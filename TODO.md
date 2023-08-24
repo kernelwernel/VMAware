@@ -1,0 +1,3 @@
+- fix the inconsistent naming 
+- finish the linux one FIRST
+- create a standard cpuid function
