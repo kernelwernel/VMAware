@@ -4,7 +4,7 @@ clear:
 	@clear
 
 compile: clear
-	@g++ -std=c++20 -O3 -w -Wall -Wextra -Werror -Wshadow -Wpedantic -pedantic -pedantic-errors vmtest.cpp -o vm
+	@clang++ -std=c++20 -O0 -w -Wall -Wextra -Werror -Wshadow -Wpedantic -pedantic -pedantic-errors vmtest.cpp -o vm
 
 run: compile
 	./vm
