@@ -2,6 +2,9 @@
 #include "vmcore.hpp"
 
 int main(void) {
-    std::cout << VM::detect();
+
+    auto lol = VM::brand();
+    //std::cout << "\n" << VM::detect();
+
     return 0;
 }

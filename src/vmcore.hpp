@@ -11,8 +11,31 @@
 #include <iostream>
 #include <limits>
 #include <cstdint>
+#include <bit>
 
-#if defined(_MSC_VER)
+
+// shorter and succinct macros
+#if (defined(_MSC_VER) || defined(_WIN32) || defined(_WIN64) || defined(__MINGW32__))
+    #define MSVC 1
+#else
+    #define MSVC 0
+#endif
+#if (defined(__GNUC__) || defined(__linux__))
+    #define LINUX 1
+#else
+    #define LINUX 0
+#endif
+#if (defined(__APPLE__) || defined(__APPLE_CPP__))
+    #define APPLE 1
+#else
+    #define APPLE 0
+#endif
+#if !(defined (MSVC) || defined(LINUX) || defined(APPLE))
+    #warning "Unknown OS detected, tests will be severely limited"
+#endif
+
+
+#if (MSVC)
     #include <intrin.h>
     #include <windows.h>
     #include <tchar.h>
@@ -22,7 +45,7 @@
     #include <Assert.h>
     #include <excpt.h>
     #pragma comment(lib, "iphlpapi.lib")
-#elif defined(__clang__) || defined(__GNUC__)
+#elif (LINUX)
     #include <cpuid.h>
     #include <x86intrin.h>
     #include <sys/stat.h>
@@ -32,8 +55,6 @@
     #include <netinet/in.h>
     #include <string.h>
     #include <memory>
-#else
-    #error "Unknown OS detected" 
 #endif
 
 struct VM {
@@ -45,29 +66,30 @@ private:
     using f32 = float;
     using sv  = std::string_view;
 
+    #if __has_cpp_attribute(__gnu__::__hot__)
+    #define HOT [[__gnu__::__hot__]]
+    #else
+    #define HOT
+    #endif
+
     // memoize the value from VM::detect() in case it's ran again
     static inline std::unordered_map<bool, std::pair<bool, sv>> memo;
 
-    #if __has_cpp_attribute(__gnu__::__hot__)
-    [[__gnu__::__hot__]]
-    #endif
-    static std::string getdata(const char* dir) {
-        std::ifstream file{};
-        std::string data{};
-        file.open(dir);
-        if (file.is_open()) {
-            file >> data;
-        }
-        file.close(); 
-        return data;
-    };
+    #if (LINUX)
+        // fetch file data
+        [[nodiscard]] HOT static std::string getdata(const char* dir) {
+            std::ifstream file{};
+            std::string data{};
+            file.open(dir);
+            if (file.is_open()) {
+                file >> data;
+            }
+            file.close(); 
+            return data;
+        };
 
-    #if __linux__
-        #if __has_cpp_attribute(__gnu__::__hot__)
-        [[__gnu__::__hot__]]
-        #endif
         // Basically std::system but it runs in the background with no output
-        [[nodiscard]] static std::unique_ptr<std::string> GetSysResult(const char *cmd) {
+        [[nodiscard]] HOT static std::unique_ptr<std::string> GetSysResult(const char *cmd) {
             std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd, "r"), pclose);
             if (!pipe) { return nullptr; }
             std::string result{};
@@ -112,11 +134,11 @@ private:
             return false;
         #endif
 
-        #if defined(_MSC_VER)
+        #if (MSVC)
             i32 info[4];
             __cpuid(info, 0);
             return (info[0] >= 1);
-        #elif (__linux__ || __GNUC__)
+        #elif (LINUX)
             u32 ext = 0;
             return (__get_cpuid_max(ext, nullptr) > 0);
         #else
@@ -131,14 +153,14 @@ private:
         const u32 a_leaf,
         const u32 c_leaf = 0xFF  // dummy value if not set manually
     ) {
-        #if defined(_MSC_VER) || defined(__INTEL_COMPILER)
+        #if (MSVC)
             i32 x[4];
             __cpuidex((i32*)x, a_leaf, c_leaf);
             a = x[0];
             b = x[1];
             c = x[2];
             d = x[3];
-        #elif defined(__clang__) || defined(__GNUC__)
+        #elif (LINUX)
             __cpuid_count(a_leaf, c_leaf, a, b, c, d);
         #endif
     };
@@ -150,9 +172,9 @@ private:
         const u32 a_leaf,
         const u32 c_leaf = 0xFF
     ) {
-        #if defined(_MSC_VER) || defined(__INTEL_COMPILER)
+        #if (MSVC)
             __cpuidex((i32*)x, a_leaf, c_leaf);
-        #elif defined(__clang__) || defined(__GNUC__)
+        #elif (LINUX)
             __cpuid_count(a_leaf, c_leaf, x[0], x[1], x[2], x[3]);
         #endif
     };
@@ -166,7 +188,7 @@ private:
             brand3   = 0x80000004;
     };
 
-
+    static inline bool no_cpuid;
 
 
 
@@ -205,28 +227,29 @@ public:
 private:
     // This can't be a lambda like the rest of the tests due to MSVC's assembler not allowing it for some random ass fucking reason
     // https://kb.vmware.com/s/article/1009458
-    bool vmware_port(void) {
-        ///* TODO: find a solution for this
+/*
+    static bool vmware_port(void) {
+        /* TODO: find a solution for this
         if (!(flags & VMWARE_PORT)) {
             return false;
         }
-        //*/
-
+        */
+/*
         u32 a, b, c, d = 0;
-
+        
         constexpr u32 vmware_magic = 0x564D5868, // magic hypervisor ID
                       vmware_port  = 0x5658,     // hypervisor port number
                       vmware_cmd   = 10,         // Getversion command identifier
                       u32_max      = std::numeric_limits<u32>::max(); // max for u32, idk why but it's required lol
 
-        #if __linux__ || defined(__GNUC__)
+        #if (LINUX)
             __asm__ __volatile__(
                 "inl (%%dx)"
                 : "=a"(a), "=b"(b), "=c"(c), "=d"(d)
                 : "0"(0x564D5868), "1"(10), "2"(0x5658), "3"(0xFFFFFFFF)
                 : "memory"
             );
-        #elif defined(_MSC_VER) // TODO: fix this code, i'm 99% sure it doesn't work anyway
+        #elif (MSVC) // TODO: fix this code, i'm 99% sure it doesn't work anyway
             __asm {
                 mov eax, vmware_magic
                 mov ebx, vmware_cmd
@@ -246,14 +269,14 @@ private:
 
         return false;
     };
-
+*/
 /*
     bool CheckHypervisorPort(void) {
     int is_vm = false;
 
     try {
 
-        //#if __linux__
+        //#if (LINUX)
 
         u32 a, b, c, d = 0;
 
@@ -308,18 +331,41 @@ private:
 */
 
 public:
-    // TODO: check for default param
-    [[nodiscard]] static bool detect(const u64 flags = (~(CURSOR) & std::numeric_limits<u64>::max())) {
+    [[nodiscard]] static bool check(const u64 flags) {
+        const i32 count = std::popcount(flags);
+
+        if (count > 1) {
+            throw std::invalid_argument("Flag argument must only contain a single option, consult the documentation's flag list");
+        }
+
+        if (count == 0) {
+            throw std::invalid_argument("Flag argument must contain at least a single option, consult the documentation's flag list");
+        }
+
+        // TODO: finish with the flag system here        
+    }
+
+
+    [[nodiscard]] static sv brand(void) {
+        // check if result hasn't been memoized already
+        if (memo.find(true) == memo.end()) {
+            bool tmp = detect(); // [[nodiscard]] bypass
+        }
+
+        return (memo[true].second);
+    }
+
+
+    [[nodiscard]] static bool detect(const u64 flags = (~(CURSOR) & ALL)) {
         namespace fs = std::filesystem;
 
         // load memoized value if it exists
         if (memo.find(true) != memo.end()) {
-            std::cout << "\n\n\nworks!\n\n\n";
             return memo[true].first;
         }
 
         // check if cpuid isn't available
-        const bool no_cpuid = !check_cpuid();
+        VM::no_cpuid = !check_cpuid();
 
         #if __x86_64__
             // check CPUID output of manufacturer ID for known VMs/hypervisors
@@ -354,19 +400,18 @@ public:
 
                     // TODO: replace this fucking garbage
                     auto cpuid_ex = [](u32 p_leaf, u32* regs, std::size_t start = 0, std::size_t end = 4) -> bool {
-                        #if (!defined(__x86_64__) && !defined(__i386__) && !defined(_M_IX86) && !defined(_M_X64))
-                            return false;
-                        #elif defined(_MSC_VER) || defined(__INTEL_COMPILER)
-                            int x[4];
+                        #if (MSVC)
+                            i32 x[4];
                             __cpuid((int*)x, leaf); 
-                        #elif defined(__clang__) || defined(__GNUC__)
-                            unsigned int x[4];
+                        #elif (LINUX)
+                            u32 x[4];
                             __cpuid(p_leaf, x[0], x[1], x[2], x[3]);
-                        #else
-                            return false;
                         #endif
 
-                        for (; start < end; start++) { *regs++ = static_cast<u32>(x[start]); } 
+                        for (; start < end; start++) { 
+                            *regs++ = static_cast<u32>(x[start]);
+                        }
+
                         return true;
                     };
 
@@ -457,7 +502,7 @@ public:
 
                 try {
                     // todo: check if this is even needed
-                    #if __linux__
+                    #if (LINUX)
                         if (!__get_cpuid_max(0x80000004, nullptr)) {
                             return false;
                         }
@@ -476,9 +521,9 @@ public:
                     std::string brand{};
 
                     for (const u32 &id : ids) {
-                        #if _MSC_VER
+                        #if (MSVC)
                             __cpuid(intbuffer.data(), id);
-                        #elif __linux__
+                        #elif (LINUX)
                             __cpuid(id, intbuffer.at(0), intbuffer.at(1), intbuffer.at(2), intbuffer.at(3));
                         #endif
 
@@ -590,7 +635,7 @@ public:
                 }
 
                 try {
-                    #if __linux__
+                    #if (LINUX)
                         u32 a, b, c, d = 0;
     
                         if (!__get_cpuid(leaf::proc_ext, &a, &b, &c, &d)) {
@@ -607,7 +652,7 @@ public:
                         }
 
                         return (acc / 100 > 350);
-                    #elif _MSC_VER
+                    #elif (MSVC)
                         #define LODWORD(_qw)    ((DWORD)(_qw))
                         u64 tsc1 = 0;
                         u64 tsc2 = 0;
@@ -699,7 +744,7 @@ public:
                     }
 
                     if (success) { std::memcpy(mac, ifr.ifr_hwaddr.sa_data, 6); }
-                #elif _MSC_VER
+                #elif (MSVC)
                     PIP_ADAPTER_INFO AdapterInfo;
                     DWORD dwBufLen = sizeof(IP_ADAPTER_INFO);
                     char *mac_addr = static_cast<char*>(std::malloc(18));
@@ -758,7 +803,7 @@ public:
         }
 */
 
-        #if __linux__
+        #if (LINUX)
             // check if thermal directory is present, might not be present in VMs
             auto temperature = [&]() -> bool {
                 if (!(flags & TEMPERATURE)) {
@@ -873,78 +918,83 @@ public:
                     return (!fs::exists("/sys/class/hwmon/"));
                 } catch (...) { return false; }
             };
-        #elif _MSC_VER
+        #elif (MSVC)
 
         #endif
 
-/*
-        std::cout << (VMID() ? "[  \x1B[38;2;94;214;114mDETECTED\x1B[0m  ]" : "[\x1B[38;2;239;75;75mNOT DETECTED\x1B[0m]") << " Checking VMID...\n";
-        std::cout << (CPUbrand() ? "[  \x1B[38;2;94;214;114mDETECTED\x1B[0m  ]" : "[\x1B[38;2;239;75;75mNOT DETECTED\x1B[0m]") << " Checking CPU brand...\n";
-        std::cout << (CPUIDhyperv() ? "[  \x1B[38;2;94;214;114mDETECTED\x1B[0m  ]" : "[\x1B[38;2;239;75;75mNOT DETECTED\x1B[0m]") << " Checking CPUID hypervisor bit...\n";
-        std::cout << (Check0x4CPUID() ? "[  \x1B[38;2;94;214;114mDETECTED\x1B[0m  ]" : "[\x1B[38;2;239;75;75mNOT DETECTED\x1B[0m]") << " Checking CPUID 0x4 leaf...\n";
-        std::cout << (HyperVbrand() ? "[  \x1B[38;2;94;214;114mDETECTED\x1B[0m  ]" : "[\x1B[38;2;239;75;75mNOT DETECTED\x1B[0m]") << " Checking hypervisor brand...\n";
-        std::cout << (RDTSCcheck() ? "[  \x1B[38;2;94;214;114mDETECTED\x1B[0m  ]" : "[\x1B[38;2;239;75;75mNOT DETECTED\x1B[0m]") << " Checking RDTSC...\n";
-        std::cout << (sidtcheck() ? "[  \x1B[38;2;94;214;114mDETECTED\x1B[0m  ]" : "[\x1B[38;2;239;75;75mNOT DETECTED\x1B[0m]") << " Checking sidt...\n";
-        std::cout << (VMwarePort() ? "[  \x1B[38;2;94;214;114mDETECTED\x1B[0m  ]" : "[\x1B[38;2;239;75;75mNOT DETECTED\x1B[0m]") << " Checking VMware port...\n";
-        std::cout << (ProcessorCount() ? "[  \x1B[38;2;94;214;114mDETECTED\x1B[0m  ]" : "[\x1B[38;2;239;75;75mNOT DETECTED\x1B[0m]") << " Checking processor count...\n";
-        std::cout << (MacCheck() ? "[  \x1B[38;2;94;214;114mDETECTED\x1B[0m  ]" : "[\x1B[38;2;239;75;75mNOT DETECTED\x1B[0m]") << " Checking MAC address...\n";
-        std::cout << (CheckTemperature() ? "[  \x1B[38;2;94;214;114mDETECTED\x1B[0m  ]" : "[\x1B[38;2;239;75;75mNOT DETECTED\x1B[0m]") << " Checking temperature...\n";
-        std::cout << (SystemdVirt() ? "[  \x1B[38;2;94;214;114mDETECTED\x1B[0m  ]" : "[\x1B[38;2;239;75;75mNOT DETECTED\x1B[0m]") << " Checking systemd virtualisation...\n";
-        std::cout << (ChassisVendor() ? "[  \x1B[38;2;94;214;114mDETECTED\x1B[0m  ]" : "[\x1B[38;2;239;75;75mNOT DETECTED\x1B[0m]") << " Checking chassis vendor...\n";
-        std::cout << (ChassisType() ? "[  \x1B[38;2;94;214;114mDETECTED\x1B[0m  ]" : "[\x1B[38;2;239;75;75mNOT DETECTED\x1B[0m]") << " Checking chassis type...\n";
-        std::cout << (Dockerenv() ? "[  \x1B[38;2;94;214;114mDETECTED\x1B[0m  ]" : "[\x1B[38;2;239;75;75mNOT DETECTED\x1B[0m]") << " Checking Dockerenv...\n";
+
+        std::cout << (vmid() ? "[  \x1B[38;2;94;214;114mDETECTED\x1B[0m  ]" : "[\x1B[38;2;239;75;75mNOT DETECTED\x1B[0m]") << " Checking VMID...\n";
+        std::cout << (cpu_brand() ? "[  \x1B[38;2;94;214;114mDETECTED\x1B[0m  ]" : "[\x1B[38;2;239;75;75mNOT DETECTED\x1B[0m]") << " Checking CPU brand...\n";
+        std::cout << (cpuid_hyperv() ? "[  \x1B[38;2;94;214;114mDETECTED\x1B[0m  ]" : "[\x1B[38;2;239;75;75mNOT DETECTED\x1B[0m]") << " Checking CPUID hypervisor bit...\n";
+        std::cout << (cpuid_0x4() ? "[  \x1B[38;2;94;214;114mDETECTED\x1B[0m  ]" : "[\x1B[38;2;239;75;75mNOT DETECTED\x1B[0m]") << " Checking CPUID 0x4 leaf...\n";
+        std::cout << (hyperv_brand() ? "[  \x1B[38;2;94;214;114mDETECTED\x1B[0m  ]" : "[\x1B[38;2;239;75;75mNOT DETECTED\x1B[0m]") << " Checking hypervisor brand...\n";
+        std::cout << (rdtsc_check() ? "[  \x1B[38;2;94;214;114mDETECTED\x1B[0m  ]" : "[\x1B[38;2;239;75;75mNOT DETECTED\x1B[0m]") << " Checking RDTSC...\n";
+        std::cout << (sidt_check() ? "[  \x1B[38;2;94;214;114mDETECTED\x1B[0m  ]" : "[\x1B[38;2;239;75;75mNOT DETECTED\x1B[0m]") << " Checking sidt...\n";
+        //std::cout << (vmware_port() ? "[  \x1B[38;2;94;214;114mDETECTED\x1B[0m  ]" : "[\x1B[38;2;239;75;75mNOT DETECTED\x1B[0m]") << " Checking VMware port...\n";
+        std::cout << (thread_count() ? "[  \x1B[38;2;94;214;114mDETECTED\x1B[0m  ]" : "[\x1B[38;2;239;75;75mNOT DETECTED\x1B[0m]") << " Checking processor count...\n";
+        std::cout << (mac_address_check() ? "[  \x1B[38;2;94;214;114mDETECTED\x1B[0m  ]" : "[\x1B[38;2;239;75;75mNOT DETECTED\x1B[0m]") << " Checking MAC address...\n";
+        std::cout << (temperature() ? "[  \x1B[38;2;94;214;114mDETECTED\x1B[0m  ]" : "[\x1B[38;2;239;75;75mNOT DETECTED\x1B[0m]") << " Checking temperature...\n";
+        std::cout << (systemd_virt() ? "[  \x1B[38;2;94;214;114mDETECTED\x1B[0m  ]" : "[\x1B[38;2;239;75;75mNOT DETECTED\x1B[0m]") << " Checking systemd virtualisation...\n";
+        std::cout << (chassis_vendor() ? "[  \x1B[38;2;94;214;114mDETECTED\x1B[0m  ]" : "[\x1B[38;2;239;75;75mNOT DETECTED\x1B[0m]") << " Checking chassis vendor...\n";
+        std::cout << (chassis_type() ? "[  \x1B[38;2;94;214;114mDETECTED\x1B[0m  ]" : "[\x1B[38;2;239;75;75mNOT DETECTED\x1B[0m]") << " Checking chassis type...\n";
+        std::cout << (dockerenv() ? "[  \x1B[38;2;94;214;114mDETECTED\x1B[0m  ]" : "[\x1B[38;2;239;75;75mNOT DETECTED\x1B[0m]") << " Checking Dockerenv...\n";
         std::cout << (dmidecode() ? "[  \x1B[38;2;94;214;114mDETECTED\x1B[0m  ]" : "[\x1B[38;2;239;75;75mNOT DETECTED\x1B[0m]") << " Checking dmidecode output...\n";
         std::cout << (dmesg() ? "[  \x1B[38;2;94;214;114mDETECTED\x1B[0m  ]" : "[\x1B[38;2;239;75;75mNOT DETECTED\x1B[0m]") << " Checking dmesg output...\n";
         std::cout << (hwmon() ? "[  \x1B[38;2;94;214;114mDETECTED\x1B[0m  ]" : "[\x1B[38;2;239;75;75mNOT DETECTED\x1B[0m]") << " Checking hwmon presence...\n";
         std::cout << "\n\n";
-*/
+
         f32 points = 0;
 
-        if (thread_count()) { std::cout << "\nproccount: "; points += 1.5; }
-        if (mac_address_check()) { std::cout << "\nmac: "; points += 3.5; }
+        if (thread_count()) { /*std::cout << "\nproccount: "*/ points += 1.5; }
+        if (mac_address_check()) { /*std::cout << "\nmac: "*/ points += 3.5; }
 
         #if __x86_64__
-            if (vmid()) { std::cout << "vmid: "; points += 6.5; }
-            if (cpu_brand()) { std::cout << "\ncpubrand: "; points += 3; }
-            if (cpuid_hyperv()) { std::cout << "\ncpuidhyperv: "; points += 5.5; }
-            if (cpuid_0x4()) { std::cout << "\n0x4cpuid: "; points += 4; }
-            if (hyperv_brand()) { std::cout << "\nhypervbrand: "; points += 4; }
-            if (rdtsc_check()) { std::cout << "\nrdtsc: "; points += 2.5; }
-            if (sidt_check()) { std::cout << "\nsidt: "; points += 4; }
-            //if (vmware_port()) { std::cout << "\nvmwareport: "; points += 3; }
+            if (vmid()) { /*std::cout << "vmid: "*/ points += 6.5; }
+            if (cpu_brand()) { /*std::cout << "\ncpubrand: "*/ points += 3; }
+            if (cpuid_hyperv()) { /*std::cout << "\ncpuidhyperv: "*/ points += 5.5; }
+            if (cpuid_0x4()) { /*std::cout << "\n0x4cpuid: "*/ points += 4; }
+            if (hyperv_brand()) { /*std::cout << "\nhypervbrand: "*/ points += 4; }
+            if (rdtsc_check()) { /*std::cout << "\nrdtsc: "*/ points += 1.5; }
+            if (sidt_check()) { /*std::cout << "\nsidt: "*/ points += 4; }
+            //if (vmware_port()) { /*std::cout << "\nvmwareport: "*/ points += 3; }
         #endif
 
-        #if __linux__
-            if (temperature()) { std::cout << "\ntemperature: "; points += 1; }
-            if (systemd_virt()) { std::cout << "\nsystemd-virt: "; points += 5; }
-            if (chassis_vendor()) { std::cout << "\nchassisvendor: "; points += 4.5; }
-            if (chassis_type()) { std::cout << "\nchassistype: "; points += 1; }
-            if (dockerenv()) { std::cout << "\ndockerenv: "; points += 3; }
-            if (dmidecode()) { std::cout << "\ndmidecode: "; points += 4; }
-            if (dmesg()) { std::cout << "\ndmesg: "; points += 3.5; }
-            if (hwmon()) { std::cout << "\nhwmon: "; points += 0.5; }
-        #elif _MSC_VER
-            if (VBoxCheck()) { std::cout << "\nvbox: "; points += 6.5; }
-            if (VBoxCheck2()) { std::cout << "\nvbox2: "; points += 6.5; }
-            if (VMwareCheck()) { std::cout << "\nvmware: "; points += 6.5; }
-            if (VPC()) { std::cout << "\nvpc: "; points += 2; }
-            if (CheckSandboxie()) { std::cout << "\nsandboxie: "; points += 4; }
-            if (RegKeyVM()) { std::cout << "\nregkey: "; pointa += 5; }
-            if (RegKeyStrSearch()) { std::cout << "\nregkeystr: "; pointa += 5; }
+        #if (LINUX)
+            if (temperature()) { /*std::cout << "\ntemperature: "*/ points += 1; }
+            if (systemd_virt()) { /*std::cout << "\nsystemd-virt: "*/ points += 5; }
+            if (chassis_vendor()) { /*std::cout << "\nchassisvendor: "*/ points += 4.5; }
+            if (chassis_type()) { /*std::cout << "\nchassistype: "*/ points += 1; }
+            if (dockerenv()) { /*std::cout << "\ndockerenv: "*/ points += 3; }
+            if (dmidecode()) { /*std::cout << "\ndmidecode: "*/ points += 4; }
+            if (dmesg()) { /*std::cout << "\ndmesg: "*/ points += 3.5; }
+            if (hwmon()) { /*std::cout << "\nhwmon: "*/ points += 0.5; }
+        #elif (MSVC)
+            if (VBoxCheck()) { /*std::cout << "\nvbox: "*/ points += 6.5; }
+            if (VBoxCheck2()) { /*std::cout << "\nvbox2: "*/ points += 6.5; }
+            if (VMwareCheck()) { /*std::cout << "\nvmware: "*/ points += 6.5; }
+            if (VPC()) { /*std::cout << "\nvpc: "*/ points += 2; }
+            if (CheckSandboxie()) { /*std::cout << "\nsandboxie: "*/ points += 4; }
+            if (RegKeyVM()) { /*std::cout << "\nregkey: ";*/ points += 5; }
+            if (RegKeyStrSearch()) { /*std::cout << "\nregkeystr: ";*/ points += 5; }
         #endif
-
+/*
         std::cout << "\n\n RESULT: " << points << "/62 points, meets VM detection threashold " << (points / 6.5) << " times over\n\n";
 
         for (const auto& pair : VM_brands) {
             std::cout << (int)pair.second << " = " << pair.first << std::endl;
         }
-
+*/
         /** 
          * you can change this threshold score to a maximum
          * of something like 10~14 if you want to be extremely
          * sure, but this can risk the result to be a false
          * negative if the detection bar is far too high.
          */
-        return (points >= 6.5);
+        const bool result = (points >= 6.5);
+
+        // memoize the result in case VM::detect() is executed again
+        memo[true].first = result;
+
+        return result;
     }
 };
