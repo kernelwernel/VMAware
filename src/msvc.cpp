@@ -1,11 +1,15 @@
 #include <Lmcons.h>
 #include <windows.h>
 
-#include <bits/stdc++.h> // remove when done
+//#include <bits/stdc++.h>
+
+#include <vector>
+#include <string>
+#include <iostream>
+#include <filesystem>
 
 namespace MSVC {
-
-    auto CheckLoadedDLLs = []() -> BOOL {
+    bool CheckLoadedDLLs() {
         std::vector<std::string> real_dlls = {
             "kernel32.dll",
             "networkexplorer.dll",
@@ -43,7 +47,7 @@ namespace MSVC {
 
 
     // credits: some guy in a russian underground forum from a screenshot I saw, idk i don't speak russian ¯\_(ツ)_/¯
-    auto GetUser = []() -> bool {      
+    bool GetUser() {      
         char user[UNLEN+1];
         DWORD user_len = UNLEN+1;
         GetUserName(user, &user_len);
@@ -56,8 +60,8 @@ namespace MSVC {
     };
 
     // credits: same russian guy as above. Whoever you are, ty
-    auto CheckSunbelt = []() -> bool {
-        return (fs::exists("C:\\analysis"));
+    bool CheckSunbelt() {
+        return (FileExists("C:\\analysis"));
     };
 
 
@@ -67,18 +71,18 @@ namespace MSVC {
      * @note Some VMs are automatic without a human due to mass malware scanning being a thing
      * @note Disabled by default due to performance reasons
      */
-    auto CursorCheck = []() -> bool {
+    bool CursorCheck() {
         POINT pos1, pos2;
         GetCursorPos(&pos1);
         Sleep(5000);
         GetCursorPos(&pos2);
 
         return ((pos1.x == pos2.x) && (pos1.y == pos2.y));
-    }
+    };
 
 
     // find vmware tools presence
-    auto VMwareCheck = []() -> bool {
+    bool VMwareCheck() {
         try {
             HKEY hKey = 0;
             DWORD dwType = REG_SZ;
@@ -86,13 +90,13 @@ namespace MSVC {
             DWORD dwBufSize = sizeof(buf);
             return (RegOpenKeyEx(TEXT("SOFTWARE\\VMware, Inc.\\VMware Tools"), 0, KEY_QUERY_VALUE, &hKey ) == ERROR_SUCCESS);
         } catch (...) { return false; }
-    }
+    };
 
 
 
 
     // Check vbox rdrdn
-    auto VBoxCheck = []() -> bool {
+    bool VBoxCheck() {
         try {
             HANDLE handle = CreateFile(_T("\\\\.\\VBoxMiniRdrDN"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
             if (handle != INVALID_HANDLE_VALUE) {
@@ -106,7 +110,7 @@ namespace MSVC {
 
 
 
-    auto RegKeyVM = []() -> bool {
+    bool RegKeyVM() {
         uint8_t score = 0;
 
         auto key = [&score](const std::string_view regkey_sv) -> void {
@@ -197,8 +201,19 @@ namespace MSVC {
         key("HKLM\\SYSTEM\\ControlSet001\\Services\\xennet6");
         key("HKLM\\SYSTEM\\ControlSet001\\Services\\xensvc");
         key("HKLM\\SYSTEM\\ControlSet001\\Services\\xenvdb");
+
         return (score >= 1);
     };
 
 
+}
+
+int main() {
+    std::cout << "Loaded DLL check: " << MSVC::CheckLoadedDLLs() << "\n";
+    std::cout << "Username check: " << MSVC::GetUser() << "\n";
+    std::cout << "Sunbelt check: " << MSVC::CheckSunbelt() << "\n";
+    std::cout << "Cursor check: " << MSVC::CursorCheck() << "\n";
+    std::cout << "VMware check: " << MSVC::VMwareCheck() << "\n";
+    std::cout << "VBox check: " << MSVC::VBoxCheck() << "\n";
+    std::cout << "Registry check: " << MSVC::RegKeyVM() << "\n";
 }

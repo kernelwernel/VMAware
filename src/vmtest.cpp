@@ -3,8 +3,10 @@
 
 int main(void) {
 
-    auto lol = VM::brand();
-    //std::cout << "\n" << VM::detect();
+    //auto lol = VM::brand();
+    //auto lol = VM::detect();
+
+    auto idk = VM::detect();
 
     return 0;
 }

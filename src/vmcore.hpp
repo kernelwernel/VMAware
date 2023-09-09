@@ -12,7 +12,13 @@
 #include <limits>
 #include <cstdint>
 #include <bit>
+#include <unordered_map>
+#include <array>
 
+
+#if __cplusplus < 201103L
+    #error "VMAware only supports C++14 or above, set your compiler flag to '-std=c++20' for GCC/clang, or '/std:c++20' for MSVC"
+#endif
 
 // shorter and succinct macros
 #if (defined(_MSC_VER) || defined(_WIN32) || defined(_WIN64) || defined(__MINGW32__))
@@ -25,7 +31,7 @@
 #else
     #define LINUX 0
 #endif
-#if (defined(__APPLE__) || defined(__APPLE_CPP__))
+#if (defined(__APPLE__) || defined(__APPLE_CPP__) || defined(__MACH__) || defined(__DARWIN))
     #define APPLE 1
 #else
     #define APPLE 0
@@ -33,7 +39,6 @@
 #if !(defined (MSVC) || defined(LINUX) || defined(APPLE))
     #warning "Unknown OS detected, tests will be severely limited"
 #endif
-
 
 #if (MSVC)
     #include <intrin.h>
@@ -64,20 +69,18 @@ private:
     using u64 = std::uint64_t;
     using i32 = std::int32_t;
     using f32 = float;
-    using sv  = std::string_view;
 
-    #if __has_cpp_attribute(__gnu__::__hot__)
-    #define HOT [[__gnu__::__hot__]]
+    #if __cplusplus <= 201402L
+        using sv  = const char*;
     #else
-    #define HOT
+        using sv  = std::string_view;
     #endif
 
-    // memoize the value from VM::detect() in case it's ran again
-    static inline std::unordered_map<bool, std::pair<bool, sv>> memo;
+
 
     #if (LINUX)
         // fetch file data
-        [[nodiscard]] HOT static std::string getdata(const char* dir) {
+        [[nodiscard]] static std::string getdata(const char* dir) {
             std::ifstream file{};
             std::string data{};
             file.open(dir);
@@ -89,18 +92,39 @@ private:
         };
 
         // Basically std::system but it runs in the background with no output
-        [[nodiscard]] HOT static std::unique_ptr<std::string> GetSysResult(const char *cmd) {
+        [[nodiscard]] static std::unique_ptr<std::string> sys_result(const char *cmd) {
             std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd, "r"), pclose);
-            if (!pipe) { return nullptr; }
+
+            if (!pipe) { 
+                return nullptr;
+            }
+
             std::string result{};
             std::array<char, 128> buffer{};
+
             while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
                 result += buffer.data();
             }
+
             result.pop_back();
-            return std::make_unique<std::string>(result);
+            
+            #if __cplusplus < 201402L
+                std::unique_ptr<std::string> tmp(nullptr);
+                return tmp; 
+            #else
+                return std::make_unique<std::string>(result);
+            #endif
         }
     #endif
+
+    [[nodiscard]] static bool exists(const char* path) {
+        #if __cplusplus >= 202002L
+            return std::filesystem::exists(path);
+        #elif __cplusplus < 201402L
+            struct stat buffer;   
+            return (stat (path, &buffer) == 0); 
+        #endif
+    }
 
     // VM scoreboard table specifically for VM::brand()
     static inline std::unordered_map<sv, u8> VM_brands {
@@ -179,6 +203,7 @@ private:
         #endif
     };
 
+    // cpuid leaf values
     struct leaf {
         static constexpr u32
             hyperv   = 0x40000000,
@@ -188,7 +213,14 @@ private:
             brand3   = 0x80000004;
     };
 
+    // memoize the value from VM::detect() in case it's ran again
+    static inline std::unordered_map<bool, std::pair<bool, sv>> memo;
+
+    // cpuid check value
     static inline bool no_cpuid;
+
+    // flags
+    static inline u64 flags;
 
 
 
@@ -223,6 +255,8 @@ public:
         CURSOR = 1 << 30,
 
         ALL = std::numeric_limits<u64>::max();
+
+    //namespace fs = std::filesystem;
 
 private:
     // This can't be a lambda like the rest of the tests due to MSVC's assembler not allowing it for some random ass fucking reason
@@ -330,10 +364,650 @@ private:
 }
 */
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    #if __x86_64__
+        // check CPUID output of manufacturer ID for known VMs/hypervisors
+        [[nodiscard]] static bool vmid() try {
+            if (no_cpuid || !(flags & VMID)) {
+                return false;
+            }
+
+            constexpr sv
+                bhyve = "bhyve bhyve ",
+                kvm = " KVMKVMKVM  ",
+                qemu = "TCGTCGTCGTCG",
+                hyperv = "Microsoft Hv",
+                xta = "MicrosoftXTA",
+                parallels = " prl hyperv ",
+                parallels2 = " lrpepyh  vr",
+                vmware = "VMwareVMware",
+                vbox = "VBoxVBoxVBox",
+                xen = "XenVMMXenVMM",
+                acrn = "ACRNACRNACRN",
+                qnx = " QNXQVMBSQG ",
+                virtapple = "VirtualApple";
+
+            constexpr std::array<sv, 13> IDs {
+                bhyve, kvm, qemu,
+                hyperv, parallels, parallels,
+                parallels2, vmware, vbox,
+                xen, acrn, qnx,
+                virtapple
+            };
+
+            // TODO: replace this fucking garbage
+            auto cpuid_ex = [](u32 p_leaf, u32* regs, std::size_t start = 0, std::size_t end = 4) -> bool {
+                #if (MSVC)
+                    i32 x[4];
+                    __cpuid((int*)x, leaf); 
+                #elif (LINUX)
+                    u32 x[4];
+                    __cpuid(p_leaf, x[0], x[1], x[2], x[3]);
+                #endif
+
+                for (; start < end; start++) { 
+                    *regs++ = static_cast<u32>(x[start]);
+                }
+
+                return true;
+            };
+
+            std::string brand = "";
+
+            u32 sig_reg[3] = {0};
+
+            if (!cpuid_ex(0, sig_reg, 1)) {
+                return false;
+            }
+
+            u32 features;
+            cpuid_ex(1, &features, 2, 3);
+
+            auto strconvert = [](u64 n) -> std::string {
+                const std::string &str(reinterpret_cast<char*>(&n));
+                return str;
+            };
+
+            std::stringstream ss;
+            ss << strconvert(sig_reg[0]);
+            ss << strconvert(sig_reg[2]);
+            ss << strconvert(sig_reg[1]);
+
+            brand = ss.str();
+
+            const bool found = (std::find(std::begin(IDs), std::end(IDs), brand) != std::end(IDs));
+            
+            if (found) {
+                if (brand == bhyve) { VM_brands["bhyve"]++; }
+                if (brand == kvm) { VM_brands["KVM"]++; }
+                if (brand == qemu) [[likely]] { VM_brands["QEMU"]++; }
+                if (brand == hyperv) { VM_brands["Microsoft Hyper-V"]++; }
+                if (brand == xta) { VM_brands["Microsoft x86-to-ARM"]++; }
+                if (brand == vmware) [[likely]] { VM_brands["VMware"]++; }
+                if (brand == vbox) [[likely]] { VM_brands["VirtualBox"]++; }
+                if (brand == parallels) { VM_brands["Parallels"]++; }
+                if (brand == parallels2) { VM_brands["Parallels"]++; }
+                if (brand == xen) { VM_brands["Xen HVM"]++; }
+                if (brand == acrn) { VM_brands["ACRN"]++; }
+                if (brand == qnx) { VM_brands["QNX hypervisor"]++; }
+                if (brand == virtapple) { VM_brands["Virtual Apple"]++; }
+            }
+
+            return found;
+        } catch (...) { return false; }
+
+
+        // check if CPU brand is a VM brand
+        [[nodiscard]] static bool cpu_brand() try {
+            if (no_cpuid || !(flags & BRAND)) {
+                return false;
+            }
+
+            // todo: check if this is even needed
+            #if (LINUX)
+                if (!__get_cpuid_max(0x80000004, nullptr)) {
+                    return false;
+                }
+            #endif
+
+            std::array<int, 4> intbuffer{};
+            constexpr std::size_t intbufsize = sizeof(i32) * intbuffer.size();
+            std::array<char, 64> charbuffer{};
+
+            constexpr std::array<u32, 3> ids = {
+                leaf::brand1,
+                leaf::brand2,
+                leaf::brand3
+            };
+
+            std::string brand = "";
+
+            for (const u32 &id : ids) {
+                #if (MSVC)
+                    __cpuid(intbuffer.data(), id);
+                #elif (LINUX)
+                    __cpuid(id, intbuffer.at(0), intbuffer.at(1), intbuffer.at(2), intbuffer.at(3));
+                #endif
+
+                std::memcpy(charbuffer.data(), intbuffer.data(), intbufsize);
+                brand += sv(charbuffer.data());
+            }
+
+            // TODO: might add more potential keywords, be aware that it could (theoretically) cause false positives
+            constexpr std::array<const char*, 16> vmkeywords {
+                "qemu", "kvm", "virtual", "vm", 
+                "vbox", "virtualbox", "vmm", "monitor", 
+                "bhyve", "hyperv", "hypervisor", "hvisor", 
+                "parallels", "vmware", "hvm", "qnx"
+            };
+
+            u8 matches = 0;
+            for (std::size_t i = 0; i < vmkeywords.size(); i++) {
+                auto const regex = std::regex(vmkeywords.at(i), std::regex::icase);
+                matches += std::regex_search(brand, regex);
+            }
+
+            return (matches >= 1);
+        } catch (...) { return false; }
+
+        // check if hypervisor feature bit in CPUID is enabled (always false for physical CPUs)
+        [[nodiscard]] static bool cpuid_hyperv() try {
+            if (no_cpuid || !(flags & HYPERV_BIT)) {
+                return false;
+            }
+
+            u32 unused, ecx = 0;
+
+            cpuid(unused, unused, ecx, unused, 1);
+
+            return (ecx & (1 << 31));
+        } catch (...) { return false; }
+
+        // check if 0x40000000~0x400000FF cpuid input is present (mostly present in VMs), at least according to https://kb.vmware.com/s/article/1009458
+        [[nodiscard]] static bool cpuid_0x4() try {
+            if (no_cpuid || !(flags & CPUID_0x4)) {
+                return false;
+            }
+
+            u32 a, b, c, d = 0;
+
+            for (u8 i = 0; i < 0xFF; i++) {
+                cpuid(a, b, c, d, (leaf::hyperv + i));
+                if ((a + b + c + d) != 0) { return true; }
+            }
+
+            return false;
+        } catch (...) { return false; }
+
+        // check for hypervisor brand string length (would be around 2 characters in a host machine)
+        [[nodiscard]] static bool hyperv_brand() try {
+            if (!(flags & HYPERV_STR)) {
+                return false;
+            }
+
+            char out[sizeof(i32) * 4 + 1] = { 0 }; // e*x size + number of e*x registers + null terminator
+            cpuid((int*)out, leaf::hyperv);
+            return (std::strlen(out + 4) >= 4);
+        } catch (...) { return false; }
+
+        // check if RDTSC is slow, if it is then it might be a VM
+        [[nodiscard]] static bool rdtsc_check() try {
+            if (!(flags & RDTSC)) {
+                return false;
+            }
+
+            #if (LINUX)
+                u32 a, b, c, d = 0;
+
+                if (!__get_cpuid(leaf::proc_ext, &a, &b, &c, &d)) {
+                    if (!(d & (1 << 27))) { return false; }
+                }
+                
+                u32 s, acc = 0;
+                i32 out[4];
+
+                for (std::size_t i = 0; i < 100; ++i) {
+                    s = __rdtsc();
+                    cpuid(out, 0, 0);
+                    acc += __rdtsc() - s;
+                }
+
+                return (acc / 100 > 350);
+            #elif (MSVC)
+                #define LODWORD(_qw)    ((DWORD)(_qw))
+                u64 tsc1 = 0;
+                u64 tsc2 = 0;
+                u64 avg = 0;
+                i32 cpuInfo[4] = {};
+                for (INT i = 0; i < 10; i++)
+                {
+                    tsc1 = __rdtsc();
+                    GetProcessHeap();
+                    tsc2 = __rdtsc();
+                    CloseHandle(0);
+                    tsc3 = __rdtsc();
+                    if ((LODWORD(tsc3) - LODWORD(tsc2)) / (LODWORD(tsc2) - LODWORD(tsc1)) >= 10) {
+                        return false;
+                    }
+                }
+
+                return true;
+            #endif
+        } catch (...) { return false; }
+
+        // check for vm presence using sidt instruction (TODO: check if this actually works)
+        // credits: https://unprotect.it/technique/sidt-red-pill/
+        [[nodiscard]] static bool sidt_check() try {
+            if (!(flags & SIDT)) {
+                return false;
+            }
+
+            u64 idtr = 0;
+
+            __asm__ __volatile__(
+                "sidt %0"
+                : "=m" (idtr)
+            );
+
+            return (idtr != 0);
+        } catch (...) { return false; }
+    #endif
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    // Check if processor count is 1 or 2 (some VMs only have a single core)
+    [[nodiscard]] static bool thread_count() try {
+        if (!(flags & THREADCOUNT)) {
+            return false;
+        }
+
+        return (std::thread::hardware_concurrency() <= 2);
+    } catch (...) { return false; }
+    
+
+    // check if mac address starts with certain VM designated values
+    [[nodiscard]] static bool mac_address_check() try {
+        if (!(flags & MAC)) {
+            return false;
+        }
+
+        u8 mac[6];
+
+        #if (LINUX)
+            struct ifreq ifr;
+            struct ifconf ifc;
+            char buf[1024];
+            i32 success = 0;
+
+            i32 sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
+
+            if (sock == -1) { 
+                return false;
+            };
+
+            ifc.ifc_len = sizeof(buf);
+            ifc.ifc_buf = buf;
+
+            if (ioctl(sock, SIOCGIFCONF, &ifc) == -1) { return false; }
+
+            struct ifreq* it = ifc.ifc_req;
+            const struct ifreq* end = it + (ifc.ifc_len / sizeof(struct ifreq));
+
+            for (; it != end; ++it) {
+                std::strcpy(ifr.ifr_name, it->ifr_name);
+
+                if (ioctl(sock, SIOCGIFFLAGS, &ifr) != 0) { 
+                    return false;
+                }
+
+                if (!(ifr.ifr_flags & IFF_LOOPBACK)) {
+                    if (ioctl(sock, SIOCGIFHWADDR, &ifr) == 0) {
+                        success = 1;
+                        break;
+                    }
+                }
+            }
+
+            if (success) { 
+                std::memcpy(mac, ifr.ifr_hwaddr.sa_data, 6);
+            }
+        #elif (MSVC)
+            PIP_ADAPTER_INFO AdapterInfo;
+            DWORD dwBufLen = sizeof(IP_ADAPTER_INFO);
+            char *mac_addr = static_cast<char*>(std::malloc(18));
+
+            AdapterInfo = (IP_ADAPTER_INFO *) std::malloc(sizeof(IP_ADAPTER_INFO));
+
+            if (AdapterInfo == NULL) {
+                free(mac_addr);
+                return false;
+            }
+
+            if (GetAdaptersInfo(AdapterInfo, &dwBufLen) == ERROR_BUFFER_OVERFLOW) {
+                std::free(AdapterInfo);
+                AdapterInfo = (IP_ADAPTER_INFO *) std::malloc(dwBufLen);
+                if (AdapterInfo == NULL) {
+                    std::free(mac_addr);
+                    return false;
+                }
+            }
+
+            if (GetAdaptersInfo(AdapterInfo, &dwBufLen) == NO_ERROR) {
+                PIP_ADAPTER_INFO pAdapterInfo = AdapterInfo;
+                for (std::size_t i = 0; i < 6; i++) {
+                    mac[i] = pAdapterInfo->Address[i];
+                }
+            }
+
+            std::free(AdapterInfo);
+        #endif
+
+        if (mac[0] == 0x08 && mac[1] == 0x00 && mac[2] == 0x27) {
+            VM_brands["VirtualBox"]++;
+            return true;
+        }
+
+        if (
+            (mac[0] == 0x00 && mac[1] == 0x0C && mac[2] == 0x29) ||
+            (mac[0] == 0x00 && mac[1] == 0x1C && mac[2] == 0x14) ||
+            (mac[0] == 0x00 && mac[1] == 0x50 && mac[2] == 0x56) ||
+            (mac[0] == 0x00 && mac[1] == 0x05 && mac[2] == 0x69)
+        ) {
+            VM_brands["VMware"]++;
+            return true;
+        }
+
+        if (mac[0] == 0x00 && mac[1] == 0x16 && mac[2] == 0xE3) {
+            VM_brands["Xen HVM"]++;
+            return true;
+        }
+
+        if (mac[0] == 0x00 && mac[1] == 0x1C && mac[2] == 0x42) {
+            VM_brands["Parallels"]++;
+            return true;
+        }
+
+        if (mac[0] == 0x0A && mac[1] == 0x00 && mac[2] == 0x27) {
+            VM_brands["Hybrid Analysis"]++;
+            return true;
+        }
+
+        return false;
+    } catch (...) { return false; }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            
+#if (LINUX)
+    // check if thermal directory is present, might not be present in VMs
+    [[nodiscard]] static bool temperature() try {
+        if (!(flags & TEMPERATURE)) {
+            return false;
+        }
+
+        return (!exists("/sys/class/thermal/thermal_zone0/"));
+    } catch (...) { return false; }
+
+
+    // get result from systemd-detect-virt tool
+    [[nodiscard]] static bool systemd_virt() try {
+        if (!(flags & SYSTEMD)) {
+            return false;
+        }
+
+        if (!(exists("/usr/bin/systemd-detect-virt") || exists("/bin/systemd-detect-virt"))) {
+            return false;
+        }
+
+        const std::unique_ptr<std::string> result = sys_result("systemd-detect-virt");
+        
+        if (result == nullptr) {
+            return false;
+        }
+
+        return (*result != "none");
+    } catch (...) { return false; }
+
+
+    // check if chassis vendor is a VM vendor
+    [[nodiscard]] static bool chassis_vendor() try {
+        if (!(flags & CVENDOR)) {
+            return false;
+        }
+
+        const char* vendor_file = "/sys/devices/virtual/dmi/id/chassis_vendor";
+
+        if (exists(vendor_file)) {
+            #if __cplusplus <= 201402L
+                const sv &vendor = getdata(vendor_file).c_str();
+            #else
+                const sv &vendor = getdata(vendor_file);
+            #endif
+
+            constexpr std::array<sv, 2> ChassisVMs = {
+                "QEMU", 
+                "Oracle Corporation" 
+            };
+
+            for (auto ptr{ &ChassisVMs[0] }; ptr != &ChassisVMs[0] + ChassisVMs.size(); ++ptr) {
+                if (*ptr == vendor) { return true; }
+            }
+        }
+
+        return false;
+    } catch (...) { return false; }
+
+
+    // Check if chassis type is invalid or not, might be a VM
+    [[nodiscard]] static bool chassis_type() try {
+        if (!(flags & CTYPE)) {
+            return false;
+        }
+
+        const char* chassis = "/sys/devices/virtual/dmi/id/chassis_type";
+        
+        if (exists(chassis)) {
+            return (stoi(getdata(chassis)) == 1);
+        }
+
+        return false;
+    } catch (...) { return false; }
+
+
+    // check if /.dockerenv or /.dockerinit file is present (most likely a docker container)
+    [[nodiscard]] static bool dockerenv() try {
+        if (!(flags & DOCKER)) {
+            return false;
+        }
+
+        return (exists("/.dockerenv") || exists("/.dockerinit"));
+    } catch (...) { return false; }
+
+
+    // check if demidecode output matches a VM brand
+    [[nodiscard]] static bool dmidecode() try {
+        if (!(flags & DMIDECODE)) {
+            return false;
+        }
+
+        if (!(exists("/bin/dmidecode") || exists("/usr/bin/dmidecode"))) {
+            return false;
+        }
+        
+        if (getuid() != 0) { 
+            return false; 
+        }
+
+        const std::unique_ptr<std::string> result = sys_result("dmidecode -t system | grep 'Manufacturer|Product' | grep -c \"QEMU|VirtualBox|KVM\"");
+
+        return (std::atoi(result->c_str()) >= 1);
+    } catch (...) { return false; }
+
+
+    // check if dmesg command output matches a VM brand
+    [[nodiscard]] static bool dmesg() try {
+        if (!(flags & DMESG)) {
+            return false;
+        }
+
+        if (!exists("/bin/dmesg") && !exists("/usr/bin/dmesg")) {
+            return false;
+        }
+
+        const std::unique_ptr<std::string> result = sys_result("dmesg | grep -i hypervisor | grep -c \"KVM|QEMU\"");
+
+        if (result == nullptr) {
+            return false;
+        }
+
+        return (std::atoi(result->c_str()));
+    } catch (...) { return false; }
+
+
+    // check if /sys/class/hwmon/ directory is present. If not, likely a VM
+    [[nodiscard]] static bool hwmon() try {
+        if (!(flags & HWMON)) {
+            return false;
+        }
+
+        return (!exists("/sys/class/hwmon/"));
+    } catch (...) { return false; }
+    
+
+    // [[nodiscard]] static bool dmi_check() try {
+    //     char string[10];
+    //     GET_BIOS_SERIAL(string);
+    //     if (!memcmp(string, "VMware-", 7) || !memcmp(string, "VMW", 3)) { return true; }
+    //     else { return false; }
+    // } catch (...) { return false; }
+#endif
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 public:
     [[nodiscard]] static bool check(const u64 flags) {
-        const i32 count = std::popcount(flags);
+        // only a single flag is accepted
+        i32 count = 0;
 
+        #if __cplusplus >= 202002L
+            count = std::popcount(flags);
+        #elif __cplusplus >= 201402L
+            count = std::__popcount(flags);
+        #else 
+        {
+            u64 tmp = flags;
+            for (; tmp != 0; count++) {
+                tmp = (tmp & (tmp - 1));
+            }
+        }
+        #endif
+    
         if (count > 1) {
             throw std::invalid_argument("Flag argument must only contain a single option, consult the documentation's flag list");
         }
@@ -342,24 +1016,60 @@ public:
             throw std::invalid_argument("Flag argument must contain at least a single option, consult the documentation's flag list");
         }
 
-        // TODO: finish with the flag system here        
+        switch(flags) {
+            #if (__x86_64__)
+                case VM::VMID: return vmid();
+                case VM::BRAND: return cpu_brand();
+                case VM::HYPERV_BIT: return cpuid_hyperv();
+                case VM::CPUID_0x4: return cpuid_0x4();
+                case VM::HYPERV_STR: return hyperv_brand();
+            #endif
+
+            #if (LINUX)
+                case VM::SIDT: return sidt_check();
+                case VM::TEMPERATURE: return temperature();
+                case VM::CVENDOR: return chassis_vendor();
+                case VM::CTYPE: return chassis_type();
+                case VM::DOCKER: return dockerenv();
+                case VM::DMIDECODE: return dmidecode();
+                case VM::DMESG: return dmesg();
+                case VM::HWMON: return hwmon();
+            #endif
+
+            #if (LINUX || MSVC)
+                case VM::RDTSC: return rdtsc_check();
+                case VM::MAC: return mac_address_check(); 
+                //case VM::VMWARE_PORT: return vmware_port();
+            #endif
+
+            case VM::THREADCOUNT: return thread_count();
+        }
+
+        return false;
     }
 
 
     [[nodiscard]] static sv brand(void) {
         // check if result hasn't been memoized already
         if (memo.find(true) == memo.end()) {
-            bool tmp = detect(); // [[nodiscard]] bypass
+            bool tmp = detect(); // [[nodiscard]] workaround
+        }
+
+        // check if no VM was detected
+        if (memo[true].first == false) {
+            return "Unknown";
         }
 
         return (memo[true].second);
     }
 
 
-    [[nodiscard]] static bool detect(const u64 flags = (~(CURSOR) & ALL)) {
-        namespace fs = std::filesystem;
-
-        // load memoized value if it exists
+    static bool detect(const u64 p_flags = (~(CURSOR) & ALL)) { // not [[nodiscard]] on purpose
+        /**
+         * load memoized value if it exists from a previous
+         * execution of VM::detect(). This can save around
+         * 5~10x speed depending on the circumstances.
+         */
         if (memo.find(true) != memo.end()) {
             return memo[true].first;
         }
@@ -367,560 +1077,7 @@ public:
         // check if cpuid isn't available
         VM::no_cpuid = !check_cpuid();
 
-        #if __x86_64__
-            // check CPUID output of manufacturer ID for known VMs/hypervisors
-            auto vmid = [=]() -> bool {
-                if (no_cpuid || !(flags & VMID)) {
-                    return false;
-                }
-
-                try {
-                    constexpr sv 
-                        bhyve = "bhyve bhyve ",
-                        kvm = " KVMKVMKVM  ",
-                        qemu = "TCGTCGTCGTCG",
-                        hyperv = "Microsoft Hv",
-                        xta = "MicrosoftXTA",
-                        parallels = " prl hyperv ",
-                        parallels2 = " lrpepyh  vr",
-                        vmware = "VMwareVMware",
-                        vbox = "VBoxVBoxVBox",
-                        xen = "XenVMMXenVMM",
-                        acrn = "ACRNACRNACRN",
-                        qnx = " QNXQVMBSQG ",
-                        virtapple = "VirtualApple";
-
-                    constexpr std::array<sv, 13> IDs {
-                        bhyve, kvm, qemu,
-                        hyperv, parallels, parallels,
-                        parallels2, vmware, vbox,
-                        xen, acrn, qnx,
-                        virtapple
-                    };
-
-                    // TODO: replace this fucking garbage
-                    auto cpuid_ex = [](u32 p_leaf, u32* regs, std::size_t start = 0, std::size_t end = 4) -> bool {
-                        #if (MSVC)
-                            i32 x[4];
-                            __cpuid((int*)x, leaf); 
-                        #elif (LINUX)
-                            u32 x[4];
-                            __cpuid(p_leaf, x[0], x[1], x[2], x[3]);
-                        #endif
-
-                        for (; start < end; start++) { 
-                            *regs++ = static_cast<u32>(x[start]);
-                        }
-
-                        return true;
-                    };
-
-                    std::string brand = "";
-
-                    u32 sig_reg[3] = {0};
-                    if (!cpuid_ex(0, sig_reg, 1)) { return false; }
-
-                    u32 features;
-                    cpuid_ex(1, &features, 2, 3);
-
-                    auto strconvert = [](u64 n) -> std::string {
-                        const std::string &str(reinterpret_cast<char*>(&n));
-                        return str;
-                    };
-
-                    std::stringstream ss;
-                    ss << strconvert(sig_reg[0]);
-                    ss << strconvert(sig_reg[2]);
-                    ss << strconvert(sig_reg[1]);
-
-                    brand = ss.str();
-
-                    bool found = (std::find(std::begin(IDs), std::end(IDs), brand) != std::end(IDs));
-
-                    if (found) {
-                        if (brand == bhyve) { VM_brands["bhyve"]++; }
-                        if (brand == kvm) { VM_brands["KVM"]++; }
-                        if (brand == qemu) [[likely]] { VM_brands["QEMU"]++; }
-                        if (brand == hyperv) { VM_brands["Microsoft Hyper-V"]++; }
-                        if (brand == xta) { VM_brands["Microsoft x86-to-ARM"]++; }
-                        if (brand == vmware) [[likely]] { VM_brands["VMware"]++; }
-                        if (brand == vbox) [[likely]] { VM_brands["VirtualBox"]++; }
-                        if (brand == parallels) { VM_brands["Parallels"]++; }
-                        if (brand == parallels2) { VM_brands["Parallels"]++; }
-                        if (brand == xen) { VM_brands["Xen HVM"]++; }
-                        if (brand == acrn) { VM_brands["ACRN"]++; }
-                        if (brand == qnx) { VM_brands["QNX hypervisor"]++; }
-                        if (brand == virtapple) { VM_brands["Virtual Apple"]++; }
-                    }
-
-                    return found;
-                } catch (...) { return false; }
-            };
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-            // check if CPU brand is a VM brand
-            auto cpu_brand = [=]() -> bool {
-                if (no_cpuid || !(flags & BRAND)) {
-                    return false;
-                }
-
-                try {
-                    // todo: check if this is even needed
-                    #if (LINUX)
-                        if (!__get_cpuid_max(0x80000004, nullptr)) {
-                            return false;
-                        }
-                    #endif
-
-                    std::array<int, 4> intbuffer{};
-                    constexpr std::size_t intbufsize = sizeof(i32) * intbuffer.size();
-                    std::array<char, 64> charbuffer{};
-
-                    constexpr std::array<u32, 3> ids = {
-                        leaf::brand1,
-                        leaf::brand2,
-                        leaf::brand3
-                    };
-
-                    std::string brand{};
-
-                    for (const u32 &id : ids) {
-                        #if (MSVC)
-                            __cpuid(intbuffer.data(), id);
-                        #elif (LINUX)
-                            __cpuid(id, intbuffer.at(0), intbuffer.at(1), intbuffer.at(2), intbuffer.at(3));
-                        #endif
-
-                        std::memcpy(charbuffer.data(), intbuffer.data(), intbufsize);
-                        brand += sv(charbuffer.data());
-                    }
-
-                    // TODO: might add more potential keywords, be aware that it could (theoretically) cause false positives
-                    constexpr std::array<const char*, 16> vmkeywords {
-                        "qemu", "kvm", "virtual", "vm", 
-                        "vbox", "virtualbox", "vmm", "monitor", 
-                        "bhyve", "hyperv", "hypervisor", "hvisor", 
-                        "parallels", "vmware", "hvm", "qnx"
-                    };
-
-                    u8 matches = 0;
-                    for (std::size_t i = 0; i < vmkeywords.size(); i++) {
-                        auto const regex = std::regex(vmkeywords.at(i), std::regex::icase);
-                        matches += std::regex_search(brand, regex);
-                    }
-
-                    return (matches >= 1);
-                } catch (...) { return false; }
-            };
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-            // check if hypervisor feature bit in CPUID is enabled (always false for physical CPUs)
-            auto cpuid_hyperv = [=]() -> bool {
-                if (no_cpuid || !(flags & HYPERV_BIT)) {
-                    return false;
-                }
-
-                try {
-                    u32 unused, ecx = 0;
-
-                    cpuid(unused, unused, ecx, unused, 1);
-
-                    return (ecx & (1 << 31));
-                } catch (...) { return false; }
-            };
-
-            // check if 0x40000000~0x400000FF cpuid input is present (mostly present in VMs), at least according to https://kb.vmware.com/s/article/1009458
-            auto cpuid_0x4 = [=]() -> bool {
-                if (no_cpuid || !(flags & CPUID_0x4)) {
-                    return false;
-                }
-
-                try {
-                    u32 a, b, c, d = 0;
-
-                    for (u8 i = 0; i < 0xFF; i++) {
-                        cpuid(a, b, c, d, (leaf::hyperv + i));
-                        if ((a + b + c + d) != 0) { return true; }
-                    }
-    
-                    return false;
-                } catch (...) { return false; }
-            };
-
-            // check for hypervisor brand string length (would be around 2 characters in a host machine)
-            auto hyperv_brand = [flags]() {
-                if (!(flags & HYPERV_STR)) {
-                    return false;
-                }
-
-                try {
-                    char out[sizeof(i32) * 4 + 1] = { 0 }; // e*x size + number of e*x registers + null terminator
-                    cpuid((int*)out, leaf::hyperv);
-                    return (std::strlen(out + 4) >= 4);
-                } catch (...) { return false; }
-            };
-
-            // check if RDTSC is slow, if it is then it might be a VM
-            auto rdtsc_check = [flags]() -> bool {
-                if (!(flags & RDTSC)) {
-                    return false;
-                }
-
-                try {
-                    #if (LINUX)
-                        u32 a, b, c, d = 0;
-    
-                        if (!__get_cpuid(leaf::proc_ext, &a, &b, &c, &d)) {
-                            if (!(d & (1 << 27))) { return false; }
-                        }
-                        
-                        u32 s, acc = 0;
-                        i32 out[4];
-
-                        for (std::size_t i = 0; i < 100; ++i) {
-                            s = __rdtsc();
-                            cpuid(out, 0, 0);
-                            acc += __rdtsc() - s;
-                        }
-
-                        return (acc / 100 > 350);
-                    #elif (MSVC)
-                        #define LODWORD(_qw)    ((DWORD)(_qw))
-                        u64 tsc1 = 0;
-                        u64 tsc2 = 0;
-                        u64 avg = 0;
-                        i32 cpuInfo[4] = {};
-                        for (INT i = 0; i < 10; i++)
-                        {
-                            tsc1 = __rdtsc();
-                            GetProcessHeap();
-                            tsc2 = __rdtsc();
-                            CloseHandle(0);
-                            tsc3 = __rdtsc();
-                            if ((LODWORD(tsc3) - LODWORD(tsc2)) / (LODWORD(tsc2) - LODWORD(tsc1)) >= 10) {
-                                return false;
-                            }
-                        }
-
-                        return true;
-                    #else
-                        return false;
-                    #endif
-                } catch (...) { return false; }
-            };
-
-            // check for vm presence using sidt instruction (TODO: check if this actually works)
-            // credits: https://unprotect.it/technique/sidt-red-pill/
-            auto sidt_check = [&]() {
-                if (!(flags & SIDT)) {
-                    return false;
-                }
-
-                try {
-                    u64 idtr = 0;
-                    __asm__ __volatile__(
-                        "sidt %0"
-                        : "=m" (idtr)
-                    );
-
-                    return (idtr != 0);
-                } catch (...) { return false; }
-            };
-        #endif
-
-        // Check if processor count is 1 or 2 (some VMs only have a single core)
-        auto thread_count = [&]() -> bool {
-            if (!(flags & THREADCOUNT)) {
-                return false;
-            }
-
-            try {
-                return (std::thread::hardware_concurrency() <= 2);
-            } catch (...) { return false; }
-        };
-
-        // check if mac address starts with certain VM designated values
-        auto mac_address_check = [&]() -> bool {
-            if (!(flags & MAC)) {
-                return false;
-            }
-
-            try {
-                unsigned char mac[6];
-                #if defined(__clang__) || defined(__GNUC__)
-                    struct ifreq ifr;
-                    struct ifconf ifc;
-                    char buf[1024];
-                    i32 success = 0;
-
-                    i32 sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
-                    if (sock == -1) { return false; };
-
-                    ifc.ifc_len = sizeof(buf);
-                    ifc.ifc_buf = buf;
-                    if (ioctl(sock, SIOCGIFCONF, &ifc) == -1) { return false; }
-
-                    struct ifreq* it = ifc.ifc_req;
-                    const struct ifreq* const end = it + (ifc.ifc_len / sizeof(struct ifreq));
-
-                    for (; it != end; ++it) {
-                        std::strcpy(ifr.ifr_name, it->ifr_name);
-                        if (ioctl(sock, SIOCGIFFLAGS, &ifr) != 0) { return false; }
-
-                        if (!(ifr.ifr_flags & IFF_LOOPBACK)) {
-                            if (ioctl(sock, SIOCGIFHWADDR, &ifr) == 0) {
-                                success = 1;
-                                break;
-                            }
-                        }
-                    }
-
-                    if (success) { std::memcpy(mac, ifr.ifr_hwaddr.sa_data, 6); }
-                #elif (MSVC)
-                    PIP_ADAPTER_INFO AdapterInfo;
-                    DWORD dwBufLen = sizeof(IP_ADAPTER_INFO);
-                    char *mac_addr = static_cast<char*>(std::malloc(18));
-
-                    AdapterInfo = (IP_ADAPTER_INFO *) std::malloc(sizeof(IP_ADAPTER_INFO));
-
-                    if (AdapterInfo == NULL) {
-                        free(mac_addr);
-                        return false;
-                    }
-
-                    if (GetAdaptersInfo(AdapterInfo, &dwBufLen) == ERROR_BUFFER_OVERFLOW) {
-                        std::free(AdapterInfo);
-                        AdapterInfo = (IP_ADAPTER_INFO *) std::malloc(dwBufLen);
-                        if (AdapterInfo == NULL) {
-                            std::free(mac_addr);
-                            return false;
-                        }
-                    }
-
-                    if (GetAdaptersInfo(AdapterInfo, &dwBufLen) == NO_ERROR) {
-                        PIP_ADAPTER_INFO pAdapterInfo = AdapterInfo;
-                        for (std::size_t i = 0; i < 6; i++) {
-                            mac[i] = pAdapterInfo->Address[i];
-                        }
-                    }
-
-                    std::free(AdapterInfo);
-                #else
-                    return false;
-                #endif
-
-                return (
-                    // i'm not gonna make constexpr magic numbers for all of these, fuck that
-                    (mac[0] == 0x08 && mac[1] == 0x00 && mac[2] == 0x27) || // vbox
-
-                    (mac[0] == 0x00 && mac[1] == 0x0C && mac[2] == 0x29) || // vmware for all 4
-                    (mac[0] == 0x00 && mac[1] == 0x1C && mac[2] == 0x14) ||
-                    (mac[0] == 0x00 && mac[1] == 0x50 && mac[2] == 0x56) ||
-                    (mac[0] == 0x00 && mac[1] == 0x05 && mac[2] == 0x69) ||
-
-                    (mac[0] == 0x00 && mac[1] == 0x16 && mac[2] == 0xE3) || // Xen
-
-                    (mac[0] == 0x00 && mac[1] == 0x1C && mac[2] == 0x42) || // parallels
-                    (mac[0] == 0x0A && mac[1] == 0x00 && mac[2] == 0x27)    // hybrid analysis
-                );
-            } catch (...) { return false; }
-        };
-
-/*
-        auto dmi_check = []() {
-            char string[10];
-            GET_BIOS_SERIAL(string);
-            if (!memcmp(string, "VMware-", 7) || !memcmp(string, "VMW", 3)) { return true; }
-            else { return false; }
-        }
-*/
-
-        #if (LINUX)
-            // check if thermal directory is present, might not be present in VMs
-            auto temperature = [&]() -> bool {
-                if (!(flags & TEMPERATURE)) {
-                    return false;
-                }
-
-                try {
-                    return (!fs::exists("/sys/class/thermal/thermal_zone0/"));
-                } catch (...) { return false; }
-            };
-
-            // get result from systemd-detect-virt tool
-            auto systemd_virt = [&]() -> bool {
-                if (!(flags & SYSTEMD)) {
-                    return false;
-                }
-
-                try {
-                    if (!(fs::exists("/usr/bin/systemd-detect-virt") || fs::exists("/bin/systemd-detect-virt"))) {
-                        return false;
-                    }
-
-                    const std::unique_ptr<std::string> &result = GetSysResult("systemd-detect-virt");
-                    if (result == nullptr) { return false; }
-                    return (*result != "none");
-                } catch (...) { return false; }
-            };
-
-            // check if chassis vendor is a VM vendor
-            auto chassis_vendor = [&]() -> bool {
-                if (!(flags & CVENDOR)) {
-                    return false;
-                }
-
-                try {
-                    const char* vendor_file = "/sys/devices/virtual/dmi/id/chassis_vendor";
-                    if (fs::exists(vendor_file)) {
-                        const sv &vendor = getdata(vendor_file);
-                        constexpr std::array<sv, 2> ChassisVMs = {
-                            "QEMU", 
-                            "Oracle Corporation" 
-                        };
-
-                        for (auto ptr{ &ChassisVMs[0] }; ptr != &ChassisVMs[0] + std::size(ChassisVMs); ++ptr) {
-                            if (*ptr == vendor) { return true; }
-                        }
-                    }
-                    return false;
-                } catch (...) { return false; }
-            };
-
-            // Check if chassis type is invalid or not, might be a VM
-            auto chassis_type = [&]() noexcept -> bool {
-                if (!(flags & CTYPE)) {
-                    return false;
-                }
-
-                try {
-                    const char* chassis = "/sys/devices/virtual/dmi/id/chassis_type";
-                    
-                    if (fs::exists(chassis)) {
-                        return (stoi(getdata(chassis)) == 1);
-                    }
-
-                    return false;
-                } catch (...) { return false; }
-            };
-
-            // check if /.dockerenv or /.dockerinit file is present (most likely a docker container)
-            auto dockerenv = [&]() -> bool {
-                if (!(flags & DOCKER)) {
-                    return false;
-                }
-
-                try {
-                    return (fs::exists("/.dockerenv") || fs::exists("/.dockerinit"));
-                } catch (...) { return false; }
-            };
-
-            // check if demidecode output matches a VM brand
-            auto dmidecode = [&]() -> bool {
-                if (!(flags & DMIDECODE)) {
-                    return false;
-                }
-
-                try {
-                    if (!fs::exists("/bin/dmidecode") && !fs::exists("/usr/bin/dmidecode")) { return false; }
-                    if (getuid()) { return false; }
-                    return (stoi(*GetSysResult("dmidecode -t system | grep 'Manufacturer|Product' | grep -c \"QEMU|VirtualBox|KVM\"")) >= 1);
-                } catch (...) { return false; }
-            };
-
-            // check if dmesg command output matches a VM brand
-            auto dmesg = [&]() -> bool {
-                if (!(flags & DMESG)) {
-                    return false;
-                }
-
-                try {
-                    if (!fs::exists("/bin/dmesg") && !fs::exists("/usr/bin/dmesg")) { return false; }
-                    return (stoi(*GetSysResult("dmesg | grep -i hypervisor | grep -c \"KVM|QEMU\"")));
-                } catch (...) { return false; }
-            };
-
-            // check if /sys/class/hwmon/ directory is present. If not, likely a VM
-            auto hwmon = [&]() -> bool {
-                if (!(flags & HWMON)) {
-                    return false;
-                }
-
-                try {
-                    return (!fs::exists("/sys/class/hwmon/"));
-                } catch (...) { return false; }
-            };
-        #elif (MSVC)
-
-        #endif
+        VM::flags = p_flags;
 
 
         std::cout << (vmid() ? "[  \x1B[38;2;94;214;114mDETECTED\x1B[0m  ]" : "[\x1B[38;2;239;75;75mNOT DETECTED\x1B[0m]") << " Checking VMID...\n";
@@ -942,6 +1099,7 @@ public:
         std::cout << (dmesg() ? "[  \x1B[38;2;94;214;114mDETECTED\x1B[0m  ]" : "[\x1B[38;2;239;75;75mNOT DETECTED\x1B[0m]") << " Checking dmesg output...\n";
         std::cout << (hwmon() ? "[  \x1B[38;2;94;214;114mDETECTED\x1B[0m  ]" : "[\x1B[38;2;239;75;75mNOT DETECTED\x1B[0m]") << " Checking hwmon presence...\n";
         std::cout << "\n\n";
+
 
         f32 points = 0;
 
@@ -977,6 +1135,7 @@ public:
             if (RegKeyVM()) { /*std::cout << "\nregkey: ";*/ points += 5; }
             if (RegKeyStrSearch()) { /*std::cout << "\nregkeystr: ";*/ points += 5; }
         #endif
+
 /*
         std::cout << "\n\n RESULT: " << points << "/62 points, meets VM detection threashold " << (points / 6.5) << " times over\n\n";
 
@@ -984,6 +1143,7 @@ public:
             std::cout << (int)pair.second << " = " << pair.first << std::endl;
         }
 */
+
         /** 
          * you can change this threshold score to a maximum
          * of something like 10~14 if you want to be extremely
