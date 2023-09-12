@@ -24,7 +24,7 @@
 *.lai
 *.la
 *.a
-*.lib
+*.li
 
 # Executables
 *.exe
@@ -34,6 +34,10 @@ main
 
 #Custom 
 vm
+cli
+src/vmaware
+src/untested.cpp
+src/mac.cpp
 resources/
 .vscode/
 archive/
