@@ -1,12 +1,11 @@
+#include "vmaware.hpp"
 #include <iostream>
-#include "vmcore.hpp"
 
 int main(void) {
 
-    //auto lol = VM::brand();
-    //auto lol = VM::detect();
+    //bool lol = VM::detect();
 
-    auto idk = VM::detect();
+    std::cout << VM::brand() << "\n";
 
     return 0;
 }

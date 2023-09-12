@@ -4,8 +4,20 @@ clear:
 	@clear
 
 compile: clear
-	@clang++ -std=c++11 -O0 -w -Wall -Wextra -Werror -Wshadow -Wpedantic -pedantic -pedantic-errors vmtest.cpp -o vm
+	@clang++ -std=c++20 -O0 -w -Wall -Wextra -Werror -Wshadow -Wpedantic -pedantic -pedantic-errors vmtest.cpp -o vm
 
 run: compile
 	./vm
-	@echo "" 
+
+clean:
+	@rm -rf ./cli
+	@rm -rf ./vm
+	@rm -rf ./vmaware
+
+cli:
+	@clang++ -std=c++20 -O3 -w -Wall -Wextra -Werror -Wshadow -Wpedantic -pedantic -pedantic-errors cli.cpp -o vmaware
+
+install: cli
+	@cp vmaware.hpp /usr/include/
+	@chmod +x vmaware
+	@mv vmaware /usr/bin/
