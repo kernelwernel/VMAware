@@ -20,7 +20,6 @@
 #include <functional>
 #include <cstring>
 #include <string>
-//#include <cstdlib>
 #include <fstream>
 #include <regex>
 #include <thread>
@@ -30,6 +29,7 @@
 #include <map>
 #include <array>
 #include <algorithm>
+#include <iostream>
 
 
 // shorter and succinct macros
@@ -112,7 +112,7 @@ private:
 
     #if (LINUX)
         // fetch file data
-        [[nodiscard]] static std::string getdata(const char* dir) {
+        [[nodiscard]] static std::string read_file(const char* dir) {
             std::ifstream file{};
             std::string data{};
             file.open(dir);
@@ -236,6 +236,20 @@ private:
             __cpuid_count(a_leaf, c_leaf, x[0], x[1], x[2], x[3]);
         #endif
     };
+
+    [[nodiscard]] static bool is_root() noexcept {
+        #if (!LINUX)
+            return false;
+        #endif
+
+        uid_t uid = getuid();
+        uid_t euid = geteuid();
+
+        return (
+            ((uid < 0) || (uid != euid)) || 
+            (euid == 0)
+        );
+    }
 
     // cpuid leaf values
     struct leaf {
@@ -595,13 +609,14 @@ private:
             i32 is_vm = false;
 
             #if (LINUX)
+            /*
                 u32 a, b, c, d = 0;
 
                 constexpr u32 vmware_magic = 0x564D5868, // magic hypervisor ID
                               vmware_port  = 0x5658,     // hypervisor port number
                               vmware_cmd   = 10,         // Getversion command identifier
                               u32_max      = std::numeric_limits<u32>::max(); // max for u32, idk
-    /*
+
                 __asm__ __volatile__(
                     "pushq %%rdx\n\t"
                     "pushq %%rcx\n\t"
@@ -813,19 +828,20 @@ private:
 
             if (exists(vendor_file)) {
                 #if (CPP <= 14)
-                    const sv vendor = getdata(vendor_file).c_str();
+                    const sv vendor = read_file(vendor_file).c_str();
                 #else
-                    const sv vendor = getdata(vendor_file);
+                    const sv vendor = read_file(vendor_file);
                 #endif
 
-                constexpr std::array<sv, 2> ChassisVMs = {
-                    "QEMU", 
-                    "Oracle Corporation" 
+                // add the VM brand to the scoreboard
+                auto add = [&](const sv p_brand) noexcept -> bool {
+                    scoreboard[p_brand]++; 
+                    return true;
                 };
 
-                for (auto ptr{ &ChassisVMs[0] }; ptr != &ChassisVMs[0] + ChassisVMs.size(); ++ptr) {
-                    if (*ptr == vendor) { return true; }
-                }
+                // TODO: More can be definitely added, I only tried QEMU and VMware so far
+                if (vendor == "QEMU") { return add("QEMU"); }
+                if (vendor == "Oracle Corporation") { return add("VMware"); }
             }
 
             return false;
@@ -841,7 +857,7 @@ private:
             const char* chassis = "/sys/devices/virtual/dmi/id/chassis_type";
             
             if (exists(chassis)) {
-                return (stoi(getdata(chassis)) == 1);
+                return (stoi(read_file(chassis)) == 1);
             }
 
             return false;
@@ -858,9 +874,9 @@ private:
         } catch (...) { return false; }
 
 
-        // check if demidecode output matches a VM brand
+        // check if dmidecode output matches a VM brand
         [[nodiscard]] static bool dmidecode() try {
-            if (!(flags & DMIDECODE)) {
+            if (!(flags & DMIDECODE) || (is_root() == false)) {
                 return false;
             }
 
@@ -868,11 +884,9 @@ private:
                 return false;
             }
             
-            if (getuid() != 0) { 
-                return false; 
-            }
-
             const std::unique_ptr<std::string> result = sys_result("dmidecode -t system | grep 'Manufacturer|Product' | grep -c \"QEMU|VirtualBox|KVM\"");
+
+            // TODO: add scoreboard points for above result
 
             return (std::atoi(result->c_str()) >= 1);
         } catch (...) { return false; }
@@ -1141,24 +1155,24 @@ private:
     #endif
 
 public:
-    [[nodiscard]] static bool check(const u64 flags) {
+    [[nodiscard]] static bool check(const u64 p_flags = 0ULL) {
         // only a single flag is accepted
         i32 count = 0;
 
         #if (CPP >= 20)
-            count = std::popcount(flags);
+            count = std::popcount(p_flags);
         #elif (CPP >= 14)
-            count = std::__popcount(flags);
+            count = std::__popcount(p_flags);
         #else 
         {
             // compiler will optimise this with the x86 popcnt instruction (I hope)
-            u64 tmp = flags;
+            u64 tmp = p_flags;
             for (; tmp != 0; count++) {
                 tmp = (tmp & (tmp - 1));
             }
         }
         #endif
-    
+
         if (count > 1) {
             throw std::invalid_argument("Flag argument must only contain a single option, consult the documentation's flag list");
         }
@@ -1167,47 +1181,57 @@ public:
             throw std::invalid_argument("Flag argument must contain at least a single option, consult the documentation's flag list");
         }
 
-        if (flags & NO_MEMO) {
+        if (p_flags & NO_MEMO) {
             throw std::invalid_argument("Flag argument must be a technique flag and not a settings flag, consult the documentation's flag list");
         }
 
-        switch(flags) {
+        // count should only have a single flag at this point
+
+        // temporarily enable all flags so that every technique is enabled
+        const u64 tmp_flags = VM::flags;
+        VM::flags = (DEFAULT | CURSOR);
+
+        bool result = false;
+
+        switch (p_flags) {
             #if (__x86_64__)
-                case VM::VMID: return vmid();
-                case VM::BRAND: return cpu_brand();
-                case VM::HYPERV_BIT: return cpuid_hyperv();
-                case VM::CPUID_0x4: return cpuid_0x4();
-                case VM::HYPERV_STR: return hyperv_brand();
+                case VM::VMID: result = vmid(); break;
+                case VM::BRAND: result = cpu_brand(); break;
+                case VM::HYPERV_BIT: result = cpuid_hyperv(); break;
+                case VM::CPUID_0x4: result = cpuid_0x4(); break;
+                case VM::HYPERV_STR: result = hyperv_brand(); break;
             #endif
 
             #if (LINUX)
-                case VM::SIDT: return sidt_check();
-                case VM::TEMPERATURE: return temperature();
-                case VM::CVENDOR: return chassis_vendor();
-                case VM::CTYPE: return chassis_type();
-                case VM::DOCKER: return dockerenv();
-                case VM::DMIDECODE: return dmidecode();
-                case VM::DMESG: return dmesg();
-                case VM::HWMON: return hwmon();
+                case VM::SIDT: result = sidt_check(); break;
+                case VM::TEMPERATURE: result = temperature(); break;
+                case VM::CVENDOR: result = chassis_vendor(); break;
+                case VM::CTYPE: result = chassis_type(); break;
+                case VM::DOCKER: result = dockerenv(); break;
+                case VM::DMIDECODE: result = dmidecode(); break;
+                case VM::DMESG: result = dmesg(); break;
+                case VM::HWMON: result = hwmon(); break;
             #endif
 
             #if (LINUX || MSVC)
-                case VM::RDTSC: return rdtsc_check();
-                case VM::MAC: return mac_address_check(); 
+                case VM::RDTSC: result = rdtsc_check(); break;
+                case VM::MAC: result = mac_address_check(); break; 
                 //case VM::VMWARE_PORT: return vmware_port();
             #endif
 
-            case VM::THREADCOUNT: return thread_count();
+            case VM::THREADCOUNT: result = thread_count(); break;
         }
 
-        return false;
+        VM::flags = tmp_flags;
+
+        return result;
     }
 
 
     [[nodiscard]] static sv brand(void) {
         // check if result hasn't been memoized already
         if (memo.find(true) == memo.end()) {
-            bool tmp = detect(); // [[nodiscard]] workaround
+            detect();
         }
 
         // check if no VM was detected
@@ -1219,7 +1243,7 @@ public:
     }
 
 
-    [[nodiscard]] static bool detect(const u64 p_flags = DEFAULT) {
+    static bool detect(const u64 p_flags = DEFAULT) {
         /**
          * load memoized value if it exists from a previous
          * execution of VM::detect(). This can save around
@@ -1277,12 +1301,12 @@ public:
         const bool result = (points >= 6.5);
 
         sv current_brand = "";
-
 /*
         for (const auto p : scoreboard) {
             std::cout << "\n" << p.first << " : " << (int)p.second;
         }
 */
+        // fetch the brand with the most points in the scoreboard
         #if (CPP >= 20)
             auto it = std::ranges::max_element(scoreboard, {},
                 [](const auto &pair) {

@@ -1,5 +1,10 @@
 #include "vmaware.hpp"
-#include <bits/stdc++.h> // I really can't care less about best practices
+#include <bits/stdc++.h> // I really can't care less about best practices tbh
+
+using sv = std::string_view;
+
+constexpr float ver = 1.0;
+constexpr sv date = "September 2023";
 
 void help(void) {
     std::cout << 
@@ -9,17 +14,21 @@ R"(Usage:
 Options:
  -h | --help        prints this help menu
  -v | --version     print version and other stuff
- -s | --silent      returns either 0 or 1 to stdout without any text output
-
+ -s | --silent      returns either 0 or 1 to STDOUT without any text output (0 = VM, 1 = baremetal)
+ -b | --brand       returns the VM brand string (consult documentation for full output list)
 )";
 }
 
 void version(void) {
-
+    std::cout << "v" << ver << " (" << date << ")\n\n" <<
+    "Derived project of VMAware library at https://github.com/kernelwernel/VMAware"
+    "License GPLv3+: GNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>.\n" << 
+    "This is free software: you are free to change and redistribute it.\n" <<
+    "There is NO WARRANTY, to the extent permitted by law.\n" <<
+    "Developed and maintained by kernelwernel, see https://github.com/kernelwernel\n";
 }
 
 int main(int argc, char* argv[]) {
-    using sv = std::string_view;
 
     constexpr sv detected = "[  \x1B[38;2;94;214;114mDETECTED\x1B[0m  ]";
     constexpr sv not_detected = "[\x1B[38;2;239;75;75mNOT DETECTED\x1B[0m]";
@@ -36,7 +45,7 @@ int main(int argc, char* argv[]) {
         checker(VM::HYPERV_STR, "hypervisor brand");
         checker(VM::RDTSC, "RDTSC");
         checker(VM::SIDT, "sidt");
-        checker(VM::VMWARE_PORT, "VMare port");
+        checker(VM::VMWARE_PORT, "VMware port");
         checker(VM::THREADCOUNT, "processor count");
         checker(VM::MAC, "MAC address");
         checker(VM::TEMPERATURE, "temperature");
@@ -49,15 +58,16 @@ int main(int argc, char* argv[]) {
         checker(VM::HWMON, "hwmon presence");
         std::printf("\n");
 
-        const bool is_vm = VM::detect();
+        const sv brand = VM::brand();
 
-        std::cout << "VM brand: " << (is_vm ? "\x1B[38;2;94;214;114m" : "\x1B[38;2;239;75;75m") << VM::brand() << "\e[0m\n\n";
+        std::cout << "VM brand: " << (brand == "Unknown" ? "\x1B[38;2;239;75;75m" : "\x1B[38;2;94;214;114m") << brand << "\e[0m\n\n";
 
         std::cout 
             << "\e[1m====== CONCLUSION: \e[0m"
-            << (is_vm ? 
-                "\x1B[38;2;94;214;114mRunning inside a VM\x1B[0m" : 
-                "\x1B[38;2;239;75;75mRunning in baremetal\x1B[0m")
+            << (brand == "Unknown" ? 
+                "\x1B[38;2;239;75;75mRunning in baremetal\x1B[0m" :
+                "\x1B[38;2;94;214;114mRunning inside a VM\x1B[0m"
+                )
             << " \e[1m======\e[0m\n\n";
     } else if (argc == 2) {
         const std::vector<sv> args(argv, argv + argc); // easier this way
@@ -70,6 +80,9 @@ int main(int argc, char* argv[]) {
             return 0;
         } else if (arg == "-v" || arg == "--version") {
             version();
+            return 0;
+        } else if (arg == "-b" || arg == "--brand") {
+            std::cout << VM::brand() << "\n";
             return 0;
         } else {
             std::cerr << "Unknown argument provided, aborting\n";
