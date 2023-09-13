@@ -263,12 +263,13 @@ private:
 
     // memoize the value from VM::detect() in case it's ran again
     static inline std::map<bool, std::pair<bool, sv>> memo;
-
+    
     // cpuid check value
     static inline bool no_cpuid;
 
     // flags
     static inline u64 flags;
+
 
 public:
     VM() = delete; // Delete default constructor
@@ -827,15 +828,11 @@ private:
             const char* vendor_file = "/sys/devices/virtual/dmi/id/chassis_vendor";
 
             if (exists(vendor_file)) {
-                #if (CPP <= 14)
-                    const sv vendor = read_file(vendor_file).c_str();
-                #else
-                    const sv vendor = read_file(vendor_file);
-                #endif
+                const std::string vendor = read_file(vendor_file);
 
                 // add the VM brand to the scoreboard
                 auto add = [&](const sv p_brand) noexcept -> bool {
-                    scoreboard[p_brand]++; 
+                    scoreboard[p_brand]++;
                     return true;
                 };
 
@@ -1151,7 +1148,7 @@ private:
             return ((pos1.x == pos2.x) && (pos1.y == pos2.y));
         } catch (...) { return false; }
 
-        // __WINDOWS
+        // __WINDOWS (label so I can easily teleport to this line on my IDE)
     #endif
 
 public:
@@ -1219,6 +1216,16 @@ public:
                 //case VM::VMWARE_PORT: return vmware_port();
             #endif
 
+            #if (MSVC)
+                case VM::CURSOR: result = cursor_check(); break;
+                case VM::VMWARE_REG: result = vmware_registry(); break;
+                case VM::VBOX_REG: result = vbox_registry(); break;
+                case VM::USER: result = user_check(); break;
+                case VM::DLL: result = DLL_check(); break;
+                case VM::REGISTRY: result = registry_key(); break;
+                case VM::SUNBELT: result = sunbelt_check(); break;
+            #endif
+
             case VM::THREADCOUNT: result = thread_count(); break;
         }
 
@@ -1262,7 +1269,7 @@ public:
         if (thread_count()) { points += 1.5; }
         if (mac_address_check()) { points += 3.5; }
 
-        #if __x86_64__
+        #if (__x86_64__)
             if (vmid()) { points += 6.5; }
             if (cpu_brand()) { points += 3; }
             if (cpuid_hyperv()) { points += 5.5; }
@@ -1316,6 +1323,8 @@ public:
 
             if (it != scoreboard.end()) {
                 current_brand = it->first;
+            } else {
+                current_brand = "Unknown";
             }
         #else
             u8 max = 0;

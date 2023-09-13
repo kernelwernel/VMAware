@@ -1,10 +1,10 @@
 #include "vmaware.hpp"
-#include <bits/stdc++.h> // I really can't care less about best practices tbh
+#include <bits/stdc++.h> // I really can't care less about best practices for a small PoC tool
 
-using sv = std::string_view;
+using sv = std::string;
 
-constexpr float ver = 1.0;
-constexpr sv date = "September 2023";
+float ver = 1.0;
+sv date = "September 2023";
 
 void help(void) {
     std::cout << 
@@ -30,8 +30,8 @@ void version(void) {
 
 int main(int argc, char* argv[]) {
 
-    constexpr sv detected = "[  \x1B[38;2;94;214;114mDETECTED\x1B[0m  ]";
-    constexpr sv not_detected = "[\x1B[38;2;239;75;75mNOT DETECTED\x1B[0m]";
+    sv detected = "[  \x1B[38;2;94;214;114mDETECTED\x1B[0m  ]";
+    sv not_detected = "[\x1B[38;2;239;75;75mNOT DETECTED\x1B[0m]";
 
     if (argc == 1) {
         auto checker = [=](const std::uint64_t flag, const sv message) -> void {
@@ -56,6 +56,13 @@ int main(int argc, char* argv[]) {
         checker(VM::DMIDECODE, "dmidecode output");
         checker(VM::DMESG, "dmesg output");
         checker(VM::HWMON, "hwmon presence");
+        checker(VM::CURSOR, "cursor");
+        checker(VM::VMWARE_REG, "VMware registry");
+        checker(VM::VBOX_REG, "VBox registry");
+        checker(VM::USER, "users");
+        checker(VM::DLL, "DLLs");
+        checker(VM::REGISTRY, "registry");
+        checker(VM::SUNBELT, "Sunbelt");
         std::printf("\n");
 
         const sv brand = VM::brand();
