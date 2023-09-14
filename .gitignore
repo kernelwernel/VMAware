@@ -35,9 +35,11 @@ main
 #Custom 
 vm
 cli
-src/vmaware
+vmaware
+tmp
+test
+tmp.cpp
 src/untested.cpp
-src/mac.cpp
 resources/
-.vscode/
 archive/
+.vscode/

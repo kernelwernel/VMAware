@@ -1,10 +1,10 @@
 #include "vmaware.hpp"
 #include <bits/stdc++.h> // I really can't care less about best practices for a small PoC tool
 
-using sv = std::string;
+using sv = std::string_view;
 
-float ver = 1.0;
-sv date = "September 2023";
+constexpr float ver = 1.0;
+constexpr sv date = "September 2023";
 
 void help(void) {
     std::cout << 
@@ -14,7 +14,7 @@ R"(Usage:
 Options:
  -h | --help        prints this help menu
  -v | --version     print version and other stuff
- -s | --silent      returns either 0 or 1 to STDOUT without any text output (0 = VM, 1 = baremetal)
+ -s | --stdout      returns either 0 or 1 to STDOUT without any text output (0 = VM, 1 = baremetal)
  -b | --brand       returns the VM brand string (consult documentation for full output list)
 )";
 }
@@ -29,9 +29,8 @@ void version(void) {
 }
 
 int main(int argc, char* argv[]) {
-
-    sv detected = "[  \x1B[38;2;94;214;114mDETECTED\x1B[0m  ]";
-    sv not_detected = "[\x1B[38;2;239;75;75mNOT DETECTED\x1B[0m]";
+    constexpr sv detected = "[  \x1B[38;2;94;214;114mDETECTED\x1B[0m  ]";
+    constexpr sv not_detected = "[\x1B[38;2;239;75;75mNOT DETECTED\x1B[0m]";
 
     if (argc == 1) {
         auto checker = [=](const std::uint64_t flag, const sv message) -> void {
@@ -45,6 +44,7 @@ int main(int argc, char* argv[]) {
         checker(VM::HYPERV_STR, "hypervisor brand");
         checker(VM::RDTSC, "RDTSC");
         checker(VM::SIDT, "sidt");
+        checker(VM::SIDT5, "sidt null byte");
         checker(VM::VMWARE_PORT, "VMware port");
         checker(VM::THREADCOUNT, "processor count");
         checker(VM::MAC, "MAC address");
@@ -80,7 +80,7 @@ int main(int argc, char* argv[]) {
         const std::vector<sv> args(argv, argv + argc); // easier this way
         const sv arg = args.at(1);
 
-        if (arg == "-s" || arg == "--silent") {
+        if (arg == "-s" || arg == "--stdout") {
             return (!VM::detect());
         } else if (arg == "-h" || arg == "--help") {
             help();
