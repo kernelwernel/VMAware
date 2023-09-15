@@ -13,9 +13,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXE_LINKER_FLAGS "-lstdc++ -lm")
 
 if (MSVC)
-    set(CMAKE_CXX_FLAGS "/W4")
+    set(CMAKE_CXX_FLAGS "/W4 /std:c++20")
 else()
-    set(CMAKE_CXX_FLAGS "-Wextra -Wall -Wextra -Wconversion -Wdouble-promotion -Wno-unused-parameter -Wno-unused-function -Wno-sign-conversion")
+    set(CMAKE_CXX_FLAGS "-std=c++20 -Wextra -Wall -Wextra -Wconversion -Wdouble-promotion -Wno-unused-parameter -Wno-unused-function -Wno-sign-conversion")
 endif()
 
 
