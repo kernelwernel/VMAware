@@ -256,15 +256,15 @@ private:
     [[nodiscard]] static bool is_root() noexcept {
         #if (!LINUX)
             return false;
+        #else
+            uid_t uid = getuid();
+            uid_t euid = geteuid();
+
+            return (
+                (uid != euid) || 
+                (euid == 0)
+            );
         #endif
-
-        uid_t uid = getuid();
-        uid_t euid = geteuid();
-
-        return (
-            (uid != euid) || 
-            (euid == 0)
-        );
     }
 
     // directly return when adding a brand to the scoreboard for a more succint expression
@@ -334,8 +334,12 @@ public:
 
         // settings
         NO_MEMO = 1ULL << 63,
-
-        ALL = ~(NO_MEMO & std::numeric_limits<u64>::max());
+        
+        #if (MSVC)
+            ALL = ~(NO_MEMO & 0xFFFFFFFFFFFFFFFF);
+        #else
+            ALL = ~(NO_MEMO & std::numeric_limits<u64>::max());
+        #endif
 
 private:
     static constexpr u64 DEFAULT = (~(CURSOR | NO_MEMO) & ALL);
@@ -1112,7 +1116,7 @@ private:
                     RegCloseKey(regkey);
                     score++;
 
-                    if (p_brand != "") [[likely]] {
+                    if (p_brand.c_str() != "") [[likely]] {
                         scoreboard[p_brand]++;
                     }
                 }
@@ -1309,6 +1313,7 @@ private:
 
     /**
      * @brief Find VMware tools presence
+     * @todo FIX THIS SHIT
      * @category Windows
      */
     [[nodiscard]] static bool vmware_registry() try {
@@ -1319,17 +1324,21 @@ private:
                 return false;
             }
 
+            return false; // TODO: fix
+            /*
+
             HKEY hKey = 0;
             DWORD dwType = REG_SZ;
             char buf[0xFF] = {0};
             DWORD dwBufSize = sizeof(buf);
-            bool result = RegOpenKeyEx(TEXT("SOFTWARE\\VMware, Inc.\\VMware Tools"), 0, KEY_QUERY_VALUE, &hKey ) == ERROR_SUCCESS);
+            bool result = (RegOpenKeyEx(TEXT("SOFTWARE\\VMware, Inc.\\VMware Tools"), 0, KEY_QUERY_VALUE, &hKey) == ERROR_SUCCESS);
 
             if (result == true) {
                 scoreboard["VMware"]++;
             }
 
             return result;
+            */
         #endif
     } catch (...) { return false; }
 
