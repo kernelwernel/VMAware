@@ -73,9 +73,9 @@
 #if (CPP >= 17)
     #include <bit>
 #endif
-//#if (CPP < 11)
-//    #error "VMAware only supports C++11 or above, set your compiler flag to '-std=c++20' for GCC/clang, or '/std:c++20' for MSVC"
-//#endif
+#if (CPP < 11 && !MSVC)
+    #error "VMAware only supports C++11 or above, set your compiler flag to '-std=c++20' for GCC/clang, or '/std:c++20' for MSVC"
+#endif
 
 
 #if (MSVC)
@@ -157,7 +157,7 @@ private:
     // check if file exists
     #if (MSVC)
         [[nodiscard]] static bool exists(LPCSTR path) {
-            GetFileAttributes("C:\\MyFile.txt"); // from winbase.h
+            GetFileAttributes(path);
             return (!(
                 (INVALID_FILE_ATTRIBUTES == GetFileAttributes(path)) && 
                 (GetLastError() == ERROR_FILE_NOT_FOUND)
@@ -352,7 +352,7 @@ public:
         #endif
 
 private:
-    static constexpr u64 DEFAULT = (~(CURSOR | NO_MEMO) & ALL);
+    static constexpr u64 DEFAULT = (~(CURSOR) & ALL);
 
     /**
      * @brief Check CPUID output of manufacturer ID for known VMs/hypervisors
@@ -362,7 +362,6 @@ private:
         #if (!x86)
             return false;
         #else
-
             if (no_cpuid || disabled(VMID)) {
                 return false;
             }
@@ -543,7 +542,9 @@ private:
 
             for (u8 i = 0; i < 0xFF; i++) {
                 cpuid(a, b, c, d, (leaf::hyperv + i));
-                if ((a + b + c + d) != 0) { return true; }
+                if ((a + b + c + d) != 0) {
+                    return true;
+                }
             }
 
             return false;
@@ -619,6 +620,8 @@ private:
 
                 return true;
             #endif
+
+            return false;
         #endif
     } catch (...) { return false; }
 
@@ -1439,7 +1442,7 @@ public:
             case VM::HWMON: result = hwmon(); break;
             case VM::RDTSC: result = rdtsc_check(); break;
             case VM::MAC: result = mac_address_check(); break; 
-            case VM::VMWARE_PORT: return vmware_port();
+            case VM::VMWARE_PORT: result = vmware_port(); break;
             case VM::CURSOR: result = cursor_check(); break;
             case VM::VMWARE_REG: result = vmware_registry(); break;
             case VM::VBOX_REG: result = vbox_registry(); break;
@@ -1499,37 +1502,30 @@ public:
 
         if (thread_count()) { points += 1.5; }
         if (mac_address_check()) { points += 3.5; }
-
-        #if (__x86_64__)
-            if (vmid()) { points += 6.5; }
-            if (cpu_brand()) { points += 3; }
-            if (cpuid_hyperv()) { points += 5.5; }
-            if (cpuid_0x4()) { points += 4; }
-            if (hyperv_brand()) { points += 4; }
-            if (rdtsc_check()) { points += 1.5; }
-            if (sidt_check()) { points += 4; }
-            if (vmware_port()) { points += 3; }
-            if (sidt5()) { points += 2; }
-        #endif
-
-        #if (LINUX)
-            if (temperature()) { points += 1; }
-            if (systemd_virt()) { points += 5; }
-            if (chassis_vendor()) { points += 4.5; }
-            if (chassis_type()) { points += 1; }
-            if (dockerenv()) { points += 3; }
-            if (dmidecode()) { points += 4; }
-            if (dmesg()) { points += 3.5; }
-            if (hwmon()) { points += 0.5; }
-        #elif (MSVC)
-            if (cursor_check()) { points += 0.5; }
-            if (vmware_registry()) { points += 4.5; }
-            if (vbox_registry()) { points += 4.5; }
-            if (user_check()) { points += 1; }
-            if (DLL_check()) { points += 3; } // might update this, idk
-            if (registry_key()) { points += 5; }
-            if (sunbelt_check()) { points += 1; }
-        #endif
+        if (vmid()) { points += 6.5; }
+        if (cpu_brand()) { points += 3; }
+        if (cpuid_hyperv()) { points += 5.5; }
+        if (cpuid_0x4()) { points += 4; }
+        if (hyperv_brand()) { points += 4; }
+        if (rdtsc_check()) { points += 1.5; }
+        if (sidt_check()) { points += 4; }
+        if (vmware_port()) { points += 3; }
+        if (sidt5()) { points += 2; }
+        if (temperature()) { points += 1; }
+        if (systemd_virt()) { points += 5; }
+        if (chassis_vendor()) { points += 4.5; }
+        if (chassis_type()) { points += 1; }
+        if (dockerenv()) { points += 3; }
+        if (dmidecode()) { points += 4; }
+        if (dmesg()) { points += 3.5; }
+        if (hwmon()) { points += 0.5; }
+        if (cursor_check()) { points += 0.5; }
+        if (vmware_registry()) { points += 4.5; }
+        if (vbox_registry()) { points += 4.5; }
+        if (user_check()) { points += 1; }
+        if (DLL_check()) { points += 3; } // might update this, idk
+        if (registry_key()) { points += 5; }
+        if (sunbelt_check()) { points += 1; }
 
         /** 
          * you can change this threshold score to a maximum

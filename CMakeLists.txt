@@ -52,7 +52,7 @@ if(CMAKE_BUILD_TYPE MATCHES "Debug")
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -DDEBUG -O0 -fsanitize=address,undefined,nullability") # -fsanitize=address,undefined,nullability
     elseif(CMAKE_BUILD_TYPE MATCHES "Release")
         MESSAGE(STATUS "Build set to release mode")
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2 -g0 -fPIE")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -g0")
         if (${CMAKE_SYSTEM_PROCESSOR} MATCHES "x86_64")
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native -mtune=native")
         elseif(${CMAKE_SYSTEM_PROCESSOR} MATCHES "arm")
@@ -66,6 +66,7 @@ endif()
 add_executable(${TARGET} "src/cli.cpp")
 set_property(TARGET ${TARGET} PROPERTY CXX_STANDARD 20)
 set_property(TARGET ${TARGET} PROPERTY CXX_STANDARD_REQUIRED ON)
+
 
 # release stuff
 if (NOT MSVC)
