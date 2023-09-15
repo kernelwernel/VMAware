@@ -58,7 +58,8 @@ git clone https://github.com/kernelwernel/VMAware
 cd VMAware
 mkdir build
 cd build
-sudo cmake ..
+cmake ..
+sudo make install
 ```
 > NOTE: I'm most likely going to change my username in the future. If the github link doesn't exist, search for the VMAware project and you should find it.
 

@@ -44,14 +44,10 @@ set(PROJECT_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 set(BUILD_DIR "${PROJECT_DIR}/build")
 set(TARGET "vmaware")
 
-if (MSVC)
-    set_property(TARGET ${TARGET} PROPERTY CXX_STANDARD 20)
-    set_property(TARGET ${TARGET} PROPERTY CXX_STANDARD_REQUIRED ON)
-endif()
 
 # debug/release CXX flag options
 if (NOT MSVC)
-    if(CMAKE_BUILD_TYPE MATCHES "Debug")
+if(CMAKE_BUILD_TYPE MATCHES "Debug")
         MESSAGE(STATUS "Build set to debug mode")
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -DDEBUG -O0 -fsanitize=address,undefined,nullability") # -fsanitize=address,undefined,nullability
     elseif(CMAKE_BUILD_TYPE MATCHES "Release")
@@ -63,14 +59,24 @@ if (NOT MSVC)
             set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mcpu=native")
         endif()
     endif()
-    endif()
+endif()
     
+
+# MSVC stuff
+//if (MSVC)
+    set_property(TARGET ${TARGET} PROPERTY CXX_STANDARD 20)
+    set_property(TARGET ${TARGET} PROPERTY CXX_STANDARD_REQUIRED ON)
+//endif()
+
 
 # add executable
 add_executable(${TARGET} "src/cli.cpp")
 
 
 # release stuff
-if(CMAKE_BUILD_TYPE MATCHES "Release")
-    install(TARGETS ${TARGET} DESTINATION bin)
+if (NOT MSVC)
+    if(CMAKE_BUILD_TYPE MATCHES "Release")
+        install(TARGETS ${TARGET} DESTINATION bin)
+        install(FILES "src/vmaware.hpp" DESTINATION /usr/include)
+    endif()
 endif()

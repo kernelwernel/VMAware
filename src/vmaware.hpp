@@ -107,7 +107,7 @@ private:
     using u32 = std::uint32_t;
     using u64 = std::uint64_t;
     using i32 = std::int32_t;
-    using f32 = float;
+    using f64 = double;
 
     #if (CPP <= 14)
         using sv = const char*;
@@ -576,7 +576,7 @@ private:
                         if (!(d & (1 << 27))) { return false; }
                     }
                     
-                    u32 s, acc = 0;
+                    u64 s, acc = 0;
                     i32 out[4];
 
                     for (std::size_t i = 0; i < 100; ++i) {
@@ -1478,7 +1478,7 @@ public:
         VM::no_cpuid = !check_cpuid();
         VM::flags = p_flags;
 
-        f32 points = 0;
+        f64 points = 0;
 
         if (thread_count()) { points += 1.5; }
         if (mac_address_check()) { points += 3.5; }
