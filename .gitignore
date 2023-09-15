@@ -40,6 +40,8 @@ tmp
 test
 tmp.cpp
 src/untested.cpp
+src/vmtest.cpp
 resources/
 archive/
 .vscode/
+build/

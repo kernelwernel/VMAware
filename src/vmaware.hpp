@@ -262,7 +262,7 @@ private:
         uid_t euid = geteuid();
 
         return (
-            ((uid < 0) || (uid != euid)) || 
+            (uid != euid) || 
             (euid == 0)
         );
     }
@@ -769,7 +769,8 @@ private:
             return false;
         }
 
-        u8 mac[6];
+        // C-style array on purpose
+        u8 mac[6] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 
         #if (LINUX)
             struct ifreq ifr;
@@ -786,7 +787,9 @@ private:
             ifc.ifc_len = sizeof(buf);
             ifc.ifc_buf = buf;
 
-            if (ioctl(sock, SIOCGIFCONF, &ifc) == -1) { return false; }
+            if (ioctl(sock, SIOCGIFCONF, &ifc) == -1) {
+                return false;
+            }
 
             struct ifreq* it = ifc.ifc_req;
             const struct ifreq* end = it + (ifc.ifc_len / sizeof(struct ifreq));
@@ -840,28 +843,33 @@ private:
             std::free(AdapterInfo);
         #endif
 
-        if (mac[0] == 0x08 && mac[1] == 0x00 && mac[2] == 0x27) {
+        // better expression to fix code duplication
+        auto compare = [=](const u8 mac1, const u8 mac2, const u8 mac3) noexcept -> bool {
+            return (mac[0] == mac1 && mac[1] == mac2 && mac[2] == mac3);
+        };
+
+        if (compare(0x08, 0x00, 0x27)) {
             return add("VirtualBox");
         }
 
         if (
-            (mac[0] == 0x00 && mac[1] == 0x0C && mac[2] == 0x29) ||
-            (mac[0] == 0x00 && mac[1] == 0x1C && mac[2] == 0x14) ||
-            (mac[0] == 0x00 && mac[1] == 0x50 && mac[2] == 0x56) ||
-            (mac[0] == 0x00 && mac[1] == 0x05 && mac[2] == 0x69)
+            (compare(0x00, 0x0C, 0x29)) ||
+            (compare(0x00, 0x1C, 0x14)) ||
+            (compare(0x00, 0x50, 0x56)) ||
+            (compare(0x00, 0x05, 0x69))
         ) {
             return add("VMware");
         }
 
-        if (mac[0] == 0x00 && mac[1] == 0x16 && mac[2] == 0xE3) {
+        if (compare(0x00, 0x16, 0xE3)) {
             return add("Xen HVM");
         }
 
-        if (mac[0] == 0x00 && mac[1] == 0x1C && mac[2] == 0x42) {
+        if (compare(0x00, 0x1C, 0x42)) {
             return add("Parallels");
         }
 
-        if (mac[0] == 0x0A && mac[1] == 0x00 && mac[2] == 0x27) {
+        if (compare(0x0A, 0x00, 0x27)) {
             return add("Hybrid Analysis");
         }
 
