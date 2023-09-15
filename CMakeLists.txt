@@ -63,10 +63,10 @@ endif()
     
 
 # MSVC stuff
-//if (MSVC)
+#if (MSVC)
     set_property(TARGET ${TARGET} PROPERTY CXX_STANDARD 20)
     set_property(TARGET ${TARGET} PROPERTY CXX_STANDARD_REQUIRED ON)
-//endif()
+#endif()
 
 
 # add executable
