@@ -348,88 +348,89 @@ private:
         [[nodiscard]] static bool vmid() try {
             #if (!x86)
                 return false;
-            #endif
+            #else
 
-            if (no_cpuid || disabled(VMID)) {
-                return false;
-            }
-
-            constexpr sv
-                bhyve = "bhyve bhyve ",
-                kvm = " KVMKVMKVM  ",
-                qemu = "TCGTCGTCGTCG",
-                hyperv = "Microsoft Hv",
-                xta = "MicrosoftXTA",
-                parallels = " prl hyperv ",
-                parallels2 = " lrpepyh  vr",
-                vmware = "VMwareVMware",
-                vbox = "VBoxVBoxVBox",
-                xen = "XenVMMXenVMM",
-                acrn = "ACRNACRNACRN",
-                qnx = " QNXQVMBSQG ",
-                virtapple = "VirtualApple";
-
-            constexpr std::array<sv, 13> IDs {
-                bhyve, kvm, qemu,
-                hyperv, parallels, parallels,
-                parallels2, vmware, vbox,
-                xen, acrn, qnx,
-                virtapple
-            };
-
-            auto cpuid_thingy = [](const u32 p_leaf, u32* regs, std::size_t start = 0, std::size_t end = 4) -> bool {
-                u32 x[4];
-                cpuid(x[0], x[1], x[2], x[3], p_leaf);
-
-                for (; start < end; start++) { 
-                    *regs++ = x[start];
+                if (no_cpuid || disabled(VMID)) {
+                    return false;
                 }
 
-                return true;
-            };
+                constexpr sv
+                    bhyve = "bhyve bhyve ",
+                    kvm = " KVMKVMKVM  ",
+                    qemu = "TCGTCGTCGTCG",
+                    hyperv = "Microsoft Hv",
+                    xta = "MicrosoftXTA",
+                    parallels = " prl hyperv ",
+                    parallels2 = " lrpepyh  vr",
+                    vmware = "VMwareVMware",
+                    vbox = "VBoxVBoxVBox",
+                    xen = "XenVMMXenVMM",
+                    acrn = "ACRNACRNACRN",
+                    qnx = " QNXQVMBSQG ",
+                    virtapple = "VirtualApple";
 
-            std::string brand = "";
+                constexpr std::array<sv, 13> IDs {
+                    bhyve, kvm, qemu,
+                    hyperv, parallels, parallels,
+                    parallels2, vmware, vbox,
+                    xen, acrn, qnx,
+                    virtapple
+                };
 
-            u32 sig_reg[3] = {0};
+                auto cpuid_thingy = [](const u32 p_leaf, u32* regs, std::size_t start = 0, std::size_t end = 4) -> bool {
+                    u32 x[4];
+                    cpuid(x[0], x[1], x[2], x[3], p_leaf);
 
-            if (!cpuid_thingy(0, sig_reg, 1)) {
-                return false;
-            }
+                    for (; start < end; start++) { 
+                        *regs++ = x[start];
+                    }
 
-            u32 features;
-            cpuid_thingy(1, &features, 2, 3);
+                    return true;
+                };
 
-            auto strconvert = [](u64 n) -> std::string {
-                const std::string &str(reinterpret_cast<char*>(&n));
-                return str;
-            };
+                std::string brand = "";
 
-            std::stringstream ss;
-            ss << strconvert(sig_reg[0]);
-            ss << strconvert(sig_reg[2]);
-            ss << strconvert(sig_reg[1]);
+                u32 sig_reg[3] = {0};
 
-            brand = ss.str();
+                if (!cpuid_thingy(0, sig_reg, 1)) {
+                    return false;
+                }
 
-            const bool found = (std::find(std::begin(IDs), std::end(IDs), brand) != std::end(IDs));
-            
-            if (found) {
-                if (brand == bhyve) { scoreboard["bhyve"]++; }
-                if (brand == kvm) { scoreboard["KVM"]++; }
-                if (brand == qemu) [[likely]] { scoreboard["QEMU"]++; }
-                if (brand == hyperv) { scoreboard["Microsoft Hyper-V"]++; }
-                if (brand == xta) { scoreboard["Microsoft x86-to-ARM"]++; }
-                if (brand == vmware) [[likely]] { scoreboard["VMware"]++; }
-                if (brand == vbox) [[likely]] { scoreboard["VirtualBox"]++; }
-                if (brand == parallels) { scoreboard["Parallels"]++; }
-                if (brand == parallels2) { scoreboard["Parallels"]++; }
-                if (brand == xen) { scoreboard["Xen HVM"]++; }
-                if (brand == acrn) { scoreboard["ACRN"]++; }
-                if (brand == qnx) { scoreboard["QNX hypervisor"]++; }
-                if (brand == virtapple) { scoreboard["Virtual Apple"]++; }
-            }
+                u32 features;
+                cpuid_thingy(1, &features, 2, 3);
 
-            return found;
+                auto strconvert = [](u64 n) -> std::string {
+                    const std::string &str(reinterpret_cast<char*>(&n));
+                    return str;
+                };
+
+                std::stringstream ss;
+                ss << strconvert(sig_reg[0]);
+                ss << strconvert(sig_reg[2]);
+                ss << strconvert(sig_reg[1]);
+
+                brand = ss.str();
+
+                const bool found = (std::find(std::begin(IDs), std::end(IDs), brand) != std::end(IDs));
+                
+                if (found) {
+                    if (brand == bhyve) { scoreboard["bhyve"]++; }
+                    if (brand == kvm) { scoreboard["KVM"]++; }
+                    if (brand == qemu) [[likely]] { scoreboard["QEMU"]++; }
+                    if (brand == hyperv) { scoreboard["Microsoft Hyper-V"]++; }
+                    if (brand == xta) { scoreboard["Microsoft x86-to-ARM"]++; }
+                    if (brand == vmware) [[likely]] { scoreboard["VMware"]++; }
+                    if (brand == vbox) [[likely]] { scoreboard["VirtualBox"]++; }
+                    if (brand == parallels) { scoreboard["Parallels"]++; }
+                    if (brand == parallels2) { scoreboard["Parallels"]++; }
+                    if (brand == xen) { scoreboard["Xen HVM"]++; }
+                    if (brand == acrn) { scoreboard["ACRN"]++; }
+                    if (brand == qnx) { scoreboard["QNX hypervisor"]++; }
+                    if (brand == virtapple) { scoreboard["Virtual Apple"]++; }
+                }
+
+                return found;
+            #endif
         } catch (...) { return false; }
 
 
@@ -440,54 +441,54 @@ private:
         [[nodiscard]] static bool cpu_brand() try {
             #if (!x86)
                 return false;
-            #endif
-
-            if (no_cpuid || disabled(BRAND)) {
-                return false;
-            }
-
-            // maybe not necessary but whatever
-            #if (LINUX)
-                if (!__get_cpuid_max(0x80000004, nullptr)) {
+            #else
+                if (no_cpuid || disabled(BRAND)) {
                     return false;
                 }
+
+                // maybe not necessary but whatever
+                #if (LINUX)
+                    if (!__get_cpuid_max(0x80000004, nullptr)) {
+                        return false;
+                    }
+                #endif
+
+                std::array<u32, 4> buffer{};
+                constexpr std::size_t buffer_size = sizeof(i32) * buffer.size();
+                std::array<char, 64> charbuffer{};
+
+                constexpr std::array<u32, 3> ids = {
+                    leaf::brand1,
+                    leaf::brand2,
+                    leaf::brand3
+                };
+
+                std::string brand = "";
+
+                for (const u32 &id : ids) {
+                    cpuid(buffer.at(0), buffer.at(1), buffer.at(2), buffer.at(3), id);
+
+                    std::memcpy(charbuffer.data(), buffer.data(), buffer_size);
+                    brand += sv(charbuffer.data());
+                }
+
+                // TODO: might add more potential keywords, be aware that it could (theoretically) cause false positives
+                constexpr std::array<const char*, 16> vmkeywords {
+                    "qemu", "kvm", "virtual", "vm", 
+                    "vbox", "virtualbox", "vmm", "monitor", 
+                    "bhyve", "hyperv", "hypervisor", "hvisor", 
+                    "parallels", "vmware", "hvm", "qnx"
+                };
+
+                u8 matches = 0;
+
+                for (std::size_t i = 0; i < vmkeywords.size(); i++) {
+                    auto const regex = std::regex(vmkeywords.at(i), std::regex::icase);
+                    matches += std::regex_search(brand, regex);
+                }
+
+                return (matches >= 1);
             #endif
-
-            std::array<u32, 4> buffer{};
-            constexpr std::size_t buffer_size = sizeof(i32) * buffer.size();
-            std::array<char, 64> charbuffer{};
-
-            constexpr std::array<u32, 3> ids = {
-                leaf::brand1,
-                leaf::brand2,
-                leaf::brand3
-            };
-
-            std::string brand = "";
-
-            for (const u32 &id : ids) {
-                cpuid(buffer.at(0), buffer.at(1), buffer.at(2), buffer.at(3), id);
-
-                std::memcpy(charbuffer.data(), buffer.data(), buffer_size);
-                brand += sv(charbuffer.data());
-            }
-
-            // TODO: might add more potential keywords, be aware that it could (theoretically) cause false positives
-            constexpr std::array<const char*, 16> vmkeywords {
-                "qemu", "kvm", "virtual", "vm", 
-                "vbox", "virtualbox", "vmm", "monitor", 
-                "bhyve", "hyperv", "hypervisor", "hvisor", 
-                "parallels", "vmware", "hvm", "qnx"
-            };
-
-            u8 matches = 0;
-
-            for (std::size_t i = 0; i < vmkeywords.size(); i++) {
-                auto const regex = std::regex(vmkeywords.at(i), std::regex::icase);
-                matches += std::regex_search(brand, regex);
-            }
-
-            return (matches >= 1);
         } catch (...) { return false; }
 
 
@@ -498,17 +499,17 @@ private:
         [[nodiscard]] static bool cpuid_hyperv() try {
             #if (!x86)
                 return false;
+            #else
+                if (no_cpuid || disabled(HYPERV_BIT)) {
+                    return false;
+                }
+
+                u32 unused, ecx = 0;
+
+                cpuid(unused, unused, ecx, unused, 1);
+
+                return (ecx & (1 << 31));
             #endif
-
-            if (no_cpuid || disabled(HYPERV_BIT)) {
-                return false;
-            }
-
-            u32 unused, ecx = 0;
-
-            cpuid(unused, unused, ecx, unused, 1);
-
-            return (ecx & (1 << 31));
         } catch (...) { return false; }
 
 
@@ -520,20 +521,20 @@ private:
         [[nodiscard]] static bool cpuid_0x4() try {
             #if (!x86)
                 return false;
-            #endif
+            #else
+                if (no_cpuid || disabled(CPUID_0x4)) {
+                    return false;
+                }
 
-            if (no_cpuid || disabled(CPUID_0x4)) {
+                u32 a, b, c, d = 0;
+
+                for (u8 i = 0; i < 0xFF; i++) {
+                    cpuid(a, b, c, d, (leaf::hyperv + i));
+                    if ((a + b + c + d) != 0) { return true; }
+                }
+
                 return false;
-            }
-
-            u32 a, b, c, d = 0;
-
-            for (u8 i = 0; i < 0xFF; i++) {
-                cpuid(a, b, c, d, (leaf::hyperv + i));
-                if ((a + b + c + d) != 0) { return true; }
-            }
-
-            return false;
+            #endif
         } catch (...) { return false; }
 
 
@@ -544,15 +545,15 @@ private:
         [[nodiscard]] static bool hyperv_brand() try {
             #if (!x86)
                 return false;
+            #else
+                if (disabled(HYPERV_STR)) {
+                    return false;
+                }
+
+                char out[sizeof(i32) * 4 + 1] = { 0 }; // e*x size + number of e*x registers + null terminator
+                cpuid((int*)out, leaf::hyperv);
+                return (std::strlen(out + 4) >= 4);
             #endif
-
-            if (disabled(HYPERV_STR)) {
-                return false;
-            }
-
-            char out[sizeof(i32) * 4 + 1] = { 0 }; // e*x size + number of e*x registers + null terminator
-            cpuid((int*)out, leaf::hyperv);
-            return (std::strlen(out + 4) >= 4);
         } catch (...) { return false; }
 
 
@@ -563,48 +564,48 @@ private:
         [[nodiscard]] static bool rdtsc_check() try {
             #if (!x86)
                 return false;
-            #endif
-
-            if (disabled(RDTSC)) {
-                return false;
-            }
-
-            #if (LINUX)
-                u32 a, b, c, d = 0;
-
-                if (!__get_cpuid(leaf::proc_ext, &a, &b, &c, &d)) {
-                    if (!(d & (1 << 27))) { return false; }
-                }
-                
-                u32 s, acc = 0;
-                i32 out[4];
-
-                for (std::size_t i = 0; i < 100; ++i) {
-                    s = __rdtsc();
-                    cpuid(out, 0, 0);
-                    acc += __rdtsc() - s;
+            #else
+                if (disabled(RDTSC)) {
+                    return false;
                 }
 
-                return (acc / 100 > 350);
-            #elif (MSVC)
-                #define LODWORD(_qw)    ((DWORD)(_qw))
-                u64 tsc1 = 0;
-                u64 tsc2 = 0;
-                u64 avg = 0;
-                i32 cpuInfo[4] = {};
-                for (INT i = 0; i < 10; i++)
-                {
-                    tsc1 = __rdtsc();
-                    GetProcessHeap();
-                    tsc2 = __rdtsc();
-                    CloseHandle(0);
-                    tsc3 = __rdtsc();
-                    if ((LODWORD(tsc3) - LODWORD(tsc2)) / (LODWORD(tsc2) - LODWORD(tsc1)) >= 10) {
-                        return false;
+                #if (LINUX)
+                    u32 a, b, c, d = 0;
+
+                    if (!__get_cpuid(leaf::proc_ext, &a, &b, &c, &d)) {
+                        if (!(d & (1 << 27))) { return false; }
                     }
-                }
+                    
+                    u32 s, acc = 0;
+                    i32 out[4];
 
-                return true;
+                    for (std::size_t i = 0; i < 100; ++i) {
+                        s = __rdtsc();
+                        cpuid(out, 0, 0);
+                        acc += __rdtsc() - s;
+                    }
+
+                    return (acc / 100 > 350);
+                #elif (MSVC)
+                    #define LODWORD(_qw)    ((DWORD)(_qw))
+                    u64 tsc1 = 0;
+                    u64 tsc2 = 0;
+                    u64 avg = 0;
+                    i32 cpuInfo[4] = {};
+                    for (INT i = 0; i < 10; i++)
+                    {
+                        tsc1 = __rdtsc();
+                        GetProcessHeap();
+                        tsc2 = __rdtsc();
+                        CloseHandle(0);
+                        tsc3 = __rdtsc();
+                        if ((LODWORD(tsc3) - LODWORD(tsc2)) / (LODWORD(tsc2) - LODWORD(tsc1)) >= 10) {
+                            return false;
+                        }
+                    }
+
+                    return true;
+                #endif
             #endif
         } catch (...) { return false; }
 
@@ -616,21 +617,21 @@ private:
          * @category x86
          */
         [[nodiscard]] static bool sidt5() try {
-            #if (!x86)
+            #if (!x86 || !LINUX)
                 return false;
+            #else
+                if (disabled(SIDT5)) {
+                    return false;
+                }
+
+                u8 warehouse[10];
+                std::memset(warehouse, 0, 10);
+
+                fflush(stdout);
+                __asm__ __volatile__("sidt %0" : "=m"(warehouse));
+
+                return (warehouse[5] == 0x00);
             #endif
-            
-            if (disabled(SIDT5)) {
-                return false;
-            }
-
-            u8 warehouse[10];
-            std::memset(warehouse, 0, 10);
-
-            fflush(stdout);
-            __asm__ __volatile__("sidt %0" : "=m"(warehouse));
-
-            return (warehouse[5] == 0x00);
         } catch (...) { return false; }
 
 
@@ -644,22 +645,22 @@ private:
         [[nodiscard]] static bool sidt_check() try {
             return false; // TODO: REMOVE AFTER VERIFYING IF IT WORKS
 
-            #if (!x86)
+            #if (!x86 || !LINUX)
                 return false;
+            #else
+                if (disabled(SIDT)) {
+                    return false;
+                }
+
+                u64 idtr = 0;
+
+                __asm__ __volatile__(
+                    "sidt %0"
+                    : "=m" (idtr)
+                );
+
+                return (idtr != 0);
             #endif
-
-            if (disabled(SIDT)) {
-                return false;
-            }
-
-            u64 idtr = 0;
-
-            __asm__ __volatile__(
-                "sidt %0"
-                : "=m" (idtr)
-            );
-
-            return (idtr != 0);
         } catch (...) { return false; }
 
 
@@ -672,77 +673,77 @@ private:
         [[nodiscard]] static bool vmware_port() try {
             #if (!x86)
                 return false;
-            #endif
-
-            if (disabled(VMWARE_PORT)) {
-                return false;
-            }
-
-            i32 is_vm = false;
-
-            #if (LINUX)
-/*
-                u32 a, b, c, d = 0;
-
-                constexpr u32 vmware_magic = 0x564D5868, // magic hypervisor ID
-                              vmware_port  = 0x5658,     // hypervisor port number
-                              vmware_cmd   = 10,         // Getversion command identifier
-                              u32_max      = std::numeric_limits<u32>::max(); // max for u32, idk
-
-                __asm__ __volatile__(
-                    "pushq %%rdx\n\t"
-                    "pushq %%rcx\n\t"
-                    "pushq %%rbx\n\t"
-                    "movl $0x564D5868, %%eax\n\t" // "VMXh"
-                    "movb $0, %%bl\n\t"
-                    "movb $10, %%cl\n\t"
-                    "movl $0x5658, %%edx\n\t" // "VX"
-                    "inl %%dx, %%eax\n\t"
-                    "cmpl $0x564D5868, %%ebx\n\t"
-                    "setz %0\n\t"
-                    "popl %%ebx\n\t"
-                    "popl %%ecx\n\t"
-                    "popl %%edx\n\t"
-                    //: "=a" (a), "=b" (b), "=c" (c), "=d" (d)
-                    : "=r" (is_vm)
-                    :
-                    : "%eax"
-                );
-    
-                or this:
-
-                __asm__ __volatile__(
-                    "inl (%%dx)"
-                    : "=a"(a), "=b"(b), "=c"(c), "=d"(d)
-                    : "0"(0x564D5868), "1"(10), "2"(0x5658), "3"(0xFFFFFFFF)
-                    : "memory"
-                );
-*/
-
-
-            #elif (MSVC)
-                __asm {
-                    push edx
-                    push ecx
-                    push ebx
-                    mov eax, 'VMXh'
-                    mov ebx, 0
-                    mov ecx, 10
-                    mov edx, 'VX'
-                    in eax, dx
-                    cmp ebx, 'VMXh'
-                    setz[is_vm]
-                    pop ebx
-                    pop ecx
-                    pop edx
+            #else
+                if (disabled(VMWARE_PORT)) {
+                    return false;
                 }
+
+                i32 is_vm = false;
+
+                #if (LINUX)
+    /*
+                    u32 a, b, c, d = 0;
+
+                    constexpr u32 vmware_magic = 0x564D5868, // magic hypervisor ID
+                                vmware_port  = 0x5658,     // hypervisor port number
+                                vmware_cmd   = 10,         // Getversion command identifier
+                                u32_max      = std::numeric_limits<u32>::max(); // max for u32, idk
+
+                    __asm__ __volatile__(
+                        "pushq %%rdx\n\t"
+                        "pushq %%rcx\n\t"
+                        "pushq %%rbx\n\t"
+                        "movl $0x564D5868, %%eax\n\t" // "VMXh"
+                        "movb $0, %%bl\n\t"
+                        "movb $10, %%cl\n\t"
+                        "movl $0x5658, %%edx\n\t" // "VX"
+                        "inl %%dx, %%eax\n\t"
+                        "cmpl $0x564D5868, %%ebx\n\t"
+                        "setz %0\n\t"
+                        "popl %%ebx\n\t"
+                        "popl %%ecx\n\t"
+                        "popl %%edx\n\t"
+                        //: "=a" (a), "=b" (b), "=c" (c), "=d" (d)
+                        : "=r" (is_vm)
+                        :
+                        : "%eax"
+                    );
+        
+                    or this:
+
+                    __asm__ __volatile__(
+                        "inl (%%dx)"
+                        : "=a"(a), "=b"(b), "=c"(c), "=d"(d)
+                        : "0"(0x564D5868), "1"(10), "2"(0x5658), "3"(0xFFFFFFFF)
+                        : "memory"
+                    );
+    */
+
+
+                #elif (MSVC)
+                    __asm {
+                        push edx
+                        push ecx
+                        push ebx
+                        mov eax, 'VMXh'
+                        mov ebx, 0
+                        mov ecx, 10
+                        mov edx, 'VX'
+                        in eax, dx
+                        cmp ebx, 'VMXh'
+                        setz[is_vm]
+                        pop ebx
+                        pop ecx
+                        pop edx
+                    }
+                #endif
+
+                if (is_vm) {
+                    scoreboard["VMware"] += 2; // extra point bc it's incredibly VMware-specific
+                }
+
+                return is_vm;
             #endif
-
-            if (is_vm) {
-                scoreboard["VMware"] += 2; // extra point bc it's incredibly VMware-specific
-            }
-
-            return is_vm;
         } catch (...) { return false; }
     #endif
 
@@ -762,7 +763,7 @@ private:
 
     /**
      * @brief Check if mac address starts with certain VM designated values
-     * @category All systems
+     * @category All systems (I think)
      */
     [[nodiscard]] static bool mac_address_check() try {
         if (disabled(MAC)) {
@@ -1360,6 +1361,12 @@ private:
     // __WINDOWS (label so I can easily teleport to this line on my IDE)
 
 public:
+    /**
+     * @brief Check for a specific technique based on flag argument
+     * @param u64 (flags from VM wrapper)
+     * @return bool
+     * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmcheck
+     */
     [[nodiscard]] static bool check(const u64 p_flags = 0ULL) {
         i32 count = 0;
 
@@ -1393,7 +1400,7 @@ public:
         assert(count == 1);
 
         // temporarily enable all flags so that every technique is enabled
-        const decltype(VM::flags) tmp_flags = VM::flags;
+        const u64 tmp_flags = VM::flags;
         VM::flags = (DEFAULT | CURSOR);
 
         bool result = false;
@@ -1431,7 +1438,11 @@ public:
         return result;
     }
 
-
+    /**
+     * @brief Fetch the VM brand
+     * @returns VMware, VirtualBox, KVM, bhyve, QEMU, Microsoft Hyper-V, Microsoft x86-to-ARM, Parallels, Xen HVM, ACRN, QNX hypervisor, Hybrid Analysis, Sandboxie, Docker, Wine, Virtual Apple, Unknown
+     * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmbrand
+     */
     [[nodiscard]] static sv brand(void) {
         // check if result hasn't been memoized already
         if (memo.find(true) == memo.end()) {
@@ -1447,6 +1458,12 @@ public:
     }
 
 
+    /**
+     * @brief Detect if running inside a VM
+     * @param u64 (any combination of flags in VM wrapper, can be optional)
+     * @return bool
+     * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmdetect
+     */
     static bool detect(const u64 p_flags = DEFAULT) {
         /**
          * load memoized value if it exists from a previous

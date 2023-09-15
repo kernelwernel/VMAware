@@ -1,5 +1,5 @@
 # Documentation
-## `VM::detect()`
+# `VM::detect()`
 
 This is basically the only thing you need, which returns a bool. If the parameter is set to default, all the recommended checks will be performed. But you can optionally set what techniques are used:
 
@@ -41,13 +41,8 @@ int main() {
 }
 ```
 
-<br>
 
-- - -
-
-<br>
-
-## `VM::brand()`
+# `VM::brand()`
 This will essentially return the VM brand as a std::string_view if it detected a VM. The possible brand string return values are: `VMware`, `VirtualBox`, `KVM`, `bhyve`, `QEMU`, `Microsoft Hyper-V`, `Microsoft x86-to-ARM`, `Parallels`, `Xen HVM`, `ACRN`, `QNX hypervisor`, `Hybrid Analysis`, `Sandboxie`, `Docker`, `Wine`, and `Virtual Apple`. If none were detected, it will return `Unknown`.
 
 ```cpp
@@ -64,13 +59,7 @@ int main() {
 }
 ```
 
-<br>
-
-- - -
-
-<br>
-
-## `VM::check()`
+# `VM::check()`
 This takes a single flag argument and returns a `bool`. It's essentially the same as `VM::detect()` but it doesn't have a scoring system. It only returns the technique's effective output. The reason why this exists is because it allows end-users to have fine-grained control over what is being executed and what isn't. 
 
 `VM::detect()` is meant for a range of techniques to be evaluated in the bigger picture with weights and biases in its scoring system, while `VM::check()` is meant for a single technique to be evaluated without any weighted points or anything extra. It just gives you what the technique has found by its own. For example:
@@ -88,14 +77,6 @@ if (VM::check(VM::HYPERV_BIT)) {
 bool result = VM::check(VM::SIDT | VM::RDTSC);
 ```
 
-<br>
-
-
-
-
-
-
-
 
 # Flag table
 VMAware provides a convenient way to not only check for VMs, but also have the flexibility and freedom for the end-user to choose what techniques are used with complete control over what gets executed or not. This is handled with a flag system.
@@ -110,6 +91,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | Hypervisor length | Check if brand string length is long enough (would be around 2 characters in a host machine while it's longer in a hypervisor) | `VM::HYPERV_STR` | Yes |
 | RDTSC check | Benchmark RDTSC and evaluate its speed, usually it's very slow in VMs | `VM::RDTSC` | Linux and Windows |
 | SIDT check | Check if SIDT instructions does anything to the interrupt descriptor table | `VM::SIDT` | Linux |
+| SIDT 5 check | Check if the 5th byte after sidt is null | `VM::SIDT5` | Linux |
 | VMware port | Check if VMware port number 0x5658 is present | `VM::VMWARE_PORT` | Linux and Windows |
 | Thread count | Check if there are only 1 or 2 threads, which is a common pattern in VMs with default settings (nowadays physical CPUs should have at least 4 threads for modern CPUs) | `VM::THREADCOUNT` | Yes |
 | MAC address match | Check if the system's MAC address matches with preset values for certain VMs | `VM::MAC` | Linux and Windows |
