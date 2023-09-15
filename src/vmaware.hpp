@@ -1117,7 +1117,7 @@ private:
                     RegCloseKey(regkey);
                     score++;
 
-                    if (p_brand.c_str() != "") [[likely]] {
+                    if (std::string(p_brand) != "") [[likely]] {
                         scoreboard[p_brand]++;
                     }
                 }
