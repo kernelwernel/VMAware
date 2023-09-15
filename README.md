@@ -26,7 +26,6 @@ The library is:
 
 The library is currently a beta, so more improvements and cross-compatibility fixes are planned.
 
-<br>
 
 # Example 🧪
 ```cpp
@@ -43,14 +42,12 @@ int main() {
 }
 ```
 
-<br>
 
 # CLI tool 🔧
 This project also provides a tiny, but handy CLI tool utilising the full potential of what the library can do.
 
 <img src="assets/image.png" width="500" title="cli">
 
-<br>
 
 # Installation 📥
 To install the library, simply download or copy and paste the [vmaware.hpp](src/vmaware.hpp) file to your project. No CMake or build frameworks are necessary, it's literally that simple.
@@ -59,16 +56,16 @@ However, if you want the full project (globally accessible headers with <vmaware
 ```bash
 git clone https://github.com/kernelwernel/VMAware 
 cd VMAware
-sudo make install
+mkdir build
+cd build
+sudo cmake ..
 ```
 > NOTE: I'm most likely going to change my username in the future. If the github link doesn't exist, search for the VMAware project and you should find it.
 
-<br>
 
 # Documentation 📒
 You can view the full docs [here](docs/documentation.md)
 
-<br>
 
 # Credits ✒️
 - [Check Point Research](https://research.checkpoint.com/)
@@ -77,7 +74,6 @@ You can view the full docs [here](docs/documentation.md)
 - [pafish](https://github.com/a0rtega/pafish)
 - [Matteo Malvica](https://www.matteomalvica.com)
 
-<br>
 
 # Legal 📜
 This library is __NOT__ soliciting the development of malware (it's most likely going to be flagged by AVs anyway). I am not responsible nor liable for any damage you cause through any malicious usage of this project. 
