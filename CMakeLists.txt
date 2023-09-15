@@ -10,8 +10,13 @@ project(
 # compiler flags
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_FLAGS "-Wall -Wextra -Wpedantic")
 set(CMAKE_EXE_LINKER_FLAGS "-lstdc++ -lm")
+
+if (MSVC)
+    set(CMAKE_CXX_FLAGS "/W4")
+else()
+    set(CMAKE_CXX_FLAGS "-Wextra -Wall -Wextra -Wconversion -Wdouble-promotion -Wno-unused-parameter -Wno-unused-function -Wno-sign-conversion")
+endif()
 
 
 # fetch and set build type
@@ -39,16 +44,18 @@ set(TARGET "vmaware")
 
 
 # debug/release CXX flag options
-if(CMAKE_BUILD_TYPE MATCHES "Debug")
-    MESSAGE(STATUS "Build set to debug mode")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -DDEBUG -O0 -fsanitize=address,undefined,nullability") # -fsanitize=address,undefined,nullability
-elseif(CMAKE_BUILD_TYPE MATCHES "Release")
-    MESSAGE(STATUS "Build set to release mode")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2 -g0 -fPIE")
-    if (${CMAKE_SYSTEM_PROCESSOR} MATCHES "x86_64")
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native -mtune=native")
-    elseif(${CMAKE_SYSTEM_PROCESSOR} MATCHES "arm")
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mcpu=native")
+if (NOT MSVC)
+    if(CMAKE_BUILD_TYPE MATCHES "Debug")
+        MESSAGE(STATUS "Build set to debug mode")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -DDEBUG -O0 -fsanitize=address,undefined,nullability") # -fsanitize=address,undefined,nullability
+    elseif(CMAKE_BUILD_TYPE MATCHES "Release")
+        MESSAGE(STATUS "Build set to release mode")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2 -g0 -fPIE")
+        if (${CMAKE_SYSTEM_PROCESSOR} MATCHES "x86_64")
+            set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native -mtune=native")
+        elseif(${CMAKE_SYSTEM_PROCESSOR} MATCHES "arm")
+            set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mcpu=native")
+        endif()
     endif()
 endif()
 
