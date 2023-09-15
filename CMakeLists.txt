@@ -60,18 +60,12 @@ if(CMAKE_BUILD_TYPE MATCHES "Debug")
         endif()
     endif()
 endif()
-    
-
-# MSVC stuff
-#if (MSVC)
-    set_property(TARGET ${TARGET} PROPERTY CXX_STANDARD 20)
-    set_property(TARGET ${TARGET} PROPERTY CXX_STANDARD_REQUIRED ON)
-#endif()
 
 
 # add executable
 add_executable(${TARGET} "src/cli.cpp")
-
+set_property(TARGET ${TARGET} PROPERTY CXX_STANDARD 20)
+set_property(TARGET ${TARGET} PROPERTY CXX_STANDARD_REQUIRED ON)
 
 # release stuff
 if (NOT MSVC)
