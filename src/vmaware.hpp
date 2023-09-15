@@ -155,7 +155,11 @@ private:
     #endif
 
     // check if file exists
-    [[nodiscard]] static bool exists(const char* path) {
+    #if (MSVC)
+        [[nodiscard]] static bool exists(LPCSTR path) {
+    #else
+        [[nodiscard]] static bool exists(const char* path) {
+    #endif
         #if (CPP >= 17)
             return std::filesystem::exists(path);
         #elif (CPP >= 11)
@@ -1209,12 +1213,13 @@ private:
             TCHAR user[UNLEN+1];
             DWORD user_len = UNLEN+1;
             GetUserName((TCHAR*)user, &user_len);
+            std::string u = user;
 
             return (
-                (user == "username") ||  // ThreadExpert
-                (user == "USER") ||      // Sandbox
-                (user == "user") ||      // Sandbox 2
-                (user == "currentuser")  // Normal
+                (u == "username") ||  // ThreadExpert
+                (u == "USER") ||      // Sandbox
+                (u == "user") ||      // Sandbox 2
+                (u == "currentuser")  // Normal
             );
         #endif
     } catch (...) { return false; }
