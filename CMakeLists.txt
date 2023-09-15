@@ -10,6 +10,7 @@ project(
 # compiler flags
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXE_LINKER_FLAGS "-lstdc++ -lm")
 
 if (MSVC)
@@ -17,6 +18,7 @@ if (MSVC)
 else()
     set(CMAKE_CXX_FLAGS "-std=c++20 -Wextra -Wall -Wextra -Wconversion -Wdouble-promotion -Wno-unused-parameter -Wno-unused-function -Wno-sign-conversion")
 endif()
+
 
 
 # fetch and set build type
@@ -42,6 +44,10 @@ set(PROJECT_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 set(BUILD_DIR "${PROJECT_DIR}/build")
 set(TARGET "vmaware")
 
+if (MSVC)
+    set_property(TARGET ${TARGET} PROPERTY CXX_STANDARD 20)
+    set_property(TARGET ${TARGET} PROPERTY CXX_STANDARD_REQUIRED ON)
+endif()
 
 # debug/release CXX flag options
 if (NOT MSVC)
@@ -52,13 +58,13 @@ if (NOT MSVC)
         MESSAGE(STATUS "Build set to release mode")
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2 -g0 -fPIE")
         if (${CMAKE_SYSTEM_PROCESSOR} MATCHES "x86_64")
-            set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native -mtune=native")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native -mtune=native")
         elseif(${CMAKE_SYSTEM_PROCESSOR} MATCHES "arm")
             set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mcpu=native")
         endif()
     endif()
-endif()
-
+    endif()
+    
 
 # add executable
 add_executable(${TARGET} "src/cli.cpp")
