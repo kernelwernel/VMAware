@@ -73,9 +73,9 @@
 #if (CPP >= 17)
     #include <bit>
 #endif
-#if (CPP < 11)
-    #error "VMAware only supports C++14 or above, set your compiler flag to '-std=c++20' for GCC/clang, or '/std:c++20' for MSVC"
-#endif
+//#if (CPP < 11)
+//    #error "VMAware only supports C++11 or above, set your compiler flag to '-std=c++20' for GCC/clang, or '/std:c++20' for MSVC"
+//#endif
 
 
 #if (MSVC)
