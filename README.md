@@ -68,6 +68,10 @@ sudo make install
 You can view the full docs [here](docs/documentation.md)
 
 
+# Issues and pull requests 
+If you have any suggestions, ideas, or any sort of contribution, feel free to ask! I'll be more than happy to discuss :)
+
+
 # Credits ✒️
 - [Check Point Research](https://research.checkpoint.com/)
 - [Unprotect Project](https://unprotect.it/)
