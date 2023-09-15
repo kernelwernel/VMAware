@@ -1,5 +1,7 @@
 #include "vmaware.hpp"
-#include <bits/stdc++.h> // I really can't care less about best practices for a small PoC tool
+#include <string>
+#include <iostream>
+#include <vector>
 
 using sv = std::string_view;
 
