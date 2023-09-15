@@ -157,16 +157,22 @@ private:
     // check if file exists
     #if (MSVC)
         [[nodiscard]] static bool exists(LPCSTR path) {
+            GetFileAttributes("C:\\MyFile.txt"); // from winbase.h
+            return (!(
+                (INVALID_FILE_ATTRIBUTES == GetFileAttributes(path)) && 
+                (GetLastError() == ERROR_FILE_NOT_FOUND)
+            ));
+        }
     #else
         [[nodiscard]] static bool exists(const char* path) {
+            #if (CPP >= 17)
+                return std::filesystem::exists(path);
+            #elif (CPP >= 11)
+                struct stat buffer;   
+                return (stat (path, &buffer) == 0); 
+            #endif
+        }
     #endif
-        #if (CPP >= 17)
-            return std::filesystem::exists(path);
-        #elif (CPP >= 11)
-            struct stat buffer;   
-            return (stat (path, &buffer) == 0); 
-        #endif
-    }
 
     // VM scoreboard table specifically for VM::brand()
     static inline std::map<sv, u8> scoreboard {
