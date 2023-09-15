@@ -1102,11 +1102,10 @@ private:
 
             u8 score = 0;
 
-            auto key = [&score](const sv p_brand, const sv regkey_sv) -> void {
+            auto key = [&score](const sv p_brand, LPCSTR regkey_s) -> void {
                 HKEY regkey;
                 LONG ret;
                 BOOL isWow64 = FALSE;
-                LPCSTR regkey_s = regkey_sv.data();
 
                 if (IsWow64Process(GetCurrentProcess(), &isWow64) && isWow64) { 
                     ret = RegOpenKeyEx(HKEY_LOCAL_MACHINE, regkey_s, 0, KEY_READ | KEY_WOW64_64KEY, &regkey);

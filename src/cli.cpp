@@ -71,7 +71,7 @@ int main(int argc, char* argv[]) {
         checker(VM::SUNBELT, "Sunbelt");
         std::printf("\n");
 
-        std::cout << "VM brand: " << (VM::brand() == "Unknown" ? red : green) << VM::brand() << ansi_exit << "\n\n";
+        std::cout << "VM brand: " << (std::string(VM::brand()) == "Unknown" ? red : green) << VM::brand() << ansi_exit << "\n\n";
 
         const std::string baremetal = (std::string(red) + "Running in baremetal " + std::string(ansi_exit));
         const std::string vmachine = (std::string(green) + "Running inside a VM " + std::string(ansi_exit));
