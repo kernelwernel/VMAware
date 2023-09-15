@@ -15,8 +15,8 @@ int main() {
     /**
      * Essentially means only the brand, MAC, and hypervisor 
      * bit techniques should be performed. Note that the less 
-     * flags you provide, the more likely the result will NOT 
-     * be accurate.
+     * flags you provide, the more likely the result whether 
+     * it's running in a VM will not be accurate.
      */ 
     bool is_vm2 = VM::detect(VM::BRAND | VM::MAC | VM::HYPERV_BIT);
 
@@ -26,7 +26,7 @@ int main() {
      * which waits 5 seconds for any human mouse interaction 
      * to detect automated virtual environments. This is the 
      * only technique that's disabled by default but if you 
-     * want to include it, add VM::ALL which is [NOT RECOMMENDED]
+     * want to include it, add VM::ALL which is NOT RECOMMENDED
      */ 
     bool is_vm3 = VM::detect(VM::ALL);
 
@@ -109,3 +109,9 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | Check DLLs | Match for VM-specific DLLs | `VM::DLL` | Windows |
 | Check registry | Look throughout the registry for all sorts of VMs | `VM::REGISTRY` | Windows |
 | Check Sunbelt | Detect for Sunbelt technology | `VM::SUNBELT` | Windows |
+
+# Non-technique flags
+| Flag | Description |
+|------|-------------|
+| `VM::ALL` | This will enable all the flags technique flags, including the cursor check. |
+| `VM::NO_MEMO` | This will disable memoization, meaning the result will not be fetched through a previous computation of the VM::detect function. Not sure why you'd need this, but it will take a performance hit if enabled. |

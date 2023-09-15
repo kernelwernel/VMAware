@@ -335,7 +335,7 @@ public:
         // settings
         NO_MEMO = 1ULL << 63,
 
-        ALL = std::numeric_limits<u64>::max();//(CURSOR | ((1 << 17) - 1));
+        ALL = ~(NO_MEMO & std::numeric_limits<u64>::max());
 
 private:
     static constexpr u64 DEFAULT = (~(CURSOR | NO_MEMO) & ALL);
