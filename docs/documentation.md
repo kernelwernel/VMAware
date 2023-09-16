@@ -13,11 +13,11 @@ int main() {
 
 
     /**
-     * Essentially means only the brand, MAC, and hypervisor 
-     * bit techniques should be performed. Note that the less 
-     * flags you provide, the more likely the result whether 
-     * it's running in a VM will not be accurate.
-     */ 
+     * Essentially means only the brand, MAC, and hypervisor bit techniques 
+     * should be performed. Note that the less flags you provide, the more 
+     * likely the result will not be accurate. If you just want to check for 
+     * a single technique, use VM::check() instead.
+     */
     bool is_vm2 = VM::detect(VM::BRAND | VM::MAC | VM::HYPERV_BIT);
 
 
@@ -32,10 +32,9 @@ int main() {
 
 
     /**
-     * If you don't want the value to be memoized for whatever
-     * reason, you can set the VM::NO_MEMO flag and the result
-     * will not be cached. Keep in mind that this could take a 
-     * performance hit.
+     * If you don't want the value to be memoized for whatever reason, 
+     * you can set the VM::NO_MEMO flag and the result will not be cached. 
+     * Keep in mind that this could take a performance hit.
      */ 
     bool is_vm3 = VM::detect(VM::ALL | VM::NO_MEMO);
 }
@@ -62,7 +61,7 @@ int main() {
 # `VM::check()`
 This takes a single flag argument and returns a `bool`. It's essentially the same as `VM::detect()` but it doesn't have a scoring system. It only returns the technique's effective output. The reason why this exists is because it allows end-users to have fine-grained control over what is being executed and what isn't. 
 
-`VM::detect()` is meant for a range of techniques to be evaluated in the bigger picture with weights and biases in its scoring system, while `VM::check()` is meant for a single technique to be evaluated without any weighted points or anything extra. It just gives you what the technique has found by its own. For example:
+`VM::detect()` is meant for a range of techniques to be evaluated in the bigger picture with weights and biases in its scoring system, while `VM::check()` is meant for a single technique to be evaluated without any weighted points or anything extra. It just gives you what the technique has found on its own. For example:
 
 ```cpp
 if (VM::check(VM::VMID)) {
