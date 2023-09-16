@@ -68,6 +68,10 @@ sudo make install
 You can view the full docs [here](docs/documentation.md)
 
 
+# Q&A
+
+
+
 # Issues and pull requests 
 If you have any suggestions, ideas, or any sort of contribution, feel free to ask! I'll be more than happy to discuss. If you found this project useful, a star would be appreciated :)
 

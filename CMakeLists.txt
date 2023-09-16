@@ -33,9 +33,9 @@ endif()
 
 # Define preprocessor macros based on the build type
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-add_compile_definitions(__DEBUG__)
+add_compile_definitions(__VMAWARE_DEBUG__)
 elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
-add_compile_definitions(__RELEASE__)
+add_compile_definitions(__VMAWARE_RELEASE__)
 endif()
 
 
@@ -49,7 +49,7 @@ set(TARGET "vmaware")
 if (NOT MSVC)
 if(CMAKE_BUILD_TYPE MATCHES "Debug")
         MESSAGE(STATUS "Build set to debug mode")
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -DDEBUG -O0 -fsanitize=address,undefined,nullability") # -fsanitize=address,undefined,nullability
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -DDEBUG -O0 -fsanitize=address")
     elseif(CMAKE_BUILD_TYPE MATCHES "Release")
         MESSAGE(STATUS "Build set to release mode")
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -g0")

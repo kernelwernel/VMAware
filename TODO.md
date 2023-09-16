@@ -11,3 +11,10 @@
 
 # distant plans
 - add ARM support
+
+
+# fully tackled VMs
+- [x] Wine
+- [ ] QEMU
+- [ ] VMware
+- [ ] VBox
