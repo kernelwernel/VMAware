@@ -90,6 +90,7 @@
     #include <Iphlpapi.h>
     #include <Assert.h>
     #include <excpt.h>
+    #include <winternl.h>
     #pragma comment(lib, "iphlpapi.lib")
 #elif (LINUX)
     #include <cpuid.h>
@@ -177,25 +178,45 @@ private:
         }
     #endif
 
+    // official aliases for VM brands. This is added to avoid accidental typos which could really fuck up the result. Also, no errors/warnings are issued if the string is invalid. 
+    static constexpr sv 
+        VMWARE = "VMware",
+        VBOX = "VirtualBox",
+        KVM = "KVM",
+        BHYVE = "bhyve",
+        QEMU = "QEMU",
+        HYPERV = "Microsoft Hyper-V",
+        MSXTA = "Microsoft x86-to-ARM",
+        PARALLELS = "Parallels",
+        XEN = "Xen HVM",
+        ACRN = "ACRN",
+        QNX = "QNX hypervisor",
+        HYBRID = "Hybrid Analysis",
+        SANDBOXIE = "Sandboxie",
+        DOCKER = "Docker",
+        WINE = "Wine",
+        VAPPLE = "Virtual Apple",
+        VPC = "Virtual PC";
+
     // VM scoreboard table specifically for VM::brand()
     static inline std::map<sv, u8> scoreboard {
-        { "VMware", 0 },
-        { "VirtualBox", 0 },
-        { "KVM", 0 },
-        { "bhyve", 0 },
-        { "QEMU", 0 },
-        { "Microsoft Hyper-V", 0 },
-        { "Microsoft x86-to-ARM", 0 },
-        { "Parallels", 0 },
-        { "Xen HVM", 0 },
-        { "ACRN", 0 },
-        { "QNX hypervisor", 0 },
-        { "Hybrid Analysis", 0 },
-        { "Sandboxie", 0 },
-        { "Docker", 0 },
-        { "Wine", 0 },
-        { "Virtual Apple", 0 },
-        { "Virtual PC", 0 }
+        { VMWARE, 0 },
+        { VBOX, 0 },
+        { KVM, 0 },
+        { BHYVE, 0 },
+        { QEMU, 0 },
+        { HYPERV, 0 },
+        { MSXTA, 0 },
+        { PARALLELS, 0 },
+        { XEN, 0 },
+        { ACRN, 0 },
+        { QNX, 0 },
+        { HYBRID, 0 },
+        { SANDBOXIE, 0 },
+        { DOCKER, 0 },
+        { WINE, 0 },
+        { VAPPLE, 0 },
+        { VPC, 0 }
     };
 
     // check if cpuid is supported
@@ -347,7 +368,7 @@ public:
         SYSTEMD = 1 << 11,
         CVENDOR = 1 << 12,
         CTYPE = 1 << 13,
-        DOCKER = 1 << 14,
+        DOCKER_CHECK = 1 << 14,
         DMIDECODE = 1 << 15,
         DMESG = 1 << 16,
         HWMON = 1 << 17,
@@ -361,8 +382,9 @@ public:
         DLL = 1ULL << 44,
         REGISTRY = 1ULL << 45,
         SUNBELT = 1ULL << 46,
-        WINE = 1ULL << 47,
+        WINE_CHECK = 1ULL << 47,
         BOOT = 1ULL << 48,
+        VM_FILES = 1ULL << 49,
 
         // settings
         NO_MEMO = 1ULL << 63,
@@ -455,22 +477,22 @@ private:
             const bool found = (std::find(std::begin(IDs), std::end(IDs), brand) != std::end(IDs));
 
             if (found) {
-                if (brand == bhyve) { scoreboard["bhyve"]++; }
-                if (brand == kvm) { scoreboard["KVM"]++; }
-                if (brand == qemu) [[likely]] { scoreboard["QEMU"]++; }
-                if (brand == hyperv) { scoreboard["Microsoft Hyper-V"]++; }
-                if (brand == xta) { scoreboard["Microsoft x86-to-ARM"]++; }
-                if (brand == vmware) [[likely]] { scoreboard["VMware"]++; }
-                if (brand == vbox) [[likely]] { scoreboard["VirtualBox"]++; }
-                if (brand == parallels) { scoreboard["Parallels"]++; }
-                if (brand == parallels2) { scoreboard["Parallels"]++; }
-                if (brand == xen) { scoreboard["Xen HVM"]++; }
-                if (brand == acrn) { scoreboard["ACRN"]++; }
-                if (brand == qnx) { scoreboard["QNX hypervisor"]++; }
-                if (brand == virtapple) { scoreboard["Virtual Apple"]++; }
+                if (brand == bhyve) { return add(BHYVE); }
+                if (brand == kvm) { return add(KVM); }
+                if (brand == qemu) [[likely]] { return add(QEMU); }
+                if (brand == hyperv) { return add(HYPERV); }
+                if (brand == xta) { return add(MSXTA); }
+                if (brand == vmware) [[likely]] { return add(VMWARE); }
+                if (brand == vbox) [[likely]] { return add(VBOX); }
+                if (brand == parallels) { return add(PARALLELS); }
+                if (brand == parallels2) { return add(PARALLELS); }
+                if (brand == xen) { return add(XEN); }
+                if (brand == acrn) { return add(ACRN); }
+                if (brand == qnx) { return add(QNX); }
+                if (brand == virtapple) { return add(VAPPLE); }
             }
 
-            return found;
+            return false;
         #endif
     } catch (...) { return false; }
 
@@ -527,7 +549,7 @@ private:
             u8 matches = 0;
 
             for (std::size_t i = 0; i < vmkeywords.size(); i++) {
-                auto const regex = std::regex(vmkeywords.at(i), std::regex::icase);
+                const auto regex = std::regex(vmkeywords.at(i), std::regex::icase);
                 matches += std::regex_search(brand, regex);
             }
 
@@ -858,10 +880,11 @@ private:
             #endif
 
             if (is_vm) {
-                scoreboard["VMware"] += 2; // extra point bc it's incredibly VMware-specific
+                scoreboard[VMWARE] += 2; // extra point bc it's incredibly VMware-specific
+                return true;
             }
 
-            return is_vm;
+            return false;
         #endif
     } catch (...) { return false; }
 
@@ -996,7 +1019,7 @@ private:
         };
 
         if (compare(0x08, 0x00, 0x27)) {
-            return add("VirtualBox");
+            return add(VBOX);
         }
 
         if (
@@ -1005,19 +1028,19 @@ private:
             (compare(0x00, 0x50, 0x56)) ||
             (compare(0x00, 0x05, 0x69))
         ) {
-            return add("VMware");
+            return add(VMWARE);
         }
 
         if (compare(0x00, 0x16, 0xE3)) {
-            return add("Xen HVM");
+            return add(XEN);
         }
 
         if (compare(0x00, 0x1C, 0x42)) {
-            return add("Parallels");
+            return add(PARALLELS);
         }
 
         if (compare(0x0A, 0x00, 0x27)) {
-            return add("Hybrid Analysis");
+            return add(HYBRID);
         }
 
         return false;
@@ -1105,8 +1128,8 @@ private:
                 const std::string vendor = read_file(vendor_file);
 
                 // TODO: More can be definitely added, I only tried QEMU and VMware so far
-                if (vendor == "QEMU") { return add("QEMU"); }
-                if (vendor == "Oracle Corporation") { return add("VMware"); }
+                if (vendor == "QEMU") { return add(QEMU); }
+                if (vendor == "Oracle Corporation") { return add(VMWARE); }
 
                 #ifdef __VMAWARE_DEBUG__ 
                     debug("CVENDOR: ", "unknown vendor = ", vendor);
@@ -1160,7 +1183,7 @@ private:
         #if (!LINUX)
             return false;
         #else
-            if (disabled(DOCKER)) {
+            if (disabled(DOCKER_CHECK)) {
                 #ifdef __VMAWARE_DEBUG__ 
                     debug("DOCKER: ", "precondition return called");
                 #endif
@@ -1202,11 +1225,11 @@ private:
                 #endif
                 return false;
             } else if (*result == "QEMU") {
-                return add("QEMU");
+                return add(QEMU);
             } else if (*result == "VirtualBox") {
-                return add("VirtualBox");
+                return add(VBOX);
             } else if (*result == "KVM") {
-                return add("KVM");
+                return add(KVM);
             } else if (std::atoi(result->c_str()) >= 1) {
                 return true;
             } else {
@@ -1247,9 +1270,9 @@ private:
             if (*result == "" || result == nullptr) {
                 return false;
             } else if (*result == "KVM") {
-                return add("KVM");
+                return add(KVM);
             } else if (*result == "QEMU") {
-                return add("QEMU");
+                return add(QEMU);
             } else if (std::atoi(result->c_str())) {
                 return true;
             } else {
@@ -1539,8 +1562,7 @@ private:
 
             if (handle != INVALID_HANDLE_VALUE) {
                 CloseHandle(handle);
-                scoreboard["VirtualBox"]++;
-                return true;
+                return add(VBOX);
             }
 
             return false;
@@ -1574,7 +1596,7 @@ private:
             bool result = (RegOpenKeyEx(TEXT("SOFTWARE\\VMware, Inc.\\VMware Tools"), 0, KEY_QUERY_VALUE, &hKey) == ERROR_SUCCESS);
 
             if (result == true) {
-                scoreboard["VMware"]++;
+                return add(VMWARE);
             }
 
             return result;
@@ -1659,11 +1681,91 @@ private:
             
             NtQuerySystemInformation(SystemTimeOfDayInformation, &SysTimeInfo, sizeof(SysTimeInfo), 0);
             LastBootTime = wmi_Get_LastBootTime();
-            return (wmi_LastBootTime.QuadPart - SysTimeInfo.BootTime.QuadPart) / 10000000 != 0; // 0 seconds
+            return ((wmi_LastBootTime.QuadPart - SysTimeInfo.BootTime.QuadPart) / 10000000 != 0); // 0 seconds
         #elif (LINUX)
             // TODO: finish this shit tomorrow
         #endif
+
+        return false;
     } catch (...) { return false; }
+
+
+    /**
+     * @brief Find for VMware and VBox specific files
+     * @category Windows
+     */
+    [[nodiscard]] static bool vm_files() try {
+        #if (!MSVC)
+            return false;
+        #else
+            if (disabled(VM_FILES)) {
+                #ifdef __VMAWARE_DEBUG__ 
+                    debug("VMFILES: ", "precondition return called");
+                #endif
+                return false;
+            }
+
+            // points
+            u8 vbox = 0;
+            u8 vmware = 0;
+
+            constexpr std::array<const char*, 26> files = {
+                // VMware
+                "C:\\windows\\System32\\Drivers\\Vmmouse.sys",
+                "C:\\windows\\System32\\Drivers\\vm3dgl.dll",
+                "C:\\windows\\System32\\Drivers\\vmdum.dll",
+                "C:\\windows\\System32\\Drivers\\VmGuestLibJava.dll",
+                "C:\\windows\\System32\\Drivers\\vm3dver.dll",
+                "C:\\windows\\System32\\Drivers\\vmtray.dll",
+                "C:\\windows\\System32\\Drivers\\VMToolsHook.dll",
+                "C:\\windows\\System32\\Drivers\\vmGuestLib.dll",
+                "C:\\windows\\System32\\Drivers\\vmhgfs.dll",
+                "C:\\windows\\System32\\Driversvmhgfs.dll",
+                
+                // VBox
+                "C:\\windows\\System32\\Drivers\\VBoxMouse.sys",
+                "C:\\windows\\System32\\Drivers\\VBoxGuest.sys",
+                "C:\\windows\\System32\\Drivers\\VBoxSF.sys",
+                "C:\\windows\\System32\\Drivers\\VBoxVideo.sys",
+                "C:\\windows\\System32\\vboxoglpackspu.dll",
+                "C:\\windows\\System32\\vboxoglpassthroughspu.dll",
+                "C:\\windows\\System32\\vboxservice.exe",
+                "C:\\windows\\System32\\vboxoglcrutil.dll",
+                "C:\\windows\\System32\\vboxdisp.dll",
+                "C:\\windows\\System32\\vboxhook.dll",
+                "C:\\windows\\System32\\vboxmrxnp.dll",
+                "C:\\windows\\System32\\vboxogl.dll",
+                "C:\\windows\\System32\\vboxtray.exe",
+                "C:\\windows\\System32\\VBoxControl.exe",
+                "C:\\windows\\System32\\vboxoglerrorspu.dll",
+                "C:\\windows\\System32\\vboxoglfeedbackspu.dll",
+            }
+
+            for (const sv file : files) {
+                if (exists(file)) {
+                    const auto regex = std::regex(file, std::regex::icase);
+
+                    if (std::regex_search("vbox", regex)) {
+                        vbox++;
+                    } else {
+                        vmware++;
+                    }
+                }
+            }
+
+            if (vbox > vmware) {
+                return add(VBOX);
+            } else if (vmware > vbox) {
+                return add(VMWARE);
+            }
+
+            return false;
+        #endif
+    } catch (...) { return false; }
+
+
+
+    // LABEL  (ignore this line, it's just a label so I can easily teleport to this line on my IDE with CTRL+F)
 
 public:
     /**
@@ -1680,13 +1782,10 @@ public:
         #elif (CPP >= 14)
             count = std::__popcount(p_flags);
         #else 
-        {
             // compiler will optimise this with the x86 popcnt instruction (I hope)
-            u64 tmp = p_flags;
-            for (; tmp != 0; count++) {
+            for (u64 tmp = p_flags; tmp != 0; count++) {
                 tmp = (tmp & (tmp - 1));
             }
-        }
         #endif
 
         if (count > 1) {
@@ -1719,9 +1818,10 @@ public:
             case VM::SIDT5: result = sidt5(); break;
             case VM::SIDT: result = sidt_check(); break;
             case VM::TEMPERATURE: result = temperature(); break;
+            case VM::SYSTEMD: result = systemd_virt(); break;
             case VM::CVENDOR: result = chassis_vendor(); break;
             case VM::CTYPE: result = chassis_type(); break;
-            case VM::DOCKER: result = dockerenv(); break;
+            case VM::DOCKER_CHECK: result = dockerenv(); break;
             case VM::DMIDECODE: result = dmidecode(); break;
             case VM::DMESG: result = dmesg(); break;
             case VM::HWMON: result = hwmon(); break;
@@ -1736,8 +1836,10 @@ public:
             case VM::REGISTRY: result = registry_key(); break;
             case VM::SUNBELT: result = sunbelt_check(); break;
             case VM::THREADCOUNT: result = thread_count(); break;
-            case VM::WINE: result = wine(); break;
+            case VM::WINE_CHECK: result = wine(); break;
             case VM::BOOT: result = boot_time(); break;
+            case VM::VM_FILES: result = vm_files(); break;
+            default: throw std::invalid_argument("Unknown flag provided for VM::check() function");
         }
 
         VM::flags = tmp_flags;
@@ -1826,11 +1928,11 @@ public:
 
         sv current_brand = "";
 
-/* (left for debug stuff)
-        for (const auto p : scoreboard) {
-            std::cout << "\n" << (int)p.second << " : " << p.first;
-        }
-*/
+        #ifdef __VMAWARE_DEBUG__
+            for (const auto p : scoreboard) {
+                std::cout << "\n" << (int)p.second << " : " << p.first;
+            }
+        #endif
 
         // fetch the brand with the most points in the scoreboard
         #if (CPP >= 20)

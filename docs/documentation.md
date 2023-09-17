@@ -97,7 +97,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | Check temperature | Check for the presence of CPU temperature sensors (mostly not present in VMs) | `VM::TEMPERATURE` | Linux |
 | Check chassis vendor | Check if the chassis has any VM-related keywords | `VM::CVENDOR` | Linux |
 | Check chassis type | Check if the chassis type is valid (usually not in VMs) | `VM::CTYPE` | Linux |
-| Check docker | Check if any docker-related files are present such as /.dockerenv and /.dockerinit | `VM::DOCKER` | Linux |
+| Check docker | Check if any docker-related files are present such as /.dockerenv and /.dockerinit | `VM::DOCKER_CHECK` | Linux |
 | Check dmidecode | Get output from dmidecode tool and grep for common VM keywords | `VM::DMIDECODE` | Linux |
 | Check dmesg | Get output from dmesg tool and grep for common VM keywords | `VM::DMESG` | Linux |
 | Check HWMON | Check if HWMON is present (if not, likely a VM) | `VM::HWMON` | Linux |
@@ -108,8 +108,9 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | Check DLLs | Match for VM-specific DLLs | `VM::DLL` | Windows |
 | Check registry | Look throughout the registry for all sorts of VMs | `VM::REGISTRY` | Windows |
 | Check Sunbelt | Detect for Sunbelt technology | `VM::SUNBELT` | Windows |
-| Check Wine | Find for a Wine-specific file | `VM::WINE` | Windows |
+| Check Wine | Find for a Wine-specific file | `VM::WINE_CHECK` | Windows |
 | Check boot time | Analyse the OS uptime | `VM::BOOT` | Yes |
+| Check VM files | Find if any VM-specific files exists | `VM::VM_FILES` | Windows |
 
 # Non-technique flags
 | Flag | Description |

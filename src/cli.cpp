@@ -58,7 +58,7 @@ int main(int argc, char* argv[]) {
         checker(VM::SYSTEMD, "systemd virtualisation");
         checker(VM::CVENDOR, "chassis vendor");
         checker(VM::CTYPE, "chassis type");
-        checker(VM::DOCKER, "Dockerenv");
+        checker(VM::DOCKER_CHECK, "Dockerenv");
         checker(VM::DMIDECODE, "dmidecode output");
         checker(VM::DMESG, "dmesg output");
         checker(VM::HWMON, "hwmon presence");
@@ -69,6 +69,9 @@ int main(int argc, char* argv[]) {
         checker(VM::DLL, "DLLs");
         checker(VM::REGISTRY, "registry");
         checker(VM::SUNBELT, "Sunbelt");
+        checker(VM::WINE_CHECK, "Wine");
+        checker(VM::BOOT, "boot uptime");
+        checker(VM::VM_FILES, "VM files");
         std::printf("\n");
 
         std::cout << "VM brand: " << (std::string(VM::brand()) == "Unknown" ? red : green) << VM::brand() << ansi_exit << "\n\n";
