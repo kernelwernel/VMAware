@@ -11,6 +11,7 @@
 
 # distant plans
 - add ARM support
+- add the library to conan.io when released
 
 
 # fully tackled VMs

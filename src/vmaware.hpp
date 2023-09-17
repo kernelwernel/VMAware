@@ -362,6 +362,7 @@ public:
         REGISTRY = 1ULL << 45,
         SUNBELT = 1ULL << 46,
         WINE = 1ULL << 47,
+        BOOT = 1ULL << 48,
 
         // settings
         NO_MEMO = 1ULL << 63,
@@ -822,22 +823,37 @@ private:
                 );
 */
 
-
             #elif (MSVC)
-                __asm {
-                    push edx
-                    push ecx
-                    push ebx
-                    mov eax, 'VMXh'
-                    mov ebx, 0
-                    mov ecx, 10
-                    mov edx, 'VX'
-                    in eax, dx
-                    cmp ebx, 'VMXh'
-                    setz[is_vm]
-                    pop ebx
-                    pop ecx
-                    pop edx
+                u16 ioports[] = { 'VX' , 'VY' };
+                u16 ioport;
+                for (u8 i = 0; i < _countof(ioports); ++i) {
+                    ioport = ioports[i];
+                    for (u8 cmd = 0; cmd < 0x2C; ++cmd) {
+                        __try {
+                            __asm {
+                                push eax
+                                push ebx
+                                push ecx
+                                push edx
+                                mov eax, 'VMXh'
+                                movzx ecx, cmd
+                                mov dx, ioport
+                                in eax, dx      // <- key point is here
+                                pop edx
+                                pop ecx
+                                pop ebx
+                                pop eax
+                            }
+
+                            is_vm = true;
+                            break;
+                        }
+                        __except (EXCEPTION_EXECUTE_HANDLER) {}
+                    }
+
+                    if (is_vm) {
+                        break;
+                    }
                 }
             #endif
 
@@ -1623,6 +1639,32 @@ private:
         #endif
     } catch (...) { return false; }
 
+
+    /**
+     * @brief Check boot-time 
+     * @todo: finish the linux part tomorrow
+     * @category All systems
+     */ 
+    [[nodiscard]] static bool boot_time() try {
+        if (disabled(BOOT)) {
+            #ifdef __VMAWARE_DEBUG__ 
+                debug("BOOT: ", "precondition return called");
+            #endif
+            return false;
+        }
+
+        #if (MSVC)
+            SYSTEM_TIME_OF_DAY_INFORMATION  SysTimeInfo;
+            LARGE_INTEGER LastBootTime;
+            
+            NtQuerySystemInformation(SystemTimeOfDayInformation, &SysTimeInfo, sizeof(SysTimeInfo), 0);
+            LastBootTime = wmi_Get_LastBootTime();
+            return (wmi_LastBootTime.QuadPart - SysTimeInfo.BootTime.QuadPart) / 10000000 != 0; // 0 seconds
+        #elif (LINUX)
+            // TODO: finish this shit tomorrow
+        #endif
+    } catch (...) { return false; }
+
 public:
     /**
      * @brief Check for a specific technique based on flag argument
@@ -1695,6 +1737,7 @@ public:
             case VM::SUNBELT: result = sunbelt_check(); break;
             case VM::THREADCOUNT: result = thread_count(); break;
             case VM::WINE: result = wine(); break;
+            case VM::BOOT: result = boot_time(); break;
         }
 
         VM::flags = tmp_flags;
@@ -1771,6 +1814,7 @@ public:
         if (registry_key()) { points += 5; }
         if (sunbelt_check()) { points += 1; }
         if (wine()) { points += 3.5; }
+        if (boot_time()) { points += 0.5; }
 
         /** 
          * you can change this threshold score to a maximum

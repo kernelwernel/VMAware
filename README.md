@@ -9,9 +9,7 @@
 
 **VMAware** (not to be confused with VMware) is an open-source, cross-platform, and incredibly simple C++ library for virtual machine detection.
 
-
-It utilises a comprehensive list of low-level and high-level anti-VM techniques that gets accounted in a scoring system. The library is meant to be stupidly easy to use, and 
-
+It utilises a comprehensive list of low-level and high-level anti-VM techniques that gets accounted in a scoring system. The library is meant to be stupidly easy to use, with additional features such as brand detection.
 
 The library is:
 - Very easy to use, with only 3 functions in its public interface

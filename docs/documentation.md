@@ -109,6 +109,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | Check registry | Look throughout the registry for all sorts of VMs | `VM::REGISTRY` | Windows |
 | Check Sunbelt | Detect for Sunbelt technology | `VM::SUNBELT` | Windows |
 | Check Wine | Find for a Wine-specific file | `VM::WINE` | Windows |
+| Check boot time | Analyse the OS uptime | `VM::BOOT` | Yes |
 
 # Non-technique flags
 | Flag | Description |
