@@ -1812,7 +1812,7 @@ private:
 
             return true;
         #endif
-    }
+    } catch (...) { return false; }
 
 
 
