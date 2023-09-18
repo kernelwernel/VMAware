@@ -26,7 +26,7 @@ Options:
 }
 
 void version(void) {
-    std::cout << "v" << ver << " (" << date << ")\n\n" <<
+    std::cout << "vmaware " << "v" << ver << " (" << date << ")\n\n" <<
     "Derived project of VMAware library at https://github.com/kernelwernel/VMAware"
     "License GPLv3+: GNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>.\n" << 
     "This is free software: you are free to change and redistribute it.\n" <<

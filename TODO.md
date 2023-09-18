@@ -1,5 +1,6 @@
 - revise sidt check
 - analyse the UUID check technique's efficiency
+- create a technique table so i don't have to manually add them for VM::detect() and VM::check()
 
 - ~~make a flagcheck function~~
 - ~~create a standard cpuid function (replace __cpuidex bc wine)~~

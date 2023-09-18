@@ -4,7 +4,7 @@
  * ██║   ██║██╔████╔██║███████║██║ █╗ ██║███████║██████╔╝█████╗  
  * ╚██╗ ██╔╝██║╚██╔╝██║██╔══██║██║███╗██║██╔══██║██╔══██╗██╔══╝  
  *  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
- *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ v1.0
+ *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ v0.1
  * 
  *  A C++ VM detection library
  * 
@@ -82,8 +82,8 @@
 
 
 #if (MSVC)
-    #include <intrin.h>
     #include <windows.h>
+    #include <intrin.h>
     #include <tchar.h>
     #include <stdbool.h>
     #include <stdio.h>
@@ -352,7 +352,7 @@ public:
     VM(VM&&) = delete; // Delete move constructor
 
     static constexpr u64
-        VMID  = 1 << 0,
+        VMID = 1 << 0,
         BRAND = 1 << 1,
         HYPERV_BIT = 1 << 2,
         CPUID_0x4 = 1 << 3,
@@ -385,6 +385,7 @@ public:
         WINE_CHECK = 1ULL << 47,
         BOOT = 1ULL << 48,
         VM_FILES = 1ULL << 49,
+        HWMODEL = 1ULL << 50,
 
         // settings
         NO_MEMO = 1ULL << 63,
@@ -1643,7 +1644,7 @@ private:
         #if (!MSVC)
             return false;
         #else
-            if (disabled(WINE)) {
+            if (disabled(WINE_CHECK)) {
                 #ifdef __VMAWARE_DEBUG__ 
                     debug("WINE: ", "precondition return called");
                 #endif
@@ -1676,12 +1677,15 @@ private:
         }
 
         #if (MSVC)
+            // doesn't work for some reason, fix this whenever i have time
+            /*
             SYSTEM_TIME_OF_DAY_INFORMATION  SysTimeInfo;
             LARGE_INTEGER LastBootTime;
             
             NtQuerySystemInformation(SystemTimeOfDayInformation, &SysTimeInfo, sizeof(SysTimeInfo), 0);
             LastBootTime = wmi_Get_LastBootTime();
             return ((wmi_LastBootTime.QuadPart - SysTimeInfo.BootTime.QuadPart) / 10000000 != 0); // 0 seconds
+            */
         #elif (LINUX)
             // TODO: finish this shit tomorrow
         #endif
@@ -1764,8 +1768,55 @@ private:
     } catch (...) { return false; }
 
 
+    /**
+     * @brief Check for sysctl hardware model
+     * @author MacRansom ransomware
+     * @todo TEST IF THIS WORKS
+     * @category MacOS
+     */ 
+    [[nodiscard]] static bool hwmodel() try {
+        #if (!APPLE)
+            return false;
+        #else
+            if (disabled(HWMODEL)) {
+                #ifdef __VMAWARE_DEBUG__
+                    debug("HWMODEL: ", "precondition return called");
+                #endif
+                return false;
+            }
 
-    // LABEL  (ignore this line, it's just a label so I can easily teleport to this line on my IDE with CTRL+F)
+            auto result = sys_result("sysctl -n hw.model");
+
+            std::smatch match;
+
+            if (result == nullptr) {
+                #ifdef __VMAWARE_DEBUG__
+                    debug("HWMODEL: ", "null result received");
+                #endif
+                return false;
+            }
+
+            #ifdef __VMAWARE_DEBUG__
+                debug("HWMODEL: ", "output = ", *result);
+            #endif
+
+            // if string contains "Mac" anywhere in the string, assume it's baremetal
+            if (std::regex_search(*result, match, std::regex("Mac"))) {
+                return false;
+            }
+
+            // not sure about the other VMs, more could potentially be added
+            if (std::regex_search(*result, match, std::regex("VMware"))) {
+                return add(VMWARE);
+            }
+
+            return true;
+        #endif
+    }
+
+
+
+    // LABEL  (ignore this, it's just a label so I can easily teleport to this line on my IDE with CTRL+F)
 
 public:
     /**
@@ -1787,6 +1838,10 @@ public:
                 tmp = (tmp & (tmp - 1));
             }
         #endif
+
+        if (p_flags == ALL) {
+            throw std::invalid_argument("Flag argument cannot be set to VM::ALL, consult the documentation's flag list");            
+        }
 
         if (count > 1) {
             throw std::invalid_argument("Flag argument must only contain a single option, consult the documentation's flag list");
@@ -1839,6 +1894,7 @@ public:
             case VM::WINE_CHECK: result = wine(); break;
             case VM::BOOT: result = boot_time(); break;
             case VM::VM_FILES: result = vm_files(); break;
+            case VM::HWMODEL: result = hwmodel(); break;
             default: throw std::invalid_argument("Unknown flag provided for VM::check() function");
         }
 
@@ -1917,20 +1973,17 @@ public:
         if (sunbelt_check()) { points += 1; }
         if (wine()) { points += 3.5; }
         if (boot_time()) { points += 0.5; }
+        if (vm_files()) { points += 4; }
+        if (hwmodel()) { points += 2.5; }
 
-        /** 
-         * you can change this threshold score to a maximum
-         * of something like 10~14 if you want to be extremely
-         * sure, but this can risk the result to be a false
-         * negative if the detection bar is far too high.
-         */
+        // arbitrary threshold score
         const bool result = (points >= 6.5);
 
         sv current_brand = "";
 
         #ifdef __VMAWARE_DEBUG__
             for (const auto p : scoreboard) {
-                std::cout << "\n" << (int)p.second << " : " << p.first;
+                debug("scoreboard: ", (int)p.second, " : ", p.first);
             }
         #endif
 

@@ -111,6 +111,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | Check Wine | Find for a Wine-specific file | `VM::WINE_CHECK` | Windows |
 | Check boot time | Analyse the OS uptime | `VM::BOOT` | Yes |
 | Check VM files | Find if any VM-specific files exists | `VM::VM_FILES` | Windows |
+| Check hwmodel | Check if the sysctl for the hwmodel does not contain the "Mac" string | `VM::HWMODEL` | MacOS |
 
 # Non-technique flags
 | Flag | Description |
