@@ -58,7 +58,7 @@ int main(int argc, char* argv[]) {
         checker(VM::SYSTEMD, "systemd virtualisation");
         checker(VM::CVENDOR, "chassis vendor");
         checker(VM::CTYPE, "chassis type");
-        checker(VM::DOCKER_CHECK, "Dockerenv");
+        checker(VM::DOCKERENV, "Dockerenv");
         checker(VM::DMIDECODE, "dmidecode output");
         checker(VM::DMESG, "dmesg output");
         checker(VM::HWMON, "hwmon presence");

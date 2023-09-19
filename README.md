@@ -67,7 +67,7 @@ sudo make install
 
 
 ## Documentation 📒
-You can view the full docs [here](docs/documentation.md). Trust me, it's not too intimidating 
+You can view the full docs [here](docs/documentation.md). Trust me, it's not too intimidating.
 
 
 ## Q&A ❓

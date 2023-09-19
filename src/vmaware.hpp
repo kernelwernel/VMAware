@@ -4,7 +4,7 @@
  * ██║   ██║██╔████╔██║███████║██║ █╗ ██║███████║██████╔╝█████╗  
  * ╚██╗ ██╔╝██║╚██╔╝██║██╔══██║██║███╗██║██╔══██║██╔══██╗██╔══╝  
  *  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
- *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ v0.1
+ *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ beta version
  * 
  *  A C++ VM detection library
  * 
@@ -302,18 +302,18 @@ private:
     }
 
     // for debug output
-    #ifdef __VMAWARE_DEBUG__
-        static inline void debug(auto ...message) noexcept {
+    static inline void debug(auto ...message) noexcept {
+        #ifdef __VMAWARE_DEBUG__
             constexpr sv black_bg = "\x1B[48;2;0;0;0m",
-                         bold = "\033[1m",
-                         blue = "\x1B[38;2;00;59;193m",
-                         ansiexit = "\x1B[0m";
+                            bold = "\033[1m",
+                            blue = "\x1B[38;2;00;59;193m",
+                            ansiexit = "\x1B[0m";
 
             std::cout << black_bg << bold << "[" << blue << "DEBUG" << ansiexit << bold << black_bg << "]" << ansiexit << " ";
             ((std::cout << message),...);
             std::cout << "\n";
-        }
-    #endif
+        #endif
+    }
 
     // directly return when adding a brand to the scoreboard for a more succint expression
     [[nodiscard]] static inline bool add(const sv p_brand) noexcept {
@@ -368,24 +368,24 @@ public:
         SYSTEMD = 1 << 11,
         CVENDOR = 1 << 12,
         CTYPE = 1 << 13,
-        DOCKER_CHECK = 1 << 14,
+        DOCKERENV = 1 << 14,
         DMIDECODE = 1 << 15,
         DMESG = 1 << 16,
         HWMON = 1 << 17,
         SIDT5 = 1 << 18,
         
         // windows-specific
-        CURSOR = 1ULL << 40,
-        VMWARE_REG = 1ULL << 41,
-        VBOX_REG = 1ULL << 42,
-        USER = 1ULL << 43,
-        DLL = 1ULL << 44,
-        REGISTRY = 1ULL << 45,
-        SUNBELT = 1ULL << 46,
-        WINE_CHECK = 1ULL << 47,
-        BOOT = 1ULL << 48,
-        VM_FILES = 1ULL << 49,
-        HWMODEL = 1ULL << 50,
+        CURSOR = 1 << 19,
+        VMWARE_REG = 1 << 20,
+        VBOX_REG = 1 << 21,
+        USER = 1 << 22,
+        DLL = 1 << 23,
+        REGISTRY = 1 << 24,
+        SUNBELT = 1 << 25,
+        WINE_CHECK = 1 << 26,
+        BOOT = 1 << 27,
+        VM_FILES = 1 << 28,
+        HWMODEL = 1 << 29,
 
         // settings
         NO_MEMO = 1ULL << 63,
@@ -408,9 +408,7 @@ private:
             return false;
         #else
             if (no_cpuid || disabled(VMID)) {
-                #ifdef __VMAWARE_DEBUG__
-                    debug("VMID: precondition return called");
-                #endif
+                debug("VMID: precondition return called");
                 return false;
             }
 
@@ -470,10 +468,8 @@ private:
             ss << strconvert(sig_reg[1]);
 
             brand = ss.str();
-
-            #ifdef __VMAWARE_DEBUG__
-                debug("VMID: ", brand);
-            #endif
+ 
+            debug("VMID: ", brand);
 
             const bool found = (std::find(std::begin(IDs), std::end(IDs), brand) != std::end(IDs));
 
@@ -507,9 +503,7 @@ private:
             return false;
         #else
             if (no_cpuid || disabled(BRAND)) {
-                #ifdef __VMAWARE_DEBUG__
-                    debug("BRAND: ", "precondition return called");
-                #endif
+                debug("BRAND: ", "precondition return called");
                 return false;
             }
 
@@ -554,9 +548,7 @@ private:
                 matches += std::regex_search(brand, regex);
             }
 
-            #ifdef __VMAWARE_DEBUG__
-                debug("BRAND: ", "matches: ", static_cast<u32>(matches));
-            #endif
+            debug("BRAND: ", "matches: ", static_cast<u32>(matches));
 
             return (matches >= 1);
         #endif
@@ -572,9 +564,7 @@ private:
             return false;
         #else
             if (no_cpuid || disabled(HYPERV_BIT)) {
-                #ifdef __VMAWARE_DEBUG__
-                    debug("HYPERV_BIT: precondition return called");
-                #endif
+                debug("HYPERV_BIT: precondition return called");
                 return false;
             }
 
@@ -597,9 +587,7 @@ private:
             return false;
         #else
             if (no_cpuid || disabled(CPUID_0x4)) {
-                #ifdef __VMAWARE_DEBUG__
-                    debug("CPUID_0X4: precondition return called");
-                #endif
+                debug("CPUID_0X4: precondition return called");
                 return false;
             }
 
@@ -626,22 +614,18 @@ private:
             return false;
         #else
             if (disabled(HYPERV_STR)) {
-                #ifdef __VMAWARE_DEBUG__
-                    debug("HYPERV_STR: precondition return called");
-                #endif
+                debug("HYPERV_STR: precondition return called");
                 return false;
             }
 
             char out[sizeof(i32) * 4 + 1] = { 0 }; // e*x size + number of e*x registers + null terminator
             cpuid((int*)out, leaf::hyperv);
 
-            #ifdef __VMAWARE_DEBUG__
-                debug("HYPERV_STR: eax: ", static_cast<u32>(out[0]), 
-                    "\nebx: ", static_cast<u32>(out[1]), 
-                    "\necx", static_cast<u32>(out[2]), 
-                    "\nedx", static_cast<u32>(out[3])
-                );
-            #endif
+            debug("HYPERV_STR: eax: ", static_cast<u32>(out[0]), 
+                "\nebx: ", static_cast<u32>(out[1]), 
+                "\necx: ", static_cast<u32>(out[2]), 
+                "\nedx: ", static_cast<u32>(out[3])
+            );
 
             return (std::strlen(out + 4) >= 4);
         #endif
@@ -657,9 +641,7 @@ private:
             return false;
         #else
             if (disabled(RDTSC)) {
-                #ifdef __VMAWARE_DEBUG__
-                    debug("RDTSC: precondition return called");
-                #endif
+                debug("RDTSC: precondition return called");
                 return false;
             }
 
@@ -681,9 +663,7 @@ private:
                     acc += __rdtsc() - s;
                 }
 
-                #ifdef __VMAWARE_DEBUG__
-                    debug("RDTSC: ", "acc = ", acc / 100);
-                #endif
+                debug("RDTSC: ", "acc = ", acc / 100);
 
                 return (acc / 100 > 350);
             #elif (MSVC)
@@ -724,9 +704,7 @@ private:
             return false;
         #else
             if (disabled(SIDT5)) {
-                #ifdef __VMAWARE_DEBUG__
-                    debug("SIDT5: ", "precondition return called");
-                #endif
+                debug("SIDT5: ", "precondition return called");
                 return false;
             }
 
@@ -766,9 +744,7 @@ private:
             return false;
         #else
             if (disabled(SIDT)) {
-                #ifdef __VMAWARE_DEBUG__
-                    debug("SIDT: ", "precondition return called");
-                #endif
+                debug("SIDT: ", "precondition return called");
                 return false;
             }
 
@@ -779,9 +755,7 @@ private:
                 : "=m" (idtr)
             );
 
-            #ifdef __VMAWARE_DEBUG__
-                debug("SIDT: ", "idtr = ", idtr);
-            #endif
+            debug("SIDT: ", "idtr = ", idtr);
 
             return (idtr != 0);
         #endif
@@ -799,9 +773,7 @@ private:
             return false;
         #else
             if (disabled(VMWARE_PORT)) {
-                #ifdef __VMAWARE_DEBUG__
-                    debug("VMWARE_PORT: ", "precondition return called");
-                #endif
+                debug("VMWARE_PORT: ", "precondition return called");
                 return false;
             }
 
@@ -896,15 +868,11 @@ private:
      */
     [[nodiscard]] static bool thread_count() try {
         if (disabled(THREADCOUNT)) {
-            #ifdef __VMAWARE_DEBUG__
-                debug("THREADCOUNT: ", "precondition return called");
-            #endif
+            debug("THREADCOUNT: ", "precondition return called");
             return false;
         }
 
-        #ifdef __VMAWARE_DEBUG__
-            debug("SIDT5: ", "threads = ", std::thread::hardware_concurrency());
-        #endif
+        debug("THREADCOUNT: ", "threads = ", std::thread::hardware_concurrency());
 
         return (std::thread::hardware_concurrency() <= 2);
     } catch (...) { return false; }
@@ -916,9 +884,7 @@ private:
      */
     [[nodiscard]] static bool mac_address_check() try {
         if (disabled(MAC)) {
-            #ifdef __VMAWARE_DEBUG__
-                debug("MAC: ", "precondition return called");
-            #endif
+            debug("MAC: ", "precondition return called");
 
             return false;
         }
@@ -966,9 +932,7 @@ private:
             if (success) { 
                 std::memcpy(mac, ifr.ifr_hwaddr.sa_data, 6);
             } else {
-                #ifdef __VMAWARE_DEBUG__
-                    debug("MAC: ", "not successful");
-                #endif
+                debug("MAC: ", "not successful");
             }
         #elif (MSVC)
             PIP_ADAPTER_INFO AdapterInfo;
@@ -1057,9 +1021,7 @@ private:
             return false;
         #else
             if (disabled(TEMPERATURE)) {
-                #ifdef __VMAWARE_DEBUG__ 
-                    debug("TEMPERATURE: ", "precondition return called");
-                #endif
+                debug("TEMPERATURE: ", "precondition return called");
                 return false;
             }
 
@@ -1077,31 +1039,23 @@ private:
             return false;
         #else
             if (disabled(SYSTEMD)) {
-                #ifdef __VMAWARE_DEBUG__ 
-                    debug("SYSTEMD: ", "precondition return called");
-                #endif
+                debug("SYSTEMD: ", "precondition return called");
                 return false;
             }
 
             if (!(exists("/usr/bin/systemd-detect-virt") || exists("/bin/systemd-detect-virt"))) {
-                #ifdef __VMAWARE_DEBUG__ 
-                    debug("SYSTEMD: ", "binary doesn't exist");
-                #endif
+                debug("SYSTEMD: ", "binary doesn't exist");
                 return false;
             }
 
             const std::unique_ptr<std::string> result = sys_result("systemd-detect-virt");
             
             if (result == nullptr) {
-                #ifdef __VMAWARE_DEBUG__ 
-                    debug("SYSTEMD: ", "invalid stdout output from systemd-detect-virt");
-                #endif
+                debug("SYSTEMD: ", "invalid stdout output from systemd-detect-virt");
                 return false;
             }
 
-            #ifdef __VMAWARE_DEBUG__ 
-                debug("SYSTEMD: ", "output = ", *result);
-            #endif
+            debug("SYSTEMD: ", "output = ", *result);
 
             return (*result != "none");
         #endif
@@ -1117,9 +1071,7 @@ private:
             return false;
         #else
             if (disabled(CVENDOR)) {
-                #ifdef __VMAWARE_DEBUG__ 
-                    debug("CVENDOR: ", "precondition return called");
-                #endif
+                debug("CVENDOR: ", "precondition return called");
                 return false;
             }
 
@@ -1132,13 +1084,9 @@ private:
                 if (vendor == "QEMU") { return add(QEMU); }
                 if (vendor == "Oracle Corporation") { return add(VMWARE); }
 
-                #ifdef __VMAWARE_DEBUG__ 
-                    debug("CVENDOR: ", "unknown vendor = ", vendor);
-                #endif
+                debug("CVENDOR: ", "unknown vendor = ", vendor);
             } else {
-                #ifdef __VMAWARE_DEBUG__ 
-                    debug("CVENDOR: ", "file doesn't exist");
-                #endif
+                debug("CVENDOR: ", "file doesn't exist");
             }
 
             return false;
@@ -1155,9 +1103,7 @@ private:
             return false;
         #else
             if (disabled(CTYPE)) {
-                #ifdef __VMAWARE_DEBUG__ 
-                    debug("CTYPE: ", "precondition return called");
-                #endif
+                debug("CTYPE: ", "precondition return called");
                 return false;
             }
 
@@ -1166,9 +1112,7 @@ private:
             if (exists(chassis)) {
                 return (stoi(read_file(chassis)) == 1);
             } else {
-                #ifdef __VMAWARE_DEBUG__ 
-                    debug("CTYPE: ", "file doesn't exist");
-                #endif
+                debug("CTYPE: ", "file doesn't exist");
             }
 
             return false;
@@ -1184,10 +1128,8 @@ private:
         #if (!LINUX)
             return false;
         #else
-            if (disabled(DOCKER_CHECK)) {
-                #ifdef __VMAWARE_DEBUG__ 
-                    debug("DOCKER: ", "precondition return called");
-                #endif
+            if (disabled(DOCKERENV)) {
+                debug("DOCKER: ", "precondition return called");
                 return false;
             }
 
@@ -1205,25 +1147,19 @@ private:
             return false;
         #else
             if (disabled(DMIDECODE) || (is_root() == false)) {
-                #ifdef __VMAWARE_DEBUG__ 
-                    debug("DMIDECODE: ", "precondition return called (root = ", is_root(), ")");
-                #endif
+                debug("DMIDECODE: ", "precondition return called (root = ", is_root(), ")");
                 return false;
             }
 
             if (!(exists("/bin/dmidecode") || exists("/usr/bin/dmidecode"))) {
-                #ifdef __VMAWARE_DEBUG__ 
-                    debug("DMIDECODE: ", "binary doesn't exist");
-                #endif
+                debug("DMIDECODE: ", "binary doesn't exist");
                 return false;
             }
             
             const std::unique_ptr<std::string> result = sys_result("dmidecode -t system | grep 'Manufacturer|Product' | grep -c \"QEMU|VirtualBox|KVM\"");
 
             if (*result == "" || result == nullptr) {
-                #ifdef __VMAWARE_DEBUG__ 
-                    debug("DMIDECODE: ", "invalid output");
-                #endif
+                debug("DMIDECODE: ", "invalid output");
                 return false;
             } else if (*result == "QEMU") {
                 return add(QEMU);
@@ -1234,9 +1170,7 @@ private:
             } else if (std::atoi(result->c_str()) >= 1) {
                 return true;
             } else {
-                #ifdef __VMAWARE_DEBUG__ 
-                    debug("DMIDECODE: ", "output = ", *result);
-                #endif
+                debug("DMIDECODE: ", "output = ", *result);
             }
 
             return false;
@@ -1253,16 +1187,12 @@ private:
             return false;
         #else
             if (disabled(DMESG)) {
-                #ifdef __VMAWARE_DEBUG__ 
-                    debug("DMESG: ", "precondition return called");
-                #endif
+                debug("DMESG: ", "precondition return called");
                 return false;
             }
 
             if (!exists("/bin/dmesg") && !exists("/usr/bin/dmesg")) {
-                #ifdef __VMAWARE_DEBUG__ 
-                    debug("DMESG: ", "binary doesn't exist");
-                #endif
+                debug("DMESG: ", "binary doesn't exist");
                 return false;
             }
 
@@ -1277,9 +1207,7 @@ private:
             } else if (std::atoi(result->c_str())) {
                 return true;
             } else {
-                #ifdef __VMAWARE_DEBUG__ 
-                    debug("DMESG: ", "output = ", *result);
-                #endif
+                debug("DMESG: ", "output = ", *result);
             }
 
             return false;
@@ -1296,9 +1224,7 @@ private:
             return false;
         #else
             if (disabled(HWMON)) {
-                #ifdef __VMAWARE_DEBUG__ 
-                    debug("HWMON: ", "precondition return called");
-                #endif
+                debug("HWMON: ", "precondition return called");
                 return false;
             }
 
@@ -1324,9 +1250,7 @@ private:
             return false;
         #else
             if (disabled(REGISTRY)) {
-                #ifdef __VMAWARE_DEBUG__ 
-                    debug("REGISTRY: ", "precondition return called");
-                #endif
+                debug("REGISTRY: ", "precondition return called");
                 return false;
             }
 
@@ -1348,9 +1272,7 @@ private:
                     score++;
 
                     if (std::string(p_brand) != "") [[likely]] {
-                        #ifdef __VMAWARE_DEBUG__ 
-                            debug("REGISTRY: ", "detected = ", p_brand);
-                        #endif
+                        debug("REGISTRY: ", "detected = ", p_brand);
                         scoreboard[p_brand]++;
                     }
                 }
@@ -1424,9 +1346,7 @@ private:
             key("Xen HVM", "HKLM\\SYSTEM\\ControlSet001\\Services\\xensvc");
             key("Xen HVM", "HKLM\\SYSTEM\\ControlSet001\\Services\\xenvdb");
 
-            #ifdef __VMAWARE_DEBUG__ 
-                debug("REGISTRY: ", "score = ", score);
-            #endif
+            debug("REGISTRY: ", "score = ", score);
 
             return (score >= 1);
         #endif
@@ -1443,9 +1363,7 @@ private:
             return false;
         #else
             if (disabled(USER)) {
-                #ifdef __VMAWARE_DEBUG__ 
-                    debug("USER: ", "precondition return called");
-                #endif
+                debug("USER: ", "precondition return called");
                 return false;
             }
 
@@ -1454,9 +1372,7 @@ private:
             GetUserName((TCHAR*)user, &user_len);
             std::string u = user;
 
-            #ifdef __VMAWARE_DEBUG__ 
-                debug("USER: ", "output = ", u);
-            #endif
+            debug("USER: ", "output = ", u);
 
             return (
                 (u == "username") ||  // ThreadExpert
@@ -1478,9 +1394,7 @@ private:
             return false;
         #else
             if (disabled(SUNBELT)) {
-                #ifdef __VMAWARE_DEBUG__ 
-                    debug("SUNBELT: ", "precondition return called");
-                #endif
+                debug("SUNBELT: ", "precondition return called");
                 return false;
             }
 
@@ -1498,9 +1412,7 @@ private:
             return false;
         #else
             if (disabled(DLL)) {
-                #ifdef __VMAWARE_DEBUG__ 
-                    debug("DLL: ", "precondition return called");
-                #endif
+                debug("DLL: ", "precondition return called");
                 return false;
             }
 
@@ -1521,9 +1433,7 @@ private:
             for (auto &dll : real_dlls) {
                 lib_inst = LoadLibraryA(dll);
                 if (lib_inst == nullptr) {
-                    #ifdef __VMAWARE_DEBUG__ 
-                        debug("DLL: ", "LIB_INST detected true for real dll = ", dll);
-                    #endif
+                    debug("DLL: ", "LIB_INST detected true for real dll = ", dll);
                     return true;
                 }
                 FreeLibrary(lib_inst);
@@ -1532,9 +1442,7 @@ private:
             for (auto &dll : false_dlls) {
                 lib_inst = LoadLibraryA(dll);
                 if (lib_inst != nullptr) {
-                    #ifdef __VMAWARE_DEBUG__ 
-                        debug("DLL: ", "LIB_INST detected true for false dll = ", dll);
-                    #endif
+                    debug("DLL: ", "LIB_INST detected true for false dll = ", dll);
                     return true;
                 }
             }
@@ -1553,9 +1461,7 @@ private:
             return false;
         #else
             if (disabled(VBOX_REG)) {
-                #ifdef __VMAWARE_DEBUG__ 
-                    debug("VBOX_REG: ", "precondition return called");
-                #endif
+                debug("VBOX_REG: ", "precondition return called");
                 return false;
             }
 
@@ -1581,9 +1487,7 @@ private:
             return false;
         #else
             if (disabled(VMWARE_REG)) {
-                #ifdef __VMAWARE_DEBUG__ 
-                    debug("VMWARE_REG: ", "precondition return called");
-                #endif
+                debug("VMWARE_REG: ", "precondition return called");
                 return false;
             }
 
@@ -1618,9 +1522,7 @@ private:
             return false;
         #else
             if (disabled(CURSOR)) {
-                #ifdef __VMAWARE_DEBUG__ 
-                    debug("CURSOR: ", "precondition return called");
-                #endif
+                debug("CURSOR: ", "precondition return called");
                 return false;
             }
 
@@ -1645,9 +1547,7 @@ private:
             return false;
         #else
             if (disabled(WINE_CHECK)) {
-                #ifdef __VMAWARE_DEBUG__ 
-                    debug("WINE: ", "precondition return called");
-                #endif
+                debug("WINE: ", "precondition return called");
                 return false;
             }
 
@@ -1670,9 +1570,7 @@ private:
      */ 
     [[nodiscard]] static bool boot_time() try {
         if (disabled(BOOT)) {
-            #ifdef __VMAWARE_DEBUG__ 
-                debug("BOOT: ", "precondition return called");
-            #endif
+            debug("BOOT: ", "precondition return called");
             return false;
         }
 
@@ -1703,9 +1601,7 @@ private:
             return false;
         #else
             if (disabled(VM_FILES)) {
-                #ifdef __VMAWARE_DEBUG__ 
-                    debug("VMFILES: ", "precondition return called");
-                #endif
+                debug("VMFILES: ", "precondition return called");
                 return false;
             }
 
@@ -1743,7 +1639,7 @@ private:
                 "C:\\windows\\System32\\VBoxControl.exe",
                 "C:\\windows\\System32\\vboxoglerrorspu.dll",
                 "C:\\windows\\System32\\vboxoglfeedbackspu.dll",
-            }
+            };
 
             for (const sv file : files) {
                 if (exists(file)) {
@@ -1779,9 +1675,7 @@ private:
             return false;
         #else
             if (disabled(HWMODEL)) {
-                #ifdef __VMAWARE_DEBUG__
-                    debug("HWMODEL: ", "precondition return called");
-                #endif
+                debug("HWMODEL: ", "precondition return called");
                 return false;
             }
 
@@ -1790,15 +1684,11 @@ private:
             std::smatch match;
 
             if (result == nullptr) {
-                #ifdef __VMAWARE_DEBUG__
-                    debug("HWMODEL: ", "null result received");
-                #endif
+                debug("HWMODEL: ", "null result received");
                 return false;
             }
 
-            #ifdef __VMAWARE_DEBUG__
-                debug("HWMODEL: ", "output = ", *result);
-            #endif
+            debug("HWMODEL: ", "output = ", *result);
 
             // if string contains "Mac" anywhere in the string, assume it's baremetal
             if (std::regex_search(*result, match, std::regex("Mac"))) {
@@ -1817,6 +1707,45 @@ private:
 
 
     // LABEL  (ignore this, it's just a label so I can easily teleport to this line on my IDE with CTRL+F)
+
+    struct data {
+        u8 points; 
+        bool(*ptr)(); // function pointer
+    };
+
+    // the points are debatable, but I think it's fine how it is. Feel free to disagree.
+    static inline std::map<u64, data> table = {
+        { VM::VMID, { 100, vmid }},
+        { VM::BRAND, { 50, cpu_brand }},
+        { VM::HYPERV_BIT, { 95, cpuid_hyperv }},
+        { VM::CPUID_0x4, { 70, cpuid_0x4 }},
+        { VM::HYPERV_STR, { 45, hyperv_brand }},
+        { VM::RDTSC, { 20, rdtsc_check }},
+        { VM::SIDT, { 65, sidt_check }},
+        { VM::VMWARE_PORT, { 80, vmware_port }},
+        { VM::THREADCOUNT, { 35, thread_count }},
+        { VM::MAC, { 90, mac_address_check }},
+        { VM::TEMPERATURE, { 15, temperature }},
+        { VM::SYSTEMD, { 70, systemd_virt }},
+        { VM::CVENDOR, { 65, chassis_vendor }},
+        { VM::CTYPE, { 10, chassis_type }},
+        { VM::DOCKERENV, { 80, dockerenv }},
+        { VM::DMIDECODE, { 55, dmidecode }},
+        { VM::DMESG, { 55, dmesg }},
+        { VM::HWMON, { 75, hwmon }},
+        { VM::SIDT5, { 45, sidt5 }},
+        { VM::CURSOR, { 10, cursor_check }},
+        { VM::VMWARE_REG, { 65, vmware_registry }},
+        { VM::VBOX_REG, { 65, vbox_registry }},
+        { VM::USER, { 35, user_check }},
+        { VM::DLL, { 50, DLL_check }}, // i genuinely have no idea
+        { VM::REGISTRY, { 75, registry_key }},
+        { VM::SUNBELT, { 10, sunbelt_check }},
+        { VM::WINE_CHECK, { 85, wine }},
+        { VM::BOOT, { 5, boot_time }},
+        { VM::VM_FILES, { 80, vm_files }},
+        { VM::HWMODEL, { 75, hwmodel }}
+    };
 
 public:
     /**
@@ -1864,53 +1793,30 @@ public:
 
         bool result = false;
 
-        switch (p_flags) {
-            case VM::VMID: result = vmid(); break;
-            case VM::BRAND: result = cpu_brand(); break;
-            case VM::HYPERV_BIT: result = cpuid_hyperv(); break;
-            case VM::CPUID_0x4: result = cpuid_0x4(); break;
-            case VM::HYPERV_STR: result = hyperv_brand(); break;
-            case VM::SIDT5: result = sidt5(); break;
-            case VM::SIDT: result = sidt_check(); break;
-            case VM::TEMPERATURE: result = temperature(); break;
-            case VM::SYSTEMD: result = systemd_virt(); break;
-            case VM::CVENDOR: result = chassis_vendor(); break;
-            case VM::CTYPE: result = chassis_type(); break;
-            case VM::DOCKER_CHECK: result = dockerenv(); break;
-            case VM::DMIDECODE: result = dmidecode(); break;
-            case VM::DMESG: result = dmesg(); break;
-            case VM::HWMON: result = hwmon(); break;
-            case VM::RDTSC: result = rdtsc_check(); break;
-            case VM::MAC: result = mac_address_check(); break; 
-            case VM::VMWARE_PORT: result = vmware_port(); break;
-            case VM::CURSOR: result = cursor_check(); break;
-            case VM::VMWARE_REG: result = vmware_registry(); break;
-            case VM::VBOX_REG: result = vbox_registry(); break;
-            case VM::USER: result = user_check(); break;
-            case VM::DLL: result = DLL_check(); break;
-            case VM::REGISTRY: result = registry_key(); break;
-            case VM::SUNBELT: result = sunbelt_check(); break;
-            case VM::THREADCOUNT: result = thread_count(); break;
-            case VM::WINE_CHECK: result = wine(); break;
-            case VM::BOOT: result = boot_time(); break;
-            case VM::VM_FILES: result = vm_files(); break;
-            case VM::HWMODEL: result = hwmodel(); break;
-            default: throw std::invalid_argument("Unknown flag provided for VM::check() function");
+        auto it = table.find(p_flags);
+
+        if (it == table.end()) {
+            throw std::invalid_argument("Flag is not known, consult the documentation's flag list");
         }
+
+        const data &pair = it->second;
+        result = pair.ptr();
 
         VM::flags = tmp_flags;
 
         return result;
     }
 
+
     /**
      * @brief Fetch the VM brand
-     * @returns VMware, VirtualBox, KVM, bhyve, QEMU, Microsoft Hyper-V, Microsoft x86-to-ARM, Parallels, Xen HVM, ACRN, QNX hypervisor, Hybrid Analysis, Sandboxie, Docker, Wine, Virtual Apple, Unknown
+     * @returns VMware, VirtualBox, KVM, bhyve, QEMU, Microsoft Hyper-V, Microsoft x86-to-ARM, Parallels, Xen HVM, ACRN, QNX hypervisor, Hybrid Analysis, Sandboxie, Docker, Wine, Virtual Apple, Virtual PC, Unknown
      * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmbrand
      */
     [[nodiscard]] static sv brand(void) {
         // check if result hasn't been memoized already
         if (memo.find(true) == memo.end()) {
+            debug("memoization: detect() called in brand");
             detect();
         }
 
@@ -1935,7 +1841,8 @@ public:
          * execution of VM::detect(). This can save around
          * 5~10x speed depending on the circumstances.
          */
-        if (!(p_flags & NO_MEMO) && memo.find(true) != memo.end()) {
+        if (disabled(NO_MEMO) && (memo.find(true) != memo.end())) {
+            debug("memoization: returned cached result in detect()");
             return memo[true].first;
         }
 
@@ -1943,41 +1850,17 @@ public:
         VM::no_cpuid = !check_cpuid();
         VM::flags = p_flags;
 
-        f64 points = 0;
-
-        if (thread_count()) { points += 1.5; }
-        if (mac_address_check()) { points += 3.5; }
-        if (vmid()) { points += 6.5; }
-        if (cpu_brand()) { points += 3; }
-        if (cpuid_hyperv()) { points += 5.5; }
-        if (cpuid_0x4()) { points += 4; }
-        if (hyperv_brand()) { points += 4; }
-        if (rdtsc_check()) { points += 1.5; }
-        if (sidt_check()) { points += 4; }
-        if (vmware_port()) { points += 3; }
-        if (sidt5()) { points += 2; }
-        if (temperature()) { points += 1; }
-        if (systemd_virt()) { points += 5; }
-        if (chassis_vendor()) { points += 4.5; }
-        if (chassis_type()) { points += 1; }
-        if (dockerenv()) { points += 3; }
-        if (dmidecode()) { points += 4; }
-        if (dmesg()) { points += 3.5; }
-        if (hwmon()) { points += 0.5; }
-        if (cursor_check()) { points += 0.5; }
-        if (vmware_registry()) { points += 4.5; }
-        if (vbox_registry()) { points += 4.5; }
-        if (user_check()) { points += 1; }
-        if (DLL_check()) { points += 3; } // might update this, idk
-        if (registry_key()) { points += 5; }
-        if (sunbelt_check()) { points += 1; }
-        if (wine()) { points += 3.5; }
-        if (boot_time()) { points += 0.5; }
-        if (vm_files()) { points += 4; }
-        if (hwmodel()) { points += 2.5; }
+        u8 points = 0;
+    
+        for (auto it = table.cbegin(); it != table.cend(); ++it) {
+            const data &pair = it->second;
+            if (pair.ptr()) {
+                points += pair.points;
+            };
+        }
 
         // arbitrary threshold score
-        const bool result = (points >= 6.5);
+        const bool result = (points >= 100);
 
         sv current_brand = "";
 
@@ -1996,7 +1879,15 @@ public:
             );
 
             if (it != scoreboard.end()) {
-                current_brand = it->first;
+                if (std::none_of(scoreboard.cbegin(), scoreboard.cend(),
+                    [](const auto &pair) {
+                        return pair.second;
+                    }
+                )) {
+                    current_brand = "Unknown";
+                } else {
+                    current_brand = it->first;
+                }
             } else {
                 current_brand = "Unknown";
             }

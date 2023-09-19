@@ -1,6 +1,7 @@
 - revise sidt check
 - analyse the UUID check technique's efficiency
-- create a technique table so i don't have to manually add them for VM::detect() and VM::check()
+- update doc without technique column
+- fix c++11 debug function param error
 
 - ~~make a flagcheck function~~
 - ~~create a standard cpuid function (replace __cpuidex bc wine)~~
@@ -8,6 +9,7 @@
 - ~~convert makefile to cmake~~
 - ~~fix the inconsistent naming~~ 
 - ~~maybe add github templates and other ci/cd stuff~~
+- ~~create a technique table so i don't have to manually add them for VM::detect() and VM::check()~~
 
 
 # distant plans
