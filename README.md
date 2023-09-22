@@ -72,19 +72,16 @@ You can view the full docs [here](docs/documentation.md). Trust me, it's not too
 
 ## Q&A ❓
 - Who is this library for?
-> It's designed for security researchers, VM engineers, anticheat developers*, and pretty much anybody who needs a practical and rock-solid VM detection mechanism in their project. For example, if you're making a VM and you're testing the effectiveness of concealing itself, or if you're a malware analyst and you want to check if your VM environment is good enough.
+> It's designed for security researchers, VM engineers, and pretty much anybody who needs a practical and rock-solid VM detection mechanism in their project. For example, if you're making a VM and you're testing the effectiveness of concealing itself, or if you're a malware analyst and you want to check if your VM environment is good enough.
 
 - Why another VM detection project?
 > There's already loads of projects that have the same goal such as [InviZzzible](https://github.com/CheckPointSW/InviZzzible), [pafish](https://github.com/a0rtega/pafish) and [Al-Khaser](https://github.com/LordNoteworthy/al-khaser). But the difference between the aforementioned projects is that they have little to no support with non-Windows systems. On top of this, I wanted the core detection techniques to be accessible programmatically for everybody to get something useful out of it rather than providing just a CLI tool like the projects above.
 
 - Is it possible to spoof the result?
-> Yes. There are some techniques that are trivially spoofable, and there's nothing the library can do about it whether it's a false negative or even a false positive. This is a problem that every VM detection project is facing, which is why the library is trying to test every technique possible to get the best result based on the environment it's running under. 
+> Yes. There are some techniques that are trivially spoofable, and there's nothing the library can do about it whether it's a deliberate false negative or even a false positive. This is a problem that every VM detection project is facing, which is why the library is trying to test every technique possible to get the best result based on the environment it's running under. 
 
 - Can I use this for malware?
 > This project is not soliciting the development of malware for any malicious intentions. Even if you intend to use it that way, it'll most likely be flagged by antiviruses anyway.
-
-- If it's designed for anti-cheat, why is it GPL?
-> I used/modified a few GPL-3.0 code from other projects. Works that are derived from that license must use the same license, so I had no choice but to use it. An open-source anti-cheat sounds like a bad idea, and frankly it is for a few reasons. Although it's possible, this isn't a good library for anti-cheats in that regard even if it can be used for that purpose. On the other hand, it can prevent exploit developers probing the game in a VM or anybody attempting a ban evasion, which is worth a mention.
 
 - When will a 1.0 be available?
 > Pretty soon, maybe around November (I just started university a few days ago, so I can't guarantee anything)

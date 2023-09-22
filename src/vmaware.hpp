@@ -1705,6 +1705,14 @@ private:
     } catch (...) { return false; }
 
 
+    /**
+     * @brief Check for match with default RAM and disk size (VBOX-specific)
+     * @note RAM = 2048MB, disk = 32GB
+     * @todo: check if it still applies to host systems with larger RAM and disk size than what I have
+     * @category Linux, Windows
+     */ 
+
+
 
     // LABEL  (ignore this, it's just a label so I can easily teleport to this line on my IDE with CTRL+F)
 
