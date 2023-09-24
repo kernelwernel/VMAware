@@ -31,6 +31,7 @@
 #include <algorithm>
 #include <iostream>
 #include <cassert>
+#include <cmath>
 
 // shorter and succinct macros
 #if __cplusplus == 202002L
@@ -91,15 +92,17 @@
     #include <Assert.h>
     #include <excpt.h>
     #include <winternl.h>
+    #include <versionhelpers.h>
     #pragma comment(lib, "iphlpapi.lib")
 #elif (LINUX)
     #include <cpuid.h>
     #include <x86intrin.h>
     #include <sys/stat.h>
+    #include <sys/statvfs.h>
     #include <sys/ioctl.h>
     #include <net/if.h> 
-    #include <unistd.h>
     #include <netinet/in.h>
+    #include <unistd.h>
     #include <string.h>
     #include <memory>
 #endif
@@ -108,6 +111,7 @@
 struct VM {
 private:
     using u8  = std::uint8_t;
+    using u16 = std::uint16_t;
     using u32 = std::uint32_t;
     using u64 = std::uint64_t;
     using i32 = std::int32_t;
@@ -305,9 +309,9 @@ private:
     static inline void debug(auto ...message) noexcept {
         #ifdef __VMAWARE_DEBUG__
             constexpr sv black_bg = "\x1B[48;2;0;0;0m",
-                            bold = "\033[1m",
-                            blue = "\x1B[38;2;00;59;193m",
-                            ansiexit = "\x1B[0m";
+                         bold = "\033[1m",
+                         blue = "\x1B[38;2;00;59;193m",
+                         ansiexit = "\x1B[0m";
 
             std::cout << black_bg << bold << "[" << blue << "DEBUG" << ansiexit << bold << black_bg << "]" << ansiexit << " ";
             ((std::cout << message),...);
@@ -319,6 +323,115 @@ private:
     [[nodiscard]] static inline bool add(const sv p_brand) noexcept {
         scoreboard[p_brand]++;
         return true;
+    }
+
+    // get disk size in GB
+    // TODO: finish the MSVC section
+    [[nodiscard]] static u16 get_disk_size() {
+        #if (LINUX)
+            struct statvfs stat;
+
+            if (statvfs("/", &stat) != 0) {
+                #if __VMAWARE_DEBUG__
+                    debug("private get_disk_size function: ", "failed to fetch disk size");
+                #endif
+                return false;
+            }
+
+            constexpr u64 GB = (1000 * 1000 * 1000);
+
+            // in gigabytes
+            const u32 size = static_cast<u32>((stat.f_blocks * stat.f_frsize) / GB);
+
+            if (size == 0) {
+                return false;
+            }
+
+            // round to the nearest factor of 10
+            const u16 result = static_cast<u16>(std::round((size / 10.0) * 10));
+
+            #if __VMAWARE_DEBUG__
+                debug("private get_disk_size function: ", "disk size = ", result, "GB");
+            #endif
+
+            return result;
+        #elif (MSVC)
+
+        #endif
+
+        return 0;
+    }
+public:
+    // get RAM size in MB
+    // TODO: finish the MSVC section
+    [[nodiscard]] static u32 get_ram_size() {
+        #if (LINUX)
+            if (!is_root()) {
+                #if __VMAWARE_DEBUG__
+                    debug("private get_ram_size function: ", "not root, returned 0");
+                #endif
+                return 0;
+            }
+
+            auto result = sys_result("dmidecode --type 19 | grep 'Size' | grep '[[:digit:]]*'");
+
+            if (result == nullptr) {
+                #if __VMAWARE_DEBUG__
+                    debug("private get_ram_size function: ", "invalid system result from dmidecode, returned 0");
+                #endif
+                return 0;
+            }
+
+            const bool MB = (std::regex_search(*result, std::regex("MB")));
+            const bool GB = (std::regex_search(*result, std::regex("GB")));
+
+            if (!(MB || GB)) {
+                #if __VMAWARE_DEBUG__
+                    debug("private get_ram_size function: ", "neither MB nor GB found, returned 0");
+                #endif
+                return 0;
+            }
+
+            std::string number_str;
+            bool in_number = false;
+
+            for (char c : *result) {
+                if (std::isdigit(c)) {
+                    number_str += c;
+                    in_number = true;
+                } else if (in_number) {
+                    break;
+                }
+            }
+
+            if (number_str.empty()) {
+                #if __VMAWARE_DEBUG__
+                    debug("private get_ram_size function: ", "string is empty, returned 0");
+                #endif
+                return 0;
+            }
+
+            u32 number = 0;
+
+            number = std::stoi(number_str);
+
+            if (MB == true) {
+                number = static_cast<u32>(std::round(number / 1024));
+            }
+
+            return number; // in GB
+        #elif (MSVC)
+            if (!IsWindowsVistaOrGreater()) {
+                return 0;
+            }
+                    
+            //https://learn.microsoft.com/en-us/windows/win32/api/sysinfoapi/nf-sysinfoapi-getphysicallyinstalledsystemmemory?redirectedfrom=MSDN
+            if (GetPhysicallyInstalledSystemMemory() == ERROR_INVALID_DATA) {
+                return 0;
+            }
+
+            // TODO: finish this whenever I have time
+        #endif
     }
 
     // memoize the value from VM::detect() in case it's ran again
@@ -336,7 +449,7 @@ private:
      *    return false;
      * }
      * 
-     * over this:
+     * compared to this:
      * 
      * if (disabled(VMID)) {
      *    return false;
@@ -386,6 +499,7 @@ public:
         BOOT = 1 << 27,
         VM_FILES = 1 << 28,
         HWMODEL = 1 << 29,
+        DISK_SIZE = 1 << 30,
 
         // settings
         NO_MEMO = 1ULL << 63,
@@ -1586,6 +1700,7 @@ private:
             */
         #elif (LINUX)
             // TODO: finish this shit tomorrow
+            //https://stackoverflow.com/questions/349889/how-do-you-determine-the-amount-of-linux-system-ram-in-c
         #endif
 
         return false;
@@ -1706,11 +1821,39 @@ private:
 
 
     /**
+     * @brief Check if disk size is too low
+     * @category Linux (for now)
+     */
+     [[nodiscard]] static bool disk_size() try {
+        #if (!LINUX)
+            return false;
+        #else
+            if (disabled(DISK_SIZE)) {
+                #if __VMAWARE_DEBUG__
+                    debug("DISK_SIZE: ", "precondition return called");
+                #endif
+                return false;
+            }
+
+            return (get_disk_size() <= 50); // 50 GB
+        #endif
+     } catch (...) { return false;}
+
+
+
+    /**
      * @brief Check for match with default RAM and disk size (VBOX-specific)
-     * @note RAM = 2048MB, disk = 32GB
+     * @note       RAM     DISK
+     * WINDOWS 11:  4096MB, 80GB
+     * WINDOWS 10:  2048MB, 50GB
+     * ARCH, OPENSUSE, REDHAD, GENTOO, FEDORA, DEBIAN: 1024MB, 8GB
+     * UBUNTU:      1028MB, 10GB
+     * ORACLE:      1024MB, 12GB
+     * OTHER LINUX: 512MB,  8GB
+     
      * @todo: check if it still applies to host systems with larger RAM and disk size than what I have
      * @category Linux, Windows
-     */ 
+     */
 
 
 
@@ -1752,7 +1895,8 @@ private:
         { VM::WINE_CHECK, { 85, wine }},
         { VM::BOOT, { 5, boot_time }},
         { VM::VM_FILES, { 80, vm_files }},
-        { VM::HWMODEL, { 75, hwmodel }}
+        { VM::HWMODEL, { 75, hwmodel }},
+        { VM::DISK_SIZE, { 60, disk_size }}
     };
 
 public:

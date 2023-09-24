@@ -2,6 +2,6 @@
 #include <iostream>
 
 int main(void) {
-    std::cout << VM::detect() << "\n";
+    std::cout << VM::get_ram_size() << "\n";
     return 0;
 }

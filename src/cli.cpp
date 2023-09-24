@@ -72,6 +72,8 @@ int main(int argc, char* argv[]) {
         checker(VM::WINE_CHECK, "Wine");
         checker(VM::BOOT, "boot uptime");
         checker(VM::VM_FILES, "VM files");
+        checker(VM::HWMODEL, "hw.model");
+        checker(VM::DISK_SIZE, "disk size");
         std::printf("\n");
 
         std::cout << "VM brand: " << (std::string(VM::brand()) == "Unknown" ? red : green) << VM::brand() << ansi_exit << "\n\n";

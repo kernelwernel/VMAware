@@ -1,8 +1,8 @@
 - revise sidt check
 - analyse the UUID check technique's efficiency
-- update doc without technique column
 - fix c++11 debug function param error
 
+- ~~update doc without technique column~~
 - ~~make a flagcheck function~~
 - ~~create a standard cpuid function (replace __cpuidex bc wine)~~
 - ~~fix the pointer destruction error~~
