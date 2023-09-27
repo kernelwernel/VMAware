@@ -306,8 +306,9 @@ private:
     }
 
     // for debug output
-    static inline void debug(auto ...message) noexcept {
-        #ifdef __VMAWARE_DEBUG__
+    #ifdef __VMAWARE_DEBUG__
+        template <typename... Args>
+        static inline void debug(Args... message) noexcept {
             constexpr sv black_bg = "\x1B[48;2;0;0;0m",
                          bold = "\033[1m",
                          blue = "\x1B[38;2;00;59;193m",
@@ -316,8 +317,15 @@ private:
             std::cout << black_bg << bold << "[" << blue << "DEBUG" << ansiexit << bold << black_bg << "]" << ansiexit << " ";
             ((std::cout << message),...);
             std::cout << "\n";
-        #endif
-    }
+        }
+
+    #else
+        // this is added so the compiler doesn't scream about "auto not allowed in function prototype" or some bullshit like that when compiling with C++17 or under.
+        template <typename... Args>
+        static inline void debug(Args... idk) noexcept {
+            return;
+        }
+    #endif
 
     // directly return when adding a brand to the scoreboard for a more succint expression
     [[nodiscard]] static inline bool add(const sv p_brand) noexcept {
@@ -327,7 +335,10 @@ private:
 
     // get disk size in GB
     // TODO: finish the MSVC section
-    [[nodiscard]] static u16 get_disk_size() {
+    [[nodiscard]] static u32 get_disk_size() {
+        constexpr u64 GB = (1000 * 1000 * 1000);
+        u32 size;
+    
         #if (LINUX)
             struct statvfs stat;
 
@@ -338,31 +349,28 @@ private:
                 return false;
             }
 
-            constexpr u64 GB = (1000 * 1000 * 1000);
-
             // in gigabytes
-            const u32 size = static_cast<u32>((stat.f_blocks * stat.f_frsize) / GB);
+            size = static_cast<u32>((stat.f_blocks * stat.f_frsize) / GB);
 
-            if (size == 0) {
-                return false;
-            }
-
-            // round to the nearest factor of 10
-            const u16 result = static_cast<u16>(std::round((size / 10.0) * 10));
-
-            #if __VMAWARE_DEBUG__
-                debug("private get_disk_size function: ", "disk size = ", result, "GB");
-            #endif
-
-            return result;
         #elif (MSVC)
 
         #endif
+    
+        if (size == 0) {
+            return false;
+        }
 
-        return 0;
+        // round to the nearest factor of 10
+        const u32 result = static_cast<u32>(std::round((size / 10.0) * 10));
+
+        #if __VMAWARE_DEBUG__
+            debug("private get_disk_size function: ", "disk size = ", result, "GB");
+        #endif
+
+        return result;
     }
-public:
-    // get RAM size in MB
+
+    // get RAM size in GB
     // TODO: finish the MSVC section
     [[nodiscard]] static u32 get_ram_size() {
         #if (LINUX)
@@ -426,9 +434,11 @@ public:
             }
                     
             //https://learn.microsoft.com/en-us/windows/win32/api/sysinfoapi/nf-sysinfoapi-getphysicallyinstalledsystemmemory?redirectedfrom=MSDN
+            /*
             if (GetPhysicallyInstalledSystemMemory() == ERROR_INVALID_DATA) {
                 return 0;
             }
+            */
 
             // TODO: finish this whenever I have time
         #endif
@@ -500,6 +510,7 @@ public:
         VM_FILES = 1 << 28,
         HWMODEL = 1 << 29,
         DISK_SIZE = 1 << 30,
+        VBOX_DEFAULT = 1ULL << 31,
 
         // settings
         NO_MEMO = 1ULL << 63,
@@ -1843,7 +1854,7 @@ private:
 
     /**
      * @brief Check for match with default RAM and disk size (VBOX-specific)
-     * @note       RAM     DISK
+     * @note        RAM     DISK
      * WINDOWS 11:  4096MB, 80GB
      * WINDOWS 10:  2048MB, 50GB
      * ARCH, OPENSUSE, REDHAD, GENTOO, FEDORA, DEBIAN: 1024MB, 8GB
@@ -1854,6 +1865,92 @@ private:
      * @todo: check if it still applies to host systems with larger RAM and disk size than what I have
      * @category Linux, Windows
      */
+    [[nodiscard]] static bool vbox_default_specs() try {
+        if (disabled(VBOX_DEFAULT)) {
+            return false;
+        }
+
+        const u32 disk = get_disk_size();
+        const u32 ram = get_ram_size();
+
+        if ((disk > 80) || (ram > 4)) {
+            return false;
+        }
+ 
+        #if (LINUX)
+            auto get_distro = []() -> std::string {
+                std::ifstream osReleaseFile("/etc/os-release");
+                std::string line;
+                
+                while (std::getline(osReleaseFile, line)) {
+                    if (line.find("ID=") != std::string::npos) {
+                        const std::size_t start = line.find('"');
+                        const std::size_t end = line.rfind('"');
+                        if (start != std::string::npos && end != std::string::npos && start < end) {
+                            return line.substr(start + 1, end - start - 1);
+                        }
+                    }
+                }
+
+                return "unknown";
+            };
+
+            const std::string distro = get_distro();
+
+            // yoda notation ftw
+            if ("unknown" == distro) {
+                return false;
+            }
+
+            if (
+                "arch" == distro ||
+                "opensuse" == distro ||
+                "redhat" == distro ||
+                "gentoo" == distro ||
+                "fedora" == distro ||
+                "debian" == distro
+            ) {
+                return ((8 == disk) && (1 == ram));
+            }
+            
+            if ("ubuntu" == distro) {
+                return ((10 == disk) && (1 == ram));
+            }
+
+            if ("ol" == distro) { // ol = oracle
+                return ((12 == disk) && (1 == ram));
+            }
+        #elif (MSVC)
+            double ret = 0.0;
+            NTSTATUS(WINAPI *RtlGetVersion)(LPOSVERSIONINFOEXW);
+            OSVERSIONINFOEXW osInfo;
+
+            *(FARPROC*)&RtlGetVersion = GetProcAddress(GetModuleHandleA("ntdll"), "RtlGetVersion");
+
+            if (NULL != RtlGetVersion) {
+                osInfo.dwOSVersionInfoSize = sizeof(osInfo);
+                RtlGetVersion(&osInfo);
+                ret = static_cast<double>(osInfo.dwMajorVersion);
+            }
+            
+            // less than windows 10
+            if (ret < 10) {
+                return false;
+            }
+
+            // windows 10
+            if (10 == ret) {
+                return ((50 == disk) && (2 == ram));
+            }
+
+            // windows 11
+            if (11 == ret) {
+                return ((80 == disk) && (4 == ram));
+            }
+        #endif
+
+        return false;
+    } catch (...) { return false; }
 
 
 
@@ -1896,7 +1993,8 @@ private:
         { VM::BOOT, { 5, boot_time }},
         { VM::VM_FILES, { 80, vm_files }},
         { VM::HWMODEL, { 75, hwmodel }},
-        { VM::DISK_SIZE, { 60, disk_size }}
+        { VM::DISK_SIZE, { 60, disk_size }},
+        { VM::VBOX_DEFAULT, { 55, vbox_default_specs }}
     };
 
 public:

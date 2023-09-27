@@ -24,7 +24,7 @@ The library is:
 
 - - -
 
-**IMPORTANT:** The library is currently a beta, so more improvements and cross-compatibility fixes are planned (especially for Windows which I'm currently working on fixing). Although the project is improving on a daily basis, I don't recommend using this for any serious projects for now.
+**IMPORTANT:** The library is currently a beta, so more improvements and cross-compatibility fixes are planned (especially for Windows which I'm currently working on fixing). I don't recommend using this for any serious projects for now.
 
 - - -
 
@@ -46,7 +46,7 @@ int main() {
 
 
 ## CLI tool 🔧
-This project also provides a tiny, but handy CLI tool utilising the full potential of what the library can do.
+This project also provides a tiny, but handy CLI tool utilising the full potential of what the library can do. Also, running the CLI as root would give better results.
 
 <img src="assets/image.png" width="500" title="cli">
 
@@ -75,7 +75,7 @@ You can view the full docs [here](docs/documentation.md). Trust me, it's not too
 > It's designed for security researchers, VM engineers, and pretty much anybody who needs a practical and rock-solid VM detection mechanism in their project. For example, if you're making a VM and you're testing the effectiveness of concealing itself, or if you're a malware analyst and you want to check if your VM environment is good enough.
 
 - Why another VM detection project?
-> There's already loads of projects that have the same goal such as [InviZzzible](https://github.com/CheckPointSW/InviZzzible), [pafish](https://github.com/a0rtega/pafish) and [Al-Khaser](https://github.com/LordNoteworthy/al-khaser). But the difference between the aforementioned projects is that they have little to no support with non-Windows systems. On top of this, I wanted the core detection techniques to be accessible programmatically for everybody to get something useful out of it rather than providing just a CLI tool like the projects above.
+> There's already loads of projects that have the same goal such as [InviZzzible](https://github.com/CheckPointSW/InviZzzible), [pafish](https://github.com/a0rtega/pafish) and [Al-Khaser](https://github.com/LordNoteworthy/al-khaser). But the difference between the aforementioned projects is that they don't provide a programmable interface to interact with the detection mechanisms, on top of having little to no support for non-Windows systems. I wanted the core detection techniques to be accessible programmatically for everybody to get something useful out of it rather than providing just a CLI tool like the projects above.
 
 - Is it possible to spoof the result?
 > Yes. There are some techniques that are trivially spoofable, and there's nothing the library can do about it whether it's a deliberate false negative or even a false positive. This is a problem that every VM detection project is facing, which is why the library is trying to test every technique possible to get the best result based on the environment it's running under. 

@@ -1,6 +1,7 @@
 - revise sidt check
 - analyse the UUID check technique's efficiency
 - fix c++11 debug function param error
+- completely remove std::system() grep commands
 
 - ~~update doc without technique column~~
 - ~~make a flagcheck function~~

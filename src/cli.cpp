@@ -74,6 +74,7 @@ int main(int argc, char* argv[]) {
         checker(VM::VM_FILES, "VM files");
         checker(VM::HWMODEL, "hw.model");
         checker(VM::DISK_SIZE, "disk size");
+        checker(VM::VBOX_DEFAULT, "VBox default specs");
         std::printf("\n");
 
         std::cout << "VM brand: " << (std::string(VM::brand()) == "Unknown" ? red : green) << VM::brand() << ansi_exit << "\n\n";

@@ -42,7 +42,7 @@ int main() {
 
 
 # `VM::brand()`
-This will essentially return the VM brand as a std::string_view (assuming you're using C++17 and above, else it will return a const char*). The possible brand string return values are: `VMware`, `VirtualBox`, `KVM`, `bhyve`, `QEMU`, `Microsoft Hyper-V`, `Microsoft x86-to-ARM`, `Parallels`, `Xen HVM`, `ACRN`, `QNX hypervisor`, `Hybrid Analysis`, `Sandboxie`, `Docker`, `Wine`, `Virtual Apple`, and `Virtual PC`. If none were detected, it will return `Unknown`.
+This will essentially return the VM brand as a std::string_view (assuming you're using C++17 and above, else it will return a const char*). The possible brand string return values are: `VMware`, `VirtualBox`, `KVM`, `bhyve`, `QEMU`, `Microsoft Hyper-V`, `Microsoft x86-to-ARM`, `Parallels`, `Xen HVM`, `ACRN`, `QNX hypervisor`, `Hybrid Analysis`, `Sandboxie`, `Docker`, `Wine`, `Virtual Apple`, and `Virtual PC`. If none were detected, it will return `Unknown`. It's often not going to produce a satisfying result due to technical difficulties with accomplishing this, on top of being highly dependant on what mechanisms detected a VM.
 
 ```cpp
 int main() {
@@ -114,6 +114,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::VM_FILES` | Find if any VM-specific files exists | Windows | 80% |
 | `VM::HWMODEL` | Check if the sysctl for the hwmodel does not contain the "Mac" string | MacOS | 75% |
 | `VM::DISK_SIZE` | Check if disk size is under or equal to 50GB | Linux | 60% |
+| `VM::VBOX_DEFAULT` | Check for default RAM and DISK sizes set by VirtualBox | Linux and Windows | 55% |
 
 # Non-technique flags
 | Flag | Description |
