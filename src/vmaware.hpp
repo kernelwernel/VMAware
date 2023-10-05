@@ -831,8 +831,7 @@ private:
                 u64 tsc2 = 0;
                 u64 avg = 0;
                 i32 cpuInfo[4] = {};
-                for (INT i = 0; i < 10; i++)
-                {
+                for (INT i = 0; i < 10; i++) {
                     tsc1 = __rdtsc();
                     GetProcessHeap();
                     tsc2 = __rdtsc();
@@ -1817,7 +1816,7 @@ private:
                 return add(VBOX);
             } else if (vbox < vmware) {
                 return add(VMWARE);
-            } else if (vbox == vmaware) {
+            } else if (vbox == vmware) {
                 return true;
             }
 
