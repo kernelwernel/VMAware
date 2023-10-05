@@ -200,7 +200,8 @@ private:
         DOCKER = "Docker",
         WINE = "Wine",
         VAPPLE = "Virtual Apple",
-        VPC = "Virtual PC";
+        VPC = "Virtual PC",
+        ANUBIS = "Anubis";
 
     // VM scoreboard table specifically for VM::brand()
     static inline std::map<sv, u8> scoreboard {
@@ -220,7 +221,9 @@ private:
         { DOCKER, 0 },
         { WINE, 0 },
         { VAPPLE, 0 },
-        { VPC, 0 }
+        { VPC, 0 },
+        { ANUBIS, 0 }
+
     };
 
     // check if cpuid is supported
@@ -337,7 +340,7 @@ private:
     // TODO: finish the MSVC section
     [[nodiscard]] static u32 get_disk_size() {
         constexpr u64 GB = (1000 * 1000 * 1000);
-        u32 size;
+        u32 size = 0;
     
         #if (LINUX)
             struct statvfs stat;
@@ -351,7 +354,6 @@ private:
 
             // in gigabytes
             size = static_cast<u32>((stat.f_blocks * stat.f_frsize) / GB);
-
         #elif (MSVC)
 
         #endif
@@ -370,13 +372,12 @@ private:
         return result;
     }
 
-    // get RAM size in GB
-    // TODO: finish the MSVC section
-    [[nodiscard]] static u32 get_ram_size() {
+    // get physical RAM size in GB
+    [[nodiscard]] static u32 get_physical_ram_size() {
         #if (LINUX)
             if (!is_root()) {
                 #if __VMAWARE_DEBUG__
-                    debug("private get_ram_size function: ", "not root, returned 0");
+                    debug("private get_physical_ram_size function: ", "not root, returned 0");
                 #endif
                 return 0;
             }
@@ -385,7 +386,7 @@ private:
 
             if (result == nullptr) {
                 #if __VMAWARE_DEBUG__
-                    debug("private get_ram_size function: ", "invalid system result from dmidecode, returned 0");
+                    debug("private get_physical_ram_size function: ", "invalid system result from dmidecode, returned 0");
                 #endif
                 return 0;
             }
@@ -395,7 +396,7 @@ private:
 
             if (!(MB || GB)) {
                 #if __VMAWARE_DEBUG__
-                    debug("private get_ram_size function: ", "neither MB nor GB found, returned 0");
+                    debug("private get_physical_ram_size function: ", "neither MB nor GB found, returned 0");
                 #endif
                 return 0;
             }
@@ -414,7 +415,7 @@ private:
 
             if (number_str.empty()) {
                 #if __VMAWARE_DEBUG__
-                    debug("private get_ram_size function: ", "string is empty, returned 0");
+                    debug("private get_physical_ram_size function: ", "string is empty, returned 0");
                 #endif
                 return 0;
             }
@@ -424,7 +425,7 @@ private:
             number = std::stoi(number_str);
 
             if (MB == true) {
-                number = static_cast<u32>(std::round(number / 1024));
+                number = static_cast<u32>(std::round(number / 1024)); // 1000?
             }
 
             return number; // in GB
@@ -432,15 +433,43 @@ private:
             if (!IsWindowsVistaOrGreater()) {
                 return 0;
             }
-                    
-            //https://learn.microsoft.com/en-us/windows/win32/api/sysinfoapi/nf-sysinfoapi-getphysicallyinstalledsystemmemory?redirectedfrom=MSDN
-            /*
-            if (GetPhysicallyInstalledSystemMemory() == ERROR_INVALID_DATA) {
+
+            ULONGLONG total_memory_kb = 0;
+
+            if (GetPhysicallyInstalledSystemMemory(&total_memory_kb) == ERROR_INVALID_DATA) {
                 return 0;
             }
-            */
 
-            // TODO: finish this whenever I have time
+            return (total_memory_kb / (1024 * 1024)); // 1000?
+        #else
+            return 0;
+        #endif
+    }
+
+    // get available memory space
+    [[nodiscard]] static u64 get_memory_space() {
+        #if (MSVC)
+            DWORDLONG ullMinRam = (1024LL * (1024LL * (1024LL * 1LL))); // 1GB
+        
+            MEMORYSTATUSEX statex = {0};
+            statex.dwLength = sizeof(statex);
+            GlobalMemoryStatusEx(&statex); // calls NtQuerySystemInformation
+            return statex.ullTotalPhys;
+        #elif (LINUX)
+            i32 pages = sysconf(_SC_PHYS_PAGES);
+            i32 page_size = sysconf(_SC_PAGE_SIZE);
+            return (pages * page_size);
+        #elif (APPLE)
+            i32 mib[2] = { CTL_HW, HW_MEMSIZE };
+            u32 namelen = sizeof(mib) / sizeof(mib[0]);
+            u64 size = 0;
+            std::size_t len = sizeof(size);
+
+            if (sysctl(mib, namelen, &size, &len, NULL, 0) < 0) {
+                return 0;
+            }
+
+            return size; // in bytes
         #endif
     }
 
@@ -511,6 +540,10 @@ public:
         HWMODEL = 1 << 29,
         DISK_SIZE = 1 << 30,
         VBOX_DEFAULT = 1ULL << 31,
+        VBOX_NETWORK = 1ULL << 32,
+        COMPUTER_NAME = 1ULL << 33,
+        HOSTNAME = 1ULL << 34,
+        MEMORY = 1ULL << 35;
 
         // settings
         NO_MEMO = 1ULL << 63,
@@ -1781,8 +1814,10 @@ private:
 
             if (vbox > vmware) {
                 return add(VBOX);
-            } else if (vmware > vbox) {
+            } else if (vbox < vmware) {
                 return add(VMWARE);
+            } else if (vbox == vmaware) {
+                return true;
             }
 
             return false;
@@ -1871,7 +1906,7 @@ private:
         }
 
         const u32 disk = get_disk_size();
-        const u32 ram = get_ram_size();
+        const u32 ram = get_physical_ram_size();
 
         if ((disk > 80) || (ram > 4)) {
             return false;
@@ -1952,9 +1987,114 @@ private:
         return false;
     } catch (...) { return false; }
 
+    /**
+     * @brief check if there are any user inputs
+     * 
+     * 
+     */
+    /*
+    [[nodiscard]] static bool user_input() try {
+        if (disabled(VBOX_DEFAULT)) {
+            return false;
+        }
+        
+        Sleep(30000);
+
+        DWORD ticks = GetTickCount();
+
+        LASTINPUTINFO li;
+        li.cbSize = sizeof(LASTINPUTINFO);
+        BOOL res = GetLastInputInfo(&li);
+
+        return (ticks - li.dwTime > 6000);
+    } catch (...) { return false; }
+    */
+
+    [[nodiscard]] static bool vbox_network_share() try {
+        if (disabled(VBOX_NETWORK)) {
+            return false;
+        }
+
+        #if (!MSVC)
+            return false;
+        #else
+            unsigned long pnsize = 0x1000;
+            char* provider = new char[pnsize];
+
+            int retv = WNetGetProviderName(WNNC_NET_RDR2SAMPLE, provider, &pnsize);
+            if (retv == NO_ERROR) {
+                return (lstrcmpi(provider, "VirtualBox Shared Folders") == 0);
+            }
+
+            return FALSE;
+        #endif
+    } catch (...) { return false; }
 
 
-    // LABEL  (ignore this, it's just a label so I can easily teleport to this line on my IDE with CTRL+F)
+    /**
+     * @brief Check if the computer name (not username to be clear) is VM-specific
+     * @category Windows
+     * @author InviZzzible project
+    */
+    [[nodiscard]] static bool computer_name_match() try {
+        if (disabled(COMPUTER_NAME)) {
+            return false;
+        }
+
+        #if (!MSVC)
+            return false;
+        #else
+            auto out_length = MAX_PATH;
+            std::vector<u8> comp_name(out_length, 0);
+            GetComputerNameA((LPSTR)comp_name.data(), (LPDWORD)&out_length);
+
+            auto compare = [&](const std::string &s) -> bool {
+                return !lstrcmpiA((LPCSTR)comp_name.data(), s.c_str());
+            };
+
+            if (compare("InsideTm") || compare("TU-4NH09SMCG1HC")) { // anubis
+                return add(ANUBIS);
+            }
+
+            return (compare("klone_x64-pc") || compare("tequilaboomboom")); // general
+        #endif
+    } catch (...) { return false; }
+
+
+    /**
+     * @brief Check if hostname is specific
+     * @author InviZzzible project
+     * @category Windows
+     */
+    [[nodiscard]] static bool hostname_match() try {
+        if (disabled(HOSTNAME)) {
+            return false;
+        }
+
+        auto out_length = MAX_PATH;
+        std::vector<u8> dns_host_name(out_length, 0);
+        GetComputerNameExA(ComputerNameDnsHostname, (LPSTR)dns_host_name.data(), (LPDWORD)&out_length);
+
+        return (!lstrcmpiA((LPCSTR)dns_host_name.data(), "SystemIT"));
+    } catch (...) { return false; }
+
+    /**
+     * @brief Check if memory is too low
+     * @author Al-Khaser project
+    */
+    [[nodiscard]] static bool low_memory_space() try {
+        if (disabled(MEMORY)) {
+            return false;
+        }
+
+        const u32 ram = get_memory_space();
+        const u64 min_ram = (1024LL * (1024LL * (1024LL * 1LL))); // 1GB
+        return (ram < min_ram);
+    } catch (...) { return false; }
+
+
+    // __LABEL  (ignore this, it's just a label so I can easily teleport to this line on my IDE with CTRL+F)
+
 
     struct data {
         u8 points; 
@@ -1994,7 +2134,14 @@ private:
         { VM::VM_FILES, { 80, vm_files }},
         { VM::HWMODEL, { 75, hwmodel }},
         { VM::DISK_SIZE, { 60, disk_size }},
-        { VM::VBOX_DEFAULT, { 55, vbox_default_specs }}
+        { VM::VBOX_DEFAULT, { 55, vbox_default_specs }},
+        { VM::VBOX_NETWORK, { 70, vbox_network_share }},
+        { VM::COMPUTER_NAME, { 40, computer_name_match }},
+        { VM::HOSTNAME, { 25, hostname_match }},
+        { VM::MEMORY, { 35, low_memory_space }}
+
+        // { VM::, { ,  }}
+        // ^ line template for personal use
     };
 
 public:

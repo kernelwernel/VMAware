@@ -87,8 +87,8 @@ You can view the full docs [here](docs/documentation.md). Trust me, it's not too
 > Pretty soon, maybe around November (I just started university a few days ago, so I can't guarantee anything)
 
 
-## Issues and pull requests 
-If you have any suggestions, ideas, or any sort of contribution, feel free to ask! I'll be more than happy to discuss. If you want to personally say something for whatever reason, my discord is `kr.nl`
+## Issues and pull requests 📬
+If you have any suggestions, ideas, or any sort of contribution, feel free to ask! I'll be more than happy to discuss. If you want to personally ask something in private, my discord is `kr.nl`
 
 If you found this project useful, a star would be appreciated :)
 
