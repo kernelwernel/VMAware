@@ -3,14 +3,19 @@
 #include <iostream>
 #include <vector>
 
+#if (defined(__GNUC__) || defined(__linux__))
+    #include <unistd.h>
+#endif
+
 using sv = std::string_view;
 
 constexpr float ver = 1.0;
-constexpr sv date = "September 2023";
-constexpr sv bold = "\033[1m";
-constexpr sv ansi_exit = "\x1B[0m";
-constexpr sv red = "\x1B[38;2;239;75;75m";
-constexpr sv green = "\x1B[38;2;94;214;114m";
+constexpr sv date = "September 2023",
+             bold = "\033[1m",
+             ansi_exit = "\x1B[0m",
+             red = "\x1B[38;2;239;75;75m",
+             green = "\x1B[38;2;94;214;114m",
+             blue = "\x1B[38;2;00;59;193m";
 
 void help(void) {
     std::cout << 
@@ -38,10 +43,25 @@ int main(int argc, char* argv[]) {
     if (argc == 1) {
         const std::string detected = ("[  " + std::string(green) + "DETECTED" + std::string(ansi_exit) + "  ]");
         const std::string not_detected = ("[" + std::string(red) + "NOT DETECTED" + std::string(ansi_exit) + "]");
+        const std::string note = ("[    " + std::string(blue) + "NOTE" + std::string(ansi_exit) + "    ]");
 
         auto checker = [=](const std::uint64_t flag, const sv message) -> void {
             std::cout << (VM::check(flag) ? detected : not_detected) << " Checking " << message << "...\n";
         };
+
+            #if (defined(__GNUC__) || defined(__linux__))
+                uid_t uid = getuid();
+                uid_t euid = geteuid();
+
+                const bool is_root = (
+                    (uid != euid) || 
+                    (euid == 0)
+                );
+
+                if (!is_root) {
+                    std::cout << note << " Running under root would give better results\n\n";
+                }
+            #endif
 
         checker(VM::VMID, "VMID");
         checker(VM::BRAND, "CPU brand");

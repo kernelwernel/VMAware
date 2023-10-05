@@ -2016,9 +2016,12 @@ private:
 
    /**
     * @brief Check VBox network provider string
-    * 
+    * @todo fix WNetGetProviderName linker error
    */
     [[nodiscard]] static bool vbox_network_share() try {
+        return false;
+        /*
+
         if (disabled(VBOX_NETWORK)) {
             return false;
         }
@@ -2026,16 +2029,18 @@ private:
         #if (!MSVC)
             return false;
         #else
-            unsigned long pnsize = 0x1000;
+            u32 pnsize = 0x1000;
             char* provider = new char[pnsize];
 
-            int retv = WNetGetProviderName(WNNC_NET_RDR2SAMPLE, provider, &pnsize);
+            i32 retv = WNetGetProviderName(WNNC_NET_RDR2SAMPLE, provider, &pnsize);
+    
             if (retv == NO_ERROR) {
                 return (lstrcmpi(provider, "VirtualBox Shared Folders") == 0);
             }
 
             return FALSE;
         #endif
+        */
     } catch (...) { return false; }
 
 
