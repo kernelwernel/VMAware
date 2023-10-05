@@ -115,6 +115,7 @@ private:
     using u32 = std::uint32_t;
     using u64 = std::uint64_t;
     using i32 = std::int32_t;
+    using i64 = std::int64_t;
     using f64 = double;
 
     #if (CPP <= 14)
@@ -456,8 +457,8 @@ private:
             GlobalMemoryStatusEx(&statex); // calls NtQuerySystemInformation
             return statex.ullTotalPhys;
         #elif (LINUX)
-            i32 pages = sysconf(_SC_PHYS_PAGES);
-            i32 page_size = sysconf(_SC_PAGE_SIZE);
+            i64 pages = sysconf(_SC_PHYS_PAGES);
+            i64 page_size = sysconf(_SC_PAGE_SIZE);
             return (pages * page_size);
         #elif (APPLE)
             i32 mib[2] = { CTL_HW, HW_MEMSIZE };
@@ -543,7 +544,7 @@ public:
         VBOX_NETWORK = 1ULL << 32,
         COMPUTER_NAME = 1ULL << 33,
         HOSTNAME = 1ULL << 34,
-        MEMORY = 1ULL << 35;
+        MEMORY = 1ULL << 35,
 
         // settings
         NO_MEMO = 1ULL << 63,
@@ -2071,11 +2072,15 @@ private:
             return false;
         }
 
-        auto out_length = MAX_PATH;
-        std::vector<u8> dns_host_name(out_length, 0);
-        GetComputerNameExA(ComputerNameDnsHostname, (LPSTR)dns_host_name.data(), (LPDWORD)&out_length);
+        #if (!MSVC)
+            return false;
+        #else
+            auto out_length = MAX_PATH;
+            std::vector<u8> dns_host_name(out_length, 0);
+            GetComputerNameExA(ComputerNameDnsHostname, (LPSTR)dns_host_name.data(), (LPDWORD)&out_length);
 
-        return (!lstrcmpiA((LPCSTR)dns_host_name.data(), "SystemIT"));
+            return (!lstrcmpiA((LPCSTR)dns_host_name.data(), "SystemIT"));
+        #endif
     } catch (...) { return false; }
 
     /**
@@ -2087,9 +2092,9 @@ private:
             return false;
         }
 
-        const u32 ram = get_memory_space();
-        const u64 min_ram = (1024LL * (1024LL * (1024LL * 1LL))); // 1GB
-        return (ram < min_ram);
+        constexpr u64 min_ram_1gb = (1024LL * (1024LL * (1024LL * 1LL)));
+        const u64 ram = get_memory_space();
+        return (ram < min_ram_1gb);
     } catch (...) { return false; }
 
 
