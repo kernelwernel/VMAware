@@ -92,6 +92,7 @@
     #include <Assert.h>
     #include <excpt.h>
     #include <winternl.h>
+    #include <winnetwk.h>
     #include <versionhelpers.h>
     #pragma comment(lib, "iphlpapi.lib")
 #elif (LINUX)
@@ -105,6 +106,9 @@
     #include <unistd.h>
     #include <string.h>
     #include <memory>
+#elif (APPLE)
+    #include <sys/types.h>
+    #include <sys/sysctl.h>
 #endif
 
 
@@ -116,7 +120,6 @@ private:
     using u64 = std::uint64_t;
     using i32 = std::int32_t;
     using i64 = std::int64_t;
-    using f64 = double;
 
     #if (CPP <= 14)
         using sv = const char*;
@@ -2010,6 +2013,11 @@ private:
     } catch (...) { return false; }
     */
 
+
+   /**
+    * @brief Check VBox network provider string
+    * 
+   */
     [[nodiscard]] static bool vbox_network_share() try {
         if (disabled(VBOX_NETWORK)) {
             return false;

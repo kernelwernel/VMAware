@@ -115,6 +115,10 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::HWMODEL` | Check if the sysctl for the hwmodel does not contain the "Mac" string | MacOS | 75% |
 | `VM::DISK_SIZE` | Check if disk size is under or equal to 50GB | Linux | 60% |
 | `VM::VBOX_DEFAULT` | Check for default RAM and DISK sizes set by VirtualBox | Linux and Windows | 55% |
+| `VM::VBOX_NETWORK` | Check VBox network provider string | Windows | 70% | 
+| `VM::COMPUTER_NAME` | Check for computer name string | Windows | 40% |
+| `VM::MEMORY` | Check if memory space is far too low for a physical machine | Windows | 35% |
+
 
 # Non-technique flags
 | Flag | Description |
