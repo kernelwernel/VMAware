@@ -205,7 +205,8 @@ private:
         WINE = "Wine",
         VAPPLE = "Virtual Apple",
         VPC = "Virtual PC",
-        ANUBIS = "Anubis";
+        ANUBIS = "Anubis",
+        JOEBOX = "JoeBox";
 
     // VM scoreboard table specifically for VM::brand()
     static inline std::map<sv, u8> scoreboard {
@@ -226,8 +227,8 @@ private:
         { WINE, 0 },
         { VAPPLE, 0 },
         { VPC, 0 },
-        { ANUBIS, 0 }
-
+        { ANUBIS, 0 },
+        { JOEBOX, 0 }
     };
 
     // check if cpuid is supported
@@ -302,8 +303,8 @@ private:
         #if (!LINUX)
             return false;
         #else
-            uid_t uid = getuid();
-            uid_t euid = geteuid();
+            const uid_t uid = getuid();
+            const uid_t euid = geteuid();
 
             return (
                 (uid != euid) || 
@@ -460,8 +461,8 @@ private:
             GlobalMemoryStatusEx(&statex); // calls NtQuerySystemInformation
             return statex.ullTotalPhys;
         #elif (LINUX)
-            i64 pages = sysconf(_SC_PHYS_PAGES);
-            i64 page_size = sysconf(_SC_PAGE_SIZE);
+            const i64 pages = sysconf(_SC_PHYS_PAGES);
+            const i64 page_size = sysconf(_SC_PAGE_SIZE);
             return (pages * page_size);
         #elif (APPLE)
             i32 mib[2] = { CTL_HW, HW_MEMSIZE };
@@ -548,6 +549,7 @@ public:
         COMPUTER_NAME = 1ULL << 33,
         HOSTNAME = 1ULL << 34,
         MEMORY = 1ULL << 35,
+        VM_PROCESSES = 1ULL << 36,
 
         // settings
         NO_MEMO = 1ULL << 63,
@@ -2098,6 +2100,7 @@ private:
     /**
      * @brief Check if memory is too low
      * @author Al-Khaser project
+     * @category x86?
     */
     [[nodiscard]] static bool low_memory_space() try {
         if (disabled(MEMORY)) {
@@ -2110,16 +2113,90 @@ private:
     } catch (...) { return false; }
 
 
+    /**
+     * @brief Check for any VM processes that are active
+     * @category Windows
+     */
+    [[nodiscard]] static bool vm_processes() try {
+        if (disabled(VM_PROCESSES)) {
+            return false;
+        }
+
+        #if (!MSVC)
+            return false;
+        #else
+            auto check_proc = [](const char* proc) -> bool {
+                HANDLE hSnapshot;
+                PROCESSENTRY32 pe = {};
+
+                pe.dwSize = sizeof(pe);
+                bool present = false;
+                hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+
+                if (hSnapshot == INVALID_HANDLE_VALUE) {
+                    return false;
+                }
+
+                if (Process32First(hSnapshot, &pe)) {
+                    do {
+                        if (!StrCmpI(pe.szExeFile, proc_name.c_str())) {
+                            present = true;
+                            break;
+                        }
+                    } while (Process32Next(hSnapshot, &pe));
+                }
+    
+                CloseHandle(hSnapshot);
+
+                return present;
+            };
+
+            if (check_proc("joeboxserver.exe") || check_proc("joeboxcontrol.exe")) {
+                return add(JOEBOX);
+            }
+
+            if (check_proc("prl_cc.exe") || check_proc("prl_tools.exe")) {
+                return add(PARALLELS);
+            }
+
+            if (check_proc("vboxservice.exe") || check_proc("vboxtray.exe")) {
+                return add(VBOX);
+            }
+
+            if (check_proc("vmsrvc.exe") || check_proc("vmusrvc.exe")) {
+                return add(VPC);
+            }
+
+            if (
+                check_proc("vmtoolsd.exe") ||
+                check_proc("vmacthlp.exe") ||
+                check_proc("vmwaretray.exe") ||
+                check_proc("vmwareuser.exe") ||
+                check_proc("vmware.exe") ||
+                check_proc("vmount2.exe")
+            ) {
+                return add(VMWARE);
+            }
+
+            if (check_proc("xenservice.exe") || check_proc("xsvc_depriv.exe")) {
+                return add(XEN);
+            }
+
+            return false;
+        #endif
+    } catch (...) { return false; }
+
+
     // __LABEL  (ignore this, it's just a label so I can easily teleport to this line on my IDE with CTRL+F)
 
 
-    struct data {
+    struct technique {
         u8 points; 
         bool(*ptr)(); // function pointer
     };
 
     // the points are debatable, but I think it's fine how it is. Feel free to disagree.
-    static inline std::map<u64, data> table = {
+    static inline std::map<u64, technique> table = {
         { VM::VMID, { 100, vmid }},
         { VM::BRAND, { 50, cpu_brand }},
         { VM::HYPERV_BIT, { 95, cpuid_hyperv }},
@@ -2155,7 +2232,8 @@ private:
         { VM::VBOX_NETWORK, { 70, vbox_network_share }},
         { VM::COMPUTER_NAME, { 40, computer_name_match }},
         { VM::HOSTNAME, { 25, hostname_match }},
-        { VM::MEMORY, { 35, low_memory_space }}
+        { VM::MEMORY, { 35, low_memory_space }},
+        { VM::VM_PROCESSES, { 30, vm_processes }}
 
         // { VM::, { ,  }}
         // ^ line template for personal use
@@ -2198,7 +2276,7 @@ public:
             throw std::invalid_argument("Flag argument must be a technique flag and not a settings flag, consult the documentation's flag list");
         }
 
-        // count should only have a single flag at this point
+        // count should only have a single flag at this stage
         assert(count == 1);
 
         // temporarily enable all flags so that every technique is enabled
@@ -2213,7 +2291,7 @@ public:
             throw std::invalid_argument("Flag is not known, consult the documentation's flag list");
         }
 
-        const data &pair = it->second;
+        const technique &pair = it->second;
         result = pair.ptr();
 
         VM::flags = tmp_flags;
@@ -2255,7 +2333,10 @@ public:
          * execution of VM::detect(). This can save around
          * 5~10x speed depending on the circumstances.
          */
-        if (disabled(NO_MEMO) && (memo.find(true) != memo.end())) {
+        if (
+            disabled(NO_MEMO) && \
+            memo.find(true) != memo.end()
+        ) {
             debug("memoization: returned cached result in detect()");
             return memo[true].first;
         }
@@ -2267,13 +2348,13 @@ public:
         u8 points = 0;
     
         for (auto it = table.cbegin(); it != table.cend(); ++it) {
-            const data &pair = it->second;
+            const technique &pair = it->second;
             if (pair.ptr()) {
                 points += pair.points;
             };
         }
 
-        // arbitrary threshold score
+        // threshold score
         const bool result = (points >= 100);
 
         sv current_brand = "";
@@ -2293,11 +2374,13 @@ public:
             );
 
             if (it != scoreboard.end()) {
-                if (std::none_of(scoreboard.cbegin(), scoreboard.cend(),
-                    [](const auto &pair) {
-                        return pair.second;
-                    }
-                )) {
+                if (
+                    std::none_of(scoreboard.cbegin(), scoreboard.cend(),
+                        [](const auto &pair) {
+                            return pair.second;
+                        }
+                    )
+                ) {
                     current_brand = "Unknown";
                 } else {
                     current_brand = it->first;

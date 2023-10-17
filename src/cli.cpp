@@ -95,6 +95,11 @@ int main(int argc, char* argv[]) {
         checker(VM::HWMODEL, "hw.model");
         checker(VM::DISK_SIZE, "disk size");
         checker(VM::VBOX_DEFAULT, "VBox default specs");
+        checker(VM::VBOX_NETWORK, "VBox network provider match");
+        checker(VM::COMPUTER_NAME, "computer name");
+        checker(VM::HOSTNAME, "hostname");
+        checker(VM::MEMORY, "low memory space");
+        checker(VM::VM_PROCESSES, "VM processes");
         std::printf("\n");
 
         std::cout << "VM brand: " << (std::string(VM::brand()) == "Unknown" ? red : green) << VM::brand() << ansi_exit << "\n\n";

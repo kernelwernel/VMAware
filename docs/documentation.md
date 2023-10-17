@@ -61,7 +61,7 @@ int main() {
 # `VM::check()`
 This takes a single flag argument and returns a `bool`. It's essentially the same as `VM::detect()` but it doesn't have a scoring system. It only returns the technique's effective output. The reason why this exists is because it allows end-users to have fine-grained control over what is being executed and what isn't. 
 
-`VM::detect()` is meant for a range of techniques to be evaluated in the bigger picture with weights and biases in its scoring system, while `VM::check()` is meant for a single technique to be evaluated without any weighted points or anything extra. It just gives you what the technique has found on its own. For example:
+`VM::detect()` is meant for a range of techniques to be evaluated in the bigger picture with weights and biases in its scoring system, while `VM::check()` is meant for a single technique to be evaluated without any points or anything extra. It just gives you what the technique has found on its own. For example:
 
 ```cpp
 if (VM::check(VM::VMID)) {
@@ -118,10 +118,10 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::VBOX_NETWORK` | Check VBox network provider string | Windows | 70% | 
 | `VM::COMPUTER_NAME` | Check for computer name string | Windows | 40% |
 | `VM::MEMORY` | Check if memory space is far too low for a physical machine | Windows | 35% |
-
+| `VM::VM_PROCESSES` | Check for any VM processes that are active | Windows | 30% |
 
 # Non-technique flags
 | Flag | Description |
 |------|-------------|
-| `VM::ALL` | This will enable all the flags technique flags, including the cursor check. |
+| `VM::ALL` | This will enable all the technique flags, including the cursor check. |
 | `VM::NO_MEMO` | This will disable memoization, meaning the result will not be fetched through a previous computation of the VM::detect function. Not sure why you'd need this, but it will take a performance hit if enabled. |
