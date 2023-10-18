@@ -84,7 +84,7 @@ You can view the full docs [here](docs/documentation.md). Trust me, it's not too
 > This project is not soliciting the development of malware for any malicious intentions. Even if you intend to use it that way, it'll most likely be flagged by antiviruses anyway.
 
 - When will a 1.0 be available?
-> Pretty soon, maybe around November (I just started university a few days ago, so I can't guarantee anything)
+> Pretty soon, maybe around November (I just started university very recently, so I can't guarantee anything)
 
 
 ## Issues and pull requests 📬

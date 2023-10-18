@@ -121,10 +121,8 @@ private:
     using i32 = std::int32_t;
     using i64 = std::int64_t;
 
-    #if (CPP <= 14)
-        using sv = const char*;
-    #else
-        using sv = std::string_view;
+    #if (CPP >= 17)
+    using sv = std::string_view;
     #endif
 
     #if (LINUX)
@@ -180,56 +178,63 @@ private:
             #if (CPP >= 17)
                 return std::filesystem::exists(path);
             #elif (CPP >= 11)
-                struct stat buffer;   
+                struct stat buffer;
                 return (stat (path, &buffer) == 0); 
             #endif
         }
     #endif
 
     // official aliases for VM brands. This is added to avoid accidental typos which could really fuck up the result. Also, no errors/warnings are issued if the string is invalid. 
-    static constexpr sv 
-        VMWARE = "VMware",
-        VBOX = "VirtualBox",
-        KVM = "KVM",
-        BHYVE = "bhyve",
-        QEMU = "QEMU",
-        HYPERV = "Microsoft Hyper-V",
-        MSXTA = "Microsoft x86-to-ARM",
-        PARALLELS = "Parallels",
-        XEN = "Xen HVM",
-        ACRN = "ACRN",
-        QNX = "QNX hypervisor",
-        HYBRID = "Hybrid Analysis",
-        SANDBOXIE = "Sandboxie",
-        DOCKER = "Docker",
-        WINE = "Wine",
-        VAPPLE = "Virtual Apple",
-        VPC = "Virtual PC",
-        ANUBIS = "Anubis",
-        JOEBOX = "JoeBox";
+    #if (CPP >= 17)
+        static constexpr sv \
+            VMWARE = "VMware",
+            VBOX = "VirtualBox",
+            KVM = "KVM",
+            BHYVE = "bhyve",
+            QEMU = "QEMU",
+            HYPERV = "Microsoft Hyper-V",
+            MSXTA = "Microsoft x86-to-ARM",
+            PARALLELS = "Parallels",
+            XEN = "Xen HVM",
+            ACRN = "ACRN",
+            QNX = "QNX hypervisor",
+            HYBRID = "Hybrid Analysis",
+            SANDBOXIE = "Sandboxie",
+            DOCKER = "Docker",
+            WINE = "Wine",
+            VAPPLE = "Virtual Apple",
+            VPC = "Virtual PC",
+            ANUBIS = "Anubis",
+            JOEBOX = "JoeBox";
+    #else 
+        static const char* VMWARE;
+        static const char* VBOX;
+        static const char* KVM;
+        static const char* BHYVE;
+        static const char* QEMU;
+        static const char* HYPERV;
+        static const char* MSXTA;
+        static const char* PARALLELS;
+        static const char* XEN;
+        static const char* ACRN;
+        static const char* QNX;
+        static const char* HYBRID;
+        static const char* SANDBOXIE;
+        static const char* DOCKER;
+        static const char* WINE;
+        static const char* VAPPLE;
+        static const char* VPC;
+        static const char* ANUBIS;
+        static const char* JOEBOX;
+    #endif
+    
 
     // VM scoreboard table specifically for VM::brand()
-    static inline std::map<sv, u8> scoreboard {
-        { VMWARE, 0 },
-        { VBOX, 0 },
-        { KVM, 0 },
-        { BHYVE, 0 },
-        { QEMU, 0 },
-        { HYPERV, 0 },
-        { MSXTA, 0 },
-        { PARALLELS, 0 },
-        { XEN, 0 },
-        { ACRN, 0 },
-        { QNX, 0 },
-        { HYBRID, 0 },
-        { SANDBOXIE, 0 },
-        { DOCKER, 0 },
-        { WINE, 0 },
-        { VAPPLE, 0 },
-        { VPC, 0 },
-        { ANUBIS, 0 },
-        { JOEBOX, 0 }
-    };
+    #if (CPP >= 17)
+        static std::map<sv, u8> scoreboard;
+    #else 
+        static std::map<const char*, u8> scoreboard;
+    #endif
 
     // check if cpuid is supported
     [[nodiscard]] static bool check_cpuid(void) {
@@ -317,10 +322,10 @@ private:
     #ifdef __VMAWARE_DEBUG__
         template <typename... Args>
         static inline void debug(Args... message) noexcept {
-            constexpr sv black_bg = "\x1B[48;2;0;0;0m",
-                         bold = "\033[1m",
-                         blue = "\x1B[38;2;00;59;193m",
-                         ansiexit = "\x1B[0m";
+            constexpr const char* black_bg = "\x1B[48;2;0;0;0m";
+            constexpr const char* bold = "\033[1m";
+            constexpr const char* blue = "\x1B[38;2;00;59;193m";
+            constexpr const char* ansiexit = "\x1B[0m";
 
             std::cout << black_bg << bold << "[" << blue << "DEBUG" << ansiexit << bold << black_bg << "]" << ansiexit << " ";
             ((std::cout << message),...);
@@ -336,10 +341,17 @@ private:
     #endif
 
     // directly return when adding a brand to the scoreboard for a more succint expression
-    [[nodiscard]] static inline bool add(const sv p_brand) noexcept {
-        scoreboard[p_brand]++;
-        return true;
-    }
+    #if (CPP >= 17)
+        [[nodiscard]] static inline bool add(const sv p_brand) noexcept {
+            scoreboard[p_brand]++;
+            return true;
+        }
+    #else
+        [[nodiscard]] static inline bool add(const char* p_brand) noexcept {
+            scoreboard[p_brand]++;
+            return true;
+        }
+    #endif
 
     // get disk size in GB
     // TODO: finish the MSVC section
@@ -479,13 +491,17 @@ private:
     }
 
     // memoize the value from VM::detect() in case it's ran again
-    static inline std::map<bool, std::pair<bool, sv>> memo;
-    
+    #if (CPP >= 17)
+        static std::map<bool, std::pair<bool, sv>> memo;
+    #else
+        static std::map<bool, std::pair<bool, const char*>> memo;
+    #endif
+
     // cpuid check value
-    static inline bool no_cpuid;
+    static bool cpuid_supported;
 
     // flags
-    static inline u64 flags;
+    static u64 flags;
 
     /**
      * assert if the flag is enabled, far better expression than typing this:
@@ -571,12 +587,16 @@ private:
         #if (!x86)
             return false;
         #else
-            if (no_cpuid || disabled(VMID)) {
+            if (!cpuid_supported || disabled(VMID)) {
                 debug("VMID: precondition return called");
                 return false;
             }
 
-            constexpr sv
+            #if (CPP >= 17)
+                constexpr sv 
+            #else
+                const std::string
+            #endif
                 bhyve = "bhyve bhyve ",
                 kvm = " KVMKVMKVM  ",
                 qemu = "TCGTCGTCGTCG",
@@ -591,7 +611,11 @@ private:
                 qnx = " QNXQVMBSQG ",
                 virtapple = "VirtualApple";
 
-            constexpr std::array<sv, 13> IDs {
+            #if (CPP >= 17)
+                constexpr std::array<sv, 13> IDs {
+            #else
+                std::array<std::string, 13> IDs {
+            #endif
                 bhyve, kvm, qemu,
                 hyperv, parallels, parallels,
                 parallels2, vmware, vbox,
@@ -666,7 +690,7 @@ private:
         #if (!x86)
             return false;
         #else
-            if (no_cpuid || disabled(BRAND)) {
+            if (!cpuid_supported || disabled(BRAND)) {
                 debug("BRAND: ", "precondition return called");
                 return false;
             }
@@ -694,7 +718,9 @@ private:
                 cpuid(buffer.at(0), buffer.at(1), buffer.at(2), buffer.at(3), id);
 
                 std::memcpy(charbuffer.data(), buffer.data(), buffer_size);
-                brand += sv(charbuffer.data());
+
+                const char* convert = charbuffer.data();
+                brand += convert;
             }
 
             // TODO: might add more potential keywords, be aware that it could (theoretically) cause false positives
@@ -727,7 +753,7 @@ private:
         #if (!x86)
             return false;
         #else
-            if (no_cpuid || disabled(HYPERV_BIT)) {
+            if (!cpuid_supported || disabled(HYPERV_BIT)) {
                 debug("HYPERV_BIT: precondition return called");
                 return false;
             }
@@ -750,7 +776,7 @@ private:
         #if (!x86)
             return false;
         #else
-            if (no_cpuid || disabled(CPUID_0x4)) {
+            if (!cpuid_supported || disabled(CPUID_0x4)) {
                 debug("CPUID_0X4: precondition return called");
                 return false;
             }
@@ -1346,7 +1372,7 @@ private:
      * @category Linux
      */
     [[nodiscard]] static bool dmesg() try {
-        #if (!LINUX)
+        #if (!LINUX || CPP <= 11)
             return false;
         #else
             if (disabled(DMESG)) {
@@ -1358,6 +1384,7 @@ private:
                 debug("DMESG: ", "binary doesn't exist");
                 return false;
             }
+
 
             const std::unique_ptr<std::string> result = sys_result("dmesg | grep -i hypervisor | grep -c \"KVM|QEMU\"");
 
@@ -1372,6 +1399,7 @@ private:
             } else {
                 debug("DMESG: ", "output = ", *result);
             }
+            std::cout << "\n\n\nWORKS!!!!!!!!!!!\n\n\n";
 
             return false;
         #endif
@@ -2196,48 +2224,7 @@ private:
     };
 
     // the points are debatable, but I think it's fine how it is. Feel free to disagree.
-    static inline std::map<u64, technique> table = {
-        { VM::VMID, { 100, vmid }},
-        { VM::BRAND, { 50, cpu_brand }},
-        { VM::HYPERV_BIT, { 95, cpuid_hyperv }},
-        { VM::CPUID_0x4, { 70, cpuid_0x4 }},
-        { VM::HYPERV_STR, { 45, hyperv_brand }},
-        { VM::RDTSC, { 20, rdtsc_check }},
-        { VM::SIDT, { 65, sidt_check }},
-        { VM::VMWARE_PORT, { 80, vmware_port }},
-        { VM::THREADCOUNT, { 35, thread_count }},
-        { VM::MAC, { 90, mac_address_check }},
-        { VM::TEMPERATURE, { 15, temperature }},
-        { VM::SYSTEMD, { 70, systemd_virt }},
-        { VM::CVENDOR, { 65, chassis_vendor }},
-        { VM::CTYPE, { 10, chassis_type }},
-        { VM::DOCKERENV, { 80, dockerenv }},
-        { VM::DMIDECODE, { 55, dmidecode }},
-        { VM::DMESG, { 55, dmesg }},
-        { VM::HWMON, { 75, hwmon }},
-        { VM::SIDT5, { 45, sidt5 }},
-        { VM::CURSOR, { 10, cursor_check }},
-        { VM::VMWARE_REG, { 65, vmware_registry }},
-        { VM::VBOX_REG, { 65, vbox_registry }},
-        { VM::USER, { 35, user_check }},
-        { VM::DLL, { 50, DLL_check }}, // i genuinely have no idea
-        { VM::REGISTRY, { 75, registry_key }},
-        { VM::SUNBELT, { 10, sunbelt_check }},
-        { VM::WINE_CHECK, { 85, wine }},
-        { VM::BOOT, { 5, boot_time }},
-        { VM::VM_FILES, { 80, vm_files }},
-        { VM::HWMODEL, { 75, hwmodel }},
-        { VM::DISK_SIZE, { 60, disk_size }},
-        { VM::VBOX_DEFAULT, { 55, vbox_default_specs }},
-        { VM::VBOX_NETWORK, { 70, vbox_network_share }},
-        { VM::COMPUTER_NAME, { 40, computer_name_match }},
-        { VM::HOSTNAME, { 25, hostname_match }},
-        { VM::MEMORY, { 35, low_memory_space }},
-        { VM::VM_PROCESSES, { 30, vm_processes }}
-
-        // { VM::, { ,  }}
-        // ^ line template for personal use
-    };
+    static const std::map<u64, technique> table;
 
 public:
     /**
@@ -2305,7 +2292,11 @@ public:
      * @returns VMware, VirtualBox, KVM, bhyve, QEMU, Microsoft Hyper-V, Microsoft x86-to-ARM, Parallels, Xen HVM, ACRN, QNX hypervisor, Hybrid Analysis, Sandboxie, Docker, Wine, Virtual Apple, Virtual PC, Unknown
      * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmbrand
      */
-    [[nodiscard]] static sv brand(void) {
+    #if (CPP >= 17)
+        [[nodiscard]] static sv brand(void) {
+    #else 
+        [[nodiscard]] static const char* brand(void) {
+    #endif
         // check if result hasn't been memoized already
         if (memo.find(true) == memo.end()) {
             debug("memoization: detect() called in brand");
@@ -2342,10 +2333,12 @@ public:
         }
 
         // set local variables within struct scope
-        VM::no_cpuid = !check_cpuid();
+        VM::cpuid_supported = check_cpuid();
         VM::flags = p_flags;
 
         u8 points = 0;
+
+        debug("cpuid: is supported? : ", VM::cpuid_supported);
     
         for (auto it = table.cbegin(); it != table.cend(); ++it) {
             const technique &pair = it->second;
@@ -2357,7 +2350,11 @@ public:
         // threshold score
         const bool result = (points >= 100);
 
-        sv current_brand = "";
+        #if (CPP >= 17)
+            sv current_brand = "";
+        #else
+            const char* current_brand = "";
+        #endif
 
         #ifdef __VMAWARE_DEBUG__
             for (const auto p : scoreboard) {
@@ -2411,4 +2408,113 @@ public:
 
         return result;
     }
+};
+
+
+#if (CPP < 17)
+    //std::map<const char*, std::uint8_t> VM::scoreboard{};
+
+    // hacky solution to problems with inline variables being incompatible with standards under C++17
+    const char* VM::VMWARE = "VMware";
+    const char* VM::VBOX = "VirtualBox";
+    const char* VM::KVM = "KVM";
+    const char* VM::BHYVE = "bhyve";
+    const char* VM::QEMU = "QEMU";
+    const char* VM::HYPERV = "Microsoft Hyper-V";
+    const char* VM::MSXTA = "Microsoft x86-to-ARM";
+    const char* VM::PARALLELS = "Parallels";
+    const char* VM::XEN = "Xen HVM";
+    const char* VM::ACRN = "ACRN";
+    const char* VM::QNX = "QNX hypervisor";
+    const char* VM::HYBRID = "Hybrid Analysis";
+    const char* VM::SANDBOXIE = "Sandboxie";
+    const char* VM::DOCKER = "Docker";
+    const char* VM::WINE = "Wine";
+    const char* VM::VAPPLE = "Virtual Apple";
+    const char* VM::VPC = "Virtual PC";
+    const char* VM::ANUBIS = "Anubis";
+    const char* VM::JOEBOX = "JoeBox";
+    
+
+#endif
+
+#if (CPP >= 17)
+    std::map<VM::sv, VM::u8> VM::scoreboard {
+#else
+    std::map<const char*, VM::u8> VM::scoreboard {
+#endif
+    { VM::VMWARE, 0 },
+    { VM::VBOX, 0 },
+    { VM::KVM, 0 },
+    { VM::BHYVE, 0 },
+    { VM::QEMU, 0 },
+    { VM::HYPERV, 0 },
+    { VM::MSXTA, 0 },
+    { VM::PARALLELS, 0 },
+    { VM::XEN, 0 },
+    { VM::ACRN, 0 },
+    { VM::QNX, 0 },
+    { VM::HYBRID, 0 },
+    { VM::SANDBOXIE, 0 },
+    { VM::DOCKER, 0 },
+    { VM::WINE, 0 },
+    { VM::VAPPLE, 0 },
+    { VM::VPC, 0 },
+    { VM::ANUBIS, 0 },
+    { VM::JOEBOX, 0 }
+};
+
+
+VM::u64 VM::flags = 0;
+bool VM::cpuid_supported = false;
+
+
+#if (CPP >= 17)
+    std::map<bool, std::pair<bool, VM::sv>> VM::memo;
+#else
+    std::map<bool, std::pair<bool, const char*>> VM::memo;
+#endif
+
+
+const std::map<VM::u64, VM::technique> VM::table = {
+    { VM::VMID, { 100, VM::vmid }},
+    { VM::BRAND, { 50, VM::cpu_brand }},
+    { VM::HYPERV_BIT, { 95, VM::cpuid_hyperv }},
+    { VM::CPUID_0x4, { 70, VM::cpuid_0x4 }},
+    { VM::HYPERV_STR, { 45, VM::hyperv_brand }},
+    { VM::RDTSC, { 20, VM::rdtsc_check }},
+    { VM::SIDT, { 65, VM::sidt_check }},
+    { VM::VMWARE_PORT, { 80, VM::vmware_port }},
+    { VM::THREADCOUNT, { 35, VM::thread_count }},
+    { VM::MAC, { 90, VM::mac_address_check }},
+    { VM::TEMPERATURE, { 15, VM::temperature }},
+    { VM::SYSTEMD, { 70, VM::systemd_virt }},
+    { VM::CVENDOR, { 65, VM::chassis_vendor }},
+    { VM::CTYPE, { 10, VM::chassis_type }},
+    { VM::DOCKERENV, { 80, VM::dockerenv }},
+    { VM::DMIDECODE, { 55, VM::dmidecode }},
+    { VM::DMESG, { 55, VM::dmesg }},
+    { VM::HWMON, { 75, VM::hwmon }},
+    { VM::SIDT5, { 45, VM::sidt5 }},
+    { VM::CURSOR, { 10, VM::cursor_check }},
+    { VM::VMWARE_REG, { 65, VM::vmware_registry }},
+    { VM::VBOX_REG, { 65, VM::vbox_registry }},
+    { VM::USER, { 35, VM::user_check }},
+    { VM::DLL, { 50, VM::DLL_check }},
+    { VM::REGISTRY, { 75, VM::registry_key }},
+    { VM::SUNBELT, { 10, VM::sunbelt_check }},
+    { VM::WINE_CHECK, { 85, VM::wine }},
+    { VM::BOOT, { 5, VM::boot_time }},
+    { VM::VM_FILES, { 80, VM::vm_files }},
+    { VM::HWMODEL, { 75, VM::hwmodel }},
+    { VM::DISK_SIZE, { 60, VM::disk_size }},
+    { VM::VBOX_DEFAULT, { 55, VM::vbox_default_specs }},
+    { VM::VBOX_NETWORK, { 70, VM::vbox_network_share }},
+    { VM::COMPUTER_NAME, { 40, VM::computer_name_match }},
+    { VM::HOSTNAME, { 25, VM::hostname_match }},
+    { VM::MEMORY, { 35, VM::low_memory_space }},
+    { VM::VM_PROCESSES, { 30, VM::vm_processes }}
+
+    // { VM::, { ,  }}
+    // ^ line template for personal use
 };

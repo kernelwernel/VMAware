@@ -2,6 +2,6 @@
 #include <iostream>
 
 int main(void) {
-    std::cout << VM::get_disk_size() << "\n";
+    std::cout << VM::detect() << "\n";
     return 0;
 }
