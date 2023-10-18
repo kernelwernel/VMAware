@@ -94,6 +94,7 @@
     #include <winternl.h>
     #include <winnetwk.h>
     #include <versionhelpers.h>
+    #include <tlhelp32.h>
     #pragma comment(lib, "iphlpapi.lib")
 #elif (LINUX)
     #include <cpuid.h>
@@ -356,7 +357,6 @@ private:
     // get disk size in GB
     // TODO: finish the MSVC section
     [[nodiscard]] static u32 get_disk_size() {
-        constexpr u64 GB = (1000 * 1000 * 1000);
         u32 size = 0;
     
         #if (LINUX)
@@ -370,6 +370,7 @@ private:
             }
 
             // in gigabytes
+            constexpr u64 GB = (1000 * 1000 * 1000);
             size = static_cast<u32>((stat.f_blocks * stat.f_frsize) / GB);
         #elif (MSVC)
 
@@ -390,7 +391,7 @@ private:
     }
 
     // get physical RAM size in GB
-    [[nodiscard]] static u32 get_physical_ram_size() {
+    [[nodiscard]] static u64 get_physical_ram_size() {
         #if (LINUX)
             if (!is_root()) {
                 #if __VMAWARE_DEBUG__
@@ -442,7 +443,7 @@ private:
             number = std::stoi(number_str);
 
             if (MB == true) {
-                number = static_cast<u32>(std::round(number / 1024)); // 1000?
+                number = static_cast<u64>(std::round(number / 1024)); // 1000?
             }
 
             return number; // in GB
@@ -465,9 +466,7 @@ private:
 
     // get available memory space
     [[nodiscard]] static u64 get_memory_space() {
-        #if (MSVC)
-            DWORDLONG ullMinRam = (1024LL * (1024LL * (1024LL * 1LL))); // 1GB
-        
+        #if (MSVC)        
             MEMORYSTATUSEX statex = {0};
             statex.dwLength = sizeof(statex);
             GlobalMemoryStatusEx(&statex); // calls NtQuerySystemInformation
@@ -1447,7 +1446,7 @@ private:
 
             u8 score = 0;
 
-            auto key = [&score](const sv p_brand, LPCSTR regkey_s) -> void {
+            auto key = [&score](const char* p_brand, const char* regkey_s) -> void {
                 HKEY regkey;
                 LONG ret;
                 BOOL isWow64 = FALSE;
@@ -1462,7 +1461,11 @@ private:
                     RegCloseKey(regkey);
                     score++;
 
-                    if (std::string(p_brand) != "") [[likely]] {
+                    if (std::string(p_brand) != "")
+                    #if (CPP >= 20)
+                        [[likely]]
+                    #endif 
+                    {
                         debug("REGISTRY: ", "detected = ", p_brand);
                         scoreboard[p_brand]++;
                     }
@@ -1833,7 +1836,7 @@ private:
                 "C:\\windows\\System32\\vboxoglfeedbackspu.dll",
             };
 
-            for (const sv file : files) {
+            for (const auto file : files) {
                 if (exists(file)) {
                     const auto regex = std::regex(file, std::regex::icase);
 
@@ -2167,7 +2170,7 @@ private:
 
                 if (Process32First(hSnapshot, &pe)) {
                     do {
-                        if (!StrCmpI(pe.szExeFile, proc_name.c_str())) {
+                        if (pe.szExeFile == proc) {
                             present = true;
                             break;
                         }
