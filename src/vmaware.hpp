@@ -336,7 +336,8 @@ private:
     #else
         // this is added so the compiler doesn't scream about "auto not allowed in function prototype" or some bullshit like that when compiling with C++17 or under.
         template <typename... Args>
-        static inline void debug(Args... idk) noexcept {
+        static inline void debug(Args... tmp) noexcept {
+            (void)tmp; // discard argument
             return;
         }
     #endif
@@ -926,7 +927,7 @@ private:
      * @category x86
      */
     [[nodiscard]] static bool sidt_check() try {
-        return false; // TODO: REMOVE AFTER VERIFYING IF IT WORKS
+        //return false; // TODO: REMOVE AFTER VERIFYING IF IT WORKS
 
         #if (!x86 || !LINUX)
             return false;
@@ -1942,7 +1943,7 @@ private:
         }
 
         const u32 disk = get_disk_size();
-        const u32 ram = get_physical_ram_size();
+        const u64 ram = get_physical_ram_size();
 
         if ((disk > 80) || (ram > 4)) {
             return false;
