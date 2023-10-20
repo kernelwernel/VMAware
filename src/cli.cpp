@@ -7,15 +7,12 @@
     #include <unistd.h>
 #endif
 
-using sv = std::string_view;
-
 constexpr float ver = 1.0;
-constexpr sv date = "September 2023",
-             bold = "\033[1m",
-             ansi_exit = "\x1B[0m",
-             red = "\x1B[38;2;239;75;75m",
-             green = "\x1B[38;2;94;214;114m",
-             blue = "\x1B[38;2;00;59;193m";
+constexpr const char* date = "September 2023";
+constexpr const char* bold = "\033[1m";
+constexpr const char* ansi_exit = "\x1B[0m";
+constexpr const char* red = "\x1B[38;2;239;75;75m";
+constexpr const char* green = "\x1B[38;2;94;214;114m";
 
 void help(void) {
     std::cout << 
@@ -43,25 +40,25 @@ int main(int argc, char* argv[]) {
     if (argc == 1) {
         const std::string detected = ("[  " + std::string(green) + "DETECTED" + std::string(ansi_exit) + "  ]");
         const std::string not_detected = ("[" + std::string(red) + "NOT DETECTED" + std::string(ansi_exit) + "]");
-        const std::string note = ("[    " + std::string(blue) + "NOTE" + std::string(ansi_exit) + "    ]");
+        const std::string note = ("[    NOTE    ]");
 
-        auto checker = [=](const std::uint64_t flag, const sv message) -> void {
+        auto checker = [=](const std::uint64_t flag, const char* message) -> void {
             std::cout << (VM::check(flag) ? detected : not_detected) << " Checking " << message << "...\n";
         };
 
-            #if (defined(__GNUC__) || defined(__linux__))
-                uid_t uid = getuid();
-                uid_t euid = geteuid();
+        #if (defined(__GNUC__) || defined(__linux__))
+            const uid_t uid = getuid();
+            const uid_t euid = geteuid();
 
-                const bool is_root = (
-                    (uid != euid) || 
-                    (euid == 0)
-                );
+            const bool is_root = (
+                (uid != euid) || 
+                (euid == 0)
+            );
 
-                if (!is_root) {
-                    std::cout << note << " Running under root would give better results\n\n";
-                }
-            #endif
+            if (!is_root) {
+                std::cout << note << " Running under root would give better results\n";
+            }
+        #endif
 
         checker(VM::VMID, "VMID");
         checker(VM::BRAND, "CPU brand");
@@ -117,18 +114,22 @@ int main(int argc, char* argv[]) {
             << ansi_exit
             << "\n\n";
     } else if (argc == 2) {
-        const std::vector<sv> args(argv, argv + argc); // easier this way
-        const sv arg = args.at(1);
+        const std::vector<const char*> args(argv, argv + argc); // easier this way
+        const char* arg = args.at(1);
 
-        if (arg == "-s" || arg == "--stdout") {
+        auto cmp = [](const char* a, const char* b) -> bool {
+            return (strcmp(a, b) == 0);
+        };
+
+        if (cmp(arg, "-s") || cmp(arg, "--stdout")) {
             return (!VM::detect());
-        } else if (arg == "-h" || arg == "--help") {
+        } else if (cmp(arg, "-h") || cmp(arg, "--help")) {
             help();
             return 0;
-        } else if (arg == "-v" || arg == "--version") {
+        } else if (cmp(arg, "-v") || cmp(arg, "--version")) {
             version();
             return 0;
-        } else if (arg == "-b" || arg == "--brand") {
+        } else if (cmp(arg, "-b") || cmp(arg, "--brand")) {
             std::cout << VM::brand() << "\n";
             return 0;
         } else {
