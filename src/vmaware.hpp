@@ -207,7 +207,7 @@ private:
     static constexpr const char* JOEBOX = "JoeBox";
     
     // VM scoreboard table specifically for VM::brand()
-    static std::map<const char*, u8> scoreboard;
+    static std::map<std::string, u8> scoreboard;
 
     // check if cpuid is supported
     [[nodiscard]] static bool check_cpuid(void) {
@@ -317,8 +317,7 @@ private:
 
     // directly return when adding a brand to the scoreboard for a more succint expression
     [[nodiscard]] static inline bool add(const char* p_brand) noexcept {
-        //scoreboard[p_brand]++; TODO: replace for test (temporary)
-        scoreboard[p_brand] = scoreboard[p_brand] + 1;
+        scoreboard[p_brand]++;
         return true;
     }
 
@@ -458,7 +457,7 @@ private:
     }
 
     // memoize the value from VM::detect() in case it's ran again
-    static std::map<bool, std::pair<bool, const char*>> memo;
+    static std::map<bool, std::pair<bool, std::string>> memo;
 
     // cpuid check value
     static bool cpuid_supported;
@@ -2431,7 +2430,7 @@ public:
         // threshold score
         const bool result = (points >= 100);
 
-        auto current_brand = "";
+        std::string current_brand = "";
         //const char* current_brand = "";
 
         #ifdef __VMAWARE_DEBUG__
@@ -2440,8 +2439,8 @@ public:
             }
         #endif
 
-        // fetch the brand with the most points in the scoreboard (temporary)
-        /*#if (CPP >= 20)
+        // fetch the brand with the most points in the scoreboard
+        #if (CPP >= 20)
             auto it = std::ranges::max_element(scoreboard, {},
                 [](const auto &pair) {
                     return pair.second;
@@ -2464,7 +2463,6 @@ public:
                 current_brand = "Unknown";
             }
         #else
-        */
             u8 max = 0;
 
             for (auto it = scoreboard.cbegin(); it != scoreboard.cend(); ++it) {
@@ -2477,7 +2475,7 @@ public:
             if (max == 0) {
                 current_brand = "Unknown";
             }
-        //#endif
+        #endif
 
         // memoize the result in case VM::detect() is executed again
         if (disabled(NO_MEMO)) {
@@ -2490,7 +2488,7 @@ public:
 };
 
 
-std::map<const char*, VM::u8> VM::scoreboard {
+std::map<std::string, VM::u8> VM::scoreboard {
     { VM::VMWARE, 0 },
     { VM::VBOX, 0 },
     { VM::KVM, 0 },
@@ -2515,7 +2513,7 @@ std::map<const char*, VM::u8> VM::scoreboard {
 
 VM::u64 VM::flags = 0;
 bool VM::cpuid_supported = false;
-std::map<bool, std::pair<bool, const char*>> VM::memo;
+std::map<bool, std::pair<bool, std::string>> VM::memo;
 
 
 const std::map<VM::u64, VM::technique> VM::table = {
