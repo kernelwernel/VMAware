@@ -186,56 +186,28 @@ private:
     #endif
 
     // official aliases for VM brands. This is added to avoid accidental typos which could really fuck up the result. Also, no errors/warnings are issued if the string is invalid. 
-    #if (CPP >= 17)
-        static constexpr sv \
-            VMWARE = "VMware",
-            VBOX = "VirtualBox",
-            KVM = "KVM",
-            BHYVE = "bhyve",
-            QEMU = "QEMU",
-            HYPERV = "Microsoft Hyper-V",
-            MSXTA = "Microsoft x86-to-ARM",
-            PARALLELS = "Parallels",
-            XEN = "Xen HVM",
-            ACRN = "ACRN",
-            QNX = "QNX hypervisor",
-            HYBRID = "Hybrid Analysis",
-            SANDBOXIE = "Sandboxie",
-            DOCKER = "Docker",
-            WINE = "Wine",
-            VAPPLE = "Virtual Apple",
-            VPC = "Virtual PC",
-            ANUBIS = "Anubis",
-            JOEBOX = "JoeBox";
-    #else 
-        static const char* VMWARE;
-        static const char* VBOX;
-        static const char* KVM;
-        static const char* BHYVE;
-        static const char* QEMU;
-        static const char* HYPERV;
-        static const char* MSXTA;
-        static const char* PARALLELS;
-        static const char* XEN;
-        static const char* ACRN;
-        static const char* QNX;
-        static const char* HYBRID;
-        static const char* SANDBOXIE;
-        static const char* DOCKER;
-        static const char* WINE;
-        static const char* VAPPLE;
-        static const char* VPC;
-        static const char* ANUBIS;
-        static const char* JOEBOX;
-    #endif
+    static constexpr const char* VMWARE = "VMware";
+    static constexpr const char* VBOX = "VirtualBox";
+    static constexpr const char* KVM = "KVM";
+    static constexpr const char* BHYVE = "bhyve";
+    static constexpr const char* QEMU = "QEMU";
+    static constexpr const char* HYPERV = "Microsoft Hyper-V";
+    static constexpr const char* MSXTA = "Microsoft x86-to-ARM";
+    static constexpr const char* PARALLELS = "Parallels";
+    static constexpr const char* XEN = "Xen HVM";
+    static constexpr const char* ACRN = "ACRN";
+    static constexpr const char* QNX = "QNX hypervisor";
+    static constexpr const char* HYBRID = "Hybrid Analysis";
+    static constexpr const char* SANDBOXIE = "Sandboxie";
+    static constexpr const char* DOCKER = "Docker";
+    static constexpr const char* WINE = "Wine";
+    static constexpr const char* VAPPLE = "Virtual Apple";
+    static constexpr const char* VPC = "Virtual PC";
+    static constexpr const char* ANUBIS = "Anubis";
+    static constexpr const char* JOEBOX = "JoeBox";
     
-
     // VM scoreboard table specifically for VM::brand()
-    #if (CPP >= 17)
-        static std::map<sv, u8> scoreboard;
-    #else 
-        static std::map<const char*, u8> scoreboard;
-    #endif
+    static std::map<const char*, u8> scoreboard;
 
     // check if cpuid is supported
     [[nodiscard]] static bool check_cpuid(void) {
@@ -344,18 +316,10 @@ private:
     #endif
 
     // directly return when adding a brand to the scoreboard for a more succint expression
-    #if (CPP >= 17)
-        //a
-        [[nodiscard]] static inline bool add(const sv p_brand) noexcept {
-            scoreboard[p_brand]++;
-            return true;
-        }
-    #else
-        [[nodiscard]] static inline bool add(const char* p_brand) noexcept {
-            scoreboard[p_brand]++;
-            return true;
-        }
-    #endif
+    [[nodiscard]] static inline bool add(const char* p_brand) noexcept {
+        scoreboard[p_brand]++;
+        return true;
+    }
 
     // get disk size in GB
     // TODO: finish the MSVC section
@@ -493,11 +457,7 @@ private:
     }
 
     // memoize the value from VM::detect() in case it's ran again
-    #if (CPP >= 17)
-        static std::map<bool, std::pair<bool, sv>> memo;
-    #else
-        static std::map<bool, std::pair<bool, const char*>> memo;
-    #endif
+    static std::map<bool, std::pair<bool, const char*>> memo;
 
     // cpuid check value
     static bool cpuid_supported;
@@ -2406,14 +2366,11 @@ public:
 
     /**
      * @brief Fetch the VM brand
+     * @return std::string
      * @returns VMware, VirtualBox, KVM, bhyve, QEMU, Microsoft Hyper-V, Microsoft x86-to-ARM, Parallels, Xen HVM, ACRN, QNX hypervisor, Hybrid Analysis, Sandboxie, Docker, Wine, Virtual Apple, Virtual PC, Unknown
      * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmbrand
      */
-    #if (CPP >= 17)
-        [[nodiscard]] static sv brand(void) {
-    #else 
-        [[nodiscard]] static const char* brand(void) {
-    #endif
+    [[nodiscard]] static std::string brand(void) {
         // check if result hasn't been memoized already
         if (memo.find(true) == memo.end()) {
             #ifdef __VMAWARE_DEBUG__
@@ -2427,7 +2384,7 @@ public:
             return "Unknown";
         }
 
-        return (memo[true].second);
+        return (std::string(memo[true].second));
     }
 
 
@@ -2473,11 +2430,7 @@ public:
         // threshold score
         const bool result = (points >= 100);
 
-        #if (CPP >= 17)
-            sv current_brand = "";
-        #else
-            const char* current_brand = "";
-        #endif
+        const char* current_brand = "";
 
         #ifdef __VMAWARE_DEBUG__
             for (const auto p : scoreboard) {
@@ -2534,36 +2487,7 @@ public:
 };
 
 
-#if (CPP < 17)
-    //std::map<const char*, std::uint8_t> VM::scoreboard{};
-
-    // hacky solution to problems with inline variables being incompatible with standards under C++17
-    const char* VM::VMWARE = "VMware";
-    const char* VM::VBOX = "VirtualBox";
-    const char* VM::KVM = "KVM";
-    const char* VM::BHYVE = "bhyve";
-    const char* VM::QEMU = "QEMU";
-    const char* VM::HYPERV = "Microsoft Hyper-V";
-    const char* VM::MSXTA = "Microsoft x86-to-ARM";
-    const char* VM::PARALLELS = "Parallels";
-    const char* VM::XEN = "Xen HVM";
-    const char* VM::ACRN = "ACRN";
-    const char* VM::QNX = "QNX hypervisor";
-    const char* VM::HYBRID = "Hybrid Analysis";
-    const char* VM::SANDBOXIE = "Sandboxie";
-    const char* VM::DOCKER = "Docker";
-    const char* VM::WINE = "Wine";
-    const char* VM::VAPPLE = "Virtual Apple";
-    const char* VM::VPC = "Virtual PC";
-    const char* VM::ANUBIS = "Anubis";
-    const char* VM::JOEBOX = "JoeBox";
-#endif
-
-#if (CPP >= 17)
-    std::map<VM::sv, VM::u8> VM::scoreboard {
-#else
-    std::map<const char*, VM::u8> VM::scoreboard {
-#endif
+std::map<const char*, VM::u8> VM::scoreboard {
     { VM::VMWARE, 0 },
     { VM::VBOX, 0 },
     { VM::KVM, 0 },
@@ -2588,13 +2512,7 @@ public:
 
 VM::u64 VM::flags = 0;
 bool VM::cpuid_supported = false;
-
-
-#if (CPP >= 17)
-    std::map<bool, std::pair<bool, VM::sv>> VM::memo;
-#else
-    std::map<bool, std::pair<bool, const char*>> VM::memo;
-#endif
+std::map<bool, std::pair<bool, const char*>> VM::memo;
 
 
 const std::map<VM::u64, VM::technique> VM::table = {

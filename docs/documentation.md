@@ -42,11 +42,11 @@ int main() {
 
 
 # `VM::brand()`
-This will essentially return the VM brand as a std::string_view (assuming you're using C++17 and above, else it will return a const char*). The possible brand string return values are: `VMware`, `VirtualBox`, `KVM`, `bhyve`, `QEMU`, `Microsoft Hyper-V`, `Microsoft x86-to-ARM`, `Parallels`, `Xen HVM`, `ACRN`, `QNX hypervisor`, `Hybrid Analysis`, `Sandboxie`, `Docker`, `Wine`, `Virtual Apple`, and `Virtual PC`. If none were detected, it will return `Unknown`. It's often not going to produce a satisfying result due to technical difficulties with accomplishing this, on top of being highly dependant on what mechanisms detected a VM.
+This will essentially return the VM brand as a std::string. The possible brand string return values are: `VMware`, `VirtualBox`, `KVM`, `bhyve`, `QEMU`, `Microsoft Hyper-V`, `Microsoft x86-to-ARM`, `Parallels`, `Xen HVM`, `ACRN`, `QNX hypervisor`, `Hybrid Analysis`, `Sandboxie`, `Docker`, `Wine`, `Virtual Apple`, and `Virtual PC`. If none were detected, it will return `Unknown`. It's often not going to produce a satisfying result due to technical difficulties with accomplishing this, on top of being highly dependant on what mechanisms detected a VM.
 
 ```cpp
 int main() {
-    std::string_view result = VM::brand();
+    const std::string result = VM::brand();
 
     if (result == "KVM") {
         // do KVM specific stuff

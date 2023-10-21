@@ -11,7 +11,6 @@ project(
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
-set(CMAKE_EXE_LINKER_FLAGS "-lstdc++ -lm")
 
 if (MSVC)
     set(CMAKE_CXX_FLAGS "/W4 /std:c++20")
