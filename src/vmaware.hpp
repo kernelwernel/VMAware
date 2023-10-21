@@ -317,7 +317,8 @@ private:
 
     // directly return when adding a brand to the scoreboard for a more succint expression
     [[nodiscard]] static inline bool add(const char* p_brand) noexcept {
-        scoreboard[p_brand]++;
+        //scoreboard[p_brand]++; TODO: replace for test (temporary)
+        scoreboard[p_brand] = scoreboard[p_brand] + 1;
         return true;
     }
 
@@ -2430,7 +2431,8 @@ public:
         // threshold score
         const bool result = (points >= 100);
 
-        const char* current_brand = "";
+        auto current_brand = "";
+        //const char* current_brand = "";
 
         #ifdef __VMAWARE_DEBUG__
             for (const auto p : scoreboard) {
@@ -2438,8 +2440,8 @@ public:
             }
         #endif
 
-        // fetch the brand with the most points in the scoreboard
-        #if (CPP >= 20)
+        // fetch the brand with the most points in the scoreboard (temporary)
+        /*#if (CPP >= 20)
             auto it = std::ranges::max_element(scoreboard, {},
                 [](const auto &pair) {
                     return pair.second;
@@ -2462,6 +2464,7 @@ public:
                 current_brand = "Unknown";
             }
         #else
+        */
             u8 max = 0;
 
             for (auto it = scoreboard.cbegin(); it != scoreboard.cend(); ++it) {
@@ -2474,7 +2477,7 @@ public:
             if (max == 0) {
                 current_brand = "Unknown";
             }
-        #endif
+        //#endif
 
         // memoize the result in case VM::detect() is executed again
         if (disabled(NO_MEMO)) {
