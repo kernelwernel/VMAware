@@ -2317,9 +2317,9 @@ public:
     [[nodiscard]] static bool check(const u64 p_flags = 0ULL) {
         i32 count = 0;
 
-        #if (CPP >= 20)
+        #if (CPP >= 20 && !MSVC)
             count = std::popcount(p_flags);
-        #elif (CPP >= 14)
+        #elif (CPP >= 14 && !MSVC)
             count = std::__popcount(p_flags);
         #else 
             // compiler will optimise this with the x86 popcnt instruction (I hope)
