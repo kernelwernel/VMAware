@@ -207,7 +207,11 @@ private:
     static constexpr const char* JOEBOX = "JoeBox";
     
     // VM scoreboard table specifically for VM::brand()
-    static std::map<const char*, int> scoreboard;
+    #if (MSVC)
+        static std::map<const char*, int> scoreboard;
+    #else
+        static std::map<const char*, u8> scoreboard;
+    #endif
 
     // check if cpuid is supported
     [[nodiscard]] static bool check_cpuid(void) {
@@ -2462,7 +2466,11 @@ public:
                 current_brand = "Unknown";
             }
         #else
-            u8 max = 0;
+            #if (MSVC)
+                int max = 0;
+            #else
+                u8 max = 0;
+            #endif
 
             for (auto it = scoreboard.cbegin(); it != scoreboard.cend(); ++it) {
                 if (it->second > max) {
@@ -2491,7 +2499,11 @@ public:
 // These are added here due to warnings related to C++17 inline variables for C++ standards that are under 17.
 // It's easier to just group them together rather than having C++17<= preprocessors with inline stuff
 
-std::map<const char*, int> VM::scoreboard {
+#if (MSVC)
+    std::map<const char*, int> VM::scoreboard {
+#else
+    std::map<const char*, VM::u8> VM::scoreboard {
+#endif
     { VM::VMWARE, 0 },
     { VM::VBOX, 0 },
     { VM::KVM, 0 },
