@@ -207,7 +207,7 @@ private:
     static constexpr const char* JOEBOX = "JoeBox";
     
     // VM scoreboard table specifically for VM::brand()
-    static std::map<std::string, u8> scoreboard;
+    static std::map<const char*, int> scoreboard;
 
     // check if cpuid is supported
     [[nodiscard]] static bool check_cpuid(void) {
@@ -457,7 +457,7 @@ private:
     }
 
     // memoize the value from VM::detect() in case it's ran again
-    static std::map<bool, std::pair<bool, std::string>> memo;
+    static std::map<bool, std::pair<bool, const char*>> memo;
 
     // cpuid check value
     static bool cpuid_supported;
@@ -2430,8 +2430,7 @@ public:
         // threshold score
         const bool result = (points >= 100);
 
-        std::string current_brand = "";
-        //const char* current_brand = "";
+        const char* current_brand = "";
 
         #ifdef __VMAWARE_DEBUG__
             for (const auto p : scoreboard) {
@@ -2488,7 +2487,11 @@ public:
 };
 
 
-std::map<std::string, VM::u8> VM::scoreboard {
+// ============= EXTERNAL DEFINITIONS =============
+// These are added here due to warnings related to C++17 inline variables for C++ standards that are under 17.
+// It's easier to just group them together rather than having C++17<= preprocessors with inline stuff
+
+std::map<const char*, int> VM::scoreboard {
     { VM::VMWARE, 0 },
     { VM::VBOX, 0 },
     { VM::KVM, 0 },
@@ -2513,7 +2516,7 @@ std::map<std::string, VM::u8> VM::scoreboard {
 
 VM::u64 VM::flags = 0;
 bool VM::cpuid_supported = false;
-std::map<bool, std::pair<bool, std::string>> VM::memo;
+std::map<bool, std::pair<bool, const char*>> VM::memo;
 
 
 const std::map<VM::u64, VM::technique> VM::table = {
