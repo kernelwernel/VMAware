@@ -1898,7 +1898,7 @@ private:
             HKEY hKey;
             char buf[0xFF] = {0};
             DWORD dwBufSize = sizeof(buf);
-            bool result = (RegOpenKeyEx("SOFTWARE\\VMware, Inc.\\VMware Tools"), 0, KEY_QUERY_VALUE, &hKey) == ERROR_SUCCESS);
+            bool result = (RegOpenKeyEx("SOFTWARE\\VMware, Inc.\\VMware Tools", 0, KEY_QUERY_VALUE, &hKey) == ERROR_SUCCESS);
             
             #ifdef __VMAWARE_DEBUG__
                 debug("VMWARE_REG: result = ", result);

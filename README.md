@@ -14,7 +14,7 @@ It utilises a comprehensive list of low-level and high-level anti-VM techniques 
 The library is:
 - Very easy to use, with only 3 functions in its public interface
 - Very flexible with fine-grained control
-- Cross-platform (to an extent)
+- Cross-platform (NOTE: MSVC IS NOT EFFECTIVE FOR NOW)
 - Header-only
 - Available with C++11 and above
 - Able to detect VMware, VirtualBox, QEMU, KVM, Parallels, and much more
