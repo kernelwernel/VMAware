@@ -487,9 +487,7 @@ private:
      *    return false;
      * }
      */
-    #if (MSVC)
-        __declspec(noalias) __declspec(restrict)
-    #elif (LINUX)
+    #if (LINUX && __has_cpp_attribute(gnu::pure))
         [[gnu::pure]]
     #endif
     [[nodiscard]] static inline bool disabled(const u64 p_flag) noexcept {
@@ -1897,10 +1895,10 @@ private:
                 return false;
             }
 
-            HKEY hKey = 0;
+            HKEY hKey;
             char buf[0xFF] = {0};
             DWORD dwBufSize = sizeof(buf);
-            const bool result = (RegOpenKeyEx(TEXT("SOFTWARE\\VMware, Inc.\\VMware Tools"), 0, KEY_QUERY_VALUE, &hKey) == ERROR_SUCCESS);
+            bool result = (RegOpenKeyEx("SOFTWARE\\VMware, Inc.\\VMware Tools"), 0, KEY_QUERY_VALUE, &hKey) == ERROR_SUCCESS);
             
             #ifdef __VMAWARE_DEBUG__
                 debug("VMWARE_REG: result = ", result);
