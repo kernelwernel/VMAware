@@ -42,7 +42,25 @@ int main() {
 
 
 # `VM::brand()`
-This will essentially return the VM brand as a std::string. The possible brand string return values are: `VMware`, `VirtualBox`, `KVM`, `bhyve`, `QEMU`, `Microsoft Hyper-V`, `Microsoft x86-to-ARM`, `Parallels`, `Xen HVM`, `ACRN`, `QNX hypervisor`, `Hybrid Analysis`, `Sandboxie`, `Docker`, `Wine`, `Virtual Apple`, and `Virtual PC`. If none were detected, it will return `Unknown`. It's often not going to produce a satisfying result due to technical difficulties with accomplishing this, on top of being highly dependant on what mechanisms detected a VM.
+This will essentially return the VM brand as a `std::string`. The possible brand string return values are: 
+- `VMware`
+- `VirtualBox`
+- `KVM`
+- `bhyve`
+- `QEMU`
+- `Microsoft Hyper-V`
+- `Microsoft x86-to-ARM`
+- `Parallels`
+- `Xen HVM`
+- `ACRN`
+- `QNX hypervisor`
+- `Hybrid Analysis`
+- `Sandboxie`
+- `Docker`
+- `Wine`
+- `Virtual Apple`
+- `Virtual PC`
+If none were detected, it will return `Unknown`. It's often not going to produce a satisfying result due to technical difficulties with accomplishing this, on top of being highly dependant on what mechanisms detected a VM. Don't rely on this function too much.
 
 ```cpp
 int main() {
@@ -81,44 +99,45 @@ bool result = VM::check(VM::SIDT | VM::RDTSC);
 VMAware provides a convenient way to not only check for VMs, but also have the flexibility and freedom for the end-user to choose what techniques are used with complete control over what gets executed or not. This is handled with a flag system.
 
 
-| Flag alias | Description | Cross-platform? | Certainty |
-| --------- | ----------- | ---------- | --------------- |
-| `VM::VMID` | Check if the CPU manufacturer ID matches that of a VM brand | Yes | 100% |
-| `VM::BRAND` | Check if the CPU brand string contains any indications of VM keywords | Yes | 50% |
-| `VM::HYPERV_BIT` | Check if the hypervisor bit is set (always false on physical CPUs) | Yes | 95% |
-|`VM::CPUID_0x4` | Check if there are any leaf values between 0x40000000 and 0x400000FF that changes the CPUID output | Yes | 70% |
-| `VM::HYPERV_STR` | Check if brand string length is long enough (would be around 2 characters in a host machine while it's longer in a hypervisor) | Yes | 45% |
-| `VM::RDTSC` | Benchmark RDTSC and evaluate its speed, usually it's very slow in VMs | Linux and Windows | 20% |
-| `VM::SIDT` | Check if SIDT instructions does anything to the interrupt descriptor table | Linux | 65% |
-| `VM::SIDT5` | Check if the 5th byte after sidt is null | Linux | 45% |
-| `VM::VMWARE_PORT` | Check if VMware port number 0x5658 is present | Linux and Windows | 80% |
-| `VM::THREADCOUNT` | Check if there are only 1 or 2 threads, which is a common pattern in VMs with default settings (nowadays physical CPUs should have at least 4 threads for modern CPUs) | Yes | 35% |
-| `VM::MAC` | Check if the system's MAC address matches with preset values for certain VMs | Linux and Windows | 90% |
-| `VM::TEMPERATURE` | Check for the presence of CPU temperature sensors (mostly not present in VMs) | Linux | 15% |
-| `VM::SYSTEMD` | Get output from systemd-detect-virt tool | Linux | 70% |
-| `VM::CVENDOR` | Check if the chassis has any VM-related keywords | Linux | 65% |
-| `VM::CTYPE` | Check if the chassis type is valid (usually not in VMs) | Linux | 10% |
-| `VM::DOCKERENV` | Check if any docker-related files are present such as /.dockerenv and /.dockerinit | Linux | 80% |
-| `VM::DMIDECODE` | Get output from dmidecode tool and grep for common VM keywords | Linux | 55% |
-| `VM::DMESG` | Get output from dmesg tool and grep for common VM keywords | Linux | 55% |
-| `VM::HWMON` | Check if HWMON is present (if not, likely a VM) | Linux | 75% |
-| `VM::CURSOR`  | Check if cursor isn't active (sign of automated VM environment) | Windows | 10% |
-| `VM::VMWARE_REG` | Look for any VMware-specific registry data | Windows | 65% |
-| `VM::VBOX_REG` | Look for any VirtualBox-specific registry data | Windows | 65% |
-| `VM::USER` | Match the username for any defaulted ones | Windows | 35% |
-| `VM::DLL` | Match for VM-specific DLLs | Windows | 50% |
-| `VM::REGISTRY` | Look throughout the registry for all sorts of VMs | Windows | 75% |
-| `VM::SUNBELT` | Detect for Sunbelt technology | Windows | 10% | 
-| `VM::WINE_CHECK` | Find for a Wine-specific file | Windows | 85% |
-| `VM::BOOT` | Analyse the OS uptime | Yes | 5% |
-| `VM::VM_FILES` | Find if any VM-specific files exists | Windows | 80% |
-| `VM::HWMODEL` | Check if the sysctl for the hwmodel does not contain the "Mac" string | MacOS | 75% |
-| `VM::DISK_SIZE` | Check if disk size is under or equal to 50GB | Linux | 60% |
-| `VM::VBOX_DEFAULT` | Check for default RAM and DISK sizes set by VirtualBox | Linux and Windows | 55% |
-| `VM::VBOX_NETWORK` | Check VBox network provider string | Windows | 70% | 
-| `VM::COMPUTER_NAME` | Check for computer name string | Windows | 40% |
-| `VM::MEMORY` | Check if memory space is far too low for a physical machine | Windows | 35% |
-| `VM::VM_PROCESSES` | Check for any VM processes that are active | Windows | 30% |
+| Flag alias | Description | Cross-platform? | Certainty | Root required? |
+| ---------- | ----------- | --------------- | --------- | -------------- |
+| `VM::VMID` | Check if the CPU manufacturer ID matches that of a VM brand | Yes | 100% |  |
+| `VM::BRAND` | Check if the CPU brand string contains any indications of VM keywords | Yes | 50% |  |
+| `VM::HYPERV_BIT` | Check if the hypervisor bit is set (always false on physical CPUs) | Yes | 95% |  |
+|`VM::CPUID_0x4` | Check if there are any leaf values between 0x40000000 and 0x400000FF that changes the CPUID output | Yes | 70% |  |
+| `VM::HYPERV_STR` | Check if brand string length is long enough (would be around 2 characters in a host machine while it's longer in a hypervisor) | Yes | 45% |  |
+| `VM::RDTSC` | Benchmark RDTSC and evaluate its speed, usually it's very slow in VMs | Linux and Windows | 20% |  |
+| `VM::SIDT` | Check if SIDT instructions does anything to the interrupt descriptor table | Linux | 65% |  |
+| `VM::SIDT5` | Check if the 5th byte after sidt is null | Linux | 45% |  |
+| `VM::VMWARE_PORT` | Check if VMware port number 0x5658 is present | Linux and Windows | 80% |  |
+| `VM::THREADCOUNT` | Check if there are only 1 or 2 threads, which is a common pattern in VMs with default settings (nowadays physical CPUs should have at least 4 threads for modern CPUs) | Yes | 35% |  |
+| `VM::MAC` | Check if the system's MAC address matches with preset values for certain VMs | Linux and Windows | 90% |  |
+| `VM::TEMPERATURE` | Check for the presence of CPU temperature sensors (mostly not present in VMs) | Linux | 15% |  |
+| `VM::SYSTEMD` | Get output from systemd-detect-virt tool | Linux | 70% |  |
+| `VM::CVENDOR` | Check if the chassis has any VM-related keywords | Linux | 65% |  |
+| `VM::CTYPE` | Check if the chassis type is valid (usually not in VMs) | Linux | 10% |  |
+| `VM::DOCKERENV` | Check if any docker-related files are present such as /.dockerenv and /.dockerinit | Linux | 80% |  |
+| `VM::DMIDECODE` | Get output from dmidecode tool and grep for common VM keywords | Linux | 55% | Yes |
+| `VM::DMESG` | Get output from dmesg tool and grep for common VM keywords | Linux | 55% |  |
+| `VM::HWMON` | Check if HWMON is present (if not, likely a VM) | Linux | 75% |  |
+| `VM::CURSOR`  | Check if cursor isn't active (sign of automated VM environment) | Windows | 10% |  |
+| `VM::VMWARE_REG` | Look for any VMware-specific registry data | Windows | 65% |  |
+| `VM::VBOX_REG` | Look for any VirtualBox-specific registry data | Windows | 65% |  |
+| `VM::USER` | Match the username for any defaulted ones | Windows | 35% |  |
+| `VM::DLL` | Match for VM-specific DLLs | Windows | 50% |  |
+| `VM::REGISTRY` | Look throughout the registry for all sorts of VMs | Windows | 75% |  |
+| `VM::SUNBELT` | Detect for Sunbelt technology | Windows | 10% |  |
+| `VM::WINE_CHECK` | Find for a Wine-specific file | Windows | 85% |  |
+| `VM::BOOT` | Analyse the OS uptime | Yes | 5% |  |
+| `VM::VM_FILES` | Find if any VM-specific files exists | Windows | 80% |  |
+| `VM::HWMODEL` | Check if the sysctl for the hwmodel does not contain the "Mac" string | MacOS | 75% |  |
+| `VM::DISK_SIZE` | Check if disk size is under or equal to 50GB | Linux | 60% |  |
+| `VM::VBOX_DEFAULT` | Check for default RAM and DISK sizes set by VirtualBox | Linux and Windows | 55% | Yes |
+| `VM::VBOX_NETWORK` | Check VBox network provider string | Windows | 70% |  |
+| `VM::COMPUTER_NAME` | Check for computer name string | Windows | 40% |  |
+| `VM::MEMORY` | Check if memory space is far too low for a physical machine | Windows | 35% |  |
+| `VM::VM_PROCESSES` | Check for any VM processes that are active | Windows | 30% |  |
+| `VM::LINUX_USER_HOST` | Check for default VM username and hostname for linux | Linux | 35% |  |
 
 # Non-technique flags
 | Flag | Description |

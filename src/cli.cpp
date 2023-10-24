@@ -97,6 +97,7 @@ int main(int argc, char* argv[]) {
         checker(VM::HOSTNAME, "hostname");
         checker(VM::MEMORY, "low memory space");
         checker(VM::VM_PROCESSES, "VM processes");
+        checker(VM::LINUX_USER_HOST, "default Linux user/host");
         std::printf("\n");
 
         std::cout << "VM brand: " << (std::string(VM::brand()) == "Unknown" ? red : green) << VM::brand() << ansi_exit << "\n\n";

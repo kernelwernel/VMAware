@@ -123,7 +123,7 @@ private:
     using i64 = std::int64_t;
 
     #if (CPP >= 17)
-    using sv = std::string_view;
+        using sv = std::string_view;
     #endif
 
     #if (LINUX)
@@ -184,8 +184,18 @@ private:
             #endif
         }
     #endif
-
-    // official aliases for VM brands. This is added to avoid accidental typos which could really fuck up the result. Also, no errors/warnings are issued if the string is invalid. 
+    
+    /**
+     * Official aliases for VM brands. This is added to avoid accidental typos 
+     * which could really fuck up the result. Also, no errors/warnings are 
+     * issued if the string is invalid in case of a typo. For example: 
+     * scoreboard[VBOX]++; 
+     * is much better and safer against typos than:
+     * scoreboard["VirtualBox"]++;
+     * Hopefully this makes sense. 
+     * 
+     * TL;DR I have wonky fingers :(
+     */ 
     static constexpr const char* VMWARE = "VMware";
     static constexpr const char* VBOX = "VirtualBox";
     static constexpr const char* KVM = "KVM";
@@ -308,18 +318,14 @@ private:
             ((std::cout << message),...);
             std::cout << "\n";
         }
-/*
-    #else
-        // this is added so the compiler doesn't scream about "auto not allowed in function prototype" or some bullshit like that when compiling with C++17 or under.
-        template <typename... Args>
-        static inline void debug(Args... tmp) noexcept {
-            (void)tmp; // discard argument
-            return;
-        }
-*/
     #endif
 
     // directly return when adding a brand to the scoreboard for a more succint expression
+    #if (MSVC) 
+        __declspec(noalias)
+    #elif (LINUX)
+        [[gnu::const]]
+    #endif
     [[nodiscard]] static inline bool add(const char* p_brand) noexcept {
         scoreboard[p_brand]++;
         return true;
@@ -481,6 +487,11 @@ private:
      *    return false;
      * }
      */
+    #if (MSVC)
+        __declspec(noalias) __declspec(restrict)
+    #elif (LINUX)
+        [[gnu::pure]]
+    #endif
     [[nodiscard]] static inline bool disabled(const u64 p_flag) noexcept {
         return (!(flags & p_flag));
     }
@@ -532,6 +543,7 @@ public:
         HOSTNAME = 1ULL << 34,
         MEMORY = 1ULL << 35,
         VM_PROCESSES = 1ULL << 36,
+        LINUX_USER_HOST = 1ULL << 37,
 
         // settings
         NO_MEMO = 1ULL << 63,
@@ -649,7 +661,12 @@ private:
 
             return false;
         #endif
-    } catch (...) { return false; }
+    } catch (...) { 
+        #ifdef __VMAWARE_DEBUG__
+            debug("VMID: catched error, returned false");
+        #endif
+        return false;
+    }
 
 
     /**
@@ -695,6 +712,10 @@ private:
                 brand += convert;
             }
 
+            #ifdef __VMAWARE_DEBUG__
+                debug("BRAND: ", "cpu brand = ", brand);
+            #endif
+
             // TODO: might add more potential keywords, be aware that it could (theoretically) cause false positives
             constexpr std::array<const char*, 16> vmkeywords {
                 "qemu", "kvm", "virtual", "vm", 
@@ -703,20 +724,33 @@ private:
                 "parallels", "vmware", "hvm", "qnx"
             };
 
-            u8 matches = 0;
+            u8 match_count = 0;
 
             for (std::size_t i = 0; i < vmkeywords.size(); i++) {
                 const auto regex = std::regex(vmkeywords.at(i), std::regex::icase);
-                matches += std::regex_search(brand, regex);
+                const bool match = std::regex_search(brand, regex);
+                
+                #ifdef __VMAWARE_DEBUG__
+                    if (match) {
+                        debug("BRAND: ", "match = ", vmkeywords.at(i));
+                    }
+                #endif
+
+                match_count += match;
             }
 
             #ifdef __VMAWARE_DEBUG__
                 debug("BRAND: ", "matches: ", static_cast<u32>(matches));
             #endif
 
-            return (matches >= 1);
+            return (match_count >= 1);
         #endif
-    } catch (...) { return false; }
+    } catch (...) { 
+        #ifdef __VMAWARE_DEBUG__
+            debug("BRAND: catched error, returned false");
+        #endif
+        return false;
+    }
 
 
     /**
@@ -740,7 +774,12 @@ private:
 
             return (ecx & (1 << 31));
         #endif
-    } catch (...) { return false; }
+    } catch (...) { 
+        #ifdef __VMAWARE_DEBUG__
+            debug("HYPERV_BIT: catched error, returned false");
+        #endif
+        return false;
+    }
 
 
     /**
@@ -770,7 +809,12 @@ private:
 
             return false;
         #endif
-    } catch (...) { return false; }
+    } catch (...) { 
+        #ifdef __VMAWARE_DEBUG__
+            debug("CPUID_0x4: catched error, returned false");
+        #endif
+        return false;
+    }
 
 
     /**
@@ -801,7 +845,12 @@ private:
 
             return (std::strlen(out + 4) >= 4);
         #endif
-    } catch (...) { return false; }
+    } catch (...) {
+        #ifdef __VMAWARE_DEBUG__
+            debug("HYPERV_STR: catched error, returned false");
+        #endif
+        return false;
+    }
 
 
     /**
@@ -838,7 +887,8 @@ private:
                 }
 
                 #ifdef __VMAWARE_DEBUG__
-                    debug("RDTSC: ", "acc = ", acc / 100);
+                    debug("RDTSC: ", "acc = ", acc);
+                    debug("RDTSC: ", "acc/100 = ", acc / 100);
                 #endif
 
                 return (acc / 100 > 350);
@@ -865,7 +915,12 @@ private:
 
             return false;
         #endif
-    } catch (...) { return false; }
+    } catch (...) { 
+        #ifdef __VMAWARE_DEBUG__
+            debug("RDTSC: catched error, returned false");
+        #endif
+        return false;
+    }
 
 
     /**
@@ -904,7 +959,12 @@ private:
 
             return (values[5] == 0x00);
         #endif
-    } catch (...) { return false; }
+    } catch (...) { 
+        #ifdef __VMAWARE_DEBUG__
+            debug("SIDT5: catched error, returned false");
+        #endif
+        return false;
+    }
 
 
     /**
@@ -942,7 +1002,12 @@ private:
             return (idtr != 0);
         #endif
 */
-    } catch (...) { return false; }
+    } catch (...) { 
+        #ifdef __VMAWARE_DEBUG__
+            debug("SIDT: catched error, returned false");
+        #endif
+        return false;
+    }
 
 
     /**
@@ -1028,7 +1093,11 @@ private:
                             is_vm = true;
                             break;
                         }
-                        __except (EXCEPTION_EXECUTE_HANDLER) {}
+                        __except (EXCEPTION_EXECUTE_HANDLER) {
+                            #ifdef __VMAWARE_DEBUG__
+                                debug("VMWARE_PORT: exception encountered for inline assembly");
+                            #endif
+                        }
                     }
 
                     if (is_vm) {
@@ -1044,7 +1113,12 @@ private:
 
             return false;
         #endif
-    } catch (...) { return false; }
+    } catch (...) { 
+        #ifdef __VMAWARE_DEBUG__
+            debug("VMWARE_PORT: catched error, returned false");
+        #endif
+        return false;
+    }
 
 
     /**
@@ -1064,7 +1138,12 @@ private:
         #endif
 
         return (std::thread::hardware_concurrency() <= 2);
-    } catch (...) { return false; }
+    } catch (...) { 
+        #ifdef __VMAWARE_DEBUG__
+            debug("THREADCOUNT: catched error, returned false");
+        #endif
+        return false;
+    }
     
 
     /**
@@ -1202,7 +1281,12 @@ private:
         }
 
         return false;
-    } catch (...) { return false; }
+    } catch (...) { 
+        #ifdef __VMAWARE_DEBUG__
+            debug("MAC: catched error, returned false");
+        #endif
+        return false;
+    }
 
 
     /**
@@ -1222,7 +1306,12 @@ private:
 
             return (!exists("/sys/class/thermal/thermal_zone0/"));
         #endif
-    } catch (...) { return false; }
+    } catch (...) { 
+        #ifdef __VMAWARE_DEBUG__
+            debug("TEMPERATURE: catched error, returned false");
+        #endif
+        return false;
+    }
 
 
     /**
@@ -1262,7 +1351,12 @@ private:
 
             return (*result != "none");
         #endif
-    } catch (...) { return false; }
+    } catch (...) { 
+        #ifdef __VMAWARE_DEBUG__
+            debug("SYSTEMD: catched error, returned false");
+        #endif
+        return false;
+    }
 
 
     /**
@@ -1300,7 +1394,12 @@ private:
 
             return false;
         #endif
-    } catch (...) { return false; }
+    } catch (...) { 
+        #ifdef __VMAWARE_DEBUG__
+            debug("CVENDOR: catched error, returned false");
+        #endif
+        return false;
+    }
 
 
     /**
@@ -1330,7 +1429,12 @@ private:
 
             return false;
         #endif
-    } catch (...) { return false; }
+    } catch (...) { 
+        #ifdef __VMAWARE_DEBUG__
+            debug("CTYPE: catched error, returned false");
+        #endif
+        return false;
+    }
 
 
     /**
@@ -1350,7 +1454,12 @@ private:
 
             return (exists("/.dockerenv") || exists("/.dockerinit"));
         #endif
-    } catch (...) { return false; }
+    } catch (...) { 
+        #ifdef __VMAWARE_DEBUG__
+            debug("DOCKERENV: catched error, returned false");
+        #endif
+        return false;
+    }
 
 
     /**
@@ -1398,7 +1507,12 @@ private:
 
             return false;
         #endif
-    } catch (...) { return false; }
+    } catch (...) { 
+        #ifdef __VMAWARE_DEBUG__
+            debug("DMIDECODE: catched error, returned false");
+        #endif
+        return false;
+    }
 
 
     /**
@@ -1423,7 +1537,6 @@ private:
                 return false;
             }
 
-
             const std::unique_ptr<std::string> result = sys_result("dmesg | grep -i hypervisor | grep -c \"KVM|QEMU\"");
 
             if (*result == "" || result == nullptr) {
@@ -1442,7 +1555,12 @@ private:
 
             return false;
         #endif
-    } catch (...) { return false; }
+    } catch (...) { 
+        #ifdef __VMAWARE_DEBUG__
+            debug("DMESG: catched error, returned false");
+        #endif
+        return false;
+    }
 
 
     /**
@@ -1462,7 +1580,12 @@ private:
 
             return (!exists("/sys/class/hwmon/"));
         #endif
-    } catch (...) { return false; }
+    } catch (...) { 
+        #ifdef __VMAWARE_DEBUG__
+            debug("HWMON: catched error, returned false");
+        #endif
+        return false;
+    }
     
 
     // [[nodiscard]] static bool dmi_check() try {
@@ -1587,12 +1710,17 @@ private:
             key("Xen HVM", "HKLM\\SYSTEM\\ControlSet001\\Services\\xenvdb");
 
             #ifdef __VMAWARE_DEBUG__
-                debug("REGISTRY: ", "score = ", score);
+                debug("REGISTRY: ", "score = ", static_cast<u32>(score));
             #endif
 
             return (score >= 1);
         #endif
-    } catch (...) { return false; }
+    } catch (...) { 
+        #ifdef __VMAWARE_DEBUG__
+            debug("REGISTRY: catched error, returned false");
+        #endif
+        return false;
+    }
 
 
     /**
@@ -1627,7 +1755,12 @@ private:
                 (u == "currentuser")  // Normal
             );
         #endif
-    } catch (...) { return false; }
+    } catch (...) { 
+        #ifdef __VMAWARE_DEBUG__
+            debug("USER: catched error, returned false");
+        #endif
+        return false;
+    }
 
 
     /**
@@ -1648,7 +1781,12 @@ private:
 
             return (exists("C:\\analysis"));
         #endif
-    } catch (...) { return false; }
+    } catch (...) { 
+        #ifdef __VMAWARE_DEBUG__
+            debug("SUNBELT: catched error, returned false");
+        #endif
+        return false;
+    }
 
 
     /**
@@ -1703,7 +1841,12 @@ private:
 
             return false;
         #endif
-    } catch (...) { return false; }
+    } catch (...) { 
+        #ifdef __VMAWARE_DEBUG__
+            debug("DLL: catched error, returned false");
+        #endif
+        return false;
+    }
 
 
     /**
@@ -1730,7 +1873,12 @@ private:
 
             return false;
         #endif
-    } catch (...) { return false; }
+    } catch (...) { 
+        #ifdef __VMAWARE_DEBUG__
+            debug("VBOX_REG: catched error, returned false");
+        #endif
+        return false;
+    }
 
 
     /**
@@ -1749,23 +1897,27 @@ private:
                 return false;
             }
 
-            return false; // TODO: fix
-            /*
-
             HKEY hKey = 0;
-            DWORD dwType = REG_SZ;
             char buf[0xFF] = {0};
             DWORD dwBufSize = sizeof(buf);
-            bool result = (RegOpenKeyEx(TEXT("SOFTWARE\\VMware, Inc.\\VMware Tools"), 0, KEY_QUERY_VALUE, &hKey) == ERROR_SUCCESS);
-
+            const bool result = (RegOpenKeyEx(TEXT("SOFTWARE\\VMware, Inc.\\VMware Tools"), 0, KEY_QUERY_VALUE, &hKey) == ERROR_SUCCESS);
+            
+            #ifdef __VMAWARE_DEBUG__
+                debug("VMWARE_REG: result = ", result);
+            #endif
+            
             if (result == true) {
                 return add(VMWARE);
             }
 
             return result;
-            */
         #endif
-    } catch (...) { return false; }
+    } catch (...) {
+        #ifdef __VMAWARE_DEBUG__
+            debug("VMWARE_REG: catched error, returned false");
+        #endif
+        return false;
+    }
 
 
     /**
@@ -1788,12 +1940,32 @@ private:
 
             POINT pos1, pos2;
             GetCursorPos(&pos1);
+
+            #ifdef __VMAWARE_DEBUG__
+                debug("CURSOR: pos1.x = ", pos1.x);
+                debug("CURSOR: pos1.y = ", pos1.y);
+                debug("CURSOR: pos2.x = ", pos2.x);
+                debug("CURSOR: pos2.y = ", pos2.y);
+            #endif
+            
             Sleep(5000);
             GetCursorPos(&pos2);
 
+            #ifdef __VMAWARE_DEBUG__
+                debug("CURSOR: pos1.x = ", pos1.x);
+                debug("CURSOR: pos1.y = ", pos1.y);
+                debug("CURSOR: pos2.x = ", pos2.x);
+                debug("CURSOR: pos2.y = ", pos2.y);
+            #endif
+
             return ((pos1.x == pos2.x) && (pos1.y == pos2.y));
         #endif
-    } catch (...) { return false; }
+    } catch (...) { 
+        #ifdef __VMAWARE_DEBUG__
+            debug("CURSOR: catched error, returned false");
+        #endif
+        return false; 
+    }
 
 
     /**
@@ -1822,7 +1994,12 @@ private:
 
             return false;
         #endif
-    } catch (...) { return false; }
+    } catch (...) { 
+        #ifdef __VMAWARE_DEBUG__
+            debug("WINE_CHECK: catched error, returned false");
+        #endif
+        return false;
+    }
 
 
     /**
@@ -1854,7 +2031,12 @@ private:
         #endif
 
         return false;
-    } catch (...) { return false; }
+    } catch (...) { 
+        #ifdef __VMAWARE_DEBUG__
+            debug("BOOT: catched error, returned false");
+        #endif
+        return false;
+    }
 
 
     /**
@@ -1913,12 +2095,23 @@ private:
                     const auto regex = std::regex(file, std::regex::icase);
 
                     if (std::regex_search("vbox", regex)) {
+                        #ifdef __VMAWARE_DEBUG__
+                            debug("VM_FILES: found vbox file = ", file);
+                        #endif
                         vbox++;
                     } else {
+                        #ifdef __VMAWARE_DEBUG__
+                            debug("VM_FILES: found vmware file = ", file);
+                        #endif
                         vmware++;
                     }
                 }
             }
+
+            #ifdef __VMAWARE_DEBUG__
+                debug("VM_FILES: vmware score: ", vmware);
+                debug("VM_FILES: vbox score: ", vbox);
+            #endif
 
             if (vbox > vmware) {
                 return add(VBOX);
@@ -1930,7 +2123,12 @@ private:
 
             return false;
         #endif
-    } catch (...) { return false; }
+    } catch (...) { 
+        #ifdef __VMAWARE_DEBUG__
+            debug("VM_FILES: catched error, returned false");
+        #endif
+        return false;
+    }
 
 
     /**
@@ -1977,7 +2175,12 @@ private:
 
             return true;
         #endif
-    } catch (...) { return false; }
+    } catch (...) { 
+        #ifdef __VMAWARE_DEBUG__
+            debug("HWMODEL: catched error, returned false");
+        #endif
+        return false;
+    }
 
 
     /**
@@ -1995,10 +2198,20 @@ private:
                 return false;
             }
 
-            return (get_disk_size() <= 50); // 50 GB
-        #endif
-     } catch (...) { return false;}
+            const u32 size = get_disk_size();
 
+            #ifdef __VMAWARE_DEBUG__
+                debug("DISK_SIZE: size = ", size);
+            #endif
+
+            return (size <= 60); // in GB
+        #endif
+     } catch (...) { 
+        #ifdef __VMAWARE_DEBUG__
+            debug("DISK_SIZE: catched error, returned false");
+        #endif
+        return false;
+    }
 
 
     /**
@@ -2022,7 +2235,15 @@ private:
         const u32 disk = get_disk_size();
         const u64 ram = get_physical_ram_size();
 
+        #ifdef __VMAWARE_DEBUG__
+            debug("VBOX_DEFAULT: disk = ", disk);
+            debug("VBOX_DEFAULT: ram = ", ram);
+        #endif
+
         if ((disk > 80) || (ram > 4)) {
+            #ifdef __VMAWARE_DEBUG__
+                debug("VBOX_DEFAULT: returned false due to lack of precondition spec comparisons");
+            #endif
             return false;
         }
  
@@ -2045,6 +2266,10 @@ private:
             };
 
             const std::string distro = get_distro();
+
+            #ifdef __VMAWARE_DEBUG__
+                debug("VBOX_DEFAULT: linux, detected distro: ", distro);
+            #endif
 
             // yoda notation ftw
             if ("unknown" == distro) {
@@ -2084,22 +2309,36 @@ private:
             
             // less than windows 10
             if (ret < 10) {
+                #ifdef __VMAWARE_DEBUG__
+                    debug("VBOX_DEFAULT: less than windows 10 detected");
+                #endif
                 return false;
             }
 
             // windows 10
             if (10 == ret) {
+                #ifdef __VMAWARE_DEBUG__
+                    debug("VBOX_DEFAULT: windows 10 detected");
+                #endif
                 return ((50 == disk) && (2 == ram));
             }
 
             // windows 11
             if (11 == ret) {
+                #ifdef __VMAWARE_DEBUG__
+                    debug("VBOX_DEFAULT: windows 11 detected");
+                #endif
                 return ((80 == disk) && (4 == ram));
             }
         #endif
 
         return false;
-    } catch (...) { return false; }
+    } catch (...) { 
+        #ifdef __VMAWARE_DEBUG__
+            debug("VBOX_DEFAULT: catched error, returned false");
+        #endif
+        return false;
+    }
 
     /**
      * @brief check if there are any user inputs
@@ -2152,7 +2391,12 @@ private:
             return FALSE;
         #endif
         */
-    } catch (...) { return false; }
+    } catch (...) { 
+        #ifdef __VMAWARE_DEBUG__
+            debug("VBOX_NETWORK: catched error, returned false");
+        #endif
+        return false;
+    }
 
 
     /**
@@ -2177,12 +2421,28 @@ private:
             };
 
             if (compare("InsideTm") || compare("TU-4NH09SMCG1HC")) { // anubis
+                #ifdef __VMAWARE_DEBUG__
+                    debug("COMPUTER_NAME: detected Anubis";);
+                #endif
+
                 return add(ANUBIS);
             }
 
-            return (compare("klone_x64-pc") || compare("tequilaboomboom")); // general
+            if (compare("klone_x64-pc") || compare("tequilaboomboom")) { // general
+                #ifdef __VMAWARE_DEBUG__
+                    debug("COMPUTER_NAME: detected general (VM but unknown)");
+                #endif
+
+                return true;
+            }
         #endif
-    } catch (...) { return false; }
+    } catch (...) { 
+        #ifdef __VMAWARE_DEBUG__
+            debug("COMPUTER_NAME: catched error, returned false");
+        #endif
+
+        return false;
+    }
 
 
     /**
@@ -2202,9 +2462,20 @@ private:
             std::vector<u8> dns_host_name(out_length, 0);
             GetComputerNameExA(ComputerNameDnsHostname, (LPSTR)dns_host_name.data(), (LPDWORD)&out_length);
 
+            #ifdef __VMAWARE_DEBUG__
+                debug("HOSTNAME: ", (LPCSTR)dns_host_name.data());
+            #endif
+
             return (!lstrcmpiA((LPCSTR)dns_host_name.data(), "SystemIT"));
         #endif
-    } catch (...) { return false; }
+    } catch (...) {
+        #ifdef __VMAWARE_DEBUG__
+            debug("HOSTNAME: catched error, returned false");
+        #endif
+
+        return false;
+    }
+
 
     /**
      * @brief Check if memory is too low
@@ -2218,8 +2489,19 @@ private:
 
         constexpr u64 min_ram_1gb = (1024LL * (1024LL * (1024LL * 1LL)));
         const u64 ram = get_memory_space();
+
+        #ifdef __VMAWARE_DEBUG__
+            debug("MEMORY: ram size (GB) = ", ram);
+            debug("MEMORY: minimum ram size (GB) = ", min_ram_1gb);
+        #endif
+
         return (ram < min_ram_1gb);
-    } catch (...) { return false; }
+    } catch (...) { 
+        #ifdef __VMAWARE_DEBUG__
+            debug("MEMORY: catched error, returned false");
+        #endif
+        return false; 
+    }
 
 
     /**
@@ -2260,20 +2542,27 @@ private:
                 return present;
             };
 
+            auto ret = [](const char* str) -> bool {
+                #ifdef __VMAWARE_DEBUG__
+                    debug("VM_PROCESSES: found ", str);
+                #endif
+                return add(str);
+            };
+
             if (check_proc("joeboxserver.exe") || check_proc("joeboxcontrol.exe")) {
-                return add(JOEBOX);
+                return ret(JOEBOX);
             }
 
             if (check_proc("prl_cc.exe") || check_proc("prl_tools.exe")) {
-                return add(PARALLELS);
+                return ret(PARALLELS);
             }
 
             if (check_proc("vboxservice.exe") || check_proc("vboxtray.exe")) {
-                return add(VBOX);
+                return ret(VBOX);
             }
 
             if (check_proc("vmsrvc.exe") || check_proc("vmusrvc.exe")) {
-                return add(VPC);
+                return ret(VPC);
             }
 
             if (
@@ -2284,16 +2573,54 @@ private:
                 check_proc("vmware.exe") ||
                 check_proc("vmount2.exe")
             ) {
-                return add(VMWARE);
+                return ret(VMWARE);
             }
 
             if (check_proc("xenservice.exe") || check_proc("xsvc_depriv.exe")) {
-                return add(XEN);
+                return ret(XEN);
             }
 
             return false;
         #endif
-    } catch (...) { return false; }
+    } catch (...) { 
+        #ifdef __VMAWARE_DEBUG__
+            debug("VM_PROCESSES: catched error, returned false");
+        #endif
+        return false;
+    }
+
+
+    /**
+     * @brief Check for default VM username and hostname for linux
+     * @category Linux
+     */ 
+    [[nodiscard]] static bool linux_user_host() try {
+        if (disabled(LINUX_USER_HOST)) {
+            return false;
+        }
+
+        #if (!LINUX)
+            return false;
+        #else
+            const char* username = std::getenv("USER");
+            const char* hostname = std::getenv("HOSTNAME");
+
+            #ifdef __VMAWARE_DEBUG__
+                debug("LINUX_USER_HOST: user = ", username);
+                debug("LINUX_USER_HOST: host = ", hostname);
+            #endif
+
+            return (
+                (strcmp(username, "liveuser") == 0) &&
+                (strcmp(hostname, "localhost-live") == 0)
+            );
+        #endif
+    } catch (...) {
+        #ifdef __VMAWARE_DEBUG__
+            debug("LINUX_USER_HOST: catched error, returned false");
+        #endif
+        return false; 
+    }
 
 
     // __LABEL  (ignore this, it's just a label so I can easily teleport to this line on my IDE with CTRL+F)
@@ -2568,7 +2895,8 @@ const std::map<VM::u64, VM::technique> VM::table = {
     { VM::COMPUTER_NAME, { 40, VM::computer_name_match }},
     { VM::HOSTNAME, { 25, VM::hostname_match }},
     { VM::MEMORY, { 35, VM::low_memory_space }},
-    { VM::VM_PROCESSES, { 30, VM::vm_processes }}
+    { VM::VM_PROCESSES, { 30, VM::vm_processes }},
+    { VM::LINUX_USER_HOST, { 35, VM::linux_user_host }}
 
     // { VM::, { ,  }}
     // ^ line template for personal use

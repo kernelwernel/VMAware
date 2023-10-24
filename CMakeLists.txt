@@ -68,7 +68,7 @@ enable_testing()
 # add executable
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin")
 add_executable(${TARGET} "src/cli.cpp")
-set_property(TARGET ${TARGET} PROPERTY CXX_STANDARD 20)
+set_property(TARGET ${TARGET} PROPERTY CXX_STANDARD 11)
 set_property(TARGET ${TARGET} PROPERTY CXX_STANDARD_REQUIRED ON)
 add_test(Test_1, "${CMAKE_SOURCE_DIR}/bin/${TARGET}")
 
