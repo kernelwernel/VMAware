@@ -14,7 +14,7 @@ It utilises a comprehensive list of low-level and high-level anti-VM techniques 
 The library is:
 - Very easy to use, with only 3 functions in its public interface
 - Very flexible with fine-grained control
-- Cross-platform (NOTE: MSVC IS NOT EFFECTIVE FOR NOW)
+- Cross-platform (NOTE: MACOS AND MSVC ARE NOT EFFECTIVE FOR NOW)
 - Header-only
 - Available with C++11 and above
 - Able to detect VMware, VirtualBox, QEMU, KVM, Parallels, and much more
@@ -84,7 +84,7 @@ You can view the full docs [here](docs/documentation.md). Trust me, it's not too
 > This project is not soliciting the development of malware for any malicious intentions. Even if you intend to use it that way, it'll most likely be flagged by antiviruses anyway.
 
 - When will a 1.0 be available?
-> Pretty soon, maybe around November (I just started university very recently, so I can't guarantee anything)
+> Pretty soon, maybe around mid November (I just started university very recently, so I can't guarantee anything)
 
 
 ## Issues and pull requests 📬
