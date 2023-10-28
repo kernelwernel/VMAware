@@ -76,6 +76,7 @@
 #endif
 #ifdef __VMAWARE_DEBUG__
     #include <iomanip>
+    #include <ios>
 #endif
 #if (CPP < 11 && !MSVC)
     #error "VMAware only supports C++11 or above, set your compiler flag to '-std=c++20' for GCC/clang, or '/std:c++20' for MSVC"
@@ -223,30 +224,6 @@ private:
         static std::map<const char*, u8> scoreboard;
     #endif
 
-    // check if cpuid is supported
-    [[nodiscard]] static bool check_cpuid(void) {
-        #if \
-        ( \
-            !defined(__x86_64__) && \
-            !defined(__i386__) && \
-            !defined(_M_IX86) && \
-            !defined(_M_X64) \
-        )
-            return false;
-        #endif
-
-        #if (MSVC)
-            i32 info[4];
-            __cpuid(info, 0);
-            return (info[0] >= 1);
-        #elif (LINUX)
-            u32 ext = 0;
-            return (__get_cpuid_max(ext, nullptr) > 0);
-        #else
-            return false;
-        #endif
-    }
-
     // cross-platform wrapper function for linux and MSVC cpuid
     static void cpuid
     (
@@ -313,6 +290,9 @@ private:
             constexpr const char* bold = "\033[1m";
             constexpr const char* blue = "\x1B[38;2;00;59;193m";
             constexpr const char* ansiexit = "\x1B[0m";
+
+            std::cout.setf(std::ios::fixed, std::ios::floatfield);
+            std::cout.setf(std::ios::showpoint);
 
             std::cout << black_bg << bold << "[" << blue << "DEBUG" << ansiexit << bold << black_bg << "]" << ansiexit << " ";
             ((std::cout << message),...);
@@ -738,7 +718,7 @@ private:
             }
 
             #ifdef __VMAWARE_DEBUG__
-                debug("BRAND: ", "matches: ", static_cast<u32>(matches));
+                debug("BRAND: ", "matches: ", static_cast<u32>(match_count));
             #endif
 
             return (match_count >= 1);
@@ -1153,7 +1133,6 @@ private:
             #ifdef __VMAWARE_DEBUG__
                 debug("MAC: ", "precondition return called");
             #endif
-
             return false;
         }
 
@@ -2740,7 +2719,6 @@ public:
         }
 
         // set local variables within struct scope
-        VM::cpuid_supported = check_cpuid();
         VM::flags = p_flags;
 
         u8 points = 0;
@@ -2852,8 +2830,29 @@ public:
 
 
 VM::u64 VM::flags = 0;
-bool VM::cpuid_supported = false;
 std::map<bool, std::pair<bool, const char*>> VM::memo;
+bool VM::cpuid_supported = []() -> bool {
+    #if \
+    ( \
+        !defined(__x86_64__) && \
+        !defined(__i386__) && \
+        !defined(_M_IX86) && \
+        !defined(_M_X64) \
+    )
+        return false;
+    #endif
+
+    #if (MSVC)
+        i32 info[4];
+        __cpuid(info, 0);
+        return (info[0] >= 1);
+    #elif (LINUX)
+        u32 ext = 0;
+        return (__get_cpuid_max(ext, nullptr) > 0);
+    #else
+        return false;
+    #endif
+}();
 
 
 const std::map<VM::u64, VM::technique> VM::table = {

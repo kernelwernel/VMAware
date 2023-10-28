@@ -58,10 +58,19 @@ However, if you want the full project (globally accessible headers with <vmaware
 ```bash
 git clone https://github.com/kernelwernel/VMAware 
 cd VMAware
+```
+
+```bash
+# FOR LINUX
 mkdir build
 cd build
 cmake ..
 sudo make install
+```
+
+```bash
+# FOR WINDOWS
+cmake -S . -B build/ -G "Visual Studio 16 2019"
 ```
 > NOTE: I'm most likely going to change my username in the future. If the github link doesn't exist, search for the VMAware project and you should find it.
 
