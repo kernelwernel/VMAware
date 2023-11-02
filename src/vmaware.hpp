@@ -1085,7 +1085,8 @@ private:
             #endif
 
             if (is_vm) {
-                scoreboard[VMWARE] += 2; // extra point bc it's incredibly VMware-specific
+                scoreboard[VMWARE]++; 
+                //scoreboard[VMWARE]++; // extra point bc it's incredibly VMware-specific, also it's not += 2 since that causes a linker error for some reason?
                 return true;
             }
 
@@ -2394,12 +2395,16 @@ private:
             GetComputerNameA((LPSTR)comp_name.data(), (LPDWORD)&out_length);
 
             auto compare = [&](const std::string &s) -> bool {
-                return !lstrcmpiA((LPCSTR)comp_name.data(), s.c_str());
+                return (std::strcmp((LPCSTR)comp_name.data(), s.c_str()) == 0);
             };
+
+            #ifdef __VMAWARE_DEBUG__
+                debug("COMPUTER_NAME: fetched = ", (LPCSTR)comp_name.data());
+            #endif
 
             if (compare("InsideTm") || compare("TU-4NH09SMCG1HC")) { // anubis
                 #ifdef __VMAWARE_DEBUG__
-                    debug("COMPUTER_NAME: detected Anubis";);
+                    debug("COMPUTER_NAME: detected Anubis");
                 #endif
 
                 return add(ANUBIS);
@@ -2729,7 +2734,7 @@ public:
     
         for (auto it = table.cbegin(); it != table.cend(); ++it) {
             const technique &pair = it->second;
-            if (pair.ptr()) {
+            if (pair.ptr()) { // equivalent to std::invoke, not used bc of C++11 compatibility
                 points += pair.points;
             };
         }
@@ -2831,6 +2836,8 @@ public:
 
 VM::u64 VM::flags = 0;
 std::map<bool, std::pair<bool, const char*>> VM::memo;
+
+
 bool VM::cpuid_supported = []() -> bool {
     #if \
     ( \
@@ -2884,12 +2891,12 @@ const std::map<VM::u64, VM::technique> VM::table = {
     { VM::SUNBELT, { 10, VM::sunbelt_check }},
     { VM::WINE_CHECK, { 85, VM::wine }},
     { VM::BOOT, { 5, VM::boot_time }},
-    { VM::VM_FILES, { 80, VM::vm_files }},
+    { VM::VM_FILES, { 20, VM::vm_files }},
     { VM::HWMODEL, { 75, VM::hwmodel }},
     { VM::DISK_SIZE, { 60, VM::disk_size }},
     { VM::VBOX_DEFAULT, { 55, VM::vbox_default_specs }},
     { VM::VBOX_NETWORK, { 70, VM::vbox_network_share }},
-    { VM::COMPUTER_NAME, { 40, VM::computer_name_match }},
+    { VM::COMPUTER_NAME, { 15, VM::computer_name_match }},
     { VM::HOSTNAME, { 25, VM::hostname_match }},
     { VM::MEMORY, { 35, VM::low_memory_space }},
     { VM::VM_PROCESSES, { 30, VM::vm_processes }},

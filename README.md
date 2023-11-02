@@ -52,7 +52,7 @@ This project also provides a tiny, but handy CLI tool utilising the full potenti
 
 
 ## Installation 📥
-To install the library, simply download or copy and paste the [vmaware.hpp](src/vmaware.hpp) file to your project. No CMake or build frameworks are necessary, it's literally that simple.
+To install the library, download or copy and paste the [vmaware.hpp](src/vmaware.hpp) file to your project. No CMake or shared object linkages are necessary, it's literally that simple.
 
 However, if you want the full project (globally accessible headers with <vmaware.hpp> and the CLI tool), follow these commands:
 ```bash
