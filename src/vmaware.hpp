@@ -1876,8 +1876,6 @@ private:
             }
 
             HKEY hKey;
-            char buf[0xFF] = {0};
-            DWORD dwBufSize = sizeof(buf);
             bool result = (RegOpenKeyEx(HKEY_LOCAL_MACHINE, "SOFTWARE\\VMware, Inc.\\VMware Tools", 0, KEY_QUERY_VALUE, &hKey) == ERROR_SUCCESS);
             
             #ifdef __VMAWARE_DEBUG__
@@ -2417,6 +2415,8 @@ private:
 
                 return true;
             }
+
+            return false;
         #endif
     } catch (...) { 
         #ifdef __VMAWARE_DEBUG__
