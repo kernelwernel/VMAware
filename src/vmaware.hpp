@@ -168,12 +168,8 @@ private:
 
     // check if file exists
     #if (MSVC)
-        [[nodiscard]] static bool exists(LPCSTR path) {
-            GetFileAttributes(path);
-            return (!(
-                (INVALID_FILE_ATTRIBUTES == GetFileAttributes(path)) && 
-                (GetLastError() == ERROR_FILE_NOT_FOUND)
-            ));
+        [[nodiscard]] static bool exists(LPCWSTR path) {
+            return (GetFileAttributesW(path) != INVALID_FILE_ATTRIBUTES) || (GetLastError() != ERROR_FILE_NOT_FOUND);
         }
     #else
         [[nodiscard]] static bool exists(const char* path) {
@@ -1596,10 +1592,17 @@ private:
                 LONG ret;
                 BOOL isWow64 = FALSE;
 
-                if (IsWow64Process(GetCurrentProcess(), &isWow64) && isWow64) { 
-                    ret = RegOpenKeyEx(HKEY_LOCAL_MACHINE, regkey_s, 0, KEY_READ | KEY_WOW64_64KEY, &regkey);
-                } else { 
-                    ret = RegOpenKeyEx(HKEY_LOCAL_MACHINE, regkey_s, 0, KEY_READ, &regkey);
+                if (IsWow64Process(GetCurrentProcess(), &isWow64) && isWow64) {
+                    wchar_t wRegKey[MAX_PATH];
+                    MultiByteToWideChar(CP_ACP, 0, regkey_s, -1, wRegKey, MAX_PATH);
+
+                    ret = RegOpenKeyEx(HKEY_LOCAL_MACHINE, wRegKey, 0, KEY_READ | KEY_WOW64_64KEY, &regkey);
+                }
+                else {
+                    wchar_t wRegKey[MAX_PATH];
+                    MultiByteToWideChar(CP_ACP, 0, regkey_s, -1, wRegKey, MAX_PATH);
+
+                    ret = RegOpenKeyEx(HKEY_LOCAL_MACHINE, wRegKey, 0, KEY_READ, &regkey);
                 }
 
                 if (ret == ERROR_SUCCESS) {
@@ -1720,7 +1723,7 @@ private:
             TCHAR user[UNLEN+1];
             DWORD user_len = UNLEN+1;
             GetUserName((TCHAR*)user, &user_len);
-            std::string u = user;
+            std::string u(user, user + user_len);
 
             #ifdef __VMAWARE_DEBUG__
                 debug("USER: ", "output = ", u);
@@ -1747,24 +1750,27 @@ private:
      * @category Windows
      */
     [[nodiscard]] static bool sunbelt_check() try {
-        #if (!MSVC)
+    #if (!MSVC)
             return false;
-        #else
+    #else
             if (disabled(SUNBELT)) {
-                #ifdef __VMAWARE_DEBUG__
-                    debug("SUNBELT: ", "precondition return called");
-                #endif
+    #ifdef __VMAWARE_DEBUG__
+                debug("SUNBELT: ", "precondition return called");
+    #endif
                 return false;
             }
 
-            return (exists("C:\\analysis"));
-        #endif
-    } catch (...) { 
-        #ifdef __VMAWARE_DEBUG__
+            // Use wide string literal
+            return exists(L"C:\\analysis");
+    #endif
+        }
+        catch (...) {
+    #ifdef __VMAWARE_DEBUG__
             debug("SUNBELT: catched error, returned false");
-        #endif
-        return false;
-    }
+    #endif
+            return false;
+        }
+
 
 
     /**
@@ -1865,35 +1871,38 @@ private:
      * @category Windows
      */
     [[nodiscard]] static bool vmware_registry() try {
-        #if (!MSVC)
+    #if (!MSVC)
             return false;
-        #else
+    #else
             if (disabled(VMWARE_REG)) {
-                #ifdef __VMAWARE_DEBUG__
-                    debug("VMWARE_REG: ", "precondition return called");
-                #endif
+    #ifdef __VMAWARE_DEBUG__
+                debug("VMWARE_REG: ", "precondition return called");
+    #endif
                 return false;
             }
 
             HKEY hKey;
-            bool result = (RegOpenKeyEx(HKEY_LOCAL_MACHINE, "SOFTWARE\\VMware, Inc.\\VMware Tools", 0, KEY_QUERY_VALUE, &hKey) == ERROR_SUCCESS);
-            
-            #ifdef __VMAWARE_DEBUG__
-                debug("VMWARE_REG: result = ", result);
-            #endif
-            
+            // Use wide string literal
+            bool result = (RegOpenKeyEx(HKEY_LOCAL_MACHINE, L"SOFTWARE\\VMware, Inc.\\VMware Tools", 0, KEY_QUERY_VALUE, &hKey) == ERROR_SUCCESS);
+
+    #ifdef __VMAWARE_DEBUG__
+            debug("VMWARE_REG: result = ", result);
+    #endif
+
             if (result == true) {
                 return add(VMWARE);
             }
 
             return result;
-        #endif
-    } catch (...) {
-        #ifdef __VMAWARE_DEBUG__
+    #endif
+        }
+        catch (...) {
+    #ifdef __VMAWARE_DEBUG__
             debug("VMWARE_REG: catched error, returned false");
-        #endif
-        return false;
-    }
+    #endif
+            return false;
+        }
+
 
 
     /**
@@ -1962,7 +1971,7 @@ private:
             }
 
             HMODULE k32;
-            k32 = GetModuleHandle("kernel32.dll");
+            k32 = GetModuleHandle(TEXT("kernel32.dll"));
 
             if (k32 != NULL) {
                 return (GetProcAddress(k32, "wine_get_unix_file_name") != NULL);
@@ -2034,55 +2043,56 @@ private:
             u8 vbox = 0;
             u8 vmware = 0;
 
-            constexpr std::array<const char*, 26> files = {
+            constexpr std::array<const wchar_t*, 26> files = {
                 // VMware
-                "C:\\windows\\System32\\Drivers\\Vmmouse.sys",
-                "C:\\windows\\System32\\Drivers\\vm3dgl.dll",
-                "C:\\windows\\System32\\Drivers\\vmdum.dll",
-                "C:\\windows\\System32\\Drivers\\VmGuestLibJava.dll",
-                "C:\\windows\\System32\\Drivers\\vm3dver.dll",
-                "C:\\windows\\System32\\Drivers\\vmtray.dll",
-                "C:\\windows\\System32\\Drivers\\VMToolsHook.dll",
-                "C:\\windows\\System32\\Drivers\\vmGuestLib.dll",
-                "C:\\windows\\System32\\Drivers\\vmhgfs.dll",
-                "C:\\windows\\System32\\Driversvmhgfs.dll",
-                
+                L"C:\\windows\\System32\\Drivers\\Vmmouse.sys",
+                L"C:\\windows\\System32\\Drivers\\vm3dgl.dll",
+                L"C:\\windows\\System32\\Drivers\\vmdum.dll",
+                L"C:\\windows\\System32\\Drivers\\VmGuestLibJava.dll",
+                L"C:\\windows\\System32\\Drivers\\vm3dver.dll",
+                L"C:\\windows\\System32\\Drivers\\vmtray.dll",
+                L"C:\\windows\\System32\\Drivers\\VMToolsHook.dll",
+                L"C:\\windows\\System32\\Drivers\\vmGuestLib.dll",
+                L"C:\\windows\\System32\\Drivers\\vmhgfs.dll",
+                L"C:\\windows\\System32\\Drivers\\vmhgfs.dll",  // Note: there's a typo in the original code
                 // VBox
-                "C:\\windows\\System32\\Drivers\\VBoxMouse.sys",
-                "C:\\windows\\System32\\Drivers\\VBoxGuest.sys",
-                "C:\\windows\\System32\\Drivers\\VBoxSF.sys",
-                "C:\\windows\\System32\\Drivers\\VBoxVideo.sys",
-                "C:\\windows\\System32\\vboxoglpackspu.dll",
-                "C:\\windows\\System32\\vboxoglpassthroughspu.dll",
-                "C:\\windows\\System32\\vboxservice.exe",
-                "C:\\windows\\System32\\vboxoglcrutil.dll",
-                "C:\\windows\\System32\\vboxdisp.dll",
-                "C:\\windows\\System32\\vboxhook.dll",
-                "C:\\windows\\System32\\vboxmrxnp.dll",
-                "C:\\windows\\System32\\vboxogl.dll",
-                "C:\\windows\\System32\\vboxtray.exe",
-                "C:\\windows\\System32\\VBoxControl.exe",
-                "C:\\windows\\System32\\vboxoglerrorspu.dll",
-                "C:\\windows\\System32\\vboxoglfeedbackspu.dll",
+                L"C:\\windows\\System32\\Drivers\\VBoxMouse.sys",
+                L"C:\\windows\\System32\\Drivers\\VBoxGuest.sys",
+                L"C:\\windows\\System32\\Drivers\\VBoxSF.sys",
+                L"C:\\windows\\System32\\Drivers\\VBoxVideo.sys",
+                L"C:\\windows\\System32\\vboxoglpackspu.dll",
+                L"C:\\windows\\System32\\vboxoglpassthroughspu.dll",
+                L"C:\\windows\\System32\\vboxservice.exe",
+                L"C:\\windows\\System32\\vboxoglcrutil.dll",
+                L"C:\\windows\\System32\\vboxdisp.dll",
+                L"C:\\windows\\System32\\vboxhook.dll",
+                L"C:\\windows\\System32\\vboxmrxnp.dll",
+                L"C:\\windows\\System32\\vboxogl.dll",
+                L"C:\\windows\\System32\\vboxtray.exe",
+                L"C:\\windows\\System32\\VBoxControl.exe",
+                L"C:\\windows\\System32\\vboxoglerrorspu.dll",
+                L"C:\\windows\\System32\\vboxoglfeedbackspu.dll",
             };
 
             for (const auto file : files) {
                 if (exists(file)) {
-                    const auto regex = std::regex(file, std::regex::icase);
+                    const auto regex = std::wregex(file, std::regex::icase);
 
-                    if (std::regex_search("vbox", regex)) {
-                        #ifdef __VMAWARE_DEBUG__
-                            debug("VM_FILES: found vbox file = ", file);
-                        #endif
+                    if (std::regex_search(L"vbox", regex)) {
+#ifdef __VMAWARE_DEBUG__
+                        debug("VM_FILES: found vbox file = ", file);
+#endif
                         vbox++;
-                    } else {
-                        #ifdef __VMAWARE_DEBUG__
-                            debug("VM_FILES: found vmware file = ", file);
-                        #endif
+                    }
+                    else {
+#ifdef __VMAWARE_DEBUG__
+                        debug("VM_FILES: found vmware file = ", file);
+#endif
                         vmware++;
                     }
                 }
             }
+
 
             #ifdef __VMAWARE_DEBUG__
                 debug("VM_FILES: vmware score: ", vmware);
@@ -2498,30 +2508,31 @@ private:
         #if (!MSVC)
             return false;
         #else
-            auto check_proc = [](const char* proc) -> bool {
-                HANDLE hSnapshot;
-                PROCESSENTRY32 pe = {};
+        auto check_proc = [](const WCHAR* proc) -> bool {
+            HANDLE hSnapshot;
+            PROCESSENTRY32 pe = {};
 
-                pe.dwSize = sizeof(pe);
-                bool present = false;
-                hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+            pe.dwSize = sizeof(pe);
+            bool present = false;
+            hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
 
-                if (hSnapshot == INVALID_HANDLE_VALUE) {
-                    return false;
-                }
+            if (hSnapshot == INVALID_HANDLE_VALUE) {
+                return false;
+            }
 
-                if (Process32First(hSnapshot, &pe)) {
-                    do {
-                        if (pe.szExeFile == proc) {
-                            present = true;
-                            break;
-                        }
-                    } while (Process32Next(hSnapshot, &pe));
-                }
-    
-                CloseHandle(hSnapshot);
+            if (Process32First(hSnapshot, &pe)) {
+                do {
+                    // Use wcscmp for wide string comparison
+                    if (wcscmp(pe.szExeFile, proc) == 0) {
+                        present = true;
+                        break;
+                    }
+                } while (Process32Next(hSnapshot, &pe));
+            }
 
-                return present;
+            CloseHandle(hSnapshot);
+
+            return present;
             };
 
             auto ret = [](const char* str) -> bool {
@@ -2531,34 +2542,34 @@ private:
                 return add(str);
             };
 
-            if (check_proc("joeboxserver.exe") || check_proc("joeboxcontrol.exe")) {
+            if (check_proc(L"joeboxserver.exe") || check_proc(L"joeboxcontrol.exe")) {
                 return ret(JOEBOX);
             }
 
-            if (check_proc("prl_cc.exe") || check_proc("prl_tools.exe")) {
+            if (check_proc(L"prl_cc.exe") || check_proc(L"prl_tools.exe")) {
                 return ret(PARALLELS);
             }
 
-            if (check_proc("vboxservice.exe") || check_proc("vboxtray.exe")) {
+            if (check_proc(L"vboxservice.exe") || check_proc(L"vboxtray.exe")) {
                 return ret(VBOX);
             }
 
-            if (check_proc("vmsrvc.exe") || check_proc("vmusrvc.exe")) {
+            if (check_proc(L"vmsrvc.exe") || check_proc(L"vmusrvc.exe")) {
                 return ret(VPC);
             }
 
             if (
-                check_proc("vmtoolsd.exe") ||
-                check_proc("vmacthlp.exe") ||
-                check_proc("vmwaretray.exe") ||
-                check_proc("vmwareuser.exe") ||
-                check_proc("vmware.exe") ||
-                check_proc("vmount2.exe")
-            ) {
+                check_proc(L"vmtoolsd.exe") ||
+                check_proc(L"vmacthlp.exe") ||
+                check_proc(L"vmwaretray.exe") ||
+                check_proc(L"vmwareuser.exe") ||
+                check_proc(L"vmware.exe") ||
+                check_proc(L"vmount2.exe")
+                ) {
                 return ret(VMWARE);
             }
 
-            if (check_proc("xenservice.exe") || check_proc("xsvc_depriv.exe")) {
+            if (check_proc(L"xenservice.exe") || check_proc(L"xsvc_depriv.exe")) {
                 return ret(XEN);
             }
 
