@@ -2285,7 +2285,17 @@ private:
             NTSTATUS(WINAPI *RtlGetVersion)(LPOSVERSIONINFOEXW);
             OSVERSIONINFOEXW osInfo;
 
-            *(FARPROC*)&RtlGetVersion = GetProcAddress(GetModuleHandleA("ntdll"), "RtlGetVersion");
+            HMODULE ntdllModule = GetModuleHandleA("ntdll");
+            if (ntdllModule != nullptr) {
+                *(FARPROC*)&RtlGetVersion = GetProcAddress(ntdllModule, "RtlGetVersion");
+
+                if (NULL != RtlGetVersion) {
+                }
+            }
+            else {
+            }
+
+            // Note: At this point, RtlGetVersion may be uninitialized if the previous block failed
 
             if (NULL != RtlGetVersion) {
                 osInfo.dwOSVersionInfoSize = sizeof(osInfo);
