@@ -4,7 +4,7 @@
  * ██║   ██║██╔████╔██║███████║██║ █╗ ██║███████║██████╔╝█████╗  
  * ╚██╗ ██╔╝██║╚██╔╝██║██╔══██║██║███╗██║██╔══██║██╔══██╗██╔══╝  
  *  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
- *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ beta version
+ *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ fixed by Requiem
  * 
  *  A C++ VM detection library
  * 
@@ -1596,13 +1596,13 @@ private:
                     wchar_t wRegKey[MAX_PATH];
                     MultiByteToWideChar(CP_ACP, 0, regkey_s, -1, wRegKey, MAX_PATH);
 
-                    ret = RegOpenKeyEx(HKEY_LOCAL_MACHINE, wRegKey, 0, KEY_READ | KEY_WOW64_64KEY, &regkey);
+                    ret = RegOpenKeyExW(HKEY_LOCAL_MACHINE, wRegKey, 0, KEY_READ | KEY_WOW64_64KEY, &regkey);
                 }
                 else {
                     wchar_t wRegKey[MAX_PATH];
                     MultiByteToWideChar(CP_ACP, 0, regkey_s, -1, wRegKey, MAX_PATH);
 
-                    ret = RegOpenKeyEx(HKEY_LOCAL_MACHINE, wRegKey, 0, KEY_READ, &regkey);
+                    ret = RegOpenKeyExW(HKEY_LOCAL_MACHINE, wRegKey, 0, KEY_READ, &regkey);
                 }
 
                 if (ret == ERROR_SUCCESS) {
@@ -1883,7 +1883,7 @@ private:
 
             HKEY hKey;
             // Use wide string literal
-            bool result = (RegOpenKeyEx(HKEY_LOCAL_MACHINE, L"SOFTWARE\\VMware, Inc.\\VMware Tools", 0, KEY_QUERY_VALUE, &hKey) == ERROR_SUCCESS);
+            bool result = (RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\VMware, Inc.\\VMware Tools", 0, KEY_QUERY_VALUE, &hKey) == ERROR_SUCCESS);
 
     #ifdef __VMAWARE_DEBUG__
             debug("VMWARE_REG: result = ", result);
@@ -2505,10 +2505,10 @@ private:
             return false;
         }
 
-        #if (!MSVC)
-            return false;
-        #else
-        auto check_proc = [](const WCHAR* proc) -> bool {
+#if (!MSVC)
+        return false;
+#else
+        auto check_proc = [](const char* proc) -> bool {
             HANDLE hSnapshot;
             PROCESSENTRY32 pe = {};
 
@@ -2522,8 +2522,8 @@ private:
 
             if (Process32First(hSnapshot, &pe)) {
                 do {
-                    // Use wcscmp for wide string comparison
-                    if (wcscmp(pe.szExeFile, proc) == 0) {
+                    // Use strcmp for narrow string comparison
+                    if (strcmp(pe.szExeFile, proc) == 0) {
                         present = true;
                         break;
                     }
@@ -2535,50 +2535,51 @@ private:
             return present;
             };
 
-            auto ret = [](const char* str) -> bool {
-                #ifdef __VMAWARE_DEBUG__
-                    debug("VM_PROCESSES: found ", str);
-                #endif
-                return add(str);
+        auto ret = [](const char* str) -> bool {
+#ifdef __VMAWARE_DEBUG__
+            debug("VM_PROCESSES: found ", str);
+#endif
+            return add(str);
             };
 
-            if (check_proc(L"joeboxserver.exe") || check_proc(L"joeboxcontrol.exe")) {
-                return ret(JOEBOX);
-            }
+        if (check_proc("joeboxserver.exe") || check_proc("joeboxcontrol.exe")) {
+            return ret("JOEBOX");
+        }
 
-            if (check_proc(L"prl_cc.exe") || check_proc(L"prl_tools.exe")) {
-                return ret(PARALLELS);
-            }
+        if (check_proc("prl_cc.exe") || check_proc("prl_tools.exe")) {
+            return ret("PARALLELS");
+        }
 
-            if (check_proc(L"vboxservice.exe") || check_proc(L"vboxtray.exe")) {
-                return ret(VBOX);
-            }
+        if (check_proc("vboxservice.exe") || check_proc("vboxtray.exe")) {
+            return ret("VBOX");
+        }
 
-            if (check_proc(L"vmsrvc.exe") || check_proc(L"vmusrvc.exe")) {
-                return ret(VPC);
-            }
+        if (check_proc("vmsrvc.exe") || check_proc("vmusrvc.exe")) {
+            return ret("VPC");
+        }
 
-            if (
-                check_proc(L"vmtoolsd.exe") ||
-                check_proc(L"vmacthlp.exe") ||
-                check_proc(L"vmwaretray.exe") ||
-                check_proc(L"vmwareuser.exe") ||
-                check_proc(L"vmware.exe") ||
-                check_proc(L"vmount2.exe")
-                ) {
-                return ret(VMWARE);
-            }
+        if (
+            check_proc("vmtoolsd.exe") ||
+            check_proc("vmacthlp.exe") ||
+            check_proc("vmwaretray.exe") ||
+            check_proc("vmwareuser.exe") ||
+            check_proc("vmware.exe") ||
+            check_proc("vmount2.exe")
+            ) {
+            return ret("VMWARE");
+        }
 
-            if (check_proc(L"xenservice.exe") || check_proc(L"xsvc_depriv.exe")) {
-                return ret(XEN);
-            }
+        if (check_proc("xenservice.exe") || check_proc("xsvc_depriv.exe")) {
+            return ret("XEN");
+        }
 
-            return false;
-        #endif
-    } catch (...) { 
-        #ifdef __VMAWARE_DEBUG__
-            debug("VM_PROCESSES: catched error, returned false");
-        #endif
+        return false;
+#endif
+    }
+    catch (...) {
+#ifdef __VMAWARE_DEBUG__
+        debug("VM_PROCESSES: caught error, returned false");
+#endif
         return false;
     }
 
