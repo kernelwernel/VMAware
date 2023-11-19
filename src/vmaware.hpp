@@ -2284,13 +2284,15 @@ private:
             OSVERSIONINFOEXW osInfo;
 
             HMODULE ntdllModule = GetModuleHandleA("ntdll");
-            if (ntdllModule != nullptr) {
-                *(FARPROC*)&RtlGetVersion = GetProcAddress(ntdllModule, "RtlGetVersion");
 
-                if (NULL != RtlGetVersion) {
-                }
+            if (ntdllModule == nullptr) {
+                return false;
             }
-            else {
+
+            *(FARPROC*)&RtlGetVersion = GetProcAddress(ntdllModule, "RtlGetVersion");
+
+            if (NULL == RtlGetVersion) {
+                return false;
             }
 
             // Note: At this point, RtlGetVersion may be uninitialized if the previous block failed
