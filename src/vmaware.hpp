@@ -2605,6 +2605,73 @@ private:
     }
 
 
+    /**
+     * @brief default vbox window class
+     * @category Windows
+     * @author Al-Khaser Project
+     */
+    [[nodiscard]] static bool vbox_window_class() try {
+        if disabled(VBOX_WINDOW_CLASS) {
+            return false;
+        }
+
+        #if (!MSVC)
+            return false;
+        #else
+            HWND hClass = FindWindow(_T("VBoxTrayToolWndClass"), NULL);
+            HWND hWindow = FindWindow(NULL, _T("VBoxTrayToolWnd"));
+
+            return (hClass || hWindow);
+    #endif
+    } catch (...) {
+        #ifdef __VMAWARE_DEBUG__
+            debug("VBOX_WINDOW_CLASS: catched error, returned false");
+        #endif
+        return false;
+    }
+
+
+    /**
+     * @brief get top-level default window level
+     * @category Windows
+     */
+    [[nodiscard]] static bool windows_number() try {
+        if (disabled(WINDOWS_NUMBER)) {
+            return false;
+        }
+
+        #if (!MSVC) 
+            return false;
+        #else
+            // this definitely doesn't fucking work
+            BOOL CALLBACK enumProc(HWND, LPARAM lParam)
+            {
+                if (LPDWORD pCnt = reinterpret_cast<LPDWORD>(lParam))
+                    *pCnt++;
+                return TRUE;
+            }
+
+            bool enumWindowsCheck(bool& detected)
+            {
+                DWORD winCnt = 0;
+
+                if (!EnumWindows(enumProc,LPARAM(&winCnt))) {
+                    std::cerr << "EnumWindows() failed\n";
+                    return false;
+                }
+
+                return winCnt < 10;
+            }
+        #endif
+    } catch (...) {
+        #ifdef __VMAWARE_DEBUG__
+            debug("WINDOWS_NUMBER: catched error, returned false");
+        #endif
+        return false;
+    }
+
+
+
     // __LABEL  (ignore this, it's just a label so I can easily teleport to this line on my IDE with CTRL+F)
 
 
