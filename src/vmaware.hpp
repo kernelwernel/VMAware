@@ -4,11 +4,12 @@
  * ██║   ██║██╔████╔██║███████║██║ █╗ ██║███████║██████╔╝█████╗  
  * ╚██╗ ██╔╝██║╚██╔╝██║██╔══██║██║███╗██║██╔══██║██╔══██╗██╔══╝  
  *  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
- *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ fixed by Requiem
+ *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ beta version
  * 
  *  A C++ VM detection library
  * 
  *  - Made by: @kernelwernel (https://github.com/kernelwernel)
+ *  - Contributed by @Requirem (https://github.com/NotRequiem)
  *  - Repository: https://github.com/kernelwernel/VMAware
  *  - Docs: https://github.com/kernelwernel/VMAware/docs/documentation.md
  *  - Full credits: https://github.com/kernelwernel/VMAware#credits
@@ -1750,26 +1751,25 @@ private:
      * @category Windows
      */
     [[nodiscard]] static bool sunbelt_check() try {
-    #if (!MSVC)
+        #if (!MSVC)
             return false;
-    #else
+        #else
             if (disabled(SUNBELT)) {
-    #ifdef __VMAWARE_DEBUG__
-                debug("SUNBELT: ", "precondition return called");
-    #endif
+                #ifdef __VMAWARE_DEBUG__
+                    debug("SUNBELT: ", "precondition return called");
+                #endif
                 return false;
             }
 
             // Use wide string literal
             return exists(L"C:\\analysis");
-    #endif
-        }
-        catch (...) {
-    #ifdef __VMAWARE_DEBUG__
+        #endif
+    } catch (...) {
+        #ifdef __VMAWARE_DEBUG__
             debug("SUNBELT: catched error, returned false");
-    #endif
-            return false;
-        }
+        #endif
+        return false;
+    }
 
 
 
@@ -1871,13 +1871,13 @@ private:
      * @category Windows
      */
     [[nodiscard]] static bool vmware_registry() try {
-    #if (!MSVC)
+        #if (!MSVC)
             return false;
-    #else
+        #else
             if (disabled(VMWARE_REG)) {
-    #ifdef __VMAWARE_DEBUG__
-                debug("VMWARE_REG: ", "precondition return called");
-    #endif
+                #ifdef __VMAWARE_DEBUG__
+                    debug("VMWARE_REG: ", "precondition return called");
+                #endif
                 return false;
             }
 
@@ -1885,23 +1885,22 @@ private:
             // Use wide string literal
             bool result = (RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\VMware, Inc.\\VMware Tools", 0, KEY_QUERY_VALUE, &hKey) == ERROR_SUCCESS);
 
-    #ifdef __VMAWARE_DEBUG__
-            debug("VMWARE_REG: result = ", result);
-    #endif
+            #ifdef __VMAWARE_DEBUG__
+                debug("VMWARE_REG: result = ", result);
+            #endif
 
             if (result == true) {
                 return add(VMWARE);
             }
 
             return result;
-    #endif
-        }
-        catch (...) {
-    #ifdef __VMAWARE_DEBUG__
+        #endif
+    } catch (...) {
+        #ifdef __VMAWARE_DEBUG__
             debug("VMWARE_REG: catched error, returned false");
-    #endif
-            return false;
-        }
+        #endif
+        return false;
+    }
 
 
 
@@ -2079,15 +2078,14 @@ private:
                     const auto regex = std::wregex(file, std::regex::icase);
 
                     if (std::regex_search(L"vbox", regex)) {
-#ifdef __VMAWARE_DEBUG__
-                        debug("VM_FILES: found vbox file = ", file);
-#endif
+                        #ifdef __VMAWARE_DEBUG__
+                            debug("VM_FILES: found vbox file = ", file);
+                        #endif
                         vbox++;
-                    }
-                    else {
-#ifdef __VMAWARE_DEBUG__
-                        debug("VM_FILES: found vmware file = ", file);
-#endif
+                    } else {
+                        #ifdef __VMAWARE_DEBUG__
+                            debug("VM_FILES: found vmware file = ", file);
+                        #endif
                         vmware++;
                     }
                 }
@@ -2515,81 +2513,80 @@ private:
             return false;
         }
 
-#if (!MSVC)
-        return false;
-#else
-        auto check_proc = [](const char* proc) -> bool {
-            HANDLE hSnapshot;
-            PROCESSENTRY32 pe = {};
+        #if (!MSVC)
+            return false;
+        #else
+            auto check_proc = [](const char* proc) -> bool {
+                HANDLE hSnapshot;
+                PROCESSENTRY32 pe = {};
 
-            pe.dwSize = sizeof(pe);
-            bool present = false;
-            hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+                pe.dwSize = sizeof(pe);
+                bool present = false;
+                hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
 
-            if (hSnapshot == INVALID_HANDLE_VALUE) {
-                return false;
-            }
+                if (hSnapshot == INVALID_HANDLE_VALUE) {
+                    return false;
+                }
 
-            if (Process32First(hSnapshot, &pe)) {
-                do {
-                    // Use strcmp for narrow string comparison
-                    if (strcmp(pe.szExeFile, proc) == 0) {
-                        present = true;
-                        break;
-                    }
-                } while (Process32Next(hSnapshot, &pe));
-            }
+                if (Process32First(hSnapshot, &pe)) {
+                    do {
+                        // Use strcmp for narrow string comparison
+                        if (strcmp(pe.szExeFile, proc) == 0) {
+                            present = true;
+                            break;
+                        }
+                    } while (Process32Next(hSnapshot, &pe));
+                }
 
-            CloseHandle(hSnapshot);
+                CloseHandle(hSnapshot);
 
-            return present;
+                return present;
             };
 
-        auto ret = [](const char* str) -> bool {
-#ifdef __VMAWARE_DEBUG__
-            debug("VM_PROCESSES: found ", str);
-#endif
-            return add(str);
+            auto ret = [](const char* str) -> bool {
+                #ifdef __VMAWARE_DEBUG__
+                    debug("VM_PROCESSES: found ", str);
+                #endif
+                return add(str);
             };
 
-        if (check_proc("joeboxserver.exe") || check_proc("joeboxcontrol.exe")) {
-            return ret("JOEBOX");
-        }
+            if (check_proc("joeboxserver.exe") || check_proc("joeboxcontrol.exe")) {
+                return ret(JOEBOX);
+            }
 
-        if (check_proc("prl_cc.exe") || check_proc("prl_tools.exe")) {
-            return ret("PARALLELS");
-        }
+            if (check_proc("prl_cc.exe") || check_proc("prl_tools.exe")) {
+                return ret(PARALLELS);
+            }
 
-        if (check_proc("vboxservice.exe") || check_proc("vboxtray.exe")) {
-            return ret("VBOX");
-        }
+            if (check_proc("vboxservice.exe") || check_proc("vboxtray.exe")) {
+                return ret(VBOX);
+            }
 
-        if (check_proc("vmsrvc.exe") || check_proc("vmusrvc.exe")) {
-            return ret("VPC");
-        }
+            if (check_proc("vmsrvc.exe") || check_proc("vmusrvc.exe")) {
+                return ret(VPC);
+            }
 
-        if (
-            check_proc("vmtoolsd.exe") ||
-            check_proc("vmacthlp.exe") ||
-            check_proc("vmwaretray.exe") ||
-            check_proc("vmwareuser.exe") ||
-            check_proc("vmware.exe") ||
-            check_proc("vmount2.exe")
-            ) {
-            return ret("VMWARE");
-        }
+            if (
+                check_proc("vmtoolsd.exe") ||
+                check_proc("vmacthlp.exe") ||
+                check_proc("vmwaretray.exe") ||
+                check_proc("vmwareuser.exe") ||
+                check_proc("vmware.exe") ||
+                check_proc("vmount2.exe")
+                ) {
+                return ret(VMWARE);
+            }
 
-        if (check_proc("xenservice.exe") || check_proc("xsvc_depriv.exe")) {
-            return ret("XEN");
-        }
+            if (check_proc("xenservice.exe") || check_proc("xsvc_depriv.exe")) {
+                return ret(XEN);
+            }
 
-        return false;
-#endif
-    }
-    catch (...) {
-#ifdef __VMAWARE_DEBUG__
-        debug("VM_PROCESSES: caught error, returned false");
-#endif
+            return false;
+        #endif
+    } catch (...) {
+        #ifdef __VMAWARE_DEBUG__
+            debug("VM_PROCESSES: caught error, returned false");
+        #endif
         return false;
     }
 
