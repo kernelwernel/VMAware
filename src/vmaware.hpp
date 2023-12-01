@@ -213,7 +213,6 @@ private:
     static constexpr const char* VPC = "Virtual PC";
     static constexpr const char* ANUBIS = "Anubis";
     static constexpr const char* JOEBOX = "JoeBox";
-    static constexpr const char* THREADEXPERT = "Thread Expert";
     
     // VM scoreboard table specifically for VM::brand()
     #if (MSVC)
@@ -520,9 +519,6 @@ public:
         MEMORY = 1ULL << 35,
         VM_PROCESSES = 1ULL << 36,
         LINUX_USER_HOST = 1ULL << 37,
-        WINDOWS_NUMBER = 1ULL << 38,
-        VBOX_WINDOW_CLASS = 1ULL << 39,
-        GAMARUE = 1ULL << 40,
 
         // settings
         NO_MEMO = 1ULL << 63,
@@ -2057,7 +2053,7 @@ private:
                 L"C:\\windows\\System32\\Drivers\\VMToolsHook.dll",
                 L"C:\\windows\\System32\\Drivers\\vmGuestLib.dll",
                 L"C:\\windows\\System32\\Drivers\\vmhgfs.dll",
-
+                L"C:\\windows\\System32\\Drivers\\vmhgfs.dll",  // Note: there's a typo in the original code
                 // VBox
                 L"C:\\windows\\System32\\Drivers\\VBoxMouse.sys",
                 L"C:\\windows\\System32\\Drivers\\VBoxGuest.sys",
@@ -2630,130 +2626,6 @@ private:
     }
 
 
-    /**
-     * @brief default vbox window class
-     * @category Windows
-     * @author Al-Khaser Project
-     */
-    [[nodiscard]] static bool vbox_window_class() try {
-        if (disabled(VBOX_WINDOW_CLASS)) {
-            return false;
-        }
-
-        #if (!MSVC)
-            return false;
-        #else
-            HWND hClass = FindWindow(_T("VBoxTrayToolWndClass"), NULL);
-            HWND hWindow = FindWindow(NULL, _T("VBoxTrayToolWnd"));
-
-            return (hClass || hWindow);
-    #endif
-    } catch (...) {
-        #ifdef __VMAWARE_DEBUG__
-            debug("VBOX_WINDOW_CLASS: catched error, returned false");
-        #endif
-        return false;
-    }
-
-
-    /**
-     * @brief get top-level default window level
-     * @category Windows
-     */
-    [[nodiscard]] static bool windows_number() try {
-        if (disabled(WINDOWS_NUMBER)) {
-            return false;
-        }
-
-        #if (!MSVC) 
-            return false;
-        #else
-            // this definitely doesn't fucking work
-            BOOL CALLBACK enumProc(HWND, LPARAM lParam)
-            {
-                if (LPDWORD pCnt = reinterpret_cast<LPDWORD>(lParam))
-                    *pCnt++;
-                return TRUE;
-            }
-
-            bool enumWindowsCheck(bool& detected)
-            {
-                DWORD winCnt = 0;
-
-                if (!EnumWindows(enumProc,LPARAM(&winCnt))) {
-                    std::cerr << "EnumWindows() failed\n";
-                    return false;
-                }
-
-                return winCnt < 10;
-            }
-        #endif
-    } catch (...) {
-        #ifdef __VMAWARE_DEBUG__
-            debug("WINDOWS_NUMBER: catched error, returned false");
-        #endif
-        return false;
-    }
-
-
-    /**
-     * @brief Gamarue ransomware check
-     * @category Windows 
-     */
-    [[nodiscard]] static bool gamarue_technique() try {
-        if (disabled(GAMARUE)) {
-            return false;
-        }
-
-        #if (!MSVC) 
-            return false;
-        #else
-            HKEY hOpen;
-            char *szBuff;
-            int iBuffSize;
-            HANDLE hMod;
-            BOOL bResult = FALSE;
-            LONG nRes;
-
-            szBuff (char*)calloc(512, sizeof(char));
-
-            hMod = GetModuleHandle("SbieDll.dll"); // Sandboxie
-            if (hMod != 0) {
-                return add(SANDBOXIE); 
-            }
-
-            hMod = GetModuleHandle("dbghelp.dll"); // Thread Expert
-            if (hMod != 0) {
-                return add(THREADEXPERT);
-            }
-
-            nRes = RegOpenKeyEz(HKEY_LOCAL_MACHINE, "Software\\Microsoft\\Windows\\CurrentVersion", 0L, KEY_QUERY_VALUE, &hOpen);
-            if (nRes == ERROR_SUCCESS) {
-                iBuffSize = SizeOf(szBuff);
-                nRes = RegQueryValueEx(hOpen, "ProductId", NULL, NULL (unsigned char*)szBuff, &iBuffsize);
-                if (nRes == ERROR_SUCCESS) {
-                    if (strcmp(szBuff, "55274-640-2673064-23950") == 0) { // joebox
-                        return add(JOEBOX);
-                    } else if (strcmp(szBuff, "76487-644-3177037-23510") == 0) {
-                        return true; // CW Sandbox
-                    } else if (strcmp(szBuff, "76487-337-8429955-22614") == 0) { // anubis
-                        return add(ANUBIS);
-                    } else {
-                        return false;
-                    }
-                }
-                RegCloseKey(hOpen);
-            }
-            return false;
-        #endif
-    } catch (...) {
-        #ifdef __VMAWARE_DEBUG__
-            debug("GAMARUE: catched error, returned false");
-        #endif
-        return false;
-    }
-
-
     // __LABEL  (ignore this, it's just a label so I can easily teleport to this line on my IDE with CTRL+F)
 
 
@@ -3049,9 +2921,7 @@ const std::map<VM::u64, VM::technique> VM::table = {
     { VM::HOSTNAME, { 25, VM::hostname_match }},
     { VM::MEMORY, { 35, VM::low_memory_space }},
     { VM::VM_PROCESSES, { 30, VM::vm_processes }},
-    { VM::LINUX_USER_HOST, { 35, VM::linux_user_host }},
-    { VM::VBOX_WINDOW_CLASS, { 15, VM::vbox_window_class }},
-    { VM::WINDOWS_NUMBER, { 20, VM::windows_number }}
+    { VM::LINUX_USER_HOST, { 35, VM::linux_user_host }}
 
     // { VM::, { ,  }}
     // ^ line template for personal use
