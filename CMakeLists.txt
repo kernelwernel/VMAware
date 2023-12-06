@@ -60,6 +60,11 @@ if(CMAKE_BUILD_TYPE MATCHES "Debug")
 endif()
 
 
+# CTest stuff
+include(CTest)
+enable_testing()
+
+
 # add executable
 add_executable(${TARGET} "src/cli.cpp")
 set_property(TARGET ${TARGET} PROPERTY CXX_STANDARD 20)
