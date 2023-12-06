@@ -213,6 +213,8 @@ private:
     static constexpr const char* VPC = "Virtual PC";
     static constexpr const char* ANUBIS = "Anubis";
     static constexpr const char* JOEBOX = "JoeBox";
+    static constexpr const char* THREADEXPERT = "Thread Expert";
+    static constexpr const char* CWSANDBOX = "CW Sandbox";
     
     // VM scoreboard table specifically for VM::brand()
     #if (MSVC)
