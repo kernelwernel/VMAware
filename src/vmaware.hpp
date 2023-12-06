@@ -74,6 +74,7 @@
 #endif
 #if (CPP >= 17)
     #include <bit>
+    #include <optional>
 #endif
 #ifdef __VMAWARE_DEBUG__
     #include <iomanip>
@@ -214,7 +215,9 @@ private:
     static constexpr const char* ANUBIS = "Anubis";
     static constexpr const char* JOEBOX = "JoeBox";
     static constexpr const char* THREADEXPERT = "Thread Expert";
-    
+    static constexpr const char* CWSANDBOX = "CW Sandbox";
+    static constexpr const char* UNKNOWN = "Unknown";
+
     // VM scoreboard table specifically for VM::brand()
     #if (MSVC)
         static std::map<const char*, int> scoreboard;
@@ -446,6 +449,7 @@ private:
 
     // memoize the value from VM::detect() in case it's ran again
     static std::map<bool, std::pair<bool, const char*>> memo;
+                //  ^ VM?           
 
     // cpuid check value
     static bool cpuid_supported;
@@ -1711,7 +1715,7 @@ private:
 
     /**
      * @brief checks for default usernames, often a sign of a VM 
-     * @author: Some guy in a russian underground forum from a screenshot I saw, idk I don't speak russian ¯\_(ツ)_/¯
+     * @author: some guy in a russian underground forum from a screenshot i saw, idk who he is but ty ¯\_(ツ)_/¯
      * @category Windows
      */ 
     [[nodiscard]] static bool user_check() try {     
@@ -1734,8 +1738,11 @@ private:
                 debug("USER: ", "output = ", u);
             #endif
 
+            if (u == "username") {
+                return add(THREADEXPERT);
+            }
+    
             return (
-                (u == "username") ||  // ThreadExpert
                 (u == "USER") ||      // Sandbox
                 (u == "user") ||      // Sandbox 2
                 (u == "currentuser")  // Normal
@@ -2646,8 +2653,12 @@ private:
             HWND hClass = FindWindow(_T("VBoxTrayToolWndClass"), NULL);
             HWND hWindow = FindWindow(NULL, _T("VBoxTrayToolWnd"));
 
-            return (hClass || hWindow);
-    #endif
+            if (hClass || hWindow) {
+                return add(VBOX);
+            }
+
+            return false;
+        #endif
     } catch (...) {
         #ifdef __VMAWARE_DEBUG__
             debug("VBOX_WINDOW_CLASS: catched error, returned false");
@@ -2661,6 +2672,8 @@ private:
      * @category Windows
      */
     [[nodiscard]] static bool windows_number() try {
+        return false; // TODO: FIX THIS SHIT
+        /*
         if (disabled(WINDOWS_NUMBER)) {
             return false;
         }
@@ -2687,6 +2700,7 @@ private:
 
             return (winCnt < 10);
         #endif
+        */
     } catch (...) {
         #ifdef __VMAWARE_DEBUG__
             debug("WINDOWS_NUMBER: catched error, returned false");
@@ -2699,7 +2713,7 @@ private:
      * @brief Gamarue ransomware check
      * @category Windows 
      */
-    [[nodiscard]] static bool gamarue_technique() try {
+    [[nodiscard]] static bool gamarue() try {
         if (disabled(GAMARUE)) {
             return false;
         }
@@ -2714,7 +2728,7 @@ private:
             BOOL bResult = FALSE;
             LONG nRes;
 
-            szBuff (char*)calloc(512, sizeof(char));
+            szBuff = (char*)calloc(512, sizeof(char));
 
             hMod = GetModuleHandle("SbieDll.dll"); // Sandboxie
             if (hMod != 0) {
@@ -2726,15 +2740,15 @@ private:
                 return add(THREADEXPERT);
             }
 
-            nRes = RegOpenKeyEz(HKEY_LOCAL_MACHINE, "Software\\Microsoft\\Windows\\CurrentVersion", 0L, KEY_QUERY_VALUE, &hOpen);
+            nRes = RegOpenKeyEx(HKEY_LOCAL_MACHINE, "Software\\Microsoft\\Windows\\CurrentVersion", 0L, KEY_QUERY_VALUE, &hOpen);
             if (nRes == ERROR_SUCCESS) {
-                iBuffSize = SizeOf(szBuff);
-                nRes = RegQueryValueEx(hOpen, "ProductId", NULL, NULL (unsigned char*)szBuff, &iBuffsize);
+                iBuffSize = sizeof(szBuff);
+                nRes = RegQueryValueEx(hOpen, "ProductId", NULL, NULL, (unsigned char*)szBuff, reinterpret_cast<LPDWORD>(iBuffSize));
                 if (nRes == ERROR_SUCCESS) {
                     if (strcmp(szBuff, "55274-640-2673064-23950") == 0) { // joebox
                         return add(JOEBOX);
                     } else if (strcmp(szBuff, "76487-644-3177037-23510") == 0) {
-                        return true; // CW Sandbox
+                        return add(CWSANDBOX); // CW Sandbox
                     } else if (strcmp(szBuff, "76487-337-8429955-22614") == 0) { // anubis
                         return add(ANUBIS);
                     } else {
@@ -2842,7 +2856,7 @@ public:
 
         // check if no VM was detected
         if (memo[true].first == false) {
-            return "Unknown";
+            return UNKNOWN;
         }
 
         return (std::string(memo[true].second));
@@ -2880,9 +2894,10 @@ public:
             debug("cpuid: is supported? : ", VM::cpuid_supported);
         #endif
     
+        // invoke every technique in the table and add points for techniques detecting a VM
         for (auto it = table.cbegin(); it != table.cend(); ++it) {
             const technique &pair = it->second;
-            if (pair.ptr()) { // equivalent to std::invoke, not used bc of C++11 compatibility
+            if (pair.ptr()) {
                 points += pair.points;
             };
         }
@@ -2892,34 +2907,31 @@ public:
 
         const char* current_brand = "";
 
-        #ifdef __VMAWARE_DEBUG__
-            for (const auto p : scoreboard) {
-                debug("scoreboard: ", (int)p.second, " : ", p.first);
-            }
-        #endif
-
         // fetch the brand with the most points in the scoreboard
         #if (CPP >= 20)
+            // get the highest score from the scoreboard
             auto it = std::ranges::max_element(scoreboard, {},
                 [](const auto &pair) {
                     return pair.second;
                 }
             );
 
+            // find potential VM brand
             if (it != scoreboard.end()) {
                 if (
+                    // if all of the scores are 0
                     std::none_of(scoreboard.cbegin(), scoreboard.cend(),
                         [](const auto &pair) {
                             return pair.second;
                         }
                     )
                 ) {
-                    current_brand = "Unknown";
+                    current_brand = UNKNOWN;
                 } else {
                     current_brand = it->first;
                 }
             } else {
-                current_brand = "Unknown";
+                current_brand = UNKNOWN;
             }
         #else
             #if (MSVC)
@@ -2936,7 +2948,13 @@ public:
             }
 
             if (max == 0) {
-                current_brand = "Unknown";
+                current_brand = UNKNOWN;
+            }
+        #endif
+
+        #ifdef __VMAWARE_DEBUG__
+            for (const auto p : scoreboard) {
+                debug("scoreboard: ", (int)p.second, " : ", p.first);
             }
         #endif
 
@@ -2978,7 +2996,12 @@ public:
     { VM::VAPPLE, 0 },
     { VM::VPC, 0 },
     { VM::ANUBIS, 0 },
-    { VM::JOEBOX, 0 }
+    { VM::JOEBOX, 0 },
+    { VM::VPC, 0 },
+    { VM::ANUBIS, 0 },
+    { VM::JOEBOX, 0 },
+    { VM::THREADEXPERT, 0 },
+    { VM::CWSANDBOX, 0 }
 };
 
 
@@ -3049,8 +3072,9 @@ const std::map<VM::u64, VM::technique> VM::table = {
     { VM::MEMORY, { 35, VM::low_memory_space }},
     { VM::VM_PROCESSES, { 30, VM::vm_processes }},
     { VM::LINUX_USER_HOST, { 35, VM::linux_user_host }},
-    { VM::VBOX_WINDOW_CLASS, { 15, VM::vbox_window_class }},
-    { VM::WINDOWS_NUMBER, { 20, VM::windows_number }}
+    { VM::VBOX_WINDOW_CLASS, { 10, VM::vbox_window_class }},
+    { VM::WINDOWS_NUMBER, { 20, VM::windows_number }},
+    { VM::GAMARUE, { 40, VM::gamarue }}
 
     // { VM::, { ,  }}
     // ^ line template for personal use
