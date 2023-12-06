@@ -2643,8 +2643,6 @@ private:
      * @author Al-Khaser Project
      */
     [[nodiscard]] static bool vbox_window_class() try {
-        return false; // segfault test
-        /*
         if (disabled(VBOX_WINDOW_CLASS)) {
             return false;
         }
@@ -2661,7 +2659,6 @@ private:
 
             return false;
         #endif
-        */
     } catch (...) {
         #ifdef __VMAWARE_DEBUG__
             debug("VBOX_WINDOW_CLASS: catched error, returned false");
@@ -2717,8 +2714,6 @@ private:
      * @category Windows 
      */
     [[nodiscard]] static bool gamarue() try {
-        return false; // testing for segfault
-        /*
         if (disabled(GAMARUE)) {
             return false;
         }
@@ -2770,7 +2765,6 @@ private:
             free(szBuff);
             return false;
         #endif
-        */
     } catch (...) {
         #ifdef __VMAWARE_DEBUG__
             debug("GAMARUE: catched error, returned false");
@@ -2909,7 +2903,7 @@ public:
         // invoke every technique in the table and add points for techniques detecting a VM
         for (auto it = table.cbegin(); it != table.cend(); ++it) {
             const technique &pair = it->second;
-            if (pair.ptr()) { // equivalent to std::invoke, not used bc of C++11 compatibility
+            if (pair.ptr()) {
                 points += pair.points;
             };
         }
