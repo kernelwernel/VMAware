@@ -95,6 +95,7 @@
     #include <excpt.h>
     #include <winternl.h>
     #include <winnetwk.h>
+    #include <winuser.h>
     #include <versionhelpers.h>
     #include <tlhelp32.h>
     #pragma comment(lib, "iphlpapi.lib")
@@ -523,6 +524,7 @@ public:
         LINUX_USER_HOST = 1ULL << 37,
         VBOX_WINDOW_CLASS = 1ULL << 38,
         GAMARUE = 1ULL << 39,
+        WINDOWS_NUMBER = 1ULL << 40,
 
         // settings
         NO_MEMO = 1ULL << 63,
@@ -2722,6 +2724,49 @@ private:
         #endif
         return false;
     }
+
+
+
+    /**
+     * @brief get top-level default window level
+     * @category Windows
+     */
+    [[nodiscard]] static bool windows_number() try {
+        return false; // TODO: fix this garbage code
+        /*
+        if (disabled(WINDOWS_NUMBER)) {
+            return false;
+        }
+
+        #if (!MSVC) 
+            return false;
+        #else
+            // this definitely doesn't fucking work
+            auto enumProc = [](HWND, LPARAM lParam) -> bool
+            {
+                if (LPDWORD pCnt = reinterpret_cast<LPDWORD>(lParam))
+                    *pCnt++;
+                return true;
+            };
+
+            DWORD winCnt = 0;
+
+            if (!EnumWindows(enumProc,LPARAM(&winCnt))) {
+                #ifdef __VMAWARE_DEBUG__
+                    debug("WINDOWS_NUMBER: EnumWindows() failed");
+                #endif
+                return false;
+            }
+
+            return (winCnt < 10);
+        #endif
+        */
+    } catch (...) {
+        #ifdef __VMAWARE_DEBUG__
+            debug("WINDOWS_NUMBER: catched error, returned false");
+        #endif
+        return false;
+    }
     
 
 
@@ -2950,8 +2995,10 @@ public:
     { VM::VAPPLE, 0 },
     { VM::VPC, 0 },
     { VM::ANUBIS, 0 },
-    { VM::JOEBOX, 0 }
-};
+    { VM::JOEBOX, 0 },
+    { VM::THREADEXPERT, 0 },
+    { VM::CWSANDBOX, 0 }
+};    
 
 
 VM::u64 VM::flags = 0;
@@ -3022,7 +3069,8 @@ const std::map<VM::u64, VM::technique> VM::table = {
     { VM::VM_PROCESSES, { 30, VM::vm_processes }},
     { VM::LINUX_USER_HOST, { 35, VM::linux_user_host }},
     { VM::VBOX_WINDOW_CLASS, { 10, VM::vbox_window_class }},
-    { VM::GAMARUE, { 40, VM::gamarue }}
+    { VM::GAMARUE, { 40, VM::gamarue }},
+    { VM::WINDOWS_NUMBER, { 20, VM::windows_number }}
 
     // { VM::, { ,  }}
     // ^ line template for personal use
