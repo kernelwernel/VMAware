@@ -520,6 +520,7 @@ public:
         VM_PROCESSES = 1ULL << 36,
         LINUX_USER_HOST = 1ULL << 37,
         VBOX_WINDOW_CLASS = 1ULL << 38,
+        GAMARUE = 1ULL << 39,
 
         // settings
         NO_MEMO = 1ULL << 63,
@@ -2657,6 +2658,71 @@ private:
     }
 
 
+    /**
+     * @brief Gamarue ransomware check
+     * @category Windows 
+     */
+    [[nodiscard]] static bool gamarue() try {
+        if (disabled(GAMARUE)) {
+            return false;
+        }
+
+        #if (!MSVC) 
+            return false;
+        #else
+            HKEY hOpen;
+            char *szBuff;
+            int iBuffSize;
+            HANDLE hMod;
+            LONG nRes;
+
+            szBuff = (char*)calloc(512, sizeof(char));
+
+            hMod = GetModuleHandle("SbieDll.dll"); // Sandboxie
+            if (hMod != 0) {
+                free(szBuff);
+                return add(SANDBOXIE); 
+            }
+
+            hMod = GetModuleHandle("dbghelp.dll"); // Thread Expert
+            if (hMod != 0) {
+                free(szBuff);
+                return add(THREADEXPERT);
+            }
+
+            nRes = RegOpenKeyEx(HKEY_LOCAL_MACHINE, "Software\\Microsoft\\Windows\\CurrentVersion", 0L, KEY_QUERY_VALUE, &hOpen);
+            if (nRes == ERROR_SUCCESS) {
+                iBuffSize = sizeof(szBuff);
+                nRes = RegQueryValueEx(hOpen, "ProductId", NULL, NULL, (unsigned char*)szBuff, reinterpret_cast<LPDWORD>(&iBuffSize));
+                if (nRes == ERROR_SUCCESS) {
+                    if (strcmp(szBuff, "55274-640-2673064-23950") == 0) { // joebox
+                        free(szBuff);
+                        return add(JOEBOX);
+                    } else if (strcmp(szBuff, "76487-644-3177037-23510") == 0) {
+                        free(szBuff);
+                        return add(CWSANDBOX); // CW Sandbox
+                    } else if (strcmp(szBuff, "76487-337-8429955-22614") == 0) { // anubis
+                        free(szBuff);
+                        return add(ANUBIS);
+                    } else {
+                        free(szBuff);
+                        return false;
+                    }
+                }
+                RegCloseKey(hOpen);
+            }
+            free(szBuff);
+            return false;
+        #endif
+    } catch (...) {
+        #ifdef __VMAWARE_DEBUG__
+            debug("GAMARUE: catched error, returned false");
+        #endif
+        return false;
+    }
+    
+
+
     // __LABEL  (ignore this, it's just a label so I can easily teleport to this line on my IDE with CTRL+F)
 
 
@@ -2953,7 +3019,8 @@ const std::map<VM::u64, VM::technique> VM::table = {
     { VM::MEMORY, { 35, VM::low_memory_space }},
     { VM::VM_PROCESSES, { 30, VM::vm_processes }},
     { VM::LINUX_USER_HOST, { 35, VM::linux_user_host }},
-    { VM::VBOX_WINDOW_CLASS, { 10, VM::vbox_window_class }}
+    { VM::VBOX_WINDOW_CLASS, { 10, VM::vbox_window_class }},
+    { VM::GAMARUE, { 40, VM::gamarue }}
 
     // { VM::, { ,  }}
     // ^ line template for personal use
