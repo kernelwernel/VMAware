@@ -519,6 +519,7 @@ public:
         MEMORY = 1ULL << 35,
         VM_PROCESSES = 1ULL << 36,
         LINUX_USER_HOST = 1ULL << 37,
+        VBOX_WINDOW_CLASS = 1ULL << 38,
 
         // settings
         NO_MEMO = 1ULL << 63,
@@ -2626,6 +2627,36 @@ private:
     }
 
 
+    /**
+     * @brief default vbox window class
+     * @category Windows
+     * @author Al-Khaser Project
+     */
+    [[nodiscard]] static bool vbox_window_class() try {
+        if (disabled(VBOX_WINDOW_CLASS)) {
+            return false;
+        }
+
+        #if (!MSVC)
+            return false;
+        #else
+            HWND hClass = FindWindow(_T("VBoxTrayToolWndClass"), NULL);
+            HWND hWindow = FindWindow(NULL, _T("VBoxTrayToolWnd"));
+
+            if (hClass || hWindow) {
+                return add(VBOX);
+            }
+
+            return false;
+        #endif
+    } catch (...) {
+        #ifdef __VMAWARE_DEBUG__
+            debug("VBOX_WINDOW_CLASS: catched error, returned false");
+        #endif
+        return false;
+    }
+
+
     // __LABEL  (ignore this, it's just a label so I can easily teleport to this line on my IDE with CTRL+F)
 
 
@@ -2921,7 +2952,8 @@ const std::map<VM::u64, VM::technique> VM::table = {
     { VM::HOSTNAME, { 25, VM::hostname_match }},
     { VM::MEMORY, { 35, VM::low_memory_space }},
     { VM::VM_PROCESSES, { 30, VM::vm_processes }},
-    { VM::LINUX_USER_HOST, { 35, VM::linux_user_host }}
+    { VM::LINUX_USER_HOST, { 35, VM::linux_user_host }},
+    { VM::VBOX_WINDOW_CLASS, { 10, VM::vbox_window_class }}
 
     // { VM::, { ,  }}
     // ^ line template for personal use
