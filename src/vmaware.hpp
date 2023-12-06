@@ -143,28 +143,92 @@ private:
         };
 
         // Basically std::system but it runs in the background with no output
-        [[nodiscard]] static std::unique_ptr<std::string> sys_result(const char *cmd) {
+        [[nodiscard]] static std::unique_ptr<std::string> sys_result(const char *cmd) try {
             #if (CPP < 14)
                 std::unique_ptr<std::string> tmp(nullptr);
                 return tmp; 
             #else
-                std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd, "r"), pclose);
+                #if (LINUX)
+                    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd, "r"), pclose);
 
-                if (!pipe) { 
-                    return nullptr;
-                }
+                    if (!pipe) { 
+                        return nullptr;
+                    }
 
-                std::string result{};
-                std::array<char, 128> buffer{};
+                    std::string result{};
+                    std::array<char, 128> buffer{};
 
-                while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
-                    result += buffer.data();
-                }
+                    while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
+                        result += buffer.data();
+                    }
 
-                result.pop_back();
+                    result.pop_back();
 
-                return std::make_unique<std::string>(result);
+                    return std::make_unique<std::string>(result);
+                #elif (MSVC)
+                    // Set up the structures for creating the process
+                    STARTUPINFO si;
+                    PROCESS_INFORMATION pi;
+                    ZeroMemory(&si, sizeof(si));
+                    ZeroMemory(&pi, sizeof(pi));
+                    si.cb = sizeof(si);
+
+                    // Create a pipe to capture the command output
+                    HANDLE hReadPipe, hWritePipe;
+                    SECURITY_ATTRIBUTES sa;
+                    sa.nLength = sizeof(SECURITY_ATTRIBUTES);
+                    sa.bInheritHandle = TRUE;
+                    sa.lpSecurityDescriptor = NULL;
+
+                    if (!CreatePipe(&hReadPipe, &hWritePipe, &sa, 0)) {
+                        #if __VMAWARE_DEBUG__
+                            debug("sys_result: ", "error creating pipe");
+                        #endif
+                        return nullptr;
+                    }
+
+                    // Set up the startup information with the write end of the pipe as the standard output
+                    si.hStdError = hWritePipe;
+                    si.hStdOutput = hWritePipe;
+                    si.dwFlags |= STARTF_USESTDHANDLES;
+
+                    // Create the process
+                    if (!CreateProcess(NULL, const_cast<char*>(command), NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi)) {
+                        #if __VMAWARE_DEBUG__
+                            debug("sys_result: ", "error creating process");
+                        #endif
+                        CloseHandle(hReadPipe);
+                        CloseHandle(hWritePipe);
+                        return nullptr;
+                    }
+
+                    // Close the write end of the pipe as it's not needed in this process
+                    CloseHandle(hWritePipe);
+
+                    // Read the output from the pipe
+                    char buffer[4096];
+                    DWORD bytesRead;
+                    std::string result;
+
+                    while (ReadFile(hReadPipe, buffer, sizeof(buffer), &bytesRead, NULL) && bytesRead > 0) {
+                        result.append(buffer, bytesRead);
+                    }
+
+                    // Close handles
+                    CloseHandle(hReadPipe);
+                    CloseHandle(pi.hProcess);
+                    CloseHandle(pi.hThread);
+
+                    // Return the result as a unique_ptr<string>
+                    return std::make_unique<std::string>(result);
+                #endif
             #endif
+        } catch (...) {
+            #if __VMAWARE_DEBUG__
+                debug("sys_result: ", "catched error, returning nullptr");
+            #endif
+            std::unique_ptr<std::string> tmp(nullptr);
+            return tmp; 
         }
     #endif
 
@@ -525,6 +589,7 @@ public:
         VBOX_WINDOW_CLASS = 1ULL << 38,
         GAMARUE = 1ULL << 39,
         WINDOWS_NUMBER = 1ULL << 40,
+        VMID_0X4 = 1ULL << 41,
 
         // settings
         NO_MEMO = 1ULL << 63,
@@ -535,24 +600,7 @@ public:
             ALL = ~(NO_MEMO & std::numeric_limits<u64>::max());
         #endif
 
-private:
-    static constexpr u64 DEFAULT = (~(CURSOR) & ALL);
-
-    /**
-     * @brief Check CPUID output of manufacturer ID for known VMs/hypervisors
-     * @category x86
-     */
-    [[nodiscard]] static bool vmid() try {
-        #if (!x86)
-            return false;
-        #else
-            if (!cpuid_supported || disabled(VMID)) {
-                #ifdef __VMAWARE_DEBUG__
-                    debug("VMID: precondition return called");
-                #endif
-                return false;
-            }
-
+        [[nodiscard]] static bool vmid_template(const u32 leaf, const char* technique_name) {
             #if (CPP >= 17)
                 constexpr sv 
             #else
@@ -596,15 +644,11 @@ private:
             };
 
             std::string brand = "";
-
             u32 sig_reg[3] = {0};
 
-            if (!cpuid_thingy(0, sig_reg, 1)) {
+            if (!cpuid_thingy(leaf, sig_reg, 1)) {
                 return false;
             }
-
-            u32 features;
-            cpuid_thingy(1, &features, 2, 3);
 
             auto strconvert = [](u64 n) -> std::string {
                 const std::string &str(reinterpret_cast<char*>(&n));
@@ -619,7 +663,7 @@ private:
             brand = ss.str();
  
             #ifdef __VMAWARE_DEBUG__
-                debug("VMID: ", brand);
+                debug(technique_name, brand);
             #endif
 
             const bool found = (std::find(std::begin(IDs), std::end(IDs), brand) != std::end(IDs));
@@ -641,6 +685,27 @@ private:
             }
 
             return false;
+        }
+
+private:
+    static constexpr u64 DEFAULT = (~(CURSOR) & ALL);
+
+    /**
+     * @brief Check CPUID output of manufacturer ID for known VMs/hypervisors
+     * @category x86
+     */
+    [[nodiscard]] static bool vmid() try {
+        if (!cpuid_supported || disabled(VMID)) {
+            #ifdef __VMAWARE_DEBUG__
+                debug("VMID: ", "precondition return called");
+            #endif
+            return false;
+        }
+
+        #if (!x86)
+            return false;
+        #else
+            return vmid_template(0, "VMID: ");
         #endif
     } catch (...) { 
         #ifdef __VMAWARE_DEBUG__
@@ -649,6 +714,30 @@ private:
         return false;
     }
 
+
+    /**
+     * @brief Check CPUID output of manufacturer ID for known VMs/hypervisors with leaf value 0x40000000
+     * @category x86
+     */
+    [[nodiscard]] static bool vmid_0x4() try {
+        if (!cpuid_supported || disabled(VMID_0X4)) {
+            #ifdef __VMAWARE_DEBUG__
+                debug("VMID_0X4: ", "precondition return called");
+            #endif
+            return false;
+        }
+
+        #if (!x86)
+            return false;
+        #else
+            return vmid_template(0x40000000, "VMID_0x4: ");
+        #endif
+    } catch (...) { 
+        #ifdef __VMAWARE_DEBUG__
+            debug("VMID_0x4: catched error, returned false");
+        #endif
+        return false;
+    }
 
     /**
      * @brief Check if CPU brand is a VM brand
@@ -2767,7 +2856,6 @@ private:
         #endif
         return false;
     }
-    
 
 
     // __LABEL  (ignore this, it's just a label so I can easily teleport to this line on my IDE with CTRL+F)
@@ -3070,7 +3158,8 @@ const std::map<VM::u64, VM::technique> VM::table = {
     { VM::LINUX_USER_HOST, { 35, VM::linux_user_host }},
     { VM::VBOX_WINDOW_CLASS, { 10, VM::vbox_window_class }},
     { VM::GAMARUE, { 40, VM::gamarue }},
-    { VM::WINDOWS_NUMBER, { 20, VM::windows_number }}
+    { VM::WINDOWS_NUMBER, { 20, VM::windows_number }},
+    { VM::VMID_0X4, { 90, VM::vmid_0x4 }}
 
     // { VM::, { ,  }}
     // ^ line template for personal use
