@@ -74,7 +74,6 @@
 #endif
 #if (CPP >= 17)
     #include <bit>
-    #include <optional>
 #endif
 #ifdef __VMAWARE_DEBUG__
     #include <iomanip>
@@ -214,10 +213,7 @@ private:
     static constexpr const char* VPC = "Virtual PC";
     static constexpr const char* ANUBIS = "Anubis";
     static constexpr const char* JOEBOX = "JoeBox";
-    static constexpr const char* THREADEXPERT = "Thread Expert";
-    static constexpr const char* CWSANDBOX = "CW Sandbox";
-    static constexpr const char* UNKNOWN = "Unknown";
-
+    
     // VM scoreboard table specifically for VM::brand()
     #if (MSVC)
         static std::map<const char*, int> scoreboard;
@@ -449,7 +445,6 @@ private:
 
     // memoize the value from VM::detect() in case it's ran again
     static std::map<bool, std::pair<bool, const char*>> memo;
-                //  ^ VM?           
 
     // cpuid check value
     static bool cpuid_supported;
@@ -524,9 +519,6 @@ public:
         MEMORY = 1ULL << 35,
         VM_PROCESSES = 1ULL << 36,
         LINUX_USER_HOST = 1ULL << 37,
-        WINDOWS_NUMBER = 1ULL << 38,
-        VBOX_WINDOW_CLASS = 1ULL << 39,
-        GAMARUE = 1ULL << 40,
 
         // settings
         NO_MEMO = 1ULL << 63,
@@ -1715,7 +1707,7 @@ private:
 
     /**
      * @brief checks for default usernames, often a sign of a VM 
-     * @author: some guy in a russian underground forum from a screenshot i saw, idk who he is but ty ¯\_(ツ)_/¯
+     * @author: Some guy in a russian underground forum from a screenshot I saw, idk I don't speak russian ¯\_(ツ)_/¯
      * @category Windows
      */ 
     [[nodiscard]] static bool user_check() try {     
@@ -1738,11 +1730,8 @@ private:
                 debug("USER: ", "output = ", u);
             #endif
 
-            if (u == "username") {
-                return add(THREADEXPERT);
-            }
-    
             return (
+                (u == "username") ||  // ThreadExpert
                 (u == "USER") ||      // Sandbox
                 (u == "user") ||      // Sandbox 2
                 (u == "currentuser")  // Normal
@@ -2064,7 +2053,7 @@ private:
                 L"C:\\windows\\System32\\Drivers\\VMToolsHook.dll",
                 L"C:\\windows\\System32\\Drivers\\vmGuestLib.dll",
                 L"C:\\windows\\System32\\Drivers\\vmhgfs.dll",
-
+                L"C:\\windows\\System32\\Drivers\\vmhgfs.dll",  // Note: there's a typo in the original code
                 // VBox
                 L"C:\\windows\\System32\\Drivers\\VBoxMouse.sys",
                 L"C:\\windows\\System32\\Drivers\\VBoxGuest.sys",
@@ -2637,142 +2626,6 @@ private:
     }
 
 
-    /**
-     * @brief default vbox window class
-     * @category Windows
-     * @author Al-Khaser Project
-     */
-    [[nodiscard]] static bool vbox_window_class() try {
-        if (disabled(VBOX_WINDOW_CLASS)) {
-            return false;
-        }
-
-        #if (!MSVC)
-            return false;
-        #else
-            HWND hClass = FindWindow(_T("VBoxTrayToolWndClass"), NULL);
-            HWND hWindow = FindWindow(NULL, _T("VBoxTrayToolWnd"));
-
-            if (hClass || hWindow) {
-                return add(VBOX);
-            }
-
-            return false;
-        #endif
-    } catch (...) {
-        #ifdef __VMAWARE_DEBUG__
-            debug("VBOX_WINDOW_CLASS: catched error, returned false");
-        #endif
-        return false;
-    }
-
-
-    /**
-     * @brief get top-level default window level
-     * @category Windows
-     */
-    [[nodiscard]] static bool windows_number() try {
-        return false; // TODO: FIX THIS SHIT
-        /*
-        if (disabled(WINDOWS_NUMBER)) {
-            return false;
-        }
-
-        #if (!MSVC) 
-            return false;
-        #else
-            // this definitely doesn't fucking work
-            auto enumProc = [](HWND, LPARAM lParam) -> bool
-            {
-                if (LPDWORD pCnt = reinterpret_cast<LPDWORD>(lParam))
-                    *pCnt++;
-                return true;
-            };
-
-            DWORD winCnt = 0;
-
-            if (!EnumWindows(enumProc,LPARAM(&winCnt))) {
-                #ifdef __VMAWARE_DEBUG__
-                    debug("WINDOWS_NUMBER: EnumWindows() failed");
-                #endif
-                return false;
-            }
-
-            return (winCnt < 10);
-        #endif
-        */
-    } catch (...) {
-        #ifdef __VMAWARE_DEBUG__
-            debug("WINDOWS_NUMBER: catched error, returned false");
-        #endif
-        return false;
-    }
-
-
-    /**
-     * @brief Gamarue ransomware check
-     * @category Windows 
-     */
-    [[nodiscard]] static bool gamarue() try {
-        if (disabled(GAMARUE)) {
-            return false;
-        }
-
-        #if (!MSVC) 
-            return false;
-        #else
-            HKEY hOpen;
-            char *szBuff;
-            int iBuffSize;
-            HANDLE hMod;
-            LONG nRes;
-
-            szBuff = (char*)calloc(512, sizeof(char));
-
-            hMod = GetModuleHandle("SbieDll.dll"); // Sandboxie
-            if (hMod != 0) {
-                free(szBuff);
-                return add(SANDBOXIE); 
-            }
-
-            hMod = GetModuleHandle("dbghelp.dll"); // Thread Expert
-            if (hMod != 0) {
-                free(szBuff);
-                return add(THREADEXPERT);
-            }
-
-            nRes = RegOpenKeyEx(HKEY_LOCAL_MACHINE, "Software\\Microsoft\\Windows\\CurrentVersion", 0L, KEY_QUERY_VALUE, &hOpen);
-            if (nRes == ERROR_SUCCESS) {
-                iBuffSize = sizeof(szBuff);
-                nRes = RegQueryValueEx(hOpen, "ProductId", NULL, NULL, (unsigned char*)szBuff, reinterpret_cast<LPDWORD>(&iBuffSize));
-                if (nRes == ERROR_SUCCESS) {
-                    if (strcmp(szBuff, "55274-640-2673064-23950") == 0) { // joebox
-                        free(szBuff);
-                        return add(JOEBOX);
-                    } else if (strcmp(szBuff, "76487-644-3177037-23510") == 0) {
-                        free(szBuff);
-                        return add(CWSANDBOX); // CW Sandbox
-                    } else if (strcmp(szBuff, "76487-337-8429955-22614") == 0) { // anubis
-                        free(szBuff);
-                        return add(ANUBIS);
-                    } else {
-                        free(szBuff);
-                        return false;
-                    }
-                }
-                RegCloseKey(hOpen);
-            }
-            free(szBuff);
-            return false;
-        #endif
-    } catch (...) {
-        #ifdef __VMAWARE_DEBUG__
-            debug("GAMARUE: catched error, returned false");
-        #endif
-        return false;
-    }
-
-
     // __LABEL  (ignore this, it's just a label so I can easily teleport to this line on my IDE with CTRL+F)
 
 
@@ -2862,7 +2715,7 @@ public:
 
         // check if no VM was detected
         if (memo[true].first == false) {
-            return UNKNOWN;
+            return "Unknown";
         }
 
         return (std::string(memo[true].second));
@@ -2900,10 +2753,9 @@ public:
             debug("cpuid: is supported? : ", VM::cpuid_supported);
         #endif
     
-        // invoke every technique in the table and add points for techniques detecting a VM
         for (auto it = table.cbegin(); it != table.cend(); ++it) {
             const technique &pair = it->second;
-            if (pair.ptr()) {
+            if (pair.ptr()) { // equivalent to std::invoke, not used bc of C++11 compatibility
                 points += pair.points;
             };
         }
@@ -2913,31 +2765,34 @@ public:
 
         const char* current_brand = "";
 
+        #ifdef __VMAWARE_DEBUG__
+            for (const auto p : scoreboard) {
+                debug("scoreboard: ", (int)p.second, " : ", p.first);
+            }
+        #endif
+
         // fetch the brand with the most points in the scoreboard
         #if (CPP >= 20)
-            // get the highest score from the scoreboard
             auto it = std::ranges::max_element(scoreboard, {},
                 [](const auto &pair) {
                     return pair.second;
                 }
             );
 
-            // find potential VM brand
             if (it != scoreboard.end()) {
                 if (
-                    // if all of the scores are 0
                     std::none_of(scoreboard.cbegin(), scoreboard.cend(),
                         [](const auto &pair) {
                             return pair.second;
                         }
                     )
                 ) {
-                    current_brand = UNKNOWN;
+                    current_brand = "Unknown";
                 } else {
                     current_brand = it->first;
                 }
             } else {
-                current_brand = UNKNOWN;
+                current_brand = "Unknown";
             }
         #else
             #if (MSVC)
@@ -2954,13 +2809,7 @@ public:
             }
 
             if (max == 0) {
-                current_brand = UNKNOWN;
-            }
-        #endif
-
-        #ifdef __VMAWARE_DEBUG__
-            for (const auto p : scoreboard) {
-                debug("scoreboard: ", (int)p.second, " : ", p.first);
+                current_brand = "Unknown";
             }
         #endif
 
@@ -3002,12 +2851,7 @@ public:
     { VM::VAPPLE, 0 },
     { VM::VPC, 0 },
     { VM::ANUBIS, 0 },
-    { VM::JOEBOX, 0 },
-    { VM::VPC, 0 },
-    { VM::ANUBIS, 0 },
-    { VM::JOEBOX, 0 },
-    { VM::THREADEXPERT, 0 },
-    { VM::CWSANDBOX, 0 }
+    { VM::JOEBOX, 0 }
 };
 
 
@@ -3077,10 +2921,7 @@ const std::map<VM::u64, VM::technique> VM::table = {
     { VM::HOSTNAME, { 25, VM::hostname_match }},
     { VM::MEMORY, { 35, VM::low_memory_space }},
     { VM::VM_PROCESSES, { 30, VM::vm_processes }},
-    { VM::LINUX_USER_HOST, { 35, VM::linux_user_host }},
-    { VM::VBOX_WINDOW_CLASS, { 10, VM::vbox_window_class }},
-    { VM::WINDOWS_NUMBER, { 20, VM::windows_number }},
-    { VM::GAMARUE, { 40, VM::gamarue }}
+    { VM::LINUX_USER_HOST, { 35, VM::linux_user_host }}
 
     // { VM::, { ,  }}
     // ^ line template for personal use

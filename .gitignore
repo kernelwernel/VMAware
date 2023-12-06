@@ -46,5 +46,7 @@ archive/
 .vscode/
 build/
 milestones.md
-*.asm
-*.cu
+bin/
+src/*.asm
+src/*.cu
+cmake/

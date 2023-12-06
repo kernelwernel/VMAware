@@ -143,12 +143,12 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::MEMORY` | Check if memory space is far too low for a physical machine | Windows | 35% |  |
 | `VM::VM_PROCESSES` | Check for any VM processes that are active | Windows | 30% |  |
 | `VM::LINUX_USER_HOST` | Check for default VM username and hostname for linux | Linux | 35% |  |
-| `VM::VBOX_WINDOW_CLASS` | Check for the window class for VirtualBox | 10% |  |
-| `VM::WINDOWS_NUMBER` | Check top-level default window level | 20% |  | 
-| `VM::GAMARUE` | Check for Gamarue ransomeware technique which compares VM-specific Window product IDs | 40% |  | 
+| `VM::VBOX_WINDOW_CLASS` | Check for the window class for VirtualBox | Windows | 10% |  |
+| `VM::WINDOWS_NUMBER` | Check top-level default window level | Windows | 20% |  | 
+| `VM::GAMARUE` | Check for Gamarue ransomeware technique which compares VM-specific Window product IDs | Windows | 40% |  | 
 
 # Non-technique flags
 | Flag | Description |
 |------|-------------|
 | `VM::ALL` | This will enable all the technique flags, including the cursor check. |
-| `VM::NO_MEMO` | This will disable memoization, meaning the result will not be fetched through a previous computation of the VM::detect function. Not sure why you'd need this, but it will take a performance hit if enabled. |
+| `VM::NO_MEMO` | This will disable memoization, meaning the result will not be fetched through a previous computation of the VM::detect() function. Note that this can take a performance hit. |

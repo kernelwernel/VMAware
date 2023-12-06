@@ -14,7 +14,7 @@ It utilises a comprehensive list of low-level and high-level anti-VM techniques 
 The library is:
 - Very easy to use, with only 3 functions in its public interface
 - Very flexible with fine-grained control
-- Cross-platform (to an extent)
+- Cross-platform (NOTE: MACOS AND MSVC ARE NOT EFFECTIVE FOR NOW)
 - Header-only
 - Available with C++11 and above
 - Able to detect VMware, VirtualBox, QEMU, KVM, Parallels, and much more
@@ -52,16 +52,25 @@ This project also provides a tiny, but handy CLI tool utilising the full potenti
 
 
 ## Installation 📥
-To install the library, simply download or copy and paste the [vmaware.hpp](src/vmaware.hpp) file to your project. No CMake or build frameworks are necessary, it's literally that simple.
+To install the library, download or copy paste the `vmaware.hpp` file in the [release section](https://github.com/kernelwernel/VMAware/releases/) to your project. No CMake or shared object linkages are necessary, it's literally that simple.
 
 However, if you want the full project (globally accessible headers with <vmaware.hpp> and the CLI tool), follow these commands:
 ```bash
 git clone https://github.com/kernelwernel/VMAware 
 cd VMAware
+```
+
+```bash
+# FOR LINUX
 mkdir build
 cd build
 cmake ..
 sudo make install
+```
+
+```bash
+# FOR WINDOWS
+cmake -S . -B build/ -G "Visual Studio 16 2019"
 ```
 > NOTE: I'm most likely going to change my username in the future. If the github link doesn't exist, search for the VMAware project and you should find it.
 
@@ -84,7 +93,7 @@ You can view the full docs [here](docs/documentation.md). Trust me, it's not too
 > This project is not soliciting the development of malware for any malicious intentions. Even if you intend to use it that way, it'll most likely be flagged by antiviruses anyway.
 
 - When will a 1.0 be available?
-> Pretty soon, maybe around November (I just started university very recently, so I can't guarantee anything)
+> Pretty soon, maybe around mid December (I just started university very recently, so I can't guarantee anything)
 
 
 ## Issues and pull requests 📬
