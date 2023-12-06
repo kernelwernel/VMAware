@@ -2714,6 +2714,8 @@ private:
      * @category Windows 
      */
     [[nodiscard]] static bool gamarue() try {
+        return false; // testing for segfault
+        /*
         if (disabled(GAMARUE)) {
             return false;
         }
@@ -2765,6 +2767,7 @@ private:
             free(szBuff);
             return false;
         #endif
+        */
     } catch (...) {
         #ifdef __VMAWARE_DEBUG__
             debug("GAMARUE: catched error, returned false");
