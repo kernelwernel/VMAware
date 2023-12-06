@@ -2643,6 +2643,8 @@ private:
      * @author Al-Khaser Project
      */
     [[nodiscard]] static bool vbox_window_class() try {
+        return false; // segfault test
+        /*
         if (disabled(VBOX_WINDOW_CLASS)) {
             return false;
         }
@@ -2659,6 +2661,7 @@ private:
 
             return false;
         #endif
+        */
     } catch (...) {
         #ifdef __VMAWARE_DEBUG__
             debug("VBOX_WINDOW_CLASS: catched error, returned false");
