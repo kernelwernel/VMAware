@@ -42,7 +42,7 @@ int main() {
 
 
 # `VM::brand()`
-This will essentially return the VM brand as a `std::string`. The possible brand string return values are: 
+This will essentially return the VM brand as a `std::string`. The brand string return values are: 
 - `VMware`
 - `VirtualBox`
 - `KVM`
@@ -60,6 +60,11 @@ This will essentially return the VM brand as a `std::string`. The possible brand
 - `Wine`
 - `Virtual Apple`
 - `Virtual PC`
+- `Anubis`
+- `JoeBox`
+- `Thread Expert`
+- `CW Sandbox`
+
 If none were detected, it will return `Unknown`. It's often not going to produce a satisfying result due to technical difficulties with accomplishing this, on top of being highly dependant on what mechanisms detected a VM. Don't rely on this function too much.
 
 ```cpp
@@ -129,7 +134,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::SUNBELT` | Detect for Sunbelt technology | Windows | 10% |  |
 | `VM::WINE_CHECK` | Find for a Wine-specific file | Windows | 85% |  |
 | `VM::BOOT` | Analyse the OS uptime | Yes | 5% |  |
-| `VM::VM_FILES` | Find if any VM-specific files exists | Windows | 80% |  |
+| `VM::VM_FILES` | Find if any VM-specific files exists | Windows | 20% |  |
 | `VM::HWMODEL` | Check if the sysctl for the hwmodel does not contain the "Mac" string | MacOS | 75% |  |
 | `VM::DISK_SIZE` | Check if disk size is under or equal to 50GB | Linux | 60% |  |
 | `VM::VBOX_DEFAULT` | Check for default RAM and DISK sizes set by VirtualBox | Linux and Windows | 55% | Yes |
@@ -138,6 +143,9 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::MEMORY` | Check if memory space is far too low for a physical machine | Windows | 35% |  |
 | `VM::VM_PROCESSES` | Check for any VM processes that are active | Windows | 30% |  |
 | `VM::LINUX_USER_HOST` | Check for default VM username and hostname for linux | Linux | 35% |  |
+| `VM::VBOX_WINDOW_CLASS` | Check for the window class for VirtualBox | 10% |  |
+| `VM::WINDOWS_NUMBER` | Check top-level default window level | 20% |  | 
+| `VM::GAMARUE` | Check for Gamarue ransomeware technique which compares VM-specific Window product IDs | 40% |  | 
 
 # Non-technique flags
 | Flag | Description |
