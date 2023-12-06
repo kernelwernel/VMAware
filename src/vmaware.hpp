@@ -2723,7 +2723,7 @@ private:
         #else
             HKEY hOpen;
             char *szBuff;
-            unsigned int iBuffSize;
+            int iBuffSize;
             HANDLE hMod;
             LONG nRes;
 
@@ -2731,31 +2731,38 @@ private:
 
             hMod = GetModuleHandle("SbieDll.dll"); // Sandboxie
             if (hMod != 0) {
+                free(szBuff);
                 return add(SANDBOXIE); 
             }
 
             hMod = GetModuleHandle("dbghelp.dll"); // Thread Expert
             if (hMod != 0) {
+                free(szBuff);
                 return add(THREADEXPERT);
             }
 
             nRes = RegOpenKeyEx(HKEY_LOCAL_MACHINE, "Software\\Microsoft\\Windows\\CurrentVersion", 0L, KEY_QUERY_VALUE, &hOpen);
             if (nRes == ERROR_SUCCESS) {
                 iBuffSize = sizeof(szBuff);
-                nRes = RegQueryValueEx(hOpen, "ProductId", NULL, NULL, (unsigned char*)szBuff, reinterpret_cast<LPDWORD>(iBuffSize));
+                nRes = RegQueryValueEx(hOpen, "ProductId", NULL, NULL, (unsigned char*)szBuff, reinterpret_cast<LPDWORD>(&iBuffSize));
                 if (nRes == ERROR_SUCCESS) {
                     if (strcmp(szBuff, "55274-640-2673064-23950") == 0) { // joebox
+                        free(szBuff);
                         return add(JOEBOX);
                     } else if (strcmp(szBuff, "76487-644-3177037-23510") == 0) {
+                        free(szBuff);
                         return add(CWSANDBOX); // CW Sandbox
                     } else if (strcmp(szBuff, "76487-337-8429955-22614") == 0) { // anubis
+                        free(szBuff);
                         return add(ANUBIS);
                     } else {
+                        free(szBuff);
                         return false;
                     }
                 }
                 RegCloseKey(hOpen);
             }
+            free(szBuff);
             return false;
         #endif
     } catch (...) {
