@@ -2725,7 +2725,6 @@ private:
             char *szBuff;
             int iBuffSize;
             HANDLE hMod;
-            BOOL bResult = FALSE;
             LONG nRes;
 
             szBuff = (char*)calloc(512, sizeof(char));
@@ -2743,7 +2742,7 @@ private:
             nRes = RegOpenKeyEx(HKEY_LOCAL_MACHINE, "Software\\Microsoft\\Windows\\CurrentVersion", 0L, KEY_QUERY_VALUE, &hOpen);
             if (nRes == ERROR_SUCCESS) {
                 iBuffSize = sizeof(szBuff);
-                nRes = RegQueryValueEx(hOpen, "ProductId", NULL, NULL, (unsigned char*)szBuff, reinterpret_cast<LPDWORD>(iBuffSize));
+                nRes = RegQueryValueEx(hOpen, "ProductId", NULL, NULL, (unsigned char*)szBuff, static_cast<LPDWORD>(iBuffSize));
                 if (nRes == ERROR_SUCCESS) {
                     if (strcmp(szBuff, "55274-640-2673064-23950") == 0) { // joebox
                         return add(JOEBOX);
