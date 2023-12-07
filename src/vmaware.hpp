@@ -590,6 +590,7 @@ public:
         GAMARUE = 1ULL << 39,
         WINDOWS_NUMBER = 1ULL << 40,
         VMID_0X4 = 1ULL << 41,
+        VPC_ILLEGAL = 1ULL << 42,
 
         // settings
         NO_MEMO = 1ULL << 63,
@@ -600,7 +601,11 @@ public:
             ALL = ~(NO_MEMO & std::numeric_limits<u64>::max());
         #endif
 
-        [[nodiscard]] static bool vmid_template(const u32 leaf, const char* technique_name) {
+        #if (CPP >= 17)
+            [[nodiscard]] static bool vmid_template(const u32 leaf, [[maybe_unused]] const char* technique_name) {
+        #else 
+            [[nodiscard]] static bool vmid_template(const u32 leaf, const char* technique_name) {
+        #endif
             #if (CPP >= 17)
                 constexpr sv 
             #else
@@ -664,6 +669,12 @@ public:
  
             #ifdef __VMAWARE_DEBUG__
                 debug(technique_name, brand);
+            #endif
+                        
+            // bypass against compiler warning about unused parameter, ignore this
+            #ifndef __DEBUG__
+                #define UNUSED(x) (void)0
+                UNUSED(technique_name);
             #endif
 
             const bool found = (std::find(std::begin(IDs), std::end(IDs), brand) != std::end(IDs));
@@ -3222,7 +3233,8 @@ const std::map<VM::u64, VM::technique> VM::table = {
     { VM::VBOX_WINDOW_CLASS, { 10, VM::vbox_window_class }},
     { VM::GAMARUE, { 40, VM::gamarue }},
     { VM::WINDOWS_NUMBER, { 20, VM::windows_number }},
-    { VM::VMID_0X4, { 90, VM::vmid_0x4 }}
+    { VM::VMID_0X4, { 90, VM::vmid_0x4 }},
+    { VM::VPC_ILLEGAL, { 60, VM::vpc_illegal }}
 
     // { VM::, { ,  }}
     // ^ line template for personal use
