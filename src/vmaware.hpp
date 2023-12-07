@@ -2875,10 +2875,9 @@ private:
             return false;
         }
 
-        // remove later
-        //#if !(x86 && MSVC)
-        //    return false;
-        //#else
+        #if (!MSVC)
+            return false;
+        #else
             bool is_vm = false;
 
             auto VPCExceptionHandler = [](PEXCEPTION_POINTERS ep) -> DWORD {
@@ -2913,7 +2912,7 @@ private:
             }
             // The exception block shouldn't get triggered if VPC is running
             __except(VPCExceptionHandler(GetExceptionInformation())) { }
-
+/*
 
             // ========== TEST 2 (query virtual pc device) ==========
             if (is_vm == false) {
@@ -2951,13 +2950,14 @@ private:
                     IsVM = true;
                 }
             }
+            */
 
             if (is_vm == true) {
                 return add(VPC);
             } else {
                 return false;
             }
-        //#endif
+        #endif
     } catch (...) {
         #ifdef __VMAWARE_DEBUG__
             debug("VPC_BACKDOOR:", "catched error, returned false");
