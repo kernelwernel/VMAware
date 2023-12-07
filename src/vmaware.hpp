@@ -2875,9 +2875,10 @@ private:
             return false;
         }
 
-        #if !(x86 && MSVC)
-            return false;
-        #else
+        // remove later
+        //#if !(x86 && MSVC)
+        //    return false;
+        //#else
             bool is_vm = false;
 
             auto VPCExceptionHandler = [](PEXCEPTION_POINTERS ep) -> DWORD {
@@ -2956,12 +2957,54 @@ private:
             } else {
                 return false;
             }
-        #endif
+        //#endif
     } catch (...) {
         #ifdef __VMAWARE_DEBUG__
             debug("VPC_BACKDOOR:", "catched error, returned false");
         #endif
         return false;
+    }
+
+
+    [[nodiscard]] static bool parallels() {
+        BYTE is_vm = 0;
+        ULONG dwDataSize = 0L;
+        PSYSTEM_FIRMWARE_TABLE_INFORMATION pSIF = NULL;
+        /* query parallels additions device presence */
+        is_vm = IsObjectExists(DEVICELINK, DEVICE_PARALLELS1);
+
+        if (is_vm == false) {
+            is_vm = IsObjectExists(DEVICELINK, DEVICE_PARALLELS2);
+        }
+
+        if (is_vm == false) {
+            is_vm = IsObjectExists(DEVICELINK, DEVICE_PARALLELS3);
+        }
+
+        /* scan raw firmware for specific string patterns */
+        if (is_vm == false) {
+            pSIF = (PSYSTEM_FIRMWARE_TABLE_INFORMATION)GetFirmwareTable(&dwDataSize, FIRM, 0xC0000);
+            if (pSIF != NULL && dwDataSize > 0) {
+                is_vm = ScanDump((CHAR*)pSIF, dwDataSize, VENDOR_PARALLELS, _strlenA(VENDOR_PARALLELS));
+                RtlFreeHeap(RtlProcessHeap(), 0, pSIF);
+            }
+        }
+
+        /* scan raw SMBIOS firmware table for specific string patterns */
+        if (is_vm == false) {
+            pSIF = (PSYSTEM_FIRMWARE_TABLE_INFORMATION)GetFirmwareTable(&dwDataSize, RSMB, 0);
+            if (pSIF != NULL && dwDataSize > 0) {
+                is_vm = ScanDump((CHAR*)pSIF, dwDataSize, SMB_PARALLELS, _strlenA(SMB_PARALLELS));
+                RtlFreeHeap(RtlProcessHeap(), 0, pSIF);
+            }
+        }
+
+        /* query Parallels on PCI bus devices */
+        if (is_vm == false) {
+            if ( vIsInList(VID_PRLS) != NULL ) is_vm = 1;
+        }
+
+        return is_vm;
     }
 
     // __LABEL  (ignore this, it's just a label so I can easily teleport to this line on my IDE with CTRL+F)
@@ -3266,7 +3309,8 @@ const std::map<VM::u64, VM::technique> VM::table = {
     { VM::GAMARUE, { 40, VM::gamarue }},
     { VM::WINDOWS_NUMBER, { 20, VM::windows_number }},
     { VM::VMID_0X4, { 90, VM::vmid_0x4 }},
-    { VM::VPC_BACKDOOR, { 70, VM::vpc_backdoor }}
+    { VM::VPC_BACKDOOR, { 70, VM::vpc_backdoor }},
+    { VM::PARALLELS, { 50, VM::parallels }}
 
     // { VM::, { ,  }}
     // ^ line template for personal use
