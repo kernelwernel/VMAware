@@ -143,28 +143,92 @@ private:
         };
 
         // Basically std::system but it runs in the background with no output
-        [[nodiscard]] static std::unique_ptr<std::string> sys_result(const char *cmd) {
+        [[nodiscard]] static std::unique_ptr<std::string> sys_result(const char *cmd) try {
             #if (CPP < 14)
                 std::unique_ptr<std::string> tmp(nullptr);
                 return tmp; 
             #else
-                std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd, "r"), pclose);
+                #if (LINUX)
+                    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd, "r"), pclose);
 
-                if (!pipe) { 
-                    return nullptr;
-                }
+                    if (!pipe) { 
+                        return nullptr;
+                    }
 
-                std::string result{};
-                std::array<char, 128> buffer{};
+                    std::string result{};
+                    std::array<char, 128> buffer{};
 
-                while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
-                    result += buffer.data();
-                }
+                    while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
+                        result += buffer.data();
+                    }
 
-                result.pop_back();
+                    result.pop_back();
 
-                return std::make_unique<std::string>(result);
+                    return std::make_unique<std::string>(result);
+                #elif (MSVC)
+                    // Set up the structures for creating the process
+                    STARTUPINFO si;
+                    PROCESS_INFORMATION pi;
+                    ZeroMemory(&si, sizeof(si));
+                    ZeroMemory(&pi, sizeof(pi));
+                    si.cb = sizeof(si);
+
+                    // Create a pipe to capture the command output
+                    HANDLE hReadPipe, hWritePipe;
+                    SECURITY_ATTRIBUTES sa;
+                    sa.nLength = sizeof(SECURITY_ATTRIBUTES);
+                    sa.bInheritHandle = TRUE;
+                    sa.lpSecurityDescriptor = NULL;
+
+                    if (!CreatePipe(&hReadPipe, &hWritePipe, &sa, 0)) {
+                        #if __VMAWARE_DEBUG__
+                            debug("sys_result: ", "error creating pipe");
+                        #endif
+                        return nullptr;
+                    }
+
+                    // Set up the startup information with the write end of the pipe as the standard output
+                    si.hStdError = hWritePipe;
+                    si.hStdOutput = hWritePipe;
+                    si.dwFlags |= STARTF_USESTDHANDLES;
+
+                    // Create the process
+                    if (!CreateProcess(NULL, const_cast<char*>(command), NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi)) {
+                        #if __VMAWARE_DEBUG__
+                            debug("sys_result: ", "error creating process");
+                        #endif
+                        CloseHandle(hReadPipe);
+                        CloseHandle(hWritePipe);
+                        return nullptr;
+                    }
+
+                    // Close the write end of the pipe as it's not needed in this process
+                    CloseHandle(hWritePipe);
+
+                    // Read the output from the pipe
+                    char buffer[4096];
+                    DWORD bytesRead;
+                    std::string result;
+
+                    while (ReadFile(hReadPipe, buffer, sizeof(buffer), &bytesRead, NULL) && bytesRead > 0) {
+                        result.append(buffer, bytesRead);
+                    }
+
+                    // Close handles
+                    CloseHandle(hReadPipe);
+                    CloseHandle(pi.hProcess);
+                    CloseHandle(pi.hThread);
+
+                    // Return the result as a unique_ptr<string>
+                    return std::make_unique<std::string>(result);
+                #endif
             #endif
+        } catch (...) {
+            #if __VMAWARE_DEBUG__
+                debug("sys_result: ", "catched error, returning nullptr");
+            #endif
+            std::unique_ptr<std::string> tmp(nullptr);
+            return tmp; 
         }
     #endif
 
@@ -525,6 +589,8 @@ public:
         VBOX_WINDOW_CLASS = 1ULL << 38,
         GAMARUE = 1ULL << 39,
         WINDOWS_NUMBER = 1ULL << 40,
+        VMID_0X4 = 1ULL << 41,
+        VPC_ILLEGAL = 1ULL << 42,
 
         // settings
         NO_MEMO = 1ULL << 63,
@@ -535,24 +601,11 @@ public:
             ALL = ~(NO_MEMO & std::numeric_limits<u64>::max());
         #endif
 
-private:
-    static constexpr u64 DEFAULT = (~(CURSOR) & ALL);
-
-    /**
-     * @brief Check CPUID output of manufacturer ID for known VMs/hypervisors
-     * @category x86
-     */
-    [[nodiscard]] static bool vmid() try {
-        #if (!x86)
-            return false;
-        #else
-            if (!cpuid_supported || disabled(VMID)) {
-                #ifdef __VMAWARE_DEBUG__
-                    debug("VMID: precondition return called");
-                #endif
-                return false;
-            }
-
+        #if (CPP >= 17)
+            [[nodiscard]] static bool vmid_template(const u32 leaf, [[maybe_unused]] const char* technique_name) {
+        #else 
+            [[nodiscard]] static bool vmid_template(const u32 leaf, const char* technique_name) {
+        #endif
             #if (CPP >= 17)
                 constexpr sv 
             #else
@@ -596,15 +649,11 @@ private:
             };
 
             std::string brand = "";
-
             u32 sig_reg[3] = {0};
 
-            if (!cpuid_thingy(0, sig_reg, 1)) {
+            if (!cpuid_thingy(leaf, sig_reg, 1)) {
                 return false;
             }
-
-            u32 features;
-            cpuid_thingy(1, &features, 2, 3);
 
             auto strconvert = [](u64 n) -> std::string {
                 const std::string &str(reinterpret_cast<char*>(&n));
@@ -619,8 +668,15 @@ private:
             brand = ss.str();
  
             #ifdef __VMAWARE_DEBUG__
-                debug("VMID: ", brand);
+                debug(technique_name, brand);
+            #else
+                #if (CPP < 17)
+                    // bypass compiler warning about unused parameter, ignore this
+                    #define UNUSED(x) ((void)(x))
+                    UNUSED(technique_name);
+                #endif
             #endif
+                        
 
             const bool found = (std::find(std::begin(IDs), std::end(IDs), brand) != std::end(IDs));
 
@@ -641,6 +697,27 @@ private:
             }
 
             return false;
+        }
+
+private:
+    static constexpr u64 DEFAULT = (~(CURSOR) & ALL);
+
+    /**
+     * @brief Check CPUID output of manufacturer ID for known VMs/hypervisors
+     * @category x86
+     */
+    [[nodiscard]] static bool vmid() try {
+        if (!cpuid_supported || disabled(VMID)) {
+            #ifdef __VMAWARE_DEBUG__
+                debug("VMID: ", "precondition return called");
+            #endif
+            return false;
+        }
+
+        #if (!x86)
+            return false;
+        #else
+            return vmid_template(0, "VMID: ");
         #endif
     } catch (...) { 
         #ifdef __VMAWARE_DEBUG__
@@ -649,6 +726,30 @@ private:
         return false;
     }
 
+
+    /**
+     * @brief Check CPUID output of manufacturer ID for known VMs/hypervisors with leaf value 0x40000000
+     * @category x86
+     */
+    [[nodiscard]] static bool vmid_0x4() try {
+        if (!cpuid_supported || disabled(VMID_0X4)) {
+            #ifdef __VMAWARE_DEBUG__
+                debug("VMID_0X4: ", "precondition return called");
+            #endif
+            return false;
+        }
+
+        #if (!x86)
+            return false;
+        #else
+            return vmid_template(0x40000000, "VMID_0x4: ");
+        #endif
+    } catch (...) { 
+        #ifdef __VMAWARE_DEBUG__
+            debug("VMID_0x4: catched error, returned false");
+        #endif
+        return false;
+    }
 
     /**
      * @brief Check if CPU brand is a VM brand
@@ -1633,69 +1734,69 @@ private:
             key("", "HKLM\\Software\\Classes\\Folder\\shell\\sandbox");
 
             // hyper-v
-            key("Microsoft Hyper-V", "HKLM\\SOFTWARE\\Microsoft\\Hyper-V");
-            key("Microsoft Hyper-V", "HKLM\\SOFTWARE\\Microsoft\\VirtualMachine");
-            key("Microsoft Hyper-V", "HKLM\\SOFTWARE\\Microsoft\\Virtual Machine\\Guest\\Parameters");
-            key("Microsoft Hyper-V", "HKLM\\SYSTEM\\ControlSet001\\Services\\vmicheartbeat");
-            key("Microsoft Hyper-V", "HKLM\\SYSTEM\\ControlSet001\\Services\\vmicvss");
-            key("Microsoft Hyper-V", "HKLM\\SYSTEM\\ControlSet001\\Services\\vmicshutdown");
-            key("Microsoft Hyper-V", "HKLM\\SYSTEM\\ControlSet001\\Services\\vmicexchange");
+            key(HYPERV, "HKLM\\SOFTWARE\\Microsoft\\Hyper-V");
+            key(HYPERV, "HKLM\\SOFTWARE\\Microsoft\\VirtualMachine");
+            key(HYPERV, "HKLM\\SOFTWARE\\Microsoft\\Virtual Machine\\Guest\\Parameters");
+            key(HYPERV, "HKLM\\SYSTEM\\ControlSet001\\Services\\vmicheartbeat");
+            key(HYPERV, "HKLM\\SYSTEM\\ControlSet001\\Services\\vmicvss");
+            key(HYPERV, "HKLM\\SYSTEM\\ControlSet001\\Services\\vmicshutdown");
+            key(HYPERV, "HKLM\\SYSTEM\\ControlSet001\\Services\\vmicexchange");
 
             // parallels
-            key("Parallels", "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_1AB8*");
+            key(PARALLELS, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_1AB8*");
 
             // sandboxie
-            key("Sandboxie", "HKLM\\SYSTEM\\CurrentControlSet\\Services\\SbieDrv");
-            key("Sandboxie", "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Sandboxie");
+            key(SANDBOXIE, "HKLM\\SYSTEM\\CurrentControlSet\\Services\\SbieDrv");
+            key(SANDBOXIE, "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Sandboxie");
 
             // virtualbox
-            key("VirtualBox", "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_80EE*");
-            key("VirtualBox", "HKLM\\HARDWARE\\ACPI\\DSDT\\VBOX__");
-            key("VirtualBox", "HKLM\\HARDWARE\\ACPI\\FADT\\VBOX__");
-            key("VirtualBox", "HKLM\\HARDWARE\\ACPI\\RSDT\\VBOX__");
-            key("VirtualBox", "HKLM\\SOFTWARE\\Oracle\\VirtualBox Guest Additions");
-            key("VirtualBox", "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxGuest");
-            key("VirtualBox", "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxMouse");
-            key("VirtualBox", "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxService");
-            key("VirtualBox", "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxSF");
-            key("VirtualBox", "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxVideo");
+            key(VBOX, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_80EE*");
+            key(VBOX, "HKLM\\HARDWARE\\ACPI\\DSDT\\VBOX__");
+            key(VBOX, "HKLM\\HARDWARE\\ACPI\\FADT\\VBOX__");
+            key(VBOX, "HKLM\\HARDWARE\\ACPI\\RSDT\\VBOX__");
+            key(VBOX, "HKLM\\SOFTWARE\\Oracle\\VirtualBox Guest Additions");
+            key(VBOX, "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxGuest");
+            key(VBOX, "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxMouse");
+            key(VBOX, "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxService");
+            key(VBOX, "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxSF");
+            key(VBOX, "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxVideo");
 
             // virtualpc
-            key("Virtual PC", "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_5333*");
-            key("Virtual PC", "HKLM\\SYSTEM\\ControlSet001\\Services\\vpcbus");
-            key("Virtual PC", "HKLM\\SYSTEM\\ControlSet001\\Services\\vpc-s3");
-            key("Virtual PC", "HKLM\\SYSTEM\\ControlSet001\\Services\\vpcuhub");
-            key("Virtual PC", "HKLM\\SYSTEM\\ControlSet001\\Services\\msvmmouf");
+            key(VPC, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_5333*");
+            key(VPC, "HKLM\\SYSTEM\\ControlSet001\\Services\\vpcbus");
+            key(VPC, "HKLM\\SYSTEM\\ControlSet001\\Services\\vpc-s3");
+            key(VPC, "HKLM\\SYSTEM\\ControlSet001\\Services\\vpcuhub");
+            key(VPC, "HKLM\\SYSTEM\\ControlSet001\\Services\\msvmmouf");
 
             // vmware
-            key("VMware", "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_15AD*");
-            key("VMware", "HKCU\\SOFTWARE\\VMware, Inc.\\VMware Tools");
-            key("VMware", "HKLM\\SOFTWARE\\VMware, Inc.\\VMware Tools");
-            key("VMware", "HKLM\\SYSTEM\\ControlSet001\\Services\\vmdebug");
-            key("VMware", "HKLM\\SYSTEM\\ControlSet001\\Services\\vmmouse");
-            key("VMware", "HKLM\\SYSTEM\\ControlSet001\\Services\\VMTools");
-            key("VMware", "HKLM\\SYSTEM\\ControlSet001\\Services\\VMMEMCTL");
-            key("VMware", "HKLM\\SYSTEM\\ControlSet001\\Services\\vmware");
-            key("VMware", "HKLM\\SYSTEM\\ControlSet001\\Services\\vmci");
-            key("VMware", "HKLM\\SYSTEM\\ControlSet001\\Services\\vmx86");
-            key("VMware", "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\IDE\\CdRomNECVMWar_VMware_IDE_CD*");
-            key("VMware", "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\IDE\\CdRomNECVMWar_VMware_SATA_CD*");
-            key("VMware", "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\IDE\\DiskVMware_Virtual_IDE_Hard_Drive*");
-            key("VMware", "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\IDE\\DiskVMware_Virtual_SATA_Hard_Drive*");
+            key(VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_15AD*");
+            key(VMWARE, "HKCU\\SOFTWARE\\VMware, Inc.\\VMware Tools");
+            key(VMWARE, "HKLM\\SOFTWARE\\VMware, Inc.\\VMware Tools");
+            key(VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Services\\vmdebug");
+            key(VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Services\\vmmouse");
+            key(VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Services\\VMTools");
+            key(VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Services\\VMMEMCTL");
+            key(VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Services\\vmware");
+            key(VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Services\\vmci");
+            key(VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Services\\vmx86");
+            key(VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\IDE\\CdRomNECVMWar_VMware_IDE_CD*");
+            key(VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\IDE\\CdRomNECVMWar_VMware_SATA_CD*");
+            key(VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\IDE\\DiskVMware_Virtual_IDE_Hard_Drive*");
+            key(VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\IDE\\DiskVMware_Virtual_SATA_Hard_Drive*");
 
             // wine
-            key("Wine", "HKCU\\SOFTWARE\\Wine");
-            key("Wine", "HKLM\\SOFTWARE\\Wine");
+            key(WINE, "HKCU\\SOFTWARE\\Wine");
+            key(WINE, "HKLM\\SOFTWARE\\Wine");
 
             // xen
-            key("Xen HVM", "HKLM\\HARDWARE\\ACPI\\DSDT\\xen");
-            key("Xen HVM", "HKLM\\HARDWARE\\ACPI\\FADT\\xen");
-            key("Xen HVM", "HKLM\\HARDWARE\\ACPI\\RSDT\\xen");
-            key("Xen HVM", "HKLM\\SYSTEM\\ControlSet001\\Services\\xenevtchn");
-            key("Xen HVM", "HKLM\\SYSTEM\\ControlSet001\\Services\\xennet");
-            key("Xen HVM", "HKLM\\SYSTEM\\ControlSet001\\Services\\xennet6");
-            key("Xen HVM", "HKLM\\SYSTEM\\ControlSet001\\Services\\xensvc");
-            key("Xen HVM", "HKLM\\SYSTEM\\ControlSet001\\Services\\xenvdb");
+            key(XEN, "HKLM\\HARDWARE\\ACPI\\DSDT\\xen");
+            key(XEN, "HKLM\\HARDWARE\\ACPI\\FADT\\xen");
+            key(XEN, "HKLM\\HARDWARE\\ACPI\\RSDT\\xen");
+            key(XEN, "HKLM\\SYSTEM\\ControlSet001\\Services\\xenevtchn");
+            key(XEN, "HKLM\\SYSTEM\\ControlSet001\\Services\\xennet");
+            key(XEN, "HKLM\\SYSTEM\\ControlSet001\\Services\\xennet6");
+            key(XEN, "HKLM\\SYSTEM\\ControlSet001\\Services\\xensvc");
+            key(XEN, "HKLM\\SYSTEM\\ControlSet001\\Services\\xenvdb");
 
             #ifdef __VMAWARE_DEBUG__
                 debug("REGISTRY: ", "score = ", static_cast<u32>(score));
@@ -2726,7 +2827,6 @@ private:
     }
 
 
-
     /**
      * @brief get top-level default window level
      * @category Windows
@@ -2767,8 +2867,71 @@ private:
         #endif
         return false;
     }
-    
 
+
+    /**
+     * @brief Check for semi-documented Virtual PC detection method using illegal instructions
+     * @category Windows x86
+     * @link http://www.codeproject.com/Articles/9823/Detect-if-your-program-is-running-inside-a-Virtual
+     */ 
+    [[nodiscard]] static bool vpc_illegal() try {
+        #if !(x86 && MSVC)
+            return false;
+        #else
+            bool is_vm = false;
+
+/*
+            DWORD __forceinline IsInsideVPC_exceptionFilter(LPEXCEPTION_POINTERS ep)
+            {
+            PCONTEXT ctx = ep->ContextRecord;
+
+            ctx->Ebx = -1; // Not running VPC
+            ctx->Eip += 4; // skip past the "call VPC" opcodes
+            return EXCEPTION_CONTINUE_EXECUTION;
+            // we can safely resume execution since we skipped faulty instruction
+            }
+*/
+
+            auto VPCExceptionHandler = [](PEXCEPTION_POINTERS ep) -> DWORD {
+                __try {
+                    PCONTEXT ctx = ep->ContextRecord;
+
+                    ctx->Ebx = -1;    // Not running VPC
+                    ctx->Eip += 4;    // skip past the "call VPC" opcodes
+                    return EXCEPTION_CONTINUE_EXECUTION;
+                    // we can safely resume execution since we skipped the faulty instruction
+                }
+                __except (EXCEPTION_EXECUTE_HANDLER) {
+                    return EXCEPTION_CONTINUE_SEARCH;
+                }
+            };
+
+            __try {
+                __asm push   ebx
+                __asm mov    ebx, 0 // It will stay ZERO if VPC is running
+                __asm mov    eax, 1 // VPC function number
+
+                // call VPC
+                __asm __emit 0Fh
+                __asm __emit 3Fh
+                __asm __emit 0Dh
+                __asm __emit 0h
+
+                __asm test   ebx, ebx
+                __asm setz   [is_vm]
+                __asm pop    ebx
+            }
+            // The exception block shouldn't get triggered if VPC is running
+            __except(VPCExceptionHandler(GetExceptionInformation())) { }
+
+            return is_vm;
+        #endif
+    } catch (...) {
+        #ifdef __VMAWARE_DEBUG__
+            debug("VPC_ILLEGAL:", "catched error, returned false");
+        #endif
+        return false;
+    }
 
     // __LABEL  (ignore this, it's just a label so I can easily teleport to this line on my IDE with CTRL+F)
 
@@ -3070,7 +3233,9 @@ const std::map<VM::u64, VM::technique> VM::table = {
     { VM::LINUX_USER_HOST, { 35, VM::linux_user_host }},
     { VM::VBOX_WINDOW_CLASS, { 10, VM::vbox_window_class }},
     { VM::GAMARUE, { 40, VM::gamarue }},
-    { VM::WINDOWS_NUMBER, { 20, VM::windows_number }}
+    { VM::WINDOWS_NUMBER, { 20, VM::windows_number }},
+    { VM::VMID_0X4, { 90, VM::vmid_0x4 }},
+    { VM::VPC_ILLEGAL, { 60, VM::vpc_illegal }}
 
     // { VM::, { ,  }}
     // ^ line template for personal use
