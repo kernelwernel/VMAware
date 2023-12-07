@@ -1722,69 +1722,69 @@ private:
             key("", "HKLM\\Software\\Classes\\Folder\\shell\\sandbox");
 
             // hyper-v
-            key("Microsoft Hyper-V", "HKLM\\SOFTWARE\\Microsoft\\Hyper-V");
-            key("Microsoft Hyper-V", "HKLM\\SOFTWARE\\Microsoft\\VirtualMachine");
-            key("Microsoft Hyper-V", "HKLM\\SOFTWARE\\Microsoft\\Virtual Machine\\Guest\\Parameters");
-            key("Microsoft Hyper-V", "HKLM\\SYSTEM\\ControlSet001\\Services\\vmicheartbeat");
-            key("Microsoft Hyper-V", "HKLM\\SYSTEM\\ControlSet001\\Services\\vmicvss");
-            key("Microsoft Hyper-V", "HKLM\\SYSTEM\\ControlSet001\\Services\\vmicshutdown");
-            key("Microsoft Hyper-V", "HKLM\\SYSTEM\\ControlSet001\\Services\\vmicexchange");
+            key(HYPERV, "HKLM\\SOFTWARE\\Microsoft\\Hyper-V");
+            key(HYPERV, "HKLM\\SOFTWARE\\Microsoft\\VirtualMachine");
+            key(HYPERV, "HKLM\\SOFTWARE\\Microsoft\\Virtual Machine\\Guest\\Parameters");
+            key(HYPERV, "HKLM\\SYSTEM\\ControlSet001\\Services\\vmicheartbeat");
+            key(HYPERV, "HKLM\\SYSTEM\\ControlSet001\\Services\\vmicvss");
+            key(HYPERV, "HKLM\\SYSTEM\\ControlSet001\\Services\\vmicshutdown");
+            key(HYPERV, "HKLM\\SYSTEM\\ControlSet001\\Services\\vmicexchange");
 
             // parallels
-            key("Parallels", "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_1AB8*");
+            key(PARALLELS, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_1AB8*");
 
             // sandboxie
-            key("Sandboxie", "HKLM\\SYSTEM\\CurrentControlSet\\Services\\SbieDrv");
-            key("Sandboxie", "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Sandboxie");
+            key(SANDBOXIE, "HKLM\\SYSTEM\\CurrentControlSet\\Services\\SbieDrv");
+            key(SANDBOXIE, "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Sandboxie");
 
             // virtualbox
-            key("VirtualBox", "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_80EE*");
-            key("VirtualBox", "HKLM\\HARDWARE\\ACPI\\DSDT\\VBOX__");
-            key("VirtualBox", "HKLM\\HARDWARE\\ACPI\\FADT\\VBOX__");
-            key("VirtualBox", "HKLM\\HARDWARE\\ACPI\\RSDT\\VBOX__");
-            key("VirtualBox", "HKLM\\SOFTWARE\\Oracle\\VirtualBox Guest Additions");
-            key("VirtualBox", "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxGuest");
-            key("VirtualBox", "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxMouse");
-            key("VirtualBox", "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxService");
-            key("VirtualBox", "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxSF");
-            key("VirtualBox", "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxVideo");
+            key(VBOX, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_80EE*");
+            key(VBOX, "HKLM\\HARDWARE\\ACPI\\DSDT\\VBOX__");
+            key(VBOX, "HKLM\\HARDWARE\\ACPI\\FADT\\VBOX__");
+            key(VBOX, "HKLM\\HARDWARE\\ACPI\\RSDT\\VBOX__");
+            key(VBOX, "HKLM\\SOFTWARE\\Oracle\\VirtualBox Guest Additions");
+            key(VBOX, "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxGuest");
+            key(VBOX, "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxMouse");
+            key(VBOX, "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxService");
+            key(VBOX, "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxSF");
+            key(VBOX, "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxVideo");
 
             // virtualpc
-            key("Virtual PC", "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_5333*");
-            key("Virtual PC", "HKLM\\SYSTEM\\ControlSet001\\Services\\vpcbus");
-            key("Virtual PC", "HKLM\\SYSTEM\\ControlSet001\\Services\\vpc-s3");
-            key("Virtual PC", "HKLM\\SYSTEM\\ControlSet001\\Services\\vpcuhub");
-            key("Virtual PC", "HKLM\\SYSTEM\\ControlSet001\\Services\\msvmmouf");
+            key(VPC, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_5333*");
+            key(VPC, "HKLM\\SYSTEM\\ControlSet001\\Services\\vpcbus");
+            key(VPC, "HKLM\\SYSTEM\\ControlSet001\\Services\\vpc-s3");
+            key(VPC, "HKLM\\SYSTEM\\ControlSet001\\Services\\vpcuhub");
+            key(VPC, "HKLM\\SYSTEM\\ControlSet001\\Services\\msvmmouf");
 
             // vmware
-            key("VMware", "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_15AD*");
-            key("VMware", "HKCU\\SOFTWARE\\VMware, Inc.\\VMware Tools");
-            key("VMware", "HKLM\\SOFTWARE\\VMware, Inc.\\VMware Tools");
-            key("VMware", "HKLM\\SYSTEM\\ControlSet001\\Services\\vmdebug");
-            key("VMware", "HKLM\\SYSTEM\\ControlSet001\\Services\\vmmouse");
-            key("VMware", "HKLM\\SYSTEM\\ControlSet001\\Services\\VMTools");
-            key("VMware", "HKLM\\SYSTEM\\ControlSet001\\Services\\VMMEMCTL");
-            key("VMware", "HKLM\\SYSTEM\\ControlSet001\\Services\\vmware");
-            key("VMware", "HKLM\\SYSTEM\\ControlSet001\\Services\\vmci");
-            key("VMware", "HKLM\\SYSTEM\\ControlSet001\\Services\\vmx86");
-            key("VMware", "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\IDE\\CdRomNECVMWar_VMware_IDE_CD*");
-            key("VMware", "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\IDE\\CdRomNECVMWar_VMware_SATA_CD*");
-            key("VMware", "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\IDE\\DiskVMware_Virtual_IDE_Hard_Drive*");
-            key("VMware", "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\IDE\\DiskVMware_Virtual_SATA_Hard_Drive*");
+            key(VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_15AD*");
+            key(VMWARE, "HKCU\\SOFTWARE\\VMware, Inc.\\VMware Tools");
+            key(VMWARE, "HKLM\\SOFTWARE\\VMware, Inc.\\VMware Tools");
+            key(VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Services\\vmdebug");
+            key(VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Services\\vmmouse");
+            key(VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Services\\VMTools");
+            key(VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Services\\VMMEMCTL");
+            key(VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Services\\vmware");
+            key(VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Services\\vmci");
+            key(VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Services\\vmx86");
+            key(VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\IDE\\CdRomNECVMWar_VMware_IDE_CD*");
+            key(VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\IDE\\CdRomNECVMWar_VMware_SATA_CD*");
+            key(VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\IDE\\DiskVMware_Virtual_IDE_Hard_Drive*");
+            key(VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\IDE\\DiskVMware_Virtual_SATA_Hard_Drive*");
 
             // wine
-            key("Wine", "HKCU\\SOFTWARE\\Wine");
-            key("Wine", "HKLM\\SOFTWARE\\Wine");
+            key(WINE, "HKCU\\SOFTWARE\\Wine");
+            key(WINE, "HKLM\\SOFTWARE\\Wine");
 
             // xen
-            key("Xen HVM", "HKLM\\HARDWARE\\ACPI\\DSDT\\xen");
-            key("Xen HVM", "HKLM\\HARDWARE\\ACPI\\FADT\\xen");
-            key("Xen HVM", "HKLM\\HARDWARE\\ACPI\\RSDT\\xen");
-            key("Xen HVM", "HKLM\\SYSTEM\\ControlSet001\\Services\\xenevtchn");
-            key("Xen HVM", "HKLM\\SYSTEM\\ControlSet001\\Services\\xennet");
-            key("Xen HVM", "HKLM\\SYSTEM\\ControlSet001\\Services\\xennet6");
-            key("Xen HVM", "HKLM\\SYSTEM\\ControlSet001\\Services\\xensvc");
-            key("Xen HVM", "HKLM\\SYSTEM\\ControlSet001\\Services\\xenvdb");
+            key(XEN, "HKLM\\HARDWARE\\ACPI\\DSDT\\xen");
+            key(XEN, "HKLM\\HARDWARE\\ACPI\\FADT\\xen");
+            key(XEN, "HKLM\\HARDWARE\\ACPI\\RSDT\\xen");
+            key(XEN, "HKLM\\SYSTEM\\ControlSet001\\Services\\xenevtchn");
+            key(XEN, "HKLM\\SYSTEM\\ControlSet001\\Services\\xennet");
+            key(XEN, "HKLM\\SYSTEM\\ControlSet001\\Services\\xennet6");
+            key(XEN, "HKLM\\SYSTEM\\ControlSet001\\Services\\xensvc");
+            key(XEN, "HKLM\\SYSTEM\\ControlSet001\\Services\\xenvdb");
 
             #ifdef __VMAWARE_DEBUG__
                 debug("REGISTRY: ", "score = ", static_cast<u32>(score));
@@ -2815,7 +2815,6 @@ private:
     }
 
 
-
     /**
      * @brief get top-level default window level
      * @category Windows
@@ -2857,6 +2856,70 @@ private:
         return false;
     }
 
+
+    /**
+     * @brief Check for semi-documented Virtual PC detection method using illegal instructions
+     * @category Windows x86
+     * @link http://www.codeproject.com/Articles/9823/Detect-if-your-program-is-running-inside-a-Virtual
+     */ 
+    [[nodiscard]] static bool vpc_illegal() try {
+        #if !(x86 && MSVC)
+            return false;
+        #else
+            bool is_vm = false;
+
+/*
+            DWORD __forceinline IsInsideVPC_exceptionFilter(LPEXCEPTION_POINTERS ep)
+            {
+            PCONTEXT ctx = ep->ContextRecord;
+
+            ctx->Ebx = -1; // Not running VPC
+            ctx->Eip += 4; // skip past the "call VPC" opcodes
+            return EXCEPTION_CONTINUE_EXECUTION;
+            // we can safely resume execution since we skipped faulty instruction
+            }
+*/
+
+            auto VPCExceptionHandler = [](PEXCEPTION_POINTERS ep) -> DWORD {
+                __try {
+                    PCONTEXT ctx = ep->ContextRecord;
+
+                    ctx->Ebx = -1;    // Not running VPC
+                    ctx->Eip += 4;    // skip past the "call VPC" opcodes
+                    return EXCEPTION_CONTINUE_EXECUTION;
+                    // we can safely resume execution since we skipped the faulty instruction
+                }
+                __except (EXCEPTION_EXECUTE_HANDLER) {
+                    return EXCEPTION_CONTINUE_SEARCH;
+                }
+            };
+
+            __try {
+                __asm push   ebx
+                __asm mov    ebx, 0 // It will stay ZERO if VPC is running
+                __asm mov    eax, 1 // VPC function number
+
+                // call VPC
+                __asm __emit 0Fh
+                __asm __emit 3Fh
+                __asm __emit 0Dh
+                __asm __emit 0h
+
+                __asm test   ebx, ebx
+                __asm setz   [is_vm]
+                __asm pop    ebx
+            }
+            // The exception block shouldn't get triggered if VPC is running
+            __except(VPCExceptionHandler(GetExceptionInformation())) { }
+
+            return is_vm;
+        #endif
+    } catch (...) {
+        #ifdef __VMAWARE_DEBUG__
+            debug("VPC_ILLEGAL:", "catched error, returned false");
+        #endif
+        return false;
+    }
 
     // __LABEL  (ignore this, it's just a label so I can easily teleport to this line on my IDE with CTRL+F)
 
