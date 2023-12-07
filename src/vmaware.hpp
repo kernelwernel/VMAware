@@ -554,8 +554,6 @@ public:
         VMWARE_PORT = 1 << 7,
         THREADCOUNT = 1 << 8,
         MAC = 1 << 9,
-
-        // linux-specific
         TEMPERATURE = 1 << 10,
         SYSTEMD = 1 << 11,
         CVENDOR = 1 << 12,
@@ -564,9 +562,7 @@ public:
         DMIDECODE = 1 << 15,
         DMESG = 1 << 16,
         HWMON = 1 << 17,
-        SIDT5 = 1 << 18,
-        
-        // windows-specific
+        SIDT5 = 1 << 18,       
         CURSOR = 1 << 19,
         VMWARE_REG = 1 << 20,
         VBOX_REG = 1 << 21,
@@ -590,9 +586,8 @@ public:
         GAMARUE = 1ULL << 39,
         WINDOWS_NUMBER = 1ULL << 40,
         VMID_0X4 = 1ULL << 41,
-        VPC_ILLEGAL = 1ULL << 42,
+        VPC_BACKDOOR = 1ULL << 42,
 
-        // settings
         NO_MEMO = 1ULL << 63,
         
         #if (MSVC)
@@ -677,7 +672,6 @@ public:
                 #endif
             #endif
                         
-
             const bool found = (std::find(std::begin(IDs), std::end(IDs), brand) != std::end(IDs));
 
             if (found) {
@@ -2873,24 +2867,18 @@ private:
      * @brief Check for semi-documented Virtual PC detection method using illegal instructions
      * @category Windows x86
      * @link http://www.codeproject.com/Articles/9823/Detect-if-your-program-is-running-inside-a-Virtual
+     * @link https://artemonsecurity.com/vmde.pdf
+     * @author N. Rin, EP_X0FF
      */ 
-    [[nodiscard]] static bool vpc_illegal() try {
+    [[nodiscard]] static bool vpc_backdoor() try {
+        if (disabled(VPC_BACKDOOR)) {
+            return false;
+        }
+
         #if !(x86 && MSVC)
             return false;
         #else
             bool is_vm = false;
-
-/*
-            DWORD __forceinline IsInsideVPC_exceptionFilter(LPEXCEPTION_POINTERS ep)
-            {
-            PCONTEXT ctx = ep->ContextRecord;
-
-            ctx->Ebx = -1; // Not running VPC
-            ctx->Eip += 4; // skip past the "call VPC" opcodes
-            return EXCEPTION_CONTINUE_EXECUTION;
-            // we can safely resume execution since we skipped faulty instruction
-            }
-*/
 
             auto VPCExceptionHandler = [](PEXCEPTION_POINTERS ep) -> DWORD {
                 __try {
@@ -2906,6 +2894,7 @@ private:
                 }
             };
 
+            // ========== TEST 1 (use well-known trick with illegal instructions )==========
             __try {
                 __asm push   ebx
                 __asm mov    ebx, 0 // It will stay ZERO if VPC is running
@@ -2924,11 +2913,53 @@ private:
             // The exception block shouldn't get triggered if VPC is running
             __except(VPCExceptionHandler(GetExceptionInformation())) { }
 
-            return is_vm;
+
+            // ========== TEST 2 (query virtual pc device) ==========
+            if (is_vm == false) {
+                is_vm = (IsObjectExists(DEVICELINK, DEVICE_VIRTUALPC));
+            }
+
+            // ========== TEST 3 (query virtual pc driver, reg. rights elevation) ==========
+            if (is_vm == false ) {
+                is_vm = (IsObjectExists(DRIVERLINK, DRIVER_VIRTUALPC));
+            }
+
+            // ========== TEST 4 (scan raw firmware for specific string patterns) ==========
+            if (is_vm == false) {
+                pSIF = (PSYSTEM_FIRMWARE_TABLE_INFORMATION)GetFirmwareTable(&dwDataSize, FIRM,
+                0xC0000);
+                if (pSIF != NULL && dwDataSize > 0) {
+                    is_vm = ScanDump((CHAR*)pSIF, dwDataSize, VENDOR_VPC, _strlenA(VENDOR_VPC));
+
+                    RtlFreeHeap(RtlProcessHeap(), 0, pSIF);
+                }
+            }
+
+            // ========== TEST 5 (scan raw smbios data for specific string patters) ==========
+            if (is_vm == false) {
+                pSIF = (PSYSTEM_FIRMWARE_TABLE_INFORMATION)GetFirmwareTable(&dwDataSize, RSMB, 0);
+                if (pSIF != NULL && dwDataSize > 0) {
+                    is_vm = ScanDump((CHAR*)pSIF, dwDataSize, SMB_VPC, _strlenA(SMB_VPC));
+                    RtlFreeHeap(RtlProcessHeap(), 0, pSIF);
+                }
+            }
+
+            // ========== TEST 6 (query S3 VID on PCI bus devices) ==========
+            if (is_vm == false) {
+                if (vIsInList(VID_S3MS) != NULL) {
+                    IsVM = true;
+                }
+            }
+
+            if (is_vm == true) {
+                return add(VPC);
+            } else {
+                return false;
+            }
         #endif
     } catch (...) {
         #ifdef __VMAWARE_DEBUG__
-            debug("VPC_ILLEGAL:", "catched error, returned false");
+            debug("VPC_BACKDOOR:", "catched error, returned false");
         #endif
         return false;
     }
@@ -3235,7 +3266,7 @@ const std::map<VM::u64, VM::technique> VM::table = {
     { VM::GAMARUE, { 40, VM::gamarue }},
     { VM::WINDOWS_NUMBER, { 20, VM::windows_number }},
     { VM::VMID_0X4, { 90, VM::vmid_0x4 }},
-    { VM::VPC_ILLEGAL, { 60, VM::vpc_illegal }}
+    { VM::VPC_BACKDOOR, { 70, VM::vpc_backdoor }}
 
     // { VM::, { ,  }}
     // ^ line template for personal use

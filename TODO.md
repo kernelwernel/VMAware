@@ -5,6 +5,7 @@
 - [ ] add github metrics for license (looks cool af)
 - [ ] add CTest before alpha release
 - [ ] maybe add a threadpool
+- [ ] test for processor type and stuff like that for cpuid EAX=1
 - [X] update doc without technique column
 - [X] make a flagcheck function
 - [X] create a standard cpuid function (replace __cpuidex bc wine)
