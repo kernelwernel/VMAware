@@ -669,13 +669,14 @@ public:
  
             #ifdef __VMAWARE_DEBUG__
                 debug(technique_name, brand);
+            #else
+                #if (CPP < 17)
+                    // bypass compiler warning about unused parameter, ignore this
+                    #define UNUSED(x) ((void)(x))
+                    UNUSED(technique_name);
+                #endif
             #endif
                         
-            // bypass against compiler warning about unused parameter, ignore this
-            #ifndef __DEBUG__
-                #define UNUSED(x) (void)0
-                UNUSED(technique_name);
-            #endif
 
             const bool found = (std::find(std::begin(IDs), std::end(IDs), brand) != std::end(IDs));
 
