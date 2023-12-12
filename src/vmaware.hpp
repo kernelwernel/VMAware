@@ -3238,7 +3238,8 @@ private:
 //            }
 //
 //            return is_vm;
-        #endif
+//        #endif
+
     }
 
     // __LABEL  (ignore this, it's just a label so I can easily teleport to this line on my IDE with CTRL+F)
