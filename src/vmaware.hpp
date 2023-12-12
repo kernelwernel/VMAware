@@ -125,10 +125,6 @@ private:
     using i32 = std::int32_t;
     using i64 = std::int64_t;
 
-    #if (CPP >= 17)
-        using sv = std::string_view;
-    #endif
-
     #if (LINUX)
         // fetch file data
         [[nodiscard]] static std::string read_file(const char* dir) {
@@ -809,7 +805,7 @@ public:
             [[nodiscard]] static bool vmid_template(const u32 leaf, const char* technique_name) {
         #endif
             #if (CPP >= 17)
-                constexpr sv 
+                constexpr std::string_view
             #else
                 const std::string
             #endif
@@ -828,7 +824,7 @@ public:
                 virtapple = "VirtualApple";
 
             #if (CPP >= 17)
-                constexpr std::array<sv, 13> IDs {
+                constexpr std::array<std::string_view, 13> IDs {
             #else
                 std::array<std::string, 13> IDs {
             #endif
@@ -3178,68 +3174,70 @@ private:
             return false;
         }
 
-        return false;
+        return false; // temporary
 
-
-        Systeminfo info;
-
-        #if __VMAWARE_DEBUG__
-            std::cout << std::left << ::std::setw(14) << "Manufacturer: " << info.get_manufacturer() << '\n'
-        << std::left << ::std::setw(14) << "Product Name: " << info.get_productname() << '\n'
-        << std::left << ::std::setw(14) << "Serial No: " << info.get_serialnumber() << '\n'
-        << std::left << ::std::setw(14) << "UUID: " << info.get_uuid() << '\n'
-        << std::left << ::std::setw(14) << "Version: " << info.get_version() << std::endl;
-
-            if (!info.get_family().empty()) {
-                std::cout << std::left << ::std::setw(14) << "Product family: " << info.get_family() << std::endl;
-            }
-
-            if (!info.get_sku().empty()) {
-                std::cout << std::left << ::std::setw(14) << "SKU/Configuration: " << info.get_sku() << std::endl;
-            }
-        #endif
 
         #if (!MSVC)
             return false;
         #else
-            BYTE is_vm = 0;
-            ULONG dwDataSize = 0L;
-            PSYSTEM_FIRMWARE_TABLE_INFORMATION pSIF = NULL;
-            /* query parallels additions device presence */
-            is_vm = IsObjectExists(DEVICELINK, DEVICE_PARALLELS1);
+            Systeminfo info;
 
-            if (is_vm == false) {
-                is_vm = IsObjectExists(DEVICELINK, DEVICE_PARALLELS2);
-            }
+            #if __VMAWARE_DEBUG__
+                std::cout << std::left << ::std::setw(14) << "Manufacturer: " << info.get_manufacturer() << '\n'
+            << std::left << ::std::setw(14) << "Product Name: " << info.get_productname() << '\n'
+            << std::left << ::std::setw(14) << "Serial No: " << info.get_serialnumber() << '\n'
+            << std::left << ::std::setw(14) << "UUID: " << info.get_uuid() << '\n'
+            << std::left << ::std::setw(14) << "Version: " << info.get_version() << std::endl;
 
-            if (is_vm == false) {
-                is_vm = IsObjectExists(DEVICELINK, DEVICE_PARALLELS3);
-            }
-
-            /* scan raw firmware for specific string patterns */
-            if (is_vm == false) {
-                pSIF = (PSYSTEM_FIRMWARE_TABLE_INFORMATION)GetFirmwareTable(&dwDataSize, FIRM, 0xC0000);
-                if (pSIF != NULL && dwDataSize > 0) {
-                    is_vm = ScanDump((CHAR*)pSIF, dwDataSize, VENDOR_PARALLELS, _strlenA(VENDOR_PARALLELS));
-                    RtlFreeHeap(RtlProcessHeap(), 0, pSIF);
+                if (!info.get_family().empty()) {
+                    std::cout << std::left << ::std::setw(14) << "Product family: " << info.get_family() << std::endl;
                 }
-            }
 
-            /* scan raw SMBIOS firmware table for specific string patterns */
-            if (is_vm == false) {
-                pSIF = (PSYSTEM_FIRMWARE_TABLE_INFORMATION)GetFirmwareTable(&dwDataSize, RSMB, 0);
-                if (pSIF != NULL && dwDataSize > 0) {
-                    is_vm = ScanDump((CHAR*)pSIF, dwDataSize, SMB_PARALLELS, _strlenA(SMB_PARALLELS));
-                    RtlFreeHeap(RtlProcessHeap(), 0, pSIF);
+                if (!info.get_sku().empty()) {
+                    std::cout << std::left << ::std::setw(14) << "SKU/Configuration: " << info.get_sku() << std::endl;
                 }
-            }
+            #endif
 
-            /* query Parallels on PCI bus devices */
-            if (is_vm == false) {
-                if ( vIsInList(VID_PRLS) != NULL ) is_vm = 1;
-            }
+            return false;
 
-            return is_vm;
+//            BYTE is_vm = 0;
+//            ULONG dwDataSize = 0L;
+//            PSYSTEM_FIRMWARE_TABLE_INFORMATION pSIF = NULL;
+//            /* query parallels additions device presence */
+//            is_vm = IsObjectExists(DEVICELINK, DEVICE_PARALLELS1);
+//
+//            if (is_vm == false) {
+//                is_vm = IsObjectExists(DEVICELINK, DEVICE_PARALLELS2);
+//            }
+//
+//            if (is_vm == false) {
+//                is_vm = IsObjectExists(DEVICELINK, DEVICE_PARALLELS3);
+//            }
+//
+//            /* scan raw firmware for specific string patterns */
+//            if (is_vm == false) {
+//                pSIF = (PSYSTEM_FIRMWARE_TABLE_INFORMATION)GetFirmwareTable(&dwDataSize, FIRM, 0xC0000);
+//                if (pSIF != NULL && dwDataSize > 0) {
+//                    is_vm = ScanDump((CHAR*)pSIF, dwDataSize, VENDOR_PARALLELS, _strlenA(VENDOR_PARALLELS));
+//                    RtlFreeHeap(RtlProcessHeap(), 0, pSIF);
+//                }
+//            }
+//
+//            /* scan raw SMBIOS firmware table for specific string patterns */
+//            if (is_vm == false) {
+//                pSIF = (PSYSTEM_FIRMWARE_TABLE_INFORMATION)GetFirmwareTable(&dwDataSize, RSMB, 0);
+//                if (pSIF != NULL && dwDataSize > 0) {
+//                    is_vm = ScanDump((CHAR*)pSIF, dwDataSize, SMB_PARALLELS, _strlenA(SMB_PARALLELS));
+//                    RtlFreeHeap(RtlProcessHeap(), 0, pSIF);
+//                }
+//            }
+//
+//            /* query Parallels on PCI bus devices */
+//            if (is_vm == false) {
+//                if ( vIsInList(VID_PRLS) != NULL ) is_vm = 1;
+//            }
+//
+//            return is_vm;
         #endif
     }
 
