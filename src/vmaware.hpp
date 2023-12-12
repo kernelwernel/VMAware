@@ -3176,13 +3176,13 @@ private:
 
         return false; // temporary
 
-
+/*
         #if (!MSVC)
             return false;
         #else
             Systeminfo info;
 
-            #if __VMAWARE_DEBUG__
+            #ifdef __VMAWARE_DEBUG__
                 std::cout << std::left << ::std::setw(14) << "Manufacturer: " << info.get_manufacturer() << '\n'
             << std::left << ::std::setw(14) << "Product Name: " << info.get_productname() << '\n'
             << std::left << ::std::setw(14) << "Serial No: " << info.get_serialnumber() << '\n'
