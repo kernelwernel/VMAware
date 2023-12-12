@@ -147,7 +147,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::WINDOWS_NUMBER` | Check top-level default window level | Windows | 20% |  | 
 | `VM::GAMARUE` | Check for Gamarue ransomeware technique which compares VM-specific Window product IDs | Windows | 40% |  | 
 | `VM::VMID_0X4` | Check if the CPU manufacturer ID matches that of a VM brand with leaf 0x40000000 | Yes | 100% |  |
-| `VM::VPC_ILLEGAL` | Check for semi-documented detection mechanism for Virtual PC | Windows | 60% |  |
+| `VM::VPC_BACKDOOR` | Check for semi-documented detection mechanism for Virtual PC | Windows | 70% |  |
 
 # Non-technique flags
 | Flag | Description |

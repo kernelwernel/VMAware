@@ -108,6 +108,7 @@ If you found this project useful, a star would be appreciated :)
 - [Al-Khaser](https://github.com/LordNoteworthy/al-khaser)
 - [pafish](https://github.com/a0rtega/pafish)
 - [Matteo Malvica](https://www.matteomalvica.com)
+- N. Rin, EP_X0FF
 
 
 ## Legal 📜
