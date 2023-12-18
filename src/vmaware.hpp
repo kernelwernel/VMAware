@@ -105,11 +105,14 @@
     #include <sys/stat.h>
     #include <sys/statvfs.h>
     #include <sys/ioctl.h>
+    #include <sys/syscall.h>
     #include <net/if.h> 
     #include <netinet/in.h>
     #include <unistd.h>
     #include <string.h>
     #include <memory>
+
+    #include <immintrin.h>
 #elif (APPLE)
     #include <sys/types.h>
     #include <sys/sysctl.h>
@@ -790,6 +793,7 @@ public:
         VMID_0X4 = 1ULL << 41,
         VPC_BACKDOOR = 1ULL << 42,
         PARALLELS_VM = 1ULL << 43,
+        SPEC_RDTSC = 1ULL << 44,
 
         NO_MEMO = 1ULL << 63,
         
@@ -3169,77 +3173,149 @@ private:
     }
 
 
-    [[nodiscard]] static bool parallels() {
+    /**
+     * @brief check for any indication of parallels through BIOS stuff
+     * @category Windows
+     */ 
+    [[nodiscard]] static bool parallels() try {
+        //https://stackoverflow.com/questions/1370586/detect-if-windows-is-running-from-within-parallels
         if (disabled(PARALLELS_VM)) {
             return false;
         }
 
-        return false; // temporary
-
-/*
         #if (!MSVC)
             return false;
         #else
-            Systeminfo info;
+            std::unique_ptr<Systeminfo> info = std::make_unique<Systeminfo>();
 
             #ifdef __VMAWARE_DEBUG__
-                std::cout << std::left << ::std::setw(14) << "Manufacturer: " << info.get_manufacturer() << '\n'
-            << std::left << ::std::setw(14) << "Product Name: " << info.get_productname() << '\n'
-            << std::left << ::std::setw(14) << "Serial No: " << info.get_serialnumber() << '\n'
-            << std::left << ::std::setw(14) << "UUID: " << info.get_uuid() << '\n'
-            << std::left << ::std::setw(14) << "Version: " << info.get_version() << std::endl;
+                std::cout << std::left << ::std::setw(14) << "Manufacturer: " << info->get_manufacturer() << '\n'
+            << std::left << ::std::setw(14) << "Product Name: " << info->get_productname() << '\n'
+            << std::left << ::std::setw(14) << "Serial No: " << info->get_serialnumber() << '\n'
+            << std::left << ::std::setw(14) << "UUID: " << info->get_uuid() << '\n'
+            << std::left << ::std::setw(14) << "Version: " << info->get_version() << std::endl;
 
-                if (!info.get_family().empty()) {
-                    std::cout << std::left << ::std::setw(14) << "Product family: " << info.get_family() << std::endl;
+                if (!info->get_family().empty()) {
+                    std::cout << std::left << ::std::setw(14) << "Product family: " << info->get_family() << std::endl;
                 }
 
-                if (!info.get_sku().empty()) {
-                    std::cout << std::left << ::std::setw(14) << "SKU/Configuration: " << info.get_sku() << std::endl;
+                if (!info->get_sku().empty()) {
+                    std::cout << std::left << ::std::setw(14) << "SKU/Configuration: " << info->get_sku() << std::endl;
                 }
             #endif
 
+            auto compare = [](const std::string &str) -> bool {
+                std::regex pattern("Parallels", std::regex_constants::icase);
+                return std::regex_match(str, pattern);
+            };
+
+            if (
+                compare(info->get_manufacturer()) ||
+                compare(info->get_productname()) ||
+                compare(info->get_family())
+            ) {
+                return add(PARALLELS);
+            }
+
             return false;
+        #endif
+    } catch (...) {
+        #ifdef __VMAWARE_DEBUG__
+            debug("PARALLELS_VM:", "catched error, returned false");
+        #endif
+        return false;
+    }
 
-//            BYTE is_vm = 0;
-//            ULONG dwDataSize = 0L;
-//            PSYSTEM_FIRMWARE_TABLE_INFORMATION pSIF = NULL;
-//            /* query parallels additions device presence */
-//            is_vm = IsObjectExists(DEVICELINK, DEVICE_PARALLELS1);
-//
-//            if (is_vm == false) {
-//                is_vm = IsObjectExists(DEVICELINK, DEVICE_PARALLELS2);
-//            }
-//
-//            if (is_vm == false) {
-//                is_vm = IsObjectExists(DEVICELINK, DEVICE_PARALLELS3);
-//            }
-//
-//            /* scan raw firmware for specific string patterns */
-//            if (is_vm == false) {
-//                pSIF = (PSYSTEM_FIRMWARE_TABLE_INFORMATION)GetFirmwareTable(&dwDataSize, FIRM, 0xC0000);
-//                if (pSIF != NULL && dwDataSize > 0) {
-//                    is_vm = ScanDump((CHAR*)pSIF, dwDataSize, VENDOR_PARALLELS, _strlenA(VENDOR_PARALLELS));
-//                    RtlFreeHeap(RtlProcessHeap(), 0, pSIF);
-//                }
-//            }
-//
-//            /* scan raw SMBIOS firmware table for specific string patterns */
-//            if (is_vm == false) {
-//                pSIF = (PSYSTEM_FIRMWARE_TABLE_INFORMATION)GetFirmwareTable(&dwDataSize, RSMB, 0);
-//                if (pSIF != NULL && dwDataSize > 0) {
-//                    is_vm = ScanDump((CHAR*)pSIF, dwDataSize, SMB_PARALLELS, _strlenA(SMB_PARALLELS));
-//                    RtlFreeHeap(RtlProcessHeap(), 0, pSIF);
-//                }
-//            }
-//
-//            /* query Parallels on PCI bus devices */
-//            if (is_vm == false) {
-//                if ( vIsInList(VID_PRLS) != NULL ) is_vm = 1;
-//            }
-//
-//            return is_vm;
-//        #endif
 
+
+    /**
+     * @brief check VM through RDTSC with speculative execution technique from the repo below
+     * @link https://github.com/bi-zone/rdtsc-checkvirt-poc
+     * @author bi-zone
+     * @category Windows
+     * @note FIX THIS FUCKING SHIT WHENEVER I HAVE TIME
+     */ 
+    [[nodiscard]] static bool speculative_rdtsc() try {
+        if (disabled(SPEC_RDTSC)) {
+            return false;
+        }
+
+        return false;
+        /*
+        #if (LINUX) 
+            #define NumberOfCycles 10000
+            #define VirtualizationLimit (NumberOfCycles/100)
+
+            void speculate(const char* detector);
+            uint64_t timed_read(const char* target);
+
+            char* detector;
+
+            detector = (char*)(malloc(4096 * 257));
+            detector = detector - ((uintptr_t)detector & 4095);
+
+            memset(detector, 0, 4096 * 256);
+    
+            int stat[0x100];
+            std::size_t length = (sizeof(stat)/sizeof(stat[0]));
+
+            for(std::size_t i = 0; i < length; ++i) {
+                stat[i] = 0;
+            }
+
+            for(int i = 0; i < NumberOfCycles; ++i) {
+                for (uint32_t i = 0; i < 256; ++i) {
+                    _mm_clflush(detector + i*4096);
+                }
+                
+                //speculate(detector);
+
+
+                uint64_t timings[256];
+                for (uint32_t i = 0; i < 256; ++i) {
+                    timings[i] = timed_read(detector + i*4096);
+                }
+
+                uint64_t lowestVal=timings[0];
+                int lowestInd=0;
+                for (uint32_t i = 1; i < 256; ++i) {
+                    if (timings[i] < lowestVal) {
+                        lowestVal=timings[i];
+                        lowestInd=i;
+                    }
+                }
+
+                int res = lowestInd;
+                ++stat[res];
+            }
+
+            //You can uncomment this region if you need detailed statistics
+            
+            for (int i=0; i<256;++i)
+            {
+                printf("[%02x] %d\n",i,stat[i]);
+            }
+            *//*
+
+            int miss_number=NumberOfCycles;
+            for (int i=0; i<8; i++)
+            {
+                miss_number-=stat[32+i];
+            }
+
+            printf("%d out of %d cache misses\n", miss_number, NumberOfCycles);
+            if (miss_number <= VirtualizationLimit) {
+                printf("RDTSC is not virtualized\n");
+            } else{
+                printf("RDTSC is virtualized\n");
+            }
+
+            return true;
+        #endif
+        */
+    } catch (...) {
+        // TODO: add debug cba
+        return false;
     }
 
     // __LABEL  (ignore this, it's just a label so I can easily teleport to this line on my IDE with CTRL+F)
@@ -3545,7 +3621,8 @@ const std::map<VM::u64, VM::technique> VM::table = {
     { VM::WINDOWS_NUMBER, { 20, VM::windows_number }},
     { VM::VMID_0X4, { 90, VM::vmid_0x4 }},
     { VM::VPC_BACKDOOR, { 70, VM::vpc_backdoor }},
-    { VM::PARALLELS_VM, { 50, VM::parallels }}
+    { VM::PARALLELS_VM, { 50, VM::parallels }},
+    { VM::SPEC_RDTSC, { 80, VM::speculative_rdtsc }}
 
     // { VM::, { ,  }}
     // ^ line template for personal use

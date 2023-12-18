@@ -117,7 +117,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::VMWARE_PORT` | Check if VMware port number 0x5658 is present | Linux and Windows | 80% |  |
 | `VM::THREADCOUNT` | Check if there are only 1 or 2 threads, which is a common pattern in VMs with default settings (nowadays physical CPUs should have at least 4 threads for modern CPUs) | Yes | 35% |  |
 | `VM::MAC` | Check if the system's MAC address matches with preset values for certain VMs | Linux and Windows | 90% |  |
-| `VM::TEMPERATURE` | Check for the presence of CPU temperature sensors (mostly not present in VMs) | Linux | 15% |  |
+| `VM::TEMPERATURE` | Check for the presence of CPU temperature sensors (mostly not present in VMs) | Linux | 15% |  
 | `VM::SYSTEMD` | Get output from systemd-detect-virt tool | Linux | 70% |  |
 | `VM::CVENDOR` | Check if the chassis has any VM-related keywords | Linux | 65% |  |
 | `VM::CTYPE` | Check if the chassis type is valid (usually not in VMs) | Linux | 10% |  |
@@ -148,6 +148,8 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::GAMARUE` | Check for Gamarue ransomeware technique which compares VM-specific Window product IDs | Windows | 40% |  | 
 | `VM::VMID_0X4` | Check if the CPU manufacturer ID matches that of a VM brand with leaf 0x40000000 | Yes | 100% |  |
 | `VM::VPC_BACKDOOR` | Check for semi-documented detection mechanism for Virtual PC | Windows | 70% |  |
+|
+|
 
 # Non-technique flags
 | Flag | Description |

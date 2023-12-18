@@ -14,17 +14,17 @@ It utilises a comprehensive list of low-level and high-level anti-VM techniques 
 The library is:
 - Very easy to use, with only 3 functions in its public interface
 - Very flexible with fine-grained control
-- Cross-platform (NOTE: MACOS AND MSVC ARE NOT EFFECTIVE FOR NOW)
+- Cross-platform **(NOTE: MACOS AND MSVC ARE NOT EFFECTIVE FOR NOW)**
 - Header-only
 - Available with C++11 and above
 - Able to detect VMware, VirtualBox, QEMU, KVM, Parallels, and much more
 - Able to detect semi-VM technologies like hypervisors, docker, and wine
-- Able to determine the VM brand
+- Able to guess the VM brand
 - Memoized, meaning past results are cached and retrieved if ran again for performance benefits 
 
 - - -
 
-**IMPORTANT:** The library is currently a beta, so more improvements and cross-compatibility fixes are planned (especially for Windows which I'm currently working on fixing). I don't recommend using this for any serious projects for now.
+**IMPORTANT:** The library is currently a beta, so more improvements and cross-compatibility fixes are planned (especially for Windows which I'm currently working on improving). I don't recommend using this for any serious projects for now.
 
 - - -
 
@@ -93,7 +93,7 @@ You can view the full docs [here](docs/documentation.md). Trust me, it's not too
 > This project is not soliciting the development of malware for any malicious intentions. Even if you intend to use it that way, it'll most likely be flagged by antiviruses anyway.
 
 - When will a 1.0 be available?
-> Pretty soon, maybe around mid December (I just started university very recently, so I can't guarantee anything)
+> Pretty soon, maybe around january 2024 (I just started university very recently, so I can't guarantee anything)
 
 
 ## Issues and pull requests 📬
