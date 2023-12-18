@@ -795,6 +795,9 @@ public:
         PARALLELS_VM = 1ULL << 43,
         SPEC_RDTSC = 1ULL << 44,
 
+        // __UNIQUE_LABEL, ADD YOUR UNIQUE FUNCTION FLAG VALUE ABOVE HERE
+
+
         NO_MEMO = 1ULL << 63,
         
         #if (MSVC)
@@ -3227,7 +3230,6 @@ private:
     }
 
 
-
     /**
      * @brief check VM through RDTSC with speculative execution technique from the repo below
      * @link https://github.com/bi-zone/rdtsc-checkvirt-poc
@@ -3314,11 +3316,15 @@ private:
         #endif
         */
     } catch (...) {
-        // TODO: add debug cba
+        #ifdef __VMAWARE_DEBUG__
+            debug("SPEC_RDTSC:", "catched error, returned false");
+        #endif
         return false;
     }
 
-    // __LABEL  (ignore this, it's just a label so I can easily teleport to this line on my IDE with CTRL+F)
+
+
+    // __TECHNIQUE_LABEL, label for adding techniques above this point
 
 
     struct technique {
@@ -3624,6 +3630,7 @@ const std::map<VM::u64, VM::technique> VM::table = {
     { VM::PARALLELS_VM, { 50, VM::parallels }},
     { VM::SPEC_RDTSC, { 80, VM::speculative_rdtsc }}
 
-    // { VM::, { ,  }}
-    // ^ line template for personal use
+    // __TABLE_LABEL, add your technique above
+    // { VM::YOUR_FUNCTION, { POINTS, FUNCTION POINTER }}
+    // ^ template 
 };
