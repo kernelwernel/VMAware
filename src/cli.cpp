@@ -98,6 +98,13 @@ int main(int argc, char* argv[]) {
         checker(VM::MEMORY, "low memory space");
         checker(VM::VM_PROCESSES, "VM processes");
         checker(VM::LINUX_USER_HOST, "default Linux user/host");
+        checker(VM::VBOX_WINDOW_CLASS, "VBox window class");
+        checker(VM::GAMARUE, "gamarue ransomware technique");
+        checker(VM::WINDOWS_NUMBER, "Windows number");
+        checker(VM::VMID_0X4, "0x4 leaf of VMID");
+        checker(VM::VPC_BACKDOOR, "VPC backdoor");
+        checker(VM::PARALLELS_VM, "Parallels techniques");
+        checker(VM::SPEC_RDTSC, "speculative RDTSC");
         std::printf("\n");
 
         std::cout << "VM brand: " << (std::string(VM::brand()) == "Unknown" ? red : green) << VM::brand() << ansi_exit << "\n\n";
