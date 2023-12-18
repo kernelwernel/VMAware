@@ -3221,7 +3221,7 @@ private:
      * @brief check for loaded dlls in the process
      * @category Windows
      * @author LordNoteworthy
-     * @note from Al-Khaser project
+     * @note modified code from Al-Khaser project
      * @link https://github.com/LordNoteworthy/al-khaser/blob/c68fbd7ba0ba46315e819b490a2c782b80262fcd/al-khaser/Anti%20VM/Generic.cpp
      */ 
     [[nodiscard]] static bool loaded_dlls() try {
@@ -3234,31 +3234,32 @@ private:
         #else
             HMODULE hDll;
 
-            constexpr std::array<TCHAR*, 5> szDlls = { 
-                _T("avghookx.dll"),		// AVG
-                _T("avghooka.dll"),		// AVG
-                _T("snxhk.dll"),		// Avast
-                _T("sbiedll.dll"),		// Sandboxie
-                _T("dbghelp.dll"),		// WindBG
-                _T("api_log.dll"),		// iDefense Lab
-                _T("dir_watch.dll"),	// iDefense Lab
-                _T("pstorec.dll"),		// SunBelt Sandbox
-                _T("vmcheck.dll"),		// Virtual PC
-                _T("wpespy.dll"),		// WPE Pro
-                _T("cmdvrt64.dll"),		// Comodo Container
-                _T("cmdvrt32.dll"),		// Comodo Container
+            constexpr std::array<const char*, 5> szDlls = { 
+                "avghookx.dll",		// AVG
+                "avghooka.dll",		// AVG
+                "snxhk.dll",		// Avast
+                "sbiedll.dll",		// Sandboxie
+                "dbghelp.dll",		// WindBG
+                "api_log.dll",		// iDefense Lab
+                "dir_watch.dll",	// iDefense Lab
+                "pstorec.dll",		// SunBelt Sandbox
+                "vmcheck.dll",		// Virtual PC
+                "wpespy.dll",		// WPE Pro
+                "cmdvrt64.dll",		// Comodo Container
+                "cmdvrt32.dll",		// Comodo Container
             };
 
             for (std::size_t i = 0; i < szDlls.size(); i++) {
-                const TCHAR* dll = szDlls.at(i);
+                const char* dll = szDlls.at(i);
 
                 hDll = GetModuleHandle(dll);
+
                 if (hDll != NULL) {
-                    if (_tcscmp(dll, _T("sbiedll.dll")) == 0) { return add(SANDBOXIE); }
-                    if (_tcscmp(dll, _T("pstorec.dll")) == 0) { return add(SUNBELT); }
-                    if (_tcscmp(dll, _T("vmcheck.dll")) == 0) { return add(VPC); }
-                    if (_tcscmp(dll, _T("cmdvrt64.dll")) == 0) { return add(COMODO); }
-                    if (_tcscmp(dll, _T("cmdvrt32.dll")) == 0) { return add(COMODO); }
+                    if (strcmp(dll, "sbiedll.dll") == 0) { return add(SANDBOXIE); }
+                    if (strcmp(dll, "pstorec.dll") == 0) { return add(SUNBELT); }
+                    if (strcmp(dll, "vmcheck.dll") == 0) { return add(VPC); }
+                    if (strcmp(dll, "cmdvrt64.dll") == 0) { return add(COMODO); }
+                    if (strcmp(dll, "cmdvrt32.dll") == 0) { return add(COMODO); }
                     return true;
                 }
             }
