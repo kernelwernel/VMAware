@@ -85,7 +85,7 @@ int main(int argc, char* argv[]) {
         checker(VM::USER, "users");
         checker(VM::DLL, "DLLs");
         checker(VM::REGISTRY, "registry");
-        checker(VM::SUNBELT, "Sunbelt");
+        checker(VM::SUNBELT_VM, "Sunbelt");
         checker(VM::WINE_CHECK, "Wine");
         checker(VM::BOOT, "boot uptime");
         checker(VM::VM_FILES, "VM files");
