@@ -290,6 +290,18 @@ private:
         static std::map<const char*, u8> scoreboard;
     #endif
 
+    // cpuid leaf values
+    struct leaf {
+        static constexpr u32
+            hyperv   = 0x40000000,
+            func_ext = 0x80000000,
+            proc_ext = 0x80000001,
+            brand1   = 0x80000002,
+            brand2   = 0x80000003,
+            brand3   = 0x80000004,
+            amd_easter_egg = 0x8fffffff;
+    };
+
     // cross-platform wrapper function for linux and MSVC cpuid
     static void cpuid
     (
@@ -323,15 +335,13 @@ private:
         #endif
     };
 
-    // cpuid leaf values
-    struct leaf {
-        static constexpr u32
-            hyperv   = 0x40000000,
-            proc_ext = 0x80000001,
-            brand1   = 0x80000002,
-            brand2   = 0x80000003,
-            brand3   = 0x80000004;
-    };
+    // check for maximum function leaf
+    static bool cpuid_leaf_supported(const u32 p_leaf) {
+        u32 eax, unused = 0;
+        cpuid(eax, unused, unused, unused, leaf::func_ext);
+
+        return (p_leaf <= eax);
+    }
 
     // self-explanatory
     [[nodiscard]] static bool is_root() noexcept {
@@ -755,7 +765,7 @@ public:
         VMID = 1 << 0,
         BRAND = 1 << 1,
         HYPERV_BIT = 1 << 2,
-        CPUID_0x4 = 1 << 3,
+        CPUID_0X4 = 1 << 3,
         HYPERV_STR = 1 << 4,
         RDTSC = 1 << 5,
         SIDT = 1 << 6,
@@ -813,9 +823,9 @@ public:
         #endif
 
         #if (CPP >= 17)
-            [[nodiscard]] static bool vmid_template(const u32 leaf, [[maybe_unused]] const char* technique_name) {
+            [[nodiscard]] static bool vmid_template(const u32 p_leaf, [[maybe_unused]] const char* technique_name) {
         #else 
-            [[nodiscard]] static bool vmid_template(const u32 leaf, const char* technique_name) {
+            [[nodiscard]] static bool vmid_template(const u32 p_leaf, const char* technique_name) {
         #endif
             #if (CPP >= 17)
                 constexpr std::string_view
@@ -862,7 +872,7 @@ public:
             std::string brand = "";
             u32 sig_reg[3] = {0};
 
-            if (!cpuid_thingy(leaf, sig_reg, 1)) {
+            if (!cpuid_thingy(p_leaf, sig_reg, 1)) {
                 return false;
             }
 
@@ -912,18 +922,15 @@ public:
 
         [[nodiscard]] static std::string get_cpu_brand() {
             if (!cpuid_supported) {
-                return "";
+                return "Unknown";
             }
 
             #if (!x86)
-                return "";
+                return "Unknown";
             #else
-                // maybe not necessary but whatever
-                #if (LINUX)
-                    if (!__get_cpuid_max(0x80000004, nullptr)) {
-                        return "";
-                    }
-                #endif
+                if (!cpuid_leaf_supported(leaf::brand3)) {
+                    return "Unknown";
+                }
 
                 std::array<u32, 4> buffer{};
                 constexpr std::size_t buffer_size = sizeof(i32) * buffer.size();
@@ -1111,7 +1118,7 @@ private:
      * @category x86
      */
     [[nodiscard]] static bool cpuid_0x4() try {
-        if (!cpuid_supported || disabled(CPUID_0x4)) {
+        if (!cpuid_supported || disabled(CPUID_0X4)) {
             return false;
         }
 
@@ -3323,8 +3330,7 @@ private:
     /**
      * @brief Do various Bochs-related CPU stuff
      * @category x86
-     * @note The idea for the CPU strings are from pafish
-     * @link https://github.com/a0rtega/pafish/blob/master/pafish/bochs.c
+     * @note Discovered by Peter Ferrie, Senior Principal Researcher, Symantec Advanced Threat Research peter_ferrie@symantec.com
      */
     [[nodiscard]] static bool bochs_cpu() try {
         if (!cpuid_supported || disabled(BOCHS_CPU)) {
@@ -3337,8 +3343,7 @@ private:
             constexpr u32 intel_ecx = 0x6c65746e;
             constexpr u32 amd_ecx   = 0x69746e65;
 
-            bool intel = false;
-            bool amd = false;
+            bool intel, amd = false;
 
             u32 unused, ecx = 0;
             cpuid(unused, unused, ecx, unused, 0);
@@ -3346,16 +3351,22 @@ private:
             if (ecx == intel_ecx) { intel = true; }
             if (ecx == amd_ecx)   { amd   = true; }
 
-            if (!(intel ^ amd)) { return false; }
+            if (!(intel ^ amd)) { 
+                return false;
+            }
 
             const std::string brand = get_cpu_brand();
 
             if (intel) {
                 // technique 1: not a valid brand 
-                if (brand == "              Intel(R) Pentium(R) 4 CPU        ") { return add(BOCHS); }
+                if (brand == "              Intel(R) Pentium(R) 4 CPU        ") { 
+                    return add(BOCHS);
+                }
             } else if (amd) {
-                // technique 2: "processor" should be "Processor" instead in AMD
-                if (brand == "AMD Athlon(tm) processor") { return add(BOCHS); }
+                // technique 2: "processor" should have a capital P
+                if (brand == "AMD Athlon(tm) processor") { 
+                    return add(BOCHS);
+                }
 
                 // technique 3: Check for AMD easter egg for K7 and K8 CPUs
                 u32 eax = 0;
@@ -3368,9 +3379,7 @@ private:
                 }
             
                 u32 ecx_bochs = 0;
-                constexpr u32 easter_egg_leaf = 0x8fffffff;
-
-                cpuid(unused, unused, ecx_bochs, unused, easter_egg_leaf);
+                cpuid(unused, unused, ecx_bochs, unused, leaf::amd_easter_egg);
 
                 if (ecx_bochs == 0) {
                     return add(BOCHS);
@@ -3635,9 +3644,7 @@ bool VM::cpuid_supported = []() -> bool {
         !defined(_M_X64) \
     )
         return false;
-    #endif
-
-    #if (MSVC)
+    #elif (MSVC)
         i32 info[4];
         __cpuid(info, 0);
         return (info[0] >= 1);
@@ -3654,7 +3661,7 @@ const std::map<VM::u64, VM::technique> VM::table = {
     { VM::VMID, { 100, VM::vmid }},
     { VM::BRAND, { 50, VM::cpu_brand }},
     { VM::HYPERV_BIT, { 95, VM::cpuid_hyperv }},
-    { VM::CPUID_0x4, { 70, VM::cpuid_0x4 }},
+    { VM::CPUID_0X4, { 70, VM::cpuid_0x4 }},
     { VM::HYPERV_STR, { 45, VM::hyperv_brand }},
     { VM::RDTSC, { 20, VM::rdtsc_check }},
     { VM::SIDT, { 65, VM::sidt_check }},

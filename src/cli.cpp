@@ -63,7 +63,7 @@ int main(int argc, char* argv[]) {
         checker(VM::VMID, "VMID");
         checker(VM::BRAND, "CPU brand");
         checker(VM::HYPERV_BIT, "CPUID hypervisor bit");
-        checker(VM::CPUID_0x4, "CPUID 0x4 leaf");
+        checker(VM::CPUID_0X4, "CPUID 0x4 leaf");
         checker(VM::HYPERV_STR, "hypervisor brand");
         checker(VM::RDTSC, "RDTSC");
         checker(VM::SIDT, "sidt");
@@ -105,6 +105,9 @@ int main(int argc, char* argv[]) {
         checker(VM::VPC_BACKDOOR, "VPC backdoor");
         checker(VM::PARALLELS_VM, "Parallels techniques");
         checker(VM::SPEC_RDTSC, "speculative RDTSC");
+        checker(VM::LOADED_DLLS, "loaded DLLs");
+        checker(VM::QEMU_BRAND, "QEMU CPU brand");
+        checker(VM::BOCHS_CPU, "BOCHS CPU techniques");
         std::printf("\n");
 
         std::cout << "VM brand: " << (std::string(VM::brand()) == "Unknown" ? red : green) << VM::brand() << ansi_exit << "\n\n";

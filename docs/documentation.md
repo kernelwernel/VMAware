@@ -36,7 +36,7 @@ int main() {
      * you can set the VM::NO_MEMO flag and the result will not be cached. 
      * Keep in mind that this could take a performance hit.
      */ 
-    bool is_vm3 = VM::detect(VM::ALL | VM::NO_MEMO);
+    bool is_vm4 = VM::detect(VM::ALL | VM::NO_MEMO);
 }
 ```
 
@@ -113,7 +113,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::VMID` | Check if the CPU manufacturer ID matches that of a VM brand | Yes | 100% |  |
 | `VM::BRAND` | Check if the CPU brand string contains any indications of VM keywords | Yes | 50% |  |
 | `VM::HYPERV_BIT` | Check if the hypervisor bit is set (always false on physical CPUs) | Yes | 95% |  |
-|`VM::CPUID_0x4` | Check if there are any leaf values between 0x40000000 and 0x400000FF that changes the CPUID output | Yes | 70% |  |
+|`VM::CPUID_0X4` | Check if there are any leaf values between 0x40000000 and 0x400000FF that changes the CPUID output | Yes | 70% |  |
 | `VM::HYPERV_STR` | Check if brand string length is long enough (would be around 2 characters in a host machine while it's longer in a hypervisor) | Yes | 45% |  |
 | `VM::RDTSC` | Benchmark RDTSC and evaluate its speed, usually it's very slow in VMs | Linux and Windows | 20% |  |
 | `VM::SIDT` | Check if SIDT instructions does anything to the interrupt descriptor table | Linux | 65% |  |
@@ -144,6 +144,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::VBOX_DEFAULT` | Check for default RAM and DISK sizes set by VirtualBox | Linux and Windows | 55% | Yes |
 | `VM::VBOX_NETWORK` | Check VBox network provider string | Windows | 70% |  |
 | `VM::COMPUTER_NAME` | Check for computer name string | Windows | 40% |  |
+| `VM::HOSTNAME` | Check if hostname is specific | Windows 25% |  |
 | `VM::MEMORY` | Check if memory space is far too low for a physical machine | Windows | 35% |  |
 | `VM::VM_PROCESSES` | Check for any VM processes that are active | Windows | 30% |  |
 | `VM::LINUX_USER_HOST` | Check for default VM username and hostname for linux | Linux | 35% |  |
@@ -152,11 +153,11 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::GAMARUE` | Check for Gamarue ransomware technique which compares VM-specific Window product IDs | Windows | 40% |  | 
 | `VM::VMID_0X4` | Check if the CPU manufacturer ID matches that of a VM brand with leaf 0x40000000 | Yes | 100% |  |
 | `VM::VPC_BACKDOOR` | Check for semi-documented detection mechanism for Virtual PC | Windows | 70% |  |
-| `VM::PARALLELS_VM` | Check for indications of Parallels VM | [TODO_ADD_THIS_SHIT] | 50% |  |
-| `VM::SPEC_RDTSC` | Check for RDTSC technique with speculative execution | [TODO_ADD_THIS_SHIT] | 80% |  |
+| `VM::PARALLELS_VM` | Check for indications of Parallels VM | None (for now) | 50% |  |
+| `VM::SPEC_RDTSC` | Check for RDTSC technique with speculative execution | None (for now) | 80% |  |
 | `VM::LOADED_DLLS` | Check for DLLs of multiple VM brands | Windows | 75% |  |
 | `VM::QEMU_BRAND` | Check for QEMU CPU brand with cpuid | Yes | 100% |  | 
-
+| `VM::BOCHS_CPU` | Check for Bochs cpuid emulation oversights | Yes | 95% |  |
 
 # Non-technique flags
 | Flag | Description |
