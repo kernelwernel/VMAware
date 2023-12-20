@@ -281,6 +281,7 @@ private:
     static constexpr const char* CWSANDBOX = "CW Sandbox";
     static constexpr const char* COMODO = "Comodo";
     static constexpr const char* SUNBELT = "SunBelt";
+    static constexpr const char* BOCHS = "Bochs";
     
     // VM scoreboard table specifically for VM::brand()
     #if (MSVC)
@@ -797,6 +798,8 @@ public:
         PARALLELS_VM = 1ULL << 43,
         SPEC_RDTSC = 1ULL << 44,
         LOADED_DLLS = 1ULL << 45,
+        QEMU_BRAND = 1ULL << 46,
+        BOCHS_CPU = 1ULL << 47,
 
         // __UNIQUE_LABEL, ADD YOUR UNIQUE FUNCTION FLAG VALUE ABOVE HERE
 
@@ -906,6 +909,51 @@ public:
             return false;
         }
 
+
+        [[nodiscard]] static std::string get_cpu_brand() {
+            if (!cpuid_supported) {
+                return "";
+            }
+
+            #if (!x86)
+                return "";
+            #else
+                // maybe not necessary but whatever
+                #if (LINUX)
+                    if (!__get_cpuid_max(0x80000004, nullptr)) {
+                        return "";
+                    }
+                #endif
+
+                std::array<u32, 4> buffer{};
+                constexpr std::size_t buffer_size = sizeof(i32) * buffer.size();
+                std::array<char, 64> charbuffer{};
+
+                constexpr std::array<u32, 3> ids = {
+                    leaf::brand1,
+                    leaf::brand2,
+                    leaf::brand3
+                };
+
+                std::string brand = "";
+
+                for (const u32 &id : ids) {
+                    cpuid(buffer.at(0), buffer.at(1), buffer.at(2), buffer.at(3), id);
+
+                    std::memcpy(charbuffer.data(), buffer.data(), buffer_size);
+
+                    const char* convert = charbuffer.data();
+                    brand += convert;
+                }
+
+                #ifdef __VMAWARE_DEBUG__
+                    debug("BRAND: ", "cpu brand = ", brand);
+                #endif
+
+                return brand;
+            #endif
+        }
+
 private:
     static constexpr u64 DEFAULT = (~(CURSOR) & ALL);
 
@@ -964,38 +1012,8 @@ private:
         #if (!x86)
             return false;
         #else
-            // maybe not necessary but whatever
-            #if (LINUX)
-                if (!__get_cpuid_max(0x80000004, nullptr)) {
-                    return false;
-                }
-            #endif
-
-            std::array<u32, 4> buffer{};
-            constexpr std::size_t buffer_size = sizeof(i32) * buffer.size();
-            std::array<char, 64> charbuffer{};
-
-            constexpr std::array<u32, 3> ids = {
-                leaf::brand1,
-                leaf::brand2,
-                leaf::brand3
-            };
-
-            std::string brand = "";
-
-            for (const u32 &id : ids) {
-                cpuid(buffer.at(0), buffer.at(1), buffer.at(2), buffer.at(3), id);
-
-                std::memcpy(charbuffer.data(), buffer.data(), buffer_size);
-
-                const char* convert = charbuffer.data();
-                brand += convert;
-            }
-
-            #ifdef __VMAWARE_DEBUG__
-                debug("BRAND: ", "cpu brand = ", brand);
-            #endif
-
+            std::string brand = get_cpu_brand();
+    
             // TODO: might add more potential keywords, be aware that it could (theoretically) cause false positives
             constexpr std::array<const char*, 16> vmkeywords {
                 "qemu", "kvm", "virtual", "vm", 
@@ -1012,7 +1030,7 @@ private:
                 
                 #ifdef __VMAWARE_DEBUG__
                     if (match) {
-                        debug("BRAND: ", "match = ", vmkeywords.at(i));
+                        debug("BRAND_KEYWORDS: ", "match = ", vmkeywords.at(i));
                     }
                 #endif
 
@@ -1020,14 +1038,42 @@ private:
             }
 
             #ifdef __VMAWARE_DEBUG__
-                debug("BRAND: ", "matches: ", static_cast<u32>(match_count));
+                debug("BRAND_KEYWORDS: ", "matches: ", static_cast<u32>(match_count));
             #endif
 
             return (match_count >= 1);
         #endif
     } catch (...) { 
         #ifdef __VMAWARE_DEBUG__
-            debug("BRAND: catched error, returned false");
+            debug("BRAND_KEYWORDS: catched error, returned false");
+        #endif
+        return false;
+    }
+
+
+    /**
+     * @brief Match for QEMU CPU brand
+     * @category x86
+     */
+    [[nodiscard]] static bool cpu_brand_qemu() try {
+        if (!cpuid_supported || disabled(QEMU_BRAND)) {
+            return false;
+        }
+
+        #if (!x86)
+            return false;
+        #else
+            std::string brand = get_cpu_brand();
+
+            if (brand == "QEMU Virtual CPU") {
+                return add(QEMU);
+            }
+
+            return false;
+        #endif
+    } catch (...) {
+        #ifdef __VMAWARE_DEBUG__
+            debug("QEMU_BRAND: catched error, returned false");
         #endif
         return false;
     }
@@ -3234,7 +3280,7 @@ private:
         #else
             HMODULE hDll;
 
-            constexpr std::array<const char*, 5> szDlls = { 
+            constexpr std::array<const char*, 12> szDlls = { 
                 "avghookx.dll",		// AVG
                 "avghooka.dll",		// AVG
                 "snxhk.dll",		// Avast
@@ -3272,6 +3318,74 @@ private:
         #endif
         return false;
     }
+
+
+    /**
+     * @brief Do various Bochs-related CPU stuff
+     * @category x86
+     * @note The idea for the CPU strings are from pafish
+     * @link https://github.com/a0rtega/pafish/blob/master/pafish/bochs.c
+     */
+    [[nodiscard]] static bool bochs_cpu() try {
+        if (!cpuid_supported || disabled(BOCHS_CPU)) {
+            return false;
+        }
+
+        #if (!x86)
+            return false;
+        #else
+            constexpr u32 intel_ecx = 0x6c65746e;
+            constexpr u32 amd_ecx   = 0x69746e65;
+
+            bool intel = false;
+            bool amd = false;
+
+            u32 unused, ecx = 0;
+            cpuid(unused, unused, ecx, unused, 0);
+
+            if (ecx == intel_ecx) { intel = true; }
+            if (ecx == amd_ecx)   { amd   = true; }
+
+            if (!(intel ^ amd)) { return false; }
+
+            const std::string brand = get_cpu_brand();
+
+            if (intel) {
+                // technique 1: not a valid brand 
+                if (brand == "              Intel(R) Pentium(R) 4 CPU        ") { return add(BOCHS); }
+            } else if (amd) {
+                // technique 2: "processor" should be "Processor" instead in AMD
+                if (brand == "AMD Athlon(tm) processor") { return add(BOCHS); }
+
+                // technique 3: Check for AMD easter egg for K7 and K8 CPUs
+                u32 eax = 0;
+                cpuid(eax, unused, unused, unused, 1);
+
+                const u32 family = ((eax >> 8) & 0xF);
+
+                if (family != 6 && family != 15) { // AMD K7 = 6, AMD K8 = 15
+                    return false;
+                }
+            
+                u32 ecx_bochs = 0;
+                constexpr u32 easter_egg_leaf = 0x8fffffff;
+
+                cpuid(unused, unused, ecx_bochs, unused, easter_egg_leaf);
+
+                if (ecx_bochs == 0) {
+                    return add(BOCHS);
+                }
+            }
+
+            return false;
+        #endif
+    } catch (...) {
+        #ifdef __VMAWARE_DEBUG__
+            debug("BOCHS_CPU:", "catched error, returned false");
+        #endif
+        return false;
+    }
+
 
 
     // __TECHNIQUE_LABEL, label for adding techniques above this point
@@ -3502,7 +3616,9 @@ public:
     { VM::JOEBOX, 0 },
     { VM::THREADEXPERT, 0 },
     { VM::CWSANDBOX, 0 },
-    { VM::COMODO, 0 }
+    { VM::COMODO, 0 },
+    { VM::SUNBELT, 0 },
+    { VM::BOCHS, 0 }
 };    
 
 
@@ -3580,7 +3696,9 @@ const std::map<VM::u64, VM::technique> VM::table = {
     { VM::VPC_BACKDOOR, { 70, VM::vpc_backdoor }},
     { VM::PARALLELS_VM, { 50, VM::parallels }},
     { VM::SPEC_RDTSC, { 80, VM::speculative_rdtsc }},
-    { VM::LOADED_DLLS, { 75, VM::loaded_dlls }}
+    { VM::LOADED_DLLS, { 75, VM::loaded_dlls }},
+    { VM::QEMU_BRAND, { 100, VM::cpu_brand_qemu }},
+    { VM::BOCHS_CPU, { 95, VM::bochs_cpu }}
 
     // __TABLE_LABEL, add your technique above
     // { VM::YOUR_FUNCTION, { POINTS, FUNCTION POINTER }}

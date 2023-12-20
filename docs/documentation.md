@@ -64,6 +64,10 @@ This will essentially return the VM brand as a `std::string`. The brand string r
 - `JoeBox`
 - `Thread Expert`
 - `CW Sandbox`
+- `SunBelt`
+- `Comodo`
+- `Bochs`
+
 
 If none were detected, it will return `Unknown`. It's often not going to produce a satisfying result due to technical difficulties with accomplishing this, on top of being highly dependant on what mechanisms detected a VM. Don't rely on this function too much.
 
@@ -131,7 +135,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::USER` | Match the username for any defaulted ones | Windows | 35% |  |
 | `VM::DLL` | Match for VM-specific DLLs | Windows | 50% |  |
 | `VM::REGISTRY` | Look throughout the registry for all sorts of VMs | Windows | 75% |  |
-| `VM::SUNBELT` | Detect for Sunbelt technology | Windows | 10% |  |
+| `VM::SUNBELT_VM` | Detect for Sunbelt technology | Windows | 10% |  |
 | `VM::WINE_CHECK` | Find for a Wine-specific file | Windows | 85% |  |
 | `VM::BOOT` | Analyse the OS uptime | Yes | 5% |  |
 | `VM::VM_FILES` | Find if any VM-specific files exists | Windows | 20% |  |
@@ -145,11 +149,14 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::LINUX_USER_HOST` | Check for default VM username and hostname for linux | Linux | 35% |  |
 | `VM::VBOX_WINDOW_CLASS` | Check for the window class for VirtualBox | Windows | 10% |  |
 | `VM::WINDOWS_NUMBER` | Check top-level default window level | Windows | 20% |  | 
-| `VM::GAMARUE` | Check for Gamarue ransomeware technique which compares VM-specific Window product IDs | Windows | 40% |  | 
+| `VM::GAMARUE` | Check for Gamarue ransomware technique which compares VM-specific Window product IDs | Windows | 40% |  | 
 | `VM::VMID_0X4` | Check if the CPU manufacturer ID matches that of a VM brand with leaf 0x40000000 | Yes | 100% |  |
 | `VM::VPC_BACKDOOR` | Check for semi-documented detection mechanism for Virtual PC | Windows | 70% |  |
-|
-|
+| `VM::PARALLELS_VM` | Check for indications of Parallels VM | [TODO_ADD_THIS_SHIT] | 50% |  |
+| `VM::SPEC_RDTSC` | Check for RDTSC technique with speculative execution | [TODO_ADD_THIS_SHIT] | 80% |  |
+| `VM::LOADED_DLLS` | Check for DLLs of multiple VM brands | Windows | 75% |  |
+| `VM::QEMU_BRAND` | Check for QEMU CPU brand with cpuid | Yes | 100% |  | 
+
 
 # Non-technique flags
 | Flag | Description |
