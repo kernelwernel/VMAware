@@ -84,7 +84,7 @@ You can view the full docs [here](docs/documentation.md). Trust me, it's not too
 > It's designed for security researchers, VM engineers, and pretty much anybody who needs a practical and rock-solid VM detection mechanism in their project. For example, if you're making a VM and you're testing the effectiveness of concealing itself, or if you're a malware analyst and you want to check if your VM environment is good enough.
 
 - Why another VM detection project?
-> There's already loads of projects that have the same goal such as [InviZzzible](https://github.com/CheckPointSW/InviZzzible), [pafish](https://github.com/a0rtega/pafish) and [Al-Khaser](https://github.com/LordNoteworthy/al-khaser). But the difference between the aforementioned projects is that they don't provide a programmable interface to interact with the detection mechanisms, on top of having little to no support for non-Windows systems. I wanted the core detection techniques to be accessible programmatically for everybody to get something useful out of it rather than providing just a CLI tool like the projects above.
+> There's already loads of projects that have the same goal such as [InviZzzible](https://github.com/CheckPointSW/InviZzzible), [pafish](https://github.com/a0rtega/pafish) and [Al-Khaser](https://github.com/LordNoteworthy/al-khaser). But the difference between the aforementioned projects is that they don't provide a programmable interface to interact with the detection mechanisms, on top of having little to no support for non-Windows systems. I wanted the core detection techniques to be accessible programmatically in a cross-platform way for everybody to get something useful out of it rather than providing just a CLI tool like those projects.
 
 - Is it possible to spoof the result?
 > Yes. There are some techniques that are trivially spoofable, and there's nothing the library can do about it whether it's a deliberate false negative or even a false positive. This is a problem that every VM detection project is facing, which is why the library is trying to test every technique possible to get the best result based on the environment it's running under. 
@@ -93,7 +93,7 @@ You can view the full docs [here](docs/documentation.md). Trust me, it's not too
 > This project is not soliciting the development of malware for any malicious intentions. Even if you intend to use it that way, it'll most likely be flagged by antiviruses anyway.
 
 - When will a 1.0 be available?
-> Pretty soon, maybe around january 2024 (I just started university very recently, so I can't guarantee anything)
+> Pretty soon, maybe around january 2024 (I just started university, so I can't guarantee anything)
 
 
 ## Issues and pull requests 📬

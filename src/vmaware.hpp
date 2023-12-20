@@ -279,6 +279,9 @@ private:
     static constexpr const char* JOEBOX = "JoeBox";
     static constexpr const char* THREADEXPERT = "Thread Expert";
     static constexpr const char* CWSANDBOX = "CW Sandbox";
+    static constexpr const char* COMODO = "Comodo";
+    static constexpr const char* SUNBELT = "SunBelt";
+    static constexpr const char* BOCHS = "Bochs";
     
     // VM scoreboard table specifically for VM::brand()
     #if (MSVC)
@@ -774,7 +777,7 @@ public:
         USER = 1 << 22,
         DLL = 1 << 23,
         REGISTRY = 1 << 24,
-        SUNBELT = 1 << 25,
+        SUNBELT_VM = 1 << 25,
         WINE_CHECK = 1 << 26,
         BOOT = 1 << 27,
         VM_FILES = 1 << 28,
@@ -794,6 +797,9 @@ public:
         VPC_BACKDOOR = 1ULL << 42,
         PARALLELS_VM = 1ULL << 43,
         SPEC_RDTSC = 1ULL << 44,
+        LOADED_DLLS = 1ULL << 45,
+        QEMU_BRAND = 1ULL << 46,
+        BOCHS_CPU = 1ULL << 47,
 
         // __UNIQUE_LABEL, ADD YOUR UNIQUE FUNCTION FLAG VALUE ABOVE HERE
 
@@ -903,6 +909,51 @@ public:
             return false;
         }
 
+
+        [[nodiscard]] static std::string get_cpu_brand() {
+            if (!cpuid_supported) {
+                return "";
+            }
+
+            #if (!x86)
+                return "";
+            #else
+                // maybe not necessary but whatever
+                #if (LINUX)
+                    if (!__get_cpuid_max(0x80000004, nullptr)) {
+                        return "";
+                    }
+                #endif
+
+                std::array<u32, 4> buffer{};
+                constexpr std::size_t buffer_size = sizeof(i32) * buffer.size();
+                std::array<char, 64> charbuffer{};
+
+                constexpr std::array<u32, 3> ids = {
+                    leaf::brand1,
+                    leaf::brand2,
+                    leaf::brand3
+                };
+
+                std::string brand = "";
+
+                for (const u32 &id : ids) {
+                    cpuid(buffer.at(0), buffer.at(1), buffer.at(2), buffer.at(3), id);
+
+                    std::memcpy(charbuffer.data(), buffer.data(), buffer_size);
+
+                    const char* convert = charbuffer.data();
+                    brand += convert;
+                }
+
+                #ifdef __VMAWARE_DEBUG__
+                    debug("BRAND: ", "cpu brand = ", brand);
+                #endif
+
+                return brand;
+            #endif
+        }
+
 private:
     static constexpr u64 DEFAULT = (~(CURSOR) & ALL);
 
@@ -912,9 +963,6 @@ private:
      */
     [[nodiscard]] static bool vmid() try {
         if (!cpuid_supported || disabled(VMID)) {
-            #ifdef __VMAWARE_DEBUG__
-                debug("VMID: ", "precondition return called");
-            #endif
             return false;
         }
 
@@ -937,9 +985,6 @@ private:
      */
     [[nodiscard]] static bool vmid_0x4() try {
         if (!cpuid_supported || disabled(VMID_0X4)) {
-            #ifdef __VMAWARE_DEBUG__
-                debug("VMID_0X4: ", "precondition return called");
-            #endif
             return false;
         }
 
@@ -960,48 +1005,15 @@ private:
      * @category x86
      */
     [[nodiscard]] static bool cpu_brand() try {
+        if (!cpuid_supported || disabled(BRAND)) {
+            return false;
+        }
+
         #if (!x86)
             return false;
         #else
-            if (!cpuid_supported || disabled(BRAND)) {
-                #ifdef __VMAWARE_DEBUG__
-                    debug("BRAND: ", "precondition return called");
-                #endif
-                return false;
-            }
-
-            // maybe not necessary but whatever
-            #if (LINUX)
-                if (!__get_cpuid_max(0x80000004, nullptr)) {
-                    return false;
-                }
-            #endif
-
-            std::array<u32, 4> buffer{};
-            constexpr std::size_t buffer_size = sizeof(i32) * buffer.size();
-            std::array<char, 64> charbuffer{};
-
-            constexpr std::array<u32, 3> ids = {
-                leaf::brand1,
-                leaf::brand2,
-                leaf::brand3
-            };
-
-            std::string brand = "";
-
-            for (const u32 &id : ids) {
-                cpuid(buffer.at(0), buffer.at(1), buffer.at(2), buffer.at(3), id);
-
-                std::memcpy(charbuffer.data(), buffer.data(), buffer_size);
-
-                const char* convert = charbuffer.data();
-                brand += convert;
-            }
-
-            #ifdef __VMAWARE_DEBUG__
-                debug("BRAND: ", "cpu brand = ", brand);
-            #endif
-
+            std::string brand = get_cpu_brand();
+    
             // TODO: might add more potential keywords, be aware that it could (theoretically) cause false positives
             constexpr std::array<const char*, 16> vmkeywords {
                 "qemu", "kvm", "virtual", "vm", 
@@ -1018,7 +1030,7 @@ private:
                 
                 #ifdef __VMAWARE_DEBUG__
                     if (match) {
-                        debug("BRAND: ", "match = ", vmkeywords.at(i));
+                        debug("BRAND_KEYWORDS: ", "match = ", vmkeywords.at(i));
                     }
                 #endif
 
@@ -1026,14 +1038,42 @@ private:
             }
 
             #ifdef __VMAWARE_DEBUG__
-                debug("BRAND: ", "matches: ", static_cast<u32>(match_count));
+                debug("BRAND_KEYWORDS: ", "matches: ", static_cast<u32>(match_count));
             #endif
 
             return (match_count >= 1);
         #endif
     } catch (...) { 
         #ifdef __VMAWARE_DEBUG__
-            debug("BRAND: catched error, returned false");
+            debug("BRAND_KEYWORDS: catched error, returned false");
+        #endif
+        return false;
+    }
+
+
+    /**
+     * @brief Match for QEMU CPU brand
+     * @category x86
+     */
+    [[nodiscard]] static bool cpu_brand_qemu() try {
+        if (!cpuid_supported || disabled(QEMU_BRAND)) {
+            return false;
+        }
+
+        #if (!x86)
+            return false;
+        #else
+            std::string brand = get_cpu_brand();
+
+            if (brand == "QEMU Virtual CPU") {
+                return add(QEMU);
+            }
+
+            return false;
+        #endif
+    } catch (...) {
+        #ifdef __VMAWARE_DEBUG__
+            debug("QEMU_BRAND: catched error, returned false");
         #endif
         return false;
     }
@@ -1044,16 +1084,13 @@ private:
      * @category x86
      */
     [[nodiscard]] static bool cpuid_hyperv() try {
+        if (!cpuid_supported || disabled(HYPERV_BIT)) {
+            return false;
+        }
+    
         #if (!x86)
             return false;
         #else
-            if (!cpuid_supported || disabled(HYPERV_BIT)) {
-                #ifdef __VMAWARE_DEBUG__
-                    debug("HYPERV_BIT: precondition return called");
-                #endif
-                return false;
-            }
-
             u32 unused, ecx = 0;
 
             cpuid(unused, unused, ecx, unused, 1);
@@ -1074,16 +1111,13 @@ private:
      * @category x86
      */
     [[nodiscard]] static bool cpuid_0x4() try {
+        if (!cpuid_supported || disabled(CPUID_0x4)) {
+            return false;
+        }
+
         #if (!x86)
             return false;
         #else
-            if (!cpuid_supported || disabled(CPUID_0x4)) {
-                #ifdef __VMAWARE_DEBUG__
-                    debug("CPUID_0X4: precondition return called");
-                #endif
-                return false;
-            }
-
             u32 a, b, c, d = 0;
 
             for (u8 i = 0; i < 0xFF; i++) {
@@ -1108,16 +1142,13 @@ private:
      * @category x86
      */
     [[nodiscard]] static bool hyperv_brand() try {
+        if (disabled(HYPERV_STR)) {
+            return false;
+        }
+
         #if (!x86)
             return false;
         #else
-            if (disabled(HYPERV_STR)) {
-                #ifdef __VMAWARE_DEBUG__
-                    debug("HYPERV_STR: precondition return called");
-                #endif
-                return false;
-            }
-
             char out[sizeof(i32) * 4 + 1] = { 0 }; // e*x size + number of e*x registers + null terminator
             cpuid((int*)out, leaf::hyperv);
 
@@ -1144,16 +1175,13 @@ private:
      * @category x86
      */
     [[nodiscard]] static bool rdtsc_check() try {
+        if (disabled(RDTSC)) {
+            return false;
+        }
+
         #if (!x86)
             return false;
         #else
-            if (disabled(RDTSC)) {
-                #ifdef __VMAWARE_DEBUG__
-                    debug("RDTSC: precondition return called");
-                #endif
-                return false;
-            }
-
             #if (LINUX)
                 u32 a, b, c, d = 0;
 
@@ -1197,9 +1225,9 @@ private:
                 }
 
                 return true;
+            #else
+                return false;
             #endif
-
-            return false;
         #endif
     } catch (...) { 
         #ifdef __VMAWARE_DEBUG__
@@ -1216,16 +1244,13 @@ private:
      * @category x86
      */
     [[nodiscard]] static bool sidt5() try {
+        if (disabled(SIDT5)) {
+            return false;
+        }
+
         #if (!x86 || !LINUX)
             return false;
         #else
-            if (disabled(SIDT5)) {
-                #ifdef __VMAWARE_DEBUG__
-                    debug("SIDT5: ", "precondition return called");
-                #endif
-                return false;
-            }
-
             u8 values[10];
             std::memset(values, 0, 10);
 
@@ -1261,19 +1286,14 @@ private:
      * @category x86
      */
     [[nodiscard]] static bool sidt_check() try {
-        return false; // TODO: REMOVE AFTER VERIFYING IF IT WORKS
+        if (disabled(SIDT)) {
+            return false;
+        }
 
-/*
+/* DOESN'T WORK FOR NOW
         #if (!x86 || !LINUX)
             return false;
         #else
-            if (disabled(SIDT)) {
-                #ifdef __VMAWARE_DEBUG__
-                    debug("SIDT: ", "precondition return called");
-                #endif
-                return false;
-            }
-
             u64 idtr = 0;
 
             __asm__ __volatile__(
@@ -1287,7 +1307,9 @@ private:
 
             return (idtr != 0);
         #endif
-*/
+        */
+
+       return false; // tmp
     } catch (...) { 
         #ifdef __VMAWARE_DEBUG__
             debug("SIDT: catched error, returned false");
@@ -1303,16 +1325,13 @@ private:
      * @category x86 Windows
      */
     [[nodiscard]] static bool vmware_port() try {
+        if (disabled(VMWARE_PORT)) {
+            return false;
+        }
+
         #if (!x86)
             return false;
         #else
-            if (disabled(VMWARE_PORT)) {
-                #ifdef __VMAWARE_DEBUG__
-                    debug("VMWARE_PORT: ", "precondition return called");
-                #endif
-                return false;
-            }
-
             i32 is_vm = false;
 
             #if (LINUX)
@@ -1414,9 +1433,6 @@ private:
      */
     [[nodiscard]] static bool thread_count() try {
         if (disabled(THREADCOUNT)) {
-            #ifdef __VMAWARE_DEBUG__
-                debug("THREADCOUNT: ", "precondition return called");
-            #endif
             return false;
         }
 
@@ -1439,9 +1455,6 @@ private:
      */
     [[nodiscard]] static bool mac_address_check() try {
         if (disabled(MAC)) {
-            #ifdef __VMAWARE_DEBUG__
-                debug("MAC: ", "precondition return called");
-            #endif
             return false;
         }
 
@@ -1580,16 +1593,13 @@ private:
      * @category Linux
      */
     [[nodiscard]] static bool temperature() try {
+        if (disabled(TEMPERATURE)) {
+            return false;
+        }
+
         #if (!LINUX)
             return false;
         #else
-            if (disabled(TEMPERATURE)) {
-                #ifdef __VMAWARE_DEBUG__
-                    debug("TEMPERATURE: ", "precondition return called");
-                #endif
-                return false;
-            }
-
             return (!exists("/sys/class/thermal/thermal_zone0/"));
         #endif
     } catch (...) { 
@@ -1605,16 +1615,13 @@ private:
      * @category Linux
      */ 
     [[nodiscard]] static bool systemd_virt() try {
+        if (disabled(SYSTEMD)) {
+            return false;
+        }
+
         #if (!LINUX)
             return false;
         #else
-            if (disabled(SYSTEMD)) {
-                #ifdef __VMAWARE_DEBUG__
-                    debug("SYSTEMD: ", "precondition return called");
-                #endif
-                return false;
-            }
-
             if (!(exists("/usr/bin/systemd-detect-virt") || exists("/bin/systemd-detect-virt"))) {
                 #ifdef __VMAWARE_DEBUG__
                     debug("SYSTEMD: ", "binary doesn't exist");
@@ -1650,16 +1657,13 @@ private:
      * @category Linux
      */ 
     [[nodiscard]] static bool chassis_vendor() try {
+        if (disabled(CVENDOR)) {
+            return false;
+        }
+
         #if (!LINUX)
             return false;
         #else
-            if (disabled(CVENDOR)) {
-                #ifdef __VMAWARE_DEBUG__
-                    debug("CVENDOR: ", "precondition return called");
-                #endif
-                return false;
-            }
-
             const char* vendor_file = "/sys/devices/virtual/dmi/id/chassis_vendor";
 
             if (exists(vendor_file)) {
@@ -1693,16 +1697,13 @@ private:
      * @category Linux
      */
     [[nodiscard]] static bool chassis_type() try {
+        if (disabled(CTYPE)) {
+            return false;
+        }
+
         #if (!LINUX)
             return false;
         #else
-            if (disabled(CTYPE)) {
-                #ifdef __VMAWARE_DEBUG__
-                    debug("CTYPE: ", "precondition return called");
-                #endif
-                return false;
-            }
-
             const char* chassis = "/sys/devices/virtual/dmi/id/chassis_type";
             
             if (exists(chassis)) {
@@ -1728,16 +1729,13 @@ private:
      * @category Linux
      */
     [[nodiscard]] static bool dockerenv() try {
+        if (disabled(DOCKERENV)) {
+            return false;
+        }
+
         #if (!LINUX)
             return false;
         #else
-            if (disabled(DOCKERENV)) {
-                #ifdef __VMAWARE_DEBUG__
-                    debug("DOCKER: ", "precondition return called");
-                #endif
-                return false;
-            }
-
             return (exists("/.dockerenv") || exists("/.dockerinit"));
         #endif
     } catch (...) { 
@@ -1753,16 +1751,16 @@ private:
      * @category Linux
      */
     [[nodiscard]] static bool dmidecode() try {
+        if (disabled(DMIDECODE) || (is_root() == false)) {
+            #ifdef __VMAWARE_DEBUG__
+                debug("DMIDECODE: ", "precondition return called (root = ", is_root(), ")");
+            #endif
+            return false;
+        }
+
         #if (!LINUX)
             return false;
         #else
-            if (disabled(DMIDECODE) || (is_root() == false)) {
-                #ifdef __VMAWARE_DEBUG__
-                    debug("DMIDECODE: ", "precondition return called (root = ", is_root(), ")");
-                #endif
-                return false;
-            }
-
             if (!(exists("/bin/dmidecode") || exists("/usr/bin/dmidecode"))) {
                 #ifdef __VMAWARE_DEBUG__
                     debug("DMIDECODE: ", "binary doesn't exist");
@@ -1806,16 +1804,13 @@ private:
      * @category Linux
      */
     [[nodiscard]] static bool dmesg() try {
+        if (disabled(DMESG)) {
+            return false;
+        }
+
         #if (!LINUX || CPP <= 11)
             return false;
         #else
-            if (disabled(DMESG)) {
-                #ifdef __VMAWARE_DEBUG__
-                    debug("DMESG: ", "precondition return called");
-                #endif
-                return false;
-            }
-
             if (!exists("/bin/dmesg") && !exists("/usr/bin/dmesg")) {
                 #ifdef __VMAWARE_DEBUG__
                     debug("DMESG: ", "binary doesn't exist");
@@ -1854,16 +1849,13 @@ private:
      * @category Linux
      */
     [[nodiscard]] static bool hwmon() try {
+        if (disabled(HWMON)) {
+            return false;
+        }
+
         #if (!LINUX)
             return false;
         #else
-            if (disabled(HWMON)) {
-                #ifdef __VMAWARE_DEBUG__
-                    debug("HWMON: ", "precondition return called");
-                #endif
-                return false;
-            }
-
             return (!exists("/sys/class/hwmon/"));
         #endif
     } catch (...) { 
@@ -1887,16 +1879,13 @@ private:
      * @category Windows
      */
     [[nodiscard]] static bool registry_key() try {
+        if (disabled(REGISTRY)) {
+            return false;
+        }
+
         #if (!MSVC)
             return false;
         #else
-            if (disabled(REGISTRY)) {
-                #ifdef __VMAWARE_DEBUG__
-                    debug("REGISTRY: ", "precondition return called");
-                #endif
-                return false;
-            }
-
             u8 score = 0;
 
             auto key = [&score](const char* p_brand, const char* regkey_s) -> void {
@@ -2022,16 +2011,13 @@ private:
      * @category Windows
      */ 
     [[nodiscard]] static bool user_check() try {     
+        if (disabled(USER)) {
+            return false;
+        }
+
         #if (!MSVC)
             return false;
         #else
-            if (disabled(USER)) {
-                #ifdef __VMAWARE_DEBUG__
-                    debug("USER: ", "precondition return called");
-                #endif
-                return false;
-            }
-
             TCHAR user[UNLEN+1];
             DWORD user_len = UNLEN+1;
             GetUserName((TCHAR*)user, &user_len);
@@ -2041,8 +2027,11 @@ private:
                 debug("USER: ", "output = ", u);
             #endif
 
+            if (u == "username") {
+                return add(THREADEXPERT);
+            } 
+
             return (
-                (u == "username") ||  // ThreadExpert
                 (u == "USER") ||      // Sandbox
                 (u == "user") ||      // Sandbox 2
                 (u == "currentuser")  // Normal
@@ -2062,22 +2051,22 @@ private:
      * @category Windows
      */
     [[nodiscard]] static bool sunbelt_check() try {
+        if (disabled(SUNBELT_VM)) {
+            return false;
+        }
+
         #if (!MSVC)
             return false;
         #else
-            if (disabled(SUNBELT)) {
-                #ifdef __VMAWARE_DEBUG__
-                    debug("SUNBELT: ", "precondition return called");
-                #endif
-                return false;
+            if (exists(L"C:\\analysis")) {
+                return add(SUNBELT);
             }
 
-            // Use wide string literal
-            return exists(L"C:\\analysis");
+            return false;
         #endif
     } catch (...) {
         #ifdef __VMAWARE_DEBUG__
-            debug("SUNBELT: catched error, returned false");
+            debug("SUNBELT_VM: catched error, returned false");
         #endif
         return false;
     }
@@ -2089,16 +2078,13 @@ private:
      * @category Windows
      */
     [[nodiscard]] static bool DLL_check() try {
+        if (disabled(DLL)) {
+            return false;
+        }
+
         #if (!MSVC)
             return false;
         #else
-            if (disabled(DLL)) {
-                #ifdef __VMAWARE_DEBUG__
-                    debug("DLL: ", "precondition return called");
-                #endif
-                return false;
-            }
-
             std::vector<const char*> real_dlls = {
                 "kernel32.dll",
                 "networkexplorer.dll",
@@ -2149,16 +2135,13 @@ private:
      * @category Windows 
      */
     [[nodiscard]] static bool vbox_registry() try {
+        if (disabled(VBOX_REG)) {
+            return false;
+        }
+
         #if (!MSVC)
             return false;
         #else
-            if (disabled(VBOX_REG)) {
-                #ifdef __VMAWARE_DEBUG__
-                    debug("VBOX_REG: ", "precondition return called");
-                #endif
-                return false;
-            }
-
             HANDLE handle = CreateFile(_T("\\\\.\\VBoxMiniRdrDN"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 
             if (handle != INVALID_HANDLE_VALUE) {
@@ -2182,16 +2165,13 @@ private:
      * @category Windows
      */
     [[nodiscard]] static bool vmware_registry() try {
+        if (disabled(VMWARE_REG)) {
+            return false;
+        }
+
         #if (!MSVC)
             return false;
         #else
-            if (disabled(VMWARE_REG)) {
-                #ifdef __VMAWARE_DEBUG__
-                    debug("VMWARE_REG: ", "precondition return called");
-                #endif
-                return false;
-            }
-
             HKEY hKey;
             // Use wide string literal
             bool result = (RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\VMware, Inc.\\VMware Tools", 0, KEY_QUERY_VALUE, &hKey) == ERROR_SUCCESS);
@@ -2214,7 +2194,6 @@ private:
     }
 
 
-
     /**
      * @brief Check if the mouse coordinates have changed after 5 seconds
      * @note Some VMs are automatic without a human due to mass malware scanning being a thing
@@ -2223,16 +2202,13 @@ private:
      * @category Windows
      */
     [[nodiscard]] static bool cursor_check() try {
+        if (disabled(CURSOR)) {
+            return false;
+        }
+
         #if (!MSVC)
             return false;
         #else
-            if (disabled(CURSOR)) {
-                #ifdef __VMAWARE_DEBUG__
-                    debug("CURSOR: ", "precondition return called");
-                #endif
-                return false;
-            }
-
             POINT pos1, pos2;
             GetCursorPos(&pos1);
 
@@ -2270,16 +2246,13 @@ private:
      * @category Windows
      */
     [[nodiscard]] static bool wine() try {
+        if (disabled(WINE_CHECK)) {
+            return false;
+        }
+
         #if (!MSVC)
             return false;
         #else
-            if (disabled(WINE_CHECK)) {
-                #ifdef __VMAWARE_DEBUG__
-                    debug("WINE: ", "precondition return called");
-                #endif
-                return false;
-            }
-
             HMODULE k32;
             k32 = GetModuleHandle(TEXT("kernel32.dll"));
 
@@ -2304,9 +2277,6 @@ private:
      */ 
     [[nodiscard]] static bool boot_time() try {
         if (disabled(BOOT)) {
-            #ifdef __VMAWARE_DEBUG__
-                debug("BOOT: ", "precondition return called");
-            #endif
             return false;
         }
 
@@ -2323,9 +2293,11 @@ private:
         #elif (LINUX)
             // TODO: finish this shit tomorrow
             //https://stackoverflow.com/questions/349889/how-do-you-determine-the-amount-of-linux-system-ram-in-c
+        #else
+            return false;
         #endif
 
-        return false;
+        return false; // tmp
     } catch (...) { 
         #ifdef __VMAWARE_DEBUG__
             debug("BOOT: catched error, returned false");
@@ -2339,16 +2311,13 @@ private:
      * @category Windows
      */
     [[nodiscard]] static bool vm_files() try {
+        if (disabled(VM_FILES)) {
+            return false;
+        }
+
         #if (!MSVC)
             return false;
         #else
-            if (disabled(VM_FILES)) {
-                #ifdef __VMAWARE_DEBUG__
-                    debug("VMFILES: ", "precondition return called");
-                #endif
-                return false;
-            }
-
             // points
             u8 vbox = 0;
             u8 vmware = 0;
@@ -2433,16 +2402,13 @@ private:
      * @category MacOS
      */ 
     [[nodiscard]] static bool hwmodel() try {
+        if (disabled(HWMODEL)) {
+            return false;
+        }
+
         #if (!APPLE)
             return false;
         #else
-            if (disabled(HWMODEL)) {
-                #ifdef __VMAWARE_DEBUG__
-                    debug("HWMODEL: ", "precondition return called");
-                #endif
-                return false;
-            }
-
             auto result = sys_result("sysctl -n hw.model");
 
             std::smatch match;
@@ -2483,16 +2449,13 @@ private:
      * @category Linux (for now)
      */
      [[nodiscard]] static bool disk_size() try {
+        if (disabled(DISK_SIZE)) {
+            return false;
+        }
+
         #if (!LINUX)
             return false;
         #else
-            if (disabled(DISK_SIZE)) {
-                #if __VMAWARE_DEBUG__
-                    debug("DISK_SIZE: ", "precondition return called");
-                #endif
-                return false;
-            }
-
             const u32 size = get_disk_size();
 
             #ifdef __VMAWARE_DEBUG__
@@ -2646,29 +2609,6 @@ private:
         #endif
         return false;
     }
-
-    /**
-     * @brief check if there are any user inputs
-     * 
-     * 
-     */
-    /*
-    [[nodiscard]] static bool user_input() try {
-        if (disabled(VBOX_DEFAULT)) {
-            return false;
-        }
-        
-        Sleep(30000);
-
-        DWORD ticks = GetTickCount();
-
-        LASTINPUTINFO li;
-        li.cbSize = sizeof(LASTINPUTINFO);
-        BOOL res = GetLastInputInfo(&li);
-
-        return (ticks - li.dwTime > 6000);
-    } catch (...) { return false; }
-    */
 
 
    /**
@@ -3323,6 +3263,130 @@ private:
     }
 
 
+    /**
+     * @brief check for loaded dlls in the process
+     * @category Windows
+     * @author LordNoteworthy
+     * @note modified code from Al-Khaser project
+     * @link https://github.com/LordNoteworthy/al-khaser/blob/c68fbd7ba0ba46315e819b490a2c782b80262fcd/al-khaser/Anti%20VM/Generic.cpp
+     */ 
+    [[nodiscard]] static bool loaded_dlls() try {
+        if (disabled(LOADED_DLLS)) {
+            return false;
+        }
+
+        #if (!MSVC)
+            return false;
+        #else
+            HMODULE hDll;
+
+            constexpr std::array<const char*, 12> szDlls = { 
+                "avghookx.dll",		// AVG
+                "avghooka.dll",		// AVG
+                "snxhk.dll",		// Avast
+                "sbiedll.dll",		// Sandboxie
+                "dbghelp.dll",		// WindBG
+                "api_log.dll",		// iDefense Lab
+                "dir_watch.dll",	// iDefense Lab
+                "pstorec.dll",		// SunBelt Sandbox
+                "vmcheck.dll",		// Virtual PC
+                "wpespy.dll",		// WPE Pro
+                "cmdvrt64.dll",		// Comodo Container
+                "cmdvrt32.dll",		// Comodo Container
+            };
+
+            for (std::size_t i = 0; i < szDlls.size(); i++) {
+                const char* dll = szDlls.at(i);
+
+                hDll = GetModuleHandle(dll);
+
+                if (hDll != NULL) {
+                    if (strcmp(dll, "sbiedll.dll") == 0) { return add(SANDBOXIE); }
+                    if (strcmp(dll, "pstorec.dll") == 0) { return add(SUNBELT); }
+                    if (strcmp(dll, "vmcheck.dll") == 0) { return add(VPC); }
+                    if (strcmp(dll, "cmdvrt64.dll") == 0) { return add(COMODO); }
+                    if (strcmp(dll, "cmdvrt32.dll") == 0) { return add(COMODO); }
+                    return true;
+                }
+            }
+
+            return false;
+        #endif
+    } catch (...) {
+        #ifdef __VMAWARE_DEBUG__
+            debug("LOADED_DLLS:", "catched error, returned false");
+        #endif
+        return false;
+    }
+
+
+    /**
+     * @brief Do various Bochs-related CPU stuff
+     * @category x86
+     * @note The idea for the CPU strings are from pafish
+     * @link https://github.com/a0rtega/pafish/blob/master/pafish/bochs.c
+     */
+    [[nodiscard]] static bool bochs_cpu() try {
+        if (!cpuid_supported || disabled(BOCHS_CPU)) {
+            return false;
+        }
+
+        #if (!x86)
+            return false;
+        #else
+            constexpr u32 intel_ecx = 0x6c65746e;
+            constexpr u32 amd_ecx   = 0x69746e65;
+
+            bool intel = false;
+            bool amd = false;
+
+            u32 unused, ecx = 0;
+            cpuid(unused, unused, ecx, unused, 0);
+
+            if (ecx == intel_ecx) { intel = true; }
+            if (ecx == amd_ecx)   { amd   = true; }
+
+            if (!(intel ^ amd)) { return false; }
+
+            const std::string brand = get_cpu_brand();
+
+            if (intel) {
+                // technique 1: not a valid brand 
+                if (brand == "              Intel(R) Pentium(R) 4 CPU        ") { return add(BOCHS); }
+            } else if (amd) {
+                // technique 2: "processor" should be "Processor" instead in AMD
+                if (brand == "AMD Athlon(tm) processor") { return add(BOCHS); }
+
+                // technique 3: Check for AMD easter egg for K7 and K8 CPUs
+                u32 eax = 0;
+                cpuid(eax, unused, unused, unused, 1);
+
+                const u32 family = ((eax >> 8) & 0xF);
+
+                if (family != 6 && family != 15) { // AMD K7 = 6, AMD K8 = 15
+                    return false;
+                }
+            
+                u32 ecx_bochs = 0;
+                constexpr u32 easter_egg_leaf = 0x8fffffff;
+
+                cpuid(unused, unused, ecx_bochs, unused, easter_egg_leaf);
+
+                if (ecx_bochs == 0) {
+                    return add(BOCHS);
+                }
+            }
+
+            return false;
+        #endif
+    } catch (...) {
+        #ifdef __VMAWARE_DEBUG__
+            debug("BOCHS_CPU:", "catched error, returned false");
+        #endif
+        return false;
+    }
+
+
 
     // __TECHNIQUE_LABEL, label for adding techniques above this point
 
@@ -3551,7 +3615,10 @@ public:
     { VM::ANUBIS, 0 },
     { VM::JOEBOX, 0 },
     { VM::THREADEXPERT, 0 },
-    { VM::CWSANDBOX, 0 }
+    { VM::CWSANDBOX, 0 },
+    { VM::COMODO, 0 },
+    { VM::SUNBELT, 0 },
+    { VM::BOCHS, 0 }
 };    
 
 
@@ -3609,7 +3676,7 @@ const std::map<VM::u64, VM::technique> VM::table = {
     { VM::USER, { 35, VM::user_check }},
     { VM::DLL, { 50, VM::DLL_check }},
     { VM::REGISTRY, { 75, VM::registry_key }},
-    { VM::SUNBELT, { 10, VM::sunbelt_check }},
+    { VM::SUNBELT_VM, { 10, VM::sunbelt_check }},
     { VM::WINE_CHECK, { 85, VM::wine }},
     { VM::BOOT, { 5, VM::boot_time }},
     { VM::VM_FILES, { 20, VM::vm_files }},
@@ -3628,7 +3695,10 @@ const std::map<VM::u64, VM::technique> VM::table = {
     { VM::VMID_0X4, { 90, VM::vmid_0x4 }},
     { VM::VPC_BACKDOOR, { 70, VM::vpc_backdoor }},
     { VM::PARALLELS_VM, { 50, VM::parallels }},
-    { VM::SPEC_RDTSC, { 80, VM::speculative_rdtsc }}
+    { VM::SPEC_RDTSC, { 80, VM::speculative_rdtsc }},
+    { VM::LOADED_DLLS, { 75, VM::loaded_dlls }},
+    { VM::QEMU_BRAND, { 100, VM::cpu_brand_qemu }},
+    { VM::BOCHS_CPU, { 95, VM::bochs_cpu }}
 
     // __TABLE_LABEL, add your technique above
     // { VM::YOUR_FUNCTION, { POINTS, FUNCTION POINTER }}
