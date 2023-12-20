@@ -71,7 +71,10 @@ add_executable(${TARGET} "src/cli.cpp")
 set_property(TARGET ${TARGET} PROPERTY CXX_STANDARD 20)
 set_property(TARGET ${TARGET} PROPERTY CXX_STANDARD_REQUIRED ON)
 add_test(executable, "${CMAKE_SOURCE_DIR}/bin/${TARGET}")
-add_test(checks ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/ctest_checks.py)
+add_test(checks 
+    COMMAND ${PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/cmake/ctest_checks.py
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/cmake/
+)
 
 
 # release stuff
