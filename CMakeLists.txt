@@ -82,7 +82,7 @@ add_test(executable, "${CMAKE_SOURCE_DIR}/bin/${TARGET}")
 add_test(
     NAME checks
     COMMAND "python3 ${PROJECT_DIR}/cmake/ctest_checks.py"
-    WORKING_DIRECTORY "cmake/"
+    #WORKING_DIRECTORY "${PROJECT_DIR}/cmake/"
 )
 
 
