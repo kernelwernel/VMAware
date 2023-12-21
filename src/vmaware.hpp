@@ -3569,7 +3569,7 @@ private:
                 pclsObj->Release();
             }
 
-            pEnumerator->Release();
+            enumerator->Release();
             pSvc->Release();
             pLoc->Release();
             CoUninitialize();
