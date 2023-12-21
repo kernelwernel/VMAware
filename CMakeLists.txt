@@ -13,7 +13,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 if (MSVC)
-    set(CMAKE_CXX_FLAGS "/W4 /std:c++20 /EHsc")
+    set(CMAKE_CXX_FLAGS "/Wall /W4 /std:c++20 /EHsc")
 else()
     set(CMAKE_CXX_FLAGS "-Wextra -Wall -Wextra -Wconversion -Wdouble-promotion -Wno-unused-parameter -Wno-unused-function -Wno-sign-conversion")
 endif()
@@ -44,15 +44,23 @@ set(TARGET "vmaware")
 
 
 # debug/release CXX flag options
-if (NOT MSVC)
-if(CMAKE_BUILD_TYPE MATCHES "Debug")
+if (MSVC)
+    if(CMAKE_BUILD_TYPE MATCHES "Debug")
+        MESSAGE(STATUS "Build set to debug mode")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /Od /RTC1 /debug")
+    elseif(CMAKE_BUILD_TYPE MATCHES "Release")
+        MESSAGE(STATUS "Build set to release mode")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /O2")
+    endif()
+elseif(LINUX)
+    if(CMAKE_BUILD_TYPE MATCHES "Debug")
         MESSAGE(STATUS "Build set to debug mode")
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -DDEBUG -O0 -fsanitize=address")
     elseif(CMAKE_BUILD_TYPE MATCHES "Release")
         MESSAGE(STATUS "Build set to release mode")
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -g0")
         if (${CMAKE_SYSTEM_PROCESSOR} MATCHES "x86_64")
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native -mtune=native")
+            set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native -mtune=native")
         elseif(${CMAKE_SYSTEM_PROCESSOR} MATCHES "arm")
             set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mcpu=native")
         endif()
@@ -60,18 +68,24 @@ if(CMAKE_BUILD_TYPE MATCHES "Debug")
 endif()
 
 
-# CTest stuff
-include(CTest)
-enable_testing()
-
-
 # add executable
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin")
 add_executable(${TARGET} "src/cli.cpp")
 set_property(TARGET ${TARGET} PROPERTY CXX_STANDARD 20)
 set_property(TARGET ${TARGET} PROPERTY CXX_STANDARD_REQUIRED ON)
-add_test(Test_1, "${CMAKE_SOURCE_DIR}/bin/${TARGET}")
 
+
+# CTest stuff
+include(CTest)
+find_package(Python REQUIRED)
+enable_testing()
+add_test(executable, "${CMAKE_SOURCE_DIR}/bin/${TARGET}")
+if(NOT MSVC)
+add_test(
+    checks 
+    ${Python_EXECUTABLE} "${CMAKE_SOURCE_DIR}/cmake/ctest_checks.py"
+)
+endif()
 
 # release stuff
 if (NOT MSVC)

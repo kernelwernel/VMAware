@@ -13,7 +13,7 @@ It utilises a comprehensive list of low-level and high-level anti-VM techniques 
 
 The library is:
 - Very easy to use, with only 3 functions in its public interface
-- Very flexible with fine-grained control
+- Very flexible, with total fine-grained control
 - Cross-platform **(NOTE: MACOS AND MSVC ARE NOT EFFECTIVE FOR NOW)**
 - Header-only
 - Available with C++11 and above
@@ -99,6 +99,8 @@ You can view the full docs [here](docs/documentation.md). Trust me, it's not too
 ## Issues and pull requests 📬
 If you have any suggestions, ideas, or any sort of contribution, feel free to ask! I'll be more than happy to discuss. If you want to personally ask something in private, my discord is `kr.nl`
 
+Contribution guidelines can be found [here](CONTRIBUTING.md).
+
 If you found this project useful, a star would be appreciated :)
 
 
@@ -109,6 +111,7 @@ If you found this project useful, a star would be appreciated :)
 - [pafish](https://github.com/a0rtega/pafish)
 - [Matteo Malvica](https://www.matteomalvica.com)
 - N. Rin, EP_X0FF
+- [Peter Ferrie, Symantec](https://github.com/peterferrie)
 
 
 ## Legal 📜

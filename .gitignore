@@ -49,4 +49,5 @@ milestones.md
 bin/
 src/*.asm
 src/*.cu
-cmake/
+notes.md
+*.pdf
