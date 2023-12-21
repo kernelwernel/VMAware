@@ -162,6 +162,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::LOADED_DLLS` | Check for DLLs of multiple VM brands | Windows | 75% |  |
 | `VM::QEMU_BRAND` | Check for QEMU CPU brand with cpuid | Yes | 100% |  | 
 | `VM::BOCHS_CPU` | Check for Bochs cpuid emulation oversights | Yes | 95% |  |
+| `VM::VPC_BOARD` | Check for VPC specific string in motherboard manufacturer | Windows | 20% |  | 
 
 <br>
 

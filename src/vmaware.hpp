@@ -833,6 +833,7 @@ public:
         LOADED_DLLS = 1ULL << 45,
         QEMU_BRAND = 1ULL << 46,
         BOCHS_CPU = 1ULL << 47,
+        VPC_BOARD = 1ULL << 48,
 
         // __UNIQUE_LABEL, ADD YOUR UNIQUE FUNCTION FLAG VALUE ABOVE HERE
 
@@ -1072,7 +1073,10 @@ private:
             #endif
 
             if (match_count > 0) {
-                if (std::find(brand.begin(), brand.end(), "QEMU") != brand.end()) {
+                const auto qemu_regex = std::regex("QEMU", std::regex::icase);
+                const bool qemu_match = std::regex_search(brand, qemu_regex);
+
+                if (qemu_match) {
                     return add(QEMU);
                 }
             }
@@ -3390,7 +3394,7 @@ private:
                 }
 
                 // technique 3: Check for AMD easter egg for K7 and K8 CPUs
-                u32 eax = 0;
+                u32 unused, eax = 0;
                 cpuid(eax, unused, unused, unused, 1);
 
                 const u32 family = ((eax >> 8) & 0xF);
@@ -3417,6 +3421,10 @@ private:
     }
 
 
+    /**
+     * @brief Go through the motherboard and match for VPC-specific string
+     * @category Windows
+     */ 
     [[nodiscard]] static bool vpc_board() try {
         if (disabled(VPC_BOARD)) {
             return false;
@@ -3430,7 +3438,7 @@ private:
             hres = CoInitializeEx(0, COINIT_MULTITHREADED);
             if (FAILED(hres)) {
                 #ifdef __VMAWARE_DEBUG__
-                    debug("Failed to initialize COM library. Error code: ", hres);
+                    debug("VPC_BOARD: Failed to initialize COM library. Error code: ", hres);
                 #endif
                 return false;
             }
@@ -3449,7 +3457,7 @@ private:
 
             if (FAILED(hres)) {
                 #ifdef __VMAWARE_DEBUG__
-                    debug("Failed to initialize security. Error code: ", hres);
+                    debug("VPC_BOARD: Failed to initialize security. Error code: ", hres);
                 #endif
                 CoUninitialize();
                 return false;
@@ -3468,7 +3476,7 @@ private:
 
             if (FAILED(hres)) {
                 #ifdef __VMAWARE_DEBUG__
-                    debug("Failed to create IWbemLocator object. Error code: ", hres);
+                    debug("VPC_BOARD: Failed to create IWbemLocator object. Error code: ", hres);
                 #endif
                 CoUninitialize();
                 return false;
@@ -3487,7 +3495,7 @@ private:
 
             if (FAILED(hres)) {
                 #ifdef __VMAWARE_DEBUG__
-                    debug("Failed to connect to WMI. Error code: ", hres);
+                    debug("VPC_BOARD: Failed to connect to WMI. Error code: ", hres);
                 #endif
                 pLoc->Release();
                 CoUninitialize();
@@ -3507,7 +3515,7 @@ private:
 
             if (FAILED(hres)) {
                 #ifdef __VMAWARE_DEBUG__
-                    debug("Failed to set proxy blanket. Error code: ", hres);
+                    debug("VPC_BOARD: Failed to set proxy blanket. Error code: ", hres);
                 #endif
                 pSvc->Release();
                 pLoc->Release();
@@ -3526,7 +3534,7 @@ private:
 
             if (FAILED(hres)) {
                 #ifdef __VMAWARE_DEBUG__
-                    debug("Query for Win32_BaseBoard failed. Error code: ", hres);
+                    debug("VPC_BOARD: Query for Win32_BaseBoard failed. Error code: ", hres);
                 #endif
                 pSvc->Release();
                 pLoc->Release();
@@ -3888,7 +3896,8 @@ const std::map<VM::u64, VM::technique> VM::table = {
     { VM::SPEC_RDTSC, { 80, VM::speculative_rdtsc }},
     { VM::LOADED_DLLS, { 75, VM::loaded_dlls }},
     { VM::QEMU_BRAND, { 100, VM::cpu_brand_qemu }},
-    { VM::BOCHS_CPU, { 95, VM::bochs_cpu }}
+    { VM::BOCHS_CPU, { 95, VM::bochs_cpu }},
+    { VM::VPC_BOARD, { 20, VM::vpc_board }}
 
     // __TABLE_LABEL, add your technique above
     // { VM::YOUR_FUNCTION, { POINTS, FUNCTION POINTER }}

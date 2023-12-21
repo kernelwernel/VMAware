@@ -108,6 +108,7 @@ int main(int argc, char* argv[]) {
         checker(VM::LOADED_DLLS, "loaded DLLs");
         checker(VM::QEMU_BRAND, "QEMU CPU brand");
         checker(VM::BOCHS_CPU, "BOCHS CPU techniques");
+        checker(VM::VPC_BOARD, "VirtualPC motherboard");
         std::printf("\n");
 
         std::cout << "VM brand: " << (std::string(VM::brand()) == "Unknown" ? red : green) << VM::brand() << ansi_exit << "\n\n";
