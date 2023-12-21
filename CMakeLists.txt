@@ -60,20 +60,21 @@ if(CMAKE_BUILD_TYPE MATCHES "Debug")
 endif()
 
 
-# CTest stuff
-include(CTest)
-enable_testing()
-
-
 # add executable
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin")
 add_executable(${TARGET} "src/cli.cpp")
 set_property(TARGET ${TARGET} PROPERTY CXX_STANDARD 20)
 set_property(TARGET ${TARGET} PROPERTY CXX_STANDARD_REQUIRED ON)
+
+
+# CTest stuff
+include(CTest)
+enable_testing()
 add_test(executable, "${CMAKE_SOURCE_DIR}/bin/${TARGET}")
-add_test(checks 
-    COMMAND ${PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/cmake/ctest_checks.py
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/cmake/
+add_test(
+    NAME checks
+    COMMAND "python3 ${CMAKE_CURRENT_SOURCE_DIR}/cmake/ctest_checks.py"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/cmake/"
 )
 
 
