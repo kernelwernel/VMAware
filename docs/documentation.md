@@ -40,6 +40,7 @@ int main() {
 }
 ```
 
+<br>
 
 # `VM::brand()`
 This will essentially return the VM brand as a `std::string`. The brand string return values are: 
@@ -69,7 +70,7 @@ This will essentially return the VM brand as a `std::string`. The brand string r
 - `Bochs`
 
 
-If none were detected, it will return `Unknown`. It's often not going to produce a satisfying result due to technical difficulties with accomplishing this, on top of being highly dependant on what mechanisms detected a VM. Don't rely on this function too much.
+If none were detected, it will return `Unknown`. It's often NOT going to produce a satisfying result due to technical difficulties with accomplishing this, on top of being highly dependant on what mechanisms detected a VM. Don't rely on this function for critical operations as if it's your golden bullet. 75% of the time it'll simply return `Unknown`.
 
 ```cpp
 int main() {
@@ -80,10 +81,12 @@ int main() {
     } else if (result == "VirtualBox") {
         // do vbox specific stuff
     } else {
-        // do stuff
+        // you get the idea
     }
 }
 ```
+
+<br>
 
 # `VM::check()`
 This takes a single flag argument and returns a `bool`. It's essentially the same as `VM::detect()` but it doesn't have a scoring system. It only returns the technique's effective output. The reason why this exists is because it allows end-users to have fine-grained control over what is being executed and what isn't. 
@@ -103,6 +106,7 @@ if (VM::check(VM::HYPERV_BIT)) {
 bool result = VM::check(VM::SIDT | VM::RDTSC);
 ```
 
+<br>
 
 # Flag table
 VMAware provides a convenient way to not only check for VMs, but also have the flexibility and freedom for the end-user to choose what techniques are used with complete control over what gets executed or not. This is handled with a flag system.
@@ -158,6 +162,8 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::LOADED_DLLS` | Check for DLLs of multiple VM brands | Windows | 75% |  |
 | `VM::QEMU_BRAND` | Check for QEMU CPU brand with cpuid | Yes | 100% |  | 
 | `VM::BOCHS_CPU` | Check for Bochs cpuid emulation oversights | Yes | 95% |  |
+
+<br>
 
 # Non-technique flags
 | Flag | Description |

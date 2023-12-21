@@ -98,6 +98,10 @@
     #include <winuser.h>
     #include <versionhelpers.h>
     #include <tlhelp32.h>
+    #include <comdef.h>
+    #include <Wbemidl.h>
+
+    #pragma comment(lib, "wbemuuid.lib")
     #pragma comment(lib, "iphlpapi.lib")
 #elif (LINUX)
     #include <cpuid.h>
@@ -110,9 +114,8 @@
     #include <netinet/in.h>
     #include <unistd.h>
     #include <string.h>
-    #include <memory>
-
     #include <immintrin.h>
+    #include <memory>
 #elif (APPLE)
     #include <sys/types.h>
     #include <sys/sysctl.h>
@@ -341,6 +344,26 @@ private:
         cpuid(eax, unused, unused, unused, leaf::func_ext);
 
         return (p_leaf <= eax);
+    }
+
+    // check AMD
+    [[nodiscard]] static bool is_amd() {
+        constexpr u32 amd_ecx = 0x69746e65;
+
+        u32 unused, ecx = 0;
+        cpuid(unused, unused, ecx, unused, 0);
+
+        return (ecx == amd_ecx);
+    }
+
+    // check Intel
+    [[nodiscard]] static bool is_intel() {
+        constexpr u32 intel_ecx = 0x6c65746e;
+
+        u32 unused, ecx = 0;
+        cpuid(unused, unused, ecx, unused, 0);
+
+        return (ecx == intel_ecx);
     }
 
     // self-explanatory
@@ -1047,6 +1070,12 @@ private:
             #ifdef __VMAWARE_DEBUG__
                 debug("BRAND_KEYWORDS: ", "matches: ", static_cast<u32>(match_count));
             #endif
+
+            if (match > 0) {
+                if (std::find(brand.begin(), brand.end(), "QEMU") != brand.end()) {
+                    return add(QEMU);
+                }
+            }
 
             return (match_count >= 1);
         #endif
@@ -3111,9 +3140,9 @@ private:
 
             if (is_vm == true) {
                 return add(VPC);
-            } else {
-                return false;
             }
+            
+            return false;
         #endif
     } catch (...) {
         #ifdef __VMAWARE_DEBUG__
@@ -3340,16 +3369,8 @@ private:
         #if (!x86)
             return false;
         #else
-            constexpr u32 intel_ecx = 0x6c65746e;
-            constexpr u32 amd_ecx   = 0x69746e65;
-
-            bool intel, amd = false;
-
-            u32 unused, ecx = 0;
-            cpuid(unused, unused, ecx, unused, 0);
-
-            if (ecx == intel_ecx) { intel = true; }
-            if (ecx == amd_ecx)   { amd   = true; }
+            const bool intel = is_intel();
+            const bool amd = is_amd();
 
             if (!(intel ^ amd)) { 
                 return false;
@@ -3396,6 +3417,168 @@ private:
     }
 
 
+    [[nodiscard]] static bool vpc_board() try {
+        if (disabled(VPC_BOARD)) {
+            return false;
+        }
+
+        #if (!MSVC)
+            return false;
+        #else
+            HRESULT hres;
+
+            hres = CoInitializeEx(0, COINIT_MULTITHREADED);
+            if (FAILED(hres)) {
+                #ifdef __VMAWARE_DEBUG__
+                    debug("Failed to initialize COM library. Error code: ", hres);
+                #endif
+                return false;
+            }
+
+            hres = CoInitializeSecurity(
+                NULL,
+                -1,                          // use the default authentication service
+                NULL,                        // use the default authorization service
+                NULL,                        // reserved
+                RPC_C_AUTHN_LEVEL_DEFAULT,   // authentication
+                RPC_C_IMP_LEVEL_IMPERSONATE, // impersonation
+                NULL,                        // authentication info
+                EOAC_NONE,                   // additional capabilities
+                NULL                         // reserved
+            );
+
+            if (FAILED(hres)) {
+                #ifdef __VMAWARE_DEBUG__
+                    debug("Failed to initialize security. Error code: ", hres);
+                #endif
+                CoUninitialize();
+                return false;
+            }
+
+            IWbemLocator* pLoc = NULL;
+            IWbemServices* pSvc = NULL;
+
+            hres = CoCreateInstance(
+                CLSID_WbemLocator,
+                0,
+                CLSCTX_INPROC_SERVER,
+                IID_IWbemLocator,
+                (LPVOID*)&pLoc
+            );
+
+            if (FAILED(hres)) {
+                #ifdef __VMAWARE_DEBUG__
+                    debug("Failed to create IWbemLocator object. Error code: ", hres);
+                #endif
+                CoUninitialize();
+                return false;
+            }
+
+            hres = pLoc->ConnectServer(
+                _bstr_t(L"ROOT\\CIMV2"), // Namespace
+                NULL,                    // User name
+                NULL,                    // User password
+                0,                       // Locale
+                NULL,                    // Security flags
+                0,                       // Authority
+                0,                       // Context object pointer
+                &pSvc
+            );
+
+            if (FAILED(hres)) {
+                #ifdef __VMAWARE_DEBUG__
+                    debug("Failed to connect to WMI. Error code: ", hres);
+                #endif
+                pLoc->Release();
+                CoUninitialize();
+                return false;
+            }
+
+            hres = CoSetProxyBlanket(
+                pSvc,                        // Indicates the proxy to set
+                RPC_C_AUTHN_WINNT,           // RPC_C_AUTHN_xxx
+                RPC_C_AUTHZ_NONE,            // RPC_C_AUTHZ_xxx
+                NULL,                        // Server principal name
+                RPC_C_AUTHN_LEVEL_CALL,      // RPC_C_AUTHN_LEVEL_xxx
+                RPC_C_IMP_LEVEL_IMPERSONATE, // RPC_C_IMP_LEVEL_xxx
+                NULL,                        // client identity
+                EOAC_NONE                    // proxy capabilities
+            );
+
+            if (FAILED(hres)) {
+                #ifdef __VMAWARE_DEBUG__
+                    debug("Failed to set proxy blanket. Error code: ", hres);
+                #endif
+                pSvc->Release();
+                pLoc->Release();
+                CoUninitialize();
+                return false;
+            }
+
+            IEnumWbemClassObject* enumerator = NULL;
+            hres = pSvc->ExecQuery(
+                bstr_t("WQL"),
+                bstr_t("SELECT * FROM Win32_BaseBoard"),
+                WBEM_FLAG_FORWARD_ONLY | WBEM_FLAG_RETURN_IMMEDIATELY,
+                NULL,
+                &enumerator
+            );
+
+            if (FAILED(hres)) {
+                #ifdef __VMAWARE_DEBUG__
+                    debug("Query for Win32_BaseBoard failed. Error code: ", hres);
+                #endif
+                pSvc->Release();
+                pLoc->Release();
+                CoUninitialize();
+                return false;
+            }
+
+            IWbemClassObject* pclsObj = NULL;
+            ULONG uReturn = 0;
+            bool is_vm = false;
+
+            while (enumerator) {
+                HRESULT hr = enumerator->Next(WBEM_INFINITE, 1, &pclsObj, &uReturn);
+
+                if (uReturn == 0) {
+                    break;
+                }
+
+                VARIANT vtProp;
+                hr = pclsObj->Get(L"Manufacturer", 0, &vtProp, 0, 0);
+
+                if (SUCCEEDED(hr)) {
+                    if (vtProp.vt == VT_BSTR && _wcsicmp(vtProp.bstrVal, L"Microsoft Corporation") == 0) {
+                        is_vm = true;
+                        VariantClear(&vtProp);
+                        break;
+                    }
+
+                    VariantClear(&vtProp);
+                }
+
+                pclsObj->Release();
+            }
+
+            pEnumerator->Release();
+            pSvc->Release();
+            pLoc->Release();
+            CoUninitialize();
+
+            if (is_vm) {
+                return add(VPC);
+            }
+
+            return false;
+        #endif
+    } catch (...) {
+        #ifdef __VMAWARE_DEBUG__
+            debug("VPC_BOARD:", "catched error, returned false");
+        #endif
+        return false;
+    }
+ 
 
     // __TECHNIQUE_LABEL, label for adding techniques above this point
 

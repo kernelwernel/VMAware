@@ -13,7 +13,7 @@ It utilises a comprehensive list of low-level and high-level anti-VM techniques 
 
 The library is:
 - Very easy to use, with only 3 functions in its public interface
-- Very flexible with fine-grained control
+- Very flexible, with total fine-grained control
 - Cross-platform **(NOTE: MACOS AND MSVC ARE NOT EFFECTIVE FOR NOW)**
 - Header-only
 - Available with C++11 and above
