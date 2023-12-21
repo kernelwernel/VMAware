@@ -77,11 +77,12 @@ set_property(TARGET ${TARGET} PROPERTY CXX_STANDARD_REQUIRED ON)
 
 # CTest stuff
 include(CTest)
+find_package(Python REQUIRED)
 enable_testing()
 add_test(executable, "${CMAKE_SOURCE_DIR}/bin/${TARGET}")
 add_test(
     checks 
-    "python3" "${CMAKE_SOURCE_DIR}/cmake/ctest_checks.py"
+    ${Python_EXECUTABLE} "${CMAKE_SOURCE_DIR}/cmake/ctest_checks.py"
 )
 
 
