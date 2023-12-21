@@ -1071,7 +1071,7 @@ private:
                 debug("BRAND_KEYWORDS: ", "matches: ", static_cast<u32>(match_count));
             #endif
 
-            if (match > 0) {
+            if (match_count > 0) {
                 if (std::find(brand.begin(), brand.end(), "QEMU") != brand.end()) {
                     return add(QEMU);
                 }
