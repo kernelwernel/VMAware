@@ -1,9 +1,11 @@
 # Documentation
 # `VM::detect()`
 
-This is basically the only thing you need, which returns a bool. If the parameter is set to default, all the recommended checks will be performed. But you can optionally set what techniques are used:
+This is basically the main function you're looking for, which returns a bool. If the parameter is set to nothing, all the <ins>recommended</ins> checks will be performed. But you can optionally set what techniques are used.
 
 ```cpp
+#include "vmaware.hpp"
+
 int main() {
     /**
      * The basic way to detect a VM where most checks will be 
@@ -16,7 +18,8 @@ int main() {
      * Essentially means only the brand, MAC, and hypervisor bit techniques 
      * should be performed. Note that the less flags you provide, the more 
      * likely the result will not be accurate. If you just want to check for 
-     * a single technique, use VM::check() instead.
+     * a single technique, use VM::check() instead. Also, read the flag table
+     * at the end of this doc file for a full list of technique flags.
      */
     bool is_vm2 = VM::detect(VM::BRAND | VM::MAC | VM::HYPERV_BIT);
 
@@ -37,13 +40,22 @@ int main() {
      * Keep in mind that this could take a performance hit.
      */ 
     bool is_vm4 = VM::detect(VM::ALL | VM::NO_MEMO);
+
+
+    /**
+     * If you want to treat any technique that was detected as positive,
+     * you can enable the VM::EXTREME flag which will return true if any
+     * technique has detected a hit despite the certainty score. This is
+     * not recommended for obvious reasons.
+     */ 
+    bool is_vm5 = VM::detect(VM::EXTREME);
 }
 ```
 
 <br>
 
 # `VM::brand()`
-This will essentially return the VM brand as a `std::string`. The brand string return values are: 
+This will essentially return the VM brand as a `std::string`. The exact possible brand string return values are: 
 - `VMware`
 - `VirtualBox`
 - `KVM`
@@ -70,9 +82,12 @@ This will essentially return the VM brand as a `std::string`. The brand string r
 - `Bochs`
 
 
-If none were detected, it will return `Unknown`. It's often NOT going to produce a satisfying result due to technical difficulties with accomplishing this, on top of being highly dependant on what mechanisms detected a VM. Don't rely on this function for critical operations as if it's your golden bullet. 75% of the time it'll simply return `Unknown`.
+If none were detected, it will return `Unknown`. It's often NOT going to produce a satisfying result due to technical difficulties with accomplishing this, on top of being highly dependent on what mechanisms detected a VM. Don't rely on this function for critical operations as if it's your golden bullet. Roughly 75% of the time it'll simply return `Unknown`.
 
 ```cpp
+#include "vmaware.hpp"
+#include <string>
+
 int main() {
     const std::string result = VM::brand();
 
@@ -94,16 +109,48 @@ This takes a single flag argument and returns a `bool`. It's essentially the sam
 `VM::detect()` is meant for a range of techniques to be evaluated in the bigger picture with weights and biases in its scoring system, while `VM::check()` is meant for a single technique to be evaluated without any points or anything extra. It just gives you what the technique has found on its own. For example:
 
 ```cpp
-if (VM::check(VM::VMID)) {
-    std::cout << "VMID technique detected a VM!\n";
-}
+#include "vmaware.hpp"
+#include <iostream>
 
-if (VM::check(VM::HYPERV_BIT)) {
-    std::cout << "Hypervisor bit is set, most definitely a VM!\n";
-}
+int main() {
+    if (VM::check(VM::VMID)) {
+        std::cout << "VMID technique detected a VM!\n";
+    }
 
-// invalid
-bool result = VM::check(VM::SIDT | VM::RDTSC);
+    if (VM::check(VM::HYPERVISOR_BIT)) {
+        std::cout << "Hypervisor bit is set, most definitely a VM!\n";
+    }
+
+    // invalid, will throw an std::invalid_argument exception
+    bool result = VM::check(VM::VMID | VM::HYPERVISOR_BIT;
+}
+```
+
+<br>
+
+# `VM::percentage()`
+This will return a std::uint8_t between 0 and 100. It'll return the certainty of whether it has detected a VM based on all the techniques available as a percentage. The lower the value, the less chance it's a VM. The higher the value, the more likely chance it is. The parameters are treated the exact same way with the VM::detect() function.
+
+```cpp
+#include "vmaware.hpp"
+#include <iostream>
+#include <cstdint>
+
+int main() {
+    // uint8_t and unsigned char works too
+    const std::uint8_t percent = VM::percentage();
+
+    if (percent == 100) {
+        std::cout << "Definitely a VM!\n";
+    } else if (percent == 0) {
+        std::cout << "Definitely NOT a VM";
+    } else {
+        std::cout << "Unsure if it's a VM";
+    }
+
+    // converted to std::uint32_t for console character encoding reasons
+    std::cout << "percentage: " << static_cast<std::uint32_t>(percent) << "%\n"; 
+}
 ```
 
 <br>
@@ -116,9 +163,9 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | ---------- | ----------- | --------------- | --------- | -------------- |
 | `VM::VMID` | Check if the CPU manufacturer ID matches that of a VM brand | Yes | 100% |  |
 | `VM::BRAND` | Check if the CPU brand string contains any indications of VM keywords | Yes | 50% |  |
-| `VM::HYPERV_BIT` | Check if the hypervisor bit is set (always false on physical CPUs) | Yes | 95% |  |
+| `VM::HYPERVISOR_BIT` | Check if the hypervisor bit is set (always false on physical CPUs) | Yes | 95% |  |
 |`VM::CPUID_0X4` | Check if there are any leaf values between 0x40000000 and 0x400000FF that changes the CPUID output | Yes | 70% |  |
-| `VM::HYPERV_STR` | Check if brand string length is long enough (would be around 2 characters in a host machine while it's longer in a hypervisor) | Yes | 45% |  |
+| `VM::HYPERVISOR_STR` | Check if brand string length is long enough (would be around 2 characters in a host machine while it's longer in a hypervisor) | Yes | 45% |  |
 | `VM::RDTSC` | Benchmark RDTSC and evaluate its speed, usually it's very slow in VMs | Linux and Windows | 20% |  |
 | `VM::SIDT` | Check if SIDT instructions does anything to the interrupt descriptor table | Linux | 65% |  |
 | `VM::SIDT5` | Check if the 5th byte after sidt is null | Linux | 45% |  |
@@ -169,5 +216,6 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 # Non-technique flags
 | Flag | Description |
 |------|-------------|
-| `VM::ALL` | This will enable all the technique flags, including the cursor check. |
+| `VM::ALL` | This will enable all the technique flags, including the cursor check that's disabled by default. |
 | `VM::NO_MEMO` | This will disable memoization, meaning the result will not be fetched through a previous computation of the VM::detect() function. Note that this can take a performance hit. |
+| `VM::EXTREME` | This will disregard the weights/biases and its scoring system. It will essentially treat any technique that found a hit as a VM detection no matter how low that technique's certainty is, so if a single technique is positive then it will return true. | 
