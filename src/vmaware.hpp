@@ -3053,9 +3053,6 @@ private:
             return false;
         }
 
-        return false; // TEMPORARY
-
-        /*
         #if (!MSVC)
             return false;
         #else
@@ -3088,7 +3085,6 @@ private:
 
             return false;
         #endif
-        */
     } catch (...) {
         #ifdef __VMAWARE_DEBUG__
             debug("WMIC: catched error, returned false");
