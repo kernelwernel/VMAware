@@ -116,6 +116,8 @@ int main(int argc, char* argv[]) {
         checker(VM::BIOS_SERIAL, "BIOS serial number");
         checker(VM::HYPERV_WMI, "Hyper-V WMI");
         checker(VM::HYPERV_REG, "Hyper-V registry");
+        checker(VM::VBOX_FOLDERS, "VirtualBox shared folders");
+        checker(VM::VBOX_MSSMBIOS, "VirtualBox MSSMBIOS");
 
         std::printf("\n");
 

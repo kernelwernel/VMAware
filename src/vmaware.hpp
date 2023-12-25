@@ -3920,7 +3920,10 @@ private:
     
     /**
      * @brief Check VirtualBox MSSMBIOS registry for VM-specific strings
-     * 
+     * @category Windows
+     * @note slightly modified from original code
+     * @author @waleedassar
+     * @link https://pastebin.com/fPY4MiYq
      */
     [[nodiscard]] static bool vbox_mssmbios() try {
         if (disabled(VBOX_MSSMBIOS)) {
