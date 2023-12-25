@@ -3639,6 +3639,9 @@ private:
             return false;
         }
 
+        return false; // TEMPORARY
+        
+        /*
         #if (!MSVC)
             return false;
         #else
@@ -3775,6 +3778,7 @@ private:
 
             return is_vm;
         #endif
+        */
     } catch (...) {
         #ifdef __VMAWARE_DEBUG__
             debug("HYPERV_WMI: ", "catched error, returned false");
@@ -3794,6 +3798,8 @@ private:
             return false;
         }
 
+        return false; // TEMPORARY
+        /*
         #if (!MSVC)
             return false;
         #else
@@ -3843,6 +3849,7 @@ private:
 
             return is_vm;
         #endif 
+        */
     } catch (...) {
         #ifdef __VMAWARE_DEBUG__
             debug("HYPERV_WMI: ", "catched error, returned false");
