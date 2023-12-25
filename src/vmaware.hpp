@@ -792,14 +792,6 @@ private:
         return (!(flags & p_flag));
     }
 
-    // same as above but for checking enabled flags
-    #if (LINUX && __has_cpp_attribute(gnu::pure))
-        [[gnu::pure]]
-    #endif
-    [[nodiscard]] static inline bool enabled(const u64 p_flag) noexcept {
-        return (flags & p_flag);
-    }
-
     // easier way to check if the result is memoized
     [[nodiscard]] static inline bool is_memoized() noexcept {
         return (
@@ -3102,16 +3094,45 @@ private:
             return false;
         }
 
-        return false;
-
-        /*
         #if (!MSVC)
             return false;
         #else
+            auto check_wmic_presence = []() -> bool {
+                FILE* pipe = _popen("wmic /?", "r");
+
+                if (pipe) {
+                    char buffer[128];
+                    while (!feof(pipe)) {
+                        if (fgets(buffer, 128, pipe) != nullptr)
+                            return true;
+                    }
+                    _pclose(pipe);
+                } else {
+                    return false;
+                }
+            };
+
+            if (check_wmic_presence() == false) {
+                #ifdef __VMAWARE_DEBUG__
+                    debug("BIOS_SERIAL: ", "wmic isn't found, returned false");
+                #endif
+                return false;
+            }
+
             std::unique_ptr<std::string> bios = sys_result("wmic bios get serialnumber");
 
-            const std::size_t nl_pos = bios->find('\n');
-            std::string extract = bios->substr(nl_pos + 1);
+            const std::string str = std::move(*bios);
+            const std::size_t nl_pos = str.find('\n');
+
+            if (nl_pos == std::string::npos) {
+                return false;
+            }
+
+            #ifdef __VMAWARE_DEBUG__
+                debug("BIOS_SERIAL: ", str);
+            #endif
+            
+            const std::string extract = str.substr(nl_pos + 1);
 
             const bool all_digits = std::all_of(extract.cbegin(), extract.cend(), [](const char c) {
                 return std::isdigit(c);
@@ -3125,7 +3146,6 @@ private:
 
             return false;
         #endif
-        */
     } catch (...) {
         #ifdef __VMAWARE_DEBUG__
             debug("BIOS_SERIAL: catched error, returned false");
@@ -3642,10 +3662,7 @@ private:
         if (disabled(HYPERV_WMI)) {
             return false;
         }
-
-        return false; // TEMPORARY
         
-        /*
         #if (!MSVC)
             return false;
         #else
@@ -3677,7 +3694,6 @@ private:
                 return false;
             }
 
-            // Connect to WMI
             IWbemLocator *pLoc = NULL;
             hres = CoCreateInstance(CLSID_WbemLocator, 0, CLSCTX_INPROC_SERVER, IID_IWbemLocator, (LPVOID*)&pLoc);
 
@@ -3782,7 +3798,6 @@ private:
 
             return is_vm;
         #endif
-        */
     } catch (...) {
         #ifdef __VMAWARE_DEBUG__
             debug("HYPERV_WMI: ", "catched error, returned false");
@@ -3802,8 +3817,6 @@ private:
             return false;
         }
 
-        return false; // TEMPORARY
-        /*
         #if (!MSVC)
             return false;
         #else
@@ -3853,7 +3866,6 @@ private:
 
             return is_vm;
         #endif 
-        */
     } catch (...) {
         #ifdef __VMAWARE_DEBUG__
             debug("HYPERV_WMI: ", "catched error, returned false");
@@ -3988,7 +4000,7 @@ public:
 
         bool result = false;
 
-        if (enabled(EXTREME)) {
+        if (disabled(EXTREME)) {
             result = (points > 0);
         } else {
             result = (points >= 100);
