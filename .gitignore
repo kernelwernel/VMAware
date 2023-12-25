@@ -45,7 +45,6 @@ archive/
 build/
 milestones.md
 bin/
-src/*.asm
-src/*.cu
 notes.md
 private/
+resources/

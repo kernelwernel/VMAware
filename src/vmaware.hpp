@@ -3110,6 +3110,8 @@ private:
                 } else {
                     return false;
                 }
+
+                return false;
             };
 
             if (check_wmic_presence() == false) {
