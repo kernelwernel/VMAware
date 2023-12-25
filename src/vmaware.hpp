@@ -3106,6 +3106,9 @@ private:
             return false;
         }
 
+        return false;
+
+        /*
         #if (!MSVC)
             return false;
         #else
@@ -3126,6 +3129,7 @@ private:
 
             return false;
         #endif
+        */
     } catch (...) {
         #ifdef __VMAWARE_DEBUG__
             debug("BIOS_SERIAL: catched error, returned false");
