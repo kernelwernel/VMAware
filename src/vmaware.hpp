@@ -103,6 +103,7 @@
 
     #pragma comment(lib, "wbemuuid.lib")
     #pragma comment(lib, "iphlpapi.lib")
+    #pragma comment(lib,"MPR")
 #elif (LINUX)
     #include <cpuid.h>
     #include <x86intrin.h>
