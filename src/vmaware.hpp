@@ -4416,7 +4416,7 @@ const std::map<VM::u64, VM::technique> VM::table = {
     { VM::LINUX_USER_HOST, { 35, VM::linux_user_host }},
     { VM::VBOX_WINDOW_CLASS, { 10, VM::vbox_window_class }},
     { VM::GAMARUE, { 40, VM::gamarue }},
-    { VM::WMIC, { 20, VM::wmic }},
+    //{ VM::WMIC, { 20, VM::wmic }},
     { VM::VMID_0X4, { 90, VM::vmid_0x4 }},
     //{ VM::VPC_BACKDOOR, { 70, VM::vpc_backdoor }},
     //{ VM::PARALLELS_VM, { 50, VM::parallels }},
