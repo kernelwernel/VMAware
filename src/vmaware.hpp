@@ -4421,7 +4421,7 @@ const std::map<VM::u64, VM::technique> VM::table = {
     { VM::VPC_BACKDOOR, { 70, VM::vpc_backdoor }},
     { VM::PARALLELS_VM, { 50, VM::parallels }},
     { VM::SPEC_RDTSC, { 80, VM::speculative_rdtsc }},
-    { VM::LOADED_DLLS, { 75, VM::loaded_dlls }},
+    //{ VM::LOADED_DLLS, { 75, VM::loaded_dlls }},
     { VM::QEMU_BRAND, { 100, VM::cpu_brand_qemu }},
     { VM::BOCHS_CPU, { 95, VM::bochs_cpu }},
     //{ VM::VPC_BOARD, { 20, VM::vpc_board }},
