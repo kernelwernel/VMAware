@@ -210,6 +210,8 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::QEMU_BRAND` | Check for QEMU CPU brand with cpuid | Yes | 100% |  | 
 | `VM::BOCHS_CPU` | Check for Bochs cpuid emulation oversights | Yes | 95% |  |
 | `VM::VPC_BOARD` | Check for VPC specific string in motherboard manufacturer | Windows | 20% |  | 
+| `VM::HYPERV_WMI` | Check for Hyper-V wmi output | Windows | 80% |  |
+| `VM::HYPERV_REG` | Check for Hyper-V strings in registry | Windows | 80% |  |
 | `VM::BIOS_SERIAL` | Check if BIOS serial number is null | Windows | 60% |  |
 
 <br>
