@@ -24,7 +24,6 @@
 #include <fstream>
 #include <regex>
 #include <thread>
-#include <filesystem>
 #include <limits>
 #include <cstdint>
 #include <map>
@@ -33,6 +32,7 @@
 #include <iostream>
 #include <cassert>
 #include <cmath>
+#include <sstream>
 
 // shorter and succinct macros
 #if __cplusplus == 202002L
@@ -74,6 +74,7 @@
 #endif
 #if (CPP >= 17)
     #include <bit>
+    #include <filesystem>
 #endif
 #ifdef __VMAWARE_DEBUG__
     #include <iomanip>
@@ -959,13 +960,13 @@ public:
             const bool found = (std::find(std::begin(IDs), std::end(IDs), brand) != std::end(IDs));
 
             if (found) {
+                if (brand == qemu) { return add(QEMU); }
+                if (brand == vmware) { return add(VMWARE); }
+                if (brand == vbox) { return add(VBOX); }
                 if (brand == bhyve) { return add(BHYVE); }
                 if (brand == kvm) { return add(KVM); }
-                if (brand == qemu) [[likely]] { return add(QEMU); }
                 if (brand == hyperv) { return add(HYPERV); }
                 if (brand == xta) { return add(MSXTA); }
-                if (brand == vmware) [[likely]] { return add(VMWARE); }
-                if (brand == vbox) [[likely]] { return add(VBOX); }
                 if (brand == parallels) { return add(PARALLELS); }
                 if (brand == parallels2) { return add(PARALLELS); }
                 if (brand == xen) { return add(XEN); }
@@ -3109,16 +3110,47 @@ private:
             return false;
         }
 
-        return false;
-
-        /*
         #if (!MSVC)
             return false;
         #else
+            auto check_wmic_presence = []() -> bool {
+                FILE* pipe = _popen("wmic /?", "r");
+
+                if (pipe) {
+                    char buffer[128];
+                    while (!feof(pipe)) {
+                        if (fgets(buffer, 128, pipe) != nullptr)
+                            return true;
+                    }
+                    _pclose(pipe);
+                } else {
+                    return false;
+                }
+
+                return false;
+            };
+
+            if (check_wmic_presence() == false) {
+                #ifdef __VMAWARE_DEBUG__
+                    debug("BIOS_SERIAL: ", "wmic isn't found, returned false");
+                #endif
+                return false;
+            }
+
             std::unique_ptr<std::string> bios = sys_result("wmic bios get serialnumber");
 
-            const std::size_t nl_pos = bios->find('\n');
-            std::string extract = bios->substr(nl_pos + 1);
+            const std::string str = *bios;
+            const std::size_t nl_pos = str.find('\n');
+
+            if (nl_pos == std::string::npos) {
+                return false;
+            }
+
+            #ifdef __VMAWARE_DEBUG__
+                debug("BIOS_SERIAL: ", str);
+            #endif
+            
+            const std::string extract = str.substr(nl_pos + 1);
 
             const bool all_digits = std::all_of(extract.cbegin(), extract.cend(), [](const char c) {
                 return std::isdigit(c);
@@ -3132,7 +3164,6 @@ private:
 
             return false;
         #endif
-        */
     } catch (...) {
         #ifdef __VMAWARE_DEBUG__
             debug("BIOS_SERIAL: catched error, returned false");
@@ -3911,7 +3942,7 @@ private:
         #if (!MSVC)
             return false;
         #else
-                        HKEY hk = 0;
+            HKEY hk = 0;
             int ret = RegOpenKeyEx(HKEY_LOCAL_MACHINE, "SYSTEM\\CurrentControlSet\\Services\\mssmbios\\data", 0, KEY_ALL_ACCESS, &hk);
             if (ret != ERROR_SUCCESS) {
                 return false;
