@@ -3057,12 +3057,30 @@ private:
             return false;
         }
 
-        return false; // TEMPORARY
-
-        /*
         #if (!MSVC)
             return false;
         #else
+            auto check_wmic_presence = []() -> bool {
+                FILE* pipe = _popen("wmic /?", "r");
+
+                if (pipe) {
+                    char buffer[128];
+                    while (!feof(pipe)) {
+                        if (fgets(buffer, 128, pipe) != nullptr)
+                            return true;
+                    }
+                    _pclose(pipe);
+                } else {
+                    return false;
+                }
+
+                return false;
+            };
+
+            if (check_wmic_presence() == false) {
+                return false;
+            }
+
             std::unique_ptr<std::string> manufacturer = sys_result("WMIC COMPUTERSYSTEM GET MANUFACTURER");
            
             if (*manufacturer == "VirtualBox") {
@@ -3092,7 +3110,6 @@ private:
 
             return false;
         #endif
-        */
     } catch (...) {
         #ifdef __VMAWARE_DEBUG__
             debug("WMIC: catched error, returned false");
@@ -3104,12 +3121,16 @@ private:
     /**
      * @brief Check if the BIOS serial is valid
      * @category Windows
+     * @todo FIX THE SEGFAULT
      */
     [[nodiscard]] static bool bios_serial() try {
         if (disabled(BIOS_SERIAL)) {
             return false;
         }
 
+        return false;
+
+        /*
         #if (!MSVC)
             return false;
         #else
@@ -3164,6 +3185,7 @@ private:
 
             return false;
         #endif
+        */
     } catch (...) {
         #ifdef __VMAWARE_DEBUG__
             debug("BIOS_SERIAL: catched error, returned false");
