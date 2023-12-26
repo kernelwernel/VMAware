@@ -213,7 +213,11 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::BIOS_SERIAL` | Check if BIOS serial number is null | Windows | 60% |  |
 | `VM::VBOX_FOLDERS` | Check for VirtualBox-specific string for shared folder ID | Windows | 45% |  |
 | `VM::VBOX_MSSMBIOS` | Check VirtualBox MSSMBIOS registry for VM-specific strings | Windows 75% |  |
-
+    { VM::BOCHS_CPU, { 95, VM::bochs_cpu }},
+    { VM::VPC_BOARD, { 20, VM::vpc_board }},
+    { VM::HYPERV_WMI, { 80, VM::hyperv_wmi }},
+    { VM::HYPERV_REG, { 80, VM::hyperv_registry }},
+    { VM::BIOS_SERIAL, { 60, VM::bios_serial }},
 <br>
 
 # Non-technique flags

@@ -116,7 +116,6 @@ int main(int argc, char* argv[]) {
         checker(VM::BIOS_SERIAL, "BIOS serial number");
         checker(VM::VBOX_FOLDERS, "VirtualBox shared folders");
         checker(VM::VBOX_MSSMBIOS, "VirtualBox MSSMBIOS");
-
         std::printf("\n");
 
         std::cout << "VM brand: " << (std::string(VM::brand()) == "Unknown" ? red : green) << VM::brand() << ansi_exit << "\n";
