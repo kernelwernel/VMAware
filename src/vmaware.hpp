@@ -866,8 +866,6 @@ public:
         HYPERV_WMI = 1ULL << 49,
         HYPERV_REG = 1ULL << 50,
         BIOS_SERIAL = 1ULL << 51,
-        VBOX_FOLDERS = 1ULL << 52,
-        VBOX_MSSMBIOS = 1ULL << 53, 
 
         // __UNIQUE_LABEL, ADD YOUR UNIQUE FUNCTION FLAG VALUE ABOVE HERE
 
@@ -3867,148 +3865,6 @@ private:
         return false;
     }
 
-    /**
-     * @brief Check for VirtualBox-specific string for shared folder ID
-     * @category Windows
-     * @note slightly modified code from original
-     * @author @waleedassar
-     * @link https://pastebin.com/xhFABpPL
-     */ 
-    [[nodiscard]] static bool vbox_shared_folders() try {
-        if (disabled(VBOX_FOLDERS)) {
-            return false;
-        }
-
-        #if (!MSVC)
-            return false;
-        #else
-            unsigned long pnsize = 0x1000;
-            char* provider = static_cast<char*>(LocalAlloc(LMEM_ZEROINIT,pnsize));
-            unsigned int retv = WNetGetProviderName(WNNC_NET_RDR2SAMPLE,provider,&pnsize);
-            if (retv == NO_ERROR) {
-                if (lstrcmpi(provider,"VirtualBox Shared Folders") == 0) {
-                    return add(VBOX);
-                }
-            }
-
-            return false;
-        #endif
-    } catch (...) {
-        #ifdef __VMAWARE_DEBUG__
-            debug("VBOX_FOLDERS: ", "catched error, returned false");
-        #endif
-        return false;
-    }
-
-    
-    /**
-     * @brief Check VirtualBox MSSMBIOS registry for VM-specific strings
-     * @category Windows
-     * @note slightly modified from original code
-     * @author @waleedassar
-     * @link https://pastebin.com/fPY4MiYq
-     */
-    [[nodiscard]] static bool vbox_mssmbios() try {
-        if (disabled(VBOX_MSSMBIOS)) {
-            return false;
-        }
-
-        #if (!MSVC)
-            return false;
-        #else
-                        HKEY hk = 0;
-            int ret = RegOpenKeyEx(HKEY_LOCAL_MACHINE, "SYSTEM\\CurrentControlSet\\Services\\mssmbios\\data", 0, KEY_ALL_ACCESS, &hk);
-            if (ret != ERROR_SUCCESS) {
-                return false;
-            }
-
-            bool is_vm = false;
-            unsigned long type = 0;
-            unsigned long length = 0;
-            ret = RegQueryValueEx(hk, "SMBiosData", 0, &type, 0, &length);
-
-            if (ret != ERROR_SUCCESS) {
-                RegCloseKey(hk);
-                return false;
-            }
-
-            if (length == 0) {
-                RegCloseKey(hk);
-                return false;
-            }
-
-            char* p = static_cast<char*>(LocalAlloc(LMEM_ZEROINIT, length));
-
-            if (p == nullptr) {
-                RegCloseKey(hk);
-                return false;
-            }
-
-            ret = RegQueryValueEx(hk, "SMBiosData", 0, &type, (unsigned char*)p, &length);
-
-            if (ret != ERROR_SUCCESS) {
-                LocalFree(p);
-                RegCloseKey(hk);
-                return false;
-            }
-
-            auto ScanDataForString = [](unsigned char* data, unsigned long data_length, unsigned char* string2) -> unsigned char* {
-                std::size_t string_length = strlen(reinterpret_cast<char*>(string2));
-
-                for (std::size_t i = 0; i <= (data_length-string_length); i++) {
-                    if (strncmp(reinterpret_cast<char*>(&data[i]), reinterpret_cast<char*>(string2), string_length) == 0) {
-                        return &data[i];
-                    }
-                }
-                return 0;
-            };
-
-            auto AllToUpper = [](char* str, std::size_t len) -> void {
-                std::transform(str, str + len, str, [](unsigned char c) -> char {
-                    return static_cast<char>(std::toupper(c));
-                });
-            };
-
-            AllToUpper(p, length);
-
-            // cleaner and better shortcut than typing reinterpret_cast<unsigned char*> a million times
-            auto cast = [](char* p) -> unsigned char* {
-                return reinterpret_cast<unsigned char*>(p);
-            };
-
-            unsigned char* x1 = ScanDataForString(cast(p), length, (unsigned char*)("INNOTEK GMBH"));
-            unsigned char* x2 = ScanDataForString(cast(p), length, (unsigned char*)("VIRTUALBOX"));
-            unsigned char* x3 = ScanDataForString(cast(p), length, (unsigned char*)("SUN MICROSYSTEMS"));
-            unsigned char* x4 = ScanDataForString(cast(p), length, (unsigned char*)("VIRTUAL MACHINE"));
-            unsigned char* x5 = ScanDataForString(cast(p), length, (unsigned char*)("VBOXVER"));
-
-            if (x1 || x2 || x3 || x4 || x5) {
-                is_vm = true;
-                #ifdef __VMAWARE_DEBUG__
-                    if (x1) { debug("VBOX_MSSMBIOS: x1 = ", x1); }
-                    if (x2) { debug("VBOX_MSSMBIOS: x2 = ", x2); }
-                    if (x3) { debug("VBOX_MSSMBIOS: x3 = ", x3); }
-                    if (x4) { debug("VBOX_MSSMBIOS: x4 = ", x4); }
-                    if (x5) { debug("VBOX_MSSMBIOS: x5 = ", x5); }
-                #endif
-            }
-
-            LocalFree(p);
-            RegCloseKey(hk);
-
-            if (is_vm) {
-                return add(VBOX);
-            }
-
-            return false;
-        #endif
-    } catch (...) {
-        #ifdef __VMAWARE_DEBUG__
-            debug("VBOX_INNOTEK: ", "catched error, returned false");
-        #endif
-        return false;
-    } 
-
 
     // __TECHNIQUE_LABEL, label for adding techniques above this point
 
@@ -4391,7 +4247,7 @@ const std::map<VM::u64, VM::technique> VM::table = {
     { VM::LINUX_USER_HOST, { 35, VM::linux_user_host }},
     { VM::VBOX_WINDOW_CLASS, { 10, VM::vbox_window_class }},
     { VM::GAMARUE, { 40, VM::gamarue }},
-    { VM::WMIC, { 20, VM::wmic }},            // clear issue here
+    { VM::WMIC, { 20, VM::wmic }},
     { VM::VMID_0X4, { 90, VM::vmid_0x4 }},
     { VM::VPC_BACKDOOR, { 70, VM::vpc_backdoor }},
     { VM::PARALLELS_VM, { 50, VM::parallels }},
