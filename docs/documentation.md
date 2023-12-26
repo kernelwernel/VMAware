@@ -213,6 +213,8 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::HYPERV_WMI` | Check for Hyper-V wmi output | Windows | 80% |  |
 | `VM::HYPERV_REG` | Check for Hyper-V strings in registry | Windows | 80% |  |
 | `VM::BIOS_SERIAL` | Check if BIOS serial number is null | Windows | 60% |  |
+| `VM::VBOX_FOLDERS` | Check for VirtualBox-specific string for shared folder ID | Windows | 45% |  |
+| `VM::VBOX_MSSMBIOS` | Check VirtualBox MSSMBIOS registry for VM-specific strings | Windows | 75% |  |
 
 <br>
 
