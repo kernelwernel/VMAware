@@ -3048,15 +3048,18 @@ private:
 
 
     /**
-     * @brief match WMIC output for 
-     * 
-     * 
+     * @brief match WMIC output for computer system manufacturer
+     * @category Windows
+     * @note FIX SEGFAULT
      */
     [[nodiscard]] static bool wmic() try {
         if (disabled(WMIC)) {
             return false;
         }
 
+        return false;
+
+        /*
         #if (!MSVC)
             return false;
         #else
@@ -3110,6 +3113,7 @@ private:
 
             return false;
         #endif
+        */
     } catch (...) {
         #ifdef __VMAWARE_DEBUG__
             debug("WMIC: catched error, returned false");
