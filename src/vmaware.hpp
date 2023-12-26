@@ -24,7 +24,6 @@
 #include <fstream>
 #include <regex>
 #include <thread>
-#include <filesystem>
 #include <limits>
 #include <cstdint>
 #include <map>
@@ -33,6 +32,7 @@
 #include <iostream>
 #include <cassert>
 #include <cmath>
+#include <sstream>
 
 // shorter and succinct macros
 #if __cplusplus == 202002L
@@ -74,6 +74,7 @@
 #endif
 #if (CPP >= 17)
     #include <bit>
+    #include <filesystem>
 #endif
 #ifdef __VMAWARE_DEBUG__
     #include <iomanip>
@@ -927,10 +928,17 @@ public:
                 return false;
             }
 
+/*
             auto strconvert = [](u64 n) -> std::string {
                 const std::string &str(reinterpret_cast<char*>(&n));
                 return str;
             };
+*/
+                auto strconvert = [](u64 n) -> std::string {
+                    const std::string str(reinterpret_cast<char*>(&n), sizeof(n));
+                    return str;
+                };
+
 
             std::stringstream ss;
             ss << strconvert(sig_reg[0]);
@@ -951,13 +959,13 @@ public:
             const bool found = (std::find(std::begin(IDs), std::end(IDs), brand) != std::end(IDs));
 
             if (found) {
+                if (brand == vmware) { return add(VMWARE); }
+                if (brand == vbox) { return add(VBOX); }
+                if (brand == qemu) { return add(QEMU); }
                 if (brand == bhyve) { return add(BHYVE); }
                 if (brand == kvm) { return add(KVM); }
-                if (brand == qemu) [[likely]] { return add(QEMU); }
                 if (brand == hyperv) { return add(HYPERV); }
                 if (brand == xta) { return add(MSXTA); }
-                if (brand == vmware) [[likely]] { return add(VMWARE); }
-                if (brand == vbox) [[likely]] { return add(VBOX); }
                 if (brand == parallels) { return add(PARALLELS); }
                 if (brand == parallels2) { return add(PARALLELS); }
                 if (brand == xen) { return add(XEN); }
@@ -3899,12 +3907,12 @@ private:
         #if (!MSVC)
             return false;
         #else
-            constexpr u32 pnsize = 0x1000;
+            unsigned long pnsize = 0x1000;
             char* provider = static_cast<char*>(LocalAlloc(LMEM_ZEROINIT,pnsize));
-            int retv = WNetGetProviderName(WNNC_NET_RDR2SAMPLE,provider,&pnsize);
+            unsigned int retv = WNetGetProviderName(WNNC_NET_RDR2SAMPLE,provider,&pnsize);
             if (retv == NO_ERROR) {
                 if (lstrcmpi(provider,"VirtualBox Shared Folders") == 0) {
-                    return add(VBOX)
+                    return add(VBOX);
                 }
             }
 
@@ -3933,7 +3941,7 @@ private:
         #if (!MSVC)
             return false;
         #else
-            HKEY hk = 0;
+                        HKEY hk = 0;
             int ret = RegOpenKeyEx(HKEY_LOCAL_MACHINE, "SYSTEM\\CurrentControlSet\\Services\\mssmbios\\data", 0, KEY_ALL_ACCESS, &hk);
             if (ret != ERROR_SUCCESS) {
                 return false;
@@ -3969,7 +3977,7 @@ private:
                 return false;
             }
 
-            auto ScanDataForString = [](unsigned char* data, u32 data_length, unsigned char* string2) -> unsigned char* {
+            auto ScanDataForString = [](unsigned char* data, unsigned long data_length, unsigned char* string2) -> unsigned char* {
                 std::size_t string_length = strlen(reinterpret_cast<char*>(string2));
 
                 for (std::size_t i = 0; i <= (data_length-string_length); i++) {
@@ -3980,29 +3988,33 @@ private:
                 return 0;
             };
 
-            std::transform(p, p + length, p, [](unsigned char c) {
-                return std::toupper(c);
-            });
+            auto AllToUpper = [](char* str, std::size_t len) -> void {
+                std::transform(str, str + len, str, [](unsigned char c) -> char {
+                    return static_cast<char>(std::toupper(c));
+                });
+            };
+
+            AllToUpper(p, length);
 
             // cleaner and better shortcut than typing reinterpret_cast<unsigned char*> a million times
             auto cast = [](char* p) -> unsigned char* {
                 return reinterpret_cast<unsigned char*>(p);
             };
 
-            unsigned char* x1 = ScanDataForString(cast(p), length, cast("INNOTEK GMBH"));
-            unsigned char* x2 = ScanDataForString(cast(p), length, cast("VIRTUALBOX"));
-            unsigned char* x3 = ScanDataForString(cast(p), length, cast("SUN MICROSYSTEMS"));
-            unsigned char* x4 = ScanDataForString(cast(p), length, cast("VIRTUAL MACHINE"));
-            unsigned char* x5 = ScanDataForString(cast(p), length, cast("VBOXVER"));
+            unsigned char* x1 = ScanDataForString(cast(p), length, (unsigned char*)("INNOTEK GMBH"));
+            unsigned char* x2 = ScanDataForString(cast(p), length, (unsigned char*)("VIRTUALBOX"));
+            unsigned char* x3 = ScanDataForString(cast(p), length, (unsigned char*)("SUN MICROSYSTEMS"));
+            unsigned char* x4 = ScanDataForString(cast(p), length, (unsigned char*)("VIRTUAL MACHINE"));
+            unsigned char* x5 = ScanDataForString(cast(p), length, (unsigned char*)("VBOXVER"));
 
             if (x1 || x2 || x3 || x4 || x5) {
                 is_vm = true;
                 #ifdef __VMAWARE_DEBUG__
-                    if (x1) { debug("VBOX_MSSMBIOS: ", x1); }
-                    if (x2) { debug("VBOX_MSSMBIOS: ", x2); }
-                    if (x3) { debug("VBOX_MSSMBIOS: ", x3); }
-                    if (x4) { debug("VBOX_MSSMBIOS: ", x4); }
-                    if (x5) { debug("VBOX_MSSMBIOS: ", x5); }
+                    if (x1) { debug("VBOX_MSSMBIOS: x1 = ", x1); }
+                    if (x2) { debug("VBOX_MSSMBIOS: x2 = ", x2); }
+                    if (x3) { debug("VBOX_MSSMBIOS: x3 = ", x3); }
+                    if (x4) { debug("VBOX_MSSMBIOS: x4 = ", x4); }
+                    if (x5) { debug("VBOX_MSSMBIOS: x5 = ", x5); }
                 #endif
             }
 
