@@ -8,7 +8,7 @@ project(
 
 
 # compiler flags
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
@@ -86,6 +86,7 @@ add_test(
     ${Python_EXECUTABLE} "${CMAKE_SOURCE_DIR}/cmake/ctest_checks.py"
 )
 endif()
+
 
 # release stuff
 if (NOT MSVC)

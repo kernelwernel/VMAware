@@ -113,11 +113,13 @@ def check_docs(flag_array):
     # Check if every element in set1 has a corresponding element in set2
     all_elements_have_pair = set1.issubset(set2) and set2.issubset(set1)
 
-    if all_elements_have_pair:
-        return
-    else:
+    not_paired = set1.symmetric_difference(set2)
+
+    if not_paired:
         print("Mismatched elements found in documentation.md and vmaware.hpp, make sure to include the technique in both files")
+        print("Elements without a pair:", not_paired)
         sys.exit(1)
+
 
 
 
@@ -147,14 +149,12 @@ def check_cli(flag_array):
     set2 = set(flag_array)
 
     # check if every element in set1 has a corresponding element in set2
-    all_elements_have_pair = set1.issubset(set2) and set2.issubset(set1)
+    not_paired = set1.symmetric_difference(set2)
 
-    if all_elements_have_pair:
-        return
-    else:
+    if not_paired:
         print("Mismatched elements found in cli.cpp and vmaware.hpp, make sure to include the technique in both files")
+        print("Elements without a pair:", not_paired)
         sys.exit(1)
-
 
 
 raw_content = fetch()

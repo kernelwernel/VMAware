@@ -24,7 +24,6 @@
 #include <fstream>
 #include <regex>
 #include <thread>
-#include <filesystem>
 #include <limits>
 #include <cstdint>
 #include <map>
@@ -33,6 +32,7 @@
 #include <iostream>
 #include <cassert>
 #include <cmath>
+#include <sstream>
 
 // shorter and succinct macros
 #if __cplusplus == 202002L
@@ -74,6 +74,7 @@
 #endif
 #if (CPP >= 17)
     #include <bit>
+    #include <filesystem>
 #endif
 #ifdef __VMAWARE_DEBUG__
     #include <iomanip>
@@ -103,6 +104,7 @@
 
     #pragma comment(lib, "wbemuuid.lib")
     #pragma comment(lib, "iphlpapi.lib")
+    #pragma comment(lib,"MPR")
 #elif (LINUX)
     #include <cpuid.h>
     #include <x86intrin.h>
@@ -128,8 +130,103 @@ private:
     using u16 = std::uint16_t;
     using u32 = std::uint32_t;
     using u64 = std::uint64_t;
+    using i8  = std::int8_t;
+    using i16 = std::int16_t;
     using i32 = std::int32_t;
     using i64 = std::int64_t;
+
+    // macro for bypassing unused parameter warnings
+    #define UNUSED(x) ((void)(x))
+
+    // Basically std::system but it runs in the background with std::string output
+    [[nodiscard]] static std::unique_ptr<std::string> sys_result(const char *cmd) try {
+        #if (CPP < 14)
+            std::unique_ptr<std::string> tmp(nullptr);
+            UNUSED(cmd);
+            return tmp; 
+        #else
+            #if (LINUX)
+                std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd, "r"), pclose);
+
+                if (!pipe) { 
+                    return nullptr;
+                }
+
+                std::string result{};
+                std::array<char, 128> buffer{};
+
+                while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
+                    result += buffer.data();
+                }
+
+                result.pop_back();
+
+                return std::make_unique<std::string>(result);
+            #elif (MSVC)
+                // Set up the structures for creating the process
+                STARTUPINFO si;
+                PROCESS_INFORMATION pi;
+                ZeroMemory(&si, sizeof(si));
+                ZeroMemory(&pi, sizeof(pi));
+                si.cb = sizeof(si);
+
+                // Create a pipe to capture the command output
+                HANDLE hReadPipe, hWritePipe;
+                SECURITY_ATTRIBUTES sa;
+                sa.nLength = sizeof(SECURITY_ATTRIBUTES);
+                sa.bInheritHandle = TRUE;
+                sa.lpSecurityDescriptor = NULL;
+
+                if (!CreatePipe(&hReadPipe, &hWritePipe, &sa, 0)) {
+                    #if __VMAWARE_DEBUG__
+                        debug("sys_result: ", "error creating pipe");
+                    #endif
+                    return nullptr;
+                }
+
+                // Set up the startup information with the write end of the pipe as the standard output
+                si.hStdError = hWritePipe;
+                si.hStdOutput = hWritePipe;
+                si.dwFlags |= STARTF_USESTDHANDLES;
+
+                // Create the process
+                if (!CreateProcess(NULL, const_cast<char*>(command), NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi)) {
+                    #if __VMAWARE_DEBUG__
+                        debug("sys_result: ", "error creating process");
+                    #endif
+                    CloseHandle(hReadPipe);
+                    CloseHandle(hWritePipe);
+                    return nullptr;
+                }
+
+                // Close the write end of the pipe as it's not needed in this process
+                CloseHandle(hWritePipe);
+
+                // Read the output from the pipe
+                char buffer[4096];
+                DWORD bytesRead;
+                std::string result;
+
+                while (ReadFile(hReadPipe, buffer, sizeof(buffer), &bytesRead, NULL) && bytesRead > 0) {
+                    result.append(buffer, bytesRead);
+                }
+
+                // Close handles
+                CloseHandle(hReadPipe);
+                CloseHandle(pi.hProcess);
+                CloseHandle(pi.hThread);
+
+                // Return the result as a unique_ptr<string>
+                return std::make_unique<std::string>(result);
+            #endif
+        #endif
+    } catch (...) {
+        #if __VMAWARE_DEBUG__
+            debug("sys_result: ", "catched error, returning nullptr");
+        #endif
+        std::unique_ptr<std::string> tmp(nullptr);
+        return tmp; 
+    }
 
     #if (LINUX)
         // fetch file data
@@ -142,95 +239,6 @@ private:
             }
             file.close(); 
             return data;
-        };
-
-        // Basically std::system but it runs in the background with no output
-        [[nodiscard]] static std::unique_ptr<std::string> sys_result(const char *cmd) try {
-            #if (CPP < 14)
-                std::unique_ptr<std::string> tmp(nullptr);
-                return tmp; 
-            #else
-                #if (LINUX)
-                    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd, "r"), pclose);
-
-                    if (!pipe) { 
-                        return nullptr;
-                    }
-
-                    std::string result{};
-                    std::array<char, 128> buffer{};
-
-                    while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
-                        result += buffer.data();
-                    }
-
-                    result.pop_back();
-
-                    return std::make_unique<std::string>(result);
-                #elif (MSVC)
-                    // Set up the structures for creating the process
-                    STARTUPINFO si;
-                    PROCESS_INFORMATION pi;
-                    ZeroMemory(&si, sizeof(si));
-                    ZeroMemory(&pi, sizeof(pi));
-                    si.cb = sizeof(si);
-
-                    // Create a pipe to capture the command output
-                    HANDLE hReadPipe, hWritePipe;
-                    SECURITY_ATTRIBUTES sa;
-                    sa.nLength = sizeof(SECURITY_ATTRIBUTES);
-                    sa.bInheritHandle = TRUE;
-                    sa.lpSecurityDescriptor = NULL;
-
-                    if (!CreatePipe(&hReadPipe, &hWritePipe, &sa, 0)) {
-                        #if __VMAWARE_DEBUG__
-                            debug("sys_result: ", "error creating pipe");
-                        #endif
-                        return nullptr;
-                    }
-
-                    // Set up the startup information with the write end of the pipe as the standard output
-                    si.hStdError = hWritePipe;
-                    si.hStdOutput = hWritePipe;
-                    si.dwFlags |= STARTF_USESTDHANDLES;
-
-                    // Create the process
-                    if (!CreateProcess(NULL, const_cast<char*>(command), NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi)) {
-                        #if __VMAWARE_DEBUG__
-                            debug("sys_result: ", "error creating process");
-                        #endif
-                        CloseHandle(hReadPipe);
-                        CloseHandle(hWritePipe);
-                        return nullptr;
-                    }
-
-                    // Close the write end of the pipe as it's not needed in this process
-                    CloseHandle(hWritePipe);
-
-                    // Read the output from the pipe
-                    char buffer[4096];
-                    DWORD bytesRead;
-                    std::string result;
-
-                    while (ReadFile(hReadPipe, buffer, sizeof(buffer), &bytesRead, NULL) && bytesRead > 0) {
-                        result.append(buffer, bytesRead);
-                    }
-
-                    // Close handles
-                    CloseHandle(hReadPipe);
-                    CloseHandle(pi.hProcess);
-                    CloseHandle(pi.hThread);
-
-                    // Return the result as a unique_ptr<string>
-                    return std::make_unique<std::string>(result);
-                #endif
-            #endif
-        } catch (...) {
-            #if __VMAWARE_DEBUG__
-                debug("sys_result: ", "catched error, returning nullptr");
-            #endif
-            std::unique_ptr<std::string> tmp(nullptr);
-            return tmp; 
         }
     #endif
 
@@ -296,12 +304,12 @@ private:
     // cpuid leaf values
     struct leaf {
         static constexpr u32
-            hyperv   = 0x40000000,
             func_ext = 0x80000000,
             proc_ext = 0x80000001,
             brand1   = 0x80000002,
             brand2   = 0x80000003,
             brand3   = 0x80000004,
+            hypervisor     = 0x40000000,
             amd_easter_egg = 0x8fffffff;
     };
 
@@ -405,7 +413,7 @@ private:
     #elif (LINUX)
         [[gnu::const]]
     #endif
-    [[nodiscard]] static inline bool add(const char* p_brand) noexcept {
+    static inline bool add(const char* p_brand) noexcept {
         scoreboard[p_brand]++;
         return true;
     }
@@ -751,8 +759,15 @@ private:
         };
     #endif
 
+    // memoization structure
+    struct memo_struct {
+        bool get_vm;
+        const char* get_brand;
+        u8 get_percent;
+    };
+
     // memoize the value from VM::detect() in case it's ran again
-    static std::map<bool, std::pair<bool, const char*>> memo;
+    static std::map<bool, memo_struct> memo;
 
     // cpuid check value
     static bool cpuid_supported;
@@ -779,6 +794,22 @@ private:
         return (!(flags & p_flag));
     }
 
+    // same as above but for checking enabled flags
+    #if (LINUX && __has_cpp_attribute(gnu::pure))
+        [[gnu::pure]]
+    #endif
+    [[nodiscard]] static inline bool enabled(const u64 p_flag) noexcept {
+        return (flags & p_flag);
+    }
+
+    // easier way to check if the result is memoized
+    [[nodiscard]] static inline bool is_memoized() noexcept {
+        return (
+            disabled(NO_MEMO) && \
+            memo.find(true) != memo.end()
+        );
+    }
+
 public:
     VM() = delete; // Delete default constructor
     VM(const VM&) = delete; // Delete copy constructor
@@ -787,9 +818,9 @@ public:
     static constexpr u64
         VMID = 1 << 0,
         BRAND = 1 << 1,
-        HYPERV_BIT = 1 << 2,
+        HYPERVISOR_BIT = 1 << 2,
         CPUID_0X4 = 1 << 3,
-        HYPERV_STR = 1 << 4,
+        HYPERVISOR_STR = 1 << 4,
         RDTSC = 1 << 5,
         SIDT = 1 << 6,
         VMWARE_PORT = 1 << 7,
@@ -825,7 +856,7 @@ public:
         LINUX_USER_HOST = 1ULL << 37,
         VBOX_WINDOW_CLASS = 1ULL << 38,
         GAMARUE = 1ULL << 39,
-        WINDOWS_NUMBER = 1ULL << 40,
+        WMIC = 1ULL << 40,
         VMID_0X4 = 1ULL << 41,
         VPC_BACKDOOR = 1ULL << 42,
         PARALLELS_VM = 1ULL << 43,
@@ -834,10 +865,15 @@ public:
         QEMU_BRAND = 1ULL << 46,
         BOCHS_CPU = 1ULL << 47,
         VPC_BOARD = 1ULL << 48,
+        HYPERV_WMI = 1ULL << 49,
+        HYPERV_REG = 1ULL << 50,
+        BIOS_SERIAL = 1ULL << 51,
+        VBOX_FOLDERS = 1ULL << 52,
+        VBOX_MSSMBIOS = 1ULL << 53,
 
         // __UNIQUE_LABEL, ADD YOUR UNIQUE FUNCTION FLAG VALUE ABOVE HERE
 
-
+        EXTREME = 1ULL << 62,
         NO_MEMO = 1ULL << 63,
         
         #if (MSVC)
@@ -917,7 +953,6 @@ public:
             #else
                 #if (CPP < 17)
                     // bypass compiler warning about unused parameter, ignore this
-                    #define UNUSED(x) ((void)(x))
                     UNUSED(technique_name);
                 #endif
             #endif
@@ -925,13 +960,13 @@ public:
             const bool found = (std::find(std::begin(IDs), std::end(IDs), brand) != std::end(IDs));
 
             if (found) {
+                if (brand == qemu) { return add(QEMU); }
+                if (brand == vmware) { return add(VMWARE); }
+                if (brand == vbox) { return add(VBOX); }
                 if (brand == bhyve) { return add(BHYVE); }
                 if (brand == kvm) { return add(KVM); }
-                if (brand == qemu) [[likely]] { return add(QEMU); }
                 if (brand == hyperv) { return add(HYPERV); }
                 if (brand == xta) { return add(MSXTA); }
-                if (brand == vmware) [[likely]] { return add(VMWARE); }
-                if (brand == vbox) [[likely]] { return add(VBOX); }
                 if (brand == parallels) { return add(PARALLELS); }
                 if (brand == parallels2) { return add(PARALLELS); }
                 if (brand == xen) { return add(XEN); }
@@ -1059,13 +1094,12 @@ private:
                 const auto regex = std::regex(vmkeywords.at(i), std::regex::icase);
                 const bool match = std::regex_search(brand, regex);
                 
-                #ifdef __VMAWARE_DEBUG__
-                    if (match) {
+                if (match) {
+                    #ifdef __VMAWARE_DEBUG__
                         debug("BRAND_KEYWORDS: ", "match = ", vmkeywords.at(i));
-                    }
-                #endif
-
-                match_count += match;
+                    #endif
+                    match_count++;
+                }
             }
 
             #ifdef __VMAWARE_DEBUG__
@@ -1105,7 +1139,9 @@ private:
         #else
             std::string brand = get_cpu_brand();
 
-            if (brand == "QEMU Virtual CPU") {
+            std::regex pattern("QEMU Virtual CPU", std::regex_constants::icase);
+
+            if (std::regex_match(brand, pattern)) {
                 return add(QEMU);
             }
 
@@ -1123,8 +1159,8 @@ private:
      * @brief Check if hypervisor feature bit in CPUID is enabled (always false for physical CPUs)
      * @category x86
      */
-    [[nodiscard]] static bool cpuid_hyperv() try {
-        if (!cpuid_supported || disabled(HYPERV_BIT)) {
+    [[nodiscard]] static bool hypervisor_bit() try {
+        if (!cpuid_supported || disabled(HYPERVISOR_BIT)) {
             return false;
         }
     
@@ -1139,7 +1175,7 @@ private:
         #endif
     } catch (...) { 
         #ifdef __VMAWARE_DEBUG__
-            debug("HYPERV_BIT: catched error, returned false");
+            debug("HYPERVISOR_BIT: catched error, returned false");
         #endif
         return false;
     }
@@ -1161,7 +1197,7 @@ private:
             u32 a, b, c, d = 0;
 
             for (u8 i = 0; i < 0xFF; i++) {
-                cpuid(a, b, c, d, (leaf::hyperv + i));
+                cpuid(a, b, c, d, (leaf::hypervisor + i));
                 if ((a + b + c + d) != 0) {
                     return true;
                 }
@@ -1181,8 +1217,8 @@ private:
      * @brief Check for hypervisor brand string length (would be around 2 characters in a host machine)
      * @category x86
      */
-    [[nodiscard]] static bool hyperv_brand() try {
-        if (disabled(HYPERV_STR)) {
+    [[nodiscard]] static bool hypervisor_brand() try {
+        if (disabled(HYPERVISOR_STR)) {
             return false;
         }
 
@@ -1190,7 +1226,7 @@ private:
             return false;
         #else
             char out[sizeof(i32) * 4 + 1] = { 0 }; // e*x size + number of e*x registers + null terminator
-            cpuid((int*)out, leaf::hyperv);
+            cpuid((int*)out, leaf::hypervisor);
 
             #ifdef __VMAWARE_DEBUG__
                 debug("HYPERV_STR: eax: ", static_cast<u32>(out[0]), 
@@ -1204,7 +1240,7 @@ private:
         #endif
     } catch (...) {
         #ifdef __VMAWARE_DEBUG__
-            debug("HYPERV_STR: catched error, returned false");
+            debug("HYPERVISOR_STR: catched error, returned false");
         #endif
         return false;
     }
@@ -3024,46 +3060,154 @@ private:
 
 
     /**
-     * @brief get top-level default window level
+     * @brief match WMIC output for computer system manufacturer
      * @category Windows
+     * @note FIX SEGFAULT
      */
-    [[nodiscard]] static bool windows_number() try {
-        return false; // TODO: fix this garbage code
-        /*
-        if (disabled(WINDOWS_NUMBER)) {
+    [[nodiscard]] static bool wmic() try {
+        if (disabled(WMIC)) {
             return false;
         }
 
-        #if (!MSVC) 
+        return false;
+
+        /*
+        #if (!MSVC)
             return false;
         #else
-            // this definitely doesn't fucking work
-            auto enumProc = [](HWND, LPARAM lParam) -> bool
-            {
-                if (LPDWORD pCnt = reinterpret_cast<LPDWORD>(lParam))
-                    *pCnt++;
-                return true;
+            auto check_wmic_presence = []() -> bool {
+                FILE* pipe = _popen("wmic /?", "r");
+
+                if (pipe) {
+                    char buffer[128];
+                    while (!feof(pipe)) {
+                        if (fgets(buffer, 128, pipe) != nullptr)
+                            return true;
+                    }
+                    _pclose(pipe);
+                } else {
+                    return false;
+                }
+
+                return false;
             };
 
-            DWORD winCnt = 0;
-
-            if (!EnumWindows(enumProc,LPARAM(&winCnt))) {
-                #ifdef __VMAWARE_DEBUG__
-                    debug("WINDOWS_NUMBER: EnumWindows() failed");
-                #endif
+            if (check_wmic_presence() == false) {
                 return false;
             }
 
-            return (winCnt < 10);
+            std::unique_ptr<std::string> manufacturer = sys_result("WMIC COMPUTERSYSTEM GET MANUFACTURER");
+           
+            if (*manufacturer == "VirtualBox") {
+                return add(VBOX);
+            }
+
+            std::unique_ptr<std::string> model = sys_result("WMIC COMPUTERSYSTEM GET MODEL");
+            
+            constexpr std::array<const char*, 16> vmkeywords {
+                "qemu", "kvm", "virtual", "vm", 
+                "vbox", "virtualbox", "vmm", "monitor", 
+                "bhyve", "hyperv", "hypervisor", "hvisor", 
+                "parallels", "vmware", "hvm", "qnx"
+            };
+
+            for (std::size_t i = 0; i < vmkeywords.size(); i++) {
+                const auto regex = std::regex(vmkeywords.at(i), std::regex::icase);
+                const bool match = std::regex_search(*model, regex);
+                
+                if (match) {
+                    #ifdef __VMAWARE_DEBUG__
+                        debug("WMIC: ", "match = ", vmkeywords.at(i));
+                    #endif
+                    return true;
+                }
+            }
+
+            return false;
         #endif
         */
     } catch (...) {
         #ifdef __VMAWARE_DEBUG__
-            debug("WINDOWS_NUMBER: catched error, returned false");
+            debug("WMIC: catched error, returned false");
         #endif
         return false;
     }
 
+
+    /**
+     * @brief Check if the BIOS serial is valid
+     * @category Windows
+     * @todo FIX THE SEGFAULT
+     */
+    [[nodiscard]] static bool bios_serial() try {
+        if (disabled(BIOS_SERIAL)) {
+            return false;
+        }
+
+        return false;
+
+        /*
+        #if (!MSVC)
+            return false;
+        #else
+            auto check_wmic_presence = []() -> bool {
+                FILE* pipe = _popen("wmic /?", "r");
+
+                if (pipe) {
+                    char buffer[128];
+                    while (!feof(pipe)) {
+                        if (fgets(buffer, 128, pipe) != nullptr)
+                            return true;
+                    }
+                    _pclose(pipe);
+                } else {
+                    return false;
+                }
+
+                return false;
+            };
+
+            if (check_wmic_presence() == false) {
+                #ifdef __VMAWARE_DEBUG__
+                    debug("BIOS_SERIAL: ", "wmic isn't found, returned false");
+                #endif
+                return false;
+            }
+
+            std::unique_ptr<std::string> bios = sys_result("wmic bios get serialnumber");
+
+            const std::string str = *bios;
+            const std::size_t nl_pos = str.find('\n');
+
+            if (nl_pos == std::string::npos) {
+                return false;
+            }
+
+            #ifdef __VMAWARE_DEBUG__
+                debug("BIOS_SERIAL: ", str);
+            #endif
+            
+            const std::string extract = str.substr(nl_pos + 1);
+
+            const bool all_digits = std::all_of(extract.cbegin(), extract.cend(), [](const char c) {
+                return std::isdigit(c);
+            });
+
+            if (all_digits) {
+                if (extract == "0") {
+                    return true;
+                }
+            }
+
+            return false;
+        #endif
+        */
+    } catch (...) {
+        #ifdef __VMAWARE_DEBUG__
+            debug("BIOS_SERIAL: catched error, returned false");
+        #endif
+        return false;
+    }
 
     /**
      * @brief Check for semi-documented Virtual PC detection method using illegal instructions
@@ -3114,45 +3258,6 @@ private:
             }
             // The exception block shouldn't get triggered if VPC is running
             __except(VPCExceptionHandler(GetExceptionInformation())) { }
-/*
-
-            // ========== TEST 2 (query virtual pc device) ==========
-            if (is_vm == false) {
-                is_vm = (IsObjectExists(DEVICELINK, DEVICE_VIRTUALPC));
-            }
-
-            // ========== TEST 3 (query virtual pc driver, reg. rights elevation) ==========
-            if (is_vm == false ) {
-                is_vm = (IsObjectExists(DRIVERLINK, DRIVER_VIRTUALPC));
-            }
-
-            // ========== TEST 4 (scan raw firmware for specific string patterns) ==========
-            if (is_vm == false) {
-                pSIF = (PSYSTEM_FIRMWARE_TABLE_INFORMATION)GetFirmwareTable(&dwDataSize, FIRM,
-                0xC0000);
-                if (pSIF != NULL && dwDataSize > 0) {
-                    is_vm = ScanDump((CHAR*)pSIF, dwDataSize, VENDOR_VPC, _strlenA(VENDOR_VPC));
-
-                    RtlFreeHeap(RtlProcessHeap(), 0, pSIF);
-                }
-            }
-
-            // ========== TEST 5 (scan raw smbios data for specific string patters) ==========
-            if (is_vm == false) {
-                pSIF = (PSYSTEM_FIRMWARE_TABLE_INFORMATION)GetFirmwareTable(&dwDataSize, RSMB, 0);
-                if (pSIF != NULL && dwDataSize > 0) {
-                    is_vm = ScanDump((CHAR*)pSIF, dwDataSize, SMB_VPC, _strlenA(SMB_VPC));
-                    RtlFreeHeap(RtlProcessHeap(), 0, pSIF);
-                }
-            }
-
-            // ========== TEST 6 (query S3 VID on PCI bus devices) ==========
-            if (is_vm == false) {
-                if (vIsInList(VID_S3MS) != NULL) {
-                    IsVM = true;
-                }
-            }
-            */
 
             if (is_vm == true) {
                 return add(VPC);
@@ -3405,13 +3510,16 @@ private:
                     return add(BOCHS);
                 }
 
-                // technique 3: Check for AMD easter egg for K7 and K8 CPUs
+                // technique 3: Check for absence of AMD easter egg for K7 and K8 CPUs
                 u32 unused, eax = 0;
                 cpuid(eax, unused, unused, unused, 1);
 
+                constexpr u8 AMD_K7 = 6;
+                constexpr u8 AMD_K8 = 15;
+
                 const u32 family = ((eax >> 8) & 0xF);
 
-                if (family != 6 && family != 15) { // AMD K7 = 6, AMD K8 = 15
+                if (family != AMD_K7 && family != AMD_K8) {
                     return false;
                 }
             
@@ -3601,6 +3709,373 @@ private:
     }
  
 
+    /**
+     * @brief get WMI query for HYPERV name
+     * @category Windows
+     * @note idea is from nettitude
+     * @link https://labs.nettitude.com/blog/vm-detection-tricks-part-3-hyper-v-raw-network-protocol/
+     */
+    [[nodiscard]] static bool hyperv_wmi() try {
+        if (disabled(HYPERV_WMI)) {
+            return false;
+        }
+
+        #if (!MSVC)
+            return false;
+        #else
+            HRESULT hres = CoInitializeEx(0, COINIT_MULTITHREADED);
+            if (FAILED(hres)) {
+                #ifdef __VMAWARE_DEBUG__
+                    debug("HYPERV_WMI: Failed to initialize COM library. Error code = ", hres);
+                #endif
+                return false;
+            }
+
+            hres = CoInitializeSecurity(
+                NULL,
+                -1,                          // COM authentication
+                NULL,                        // Authentication services
+                NULL,                        // Reserved
+                RPC_C_AUTHN_LEVEL_DEFAULT,   // Default authentication
+                RPC_C_IMP_LEVEL_IMPERSONATE, // Default Impersonation
+                NULL,                        // Authentication info
+                EOAC_NONE,                   // Additional capabilities
+                NULL                         // Reserved
+            );
+
+            if (FAILED(hres)) {
+                #ifdef __VMAWARE_DEBUG__
+                    debug("HYPERV_WMI: Failed to initialize security. Error code = ", hres);
+                #endif
+                CoUninitialize();
+                return false;
+            }
+
+            // Connect to WMI
+            IWbemLocator *pLoc = NULL;
+            hres = CoCreateInstance(CLSID_WbemLocator, 0, CLSCTX_INPROC_SERVER, IID_IWbemLocator, (LPVOID*)&pLoc);
+
+            if (FAILED(hres)) {
+                #ifdef __VMAWARE_DEBUG__
+                    debug("HYPERV_WMI: Failed to create IWbemLocator object. Error code = ", hres);
+                #endif
+                CoUninitialize();
+                return false;
+            }
+
+            IWbemServices *pSvc = NULL;
+            hres = pLoc->ConnectServer(
+                _bstr_t(L"\\\\.\\root\\CIMV2"),   // Object path of WMI namespace
+                NULL,                             // User name. NULL = current user
+                NULL,                             // User password. NULL = current
+                0,                                // Locale. NULL indicates current
+                NULL,                             // Security flags.
+                0,                                // Authority (e.g. Kerberos)
+                0,                                // Context object
+                &pSvc                             // pointer to IWbemServices proxy
+            );
+
+            if (FAILED(hres)) {
+                #ifdef __VMAWARE_DEBUG__
+                    debug("HYPERV_WMI: Could not connect. Error code = ", hres);
+                #endif
+                pLoc->Release();
+                CoUninitialize();
+                return false;
+            }
+
+            hres = CoSetProxyBlanket(
+                pSvc,                        // Indicates the proxy to set
+                RPC_C_AUTHN_WINNT,           // RPC_C_AUTHN_xxx
+                RPC_C_AUTHZ_NONE,            // RPC_C_AUTHZ_xxx
+                NULL,                        // Server principal name
+                RPC_C_AUTHN_LEVEL_CALL,      // RPC_C_AUTHN_LEVEL_xxx
+                RPC_C_IMP_LEVEL_IMPERSONATE, // RPC_C_IMP_LEVEL_xxx
+                NULL,                        // client identity
+                EOAC_NONE                    // proxy capabilities
+            );
+
+            if (FAILED(hres)) {
+                #ifdef __VMAWARE_DEBUG__
+                    debug("HYPERV_WMI: Could not set proxy blanket. Error code = ", hres);
+                #endif
+                pSvc->Release();
+                pLoc->Release();
+                CoUninitialize();
+                return false;
+            }
+
+            IEnumWbemClassObject* pEnumerator = NULL;
+            hres = pSvc->ExecQuery(
+                _bstr_t(L"WQL"), 
+                _bstr_t(L"SELECT * FROM Win32_NetworkProtocol"),
+                WBEM_FLAG_FORWARD_ONLY | WBEM_FLAG_RETURN_IMMEDIATELY, 
+                NULL, 
+                &pEnumerator
+            );
+
+            if (FAILED(hres)) {
+                #ifdef __VMAWARE_DEBUG__
+                    debug("HYPERV_WMI: ExecQuery failed. Error code = ", hres);
+                #endif
+                pSvc->Release();
+                pLoc->Release();
+                CoUninitialize();
+                return false;
+            }
+
+            IWbemClassObject* pclsObj = NULL;
+            ULONG uReturn = 0;
+            bool is_vm = false;
+
+            while (pEnumerator) {
+                HRESULT hr = pEnumerator->Next(WBEM_INFINITE, 1, &pclsObj, &uReturn);
+
+                if (uReturn == 0 || FAILED(hr)) {
+                    break;
+                }
+
+                VARIANT vtProp;
+                hr = pclsObj->Get(L"Name", 0, &vtProp, 0, 0);
+
+                if (!FAILED(hr)) {
+                    if (vtProp.vt == VT_BSTR) {
+                        is_vm = (wcscmp(vtProp.bstrVal, L"Hyper-V RAW") == 0);
+                    }
+                }
+
+                VariantClear(&vtProp);
+                pclsObj->Release();
+                pclsObj = NULL;
+            }
+
+            pSvc->Release();
+            pLoc->Release();
+            pEnumerator->Release();
+            CoUninitialize();
+
+            return is_vm;
+        #endif
+    } catch (...) {
+        #ifdef __VMAWARE_DEBUG__
+            debug("HYPERV_WMI: ", "catched error, returned false");
+        #endif
+        return false;
+    }
+
+
+    /**
+     * @brief compare for hyperv-specific string in registry
+     * @category Windows
+     * @note idea is from nettitude
+     * @link https://labs.nettitude.com/blog/vm-detection-tricks-part-3-hyper-v-raw-network-protocol/
+     */
+    [[nodiscard]] static bool hyperv_registry() try {
+        if (disabled(HYPERV_REG)) {
+            return false;
+        }
+
+        #if (!MSVC)
+            return false;
+        #else
+            constexpr const char* registryPath = "SYSTEM\\CurrentControlSet\\Services\\WinSock2\\Parameters\\Protocol_Catalog9\\Catalog_Entries";
+
+            HKEY hKey;
+            LONG result = RegOpenKeyEx(HKEY_LOCAL_MACHINE, registryPath, 0, KEY_READ, &hKey);
+
+            if (result != ERROR_SUCCESS) {
+                #ifdef __VMAWARE_DEBUG__
+                    debug("HYPERV_WMI: Error opening registry key. Code: ", result);
+                #endif
+                return false;
+            }
+
+            bool is_vm = false;
+
+            DWORD index = 0;
+            char subkeyName[256];
+            DWORD subkeyNameSize = sizeof(subkeyName) / sizeof(subkeyName[0]);
+
+            while (RegEnumKeyEx(hKey, index++, subkeyName, &subkeyNameSize, NULL, NULL, NULL, NULL) == ERROR_SUCCESS) {
+                HKEY subkey;
+                result = RegOpenKeyEx(hKey, subkeyName, 0, KEY_READ, &subkey);
+
+                if (result == ERROR_SUCCESS) {
+                    wchar_t protocolName[256];
+                    DWORD dataSize = sizeof(protocolName);
+
+                    // Check if the "ProtocolName" value exists
+                    result = RegQueryValueEx(subkey, "ProtocolName", NULL, NULL, reinterpret_cast<LPBYTE>(protocolName), &dataSize);
+
+                    if (result == ERROR_SUCCESS) {
+                        if (wcscmp(protocolName, L"Hyper-V RAW") == 0) {
+                            is_vm = true;
+                            break;
+                        }
+                    }
+
+                    RegCloseKey(subkey);
+                }
+
+                subkeyNameSize = sizeof(subkeyName) / sizeof(subkeyName[0]);
+            }
+
+            RegCloseKey(hKey);
+
+            return is_vm;
+        #endif 
+    } catch (...) {
+        #ifdef __VMAWARE_DEBUG__
+            debug("HYPERV_WMI: ", "catched error, returned false");
+        #endif
+        return false;
+    }
+
+
+    /**
+     * @brief Check for VirtualBox-specific string for shared folder ID
+     * @category Windows
+     * @note slightly modified code from original
+     * @author @waleedassar
+     * @link https://pastebin.com/xhFABpPL
+     */ 
+    [[nodiscard]] static bool vbox_shared_folders() try {
+        if (disabled(VBOX_FOLDERS)) {
+            return false;
+        }
+
+        #if (!MSVC)
+            return false;
+        #else
+            unsigned long pnsize = 0x1000;
+            char* provider = static_cast<char*>(LocalAlloc(LMEM_ZEROINIT,pnsize));
+            unsigned int retv = WNetGetProviderName(WNNC_NET_RDR2SAMPLE,provider,&pnsize);
+            if (retv == NO_ERROR) {
+                if (lstrcmpi(provider,"VirtualBox Shared Folders") == 0) {
+                    return add(VBOX);
+                }
+            }
+
+            return false;
+        #endif
+    } catch (...) {
+        #ifdef __VMAWARE_DEBUG__
+            debug("VBOX_FOLDERS: ", "catched error, returned false");
+        #endif
+        return false;
+    }
+
+
+    /**
+     * @brief Check VirtualBox MSSMBIOS registry for VM-specific strings
+     * @category Windows
+     * @note slightly modified from original code
+     * @author @waleedassar
+     * @link https://pastebin.com/fPY4MiYq
+     */
+    [[nodiscard]] static bool vbox_mssmbios() try {
+        if (disabled(VBOX_MSSMBIOS)) {
+            return false;
+        }
+
+        #if (!MSVC)
+            return false;
+        #else
+            HKEY hk = 0;
+            int ret = RegOpenKeyEx(HKEY_LOCAL_MACHINE, "SYSTEM\\CurrentControlSet\\Services\\mssmbios\\data", 0, KEY_ALL_ACCESS, &hk);
+            if (ret != ERROR_SUCCESS) {
+                return false;
+            }
+
+            bool is_vm = false;
+            unsigned long type = 0;
+            unsigned long length = 0;
+            ret = RegQueryValueEx(hk, "SMBiosData", 0, &type, 0, &length);
+
+            if (ret != ERROR_SUCCESS) {
+                RegCloseKey(hk);
+                return false;
+            }
+
+            if (length == 0) {
+                RegCloseKey(hk);
+                return false;
+            }
+
+            char* p = static_cast<char*>(LocalAlloc(LMEM_ZEROINIT, length));
+
+            if (p == nullptr) {
+                RegCloseKey(hk);
+                return false;
+            }
+
+            ret = RegQueryValueEx(hk, "SMBiosData", 0, &type, (unsigned char*)p, &length);
+
+            if (ret != ERROR_SUCCESS) {
+                LocalFree(p);
+                RegCloseKey(hk);
+                return false;
+            }
+
+            auto ScanDataForString = [](unsigned char* data, unsigned long data_length, unsigned char* string2) -> unsigned char* {
+                std::size_t string_length = strlen(reinterpret_cast<char*>(string2));
+
+                for (std::size_t i = 0; i <= (data_length-string_length); i++) {
+                    if (strncmp(reinterpret_cast<char*>(&data[i]), reinterpret_cast<char*>(string2), string_length) == 0) {
+                        return &data[i];
+                    }
+                }
+                return 0;
+            };
+
+            auto AllToUpper = [](char* str, std::size_t len) -> void {
+                std::transform(str, str + len, str, [](unsigned char c) -> char {
+                    return static_cast<char>(std::toupper(c));
+                });
+            };
+
+            AllToUpper(p, length);
+
+            // cleaner and better shortcut than typing reinterpret_cast<unsigned char*> a million times
+            auto cast = [](char* p) -> unsigned char* {
+                return reinterpret_cast<unsigned char*>(p);
+            };
+
+            unsigned char* x1 = ScanDataForString(cast(p), length, (unsigned char*)("INNOTEK GMBH"));
+            unsigned char* x2 = ScanDataForString(cast(p), length, (unsigned char*)("VIRTUALBOX"));
+            unsigned char* x3 = ScanDataForString(cast(p), length, (unsigned char*)("SUN MICROSYSTEMS"));
+            unsigned char* x4 = ScanDataForString(cast(p), length, (unsigned char*)("VIRTUAL MACHINE"));
+            unsigned char* x5 = ScanDataForString(cast(p), length, (unsigned char*)("VBOXVER"));
+
+            if (x1 || x2 || x3 || x4 || x5) {
+                is_vm = true;
+                #ifdef __VMAWARE_DEBUG__
+                    if (x1) { debug("VBOX_MSSMBIOS: x1 = ", x1); }
+                    if (x2) { debug("VBOX_MSSMBIOS: x2 = ", x2); }
+                    if (x3) { debug("VBOX_MSSMBIOS: x3 = ", x3); }
+                    if (x4) { debug("VBOX_MSSMBIOS: x4 = ", x4); }
+                    if (x5) { debug("VBOX_MSSMBIOS: x5 = ", x5); }
+                #endif
+            }
+
+            LocalFree(p);
+            RegCloseKey(hk);
+
+            if (is_vm) {
+                return add(VBOX);
+            }
+
+            return false;
+        #endif
+    } catch (...) {
+        #ifdef __VMAWARE_DEBUG__
+            debug("VBOX_MSSMBIOS: ", "catched error, returned false");
+        #endif
+        return false;
+    } 
+
+
+
     // __TECHNIQUE_LABEL, label for adding techniques above this point
 
 
@@ -3675,68 +4150,63 @@ public:
 
     /**
      * @brief Fetch the VM brand
+     * @param void
      * @return std::string
      * @returns VMware, VirtualBox, KVM, bhyve, QEMU, Microsoft Hyper-V, Microsoft x86-to-ARM, Parallels, Xen HVM, ACRN, QNX hypervisor, Hybrid Analysis, Sandboxie, Docker, Wine, Virtual Apple, Virtual PC, Unknown
      * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmbrand
      */
     [[nodiscard]] static std::string brand(void) {
-        // check if result hasn't been memoized already
-        if (memo.find(true) == memo.end()) {
-            #ifdef __VMAWARE_DEBUG__
-                debug("memoization: detect() called in brand");
-            #endif
+        if (is_memoized() == false) {
             detect();
         }
 
-        // check if no VM was detected
-        if (memo[true].first == false) {
-            return "Unknown";
-        }
-
-        return (std::string(memo[true].second));
+        memo_struct &tmp = memo[true];
+        return tmp.get_brand;
     }
 
 
     /**
      * @brief Detect if running inside a VM
-     * @param u64 (any combination of flags in VM wrapper, can be optional)
+     * @param std::uint64_t (any combination of flags in VM wrapper, can be optional)
      * @return bool
      * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmdetect
      */
     static bool detect(const u64 p_flags = DEFAULT) {
+        VM::flags = p_flags;
+
         /**
          * load memoized value if it exists from a previous
          * execution of VM::detect(). This can save around
          * 5~10x speed depending on the circumstances.
          */
-        if (
-            disabled(NO_MEMO) && \
-            memo.find(true) != memo.end()
-        ) {
+        if (is_memoized()) {
             #ifdef __VMAWARE_DEBUG__
                 debug("memoization: returned cached result in detect()");
             #endif
-            return memo[true].first;
+            memo_struct &lol = memo[true];
+            return (lol.get_vm);
         }
 
-        // set local variables within struct scope
-        VM::flags = p_flags;
-
-        u8 points = 0;
+        u16 points = 0;
 
         #ifdef __VMAWARE_DEBUG__
             debug("cpuid: is supported? : ", VM::cpuid_supported);
         #endif
-    
+
         for (auto it = table.cbegin(); it != table.cend(); ++it) {
             const technique &pair = it->second;
             if (pair.ptr()) { // equivalent to std::invoke, not used bc of C++11 compatibility
                 points += pair.points;
-            };
+            }
         }
 
-        // threshold score
-        const bool result = (points >= 100);
+        bool result = false;
+
+        if (enabled(EXTREME)) {
+            result = (points > 0);
+        } else {
+            result = (points >= 100);
+        }
 
         const char* current_brand = "";
 
@@ -3789,12 +4259,97 @@ public:
         #endif
 
         // memoize the result in case VM::detect() is executed again
-        if (disabled(NO_MEMO)) {
-            memo[true].first = result;
-            memo[true].second = current_brand;
+        if (is_memoized() == false) {
+            u8 percent = 0;
+
+            if (points > 100) {
+                percent = 100;
+            } else {
+                percent = static_cast<u8>(points);
+            }
+
+            memo_struct tmp = { 
+                result,        // is vm?
+                current_brand, // brand
+                percent        // self-explanatory
+            };
+
+            memo[true] = tmp;
         }
 
         return result;
+    }
+
+
+    /**
+     * @brief Get the percentage of how likely it's a VM
+     * @param std::uint64_t (any combination of flags, can be optional)
+     * @return std::uint8_t
+     * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmpercentage
+     */
+    static u8 percentage(const u64 p_flags = DEFAULT) {
+        VM::flags = p_flags;
+
+        if (is_memoized()) {
+            #ifdef __VMAWARE_DEBUG__
+                debug("memoization: ", "returned cached result in VM::percentage()");
+            #endif
+
+            memo_struct &tmp = memo[true];
+            return tmp.get_percent;
+        }
+
+        u16 points = 0;
+
+        for (auto it = table.cbegin(); it != table.cend(); ++it) {
+            const technique &pair = it->second;
+            if (pair.ptr()) { // equivalent to std::invoke, not used bc of C++11 compatibility
+                points += pair.points;
+            }
+        }
+
+        u8 percent = 0;
+
+        if (points > 100) {
+            percent = 100;
+        } else {
+            percent = static_cast<u8>(points);
+        }
+
+        if (disabled(NO_MEMO)) {
+            #ifdef __VMAWARE_DEBUG__
+                debug("memoization: ", "cached result to  VM::percentage()");
+            #endif
+            const bool result = (points >= 100);
+            const char* current_brand = "";
+
+            #if (MSVC)
+                int max = 0;
+            #else
+                u8 max = 0;
+            #endif
+
+            for (auto it = scoreboard.cbegin(); it != scoreboard.cend(); ++it) {
+                if (it->second > max) {
+                    current_brand = it->first;
+                    max = it->second;
+                }
+            }
+
+            if (max == 0) {
+                current_brand = "Unknown";
+            }
+
+            memo_struct tmp = { 
+                result, // is vm?
+                current_brand, // brand
+                percent // percent
+            };
+
+            memo[true] = tmp;
+        }
+
+        return percent;
     }
 };
 
@@ -3832,11 +4387,11 @@ public:
     { VM::COMODO, 0 },
     { VM::SUNBELT, 0 },
     { VM::BOCHS, 0 }
-};    
+};
 
 
 VM::u64 VM::flags = 0;
-std::map<bool, std::pair<bool, const char*>> VM::memo;
+std::map<bool, VM::memo_struct> VM::memo;
 
 
 bool VM::cpuid_supported = []() -> bool {
@@ -3851,7 +4406,7 @@ bool VM::cpuid_supported = []() -> bool {
     #elif (MSVC)
         i32 info[4];
         __cpuid(info, 0);
-        return (info[0] >= 1);
+        return (info[0] > 0);
     #elif (LINUX)
         u32 ext = 0;
         return (__get_cpuid_max(ext, nullptr) > 0);
@@ -3864,9 +4419,9 @@ bool VM::cpuid_supported = []() -> bool {
 const std::map<VM::u64, VM::technique> VM::table = {
     { VM::VMID, { 100, VM::vmid }},
     { VM::BRAND, { 50, VM::cpu_brand }},
-    { VM::HYPERV_BIT, { 95, VM::cpuid_hyperv }},
+    { VM::HYPERVISOR_BIT, { 95, VM::hypervisor_bit }},
     { VM::CPUID_0X4, { 70, VM::cpuid_0x4 }},
-    { VM::HYPERV_STR, { 45, VM::hyperv_brand }},
+    { VM::HYPERVISOR_STR, { 45, VM::hypervisor_brand }},
     { VM::RDTSC, { 20, VM::rdtsc_check }},
     { VM::SIDT, { 65, VM::sidt_check }},
     { VM::VMWARE_PORT, { 80, VM::vmware_port }},
@@ -3902,7 +4457,7 @@ const std::map<VM::u64, VM::technique> VM::table = {
     { VM::LINUX_USER_HOST, { 35, VM::linux_user_host }},
     { VM::VBOX_WINDOW_CLASS, { 10, VM::vbox_window_class }},
     { VM::GAMARUE, { 40, VM::gamarue }},
-    { VM::WINDOWS_NUMBER, { 20, VM::windows_number }},
+    { VM::WMIC, { 20, VM::wmic }},
     { VM::VMID_0X4, { 90, VM::vmid_0x4 }},
     { VM::VPC_BACKDOOR, { 70, VM::vpc_backdoor }},
     { VM::PARALLELS_VM, { 50, VM::parallels }},
@@ -3910,7 +4465,12 @@ const std::map<VM::u64, VM::technique> VM::table = {
     { VM::LOADED_DLLS, { 75, VM::loaded_dlls }},
     { VM::QEMU_BRAND, { 100, VM::cpu_brand_qemu }},
     { VM::BOCHS_CPU, { 95, VM::bochs_cpu }},
-    { VM::VPC_BOARD, { 20, VM::vpc_board }}
+    { VM::VPC_BOARD, { 20, VM::vpc_board }},
+    { VM::HYPERV_WMI, { 80, VM::hyperv_wmi }},
+    { VM::HYPERV_REG, { 80, VM::hyperv_registry }},
+    { VM::BIOS_SERIAL, { 60, VM::bios_serial }},
+    { VM::VBOX_FOLDERS, { 45, VM::vbox_shared_folders }},
+    { VM::VBOX_MSSMBIOS, { 75, VM::vbox_mssmbios }}
 
     // __TABLE_LABEL, add your technique above
     // { VM::YOUR_FUNCTION, { POINTS, FUNCTION POINTER }}

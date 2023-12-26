@@ -56,7 +56,7 @@ To add your own function, follow the format below:
         return false;
     }
 
-    #if (!MSVC) // This is a filter in case your function only works for a specific platform. There are many macros such as LINUX, MSVC, APPLE, and x86. It's also case sensitive, so don't make any typos!
+    #if (!MSVC) // This is a filter in case your function only works for a specific platform. There are many macros such as "LINUX", "MSVC", "APPLE", and "x86". It's also case sensitive, so don't make any typos!
         return false;
     #else
 
