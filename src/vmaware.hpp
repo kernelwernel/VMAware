@@ -4424,7 +4424,7 @@ const std::map<VM::u64, VM::technique> VM::table = {
     { VM::LOADED_DLLS, { 75, VM::loaded_dlls }},
     { VM::QEMU_BRAND, { 100, VM::cpu_brand_qemu }},
     { VM::BOCHS_CPU, { 95, VM::bochs_cpu }},
-    { VM::VPC_BOARD, { 20, VM::vpc_board }},
+    //{ VM::VPC_BOARD, { 20, VM::vpc_board }},
     // { VM::HYPERV_WMI, { 80, VM::hyperv_wmi }},        TODO: FIX
     // { VM::HYPERV_REG, { 80, VM::hyperv_registry }},   SAME
     { VM::BIOS_SERIAL, { 60, VM::bios_serial }},
