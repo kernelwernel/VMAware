@@ -1114,7 +1114,7 @@ private:
                 }
             }
 
-            return (match_count >= 1);
+            return (match_count > 0);
         #endif
     } catch (...) { 
         #ifdef __VMAWARE_DEBUG__
@@ -3056,6 +3056,9 @@ private:
             return false;
         }
 
+        return false;
+
+/*
         #if (!MSVC)
             return false;
         #else
@@ -3088,6 +3091,7 @@ private:
 
             return false;
         #endif
+*/
     } catch (...) {
         #ifdef __VMAWARE_DEBUG__
             debug("WMIC: catched error, returned false");
@@ -4418,18 +4422,18 @@ const std::map<VM::u64, VM::technique> VM::table = {
     { VM::GAMARUE, { 40, VM::gamarue }},
     //{ VM::WMIC, { 20, VM::wmic }},
     { VM::VMID_0X4, { 90, VM::vmid_0x4 }},
-    //{ VM::VPC_BACKDOOR, { 70, VM::vpc_backdoor }},
-    //{ VM::PARALLELS_VM, { 50, VM::parallels }},
-    //{ VM::SPEC_RDTSC, { 80, VM::speculative_rdtsc }},
-    //{ VM::LOADED_DLLS, { 75, VM::loaded_dlls }},
+    { VM::VPC_BACKDOOR, { 70, VM::vpc_backdoor }},
+    { VM::PARALLELS_VM, { 50, VM::parallels }},
+    { VM::SPEC_RDTSC, { 80, VM::speculative_rdtsc }},
+    { VM::LOADED_DLLS, { 75, VM::loaded_dlls }},
     { VM::QEMU_BRAND, { 100, VM::cpu_brand_qemu }},
     { VM::BOCHS_CPU, { 95, VM::bochs_cpu }},
-    //{ VM::VPC_BOARD, { 20, VM::vpc_board }},
-    // { VM::HYPERV_WMI, { 80, VM::hyperv_wmi }},        TODO: FIX
-    // { VM::HYPERV_REG, { 80, VM::hyperv_registry }},   SAME
-    //{ VM::BIOS_SERIAL, { 60, VM::bios_serial }},
-    //{ VM::VBOX_FOLDERS, { 45, VM::vbox_shared_folders }},
-    //{ VM::VBOX_MSSMBIOS, { 75, VM::vbox_mssmbios }}
+    { VM::VPC_BOARD, { 20, VM::vpc_board }},
+    { VM::HYPERV_WMI, { 80, VM::hyperv_wmi }},
+    { VM::HYPERV_REG, { 80, VM::hyperv_registry }},
+    { VM::BIOS_SERIAL, { 60, VM::bios_serial }},
+    { VM::VBOX_FOLDERS, { 45, VM::vbox_shared_folders }},
+    { VM::VBOX_MSSMBIOS, { 75, VM::vbox_mssmbios }}
 
     // __TABLE_LABEL, add your technique above
     // { VM::YOUR_FUNCTION, { POINTS, FUNCTION POINTER }}
