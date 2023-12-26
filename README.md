@@ -25,9 +25,9 @@ The library is:
 
 - - -
 
-**IMPORTANT:** The library is currently a beta, so more improvements and cross-compatibility fixes are planned (especially for Windows which I'm currently working on improving). I don't recommend using this for any serious projects for now.
+**IMPORTANT:** The library is currently in alpha version, so more improvements and cross-compatibility fixes are planned (especially for Windows which I'm currently working on improving). I don't recommend using this for any serious projects for now.
 
-Also, this library doesn't guarantee it'll be accurate. If you found a false negative then please create an issue with information on what your VM is, what OS you're using, and what .
+Also, this library doesn't guarantee it'll be accurate. If you found a false negative then please create an issue with information on what your VM is, what OS you're using, and other useful information.
 
 - - -
 
