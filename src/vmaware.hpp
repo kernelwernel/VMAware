@@ -866,6 +866,7 @@ public:
         HYPERV_WMI = 1ULL << 49,
         HYPERV_REG = 1ULL << 50,
         BIOS_SERIAL = 1ULL << 51,
+        VBOX_FOLDERS = 1ULL << 52,
 
         // __UNIQUE_LABEL, ADD YOUR UNIQUE FUNCTION FLAG VALUE ABOVE HERE
 
@@ -3859,6 +3860,41 @@ private:
     }
 
 
+    /**
+     * @brief Check for VirtualBox-specific string for shared folder ID
+     * @category Windows
+     * @note slightly modified code from original
+     * @author @waleedassar
+     * @link https://pastebin.com/xhFABpPL
+     */ 
+    [[nodiscard]] static bool vbox_shared_folders() try {
+        if (disabled(VBOX_FOLDERS)) {
+            return false;
+        }
+
+        #if (!MSVC)
+            return false;
+        #else
+            unsigned long pnsize = 0x1000;
+            char* provider = static_cast<char*>(LocalAlloc(LMEM_ZEROINIT,pnsize));
+            unsigned int retv = WNetGetProviderName(WNNC_NET_RDR2SAMPLE,provider,&pnsize);
+            if (retv == NO_ERROR) {
+                if (lstrcmpi(provider,"VirtualBox Shared Folders") == 0) {
+                    return add(VBOX);
+                }
+            }
+
+            return false;
+        #endif
+    } catch (...) {
+        #ifdef __VMAWARE_DEBUG__
+            debug("VBOX_FOLDERS: ", "catched error, returned false");
+        #endif
+        return false;
+    }
+
+
+
     // __TECHNIQUE_LABEL, label for adding techniques above this point
 
 
@@ -4252,6 +4288,7 @@ const std::map<VM::u64, VM::technique> VM::table = {
     { VM::HYPERV_WMI, { 80, VM::hyperv_wmi }},
     { VM::HYPERV_REG, { 80, VM::hyperv_registry }},
     { VM::BIOS_SERIAL, { 60, VM::bios_serial }},
+    { VM::VBOX_FOLDERS, { 45, VM::vbox_shared_folders }},
 
     // __TABLE_LABEL, add your technique above
     // { VM::YOUR_FUNCTION, { POINTS, FUNCTION POINTER }}
