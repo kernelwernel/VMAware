@@ -4428,8 +4428,8 @@ const std::map<VM::u64, VM::technique> VM::table = {
     // { VM::HYPERV_WMI, { 80, VM::hyperv_wmi }},        TODO: FIX
     // { VM::HYPERV_REG, { 80, VM::hyperv_registry }},   SAME
     { VM::BIOS_SERIAL, { 60, VM::bios_serial }},
-    { VM::VBOX_FOLDERS, { 45, VM::vbox_shared_folders }},
-    { VM::VBOX_MSSMBIOS, { 75, VM::vbox_mssmbios }}
+    //{ VM::VBOX_FOLDERS, { 45, VM::vbox_shared_folders }},
+    //{ VM::VBOX_MSSMBIOS, { 75, VM::vbox_mssmbios }}
 
     // __TABLE_LABEL, add your technique above
     // { VM::YOUR_FUNCTION, { POINTS, FUNCTION POINTER }}
