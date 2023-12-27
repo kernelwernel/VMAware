@@ -54,7 +54,7 @@ int main() {
 ## CLI tool 🔧
 This project also provides a tiny, but handy CLI tool utilising the full potential of what the library can do. Also, running the CLI as root would give better results.
 
-<img src="assets/image.png" width="500" title="cli">
+<img src="assets/demo.png" width="500" title="cli">
 
 <br>
 
