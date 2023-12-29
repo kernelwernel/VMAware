@@ -46,11 +46,6 @@
 #else
     #define CPP 0
 #endif
-#if (__x86_64__)
-    #define x86 1
-#else
-    #define x86 0
-#endif
 #if (defined(_MSC_VER) || defined(_WIN32) || defined(_WIN64) || defined(__MINGW32__))
     #define MSVC 1
 #else
@@ -65,6 +60,19 @@
     #define APPLE 1
 #else
     #define APPLE 0
+#endif
+#if (MSVC)
+    #if (_M_IX86)
+        #define x86 1
+    #else
+        #define x86 0
+    #endif
+#else
+    #if (__x86_64__)
+        #define x86 1
+    #else
+        #define x86 0
+    #endif
 #endif
 #if !(defined (MSVC) || defined(LINUX) || defined(APPLE))
     #warning "Unknown OS detected, tests will be severely limited"
@@ -123,6 +131,9 @@
     #include <sys/sysctl.h>
 #endif
 
+#if (MSVC)
+#pragma warning(disable : 4626)
+#endif
 
 struct VM {
 private:
@@ -221,7 +232,7 @@ private:
             #endif
         #endif
     } catch (...) {
-        #if __VMAWARE_DEBUG__
+        #ifdef __VMAWARE_DEBUG__
             debug("sys_result: ", "catched error, returning nullptr");
         #endif
         std::unique_ptr<std::string> tmp(nullptr);
@@ -322,7 +333,7 @@ private:
     ) {
         #if (MSVC)
             i32 x[4];
-            __cpuidex((i32*)x, a_leaf, c_leaf);
+            __cpuidex((i32*)x, static_cast<int>(a_leaf), static_cast<int>(c_leaf));
             a = static_cast<u32>(x[0]);
             b = static_cast<u32>(x[1]);
             c = static_cast<u32>(x[2]);
@@ -340,7 +351,7 @@ private:
         const u32 c_leaf = 0xFF
     ) {
         #if (MSVC)
-            __cpuidex((i32*)x, a_leaf, c_leaf);
+            __cpuidex((i32*)x, static_cast<int>(a_leaf), static_cast<int>(c_leaf));
         #elif (LINUX)
             __cpuid_count(a_leaf, c_leaf, x[0], x[1], x[2], x[3]);
         #endif
@@ -447,7 +458,7 @@ private:
         // round to the nearest factor of 10
         const u32 result = static_cast<u32>(std::round((size / 10.0) * 10));
 
-        #if __VMAWARE_DEBUG__
+        #ifdef __VMAWARE_DEBUG__
             debug("private get_disk_size function: ", "disk size = ", result, "GB");
         #endif
 
@@ -614,6 +625,7 @@ private:
             }
 
             // retrieve the BIOS data block from the system
+            #pragma warning(disable : 5045)
             SMBIOSData* get_bios_data() {
                 SMBIOSData *bios_data = nullptr;
 
@@ -622,19 +634,22 @@ private:
                 DWORD bios_size = GetSystemFirmwareTable('RSMB', 0, NULL, 0);
 
                 if (bios_size > 0) {
-                    bios_data = (SMBIOSData*)malloc(bios_size);
+                    if (bios_data != nullptr) {
+                        bios_data = (SMBIOSData*)malloc(bios_size);
 
-                    // Retrieve the SMBIOS table
-                    DWORD bytes_retrieved = GetSystemFirmwareTable('RSMB', 0, bios_data, bios_size);
+                        // Retrieve the SMBIOS table
+                        DWORD bytes_retrieved = GetSystemFirmwareTable('RSMB', 0, bios_data, bios_size);
 
-                    if (bytes_retrieved != bios_size) {
-                        free(bios_data);
-                        bios_data = nullptr;
+                        if (bytes_retrieved != bios_size) {
+                            free(bios_data);
+                            bios_data = nullptr;
+                        }
                     }
                 }
 
                 return bios_data;
             }
+            #pragma warning(default : 5045)
 
 
             // locates system information memory block in BIOS table
@@ -759,15 +774,100 @@ private:
         };
     #endif
 
-    // memoization structure
-    struct memo_struct {
-        bool get_vm;
-        const char* get_brand;
-        u8 get_percent;
+    // memoization
+    struct memo {
+    private:
+        // memoization structure
+        #if (MSVC)
+        #pragma warning(disable : 4820)
+        #endif
+        struct memo_struct {
+            std::string get_brand;
+            u8 get_percent;
+            bool get_vm;
+        };
+        #if (MSVC)
+        #pragma warning(default : 4820)
+        #endif
+
+
+    public:
+        // memoize the value from VM::detect() in case it's ran again
+        static std::map<bool, memo_struct> cache;
+    
+        // easier way to check if the result is memoized
+        [[nodiscard]] static inline bool is_memoized() noexcept {
+            return (
+                disabled(NO_MEMO) && \
+                cache.find(true) != cache.end()
+            );
+        }
+
+        // get vm bool
+        static bool get_vm() {
+            memo_struct &tmp = cache[true];
+            return (tmp.get_vm);
+        }
+
+        // get vm brand
+        static std::string get_brand() {
+            memo_struct &tmp = cache[true];
+            return (tmp.get_brand);
+        }
+
+        // get vm percentage
+        static u8 get_percent() {
+            memo_struct &tmp = cache[true];
+            return (tmp.get_percent);
+        }
+
+        static constexpr u8
+            FOUND_VM = 1,
+            FOUND_BRAND = 2,
+            FOUND_PERCENT = 3;
+
+        static constexpr bool UNUSED_VM = false;
+        static constexpr const char* UNUSED_BRAND = "";
+        static constexpr u8 UNUSED_PERCENT = 0;
+
+        static void memoize(const u8 p_flags, const bool is_vm, const std::string vm_brand, const u8 vm_percent) {            
+            if (cache.find(true) != cache.end()) {
+                return;
+            }
+
+            // default values
+            bool local_is_vm = false;
+            std::string local_vm_brand = "Unknown";
+            u8 local_vm_percent = 0;
+
+            if (p_flags & FOUND_VM) {
+                local_is_vm = is_vm;
+            } else {
+                local_is_vm = detect(NO_MEMO);
+            }
+
+            if (p_flags & FOUND_BRAND) {
+                local_vm_brand = vm_brand;
+            } else {
+                local_vm_brand = brand(NO_MEMO);
+            }
+
+            if (p_flags & FOUND_PERCENT) {
+                local_vm_percent = vm_percent;
+            } else {
+                local_vm_percent = percentage();
+            }
+
+            memo_struct tmp = {
+                local_vm_brand,
+                local_vm_percent,
+                local_is_vm,
+            };
+
+            cache[true] = tmp;
+        }
     };
 
-    // memoize the value from VM::detect() in case it's ran again
-    static std::map<bool, memo_struct> memo;
 
     // cpuid check value
     static bool cpuid_supported;
@@ -800,14 +900,6 @@ private:
     #endif
     [[nodiscard]] static inline bool enabled(const u64 p_flag) noexcept {
         return (flags & p_flag);
-    }
-
-    // easier way to check if the result is memoized
-    [[nodiscard]] static inline bool is_memoized() noexcept {
-        return (
-            disabled(NO_MEMO) && \
-            memo.find(true) != memo.end()
-        );
     }
 
 public:
@@ -870,157 +962,169 @@ public:
         BIOS_SERIAL = 1ULL << 51,
         VBOX_FOLDERS = 1ULL << 52,
         VBOX_MSSMBIOS = 1ULL << 53,
+        MAC_HYPERTHREAD = 1ULL << 54,
 
         // __UNIQUE_LABEL, ADD YOUR UNIQUE FUNCTION FLAG VALUE ABOVE HERE
 
         EXTREME = 1ULL << 62,
         NO_MEMO = 1ULL << 63,
-        
-        #if (MSVC)
-            ALL = ~(NO_MEMO & 0xFFFFFFFFFFFFFFFF);
+    
+    #if (MSVC)
+        ALL = ~(NO_MEMO & 0xFFFFFFFFFFFFFFFF);
+    #else
+        ALL = ~(NO_MEMO & std::numeric_limits<u64>::max());
+    #endif
+
+private:
+    #if (CPP >= 17)
+        [[nodiscard]] static bool vmid_template(const u32 p_leaf, [[maybe_unused]] const char* technique_name) {
+    #else 
+        [[nodiscard]] static bool vmid_template(const u32 p_leaf, const char* technique_name) {
+    #endif
+        #if (CPP >= 17)
+            constexpr std::string_view
         #else
-            ALL = ~(NO_MEMO & std::numeric_limits<u64>::max());
+            const std::string
         #endif
+            bhyve = "bhyve bhyve ",
+            kvm = "KVMKVMKVM\0\0\0",
+            qemu = "TCGTCGTCGTCG",
+            hyperv = "Microsoft Hv",
+            xta = "MicrosoftXTA",
+            parallels = " prl hyperv ",
+            parallels2 = " lrpepyh  vr",
+            vmware = "VMwareVMware",
+            vbox = "VBoxVBoxVBox",
+            xen = "XenVMMXenVMM",
+            acrn = "ACRNACRNACRN",
+            qnx = " QNXQVMBSQG ",
+            virtapple = "VirtualApple";
 
         #if (CPP >= 17)
-            [[nodiscard]] static bool vmid_template(const u32 p_leaf, [[maybe_unused]] const char* technique_name) {
-        #else 
-            [[nodiscard]] static bool vmid_template(const u32 p_leaf, const char* technique_name) {
+            constexpr std::array<std::string_view, 13> IDs {
+        #else
+            std::array<std::string, 13> IDs {
         #endif
-            #if (CPP >= 17)
-                constexpr std::string_view
-            #else
-                const std::string
-            #endif
-                bhyve = "bhyve bhyve ",
-                kvm = " KVMKVMKVM  ",
-                qemu = "TCGTCGTCGTCG",
-                hyperv = "Microsoft Hv",
-                xta = "MicrosoftXTA",
-                parallels = " prl hyperv ",
-                parallels2 = " lrpepyh  vr",
-                vmware = "VMwareVMware",
-                vbox = "VBoxVBoxVBox",
-                xen = "XenVMMXenVMM",
-                acrn = "ACRNACRNACRN",
-                qnx = " QNXQVMBSQG ",
-                virtapple = "VirtualApple";
+            bhyve, kvm, qemu,
+            hyperv, parallels, parallels,
+            parallels2, vmware, vbox,
+            xen, acrn, qnx,
+            virtapple
+        };
 
-            #if (CPP >= 17)
-                constexpr std::array<std::string_view, 13> IDs {
-            #else
-                std::array<std::string, 13> IDs {
-            #endif
-                bhyve, kvm, qemu,
-                hyperv, parallels, parallels,
-                parallels2, vmware, vbox,
-                xen, acrn, qnx,
-                virtapple
-            };
+        auto cpuid_thingy = [](const u32 p_leaf, u32* regs, std::size_t start = 0, std::size_t end = 4) -> bool {
+            u32 x[4];
+            cpuid(x[0], x[1], x[2], x[3], p_leaf);
 
-            auto cpuid_thingy = [](const u32 p_leaf, u32* regs, std::size_t start = 0, std::size_t end = 4) -> bool {
-                u32 x[4];
-                cpuid(x[0], x[1], x[2], x[3], p_leaf);
-
-                for (; start < end; start++) { 
-                    *regs++ = x[start];
-                }
-
-                return true;
-            };
-
-            std::string brand = "";
-            u32 sig_reg[3] = {0};
-
-            if (!cpuid_thingy(p_leaf, sig_reg, 1)) {
-                return false;
+            for (; start < end; start++) { 
+                *regs++ = x[start];
             }
 
-            auto strconvert = [](u64 n) -> std::string {
-                const std::string &str(reinterpret_cast<char*>(&n));
-                return str;
-            };
+            return true;
+        };
 
-            std::stringstream ss;
-            ss << strconvert(sig_reg[0]);
-            ss << strconvert(sig_reg[2]);
-            ss << strconvert(sig_reg[1]);
+        std::string brand = "";
+        u32 sig_reg[3] = {0};
 
-            brand = ss.str();
- 
-            #ifdef __VMAWARE_DEBUG__
-                debug(technique_name, brand);
-            #else
-                #if (CPP < 17)
-                    // bypass compiler warning about unused parameter, ignore this
-                    UNUSED(technique_name);
-                #endif
-            #endif
-                        
-            const bool found = (std::find(std::begin(IDs), std::end(IDs), brand) != std::end(IDs));
-
-            if (found) {
-                if (brand == qemu) { return add(QEMU); }
-                if (brand == vmware) { return add(VMWARE); }
-                if (brand == vbox) { return add(VBOX); }
-                if (brand == bhyve) { return add(BHYVE); }
-                if (brand == kvm) { return add(KVM); }
-                if (brand == hyperv) { return add(HYPERV); }
-                if (brand == xta) { return add(MSXTA); }
-                if (brand == parallels) { return add(PARALLELS); }
-                if (brand == parallels2) { return add(PARALLELS); }
-                if (brand == xen) { return add(XEN); }
-                if (brand == acrn) { return add(ACRN); }
-                if (brand == qnx) { return add(QNX); }
-                if (brand == virtapple) { return add(VAPPLE); }
-            }
-
+        if (!cpuid_thingy(p_leaf, sig_reg, 1)) {
             return false;
         }
 
+        auto strconvert = [](u64 n) -> std::string {
+            const std::string &str(reinterpret_cast<char*>(&n));
+            return str;
+        };
 
-        [[nodiscard]] static std::string get_cpu_brand() {
-            if (!cpuid_supported) {
+        std::stringstream ss;
+        ss << strconvert(sig_reg[0]);
+        ss << strconvert(sig_reg[2]);
+        ss << strconvert(sig_reg[1]);
+
+        brand = ss.str();
+
+        #ifdef __VMAWARE_DEBUG__
+            debug(technique_name, brand);
+        #else
+            #if (CPP < 17)
+                // bypass compiler warning about unused parameter, ignore this
+                UNUSED(technique_name);
+            #endif
+        #endif
+                    
+        const bool found = (std::find(std::begin(IDs), std::end(IDs), brand) != std::end(IDs));
+
+        if (found) {
+            if (brand == qemu) { return add(QEMU); }
+            if (brand == vmware) { return add(VMWARE); }
+            if (brand == vbox) { return add(VBOX); }
+            if (brand == bhyve) { return add(BHYVE); }
+            if (brand == kvm) { return add(KVM); }
+            if (brand == hyperv) { return add(HYPERV); }
+            if (brand == xta) { return add(MSXTA); }
+            if (brand == parallels) { return add(PARALLELS); }
+            if (brand == parallels2) { return add(PARALLELS); }
+            if (brand == xen) { return add(XEN); }
+            if (brand == acrn) { return add(ACRN); }
+            if (brand == qnx) { return add(QNX); }
+            if (brand == virtapple) { return add(VAPPLE); }
+        }
+
+        /**
+         * This is added because there are inconsist string 
+         * values for KVM's manufacturer ID. For example, 
+         * it gives as "KVMKMVMKV" when I run it under QEMU
+         * but the Wikipedia article on CPUID says it's 
+         * "KVMKVMKVM\0\0\0", like wtf????
+         */
+        if (brand.find("KVM") != std::string::npos) {
+            return add(KVM);
+        }
+
+        return false;
+    }
+
+
+    [[nodiscard]] static std::string get_cpu_brand() {
+        if (!cpuid_supported) {
+            return "Unknown";
+        }
+
+        #if (!x86)
+            return "Unknown";
+        #else
+            if (!cpuid_leaf_supported(leaf::brand3)) {
                 return "Unknown";
             }
 
-            #if (!x86)
-                return "Unknown";
-            #else
-                if (!cpuid_leaf_supported(leaf::brand3)) {
-                    return "Unknown";
-                }
+            std::array<u32, 4> buffer{};
+            constexpr std::size_t buffer_size = sizeof(i32) * buffer.size();
+            std::array<char, 64> charbuffer{};
 
-                std::array<u32, 4> buffer{};
-                constexpr std::size_t buffer_size = sizeof(i32) * buffer.size();
-                std::array<char, 64> charbuffer{};
+            constexpr std::array<u32, 3> ids = {{
+                leaf::brand1,
+                leaf::brand2,
+                leaf::brand3
+            }};
 
-                constexpr std::array<u32, 3> ids = {
-                    leaf::brand1,
-                    leaf::brand2,
-                    leaf::brand3
-                };
+            std::string brand = "";
 
-                std::string brand = "";
+            for (const u32 &id : ids) {
+                cpuid(buffer.at(0), buffer.at(1), buffer.at(2), buffer.at(3), id);
 
-                for (const u32 &id : ids) {
-                    cpuid(buffer.at(0), buffer.at(1), buffer.at(2), buffer.at(3), id);
+                std::memcpy(charbuffer.data(), buffer.data(), buffer_size);
 
-                    std::memcpy(charbuffer.data(), buffer.data(), buffer_size);
+                const char* convert = charbuffer.data();
+                brand += convert;
+            }
 
-                    const char* convert = charbuffer.data();
-                    brand += convert;
-                }
-
-                #ifdef __VMAWARE_DEBUG__
-                    debug("BRAND: ", "cpu brand = ", brand);
-                #endif
-
-                return brand;
+            #ifdef __VMAWARE_DEBUG__
+                debug("BRAND: ", "cpu brand = ", brand);
             #endif
-        }
 
-private:
+            return brand;
+        #endif
+    }
+
     static constexpr u64 DEFAULT = (~(CURSOR) & ALL);
 
     /**
@@ -1081,22 +1185,22 @@ private:
             std::string brand = get_cpu_brand();
     
             // TODO: might add more potential keywords, be aware that it could (theoretically) cause false positives
-            constexpr std::array<const char*, 16> vmkeywords {
+            constexpr std::array<const char*, 16> vmkeywords {{
                 "qemu", "kvm", "virtual", "vm", 
                 "vbox", "virtualbox", "vmm", "monitor", 
                 "bhyve", "hyperv", "hypervisor", "hvisor", 
                 "parallels", "vmware", "hvm", "qnx"
-            };
+            }};
 
             u8 match_count = 0;
 
-            for (std::size_t i = 0; i < vmkeywords.size(); i++) {
-                const auto regex = std::regex(vmkeywords.at(i), std::regex::icase);
+            for (auto it = vmkeywords.cbegin(); it != vmkeywords.cend(); it++) {
+                const auto regex = std::regex(*it, std::regex::icase);
                 const bool match = std::regex_search(brand, regex);
                 
                 if (match) {
                     #ifdef __VMAWARE_DEBUG__
-                        debug("BRAND_KEYWORDS: ", "match = ", vmkeywords.at(i));
+                        debug("BRAND_KEYWORDS: ", "match = ", *it);
                     #endif
                     match_count++;
                 }
@@ -1186,6 +1290,9 @@ private:
      * @link https://kb.vmware.com/s/article/1009458
      * @category x86
      */
+    #if (MSVC)
+    #pragma warning(disable : 5045)
+    #endif
     [[nodiscard]] static bool cpuid_0x4() try {
         if (!cpuid_supported || disabled(CPUID_0X4)) {
             return false;
@@ -1211,6 +1318,9 @@ private:
         #endif
         return false;
     }
+    #if (MSVC)
+        #pragma warning(default : 5045)
+    #endif
 
 
     /**
@@ -1286,15 +1396,14 @@ private:
                 #define LODWORD(_qw)    ((DWORD)(_qw))
                 u64 tsc1 = 0;
                 u64 tsc2 = 0;
-                u64 avg = 0;
-                i32 cpuInfo[4] = {};
+                u64 tsc3 = 0;
                 for (INT i = 0; i < 10; i++) {
                     tsc1 = __rdtsc();
                     GetProcessHeap();
                     tsc2 = __rdtsc();
                     CloseHandle(0);
                     tsc3 = __rdtsc();
-                    const bool conditon = ((LODWORD(tsc3) - LODWORD(tsc2)) / (LODWORD(tsc2) - LODWORD(tsc1)) >= 10);
+                    const bool condition = ((LODWORD(tsc3) - LODWORD(tsc2)) / (LODWORD(tsc2) - LODWORD(tsc1)) >= 10);
                     if (condition) {
                         return false;
                     }
@@ -1400,7 +1509,7 @@ private:
      * @link https://kb.vmware.com/s/article/1009458
      * @category x86 Windows
      */
-    [[nodiscard]] static bool vmware_port() try {
+    [[nodiscard]] static bool vmware_port() {
         if (disabled(VMWARE_PORT)) {
             return false;
         }
@@ -1408,7 +1517,7 @@ private:
         #if (!x86)
             return false;
         #else
-            i32 is_vm = false;
+            bool is_vm = false;
 
             #if (LINUX)
 /*
@@ -1450,57 +1559,48 @@ private:
 */
 
             #elif (MSVC)
-                u16 ioports[] = { 'VX' , 'VY' };
-                u16 ioport;
-                for (u8 i = 0; i < _countof(ioports); ++i) {
-                    ioport = ioports[i];
-                    for (u8 cmd = 0; cmd < 0x2C; ++cmd) {
-                        __try {
-                            __asm {
-                                push eax
-                                push ebx
-                                push ecx
-                                push edx
-                                mov eax, 'VMXh'
-                                movzx ecx, cmd
-                                mov dx, ioport
-                                in eax, dx      // <- key point is here
-                                pop edx
-                                pop ecx
-                                pop ebx
-                                pop eax
-                            }
+                constexpr std::array<u16, 2> ioports = {{ 'VX' , 'VY' }};
+                u32 ioport;
+                for (auto it = ioports.cbegin(); it != ioports.cend(); it++) {
+                    ioport = *it;
 
-                            is_vm = true;
-                            break;
+                    __try {
+                        __asm {
+                            push edx
+                            push ecx
+                            push ebx
+                            mov eax, 'VMXh'
+                            mov ebx, 0
+                            mov ecx, 10
+                            mov edx, ioport
+                            in eax, dx      // <- key point is here
+                            cmp ebx, 'VMXh'
+                            setz[is_vm]
+                            pop ebx
+                            pop ecx
+                            pop edx
                         }
-                        __except (EXCEPTION_EXECUTE_HANDLER) {
-                            #ifdef __VMAWARE_DEBUG__
-                                debug("VMWARE_PORT: exception encountered for inline assembly");
-                            #endif
-                        }
-                    }
-
-                    if (is_vm) {
-                        break;
+                    } 
+                    __except (EXCEPTION_EXECUTE_HANDLER) {
+                        is_vm = false;
                     }
                 }
             #endif
 
             if (is_vm) {
                 scoreboard[VMWARE]++; 
-                //scoreboard[VMWARE]++; // extra point bc it's incredibly VMware-specific, also it's not += 2 since that causes a linker error for some reason?
+                scoreboard[VMWARE]++; // extra point bc it's incredibly VMware-specific, also it's not += 2 since that causes a linker error for some reason?
                 return true;
             }
 
             return false;
         #endif
-    } catch (...) { 
+    }/* catch (...) { 
         #ifdef __VMAWARE_DEBUG__
             debug("VMWARE_PORT: catched error, returned false");
         #endif
         return false;
-    }
+    }*/
 
 
     /**
@@ -2398,7 +2498,7 @@ private:
             u8 vbox = 0;
             u8 vmware = 0;
 
-            constexpr std::array<const wchar_t*, 26> files = {
+            constexpr std::array<const wchar_t*, 26> files = {{
                 // VMware
                 L"C:\\windows\\System32\\Drivers\\Vmmouse.sys",
                 L"C:\\windows\\System32\\Drivers\\vm3dgl.dll",
@@ -2427,7 +2527,7 @@ private:
                 L"C:\\windows\\System32\\VBoxControl.exe",
                 L"C:\\windows\\System32\\vboxoglerrorspu.dll",
                 L"C:\\windows\\System32\\vboxoglfeedbackspu.dll",
-            };
+            }};
 
             for (const auto file : files) {
                 if (exists(file)) {
@@ -2510,11 +2610,38 @@ private:
                 return add(VMWARE);
             }
 
+            // assumed true since it doesn't contain "Mac" string
             return true;
         #endif
     } catch (...) { 
         #ifdef __VMAWARE_DEBUG__
             debug("HWMODEL: catched error, returned false");
+        #endif
+        return false;
+    }
+
+
+    /**
+     * @brief check if hyperthreading core count matches with physical expectations
+     * @category MacOS
+     * @author from MacRansom ransomware 
+     * @link https://evasions.checkpoint.com/techniques/macos.html
+     */
+    [[nodiscard]] static bool mac_hyperthread() try {
+        if (disabled(MAC_HYPERTHREAD)) {
+            return false;
+        }
+
+        #if (!APPLE)
+            return false;
+        #else
+            std::unique_ptr<std::string> result = sys_result("echo $((`sysctl -n hw.logicalcpu`/`sysctl -n hw.physicalcpu`))");
+            
+            return (*result != ("2"));
+        #endif
+    } catch (...) { 
+        #ifdef __VMAWARE_DEBUG__
+            debug("MAC_HYPERTHREAD: catched error, returned false");
         #endif
         return false;
     }
@@ -2736,7 +2863,7 @@ private:
             return false;
         #else
             auto out_length = MAX_PATH;
-            std::vector<u8> comp_name(out_length, 0);
+            std::vector<u8> comp_name(static_cast<u32>(out_length), 0);
             GetComputerNameA((LPSTR)comp_name.data(), (LPDWORD)&out_length);
 
             auto compare = [&](const std::string &s) -> bool {
@@ -2788,7 +2915,7 @@ private:
             return false;
         #else
             auto out_length = MAX_PATH;
-            std::vector<u8> dns_host_name(out_length, 0);
+            std::vector<u8> dns_host_name(static_cast<u32>(out_length), 0);
             GetComputerNameExA(ComputerNameDnsHostname, (LPSTR)dns_host_name.data(), (LPDWORD)&out_length);
 
             #ifdef __VMAWARE_DEBUG__
@@ -3200,11 +3327,12 @@ private:
     /**
      * @brief Check for semi-documented Virtual PC detection method using illegal instructions
      * @category Windows x86
+     * @note no function-level try-catch block, because i can't add it wrapped around multiple other try-catches
      * @link http://www.codeproject.com/Articles/9823/Detect-if-your-program-is-running-inside-a-Virtual
      * @link https://artemonsecurity.com/vmde.pdf
      * @author N. Rin, EP_X0FF
      */ 
-    [[nodiscard]] static bool vpc_backdoor() try {
+    [[nodiscard]] static bool vpc_backdoor() {
         if (disabled(VPC_BACKDOOR)) {
             return false;
         }
@@ -3218,9 +3346,9 @@ private:
                 __try {
                     PCONTEXT ctx = ep->ContextRecord;
 
-                    ctx->Ebx = -1;    // Not running VPC
+                    ctx->Ebx = static_cast<DWORD>(-1);    // Not running VPC
                     ctx->Eip += 4;    // skip past the "call VPC" opcodes
-                    return EXCEPTION_CONTINUE_EXECUTION;
+                    return static_cast<DWORD>(EXCEPTION_CONTINUE_EXECUTION);
                     // we can safely resume execution since we skipped the faulty instruction
                 }
                 __except (EXCEPTION_EXECUTE_HANDLER) {
@@ -3253,13 +3381,7 @@ private:
             
             return false;
         #endif
-    } catch (...) {
-        #ifdef __VMAWARE_DEBUG__
-            debug("VPC_BACKDOOR:", "catched error, returned false");
-        #endif
-        return false;
     }
-
 
     /**
      * @brief check for any indication of parallels through BIOS stuff
@@ -3425,7 +3547,7 @@ private:
         #else
             HMODULE hDll;
 
-            constexpr std::array<const char*, 12> szDlls = { 
+            constexpr std::array<const char*, 12> szDlls = {{ 
                 "avghookx.dll",		// AVG
                 "avghooka.dll",		// AVG
                 "snxhk.dll",		// Avast
@@ -3438,10 +3560,10 @@ private:
                 "wpespy.dll",		// WPE Pro
                 "cmdvrt64.dll",		// Comodo Container
                 "cmdvrt32.dll",		// Comodo Container
-            };
+            }};
 
-            for (std::size_t i = 0; i < szDlls.size(); i++) {
-                const char* dll = szDlls.at(i);
+            for (auto it = szDlls.begin(); it != szDlls.end(); ++it) {
+                const char* dll = *it;
 
                 hDll = GetModuleHandle(dll);
 
@@ -3449,8 +3571,9 @@ private:
                     if (strcmp(dll, "sbiedll.dll") == 0) { return add(SANDBOXIE); }
                     if (strcmp(dll, "pstorec.dll") == 0) { return add(SUNBELT); }
                     if (strcmp(dll, "vmcheck.dll") == 0) { return add(VPC); }
-                    if (strcmp(dll, "cmdvrt64.dll") == 0) { return add(COMODO); }
                     if (strcmp(dll, "cmdvrt32.dll") == 0) { return add(COMODO); }
+                    if (strcmp(dll, "cmdvrt64.dll") == 0) { return add(COMODO); }
+    
                     return true;
                 }
             }
@@ -4004,16 +4127,19 @@ private:
                 return false;
             }
 
+            #pragma warning(disable : 5045)
             auto ScanDataForString = [](unsigned char* data, unsigned long data_length, unsigned char* string2) -> unsigned char* {
                 std::size_t string_length = strlen(reinterpret_cast<char*>(string2));
 
-                for (std::size_t i = 0; i <= (data_length-string_length); i++) {
+                for (std::size_t i = 0; i <= (data_length - string_length); i++) {
                     if (strncmp(reinterpret_cast<char*>(&data[i]), reinterpret_cast<char*>(string2), string_length) == 0) {
                         return &data[i];
                     }
                 }
+                
                 return 0;
             };
+            #pragma warning(default : 5045)
 
             auto AllToUpper = [](char* str, std::size_t len) -> void {
                 std::transform(str, str + len, str, [](unsigned char c) -> char {
@@ -4065,11 +4191,16 @@ private:
 
     // __TECHNIQUE_LABEL, label for adding techniques above this point
 
-
+    #if (MSVC)
+    #pragma warning(disable : 4820)
+    #endif
     struct technique {
         u8 points; 
         bool(*ptr)(); // function pointer
     };
+    #if (MSVC)
+    #pragma warning(default : 4820)
+    #endif
 
     // the points are debatable, but I think it's fine how it is. Feel free to disagree.
     static const std::map<u64, technique> table;
@@ -4107,7 +4238,10 @@ public:
             throw std::invalid_argument("Flag argument must contain at least a single option, consult the documentation's flag list");
         }
 
-        if (p_flags & NO_MEMO) {
+        if (
+            (p_flags & NO_MEMO) || \
+            (p_flags & EXTREME)
+        ) {
             throw std::invalid_argument("Flag argument must be a technique flag and not a settings flag, consult the documentation's flag list");
         }
 
@@ -4142,70 +4276,22 @@ public:
      * @returns VMware, VirtualBox, KVM, bhyve, QEMU, Microsoft Hyper-V, Microsoft x86-to-ARM, Parallels, Xen HVM, ACRN, QNX hypervisor, Hybrid Analysis, Sandboxie, Docker, Wine, Virtual Apple, Virtual PC, Unknown
      * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmbrand
      */
-    [[nodiscard]] static std::string brand(void) {
-        if (is_memoized() == false) {
-            detect();
-        }
-
-        memo_struct &tmp = memo[true];
-        return tmp.get_brand;
-    }
-
-
-    /**
-     * @brief Detect if running inside a VM
-     * @param std::uint64_t (any combination of flags in VM wrapper, can be optional)
-     * @return bool
-     * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmdetect
-     */
-    static bool detect(const u64 p_flags = DEFAULT) {
+    [[nodiscard]] static std::string brand(const u64 p_flags = DEFAULT) {
         VM::flags = p_flags;
 
-        /**
-         * load memoized value if it exists from a previous
-         * execution of VM::detect(). This can save around
-         * 5~10x speed depending on the circumstances.
-         */
-        if (is_memoized()) {
+        if (memo::is_memoized()) {
             #ifdef __VMAWARE_DEBUG__
-                debug("memoization: returned cached result in detect()");
+                debug("memoization: returned cached result in brand()");
             #endif
-            memo_struct &lol = memo[true];
-            return (lol.get_vm);
-        }
 
-        u16 points = 0;
-
-        #ifdef __VMAWARE_DEBUG__
-            debug("cpuid: is supported? : ", VM::cpuid_supported);
-        #endif
-
-        for (auto it = table.cbegin(); it != table.cend(); ++it) {
-            const technique &pair = it->second;
-            if (pair.ptr()) { // equivalent to std::invoke, not used bc of C++11 compatibility
-                points += pair.points;
-            }
-        }
-
-        bool result = false;
-
-        if (enabled(EXTREME)) {
-            result = (points > 0);
-        } else {
-            result = (points >= 100);
+            return (memo::get_brand());
         }
 
         const char* current_brand = "";
 
-        #ifdef __VMAWARE_DEBUG__
-            for (const auto p : scoreboard) {
-                debug("scoreboard: ", (int)p.second, " : ", p.first);
-            }
-        #endif
-
         // fetch the brand with the most points in the scoreboard
         #if (CPP >= 20)
-            auto it = std::ranges::max_element(scoreboard, {},
+            auto it = std::ranges::max_element(VM::scoreboard, {},
                 [](const auto &pair) {
                     return pair.second;
                 }
@@ -4242,26 +4328,78 @@ public:
 
             if (max == 0) {
                 current_brand = "Unknown";
+            } 
+        #endif
+
+        if (
+            (scoreboard[QEMU] > 0) &&
+            (scoreboard[KVM] > 0)
+        ) {
+            current_brand = "QEMU/KVM";
+        }
+
+        #ifdef __VMAWARE_DEBUG__
+            for (const auto p : scoreboard) {
+                debug("scoreboard: ", (int)p.second, " : ", p.first);
             }
         #endif
 
-        // memoize the result in case VM::detect() is executed again
-        if (is_memoized() == false) {
-            u8 percent = 0;
+        if (disabled(NO_MEMO)) {
+            #ifdef __VMAWARE_DEBUG__
+                debug("memoization: cached result in brand()");
+            #endif
 
-            if (points > 100) {
-                percent = 100;
-            } else {
-                percent = static_cast<u8>(points);
+            memo::memoize(memo::FOUND_BRAND, memo::UNUSED_VM, current_brand, memo::UNUSED_PERCENT);
+        }
+
+        return current_brand;
+    }
+
+
+    /**
+     * @brief Detect if running inside a VM
+     * @param std::uint64_t (any combination of flags in VM wrapper, can be optional)
+     * @return bool
+     * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmdetect
+     */
+    static bool detect(const u64 p_flags = DEFAULT) {
+        VM::flags = p_flags;
+
+        /**
+         * load memoized value if it exists from a previous
+         * execution of VM::detect(). This can save around
+         * 5~10x speed depending on the circumstances.
+         */
+        if (memo::is_memoized()) {
+            #ifdef __VMAWARE_DEBUG__
+                debug("memoization: returned cached result in detect()");
+            #endif
+            return (memo::get_vm());
+        }
+
+        u16 points = 0;
+
+        #ifdef __VMAWARE_DEBUG__
+            debug("cpuid: is supported? : ", VM::cpuid_supported);
+        #endif
+
+        for (auto it = table.cbegin(); it != table.cend(); ++it) {
+            const technique &pair = it->second;
+            if (pair.ptr()) { // equivalent to std::invoke, not used bc of C++11 compatibility
+                points += pair.points;
             }
+        }
 
-            memo_struct tmp = { 
-                result,        // is vm?
-                current_brand, // brand
-                percent        // self-explanatory
-            };
+        bool result = false;
 
-            memo[true] = tmp;
+        if (enabled(EXTREME)) {
+            result = (points > 0);
+        } else {
+            result = (points >= 100);
+        }
+
+        if (disabled(NO_MEMO)) {
+            memo::memoize(memo::FOUND_VM, result, memo::UNUSED_BRAND, memo::UNUSED_PERCENT);
         }
 
         return result;
@@ -4277,13 +4415,12 @@ public:
     static u8 percentage(const u64 p_flags = DEFAULT) {
         VM::flags = p_flags;
 
-        if (is_memoized()) {
+        if (memo::is_memoized()) {
             #ifdef __VMAWARE_DEBUG__
                 debug("memoization: ", "returned cached result in VM::percentage()");
             #endif
 
-            memo_struct &tmp = memo[true];
-            return tmp.get_percent;
+            return (memo::get_percent());
         }
 
         u16 points = 0;
@@ -4304,42 +4441,16 @@ public:
         }
 
         if (disabled(NO_MEMO)) {
-            #ifdef __VMAWARE_DEBUG__
-                debug("memoization: ", "cached result to  VM::percentage()");
-            #endif
-            const bool result = (points >= 100);
-            const char* current_brand = "";
-
-            #if (MSVC)
-                int max = 0;
-            #else
-                u8 max = 0;
-            #endif
-
-            for (auto it = scoreboard.cbegin(); it != scoreboard.cend(); ++it) {
-                if (it->second > max) {
-                    current_brand = it->first;
-                    max = it->second;
-                }
-            }
-
-            if (max == 0) {
-                current_brand = "Unknown";
-            }
-
-            memo_struct tmp = { 
-                result, // is vm?
-                current_brand, // brand
-                percent // percent
-            };
-
-            memo[true] = tmp;
+            memo::memoize(memo::FOUND_PERCENT, memo::UNUSED_VM, memo::UNUSED_BRAND, percent);
         }
 
         return percent;
     }
 };
 
+#if (MSVC)
+#pragma warning(default : 4626)
+#endif
 
 // ============= EXTERNAL DEFINITIONS =============
 // These are added here due to warnings related to C++17 inline variables for C++ standards that are under 17.
@@ -4378,7 +4489,7 @@ public:
 
 
 VM::u64 VM::flags = 0;
-std::map<bool, VM::memo_struct> VM::memo;
+std::map<bool, VM::memo::memo_struct> VM::memo::cache;
 
 
 bool VM::cpuid_supported = []() -> bool {
@@ -4457,7 +4568,8 @@ const std::map<VM::u64, VM::technique> VM::table = {
     { VM::HYPERV_REG, { 80, VM::hyperv_registry }},
     { VM::BIOS_SERIAL, { 60, VM::bios_serial }},
     { VM::VBOX_FOLDERS, { 45, VM::vbox_shared_folders }},
-    { VM::VBOX_MSSMBIOS, { 75, VM::vbox_mssmbios }}
+    { VM::VBOX_MSSMBIOS, { 75, VM::vbox_mssmbios }},
+    { VM::MAC_HYPERTHREAD, { 10, VM::mac_hyperthread }}
 
     // __TABLE_LABEL, add your technique above
     // { VM::YOUR_FUNCTION, { POINTS, FUNCTION POINTER }}

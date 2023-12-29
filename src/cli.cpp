@@ -118,6 +118,7 @@ int main(int argc, char* argv[]) {
         checker(VM::HYPERV_WMI, "Hyper-V WMI output");
         checker(VM::VBOX_FOLDERS, "VirtualBox shared folders");
         checker(VM::VBOX_MSSMBIOS, "VirtualBox MSSMBIOS");
+        checker(VM::MAC_HYPERTHREAD, "MacOS hyperthreading");
         std::printf("\n");
 
         std::cout << "VM brand: " << (std::string(VM::brand()) == "Unknown" ? red : green) << VM::brand() << ansi_exit << "\n";

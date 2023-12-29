@@ -129,7 +129,7 @@ int main() {
 <br>
 
 # `VM::percentage()`
-This will return a std::uint8_t between 0 and 100. It'll return the certainty of whether it has detected a VM based on all the techniques available as a percentage. The lower the value, the less chance it's a VM. The higher the value, the more likely chance it is. The parameters are treated the exact same way with the VM::detect() function.
+This will return a std::uint8_t between 0 and 100. It'll return the certainty of whether it has detected a VM based on all the techniques available as a percentage. The lower the value, the less chance it's a VM. The higher the value, the more likely it is. The parameters are treated the exact same way with the VM::detect() function.
 
 ```cpp
 #include "vmaware.hpp"
@@ -215,6 +215,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::BIOS_SERIAL` | Check if BIOS serial number is null | Windows | 60% |  |
 | `VM::VBOX_FOLDERS` | Check for VirtualBox-specific string for shared folder ID | Windows | 45% |  |
 | `VM::VBOX_MSSMBIOS` | Check VirtualBox MSSMBIOS registry for VM-specific strings | Windows | 75% |  |
+| `VM::MAC_HYPERTHREAD` | Check if hyperthreading core count matches with physical expectations | MacOS | 10% |  |
 
 <br>
 

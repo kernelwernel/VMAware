@@ -14,20 +14,20 @@ It utilises a comprehensive list of low-level and high-level anti-VM techniques 
 The library is:
 - Very easy to use, with only 4 functions in its public interface
 - Very flexible, with total fine-grained control over what gets executed
-- Cross-platform **(NOTE: MACOS AND WINDOWS ARE NOT EFFECTIVE FOR NOW)**
+- Cross-platform **(NOTE: MACOS IS NOT EFFECTIVE FOR NOW)**
 - Header-only
 - Available with C++11 and above
 - Features up to 50+ techniques
-- Able to detect VMware, VirtualBox, QEMU, KVM, Parallels, and much more
+- Able to detect VMware, VirtualBox, QEMU, KVM, Parallels, and [much more](https://github.com/kernelwernel/VMAware/blob/v0.2/docs/documentation.md#vmbrand)
 - Able to detect semi-VM technologies like hypervisors, docker, and wine
 - Able to guess the VM brand
 - Memoized, meaning past results are cached and retrieved if ran again for performance benefits 
 
 - - -
 
-**IMPORTANT:** The library is currently in alpha version, so more improvements and cross-compatibility fixes are planned (especially for Windows which I'm currently working on improving). I don't recommend using this for any serious projects for now.
+**IMPORTANT:** The library is currently in the alpha stage, so more improvements and cross-compatibility fixes are planned (especially for MacOS and Windows which I'm currently working on improving). I don't recommend using this for any serious projects for now.
 
-Also, this library doesn't guarantee it'll be accurate. If you found a false negative then please create an issue with information on what your VM is, what OS you're using, and other useful information.
+Also, this library doesn't guarantee it'll be accurate. If you found a false negative then please create an issue with information on what your VM is, what OS you're using, and other useful details.
 
 - - -
 
@@ -67,16 +67,17 @@ git clone https://github.com/kernelwernel/VMAware
 cd VMAware
 ```
 
+### FOR LINUX:
 ```bash
-# FOR LINUX
+sudo dnf/apt/yum update -y # change this to whatever your distro is
 mkdir build
 cd build
 cmake ..
 sudo make install
 ```
 
+### FOR WINDOWS:
 ```bash
-# FOR WINDOWS
 cmake -S . -B build/ -G "Visual Studio 16 2019"
 ```
 > NOTE: I'm most likely going to change my username in the future. If the github link doesn't exist, search for the VMAware project and you should find it.
