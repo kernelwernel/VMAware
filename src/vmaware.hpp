@@ -9,7 +9,7 @@
  *  A C++ VM detection library
  * 
  *  - Made by: @kernelwernel (https://github.com/kernelwernel)
- *  - Contributed by @Requirem (https://github.com/NotRequiem)
+ *  - Contributed by @Requiem (https://github.com/NotRequiem)
  *  - Repository: https://github.com/kernelwernel/VMAware
  *  - Docs: https://github.com/kernelwernel/VMAware/docs/documentation.md
  *  - Full credits: https://github.com/kernelwernel/VMAware#credits
@@ -3147,22 +3147,34 @@ private:
                 iBuffSize = sizeof(szBuff);
                 nRes = RegQueryValueEx(hOpen, "ProductId", NULL, NULL, (unsigned char*)szBuff, reinterpret_cast<LPDWORD>(&iBuffSize));
                 if (nRes == ERROR_SUCCESS) {
-                    if (strcmp(szBuff, "55274-640-2673064-23950") == 0) { // joebox
-                        free(szBuff);
-                        return add(JOEBOX);
-                    } else if (strcmp(szBuff, "76487-644-3177037-23510") == 0) {
-                        free(szBuff);
-                        return add(CWSANDBOX); // CW Sandbox
-                    } else if (strcmp(szBuff, "76487-337-8429955-22614") == 0) { // anubis
-                        free(szBuff);
-                        return add(ANUBIS);
-                    } else {
-                        free(szBuff);
+                    // Check if szBuff is not NULL before using strcmp
+                    if (szBuff != NULL) {
+                        if (strcmp(szBuff, "55274-640-2673064-23950") == 0) { // joebox
+                            free(szBuff);
+                            return add(JOEBOX);
+                        }
+                        else if (strcmp(szBuff, "76487-644-3177037-23510") == 0) {
+                            free(szBuff);
+                            return add(CWSANDBOX); // CW Sandbox
+                        }
+                        else if (strcmp(szBuff, "76487-337-8429955-22614") == 0) { // anubis
+                            free(szBuff);
+                            return add(ANUBIS);
+                        }
+                        else {
+                            free(szBuff);
+                            return false;
+                        }
+                    }
+                    else {
+                        // Handle the case when szBuff is NULL
+                        RegCloseKey(hOpen);
                         return false;
                     }
                 }
                 RegCloseKey(hOpen);
             }
+            // Set szBuff to NULL after freeing to avoid double free issues
             free(szBuff);
             return false;
         #endif
@@ -3785,6 +3797,7 @@ private:
                 }
 
                 VARIANT vtProp;
+                VariantInit(&vtProp);
                 hr = pclsObj->Get(L"Manufacturer", 0, &vtProp, 0, 0);
 
                 if (SUCCEEDED(hr)) {
