@@ -119,6 +119,10 @@ int main(int argc, char* argv[]) {
         checker(VM::VBOX_FOLDERS, "VirtualBox shared folders");
         checker(VM::VBOX_MSSMBIOS, "VirtualBox MSSMBIOS");
         checker(VM::MAC_HYPERTHREAD, "MacOS hyperthreading");
+        checker(VM::MAC_MEMSIZE, "MacOS hw.memsize");
+        checker(VM::MAC_IOKIT, "MacOS registry IO-kit");
+        checker(VM::IOREG_GREP, "IO registry grep");
+        checker(VM::MAC_SIP, "MacOS SIP");
         std::printf("\n");
 
         std::cout << "VM brand: " << (std::string(VM::brand()) == "Unknown" ? red : green) << VM::brand() << ansi_exit << "\n";

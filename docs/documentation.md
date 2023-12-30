@@ -216,6 +216,11 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::VBOX_FOLDERS` | Check for VirtualBox-specific string for shared folder ID | Windows | 45% |  |
 | `VM::VBOX_MSSMBIOS` | Check VirtualBox MSSMBIOS registry for VM-specific strings | Windows | 75% |  |
 | `VM::MAC_HYPERTHREAD` | Check if hyperthreading core count matches with physical expectations | MacOS | 10% |  |
+| `VM::MAC_MEMSIZE` | Check if memory is too low for MacOS system | MacOS | 30% |  |
+| `VM::MAC_IOKIT` | Check MacOS' IO kit registry for VM-specific strings | MacOS | 80% |  |
+| `VM::IOREG_GREP` | Check for VM-strings in ioreg commands for MacOS | MacOS | 75% |  |
+| `VM::MAC_SIP` | Check if System Integrity Protection is disabled (likely a VM if it is) | MacOS | 85% |  |
+
 
 <br>
 
