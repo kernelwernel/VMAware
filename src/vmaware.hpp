@@ -16,7 +16,25 @@
  *  - License: GPL-3.0
  */ 
 
-#pragma once
+#if (defined(_MSC_VER) || defined(_WIN32) || defined(_WIN64) || defined(__MINGW32__))
+    #define MSVC 1
+#else
+    #define MSVC 0
+#endif
+#if (defined(__GNUC__) || defined(__linux__))
+    #define LINUX 1
+#else
+    #define LINUX 0
+#endif
+#if (defined(__APPLE__) || defined(__APPLE_CPP__) || defined(__MACH__) || defined(__DARWIN))
+    #define APPLE 1
+#else
+    #define APPLE 0
+#endif
+
+#if (MSVC)
+#pragma warning(push, 0)  
+#endif
 
 #include <functional>
 #include <cstring>
@@ -45,21 +63,6 @@
     #define CPP 11
 #else
     #define CPP 0
-#endif
-#if (defined(_MSC_VER) || defined(_WIN32) || defined(_WIN64) || defined(__MINGW32__))
-    #define MSVC 1
-#else
-    #define MSVC 0
-#endif
-#if (defined(__GNUC__) || defined(__linux__))
-    #define LINUX 1
-#else
-    #define LINUX 0
-#endif
-#if (defined(__APPLE__) || defined(__APPLE_CPP__) || defined(__MACH__) || defined(__DARWIN))
-    #define APPLE 1
-#else
-    #define APPLE 0
 #endif
 #if (MSVC)
     #if (_M_IX86)
@@ -91,7 +94,6 @@
 #if (CPP < 11 && !MSVC)
     #error "VMAware only supports C++11 or above, set your compiler flag to '-std=c++20' for GCC/clang, or '/std:c++20' for MSVC"
 #endif
-
 
 #if (MSVC)
     #include <windows.h>
@@ -132,8 +134,19 @@
 #endif
 
 #if (MSVC)
-#pragma warning(disable : 4626)
+#pragma warning(pop) 
 #endif
+
+// macro shortcut to disable MSVC warnings
+#if (MSVC)
+    #define MSVC_DISABLE_WARNING(...) __pragma(warning(disable : __VA_ARGS__))
+    #define MSVC_ENABLE_WARNING(...) __pragma(warning(default : __VA_ARGS__))
+#else
+    #define MSVC_DISABLE_WARNING(...)
+    #define MSVC_ENABLE_WARNING(...)
+#endif
+
+MSVC_DISABLE_WARNING(4626 4514)
 
 struct VM {
 private:
@@ -304,6 +317,7 @@ private:
     static constexpr const char* COMODO = "Comodo";
     static constexpr const char* SUNBELT = "SunBelt";
     static constexpr const char* BOCHS = "Bochs";
+
     
     // VM scoreboard table specifically for VM::brand()
     #if (MSVC)
@@ -400,6 +414,11 @@ private:
         #endif
     }
 
+    // scan for keyword in string
+    [[nodiscard]] static bool find(const std::string &base_str, const char* keyword) noexcept {
+        return (base_str.find(keyword) != std::string::npos);
+    };
+
     // for debug output
     #ifdef __VMAWARE_DEBUG__
         template <typename... Args>
@@ -433,6 +452,7 @@ private:
     // TODO: finish the MSVC section
     [[nodiscard]] static u32 get_disk_size() {
         u32 size = 0;
+        constexpr u64 GB = (1024 * 1024 * 1024);
     
         #if (LINUX)
             struct statvfs stat;
@@ -445,10 +465,23 @@ private:
             }
 
             // in gigabytes
-            constexpr u64 GB = (1000 * 1000 * 1000);
             size = static_cast<u32>((stat.f_blocks * stat.f_frsize) / GB);
         #elif (MSVC)
+            ULARGE_INTEGER totalNumberOfBytes;
 
+            if (GetDiskFreeSpaceEx(
+                static_cast<LPCSTR>("C:"),                   // Drive or directory path
+                nullptr,                 // Free bytes available to the caller (not needed for total size)
+                reinterpret_cast<PULARGE_INTEGER>(&totalNumberOfBytes),     // Total number of bytes on the disk
+                nullptr                  // Total number of free bytes on the disk (not needed for total size)
+            )) {
+                // Convert bytes to gigabytes (1 GB = 1024^3 bytes)
+                size = static_cast<u32>(totalNumberOfBytes.QuadPart) / GB;
+            } else {
+                #ifdef __VMAWARE_DEBUG__
+                    debug("get_disk_size: ", "failed to fetch size in GB");
+                #endif
+            }
         #endif
     
         if (size == 0) {
@@ -515,7 +548,7 @@ private:
 
             u64 number = 0;
 
-            number = std::stoi(number_str);
+            number = std::stoull(number_str);
 
             if (MB == true) {
                 number = static_cast<u64>(std::round(number / 1024)); // 1000?
@@ -625,7 +658,7 @@ private:
             }
 
             // retrieve the BIOS data block from the system
-            #pragma warning(disable : 5045)
+            MSVC_DISABLE_WARNING(5045)
             SMBIOSData* get_bios_data() {
                 SMBIOSData *bios_data = nullptr;
 
@@ -649,7 +682,7 @@ private:
 
                 return bios_data;
             }
-            #pragma warning(default : 5045)
+            MSVC_ENABLE_WARNING(5045)
 
 
             // locates system information memory block in BIOS table
@@ -778,18 +811,13 @@ private:
     struct memo {
     private:
         // memoization structure
-        #if (MSVC)
-        #pragma warning(disable : 4820)
-        #endif
+        MSVC_DISABLE_WARNING(4820)
         struct memo_struct {
             std::string get_brand;
             u8 get_percent;
             bool get_vm;
         };
-        #if (MSVC)
-        #pragma warning(default : 4820)
-        #endif
-
+        MSVC_ENABLE_WARNING(4820)
 
     public:
         // memoize the value from VM::detect() in case it's ran again
@@ -963,6 +991,10 @@ public:
         VBOX_FOLDERS = 1ULL << 52,
         VBOX_MSSMBIOS = 1ULL << 53,
         MAC_HYPERTHREAD = 1ULL << 54,
+        MAC_MEMSIZE = 1ULL << 55,
+        MAC_IOKIT = 1ULL << 56,
+        IOREG_GREP = 1ULL << 57,
+        MAC_SIP = 1ULL << 58,
 
         // __UNIQUE_LABEL, ADD YOUR UNIQUE FUNCTION FLAG VALUE ABOVE HERE
 
@@ -1290,9 +1322,7 @@ private:
      * @link https://kb.vmware.com/s/article/1009458
      * @category x86
      */
-    #if (MSVC)
-    #pragma warning(disable : 5045)
-    #endif
+    MSVC_DISABLE_WARNING(5045)
     [[nodiscard]] static bool cpuid_0x4() try {
         if (!cpuid_supported || disabled(CPUID_0X4)) {
             return false;
@@ -1318,9 +1348,7 @@ private:
         #endif
         return false;
     }
-    #if (MSVC)
-        #pragma warning(default : 5045)
-    #endif
+    MSVC_ENABLE_WARNING(5045)
 
 
     /**
@@ -3059,6 +3087,10 @@ private:
         #if (!LINUX)
             return false;
         #else
+            if (is_root()) {
+                return false;
+            }
+
             const char* username = std::getenv("USER");
             const char* hostname = std::getenv("HOSTNAME");
 
@@ -4140,7 +4172,7 @@ private:
                 return false;
             }
 
-            #pragma warning(disable : 5045)
+            MSVC_DISABLE_WARNING(5045)
             auto ScanDataForString = [](unsigned char* data, unsigned long data_length, unsigned char* string2) -> unsigned char* {
                 std::size_t string_length = strlen(reinterpret_cast<char*>(string2));
 
@@ -4152,13 +4184,13 @@ private:
                 
                 return 0;
             };
-            #pragma warning(default : 5045)
 
-            auto AllToUpper = [](char* str, std::size_t len) -> void {
-                std::transform(str, str + len, str, [](unsigned char c) -> char {
-                    return static_cast<char>(std::toupper(c));
-                });
+            auto AllToUpper = [](char* str, std::size_t len) {
+                for (std::size_t i = 0; i < len; ++i) {
+                    str[i] = static_cast<char>(std::toupper(static_cast<unsigned char>(str[i])));
+                }
             };
+            MSVC_ENABLE_WARNING(5045)
 
             AllToUpper(p, length);
 
@@ -4201,19 +4233,246 @@ private:
     } 
 
 
+    /**
+     * @brief Check if memory is too low for MacOS system
+     * @category MacOS
+     * @link https://evasions.checkpoint.com/techniques/macos.html
+     */
+    [[nodiscard]] static bool hw_memsize() try {
+        if (disabled(MAC_MEMSIZE)) {
+            return false;
+        }
+
+        #if (!APPLE)
+            return false;
+        #else
+            std::unique_ptr<std::string> result = sys_result("sysctl -n hw.memsize");
+            const std::string ram = *result;
+
+            if (ram == "0") {
+                return false;
+            }
+
+            #ifdef __VMAWARE_DEBUG__
+                debug("MAC_MEMSIZE: ", "ram size = ", ram);
+            #endif
+
+            for (const char c : ram) {
+                if (!std::isdigit(c)) {
+                    #ifdef __VMAWARE_DEBUG__
+                        debug("MAC_MEMSIZE: ", "found non-digit character, returned false");
+                    #endif
+                    return false;
+                }
+            }
+
+            const u64 ram_u64 = std::stoull(ram);
+
+            #ifdef __VMAWARE_DEBUG__
+                debug("MAC_MEMSIZE: ", "ram size in u64 = ", ram_u64);
+            #endif
+
+            constexpr u64 limit = 4000000000; // 4GB 
+
+            return (ram_u64 <= limit);
+        #endif
+    } catch (...) {
+        #ifdef __VMAWARE_DEBUG__
+            debug("MAC_MEMSIZE: ", "catched error, returned false");
+        #endif
+        return false;
+    }
+
+
+    /**
+     * @brief Check MacOS' IO kit registry for VM-specific strings
+     * @category MacOS
+     * @link https://evasions.checkpoint.com/techniques/macos.html
+     */
+    [[nodiscard]] static bool io_kit() try {
+        if (disabled(MAC_IOKIT)) {
+            return false;
+        }
+    
+        #if (!APPLE)
+            return false;
+        #else
+            std::unique_ptr<std::string> platform_ptr = sys_result("ioreg -rd1 -c IOPlatformExpertDevice");
+            std::unique_ptr<std::string> board_ptr = sys_result("ioreg -rd1 -c board-id");
+            std::unique_ptr<std::string> manufacturer_ptr = sys_result("ioreg -rd1 -c manufacturer");
+
+            const std::string platform = *platform_ptr;
+            const std::string board = *board_ptr;
+            const std::string manufacturer = *manufacturer_ptr;
+
+            auto check_platform = [&]() -> bool {
+                debug("IO_KIT: ", "platform = ", platform);
+
+                for (const char c : platform) {
+                    if (!std::isdigit(c)) {
+                        return false;
+                    }
+                }
+
+                return (platform == "0");
+            };
+
+            auto check_board = [&]() -> bool {
+                debug("IO_KIT: ", "board = ", board);
+                if (board == "") {
+                    return false;
+                }
+    
+                if (find(board, "Mac")) {
+                    return false;
+                }
+
+                if (find(board, "VirtualBox")) {
+                    return add(VBOX);
+                }
+
+                if (find(board, "VMware")) {
+                    return add(VMWARE);
+                }
+
+                return true;
+            };
+
+            auto check_manufacturer = [&]() -> bool {
+                debug("IO_KIT: ", "manufacturer = ", manufacturer);
+
+                if (find(manufacturer, "Apple")) {
+                    return false;
+                }
+
+                if (find(manufacturer, "innotek")) {
+                    return add(VBOX);
+                }
+
+                return true;
+            };
+
+            return (
+                check_platform() || 
+                check_board() ||
+                check_manufacturer()
+            );
+        #endif            
+    } catch (...) {
+        #ifdef __VMAWARE_DEBUG__
+            debug("MAC_IOKIT: ", "catched error, returned false");
+        #endif
+        return false;
+    }
+
+
+    /**
+     * @brief Check for VM-strings in ioreg commands for MacOS
+     * @category MacOS
+     * @link https://evasions.checkpoint.com/techniques/macos.html
+     */
+    [[nodiscard]] static bool ioreg_grep() try {
+        if (disabled(IOREG_GREP)) {
+            return false;
+        }
+
+        #if (!APPLE)
+            return false;
+        #else
+            auto check_usb = []() -> bool {
+                std::unique_ptr<std::string> result = sys_result("ioreg -rd1 -c IOUSBHostDevice | grep \"USB Vendor Name\"");
+                const std::string usb = *result;
+
+                if (find(usb, "Apple")) {
+                    return false;
+                }
+
+                if (find(usb, "VirtualBox")) {
+                    return add(VBOX);
+                }
+
+                return true;
+            };
+
+            auto check_general = []() -> bool {
+                std::unique_ptr<std::string> sys_vbox = sys_result("ioreg -l | grep -i -c -e \"virtualbox\" -e \"oracle\"");
+
+                if (std::stoi(*sys_vbox) > 0) {
+                    return add(VBOX);
+                }
+
+                std::unique_ptr<std::string> sys_vmware = sys_result("ioreg -l | grep -i -c -e \"vmware\"");
+                
+                if (std::stoi(*sys_vmware) > 0) {
+                    return add(VMWARE);
+                }
+
+                return false;
+            };
+
+            auto check_rom = []() -> bool {
+                std::unique_ptr<std::string> sys_rom = sys_result("system_profiler SPHardwareDataType | grep \"Boot ROM Version\"");
+                const std::string rom = *sys_rom;
+
+                if (find(rom, "VirtualBox")) {
+                    return add(VBOX);
+                }
+
+                return false;
+            };
+
+            return (
+                check_usb() ||
+                check_general() ||
+                check_rom()
+            );
+        #endif
+    } catch (...) {
+        #ifdef __VMAWARE_DEBUG__
+            debug("IOREG_GREP: ", "catched error, returned false");
+        #endif
+        return false;
+    }
+
+
+    /**
+     * @brief Check if System Integrity Protection is disabled (likely a VM if it is)
+     * @category MacOS
+     * @link https://evasions.checkpoint.com/techniques/macos.html
+     */
+    [[nodiscard]] static bool mac_sip() try {
+        if (disabled(MAC_SIP)) {
+            return false;
+        }
+
+        #if (!APPLE)
+            return false;
+        #else
+            std::unique_ptr<std::string> result = sys_result("csrutil status");
+            const std::string tmp = *result;
+
+            #ifdef __VMAWARE_DEBUG__
+                debug("MAC_SIP: ", "result = ", tmp);
+            #endif
+
+            return (find(tmp, "disabled") || (!find(tmp, "enabled")));
+        #endif
+    } catch (...) {
+        #ifdef __VMAWARE_DEBUG__
+            debug("MAC_SIP: ", "catched error, returned false");
+        #endif
+        return false;
+    }
+
 
     // __TECHNIQUE_LABEL, label for adding techniques above this point
 
-    #if (MSVC)
-    #pragma warning(disable : 4820)
-    #endif
+    MSVC_DISABLE_WARNING(4820)
     struct technique {
         u8 points; 
         bool(*ptr)(); // function pointer
     };
-    #if (MSVC)
-    #pragma warning(default : 4820)
-    #endif
+    MSVC_ENABLE_WARNING(4820)
 
     // the points are debatable, but I think it's fine how it is. Feel free to disagree.
     static const std::map<u64, technique> table;
@@ -4461,9 +4720,7 @@ public:
     }
 };
 
-#if (MSVC)
-#pragma warning(default : 4626)
-#endif
+MSVC_ENABLE_WARNING(4626 4514)
 
 // ============= EXTERNAL DEFINITIONS =============
 // These are added here due to warnings related to C++17 inline variables for C++ standards that are under 17.
@@ -4582,9 +4839,13 @@ const std::map<VM::u64, VM::technique> VM::table = {
     { VM::BIOS_SERIAL, { 60, VM::bios_serial }},
     { VM::VBOX_FOLDERS, { 45, VM::vbox_shared_folders }},
     { VM::VBOX_MSSMBIOS, { 75, VM::vbox_mssmbios }},
-    { VM::MAC_HYPERTHREAD, { 10, VM::mac_hyperthread }}
+    { VM::MAC_HYPERTHREAD, { 10, VM::mac_hyperthread }},
+    { VM::MAC_MEMSIZE, { 30, VM::hw_memsize }},
+    { VM::MAC_IOKIT, { 80, VM::io_kit }},
+    { VM::IOREG_GREP, { 75, VM::ioreg_grep }},
+    { VM::MAC_SIP, { 85, VM::mac_sip }}
 
     // __TABLE_LABEL, add your technique above
-    // { VM::YOUR_FUNCTION, { POINTS, FUNCTION POINTER }}
+    // { VM::FUNCTION, { POINTS, FUNCTION_POINTER }}
     // ^ template 
 };
