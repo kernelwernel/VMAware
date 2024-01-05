@@ -77,7 +77,7 @@ some key stuff you should be aware of:
 - Make sure to add `[[nodiscard]]`.
 - Add a function try-catch block.
 - Copy-paste the same code within the example's catch block for debug reasons. Don't forget to replace the `YOUR_FUNCTION` part with your own unique function flag string within the debug code.
-- The library also uses integer size suffixes such as `u8`, `i32`, `u16`, instead of `uint8_t`, `std::int32_t`, or `unsigned short`. The full alias list goes as follows:
+- The library also uses integer size suffixes such as `u8`, `int32_t`, `u16`, instead of `uint8_t`, `std::int32_t`, or `unsigned short`. The full alias list goes as follows:
 ```cpp
     using u8  = std::uint8_t;
     using u16 = std::uint16_t;
@@ -85,7 +85,7 @@ some key stuff you should be aware of:
     using u64 = std::uint64_t;
     using i8  = std::int8_t;
     using i16 = std::int16_t;
-    using i32 = std::int32_t;
+    using int32_t = std::int32_t;
     using i64 = std::int64_t;
 ```
 

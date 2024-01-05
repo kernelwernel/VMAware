@@ -7,14 +7,14 @@
 <img alt="GitHub" align="center" src="https://img.shields.io/github/license/kernelwernel/VMAware">
 </p>
 
-**VMAware** (not to be confused with VMware) is an open-source, cross-platform, and incredibly simple C++ library for virtual machine detection.
+**VMAware** (not to be confused with VMware) is a cross-platform C++ library for virtual machine detection.
 
 It utilises a comprehensive list of low-level and high-level anti-VM techniques that gets accounted in a scoring system. The library is meant to be stupidly easy to use, designed for anybody wanting to integrate the library to their project without a hassle.
 
 The library is:
 - Very easy to use, with only 4 functions in its public interface
 - Very flexible, with total fine-grained control over what gets executed
-- Cross-platform **(NOTE: MACOS IS NOT EFFECTIVE FOR NOW)**
+- Cross-platform (Windows + MacOS + Linux)
 - Header-only
 - Available with C++11 and above
 - Features up to 50+ techniques
@@ -42,10 +42,11 @@ int main() {
     if (VM::detect()) {
         std::cout << "Virtual machine detected!" << std::endl;
         std::cout << "VM name: " << VM::brand() << std::endl;
-        std::cout << "VM certainty: " << VM::percentage() << "%" << std::endl;
     } else {
         std::cout << "Running in baremetal" << std::endl;
     }
+    
+    std::cout << "VM certainty: " << VM::percentage() << "%" << std::endl;
 }
 ```
 

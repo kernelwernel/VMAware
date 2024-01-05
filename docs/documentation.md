@@ -1,5 +1,16 @@
 # Documentation
-# `VM::detect()`
+
+## Contents
+- [`VM::detect()`](#vmdetect)
+- [`VM::brand()`](#vmbrand)
+- [`VM::check()`](#vmcheck)
+- [`VM::percentage()`](#vmpercentage)
+- [Flag table](#flag-table)
+- [Non-technique flags](#non-technique-flags)
+
+<br>
+
+## `VM::detect()`
 
 This is basically the main function you're looking for, which returns a bool. If the parameter is set to nothing, all the <ins>recommended</ins> checks will be performed. But you can optionally set what techniques are used.
 
@@ -37,7 +48,9 @@ int main() {
     /**
      * If you don't want the value to be memoized for whatever reason, 
      * you can set the VM::NO_MEMO flag and the result will not be cached. 
-     * Keep in mind that this could take a performance hit.
+     * It's recommended to use this flag if you're only using one function
+     * from the public interface a single time in total, so no unneccessary 
+     * caching will be operated when you're not going to re-use the previous result. 
      */ 
     bool is_vm4 = VM::detect(VM::ALL | VM::NO_MEMO);
 
@@ -54,13 +67,14 @@ int main() {
 
 <br>
 
-# `VM::brand()`
+## `VM::brand()`
 This will essentially return the VM brand as a `std::string`. The exact possible brand string return values are: 
 - `VMware`
 - `VirtualBox`
-- `KVM`
 - `bhyve`
+- `KVM`
 - `QEMU`
+- `QEMU/KVM`
 - `Microsoft Hyper-V`
 - `Microsoft x86-to-ARM`
 - `Parallels`
@@ -82,7 +96,7 @@ This will essentially return the VM brand as a `std::string`. The exact possible
 - `Bochs`
 
 
-If none were detected, it will return `Unknown`. It's often NOT going to produce a satisfying result due to technical difficulties with accomplishing this, on top of being highly dependent on what mechanisms detected a VM. Don't rely on this function for critical operations as if it's your golden bullet. Roughly 75% of the time it'll simply return `Unknown`.
+If none were detected, it will return `Unknown`. It's often NOT going to produce a satisfying result due to technical difficulties with accomplishing this, on top of being highly dependent on what mechanisms detected a VM. Don't rely on this function for critical operations as if it's your golden bullet. Roughly 75% of the time it'll simply return `Unknown`, assuming it is actually running under a VM.
 
 ```cpp
 #include "vmaware.hpp"
@@ -103,7 +117,7 @@ int main() {
 
 <br>
 
-# `VM::check()`
+## `VM::check()`
 This takes a single flag argument and returns a `bool`. It's essentially the same as `VM::detect()` but it doesn't have a scoring system. It only returns the technique's effective output. The reason why this exists is because it allows end-users to have fine-grained control over what is being executed and what isn't. 
 
 `VM::detect()` is meant for a range of techniques to be evaluated in the bigger picture with weights and biases in its scoring system, while `VM::check()` is meant for a single technique to be evaluated without any points or anything extra. It just gives you what the technique has found on its own. For example:
@@ -128,7 +142,7 @@ int main() {
 
 <br>
 
-# `VM::percentage()`
+## `VM::percentage()`
 This will return a std::uint8_t between 0 and 100. It'll return the certainty of whether it has detected a VM based on all the techniques available as a percentage. The lower the value, the less chance it's a VM. The higher the value, the more likely it is. The parameters are treated the exact same way with the VM::detect() function.
 
 ```cpp
@@ -206,6 +220,9 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::VPC_BACKDOOR` | Check for semi-documented detection mechanism for Virtual PC | Windows | 70% |  |
 | `VM::PARALLELS_VM` | Check for indications of Parallels VM | None (for now) | 50% |  |
 | `VM::SPEC_RDTSC` | Check for RDTSC technique with speculative execution | None (for now) | 80% |  |
+
+
+
 | `VM::LOADED_DLLS` | Check for DLLs of multiple VM brands | Windows | 75% |  |
 | `VM::QEMU_BRAND` | Check for QEMU CPU brand with cpuid | Yes | 100% |  | 
 | `VM::BOCHS_CPU` | Check for Bochs cpuid emulation oversights | Yes | 95% |  |
@@ -228,5 +245,5 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | Flag | Description |
 |------|-------------|
 | `VM::ALL` | This will enable all the technique flags, including the cursor check that's disabled by default. |
-| `VM::NO_MEMO` | This will disable memoization, meaning the result will not be fetched through a previous computation of the VM::detect() function. Note that this can take a performance hit. |
+| `VM::NO_MEMO` | This will disable memoization, meaning the result will not be fetched through a previous computation of the VM::detect() function. Use this if you're only using a single function from the `VM` struct for a performance boost.
 | `VM::EXTREME` | This will disregard the weights/biases and its scoring system. It will essentially treat any technique that found a hit as a VM detection no matter how low that technique's certainty is, so if a single technique is positive then it will return true. | 

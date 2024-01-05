@@ -4,14 +4,14 @@
 - [ ] completely remove std::system() grep commands
 - [ ] add github metrics for license (looks cool af)
 - [X] add CTest before alpha release
-- [ ] maybe add a threadpool
 - [ ] test for processor type and stuff like that for cpuid EAX=1
 - [ ] grep everywhere for QEMU shit
-- [ ] implement VM::EXTREME flag
-- [ ] update the cli tool image in the readme
+- [X] implement VM::EXTREME flag
+- [X] update the cli tool image in the readme
 - [X] focus on hyperv detection (https://labs.nettitude.com/blog/vm-detection-tricks-part-3-hyper-v-raw-network-protocol/)
 - [X] add percentage overload functionality for VM::detect()
 - [ ] maybe document the project in codeproject.com when a 1.0 is ready
+- [ ] add a cpuid fuzzer (baremetal and VM)
 
 
 # Distant plans

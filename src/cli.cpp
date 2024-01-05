@@ -28,6 +28,7 @@ Options:
  -v | --version     print version and other stuff
  -s | --stdout      returns either 0 or 1 to STDOUT without any text output (0 = VM, 1 = baremetal)
  -b | --brand       returns the VM brand string (consult documentation for full output list)
+ -p | --percent     returns the VM percentage between 0 and 100
 )";
 }
 
@@ -130,12 +131,16 @@ int main(int argc, char* argv[]) {
         const char* percent_color = "";
         std::uint8_t percent = VM::percentage();
 
-        if (percent < 20) {
+        if (percent == 0) {
             percent_color = red;
-        } else if (percent > 75) {
-            percent_color = green;
-        } else {
+        } else if (percent < 25) {
+            percent_color = red_orange;
+        } else if (percent < 50) {
             percent_color = orange;
+        } else if (percent < 75) {
+            percent_color = green_orange;
+        } else {
+            percent_color = green;
         }
 
         std::cout << "VM certainty: " << percent_color << static_cast<std::uint32_t>(VM::percentage()) << "%" << ansi_exit << "\n";
@@ -210,8 +215,11 @@ int main(int argc, char* argv[]) {
         } else if (cmp(arg, "-b") || cmp(arg, "--brand")) {
             std::cout << VM::brand() << "\n";
             return 0;
+        } else if (cmp(arg, "-p") || cmp(arg, "--percent")) {
+            std::cout << VM::percentage() << "\n";
+            return 0;
         } else {
-            std::cerr << "Unknown argument provided, aborting\n";
+            std::cerr << "Unknown argument provided, consult the help menu with --help\n";
             return 1;
         }
     } else if (argc > 2) {
