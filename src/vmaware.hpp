@@ -18,18 +18,18 @@
 
 #if (defined(_MSC_VER) || defined(_WIN32) || defined(_WIN64) || defined(__MINGW32__))
     #define MSVC 1
-#else
-    #define MSVC 0
+    #define LINUX 0
+    #define APPLE 0
 #endif
 #if (defined(__GNUC__) || defined(__linux__))
+    #define MSVC 0
     #define LINUX 1
-#else
-    #define LINUX 0
+    #define APPLE 0
 #endif
 #if (defined(__APPLE__) || defined(__APPLE_CPP__) || defined(__MACH__) || defined(__DARWIN))
+    #define MSVC 0
+    #define LINUX 0
     #define APPLE 1
-#else
-    #define APPLE 0
 #endif
 
 #if (MSVC)
@@ -156,7 +156,7 @@ private:
     using u64 = std::uint64_t;
     using i8  = std::int8_t;
     using i16 = std::int16_t;
-    using i32 = std::int32_t;
+    using int32_t = std::int32_t;
     using i64 = std::int64_t;
 
     // macro for bypassing unused parameter warnings
@@ -346,8 +346,8 @@ private:
         const u32 c_leaf = 0xFF  // dummy value if not set manually
     ) {
         #if (MSVC)
-            i32 x[4];
-            __cpuidex((i32*)x, static_cast<int>(a_leaf), static_cast<int>(c_leaf));
+            int32_t x[4];
+            __cpuidex((int32_t*)x, static_cast<int>(a_leaf), static_cast<int>(c_leaf));
             a = static_cast<u32>(x[0]);
             b = static_cast<u32>(x[1]);
             c = static_cast<u32>(x[2]);
@@ -360,12 +360,12 @@ private:
     // same as above but for array type parameters (MSVC specific)
     static void cpuid
     (
-        i32 x[4],
+        int32_t x[4],
         const u32 a_leaf,
         const u32 c_leaf = 0xFF
     ) {
         #if (MSVC)
-            __cpuidex((i32*)x, static_cast<int>(a_leaf), static_cast<int>(c_leaf));
+            __cpuidex((int32_t*)x, static_cast<int>(a_leaf), static_cast<int>(c_leaf));
         #elif (LINUX)
             __cpuid_count(a_leaf, c_leaf, x[0], x[1], x[2], x[3]);
         #endif
@@ -375,6 +375,10 @@ private:
     static bool cpuid_leaf_supported(const u32 p_leaf) {
         u32 eax, unused = 0;
         cpuid(eax, unused, unused, unused, leaf::func_ext);
+
+        #ifdef __VMAWARE_DEBUG__
+            debug("CPUID function: highest leaf = ", eax);
+        #endif
 
         return (p_leaf <= eax);
     }
@@ -444,16 +448,15 @@ private:
         [[gnu::const]]
     #endif
     static inline bool add(const char* p_brand) noexcept {
-        scoreboard[p_brand]++;
+        scoreboard.at(p_brand)++;
         return true;
     }
 
     // get disk size in GB
-    // TODO: finish the MSVC section
     [[nodiscard]] static u32 get_disk_size() {
         u32 size = 0;
         constexpr u64 GB = (1024 * 1024 * 1024);
-    
+
         #if (LINUX)
             struct statvfs stat;
 
@@ -470,12 +473,11 @@ private:
             ULARGE_INTEGER totalNumberOfBytes;
 
             if (GetDiskFreeSpaceEx(
-                static_cast<LPCSTR>("C:"),                   // Drive or directory path
-                nullptr,                 // Free bytes available to the caller (not needed for total size)
+                static_cast<LPCSTR>("C:"),   // Drive or directory path
+                nullptr,                     // Free bytes available to the caller (not needed for total size)
                 reinterpret_cast<PULARGE_INTEGER>(&totalNumberOfBytes),     // Total number of bytes on the disk
-                nullptr                  // Total number of free bytes on the disk (not needed for total size)
+                nullptr                      // Total number of free bytes on the disk (not needed for total size)
             )) {
-                // Convert bytes to gigabytes (1 GB = 1024^3 bytes)
                 size = static_cast<u32>(totalNumberOfBytes.QuadPart) / GB;
             } else {
                 #ifdef __VMAWARE_DEBUG__
@@ -499,11 +501,11 @@ private:
     }
 
     // get physical RAM size in GB
-    [[nodiscard]] static u64 get_physical_ram_size() {
+    [[nodiscard]] static u64 get_physical_ram_size_gb() {
         #if (LINUX)
             if (!is_root()) {
                 #if __VMAWARE_DEBUG__
-                    debug("private get_physical_ram_size function: ", "not root, returned 0");
+                    debug("private get_physical_ram_size_gb function: ", "not root, returned 0");
                 #endif
                 return 0;
             }
@@ -512,7 +514,7 @@ private:
 
             if (result == nullptr) {
                 #if __VMAWARE_DEBUG__
-                    debug("private get_physical_ram_size function: ", "invalid system result from dmidecode, returned 0");
+                    debug("private get_physical_ram_size_gb function: ", "invalid system result from dmidecode, returned 0");
                 #endif
                 return 0;
             }
@@ -522,7 +524,7 @@ private:
 
             if (!(MB || GB)) {
                 #if __VMAWARE_DEBUG__
-                    debug("private get_physical_ram_size function: ", "neither MB nor GB found, returned 0");
+                    debug("private get_physical_ram_size_gb function: ", "neither MB nor GB found, returned 0");
                 #endif
                 return 0;
             }
@@ -541,7 +543,7 @@ private:
 
             if (number_str.empty()) {
                 #if __VMAWARE_DEBUG__
-                    debug("private get_physical_ram_size function: ", "string is empty, returned 0");
+                    debug("private get_physical_ram_size_gb function: ", "string is empty, returned 0");
                 #endif
                 return 0;
             }
@@ -551,7 +553,7 @@ private:
             number = std::stoull(number_str);
 
             if (MB == true) {
-                number = static_cast<u64>(std::round(number / 1024)); // 1000?
+                number = static_cast<u64>(std::round(number / 1024));
             }
 
             return number; // in GB
@@ -566,7 +568,7 @@ private:
                 return 0;
             }
 
-            return (total_memory_kb / (1024 * 1024)); // 1000?
+            return (total_memory_kb / (1024 * 1024)); // MB
         #else
             return 0;
         #endif
@@ -574,7 +576,7 @@ private:
 
     // get available memory space
     [[nodiscard]] static u64 get_memory_space() {
-        #if (MSVC)        
+        #if (MSVC)
             MEMORYSTATUSEX statex = {0};
             statex.dwLength = sizeof(statex);
             GlobalMemoryStatusEx(&statex); // calls NtQuerySystemInformation
@@ -584,7 +586,7 @@ private:
             const i64 page_size = sysconf(_SC_PAGE_SIZE);
             return (pages * page_size);
         #elif (APPLE)
-            i32 mib[2] = { CTL_HW, HW_MEMSIZE };
+            int32_t mib[2] = { CTL_HW, HW_MEMSIZE };
             u32 namelen = sizeof(mib) / sizeof(mib[0]);
             u64 size = 0;
             std::size_t len = sizeof(size);
@@ -883,7 +885,7 @@ private:
             if (p_flags & FOUND_PERCENT) {
                 local_vm_percent = vm_percent;
             } else {
-                local_vm_percent = percentage();
+                local_vm_percent = percentage(NO_MEMO);
             }
 
             memo_struct tmp = {
@@ -1129,7 +1131,7 @@ private:
             }
 
             std::array<u32, 4> buffer{};
-            constexpr std::size_t buffer_size = sizeof(i32) * buffer.size();
+            constexpr std::size_t buffer_size = sizeof(int32_t) * buffer.size();
             std::array<char, 64> charbuffer{};
 
             constexpr std::array<u32, 3> ids = {{
@@ -1363,7 +1365,7 @@ private:
         #if (!x86)
             return false;
         #else
-            char out[sizeof(i32) * 4 + 1] = { 0 }; // e*x size + number of e*x registers + null terminator
+            char out[sizeof(int32_t) * 4 + 1] = { 0 }; // e*x size + number of e*x registers + null terminator
             cpuid((int*)out, leaf::hypervisor);
 
             #ifdef __VMAWARE_DEBUG__
@@ -1406,7 +1408,7 @@ private:
                 }
                 
                 u64 s, acc = 0;
-                i32 out[4];
+                int32_t out[4];
 
                 for (std::size_t i = 0; i < 100; ++i) {
                     s = __rdtsc();
@@ -1616,19 +1618,12 @@ private:
             #endif
 
             if (is_vm) {
-                scoreboard[VMWARE]++; 
-                scoreboard[VMWARE]++; // extra point bc it's incredibly VMware-specific, also it's not += 2 since that causes a linker error for some reason?
-                return true;
+                return add(VMWARE);
             }
 
             return false;
         #endif
-    }/* catch (...) { 
-        #ifdef __VMAWARE_DEBUG__
-            debug("VMWARE_PORT: catched error, returned false");
-        #endif
-        return false;
-    }*/
+    }
 
 
     /**
@@ -1669,9 +1664,9 @@ private:
             struct ifreq ifr;
             struct ifconf ifc;
             char buf[1024];
-            i32 success = 0;
+            int32_t success = 0;
 
-            i32 sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
+            int32_t sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
 
             if (sock == -1) { 
                 return false;
@@ -1744,12 +1739,12 @@ private:
         #ifdef __VMAWARE_DEBUG__
             std::stringstream ss;
             ss << std::setw(2) << std::setfill('0') << std::hex
-            << static_cast<i32>(mac[0]) << ":"
-            << static_cast<i32>(mac[1]) << ":"
-            << static_cast<i32>(mac[2]) << ":"
-            << static_cast<i32>(mac[3]) << ":"
-            << static_cast<i32>(mac[4]) << ":"
-            << static_cast<i32>(mac[5]);
+            << static_cast<int32_t>(mac[0]) << ":"
+            << static_cast<int32_t>(mac[1]) << ":"
+            << static_cast<int32_t>(mac[2]) << ":"
+            << static_cast<int32_t>(mac[3]) << ":"
+            << static_cast<int32_t>(mac[4]) << ":"
+            << static_cast<int32_t>(mac[5]);
             debug("MAC: ", ss.str());
         #endif
         
@@ -2722,7 +2717,7 @@ private:
         }
 
         const u32 disk = get_disk_size();
-        const u64 ram = get_physical_ram_size();
+        const u64 ram = get_physical_ram_size_gb();
 
         #ifdef __VMAWARE_DEBUG__
             debug("VBOX_DEFAULT: disk = ", disk);
@@ -2860,7 +2855,7 @@ private:
             u32 pnsize = 0x1000;
             char* provider = new char[pnsize];
 
-            i32 retv = WNetGetProviderName(WNNC_NET_RDR2SAMPLE, provider, &pnsize);
+            int32_t retv = WNetGetProviderName(WNNC_NET_RDR2SAMPLE, provider, &pnsize);
     
             if (retv == NO_ERROR) {
                 return (lstrcmpi(provider, "VirtualBox Shared Folders") == 0);
@@ -4485,7 +4480,7 @@ public:
      * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmcheck
      */
     [[nodiscard]] static bool check(const u64 p_flags = 0ULL) {
-        i32 count = 0;
+        int32_t count = 0;
 
         #if (CPP >= 20 && !MSVC)
             count = std::popcount(p_flags);
@@ -4597,15 +4592,24 @@ public:
                     max = it->second;
                 }
             }
-
+            
             if (max == 0) {
                 current_brand = "Unknown";
             } 
         #endif
 
+        // goofy ass C++11 and C++14 linker error workaround
+        #if (CPP <= 14)
+            constexpr const char* TMP_QEMU = "QEMU";
+            constexpr const char* TMP_KVM = "KVM";
+        #else
+            constexpr const char* TMP_QEMU = VM::QEMU;
+            constexpr const char* TMP_KVM = VM::KVM;
+        #endif
+
         if (
-            (scoreboard[QEMU] > 0) &&
-            (scoreboard[KVM] > 0)
+            (scoreboard.at(TMP_QEMU) > 0) &&
+            (scoreboard.at(TMP_KVM) > 0)
         ) {
             current_brand = "QEMU/KVM";
         }
@@ -4637,11 +4641,6 @@ public:
     static bool detect(const u64 p_flags = DEFAULT) {
         VM::flags = p_flags;
 
-        /**
-         * load memoized value if it exists from a previous
-         * execution of VM::detect(). This can save around
-         * 5~10x speed depending on the circumstances.
-         */
         if (memo::is_memoized()) {
             #ifdef __VMAWARE_DEBUG__
                 debug("memoization: returned cached result in detect()");
@@ -4649,25 +4648,17 @@ public:
             return (memo::get_vm());
         }
 
-        u16 points = 0;
-
         #ifdef __VMAWARE_DEBUG__
             debug("cpuid: is supported? : ", VM::cpuid_supported);
         #endif
 
-        for (auto it = table.cbegin(); it != table.cend(); ++it) {
-            const technique &pair = it->second;
-            if (pair.ptr()) { // equivalent to std::invoke, not used bc of C++11 compatibility
-                points += pair.points;
-            }
-        }
-
         bool result = false;
+        u8 p = percentage(p_flags);
 
         if (enabled(EXTREME)) {
-            result = (points > 0);
+            result = (p > 0);
         } else {
-            result = (points >= 100);
+            result = (p == 100);
         }
 
         if (disabled(NO_MEMO)) {
@@ -4705,7 +4696,7 @@ public:
         }
 
         u8 percent = 0;
-
+        
         if (points > 100) {
             percent = 100;
         } else {
@@ -4772,7 +4763,7 @@ bool VM::cpuid_supported = []() -> bool {
     )
         return false;
     #elif (MSVC)
-        i32 info[4];
+        int32_t info[4];
         __cpuid(info, 0);
         return (info[0] > 0);
     #elif (LINUX)
