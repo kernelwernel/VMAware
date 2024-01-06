@@ -822,18 +822,20 @@
                 std::string get_brand;
                 u8 get_percent;
                 bool get_vm;
-
+        
+                // Default constructor
+                memo_struct() : get_percent(0), get_vm(false) {}
+        
                 // Constructor to initialize the members
                 memo_struct(const std::string& brand, u8 percent, bool is_vm)
                     : get_brand(brand), get_percent(percent), get_vm(is_vm) {}
             };
             MSVC_ENABLE_WARNING(4820)
-
-
+        
         public:
             // memoize the value from VM::detect() in case it's ran again
             static std::map<bool, memo_struct> cache;
-
+        
             // easier way to check if the result is memoized
             [[nodiscard]] static inline bool is_memoized() noexcept {
                 return (
@@ -841,67 +843,45 @@
                     cache.find(true) != cache.end()
                     );
             }
-
+        
             // get vm bool
             static bool get_vm() {
                 memo_struct& tmp = cache[true];
-                return (tmp.get_vm);
+                return tmp.get_vm;
             }
-
+        
             // get vm brand
             static std::string get_brand() {
                 memo_struct& tmp = cache[true];
-                return (tmp.get_brand);
+                return tmp.get_brand;
             }
-
+        
             // get vm percentage
             static u8 get_percent() {
                 memo_struct& tmp = cache[true];
-                return (tmp.get_percent);
+                return tmp.get_percent;
             }
-
+        
             static constexpr u8
                 FOUND_VM = 1,
                 FOUND_BRAND = 2,
                 FOUND_PERCENT = 3;
-
+        
             static constexpr bool UNUSED_VM = false;
             static constexpr const char* UNUSED_BRAND = "";
             static constexpr u8 UNUSED_PERCENT = 0;
-
-            static void memoize(const u8 p_flags, const bool is_vm, const std::string vm_brand, const u8 vm_percent) {
+        
+            static void memoize(const u8 p_flags, const bool is_vm, const std::string& vm_brand, const u8 vm_percent) {
                 if (cache.find(true) != cache.end()) {
                     return;
                 }
-
+        
                 // default values
-                bool local_is_vm = false;
-                std::string local_vm_brand = "Unknown";
-                u8 local_vm_percent = 0;
-
-                if (p_flags & FOUND_VM) {
-                    local_is_vm = is_vm;
-                }
-                else {
-                    local_is_vm = detect(NO_MEMO);
-                }
-
-                if (p_flags & FOUND_BRAND) {
-                    local_vm_brand = vm_brand;
-                }
-                else {
-                    local_vm_brand = brand(NO_MEMO);
-                }
-
-                if (p_flags & FOUND_PERCENT) {
-                    local_vm_percent = vm_percent;
-                }
-                else {
-                    local_vm_percent = percentage(NO_MEMO);
-                }
-
+                bool local_is_vm = (p_flags & FOUND_VM) ? is_vm : detect(NO_MEMO);
+                std::string local_vm_brand = (p_flags & FOUND_BRAND) ? vm_brand : brand(NO_MEMO);
+                u8 local_vm_percent = (p_flags & FOUND_PERCENT) ? vm_percent : percentage(NO_MEMO);
+        
                 memo_struct tmp(local_vm_brand, local_vm_percent, local_is_vm);
-
                 cache[true] = tmp;
             }
         };
