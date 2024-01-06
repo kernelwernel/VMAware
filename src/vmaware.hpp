@@ -473,7 +473,7 @@
 #elif (MSVC)
             ULARGE_INTEGER totalNumberOfBytes;
 
-            if (GetDiskFreeSpaceEx(
+            if (GetDiskFreeSpaceExW(
                 L"C:",                      // Drive or directory path (use wide character string)
                 nullptr,                    // Free bytes available to the caller (not needed for total size)
                 reinterpret_cast<PULARGE_INTEGER>(&totalNumberOfBytes),  // Total number of bytes on the disk
@@ -822,20 +822,20 @@
                 std::string get_brand;
                 u8 get_percent;
                 bool get_vm;
-        
+
                 // Default constructor
                 memo_struct() : get_percent(0), get_vm(false) {}
-        
+
                 // Constructor to initialize the members
                 memo_struct(const std::string& brand, u8 percent, bool is_vm)
                     : get_brand(brand), get_percent(percent), get_vm(is_vm) {}
             };
             MSVC_ENABLE_WARNING(4820)
-        
+
         public:
             // memoize the value from VM::detect() in case it's ran again
             static std::map<bool, memo_struct> cache;
-        
+
             // easier way to check if the result is memoized
             [[nodiscard]] static inline bool is_memoized() noexcept {
                 return (
@@ -843,48 +843,50 @@
                     cache.find(true) != cache.end()
                     );
             }
-        
+
             // get vm bool
             static bool get_vm() {
                 memo_struct& tmp = cache[true];
                 return tmp.get_vm;
             }
-        
+
             // get vm brand
             static std::string get_brand() {
                 memo_struct& tmp = cache[true];
                 return tmp.get_brand;
             }
-        
+
             // get vm percentage
             static u8 get_percent() {
                 memo_struct& tmp = cache[true];
                 return tmp.get_percent;
             }
-        
+
             static constexpr u8
                 FOUND_VM = 1,
                 FOUND_BRAND = 2,
                 FOUND_PERCENT = 3;
-        
+
             static constexpr bool UNUSED_VM = false;
             static constexpr const char* UNUSED_BRAND = "";
             static constexpr u8 UNUSED_PERCENT = 0;
-        
+
             static void memoize(const u8 p_flags, const bool is_vm, const std::string& vm_brand, const u8 vm_percent) {
                 if (cache.find(true) != cache.end()) {
                     return;
                 }
-        
+
                 // default values
                 bool local_is_vm = (p_flags & FOUND_VM) ? is_vm : detect(NO_MEMO);
                 std::string local_vm_brand = (p_flags & FOUND_BRAND) ? vm_brand : brand(NO_MEMO);
                 u8 local_vm_percent = (p_flags & FOUND_PERCENT) ? vm_percent : percentage(NO_MEMO);
-        
+
                 memo_struct tmp(local_vm_brand, local_vm_percent, local_is_vm);
                 cache[true] = tmp;
             }
         };
+
+
 
 
         // cpuid check value
@@ -2816,7 +2818,7 @@ return false;
             }
 #elif (MSVC)
             double ret = 0.0;
-            NTSTATUS(WINAPI* RtlGetVersion)(LPOSVERSIONINFOEXW) = nullptr;
+            NTSTATUS(WINAPI * RtlGetVersion)(LPOSVERSIONINFOEXW) = nullptr;
             OSVERSIONINFOEXW osInfo{};
 
             HMODULE ntdllModule = GetModuleHandleA("ntdll");
@@ -3034,7 +3036,7 @@ return false;
 #if (!MSVC)
             return false;
 #else
-            auto check_proc = [](const wchar_t* proc) -> bool {
+            auto check_proc = [](const WCHAR* proc) -> bool {
                 HANDLE hSnapshot;
                 PROCESSENTRY32 pe = {};
 
@@ -4082,7 +4084,7 @@ return false;
             constexpr const wchar_t* registryPath = L"SYSTEM\\CurrentControlSet\\Services\\WinSock2\\Parameters\\Protocol_Catalog9\\Catalog_Entries";
 
             HKEY hKey;
-            LONG result = RegOpenKeyEx(HKEY_LOCAL_MACHINE, registryPath, 0, KEY_READ, &hKey);
+            LONG result = RegOpenKeyExW(HKEY_LOCAL_MACHINE, registryPath, 0, KEY_READ, &hKey);
 
             if (result != ERROR_SUCCESS) {
 #ifdef __VMAWARE_DEBUG__
@@ -4097,16 +4099,16 @@ return false;
             wchar_t subkeyName[256];
             DWORD subkeyNameSize = sizeof(subkeyName) / sizeof(subkeyName[0]);
 
-            while (RegEnumKeyEx(hKey, index++, subkeyName, &subkeyNameSize, NULL, NULL, NULL, NULL) == ERROR_SUCCESS) {
+            while (RegEnumKeyExW(hKey, index++, subkeyName, &subkeyNameSize, NULL, NULL, NULL, NULL) == ERROR_SUCCESS) {
                 HKEY subkey;
-                result = RegOpenKeyEx(hKey, subkeyName, 0, KEY_READ, &subkey);
+                result = RegOpenKeyExW(hKey, subkeyName, 0, KEY_READ, &subkey);
 
                 if (result == ERROR_SUCCESS) {
                     wchar_t protocolName[256]{};
                     DWORD dataSize = sizeof(protocolName);
 
                     // Check if the "ProtocolName" value exists
-                    result = RegQueryValueEx(subkey, L"ProtocolName", NULL, NULL, reinterpret_cast<LPBYTE>(protocolName), &dataSize);
+                    result = RegQueryValueExW(subkey, L"ProtocolName", NULL, NULL, reinterpret_cast<LPBYTE>(protocolName), &dataSize);
 
                     if (result == ERROR_SUCCESS) {
                         if (wcscmp(protocolName, L"Hyper-V RAW") == 0) {
@@ -4149,34 +4151,34 @@ return false;
 #if (!MSVC)
             return false;
 #else
-            unsigned long pnsize = 0x1000;
-            wchar_t* provider = static_cast<wchar_t*>(LocalAlloc(LMEM_ZEROINIT, pnsize));
+            DWORD pnsize = 0;  // Initialize to 0 to query the required size
+            wchar_t* provider = nullptr;
 
-            if (provider != nullptr) {
-                unsigned int retv = WNetGetProviderName(WNNC_NET_RDR2SAMPLE, provider, &pnsize);
+            // Query the required size
+            DWORD retv = WNetGetProviderNameW(WNNC_NET_RDR2SAMPLE, nullptr, &pnsize);
 
-                if (retv == ERROR_MORE_DATA) {
+            if (retv == ERROR_MORE_DATA) {
+                // Allocate a buffer of the required size
+                provider = static_cast<wchar_t*>(LocalAlloc(LMEM_ZEROINIT, pnsize));
+
+                if (provider != nullptr) {
+                    // Retrieve the actual data
+                    retv = WNetGetProviderNameW(WNNC_NET_RDR2SAMPLE, provider, &pnsize);
+                }
+            }
+
+            if (retv == NO_ERROR && provider != nullptr) {
+                if (lstrcmpiW(provider, L"VirtualBox Shared Folders") == 0) {
                     LocalFree(provider);
-                    provider = static_cast<wchar_t*>(LocalAlloc(LMEM_ZEROINIT, pnsize));
-
-                    if (provider != nullptr) {
-                        retv = WNetGetProviderName(WNNC_NET_RDR2SAMPLE, provider, &pnsize);
-                    }
-                    else {
-                    }
+                    return add(VBOX);
                 }
+            }
 
-                if (retv == NO_ERROR) {
-                    if (lstrcmpiW(provider, L"VirtualBox Shared Folders") == 0) {
-                        LocalFree(provider);
-                        return add(VBOX);
-                    }
-                }
-
-                LocalFree(provider);
-                }
+            // Clean up the allocated buffer
+            LocalFree(provider);
 
             return false;
+
 #endif
         }
         catch (...) {
