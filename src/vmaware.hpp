@@ -3537,7 +3537,7 @@ return false;
 
         for (std::size_t i = 0; i < 10; i++) {
             tsc1 = __rdtsc();
-            cpuid(cpuInfo, 0);
+            cpuid(reg, 0);
             tsc2 = __rdtsc();
             avg += (tsc2 - tsc1);
         }
