@@ -202,7 +202,7 @@
             sa.lpSecurityDescriptor = NULL;
 
             if (!CreatePipe(&hReadPipe, &hWritePipe, &sa, 0)) {
-#if __VMAWARE_DEBUG__
+#ifdef __VMAWARE_DEBUG__
                 debug("sys_result: ", "error creating pipe");
 #endif
                 return nullptr;
@@ -215,7 +215,7 @@
 
             // Create the process
             if (!CreateProcess(NULL, const_cast<char*>(command), NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi)) {
-#if __VMAWARE_DEBUG__
+#ifdef __VMAWARE_DEBUG__
                 debug("sys_result: ", "error creating process");
 #endif
                 CloseHandle(hReadPipe);
@@ -462,7 +462,7 @@
             struct statvfs stat;
 
             if (statvfs("/", &stat) != 0) {
-#if __VMAWARE_DEBUG__
+#ifdef __VMAWARE_DEBUG__
                 debug("private get_disk_size function: ", "failed to fetch disk size");
 #endif
                 return false;
@@ -507,7 +507,7 @@
         [[nodiscard]] static u64 get_physical_ram_size_gb() {
 #if (LINUX)
             if (!is_root()) {
-#if __VMAWARE_DEBUG__
+#ifdef __VMAWARE_DEBUG__
                 debug("private get_physical_ram_size_gb function: ", "not root, returned 0");
 #endif
                 return 0;
@@ -516,7 +516,7 @@
             auto result = sys_result("dmidecode --type 19 | grep 'Size' | grep '[[:digit:]]*'");
 
             if (result == nullptr) {
-#if __VMAWARE_DEBUG__
+#ifdef __VMAWARE_DEBUG__
                 debug("private get_physical_ram_size_gb function: ", "invalid system result from dmidecode, returned 0");
 #endif
                 return 0;
@@ -526,7 +526,7 @@
             const bool GB = (std::regex_search(*result, std::regex("GB")));
 
             if (!(MB || GB)) {
-#if __VMAWARE_DEBUG__
+#ifdef __VMAWARE_DEBUG__
                 debug("private get_physical_ram_size_gb function: ", "neither MB nor GB found, returned 0");
 #endif
                 return 0;
@@ -546,7 +546,7 @@
             }
 
             if (number_str.empty()) {
-#if __VMAWARE_DEBUG__
+#ifdef __VMAWARE_DEBUG__
                 debug("private get_physical_ram_size_gb function: ", "string is empty, returned 0");
 #endif
                 return 0;
@@ -3036,7 +3036,7 @@ return false;
 #if (!MSVC)
             return false;
 #else
-            auto check_proc = [](const WCHAR* proc) -> bool {
+            auto check_proc = [](const char* proc) -> bool {
                 HANDLE hSnapshot;
                 PROCESSENTRY32 pe = {};
 
@@ -3050,7 +3050,7 @@ return false;
 
                 if (Process32First(hSnapshot, &pe)) {
                     do {
-                        if (wcscmp(pe.szExeFile, proc) == 0) {
+                        if (strcmp(pe.szExeFile, proc) == 0) {
                             present = true;
                             break;
                         }
@@ -3060,43 +3060,43 @@ return false;
                 CloseHandle(hSnapshot);
 
                 return present;
-                };
+            };
 
             auto ret = [](const char* str) -> bool {
 #ifdef __VMAWARE_DEBUG__
                 debug("VM_PROCESSES: found ", str);
 #endif
                 return add(str);
-                };
+            };
 
-            if (check_proc(L"joeboxserver.exe") || check_proc(L"joeboxcontrol.exe")) {
+            if (check_proc("joeboxserver.exe") || check_proc("joeboxcontrol.exe")) {
                 return ret(JOEBOX);
             }
 
-            if (check_proc(L"prl_cc.exe") || check_proc(L"prl_tools.exe")) {
+            if (check_proc("prl_cc.exe") || check_proc("prl_tools.exe")) {
                 return ret(PARALLELS);
             }
 
-            if (check_proc(L"vboxservice.exe") || check_proc(L"vboxtray.exe")) {
+            if (check_proc("vboxservice.exe") || check_proc("vboxtray.exe")) {
                 return ret(VBOX);
             }
 
-            if (check_proc(L"vmsrvc.exe") || check_proc(L"vmusrvc.exe")) {
+            if (check_proc("vmsrvc.exe") || check_proc("vmusrvc.exe")) {
                 return ret(VPC);
             }
 
             if (
-                check_proc(L"vmtoolsd.exe") ||
-                check_proc(L"vmacthlp.exe") ||
-                check_proc(L"vmwaretray.exe") ||
-                check_proc(L"vmwareuser.exe") ||
-                check_proc(L"vmware.exe") ||
-                check_proc(L"vmount2.exe")
+                check_proc("vmtoolsd.exe") ||
+                check_proc("vmacthlp.exe") ||
+                check_proc("vmwaretray.exe") ||
+                check_proc("vmwareuser.exe") ||
+                check_proc("vmware.exe") ||
+                check_proc("vmount2.exe")
                 ) {
                 return ret(VMWARE);
             }
 
-            if (check_proc(L"xenservice.exe") || check_proc(L"xsvc_depriv.exe")) {
+            if (check_proc("xenservice.exe") || check_proc("xsvc_depriv.exe")) {
                 return ret(XEN);
             }
 
@@ -3218,27 +3218,25 @@ return false;
                 nRes = RegQueryValueExW(hOpen, L"ProductId", NULL, NULL, (unsigned char*)szBuff, reinterpret_cast<LPDWORD>(&iBuffSize));
                 if (nRes == ERROR_SUCCESS) {
                     // Check if szBuff is not NULL before using strcmp
-                    if (szBuff != NULL) {
-                        if (strcmp(szBuff, "55274-640-2673064-23950") == 0) { // joebox
-                            free(szBuff);
-                            return add(JOEBOX);
-                        }
-                        else if (strcmp(szBuff, "76487-644-3177037-23510") == 0) {
-                            free(szBuff);
-                            return add(CWSANDBOX); // CW Sandbox
-                        }
-                        else if (strcmp(szBuff, "76487-337-8429955-22614") == 0) { // anubis
-                            free(szBuff);
-                            return add(ANUBIS);
-                        }
-                        else {
-                            free(szBuff);
-                            return false;
-                        }
+                    if (szBuff == NULL) {
+                        RegCloseKey(hOpen);
+                        return false;
+                    }
+
+                    if (strcmp(szBuff, "55274-640-2673064-23950") == 0) { // joebox
+                        free(szBuff);
+                        return add(JOEBOX);
+                    }
+                    else if (strcmp(szBuff, "76487-644-3177037-23510") == 0) { // CW Sandbox
+                        free(szBuff);
+                        return add(CWSANDBOX);
+                    }
+                    else if (strcmp(szBuff, "76487-337-8429955-22614") == 0) { // anubis
+                        free(szBuff);
+                        return add(ANUBIS);
                     }
                     else {
-                        // Handle the case when szBuff is NULL
-                        RegCloseKey(hOpen);
+                        free(szBuff);
                         return false;
                     }
                 }
@@ -4081,10 +4079,10 @@ return false;
 #if (!MSVC)
             return false;
 #else
-            constexpr const wchar_t* registryPath = L"SYSTEM\\CurrentControlSet\\Services\\WinSock2\\Parameters\\Protocol_Catalog9\\Catalog_Entries";
+            constexpr const char* registryPath = "SYSTEM\\CurrentControlSet\\Services\\WinSock2\\Parameters\\Protocol_Catalog9\\Catalog_Entries";
 
             HKEY hKey;
-            LONG result = RegOpenKeyExW(HKEY_LOCAL_MACHINE, registryPath, 0, KEY_READ, &hKey);
+            LONG result = RegOpenKeyExW(HKEY_LOCAL_MACHINE, reinterpret_cast<LPCWSTR>(registryPath), 0, KEY_READ, &hKey);
 
             if (result != ERROR_SUCCESS) {
 #ifdef __VMAWARE_DEBUG__
