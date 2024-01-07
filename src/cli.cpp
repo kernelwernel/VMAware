@@ -109,7 +109,7 @@ int main(int argc, char* argv[]) {
         checker(VM::VMID_0X4, "0x4 leaf of VMID");
         checker(VM::VPC_BACKDOOR, "VPC backdoor");
         checker(VM::PARALLELS_VM, "Parallels techniques");
-        checker(VM::SPEC_RDTSC, "speculative RDTSC");
+        checker(VM::RDTSC_VMEXIT, "RDTSC VMEXIT");
         checker(VM::LOADED_DLLS, "loaded DLLs");
         checker(VM::QEMU_BRAND, "QEMU CPU brand");
         checker(VM::BOCHS_CPU, "BOCHS CPU techniques");
