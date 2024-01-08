@@ -12,7 +12,7 @@
 
 ## `VM::detect()`
 
-This is basically the main function you're looking for, which returns a bool. If the parameter is set to nothing, all the <ins>recommended</ins> checks will be performed. But you can optionally set what techniques are used.
+This is basically the main function you're looking for, which returns a bool. If the parameter is set to nothing, all the recommended checks will be performed. But you can optionally set what techniques are used.
 
 ```cpp
 #include "vmaware.hpp"
@@ -62,6 +62,13 @@ int main() {
      * not recommended for obvious reasons.
      */ 
     bool is_vm5 = VM::detect(VM::EXTREME);
+
+
+    /**
+     * This will essentially mean "perform all the default flags, but only disable
+     * the VM::RDTSC technique". 
+     */ 
+    bool is_vm6 = VM::detect(VM::DEFAULT & ~(VM::RDTSC));
 }
 ```
 
@@ -136,7 +143,7 @@ int main() {
     }
 
     // invalid, will throw an std::invalid_argument exception
-    bool result = VM::check(VM::VMID | VM::HYPERVISOR_BIT;
+    bool result = VM::check(VM::VMID | VM::HYPERVISOR_BIT);
 }
 ```
 
@@ -244,3 +251,4 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::ALL` | This will enable all the technique flags, including the cursor check that's disabled by default. |
 | `VM::NO_MEMO` | This will disable memoization, meaning the result will not be fetched through a previous computation of the VM::detect() function. Use this if you're only using a single function from the `VM` struct for a performance boost.
 | `VM::EXTREME` | This will disregard the weights/biases and its scoring system. It will essentially treat any technique that found a hit as a VM detection no matter how low that technique's certainty is, so if a single technique is positive then it will return true. | 
+| `VM::DEFAULT` | This represents a range of flags which are enabled if no default argument is provided. The reason why this exists is to easily disable any bitwise
