@@ -63,8 +63,14 @@
 #define CPP 11
 #else
 #define CPP 0
+#define CPP 0
 #endif
 #if (MSVC)
+#if (_M_IX86)
+#define x86 1
+#else
+#define x86 0
+#endif
 #if (_M_IX86)
 #define x86 1
 #else
@@ -114,7 +120,7 @@
 
 #pragma comment(lib, "wbemuuid.lib")
 #pragma comment(lib, "iphlpapi.lib")
-#pragma comment(lib, "MPR")
+#pragma comment(lib,"MPR")
 #elif (LINUX)
 #include <cpuid.h>
 #include <x86intrin.h>
@@ -372,37 +378,40 @@ private:
 #endif
     };
 
-    // check for maximum function leaf
-    static bool cpuid_leaf_supported(const u32 p_leaf) {
-        u32 eax, unused = 0;
-        cpuid(eax, unused, unused, unused, leaf::func_ext);
+        // check for maximum function leaf
+        static bool cpuid_leaf_supported(const u32 p_leaf) {
+            u32 eax, unused = 0;
+            cpuid(eax, unused, unused, unused, leaf::func_ext);
 
+#ifdef __VMAWARE_DEBUG__
+            debug("CPUID function: highest leaf = ", eax);
+#endif
 #ifdef __VMAWARE_DEBUG__
         debug("CPUID function: highest leaf = ", eax);
 #endif
 
-        return (p_leaf <= eax);
-    }
+            return (p_leaf <= eax);
+        }
 
-    // check AMD
-    [[nodiscard]] static bool is_amd() {
-        constexpr u32 amd_ecx = 0x69746e65;
+        // check AMD
+        [[nodiscard]] static bool is_amd() {
+            constexpr u32 amd_ecx = 0x69746e65;
 
-        u32 unused, ecx = 0;
-        cpuid(unused, unused, ecx, unused, 0);
+            u32 unused, ecx = 0;
+            cpuid(unused, unused, ecx, unused, 0);
 
-        return (ecx == amd_ecx);
-    }
+            return (ecx == amd_ecx);
+        }
 
-    // check Intel
-    [[nodiscard]] static bool is_intel() {
-        constexpr u32 intel_ecx = 0x6c65746e;
+        // check Intel
+        [[nodiscard]] static bool is_intel() {
+            constexpr u32 intel_ecx = 0x6c65746e;
 
-        u32 unused, ecx = 0;
-        cpuid(unused, unused, ecx, unused, 0);
+            u32 unused, ecx = 0;
+            cpuid(unused, unused, ecx, unused, 0);
 
-        return (ecx == intel_ecx);
-    }
+            return (ecx == intel_ecx);
+        }
 
     // self-explanatory
     [[nodiscard]] static bool is_root() noexcept {
@@ -493,15 +502,15 @@ private:
             return false;
         }
 
-        // round to the nearest factor of 10
-        const u32 result = static_cast<u32>(std::round((size / 10.0) * 10));
+            // round to the nearest factor of 10
+            const u32 result = static_cast<u32>(std::round((size / 10.0) * 10));
 
 #ifdef __VMAWARE_DEBUG__
         debug("private get_disk_size function: ", "disk size = ", result, "GB");
 #endif
 
-        return result;
-    }
+            return result;
+        }
 
     // get physical RAM size in GB
     [[nodiscard]] static u64 get_physical_ram_size_gb() {
@@ -605,9 +614,9 @@ private:
 
 #if (MSVC)
     /**
-        * @link: https://codereview.stackexchange.com/questions/249034/systeminfo-a-c-class-to-retrieve-system-management-data-from-the-bios
-        * @author: arcomber
-        */
+     * @link: https://codereview.stackexchange.com/questions/249034/systeminfo-a-c-class-to-retrieve-system-management-data-from-the-bios
+     * @author: arcomber
+     */
     class Systeminfo {
     private:
 #pragma pack(push) 
@@ -665,7 +674,7 @@ private:
 
         // retrieve the BIOS data block from the system
         MSVC_DISABLE_WARNING(5045)
-            SMBIOSData* get_bios_data() {
+        SMBIOSData* get_bios_data() {
             SMBIOSData* bios_data = nullptr;
 
             // GetSystemFirmwareTable with arg RSMB retrieves raw SMBIOS firmware table
@@ -691,15 +700,14 @@ private:
         MSVC_ENABLE_WARNING(5045)
 
 
-            // locates system information memory block in BIOS table
-            SYSTEMINFORMATION* find_system_information(SMBIOSData* bios_data) {
-
+        // locates system information memory block in BIOS table
+        SYSTEMINFORMATION* find_system_information(SMBIOSData* bios_data) {
             uint8_t* data = bios_data->SMBIOSTableData;
 
             while (data < bios_data->SMBIOSTableData + bios_data->Length)
             {
-                uint8_t* next;
-                SMBIOSHEADER* header = (SMBIOSHEADER*)data;
+                uint8_t *next;
+                SMBIOSHEADER *header = (SMBIOSHEADER*)data;
 
                 if (header->length < 4)
                     break;
@@ -818,13 +826,13 @@ private:
     private:
         // memoization structure
         MSVC_DISABLE_WARNING(4820)
-            struct memo_struct {
+        struct memo_struct {
             std::string get_brand;
             u8 get_percent;
             bool get_vm;
 
             // Default constructor
-            memo_struct() : get_percent(0), get_vm(false) {}
+            memo_struct() : get_brand("Unknown"), get_percent(0), get_vm(false) {}
 
             // Constructor to initialize the members
             memo_struct(const std::string& brand, u8 percent, bool is_vm)
@@ -841,7 +849,7 @@ private:
             return (
                 disabled(NO_MEMO) && \
                 cache.find(true) != cache.end()
-                );
+            );
         }
 
         // get vm bool
@@ -862,14 +870,14 @@ private:
             return tmp.get_percent;
         }
 
-        static constexpr u8
-            FOUND_VM = 1,
-            FOUND_BRAND = 2,
-            FOUND_PERCENT = 3;
+            static constexpr u8
+                FOUND_VM = 1,
+                FOUND_BRAND = 2,
+                FOUND_PERCENT = 3;
 
-        static constexpr bool UNUSED_VM = false;
-        static constexpr const char* UNUSED_BRAND = "";
-        static constexpr u8 UNUSED_PERCENT = 0;
+            static constexpr bool UNUSED_VM = false;
+            static constexpr const char* UNUSED_BRAND = "";
+            static constexpr u8 UNUSED_PERCENT = 0;
 
         static void memoize(const u8 p_flags, const bool is_vm, const std::string& vm_brand, const u8 vm_percent) {
             if (cache.find(true) != cache.end()) {
@@ -889,24 +897,24 @@ private:
 
 
 
-    // cpuid check value
-    static bool cpuid_supported;
+        // cpuid check value
+        static bool cpuid_supported;
 
-    // flags
-    static u64 flags;
+        // flags
+        static u64 flags;
 
     /**
-        * assert if the flag is enabled, far better expression than typing this:
-        * if (!(flags & VMID)) {
-        *    return false;
-        * }
-        *
-        * compared to this:
-        *
-        * if (disabled(VMID)) {
-        *    return false;
-        * }
-        */
+     * assert if the flag is enabled, far better expression than typing this:
+     * if (!(flags & VMID)) {
+     *    return false;
+     * }
+     *
+     * compared to this:
+     *
+     * if (disabled(VMID)) {
+     *    return false;
+     * }
+     */
 #if (LINUX && __has_cpp_attribute(gnu::pure))
     [[gnu::pure]]
 #endif
@@ -922,10 +930,10 @@ private:
         return (flags & p_flag);
     }
 
-public:
-    VM() = delete; // Delete default constructor
-    VM(const VM&) = delete; // Delete copy constructor
-    VM(VM&&) = delete; // Delete move constructor
+    public:
+        VM() = delete; // Delete default constructor
+        VM(const VM&) = delete; // Delete copy constructor
+        VM(VM&&) = delete; // Delete move constructor
 
     static constexpr u64
         VMID = 1 << 0,
@@ -1026,86 +1034,86 @@ private:
 
 #if (CPP >= 17)
         constexpr std::array<std::string_view, 13> IDs{
-    #else
+#else
         std::array<std::string, 13> IDs {
-    #endif
-        bhyve, kvm, qemu,
-        hyperv, parallels, parallels,
-        parallels2, vmware, vbox,
-        xen, acrn, qnx,
-        virtapple
-    };
+#endif
+            bhyve, kvm, qemu,
+            hyperv, parallels, parallels,
+            parallels2, vmware, vbox,
+            xen, acrn, qnx,
+            virtapple
+        };
 
-    auto cpuid_thingy = [](const u32 p_leaf, u32* regs, std::size_t start = 0, std::size_t end = 4) -> bool {
-        u32 x[4]{};
-        cpuid(x[0], x[1], x[2], x[3], p_leaf);
+        auto cpuid_thingy = [](const u32 p_leaf, u32* regs, std::size_t start = 0, std::size_t end = 4) -> bool {
+            u32 x[4]{};
+            cpuid(x[0], x[1], x[2], x[3], p_leaf);
 
-        for (; start < end; start++) {
-            *regs++ = x[start];
+            for (; start < end; start++) { 
+                *regs++ = x[start];
+            }
+
+            return true;
+        };
+
+        std::string brand = "";
+        u32 sig_reg[3] = {0};
+
+        if (!cpuid_thingy(p_leaf, sig_reg, 1)) {
+            return false;
         }
 
-        return true;
-    };
+        auto strconvert = [](u64 n) -> std::string {
+            const std::string& str(reinterpret_cast<char*>(&n));
+            return str;
+        };
 
-    std::string brand = "";
-    u32 sig_reg[3] = {0};
+        std::stringstream ss;
+        ss << strconvert(sig_reg[0]);
+        ss << strconvert(sig_reg[2]);
+        ss << strconvert(sig_reg[1]);
 
-    if (!cpuid_thingy(p_leaf, sig_reg, 1)) {
+        brand = ss.str();
+
+#ifdef __VMAWARE_DEBUG__
+        debug(technique_name, brand);
+#else
+#if (CPP < 17)
+        // bypass compiler warning about unused parameter, ignore this
+        UNUSED(technique_name);
+#endif
+#endif
+
+        const bool found = (std::find(std::begin(IDs), std::end(IDs), brand) != std::end(IDs));
+
+        if (found) {
+            if (brand == qemu) { return add(QEMU); }
+            if (brand == vmware) { return add(VMWARE); }
+            if (brand == vbox) { return add(VBOX); }
+            if (brand == bhyve) { return add(BHYVE); }
+            if (brand == kvm) { return add(KVM); }
+            if (brand == hyperv) { return add(HYPERV); }
+            if (brand == xta) { return add(MSXTA); }
+            if (brand == parallels) { return add(PARALLELS); }
+            if (brand == parallels2) { return add(PARALLELS); }
+            if (brand == xen) { return add(XEN); }
+            if (brand == acrn) { return add(ACRN); }
+            if (brand == qnx) { return add(QNX); }
+            if (brand == virtapple) { return add(VAPPLE); }
+        }
+
+        /**
+         * This is added because there are inconsist string 
+         * values for KVM's manufacturer ID. For example, 
+         * it gives as "KVMKMVMKV" when I run it under QEMU
+         * but the Wikipedia article on CPUID says it's 
+         * "KVMKVMKVM\0\0\0", like wtf????
+         */
+        if (brand.find("KVM") != std::string::npos) {
+            return add(KVM);
+        }
+
         return false;
     }
-
-    auto strconvert = [](u64 n) -> std::string {
-        const std::string& str(reinterpret_cast<char*>(&n));
-        return str;
-    };
-
-    std::stringstream ss;
-    ss << strconvert(sig_reg[0]);
-    ss << strconvert(sig_reg[2]);
-    ss << strconvert(sig_reg[1]);
-
-    brand = ss.str();
-
-    #ifdef __VMAWARE_DEBUG__
-        debug(technique_name, brand);
-    #else
-        #if (CPP < 17)
-    // bypass compiler warning about unused parameter, ignore this
-    UNUSED(technique_name);
-#endif
-#endif
-
-const bool found = (std::find(std::begin(IDs), std::end(IDs), brand) != std::end(IDs));
-
-if (found) {
-if (brand == qemu) { return add(QEMU); }
-if (brand == vmware) { return add(VMWARE); }
-if (brand == vbox) { return add(VBOX); }
-if (brand == bhyve) { return add(BHYVE); }
-if (brand == kvm) { return add(KVM); }
-if (brand == hyperv) { return add(HYPERV); }
-if (brand == xta) { return add(MSXTA); }
-if (brand == parallels) { return add(PARALLELS); }
-if (brand == parallels2) { return add(PARALLELS); }
-if (brand == xen) { return add(XEN); }
-if (brand == acrn) { return add(ACRN); }
-if (brand == qnx) { return add(QNX); }
-if (brand == virtapple) { return add(VAPPLE); }
-}
-
-/**
-* This is added because there are inconsist string
-* values for KVM's manufacturer ID. For example,
-* it gives as "KVMKMVMKV" when I run it under QEMU
-* but the Wikipedia article on CPUID says it's
-* "KVMKVMKVM\0\0\0", like wtf????
-*/
-if (brand.find("KVM") != std::string::npos) {
-return add(KVM);
-}
-
-return false;
-        }
 
 
     [[nodiscard]] static std::string get_cpu_brand() {
@@ -1149,12 +1157,12 @@ return false;
 #endif
     }
 
-    static constexpr u64 DEFAULT = (~(CURSOR)&ALL);
+    static constexpr u64 DEFAULT = (~(CURSOR) & ALL);
 
     /**
-        * @brief Check CPUID output of manufacturer ID for known VMs/hypervisors
-        * @category x86
-        */
+     * @brief Check CPUID output of manufacturer ID for known VMs/hypervisors
+     * @category x86
+     */
     [[nodiscard]] static bool vmid() try {
         if (!cpuid_supported || disabled(VMID)) {
             return false;
@@ -1175,9 +1183,9 @@ return false;
 
 
     /**
-        * @brief Check CPUID output of manufacturer ID for known VMs/hypervisors with leaf value 0x40000000
-        * @category x86
-        */
+     * @brief Check CPUID output of manufacturer ID for known VMs/hypervisors with leaf value 0x40000000
+     * @category x86
+     */
     [[nodiscard]] static bool vmid_0x4() try {
         if (!cpuid_supported || disabled(VMID_0X4)) {
             return false;
@@ -1197,9 +1205,9 @@ return false;
     }
 
     /**
-        * @brief Check if CPU brand is a VM brand
-        * @category x86
-        */
+     * @brief Check if CPU brand is a VM brand
+     * @category x86
+     */
     [[nodiscard]] static bool cpu_brand() try {
         if (!cpuid_supported || disabled(BRAND)) {
             return false;
@@ -1211,7 +1219,7 @@ return false;
         std::string brand = get_cpu_brand();
 
         // TODO: might add more potential keywords, be aware that it could (theoretically) cause false positives
-        constexpr std::array<const char*, 16> vmkeywords{ {
+        constexpr std::array<const char*, 16> vmkeywords { {
             "qemu", "kvm", "virtual", "vm",
             "vbox", "virtualbox", "vmm", "monitor",
             "bhyve", "hyperv", "hypervisor", "hvisor",
@@ -1257,9 +1265,9 @@ return false;
 
 
     /**
-        * @brief Match for QEMU CPU brand
-        * @category x86
-        */
+     * @brief Match for QEMU CPU brand
+     * @category x86
+     */
     [[nodiscard]] static bool cpu_brand_qemu() try {
         if (!cpuid_supported || disabled(QEMU_BRAND)) {
             return false;
@@ -1288,18 +1296,18 @@ return false;
 
 
     /**
-        * @brief Check if hypervisor feature bit in CPUID is enabled (always false for physical CPUs)
-        * @category x86
-        */
+     * @brief Check if hypervisor feature bit in CPUID is enabled (always false for physical CPUs)
+     * @category x86
+     */
     [[nodiscard]] static bool hypervisor_bit() try {
         if (!cpuid_supported || disabled(HYPERVISOR_BIT)) {
             return false;
         }
-
-#if (!x86)
-        return false;
-#else
-        u32 unused, ecx = 0;
+    
+        #if (!x86)
+            return false;
+        #else
+            u32 unused, ecx = 0;
 
         cpuid(unused, unused, ecx, unused, 1);
 
@@ -1315,12 +1323,12 @@ return false;
 
 
     /**
-        * @brief Check if 0x40000000~0x400000FF cpuid input is present (mostly present in VMs, according to VMware)
-        * @link https://kb.vmware.com/s/article/1009458
-        * @category x86
-        */
+     * @brief Check if 0x40000000~0x400000FF cpuid input is present (mostly present in VMs, according to VMware)
+     * @link https://kb.vmware.com/s/article/1009458
+     * @category x86
+     */
     MSVC_DISABLE_WARNING(5045)
-        [[nodiscard]] static bool cpuid_0x4() try {
+    [[nodiscard]] static bool cpuid_0x4() try {
         if (!cpuid_supported || disabled(CPUID_0X4)) {
             return false;
         }
@@ -1349,11 +1357,11 @@ return false;
     MSVC_ENABLE_WARNING(5045)
 
 
-        /**
-            * @brief Check for hypervisor brand string length (would be around 2 characters in a host machine)
-            * @category x86
-            */
-        [[nodiscard]] static bool hypervisor_brand() try {
+    /**
+     * @brief Check for hypervisor brand string length (would be around 2 characters in a host machine)
+     * @category x86
+     */
+    [[nodiscard]] static bool hypervisor_brand() try {
         if (disabled(HYPERVISOR_STR)) {
             return false;
         }
@@ -1384,9 +1392,9 @@ return false;
 
 
     /**
-        * @brief Check if RDTSC is slow, if yes then it might be a VM
-        * @category x86
-        */
+     * @brief Check if RDTSC is slow, if yes then it might be a VM
+     * @category x86
+     */
     [[nodiscard]] static bool rdtsc_check() try {
         if (disabled(RDTSC)) {
             return false;
@@ -1451,11 +1459,11 @@ return false;
 
 
     /**
-        * @brief Check if the 5th byte after sidt is null
-        * @author Matteo Malvica
-        * @link https://www.matteomalvica.com/blog/2018/12/05/detecting-vmware-on-64-bit-systems/
-        * @category x86
-        */
+     * @brief Check if the 5th byte after sidt is null
+     * @author Matteo Malvica
+     * @link https://www.matteomalvica.com/blog/2018/12/05/detecting-vmware-on-64-bit-systems/
+     * @category x86
+     */
     [[nodiscard]] static bool sidt5() try {
         if (disabled(SIDT5)) {
             return false;
@@ -1493,35 +1501,35 @@ return false;
 
 
     /**
-        * @brief Check for vm presence using sidt instruction
-        * @todo: Check if this actually works
-        * @author Unprotect
-        * @link https://unprotect.it/technique/sidt-red-pill/
-        * @category x86
-        */
+     * @brief Check for vm presence using sidt instruction 
+     * @todo: Check if this actually works
+     * @author Unprotect
+     * @link https://unprotect.it/technique/sidt-red-pill/
+     * @category x86
+     */
     [[nodiscard]] static bool sidt_check() try {
         if (disabled(SIDT)) {
             return false;
         }
 
         /* DOESN'T WORK FOR NOW
-                #if (!x86 || !LINUX)
-                    return false;
-                #else
-                    u64 idtr = 0;
+        #if (!x86 || !LINUX)
+            return false;
+        #else
+            u64 idtr = 0;
 
-                    __asm__ __volatile__(
-                        "sidt %0"
-                        : "=m" (idtr)
-                    );
+            __asm__ __volatile__(
+                "sidt %0"
+                : "=m" (idtr)
+            );
 
-                    #ifdef __VMAWARE_DEBUG__
-                        debug("SIDT: ", "idtr = ", idtr);
-                    #endif
+            #ifdef __VMAWARE_DEBUG__
+                debug("SIDT: ", "idtr = ", idtr);
+            #endif
 
-                    return (idtr != 0);
-                #endif
-                */
+            return (idtr != 0);
+        #endif
+        */
 
         return false; // tmp
     }
@@ -1534,11 +1542,11 @@ return false;
 
 
     /**
-        * @brief Check if VMware port number 0x5658 is present
-        * @todo Make better Linux-compatible GCC inline assembly code
-        * @link https://kb.vmware.com/s/article/1009458
-        * @category x86 Windows
-        */
+     * @brief Check if VMware port number 0x5658 is present
+     * @todo Make better Linux-compatible GCC inline assembly code
+     * @link https://kb.vmware.com/s/article/1009458
+     * @category x86 Windows
+     */
     [[nodiscard]] static bool vmware_port() {
         if (disabled(VMWARE_PORT)) {
             return false;
@@ -1551,42 +1559,42 @@ return false;
 
 #if (LINUX)
         /*
-                        u32 a, b, c, d = 0;
+        u32 a, b, c, d = 0;
 
-                        constexpr u32 vmware_magic = 0x564D5868, // magic hypervisor ID
-                                    vmware_port  = 0x5658,     // hypervisor port number
-                                    vmware_cmd   = 10,         // Getversion command identifier
-                                    u32_max      = std::numeric_limits<u32>::max(); // max for u32, idk
+        constexpr u32 vmware_magic = 0x564D5868, // magic hypervisor ID
+                    vmware_port  = 0x5658,     // hypervisor port number
+                    vmware_cmd   = 10,         // Getversion command identifier
+                    u32_max      = std::numeric_limits<u32>::max(); // max for u32, idk
 
-                        __asm__ __volatile__(
-                            "pushq %%rdx\n\t"
-                            "pushq %%rcx\n\t"
-                            "pushq %%rbx\n\t"
-                            "movl $0x564D5868, %%eax\n\t" // "VMXh"
-                            "movb $0, %%bl\n\t"
-                            "movb $10, %%cl\n\t"
-                            "movl $0x5658, %%edx\n\t" // "VX"
-                            "inl %%dx, %%eax\n\t"
-                            "cmpl $0x564D5868, %%ebx\n\t"
-                            "setz %0\n\t"
-                            "popl %%ebx\n\t"
-                            "popl %%ecx\n\t"
-                            "popl %%edx\n\t"
-                            //: "=a" (a), "=b" (b), "=c" (c), "=d" (d)
-                            : "=r" (is_vm)
-                            :
-                            : "%eax"
-                        );
+        __asm__ __volatile__(
+            "pushq %%rdx\n\t"
+            "pushq %%rcx\n\t"
+            "pushq %%rbx\n\t"
+            "movl $0x564D5868, %%eax\n\t" // "VMXh"
+            "movb $0, %%bl\n\t"
+            "movb $10, %%cl\n\t"
+            "movl $0x5658, %%edx\n\t" // "VX"
+            "inl %%dx, %%eax\n\t"
+            "cmpl $0x564D5868, %%ebx\n\t"
+            "setz %0\n\t"
+            "popl %%ebx\n\t"
+            "popl %%ecx\n\t"
+            "popl %%edx\n\t"
+            //: "=a" (a), "=b" (b), "=c" (c), "=d" (d)
+            : "=r" (is_vm)
+            :
+            : "%eax"
+        );
+    
+        or this:
 
-                        or this:
-
-                        __asm__ __volatile__(
-                            "inl (%%dx)"
-                            : "=a"(a), "=b"(b), "=c"(c), "=d"(d)
-                            : "0"(0x564D5868), "1"(10), "2"(0x5658), "3"(0xFFFFFFFF)
-                            : "memory"
-                        );
-        */
+        __asm__ __volatile__(
+            "inl (%%dx)"
+            : "=a"(a), "=b"(b), "=c"(c), "=d"(d)
+            : "0"(0x564D5868), "1"(10), "2"(0x5658), "3"(0xFFFFFFFF)
+            : "memory"
+        );
+*/
 
 #elif (MSVC)
         constexpr std::array<u16, 2> ioports = { { 'VX' , 'VY' } };
@@ -1627,9 +1635,9 @@ return false;
 
 
     /**
-        * @brief Check if processor count is 1 or 2 (some VMs only have a single core)
-        * @category All systems
-        */
+     * @brief Check if processor count is 1 or 2 (some VMs only have a single core)
+     * @category All systems
+     */
     [[nodiscard]] static bool thread_count() try {
         if (disabled(THREADCOUNT)) {
             return false;
@@ -1650,9 +1658,9 @@ return false;
 
 
     /**
-        * @brief Check if mac address starts with certain VM designated values
-        * @category All systems (I think)
-        */
+     * @brief Check if mac address starts with certain VM designated values
+     * @category All systems (I think)
+     */
     [[nodiscard]] static bool mac_address_check() try {
         if (disabled(MAC)) {
             return false;
@@ -1753,7 +1761,7 @@ return false;
         // better expression to fix code duplication
         auto compare = [=](const u8 mac1, const u8 mac2, const u8 mac3) noexcept -> bool {
             return (mac[0] == mac1 && mac[1] == mac2 && mac[2] == mac3);
-            };
+        };
 
         if (compare(0x08, 0x00, 0x27)) {
             return add(VBOX);
@@ -1764,7 +1772,7 @@ return false;
             (compare(0x00, 0x1C, 0x14)) ||
             (compare(0x00, 0x50, 0x56)) ||
             (compare(0x00, 0x05, 0x69))
-            ) {
+        ) {
             return add(VMWARE);
         }
 
@@ -1791,9 +1799,9 @@ return false;
 
 
     /**
-        * @brief Check if thermal directory is present, might not be present in VMs
-        * @category Linux
-        */
+     * @brief Check if thermal directory is present, might not be present in VMs
+     * @category Linux
+     */
     [[nodiscard]] static bool temperature() try {
         if (disabled(TEMPERATURE)) {
             return false;
@@ -1814,9 +1822,9 @@ return false;
 
 
     /**
-        * @brief Check result from systemd-detect-virt tool
-        * @category Linux
-        */
+     * @brief Check result from systemd-detect-virt tool
+     * @category Linux
+     */ 
     [[nodiscard]] static bool systemd_virt() try {
         if (disabled(SYSTEMD)) {
             return false;
@@ -1857,9 +1865,9 @@ return false;
 
 
     /**
-        * @brief Check if chassis vendor is a VM vendor
-        * @category Linux
-        */
+     * @brief Check if chassis vendor is a VM vendor
+     * @category Linux
+     */ 
     [[nodiscard]] static bool chassis_vendor() try {
         if (disabled(CVENDOR)) {
             return false;
@@ -1899,9 +1907,9 @@ return false;
 
 
     /**
-        * @brief Check if the chassis type is valid (it's very often invalid in VMs)
-        * @category Linux
-        */
+     * @brief Check if the chassis type is valid (it's very often invalid in VMs)
+     * @category Linux
+     */
     [[nodiscard]] static bool chassis_type() try {
         if (disabled(CTYPE)) {
             return false;
@@ -1933,9 +1941,9 @@ return false;
 
 
     /**
-        * @brief Check if /.dockerenv or /.dockerinit file is present
-        * @category Linux
-        */
+     * @brief Check if /.dockerenv or /.dockerinit file is present
+     * @category Linux
+     */
     [[nodiscard]] static bool dockerenv() try {
         if (disabled(DOCKERENV)) {
             return false;
@@ -1956,14 +1964,14 @@ return false;
 
 
     /**
-        * @brief Check if dmidecode output matches a VM brand
-        * @category Linux
-        */
+     * @brief Check if dmidecode output matches a VM brand
+     * @category Linux
+     */
     [[nodiscard]] static bool dmidecode() try {
         if (disabled(DMIDECODE) || (is_root() == false)) {
-#ifdef __VMAWARE_DEBUG__
-            debug("DMIDECODE: ", "precondition return called (root = ", is_root(), ")");
-#endif
+            #ifdef __VMAWARE_DEBUG__
+                debug("DMIDECODE: ", "precondition return called (root = ", is_root(), ")");
+            #endif
             return false;
         }
 
@@ -2015,9 +2023,9 @@ return false;
 
 
     /**
-        * @brief Check if dmesg command output matches a VM brand
-        * @category Linux
-        */
+     * @brief Check if dmesg command output matches a VM brand
+     * @category Linux
+     */
     [[nodiscard]] static bool dmesg() try {
         if (disabled(DMESG)) {
             return false;
@@ -2065,9 +2073,9 @@ return false;
 
 
     /**
-        * @brief Check if /sys/class/hwmon/ directory is present. If not, likely a VM
-        * @category Linux
-        */
+     * @brief Check if /sys/class/hwmon/ directory is present. If not, likely a VM
+     * @category Linux
+     */
     [[nodiscard]] static bool hwmon() try {
         if (disabled(HWMON)) {
             return false;
@@ -2087,18 +2095,10 @@ return false;
     }
 
 
-    // [[nodiscard]] static bool dmi_check() try {
-    //     char string[10];
-    //     GET_BIOS_SERIAL(string);
-    //     if (!memcmp(string, "VMware-", 7) || !memcmp(string, "VMW", 3)) { return true; }
-    //     else { return false; }
-    // } catch (...) { return false; }
-
-
     /**
-        * @brief Check for tons of VM-specific registry values
-        * @category Windows
-        */
+     * @brief Check for tons of VM-specific registry values
+     * @category Windows
+     */
     [[nodiscard]] static bool registry_key() try {
         if (disabled(REGISTRY)) {
             return false;
@@ -2142,7 +2142,7 @@ return false;
                         scoreboard[p_brand]++;
                     }
             }
-            };
+        };
 
         // general
         key("", "HKLM\\Software\\Classes\\Folder\\shell\\sandbox");
@@ -2228,11 +2228,11 @@ return false;
 
 
     /**
-        * @brief checks for default usernames, often a sign of a VM
-        * @author: Some guy in a russian underground forum from a screenshot I saw, idk I don't speak russian ¯\_(ツ)_/¯
-        * @category Windows
-        */
-    [[nodiscard]] static bool user_check() try {
+     * @brief checks for default usernames, often a sign of a VM 
+     * @author: Some guy in a russian underground forum from a screenshot I saw, idk I don't speak russian ¯\_(ツ)_/¯
+     * @category Windows
+     */ 
+    [[nodiscard]] static bool user_check() try {     
         if (disabled(USER)) {
             return false;
         }
@@ -2257,7 +2257,7 @@ return false;
             (u == "USER") ||      // Sandbox
             (u == "user") ||      // Sandbox 2
             (u == "currentuser")  // Normal
-            );
+        );
 #endif
     }
     catch (...) {
@@ -2269,10 +2269,10 @@ return false;
 
 
     /**
-        * @brief Check if Sunbelt-specific file exists
-        * @author same russian guy as above. Whoever you are, ty
-        * @category Windows
-        */
+     * @brief Check if Sunbelt-specific file exists
+     * @author same russian guy as above. Whoever you are, ty
+     * @category Windows
+     */
     [[nodiscard]] static bool sunbelt_check() try {
         if (disabled(SUNBELT_VM)) {
             return false;
@@ -2298,9 +2298,9 @@ return false;
 
 
     /**
-        * @brief Check for VM-specific DLLs
-        * @category Windows
-        */
+     * @brief Check for VM-specific DLLs
+     * @category Windows
+     */
     [[nodiscard]] static bool DLL_check() try {
         if (disabled(DLL)) {
             return false;
@@ -2356,9 +2356,9 @@ return false;
 
 
     /**
-        * @brief Check VBox RdrDN
-        * @category Windows
-        */
+     * @brief Check VBox RdrDN
+     * @category Windows 
+     */
     [[nodiscard]] static bool vbox_registry() try {
         if (disabled(VBOX_REG)) {
             return false;
@@ -2386,10 +2386,10 @@ return false;
 
 
     /**
-        * @brief Find VMware tools presence
-        * @todo FIX THIS SHIT
-        * @category Windows
-        */
+     * @brief Find VMware tools presence
+     * @todo FIX THIS SHIT
+     * @category Windows
+     */
     [[nodiscard]] static bool vmware_registry() try {
         if (disabled(VMWARE_REG)) {
             return false;
@@ -2422,12 +2422,12 @@ return false;
 
 
     /**
-        * @brief Check if the mouse coordinates have changed after 5 seconds
-        * @note Some VMs are automatic without a human due to mass malware scanning being a thing
-        * @note Disabled by default due to performance reasons
-        * @note Doing this on linux is a major pain bc it requires X11 linkage and it isn't universally supported
-        * @category Windows
-        */
+     * @brief Check if the mouse coordinates have changed after 5 seconds
+     * @note Some VMs are automatic without a human due to mass malware scanning being a thing
+     * @note Disabled by default due to performance reasons
+     * @note Doing this on linux is a major pain bc it requires X11 linkage and it isn't universally supported
+     * @category Windows
+     */
     [[nodiscard]] static bool cursor_check() try {
         if (disabled(CURSOR)) {
             return false;
@@ -2468,11 +2468,11 @@ return false;
 
 
     /**
-        * @brief Check wine_get_unix_file_name file for Wine
-        * @author pafish project
-        * @link https://github.com/a0rtega/pafish/blob/master/pafish/wine.c
-        * @category Windows
-        */
+     * @brief Check wine_get_unix_file_name file for Wine
+     * @author pafish project
+     * @link https://github.com/a0rtega/pafish/blob/master/pafish/wine.c
+     * @category Windows
+     */
     [[nodiscard]] static bool wine() try {
         if (disabled(WINE_CHECK)) {
             return false;
@@ -2500,10 +2500,10 @@ return false;
 
 
     /**
-        * @brief Check boot-time
-        * @todo: finish the linux part tomorrow
-        * @category All systems
-        */
+     * @brief Check boot-time 
+     * @todo: finish the linux part tomorrow
+     * @category All systems
+     */ 
     [[nodiscard]] static bool boot_time() try {
         if (disabled(BOOT)) {
             return false;
@@ -2537,9 +2537,9 @@ return false;
 
 
     /**
-        * @brief Find for VMware and VBox specific files
-        * @category Windows
-        */
+     * @brief Find for VMware and VBox specific files
+     * @category Windows
+     */
     [[nodiscard]] static bool vm_files() try {
         if (disabled(VM_FILES)) {
             return false;
@@ -2553,34 +2553,34 @@ return false;
         u8 vmware = 0;
 
         constexpr std::array<const wchar_t*, 26> files = { {
-                // VMware
-                L"C:\\windows\\System32\\Drivers\\Vmmouse.sys",
-                L"C:\\windows\\System32\\Drivers\\vm3dgl.dll",
-                L"C:\\windows\\System32\\Drivers\\vmdum.dll",
-                L"C:\\windows\\System32\\Drivers\\VmGuestLibJava.dll",
-                L"C:\\windows\\System32\\Drivers\\vm3dver.dll",
-                L"C:\\windows\\System32\\Drivers\\vmtray.dll",
-                L"C:\\windows\\System32\\Drivers\\VMToolsHook.dll",
-                L"C:\\windows\\System32\\Drivers\\vmGuestLib.dll",
-                L"C:\\windows\\System32\\Drivers\\vmhgfs.dll",
-                L"C:\\windows\\System32\\Drivers\\vmhgfs.dll",  // Note: there's a typo in the original code
-                // VBox
-                L"C:\\windows\\System32\\Drivers\\VBoxMouse.sys",
-                L"C:\\windows\\System32\\Drivers\\VBoxGuest.sys",
-                L"C:\\windows\\System32\\Drivers\\VBoxSF.sys",
-                L"C:\\windows\\System32\\Drivers\\VBoxVideo.sys",
-                L"C:\\windows\\System32\\vboxoglpackspu.dll",
-                L"C:\\windows\\System32\\vboxoglpassthroughspu.dll",
-                L"C:\\windows\\System32\\vboxservice.exe",
-                L"C:\\windows\\System32\\vboxoglcrutil.dll",
-                L"C:\\windows\\System32\\vboxdisp.dll",
-                L"C:\\windows\\System32\\vboxhook.dll",
-                L"C:\\windows\\System32\\vboxmrxnp.dll",
-                L"C:\\windows\\System32\\vboxogl.dll",
-                L"C:\\windows\\System32\\vboxtray.exe",
-                L"C:\\windows\\System32\\VBoxControl.exe",
-                L"C:\\windows\\System32\\vboxoglerrorspu.dll",
-                L"C:\\windows\\System32\\vboxoglfeedbackspu.dll",
+            // VMware
+            L"C:\\windows\\System32\\Drivers\\Vmmouse.sys",
+            L"C:\\windows\\System32\\Drivers\\vm3dgl.dll",
+            L"C:\\windows\\System32\\Drivers\\vmdum.dll",
+            L"C:\\windows\\System32\\Drivers\\VmGuestLibJava.dll",
+            L"C:\\windows\\System32\\Drivers\\vm3dver.dll",
+            L"C:\\windows\\System32\\Drivers\\vmtray.dll",
+            L"C:\\windows\\System32\\Drivers\\VMToolsHook.dll",
+            L"C:\\windows\\System32\\Drivers\\vmGuestLib.dll",
+            L"C:\\windows\\System32\\Drivers\\vmhgfs.dll",
+            L"C:\\windows\\System32\\Drivers\\vmhgfs.dll",  // Note: there's a typo in the original code
+            // VBox
+            L"C:\\windows\\System32\\Drivers\\VBoxMouse.sys",
+            L"C:\\windows\\System32\\Drivers\\VBoxGuest.sys",
+            L"C:\\windows\\System32\\Drivers\\VBoxSF.sys",
+            L"C:\\windows\\System32\\Drivers\\VBoxVideo.sys",
+            L"C:\\windows\\System32\\vboxoglpackspu.dll",
+            L"C:\\windows\\System32\\vboxoglpassthroughspu.dll",
+            L"C:\\windows\\System32\\vboxservice.exe",
+            L"C:\\windows\\System32\\vboxoglcrutil.dll",
+            L"C:\\windows\\System32\\vboxdisp.dll",
+            L"C:\\windows\\System32\\vboxhook.dll",
+            L"C:\\windows\\System32\\vboxmrxnp.dll",
+            L"C:\\windows\\System32\\vboxogl.dll",
+            L"C:\\windows\\System32\\vboxtray.exe",
+            L"C:\\windows\\System32\\VBoxControl.exe",
+            L"C:\\windows\\System32\\vboxoglerrorspu.dll",
+            L"C:\\windows\\System32\\vboxoglfeedbackspu.dll",
             } };
 
         for (const auto file : files) {
@@ -2630,11 +2630,11 @@ return false;
 
 
     /**
-        * @brief Check for sysctl hardware model
-        * @author MacRansom ransomware
-        * @todo TEST IF THIS WORKS
-        * @category MacOS
-        */
+     * @brief Check for sysctl hardware model
+     * @author MacRansom ransomware
+     * @todo TEST IF THIS WORKS
+     * @category MacOS
+     */ 
     [[nodiscard]] static bool hwmodel() try {
         if (disabled(HWMODEL)) {
             return false;
@@ -2681,11 +2681,11 @@ return false;
 
 
     /**
-        * @brief check if hyperthreading core count matches with physical expectations
-        * @category MacOS
-        * @author from MacRansom ransomware
-        * @link https://evasions.checkpoint.com/techniques/macos.html
-        */
+     * @brief check if hyperthreading core count matches with physical expectations
+     * @category MacOS
+     * @author from MacRansom ransomware 
+     * @link https://evasions.checkpoint.com/techniques/macos.html
+     */
     [[nodiscard]] static bool mac_hyperthread() try {
         if (disabled(MAC_HYPERTHREAD)) {
             return false;
@@ -2708,10 +2708,10 @@ return false;
 
 
     /**
-        * @brief Check if disk size is too low
-        * @category Linux (for now)
-        */
-    [[nodiscard]] static bool disk_size() try {
+     * @brief Check if disk size is too low
+     * @category Linux (for now)
+     */
+     [[nodiscard]] static bool disk_size() try {
         if (disabled(DISK_SIZE)) {
             return false;
         }
@@ -2737,18 +2737,18 @@ return false;
 
 
     /**
-        * @brief Check for match with default RAM and disk size (VBOX-specific)
-        * @note        RAM     DISK
-        * WINDOWS 11:  4096MB, 80GB
-        * WINDOWS 10:  2048MB, 50GB
-        * ARCH, OPENSUSE, REDHAD, GENTOO, FEDORA, DEBIAN: 1024MB, 8GB
-        * UBUNTU:      1028MB, 10GB
-        * ORACLE:      1024MB, 12GB
-        * OTHER LINUX: 512MB,  8GB
-
-        * @todo: check if it still applies to host systems with larger RAM and disk size than what I have
-        * @category Linux, Windows
-        */
+     * @brief Check for match with default RAM and disk size (VBOX-specific)
+     * @note        RAM     DISK
+     * WINDOWS 11:  4096MB, 80GB
+     * WINDOWS 10:  2048MB, 50GB
+     * ARCH, OPENSUSE, REDHAD, GENTOO, FEDORA, DEBIAN: 1024MB, 8GB
+     * UBUNTU:      1028MB, 10GB
+     * ORACLE:      1024MB, 12GB
+     * OTHER LINUX: 512MB,  8GB
+     
+     * @todo: check if it still applies to host systems with larger RAM and disk size than what I have
+     * @category Linux, Windows
+     */
     [[nodiscard]] static bool vbox_default_specs() try {
         if (disabled(VBOX_DEFAULT)) {
             return false;
@@ -2785,7 +2785,7 @@ return false;
             }
 
             return "unknown";
-            };
+        };
 
         const std::string distro = get_distro();
 
@@ -2805,7 +2805,7 @@ return false;
             "gentoo" == distro ||
             "fedora" == distro ||
             "debian" == distro
-            ) {
+        ) {
             return ((8 == disk) && (1 == ram));
         }
 
@@ -2874,26 +2874,26 @@ return false;
     }
 
 
-    /**
-        * @brief Check VBox network provider string
-        * @todo fix WNetGetProviderName linker error
+   /**
+    * @brief Check VBox network provider string
+    * @todo fix WNetGetProviderName linker error
     */
     [[nodiscard]] static bool vbox_network_share() try {
         return false;
         /*
 
-        if (disabled(VBOX_NETWORK)) {
-            return false;
-        }
+            if (disabled(VBOX_NETWORK)) {
+                return false;
+            }
 
-        #if (!MSVC)
-            return false;
-        #else
-            u32 pnsize = 0x1000;
-            char* provider = new char[pnsize];
+            #if (!MSVC)
+                return false;
+            #else
+                u32 pnsize = 0x1000;
+                char* provider = new char[pnsize];
 
             int32_t retv = WNetGetProviderName(WNNC_NET_RDR2SAMPLE, provider, &pnsize);
-
+    
             if (retv == NO_ERROR) {
                 return (lstrcmpi(provider, "VirtualBox Shared Folders") == 0);
             }
@@ -2911,10 +2911,10 @@ return false;
 
 
     /**
-        * @brief Check if the computer name (not username to be clear) is VM-specific
-        * @category Windows
-        * @author InviZzzible project
-    */
+     * @brief Check if the computer name (not username to be clear) is VM-specific
+     * @category Windows
+     * @author InviZzzible project
+     */
     [[nodiscard]] static bool computer_name_match() try {
         if (disabled(COMPUTER_NAME)) {
             return false;
@@ -2929,7 +2929,7 @@ return false;
 
         auto compare = [&](const std::string& s) -> bool {
             return (std::strcmp((LPCSTR)comp_name.data(), s.c_str()) == 0);
-            };
+        };
 
 #ifdef __VMAWARE_DEBUG__
         debug("COMPUTER_NAME: fetched = ", (LPCSTR)comp_name.data());
@@ -2958,16 +2958,15 @@ return false;
 #ifdef __VMAWARE_DEBUG__
         debug("COMPUTER_NAME: catched error, returned false");
 #endif
-
         return false;
     }
 
 
     /**
-        * @brief Check if hostname is specific
-        * @author InviZzzible project
-        * @category Windows
-        */
+     * @brief Check if hostname is specific
+     * @author InviZzzible project
+     * @category Windows
+     */
     [[nodiscard]] static bool hostname_match() try {
         if (disabled(HOSTNAME)) {
             return false;
@@ -2991,15 +2990,14 @@ return false;
 #ifdef __VMAWARE_DEBUG__
         debug("HOSTNAME: catched error, returned false");
 #endif
-
         return false;
     }
 
 
     /**
-        * @brief Check if memory is too low
-        * @author Al-Khaser project
-        * @category x86?
+     * @brief Check if memory is too low
+     * @author Al-Khaser project
+     * @category x86?
     */
     [[nodiscard]] static bool low_memory_space() try {
         if (disabled(MEMORY)) {
@@ -3025,9 +3023,9 @@ return false;
 
 
     /**
-        * @brief Check for any VM processes that are active
-        * @category Windows
-        */
+     * @brief Check for any VM processes that are active
+     * @category Windows
+     */
     [[nodiscard]] static bool vm_processes() try {
         if (disabled(VM_PROCESSES)) {
             return false;
@@ -3092,7 +3090,7 @@ return false;
             check_proc("vmwareuser.exe") ||
             check_proc("vmware.exe") ||
             check_proc("vmount2.exe")
-            ) {
+        ) {
             return ret(VMWARE);
         }
 
@@ -3112,9 +3110,9 @@ return false;
 
 
     /**
-        * @brief Check for default VM username and hostname for linux
-        * @category Linux
-        */
+     * @brief Check for default VM username and hostname for linux
+     * @category Linux
+     */ 
     [[nodiscard]] static bool linux_user_host() try {
         if (disabled(LINUX_USER_HOST)) {
             return false;
@@ -3138,7 +3136,7 @@ return false;
         return (
             (strcmp(username, "liveuser") == 0) &&
             (strcmp(hostname, "localhost-live") == 0)
-            );
+        );
 #endif
     }
     catch (...) {
@@ -3150,10 +3148,10 @@ return false;
 
 
     /**
-        * @brief default vbox window class
-        * @category Windows
-        * @author Al-Khaser Project
-        */
+     * @brief default vbox window class
+     * @category Windows
+     * @author Al-Khaser Project
+     */
     [[nodiscard]] static bool vbox_window_class() try {
         if (disabled(VBOX_WINDOW_CLASS)) {
             return false;
@@ -3181,9 +3179,9 @@ return false;
 
 
     /**
-        * @brief Gamarue ransomware check
-        * @category Windows
-        */
+     * @brief Gamarue ransomware check
+     * @category Windows 
+     */
     [[nodiscard]] static bool gamarue() try {
         if (disabled(GAMARUE)) {
             return false;
@@ -3256,61 +3254,61 @@ return false;
 
 
     /**
-        * @brief match WMIC output for computer system manufacturer
-        * @category Windows
-        * @note FIX SEGFAULT
-        */
+     * @brief match WMIC output for computer system manufacturer
+     * @category Windows
+     * @note FIX SEGFAULT
+     */
     [[nodiscard]] static bool wmic() try {
         if (disabled(WMIC)) {
             return false;
         }
 
-        return false;
-
-        /*
-        #if (!MSVC)
             return false;
-        #else
-            auto check_wmic_presence = []() -> bool {
-                FILE* pipe = _popen("wmic /?", "r");
 
-                if (pipe) {
-                    char buffer[128];
-                    while (!feof(pipe)) {
-                        if (fgets(buffer, 128, pipe) != nullptr)
-                            return true;
+            /*
+            #if (!MSVC)
+                return false;
+            #else
+                auto check_wmic_presence = []() -> bool {
+                    FILE* pipe = _popen("wmic /?", "r");
+
+                    if (pipe) {
+                        char buffer[128];
+                        while (!feof(pipe)) {
+                            if (fgets(buffer, 128, pipe) != nullptr)
+                                return true;
+                        }
+                        _pclose(pipe);
+                    } else {
+                        return false;
                     }
-                    _pclose(pipe);
-                } else {
+
+                    return false;
+                };
+
+                if (check_wmic_presence() == false) {
                     return false;
                 }
 
-                return false;
-            };
-
-            if (check_wmic_presence() == false) {
-                return false;
-            }
-
             std::unique_ptr<std::string> manufacturer = sys_result("WMIC COMPUTERSYSTEM GET MANUFACTURER");
-
+           
             if (*manufacturer == "VirtualBox") {
                 return add(VBOX);
             }
 
             std::unique_ptr<std::string> model = sys_result("WMIC COMPUTERSYSTEM GET MODEL");
-
+            
             constexpr std::array<const char*, 16> vmkeywords {
-                "qemu", "kvm", "virtual", "vm",
-                "vbox", "virtualbox", "vmm", "monitor",
-                "bhyve", "hyperv", "hypervisor", "hvisor",
+                "qemu", "kvm", "virtual", "vm", 
+                "vbox", "virtualbox", "vmm", "monitor", 
+                "bhyve", "hyperv", "hypervisor", "hvisor", 
                 "parallels", "vmware", "hvm", "qnx"
             };
 
             for (std::size_t i = 0; i < vmkeywords.size(); i++) {
                 const auto regex = std::regex(vmkeywords.at(i), std::regex::icase);
                 const bool match = std::regex_search(*model, regex);
-
+                
                 if (match) {
                     #ifdef __VMAWARE_DEBUG__
                         debug("WMIC: ", "match = ", vmkeywords.at(i));
@@ -3332,69 +3330,69 @@ return false;
 
 
     /**
-        * @brief Check if the BIOS serial is valid
-        * @category Windows
-        * @todo FIX THE SEGFAULT
-        */
+     * @brief Check if the BIOS serial is valid
+     * @category Windows
+     * @todo FIX THE SEGFAULT
+     */
     [[nodiscard]] static bool bios_serial() try {
         if (disabled(BIOS_SERIAL)) {
             return false;
         }
 
-        return false;
-
-        /*
-        #if (!MSVC)
             return false;
-        #else
-            auto check_wmic_presence = []() -> bool {
-                FILE* pipe = _popen("wmic /?", "r");
 
-                if (pipe) {
-                    char buffer[128];
-                    while (!feof(pipe)) {
-                        if (fgets(buffer, 128, pipe) != nullptr)
-                            return true;
+            /*
+            #if (!MSVC)
+                return false;
+            #else
+                auto check_wmic_presence = []() -> bool {
+                    FILE* pipe = _popen("wmic /?", "r");
+
+                    if (pipe) {
+                        char buffer[128];
+                        while (!feof(pipe)) {
+                            if (fgets(buffer, 128, pipe) != nullptr)
+                                return true;
+                        }
+                        _pclose(pipe);
+                    } else {
+                        return false;
                     }
-                    _pclose(pipe);
-                } else {
+
+                    return false;
+                };
+
+                if (check_wmic_presence() == false) {
+                    #ifdef __VMAWARE_DEBUG__
+                        debug("BIOS_SERIAL: ", "wmic isn't found, returned false");
+                    #endif
                     return false;
                 }
 
-                return false;
-            };
+                std::unique_ptr<std::string> bios = sys_result("wmic bios get serialnumber");
 
-            if (check_wmic_presence() == false) {
-                #ifdef __VMAWARE_DEBUG__
-                    debug("BIOS_SERIAL: ", "wmic isn't found, returned false");
-                #endif
-                return false;
-            }
+                const std::string str = *bios;
+                const std::size_t nl_pos = str.find('\n');
 
-            std::unique_ptr<std::string> bios = sys_result("wmic bios get serialnumber");
-
-            const std::string str = *bios;
-            const std::size_t nl_pos = str.find('\n');
-
-            if (nl_pos == std::string::npos) {
-                return false;
-            }
+                if (nl_pos == std::string::npos) {
+                    return false;
+                }
 
             #ifdef __VMAWARE_DEBUG__
                 debug("BIOS_SERIAL: ", str);
             #endif
-
+            
             const std::string extract = str.substr(nl_pos + 1);
 
-            const bool all_digits = std::all_of(extract.cbegin(), extract.cend(), [](const char c) {
-                return std::isdigit(c);
-            });
+                const bool all_digits = std::all_of(extract.cbegin(), extract.cend(), [](const char c) {
+                    return std::isdigit(c);
+                });
 
-            if (all_digits) {
-                if (extract == "0") {
-                    return true;
+                if (all_digits) {
+                    if (extract == "0") {
+                        return true;
+                    }
                 }
-            }
 
             return false;
         #endif
@@ -3408,13 +3406,13 @@ return false;
     }
 
     /**
-        * @brief Check for semi-documented Virtual PC detection method using illegal instructions
-        * @category Windows x86
-        * @note no function-level try-catch block, because i can't add it wrapped around multiple other try-catches
-        * @link http://www.codeproject.com/Articles/9823/Detect-if-your-program-is-running-inside-a-Virtual
-        * @link https://artemonsecurity.com/vmde.pdf
-        * @author N. Rin, EP_X0FF
-        */
+     * @brief Check for semi-documented Virtual PC detection method using illegal instructions
+     * @category Windows x86
+     * @note no function-level try-catch block, because i can't add it wrapped around multiple other try-catches
+     * @link http://www.codeproject.com/Articles/9823/Detect-if-your-program-is-running-inside-a-Virtual
+     * @link https://artemonsecurity.com/vmde.pdf
+     * @author N. Rin, EP_X0FF
+     */ 
     [[nodiscard]] static bool vpc_backdoor() {
         if (disabled(VPC_BACKDOOR)) {
             return false;
@@ -3424,6 +3422,10 @@ return false;
         return false;
 #else
         bool is_vm = false;
+#if (!MSVC || !x86)
+            return false;
+#else
+            bool is_vm = false;
 
         auto VPCExceptionHandler = [](PEXCEPTION_POINTERS ep) -> DWORD {
             __try {
@@ -3437,7 +3439,7 @@ return false;
             __except (EXCEPTION_EXECUTE_HANDLER) {
                 return EXCEPTION_CONTINUE_SEARCH;
             }
-            };
+        };
 
         // ========== TEST 1 (use well-known trick with illegal instructions )==========
         __try {
@@ -3453,7 +3455,7 @@ return false;
 
             __asm test   ebx, ebx
             __asm setz[is_vm]
-                __asm pop    ebx
+            __asm pop    ebx
         }
         // The exception block shouldn't get triggered if VPC is running
         __except (VPCExceptionHandler(GetExceptionInformation())) {}
@@ -3467,11 +3469,11 @@ return false;
     }
 
     /**
-        * @brief check for any indication of parallels through BIOS stuff
-        * @category Windows
-        */
+     * @brief check for any indication of parallels through BIOS stuff
+     * @link https://stackoverflow.com/questions/1370586/detect-if-windows-is-running-from-within-parallels
+     * @category Windows
+     */ 
     [[nodiscard]] static bool parallels() try {
-        //https://stackoverflow.com/questions/1370586/detect-if-windows-is-running-from-within-parallels
         if (disabled(PARALLELS_VM)) {
             return false;
         }
@@ -3555,12 +3557,12 @@ return false;
 
 
     /**
-        * @brief check for loaded dlls in the process
-        * @category Windows
-        * @author LordNoteworthy
-        * @note modified code from Al-Khaser project
-        * @link https://github.com/LordNoteworthy/al-khaser/blob/c68fbd7ba0ba46315e819b490a2c782b80262fcd/al-khaser/Anti%20VM/Generic.cpp
-        */
+     * @brief check for loaded dlls in the process
+     * @category Windows
+     * @author LordNoteworthy
+     * @note modified code from Al-Khaser project
+     * @link https://github.com/LordNoteworthy/al-khaser/blob/c68fbd7ba0ba46315e819b490a2c782b80262fcd/al-khaser/Anti%20VM/Generic.cpp
+     */ 
     [[nodiscard]] static bool loaded_dlls() try {
         if (disabled(LOADED_DLLS)) {
             return false;
@@ -3613,10 +3615,10 @@ return false;
     }
 
     /**
-        * @brief Do various Bochs-related CPU stuff
-        * @category x86
-        * @note Discovered by Peter Ferrie, Senior Principal Researcher, Symantec Advanced Threat Research peter_ferrie@symantec.com
-        */
+     * @brief Do various Bochs-related CPU stuff
+     * @category x86
+     * @note Discovered by Peter Ferrie, Senior Principal Researcher, Symantec Advanced Threat Research peter_ferrie@symantec.com
+     */
     [[nodiscard]] static bool bochs_cpu() try {
         if (!cpuid_supported || disabled(BOCHS_CPU)) {
             return false;
@@ -3680,9 +3682,9 @@ return false;
 
 
     /**
-        * @brief Go through the motherboard and match for VPC-specific string
-        * @category Windows
-        */
+     * @brief Go through the motherboard and match for VPC-specific string
+     * @category Windows
+     */ 
     [[nodiscard]] static bool vpc_board() try {
         if (disabled(VPC_BOARD)) {
             return false;
@@ -3849,11 +3851,11 @@ return false;
 
 
     /**
-        * @brief get WMI query for HYPERV name
-        * @category Windows
-        * @note idea is from nettitude
-        * @link https://labs.nettitude.com/blog/vm-detection-tricks-part-3-hyper-v-raw-network-protocol/
-        */
+     * @brief get WMI query for HYPERV name
+     * @category Windows
+     * @note idea is from nettitude
+     * @link https://labs.nettitude.com/blog/vm-detection-tricks-part-3-hyper-v-raw-network-protocol/
+     */
     [[nodiscard]] static bool hyperv_wmi() try {
         if (disabled(HYPERV_WMI)) {
             return false;
@@ -4006,11 +4008,11 @@ return false;
 
 
     /**
-        * @brief compare for hyperv-specific string in registry
-        * @category Windows
-        * @note idea is from nettitude
-        * @link https://labs.nettitude.com/blog/vm-detection-tricks-part-3-hyper-v-raw-network-protocol/
-        */
+     * @brief compare for hyperv-specific string in registry
+     * @category Windows
+     * @note idea is from nettitude
+     * @link https://labs.nettitude.com/blog/vm-detection-tricks-part-3-hyper-v-raw-network-protocol/
+     */
     [[nodiscard]] static bool hyperv_registry() try {
         if (disabled(HYPERV_REG)) {
             return false;
@@ -4075,12 +4077,12 @@ return false;
 
 
     /**
-        * @brief Check for VirtualBox-specific string for shared folder ID
-        * @category Windows
-        * @note slightly modified code from original
-        * @author @waleedassar
-        * @link https://pastebin.com/xhFABpPL
-        */
+     * @brief Check for VirtualBox-specific string for shared folder ID
+     * @category Windows
+     * @note slightly modified code from original
+     * @author @waleedassar
+     * @link https://pastebin.com/xhFABpPL
+     */ 
     [[nodiscard]] static bool vbox_shared_folders() try {
         if (disabled(VBOX_FOLDERS)) {
             return false;
@@ -4128,12 +4130,12 @@ return false;
 
 
     /**
-        * @brief Check VirtualBox MSSMBIOS registry for VM-specific strings
-        * @category Windows
-        * @note slightly modified from original code
-        * @author @waleedassar
-        * @link https://pastebin.com/fPY4MiYq
-        */
+     * @brief Check VirtualBox MSSMBIOS registry for VM-specific strings
+     * @category Windows
+     * @note slightly modified from original code
+     * @author @waleedassar
+     * @link https://pastebin.com/fPY4MiYq
+     */
     [[nodiscard]] static bool vbox_mssmbios() try {
         if (disabled(VBOX_MSSMBIOS)) {
             return false;
@@ -4198,7 +4200,7 @@ return false;
         };
         MSVC_ENABLE_WARNING(5045)
 
-            AllToUpper(p, length);
+        AllToUpper(p, length);
 
         // cleaner and better shortcut than typing reinterpret_cast<unsigned char*> a million times
         auto cast = [](char* p) -> unsigned char* {
@@ -4241,10 +4243,10 @@ return false;
 
 
     /**
-        * @brief Check if memory is too low for MacOS system
-        * @category MacOS
-        * @link https://evasions.checkpoint.com/techniques/macos.html
-        */
+     * @brief Check if memory is too low for MacOS system
+     * @category MacOS
+     * @link https://evasions.checkpoint.com/techniques/macos.html
+     */
     [[nodiscard]] static bool hw_memsize() try {
         if (disabled(MAC_MEMSIZE)) {
             return false;
@@ -4293,10 +4295,10 @@ return false;
 
 
     /**
-        * @brief Check MacOS' IO kit registry for VM-specific strings
-        * @category MacOS
-        * @link https://evasions.checkpoint.com/techniques/macos.html
-        */
+     * @brief Check MacOS' IO kit registry for VM-specific strings
+     * @category MacOS
+     * @link https://evasions.checkpoint.com/techniques/macos.html
+     */
     [[nodiscard]] static bool io_kit() try {
         if (disabled(MAC_IOKIT)) {
             return false;
@@ -4376,10 +4378,10 @@ return false;
 
 
     /**
-        * @brief Check for VM-strings in ioreg commands for MacOS
-        * @category MacOS
-        * @link https://evasions.checkpoint.com/techniques/macos.html
-        */
+     * @brief Check for VM-strings in ioreg commands for MacOS
+     * @category MacOS
+     * @link https://evasions.checkpoint.com/techniques/macos.html
+     */
     [[nodiscard]] static bool ioreg_grep() try {
         if (disabled(IOREG_GREP)) {
             return false;
@@ -4446,10 +4448,10 @@ return false;
 
 
     /**
-        * @brief Check if System Integrity Protection is disabled (likely a VM if it is)
-        * @category MacOS
-        * @link https://evasions.checkpoint.com/techniques/macos.html
-        */
+     * @brief Check if System Integrity Protection is disabled (likely a VM if it is)
+     * @category MacOS
+     * @link https://evasions.checkpoint.com/techniques/macos.html
+     */
     [[nodiscard]] static bool mac_sip() try {
         if (disabled(MAC_SIP)) {
             return false;
@@ -4476,25 +4478,25 @@ return false;
     }
 
 
-    // __TECHNIQUE_LABEL, label for adding techniques above this point
+        // __TECHNIQUE_LABEL, label for adding techniques above this point
 
     MSVC_DISABLE_WARNING(4820)
-        struct technique {
-        u8 points;
+    struct technique {
+        u8 points; 
         bool(*ptr)(); // function pointer
     };
     MSVC_ENABLE_WARNING(4820)
 
-    // the points are debatable, but I think it's fine how it is. Feel free to disagree.
-    static const std::map<u64, technique> table;
+            // the points are debatable, but I think it's fine how it is. Feel free to disagree.
+            static const std::map<u64, technique> table;
 
 public:
     /**
-        * @brief Check for a specific technique based on flag argument
-        * @param u64 (flags from VM wrapper)
-        * @return bool
-        * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmcheck
-        */
+     * @brief Check for a specific technique based on flag argument
+     * @param u64 (flags from VM wrapper)
+     * @return bool
+     * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmcheck
+     */
     [[nodiscard]] static bool check(const u64 p_flags = 0ULL) {
         int32_t count = 0;
 
@@ -4513,52 +4515,52 @@ public:
             throw std::invalid_argument("Flag argument cannot be set to VM::ALL, consult the documentation's flag list");
         }
 
-        if (count > 1) {
-            throw std::invalid_argument("Flag argument must only contain a single option, consult the documentation's flag list");
-        }
+            if (count > 1) {
+                throw std::invalid_argument("Flag argument must only contain a single option, consult the documentation's flag list");
+            }
 
-        if (count == 0) {
-            throw std::invalid_argument("Flag argument must contain at least a single option, consult the documentation's flag list");
-        }
+            if (count == 0) {
+                throw std::invalid_argument("Flag argument must contain at least a single option, consult the documentation's flag list");
+            }
 
         if (
             (p_flags & NO_MEMO) || \
             (p_flags & EXTREME)
-            ) {
+        ) {
             throw std::invalid_argument("Flag argument must be a technique flag and not a settings flag, consult the documentation's flag list");
         }
 
-        // count should only have a single flag at this stage
-        assert(count == 1);
+            // count should only have a single flag at this stage
+            assert(count == 1);
 
-        // temporarily enable all flags so that every technique is enabled
-        const u64 tmp_flags = VM::flags;
-        VM::flags = (DEFAULT | CURSOR);
+            // temporarily enable all flags so that every technique is enabled
+            const u64 tmp_flags = VM::flags;
+            VM::flags = (DEFAULT | CURSOR);
 
-        bool result = false;
+            bool result = false;
 
-        auto it = table.find(p_flags);
+            auto it = table.find(p_flags);
 
-        if (it == table.end()) {
-            throw std::invalid_argument("Flag is not known, consult the documentation's flag list");
-        }
+            if (it == table.end()) {
+                throw std::invalid_argument("Flag is not known, consult the documentation's flag list");
+            }
 
         const technique& pair = it->second;
         result = pair.ptr();
 
-        VM::flags = tmp_flags;
+            VM::flags = tmp_flags;
 
-        return result;
-    }
+            return result;
+        }
 
 
     /**
-        * @brief Fetch the VM brand
-        * @param void
-        * @return std::string
-        * @returns VMware, VirtualBox, KVM, bhyve, QEMU, Microsoft Hyper-V, Microsoft x86-to-ARM, Parallels, Xen HVM, ACRN, QNX hypervisor, Hybrid Analysis, Sandboxie, Docker, Wine, Virtual Apple, Virtual PC, Unknown
-        * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmbrand
-        */
+     * @brief Fetch the VM brand
+     * @param void
+     * @return std::string
+     * @returns VMware, VirtualBox, KVM, bhyve, QEMU, Microsoft Hyper-V, Microsoft x86-to-ARM, Parallels, Xen HVM, ACRN, QNX hypervisor, Hybrid Analysis, Sandboxie, Docker, Wine, Virtual Apple, Virtual PC, Unknown
+     * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmbrand
+     */
     [[nodiscard]] static std::string brand(const u64 p_flags = DEFAULT) {
         VM::flags = p_flags;
 
@@ -4567,10 +4569,10 @@ public:
             debug("memoization: returned cached result in brand()");
 #endif
 
-            return (memo::get_brand());
-        }
+                return (memo::get_brand());
+            }
 
-        const char* current_brand = "";
+            const char* current_brand = "";
 
         // fetch the brand with the most points in the scoreboard
 #if (CPP >= 20)
@@ -4628,7 +4630,7 @@ public:
         if (
             (scoreboard.at(TMP_QEMU) > 0) &&
             (scoreboard.at(TMP_KVM) > 0)
-            ) {
+        ) {
             current_brand = "QEMU/KVM";
         }
 
@@ -4643,19 +4645,19 @@ public:
             debug("memoization: cached result in brand()");
 #endif
 
-            memo::memoize(memo::FOUND_BRAND, memo::UNUSED_VM, current_brand, memo::UNUSED_PERCENT);
-        }
+                memo::memoize(memo::FOUND_BRAND, memo::UNUSED_VM, current_brand, memo::UNUSED_PERCENT);
+            }
 
-        return current_brand;
-    }
+            return current_brand;
+        }
 
 
     /**
-        * @brief Detect if running inside a VM
-        * @param std::uint64_t (any combination of flags in VM wrapper, can be optional)
-        * @return bool
-        * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmdetect
-        */
+     * @brief Detect if running inside a VM
+     * @param std::uint64_t (any combination of flags in VM wrapper, can be optional)
+     * @return bool
+     * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmdetect
+     */
     static bool detect(const u64 p_flags = DEFAULT) {
         VM::flags = p_flags;
 
@@ -4667,11 +4669,11 @@ public:
         }
 
 #ifdef __VMAWARE_DEBUG__
-        debug("cpuid: is supported? : ", VM::cpuid_supported);
+            debug("cpuid: is supported? : ", VM::cpuid_supported);
 #endif
 
-        bool result = false;
-        u8 p = percentage(p_flags);
+            bool result = false;
+            u8 p = percentage(p_flags);
 
         if (enabled(EXTREME)) {
             result = (p > 0);
@@ -4680,20 +4682,20 @@ public:
             result = (p == 100);
         }
 
-        if (disabled(NO_MEMO)) {
-            memo::memoize(memo::FOUND_VM, result, memo::UNUSED_BRAND, memo::UNUSED_PERCENT);
-        }
+            if (disabled(NO_MEMO)) {
+                memo::memoize(memo::FOUND_VM, result, memo::UNUSED_BRAND, memo::UNUSED_PERCENT);
+            }
 
-        return result;
-    }
+            return result;
+        }
 
 
     /**
-        * @brief Get the percentage of how likely it's a VM
-        * @param std::uint64_t (any combination of flags, can be optional)
-        * @return std::uint8_t
-        * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmpercentage
-        */
+     * @brief Get the percentage of how likely it's a VM
+     * @param std::uint64_t (any combination of flags, can be optional)
+     * @return std::uint8_t
+     * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmpercentage
+     */
     static u8 percentage(const u64 p_flags = DEFAULT) {
         VM::flags = p_flags;
 
@@ -4702,10 +4704,10 @@ public:
             debug("memoization: ", "returned cached result in VM::percentage()");
 #endif
 
-            return (memo::get_percent());
-        }
+                return (memo::get_percent());
+            }
 
-        u16 points = 0;
+            u16 points = 0;
 
         for (auto it = table.cbegin(); it != table.cend(); ++it) {
             const technique& pair = it->second;
@@ -4723,13 +4725,13 @@ public:
             percent = static_cast<u8>(points);
         }
 
-        if (disabled(NO_MEMO)) {
-            memo::memoize(memo::FOUND_PERCENT, memo::UNUSED_VM, memo::UNUSED_BRAND, percent);
-        }
+            if (disabled(NO_MEMO)) {
+                memo::memoize(memo::FOUND_PERCENT, memo::UNUSED_VM, memo::UNUSED_BRAND, percent);
+            }
 
-        return percent;
-    }
-};
+            return percent;
+        }
+        };
 
 MSVC_ENABLE_WARNING(4626 4514)
 
@@ -4738,7 +4740,7 @@ MSVC_ENABLE_WARNING(4626 4514)
 // It's easier to just group them together rather than having C++17<= preprocessors with inline stuff
 
 #if (MSVC)
-std::map<const char*, int> VM::scoreboard{
+    std::map<const char*, int> VM::scoreboard {
 #else
     std::map<const char*, VM::u8> VM::scoreboard {
 #endif
