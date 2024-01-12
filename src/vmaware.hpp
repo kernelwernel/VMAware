@@ -3422,10 +3422,6 @@ private:
         return false;
 #else
         bool is_vm = false;
-#if (!MSVC || !x86)
-            return false;
-#else
-            bool is_vm = false;
 
         auto VPCExceptionHandler = [](PEXCEPTION_POINTERS ep) -> DWORD {
             __try {
