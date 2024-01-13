@@ -124,6 +124,9 @@ int main(int argc, char* argv[]) {
         checker(VM::MAC_IOKIT, "MacOS registry IO-kit");
         checker(VM::IOREG_GREP, "IO registry grep");
         checker(VM::MAC_SIP, "MacOS SIP");
+        checker(VM::KVM_REG, "KVM registries");
+        checker(VM::KVM_DRIVERS, "KVM drivers");
+        checker(VM::KVM_DIRS, "KVM directories");
         std::printf("\n");
 
         std::cout << "VM brand: " << (std::string(VM::brand()) == "Unknown" ? red : green) << VM::brand() << ansi_exit << "\n";

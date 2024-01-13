@@ -55,6 +55,7 @@
 #define x86 0
 #endif
 
+
 #if !(defined (MSVC) || defined(LINUX) || defined(APPLE))
 #warning "Unknown OS detected, tests will be severely limited"
 #endif
@@ -69,6 +70,10 @@
 #ifdef __VMAWARE_DEBUG__
 #include <iomanip>
 #include <ios>
+#endif
+
+#if (MSVC)
+#pragma warning(push, 0) // disable the fuckign windows errors temporarily
 #endif
 
 #include <functional>
@@ -87,46 +92,8 @@
 #include <cmath>
 #include <sstream>
 
-<<<<<<< HEAD
- // shorter and succinct macros
-#if __cplusplus == 202002L
-#define CPP 20
-#elif __cplusplus == 201703L
-#define CPP 17
-#elif __cplusplus == 201402L
-#define CPP 14
-#elif __cplusplus == 201103L
-#define CPP 11
-#else
-#define CPP 0
-#endif
-#if (defined(__x86_64__) || defined(__i386__) || defined(_M_IX86) || defined(_M_X64))
-#define x86 1
-#else
-#define x86 0
-#endif
-#if !(defined(MSVC) || defined(LINUX) || defined(APPLE))
-#warning "Unknown OS detected, tests will be severely limited"
-#endif
-#if (CPP >= 20)
-#include <ranges>
-#endif
-#if (CPP >= 17)
-#include <bit>
-#include <filesystem>
-#endif
-#ifdef __VMAWARE_DEBUG__
-#include <iomanip>
-#include <ios>
-#endif
-#if (CPP < 11 && !MSVC)
-#error "VMAware only supports C++11 or above, set your compiler flag to '-std=c++20' for GCC/clang, or '/std:c++20' for MSVC"
-#endif
-=======
-#if (MSVC)
-#pragma warning(push, 0) // disable the fuckign windows errors temporarily
->>>>>>> main
 
+#if (MSVC)
 #include <windows.h>
 #include <intrin.h>
 #include <tchar.h>
@@ -147,9 +114,7 @@
 
 #pragma comment(lib, "wbemuuid.lib")
 #pragma comment(lib, "iphlpapi.lib")
-#pragma comment(lib,"MPR")
-
-#pragma warning(pop) 
+#pragma comment(lib, "MPR")
 #elif (LINUX)
 #include <cpuid.h>
 #include <x86intrin.h>
@@ -166,6 +131,10 @@
 #elif (APPLE)
 #include <sys/types.h>
 #include <sys/sysctl.h>
+#endif
+
+#if (MSVC)
+#pragma warning(pop) 
 #endif
 
 // macro shortcut to disable MSVC warnings
@@ -300,8 +269,8 @@ private:
 
     // check if file exists
 #if (MSVC)
-    [[nodiscard]] static bool exists(LPCWSTR path) {
-        return (GetFileAttributesW(path) != INVALID_FILE_ATTRIBUTES) || (GetLastError() != ERROR_FILE_NOT_FOUND);
+    [[nodiscard]] static bool exists(LPCSTR path) {
+        return (GetFileAttributes(path) != INVALID_FILE_ATTRIBUTES) || (GetLastError() != ERROR_FILE_NOT_FOUND);
     }
 #else
     [[nodiscard]] static bool exists(const char* path) {
@@ -315,16 +284,16 @@ private:
 #endif
 
     /**
-     * Official aliases for VM brands. This is added to avoid accidental typos
-     * which could really fuck up the result. Also, no errors/warnings are
-     * issued if the string is invalid in case of a typo. For example:
-     * scoreboard[VBOX]++;
-     * is much better and safer against typos than:
-     * scoreboard["VirtualBox"]++;
-     * Hopefully this makes sense.
-     *
-     * TL;DR I have wonky fingers :(
-     */
+    * Official aliases for VM brands. This is added to avoid accidental typos
+    * which could really fuck up the result. Also, no errors/warnings are
+    * issued if the string is invalid in case of a typo. For example:
+    * scoreboard[VBOX]++;
+    * is much better and safer against typos than:
+    * scoreboard["VirtualBox"]++;
+    * Hopefully this makes sense.
+    *
+    * TL;DR I have wonky fingers :(
+    */
     static constexpr const char* VMWARE = "VMware";
     static constexpr const char* VBOX = "VirtualBox";
     static constexpr const char* KVM = "KVM";
@@ -863,8 +832,6 @@ private:
             std::string get_brand;
             u8 get_percent;
             bool get_vm;
-<<<<<<< HEAD
-=======
 
             // Default constructor
             memo_struct() : get_brand("Unknown"), get_percent(0), get_vm(false) {}
@@ -872,7 +839,6 @@ private:
             // Constructor to initialize the members
             memo_struct(const std::string& brand, u8 percent, bool is_vm)
                 : get_brand(brand), get_percent(percent), get_vm(is_vm) {}
->>>>>>> main
         };
         MSVC_ENABLE_WARNING(4820)
 
@@ -930,16 +896,11 @@ private:
         }
     };
 
-<<<<<<< HEAD
-    // cpuid check value
-    static bool cpuid_supported;
-=======
 
 
 
         // cpuid check value
         static bool cpuid_supported;
->>>>>>> main
 
         // flags
         static u64 flags;
@@ -1046,12 +1007,10 @@ private:
         NO_MEMO = 1ULL << 63,
 
 #if (MSVC)
-        ALL = ~((NO_MEMO | EXTREME) & 0xFFFFFFFFFFFFFFFF),
+        ALL = ~(NO_MEMO & 0xFFFFFFFFFFFFFFFF);
 #else
-        ALL = ~((NO_MEMO | EXTREME) & std::numeric_limits<u64>::max()),
+        ALL = ~(NO_MEMO & std::numeric_limits<u64>::max());
 #endif
-
-        DEFAULT = (ALL & ~(CURSOR));
 
 private:
 #if (CPP >= 17)
@@ -1079,11 +1038,7 @@ private:
             virtapple = "VirtualApple";
 
 #if (CPP >= 17)
-<<<<<<< HEAD
-        constexpr std::array<std::string_view, 13> IDs {
-=======
         constexpr std::array<std::string_view, 13> IDs{
->>>>>>> main
 #else
         std::array<std::string, 13> IDs {
 #endif
@@ -1098,11 +1053,7 @@ private:
             u32 x[4]{};
             cpuid(x[0], x[1], x[2], x[3], p_leaf);
 
-<<<<<<< HEAD
-            for (; start < end; start++) {
-=======
             for (; start < end; start++) { 
->>>>>>> main
                 *regs++ = x[start];
             }
 
@@ -1132,13 +1083,8 @@ private:
         debug(technique_name, brand);
 #else
 #if (CPP < 17)
-<<<<<<< HEAD
-            // bypass compiler warning about unused parameter, ignore this
-            UNUSED(technique_name);
-=======
         // bypass compiler warning about unused parameter, ignore this
         UNUSED(technique_name);
->>>>>>> main
 #endif
 #endif
 
@@ -1161,21 +1107,12 @@ private:
         }
 
         /**
-<<<<<<< HEAD
-        * This is added because there are inconsist string
-        * values for KVM's manufacturer ID. For example,
-        * it gives as "KVMKMVMKV" when I run it under QEMU
-        * but the Wikipedia article on CPUID says it's
-        * "KVMKVMKVM\0\0\0", like wtf????
-        */
-=======
          * This is added because there are inconsist string 
          * values for KVM's manufacturer ID. For example, 
          * it gives as "KVMKMVMKV" when I run it under QEMU
          * but the Wikipedia article on CPUID says it's 
          * "KVMKVMKVM\0\0\0", like wtf????
          */
->>>>>>> main
         if (brand.find("KVM") != std::string::npos) {
             return add(KVM);
         }
@@ -1225,10 +1162,7 @@ private:
 #endif
     }
 
-<<<<<<< HEAD
-=======
     static constexpr u64 DEFAULT = (~(CURSOR) & ALL);
->>>>>>> main
 
     /**
      * @brief Check CPUID output of manufacturer ID for known VMs/hypervisors
@@ -1274,7 +1208,6 @@ private:
 #endif
         return false;
     }
-
 
     /**
      * @brief Check if CPU brand is a VM brand
@@ -1573,11 +1506,7 @@ private:
 
 
     /**
-<<<<<<< HEAD
-     * @brief Check for vm presence using sidt instruction
-=======
      * @brief Check for vm presence using sidt instruction 
->>>>>>> main
      * @todo: Check if this actually works
      * @author Unprotect
      * @link https://unprotect.it/technique/sidt-red-pill/
@@ -1900,11 +1829,7 @@ private:
     /**
      * @brief Check result from systemd-detect-virt tool
      * @category Linux
-<<<<<<< HEAD
-     */
-=======
      */ 
->>>>>>> main
     [[nodiscard]] static bool systemd_virt() try {
         if (disabled(SYSTEMD)) {
             return false;
@@ -1947,11 +1872,7 @@ private:
     /**
      * @brief Check if chassis vendor is a VM vendor
      * @category Linux
-<<<<<<< HEAD
-     */
-=======
      */ 
->>>>>>> main
     [[nodiscard]] static bool chassis_vendor() try {
         if (disabled(CVENDOR)) {
             return false;
@@ -2311,19 +2232,11 @@ private:
 
 
     /**
-<<<<<<< HEAD
-     * @brief checks for default usernames, often a sign of a VM
-     * @author: Some guy in a russian underground forum from a screenshot I saw, idk I don't speak russian ¯\_(ツ)_/¯
-     * @category Windows
-     */
-    [[nodiscard]] static bool user_check() try {
-=======
      * @brief checks for default usernames, often a sign of a VM 
      * @author: Some guy in a russian underground forum from a screenshot I saw, idk I don't speak russian ¯\_(ツ)_/¯
      * @category Windows
      */ 
     [[nodiscard]] static bool user_check() try {     
->>>>>>> main
         if (disabled(USER)) {
             return false;
         }
@@ -2372,7 +2285,7 @@ private:
 #if (!MSVC)
         return false;
 #else
-        if (exists(L"C:\\analysis")) {
+        if (exists("C:\\analysis")) {
             return add(SUNBELT);
         }
 
@@ -2385,6 +2298,7 @@ private:
 #endif
         return false;
     }
+
 
 
     /**
@@ -2447,11 +2361,7 @@ private:
 
     /**
      * @brief Check VBox RdrDN
-<<<<<<< HEAD
-     * @category Windows
-=======
      * @category Windows 
->>>>>>> main
      */
     [[nodiscard]] static bool vbox_registry() try {
         if (disabled(VBOX_REG)) {
@@ -2594,17 +2504,10 @@ private:
 
 
     /**
-<<<<<<< HEAD
-     * @brief Check boot-time
-     * @todo: finish the linux part tomorrow
-     * @category All systems
-     */
-=======
      * @brief Check boot-time 
      * @todo: finish the linux part tomorrow
      * @category All systems
      */ 
->>>>>>> main
     [[nodiscard]] static bool boot_time() try {
         if (disabled(BOOT)) {
             return false;
@@ -2653,42 +2556,42 @@ private:
         u8 vbox = 0;
         u8 vmware = 0;
 
-        constexpr std::array<const wchar_t*, 26> files = { {
+        constexpr std::array<const char*, 26> files = { {
             // VMware
-            L"C:\\windows\\System32\\Drivers\\Vmmouse.sys",
-            L"C:\\windows\\System32\\Drivers\\vm3dgl.dll",
-            L"C:\\windows\\System32\\Drivers\\vmdum.dll",
-            L"C:\\windows\\System32\\Drivers\\VmGuestLibJava.dll",
-            L"C:\\windows\\System32\\Drivers\\vm3dver.dll",
-            L"C:\\windows\\System32\\Drivers\\vmtray.dll",
-            L"C:\\windows\\System32\\Drivers\\VMToolsHook.dll",
-            L"C:\\windows\\System32\\Drivers\\vmGuestLib.dll",
-            L"C:\\windows\\System32\\Drivers\\vmhgfs.dll",
-            L"C:\\windows\\System32\\Drivers\\vmhgfs.dll",  // Note: there's a typo in the original code
+            "C:\\windows\\System32\\Drivers\\Vmmouse.sys",
+            "C:\\windows\\System32\\Drivers\\vm3dgl.dll",
+            "C:\\windows\\System32\\Drivers\\vmdum.dll",
+            "C:\\windows\\System32\\Drivers\\VmGuestLibJava.dll",
+            "C:\\windows\\System32\\Drivers\\vm3dver.dll",
+            "C:\\windows\\System32\\Drivers\\vmtray.dll",
+            "C:\\windows\\System32\\Drivers\\VMToolsHook.dll",
+            "C:\\windows\\System32\\Drivers\\vmGuestLib.dll",
+            "C:\\windows\\System32\\Drivers\\vmhgfs.dll",
+            "C:\\windows\\System32\\Drivers\\vmhgfs.dll",  // Note: there's a typo in the original code
             // VBox
-            L"C:\\windows\\System32\\Drivers\\VBoxMouse.sys",
-            L"C:\\windows\\System32\\Drivers\\VBoxGuest.sys",
-            L"C:\\windows\\System32\\Drivers\\VBoxSF.sys",
-            L"C:\\windows\\System32\\Drivers\\VBoxVideo.sys",
-            L"C:\\windows\\System32\\vboxoglpackspu.dll",
-            L"C:\\windows\\System32\\vboxoglpassthroughspu.dll",
-            L"C:\\windows\\System32\\vboxservice.exe",
-            L"C:\\windows\\System32\\vboxoglcrutil.dll",
-            L"C:\\windows\\System32\\vboxdisp.dll",
-            L"C:\\windows\\System32\\vboxhook.dll",
-            L"C:\\windows\\System32\\vboxmrxnp.dll",
-            L"C:\\windows\\System32\\vboxogl.dll",
-            L"C:\\windows\\System32\\vboxtray.exe",
-            L"C:\\windows\\System32\\VBoxControl.exe",
-            L"C:\\windows\\System32\\vboxoglerrorspu.dll",
-            L"C:\\windows\\System32\\vboxoglfeedbackspu.dll",
+            "C:\\windows\\System32\\Drivers\\VBoxMouse.sys",
+            "C:\\windows\\System32\\Drivers\\VBoxGuest.sys",
+            "C:\\windows\\System32\\Drivers\\VBoxSF.sys",
+            "C:\\windows\\System32\\Drivers\\VBoxVideo.sys",
+            "C:\\windows\\System32\\vboxoglpackspu.dll",
+            "C:\\windows\\System32\\vboxoglpassthroughspu.dll",
+            "C:\\windows\\System32\\vboxservice.exe",
+            "C:\\windows\\System32\\vboxoglcrutil.dll",
+            "C:\\windows\\System32\\vboxdisp.dll",
+            "C:\\windows\\System32\\vboxhook.dll",
+            "C:\\windows\\System32\\vboxmrxnp.dll",
+            "C:\\windows\\System32\\vboxogl.dll",
+            "C:\\windows\\System32\\vboxtray.exe",
+            "C:\\windows\\System32\\VBoxControl.exe",
+            "C:\\windows\\System32\\vboxoglerrorspu.dll",
+            "C:\\windows\\System32\\vboxoglfeedbackspu.dll",
             } };
 
         for (const auto file : files) {
             if (exists(file)) {
-                const auto regex = std::wregex(file, std::regex::icase);
+                const auto regex = std::regex(file, std::regex::icase);
 
-                if (std::regex_search(L"vbox", regex)) {
+                if (std::regex_search("vbox", regex)) {
 #ifdef __VMAWARE_DEBUG__
                     debug("VM_FILES: found vbox file = ", file);
 #endif
@@ -2735,11 +2638,7 @@ private:
      * @author MacRansom ransomware
      * @todo TEST IF THIS WORKS
      * @category MacOS
-<<<<<<< HEAD
-     */
-=======
      */ 
->>>>>>> main
     [[nodiscard]] static bool hwmodel() try {
         if (disabled(HWMODEL)) {
             return false;
@@ -2788,11 +2687,7 @@ private:
     /**
      * @brief check if hyperthreading core count matches with physical expectations
      * @category MacOS
-<<<<<<< HEAD
-     * @author from MacRansom ransomware
-=======
      * @author from MacRansom ransomware 
->>>>>>> main
      * @link https://evasions.checkpoint.com/techniques/macos.html
      */
     [[nodiscard]] static bool mac_hyperthread() try {
@@ -2854,10 +2749,7 @@ private:
      * UBUNTU:      1028MB, 10GB
      * ORACLE:      1024MB, 12GB
      * OTHER LINUX: 512MB,  8GB
-<<<<<<< HEAD
-=======
      
->>>>>>> main
      * @todo: check if it still applies to host systems with larger RAM and disk size than what I have
      * @category Linux, Windows
      */
@@ -2986,17 +2878,10 @@ private:
     }
 
 
-<<<<<<< HEAD
-    /**
-     * @brief Check VBox network provider string
-     * @todo fix WNetGetProviderName linker error
-     */
-=======
    /**
     * @brief Check VBox network provider string
     * @todo fix WNetGetProviderName linker error
     */
->>>>>>> main
     [[nodiscard]] static bool vbox_network_share() try {
         return false;
         /*
@@ -3117,11 +3002,7 @@ private:
      * @brief Check if memory is too low
      * @author Al-Khaser project
      * @category x86?
-<<<<<<< HEAD
-     */
-=======
     */
->>>>>>> main
     [[nodiscard]] static bool low_memory_space() try {
         if (disabled(MEMORY)) {
             return false;
@@ -3235,11 +3116,7 @@ private:
     /**
      * @brief Check for default VM username and hostname for linux
      * @category Linux
-<<<<<<< HEAD
-     */
-=======
      */ 
->>>>>>> main
     [[nodiscard]] static bool linux_user_host() try {
         if (disabled(LINUX_USER_HOST)) {
             return false;
@@ -3307,11 +3184,7 @@ private:
 
     /**
      * @brief Gamarue ransomware check
-<<<<<<< HEAD
-     * @category Windows
-=======
      * @category Windows 
->>>>>>> main
      */
     [[nodiscard]] static bool gamarue() try {
         if (disabled(GAMARUE)) {
@@ -3543,11 +3416,7 @@ private:
      * @link http://www.codeproject.com/Articles/9823/Detect-if-your-program-is-running-inside-a-Virtual
      * @link https://artemonsecurity.com/vmde.pdf
      * @author N. Rin, EP_X0FF
-<<<<<<< HEAD
-     */
-=======
      */ 
->>>>>>> main
     [[nodiscard]] static bool vpc_backdoor() {
         if (disabled(VPC_BACKDOOR)) {
             return false;
@@ -3601,14 +3470,9 @@ private:
 
     /**
      * @brief check for any indication of parallels through BIOS stuff
-<<<<<<< HEAD
-     * @category Windows
-     */
-=======
      * @link https://stackoverflow.com/questions/1370586/detect-if-windows-is-running-from-within-parallels
      * @category Windows
      */ 
->>>>>>> main
     [[nodiscard]] static bool parallels() try {
         if (disabled(PARALLELS_VM)) {
             return false;
@@ -3660,9 +3524,9 @@ private:
 
 
     /**
-     * @brief check VM through alternative RDTSC technique with VMEXIT
-     * @category x86
-     */
+        * @brief check VM through alternative RDTSC technique with VMEXIT
+        * @category x86
+        */
     [[nodiscard]] static bool rdtsc_vmexit() try {
         if (disabled(RDTSC_VMEXIT)) {
             return false;
@@ -3698,11 +3562,7 @@ private:
      * @author LordNoteworthy
      * @note modified code from Al-Khaser project
      * @link https://github.com/LordNoteworthy/al-khaser/blob/c68fbd7ba0ba46315e819b490a2c782b80262fcd/al-khaser/Anti%20VM/Generic.cpp
-<<<<<<< HEAD
-     */
-=======
      */ 
->>>>>>> main
     [[nodiscard]] static bool loaded_dlls() try {
         if (disabled(LOADED_DLLS)) {
             return false;
@@ -3824,11 +3684,7 @@ private:
     /**
      * @brief Go through the motherboard and match for VPC-specific string
      * @category Windows
-<<<<<<< HEAD
-     */
-=======
      */ 
->>>>>>> main
     [[nodiscard]] static bool vpc_board() try {
         if (disabled(VPC_BOARD)) {
             return false;
@@ -4226,11 +4082,7 @@ private:
      * @note slightly modified code from original
      * @author @waleedassar
      * @link https://pastebin.com/xhFABpPL
-<<<<<<< HEAD
-     */
-=======
      */ 
->>>>>>> main
     [[nodiscard]] static bool vbox_shared_folders() try {
         if (disabled(VBOX_FOLDERS)) {
             return false;
@@ -4667,6 +4519,8 @@ private:
                 return add(KVM);
             }
         }
+
+        return false;
 #endif
     }
     catch (...) {

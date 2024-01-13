@@ -241,6 +241,10 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::MAC_IOKIT` | Check MacOS' IO kit registry for VM-specific strings | MacOS | 80% |  |
 | `VM::IOREG_GREP` | Check for VM-strings in ioreg commands for MacOS | MacOS | 75% |  |
 | `VM::MAC_SIP` | Check if System Integrity Protection is disabled (likely a VM if it is) | MacOS | 85% |  |
+| `VM::KVM_REG` | Check for KVM-specific registry strings | Windows | 75% |  |
+| `VM::KVM_DRIVERS` | Check for KVM-specific system files in system driver directory | Windows | 55% |  |
+| `VM::KVM_DIRS` | Check for KVM-specific directories | Windows | 55% |  |
+
 
 
 <br>
