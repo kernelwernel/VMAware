@@ -32,8 +32,43 @@
 #define APPLE 1
 #endif
 
-#if (MSVC)
-#pragma warning(push, 0)  
+// shorter and succinct macros
+#if __cplusplus == 202002L
+#define CPP 20
+#elif __cplusplus == 201703L
+#define CPP 17
+#elif __cplusplus == 201402L
+#define CPP 14
+#elif __cplusplus == 201103L
+#define CPP 11
+#else
+#define CPP 0
+#endif
+
+#if (CPP < 11 && !MSVC)
+#error "VMAware only supports C++11 or above, set your compiler flag to '-std=c++20' for GCC/clang, or '/std:c++20' for MSVC"
+#endif
+
+#if (defined(__x86_64__) || defined(__i386__) || defined(_M_IX86) || defined(_M_X64))
+#define x86 1
+#else
+#define x86 0
+#endif
+
+#if !(defined (MSVC) || defined(LINUX) || defined(APPLE))
+#warning "Unknown OS detected, tests will be severely limited"
+#endif
+
+#if (CPP >= 20)
+#include <ranges>
+#endif
+#if (CPP >= 17)
+#include <bit>
+#include <filesystem>
+#endif
+#ifdef __VMAWARE_DEBUG__
+#include <iomanip>
+#include <ios>
 #endif
 
 #include <functional>
@@ -52,56 +87,9 @@
 #include <cmath>
 #include <sstream>
 
- // shorter and succinct macros
-#if __cplusplus == 202002L
-#define CPP 20
-#elif __cplusplus == 201703L
-#define CPP 17
-#elif __cplusplus == 201402L
-#define CPP 14
-#elif __cplusplus == 201103L
-#define CPP 11
-#else
-#define CPP 0
-#define CPP 0
-#endif
 #if (MSVC)
-#if (_M_IX86)
-#define x86 1
-#else
-#define x86 0
-#endif
-#if (_M_IX86)
-#define x86 1
-#else
-#define x86 0
-#endif
-#else
-#if (__x86_64__)
-#define x86 1
-#else
-#define x86 0
-#endif
-#endif
-#if !(defined (MSVC) || defined(LINUX) || defined(APPLE))
-#warning "Unknown OS detected, tests will be severely limited"
-#endif
-#if (CPP >= 20)
-#include <ranges>
-#endif
-#if (CPP >= 17)
-#include <bit>
-#include <filesystem>
-#endif
-#ifdef __VMAWARE_DEBUG__
-#include <iomanip>
-#include <ios>
-#endif
-#if (CPP < 11 && !MSVC)
-#error "VMAware only supports C++11 or above, set your compiler flag to '-std=c++20' for GCC/clang, or '/std:c++20' for MSVC"
-#endif
+#pragma warning(push, 0) // disable the fuckign windows errors temporarily
 
-#if (MSVC)
 #include <windows.h>
 #include <intrin.h>
 #include <tchar.h>
@@ -117,10 +105,14 @@
 #include <tlhelp32.h>
 #include <comdef.h>
 #include <Wbemidl.h>
+#include <shlwapi.h>
+#include <shlobj_core.h>
 
 #pragma comment(lib, "wbemuuid.lib")
 #pragma comment(lib, "iphlpapi.lib")
 #pragma comment(lib,"MPR")
+
+#pragma warning(pop) 
 #elif (LINUX)
 #include <cpuid.h>
 #include <x86intrin.h>
@@ -137,10 +129,6 @@
 #elif (APPLE)
 #include <sys/types.h>
 #include <sys/sysctl.h>
-#endif
-
-#if (MSVC)
-#pragma warning(pop) 
 #endif
 
 // macro shortcut to disable MSVC warnings
@@ -821,6 +809,14 @@ private:
     };
 #endif
 
+#if (MSVC)
+    [[nodiscard]] static bool is_wow64() {
+        BOOL isWow64 = FALSE;
+        BOOL tmp = IsWow64Process(GetCurrentProcess(), &isWow64);
+        return (tmp && isWow64);
+    }
+#endif
+
     // memoization
     struct memo {
     private:
@@ -995,6 +991,9 @@ private:
         MAC_IOKIT = 1ULL << 56,
         IOREG_GREP = 1ULL << 57,
         MAC_SIP = 1ULL << 58,
+        KVM_REG = 1ULL << 59,
+        KVM_DRIVERS = 1ULL << 60,
+        KVM_DIRS = 1ULL << 61,
 
         // __UNIQUE_LABEL, ADD YOUR UNIQUE FUNCTION FLAG VALUE ABOVE HERE
 
@@ -2112,9 +2111,8 @@ private:
         auto key = [&score](const char* p_brand, const char* regkey_s) -> void {
             HKEY regkey;
             LONG ret;
-            BOOL isWow64 = FALSE;
 
-            if (IsWow64Process(GetCurrentProcess(), &isWow64) && isWow64) {
+            if (is_wow64()) {
                 wchar_t wRegKey[MAX_PATH];
                 MultiByteToWideChar(CP_ACP, 0, regkey_s, -1, wRegKey, MAX_PATH);
 
@@ -4473,8 +4471,160 @@ private:
         return false;
     }
 
+    
+    /**
+     * @brief Check for KVM-specific registries
+     * @category Windows
+     * @note idea is from Al-Khaser, slightly modified code
+     * @author LordNoteWorthy
+     * @link https://github.com/LordNoteworthy/al-khaser/blob/0f31a3866bafdfa703d2ed1ee1a242ab31bf5ef0/al-khaser/AntiVM/KVM.cpp
+     */
+    [[nodiscard]] static bool kvm_registry() try {
+        if (disabled(KVM_REG)) {
+            return false;
+        }
 
-        // __TECHNIQUE_LABEL, label for adding techniques above this point
+#if (!MSVC)
+        return false;
+#else
+        auto registry_exists = [](const char* key) -> bool {
+            HKEY keyHandle;
+            
+            if (RegOpenKeyEx(HKEY_LOCAL_MACHINE, key, 0, KEY_QUERY_VALUE, &keyHandle) == ERROR_SUCCESS) {
+                RegCloseKey(keyHandle);
+                return true;
+            }
+
+            return false;
+        };
+
+        constexpr std::array<const char*, 7> keys = {{
+            "SYSTEM\\ControlSet001\\Services\\vioscsi",
+            "SYSTEM\\ControlSet001\\Services\\viostor",
+            "SYSTEM\\ControlSet001\\Services\\VirtIO-FS Service",
+            "SYSTEM\\ControlSet001\\Services\\VirtioSerial",
+            "SYSTEM\\ControlSet001\\Services\\BALLOON",
+            "SYSTEM\\ControlSet001\\Services\\BalloonService",
+            "SYSTEM\\ControlSet001\\Services\\netkvm",
+        }};
+
+        for (auto it = keys.cbegin(); it != keys.cend(); it++) {
+            if (registry_exists(*it)) {
+                return add(KVM);
+            }
+        }
+#endif
+    }
+    catch (...) {
+#ifdef __VMAWARE_DEBUG__
+        debug("KVM_REG: ", "catched error, returned false");
+#endif
+        return false;
+    }
+
+
+    /**
+     * @brief Check for KVM driver files
+     * @category Windows
+     * @note idea is from Al-Khaser, slightly modified code
+     * @author LordNoteWorthy
+     * @link https://github.com/LordNoteworthy/al-khaser/blob/0f31a3866bafdfa703d2ed1ee1a242ab31bf5ef0/al-khaser/AntiVM/KVM.cpp
+     */
+    [[nodiscard]] static bool kvm_drivers() try {
+        if (disabled(KVM_DRIVERS)) {
+            return false;
+        }
+
+#if (!MSVC)
+        return false;
+#else
+        constexpr std::array<const char*, 10> keys = {{
+            "System32\\drivers\\balloon.sys",
+            "System32\\drivers\\netkvm.sys",
+            "System32\\drivers\\pvpanic.sys",
+            "System32\\drivers\\viofs.sys",
+            "System32\\drivers\\viogpudo.sys",
+            "System32\\drivers\\vioinput.sys",
+            "System32\\drivers\\viorng.sys",
+            "System32\\drivers\\vioscsi.sys",
+            "System32\\drivers\\vioser.sys",
+            "System32\\drivers\\viostor.sys",
+        }};
+
+        TCHAR szWinDir[MAX_PATH] = _T("");
+        TCHAR szPath[MAX_PATH] = _T("");
+        PVOID OldValue = NULL;
+
+        GetWindowsDirectory(szWinDir, MAX_PATH);
+
+        if (is_wow64()) {
+            Wow64DisableWow64FsRedirection(&OldValue);
+        }
+
+        bool is_vm = false;
+
+        for (auto it = keys.cbegin(); it != keys.cend(); it++) {
+            PathCombine(szPath, szWinDir, *it);
+            if (exists(szPath)) {
+                is_vm = true;
+                break;
+            }
+        }
+
+        if (is_wow64()) {
+            Wow64RevertWow64FsRedirection(&OldValue);
+        }
+
+        return is_vm;
+#endif
+    }
+    catch (...) {
+#ifdef __VMAWARE_DEBUG__
+        debug("KVM_DRIVERS: ", "catched error, returned false");
+#endif
+        return false;
+    }
+
+
+    /**
+     * @brief Check KVM directories
+     * @category Windows
+     * @author LordNoteWorthy
+     * @note from Al-Khaser project
+     * @link https://github.com/LordNoteworthy/al-khaser/blob/0f31a3866bafdfa703d2ed1ee1a242ab31bf5ef0/al-khaser/AntiVM/KVM.cpp
+     */
+    [[nodiscard]] static bool kvm_directories() try {
+        if (disabled(KVM_DIRS)) {
+            return false;
+        }
+
+#if (!MSVC)
+        return false;
+#else
+        TCHAR szProgramFile[MAX_PATH];
+        TCHAR szPath[MAX_PATH] = _T("");
+        TCHAR szTarget[MAX_PATH] = _T("Virtio-Win\\");
+
+        if (is_wow64()) {
+            ExpandEnvironmentStrings(_T("%ProgramW6432%"), szProgramFile, ARRAYSIZE(szProgramFile));
+        } else {
+            SHGetSpecialFolderPath(NULL, szProgramFile, CSIDL_PROGRAM_FILES, FALSE);
+        }
+
+        PathCombine(szPath, szProgramFile, szTarget);
+        return exists(szPath);
+#endif
+    }
+    catch (...) {
+#ifdef __VMAWARE_DEBUG__
+        debug("KVM_DIRS: ", "catched error, returned false");
+#endif
+        return false;
+    }
+
+
+
+    // __TECHNIQUE_LABEL, label for adding techniques above this point
 
     MSVC_DISABLE_WARNING(4820)
     struct technique {
@@ -4483,8 +4633,7 @@ private:
     };
     MSVC_ENABLE_WARNING(4820)
 
-            // the points are debatable, but I think it's fine how it is. Feel free to disagree.
-            static const std::map<u64, technique> table;
+    static const std::map<u64, technique> table;
 
 public:
     /**
@@ -4511,13 +4660,13 @@ public:
             throw std::invalid_argument("Flag argument cannot be set to VM::ALL, consult the documentation's flag list");
         }
 
-            if (count > 1) {
-                throw std::invalid_argument("Flag argument must only contain a single option, consult the documentation's flag list");
-            }
+        if (count > 1) {
+            throw std::invalid_argument("Flag argument must only contain a single option, consult the documentation's flag list");
+        }
 
-            if (count == 0) {
-                throw std::invalid_argument("Flag argument must contain at least a single option, consult the documentation's flag list");
-            }
+        if (count == 0) {
+            throw std::invalid_argument("Flag argument must contain at least a single option, consult the documentation's flag list");
+        }
 
         if (
             (p_flags & NO_MEMO) || \
@@ -4526,28 +4675,28 @@ public:
             throw std::invalid_argument("Flag argument must be a technique flag and not a settings flag, consult the documentation's flag list");
         }
 
-            // count should only have a single flag at this stage
-            assert(count == 1);
+        // count should only have a single flag at this stage
+        assert(count == 1);
 
-            // temporarily enable all flags so that every technique is enabled
-            const u64 tmp_flags = VM::flags;
-            VM::flags = (DEFAULT | CURSOR);
+        // temporarily enable all flags so that every technique is enabled
+        const u64 tmp_flags = VM::flags;
+        VM::flags = (DEFAULT | CURSOR);
 
-            bool result = false;
+        bool result = false;
 
-            auto it = table.find(p_flags);
+        auto it = table.find(p_flags);
 
-            if (it == table.end()) {
-                throw std::invalid_argument("Flag is not known, consult the documentation's flag list");
-            }
+        if (it == table.end()) {
+            throw std::invalid_argument("Flag is not known, consult the documentation's flag list");
+        }
 
         const technique& pair = it->second;
         result = pair.ptr();
 
-            VM::flags = tmp_flags;
+        VM::flags = tmp_flags;
 
-            return result;
-        }
+        return result;
+    }
 
 
     /**
@@ -4564,11 +4713,10 @@ public:
 #ifdef __VMAWARE_DEBUG__
             debug("memoization: returned cached result in brand()");
 #endif
+            return (memo::get_brand());
+        }
 
-                return (memo::get_brand());
-            }
-
-            const char* current_brand = "";
+        const char* current_brand = "";
 
         // fetch the brand with the most points in the scoreboard
 #if (CPP >= 20)
@@ -4640,12 +4788,11 @@ public:
 #ifdef __VMAWARE_DEBUG__
             debug("memoization: cached result in brand()");
 #endif
-
-                memo::memoize(memo::FOUND_BRAND, memo::UNUSED_VM, current_brand, memo::UNUSED_PERCENT);
-            }
-
-            return current_brand;
+            memo::memoize(memo::FOUND_BRAND, memo::UNUSED_VM, current_brand, memo::UNUSED_PERCENT);
         }
+
+        return current_brand;
+    }
 
 
     /**
@@ -4665,11 +4812,11 @@ public:
         }
 
 #ifdef __VMAWARE_DEBUG__
-            debug("cpuid: is supported? : ", VM::cpuid_supported);
+        debug("cpuid: is supported? : ", VM::cpuid_supported);
 #endif
 
-            bool result = false;
-            u8 p = percentage(p_flags);
+        bool result = false;
+        u8 p = percentage(p_flags);
 
         if (enabled(EXTREME)) {
             result = (p > 0);
@@ -4678,12 +4825,12 @@ public:
             result = (p == 100);
         }
 
-            if (disabled(NO_MEMO)) {
-                memo::memoize(memo::FOUND_VM, result, memo::UNUSED_BRAND, memo::UNUSED_PERCENT);
-            }
-
-            return result;
+        if (disabled(NO_MEMO)) {
+            memo::memoize(memo::FOUND_VM, result, memo::UNUSED_BRAND, memo::UNUSED_PERCENT);
         }
+
+        return result;
+    }
 
 
     /**
@@ -4699,11 +4846,10 @@ public:
 #ifdef __VMAWARE_DEBUG__
             debug("memoization: ", "returned cached result in VM::percentage()");
 #endif
+            return (memo::get_percent());
+        }
 
-                return (memo::get_percent());
-            }
-
-            u16 points = 0;
+        u16 points = 0;
 
         for (auto it = table.cbegin(); it != table.cend(); ++it) {
             const technique& pair = it->second;
@@ -4721,13 +4867,13 @@ public:
             percent = static_cast<u8>(points);
         }
 
-            if (disabled(NO_MEMO)) {
-                memo::memoize(memo::FOUND_PERCENT, memo::UNUSED_VM, memo::UNUSED_BRAND, percent);
-            }
-
-            return percent;
+        if (disabled(NO_MEMO)) {
+            memo::memoize(memo::FOUND_PERCENT, memo::UNUSED_VM, memo::UNUSED_BRAND, percent);
         }
-        };
+
+        return percent;
+    }
+};
 
 MSVC_ENABLE_WARNING(4626 4514)
 
@@ -4772,13 +4918,7 @@ std::map<bool, VM::memo::memo_struct> VM::memo::cache;
 
 
 bool VM::cpuid_supported = []() -> bool {
-    #if \
-    ( \
-        !defined(__x86_64__) && \
-        !defined(__i386__) && \
-        !defined(_M_IX86) && \
-        !defined(_M_X64) \
-    )
+    #if (!x86)
         return false;
     #elif (MSVC)
         int32_t info[4];
@@ -4793,10 +4933,11 @@ bool VM::cpuid_supported = []() -> bool {
 }();
 
 
+// the 0~100 points are debatable, but I think it's fine how it is. Feel free to disagree.
 const std::map<VM::u64, VM::technique> VM::table = {
     { VM::VMID, { 100, VM::vmid }},
     { VM::BRAND, { 50, VM::cpu_brand }},
-    { VM::HYPERVISOR_BIT, { 95, VM::hypervisor_bit }},
+    { VM::HYPERVISOR_BIT, { 100, VM::hypervisor_bit }},
     { VM::CPUID_0X4, { 70, VM::cpuid_0x4 }},
     { VM::HYPERVISOR_STR, { 45, VM::hypervisor_brand }},
     { VM::RDTSC, { 20, VM::rdtsc_check }},
@@ -4853,6 +4994,9 @@ const std::map<VM::u64, VM::technique> VM::table = {
     { VM::MAC_IOKIT, { 80, VM::io_kit }},
     { VM::IOREG_GREP, { 75, VM::ioreg_grep }},
     { VM::MAC_SIP, { 85, VM::mac_sip }},
+    { VM::KVM_REG, { 75, VM::kvm_registry }},
+    { VM::KVM_DRIVERS, { 55, VM::kvm_drivers }},
+    { VM::KVM_DIRS, { 55, VM::kvm_directories }}
 
     // __TABLE_LABEL, add your technique above
     // { VM::FUNCTION, { POINTS, FUNCTION_POINTER }}

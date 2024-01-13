@@ -17,7 +17,7 @@ The library is:
 - Cross-platform (Windows + MacOS + Linux)
 - Header-only
 - Available with C++11 and above
-- Features up to 50+ techniques
+- Features up to 60+ unique techniques
 - Able to detect VMware, VirtualBox, QEMU, KVM, Parallels, and [much more](https://github.com/kernelwernel/VMAware/blob/v0.2/docs/documentation.md#vmbrand)
 - Able to detect semi-VM technologies like hypervisors, docker, and wine
 - Able to guess the VM brand
