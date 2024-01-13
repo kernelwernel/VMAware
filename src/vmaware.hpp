@@ -3431,10 +3431,13 @@ private:
             __try {
                 PCONTEXT ctx = ep->ContextRecord;
 
-                ctx->Ebx = static_cast<DWORD>(-1);    // Not running VPC
-                ctx->Eip += 4;    // skip past the "call VPC" opcodes
-                return static_cast<DWORD>(EXCEPTION_CONTINUE_EXECUTION);
-                // we can safely resume execution since we skipped the faulty instruction
+                if (ctx->ContextFlags & CONTEXT_INTEGER) {
+                    ctx->Ebx = static_cast<DWORD>(-1);
+                    ctx->Eip += 4;
+                    return static_cast<DWORD>(EXCEPTION_CONTINUE_EXECUTION);
+                } else {
+                    return EXCEPTION_CONTINUE_SEARCH;
+                }
             }
             __except (EXCEPTION_EXECUTE_HANDLER) {
                 return EXCEPTION_CONTINUE_SEARCH;
