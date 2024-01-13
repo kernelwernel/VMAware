@@ -12,6 +12,7 @@
 - [X] add percentage overload functionality for VM::detect()
 - [ ] maybe document the project in codeproject.com when a 1.0 is ready
 - [ ] add a cpuid fuzzer (baremetal and VM)
+- [ ] organise the registry existence function better and group them together as a single utility function
 
 
 # Distant plans
