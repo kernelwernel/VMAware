@@ -3409,6 +3409,18 @@ private:
         return false;
     }
 
+
+#if (MSVC && x86)
+    // IsInsideVPC's exception filter, added here since it can't be made into a lambda
+    DWORD __forceinline VPCExceptionHandler(LPEXCEPTION_POINTERS ep) {
+        PCONTEXT ctx = ep->ContextRecord;
+
+        ctx->Ebx = static_cast<DWORD>(-1); // Not running VPC
+        ctx->Eip += 4; // skip past the "call VPC" opcodes
+        return static_cast<DWORD>(EXCEPTION_CONTINUE_EXECUTION);
+    }
+#endif
+
     /**
      * @brief Check for semi-documented Virtual PC detection method using illegal instructions
      * @category Windows x86
@@ -3422,29 +3434,12 @@ private:
             return false;
         }
 
-#if (!MSVC || !x86)
+#if !(MSVC && x86)
         return false;
 #else
         bool is_vm = false;
 
-        auto VPCExceptionHandler = [](PEXCEPTION_POINTERS ep) -> DWORD {
-            __try {
-                PCONTEXT ctx = ep->ContextRecord;
-
-                if (ctx->ContextFlags & CONTEXT_INTEGER) {
-                    ctx->Ebx = static_cast<DWORD>(-1);
-                    ctx->Eip += 4;
-                    return static_cast<DWORD>(EXCEPTION_CONTINUE_EXECUTION);
-                } else {
-                    return EXCEPTION_CONTINUE_SEARCH;
-                }
-            }
-            __except (EXCEPTION_EXECUTE_HANDLER) {
-                return EXCEPTION_CONTINUE_SEARCH;
-            }
-        };
-
-        // ========== TEST 1 (use well-known trick with illegal instructions )==========
+        // ========== TEST 1 (use well-known trick with illegal instructions) ==========
         __try {
             __asm push   ebx
             __asm mov    ebx, 0 // It will stay ZERO if VPC is running
