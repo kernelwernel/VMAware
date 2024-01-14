@@ -114,6 +114,7 @@
 
 #pragma comment(lib, "wbemuuid.lib")
 #pragma comment(lib, "iphlpapi.lib")
+#pragma comment(lib, "Shlwapi.lib")
 #pragma comment(lib, "MPR")
 #elif (LINUX)
 #include <cpuid.h>
