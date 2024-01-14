@@ -224,7 +224,6 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::WMIC` | Check top-level default window level | Windows | 20% |  | 
 | `VM::GAMARUE` | Check for Gamarue ransomware technique which compares VM-specific Window product IDs | Windows | 40% |  | 
 | `VM::VMID_0X4` | Check if the CPU manufacturer ID matches that of a VM brand with leaf 0x40000000 | Yes | 100% |  |
-| `VM::VPC_BACKDOOR` | Check for semi-documented detection mechanism for Virtual PC | Windows | 70% |  |
 | `VM::PARALLELS_VM` | Check for indications of Parallels VM | Windows | 50% |  |
 | `VM::RDTSC_VMEXIT` | Check for RDTSC technique with VMEXIT | Yes | 50% |  |
 | `VM::LOADED_DLLS` | Check for DLLs of multiple VM brands | Windows | 75% |  |

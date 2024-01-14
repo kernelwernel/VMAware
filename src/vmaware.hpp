@@ -980,7 +980,7 @@ private:
         GAMARUE = 1ULL << 39,
         WMIC = 1ULL << 40,
         VMID_0X4 = 1ULL << 41,
-        VPC_BACKDOOR = 1ULL << 42,
+        //VPC_BACKDOOR = 1ULL << 42,
         PARALLELS_VM = 1ULL << 43,
         RDTSC_VMEXIT = 1ULL << 44,
         LOADED_DLLS = 1ULL << 45,
@@ -1602,6 +1602,7 @@ private:
 */
 
 #elif (MSVC)
+/*
         constexpr std::array<u16, 2> ioports = { { 'VX' , 'VY' } };
         u32 ioport;
         for (auto it = ioports.cbegin(); it != ioports.cend(); it++) {
@@ -1628,6 +1629,7 @@ private:
                 is_vm = false;
             }
         }
+*/
 #endif
 
         if (is_vm) {
@@ -3410,69 +3412,13 @@ private:
     }
 
 
-#if (MSVC && x86)
-    // IsInsideVPC's exception filter, added here since it can't be made into a lambda
-    DWORD __forceinline VPCExceptionHandler(LPEXCEPTION_POINTERS ep) {
-        PCONTEXT ctx = ep->ContextRecord;
-
-        ctx->Ebx = static_cast<DWORD>(-1); // Not running VPC
-        ctx->Eip += 4; // skip past the "call VPC" opcodes
-        return static_cast<DWORD>(EXCEPTION_CONTINUE_EXECUTION);
-    }
-#endif
-
-    /**
-     * @brief Check for semi-documented Virtual PC detection method using illegal instructions
-     * @category Windows x86
-     * @note no function-level try-catch block, because i can't add it wrapped around multiple other try-catches
-     * @link http://www.codeproject.com/Articles/9823/Detect-if-your-program-is-running-inside-a-Virtual
-     * @link https://artemonsecurity.com/vmde.pdf
-     * @author N. Rin, EP_X0FF
-     */ 
-    [[nodiscard]] static bool vpc_backdoor() {
-        if (disabled(VPC_BACKDOOR)) {
-            return false;
-        }
-
-#if !(MSVC && x86)
-        return false;
-#else
-        bool is_vm = false;
-
-        // ========== TEST 1 (use well-known trick with illegal instructions) ==========
-        __try {
-            __asm push   ebx
-            __asm mov    ebx, 0 // It will stay ZERO if VPC is running
-            __asm mov    eax, 1 // VPC function number
-
-            // call VPC
-            __asm __emit 0Fh
-            __asm __emit 3Fh
-            __asm __emit 0Dh
-            __asm __emit 0h
-
-            __asm test   ebx, ebx
-            __asm setz[is_vm]
-            __asm pop    ebx
-        }
-        // The exception block shouldn't get triggered if VPC is running
-        __except (VPCExceptionHandler(GetExceptionInformation())) {}
-
-        if (is_vm == true) {
-            return add(VPC);
-        }
-
-        return false;
-#endif
-    }
-
     /**
      * @brief check for any indication of parallels through BIOS stuff
      * @link https://stackoverflow.com/questions/1370586/detect-if-windows-is-running-from-within-parallels
      * @category Windows
      */ 
     [[nodiscard]] static bool parallels() try {
-        if (disabled(PARALLELS_VM)) {
+        if (disabled(PARALLELS_VM)) {dismantled
             return false;
         }
 
@@ -3586,8 +3532,8 @@ private:
             "cmdvrt32.dll",    // Comodo Container
         } };
 
-        for (auto it = szDlls.begin(); it != szDlls.end(); ++it) {
-            const char* dll = *it;
+        for (const auto& key : szDlls) {
+            const char* dll = key;
 
             hDll = GetModuleHandleA(dll);  // Use GetModuleHandleA for ANSI strings
 
@@ -4512,8 +4458,8 @@ private:
             "SYSTEM\\ControlSet001\\Services\\netkvm",
         }};
 
-        for (auto it = keys.cbegin(); it != keys.cend(); it++) {
-            if (registry_exists(*it)) {
+        for (const auto& key : keys) {
+            if (registry_exists(key)) {
                 return add(KVM);
             }
         }
@@ -4569,8 +4515,8 @@ private:
 
         bool is_vm = false;
 
-        for (auto it = keys.cbegin(); it != keys.cend(); it++) {
-            PathCombine(szPath, szWinDir, *it);
+        for (const auto& key : keys) {
+            PathCombine(szPath, szWinDir, key);
             if (exists(szPath)) {
                 is_vm = true;
                 break;
@@ -4739,7 +4685,7 @@ public:
                         return pair.second;
                     }
                 )
-                ) {
+            ) {
                 current_brand = "Unknown";
             }
             else {
@@ -4756,12 +4702,21 @@ public:
         u8 max = 0;
 #endif
 
+#if (CPP >= 17)
+        for (const auto& [brand, points] : scoreboard) {
+            if (points > max) {
+                current_brand = brand;
+                max = points;
+            }
+        }
+else
         for (auto it = scoreboard.cbegin(); it != scoreboard.cend(); ++it) {
             if (it->second > max) {
                 current_brand = it->first;
                 max = it->second;
             }
         }
+#endif
 
         if (max == 0) {
             current_brand = "Unknown";
@@ -4983,7 +4938,7 @@ const std::map<VM::u64, VM::technique> VM::table = {
     { VM::GAMARUE, { 40, VM::gamarue }},
     { VM::WMIC, { 20, VM::wmic }},
     { VM::VMID_0X4, { 90, VM::vmid_0x4 }},
-    { VM::VPC_BACKDOOR, { 70, VM::vpc_backdoor }},
+    //{ VM::VPC_BACKDOOR, { 70, VM::vpc_backdoor }},
     { VM::PARALLELS_VM, { 50, VM::parallels }},
     { VM::RDTSC_VMEXIT, { 50, VM::rdtsc_vmexit }},
     { VM::LOADED_DLLS, { 75, VM::loaded_dlls }},
