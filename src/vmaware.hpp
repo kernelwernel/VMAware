@@ -1548,7 +1548,7 @@ private:
 
     /**
      * @brief Check if VMware port number 0x5658 is present
-     * @todo Make better Linux-compatible GCC inline assembly code
+     * @todo Make better Linux-compatible GCC inline assembly code, fix MSVC too
      * @link https://kb.vmware.com/s/article/1009458
      * @category x86 Windows
      */
@@ -3418,7 +3418,7 @@ private:
      * @category Windows
      */ 
     [[nodiscard]] static bool parallels() try {
-        if (disabled(PARALLELS_VM)) {dismantled
+        if (disabled(PARALLELS_VM)) {
             return false;
         }
 
