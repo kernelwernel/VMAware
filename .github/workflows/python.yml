@@ -1,4 +1,4 @@
-name: Run Python Script
+name: Python updated argument check
 
 on:
   push:
@@ -20,4 +20,4 @@ jobs:
         python-version: 3.8
 
     - name: Run Python script
-      run: python ../../auxiliary/arg_cheks.py
+      run: python ${{ github.workspace }}/auxiliary/arg_checks.py
