@@ -224,8 +224,8 @@ private:
     #define unlikely(x) __builtin_expect(!!(x), 0)
     #define likely(x)   __builtin_expect(!!(x), 1)
     #else
-    #define unlikely(x)
-    #define likely(x)
+    #define unlikely
+    #define likely
     #endif
 
 public:
@@ -4601,7 +4601,7 @@ public:
 #endif
         auto throw_error = [&](const char* text) -> void {
             std::stringstream ss;
-#if (CPP >= 20)
+#if (CPP >= 20 && !defined(__clang__))
             ss << ", error in " << loc.function_name() << " at " << loc.file_name() << ":" << loc.line() << ")";
 #endif
             ss << ". Consult the documentation's flag handler for VM::check()";
