@@ -4594,7 +4594,7 @@ public:
      * @return bool
      * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmcheck
      */
-#if (CPP >= 20)
+#if (CPP >= 20 && !defined(__clang__)) // not sure why clang doesn't support this lol
     [[nodiscard]] static bool check(const u8 p_flag = 0, const std::source_location& loc = std::source_location::current()) {
 #else
     [[nodiscard]] static bool check(const u8 p_flag = 0) {
