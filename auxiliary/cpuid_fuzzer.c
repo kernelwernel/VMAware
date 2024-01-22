@@ -46,7 +46,7 @@
     #include <sys/sysinfo.h>
 #endif
 
-// unlikely macro
+// branching macros
 #define unlikely(x) __builtin_expect(!!(x), 0)
 #define likely(x)   __builtin_expect(!!(x), 1)
 
@@ -105,14 +105,6 @@
 // miscellaneous
 #define null_leaf 0xFF
 #define breakpoint 10000000
-
-
-
-
-
-
-
-
 
 
 typedef struct {

@@ -1,7 +1,7 @@
 - [ ] revise sidt check
 - [ ] analyse the UUID check technique's efficiency
 - [X] fix c++11 debug function param error
-- [ ] completely remove std::system() grep commands
+- [X] completely remove std::system() grep commands
 - [ ] add github metrics for license (looks cool af)
 - [X] add CTest before alpha release
 - [ ] test for processor type and stuff like that for cpuid EAX=1
@@ -13,6 +13,8 @@
 - [ ] maybe document the project in codeproject.com when a 1.0 is ready
 - [ ] add a cpuid fuzzer (baremetal and VM)
 - [ ] organise the registry existence function better and group them together as a single utility function
+- [ ] add <source_location> for error handling
+- [ ] make an MIT version for 1.0
 
 
 # Distant plans

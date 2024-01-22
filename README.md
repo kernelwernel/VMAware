@@ -101,7 +101,10 @@ You can view the full docs [here](docs/documentation.md). Trust me, it's not too
 > Yes. There are some techniques that are trivially spoofable, and there's nothing the library can do about it whether it's a deliberate false negative or even a false positive. This is a problem that every VM detection project is facing, which is why the library is trying to test every technique possible to get the best result based on the environment it's running under. 
 
 - Can I use this for malware?
-> This project is not soliciting the development of malware for obvious reasons. Even if you intend to use it for concealment purposes, it'll most likely be flagged by antiviruses anyway.
+> This project is not soliciting the development of malware for obvious reasons. Even if you intend to use it for concealment purposes, it'll most likely be flagged by antiviruses anyway and nothing is obfuscated to begin with. Good luck obfuscating 5000 lines of C++ code lmfao.
+
+- Why GPL 3.0? 
+> I would've made it MIT so proprietary software can make use of the library, but some of the techniques employed are from GPL 3.0 projects, and I have no choice but to use the same license for legal reasons. I could try to make an MIT version without the GPL code, but I'm not sure if anybody would care enough if I made one. That's just an idea in my head for now.
 
 - When will a 1.0 be available?
 > Pretty soon, maybe around january 2024 (I just started university, so I can't guarantee anything)
@@ -110,8 +113,6 @@ You can view the full docs [here](docs/documentation.md). Trust me, it's not too
 
 ## Issues and pull requests 📬
 If you have any suggestions, ideas, or any sort of contribution, feel free to ask! I'll be more than happy to discuss. If you want to personally ask something in private, my discord is `kr.nl`
-
-Contribution guidelines can be found [here](CONTRIBUTING.md).
 
 If you found this project useful, a star would be appreciated :)
 

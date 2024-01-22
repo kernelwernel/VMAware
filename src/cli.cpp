@@ -8,8 +8,8 @@
     #include <unistd.h>
 #endif
 
-constexpr float ver = 1.0;
-constexpr const char* date = "September 2023";
+constexpr const char* ver = "1.1";
+constexpr const char* date = "January 2024";
 constexpr const char* bold = "\033[1m";
 constexpr const char* ansi_exit = "\x1B[0m";
 constexpr const char* red = "\x1B[38;2;239;75;75m";
@@ -47,7 +47,7 @@ int main(int argc, char* argv[]) {
         const std::string not_detected = ("[" + std::string(red) + "NOT DETECTED" + std::string(ansi_exit) + "]");
         const std::string note = ("[    NOTE    ]");
 
-        auto checker = [&](const std::uint64_t flag, const char* message) -> void {
+        auto checker = [&](const std::uint8_t flag, const char* message) -> void {
             std::cout << (VM::check(flag) ? detected : not_detected) << " Checking " << message << "...\n";
         };
 
@@ -128,7 +128,7 @@ int main(int argc, char* argv[]) {
         checker(VM::KVM_DIRS, "KVM directories");
         std::printf("\n");
 
-        std::cout << "VM brand: " << (std::string(VM::brand()) == "Unknown" ? red : green) << VM::brand() << ansi_exit << "\n";
+        std::cout << "VM brand: " << (VM::brand() == "Unknown" ? red : green) << VM::brand() << ansi_exit << "\n";
 
         const char* percent_color = "";
         std::uint8_t percent = VM::percentage();
