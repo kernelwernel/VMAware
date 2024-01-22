@@ -2143,7 +2143,7 @@ private:
                 RegCloseKey(regkey);
                 score++;
 
-                if (likely((std::string(p_brand) != "")) {
+                if (std::string(p_brand) != "") {
 #ifdef __VMAWARE_DEBUG__
                     debug("REGISTRY: ", "detected = ", p_brand);
 #endif
