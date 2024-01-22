@@ -19,5 +19,8 @@ jobs:
       with:
         python-version: 3.8
 
+    - name: Set working directory
+      run: cd ${{ github.workspace }}/auxiliary
+
     - name: Run Python script
       run: python ${{ github.workspace }}/auxiliary/arg_checks.py
