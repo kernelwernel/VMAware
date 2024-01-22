@@ -221,11 +221,11 @@ private:
 
     // likely and unlikely macros
     #if (LINUX)
-    #define unlikely(x) __builtin_expect(!!(x), 0)
-    #define likely(x)   __builtin_expect(!!(x), 1)
+    #define VMAWARE_UNLIKELY(x) __builtin_expect(!!(x), 0)
+    #define VMAWARE_LIKELY(x)   __builtin_expect(!!(x), 1)
     #else
-    #define unlikely
-    #define likely
+    #define VMAWARE_UNLIKELY
+    #define VMAWARE_LIKELY
     #endif
 
 public:
@@ -1100,8 +1100,8 @@ private:
 
         if (found) {
             if (brand == qemu) { return add(QEMU); }
-            if (likely(brand == vmware)) { return add(VMWARE); }
-            if (likely(brand == vbox)) { return add(VBOX); }
+            if (VMAWARE_LIKELY(brand == vmware)) { return add(VMWARE); }
+            if (VMAWARE_LIKELY(brand == vbox)) { return add(VBOX); }
             if (brand == bhyve) { return add(BHYVE); }
             if (brand == kvm) { return add(KVM); }
             if (brand == hyperv) { return add(HYPERV); }
@@ -4638,7 +4638,7 @@ public:
 
         auto it = table.find(p_flag);
 
-        if (unlikely(it == table.end())) {
+        if (VMAWARE_UNLIKELY(it == table.end())) {
             throw_error("Flag is not known");
         }
 
