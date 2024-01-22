@@ -4594,7 +4594,11 @@ public:
      * @return bool
      * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmcheck
      */
-    [[nodiscard]] static bool check(const u8 p_flag = 0, const std::source_location& loc = std::source_location::current()) {   
+#if (CPP >= 20)
+    [[nodiscard]] static bool check(const u8 p_flag = 0, const std::source_location& loc = std::source_location::current()) {
+#else
+    [[nodiscard]] static bool check(const u8 p_flag = 0) {
+#endif
         auto throw_error = [&](const char* text) -> void {
             std::stringstream ss;
 #if (CPP >= 20)
