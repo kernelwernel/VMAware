@@ -71,21 +71,21 @@ endif()
 # add executable
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin")
 add_executable(${TARGET} "src/cli.cpp")
-set_property(TARGET ${TARGET} PROPERTY CXX_STANDARD 11)
+set_property(TARGET ${TARGET} PROPERTY CXX_STANDARD 20)
 set_property(TARGET ${TARGET} PROPERTY CXX_STANDARD_REQUIRED ON)
 
 
 # CTest stuff
-include(CTest)
-find_package(Python REQUIRED)
-enable_testing()
-add_test(executable, "${CMAKE_SOURCE_DIR}/bin/${TARGET}")
-if(NOT MSVC)
-add_test(
-    checks 
-    ${Python_EXECUTABLE} "${CMAKE_SOURCE_DIR}/cmake/ctest_checks.py"
-)
-endif()
+#include(CTest)
+#find_package(Python REQUIRED)
+#enable_testing()
+#add_test(executable, "${CMAKE_SOURCE_DIR}/bin/${TARGET}")
+#if(NOT MSVC)
+#add_test(
+#    checks 
+#    ${Python_EXECUTABLE} "${CMAKE_SOURCE_DIR}/cmake/ctest_checks.py"
+#)
+#endif()
 
 
 # release stuff

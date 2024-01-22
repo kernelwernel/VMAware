@@ -150,7 +150,7 @@ int main() {
 <br>
 
 ## `VM::percentage()`
-This will return a std::uint8_t between 0 and 100. It'll return the certainty of whether it has detected a VM based on all the techniques available as a percentage. The lower the value, the less chance it's a VM. The higher the value, the more likely it is. The parameters are treated the exact same way with the VM::detect() function.
+This will return a `std::uint8_t` between 0 and 100. It'll return the certainty of whether it has detected a VM based on all the techniques available as a percentage. The lower the value, the less chance it's a VM. The higher the value, the more likely it is. The parameters are treated the exact same way with the `VM::detect()` function.
 
 ```cpp
 #include "vmaware.hpp"
@@ -252,6 +252,6 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | Flag | Description |
 |------|-------------|
 | `VM::ALL` | This will enable all the technique flags, including the cursor check that's disabled by default. |
-| `VM::NO_MEMO` | This will disable memoization, meaning the result will not be fetched through a previous computation of the VM::detect() function. Use this if you're only using a single function from the `VM` struct for a performance boost.
+| `VM::NO_MEMO` | This will disable memoization, meaning the result will not be fetched through a previous computation of the `VM::detect()` function. Use this if you're only using a single function from the `VM` struct for a performance boost.
 | `VM::EXTREME` | This will disregard the weights/biases and its scoring system. It will essentially treat any technique that found a hit as a VM detection no matter how low that technique's certainty is, so if a single technique is positive then it will return true. | 
 | `VM::DEFAULT` | This represents a range of flags which are enabled if no default argument is provided. The reason why this exists is to easily disable any bitwise
