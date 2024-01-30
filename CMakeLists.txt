@@ -76,10 +76,10 @@ set_property(TARGET ${TARGET} PROPERTY CXX_STANDARD_REQUIRED ON)
 
 
 # CTest stuff
-#include(CTest)
+include(CTest)
 #find_package(Python REQUIRED)
-#enable_testing()
-#add_test(executable, "${CMAKE_SOURCE_DIR}/bin/${TARGET}")
+enable_testing()
+add_test(executable, "${CMAKE_SOURCE_DIR}/bin/${TARGET}")
 #if(NOT MSVC)
 #add_test(
 #    checks 
