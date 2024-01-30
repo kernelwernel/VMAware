@@ -27,7 +27,7 @@ The library is:
 
 **IMPORTANT:** The library is currently in the alpha stage, so more improvements and cross-compatibility fixes are planned (especially for MacOS and Windows which I'm currently working on improving). I don't recommend using this for any serious projects for now.
 
-Also, this library doesn't guarantee it'll be accurate. If you found a false negative then please create an issue with information on what your VM is, what OS you're using, and other useful details.
+Also, this library doesn't guarantee it'll be accurate. If you found a false negative then please create an issue with information on what your VM is, what OS you're using, and other relevant details.
 
 - - -
 
