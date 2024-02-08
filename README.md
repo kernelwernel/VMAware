@@ -9,8 +9,6 @@
 
 **VMAware** (not to be confused with VMware) is a cross-platform C++ library for virtual machine detection.
 
-It utilises a comprehensive list of low-level and high-level anti-VM techniques that gets accounted in a scoring system. The library is meant to be stupidly easy to use, designed for anybody wanting to integrate the library to their project without a hassle.
-
 The library is:
 - Very easy to use, with only 4 functions in its public interface
 - Very flexible, with total fine-grained control over what gets executed
@@ -25,9 +23,9 @@ The library is:
 
 - - -
 
-**IMPORTANT:** The library is currently in the alpha stage, so more improvements and cross-compatibility fixes are planned (especially for MacOS and Windows which I'm currently working on improving). I don't recommend using this for any serious projects for now.
+**IMPORTANT:** The library is currently in the alpha stage, so more improvements are planned. I don't recommend using this for any serious projects for now.
 
-Also, this library doesn't guarantee it'll be accurate. If you found a false negative then please create an issue with information on what your VM is, what OS you're using, and other relevant details.
+Also, this library doesn't guarantee it'll be accurate. If you found a false positive or a false negative then please create an issue with information on what your VM is, what OS you're using, and other relevant details.
 
 - - -
 
@@ -91,6 +89,9 @@ You can view the full docs [here](docs/documentation.md). Trust me, it's not too
 <br>
 
 ## Q&A ❓
+- How does it work?
+> It utilises a comprehensive list of low-level and high-level anti-VM techniques that gets accounted in a scoring system. The given scores for each technique given are arbitrarily given.
+
 - Who is this library for?
 > It's designed for security researchers, VM engineers, and pretty much anybody who needs a practical and rock-solid VM detection mechanism in their project. For example, if you're making a VM and you're testing the effectiveness of concealing itself, or if you're a malware analyst and you want to check if your VM environment is good enough.
 

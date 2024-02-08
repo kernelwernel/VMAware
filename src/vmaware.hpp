@@ -164,6 +164,7 @@ private:
     using i32 = std::int32_t;
     using i64 = std::int64_t;
 
+    static constexpr auto enum_line_start = __LINE__; // hacky way to fetch enum size
 public:
     enum enum_flags : u8 {
         VMID = 1,
@@ -191,7 +192,6 @@ public:
         REGISTRY,
         SUNBELT_VM,
         WINE_CHECK,
-        BOOT,
         VM_FILES,
         HWMODEL,
         DISK_SIZE,
@@ -228,7 +228,10 @@ public:
         EXTREME,
         NO_MEMO
     };
+private:
+    static constexpr u8 enum_size = __LINE__ - enum_line_start - 4; // get enum size
 
+public:
     // this will allow the enum to be used in the public interface as "VM::TECHNIQUE"
     enum enum_flags tmp_ignore_this = NO_MEMO;
 
@@ -239,8 +242,7 @@ public:
 
 private:
     // for the bitset
-    static constexpr u8 flag_size = 65;
-    using flagset = std::bitset<flag_size>;
+    using flagset = std::bitset<enum_size>;
 
     // global values
     static flagset DEFAULT; // default bitset that will be run if no parameters are specified
@@ -302,6 +304,7 @@ private:
     #define VMAWARE_LIKELY
 #endif
 
+    // various cpu operation stuff
     struct cpu {
         // cpuid leaf values
         struct leaf {
@@ -607,10 +610,7 @@ private:
         }
     };
 
-
-
-
-
+    // miscellaneous functionalities
     struct util {
 #if (LINUX)
         // fetch file data
@@ -662,7 +662,7 @@ private:
             return (base_str.find(keyword) != std::string::npos);
         };
 
-    // for debug output
+        // for debug output
 #ifdef __VMAWARE_DEBUG__
         template <typename... Args>
         static inline void debug(Args... message) noexcept {
@@ -680,7 +680,7 @@ private:
         }
 #endif
 
-    // directly return when adding a brand to the scoreboard for a more succint expression
+        // directly return when adding a brand to the scoreboard for a more succint expression
 #if (MSVC) 
         __declspec(noalias)
 #elif (LINUX)
@@ -2268,7 +2268,6 @@ private:
 
     /**
      * @brief Find VMware tools presence
-     * @todo FIX THIS SHIT
      * @category Windows
      */
     [[nodiscard]] static bool vmware_registry() try {
@@ -2381,43 +2380,6 @@ private:
 
 
     /**
-     * @brief Check boot-time 
-     * @todo: finish the linux part tomorrow
-     * @category All systems
-     */ 
-    [[nodiscard]] static bool boot_time() try {
-        if (util::disabled(BOOT)) {
-            return false;
-        }
-
-#if (MSVC)
-        // doesn't work for some reason, fix this whenever i have time
-        /*
-        SYSTEM_TIME_OF_DAY_INFORMATION  SysTimeInfo;
-        LARGE_INTEGER LastBootTime;
-
-        NtQuerySystemInformation(SystemTimeOfDayInformation, &SysTimeInfo, sizeof(SysTimeInfo), 0);
-        LastBootTime = wmi_Get_LastBootTime();
-        return ((wmi_LastBootTime.QuadPart - SysTimeInfo.BootTime.QuadPart) / 10000000 != 0); // 0 seconds
-        */
-#elif (LINUX)
-        // TODO: finish this shit tomorrow
-        //https://stackoverflow.com/questions/349889/how-do-you-determine-the-amount-of-linux-system-ram-in-c
-#else
-        return false;
-#endif
-
-        return false; // tmp
-    }
-    catch (...) {
-#ifdef __VMAWARE_DEBUG__
-        debug("BOOT: catched error, returned false");
-#endif
-        return false;
-    }
-
-
-    /**
      * @brief Find for VMware and VBox specific files
      * @category Windows
      */
@@ -2513,7 +2475,6 @@ private:
     /**
      * @brief Check for sysctl hardware model
      * @author MacRansom ransomware
-     * @todo TEST IF THIS WORKS
      * @category MacOS
      */ 
     [[nodiscard]] static bool hwmodel() try {
@@ -2760,28 +2721,24 @@ private:
     * @todo fix WNetGetProviderName linker error
     */
     [[nodiscard]] static bool vbox_network_share() try {
+        if (util::disabled(VBOX_NETWORK)) {
+            return false;
+        }
+
+#if (!MSVC)
         return false;
-        /*
+#else
+        u32 pnsize = 0x1000;
+        char* provider = new char[pnsize];
 
-            if (util::disabled(VBOX_NETWORK)) {
-                return false;
-            }
-
-            #if (!MSVC)
-                return false;
-            #else
-                u32 pnsize = 0x1000;
-                char* provider = new char[pnsize];
-
-            int32_t retv = WNetGetProviderName(WNNC_NET_RDR2SAMPLE, provider, &pnsize);
+        U32 retv = WNetGetProviderName(WNNC_NET_RDR2SAMPLE, provider, reinterpret_cast<LPDWORD>(&pnsize));
     
-            if (retv == NO_ERROR) {
-                return (lstrcmpi(provider, "VirtualBox Shared Folders") == 0);
-            }
+        if (retv == NO_ERROR) {
+            return (lstrcmpi(provider, "VirtualBox Shared Folders") == 0);
+        }
 
-            return FALSE;
-        #endif
-        */
+        return false;
+#endif
     }
     catch (...) {
 #ifdef __VMAWARE_DEBUG__
@@ -3212,8 +3169,7 @@ private:
 
     /**
      * @brief Check if the BIOS serial is valid
-     * @category Windows
-     * @todo FIX THE SEGFAULT
+     * @category Linux
      */
     [[nodiscard]] static bool bios_serial() try {
         if (util::disabled(BIOS_SERIAL)) {
@@ -4453,7 +4409,7 @@ public:
             throw std::invalid_argument(std::string(text) + ss.str());
         };
 
-        if (p_flag > flag_size) {
+        if (p_flag > enum_size) {
             throw_error("Flag argument must be a valid");
         }
 
@@ -4720,8 +4676,8 @@ MSVC_ENABLE_WARNING(4626 4514)
 
 
 std::map<bool, VM::memo::memo_struct> VM::memo::cache;
-std::bitset<VM::flag_size> VM::flags = 0;
-std::bitset<VM::flag_size> VM::DEFAULT = []() -> flagset {
+VM::flagset VM::flags = 0;
+VM::flagset VM::DEFAULT = []() -> flagset {
     flagset tmp;
     tmp.set(); // set all bits to 1
     tmp.flip(EXTREME);
@@ -4773,7 +4729,6 @@ const std::map<VM::u8, VM::technique> VM::table = {
     { VM::REGISTRY, { 75, VM::registry_key }},
     { VM::SUNBELT_VM, { 10, VM::sunbelt_check }},
     { VM::WINE_CHECK, { 85, VM::wine }},
-    { VM::BOOT, { 5, VM::boot_time }},
     { VM::VM_FILES, { 20, VM::vm_files }},
     { VM::HWMODEL, { 75, VM::hwmodel }},
     { VM::DISK_SIZE, { 60, VM::disk_size }},
