@@ -2731,7 +2731,7 @@ private:
         u32 pnsize = 0x1000;
         char* provider = new char[pnsize];
 
-        U32 retv = WNetGetProviderName(WNNC_NET_RDR2SAMPLE, provider, reinterpret_cast<LPDWORD>(&pnsize));
+        u32 retv = WNetGetProviderName(WNNC_NET_RDR2SAMPLE, provider, reinterpret_cast<LPDWORD>(&pnsize));
     
         if (retv == NO_ERROR) {
             return (lstrcmpi(provider, "VirtualBox Shared Folders") == 0);
