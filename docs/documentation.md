@@ -207,7 +207,6 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::REGISTRY` | Look throughout the registry for all sorts of VMs | Windows | 75% |  |
 | `VM::SUNBELT_VM` | Detect for Sunbelt technology | Windows | 10% |  |
 | `VM::WINE_CHECK` | Find for a Wine-specific file | Windows | 85% |  |
-| `VM::BOOT` | Analyse the OS uptime | Yes | 5% |  |
 | `VM::VM_FILES` | Find if any VM-specific files exists | Windows | 20% |  |
 | `VM::HWMODEL` | Check if the sysctl for the hwmodel does not contain the "Mac" string | MacOS | 75% |  |
 | `VM::DISK_SIZE` | Check if disk size is under or equal to 50GB | Linux | 60% |  |

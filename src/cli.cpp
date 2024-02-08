@@ -90,7 +90,6 @@ int main(int argc, char* argv[]) {
         checker(VM::REGISTRY, "registry");
         checker(VM::SUNBELT_VM, "Sunbelt");
         checker(VM::WINE_CHECK, "Wine");
-        checker(VM::BOOT, "boot uptime");
         checker(VM::VM_FILES, "VM files");
         checker(VM::HWMODEL, "hw.model");
         checker(VM::DISK_SIZE, "disk size");
