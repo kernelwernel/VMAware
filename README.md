@@ -23,9 +23,9 @@ The library is:
 
 - - -
 
-**IMPORTANT:** The library is currently in the alpha stage, so more improvements are planned. I don't recommend using this for any serious projects for now.
+**IMPORTANT:** 
 
-Also, this library doesn't guarantee it'll be accurate. If you found a false positive or a false negative then please create an issue with information on what your VM is, what OS you're using, and other relevant details.
+The library doesn't guarantee it'll be accurate. If you found a false positive or a false negative then please create an issue with information on what your VM is, what OS you're using, and other relevant details.
 
 - - -
 
@@ -106,9 +106,6 @@ You can view the full docs [here](docs/documentation.md). Trust me, it's not too
 
 - Why GPL 3.0? 
 > I would've made it MIT so proprietary software can make use of the library, but some of the techniques employed are from GPL 3.0 projects, and I have no choice but to use the same license for legal reasons. I could try to make an MIT version without the GPL code, but I'm not sure if anybody would care enough if I made one. That's just an idea in my head for now.
-
-- When will a 1.0 be available?
-> Pretty soon, maybe around january 2024 (I just started university, so I can't guarantee anything)
 
 <br>
 
