@@ -4425,7 +4425,7 @@ public:
         }
 
         // count should only have a single flag at this stage
-        assert(p_flag > 0 && p_flag <= flag_size);
+        assert(p_flag > 0 && p_flag <= enum_size);
 
         // temporarily enable all flags so that every technique is enabled
         const flagset tmp_flags = VM::flags;
