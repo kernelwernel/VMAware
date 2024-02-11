@@ -770,7 +770,7 @@ private:
             si.dwFlags |= STARTF_USESTDHANDLES;
 
             // Create the process
-            if (!CreateProcess(NULL, const_cast<char*>(command), NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi)) {
+            if (!CreateProcess(NULL, const_cast<char*>(cmd), NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi)) {
 #ifdef __VMAWARE_DEBUG__
                 debug("sys_result: ", "error creating process");
 #endif
