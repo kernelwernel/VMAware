@@ -37,17 +37,26 @@
 #endif
 
 // shorter and succinct macros
-#if __cplusplus == 202002L
+#if __cplusplus == 202302L
+#define CPP 23
+#pragma message("using C++23")
+#elif __cplusplus == 202002L
 #define CPP 20
+#pragma message("using C++20")
 #elif __cplusplus == 201703L
 #define CPP 17
+#pragma message("using C++17")
 #elif __cplusplus == 201402L
 #define CPP 14
+#pragma message("using C++14")
 #elif __cplusplus == 201103L
 #define CPP 11
+#pragma message("using C++11")
 #else
 #define CPP 0
+#pragma message("using pre C++11 :(")
 #endif
+
 
 #if (CPP < 11 && !MSVC)
 #error "VMAware only supports C++11 or above, set your compiler flag to '-std=c++20' for GCC/clang, or '/std:c++20' for MSVC"
@@ -64,11 +73,11 @@
 #endif
 
 #if (CPP >= 20)
+#include <bit>
 #include <ranges>
 #include <source_location>
 #endif
 #if (CPP >= 17)
-#include <bit>
 #include <filesystem>
 #endif
 #ifdef __VMAWARE_DEBUG__
