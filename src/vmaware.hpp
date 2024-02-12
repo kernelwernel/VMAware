@@ -49,16 +49,36 @@
 #endif
 
 // shorter and succinct macros
-#if __cplusplus == 202002L
+#if __cplusplus == 202302L
+#define CPP 23
+#ifdef __VMAWARE_DEBUG__
+#pragma message("using C++23")
+#endif
+#elif __cplusplus == 202002L
 #define CPP 20
+#ifdef __VMAWARE_DEBUG__
+#pragma message("using C++20")
+#endif
 #elif __cplusplus == 201703L
 #define CPP 17
+#ifdef __VMAWARE_DEBUG__
+#pragma message("using C++17")
+#endif
 #elif __cplusplus == 201402L
 #define CPP 14
+#ifdef __VMAWARE_DEBUG__
+#pragma message("using C++14")
+#endif
 #elif __cplusplus == 201103L
 #define CPP 11
+#ifdef __VMAWARE_DEBUG__
+#pragma message("using C++11")
+#endif
 #else
 #define CPP 0
+#ifdef __VMAWARE_DEBUG__
+#pragma message("using pre C++11 :(")
+#endif
 #endif
 
 #if (CPP < 11 && !MSVC)
@@ -76,11 +96,11 @@
 #endif
 
 #if (CPP >= 20)
+#include <bit>
 #include <ranges>
 #include <source_location>
 #endif
 #if (CPP >= 17)
-#include <bit>
 #include <filesystem>
 #endif
 #ifdef __VMAWARE_DEBUG__
