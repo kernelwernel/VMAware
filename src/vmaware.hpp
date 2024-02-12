@@ -9,7 +9,9 @@
  *  A C++ VM detection library
  *
  *  - Made by: @kernelwernel (https://github.com/kernelwernel)
- *  - Contributed by @Requiem (https://github.com/NotRequiem)
+ *  - Contributed by:
+ *      - @Requiem (https://github.com/NotRequiem)
+ *      - @Alex (https://github.com/greenozon)
  *  - Repository: https://github.com/kernelwernel/VMAware
  *  - Docs: https://github.com/kernelwernel/VMAware/docs/documentation.md
  *  - Full credits: https://github.com/kernelwernel/VMAware#credits
@@ -39,24 +41,35 @@
 // shorter and succinct macros
 #if __cplusplus == 202302L
 #define CPP 23
+#ifdef __VMAWARE_DEBUG__
 #pragma message("using C++23")
+#endif
 #elif __cplusplus == 202002L
 #define CPP 20
+#ifdef __VMAWARE_DEBUG__
 #pragma message("using C++20")
+#endif
 #elif __cplusplus == 201703L
 #define CPP 17
+#ifdef __VMAWARE_DEBUG__
 #pragma message("using C++17")
+#endif
 #elif __cplusplus == 201402L
 #define CPP 14
+#ifdef __VMAWARE_DEBUG__
 #pragma message("using C++14")
+#endif
 #elif __cplusplus == 201103L
 #define CPP 11
+#ifdef __VMAWARE_DEBUG__
 #pragma message("using C++11")
+#endif
 #else
 #define CPP 0
+#ifdef __VMAWARE_DEBUG__
 #pragma message("using pre C++11 :(")
 #endif
-
+#endif
 
 #if (CPP < 11 && !MSVC)
 #error "VMAware only supports C++11 or above, set your compiler flag to '-std=c++20' for GCC/clang, or '/std:c++20' for MSVC"
