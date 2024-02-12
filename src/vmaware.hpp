@@ -4,16 +4,28 @@
  * ██║   ██║██╔████╔██║███████║██║ █╗ ██║███████║██████╔╝█████╗
  * ╚██╗ ██╔╝██║╚██╔╝██║██╔══██║██║███╗██║██╔══██║██╔══██╗██╔══╝
  *  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
- *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ alpha version
+ *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ 1.0 version
  *
  *  A C++ VM detection library
  *
  *  - Made by: @kernelwernel (https://github.com/kernelwernel)
- *  - Contributed by @Requiem (https://github.com/NotRequiem)
+ *  - Contributed by:
+ *      - @Requiem (https://github.com/NotRequiem)
+ *      - @Alex (https://github.com/greenozon)
  *  - Repository: https://github.com/kernelwernel/VMAware
  *  - Docs: https://github.com/kernelwernel/VMAware/docs/documentation.md
  *  - Full credits: https://github.com/kernelwernel/VMAware#credits
  *  - License: GPL-3.0
+ * 
+ * 
+ * ================================= SECTIONS ================================== 
+ * - enums for publicly accessible techniques  => line 181
+ * - struct for internal cpu operations        => line 320
+ * - struct for internal memoization           => line 553
+ * - struct for internal utility functions     => line 626
+ * - start of internal VM detection techniques => line 1192
+ * - start of public VM detection functions    => line 4403
+ * - start of externally defined variables     => line 4654
  */
 
 #pragma once
@@ -523,7 +535,7 @@ private:
             }
 
             /**
-             * This is added because there are inconsist string 
+             * This is added because there are inconsistent string 
              * values for KVM's manufacturer ID. For example, 
              * it gives as "KVMKMVMKV" when I run it under QEMU
              * but the Wikipedia article on CPUID says it's 
@@ -1175,7 +1187,7 @@ private:
         return (tmp && isWow64);
     }
 #endif
-        };
+    };
 
 private:
     /**

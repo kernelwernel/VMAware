@@ -7,7 +7,7 @@
 <img alt="GitHub" align="center" src="https://img.shields.io/github/license/kernelwernel/VMAware">
 </p>
 
-**VMAware** (not to be confused with VMware) is a cross-platform C++ library for virtual machine detection.
+**VMAware** (VM + Aware) is a cross-platform C++ library for virtual machine detection.
 
 The library is:
 - Very easy to use, with only 4 functions in its public interface
