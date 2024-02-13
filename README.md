@@ -126,6 +126,7 @@ If you found this project useful, a star would be appreciated :)
 - [Peter Ferrie, Symantec](https://github.com/peterferrie)
 - [Graham Sutherland, LRQA Nettitude](https://www.nettitude.com/uk/)
 - [Requiem](https://github.com/NotRequiem)
+- [Alex](https://github.com/greenozon)
 
 <br>
 
