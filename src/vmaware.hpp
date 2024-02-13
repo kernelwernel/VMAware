@@ -152,6 +152,8 @@
 #pragma comment(lib, "iphlpapi.lib")
 #pragma comment(lib, "Shlwapi.lib")
 #pragma comment(lib, "MPR")
+#pragma comment(lib, "advapi32.lib")
+#pragma comment(lib, "shell32.lib")
 #elif (LINUX)
 #include <cpuid.h>
 #include <x86intrin.h>
