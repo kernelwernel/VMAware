@@ -533,13 +533,11 @@ private:
 
             brand = ss.str();
 
-#ifdef __VMAWARE_DEBUG__
             debug(technique_name, brand);
-#else
+
 #if (CPP < 17)
             // bypass compiler warning about unused parameter, ignore this
             UNUSED(technique_name);
-#endif
 #endif
 
             const bool found = (std::find(std::begin(IDs), std::end(IDs), brand) != std::end(IDs));
@@ -836,9 +834,7 @@ private:
 #endif
         }
         catch (...) {
-#ifdef __VMAWARE_DEBUG__
             debug("sys_result: ", "catched error, returning nullptr");
-#endif
             std::unique_ptr<std::string> tmp(nullptr);
             return tmp;
         }
@@ -852,9 +848,7 @@ private:
             struct statvfs stat;
 
             if (statvfs("/", &stat) != 0) {
-#ifdef __VMAWARE_DEBUG__
                 debug("private util::get_disk_size( function: ", "failed to fetch disk size");
-#endif
                 return false;
             }
 
@@ -873,9 +867,7 @@ private:
             }
 
             else {
-#ifdef __VMAWARE_DEBUG__
                 debug("util::get_disk_size(: ", "failed to fetch size in GB");
-#endif
             }
 #endif
 
@@ -886,9 +878,7 @@ private:
             // round to the nearest factor of 10
             const u32 result = static_cast<u32>(std::round((size / 10.0) * 10));
 
-#ifdef __VMAWARE_DEBUG__
             debug("private util::get_disk_size( function: ", "disk size = ", result, "GB");
-#endif
 
             return result;
         }
@@ -897,18 +887,14 @@ private:
         [[nodiscard]] static u64 get_physical_ram_size() {
 #if (LINUX)
             if (!util::is_root()) {
-#ifdef __VMAWARE_DEBUG__
                 debug("private get_physical_ram_size function: ", "not root, returned 0");
-#endif
                 return 0;
             }
 
             auto result = util::sys_result("dmidecode --type 19 | grep 'Size' | grep '[[:digit:]]*'");
 
             if (result == nullptr) {
-#ifdef __VMAWARE_DEBUG__
                 debug("private get_physical_ram_size function: ", "invalid system result from dmidecode, returned 0");
-#endif
                 return 0;
             }
 
@@ -916,9 +902,7 @@ private:
             const bool GB = (std::regex_search(*result, std::regex("GB")));
 
             if (!(MB || GB)) {
-#ifdef __VMAWARE_DEBUG__
                 debug("private get_physical_ram_size function: ", "neither MB nor GB found, returned 0");
-#endif
                 return 0;
             }
 
@@ -936,9 +920,7 @@ private:
             }
 
             if (number_str.empty()) {
-#ifdef __VMAWARE_DEBUG__
                 debug("private get_physical_ram_size_gb function: ", "string is empty, returned 0");
-#endif
                 return 0;
             }
 
@@ -1228,9 +1210,7 @@ private:
 #endif
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("VMID: catched error, returned false");
-#endif
         return false;
     }
 
@@ -1251,9 +1231,7 @@ private:
 #endif
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("VMID_0x4: catched error, returned false");
-#endif
         return false;
     }
 
@@ -1286,16 +1264,12 @@ private:
             const bool match = std::regex_search(brand, regex);
 
             if (match) {
-#ifdef __VMAWARE_DEBUG__
                 debug("BRAND_KEYWORDS: ", "match = ", *it);
-#endif
                 match_count++;
             }
         }
 
-#ifdef __VMAWARE_DEBUG__
         debug("BRAND_KEYWORDS: ", "matches: ", static_cast<u32>(match_count));
-#endif
 
         if (match_count > 0) {
             const auto qemu_regex = std::regex("QEMU", std::regex::icase);
@@ -1310,9 +1284,7 @@ private:
 #endif
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("BRAND_KEYWORDS: catched error, returned false");
-#endif
         return false;
     }
 
@@ -1341,9 +1313,7 @@ private:
 #endif
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("QEMU_BRAND: catched error, returned false");
-#endif
         return false;
     }
 
@@ -1368,9 +1338,7 @@ private:
 #endif
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("HYPERVISOR_BIT: catched error, returned false");
-#endif
         return false;
     }
 
@@ -1402,9 +1370,7 @@ private:
 #endif
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("CPUID_0x4: catched error, returned false");
-#endif
         return false;
     }
     MSVC_ENABLE_WARNING(5045)
@@ -1425,21 +1391,17 @@ private:
         char out[sizeof(int32_t) * 4 + 1] = { 0 }; // e*x size + number of e*x registers + null terminator
         cpu::cpuid((int*)out, cpu::leaf::hypervisor);
 
-#ifdef __VMAWARE_DEBUG__
         debug("HYPERV_STR: eax: ", static_cast<u32>(out[0]),
             "\nebx: ", static_cast<u32>(out[1]),
             "\necx: ", static_cast<u32>(out[2]),
             "\nedx: ", static_cast<u32>(out[3])
         );
-#endif
 
         return (std::strlen(out + 4) >= 4);
 #endif
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("HYPERVISOR_STR: catched error, returned false");
-#endif
         return false;
     }
 
@@ -1475,10 +1437,8 @@ private:
             acc += __rdtsc() - s;
         }
 
-#ifdef __VMAWARE_DEBUG__
         debug("RDTSC: ", "acc = ", acc);
         debug("RDTSC: ", "acc/100 = ", acc / 100);
-#endif
 
         return (acc / 100 > 350);
 #elif (MSVC)
@@ -1505,9 +1465,7 @@ private:
 #endif
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("RDTSC: catched error, returned false");
-#endif
         return false;
     }
 
@@ -1547,9 +1505,7 @@ private:
 #endif
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("SIDT5: catched error, returned false");
-#endif
         return false;
     }
 
@@ -1563,16 +1519,12 @@ private:
             return false;
         }
 
-#ifdef __VMAWARE_DEBUG__
         debug("THREADCOUNT: ", "threads = ", std::thread::hardware_concurrency());
-#endif
 
         return (std::thread::hardware_concurrency() <= 2);
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("THREADCOUNT: catched error, returned false");
-#endif
         return false;
     }
 
@@ -1630,9 +1582,7 @@ private:
             std::memcpy(mac, ifr.ifr_hwaddr.sa_data, 6);
         }
         else {
-#ifdef __VMAWARE_DEBUG__
             debug("MAC: ", "not successful");
-#endif
         }
 #elif (MSVC)
         PIP_ADAPTER_INFO AdapterInfo;
@@ -1711,9 +1661,7 @@ private:
         return false;
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("MAC: catched error, returned false");
-#endif
         return false;
     }
 
@@ -1734,9 +1682,7 @@ private:
 #endif
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("TEMPERATURE: catched error, returned false");
-#endif
         return false;
     }
 
@@ -1754,32 +1700,24 @@ private:
         return false;
 #else
         if (!(util::exists("/usr/bin/systemd-detect-virt") || util::exists("/bin/systemd-detect-virt"))) {
-#ifdef __VMAWARE_DEBUG__
             debug("SYSTEMD: ", "binary doesn't exist");
-#endif
             return false;
         }
 
         const std::unique_ptr<std::string> result = util::sys_result("systemd-detect-virt");
 
         if (result == nullptr) {
-#ifdef __VMAWARE_DEBUG__
             debug("SYSTEMD: ", "invalid stdout output from systemd-detect-virt");
-#endif
             return false;
         }
 
-#ifdef __VMAWARE_DEBUG__
         debug("SYSTEMD: ", "output = ", *result);
-#endif
 
         return (*result != "none");
 #endif
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("SYSTEMD: catched error, returned false");
-#endif
         return false;
     }
 
@@ -1805,23 +1743,17 @@ private:
             if (vendor == "QEMU") { return util::add(QEMU); }
             if (vendor == "Oracle Corporation") { return util::add(VMWARE); }
 
-#ifdef __VMAWARE_DEBUG__
             debug("CVENDOR: ", "unknown vendor = ", vendor);
-#endif
         }
         else {
-#ifdef __VMAWARE_DEBUG__
             debug("CVENDOR: ", "file doesn't exist");
-#endif
         }
 
         return false;
 #endif
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("CVENDOR: catched error, returned false");
-#endif
         return false;
     }
 
@@ -1844,18 +1776,14 @@ private:
             return (stoi(util::read_file(chassis)) == 1);
         }
         else {
-#ifdef __VMAWARE_DEBUG__
             debug("CTYPE: ", "file doesn't exist");
-#endif
         }
 
         return false;
 #endif
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("CTYPE: catched error, returned false");
-#endif
         return false;
     }
 
@@ -1876,9 +1804,7 @@ private:
 #endif
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("DOCKERENV: catched error, returned false");
-#endif
         return false;
     }
 
@@ -1889,9 +1815,7 @@ private:
      */
     [[nodiscard]] static bool dmidecode() try {
         if (util::disabled(DMIDECODE) || (util::is_root() == false)) {
-            #ifdef __VMAWARE_DEBUG__
-                debug("DMIDECODE: ", "precondition return called (root = ", util::is_root(), ")");
-            #endif
+            debug("DMIDECODE: ", "precondition return called (root = ", util::is_root(), ")");
             return false;
         }
 
@@ -1899,18 +1823,14 @@ private:
         return false;
 #else
         if (!(util::exists("/bin/dmidecode") || util::exists("/usr/bin/dmidecode"))) {
-#ifdef __VMAWARE_DEBUG__
             debug("DMIDECODE: ", "binary doesn't exist");
-#endif
             return false;
         }
 
         const std::unique_ptr<std::string> result = util::sys_result("dmidecode -t system | grep 'Manufacturer|Product' | grep -c \"QEMU|VirtualBox|KVM\"");
 
         if (*result == "" || result == nullptr) {
-#ifdef __VMAWARE_DEBUG__
             debug("DMIDECODE: ", "invalid output");
-#endif
             return false;
         }
         else if (*result == "QEMU") {
@@ -1926,18 +1846,14 @@ private:
             return true;
         }
         else {
-#ifdef __VMAWARE_DEBUG__
             debug("DMIDECODE: ", "output = ", *result);
-#endif
         }
 
         return false;
 #endif
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("DMIDECODE: catched error, returned false");
-#endif
         return false;
     }
 
@@ -1955,9 +1871,7 @@ private:
         return false;
 #else
         if (!util::exists("/bin/dmesg") && !util::exists("/usr/bin/dmesg")) {
-#ifdef __VMAWARE_DEBUG__
             debug("DMESG: ", "binary doesn't exist");
-#endif
             return false;
         }
 
@@ -1976,18 +1890,14 @@ private:
             return true;
         }
         else {
-#ifdef __VMAWARE_DEBUG__
             debug("DMESG: ", "output = ", *result);
-#endif
         }
 
         return false;
 #endif
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("DMESG: catched error, returned false");
-#endif
         return false;
     }
 
@@ -2008,9 +1918,7 @@ private:
 #endif
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("HWMON: catched error, returned false");
-#endif
         return false;
     }
 
@@ -2051,9 +1959,7 @@ private:
                 score++;
 
                 if (std::string(p_brand) != "") {
-#ifdef __VMAWARE_DEBUG__
                     debug("REGISTRY: ", "detected = ", p_brand);
-#endif
                     scoreboard[p_brand]++;
                 }
             }
@@ -2127,17 +2033,13 @@ private:
         key(XEN, "HKLM\\SYSTEM\\ControlSet001\\Services\\xensvc");
         key(XEN, "HKLM\\SYSTEM\\ControlSet001\\Services\\xenvdb");
 
-#ifdef __VMAWARE_DEBUG__
         debug("REGISTRY: ", "score = ", static_cast<u32>(score));
-#endif
 
         return (score >= 1);
 #endif
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("REGISTRY: catched error, returned false");
-#endif
         return false;
     }
 
@@ -2160,9 +2062,7 @@ private:
         GetUserName((TCHAR*)user, &user_len);
         std::string u(user, user + user_len);
 
-#ifdef __VMAWARE_DEBUG__
         debug("USER: ", "output = ", u);
-#endif
 
         if (u == "username") {
             return util::add(THREADEXPERT);
@@ -2176,9 +2076,7 @@ private:
 #endif
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("USER: catched error, returned false");
-#endif
         return false;
     }
 
@@ -2204,9 +2102,7 @@ private:
 #endif
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("SUNBELT_VM: catched error, returned false");
-#endif
         return false;
     }
 
@@ -2241,9 +2137,7 @@ private:
         for (auto& dll : real_dlls) {
             lib_inst = LoadLibraryA(dll);
             if (lib_inst == nullptr) {
-#ifdef __VMAWARE_DEBUG__
                 debug("DLL: ", "LIB_INST detected true for real dll = ", dll);
-#endif
                 return true;
             }
             FreeLibrary(lib_inst);
@@ -2252,9 +2146,7 @@ private:
         for (auto& dll : false_dlls) {
             lib_inst = LoadLibraryA(dll);
             if (lib_inst != nullptr) {
-#ifdef __VMAWARE_DEBUG__
                 debug("DLL: ", "LIB_INST detected true for false dll = ", dll);
-#endif
                 return true;
             }
         }
@@ -2263,9 +2155,7 @@ private:
 #endif
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("DLL: catched error, returned false");
-#endif
         return false;
     }
 
@@ -2293,9 +2183,7 @@ private:
 #endif
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("VBOX_REG: catched error, returned false");
-#endif
         return false;
     }
 
@@ -2316,9 +2204,7 @@ private:
         // Use wide string literal
         bool result = (RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\VMware, Inc.\\VMware Tools", 0, KEY_QUERY_VALUE, &hKey) == ERROR_SUCCESS);
 
-#ifdef __VMAWARE_DEBUG__
         debug("VMWARE_REG: result = ", result);
-#endif
 
         if (result == true) {
             return util::add(VMWARE);
@@ -2328,9 +2214,7 @@ private:
 #endif
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("VMWARE_REG: catched error, returned false");
-#endif
         return false;
     }
 
@@ -2368,9 +2252,7 @@ private:
 #endif
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("CURSOR: catched error, returned false");
-#endif
         return false;
     }
 
@@ -2400,9 +2282,7 @@ private:
 #endif
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("WINE_CHECK: catched error, returned false");
-#endif
         return false;
     }
 
@@ -2459,25 +2339,19 @@ private:
                 const auto regex = std::regex(file, std::regex::icase);
 
                 if (std::regex_search("vbox", regex)) {
-#ifdef __VMAWARE_DEBUG__
                     debug("VM_FILES: found vbox file = ", file);
-#endif
                     vbox++;
                 }
                 else {
-#ifdef __VMAWARE_DEBUG__
                     debug("VM_FILES: found vmware file = ", file);
-#endif
                     vmware++;
                 }
             }
         }
 
 
-#ifdef __VMAWARE_DEBUG__
         debug("VM_FILES: vmware score: ", vmware);
         debug("VM_FILES: vbox score: ", vbox);
-#endif
 
         if (vbox > vmware) {
             return util::add(VBOX);
@@ -2493,9 +2367,7 @@ private:
 #endif
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("VM_FILES: catched error, returned false");
-#endif
         return false;
     }
 
@@ -2518,15 +2390,11 @@ private:
         std::smatch match;
 
         if (result == nullptr) {
-#ifdef __VMAWARE_DEBUG__
             debug("HWMODEL: ", "null result received");
-#endif
             return false;
         }
 
-#ifdef __VMAWARE_DEBUG__
         debug("HWMODEL: ", "output = ", *result);
-#endif
 
         // if string contains "Mac" anywhere in the string, assume it's baremetal
         if (std::regex_search(*result, match, std::regex("Mac"))) {
@@ -2543,9 +2411,7 @@ private:
 #endif
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("HWMODEL: catched error, returned false");
-#endif
         return false;
     }
 
@@ -2570,9 +2436,7 @@ private:
 #endif
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("MAC_HYPERTHREAD: catched error, returned false");
-#endif
         return false;
     }
 
@@ -2591,17 +2455,13 @@ private:
 #else
         const u32 size = util::get_disk_size();
 
-#ifdef __VMAWARE_DEBUG__
         debug("DISK_SIZE: size = ", size);
-#endif
 
         return (size <= 60); // in GB
 #endif
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("DISK_SIZE: catched error, returned false");
-#endif
         return false;
     }
 
@@ -2627,15 +2487,11 @@ private:
         const u32 disk = util::get_disk_size();
         const u64 ram = util::get_physical_ram_size();
 
-#ifdef __VMAWARE_DEBUG__
         debug("VBOX_DEFAULT: disk = ", disk);
         debug("VBOX_DEFAULT: ram = ", ram);
-#endif
 
         if ((disk > 80) || (ram > 4)) {
-#ifdef __VMAWARE_DEBUG__
             debug("VBOX_DEFAULT: returned false due to lack of precondition spec comparisons");
-#endif
             return false;
         }
 
@@ -2659,9 +2515,7 @@ private:
 
         const std::string distro = get_distro();
 
-#ifdef __VMAWARE_DEBUG__
         debug("VBOX_DEFAULT: linux, detected distro: ", distro);
-#endif
 
         // yoda notation ftw
         if ("unknown" == distro) {
@@ -2711,25 +2565,19 @@ private:
 
         // less than windows 10
         if (ret < 10) {
-#ifdef __VMAWARE_DEBUG__
             debug("VBOX_DEFAULT: less than windows 10 detected");
-#endif
             return false;
         }
 
         // windows 10
         if (10 == ret) {
-#ifdef __VMAWARE_DEBUG__
             debug("VBOX_DEFAULT: windows 10 detected");
-#endif
             return ((50 == disk) && (2 == ram));
         }
 
         // windows 11
         if (11 == ret) {
-#ifdef __VMAWARE_DEBUG__
             debug("VBOX_DEFAULT: windows 11 detected");
-#endif
             return ((80 == disk) && (4 == ram));
         }
 #endif
@@ -2737,9 +2585,7 @@ private:
         return false;
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("VBOX_DEFAULT: catched error, returned false");
-#endif
         return false;
     }
 
@@ -2769,9 +2615,7 @@ private:
 #endif
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("VBOX_NETWORK: catched error, returned false");
-#endif
         return false;
     }
 
@@ -2797,22 +2641,16 @@ private:
             return (std::strcmp((LPCSTR)comp_name.data(), s.c_str()) == 0);
         };
 
-#ifdef __VMAWARE_DEBUG__
         debug("COMPUTER_NAME: fetched = ", (LPCSTR)comp_name.data());
-#endif
 
         if (compare("InsideTm") || compare("TU-4NH09SMCG1HC")) { // anubis
-#ifdef __VMAWARE_DEBUG__
             debug("COMPUTER_NAME: detected Anubis");
-#endif
 
             return util::add(ANUBIS);
         }
 
         if (compare("klone_x64-pc") || compare("tequilaboomboom")) { // general
-#ifdef __VMAWARE_DEBUG__
             debug("COMPUTER_NAME: detected general (VM but unknown)");
-#endif
 
             return true;
         }
@@ -2821,9 +2659,7 @@ private:
 #endif
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("COMPUTER_NAME: catched error, returned false");
-#endif
         return false;
     }
 
@@ -2845,17 +2681,13 @@ private:
         std::vector<u8> dns_host_name(static_cast<u32>(out_length), 0);
         GetComputerNameExA(ComputerNameDnsHostname, (LPSTR)dns_host_name.data(), (LPDWORD)&out_length);
 
-#ifdef __VMAWARE_DEBUG__
         debug("HOSTNAME: ", (LPCSTR)dns_host_name.data());
-#endif
 
         return (!lstrcmpiA((LPCSTR)dns_host_name.data(), "SystemIT"));
 #endif
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("HOSTNAME: catched error, returned false");
-#endif
         return false;
     }
 
@@ -2873,17 +2705,13 @@ private:
         constexpr u64 min_ram_1gb = (1024LL * (1024LL * (1024LL * 1LL)));
         const u64 ram = util::get_memory_space();
 
-#ifdef __VMAWARE_DEBUG__
         debug("MEMORY: ram size (GB) = ", ram);
         debug("MEMORY: minimum ram size (GB) = ", min_ram_1gb);
-#endif
 
         return (ram < min_ram_1gb);
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("MEMORY: catched error, returned false");
-#endif
         return false;
     }
 
@@ -2927,9 +2755,7 @@ private:
         };
 
         auto ret = [](const char* str) -> bool {
-#ifdef __VMAWARE_DEBUG__
             debug("VM_PROCESSES: found ", str);
-#endif
             return util::add(str);
         };
 
@@ -2968,9 +2794,7 @@ private:
 #endif
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("VM_PROCESSES: caught error, returned false");
-#endif
         return false;
     }
 
@@ -2994,10 +2818,8 @@ private:
         const char* username = std::getenv("USER");
         const char* hostname = std::getenv("HOSTNAME");
 
-#ifdef __VMAWARE_DEBUG__
         debug("LINUX_USER_HOST: user = ", username);
         debug("LINUX_USER_HOST: host = ", hostname);
-#endif
 
         return (
             (strcmp(username, "liveuser") == 0) &&
@@ -3006,9 +2828,7 @@ private:
 #endif
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("LINUX_USER_HOST: catched error, returned false");
-#endif
         return false;
     }
 
@@ -3037,9 +2857,7 @@ private:
 #endif
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("VBOX_WINDOW_CLASS: catched error, returned false");
-#endif
         return false;
     }
 
@@ -3112,9 +2930,7 @@ private:
 #endif
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("GAMARUE: catched error, returned false");
-#endif
         return false;
     }
 
@@ -3176,9 +2992,7 @@ private:
                 const bool match = std::regex_search(*model, regex);
                 
                 if (match) {
-                    #ifdef __VMAWARE_DEBUG__
-                        debug("WMIC: ", "match = ", vmkeywords.at(i));
-                    #endif
+                    debug("WMIC: ", "match = ", vmkeywords.at(i));
                     return true;
                 }
             }
@@ -3188,9 +3002,7 @@ private:
         */
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("WMIC: catched error, returned false");
-#endif
         return false;
     }
 
@@ -3216,9 +3028,7 @@ private:
             return false;
         }
 
-#ifdef __VMAWARE_DEBUG__
         debug("BIOS_SERIAL: ", str);
-#endif
             
         const std::string extract = str.substr(nl_pos + 1);
 
@@ -3236,9 +3046,7 @@ private:
 #endif
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("BIOS_SERIAL: catched error, returned false");
-#endif
         return false;
     }
 
@@ -3291,9 +3099,7 @@ private:
 #endif
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("PARALLELS_VM:", "catched error, returned false");
-#endif
         return false;
     }
 
@@ -3324,9 +3130,7 @@ private:
         return (avg >= 1000 || avg == 0);
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("RDTSC_VMEXIT:", "catched error, returned false");
-#endif
         return false;
     }
 
@@ -3383,9 +3187,7 @@ private:
 #endif
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("LOADED_DLLS:", "caught error, returned false");
-#endif
         return false;
     }
 
@@ -3449,9 +3251,7 @@ private:
 #endif
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("BOCHS_CPU:", "catched error, returned false");
-#endif
         return false;
     }
 
@@ -3472,9 +3272,7 @@ private:
 
         hres = CoInitializeEx(0, COINIT_MULTITHREADED);
         if (FAILED(hres)) {
-#ifdef __VMAWARE_DEBUG__
             debug("VPC_BOARD: Failed to initialize COM library. Error code: ", hres);
-#endif
             return false;
         }
 
@@ -3491,9 +3289,7 @@ private:
         );
 
         if (FAILED(hres)) {
-#ifdef __VMAWARE_DEBUG__
             debug("VPC_BOARD: Failed to initialize security. Error code: ", hres);
-#endif
             CoUninitialize();
             return false;
         }
@@ -3510,9 +3306,7 @@ private:
         );
 
         if (FAILED(hres)) {
-#ifdef __VMAWARE_DEBUG__
             debug("VPC_BOARD: Failed to create IWbemLocator object. Error code: ", hres);
-#endif
             CoUninitialize();
             return false;
         }
@@ -3529,9 +3323,7 @@ private:
         );
 
         if (FAILED(hres)) {
-#ifdef __VMAWARE_DEBUG__
             debug("VPC_BOARD: Failed to connect to WMI. Error code: ", hres);
-#endif
             pLoc->Release();
             CoUninitialize();
             return false;
@@ -3549,9 +3341,7 @@ private:
         );
 
         if (FAILED(hres)) {
-#ifdef __VMAWARE_DEBUG__
             debug("VPC_BOARD: Failed to set proxy blanket. Error code: ", hres);
-#endif
             pSvc->Release();
             pLoc->Release();
             CoUninitialize();
@@ -3568,9 +3358,7 @@ private:
         );
 
         if (FAILED(hres)) {
-#ifdef __VMAWARE_DEBUG__
             debug("VPC_BOARD: Query for Win32_BaseBoard failed. Error code: ", hres);
-#endif
             pSvc->Release();
             pLoc->Release();
             CoUninitialize();
@@ -3618,9 +3406,7 @@ private:
 #endif
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("VPC_BOARD:", "catched error, returned false");
-#endif
         return false;
     }
 
@@ -3641,9 +3427,7 @@ private:
 #else
         HRESULT hres = CoInitializeEx(0, COINIT_MULTITHREADED);
         if (FAILED(hres)) {
-#ifdef __VMAWARE_DEBUG__
             debug("HYPERV_WMI: Failed to initialize COM library. Error code = ", hres);
-#endif
             return false;
         }
 
@@ -3660,9 +3444,7 @@ private:
         );
 
         if (FAILED(hres)) {
-#ifdef __VMAWARE_DEBUG__
             debug("HYPERV_WMI: Failed to initialize security. Error code = ", hres);
-#endif
             CoUninitialize();
             return false;
         }
@@ -3672,9 +3454,7 @@ private:
         hres = CoCreateInstance(CLSID_WbemLocator, 0, CLSCTX_INPROC_SERVER, IID_IWbemLocator, (LPVOID*)&pLoc);
 
         if (FAILED(hres)) {
-#ifdef __VMAWARE_DEBUG__
             debug("HYPERV_WMI: Failed to create IWbemLocator object. Error code = ", hres);
-#endif
             CoUninitialize();
             return false;
         }
@@ -3692,9 +3472,7 @@ private:
         );
 
         if (FAILED(hres)) {
-#ifdef __VMAWARE_DEBUG__
             debug("HYPERV_WMI: Could not connect. Error code = ", hres);
-#endif
             pLoc->Release();
             CoUninitialize();
             return false;
@@ -3712,9 +3490,7 @@ private:
         );
 
         if (FAILED(hres)) {
-#ifdef __VMAWARE_DEBUG__
             debug("HYPERV_WMI: Could not set proxy blanket. Error code = ", hres);
-#endif
             pSvc->Release();
             pLoc->Release();
             CoUninitialize();
@@ -3731,9 +3507,7 @@ private:
         );
 
         if (FAILED(hres)) {
-#ifdef __VMAWARE_DEBUG__
             debug("HYPERV_WMI: ExecQuery failed. Error code = ", hres);
-#endif
             pSvc->Release();
             pLoc->Release();
             CoUninitialize();
@@ -3775,9 +3549,7 @@ private:
 #endif
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("HYPERV_WMI: ", "catched error, returned false");
-#endif
         return false;
     }
 
@@ -3802,9 +3574,7 @@ private:
         LONG result = RegOpenKeyExW(HKEY_LOCAL_MACHINE, reinterpret_cast<LPCWSTR>(registryPath), 0, KEY_READ, &hKey);
 
         if (result != ERROR_SUCCESS) {
-#ifdef __VMAWARE_DEBUG__
             debug("HYPERV_WMI: Error opening registry key. Code: ", result);
-#endif
             return false;
         }
 
@@ -3844,9 +3614,7 @@ private:
 #endif 
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("HYPERV_WMI: ", "catched error, returned false");
-#endif
         return false;
     }
 
@@ -3897,9 +3665,7 @@ private:
 #endif
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("VBOX_FOLDERS: ", "catched error, returned false");
-#endif
         return false;
     }
 
@@ -4010,9 +3776,7 @@ private:
 #endif
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("VBOX_MSSMBIOS: ", "catched error, returned false");
-#endif
         return false;
     }
 
@@ -4037,24 +3801,18 @@ private:
             return false;
         }
 
-#ifdef __VMAWARE_DEBUG__
         debug("MAC_MEMSIZE: ", "ram size = ", ram);
-#endif
 
         for (const char c : ram) {
             if (!std::isdigit(c)) {
-#ifdef __VMAWARE_DEBUG__
                 debug("MAC_MEMSIZE: ", "found non-digit character, returned false");
-#endif
                 return false;
             }
         }
 
         const u64 ram_u64 = std::stoull(ram);
 
-#ifdef __VMAWARE_DEBUG__
         debug("MAC_MEMSIZE: ", "ram size in u64 = ", ram_u64);
-#endif
 
         constexpr u64 limit = 4000000000; // 4GB 
 
@@ -4062,9 +3820,7 @@ private:
 #endif
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("MAC_MEMSIZE: ", "catched error, returned false");
-#endif
         return false;
     }
 
@@ -4145,9 +3901,7 @@ private:
 #endif            
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("MAC_IOKIT: ", "catched error, returned false");
-#endif
         return false;
     }
 
@@ -4215,9 +3969,7 @@ private:
 #endif
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("IOREG_GREP: ", "catched error, returned false");
-#endif
         return false;
     }
 
@@ -4238,17 +3990,13 @@ private:
         std::unique_ptr<std::string> result = util::sys_result("csrutil status");
         const std::string tmp = *result;
 
-#ifdef __VMAWARE_DEBUG__
         debug("MAC_SIP: ", "result = ", tmp);
-#endif
 
         return (find(tmp, "disabled") || (!find(tmp, "enabled")));
 #endif
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("MAC_SIP: ", "catched error, returned false");
-#endif
         return false;
     }
 
@@ -4299,9 +4047,7 @@ private:
 #endif
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("KVM_REG: ", "catched error, returned false");
-#endif
         return false;
     }
 
@@ -4362,9 +4108,7 @@ private:
 #endif
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("KVM_DRIVERS: ", "catched error, returned false");
-#endif
         return false;
     }
 
@@ -4399,9 +4143,7 @@ private:
 #endif
     }
     catch (...) {
-#ifdef __VMAWARE_DEBUG__
         debug("KVM_DIRS: ", "catched error, returned false");
-#endif
         return false;
     }
 
@@ -4491,9 +4233,7 @@ public:
         VM::flags = p_flags;
 
         if (memo::is_memoized()) {
-#ifdef __VMAWARE_DEBUG__
             debug("memoization: returned cached result in brand()");
-#endif
             return (memo::get_brand());
         }
 
@@ -4575,9 +4315,7 @@ public:
 #endif
 
         if (util::disabled(NO_MEMO)) {
-#ifdef __VMAWARE_DEBUG__
             debug("memoization: cached result in brand()");
-#endif
             memo::memoize(memo::FOUND_BRAND, memo::UNUSED_VM, current_brand, memo::UNUSED_PERCENT);
         }
 
@@ -4595,15 +4333,11 @@ public:
         VM::flags = p_flags;
 
         if (memo::is_memoized()) {
-#ifdef __VMAWARE_DEBUG__
             debug("memoization: returned cached result in detect()");
-#endif
             return (memo::get_vm());
         }
 
-#ifdef __VMAWARE_DEBUG__
         debug("cpuid: is supported? : ", VM::cpuid_supported);
-#endif
 
         bool result = false;
         u8 p = percentage(p_flags);
@@ -4633,9 +4367,7 @@ public:
         VM::flags = p_flags;
 
         if (memo::is_memoized()) {
-#ifdef __VMAWARE_DEBUG__
             debug("memoization: ", "returned cached result in VM::percentage()");
-#endif
             return (memo::get_percent());
         }
 
