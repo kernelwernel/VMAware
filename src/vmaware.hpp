@@ -187,6 +187,12 @@
 
 MSVC_DISABLE_WARNING(4626 4514)
 
+#ifdef __VMAWARE_DEBUG__
+#define debug(...) VM::util::debug_msg(__VA_ARGS__)
+#else
+#define debug(...)
+#endif
+
 struct VM {
 private:
     using u8  = std::uint8_t;
@@ -396,9 +402,8 @@ private:
             u32 eax, unused = 0;
             cpu::cpuid(eax, unused, unused, unused, cpu::leaf::func_ext);
 
-#ifdef __VMAWARE_DEBUG__
             debug("CPUID function: highest leaf = ", eax);
-#endif
+
             return (p_leaf <= eax);
         }
 
@@ -456,9 +461,8 @@ private:
                 brand += convert;
             }
 
-#ifdef __VMAWARE_DEBUG__
             debug("BRAND: ", "cpu brand = ", brand);
-#endif
+
             return brand;
 #endif
         }
@@ -699,7 +703,7 @@ private:
         // for debug output
 #ifdef __VMAWARE_DEBUG__
         template <typename... Args>
-        static inline void debug(Args... message) noexcept {
+        static inline void debug_msg(Args... message) noexcept {
             constexpr const char* black_bg = "\x1B[48;2;0;0;0m";
             constexpr const char* bold = "\033[1m";
             constexpr const char* blue = "\x1B[38;2;00;59;193m";
@@ -778,10 +782,8 @@ private:
             return std::make_unique<std::string>(result);
 #elif (MSVC)
             // Set up the structures for creating the process
-            STARTUPINFO si;
-            PROCESS_INFORMATION pi;
-            ZeroMemory(&si, sizeof(si));
-            ZeroMemory(&pi, sizeof(pi));
+            STARTUPINFO si = { 0 };
+            PROCESS_INFORMATION pi = { 0 };
             si.cb = sizeof(si);
 
             // Create a pipe to capture the command output
@@ -792,9 +794,8 @@ private:
             sa.lpSecurityDescriptor = NULL;
 
             if (!CreatePipe(&hReadPipe, &hWritePipe, &sa, 0)) {
-#ifdef __VMAWARE_DEBUG__
                 debug("sys_result: ", "error creating pipe");
-#endif
+
                 return nullptr;
             }
 
@@ -805,9 +806,8 @@ private:
 
             // Create the process
             if (!CreateProcess(NULL, const_cast<char*>(cmd), NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi)) {
-#ifdef __VMAWARE_DEBUG__
                 debug("sys_result: ", "error creating process");
-#endif
+
                 CloseHandle(hReadPipe);
                 CloseHandle(hWritePipe);
                 return nullptr;
@@ -2353,22 +2353,16 @@ private:
         POINT pos1, pos2;
         GetCursorPos(&pos1);
 
-#ifdef __VMAWARE_DEBUG__
         debug("CURSOR: pos1.x = ", pos1.x);
         debug("CURSOR: pos1.y = ", pos1.y);
-        debug("CURSOR: pos2.x = ", pos2.x);
-        debug("CURSOR: pos2.y = ", pos2.y);
-#endif
 
         Sleep(5000);
         GetCursorPos(&pos2);
 
-#ifdef __VMAWARE_DEBUG__
         debug("CURSOR: pos1.x = ", pos1.x);
         debug("CURSOR: pos1.y = ", pos1.y);
         debug("CURSOR: pos2.x = ", pos2.x);
         debug("CURSOR: pos2.y = ", pos2.y);
-#endif
 
         return ((pos1.x == pos2.x) && (pos1.y == pos2.y));
 #endif
