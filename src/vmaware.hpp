@@ -702,6 +702,7 @@ private:
 #ifdef __VMAWARE_DEBUG__
         template <typename... Args>
         static inline void debug_msg(Args... message) noexcept {
+#if (LINUX || APPLE)
             constexpr const char* black_bg = "\x1B[48;2;0;0;0m";
             constexpr const char* bold = "\033[1m";
             constexpr const char* blue = "\x1B[38;2;00;59;193m";
@@ -711,6 +712,9 @@ private:
             std::cout.setf(std::ios::showpoint);
 
             std::cout << black_bg << bold << "[" << blue << "DEBUG" << ansiexit << bold << black_bg << "]" << ansiexit << " ";
+#else       
+            std::cout << "[DEBUG] ";
+#endif
             ((std::cout << message), ...);
             std::cout << "\n";
         }
