@@ -154,6 +154,13 @@
 #pragma comment(lib, "MPR")
 #pragma comment(lib, "advapi32.lib")
 #pragma comment(lib, "shell32.lib")
+
+#ifdef _UNICODE
+#define tregex std::wregex
+#else
+#define tregex std::regex
+#endif
+
 #elif (LINUX)
 #include <cpuid.h>
 #include <x86intrin.h>
@@ -170,6 +177,10 @@
 #elif (APPLE)
 #include <sys/types.h>
 #include <sys/sysctl.h>
+#endif
+
+#if (!MSVC)
+#define TCHAR char
 #endif
 
 #if (MSVC)
@@ -664,7 +675,7 @@ private:
 
 #if (MSVC)
         // check if file exists
-        [[nodiscard]] static bool exists(LPCSTR path) {
+        [[nodiscard]] static bool exists(LPCTSTR path) {
             return (GetFileAttributes(path) != INVALID_FILE_ATTRIBUTES) || (GetLastError() != ERROR_FILE_NOT_FOUND);
         }
 #else
@@ -759,7 +770,7 @@ private:
         }
 
         // basically std::system but it runs in the background with std::string output
-        [[nodiscard]] static std::unique_ptr<std::string> sys_result(const char* cmd) try {
+        [[nodiscard]] static std::unique_ptr<std::string> sys_result(const TCHAR* cmd) try {
 #if (CPP < 14)
             std::unique_ptr<std::string> tmp(nullptr);
             UNUSED(cmd);
@@ -807,7 +818,7 @@ private:
             si.dwFlags |= STARTF_USESTDHANDLES;
 
             // Create the process
-            if (!CreateProcess(NULL, const_cast<char*>(cmd), NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi)) {
+            if (!CreateProcess(NULL, const_cast<TCHAR*>(cmd), NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi)) {
                 debug("sys_result: ", "error creating process");
 
                 CloseHandle(hReadPipe);
@@ -2063,19 +2074,18 @@ private:
 #else
         TCHAR user[UNLEN + 1]{};
         DWORD user_len = UNLEN + 1;
-        GetUserName((TCHAR*)user, &user_len);
-        std::string u(user, user + user_len);
+        GetUserName(user, &user_len);
 
-        debug("USER: ", "output = ", u);
+        //TODO Ansi: debug("USER: ", "output = ", user);
 
-        if (u == "username") {
+        if (0 == _tcscmp(user, _T("username"))) {
             return util::add(THREADEXPERT);
         }
 
         return (
-            (u == "USER") ||      // Sandbox
-            (u == "user") ||      // Sandbox 2
-            (u == "currentuser")  // Normal
+            (0 == _tcscmp(user, _T("USER"))) ||      // Sandbox
+            (0 == _tcscmp(user, _T("user"))) ||      // Sandbox 2
+            (0 == _tcscmp(user, _T("currentuser")))  // Normal
         );
 #endif
     }
@@ -2098,7 +2108,7 @@ private:
 #if (!MSVC)
         return false;
 #else
-        if (util::exists("C:\\analysis")) {
+        if (util::exists(_T("C:\\analysis"))) {
             return util::add(SUNBELT);
         }
 
@@ -2307,52 +2317,51 @@ private:
         u8 vbox = 0;
         u8 vmware = 0;
 
-        constexpr std::array<const char*, 26> files = { {
+        constexpr std::array<const TCHAR*, 26> files = { {
             // VMware
-            "C:\\windows\\System32\\Drivers\\Vmmouse.sys",
-            "C:\\windows\\System32\\Drivers\\vm3dgl.dll",
-            "C:\\windows\\System32\\Drivers\\vmdum.dll",
-            "C:\\windows\\System32\\Drivers\\VmGuestLibJava.dll",
-            "C:\\windows\\System32\\Drivers\\vm3dver.dll",
-            "C:\\windows\\System32\\Drivers\\vmtray.dll",
-            "C:\\windows\\System32\\Drivers\\VMToolsHook.dll",
-            "C:\\windows\\System32\\Drivers\\vmGuestLib.dll",
-            "C:\\windows\\System32\\Drivers\\vmhgfs.dll",
-            "C:\\windows\\System32\\Drivers\\vmhgfs.dll",  // Note: there's a typo in the original code
+            _T("C:\\windows\\System32\\Drivers\\Vmmouse.sys"),
+            _T("C:\\windows\\System32\\Drivers\\vm3dgl.dll"),
+            _T("C:\\windows\\System32\\Drivers\\vmdum.dll"),
+            _T("C:\\windows\\System32\\Drivers\\VmGuestLibJava.dll"),
+            _T("C:\\windows\\System32\\Drivers\\vm3dver.dll"),
+            _T("C:\\windows\\System32\\Drivers\\vmtray.dll"),
+            _T("C:\\windows\\System32\\Drivers\\VMToolsHook.dll"),
+            _T("C:\\windows\\System32\\Drivers\\vmGuestLib.dll"),
+            _T("C:\\windows\\System32\\Drivers\\vmhgfs.dll"),
+            _T("C:\\windows\\System32\\Drivers\\vmhgfs.dll"),  // Note: there's a typo in the original code
             // VBox
-            "C:\\windows\\System32\\Drivers\\VBoxMouse.sys",
-            "C:\\windows\\System32\\Drivers\\VBoxGuest.sys",
-            "C:\\windows\\System32\\Drivers\\VBoxSF.sys",
-            "C:\\windows\\System32\\Drivers\\VBoxVideo.sys",
-            "C:\\windows\\System32\\vboxoglpackspu.dll",
-            "C:\\windows\\System32\\vboxoglpassthroughspu.dll",
-            "C:\\windows\\System32\\vboxservice.exe",
-            "C:\\windows\\System32\\vboxoglcrutil.dll",
-            "C:\\windows\\System32\\vboxdisp.dll",
-            "C:\\windows\\System32\\vboxhook.dll",
-            "C:\\windows\\System32\\vboxmrxnp.dll",
-            "C:\\windows\\System32\\vboxogl.dll",
-            "C:\\windows\\System32\\vboxtray.exe",
-            "C:\\windows\\System32\\VBoxControl.exe",
-            "C:\\windows\\System32\\vboxoglerrorspu.dll",
-            "C:\\windows\\System32\\vboxoglfeedbackspu.dll",
+            _T("C:\\windows\\System32\\Drivers\\VBoxMouse.sys"),
+            _T("C:\\windows\\System32\\Drivers\\VBoxGuest.sys"),
+            _T("C:\\windows\\System32\\Drivers\\VBoxSF.sys"),
+            _T("C:\\windows\\System32\\Drivers\\VBoxVideo.sys"),
+            _T("C:\\windows\\System32\\vboxoglpackspu.dll"),
+            _T("C:\\windows\\System32\\vboxoglpassthroughspu.dll"),
+            _T("C:\\windows\\System32\\vboxservice.exe"),
+            _T("C:\\windows\\System32\\vboxoglcrutil.dll"),
+            _T("C:\\windows\\System32\\vboxdisp.dll"),
+            _T("C:\\windows\\System32\\vboxhook.dll"),
+            _T("C:\\windows\\System32\\vboxmrxnp.dll"),
+            _T("C:\\windows\\System32\\vboxogl.dll"),
+            _T("C:\\windows\\System32\\vboxtray.exe"),
+            _T("C:\\windows\\System32\\VBoxControl.exe"),
+            _T("C:\\windows\\System32\\vboxoglerrorspu.dll"),
+            _T("C:\\windows\\System32\\vboxoglfeedbackspu.dll"),
             } };
 
         for (const auto file : files) {
             if (util::exists(file)) {
-                const auto regex = std::regex(file, std::regex::icase);
+                const auto regex = tregex(file, std::regex::icase);
 
-                if (std::regex_search("vbox", regex)) {
-                    debug("VM_FILES: found vbox file = ", file);
+                if (std::regex_search(_T("vbox"), regex)) {
+                    //TODO Ansi: debug("VM_FILES: found vbox file = ", file);
                     vbox++;
                 }
                 else {
-                    debug("VM_FILES: found vmware file = ", file);
+                    //TODO Ansi: debug("VM_FILES: found vmware file = ", file);
                     vmware++;
                 }
             }
         }
-
 
         debug("VM_FILES: vmware score: ", vmware);
         debug("VM_FILES: vbox score: ", vbox);
@@ -2607,12 +2616,12 @@ private:
         return false;
 #else
         u32 pnsize = 0x1000;
-        char* provider = new char[pnsize];
+        TCHAR* provider = new TCHAR[pnsize];
 
         u32 retv = WNetGetProviderName(WNNC_NET_RDR2SAMPLE, provider, reinterpret_cast<LPDWORD>(&pnsize));
     
         if (retv == NO_ERROR) {
-            return (lstrcmpi(provider, "VirtualBox Shared Folders") == 0);
+            return (lstrcmpi(provider, _T("VirtualBox Shared Folders")) == 0);
         }
 
         return false;
@@ -2732,7 +2741,7 @@ private:
 #if (!MSVC)
         return false;
 #else
-        auto check_proc = [](const char* proc) -> bool {
+        auto check_proc = [](const TCHAR* proc) -> bool {
             HANDLE hSnapshot;
             PROCESSENTRY32 pe = {};
 
@@ -2746,7 +2755,7 @@ private:
 
             if (Process32First(hSnapshot, &pe)) {
                 do {
-                    if (strcmp(pe.szExeFile, proc) == 0) {
+                    if (_tcscmp(pe.szExeFile, proc) == 0) {
                         present = true;
                         break;
                     }
@@ -2763,34 +2772,34 @@ private:
             return util::add(str);
         };
 
-        if (check_proc("joeboxserver.exe") || check_proc("joeboxcontrol.exe")) {
+        if (check_proc(_T("joeboxserver.exe")) || check_proc(_T("joeboxcontrol.exe"))) {
             return ret(JOEBOX);
         }
 
-        if (check_proc("prl_cc.exe") || check_proc("prl_tools.exe")) {
+        if (check_proc(_T("prl_cc.exe")) || check_proc(_T("prl_tools.exe"))) {
             return ret(PARALLELS);
         }
 
-        if (check_proc("vboxservice.exe") || check_proc("vboxtray.exe")) {
+        if (check_proc(_T("vboxservice.exe")) || check_proc(_T("vboxtray.exe"))) {
             return ret(VBOX);
         }
 
-        if (check_proc("vmsrvc.exe") || check_proc("vmusrvc.exe")) {
+        if (check_proc(_T("vmsrvc.exe")) || check_proc(_T("vmusrvc.exe"))) {
             return ret(VPC);
         }
 
         if (
-            check_proc("vmtoolsd.exe") ||
-            check_proc("vmacthlp.exe") ||
-            check_proc("vmwaretray.exe") ||
-            check_proc("vmwareuser.exe") ||
-            check_proc("vmware.exe") ||
-            check_proc("vmount2.exe")
+            check_proc(_T("vmtoolsd.exe")) ||
+            check_proc(_T("vmacthlp.exe")) ||
+            check_proc(_T("vmwaretray.exe")) ||
+            check_proc(_T("vmwareuser.exe")) ||
+            check_proc(_T("vmware.exe")) ||
+            check_proc(_T("vmount2.exe"))
         ) {
             return ret(VMWARE);
         }
 
-        if (check_proc("xenservice.exe") || check_proc("xsvc_depriv.exe")) {
+        if (check_proc(_T("xenservice.exe")) || check_proc(_T("xsvc_depriv.exe"))) {
             return ret(XEN);
         }
 
@@ -4020,7 +4029,7 @@ private:
 #if (!MSVC)
         return false;
 #else
-        auto registry_exists = [](const char* key) -> bool {
+        auto registry_exists = [](const TCHAR* key) -> bool {
             HKEY keyHandle;
             
             if (RegOpenKeyEx(HKEY_LOCAL_MACHINE, key, 0, KEY_QUERY_VALUE, &keyHandle) == ERROR_SUCCESS) {
@@ -4031,14 +4040,14 @@ private:
             return false;
         };
 
-        constexpr std::array<const char*, 7> keys = {{
-            "SYSTEM\\ControlSet001\\Services\\vioscsi",
-            "SYSTEM\\ControlSet001\\Services\\viostor",
-            "SYSTEM\\ControlSet001\\Services\\VirtIO-FS Service",
-            "SYSTEM\\ControlSet001\\Services\\VirtioSerial",
-            "SYSTEM\\ControlSet001\\Services\\BALLOON",
-            "SYSTEM\\ControlSet001\\Services\\BalloonService",
-            "SYSTEM\\ControlSet001\\Services\\netkvm",
+        constexpr std::array<const TCHAR*, 7> keys = {{
+            _T("SYSTEM\\ControlSet001\\Services\\vioscsi"),
+            _T("SYSTEM\\ControlSet001\\Services\\viostor"),
+            _T("SYSTEM\\ControlSet001\\Services\\VirtIO-FS Service"),
+            _T("SYSTEM\\ControlSet001\\Services\\VirtioSerial"),
+            _T("SYSTEM\\ControlSet001\\Services\\BALLOON"),
+            _T("SYSTEM\\ControlSet001\\Services\\BalloonService"),
+            _T("SYSTEM\\ControlSet001\\Services\\netkvm"),
         }};
 
         for (const auto& key : keys) {
@@ -4071,17 +4080,17 @@ private:
 #if (!MSVC)
         return false;
 #else
-        constexpr std::array<const char*, 10> keys = {{
-            "System32\\drivers\\balloon.sys",
-            "System32\\drivers\\netkvm.sys",
-            "System32\\drivers\\pvpanic.sys",
-            "System32\\drivers\\viofs.sys",
-            "System32\\drivers\\viogpudo.sys",
-            "System32\\drivers\\vioinput.sys",
-            "System32\\drivers\\viorng.sys",
-            "System32\\drivers\\vioscsi.sys",
-            "System32\\drivers\\vioser.sys",
-            "System32\\drivers\\viostor.sys",
+        constexpr std::array<const TCHAR*, 10> keys = {{
+            _T("System32\\drivers\\balloon.sys"),
+            _T("System32\\drivers\\netkvm.sys"),
+            _T("System32\\drivers\\pvpanic.sys"),
+            _T("System32\\drivers\\viofs.sys"),
+            _T("System32\\drivers\\viogpudo.sys"),
+            _T("System32\\drivers\\vioinput.sys"),
+            _T("System32\\drivers\\viorng.sys"),
+            _T("System32\\drivers\\vioscsi.sys"),
+            _T("System32\\drivers\\vioser.sys"),
+            _T("System32\\drivers\\viostor.sys"),
         }};
 
         TCHAR szWinDir[MAX_PATH] = _T("");
