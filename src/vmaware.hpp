@@ -179,6 +179,10 @@
 #include <sys/sysctl.h>
 #endif
 
+#if (!MSVC)
+#define TCHAR char
+#endif
+
 #if (MSVC)
 #pragma warning(pop) 
 #endif
