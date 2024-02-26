@@ -4246,8 +4246,8 @@ public:
         }
 
         if (
-            (p_flag.test(NO_MEMO)) || \
-            (p_flag.test(EXTREME))
+            (p_flag == NO_MEMO) || \
+            (p_flag == EXTREME)
         ) {
             throw_error("Flag argument must be a technique flag and not a settings flag");
         }
