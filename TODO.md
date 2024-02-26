@@ -11,10 +11,11 @@
 - [X] focus on hyperv detection (https://labs.nettitude.com/blog/vm-detection-tricks-part-3-hyper-v-raw-network-protocol/)
 - [X] add percentage overload functionality for VM::detect()
 - [ ] maybe document the project in codeproject.com when a 1.0 is ready
-- [ ] add a cpuid fuzzer (baremetal and VM)
+- [X] add a cpuid fuzzer (baremetal and VM)
 - [ ] organise the registry existence function better and group them together as a single utility function
-- [ ] add <source_location> for error handling
+- [X] add <source_location> for error handling
 - [ ] make an MIT version for 1.0
+- [ ] add function to add custom techniques for end-user
 
 
 # Distant plans

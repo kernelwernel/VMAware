@@ -128,7 +128,7 @@ int main(int argc, char* argv[]) {
         std::cout << "VM brand: " << (VM::brand() == "Unknown" ? red : green) << VM::brand() << ansi_exit << "\n";
 
         const char* percent_color = "";
-        std::uint8_t percent = VM::percentage();
+        std::uint16_t percent = VM::percentage();
 
         if (percent == 0) {
             percent_color = red;

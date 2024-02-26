@@ -370,8 +370,6 @@ int main(int argc, char *argv[]) {
     const uint64_t high_leaf = get_highest_leaf();
     printf("highest leaf = 0x%0lX\n", high_leaf);
 
-
-
     if (flags & leaf_mode) {
         leaf_mode_fuzzer(high_leaf);
     } else if (flags & scan_mode) {
