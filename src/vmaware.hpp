@@ -1254,9 +1254,6 @@ private:
             return false;
         }
 
-        // WARNING: TMP 
-        return true;
-
 #if (!x86)
         return false;
 #else
@@ -1277,9 +1274,6 @@ private:
         if (!cpuid_supported || util::disabled(VMID_0X4)) {
             return false;
         }
-
-        // WARNING: TMP
-        return true;
 
 #if (!x86)
         return false;
@@ -4067,9 +4061,6 @@ private:
         if (util::disabled(KVM_REG)) {
             return false;
         }
-
-        // WARNING: TMP
-        return util::add(KVM);
 
 #if (!MSVC)
         return false;
