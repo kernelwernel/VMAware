@@ -191,7 +191,7 @@ int main(int argc, char* argv[]) {
         std::cout << "VM confirmation: " << (is_detected ? green : red) << std::boolalpha << is_detected << std::noboolalpha << ansi_exit << "\n\n";
 
         const char* conclusion_color = "";
-        const char* conclusion_message = "";
+        std::string conclusion_message = "";
 
         constexpr const char* baremetal = "Running in baremetal";
         constexpr const char* very_unlikely = "Very unlikely a VM";
