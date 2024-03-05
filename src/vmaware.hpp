@@ -4,7 +4,7 @@
  * ██║   ██║██╔████╔██║███████║██║ █╗ ██║███████║██████╔╝█████╗
  * ╚██╗ ██╔╝██║╚██╔╝██║██╔══██║██║███╗██║██╔══██║██╔══██╗██╔══╝
  *  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
- *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ 1.0 version
+ *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ 1.1 version
  *
  *  A C++ VM detection library
  *
@@ -12,23 +12,22 @@
  *  - Contributed by:
  *      - @Requiem (https://github.com/NotRequiem)
  *      - @Alex (https://github.com/greenozon)
+ *      - @Marek Knápek (https://github.com/MarekKnapek)
  *  - Repository: https://github.com/kernelwernel/VMAware
  *  - Docs: https://github.com/kernelwernel/VMAware/docs/documentation.md
  *  - Full credits: https://github.com/kernelwernel/VMAware#credits
  *  - License: GPL-3.0
  * 
- * 
- * ================================= SECTIONS ================================== 
- * - enums for publicly accessible techniques  => line 181
- * - struct for internal cpu operations        => line 320
- * - struct for internal memoization           => line 553
- * - struct for internal utility functions     => line 626
- * - start of internal VM detection techniques => line 1192
- * - start of public VM detection functions    => line 4403
- * - start of externally defined variables     => line 4654
+ * ================================ SECTIONS ==================================
+ * - enums for publicly accessible techniques  => line 219
+ * - struct for internal cpu operations        => line 373
+ * - struct for internal memoization           => line 602
+ * - struct for internal utility functions     => line 675
+ * - struct for internal core components       => line 4193
+ * - start of internal VM detection techniques => line 1239
+ * - start of public VM detection functions    => line 4236
+ * - start of externally defined variables     => line 4475
  */
-
-#pragma once
 
 #if (defined(_MSC_VER) || defined(_WIN32) || defined(_WIN64) || defined(__MINGW32__))
 #define MSVC 1
@@ -128,6 +127,7 @@
 #include <cmath>
 #include <sstream>
 #include <bitset>
+#include <type_traits>
 
 #if (MSVC)
 #include <windows.h>
@@ -321,13 +321,6 @@ private:
 
         return p_flags;
     }
-    
-    // VM scoreboard table specifically for VM::brand()
-#if (MSVC)
-    static std::map<const char*, int> scoreboard;
-#else
-    static std::map<const char*, u8> scoreboard;
-#endif
 
     /**
     * Official aliases for VM brands. This is added to avoid accidental typos
@@ -365,7 +358,7 @@ private:
     static constexpr const char* SUNBELT = "SunBelt";
     static constexpr const char* BOCHS = "Bochs";
 
-    // macro for bypassing unused parameter warnings
+    // macro for bypassing unused parameter/variable warnings
     #define UNUSED(x) ((void)(x))
 
     // likely and unlikely macros
@@ -613,14 +606,14 @@ private:
         MSVC_DISABLE_WARNING(4820)
         struct memo_struct {
             std::string get_brand;
-            u16 get_percent;
+            u8 get_percent;
             bool get_vm;
 
             // Default constructor
             memo_struct() : get_brand("Unknown"), get_percent(0), get_vm(false) {}
 
             // Constructor to initialize the members
-            memo_struct(const std::string& brand, u16 percent, bool is_vm)
+            memo_struct(const std::string& brand, u8 percent, bool is_vm)
                 : get_brand(brand), get_percent(percent), get_vm(is_vm) {}
         };
         MSVC_ENABLE_WARNING(4820)
@@ -650,7 +643,7 @@ private:
         }
 
         // get vm percentage
-        static u16 get_percent() {
+        static u8 get_percent() {
             memo_struct& tmp = cache.at(true);
             return tmp.get_percent;
         }
@@ -664,7 +657,7 @@ private:
         static constexpr const char* UNUSED_BRAND = "";
         static constexpr u8 UNUSED_PERCENT = 0;
 
-        static void memoize(const u8 p_flags, const bool is_vm, const std::string& vm_brand, const u16 vm_percent) {
+        static void memoize(const u8 p_flags, const bool is_vm, const std::string& vm_brand, const u8 vm_percent) {
             if (cache.find(true) != cache.end()) {
                 return;
             }
@@ -672,7 +665,7 @@ private:
             // default values
             bool local_is_vm = (p_flags & FOUND_VM) ? is_vm : detect(NO_MEMO);
             std::string local_vm_brand = (p_flags & FOUND_BRAND) ? vm_brand : brand(NO_MEMO);
-            u16 local_vm_percent = (p_flags & FOUND_PERCENT) ? vm_percent : percentage(NO_MEMO);
+            u8 local_vm_percent = (p_flags & FOUND_PERCENT) ? vm_percent : percentage(NO_MEMO);
 
             memo_struct tmp(local_vm_brand, local_vm_percent, local_is_vm);
             cache[true] = tmp;
@@ -774,7 +767,7 @@ private:
         [[gnu::const]]
 #endif
         static inline bool add(const char* p_brand) noexcept {
-            scoreboard.at(p_brand)++;
+            core::scoreboard.at(p_brand)++;
             return true;
         }
 
@@ -1244,7 +1237,7 @@ private:
 #endif
     };
 
-private:
+private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check CPUID output of manufacturer ID for known VMs/hypervisors
      * @category x86
@@ -4198,16 +4191,50 @@ private:
 
     // __TECHNIQUE_LABEL, label for adding techniques above this point
 
-    MSVC_DISABLE_WARNING(4820)
-    struct technique {
-        u8 points;
-        std::function<bool()> run;
+    struct core {
+        MSVC_DISABLE_WARNING(4820)
+        struct technique {
+            u8 points;
+            std::function<bool()> run;
+        };
+        MSVC_ENABLE_WARNING(4820)
+
+        static const std::map<u8, technique> table;
+
+        static std::vector<technique> custom_table;
+
+        // VM scoreboard table specifically for VM::brand()
+#if (MSVC)
+        static std::map<const char*, int> scoreboard;
+#else
+        static std::map<const char*, u8> scoreboard;
+#endif
+
+        static u16 run_all(flagset p_flags = DEFAULT) {
+            u16 points = 0;
+            VM::flags = p_flags;
+
+            for (const auto& tmp : table) {
+                technique pair = tmp.second;
+                if (pair.run()) {
+                    points += pair.points;
+                }
+            }
+
+            if (!custom_table.empty()) {
+                for (const auto& pair : custom_table) {
+                    if (pair.run()) {
+                        points += pair.points;
+                    }
+                }
+            }
+
+            return points;
+        }
     };
-    MSVC_ENABLE_WARNING(4820)
 
-    static const std::map<u8, technique> table;
 
-public:
+public: // START OF PUBLIC FUNCTIONS
     /**
      * @brief Check for a specific technique based on flag argument
      * @param u8 (flags from VM wrapper)
@@ -4252,13 +4279,13 @@ public:
 
         bool result = false;
 
-        auto it = table.find(p_flag);
+        auto it = core::table.find(p_flag);
 
-        if (VMAWARE_UNLIKELY(it == table.end())) {
+        if (VMAWARE_UNLIKELY(it == core::table.end())) {
             throw_error("Flag is not known");
         }
 
-        const technique& pair = it->second;
+        const core::technique& pair = it->second;
         result = pair.run();
 
         VM::flags = tmp_flags;
@@ -4275,28 +4302,25 @@ public:
      * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmbrand
      */
     [[nodiscard]] static std::string brand(const flagset p_flags = DEFAULT) {
-        VM::flags = p_flags;
-
-        if (memo::is_memoized()) {
-#ifdef __VMAWARE_DEBUG__
-            debug("memoization: returned cached result in brand()");
-#endif
-            return (memo::get_brand());
+        {
+            // this is added to set the brand scoreboard table
+            u16 tmp = core::run_all(p_flags);
+            UNUSED(tmp);
         }
 
         const char* current_brand = "";
 
         // fetch the brand with the most points in the scoreboard
 #if (CPP >= 20)
-        auto it = std::ranges::max_element(VM::scoreboard, {},
+        auto it = std::ranges::max_element(core::scoreboard, {},
             [](const auto& pair) {
                 return pair.second;
             }
         );
 
-        if (it != scoreboard.end()) {
+        if (it != core::scoreboard.end()) {
             if (
-                std::none_of(scoreboard.cbegin(), scoreboard.cend(),
+                std::none_of(core::scoreboard.cbegin(), core::scoreboard.cend(),
                     [](const auto& pair) {
                         return pair.second;
                     }
@@ -4319,14 +4343,14 @@ public:
 #endif
 
 #if (CPP >= 17)
-        for (const auto& [brand, points] : scoreboard) {
+        for (const auto& [brand, points] : core::scoreboard) {
             if (points > max) {
                 current_brand = brand;
                 max = points;
             }
         }
 #else
-        for (auto it = scoreboard.cbegin(); it != scoreboard.cend(); ++it) {
+        for (auto it = core::scoreboard.cbegin(); it != core::scoreboard.cend(); ++it) {
             if (it->second > max) {
                 current_brand = it->first;
                 max = it->second;
@@ -4349,14 +4373,14 @@ public:
 #endif
 
         if (
-            (scoreboard.at(TMP_QEMU) > 0) &&
-            (scoreboard.at(TMP_KVM) > 0)
+            (core::scoreboard.at(TMP_QEMU) > 0) &&
+            (core::scoreboard.at(TMP_KVM) > 0)
         ) {
-            current_brand = "QEMU/KVM";
+            current_brand = "QEMU+KVM";
         }
 
 #ifdef __VMAWARE_DEBUG__
-        for (const auto p : scoreboard) {
+        for (const auto p : core::scoreboard) {
             debug("scoreboard: ", (int)p.second, " : ", p.first);
         }
 #endif
@@ -4373,13 +4397,13 @@ public:
      */
     static bool detect(flagset p_flags = DEFAULT) {
         bool result = false;
-        u16 p = percentage(p_flags);
+
+        u16 points = core::run_all(p_flags);
 
         if (util::enabled(EXTREME)) {
-            result = (p > 0);
-        }
-        else {
-            result = (p == 100);
+            result = (points > 0);
+        } else {
+            result = (points >= 100);
         }
 
         return result;
@@ -4389,25 +4413,55 @@ public:
     /**
      * @brief Get the percentage of how likely it's a VM
      * @param any combination of flags, can be optional
-     * @return std::uint16_t
+     * @return std::uint8_t
      * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmpercentage
      */
-    static u16 percentage(flagset p_flags = DEFAULT) {
-        u16 percent = 0;
-        VM::flags = p_flags;
+    static u8 percentage(flagset p_flags = DEFAULT) {
+        u16 points = core::run_all(p_flags);
+        u8 percent = 0;
 
-        for (auto& tmp : table) {
-            technique pair = tmp.second;
-            if (pair.run()) {
-                percent += pair.points;
-            }
-        }
-
-        if (percent > 100) {
+        if (points > 100) {
             percent = 100;
+        } else {
+            percent = static_cast<u8>(points);
         }
 
         return percent;
+    }
+
+
+    /**
+     * @brief Add a custom technique to the VM detection technique collection
+     * @return void
+     */ 
+    static void add_custom(
+        const std::uint8_t percent, 
+#if (CPP >= 20 && !defined(__clang__))
+        std::function<bool()> detection_func, 
+        const std::source_location& loc = std::source_location::current()
+#else
+        std::function<bool()> detection_func
+#endif
+    ) {
+        auto throw_error = [&](const char* text) -> void {
+            std::stringstream ss;
+#if (CPP >= 20 && !defined(__clang__))
+            ss << ", error in " << loc.function_name() << " at " << loc.file_name() << ":" << loc.line() << ")";
+#endif
+            ss << ". Consult the documentation's parameters for VM::add_custom()";
+            throw std::invalid_argument(std::string(text) + ss.str());
+        };
+
+        if (percent > 100) {
+            throw_error("Percentage parameter must be between 0 and 100");
+        }
+
+        core::technique query {
+            percent,
+            detection_func
+        };
+
+        core::custom_table.emplace_back(query);
     }
 };
 
@@ -4418,9 +4472,9 @@ MSVC_ENABLE_WARNING(4626 4514)
 // It's easier to just group them together rather than having C++17<= preprocessors with inline stuff
 
 #if (MSVC)
-    std::map<const char*, int> VM::scoreboard {
+    std::map<const char*, int> VM::core::scoreboard {
 #else
-    std::map<const char*, VM::u8> VM::scoreboard {
+    std::map<const char*, VM::u8> VM::core::scoreboard {
 #endif
     { VM::VMWARE, 0 },
     { VM::VBOX, 0 },
@@ -4485,8 +4539,14 @@ bool VM::cpuid_supported = []() -> bool {
 }();
 
 
+// this is initialised as empty, because this is where custom techniques can be added at runtime 
+std::vector<VM::core::technique> VM::core::custom_table = {
+
+};
+
+
 // the 0~100 points are debatable, but I think it's fine how it is. Feel free to disagree.
-const std::map<VM::u8, VM::technique> VM::table = {
+const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::VMID, { 100, VM::vmid }},
     { VM::BRAND, { 50, VM::cpu_brand }},
     { VM::HYPERVISOR_BIT, { 100, VM::hypervisor_bit }},

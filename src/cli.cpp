@@ -125,10 +125,12 @@ int main(int argc, char* argv[]) {
         checker(VM::KVM_DIRS, "KVM directories");
         std::printf("\n");
 
-        std::cout << "VM brand: " << (VM::brand() == "Unknown" ? red : green) << VM::brand() << ansi_exit << "\n";
+        const std::string brand = VM::brand();
+
+        std::cout << "VM brand: " << (brand == "Unknown" ? red : green) << brand << ansi_exit << "\n";
 
         const char* percent_color = "";
-        std::uint16_t percent = VM::percentage();
+        std::uint8_t percent = VM::percentage();
 
         if (percent == 0) {
             percent_color = red;
@@ -154,11 +156,20 @@ int main(int argc, char* argv[]) {
         constexpr const char* baremetal = "Running in baremetal";
         constexpr const char* very_unlikely = "Very unlikely a VM";
         constexpr const char* unlikely = "Unlikely a VM";
+
         constexpr const char* potentially = "Potentially a VM";
         constexpr const char* might = "Might be a VM";
         constexpr const char* likely = "Likely a VM";
         constexpr const char* very_likely = "Very likely a VM";
         constexpr const char* inside_vm = "Running inside a VM";
+
+        if (brand != "Unknown") {
+            const std::string potentially = "Potentially a " + brand + " VM";
+            const std::string might = "Might be a " + brand + " VM";
+            const std::string likely = "Likely a " + brand + " VM";
+            const std::string very_likely = "Very likely a " + brand + " VM";
+            const std::string inside_vm = "Running inside a " + brand + " VM";
+        }
         
         if (percent == 0) {
             conclusion_color = red;

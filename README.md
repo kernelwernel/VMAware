@@ -10,8 +10,8 @@
 **VMAware** (VM + Aware) is a cross-platform C++ library for virtual machine detection.
 
 The library is:
-- Very easy to use, with only 4 functions in its public interface
-- Very flexible, with total fine-grained control over what gets executed
+- Very easy to use, with only 5 functions in its public interface
+- Very flexible, with total fine-grained control over which techniques get executed
 - Cross-platform (Windows + MacOS + Linux)
 - Header-only
 - Available with C++11 and above
@@ -19,7 +19,9 @@ The library is:
 - Able to detect VMware, VirtualBox, QEMU, KVM, Parallels, and [much more](https://github.com/kernelwernel/VMAware/blob/v0.2/docs/documentation.md#vmbrand)
 - Able to detect semi-VM technologies like hypervisors, docker, and wine
 - Able to guess the VM brand
+- Able to add your own custom VM detection techniques
 - Memoized, meaning past results are cached and retrieved if ran again for performance benefits 
+- MIT and GPL-3.0 compliant code support
 
 - - -
 
@@ -47,6 +49,15 @@ int main() {
     std::cout << "VM certainty: " << VM::percentage() << "%" << std::endl;
 }
 ```
+
+<br>
+
+## Structure
+
+<p align="center">
+<img src="assets/vmaware.drawio.svg" align="center" width="500" title="VMAware">
+<br>
+</p>
 
 <br>
 
@@ -116,7 +127,7 @@ If you found this project useful, a star would be appreciated :)
 
 <br>
 
-## Credits ✒️
+## Credits and contributors ✒️
 - [Check Point Research](https://research.checkpoint.com/)
 - [Unprotect Project](https://unprotect.it/)
 - [Al-Khaser](https://github.com/LordNoteworthy/al-khaser)
@@ -127,6 +138,7 @@ If you found this project useful, a star would be appreciated :)
 - [Graham Sutherland, LRQA Nettitude](https://www.nettitude.com/uk/)
 - [Requiem](https://github.com/NotRequiem)
 - [Alex](https://github.com/greenozon)
+- [Marek Knápek](https://github.com/MarekKnapek)
 
 <br>
 

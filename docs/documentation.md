@@ -5,6 +5,7 @@
 - [`VM::brand()`](#vmbrand)
 - [`VM::check()`](#vmcheck)
 - [`VM::percentage()`](#vmpercentage)
+- [`VM::add_custom()`](#vmaddcustom)
 - [Flag table](#flag-table)
 - [Non-technique flags](#non-technique-flags)
 
@@ -81,7 +82,7 @@ This will essentially return the VM brand as a `std::string`. The exact possible
 - `bhyve`
 - `KVM`
 - `QEMU`
-- `QEMU/KVM`
+- `QEMU+KVM`
 - `Microsoft Hyper-V`
 - `Microsoft x86-to-ARM`
 - `Parallels`
@@ -172,6 +173,32 @@ int main() {
     // converted to std::uint32_t for console character encoding reasons
     std::cout << "percentage: " << static_cast<std::uint32_t>(percent) << "%\n"; 
 }
+```
+
+<br>
+
+## `VM::add_custom()`
+This function allows you to add your own custom VM detection techniques to the system. The first parameter is the percentage score (0 to 100) of how likely it's a VM if your custom code returns `true`
+```cpp
+    // Example 1 with std::function
+    std::function<bool()> new_technique = []() -> bool {
+        // add your VM detection code here
+        return true;
+    };
+
+    VM::add_custom(1, new_technique);
+```
+
+```cpp
+    // Example 2 with lambdas
+    VM::add_custom(69, []() -> bool { return true; });
+
+    auto new_technique = []() -> bool { 
+        // add your VM detection code here
+        return true;
+    }
+
+    VM::add_custom(69, new_technique);
 ```
 
 <br>
