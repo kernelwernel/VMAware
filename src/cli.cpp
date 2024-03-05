@@ -50,8 +50,8 @@ private:
   win_ansi_enabler_t& operator=(win_ansi_enabler_t const&);
 private:
   BOOL m_set;
-  HANDLE m_out;
   DWORD m_old;
+  HANDLE m_out;
 };
 #endif
 
@@ -197,18 +197,18 @@ int main(int argc, char* argv[]) {
         constexpr const char* very_unlikely = "Very unlikely a VM";
         constexpr const char* unlikely = "Unlikely a VM";
 
-        constexpr const char* potentially = "Potentially a VM";
-        constexpr const char* might = "Might be a VM";
-        constexpr const char* likely = "Likely a VM";
-        constexpr const char* very_likely = "Very likely a VM";
-        constexpr const char* inside_vm = "Running inside a VM";
+        std::string potentially = "Potentially a VM";
+        std::string might = "Might be a VM";
+        std::string likely = "Likely a VM";
+        std::string very_likely = "Very likely a VM";
+        std::string inside_vm = "Running inside a VM";
 
         if (brand != "Unknown") {
-            const std::string potentially = "Potentially a " + brand + " VM";
-            const std::string might = "Might be a " + brand + " VM";
-            const std::string likely = "Likely a " + brand + " VM";
-            const std::string very_likely = "Very likely a " + brand + " VM";
-            const std::string inside_vm = "Running inside a " + brand + " VM";
+            potentially = "Potentially a " + brand + " VM";
+            might = "Might be a " + brand + " VM";
+            likely = "Likely a " + brand + " VM";
+            very_likely = "Very likely a " + brand + " VM";
+            inside_vm = "Running inside a " + brand + " VM";
         }
         
         if (percent == 0) {

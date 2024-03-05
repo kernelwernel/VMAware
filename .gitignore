@@ -49,3 +49,5 @@ notes.md
 private/
 resources/
 releases/
+release_notes.txt
+*.bkp

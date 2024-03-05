@@ -2004,7 +2004,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
                 if (std::string(p_brand) != "") {
                     debug("REGISTRY: ", "detected = ", p_brand);
-                    scoreboard[p_brand]++;
+                    core::scoreboard[p_brand]++;
                 }
             }
         };
