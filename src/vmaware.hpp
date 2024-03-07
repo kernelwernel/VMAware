@@ -19,14 +19,14 @@
  *  - License: GPL-3.0
  * 
  * ================================ SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 219
- * - struct for internal cpu operations        => line 373
- * - struct for internal memoization           => line 602
- * - struct for internal utility functions     => line 675
- * - struct for internal core components       => line 4193
- * - start of internal VM detection techniques => line 1239
- * - start of public VM detection functions    => line 4236
- * - start of externally defined variables     => line 4475
+ * - enums for publicly accessible techniques  => line 221
+ * - struct for internal cpu operations        => line 377
+ * - struct for internal memoization           => line 606
+ * - struct for internal utility functions     => line 679
+ * - struct for internal core components       => line 4352
+ * - start of internal VM detection techniques => line 1205
+ * - start of public VM detection functions    => line 4436
+ * - start of externally defined variables     => line 4669
  */
 
 #if (defined(_MSC_VER) || defined(_WIN32) || defined(_WIN64) || defined(__MINGW32__))
@@ -147,6 +147,8 @@
 #include <Wbemidl.h>
 #include <shlwapi.h>
 #include <shlobj_core.h>
+#include <strmif.h>
+#include <dshow.h>
 
 #pragma comment(lib, "wbemuuid.lib")
 #pragma comment(lib, "iphlpapi.lib")
@@ -154,6 +156,8 @@
 #pragma comment(lib, "MPR")
 #pragma comment(lib, "advapi32.lib")
 #pragma comment(lib, "shell32.lib")
+#pragma comment(lib, "strmiids.lib")
+#pragma comment(lib, "uuid.lib")
 
 #ifdef _UNICODE
 #define tregex std::wregex
@@ -276,6 +280,8 @@ public:
         KVM_REG,
         KVM_DRIVERS,
         KVM_DIRS,
+        HKLM_REGISTRIES,
+        AUDIO,
         EXTREME,
         NO_MEMO
     };
@@ -569,19 +575,19 @@ private:
             const bool found = (std::find(std::begin(IDs), std::end(IDs), brand) != std::end(IDs));
 
             if (found) {
-                if (brand == qemu) { return util::add(QEMU); }
-                if (brand == vmware) { return util::add(VMWARE); }
-                if (brand == vbox) { return util::add(VBOX); }
-                if (brand == bhyve) { return util::add(BHYVE); }
-                if (brand == kvm) { return util::add(KVM); }
-                if (brand == hyperv) { return util::add(HYPERV); }
-                if (brand == xta) { return util::add(MSXTA); }
-                if (brand == parallels) { return util::add(PARALLELS); }
-                if (brand == parallels2) { return util::add(PARALLELS); }
-                if (brand == xen) { return util::add(XEN); }
-                if (brand == acrn) { return util::add(ACRN); }
-                if (brand == qnx) { return util::add(QNX); }
-                if (brand == virtapple) { return util::add(VAPPLE); }
+                if (brand == qemu) { return core::add(QEMU); }
+                if (brand == vmware) { return core::add(VMWARE); }
+                if (brand == vbox) { return core::add(VBOX); }
+                if (brand == bhyve) { return core::add(BHYVE); }
+                if (brand == kvm) { return core::add(KVM); }
+                if (brand == hyperv) { return core::add(HYPERV); }
+                if (brand == xta) { return core::add(MSXTA); }
+                if (brand == parallels) { return core::add(PARALLELS); }
+                if (brand == parallels2) { return core::add(PARALLELS); }
+                if (brand == xen) { return core::add(XEN); }
+                if (brand == acrn) { return core::add(ACRN); }
+                if (brand == qnx) { return core::add(QNX); }
+                if (brand == virtapple) { return core::add(VAPPLE); }
             }
 
             /**
@@ -592,7 +598,7 @@ private:
              * "KVMKVMKVM\0\0\0", like wtf????
              */
             if (brand.find("KVM") != std::string::npos) {
-                return util::add(KVM);
+                return core::add(KVM);
             }
 
             return false;
@@ -625,7 +631,7 @@ private:
         // easier way to check if the result is memoized
         [[nodiscard]] static inline bool is_memoized() noexcept {
             return (
-                util::disabled(NO_MEMO) && \
+                core::disabled(NO_MEMO) && \
                 cache.find(true) != cache.end()
             );
         }
@@ -759,44 +765,6 @@ private:
             std::cout << "\n";
         }
 #endif
-
-        // directly return when adding a brand to the scoreboard for a more succint expression
-#if (MSVC) 
-        __declspec(noalias)
-#elif (LINUX)
-        [[gnu::const]]
-#endif
-        static inline bool add(const char* p_brand) noexcept {
-            core::scoreboard.at(p_brand)++;
-            return true;
-        }
-
-        /**
-         * assert if the flag is enabled, far better expression than typing this:
-         * if (!(flags & VMID)) {
-         *    return false;
-         * }
-         *
-         * compared to this:
-         *
-         * if (util::disabled(VMID)) {
-         *    return false;
-         * }
-         */
-#if (LINUX && __has_cpp_attribute(gnu::pure))
-        [[gnu::pure]]
-#endif
-        [[nodiscard]] static inline bool disabled(const u8 flag_bit) noexcept {
-            return (!flags.test(flag_bit));
-        }
-
-        // same as above but for checking enabled flags
-#if (LINUX && __has_cpp_attribute(gnu::pure))
-        [[gnu::pure]]
-#endif
-        [[nodiscard]] static inline bool enabled(const u8 flag_bit) noexcept {
-            return (flags.test(flag_bit));
-        }
 
         // basically std::system but it runs in the background with std::string output
         [[nodiscard]] static std::unique_ptr<std::string> sys_result(const TCHAR* cmd) try {
@@ -1243,7 +1211,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category x86
      */
     [[nodiscard]] static bool vmid() try {
-        if (!cpuid_supported || util::disabled(VMID)) {
+        if (!cpuid_supported || core::disabled(VMID)) {
             return false;
         }
 
@@ -1264,7 +1232,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category x86
      */
     [[nodiscard]] static bool vmid_0x4() try {
-        if (!cpuid_supported || util::disabled(VMID_0X4)) {
+        if (!cpuid_supported || core::disabled(VMID_0X4)) {
             return false;
         }
 
@@ -1284,7 +1252,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category x86
      */
     [[nodiscard]] static bool cpu_brand() try {
-        if (!cpuid_supported || util::disabled(BRAND)) {
+        if (!cpuid_supported || core::disabled(BRAND)) {
             return false;
         }
 
@@ -1320,7 +1288,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             const bool qemu_match = std::regex_search(brand, qemu_regex);
 
             if (qemu_match) {
-                return util::add(QEMU);
+                return core::add(QEMU);
             }
         }
 
@@ -1338,7 +1306,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category x86
      */
     [[nodiscard]] static bool cpu_brand_qemu() try {
-        if (!cpuid_supported || util::disabled(QEMU_BRAND)) {
+        if (!cpuid_supported || core::disabled(QEMU_BRAND)) {
             return false;
         }
 
@@ -1350,7 +1318,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         std::regex pattern("QEMU Virtual CPU", std::regex_constants::icase);
 
         if (std::regex_match(brand, pattern)) {
-            return util::add(QEMU);
+            return core::add(QEMU);
         }
 
         return false;
@@ -1367,7 +1335,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category x86
      */
     [[nodiscard]] static bool hypervisor_bit() try {
-        if (!cpuid_supported || util::disabled(HYPERVISOR_BIT)) {
+        if (!cpuid_supported || core::disabled(HYPERVISOR_BIT)) {
             return false;
         }
     
@@ -1394,7 +1362,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      */
     MSVC_DISABLE_WARNING(5045)
     [[nodiscard]] static bool cpuid_0x4() try {
-        if (!cpuid_supported || util::disabled(CPUID_0X4)) {
+        if (!cpuid_supported || core::disabled(CPUID_0X4)) {
             return false;
         }
 
@@ -1425,7 +1393,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category x86
      */
     [[nodiscard]] static bool hypervisor_brand() try {
-        if (util::disabled(HYPERVISOR_STR)) {
+        if (core::disabled(HYPERVISOR_STR)) {
             return false;
         }
 
@@ -1455,7 +1423,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category x86
      */
     [[nodiscard]] static bool rdtsc_check() try {
-        if (util::disabled(RDTSC)) {
+        if (core::disabled(RDTSC)) {
             return false;
         }
 
@@ -1521,7 +1489,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category x86
      */
     [[nodiscard]] static bool sidt5() try {
-        if (util::disabled(SIDT5)) {
+        if (core::disabled(SIDT5)) {
             return false;
         }
 
@@ -1559,7 +1527,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category All systems
      */
     [[nodiscard]] static bool thread_count() try {
-        if (util::disabled(THREADCOUNT)) {
+        if (core::disabled(THREADCOUNT)) {
             return false;
         }
 
@@ -1578,7 +1546,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category All systems (I think)
      */
     [[nodiscard]] static bool mac_address_check() try {
-        if (util::disabled(MAC)) {
+        if (core::disabled(MAC)) {
             return false;
         }
 
@@ -1678,7 +1646,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         };
 
         if (compare(0x08, 0x00, 0x27)) {
-            return util::add(VBOX);
+            return core::add(VBOX);
         }
 
         if (
@@ -1687,19 +1655,19 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             (compare(0x00, 0x50, 0x56)) ||
             (compare(0x00, 0x05, 0x69))
         ) {
-            return util::add(VMWARE);
+            return core::add(VMWARE);
         }
 
         if (compare(0x00, 0x16, 0xE3)) {
-            return util::add(XEN);
+            return core::add(XEN);
         }
 
         if (compare(0x00, 0x1C, 0x42)) {
-            return util::add(PARALLELS);
+            return core::add(PARALLELS);
         }
 
         if (compare(0x0A, 0x00, 0x27)) {
-            return util::add(HYBRID);
+            return core::add(HYBRID);
         }
 
         return false;
@@ -1715,7 +1683,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Linux
      */
     [[nodiscard]] static bool temperature() try {
-        if (util::disabled(TEMPERATURE)) {
+        if (core::disabled(TEMPERATURE)) {
             return false;
         }
 
@@ -1736,7 +1704,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Linux
      */ 
     [[nodiscard]] static bool systemd_virt() try {
-        if (util::disabled(SYSTEMD)) {
+        if (core::disabled(SYSTEMD)) {
             return false;
         }
 
@@ -1771,7 +1739,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Linux
      */ 
     [[nodiscard]] static bool chassis_vendor() try {
-        if (util::disabled(CVENDOR)) {
+        if (core::disabled(CVENDOR)) {
             return false;
         }
 
@@ -1784,8 +1752,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             const std::string vendor = util::read_file(vendor_file);
 
             // TODO: More can be definitely added, I only tried QEMU and VMware so far
-            if (vendor == "QEMU") { return util::add(QEMU); }
-            if (vendor == "Oracle Corporation") { return util::add(VMWARE); }
+            if (vendor == "QEMU") { return core::add(QEMU); }
+            if (vendor == "Oracle Corporation") { return core::add(VMWARE); }
 
             debug("CVENDOR: ", "unknown vendor = ", vendor);
         }
@@ -1807,7 +1775,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Linux
      */
     [[nodiscard]] static bool chassis_type() try {
-        if (util::disabled(CTYPE)) {
+        if (core::disabled(CTYPE)) {
             return false;
         }
 
@@ -1837,7 +1805,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Linux
      */
     [[nodiscard]] static bool dockerenv() try {
-        if (util::disabled(DOCKERENV)) {
+        if (core::disabled(DOCKERENV)) {
             return false;
         }
 
@@ -1858,7 +1826,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Linux
      */
     [[nodiscard]] static bool dmidecode() try {
-        if (util::disabled(DMIDECODE) || (util::is_root() == false)) {
+        if (core::disabled(DMIDECODE) || (util::is_root() == false)) {
             debug("DMIDECODE: ", "precondition return called (root = ", util::is_root(), ")");
             return false;
         }
@@ -1878,13 +1846,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
         else if (*result == "QEMU") {
-            return util::add(QEMU);
+            return core::add(QEMU);
         }
         else if (*result == "VirtualBox") {
-            return util::add(VBOX);
+            return core::add(VBOX);
         }
         else if (*result == "KVM") {
-            return util::add(KVM);
+            return core::add(KVM);
         }
         else if (std::atoi(result->c_str()) >= 1) {
             return true;
@@ -1907,7 +1875,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Linux
      */
     [[nodiscard]] static bool dmesg() try {
-        if (util::disabled(DMESG) || !util::is_root()) {
+        if (core::disabled(DMESG) || !util::is_root()) {
             return false;
         }
 
@@ -1925,10 +1893,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
         else if (*result == "KVM") {
-            return util::add(KVM);
+            return core::add(KVM);
         }
         else if (*result == "QEMU") {
-            return util::add(QEMU);
+            return core::add(QEMU);
         }
         else if (std::atoi(result->c_str())) {
             return true;
@@ -1951,7 +1919,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Linux
      */
     [[nodiscard]] static bool hwmon() try {
-        if (util::disabled(HWMON)) {
+        if (core::disabled(HWMON)) {
             return false;
         }
 
@@ -1972,7 +1940,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Windows
      */
     [[nodiscard]] static bool registry_key() try {
-        if (util::disabled(REGISTRY)) {
+        if (core::disabled(REGISTRY)) {
             return false;
         }
 
@@ -2094,7 +2062,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Windows
      */ 
     [[nodiscard]] static bool user_check() try {     
-        if (util::disabled(USER)) {
+        if (core::disabled(USER)) {
             return false;
         }
 
@@ -2108,7 +2076,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         //TODO Ansi: debug("USER: ", "output = ", user);
 
         if (0 == _tcscmp(user, _T("username"))) {
-            return util::add(THREADEXPERT);
+            return core::add(THREADEXPERT);
         }
 
         return (
@@ -2130,7 +2098,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Windows
      */
     [[nodiscard]] static bool sunbelt_check() try {
-        if (util::disabled(SUNBELT_VM)) {
+        if (core::disabled(SUNBELT_VM)) {
             return false;
         }
 
@@ -2138,7 +2106,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #else
         if (util::exists(_T("C:\\analysis"))) {
-            return util::add(SUNBELT);
+            return core::add(SUNBELT);
         }
 
         return false;
@@ -2156,7 +2124,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Windows
      */
     [[nodiscard]] static bool DLL_check() try {
-        if (util::disabled(DLL)) {
+        if (core::disabled(DLL)) {
             return false;
         }
 
@@ -2208,7 +2176,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Windows 
      */
     [[nodiscard]] static bool vbox_registry() try {
-        if (util::disabled(VBOX_REG)) {
+        if (core::disabled(VBOX_REG)) {
             return false;
         }
 
@@ -2219,7 +2187,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         if (handle != INVALID_HANDLE_VALUE) {
             CloseHandle(handle);
-            return util::add(VBOX);
+            return core::add(VBOX);
         }
 
         return false;
@@ -2236,7 +2204,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Windows
      */
     [[nodiscard]] static bool vmware_registry() try {
-        if (util::disabled(VMWARE_REG)) {
+        if (core::disabled(VMWARE_REG)) {
             return false;
         }
 
@@ -2250,7 +2218,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         debug("VMWARE_REG: result = ", result);
 
         if (result == true) {
-            return util::add(VMWARE);
+            return core::add(VMWARE);
         }
 
         return result;
@@ -2270,7 +2238,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Windows
      */
     [[nodiscard]] static bool cursor_check() try {
-        if (util::disabled(CURSOR)) {
+        if (core::disabled(CURSOR)) {
             return false;
         }
 
@@ -2307,7 +2275,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Windows
      */
     [[nodiscard]] static bool wine() try {
-        if (util::disabled(WINE_CHECK)) {
+        if (core::disabled(WINE_CHECK)) {
             return false;
         }
 
@@ -2335,7 +2303,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Windows
      */
     [[nodiscard]] static bool vm_files() try {
-        if (util::disabled(VM_FILES)) {
+        if (core::disabled(VM_FILES)) {
             return false;
         }
 
@@ -2396,10 +2364,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         debug("VM_FILES: vbox score: ", vbox);
 
         if (vbox > vmware) {
-            return util::add(VBOX);
+            return core::add(VBOX);
         }
         else if (vbox < vmware) {
-            return util::add(VMWARE);
+            return core::add(VMWARE);
         }
         else if (vbox == vmware) {
             return true;
@@ -2420,7 +2388,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category MacOS
      */ 
     [[nodiscard]] static bool hwmodel() try {
-        if (util::disabled(HWMODEL)) {
+        if (core::disabled(HWMODEL)) {
             return false;
         }
 
@@ -2445,7 +2413,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         // not sure about the other VMs, more could potentially be added
         if (std::regex_search(*result, match, std::regex("VMware"))) {
-            return util::add(VMWARE);
+            return core::add(VMWARE);
         }
 
         // assumed true since it doesn't contain "Mac" string
@@ -2465,7 +2433,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @link https://evasions.checkpoint.com/techniques/macos.html
      */
     [[nodiscard]] static bool mac_hyperthread() try {
-        if (util::disabled(MAC_HYPERTHREAD)) {
+        if (core::disabled(MAC_HYPERTHREAD)) {
             return false;
         }
 
@@ -2488,7 +2456,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Linux (for now)
      */
      [[nodiscard]] static bool disk_size() try {
-        if (util::disabled(DISK_SIZE)) {
+        if (core::disabled(DISK_SIZE)) {
             return false;
         }
 
@@ -2522,7 +2490,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Linux, Windows
      */
     [[nodiscard]] static bool vbox_default_specs() try {
-        if (util::disabled(VBOX_DEFAULT)) {
+        if (core::disabled(VBOX_DEFAULT)) {
             return false;
         }
 
@@ -2636,7 +2604,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     * @brief Check VBox network provider string
     */
     [[nodiscard]] static bool vbox_network_share() try {
-        if (util::disabled(VBOX_NETWORK)) {
+        if (core::disabled(VBOX_NETWORK)) {
             return false;
         }
 
@@ -2667,7 +2635,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @author InviZzzible project
      */
     [[nodiscard]] static bool computer_name_match() try {
-        if (util::disabled(COMPUTER_NAME)) {
+        if (core::disabled(COMPUTER_NAME)) {
             return false;
         }
 
@@ -2687,7 +2655,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (compare("InsideTm") || compare("TU-4NH09SMCG1HC")) { // anubis
             debug("COMPUTER_NAME: detected Anubis");
 
-            return util::add(ANUBIS);
+            return core::add(ANUBIS);
         }
 
         if (compare("klone_x64-pc") || compare("tequilaboomboom")) { // general
@@ -2711,7 +2679,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Windows
      */
     [[nodiscard]] static bool hostname_match() try {
-        if (util::disabled(HOSTNAME)) {
+        if (core::disabled(HOSTNAME)) {
             return false;
         }
 
@@ -2739,7 +2707,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category x86?
     */
     [[nodiscard]] static bool low_memory_space() try {
-        if (util::disabled(MEMORY)) {
+        if (core::disabled(MEMORY)) {
             return false;
         }
 
@@ -2762,7 +2730,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Windows
      */
     [[nodiscard]] static bool vm_processes() try {
-        if (util::disabled(VM_PROCESSES)) {
+        if (core::disabled(VM_PROCESSES)) {
             return false;
         }
 
@@ -2797,7 +2765,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         auto ret = [](const char* str) -> bool {
             debug("VM_PROCESSES: found ", str);
-            return util::add(str);
+            return core::add(str);
         };
 
         if (check_proc(_T("joeboxserver.exe")) || check_proc(_T("joeboxcontrol.exe"))) {
@@ -2845,7 +2813,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Linux
      */ 
     [[nodiscard]] static bool linux_user_host() try {
-        if (util::disabled(LINUX_USER_HOST)) {
+        if (core::disabled(LINUX_USER_HOST)) {
             return false;
         }
 
@@ -2880,7 +2848,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @author Al-Khaser Project
      */
     [[nodiscard]] static bool vbox_window_class() try {
-        if (util::disabled(VBOX_WINDOW_CLASS)) {
+        if (core::disabled(VBOX_WINDOW_CLASS)) {
             return false;
         }
 
@@ -2891,7 +2859,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         HWND hWindow = FindWindow(NULL, _T("VBoxTrayToolWnd"));
 
         if (hClass || hWindow) {
-            return util::add(VBOX);
+            return core::add(VBOX);
         }
 
         return false;
@@ -2908,7 +2876,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Windows 
      */
     [[nodiscard]] static bool gamarue() try {
-        if (util::disabled(GAMARUE)) {
+        if (core::disabled(GAMARUE)) {
             return false;
         }
 
@@ -2926,13 +2894,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         hMod = GetModuleHandleW(L"SbieDll.dll"); // Sandboxie
         if (hMod != 0) {
             free(szBuff);
-            return util::add(SANDBOXIE);
+            return core::add(SANDBOXIE);
         }
 
         hMod = GetModuleHandleW(L"dbghelp.dll"); // Thread Expert
         if (hMod != 0) {
             free(szBuff);
-            return util::add(THREADEXPERT);
+            return core::add(THREADEXPERT);
         }
 
         nRes = RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"Software\\Microsoft\\Windows\\CurrentVersion", 0L, KEY_QUERY_VALUE, &hOpen);
@@ -2948,15 +2916,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
                 if (strcmp(szBuff, "55274-640-2673064-23950") == 0) { // joebox
                     free(szBuff);
-                    return util::add(JOEBOX);
+                    return core::add(JOEBOX);
                 }
                 else if (strcmp(szBuff, "76487-644-3177037-23510") == 0) { // CW Sandbox
                     free(szBuff);
-                    return util::add(CWSANDBOX);
+                    return core::add(CWSANDBOX);
                 }
                 else if (strcmp(szBuff, "76487-337-8429955-22614") == 0) { // anubis
                     free(szBuff);
-                    return util::add(ANUBIS);
+                    return core::add(ANUBIS);
                 }
                 else {
                     free(szBuff);
@@ -2982,7 +2950,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @note FIX SEGFAULT
      */
     [[nodiscard]] static bool wmic() try {
-        if (util::disabled(WMIC)) {
+        if (core::disabled(WMIC)) {
             return false;
         }
 
@@ -3016,7 +2984,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             std::unique_ptr<std::string> manufacturer = util::sys_result("WMIC COMPUTERSYSTEM GET MANUFACTURER");
            
             if (*manufacturer == "VirtualBox") {
-                return util::add(VBOX);
+                return core::add(VBOX);
             }
 
             std::unique_ptr<std::string> model = util::sys_result("WMIC COMPUTERSYSTEM GET MODEL");
@@ -3053,7 +3021,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Linux
      */
     [[nodiscard]] static bool bios_serial() try {
-        if (util::disabled(BIOS_SERIAL)) {
+        if (core::disabled(BIOS_SERIAL)) {
             return false;
         }
 
@@ -3098,7 +3066,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Windows
      */ 
     [[nodiscard]] static bool parallels() try {
-        if (util::disabled(PARALLELS_VM)) {
+        if (core::disabled(PARALLELS_VM)) {
             return false;
         }
 
@@ -3133,7 +3101,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             compare(info->get_productname()) ||
             compare(info->get_family())
         ) {
-            return util::add(PARALLELS);
+            return core::add(PARALLELS);
         }
 
         return false;
@@ -3150,7 +3118,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category x86
      */
     [[nodiscard]] static bool rdtsc_vmexit() try {
-        if (util::disabled(RDTSC_VMEXIT)) {
+        if (core::disabled(RDTSC_VMEXIT)) {
             return false;
         }
 
@@ -3184,7 +3152,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @link https://github.com/LordNoteworthy/al-khaser/blob/c68fbd7ba0ba46315e819b490a2c782b80262fcd/al-khaser/Anti%20VM/Generic.cpp
      */ 
     [[nodiscard]] static bool loaded_dlls() try {
-        if (util::disabled(LOADED_DLLS)) {
+        if (core::disabled(LOADED_DLLS)) {
             return false;
         }
 
@@ -3214,11 +3182,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             hDll = GetModuleHandleA(dll);  // Use GetModuleHandleA for ANSI strings
 
             if (hDll != NULL && dll != NULL) {
-                if (strcmp(dll, "sbiedll.dll") == 0) { return util::add(SANDBOXIE); }
-                if (strcmp(dll, "pstorec.dll") == 0) { return util::add(SUNBELT); }
-                if (strcmp(dll, "vmcheck.dll") == 0) { return util::add(VPC); }
-                if (strcmp(dll, "cmdvrt32.dll") == 0) { return util::add(COMODO); }
-                if (strcmp(dll, "cmdvrt64.dll") == 0) { return util::add(COMODO); }
+                if (strcmp(dll, "sbiedll.dll") == 0) { return core::add(SANDBOXIE); }
+                if (strcmp(dll, "pstorec.dll") == 0) { return core::add(SUNBELT); }
+                if (strcmp(dll, "vmcheck.dll") == 0) { return core::add(VPC); }
+                if (strcmp(dll, "cmdvrt32.dll") == 0) { return core::add(COMODO); }
+                if (strcmp(dll, "cmdvrt64.dll") == 0) { return core::add(COMODO); }
 
                 return true;
             }
@@ -3238,7 +3206,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @note Discovered by Peter Ferrie, Senior Principal Researcher, Symantec Advanced Threat Research peter_ferrie@symantec.com
      */
     [[nodiscard]] static bool bochs_cpu() try {
-        if (!cpuid_supported || util::disabled(BOCHS_CPU)) {
+        if (!cpuid_supported || core::disabled(BOCHS_CPU)) {
             return false;
         }
 
@@ -3258,13 +3226,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (intel) {
             // technique 1: not a valid brand 
             if (brand == "              Intel(R) Pentium(R) 4 CPU        ") {
-                return util::add(BOCHS);
+                return core::add(BOCHS);
             }
         }
         else if (amd) {
             // technique 2: "processor" should have a capital P
             if (brand == "AMD Athlon(tm) processor") {
-                return util::add(BOCHS);
+                return core::add(BOCHS);
             }
 
             // technique 3: Check for absence of AMD easter egg for K7 and K8 CPUs
@@ -3284,7 +3252,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             cpu::cpuid(unused, unused, ecx_bochs, unused, cpu::leaf::amd_easter_egg);
 
             if (ecx_bochs == 0) {
-                return util::add(BOCHS);
+                return core::add(BOCHS);
             }
         }
 
@@ -3302,7 +3270,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Windows
      */ 
     [[nodiscard]] static bool vpc_board() try {
-        if (util::disabled(VPC_BOARD)) {
+        if (core::disabled(VPC_BOARD)) {
             return false;
         }
 
@@ -3440,7 +3408,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         CoUninitialize();
 
         if (is_vm) {
-            return util::add(VPC);
+            return core::add(VPC);
         }
 
         return false;
@@ -3459,7 +3427,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @link https://labs.nettitude.com/blog/vm-detection-tricks-part-3-hyper-v-raw-network-protocol/
      */
     [[nodiscard]] static bool hyperv_wmi() try {
-        if (util::disabled(HYPERV_WMI)) {
+        if (core::disabled(HYPERV_WMI)) {
             return false;
         }
 
@@ -3602,7 +3570,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @link https://labs.nettitude.com/blog/vm-detection-tricks-part-3-hyper-v-raw-network-protocol/
      */
     [[nodiscard]] static bool hyperv_registry() try {
-        if (util::disabled(HYPERV_REG)) {
+        if (core::disabled(HYPERV_REG)) {
             return false;
         }
 
@@ -3668,7 +3636,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @link https://pastebin.com/xhFABpPL
      */ 
     [[nodiscard]] static bool vbox_shared_folders() try {
-        if (util::disabled(VBOX_FOLDERS)) {
+        if (core::disabled(VBOX_FOLDERS)) {
             return false;
         }
 
@@ -3694,7 +3662,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (retv == NO_ERROR && provider != nullptr) {
             if (lstrcmpiW(provider, L"VirtualBox Shared Folders") == 0) {
                 LocalFree(provider);
-                return util::add(VBOX);
+                return core::add(VBOX);
             }
         }
 
@@ -3719,7 +3687,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @link https://pastebin.com/fPY4MiYq
      */
     [[nodiscard]] static bool vbox_mssmbios() try {
-        if (util::disabled(VBOX_MSSMBIOS)) {
+        if (core::disabled(VBOX_MSSMBIOS)) {
             return false;
         }
 
@@ -3810,7 +3778,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         RegCloseKey(hk);
 
         if (is_vm) {
-            return util::add(VBOX);
+            return core::add(VBOX);
         }
 
         return false;
@@ -3828,7 +3796,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @link https://evasions.checkpoint.com/techniques/macos.html
      */
     [[nodiscard]] static bool hw_memsize() try {
-        if (util::disabled(MAC_MEMSIZE)) {
+        if (core::disabled(MAC_MEMSIZE)) {
             return false;
         }
 
@@ -3872,7 +3840,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @link https://evasions.checkpoint.com/techniques/macos.html
      */
     [[nodiscard]] static bool io_kit() try {
-        if (util::disabled(MAC_IOKIT)) {
+        if (core::disabled(MAC_IOKIT)) {
             return false;
         }
 
@@ -3910,11 +3878,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             if (find(board, "VirtualBox")) {
-                return util::add(VBOX);
+                return core::add(VBOX);
             }
 
             if (find(board, "VMware")) {
-                return util::add(VMWARE);
+                return core::add(VMWARE);
             }
 
             return true;
@@ -3928,7 +3896,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             if (find(manufacturer, "innotek")) {
-                return util::add(VBOX);
+                return core::add(VBOX);
             }
 
             return true;
@@ -3953,7 +3921,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @link https://evasions.checkpoint.com/techniques/macos.html
      */
     [[nodiscard]] static bool ioreg_grep() try {
-        if (util::disabled(IOREG_GREP)) {
+        if (core::disabled(IOREG_GREP)) {
             return false;
         }
 
@@ -3969,7 +3937,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             if (find(usb, "VirtualBox")) {
-                return util::add(VBOX);
+                return core::add(VBOX);
             }
 
             return true;
@@ -3979,13 +3947,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             std::unique_ptr<std::string> sys_vbox = util::sys_result("ioreg -l | grep -i -c -e \"virtualbox\" -e \"oracle\"");
 
             if (std::stoi(*sys_vbox) > 0) {
-                return util::add(VBOX);
+                return core::add(VBOX);
             }
 
             std::unique_ptr<std::string> sys_vmware = util::sys_result("ioreg -l | grep -i -c -e \"vmware\"");
 
             if (std::stoi(*sys_vmware) > 0) {
-                return util::add(VMWARE);
+                return core::add(VMWARE);
             }
 
             return false;
@@ -3996,7 +3964,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             const std::string rom = *sys_rom;
 
             if (find(rom, "VirtualBox")) {
-                return util::add(VBOX);
+                return core::add(VBOX);
             }
 
             return false;
@@ -4021,7 +3989,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @link https://evasions.checkpoint.com/techniques/macos.html
      */
     [[nodiscard]] static bool mac_sip() try {
-        if (util::disabled(MAC_SIP)) {
+        if (core::disabled(MAC_SIP)) {
             return false;
         }
 
@@ -4050,7 +4018,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @link https://github.com/LordNoteworthy/al-khaser/blob/0f31a3866bafdfa703d2ed1ee1a242ab31bf5ef0/al-khaser/AntiVM/KVM.cpp
      */
     [[nodiscard]] static bool kvm_registry() try {
-        if (util::disabled(KVM_REG)) {
+        if (core::disabled(KVM_REG)) {
             return false;
         }
 
@@ -4080,7 +4048,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         for (const auto& key : keys) {
             if (registry_exists(key)) {
-                return util::add(KVM);
+                return core::add(KVM);
             }
         }
 
@@ -4101,7 +4069,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @link https://github.com/LordNoteworthy/al-khaser/blob/0f31a3866bafdfa703d2ed1ee1a242ab31bf5ef0/al-khaser/AntiVM/KVM.cpp
      */
     [[nodiscard]] static bool kvm_drivers() try {
-        if (util::disabled(KVM_DRIVERS)) {
+        if (core::disabled(KVM_DRIVERS)) {
             return false;
         }
 
@@ -4162,7 +4130,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @link https://github.com/LordNoteworthy/al-khaser/blob/0f31a3866bafdfa703d2ed1ee1a242ab31bf5ef0/al-khaser/AntiVM/KVM.cpp
      */
     [[nodiscard]] static bool kvm_directories() try {
-        if (util::disabled(KVM_DIRS)) {
+        if (core::disabled(KVM_DIRS)) {
             return false;
         }
 
@@ -4188,7 +4156,201 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
     }
 
-    // __TECHNIQUE_LABEL, label for adding techniques above this point
+
+    /**
+     * @brief Fetch HKLM registries for specific VM strings
+     * @category Windows
+     */
+    [[nodiscard]] static bool hklm_registries() try {
+        if (core::disabled(HKLM_REGISTRIES)) {
+            return false;
+        }
+
+#if (!MSVC)
+        return false;
+#else
+        u8 count = 0;
+
+        auto check_key = [&count](const char* p_brand, const char* subKey, const char* valueName, const char* comp_string) {
+            HKEY hKey;
+            DWORD dwType = REG_SZ;
+            char buffer[1024];
+            DWORD bufferSize = sizeof(buffer);
+
+            if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, subKey, 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
+                if (RegQueryValueExA(hKey, valueName, NULL, &dwType, reinterpret_cast<LPBYTE>(buffer), &bufferSize) == ERROR_SUCCESS) {
+                    if (strcmp(buffer, comp_string) == 0) {
+                        core::add(p_brand);
+                        count++;
+                    }
+                } else {
+                    debug("Failed to query value for \"", subKey, "\"");
+                }
+
+                RegCloseKey(hKey);
+            } else {
+                debug("Failed to open registry key for \"", subKey, "\"");
+            }
+        };
+
+        check_key(BOCHS, "HARDWARE\\Description\\System", "SystemBiosVersion", "BOCHS");
+        check_key(BOCHS, "HARDWARE\\Description\\System", "VideoBiosVersion", "BOCHS");
+
+        check_key(ANUBIS, "SOFTWARE\\Microsoft\\Windows\\CurrentVersion", "ProductID", "76487-337-8429955-22614");
+        check_key(ANUBIS, "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", "ProductID", "76487-337-8429955-22614");
+
+        check_key(CWSANDBOX, "SOFTWARE\\Microsoft\\Windows\\CurrentVersion", "ProductID", "76487-644-3177037-23510");
+        check_key(CWSANDBOX, "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", "ProductID", "76487-644-3177037-23510");
+
+        check_key(JOEBOX, "SOFTWARE\\Microsoft\\Windows\\CurrentVersion", "ProductID", "55274-640-2673064-23950");
+        check_key(JOEBOX, "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", "ProductID", "55274-640-2673064-23950");
+
+        check_key(PARALLELS, "HARDWARE\\Description\\System", "SystemBiosVersion", "PARALLELS");
+        check_key(PARALLELS, "HARDWARE\\Description\\System", "VideoBiosVersion", "PARALLELS");
+
+        check_key(QEMU, "HARDWARE\\DEVICEMAP\\Scsi\\Scsi Port 0\\Scsi Bus 0\\Target Id 0\\Logical Unit Id 0", "Identifier", "QEMU");
+        check_key(QEMU, "HARDWARE\\Description\\System", "SystemBiosVersion", "QEMU");
+        check_key(QEMU, "HARDWARE\\Description\\System", "VideoBiosVersion", "QEMU");
+        check_key(QEMU, "HARDWARE\\Description\\System\\BIOS", "SystemManufacturer", "QEMU");
+
+        check_key(VBOX, "HARDWARE\\DEVICEMAP\\Scsi\\Scsi Port 0\\Scsi Bus 0\\Target Id 0\\Logical Unit Id 0", "Identifier", "VBOX");
+        check_key(VBOX, "HARDWARE\\DEVICEMAP\\Scsi\\Scsi Port 1\\Scsi Bus 0\\Target Id 0\\Logical Unit Id 0", "Identifier", "VBOX");
+        check_key(VBOX, "HARDWARE\\DEVICEMAP\\Scsi\\Scsi Port 2\\Scsi Bus 0\\Target Id 0\\Logical Unit Id 0", "Identifier", "VBOX");
+        check_key(VBOX, "HARDWARE\\Description\\System", "SystemBiosVersion", "VBOX");
+        check_key(VBOX, "HARDWARE\\Description\\System", "VideoBiosVersion", "VIRTUALBOX");
+        check_key(VBOX, "HARDWARE\\Description\\System\\BIOS", "SystemProductName", "VIRTUAL");
+        check_key(VBOX, "SYSTEM\\ControlSet001\\Services\\Disk\\Enum", "DeviceDesc", "VBOX");
+        check_key(VBOX, "SYSTEM\\ControlSet001\\Services\\Disk\\Enum", "FriendlyName", "VBOX");
+        check_key(VBOX, "SYSTEM\\ControlSet002\\Services\\Disk\\Enum", "DeviceDesc", "VBOX");
+        check_key(VBOX, "SYSTEM\\ControlSet002\\Services\\Disk\\Enum", "FriendlyName", "VBOX");
+        check_key(VBOX, "SYSTEM\\ControlSet003\\Services\\Disk\\Enum", "DeviceDesc", "VBOX");
+        check_key(VBOX, "SYSTEM\\ControlSet003\\Services\\Disk\\Enum", "FriendlyName", "VBOX");
+        check_key(VBOX, "SYSTEM\\CurrentControlSet\\Control\\SystemInformation", "SystemProductName", "VIRTUAL");
+        check_key(VBOX, "SYSTEM\\CurrentControlSet\\Control\\SystemInformation", "SystemProductName", "VIRTUALBOX");
+
+        check_key(VMWARE, "HARDWARE\\DEVICEMAP\\Scsi\\Scsi Port 0\\Scsi Bus 0\\Target Id 0\\Logical Unit Id 0", "Identifier", "VMWARE");
+        check_key(VMWARE, "HARDWARE\\DEVICEMAP\\Scsi\\Scsi Port 1\\Scsi Bus 0\\Target Id 0\\Logical Unit Id 0", "Identifier", "VMWARE");
+        check_key(VMWARE, "HARDWARE\\DEVICEMAP\\Scsi\\Scsi Port 2\\Scsi Bus 0\\Target Id 0\\Logical Unit Id 0", "Identifier", "VMWARE");
+        check_key(VMWARE, "HARDWARE\\Description\\System", "SystemBiosVersion", "VMWARE");
+        check_key(VMWARE, "HARDWARE\\Description\\System", "SystemBiosVersion", "INTEL - 6040000");
+        check_key(VMWARE, "HARDWARE\\Description\\System", "VideoBiosVersion", "VMWARE");
+        check_key(VMWARE, "HARDWARE\\Description\\System\\BIOS", "SystemProductName", "VMware");
+        check_key(VMWARE, "SYSTEM\\ControlSet001\\Services\\Disk\\Enum", "0", "VMware");
+        check_key(VMWARE, "SYSTEM\\ControlSet001\\Services\\Disk\\Enum", "1", "VMware");
+        check_key(VMWARE, "SYSTEM\\ControlSet001\\Services\\Disk\\Enum", "DeviceDesc", "VMware");
+        check_key(VMWARE, "SYSTEM\\ControlSet001\\Services\\Disk\\Enum", "FriendlyName", "VMware");
+        check_key(VMWARE, "SYSTEM\\ControlSet002\\Services\\Disk\\Enum", "DeviceDesc", "VMware");
+        check_key(VMWARE, "SYSTEM\\ControlSet002\\Services\\Disk\\Enum", "FriendlyName", "VMware");
+        check_key(VMWARE, "SYSTEM\\ControlSet003\\Services\\Disk\\Enum", "DeviceDesc", "VMware");
+        check_key(VMWARE, "SYSTEM\\ControlSet003\\Services\\Disk\\Enum", "FriendlyName", "VMware");
+        //check_key(HKCR\Installer\Products 	ProductName 	vmware tools
+        //check_key(HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall 	DisplayName 	vmware tools
+        check_key(VMWARE, "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall", "DisplayName", "vmware tools");
+        check_key(VMWARE, "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall", "DisplayName", "vmware tools");
+        check_key(VMWARE, "SYSTEM\\ControlSet001\\Control\\Class\\{4D36E968-E325-11CE-BFC1-08002BE10318}\\0000", "CoInstallers32", "*vmx*");
+        check_key(VMWARE, "SYSTEM\\ControlSet001\\Control\\Class\\{4D36E968-E325-11CE-BFC1-08002BE10318}\\0000", "DriverDesc", "VMware*");
+        check_key(VMWARE, "SYSTEM\\ControlSet001\\Control\\Class\\{4D36E968-E325-11CE-BFC1-08002BE10318}\\0000", "InfSection", "vmx*");
+        check_key(VMWARE, "SYSTEM\\ControlSet001\\Control\\Class\\{4D36E968-E325-11CE-BFC1-08002BE10318}\\0000", "ProviderName", "VMware*");
+        check_key(VMWARE, "SYSTEM\\ControlSet001\\Control\\Class\\{4D36E968-E325-11CE-BFC1-08002BE10318}\\0000\\Settings", "Device Description", "VMware*");
+        check_key(VMWARE, "SYSTEM\\CurrentControlSet\\Control\\SystemInformation", "SystemProductName", "VMWARE");
+        check_key(VMWARE, "SYSTEM\\CurrentControlSet\\Control\\Video\\{GUID}\\Video", "Service", "vm3dmp");
+        check_key(VMWARE, "SYSTEM\\CurrentControlSet\\Control\\Video\\{GUID}\\Video", "Service", "vmx_svga");
+        check_key(VMWARE, "SYSTEM\\CurrentControlSet\\Control\\Video\\{GUID}\\0000", "Device Description", "VMware SVGA*");
+
+        check_key(XEN, "HARDWARE\\Description\\System\\BIOS", "SystemProductName", "Xen");
+
+        return (count > 0);
+#endif
+    }
+    catch (...) {
+        debug("KHLM_REGISTRIES: ", "catched error, returned false");
+        return false;
+    }
+
+
+    /**
+     * @brief Check for audio device
+     * @category Windows
+     * @author CheckPointSW (InviZzzible project)
+     * @link https://github.com/CheckPointSW/InviZzzible/blob/master/SandboxEvasion/helper.cpp
+     * @copyright GPL-3.0
+     */ 
+    [[nodiscard]] static bool check_audio() try {
+        if (core::disabled(AUDIO)) {
+            return false;
+        }
+
+#if (!MSVC)
+        return false;
+#else
+        PCWSTR wszfilterName = L"audio_device_random_name";
+
+        if (FAILED(CoInitialize(NULL)))
+            return false;
+
+        IGraphBuilder *pGraph = nullptr;
+        if (FAILED(CoCreateInstance(CLSID_FilterGraph, NULL, CLSCTX_INPROC_SERVER, IID_IGraphBuilder, (void**)&pGraph)))
+            return false;
+
+        // First anti-emulation check: If AddFilter is called with NULL as a first argument it should return the E_POINTER error code. 
+        // Some emulators may implement unknown COM interfaces in a generic way, so they will probably fail here.
+        if (E_POINTER != pGraph->AddFilter(NULL, wszfilterName))
+            return true;
+
+        // Initializes a simple Audio Renderer, error code is not checked, 
+        // but pBaseFilter will be set to NULL upon failure and the code will eventually fail later.
+        IBaseFilter *pBaseFilter = nullptr;
+        CoCreateInstance(CLSID_AudioRender, NULL, CLSCTX_INPROC_SERVER, IID_IBaseFilter, (void**)&pBaseFilter);
+            
+        // Adds the previously created Audio Renderer to the Filter Graph, no error checks
+        pGraph->AddFilter(pBaseFilter, wszfilterName);
+
+        // Tries to find the filter that was just added; in case of any previously not checked error (or wrong emulation) 
+        // this function won't find the filter and the sandbox/emulator will be successfully detected.
+        IBaseFilter *pBaseFilter2 = nullptr;
+        pGraph->FindFilterByName(wszfilterName, &pBaseFilter2);
+        if (nullptr == pBaseFilter2)
+            return true;
+
+        // Checks if info.achName is equal to the previously added filterName, if not - poor API emulation
+        FILTER_INFO info = { 0 };
+        pBaseFilter2->QueryFilterInfo(&info);
+        if (0 != wcscmp(info.achName, wszfilterName))
+            return false;
+
+        // Checks if the API sets a proper IReferenceClock pointer
+        IReferenceClock *pClock = nullptr;
+        if (0 != pBaseFilter2->GetSyncSource(&pClock))
+            return false;
+        if (0 != pClock)
+            return false;
+
+        // Checks if CLSID is different from 0
+        CLSID clsID = { 0 };
+        pBaseFilter2->GetClassID(&clsID);
+        if (clsID.Data1 == 0)
+            return true;
+
+        if (nullptr == pBaseFilter2)
+            return true;
+
+        // Just checks if the call was successful
+        IEnumPins *pEnum = nullptr;
+        if (0 != pBaseFilter2->EnumPins(&pEnum))
+            return true;
+
+        // The reference count returned by AddRef has to be higher than 0
+        if (0 == pBaseFilter2->AddRef())
+            return true;
+
+        return false;
+#endif
+    }
+    catch (...) {
+        debug("AUDIO: ", "catched error, returned false");
+        return false;
+    }
+
 
     struct core {
         MSVC_DISABLE_WARNING(4820)
@@ -4208,6 +4370,44 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #else
         static std::map<const char*, u8> scoreboard;
 #endif
+
+        // directly return when adding a brand to the scoreboard for a more succint expression
+#if (MSVC) 
+        __declspec(noalias)
+#elif (LINUX)
+        [[gnu::const]]
+#endif
+        static inline bool add(const char* p_brand) noexcept {
+            core::scoreboard.at(p_brand)++;
+            return true;
+        }
+
+        /**
+         * assert if the flag is enabled, far better expression than typing this:
+         * if (!(flags & VMID)) {
+         *    return false;
+         * }
+         *
+         * compared to this:
+         *
+         * if (core::disabled(VMID)) {
+         *    return false;
+         * }
+         */
+#if (LINUX && __has_cpp_attribute(gnu::pure))
+        [[gnu::pure]]
+#endif
+        [[nodiscard]] static inline bool disabled(const u8 flag_bit) noexcept {
+            return (!flags.test(flag_bit));
+        }
+
+        // same as above but for checking enabled flags
+#if (LINUX && __has_cpp_attribute(gnu::pure))
+        [[gnu::pure]]
+#endif
+        [[nodiscard]] static inline bool enabled(const u8 flag_bit) noexcept {
+            return (flags.test(flag_bit));
+        }
 
         static u16 run_all(flagset p_flags = DEFAULT) {
             u16 points = 0;
@@ -4402,7 +4602,7 @@ public: // START OF PUBLIC FUNCTIONS
 
         u16 points = core::run_all(p_flags);
 
-        if (util::enabled(EXTREME)) {
+        if (core::enabled(EXTREME)) {
             result = (points > 0);
         } else {
             result = (points >= 100);
@@ -4606,7 +4806,9 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::MAC_SIP, { 85, VM::mac_sip }},
     { VM::KVM_REG, { 75, VM::kvm_registry }},
     { VM::KVM_DRIVERS, { 55, VM::kvm_drivers }},
-    { VM::KVM_DIRS, { 55, VM::kvm_directories }}
+    { VM::KVM_DIRS, { 55, VM::kvm_directories }},
+    { VM::HKLM_REGISTRIES, { 70, VM::hklm_registries }},
+    { VM::AUDIO, { 35, VM::check_audio }}
 
     // __TABLE_LABEL, add your technique above
     // { VM::FUNCTION, { POINTS, FUNCTION_POINTER }}
