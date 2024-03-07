@@ -164,6 +164,8 @@ int main(int argc, char* argv[]) {
         checker(VM::KVM_REG, "KVM registries");
         checker(VM::KVM_DRIVERS, "KVM drivers");
         checker(VM::KVM_DIRS, "KVM directories");
+        checker(VM::HKLM_REGISTRIES, "HKLM registries");
+        checker(VM::AUDIO, "Audio device");
         std::printf("\n");
 
         const std::string brand = VM::brand();
