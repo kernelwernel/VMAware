@@ -23,10 +23,10 @@
  * - struct for internal cpu operations        => line 377
  * - struct for internal memoization           => line 606
  * - struct for internal utility functions     => line 679
- * - struct for internal core components       => line 4351
+ * - struct for internal core components       => line 4352
  * - start of internal VM detection techniques => line 1205
- * - start of public VM detection functions    => line 4435
- * - start of externally defined variables     => line 4668
+ * - start of public VM detection functions    => line 4436
+ * - start of externally defined variables     => line 4669
  */
 
 #if (defined(_MSC_VER) || defined(_WIN32) || defined(_WIN64) || defined(__MINGW32__))
