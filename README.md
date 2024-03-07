@@ -21,6 +21,7 @@ The library is:
 - Able to guess the VM brand
 - Able to add your own custom VM detection techniques
 - Memoized, meaning past results are cached and retrieved if ran again for performance benefits 
+- seperate MIT and GPL-3.0 compliant library header files
 
 - - -
 
@@ -114,8 +115,8 @@ You can view the full docs [here](docs/documentation.md). Trust me, it's not too
 - Can I use this for malware?
 > This project is not soliciting the development of malware for obvious reasons. Even if you intend to use it for concealment purposes, it'll most likely be flagged by antiviruses anyway and nothing is obfuscated to begin with. Good luck obfuscating 5000 lines of C++ code lmfao.
 
-- Why GPL 3.0? 
-> I would've made it MIT so proprietary software can make use of the library, but some of the techniques employed are from GPL 3.0 projects, and I have no choice but to use the same license for legal reasons. I could try to make an MIT version without the GPL code, but I'm not sure if anybody would care enough if I made one. That's just an idea in my head for now.
+- Why GPL 3.0 and MIT? 
+> I would've made it strictly MIT so proprietary software can make use of the library, but some of the techniques employed are from GPL 3.0 projects, and I have no choice but to use the same license for legal reasons. This gave me an idea to make an MIT version without all of the GPL code so it can also be used without forcing your code to be open-source. It should be noted that the MIT version removes **8** techniques, and the lesser the number of techniques, the less accurate the overall result might be.
 
 <br>
 
