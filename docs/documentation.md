@@ -178,27 +178,44 @@ int main() {
 <br>
 
 ## `VM::add_custom()`
-This function allows you to add your own custom VM detection techniques to the system. The first parameter is the percentage score (0 to 100) of how likely it's a VM if your custom code returns `true`
-```cpp
-    // Example 1 with std::function
-    std::function<bool()> new_technique = []() -> bool {
-        // add your VM detection code here
-        return true;
-    };
+This function allows you to add your own custom VM detection techniques to the scoring system. The first parameter is the percentage score (0 to 100) of how likely it's a VM if your custom code returns `true`, and the second parameter should either be a lambda, a function pointer, or a `std::function<bool()>`
 
-    VM::add_custom(1, new_technique);
+```cpp
+// Example 1 with function pointers
+
+bool new_technique() {
+    // add your VM detection code here
+    return true; 
+}
+
+VM::add_custom(50, new_technique);
 ```
 
 ```cpp
-    // Example 2 with lambdas
-    VM::add_custom(69, []() -> bool { return true; });
+// Example 2 with lambdas
 
-    auto new_technique = []() -> bool { 
-        // add your VM detection code here
-        return true;
-    }
+VM::add_custom(50, []() -> bool { 
+    // add your VM detection code here
+    return true; 
+});
 
-    VM::add_custom(69, new_technique);
+auto new_technique = []() -> bool { 
+    // add your VM detection code here
+    return true;
+}
+
+VM::add_custom(50, new_technique);
+```
+
+```cpp
+// Example 3 with std::function
+
+std::function<bool()> new_technique = []() -> bool {
+    // add your VM detection code here
+    return true;
+};
+
+VM::add_custom(50, new_technique);
 ```
 
 <br>

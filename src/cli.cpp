@@ -13,7 +13,7 @@
 #endif
 
 constexpr const char* ver = "1.1";
-constexpr const char* date = "January 2024";
+constexpr const char* date = "March 2024";
 constexpr const char* bold = "\033[1m";
 constexpr const char* ansi_exit = "\x1B[0m";
 constexpr const char* red = "\x1B[38;2;239;75;75m";
@@ -63,6 +63,7 @@ R"(Usage:
 Options:
  -h | --help        prints this help menu
  -v | --version     print version and other stuff
+ -d | --detect      returns the result as a boolean (1 = VM, 0 = baremetal)
  -s | --stdout      returns either 0 or 1 to STDOUT without any text output (0 = VM, 1 = baremetal)
  -b | --brand       returns the VM brand string (consult documentation for full output list)
  -p | --percent     returns the VM percentage between 0 and 100
@@ -230,7 +231,7 @@ int main(int argc, char* argv[]) {
             conclusion_color = green_orange;
             conclusion_message = likely;
         } else if (percent < 100) {
-            conclusion_color = green_orange;
+            conclusion_color = green;
             conclusion_message = very_likely;
         } else if (percent == 100) {
             conclusion_color = green;
@@ -251,7 +252,7 @@ int main(int argc, char* argv[]) {
         const char* arg = args.at(1);
 
         auto cmp = [](const char* a, const char* b) -> bool {
-            return (strcmp(a, b) == 0);
+            return (std::strcmp(a, b) == 0);
         };
 
         if (cmp(arg, "-s") || cmp(arg, "--stdout")) {
@@ -267,6 +268,9 @@ int main(int argc, char* argv[]) {
             return 0;
         } else if (cmp(arg, "-p") || cmp(arg, "--percent")) {
             std::cout << VM::percentage() << "\n";
+            return 0;
+        } else if (cmp(arg, "-d") || cmp(arg, "--detect")) {
+            std::cout << VM::detect() << "\n";
             return 0;
         } else {
             std::cerr << "Unknown argument provided, consult the help menu with --help\n";

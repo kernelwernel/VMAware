@@ -21,7 +21,6 @@ The library is:
 - Able to guess the VM brand
 - Able to add your own custom VM detection techniques
 - Memoized, meaning past results are cached and retrieved if ran again for performance benefits 
-- MIT and GPL-3.0 compliant code support
 
 - - -
 
@@ -52,17 +51,17 @@ int main() {
 
 <br>
 
-## Structure
+## Structure ⚙️
 
 <p align="center">
-<img src="assets/vmaware.drawio.svg" align="center" width="500" title="VMAware">
+<img src="assets/vmaware.drawio.svg" align="center" title="VMAware">
 <br>
 </p>
 
 <br>
 
 ## CLI tool 🔧
-This project also provides a tiny, but handy CLI tool utilising the full potential of what the library can do. Also, running the CLI as root would give better results.
+This project also provides a tiny, but handy CLI tool utilising the full potential of what the library can do. Also, running the CLI as root/admin would give better results.
 
 <img src="assets/demo.png" width="500" title="cli">
 

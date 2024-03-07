@@ -69,7 +69,7 @@ endif()
 
 
 # add executable
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin")
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${BUILD_DIR}")
 add_executable(${TARGET} "src/cli.cpp")
 set_property(TARGET ${TARGET} PROPERTY CXX_STANDARD 20)
 set_property(TARGET ${TARGET} PROPERTY CXX_STANDARD_REQUIRED ON)
@@ -79,7 +79,7 @@ set_property(TARGET ${TARGET} PROPERTY CXX_STANDARD_REQUIRED ON)
 include(CTest)
 #find_package(Python REQUIRED)
 enable_testing()
-add_test(executable, "${CMAKE_SOURCE_DIR}/bin/${TARGET}")
+add_test(executable, "${BUILD_DIR}/${TARGET}")
 #if(NOT MSVC)
 #add_test(
 #    checks 
@@ -91,7 +91,7 @@ add_test(executable, "${CMAKE_SOURCE_DIR}/bin/${TARGET}")
 # release stuff
 if (NOT MSVC)
     if(CMAKE_BUILD_TYPE MATCHES "Release")
-        install(TARGETS ${TARGET} DESTINATION bin)
+        install(TARGETS ${TARGET} DESTINATION ${CMAKE_SOURCE_DIR})
         install(FILES "src/vmaware.hpp" DESTINATION /usr/include)
     endif()
 elseif(MSVC)

@@ -16,7 +16,7 @@
  *  - Repository: https://github.com/kernelwernel/VMAware
  *  - Docs: https://github.com/kernelwernel/VMAware/docs/documentation.md
  *  - Full credits: https://github.com/kernelwernel/VMAware#credits
- *  - License: GPL-3.0
+ *  - License: MIT
  * 
  * ================================ SECTIONS ==================================
  * - enums for publicly accessible techniques  => line 219
@@ -242,24 +242,18 @@ public:
         DLL,
         REGISTRY,
         SUNBELT_VM,
-        WINE_CHECK,
         VM_FILES,
         HWMODEL,
         DISK_SIZE,
         VBOX_DEFAULT,
         VBOX_NETWORK,
-        COMPUTER_NAME,
-        HOSTNAME,
-        MEMORY,
         VM_PROCESSES,
         LINUX_USER_HOST,
-        VBOX_WINDOW_CLASS,
         GAMARUE,
         WMIC,
         VMID_0X4,
         PARALLELS_VM,
         RDTSC_VMEXIT,
-        LOADED_DLLS,
         QEMU_BRAND,
         BOCHS_CPU,
         VPC_BOARD,
@@ -273,9 +267,6 @@ public:
         MAC_IOKIT,
         IOREG_GREP,
         MAC_SIP,
-        KVM_REG,
-        KVM_DRIVERS,
-        KVM_DIRS,
         EXTREME,
         NO_MEMO
     };
@@ -2150,7 +2141,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
 
 
-
     /**
      * @brief Check for VM-specific DLLs
      * @category Windows
@@ -2296,36 +2286,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
     catch (...) {
         debug("CURSOR: catched error, returned false");
-        return false;
-    }
-
-
-    /**
-     * @brief Check wine_get_unix_file_name file for Wine
-     * @author pafish project
-     * @link https://github.com/a0rtega/pafish/blob/master/pafish/wine.c
-     * @category Windows
-     */
-    [[nodiscard]] static bool wine() try {
-        if (util::disabled(WINE_CHECK)) {
-            return false;
-        }
-
-#if (!MSVC)
-        return false;
-#else
-        HMODULE k32;
-        k32 = GetModuleHandle(TEXT("kernel32.dll"));
-
-        if (k32 != NULL) {
-            return (GetProcAddress(k32, "wine_get_unix_file_name") != NULL);
-        }
-
-        return false;
-#endif
-    }
-    catch (...) {
-        debug("WINE_CHECK: catched error, returned false");
         return false;
     }
 
@@ -2662,102 +2622,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check if the computer name (not username to be clear) is VM-specific
-     * @category Windows
-     * @author InviZzzible project
-     */
-    [[nodiscard]] static bool computer_name_match() try {
-        if (util::disabled(COMPUTER_NAME)) {
-            return false;
-        }
-
-#if (!MSVC)
-        return false;
-#else
-        auto out_length = MAX_PATH;
-        std::vector<u8> comp_name(static_cast<u32>(out_length), 0);
-        GetComputerNameA((LPSTR)comp_name.data(), (LPDWORD)&out_length);
-
-        auto compare = [&](const std::string& s) -> bool {
-            return (std::strcmp((LPCSTR)comp_name.data(), s.c_str()) == 0);
-        };
-
-        debug("COMPUTER_NAME: fetched = ", (LPCSTR)comp_name.data());
-
-        if (compare("InsideTm") || compare("TU-4NH09SMCG1HC")) { // anubis
-            debug("COMPUTER_NAME: detected Anubis");
-
-            return util::add(ANUBIS);
-        }
-
-        if (compare("klone_x64-pc") || compare("tequilaboomboom")) { // general
-            debug("COMPUTER_NAME: detected general (VM but unknown)");
-
-            return true;
-        }
-
-        return false;
-#endif
-    }
-    catch (...) {
-        debug("COMPUTER_NAME: catched error, returned false");
-        return false;
-    }
-
-
-    /**
-     * @brief Check if hostname is specific
-     * @author InviZzzible project
-     * @category Windows
-     */
-    [[nodiscard]] static bool hostname_match() try {
-        if (util::disabled(HOSTNAME)) {
-            return false;
-        }
-
-#if (!MSVC)
-        return false;
-#else
-        auto out_length = MAX_PATH;
-        std::vector<u8> dns_host_name(static_cast<u32>(out_length), 0);
-        GetComputerNameExA(ComputerNameDnsHostname, (LPSTR)dns_host_name.data(), (LPDWORD)&out_length);
-
-        debug("HOSTNAME: ", (LPCSTR)dns_host_name.data());
-
-        return (!lstrcmpiA((LPCSTR)dns_host_name.data(), "SystemIT"));
-#endif
-    }
-    catch (...) {
-        debug("HOSTNAME: catched error, returned false");
-        return false;
-    }
-
-
-    /**
-     * @brief Check if memory is too low
-     * @author Al-Khaser project
-     * @category x86?
-    */
-    [[nodiscard]] static bool low_memory_space() try {
-        if (util::disabled(MEMORY)) {
-            return false;
-        }
-
-        constexpr u64 min_ram_1gb = (1024LL * (1024LL * (1024LL * 1LL)));
-        const u64 ram = util::get_memory_space();
-
-        debug("MEMORY: ram size (GB) = ", ram);
-        debug("MEMORY: minimum ram size (GB) = ", min_ram_1gb);
-
-        return (ram < min_ram_1gb);
-    }
-    catch (...) {
-        debug("MEMORY: catched error, returned false");
-        return false;
-    }
-
-
-    /**
      * @brief Check for any VM processes that are active
      * @category Windows
      */
@@ -2870,35 +2734,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
     catch (...) {
         debug("LINUX_USER_HOST: catched error, returned false");
-        return false;
-    }
-
-
-    /**
-     * @brief default vbox window class
-     * @category Windows
-     * @author Al-Khaser Project
-     */
-    [[nodiscard]] static bool vbox_window_class() try {
-        if (util::disabled(VBOX_WINDOW_CLASS)) {
-            return false;
-        }
-
-#if (!MSVC)
-        return false;
-#else
-        HWND hClass = FindWindow(_T("VBoxTrayToolWndClass"), NULL);
-        HWND hWindow = FindWindow(NULL, _T("VBoxTrayToolWnd"));
-
-        if (hClass || hWindow) {
-            return util::add(VBOX);
-        }
-
-        return false;
-#endif
-    }
-    catch (...) {
-        debug("VBOX_WINDOW_CLASS: catched error, returned false");
         return false;
     }
 
@@ -3175,62 +3010,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
     }
 
-
-    /**
-     * @brief check for loaded dlls in the process
-     * @category Windows
-     * @author LordNoteworthy
-     * @note modified code from Al-Khaser project
-     * @link https://github.com/LordNoteworthy/al-khaser/blob/c68fbd7ba0ba46315e819b490a2c782b80262fcd/al-khaser/Anti%20VM/Generic.cpp
-     */ 
-    [[nodiscard]] static bool loaded_dlls() try {
-        if (util::disabled(LOADED_DLLS)) {
-            return false;
-        }
-
-#if (!MSVC)
-        return false;
-#else
-        HMODULE hDll;
-
-        constexpr std::array<const char*, 12> szDlls = { {
-            "avghookx.dll",    // AVG
-            "avghooka.dll",    // AVG
-            "snxhk.dll",       // Avast
-            "sbiedll.dll",     // Sandboxie
-            "dbghelp.dll",     // WindBG
-            "api_log.dll",     // iDefense Lab
-            "dir_watch.dll",   // iDefense Lab
-            "pstorec.dll",     // SunBelt Sandbox
-            "vmcheck.dll",     // Virtual PC
-            "wpespy.dll",      // WPE Pro
-            "cmdvrt64.dll",    // Comodo Container
-            "cmdvrt32.dll",    // Comodo Container
-        } };
-
-        for (const auto& key : szDlls) {
-            const char* dll = key;
-
-            hDll = GetModuleHandleA(dll);  // Use GetModuleHandleA for ANSI strings
-
-            if (hDll != NULL && dll != NULL) {
-                if (strcmp(dll, "sbiedll.dll") == 0) { return util::add(SANDBOXIE); }
-                if (strcmp(dll, "pstorec.dll") == 0) { return util::add(SUNBELT); }
-                if (strcmp(dll, "vmcheck.dll") == 0) { return util::add(VPC); }
-                if (strcmp(dll, "cmdvrt32.dll") == 0) { return util::add(COMODO); }
-                if (strcmp(dll, "cmdvrt64.dll") == 0) { return util::add(COMODO); }
-
-                return true;
-            }
-        }
-
-        return false;
-#endif
-    }
-    catch (...) {
-        debug("LOADED_DLLS:", "caught error, returned false");
-        return false;
-    }
 
     /**
      * @brief Do various Bochs-related CPU stuff
@@ -4041,153 +3820,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
     }
 
-    
-    /**
-     * @brief Check for KVM-specific registries
-     * @category Windows
-     * @note idea is from Al-Khaser, slightly modified code
-     * @author LordNoteWorthy
-     * @link https://github.com/LordNoteworthy/al-khaser/blob/0f31a3866bafdfa703d2ed1ee1a242ab31bf5ef0/al-khaser/AntiVM/KVM.cpp
-     */
-    [[nodiscard]] static bool kvm_registry() try {
-        if (util::disabled(KVM_REG)) {
-            return false;
-        }
-
-#if (!MSVC)
-        return false;
-#else
-        auto registry_exists = [](const TCHAR* key) -> bool {
-            HKEY keyHandle;
-            
-            if (RegOpenKeyEx(HKEY_LOCAL_MACHINE, key, 0, KEY_QUERY_VALUE, &keyHandle) == ERROR_SUCCESS) {
-                RegCloseKey(keyHandle);
-                return true;
-            }
-
-            return false;
-        };
-
-        constexpr std::array<const TCHAR*, 7> keys = {{
-            _T("SYSTEM\\ControlSet001\\Services\\vioscsi"),
-            _T("SYSTEM\\ControlSet001\\Services\\viostor"),
-            _T("SYSTEM\\ControlSet001\\Services\\VirtIO-FS Service"),
-            _T("SYSTEM\\ControlSet001\\Services\\VirtioSerial"),
-            _T("SYSTEM\\ControlSet001\\Services\\BALLOON"),
-            _T("SYSTEM\\ControlSet001\\Services\\BalloonService"),
-            _T("SYSTEM\\ControlSet001\\Services\\netkvm"),
-        }};
-
-        for (const auto& key : keys) {
-            if (registry_exists(key)) {
-                return util::add(KVM);
-            }
-        }
-
-        return false;
-#endif
-    }
-    catch (...) {
-        debug("KVM_REG: ", "catched error, returned false");
-        return false;
-    }
-
-
-    /**
-     * @brief Check for KVM driver files
-     * @category Windows
-     * @note idea is from Al-Khaser, slightly modified code
-     * @author LordNoteWorthy
-     * @link https://github.com/LordNoteworthy/al-khaser/blob/0f31a3866bafdfa703d2ed1ee1a242ab31bf5ef0/al-khaser/AntiVM/KVM.cpp
-     */
-    [[nodiscard]] static bool kvm_drivers() try {
-        if (util::disabled(KVM_DRIVERS)) {
-            return false;
-        }
-
-#if (!MSVC)
-        return false;
-#else
-        constexpr std::array<const TCHAR*, 10> keys = {{
-            _T("System32\\drivers\\balloon.sys"),
-            _T("System32\\drivers\\netkvm.sys"),
-            _T("System32\\drivers\\pvpanic.sys"),
-            _T("System32\\drivers\\viofs.sys"),
-            _T("System32\\drivers\\viogpudo.sys"),
-            _T("System32\\drivers\\vioinput.sys"),
-            _T("System32\\drivers\\viorng.sys"),
-            _T("System32\\drivers\\vioscsi.sys"),
-            _T("System32\\drivers\\vioser.sys"),
-            _T("System32\\drivers\\viostor.sys"),
-        }};
-
-        TCHAR szWinDir[MAX_PATH] = _T("");
-        TCHAR szPath[MAX_PATH] = _T("");
-        PVOID OldValue = NULL;
-
-        GetWindowsDirectory(szWinDir, MAX_PATH);
-
-        if (util::is_wow64()) {
-            Wow64DisableWow64FsRedirection(&OldValue);
-        }
-
-        bool is_vm = false;
-
-        for (const auto& key : keys) {
-            PathCombine(szPath, szWinDir, key);
-            if (util::exists(szPath)) {
-                is_vm = true;
-                break;
-            }
-        }
-
-        if (util::is_wow64()) {
-            Wow64RevertWow64FsRedirection(&OldValue);
-        }
-
-        return is_vm;
-#endif
-    }
-    catch (...) {
-        debug("KVM_DRIVERS: ", "catched error, returned false");
-        return false;
-    }
-
-
-    /**
-     * @brief Check KVM directories
-     * @category Windows
-     * @author LordNoteWorthy
-     * @note from Al-Khaser project
-     * @link https://github.com/LordNoteworthy/al-khaser/blob/0f31a3866bafdfa703d2ed1ee1a242ab31bf5ef0/al-khaser/AntiVM/KVM.cpp
-     */
-    [[nodiscard]] static bool kvm_directories() try {
-        if (util::disabled(KVM_DIRS)) {
-            return false;
-        }
-
-#if (!MSVC)
-        return false;
-#else
-        TCHAR szProgramFile[MAX_PATH];
-        TCHAR szPath[MAX_PATH] = _T("");
-        TCHAR szTarget[MAX_PATH] = _T("Virtio-Win\\");
-
-        if (util::is_wow64()) {
-            ExpandEnvironmentStrings(_T("%ProgramW6432%"), szProgramFile, ARRAYSIZE(szProgramFile));
-        } else {
-            SHGetSpecialFolderPath(NULL, szProgramFile, CSIDL_PROGRAM_FILES, FALSE);
-        }
-
-        PathCombine(szPath, szProgramFile, szTarget);
-        return util::exists(szPath);
-#endif
-    }
-    catch (...) {
-        debug("KVM_DIRS: ", "catched error, returned false");
-        return false;
-    }
-
     // __TECHNIQUE_LABEL, label for adding techniques above this point
 
     struct core {
@@ -4220,14 +3852,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
             }
 
-            if (custom_table.empty()) {
-                return points;
-            }
-
-            // for custom VM techniques
-            for (const auto& pair : custom_table) {
-                if (pair.run()) {
-                    points += pair.points;
+            if (!custom_table.empty()) {
+                for (const auto& pair : custom_table) {
+                    if (pair.run()) {
+                        points += pair.points;
+                    }
                 }
             }
 
@@ -4573,24 +4202,18 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::DLL, { 50, VM::DLL_check }},
     { VM::REGISTRY, { 75, VM::registry_key }},
     { VM::SUNBELT_VM, { 10, VM::sunbelt_check }},
-    { VM::WINE_CHECK, { 85, VM::wine }},
     { VM::VM_FILES, { 20, VM::vm_files }},
     { VM::HWMODEL, { 75, VM::hwmodel }},
     { VM::DISK_SIZE, { 60, VM::disk_size }},
     { VM::VBOX_DEFAULT, { 55, VM::vbox_default_specs }},
     { VM::VBOX_NETWORK, { 70, VM::vbox_network_share }},
-    { VM::COMPUTER_NAME, { 15, VM::computer_name_match }},
-    { VM::HOSTNAME, { 25, VM::hostname_match }},
-    { VM::MEMORY, { 35, VM::low_memory_space }},
     { VM::VM_PROCESSES, { 30, VM::vm_processes }},
     { VM::LINUX_USER_HOST, { 35, VM::linux_user_host }},
-    { VM::VBOX_WINDOW_CLASS, { 10, VM::vbox_window_class }},
     { VM::GAMARUE, { 40, VM::gamarue }},
     { VM::WMIC, { 20, VM::wmic }},
     { VM::VMID_0X4, { 90, VM::vmid_0x4 }},
     { VM::PARALLELS_VM, { 50, VM::parallels }},
     { VM::RDTSC_VMEXIT, { 50, VM::rdtsc_vmexit }},
-    { VM::LOADED_DLLS, { 75, VM::loaded_dlls }},
     { VM::QEMU_BRAND, { 100, VM::cpu_brand_qemu }},
     { VM::BOCHS_CPU, { 95, VM::bochs_cpu }},
     { VM::VPC_BOARD, { 20, VM::vpc_board }},
@@ -4604,9 +4227,6 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::MAC_IOKIT, { 80, VM::io_kit }},
     { VM::IOREG_GREP, { 75, VM::ioreg_grep }},
     { VM::MAC_SIP, { 85, VM::mac_sip }},
-    { VM::KVM_REG, { 75, VM::kvm_registry }},
-    { VM::KVM_DRIVERS, { 55, VM::kvm_drivers }},
-    { VM::KVM_DIRS, { 55, VM::kvm_directories }}
 
     // __TABLE_LABEL, add your technique above
     // { VM::FUNCTION, { POINTS, FUNCTION_POINTER }}
