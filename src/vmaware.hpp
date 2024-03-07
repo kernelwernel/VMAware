@@ -156,6 +156,8 @@
 #pragma comment(lib, "MPR")
 #pragma comment(lib, "advapi32.lib")
 #pragma comment(lib, "shell32.lib")
+#pragma comment(lib, "strmiids.lib")
+#pragma comment(lib, "uuid.lib")
 
 #ifdef _UNICODE
 #define tregex std::wregex
