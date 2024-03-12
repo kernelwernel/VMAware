@@ -289,8 +289,3 @@ int main(int argc, char* argv[]) {
     
     return 0;
 }
-
-win_ansi_enabler_t& win_ansi_enabler_t::operator=(win_ansi_enabler_t const&)
-{
-    // TODO: insert return statement here
-}
