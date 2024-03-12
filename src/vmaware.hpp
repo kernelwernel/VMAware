@@ -1462,7 +1462,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             tsc1 = __rdtsc();
             GetProcessHeap();
             tsc2 = __rdtsc();
-            CloseHandle(0);
+            // CloseHandle(0);
             tsc3 = __rdtsc();
             const bool condition = ((LODWORD(tsc3) - LODWORD(tsc2)) / (LODWORD(tsc2) - LODWORD(tsc1)) >= 10);
             if (condition) {
