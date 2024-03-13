@@ -26,32 +26,33 @@ constexpr const char* green_orange = "\x1B[38;2;174;197;59m";
 class win_ansi_enabler_t
 {
 public:
-  win_ansi_enabler_t()
-  {
-    m_set = FALSE;
-    m_out = GetStdHandle(STD_OUTPUT_HANDLE);
-    if(m_out != NULL && m_out != INVALID_HANDLE_VALUE)
+    win_ansi_enabler_t()
     {
-      if(GetConsoleMode(m_out, &m_old) != FALSE)
-      {
-        m_set = SetConsoleMode(m_out, m_old | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
-      }
+        m_set = FALSE;
+        m_old = 0;
+        m_out = GetStdHandle(STD_OUTPUT_HANDLE);
+        if (m_out != NULL && m_out != INVALID_HANDLE_VALUE)
+        {
+            if (GetConsoleMode(m_out, &m_old) != FALSE)
+            {
+                m_set = SetConsoleMode(m_out, m_old | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+            }
+        }
     }
-  }
-  ~win_ansi_enabler_t()
-  {
-    if(m_set != FALSE)
+    ~win_ansi_enabler_t()
     {
-      SetConsoleMode(m_out, m_old);
+        if (m_set != FALSE)
+        {
+            SetConsoleMode(m_out, m_old);
+        }
     }
-  }
 private:
-  win_ansi_enabler_t(win_ansi_enabler_t const&);
-  win_ansi_enabler_t& operator=(win_ansi_enabler_t const&);
+    win_ansi_enabler_t(win_ansi_enabler_t const&);
+    win_ansi_enabler_t& operator=(win_ansi_enabler_t const&);
 private:
-  BOOL m_set;
-  DWORD m_old;
-  HANDLE m_out;
+    BOOL m_set;
+    DWORD m_old;
+    HANDLE m_out;
 };
 #endif
 
