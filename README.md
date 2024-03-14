@@ -21,7 +21,7 @@ The library is:
 - Able to guess the VM brand
 - Able to add your own custom VM detection techniques
 - Memoized, meaning past results are cached and retrieved if ran again for performance benefits 
-- seperate MIT and GPL-3.0 compliant library header files
+- Contains seperate MIT and GPL-3.0 compliant library header files
 
 - - -
 
@@ -46,7 +46,7 @@ int main() {
         std::cout << "Running in baremetal" << std::endl;
     }
     
-    std::cout << "VM certainty: " << VM::percentage() << "%" << std::endl;
+    std::cout << "VM certainty: " << (int)VM::percentage() << "%" << std::endl;
 }
 ```
 
@@ -90,21 +90,20 @@ sudo make install
 ```bash
 cmake -S . -B build/ -G "Visual Studio 16 2019"
 ```
-> NOTE: I'm most likely going to change my username in the future. If the github link doesn't exist, search for the VMAware project and you should find it.
 
 <br>
 
 ## Documentation 📒
-You can view the full docs [here](docs/documentation.md). Trust me, it's not too intimidating.
+You can view the full docs [here](docs/documentation.md). Trust me, it's not too intimidating ;)
 
 <br>
 
 ## Q&A ❓
 - How does it work?
-> It utilises a comprehensive list of low-level and high-level anti-VM techniques that gets accounted in a scoring system. The given scores for each technique given are arbitrarily given.
+> It utilises a comprehensive list of low-level and high-level anti-VM techniques that gets accounted in a scoring system. The scores for each technique are arbitrarily given, and a threshold must be met to detect if it's running in a VM.
 
 - Who is this library for?
-> It's designed for security researchers, VM engineers, and pretty much anybody who needs a practical and rock-solid VM detection mechanism in their project. For example, if you're making a VM and you're testing the effectiveness of concealing itself, or if you're a malware analyst and you want to check if your VM environment is good enough.
+> It's designed for security researchers, VM engineers, and pretty much anybody who needs a practical and rock-solid VM detection mechanism in their project. For example, if you're making a VM and you're testing the effectiveness of concealing itself, or if you're a malware analyst and you want to check if your VM environment is good enough to avoid detection.
 
 - Why another VM detection project?
 > There's already loads of projects that have the same goal such as [InviZzzible](https://github.com/CheckPointSW/InviZzzible), [pafish](https://github.com/a0rtega/pafish) and [Al-Khaser](https://github.com/LordNoteworthy/al-khaser). But the difference between the aforementioned projects is that they don't provide a programmable interface to interact with the detection mechanisms, on top of having little to no support for non-Windows systems. I wanted the core detection techniques to be accessible programmatically in a cross-platform way for everybody to get something useful out of it rather than providing just a CLI tool like those projects.
@@ -113,17 +112,20 @@ You can view the full docs [here](docs/documentation.md). Trust me, it's not too
 > Yes. There are some techniques that are trivially spoofable, and there's nothing the library can do about it whether it's a deliberate false negative or even a false positive. This is a problem that every VM detection project is facing, which is why the library is trying to test every technique possible to get the best result based on the environment it's running under. 
 
 - Can I use this for malware?
-> This project is not soliciting the development of malware for obvious reasons. Even if you intend to use it for concealment purposes, it'll most likely be flagged by antiviruses anyway and nothing is obfuscated to begin with. Good luck obfuscating 5000 lines of C++ code lmfao.
+> This project is not soliciting the development of malware for obvious reasons. Even if you intend to use it for concealment purposes, it'll most likely be flagged by antiviruses anyway and nothing is obfuscated to begin with. Good luck manually obfuscating 5000 lines of C++ code lmfao
 
 - Why GPL 3.0 and MIT? 
-> I would've made it strictly MIT so proprietary software can make use of the library, but some of the techniques employed are from GPL 3.0 projects, and I have no choice but to use the same license for legal reasons. This gave me an idea to make an MIT version without all of the GPL code so it can also be used without forcing your code to be open-source. It should be noted that the MIT version removes **8** techniques, and the lesser the number of techniques, the less accurate the overall result might be.
+> I would've made it strictly MIT so proprietary software can make use of the library, but some of the techniques employed are from GPL 3.0 projects, and I have no choice but to use the same license for legal reasons. This gave me an idea to make an MIT version without all of the GPL code so it can also be used without forcing your code to be open-source. It should be noted that the MIT version removes **8** techniques, and the lesser the number of mechanisms, the less accurate the overall result might be.
+
+- The tool has many false positives under a Windows 11 host, why?
+> This is because it is in fact running under a VM. More specifically, Hyper-V might be used by default for every program that's running in Windows 11. 
 
 <br>
 
 ## Issues and pull requests 📬
 If you have any suggestions, ideas, or any sort of contribution, feel free to ask! I'll be more than happy to discuss. If you want to personally ask something in private, my discord is `kr.nl`
 
-If you found this project useful, a star would be appreciated :)
+And if you found this project useful, a star would be appreciated :)
 
 <br>
 

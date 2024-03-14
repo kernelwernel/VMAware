@@ -30,6 +30,7 @@ public:
   {
     m_set = FALSE;
     m_out = GetStdHandle(STD_OUTPUT_HANDLE);
+    m_old = 0;
     if(m_out != NULL && m_out != INVALID_HANDLE_VALUE)
     {
       if(GetConsoleMode(m_out, &m_old) != FALSE)
@@ -166,6 +167,12 @@ int main(int argc, char* argv[]) {
         checker(VM::KVM_DIRS, "KVM directories");
         checker(VM::HKLM_REGISTRIES, "HKLM registries");
         checker(VM::AUDIO, "Audio device");
+        checker(VM::QEMU_GA, "qemu-ga process");
+        checker(VM::VALID_MSR, "MSR validity");
+        checker(VM::QEMU_PROC, "QEMU processes");
+        checker(VM::QEMU_DIR, "QEMU directories");
+        checker(VM::VPC_PROC, "VPC processes");
+        checker(VM::VPC_INVALID, "VPC invalid instructions");
         std::printf("\n");
 
         const std::string brand = VM::brand();
