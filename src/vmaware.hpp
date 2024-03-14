@@ -4741,7 +4741,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             const u16 ver = util::get_windows_version();
 #endif
 
-            auto adjust = [ver](const u8 value) -> u8 {
+            auto adjust = [=](const u8 value) -> u8 {
 #if (MSVC)
                 if (ver == 11) {
                     return (value / 2);
