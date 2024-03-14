@@ -1300,7 +1300,7 @@ private:
         return (tmp && isWow64);
     }
 
-    [[nodiscard]] static u16 get_windows_ver() {
+    [[nodiscard]] static u16 get_windows_version() {
         double ret = 0.0;
         NTSTATUS(WINAPI * RtlGetVersion)(LPOSVERSIONINFOEXW) = nullptr;
         OSVERSIONINFOEXW osInfo{};
@@ -2674,7 +2674,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return ((12 == disk) && (1 == ram));
         }
 #elif (MSVC)
-        const u16 ret = util::get_windows_dir();
+        const u16 ret = util::get_windows_version();
         // less than windows 10
         if (ret < 10) {
             debug("VBOX_DEFAULT: less than windows 10 detected");
@@ -4630,7 +4630,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-#if (!MSVC)
+#if (!MSVC || !x86)
         return false;
 #else
         bool rc = false;
@@ -4741,7 +4741,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             const u16 ver = util::get_windows_version();
 #endif
 
-            auto adjust = [](const u8 value) -> u8 {
+            auto adjust = [ver](const u8 value) -> u8 {
 #if (MSVC)
                 if (ver == 11) {
                     return (value / 2);
