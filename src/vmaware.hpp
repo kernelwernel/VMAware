@@ -4198,8 +4198,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         TCHAR szPath[MAX_PATH] = _T("");
         PVOID OldValue = NULL;
 
-        GetWindowsDirectory(szWinDir, MAX_PATH);
-
+        if (GetWindowsDirectory(szWinDir, MAX_PATH) == 0) {
+            return false;
+        }
+        
         if (util::is_wow64()) {
             Wow64DisableWow64FsRedirection(&OldValue);
         }
@@ -4405,9 +4407,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // Initializes a simple Audio Renderer, error code is not checked, 
         // but pBaseFilter will be set to NULL upon failure and the code will eventually fail later.
         IBaseFilter *pBaseFilter = nullptr;
-        auto tmp = CoCreateInstance(CLSID_AudioRender, NULL, CLSCTX_INPROC_SERVER, IID_IBaseFilter, (void**)&pBaseFilter);
-        UNUSED(tmp);
 
+        HRESULT hr = CoCreateInstance(CLSID_AudioRender, NULL, CLSCTX_INPROC_SERVER, IID_IBaseFilter, (void**)&pBaseFilter);
+        if (FAILED(hr)) {
+            return false;
+        }
+        
         // Adds the previously created Audio Renderer to the Filter Graph, no error checks
         pGraph->AddFilter(pBaseFilter, wszfilterName);
 
