@@ -33,7 +33,7 @@
 #define MSVC 1
 #define LINUX 0
 #define APPLE 0
-#elif (defined(__GNUC__) || defined(__linux__))
+#elif (defined(__linux__))
 #define MSVC 0
 #define LINUX 1
 #define APPLE 0
