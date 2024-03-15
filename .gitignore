@@ -50,4 +50,6 @@ private/
 resources/
 releases/
 release_notes.txt
-*.bkp
+*.bk
+cmake-build-*/
+.idea/*
