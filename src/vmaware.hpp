@@ -4632,7 +4632,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 #if (!MSVC || !x86)
         return false;
-#else
+#elif (defined(_WIN32) && defined(__i386__))
         bool rc = false;
 
         auto IsInsideVPC_exceptionFilter = [](PEXCEPTION_POINTERS ep) -> DWORD {
