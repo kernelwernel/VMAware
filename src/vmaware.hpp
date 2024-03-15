@@ -290,6 +290,7 @@ public:
         QEMU_DIR,
         VPC_PROC,
         VPC_INVALID,
+        SIDT,
         EXTREME,
         NO_MEMO
     };
@@ -4576,7 +4577,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 	    	PathCombine(szPath, szProgramFile, szDirectories[i]);
 
-	    	if (exists(szPath))
+	    	if (util::exists(szPath))
 	    		return core::add(QEMU);
 	    }
 
@@ -4623,7 +4624,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
     /**
      * @brief Check for official VPC method
-     * @category Windows
+     * @category Windows, x86
      */ 
     [[nodiscard]] static bool vpc_invalid() {
         if (core::disabled(VPC_INVALID)) {
@@ -4673,9 +4674,59 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         return rc;
+#else
+        return false;
 #endif
     }
 
+
+    /**
+     * @brief Check for sidt method
+     * @category Linux, Windows, x86
+     */ 
+    [[nodiscard]] static bool sidt() try {
+        if (core::disabled(SIDT)) {
+            return false;
+        }
+
+#if (!x86)
+        return false;
+#elif (MSVC)
+        u8	idtr[6];
+	    u32	idt	= 0;
+
+	    _asm sidt idtr
+	    idt = *((unsigned long *)&idtr[2]);
+
+	    return ((idt >> 24) == 0xff);
+#elif (LINUX)
+        struct IDTR {
+            u16 limit;
+            u32 base;
+        } __attribute__((packed));
+
+        IDTR idtr;
+        u32 idt_entry = 0;
+
+        __asm__ __volatile__(
+            "sidt %0" 
+            : "=m" (idtr)
+        );
+
+        std::ifstream mem("/dev/mem", std::ios::binary);
+        mem.seekg(idtr.base + 8, std::ios::beg);
+        mem.read(reinterpret_cast<char*>(&idt_entry), sizeof(idt_entry));
+        mem.close();
+
+        return ((idt_entry >> 24) == 0xFF);
+#else
+        return false;
+#endif
+    }
+    catch (...) {
+        debug("SIDT: ", "catched error, returned false");
+        return false;
+    }
 
     struct core {
         MSVC_DISABLE_WARNING(4820)
@@ -5151,7 +5202,8 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::QEMU_PROC, { 30, VM::qemu_processes }},
     { VM::QEMU_DIR, { 45, VM::qemu_dir }},
     { VM::VPC_PROC, { 30, VM::vpc_proc }},
-    { VM::VPC_INVALID, { 75, VM::vpc_invalid }}
+    { VM::VPC_INVALID, { 75, VM::vpc_invalid }},
+    { VM::SIDT, { 60, VM::sidt }}
 
     // __TABLE_LABEL, add your technique above
     // { VM::FUNCTION, { POINTS, FUNCTION_POINTER }}

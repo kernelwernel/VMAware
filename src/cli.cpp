@@ -173,6 +173,7 @@ int main(int argc, char* argv[]) {
         checker(VM::QEMU_DIR, "QEMU directories");
         checker(VM::VPC_PROC, "VPC processes");
         checker(VM::VPC_INVALID, "VPC invalid instructions");
+        checker(VM::SIDT, "SIDT");
         std::printf("\n");
 
         const std::string brand = VM::brand();
