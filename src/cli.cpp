@@ -174,6 +174,8 @@ int main(int argc, char* argv[]) {
         checker(VM::VPC_PROC, "VPC processes");
         checker(VM::VPC_INVALID, "VPC invalid instructions");
         checker(VM::SIDT, "SIDT");
+        checker(VM::SLDT, "SLDT");
+        checker(VM::SGDT, "SGDT");
         std::printf("\n");
 
         const std::string brand = VM::brand();

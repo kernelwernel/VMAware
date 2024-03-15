@@ -291,6 +291,8 @@ public:
         VPC_PROC,
         VPC_INVALID,
         SIDT,
+        SLDT,
+        SGDT,
         EXTREME,
         NO_MEMO
     };
@@ -4691,7 +4693,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 #if (!x86)
         return false;
-#elif (MSVC)
+#elif (defined(_WIN32) && defined(__i386__))
         u8	idtr[6];
 	    u32	idt	= 0;
 
@@ -4727,6 +4729,64 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         debug("SIDT: ", "catched error, returned false");
         return false;
     }
+
+
+    /**
+     * @brief Check for sldt
+     * @category Windows, x86
+     */ 
+    [[nodiscard]] static bool sldt() try {
+        if (core::disabled(SLDT)) {
+            return false;
+        }
+
+#if (!x86)
+        return false;
+#elif (defined(_WIN32) && defined(__i386__))
+        u8 ldtr[5] = "\xef\xbe\xad\xde";
+        u32 ldt= 0;
+
+        _asm sldt ldtr
+        ldt = *((u32 *)&ldtr[0]);
+
+        return (ldt != 0xdead0000);
+#else
+        return false;
+#endif
+    }
+    catch (...) {
+        debug("SLDT: ", "catched error, returned false");
+        return false;
+    }
+
+
+    /**
+     * @brief Check for sgdt
+     * @category Windows, x86
+     */ 
+    [[nodiscard]] static bool sgdt() try {
+        if (core::disabled(SGDT)) {
+            return false;
+        }
+
+#if (!x86)
+        return false;
+#elif (defined(_WIN32) && defined(__i386__))
+        u8 gdtr[6];
+        u32 gdt	= 0;
+
+        _asm sgdt gdtr
+        gdt = *((unsigned long *)&gdtr[2]);
+
+        return ((gdt >> 24) == 0xff);
+#else
+        return false;
+#endif
+    } catch (...) {
+        debug("SGDT: ", "catched error, returned false");
+        return false;
+    }
+
 
     struct core {
         MSVC_DISABLE_WARNING(4820)
@@ -5203,7 +5263,9 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::QEMU_DIR, { 45, VM::qemu_dir }},
     { VM::VPC_PROC, { 30, VM::vpc_proc }},
     { VM::VPC_INVALID, { 75, VM::vpc_invalid }},
-    { VM::SIDT, { 60, VM::sidt }}
+    { VM::SIDT, { 60, VM::sidt }},
+    { VM::SLDT, { 25, VM::sldt }},
+    { VM::SGDT, { 50, VM::sgdt }}
 
     // __TABLE_LABEL, add your technique above
     // { VM::FUNCTION, { POINTS, FUNCTION_POINTER }}
