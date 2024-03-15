@@ -3878,15 +3878,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return false;
             }
 
-            if (find(board, "Mac")) {
+            if (util::find(board, "Mac")) {
                 return false;
             }
 
-            if (find(board, "VirtualBox")) {
+            if (util::find(board, "VirtualBox")) {
                 return core::add(VBOX);
             }
 
-            if (find(board, "VMware")) {
+            if (util::find(board, "VMware")) {
                 return core::add(VMWARE);
             }
 
@@ -3896,11 +3896,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         auto check_manufacturer = [&]() -> bool {
             debug("IO_KIT: ", "manufacturer = ", manufacturer);
 
-            if (find(manufacturer, "Apple")) {
+            if (util::find(manufacturer, "Apple")) {
                 return false;
             }
 
-            if (find(manufacturer, "innotek")) {
+            if (util::find(manufacturer, "innotek")) {
                 return core::add(VBOX);
             }
 
@@ -3937,11 +3937,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             std::unique_ptr<std::string> result = util::sys_result("ioreg -rd1 -c IOUSBHostDevice | grep \"USB Vendor Name\"");
             const std::string usb = *result;
 
-            if (find(usb, "Apple")) {
+            if (util::find(usb, "Apple")) {
                 return false;
             }
 
-            if (find(usb, "VirtualBox")) {
+            if (util::find(usb, "VirtualBox")) {
                 return core::add(VBOX);
             }
 
@@ -3968,7 +3968,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             std::unique_ptr<std::string> sys_rom = util::sys_result("system_profiler SPHardwareDataType | grep \"Boot ROM Version\"");
             const std::string rom = *sys_rom;
 
-            if (find(rom, "VirtualBox")) {
+            if (util::find(rom, "VirtualBox")) {
                 return core::add(VBOX);
             }
 
@@ -4006,7 +4006,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         debug("MAC_SIP: ", "result = ", tmp);
 
-        return (find(tmp, "disabled") || (!find(tmp, "enabled")));
+        return (util::find(tmp, "disabled") || (!util::find(tmp, "enabled")));
 #endif
     }
     catch (...) {
