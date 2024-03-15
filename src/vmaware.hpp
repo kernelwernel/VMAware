@@ -3122,6 +3122,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
+        #if (!x86)
+          return false;
+        #else
+
         u64 tsc1 = 0;
         u64 tsc2 = 0;
         u64 avg = 0;
@@ -3137,6 +3141,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         avg /= 10;
 
         return (avg >= 1000 || avg == 0);
+        #endif
     }
     catch (...) {
         debug("RDTSC_VMEXIT:", "catched error, returned false");
