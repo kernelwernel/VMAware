@@ -13,6 +13,7 @@
  *      - @Requiem (https://github.com/NotRequiem)
  *      - @Alex (https://github.com/greenozon)
  *      - @Marek Knápek (https://github.com/MarekKnapek)
+ *      - @Vladyslav Miachkov (https://github.com/fameowner99)
  *  - Repository: https://github.com/kernelwernel/VMAware
  *  - Docs: https://github.com/kernelwernel/VMAware/docs/documentation.md
  *  - Full credits: https://github.com/kernelwernel/VMAware#credits
