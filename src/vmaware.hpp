@@ -294,7 +294,8 @@ public:
         SLDT,
         SGDT,
         EXTREME,
-        NO_MEMO
+        NO_MEMO,
+        WIN11_HYPERV
     };
 private:
     static constexpr u8 enum_size = __LINE__ - enum_line_start - 4; // get enum size
@@ -4482,7 +4483,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief check for valid MSRs
+     * @brief check for valid MSR value
      * @category Windows
      * @author LukeGoule
      * @link https://github.com/LukeGoule/compact_vm_detector/tree/main
@@ -4854,7 +4855,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             auto adjust = [=](const u8 value) -> u8 {
 #if (MSVC)
-                if (ver == 11) {
+                if (ver == 11 && core::enabled(WIN11_HYPERV)) {
                     return (value / 2);
                 }
 #endif

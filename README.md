@@ -21,7 +21,7 @@ The library is:
 - Able to guess the VM brand
 - Able to add your own custom VM detection techniques
 - Memoized, meaning past results are cached and retrieved if ran again for performance benefits 
-- Contains seperate MIT and GPL-3.0 compliant library header files
+- Contains separate MIT and GPL-3.0 compliant library header files
 
 - - -
 

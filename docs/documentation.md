@@ -224,8 +224,8 @@ VM::add_custom(50, new_technique);
 VMAware provides a convenient way to not only check for VMs, but also have the flexibility and freedom for the end-user to choose what techniques are used with complete control over what gets executed or not. This is handled with a flag system.
 
 
-| Flag alias | Description | Cross-platform? | Certainty | Root required? | GPL-3.0? |
-| ---------- | ----------- | --------------- | --------- | -------------- | -------- |
+| Flag alias | Description | Cross-platform? | Certainty | Admin? | GPL-3.0? |
+| ---------- | ----------- | --------------- | --------- | ------ | -------- |
 | `VM::VMID` | Check if the CPU manufacturer ID matches that of a VM brand | Yes | 100% |  |  |
 | `VM::BRAND` | Check if the CPU brand string contains any indications of VM keywords | Yes | 50% |  |  |
 | `VM::HYPERVISOR_BIT` | Check if the hypervisor bit is set (always false on physical CPUs) | Yes | 100% |  |  |
@@ -240,7 +240,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::CVENDOR` | Check if the chassis has any VM-related keywords | Linux | 65% |  |  |
 | `VM::CTYPE` | Check if the chassis type is valid (usually not in VMs) | Linux | 10% |  |  |
 | `VM::DOCKERENV` | Check if any docker-related files are present such as /.dockerenv and /.dockerinit | Linux | 80% |  |  |
-| `VM::DMIDECODE` | Get output from dmidecode tool and grep for common VM keywords | Linux | 55% | Yes |  |
+| `VM::DMIDECODE` | Get output from dmidecode tool and grep for common VM keywords | Linux | 55% | Admin |  |
 | `VM::DMESG` | Get output from dmesg tool and grep for common VM keywords | Linux | 55% |  |  |
 | `VM::HWMON` | Check if HWMON is present (if not, likely a VM) | Linux | 75% |  |  |
 | `VM::CURSOR`  | Check if cursor isn't active (sign of automated VM environment) | Windows | 10% |  |  |
@@ -254,7 +254,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::VM_FILES` | Find if any VM-specific files exists | Windows | 10% |  |  |
 | `VM::HWMODEL` | Check if the sysctl for the hwmodel does not contain the "Mac" string | MacOS | 75% |  |  |
 | `VM::DISK_SIZE` | Check if disk size is under or equal to 50GB | Linux | 60% |  |  |
-| `VM::VBOX_DEFAULT` | Check for default RAM and DISK sizes set by VirtualBox | Linux and Windows | 55% | Yes |  |
+| `VM::VBOX_DEFAULT` | Check for default RAM and DISK sizes set by VirtualBox | Linux and Windows | 55% | Admin |  |
 | `VM::VBOX_NETWORK` | Check VBox network provider string | Windows | 70% |  |  | 
 | `VM::COMPUTER_NAME` | Check for computer name string | Windows | 40% |  | GPL |
 | `VM::HOSTNAME` | Check if hostname is specific | Windows | 25% |  | GPL |
@@ -287,7 +287,14 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::HKLM_REGISTRIES` | Check for HKLM-based registry keys | Windows | 70% |  |  |
 | `VM::AUDIO` | Check if audio device is present | Windows | 35% |  | GPL |
 | `VM::QEMU_GA` | Check for the "qemu-ga" process | Linux | 20% |  |  |
-| `VM::VALID_MSR
+| `VM::VALID_MSR` | Check for valid MSR value | Windows | 35% |  |  |
+| `VM::QEMU_PROC` | Check for QEMU processes | Windows | 30% |  |  |
+| `VM::QEMU_DIR` | Check for QEMU-specific blacklisted directories | Windows | 45% |  | GPL |
+| `VM::VPC_PROC` | Check for VPC processes | Windows | 30% |  |  |
+| `VM::VPC_INVALID` | Check for official VPC method | Windows | 75% |  |  |
+| `VM::SIDT` | Check for sidt instruction method | Linux, Windows | 60% |  |  |
+| `VM::SLDT` | Check for sldt instruction method | Windows | 25% |  |  |
+| `VM::SGDT` | Check for sgdt instruction method | Windows | 50% |  |  |
 
 <br>
 
@@ -298,3 +305,4 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::NO_MEMO` | This will disable memoization, meaning the result will not be fetched through a previous computation of the `VM::detect()` function. Use this if you're only using a single function from the `VM` struct for a performance boost.
 | `VM::EXTREME` | This will disregard the weights/biases and its scoring system. It will essentially treat any technique that found a hit as a VM detection no matter how low that technique's certainty is, so if a single technique is positive then it will return true. | 
 | `VM::DEFAULT` | This represents a range of flags which are enabled if no default argument is provided. The reason why this exists is to easily disable any bits manually (shown in the is_vm6 example in the `VM::detect()` section)
+| `VM::WIN11_HYPERV` | This will take into account that Windows 11 sometimes may have Hyper-V as a default virtualisation software for any program used even if the OS is running as host. |
