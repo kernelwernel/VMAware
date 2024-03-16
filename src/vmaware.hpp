@@ -2497,7 +2497,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         else if (vbox < vmware) {
             return core::add(VMWARE);
         }
-        else if (vbox == vmware) {
+        else if (vbox > 0 && vbox == vmware) {
             return true;
         }
 
