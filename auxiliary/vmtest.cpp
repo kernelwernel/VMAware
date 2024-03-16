@@ -1,4 +1,4 @@
-#include "vmaware.hpp"
+#include "../src/vmaware.hpp"
 #include <iostream>
 
 int main(void) {

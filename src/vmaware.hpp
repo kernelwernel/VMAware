@@ -178,7 +178,9 @@
 #include <unistd.h>
 #include <string.h>
 #include <immintrin.h>
+#include <dirent.h>
 #include <memory>
+#include <cctype>
 #elif (APPLE)
 #include <sys/types.h>
 #include <sys/sysctl.h>
@@ -283,6 +285,15 @@ public:
         KVM_DIRS,
         HKLM_REGISTRIES,
         AUDIO,
+        QEMU_GA,
+        VALID_MSR,
+        QEMU_PROC,
+        QEMU_DIR,
+        VPC_PROC,
+        VPC_INVALID,
+        SIDT,
+        SLDT,
+        SGDT,
         EXTREME,
         NO_MEMO
     };
@@ -988,6 +999,97 @@ private:
 #endif
         }
 
+
+        [[nodiscard]] static bool is_proc_running(const TCHAR* executable) {
+#if (MSVC)
+            PROCESSENTRY32 entry;
+            entry.dwSize = sizeof(PROCESSENTRY32);
+
+            const auto snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, NULL);
+
+            if (!Process32First(snapshot, &entry)) {
+                CloseHandle(snapshot);
+                return false;
+            }
+
+            do {
+                if (!_tcsicmp(entry.szExeFile, executable)) {
+                    CloseHandle(snapshot);
+                    return true;
+                }
+            } while (Process32Next(snapshot, &entry));
+
+            CloseHandle(snapshot);
+            return false;
+#elif (LINUX)
+    #if (CPP >= 17)
+            for (const auto& entry : std::filesystem::directory_iterator("/proc")) {
+                if (!(entry.is_directory())) {
+                    continue;
+                }
+                const std::string filename = entry.path().filename().string();
+    #else
+            DIR* dir = opendir("/proc");
+            if (!dir) {
+                debug("QEMU_GA: ", "failed to open /proc directory");
+                return false;
+            }
+
+            struct dirent* entry;
+            while ((entry = readdir(dir)) != nullptr) {
+                std::string filename(entry->d_name);
+                if (filename == "." || filename == "..") {
+                    continue;
+                }
+    #endif
+            if (!(std::all_of(filename.begin(), filename.end(), ::isdigit))) {
+                continue;
+            }
+
+            const std::string cmdline_file = "/proc/" + filename + "/cmdline";
+            std::ifstream cmdline(cmdline_file);
+            if (!(cmdline.is_open())) {
+                continue;
+            }
+
+            std::string line;
+            std::getline(cmdline, line);
+            cmdline.close();
+
+            if (
+                !line.empty() && \
+                line.find(executable) != std::string::npos
+            ) {
+                const std::size_t slash_index = line.find_last_of('/');
+
+                if (slash_index == std::string::npos) {
+                    continue;
+                }
+                
+                line = std::move(line.substr(slash_index + 1));
+
+                const std::size_t space_index = line.find_first_of(' ');
+
+                if (space_index != std::string::npos) {
+                    line = std::move(line.substr(0, space_index));
+                }
+
+                if (line != executable) {
+                    continue;
+                }
+    #if (CPP < 17)
+                closedir(dir);
+    #endif
+                return core::add(QEMU);
+            }
+        }
+
+        return false;
+#else
+        return false;
+#endif
+    }
+
 #if (MSVC)
     /**
      * @link: https://codereview.stackexchange.com/questions/249034/systeminfo-a-c-class-to-retrieve-system-management-data-from-the-bios
@@ -1195,13 +1297,37 @@ private:
         std::string uuid_;
         std::string version_;
     };
-#endif
 
-#if (MSVC)
     [[nodiscard]] static bool is_wow64() {
         BOOL isWow64 = FALSE;
         BOOL tmp = IsWow64Process(GetCurrentProcess(), &isWow64);
         return (tmp && isWow64);
+    }
+
+    [[nodiscard]] static u16 get_windows_version() {
+        double ret = 0.0;
+        NTSTATUS(WINAPI * RtlGetVersion)(LPOSVERSIONINFOEXW) = nullptr;
+        OSVERSIONINFOEXW osInfo{};
+
+        HMODULE ntdllModule = GetModuleHandleA("ntdll");
+
+        if (ntdllModule == nullptr) {
+            return false;
+        }
+
+        *(FARPROC*)&RtlGetVersion = GetProcAddress(ntdllModule, "RtlGetVersion");
+
+        if (RtlGetVersion == nullptr) {
+            return false;
+        }
+
+        if (RtlGetVersion != nullptr) {
+            osInfo.dwOSVersionInfoSize = sizeof(osInfo);
+            RtlGetVersion(&osInfo);
+            ret = static_cast<double>(osInfo.dwMajorVersion);
+        }
+
+        return static_cast<u16>(std::round(ret));
     }
 #endif
     };
@@ -1461,9 +1587,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         u64 tsc3 = 0;
         for (INT i = 0; i < 10; i++) {
             tsc1 = __rdtsc();
-            GetProcessHeap();
+            GetProcessHeap();  // delay
             tsc2 = __rdtsc();
-            CloseHandle(0);
+            CloseHandle(0);    // delay
             tsc3 = __rdtsc();
             const bool condition = ((LODWORD(tsc3) - LODWORD(tsc2)) / (LODWORD(tsc2) - LODWORD(tsc1)) >= 10);
             if (condition) {
@@ -2552,28 +2678,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return ((12 == disk) && (1 == ram));
         }
 #elif (MSVC)
-        double ret = 0.0;
-        NTSTATUS(WINAPI * RtlGetVersion)(LPOSVERSIONINFOEXW) = nullptr;
-        OSVERSIONINFOEXW osInfo{};
-
-        HMODULE ntdllModule = GetModuleHandleA("ntdll");
-
-        if (ntdllModule == nullptr) {
-            return false;
-        }
-
-        *(FARPROC*)&RtlGetVersion = GetProcAddress(ntdllModule, "RtlGetVersion");
-
-        if (RtlGetVersion == nullptr) {
-            return false;
-        }
-
-        if (RtlGetVersion != nullptr) {
-            osInfo.dwOSVersionInfoSize = sizeof(osInfo);
-            RtlGetVersion(&osInfo);
-            ret = static_cast<double>(osInfo.dwMajorVersion);
-        }
-
+        const u16 ret = util::get_windows_version();
         // less than windows 10
         if (ret < 10) {
             debug("VBOX_DEFAULT: less than windows 10 detected");
@@ -4308,6 +4413,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // Initializes a simple Audio Renderer, error code is not checked, 
         // but pBaseFilter will be set to NULL upon failure and the code will eventually fail later.
         IBaseFilter *pBaseFilter = nullptr;
+
         HRESULT hr = CoCreateInstance(CLSID_AudioRender, NULL, CLSCTX_INPROC_SERVER, IID_IBaseFilter, (void**)&pBaseFilter);
         if (FAILED(hr)) {
             return false;
@@ -4359,6 +4465,336 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
     catch (...) {
         debug("AUDIO: ", "catched error, returned false");
+        return false;
+    }
+
+
+    /**
+     * @brief Check for qemu-ga process 
+     * @category Linux
+     */ 
+    [[nodiscard]] static bool qemu_ga() try {
+        if (core::disabled(QEMU_GA)) {
+            return false;
+        }
+
+#if (!LINUX)
+        return false;
+#else
+        constexpr const char* process = "qemu-ga";
+
+        return (util::is_proc_running(process));
+#endif
+    }
+    catch (...) {
+        debug("QEMU_GA: ", "catched error, returned false");
+        return false;
+    }
+
+
+    /**
+     * @brief check for valid MSRs
+     * @category Windows
+     * @author LukeGoule
+     * @link https://github.com/LukeGoule/compact_vm_detector/tree/main
+     * @copyright MIT
+     */ 
+    [[nodiscard]] static bool valid_msr() {
+        if (core::disabled(VALID_MSR)) {
+            return false;
+        }
+
+#if (!MSVC)
+        return false;
+#else
+        __try
+        {
+            __readmsr(0x40000000);
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        {
+            return false;
+        }
+
+        return true;
+#endif
+    }
+
+
+    /**
+     * @brief Check for QEMU processes 
+     * @category Windows
+     */ 
+    [[nodiscard]] static bool qemu_processes() try {
+        if (core::disabled(QEMU_PROC)) {
+            return false;
+        }
+
+#if (!MSVC)
+        return false;
+#else
+        constexpr std::array<const TCHAR*, 3> qemu_proc_strings = {{
+            _T("qemu-ga.exe"),
+            _T("vdagent.exe"),
+            _T("vdservice.exe")
+        }};
+
+        for (const auto str : qemu_proc_strings) {
+            if (util::is_proc_running(str)) {
+                return core::add(QEMU);
+            }
+        }
+
+        return false;
+#endif
+    }
+    catch (...) {
+        debug("QEMU_PROC: ", "catched error, returned false");
+        return false;
+    }
+
+
+    /**
+     * @brief Check for QEMU-specific blacklisted directories
+     * @author LordNoteworthy
+     * @link https://github.com/LordNoteworthy/al-khaser/blob/master/al-khaser/AntiVM/Qemu.cpp
+     * @category Windows
+     * @note from al-khaser project
+     * @copyright GPL-3.0
+     */ 
+    [[nodiscard]] static bool qemu_dir() try {
+        if (core::disabled(QEMU_DIR)) {
+            return false;
+        }
+
+#if (!MSVC)
+        return false;
+#else
+        TCHAR szProgramFile[MAX_PATH];
+	    TCHAR szPath[MAX_PATH] = _T("");
+
+	    const TCHAR* szDirectories[] = {
+	        _T("qemu-ga"),	// QEMU guest agent.
+	        _T("SPICE Guest Tools"), // SPICE guest tools.
+	    };
+
+	    WORD iLength = sizeof(szDirectories) / sizeof(szDirectories[0]);
+	    for (int i = 0; i < iLength; i++)
+	    {
+	    	TCHAR msg[256] = _T("");
+
+	    	if (util::is_wow64())
+	    		ExpandEnvironmentStrings(_T("%ProgramW6432%"), szProgramFile, ARRAYSIZE(szProgramFile));
+	    	else
+	    		SHGetSpecialFolderPath(NULL, szProgramFile, CSIDL_PROGRAM_FILES, FALSE);
+
+	    	PathCombine(szPath, szProgramFile, szDirectories[i]);
+
+	    	if (util::exists(szPath))
+	    		return core::add(QEMU);
+	    }
+
+        return false;
+#endif
+    }
+    catch (...) {
+        debug("QEMU_DIR: ", "catched error, returned false");
+        return false;
+    }
+
+    
+    /**
+     * @brief Check for VPC processes
+     * @category Windows
+     */ 
+    [[nodiscard]] static bool vpc_proc() try {
+        if (core::disabled(VPC_PROC)) {
+            return false;
+        }
+
+#if (!MSVC)
+        return false;
+#else
+        constexpr std::array<const TCHAR*, 2> vpc_proc_strings = {{
+            _T("VMSrvc.exe"),
+            _T("VMUSrvc.exe")
+        }};
+        
+        for (const auto str : vpc_proc_strings) {
+            if (util::is_proc_running(str)) {
+                return core::add(VPC);
+            }
+        }
+
+        return false;
+#endif
+    }
+    catch (...) {
+        debug("VPC_PROC: ", "catched error, returned false");
+        return false;
+    }
+
+
+    /**
+     * @brief Check for official VPC method
+     * @category Windows, x86
+     */ 
+    [[nodiscard]] static bool vpc_invalid() {
+        if (core::disabled(VPC_INVALID)) {
+            return false;
+        }
+
+#if (!MSVC || !x86)
+        return false;
+#elif (defined(_WIN32) && defined(__i386__))
+        bool rc = false;
+
+        auto IsInsideVPC_exceptionFilter = [](PEXCEPTION_POINTERS ep) -> DWORD {
+            PCONTEXT ctx = ep->ContextRecord;
+
+            ctx->Ebx = static_cast<DWORD>(-1); // Not running VPC
+            ctx->Eip += 4; // skip past the "call VPC" opcodes
+            return static_cast<DWORD>(EXCEPTION_CONTINUE_EXECUTION);
+            // we can safely resume execution since we skipped faulty instruction
+        };
+
+        __try {
+            __asm {
+                push eax			
+                push ebx
+                push ecx
+                push edx
+
+                mov ebx,0h
+                mov eax, 01h
+                    
+                __emit 0Fh
+                __emit 3Fh
+                __emit 07h
+                __emit 0Bh
+
+                test ebx, ebx
+                setz [rc]
+            
+                pop edx
+                pop ecx
+                pop ebx
+                pop eax
+            }
+        }
+        __except(IsInsideVPC_exceptionFilter(GetExceptionInformation())) {
+            rc = false;
+        }
+
+        return rc;
+#else
+        return false;
+#endif
+    }
+
+
+    /**
+     * @brief Check for sidt method
+     * @category Linux, Windows, x86
+     */ 
+    [[nodiscard]] static bool sidt() try {
+        if (core::disabled(SIDT)) {
+            return false;
+        }
+
+#if (!x86)
+        return false;
+#elif (defined(_WIN32) && defined(__i386__))
+        u8	idtr[6];
+	    u32	idt	= 0;
+
+	    _asm sidt idtr
+	    idt = *((unsigned long *)&idtr[2]);
+
+	    return ((idt >> 24) == 0xff);
+#elif (LINUX)
+        struct IDTR {
+            u16 limit;
+            u32 base;
+        } __attribute__((packed));
+
+        IDTR idtr;
+        u32 idt_entry = 0;
+
+        __asm__ __volatile__(
+            "sidt %0" 
+            : "=m" (idtr)
+        );
+
+        std::ifstream mem("/dev/mem", std::ios::binary);
+        mem.seekg(idtr.base + 8, std::ios::beg);
+        mem.read(reinterpret_cast<char*>(&idt_entry), sizeof(idt_entry));
+        mem.close();
+
+        return ((idt_entry >> 24) == 0xFF);
+#else
+        return false;
+#endif
+    }
+    catch (...) {
+        debug("SIDT: ", "catched error, returned false");
+        return false;
+    }
+
+
+    /**
+     * @brief Check for sldt
+     * @category Windows, x86
+     */ 
+    [[nodiscard]] static bool sldt() try {
+        if (core::disabled(SLDT)) {
+            return false;
+        }
+
+#if (!x86)
+        return false;
+#elif (defined(_WIN32) && defined(__i386__))
+        u8 ldtr[5] = "\xef\xbe\xad\xde";
+        u32 ldt= 0;
+
+        _asm sldt ldtr
+        ldt = *((u32 *)&ldtr[0]);
+
+        return (ldt != 0xdead0000);
+#else
+        return false;
+#endif
+    }
+    catch (...) {
+        debug("SLDT: ", "catched error, returned false");
+        return false;
+    }
+
+
+    /**
+     * @brief Check for sgdt
+     * @category Windows, x86
+     */ 
+    [[nodiscard]] static bool sgdt() try {
+        if (core::disabled(SGDT)) {
+            return false;
+        }
+
+#if (!x86)
+        return false;
+#elif (defined(_WIN32) && defined(__i386__))
+        u8 gdtr[6];
+        u32 gdt	= 0;
+
+        _asm sgdt gdtr
+        gdt = *((unsigned long *)&gdtr[2]);
+
+        return ((gdt >> 24) == 0xff);
+#else
+        return false;
+#endif
+    } catch (...) {
+        debug("SGDT: ", "catched error, returned false");
         return false;
     }
 
@@ -4423,11 +4859,23 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         static u16 run_all(flagset p_flags = DEFAULT) {
             u16 points = 0;
             VM::flags = p_flags;
+#if (MSVC)
+            const u16 ver = util::get_windows_version();
+#endif
+
+            auto adjust = [=](const u8 value) -> u8 {
+#if (MSVC)
+                if (ver == 11) {
+                    return (value / 2);
+                }
+#endif
+                return value;
+            };
 
             for (const auto& tmp : table) {
                 technique pair = tmp.second;
                 if (pair.run()) {
-                    points += pair.points;
+                    points += adjust(pair.points);
                 }
             }
 
@@ -4438,7 +4886,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             // for custom VM techniques
             for (const auto& pair : custom_table) {
                 if (pair.run()) {
-                    points += pair.points;
+                    points += adjust(pair.points);
                 }
             }
 
@@ -4494,7 +4942,7 @@ public: // START OF PUBLIC FUNCTIONS
 
         auto it = core::table.find(p_flag);
 
-        if (VMAWARE_UNLIKELY(it == core::table.end())) {
+        if (/*VMAWARE_UNLIKELY*/(it == core::table.end())) {
             throw_error("Flag is not known");
         }
 
@@ -4785,7 +5233,7 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::REGISTRY, { 75, VM::registry_key }},
     { VM::SUNBELT_VM, { 10, VM::sunbelt_check }},
     { VM::WINE_CHECK, { 85, VM::wine }},
-    { VM::VM_FILES, { 20, VM::vm_files }},
+    { VM::VM_FILES, { 10, VM::vm_files }},
     { VM::HWMODEL, { 75, VM::hwmodel }},
     { VM::DISK_SIZE, { 60, VM::disk_size }},
     { VM::VBOX_DEFAULT, { 55, VM::vbox_default_specs }},
@@ -4819,7 +5267,16 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::KVM_DRIVERS, { 55, VM::kvm_drivers }},
     { VM::KVM_DIRS, { 55, VM::kvm_directories }},
     { VM::HKLM_REGISTRIES, { 70, VM::hklm_registries }},
-    { VM::AUDIO, { 35, VM::check_audio }}
+    { VM::AUDIO, { 35, VM::check_audio }},
+    { VM::QEMU_GA, { 20, VM::qemu_ga }},
+    { VM::VALID_MSR, { 35, VM::valid_msr }},
+    { VM::QEMU_PROC, { 30, VM::qemu_processes }},
+    { VM::QEMU_DIR, { 45, VM::qemu_dir }},
+    { VM::VPC_PROC, { 30, VM::vpc_proc }},
+    { VM::VPC_INVALID, { 75, VM::vpc_invalid }},
+    { VM::SIDT, { 60, VM::sidt }},
+    { VM::SLDT, { 25, VM::sldt }},
+    { VM::SGDT, { 50, VM::sgdt }}
 
     // __TABLE_LABEL, add your technique above
     // { VM::FUNCTION, { POINTS, FUNCTION_POINTER }}

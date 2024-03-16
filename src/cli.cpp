@@ -26,7 +26,12 @@ constexpr const char* green_orange = "\x1B[38;2;174;197;59m";
 class win_ansi_enabler_t
 {
 public:
-    win_ansi_enabler_t()
+  win_ansi_enabler_t()
+  {
+    m_set = FALSE;
+    m_out = GetStdHandle(STD_OUTPUT_HANDLE);
+    m_old = 0;
+    if(m_out != NULL && m_out != INVALID_HANDLE_VALUE)
     {
         m_set = FALSE;
         m_old = 0;
@@ -167,6 +172,15 @@ int main(int argc, char* argv[]) {
         checker(VM::KVM_DIRS, "KVM directories");
         checker(VM::HKLM_REGISTRIES, "HKLM registries");
         checker(VM::AUDIO, "Audio device");
+        checker(VM::QEMU_GA, "qemu-ga process");
+        checker(VM::VALID_MSR, "MSR validity");
+        checker(VM::QEMU_PROC, "QEMU processes");
+        checker(VM::QEMU_DIR, "QEMU directories");
+        checker(VM::VPC_PROC, "VPC processes");
+        checker(VM::VPC_INVALID, "VPC invalid instructions");
+        checker(VM::SIDT, "SIDT");
+        checker(VM::SLDT, "SLDT");
+        checker(VM::SGDT, "SGDT");
         std::printf("\n");
 
         const std::string brand = VM::brand();

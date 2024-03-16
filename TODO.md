@@ -14,10 +14,11 @@
 - [X] add a cpuid fuzzer (baremetal and VM)
 - [ ] organise the registry existence function better and group them together as a single utility function
 - [X] add <source_location> for error handling
-- [ ] make an MIT version for 1.0
+- [X] make an MIT version for 1.0
 - [X] add function to add custom techniques for end-user
 - [ ] fix memoization
-- [ ] add a python script to automatically set the lines of the seperate sections in the header
+- [X] add a python script to automatically set the lines of the seperate sections in the header
+- [ ] add C++20 concepts for the VM::add_custom() function
 
 
 # Distant plans
