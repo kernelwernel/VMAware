@@ -13,6 +13,7 @@
  *      - @Requiem (https://github.com/NotRequiem)
  *      - @Alex (https://github.com/greenozon)
  *      - @Marek Knápek (https://github.com/MarekKnapek)
+ *      - @Vladyslav Miachkov (https://github.com/fameowner99)
  *  - Repository: https://github.com/kernelwernel/VMAware
  *  - Docs: https://github.com/kernelwernel/VMAware/docs/documentation.md
  *  - Full credits: https://github.com/kernelwernel/VMAware#credits
@@ -33,7 +34,7 @@
 #define MSVC 1
 #define LINUX 0
 #define APPLE 0
-#elif (defined(__GNUC__) || defined(__linux__))
+#elif (defined(__linux__))
 #define MSVC 0
 #define LINUX 1
 #define APPLE 0
@@ -3122,6 +3123,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
+        #if (!x86)
+          return false;
+        #else
+
         u64 tsc1 = 0;
         u64 tsc2 = 0;
         u64 avg = 0;
@@ -3137,6 +3142,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         avg /= 10;
 
         return (avg >= 1000 || avg == 0);
+        #endif
     }
     catch (...) {
         debug("RDTSC_VMEXIT:", "catched error, returned false");
@@ -3873,15 +3879,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return false;
             }
 
-            if (find(board, "Mac")) {
+            if (util::find(board, "Mac")) {
                 return false;
             }
 
-            if (find(board, "VirtualBox")) {
+            if (util::find(board, "VirtualBox")) {
                 return core::add(VBOX);
             }
 
-            if (find(board, "VMware")) {
+            if (util::find(board, "VMware")) {
                 return core::add(VMWARE);
             }
 
@@ -3891,11 +3897,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         auto check_manufacturer = [&]() -> bool {
             debug("IO_KIT: ", "manufacturer = ", manufacturer);
 
-            if (find(manufacturer, "Apple")) {
+            if (util::find(manufacturer, "Apple")) {
                 return false;
             }
 
-            if (find(manufacturer, "innotek")) {
+            if (util::find(manufacturer, "innotek")) {
                 return core::add(VBOX);
             }
 
@@ -3932,11 +3938,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             std::unique_ptr<std::string> result = util::sys_result("ioreg -rd1 -c IOUSBHostDevice | grep \"USB Vendor Name\"");
             const std::string usb = *result;
 
-            if (find(usb, "Apple")) {
+            if (util::find(usb, "Apple")) {
                 return false;
             }
 
-            if (find(usb, "VirtualBox")) {
+            if (util::find(usb, "VirtualBox")) {
                 return core::add(VBOX);
             }
 
@@ -3963,7 +3969,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             std::unique_ptr<std::string> sys_rom = util::sys_result("system_profiler SPHardwareDataType | grep \"Boot ROM Version\"");
             const std::string rom = *sys_rom;
 
-            if (find(rom, "VirtualBox")) {
+            if (util::find(rom, "VirtualBox")) {
                 return core::add(VBOX);
             }
 
@@ -4001,7 +4007,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         debug("MAC_SIP: ", "result = ", tmp);
 
-        return (find(tmp, "disabled") || (!find(tmp, "enabled")));
+        return (util::find(tmp, "disabled") || (!util::find(tmp, "enabled")));
 #endif
     }
     catch (...) {
