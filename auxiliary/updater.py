@@ -103,4 +103,4 @@ def update(filename):
 
 
 update("../src/vmaware.hpp")
-update("../src/vmaware_mit.hpp")
+update("../src/vmaware_MIT.hpp")

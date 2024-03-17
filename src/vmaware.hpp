@@ -20,14 +20,14 @@
  *  - License: GPL-3.0
  * 
  * ================================ SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 221
- * - struct for internal cpu operations        => line 377
- * - struct for internal memoization           => line 606
- * - struct for internal utility functions     => line 679
- * - struct for internal core components       => line 4352
- * - start of internal VM detection techniques => line 1205
- * - start of public VM detection functions    => line 4436
- * - start of externally defined variables     => line 4669
+ * - enums for publicly accessible techniques  => line 226
+ * - struct for internal cpu operations        => line 393
+ * - struct for internal memoization           => line 622
+ * - struct for internal utility functions     => line 695
+ * - struct for internal core components       => line 4977
+ * - start of internal VM detection techniques => line 1336
+ * - start of public VM detection functions    => line 5062
+ * - start of externally defined variables     => line 5295
  */
 
 #if (defined(_MSC_VER) || defined(_WIN32) || defined(_WIN64) || defined(__MINGW32__))
@@ -589,29 +589,29 @@ private:
             const bool found = (std::find(std::begin(IDs), std::end(IDs), brand) != std::end(IDs));
 
             if (found) {
-                if (brand == qemu) { return core::add(QEMU); }
-                if (brand == vmware) { return core::add(VMWARE); }
-                if (brand == vbox) { return core::add(VBOX); }
-                if (brand == bhyve) { return core::add(BHYVE); }
-                if (brand == kvm) { return core::add(KVM); }
-                if (brand == hyperv) { return core::add(HYPERV); }
-                if (brand == xta) { return core::add(MSXTA); }
-                if (brand == parallels) { return core::add(PARALLELS); }
+                if (brand == qemu)       { return core::add(QEMU); }
+                if (brand == vmware)     { return core::add(VMWARE); }
+                if (brand == vbox)       { return core::add(VBOX); }
+                if (brand == bhyve)      { return core::add(BHYVE); }
+                if (brand == kvm)        { return core::add(KVM); }
+                if (brand == hyperv)     { return core::add(HYPERV); }
+                if (brand == xta)        { return core::add(MSXTA); }
+                if (brand == parallels)  { return core::add(PARALLELS); }
                 if (brand == parallels2) { return core::add(PARALLELS); }
-                if (brand == xen) { return core::add(XEN); }
-                if (brand == acrn) { return core::add(ACRN); }
-                if (brand == qnx) { return core::add(QNX); }
-                if (brand == virtapple) { return core::add(VAPPLE); }
+                if (brand == xen)        { return core::add(XEN); }
+                if (brand == acrn)       { return core::add(ACRN); }
+                if (brand == qnx)        { return core::add(QNX); }
+                if (brand == virtapple)  { return core::add(VAPPLE); }
             }
 
             /**
              * This is added because there are inconsistent string 
              * values for KVM's manufacturer ID. For example, 
-             * it gives as "KVMKMVMKV" when I run it under QEMU
+             * it gives me "KVMKMVMKV" when I run it under QEMU
              * but the Wikipedia article on CPUID says it's 
              * "KVMKVMKVM\0\0\0", like wtf????
              */
-            if (brand.find("KVM") != std::string::npos) {
+            if (util::find(brand, "KVM")) {
                 return core::add(KVM);
             }
 
@@ -624,23 +624,23 @@ private:
     private:
         // memoization structure
         MSVC_DISABLE_WARNING(4820)
-        struct memo_struct {
+        struct cache_struct {
             std::string get_brand;
             u8 get_percent;
             bool get_vm;
 
             // Default constructor
-            memo_struct() : get_brand("Unknown"), get_percent(0), get_vm(false) {}
+            cache_struct() : get_brand("Unknown"), get_percent(0), get_vm(false) {}
 
             // Constructor to initialize the members
-            memo_struct(const std::string& brand, u8 percent, bool is_vm)
+            cache_struct(const std::string& brand, u8 percent, bool is_vm)
                 : get_brand(brand), get_percent(percent), get_vm(is_vm) {}
         };
         MSVC_ENABLE_WARNING(4820)
 
     public:
         // memoize the value from VM::detect() in case it's ran again
-        static std::map<bool, memo_struct> cache;
+        static std::map<bool, cache_struct> cache;
 
         // easier way to check if the result is memoized
         [[nodiscard]] static inline bool is_memoized() noexcept {
@@ -652,19 +652,19 @@ private:
 
         // get vm bool
         static bool get_vm() {
-            memo_struct& tmp = cache.at(true);
+            cache_struct& tmp = cache.at(true);
             return tmp.get_vm;
         }
 
         // get vm brand
         static std::string get_brand() {
-            memo_struct& tmp = cache.at(true);
+            cache_struct& tmp = cache.at(true);
             return tmp.get_brand;
         }
 
         // get vm percentage
         static u8 get_percent() {
-            memo_struct& tmp = cache.at(true);
+            cache_struct& tmp = cache.at(true);
             return tmp.get_percent;
         }
 
@@ -687,7 +687,7 @@ private:
             std::string local_vm_brand = (p_flags & FOUND_BRAND) ? vm_brand : brand(NO_MEMO);
             u8 local_vm_percent = (p_flags & FOUND_PERCENT) ? vm_percent : percentage(NO_MEMO);
 
-            memo_struct tmp(local_vm_brand, local_vm_percent, local_is_vm);
+            cache_struct tmp(local_vm_brand, local_vm_percent, local_is_vm);
             cache[true] = tmp;
         }
     };
@@ -1499,7 +1499,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-#if (!x86)
+#if (!x86 || MSVC)
         return false;
 #else
         u32 a, b, c, d = 0;
@@ -2382,7 +2382,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check if the mouse coordinates have changed after 5 seconds
      * @note Some VMs are automatic without a human due to mass malware scanning being a thing
      * @note Disabled by default due to performance reasons
-     * @note Doing this on linux is a major pain bc it requires X11 linkage and it isn't universally supported
      * @category Windows
      */
     [[nodiscard]] static bool cursor_check() try {
@@ -5331,16 +5330,21 @@ MSVC_ENABLE_WARNING(4626 4514)
 };
 
 
-std::map<bool, VM::memo::memo_struct> VM::memo::cache;
+std::map<bool, VM::memo::cache_struct> VM::memo::cache;
 
 VM::flagset VM::flags = 0;
 
 VM::flagset VM::DEFAULT = []() -> flagset {
     flagset tmp;
-    tmp.set(); // set all bits to 1
+    
+    // set all bits to 1
+    tmp.set();
+
+    // disable all the non-default flags
     tmp.flip(EXTREME);
     tmp.flip(NO_MEMO);
     tmp.flip(CURSOR);
+    tmp.flip(WIN11_HYPERV);
     return tmp;
 }();
 
