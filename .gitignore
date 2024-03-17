@@ -53,3 +53,4 @@ release_notes.txt
 *.bk
 cmake-build-*/
 .idea/*
+*.bkp

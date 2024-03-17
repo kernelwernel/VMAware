@@ -294,6 +294,7 @@ public:
         SIDT,
         SLDT,
         SGDT,
+        HYPERV_BOARD,
         EXTREME,
         NO_MEMO,
         WIN11_HYPERV
@@ -1468,9 +1469,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
     
 #if (!x86)
-            return false;
+        return false;
 #else
-            u32 unused, ecx = 0;
+        if (core::enabled(WIN11_HYPERV)) {
+            return false;
+        }
+
+        u32 unused, ecx = 0;
 
         cpu::cpuid(unused, unused, ecx, unused, 1);
 
@@ -1499,7 +1504,18 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #else
         u32 a, b, c, d = 0;
 
-        for (u8 i = 0; i < 0xFF; i++) {
+        if (core::enabled(WIN11_HYPERV)) {
+            cpu::cpuid(a, b, c, d, (cpu::leaf::hypervisor));
+            if (
+                b == 0x7263694D &&  // "Micr"
+                c == 0x666F736F &&  // "osof"
+                d == 0x76482074     // "t Hv"
+            ) {
+                return false;
+            }
+        }
+
+        for (u8 i = 0; i <= 0xFF; i++) {
             cpu::cpuid(a, b, c, d, (cpu::leaf::hypervisor + i));
             if ((a + b + c + d) != 0) {
                 return true;
@@ -1528,6 +1544,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!x86)
         return false;
 #else
+        if (core::enabled(WIN11_HYPERV)) {
+            return false;
+        }
+
         char out[sizeof(int32_t) * 4 + 1] = { 0 }; // e*x size + number of e*x registers + null terminator
         cpu::cpuid((int*)out, cpu::leaf::hypervisor);
 
@@ -2401,6 +2421,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @author pafish project
      * @link https://github.com/a0rtega/pafish/blob/master/pafish/wine.c
      * @category Windows
+     * @copyright GPL-3.0
      */
     [[nodiscard]] static bool wine() try {
         if (core::disabled(WINE_CHECK)) {
@@ -2453,7 +2474,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             _T("C:\\windows\\System32\\Drivers\\VMToolsHook.dll"),
             _T("C:\\windows\\System32\\Drivers\\vmGuestLib.dll"),
             _T("C:\\windows\\System32\\Drivers\\vmhgfs.dll"),
-            _T("C:\\windows\\System32\\Drivers\\vmhgfs.dll"),  // Note: there's a typo in the original code
+
             // VBox
             _T("C:\\windows\\System32\\Drivers\\VBoxMouse.sys"),
             _T("C:\\windows\\System32\\Drivers\\VBoxGuest.sys"),
@@ -2497,7 +2518,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         else if (vbox < vmware) {
             return core::add(VMWARE);
         }
-        else if (vbox > 0 && vbox == vmware) {
+        else if (
+            vbox > 0 && 
+            vmware > 0 && 
+            vbox == vmware
+        ) {
             return true;
         }
 
@@ -2812,7 +2837,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check if memory is too low
      * @author Al-Khaser project
      * @category x86?
-    */
+     * @copyright GPL-3.0
+     */
     [[nodiscard]] static bool low_memory_space() try {
         if (core::disabled(MEMORY)) {
             return false;
@@ -2870,25 +2896,20 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return present;
         };
 
-        auto ret = [](const char* str) -> bool {
-            debug("VM_PROCESSES: found ", str);
-            return core::add(str);
-        };
-
         if (check_proc(_T("joeboxserver.exe")) || check_proc(_T("joeboxcontrol.exe"))) {
-            return ret(JOEBOX);
+            return core::add(JOEBOX);
         }
 
         if (check_proc(_T("prl_cc.exe")) || check_proc(_T("prl_tools.exe"))) {
-            return ret(PARALLELS);
+            return core::add(PARALLELS);
         }
 
         if (check_proc(_T("vboxservice.exe")) || check_proc(_T("vboxtray.exe"))) {
-            return ret(VBOX);
+            return core::add(VBOX);
         }
 
         if (check_proc(_T("vmsrvc.exe")) || check_proc(_T("vmusrvc.exe"))) {
-            return ret(VPC);
+            return core::add(VPC);
         }
 
         if (
@@ -2899,11 +2920,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             check_proc(_T("vmware.exe")) ||
             check_proc(_T("vmount2.exe"))
         ) {
-            return ret(VMWARE);
+            return core::add(VMWARE);
         }
 
         if (check_proc(_T("xenservice.exe")) || check_proc(_T("xsvc_depriv.exe"))) {
-            return ret(XEN);
+            return core::add(XEN);
         }
 
         return false;
@@ -4800,6 +4821,161 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
 
 
+    /**
+     * @brief Go through the motherboard and match for Hyper-V string
+     * @category Windows
+     */ 
+    [[nodiscard]] static bool hyperv_board() try {
+        if (core::disabled(HYPERV_BOARD)) {
+            return false;
+        }
+
+#if (!MSVC)
+        return false;
+#else
+        HRESULT hres;
+
+        hres = CoInitializeEx(0, COINIT_MULTITHREADED);
+        if (FAILED(hres)) {
+            debug("VPC_BOARD: Failed to initialize COM library. Error code: ", hres);
+            return false;
+        }
+
+        hres = CoInitializeSecurity(
+            NULL,
+            -1,                          // use the default authentication service
+            NULL,                        // use the default authorization service
+            NULL,                        // reserved
+            RPC_C_AUTHN_LEVEL_DEFAULT,   // authentication
+            RPC_C_IMP_LEVEL_IMPERSONATE, // impersonation
+            NULL,                        // authentication info
+            EOAC_NONE,                   // additional capabilities
+            NULL                         // reserved
+        );
+
+        if (FAILED(hres)) {
+            debug("VPC_BOARD: Failed to initialize security. Error code: ", hres);
+            CoUninitialize();
+            return false;
+        }
+
+        IWbemLocator* pLoc = NULL;
+        IWbemServices* pSvc = NULL;
+
+        hres = CoCreateInstance(
+            CLSID_WbemLocator,
+            0,
+            CLSCTX_INPROC_SERVER,
+            IID_IWbemLocator,
+            (LPVOID*)&pLoc
+        );
+
+        if (FAILED(hres)) {
+            debug("VPC_BOARD: Failed to create IWbemLocator object. Error code: ", hres);
+            CoUninitialize();
+            return false;
+        }
+
+        hres = pLoc->ConnectServer(
+            _bstr_t(L"ROOT\\CIMV2"), // Namespace
+            NULL,                    // User name
+            NULL,                    // User password
+            0,                       // Locale
+            NULL,                    // Security flags
+            0,                       // Authority
+            0,                       // Context object pointer
+            &pSvc
+        );
+
+        if (FAILED(hres)) {
+            debug("VPC_BOARD: Failed to connect to WMI. Error code: ", hres);
+            pLoc->Release();
+            CoUninitialize();
+            return false;
+        }
+
+        hres = CoSetProxyBlanket(
+            pSvc,                        // Indicates the proxy to set
+            RPC_C_AUTHN_WINNT,           // RPC_C_AUTHN_xxx
+            RPC_C_AUTHZ_NONE,            // RPC_C_AUTHZ_xxx
+            NULL,                        // Server principal name
+            RPC_C_AUTHN_LEVEL_CALL,      // RPC_C_AUTHN_LEVEL_xxx
+            RPC_C_IMP_LEVEL_IMPERSONATE, // RPC_C_IMP_LEVEL_xxx
+            NULL,                        // client identity
+            EOAC_NONE                    // proxy capabilities
+        );
+
+        if (FAILED(hres)) {
+            debug("VPC_BOARD: Failed to set proxy blanket. Error code: ", hres);
+            pSvc->Release();
+            pLoc->Release();
+            CoUninitialize();
+            return false;
+        }
+
+        IEnumWbemClassObject* enumerator = NULL;
+        hres = pSvc->ExecQuery(
+            bstr_t("WQL"),
+            bstr_t("SELECT * FROM Win32_BaseBoard"),
+            WBEM_FLAG_FORWARD_ONLY | WBEM_FLAG_RETURN_IMMEDIATELY,
+            NULL,
+            &enumerator
+        );
+
+        if (FAILED(hres)) {
+            debug("VPC_BOARD: Query for Win32_BaseBoard failed. Error code: ", hres);
+            pSvc->Release();
+            pLoc->Release();
+            CoUninitialize();
+            return false;
+        }
+
+        IWbemClassObject* pclsObj = NULL;
+        ULONG uReturn = 0;
+        bool is_vm = false;
+
+        while (enumerator) {
+            HRESULT hr = enumerator->Next(WBEM_INFINITE, 1, &pclsObj, &uReturn);
+
+            if (uReturn == 0) {
+                break;
+            }
+
+            VARIANT vtProp;
+            VariantInit(&vtProp);
+            hr = pclsObj->Get(L"Manufacturer", 0, &vtProp, 0, 0);
+
+            if (SUCCEEDED(hr)) {
+                if (vtProp.vt == VT_BSTR && _wcsicmp(vtProp.bstrVal, L"Microsoft Corporation Virtual Machine") == 0) {
+                    is_vm = true;
+                    VariantClear(&vtProp);
+                    break;
+                }
+
+                VariantClear(&vtProp);
+            }
+
+            pclsObj->Release();
+        }
+
+        enumerator->Release();
+        pSvc->Release();
+        pLoc->Release();
+        CoUninitialize();
+
+        if (is_vm) {
+            return core::add(HYPERV);
+        }
+
+        return false;
+#endif
+    }
+    catch (...) {
+        debug("HYPERV_BOARD:", "catched error, returned false");
+        return false;
+    }
+
+
     struct core {
         MSVC_DISABLE_WARNING(4820)
         struct technique {
@@ -4830,18 +5006,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return true;
         }
 
-        /**
-         * assert if the flag is enabled, far better expression than typing this:
-         * if (!(flags & VMID)) {
-         *    return false;
-         * }
-         *
-         * compared to this:
-         *
-         * if (core::disabled(VMID)) {
-         *    return false;
-         * }
-         */
+        // assert if the flag is enabled, far better expression than typing std::bitset member functions
 #if (LINUX && __has_cpp_attribute(gnu::pure))
         [[gnu::pure]]
 #endif
@@ -5249,7 +5414,7 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::WMIC, { 20, VM::wmic }},
     { VM::VMID_0X4, { 90, VM::vmid_0x4 }},
     { VM::PARALLELS_VM, { 50, VM::parallels }},
-    { VM::RDTSC_VMEXIT, { 50, VM::rdtsc_vmexit }},
+    { VM::RDTSC_VMEXIT, { 35, VM::rdtsc_vmexit }},
     { VM::LOADED_DLLS, { 75, VM::loaded_dlls }},
     { VM::QEMU_BRAND, { 100, VM::cpu_brand_qemu }},
     { VM::BOCHS_CPU, { 95, VM::bochs_cpu }},
@@ -5277,7 +5442,8 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::VPC_INVALID, { 75, VM::vpc_invalid }},
     { VM::SIDT, { 60, VM::sidt }},
     { VM::SLDT, { 25, VM::sldt }},
-    { VM::SGDT, { 50, VM::sgdt }}
+    { VM::SGDT, { 50, VM::sgdt }},
+    { VM::HYPERV_BOARD, { 45, VM::hyperv_board }}
 
     // __TABLE_LABEL, add your technique above
     // { VM::FUNCTION, { POINTS, FUNCTION_POINTER }}
