@@ -5199,9 +5199,10 @@ public: // START OF PUBLIC FUNCTIONS
         constexpr const char* TMP_KVM = VM::KVM;
 #endif
 
-        if (
-            (core::scoreboard.at(TMP_QEMU) > 0) &&
-            (core::scoreboard.at(TMP_KVM) > 0)
+        if (core::scoreboard.contains(TMP_QEMU) &&
+            core::scoreboard.contains(TMP_KVM) &&
+            core::scoreboard.at(TMP_QEMU) > 0 &&
+            core::scoreboard.at(TMP_KVM) > 0
         ) {
             current_brand = "QEMU+KVM";
         }
