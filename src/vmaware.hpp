@@ -2463,7 +2463,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         u8 vbox = 0;
         u8 vmware = 0;
 
-        constexpr std::array<const TCHAR*, 26> files = { {
+        constexpr std::array<const TCHAR*, 25> files = { {
             // VMware
             _T("C:\\windows\\System32\\Drivers\\Vmmouse.sys"),
             _T("C:\\windows\\System32\\Drivers\\vm3dgl.dll"),
