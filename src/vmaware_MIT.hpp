@@ -13,6 +13,7 @@
  *      - @Requiem (https://github.com/NotRequiem)
  *      - @Alex (https://github.com/greenozon)
  *      - @Marek Knápek (https://github.com/MarekKnapek)
+ *      - @Vladyslav Miachkov (https://github.com/fameowner99)
  *  - Repository: https://github.com/kernelwernel/VMAware
  *  - Docs: https://github.com/kernelwernel/VMAware/docs/documentation.md
  *  - Full credits: https://github.com/kernelwernel/VMAware#credits
@@ -39,14 +40,14 @@
  * SOFTWARE.
  * 
  * ================================ SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 219
- * - struct for internal cpu operations        => line 365
- * - struct for internal memoization           => line 594
- * - struct for internal utility functions     => line 667
- * - struct for internal core components       => line 3934
- * - start of internal VM detection techniques => line 1231
- * - start of public VM detection functions    => line 4018
- * - start of externally defined variables     => line 4251
+ * - enums for publicly accessible techniques  => line 239
+ * - struct for internal cpu operations        => line 385
+ * - struct for internal memoization           => line 614
+ * - struct for internal utility functions     => line 687
+ * - struct for internal core components       => line 3954
+ * - start of internal VM detection techniques => line 1251
+ * - start of public VM detection functions    => line 4038
+ * - start of externally defined variables     => line 4271
  */
 
 #if (defined(_MSC_VER) || defined(_WIN32) || defined(_WIN64) || defined(__MINGW32__))
@@ -616,23 +617,23 @@ private:
     private:
         // memoization structure
         MSVC_DISABLE_WARNING(4820)
-        struct memo_struct {
+        struct cache_struct {
             std::string get_brand;
             u8 get_percent;
             bool get_vm;
 
             // Default constructor
-            memo_struct() : get_brand("Unknown"), get_percent(0), get_vm(false) {}
+            cache_struct() : get_brand("Unknown"), get_percent(0), get_vm(false) {}
 
             // Constructor to initialize the members
-            memo_struct(const std::string& brand, u8 percent, bool is_vm)
+            cache_struct(const std::string& brand, u8 percent, bool is_vm)
                 : get_brand(brand), get_percent(percent), get_vm(is_vm) {}
         };
         MSVC_ENABLE_WARNING(4820)
 
     public:
         // memoize the value from VM::detect() in case it's ran again
-        static std::map<bool, memo_struct> cache;
+        static std::map<bool, cache_struct> cache;
 
         // easier way to check if the result is memoized
         [[nodiscard]] static inline bool is_memoized() noexcept {
@@ -644,19 +645,19 @@ private:
 
         // get vm bool
         static bool get_vm() {
-            memo_struct& tmp = cache.at(true);
+            cache_struct& tmp = cache.at(true);
             return tmp.get_vm;
         }
 
         // get vm brand
         static std::string get_brand() {
-            memo_struct& tmp = cache.at(true);
+            cache_struct& tmp = cache.at(true);
             return tmp.get_brand;
         }
 
         // get vm percentage
         static u8 get_percent() {
-            memo_struct& tmp = cache.at(true);
+            cache_struct& tmp = cache.at(true);
             return tmp.get_percent;
         }
 
@@ -679,7 +680,7 @@ private:
             std::string local_vm_brand = (p_flags & FOUND_BRAND) ? vm_brand : brand(NO_MEMO);
             u8 local_vm_percent = (p_flags & FOUND_PERCENT) ? vm_percent : percentage(NO_MEMO);
 
-            memo_struct tmp(local_vm_brand, local_vm_percent, local_is_vm);
+            cache_struct tmp(local_vm_brand, local_vm_percent, local_is_vm);
             cache[true] = tmp;
         }
     };
@@ -4305,7 +4306,7 @@ MSVC_ENABLE_WARNING(4626 4514)
 };
 
 
-std::map<bool, VM::memo::memo_struct> VM::memo::cache;
+std::map<bool, VM::memo::cache_struct> VM::memo::cache;
 
 VM::flagset VM::flags = 0;
 
