@@ -3268,7 +3268,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         avg /= 10;
 
-        return (avg >= 1000 || avg == 0);
+        return (avg >= 1500 || avg == 0);
         #endif
     }
     catch (...) {
