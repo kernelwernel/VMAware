@@ -2590,12 +2590,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-#if (!APPLE)
+#if (!APPLE || !x86)
         return false;
 #else
+        // not valid for all cases
+        // my mac return 1
         std::unique_ptr<std::string> result = util::sys_result("echo $((`sysctl -n hw.logicalcpu`/`sysctl -n hw.physicalcpu`))");
 
         return (*result != ("2"));
+        return false;
 #endif
     }
     catch (...) {
@@ -3980,7 +3983,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!APPLE)
         return false;
 #else
-        std::unique_ptr<std::string> platform_ptr = util::sys_result("ioreg -rd1 -c IOPlatformExpertDevice");
+        // board_ptr and manufacturer_ptr empty
+       /* std::unique_ptr<std::string> platform_ptr = util::sys_result("ioreg -rd1 -c IOPlatformExpertDevice");
         std::unique_ptr<std::string> board_ptr = util::sys_result("ioreg -rd1 -c board-id");
         std::unique_ptr<std::string> manufacturer_ptr = util::sys_result("ioreg -rd1 -c manufacturer");
 
@@ -4039,7 +4043,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             check_platform() ||
             check_board() ||
             check_manufacturer()
-        );
+        );*/
+
+        return false;
 #endif            
     }
     catch (...) {
@@ -4073,7 +4079,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return core::add(VBOX);
             }
 
-            return true;
+            return false;
         };
 
         auto check_general = []() -> bool {
