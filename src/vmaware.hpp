@@ -184,6 +184,7 @@
 #elif (APPLE)
 #include <sys/types.h>
 #include <sys/sysctl.h>
+#include <unistd.h>
 #endif
 
 #if (!MSVC)
@@ -726,7 +727,7 @@ private:
 
         // self-explanatory
         [[nodiscard]] static bool is_root() noexcept {
-#if (LINUX)
+#if (LINUX || APPLE)
             const uid_t uid = getuid();
             const uid_t euid = geteuid();
 
@@ -787,7 +788,7 @@ private:
             UNUSED(cmd);
             return tmp;
 #else
-#if (LINUX)
+#if (LINUX || APPLE)
             std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd, "r"), pclose);
 
             if (!pipe) {
