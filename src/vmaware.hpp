@@ -5002,16 +5002,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-#if (                                                          \
-    !x86 ||                                                    \
-    !MSVC ||                                                   \
-    (defined(_WIN32) && defined(__i386__) && !defined(_WIN64)) \
-)
+#if (!x86)
         return false;
-#else
+#elif (defined(_WIN32) && defined(__i386__))
         unsigned char m[6];
         __asm sidt m;
         return (m[5] > 0xd0);
+#else
+        return false;
 #endif
     } catch (...) {
         debug("OFFSEC_SIDT: ", "catched error, returned false");
@@ -5031,16 +5029,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-#if (                                                          \
-    !x86 ||                                                    \
-    !MSVC ||                                                   \
-    (defined(_WIN32) && defined(__i386__) && !defined(_WIN64)) \
-)
+#if (!x86)
         return false;
-#else
+#elif (defined(_WIN32) && defined(__i386__))
         unsigned char m[6];
         __asm sgdt m;
         return (m[5] > 0xd0);
+#else
+        return false;
 #endif
     } catch (...) {
         debug("OFFSEC_SGDT: ", "catched error, returned false");
@@ -5060,20 +5056,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-#if (                                                          \
-    !x86 ||                                                    \
-    !MSVC ||                                                   \
-    (defined(_WIN32) && defined(__i386__) && !defined(_WIN64)) \
-)
+#if (!x86)
         return false;
-#else
+#elif (defined(_WIN32) && defined(__i386__))
         unsigned char m[6];
-    #if (MSVC)
         __asm sldt m;
-    #else
-        return false;
-    #endif
         return (m[0] != 0x00 && m[1] != 0x00);
+#else
+        return false;
 #endif
     } catch (...) {
         debug("OFFSEC_SLDT: ", "catched error, returned false");
