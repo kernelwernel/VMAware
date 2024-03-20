@@ -177,7 +177,7 @@ int main(int argc, char* argv[]) {
         checker(VM::SGDT, "SGDT");
         checker(VM::SLDT, "SLDT");
         checker(VM::HYPERV_BOARD, "Hyper-V motherboard");
-        //checker(VM::OFFSEC_SIDT, "Offensive Security SIDT");
+        checker(VM::OFFSEC_SIDT, "Offensive Security SIDT");
         //checker(VM::OFFSEC_SGDT, "Offensive Security SGDT");
         //checker(VM::OFFSEC_SGDT, "Offensive Security SLDT");
         std::printf("\n");
