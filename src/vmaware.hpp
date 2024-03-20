@@ -4776,21 +4776,18 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-#if (!x86 || (defined(_WIN32) && defined(__i386__)))
+#if (!x86)
         return false;
-#else
+#elif (defined(_WIN32) && defined(__i386__))
         u8 gdtr[6];
         u32 gdt	= 0;
 
-    #if (MSVC)
         _asm sgdt gdtr
-    #else
-        return false;
-    #endif
-
         gdt = *((u32 *)&gdtr[2]);
 
         return ((gdt >> 24) == 0xff);
+#else
+        return false;
 #endif
     } catch (...) {
         debug("SGDT: ", "catched error, returned false");
@@ -4807,13 +4804,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-#if (!x86 || (defined(_WIN32) && defined(__i386__)))
+#if (!x86)
         return false;
 #else
         u8 ldtr[5] = "\xef\xbe\xad\xde";
         u32 ldt= 0;
 
-    #if (MSVC)
+    #if (defined(_WIN32) && defined(__i386__))
         _asm sldt ldtr
     #elif (LINUX)
         __asm__ __volatile__(
