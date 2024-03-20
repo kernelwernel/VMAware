@@ -4783,7 +4783,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         u32 gdt	= 0;
 
         _asm sgdt gdtr
-        gdt = *((u32 *)&gdtr[2]);
+        gdt = *((unsigned long *)&gdtr[2]);
 
         return ((gdt >> 24) == 0xff);
 #else
@@ -4799,6 +4799,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for sldt
      * @category Linux, Windows, x86
      */ 
+/*
     [[nodiscard]] static bool sldt() try {
         if (core::disabled(SLDT)) {
             return false;
@@ -4830,6 +4831,38 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         debug("SLDT: ", "catched error, returned false");
         return false;
     }
+*/
+
+    /**
+     * @brief Check for sldt
+     * @category Windows, x86
+     */ 
+    [[nodiscard]] static bool sldt() try {
+        if (core::disabled(SLDT)) {
+            return false;
+        }
+
+#if (!x86)
+        return false;
+#elif (defined(_WIN32) && defined(__i386__))
+        u8 ldtr[5] = "\xef\xbe\xad\xde";
+        u32 ldt= 0;
+
+        _asm sldt ldtr
+        ldt = *((u32 *)&ldtr[0]);
+
+        return (ldt != 0xdead0000);
+#else
+        return false;
+#endif
+    }
+    catch (...) {
+        debug("SLDT: ", "catched error, returned false");
+        return false;
+    }
+
+
+
 
 
     /**
@@ -5534,13 +5567,13 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::QEMU_DIR, { 45, VM::qemu_dir }},
     { VM::VPC_PROC, { 30, VM::vpc_proc }},
     { VM::VPC_INVALID, { 75, VM::vpc_invalid }},
-    //{ VM::SIDT, { 30, VM::sidt }},
-    //{ VM::SGDT, { 30, VM::sgdt }},
-    //{ VM::SLDT, { 15, VM::sldt }},
+    { VM::SIDT, { 30, VM::sidt }},
+    { VM::SGDT, { 30, VM::sgdt }},
+    { VM::SLDT, { 15, VM::sldt }},
+    { VM::HYPERV_BOARD, { 45, VM::hyperv_board }}
     //{ VM::OFFSEC_SIDT, { 60, VM::offsec_sidt }},
     //{ VM::OFFSEC_SGDT, { 60, VM::offsec_sgdt }},
     //{ VM::OFFSEC_SLDT, { 20, VM::offsec_sldt }},
-    //{ VM::HYPERV_BOARD, { 45, VM::hyperv_board }}
 
     // __TABLE_LABEL, add your technique above
     // { VM::FUNCTION, { POINTS, FUNCTION_POINTER }}

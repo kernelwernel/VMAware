@@ -173,13 +173,13 @@ int main(int argc, char* argv[]) {
         checker(VM::QEMU_DIR, "QEMU directories");
         checker(VM::VPC_PROC, "VPC processes");
         checker(VM::VPC_INVALID, "VPC invalid instructions");
-        //checker(VM::SIDT, "SIDT");
-        //checker(VM::SGDT, "SGDT");
-        //checker(VM::SLDT, "SLDT");
+        checker(VM::SIDT, "SIDT");
+        checker(VM::SGDT, "SGDT");
+        checker(VM::SLDT, "SLDT");
+        checker(VM::HYPERV_BOARD, "Hyper-V motherboard");
         //checker(VM::OFFSEC_SIDT, "Offensive Security SIDT");
         //checker(VM::OFFSEC_SGDT, "Offensive Security SGDT");
         //checker(VM::OFFSEC_SGDT, "Offensive Security SLDT");
-        //checker(VM::HYPERV_BOARD, "Hyper-V motherboard");
         std::printf("\n");
 
         const std::string brand = VM::brand();
