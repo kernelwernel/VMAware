@@ -298,6 +298,7 @@ public:
         HYPERV_BOARD,
         OFFSEC_SIDT,
         OFFSEC_SGDT,
+        OFFSEC_SLDT,
         EXTREME,
         NO_MEMO,
         WIN11_HYPERV
@@ -5038,6 +5039,33 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
 
 
+    /**
+     * @brief Check for Offensive Security sldt method
+     * @category Windows, x86
+     * @author Danny Quist (chamuco@gmail.com)
+     * @author Val Smith (mvalsmith@metasploit.com)
+     * @note code documentation paper in /papers/www.offensivecomputing.net_vm.pdf
+     */ 
+    [[nodiscard]] static bool offsec_sldt() try {
+        if (core::disabled(OFFSEC_SLDT)) {
+            return false;
+        }
+
+#if (!x86)
+        return false;
+#elif (defined(_WIN32) && defined(__i386__))
+        unsigned char m[6];
+        __asm sldt m;
+        return (m[0] != 0x00 && m[1] != 0x00);
+#else
+        return false;
+#endif
+    } catch (...) {
+        debug("OFFSEC_SLDT: ", "catched error, returned false");
+        return false;
+    }
+
+
     struct core {
         MSVC_DISABLE_WARNING(4820)
         struct technique {
@@ -5513,7 +5541,8 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::SGDT, { 50, VM::sgdt }},
     { VM::HYPERV_BOARD, { 45, VM::hyperv_board }},
     { VM::OFFSEC_SIDT, { 60, VM::offsec_sidt }},
-    { VM::OFFSEC_SGDT, { 60, VM::offsec_sgdt }}
+    { VM::OFFSEC_SGDT, { 60, VM::offsec_sgdt }},
+    { VM::OFFSEC_SLDT, { 20, VM::offsec_sldt }}
 
     // __TABLE_LABEL, add your technique above
     // { VM::FUNCTION, { POINTS, FUNCTION_POINTER }}
