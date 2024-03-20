@@ -5537,9 +5537,9 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::SIDT, { 30, VM::sidt }},
     { VM::SGDT, { 30, VM::sgdt }},
     { VM::SLDT, { 15, VM::sldt }},
-    { VM::OFFSEC_SIDT, { 60, VM::offsec_sidt }},
-    { VM::OFFSEC_SGDT, { 60, VM::offsec_sgdt }},
-    { VM::OFFSEC_SLDT, { 20, VM::offsec_sldt }},
+    //{ VM::OFFSEC_SIDT, { 60, VM::offsec_sidt }},
+    //{ VM::OFFSEC_SGDT, { 60, VM::offsec_sgdt }},
+    //{ VM::OFFSEC_SLDT, { 20, VM::offsec_sldt }},
     { VM::HYPERV_BOARD, { 45, VM::hyperv_board }}
 
     // __TABLE_LABEL, add your technique above
