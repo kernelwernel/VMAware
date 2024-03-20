@@ -293,12 +293,12 @@ public:
         VPC_PROC,
         VPC_INVALID,
         SIDT,
-        SLDT,
         SGDT,
-        HYPERV_BOARD,
+        SLDT,
         OFFSEC_SIDT,
         OFFSEC_SGDT,
         OFFSEC_SLDT,
+        HYPERV_BOARD,
         EXTREME,
         NO_MEMO,
         WIN11_HYPERV
@@ -5537,12 +5537,12 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::VPC_PROC, { 30, VM::vpc_proc }},
     { VM::VPC_INVALID, { 75, VM::vpc_invalid }},
     { VM::SIDT, { 60, VM::sidt }},
-    { VM::SLDT, { 25, VM::sldt }},
     { VM::SGDT, { 50, VM::sgdt }},
-    { VM::HYPERV_BOARD, { 45, VM::hyperv_board }},
+    { VM::SLDT, { 25, VM::sldt }},
     { VM::OFFSEC_SIDT, { 60, VM::offsec_sidt }},
     { VM::OFFSEC_SGDT, { 60, VM::offsec_sgdt }},
-    { VM::OFFSEC_SLDT, { 20, VM::offsec_sldt }}
+    { VM::OFFSEC_SLDT, { 20, VM::offsec_sldt }},
+    { VM::HYPERV_BOARD, { 45, VM::hyperv_board }}
 
     // __TABLE_LABEL, add your technique above
     // { VM::FUNCTION, { POINTS, FUNCTION_POINTER }}
