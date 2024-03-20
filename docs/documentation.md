@@ -292,9 +292,13 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::QEMU_DIR` | Check for QEMU-specific blacklisted directories | Windows | 45% |  | GPL |
 | `VM::VPC_PROC` | Check for VPC processes | Windows | 30% |  |  |
 | `VM::VPC_INVALID` | Check for official VPC method | Windows | 75% |  |  |
-| `VM::SIDT` | Check for sidt instruction method | Linux, Windows | 60% |  |  |
-| `VM::SLDT` | Check for sldt instruction method | Windows | 25% |  |  |
-| `VM::SGDT` | Check for sgdt instruction method | Windows | 50% |  |  |
+| `VM::SIDT` | Check for sidt instruction method | Linux, Windows | 30% |  |  |
+| `VM::SGDT` | Check for sgdt instruction method | Windows | 30% |  |  |
+| `VM::SLDT` | Check for sldt instruction method | Linux, Windows | 15% |  |  |
+| `VM::OFFSEC_SIDT` | Check for Offensive Security SIDT method | Windows | 60% |  |  |
+| `VM::OFFSEC_SGDT` | Check for Offensive Security SGDT method | Windows | 60% |  |  |
+| `VM::OFFSEC_SLDT` | Check for Offensive Security SLDT method | Windows | 20% |  |  |
+| `VM::HYPERV_BOARD` | Check for Hyper-V string in motherboard | Windows | 45% |  |  |
 
 <br>
 
