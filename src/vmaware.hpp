@@ -292,8 +292,11 @@ public:
         VPC_PROC,
         VPC_INVALID,
         SIDT,
-        SLDT,
         SGDT,
+        SLDT,
+        OFFSEC_SIDT,
+        OFFSEC_SGDT,
+        OFFSEC_SLDT,
         HYPERV_BOARD,
         EXTREME,
         NO_MEMO,
@@ -1515,7 +1518,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
         }
 
-        for (u8 i = 0; i <= 0xFF; i++) {
+        for (u8 i = 0; i < 0xFF; i++) {
             cpu::cpuid(a, b, c, d, (cpu::leaf::hypervisor + i));
             if ((a + b + c + d) != 0) {
                 return true;
@@ -4730,6 +4733,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 	    u32	idt	= 0;
 
 	    _asm sidt idtr
+
 	    idt = *((unsigned long *)&idtr[2]);
 
 	    return ((idt >> 24) == 0xff);
@@ -4764,35 +4768,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check for sldt
-     * @category Windows, x86
-     */ 
-    [[nodiscard]] static bool sldt() try {
-        if (core::disabled(SLDT)) {
-            return false;
-        }
-
-#if (!x86)
-        return false;
-#elif (defined(_WIN32) && defined(__i386__))
-        u8 ldtr[5] = "\xef\xbe\xad\xde";
-        u32 ldt= 0;
-
-        _asm sldt ldtr
-        ldt = *((u32 *)&ldtr[0]);
-
-        return (ldt != 0xdead0000);
-#else
-        return false;
-#endif
-    }
-    catch (...) {
-        debug("SLDT: ", "catched error, returned false");
-        return false;
-    }
-
-
-    /**
      * @brief Check for sgdt
      * @category Windows, x86
      */ 
@@ -4801,21 +4776,61 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-#if (!x86)
+#if (!x86 || (defined(_WIN32) && defined(__i386__)))
         return false;
-#elif (defined(_WIN32) && defined(__i386__))
+#else
         u8 gdtr[6];
         u32 gdt	= 0;
 
+    #if (MSVC)
         _asm sgdt gdtr
-        gdt = *((unsigned long *)&gdtr[2]);
+    #else
+        return false;
+    #endif
+
+        gdt = *((u32 *)&gdtr[2]);
 
         return ((gdt >> 24) == 0xff);
-#else
-        return false;
 #endif
     } catch (...) {
         debug("SGDT: ", "catched error, returned false");
+        return false;
+    }
+
+
+    /**
+     * @brief Check for sldt
+     * @category Linux, Windows, x86
+     */ 
+    [[nodiscard]] static bool sldt() try {
+        if (core::disabled(SLDT)) {
+            return false;
+        }
+
+#if (!x86 || (defined(_WIN32) && defined(__i386__)))
+        return false;
+#else
+        u8 ldtr[5] = "\xef\xbe\xad\xde";
+        u32 ldt= 0;
+
+    #if (MSVC)
+        _asm sldt ldtr
+    #elif (LINUX)
+        __asm__ __volatile__(
+            "sldt %0" 
+            : "=m" (ldtr)
+        );
+    #else
+        return false;
+    #endif
+
+        ldt = *((u32 *)&ldtr[0]);
+
+        return (ldt != 0xdead0000);
+#endif
+    }
+    catch (...) {
+        debug("SLDT: ", "catched error, returned false");
         return false;
     }
 
@@ -4974,6 +4989,96 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
     }
 
+
+    /**
+     * @brief Check for offensive security sidt method
+     * @category Windows, x86
+     * @author Danny Quist (chamuco@gmail.com)
+     * @author Val Smith (mvalsmith@metasploit.com)
+     * @note code documentation paper in /papers/www.offensivecomputing.net_vm.pdf
+     */ 
+    [[nodiscard]] static bool offsec_sidt() try {
+        if (core::disabled(OFFSEC_SIDT)) {
+            return false;
+        }
+
+#if (                                                          \
+    !x86 ||                                                    \
+    !MSVC ||                                                   \
+    (defined(_WIN32) && defined(__i386__) && !defined(_WIN64)) \
+)
+        return false;
+#else
+        unsigned char m[6];
+        __asm sidt m;
+        return (m[5] > 0xd0);
+#endif
+    } catch (...) {
+        debug("OFFSEC_SIDT: ", "catched error, returned false");
+        return false;
+    }
+
+
+    /**
+     * @brief Check for offensive security sgdt method
+     * @category Windows, x86
+     * @author Danny Quist (chamuco@gmail.com)
+     * @author Val Smith (mvalsmith@metasploit.com)
+     * @note code documentation paper in /papers/www.offensivecomputing.net_vm.pdf
+     */ 
+    [[nodiscard]] static bool offsec_sgdt() try {
+        if (core::disabled(OFFSEC_SGDT)) {
+            return false;
+        }
+
+#if (                                                          \
+    !x86 ||                                                    \
+    !MSVC ||                                                   \
+    (defined(_WIN32) && defined(__i386__) && !defined(_WIN64)) \
+)
+        return false;
+#else
+        unsigned char m[6];
+        __asm sgdt m;
+        return (m[5] > 0xd0);
+#endif
+    } catch (...) {
+        debug("OFFSEC_SGDT: ", "catched error, returned false");
+        return false;
+    }
+
+
+    /**
+     * @brief Check for Offensive Security sldt method
+     * @category Windows, x86
+     * @author Danny Quist (chamuco@gmail.com)
+     * @author Val Smith (mvalsmith@metasploit.com)
+     * @note code documentation paper in /papers/www.offensivecomputing.net_vm.pdf
+     */ 
+    [[nodiscard]] static bool offsec_sldt() try {
+        if (core::disabled(OFFSEC_SLDT)) {
+            return false;
+        }
+
+#if (                                                          \
+    !x86 ||                                                    \
+    !MSVC ||                                                   \
+    (defined(_WIN32) && defined(__i386__) && !defined(_WIN64)) \
+)
+        return false;
+#else
+        unsigned char m[6];
+    #if (MSVC)
+        __asm sldt m;
+    #else
+        return false;
+    #endif
+        return (m[0] != 0x00 && m[1] != 0x00);
+#endif
+    } catch (...) {
+        debug("OFFSEC_SLDT: ", "catched error, returned false");
+        return false;
+    }
 
     struct core {
         MSVC_DISABLE_WARNING(4820)
@@ -5262,11 +5367,9 @@ public: // START OF PUBLIC FUNCTIONS
      */ 
     static void add_custom(
         const std::uint8_t percent, 
-#if (CPP >= 20 && !defined(__clang__))
-        std::function<bool()> detection_func, 
-        const std::source_location& loc = std::source_location::current()
-#else
         std::function<bool()> detection_func
+#if (CPP >= 20 && !defined(__clang__))
+        , const std::source_location& loc = std::source_location::current()
 #endif
     ) {
         auto throw_error = [&](const char* text) -> void {
@@ -5444,9 +5547,12 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::QEMU_DIR, { 45, VM::qemu_dir }},
     { VM::VPC_PROC, { 30, VM::vpc_proc }},
     { VM::VPC_INVALID, { 75, VM::vpc_invalid }},
-    { VM::SIDT, { 60, VM::sidt }},
-    { VM::SLDT, { 25, VM::sldt }},
-    { VM::SGDT, { 50, VM::sgdt }},
+    { VM::SIDT, { 30, VM::sidt }},
+    { VM::SGDT, { 30, VM::sgdt }},
+    { VM::SLDT, { 15, VM::sldt }},
+    { VM::OFFSEC_SIDT, { 60, VM::offsec_sidt }},
+    { VM::OFFSEC_SGDT, { 60, VM::offsec_sgdt }},
+    { VM::OFFSEC_SLDT, { 20, VM::offsec_sldt }},
     { VM::HYPERV_BOARD, { 45, VM::hyperv_board }}
 
     // __TABLE_LABEL, add your technique above
