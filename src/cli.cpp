@@ -48,7 +48,6 @@ public:
   }
 private:
   win_ansi_enabler_t(win_ansi_enabler_t const&);
-  win_ansi_enabler_t& operator=(win_ansi_enabler_t const&);
 private:
   BOOL m_set;
   DWORD m_old;
