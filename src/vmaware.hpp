@@ -2721,7 +2721,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!MSVC)
         return false;
 #else
-        constexpr u32 pnsize = 0x1000;
+        u32 pnsize = 0x1000;
         TCHAR* provider = new TCHAR[pnsize];
 
         u32 retv = WNetGetProviderName(WNNC_NET_RDR2SAMPLE, provider, reinterpret_cast<LPDWORD>(&pnsize));
