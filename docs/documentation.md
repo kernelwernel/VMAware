@@ -243,7 +243,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::DMIDECODE` | Get output from dmidecode tool and grep for common VM keywords | Linux | 55% | Admin |  |
 | `VM::DMESG` | Get output from dmesg tool and grep for common VM keywords | Linux | 55% |  |  |
 | `VM::HWMON` | Check if HWMON is present (if not, likely a VM) | Linux | 75% |  |  |
-| `VM::CURSOR`  | Check if cursor isn't active (sign of automated VM environment) | Windows | 10% |  |  |
+| `VM::CURSOR`  | Check if cursor isn't active (sign of automated VM environment) | Windows | 5% |  |  |
 | `VM::VMWARE_REG` | Look for any VMware-specific registry data | Windows | 65% |  |  |
 | `VM::VBOX_REG` | Look for any VirtualBox-specific registry data | Windows | 65% |  |  |
 | `VM::USER` | Match the username for any defaulted ones | Windows | 35% |  |  |
@@ -276,7 +276,6 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::BIOS_SERIAL` | Check if BIOS serial number is null | Windows | 60% |  |  |
 | `VM::VBOX_FOLDERS` | Check for VirtualBox-specific string for shared folder ID | Windows | 45% |  |  |
 | `VM::VBOX_MSSMBIOS` | Check VirtualBox MSSMBIOS registry for VM-specific strings | Windows | 75% |  |  |
-| `VM::MAC_HYPERTHREAD` | Check if hyperthreading core count matches with physical expectations | MacOS | 10% |  |  |
 | `VM::MAC_MEMSIZE` | Check if memory is too low for MacOS system | MacOS | 30% |  |  |
 | `VM::MAC_IOKIT` | Check MacOS' IO kit registry for VM-specific strings | MacOS | 80% |  |  |
 | `VM::IOREG_GREP` | Check for VM-strings in ioreg commands for MacOS | MacOS | 75% |  |  |
@@ -309,4 +308,4 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::NO_MEMO` | This will disable memoization, meaning the result will not be fetched through a previous computation of the `VM::detect()` function. Use this if you're only using a single function from the `VM` struct for a performance boost.
 | `VM::EXTREME` | This will disregard the weights/biases and its scoring system. It will essentially treat any technique that found a hit as a VM detection no matter how low that technique's certainty is, so if a single technique is positive then it will return true. | 
 | `VM::DEFAULT` | This represents a range of flags which are enabled if no default argument is provided. The reason why this exists is to easily disable any bits manually (shown in the is_vm6 example in the `VM::detect()` section)
-| `VM::WIN11_HYPERV` | This will take into account that Windows 11 sometimes may have Hyper-V as a default virtualisation software for any program even if the OS is running as host. Essentially, it will diregard any techniques prone to this issue, and NOT detect it as running in a VM, while having a higher threshold bar to detect it as a VM. |
+| `VM::WIN_HYPERV_DEFAULT` | This will take into account that Windows 11 (and sometimes 10) may have Hyper-V as a default virtualisation software for any program even if the OS is running as host. Essentially, this flag will count any techniques prone to this issue as running in a VM, while having a higher threshold bar to detect it as one. |
