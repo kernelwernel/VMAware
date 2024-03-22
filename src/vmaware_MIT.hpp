@@ -780,7 +780,7 @@ private:
         [[gnu::const]]
 #endif
         static inline bool add(const char* p_brand) noexcept {
-            core::scoreboard.at(p_brand)++;
+            core::brand_scoreboard.at(p_brand)++;
             return true;
         }
 
@@ -2020,7 +2020,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
                 if (std::string(p_brand) != "") {
                     debug("REGISTRY: ", "detected = ", p_brand);
-                    core::scoreboard[p_brand]++;
+                    core::brand_scoreboard[p_brand]++;
                 }
             }
             };
@@ -3982,7 +3982,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         [[gnu::const]]
 #endif
         static inline bool add(const char* p_brand) noexcept {
-            core::scoreboard.at(p_brand)++;
+            core::brand_scoreboard.at(p_brand)++;
             return true;
         }
 
@@ -4118,15 +4118,15 @@ public: // START OF PUBLIC FUNCTIONS
 
         // fetch the brand with the most points in the scoreboard
 #if (CPP >= 20)
-        auto it = std::ranges::max_element(core::scoreboard, {},
+        auto it = std::ranges::max_element(core::brand_scoreboard, {},
             [](const auto& pair) {
                 return pair.second;
             }
         );
 
-        if (it != core::scoreboard.end()) {
+        if (it != core::brand_scoreboard.end()) {
             if (
-                std::none_of(core::scoreboard.cbegin(), core::scoreboard.cend(),
+                std::none_of(core::brand_scoreboard.cbegin(), core::brand_scoreboard.cend(),
                     [](const auto& pair) {
                         return pair.second;
                     }
@@ -4149,14 +4149,14 @@ public: // START OF PUBLIC FUNCTIONS
 #endif
 
 #if (CPP >= 17)
-        for (const auto& [brand, points] : core::scoreboard) {
+        for (const auto& [brand, points] : core::brand_scoreboard) {
             if (points > max) {
                 current_brand = brand;
                 max = points;
             }
         }
 #else
-        for (auto it = core::scoreboard.cbegin(); it != core::scoreboard.cend(); ++it) {
+        for (auto it = core::brand_scoreboard.cbegin(); it != core::brand_scoreboard.cend(); ++it) {
             if (it->second > max) {
                 current_brand = it->first;
                 max = it->second;
@@ -4179,14 +4179,14 @@ public: // START OF PUBLIC FUNCTIONS
 #endif
 
         if (
-            (core::scoreboard.at(TMP_QEMU) > 0) &&
-            (core::scoreboard.at(TMP_KVM) > 0)
-            ) {
+            (core::brand_scoreboard.at(TMP_QEMU) > 0) &&
+            (core::brand_scoreboard.at(TMP_KVM) > 0)
+        ) {
             current_brand = "QEMU+KVM";
         }
 
 #ifdef __VMAWARE_DEBUG__
-        for (const auto p : core::scoreboard) {
+        for (const auto p : core::brand_scoreboard) {
             debug("scoreboard: ", (int)p.second, " : ", p.first);
         }
 #endif
@@ -4280,9 +4280,9 @@ MSVC_ENABLE_WARNING(4626 4514)
 // It's easier to just group them together rather than having C++17<= preprocessors with inline stuff
 
 #if (MSVC)
-std::map<const char*, int> VM::core::scoreboard{
+    std::map<const char*, int> VM::core::brand_scoreboard {
 #else
-    std::map<const char*, VM::u8> VM::core::scoreboard {
+    std::map<const char*, VM::u8> VM::core::brand_scoreboard {
 #endif
     { VM::VMWARE, 0 },
     { VM::VBOX, 0 },

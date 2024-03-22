@@ -19,6 +19,7 @@
 - [ ] fix memoization
 - [X] add a python script to automatically set the lines of the seperate sections in the header
 - [ ] add C++20 concepts for the VM::add_custom() function
+- [ ] check for valid monitor technique
 
 
 # Distant plans

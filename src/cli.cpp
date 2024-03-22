@@ -156,7 +156,6 @@ int main(int argc, char* argv[]) {
         checker(VM::HYPERV_WMI, "Hyper-V WMI output");
         checker(VM::VBOX_FOLDERS, "VirtualBox shared folders");
         checker(VM::VBOX_MSSMBIOS, "VirtualBox MSSMBIOS");
-        checker(VM::MAC_HYPERTHREAD, "MacOS hyperthreading");
         checker(VM::MAC_MEMSIZE, "MacOS hw.memsize");
         checker(VM::MAC_IOKIT, "MacOS registry IO-kit");
         checker(VM::IOREG_GREP, "IO registry grep");

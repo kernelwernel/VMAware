@@ -276,7 +276,6 @@ public:
         BIOS_SERIAL,
         VBOX_FOLDERS,
         VBOX_MSSMBIOS,
-        MAC_HYPERTHREAD,
         MAC_MEMSIZE,
         MAC_IOKIT,
         IOREG_GREP,
@@ -301,7 +300,7 @@ public:
         HYPERV_BOARD,
         EXTREME,
         NO_MEMO,
-        WIN11_HYPERV
+        WIN_HYPERV_DEFAULT
     };
 private:
     static constexpr u8 enum_size = __LINE__ - enum_line_start - 4; // get enum size
@@ -1489,13 +1488,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
+        if (core::disabled(WIN_HYPERV_DEFAULT) && MSVC) {
+            return false;
+        }
+    
 #if (!x86)
         return false;
 #else
-        if (core::enabled(WIN11_HYPERV)) {
-            return false;
-        }
-
         u32 unused, ecx = 0;
 
         cpu::cpuid(unused, unused, ecx, unused, 1);
@@ -1520,12 +1519,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-#if (!x86 || MSVC)
+        if (core::disabled(WIN_HYPERV_DEFAULT) && MSVC) {
+            return false;
+        }
+
+#if (!x86)
         return false;
 #else
         u32 a, b, c, d = 0;
 
-        if (core::enabled(WIN11_HYPERV)) {
+        if (core::enabled(WIN_HYPERV_DEFAULT)) {
             cpu::cpuid(a, b, c, d, (cpu::leaf::hypervisor));
             if (
                 b == 0x7263694D &&  // "Micr"
@@ -1565,7 +1568,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!x86)
         return false;
 #else
-        if (core::enabled(WIN11_HYPERV)) {
+        if (core::disabled(WIN_HYPERV_DEFAULT) && MSVC) {
             return false;
         }
 
@@ -1772,12 +1775,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         PIP_ADAPTER_INFO AdapterInfo;
         DWORD dwBufLen = sizeof(IP_ADAPTER_INFO);
 
-        char* mac_addr = static_cast<char*>(std::malloc(18));
-
         AdapterInfo = (IP_ADAPTER_INFO*)std::malloc(sizeof(IP_ADAPTER_INFO));
 
         if (AdapterInfo == NULL) {
-            free(mac_addr);
             return false;
         }
 
@@ -1785,7 +1785,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             std::free(AdapterInfo);
             AdapterInfo = (IP_ADAPTER_INFO*)std::malloc(dwBufLen);
             if (AdapterInfo == NULL) {
-                std::free(mac_addr);
                 return false;
             }
         }
@@ -2144,7 +2143,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
                 if (std::string(p_brand) != "") {
                     debug("REGISTRY: ", "detected = ", p_brand);
-                    core::scoreboard[p_brand]++;
+                    core::brand_scoreboard[p_brand]++;
                 }
             }
             };
@@ -2603,34 +2602,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief check if hyperthreading core count matches with physical expectations
-     * @category MacOS
-     * @author from MacRansom ransomware
-     * @link https://evasions.checkpoint.com/techniques/macos.html
-     */
-    [[nodiscard]] static bool mac_hyperthread() try {
-        if (core::disabled(MAC_HYPERTHREAD)) {
-            return false;
-        }
-
-#if (!APPLE || !x86)
-        return false;
-#else
-        // not valid for all cases
-        // my mac return 1
-        std::unique_ptr<std::string> result = util::sys_result("echo $((`sysctl -n hw.logicalcpu`/`sysctl -n hw.physicalcpu`))");
-
-        return (*result != ("2"));
-        return false;
-#endif
-    }
-    catch (...) {
-        debug("MAC_HYPERTHREAD: catched error, returned false");
-        return false;
-    }
-
-
-    /**
      * @brief Check if disk size is too low
      * @category Linux (for now)
      */
@@ -2775,7 +2746,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         u32 retv = WNetGetProviderName(WNNC_NET_RDR2SAMPLE, provider, reinterpret_cast<LPDWORD>(&pnsize));
 
         if (retv == NO_ERROR) {
-            return (lstrcmpi(provider, _T("VirtualBox Shared Folders")) == 0);
+            bool result = (lstrcmpi(provider, _T("VirtualBox Shared Folders")) == 0);
+            delete provider;
+            return result;
         }
 
         return false;
@@ -4010,7 +3983,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #else
         // board_ptr and manufacturer_ptr empty
-       /* std::unique_ptr<std::string> platform_ptr = util::sys_result("ioreg -rd1 -c IOPlatformExpertDevice");
+        std::unique_ptr<std::string> platform_ptr = util::sys_result("ioreg -rd1 -c IOPlatformExpertDevice");
         std::unique_ptr<std::string> board_ptr = util::sys_result("ioreg -rd1 -c board-id");
         std::unique_ptr<std::string> manufacturer_ptr = util::sys_result("ioreg -rd1 -c manufacturer");
 
@@ -4018,8 +3991,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const std::string board = *board_ptr;
         const std::string manufacturer = *manufacturer_ptr;
 
+        if (platform.empty())
+
         auto check_platform = [&]() -> bool {
             debug("IO_KIT: ", "platform = ", platform);
+
+            if (platform.empty()) {
+                return false;
+            }
 
             for (const char c : platform) {
                 if (!std::isdigit(c)) {
@@ -4032,7 +4011,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         auto check_board = [&]() -> bool {
             debug("IO_KIT: ", "board = ", board);
-            if (board == "") {
+
+            if (board.empty()) {
                 return false;
             }
 
@@ -4048,11 +4028,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return core::add(VMWARE);
             }
 
-            return true;
+            return false;
         };
 
         auto check_manufacturer = [&]() -> bool {
             debug("IO_KIT: ", "manufacturer = ", manufacturer);
+
+            if (manufacturer.empty()) {
+                return false;
+            }
 
             if (util::find(manufacturer, "Apple")) {
                 return false;
@@ -4062,14 +4046,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return core::add(VBOX);
             }
 
-            return true;
+            return false;
         };
 
         return (
             check_platform() ||
             check_board() ||
             check_manufacturer()
-        );*/
+        );
 
         return false;
 #endif            
@@ -5110,9 +5094,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         // VM scoreboard table specifically for VM::brand()
 #if (MSVC)
-        static std::map<const char*, int> scoreboard;
+        static std::map<const char*, int> brand_scoreboard;
 #else
-        static std::map<const char*, u8> scoreboard;
+        static std::map<const char*, u8> brand_scoreboard;
 #endif
 
         // directly return when adding a brand to the scoreboard for a more succint expression
@@ -5122,7 +5106,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         [[gnu::const]]
 #endif
         static inline bool add(const char* p_brand) noexcept {
-            core::scoreboard.at(p_brand)++;
+            core::brand_scoreboard.at(p_brand)++;
             return true;
         }
 
@@ -5151,7 +5135,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             auto adjust = [=](const u8 value) -> u8 {
 #if (MSVC)
-                if (ver == 11 && core::enabled(WIN11_HYPERV)) {
+                if (ver == 11 && core::enabled(WIN_HYPERV_DEFAULT)) {
                     return (value / 2);
                 }
 #endif
@@ -5259,15 +5243,15 @@ public: // START OF PUBLIC FUNCTIONS
 
         // fetch the brand with the most points in the scoreboard
 #if (CPP >= 20)
-        auto it = std::ranges::max_element(core::scoreboard, {},
+        auto it = std::ranges::max_element(core::brand_scoreboard, {},
             [](const auto& pair) {
                 return pair.second;
             }
         );
 
-        if (it != core::scoreboard.end()) {
+        if (it != core::brand_scoreboard.end()) {
             if (
-                std::none_of(core::scoreboard.cbegin(), core::scoreboard.cend(),
+                std::none_of(core::brand_scoreboard.cbegin(), core::brand_scoreboard.cend(),
                     [](const auto& pair) {
                         return pair.second;
                     }
@@ -5290,14 +5274,14 @@ public: // START OF PUBLIC FUNCTIONS
 #endif
 
 #if (CPP >= 17)
-        for (const auto& [brand, points] : core::scoreboard) {
+        for (const auto& [brand, points] : core::brand_scoreboard) {
             if (points > max) {
                 current_brand = brand;
                 max = points;
             }
         }
 #else
-        for (auto it = core::scoreboard.cbegin(); it != core::scoreboard.cend(); ++it) {
+        for (auto it = core::brand_scoreboard.cbegin(); it != core::brand_scoreboard.cend(); ++it) {
             if (it->second > max) {
                 current_brand = it->first;
                 max = it->second;
@@ -5319,14 +5303,15 @@ public: // START OF PUBLIC FUNCTIONS
         constexpr const char* TMP_KVM = VM::KVM;
 #endif
 
-        if (core::scoreboard.at(TMP_QEMU) > 0 &&
-            core::scoreboard.at(TMP_KVM) > 0
-            ) {
+        if (
+            core::brand_scoreboard.at(TMP_QEMU) > 0 &&
+            core::brand_scoreboard.at(TMP_KVM) > 0
+        ) {
             current_brand = "QEMU+KVM";
         }
 
 #ifdef __VMAWARE_DEBUG__
-        for (const auto p : core::scoreboard) {
+        for (const auto p : core::brand_scoreboard) {
             debug("scoreboard: ", (int)p.second, " : ", p.first);
         }
 #endif
@@ -5420,9 +5405,9 @@ MSVC_ENABLE_WARNING(4626 4514)
 // It's easier to just group them together rather than having C++17<= preprocessors with inline stuff
 
 #if (MSVC)
-std::map<const char*, int> VM::core::scoreboard{
+    std::map<const char*, int> VM::core::brand_scoreboard {
 #else
-    std::map<const char*, VM::u8> VM::core::scoreboard {
+    std::map<const char*, VM::u8> VM::core::brand_scoreboard {
 #endif
     { VM::VMWARE, 0 },
     { VM::VBOX, 0 },
@@ -5465,7 +5450,7 @@ VM::flagset VM::DEFAULT = []() -> flagset {
     tmp.flip(EXTREME);
     tmp.flip(NO_MEMO);
     tmp.flip(CURSOR);
-    tmp.flip(WIN11_HYPERV);
+    tmp.flip(WIN_HYPERV_DEFAULT);
     return tmp;
 }();
 
@@ -5517,7 +5502,7 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::DMESG, { 55, VM::dmesg }},
     { VM::HWMON, { 75, VM::hwmon }},
     { VM::SIDT5, { 45, VM::sidt5 }},
-    { VM::CURSOR, { 10, VM::cursor_check }},
+    { VM::CURSOR, { 5, VM::cursor_check }},
     { VM::VMWARE_REG, { 65, VM::vmware_registry }},
     { VM::VBOX_REG, { 65, VM::vbox_registry }},
     { VM::USER, { 35, VM::user_check }},
@@ -5550,7 +5535,6 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::BIOS_SERIAL, { 60, VM::bios_serial }},
     { VM::VBOX_FOLDERS, { 45, VM::vbox_shared_folders }},
     { VM::VBOX_MSSMBIOS, { 75, VM::vbox_mssmbios }},
-    { VM::MAC_HYPERTHREAD, { 10, VM::mac_hyperthread }},
     { VM::MAC_MEMSIZE, { 30, VM::hw_memsize }},
     { VM::MAC_IOKIT, { 80, VM::io_kit }},
     { VM::IOREG_GREP, { 75, VM::ioreg_grep }},
