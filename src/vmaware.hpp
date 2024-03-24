@@ -4,7 +4,7 @@
  * ██║   ██║██╔████╔██║███████║██║ █╗ ██║███████║██████╔╝█████╗
  * ╚██╗ ██╔╝██║╚██╔╝██║██╔══██║██║███╗██║██╔══██║██╔══██╗██╔══╝
  *  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
- *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ 1.1 (March 2024)
+ *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ 1.2 (March 2024)
  *
  *  A C++ VM detection library
  *
@@ -20,14 +20,14 @@
  *  - License: GPL-3.0
  *
  * ================================ SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 226
- * - struct for internal cpu operations        => line 393
- * - struct for internal memoization           => line 622
- * - struct for internal utility functions     => line 695
- * - struct for internal core components       => line 4977
- * - start of internal VM detection techniques => line 1336
- * - start of public VM detection functions    => line 5062
- * - start of externally defined variables     => line 5295
+ * - enums for publicly accessible techniques  => line 227
+ * - struct for internal cpu operations        => line 397
+ * - struct for internal memoization           => line 626
+ * - struct for internal utility functions     => line 699
+ * - struct for internal core components       => line 5123
+ * - start of internal VM detection techniques => line 1357
+ * - start of public VM detection functions    => line 5208
+ * - start of externally defined variables     => line 5443
  */
 
 #if (defined(_MSC_VER) || defined(_WIN32) || defined(_WIN64) || defined(__MINGW32__))
@@ -298,6 +298,7 @@ public:
         OFFSEC_SGDT,
         OFFSEC_SLDT,
         HYPERV_BOARD,
+        VM_FILES_EXTRA,
         EXTREME,
         NO_MEMO,
         WIN_HYPERV_DEFAULT
@@ -2485,36 +2486,37 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         u8 vbox = 0;
         u8 vmware = 0;
 
-        constexpr std::array<const TCHAR*, 25> files = { {
-                // VMware
-                _T("C:\\windows\\System32\\Drivers\\Vmmouse.sys"),
-                _T("C:\\windows\\System32\\Drivers\\vm3dgl.dll"),
-                _T("C:\\windows\\System32\\Drivers\\vmdum.dll"),
-                _T("C:\\windows\\System32\\Drivers\\VmGuestLibJava.dll"),
-                _T("C:\\windows\\System32\\Drivers\\vm3dver.dll"),
-                _T("C:\\windows\\System32\\Drivers\\vmtray.dll"),
-                _T("C:\\windows\\System32\\Drivers\\VMToolsHook.dll"),
-                _T("C:\\windows\\System32\\Drivers\\vmGuestLib.dll"),
-                _T("C:\\windows\\System32\\Drivers\\vmhgfs.dll"),
+        constexpr std::array<const TCHAR*, 26> files = { {
+            // VMware
+            _T("C:\\windows\\System32\\Drivers\\Vmmouse.sys"),
+            _T("C:\\windows\\System32\\Drivers\\vm3dgl.dll"),
+            _T("C:\\windows\\System32\\Drivers\\vmdum.dll"),
+            _T("C:\\windows\\System32\\Drivers\\VmGuestLibJava.dll"),
+            _T("C:\\windows\\System32\\Drivers\\vm3dver.dll"),
+            _T("C:\\windows\\System32\\Drivers\\vmtray.dll"),
+            _T("C:\\windows\\System32\\Drivers\\VMToolsHook.dll"),
+            _T("C:\\windows\\System32\\Drivers\\vmGuestLib.dll"),
+            _T("C:\\windows\\System32\\Drivers\\vmhgfs.dll"),
 
-                // VBox
-                _T("C:\\windows\\System32\\Drivers\\VBoxMouse.sys"),
-                _T("C:\\windows\\System32\\Drivers\\VBoxGuest.sys"),
-                _T("C:\\windows\\System32\\Drivers\\VBoxSF.sys"),
-                _T("C:\\windows\\System32\\Drivers\\VBoxVideo.sys"),
-                _T("C:\\windows\\System32\\vboxoglpackspu.dll"),
-                _T("C:\\windows\\System32\\vboxoglpassthroughspu.dll"),
-                _T("C:\\windows\\System32\\vboxservice.exe"),
-                _T("C:\\windows\\System32\\vboxoglcrutil.dll"),
-                _T("C:\\windows\\System32\\vboxdisp.dll"),
-                _T("C:\\windows\\System32\\vboxhook.dll"),
-                _T("C:\\windows\\System32\\vboxmrxnp.dll"),
-                _T("C:\\windows\\System32\\vboxogl.dll"),
-                _T("C:\\windows\\System32\\vboxtray.exe"),
-                _T("C:\\windows\\System32\\VBoxControl.exe"),
-                _T("C:\\windows\\System32\\vboxoglerrorspu.dll"),
-                _T("C:\\windows\\System32\\vboxoglfeedbackspu.dll"),
-            } };
+            // VBox
+            _T("C:\\windows\\System32\\Drivers\\VBoxMouse.sys"),
+            _T("C:\\windows\\System32\\Drivers\\VBoxGuest.sys"),
+            _T("C:\\windows\\System32\\Drivers\\VBoxSF.sys"),
+            _T("C:\\windows\\System32\\Drivers\\VBoxVideo.sys"),
+            _T("C:\\windows\\System32\\vboxoglpackspu.dll"),
+            _T("C:\\windows\\System32\\vboxoglpassthroughspu.dll"),
+            _T("C:\\windows\\System32\\vboxservice.exe"),
+            _T("C:\\windows\\System32\\vboxoglcrutil.dll"),
+            _T("C:\\windows\\System32\\vboxdisp.dll"),
+            _T("C:\\windows\\System32\\vboxhook.dll"),
+            _T("C:\\windows\\System32\\vboxmrxnp.dll"),
+            _T("C:\\windows\\System32\\vboxogl.dll"),
+            _T("C:\\windows\\System32\\vboxtray.exe"),
+            _T("C:\\windows\\System32\\VBoxControl.exe"),
+            _T("C:\\windows\\System32\\vboxoglerrorspu.dll"),
+            _T("C:\\windows\\System32\\vboxoglfeedbackspu.dll"),
+            _T("c:\\windows\\system32\\vboxoglarrayspu.dll")
+        } };
 
         for (const auto file : files) {
             if (util::exists(file)) {
@@ -4400,7 +4402,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         //check_key(HKCR\Installer\Products 	ProductName 	vmware tools
         //check_key(HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall 	DisplayName 	vmware tools
         check_key(VMWARE, "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall", "DisplayName", "vmware tools");
-        check_key(VMWARE, "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall", "DisplayName", "vmware tools");
         check_key(VMWARE, "SYSTEM\\ControlSet001\\Control\\Class\\{4D36E968-E325-11CE-BFC1-08002BE10318}\\0000", "CoInstallers32", "*vmx*");
         check_key(VMWARE, "SYSTEM\\ControlSet001\\Control\\Class\\{4D36E968-E325-11CE-BFC1-08002BE10318}\\0000", "DriverDesc", "VMware*");
         check_key(VMWARE, "SYSTEM\\ControlSet001\\Control\\Class\\{4D36E968-E325-11CE-BFC1-08002BE10318}\\0000", "InfSection", "vmx*");
@@ -5080,6 +5081,46 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
 
 
+    /**
+     * @brief Find for VPC and Parallels specific VM files
+     * @category Windows
+     */
+    [[nodiscard]] static bool vm_files_extra() try {
+        if (core::disabled(VM_FILES_EXTRA)) {
+            return false;
+        }
+
+#if (!MSVC)
+        return false;
+#else
+        constexpr std::array<std::pair<const char*, const TCHAR*>, 9> files = { {
+            { VPC, "c:\\windows\\system32\\drivers\\vmsrvc.sys" },
+            { VPC, "c:\\windows\\system32\\drivers\\vpc-s3.sys" },
+            { PARALLELS, "c:\\windows\\system32\\drivers\\prleth.sys" },
+            { PARALLELS, "c:\\windows\\system32\\drivers\\prlfs.sys" },
+            { PARALLELS, "c:\\windows\\system32\\drivers\\prlmouse.sys" },
+            { PARALLELS, "c:\\windows\\system32\\drivers\\prlvideo.sys" },
+            { PARALLELS, "c:\\windows\\system32\\drivers\\prltime.sys" },
+            { PARALLELS, "c:\\windows\\system32\\drivers\\prl_pv32.sys" },
+            { PARALLELS, "c:\\windows\\system32\\drivers\\prl_paravirt_32.sys" }
+        } };
+
+        for (const auto &file_pair : files) {
+            if (util::exists(file_pair.second)) {
+                return core::add(file_pair.first);
+            }
+        }
+        
+        return false;
+#endif
+    }
+    catch (...) {
+        debug("VM_FILES_EXTRA: catched error, returned false");
+        return false;
+    }
+
+
+
     struct core {
         MSVC_DISABLE_WARNING(4820)
             struct technique {
@@ -5510,7 +5551,7 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::REGISTRY, { 75, VM::registry_key }},
     { VM::SUNBELT_VM, { 10, VM::sunbelt_check }},
     { VM::WINE_CHECK, { 85, VM::wine }},
-    { VM::VM_FILES, { 10, VM::vm_files }},
+    { VM::VM_FILES, { 60, VM::vm_files }},
     { VM::HWMODEL, { 75, VM::hwmodel }},
     { VM::DISK_SIZE, { 60, VM::disk_size }},
     { VM::VBOX_DEFAULT, { 55, VM::vbox_default_specs }},
@@ -5556,7 +5597,8 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::OFFSEC_SIDT, { 60, VM::offsec_sidt }},
     { VM::OFFSEC_SGDT, { 60, VM::offsec_sgdt }},
     { VM::OFFSEC_SLDT, { 20, VM::offsec_sldt }},
-    { VM::HYPERV_BOARD, { 45, VM::hyperv_board }}
+    { VM::HYPERV_BOARD, { 45, VM::hyperv_board }},
+    { VM::VM_FILES_EXTRA, { 70, VM::vm_files_extra }}
 
     // __TABLE_LABEL, add your technique above
     // { VM::FUNCTION, { POINTS, FUNCTION_POINTER }}

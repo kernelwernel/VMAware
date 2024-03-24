@@ -12,7 +12,7 @@
     #include "Windows.h"
 #endif
 
-constexpr const char* ver = "1.1";
+constexpr const char* ver = "1.2";
 constexpr const char* date = "March 2024";
 constexpr const char* bold = "\033[1m";
 constexpr const char* ansi_exit = "\x1B[0m";
@@ -178,6 +178,7 @@ int main(int argc, char* argv[]) {
         checker(VM::OFFSEC_SGDT, "Offensive Security SGDT");
         checker(VM::OFFSEC_SLDT, "Offensive Security SLDT");
         checker(VM::HYPERV_BOARD, "Hyper-V motherboard");
+        checker(VM::VM_FILES_EXTRA, "Extra VM files");
         std::printf("\n");
 
         const std::string brand = VM::brand();
