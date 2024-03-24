@@ -144,6 +144,9 @@ And if you found this project useful, a star would be appreciated :)
 - [Requiem](https://github.com/NotRequiem)
 - [Alex](https://github.com/greenozon)
 - [Marek Knápek](https://github.com/MarekKnapek)
+- [Vladyslav Miachkov](https://github.com/fameowner99)
+- [(Offensive Security) Danny Quist](chamuco@gmail.com)
+- [(Offensive Security) Val Smith](mvalsmith@metasploit.com)
 
 <br>
 

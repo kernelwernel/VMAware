@@ -12,7 +12,7 @@
     #include "Windows.h"
 #endif
 
-constexpr const char* ver = "1.1";
+constexpr const char* ver = "1.2";
 constexpr const char* date = "March 2024";
 constexpr const char* bold = "\033[1m";
 constexpr const char* ansi_exit = "\x1B[0m";
@@ -48,7 +48,6 @@ public:
   }
 private:
   win_ansi_enabler_t(win_ansi_enabler_t const&);
-  win_ansi_enabler_t& operator=(win_ansi_enabler_t const&);
 private:
   BOOL m_set;
   DWORD m_old;
@@ -157,7 +156,6 @@ int main(int argc, char* argv[]) {
         checker(VM::HYPERV_WMI, "Hyper-V WMI output");
         checker(VM::VBOX_FOLDERS, "VirtualBox shared folders");
         checker(VM::VBOX_MSSMBIOS, "VirtualBox MSSMBIOS");
-        checker(VM::MAC_HYPERTHREAD, "MacOS hyperthreading");
         checker(VM::MAC_MEMSIZE, "MacOS hw.memsize");
         checker(VM::MAC_IOKIT, "MacOS registry IO-kit");
         checker(VM::IOREG_GREP, "IO registry grep");
@@ -174,8 +172,13 @@ int main(int argc, char* argv[]) {
         checker(VM::VPC_PROC, "VPC processes");
         checker(VM::VPC_INVALID, "VPC invalid instructions");
         checker(VM::SIDT, "SIDT");
-        checker(VM::SLDT, "SLDT");
         checker(VM::SGDT, "SGDT");
+        checker(VM::SLDT, "SLDT");
+        checker(VM::OFFSEC_SIDT, "Offensive Security SIDT");
+        checker(VM::OFFSEC_SGDT, "Offensive Security SGDT");
+        checker(VM::OFFSEC_SLDT, "Offensive Security SLDT");
+        checker(VM::HYPERV_BOARD, "Hyper-V motherboard");
+        checker(VM::VM_FILES_EXTRA, "Extra VM files");
         std::printf("\n");
 
         const std::string brand = VM::brand();
