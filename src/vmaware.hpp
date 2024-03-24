@@ -431,7 +431,7 @@ private:
             __cpuid_count(a_leaf, c_leaf, a, b, c, d);
     #endif
 #else
-            return false;
+            return;
 #endif
         };
 
@@ -452,7 +452,7 @@ private:
             __cpuid_count(a_leaf, c_leaf, x[0], x[1], x[2], x[3]);
     #endif
 #else
-            return false;
+            return;
 #endif
         };
 
