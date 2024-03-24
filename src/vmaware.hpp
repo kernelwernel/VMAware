@@ -170,6 +170,7 @@
 #if (x86)
 #include <cpuid.h>
 #include <x86intrin.h>
+#include <immintrin.h>
 #endif
 #include <sys/stat.h>
 #include <sys/statvfs.h>
@@ -179,7 +180,6 @@
 #include <netinet/in.h>
 #include <unistd.h>
 #include <string.h>
-#include <immintrin.h>
 #include <dirent.h>
 #include <memory>
 #include <cctype>
@@ -251,7 +251,7 @@ public:
         USER,
         DLL,
         REGISTRY,
-        SUNBELT_VM,
+        CWSANDBOX_VM,
         WINE_CHECK,
         VM_FILES,
         HWMODEL,
@@ -333,7 +333,7 @@ private:
             if (
                 (p_flags.test(EXTREME)) || \
                 (p_flags.test(NO_MEMO))
-                ) {
+            ) {
                 p_flags = DEFAULT;
                 if (p_flags.test(EXTREME)) {
                     p_flags.set(EXTREME);
@@ -381,7 +381,6 @@ private:
     static constexpr const char* THREADEXPERT = "Thread Expert";
     static constexpr const char* CWSANDBOX = "CW Sandbox";
     static constexpr const char* COMODO = "Comodo";
-    static constexpr const char* SUNBELT = "SunBelt";
     static constexpr const char* BOCHS = "Bochs";
 
     // macro for bypassing unused parameter/variable warnings
@@ -2273,12 +2272,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check if Sunbelt-specific file exists
+     * @brief Check if CWSandbox-specific file exists
      * @author same russian guy as above. Whoever you are, ty
      * @category Windows
      */
-    [[nodiscard]] static bool sunbelt_check() try {
-        if (core::disabled(SUNBELT_VM)) {
+    [[nodiscard]] static bool cwsandbox_check() try {
+        if (core::disabled(CWSANDBOX_VM)) {
             return false;
         }
 
@@ -2286,17 +2285,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #else
         if (util::exists(_T("C:\\analysis"))) {
-            return core::add(SUNBELT);
+            return core::add(CWSANDBOX);
         }
 
         return false;
 #endif
     }
     catch (...) {
-        debug("SUNBELT_VM: catched error, returned false");
+        debug("CWSANDBOX_VM: catched error, returned false");
         return false;
     }
-
 
 
     /**
@@ -3314,7 +3312,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             "dbghelp.dll",     // WindBG
             "api_log.dll",     // iDefense Lab
             "dir_watch.dll",   // iDefense Lab
-            "pstorec.dll",     // SunBelt Sandbox
+            "pstorec.dll",     // SunBelt CWSandbox
             "vmcheck.dll",     // Virtual PC
             "wpespy.dll",      // WPE Pro
             "cmdvrt64.dll",    // Comodo Container
@@ -3328,7 +3326,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             if (hDll != NULL && dll != NULL) {
                 if (strcmp(dll, "sbiedll.dll") == 0) { return core::add(SANDBOXIE); }
-                if (strcmp(dll, "pstorec.dll") == 0) { return core::add(SUNBELT); }
+                if (strcmp(dll, "pstorec.dll") == 0) { return core::add(CWSANDBOX); }
                 if (strcmp(dll, "vmcheck.dll") == 0) { return core::add(VPC); }
                 if (strcmp(dll, "cmdvrt32.dll") == 0) { return core::add(COMODO); }
                 if (strcmp(dll, "cmdvrt64.dll") == 0) { return core::add(COMODO); }
@@ -5480,7 +5478,6 @@ MSVC_ENABLE_WARNING(4626 4514)
     { VM::THREADEXPERT, 0 },
     { VM::CWSANDBOX, 0 },
     { VM::COMODO, 0 },
-    { VM::SUNBELT, 0 },
     { VM::BOCHS, 0 }
 };
 
@@ -5557,7 +5554,7 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::USER, { 35, VM::user_check }},
     { VM::DLL, { 50, VM::DLL_check }},
     { VM::REGISTRY, { 75, VM::registry_key }},
-    { VM::SUNBELT_VM, { 10, VM::sunbelt_check }},
+    { VM::CWSANDBOX_VM, { 10, VM::cwsandbox_check }},
     { VM::WINE_CHECK, { 85, VM::wine }},
     { VM::VM_FILES, { 60, VM::vm_files }},
     { VM::HWMODEL, { 75, VM::hwmodel }},

@@ -249,7 +249,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::USER` | Match the username for any defaulted ones | Windows | 35% |  |  |
 | `VM::DLL` | Match for VM-specific DLLs | Windows | 50% |  |  |
 | `VM::REGISTRY` | Look throughout the registry for all sorts of VMs | Windows | 75% |  |  |
-| `VM::SUNBELT_VM` | Detect for Sunbelt technology | Windows | 10% |  |  |
+| `VM::CWSANDBOX_VM` | Detect for Sunbelt technology CWSandbox VM | Windows | 10% |  |  |
 | `VM::WINE_CHECK` | Find for a Wine-specific file | Windows | 85% |  |  |
 | `VM::VM_FILES` | Find if any VM-specific files exists | Windows | 10% |  |  |
 | `VM::HWMODEL` | Check if the sysctl for the hwmodel does not contain the "Mac" string | MacOS | 75% |  |  |

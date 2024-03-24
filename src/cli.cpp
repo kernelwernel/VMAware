@@ -129,7 +129,7 @@ int main(int argc, char* argv[]) {
         checker(VM::USER, "users");
         checker(VM::DLL, "DLLs");
         checker(VM::REGISTRY, "registry");
-        checker(VM::SUNBELT_VM, "Sunbelt");
+        checker(VM::CWSANDBOX_VM, "Sunbelt CWSandbox directory");
         checker(VM::WINE_CHECK, "Wine");
         checker(VM::VM_FILES, "VM files");
         checker(VM::HWMODEL, "hw.model");
