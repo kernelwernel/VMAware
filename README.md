@@ -15,6 +15,7 @@ The library is:
 - Very easy to use, with only 5 functions in its public interface
 - Very flexible, with total fine-grained control over which techniques get executed
 - Cross-platform (Windows + MacOS + Linux)
+- Compatible with ARM architecture
 - Header-only
 - Available with C++11 and above
 - Features up to 70+ unique techniques

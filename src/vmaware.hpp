@@ -167,8 +167,10 @@
 #endif
 
 #elif (LINUX)
+#if (x86)
 #include <cpuid.h>
 #include <x86intrin.h>
+#endif
 #include <sys/stat.h>
 #include <sys/statvfs.h>
 #include <sys/ioctl.h>
@@ -411,6 +413,9 @@ private:
             const u32 a_leaf,
             const u32 c_leaf = 0xFF  // dummy value if not set manually
         ) {
+#if (!x86)
+            return;
+#endif
             // may be unmodified for older 32-bit processors, clearing just in case
             b = 0;
             c = 0;
@@ -433,6 +438,9 @@ private:
             const u32 a_leaf,
             const u32 c_leaf = 0xFF
         ) {
+#if (!x86)
+            return;
+#endif
             // may be unmodified for older 32-bit processors, clearing just in case
             x[1] = 0;
             x[2] = 0;
@@ -1515,7 +1523,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
         }
 
-        for (u8 i = 0; i <= 0xFF; i++) {
+        for (u8 i = 0; i < 0xFF; ++i) {
             cpu::cpuid(a, b, c, d, (cpu::leaf::hypervisor + i));
             if ((a + b + c + d) != 0) {
                 return true;
