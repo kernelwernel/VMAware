@@ -298,6 +298,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::OFFSEC_SGDT` | Check for Offensive Security SGDT method | Windows | 60% |  |  |
 | `VM::OFFSEC_SLDT` | Check for Offensive Security SLDT method | Windows | 20% |  |  |
 | `VM::HYPERV_BOARD` | Check for Hyper-V string in motherboard | Windows | 45% |  |  |
+| `VM::VM_FILES_EXTRA` | Check for VPC and Parallels files | Windows | 70% |  |  |
 
 <br>
 
