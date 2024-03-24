@@ -12,7 +12,7 @@
     #include "Windows.h"
 #endif
 
-constexpr const char* ver = "1.1";
+constexpr const char* ver = "1.2";
 constexpr const char* date = "March 2024";
 constexpr const char* bold = "\033[1m";
 constexpr const char* ansi_exit = "\x1B[0m";
@@ -48,7 +48,6 @@ public:
   }
 private:
   win_ansi_enabler_t(win_ansi_enabler_t const&);
-  win_ansi_enabler_t& operator=(win_ansi_enabler_t const&);
 private:
   BOOL m_set;
   DWORD m_old;
