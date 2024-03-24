@@ -416,21 +416,22 @@ private:
             const u32 a_leaf,
             const u32 c_leaf = 0xFF  // dummy value if not set manually
         ) {
-#if (!x86)
-            return;
-#endif
+#if (x86)
             // may be unmodified for older 32-bit processors, clearing just in case
             b = 0;
             c = 0;
-#if (MSVC)
+    #if (MSVC)
             int32_t x[4]{};
             __cpuidex((int32_t*)x, static_cast<int>(a_leaf), static_cast<int>(c_leaf));
             a = static_cast<u32>(x[0]);
             b = static_cast<u32>(x[1]);
             c = static_cast<u32>(x[2]);
             d = static_cast<u32>(x[3]);
-#elif (LINUX)
+    #elif (LINUX)
             __cpuid_count(a_leaf, c_leaf, a, b, c, d);
+    #endif
+#else
+            return false;
 #endif
         };
 
@@ -441,16 +442,17 @@ private:
             const u32 a_leaf,
             const u32 c_leaf = 0xFF
         ) {
-#if (!x86)
-            return;
-#endif
+#if (x86)
             // may be unmodified for older 32-bit processors, clearing just in case
             x[1] = 0;
             x[2] = 0;
-#if (MSVC)
+    #if (MSVC)
             __cpuidex((int32_t*)x, static_cast<int>(a_leaf), static_cast<int>(c_leaf));
-#elif (LINUX)
+    #elif (LINUX)
             __cpuid_count(a_leaf, c_leaf, x[0], x[1], x[2], x[3]);
+    #endif
+#else
+            return false;
 #endif
         };
 
@@ -5508,8 +5510,7 @@ VM::flagset VM::ALL = []() -> flagset {
 
 
 bool VM::cpuid_supported = []() -> bool {
-    #if (!x86)
-        return false;
+#if (x86)
     #elif (MSVC)
         int32_t info[4];
         __cpuid(info, 0);
@@ -5520,6 +5521,9 @@ bool VM::cpuid_supported = []() -> bool {
     #else
         return false;
     #endif
+#else
+    return false;
+#endif
 }();
 
 
