@@ -5511,7 +5511,7 @@ VM::flagset VM::ALL = []() -> flagset {
 
 bool VM::cpuid_supported = []() -> bool {
 #if (x86)
-    #elif (MSVC)
+    #if (MSVC)
         int32_t info[4];
         __cpuid(info, 0);
         return (info[0] > 0);
