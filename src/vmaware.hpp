@@ -261,15 +261,20 @@ public:
         COMPUTER_NAME,
         HOSTNAME,
         MEMORY,
+        VBOX_WINDOW_CLASS,
+        LOADED_DLLS,
+        KVM_REG,
+        KVM_DRIVERS,
+        KVM_DIRS,
+        AUDIO,
+        QEMU_DIR,
         VM_PROCESSES,
         LINUX_USER_HOST,
-        VBOX_WINDOW_CLASS,
         GAMARUE,
         WMIC,
         VMID_0X4,
         PARALLELS_VM,
         RDTSC_VMEXIT,
-        LOADED_DLLS,
         QEMU_BRAND,
         BOCHS_CPU,
         VPC_BOARD,
@@ -282,15 +287,10 @@ public:
         MAC_IOKIT,
         IOREG_GREP,
         MAC_SIP,
-        KVM_REG,
-        KVM_DRIVERS,
-        KVM_DIRS,
         HKLM_REGISTRIES,
-        AUDIO,
         QEMU_GA,
         VALID_MSR,
         QEMU_PROC,
-        QEMU_DIR,
         VPC_PROC,
         VPC_INVALID,
         SIDT,
@@ -2868,6 +2868,380 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
+     * @brief default vbox window class
+     * @category Windows
+     * @author Al-Khaser Project
+     * @copyright GPL-3.0
+     */
+    [[nodiscard]] static bool vbox_window_class() try {
+        if (core::disabled(VBOX_WINDOW_CLASS)) {
+            return false;
+        }
+
+#if (!MSVC)
+        return false;
+#else
+        HWND hClass = FindWindow(_T("VBoxTrayToolWndClass"), NULL);
+        HWND hWindow = FindWindow(NULL, _T("VBoxTrayToolWnd"));
+
+        if (hClass || hWindow) {
+            return core::add(VBOX);
+        }
+
+        return false;
+#endif
+    }
+    catch (...) {
+        debug("VBOX_WINDOW_CLASS: catched error, returned false");
+        return false;
+    }
+
+
+        /**
+     * @brief check for loaded dlls in the process
+     * @category Windows
+     * @author LordNoteworthy
+     * @note modified code from Al-Khaser project
+     * @link https://github.com/LordNoteworthy/al-khaser/blob/c68fbd7ba0ba46315e819b490a2c782b80262fcd/al-khaser/Anti%20VM/Generic.cpp
+     */
+    [[nodiscard]] static bool loaded_dlls() try {
+        if (core::disabled(LOADED_DLLS)) {
+            return false;
+        }
+
+#if (!MSVC)
+        return false;
+#else
+        HMODULE hDll;
+
+        constexpr std::array<const char*, 12> szDlls = { {
+            "avghookx.dll",    // AVG
+            "avghooka.dll",    // AVG
+            "snxhk.dll",       // Avast
+            "sbiedll.dll",     // Sandboxie
+            "dbghelp.dll",     // WindBG
+            "api_log.dll",     // iDefense Lab
+            "dir_watch.dll",   // iDefense Lab
+            "pstorec.dll",     // SunBelt CWSandbox
+            "vmcheck.dll",     // Virtual PC
+            "wpespy.dll",      // WPE Pro
+            "cmdvrt64.dll",    // Comodo Container
+            "cmdvrt32.dll",    // Comodo Container
+        } };
+
+        for (const auto& key : szDlls) {
+            const char* dll = key;
+
+            hDll = GetModuleHandleA(dll);  // Use GetModuleHandleA for ANSI strings
+
+            if (hDll != NULL && dll != NULL) {
+                if (strcmp(dll, "sbiedll.dll") == 0) { return core::add(SANDBOXIE); }
+                if (strcmp(dll, "pstorec.dll") == 0) { return core::add(CWSANDBOX); }
+                if (strcmp(dll, "vmcheck.dll") == 0) { return core::add(VPC); }
+                if (strcmp(dll, "cmdvrt32.dll") == 0) { return core::add(COMODO); }
+                if (strcmp(dll, "cmdvrt64.dll") == 0) { return core::add(COMODO); }
+
+                return true;
+            }
+        }
+
+        return false;
+#endif
+    }
+    catch (...) {
+        debug("LOADED_DLLS:", "caught error, returned false");
+        return false;
+    }
+
+
+        /**
+     * @brief Check for KVM-specific registries
+     * @category Windows
+     * @note idea is from Al-Khaser, slightly modified code
+     * @author LordNoteWorthy
+     * @link https://github.com/LordNoteworthy/al-khaser/blob/0f31a3866bafdfa703d2ed1ee1a242ab31bf5ef0/al-khaser/AntiVM/KVM.cpp
+     */
+    [[nodiscard]] static bool kvm_registry() try {
+        if (core::disabled(KVM_REG)) {
+            return false;
+        }
+
+#if (!MSVC)
+        return false;
+#else
+        auto registry_exists = [](const TCHAR* key) -> bool {
+            HKEY keyHandle;
+
+            if (RegOpenKeyEx(HKEY_LOCAL_MACHINE, key, 0, KEY_QUERY_VALUE, &keyHandle) == ERROR_SUCCESS) {
+                RegCloseKey(keyHandle);
+                return true;
+            }
+
+            return false;
+            };
+
+        constexpr std::array<const TCHAR*, 7> keys = { {
+            _T("SYSTEM\\ControlSet001\\Services\\vioscsi"),
+            _T("SYSTEM\\ControlSet001\\Services\\viostor"),
+            _T("SYSTEM\\ControlSet001\\Services\\VirtIO-FS Service"),
+            _T("SYSTEM\\ControlSet001\\Services\\VirtioSerial"),
+            _T("SYSTEM\\ControlSet001\\Services\\BALLOON"),
+            _T("SYSTEM\\ControlSet001\\Services\\BalloonService"),
+            _T("SYSTEM\\ControlSet001\\Services\\netkvm"),
+        } };
+
+        for (const auto& key : keys) {
+            if (registry_exists(key)) {
+                return core::add(KVM);
+            }
+        }
+
+        return false;
+#endif
+    }
+    catch (...) {
+        debug("KVM_REG: ", "catched error, returned false");
+        return false;
+    }
+
+
+    /**
+     * @brief Check for KVM driver files
+     * @category Windows
+     * @note idea is from Al-Khaser, slightly modified code
+     * @author LordNoteWorthy
+     * @link https://github.com/LordNoteworthy/al-khaser/blob/0f31a3866bafdfa703d2ed1ee1a242ab31bf5ef0/al-khaser/AntiVM/KVM.cpp
+     */
+    [[nodiscard]] static bool kvm_drivers() try {
+        if (core::disabled(KVM_DRIVERS)) {
+            return false;
+        }
+
+#if (!MSVC)
+        return false;
+#else
+        constexpr std::array<const TCHAR*, 10> keys = { {
+            _T("System32\\drivers\\balloon.sys"),
+            _T("System32\\drivers\\netkvm.sys"),
+            _T("System32\\drivers\\pvpanic.sys"),
+            _T("System32\\drivers\\viofs.sys"),
+            _T("System32\\drivers\\viogpudo.sys"),
+            _T("System32\\drivers\\vioinput.sys"),
+            _T("System32\\drivers\\viorng.sys"),
+            _T("System32\\drivers\\vioscsi.sys"),
+            _T("System32\\drivers\\vioser.sys"),
+            _T("System32\\drivers\\viostor.sys"),
+        } };
+
+        TCHAR szWinDir[MAX_PATH] = _T("");
+        TCHAR szPath[MAX_PATH] = _T("");
+        PVOID OldValue = NULL;
+
+        if (GetWindowsDirectory(szWinDir, MAX_PATH) == 0) {
+            return false;
+        }
+
+        if (util::is_wow64()) {
+            Wow64DisableWow64FsRedirection(&OldValue);
+        }
+
+        bool is_vm = false;
+
+        for (const auto& key : keys) {
+            PathCombine(szPath, szWinDir, key);
+            if (util::exists(szPath)) {
+                is_vm = true;
+                break;
+            }
+        }
+
+        if (util::is_wow64()) {
+            Wow64RevertWow64FsRedirection(&OldValue);
+        }
+
+        return is_vm;
+#endif
+    }
+    catch (...) {
+        debug("KVM_DRIVERS: ", "catched error, returned false");
+        return false;
+    }
+
+
+    /**
+     * @brief Check KVM directories
+     * @category Windows
+     * @author LordNoteWorthy
+     * @note from Al-Khaser project
+     * @link https://github.com/LordNoteworthy/al-khaser/blob/0f31a3866bafdfa703d2ed1ee1a242ab31bf5ef0/al-khaser/AntiVM/KVM.cpp
+     */
+    [[nodiscard]] static bool kvm_directories() try {
+        if (core::disabled(KVM_DIRS)) {
+            return false;
+        }
+
+#if (!MSVC)
+        return false;
+#else
+        TCHAR szProgramFile[MAX_PATH];
+        TCHAR szPath[MAX_PATH] = _T("");
+        TCHAR szTarget[MAX_PATH] = _T("Virtio-Win\\");
+
+        if (util::is_wow64()) {
+            ExpandEnvironmentStrings(_T("%ProgramW6432%"), szProgramFile, ARRAYSIZE(szProgramFile));
+        }
+        else {
+            SHGetSpecialFolderPath(NULL, szProgramFile, CSIDL_PROGRAM_FILES, FALSE);
+        }
+
+        PathCombine(szPath, szProgramFile, szTarget);
+        return util::exists(szPath);
+#endif
+    }
+    catch (...) {
+        debug("KVM_DIRS: ", "catched error, returned false");
+        return false;
+    }
+
+
+        /**
+     * @brief Check for audio device
+     * @category Windows
+     * @author CheckPointSW (InviZzzible project)
+     * @link https://github.com/CheckPointSW/InviZzzible/blob/master/SandboxEvasion/helper.cpp
+     * @copyright GPL-3.0
+     */
+    [[nodiscard]] static bool check_audio() try {
+        if (core::disabled(AUDIO)) {
+            return false;
+        }
+
+#if (!MSVC)
+        return false;
+#else
+        PCWSTR wszfilterName = L"audio_device_random_name";
+
+        if (FAILED(CoInitialize(NULL)))
+            return false;
+
+        IGraphBuilder* pGraph = nullptr;
+        if (FAILED(CoCreateInstance(CLSID_FilterGraph, NULL, CLSCTX_INPROC_SERVER, IID_IGraphBuilder, (void**)&pGraph)))
+            return false;
+
+        // First anti-emulation check: If AddFilter is called with NULL as a first argument it should return the E_POINTER error code. 
+        // Some emulators may implement unknown COM interfaces in a generic way, so they will probably fail here.
+        if (E_POINTER != pGraph->AddFilter(NULL, wszfilterName))
+            return true;
+
+        // Initializes a simple Audio Renderer, error code is not checked, 
+        // but pBaseFilter will be set to NULL upon failure and the code will eventually fail later.
+        IBaseFilter* pBaseFilter = nullptr;
+
+        HRESULT hr = CoCreateInstance(CLSID_AudioRender, NULL, CLSCTX_INPROC_SERVER, IID_IBaseFilter, (void**)&pBaseFilter);
+        if (FAILED(hr)) {
+            return false;
+        }
+
+        // Adds the previously created Audio Renderer to the Filter Graph, no error checks
+        pGraph->AddFilter(pBaseFilter, wszfilterName);
+
+        // Tries to find the filter that was just added; in case of any previously not checked error (or wrong emulation) 
+        // this function won't find the filter and the sandbox/emulator will be successfully detected.
+        IBaseFilter* pBaseFilter2 = nullptr;
+        pGraph->FindFilterByName(wszfilterName, &pBaseFilter2);
+        if (nullptr == pBaseFilter2)
+            return true;
+
+        // Checks if info.achName is equal to the previously added filterName, if not - poor API emulation
+        FILTER_INFO info = { 0 };
+        pBaseFilter2->QueryFilterInfo(&info);
+        if (0 != wcscmp(info.achName, wszfilterName))
+            return false;
+
+        // Checks if the API sets a proper IReferenceClock pointer
+        IReferenceClock* pClock = nullptr;
+        if (0 != pBaseFilter2->GetSyncSource(&pClock))
+            return false;
+        if (0 != pClock)
+            return false;
+
+        // Checks if CLSID is different from 0
+        CLSID clsID = { 0 };
+        pBaseFilter2->GetClassID(&clsID);
+        if (clsID.Data1 == 0)
+            return true;
+
+        if (nullptr == pBaseFilter2)
+            return true;
+
+        // Just checks if the call was successful
+        IEnumPins* pEnum = nullptr;
+        if (0 != pBaseFilter2->EnumPins(&pEnum))
+            return true;
+
+        // The reference count returned by AddRef has to be higher than 0
+        if (0 == pBaseFilter2->AddRef())
+            return true;
+
+        return false;
+#endif
+    }
+    catch (...) {
+        debug("AUDIO: ", "catched error, returned false");
+        return false;
+    }
+
+
+    /**
+     * @brief Check for QEMU-specific blacklisted directories
+     * @author LordNoteworthy
+     * @link https://github.com/LordNoteworthy/al-khaser/blob/master/al-khaser/AntiVM/Qemu.cpp
+     * @category Windows
+     * @note from al-khaser project
+     * @copyright GPL-3.0
+     */
+    [[nodiscard]] static bool qemu_dir() try {
+        if (core::disabled(QEMU_DIR)) {
+            return false;
+        }
+
+#if (!MSVC)
+        return false;
+#else
+        TCHAR szProgramFile[MAX_PATH];
+        TCHAR szPath[MAX_PATH] = _T("");
+
+        const TCHAR* szDirectories[] = {
+            _T("qemu-ga"),	// QEMU guest agent.
+            _T("SPICE Guest Tools"), // SPICE guest tools.
+        };
+
+        WORD iLength = sizeof(szDirectories) / sizeof(szDirectories[0]);
+        for (int i = 0; i < iLength; i++)
+        {
+            TCHAR msg[256] = _T("");
+
+            if (util::is_wow64())
+                ExpandEnvironmentStrings(_T("%ProgramW6432%"), szProgramFile, ARRAYSIZE(szProgramFile));
+            else
+                SHGetSpecialFolderPath(NULL, szProgramFile, CSIDL_PROGRAM_FILES, FALSE);
+
+            PathCombine(szPath, szProgramFile, szDirectories[i]);
+
+            if (util::exists(szPath))
+                return core::add(QEMU);
+        }
+
+        return false;
+#endif
+    }
+    catch (...) {
+        debug("QEMU_DIR: ", "catched error, returned false");
+        return false;
+    }
+
+
+    /**
      * @brief Check for any VM processes that are active
      * @category Windows
      */
@@ -2978,35 +3352,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
     catch (...) {
         debug("LINUX_USER_HOST: catched error, returned false");
-        return false;
-    }
-
-
-    /**
-     * @brief default vbox window class
-     * @category Windows
-     * @author Al-Khaser Project
-     */
-    [[nodiscard]] static bool vbox_window_class() try {
-        if (core::disabled(VBOX_WINDOW_CLASS)) {
-            return false;
-        }
-
-#if (!MSVC)
-        return false;
-#else
-        HWND hClass = FindWindow(_T("VBoxTrayToolWndClass"), NULL);
-        HWND hWindow = FindWindow(NULL, _T("VBoxTrayToolWnd"));
-
-        if (hClass || hWindow) {
-            return core::add(VBOX);
-        }
-
-        return false;
-#endif
-    }
-    catch (...) {
-        debug("VBOX_WINDOW_CLASS: catched error, returned false");
         return false;
     }
 
@@ -3288,62 +3633,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
     }
 
-
-    /**
-     * @brief check for loaded dlls in the process
-     * @category Windows
-     * @author LordNoteworthy
-     * @note modified code from Al-Khaser project
-     * @link https://github.com/LordNoteworthy/al-khaser/blob/c68fbd7ba0ba46315e819b490a2c782b80262fcd/al-khaser/Anti%20VM/Generic.cpp
-     */
-    [[nodiscard]] static bool loaded_dlls() try {
-        if (core::disabled(LOADED_DLLS)) {
-            return false;
-        }
-
-#if (!MSVC)
-        return false;
-#else
-        HMODULE hDll;
-
-        constexpr std::array<const char*, 12> szDlls = { {
-            "avghookx.dll",    // AVG
-            "avghooka.dll",    // AVG
-            "snxhk.dll",       // Avast
-            "sbiedll.dll",     // Sandboxie
-            "dbghelp.dll",     // WindBG
-            "api_log.dll",     // iDefense Lab
-            "dir_watch.dll",   // iDefense Lab
-            "pstorec.dll",     // SunBelt CWSandbox
-            "vmcheck.dll",     // Virtual PC
-            "wpespy.dll",      // WPE Pro
-            "cmdvrt64.dll",    // Comodo Container
-            "cmdvrt32.dll",    // Comodo Container
-        } };
-
-        for (const auto& key : szDlls) {
-            const char* dll = key;
-
-            hDll = GetModuleHandleA(dll);  // Use GetModuleHandleA for ANSI strings
-
-            if (hDll != NULL && dll != NULL) {
-                if (strcmp(dll, "sbiedll.dll") == 0) { return core::add(SANDBOXIE); }
-                if (strcmp(dll, "pstorec.dll") == 0) { return core::add(CWSANDBOX); }
-                if (strcmp(dll, "vmcheck.dll") == 0) { return core::add(VPC); }
-                if (strcmp(dll, "cmdvrt32.dll") == 0) { return core::add(COMODO); }
-                if (strcmp(dll, "cmdvrt64.dll") == 0) { return core::add(COMODO); }
-
-                return true;
-            }
-        }
-
-        return false;
-#endif
-    }
-    catch (...) {
-        debug("LOADED_DLLS:", "caught error, returned false");
-        return false;
-    }
 
     /**
      * @brief Do various Bochs-related CPU stuff
@@ -4170,156 +4459,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check for KVM-specific registries
-     * @category Windows
-     * @note idea is from Al-Khaser, slightly modified code
-     * @author LordNoteWorthy
-     * @link https://github.com/LordNoteworthy/al-khaser/blob/0f31a3866bafdfa703d2ed1ee1a242ab31bf5ef0/al-khaser/AntiVM/KVM.cpp
-     */
-    [[nodiscard]] static bool kvm_registry() try {
-        if (core::disabled(KVM_REG)) {
-            return false;
-        }
-
-#if (!MSVC)
-        return false;
-#else
-        auto registry_exists = [](const TCHAR* key) -> bool {
-            HKEY keyHandle;
-
-            if (RegOpenKeyEx(HKEY_LOCAL_MACHINE, key, 0, KEY_QUERY_VALUE, &keyHandle) == ERROR_SUCCESS) {
-                RegCloseKey(keyHandle);
-                return true;
-            }
-
-            return false;
-            };
-
-        constexpr std::array<const TCHAR*, 7> keys = { {
-            _T("SYSTEM\\ControlSet001\\Services\\vioscsi"),
-            _T("SYSTEM\\ControlSet001\\Services\\viostor"),
-            _T("SYSTEM\\ControlSet001\\Services\\VirtIO-FS Service"),
-            _T("SYSTEM\\ControlSet001\\Services\\VirtioSerial"),
-            _T("SYSTEM\\ControlSet001\\Services\\BALLOON"),
-            _T("SYSTEM\\ControlSet001\\Services\\BalloonService"),
-            _T("SYSTEM\\ControlSet001\\Services\\netkvm"),
-        } };
-
-        for (const auto& key : keys) {
-            if (registry_exists(key)) {
-                return core::add(KVM);
-            }
-        }
-
-        return false;
-#endif
-    }
-    catch (...) {
-        debug("KVM_REG: ", "catched error, returned false");
-        return false;
-    }
-
-
-    /**
-     * @brief Check for KVM driver files
-     * @category Windows
-     * @note idea is from Al-Khaser, slightly modified code
-     * @author LordNoteWorthy
-     * @link https://github.com/LordNoteworthy/al-khaser/blob/0f31a3866bafdfa703d2ed1ee1a242ab31bf5ef0/al-khaser/AntiVM/KVM.cpp
-     */
-    [[nodiscard]] static bool kvm_drivers() try {
-        if (core::disabled(KVM_DRIVERS)) {
-            return false;
-        }
-
-#if (!MSVC)
-        return false;
-#else
-        constexpr std::array<const TCHAR*, 10> keys = { {
-            _T("System32\\drivers\\balloon.sys"),
-            _T("System32\\drivers\\netkvm.sys"),
-            _T("System32\\drivers\\pvpanic.sys"),
-            _T("System32\\drivers\\viofs.sys"),
-            _T("System32\\drivers\\viogpudo.sys"),
-            _T("System32\\drivers\\vioinput.sys"),
-            _T("System32\\drivers\\viorng.sys"),
-            _T("System32\\drivers\\vioscsi.sys"),
-            _T("System32\\drivers\\vioser.sys"),
-            _T("System32\\drivers\\viostor.sys"),
-        } };
-
-        TCHAR szWinDir[MAX_PATH] = _T("");
-        TCHAR szPath[MAX_PATH] = _T("");
-        PVOID OldValue = NULL;
-
-        if (GetWindowsDirectory(szWinDir, MAX_PATH) == 0) {
-            return false;
-        }
-
-        if (util::is_wow64()) {
-            Wow64DisableWow64FsRedirection(&OldValue);
-        }
-
-        bool is_vm = false;
-
-        for (const auto& key : keys) {
-            PathCombine(szPath, szWinDir, key);
-            if (util::exists(szPath)) {
-                is_vm = true;
-                break;
-            }
-        }
-
-        if (util::is_wow64()) {
-            Wow64RevertWow64FsRedirection(&OldValue);
-        }
-
-        return is_vm;
-#endif
-    }
-    catch (...) {
-        debug("KVM_DRIVERS: ", "catched error, returned false");
-        return false;
-    }
-
-
-    /**
-     * @brief Check KVM directories
-     * @category Windows
-     * @author LordNoteWorthy
-     * @note from Al-Khaser project
-     * @link https://github.com/LordNoteworthy/al-khaser/blob/0f31a3866bafdfa703d2ed1ee1a242ab31bf5ef0/al-khaser/AntiVM/KVM.cpp
-     */
-    [[nodiscard]] static bool kvm_directories() try {
-        if (core::disabled(KVM_DIRS)) {
-            return false;
-        }
-
-#if (!MSVC)
-        return false;
-#else
-        TCHAR szProgramFile[MAX_PATH];
-        TCHAR szPath[MAX_PATH] = _T("");
-        TCHAR szTarget[MAX_PATH] = _T("Virtio-Win\\");
-
-        if (util::is_wow64()) {
-            ExpandEnvironmentStrings(_T("%ProgramW6432%"), szProgramFile, ARRAYSIZE(szProgramFile));
-        }
-        else {
-            SHGetSpecialFolderPath(NULL, szProgramFile, CSIDL_PROGRAM_FILES, FALSE);
-        }
-
-        PathCombine(szPath, szProgramFile, szTarget);
-        return util::exists(szPath);
-#endif
-    }
-    catch (...) {
-        debug("KVM_DIRS: ", "catched error, returned false");
-        return false;
-    }
-
-
-    /**
      * @brief Fetch HKLM registries for specific VM strings
      * @category Windows
      */
@@ -4432,94 +4571,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check for audio device
-     * @category Windows
-     * @author CheckPointSW (InviZzzible project)
-     * @link https://github.com/CheckPointSW/InviZzzible/blob/master/SandboxEvasion/helper.cpp
-     * @copyright GPL-3.0
-     */
-    [[nodiscard]] static bool check_audio() try {
-        if (core::disabled(AUDIO)) {
-            return false;
-        }
-
-#if (!MSVC)
-        return false;
-#else
-        PCWSTR wszfilterName = L"audio_device_random_name";
-
-        if (FAILED(CoInitialize(NULL)))
-            return false;
-
-        IGraphBuilder* pGraph = nullptr;
-        if (FAILED(CoCreateInstance(CLSID_FilterGraph, NULL, CLSCTX_INPROC_SERVER, IID_IGraphBuilder, (void**)&pGraph)))
-            return false;
-
-        // First anti-emulation check: If AddFilter is called with NULL as a first argument it should return the E_POINTER error code. 
-        // Some emulators may implement unknown COM interfaces in a generic way, so they will probably fail here.
-        if (E_POINTER != pGraph->AddFilter(NULL, wszfilterName))
-            return true;
-
-        // Initializes a simple Audio Renderer, error code is not checked, 
-        // but pBaseFilter will be set to NULL upon failure and the code will eventually fail later.
-        IBaseFilter* pBaseFilter = nullptr;
-
-        HRESULT hr = CoCreateInstance(CLSID_AudioRender, NULL, CLSCTX_INPROC_SERVER, IID_IBaseFilter, (void**)&pBaseFilter);
-        if (FAILED(hr)) {
-            return false;
-        }
-
-        // Adds the previously created Audio Renderer to the Filter Graph, no error checks
-        pGraph->AddFilter(pBaseFilter, wszfilterName);
-
-        // Tries to find the filter that was just added; in case of any previously not checked error (or wrong emulation) 
-        // this function won't find the filter and the sandbox/emulator will be successfully detected.
-        IBaseFilter* pBaseFilter2 = nullptr;
-        pGraph->FindFilterByName(wszfilterName, &pBaseFilter2);
-        if (nullptr == pBaseFilter2)
-            return true;
-
-        // Checks if info.achName is equal to the previously added filterName, if not - poor API emulation
-        FILTER_INFO info = { 0 };
-        pBaseFilter2->QueryFilterInfo(&info);
-        if (0 != wcscmp(info.achName, wszfilterName))
-            return false;
-
-        // Checks if the API sets a proper IReferenceClock pointer
-        IReferenceClock* pClock = nullptr;
-        if (0 != pBaseFilter2->GetSyncSource(&pClock))
-            return false;
-        if (0 != pClock)
-            return false;
-
-        // Checks if CLSID is different from 0
-        CLSID clsID = { 0 };
-        pBaseFilter2->GetClassID(&clsID);
-        if (clsID.Data1 == 0)
-            return true;
-
-        if (nullptr == pBaseFilter2)
-            return true;
-
-        // Just checks if the call was successful
-        IEnumPins* pEnum = nullptr;
-        if (0 != pBaseFilter2->EnumPins(&pEnum))
-            return true;
-
-        // The reference count returned by AddRef has to be higher than 0
-        if (0 == pBaseFilter2->AddRef())
-            return true;
-
-        return false;
-#endif
-    }
-    catch (...) {
-        debug("AUDIO: ", "catched error, returned false");
-        return false;
-    }
-
-
-    /**
      * @brief Check for qemu-ga process
      * @category Linux
      */
@@ -4600,55 +4651,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
     catch (...) {
         debug("QEMU_PROC: ", "catched error, returned false");
-        return false;
-    }
-
-
-    /**
-     * @brief Check for QEMU-specific blacklisted directories
-     * @author LordNoteworthy
-     * @link https://github.com/LordNoteworthy/al-khaser/blob/master/al-khaser/AntiVM/Qemu.cpp
-     * @category Windows
-     * @note from al-khaser project
-     * @copyright GPL-3.0
-     */
-    [[nodiscard]] static bool qemu_dir() try {
-        if (core::disabled(QEMU_DIR)) {
-            return false;
-        }
-
-#if (!MSVC)
-        return false;
-#else
-        TCHAR szProgramFile[MAX_PATH];
-        TCHAR szPath[MAX_PATH] = _T("");
-
-        const TCHAR* szDirectories[] = {
-            _T("qemu-ga"),	// QEMU guest agent.
-            _T("SPICE Guest Tools"), // SPICE guest tools.
-        };
-
-        WORD iLength = sizeof(szDirectories) / sizeof(szDirectories[0]);
-        for (int i = 0; i < iLength; i++)
-        {
-            TCHAR msg[256] = _T("");
-
-            if (util::is_wow64())
-                ExpandEnvironmentStrings(_T("%ProgramW6432%"), szProgramFile, ARRAYSIZE(szProgramFile));
-            else
-                SHGetSpecialFolderPath(NULL, szProgramFile, CSIDL_PROGRAM_FILES, FALSE);
-
-            PathCombine(szPath, szProgramFile, szDirectories[i]);
-
-            if (util::exists(szPath))
-                return core::add(QEMU);
-        }
-
-        return false;
-#endif
-    }
-    catch (...) {
-        debug("QEMU_DIR: ", "catched error, returned false");
         return false;
     }
 
@@ -5568,15 +5570,20 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::COMPUTER_NAME, { 15, VM::computer_name_match }},
     { VM::HOSTNAME, { 25, VM::hostname_match }},
     { VM::MEMORY, { 35, VM::low_memory_space }},
+    { VM::VBOX_WINDOW_CLASS, { 10, VM::vbox_window_class }},
+    { VM::KVM_REG, { 75, VM::kvm_registry }},
+    { VM::KVM_DRIVERS, { 55, VM::kvm_drivers }},
+    { VM::KVM_DIRS, { 55, VM::kvm_directories }},
+    { VM::LOADED_DLLS, { 75, VM::loaded_dlls }},
+    { VM::AUDIO, { 35, VM::check_audio }},
+    { VM::QEMU_DIR, { 45, VM::qemu_dir }},
     { VM::VM_PROCESSES, { 30, VM::vm_processes }},
     { VM::LINUX_USER_HOST, { 35, VM::linux_user_host }},
-    { VM::VBOX_WINDOW_CLASS, { 10, VM::vbox_window_class }},
     { VM::GAMARUE, { 40, VM::gamarue }},
     { VM::WMIC, { 20, VM::wmic }},
     { VM::VMID_0X4, { 90, VM::vmid_0x4 }},
     { VM::PARALLELS_VM, { 50, VM::parallels }},
     { VM::RDTSC_VMEXIT, { 35, VM::rdtsc_vmexit }},
-    { VM::LOADED_DLLS, { 75, VM::loaded_dlls }},
     { VM::QEMU_BRAND, { 100, VM::cpu_brand_qemu }},
     { VM::BOCHS_CPU, { 95, VM::bochs_cpu }},
     { VM::VPC_BOARD, { 20, VM::vpc_board }},
@@ -5589,15 +5596,10 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::MAC_IOKIT, { 80, VM::io_kit }},
     { VM::IOREG_GREP, { 75, VM::ioreg_grep }},
     { VM::MAC_SIP, { 85, VM::mac_sip }},
-    { VM::KVM_REG, { 75, VM::kvm_registry }},
-    { VM::KVM_DRIVERS, { 55, VM::kvm_drivers }},
-    { VM::KVM_DIRS, { 55, VM::kvm_directories }},
     { VM::HKLM_REGISTRIES, { 70, VM::hklm_registries }},
-    { VM::AUDIO, { 35, VM::check_audio }},
     { VM::QEMU_GA, { 20, VM::qemu_ga }},
     { VM::VALID_MSR, { 35, VM::valid_msr }},
     { VM::QEMU_PROC, { 30, VM::qemu_processes }},
-    { VM::QEMU_DIR, { 45, VM::qemu_dir }},
     { VM::VPC_PROC, { 30, VM::vpc_proc }},
     { VM::VPC_INVALID, { 75, VM::vpc_invalid }},
     { VM::SIDT, { 60, VM::sidt }},
