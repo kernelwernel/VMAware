@@ -4289,9 +4289,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const std::string platform = *platform_ptr;
         const std::string board = *board_ptr;
         const std::string manufacturer = *manufacturer_ptr;
-
-        if (platform.empty())
-
+        
         auto check_platform = [&]() -> bool {
             debug("IO_KIT: ", "platform = ", platform);
 
