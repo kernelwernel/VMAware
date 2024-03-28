@@ -5349,9 +5349,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        constexpr auto EndUserModeAddress = (*(UINT_PTR*)0x7FFE02B4);
-
-		if ((UINT_PTR)(lpep->ExceptionRecord->ExceptionAddress) > EndUserModeAddress) {
+		if ((UINT_PTR)(lpep->ExceptionRecord->ExceptionAddress) > (*(UINT_PTR*)0x7FFE02B4)) {
             return core::add(VMWARE);
         }
 
