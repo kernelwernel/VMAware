@@ -307,7 +307,7 @@ public:
         VMWARE_SCSI,
         VMWARE_DMESG,
         VMWARE_EMULATION,
-        STR,
+        VMWARE_STR,
         EXTREME,
         NO_MEMO,
         WIN_HYPERV_DEFAULT
@@ -5316,8 +5316,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @note Alfredo Omella's (S21sec) STR technique
      * @category Windows
      */ 
-    [[nodiscard]] static bool str() {
-        if (core::disabled(STR)) {
+    [[nodiscard]] static bool vmware_str() {
+        if (core::disabled(VMWARE_STR)) {
             return false;
         }
 
@@ -5348,6 +5348,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (core::disabled(VMWARE_EMULATION)) {
             return false;
         }
+
+        constexpr auto EndUserModeAddress = (*(UINT_PTR*)0x7FFE02B4);
 
 		if ((UINT_PTR)(lpep->ExceptionRecord->ExceptionAddress) > EndUserModeAddress) {
             return core::add(VMWARE);
@@ -5847,7 +5849,7 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::VMWARE_IOPORTS, { 70, VM::vmware_ioports }},
     { VM::VMWARE_SCSI, { 40, VM::vmware_scsi }},
     { VM::VMWARE_DMESG, { 65, VM::vmware_dmesg }},
-    { VM::STR, { 35, VM::str }},
+    { VM::VMWARE_STR, { 35, VM::vmware_str }},
     { VM::VMWARE_EMULATION, { 20, VM::vmware_emul }}
 
     // __TABLE_LABEL, add your technique above
