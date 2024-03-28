@@ -306,6 +306,7 @@ public:
         VMWARE_IOPORTS,
         VMWARE_SCSI,
         VMWARE_DMESG,
+        VMWARE_EMULATION,
         STR,
         EXTREME,
         NO_MEMO,
@@ -5336,6 +5337,31 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
 
 
+    /**
+     * @brief Check using str assembly instruction
+     * @category Windows
+     * @note code from Tobias Klein's ScoppyNG project
+     * @copyright BSD clause 2
+     */ 
+#if (MSVC)
+    [[nodiscard]] static bool vmware_emul(LPEXCEPTION_POINTERS lpep) {
+        if (core::disabled(VMWARE_EMULATION)) {
+            return false;
+        }
+
+		if ((UINT_PTR)(lpep->ExceptionRecord->ExceptionAddress) > EndUserModeAddress) {
+            return core::add(VMWARE);
+        }
+
+        return false;
+
+		//return (EXCEPTION_EXECUTE_HANDLER);
+    }
+#else
+    [[nodiscard]] static bool vmware_emul() {
+        return false;
+    }
+#endif
 
     struct core {
         MSVC_DISABLE_WARNING(4820)
@@ -5821,7 +5847,8 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::VMWARE_IOPORTS, { 70, VM::vmware_ioports }},
     { VM::VMWARE_SCSI, { 40, VM::vmware_scsi }},
     { VM::VMWARE_DMESG, { 65, VM::vmware_dmesg }},
-    { VM::STR, { 35, VM::str }}
+    { VM::STR, { 35, VM::str }},
+    { VM::VMWARE_EMULATION, { 20, VM::vmware_emul }}
 
     // __TABLE_LABEL, add your technique above
     // { VM::FUNCTION, { POINTS, FUNCTION_POINTER }}

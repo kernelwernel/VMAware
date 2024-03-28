@@ -185,6 +185,7 @@ int main(int argc, char* argv[]) {
         checker(VM::VMWARE_SCSI, "/proc/scsi/scsi file");
         checker(VM::VMWARE_DMESG, "VMware dmesg");
         checker(VM::STR, "STR instruction");
+        checker(VM::VMWARE_EMULATION, "VMware emulation mode");
 
         std::printf("\n");
 
