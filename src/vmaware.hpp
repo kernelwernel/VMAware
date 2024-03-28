@@ -216,11 +216,11 @@ MSVC_DISABLE_WARNING(4626 4514)
 
 struct VM {
 private:
-    using u8 = std::uint8_t;
+    using u8  = std::uint8_t;
     using u16 = std::uint16_t;
     using u32 = std::uint32_t;
     using u64 = std::uint64_t;
-    using i8 = std::int8_t;
+    using i8  = std::int8_t;
     using i16 = std::int16_t;
     using i32 = std::int32_t;
     using i64 = std::int64_t;
@@ -301,6 +301,12 @@ public:
         OFFSEC_SLDT,
         HYPERV_BOARD,
         VM_FILES_EXTRA,
+        VPC_SIDT,
+        VMWARE_IOMEM,
+        VMWARE_IOPORTS,
+        VMWARE_SCSI,
+        VMWARE_DMESG,
+        STR,
         EXTREME,
         NO_MEMO,
         WIN_HYPERV_DEFAULT
@@ -379,7 +385,7 @@ private:
     static constexpr const char* ANUBIS = "Anubis";
     static constexpr const char* JOEBOX = "JoeBox";
     static constexpr const char* THREADEXPERT = "Thread Expert";
-    static constexpr const char* CWSANDBOX = "CW Sandbox";
+    static constexpr const char* CWSANDBOX = "CWSandbox";
     static constexpr const char* COMODO = "Comodo";
     static constexpr const char* BOCHS = "Bochs";
 
@@ -602,19 +608,19 @@ private:
             const bool found = (std::find(std::begin(IDs), std::end(IDs), brand) != std::end(IDs));
 
             if (found) {
-                if (brand == qemu) { return core::add(QEMU); }
-                if (brand == vmware) { return core::add(VMWARE); }
-                if (brand == vbox) { return core::add(VBOX); }
-                if (brand == bhyve) { return core::add(BHYVE); }
-                if (brand == kvm) { return core::add(KVM); }
-                if (brand == hyperv) { return core::add(HYPERV); }
-                if (brand == xta) { return core::add(MSXTA); }
-                if (brand == parallels) { return core::add(PARALLELS); }
+                if (brand == qemu)       { return core::add(QEMU); }
+                if (brand == vmware)     { return core::add(VMWARE); }
+                if (brand == vbox)       { return core::add(VBOX); }
+                if (brand == bhyve)      { return core::add(BHYVE); }
+                if (brand == kvm)        { return core::add(KVM); }
+                if (brand == hyperv)     { return core::add(HYPERV); }
+                if (brand == xta)        { return core::add(MSXTA); }
+                if (brand == parallels)  { return core::add(PARALLELS); }
                 if (brand == parallels2) { return core::add(PARALLELS); }
-                if (brand == xen) { return core::add(XEN); }
-                if (brand == acrn) { return core::add(ACRN); }
-                if (brand == qnx) { return core::add(QNX); }
-                if (brand == virtapple) { return core::add(VAPPLE); }
+                if (brand == xen)        { return core::add(XEN); }
+                if (brand == acrn)       { return core::add(ACRN); }
+                if (brand == qnx)        { return core::add(QNX); }
+                if (brand == virtapple)  { return core::add(VAPPLE); }
             }
 
             /**
@@ -629,8 +635,8 @@ private:
             }
 
             return false;
-            }
-        };
+        }
+    };
 
     // memoization
     struct memo {
@@ -710,12 +716,18 @@ private:
 #if (LINUX)
         // fetch file data
         [[nodiscard]] static std::string read_file(const char* dir) {
+            if (!exists(dir)) {
+                return "";
+            }
+
             std::ifstream file{};
             std::string data{};
             file.open(dir);
+
             if (file.is_open()) {
                 file >> data;
             }
+
             file.close();
             return data;
         }
@@ -4763,8 +4775,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         _asm sidt idtr
         idt = *((unsigned long*)&idtr[2]);
 
-        return ((idt >> 24) == 0xff);
+        if ((idt >> 24) == 0xff) {
+            return core::add(VMWARE);
+        }
+
+        return false;
 #elif (LINUX)
+        if (util::is_root()) {
+            return false;
+        }
+
         struct IDTR {
             u16 limit;
             u32 base;
@@ -4783,7 +4803,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         mem.read(reinterpret_cast<char*>(&idt_entry), sizeof(idt_entry));
         mem.close();
 
-        return ((idt_entry >> 24) == 0xFF);
+        if ((idt_entry >> 24) == 0xff) {
+            return core::add(VMWARE);
+        }
+
+        return false;
 #else
         return false;
 #endif
@@ -5092,6 +5116,41 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
+     * @brief Check for sidt method with VPC's 0xe8XXXXXX range
+     * @category Windows, x86
+     * @note Idea from Tom Liston and Ed Skoudis' paper "On the Cutting Edge: Thwarting Virtual Machine Detection"
+     * @note Paper situated at /papers/ThwartingVMDetection_Liston_Skoudis.pdf
+     */
+    [[nodiscard]] static bool vpc_sidt() try {
+        if (core::disabled(VPC_SIDT)) {
+            return false;
+        }
+
+#if (!x86 || LINUX)
+        return false;
+#elif (defined(_WIN32) && defined(__i386__))
+        u8	idtr[6];
+        u32	idt = 0;
+
+        _asm sidt idtr
+        idt = *((unsigned long*)&idtr[2]);
+
+        if ((idt >> 24) == 0xe8) {
+            return core::add(VPC);
+        }
+
+        return false;
+#else
+        return false;
+#endif
+    }
+    catch (...) {
+        debug("VPC_SIDT: ", "catched error, returned false");
+        return false;
+    }
+
+
+    /**
      * @brief Find for VPC and Parallels specific VM files
      * @category Windows
      */
@@ -5127,6 +5186,153 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     catch (...) {
         debug("VM_FILES_EXTRA: catched error, returned false");
         return false;
+    }
+
+
+    /**
+     * @brief Find for VMware string in /proc/iomem
+     * @category Linux
+     * @note idea from ScoopyNG by Tobias Klein
+     */
+    [[nodiscard]] static bool vmware_iomem() try {
+        if (core::disabled(VMWARE_IOMEM)) {
+            return false;
+        }
+
+#if (!LINUX)
+        return false;
+#else
+        const std::string iomem_file = util::read_file("/proc/iomem");
+
+        if (util::find(iomem_file, "VMware")) {
+            return core::add(VMWARE);
+        }
+
+        return false;
+#endif
+    }
+    catch (...) {
+        debug("VMWARE_IOMEM: catched error, returned false");
+        return false;
+    }
+
+
+    /**
+     * @brief Find for VMware string in /proc/ioports
+     * @category Windows
+     * @note idea from ScoopyNG by Tobias Klein
+     */
+    [[nodiscard]] static bool vmware_ioports() try {
+        if (core::disabled(VMWARE_IOPORTS)) {
+            return false;
+        }
+
+#if (!LINUX)
+        return false;
+#else
+        const std::string ioports_file = util::read_file("/proc/ioports");
+
+        if (util::find(ioports_file, "VMware")) {
+            return core::add(VMWARE);
+        }
+
+        return false;
+#endif
+    }
+    catch (...) {
+        debug("VMWARE_IOPORTS: catched error, returned false");
+        return false;
+    }
+
+
+    /**
+     * @brief Find for VMware string in /proc/scsi/scsi
+     * @category Windows
+     * @note idea from ScoopyNG by Tobias Klein
+     */
+    [[nodiscard]] static bool vmware_scsi() try {
+        if (core::disabled(VMWARE_SCSI)) {
+            return false;
+        }
+
+#if (!LINUX)
+        return false;
+#else
+        const std::string scsi_file = util::read_file("/proc/scsi/scsi");
+
+        if (util::find(scsi_file, "VMware")) {
+            return core::add(VMWARE);
+        }
+
+        return false;
+#endif
+    }
+    catch (...) {
+        debug("VMWARE_SCSI: catched error, returned false");
+        return false;
+    }
+
+
+    /**
+     * @brief Find for VMware-specific device name in dmesg output
+     * @category Windows
+     * @note idea from ScoopyNG by Tobias Klein
+     */
+    [[nodiscard]] static bool vmware_dmesg() try {
+        if (core::disabled(VMWARE_DMESG) || !util::is_root()) {
+            return false;
+        }
+
+#if (!LINUX)
+        return false;
+#else
+        auto dmesg_output = util::sys_result("dmesg");
+        const std::string dmesg = *dmesg_output;
+
+        if (dmesg.empty()) {
+            return false;
+        }
+
+        if (util::find(dmesg, "BusLogic BT-958")) {
+            return core::add(VMWARE);
+        }
+
+        if (util::find(dmesg, "pcnet32")) {
+            return core::add(VMWARE);
+        }
+
+        return false;
+#endif
+    }
+    catch (...) {
+        debug("VMWARE_DMESG: catched error, returned false");
+        return false;
+    }
+
+
+    /**
+     * @brief Check using str assembly instruction
+     * @note Alfredo Omella's (S21sec) STR technique
+     * @category Windows
+     */ 
+    [[nodiscard]] static bool str() {
+        if (core::disabled(STR)) {
+            return false;
+        }
+
+#if (!x86)
+        return false;
+#elif (defined(_WIN32) && defined(__i386__))
+        unsigned char	mem[4] = {0, 0, 0, 0};
+
+        __asm str mem;
+
+        if ((mem[0] == 0x00) && (mem[1] == 0x40)) {
+            return core::add(VMWARE);
+        }
+#else
+        return false;
+#endif
     }
 
 
@@ -5602,14 +5808,20 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::QEMU_PROC, { 30, VM::qemu_processes }},
     { VM::VPC_PROC, { 30, VM::vpc_proc }},
     { VM::VPC_INVALID, { 75, VM::vpc_invalid }},
-    { VM::SIDT, { 60, VM::sidt }},
-    { VM::SGDT, { 50, VM::sgdt }},
-    { VM::SLDT, { 25, VM::sldt }},
+    { VM::SIDT, { 30, VM::sidt }},
+    { VM::SGDT, { 30, VM::sgdt }},
+    { VM::SLDT, { 15, VM::sldt }},
     { VM::OFFSEC_SIDT, { 60, VM::offsec_sidt }},
     { VM::OFFSEC_SGDT, { 60, VM::offsec_sgdt }},
     { VM::OFFSEC_SLDT, { 20, VM::offsec_sldt }},
+    { VM::VPC_SIDT, { 15, VM::vpc_sidt }},
     { VM::HYPERV_BOARD, { 45, VM::hyperv_board }},
-    { VM::VM_FILES_EXTRA, { 70, VM::vm_files_extra }}
+    { VM::VM_FILES_EXTRA, { 70, VM::vm_files_extra }},
+    { VM::VMWARE_IOMEM, { 65, VM::vmware_iomem }},
+    { VM::VMWARE_IOPORTS, { 70, VM::vmware_ioports }},
+    { VM::VMWARE_SCSI, { 40, VM::vmware_scsi }},
+    { VM::VMWARE_DMESG, { 65, VM::vmware_dmesg }},
+    { VM::STR, { 35, VM::str }}
 
     // __TABLE_LABEL, add your technique above
     // { VM::FUNCTION, { POINTS, FUNCTION_POINTER }}

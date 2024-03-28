@@ -98,8 +98,7 @@ This will essentially return the VM brand as a `std::string`. The exact possible
 - `Anubis`
 - `JoeBox`
 - `Thread Expert`
-- `CW Sandbox`
-- `SunBelt`
+- `CWSandbox`
 - `Comodo`
 - `Bochs`
 
@@ -297,6 +296,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::OFFSEC_SIDT` | Check for Offensive Security SIDT method | Windows | 60% |  |  |
 | `VM::OFFSEC_SGDT` | Check for Offensive Security SGDT method | Windows | 60% |  |  |
 | `VM::OFFSEC_SLDT` | Check for Offensive Security SLDT method | Windows | 20% |  |  |
+| `VM::VPC_SIDT` | Check for VPC range for SIDT | Windows | 15% |  |  |
 | `VM::HYPERV_BOARD` | Check for Hyper-V string in motherboard | Windows | 45% |  |  |
 | `VM::VM_FILES_EXTRA` | Check for VPC and Parallels files | Windows | 70% |  |  |
 
