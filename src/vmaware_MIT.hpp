@@ -728,7 +728,7 @@ private:
 #endif
 
         // self-explanatory
-        [[nodiscard]] static bool is_root() noexcept {
+        [[nodiscard]] static bool is_admin() noexcept {
 #if (LINUX || APPLE)
             const uid_t uid = getuid();
             const uid_t euid = geteuid();
@@ -925,7 +925,7 @@ private:
         // get physical RAM size in GB
         [[nodiscard]] static u64 get_physical_ram_size() {
 #if (LINUX)
-            if (!util::is_root()) {
+            if (!util::is_admin()) {
                 debug("private get_physical_ram_size function: ", "not root, returned 0");
                 return 0;
             }
@@ -1997,8 +1997,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Linux
      */
     [[nodiscard]] static bool dmidecode() try {
-        if (core::disabled(DMIDECODE) || (util::is_root() == false)) {
-            debug("DMIDECODE: ", "precondition return called (root = ", util::is_root(), ")");
+        if (core::disabled(DMIDECODE) || (util::is_admin() == false)) {
+            debug("DMIDECODE: ", "precondition return called (root = ", util::is_admin(), ")");
             return false;
         }
 
@@ -2046,7 +2046,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Linux
      */
     [[nodiscard]] static bool dmesg() try {
-        if (core::disabled(DMESG) || !util::is_root()) {
+        if (core::disabled(DMESG) || !util::is_admin()) {
             return false;
         }
 
@@ -2853,7 +2853,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!LINUX)
         return false;
 #else
-        if (util::is_root()) {
+        if (util::is_admin()) {
             return false;
         }
 

@@ -751,7 +751,7 @@ private:
 #endif
 
         // self-explanatory
-        [[nodiscard]] static bool is_root() noexcept {
+        [[nodiscard]] static bool is_admin() noexcept {
 #if (LINUX || APPLE)
             const uid_t uid = getuid();
             const uid_t euid = geteuid();
@@ -759,7 +759,7 @@ private:
             return (
                 (uid != euid) ||
                 (euid == 0)
-                );
+            );
 #elif (MSVC)
             BOOL is_admin = FALSE;
             HANDLE hToken = NULL;
@@ -948,7 +948,7 @@ private:
         // get physical RAM size in GB
         [[nodiscard]] static u64 get_physical_ram_size() {
 #if (LINUX)
-            if (!util::is_root()) {
+            if (!util::is_admin()) {
                 debug("private get_physical_ram_size function: ", "not root, returned 0");
                 return 0;
             }
@@ -2020,8 +2020,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Linux
      */
     [[nodiscard]] static bool dmidecode() try {
-        if (core::disabled(DMIDECODE) || (util::is_root() == false)) {
-            debug("DMIDECODE: ", "precondition return called (root = ", util::is_root(), ")");
+        if (core::disabled(DMIDECODE) || (util::is_admin() == false)) {
+            debug("DMIDECODE: ", "precondition return called (root = ", util::is_admin(), ")");
             return false;
         }
 
@@ -2069,7 +2069,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Linux
      */
     [[nodiscard]] static bool dmesg() try {
-        if (core::disabled(DMESG) || !util::is_root()) {
+        if (core::disabled(DMESG) || !util::is_admin()) {
             return false;
         }
 
@@ -3347,7 +3347,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!LINUX)
         return false;
 #else
-        if (util::is_root()) {
+        if (util::is_admin()) {
             return false;
         }
 
@@ -4721,7 +4721,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             ctx->Eip += 4; // skip past the "call VPC" opcodes
             return static_cast<DWORD>(EXCEPTION_CONTINUE_EXECUTION);
             // we can safely resume execution since we skipped faulty instruction
-            };
+        };
 
         __try {
             __asm {
@@ -4782,7 +4782,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         return false;
 #elif (LINUX)
-        if (util::is_root()) {
+        if (util::is_admin()) {
             return false;
         }
 
@@ -5280,13 +5280,17 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @note idea from ScoopyNG by Tobias Klein
      */
     [[nodiscard]] static bool vmware_dmesg() try {
-        if (core::disabled(VMWARE_DMESG) || !util::is_root()) {
+        if (core::disabled(VMWARE_DMESG)) {
             return false;
         }
 
 #if (!LINUX)
         return false;
 #else
+        if (!util::is_admin()) {
+            return false;
+        }
+
         auto dmesg_output = util::sys_result("dmesg");
         const std::string dmesg = *dmesg_output;
 
@@ -5314,6 +5318,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check using str assembly instruction
      * @note Alfredo Omella's (S21sec) STR technique
+     * @note paper describing this technique is located at /papers/www.s21sec.com_vmware-eng.pdf (2006)
      * @category Windows
      */ 
     [[nodiscard]] static bool vmware_str() {
@@ -5324,7 +5329,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!x86)
         return false;
 #elif (defined(_WIN32) && defined(__i386__))
-        unsigned char	mem[4] = {0, 0, 0, 0};
+        unsigned char mem[4] = {0, 0, 0, 0};
 
         __asm str mem;
 
