@@ -5349,10 +5349,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @copyright BSD clause 2
      */ 
 #if (MSVC)
-    [[nodiscard]] static bool vmware_emul(LPEXCEPTION_POINTERS lpep) {
+    [[nodiscard]] static bool vmware_emul() {
         if (core::disabled(VMWARE_EMULATION)) {
             return false;
         }
+
+        LPEXCEPTION_POINTERS lpep;
 
 		if ((UINT_PTR)(lpep->ExceptionRecord->ExceptionAddress) > (*(UINT_PTR*)0x7FFE02B4)) {
             return core::add(VMWARE);
