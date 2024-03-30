@@ -147,6 +147,9 @@ And if you found this project useful, a star would be appreciated :)
 - [Vladyslav Miachkov](https://github.com/fameowner99)
 - [(Offensive Security) Danny Quist](chamuco@gmail.com)
 - [(Offensive Security) Val Smith](mvalsmith@metasploit.com)
+- Tom Liston + Ed Skoudis
+- [Tobias Klein](https://www.trapkit.de/index.html)
+- [(S21sec) Alfredo Omella](https://www.s21sec.com/)
 
 <br>
 
