@@ -5487,13 +5487,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
 
             auto adjust = [=](const u8 value) -> u8 {
-#if (MSVC)
-                if (ver == 11 && core::enabled(WIN_HYPERV_DEFAULT)) {
-                    return (value / 2);
-                }
-#endif
                 return value;
-                };
+            };
 
             for (const auto& tmp : table) {
                 technique pair = tmp.second;
