@@ -309,6 +309,8 @@ public:
         VMWARE_EMULATION,
         VMWARE_STR,
         VMWARE_BACKDOOR,
+        VMWARE_PORT_MEM,
+        SMSW,
         EXTREME,
         NO_MEMO,
         WIN_HYPERV_DEFAULT
@@ -5328,7 +5330,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @note paper describing this technique is located at /papers/www.s21sec.com_vmware-eng.pdf (2006)
      * @category Windows
      */ 
-    [[nodiscard]] static bool vmware_str() {
+    [[nodiscard]] static bool vmware_str() try {
         if (core::disabled(VMWARE_STR)) {
             return false;
         }
@@ -5347,31 +5349,77 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
+    catch (...) {
+        debug("VMWARE_STR: catched error, returned false");
+        return false;
+    }
 
 
     /**
-     * @brief Check using str assembly instruction
-     * @category Windows
-     * @note code from Tobias Klein's ScoppyNG project
+     * @brief Check VMware emulation test
+     * @category Windows, x86
+     * @note Derek Soeder's (eEye Digital Security) VMware emulation test
      * @copyright BSD clause 2
      */ 
+#if (defined(_WIN32) && defined(__i386__))
+    #define EndUserModeAddress (*(UINT_PTR*)0x7FFE02B4)
+
+    int handle_exception(LPEXCEPTION_POINTERS lpep, bool &is_vm) {
+		if ((UINT_PTR)(lpep->ExceptionRecord->ExceptionAddress) > EndUserModeAddress) {
+			is_vm = true;
+        }
+
+		return (EXCEPTION_EXECUTE_HANDLER);
+    }
+
+    void __declspec(naked) emul_asm() {
+		__asm {
+				pop eax
+				push 0x000F
+				push eax
+				retf
+		}
+    }
+
     [[nodiscard]] static bool vmware_emul() {
         if (core::disabled(VMWARE_EMULATION)) {
             return false;
         }
 
-#if (MSVC)
-        LPEXCEPTION_POINTERS lpep;
+		NTSETLDTENTRIES ZwSetLdtEntries;
+		LDT_ENTRY csdesc;
+        bool is_vm = false;
 
-		if ((UINT_PTR)(lpep->ExceptionRecord->ExceptionAddress) > (*(UINT_PTR*)0x7FFE02B4)) {
+		ZwSetLdtEntries = (NTSETLDTENTRIES)GetProcAddress (GetModuleHandle ("ntdll.dll"), "ZwSetLdtEntries");
+
+		memset (&csdesc, 0, sizeof (csdesc));
+		
+		csdesc.LimitLow = (WORD)(EndUserModeAddress >> 12);
+		csdesc.HighWord.Bytes.Flags1 = 0xFA;
+		csdesc.HighWord.Bytes.Flags2 = 0xC0 | ((EndUserModeAddress >> 28) & 0x0F);
+		
+		ZwSetLdtEntries (0x000F, ((DWORD*)&csdesc)[0], ((DWORD*)&csdesc)[1], 0, 0, 0);
+
+		__try {
+			test7_switchcs();
+			__asm {
+                or eax, -1
+                jmp eax
+            }
+        }
+        __except (handle_exception(GetExceptionInformation(), is_vm)) { }
+
+        if (is_vm) {
             return core::add(VMWARE);
         }
 
         return false;
-#else
-        return false;
-#endif
     }
+#else
+    [[nodiscard]] static bool vmware_emul() {
+        return false;
+    }
+#endif
 
 
     /**
@@ -5379,6 +5427,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Windows, x86
      * @note Code from ScoopyNG by Tobias Klein
      * @note Technique founded by Ken Kato
+     * @copyright BSD clause 2
      */ 
     [[nodiscard]] static bool vmware_backdoor() {
         if (core::disabled(VMWARE_BACKDOOR)) {
@@ -5431,7 +5480,90 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
-        
+
+
+    /**
+     * @brief Check for VMware memory using IO port backdoor
+     * @category Windows, x86
+     * @note Code from ScoopyNG by Tobias Klein
+     * @copyright BSD clause 2
+     */ 
+    [[nodiscard]] static bool vmware_port_memory() {
+        if (core::disabled(VMWARE_PORT_MEM)) {
+            return false;
+        }
+
+#if (!x86 || !MSVC)
+        return false;
+#elif (defined(_WIN32) && defined(__i386__))
+        unsigned int a = 0;
+
+        __try {
+            __asm {
+                push eax
+                push ebx
+                push ecx
+                push edx
+                
+                mov eax, 'VMXh'
+                mov ecx, 14h
+                mov dx, 'VX'
+                in eax, dx
+                mov a, eax 
+
+                pop edx
+                pop ecx
+                pop ebx
+                pop eax
+            }
+        } __except (EXCEPTION_EXECUTE_HANDLER) {}
+
+        if (a > 0) {
+            return core::add(VMWARE);
+        }
+
+        return false;
+#else
+        return false;
+#endif
+    }
+
+
+    /**
+     * @brief Check for SMSW instruction technique
+     * @category Windows, x86
+     * @author Danny Quist from Offensive Computing
+     */ 
+    [[nodiscard]] static bool smsw() try {
+        if (core::disabled(SMSW)) {
+            return false;
+        }
+
+#if (!x86 || !MSVC)
+        return false;
+#elif (defined(_WIN32) && defined(__i386__))
+        unsigned int reax = 0;
+
+        __asm
+        {
+            mov eax, 0xCCCCCCCC;
+            smsw eax;
+            mov DWORD PTR [reax], eax;
+        }
+
+        return (
+            (((reax >> 24) & 0xFF) == 0xcc) && 
+            (((reax >> 16) & 0xFF) == 0xcc)
+        );
+#else
+        return false;
+#endif
+    }
+    catch (...) {
+        debug("SMSW: catched error, returned false");
+        return false;
+    }
+
 
     struct core {
         MSVC_DISABLE_WARNING(4820)
@@ -5942,8 +6074,9 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::VMWARE_DMESG, { 65, VM::vmware_dmesg }},
     { VM::VMWARE_EMULATION, { 20, VM::vmware_emul }},
     { VM::VMWARE_STR, { 35, VM::vmware_str }},
-    { VM::VMWARE_BACKDOOR, { 100, VM::vmware_backdoor }}
-
+    { VM::VMWARE_BACKDOOR, { 100, VM::vmware_backdoor }},
+    { VM::VMWARE_PORT_MEM, { 85, VM::vmware_port_memory }},
+    { VM::SMSW, { 30, VM::smsw }}
 
     // __TABLE_LABEL, add your technique above
     // { VM::FUNCTION, { POINTS, FUNCTION_POINTER }}

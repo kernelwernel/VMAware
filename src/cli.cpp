@@ -62,11 +62,12 @@ R"(Usage:
 
 Options:
  -h | --help        prints this help menu
- -v | --version     print version and other stuff
+ -v | --version     print cli version and other details
  -d | --detect      returns the result as a boolean (1 = VM, 0 = baremetal)
  -s | --stdout      returns either 0 or 1 to STDOUT without any text output (0 = VM, 1 = baremetal)
  -b | --brand       returns the VM brand string (consult documentation for full output list)
  -p | --percent     returns the VM percentage between 0 and 100
+ -c | --conclusion  returns the conclusion message string
 )";
 }
 
@@ -77,6 +78,68 @@ void version(void) {
     "This is free software: you are free to change and redistribute it.\n" <<
     "There is NO WARRANTY, to the extent permitted by law.\n" <<
     "Developed and maintained by kernelwernel, see https://github.com/kernelwernel\n";
+}
+
+const char* color(const std::uint8_t score) {
+    if (score == 0) {
+        return red;
+    } else if (score <= 12) {
+        return red;
+    } else if (score <= 25) {
+        return red_orange;
+    } else if (score < 50) {
+        return red_orange;
+    } else if (score <= 62) {
+        return orange;
+    } else if (score <= 75) {
+        return green_orange;
+    } else if (score < 100) {
+        return green;
+    } else if (score == 100) {
+        return green;
+    }
+
+    return "";
+}
+
+std::string message(const std::uint8_t score, const std::string &brand) {
+    constexpr const char* baremetal = "Running in baremetal";
+    constexpr const char* very_unlikely = "Very unlikely a VM";
+    constexpr const char* unlikely = "Unlikely a VM";
+
+    std::string potentially = "Potentially a VM";
+    std::string might = "Might be a VM";
+    std::string likely = "Likely a VM";
+    std::string very_likely = "Very likely a VM";
+    std::string inside_vm = "Running inside a VM";
+
+    if (brand != "Unknown") {
+        potentially = "Potentially a " + brand + " VM";
+        might = "Might be a " + brand + " VM";
+        likely = "Likely a " + brand + " VM";
+        very_likely = "Very likely a " + brand + " VM";
+        inside_vm = "Running inside a " + brand + " VM";
+    }
+    
+    if (score == 0) {
+        return baremetal;
+    } else if (score <= 12) {
+        return very_unlikely;
+    } else if (score <= 25) {
+        return unlikely;
+    } else if (score < 50) {
+        return potentially;
+    } else if (score <= 62) {
+        return might;
+    } else if (score <= 75) {
+        return likely;
+    } else if (score < 100) {
+        return very_likely;
+    } else if (score == 100) {
+        return inside_vm;
+    }
+
+    return "Unknown error";
 }
 
 int main(int argc, char* argv[]) {
@@ -186,6 +249,9 @@ int main(int argc, char* argv[]) {
         checker(VM::VMWARE_DMESG, "VMware dmesg");
         checker(VM::VMWARE_EMULATION, "VMware emulation mode");
         checker(VM::VMWARE_STR, "STR instruction");
+        checker(VM::VMWARE_BACKDOOR, "VMware IO port backdoor");
+        checker(VM::SMSW, "SMSW instruction");
+        checker(VM::VMWARE_PORT_MEM, "VMware port memory");
 
         std::printf("\n");
 
@@ -194,7 +260,7 @@ int main(int argc, char* argv[]) {
         std::cout << "VM brand: " << (brand == "Unknown" ? red : green) << brand << ansi_exit << "\n";
 
         const char* percent_color = "";
-        std::uint8_t percent = VM::percentage();
+        const std::uint8_t percent = VM::percentage();
 
         if (percent == 0) {
             percent_color = red;
@@ -214,52 +280,8 @@ int main(int argc, char* argv[]) {
 
         std::cout << "VM confirmation: " << (is_detected ? green : red) << std::boolalpha << is_detected << std::noboolalpha << ansi_exit << "\n\n";
 
-        const char* conclusion_color = "";
-        std::string conclusion_message = "";
-
-        constexpr const char* baremetal = "Running in baremetal";
-        constexpr const char* very_unlikely = "Very unlikely a VM";
-        constexpr const char* unlikely = "Unlikely a VM";
-
-        std::string potentially = "Potentially a VM";
-        std::string might = "Might be a VM";
-        std::string likely = "Likely a VM";
-        std::string very_likely = "Very likely a VM";
-        std::string inside_vm = "Running inside a VM";
-
-        if (brand != "Unknown") {
-            potentially = "Potentially a " + brand + " VM";
-            might = "Might be a " + brand + " VM";
-            likely = "Likely a " + brand + " VM";
-            very_likely = "Very likely a " + brand + " VM";
-            inside_vm = "Running inside a " + brand + " VM";
-        }
-        
-        if (percent == 0) {
-            conclusion_color = red;
-            conclusion_message = baremetal;
-        } else if (percent <= 12) {
-            conclusion_color = red;
-            conclusion_message = very_unlikely;
-        } else if (percent <= 25) {
-            conclusion_color = red_orange;
-            conclusion_message = unlikely;
-        } else if (percent < 50) { // not <= on purpose
-            conclusion_color = red_orange;
-            conclusion_message = potentially;
-        } else if (percent <= 62) {
-            conclusion_color = orange;
-            conclusion_message = might;
-        } else if (percent <= 75) {
-            conclusion_color = green_orange;
-            conclusion_message = likely;
-        } else if (percent < 100) {
-            conclusion_color = green;
-            conclusion_message = very_likely;
-        } else if (percent == 100) {
-            conclusion_color = green;
-            conclusion_message = inside_vm;
-        }
+        const char* conclusion_color = color(percent);
+        std::string conclusion_message = message(percent, brand);
 
         std::cout 
             << bold 
@@ -290,10 +312,15 @@ int main(int argc, char* argv[]) {
             std::cout << VM::brand() << "\n";
             return 0;
         } else if (cmp(arg, "-p") || cmp(arg, "--percent")) {
-            std::cout << VM::percentage() << "\n";
+            std::cout << static_cast<std::uint32_t>(VM::percentage()) << "\n";
             return 0;
         } else if (cmp(arg, "-d") || cmp(arg, "--detect")) {
             std::cout << VM::detect() << "\n";
+            return 0;
+        } else if (cmp(arg, "-c") || cmp(arg, "--conclusion")) {
+            const std::uint8_t percent = VM::percentage();
+            const std::string brand = VM::brand();
+            std::cout << message(percent, brand) << "\n";
             return 0;
         } else {
             std::cerr << "Unknown argument provided, consult the help menu with --help\n";
