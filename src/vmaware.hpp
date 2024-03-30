@@ -308,6 +308,7 @@ public:
         VMWARE_DMESG,
         VMWARE_EMULATION,
         VMWARE_STR,
+        VMWARE_BACKDOOR,
         EXTREME,
         NO_MEMO,
         WIN_HYPERV_DEFAULT
@@ -366,8 +367,12 @@ private:
     *
     * TL;DR I have wonky fingers :(
     */
-    static constexpr const char* VMWARE = "VMware";
     static constexpr const char* VBOX = "VirtualBox";
+    static constexpr const char* VMWARE = "VMware";
+    static constexpr const char* VMWARE_EXPRESS = "VMware Express";
+    static constexpr const char* VMWARE_ESX = "VMware ESX";
+    static constexpr const char* VMWARE_GSX = "VMware GSX";
+    static constexpr const char* VMWARE_WORKSTATION = "VMware Workstation";
     static constexpr const char* KVM = "KVM";
     static constexpr const char* BHYVE = "bhyve";
     static constexpr const char* QEMU = "QEMU";
@@ -775,6 +780,8 @@ private:
                             if (dwIntegrityLevel >= SECURITY_MANDATORY_HIGH_RID) {
                                 is_admin = TRUE;
                             }
+
+                            UNUSED(pSID);
                         }
                         free(pTIL);
                     }
@@ -1537,7 +1544,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category x86
      */
     MSVC_DISABLE_WARNING(5045)
-        [[nodiscard]] static bool cpuid_0x4() try {
+    [[nodiscard]] static bool cpuid_0x4() try {
         if (!cpuid_supported || core::disabled(CPUID_0X4)) {
             return false;
         }
@@ -1557,7 +1564,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 b == 0x7263694D &&  // "Micr"
                 c == 0x666F736F &&  // "osof"
                 d == 0x76482074     // "t Hv"
-                ) {
+            ) {
                 return false;
             }
         }
@@ -1579,11 +1586,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     MSVC_ENABLE_WARNING(5045)
 
 
-        /**
-         * @brief Check for hypervisor brand string length (would be around 2 characters in a host machine)
-         * @category x86
-         */
-        [[nodiscard]] static bool hypervisor_brand() try {
+    /**
+     * @brief Check for hypervisor brand string length (would be around 2 characters in a host machine)
+     * @category x86
+     */
+    [[nodiscard]] static bool hypervisor_brand() try {
         if (core::disabled(HYPERVISOR_STR)) {
             return false;
         }
@@ -1837,7 +1844,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // better expression to fix code duplication
         auto compare = [=](const u8 mac1, const u8 mac2, const u8 mac3) noexcept -> bool {
             return (mac[0] == mac1 && mac[1] == mac2 && mac[2] == mac3);
-            };
+        };
 
         if (compare(0x08, 0x00, 0x27)) {
             return core::add(VBOX);
@@ -1848,7 +1855,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             (compare(0x00, 0x1C, 0x14)) ||
             (compare(0x00, 0x50, 0x56)) ||
             (compare(0x00, 0x05, 0x69))
-            ) {
+        ) {
             return core::add(VMWARE);
         }
 
@@ -5348,12 +5355,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @note code from Tobias Klein's ScoppyNG project
      * @copyright BSD clause 2
      */ 
-#if (MSVC)
     [[nodiscard]] static bool vmware_emul() {
         if (core::disabled(VMWARE_EMULATION)) {
             return false;
         }
 
+#if (MSVC)
         LPEXCEPTION_POINTERS lpep;
 
 		if ((UINT_PTR)(lpep->ExceptionRecord->ExceptionAddress) > (*(UINT_PTR*)0x7FFE02B4)) {
@@ -5361,14 +5368,70 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         return false;
-
-		//return (EXCEPTION_EXECUTE_HANDLER);
-    }
 #else
-    [[nodiscard]] static bool vmware_emul() {
         return false;
-    }
 #endif
+    }
+
+
+    /**
+     * @brief Check for official VMware io port backdoor technique
+     * @category Windows, x86
+     * @note Code from ScoopyNG by Tobias Klein
+     * @note Technique founded by Ken Kato
+     */ 
+    [[nodiscard]] static bool vmware_backdoor() {
+        if (core::disabled(VMWARE_BACKDOOR)) {
+            return false;
+        }
+
+#if (!x86 || !MSVC)
+        return false;
+#elif (defined(_WIN32) && defined(__i386__))
+        unsigned int a, b;
+
+        __try {
+            __asm {
+                // save register values on the stack
+                push eax			
+                push ebx
+                push ecx
+                push edx
+                
+                // perform fingerprint
+                mov eax, 'VMXh'	    // VMware magic value (0x564D5868)
+                mov ecx, 0Ah		// special version cmd (0x0a)
+                mov dx, 'VX'		// special VMware I/O port (0x5658)
+                
+                in eax, dx			// special I/O cmd
+                
+                mov a, ebx			// data 
+                mov b, ecx			// data	(eax gets also modified but will not be evaluated)
+
+                // restore register values from the stack
+                pop edx
+                pop ecx
+                pop ebx
+                pop eax
+            }
+        } __except (EXCEPTION_EXECUTE_HANDLER) {}
+
+        if (a == 'VMXh') {		// is the value equal to the VMware magic value?
+            switch (b) {
+                case 1:  return core::add(VMWARE_EXPRESS);
+                case 2:  return core::add(VMWARE_ESX);
+                case 3:  return core::add(VMWARE_GSX);
+                case 4:  return core::add(VMWARE_WORKSTATION);
+                default: return core::add(VMWARE);
+            }
+        }
+    
+        return false;
+#else
+        return false;
+#endif
+    }
+        
 
     struct core {
         MSVC_DISABLE_WARNING(4820)
@@ -5557,51 +5620,76 @@ public: // START OF PUBLIC FUNCTIONS
             current_brand = "Unknown";
         }
 #else
-#if (MSVC)
+    #if (MSVC)
         int max = 0;
-#else
+    #else
         u8 max = 0;
-#endif
+    #endif
 
-#if (CPP >= 17)
+    #if (CPP >= 17)
         for (const auto& [brand, points] : core::brand_scoreboard) {
             if (points > max) {
                 current_brand = brand;
                 max = points;
             }
         }
-#else
+    #else
         for (auto it = core::brand_scoreboard.cbegin(); it != core::brand_scoreboard.cend(); ++it) {
             if (it->second > max) {
                 current_brand = it->first;
                 max = it->second;
             }
         }
-#endif
+    #endif
 
         if (max == 0) {
             current_brand = "Unknown";
         }
 #endif
 
-        // goofy C++11 and C++14 linker error workaround
+        // goofy ass C++11 and C++14 linker error workaround
 #if (CPP <= 14)
         constexpr const char* TMP_QEMU = "QEMU";
-        constexpr const char* TMP_KVM = "KVM";
+        constexpr const char* TMP_KVM  = "KVM";
+    
+        constexpr const char* TMP_VMWARE      = "VMware";
+        constexpr const char* TMP_EXPRESS     = "VMware Express";
+        constexpr const char* TMP_ESX         = "VMware ESX";
+        constexpr const char* TMP_GSX         = "VMware GSX";
+        constexpr const char* TMP_WORKSTATION = "VMware Workstation";
 #else
         constexpr const char* TMP_QEMU = VM::QEMU;
-        constexpr const char* TMP_KVM = VM::KVM;
+        constexpr const char* TMP_KVM  = VM::KVM;
+
+        constexpr const char* TMP_VMWARE      = VM::VMWARE;
+        constexpr const char* TMP_EXPRESS     = VM::VMWARE_EXPRESS;
+        constexpr const char* TMP_ESX         = VM::VMWARE_ESX;
+        constexpr const char* TMP_GSX         = VM::VMWARE_GSX;
+        constexpr const char* TMP_WORKSTATION = VM::VMWARE_WORKSTATION;
 #endif
+        #define brands core::brand_scoreboard
 
         if (
-            core::brand_scoreboard.at(TMP_QEMU) > 0 &&
-            core::brand_scoreboard.at(TMP_KVM) > 0
+            brands.at(TMP_QEMU) > 0 &&
+            brands.at(TMP_KVM) > 0
         ) {
             current_brand = "QEMU+KVM";
         }
 
+        if (brands.at(TMP_VMWARE) > 0) {
+            if (brands.at(TMP_EXPRESS) > 0) { 
+                current_brand = TMP_EXPRESS;
+            } else if (brands.at(TMP_ESX) > 0) { 
+                current_brand = TMP_ESX;
+            } else if (brands.at(TMP_GSX) > 0) { 
+                current_brand = TMP_GSX;
+            } else if (brands.at(TMP_WORKSTATION) > 0) { 
+                current_brand = TMP_WORKSTATION;
+            }
+        }
+
 #ifdef __VMAWARE_DEBUG__
-        for (const auto p : core::brand_scoreboard) {
+        for (const auto p : brands) {
             debug("scoreboard: ", (int)p.second, " : ", p.first);
         }
 #endif
@@ -5699,11 +5787,15 @@ MSVC_ENABLE_WARNING(4626 4514)
 #else
     std::map<const char*, VM::u8> VM::core::brand_scoreboard {
 #endif
-    { VM::VMWARE, 0 },
     { VM::VBOX, 0 },
-    { VM::KVM, 0 },
+    { VM::VMWARE, 0 },
+    { VM::VMWARE_EXPRESS, 0 },
+    { VM::VMWARE_ESX, 0 },
+    { VM::VMWARE_GSX, 0 },
+    { VM::VMWARE_WORKSTATION, 0 },
     { VM::BHYVE, 0 },
     { VM::QEMU, 0 },
+    { VM::KVM, 0 },
     { VM::HYPERV, 0 },
     { VM::MSXTA, 0 },
     { VM::PARALLELS, 0 },
@@ -5723,7 +5815,6 @@ MSVC_ENABLE_WARNING(4626 4514)
     { VM::COMODO, 0 },
     { VM::BOCHS, 0 }
 };
-
 
 std::map<bool, VM::memo::cache_struct> VM::memo::cache;
 
@@ -5854,8 +5945,10 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::VMWARE_IOPORTS, { 70, VM::vmware_ioports }},
     { VM::VMWARE_SCSI, { 40, VM::vmware_scsi }},
     { VM::VMWARE_DMESG, { 65, VM::vmware_dmesg }},
+    { VM::VMWARE_EMULATION, { 20, VM::vmware_emul }},
     { VM::VMWARE_STR, { 35, VM::vmware_str }},
-    { VM::VMWARE_EMULATION, { 20, VM::vmware_emul }}
+    { VM::VMWARE_BACKDOOR, { 100, VM::vmware_backdoor }}
+
 
     // __TABLE_LABEL, add your technique above
     // { VM::FUNCTION, { POINTS, FUNCTION_POINTER }}
