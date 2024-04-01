@@ -20,14 +20,14 @@
  *  - License: GPL-3.0
  *
  * ================================ SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 227
- * - struct for internal cpu operations        => line 397
- * - struct for internal memoization           => line 626
- * - struct for internal utility functions     => line 699
- * - struct for internal core components       => line 5123
- * - start of internal VM detection techniques => line 1357
- * - start of public VM detection functions    => line 5208
- * - start of externally defined variables     => line 5443
+ * - enums for publicly accessible techniques  => line 229
+ * - struct for internal cpu operations        => line 388
+ * - struct for internal memoization           => line 625
+ * - struct for internal utility functions     => line 698
+ * - struct for internal core components       => line 4652
+ * - start of internal VM detection techniques => line 1356
+ * - start of public VM detection functions    => line 4737
+ * - start of externally defined variables     => line 4972
  */
 
 #if (defined(_MSC_VER) || defined(_WIN32) || defined(_WIN64) || defined(__MINGW32__))
