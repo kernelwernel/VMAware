@@ -5207,15 +5207,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #else
         constexpr std::array<std::pair<const char*, const TCHAR*>, 9> files = { {
-            { VPC, "c:\\windows\\system32\\drivers\\vmsrvc.sys" },
-            { VPC, "c:\\windows\\system32\\drivers\\vpc-s3.sys" },
-            { PARALLELS, "c:\\windows\\system32\\drivers\\prleth.sys" },
-            { PARALLELS, "c:\\windows\\system32\\drivers\\prlfs.sys" },
-            { PARALLELS, "c:\\windows\\system32\\drivers\\prlmouse.sys" },
-            { PARALLELS, "c:\\windows\\system32\\drivers\\prlvideo.sys" },
-            { PARALLELS, "c:\\windows\\system32\\drivers\\prltime.sys" },
-            { PARALLELS, "c:\\windows\\system32\\drivers\\prl_pv32.sys" },
-            { PARALLELS, "c:\\windows\\system32\\drivers\\prl_paravirt_32.sys" }
+            { VPC, L"c:\\windows\\system32\\drivers\\vmsrvc.sys" },
+            { VPC, L"c:\\windows\\system32\\drivers\\vpc-s3.sys" },
+            { PARALLELS, L"c:\\windows\\system32\\drivers\\prleth.sys" },
+            { PARALLELS, L"c:\\windows\\system32\\drivers\\prlfs.sys" },
+            { PARALLELS, L"c:\\windows\\system32\\drivers\\prlmouse.sys" },
+            { PARALLELS, L"c:\\windows\\system32\\drivers\\prlvideo.sys" },
+            { PARALLELS, L"c:\\windows\\system32\\drivers\\prltime.sys" },
+            { PARALLELS, L"c:\\windows\\system32\\drivers\\prl_pv32.sys" },
+            { PARALLELS, L"c:\\windows\\system32\\drivers\\prl_paravirt_32.sys" }
         } };
 
         for (const auto &file_pair : files) {
