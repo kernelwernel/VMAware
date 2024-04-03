@@ -241,7 +241,7 @@ int main(int argc, char* argv[]) {
         //checker(VM::OFFSEC_SGDT, "Offensive Security SGDT");
         //checker(VM::OFFSEC_SLDT, "Offensive Security SLDT");
         //checker(VM::VPC_SIDT, "VirtualPC SIDT");
-        checker(VM::HYPERV_BOARD, "Hyper-V motherboard");
+        //checker(VM::HYPERV_BOARD, "Hyper-V motherboard");
         checker(VM::VM_FILES_EXTRA, "Extra VM files");
         checker(VM::VMWARE_IOMEM, "/proc/iomem file");
         checker(VM::VMWARE_IOPORTS, "/proc/ioports file");

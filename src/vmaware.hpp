@@ -6156,7 +6156,7 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     //{ VM::OFFSEC_SGDT, { 60, VM::offsec_sgdt }},
     //{ VM::OFFSEC_SLDT, { 20, VM::offsec_sldt }},
     //{ VM::VPC_SIDT, { 15, VM::vpc_sidt }},
-    { VM::HYPERV_BOARD, { 45, VM::hyperv_board }},
+    //{ VM::HYPERV_BOARD, { 45, VM::hyperv_board }},
     { VM::VM_FILES_EXTRA, { 70, VM::vm_files_extra }},
     { VM::VMWARE_IOMEM, { 65, VM::vmware_iomem }},
     { VM::VMWARE_IOPORTS, { 70, VM::vmware_ioports }},
