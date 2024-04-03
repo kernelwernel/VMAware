@@ -233,7 +233,7 @@ int main(int argc, char* argv[]) {
         checker(VM::QEMU_PROC, "QEMU processes");
         checker(VM::QEMU_DIR, "QEMU directories");
         checker(VM::VPC_PROC, "VPC processes");
-        checker(VM::VPC_INVALID, "VPC invalid instructions");
+        //checker(VM::VPC_INVALID, "VPC invalid instructions");
         checker(VM::SIDT, "SIDT");
         checker(VM::SGDT, "SGDT");
         checker(VM::SLDT, "SLDT");

@@ -18,10 +18,12 @@
 - [ ] fix memoization
 - [X] add a python script to automatically set the lines of the seperate sections in the header
 - [ ] add C++20 concepts for the VM::add_custom() function
-- [ ] check for valid monitor technique
+- [X] check for valid monitor technique
 - [ ] fix the is_admin code for windows
-- [ ] test it on compiler explorer with windows 32-bit settings
+- [X] test it on compiler explorer with windows 32-bit settings
+- [ ] upload the lib to dnf 
+- [ ] upload the lib to apt 
+- [X] add ARM support
 
 # Distant plans
-- add ARM support
 - add the library to conan.io when released

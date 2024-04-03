@@ -323,6 +323,7 @@ public:
         VMWARE_BACKDOOR,
         VMWARE_PORT_MEM,
         SMSW,
+        MUTEX,
         EXTREME,
         NO_MEMO,
         WIN_HYPERV_DEFAULT
@@ -1980,18 +1981,18 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #else
         const char* vendor_file = "/sys/devices/virtual/dmi/id/chassis_vendor";
 
-        if (util::exists(vendor_file)) {
-            const std::string vendor = util::read_file(vendor_file);
-
-            // TODO: More can be definitely added, I only tried QEMU and VMware so far
-            if (vendor == "QEMU") { return core::add(QEMU); }
-            if (vendor == "Oracle Corporation") { return core::add(VMWARE); }
-
-            debug("CVENDOR: ", "unknown vendor = ", vendor);
-        }
-        else {
+        if (!util::exists(vendor_file)) {
             debug("CVENDOR: ", "file doesn't exist");
+            return false;
         }
+
+        const std::string vendor = util::read_file(vendor_file);
+
+        // TODO: More can definitely be added, I only tried QEMU and VMware so far
+        if (vendor == "QEMU") { return core::add(QEMU); }
+        if (vendor == "Oracle Corporation") { return core::add(VMWARE); }
+
+        debug("CVENDOR: ", "unknown vendor = ", vendor);
 
         return false;
 #endif
@@ -5398,6 +5399,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @copyright BSD clause 2
      */ 
 #if (x86_32 && MSVC)
+    MSVC_DISABLE_WARNING(4740)
     #define EndUserModeAddress (*(UINT_PTR*)0x7FFE02B4)
     typedef LONG (NTAPI *NTSETLDTENTRIES)(DWORD, DWORD, DWORD, DWORD, DWORD, DWORD);
 
@@ -5448,6 +5450,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         return false;
     }
+    MSVC_ENABLE_WARNING(4740)
 #else
     [[nodiscard]] static bool vmware_emul() {
         return false;
@@ -5598,6 +5601,62 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
     }
 
+
+    /**
+     * @brief Check for mutex strings of VM brands
+     * @category Windows, x86
+     * @note from VMDE project 
+     * @author hfiref0x
+     * @copyright MIT
+     */ 
+    [[nodiscard]] static bool mutex() try {
+        if (core::disabled(MUTEX)) {
+            return false;
+        }
+
+#if (!MSVC)
+        return false;
+#else
+        auto supMutexExist = [](LPWSTR lpMutexName) -> bool {
+            DWORD dwError;
+            HANDLE hObject = NULL;
+            if (lpMutexName == NULL) {
+                return;
+            }
+
+            SetLastError(0);
+            hObject = CreateMutex(NULL, FALSE, lpMutexName); // define around A or W function version
+            dwError = GetLastError();
+
+            if (hObject) {
+                CloseHandle(hObject);
+            }
+
+            return (dwError == ERROR_ALREADY_EXISTS);
+        };
+
+        if (
+            supMutexExist("Sandboxie_SingleInstanceMutex_Control") ||
+            (supMutexExist("SBIE_BOXED_ServiceInitComplete_Mutex1"))
+        ) { 
+            return core::add(SANDBOXIE);
+        }
+    
+        if (supMutexExist("MicrosoftVirtualPC7UserServiceMakeSureWe'reTheOnlyOneMutex")) {
+            return core::add(VPC);
+        }
+
+        if (supMutexExist("Frz_State")) {
+            return true;
+        }
+
+        return false;
+#endif
+    }
+    catch (...) {
+        debug("MUTEX: catched error, returned false");
+        return false;
+    }
 
     struct core {
         MSVC_DISABLE_WARNING(4820)
@@ -6089,7 +6148,7 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::VALID_MSR, { 35, VM::valid_msr }},
     { VM::QEMU_PROC, { 30, VM::qemu_processes }},
     { VM::VPC_PROC, { 30, VM::vpc_proc }},
-    { VM::VPC_INVALID, { 75, VM::vpc_invalid }},
+    //{ VM::VPC_INVALID, { 75, VM::vpc_invalid }},
     { VM::SIDT, { 30, VM::sidt }},
     { VM::SGDT, { 30, VM::sgdt }},
     { VM::SLDT, { 15, VM::sldt }},
