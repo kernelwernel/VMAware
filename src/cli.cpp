@@ -236,10 +236,10 @@ int main(int argc, char* argv[]) {
         //checker(VM::VPC_INVALID, "VPC invalid instructions");
         //checker(VM::SIDT, "SIDT");
         checker(VM::SGDT, "SGDT");
-        checker(VM::SLDT, "SLDT");
-        //checker(VM::OFFSEC_SIDT, "Offensive Security SIDT");
-        //checker(VM::OFFSEC_SGDT, "Offensive Security SGDT");
-        //checker(VM::OFFSEC_SLDT, "Offensive Security SLDT");
+        //checker(VM::SLDT, "SLDT");
+        checker(VM::OFFSEC_SIDT, "Offensive Security SIDT");
+        checker(VM::OFFSEC_SGDT, "Offensive Security SGDT");
+        checker(VM::OFFSEC_SLDT, "Offensive Security SLDT");
         checker(VM::VPC_SIDT, "VirtualPC SIDT");
         checker(VM::HYPERV_BOARD, "Hyper-V motherboard");
         checker(VM::VM_FILES_EXTRA, "Extra VM files");
