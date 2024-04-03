@@ -5617,7 +5617,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!MSVC)
         return false;
 #else
-        auto supMutexExist = [](LPWSTR lpMutexName) -> bool {
+        auto supMutexExist = [](const char* lpMutexName) -> bool {
             DWORD dwError;
             HANDLE hObject = NULL;
             if (lpMutexName == NULL) {
@@ -5625,7 +5625,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             SetLastError(0);
-            hObject = CreateMutex(NULL, FALSE, lpMutexName); // define around A or W function version
+            hObject = CreateMutex(NULL, FALSE, lpMutexName);
             dwError = GetLastError();
 
             if (hObject) {
