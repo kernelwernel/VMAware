@@ -235,7 +235,7 @@ int main(int argc, char* argv[]) {
         checker(VM::VPC_PROC, "VPC processes");
         //checker(VM::VPC_INVALID, "VPC invalid instructions");
         //checker(VM::SIDT, "SIDT");
-        checker(VM::SGDT, "SGDT");
+        //checker(VM::SGDT, "SGDT");
         //checker(VM::SLDT, "SLDT");
         //checker(VM::OFFSEC_SIDT, "Offensive Security SIDT");
         //checker(VM::OFFSEC_SGDT, "Offensive Security SGDT");
