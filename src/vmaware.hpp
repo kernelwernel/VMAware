@@ -5621,7 +5621,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             DWORD dwError;
             HANDLE hObject = NULL;
             if (lpMutexName == NULL) {
-                return;
+                return false;
             }
 
             SetLastError(0);
@@ -5637,7 +5637,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         if (
             supMutexExist("Sandboxie_SingleInstanceMutex_Control") ||
-            (supMutexExist("SBIE_BOXED_ServiceInitComplete_Mutex1"))
+            supMutexExist("SBIE_BOXED_ServiceInitComplete_Mutex1")
         ) { 
             return core::add(SANDBOXIE);
         }
