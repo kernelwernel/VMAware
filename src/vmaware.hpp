@@ -6166,7 +6166,7 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::VMWARE_STR, { 35, VM::vmware_str }},
     { VM::VMWARE_BACKDOOR, { 100, VM::vmware_backdoor }},
     { VM::VMWARE_PORT_MEM, { 85, VM::vmware_port_memory }},
-    { VM::SMSW, { 30, VM::smsw }}
+    { VM::SMSW, { 30, VM::smsw }},
     { VM::MUTEX, { 85, VM::mutex }}
 
     // __TABLE_LABEL, add your technique above
