@@ -79,6 +79,11 @@ int main() {
 This will essentially return the VM brand as a `std::string`. The exact possible brand string return values are: 
 - `VMware`
 - `VirtualBox`
+- `VMware`
+- `VMware Express`
+- `VMware ESX`
+- `VMware GSX`
+- `VMware Workstation`
 - `bhyve`
 - `KVM`
 - `QEMU`
@@ -267,9 +272,9 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::PARALLELS_VM` | Check for indications of Parallels VM | Windows | 50% |  |  |
 | `VM::RDTSC_VMEXIT` | Check for RDTSC technique with VMEXIT | Yes | 50% |  |  |
 | `VM::LOADED_DLLS` | Check for DLLs of multiple VM brands | Windows | 75% |  | GPL |
-| `VM::QEMU_BRAND` | Check for QEMU CPU brand with cpuid | Yes | 100% |  |   |
+| `VM::QEMU_BRAND` | Check for QEMU CPU brand with cpuid | Yes | 100% |  |  |
 | `VM::BOCHS_CPU` | Check for Bochs cpuid emulation oversights | Yes | 95% |  |  |
-| `VM::VPC_BOARD` | Check for VPC specific string in motherboard manufacturer | Windows | 20% |  |   |
+| `VM::VPC_BOARD` | Check for VPC specific string in motherboard manufacturer | Windows | 20% |  |  |
 | `VM::HYPERV_WMI` | Check for Hyper-V wmi output | Windows | 80% |  |  |
 | `VM::HYPERV_REG` | Check for Hyper-V strings in registry | Windows | 80% |  |  |
 | `VM::BIOS_SERIAL` | Check if BIOS serial number is null | Windows | 60% |  |  |
