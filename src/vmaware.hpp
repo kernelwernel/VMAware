@@ -6162,7 +6162,7 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::VMWARE_IOPORTS, { 70, VM::vmware_ioports }},
     { VM::VMWARE_SCSI, { 40, VM::vmware_scsi }},
     { VM::VMWARE_DMESG, { 65, VM::vmware_dmesg }},
-    //{ VM::VMWARE_EMULATION, { 20, VM::vmware_emul }},
+    { VM::VMWARE_EMULATION, { 20, VM::vmware_emul }},
     { VM::VMWARE_STR, { 35, VM::vmware_str }},
     { VM::VMWARE_BACKDOOR, { 100, VM::vmware_backdoor }},
     { VM::VMWARE_PORT_MEM, { 85, VM::vmware_port_memory }},

@@ -247,7 +247,7 @@ int main(int argc, char* argv[]) {
         checker(VM::VMWARE_IOPORTS, "/proc/ioports file");
         checker(VM::VMWARE_SCSI, "/proc/scsi/scsi file");
         checker(VM::VMWARE_DMESG, "VMware dmesg");
-        //checker(VM::VMWARE_EMULATION, "VMware emulation mode");
+        checker(VM::VMWARE_EMULATION, "VMware emulation mode");
         checker(VM::VMWARE_STR, "STR instruction");
         checker(VM::VMWARE_BACKDOOR, "VMware IO port backdoor");
         checker(VM::VMWARE_PORT_MEM, "VMware port memory");
