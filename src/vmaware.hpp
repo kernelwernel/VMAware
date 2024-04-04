@@ -318,7 +318,6 @@ public:
         VMWARE_IOPORTS,
         VMWARE_SCSI,
         VMWARE_DMESG,
-        VMWARE_EMULATION,
         VMWARE_STR,
         VMWARE_BACKDOOR,
         VMWARE_PORT_MEM,
@@ -4234,21 +4233,21 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             return 0;
-            };
+        };
 
         auto AllToUpper = [](char* str, std::size_t len) {
             for (std::size_t i = 0; i < len; ++i) {
                 str[i] = static_cast<char>(std::toupper(static_cast<unsigned char>(str[i])));
             }
-            };
+        };
         MSVC_ENABLE_WARNING(5045)
 
-            AllToUpper(p, length);
+        AllToUpper(p, length);
 
         // cleaner and better shortcut than typing reinterpret_cast<unsigned char*> a million times
         auto cast = [](char* p) -> unsigned char* {
             return reinterpret_cast<unsigned char*>(p);
-            };
+        };
 
         unsigned char* x1 = ScanDataForString(cast(p), length, (unsigned char*)("INNOTEK GMBH"));
         unsigned char* x2 = ScanDataForString(cast(p), length, (unsigned char*)("VIRTUALBOX"));
@@ -5393,72 +5392,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check VMware emulation test
-     * @category Windows, x86
-     * @note Derek Soeder's (eEye Digital Security) VMware emulation test
-     * @copyright BSD clause 2
-     */ 
-#if (x86_32 && MSVC)
-    MSVC_DISABLE_WARNING(4740)
-    #define EndUserModeAddress (*(UINT_PTR*)0x7FFE02B4)
-    typedef LONG (NTAPI *NTSETLDTENTRIES)(DWORD, DWORD, DWORD, DWORD, DWORD, DWORD);
-
-    static int handle_exception(LPEXCEPTION_POINTERS lpep, bool &is_vm) {
-		if ((UINT_PTR)(lpep->ExceptionRecord->ExceptionAddress) > EndUserModeAddress) {
-			is_vm = true;
-        }
-
-		return (EXCEPTION_EXECUTE_HANDLER);
-    }
-
-    [[nodiscard]] static bool vmware_emul() {
-        if (core::disabled(VMWARE_EMULATION)) {
-            return false;
-        }
-
-		NTSETLDTENTRIES ZwSetLdtEntries;
-		LDT_ENTRY csdesc;
-        bool is_vm = false;
-
-		ZwSetLdtEntries = reinterpret_cast<NTSETLDTENTRIES>(GetProcAddress(GetModuleHandle ("ntdll.dll"), "ZwSetLdtEntries"));
-
-		memset (&csdesc, 0, sizeof (csdesc));
-		
-		csdesc.LimitLow = (WORD)(EndUserModeAddress >> 12);
-		csdesc.HighWord.Bytes.Flags1 = 0xFA;
-		csdesc.HighWord.Bytes.Flags2 = 0xC0 | ((EndUserModeAddress >> 28) & 0x0F);
-		
-		ZwSetLdtEntries (0x000F, ((DWORD*)&csdesc)[0], ((DWORD*)&csdesc)[1], 0, 0, 0);
-
-		__try {
-			__asm {
-				pop eax
-				push 0x000F
-				push eax
-				retf
-		    }
-			__asm {
-                or eax, -1
-                jmp eax
-            }
-        }
-        __except (handle_exception(GetExceptionInformation(), is_vm)) { }
-
-        if (is_vm) {
-            return core::add(VMWARE);
-        }
-
-        return false;
-    }
-    MSVC_ENABLE_WARNING(4740)
-#else
-    [[nodiscard]] static bool vmware_emul() {
-        return false;
-    }
-#endif
-
-
-    /**
      * @brief Check for official VMware io port backdoor technique
      * @category Windows, x86
      * @note Code from ScoopyNG by Tobias Klein
@@ -5678,7 +5611,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
 
         // directly return when adding a brand to the scoreboard for a more succint expression
-#if (MSVC) 
+#if (MSVC)
         __declspec(noalias)
 #elif (LINUX)
         [[gnu::const]]
@@ -5826,7 +5759,7 @@ public: // START OF PUBLIC FUNCTIONS
                         return pair.second;
                     }
                 )
-                ) {
+            ) {
                 current_brand = "Unknown";
             }
             else {
@@ -6162,7 +6095,6 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::VMWARE_IOPORTS, { 70, VM::vmware_ioports }},
     { VM::VMWARE_SCSI, { 40, VM::vmware_scsi }},
     { VM::VMWARE_DMESG, { 65, VM::vmware_dmesg }},
-    //{ VM::VMWARE_EMULATION, { 20, VM::vmware_emul }},
     { VM::VMWARE_STR, { 35, VM::vmware_str }},
     { VM::VMWARE_BACKDOOR, { 100, VM::vmware_backdoor }},
     { VM::VMWARE_PORT_MEM, { 85, VM::vmware_port_memory }},
