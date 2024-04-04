@@ -150,7 +150,7 @@ And if you found this project useful, a star would be appreciated :)
 - Tom Liston + Ed Skoudis
 - [Tobias Klein](https://www.trapkit.de/index.html)
 - [(S21sec) Alfredo Omella](https://www.s21sec.com/)
-- [(eEye Digital Security) Derek Soeder]()
+- [hfiref0x](https://github.com/hfiref0x)
 
 <br>
 

@@ -218,7 +218,7 @@ int main(int argc, char* argv[]) {
         checker(VM::HYPERV_REG, "Hyper-V registry");
         checker(VM::HYPERV_WMI, "Hyper-V WMI output");
         checker(VM::VBOX_FOLDERS, "VirtualBox shared folders");
-        checker(VM::VBOX_MSSMBIOS, "VirtualBox MSSMBIOS");
+        checker(VM::MSSMBIOS, "MSSMBIOS");
         checker(VM::MAC_MEMSIZE, "MacOS hw.memsize");
         checker(VM::MAC_IOKIT, "MacOS registry IO-kit");
         checker(VM::IOREG_GREP, "IO registry grep");
@@ -247,15 +247,15 @@ int main(int argc, char* argv[]) {
         checker(VM::VMWARE_IOPORTS, "/proc/ioports file");
         checker(VM::VMWARE_SCSI, "/proc/scsi/scsi file");
         checker(VM::VMWARE_DMESG, "VMware dmesg");
-        checker(VM::VMWARE_EMULATION, "VMware emulation mode");
         checker(VM::VMWARE_STR, "STR instruction");
         checker(VM::VMWARE_BACKDOOR, "VMware IO port backdoor");
-        checker(VM::SMSW, "SMSW instruction");
         checker(VM::VMWARE_PORT_MEM, "VMware port memory");
+        checker(VM::SMSW, "SMSW instruction");
+        checker(VM::MUTEX, "mutex strings");
 
         std::printf("\n");
 
-        const std::string brand = VM::brand();
+        const std::string brand = VM::brand(VM::MULTIPLE);
 
         std::cout << "VM brand: " << (brand == "Unknown" ? red : green) << brand << ansi_exit << "\n";
 
@@ -309,7 +309,7 @@ int main(int argc, char* argv[]) {
             version();
             return 0;
         } else if (cmp(arg, "-b") || cmp(arg, "--brand")) {
-            std::cout << VM::brand() << "\n";
+            std::cout << VM::brand(VM::MULTIPLE) << "\n";
             return 0;
         } else if (cmp(arg, "-p") || cmp(arg, "--percent")) {
             std::cout << static_cast<std::uint32_t>(VM::percentage()) << "\n";
