@@ -6148,7 +6148,7 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::VALID_MSR, { 35, VM::valid_msr }},
     { VM::QEMU_PROC, { 30, VM::qemu_processes }},
     { VM::VPC_PROC, { 30, VM::vpc_proc }},
-    //{ VM::VPC_INVALID, { 75, VM::vpc_invalid }},
+    { VM::VPC_INVALID, { 75, VM::vpc_invalid }},
     //{ VM::SIDT, { 30, VM::sidt }},
     //{ VM::SGDT, { 30, VM::sgdt }},
     //{ VM::SLDT, { 15, VM::sldt }},
