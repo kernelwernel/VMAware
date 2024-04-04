@@ -305,8 +305,12 @@ public:
         NO_MEMO,
         WIN_HYPERV_DEFAULT
     };
+
 private:
     static constexpr u8 enum_size = __LINE__ - enum_line_start - 4; // get enum size
+
+    // for the bitset
+    using flagset = std::bitset<enum_size>;
 
 public:
     // this will allow the enum to be used in the public interface as "VM::TECHNIQUE"
@@ -317,13 +321,12 @@ public:
     VM(const VM&) = delete;
     VM(VM&&) = delete;
 
-private:
-    // for the bitset
-    using flagset = std::bitset<enum_size>;
-
-    // global values
     static flagset DEFAULT; // default bitset that will be run if no parameters are specified
     static flagset ALL; // same as default, but with cursor check included
+
+private:
+
+    // global values
     static flagset flags; // global flags
     static bool cpuid_supported; // cpuid check value
 
