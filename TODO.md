@@ -25,6 +25,8 @@
 - [ ] upload the lib to apt 
 - [X] add ARM support
 - [ ] look into what `fv-az663-325` is
+- [ ] implement techniques from [here](https://labs.nettitude.com/blog/vm-detection-tricks-part-3-hyper-v-raw-network-protocol/)
+- [ ] add multiple choice for VM::brand()
 
 # Distant plans
 - add the library to conan.io when released

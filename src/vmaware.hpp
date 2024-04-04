@@ -325,7 +325,8 @@ public:
         MUTEX,
         EXTREME,
         NO_MEMO,
-        WIN_HYPERV_DEFAULT
+        WIN_HYPERV_DEFAULT,
+        MULTIPLE
     };
 private:
     static constexpr u8 enum_size = __LINE__ - enum_line_start - 4; // get enum size
@@ -576,18 +577,6 @@ private:
                 qnx = " QNXQVMBSQG ",
                 virtapple = "VirtualApple";
 
-#if (CPP >= 17)
-            constexpr std::array<std::string_view, 13> IDs{
-#else
-            std::array<std::string, 13> IDs {
-#endif
-                bhyve, kvm, qemu,
-                hyperv, parallels, parallels,
-                parallels2, vmware, vbox,
-                xen, acrn, qnx,
-                virtapple
-            };
-
             auto cpuid_thingy = [](const u32 p_leaf, u32* regs, std::size_t start = 0, std::size_t end = 4) -> bool {
                 u32 x[4]{};
                 cpu::cpuid(x[0], x[1], x[2], x[3], p_leaf);
@@ -611,36 +600,44 @@ private:
                 return str;
             };
 
-            std::stringstream ss;
-            ss << strconvert(sig_reg[0]);
-            ss << strconvert(sig_reg[1]);
-            ss << strconvert(sig_reg[2]);
+            std::stringstream ss1;
+            std::stringstream ss2;
 
-            brand = ss.str();
+            ss1 << strconvert(sig_reg[0]);
+            ss1 << strconvert(sig_reg[1]);
+            ss1 << strconvert(sig_reg[2]);
 
-            debug(technique_name, brand);
+            ss2 << strconvert(sig_reg[0]);
+            ss2 << strconvert(sig_reg[2]);
+            ss2 << strconvert(sig_reg[1]);
+
+            std::string brand1 = ss1.str();
+            std::string brand2 = ss2.str();
+
+            debug(technique_name, brand1);
+            debug(technique_name, brand2);
 
 #if (CPP < 17)
             // bypass compiler warning about unused parameter, ignore this
             UNUSED(technique_name);
 #endif
 
-            const bool found = (std::find(std::begin(IDs), std::end(IDs), brand) != std::end(IDs));
+            const std::vector<std::string> brand_streams = { brand1, brand2 };
 
-            if (found) {
-                if (brand == qemu)       { return core::add(QEMU); }
-                if (brand == vmware)     { return core::add(VMWARE); }
-                if (brand == vbox)       { return core::add(VBOX); }
-                if (brand == bhyve)      { return core::add(BHYVE); }
-                if (brand == kvm)        { return core::add(KVM); }
-                if (brand == xta)        { return core::add(MSXTA); }
-                if (brand == parallels)  { return core::add(PARALLELS); }
-                if (brand == parallels2) { return core::add(PARALLELS); }
-                if (brand == xen)        { return core::add(XEN); }
-                if (brand == acrn)       { return core::add(ACRN); }
-                if (brand == qnx)        { return core::add(QNX); }
-                if (brand == virtapple)  { return core::add(VAPPLE); }
-                if (brand == hyperv)     { 
+            for (const auto &tmp_brand : brand_streams) {
+                if (tmp_brand == qemu)       { return core::add(QEMU); }
+                if (tmp_brand == vmware)     { return core::add(VMWARE); }
+                if (tmp_brand == vbox)       { return core::add(VBOX); }
+                if (tmp_brand == bhyve)      { return core::add(BHYVE); }
+                if (tmp_brand == kvm)        { return core::add(KVM); }
+                if (tmp_brand == xta)        { return core::add(MSXTA); }
+                if (tmp_brand == parallels)  { return core::add(PARALLELS); }
+                if (tmp_brand == parallels2) { return core::add(PARALLELS); }
+                if (tmp_brand == xen)        { return core::add(XEN); }
+                if (tmp_brand == acrn)       { return core::add(ACRN); }
+                if (tmp_brand == qnx)        { return core::add(QNX); }
+                if (tmp_brand == virtapple)  { return core::add(VAPPLE); }
+                if (tmp_brand == hyperv)     { 
                     bool tmp = core::add(VPC);
                     UNUSED(tmp);
                     return core::add(HYPERV);
@@ -654,7 +651,7 @@ private:
              * but the Wikipedia article on CPUID says it's
              * "KVMKVMKVM\0\0\0", like wtf????
              */
-            if (util::find(brand, "KVM")) {
+            if (util::find(brand1, "KVM") || util::find(brand2, "KVM")) {
                 return core::add(KVM);
             }
 
@@ -5695,7 +5692,7 @@ public: // START OF PUBLIC FUNCTIONS
 #endif
             ss << ". Consult the documentation's flag handler for VM::check()";
             throw std::invalid_argument(std::string(text) + ss.str());
-            };
+        };
 
         if (p_flag > enum_size) {
             throw_error("Flag argument must be a valid");
@@ -5708,7 +5705,7 @@ public: // START OF PUBLIC FUNCTIONS
         if (
             (p_flag == NO_MEMO) || \
             (p_flag == EXTREME)
-            ) {
+        ) {
             throw_error("Flag argument must be a technique flag and not a settings flag");
         }
 
@@ -5723,7 +5720,7 @@ public: // START OF PUBLIC FUNCTIONS
 
         auto it = core::table.find(p_flag);
 
-        if (/*VMAWARE_UNLIKELY*/(it == core::table.end())) {
+        if ((it == core::table.end())) {
             throw_error("Flag is not known");
         }
 
@@ -5738,72 +5735,55 @@ public: // START OF PUBLIC FUNCTIONS
 
     /**
      * @brief Fetch the VM brand
-     * @param any combination of flags, can be optional
+     * @param either nothing or VM::MULTIPLE
      * @return std::string
      * @returns VMware, VirtualBox, KVM, bhyve, QEMU, Microsoft Hyper-V, Microsoft x86-to-ARM, Parallels, Xen HVM, ACRN, QNX hypervisor, Hybrid Analysis, Sandboxie, Docker, Wine, Virtual Apple, Virtual PC, Unknown
      * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmbrand
      */
-    [[nodiscard]] static std::string brand(const flagset p_flags = DEFAULT) {
+    [[nodiscard]] static std::string brand(u8 is_multiple = false) {
         {
             // this is added to set the brand scoreboard table
-            u16 tmp = core::run_all(p_flags);
+            u16 tmp = core::run_all(DEFAULT);
             UNUSED(tmp);
         }
 
+        #define brands core::brand_scoreboard
+
+#ifdef __VMAWARE_DEBUG__
+        for (const auto p : brands) {
+            debug("scoreboard: ", (int)p.second, " : ", p.first);
+        }
+#endif
+
+        if (is_multiple == VM::MULTIPLE) {
+            is_multiple = true;
+        } else if (is_multiple != 0) {
+            throw std::invalid_argument("Flag for VM::brand() must either be empty or VM::MULTIPLE. Consult the documentation's flag handler for VM::check()");
+        }
+
         const char* current_brand = "";
+        i32 max = 0;
 
-        // fetch the brand with the most points in the scoreboard
-#if (CPP >= 20)
-        auto it = std::ranges::max_element(core::brand_scoreboard, {},
-            [](const auto& pair) {
-                return pair.second;
-            }
-        );
-
-        if (it != core::brand_scoreboard.end()) {
-            if (
-                std::none_of(core::brand_scoreboard.cbegin(), core::brand_scoreboard.cend(),
-                    [](const auto& pair) {
-                        return pair.second;
-                    }
-                )
-            ) {
-                current_brand = "Unknown";
-            }
-            else {
-                current_brand = it->first;
-            }
-        }
-        else {
-            current_brand = "Unknown";
-        }
-#else
-    #if (MSVC)
-        int max = 0;
-    #else
-        u8 max = 0;
-    #endif
-
-    #if (CPP >= 17)
-        for (const auto& [brand, points] : core::brand_scoreboard) {
+        // both do the same thing
+#if (CPP >= 17)
+        for (const auto& [brand, points] : brands) {
             if (points > max) {
                 current_brand = brand;
                 max = points;
             }
         }
-    #else
-        for (auto it = core::brand_scoreboard.cbegin(); it != core::brand_scoreboard.cend(); ++it) {
+#else
+        for (auto it = brands.cbegin(); it != brands.cend(); ++it) {
             if (it->second > max) {
                 current_brand = it->first;
                 max = it->second;
             }
         }
-    #endif
+#endif
 
         if (max == 0) {
-            current_brand = "Unknown";
+            return "Unknown";
         }
-#endif
 
         // goofy ass C++11 and C++14 linker error workaround
 #if (CPP <= 14)
@@ -5832,23 +5812,17 @@ public: // START OF PUBLIC FUNCTIONS
         constexpr const char* TMP_HYPERV      = VM::HYPERV;
 #endif
 
-        #define brands core::brand_scoreboard
-
         if (
             brands.at(TMP_QEMU) > 0 &&
             brands.at(TMP_KVM) > 0
         ) {
             current_brand = "QEMU+KVM";
-        }
-
-        if (
+        } else if (
             brands.at(TMP_VPC) > 0 &&
             brands.at(TMP_HYPERV) > 0
         ) {
             current_brand = "Microsoft Virtual PC/Hyper-V";
-        }
-
-        if (brands.at(TMP_VMWARE) > 0) {
+        } else if (brands.at(TMP_VMWARE) > 0) {
             if (brands.at(TMP_EXPRESS) > 0) { 
                 current_brand = TMP_EXPRESS;
             } else if (brands.at(TMP_ESX) > 0) { 
@@ -5858,13 +5832,30 @@ public: // START OF PUBLIC FUNCTIONS
             } else if (brands.at(TMP_WORKSTATION) > 0) { 
                 current_brand = TMP_WORKSTATION;
             }
-        }
+        } else if (is_multiple) {
+            std::vector<std::string> potential_brands;
 
-#ifdef __VMAWARE_DEBUG__
-        for (const auto p : brands) {
-            debug("scoreboard: ", (int)p.second, " : ", p.first);
+            for (auto it = brands.cbegin(); it != brands.cend(); ++it) {
+                const u8 points = it->second;
+                const std::string brand = it->first;
+
+                if (points > 0) {
+                    potential_brands.push_back(brand);
+                }
+            }
+
+            std::stringstream ss;
+            u8 i = 1;
+
+            ss << potential_brands.front();
+
+            for (; i < potential_brands.size(); i++) {
+                ss << " or ";
+                ss << potential_brands.at(i);
+            }
+
+            return ss.str();
         }
-#endif
 
         return current_brand;
     }
@@ -6003,6 +5994,7 @@ VM::flagset VM::DEFAULT = []() -> flagset {
     tmp.flip(NO_MEMO);
     tmp.flip(CURSOR);
     tmp.flip(WIN_HYPERV_DEFAULT);
+    tmp.flip(MULTIPLE);
     return tmp;
 }();
 

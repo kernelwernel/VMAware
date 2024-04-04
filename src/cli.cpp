@@ -255,7 +255,7 @@ int main(int argc, char* argv[]) {
 
         std::printf("\n");
 
-        const std::string brand = VM::brand();
+        const std::string brand = VM::brand(VM::MULTIPLE);
 
         std::cout << "VM brand: " << (brand == "Unknown" ? red : green) << brand << ansi_exit << "\n";
 
@@ -309,7 +309,7 @@ int main(int argc, char* argv[]) {
             version();
             return 0;
         } else if (cmp(arg, "-b") || cmp(arg, "--brand")) {
-            std::cout << VM::brand() << "\n";
+            std::cout << VM::brand(VM::MULTIPLE) << "\n";
             return 0;
         } else if (cmp(arg, "-p") || cmp(arg, "--percent")) {
             std::cout << static_cast<std::uint32_t>(VM::percentage()) << "\n";
