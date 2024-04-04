@@ -89,6 +89,8 @@ This will essentially return the VM brand as a `std::string`. The exact possible
 - `QEMU`
 - `QEMU+KVM`
 - `Microsoft Hyper-V`
+- `Virtual PC`
+- `Microsoft Virtual PC/Hyper-V`
 - `Microsoft x86-to-ARM`
 - `Parallels`
 - `Xen HVM`
@@ -99,7 +101,6 @@ This will essentially return the VM brand as a `std::string`. The exact possible
 - `Docker`
 - `Wine`
 - `Virtual Apple`
-- `Virtual PC`
 - `Anubis`
 - `JoeBox`
 - `Thread Expert`

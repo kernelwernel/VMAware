@@ -24,6 +24,7 @@
 - [ ] upload the lib to dnf 
 - [ ] upload the lib to apt 
 - [X] add ARM support
+- [ ] look into what `fv-az663-325` is
 
 # Distant plans
 - add the library to conan.io when released

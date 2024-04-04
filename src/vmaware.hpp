@@ -294,7 +294,7 @@ public:
         HYPERV_REG,
         BIOS_SERIAL,
         VBOX_FOLDERS,
-        VBOX_MSSMBIOS,
+        MSSMBIOS,
         MAC_MEMSIZE,
         MAC_IOKIT,
         IOREG_GREP,
@@ -613,8 +613,8 @@ private:
 
             std::stringstream ss;
             ss << strconvert(sig_reg[0]);
-            ss << strconvert(sig_reg[2]);
             ss << strconvert(sig_reg[1]);
+            ss << strconvert(sig_reg[2]);
 
             brand = ss.str();
 
@@ -633,7 +633,6 @@ private:
                 if (brand == vbox)       { return core::add(VBOX); }
                 if (brand == bhyve)      { return core::add(BHYVE); }
                 if (brand == kvm)        { return core::add(KVM); }
-                if (brand == hyperv)     { return core::add(HYPERV); }
                 if (brand == xta)        { return core::add(MSXTA); }
                 if (brand == parallels)  { return core::add(PARALLELS); }
                 if (brand == parallels2) { return core::add(PARALLELS); }
@@ -641,6 +640,11 @@ private:
                 if (brand == acrn)       { return core::add(ACRN); }
                 if (brand == qnx)        { return core::add(QNX); }
                 if (brand == virtapple)  { return core::add(VAPPLE); }
+                if (brand == hyperv)     { 
+                    bool tmp = core::add(VPC);
+                    UNUSED(tmp);
+                    return core::add(HYPERV);
+                }
             }
 
             /**
@@ -2592,8 +2596,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
         }
 
-        debug("VM_FILES: vmware score: ", vmware);
-        debug("VM_FILES: vbox score: ", vbox);
+        debug("VM_FILES: vmware score: ", static_cast<u32>(vmware));
+        debug("VM_FILES: vbox score: ", static_cast<u32>(vbox));
 
         if (vbox > vmware) {
             return core::add(VBOX);
@@ -4172,14 +4176,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check VirtualBox MSSMBIOS registry for VM-specific strings
+     * @brief Check MSSMBIOS registry for VM-specific strings
      * @category Windows
      * @note slightly modified from original code
      * @author @waleedassar
      * @link https://pastebin.com/fPY4MiYq
      */
-    [[nodiscard]] static bool vbox_mssmbios() try {
-        if (core::disabled(VBOX_MSSMBIOS)) {
+    [[nodiscard]] static bool mssmbios() try {
+        if (core::disabled(MSSMBIOS)) {
             return false;
         }
 
@@ -4223,7 +4227,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         MSVC_DISABLE_WARNING(5045)
-            auto ScanDataForString = [](unsigned char* data, unsigned long data_length, unsigned char* string2) -> unsigned char* {
+        auto ScanDataForString = [](unsigned char* data, unsigned long data_length, unsigned char* string2) -> unsigned char* {
             std::size_t string_length = strlen(reinterpret_cast<char*>(string2));
 
             for (std::size_t i = 0; i <= (data_length - string_length); i++) {
@@ -4252,8 +4256,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         unsigned char* x1 = ScanDataForString(cast(p), length, (unsigned char*)("INNOTEK GMBH"));
         unsigned char* x2 = ScanDataForString(cast(p), length, (unsigned char*)("VIRTUALBOX"));
         unsigned char* x3 = ScanDataForString(cast(p), length, (unsigned char*)("SUN MICROSYSTEMS"));
-        unsigned char* x4 = ScanDataForString(cast(p), length, (unsigned char*)("VIRTUAL MACHINE"));
-        unsigned char* x5 = ScanDataForString(cast(p), length, (unsigned char*)("VBOXVER"));
+        unsigned char* x4 = ScanDataForString(cast(p), length, (unsigned char*)("VBOXVER"));
+        unsigned char* x5 = ScanDataForString(cast(p), length, (unsigned char*)("VIRTUAL MACHINE"));
 
         if (x1 || x2 || x3 || x4 || x5) {
             is_vm = true;
@@ -4270,6 +4274,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         RegCloseKey(hk);
 
         if (is_vm) {
+            if (x5) {
+                return true;
+            }
+
             return core::add(VBOX);
         }
 
@@ -5807,6 +5815,9 @@ public: // START OF PUBLIC FUNCTIONS
         constexpr const char* TMP_ESX         = "VMware ESX";
         constexpr const char* TMP_GSX         = "VMware GSX";
         constexpr const char* TMP_WORKSTATION = "VMware Workstation";
+
+        constexpr const char* TMP_VPC         = "Virtual PC";
+        constexpr const char* TMP_HYPERV      = "Microsoft Hyper-V";
 #else
         constexpr const char* TMP_QEMU = VM::QEMU;
         constexpr const char* TMP_KVM  = VM::KVM;
@@ -5816,7 +5827,11 @@ public: // START OF PUBLIC FUNCTIONS
         constexpr const char* TMP_ESX         = VM::VMWARE_ESX;
         constexpr const char* TMP_GSX         = VM::VMWARE_GSX;
         constexpr const char* TMP_WORKSTATION = VM::VMWARE_WORKSTATION;
+
+        constexpr const char* TMP_VPC         = VM::VPC;
+        constexpr const char* TMP_HYPERV      = VM::HYPERV;
 #endif
+
         #define brands core::brand_scoreboard
 
         if (
@@ -5824,6 +5839,13 @@ public: // START OF PUBLIC FUNCTIONS
             brands.at(TMP_KVM) > 0
         ) {
             current_brand = "QEMU+KVM";
+        }
+
+        if (
+            brands.at(TMP_VPC) > 0 &&
+            brands.at(TMP_HYPERV) > 0
+        ) {
+            current_brand = "Microsoft Virtual PC/Hyper-V";
         }
 
         if (brands.at(TMP_VMWARE) > 0) {
@@ -6071,7 +6093,7 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::HYPERV_REG, { 80, VM::hyperv_registry }},
     { VM::BIOS_SERIAL, { 60, VM::bios_serial }},
     { VM::VBOX_FOLDERS, { 45, VM::vbox_shared_folders }},
-    { VM::VBOX_MSSMBIOS, { 75, VM::vbox_mssmbios }},
+    { VM::MSSMBIOS, { 75, VM::mssmbios }},
     { VM::MAC_MEMSIZE, { 30, VM::hw_memsize }},
     { VM::MAC_IOKIT, { 80, VM::io_kit }},
     { VM::IOREG_GREP, { 75, VM::ioreg_grep }},
