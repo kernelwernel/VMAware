@@ -242,16 +242,16 @@ int main(int argc, char* argv[]) {
         //checker(VM::OFFSEC_SLDT, "Offensive Security SLDT");
         //checker(VM::VPC_SIDT, "VirtualPC SIDT");
         //checker(VM::HYPERV_BOARD, "Hyper-V motherboard");
-        checker(VM::VM_FILES_EXTRA, "Extra VM files");
-        checker(VM::VMWARE_IOMEM, "/proc/iomem file");
-        checker(VM::VMWARE_IOPORTS, "/proc/ioports file");
-        checker(VM::VMWARE_SCSI, "/proc/scsi/scsi file");
-        checker(VM::VMWARE_DMESG, "VMware dmesg");
-        checker(VM::VMWARE_EMULATION, "VMware emulation mode");
-        checker(VM::VMWARE_STR, "STR instruction");
-        checker(VM::VMWARE_BACKDOOR, "VMware IO port backdoor");
-        checker(VM::SMSW, "SMSW instruction");
-        checker(VM::VMWARE_PORT_MEM, "VMware port memory");
+        //checker(VM::VM_FILES_EXTRA, "Extra VM files");
+        //checker(VM::VMWARE_IOMEM, "/proc/iomem file");
+        //checker(VM::VMWARE_IOPORTS, "/proc/ioports file");
+        //checker(VM::VMWARE_SCSI, "/proc/scsi/scsi file");
+        //checker(VM::VMWARE_DMESG, "VMware dmesg");
+        //checker(VM::VMWARE_EMULATION, "VMware emulation mode");
+        //checker(VM::VMWARE_STR, "STR instruction");
+        //checker(VM::VMWARE_BACKDOOR, "VMware IO port backdoor");
+        //checker(VM::SMSW, "SMSW instruction");
+        //checker(VM::VMWARE_PORT_MEM, "VMware port memory");
 
         std::printf("\n");
 

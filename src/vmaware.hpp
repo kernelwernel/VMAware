@@ -6157,16 +6157,16 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     //{ VM::OFFSEC_SLDT, { 20, VM::offsec_sldt }},
     //{ VM::VPC_SIDT, { 15, VM::vpc_sidt }},
     //{ VM::HYPERV_BOARD, { 45, VM::hyperv_board }},
-    { VM::VM_FILES_EXTRA, { 70, VM::vm_files_extra }},
-    { VM::VMWARE_IOMEM, { 65, VM::vmware_iomem }},
-    { VM::VMWARE_IOPORTS, { 70, VM::vmware_ioports }},
-    { VM::VMWARE_SCSI, { 40, VM::vmware_scsi }},
-    { VM::VMWARE_DMESG, { 65, VM::vmware_dmesg }},
-    { VM::VMWARE_EMULATION, { 20, VM::vmware_emul }},
-    { VM::VMWARE_STR, { 35, VM::vmware_str }},
-    { VM::VMWARE_BACKDOOR, { 100, VM::vmware_backdoor }},
-    { VM::VMWARE_PORT_MEM, { 85, VM::vmware_port_memory }},
-    { VM::SMSW, { 30, VM::smsw }}
+    //{ VM::VM_FILES_EXTRA, { 70, VM::vm_files_extra }},
+    //{ VM::VMWARE_IOMEM, { 65, VM::vmware_iomem }},
+    //{ VM::VMWARE_IOPORTS, { 70, VM::vmware_ioports }},
+    //{ VM::VMWARE_SCSI, { 40, VM::vmware_scsi }},
+    //{ VM::VMWARE_DMESG, { 65, VM::vmware_dmesg }},
+    //{ VM::VMWARE_EMULATION, { 20, VM::vmware_emul }},
+    //{ VM::VMWARE_STR, { 35, VM::vmware_str }},
+    //{ VM::VMWARE_BACKDOOR, { 100, VM::vmware_backdoor }},
+    //{ VM::VMWARE_PORT_MEM, { 85, VM::vmware_port_memory }},
+    //{ VM::SMSW, { 30, VM::smsw }}
 
     // __TABLE_LABEL, add your technique above
     // { VM::FUNCTION, { POINTS, FUNCTION_POINTER }}
