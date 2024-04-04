@@ -98,8 +98,7 @@ This will essentially return the VM brand as a `std::string`. The exact possible
 - `Anubis`
 - `JoeBox`
 - `Thread Expert`
-- `CW Sandbox`
-- `SunBelt`
+- `CWSandbox`
 - `Comodo`
 - `Bochs`
 
@@ -262,7 +261,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::VM_PROCESSES` | Check for any VM processes that are active | Windows | 30% |  |  |
 | `VM::LINUX_USER_HOST` | Check for default VM username and hostname for linux | Linux | 35% |  |  |
 | `VM::VBOX_WINDOW_CLASS` | Check for the window class for VirtualBox | Windows | 10% |  | GPL |
-| `VM::WMIC` | Check top-level default window level | Windows | 20% |  |   |
+| `VM::WMIC` | Check top-level default window level | Windows | 20% |  |  |
 | `VM::GAMARUE` | Check for Gamarue ransomware technique which compares VM-specific Window product IDs | Windows | 40% |  |  |
 | `VM::VMID_0X4` | Check if the CPU manufacturer ID matches that of a VM brand with leaf 0x40000000 | Yes | 100% |  |  |
 | `VM::PARALLELS_VM` | Check for indications of Parallels VM | Windows | 50% |  |  |
@@ -297,6 +296,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::OFFSEC_SIDT` | Check for Offensive Security SIDT method | Windows | 60% |  |  |
 | `VM::OFFSEC_SGDT` | Check for Offensive Security SGDT method | Windows | 60% |  |  |
 | `VM::OFFSEC_SLDT` | Check for Offensive Security SLDT method | Windows | 20% |  |  |
+| `VM::VPC_SIDT` | Check for VPC range for SIDT | Windows | 15% |  |  |
 | `VM::HYPERV_BOARD` | Check for Hyper-V string in motherboard | Windows | 45% |  |  |
 | `VM::VM_FILES_EXTRA` | Check for VPC and Parallels files | Windows | 70% |  |  |
 

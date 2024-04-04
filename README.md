@@ -15,10 +15,10 @@ The library is:
 - Very easy to use, with only 5 functions in its public interface
 - Very flexible, with total fine-grained control over which techniques get executed
 - Cross-platform (Windows + MacOS + Linux)
-- Compatible with ARM architecture
+- Compatible with ARM architecture and 32-bit Windows
 - Header-only
 - Available with C++11 and above
-- Features up to 70+ unique techniques
+- Features up to 80+ unique techniques
 - Able to detect VMware, VirtualBox, QEMU, KVM, Parallels, and [much more](https://github.com/kernelwernel/VMAware/blob/v0.2/docs/documentation.md#vmbrand)
 - Able to detect semi-VM technologies like hypervisors, docker, and wine
 - Able to guess the VM brand
@@ -115,7 +115,7 @@ You can view the full docs [here](docs/documentation.md). Trust me, it's not too
 > Yes. There are some techniques that are trivially spoofable, and there's nothing the library can do about it whether it's a deliberate false negative or even a false positive. This is a problem that every VM detection project is facing, which is why the library is trying to test every technique possible to get the best result based on the environment it's running under. 
 
 - Can I use this for malware?
-> This project is not soliciting the development of malware for obvious reasons. Even if you intend to use it for concealment purposes, it'll most likely be flagged by antiviruses anyway and nothing is obfuscated to begin with. Good luck manually obfuscating 5000 lines of C++ code lmfao
+> This project is not soliciting the development of malware for obvious reasons. Even if you intend to use it for concealment purposes, it'll most likely be flagged by antiviruses anyway and nothing is obfuscated to begin with. Good luck manually obfuscating 6000 lines of C++ code lmfao
 
 - Why GPL 3.0 and MIT? 
 > I would've made it strictly MIT so proprietary software can make use of the library, but some of the techniques employed are from GPL 3.0 projects, and I have no choice but to use the same license for legal reasons. This gave me an idea to make an MIT version without all of the GPL code so it can also be used without forcing your code to be open-source. It should be noted that the MIT version removes **8** techniques, and the lesser the number of mechanisms, the less accurate the overall result might be.
@@ -147,6 +147,10 @@ And if you found this project useful, a star would be appreciated :)
 - [Vladyslav Miachkov](https://github.com/fameowner99)
 - [(Offensive Security) Danny Quist](chamuco@gmail.com)
 - [(Offensive Security) Val Smith](mvalsmith@metasploit.com)
+- Tom Liston + Ed Skoudis
+- [Tobias Klein](https://www.trapkit.de/index.html)
+- [(S21sec) Alfredo Omella](https://www.s21sec.com/)
+- [(eEye Digital Security) Derek Soeder]()
 
 <br>
 

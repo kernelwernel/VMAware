@@ -1,4 +1,3 @@
-- [ ] revise sidt check
 - [ ] analyse the UUID check technique's efficiency
 - [X] fix c++11 debug function param error
 - [X] completely remove std::system() grep commands
@@ -20,7 +19,8 @@
 - [X] add a python script to automatically set the lines of the seperate sections in the header
 - [ ] add C++20 concepts for the VM::add_custom() function
 - [ ] check for valid monitor technique
-
+- [ ] fix the is_admin code for windows
+- [ ] test it on compiler explorer with windows 32-bit settings
 
 # Distant plans
 - add ARM support
