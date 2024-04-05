@@ -6,10 +6,10 @@
  *  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
  *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝
  * 
- *  A C++ VM detection library
+ *  C++ VM detection library
  * 
  * ===============================================================
-
+ *
  * This program serves as an internal tool for fuzzing cpuid values 
  * and comparing them between baremetal outputs and VM outputs.
  * 
@@ -17,6 +17,7 @@
  * 
  *  - Made by: @kernelwernel (https://github.com/kernelwernel)
  *  - Repository: https://github.com/kernelwernel/VMAware
+ *  - License: GPL 3.0
  */ 
 
 

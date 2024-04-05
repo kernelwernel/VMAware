@@ -4,7 +4,7 @@
  * ██║   ██║██╔████╔██║███████║██║ █╗ ██║███████║██████╔╝█████╗
  * ╚██╗ ██╔╝██║╚██╔╝██║██╔══██║██║███╗██║██╔══██║██╔══██╗██╔══╝
  *  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
- *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ 1.2 (March 2024)
+ *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ 1.3 (April 2024)
  *
  *  A C++ VM detection library
  *
@@ -16,18 +16,18 @@
  *      - @Vladyslav Miachkov (https://github.com/fameowner99)
  *  - Repository: https://github.com/kernelwernel/VMAware
  *  - Docs: https://github.com/kernelwernel/VMAware/docs/documentation.md
- *  - Full credits: https://github.com/kernelwernel/VMAware#credits
+ *  - Full credits: https://github.com/kernelwernel/VMAware#credits-and-contributors-%EF%B8%8F
  *  - License: GPL-3.0
  *
  * ================================ SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 229
- * - struct for internal cpu operations        => line 412
- * - struct for internal memoization           => line 649
- * - struct for internal utility functions     => line 722
- * - struct for internal core components       => line 5573
- * - start of internal VM detection techniques => line 1388
- * - start of public VM detection functions    => line 5650
- * - start of externally defined variables     => line 5910
+ * - enums for publicly accessible techniques  => line 246
+ * - struct for internal cpu operations        => line 432
+ * - struct for internal memoization           => line 669
+ * - struct for internal utility functions     => line 742
+ * - struct for internal core components       => line 5705
+ * - start of internal VM detection techniques => line 1422
+ * - start of public VM detection functions    => line 5782
+ * - start of externally defined variables     => line 6048
  */
 
 #if (defined(_MSC_VER) || defined(_WIN32) || defined(_WIN64) || defined(__MINGW32__))
@@ -188,6 +188,7 @@
 #include <sys/statvfs.h>
 #include <sys/ioctl.h>
 #include <sys/syscall.h>
+#include <sys/sysinfo.h>
 #include <net/if.h> 
 #include <netinet/in.h>
 #include <unistd.h>
@@ -199,6 +200,9 @@
 #include <sys/types.h>
 #include <sys/sysctl.h>
 #include <unistd.h>
+#include <time.h>
+#include <errno.h>
+#include <chrono>
 #endif
 
 #if (!MSVC)
@@ -323,6 +327,8 @@ public:
         VMWARE_PORT_MEM,
         SMSW,
         MUTEX,
+        VM_DIRS,
+        UPTIME,
         EXTREME,
         NO_MEMO,
         WIN_HYPERV_DEFAULT,
@@ -758,7 +764,7 @@ private:
 #endif
 
 #if (MSVC)
-        // check if file exists
+        // check if path exists
         [[nodiscard]] static bool exists(LPCTSTR path) {
             return (GetFileAttributes(path) != INVALID_FILE_ATTRIBUTES) || (GetLastError() != ERROR_FILE_NOT_FOUND);
         }
@@ -1082,9 +1088,10 @@ private:
             // Calculate how many process identifiers were returned
             DWORD numProcesses = bytesReturned / sizeof(DWORD);
 
-            MSVC_DISABLE_WARNING(5045)
-
+            MSVC_DISABLE_WARNING(5045);
+MSVC_DISABLE_WARNING(5045);
             for (DWORD i = 0; i < numProcesses; ++i) {
+MSVC_ENABLE_WARNING(5045);
                 // Open the process
                 HANDLE process = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, processes[i]);
                 if (process != nullptr) {
@@ -1101,7 +1108,7 @@ private:
                 }
             }
 
-            MSVC_ENABLE_WARNING(5045)
+            MSVC_ENABLE_WARNING(5045);
 
             return false;
 #elif (LINUX)
@@ -1742,7 +1749,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         fflush(stdout);
         __asm__ __volatile__("sidt %0" : "=m"(values));
 
-#ifdef __VMAWARE_DEBUG__
+    #ifdef __VMAWARE_DEBUG__
         u32 result = 0;
 
         for (u8 i = 0; i < 10; i++) {
@@ -1751,7 +1758,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         debug("SIDT5: ", "values = 0x", std::hex, std::setw(16), std::setfill('0'), result);
-#endif
+    #endif
 
         return (values[5] == 0x00);
 #endif
@@ -2211,7 +2218,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     core::brand_scoreboard[p_brand]++;
                 }
             }
-            };
+        };
 
         // general
         key("", "HKLM\\Software\\Classes\\Folder\\shell\\sandbox");
@@ -2315,11 +2322,18 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return core::add(THREADEXPERT);
         }
 
+        if (0 == _tcscmp(user, _T("vmware"))) {
+            return core::add(VMWARE);
+        }
+
+        if (0 == _tcscmp(user, _T("user"))) {
+            return core::add(SANDBOXIE);
+        }
+
         return (
             (0 == _tcscmp(user, _T("USER"))) ||      // Sandbox
-            (0 == _tcscmp(user, _T("user"))) ||      // Sandbox 2
             (0 == _tcscmp(user, _T("currentuser")))  // Normal
-            );
+        );
 #endif
     }
     catch (...) {
@@ -2796,6 +2810,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
     /**
      * @brief Check VBox network provider string
+     * @category Windows
      */
     [[nodiscard]] static bool vbox_network_share() try {
         if (core::disabled(VBOX_NETWORK)) {
@@ -2844,7 +2859,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         auto compare = [&](const std::string& s) -> bool {
             return (std::strcmp((LPCSTR)comp_name.data(), s.c_str()) == 0);
-            };
+        };
 
         debug("COMPUTER_NAME: fetched = ", (LPCSTR)comp_name.data());
 
@@ -5441,7 +5456,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
         } __except (EXCEPTION_EXECUTE_HANDLER) {}
 
-        if (a == 'VMXh') {		// is the value equal to the VMware magic value?
+        if (a == 'VMXh') {
             switch (b) {
                 case 1:  return core::add(VMWARE_EXPRESS);
                 case 2:  return core::add(VMWARE_ESX);
@@ -5506,7 +5521,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check for SMSW instruction technique
+     * @brief Check for SMSW assembly instruction technique
      * @category Windows, x86
      * @author Danny Quist from Offensive Computing
      */ 
@@ -5597,6 +5612,95 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
     }
 
+
+    /**
+     * @brief Check for specific VM directories 
+     * @category Windows
+     */ 
+    [[nodiscard]] static bool vm_directories() try {
+        if (core::disabled(VM_DIRS)) {
+            return false;
+        }
+
+#if (!MSVC)
+        return false;
+#else
+        constexpr std::array<std::pair<const char*, const char*>, 3> dirs = {{
+            { CWSANDBOX, "c:\\analysis" },
+            { VBOX, "%PROGRAMFILES%\\oracle\\virtualbox guest additions\\" },
+            { VMWARE, "%PROGRAMFILES%\\VMware\\" }
+        }};
+
+        for (const auto dir : dirs) {
+            if (util::exists(dir.second)) {
+                return core::add(dir.first);
+            }
+        }
+
+        return false;
+#endif
+    }
+    catch (...) {
+        debug("VM_DIRS: catched error, returned false");
+        return false;
+    }
+
+
+    /**
+     * @brief Check for uptime of less than or equal to 2 minutes
+     * @category Windows, Linux
+     * @note https://stackoverflow.com/questions/30095439/how-do-i-get-system-up-time-in-milliseconds-in-c
+     */ 
+    [[nodiscard]] static bool uptime() try {
+        if (core::disabled(UPTIME)) {
+            return false;
+        }
+
+        constexpr u32 uptime_ms = 1000 * 60 * 2;
+        constexpr u32 uptime_s = 60 * 2;
+
+#if (MSVC)
+        UNUSED(uptime_s);
+        return (GetTickCount64() <= uptime_ms);
+#elif (LINUX)
+        UNUSED(uptime_ms);
+        struct sysinfo info;
+
+        if (sysinfo(&info) != 0) {
+            debug("UPTIME: sysinfo failed");
+            return false;
+        }
+
+        return (info.uptime < uptime_s);
+#elif (APPLE)
+        UNUSED(uptime_s);
+        std::chrono::milliseconds uptime(0u);
+
+        struct timeval ts;
+        std::size_t len = sizeof(ts);
+
+        int mib[2] = { CTL_KERN, KERN_BOOTTIME };
+
+        if (sysctl(mib, 2, &ts, &len, NULL, 0) != 0) {
+            return false;
+        }
+
+        uptime = std::chrono::milliseconds(
+            static_cast<unsigned long long>(ts.tv_sec)*1000ULL + 
+            static_cast<unsigned long long>(ts.tv_usec)/1000ULL
+        );
+
+        return (uptime < uptime_ms);
+#else
+        return false;
+#endif
+    }
+    catch (...) {
+        debug("UPTIME: catched error, returned false");
+        return false;
+    }
+
+
     struct core {
         MSVC_DISABLE_WARNING(4820)
             struct technique {
@@ -5605,7 +5709,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         };
         MSVC_ENABLE_WARNING(4820)
 
-            static const std::map<u8, technique> table;
+        static const std::map<u8, technique> table;
 
         static std::vector<technique> custom_table;
 
@@ -5849,12 +5953,10 @@ public: // START OF PUBLIC FUNCTIONS
             u8 i = 1;
 
             ss << potential_brands.front();
-
             for (; i < potential_brands.size(); i++) {
                 ss << " or ";
                 ss << potential_brands.at(i);
             }
-
             return ss.str();
         }
 
@@ -6114,7 +6216,9 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::VMWARE_BACKDOOR, { 100, VM::vmware_backdoor }},
     { VM::VMWARE_PORT_MEM, { 85, VM::vmware_port_memory }},
     { VM::SMSW, { 30, VM::smsw }},
-    { VM::MUTEX, { 85, VM::mutex }}
+    { VM::MUTEX, { 85, VM::mutex }},
+    { VM::VM_DIRS, { 75, VM::vm_directories }},
+    { VM::UPTIME, { 10, VM::uptime }}
 
     // __TABLE_LABEL, add your technique above
     // { VM::FUNCTION, { POINTS, FUNCTION_POINTER }}
