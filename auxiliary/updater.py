@@ -1,7 +1,27 @@
+# 
+# ██╗   ██╗███╗   ███╗ █████╗ ██╗    ██╗ █████╗ ██████╗ ███████╗
+# ██║   ██║████╗ ████║██╔══██╗██║    ██║██╔══██╗██╔══██╗██╔════╝
+# ██║   ██║██╔████╔██║███████║██║ █╗ ██║███████║██████╔╝█████╗  
+# ╚██╗ ██╔╝██║╚██╔╝██║██╔══██║██║███╗██║██╔══██║██╔══██╗██╔══╝  
+#  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
+#   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝
+# 
+#  C++ VM detection library
+# 
+# ===============================================================
+# 
 # This is an internal script to update the VMAware
 # header file's banner automatically and much more reliably.
 # For example, it'll update the line numbers for the sections
-# the header, and other basic information.
+# header, and other basic information.
+# 
+# ===============================================================
+# 
+#  - Made by: @kernelwernel (https://github.com/kernelwernel)
+#  - Repository: https://github.com/kernelwernel/VMAware
+#  - License: GPL 3.0
+
+
 
 def update(filename):
     with open(filename, 'r') as vmaware_read:

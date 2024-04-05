@@ -1,7 +1,25 @@
+# 
+# ██╗   ██╗███╗   ███╗ █████╗ ██╗    ██╗ █████╗ ██████╗ ███████╗
+# ██║   ██║████╗ ████║██╔══██╗██║    ██║██╔══██╗██╔══██╗██╔════╝
+# ██║   ██║██╔████╔██║███████║██║ █╗ ██║███████║██████╔╝█████╗  
+# ╚██╗ ██╔╝██║╚██╔╝██║██╔══██║██║███╗██║██╔══██║██╔══██╗██╔══╝  
+#  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
+#   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝
+# 
+#  C++ VM detection library
+# 
+# =============================================================
+#
 # this is just an internal script for CI/CD. The main goal is to 
 # check whether all of the techniques are actually updated since 
 # keeping track of the docs, the cli, and the table isn't easy,
 # so I'm automating the checks in case I forget to update any.
+# 
+# ===============================================================
+# 
+#  - Made by: @kernelwernel (https://github.com/kernelwernel)
+#  - Repository: https://github.com/kernelwernel/VMAware
+#  - License: GPL 3.0
 
 import sys
 import re
@@ -15,7 +33,7 @@ def fetch():
     header_content.reverse()
 
     # breakpoint
-    keyword = "const std::map<VM::u64, VM::technique> VM::table = {"
+    keyword = "const std::map<VM::u8, VM::core::technique> VM::core::table = {"
 
     # fetch index of breakpoint
     index_of_keyword = next((i for i, line in enumerate(header_content) if keyword in line), None)
@@ -36,7 +54,7 @@ def filter(raw_content):
         s.isspace() or 
         "//" in s or 
         ";" in s or
-        "VM::technique" in s
+        "VM::core::technique" in s
     )]
 
     # strip all whitespace

@@ -252,6 +252,8 @@ int main(int argc, char* argv[]) {
         checker(VM::VMWARE_PORT_MEM, "VMware port memory");
         checker(VM::SMSW, "SMSW instruction");
         checker(VM::MUTEX, "mutex strings");
+        checker(VM::VM_DIRS, "VM directories");
+        checker(VM::UPTIME, "uptime");
 
         std::printf("\n");
 
