@@ -128,22 +128,6 @@ int main() {
 }
 ```
 
-On rare occasions, there could be conflicting reports of multiple VM brands being detected, which could cause an inaccurate or buggy result. This is where `VM::MULTIPLE` comes in. This flag is specific to `VM::brand()`, and it will return a string with the format "`vm_brand1 or vm_brand2 [or vm_brand3 ...]`" ONLY IF it has found a collision between multiple VM brands. For example:
-
-```cpp
-#include "vmaware.hpp"
-#include <string>
-
-int main() {
-    const std::string result = VM::brand(VM::MULTIPLE);
-
-    // the output could be something like "VirtualBox or VMware"
-    // it could also be "Sandboxie or Wine or Anubis", there isn't
-    // a limit to how many VM brands can be included in the string.
-    std::cout << result << "\n";
-}
-```
-
 <br>
 
 ## `VM::check()`
@@ -332,4 +316,3 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::EXTREME` | This will disregard the weights/biases and its scoring system. It will essentially treat any technique that found a hit as a VM detection no matter how low that technique's certainty is, so if a single technique is positive then it will return true. | 
 | `VM::DEFAULT` | This represents a range of flags which are enabled if no default argument is provided. The reason why this exists is to easily disable any bits manually (shown in the is_vm6 example in the `VM::detect()` section)
 | `VM::WIN_HYPERV_DEFAULT` | This will take into account that Windows 11 (and sometimes 10) may have Hyper-V as a default virtualisation software for any program even if the OS is running as host. Essentially, this flag will count any techniques prone to this issue as running in a VM, while having a higher threshold bar to detect it as one. |
-| `VM::MULTIPLE` | This is exclusive for `VM::brand()`. It will output a string message of all the potential brands it has detected instead of only giving a single one, which may be buggy. 

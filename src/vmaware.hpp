@@ -14,7 +14,6 @@
  *      - @Alex (https://github.com/greenozon)
  *      - @Marek Knápek (https://github.com/MarekKnapek)
  *      - @Vladyslav Miachkov (https://github.com/fameowner99)
- *      - @Alan Tse (https://github.com/alandtse)
  *  - Repository: https://github.com/kernelwernel/VMAware
  *  - Docs: https://github.com/kernelwernel/VMAware/docs/documentation.md
  *  - Full credits: https://github.com/kernelwernel/VMAware#credits
@@ -4263,11 +4262,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (x1 || x2 || x3 || x4 || x5) {
             is_vm = true;
 #ifdef __VMAWARE_DEBUG__
-            if (x1) { debug("MSSMBIOS: x1 = ", x1); }
-            if (x2) { debug("MSSMBIOS: x2 = ", x2); }
-            if (x3) { debug("MSSMBIOS: x3 = ", x3); }
-            if (x4) { debug("MSSMBIOS: x4 = ", x4); }
-            if (x5) { debug("MSSMBIOS: x5 = ", x5); }
+            if (x1) { debug("VBOX_MSSMBIOS: x1 = ", x1); }
+            if (x2) { debug("VBOX_MSSMBIOS: x2 = ", x2); }
+            if (x3) { debug("VBOX_MSSMBIOS: x3 = ", x3); }
+            if (x4) { debug("VBOX_MSSMBIOS: x4 = ", x4); }
+            if (x5) { debug("VBOX_MSSMBIOS: x5 = ", x5); }
 #endif
         }
 
@@ -4276,9 +4275,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         if (is_vm) {
             if (x5) {
-                bool tmp = core::add(VBOX);
-                     tmp = core::add(HYPERV);
-                UNUSED(tmp);
                 return true;
             }
 
@@ -5841,7 +5837,7 @@ public: // START OF PUBLIC FUNCTIONS
             std::vector<std::string> potential_brands;
 
             for (auto it = brands.cbegin(); it != brands.cend(); ++it) {
-                const int points = it->second;
+                const u8 points = it->second;
                 const std::string brand = it->first;
 
                 if (points > 0) {
