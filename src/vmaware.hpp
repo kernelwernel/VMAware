@@ -6,7 +6,7 @@
  *  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
  *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ 1.3 (April 2024)
  *
- *  A C++ VM detection library
+ *  C++ VM detection library
  *
  *  - Made by: @kernelwernel (https://github.com/kernelwernel)
  *  - Contributed by:
@@ -5574,40 +5574,40 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!MSVC)
         return false;
 #else
-        auto supMutexExist = [](const char* lpMutexName) -> bool {
-            DWORD dwError;
-            HANDLE hObject = NULL;
-            if (lpMutexName == NULL) {
-                return false;
-            }
-
-            SetLastError(0);
-            hObject = CreateMutex(NULL, FALSE, lpMutexName);
-            dwError = GetLastError();
-
-            if (hObject) {
-                CloseHandle(hObject);
-            }
-
-            return (dwError == ERROR_ALREADY_EXISTS);
-        };
-
-        if (
-            supMutexExist("Sandboxie_SingleInstanceMutex_Control") ||
-            supMutexExist("SBIE_BOXED_ServiceInitComplete_Mutex1")
-        ) { 
-            return core::add(SANDBOXIE);
-        }
-    
-        if (supMutexExist("MicrosoftVirtualPC7UserServiceMakeSureWe'reTheOnlyOneMutex")) {
-            return core::add(VPC);
+    auto supMutexExist = [](const char* lpMutexName) -> bool {
+        DWORD dwError;
+        HANDLE hObject = NULL;
+        if (lpMutexName == NULL) {
+            return false;
         }
 
-        if (supMutexExist("Frz_State")) {
-            return true;
+        SetLastError(0);
+        hObject = CreateMutexA(NULL, FALSE, lpMutexName);
+        dwError = GetLastError();
+
+        if (hObject) {
+            CloseHandle(hObject);
         }
 
-        return false;
+        return (dwError == ERROR_ALREADY_EXISTS);
+    };
+
+    if (
+        supMutexExist("Sandboxie_SingleInstanceMutex_Control") ||
+        supMutexExist("SBIE_BOXED_ServiceInitComplete_Mutex1")
+    ) { 
+        return core::add(SANDBOXIE);
+    }
+
+    if (supMutexExist("MicrosoftVirtualPC7UserServiceMakeSureWe'reTheOnlyOneMutex")) {
+        return core::add(VPC);
+    }
+
+    if (supMutexExist("Frz_State")) {
+        return true;
+    }
+
+    return false;
 #endif
     }
     catch (...) {

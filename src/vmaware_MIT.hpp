@@ -6,7 +6,7 @@
  *  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
  *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ 1.3 (April 2024)
  *
- *  A C++ VM detection library
+ *  C++ VM detection library
  *
  *  - Made by: @kernelwernel (https://github.com/kernelwernel)
  *  - Contributed by:
@@ -5102,7 +5102,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             SetLastError(0);
-            hObject = CreateMutex(NULL, FALSE, lpMutexName);
+            hObject = CreateMutexA(NULL, FALSE, lpMutexName);
             dwError = GetLastError();
 
             if (hObject) {
