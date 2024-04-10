@@ -3024,7 +3024,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
 
 
-        /**
+    /**
      * @brief Check for KVM-specific registries
      * @category Windows
      * @note idea is from Al-Khaser, slightly modified code
