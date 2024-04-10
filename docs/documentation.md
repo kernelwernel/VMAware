@@ -316,6 +316,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::MUTEX` | Check for mutex strings of VM brands | Windows | 85% |  |  |  |
 | `VM::VM_DIRS` | Check for specific VM directories | Windows | 75% |  |  |  |
 | `VM::UPTIME` | Check if uptime is less than or equal to 2 minutes | Yes | 10% |  |  |  |
+| `VM::MMX` | Check for presence of MMX instructions | Yes | 45% |  |  |  |
 
 
 <br>

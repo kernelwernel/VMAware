@@ -163,6 +163,7 @@ If you know a project, or if you're working on a project that uses VMAware, let 
 - [Tobias Klein](https://www.trapkit.de/index.html)
 - [(S21sec) Alfredo Omella](https://www.s21sec.com/)
 - [hfiref0x](https://github.com/hfiref0x)
+- [Waleedassar](http://waleedassar.blogspot.com)
 
 <br>
 
