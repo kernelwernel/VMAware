@@ -48,7 +48,7 @@
 #define APPLE 0
 #endif
 
- // shorter and succinct macros
+// shorter and succinct macros
 #if __cplusplus == 202302L
 #define CPP 23
 #ifdef __VMAWARE_DEBUG__
@@ -5764,9 +5764,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (MSVC && x86_32)
     MSVC_DISABLE_WARNING(FS_HANDLE)
 
-    bool flag = false;
+    static bool flag = false;
     
-    int __cdecl Handler(EXCEPTION_RECORD* pRec, unsigned char* pContext) {
+    static int __cdecl Handler(EXCEPTION_RECORD* pRec, unsigned char* pContext) {
         if (
             pRec->ExceptionCode == 0xC000001D || 
             pRec->ExceptionCode == 0xC000001E || 
@@ -6342,7 +6342,8 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::MUTEX, { 85, VM::mutex }},
     { VM::VM_DIRS, { 75, VM::vm_directories }},
     { VM::UPTIME, { 10, VM::uptime }},
-    { VM::MMX, { 45, VM::mmx_check }}
+    { VM::MMX, { 45, VM::mmx_check }},
+    { VM::VPC_RESET, { 50, VM::vpc_reset }}
 
     // __TABLE_LABEL, add your technique above
     // { VM::FUNCTION, { POINTS, FUNCTION_POINTER }}
