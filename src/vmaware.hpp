@@ -5764,7 +5764,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (MSVC && x86_32)
     MSVC_DISABLE_WARNING(FS_HANDLE)
 
-    static bool flag = false;
+    static inline bool flag = false;
     
     static int __cdecl Handler(EXCEPTION_RECORD* pRec, unsigned char* pContext) {
         if (
