@@ -254,6 +254,8 @@ int main(int argc, char* argv[]) {
         checker(VM::MUTEX, "mutex strings");
         checker(VM::VM_DIRS, "VM directories");
         checker(VM::UPTIME, "uptime");
+        checker(VM::MMX, "MMX instruction set");
+        checker(VM::VPC_RESET, "VPC reset error");
 
         std::printf("\n");
 

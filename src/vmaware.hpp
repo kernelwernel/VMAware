@@ -5436,29 +5436,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             for (u8 cmd = 0; cmd < 0x2c; ++cmd) {
                 __try {
                     __asm {
-                        /*
-                        // save register values on the stack
-                        push eax			
-                        push ebx
-                        push ecx
-                        push edx
-                        
-                        // perform fingerprint
-                        mov eax, 'VMXh'	    // VMware magic value (0x564D5868)
-                        mov ecx, 0Ah		// special version cmd (0x0a)
-                        mov dx, 'VX'		// special VMware I/O port (0x5658)
-                        
-                        in eax, dx			// special I/O cmd
-                        
-                        mov a, ebx			// data 
-                        mov b, ecx			// data	(eax gets also modified but will not be evaluated)
-
-                        // restore register values from the stack
-                        pop edx
-                        pop ecx
-                        pop ebx
-                        pop eax
-                        */
                         push eax
                         push ebx
                         push ecx
@@ -5661,6 +5638,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         for (const auto dir : dirs) {
             if (util::exists(dir.second)) {
+                debug("VM_DIRS: found ", dir.second);
                 return core::add(dir.first);
             }
         }
