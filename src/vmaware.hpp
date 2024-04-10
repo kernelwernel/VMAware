@@ -5739,6 +5739,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Windows, x86
      * @author http://waleedassar.blogspot.com (@waleedassar)
      */
+    /*
 #if (MSVC && x86_32)
     MSVC_DISABLE_WARNING(FS_HANDLE)
 
@@ -5757,7 +5758,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         return ExceptionContinueSearch;
     }
-    
+
     [[nodiscard]] static bool vpc_reset() try {
         if (core::disabled(VPC_RESET)) {
             return false;
@@ -5807,7 +5808,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
     }
 #endif
-
+*/
 
     struct core {
         MSVC_DISABLE_WARNING(PADDING)
@@ -6320,8 +6321,8 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::MUTEX, { 85, VM::mutex }},
     { VM::VM_DIRS, { 75, VM::vm_directories }},
     { VM::UPTIME, { 10, VM::uptime }},
-    { VM::MMX, { 45, VM::mmx_check }},
-    { VM::VPC_RESET, { 50, VM::vpc_reset }}
+    { VM::MMX, { 45, VM::mmx_check }}
+    //{ VM::VPC_RESET, { 50, VM::vpc_reset }}
 
     // __TABLE_LABEL, add your technique above
     // { VM::FUNCTION, { POINTS, FUNCTION_POINTER }}
