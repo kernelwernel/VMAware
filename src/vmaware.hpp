@@ -1770,7 +1770,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check if processor count is 1 or 2 (some VMs only have a single core)
      * @category All systems
-     */3
+     */
     [[nodiscard]] static bool thread_count() try {
         if (core::disabled(THREADCOUNT)) {
             return false;
