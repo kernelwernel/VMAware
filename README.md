@@ -58,7 +58,7 @@ int main() {
 ## Structure ⚙️
 
 <p align="center">
-<img src="assets/vmaware.drawio.svg" align="center" title="VMAware">
+<img src="assets/vmaware.drawio.png" align="center" title="VMAware">
 <br>
 </p>
 
@@ -72,7 +72,7 @@ This project also provides a tiny, but handy CLI tool utilising the full potenti
 <br>
 
 ## Installation 📥
-To install the library, download or copy paste the `vmaware.hpp` file in the [release section](https://github.com/kernelwernel/VMAware/releases/) to your project. No CMake or shared object linkages are necessary, it's literally that simple.
+To install the library, download the `vmaware.hpp` file in the latest [release section](https://github.com/kernelwernel/VMAware/releases/latest) to your project. No CMake or shared object linkages are necessary, it's literally that simple.
 
 However, if you want the full project (globally accessible headers with <vmaware.hpp> and the CLI tool), follow these commands:
 ```bash
@@ -126,11 +126,23 @@ You can view the full docs [here](docs/documentation.md). Trust me, it's not too
 <br>
 
 ## Issues and pull requests 📬
-If you have any suggestions, ideas, or any sort of contribution, feel free to ask! I'll be more than happy to discuss. If you want to personally ask something in private, my discord is `kr.nl`
+If you have any suggestions, ideas, or any sort of contribution, feel free to ask! I'll be more than happy to discuss in the [issue](https://github.com/kernelwernel/VMAware/issues) section. If you want to personally ask something in private, my discord is `kr.nl`
 
 And if you found this project useful, a star would be appreciated :)
 
 <br>
+
+## Projects using VMAware
+**[CrashLoggerSSE](https://github.com/alandtse/CrashLoggerSSE)** - SKSE/SKSEVR plugin that generates crash logs
+
+**[screenshare-tool](https://github.com/NotRequiem/screenshare-tool)** - Screenshare tool for Windows
+
+**[Some malware I randomly found on MalwareBazaar's database lol](https://bazaar.abuse.ch/browse/tag/vmaware/)**
+
+If you know a project, or if you're working on a project that uses VMAware, let me know and I'll add it here.
+
+<br>
+
 
 ## Credits and contributors ✒️
 - [Check Point Research](https://research.checkpoint.com/)
@@ -151,6 +163,7 @@ And if you found this project useful, a star would be appreciated :)
 - [Tobias Klein](https://www.trapkit.de/index.html)
 - [(S21sec) Alfredo Omella](https://www.s21sec.com/)
 - [hfiref0x](https://github.com/hfiref0x)
+- [Waleedassar](http://waleedassar.blogspot.com)
 
 <br>
 

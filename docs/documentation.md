@@ -307,7 +307,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::VM_FILES_EXTRA` | Check for VPC and Parallels files | Windows | 70% |  |  |  |
 | `VM::VMWARE_IOMEM` | Check for VMware string in /proc/iomem | Linux | 65% |  |  |  |
 | `VM::VMWARE_IOPORTS` | Check for VMware string in /proc/ioports | Linux | 70% |  |  |  |
-| `VM::VMWARE_SCSI` | Check for VMware string in /proc/scsi/scsi | 40% |  |  |  |
+| `VM::VMWARE_SCSI` | Check for VMware string in /proc/scsi/scsi | Linux | 40% |  |  |  |
 | `VM::VMWARE_DMESG` | Check for VMware-specific device name in dmesg output | Linux | 65% |  |  |  |
 | `VM::VMWARE_STR` | Check using str assembly instruction | Windows | 35% |  |  |  |
 | `VM::VMWARE_BACKDOOR` | Check for official VMware io port backdoor technique | Windows | 100% |  |  | 32-bit |
@@ -316,6 +316,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::MUTEX` | Check for mutex strings of VM brands | Windows | 85% |  |  |  |
 | `VM::VM_DIRS` | Check for specific VM directories | Windows | 75% |  |  |  |
 | `VM::UPTIME` | Check if uptime is less than or equal to 2 minutes | Yes | 10% |  |  |  |
+| `VM::MMX` | Check for presence of MMX instructions | Yes | 45% |  |  |  |
 
 
 <br>

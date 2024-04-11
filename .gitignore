@@ -55,3 +55,4 @@ cmake-build-*/
 .idea/*
 *.bkp
 *copy.hpp
+personal_todo.md

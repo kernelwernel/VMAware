@@ -6,7 +6,7 @@
  *  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
  *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ 1.3 (April 2024)
  *
- *  A C++ VM detection library
+ *  C++ VM detection library
  *
  *  - Made by: @kernelwernel (https://github.com/kernelwernel)
  *  - Contributed by:
@@ -751,21 +751,18 @@ private:
         }
 #endif
 
-#if (MSVC)
-        // check if path exists
-        [[nodiscard]] static bool exists(LPCTSTR path) {
-            return (GetFileAttributes(path) != INVALID_FILE_ATTRIBUTES) || (GetLastError() != ERROR_FILE_NOT_FOUND);
-        }
-#else
         [[nodiscard]] static bool exists(const char* path) {
-#if (CPP >= 17)
+#if (MSVC)
+            return (GetFileAttributesA(path) != INVALID_FILE_ATTRIBUTES) || (GetLastError() != ERROR_FILE_NOT_FOUND);
+#else 
+    #if (CPP >= 17)
             return std::filesystem::exists(path);
-#elif (CPP >= 11)
+    #elif (CPP >= 11)
             struct stat buffer;
             return (stat(path, &buffer) == 0);
+    #endif
 #endif
         }
-#endif
 
         // self-explanatory
         [[nodiscard]] static bool is_admin() noexcept {
@@ -5102,7 +5099,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             SetLastError(0);
-            hObject = CreateMutex(NULL, FALSE, lpMutexName);
+            hObject = CreateMutexA(NULL, FALSE, lpMutexName);
             dwError = GetLastError();
 
             if (hObject) {

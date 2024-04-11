@@ -12,8 +12,8 @@
     #include "Windows.h"
 #endif
 
-constexpr const char* ver = "1.2";
-constexpr const char* date = "March 2024";
+constexpr const char* ver = "1.3";
+constexpr const char* date = "April 2024";
 constexpr const char* bold = "\033[1m";
 constexpr const char* ansi_exit = "\x1B[0m";
 constexpr const char* red = "\x1B[38;2;239;75;75m";
@@ -254,6 +254,8 @@ int main(int argc, char* argv[]) {
         checker(VM::MUTEX, "mutex strings");
         checker(VM::VM_DIRS, "VM directories");
         checker(VM::UPTIME, "uptime");
+        checker(VM::MMX, "MMX instruction set");
+        //checker(VM::VPC_RESET, "VPC reset error");
 
         std::printf("\n");
 
