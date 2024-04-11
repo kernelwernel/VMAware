@@ -123,6 +123,9 @@ You can view the full docs [here](docs/documentation.md). Trust me, it's not too
 - The tool has many false positives under a Windows 11 host, why?
 > This is because it is in fact running under a VM. More specifically, Hyper-V might be used by default for every program that's running in Windows 11. 
 
+- I have linker errors when compiling with gcc or clang
+> Either compile with `-lm` and `-lstdc++`, or use g++/clang++ compilers instead.
+
 <br>
 
 ## Issues and pull requests 📬

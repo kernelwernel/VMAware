@@ -20,14 +20,14 @@
  *  - License: GPL-3.0
  *
  * ================================ SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 246
- * - struct for internal cpu operations        => line 432
- * - struct for internal memoization           => line 669
- * - struct for internal utility functions     => line 742
- * - struct for internal core components       => line 5705
- * - start of internal VM detection techniques => line 1422
- * - start of public VM detection functions    => line 5782
- * - start of externally defined variables     => line 6048
+ * - enums for publicly accessible techniques  => line 252
+ * - struct for internal cpu operations        => line 447
+ * - struct for internal memoization           => line 684
+ * - struct for internal utility functions     => line 757
+ * - struct for internal core components       => line 5713
+ * - start of internal VM detection techniques => line 1423
+ * - start of public VM detection functions    => line 5786
+ * - start of externally defined variables     => line 6053
  */
 
 #if (defined(_MSC_VER) || defined(_WIN32) || defined(_WIN64) || defined(__MINGW32__))
@@ -3736,8 +3736,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             if (brand == "              Intel(R) Pentium(R) 4 CPU        ") {
                 return core::add(BOCHS);
             }
-        }
-        else if (amd) {
+        } else if (amd) {
             // technique 2: "processor" should have a capital P
             if (brand == "AMD Athlon(tm) processor") {
                 return core::add(BOCHS);
