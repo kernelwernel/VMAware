@@ -1746,7 +1746,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         fflush(stdout);
         __asm__ __volatile__("sidt %0" : "=m"(values));
-
+/*
     #ifdef __VMAWARE_DEBUG__
         u32 result = 0;
 
@@ -1757,7 +1757,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         debug("SIDT5: ", "values = 0x", std::hex, std::setw(16), std::setfill('0'), result);
     #endif
-
+*/
         return (values[5] == 0x00);
 #endif
     }
@@ -1770,7 +1770,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check if processor count is 1 or 2 (some VMs only have a single core)
      * @category All systems
-     */
+     */3
     [[nodiscard]] static bool thread_count() try {
         if (core::disabled(THREADCOUNT)) {
             return false;
