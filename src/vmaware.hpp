@@ -1746,7 +1746,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         fflush(stdout);
         __asm__ __volatile__("sidt %0" : "=m"(values));
-/*
+
     #ifdef __VMAWARE_DEBUG__
         u32 result = 0;
 
@@ -1757,7 +1757,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         debug("SIDT5: ", "values = 0x", std::hex, std::setw(16), std::setfill('0'), result);
     #endif
-*/
+
         return (values[5] == 0x00);
 #endif
     }
@@ -6153,7 +6153,7 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::DMIDECODE, { 55, VM::dmidecode }},
     { VM::DMESG, { 55, VM::dmesg }},
     { VM::HWMON, { 75, VM::hwmon }},
-    { VM::SIDT5, { 45, VM::sidt5 }},
+    //{ VM::SIDT5, { 45, VM::sidt5 }},
     { VM::CURSOR, { 5, VM::cursor_check }},
     { VM::VMWARE_REG, { 65, VM::vmware_registry }},
     { VM::VBOX_REG, { 65, VM::vbox_registry }},
