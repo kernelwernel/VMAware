@@ -336,8 +336,6 @@ public:
         MUTEX,
         VM_DIRS,
         UPTIME,
-        MMX,
-        VPC_RESET,
         EXTREME,
         NO_MEMO,
         WIN_HYPERV_DEFAULT,
@@ -4830,19 +4828,30 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-#if (MSVC && x86_32)
         u8	idtr[6];
-        u32	idt = 0;
+        u32	idt_entry = 0;
 
+#if (MSVC)
+    #if (x86_32)
         _asm sidt idtr
-        idt = *((unsigned long*)&idtr[2]);
+    #elif (x86)
+        #pragma pack(1)
+        struct IDTR {
+            u16 limit;
+            u64 base;
+        };
+        #pragma pack()
 
-        if ((idt >> 24) == 0xff) {
-            return core::add(VMWARE);
-        }
-
+        IDTR idtrStruct;
+        __sidt(&idtrStruct);
+        std::memcpy(idtr, &idtrStruct, sizeof(IDTR));
+    #else
         return false;
+    #endif
+
+        idt_entry = *((unsigned long*)&idtr[2]);
 #elif (LINUX)
+        // false positive with root for some reason
         if (util::is_admin()) {
             return false;
         }
@@ -4852,8 +4861,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             u32 base;
         } __attribute__((packed));
 
-        IDTR idtr;
-        u32 idt_entry = 0;
+        IDTR idtr_struct;
 
         __asm__ __volatile__(
             "sidt %0"
@@ -4861,18 +4869,18 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         );
 
         std::ifstream mem("/dev/mem", std::ios::binary);
-        mem.seekg(idtr.base + 8, std::ios::beg);
+        mem.seekg(idtr_struct.base + 8, std::ios::beg);
         mem.read(reinterpret_cast<char*>(&idt_entry), sizeof(idt_entry));
         mem.close();
+#else
+        return false;
+#endif
 
-        if ((idt_entry >> 24) == 0xff) {
+        if ((idt_entry >> 24) == 0xFF) {
             return core::add(VMWARE);
         }
 
         return false;
-#else
-        return false;
-#endif
     }
     catch (...) {
         debug("SIDT: ", "catched error, returned false");
@@ -4892,13 +4900,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!MSVC || !x86)
         return false;
 #elif (x86_32)
-        unsigned short ldtr[5] = { 0xef, 0xbe, 0xad, 0xde };
+        unsigned short ldtr[5] = { 0xEF, 0xBE, 0xAD, 0xDE };
         unsigned int ldt = 0;
 
         _asm sldt ldtr;
         ldt = *((u32*)&ldtr[0]);
 
-        return (ldt != 0xdead0000);
+        return (ldt != 0xDEAD0000);
 #else
         return false;
 #endif
@@ -4927,7 +4935,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         _asm sgdt gdtr
         gdt = *((unsigned long*)&gdtr[2]);
 
-        return ((gdt >> 24) == 0xff);
+        return ((gdt >> 24) == 0xFF);
 #else
         return false;
 #endif
@@ -5110,7 +5118,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #elif (x86_32)
         unsigned char m[6];
         __asm sidt m;
-        return (m[5] > 0xd0);
+        return (m[5] > 0xD0);
 #else
         return false;
 #endif
@@ -5138,7 +5146,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #elif (x86_32)
         unsigned char m[6];
         __asm sgdt m;
-        return (m[5] > 0xd0);
+        return (m[5] > 0xD0);
 #else
         return false;
 #endif
@@ -5178,7 +5186,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check for sidt method with VPC's 0xe8XXXXXX range
+     * @brief Check for sidt method with VPC's 0xE8XXXXXX range
      * @category Windows, x86
      * @note Idea from Tom Liston and Ed Skoudis' paper "On the Cutting Edge: Thwarting Virtual Machine Detection"
      * @note Paper situated at /papers/ThwartingVMDetection_Liston_Skoudis.pdf
@@ -5197,7 +5205,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         _asm sidt idtr
         idt = *((unsigned long*)&idtr[2]);
 
-        if ((idt >> 24) == 0xe8) {
+        if ((idt >> 24) == 0xE8) {
             return core::add(VPC);
         }
 
@@ -5546,8 +5554,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         return (
-            (((reax >> 24) & 0xFF) == 0xcc) && 
-            (((reax >> 16) & 0xFF) == 0xcc)
+            (((reax >> 24) & 0xFF) == 0xCC) && 
+            (((reax >> 16) & 0xFF) == 0xCC)
         );
 #else
         return false;
@@ -6275,7 +6283,7 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::AUDIO, { 35, VM::check_audio }},
     { VM::QEMU_DIR, { 45, VM::qemu_dir }},
     { VM::VM_PROCESSES, { 30, VM::vm_processes }},
-    { VM::LINUX_USER_HOST, { 35, VM::linux_user_host }},
+    { VM::LINUX_USER_HOST, { 25, VM::linux_user_host }},
     { VM::GAMARUE, { 40, VM::gamarue }},
     { VM::WMIC, { 20, VM::wmic }},
     { VM::VMID_0X4, { 90, VM::vmid_0x4 }},
@@ -6318,9 +6326,7 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::SMSW, { 30, VM::smsw }},
     { VM::MUTEX, { 85, VM::mutex }},
     { VM::VM_DIRS, { 75, VM::vm_directories }},
-    { VM::UPTIME, { 10, VM::uptime }},
-    { VM::MMX, { 45, VM::mmx_check }}
-    //{ VM::VPC_RESET, { 50, VM::vpc_reset }}
+    { VM::UPTIME, { 10, VM::uptime }}
 
     // __TABLE_LABEL, add your technique above
     // { VM::FUNCTION, { POINTS, FUNCTION_POINTER }}

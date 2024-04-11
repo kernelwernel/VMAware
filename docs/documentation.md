@@ -265,7 +265,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::HOSTNAME` | Check if hostname is specific | Windows | 25% |  | GPL |  |
 | `VM::MEMORY` | Check if memory space is far too low for a physical machine | Windows | 35% |  | GPL |  |
 | `VM::VM_PROCESSES` | Check for any VM processes that are active | Windows | 30% |  |  |  |
-| `VM::LINUX_USER_HOST` | Check for default VM username and hostname for linux | Linux | 35% |  |  |  |
+| `VM::LINUX_USER_HOST` | Check for default VM username and hostname for linux | Linux | 25% |  |  |  |
 | `VM::VBOX_WINDOW_CLASS` | Check for the window class for VirtualBox | Windows | 10% |  | GPL |  |
 | `VM::WMIC` | Check top-level default window level | Windows | 20% |  |  |  |
 | `VM::GAMARUE` | Check for Gamarue ransomware technique which compares VM-specific Window product IDs | Windows | 40% |  |  |  |
@@ -316,7 +316,6 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::MUTEX` | Check for mutex strings of VM brands | Windows | 85% |  |  |  |
 | `VM::VM_DIRS` | Check for specific VM directories | Windows | 75% |  |  |  |
 | `VM::UPTIME` | Check if uptime is less than or equal to 2 minutes | Yes | 10% |  |  |  |
-| `VM::MMX` | Check for presence of MMX instructions | Yes | 45% |  |  |  |
 
 
 <br>
