@@ -5698,8 +5698,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         uptime = std::chrono::milliseconds(
-            static_cast<unsigned long long>(ts.tv_sec)*1000ULL + 
-            static_cast<unsigned long long>(ts.tv_usec)/1000ULL
+            (static_cast<u64>(ts.tv_sec) * 1000ULL) + 
+            (static_cast<u64>(ts.tv_usec) / 1000ULL)
         );
 
         return (uptime < uptime_ms);
@@ -5711,110 +5711,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         debug("UPTIME: catched error, returned false");
         return false;
     }
-
-
-    /**
-     * @brief Check if MMX extension is present
-     * @category x86
-     * @note "[MMX is] usually not supported in Virtual Machines so their absence may indicate that the malware is running in a VM."
-     * @note https://www.cyberbit.com/endpoint-security/anti-vm-and-anti-sandbox-explained/
-     */ 
-    [[nodiscard]] static bool mmx_check() try {
-        if (core::disabled(MMX)) {
-            return false;
-        }
-#if (!x86)
-        return false;
-#else
-        constexpr u8 mmx_bit = 23;
-    
-        u32 unused, edx = 0;
-        cpu::cpuid(unused, unused, unused, edx, 1);
-
-        return (edx & (1 << mmx_bit));
-#endif
-    }
-    catch (...) {
-        debug("MMX: catched error, returned false");
-        return false;
-    }
-
-
-    /**
-     * @brief Check for VPC triggering a reset error
-     * @category Windows, x86
-     * @author http://waleedassar.blogspot.com (@waleedassar)
-     */
-    /*
-#if (MSVC && x86_32)
-    MSVC_DISABLE_WARNING(FS_HANDLE)
-
-    static inline bool flag = false;
-    
-    static int __cdecl Handler(EXCEPTION_RECORD* pRec, unsigned char* pContext) {
-        if (
-            pRec->ExceptionCode == 0xC000001D || 
-            pRec->ExceptionCode == 0xC000001E || 
-            pRec->ExceptionCode == 0xC0000005
-        ) {
-            flag = true;
-            (*(unsigned long*)(pContext + 0xB8)) += 5;
-            return ExceptionContinueExecution;
-        }
-
-        return ExceptionContinueSearch;
-    }
-
-    [[nodiscard]] static bool vpc_reset() try {
-        if (core::disabled(VPC_RESET)) {
-            return false;
-        }
-
-        __asm {
-            push offset Handler
-            push dword ptr fs:[0x0]
-            mov dword ptr fs:[0x0],esp
-        }
-
-        flag = false;
-
-        __asm {
-            __emit 0x0F
-            __emit 0xC7
-            __emit 0xC8
-            __emit 0x05
-            __emit 0x00
-        }
-
-        bool is_vm = false;
-
-        if (flag == false) {
-            is_vm = true;
-        }
-
-        __asm {
-            pop dword ptr fs:[0x0]
-            pop eax
-        }
-
-        if (is_vm) {
-            return core::add(VPC);
-        }
-
-        return false;
-    }
-    catch (...) {
-        debug("VPC_RESET: catched error, returned false");
-        return false;
-    }
-
-    MSVC_ENABLE_WARNING(FS_HANDLE) 
-#else
-    [[nodiscard]] static bool vpc_reset() {
-        return false;
-    }
-#endif
-*/
 
     struct core {
         MSVC_DISABLE_WARNING(PADDING)
