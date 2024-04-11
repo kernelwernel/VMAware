@@ -4830,9 +4830,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-#if (!MSVC || !x86)
-        return false;
-#elif (x86_32)
+#if (MSVC && x86_32)
         u8	idtr[6];
         u32	idt = 0;
 

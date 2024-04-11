@@ -126,13 +126,13 @@ You can view the full docs [here](docs/documentation.md). Trust me, it's not too
 <br>
 
 ## Issues and pull requests 📬
-If you have any suggestions, ideas, or any sort of contribution, feel free to ask! I'll be more than happy to discuss. If you want to personally ask something in private, my discord is `kr.nl`
+If you have any suggestions, ideas, or any sort of contribution, feel free to ask! I'll be more than happy to discuss in the [issue](https://github.com/kernelwernel/VMAware/issues) section. If you want to personally ask something in private, my discord is `kr.nl`
 
 And if you found this project useful, a star would be appreciated :)
 
 <br>
 
-## Projects using the lib
+## Projects using VMAware
 **[CrashLoggerSSE](https://github.com/alandtse/CrashLoggerSSE)** - SKSE/SKSEVR plugin that generates crash logs
 
 **[screenshare-tool](https://github.com/NotRequiem/screenshare-tool)** - Screenshare tool for Windows
