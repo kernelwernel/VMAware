@@ -1733,6 +1733,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @link https://www.matteomalvica.com/blog/2018/12/05/detecting-vmware-on-64-bit-systems/
      * @category x86
      */
+    /*
     [[nodiscard]] static bool sidt5() try {
         if (core::disabled(SIDT5)) {
             return false;
@@ -1765,6 +1766,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         debug("SIDT5: catched error, returned false");
         return false;
     }
+    */
 
 
     /**
