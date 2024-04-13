@@ -176,7 +176,7 @@ int main(int argc, char* argv[]) {
         checker(VM::CPUID_0X4, "CPUID 0x4 leaf");
         checker(VM::HYPERVISOR_STR, "hypervisor brand");
         checker(VM::RDTSC, "RDTSC");
-        //checker(VM::SIDT5, "sidt null byte");
+        checker(VM::SIDT5, "sidt null byte");
         checker(VM::THREADCOUNT, "processor count");
         checker(VM::MAC, "MAC address");
         checker(VM::TEMPERATURE, "temperature");
