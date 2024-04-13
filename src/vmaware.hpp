@@ -4822,7 +4822,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for sidt method
      * @category Linux, Windows, x86
      */
-/*
     [[nodiscard]] static bool sidt() try {
         if (core::disabled(SIDT)) {
             return false;
@@ -4886,7 +4885,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         debug("SIDT: ", "catched error, returned false");
         return false;
     }
-*/
+
 
     /**
      * @brief Check for sldt
@@ -6203,7 +6202,7 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::QEMU_PROC, { 30, VM::qemu_processes }},
     { VM::VPC_PROC, { 30, VM::vpc_proc }},
     { VM::VPC_INVALID, { 75, VM::vpc_invalid }},
-    //{ VM::SIDT, { 30, VM::sidt }},
+    { VM::SIDT, { 30, VM::sidt }},
     { VM::SGDT, { 30, VM::sgdt }},
     { VM::SLDT, { 15, VM::sldt }},
     { VM::OFFSEC_SIDT, { 60, VM::offsec_sidt }},
