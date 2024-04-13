@@ -1733,7 +1733,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @link https://www.matteomalvica.com/blog/2018/12/05/detecting-vmware-on-64-bit-systems/
      * @category x86
      */
-    /*
     [[nodiscard]] static bool sidt5() try {
         if (core::disabled(SIDT5)) {
             return false;
@@ -1766,7 +1765,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         debug("SIDT5: catched error, returned false");
         return false;
     }
-    */
 
 
     /**
@@ -6156,7 +6154,7 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::DMIDECODE, { 55, VM::dmidecode }},
     { VM::DMESG, { 55, VM::dmesg }},
     { VM::HWMON, { 75, VM::hwmon }},
-    //{ VM::SIDT5, { 45, VM::sidt5 }},
+    { VM::SIDT5, { 45, VM::sidt5 }},
     { VM::CURSOR, { 5, VM::cursor_check }},
     { VM::VMWARE_REG, { 65, VM::vmware_registry }},
     { VM::VBOX_REG, { 65, VM::vbox_registry }},
