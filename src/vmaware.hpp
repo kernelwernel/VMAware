@@ -1661,7 +1661,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category x86
      */
     [[nodiscard]] 
-#if (LINUX && __clang__)
+#if (LINUX)
     __attribute__((no_sanitize("address", "leak", "thread", "undefined")))
 #endif
     static bool rdtsc_check() try {
@@ -1733,12 +1733,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @link https://www.matteomalvica.com/blog/2018/12/05/detecting-vmware-on-64-bit-systems/
      * @category x86
      */
+    /*
     [[nodiscard]] static bool sidt5() try {
         if (core::disabled(SIDT5)) {
             return false;
         }
 
-#if (!x86 || !LINUX)
+#if (!x86 || !LINUX || GCC)
         return false;
 #else
         u8 values[10];
@@ -1765,7 +1766,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         debug("SIDT5: catched error, returned false");
         return false;
     }
-
+*/
 
     /**
      * @brief Check if processor count is 1 or 2 (some VMs only have a single core)
@@ -6160,7 +6161,7 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::DMIDECODE, { 55, VM::dmidecode }},
     { VM::DMESG, { 55, VM::dmesg }},
     { VM::HWMON, { 75, VM::hwmon }},
-    { VM::SIDT5, { 45, VM::sidt5 }},
+    //{ VM::SIDT5, { 45, VM::sidt5 }},
     { VM::CURSOR, { 5, VM::cursor_check }},
     { VM::VMWARE_REG, { 65, VM::vmware_registry }},
     { VM::VBOX_REG, { 65, VM::vbox_registry }},
