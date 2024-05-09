@@ -77,7 +77,6 @@ int main() {
 
 ## `VM::brand()`
 This will essentially return the VM brand as a `std::string`. The exact possible brand string return values are: 
-- `VMware`
 - `VirtualBox`
 - `VMware`
 - `VMware Express`
@@ -85,11 +84,11 @@ This will essentially return the VM brand as a `std::string`. The exact possible
 - `VMware GSX`
 - `VMware Workstation`
 - `bhyve`
-- `KVM`
 - `QEMU`
+- `KVM`
 - `QEMU+KVM`
-- `Microsoft Hyper-V`
 - `Virtual PC`
+- `Microsoft Hyper-V`
 - `Microsoft Virtual PC/Hyper-V`
 - `Microsoft x86-to-ARM`
 - `Parallels`
@@ -127,6 +126,26 @@ int main() {
     }
 }
 ```
+
+
+On rare occasions, there might be cases where there's multiple brands that have been detected, which might cause a conflicting output with an inaccurate result. To prevent this, you can use the `VM::MULTIPLE` flag that returns a **message** rather than a **VM brand string**. For example, if it found 2 conflicting brands, it will return `VMware or VirtualBox`. For 3 conflicts, it's `VMware or VirtualBox or QEMU` and so on.
+
+
+```cpp
+#include "vmaware.hpp"
+#include <string>
+
+int main() {
+    // format: "vmbrand1 or vmbrand2 [or vmbrandx...]"
+    const std::string result = VM::brand(VM::MULTIPLE);
+
+    // example output: "VMware or Bochs"
+    std::cout << result << "\n";
+
+    // keep in mind that there's no limit to how many conflicts there can be
+}
+```
+
 
 <br>
 

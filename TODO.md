@@ -28,6 +28,8 @@
 - [ ] implement techniques from [here](https://labs.nettitude.com/blog/vm-detection-tricks-part-3-hyper-v-raw-network-protocol/)
 - [X] add multiple choice for VM::brand()
 - [ ] add c++20 module support 
+- [ ] design a way to disable some techniques way easier
+- [ ] make a man file in markdown for the cli tool
 
 # Distant plans
 - add the library to conan.io when released

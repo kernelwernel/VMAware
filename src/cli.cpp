@@ -82,23 +82,14 @@ void version(void) {
 }
 
 const char* color(const std::uint8_t score) {
-    if (score == 0) {
-        return red;
-    } else if (score <= 12) {
-        return red;
-    } else if (score <= 25) {
-        return red_orange;
-    } else if (score < 50) {
-        return red_orange;
-    } else if (score <= 62) {
-        return orange;
-    } else if (score <= 75) {
-        return green_orange;
-    } else if (score < 100) {
-        return green;
-    } else if (score == 100) {
-        return green;
-    }
+    if (score == 0)        { return red; }
+    else if (score <= 12)  { return red; }
+    else if (score <= 25)  { return red_orange; }
+    else if (score < 50)   { return red_orange; }
+    else if (score <= 62)  { return orange; }
+    else if (score <= 75)  { return green_orange; }
+    else if (score < 100)  { return green; }
+    else if (score == 100) { return green; }
 
     return "";
 }
@@ -122,23 +113,14 @@ std::string message(const std::uint8_t score, const std::string &brand) {
         inside_vm = "Running inside a " + brand + " VM";
     }
     
-    if (score == 0) {
-        return baremetal;
-    } else if (score <= 12) {
-        return very_unlikely;
-    } else if (score <= 25) {
-        return unlikely;
-    } else if (score < 50) {
-        return potentially;
-    } else if (score <= 62) {
-        return might;
-    } else if (score <= 75) {
-        return likely;
-    } else if (score < 100) {
-        return very_likely;
-    } else if (score == 100) {
-        return inside_vm;
-    }
+    if (score == 0)        { return baremetal; } 
+    else if (score <= 12)  { return very_unlikely; } 
+    else if (score <= 25)  { return unlikely; } 
+    else if (score < 50)   { return potentially; } 
+    else if (score <= 62)  { return might; } 
+    else if (score <= 75)  { return likely; } 
+    else if (score < 100)  { return very_likely; } 
+    else if (score == 100) { return inside_vm; }
 
     return "Unknown error";
 }
@@ -157,7 +139,7 @@ int main(int argc, char* argv[]) {
         };
 
         #if (defined(__GNUC__) || defined(__linux__))
-            const uid_t uid = getuid();
+            const uid_t uid  = getuid();
             const uid_t euid = geteuid();
 
             const bool is_root = (
@@ -265,23 +247,25 @@ int main(int argc, char* argv[]) {
         const char* percent_color = "";
         const std::uint8_t percent = VM::percentage();
 
-        if (percent == 0) {
-            percent_color = red;
-        } else if (percent < 25) {
-            percent_color = red_orange;
-        } else if (percent < 50) {
-            percent_color = orange;
-        } else if (percent < 75) {
-            percent_color = green_orange;
-        } else {
-            percent_color = green;
-        }
+        if (percent == 0)      { percent_color = red; } 
+        else if (percent < 25) { percent_color = red_orange; } 
+        else if (percent < 50) { percent_color = orange; } 
+        else if (percent < 75) { percent_color = green_orange; } 
+        else                   { percent_color = green; }
 
         std::cout << "VM certainty: " << percent_color << static_cast<std::uint32_t>(VM::percentage()) << "%" << ansi_exit << "\n";
 
         const bool is_detected = VM::detect();
 
         std::cout << "VM confirmation: " << (is_detected ? green : red) << std::boolalpha << is_detected << std::noboolalpha << ansi_exit << "\n\n";
+
+        if (
+            brand == "Microsoft Hyper-V" ||
+            brand == "Virtual PC" ||
+            brand == "Microsoft Virtual PC/Hyper-V"
+        ) {
+            std::cout << note << " Possibility of Hyper-V default virtualisation within host system\n";
+        }
 
         const char* conclusion_color = color(percent);
         std::string conclusion_message = message(percent, brand);

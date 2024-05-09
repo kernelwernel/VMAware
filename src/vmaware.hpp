@@ -95,7 +95,7 @@
 #else
 #define x86_32 0
 #endif
-#if (defined(__arm__) || defined(__ARM_LINUX_COMPILER__) ||defined(__aarch64__) || defined(_M_ARM64))
+#if (defined(__arm__) || defined(__ARM_LINUX_COMPILER__) || defined(__aarch64__) || defined(_M_ARM64))
 #define ARM 1
 #else
 #define ARM 0
@@ -1122,7 +1122,7 @@ private:
 #else
             DIR* dir = opendir("/proc");
             if (!dir) {
-                debug("QEMU_GA: ", "failed to open /proc directory");
+                debug("util::is_proc_running: ", "failed to open /proc directory");
                 return false;
             }
 
@@ -1171,7 +1171,7 @@ private:
 #if (CPP < 17)
                     closedir(dir);
 #endif
-                    return core::add(QEMU);
+                    return true;
                 }
             }
 
@@ -2842,6 +2842,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check if the computer name (not username to be clear) is VM-specific
      * @category Windows
      * @author InviZzzible project
+     * @copyright GPL-3.0
      */
     [[nodiscard]] static bool computer_name_match() try {
         if (core::disabled(COMPUTER_NAME)) {
@@ -4657,7 +4658,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #else
         constexpr const char* process = "qemu-ga";
 
-        return (util::is_proc_running(process));
+        if (util::is_proc_running(process)) {
+            return core::add(QEMU);
+        }
+
+        return false;
 #endif
     }
     catch (...) {
@@ -6015,6 +6020,8 @@ public: // START OF PUBLIC FUNCTIONS
 
     /**
      * @brief Add a custom technique to the VM detection technique collection
+     * @param either a function pointer, lambda function, or std::function<bool()>
+     * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmaddcustom
      * @return void
      */
     static void add_custom(
@@ -6167,16 +6174,16 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::DISK_SIZE, { 60, VM::disk_size }},
     { VM::VBOX_DEFAULT, { 55, VM::vbox_default_specs }},
     { VM::VBOX_NETWORK, { 70, VM::vbox_network_share }},
-    { VM::COMPUTER_NAME, { 15, VM::computer_name_match }},
-    { VM::HOSTNAME, { 25, VM::hostname_match }},
-    { VM::MEMORY, { 35, VM::low_memory_space }},
-    { VM::VBOX_WINDOW_CLASS, { 10, VM::vbox_window_class }},
-    { VM::KVM_REG, { 75, VM::kvm_registry }},
-    { VM::KVM_DRIVERS, { 55, VM::kvm_drivers }},
-    { VM::KVM_DIRS, { 55, VM::kvm_directories }},
-    { VM::LOADED_DLLS, { 75, VM::loaded_dlls }},
-    { VM::AUDIO, { 35, VM::check_audio }},
-    { VM::QEMU_DIR, { 45, VM::qemu_dir }},
+    { VM::COMPUTER_NAME, { 15, VM::computer_name_match }}, // GPL
+    { VM::HOSTNAME, { 25, VM::hostname_match }}, // GPL
+    { VM::MEMORY, { 35, VM::low_memory_space }}, // GPL
+    { VM::VBOX_WINDOW_CLASS, { 10, VM::vbox_window_class }}, // GPL
+    { VM::KVM_REG, { 75, VM::kvm_registry }}, // GPL
+    { VM::KVM_DRIVERS, { 55, VM::kvm_drivers }}, // GPL
+    { VM::KVM_DIRS, { 55, VM::kvm_directories }}, // GPL
+    { VM::LOADED_DLLS, { 75, VM::loaded_dlls }}, // GPL
+    { VM::AUDIO, { 35, VM::check_audio }}, // GPL
+    { VM::QEMU_DIR, { 45, VM::qemu_dir }}, // GPL
     { VM::VM_PROCESSES, { 30, VM::vm_processes }},
     { VM::LINUX_USER_HOST, { 25, VM::linux_user_host }},
     { VM::GAMARUE, { 40, VM::gamarue }},
