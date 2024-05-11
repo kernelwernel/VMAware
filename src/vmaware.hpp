@@ -101,6 +101,17 @@
 #define ARM 0
 #endif
 
+#if defined(__GNUC__) && !defined(__clang__)
+#define GCC 1
+#define CLANG 0
+#elif defined(__clang__)
+#define GCC 0
+#define CLANG 1
+#else
+#define GCC 0
+#define CLANG 0
+#endif
+
 #if !(defined(MSVC) || defined(LINUX) || defined(APPLE))
 #warning "Unknown OS detected, tests will be severely limited"
 #endif
@@ -4834,6 +4845,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
+        // gcc/g++ causes a stack smashing error at runtime for some reason
+        if (GCC) {
+            return false;
+        }
+
         u8	idtr[6];
         u32	idt_entry = 0;
 
@@ -6162,7 +6178,7 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::DMIDECODE, { 55, VM::dmidecode }},
     { VM::DMESG, { 55, VM::dmesg }},
     { VM::HWMON, { 75, VM::hwmon }},
-    //{ VM::SIDT5, { 45, VM::sidt5 }},
+    { VM::SIDT5, { 45, VM::sidt5 }},
     { VM::CURSOR, { 5, VM::cursor_check }},
     { VM::VMWARE_REG, { 65, VM::vmware_registry }},
     { VM::VBOX_REG, { 65, VM::vbox_registry }},
