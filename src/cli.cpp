@@ -237,6 +237,7 @@ int main(int argc, char* argv[]) {
         checker(VM::MUTEX, "mutex strings");
         checker(VM::VM_DIRS, "VM directories");
         checker(VM::UPTIME, "uptime");
+        checker(VM::ODD_CPU_THREADS, "unusual thread count");
 
         std::printf("\n");
 

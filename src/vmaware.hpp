@@ -82,7 +82,7 @@
 #endif
 
 #if (CPP < 11 && !MSVC)
-#error "VMAware only supports C++11 or above, set your compiler flag to '-std=c++20' for GCC/clang, or '/std:c++20' for MSVC"
+#error "VMAware only supports C++11 or above, set your compiler flag to '-std=c++20' for gcc/clang, or '/std:c++20' for MSVC"
 #endif
 
 #if (defined(__x86_64__) || defined(__i386__) || defined(_M_IX86) || defined(_M_X64))
@@ -101,12 +101,12 @@
 #define ARM 0
 #endif
 
-#if defined(__GNUC__) && !defined(__clang__)
-#define GCC 1
-#define CLANG 0
-#elif defined(__clang__)
+#if defined(__clang__)
 #define GCC 0
 #define CLANG 1
+#elif defined(__GNUC__)
+#define GCC 1
+#define CLANG 0
 #else
 #define GCC 0
 #define CLANG 0
@@ -347,6 +347,7 @@ public:
         MUTEX,
         VM_DIRS,
         UPTIME,
+        ODD_CPU_THREADS,
         EXTREME,
         NO_MEMO,
         WIN_HYPERV_DEFAULT,
@@ -5734,6 +5735,138 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
     }
 
+
+    /**
+     * @brief Check for odd CPU threads, usually a sign of modification through VM setting because 99% of CPUs have even numbers of threads
+     * @category All, x86
+     */ 
+    [[nodiscard]] static bool odd_cpu_threads() try {
+        if (core::disabled(ODD_CPU_THREADS)) {
+            return false;
+        }
+
+        #if (!x86)
+            return false;
+        #else
+            const u32 threads = std::thread::hardware_concurrency();
+
+            struct stepping_struct {
+                u8 model;
+                u8 family;
+                u8 extmodel;
+            };
+
+            struct stepping_struct steps;
+
+            u32 unused, eax = 0;
+            cpu::cpuid(eax, unused, unused, unused, 1);
+
+            steps.model    = ((eax >> 4)  & 0b1111);
+            steps.family   = ((eax >> 8)  & 0b1111);
+            steps.extmodel = ((eax >> 16) & 0b1111);
+            
+            debug("ODD_CPU_THREADS: model    = ", static_cast<u32>(steps.model));
+            debug("ODD_CPU_THREADS: family   = ", static_cast<u32>(steps.family));
+            debug("ODD_CPU_THREADS: extmodel = ", static_cast<u32>(steps.extmodel));
+
+            // check if the CPU is an intel celeron
+            auto is_celeron = [&steps]() -> bool {
+                constexpr u8 celeron_family   = 0x6;
+                constexpr u8 celeron_extmodel = 0x2;
+                constexpr u8 celeron_model    = 0xA;
+ 
+                return (
+                    steps.family   == celeron_family   &&
+                    steps.extmodel == celeron_extmodel && 
+                    steps.model    == celeron_model
+                );
+            };
+
+            // check if the microarchitecture was made before 2006, which was around the time multi-core processors were implemented
+            auto old_microarchitecture = [&steps]() -> bool {
+                if (!(cpu::is_intel() || cpu::is_amd())) {
+                    return false;
+                }
+
+                constexpr std::array<std::array<u8, 3>, 32> old_archs = {{
+                    // 80486
+                    {{ 0x4, 0x0, 0x1 }},
+                    {{ 0x4, 0x0, 0x2 }},
+                    {{ 0x4, 0x0, 0x3 }},
+                    {{ 0x4, 0x0, 0x4 }},
+                    {{ 0x4, 0x0, 0x5 }},
+                    {{ 0x4, 0x0, 0x7 }},
+                    {{ 0x4, 0x0, 0x8 }},
+                    {{ 0x4, 0x0, 0x9 }},
+
+                    // P5
+                    {{ 0x5, 0x0, 0x1 }},
+                    {{ 0x5, 0x0, 0x2 }},
+                    {{ 0x5, 0x0, 0x4 }},
+                    {{ 0x5, 0x0, 0x7 }},
+                    {{ 0x5, 0x0, 0x8 }},
+
+                    // P6
+                    {{ 0x6, 0x0, 0x1 }},
+                    {{ 0x6, 0x0, 0x3 }},
+                    {{ 0x6, 0x0, 0x5 }},
+                    {{ 0x6, 0x0, 0x6 }},
+                    {{ 0x6, 0x0, 0x7 }},
+                    {{ 0x6, 0x0, 0x8 }},
+                    {{ 0x6, 0x0, 0xA }},
+                    {{ 0x6, 0x0, 0xB }},
+
+                    // Netburst
+                    {{ 0xF, 0x0, 0x6 }},
+                    {{ 0xF, 0x0, 0x4 }},
+                    {{ 0xF, 0x0, 0x3 }},
+                    {{ 0xF, 0x0, 0x2 }},
+                    {{ 0xF, 0x0, 0x10 }},
+
+                    {{ 0x6, 0x1, 0x5 }}, // Pentium M (Talopai)
+                    {{ 0x6, 0x1, 0x6 }}, // Core (Client)
+                    {{ 0x6, 0x0, 0x9 }}, // Pentium M
+                    {{ 0x6, 0x0, 0xD }}, // Pentium M
+                    {{ 0x6, 0x0, 0xE }}, // Modified Pentium M
+                    {{ 0x6, 0x0, 0xF }}  // Core (Client)
+                }};
+
+                constexpr u8 FAMILY   = 0;
+                constexpr u8 EXTMODEL = 1;
+                constexpr u8 MODEL    = 2;
+
+                for (const auto element : old_archs) {
+                    if (
+                        steps.family   == element.at(FAMILY)   &&
+                        steps.extmodel == element.at(EXTMODEL) &&
+                        steps.model    == element.at(MODEL)
+                    ) {
+                        return true;
+                    }
+                }
+
+                return false;
+            };
+
+            // intel celeron CPUs are relatively modern, but they can contain a single or odd thread count
+            if (cpu::is_intel() && is_celeron()) {
+                return false;
+            }
+
+            // CPUs before 2006 had no official multi-core processors
+            if (old_microarchitecture()) {
+                return false;
+            }
+
+            return (threads & 1);
+        #endif
+    }
+    catch (...) {
+        debug("ODD_CPU_THREADS: catched error, returned false");
+        return false;
+    }
+
+
     struct core {
         MSVC_DISABLE_WARNING(PADDING)
         struct technique {
@@ -5814,14 +5947,14 @@ public: // START OF PUBLIC FUNCTIONS
      * @return bool
      * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmcheck
      */
-#if (CPP >= 20 && !defined(__clang__)) // not sure why clang doesn't support this lol
+#if (CPP >= 20 && !CLANG) // not sure why clang doesn't support this lol
     [[nodiscard]] static bool check(const u8 p_flag = 0, const std::source_location& loc = std::source_location::current()) {
 #else
     [[nodiscard]] static bool check(const u8 p_flag = 0) {
 #endif
         auto throw_error = [&](const char* text) -> void {
             std::stringstream ss;
-#if (CPP >= 20 && !defined(__clang__))
+#if (CPP >= 20 && !CLANG)
             ss << ", error in " << loc.function_name() << " at " << loc.file_name() << ":" << loc.line() << ")";
 #endif
             ss << ". Consult the documentation's flag handler for VM::check()";
@@ -6044,7 +6177,7 @@ public: // START OF PUBLIC FUNCTIONS
      */
     static void add_custom(
         const std::uint8_t percent,
-#if (CPP >= 20 && !defined(__clang__))
+#if (CPP >= 20 && !CLANG)
         std::function<bool()> detection_func,
         const std::source_location & loc = std::source_location::current()
 #else
@@ -6053,7 +6186,7 @@ public: // START OF PUBLIC FUNCTIONS
     ) {
         auto throw_error = [&](const char* text) -> void {
             std::stringstream ss;
-#if (CPP >= 20 && !defined(__clang__))
+#if (CPP >= 20 && !CLANG)
             ss << ", error in " << loc.function_name() << " at " << loc.file_name() << ":" << loc.line() << ")";
 #endif
             ss << ". Consult the documentation's parameters for VM::add_custom()";
@@ -6246,7 +6379,8 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::SMSW, { 30, VM::smsw }},
     { VM::MUTEX, { 85, VM::mutex }},
     { VM::VM_DIRS, { 75, VM::vm_directories }},
-    { VM::UPTIME, { 10, VM::uptime }}
+    { VM::UPTIME, { 10, VM::uptime }},
+    { VM::ODD_CPU_THREADS, { 80, VM::odd_cpu_threads }},
 
     // __TABLE_LABEL, add your technique above
     // { VM::FUNCTION, { POINTS, FUNCTION_POINTER }}
