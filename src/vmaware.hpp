@@ -1734,7 +1734,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @link https://www.matteomalvica.com/blog/2018/12/05/detecting-vmware-on-64-bit-systems/
      * @category x86
      */
-    /*
     [[nodiscard]] static bool sidt5() try {
         if (core::disabled(SIDT5)) {
             return false;
@@ -1767,7 +1766,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         debug("SIDT5: catched error, returned false");
         return false;
     }
-*/
+
 
     /**
      * @brief Check if processor count is 1 or 2 (some VMs only have a single core)
@@ -3677,6 +3676,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      */
     [[nodiscard]] 
 #if (LINUX)
+    // this is added so no sanitizers can potentially cause unwanted delays while measuring rdtsc in a debug compilation
     __attribute__((no_sanitize("address", "leak", "thread", "undefined")))
 #endif
     static bool rdtsc_vmexit() try {
