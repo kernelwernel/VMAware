@@ -28,6 +28,11 @@
 - [ ] implement techniques from [here](https://labs.nettitude.com/blog/vm-detection-tricks-part-3-hyper-v-raw-network-protocol/)
 - [X] add multiple choice for VM::brand()
 - [ ] add c++20 module support 
+- [ ] design a way to disable some techniques way easier
+- [ ] make a man file in markdown for the cli tool
+- [ ] implement smbios version technique [here](https://github.com/Print3M/Anti-VM/blob/eb524ed89e783b36c149acc450b2350d4198b06b/detectors.cpp#L88)
+- [ ] implement a display size technique for linux with EDID 
+- [ ] implement a technique that matches the CPU product name and match it with a database of core counts for that specific CPU product
 
 # Distant plans
 - add the library to conan.io when released

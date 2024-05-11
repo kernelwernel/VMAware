@@ -27,7 +27,7 @@ def update(filename):
     with open(filename, 'r') as vmaware_read:
         header_content = vmaware_read.readlines()
 
-    # fetch important bits
+    # fetch important portions
     enum = "enum enum_flags"
     cpu  = "struct cpu {"
     memo = "struct memo {"

@@ -20,14 +20,14 @@
  *  - License: GPL-3.0
  *
  * ================================ SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 246
- * - struct for internal cpu operations        => line 432
- * - struct for internal memoization           => line 669
- * - struct for internal utility functions     => line 742
- * - struct for internal core components       => line 5705
- * - start of internal VM detection techniques => line 1422
- * - start of public VM detection functions    => line 5782
- * - start of externally defined variables     => line 6048
+ * - enums for publicly accessible techniques  => line 252
+ * - struct for internal cpu operations        => line 447
+ * - struct for internal memoization           => line 684
+ * - struct for internal utility functions     => line 757
+ * - struct for internal core components       => line 5713
+ * - start of internal VM detection techniques => line 1423
+ * - start of public VM detection functions    => line 5786
+ * - start of externally defined variables     => line 6053
  */
 
 #if (defined(_MSC_VER) || defined(_WIN32) || defined(_WIN64) || defined(__MINGW32__))
@@ -95,10 +95,21 @@
 #else
 #define x86_32 0
 #endif
-#if (defined(__arm__) || defined(__ARM_LINUX_COMPILER__) ||defined(__aarch64__) || defined(_M_ARM64))
+#if (defined(__arm__) || defined(__ARM_LINUX_COMPILER__) || defined(__aarch64__) || defined(_M_ARM64))
 #define ARM 1
 #else
 #define ARM 0
+#endif
+
+#if defined(__GNUC__) && !defined(__clang__)
+#define GCC 1
+#define CLANG 0
+#elif defined(__clang__)
+#define GCC 0
+#define CLANG 1
+#else
+#define GCC 0
+#define CLANG 0
 #endif
 
 #if !(defined(MSVC) || defined(LINUX) || defined(APPLE))
@@ -336,8 +347,6 @@ public:
         MUTEX,
         VM_DIRS,
         UPTIME,
-        MMX,
-        VPC_RESET,
         EXTREME,
         NO_MEMO,
         WIN_HYPERV_DEFAULT,
@@ -1134,7 +1143,7 @@ private:
 #else
             DIR* dir = opendir("/proc");
             if (!dir) {
-                debug("QEMU_GA: ", "failed to open /proc directory");
+                debug("util::is_proc_running: ", "failed to open /proc directory");
                 return false;
             }
 
@@ -1183,7 +1192,7 @@ private:
 #if (CPP < 17)
                     closedir(dir);
 #endif
-                    return core::add(QEMU);
+                    return true;
                 }
             }
 
@@ -1674,6 +1683,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      */
     [[nodiscard]] 
 #if (LINUX)
+    // this is added so no sanitizers can potentially cause unwanted delays while measuring rdtsc in a debug compilation
     __attribute__((no_sanitize("address", "leak", "thread", "undefined")))
 #endif
     static bool rdtsc_check() try {
@@ -1684,7 +1694,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!x86)
         return false;
 #else
-#if (LINUX)
+    #if (LINUX)
         u32 a, b, c, d = 0;
 
         // check if rdtsc is available
@@ -1707,7 +1717,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         debug("RDTSC: ", "acc/100 = ", acc / 100);
 
         return (acc / 100 > 350);
-#elif (MSVC)
+    #elif (MSVC)
 #define LODWORD(_qw)    ((DWORD)(_qw))
         u64 tsc1 = 0;
         u64 tsc2 = 0;
@@ -1728,9 +1738,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         return true;
-#else
+    #else
         return false;
-#endif
+    #endif
 #endif
     }
     catch (...) {
@@ -1750,7 +1760,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-#if (!x86 || !LINUX)
+#if (!x86 || !LINUX || GCC)
         return false;
 #else
         u8 values[10];
@@ -2854,6 +2864,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check if the computer name (not username to be clear) is VM-specific
      * @category Windows
      * @author InviZzzible project
+     * @copyright GPL-3.0
      */
     [[nodiscard]] static bool computer_name_match() try {
         if (core::disabled(COMPUTER_NAME)) {
@@ -3686,6 +3697,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      */
     [[nodiscard]] 
 #if (LINUX)
+    // this is added so no sanitizers can potentially cause unwanted delays while measuring rdtsc in a debug compilation
     __attribute__((no_sanitize("address", "leak", "thread", "undefined")))
 #endif
     static bool rdtsc_vmexit() try {
@@ -3748,8 +3760,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             if (brand == "              Intel(R) Pentium(R) 4 CPU        ") {
                 return core::add(BOCHS);
             }
-        }
-        else if (amd) {
+        } else if (amd) {
             // technique 2: "processor" should have a capital P
             if (brand == "AMD Athlon(tm) processor") {
                 return core::add(BOCHS);
@@ -4670,7 +4681,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #else
         constexpr const char* process = "qemu-ga";
 
-        return (util::is_proc_running(process));
+        if (util::is_proc_running(process)) {
+            return core::add(QEMU);
+        }
+
+        return false;
 #endif
     }
     catch (...) {
@@ -4840,19 +4855,35 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-#if (MSVC && x86_32)
-        u8	idtr[6];
-        u32	idt = 0;
-
-        _asm sidt idtr
-        idt = *((unsigned long*)&idtr[2]);
-
-        if ((idt >> 24) == 0xff) {
-            return core::add(VMWARE);
+        // gcc/g++ causes a stack smashing error at runtime for some reason
+        if (GCC) {
+            return false;
         }
 
+        u8	idtr[6];
+        u32	idt_entry = 0;
+
+#if (MSVC)
+    #if (x86_32)
+        _asm sidt idtr
+    #elif (x86)
+        #pragma pack(1)
+        struct IDTR {
+            u16 limit;
+            u64 base;
+        };
+        #pragma pack()
+
+        IDTR idtrStruct;
+        __sidt(&idtrStruct);
+        std::memcpy(idtr, &idtrStruct, sizeof(IDTR));
+    #else
         return false;
+    #endif
+
+        idt_entry = *((unsigned long*)&idtr[2]);
 #elif (LINUX)
+        // false positive with root for some reason
         if (util::is_admin()) {
             return false;
         }
@@ -4862,8 +4893,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             u32 base;
         } __attribute__((packed));
 
-        IDTR idtr;
-        u32 idt_entry = 0;
+        IDTR idtr_struct;
 
         __asm__ __volatile__(
             "sidt %0"
@@ -4871,18 +4901,18 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         );
 
         std::ifstream mem("/dev/mem", std::ios::binary);
-        mem.seekg(idtr.base + 8, std::ios::beg);
+        mem.seekg(idtr_struct.base + 8, std::ios::beg);
         mem.read(reinterpret_cast<char*>(&idt_entry), sizeof(idt_entry));
         mem.close();
+#else
+        return false;
+#endif
 
-        if ((idt_entry >> 24) == 0xff) {
+        if ((idt_entry >> 24) == 0xFF) {
             return core::add(VMWARE);
         }
 
         return false;
-#else
-        return false;
-#endif
     }
     catch (...) {
         debug("SIDT: ", "catched error, returned false");
@@ -4902,13 +4932,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!MSVC || !x86)
         return false;
 #elif (x86_32)
-        unsigned short ldtr[5] = { 0xef, 0xbe, 0xad, 0xde };
+        unsigned short ldtr[5] = { 0xEF, 0xBE, 0xAD, 0xDE };
         unsigned int ldt = 0;
 
         _asm sldt ldtr;
         ldt = *((u32*)&ldtr[0]);
 
-        return (ldt != 0xdead0000);
+        return (ldt != 0xDEAD0000);
 #else
         return false;
 #endif
@@ -4937,7 +4967,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         _asm sgdt gdtr
         gdt = *((unsigned long*)&gdtr[2]);
 
-        return ((gdt >> 24) == 0xff);
+        return ((gdt >> 24) == 0xFF);
 #else
         return false;
 #endif
@@ -5120,7 +5150,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #elif (x86_32)
         unsigned char m[6];
         __asm sidt m;
-        return (m[5] > 0xd0);
+        return (m[5] > 0xD0);
 #else
         return false;
 #endif
@@ -5148,7 +5178,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #elif (x86_32)
         unsigned char m[6];
         __asm sgdt m;
-        return (m[5] > 0xd0);
+        return (m[5] > 0xD0);
 #else
         return false;
 #endif
@@ -5188,7 +5218,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check for sidt method with VPC's 0xe8XXXXXX range
+     * @brief Check for sidt method with VPC's 0xE8XXXXXX range
      * @category Windows, x86
      * @note Idea from Tom Liston and Ed Skoudis' paper "On the Cutting Edge: Thwarting Virtual Machine Detection"
      * @note Paper situated at /papers/ThwartingVMDetection_Liston_Skoudis.pdf
@@ -5207,7 +5237,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         _asm sidt idtr
         idt = *((unsigned long*)&idtr[2]);
 
-        if ((idt >> 24) == 0xe8) {
+        if ((idt >> 24) == 0xE8) {
             return core::add(VPC);
         }
 
@@ -5556,8 +5586,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         return (
-            (((reax >> 24) & 0xFF) == 0xcc) && 
-            (((reax >> 16) & 0xFF) == 0xcc)
+            (((reax >> 24) & 0xFF) == 0xCC) && 
+            (((reax >> 16) & 0xFF) == 0xCC)
         );
 #else
         return false;
@@ -5700,8 +5730,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         uptime = std::chrono::milliseconds(
-            static_cast<unsigned long long>(ts.tv_sec)*1000ULL + 
-            static_cast<unsigned long long>(ts.tv_usec)/1000ULL
+            (static_cast<u64>(ts.tv_sec) * 1000ULL) + 
+            (static_cast<u64>(ts.tv_usec) / 1000ULL)
         );
 
         return (uptime < uptime_ms);
@@ -5713,110 +5743,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         debug("UPTIME: catched error, returned false");
         return false;
     }
-
-
-    /**
-     * @brief Check if MMX extension is present
-     * @category x86
-     * @note "[MMX is] usually not supported in Virtual Machines so their absence may indicate that the malware is running in a VM."
-     * @note https://www.cyberbit.com/endpoint-security/anti-vm-and-anti-sandbox-explained/
-     */ 
-    [[nodiscard]] static bool mmx_check() try {
-        if (core::disabled(MMX)) {
-            return false;
-        }
-#if (!x86)
-        return false;
-#else
-        constexpr u8 mmx_bit = 23;
-    
-        u32 unused, edx = 0;
-        cpu::cpuid(unused, unused, unused, edx, 1);
-
-        return (edx & (1 << mmx_bit));
-#endif
-    }
-    catch (...) {
-        debug("MMX: catched error, returned false");
-        return false;
-    }
-
-
-    /**
-     * @brief Check for VPC triggering a reset error
-     * @category Windows, x86
-     * @author http://waleedassar.blogspot.com (@waleedassar)
-     */
-    /*
-#if (MSVC && x86_32)
-    MSVC_DISABLE_WARNING(FS_HANDLE)
-
-    static inline bool flag = false;
-    
-    static int __cdecl Handler(EXCEPTION_RECORD* pRec, unsigned char* pContext) {
-        if (
-            pRec->ExceptionCode == 0xC000001D || 
-            pRec->ExceptionCode == 0xC000001E || 
-            pRec->ExceptionCode == 0xC0000005
-        ) {
-            flag = true;
-            (*(unsigned long*)(pContext + 0xB8)) += 5;
-            return ExceptionContinueExecution;
-        }
-
-        return ExceptionContinueSearch;
-    }
-
-    [[nodiscard]] static bool vpc_reset() try {
-        if (core::disabled(VPC_RESET)) {
-            return false;
-        }
-
-        __asm {
-            push offset Handler
-            push dword ptr fs:[0x0]
-            mov dword ptr fs:[0x0],esp
-        }
-
-        flag = false;
-
-        __asm {
-            __emit 0x0F
-            __emit 0xC7
-            __emit 0xC8
-            __emit 0x05
-            __emit 0x00
-        }
-
-        bool is_vm = false;
-
-        if (flag == false) {
-            is_vm = true;
-        }
-
-        __asm {
-            pop dword ptr fs:[0x0]
-            pop eax
-        }
-
-        if (is_vm) {
-            return core::add(VPC);
-        }
-
-        return false;
-    }
-    catch (...) {
-        debug("VPC_RESET: catched error, returned false");
-        return false;
-    }
-
-    MSVC_ENABLE_WARNING(FS_HANDLE) 
-#else
-    [[nodiscard]] static bool vpc_reset() {
-        return false;
-    }
-#endif
-*/
 
     struct core {
         MSVC_DISABLE_WARNING(PADDING)
@@ -6122,6 +6048,8 @@ public: // START OF PUBLIC FUNCTIONS
 
     /**
      * @brief Add a custom technique to the VM detection technique collection
+     * @param either a function pointer, lambda function, or std::function<bool()>
+     * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmaddcustom
      * @return void
      */
     static void add_custom(
@@ -6274,18 +6202,18 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::DISK_SIZE, { 60, VM::disk_size }},
     { VM::VBOX_DEFAULT, { 55, VM::vbox_default_specs }},
     { VM::VBOX_NETWORK, { 70, VM::vbox_network_share }},
-    { VM::COMPUTER_NAME, { 15, VM::computer_name_match }},
-    { VM::HOSTNAME, { 25, VM::hostname_match }},
-    { VM::MEMORY, { 35, VM::low_memory_space }},
-    { VM::VBOX_WINDOW_CLASS, { 10, VM::vbox_window_class }},
-    { VM::KVM_REG, { 75, VM::kvm_registry }},
-    { VM::KVM_DRIVERS, { 55, VM::kvm_drivers }},
-    { VM::KVM_DIRS, { 55, VM::kvm_directories }},
-    { VM::LOADED_DLLS, { 75, VM::loaded_dlls }},
-    { VM::AUDIO, { 35, VM::check_audio }},
-    { VM::QEMU_DIR, { 45, VM::qemu_dir }},
+    { VM::COMPUTER_NAME, { 15, VM::computer_name_match }}, // GPL
+    { VM::HOSTNAME, { 25, VM::hostname_match }}, // GPL
+    { VM::MEMORY, { 35, VM::low_memory_space }}, // GPL
+    { VM::VBOX_WINDOW_CLASS, { 10, VM::vbox_window_class }}, // GPL
+    { VM::KVM_REG, { 75, VM::kvm_registry }}, // GPL
+    { VM::KVM_DRIVERS, { 55, VM::kvm_drivers }}, // GPL
+    { VM::KVM_DIRS, { 55, VM::kvm_directories }}, // GPL
+    { VM::LOADED_DLLS, { 75, VM::loaded_dlls }}, // GPL
+    { VM::AUDIO, { 35, VM::check_audio }}, // GPL
+    { VM::QEMU_DIR, { 45, VM::qemu_dir }}, // GPL
     { VM::VM_PROCESSES, { 30, VM::vm_processes }},
-    { VM::LINUX_USER_HOST, { 35, VM::linux_user_host }},
+    { VM::LINUX_USER_HOST, { 25, VM::linux_user_host }},
     { VM::GAMARUE, { 40, VM::gamarue }},
     { VM::WMIC, { 20, VM::wmic }},
     { VM::VMID_0X4, { 90, VM::vmid_0x4 }},
@@ -6328,9 +6256,7 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::SMSW, { 30, VM::smsw }},
     { VM::MUTEX, { 85, VM::mutex }},
     { VM::VM_DIRS, { 75, VM::vm_directories }},
-    { VM::UPTIME, { 10, VM::uptime }},
-    { VM::MMX, { 45, VM::mmx_check }}
-    //{ VM::VPC_RESET, { 50, VM::vpc_reset }}
+    { VM::UPTIME, { 10, VM::uptime }}
 
     // __TABLE_LABEL, add your technique above
     // { VM::FUNCTION, { POINTS, FUNCTION_POINTER }}

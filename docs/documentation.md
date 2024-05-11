@@ -77,7 +77,6 @@ int main() {
 
 ## `VM::brand()`
 This will essentially return the VM brand as a `std::string`. The exact possible brand string return values are: 
-- `VMware`
 - `VirtualBox`
 - `VMware`
 - `VMware Express`
@@ -85,11 +84,11 @@ This will essentially return the VM brand as a `std::string`. The exact possible
 - `VMware GSX`
 - `VMware Workstation`
 - `bhyve`
-- `KVM`
 - `QEMU`
+- `KVM`
 - `QEMU+KVM`
-- `Microsoft Hyper-V`
 - `Virtual PC`
+- `Microsoft Hyper-V`
 - `Microsoft Virtual PC/Hyper-V`
 - `Microsoft x86-to-ARM`
 - `Parallels`
@@ -127,6 +126,26 @@ int main() {
     }
 }
 ```
+
+
+On rare occasions, there might be cases where there's multiple brands that have been detected, which might cause a conflicting output with an inaccurate result. To prevent this, you can use the `VM::MULTIPLE` flag that returns a **message** rather than a **VM brand string**. For example, if it found 2 conflicting brands, it will return `VMware or VirtualBox`. For 3 conflicts, it's `VMware or VirtualBox or QEMU` and so on.
+
+
+```cpp
+#include "vmaware.hpp"
+#include <string>
+
+int main() {
+    // format: "vmbrand1 or vmbrand2 [or vmbrandx...]"
+    const std::string result = VM::brand(VM::MULTIPLE);
+
+    // example output: "VMware or Bochs"
+    std::cout << result << "\n";
+
+    // keep in mind that there's no limit to how many conflicts there can be
+}
+```
+
 
 <br>
 
@@ -265,7 +284,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::HOSTNAME` | Check if hostname is specific | Windows | 25% |  | GPL |  |
 | `VM::MEMORY` | Check if memory space is far too low for a physical machine | Windows | 35% |  | GPL |  |
 | `VM::VM_PROCESSES` | Check for any VM processes that are active | Windows | 30% |  |  |  |
-| `VM::LINUX_USER_HOST` | Check for default VM username and hostname for linux | Linux | 35% |  |  |  |
+| `VM::LINUX_USER_HOST` | Check for default VM username and hostname for linux | Linux | 25% |  |  |  |
 | `VM::VBOX_WINDOW_CLASS` | Check for the window class for VirtualBox | Windows | 10% |  | GPL |  |
 | `VM::WMIC` | Check top-level default window level | Windows | 20% |  |  |  |
 | `VM::GAMARUE` | Check for Gamarue ransomware technique which compares VM-specific Window product IDs | Windows | 40% |  |  |  |
@@ -316,7 +335,6 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::MUTEX` | Check for mutex strings of VM brands | Windows | 85% |  |  |  |
 | `VM::VM_DIRS` | Check for specific VM directories | Windows | 75% |  |  |  |
 | `VM::UPTIME` | Check if uptime is less than or equal to 2 minutes | Yes | 10% |  |  |  |
-| `VM::MMX` | Check for presence of MMX instructions | Yes | 45% |  |  |  |
 
 
 <br>

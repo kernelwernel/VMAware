@@ -22,13 +22,13 @@
  *
  * ================================ SECTIONS ==================================
  * - enums for publicly accessible techniques  => line 246
- * - struct for internal cpu operations        => line 432
- * - struct for internal memoization           => line 669
- * - struct for internal utility functions     => line 742
- * - struct for internal core components       => line 5705
- * - start of internal VM detection techniques => line 1422
- * - start of public VM detection functions    => line 5782
- * - start of externally defined variables     => line 6048
+ * - struct for internal cpu operations        => line 422
+ * - struct for internal memoization           => line 659
+ * - struct for internal utility functions     => line 732
+ * - struct for internal core components       => line 5223
+ * - start of internal VM detection techniques => line 1409
+ * - start of public VM detection functions    => line 5300
+ * - start of externally defined variables     => line 5566
  */
 
 #if (defined(_MSC_VER) || defined(_WIN32) || defined(_WIN64) || defined(__MINGW32__))

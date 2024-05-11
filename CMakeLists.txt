@@ -18,6 +18,12 @@ else()
     set(CMAKE_CXX_FLAGS "-Wextra -Wall -Wextra -Wconversion -Wdouble-promotion -Wno-unused-parameter -Wno-unused-function -Wno-sign-conversion")
 endif()
 
+if(CMAKE_C_COMPILER_ID STREQUAL "Clang" OR CMAKE_C_COMPILER_ID STREQUAL "GNU")
+    set(CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS} -lstdc++ -lm")
+else()
+    message("Unsupported compiler")
+endif()
+
 
 # fetch and set build type
 set(available_build_types Debug Release)
@@ -58,7 +64,7 @@ elseif(LINUX)
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -DDEBUG -O0 -fsanitize=address")
     elseif(CMAKE_BUILD_TYPE MATCHES "Release")
         MESSAGE(STATUS "Build set to release mode")
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -g0")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g0") # -O3")
         if (${CMAKE_SYSTEM_PROCESSOR} MATCHES "x86_64")
             set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native -mtune=native")
         elseif(${CMAKE_SYSTEM_PROCESSOR} MATCHES "arm")
@@ -79,7 +85,12 @@ set_property(TARGET ${TARGET} PROPERTY CXX_STANDARD_REQUIRED ON)
 include(CTest)
 #find_package(Python REQUIRED)
 enable_testing()
+if(MSVC)
+add_test(executable, "${BUILD_DIR}/Release/${TARGET}")
+else()
 add_test(executable, "${BUILD_DIR}/${TARGET}")
+endif()
+
 #if(NOT MSVC)
 #add_test(
 #    checks 
