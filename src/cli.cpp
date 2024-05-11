@@ -264,7 +264,7 @@ int main(int argc, char* argv[]) {
             brand == "Virtual PC" ||
             brand == "Microsoft Virtual PC/Hyper-V"
         ) {
-            std::cout << note << " Possibility of Hyper-V default virtualisation within host system\n";
+            std::cout << note << " Possibility of Hyper-V default virtualisation within host system, see here https://github.com/kernelwernel/VMAware/issues/75\n";
         }
 
         const char* conclusion_color = color(percent);
