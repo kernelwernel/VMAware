@@ -345,9 +345,9 @@ public:
         VMWARE_PORT_MEM,
         SMSW,
         MUTEX,
-        VM_DIRS,
         UPTIME,
         ODD_CPU_THREADS,
+        CPU_THREAD_MISMATCH,
         EXTREME,
         NO_MEMO,
         WIN_HYPERV_DEFAULT,
@@ -547,7 +547,7 @@ private:
             return (ecx == intel_ecx);
         }
 
-        // self-explanatory
+        // get the CPU product
         [[nodiscard]] static std::string get_brand() {
             if (!cpuid_supported) {
                 return "Unknown";
@@ -5648,40 +5648,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check for specific VM directories 
-     * @category Windows
-     */ 
-    [[nodiscard]] static bool vm_directories() try {
-        if (core::disabled(VM_DIRS)) {
-            return false;
-        }
-
-#if (!MSVC)
-        return false;
-#else
-        constexpr std::array<std::pair<const char*, const char*>, 3> dirs = {{
-            { CWSANDBOX, "c:\\analysis" },
-            { VBOX, "%PROGRAMFILES%\\oracle\\virtualbox guest additions\\" },
-            { VMWARE, "%PROGRAMFILES%\\VMware\\" }
-        }};
-
-        for (const auto dir : dirs) {
-            if (util::exists(dir.second)) {
-                debug("VM_DIRS: found ", dir.second);
-                return core::add(dir.first);
-            }
-        }
-
-        return false;
-#endif
-    }
-    catch (...) {
-        debug("VM_DIRS: catched error, returned false");
-        return false;
-    }
-
-
-    /**
      * @brief Check for uptime of less than or equal to 2 minutes
      * @category Windows, Linux
      * @note https://stackoverflow.com/questions/30095439/how-do-i-get-system-up-time-in-milliseconds-in-c
@@ -5771,6 +5737,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             // check if the CPU is an intel celeron
             auto is_celeron = [&steps]() -> bool {
+                if (!cpu::is_intel()) {
+                    return false;
+                }
+
                 constexpr u8 celeron_family   = 0x6;
                 constexpr u8 celeron_extmodel = 0x2;
                 constexpr u8 celeron_model    = 0xA;
@@ -5784,10 +5754,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             // check if the microarchitecture was made before 2006, which was around the time multi-core processors were implemented
             auto old_microarchitecture = [&steps]() -> bool {
-                if (!(cpu::is_intel() || cpu::is_amd())) {
-                    return false;
-                }
-
                 constexpr std::array<std::array<u8, 3>, 32> old_archs = {{
                     // 80486
                     {{ 0x4, 0x0, 0x1 }},
@@ -5835,11 +5801,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 constexpr u8 EXTMODEL = 1;
                 constexpr u8 MODEL    = 2;
 
-                for (const auto element : old_archs) {
+                for (const auto arch : old_archs) {
                     if (
-                        steps.family   == element.at(FAMILY)   &&
-                        steps.extmodel == element.at(EXTMODEL) &&
-                        steps.model    == element.at(MODEL)
+                        steps.family   == arch.at(FAMILY)   &&
+                        steps.extmodel == arch.at(EXTMODEL) &&
+                        steps.model    == arch.at(MODEL)
                     ) {
                         return true;
                     }
@@ -5848,8 +5814,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return false;
             };
 
+            // self-explanatory
+            if (!(cpu::is_intel() || cpu::is_amd())) {
+                return false;
+            }
+
             // intel celeron CPUs are relatively modern, but they can contain a single or odd thread count
-            if (cpu::is_intel() && is_celeron()) {
+            if (is_celeron()) {
                 return false;
             }
 
@@ -5858,11 +5829,41 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return false;
             }
 
+            // is the count odd?
             return (threads & 1);
         #endif
     }
     catch (...) {
         debug("ODD_CPU_THREADS: catched error, returned false");
+        return false;
+    }
+
+
+    /**
+     * @brief Check for CPUs
+     * @category All, x86
+     */ 
+    [[nodiscard]] static bool cpu_thread_mismatch() try {
+        if (core::disabled(CPU_THREAD_MISMATCH)) {
+            return false;
+        }
+
+        #if (!x86)
+            return false;
+        #else
+            const std::string brand = cpu::get_brand();
+
+            static const auto r = std::regex(R"(\)");
+
+            if (cpu::is_intel()) {
+
+            } else if (cpu::is_amd()) {
+                
+            }
+        #endif
+    }
+    catch (...) {
+        debug("CPU_THREAD_MISMATCH: catched error, returned false");
         return false;
     }
 
@@ -6378,9 +6379,9 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::VMWARE_PORT_MEM, { 85, VM::vmware_port_memory }},
     { VM::SMSW, { 30, VM::smsw }},
     { VM::MUTEX, { 85, VM::mutex }},
-    { VM::VM_DIRS, { 75, VM::vm_directories }},
     { VM::UPTIME, { 10, VM::uptime }},
     { VM::ODD_CPU_THREADS, { 80, VM::odd_cpu_threads }},
+    { VM::CPU_THREAD_MISMATCH, { 70, VM::cpu_thread_mismatch }}
 
     // __TABLE_LABEL, add your technique above
     // { VM::FUNCTION, { POINTS, FUNCTION_POINTER }}
