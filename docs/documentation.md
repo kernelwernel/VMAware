@@ -333,8 +333,8 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::VMWARE_PORT_MEM` | Check for VMware memory using IO port backdoor | Windows | 85% |  |  | 32-bit |
 | `VM::SMSW` | Check for SMSW assembly instruction technique | Windows | 30% |  |  | 32-bit |
 | `VM::MUTEX` | Check for mutex strings of VM brands | Windows | 85% |  |  |  |
-| `VM::VM_DIRS` | Check for specific VM directories | Windows | 75% |  |  |  |
 | `VM::UPTIME` | Check if uptime is less than or equal to 2 minutes | Yes | 10% |  |  |  |
+| `VM::ODD_CPU_THREADS` | Check if the CPU has an odd number of CPU threads | Yes | 80% |  |  |  |
 
 
 <br>
