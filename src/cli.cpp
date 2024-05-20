@@ -259,12 +259,14 @@ int main(int argc, char* argv[]) {
 
         std::cout << "VM confirmation: " << (is_detected ? green : red) << std::boolalpha << is_detected << std::noboolalpha << ansi_exit << "\n\n";
 
+        brand = VM::brand(); // no VM::MULTIPLE this time
+
         if (
             brand == "Microsoft Hyper-V" ||
             brand == "Virtual PC" ||
             brand == "Microsoft Virtual PC/Hyper-V"
         ) {
-            std::cout << note << " Possibility of Hyper-V default virtualisation within host system, see here https://github.com/kernelwernel/VMAware/issues/75\n";
+            std::cout << note << " If you know you are running on host, Hyper-V virtualises all applications by default within host system, see here https://github.com/kernelwernel/VMAware/issues/75\n";
         }
 
         const char* conclusion_color = color(percent);
