@@ -801,6 +801,16 @@ private:
 #endif
         }
 
+#if (MSVC) && (_UNICODE)
+        // handle TCHAR conversion
+        [[nodiscard]] static bool exists(const TCHAR* path)
+		{
+			char c_szText[_MAX_PATH];
+			wcstombs(c_szText, path, wcslen(path) + 1);
+			return exists(c_szText);
+		}
+#endif
+
         // self-explanatory
         [[nodiscard]] static bool is_admin() noexcept {
 #if (LINUX || APPLE)
