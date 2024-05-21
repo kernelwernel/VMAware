@@ -696,73 +696,63 @@ private:
     // memoization
     struct memo {
     private:
-        // memoization structure
-        MSVC_DISABLE_WARNING(PADDING)
-        struct cache_struct {
-            std::string get_brand;
-            u8 get_percent;
-            bool get_vm;
-
-            // Default constructor
-            cache_struct() : get_brand("Unknown"), get_percent(0), get_vm(false) {}
-
-            // Constructor to initialize the members
-            cache_struct(const std::string& brand, u8 percent, bool is_vm)
-                : get_brand(brand), get_percent(percent), get_vm(is_vm) {}
-        };
-        MSVC_ENABLE_WARNING(PADDING)
+        using result_t = bool;
+        using points_t = u8;
 
     public:
-        // memoize the value from VM::detect() in case it's ran again
-        static std::map<bool, cache_struct> cache;
+        struct data_t {
+            result_t result;
+            points_t points;
+        };
 
-        // easier way to check if the result is memoized
-        [[nodiscard]] static inline bool is_memoized() noexcept {
-            return (
-                core::disabled(NO_MEMO) && \
-                cache.find(true) != cache.end()
-                );
+    private:
+        static std::map<u8, data_t> cache_table;
+        static flagset cache_keys;
+        static std::string brand_cache;
+        static std::string multibrand_cache;
+
+    public:
+
+        static void cache_store(const u8 technique_macro, const result_t result, const points_t points) {
+            cache_table[technique_macro] = { result, points };
+            cache_keys.set(technique_macro);
         }
 
-        // get vm bool
-        static bool get_vm() {
-            cache_struct& tmp = cache.at(true);
-            return tmp.get_vm;
+        static bool is_cached(const u8 technique_macro) {
+            return cache_keys.test(technique_macro);
         }
 
-        // get vm brand
-        static std::string get_brand() {
-            cache_struct& tmp = cache.at(true);
-            return tmp.get_brand;
+        static data_t cache_fetch(const u8 technique_macro) {
+            return cache_table.at(technique_macro);
         }
 
-        // get vm percentage
-        static u8 get_percent() {
-            cache_struct& tmp = cache.at(true);
-            return tmp.get_percent;
+        static std::string fetch_brand() {
+            return brand_cache;
         }
 
-        static constexpr u8
-            FOUND_VM = 1,
-            FOUND_BRAND = 2,
-            FOUND_PERCENT = 3;
+        static void store_brand(const std::string &p_brand) {
+            brand_cache = p_brand;
+        }
 
-        static constexpr bool UNUSED_VM = false;
-        static constexpr const char* UNUSED_BRAND = "";
-        static constexpr u8 UNUSED_PERCENT = 0;
+        static bool is_brand_cached() {
+            return (!brand_cache.empty());
+        }
 
-        static void memoize(const u8 p_flags, const bool is_vm, const std::string& vm_brand, const u8 vm_percent) {
-            if (cache.find(true) != cache.end()) {
-                return;
-            }
+        static std::string fetch_multibrand() {
+            return multibrand_cache;
+        }
 
-            // default values
-            bool local_is_vm = (p_flags & FOUND_VM) ? is_vm : detect(NO_MEMO);
-            std::string local_vm_brand = (p_flags & FOUND_BRAND) ? vm_brand : brand(NO_MEMO);
-            u8 local_vm_percent = (p_flags & FOUND_PERCENT) ? vm_percent : percentage(NO_MEMO);
+        static void store_multibrand(const std::string &p_brand) {
+            multibrand_cache = p_brand;
+        }
 
-            cache_struct tmp(local_vm_brand, local_vm_percent, local_is_vm);
-            cache[true] = tmp;
+        static bool is_multibrand_cached() {
+            return (!multibrand_cache.empty());
+        }
+    
+        // basically checks whether all the techniques were cached
+        static bool all_present() {
+            return (cache_table.size() == (enum_size - 4)); // 4 are non-technique flags
         }
     };
 
@@ -5853,6 +5843,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for CPUs
      * @category All, x86
      */ 
+    /*
     [[nodiscard]] static bool cpu_thread_mismatch() try {
         if (core::disabled(CPU_THREAD_MISMATCH)) {
             return false;
@@ -5876,13 +5867,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         debug("CPU_THREAD_MISMATCH: catched error, returned false");
         return false;
     }
+    */
 
 
     struct core {
         MSVC_DISABLE_WARNING(PADDING)
         struct technique {
             u8 points;
-            std::function<bool()> run;
+            std::function<bool()> run; // this is the technique function
         };
         MSVC_ENABLE_WARNING(PADDING)
 
@@ -5923,15 +5915,32 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         static u16 run_all(flagset p_flags = DEFAULT) {
             u16 points = 0;
             VM::flags = p_flags;
+            const bool memo_disabled = core::enabled(VM::NO_MEMO);
 
-            auto adjust = [=](const u8 value) -> u8 {
-                return value;
-            };
-
+            // for main technique table
             for (const auto& tmp : table) {
+                const u8 macro = tmp.first;
                 technique pair = tmp.second;
-                if (pair.run()) {
-                    points += adjust(pair.points);
+
+                // check if the technique is cached already
+                if (memo::is_cached(macro)) {
+                    const memo::data_t data = memo::cache_fetch(macro);
+
+                    if (data.result) {
+                        points += data.points;
+                    }
+
+                    continue;
+                }
+
+                const bool result = pair.run();
+
+                if (result) {
+                    points += pair.points;
+                }
+    
+                if (!memo_disabled) {
+                    memo::cache_store(macro, result, pair.points);
                 }
             }
 
@@ -5942,11 +5951,35 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             // for custom VM techniques
             for (const auto& pair : custom_table) {
                 if (pair.run()) {
-                    points += adjust(pair.points);
+                    points += pair.points;
                 }
             }
 
+
             return points;
+        }
+
+
+        static bool hyperv_default_check() {
+            if (MSVC && core::disabled(WIN_HYPERV_DEFAULT)) {
+                std::string tmp_brand;
+
+                if (memo::is_brand_cached()) {
+                    tmp_brand = memo::fetch_brand();
+                } else {
+                    tmp_brand = brand();
+                }
+
+                if (
+                    tmp_brand == "Microsoft Hyper-V" ||
+                    tmp_brand == "Virtual PC" ||
+                    tmp_brand == "Microsoft Virtual PC/Hyper-V"
+                ) {
+                    return true;
+                }
+            }
+            
+            return false;
         }
     };
 
@@ -5982,13 +6015,20 @@ public: // START OF PUBLIC FUNCTIONS
 
         if (
             (p_flag == NO_MEMO) || \
-            (p_flag == EXTREME)
+            (p_flag == EXTREME) || \
+            (p_flag == WIN_HYPERV_DEFAULT) || \
+            (p_flag == MULTIPLE)
         ) {
             throw_error("Flag argument must be a technique flag and not a settings flag");
         }
 
         // count should only have a single flag at this stage
         assert(p_flag > 0 && p_flag <= enum_size);
+
+        if (memo::is_cached(p_flag)) {
+            const memo::data_t data = memo::cache_fetch(p_flag);
+            return data.result;
+        }
 
         // temporarily enable all flags so that every technique is enabled
         const flagset tmp_flags = VM::flags;
@@ -6007,6 +6047,8 @@ public: // START OF PUBLIC FUNCTIONS
 
         VM::flags = tmp_flags;
 
+        memo::cache_store(p_flag, result, pair.points);
+
         return result;
     }
 
@@ -6019,11 +6061,12 @@ public: // START OF PUBLIC FUNCTIONS
      * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmbrand
      */
     [[nodiscard]] static std::string brand(u8 is_multiple = false) {
-        {
-            // this is added to set the brand scoreboard table
+        // this is added to set the brand scoreboard table in case all techniques were not ran
+        if (!memo::all_present()) {
             u16 tmp = core::run_all(DEFAULT);
             UNUSED(tmp);
         }
+
 
         #define brands core::brand_scoreboard
 
@@ -6039,7 +6082,17 @@ public: // START OF PUBLIC FUNCTIONS
             throw std::invalid_argument("Flag for VM::brand() must either be empty or VM::MULTIPLE. Consult the documentation's flag handler for VM::check()");
         }
 
-        const char* current_brand = "";
+        if (is_multiple) {
+            if (memo::is_multibrand_cached()) {
+                return memo::fetch_multibrand();
+            }
+        } else {
+            if (memo::is_brand_cached()) {
+                return memo::fetch_brand();
+            }
+        }
+
+        std::string current_brand = "";
         i32 max = 0;
 
         // both do the same thing
@@ -6130,7 +6183,13 @@ public: // START OF PUBLIC FUNCTIONS
                 ss << " or ";
                 ss << potential_brands.at(i);
             }
-            return ss.str();
+            current_brand = ss.str();
+        }
+
+        if (is_multiple) {
+            memo::store_multibrand(current_brand);
+        } else {
+            memo::store_brand(current_brand);
         }
 
         return current_brand;
@@ -6146,13 +6205,16 @@ public: // START OF PUBLIC FUNCTIONS
     static bool detect(flagset p_flags = DEFAULT) {
         bool result = false;
 
-        u16 points = core::run_all(p_flags);
+        const u16 points = core::run_all(p_flags);
 
         if (core::enabled(EXTREME)) {
             result = (points > 0);
-        }
-        else {
+        } else {
             result = (points >= 100);
+        }
+
+        if (core::hyperv_default_check()) {
+            return false;
         }
 
         return result;
@@ -6166,14 +6228,17 @@ public: // START OF PUBLIC FUNCTIONS
      * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmpercentage
      */
     static u8 percentage(flagset p_flags = DEFAULT) {
-        u16 points = core::run_all(p_flags);
+        const u16 points = core::run_all(p_flags);
         u8 percent = 0;
 
         if (points > 100) {
             percent = 100;
-        }
-        else {
+        } else {
             percent = static_cast<u8>(points);
+        }
+
+        if (core::hyperv_default_check()) {
+            return 0;
         }
 
         return percent;
@@ -6254,7 +6319,11 @@ std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard {
     { VM::BOCHS, 0 }
 };
 
-std::map<bool, VM::memo::cache_struct> VM::memo::cache;
+std::map<VM::u8, VM::memo::data_t> VM::memo::cache_table;
+VM::flagset VM::memo::cache_keys = 0;
+std::string VM::memo::brand_cache = "";
+std::string VM::memo::multibrand_cache = "";
+
 
 VM::flagset VM::flags = 0;
 
@@ -6390,8 +6459,8 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::SMSW, { 30, VM::smsw }},
     { VM::MUTEX, { 85, VM::mutex }},
     { VM::UPTIME, { 10, VM::uptime }},
-    { VM::ODD_CPU_THREADS, { 80, VM::odd_cpu_threads }},
-    { VM::CPU_THREAD_MISMATCH, { 70, VM::cpu_thread_mismatch }}
+    { VM::ODD_CPU_THREADS, { 80, VM::odd_cpu_threads }}
+    //{ VM::CPU_THREAD_MISMATCH, { 70, VM::cpu_thread_mismatch, 0, 0 }}
 
     // __TABLE_LABEL, add your technique above
     // { VM::FUNCTION, { POINTS, FUNCTION_POINTER }}
