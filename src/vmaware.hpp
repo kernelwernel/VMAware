@@ -6086,7 +6086,7 @@ public: // START OF PUBLIC FUNCTIONS
             if (memo::is_multibrand_cached()) {
                 return memo::fetch_multibrand();
             }
-        else {
+        } else {
             if (memo::is_brand_cached()) {
                 return memo::fetch_brand();
             }
