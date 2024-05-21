@@ -255,7 +255,7 @@ int main(int argc, char* argv[]) {
 
         std::cout << "VM certainty: " << percent_color << static_cast<std::uint32_t>(VM::percentage()) << "%" << ansi_exit << "\n";
 
-        const bool is_detected = VM::detect();
+        const bool is_detected = VM::detect(VM::WIN_HYPERV_DEFAULT);
 
         std::cout << "VM confirmation: " << (is_detected ? green : red) << std::boolalpha << is_detected << std::noboolalpha << ansi_exit << "\n\n";
 

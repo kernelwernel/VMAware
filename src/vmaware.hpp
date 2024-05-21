@@ -709,6 +709,7 @@ private:
         static std::map<u8, data_t> cache_table;
         static flagset cache_keys;
         static std::string brand_cache;
+        static std::string multibrand_cache;
 
     public:
 
@@ -735,6 +736,18 @@ private:
 
         static bool is_brand_cached() {
             return (!brand_cache.empty());
+        }
+
+        static std::string fetch_multibrand() {
+            return multibrand_cache;
+        }
+
+        static void store_multibrand(const std::string &p_brand) {
+            multibrand_cache = p_brand;
+        }
+
+        static bool is_multibrand_cached() {
+            return (!multibrand_cache.empty());
         }
     
         // basically checks whether all the techniques were cached
@@ -6054,9 +6067,6 @@ public: // START OF PUBLIC FUNCTIONS
             UNUSED(tmp);
         }
 
-        if (memo::is_brand_cached()) {
-            return memo::fetch_brand();
-        }
 
         #define brands core::brand_scoreboard
 
@@ -6070,6 +6080,16 @@ public: // START OF PUBLIC FUNCTIONS
             is_multiple = true;
         } else if (is_multiple != 0) {
             throw std::invalid_argument("Flag for VM::brand() must either be empty or VM::MULTIPLE. Consult the documentation's flag handler for VM::check()");
+        }
+
+        if (is_multiple) {
+            if (memo::is_multibrand_cached()) {
+                return memo::fetch_multibrand();
+            }
+        else {
+            if (memo::is_brand_cached()) {
+                return memo::fetch_brand();
+            }
         }
 
         std::string current_brand = "";
@@ -6166,7 +6186,11 @@ public: // START OF PUBLIC FUNCTIONS
             current_brand = ss.str();
         }
 
-        memo::store_brand(current_brand);
+        if (is_multiple) {
+            memo::store_multibrand(current_brand);
+        } else {
+            memo::store_brand(current_brand);
+        }
 
         return current_brand;
     }
@@ -6298,6 +6322,8 @@ std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard {
 std::map<VM::u8, VM::memo::data_t> VM::memo::cache_table;
 VM::flagset VM::memo::cache_keys = 0;
 std::string VM::memo::brand_cache = "";
+std::string VM::memo::multibrand_cache = "";
+
 
 VM::flagset VM::flags = 0;
 
