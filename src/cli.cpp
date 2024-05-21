@@ -240,7 +240,7 @@ int main(int argc, char* argv[]) {
 
         std::printf("\n");
 
-        const std::string brand = VM::brand(VM::MULTIPLE);
+        std::string brand = VM::brand(VM::MULTIPLE);
 
         std::cout << "VM brand: " << (brand == "Unknown" ? red : green) << brand << ansi_exit << "\n";
 

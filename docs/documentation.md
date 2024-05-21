@@ -343,7 +343,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | Flag | Description |
 |------|-------------|
 | `VM::ALL` | This will enable all the technique flags, including the cursor check that's disabled by default. |
-| `VM::NO_MEMO` | This will disable memoization, meaning the result will not be fetched through a previous computation of the `VM::detect()` function. Use this if you're only using a single function from the `VM` struct for a performance boost.
+| `VM::NO_MEMO` | This will disable memoization, meaning the result will not be fetched through a previous computation of the `VM::detect()` function. Use this if you're only using a single function from the `VM` struct for a performance boost. |
 | `VM::EXTREME` | This will disregard the weights/biases and its scoring system. It will essentially treat any technique that found a hit as a VM detection no matter how low that technique's certainty is, so if a single technique is positive then it will return true. | 
 | `VM::DEFAULT` | This represents a range of flags which are enabled if no default argument is provided. The reason why this exists is to easily disable any bits manually (shown in the is_vm6 example in the `VM::detect()` section)
 | `VM::WIN_HYPERV_DEFAULT` | This will take into account that Windows 11 (and sometimes 10) may have Hyper-V as a default virtualisation software for any program even if the OS is running as host. Essentially, this flag will count any techniques prone to this issue as running in a VM, while having a higher threshold bar to detect it as one. |
