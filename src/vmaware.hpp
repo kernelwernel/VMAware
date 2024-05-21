@@ -5945,6 +5945,29 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             return points;
         }
+
+
+        static bool hyperv_default_check() {
+            if (MSVC && core::disabled(WIN_HYPERV_DEFAULT)) {
+                std::string tmp_brand;
+
+                if (memo::is_brand_cached()) {
+                    tmp_brand = memo::fetch_brand();
+                } else {
+                    tmp_brand = brand();
+                }
+
+                if (
+                    tmp_brand == "Microsoft Hyper-V" ||
+                    tmp_brand == "Virtual PC" ||
+                    tmp_brand == "Microsoft Virtual PC/Hyper-V"
+                ) {
+                    return true;
+                }
+            }
+            
+            return false;
+        }
     };
 
 
@@ -6162,9 +6185,12 @@ public: // START OF PUBLIC FUNCTIONS
 
         if (core::enabled(EXTREME)) {
             result = (points > 0);
-        }
-        else {
+        } else {
             result = (points >= 100);
+        }
+
+        if (core::hyperv_default_check()) {
+            return false;
         }
 
         return result;
@@ -6185,6 +6211,10 @@ public: // START OF PUBLIC FUNCTIONS
             percent = 100;
         } else {
             percent = static_cast<u8>(points);
+        }
+
+        if (core::hyperv_default_check()) {
+            return 0;
         }
 
         return percent;
