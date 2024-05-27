@@ -305,13 +305,13 @@ public:
         DLL,
         REGISTRY,
         CWSANDBOX_VM,
-        WINE_CHECK,
         VM_FILES,
         HWMODEL,
         DISK_SIZE,
         VBOX_DEFAULT,
         VBOX_NETWORK,
         COMPUTER_NAME,
+        WINE_CHECK, 
         HOSTNAME,
         MEMORY,
         VBOX_WINDOW_CLASS,
@@ -2603,37 +2603,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check wine_get_unix_file_name file for Wine
-     * @author pafish project
-     * @link https://github.com/a0rtega/pafish/blob/master/pafish/wine.c
-     * @category Windows
-     * @copyright GPL-3.0
-     */
-    [[nodiscard]] static bool wine() try {
-        if (core::disabled(WINE_CHECK)) {
-            return false;
-        }
-
-#if (!MSVC)
-        return false;
-#else
-        HMODULE k32;
-        k32 = GetModuleHandle(TEXT("kernel32.dll"));
-
-        if (k32 != NULL) {
-            return (GetProcAddress(k32, "wine_get_unix_file_name") != NULL);
-        }
-
-        return false;
-#endif
-    }
-    catch (...) {
-        debug("WINE_CHECK: catched error, returned false");
-        return false;
-    }
-
-
-    /**
      * @brief Find for VMware and VBox specific files
      * @category Windows
      */
@@ -2923,6 +2892,37 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
     catch (...) {
         debug("VBOX_NETWORK: catched error, returned false");
+        return false;
+    }
+
+
+    /**
+     * @brief Check wine_get_unix_file_name file for Wine
+     * @author pafish project
+     * @link https://github.com/a0rtega/pafish/blob/master/pafish/wine.c
+     * @category Windows
+     * @copyright GPL-3.0
+     */
+    [[nodiscard]] static bool wine() try {
+        if (core::disabled(WINE_CHECK)) {
+            return false;
+        }
+
+#if (!MSVC)
+        return false;
+#else
+        HMODULE k32;
+        k32 = GetModuleHandle(TEXT("kernel32.dll"));
+
+        if (k32 != NULL) {
+            return (GetProcAddress(k32, "wine_get_unix_file_name") != NULL);
+        }
+
+        return false;
+#endif
+    }
+    catch (...) {
+        debug("WINE_CHECK: catched error, returned false");
         return false;
     }
 
@@ -7599,12 +7599,12 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::DLL, { 50, VM::DLL_check }},
     { VM::REGISTRY, { 75, VM::registry_key }},
     { VM::CWSANDBOX_VM, { 10, VM::cwsandbox_check }},
-    { VM::WINE_CHECK, { 85, VM::wine }},
     { VM::VM_FILES, { 60, VM::vm_files }},
     { VM::HWMODEL, { 75, VM::hwmodel }},
     { VM::DISK_SIZE, { 60, VM::disk_size }},
     { VM::VBOX_DEFAULT, { 55, VM::vbox_default_specs }},
     { VM::VBOX_NETWORK, { 70, VM::vbox_network_share }},
+    { VM::WINE_CHECK, { 85, VM::wine }}, // GPL
     { VM::COMPUTER_NAME, { 15, VM::computer_name_match }}, // GPL
     { VM::HOSTNAME, { 25, VM::hostname_match }}, // GPL
     { VM::MEMORY, { 35, VM::low_memory_space }}, // GPL
