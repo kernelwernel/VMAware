@@ -335,6 +335,8 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::MUTEX` | Check for mutex strings of VM brands | Windows | 85% |  |  |  |
 | `VM::UPTIME` | Check if uptime is less than or equal to 2 minutes | Yes | 10% |  |  |  |
 | `VM::ODD_CPU_THREADS` | Check if the CPU has an odd number of CPU threads | Yes | 80% |  |  |  |
+| `VM::INTEL_THREAD_MISMATCH` | Check if Intel "i series" CPUs have mismatched thread counts based on a database of threads on models | Yes | 85% |  |  |  |
+| `VM::XEON_THREAD_MISMATCH` | Check if Intel Xeon CPUs have mismatched threads (same as above technique) | Yes | 85% |  |  |  |
 
 
 <br>
