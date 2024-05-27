@@ -88,9 +88,7 @@ def update(filename):
         " * - start of internal VM detection techniques => line __TECHNIQUES__",
         " * - struct for internal core components       => line __CORE__",
         " * - start of public VM detection functions    => line __PUBLIC__",
-        " * - start of externally defined variables     => line __EXTERNAL__",
-        " */",
-        ""
+        " * - start of externally defined variables     => line __EXTERNAL__"
     ]
 
     # replace the macro strings with the file line numbers

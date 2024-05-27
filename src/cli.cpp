@@ -238,6 +238,7 @@ int main(int argc, char* argv[]) {
         checker(VM::UPTIME, "uptime");
         checker(VM::ODD_CPU_THREADS, "unusual thread count");
         checker(VM::INTEL_THREAD_MISMATCH, "Intel thread count mismatch");
+        checker(VM::XEON_THREAD_MISMATCH, "Intel Xeon thread count mismatch");
 
         std::printf("\n");
 
