@@ -15,7 +15,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 if (MSVC)
     set(CMAKE_CXX_FLAGS "/Wall /W4 /std:c++20 /EHsc")
 else()
-    set(CMAKE_CXX_FLAGS "-Wextra -Wall -Wextra -Wconversion -Wdouble-promotion -Wno-unused-parameter -Wno-unused-function -Wno-sign-conversion")
+    set(CMAKE_CXX_FLAGS "-Wextra -Wall -Wextra -Wconversion -Wdouble-promotion -Wno-unused-parameter -Wno-unused-function -Wno-sign-conversion -fmax-errors=20")
 endif()
 
 if(CMAKE_C_COMPILER_ID STREQUAL "Clang" OR CMAKE_C_COMPILER_ID STREQUAL "GNU")
