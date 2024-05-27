@@ -2865,17 +2865,18 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #else
         u32 pnsize = 0x1000;
-        TCHAR* provider = new TCHAR[pnsize];
-
-        u32 retv = WNetGetProviderName(WNNC_NET_RDR2SAMPLE, provider, reinterpret_cast<LPDWORD>(&pnsize));
-
-        if (retv == NO_ERROR) {
-            bool result = (lstrcmpi(provider, _T("VirtualBox Shared Folders")) == 0);
-            delete provider;
-            return result;
-        }
-
-        return false;
+	TCHAR* provider = new TCHAR[pnsize];
+	
+	u32 retv = WNetGetProviderName(WNNC_NET_RDR2SAMPLE, provider, reinterpret_cast<LPDWORD>(&pnsize));
+	
+	if (retv == NO_ERROR) {
+	    bool result = (lstrcmpi(provider, _T("VirtualBox Shared Folders")) == 0);
+	    delete[] provider;
+	    return result;
+	}
+	
+	delete[] provider;
+	return false;
 #endif
     }
     catch (...) {
@@ -4884,29 +4885,28 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        u8	idtr[10];
-        u32	idt_entry = 0;
+        u8 idtr[10]{};
+        u32 idt_entry = 0;
 
 #if (MSVC)
-    #if (x86_32)
+#if (x86_32)
         _asm sidt idtr
-    #elif (x86)
-        #pragma pack(1)
+#elif (x86)
+#pragma pack(1)
         struct IDTR {
             u16 limit;
             u64 base;
         };
-        #pragma pack()
+#pragma pack()
 
         IDTR idtrStruct;
         __sidt(&idtrStruct);
         std::memcpy(idtr, &idtrStruct, sizeof(IDTR));
-    */
-    #else
+#else
         return false;
-    #endif
+#endif
 
-        idt_entry = *((unsigned long*)&idtr[2]);
+        idt_entry = *reinterpret_cast<unsigned long*>(&idtr[2]);
 #elif (LINUX)
         // false positive with root for some reason
         if (util::is_admin()) {
@@ -4922,7 +4922,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         __asm__ __volatile__(
             "sidt %0"
-            : "=m" (idtr)
+            : "=m" (idtr_struct)
         );
 
         std::ifstream mem("/dev/mem", std::ios::binary);
@@ -4940,7 +4940,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
     }
     catch (...) {
-        debug("SIDT: ", "catched error, returned false");
+        debug("SIDT: ", "caught error, returned false");
         return false;
     }
 
@@ -4986,7 +4986,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!MSVC || !x86)
         return false;
 #elif (x86_32)
-        u8 gdtr[6];
+        u8 gdtr[6]{};
         u32 gdt = 0;
 
         _asm sgdt gdtr
@@ -5173,7 +5173,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!MSVC || !x86)
         return false;
 #elif (x86_32)
-        unsigned char m[6];
+        unsigned char m[6]{};
         __asm sidt m;
         return (m[5] > 0xD0);
 #else
@@ -5201,7 +5201,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!MSVC || !x86)
         return false;
 #elif (x86_32)
-        unsigned char m[6];
+        unsigned char m[6]{};
         __asm sgdt m;
         return (m[5] > 0xD0);
 #else
@@ -5229,7 +5229,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!MSVC || !x86)
         return false;
 #elif (x86_32)
-        unsigned short m[6];
+        unsigned short m[6]{};
         __asm sldt m;
         return (m[0] != 0x00 && m[1] != 0x00);
 #else
@@ -5256,7 +5256,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!MSVC || !x86)
         return false;
 #elif (x86_32)
-        u8	idtr[6];
+        u8	idtr[6]{};
         u32	idt = 0;
 
         _asm sidt idtr
@@ -5756,7 +5756,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 u8 extmodel;
             };
 
-            struct stepping_struct steps;
+            struct stepping_struct steps {};
 
             u32 unused, eax = 0;
             cpu::cpuid(eax, unused, unused, unused, 1);
@@ -5836,7 +5836,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 constexpr u8 EXTMODEL = 1;
                 constexpr u8 MODEL    = 2;
 
-                for (const auto arch : old_archs) {
+                for (const auto& arch : old_archs) {
                     if (
                         steps.family   == arch.at(FAMILY)   &&
                         steps.extmodel == arch.at(EXTMODEL) &&
