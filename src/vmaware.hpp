@@ -348,7 +348,7 @@ public:
         UPTIME,
         ODD_CPU_THREADS,
         INTEL_THREAD_MISMATCH,
-        INTEL_XEON_THREAD_MISMATCH,
+        XEON_THREAD_MISMATCH,
         EXTREME,
         NO_MEMO,
         WIN_HYPERV_DEFAULT,
@@ -589,20 +589,22 @@ private:
 #endif
         }
 
-        [[nodiscard]] static std::string get_model() {
+        struct model_struct {
+            bool found;
+            bool is_xeon;
+            bool is_i_series;
+            std::string string;
+        };
+
+        [[nodiscard]] static model_struct get_model() {
             const std::string brand = get_brand();
 
             constexpr const char* intel_i_series_regex    = "i[0-9]-[A-Z0-9]{1,7}";
             constexpr const char* intel_xeon_series_regex = "[DEW]-[A-Z0-9]{1,7}";
 
-            constexpr std::array<const char*, 2> regex_templates {{
-                intel_i_series_regex,
-                intel_xeon_series_regex
-            }};
-
             std::string match_str = "";
 
-            for (const auto regex : regex_templates) {
+            auto match = [&](const char* regex) -> bool {
                 std::regex pattern(regex);
 
                 auto words_begin  = std::sregex_iterator(brand.begin(), brand.end(), pattern);
@@ -614,11 +616,32 @@ private:
                 }
 
                 if (!match_str.empty()) {
-                    return match_str;
+                    return true;
+                }
+
+                return false;
+            };
+
+            bool found        = false;
+            bool is_xeon      = false;
+            bool is_i_series  = false;
+            std::string string = "";
+
+            if (cpu::is_intel()) {
+                if (match(intel_i_series_regex)) {
+                    found       = true;
+                    is_i_series = true;
+                    string       = match_str;
+                } else if (match(intel_xeon_series_regex)) {
+                    found   = true;
+                    is_xeon = true;
+                    string   = match_str;
                 }
             }
 
-            return "";
+            // no AMD (for now)
+
+            return model_struct{ found, is_xeon, is_i_series, string };
         };
 
 #if (CPP >= 17)
@@ -4901,7 +4924,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         IDTR idtrStruct;
         __sidt(&idtrStruct);
         std::memcpy(idtr, &idtrStruct, sizeof(IDTR));
-    */
     #else
         return false;
     #endif
@@ -5877,7 +5899,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for CPUs that don't match their thread count
      * @category All, x86
-     * @links https://en.wikipedia.org/wiki/List_of_Intel_Core_processors
+     * @link https://en.wikipedia.org/wiki/List_of_Intel_Core_processors
      */ 
     [[nodiscard]] static bool intel_thread_mismatch() try {
         if (core::disabled(INTEL_THREAD_MISMATCH)) {
@@ -5891,15 +5913,19 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return false;
             }
 
-            const std::string model = cpu::get_model();
+            const cpu::model_struct model = cpu::get_model();
 
-            debug("INTEL_THREAD_MISMATCH: CPU model = ", model);
-
-            if (model.empty()) {
+            if (!model.found) {
                 return false;
             }
 
-            std::unordered_map<std::string, u8> thread_database = {
+            if (!model.is_i_series) {
+                return false;
+            }
+
+            debug("INTEL_THREAD_MISMATCH: CPU model = ", model.string);
+
+            const std::unordered_map<std::string, u8> thread_database = {
                 // i3 series
                 { "i3-1000G1", 4 },
                 { "i3-1000G4", 4 },
@@ -6856,11 +6882,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             };
 
             // basically means "if there's 0 matches in the database, return false"
-            if (thread_database.count(model) == 0) {
+            if (thread_database.count(model.string) == 0) {
                 return false;
             }
 
-            const u8 threads = thread_database.at(model);
+            const u8 threads = thread_database.at(model.string);
 
             debug("INTEL_THREAD_MISMATCH: thread in database = ", static_cast<u32>(threads));
 
@@ -6872,6 +6898,158 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
     }
 
+
+    /**
+     * @brief Check for Intel Xeon CPUs that don't match their thread count
+     * @category All, x86
+     * @link https://en.wikipedia.org/wiki/List_of_Intel_Core_processors
+     */ 
+    [[nodiscard]] static bool xeon_thread_mismatch() try {
+        if (core::disabled(XEON_THREAD_MISMATCH)) {
+            return false;
+        }
+
+        #if (!x86)
+            return false;
+        #else
+            if (!cpu::is_intel()) {
+                return false;
+            }
+
+            const cpu::model_struct model = cpu::get_model();
+
+            if (!model.found) {
+                return false;
+            }
+
+            if (!model.is_i_series) {
+                return false;
+            }
+
+            debug("XEON_THREAD_MISMATCH: CPU model = ", model.string);
+
+            const std::unordered_map<std::string, u8> xeon_thread_database = {
+                // Xeon D
+                { "D-1518", 8 },
+                { "D-1520", 8 },
+                { "D-1521", 8 },
+                { "D-1527", 8 },
+                { "D-1528", 12 },
+                { "D-1529", 8 },
+                { "D-1531", 12 },
+                { "D-1537", 16 },
+                { "D-1539", 16 },
+                { "D-1540", 16 },
+                { "D-1541", 16 },
+                { "D-1548", 16 },
+                { "D-1557", 24 },
+                { "D-1559", 24 },
+                { "D-1567", 24 },
+                { "D-1571", 32 },
+                { "D-1577", 32 },
+                { "D-1581", 32 },
+                { "D-1587", 32 },
+                { "D-1513N", 8 },
+                { "D-1523N", 8 },
+                { "D-1533N", 12 },
+                { "D-1543N", 16 },
+                { "D-1553N", 16 },
+                { "D-1602", 4 },
+                { "D-1612", 8 },
+                { "D-1622", 8 },
+                { "D-1627", 8 },
+                { "D-1632", 16 },
+                { "D-1637", 12 },
+                { "D-1623N", 8 },
+                { "D-1633N", 12 },
+                { "D-1649N", 16 },
+                { "D-1653N", 16 },
+                { "D-2141I", 16 },
+                { "D-2161I", 24 },
+                { "D-2191", 36 },
+                { "D-2123IT", 8 },
+                { "D-2142IT", 16 },
+                { "D-2143IT", 16 },
+                { "D-2163IT", 24 },
+                { "D-2173IT", 28 },
+                { "D-2183IT", 32 },
+                { "D-2145NT", 16 },
+                { "D-2146NT", 16 },
+                { "D-2166NT", 24 },
+                { "D-2177NT", 28 },
+                { "D-2187NT", 32 },
+
+                // Xeon E
+                { "E-2104G", 4 },
+                { "E-2124", 4 },
+                { "E-2124G", 4 },
+                { "E-2126G", 6 },
+                { "E-2134", 8 },
+                { "E-2136", 12 },
+                { "E-2144G", 8 },
+                { "E-2146G", 12 },
+                { "E-2174G", 8 },
+                { "E-2176G", 12 },
+                { "E-2186G", 12 },
+                { "E-2176M", 12 },
+                { "E-2186M", 12 },
+                { "E-2224", 4 },
+                { "E-2224G", 4 },
+                { "E-2226G", 6 },
+                { "E-2234", 8 },
+                { "E-2236", 12 },
+                { "E-2244G", 8 },
+                { "E-2246G", 12 },
+                { "E-2274G", 8 },
+                { "E-2276G", 12 },
+                { "E-2278G", 16 },
+                { "E-2286G", 12 },
+                { "E-2288G", 16 },
+                { "E-2276M", 12 },
+                { "E-2286M", 16 },
+
+                // Xeon W
+                { "W-2102", 4 },
+                { "W-2104", 4 },
+                { "W-2123", 8 },
+                { "W-2125", 8 },
+                { "W-2133", 12 },
+                { "W-2135", 12 },
+                { "W-2140B", 16 },
+                { "W-2145", 16 },
+                { "W-2150B", 20 },
+                { "W-2155", 20 },
+                { "W-2170B", 28 },
+                { "W-2175", 28 },
+                { "W-2191B", 36 },
+                { "W-2195", 36 },
+                { "W-3175X", 56 },
+                { "W-3223", 16 },
+                { "W-3225", 16 },
+                { "W-3235", 24 },
+                { "W-3245", 32 },
+                { "W-3245M", 32 },
+                { "W-3265", 48 },
+                { "W-3265M", 48 },
+                { "W-3275", 56 },
+                { "W-3275M", 56 }
+            };
+
+            if (xeon_thread_database.count(model.string) == 0) {
+                return false;
+            }
+
+            const u8 threads = xeon_thread_database.at(model.string);
+
+            debug("XEON_THREAD_MISMATCH: thread in database = ", static_cast<u32>(threads));
+
+            return (std::thread::hardware_concurrency() != threads);
+        #endif
+    }
+    catch (...) {
+        debug("INTEL_THREAD_MISMATCH: catched error, returned false");
+        return false;
+    }
 
     struct core {
         MSVC_DISABLE_WARNING(PADDING)
@@ -7462,7 +7640,8 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::MUTEX, { 85, VM::mutex }},
     { VM::UPTIME, { 10, VM::uptime }},
     { VM::ODD_CPU_THREADS, { 80, VM::odd_cpu_threads }},
-    { VM::INTEL_THREAD_MISMATCH, { 70, VM::intel_thread_mismatch }}
+    { VM::INTEL_THREAD_MISMATCH, { 85, VM::intel_thread_mismatch }},
+    { VM::XEON_THREAD_MISMATCH, { 85, VM::xeon_thread_mismatch }}
 
     // __TABLE_LABEL, add your technique above
     // { VM::FUNCTION, { POINTS, FUNCTION_POINTER }}
