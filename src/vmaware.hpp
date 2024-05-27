@@ -19,16 +19,35 @@
  *  - Full credits: https://github.com/kernelwernel/VMAware#credits-and-contributors-%EF%B8%8F
  *  - License: GPL-3.0
  *
+ * 
  * ================================ SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 252
- * - struct for internal cpu operations        => line 447
- * - struct for internal memoization           => line 684
- * - struct for internal utility functions     => line 757
- * - struct for internal core components       => line 5713
- * - start of internal VM detection techniques => line 1423
- * - start of public VM detection functions    => line 5786
- * - start of externally defined variables     => line 6053
+ * - enums for publicly accessible techniques  => line 282
+ * - struct for internal cpu operations        => line 480
+ * - struct for internal memoization           => line 772
+ * - struct for internal utility functions     => line 834
+ * - struct for internal core components       => line 7073
+ * - start of internal VM detection techniques => line 1510
+ * - start of public VM detection functions    => line 7187
+ * - start of externally defined variables     => line 7487
+ * 
+ * 
+ * ================================ EXAMPLE ==================================
+#include "vmaware.hpp"
+#include <iostream>
+
+int main() {
+    if (VM::detect()) {
+        std::cout << "Virtual machine detected!" << std::endl;
+        std::cout << "VM name: " << VM::brand() << std::endl;
+    } else {
+        std::cout << "Running in baremetal" << std::endl;
+    }
+    
+    std::cout << "VM certainty: " << (int)VM::percentage() << "%" << std::endl;
+}
+
  */
+
 
 #if (defined(_MSC_VER) || defined(_WIN32) || defined(_WIN64) || defined(__MINGW32__))
 #define MSVC 1
