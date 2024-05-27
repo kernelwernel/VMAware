@@ -33,6 +33,7 @@
 - [ ] implement smbios version technique [here](https://github.com/Print3M/Anti-VM/blob/eb524ed89e783b36c149acc450b2350d4198b06b/detectors.cpp#L88)
 - [ ] implement a display size technique for linux with EDID 
 - [ ] implement a technique that matches the CPU product name and match it with a database of core counts for that specific CPU product
+- [ ] add usage example in the .hpp file directly below the banner
 
 # Distant plans
 - add the library to conan.io when released

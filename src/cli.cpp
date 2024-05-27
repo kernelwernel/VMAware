@@ -113,7 +113,7 @@ std::string message(const std::uint8_t score, const std::string &brand) {
         inside_vm = "Running inside a " + brand + " VM";
     }
     
-    if (score == 0)        { return baremetal; } 
+    if      (score == 0)   { return baremetal; } 
     else if (score <= 12)  { return very_unlikely; } 
     else if (score <= 25)  { return unlikely; } 
     else if (score < 50)   { return potentially; } 
@@ -237,6 +237,7 @@ int main(int argc, char* argv[]) {
         checker(VM::MUTEX, "mutex strings");
         checker(VM::UPTIME, "uptime");
         checker(VM::ODD_CPU_THREADS, "unusual thread count");
+        checker(VM::INTEL_THREAD_MISMATCH, "Intel thread count mismatch");
 
         std::printf("\n");
 
@@ -266,7 +267,7 @@ int main(int argc, char* argv[]) {
             brand == "Virtual PC" ||
             brand == "Microsoft Virtual PC/Hyper-V"
         ) {
-            std::cout << note << " If you know you are running on host, Hyper-V virtualises all applications by default within host system, see here https://github.com/kernelwernel/VMAware/issues/75\n";
+            std::cout << note << " If you know you are running on host, Hyper-V virtualises all applications by default within the host system, see here https://github.com/kernelwernel/VMAware/issues/75\n";
         }
 
         const char* conclusion_color = color(percent);
