@@ -161,6 +161,7 @@ int main() {
 #include <limits>
 #include <cstdint>
 #include <map>
+#include <unordered_map>
 #include <array>
 #include <algorithm>
 #include <iostream>
@@ -4971,7 +4972,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         mem.seekg(idtr_struct.base + 8, std::ios::beg);
         mem.read(reinterpret_cast<char*>(&idt_entry), sizeof(idt_entry));
         mem.close();
+        UNUSED(idtr);
 #else
+        UNUSED(idtr);
+        UNUSED(idt_entry);
         return false;
 #endif
 
