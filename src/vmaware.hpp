@@ -465,6 +465,13 @@ private:
     static constexpr const char* CWSANDBOX = "CWSandbox";
     static constexpr const char* COMODO = "Comodo";
     static constexpr const char* BOCHS = "Bochs";
+    static constexpr const char* KVM_HYPERV = "KVM Hyper-V Enlightenment";
+    static constexpr const char* NVMM = "NVMM";
+    static constexpr const char* BSD_VMM = "OpenBSD VMM";
+    static constexpr const char* INTEL_HAXM = "Intel HAXM";
+    static constexpr const char* UNISYS = "Unisys s-Par";
+    static constexpr const char* LMHS = "Lockheed Martin LMHS"; // yes, you read that right. The library can now detect VMs running on US military fighter jets, apparently.
+
 
     // macro for bypassing unused parameter/variable warnings
 #define UNUSED(x) ((void)(x))
@@ -567,6 +574,35 @@ private:
             cpuid(unused, unused, ecx, unused, 0);
 
             return (ecx == intel_ecx);
+        }
+
+        [[nodiscard]] static bool has_hyperthreading() {
+            u32 eax, ebx, ecx, edx;
+
+            cpuid(eax, ebx, ecx, edx, 1);
+
+            bool htt_available = (edx & (1 << 28));
+
+            if (!htt_available) {
+                return false;
+            }
+
+            i32 logical_cores = ((ebx >> 16) & 0xFF);
+            i32 physical_cores = 0;
+
+#if (MSVC)
+            SYSTEM_INFO sysinfo;
+            GetSystemInfo(&sysinfo);
+            physical_cores = sysinfo.dwNumberOfProcessors;
+#elif (LINUX)
+            physical_cores = static_cast<i32>(sysconf(_SC_NPROCESSORS_CONF));
+#elif (APPLE)
+            sysctlbyname("hw.physicalcpu", &physical_cores, sizeof(physical_cores), NULL, 0);
+#else
+            return false;
+#endif
+    
+            return (logical_cores > physical_cores);
         }
 
         // get the CPU product
@@ -675,7 +711,9 @@ private:
             const std::string
 #endif
                 bhyve = "bhyve bhyve ",
+                bhyve2 = "BHyVE BHyVE ",
                 kvm = "KVMKVMKVM\0\0\0",
+                kvm_hyperv = "Linux KVM Hv",
                 qemu = "TCGTCGTCGTCG",
                 hyperv = "Microsoft Hv",
                 xta = "MicrosoftXTA",
@@ -686,7 +724,13 @@ private:
                 xen = "XenVMMXenVMM",
                 acrn = "ACRNACRNACRN",
                 qnx = " QNXQVMBSQG ",
-                virtapple = "VirtualApple";
+                qnx2 = "QXNQSBMV",
+                nvmm = "___ NVMM ___",
+                openbsd_vmm = "OpenBSDVMM58",
+                intel_haxm = "HAXMHAXMHAXM",
+                virtapple = "VirtualApple",
+                unisys = "UnisysSpar64",
+                lmhs = "SRESRESRESRE";
 
             auto cpuid_thingy = [](const u32 p_leaf, u32* regs, std::size_t start = 0, std::size_t end = 4) -> bool {
                 u32 x[4]{};
@@ -736,34 +780,60 @@ private:
             const std::vector<std::string> brand_streams = { brand1, brand2 };
 
             for (const auto &tmp_brand : brand_streams) {
-                if (tmp_brand == qemu)       { return core::add(QEMU); }
-                if (tmp_brand == vmware)     { return core::add(VMWARE); }
-                if (tmp_brand == vbox)       { return core::add(VBOX); }
-                if (tmp_brand == bhyve)      { return core::add(BHYVE); }
-                if (tmp_brand == kvm)        { return core::add(KVM); }
-                if (tmp_brand == xta)        { return core::add(MSXTA); }
-                if (tmp_brand == parallels)  { return core::add(PARALLELS); }
-                if (tmp_brand == parallels2) { return core::add(PARALLELS); }
-                if (tmp_brand == xen)        { return core::add(XEN); }
-                if (tmp_brand == acrn)       { return core::add(ACRN); }
-                if (tmp_brand == qnx)        { return core::add(QNX); }
-                if (tmp_brand == virtapple)  { return core::add(VAPPLE); }
+                if (tmp_brand == qemu)        { return core::add(QEMU); }
+                if (tmp_brand == vmware)      { return core::add(VMWARE); }
+                if (tmp_brand == vbox)        { return core::add(VBOX); }
+                if (tmp_brand == bhyve)       { return core::add(BHYVE); }
+                if (tmp_brand == bhyve2)      { return core::add(BHYVE); }
+                if (tmp_brand == kvm)         { return core::add(KVM); }
+                if (tmp_brand == kvm_hyperv)  { return core::add(KVM_HYPERV); }
+                if (tmp_brand == xta)         { return core::add(MSXTA); }
+                if (tmp_brand == parallels)   { return core::add(PARALLELS); }
+                if (tmp_brand == parallels2)  { return core::add(PARALLELS); }
+                if (tmp_brand == xen)         { return core::add(XEN); }
+                if (tmp_brand == acrn)        { return core::add(ACRN); }
+                if (tmp_brand == qnx)         { return core::add(QNX); }
+                if (tmp_brand == virtapple)   { return core::add(VAPPLE); }
+                if (tmp_brand == nvmm)        { return core::add(NVMM); }
+                if (tmp_brand == openbsd_vmm) { return core::add(BSD_VMM); }
+                if (tmp_brand == intel_haxm)  { return core::add(INTEL_HAXM); }
+                if (tmp_brand == unisys)      { return core::add(UNISYS); }
+                if (tmp_brand == lmhs)        { return core::add(LMHS); }
+
+
+                // both Hyper-V and VirtualPC have the same string value
                 if (tmp_brand == hyperv)     { 
                     bool tmp = core::add(VPC);
                     UNUSED(tmp);
                     return core::add(HYPERV);
                 }
-            }
 
-            /**
-             * This is added because there are inconsistent string
-             * values for KVM's manufacturer ID. For example,
-             * it gives me "KVMKMVMKV" when I run it under QEMU
-             * but the Wikipedia article on CPUID says it's
-             * "KVMKVMKVM\0\0\0", like wtf????
-             */
-            if (util::find(brand1, "KVM") || util::find(brand2, "KVM")) {
-                return core::add(KVM);
+                /**
+                 * this is added because there are inconsistent string
+                 * values for KVM's manufacturer ID. For example,
+                 * it gives me "KVMKMVMKV" when I run it under QEMU
+                 * but the Wikipedia article on CPUID says it's
+                 * "KVMKVMKVM\0\0\0", like wtf????
+                 */
+                if (util::find(tmp_brand, "KVM")) {
+                    return core::add(KVM);
+                }
+
+                /** 
+                 * i'm honestly not sure about this one, 
+                 * it's supposed to have 12 characters but
+                 * Wikipedia tells me it has 8, so i'm just
+                 * going to scan for the string ig
+                 */ 
+                #if (CPP >= 17)
+                const char* qnx_sample = qnx2.data();
+                #else
+                const char* qnx_sample = qnx2.c_str();
+                #endif
+
+                if (util::find(tmp_brand, qnx_sample)) {
+                    return core::add(QNX);
+                }
             }
 
             return false;
@@ -1643,10 +1713,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        if (core::disabled(WIN_HYPERV_DEFAULT) && MSVC) {
-            return false;
-        }
-    
 #if (!x86)
         return false;
 #else
@@ -1674,25 +1740,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        if (core::disabled(WIN_HYPERV_DEFAULT) && MSVC) {
-            return false;
-        }
-
 #if (!x86)
         return false;
 #else
         u32 a, b, c, d = 0;
-
-        if (core::enabled(WIN_HYPERV_DEFAULT)) {
-            cpu::cpuid(a, b, c, d, (cpu::leaf::hypervisor));
-            if (
-                b == 0x7263694D &&  // "Micr"
-                c == 0x666F736F &&  // "osof"
-                d == 0x76482074     // "t Hv"
-            ) {
-                return false;
-            }
-        }
 
         for (u8 i = 0; i < 0xFF; ++i) {
             cpu::cpuid(a, b, c, d, (cpu::leaf::hypervisor + i));
@@ -1722,10 +1773,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!x86)
         return false;
 #else
-        if (core::disabled(WIN_HYPERV_DEFAULT) && MSVC) {
-            return false;
-        }
-
         char out[sizeof(int32_t) * 4 + 1] = { 0 }; // e*x size + number of e*x registers + null terminator
         cpu::cpuid((int*)out, cpu::leaf::hypervisor);
 
@@ -5937,6 +5984,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return false;
             }
 
+            if (cpu::has_hyperthreading()) {
+                return false;
+            }
+
             const cpu::model_struct model = cpu::get_model();
 
             if (!model.found) {
@@ -6942,6 +6993,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return false;
             }
 
+            if (cpu::has_hyperthreading()) {
+                return false;
+            }
+
             const cpu::model_struct model = cpu::get_model();
 
             if (!model.found) {
@@ -7078,6 +7133,33 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         debug("XEON_THREAD_MISMATCH: catched error, returned false");
         return false;
     }
+
+
+
+
+
+// TODO: DO AMD
+//https://en.wikipedia.org/wiki/List_of_AMD_Ryzen_processors
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     struct core {
         MSVC_DISABLE_WARNING(PADDING)
@@ -7507,6 +7589,7 @@ std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard {
     { VM::BHYVE, 0 },
     { VM::QEMU, 0 },
     { VM::KVM, 0 },
+    { VM::KVM_HYPERV, 0 },
     { VM::HYPERV, 0 },
     { VM::MSXTA, 0 },
     { VM::PARALLELS, 0 },
@@ -7524,7 +7607,12 @@ std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard {
     { VM::THREADEXPERT, 0 },
     { VM::CWSANDBOX, 0 },
     { VM::COMODO, 0 },
-    { VM::BOCHS, 0 }
+    { VM::BOCHS, 0 },
+    { VM::NVMM, 0},
+    { VM::BSD_VMM, 0 },
+    { VM::INTEL_HAXM, 0 },
+    { VM::UNISYS, 0 },
+    { VM::LMHS, 0 }
 };
 
 std::map<VM::u8, VM::memo::data_t> VM::memo::cache_table;
