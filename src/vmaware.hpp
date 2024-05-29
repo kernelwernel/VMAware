@@ -607,6 +607,10 @@ private:
 
         // get the CPU product
         [[nodiscard]] static std::string get_brand() {
+            if (memo::is_cpu_brand_cached()) {
+                return memo::fetch_cpu_brand();
+            }
+
             if (!cpuid_supported) {
                 return "Unknown";
             }
@@ -640,6 +644,8 @@ private:
             }
 
             debug("BRAND: ", "cpu brand = ", brand);
+
+            memo::store_cpu_brand(brand);
 
             return brand;
 #endif
@@ -823,7 +829,7 @@ private:
                  * i'm honestly not sure about this one, 
                  * it's supposed to have 12 characters but
                  * Wikipedia tells me it has 8, so i'm just
-                 * going to scan for the string ig
+                 * going to scan for the entire string ig
                  */ 
                 #if (CPP >= 17)
                 const char* qnx_sample = qnx2.data();
@@ -857,6 +863,7 @@ private:
         static flagset cache_keys;
         static std::string brand_cache;
         static std::string multibrand_cache;
+        static std::string cpu_brand_cache;
 
     public:
         static void cache_store(const u8 technique_macro, const result_t result, const points_t points) {
@@ -896,6 +903,18 @@ private:
             return (!multibrand_cache.empty());
         }
     
+        static std::string fetch_cpu_brand() {
+            return cpu_brand_cache;
+        }
+
+        static void store_cpu_brand(const std::string &p_brand) {
+            cpu_brand_cache = p_brand;
+        }
+
+        static bool is_cpu_brand_cached() {
+            return (!cpu_brand_cache.empty());
+        }
+
         // basically checks whether all the techniques were cached
         static bool all_present() {
             return (cache_table.size() == technique_count);
@@ -1551,8 +1570,8 @@ private:
             return (tmp && isWow64);
         }
 
-        [[nodiscard]] static u16 get_windows_version() {
-            double ret = 0.0;
+        [[nodiscard]] static u8 get_windows_version() {
+            u8 ret = 0;
             NTSTATUS(WINAPI * RtlGetVersion)(LPOSVERSIONINFOEXW) = nullptr;
             OSVERSIONINFOEXW osInfo{};
 
@@ -1571,13 +1590,13 @@ private:
             if (RtlGetVersion != nullptr) {
                 osInfo.dwOSVersionInfoSize = sizeof(osInfo);
                 RtlGetVersion(&osInfo);
-                ret = static_cast<double>(osInfo.dwMajorVersion);
+                ret = static_cast<u8>(osInfo.dwMajorVersion);
             }
 
-            return static_cast<u16>(std::round(ret));
+            return ret;
         }
 #endif
-        };
+    };
 
 private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
@@ -1613,7 +1632,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!x86)
         return false;
 #else
-        return cpu::vmid_template(0x40000000, "VMID_0x4: ");
+        return cpu::vmid_template(cpu::leaf::hypervisor, "VMID_0x4: ");
 #endif
     }
     catch (...) {
@@ -4826,7 +4845,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #else
         __try
         {
-            __readmsr(0x40000000);
+            __readmsr(leaf::hypervisor);
         }
         __except (EXCEPTION_EXECUTE_HANDLER)
         {
@@ -7410,6 +7429,7 @@ public: // START OF PUBLIC FUNCTIONS
 #if (CPP <= 14)
         constexpr const char* TMP_QEMU        = "QEMU";
         constexpr const char* TMP_KVM         = "KVM";
+        constexpr const char* TMP_KVM_HYPERV  = "KVM Hyper-V Enlightenment";
     
         constexpr const char* TMP_VMWARE      = "VMware";
         constexpr const char* TMP_EXPRESS     = "VMware Express";
@@ -7422,6 +7442,7 @@ public: // START OF PUBLIC FUNCTIONS
 #else
         constexpr const char* TMP_QEMU        = VM::QEMU;
         constexpr const char* TMP_KVM         = VM::KVM;
+        constexpr const char* TMP_KVM_HYPERV  = VM::KVM_HYPERV;
 
         constexpr const char* TMP_VMWARE      = VM::VMWARE;
         constexpr const char* TMP_EXPRESS     = VM::VMWARE_EXPRESS;
@@ -7434,6 +7455,11 @@ public: // START OF PUBLIC FUNCTIONS
 #endif
 
         if (
+            brands.at(TMP_KVM) > 0 &&
+            brands.at(TMP_KVM_HYPERV) > 0
+        ) {
+            current_brand = TMP_KVM_HYPERV;
+        } else if (
             brands.at(TMP_QEMU) > 0 &&
             brands.at(TMP_KVM) > 0
         ) {
@@ -7442,7 +7468,15 @@ public: // START OF PUBLIC FUNCTIONS
             brands.at(TMP_VPC) > 0 &&
             brands.at(TMP_HYPERV) > 0
         ) {
+#if (MSVC)
+            if (util::get_windows_version() < 10) {
+                current_brand = TMP_VPC;
+            } else {
+                current_brand = TMP_HYPERV;
+            }
+#else
             current_brand = "Microsoft Virtual PC/Hyper-V";
+#endif
         } else if (brands.at(TMP_VMWARE) > 0) {
             if (brands.at(TMP_EXPRESS) > 0) {
                 current_brand = TMP_EXPRESS;
@@ -7619,6 +7653,7 @@ std::map<VM::u8, VM::memo::data_t> VM::memo::cache_table;
 VM::flagset VM::memo::cache_keys = 0;
 std::string VM::memo::brand_cache = "";
 std::string VM::memo::multibrand_cache = "";
+std::string VM::memo::cpu_brand_cache = "";
 
 
 VM::flagset VM::flags = 0;

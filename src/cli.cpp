@@ -255,7 +255,7 @@ int main(int argc, char* argv[]) {
         else if (percent < 75) { percent_color = green_orange; } 
         else                   { percent_color = green; }
 
-        std::cout << "VM certainty: " << percent_color << static_cast<std::uint32_t>(VM::percentage()) << "%" << ansi_exit << "\n";
+        std::cout << "VM likeliness: " << percent_color << static_cast<std::uint32_t>(VM::percentage()) << "%" << ansi_exit << "\n";
 
         const bool is_detected = VM::detect(VM::WIN_HYPERV_DEFAULT);
 

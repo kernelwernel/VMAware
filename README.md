@@ -14,7 +14,7 @@
 The library is:
 - Very easy to use, with only 5 functions in its public interface
 - Cross-platform (Windows + MacOS + Linux)
-- Compatible with ARM architecture and 32-bit Windows
+- Compatible with x86 and ARM, with backwards compatibility for 32-bit systems
 - Features up to 80+ unique VM detection techniques
 - Very flexible, with total fine-grained control over which techniques get executed
 - Header-only
