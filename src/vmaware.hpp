@@ -4845,7 +4845,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #else
         __try
         {
-            __readmsr(leaf::hypervisor);
+            __readmsr(cpu::leaf::hypervisor);
         }
         __except (EXCEPTION_EXECUTE_HANDLER)
         {
@@ -7281,8 +7281,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
 
                 if (
-                    tmp_brand == "Microsoft Hyper-V" ||
-                    tmp_brand == "Virtual PC" ||
+                    tmp_brand == VM::HYPERV ||
+                    tmp_brand == VM::VPC ||
                     tmp_brand == "Microsoft Virtual PC/Hyper-V"
                 ) {
                     return true;
