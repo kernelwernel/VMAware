@@ -86,6 +86,7 @@ This will essentially return the VM brand as a `std::string`. The exact possible
 - `bhyve`
 - `QEMU`
 - `KVM`
+- `KVM Hyper-V Enlightenment`
 - `QEMU+KVM`
 - `Virtual PC`
 - `Microsoft Hyper-V`
@@ -106,6 +107,11 @@ This will essentially return the VM brand as a `std::string`. The exact possible
 - `CWSandbox`
 - `Comodo`
 - `Bochs`
+- `Lockheed Martin LMHS` (yes, you read that right. The library can detect VMs running on US military fighter jets)
+- `NVMM`
+- `OpenBSD VMM`
+- `Intel HAXM`
+- `Unisys s-Par`
 
 
 If none were detected, it will return `Unknown`. It's often NOT going to produce a satisfying result due to technical difficulties with accomplishing this, on top of being highly dependent on what mechanisms detected a VM. Don't rely on this function for critical operations as if it's your golden bullet. Roughly 50% of the time it'll simply return `Unknown`, assuming it is actually running under a VM.
@@ -274,7 +280,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::DLL` | Match for VM-specific DLLs | Windows | 50% |  |  |  |
 | `VM::REGISTRY` | Look throughout the registry for all sorts of VMs | Windows | 75% |  |  |  |
 | `VM::CWSANDBOX_VM` | Detect for Sunbelt technology CWSandbox VM | Windows | 10% |  |  |  |
-| `VM::WINE_CHECK` | Find for a Wine-specific file | Windows | 85% |  |  |  |
+| `VM::WINE_CHECK` | Find for a Wine-specific file | Windows | 85% |  | GPL |  |
 | `VM::VM_FILES` | Find if any VM-specific files exists | Windows | 10% |  |  |  |
 | `VM::HWMODEL` | Check if the sysctl for the hwmodel does not contain the "Mac" string | MacOS | 75% |  |  |  |
 | `VM::DISK_SIZE` | Check if disk size is under or equal to 50GB | Linux | 60% |  |  |  |
@@ -348,5 +354,5 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::NO_MEMO` | This will disable memoization, meaning the result will not be fetched through a previous computation of the `VM::detect()` function. Use this if you're only using a single function from the `VM` struct for a performance boost. |
 | `VM::EXTREME` | This will disregard the weights/biases and its scoring system. It will essentially treat any technique that found a hit as a VM detection no matter how low that technique's certainty is, so if a single technique is positive then it will return true. | 
 | `VM::DEFAULT` | This represents a range of flags which are enabled if no default argument is provided. The reason why this exists is to easily disable any bits manually (shown in the is_vm6 example in the `VM::detect()` section)
-| `VM::WIN_HYPERV_DEFAULT` | Windows 11 (and sometimes 10) may have Hyper-V as a default virtualisation software for any program even if the OS is running as host, which is one of the main hurdles of the library to overcome between host virtualisation and actual virtualisation. The library will discard any Hyper-V brand suspicions as "not running in a VM". This flag will basically mean "I'm aware this program is running in a default virtualised environment even when the user is only using host, "but i'll still count this as running in a VM" |
+| `VM::WIN_HYPERV_DEFAULT` | Windows 11 (and sometimes 10) may have Hyper-V as a default virtualisation software for any program even if the OS is running as host, which is one of the main hurdles of the library to overcome between host virtualisation and actual virtualisation. The library will discard any Hyper-V brand suspicions as not running in a VM. This flag will basically mean "I'm aware this program might be running in a default virtualised environment even if the user is only using the host environment, but I'll still count this as running in a VM anyway whether it's default virtualisation or manual virtualisation" |
 | `VM::MULTIPLE` | This is specific to `VM::brand()`. This will basically return a `std::string` message of what brands could be involved. For example, it could return "`VMware or VirtualBox`" instead of having a single brand string output. |   
