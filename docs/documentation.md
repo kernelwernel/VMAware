@@ -292,7 +292,6 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::VM_PROCESSES` | Check for any VM processes that are active | Windows | 30% |  |  |  |
 | `VM::LINUX_USER_HOST` | Check for default VM username and hostname for linux | Linux | 25% |  |  |  |
 | `VM::VBOX_WINDOW_CLASS` | Check for the window class for VirtualBox | Windows | 10% |  | GPL |  |
-| `VM::WMIC` | Check top-level default window level | Windows | 20% |  |  |  |
 | `VM::GAMARUE` | Check for Gamarue ransomware technique which compares VM-specific Window product IDs | Windows | 40% |  |  |  |
 | `VM::VMID_0X4` | Check if the CPU manufacturer ID matches that of a VM brand with leaf 0x40000000 | Yes | 100% |  |  |  |
 | `VM::PARALLELS_VM` | Check for indications of Parallels VM | Windows | 50% |  |  |  |
@@ -321,7 +320,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::QEMU_DIR` | Check for QEMU-specific blacklisted directories | Windows | 45% |  | GPL |  |
 | `VM::VPC_PROC` | Check for VPC processes | Windows | 30% |  |  |  |
 | `VM::VPC_INVALID` | Check for official VPC method | Windows | 75% |  |  | 32-bit |
-| `VM::SIDT` | Check for sidt instruction method | Linux, Windows | 30% |  |  | 32-bit |
+| `VM::SIDT` | Check for sidt instruction method | Linux, Windows | 30% |  |  |  |
 | `VM::SGDT` | Check for sgdt instruction method | Windows | 30% |  |  | 32-bit |
 | `VM::SLDT` | Check for sldt instruction method | Windows | 15% |  |  | 32-bit |
 | `VM::OFFSEC_SIDT` | Check for Offensive Security SIDT method | Windows | 60% |  |  | 32-bit |
