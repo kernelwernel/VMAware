@@ -189,7 +189,6 @@ int main(int argc, char* argv[]) {
         checker(VM::LINUX_USER_HOST, "default Linux user/host");
         checker(VM::VBOX_WINDOW_CLASS, "VBox window class");
         checker(VM::GAMARUE, "gamarue ransomware technique");
-        checker(VM::WMIC, "WMIC outputs");
         checker(VM::VMID_0X4, "0x4 leaf of VMID");
         checker(VM::PARALLELS_VM, "Parallels techniques");
         checker(VM::RDTSC_VMEXIT, "RDTSC VMEXIT");

@@ -336,7 +336,6 @@ public:
         VM_PROCESSES,
         LINUX_USER_HOST,
         GAMARUE,
-        WMIC,
         VMID_0X4,
         PARALLELS_VM,
         RDTSC_VMEXIT,
@@ -2937,7 +2936,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return ((80 == disk) && (4 == ram));
         }
     #endif
-
+#endif
         return false;
     }
     catch (...) {
