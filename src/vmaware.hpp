@@ -7099,7 +7099,22 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
 
+    /**
+     * @brief 
+     * @category All, x86
+     * @link https://en.wikipedia.org/wiki/List_of_Intel_Core_processors
+     */ 
+    [[nodiscard]] static bool () try {
+#if (!x86)
+        return false;
+#else
 
+#endif
+    }
+    catch (...) {
+        debug("XEON_THREAD_MISMATCH: catched error, returned false");
+        return false;
+    }
 
 
 
