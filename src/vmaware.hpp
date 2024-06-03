@@ -586,8 +586,8 @@ private:
 
         // get the CPU product
         [[nodiscard]] static std::string get_brand() {
-            if (memo::is_cpu_brand_cached()) {
-                return memo::fetch_cpu_brand();
+            if (memo::cpu::is_brand_cached()) {
+                return memo::cpu::fetch_brand();
             }
 
             if (!core::cpuid_supported) {
@@ -624,7 +624,7 @@ private:
 
             debug("BRAND: ", "cpu brand = ", brand);
 
-            memo::store_cpu_brand(brand);
+            memo::cpu::store_brand(brand);
 
             return brand;
 #endif
@@ -840,9 +840,6 @@ private:
     private:
         static std::map<u8, data_t> cache_table;
         static flagset cache_keys;
-        static std::string brand_cache;
-        static std::string multibrand_cache;
-        static std::string cpu_brand_cache;
 
     public:
         static void cache_store(const u8 technique_macro, const result_t result, const points_t points) {
@@ -858,46 +855,58 @@ private:
             return cache_table.at(technique_macro);
         }
 
-        static std::string fetch_brand() {
-            return brand_cache;
-        }
-
-        static void store_brand(const std::string &p_brand) {
-            brand_cache = p_brand;
-        }
-
-        static bool is_brand_cached() {
-            return (!brand_cache.empty());
-        }
-
-        static std::string fetch_multibrand() {
-            return multibrand_cache;
-        }
-
-        static void store_multibrand(const std::string &p_brand) {
-            multibrand_cache = p_brand;
-        }
-
-        static bool is_multibrand_cached() {
-            return (!multibrand_cache.empty());
-        }
-    
-        static std::string fetch_cpu_brand() {
-            return cpu_brand_cache;
-        }
-
-        static void store_cpu_brand(const std::string &p_brand) {
-            cpu_brand_cache = p_brand;
-        }
-
-        static bool is_cpu_brand_cached() {
-            return (!cpu_brand_cache.empty());
-        }
-
         // basically checks whether all the techniques were cached
         static bool all_present() {
             return (cache_table.size() == technique_count);
         }
+
+        struct brand {
+            static std::string brand_cache;
+
+            static std::string fetch_brand() {
+                return brand_cache;
+            }
+
+            static void store_brand(const std::string &p_brand) {
+                brand_cache = p_brand;
+            }
+
+            static bool is_brand_cached() {
+                return (!brand_cache.empty());
+            }
+        };
+
+        struct multi {
+            static std::string brand_cache;
+
+            static std::string fetch_brand() {
+                return brand_cache;
+            }
+
+            static void store_brand(const std::string &p_brand) {
+                brand_cache = p_brand;
+            }
+
+            static bool is_brand_cached() {
+                return (!brand_cache.empty());
+            }
+        };
+    
+        struct cpu {
+            static std::string brand_cache;
+
+            static std::string fetch_brand() {
+                return brand_cache;
+            }
+
+            static void store_brand(const std::string &p_brand) {
+                brand_cache = p_brand;
+            }
+
+            static bool is_brand_cached() {
+                return (!brand_cache.empty());
+            }
+        };
     };
 
     // miscellaneous functionalities
@@ -6811,7 +6820,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         static std::vector<technique> custom_table;
 
-        static bool cpuid_supported; // cpuid check value
+        static bool cpuid_supported;
 
         // VM scoreboard table specifically for VM::brand()
         static std::map<const char*, brand_score_t> brand_scoreboard;
@@ -6941,8 +6950,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             if (MSVC && core::disabled(p_flags, WIN_HYPERV_DEFAULT)) {
                 std::string tmp_brand;
 
-                if (memo::is_brand_cached()) {
-                    tmp_brand = memo::fetch_brand();
+                if (memo::brand::is_brand_cached()) {
+                    tmp_brand = memo::brand::fetch_brand();
                 } else {
                     tmp_brand = brand();
                 }
@@ -7054,12 +7063,12 @@ public: // START OF PUBLIC FUNCTIONS
         }
 
         if (is_multiple) {
-            if (memo::is_multibrand_cached()) {
-                return memo::fetch_multibrand();
+            if (memo::multi::is_brand_cached()) {
+                return memo::multi::fetch_brand();
             }
         } else {
-            if (memo::is_brand_cached()) {
-                return memo::fetch_brand();
+            if (memo::brand::is_brand_cached()) {
+                return memo::brand::fetch_brand();
             }
         }
 
@@ -7173,9 +7182,9 @@ public: // START OF PUBLIC FUNCTIONS
         }
 
         if (is_multiple) {
-            memo::store_multibrand(current_brand);
+            memo::multi::store_brand(current_brand);
         } else {
-            memo::store_brand(current_brand);
+            memo::brand::store_brand(current_brand);
         }
 
         return current_brand;
@@ -7275,6 +7284,8 @@ MSVC_ENABLE_WARNING(ASSIGNMENT_OPERATOR NO_INLINE_FUNC SPECTRE)
 // These are added here due to warnings related to C++17 inline variables for C++ standards that are under 17.
 // It's easier to just group them together rather than having C++17<= preprocessors with inline stuff
 
+
+// scoreboard list of brands, if a VM detection technique detects a brand, that will be incremented here as a single point.
 std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard {
     { VM::VBOX, 0 },
     { VM::VMWARE, 0 },
@@ -7311,20 +7322,23 @@ std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard {
     { VM::LMHS, 0 }
 };
 
+
+// initial definitions for cache items
 std::map<VM::u8, VM::memo::data_t> VM::memo::cache_table;
 VM::flagset VM::memo::cache_keys = 0;
-std::string VM::memo::brand_cache = "";
-std::string VM::memo::multibrand_cache = "";
-std::string VM::memo::cpu_brand_cache = "";
+std::string VM::memo::brand::brand_cache = "";
+std::string VM::memo::multi::brand_cache = "";
+std::string VM::memo::cpu::brand_cache = "";
 
 
+// default flags 
 VM::flagset VM::DEFAULT = []() -> flagset {
     flagset tmp;
 
     // set all bits to 1
     tmp.set();
 
-    // disable all the non-default flags (WIN_HYPERV_DEFAULT is enabled)
+    // disable all the non-default flags
     tmp.flip(EXTREME);
     tmp.flip(NO_MEMO);
     tmp.flip(CURSOR);
@@ -7333,6 +7347,8 @@ VM::flagset VM::DEFAULT = []() -> flagset {
     return tmp;
 }();
 
+
+// flag to enable every technique, basically VM::DEFAULT but with VM::CURSOR technique
 VM::flagset VM::ALL = []() -> flagset {
     flagset tmp = DEFAULT;
     tmp.set(CURSOR);
@@ -7340,6 +7356,7 @@ VM::flagset VM::ALL = []() -> flagset {
 }();
 
 
+// check if cpuid is supported
 bool VM::core::cpuid_supported = []() -> bool {
 #if (x86)
     #if (MSVC)
