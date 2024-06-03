@@ -59,7 +59,7 @@ private:
 void help(void) {
     std::cout << 
 R"(Usage: 
- vmaware [options]
+ vmaware [option]
 
 Options:
  -h | --help        prints this help menu
@@ -82,7 +82,7 @@ void version(void) {
 }
 
 const char* color(const std::uint8_t score) {
-    if (score == 0)        { return red; }
+    if      (score == 0)   { return red; }
     else if (score <= 12)  { return red; }
     else if (score <= 25)  { return red_orange; }
     else if (score < 50)   { return red_orange; }
@@ -248,7 +248,7 @@ int main(int argc, char* argv[]) {
         const char* percent_color = "";
         const std::uint8_t percent = VM::percentage();
 
-        if (percent == 0)      { percent_color = red; } 
+        if      (percent == 0) { percent_color = red; } 
         else if (percent < 25) { percent_color = red_orange; } 
         else if (percent < 50) { percent_color = orange; } 
         else if (percent < 75) { percent_color = green_orange; } 
@@ -267,10 +267,10 @@ int main(int argc, char* argv[]) {
             brand == "Virtual PC" ||
             brand == "Microsoft Virtual PC/Hyper-V"
         ) {
-            std::cout << note << " If you know you are running on host, Hyper-V virtualises all applications by default within the host system, see here https://github.com/kernelwernel/VMAware/issues/75\n";
+            std::cout << note << " If you know you are running on host, Hyper-V virtualises all applications by default within the host system. This result is in fact correct and NOT a false positive, see here https://github.com/kernelwernel/VMAware/issues/75\n";
         }
 
-        const char* conclusion_color = color(percent);
+        const char* conclusion_color   = color(percent);
         std::string conclusion_message = message(percent, brand);
 
         std::cout 
