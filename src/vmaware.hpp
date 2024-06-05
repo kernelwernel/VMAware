@@ -369,7 +369,7 @@ public:
         INTEL_THREAD_MISMATCH,
         XEON_THREAD_MISMATCH,
 
-        // start of non-technqiue flags
+        // start of non-technique flags
         EXTREME,
         NO_MEMO,
         WIN_HYPERV_DEFAULT,
@@ -380,7 +380,7 @@ private:
     static constexpr u8 enum_size = __LINE__ - enum_line_start - 4; // get enum size
     static constexpr u8 technique_count = enum_size - 4; // get total number of techniques
     static constexpr u8 non_technique_count = enum_size - technique_count; // get number of non-technique flags like VM::NO_MEMO for example
-
+    static constexpr u8 start_of_non_technique = VM::EXTREME;
     // for the bitset
     using flagset = std::bitset<enum_size>;
 
@@ -634,6 +634,7 @@ private:
             bool found;
             bool is_xeon;
             bool is_i_series;
+            bool is_ryzen;
             std::string string;
         };
 
@@ -642,6 +643,7 @@ private:
 
             constexpr const char* intel_i_series_regex    = "i[0-9]-[A-Z0-9]{1,7}";
             constexpr const char* intel_xeon_series_regex = "[DEW]-[A-Z0-9]{1,7}";
+            constexpr const char* amd_ryzen_regex         = "^(PRO)?[A-Z0-9]{1,7}";
 
             std::string match_str = "";
 
@@ -663,26 +665,29 @@ private:
                 return false;
             };
 
-            bool found        = false;
-            bool is_xeon      = false;
-            bool is_i_series  = false;
-            std::string string = "";
+            bool found         = false;
+            bool is_xeon       = false;
+            bool is_i_series   = false;
+            bool is_ryzen      = false;
 
             if (cpu::is_intel()) {
                 if (match(intel_i_series_regex)) {
                     found       = true;
                     is_i_series = true;
-                    string       = match_str;
                 } else if (match(intel_xeon_series_regex)) {
                     found   = true;
                     is_xeon = true;
-                    string   = match_str;
                 }
             }
 
-            // no AMD (for now)
+            if (cpu::is_amd()) {
+                if (match(amd_ryzen_regex)) {
+                    found = true;
+                    is_ryzen = true;
+                }
+            }
 
-            return model_struct{ found, is_xeon, is_i_series, string };
+            return model_struct{ found, is_xeon, is_i_series, is_ryzen, match_str };
         };
 
 #if (CPP >= 17)
@@ -6766,40 +6771,42 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
 
 
-
-
-
-// TODO: DO AMD
-//https://en.wikipedia.org/wiki/List_of_AMD_Ryzen_processors
-
-
-
-
-
-
-
-
-
     /**
-     * @brief 
+     * @brief Check for AMD CPUs that don't match their thread count
      * @category All, x86
-     * @link https://en.wikipedia.org/wiki/List_of_Intel_Core_processors
+     * @link https://en.wikipedia.org/wiki/List_of_AMD_Ryzen_processors
      */ 
 /*
-    [[nodiscard]] static bool () try {
+    [[nodiscard]] static bool amd_thread_mismatch() try {
 #if (!x86)
         return false;
 #else
+        if (!cpu::is_amd()) {
+            return false;
+        }
 
+        if (cpu::has_hyperthreading()) {
+            return false;
+        }
+
+        const cpu::model_struct model = cpu::get_model();
+
+        if (!model.found) {
+            return false;
+        }
+
+        if (!model.is_i_series) {
+            return false;
+        }
+
+        debug("XEON_THREAD_MISMATCH: CPU model = ", model.string);
 #endif
     }
     catch (...) {
-        debug("XEON_THREAD_MISMATCH: catched error, returned false");
+        debug("AMD_THREAD_MISMATCH: catched error, returned false");
         return false;
     }
-
 */
-
 
 
 
@@ -6867,8 +6874,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             bool is_non_technique_set = false;
 
-            // VM::EXTREME is the start of non-technique flags in the enum
-            for (std::size_t i = VM::EXTREME; i <= enum_size; i++) {
+            for (std::size_t i = start_of_non_technique; i <= enum_size; i++) {
                 if (p_flags.test(i)) {
                     is_non_technique_set = true;
                     break;
@@ -6907,7 +6913,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
 
                 // check if the technique is cached already
-                if (memo::is_cached(macro)) {
+                if (!memo_disabled && memo::is_cached(macro)) {
                     const memo::data_t data = memo::cache_fetch(macro);
 
                     if (data.result) {
@@ -6941,31 +6947,28 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
             }
 
-
             return points;
         }
 
         // check if Hyper-V is running 
         static bool hyperv_default_check(const flagset &p_flags) {
-            if (MSVC && core::disabled(p_flags, WIN_HYPERV_DEFAULT)) {
-                std::string tmp_brand;
-
-                if (memo::brand::is_brand_cached()) {
-                    tmp_brand = memo::brand::fetch_brand();
-                } else {
-                    tmp_brand = brand();
-                }
-
-                if (
-                    tmp_brand == VM::HYPERV ||
-                    tmp_brand == VM::VPC ||
-                    tmp_brand == "Microsoft Virtual PC/Hyper-V"
-                ) {
-                    return true;
-                }
-            }
-            
+#if (!MSVC)
             return false;
+#else
+            std::string tmp_brand;
+
+            if (memo::brand::is_brand_cached()) {
+                tmp_brand = memo::brand::fetch_brand();
+            } else {
+                tmp_brand = brand();
+            }
+
+            return (
+                tmp_brand == VM::HYPERV ||
+                tmp_brand == VM::VPC ||
+                tmp_brand == "Microsoft Virtual PC/Hyper-V"
+            );
+#endif
         }
     };
 
@@ -7208,8 +7211,10 @@ public: // START OF PUBLIC FUNCTIONS
             result = (points >= 100);
         }
 
-        if (core::hyperv_default_check(p_flags)) {
-            return false;
+        if (core::disabled(p_flags, VM::WIN_HYPERV_DEFAULT)) {
+            if (core::hyperv_default_check(p_flags)) {
+                return false;
+            }
         }
 
         return result;

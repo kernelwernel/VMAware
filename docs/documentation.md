@@ -107,7 +107,7 @@ This will essentially return the VM brand as a `std::string`. The exact possible
 - `CWSandbox`
 - `Comodo`
 - `Bochs`
-- `Lockheed Martin LMHS` (yes, you read that right. The library can detect VMs running on US military fighter jets)
+- `Lockheed Martin LMHS`   (yes, you read that right. The library can detect VMs running on US military fighter jets)
 - `NVMM`
 - `OpenBSD VMM`
 - `Intel HAXM`
