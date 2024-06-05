@@ -107,7 +107,7 @@ This will essentially return the VM brand as a `std::string`. The exact possible
 - `CWSandbox`
 - `Comodo`
 - `Bochs`
-- `Lockheed Martin LMHS` (yes, you read that right. The library can detect VMs running on US military fighter jets)
+- `Lockheed Martin LMHS`   (yes, you read that right. The library can detect VMs running on US military fighter jets)
 - `NVMM`
 - `OpenBSD VMM`
 - `Intel HAXM`
@@ -261,7 +261,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::HYPERVISOR_BIT` | Check if the hypervisor bit is set (always false on physical CPUs) | Yes | 100% |  |  |  |
 |`VM::CPUID_0X4` | Check if there are any leaf values between 0x40000000 and 0x400000FF that changes the CPUID output | Yes | 70% |  |  |  |
 | `VM::HYPERVISOR_STR` | Check if brand string length is long enough (would be around 2 characters in a host machine while it's longer in a hypervisor) | Yes | 45% |  |  |  |
-| `VM::RDTSC` | Benchmark RDTSC and evaluate its speed, usually it's very slow in VMs | Linux and Windows | 20% |  |  |  |
+| `VM::RDTSC` | Benchmark RDTSC and evaluate its speed, usually it's very slow in VMs | Linux and Windows | 10% |  |  |  |
 | `VM::SIDT5` | Check if the 5th byte after sidt is null | Linux | 45% |  |  |  |
 | `VM::THREADCOUNT` | Check if there are only 1 or 2 threads, which is a common pattern in VMs with default settings (nowadays physical CPUs should have at least 4 threads for modern CPUs) | Yes | 35% |  |  |  |
 | `VM::MAC` | Check if the system's MAC address matches with preset values for certain VMs | Linux and Windows | 90% |  |  |  |

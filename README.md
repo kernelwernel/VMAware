@@ -19,7 +19,7 @@ The library is:
 - Very flexible, with total fine-grained control over which techniques get executed
 - Header-only
 - Available with C++11 and above
-- Able to detect VMware, VirtualBox, QEMU, KVM, Parallels, and [much more](https://github.com/kernelwernel/VMAware/blob/v0.2/docs/documentation.md#vmbrand)
+- Able to detect VMware, VirtualBox, QEMU, KVM, Parallels, and [much more](https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmbrand)
 - Able to detect semi-VM technologies like hypervisors, docker, and wine
 - Able to guess the VM brand
 - Memoized, meaning past results are cached and retrieved if ran again for performance benefits 
