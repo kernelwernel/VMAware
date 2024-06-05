@@ -1,4 +1,4 @@
-#include "../releases/1.4/vmaware.hpp"
+#include "vmaware.hpp"
 
 #include <string>
 #include <iostream>
