@@ -15,7 +15,7 @@ The library is:
 - Very easy to use, with only 5 functions in its public interface
 - Cross-platform (Windows + MacOS + Linux)
 - Compatible with x86 and ARM, with backwards compatibility for 32-bit systems
-- Features up to 80+ unique VM detection techniques
+- Features up to 80+ unique VM detection techniques ([list](https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#flag-table))
 - Very flexible, with total fine-grained control over which techniques get executed
 - Header-only
 - Available with C++11 and above
@@ -114,10 +114,10 @@ You can view the full docs [here](docs/documentation.md). Trust me, it's not too
 > Yes. There are some techniques that are trivially spoofable, and there's nothing the library can do about it whether it's a deliberate false positive or even a false negative. This is a problem that every VM detection project is facing, which is why the library is trying to test every technique possible to get the best result based on the environment it's running under. 
 
 - What about using this for malware?
-> This project is not soliciting the development of malware for obvious reasons. Even if you intend to use it for concealment purposes, it'll most likely be flagged by antiviruses anyway and nothing is obfuscated to begin with. You're not a slick l33t haxxor for abusing the library for malware, and good luck manually obfuscating 6000 lines of C++ code lmfao
+> This project is not soliciting the development of malware for obvious reasons. Even if you intend to use it for concealment purposes, it'll most likely be flagged by antiviruses anyway and nothing is obfuscated to begin with. You're not a slick l33t edgel0rd h4xx0r for abusing the library for malicious shit, you're just a fucking moron. Good luck manually obfuscating over 7000 lines of C++ code lmfao
 
 - Why GPL 3.0 and MIT? 
-> I would've made it strictly MIT so proprietary software can make use of the library, but some of the techniques employed are from GPL 3.0 projects, and I have no choice but to use the same license for legal reasons. This gave me an idea to make an MIT version without all of the GPL code so it can also be used without forcing your code to be open-source. It should be noted that the MIT version removes **10** techniques out of 85 (as of 1.3 version), and the lesser the number of mechanisms, the less accurate the overall result might be.
+> I would've made it strictly MIT so proprietary software can make use of the library, but some of the techniques employed are from GPL 3.0 projects, and I have no choice but to use the same license for legal reasons. This gave me an idea to make an MIT version without all of the GPL code so it can also be used without forcing your code to be open-source. It should be noted that the MIT version removes **10** techniques out of 85 (as of 1.4 version), and the lesser the number of mechanisms, the less accurate the overall result might be.
 
 - The tool has many false positives under a Windows 11 host, why?
 > This is because it is in fact running under a VM. More specifically, Hyper-V might be used by default for every program that's running in Windows 11. 
