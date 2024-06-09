@@ -7,21 +7,24 @@ project(
 )
 
 
+# set c++ standard
+if(NOT DEFINED CMAKE_CXX_STANDARD)
+    set(CMAKE_CXX_STANDARD 20)
+endif()
+
+
 # compiler flags
-set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 if (MSVC)
-    set(CMAKE_CXX_FLAGS "/Wall /W4 /std:c++20 /EHsc")
+    set(CMAKE_CXX_FLAGS "/Wall /W4 /EHsc")
 else()
     set(CMAKE_CXX_FLAGS "-Wextra -Wall -Wextra -Wconversion -Wdouble-promotion -Wno-unused-parameter -Wno-unused-function -Wno-sign-conversion -fmax-errors=20")
 endif()
 
 if(CMAKE_C_COMPILER_ID STREQUAL "Clang" OR CMAKE_C_COMPILER_ID STREQUAL "GNU")
     set(CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS} -lstdc++ -lm")
-else()
-    message("Unsupported compiler")
 endif()
 
 
@@ -77,7 +80,9 @@ endif()
 # add executable
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${BUILD_DIR}")
 add_executable(${TARGET} "src/cli.cpp")
-set_property(TARGET ${TARGET} PROPERTY CXX_STANDARD 20)
+if(NOT DEFINED CMAKE_CXX_STANDARD)
+    set_property(TARGET ${TARGET} PROPERTY CXX_STANDARD 20)
+endif()
 set_property(TARGET ${TARGET} PROPERTY CXX_STANDARD_REQUIRED ON)
 
 
@@ -90,13 +95,6 @@ add_test(executable, "${BUILD_DIR}/Release/${TARGET}")
 else()
 add_test(executable, "${BUILD_DIR}/${TARGET}")
 endif()
-
-#if(NOT MSVC)
-#add_test(
-#    checks 
-#    ${Python_EXECUTABLE} "${CMAKE_SOURCE_DIR}/cmake/ctest_checks.py"
-#)
-#endif()
 
 
 # release stuff

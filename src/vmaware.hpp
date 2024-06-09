@@ -68,7 +68,12 @@ int main() {
 #endif
 
 // shorter and succinct macros
-#if __cplusplus == 202302L
+#if __cplusplus > 202100L
+#define CPP 23
+#ifdef __VMAWARE_DEBUG__
+#pragma message("using post-C++23, set back to C++23 standard")
+#endif
+#elif __cplusplus == 202100L
 #define CPP 23
 #ifdef __VMAWARE_DEBUG__
 #pragma message("using C++23")
@@ -93,10 +98,15 @@ int main() {
 #ifdef __VMAWARE_DEBUG__
 #pragma message("using C++11")
 #endif
+#elif __cplusplus < 201103L
+#define CPP 1
+#ifdef __VMAWARE_DEBUG__
+#pragma message("using pre-C++11")
+#endif
 #else
 #define CPP 0
 #ifdef __VMAWARE_DEBUG__
-#pragma message("using pre C++11 :(")
+#pragma message("Unknown C++ standard")
 #endif
 #endif
 
@@ -1031,6 +1041,20 @@ private:
 
         // for debug output
 #ifdef __VMAWARE_DEBUG__
+#if (CPP < 17)
+        // Helper function to handle the recursion
+        static inline void print_to_stream(std::ostream&) noexcept {
+            // Base case: do nothing
+        }
+
+        template <typename T, typename... Args>
+        static void print_to_stream(std::ostream& os, T&& first, Args&&... args) noexcept {
+            os << std::forward<T>(first);
+            using expander = int[];
+            (void)expander{0, (void(os << std::forward<Args>(args)), 0)...};
+        }
+#endif
+
         template <typename... Args>
         static inline void debug_msg(Args... message) noexcept {
 #if (LINUX || APPLE)
@@ -1046,7 +1070,13 @@ private:
 #else       
             std::cout << "[DEBUG] ";
 #endif
+
+#if (CPP >= 17)
             ((std::cout << message), ...);
+#else
+            print_to_stream(std::cout, message...);
+#endif
+
             std::cout << "\n";
         }
 #endif
@@ -1314,14 +1344,15 @@ private:
 
                 const std::string filename = entry.path().filename().string();
 #else
-            DIR* dir = opendir("/proc");
+            //DIR* dir = opendir("/proc/");
+            std::unique_ptr<DIR, decltype(&closedir)> dir(opendir("/proc"), closedir);
             if (!dir) {
                 debug("util::is_proc_running: ", "failed to open /proc directory");
                 return false;
             }
 
             struct dirent* entry;
-            while ((entry = readdir(dir)) != nullptr) {
+            while ((entry = readdir(dir.get())) != nullptr) {
                 std::string filename(entry->d_name);
                 if (filename == "." || filename == "..") {
                     continue;
@@ -1340,33 +1371,41 @@ private:
                 std::string line;
                 std::getline(cmdline, line);
                 cmdline.close();
-
-                if (
-                    !line.empty() && \
-                    line.find(executable) != std::string::npos
-                ) {
-                    const std::size_t slash_index = line.find_last_of('/');
-
-                    if (slash_index == std::string::npos) {
-                        continue;
-                    }
-
-                    line = line.substr(slash_index + 1);
-
-                    const std::size_t space_index = line.find_first_of(' ');
-
-                    if (space_index != std::string::npos) {
-                        line = line.substr(0, space_index);
-                    }
-
-                    if (line != executable) {
-                        continue;
-                    }
-#if (CPP < 17)
-                    closedir(dir);
-#endif
-                    return true;
+ 
+                if (line.empty()) {
+                    continue;
                 }
+
+                //std::cout << "\n\nLINE = " << line << "\n";
+                if (line.find(executable) == std::string::npos) {
+                    //std::cout << "skipped\n";
+                    continue;
+                }
+
+                std::cout << "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nNOT SKIPPED\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n";
+
+                const std::size_t slash_index = line.find_last_of('/');
+
+                if (slash_index == std::string::npos) {
+                    continue;
+                }
+
+                line = line.substr(slash_index + 1);
+
+                const std::size_t space_index = line.find_first_of(' ');
+
+                if (space_index != std::string::npos) {
+                    line = line.substr(0, space_index);
+                }
+
+                if (line != executable) {
+                    continue;
+                }
+//#if (CPP < 17)
+//                closedir(dir);
+//                free(dir);
+//#endif
+                return true;
             }
 
             return false;
@@ -6858,7 +6897,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        if (!model.is_i_series) {
+        if (!model.is_ryzen) {
             return false;
         }
 
@@ -6870,9 +6909,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
     }
 */
-
-
-
 
 
 
@@ -7128,6 +7164,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             // Base case: Do nothing
         }
 
+        // Base case for the recursive handling
+        static void handle_disabled_args() {
+            // Base case: Do nothing
+        }
+
         // Helper function to check if a given argument is of a specific type
         template <typename T, typename U>
         static bool isType(U&&) {
@@ -7157,12 +7198,66 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             handleArgs(std::forward<Rest>(rest)...);
         }
 
+        // Recursive case to handle each argument based on its type
+        template <typename First, typename... Rest>
+        static void handle_disabled_args(First&& first, Rest&&... rest) {
+            TestUint8Handler uint8Handler;
+
+            if (isType<flagset>(first)) {
+                throw std::invalid_argument("Arguments must not contain VM::DEFAULT or VM::ALL, only technique flags are accepted (view the documentation for a full list)");
+            } else if (isType<enum_flags>(first)) {
+                dispatch(first, uint8Handler);
+            } else {
+                throw std::invalid_argument("Arguments must be a technique flag, aborting");
+            }
+
+            // Recursively handle the rest of the arguments
+            handle_disabled_args(std::forward<Rest>(rest)...);
+        }
+
+        template <typename... Args>
+        static constexpr bool is_empty() {
+            return (sizeof...(Args) == 0);
+        }
+
+#if (CPP >= 17)
+        #define VMAWARE_CONSTEXPR constexpr
+#else
+        #define VMAWARE_CONSTEXPR
+#endif
+
     public:
         // Function template to test variadic arguments
         template <typename... Args>
         static flagset arg_handler(Args&&... args) {
+            if VMAWARE_CONSTEXPR (is_empty<Args...>()) {
+                return VM::DEFAULT;
+            }
+
+            flag_collector.reset();
+
             handleArgs(std::forward<Args>(args)...);
+    
             core::flag_sanitizer(flag_collector);
+
+            return flag_collector;
+        }
+
+        // same as above but for VM::disable which only accepts technique flags
+        template <typename... Args>
+        static flagset disabled_arg_handler(Args&&... args) {
+            flag_collector.reset();
+
+            if VMAWARE_CONSTEXPR (is_empty<Args...>()) {
+                throw std::invalid_argument("VM::DISABLE must contain a flag");
+            }
+
+            handle_disabled_args(std::forward<Args>(args)...);
+
+            if (core::is_non_technique_set(flag_collector)) {
+                throw std::invalid_argument("VM::DISABLE must not contain a non-technique flag, they are disabled by default anyway");
+            }
+
             return flag_collector;
         }
     };
@@ -7236,15 +7331,7 @@ public: // START OF PUBLIC FUNCTIONS
     [[nodiscard]] static std::string brand(Args ...args) {
         flagset flags = core::arg_handler(args...);
 
-        bool is_multiple = false;
-
-        if (flags == VM::DEFAULT) {
-            is_multiple = false;
-        } else if (flags.test(VM::MULTIPLE)) {
-            is_multiple = true;
-        } else {
-            throw std::invalid_argument("Flag for VM::brand() must either be empty or VM::MULTIPLE. Consult the documentation's flag handler for VM::brand()");
-        }
+        const bool is_multiple = flags.test(VM::MULTIPLE);
 
         // this is added to set the brand scoreboard table in case all techniques were not ran
         if (!memo::all_present()) {
@@ -7415,6 +7502,7 @@ public: // START OF PUBLIC FUNCTIONS
         }
 
         if (core::hyperv_default_check(flags)) {
+            debug("VM::detect(): returned false due to Hyper-V default check");
             return false;
         }
 
@@ -7444,6 +7532,7 @@ public: // START OF PUBLIC FUNCTIONS
         }
 
         if (core::hyperv_default_check(flags)) {
+            debug("VM::percentage(): returned 0 due to Hyper-V default check");
             return 0;
         }
 
@@ -7473,7 +7562,7 @@ public: // START OF PUBLIC FUNCTIONS
 #endif
             ss << ". Consult the documentation's parameters for VM::add_custom()";
             throw std::invalid_argument(std::string(text) + ss.str());
-            };
+        };
 
         if (percent > 100) {
             throw_error("Percentage parameter must be between 0 and 100");
@@ -7485,6 +7574,26 @@ public: // START OF PUBLIC FUNCTIONS
         };
 
         core::custom_table.emplace_back(query);
+    }
+
+
+    /**
+     * @brief disable the provided technique flags so they are not counted to the overall result
+     * @param technique flag(s) only
+     * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmdetect
+     * @return flagset
+     */
+    template <typename ...Args>
+    static flagset DISABLE(Args ...args) {
+        flagset flags = core::disabled_arg_handler(args...);
+
+        flags.flip();
+        flags.set(NO_MEMO, 0);
+        flags.set(EXTREME, 0);
+        flags.set(DISCARD_HYPERV_DEFAULT, 0);
+        flags.set(MULTIPLE, 0);
+
+        return flags;
     }
 };
 

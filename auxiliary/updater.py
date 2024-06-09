@@ -10,10 +10,10 @@
 # 
 # ===============================================================
 # 
-# This is an internal script to update the VMAware
-# header file's banner automatically and much more reliably.
-# For example, it'll update the line numbers for the sections
-# header, and other basic information.
+#  This is an internal script to update the VMAware
+#  header file's banner automatically and much more reliably.
+#  For example, it'll update the line numbers for the sections
+#  header, and other basic information.
 # 
 # ===============================================================
 # 

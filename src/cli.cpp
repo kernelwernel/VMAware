@@ -72,7 +72,7 @@ Options:
  -l | --brand-list  returns all the possible VM brand string values
 
 Extra:
- --discard-hyper-v  disable the possibility of Hyper-V default virtualisation on host OS
+ --discard-hyper-v  disable the possibility of Hyper-V default virtualisation result on host OS
 )";
 }
 
@@ -426,11 +426,11 @@ Unisys s-Par
 
         const bool detect = (find("-d") || find("--detect"));
         const bool std_out = (find("-s") || find("--stdout")); // can't do "stdout" cuz it's already a macro
-        const bool percent = (find("-p") || find("--percent"));
+        const bool p_percent = (find("-p") || find("--percent"));
         const bool conclusion = (find("-c") || find("--conclusion"));
 
         // check if combination of the option and hyperv exists
-        if (!(detect || std_out || percent || conclusion)) {
+        if (!(detect || std_out || p_percent || conclusion)) {
             std::cerr << "Unknown or unsupported option with" << hyperv_arg << ", only --detect, --stdout, --percent, and --conclusion are supported\n";
             return 1;
         }
@@ -441,7 +441,7 @@ Unisys s-Par
             return 0;
         } else if (std_out) {
             return (!VM::detect());
-        } else if (percent) {
+        } else if (p_percent) {
             std::cout << static_cast<std::uint32_t>(VM::percentage()) << "\n";
             return 0;
         } else if (conclusion) {
