@@ -1691,7 +1691,7 @@ private:
                 return util::get_windows_version_backup();
             }
 
-            RTL_OSVERSIONINFOW osvi;
+            RTL_OSVERSIONINFOW osvi{};
             osvi.dwOSVersionInfoSize = sizeof(osvi);
 
             if (pRtlGetVersion(&osvi) != 0) {
