@@ -7066,7 +7066,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!MSVC)
             return false;
 #else
-            if (core::disabled(flags, VM::DISCARD_HYPERV_DEFAULT)) {
+            if (core::enabled(flags, VM::DISCARD_HYPERV_DEFAULT)) {
                 return false;
             }
 

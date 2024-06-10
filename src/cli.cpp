@@ -327,10 +327,11 @@ int main(int argc, char* argv[]) {
 #endif
 
     const std::vector<const char*> args(argv, argv + argc); // easier this way
+    const std::uint32_t arg_count = argc - 1;
 
-    if (argc == 1) {
-        general(true);
-    } else if (argc == 2) {
+    if (arg_count == 0) {
+        general();
+    } else if (arg_count == 1) {
         const char* argument = args.at(1);
 
         auto arg = [&argument](const char* option) -> bool {
@@ -405,7 +406,7 @@ Unisys s-Par
             std::cerr << "Unknown argument provided, consult the help menu with --help\n";
             return 1;
         }
-    } else if (argc == 3) {
+    } else if (arg_count == 2) {
         constexpr const char* hyperv_arg = "--discard-hyper-v";
 
         auto find = [&args](const char* option) -> bool {
@@ -424,9 +425,9 @@ Unisys s-Par
             return 1;
         }
 
-        const bool detect = (find("-d") || find("--detect"));
-        const bool std_out = (find("-s") || find("--stdout")); // can't do "stdout" cuz it's already a macro
-        const bool p_percent = (find("-p") || find("--percent"));
+        const bool detect     = (find("-d") || find("--detect"));
+        const bool std_out    = (find("-s") || find("--stdout")); // can't do "stdout" cuz it's already a macro
+        const bool p_percent  = (find("-p") || find("--percent"));
         const bool conclusion = (find("-c") || find("--conclusion"));
 
         // check if combination of the option and hyperv exists
@@ -449,8 +450,8 @@ Unisys s-Par
             const std::string brand = VM::brand();
             std::cout << message(percent, brand) << "\n";
         }
-    } else if (argc > 2) {
-        std::cerr << "Only 1, 2, or no arguments are expected, not " << argc << ". consult the help menu with --help\n";
+    } else if (arg_count > 2) {
+        std::cerr << "Only 1, 2, or no arguments are expected, not " << arg_count << ". consult the help menu with --help\n";
         return 1;
     } else {
         std::cerr << "Encountered unknown error, aborting\n";
