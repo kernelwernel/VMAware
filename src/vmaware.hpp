@@ -1625,6 +1625,33 @@ private:
             return (tmp && isWow64);
         }
 
+        // backup function in case the main get_windows_version function fails
+        [[nodiscard]] static u8 get_windows_version_backup() {
+            u8 ret = 0;
+            NTSTATUS(WINAPI * RtlGetVersion)(LPOSVERSIONINFOEXW) = nullptr;
+            OSVERSIONINFOEXW osInfo{};
+
+            HMODULE ntdllModule = GetModuleHandleA("ntdll");
+
+            if (ntdllModule == nullptr) {
+                return false;
+            }
+
+            *(FARPROC*)&RtlGetVersion = GetProcAddress(ntdllModule, "RtlGetVersion");
+
+            if (RtlGetVersion == nullptr) {
+                return false;
+            }
+
+            if (RtlGetVersion != nullptr) {
+                osInfo.dwOSVersionInfoSize = sizeof(osInfo);
+                RtlGetVersion(&osInfo);
+                ret = static_cast<u8>(osInfo.dwMajorVersion);
+            }
+
+            return ret;
+        }
+
         // credits to @Requiem for the code, thanks man :)
         [[nodiscard]] static u8 get_windows_version() {
             typedef NTSTATUS(WINAPI* RtlGetVersionFunc)(PRTL_OSVERSIONINFOW);
@@ -1655,19 +1682,19 @@ private:
 
             HMODULE ntdll = LoadLibraryW(L"ntdll.dll");
             if (!ntdll) {
-                return 0;
+                return util::get_windows_version_backup();
             }
 
             RtlGetVersionFunc pRtlGetVersion = (RtlGetVersionFunc)GetProcAddress(ntdll, "RtlGetVersion");
             if (!pRtlGetVersion) {
-                return 0;
+                return util::get_windows_version_backup();
             }
 
             RTL_OSVERSIONINFOW osvi;
             osvi.dwOSVersionInfoSize = sizeof(osvi);
 
             if (pRtlGetVersion(&osvi) != 0) {
-                return 0;
+                return util::get_windows_version_backup();
             }
 
             u8 major_version = 0;
@@ -1678,8 +1705,14 @@ private:
 
             FreeLibrary(ntdll);
 
+            if (major_version == 0) {
+                return util::get_windows_version_backup();
+            }
+
             return major_version;
         }
+
+
 #endif
     };
 
