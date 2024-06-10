@@ -4,7 +4,7 @@
  * ██║   ██║██╔████╔██║███████║██║ █╗ ██║███████║██████╔╝█████╗
  * ╚██╗ ██╔╝██║╚██╔╝██║██╔══██║██║███╗██║██╔══██║██╔══██╗██╔══╝
  *  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
- *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ 1.4 (May 2024)
+ *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ 1.5 (June 2024)
  *
  *  C++ VM detection library
  *
@@ -21,14 +21,14 @@
  *
  * 
  * ================================ SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 293
- * - struct for internal cpu operations        => line 485
- * - struct for internal memoization           => line 857
- * - struct for internal utility functions     => line 941
- * - struct for internal core components       => line 6916
- * - start of internal VM detection techniques => line 1686
- * - start of public VM detection functions    => line 7265
- * - start of externally defined variables     => line 7602
+ * - enums for publicly accessible techniques  => line 292
+ * - struct for internal cpu operations        => line 484
+ * - struct for internal memoization           => line 856
+ * - struct for internal utility functions     => line 940
+ * - struct for internal core components       => line 6907
+ * - start of internal VM detection techniques => line 1718
+ * - start of public VM detection functions    => line 7259
+ * - start of externally defined variables     => line 7596
  * 
  * 
  * ================================ EXAMPLE ==================================
@@ -6905,47 +6905,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
 
 
-    /**
-     * @brief Check for AMD CPUs that don't match their thread count
-     * @category All, x86
-     * @link https://en.wikipedia.org/wiki/List_of_AMD_Ryzen_processors
-     */ 
-/*
-    [[nodiscard]] static bool amd_thread_mismatch() try {
-#if (!x86)
-        return false;
-#else
-        if (!cpu::is_amd()) {
-            return false;
-        }
-
-        if (cpu::has_hyperthreading()) {
-            return false;
-        }
-
-        const cpu::model_struct model = cpu::get_model();
-
-        if (!model.found) {
-            return false;
-        }
-
-        if (!model.is_ryzen) {
-            return false;
-        }
-
-        debug("AMD_THREAD_MISMATCH: CPU model = ", model.string);
-#endif
-    }
-    catch (...) {
-        debug("AMD_THREAD_MISMATCH: catched error, returned false");
-        return false;
-    }
-*/
-
-
-
-
-
     struct core {
         MSVC_DISABLE_WARNING(PADDING)
         struct technique {
@@ -7105,10 +7064,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             const u8 version = util::get_windows_version();
             
-            if (
-                (version == 0) ||
-                (version < 10)
-            ) {
+            if (version == 0) {
+                return true;
+            }
+
+            if (version < 10) {
                 debug("HYPERV_CHECK: returned false through insufficient windows version (version ", static_cast<u32>(version), ")");
                 return false;
             }

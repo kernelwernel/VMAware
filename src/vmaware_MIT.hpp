@@ -4,7 +4,7 @@
  * ██║   ██║██╔████╔██║███████║██║ █╗ ██║███████║██████╔╝█████╗
  * ╚██╗ ██╔╝██║╚██╔╝██║██╔══██║██║███╗██║██╔══██║██╔══██╗██╔══╝
  *  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
- *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ 1.4 (May 2024)
+ *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ 1.5 (June 2024)
  *
  *  C++ VM detection library
  *
@@ -43,14 +43,14 @@
  * 
  * 
  * ================================ SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 293
- * - struct for internal cpu operations        => line 485
- * - struct for internal memoization           => line 857
- * - struct for internal utility functions     => line 941
- * - struct for internal core components       => line 6916
- * - start of internal VM detection techniques => line 1686
- * - start of public VM detection functions    => line 7265
- * - start of externally defined variables     => line 7602
+ * - enums for publicly accessible techniques  => line 314
+ * - struct for internal cpu operations        => line 506
+ * - struct for internal memoization           => line 878
+ * - struct for internal utility functions     => line 962
+ * - struct for internal core components       => line 6929
+ * - start of internal VM detection techniques => line 1740
+ * - start of public VM detection functions    => line 7281
+ * - start of externally defined variables     => line 7618
  * 
  * 
  * ================================ EXAMPLE ==================================
@@ -1636,6 +1636,33 @@ private:
             return (tmp && isWow64);
         }
 
+        // backup function in case the main get_windows_version function fails
+        [[nodiscard]] static u8 get_windows_version_backup() {
+            u8 ret = 0;
+            NTSTATUS(WINAPI * RtlGetVersion)(LPOSVERSIONINFOEXW) = nullptr;
+            OSVERSIONINFOEXW osInfo{};
+
+            HMODULE ntdllModule = GetModuleHandleA("ntdll");
+
+            if (ntdllModule == nullptr) {
+                return false;
+            }
+
+            *(FARPROC*)&RtlGetVersion = GetProcAddress(ntdllModule, "RtlGetVersion");
+
+            if (RtlGetVersion == nullptr) {
+                return false;
+            }
+
+            if (RtlGetVersion != nullptr) {
+                osInfo.dwOSVersionInfoSize = sizeof(osInfo);
+                RtlGetVersion(&osInfo);
+                ret = static_cast<u8>(osInfo.dwMajorVersion);
+            }
+
+            return ret;
+        }
+
         // credits to @Requiem for the code, thanks man :)
         [[nodiscard]] static u8 get_windows_version() {
             typedef NTSTATUS(WINAPI* RtlGetVersionFunc)(PRTL_OSVERSIONINFOW);
@@ -1666,19 +1693,19 @@ private:
 
             HMODULE ntdll = LoadLibraryW(L"ntdll.dll");
             if (!ntdll) {
-                return 0;
+                return util::get_windows_version_backup();
             }
 
             RtlGetVersionFunc pRtlGetVersion = (RtlGetVersionFunc)GetProcAddress(ntdll, "RtlGetVersion");
             if (!pRtlGetVersion) {
-                return 0;
+                return util::get_windows_version_backup();
             }
 
             RTL_OSVERSIONINFOW osvi;
             osvi.dwOSVersionInfoSize = sizeof(osvi);
 
             if (pRtlGetVersion(&osvi) != 0) {
-                return 0;
+                return util::get_windows_version_backup();
             }
 
             u8 major_version = 0;
@@ -1689,8 +1716,14 @@ private:
 
             FreeLibrary(ntdll);
 
+            if (major_version == 0) {
+                return util::get_windows_version_backup();
+            }
+
             return major_version;
         }
+
+
 #endif
     };
 
@@ -6424,47 +6457,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
 
 
-    /**
-     * @brief Check for AMD CPUs that don't match their thread count
-     * @category All, x86
-     * @link https://en.wikipedia.org/wiki/List_of_AMD_Ryzen_processors
-     */ 
-/*
-    [[nodiscard]] static bool amd_thread_mismatch() try {
-#if (!x86)
-        return false;
-#else
-        if (!cpu::is_amd()) {
-            return false;
-        }
-
-        if (cpu::has_hyperthreading()) {
-            return false;
-        }
-
-        const cpu::model_struct model = cpu::get_model();
-
-        if (!model.found) {
-            return false;
-        }
-
-        if (!model.is_ryzen) {
-            return false;
-        }
-
-        debug("AMD_THREAD_MISMATCH: CPU model = ", model.string);
-#endif
-    }
-    catch (...) {
-        debug("AMD_THREAD_MISMATCH: catched error, returned false");
-        return false;
-    }
-*/
-
-
-
-
-
     struct core {
         MSVC_DISABLE_WARNING(PADDING)
         struct technique {
@@ -6618,15 +6610,18 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
 #else
             if (core::enabled(flags, VM::DISCARD_HYPERV_DEFAULT)) {
+                debug("HYPERV_CHECK: returned false through flag check");
                 return false;
             }
 
             const u8 version = util::get_windows_version();
             
-            if (
-                (version == 0) ||
-                (version < 10)
-            ) {
+            if (version == 0) {
+                return true;
+            }
+
+            if (version < 10) {
+                debug("HYPERV_CHECK: returned false through insufficient windows version (version ", static_cast<u32>(version), ")");
                 return false;
             }
 
@@ -6644,7 +6639,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 tmp_brand == "Microsoft Virtual PC/Hyper-V"
             );
 
-            debug("is Hyper-V brand check = ", result);
+            debug("HYPERV_CHECK: is Hyper-V brand check = ", result);
 
             return result;
 #endif

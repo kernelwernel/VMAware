@@ -36,8 +36,8 @@
     #include "Windows.h"
 #endif
 
-constexpr const char* ver = "1.4";
-constexpr const char* date = "May 2024";
+constexpr const char* ver = "1.5";
+constexpr const char* date = "June 2024";
 constexpr const char* bold = "\033[1m";
 constexpr const char* ansi_exit = "\x1B[0m";
 constexpr const char* red = "\x1B[38;2;239;75;75m";
