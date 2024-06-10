@@ -10,10 +10,10 @@
 # 
 # =============================================================
 #
-# This is just an internal script for CI/CD. The main goal is to 
-# check whether all of the techniques are actually updated since 
-# keeping track of the docs, the cli, and the table isn't easy,
-# so I'm automating the checks in case I forget to update any.
+#  This is just an internal script for CI/CD. The main goal is to 
+#  check whether all of the techniques are actually updated since 
+#  keeping track of the docs, the cli, and the table isn't easy,
+#  so I'm automating the checks in case I forget to update any.
 # 
 # ===============================================================
 # 

@@ -33,7 +33,7 @@ int main() {
      * a single technique, use VM::check() instead. Also, read the flag table
      * at the end of this doc file for a full list of technique flags.
      */
-    bool is_vm2 = VM::detect(VM::BRAND, VM::MAC, VM::HYPERV_BIT);
+    bool is_vm2 = VM::detect(VM::BRAND, VM::MAC, VM::HYPERVISOR_BIT);
 
 
     /**
@@ -66,10 +66,18 @@ int main() {
 
 
     /**
+     * If you want to disable any techniques for whatever reason, use VM::DISABLE().
      * This will essentially mean "perform all the default flags, but only disable
      * the VM::RDTSC technique". 
      */ 
-    bool is_vm6 = VM::detect(VM::DEFAULT & ~(VM::RDTSC));
+    bool is_vm6 = VM::detect(VM::DISABLE(VM::RDTSC));
+
+
+    /**
+     * Same as above, but you can disable multiple techniques at the same time.
+     */ 
+    bool is_vm6 = VM::detect(VM::DISABLE(VM::VMID, VM::RDTSC));
+
 }
 ```
 
@@ -158,7 +166,7 @@ int main() {
 ## `VM::check()`
 This takes a single flag argument and returns a `bool`. It's essentially the same as `VM::detect()` but it doesn't have a scoring system. It only returns the technique's effective output. The reason why this exists is because it allows end-users to have fine-grained control over what is being executed and what isn't. 
 
-`VM::detect()` is meant for a range of techniques to be evaluated in the bigger picture with weights and biases in its scoring system, while `VM::check()` is meant for a single technique to be evaluated without any points or anything extra. It just gives you what the technique has found on its own. For example:
+`VM::detect()` is meant for a range of techniques to be evaluated in the bigger picture with weights and biases in its scoring system, while `VM::check()` is meant for a single technique to be evaluated without any points or anything extra. It very simply just gives you what the technique has found on its own. For example:
 
 ```cpp
 #include "vmaware.hpp"
@@ -172,9 +180,6 @@ int main() {
     if (VM::check(VM::HYPERVISOR_BIT)) {
         std::cout << "Hypervisor bit is set, most definitely a VM!\n";
     }
-
-    // invalid, will throw an std::invalid_argument exception
-    bool result = VM::check(VM::VMID | VM::HYPERVISOR_BIT);
 }
 ```
 
@@ -353,5 +358,5 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::NO_MEMO` | This will disable memoization, meaning the result will not be fetched through a previous computation of the `VM::detect()` function. Use this if you're only using a single function from the `VM` struct for a performance boost. |
 | `VM::EXTREME` | This will disregard the weights/biases and its scoring system. It will essentially treat any technique that found a hit as a VM detection no matter how low that technique's certainty is, so if a single technique is positive then it will return true. | 
 | `VM::DEFAULT` | This represents a range of flags which are enabled if no default argument is provided. The reason why this exists is to easily disable any bits manually (shown in the is_vm6 example in the `VM::detect()` section)
-| `VM::WIN_HYPERV_DEFAULT` | Windows 11 (and sometimes 10) may have Hyper-V as a default virtualisation software for any program even if the OS is running as host, which is one of the main hurdles of the library to overcome between host virtualisation and actual virtualisation. The library will discard any Hyper-V brand suspicions as not running in a VM. This flag will basically mean "I'm aware this program might be running in a default virtualised environment even if the user is only using the host environment, but I'll still count this as running in a VM anyway whether it's default virtualisation or manual virtualisation" |
+| `VM::DISCARD_HYPERV_DEFAULT` | Windows 11 (and sometimes 10) may have Hyper-V as a default virtualisation software for any program even if the OS is running as host, which is one of the main hurdles of the library to overcome between host virtualisation and actual virtualisation. The library will discard any Hyper-V brand suspicions as not running in a VM. This flag will basically mean "I'm aware this program might be running in a default virtualised environment even if the user is only using the host environment, but I'll still count this as running in a VM anyway whether it's default virtualisation or manually intended virtualisation" |
 | `VM::MULTIPLE` | This is specific to `VM::brand()`. This will basically return a `std::string` message of what brands could be involved. For example, it could return "`VMware or VirtualBox`" instead of having a single brand string output. |   

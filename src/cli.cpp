@@ -1,3 +1,26 @@
+/**
+ * ██╗   ██╗███╗   ███╗ █████╗ ██╗    ██╗ █████╗ ██████╗ ███████╗
+ * ██║   ██║████╗ ████║██╔══██╗██║    ██║██╔══██╗██╔══██╗██╔════╝
+ * ██║   ██║██╔████╔██║███████║██║ █╗ ██║███████║██████╔╝█████╗  
+ * ╚██╗ ██╔╝██║╚██╔╝██║██╔══██║██║███╗██║██╔══██║██╔══██╗██╔══╝  
+ *  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
+ *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝
+ * 
+ *  C++ VM detection library
+ * 
+ * ===============================================================
+ *
+ *  This is the main CLI code, which demonstrates the majority 
+ *  of the library's capabilities while also providing as a
+ *  practical and general VM detection tool for everybody to use
+ * 
+ * ===============================================================
+ * 
+ *  - Made by: @kernelwernel (https://github.com/kernelwernel)
+ *  - Repository: https://github.com/kernelwernel/VMAware
+ *  - License: GPL 3.0
+ */ 
+
 #include "vmaware.hpp"
 
 #include <string>
@@ -13,8 +36,8 @@
     #include "Windows.h"
 #endif
 
-constexpr const char* ver = "1.4";
-constexpr const char* date = "May 2024";
+constexpr const char* ver = "1.5";
+constexpr const char* date = "June 2024";
 constexpr const char* bold = "\033[1m";
 constexpr const char* ansi_exit = "\x1B[0m";
 constexpr const char* red = "\x1B[38;2;239;75;75m";
@@ -72,7 +95,7 @@ Options:
  -l | --brand-list  returns all the possible VM brand string values
 
 Extra:
- --discard-hyper-v  disable the possibility of Hyper-V default virtualisation on host OS
+ --discard-hyper-v  disable the possibility of Hyper-V default virtualisation result on host OS
 )";
 }
 
@@ -135,7 +158,7 @@ void general(const bool discard_hyperv = false) {
     const std::string not_detected = ("[" + std::string(red) + "NOT DETECTED" + std::string(ansi_exit) + "]");
     const std::string note = ("[    NOTE    ]");
 
-    std::uint8_t total_count = 0;
+    std::uint8_t total_technique_count = 0;
     std::uint8_t detected_count = 0;
 
     auto checker = [&](const std::uint8_t flag, const char* message) -> void {
@@ -146,7 +169,7 @@ void general(const bool discard_hyperv = false) {
             std::cout << not_detected << " Checking " << message << "...\n";
         }
 
-        total_count++;
+        total_technique_count++;
     };
 
     #if (defined(__GNUC__) || defined(__linux__))
@@ -289,7 +312,7 @@ void general(const bool discard_hyperv = false) {
         count_color << 
         static_cast<std::uint32_t>(detected_count) << 
         "/" <<
-        static_cast<std::uint32_t>(total_count) << 
+        static_cast<std::uint32_t>(total_technique_count) << 
         ansi_exit <<
         "\n\n";
 
@@ -327,10 +350,11 @@ int main(int argc, char* argv[]) {
 #endif
 
     const std::vector<const char*> args(argv, argv + argc); // easier this way
+    const std::uint32_t arg_count = argc - 1;
 
-    if (argc == 1) {
-        general(false);
-    } else if (argc == 2) {
+    if (arg_count == 0) {
+        general();
+    } else if (arg_count == 1) {
         const char* argument = args.at(1);
 
         auto arg = [&argument](const char* option) -> bool {
@@ -405,7 +429,7 @@ Unisys s-Par
             std::cerr << "Unknown argument provided, consult the help menu with --help\n";
             return 1;
         }
-    } else if (argc == 3) {
+    } else if (arg_count == 2) {
         constexpr const char* hyperv_arg = "--discard-hyper-v";
 
         auto find = [&args](const char* option) -> bool {
@@ -424,13 +448,13 @@ Unisys s-Par
             return 1;
         }
 
-        const bool detect = (find("-d") || find("--detect"));
-        const bool std_out = (find("-s") || find("--stdout")); // can't do "stdout" cuz it's already a macro
-        const bool percent = (find("-p") || find("--percent"));
+        const bool detect     = (find("-d") || find("--detect"));
+        const bool std_out    = (find("-s") || find("--stdout")); // can't do "stdout" cuz it's already a macro
+        const bool p_percent  = (find("-p") || find("--percent"));
         const bool conclusion = (find("-c") || find("--conclusion"));
 
         // check if combination of the option and hyperv exists
-        if (!(detect || std_out || percent || conclusion)) {
+        if (!(detect || std_out || p_percent || conclusion)) {
             std::cerr << "Unknown or unsupported option with" << hyperv_arg << ", only --detect, --stdout, --percent, and --conclusion are supported\n";
             return 1;
         }
@@ -441,7 +465,7 @@ Unisys s-Par
             return 0;
         } else if (std_out) {
             return (!VM::detect());
-        } else if (percent) {
+        } else if (p_percent) {
             std::cout << static_cast<std::uint32_t>(VM::percentage()) << "\n";
             return 0;
         } else if (conclusion) {
@@ -449,8 +473,8 @@ Unisys s-Par
             const std::string brand = VM::brand();
             std::cout << message(percent, brand) << "\n";
         }
-    } else if (argc > 2) {
-        std::cerr << "Only 1, 2, or no arguments are expected, not " << argc << ". consult the help menu with --help\n";
+    } else if (arg_count > 2) {
+        std::cerr << "Only 1, 2, or no arguments are expected, not " << arg_count << ". consult the help menu with --help\n";
         return 1;
     } else {
         std::cerr << "Encountered unknown error, aborting\n";

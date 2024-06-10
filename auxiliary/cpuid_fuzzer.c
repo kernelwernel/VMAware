@@ -10,8 +10,8 @@
  * 
  * ===============================================================
  *
- * This program serves as an internal tool for fuzzing cpuid values 
- * and comparing them between baremetal outputs and VM outputs.
+ *  This program serves as an internal tool for fuzzing cpuid values 
+ *  and comparing them between baremetal outputs and VM outputs.
  * 
  * ===============================================================
  * 
