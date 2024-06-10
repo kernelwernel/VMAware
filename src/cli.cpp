@@ -330,7 +330,7 @@ int main(int argc, char* argv[]) {
     const std::uint32_t arg_count = argc - 1;
 
     if (arg_count == 0) {
-        general();
+        general(true);
     } else if (arg_count == 1) {
         const char* argument = args.at(1);
 

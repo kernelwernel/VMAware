@@ -21,31 +21,30 @@
  *
  * 
  * ================================ SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 283
- * - struct for internal cpu operations        => line 481
- * - struct for internal memoization           => line 773
- * - struct for internal utility functions     => line 835
- * - struct for internal core components       => line 7081
- * - start of internal VM detection techniques => line 1511
- * - start of public VM detection functions    => line 7195
- * - start of externally defined variables     => line 7495
+ * - enums for publicly accessible techniques  => line 293
+ * - struct for internal cpu operations        => line 485
+ * - struct for internal memoization           => line 857
+ * - struct for internal utility functions     => line 941
+ * - struct for internal core components       => line 6916
+ * - start of internal VM detection techniques => line 1686
+ * - start of public VM detection functions    => line 7265
+ * - start of externally defined variables     => line 7602
  * 
  * 
  * ================================ EXAMPLE ==================================
-#include "vmaware.hpp"
-#include <iostream>
-
-int main() {
-    if (VM::detect()) {
-        std::cout << "Virtual machine detected!" << std::endl;
-        std::cout << "VM name: " << VM::brand() << std::endl;
-    } else {
-        std::cout << "Running in baremetal" << std::endl;
-    }
-    
-    std::cout << "VM certainty: " << (int)VM::percentage() << "%" << std::endl;
-}
-
+ * #include "vmaware.hpp"
+ * #include <iostream>
+ * 
+ * int main() {
+ *     if (VM::detect()) {
+ *         std::cout << "Virtual machine detected!" << std::endl;
+ *         std::cout << "VM name: " << VM::brand() << std::endl;
+ *     } else {
+ *         std::cout << "Running in baremetal" << std::endl;
+ *     }
+ *     
+ *     std::cout << "VM certainty: " << (int)VM::percentage() << "%" << std::endl;
+ * }
  */
 
 
