@@ -329,7 +329,7 @@ int main(int argc, char* argv[]) {
     const std::vector<const char*> args(argv, argv + argc); // easier this way
 
     if (argc == 1) {
-        general(false);
+        general(true);
     } else if (argc == 2) {
         const char* argument = args.at(1);
 
