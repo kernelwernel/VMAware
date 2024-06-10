@@ -1,3 +1,26 @@
+/**
+ * ██╗   ██╗███╗   ███╗ █████╗ ██╗    ██╗ █████╗ ██████╗ ███████╗
+ * ██║   ██║████╗ ████║██╔══██╗██║    ██║██╔══██╗██╔══██╗██╔════╝
+ * ██║   ██║██╔████╔██║███████║██║ █╗ ██║███████║██████╔╝█████╗  
+ * ╚██╗ ██╔╝██║╚██╔╝██║██╔══██║██║███╗██║██╔══██║██╔══██╗██╔══╝  
+ *  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
+ *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝
+ * 
+ *  C++ VM detection library
+ * 
+ * ===============================================================
+ *
+ *  This is the main CLI code, which demonstrates the majority 
+ *  of the library's capabilities while also providing as a
+ *  practical and general VM detection tool for everybody to use
+ * 
+ * ===============================================================
+ * 
+ *  - Made by: @kernelwernel (https://github.com/kernelwernel)
+ *  - Repository: https://github.com/kernelwernel/VMAware
+ *  - License: GPL 3.0
+ */ 
+
 #include "vmaware.hpp"
 
 #include <string>
@@ -135,7 +158,7 @@ void general(const bool discard_hyperv = false) {
     const std::string not_detected = ("[" + std::string(red) + "NOT DETECTED" + std::string(ansi_exit) + "]");
     const std::string note = ("[    NOTE    ]");
 
-    std::uint8_t total_count = 0;
+    std::uint8_t total_technique_count = 0;
     std::uint8_t detected_count = 0;
 
     auto checker = [&](const std::uint8_t flag, const char* message) -> void {
@@ -146,7 +169,7 @@ void general(const bool discard_hyperv = false) {
             std::cout << not_detected << " Checking " << message << "...\n";
         }
 
-        total_count++;
+        total_technique_count++;
     };
 
     #if (defined(__GNUC__) || defined(__linux__))
@@ -289,7 +312,7 @@ void general(const bool discard_hyperv = false) {
         count_color << 
         static_cast<std::uint32_t>(detected_count) << 
         "/" <<
-        static_cast<std::uint32_t>(total_count) << 
+        static_cast<std::uint32_t>(total_technique_count) << 
         ansi_exit <<
         "\n\n";
 
@@ -330,7 +353,7 @@ int main(int argc, char* argv[]) {
     const std::uint32_t arg_count = argc - 1;
 
     if (arg_count == 0) {
-        general(true);
+        general();
     } else if (arg_count == 1) {
         const char* argument = args.at(1);
 

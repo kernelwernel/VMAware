@@ -7066,6 +7066,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
 #else
             if (core::enabled(flags, VM::DISCARD_HYPERV_DEFAULT)) {
+                debug("HYPERV_CHECK: returned false through flag check")
                 return false;
             }
 
@@ -7075,6 +7076,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 (version == 0) ||
                 (version < 10)
             ) {
+                debug("HYPERV_CHECK: returned false through insufficient windows version")
                 return false;
             }
 
@@ -7092,7 +7094,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 tmp_brand == "Microsoft Virtual PC/Hyper-V"
             );
 
-            debug("is Hyper-V brand check = ", result);
+            debug("HYPERV_CHECK: is Hyper-V brand check = ", result);
 
             return result;
 #endif
