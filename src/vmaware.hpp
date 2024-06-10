@@ -7076,7 +7076,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 (version == 0) ||
                 (version < 10)
             ) {
-                debug("HYPERV_CHECK: returned false through insufficient windows version");
+                debug("HYPERV_CHECK: returned false through insufficient windows version (version ", static_cast<u32>(version), ")");
                 return false;
             }
 
