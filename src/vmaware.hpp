@@ -7080,16 +7080,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         const struct map_key ResourceRegistryKeys[ResourceRegistryKeysLength] = {
             {
-                "Hardware\\ResourceMap\\System Resources\\Physical Memory",
-                ".Translated"
+                const_cast<LPCSTR>("Hardware\\ResourceMap\\System Resources\\Physical Memory"),
+                const_cast<LPCSTR>(".Translated")
             },
             {
-                "Hardware\\ResourceMap\\System Resources\\Reserved",
-                ".Translated"
+                const_cast<LPCSTR>("Hardware\\ResourceMap\\System Resources\\Reserved"),
+                const_cast<LPCSTR>(".Translated")
             },
             {
-                "Hardware\\ResourceMap\\System Resources\\Loader Reserved",
-                ".Raw"
+                const_cast<LPCSTR>("Hardware\\ResourceMap\\System Resources\\Loader Reserved"),
+                const_cast<LPCSTR>(".Raw")
             }
         };
 
@@ -7099,7 +7099,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             struct map_key key
         ) -> DWORD {
             HKEY hKey = NULL;
-            LPCWSTR pszSubKey = key.KeyPath;
+            LPTSTR pszSubKey = key.KeyPath;
             LPTSTR pszValueName = key.ValueName;
             LPBYTE lpData = NULL;
             DWORD dwLength = 0, count = 0, type = 0;;
@@ -7109,7 +7109,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 printf("[X] Could not get reg key: %d / %d\n", result, GetLastError());
                 return 0;
             }
-            if ((result = RegQueryValueExW(hKey, pszValueName, 0, &type, NULL, &dwLength)) != ERROR_SUCCESS)
+            if ((result = RegQueryValueExW(hKey, reinterpret_cast<LPCWSTR>(pszValueName), 0, &type, NULL, &dwLength)) != ERROR_SUCCESS)
             {
                 printf("[X] Could not query hardware key: %d / %d\n", result, GetLastError());
                 return 0;
