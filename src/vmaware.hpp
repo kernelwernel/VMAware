@@ -7106,12 +7106,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             DWORD result;
             if ((result = RegOpenKeyW(HKEY_LOCAL_MACHINE, pszSubKey, &hKey)) != ERROR_SUCCESS)
             {
-                printf("[X] Could not get reg key: %d / %d\n", result, GetLastError());
+                debug("NETTITUDE_VM_MEMORY: Could not get reg key: ", result, " / ", GetLastError());
                 return 0;
             }
-            if ((result = RegQueryValueExW(hKey, reinterpret_cast<LPCWSTR>(pszValueName), 0, &type, NULL, &dwLength)) != ERROR_SUCCESS)
+            if ((result = RegQueryValueExW(hKey, reinterpret_cast<LPCWSTR>(pszValueName, 0, &type, NULL, &dwLength)) != ERROR_SUCCESS)
             {
-                printf("[X] Could not query hardware key: %d / %d\n", result, GetLastError());
+                debug("NETTITUDE_VM_MEMORY: Could not query hardware key: ", result, " / ", GetLastError());
                 return 0;
             }
             lpData = (LPBYTE)malloc(dwLength);
@@ -7224,21 +7224,24 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         };
 
         DWORD count;
-        printf("[*] Getting physical memory regions from registry\n");
         
         struct memory_region *regions[ResourceRegistryKeysLength];
         int region_counts[ResourceRegistryKeysLength];
         
         for (int i = 0; i < ResourceRegistryKeysLength; i++)
         {
-            printf("[*] Reading data from %ws\\%ws\n",
-                ResourceRegistryKeys[i].KeyPath, ResourceRegistryKeys[i].ValueName);
+            debug(
+                "NETTITUDE_VM_MEMORY: Reading data from ", 
+                ResourceRegistryKeys[i].KeyPath, 
+                "\\", 
+                ResourceRegistryKeys[i].ValueName
+            );
             
             count = parse_memory_map(NULL, ResourceRegistryKeys[i]);
             if (count == 0)
             {
-                printf("[X] Could not find memory region, exiting.\n");
-                return -1;
+                debug("NETTITUDE_VM_MEMORY: Could not find memory region, returning 0.");
+                return 0;
             }
             regions[i] = (struct memory_region *)malloc(sizeof(struct memory_region) * count);
             
@@ -7246,8 +7249,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             region_counts[i] = count;
             for (DWORD r = 0; r < count; r++)
             {
-                printf("[*] --> Memory region found: %.16llx - %.16llx\n",
-                    regions[i][r].address, regions[i][r].address + regions[i][r].size);
+                debug(
+                    "NETTITUDE_VM_MEMORY: --> Memory region found: ", 
+                    regions[i][r].address,
+                    " - ",
+                    regions[i][r].address + regions[i][r].size
+                );
             }
         }
         
