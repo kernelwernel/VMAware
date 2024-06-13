@@ -7080,16 +7080,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         const struct map_key ResourceRegistryKeys[ResourceRegistryKeysLength] = {
             {
-                L"Hardware\\ResourceMap\\System Resources\\Physical Memory",
-                L".Translated"
+                "Hardware\\ResourceMap\\System Resources\\Physical Memory",
+                ".Translated"
             },
             {
-                L"Hardware\\ResourceMap\\System Resources\\Reserved",
-                L".Translated"
+                "Hardware\\ResourceMap\\System Resources\\Reserved",
+                ".Translated"
             },
             {
-                L"Hardware\\ResourceMap\\System Resources\\Loader Reserved",
-                L".Raw"
+                "Hardware\\ResourceMap\\System Resources\\Loader Reserved",
+                ".Raw"
             }
         };
 
@@ -7099,7 +7099,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             struct map_key key
         ) -> DWORD {
             HKEY hKey = NULL;
-            LPTSTR pszSubKey = key.KeyPath;
+            LPCWSTR pszSubKey = key.KeyPath;
             LPTSTR pszValueName = key.ValueName;
             LPBYTE lpData = NULL;
             DWORD dwLength = 0, count = 0, type = 0;;
@@ -7221,8 +7221,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
             /* pretty sure it's a VM, but we don't know what type */
             return VM_RESOURCE_CHECK_UNKNOWN_PLATFORM;
-        }
-
+        };
 
         DWORD count;
         printf("[*] Getting physical memory regions from registry\n");
@@ -7263,28 +7262,34 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         
         switch (check_result)
         {
+            // error
             case VM_RESOURCE_CHECK_ERROR:
-                printf("[X] Error occurred during VM check.\n");
+                return false;
                 break;
+
+            // no VM
             case VM_RESOURCE_CHECK_NO_VM:
-                printf("[-] No VM detected.\n");
+                return false;
                 break;
+
+            // Hyper-V
             case VM_RESOURCE_CHECK_HYPERV:
-                printf("[+] Detected Hyper-V.\n");
+                return core::add(HYPERV);
                 break;
+
+            // VirtualBox
             case VM_RESOURCE_CHECK_VBOX:
-                printf("[+] Detected VirtualBox.\n");
+                return core::add(VBOX);
                 break;
+
+            // Unknown brand, but likely VM
             case VM_RESOURCE_CHECK_UNKNOWN_PLATFORM:
-                printf("[+] Likely VM detected, but cannot identify platform. \n");
+                return true;
                 break;
             default:
-                printf("[X] VM check returned unexpected value.\n");
+                return false;
                 break;
         }
-        
-        printf("\nDone.\n");
-        return 0;
 #endif
     } catch (...) {
         debug("NETTITUDE_VM_MEMORY: catched error, returned false");
