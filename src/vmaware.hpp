@@ -208,6 +208,7 @@
 #pragma comment(lib, "Shlwapi.lib")
 #pragma comment(lib, "MPR")
 #pragma comment(lib, "advapi32.lib")
+#pragma comment(lib, "kernel32.lib")
 #pragma comment(lib, "shell32.lib")
 #pragma comment(lib, "strmiids.lib")
 #pragma comment(lib, "uuid.lib")
@@ -378,6 +379,7 @@ public:
         ODD_CPU_THREADS,
         INTEL_THREAD_MISMATCH,
         XEON_THREAD_MISMATCH,
+        NETTITUDE_VM_MEMORY,
 
         // start of non-technique flags
         EXTREME,
@@ -388,15 +390,15 @@ public:
 
 private:
     static constexpr u8 enum_size = VM::MULTIPLE; // get enum size through value of last element
-    static constexpr u8 technique_count = enum_size - 4; // get total number of techniques
-    static constexpr u8 non_technique_count = enum_size - technique_count; // get number of non-technique flags like VM::NO_MEMO for example
+    static constexpr u8 technique_count = VM::EXTREME; // get total number of techniques
+    static constexpr u8 non_technique_count = enum_size - technique_count + 1; // get number of non-technique flags like VM::NO_MEMO for example
     static constexpr u8 INVALID = 255;
 
     // intended for loop indexes
     static constexpr u8 enum_begin = 0;
     static constexpr u8 enum_end = enum_size + 1;
     static constexpr u8 technique_begin = enum_begin;
-    static constexpr u8 technique_end = VM::EXTREME - 1;
+    static constexpr u8 technique_end = VM::EXTREME;
     static constexpr u8 non_technique_begin = VM::EXTREME;
     static constexpr u8 non_technique_end = enum_end;
 
@@ -814,7 +816,6 @@ private:
                 if (tmp_brand == unisys)      { return core::add(UNISYS); }
                 if (tmp_brand == lmhs)        { return core::add(LMHS); }
 
-
                 // both Hyper-V and VirtualPC have the same string value
                 if (tmp_brand == hyperv)     { 
                     bool tmp = core::add(VPC);
@@ -884,9 +885,15 @@ private:
             return cache_table.at(technique_macro);
         }
 
-        // basically checks whether all the techniques were cached
+        // basically checks whether all the techniques were cached (with exception of VM::CURSOR)
         static bool all_present() {
-            return (cache_table.size() == technique_count);
+            if (cache_table.size() == technique_count) {
+                return true;
+            } else if (cache_table.size() == technique_count - 1) {
+                return (!cache_keys.test(CURSOR));
+            }
+
+            return false;
         }
 
         struct brand {
@@ -6906,6 +6913,415 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
 
 
+
+
+
+
+
+
+    [[nodiscard]] static bool nettitude_vm_memory() try{
+#if (!MSVC)
+    return false;
+#else
+        typedef LARGE_INTEGER PHYSICAL_ADDRESS, *PPHYSICAL_ADDRESS;
+
+        #pragma pack(push,4)
+        typedef struct _CM_PARTIAL_RESOURCE_DESCRIPTOR {
+            UCHAR Type;
+            UCHAR ShareDisposition;
+            USHORT Flags;
+            union {
+                struct {
+                    PHYSICAL_ADDRESS Start;
+                    ULONG Length;
+                } Generic;
+                struct {
+                    PHYSICAL_ADDRESS Start;
+                    ULONG Length;
+                } Port;
+                struct {
+        #if defined(NT_PROCESSOR_GROUPS)
+                    USHORT Level;
+                    USHORT Group;
+        #else
+                    ULONG Level;
+        #endif
+                    ULONG Vector;
+                    KAFFINITY Affinity;
+                } Interrupt;
+                struct {
+                    union {
+                        struct {
+        #if defined(NT_PROCESSOR_GROUPS)
+                            USHORT Group;
+        #else
+                            USHORT Reserved;
+        #endif
+                            USHORT MessageCount;
+                            ULONG Vector;
+                            KAFFINITY Affinity;
+                        } Raw;
+                        struct {
+        #if defined(NT_PROCESSOR_GROUPS)
+                            USHORT Level;
+                            USHORT Group;
+        #else
+                            ULONG Level;
+        #endif
+                            ULONG Vector;
+                            KAFFINITY Affinity;
+                        } Translated;
+                    } DUMMYUNIONNAME;
+                } MessageInterrupt;
+                struct {
+                    PHYSICAL_ADDRESS Start;
+                    ULONG Length;
+                } Memory;
+                struct {
+                    ULONG Channel;
+                    ULONG Port;
+                    ULONG Reserved1;
+                } Dma;
+                struct {
+                    ULONG Channel;
+                    ULONG RequestLine;
+                    UCHAR TransferWidth;
+                    UCHAR Reserved1;
+                    UCHAR Reserved2;
+                    UCHAR Reserved3;
+                } DmaV3;
+                struct {
+                    ULONG Data[3];
+                } DevicePrivate;
+                struct {
+                    ULONG Start;
+                    ULONG Length;
+                    ULONG Reserved;
+                } BusNumber;
+                struct {
+                    ULONG DataSize;
+                    ULONG Reserved1;
+                    ULONG Reserved2;
+                } DeviceSpecificData;
+                struct {
+                    PHYSICAL_ADDRESS Start;
+                    ULONG Length40;
+                } Memory40;
+                struct {
+                    PHYSICAL_ADDRESS Start;
+                    ULONG Length48;
+                } Memory48;
+                struct {
+                    PHYSICAL_ADDRESS Start;
+                    ULONG Length64;
+                } Memory64;
+                struct {
+                    UCHAR Class;
+                    UCHAR Type;
+                    UCHAR Reserved1;
+                    UCHAR Reserved2;
+                    ULONG IdLowPart;
+                    ULONG IdHighPart;
+                } Connection;
+            } u;
+        } CM_PARTIAL_RESOURCE_DESCRIPTOR, *PCM_PARTIAL_RESOURCE_DESCRIPTOR;
+        #pragma pack(pop,4)
+        typedef enum _INTERFACE_TYPE {
+            InterfaceTypeUndefined,
+            Internal,
+            Isa,
+            Eisa,
+            MicroChannel,
+            TurboChannel,
+            PCIBus,
+            VMEBus,
+            NuBus,
+            PCMCIABus,
+            CBus,
+            MPIBus,
+            MPSABus,
+            ProcessorInternal,
+            InternalPowerBus,
+            PNPISABus,
+            PNPBus,
+            Vmcs,
+            ACPIBus,
+            MaximumInterfaceType
+        } INTERFACE_TYPE, *PINTERFACE_TYPE;
+        typedef struct _CM_PARTIAL_RESOURCE_LIST {
+            USHORT                         Version;
+            USHORT                         Revision;
+            ULONG                          Count;
+            CM_PARTIAL_RESOURCE_DESCRIPTOR PartialDescriptors[1];
+        } CM_PARTIAL_RESOURCE_LIST, *PCM_PARTIAL_RESOURCE_LIST;
+        typedef struct _CM_FULL_RESOURCE_DESCRIPTOR {
+            INTERFACE_TYPE           InterfaceType;
+            ULONG                    BusNumber;
+            CM_PARTIAL_RESOURCE_LIST PartialResourceList;
+        } *PCM_FULL_RESOURCE_DESCRIPTOR, CM_FULL_RESOURCE_DESCRIPTOR;
+        typedef struct _CM_RESOURCE_LIST {
+            ULONG                       Count;
+            CM_FULL_RESOURCE_DESCRIPTOR List[1];
+        } *PCM_RESOURCE_LIST, CM_RESOURCE_LIST;
+        struct memory_region {
+            ULONG64 size;
+            ULONG64 address;
+        };
+        struct map_key {
+            LPTSTR KeyPath;
+            LPTSTR ValueName;
+        };
+
+        /* registry keys for resource maps */
+        #define VM_RESOURCE_CHECK_REGKEY_PHYSICAL 0
+        #define VM_RESOURCE_CHECK_REGKEY_RESERVED 1
+        #define VM_RESOURCE_CHECK_REGKEY_LOADER_RESERVED 2
+        #define ResourceRegistryKeysLength 3
+
+        const struct map_key ResourceRegistryKeys[ResourceRegistryKeysLength] = {
+            {
+                L"Hardware\\ResourceMap\\System Resources\\Physical Memory",
+                L".Translated"
+            },
+            {
+                L"Hardware\\ResourceMap\\System Resources\\Reserved",
+                L".Translated"
+            },
+            {
+                L"Hardware\\ResourceMap\\System Resources\\Loader Reserved",
+                L".Raw"
+            }
+        };
+
+        /* parse a REG_RESOURCE_LIST value for memory descriptors */
+        auto parse_memory_map = [](
+            struct memory_region *regions, 
+            struct map_key key
+        ) -> DWORD {
+            HKEY hKey = NULL;
+            LPTSTR pszSubKey = key.KeyPath;
+            LPTSTR pszValueName = key.ValueName;
+            LPBYTE lpData = NULL;
+            DWORD dwLength = 0, count = 0, type = 0;;
+            DWORD result;
+            if ((result = RegOpenKeyW(HKEY_LOCAL_MACHINE, pszSubKey, &hKey)) != ERROR_SUCCESS)
+            {
+                printf("[X] Could not get reg key: %d / %d\n", result, GetLastError());
+                return 0;
+            }
+            if ((result = RegQueryValueExW(hKey, pszValueName, 0, &type, NULL, &dwLength)) != ERROR_SUCCESS)
+            {
+                printf("[X] Could not query hardware key: %d / %d\n", result, GetLastError());
+                return 0;
+            }
+            lpData = (LPBYTE)malloc(dwLength);
+            RegQueryValueEx(hKey, pszValueName, 0, &type, lpData, &dwLength);
+            CM_RESOURCE_LIST *resource_list = (CM_RESOURCE_LIST *)lpData;
+            for (DWORD i = 0; i < resource_list->Count; i++)
+            {
+                for (DWORD j = 0; j < resource_list->List[0].PartialResourceList.Count; j++)
+                {
+                    if (resource_list->List[i].PartialResourceList.PartialDescriptors[j].Type == 3)
+                    {
+                        if (regions != NULL)
+                        {
+                            regions->address = resource_list->List[i].PartialResourceList.PartialDescriptors[j].u.Memory.Start.QuadPart;
+                            regions->size = resource_list->List[i].PartialResourceList.PartialDescriptors[j].u.Memory.Length;
+                            regions++;
+                        }
+                        count++;
+                    }
+                }
+            }
+            return count;
+        }
+
+        #define VM_RESOURCE_CHECK_ERROR -1
+        #define VM_RESOURCE_CHECK_NO_VM 0
+        #define VM_RESOURCE_CHECK_HYPERV 1
+        #define VM_RESOURCE_CHECK_VBOX 2
+        #define VM_RESOURCE_CHECK_UNKNOWN_PLATFORM 99
+
+        auto vm_resource_check = [](
+            struct memory_region *phys, int phys_count,
+            struct memory_region *reserved, int reserved_count,
+            struct memory_region *loader_reserved, int loader_reserved_count
+        ) -> int {
+            const ULONG64 VBOX_PHYS_LO   = 0x0000000000001000ULL;
+            const ULONG64 VBOX_PHYS_HI   = 0x000000000009f000ULL;
+            const ULONG64 HYPERV_PHYS_LO = 0x0000000000001000ULL;
+            const ULONG64 HYPERV_PHYS_HI = 0x00000000000a0000ULL;
+            
+            const ULONG64 RESERVED_ADDR_LOW = 0x0000000000001000ULL;
+            const ULONG64 LOADER_RESERVED_ADDR_LOW = 0x0000000000000000ULL;
+            if (phys_count <= 0 || reserved_count <= 0 || loader_reserved_count <= 0)
+            {
+                return VM_RESOURCE_CHECK_ERROR;
+            }
+            if (phys == NULL || reserved == NULL || loader_reserved == NULL)
+            {
+                return VM_RESOURCE_CHECK_ERROR;
+            }
+            
+            /* find the reserved address range starting
+            RESERVED_ADDR_LOW, and record its end address */
+            ULONG64 lowestReservedAddrRangeEnd = 0;
+            for (int i = 0; i < reserved_count; i++)
+            {
+                if (reserved[i].address == RESERVED_ADDR_LOW)
+                {
+                    lowestReservedAddrRangeEnd = reserved[i].address + reserved[i].size;
+                    break;
+                }
+            }
+            if (lowestReservedAddrRangeEnd == 0)
+            {
+                /* every system tested had a range starting at RESERVED_ADDR_LOW */
+                /* this is an outlier. error. */
+                return VM_RESOURCE_CHECK_ERROR;
+            }
+            
+            /* find the loader reserved address range starting
+            LOADER_RESERVED_ADDR_LOW, and record its end address */
+            ULONG64 lowestLoaderReservedAddrRangeEnd = 0;
+            for (int i = 0; i < loader_reserved_count; i++)
+            {
+                if (loader_reserved[i].address == LOADER_RESERVED_ADDR_LOW)
+                {
+                    lowestLoaderReservedAddrRangeEnd = loader_reserved[i].address + loader_reserved[i].size;
+                    break;
+                }
+            }
+            if (lowestLoaderReservedAddrRangeEnd == 0)
+            {
+                /* every system tested had a range starting at LOADER_RESERVED_ADDR_LOW */
+                /* this is an outlier. error. */
+                return VM_RESOURCE_CHECK_ERROR;
+            }
+            
+            /* check if the end addresses are equal. if not, we haven't detected a VM */
+            if (lowestReservedAddrRangeEnd != lowestLoaderReservedAddrRangeEnd)
+            {
+                return VM_RESOURCE_CHECK_NO_VM;
+            }
+            
+            /* now find the type of VM by its known physical memory range */
+            for (int i = 0; i < phys_count; i++)
+            {
+                if (phys[i].address == HYPERV_PHYS_LO && (phys[i].address + phys[i].size) == HYPERV_PHYS_HI)
+                {
+                    /* hyper-v */
+                    return VM_RESOURCE_CHECK_HYPERV;
+                }
+                if (phys[i].address == VBOX_PHYS_LO && (phys[i].address + phys[i].size) == VBOX_PHYS_HI)
+                {
+                    /* vbox */
+                    return VM_RESOURCE_CHECK_VBOX;
+                }
+            }
+            /* pretty sure it's a VM, but we don't know what type */
+            return VM_RESOURCE_CHECK_UNKNOWN_PLATFORM;
+        }
+
+
+        DWORD count;
+        printf("[*] Getting physical memory regions from registry\n");
+        
+        struct memory_region *regions[ResourceRegistryKeysLength];
+        int region_counts[ResourceRegistryKeysLength];
+        
+        for (int i = 0; i < ResourceRegistryKeysLength; i++)
+        {
+            printf("[*] Reading data from %ws\\%ws\n",
+                ResourceRegistryKeys[i].KeyPath, ResourceRegistryKeys[i].ValueName);
+            
+            count = parse_memory_map(NULL, ResourceRegistryKeys[i]);
+            if (count == 0)
+            {
+                printf("[X] Could not find memory region, exiting.\n");
+                return -1;
+            }
+            regions[i] = (struct memory_region *)malloc(sizeof(struct memory_region) * count);
+            
+            count = parse_memory_map(regions[i], ResourceRegistryKeys[i]);
+            region_counts[i] = count;
+            for (DWORD r = 0; r < count; r++)
+            {
+                printf("[*] --> Memory region found: %.16llx - %.16llx\n",
+                    regions[i][r].address, regions[i][r].address + regions[i][r].size);
+            }
+        }
+        
+        int check_result = vm_resource_check(
+            regions[VM_RESOURCE_CHECK_REGKEY_PHYSICAL],
+            region_counts[VM_RESOURCE_CHECK_REGKEY_PHYSICAL],
+            regions[VM_RESOURCE_CHECK_REGKEY_RESERVED],
+            region_counts[VM_RESOURCE_CHECK_REGKEY_RESERVED],
+            regions[VM_RESOURCE_CHECK_REGKEY_LOADER_RESERVED],
+            region_counts[VM_RESOURCE_CHECK_REGKEY_LOADER_RESERVED]
+        );
+        
+        switch (check_result)
+        {
+            case VM_RESOURCE_CHECK_ERROR:
+                printf("[X] Error occurred during VM check.\n");
+                break;
+            case VM_RESOURCE_CHECK_NO_VM:
+                printf("[-] No VM detected.\n");
+                break;
+            case VM_RESOURCE_CHECK_HYPERV:
+                printf("[+] Detected Hyper-V.\n");
+                break;
+            case VM_RESOURCE_CHECK_VBOX:
+                printf("[+] Detected VirtualBox.\n");
+                break;
+            case VM_RESOURCE_CHECK_UNKNOWN_PLATFORM:
+                printf("[+] Likely VM detected, but cannot identify platform. \n");
+                break;
+            default:
+                printf("[X] VM check returned unexpected value.\n");
+                break;
+        }
+        
+        printf("\nDone.\n");
+        return 0;
+#endif
+    } catch (...) {
+        debug("NETTITUDE_VM_MEMORY: catched error, returned false");
+        return false;
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     struct core {
         MSVC_DISABLE_WARNING(PADDING)
         struct technique {
@@ -7004,7 +7420,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // run every VM detection mechanism in the technique table
         static u16 run_all(const flagset &flags) {
             u16 points = 0;
-            const bool memo_disabled = core::enabled(flags, VM::NO_MEMO);
+            const bool memo_disabled = core::enabled(flags, NO_MEMO);
 
             // for main technique table
             for (const auto& tmp : table) {
@@ -7328,27 +7744,31 @@ public: // START OF PUBLIC FUNCTIONS
 
         const bool is_multiple = flags.test(VM::MULTIPLE);
 
-        // this is added to set the brand scoreboard table in case all techniques were not ran
+        #define brands core::brand_scoreboard
+
+// this gets annoying really fast 
+//#ifdef __VMAWARE_DEBUG__
+//        for (const auto p : brands) {
+//            debug("scoreboard: ", (int)p.second, " : ", p.first);
+//        }
+//#endif
+
         if (!memo::all_present()) {
-            u16 tmp = core::run_all(VM::DEFAULT);
+            u16 tmp = core::run_all(flags);
             UNUSED(tmp);
         }
 
-        #define brands core::brand_scoreboard
-
-#ifdef __VMAWARE_DEBUG__
-        for (const auto p : brands) {
-            debug("scoreboard: ", (int)p.second, " : ", p.first);
-        }
-#endif
-
-        if (is_multiple) {
-            if (memo::multi::is_brand_cached()) {
-                return memo::multi::fetch_brand();
-            }
-        } else {
-            if (memo::brand::is_brand_cached()) {
-                return memo::brand::fetch_brand();
+        if (core::disabled(flags, NO_MEMO)) {
+            if (is_multiple) {
+                if (memo::multi::is_brand_cached()) {
+                    debug("VM::brand(): returned multi brand from cache");
+                    return memo::multi::fetch_brand();
+                }
+            } else {
+                if (memo::brand::is_brand_cached()) {
+                    debug("VM::brand(): returned brand from cache");
+                    return memo::brand::fetch_brand();
+                }
             }
         }
 
@@ -7466,8 +7886,10 @@ public: // START OF PUBLIC FUNCTIONS
         }
 
         if (is_multiple) {
+            debug("VM::brand(): cached multiple brand string");
             memo::multi::store_brand(current_brand);
         } else {
+            debug("VM::brand(): cached brand string");
             memo::brand::store_brand(current_brand);
         }
 
@@ -7748,7 +8170,7 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::GAMARUE, { 40, VM::gamarue }},
     { VM::VMID_0X4, { 90, VM::vmid_0x4 }},
     { VM::PARALLELS_VM, { 50, VM::parallels }},
-    { VM::RDTSC_VMEXIT, { 35, VM::rdtsc_vmexit }},
+    { VM::RDTSC_VMEXIT, { 25, VM::rdtsc_vmexit }},
     { VM::QEMU_BRAND, { 100, VM::cpu_brand_qemu }},
     { VM::BOCHS_CPU, { 95, VM::bochs_cpu }},
     { VM::VPC_BOARD, { 20, VM::vpc_board }},
@@ -7788,7 +8210,8 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::UPTIME, { 10, VM::uptime }},
     { VM::ODD_CPU_THREADS, { 80, VM::odd_cpu_threads }},
     { VM::INTEL_THREAD_MISMATCH, { 85, VM::intel_thread_mismatch }},
-    { VM::XEON_THREAD_MISMATCH, { 85, VM::xeon_thread_mismatch }}
+    { VM::XEON_THREAD_MISMATCH, { 85, VM::xeon_thread_mismatch }},
+    { VM::NETTITUDE_VM_MEMORY, { 75, VM::nettitude_vm_memory }}
 
     // __TABLE_LABEL, add your technique above
     // { VM::FUNCTION, { POINTS, FUNCTION_POINTER }}

@@ -300,7 +300,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::GAMARUE` | Check for Gamarue ransomware technique which compares VM-specific Window product IDs | Windows | 40% |  |  |  |
 | `VM::VMID_0X4` | Check if the CPU manufacturer ID matches that of a VM brand with leaf 0x40000000 |  | 100% |  |  |  |
 | `VM::PARALLELS_VM` | Check for indications of Parallels VM | Windows | 50% |  |  |  |
-| `VM::RDTSC_VMEXIT` | Check for RDTSC technique with VMEXIT |  | 50% |  |  |  |
+| `VM::RDTSC_VMEXIT` | Check for RDTSC technique with VMEXIT |  | 25% |  |  |  |
 | `VM::LOADED_DLLS` | Check for DLLs of multiple VM brands | Windows | 75% |  | GPL |  |
 | `VM::QEMU_BRAND` | Check for QEMU CPU brand with cpuid |  | 100% |  |  |  |
 | `VM::BOCHS_CPU` | Check for Bochs cpuid emulation oversights |  | 95% |  |  |  |

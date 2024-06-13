@@ -38,6 +38,7 @@
 
 constexpr const char* ver = "1.5";
 constexpr const char* date = "June 2024";
+
 constexpr const char* bold = "\033[1m";
 constexpr const char* ansi_exit = "\x1B[0m";
 constexpr const char* red = "\x1B[38;2;239;75;75m";
@@ -182,7 +183,7 @@ void general(const bool discard_hyperv = false) {
         );
 
         if (!is_root) {
-            std::cout << note << " Running under root would give better results\n";
+            std::cout << note << " Running under root might give better results\n";
         }
     #endif
 
@@ -272,10 +273,11 @@ void general(const bool discard_hyperv = false) {
     checker(VM::ODD_CPU_THREADS, "unusual thread count");
     checker(VM::INTEL_THREAD_MISMATCH, "Intel thread count mismatch");
     checker(VM::XEON_THREAD_MISMATCH, "Intel Xeon thread count mismatch");
+    checker(VM::NETTITUDE_VM_MEMORY, "VM memory regions");
 
     std::printf("\n");
 
-    std::string brand = VM::brand(VM::MULTIPLE);
+    std::string brand = VM::brand(VM::NO_MEMO, VM::MULTIPLE);
 
     std::cout << "VM brand: " << (brand == "Unknown" ? red : green) << brand << ansi_exit << "\n";
 
@@ -303,7 +305,7 @@ void general(const bool discard_hyperv = false) {
         case 3: count_color = orange; break;
         case 4: count_color = green_orange; break;
         default:
-            // anything over 5 is green
+            // anything over 4 is green
             count_color = green;
     }
 
@@ -362,7 +364,7 @@ int main(int argc, char* argv[]) {
         };
 
         if (arg("-s") || arg("--stdout")) {
-            return (!VM::detect(VM::DISCARD_HYPERV_DEFAULT));
+            return (!VM::detect(VM::NO_MEMO, VM::DISCARD_HYPERV_DEFAULT));
         } else if (arg("-h") || arg("--help")) {
             help();
             return 0;
@@ -370,17 +372,17 @@ int main(int argc, char* argv[]) {
             version();
             return 0;
         } else if (arg("-b") || arg("--brand")) {
-            std::cout << VM::brand(VM::MULTIPLE) << "\n";
+            std::cout << VM::brand(VM::NO_MEMO, VM::MULTIPLE) << "\n";
             return 0;
         } else if (arg("-p") || arg("--percent")) {
-            std::cout << static_cast<std::uint32_t>(VM::percentage(VM::DISCARD_HYPERV_DEFAULT)) << "\n";
+            std::cout << static_cast<std::uint32_t>(VM::percentage(VM::NO_MEMO, VM::DISCARD_HYPERV_DEFAULT)) << "\n";
             return 0;
         } else if (arg("-d") || arg("--detect")) {
-            std::cout << VM::detect() << "\n";
+            std::cout << VM::detect(VM::NO_MEMO) << "\n";
             return 0;
         } else if (arg("-c") || arg("--conclusion")) {
             const std::uint8_t percent = VM::percentage(VM::DISCARD_HYPERV_DEFAULT);
-            const std::string brand = VM::brand();
+            const std::string brand = VM::brand(VM::NO_MEMO);
             std::cout << message(percent, brand) << "\n";
             return 0;
         } else if (arg("-l") || arg("--brand-list")) {
