@@ -31,5 +31,6 @@ int main(void) {
     const bool test5 = VM::detect(VM::DEFAULT, VM::DISABLE(VM::RDTSC));
     const bool test6 = VM::detect(VM::DEFAULT, VM::DISABLE(VM::RDTSC), VM::EXTREME);
     const bool test7 = VM::detect(VM::NO_MEMO, VM::EXTREME, VM::MULTIPLE, VM::DISCARD_HYPERV_DEFAULT);
+    const std::string test8 = VM::brand();
     return 0;
 }

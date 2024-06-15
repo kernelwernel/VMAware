@@ -34,6 +34,8 @@
 - [ ] implement a display size technique for linux with EDID 
 - [X] implement a technique that matches the CPU product name and match it with a database of core counts for that specific CPU product
 - [X] add usage example in the .hpp file directly below the banner
+- [ ] use the [[assume()]] attribute in C++23 for certain areas (not sure where exactly) 
+- [ ] maybe add [[deprecated]]?
 
 # Distant plans
 - add the library to conan.io when released

@@ -22,14 +22,14 @@
  *
  * 
  * ================================ SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 292
- * - struct for internal cpu operations        => line 484
- * - struct for internal memoization           => line 856
- * - struct for internal utility functions     => line 940
- * - struct for internal core components       => line 6907
- * - start of internal VM detection techniques => line 1718
- * - start of public VM detection functions    => line 7259
- * - start of externally defined variables     => line 7596
+ * - enums for publicly accessible techniques  => line 293
+ * - struct for internal cpu operations        => line 488
+ * - struct for internal memoization           => line 859
+ * - struct for internal utility functions     => line 949
+ * - struct for internal core components       => line 7337
+ * - start of internal VM detection techniques => line 1727
+ * - start of public VM detection functions    => line 7693
+ * - start of externally defined variables     => line 8038
  * 
  * 
  * ================================ EXAMPLE ==================================
@@ -290,11 +290,10 @@ private:
     using i32 = std::int32_t;
     using i64 = std::int64_t;
 
-    static constexpr auto enum_line_start = __LINE__; // hacky way to fetch enum size
 public:
     enum enum_flags : u8 {
         VMID = 0,
-        BRAND,
+        CPU_BRAND,
         HYPERVISOR_BIT,
         CPUID_0X4,
         HYPERVISOR_STR,
@@ -384,7 +383,8 @@ public:
         // start of non-technique flags
         EXTREME,
         NO_MEMO,
-        DISCARD_HYPERV_DEFAULT,
+        ENABLE_HYPERV_HOST,
+        WIN_HYPERV_DEFAULT [[deprecated("Use VM::ENABLE_HYPERV_HOST instead")]],
         MULTIPLE
     };
 
@@ -392,6 +392,7 @@ private:
     static constexpr u8 enum_size = VM::MULTIPLE; // get enum size through value of last element
     static constexpr u8 technique_count = VM::EXTREME; // get total number of techniques
     static constexpr u8 non_technique_count = enum_size - technique_count + 1; // get number of non-technique flags like VM::NO_MEMO for example
+    static constexpr u8 WIN_HYPERV_DEFAULT_MACRO = ENABLE_HYPERV_HOST + 1; // can't use orignal enum value because that would give compiler warnings of deprecated usage
     static constexpr u8 INVALID = 255;
 
     // intended for loop indexes
@@ -6913,12 +6914,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
 
 
-
-
-
-
-
-
+    /**
+     * @brief CHeck for 
+     * @category Windows
+     * @link https://labs.nettitude.com/blog/vm-detection-tricks-part-1-physical-memory-resource-maps/
+     */ 
     [[nodiscard]] static bool nettitude_vm_memory() try{
 #if (!MSVC)
     return false;
@@ -7134,7 +7134,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
             }
             return count;
-        }
+        };
 
         #define VM_RESOURCE_CHECK_ERROR -1
         #define VM_RESOURCE_CHECK_NO_VM 0
@@ -7366,7 +7366,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (LINUX && __has_cpp_attribute(gnu::pure))
         [[gnu::pure]]
 #endif
-        [[nodiscard]] static inline bool disabled(const flagset &flags, const u8 flag_bit) noexcept {
+        [[nodiscard]] static inline bool is_disabled(const flagset &flags, const u8 flag_bit) noexcept {
             return (!flags.test(flag_bit));
         }
 
@@ -7374,7 +7374,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (LINUX && __has_cpp_attribute(gnu::pure))
         [[gnu::pure]]
 #endif
-        [[nodiscard]] static inline bool enabled(const flagset &flags, const u8 flag_bit) noexcept {
+        [[nodiscard]] static inline bool is_enabled(const flagset &flags, const u8 flag_bit) noexcept {
             return (flags.test(flag_bit));
         }
 
@@ -7422,7 +7422,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             if (
                 flags.test(EXTREME) ||
                 flags.test(NO_MEMO) ||
-                flags.test(DISCARD_HYPERV_DEFAULT) ||
+                flags.test(ENABLE_HYPERV_HOST) ||
+                flags.test(WIN_HYPERV_DEFAULT_MACRO) || // deprecated
                 flags.test(MULTIPLE)
             ) {
                 flags |= VM::DEFAULT;
@@ -7432,20 +7433,20 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // run every VM detection mechanism in the technique table
         static u16 run_all(const flagset &flags) {
             u16 points = 0;
-            const bool memo_disabled = core::enabled(flags, NO_MEMO);
+            const bool memo_enabled = core::is_disabled(flags, NO_MEMO);
 
             // for main technique table
             for (const auto& tmp : table) {
-                const u8 macro = tmp.first;
+                const u8 technique_macro = tmp.first;
 
                 // check if it's disabled
-                if (!flags.test(macro)) {
+                if (core::is_disabled(flags, technique_macro)) {
                     continue;
                 }
 
                 // check if the technique is cached already
-                if (!memo_disabled && memo::is_cached(macro)) {
-                    const memo::data_t data = memo::cache_fetch(macro);
+                if (memo_enabled && memo::is_cached(technique_macro)) {
+                    const memo::data_t data = memo::cache_fetch(technique_macro);
 
                     if (data.result) {
                         points += data.points;
@@ -7462,8 +7463,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     points += pair.points;
                 }
     
-                if (!memo_disabled) {
-                    memo::cache_store(macro, result, pair.points);
+                if (memo_enabled) {
+                    memo::cache_store(technique_macro, result, pair.points);
                 }
             }
 
@@ -7486,7 +7487,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!MSVC)
             return false;
 #else
-            if (core::enabled(flags, VM::DISCARD_HYPERV_DEFAULT)) {
+            if (
+                core::is_enabled(flags, VM::ENABLE_HYPERV_HOST) ||
+                core::is_enabled(flags, VM::WIN_HYPERV_DEFAULT_MACRO) // deprecated
+            ) {
                 debug("HYPERV_CHECK: returned false through flag check");
                 return false;
             }
@@ -7714,7 +7718,8 @@ public: // START OF PUBLIC FUNCTIONS
         if (
             (flag_bit == NO_MEMO) || \
             (flag_bit == EXTREME) || \
-            (flag_bit == DISCARD_HYPERV_DEFAULT) || \
+            (flag_bit == ENABLE_HYPERV_HOST) || \
+            (flag_bit == WIN_HYPERV_DEFAULT_MACRO) ||  // deprecated
             (flag_bit == MULTIPLE)
         ) {
             throw_error("Flag argument must be a technique flag and not a settings flag");
@@ -7770,7 +7775,7 @@ public: // START OF PUBLIC FUNCTIONS
             UNUSED(tmp);
         }
 
-        if (core::disabled(flags, NO_MEMO)) {
+        if (core::is_disabled(flags, NO_MEMO)) {
             if (is_multiple) {
                 if (memo::multi::is_brand_cached()) {
                     debug("VM::brand(): returned multi brand from cache");
@@ -7787,7 +7792,7 @@ public: // START OF PUBLIC FUNCTIONS
         std::string current_brand = "";
         i32 max = 0;
 
-        // both do the same thing
+        // both do the same thing, just with a difference in clarity and code readability
 #if (CPP >= 17)
         for (const auto& [brand, points] : brands) {
             if (points > max) {
@@ -7924,7 +7929,7 @@ public: // START OF PUBLIC FUNCTIONS
 
         const u16 points = core::run_all(flags);
 
-        if (core::enabled(flags, EXTREME)) {
+        if (core::is_enabled(flags, EXTREME)) {
             result = (points > 0);
         } else {
             result = (points >= 100);
@@ -8019,7 +8024,8 @@ public: // START OF PUBLIC FUNCTIONS
         flags.flip();
         flags.set(NO_MEMO, 0);
         flags.set(EXTREME, 0);
-        flags.set(DISCARD_HYPERV_DEFAULT, 0);
+        flags.set(ENABLE_HYPERV_HOST, 0);
+        flags.set(WIN_HYPERV_DEFAULT_MACRO, 0); // deprecated
         flags.set(MULTIPLE, 0);
 
         return flags;
@@ -8095,7 +8101,8 @@ VM::flagset VM::DEFAULT = []() -> flagset {
     tmp.flip(EXTREME);
     tmp.flip(NO_MEMO);
     tmp.flip(CURSOR);
-    tmp.flip(DISCARD_HYPERV_DEFAULT);
+    tmp.flip(ENABLE_HYPERV_HOST);
+    tmp.flip(WIN_HYPERV_DEFAULT_MACRO); // deprecated
     tmp.flip(MULTIPLE);
 
     return tmp;
@@ -8138,7 +8145,7 @@ std::vector<VM::core::technique> VM::core::custom_table = {
 // the 0~100 points are debatable, but I think it's fine how it is. Feel free to disagree.
 const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::VMID, { 100, VM::vmid }},
-    { VM::BRAND, { 50, VM::cpu_brand }},
+    { VM::CPU_BRAND, { 50, VM::cpu_brand }},
     { VM::HYPERVISOR_BIT, { 100, VM::hypervisor_bit }},
     { VM::CPUID_0X4, { 70, VM::cpuid_0x4 }},
     { VM::HYPERVISOR_STR, { 45, VM::hypervisor_brand }},
