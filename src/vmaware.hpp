@@ -22,14 +22,14 @@
  *
  * 
  * ================================ SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 292
- * - struct for internal cpu operations        => line 484
- * - struct for internal memoization           => line 856
- * - struct for internal utility functions     => line 940
- * - struct for internal core components       => line 6907
- * - start of internal VM detection techniques => line 1718
- * - start of public VM detection functions    => line 7259
- * - start of externally defined variables     => line 7596
+ * - enums for publicly accessible techniques  => line 293
+ * - struct for internal cpu operations        => line 488
+ * - struct for internal memoization           => line 859
+ * - struct for internal utility functions     => line 949
+ * - struct for internal core components       => line 7337
+ * - start of internal VM detection techniques => line 1727
+ * - start of public VM detection functions    => line 7693
+ * - start of externally defined variables     => line 8038
  * 
  * 
  * ================================ EXAMPLE ==================================
@@ -208,6 +208,7 @@
 #pragma comment(lib, "Shlwapi.lib")
 #pragma comment(lib, "MPR")
 #pragma comment(lib, "advapi32.lib")
+#pragma comment(lib, "kernel32.lib")
 #pragma comment(lib, "shell32.lib")
 #pragma comment(lib, "strmiids.lib")
 #pragma comment(lib, "uuid.lib")
@@ -274,8 +275,10 @@ MSVC_DISABLE_WARNING(ASSIGNMENT_OPERATOR NO_INLINE_FUNC SPECTRE)
 
 #ifdef __VMAWARE_DEBUG__
 #define debug(...) VM::util::debug_msg(__VA_ARGS__)
+#define core_debug(...) VM::util::core_debug_msg(__VA_ARGS__)
 #else
 #define debug(...)
+#define core_debug(...)
 #endif
 
 struct VM {
@@ -289,11 +292,10 @@ private:
     using i32 = std::int32_t;
     using i64 = std::int64_t;
 
-    static constexpr auto enum_line_start = __LINE__; // hacky way to fetch enum size
 public:
     enum enum_flags : u8 {
         VMID = 0,
-        BRAND,
+        CPU_BRAND,
         HYPERVISOR_BIT,
         CPUID_0X4,
         HYPERVISOR_STR,
@@ -378,28 +380,35 @@ public:
         ODD_CPU_THREADS,
         INTEL_THREAD_MISMATCH,
         XEON_THREAD_MISMATCH,
+        NETTITUDE_VM_MEMORY,
 
         // start of non-technique flags
         EXTREME,
         NO_MEMO,
-        DISCARD_HYPERV_DEFAULT,
+        ENABLE_HYPERV_HOST,
+        WIN_HYPERV_DEFAULT [[deprecated("Use VM::ENABLE_HYPERV_HOST instead")]],
         MULTIPLE
     };
 
 private:
-    static constexpr u8 enum_size = VM::MULTIPLE; // get enum size through value of last element
-    static constexpr u8 technique_count = enum_size - 4; // get total number of techniques
-    static constexpr u8 non_technique_count = enum_size - technique_count; // get number of non-technique flags like VM::NO_MEMO for example
+    static constexpr u8 enum_size = MULTIPLE; // get enum size through value of last element
+    static constexpr u8 non_technique_count = MULTIPLE - EXTREME + 1; // get number of non-technique flags like VM::NO_MEMO for example
+    static constexpr u8 WIN_HYPERV_DEFAULT_MACRO = ENABLE_HYPERV_HOST + 1; // can't use orignal enum value because that would give compiler warnings of deprecated usage
     static constexpr u8 INVALID = 255;
 
     // intended for loop indexes
     static constexpr u8 enum_begin = 0;
     static constexpr u8 enum_end = enum_size + 1;
     static constexpr u8 technique_begin = enum_begin;
-    static constexpr u8 technique_end = VM::EXTREME - 1;
-    static constexpr u8 non_technique_begin = VM::EXTREME;
+    static constexpr u8 technique_end = EXTREME;
+    static constexpr u8 non_technique_begin = EXTREME;
     static constexpr u8 non_technique_end = enum_end;
 
+public:
+    static constexpr u8 technique_count = EXTREME; // get total number of techniques
+    static std::vector<enum_flags> technique_vector;
+
+private:
 
 #if (MSVC)
     using brand_score_t = i32;
@@ -606,8 +615,8 @@ private:
 
         // get the CPU product
         [[nodiscard]] static std::string get_brand() {
-            if (memo::cpu::is_brand_cached()) {
-                return memo::cpu::fetch_brand();
+            if (memo::cpu_brand::is_cached()) {
+                return memo::cpu_brand::fetch();
             }
 
             if (!core::cpuid_supported) {
@@ -644,7 +653,7 @@ private:
 
             debug("BRAND: ", "cpu brand = ", brand);
 
-            memo::cpu::store_brand(brand);
+            memo::cpu_brand::store(brand);
 
             return brand;
 #endif
@@ -814,7 +823,6 @@ private:
                 if (tmp_brand == unisys)      { return core::add(UNISYS); }
                 if (tmp_brand == lmhs)        { return core::add(LMHS); }
 
-
                 // both Hyper-V and VirtualPC have the same string value
                 if (tmp_brand == hyperv)     { 
                     bool tmp = core::add(VPC);
@@ -884,55 +892,61 @@ private:
             return cache_table.at(technique_macro);
         }
 
-        // basically checks whether all the techniques were cached
+        // basically checks whether all the techniques were cached (with exception of VM::CURSOR)
         static bool all_present() {
-            return (cache_table.size() == technique_count);
+            if (cache_table.size() == technique_count) {
+                return true;
+            } else if (cache_table.size() == technique_count - 1) {
+                return (!cache_keys.test(CURSOR));
+            }
+
+            return false;
         }
 
         struct brand {
             static std::string brand_cache;
 
-            static std::string fetch_brand() {
+            static std::string fetch() {
                 return brand_cache;
             }
 
-            static void store_brand(const std::string &p_brand) {
+            static void store(const std::string &p_brand) {
                 brand_cache = p_brand;
             }
 
-            static bool is_brand_cached() {
+            static bool is_cached() {
                 return (!brand_cache.empty());
             }
         };
 
-        struct multi {
+        struct multi_brand {
             static std::string brand_cache;
 
-            static std::string fetch_brand() {
+            static std::string fetch() {
                 return brand_cache;
             }
 
-            static void store_brand(const std::string &p_brand) {
+            static void store(const std::string &p_brand) {
                 brand_cache = p_brand;
             }
 
-            static bool is_brand_cached() {
+            static bool is_cached() {
                 return (!brand_cache.empty());
             }
         };
     
-        struct cpu {
+        struct cpu_brand {
             static std::string brand_cache;
 
-            static std::string fetch_brand() {
+            static std::string fetch() {
                 return brand_cache;
             }
 
-            static void store_brand(const std::string &p_brand) {
+            static void store(const std::string &p_brand) {
                 brand_cache = p_brand;
             }
 
-            static bool is_brand_cached() {
+            static bool is_cached() {
                 return (!brand_cache.empty());
             }
         };
@@ -1079,6 +1093,31 @@ private:
 
             std::cout << "\n";
         }
+
+        template <typename... Args>
+        static inline void core_debug_msg(Args... message) noexcept {
+#if (LINUX || APPLE)
+            constexpr const char* black_bg = "\x1B[48;2;0;0;0m";
+            constexpr const char* bold = "\033[1m";
+            constexpr const char* blue = "\x1B[38;2;255;180;5m";
+            constexpr const char* ansiexit = "\x1B[0m";
+
+            std::cout.setf(std::ios::fixed, std::ios::floatfield);
+            std::cout.setf(std::ios::showpoint);
+
+            std::cout << black_bg << bold << "[" << blue << "CORE DEBUG" << ansiexit << bold << black_bg << "]" << ansiexit << " ";
+#else       
+            std::cout << "[CORE DEBUG] ";
+#endif
+
+#if (CPP >= 17)
+            ((std::cout << message), ...);
+#else
+            print_to_stream(std::cout, message...);
+#endif
+
+            std::cout << "\n";
+        }
 #endif
 
         // basically std::system but it runs in the background with std::string output
@@ -1177,7 +1216,7 @@ private:
         // get disk size in GB
         [[nodiscard]] static u32 get_disk_size() {
             u32 size = 0;
-            constexpr u64 GB = (static_cast<VM::u64>(1024 * 1024) * 1024);
+            constexpr u64 GB = (static_cast<u64>(1024 * 1024) * 1024);
 
 #if (LINUX)
             struct statvfs stat;
@@ -6906,6 +6945,426 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
 
 
+    /**
+     * @brief CHeck for 
+     * @category Windows
+     * @link https://labs.nettitude.com/blog/vm-detection-tricks-part-1-physical-memory-resource-maps/
+     */ 
+    [[nodiscard]] static bool nettitude_vm_memory() try{
+#if (!MSVC)
+    return false;
+#else
+        typedef LARGE_INTEGER PHYSICAL_ADDRESS, *PPHYSICAL_ADDRESS;
+
+        #pragma pack(push,4)
+        typedef struct _CM_PARTIAL_RESOURCE_DESCRIPTOR {
+            UCHAR Type;
+            UCHAR ShareDisposition;
+            USHORT Flags;
+            union {
+                struct {
+                    PHYSICAL_ADDRESS Start;
+                    ULONG Length;
+                } Generic;
+                struct {
+                    PHYSICAL_ADDRESS Start;
+                    ULONG Length;
+                } Port;
+                struct {
+        #if defined(NT_PROCESSOR_GROUPS)
+                    USHORT Level;
+                    USHORT Group;
+        #else
+                    ULONG Level;
+        #endif
+                    ULONG Vector;
+                    KAFFINITY Affinity;
+                } Interrupt;
+                struct {
+                    union {
+                        struct {
+        #if defined(NT_PROCESSOR_GROUPS)
+                            USHORT Group;
+        #else
+                            USHORT Reserved;
+        #endif
+                            USHORT MessageCount;
+                            ULONG Vector;
+                            KAFFINITY Affinity;
+                        } Raw;
+                        struct {
+        #if defined(NT_PROCESSOR_GROUPS)
+                            USHORT Level;
+                            USHORT Group;
+        #else
+                            ULONG Level;
+        #endif
+                            ULONG Vector;
+                            KAFFINITY Affinity;
+                        } Translated;
+                    } DUMMYUNIONNAME;
+                } MessageInterrupt;
+                struct {
+                    PHYSICAL_ADDRESS Start;
+                    ULONG Length;
+                } Memory;
+                struct {
+                    ULONG Channel;
+                    ULONG Port;
+                    ULONG Reserved1;
+                } Dma;
+                struct {
+                    ULONG Channel;
+                    ULONG RequestLine;
+                    UCHAR TransferWidth;
+                    UCHAR Reserved1;
+                    UCHAR Reserved2;
+                    UCHAR Reserved3;
+                } DmaV3;
+                struct {
+                    ULONG Data[3];
+                } DevicePrivate;
+                struct {
+                    ULONG Start;
+                    ULONG Length;
+                    ULONG Reserved;
+                } BusNumber;
+                struct {
+                    ULONG DataSize;
+                    ULONG Reserved1;
+                    ULONG Reserved2;
+                } DeviceSpecificData;
+                struct {
+                    PHYSICAL_ADDRESS Start;
+                    ULONG Length40;
+                } Memory40;
+                struct {
+                    PHYSICAL_ADDRESS Start;
+                    ULONG Length48;
+                } Memory48;
+                struct {
+                    PHYSICAL_ADDRESS Start;
+                    ULONG Length64;
+                } Memory64;
+                struct {
+                    UCHAR Class;
+                    UCHAR Type;
+                    UCHAR Reserved1;
+                    UCHAR Reserved2;
+                    ULONG IdLowPart;
+                    ULONG IdHighPart;
+                } Connection;
+            } u;
+        } CM_PARTIAL_RESOURCE_DESCRIPTOR, *PCM_PARTIAL_RESOURCE_DESCRIPTOR;
+        #pragma pack(pop,4)
+        typedef enum _INTERFACE_TYPE {
+            InterfaceTypeUndefined,
+            Internal,
+            Isa,
+            Eisa,
+            MicroChannel,
+            TurboChannel,
+            PCIBus,
+            VMEBus,
+            NuBus,
+            PCMCIABus,
+            CBus,
+            MPIBus,
+            MPSABus,
+            ProcessorInternal,
+            InternalPowerBus,
+            PNPISABus,
+            PNPBus,
+            Vmcs,
+            ACPIBus,
+            MaximumInterfaceType
+        } INTERFACE_TYPE, *PINTERFACE_TYPE;
+        typedef struct _CM_PARTIAL_RESOURCE_LIST {
+            USHORT                         Version;
+            USHORT                         Revision;
+            ULONG                          Count;
+            CM_PARTIAL_RESOURCE_DESCRIPTOR PartialDescriptors[1];
+        } CM_PARTIAL_RESOURCE_LIST, *PCM_PARTIAL_RESOURCE_LIST;
+        typedef struct _CM_FULL_RESOURCE_DESCRIPTOR {
+            INTERFACE_TYPE           InterfaceType;
+            ULONG                    BusNumber;
+            CM_PARTIAL_RESOURCE_LIST PartialResourceList;
+        } *PCM_FULL_RESOURCE_DESCRIPTOR, CM_FULL_RESOURCE_DESCRIPTOR;
+        typedef struct _CM_RESOURCE_LIST {
+            ULONG                       Count;
+            CM_FULL_RESOURCE_DESCRIPTOR List[1];
+        } *PCM_RESOURCE_LIST, CM_RESOURCE_LIST;
+        struct memory_region {
+            ULONG64 size;
+            ULONG64 address;
+        };
+        struct map_key {
+            LPTSTR KeyPath;
+            LPTSTR ValueName;
+        };
+
+        /* registry keys for resource maps */
+        #define VM_RESOURCE_CHECK_REGKEY_PHYSICAL 0
+        #define VM_RESOURCE_CHECK_REGKEY_RESERVED 1
+        #define VM_RESOURCE_CHECK_REGKEY_LOADER_RESERVED 2
+        #define ResourceRegistryKeysLength 3
+
+        const struct map_key ResourceRegistryKeys[ResourceRegistryKeysLength] = {
+            {
+                const_cast<LPTSTR>("Hardware\\ResourceMap\\System Resources\\Physical Memory"),
+                const_cast<LPTSTR>(".Translated")
+            },
+            {
+                const_cast<LPTSTR>("Hardware\\ResourceMap\\System Resources\\Reserved"),
+                const_cast<LPTSTR>(".Translated")
+            },
+            {
+                const_cast<LPTSTR>("Hardware\\ResourceMap\\System Resources\\Loader Reserved"),
+                const_cast<LPTSTR>(".Raw")
+            }
+        };
+
+        /* parse a REG_RESOURCE_LIST value for memory descriptors */
+        auto parse_memory_map = [](
+            struct memory_region *regions, 
+            struct map_key key
+        ) -> DWORD {
+            HKEY hKey = NULL;
+            LPTSTR pszSubKey = key.KeyPath;
+            LPTSTR pszValueName = key.ValueName;
+            LPBYTE lpData = NULL;
+            DWORD dwLength = 0, count = 0, type = 0;;
+            DWORD result;
+            if ((result = RegOpenKeyW(HKEY_LOCAL_MACHINE, reinterpret_cast<LPCWSTR>(pszSubKey), &hKey)) != ERROR_SUCCESS) {
+                debug("NETTITUDE_VM_MEMORY: Could not get reg key: ", result, " / ", GetLastError());
+                return 0;
+            }
+
+            if ((result = RegQueryValueExW(hKey, reinterpret_cast<LPCWSTR>(pszValueName), 0, &type, NULL, &dwLength)) != ERROR_SUCCESS) {
+                debug("NETTITUDE_VM_MEMORY: Could not query hardware key: ", result, " / ", GetLastError());
+                return 0;
+            }
+
+            lpData = (LPBYTE)malloc(dwLength);
+            RegQueryValueEx(hKey, pszValueName, 0, &type, lpData, &dwLength);
+            CM_RESOURCE_LIST *resource_list = (CM_RESOURCE_LIST *)lpData;
+            for (DWORD i = 0; i < resource_list->Count; i++)
+            {
+                for (DWORD j = 0; j < resource_list->List[0].PartialResourceList.Count; j++)
+                {
+                    if (resource_list->List[i].PartialResourceList.PartialDescriptors[j].Type == 3)
+                    {
+                        if (regions != NULL)
+                        {
+                            regions->address = resource_list->List[i].PartialResourceList.PartialDescriptors[j].u.Memory.Start.QuadPart;
+                            regions->size = resource_list->List[i].PartialResourceList.PartialDescriptors[j].u.Memory.Length;
+                            regions++;
+                        }
+                        count++;
+                    }
+                }
+            }
+            return count;
+        };
+
+        #define VM_RESOURCE_CHECK_ERROR -1
+        #define VM_RESOURCE_CHECK_NO_VM 0
+        #define VM_RESOURCE_CHECK_HYPERV 1
+        #define VM_RESOURCE_CHECK_VBOX 2
+        #define VM_RESOURCE_CHECK_UNKNOWN_PLATFORM 99
+
+        auto vm_resource_check = [](
+            struct memory_region *phys, int phys_count,
+            struct memory_region *reserved, int reserved_count,
+            struct memory_region *loader_reserved, int loader_reserved_count
+        ) -> int {
+            const ULONG64 VBOX_PHYS_LO   = 0x0000000000001000ULL;
+            const ULONG64 VBOX_PHYS_HI   = 0x000000000009f000ULL;
+            const ULONG64 HYPERV_PHYS_LO = 0x0000000000001000ULL;
+            const ULONG64 HYPERV_PHYS_HI = 0x00000000000a0000ULL;
+            
+            const ULONG64 RESERVED_ADDR_LOW = 0x0000000000001000ULL;
+            const ULONG64 LOADER_RESERVED_ADDR_LOW = 0x0000000000000000ULL;
+            if (phys_count <= 0 || reserved_count <= 0 || loader_reserved_count <= 0)
+            {
+                return VM_RESOURCE_CHECK_ERROR;
+            }
+            if (phys == NULL || reserved == NULL || loader_reserved == NULL)
+            {
+                return VM_RESOURCE_CHECK_ERROR;
+            }
+            
+            /* find the reserved address range starting
+            RESERVED_ADDR_LOW, and record its end address */
+            ULONG64 lowestReservedAddrRangeEnd = 0;
+            for (int i = 0; i < reserved_count; i++)
+            {
+                if (reserved[i].address == RESERVED_ADDR_LOW)
+                {
+                    lowestReservedAddrRangeEnd = reserved[i].address + reserved[i].size;
+                    break;
+                }
+            }
+            if (lowestReservedAddrRangeEnd == 0)
+            {
+                /* every system tested had a range starting at RESERVED_ADDR_LOW */
+                /* this is an outlier. error. */
+                return VM_RESOURCE_CHECK_ERROR;
+            }
+            
+            /* find the loader reserved address range starting
+            LOADER_RESERVED_ADDR_LOW, and record its end address */
+            ULONG64 lowestLoaderReservedAddrRangeEnd = 0;
+            for (int i = 0; i < loader_reserved_count; i++)
+            {
+                if (loader_reserved[i].address == LOADER_RESERVED_ADDR_LOW)
+                {
+                    lowestLoaderReservedAddrRangeEnd = loader_reserved[i].address + loader_reserved[i].size;
+                    break;
+                }
+            }
+            if (lowestLoaderReservedAddrRangeEnd == 0)
+            {
+                /* every system tested had a range starting at LOADER_RESERVED_ADDR_LOW */
+                /* this is an outlier. error. */
+                return VM_RESOURCE_CHECK_ERROR;
+            }
+            
+            /* check if the end addresses are equal. if not, we haven't detected a VM */
+            if (lowestReservedAddrRangeEnd != lowestLoaderReservedAddrRangeEnd)
+            {
+                return VM_RESOURCE_CHECK_NO_VM;
+            }
+            
+            /* now find the type of VM by its known physical memory range */
+            for (int i = 0; i < phys_count; i++)
+            {
+                if (phys[i].address == HYPERV_PHYS_LO && (phys[i].address + phys[i].size) == HYPERV_PHYS_HI)
+                {
+                    /* hyper-v */
+                    return VM_RESOURCE_CHECK_HYPERV;
+                }
+                if (phys[i].address == VBOX_PHYS_LO && (phys[i].address + phys[i].size) == VBOX_PHYS_HI)
+                {
+                    /* vbox */
+                    return VM_RESOURCE_CHECK_VBOX;
+                }
+            }
+            /* pretty sure it's a VM, but we don't know what type */
+            return VM_RESOURCE_CHECK_UNKNOWN_PLATFORM;
+        };
+
+        DWORD count;
+        
+        struct memory_region *regions[ResourceRegistryKeysLength];
+        int region_counts[ResourceRegistryKeysLength];
+        
+        for (int i = 0; i < ResourceRegistryKeysLength; i++)
+        {
+            debug(
+                "NETTITUDE_VM_MEMORY: Reading data from ", 
+                ResourceRegistryKeys[i].KeyPath, 
+                "\\", 
+                ResourceRegistryKeys[i].ValueName
+            );
+            
+            count = parse_memory_map(NULL, ResourceRegistryKeys[i]);
+            if (count == 0)
+            {
+                debug("NETTITUDE_VM_MEMORY: Could not find memory region, returning 0.");
+                return 0;
+            }
+            regions[i] = (struct memory_region *)malloc(sizeof(struct memory_region) * count);
+            
+            count = parse_memory_map(regions[i], ResourceRegistryKeys[i]);
+            region_counts[i] = count;
+            for (DWORD r = 0; r < count; r++)
+            {
+                debug(
+                    "NETTITUDE_VM_MEMORY: --> Memory region found: ", 
+                    regions[i][r].address,
+                    " - ",
+                    regions[i][r].address + regions[i][r].size
+                );
+            }
+        }
+        
+        int check_result = vm_resource_check(
+            regions[VM_RESOURCE_CHECK_REGKEY_PHYSICAL],
+            region_counts[VM_RESOURCE_CHECK_REGKEY_PHYSICAL],
+            regions[VM_RESOURCE_CHECK_REGKEY_RESERVED],
+            region_counts[VM_RESOURCE_CHECK_REGKEY_RESERVED],
+            regions[VM_RESOURCE_CHECK_REGKEY_LOADER_RESERVED],
+            region_counts[VM_RESOURCE_CHECK_REGKEY_LOADER_RESERVED]
+        );
+        
+        switch (check_result)
+        {
+            // error
+            case VM_RESOURCE_CHECK_ERROR:
+                return false;
+                break;
+
+            // no VM
+            case VM_RESOURCE_CHECK_NO_VM:
+                return false;
+                break;
+
+            // Hyper-V
+            case VM_RESOURCE_CHECK_HYPERV:
+                return core::add(HYPERV);
+                break;
+
+            // VirtualBox
+            case VM_RESOURCE_CHECK_VBOX:
+                return core::add(VBOX);
+                break;
+
+            // Unknown brand, but likely VM
+            case VM_RESOURCE_CHECK_UNKNOWN_PLATFORM:
+                return true;
+                break;
+            default:
+                return false;
+                break;
+        }
+#endif
+    } catch (...) {
+        debug("NETTITUDE_VM_MEMORY: catched error, returned false");
+        return false;
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     struct core {
         MSVC_DISABLE_WARNING(PADDING)
         struct technique {
@@ -6938,7 +7397,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (LINUX && __has_cpp_attribute(gnu::pure))
         [[gnu::pure]]
 #endif
-        [[nodiscard]] static inline bool disabled(const flagset &flags, const u8 flag_bit) noexcept {
+        [[nodiscard]] static inline bool is_disabled(const flagset &flags, const u8 flag_bit) noexcept {
             return (!flags.test(flag_bit));
         }
 
@@ -6946,7 +7405,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (LINUX && __has_cpp_attribute(gnu::pure))
         [[gnu::pure]]
 #endif
-        [[nodiscard]] static inline bool enabled(const flagset &flags, const u8 flag_bit) noexcept {
+        [[nodiscard]] static inline bool is_enabled(const flagset &flags, const u8 flag_bit) noexcept {
             return (flags.test(flag_bit));
         }
 
@@ -6973,11 +7432,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // manage the flag to handle edgecases
         static void flag_sanitizer(flagset &flags) {
             if (flags.count() == 0) {
-                flags |= VM::DEFAULT;
+                flags |= DEFAULT;
                 return;
             }
 
-            if (flags == VM::DEFAULT) {
+            if (flags == DEFAULT) {
                 return;
             }
 
@@ -6994,30 +7453,31 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             if (
                 flags.test(EXTREME) ||
                 flags.test(NO_MEMO) ||
-                flags.test(DISCARD_HYPERV_DEFAULT) ||
+                flags.test(ENABLE_HYPERV_HOST) ||
+                flags.test(WIN_HYPERV_DEFAULT_MACRO) || // deprecated
                 flags.test(MULTIPLE)
             ) {
-                flags |= VM::DEFAULT;
+                flags |= DEFAULT;
             }
         }
 
         // run every VM detection mechanism in the technique table
         static u16 run_all(const flagset &flags) {
             u16 points = 0;
-            const bool memo_disabled = core::enabled(flags, VM::NO_MEMO);
+            const bool memo_enabled = core::is_disabled(flags, NO_MEMO);
 
             // for main technique table
             for (const auto& tmp : table) {
-                const u8 macro = tmp.first;
+                const u8 technique_macro = tmp.first;
 
                 // check if it's disabled
-                if (!flags.test(macro)) {
+                if (core::is_disabled(flags, technique_macro)) {
                     continue;
                 }
 
                 // check if the technique is cached already
-                if (!memo_disabled && memo::is_cached(macro)) {
-                    const memo::data_t data = memo::cache_fetch(macro);
+                if (memo_enabled && memo::is_cached(technique_macro)) {
+                    const memo::data_t data = memo::cache_fetch(technique_macro);
 
                     if (data.result) {
                         points += data.points;
@@ -7034,8 +7494,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     points += pair.points;
                 }
     
-                if (!memo_disabled) {
-                    memo::cache_store(macro, result, pair.points);
+                if (memo_enabled) {
+                    memo::cache_store(technique_macro, result, pair.points);
                 }
             }
 
@@ -7055,14 +7515,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         // check if Hyper-V is running 
         static bool hyperv_default_check(const flagset &flags) {
-#if (!MSVC)
-            return false;
-#else
-            if (core::enabled(flags, VM::DISCARD_HYPERV_DEFAULT)) {
-                debug("HYPERV_CHECK: returned false through flag check");
+            if (
+                core::is_enabled(flags, ENABLE_HYPERV_HOST) ||
+                core::is_enabled(flags, WIN_HYPERV_DEFAULT_MACRO) // deprecated
+            ) {
+                core_debug("HYPERV_CHECK: returned false through flag check");
                 return false;
             }
 
+#if (MSVC)
             const u8 version = util::get_windows_version();
             
             if (version == 0) {
@@ -7070,28 +7531,27 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             if (version < 10) {
-                debug("HYPERV_CHECK: returned false through insufficient windows version (version ", static_cast<u32>(version), ")");
+                core_debug("HYPERV_CHECK: returned false through insufficient windows version (version ", static_cast<u32>(version), ")");
                 return false;
             }
-
+#endif
             std::string tmp_brand;
 
-            if (memo::brand::is_brand_cached()) {
-                tmp_brand = memo::brand::fetch_brand();
+            if (memo::brand::is_cached()) {
+                tmp_brand = memo::brand::fetch();
             } else {
                 tmp_brand = brand();
             }
 
             const bool result = (
-                tmp_brand == VM::HYPERV ||
-                tmp_brand == VM::VPC ||
+                tmp_brand == HYPERV ||
+                tmp_brand == VPC ||
                 tmp_brand == "Microsoft Virtual PC/Hyper-V"
             );
 
-            debug("HYPERV_CHECK: is Hyper-V brand check = ", result);
+            core_debug("HYPERV_CHECK: is Hyper-V brand check = ", result);
 
             return result;
-#endif
         }
 
         /**
@@ -7226,7 +7686,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         template <typename... Args>
         static flagset arg_handler(Args&&... args) {
             if VMAWARE_CONSTEXPR (is_empty<Args...>()) {
-                return VM::DEFAULT;
+                return DEFAULT;
             }
 
             flag_collector.reset();
@@ -7286,11 +7746,16 @@ public: // START OF PUBLIC FUNCTIONS
         if (
             (flag_bit == NO_MEMO) || \
             (flag_bit == EXTREME) || \
-            (flag_bit == DISCARD_HYPERV_DEFAULT) || \
+            (flag_bit == ENABLE_HYPERV_HOST) || \
+            (flag_bit == WIN_HYPERV_DEFAULT_MACRO) ||  // deprecated
             (flag_bit == MULTIPLE)
         ) {
             throw_error("Flag argument must be a technique flag and not a settings flag");
         }
+
+#if (CPP >= 23)
+        [[assume(flag_bit < technique_end)]];
+#endif
 
         if (memo::is_cached(flag_bit)) {
             const memo::data_t data = memo::cache_fetch(flag_bit);
@@ -7317,60 +7782,59 @@ public: // START OF PUBLIC FUNCTIONS
 
     /**
      * @brief Fetch the VM brand
-     * @param either nothing or VM::MULTIPLE
+     * @param any flag combination in VM structure or nothing (VM::MULTIPLE can be added)
      * @return std::string
-     * @returns VMware, VirtualBox, KVM, bhyve, QEMU, Microsoft Hyper-V, Microsoft x86-to-ARM, Parallels, Xen HVM, ACRN, QNX hypervisor, Hybrid Analysis, Sandboxie, Docker, Wine, Virtual Apple, Virtual PC, Unknown
      * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmbrand
      */
     template <typename ...Args>
     [[nodiscard]] static std::string brand(Args ...args) {
         flagset flags = core::arg_handler(args...);
 
-        const bool is_multiple = flags.test(VM::MULTIPLE);
-
-        // this is added to set the brand scoreboard table in case all techniques were not ran
-        if (!memo::all_present()) {
-            u16 tmp = core::run_all(VM::DEFAULT);
-            UNUSED(tmp);
-        }
+        const bool is_multiple = flags.test(MULTIPLE);
 
         #define brands core::brand_scoreboard
 
-#ifdef __VMAWARE_DEBUG__
-        for (const auto p : brands) {
-            debug("scoreboard: ", (int)p.second, " : ", p.first);
-        }
-#endif
+// this gets annoying really fast 
+//#ifdef __VMAWARE_DEBUG__
+//        for (const auto p : brands) {
+//            core_debug("scoreboard: ", (int)p.second, " : ", p.first);
+//        }
+//#endif
 
-        if (is_multiple) {
-            if (memo::multi::is_brand_cached()) {
-                return memo::multi::fetch_brand();
-            }
-        } else {
-            if (memo::brand::is_brand_cached()) {
-                return memo::brand::fetch_brand();
+        // are all the techiques already run? if not, run all of them to get the necessary info to fetch the brand
+        if (!memo::all_present() || core::is_enabled(flags, NO_MEMO)) {
+            u16 tmp = core::run_all(flags);
+            UNUSED(tmp);
+        }
+
+        // check if it's already cached and return that instead
+        if (core::is_disabled(flags, NO_MEMO)) {
+            if (is_multiple) {
+                if (memo::multi_brand::is_cached()) {
+                    core_debug("VM::brand(): returned multi brand from cache");
+                    return memo::multi_brand::fetch();
+                }
+            } else {
+                if (memo::brand::is_cached()) {
+                    core_debug("VM::brand(): returned brand from cache");
+                    return memo::brand::fetch();
+                }
             }
         }
 
         std::string current_brand = "";
         i32 max = 0;
 
-        // both do the same thing
-#if (CPP >= 17)
-        for (const auto& [brand, points] : brands) {
+        // fetch the brand with the highest score
+        for (auto it = brands.cbegin(); it != brands.cend(); ++it) {
+            const char* brand = it->first;
+            const brand_score_t points = it->second;
+
             if (points > max) {
                 current_brand = brand;
                 max = points;
             }
         }
-#else
-        for (auto it = brands.cbegin(); it != brands.cend(); ++it) {
-            if (it->second > max) {
-                current_brand = it->first;
-                max = it->second;
-            }
-        }
-#endif
 
         if (max == 0) {
             return "Unknown";
@@ -7391,18 +7855,18 @@ public: // START OF PUBLIC FUNCTIONS
         constexpr const char* TMP_VPC         = "Virtual PC";
         constexpr const char* TMP_HYPERV      = "Microsoft Hyper-V";
 #else
-        constexpr const char* TMP_QEMU        = VM::QEMU;
-        constexpr const char* TMP_KVM         = VM::KVM;
-        constexpr const char* TMP_KVM_HYPERV  = VM::KVM_HYPERV;
+        constexpr const char* TMP_QEMU        = QEMU;
+        constexpr const char* TMP_KVM         = KVM;
+        constexpr const char* TMP_KVM_HYPERV  = KVM_HYPERV;
 
-        constexpr const char* TMP_VMWARE      = VM::VMWARE;
-        constexpr const char* TMP_EXPRESS     = VM::VMWARE_EXPRESS;
-        constexpr const char* TMP_ESX         = VM::VMWARE_ESX;
-        constexpr const char* TMP_GSX         = VM::VMWARE_GSX;
-        constexpr const char* TMP_WORKSTATION = VM::VMWARE_WORKSTATION;
+        constexpr const char* TMP_VMWARE      = VMWARE;
+        constexpr const char* TMP_EXPRESS     = VMWARE_EXPRESS;
+        constexpr const char* TMP_ESX         = VMWARE_ESX;
+        constexpr const char* TMP_GSX         = VMWARE_GSX;
+        constexpr const char* TMP_WORKSTATION = VMWARE_WORKSTATION;
 
-        constexpr const char* TMP_VPC         = VM::VPC;
-        constexpr const char* TMP_HYPERV      = VM::HYPERV;
+        constexpr const char* TMP_VPC         = VPC;
+        constexpr const char* TMP_HYPERV      = HYPERV;
 #endif
 
         if (
@@ -7421,6 +7885,7 @@ public: // START OF PUBLIC FUNCTIONS
         ) {
 #if (MSVC)
             const u8 version = util::get_windows_version();
+
             if (
                 (version < 10) &&
                 (version != 0)
@@ -7466,9 +7931,11 @@ public: // START OF PUBLIC FUNCTIONS
         }
 
         if (is_multiple) {
-            memo::multi::store_brand(current_brand);
+            core_debug("VM::brand(): cached multiple brand string");
+            memo::multi_brand::store(current_brand);
         } else {
-            memo::brand::store_brand(current_brand);
+            core_debug("VM::brand(): cached brand string");
+            memo::brand::store(current_brand);
         }
 
         return current_brand;
@@ -7477,11 +7944,10 @@ public: // START OF PUBLIC FUNCTIONS
 
     /**
      * @brief Detect if running inside a VM
-     * @param any combination of flags, can be optional
+     * @param any flag combination in VM structure or nothing
      * @return bool
      * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmdetect
      */
-    // for bit flags (i.e. VM::VMID, VM::RDTSC, etc...)
     template <typename ...Args>
     static bool detect(Args ...args) {
         flagset flags = core::arg_handler(args...);
@@ -7490,14 +7956,14 @@ public: // START OF PUBLIC FUNCTIONS
 
         const u16 points = core::run_all(flags);
 
-        if (core::enabled(flags, EXTREME)) {
+        if (core::is_enabled(flags, EXTREME)) {
             result = (points > 0);
         } else {
             result = (points >= 100);
         }
 
         if (core::hyperv_default_check(flags)) {
-            debug("VM::detect(): returned false due to Hyper-V default check");
+            core_debug("VM::detect(): returned false due to Hyper-V default check");
             return false;
         }
 
@@ -7507,7 +7973,7 @@ public: // START OF PUBLIC FUNCTIONS
 
     /**
      * @brief Get the percentage of how likely it's a VM
-     * @param any combination of flags, can be optional
+     * @param any flag combination in VM structure or nothing
      * @return std::uint8_t
      * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmpercentage
      */
@@ -7527,7 +7993,7 @@ public: // START OF PUBLIC FUNCTIONS
         }
 
         if (core::hyperv_default_check(flags)) {
-            debug("VM::percentage(): returned 0 due to Hyper-V default check");
+            core_debug("VM::percentage(): returned 0 due to Hyper-V default check");
             return 0;
         }
 
@@ -7585,7 +8051,8 @@ public: // START OF PUBLIC FUNCTIONS
         flags.flip();
         flags.set(NO_MEMO, 0);
         flags.set(EXTREME, 0);
-        flags.set(DISCARD_HYPERV_DEFAULT, 0);
+        flags.set(ENABLE_HYPERV_HOST, 0);
+        flags.set(WIN_HYPERV_DEFAULT_MACRO, 0); // deprecated
         flags.set(MULTIPLE, 0);
 
         return flags;
@@ -7642,8 +8109,8 @@ std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard {
 std::map<VM::u8, VM::memo::data_t> VM::memo::cache_table;
 VM::flagset VM::memo::cache_keys = 0;
 std::string VM::memo::brand::brand_cache = "";
-std::string VM::memo::multi::brand_cache = "";
-std::string VM::memo::cpu::brand_cache = "";
+std::string VM::memo::multi_brand::brand_cache = "";
+std::string VM::memo::cpu_brand::brand_cache = "";
 
 
 // not even sure how to explain honestly, just pretend this doesn't exist idfk
@@ -7661,7 +8128,8 @@ VM::flagset VM::DEFAULT = []() -> flagset {
     tmp.flip(EXTREME);
     tmp.flip(NO_MEMO);
     tmp.flip(CURSOR);
-    tmp.flip(DISCARD_HYPERV_DEFAULT);
+    tmp.flip(ENABLE_HYPERV_HOST);
+    tmp.flip(WIN_HYPERV_DEFAULT_MACRO); // deprecated
     tmp.flip(MULTIPLE);
 
     return tmp;
@@ -7672,6 +8140,17 @@ VM::flagset VM::DEFAULT = []() -> flagset {
 VM::flagset VM::ALL = []() -> flagset {
     flagset tmp = DEFAULT;
     tmp.set(CURSOR);
+    return tmp;
+}();
+
+
+std::vector<VM::enum_flags> VM::technique_vector = []() -> std::vector<VM::enum_flags> {
+    std::vector<VM::enum_flags> tmp{};
+
+    for (u8 i = VM::technique_begin; i < VM::technique_end; i++) {
+        tmp.push_back(static_cast<VM::enum_flags>(i));
+    }
+
     return tmp;
 }();
 
@@ -7704,7 +8183,7 @@ std::vector<VM::core::technique> VM::core::custom_table = {
 // the 0~100 points are debatable, but I think it's fine how it is. Feel free to disagree.
 const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::VMID, { 100, VM::vmid }},
-    { VM::BRAND, { 50, VM::cpu_brand }},
+    { VM::CPU_BRAND, { 50, VM::cpu_brand }},
     { VM::HYPERVISOR_BIT, { 100, VM::hypervisor_bit }},
     { VM::CPUID_0X4, { 70, VM::cpuid_0x4 }},
     { VM::HYPERVISOR_STR, { 45, VM::hypervisor_brand }},
@@ -7748,7 +8227,7 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::GAMARUE, { 40, VM::gamarue }},
     { VM::VMID_0X4, { 90, VM::vmid_0x4 }},
     { VM::PARALLELS_VM, { 50, VM::parallels }},
-    { VM::RDTSC_VMEXIT, { 35, VM::rdtsc_vmexit }},
+    { VM::RDTSC_VMEXIT, { 25, VM::rdtsc_vmexit }},
     { VM::QEMU_BRAND, { 100, VM::cpu_brand_qemu }},
     { VM::BOCHS_CPU, { 95, VM::bochs_cpu }},
     { VM::VPC_BOARD, { 20, VM::vpc_board }},
@@ -7788,7 +8267,8 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::UPTIME, { 10, VM::uptime }},
     { VM::ODD_CPU_THREADS, { 80, VM::odd_cpu_threads }},
     { VM::INTEL_THREAD_MISMATCH, { 85, VM::intel_thread_mismatch }},
-    { VM::XEON_THREAD_MISMATCH, { 85, VM::xeon_thread_mismatch }}
+    { VM::XEON_THREAD_MISMATCH, { 85, VM::xeon_thread_mismatch }},
+    { VM::NETTITUDE_VM_MEMORY, { 75, VM::nettitude_vm_memory }}
 
     // __TABLE_LABEL, add your technique above
     // { VM::FUNCTION, { POINTS, FUNCTION_POINTER }}

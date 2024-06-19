@@ -15,11 +15,11 @@
 - [X] add <source_location> for error handling
 - [X] make an MIT version for 1.0
 - [X] add function to add custom techniques for end-user
-- [ ] fix memoization
+- [X] fix memoization
 - [X] add a python script to automatically set the lines of the seperate sections in the header
 - [ ] add C++20 concepts for the VM::add_custom() function
 - [X] check for valid monitor technique
-- [ ] fix the is_admin code for windows
+- [X] fix the is_admin code for windows
 - [X] test it on compiler explorer with windows 32-bit settings
 - [ ] upload the lib to dnf 
 - [ ] upload the lib to apt 
@@ -28,12 +28,14 @@
 - [ ] implement techniques from [here](https://labs.nettitude.com/blog/vm-detection-tricks-part-3-hyper-v-raw-network-protocol/)
 - [X] add multiple choice for VM::brand()
 - [ ] add c++20 module support 
-- [ ] design a way to disable some techniques way easier
+- [X] design a way to disable some techniques way easier
 - [ ] make a man file in markdown for the cli tool
 - [ ] implement smbios version technique [here](https://github.com/Print3M/Anti-VM/blob/eb524ed89e783b36c149acc450b2350d4198b06b/detectors.cpp#L88)
 - [ ] implement a display size technique for linux with EDID 
 - [X] implement a technique that matches the CPU product name and match it with a database of core counts for that specific CPU product
-- [ ] add usage example in the .hpp file directly below the banner
+- [X] add usage example in the .hpp file directly below the banner
+- [ ] use the [[assume()]] attribute in C++23 for certain areas (not sure where exactly) 
+- [ ] maybe add [[deprecated]]?
 
 # Distant plans
 - add the library to conan.io when released

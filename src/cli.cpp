@@ -38,6 +38,7 @@
 
 constexpr const char* ver = "1.5";
 constexpr const char* date = "June 2024";
+
 constexpr const char* bold = "\033[1m";
 constexpr const char* ansi_exit = "\x1B[0m";
 constexpr const char* red = "\x1B[38;2;239;75;75m";
@@ -79,6 +80,10 @@ private:
 };
 #endif
 
+// for the technique counts
+std::uint8_t detected_count = 0;
+
+
 void help(void) {
     std::cout << 
 R"(Usage: 
@@ -93,9 +98,10 @@ Options:
  -p | --percent     returns the VM percentage between 0 and 100
  -c | --conclusion  returns the conclusion message string
  -l | --brand-list  returns all the possible VM brand string values
+ -n | --number      returns the number of VM detection techniques it performs
 
 Extra:
- --discard-hyper-v  disable the possibility of Hyper-V default virtualisation result on host OS
+ --disable-hyperv-host  disable the possibility of Hyper-V default virtualisation result on host OS
 )";
 }
 
@@ -153,13 +159,10 @@ std::string message(const std::uint8_t score, const std::string &brand) {
 }
 
 
-void general(const bool discard_hyperv = false) {
+void general(const bool enable_hyperv = true) {
     const std::string detected = ("[  " + std::string(green) + "DETECTED" + std::string(ansi_exit) + "  ]");
     const std::string not_detected = ("[" + std::string(red) + "NOT DETECTED" + std::string(ansi_exit) + "]");
     const std::string note = ("[    NOTE    ]");
-
-    std::uint8_t total_technique_count = 0;
-    std::uint8_t detected_count = 0;
 
     auto checker = [&](const std::uint8_t flag, const char* message) -> void {
         if (VM::check(flag)) {
@@ -168,8 +171,6 @@ void general(const bool discard_hyperv = false) {
         } else {
             std::cout << not_detected << " Checking " << message << "...\n";
         }
-
-        total_technique_count++;
     };
 
     #if (defined(__GNUC__) || defined(__linux__))
@@ -182,12 +183,12 @@ void general(const bool discard_hyperv = false) {
         );
 
         if (!is_root) {
-            std::cout << note << " Running under root would give better results\n";
+            std::cout << note << " Running under root might give better results\n";
         }
     #endif
 
     checker(VM::VMID, "VMID");
-    checker(VM::BRAND, "CPU brand");
+    checker(VM::CPU_BRAND, "CPU brand");
     checker(VM::HYPERVISOR_BIT, "CPUID hypervisor bit");
     checker(VM::CPUID_0X4, "CPUID 0x4 leaf");
     checker(VM::HYPERVISOR_STR, "hypervisor brand");
@@ -272,6 +273,7 @@ void general(const bool discard_hyperv = false) {
     checker(VM::ODD_CPU_THREADS, "unusual thread count");
     checker(VM::INTEL_THREAD_MISMATCH, "Intel thread count mismatch");
     checker(VM::XEON_THREAD_MISMATCH, "Intel Xeon thread count mismatch");
+    checker(VM::NETTITUDE_VM_MEMORY, "VM memory regions");
 
     std::printf("\n");
 
@@ -280,7 +282,7 @@ void general(const bool discard_hyperv = false) {
     std::cout << "VM brand: " << (brand == "Unknown" ? red : green) << brand << ansi_exit << "\n";
 
     const char* percent_color = "";
-    const std::uint8_t percent = (discard_hyperv ? VM::percentage() : VM::percentage(VM::DISCARD_HYPERV_DEFAULT));
+    const std::uint8_t percent = (enable_hyperv ? VM::percentage(VM::ENABLE_HYPERV_HOST) : VM::percentage());
 
     if      (percent == 0) { percent_color = red; }
     else if (percent < 25) { percent_color = red_orange; }
@@ -290,7 +292,7 @@ void general(const bool discard_hyperv = false) {
 
     std::cout << "VM likeliness: " << percent_color << static_cast<std::uint32_t>(percent) << "%" << ansi_exit << "\n";
 
-    const bool is_detected = (discard_hyperv ? VM::detect() : VM::detect(VM::DISCARD_HYPERV_DEFAULT));
+    const bool is_detected = (enable_hyperv ? VM::detect(VM::ENABLE_HYPERV_HOST) : VM::detect());
 
     std::cout << "VM confirmation: " << (is_detected ? green : red) << std::boolalpha << is_detected << std::noboolalpha << ansi_exit << "\n";
 
@@ -303,7 +305,7 @@ void general(const bool discard_hyperv = false) {
         case 3: count_color = orange; break;
         case 4: count_color = green_orange; break;
         default:
-            // anything over 5 is green
+            // anything over 4 is green
             count_color = green;
     }
 
@@ -312,21 +314,21 @@ void general(const bool discard_hyperv = false) {
         count_color << 
         static_cast<std::uint32_t>(detected_count) << 
         "/" <<
-        static_cast<std::uint32_t>(total_technique_count) << 
+        static_cast<std::uint32_t>(VM::technique_count) << 
         ansi_exit <<
         "\n\n";
 
     brand = VM::brand(); // no VM::MULTIPLE this time
     
     if (
-        discard_hyperv == false &&
+        enable_hyperv == true &&
         (
             brand == "Microsoft Hyper-V" ||
             brand == "Virtual PC" ||
             brand == "Microsoft Virtual PC/Hyper-V"
         )
     ) {
-        std::cout << note << " If you know you are running on host, Hyper-V virtualises all applications by default within the host system. This result is in fact correct and NOT a false positive, see here https://github.com/kernelwernel/VMAware/issues/75\n";
+        std::cout << note << " If you know you are running on host, Hyper-V virtualises all applications by default within the host system. This result is in fact correct and NOT a false positive. If you do not want Hyper-V's default virtualisation enabled, run with the \"--discard-hyperv-host\" argument. See here https://github.com/kernelwernel/VMAware/issues/75\n";
     }
 
     const char* conclusion_color   = color(percent);
@@ -362,7 +364,7 @@ int main(int argc, char* argv[]) {
         };
 
         if (arg("-s") || arg("--stdout")) {
-            return (!VM::detect(VM::DISCARD_HYPERV_DEFAULT));
+            return (!VM::detect(VM::NO_MEMO, VM::ENABLE_HYPERV_HOST));
         } else if (arg("-h") || arg("--help")) {
             help();
             return 0;
@@ -370,17 +372,20 @@ int main(int argc, char* argv[]) {
             version();
             return 0;
         } else if (arg("-b") || arg("--brand")) {
-            std::cout << VM::brand(VM::MULTIPLE) << "\n";
+            std::cout << VM::brand(VM::NO_MEMO, VM::MULTIPLE) << "\n";
             return 0;
         } else if (arg("-p") || arg("--percent")) {
-            std::cout << static_cast<std::uint32_t>(VM::percentage(VM::DISCARD_HYPERV_DEFAULT)) << "\n";
+            std::cout << static_cast<std::uint32_t>(VM::percentage(VM::NO_MEMO, VM::ENABLE_HYPERV_HOST)) << "\n";
             return 0;
         } else if (arg("-d") || arg("--detect")) {
-            std::cout << VM::detect() << "\n";
+            std::cout << VM::detect(VM::NO_MEMO) << "\n";
+            return 0;
+        } else if (arg("-n") || arg("--number")) {
+            std::cout << static_cast<std::uint32_t>(VM::technique_count) << "\n";
             return 0;
         } else if (arg("-c") || arg("--conclusion")) {
-            const std::uint8_t percent = VM::percentage(VM::DISCARD_HYPERV_DEFAULT);
-            const std::string brand = VM::brand();
+            const std::uint8_t percent = VM::percentage(VM::ENABLE_HYPERV_HOST);
+            const std::string brand = VM::brand(VM::MULTIPLE);
             std::cout << message(percent, brand) << "\n";
             return 0;
         } else if (arg("-l") || arg("--brand-list")) {
@@ -422,15 +427,15 @@ Intel HAXM
 Unisys s-Par
 )";
             return 0;
-        } else if (arg("--discard-hyper-v")) {
-            general(true);
+        } else if (arg("--disable-hyperv-host")) {
+            general(false);
             return 0;
         } else {
             std::cerr << "Unknown argument provided, consult the help menu with --help\n";
             return 1;
         }
     } else if (arg_count == 2) {
-        constexpr const char* hyperv_arg = "--discard-hyper-v";
+        constexpr const char* hyperv_arg = "--disable-hyperv-host";
 
         auto find = [&args](const char* option) -> bool {
             for (const auto arg : args) {
@@ -448,27 +453,27 @@ Unisys s-Par
             return 1;
         }
 
-        const bool detect     = (find("-d") || find("--detect"));
-        const bool std_out    = (find("-s") || find("--stdout")); // can't do "stdout" cuz it's already a macro
-        const bool p_percent  = (find("-p") || find("--percent"));
-        const bool conclusion = (find("-c") || find("--conclusion"));
+        const bool p_detect     = (find("-d") || find("--detect"));
+        const bool p_stdout     = (find("-s") || find("--stdout"));
+        const bool p_percent    = (find("-p") || find("--percent"));
+        const bool p_conclusion = (find("-c") || find("--conclusion"));
 
         // check if combination of the option and hyperv exists
-        if (!(detect || std_out || p_percent || conclusion)) {
+        if (!(p_detect || p_stdout || p_percent || p_conclusion)) {
             std::cerr << "Unknown or unsupported option with" << hyperv_arg << ", only --detect, --stdout, --percent, and --conclusion are supported\n";
             return 1;
         }
 
         // run that option but with hyperv modification
-        if (detect) {
+        if (p_detect) {
             std::cout << VM::detect() << "\n";
             return 0;
-        } else if (std_out) {
+        } else if (p_stdout) {
             return (!VM::detect());
         } else if (p_percent) {
             std::cout << static_cast<std::uint32_t>(VM::percentage()) << "\n";
             return 0;
-        } else if (conclusion) {
+        } else if (p_conclusion) {
             const std::uint8_t percent = VM::percentage();
             const std::string brand = VM::brand();
             std::cout << message(percent, brand) << "\n";

@@ -10,10 +10,10 @@
  *
  *  - Made by: @kernelwernel (https://github.com/kernelwernel)
  *  - Contributed by:
- *      - @Requiem (https://github.com/NotRequiem)
- *      - @Alex (https://github.com/greenozon)
- *      - @Marek Knápek (https://github.com/MarekKnapek)
- *      - @Vladyslav Miachkov (https://github.com/fameowner99)
+ *      - Requiem (https://github.com/NotRequiem)
+ *      - Alex (https://github.com/greenozon)
+ *      - Marek Knápek (https://github.com/MarekKnapek)
+ *      - Vladyslav Miachkov (https://github.com/fameowner99)
  *      - Alan Tse (https://github.com/alandtse)
  *  - Repository: https://github.com/kernelwernel/VMAware
  *  - Docs: https://github.com/kernelwernel/VMAware/docs/documentation.md
@@ -44,14 +44,14 @@
  * 
  * 
  * ================================ SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 314
- * - struct for internal cpu operations        => line 506
- * - struct for internal memoization           => line 878
- * - struct for internal utility functions     => line 962
- * - struct for internal core components       => line 6929
- * - start of internal VM detection techniques => line 1740
- * - start of public VM detection functions    => line 7281
- * - start of externally defined variables     => line 7618
+ * - enums for publicly accessible techniques  => line 315
+ * - struct for internal cpu operations        => line 498
+ * - struct for internal memoization           => line 869
+ * - struct for internal utility functions     => line 959
+ * - struct for internal core components       => line 6467
+ * - start of internal VM detection techniques => line 1737
+ * - start of public VM detection functions    => line 6823
+ * - start of externally defined variables     => line 7168
  * 
  * 
  * ================================ EXAMPLE ==================================
@@ -230,6 +230,7 @@
 #pragma comment(lib, "Shlwapi.lib")
 #pragma comment(lib, "MPR")
 #pragma comment(lib, "advapi32.lib")
+#pragma comment(lib, "kernel32.lib")
 #pragma comment(lib, "shell32.lib")
 #pragma comment(lib, "strmiids.lib")
 #pragma comment(lib, "uuid.lib")
@@ -311,11 +312,10 @@ private:
     using i32 = std::int32_t;
     using i64 = std::int64_t;
 
-    static constexpr auto enum_line_start = __LINE__; // hacky way to fetch enum size
 public:
     enum enum_flags : u8 {
         VMID = 0,
-        BRAND,
+        CPU_BRAND,
         HYPERVISOR_BIT,
         CPUID_0X4,
         HYPERVISOR_STR,
@@ -393,21 +393,23 @@ public:
         // start of non-technique flags
         EXTREME,
         NO_MEMO,
-        DISCARD_HYPERV_DEFAULT,
+        ENABLE_HYPERV_HOST,
+        WIN_HYPERV_DEFAULT [[deprecated("Use VM::ENABLE_HYPERV_HOST instead")]],
         MULTIPLE
     };
 
 private:
     static constexpr u8 enum_size = VM::MULTIPLE; // get enum size through value of last element
-    static constexpr u8 technique_count = enum_size - 4; // get total number of techniques
-    static constexpr u8 non_technique_count = enum_size - technique_count; // get number of non-technique flags like VM::NO_MEMO for example
+    static constexpr u8 technique_count = VM::EXTREME; // get total number of techniques
+    static constexpr u8 non_technique_count = enum_size - technique_count + 1; // get number of non-technique flags like VM::NO_MEMO for example
+    static constexpr u8 WIN_HYPERV_DEFAULT_MACRO = ENABLE_HYPERV_HOST + 1; // can't use orignal enum value because that would give compiler warnings of deprecated usage
     static constexpr u8 INVALID = 255;
 
     // intended for loop indexes
     static constexpr u8 enum_begin = 0;
     static constexpr u8 enum_end = enum_size + 1;
     static constexpr u8 technique_begin = enum_begin;
-    static constexpr u8 technique_end = VM::EXTREME - 1;
+    static constexpr u8 technique_end = VM::EXTREME;
     static constexpr u8 non_technique_begin = VM::EXTREME;
     static constexpr u8 non_technique_end = enum_end;
 
@@ -825,7 +827,6 @@ private:
                 if (tmp_brand == unisys)      { return core::add(UNISYS); }
                 if (tmp_brand == lmhs)        { return core::add(LMHS); }
 
-
                 // both Hyper-V and VirtualPC have the same string value
                 if (tmp_brand == hyperv)     { 
                     bool tmp = core::add(VPC);
@@ -895,9 +896,15 @@ private:
             return cache_table.at(technique_macro);
         }
 
-        // basically checks whether all the techniques were cached
+        // basically checks whether all the techniques were cached (with exception of VM::CURSOR)
         static bool all_present() {
-            return (cache_table.size() == technique_count);
+            if (cache_table.size() == technique_count) {
+                return true;
+            } else if (cache_table.size() == technique_count - 1) {
+                return (!cache_keys.test(CURSOR));
+            }
+
+            return false;
         }
 
         struct brand {
@@ -1702,7 +1709,7 @@ private:
                 return util::get_windows_version_backup();
             }
 
-            RTL_OSVERSIONINFOW osvi;
+            RTL_OSVERSIONINFOW osvi{};
             osvi.dwOSVersionInfoSize = sizeof(osvi);
 
             if (pRtlGetVersion(&osvi) != 0) {
@@ -6490,7 +6497,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (LINUX && __has_cpp_attribute(gnu::pure))
         [[gnu::pure]]
 #endif
-        [[nodiscard]] static inline bool disabled(const flagset &flags, const u8 flag_bit) noexcept {
+        [[nodiscard]] static inline bool is_disabled(const flagset &flags, const u8 flag_bit) noexcept {
             return (!flags.test(flag_bit));
         }
 
@@ -6498,7 +6505,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (LINUX && __has_cpp_attribute(gnu::pure))
         [[gnu::pure]]
 #endif
-        [[nodiscard]] static inline bool enabled(const flagset &flags, const u8 flag_bit) noexcept {
+        [[nodiscard]] static inline bool is_enabled(const flagset &flags, const u8 flag_bit) noexcept {
             return (flags.test(flag_bit));
         }
 
@@ -6546,7 +6553,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             if (
                 flags.test(EXTREME) ||
                 flags.test(NO_MEMO) ||
-                flags.test(DISCARD_HYPERV_DEFAULT) ||
+                flags.test(ENABLE_HYPERV_HOST) ||
+                flags.test(WIN_HYPERV_DEFAULT_MACRO) || // deprecated
                 flags.test(MULTIPLE)
             ) {
                 flags |= VM::DEFAULT;
@@ -6556,20 +6564,20 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // run every VM detection mechanism in the technique table
         static u16 run_all(const flagset &flags) {
             u16 points = 0;
-            const bool memo_disabled = core::enabled(flags, VM::NO_MEMO);
+            const bool memo_enabled = core::is_disabled(flags, NO_MEMO);
 
             // for main technique table
             for (const auto& tmp : table) {
-                const u8 macro = tmp.first;
+                const u8 technique_macro = tmp.first;
 
                 // check if it's disabled
-                if (!flags.test(macro)) {
+                if (core::is_disabled(flags, technique_macro)) {
                     continue;
                 }
 
                 // check if the technique is cached already
-                if (!memo_disabled && memo::is_cached(macro)) {
-                    const memo::data_t data = memo::cache_fetch(macro);
+                if (memo_enabled && memo::is_cached(technique_macro)) {
+                    const memo::data_t data = memo::cache_fetch(technique_macro);
 
                     if (data.result) {
                         points += data.points;
@@ -6586,8 +6594,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     points += pair.points;
                 }
     
-                if (!memo_disabled) {
-                    memo::cache_store(macro, result, pair.points);
+                if (memo_enabled) {
+                    memo::cache_store(technique_macro, result, pair.points);
                 }
             }
 
@@ -6610,7 +6618,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!MSVC)
             return false;
 #else
-            if (core::enabled(flags, VM::DISCARD_HYPERV_DEFAULT)) {
+            if (
+                core::is_enabled(flags, VM::ENABLE_HYPERV_HOST) ||
+                core::is_enabled(flags, VM::WIN_HYPERV_DEFAULT_MACRO) // deprecated
+            ) {
                 debug("HYPERV_CHECK: returned false through flag check");
                 return false;
             }
@@ -6838,7 +6849,8 @@ public: // START OF PUBLIC FUNCTIONS
         if (
             (flag_bit == NO_MEMO) || \
             (flag_bit == EXTREME) || \
-            (flag_bit == DISCARD_HYPERV_DEFAULT) || \
+            (flag_bit == ENABLE_HYPERV_HOST) || \
+            (flag_bit == WIN_HYPERV_DEFAULT_MACRO) ||  // deprecated
             (flag_bit == MULTIPLE)
         ) {
             throw_error("Flag argument must be a technique flag and not a settings flag");
@@ -6880,34 +6892,38 @@ public: // START OF PUBLIC FUNCTIONS
 
         const bool is_multiple = flags.test(VM::MULTIPLE);
 
-        // this is added to set the brand scoreboard table in case all techniques were not ran
+        #define brands core::brand_scoreboard
+
+// this gets annoying really fast 
+//#ifdef __VMAWARE_DEBUG__
+//        for (const auto p : brands) {
+//            debug("scoreboard: ", (int)p.second, " : ", p.first);
+//        }
+//#endif
+
         if (!memo::all_present()) {
-            u16 tmp = core::run_all(VM::DEFAULT);
+            u16 tmp = core::run_all(flags);
             UNUSED(tmp);
         }
 
-        #define brands core::brand_scoreboard
-
-#ifdef __VMAWARE_DEBUG__
-        for (const auto p : brands) {
-            debug("scoreboard: ", (int)p.second, " : ", p.first);
-        }
-#endif
-
-        if (is_multiple) {
-            if (memo::multi::is_brand_cached()) {
-                return memo::multi::fetch_brand();
-            }
-        } else {
-            if (memo::brand::is_brand_cached()) {
-                return memo::brand::fetch_brand();
+        if (core::is_disabled(flags, NO_MEMO)) {
+            if (is_multiple) {
+                if (memo::multi::is_brand_cached()) {
+                    debug("VM::brand(): returned multi brand from cache");
+                    return memo::multi::fetch_brand();
+                }
+            } else {
+                if (memo::brand::is_brand_cached()) {
+                    debug("VM::brand(): returned brand from cache");
+                    return memo::brand::fetch_brand();
+                }
             }
         }
 
         std::string current_brand = "";
         i32 max = 0;
 
-        // both do the same thing
+        // both do the same thing, just with a difference in clarity and code readability
 #if (CPP >= 17)
         for (const auto& [brand, points] : brands) {
             if (points > max) {
@@ -7018,8 +7034,10 @@ public: // START OF PUBLIC FUNCTIONS
         }
 
         if (is_multiple) {
+            debug("VM::brand(): cached multiple brand string");
             memo::multi::store_brand(current_brand);
         } else {
+            debug("VM::brand(): cached brand string");
             memo::brand::store_brand(current_brand);
         }
 
@@ -7042,7 +7060,7 @@ public: // START OF PUBLIC FUNCTIONS
 
         const u16 points = core::run_all(flags);
 
-        if (core::enabled(flags, EXTREME)) {
+        if (core::is_enabled(flags, EXTREME)) {
             result = (points > 0);
         } else {
             result = (points >= 100);
@@ -7137,7 +7155,8 @@ public: // START OF PUBLIC FUNCTIONS
         flags.flip();
         flags.set(NO_MEMO, 0);
         flags.set(EXTREME, 0);
-        flags.set(DISCARD_HYPERV_DEFAULT, 0);
+        flags.set(ENABLE_HYPERV_HOST, 0);
+        flags.set(WIN_HYPERV_DEFAULT_MACRO, 0); // deprecated
         flags.set(MULTIPLE, 0);
 
         return flags;
@@ -7213,7 +7232,8 @@ VM::flagset VM::DEFAULT = []() -> flagset {
     tmp.flip(EXTREME);
     tmp.flip(NO_MEMO);
     tmp.flip(CURSOR);
-    tmp.flip(DISCARD_HYPERV_DEFAULT);
+    tmp.flip(ENABLE_HYPERV_HOST);
+    tmp.flip(WIN_HYPERV_DEFAULT_MACRO); // deprecated
     tmp.flip(MULTIPLE);
 
     return tmp;
@@ -7256,7 +7276,7 @@ std::vector<VM::core::technique> VM::core::custom_table = {
 // the 0~100 points are debatable, but I think it's fine how it is. Feel free to disagree.
 const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::VMID, { 100, VM::vmid }},
-    { VM::BRAND, { 50, VM::cpu_brand }},
+    { VM::CPU_BRAND, { 50, VM::cpu_brand }},
     { VM::HYPERVISOR_BIT, { 100, VM::hypervisor_bit }},
     { VM::CPUID_0X4, { 70, VM::cpuid_0x4 }},
     { VM::HYPERVISOR_STR, { 45, VM::hypervisor_brand }},
@@ -7289,7 +7309,7 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::GAMARUE, { 40, VM::gamarue }},
     { VM::VMID_0X4, { 90, VM::vmid_0x4 }},
     { VM::PARALLELS_VM, { 50, VM::parallels }},
-    { VM::RDTSC_VMEXIT, { 35, VM::rdtsc_vmexit }},
+    { VM::RDTSC_VMEXIT, { 25, VM::rdtsc_vmexit }},
     { VM::QEMU_BRAND, { 100, VM::cpu_brand_qemu }},
     { VM::BOCHS_CPU, { 95, VM::bochs_cpu }},
     { VM::VPC_BOARD, { 20, VM::vpc_board }},
