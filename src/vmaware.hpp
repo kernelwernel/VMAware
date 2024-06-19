@@ -7135,12 +7135,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             LPBYTE lpData = NULL;
             DWORD dwLength = 0, count = 0, type = 0;;
             DWORD result;
-            if ((result = RegOpenKeyW(HKEY_LOCAL_MACHINE, pszSubKey, &hKey)) != ERROR_SUCCESS) {
+            if ((result = RegOpenKeyW(HKEY_LOCAL_MACHINE, reinterpret_cast<LPCWSTR>(pszSubKey), &hKey)) != ERROR_SUCCESS) {
                 debug("NETTITUDE_VM_MEMORY: Could not get reg key: ", result, " / ", GetLastError());
                 return 0;
             }
 
-            if ((result = RegQueryValueExW(hKey, reinterpret_cast<LPCWSTR>(pszValueName, 0, &type, NULL, &dwLength)) != ERROR_SUCCESS)) {
+            if ((result = RegQueryValueExW(hKey, reinterpret_cast<LPCWSTR>(pszValueName), 0, &type, NULL, &dwLength)) != ERROR_SUCCESS)) {
                 debug("NETTITUDE_VM_MEMORY: Could not query hardware key: ", result, " / ", GetLastError());
                 return 0;
             }
