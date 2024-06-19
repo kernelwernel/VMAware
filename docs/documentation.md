@@ -387,9 +387,28 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::WIN_HYPERV_DEFAULT` | ⚠️ **DEPRECATED** ⚠️ Same as above, but deprecated as of 1.5 release. |
 | `VM::MULTIPLE` | This is specific to `VM::brand()`. This will basically return a `std::string` message of what brands could be involved. For example, it could return "`VMware or VirtualBox`" instead of having a single brand string output. This has no effect if applied to any other functions than `VM::brand()`. |   
 
+<br>
 
 # Variables
 | Variable | Description |
 |----------|-------------|
 | `VM::technique_count` | This will store the number of VM detections |
-| `VM::technique_vector` | This will store all the technique macros as a vector. Useful if you're trying to loop through all the techniques for whatever operation. |
+| `VM::technique_vector` | This will store all the technique macros as a vector. Useful if you're trying to loop through all the techniques for whatever operation you're performing. |
+
+<br>
+
+# CLI documentation
+| Shorthand | Full command | Description |
+|-----------|--------------|-------------|
+| -h | --help | Prints the help menu |
+| -v | --version | Prints the version and miscellaneous details |
+| -d | --detect | Prints the VM detection result (1 = VM, 0 = baremetal) |
+| -s | --stdout | Returns either 0 or 1 to STDOUT without any text output (0 = VM, 1 = baremetal) |
+| -b | --brand | Prints the most likely brand |
+| -l | --brand-list | Prints all the possible VM brand strings the CLI supports |
+| -c | --conclusion | Prints the conclusion message string |
+| -p | --percent | Prints the VM likeliness percentage between 0 and 100 |
+| -n | --number | Prints the number of VM detection techniques it can performs |
+|    | --disable-hyperv-host | Disable the possibility of Hyper-V default virtualisation result on host OS (this can be used as a combination with the above commands) |
+
+**NOTE:** If you want a general result of everything combined above, do not put any arguments. This is the intended way to use the CLI tool.

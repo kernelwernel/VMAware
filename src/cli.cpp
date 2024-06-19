@@ -380,6 +380,9 @@ int main(int argc, char* argv[]) {
         } else if (arg("-d") || arg("--detect")) {
             std::cout << VM::detect(VM::NO_MEMO) << "\n";
             return 0;
+        } else if (arg("-n") || arg("--number")) {
+            std::cout << static_cast<std::uint32_t>(VM::technique_count) << "\n";
+            return 0;
         } else if (arg("-c") || arg("--conclusion")) {
             const std::uint8_t percent = VM::percentage(VM::ENABLE_HYPERV_HOST);
             const std::string brand = VM::brand(VM::MULTIPLE);
