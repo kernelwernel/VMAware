@@ -275,8 +275,10 @@ MSVC_DISABLE_WARNING(ASSIGNMENT_OPERATOR NO_INLINE_FUNC SPECTRE)
 
 #ifdef __VMAWARE_DEBUG__
 #define debug(...) VM::util::debug_msg(__VA_ARGS__)
+#define core_debug(...) VM::util::core_debug_msg(__VA_ARGS__)
 #else
 #define debug(...)
+#define core_debug(...)
 #endif
 
 struct VM {
@@ -389,9 +391,8 @@ public:
     };
 
 private:
-    static constexpr u8 enum_size = VM::MULTIPLE; // get enum size through value of last element
-    static constexpr u8 technique_count = VM::EXTREME; // get total number of techniques
-    static constexpr u8 non_technique_count = enum_size - technique_count + 1; // get number of non-technique flags like VM::NO_MEMO for example
+    static constexpr u8 enum_size = MULTIPLE; // get enum size through value of last element
+    static constexpr u8 non_technique_count = MULTIPLE - EXTREME + 1; // get number of non-technique flags like VM::NO_MEMO for example
     static constexpr u8 WIN_HYPERV_DEFAULT_MACRO = ENABLE_HYPERV_HOST + 1; // can't use orignal enum value because that would give compiler warnings of deprecated usage
     static constexpr u8 INVALID = 255;
 
@@ -399,10 +400,15 @@ private:
     static constexpr u8 enum_begin = 0;
     static constexpr u8 enum_end = enum_size + 1;
     static constexpr u8 technique_begin = enum_begin;
-    static constexpr u8 technique_end = VM::EXTREME;
-    static constexpr u8 non_technique_begin = VM::EXTREME;
+    static constexpr u8 technique_end = EXTREME;
+    static constexpr u8 non_technique_begin = EXTREME;
     static constexpr u8 non_technique_end = enum_end;
 
+public:
+    static constexpr u8 technique_count = EXTREME; // get total number of techniques
+    static std::vector<enum_flags> technique_vector;
+
+private:
 
 #if (MSVC)
     using brand_score_t = i32;
@@ -609,8 +615,8 @@ private:
 
         // get the CPU product
         [[nodiscard]] static std::string get_brand() {
-            if (memo::cpu::is_brand_cached()) {
-                return memo::cpu::fetch_brand();
+            if (memo::cpu_brand::is_cached()) {
+                return memo::cpu_brand::fetch();
             }
 
             if (!core::cpuid_supported) {
@@ -647,7 +653,7 @@ private:
 
             debug("BRAND: ", "cpu brand = ", brand);
 
-            memo::cpu::store_brand(brand);
+            memo::cpu_brand::store(brand);
 
             return brand;
 #endif
@@ -900,47 +906,47 @@ private:
         struct brand {
             static std::string brand_cache;
 
-            static std::string fetch_brand() {
+            static std::string fetch() {
                 return brand_cache;
             }
 
-            static void store_brand(const std::string &p_brand) {
+            static void store(const std::string &p_brand) {
                 brand_cache = p_brand;
             }
 
-            static bool is_brand_cached() {
+            static bool is_cached() {
                 return (!brand_cache.empty());
             }
         };
 
-        struct multi {
+        struct multi_brand {
             static std::string brand_cache;
 
-            static std::string fetch_brand() {
+            static std::string fetch() {
                 return brand_cache;
             }
 
-            static void store_brand(const std::string &p_brand) {
+            static void store(const std::string &p_brand) {
                 brand_cache = p_brand;
             }
 
-            static bool is_brand_cached() {
+            static bool is_cached() {
                 return (!brand_cache.empty());
             }
         };
     
-        struct cpu {
+        struct cpu_brand {
             static std::string brand_cache;
 
-            static std::string fetch_brand() {
+            static std::string fetch() {
                 return brand_cache;
             }
 
-            static void store_brand(const std::string &p_brand) {
+            static void store(const std::string &p_brand) {
                 brand_cache = p_brand;
             }
 
-            static bool is_brand_cached() {
+            static bool is_cached() {
                 return (!brand_cache.empty());
             }
         };
@@ -1087,6 +1093,31 @@ private:
 
             std::cout << "\n";
         }
+
+        template <typename... Args>
+        static inline void core_debug_msg(Args... message) noexcept {
+#if (LINUX || APPLE)
+            constexpr const char* black_bg = "\x1B[48;2;0;0;0m";
+            constexpr const char* bold = "\033[1m";
+            constexpr const char* blue = "\x1B[38;2;255;180;5m";
+            constexpr const char* ansiexit = "\x1B[0m";
+
+            std::cout.setf(std::ios::fixed, std::ios::floatfield);
+            std::cout.setf(std::ios::showpoint);
+
+            std::cout << black_bg << bold << "[" << blue << "CORE DEBUG" << ansiexit << bold << black_bg << "]" << ansiexit << " ";
+#else       
+            std::cout << "[CORE DEBUG] ";
+#endif
+
+#if (CPP >= 17)
+            ((std::cout << message), ...);
+#else
+            print_to_stream(std::cout, message...);
+#endif
+
+            std::cout << "\n";
+        }
 #endif
 
         // basically std::system but it runs in the background with std::string output
@@ -1185,7 +1216,7 @@ private:
         // get disk size in GB
         [[nodiscard]] static u32 get_disk_size() {
             u32 size = 0;
-            constexpr u64 GB = (static_cast<VM::u64>(1024 * 1024) * 1024);
+            constexpr u64 GB = (static_cast<u64>(1024 * 1024) * 1024);
 
 #if (LINUX)
             struct statvfs stat;
@@ -7080,16 +7111,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         const struct map_key ResourceRegistryKeys[ResourceRegistryKeysLength] = {
             {
-                const_cast<LPCSTR>("Hardware\\ResourceMap\\System Resources\\Physical Memory"),
-                const_cast<LPCSTR>(".Translated")
+                const_cast<LPTSTR>("Hardware\\ResourceMap\\System Resources\\Physical Memory"),
+                const_cast<LPTSTR>(".Translated")
             },
             {
-                const_cast<LPCSTR>("Hardware\\ResourceMap\\System Resources\\Reserved"),
-                const_cast<LPCSTR>(".Translated")
+                const_cast<LPTSTR>("Hardware\\ResourceMap\\System Resources\\Reserved"),
+                const_cast<LPTSTR>(".Translated")
             },
             {
-                const_cast<LPCSTR>("Hardware\\ResourceMap\\System Resources\\Loader Reserved"),
-                const_cast<LPCSTR>(".Raw")
+                const_cast<LPTSTR>("Hardware\\ResourceMap\\System Resources\\Loader Reserved"),
+                const_cast<LPTSTR>(".Raw")
             }
         };
 
@@ -7401,11 +7432,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // manage the flag to handle edgecases
         static void flag_sanitizer(flagset &flags) {
             if (flags.count() == 0) {
-                flags |= VM::DEFAULT;
+                flags |= DEFAULT;
                 return;
             }
 
-            if (flags == VM::DEFAULT) {
+            if (flags == DEFAULT) {
                 return;
             }
 
@@ -7426,7 +7457,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 flags.test(WIN_HYPERV_DEFAULT_MACRO) || // deprecated
                 flags.test(MULTIPLE)
             ) {
-                flags |= VM::DEFAULT;
+                flags |= DEFAULT;
             }
         }
 
@@ -7484,17 +7515,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         // check if Hyper-V is running 
         static bool hyperv_default_check(const flagset &flags) {
-#if (!MSVC)
-            return false;
-#else
             if (
-                core::is_enabled(flags, VM::ENABLE_HYPERV_HOST) ||
-                core::is_enabled(flags, VM::WIN_HYPERV_DEFAULT_MACRO) // deprecated
+                core::is_enabled(flags, ENABLE_HYPERV_HOST) ||
+                core::is_enabled(flags, WIN_HYPERV_DEFAULT_MACRO) // deprecated
             ) {
-                debug("HYPERV_CHECK: returned false through flag check");
+                core_debug("HYPERV_CHECK: returned false through flag check");
                 return false;
             }
 
+#if (MSVC)
             const u8 version = util::get_windows_version();
             
             if (version == 0) {
@@ -7502,28 +7531,27 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             if (version < 10) {
-                debug("HYPERV_CHECK: returned false through insufficient windows version (version ", static_cast<u32>(version), ")");
+                core_debug("HYPERV_CHECK: returned false through insufficient windows version (version ", static_cast<u32>(version), ")");
                 return false;
             }
-
+#endif
             std::string tmp_brand;
 
-            if (memo::brand::is_brand_cached()) {
-                tmp_brand = memo::brand::fetch_brand();
+            if (memo::brand::is_cached()) {
+                tmp_brand = memo::brand::fetch();
             } else {
                 tmp_brand = brand();
             }
 
             const bool result = (
-                tmp_brand == VM::HYPERV ||
-                tmp_brand == VM::VPC ||
+                tmp_brand == HYPERV ||
+                tmp_brand == VPC ||
                 tmp_brand == "Microsoft Virtual PC/Hyper-V"
             );
 
-            debug("HYPERV_CHECK: is Hyper-V brand check = ", result);
+            core_debug("HYPERV_CHECK: is Hyper-V brand check = ", result);
 
             return result;
-#endif
         }
 
         /**
@@ -7658,7 +7686,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         template <typename... Args>
         static flagset arg_handler(Args&&... args) {
             if VMAWARE_CONSTEXPR (is_empty<Args...>()) {
-                return VM::DEFAULT;
+                return DEFAULT;
             }
 
             flag_collector.reset();
@@ -7725,6 +7753,10 @@ public: // START OF PUBLIC FUNCTIONS
             throw_error("Flag argument must be a technique flag and not a settings flag");
         }
 
+#if (CPP >= 23)
+        [[assume(flag_bit < technique_end)]];
+#endif
+
         if (memo::is_cached(flag_bit)) {
             const memo::data_t data = memo::cache_fetch(flag_bit);
             return data.result;
@@ -7750,41 +7782,42 @@ public: // START OF PUBLIC FUNCTIONS
 
     /**
      * @brief Fetch the VM brand
-     * @param either nothing or VM::MULTIPLE
+     * @param any flag combination in VM structure or nothing (VM::MULTIPLE can be added)
      * @return std::string
-     * @returns VMware, VirtualBox, KVM, bhyve, QEMU, Microsoft Hyper-V, Microsoft x86-to-ARM, Parallels, Xen HVM, ACRN, QNX hypervisor, Hybrid Analysis, Sandboxie, Docker, Wine, Virtual Apple, Virtual PC, Unknown
      * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmbrand
      */
     template <typename ...Args>
     [[nodiscard]] static std::string brand(Args ...args) {
         flagset flags = core::arg_handler(args...);
 
-        const bool is_multiple = flags.test(VM::MULTIPLE);
+        const bool is_multiple = flags.test(MULTIPLE);
 
         #define brands core::brand_scoreboard
 
 // this gets annoying really fast 
 //#ifdef __VMAWARE_DEBUG__
 //        for (const auto p : brands) {
-//            debug("scoreboard: ", (int)p.second, " : ", p.first);
+//            core_debug("scoreboard: ", (int)p.second, " : ", p.first);
 //        }
 //#endif
 
-        if (!memo::all_present()) {
+        // are all the techiques already run? if not, run all of them to get the necessary info to fetch the brand
+        if (!memo::all_present() || core::is_enabled(flags, NO_MEMO)) {
             u16 tmp = core::run_all(flags);
             UNUSED(tmp);
         }
 
+        // check if it's already cached and return that instead
         if (core::is_disabled(flags, NO_MEMO)) {
             if (is_multiple) {
-                if (memo::multi::is_brand_cached()) {
-                    debug("VM::brand(): returned multi brand from cache");
-                    return memo::multi::fetch_brand();
+                if (memo::multi_brand::is_cached()) {
+                    core_debug("VM::brand(): returned multi brand from cache");
+                    return memo::multi_brand::fetch();
                 }
             } else {
-                if (memo::brand::is_brand_cached()) {
-                    debug("VM::brand(): returned brand from cache");
-                    return memo::brand::fetch_brand();
+                if (memo::brand::is_cached()) {
+                    core_debug("VM::brand(): returned brand from cache");
+                    return memo::brand::fetch();
                 }
             }
         }
@@ -7792,22 +7825,16 @@ public: // START OF PUBLIC FUNCTIONS
         std::string current_brand = "";
         i32 max = 0;
 
-        // both do the same thing, just with a difference in clarity and code readability
-#if (CPP >= 17)
-        for (const auto& [brand, points] : brands) {
+        // fetch the brand with the highest score
+        for (auto it = brands.cbegin(); it != brands.cend(); ++it) {
+            const char* brand = it->first;
+            const brand_score_t points = it->second;
+
             if (points > max) {
                 current_brand = brand;
                 max = points;
             }
         }
-#else
-        for (auto it = brands.cbegin(); it != brands.cend(); ++it) {
-            if (it->second > max) {
-                current_brand = it->first;
-                max = it->second;
-            }
-        }
-#endif
 
         if (max == 0) {
             return "Unknown";
@@ -7828,18 +7855,18 @@ public: // START OF PUBLIC FUNCTIONS
         constexpr const char* TMP_VPC         = "Virtual PC";
         constexpr const char* TMP_HYPERV      = "Microsoft Hyper-V";
 #else
-        constexpr const char* TMP_QEMU        = VM::QEMU;
-        constexpr const char* TMP_KVM         = VM::KVM;
-        constexpr const char* TMP_KVM_HYPERV  = VM::KVM_HYPERV;
+        constexpr const char* TMP_QEMU        = QEMU;
+        constexpr const char* TMP_KVM         = KVM;
+        constexpr const char* TMP_KVM_HYPERV  = KVM_HYPERV;
 
-        constexpr const char* TMP_VMWARE      = VM::VMWARE;
-        constexpr const char* TMP_EXPRESS     = VM::VMWARE_EXPRESS;
-        constexpr const char* TMP_ESX         = VM::VMWARE_ESX;
-        constexpr const char* TMP_GSX         = VM::VMWARE_GSX;
-        constexpr const char* TMP_WORKSTATION = VM::VMWARE_WORKSTATION;
+        constexpr const char* TMP_VMWARE      = VMWARE;
+        constexpr const char* TMP_EXPRESS     = VMWARE_EXPRESS;
+        constexpr const char* TMP_ESX         = VMWARE_ESX;
+        constexpr const char* TMP_GSX         = VMWARE_GSX;
+        constexpr const char* TMP_WORKSTATION = VMWARE_WORKSTATION;
 
-        constexpr const char* TMP_VPC         = VM::VPC;
-        constexpr const char* TMP_HYPERV      = VM::HYPERV;
+        constexpr const char* TMP_VPC         = VPC;
+        constexpr const char* TMP_HYPERV      = HYPERV;
 #endif
 
         if (
@@ -7858,6 +7885,7 @@ public: // START OF PUBLIC FUNCTIONS
         ) {
 #if (MSVC)
             const u8 version = util::get_windows_version();
+
             if (
                 (version < 10) &&
                 (version != 0)
@@ -7903,11 +7931,11 @@ public: // START OF PUBLIC FUNCTIONS
         }
 
         if (is_multiple) {
-            debug("VM::brand(): cached multiple brand string");
-            memo::multi::store_brand(current_brand);
+            core_debug("VM::brand(): cached multiple brand string");
+            memo::multi_brand::store(current_brand);
         } else {
-            debug("VM::brand(): cached brand string");
-            memo::brand::store_brand(current_brand);
+            core_debug("VM::brand(): cached brand string");
+            memo::brand::store(current_brand);
         }
 
         return current_brand;
@@ -7916,11 +7944,10 @@ public: // START OF PUBLIC FUNCTIONS
 
     /**
      * @brief Detect if running inside a VM
-     * @param any combination of flags, can be optional
+     * @param any flag combination in VM structure or nothing
      * @return bool
      * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmdetect
      */
-    // for bit flags (i.e. VM::VMID, VM::RDTSC, etc...)
     template <typename ...Args>
     static bool detect(Args ...args) {
         flagset flags = core::arg_handler(args...);
@@ -7936,7 +7963,7 @@ public: // START OF PUBLIC FUNCTIONS
         }
 
         if (core::hyperv_default_check(flags)) {
-            debug("VM::detect(): returned false due to Hyper-V default check");
+            core_debug("VM::detect(): returned false due to Hyper-V default check");
             return false;
         }
 
@@ -7946,7 +7973,7 @@ public: // START OF PUBLIC FUNCTIONS
 
     /**
      * @brief Get the percentage of how likely it's a VM
-     * @param any combination of flags, can be optional
+     * @param any flag combination in VM structure or nothing
      * @return std::uint8_t
      * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmpercentage
      */
@@ -7966,7 +7993,7 @@ public: // START OF PUBLIC FUNCTIONS
         }
 
         if (core::hyperv_default_check(flags)) {
-            debug("VM::percentage(): returned 0 due to Hyper-V default check");
+            core_debug("VM::percentage(): returned 0 due to Hyper-V default check");
             return 0;
         }
 
@@ -8082,8 +8109,8 @@ std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard {
 std::map<VM::u8, VM::memo::data_t> VM::memo::cache_table;
 VM::flagset VM::memo::cache_keys = 0;
 std::string VM::memo::brand::brand_cache = "";
-std::string VM::memo::multi::brand_cache = "";
-std::string VM::memo::cpu::brand_cache = "";
+std::string VM::memo::multi_brand::brand_cache = "";
+std::string VM::memo::cpu_brand::brand_cache = "";
 
 
 // not even sure how to explain honestly, just pretend this doesn't exist idfk
@@ -8113,6 +8140,17 @@ VM::flagset VM::DEFAULT = []() -> flagset {
 VM::flagset VM::ALL = []() -> flagset {
     flagset tmp = DEFAULT;
     tmp.set(CURSOR);
+    return tmp;
+}();
+
+
+std::vector<VM::enum_flags> VM::technique_vector = []() -> std::vector<VM::enum_flags> {
+    std::vector<VM::enum_flags> tmp{};
+
+    for (u8 i = VM::technique_begin; i < VM::technique_end; i++) {
+        tmp.push_back(static_cast<VM::enum_flags>(i));
+    }
+
     return tmp;
 }();
 
