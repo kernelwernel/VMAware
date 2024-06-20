@@ -3520,7 +3520,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         strs[1] = "\\\\.\\vmci";
 
         for (int i=0; i < count; i++) {
-            h = CreateFile(strs[i], GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+            h = CreateFile(strs[i].c_str(), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
             if (h != INVALID_HANDLE_VALUE) {
                 debug("VMWare traced using device ", strs[i]);
                 return true;
