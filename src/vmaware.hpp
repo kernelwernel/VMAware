@@ -334,6 +334,7 @@ public:
         KVM_DIRS,          // GPL
         AUDIO,             // GPL
         QEMU_DIR,          // GPL 
+        VMWARE_DEVICES,    // GPL
         VM_PROCESSES,
         LINUX_USER_HOST,
         GAMARUE,
@@ -3497,6 +3498,42 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
     }
 
+
+    /**
+     * @brief Check for any VM processes that are active
+     * @author a0rtega
+     * @category Windows
+     * @link https://github.com/a0rtega/pafish/blob/master/pafish/vmware.c
+     * @note from pafish project
+     * @copyright GPL
+     */
+    [[nodiscard]] static bool vmware_devices() try {
+#if (!MSVC)
+        return false;
+#else
+        HANDLE h;
+        const u8 count = 2;
+        std::string strs[count];
+        char message[200];
+
+        strs[0] = "\\\\.\\HGFS";
+        strs[1] = "\\\\.\\vmci";
+
+        for (int i=0; i < count; i++) {
+            h = CreateFile(strs[i], GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+            if (h != INVALID_HANDLE_VALUE) {
+                debug("VMWare traced using device ", strs[i]);
+                return true;
+            }
+        }
+
+        return false;
+#endif
+    }
+    catch (...) {
+        debug("QEMU_DIR: ", "catched error, returned false");
+        return false;
+    }
 
     /**
      * @brief Check for any VM processes that are active
@@ -8222,6 +8259,7 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::LOADED_DLLS, { 75, VM::loaded_dlls }},             // GPL
     { VM::AUDIO, { 35, VM::check_audio }},                   // GPL
     { VM::QEMU_DIR, { 45, VM::qemu_dir }},                   // GPL
+    { VM::VMWARE_DEVICES, { 60, VM::vmware_devices }},       // GPL
     { VM::VM_PROCESSES, { 30, VM::vm_processes }},
     { VM::LINUX_USER_HOST, { 25, VM::linux_user_host }},
     { VM::GAMARUE, { 40, VM::gamarue }},
