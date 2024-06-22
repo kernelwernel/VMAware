@@ -2,12 +2,15 @@
 
 ## Contents
 - [`VM::detect()`](#vmdetect)
+- [`VM::percentage()`](#vmpercentage)
 - [`VM::brand()`](#vmbrand)
 - [`VM::check()`](#vmcheck)
-- [`VM::percentage()`](#vmpercentage)
 - [`VM::add_custom()`](#vmaddcustom)
 - [Flag table](#flag-table)
 - [Non-technique flags](#non-technique-flags)
+- [Variables](#variables)
+- [CLI arguments](#cli-documentation)
+
 
 <br>
 
@@ -73,17 +76,25 @@ int main() {
 
 
     /**
+     * This will set the threshold bar to detect a VM higher than the default threshold.
+     * Use this if you want to be extremely sure if it's a VM, but this can risk the result
+     * to be a false negative. Use VM::percentage() for a more accurate picture instead.
+     */ 
+    bool is_vm7 = VM::detect(VM::HIGH_THRESHOLD);
+
+
+    /**
      * If you want to disable any technique for whatever reason, use VM::DISABLE().
      * This will essentially mean "perform all the default flags, but only disable
      * the VM::RDTSC technique". 
      */ 
-    bool is_vm7 = VM::detect(VM::DISABLE(VM::RDTSC));
+    bool is_vm8 = VM::detect(VM::DISABLE(VM::RDTSC));
 
 
     /**
      * Same as above, but you can disable multiple techniques at the same time.
      */ 
-    bool is_vm8 = VM::detect(VM::DISABLE(VM::VMID, VM::RDTSC, VM::HYPERVISOR_BIT));
+    bool is_vm9 = VM::detect(VM::DISABLE(VM::VMID, VM::RDTSC, VM::HYPERVISOR_BIT));
 
 
     /**
@@ -96,10 +107,39 @@ int main() {
      * For further information, please check the VM::ENABLE_HYPER_HOST flag information
      * in the non-technique flags section (situated at the end of this documentation).
      */ 
-    bool is_vm8 = VM::detect(VM::ENABLE_HYPERV_HOST);
+    bool is_vm10 = VM::detect(VM::ENABLE_HYPERV_HOST);
 
 }
 ```
+
+<br>
+
+## `VM::percentage()`
+This will return a `std::uint8_t` between 0 and 100. It'll return the certainty of whether it has detected a VM based on all the techniques available as a percentage. The lower the value, the less chance it's a VM. The higher the value, the more likely it is. The parameters are treated the exact same way with the `VM::detect()` function.
+
+```cpp
+#include "vmaware.hpp"
+#include <iostream>
+#include <cstdint>
+
+int main() {
+    // uint8_t and unsigned char works too
+    const std::uint8_t percent = VM::percentage();
+
+    if (percent == 100) {
+        std::cout << "Definitely a VM!\n";
+    } else if (percent == 0) {
+        std::cout << "Definitely NOT a VM";
+    } else {
+        std::cout << "Unsure if it's a VM";
+    }
+
+    // converted to std::uint32_t for console character encoding reasons
+    std::cout << "percentage: " << static_cast<std::uint32_t>(percent) << "%\n"; 
+}
+```
+
+NOTE: you can use the same flag system as shown with `VM::detect()` for `VM::percentage()`
 
 <br>
 
@@ -207,32 +247,6 @@ int main() {
 
 <br>
 
-## `VM::percentage()`
-This will return a `std::uint8_t` between 0 and 100. It'll return the certainty of whether it has detected a VM based on all the techniques available as a percentage. The lower the value, the less chance it's a VM. The higher the value, the more likely it is. The parameters are treated the exact same way with the `VM::detect()` function.
-
-```cpp
-#include "vmaware.hpp"
-#include <iostream>
-#include <cstdint>
-
-int main() {
-    // uint8_t and unsigned char works too
-    const std::uint8_t percent = VM::percentage();
-
-    if (percent == 100) {
-        std::cout << "Definitely a VM!\n";
-    } else if (percent == 0) {
-        std::cout << "Definitely NOT a VM";
-    } else {
-        std::cout << "Unsure if it's a VM";
-    }
-
-    // converted to std::uint32_t for console character encoding reasons
-    std::cout << "percentage: " << static_cast<std::uint32_t>(percent) << "%\n"; 
-}
-```
-
-NOTE: you can use the same flag system as shown with `VM::detect()` for `VM::percentage()`
 
 
 <br>
@@ -381,18 +395,19 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 |------|-------------|
 | `VM::ALL` | This will enable all the technique flags, including the cursor check that's disabled by default. |
 | `VM::NO_MEMO` | This will disable memoization, meaning the result will not be fetched through a previous computation of the `VM::detect()` function. Use this if you're only using a single function from the `VM` struct for a performance boost. |
-| `VM::EXTREME` | This will disregard the weights/biases and its scoring system. It will essentially treat any technique that found a hit as a VM detection no matter how low that technique's certainty is, so if a single technique is positive then it will return true. | 
+| `VM::EXTREME` | This will disregard the weights/biases in the scoring system. It will essentially treat any technique that found a hit as a VM detection no matter how low that technique's certainty is, so if a single technique is positive then it will return true. | 
 | `VM::DEFAULT` | This represents a range of flags which are enabled if no default argument is provided. |
-| `VM::ENABLE_HYPERV_HOST` | Windows 11 (and 10 if enabled manually) may have Hyper-V as a default virtualisation solution for any host program even if the OS is running as host. There isn't a way to detect whether to detect whether the host program is ran in default virtualisation mode, or manually intended virtualisation, which is one of the main hurdles of the library to overcome. This is a Hyper-V specific problem, and the library will discard any Hyper-V brand suspicions as not running in a VM by default. But if this flag is enabled then it will still count it regardless of the risk that it might be Hyper-V's default host virtualisation for every host program. So basically this flag means that "I'm aware this program might be running in a default virtualised environment on host, but I'll still count this as running in a VM anyway whether it's default virtualisation or manually intended virtualisation". |
+| `VM::ENABLE_HYPERV_HOST` | Windows 11 (and 10 if enabled manually) may have Hyper-V as a default virtualisation solution for any host program even if the OS is running as host. There isn't a way to detect whether the host program is ran in default virtualisation mode, or manually intended virtualisation, which is one of the main hurdles of the library to overcome. This is a Hyper-V specific problem, and the library will discard any Hyper-V brand suspicions as not running in a VM by default. But if this flag is enabled then it will still count it regardless of the risk that it might be Hyper-V's default host virtualisation for every host program. So basically this flag means that "I'm aware this program might be running in a default virtualised environment on host, but I'll still count this as running in a VM anyway whether it's default virtualisation or manually intended virtualisation". |
 | `VM::WIN_HYPERV_DEFAULT` | ⚠️ **DEPRECATED** ⚠️ Same as above, but deprecated as of 1.5 release. |
 | `VM::MULTIPLE` | This is specific to `VM::brand()`. This will basically return a `std::string` message of what brands could be involved. For example, it could return "`VMware or VirtualBox`" instead of having a single brand string output. This has no effect if applied to any other functions than `VM::brand()`. |   
+| `VM::HIGH_THRESHOLD` | This is specific to `VM::detect()` and `VM::percentage()`, which will set the threshold bar to confidently detect a VM by 3.5x higher. |
 
 <br>
 
 # Variables
 | Variable | Description |
 |----------|-------------|
-| `VM::technique_count` | This will store the number of VM detections |
+| `VM::technique_count` | This will store the number of VM detection techniques |
 | `VM::technique_vector` | This will store all the technique macros as a vector. Useful if you're trying to loop through all the techniques for whatever operation you're performing. |
 
 <br>

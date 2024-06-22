@@ -25,13 +25,11 @@ The library is:
 - Memoized, meaning past results are cached and retrieved if ran again for performance benefits 
 - Contains separate MIT and GPL-3.0 compliant library header files
 
-- - -
 
-**IMPORTANT:** 
+> [!IMPORTANT]
+> The library doesn't guarantee it'll be accurate. If you found a false positive or a false negative then please create an issue with information on what your VM is, what OS you're using, and other relevant details.
+>
 
-The library doesn't guarantee it'll be accurate. If you found a false positive or a false negative then please create an issue with information on what your VM is, what OS you're using, and other relevant details.
-
-- - -
 
 <br>
 

@@ -145,6 +145,9 @@
 #warning "Unknown OS detected, tests will be severely limited"
 #endif
 
+#if (CPP >= 23)
+#include <limits>
+#endif
 #if (CPP >= 20)
 #include <bit>
 #include <ranges>
@@ -168,7 +171,6 @@
 #include <fstream>
 #include <regex>
 #include <thread>
-#include <limits>
 #include <cstdint>
 #include <map>
 #include <unordered_map>
@@ -386,6 +388,7 @@ public:
         // start of non-technique flags
         EXTREME,
         NO_MEMO,
+        HIGH_THRESHOLD,
         ENABLE_HYPERV_HOST,
         WIN_HYPERV_DEFAULT [[deprecated("Use VM::ENABLE_HYPERV_HOST instead")]],
         MULTIPLE
@@ -395,7 +398,10 @@ private:
     static constexpr u8 enum_size = MULTIPLE; // get enum size through value of last element
     static constexpr u8 non_technique_count = MULTIPLE - EXTREME + 1; // get number of non-technique flags like VM::NO_MEMO for example
     static constexpr u8 WIN_HYPERV_DEFAULT_MACRO = ENABLE_HYPERV_HOST + 1; // can't use orignal enum value because that would give compiler warnings of deprecated usage
-    static constexpr u8 INVALID = 255;
+    static constexpr u8 INVALID = 255; // explicit invalid technique macro
+    static constexpr u16 maximum_points = 4765; // theoretical total points if all VM detections returned true (which is practically impossible)
+    static constexpr u16 high_threshold_score = 350; // new threshold score from 100 to 350 if VM::HIGH_THRESHOLD flag is enabled
+    static constexpr bool SHORTCUT = true; // macro for whether VM::core::run_all() should take a shortcut by skipping the rest of the techniques if the threshold score is already met
 
     // intended for loop indexes
     static constexpr u8 enum_begin = 0;
@@ -408,6 +414,9 @@ private:
 public:
     static constexpr u8 technique_count = EXTREME; // get total number of techniques
     static std::vector<enum_flags> technique_vector;
+#ifdef __VMAWARE_DEBUG__
+    static u16 total_points;
+#endif
 
 private:
 
@@ -7339,29 +7348,36 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         {
             // error
             case VM_RESOURCE_CHECK_ERROR:
+                debug("NETTITUDE_VM_MEMORY: unknown error, returned false");
                 return false;
                 break;
 
             // no VM
             case VM_RESOURCE_CHECK_NO_VM:
+                debug("NETTITUDE_VM_MEMORY: no VM detected");
                 return false;
                 break;
 
             // Hyper-V
             case VM_RESOURCE_CHECK_HYPERV:
+                debug("NETTITUDE_VM_MEMORY: Hyper-V detected");
                 return core::add(HYPERV);
                 break;
 
             // VirtualBox
             case VM_RESOURCE_CHECK_VBOX:
+                debug("NETTITUDE_VM_MEMORY: Vbox detected");
                 return core::add(VBOX);
                 break;
 
             // Unknown brand, but likely VM
             case VM_RESOURCE_CHECK_UNKNOWN_PLATFORM:
+                debug("NETTITUDE_VM_MEMORY: unknown brand, but likely VM (returned true)");
                 return true;
                 break;
+
             default:
+                debug("NETTITUDE_VM_MEMORY: returned false as default case");
                 return false;
                 break;
         }
@@ -7490,6 +7506,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             if (
                 flags.test(EXTREME) ||
                 flags.test(NO_MEMO) ||
+                flags.test(HIGH_THRESHOLD) ||
                 flags.test(ENABLE_HYPERV_HOST) ||
                 flags.test(WIN_HYPERV_DEFAULT_MACRO) || // deprecated
                 flags.test(MULTIPLE)
@@ -7499,7 +7516,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         // run every VM detection mechanism in the technique table
-        static u16 run_all(const flagset &flags) {
+        static u16 run_all(const flagset &flags, const bool shortcut = false) {
             u16 points = 0;
             const bool memo_enabled = core::is_disabled(flags, NO_MEMO);
 
@@ -7523,27 +7540,39 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     continue;
                 }
 
+                // initialise the technique structure
                 technique pair = tmp.second;
 
+                // run the technique
                 const bool result = pair.run();
 
+                // accumulate the points if technique detected a VM
                 if (result) {
                     points += pair.points;
                 }
+
+                /**
+                 * for things like VM::detect() and VM::percentage(), 
+                 * a score of 200+ is guaranteed to be a VM, so 
+                 * there's no point in running the rest of the techniques
+                 */ 
+                if (shortcut && points >= 200) {
+                    core_debug("VM::run_all(): returned points early due to shortcut option");
+                    return points;
+                }
     
+                // store the current technique result to the cache
                 if (memo_enabled) {
                     memo::cache_store(technique_macro, result, pair.points);
                 }
             }
 
-            if (custom_table.empty()) {
-                return points;
-            }
-
             // for custom VM techniques
-            for (const auto& pair : custom_table) {
-                if (pair.run()) {
-                    points += pair.points;
+            if (!custom_table.empty()) {
+                for (const auto& pair : custom_table) {
+                    if (pair.run()) {
+                        points += pair.points;
+                    }
                 }
             }
 
@@ -7762,11 +7791,13 @@ public: // START OF PUBLIC FUNCTIONS
      * @return bool
      * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmcheck
      */
-#if (CPP >= 20 && !CLANG) // not sure why clang doesn't support this lol
-    [[nodiscard]] static bool check(const u8 flag_bit, const std::source_location& loc = std::source_location::current()) {
-#else
-    [[nodiscard]] static bool check(const u8 flag_bit) {
+    [[nodiscard]] static bool check(const u8 flag_bit
+// clang doesn't support std::source_location for some reason
+#if (CPP >= 20 && !CLANG)
+        , const std::source_location& loc = std::source_location::current()
 #endif
+    ) {
+        // lambda to manage exceptions
         auto throw_error = [&](const char* text) -> void {
             std::stringstream ss;
 #if (CPP >= 20 && !CLANG)
@@ -7776,13 +7807,16 @@ public: // START OF PUBLIC FUNCTIONS
             throw std::invalid_argument(std::string(text) + ss.str());
         };
 
+        // check if flag is out of range
         if (flag_bit > enum_size) {
             throw_error("Flag argument must be a valid");
         }
 
+        // check if the bit is a non-technique flag, which shouldn't be allowed
         if (
             (flag_bit == NO_MEMO) || \
             (flag_bit == EXTREME) || \
+            (flag_bit == HIGH_THRESHOLD) || \
             (flag_bit == ENABLE_HYPERV_HOST) || \
             (flag_bit == WIN_HYPERV_DEFAULT_MACRO) ||  // deprecated
             (flag_bit == MULTIPLE)
@@ -7794,21 +7828,25 @@ public: // START OF PUBLIC FUNCTIONS
         [[assume(flag_bit < technique_end)]];
 #endif
 
+        // if the technique is already cached, return the cached value instead
         if (memo::is_cached(flag_bit)) {
             const memo::data_t data = memo::cache_fetch(flag_bit);
             return data.result;
         }
 
-        bool result = false;
-
+        // check if the flag even exists
         auto it = core::table.find(flag_bit);
-
         if (it == core::table.end()) {
             throw_error("Flag is not known");
         }
 
+        // initialise and run the technique
         const core::technique& pair = it->second;
-        result = pair.run();
+        const bool result = pair.run();
+
+#ifdef __VMAWARE_DEBUG__
+        total_points += pair.points;
+#endif
 
         // store the technique result in the cache table
         memo::cache_store(flag_bit, result, pair.points);
@@ -7827,22 +7865,22 @@ public: // START OF PUBLIC FUNCTIONS
     [[nodiscard]] static std::string brand(Args ...args) {
         flagset flags = core::arg_handler(args...);
 
-        const bool is_multiple = flags.test(MULTIPLE);
-
-        #define brands core::brand_scoreboard
-
-// this gets annoying really fast 
-//#ifdef __VMAWARE_DEBUG__
-//        for (const auto p : brands) {
-//            core_debug("scoreboard: ", (int)p.second, " : ", p.first);
-//        }
-//#endif
+        const bool is_multiple = core::is_enabled(flags, MULTIPLE);
 
         // are all the techiques already run? if not, run all of them to get the necessary info to fetch the brand
         if (!memo::all_present() || core::is_enabled(flags, NO_MEMO)) {
             u16 tmp = core::run_all(flags);
             UNUSED(tmp);
         }
+
+        #define brands core::brand_scoreboard
+
+        // this gets annoying really fast 
+        //#ifdef __VMAWARE_DEBUG__
+        //    for (const auto p : brands) {
+        //        core_debug("scoreboard: ", (int)p.second, " : ", p.first);
+        //    }
+        //#endif
 
         // check if it's already cached and return that instead
         if (core::is_disabled(flags, NO_MEMO)) {
@@ -7873,6 +7911,7 @@ public: // START OF PUBLIC FUNCTIONS
             }
         }
 
+        // if no brand had a single point, return "Unknown"
         if (max == 0) {
             return "Unknown";
         }
@@ -7967,12 +8006,14 @@ public: // START OF PUBLIC FUNCTIONS
             current_brand = ss.str();
         }
 
-        if (is_multiple) {
-            core_debug("VM::brand(): cached multiple brand string");
-            memo::multi_brand::store(current_brand);
-        } else {
-            core_debug("VM::brand(): cached brand string");
-            memo::brand::store(current_brand);
+        if (core::is_disabled(flags, NO_MEMO)) {
+            if (is_multiple) {
+                core_debug("VM::brand(): cached multiple brand string");
+                memo::multi_brand::store(current_brand);
+            } else {
+                core_debug("VM::brand(): cached brand string");
+                memo::brand::store(current_brand);
+            }
         }
 
         return current_brand;
@@ -7989,12 +8030,25 @@ public: // START OF PUBLIC FUNCTIONS
     static bool detect(Args ...args) {
         flagset flags = core::arg_handler(args...);
 
-        bool result = false;
+        if (
+            core::is_enabled(flags, EXTREME) && \
+            core::is_enabled(flags, HIGH_THRESHOLD)
+        ) {
+            throw std::invalid_argument("VM::EXTREME and VM::HIGH_THRESHOLD should not be set at the same time. Use either options instead of both");
+        }
 
-        const u16 points = core::run_all(flags);
+        const u16 points = core::run_all(flags, SHORTCUT);
+
+#if (CPP >= 23)
+        [[assume(points < maximum_points)]];
+#endif
+
+        bool result = false;
 
         if (core::is_enabled(flags, EXTREME)) {
             result = (points > 0);
+        } else if (core::is_enabled(flags, HIGH_THRESHOLD)) {
+            result = (points > high_threshold_score);
         } else {
             result = (points >= 100);
         }
@@ -8018,10 +8072,31 @@ public: // START OF PUBLIC FUNCTIONS
     static u8 percentage(Args ...args) {
         flagset flags = core::arg_handler(args...);
 
-        const u16 points = core::run_all(flags);
+        if (
+            core::is_enabled(flags, EXTREME) && \
+            core::is_enabled(flags, HIGH_THRESHOLD)
+        ) {
+            throw std::invalid_argument("VM::EXTREME and VM::HIGH_THRESHOLD should not be set at the same time. Use either options instead of both");
+        }
+
+        const u16 points = core::run_all(flags, SHORTCUT);
         u8 percent = 0;
 
-        if (points >= 200) {
+#if (CPP >= 23)
+        [[assume(points < maximum_points)]];
+#endif
+
+        u16 threshold = 200;
+
+        if (core::is_enabled(flags, HIGH_THRESHOLD)) {
+            threshold = high_threshold_score;
+        }
+
+        if (core::is_enabled(flags, EXTREME)) {
+            threshold = 0;
+        }
+
+        if (points >= threshold) {
             percent = 100;
         } else if (points >= 100) {
             percent = 99;
@@ -8046,11 +8121,10 @@ public: // START OF PUBLIC FUNCTIONS
      */
     static void add_custom(
         const std::uint8_t percent,
-#if (CPP >= 20 && !CLANG)
-        std::function<bool()> detection_func,
-        const std::source_location & loc = std::source_location::current()
-#else
         std::function<bool()> detection_func
+// clang doesn't support std::source_location for some reason
+#if (CPP >= 20 && !CLANG)
+        , const std::source_location & loc = std::source_location::current()
 #endif
     ) {
         auto throw_error = [&](const char* text) -> void {
@@ -8065,6 +8139,10 @@ public: // START OF PUBLIC FUNCTIONS
         if (percent > 100) {
             throw_error("Percentage parameter must be between 0 and 100");
         }
+
+#if (CPP >= 23)
+        [[assume(percent > 0 && percent <= 100)]];
+#endif
 
         core::technique query{
             percent,
@@ -8088,6 +8166,7 @@ public: // START OF PUBLIC FUNCTIONS
         flags.flip();
         flags.set(NO_MEMO, 0);
         flags.set(EXTREME, 0);
+        flags.set(HIGH_THRESHOLD, 0);
         flags.set(ENABLE_HYPERV_HOST, 0);
         flags.set(WIN_HYPERV_DEFAULT_MACRO, 0); // deprecated
         flags.set(MULTIPLE, 0);
@@ -8148,7 +8227,9 @@ VM::flagset VM::memo::cache_keys = 0;
 std::string VM::memo::brand::brand_cache = "";
 std::string VM::memo::multi_brand::brand_cache = "";
 std::string VM::memo::cpu_brand::brand_cache = "";
-
+#ifdef __VMAWARE_DEBUG__
+VM::u16 VM::total_points = 0;
+#endif
 
 // not even sure how to explain honestly, just pretend this doesn't exist idfk
 VM::flagset VM::core::flag_collector;
@@ -8165,6 +8246,7 @@ VM::flagset VM::DEFAULT = []() -> flagset {
     tmp.flip(EXTREME);
     tmp.flip(NO_MEMO);
     tmp.flip(CURSOR);
+    tmp.flip(HIGH_THRESHOLD);
     tmp.flip(ENABLE_HYPERV_HOST);
     tmp.flip(WIN_HYPERV_DEFAULT_MACRO); // deprecated
     tmp.flip(MULTIPLE);
@@ -8222,7 +8304,7 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::VMID, { 100, VM::vmid }},
     { VM::CPU_BRAND, { 50, VM::cpu_brand }},
     { VM::HYPERVISOR_BIT, { 100, VM::hypervisor_bit }},
-    { VM::CPUID_0X4, { 70, VM::cpuid_0x4 }},
+    { VM::CPUID_0X4, { 70, VM::cpuid_0x4 }},            
     { VM::HYPERVISOR_STR, { 45, VM::hypervisor_brand }},
     { VM::RDTSC, { 10, VM::rdtsc_check }},
     { VM::THREADCOUNT, { 35, VM::thread_count }},
