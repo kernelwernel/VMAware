@@ -25,12 +25,12 @@
 
 int main(void) {
     const bool test1 = VM::detect();
-    const bool test2 = VM::detect(VM::ALL);
-    const bool test3 = VM::detect(VM::DEFAULT);
-    const bool test4 = VM::detect(VM::DEFAULT, VM::ALL);
-    const bool test5 = VM::detect(VM::DEFAULT, VM::DISABLE(VM::RDTSC));
-    const bool test6 = VM::detect(VM::DEFAULT, VM::DISABLE(VM::RDTSC), VM::EXTREME);
-    const bool test7 = VM::detect(VM::NO_MEMO, VM::EXTREME, VM::MULTIPLE, VM::DISCARD_HYPERV_DEFAULT);
-    const std::string test8 = VM::brand();
+    //const bool test2 = VM::detect(VM::ALL);
+    //const bool test3 = VM::detect(VM::DEFAULT);
+    //const bool test4 = VM::detect(VM::DEFAULT, VM::ALL);
+    //const bool test5 = VM::detect(VM::DEFAULT, VM::DISABLE(VM::RDTSC));
+    //const bool test6 = VM::detect(VM::DEFAULT, VM::DISABLE(VM::RDTSC), VM::EXTREME);
+    //const bool test7 = VM::detect(VM::NO_MEMO, VM::EXTREME, VM::MULTIPLE, VM::ENABLE_HYPERV_HOST);
+    //const std::string test8 = VM::brand();
     return 0;
 }

@@ -274,8 +274,13 @@ void general(const bool enable_hyperv = true) {
     checker(VM::INTEL_THREAD_MISMATCH, "Intel thread count mismatch");
     checker(VM::XEON_THREAD_MISMATCH, "Intel Xeon thread count mismatch");
     checker(VM::NETTITUDE_VM_MEMORY, "VM memory regions");
+    checker(VM::VMWARE_DEVICES, "VMware devices");
 
     std::printf("\n");
+
+#ifdef __VMAWARE_DEBUG__
+    std::cout << "[DEBUG] theoretical maximum points: " << VM::total_points << "\n";
+#endif
 
     std::string brand = VM::brand(VM::MULTIPLE);
 
@@ -295,6 +300,7 @@ void general(const bool enable_hyperv = true) {
     const bool is_detected = (enable_hyperv ? VM::detect(VM::ENABLE_HYPERV_HOST) : VM::detect());
 
     std::cout << "VM confirmation: " << (is_detected ? green : red) << std::boolalpha << is_detected << std::noboolalpha << ansi_exit << "\n";
+
 
     const char* count_color = "";
 
@@ -317,6 +323,7 @@ void general(const bool enable_hyperv = true) {
         static_cast<std::uint32_t>(VM::technique_count) << 
         ansi_exit <<
         "\n\n";
+
 
     brand = VM::brand(); // no VM::MULTIPLE this time
     

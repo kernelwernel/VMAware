@@ -51,6 +51,6 @@ for version in "${standards[@]}"; do
     fi
 done
 
-cd $(current_dir)
+cd $current_dir
 
 rm -rf build
