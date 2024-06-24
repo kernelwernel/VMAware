@@ -204,6 +204,7 @@
 #include <strmif.h>
 #include <dshow.h>
 #include <stdio.h>
+#include <io.h>
 
 #pragma comment(lib, "wbemuuid.lib")
 #pragma comment(lib, "iphlpapi.lib")
@@ -384,8 +385,9 @@ public:
         INTEL_THREAD_MISMATCH,
         XEON_THREAD_MISMATCH,
         NETTITUDE_VM_MEMORY,
+        HYPERV_CPUID,
 
-        // start of non-technique flags
+        // start of non-technique flags (THE ORDERING IS VERY SPECIFIC AND MIGHT BREAK SOMETHING IDK)
         EXTREME,
         NO_MEMO,
         HIGH_THRESHOLD,
@@ -6992,13 +6994,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief CHeck for 
+     * @brief Check for memory regions to detect VM-specific brands
      * @category Windows
+     * @author Graham Sutherland
      * @link https://labs.nettitude.com/blog/vm-detection-tricks-part-1-physical-memory-resource-maps/
      */ 
-    [[nodiscard]] static bool nettitude_vm_memory() try{
+    [[nodiscard]] static bool nettitude_vm_memory() try {
 #if (!MSVC)
-    return false;
+        return false;
 #else
         typedef LARGE_INTEGER PHYSICAL_ADDRESS, *PPHYSICAL_ADDRESS;
 
@@ -7389,6 +7392,70 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
 
+    /**
+     * @brief Check for Hyper-V CPUID technique by checking whether all the bits equate to more than 4000 (not sure how this works if i'm honest)
+     * @category x86
+     * @author 一半人生
+     * @link https://unprotect.it/snippet/vmcpuid/195/
+     */ 
+    [[nodiscard]] static bool hyperv_cpuid() try {
+#if (!x86)
+        return false;
+#else
+        /// See: Feature Information Returned in the ECX Register
+        union CpuFeaturesEcx {
+            u32 all;
+            struct {
+                u32 sse3 : 1;       //!< [0] Streaming SIMD Extensions 3 (SSE3)
+                u32 pclmulqdq : 1;  //!< [1] PCLMULQDQ
+                u32 dtes64 : 1;     //!< [2] 64-bit DS Area
+                u32 monitor : 1;    //!< [3] MONITOR/WAIT
+                u32 ds_cpl : 1;     //!< [4] CPL qualified Debug Store
+                u32 vmx : 1;        //!< [5] Virtual Machine Technology
+                u32 smx : 1;        //!< [6] Safer Mode Extensions
+                u32 est : 1;        //!< [7] Enhanced Intel Speedstep Technology
+                u32 tm2 : 1;        //!< [8] Thermal monitor 2
+                u32 ssse3 : 1;      //!< [9] Supplemental Streaming SIMD Extensions 3
+                u32 cid : 1;        //!< [10] L1 context ID
+                u32 sdbg : 1;       //!< [11] IA32_DEBUG_INTERFACE MSR
+                u32 fma : 1;        //!< [12] FMA extensions using YMM state
+                u32 cx16 : 1;       //!< [13] CMPXCHG16B
+                u32 xtpr : 1;       //!< [14] xTPR Update Control
+                u32 pdcm : 1;       //!< [15] Performance/Debug capability MSR
+                u32 reserved : 1;   //!< [16] Reserved
+                u32 pcid : 1;       //!< [17] Process-context identifiers
+                u32 dca : 1;        //!< [18] prefetch from a memory mapped device
+                u32 sse4_1 : 1;     //!< [19] SSE4.1
+                u32 sse4_2 : 1;     //!< [20] SSE4.2
+                u32 x2_apic : 1;    //!< [21] x2APIC feature
+                u32 movbe : 1;      //!< [22] MOVBE instruction
+                u32 popcnt : 1;     //!< [23] POPCNT instruction
+                u32 reserved3 : 1;  //!< [24] one-shot operation using a TSC deadline
+                u32 aes : 1;        //!< [25] AESNI instruction
+                u32 xsave : 1;      //!< [26] XSAVE/XRSTOR feature
+                u32 osxsave : 1;    //!< [27] enable XSETBV/XGETBV instructions
+                u32 avx : 1;        //!< [28] AVX instruction extensions
+                u32 f16c : 1;       //!< [29] 16-bit floating-point conversion
+                u32 rdrand : 1;     //!< [30] RDRAND instruction
+                u32 not_used : 1;   //!< [31] Always 0 (a.k.a. HypervisorPresent)
+            } fields;
+        };
+        
+        if (sizeof(CpuFeaturesEcx) != 4) {
+            debug("HYPERV_CPUID: Size is not 4 bytes for union structure, returning false");
+            return 0;
+        }
+
+        i32 cpu_info[4] = {};
+        cpu::cpuid(cpu_info, 0x40000001);
+        i32 vid = 0;
+        vid = (i32)cpu_info[0];
+        return (vid >= 4000);
+#endif
+    } catch (...) {
+        debug("HYPERV_CPUID: catched error, returned false");
+        return false;
+    }
 
 
 
@@ -7520,6 +7587,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             u16 points = 0;
             const bool memo_enabled = core::is_disabled(flags, NO_MEMO);
 
+            const u16 threshold_points = (core::is_enabled(flags, HIGH_THRESHOLD) ? maximum_points : 200);
+
             // for main technique table
             for (const auto& tmp : table) {
                 const u8 technique_macro = tmp.first;
@@ -7556,7 +7625,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                  * a score of 200+ is guaranteed to be a VM, so 
                  * there's no point in running the rest of the techniques
                  */ 
-                if (shortcut && points >= 200) {
+                if (shortcut && points >= threshold_points) {
                     core_debug("VM::run_all(): returned points early due to shortcut option");
                     return points;
                 }
@@ -8388,7 +8457,8 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::ODD_CPU_THREADS, { 80, VM::odd_cpu_threads }},
     { VM::INTEL_THREAD_MISMATCH, { 85, VM::intel_thread_mismatch }},
     { VM::XEON_THREAD_MISMATCH, { 85, VM::xeon_thread_mismatch }},
-    { VM::NETTITUDE_VM_MEMORY, { 75, VM::nettitude_vm_memory }}
+    { VM::NETTITUDE_VM_MEMORY, { 75, VM::nettitude_vm_memory }},
+    { VM::HYPERV_CPUID, { 35, VM::hyperv_cpuid }}
 
     // __TABLE_LABEL, add your technique above
     // { VM::FUNCTION, { POINTS, FUNCTION_POINTER }}

@@ -139,7 +139,8 @@ int main() {
 }
 ```
 
-NOTE: you can use the same flag system as shown with `VM::detect()` for `VM::percentage()`
+> [!NOTE]
+> you can use the same flag system as shown with `VM::detect()` for `VM::percentage()`
 
 <br>
 
@@ -220,7 +221,11 @@ int main() {
 }
 ```
 
-NOTE: you can use the same flag system as shown with `VM::detect()` for `VM::brand()`
+> [!NOTE]
+> you can use the same flag system as shown with `VM::detect()` for `VM::brand()`
+
+> [!IMPORTANT]
+> `VM::MULTIPLE` has no effect for any other function other than `VM::brand()`
 
 
 <br>
@@ -386,7 +391,8 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::ODD_CPU_THREADS` | Check if the CPU has an odd number of CPU threads |  | 80% |  |  |  |
 | `VM::INTEL_THREAD_MISMATCH` | Check if Intel "i series" CPUs have mismatched thread counts based on a database of threads on models |  | 85% |  |  |  |
 | `VM::XEON_THREAD_MISMATCH` | Check if Intel Xeon CPUs have mismatched threads (same as above technique) |  | 85% |  |  |  |
-
+| `VM::NETTITUDE_VM_MEMORY` | Check for specific VM memory regions | Windows | 75% |  |  |  |
+| `VM::VMWARE_DEVICES` | Check for VMware device systems | Windows | 60% |  | GPL |  |
 
 <br>
 

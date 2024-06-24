@@ -275,6 +275,7 @@ void general(const bool enable_hyperv = true) {
     checker(VM::XEON_THREAD_MISMATCH, "Intel Xeon thread count mismatch");
     checker(VM::NETTITUDE_VM_MEMORY, "VM memory regions");
     checker(VM::VMWARE_DEVICES, "VMware devices");
+    checker(VM::HYPERV_CPUID, "Hyper-V CPUID");
 
     std::printf("\n");
 

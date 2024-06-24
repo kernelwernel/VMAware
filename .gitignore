@@ -56,3 +56,4 @@ cmake-build-*/
 *.bkp
 *copy.hpp
 personal_todo.md
+notes.txt
