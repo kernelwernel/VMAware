@@ -241,6 +241,7 @@
 #include <dirent.h>
 #include <memory>
 #include <cctype>
+#include <fcntl.h>
 #elif (APPLE)
 #include <sys/types.h>
 #include <sys/sysctl.h>
@@ -386,6 +387,8 @@ public:
         XEON_THREAD_MISMATCH,
         NETTITUDE_VM_MEMORY,
         HYPERV_CPUID,
+        CUCKOO_DIR,
+        CUCKOO_PIPE,
 
         // start of non-technique flags (THE ORDERING IS VERY SPECIFIC AND MIGHT BREAK SOMETHING IDK)
         EXTREME,
@@ -489,7 +492,7 @@ private:
     static constexpr const char* INTEL_HAXM = "Intel HAXM";
     static constexpr const char* UNISYS = "Unisys s-Par";
     static constexpr const char* LMHS = "Lockheed Martin LMHS"; // yes, you read that right. The library can now detect VMs running on US military fighter jets, apparently.
-
+    static constexpr const char* CUCKOO = "Cuckoo";
 
 // macro for bypassing unused parameter/variable warnings
 #define UNUSED(x) ((void)(x))
@@ -3100,13 +3103,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         if (compare("InsideTm") || compare("TU-4NH09SMCG1HC")) { // anubis
             debug("COMPUTER_NAME: detected Anubis");
-
             return core::add(ANUBIS);
         }
 
         if (compare("klone_x64-pc") || compare("tequilaboomboom")) { // general
             debug("COMPUTER_NAME: detected general (VM but unknown)");
-
             return true;
         }
 
@@ -7391,7 +7392,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
 
 
-
     /**
      * @brief Check for Hyper-V CPUID technique by checking whether all the bits equate to more than 4000 (not sure how this works if i'm honest)
      * @category x86
@@ -7458,10 +7458,110 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
 
 
+    /**
+     * @brief Check for cuckoo directory using crt and win api directory functions
+     * @category Windows
+     * @author 一半人生
+     * @link https://unprotect.it/snippet/checking-specific-folder-name/196/
+     */ 
+    [[nodiscard]] static bool cuckoo_dir() try {
+#if (!MSVC)
+        return false;
+#else
+        // win api
+        auto IsDirectory2 = [](std::string& strDirName) -> bool {
+            const auto iCode = CreateDirectoryA(strDirName.c_str(), NULL);
+
+            if (ERROR_ALREADY_EXISTS == GetLastError()) {
+                return true;
+            }
+
+            if (iCode) {
+                RemoveDirectoryA(strDirName.c_str());
+            }
+
+            return false;
+        };
+
+        // win api
+        auto IsDirectory1 = [](std::string& strDirName) -> bool {
+            const HANDLE hFile = CreateFileA(
+                strDirName.c_str(),
+                GENERIC_READ,                   
+                0,                              
+                NULL,
+                OPEN_EXISTING,                  
+                FILE_FLAG_BACKUP_SEMANTICS,     
+                NULL
+            );
+
+            if (!hFile || (INVALID_HANDLE_VALUE == hFile)) {
+                return false;
+            }
+
+            if (hFile) {
+                CloseHandle(hFile);
+            }
+
+            return true;
+        };
+
+        // crt
+        auto IsDirectory = [](std::string& strDirName) -> bool {
+            if (0 == _access(strDirName.c_str(), 0)) {
+                return true;
+            }
+
+            return false;
+        };
+
+	    std::string strDirName = "C:\\Cuckoo";
+
+        if (
+            IsDirectory(strDirName) ||
+            IsDirectory1(strDirName) ||
+            IsDirectory2(strDirName)
+        ) {
+            return core::add(CUCKOO);
+        }
+
+        return false;
+#endif
+    } catch (...) {
+        debug("CUCKOO_DIR: catched error, returned false");
+        return false;
+    }
 
 
+    /**
+     * @brief Check for cuckoo pipe 
+     * @category Windows
+     * @author Thomas Roccia (fr0gger) 
+     * @link https://unprotect.it/snippet/checking-specific-folder-name/196/
+     */ 
+    [[nodiscard]] static bool cuckoo_pipe() try {
+#if (!LINUX)
+        return false;
+#else
+        int fd = open("\\\\.\\pipe\\cuckoo", O_RDONLY);
+        bool is_cuckoo = false;
 
+        if (fd >= 0) {
+            is_cuckoo = true;
+        }
 
+        close(fd);
+
+        if (is_cuckoo) {
+            return core::add(CUCKOO);
+        }
+
+        return false;
+#endif
+    } catch (...) {
+        debug("CUCKOO_PIPE: catched error, returned false");
+        return false;
+    }
 
 
 
@@ -8286,7 +8386,8 @@ std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard {
     { VM::BSD_VMM, 0 },
     { VM::INTEL_HAXM, 0 },
     { VM::UNISYS, 0 },
-    { VM::LMHS, 0 }
+    { VM::LMHS, 0 },
+    { VM::CUCKOO, 0 }
 };
 
 
@@ -8458,7 +8559,9 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::INTEL_THREAD_MISMATCH, { 85, VM::intel_thread_mismatch }},
     { VM::XEON_THREAD_MISMATCH, { 85, VM::xeon_thread_mismatch }},
     { VM::NETTITUDE_VM_MEMORY, { 75, VM::nettitude_vm_memory }},
-    { VM::HYPERV_CPUID, { 35, VM::hyperv_cpuid }}
+    { VM::HYPERV_CPUID, { 35, VM::hyperv_cpuid }},
+    { VM::CUCKOO_DIR, { 15, VM::cuckoo_dir }},
+    { VM::CUCKOO_PIPE, { 20, VM::cuckoo_pipe }}
 
     // __TABLE_LABEL, add your technique above
     // { VM::FUNCTION, { POINTS, FUNCTION_POINTER }}

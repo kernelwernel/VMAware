@@ -276,6 +276,9 @@ void general(const bool enable_hyperv = true) {
     checker(VM::NETTITUDE_VM_MEMORY, "VM memory regions");
     checker(VM::VMWARE_DEVICES, "VMware devices");
     checker(VM::HYPERV_CPUID, "Hyper-V CPUID");
+    checker(VM::CUCKOO_DIR, "Cuckoo directory");
+    checker(VM::CUCKOO_PIPE, "Cuckoo pipe");
+
 
     std::printf("\n");
 
@@ -433,6 +436,7 @@ NVMM
 OpenBSD VMM
 Intel HAXM
 Unisys s-Par
+Cuckoo
 )";
             return 0;
         } else if (arg("--disable-hyperv-host")) {

@@ -57,3 +57,4 @@ cmake-build-*/
 *copy.hpp
 personal_todo.md
 notes.txt
+auxiliary/tests.cpp

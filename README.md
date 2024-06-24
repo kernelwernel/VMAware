@@ -62,7 +62,7 @@ int main() {
 <br>
 
 ## CLI tool 🔧
-This project also provides a tiny, but handy CLI tool utilising the full potential of what the library can do.
+This project also provides a tiny, but handy CLI tool utilising the full potential of what the library can do. It'll give you all sorts of details about the environment it's running under.
 
 <img src="assets/demo.jpg" width="500" title="cli">
 
@@ -164,7 +164,8 @@ If you know a project, or if you're working on a project that uses VMAware, let 
 - [(S21sec) Alfredo Omella](https://www.s21sec.com/)
 - [hfiref0x](https://github.com/hfiref0x)
 - [Waleedassar](http://waleedassar.blogspot.com)
-- [一半人生]
+- 一半人生
+- Thomas Roccia (fr0gger) 
 
 <br>
 
