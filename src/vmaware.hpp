@@ -205,6 +205,8 @@
 #include <dshow.h>
 #include <stdio.h>
 #include <io.h>
+#include <winspool.h>
+#include <wtypes.h>
 
 #pragma comment(lib, "wbemuuid.lib")
 #pragma comment(lib, "iphlpapi.lib")
@@ -242,6 +244,7 @@
 #include <memory>
 #include <cctype>
 #include <fcntl.h>
+#include <limits.h>
 #elif (APPLE)
 #include <sys/types.h>
 #include <sys/sysctl.h>
@@ -389,6 +392,10 @@ public:
         HYPERV_CPUID,
         CUCKOO_DIR,
         CUCKOO_PIPE,
+        USB_DRIVE,
+        HYPERV_HOSTNAME,
+        GENERAL_HOSTNAME,
+        SCREEN_RESOLUTION,
 
         // start of non-technique flags (THE ORDERING IS VERY SPECIFIC AND MIGHT BREAK SOMETHING IDK)
         EXTREME,
@@ -418,7 +425,7 @@ private:
 
 public:
     static constexpr u8 technique_count = EXTREME; // get total number of techniques
-    static std::vector<enum_flags> technique_vector;
+    static std::vector<u8> technique_vector;
 #ifdef __VMAWARE_DEBUG__
     static u16 total_points;
 #endif
@@ -1466,7 +1473,27 @@ private:
 #else
             return false;
 #endif
+        }
+
+        [[nodiscard]] static std::string get_hostname() {
+#if (MSVC)
+            char  ComputerName [MAX_COMPUTERNAME_LENGTH + 1];
+            DWORD cbComputerName = sizeof ( ComputerName );
+
+            if (GetComputerName(ComputerName, &cbComputerName)) {
+                return std::string(ComputerName);
             }
+#elif (LINUX)
+            char hostname[HOST_NAME_MAX];
+
+            if (gethostname(hostname, sizeof(hostname)) == 0) {
+                return hostname;
+            }
+#endif
+
+            return nullptr;
+        }
+
 
 #if (MSVC)
         /**
@@ -1766,8 +1793,6 @@ private:
 
             return major_version;
         }
-
-
 #endif
     };
 
@@ -7397,6 +7422,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category x86
      * @author 一半人生
      * @link https://unprotect.it/snippet/vmcpuid/195/
+     * @copyright MIT
      */ 
     [[nodiscard]] static bool hyperv_cpuid() try {
 #if (!x86)
@@ -7450,7 +7476,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         cpu::cpuid(cpu_info, 0x40000001);
         i32 vid = 0;
         vid = (i32)cpu_info[0];
-        return (vid >= 4000);
+
+        if (vid >= 4000) {
+            return core::add(HYPERV);
+        }
+
+        return false;
 #endif
     } catch (...) {
         debug("HYPERV_CPUID: catched error, returned false");
@@ -7463,6 +7494,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Windows
      * @author 一半人生
      * @link https://unprotect.it/snippet/checking-specific-folder-name/196/
+     * @copyright MIT
      */ 
     [[nodiscard]] static bool cuckoo_dir() try {
 #if (!MSVC)
@@ -7538,6 +7570,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Windows
      * @author Thomas Roccia (fr0gger) 
      * @link https://unprotect.it/snippet/checking-specific-folder-name/196/
+     * @copyright MIT
      */ 
     [[nodiscard]] static bool cuckoo_pipe() try {
 #if (!LINUX)
@@ -7564,6 +7597,127 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
 
 
+    /**
+     * @brief Check for presence of USB drive 
+     * @category Windows
+     * @author Thomas Roccia (fr0gger) 
+     * @link https://unprotect.it/technique/detecting-usb-drive/
+     * @copyright MIT
+     */ 
+    [[nodiscard]] static bool usb_drive() try {
+#if (!MSVC)
+        return false;
+#else
+        UINT drives = GetLogicalDrives();
+
+        for (int i = 0; i < 26; i++) {
+            if ((drives & (1 << i)) && GetDriveTypeA((char)('A' + i) + ":\\") == DRIVE_REMOVABLE) {
+                debug("USB drive detected: ", 'A' + i, ", returning false");
+                return false;
+            }
+        }
+
+        // at this point, no drives have been detected
+        return true;
+#endif
+    } catch (...) {
+        debug("USB_DRIVE: catched error, returned false");
+        return false;
+    }
+
+
+    /**
+     * @brief Check for Azure Hyper-V utilisation through hostname regex check
+     * @category Windows, Linux
+     */ 
+    [[nodiscard]] static bool hyperv_hostname() try {
+#if (!(MSVC || LINUX))
+        return false;
+#else
+        std::string hostname = util::get_hostname();
+
+        // most Hyper-V hostnames under Azure have the hostname format of fv-azXXX-XXX where the X is a digit
+        std::regex pattern("fv-az\\d{3}-\\d{3}");
+
+        if (std::regex_match(hostname, pattern)) {
+           return core::add(HYPERV);
+        }
+
+        return false;
+#endif
+    } catch (...) {
+        debug("HYPERV_HOSTNAME: catched error, returned false");
+        return false;
+    }
+
+
+    /**
+     * @brief Check for commonly set hostnames by certain VM brands
+     * @category Windows, Linux
+     * @note Idea from Thomas Roccia (fr0gger)
+     * @link https://unprotect.it/technique/detecting-hostname-username/
+     */ 
+    [[nodiscard]] static bool general_hostname() try {
+#if (!(MSVC || LINUX))
+        return false;
+#else
+        std::string hostname = util::get_hostname();
+
+        auto cmp = [&](const char* str2) -> bool {
+            return (hostname == str2);
+        };
+
+        if (
+            cmp("Sandbox") ||
+            cmp("Maltest") ||
+            cmp("Malware") ||
+            cmp("malsand") ||
+            cmp("ClonePC")
+        ) {
+            return true;
+        }
+
+        if (cmp("Cuckoo")) {
+            return core::add(CUCKOO);
+        }
+
+        return false;
+#endif
+    } catch (...) {
+        debug("GENERAL_HOSTNAME: catched error, returned false");
+        return false;
+    }
+    
+
+    /**
+     * @brief Check for preset window resolutions
+     * @category Windows
+     * @note Idea from Thomas Roccia (fr0gger)
+     * @link https://unprotect.it/technique/checking-screen-resolution/
+     */ 
+    [[nodiscard]] static bool screen_resolution() try {
+#if (!MSVC)
+        return false;
+#else
+        RECT desktop;
+        const HWND hDesktop = GetDesktopWindow();
+        GetWindowRect(hDesktop, &desktop);
+        const i32 horiz = desktop.right;
+        const i32 verti = desktop.bottom;
+
+        debug("SCREEN_RESOLUTION: horizontal = ", horiz, ", vertical = ", verti);
+
+        if (horiz < 1024) {
+            return true;
+        }
+
+        return false;
+#endif
+    } catch (...) {
+        debug("SCREEN_RESOLUTION: catched error, returned false");
+        return false;
+    }
+    
 
 
 
@@ -8433,11 +8587,12 @@ VM::flagset VM::ALL = []() -> flagset {
 }();
 
 
-std::vector<VM::enum_flags> VM::technique_vector = []() -> std::vector<VM::enum_flags> {
-    std::vector<VM::enum_flags> tmp{};
+std::vector<VM::u8> VM::technique_vector = []() -> std::vector<VM::u8> {
+    std::vector<VM::u8> tmp{};
 
+    // all the techniques have a macro value starting from 0 to ~90, hence why it's a classic loop
     for (u8 i = VM::technique_begin; i < VM::technique_end; i++) {
-        tmp.push_back(static_cast<VM::enum_flags>(i));
+        tmp.push_back(i);
     }
 
     return tmp;
@@ -8561,7 +8716,11 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::NETTITUDE_VM_MEMORY, { 75, VM::nettitude_vm_memory }},
     { VM::HYPERV_CPUID, { 35, VM::hyperv_cpuid }},
     { VM::CUCKOO_DIR, { 15, VM::cuckoo_dir }},
-    { VM::CUCKOO_PIPE, { 20, VM::cuckoo_pipe }}
+    { VM::CUCKOO_PIPE, { 20, VM::cuckoo_pipe }},
+    { VM::USB_DRIVE, { 30, VM::usb_drive }},
+    { VM::HYPERV_HOSTNAME, { 50, VM::hyperv_hostname }},
+    { VM::GENERAL_HOSTNAME, { 20, VM::general_hostname }},
+    { VM::SCREEN_RESOLUTION, { 10, VM::screen_resolution }}
 
     // __TABLE_LABEL, add your technique above
     // { VM::FUNCTION, { POINTS, FUNCTION_POINTER }}

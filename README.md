@@ -15,7 +15,7 @@ The library is:
 - Very easy to use, with only 5 functions in its public interface
 - Cross-platform (Windows + MacOS + Linux)
 - Compatible with x86 and ARM, with backwards compatibility for 32-bit systems
-- Features up to 80+ unique VM detection techniques ([list](https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#flag-table))
+- Features up to 90+ unique VM detection techniques ([list](https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#flag-table))
 - Very flexible, with total fine-grained control over which techniques get executed
 - Header-only
 - Available with C++11 and above
@@ -164,7 +164,7 @@ If you know a project, or if you're working on a project that uses VMAware, let 
 - [(S21sec) Alfredo Omella](https://www.s21sec.com/)
 - [hfiref0x](https://github.com/hfiref0x)
 - [Waleedassar](http://waleedassar.blogspot.com)
-- 一半人生
+- [一半人生](https://github.com/TimelifeCzy)
 - Thomas Roccia (fr0gger) 
 
 <br>
