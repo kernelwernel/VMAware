@@ -204,6 +204,9 @@
 #include <strmif.h>
 #include <dshow.h>
 #include <stdio.h>
+#include <io.h>
+#include <winspool.h>
+#include <wtypes.h>
 
 #pragma comment(lib, "wbemuuid.lib")
 #pragma comment(lib, "iphlpapi.lib")
@@ -240,6 +243,8 @@
 #include <dirent.h>
 #include <memory>
 #include <cctype>
+#include <fcntl.h>
+#include <limits.h>
 #elif (APPLE)
 #include <sys/types.h>
 #include <sys/sysctl.h>
@@ -384,8 +389,15 @@ public:
         INTEL_THREAD_MISMATCH,
         XEON_THREAD_MISMATCH,
         NETTITUDE_VM_MEMORY,
+        HYPERV_CPUID,
+        CUCKOO_DIR,
+        CUCKOO_PIPE,
+        USB_DRIVE,
+        HYPERV_HOSTNAME,
+        GENERAL_HOSTNAME,
+        SCREEN_RESOLUTION,
 
-        // start of non-technique flags
+        // start of non-technique flags (THE ORDERING IS VERY SPECIFIC AND MIGHT BREAK SOMETHING IDK)
         EXTREME,
         NO_MEMO,
         HIGH_THRESHOLD,
@@ -413,7 +425,7 @@ private:
 
 public:
     static constexpr u8 technique_count = EXTREME; // get total number of techniques
-    static std::vector<enum_flags> technique_vector;
+    static std::vector<u8> technique_vector;
 #ifdef __VMAWARE_DEBUG__
     static u16 total_points;
 #endif
@@ -487,7 +499,7 @@ private:
     static constexpr const char* INTEL_HAXM = "Intel HAXM";
     static constexpr const char* UNISYS = "Unisys s-Par";
     static constexpr const char* LMHS = "Lockheed Martin LMHS"; // yes, you read that right. The library can now detect VMs running on US military fighter jets, apparently.
-
+    static constexpr const char* CUCKOO = "Cuckoo";
 
 // macro for bypassing unused parameter/variable warnings
 #define UNUSED(x) ((void)(x))
@@ -1461,7 +1473,27 @@ private:
 #else
             return false;
 #endif
+        }
+
+        [[nodiscard]] static std::string get_hostname() {
+#if (MSVC)
+            char  ComputerName [MAX_COMPUTERNAME_LENGTH + 1];
+            DWORD cbComputerName = sizeof ( ComputerName );
+
+            if (GetComputerName(ComputerName, &cbComputerName)) {
+                return std::string(ComputerName);
             }
+#elif (LINUX)
+            char hostname[HOST_NAME_MAX];
+
+            if (gethostname(hostname, sizeof(hostname)) == 0) {
+                return hostname;
+            }
+#endif
+
+            return nullptr;
+        }
+
 
 #if (MSVC)
         /**
@@ -1761,8 +1793,6 @@ private:
 
             return major_version;
         }
-
-
 #endif
     };
 
@@ -3098,13 +3128,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         if (compare("InsideTm") || compare("TU-4NH09SMCG1HC")) { // anubis
             debug("COMPUTER_NAME: detected Anubis");
-
             return core::add(ANUBIS);
         }
 
         if (compare("klone_x64-pc") || compare("tequilaboomboom")) { // general
             debug("COMPUTER_NAME: detected general (VM but unknown)");
-
             return true;
         }
 
@@ -6992,13 +7020,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief CHeck for 
+     * @brief Check for memory regions to detect VM-specific brands
      * @category Windows
+     * @author Graham Sutherland
      * @link https://labs.nettitude.com/blog/vm-detection-tricks-part-1-physical-memory-resource-maps/
      */ 
-    [[nodiscard]] static bool nettitude_vm_memory() try{
+    [[nodiscard]] static bool nettitude_vm_memory() try {
 #if (!MSVC)
-    return false;
+        return false;
 #else
         typedef LARGE_INTEGER PHYSICAL_ADDRESS, *PPHYSICAL_ADDRESS;
 
@@ -7388,15 +7417,307 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
 
 
+    /**
+     * @brief Check for Hyper-V CPUID technique by checking whether all the bits equate to more than 4000 (not sure how this works if i'm honest)
+     * @category x86
+     * @author 一半人生
+     * @link https://unprotect.it/snippet/vmcpuid/195/
+     * @copyright MIT
+     */ 
+    [[nodiscard]] static bool hyperv_cpuid() try {
+#if (!x86)
+        return false;
+#else
+        /// See: Feature Information Returned in the ECX Register
+        union CpuFeaturesEcx {
+            u32 all;
+            struct {
+                u32 sse3 : 1;       //!< [0] Streaming SIMD Extensions 3 (SSE3)
+                u32 pclmulqdq : 1;  //!< [1] PCLMULQDQ
+                u32 dtes64 : 1;     //!< [2] 64-bit DS Area
+                u32 monitor : 1;    //!< [3] MONITOR/WAIT
+                u32 ds_cpl : 1;     //!< [4] CPL qualified Debug Store
+                u32 vmx : 1;        //!< [5] Virtual Machine Technology
+                u32 smx : 1;        //!< [6] Safer Mode Extensions
+                u32 est : 1;        //!< [7] Enhanced Intel Speedstep Technology
+                u32 tm2 : 1;        //!< [8] Thermal monitor 2
+                u32 ssse3 : 1;      //!< [9] Supplemental Streaming SIMD Extensions 3
+                u32 cid : 1;        //!< [10] L1 context ID
+                u32 sdbg : 1;       //!< [11] IA32_DEBUG_INTERFACE MSR
+                u32 fma : 1;        //!< [12] FMA extensions using YMM state
+                u32 cx16 : 1;       //!< [13] CMPXCHG16B
+                u32 xtpr : 1;       //!< [14] xTPR Update Control
+                u32 pdcm : 1;       //!< [15] Performance/Debug capability MSR
+                u32 reserved : 1;   //!< [16] Reserved
+                u32 pcid : 1;       //!< [17] Process-context identifiers
+                u32 dca : 1;        //!< [18] prefetch from a memory mapped device
+                u32 sse4_1 : 1;     //!< [19] SSE4.1
+                u32 sse4_2 : 1;     //!< [20] SSE4.2
+                u32 x2_apic : 1;    //!< [21] x2APIC feature
+                u32 movbe : 1;      //!< [22] MOVBE instruction
+                u32 popcnt : 1;     //!< [23] POPCNT instruction
+                u32 reserved3 : 1;  //!< [24] one-shot operation using a TSC deadline
+                u32 aes : 1;        //!< [25] AESNI instruction
+                u32 xsave : 1;      //!< [26] XSAVE/XRSTOR feature
+                u32 osxsave : 1;    //!< [27] enable XSETBV/XGETBV instructions
+                u32 avx : 1;        //!< [28] AVX instruction extensions
+                u32 f16c : 1;       //!< [29] 16-bit floating-point conversion
+                u32 rdrand : 1;     //!< [30] RDRAND instruction
+                u32 not_used : 1;   //!< [31] Always 0 (a.k.a. HypervisorPresent)
+            } fields;
+        };
+        
+        if (sizeof(CpuFeaturesEcx) != 4) {
+            debug("HYPERV_CPUID: Size is not 4 bytes for union structure, returning false");
+            return 0;
+        }
+
+        i32 cpu_info[4] = {};
+        cpu::cpuid(cpu_info, 0x40000001);
+        i32 vid = 0;
+        vid = (i32)cpu_info[0];
+
+        if (vid >= 4000) {
+            return core::add(HYPERV);
+        }
+
+        return false;
+#endif
+    } catch (...) {
+        debug("HYPERV_CPUID: catched error, returned false");
+        return false;
+    }
 
 
+    /**
+     * @brief Check for cuckoo directory using crt and win api directory functions
+     * @category Windows
+     * @author 一半人生
+     * @link https://unprotect.it/snippet/checking-specific-folder-name/196/
+     * @copyright MIT
+     */ 
+    [[nodiscard]] static bool cuckoo_dir() try {
+#if (!MSVC)
+        return false;
+#else
+        // win api
+        auto IsDirectory2 = [](std::string& strDirName) -> bool {
+            const auto iCode = CreateDirectoryA(strDirName.c_str(), NULL);
+
+            if (ERROR_ALREADY_EXISTS == GetLastError()) {
+                return true;
+            }
+
+            if (iCode) {
+                RemoveDirectoryA(strDirName.c_str());
+            }
+
+            return false;
+        };
+
+        // win api
+        auto IsDirectory1 = [](std::string& strDirName) -> bool {
+            const HANDLE hFile = CreateFileA(
+                strDirName.c_str(),
+                GENERIC_READ,                   
+                0,                              
+                NULL,
+                OPEN_EXISTING,                  
+                FILE_FLAG_BACKUP_SEMANTICS,     
+                NULL
+            );
+
+            if (!hFile || (INVALID_HANDLE_VALUE == hFile)) {
+                return false;
+            }
+
+            if (hFile) {
+                CloseHandle(hFile);
+            }
+
+            return true;
+        };
+
+        // crt
+        auto IsDirectory = [](std::string& strDirName) -> bool {
+            if (0 == _access(strDirName.c_str(), 0)) {
+                return true;
+            }
+
+            return false;
+        };
+
+	    std::string strDirName = "C:\\Cuckoo";
+
+        if (
+            IsDirectory(strDirName) ||
+            IsDirectory1(strDirName) ||
+            IsDirectory2(strDirName)
+        ) {
+            return core::add(CUCKOO);
+        }
+
+        return false;
+#endif
+    } catch (...) {
+        debug("CUCKOO_DIR: catched error, returned false");
+        return false;
+    }
 
 
+    /**
+     * @brief Check for cuckoo pipe 
+     * @category Windows
+     * @author Thomas Roccia (fr0gger) 
+     * @link https://unprotect.it/snippet/checking-specific-folder-name/196/
+     * @copyright MIT
+     */ 
+    [[nodiscard]] static bool cuckoo_pipe() try {
+#if (!LINUX)
+        return false;
+#else
+        int fd = open("\\\\.\\pipe\\cuckoo", O_RDONLY);
+        bool is_cuckoo = false;
+
+        if (fd >= 0) {
+            is_cuckoo = true;
+        }
+
+        close(fd);
+
+        if (is_cuckoo) {
+            return core::add(CUCKOO);
+        }
+
+        return false;
+#endif
+    } catch (...) {
+        debug("CUCKOO_PIPE: catched error, returned false");
+        return false;
+    }
 
 
+    /**
+     * @brief Check for presence of USB drive 
+     * @category Windows
+     * @author Thomas Roccia (fr0gger) 
+     * @link https://unprotect.it/technique/detecting-usb-drive/
+     * @copyright MIT
+     */ 
+    [[nodiscard]] static bool usb_drive() try {
+#if (!MSVC)
+        return false;
+#else
+        UINT drives = GetLogicalDrives();
+
+        for (int i = 0; i < 26; i++) {
+            if ((drives & (1 << i)) && GetDriveTypeA((char)('A' + i) + ":\\") == DRIVE_REMOVABLE) {
+                debug("USB drive detected: ", 'A' + i, ", returning false");
+                return false;
+            }
+        }
+
+        // at this point, no drives have been detected
+        return true;
+#endif
+    } catch (...) {
+        debug("USB_DRIVE: catched error, returned false");
+        return false;
+    }
 
 
+    /**
+     * @brief Check for Azure Hyper-V utilisation through hostname regex check
+     * @category Windows, Linux
+     */ 
+    [[nodiscard]] static bool hyperv_hostname() try {
+#if (!(MSVC || LINUX))
+        return false;
+#else
+        std::string hostname = util::get_hostname();
 
+        // most Hyper-V hostnames under Azure have the hostname format of fv-azXXX-XXX where the X is a digit
+        std::regex pattern("fv-az\\d{3}-\\d{3}");
+
+        if (std::regex_match(hostname, pattern)) {
+           return core::add(HYPERV);
+        }
+
+        return false;
+#endif
+    } catch (...) {
+        debug("HYPERV_HOSTNAME: catched error, returned false");
+        return false;
+    }
+
+
+    /**
+     * @brief Check for commonly set hostnames by certain VM brands
+     * @category Windows, Linux
+     * @note Idea from Thomas Roccia (fr0gger)
+     * @link https://unprotect.it/technique/detecting-hostname-username/
+     */ 
+    [[nodiscard]] static bool general_hostname() try {
+#if (!(MSVC || LINUX))
+        return false;
+#else
+        std::string hostname = util::get_hostname();
+
+        auto cmp = [&](const char* str2) -> bool {
+            return (hostname == str2);
+        };
+
+        if (
+            cmp("Sandbox") ||
+            cmp("Maltest") ||
+            cmp("Malware") ||
+            cmp("malsand") ||
+            cmp("ClonePC")
+        ) {
+            return true;
+        }
+
+        if (cmp("Cuckoo")) {
+            return core::add(CUCKOO);
+        }
+
+        return false;
+#endif
+    } catch (...) {
+        debug("GENERAL_HOSTNAME: catched error, returned false");
+        return false;
+    }
+    
+
+    /**
+     * @brief Check for preset window resolutions
+     * @category Windows
+     * @note Idea from Thomas Roccia (fr0gger)
+     * @link https://unprotect.it/technique/checking-screen-resolution/
+     */ 
+    [[nodiscard]] static bool screen_resolution() try {
+#if (!MSVC)
+        return false;
+#else
+        RECT desktop;
+        const HWND hDesktop = GetDesktopWindow();
+        GetWindowRect(hDesktop, &desktop);
+        const i32 horiz = desktop.right;
+        const i32 verti = desktop.bottom;
+
+        debug("SCREEN_RESOLUTION: horizontal = ", horiz, ", vertical = ", verti);
+
+        if (horiz < 1024) {
+            return true;
+        }
+
+        return false;
+#endif
+    } catch (...) {
+        debug("SCREEN_RESOLUTION: catched error, returned false");
+        return false;
+    }
+    
 
 
 
@@ -7520,6 +7841,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             u16 points = 0;
             const bool memo_enabled = core::is_disabled(flags, NO_MEMO);
 
+            const u16 threshold_points = (core::is_enabled(flags, HIGH_THRESHOLD) ? maximum_points : 200);
+
             // for main technique table
             for (const auto& tmp : table) {
                 const u8 technique_macro = tmp.first;
@@ -7556,7 +7879,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                  * a score of 200+ is guaranteed to be a VM, so 
                  * there's no point in running the rest of the techniques
                  */ 
-                if (shortcut && points >= 200) {
+                if (shortcut && points >= threshold_points) {
                     core_debug("VM::run_all(): returned points early due to shortcut option");
                     return points;
                 }
@@ -8217,7 +8540,8 @@ std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard {
     { VM::BSD_VMM, 0 },
     { VM::INTEL_HAXM, 0 },
     { VM::UNISYS, 0 },
-    { VM::LMHS, 0 }
+    { VM::LMHS, 0 },
+    { VM::CUCKOO, 0 }
 };
 
 
@@ -8263,11 +8587,12 @@ VM::flagset VM::ALL = []() -> flagset {
 }();
 
 
-std::vector<VM::enum_flags> VM::technique_vector = []() -> std::vector<VM::enum_flags> {
-    std::vector<VM::enum_flags> tmp{};
+std::vector<VM::u8> VM::technique_vector = []() -> std::vector<VM::u8> {
+    std::vector<VM::u8> tmp{};
 
+    // all the techniques have a macro value starting from 0 to ~90, hence why it's a classic loop
     for (u8 i = VM::technique_begin; i < VM::technique_end; i++) {
-        tmp.push_back(static_cast<VM::enum_flags>(i));
+        tmp.push_back(i);
     }
 
     return tmp;
@@ -8388,7 +8713,14 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::ODD_CPU_THREADS, { 80, VM::odd_cpu_threads }},
     { VM::INTEL_THREAD_MISMATCH, { 85, VM::intel_thread_mismatch }},
     { VM::XEON_THREAD_MISMATCH, { 85, VM::xeon_thread_mismatch }},
-    { VM::NETTITUDE_VM_MEMORY, { 75, VM::nettitude_vm_memory }}
+    { VM::NETTITUDE_VM_MEMORY, { 75, VM::nettitude_vm_memory }},
+    { VM::HYPERV_CPUID, { 35, VM::hyperv_cpuid }},
+    { VM::CUCKOO_DIR, { 15, VM::cuckoo_dir }},
+    { VM::CUCKOO_PIPE, { 20, VM::cuckoo_pipe }},
+    { VM::USB_DRIVE, { 30, VM::usb_drive }},
+    { VM::HYPERV_HOSTNAME, { 50, VM::hyperv_hostname }},
+    { VM::GENERAL_HOSTNAME, { 20, VM::general_hostname }},
+    { VM::SCREEN_RESOLUTION, { 10, VM::screen_resolution }}
 
     // __TABLE_LABEL, add your technique above
     // { VM::FUNCTION, { POINTS, FUNCTION_POINTER }}

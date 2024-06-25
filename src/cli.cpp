@@ -275,6 +275,14 @@ void general(const bool enable_hyperv = true) {
     checker(VM::XEON_THREAD_MISMATCH, "Intel Xeon thread count mismatch");
     checker(VM::NETTITUDE_VM_MEMORY, "VM memory regions");
     checker(VM::VMWARE_DEVICES, "VMware devices");
+    checker(VM::HYPERV_CPUID, "Hyper-V CPUID");
+    checker(VM::CUCKOO_DIR, "Cuckoo directory");
+    checker(VM::CUCKOO_PIPE, "Cuckoo pipe");
+    checker(VM::USB_DRIVE, "USB drive presence");
+    checker(VM::HYPERV_HOSTNAME, "Hyper-V Azure hostname");
+    checker(VM::GENERAL_HOSTNAME, "general VM hostnames");
+    checker(VM::SCREEN_RESOLUTION, "screen resolution");
+
 
     std::printf("\n");
 
@@ -432,6 +440,7 @@ NVMM
 OpenBSD VMM
 Intel HAXM
 Unisys s-Par
+Cuckoo
 )";
             return 0;
         } else if (arg("--disable-hyperv-host")) {

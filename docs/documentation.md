@@ -139,7 +139,8 @@ int main() {
 }
 ```
 
-NOTE: you can use the same flag system as shown with `VM::detect()` for `VM::percentage()`
+> [!NOTE]
+> you can use the same flag system as shown with `VM::detect()` for `VM::percentage()`
 
 <br>
 
@@ -180,6 +181,7 @@ This will essentially return the VM brand as a `std::string`. The exact possible
 - `OpenBSD VMM`
 - `Intel HAXM`
 - `Unisys s-Par`
+- `Cuckoo`
 
 
 If none were detected, it will return `Unknown`. It's often NOT going to produce a satisfying result due to technical difficulties with accomplishing this, on top of being highly dependent on what mechanisms detected a VM. Don't rely on this function for critical operations as if it's your golden bullet. Roughly 50% of the time it'll simply return `Unknown`, assuming it is actually running under a VM.
@@ -220,7 +222,11 @@ int main() {
 }
 ```
 
-NOTE: you can use the same flag system as shown with `VM::detect()` for `VM::brand()`
+> [!NOTE]
+> you can use the same flag system as shown with `VM::detect()` for `VM::brand()`
+
+> [!IMPORTANT]
+> `VM::MULTIPLE` has no effect for any other function other than `VM::brand()`
 
 
 <br>
@@ -386,7 +392,8 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::ODD_CPU_THREADS` | Check if the CPU has an odd number of CPU threads |  | 80% |  |  |  |
 | `VM::INTEL_THREAD_MISMATCH` | Check if Intel "i series" CPUs have mismatched thread counts based on a database of threads on models |  | 85% |  |  |  |
 | `VM::XEON_THREAD_MISMATCH` | Check if Intel Xeon CPUs have mismatched threads (same as above technique) |  | 85% |  |  |  |
-
+| `VM::NETTITUDE_VM_MEMORY` | Check for specific VM memory regions | Windows | 75% |  |  |  |
+| `VM::VMWARE_DEVICES` | Check for VMware device systems | Windows | 60% |  | GPL |  |
 
 <br>
 
@@ -405,10 +412,10 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 <br>
 
 # Variables
-| Variable | Description |
-|----------|-------------|
-| `VM::technique_count` | This will store the number of VM detection techniques |
-| `VM::technique_vector` | This will store all the technique macros as a vector. Useful if you're trying to loop through all the techniques for whatever operation you're performing. |
+| Variable | Type | Description |
+|----------|------|-------------|
+| `VM::technique_count` | `std::uint8_t` | This will store the number of VM detection techniques |
+| `VM::technique_vector` | `std::vector<std::uint8_t>` | This will store all the technique macros as a vector. Useful if you're trying to loop through all the techniques for whatever operation you're performing. |
 
 <br>
 
@@ -426,4 +433,6 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | -n | --number | Prints the number of VM detection techniques it can performs |
 |    | --disable-hyperv-host | Disable the possibility of Hyper-V default virtualisation result on host OS (this can be used as a combination with the above commands) |
 
-**NOTE:** If you want a general result of everything combined above, do not put any arguments. This is the intended way to use the CLI tool.
+> [!NOTE]
+> If you want a general result of everything combined above, do not put any arguments. This is the intended way to use the CLI tool.
+>
