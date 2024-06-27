@@ -165,7 +165,7 @@ If you know a project, or if you're working on a project that uses VMAware, let 
 - [hfiref0x](https://github.com/hfiref0x)
 - [Waleedassar](http://waleedassar.blogspot.com)
 - [一半人生](https://github.com/TimelifeCzy)
-- Thomas Roccia (fr0gger) 
+- [Thomas Roccia (fr0gger)](https://github.com/fr0gger)
 
 <br>
 

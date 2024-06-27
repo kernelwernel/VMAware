@@ -282,6 +282,7 @@ void general(const bool enable_hyperv = true) {
     checker(VM::HYPERV_HOSTNAME, "Hyper-V Azure hostname");
     checker(VM::GENERAL_HOSTNAME, "general VM hostnames");
     checker(VM::SCREEN_RESOLUTION, "screen resolution");
+    checker(VM::DEVICE_STRING, "bogus device string");
 
 
     std::printf("\n");

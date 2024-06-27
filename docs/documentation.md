@@ -105,9 +105,16 @@ int main() {
      * detections a "not running in a VM". This flag will disable this mechanism. 
      * 
      * For further information, please check the VM::ENABLE_HYPER_HOST flag information
-     * in the non-technique flags section (situated at the end of this documentation).
+     * in the non-technique flags section (situated around the end of this documentation).
      */ 
     bool is_vm10 = VM::detect(VM::ENABLE_HYPERV_HOST);
+
+
+    /**
+     * This is just an example to show that you can use a combination of different
+     * flags and non-technique flags with the above examples. 
+     */ 
+    bool is_vm11 = VM::detect(VM::ALL, VM::NO_MEMO, VM::HIGH_THRESHOLD, VM::DISABLE(VM::RDTSC, VM::VMID));
 
 }
 ```
@@ -219,6 +226,9 @@ int main() {
     std::cout << result << "\n";
 
     // keep in mind that there's no limit to how many conflicts there can be
+
+    // and if there's no conflict, it'll revert back to giving the brand string
+    // normally as if the VM::MULTIPLE wasn't there
 }
 ```
 
@@ -394,7 +404,13 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::XEON_THREAD_MISMATCH` | Check if Intel Xeon CPUs have mismatched threads (same as above technique) |  | 85% |  |  |  |
 | `VM::NETTITUDE_VM_MEMORY` | Check for specific VM memory regions | Windows | 75% |  |  |  |
 | `VM::VMWARE_DEVICES` | Check for VMware device systems | Windows | 60% |  | GPL |  |
-
+| `VM::HYPERV_CPUID` | Check for Hyper-V specific CPUID results in ecx |  | 35% |  |  |  |
+| `VM::CUCKOO_DIR` | Check for Cuckoo specific directory | Windows | 15% |  |  |  |
+| `VM::CUCKOO_PIPE` | Check for Cuckoo specific piping mechanism | Windows | 20% |  |  |  |
+| `VM::USB_DRIVE` | Check for absence of USB drives | Windows | 30% |  |  |  |
+| `VM::HYPERV_HOSTNAME` | Check for default Azure hostname format (Azure uses Hyper-V as their base VM brand) | Windows, Linux | 50% |  |  |  |
+| `VM::GENERAL_HOSTNAME` | Check for general hostnames that match with certain VM brands | Windows, Linux | 20% |  |  |  |
+| `VM::SCREEN_RESOLUTION` | Check for pre-set screen resolutions commonly found in VMs | Windows | 10% |  |  |  |
 <br>
 
 # Non-technique flags
