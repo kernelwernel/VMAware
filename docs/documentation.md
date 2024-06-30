@@ -63,7 +63,7 @@ int main() {
      * caching will be operated when you're not going to re-use the previously 
      * stored result. 
      */ 
-    bool is_vm5 = VM::detect(VM::ALL, VM::NO_MEMO);
+    bool is_vm5 = VM::detect(VM::NO_MEMO);
 
 
     /**
@@ -78,15 +78,15 @@ int main() {
     /**
      * This will set the threshold bar to detect a VM higher than the default threshold.
      * Use this if you want to be extremely sure if it's a VM, but this can risk the result
-     * to be a false negative. Use VM::percentage() for a more accurate picture instead.
+     * to be a false negative. Use VM::percentage() for a more precise result if you want.
      */ 
     bool is_vm7 = VM::detect(VM::HIGH_THRESHOLD);
 
 
     /**
-     * If you want to disable any technique for whatever reason, use VM::DISABLE().
-     * This will essentially mean "perform all the default flags, but only disable
-     * the VM::RDTSC technique". 
+     * If you want to disable any technique for whatever reason, use VM::DISABLE(...).
+     * This code snippet essentially means "perform all the default flags, but only 
+     * disable the VM::RDTSC technique". 
      */ 
     bool is_vm8 = VM::detect(VM::DISABLE(VM::RDTSC));
 
@@ -114,7 +114,7 @@ int main() {
      * This is just an example to show that you can use a combination of different
      * flags and non-technique flags with the above examples. 
      */ 
-    bool is_vm11 = VM::detect(VM::ALL, VM::NO_MEMO, VM::HIGH_THRESHOLD, VM::DISABLE(VM::RDTSC, VM::VMID));
+    bool is_vm11 = VM::detect(VM::DEFAULT, VM::NO_MEMO, VM::HIGH_THRESHOLD, VM::DISABLE(VM::RDTSC, VM::VMID));
 
 }
 ```
@@ -147,7 +147,7 @@ int main() {
 ```
 
 > [!NOTE]
-> you can use the same flag system as shown with `VM::detect()` for `VM::percentage()`
+> you can use the same flag system as shown with `VM::detect()` for this function.
 
 <br>
 
@@ -191,7 +191,7 @@ This will essentially return the VM brand as a `std::string`. The exact possible
 - `Cuckoo`
 
 
-If none were detected, it will return `Unknown`. It's often NOT going to produce a satisfying result due to technical difficulties with accomplishing this, on top of being highly dependent on what mechanisms detected a VM. Don't rely on this function for critical operations as if it's your golden bullet. Roughly 50% of the time it'll simply return `Unknown`, assuming it is actually running under a VM.
+If none were detected, it will return `Unknown`. It's often NOT going to produce a satisfying result due to technical difficulties with accomplishing this, on top of being highly dependent on what mechanisms detected a VM. Don't rely on this function for critical operations as if it's your golden bullet. It's very unreliable and it'll most likely return `Unknown` (assuming it is actually running under a VM).
 
 ```cpp
 #include "vmaware.hpp"
@@ -411,6 +411,9 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::HYPERV_HOSTNAME` | Check for default Azure hostname format (Azure uses Hyper-V as their base VM brand) | Windows, Linux | 50% |  |  |  |
 | `VM::GENERAL_HOSTNAME` | Check for general hostnames that match with certain VM brands | Windows, Linux | 20% |  |  |  |
 | `VM::SCREEN_RESOLUTION` | Check for pre-set screen resolutions commonly found in VMs | Windows | 10% |  |  |  |
+| `VM::DEVICE_STRING` | Check for acceptance of bogus device string | Windows | 25% |  |  |  |
+| `VM::MOUSE_DEVICE` | Check for presence of mouse device | Windows | 20% |  | GPL |  |
+
 <br>
 
 # Non-technique flags

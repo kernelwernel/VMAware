@@ -342,6 +342,7 @@ public:
         AUDIO,             // GPL
         QEMU_DIR,          // GPL 
         VMWARE_DEVICES,    // GPL
+        MOUSE_DEVICE,      // GPL
         VM_PROCESSES,
         LINUX_USER_HOST,
         GAMARUE,
@@ -3900,6 +3901,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         // if neither amd or intel, return false
         if (!(intel ^ amd)) {
+            debug("BOCHS_CPU: neither AMD or Intel detect, returned false");
             return false;
         }
 
@@ -7750,10 +7752,27 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
     
 
-
-
-
-
+    /**
+     * @brief Check for the presence of a mouse device
+     * @category Windows
+     * @author a0rtega
+     * @link https://github.com/a0rtega/pafish/blob/master/pafish/rtt.c
+     * @note from pafish project
+     * @copyright GPL
+     */ 
+    [[nodiscard]] static bool mouse_device() try {
+#if (!MSVC)
+        return false;
+#else
+        int res;
+        res = GetSystemMetrics(SM_MOUSEPRESENT);
+        return (res == 0);
+#endif
+    } catch (...) {
+        debug("MOUSE_DEVICE: catched error, returned false");
+        return false;
+    }
+    
 
 
 
@@ -7773,7 +7792,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         };
         MSVC_ENABLE_WARNING(PADDING)
 
-        static const std::map<u8, technique> table;
+        static const std::map<u8, technique> technique_table;
 
         static std::vector<technique> custom_table;
 
@@ -7870,7 +7889,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             const u16 threshold_points = (core::is_enabled(flags, HIGH_THRESHOLD) ? maximum_points : 200);
 
             // for main technique table
-            for (const auto& tmp : table) {
+            for (const auto& tmp : technique_table) {
                 const u8 technique_macro = tmp.first;
 
                 // check if it's disabled
@@ -8184,8 +8203,8 @@ public: // START OF PUBLIC FUNCTIONS
         }
 
         // check if the flag even exists
-        auto it = core::table.find(flag_bit);
-        if (it == core::table.end()) {
+        auto it = core::technique_table.find(flag_bit);
+        if (it == core::technique_table.end()) {
             throw_error("Flag is not known");
         }
 
@@ -8651,7 +8670,7 @@ std::vector<VM::core::technique> VM::core::custom_table = {
 
 
 // the 0~100 points are debatable, but I think it's fine how it is. Feel free to disagree.
-const std::map<VM::u8, VM::core::technique> VM::core::table = {
+const std::map<VM::u8, VM::core::technique> VM::core::technique_table = {
     { VM::VMID, { 100, VM::vmid }},
     { VM::CPU_BRAND, { 50, VM::cpu_brand }},
     { VM::HYPERVISOR_BIT, { 100, VM::hypervisor_bit }},
@@ -8693,6 +8712,7 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::AUDIO, { 35, VM::check_audio }},                   // GPL
     { VM::QEMU_DIR, { 45, VM::qemu_dir }},                   // GPL
     { VM::VMWARE_DEVICES, { 60, VM::vmware_devices }},       // GPL
+    { VM::MOUSE_DEVICE, { 20, VM::mouse_device }},           // GPL
     { VM::VM_PROCESSES, { 30, VM::vm_processes }},
     { VM::LINUX_USER_HOST, { 25, VM::linux_user_host }},
     { VM::GAMARUE, { 40, VM::gamarue }},
@@ -8747,7 +8767,7 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::HYPERV_HOSTNAME, { 50, VM::hyperv_hostname }},
     { VM::GENERAL_HOSTNAME, { 20, VM::general_hostname }},
     { VM::SCREEN_RESOLUTION, { 30, VM::screen_resolution }},
-    { VM::DEVICE_STRING, { 25, VM::device_string }}
+    { VM::DEVICE_STRING, { 25, VM::device_string }},
 
     // __TABLE_LABEL, add your technique above
     // { VM::FUNCTION, { POINTS, FUNCTION_POINTER }}
