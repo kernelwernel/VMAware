@@ -5,21 +5,14 @@
     "steps":
       - "uses": "actions/checkout@main"
       - "run": "cmd.exe /c .github\\workflows\\build_run_win_32.bat"
-        "with":
-          "path": "build\\Release\\vmaware.exe"
-          "name": "vmaware32_debug.exe"
   "build_run_win_64":
     "runs-on": "windows-latest"
     "steps":
       - "uses": "actions/checkout@main"
       - "run": "cmd.exe /c .github\\workflows\\build_run_win_64.bat"
-        "with":
-          "path": "build\\Release\\vmaware.exe"
-          "name": "vmaware64_debug.exe"
   "build_run_win_32_release":
     "runs-on": "windows-latest"
     "steps":
-      - "uses": "actions/checkout@main"
       - "run": "cmd.exe /c .github\\workflows\\build_run_win_32_release.bat"
       - "uses": "actions/upload-artifact@main"
         "with":
@@ -28,7 +21,6 @@
   "build_run_win_64_release":
     "runs-on": "windows-latest"
     "steps":
-      - "uses": "actions/checkout@main"
       - "run": "cmd.exe /c .github\\workflows\\build_run_win_64_release.bat"
       - "uses": "actions/upload-artifact@main"
         "with":
