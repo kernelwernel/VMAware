@@ -290,11 +290,11 @@ MSVC_DISABLE_WARNING(ASSIGNMENT_OPERATOR NO_INLINE_FUNC SPECTRE)
 
 struct VM {
 private:
-    using u8 = std::uint8_t;
+    using u8  = std::uint8_t;
     using u16 = std::uint16_t;
     using u32 = std::uint32_t;
     using u64 = std::uint64_t;
-    using i8 = std::int8_t;
+    using i8  = std::int8_t;
     using i16 = std::int16_t;
     using i32 = std::int32_t;
     using i64 = std::int64_t;
@@ -716,7 +716,7 @@ private:
                 }
 
                 return false;
-                };
+            };
 
             bool found = false;
             bool is_xeon = false;
@@ -727,8 +727,7 @@ private:
                 if (match(intel_i_series_regex)) {
                     found = true;
                     is_i_series = true;
-                }
-                else if (match(intel_xeon_series_regex)) {
+                } else if (match(intel_xeon_series_regex)) {
                     found = true;
                     is_xeon = true;
                 }
@@ -922,7 +921,7 @@ private:
             if (cache_table.size() == technique_count) {
                 return true;
             }
-            else if (cache_table.size() == static_cast<unsigned long long>(technique_count) - 1) {
+            else if (cache_table.size() == static_cast<std::size_t>(technique_count) - 1) {
                 return (!cache_keys.test(CURSOR));
             }
 
@@ -1236,7 +1235,7 @@ private:
 #endif
         }
         catch (...) {
-            debug("sys_result: ", "catched error, returning nullptr");
+            debug("sys_result: ", "caught error, returning nullptr");
             std::unique_ptr<std::string> tmp(nullptr);
             return tmp;
         }
@@ -1819,7 +1818,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("VMID: catched error, returned false");
+        debug("VMID: caught error, returned false");
         return false;
     }
 
@@ -1840,7 +1839,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("VMID_0x4: catched error, returned false");
+        debug("VMID_0x4: caught error, returned false");
         return false;
     }
 
@@ -1893,7 +1892,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("BRAND_KEYWORDS: catched error, returned false");
+        debug("BRAND_KEYWORDS: caught error, returned false");
         return false;
     }
 
@@ -1922,7 +1921,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("QEMU_BRAND: catched error, returned false");
+        debug("QEMU_BRAND: caught error, returned false");
         return false;
     }
 
@@ -1948,7 +1947,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("HYPERVISOR_BIT: catched error, returned false");
+        debug("HYPERVISOR_BIT: caught error, returned false");
         return false;
     }
 
@@ -1979,7 +1978,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("CPUID_0x4: catched error, returned false");
+        debug("CPUID_0x4: caught error, returned false");
         return false;
     }
 
@@ -2005,7 +2004,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("HYPERVISOR_STR: catched error, returned false");
+        debug("HYPERVISOR_STR: caught error, returned false");
         return false;
     }
 
@@ -2073,7 +2072,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("RDTSC: catched error, returned false");
+        debug("RDTSC: caught error, returned false");
         return false;
     }
 
@@ -2109,7 +2108,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("SIDT5: catched error, returned false");
+        debug("SIDT5: caught error, returned false");
         return false;
     }
 
@@ -2124,7 +2123,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return (std::thread::hardware_concurrency() <= 2);
     }
     catch (...) {
-        debug("THREADCOUNT: catched error, returned false");
+        debug("THREADCOUNT: caught error, returned false");
         return false;
     }
 
@@ -2255,7 +2254,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
     }
     catch (...) {
-        debug("MAC: catched error, returned false");
+        debug("MAC: caught error, returned false");
         return false;
     }
 
@@ -2272,7 +2271,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("TEMPERATURE: catched error, returned false");
+        debug("TEMPERATURE: caught error, returned false");
         return false;
     }
 
@@ -2303,7 +2302,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("SYSTEMD: catched error, returned false");
+        debug("SYSTEMD: caught error, returned false");
         return false;
     }
 
@@ -2335,7 +2334,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("CVENDOR: catched error, returned false");
+        debug("CVENDOR: caught error, returned false");
         return false;
     }
 
@@ -2361,7 +2360,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("CTYPE: catched error, returned false");
+        debug("CTYPE: caught error, returned false");
         return false;
     }
 
@@ -2378,7 +2377,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("DOCKERENV: catched error, returned false");
+        debug("DOCKERENV: caught error, returned false");
         return false;
     }
 
@@ -2427,7 +2426,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("DMIDECODE: catched error, returned false");
+        debug("DMIDECODE: caught error, returned false");
         return false;
     }
 
@@ -2471,7 +2470,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("DMESG: catched error, returned false");
+        debug("DMESG: caught error, returned false");
         return false;
     }
 
@@ -2488,7 +2487,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("HWMON: catched error, returned false");
+        debug("HWMON: caught error, returned false");
         return false;
     }
 
@@ -2605,7 +2604,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("REGISTRY: catched error, returned false");
+        debug("REGISTRY: caught error, returned false");
         return false;
     }
 
@@ -2644,7 +2643,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("USER: catched error, returned false");
+        debug("USER: caught error, returned false");
         return false;
     }
 
@@ -2666,7 +2665,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("CWSANDBOX_VM: catched error, returned false");
+        debug("CWSANDBOX_VM: caught error, returned false");
         return false;
     }
 
@@ -2714,7 +2713,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("DLL: catched error, returned false");
+        debug("DLL: caught error, returned false");
         return false;
     }
 
@@ -2738,7 +2737,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("VBOX_REG: catched error, returned false");
+        debug("VBOX_REG: caught error, returned false");
         return false;
     }
 
@@ -2765,7 +2764,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("VMWARE_REG: catched error, returned false");
+        debug("VMWARE_REG: caught error, returned false");
         return false;
     }
 
@@ -2798,7 +2797,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("CURSOR: catched error, returned false");
+        debug("CURSOR: caught error, returned false");
         return false;
     }
 
@@ -2888,7 +2887,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("VM_FILES: catched error, returned false");
+        debug("VM_FILES: caught error, returned false");
         return false;
     }
 
@@ -2928,7 +2927,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("HWMODEL: catched error, returned false");
+        debug("HWMODEL: caught error, returned false");
         return false;
     }
 
@@ -2949,7 +2948,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("DISK_SIZE: catched error, returned false");
+        debug("DISK_SIZE: caught error, returned false");
         return false;
     }
 
@@ -3056,7 +3055,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
     }
     catch (...) {
-        debug("VBOX_DEFAULT: catched error, returned false");
+        debug("VBOX_DEFAULT: caught error, returned false");
         return false;
     }
 
@@ -3085,7 +3084,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("VBOX_NETWORK: catched error, returned false");
+        debug("VBOX_NETWORK: caught error, returned false");
         return false;
     }
 
@@ -3112,7 +3111,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("WINE_CHECK: catched error, returned false");
+        debug("WINE_CHECK: caught error, returned false");
         return false;
     }
 
@@ -3151,7 +3150,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("COMPUTER_NAME: catched error, returned false");
+        debug("COMPUTER_NAME: caught error, returned false");
         return false;
     }
 
@@ -3175,7 +3174,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("HOSTNAME: catched error, returned false");
+        debug("HOSTNAME: caught error, returned false");
         return false;
     }
 
@@ -3196,7 +3195,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return (ram < min_ram_1gb);
     }
     catch (...) {
-        debug("MEMORY: catched error, returned false");
+        debug("MEMORY: caught error, returned false");
         return false;
     }
 
@@ -3222,7 +3221,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("VBOX_WINDOW_CLASS: catched error, returned false");
+        debug("VBOX_WINDOW_CLASS: caught error, returned false");
         return false;
     }
 
@@ -3322,7 +3321,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("KVM_REG: ", "catched error, returned false");
+        debug("KVM_REG: ", "caught error, returned false");
         return false;
     }
 
@@ -3381,7 +3380,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("KVM_DRIVERS: ", "catched error, returned false");
+        debug("KVM_DRIVERS: ", "caught error, returned false");
         return false;
     }
 
@@ -3413,7 +3412,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("KVM_DIRS: ", "catched error, returned false");
+        debug("KVM_DIRS: ", "caught error, returned false");
         return false;
     }
 
@@ -3497,7 +3496,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("AUDIO: ", "catched error, returned false");
+        debug("AUDIO: ", "caught error, returned false");
         return false;
     }
 
@@ -3542,7 +3541,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("QEMU_DIR: ", "catched error, returned false");
+        debug("QEMU_DIR: ", "caught error, returned false");
         return false;
     }
 
@@ -3578,7 +3577,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("QEMU_DIR: ", "catched error, returned false");
+        debug("QEMU_DIR: ", "caught error, returned false");
         return false;
     }
 
@@ -3686,7 +3685,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("LINUX_USER_HOST: catched error, returned false");
+        debug("LINUX_USER_HOST: caught error, returned false");
         return false;
     }
 
@@ -3755,7 +3754,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("GAMARUE: catched error, returned false");
+        debug("GAMARUE: caught error, returned false");
         return false;
     }
 
@@ -3795,7 +3794,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("BIOS_SERIAL: catched error, returned false");
+        debug("BIOS_SERIAL: caught error, returned false");
         return false;
     }
 
@@ -3844,7 +3843,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("PARALLELS_VM:", "catched error, returned false");
+        debug("PARALLELS_VM:", "caught error, returned false");
         return false;
     }
 
@@ -3881,7 +3880,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("RDTSC_VMEXIT:", "catched error, returned false");
+        debug("RDTSC_VMEXIT:", "caught error, returned false");
         return false;
     }
 
@@ -3947,7 +3946,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("BOCHS_CPU:", "catched error, returned false");
+        debug("BOCHS_CPU:", "caught error, returned false");
         return false;
     }
 
@@ -4098,7 +4097,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("VPC_BOARD:", "catched error, returned false");
+        debug("VPC_BOARD:", "caught error, returned false");
         return false;
     }
 
@@ -4237,7 +4236,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("HYPERV_WMI: ", "catched error, returned false");
+        debug("HYPERV_WMI: ", "caught error, returned false");
         return false;
     }
 
@@ -4298,7 +4297,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif 
     }
     catch (...) {
-        debug("HYPERV_WMI: ", "catched error, returned false");
+        debug("HYPERV_WMI: ", "caught error, returned false");
         return false;
     }
 
@@ -4345,7 +4344,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("VBOX_FOLDERS: ", "catched error, returned false");
+        debug("VBOX_FOLDERS: ", "caught error, returned false");
         return false;
     }
 
@@ -4454,7 +4453,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("VBOX_MSSMBIOS: ", "catched error, returned false");
+        debug("VBOX_MSSMBIOS: ", "caught error, returned false");
         return false;
     }
 
@@ -4494,7 +4493,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("MAC_MEMSIZE: ", "catched error, returned false");
+        debug("MAC_MEMSIZE: ", "caught error, returned false");
         return false;
     }
 
@@ -4583,7 +4582,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif            
     }
     catch (...) {
-        debug("MAC_IOKIT: ", "catched error, returned false");
+        debug("MAC_IOKIT: ", "caught error, returned false");
         return false;
     }
 
@@ -4647,7 +4646,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("IOREG_GREP: ", "catched error, returned false");
+        debug("IOREG_GREP: ", "caught error, returned false");
         return false;
     }
 
@@ -4670,7 +4669,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("MAC_SIP: ", "catched error, returned false");
+        debug("MAC_SIP: ", "caught error, returned false");
         return false;
     }
 
@@ -4778,7 +4777,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("KHLM_REGISTRIES: ", "catched error, returned false");
+        debug("KHLM_REGISTRIES: ", "caught error, returned false");
         return false;
     }
 
@@ -4801,7 +4800,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("QEMU_GA: ", "catched error, returned false");
+        debug("QEMU_GA: ", "caught error, returned false");
         return false;
     }
 
@@ -4855,7 +4854,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("QEMU_PROC: ", "catched error, returned false");
+        debug("QEMU_PROC: ", "caught error, returned false");
         return false;
     }
 
@@ -4883,7 +4882,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("VPC_PROC: ", "catched error, returned false");
+        debug("VPC_PROC: ", "caught error, returned false");
         return false;
     }
 
@@ -5033,7 +5032,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("SLDT: ", "catched error, returned false");
+        debug("SLDT: ", "caught error, returned false");
         return false;
     }
 
@@ -5056,7 +5055,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("SGDT: ", "catched error, returned false");
+        debug("SGDT: ", "caught error, returned false");
         return false;
     }
 
@@ -5207,7 +5206,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("HYPERV_BOARD:", "catched error, returned false");
+        debug("HYPERV_BOARD:", "caught error, returned false");
         return false;
     }
 
@@ -5232,7 +5231,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("OFFSEC_SIDT: ", "catched error, returned false");
+        debug("OFFSEC_SIDT: ", "caught error, returned false");
         return false;
     }
 
@@ -5257,7 +5256,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("OFFSEC_SGDT: ", "catched error, returned false");
+        debug("OFFSEC_SGDT: ", "caught error, returned false");
         return false;
     }
 
@@ -5282,7 +5281,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("OFFSEC_SLDT: ", "catched error, returned false");
+        debug("OFFSEC_SLDT: ", "caught error, returned false");
         return false;
     }
 
@@ -5313,7 +5312,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("VPC_SIDT: ", "catched error, returned false");
+        debug("VPC_SIDT: ", "caught error, returned false");
         return false;
     }
 
@@ -5348,7 +5347,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("VM_FILES_EXTRA: catched error, returned false");
+        debug("VM_FILES_EXTRA: caught error, returned false");
         return false;
     }
 
@@ -5372,7 +5371,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("VMWARE_IOMEM: catched error, returned false");
+        debug("VMWARE_IOMEM: caught error, returned false");
         return false;
     }
 
@@ -5396,7 +5395,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("VMWARE_IOPORTS: catched error, returned false");
+        debug("VMWARE_IOPORTS: caught error, returned false");
         return false;
     }
 
@@ -5420,7 +5419,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("VMWARE_SCSI: catched error, returned false");
+        debug("VMWARE_SCSI: caught error, returned false");
         return false;
     }
 
@@ -5457,7 +5456,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("VMWARE_DMESG: catched error, returned false");
+        debug("VMWARE_DMESG: caught error, returned false");
         return false;
     }
 
@@ -5484,7 +5483,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("VMWARE_STR: catched error, returned false");
+        debug("VMWARE_STR: caught error, returned false");
         return false;
     }
 
@@ -5626,7 +5625,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("SMSW: catched error, returned false");
+        debug("SMSW: caught error, returned false");
         return false;
     }
 
@@ -5679,7 +5678,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("MUTEX: catched error, returned false");
+        debug("MUTEX: caught error, returned false");
         return false;
     }
 
@@ -5730,7 +5729,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("UPTIME: catched error, returned false");
+        debug("UPTIME: caught error, returned false");
         return false;
     }
 
@@ -5864,7 +5863,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("ODD_CPU_THREADS: catched error, returned false");
+        debug("ODD_CPU_THREADS: caught error, returned false");
         return false;
     }
 
@@ -6871,7 +6870,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("INTEL_THREAD_MISMATCH: catched error, returned false");
+        debug("INTEL_THREAD_MISMATCH: caught error, returned false");
         return false;
     }
 
@@ -7028,7 +7027,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("XEON_THREAD_MISMATCH: catched error, returned false");
+        debug("XEON_THREAD_MISMATCH: caught error, returned false");
         return false;
     }
 
@@ -7043,7 +7042,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!MSVC)
         return false;
 #else
-        typedef LARGE_INTEGER PHYSICAL_ADDRESS, * PPHYSICAL_ADDRESS;
+        typedef LARGE_INTEGER PHYSICAL_ADDRESS, *PPHYSICAL_ADDRESS;
 
 #pragma pack(push,4)
         typedef struct _CM_PARTIAL_RESOURCE_DESCRIPTOR {
@@ -7144,7 +7143,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     ULONG IdHighPart;
                 } Connection;
             } u;
-        } CM_PARTIAL_RESOURCE_DESCRIPTOR, * PCM_PARTIAL_RESOURCE_DESCRIPTOR;
+        } CM_PARTIAL_RESOURCE_DESCRIPTOR, *PCM_PARTIAL_RESOURCE_DESCRIPTOR;
 #pragma pack(pop,4)
         typedef enum _INTERFACE_TYPE {
             InterfaceTypeUndefined,
@@ -7167,13 +7166,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             Vmcs,
             ACPIBus,
             MaximumInterfaceType
-        } INTERFACE_TYPE, * PINTERFACE_TYPE;
+        } INTERFACE_TYPE, *PINTERFACE_TYPE;
         typedef struct _CM_PARTIAL_RESOURCE_LIST {
             USHORT                         Version;
             USHORT                         Revision;
             ULONG                          Count;
             CM_PARTIAL_RESOURCE_DESCRIPTOR PartialDescriptors[1];
-        } CM_PARTIAL_RESOURCE_LIST, * PCM_PARTIAL_RESOURCE_LIST;
+        } CM_PARTIAL_RESOURCE_LIST, *PCM_PARTIAL_RESOURCE_LIST;
         typedef struct _CM_FULL_RESOURCE_DESCRIPTOR {
             INTERFACE_TYPE           InterfaceType;
             ULONG                    BusNumber;
@@ -7427,7 +7426,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("NETTITUDE_VM_MEMORY: catched error, returned false");
+        debug("NETTITUDE_VM_MEMORY: caught error, returned false");
         return false;
     }
 
@@ -7495,7 +7494,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("HYPERV_CPUID: catched error, returned false");
+        debug("HYPERV_CPUID: caught error, returned false");
         return false;
     }
 
@@ -7572,7 +7571,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("CUCKOO_DIR: catched error, returned false");
+        debug("CUCKOO_DIR: caught error, returned false");
         return false;
     }
 
@@ -7605,7 +7604,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("CUCKOO_PIPE: catched error, returned false");
+        debug("CUCKOO_PIPE: caught error, returned false");
         return false;
     }
 
@@ -7635,7 +7634,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("USB_DRIVE: catched error, returned false");
+        debug("USB_DRIVE: caught error, returned false");
         return false;
     }
 
@@ -7661,7 +7660,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("HYPERV_HOSTNAME: catched error, returned false");
+        debug("HYPERV_HOSTNAME: caught error, returned false");
         return false;
     }
 
@@ -7701,7 +7700,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("GENERAL_HOSTNAME: catched error, returned false");
+        debug("GENERAL_HOSTNAME: caught error, returned false");
         return false;
     }
 
@@ -7737,9 +7736,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("SCREEN_RESOLUTION: catched error, returned false");
+        debug("SCREEN_RESOLUTION: caught error, returned false");
         return false;
     }
+
 
     /**
      * @brief Check if bogus device string would succeed
@@ -7787,7 +7787,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("MOUSE_DEVICE: catched error, returned false");
+        debug("MOUSE_DEVICE: caught error, returned false");
         return false;
     }
 
@@ -8142,7 +8142,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // Function template to test variadic arguments
         template <typename... Args>
         static flagset arg_handler(Args&&... args) {
-            if VMAWARE_CONSTEXPR(is_empty<Args...>()) {
+            if VMAWARE_CONSTEXPR (is_empty<Args...>()) {
                 return DEFAULT;
             }
 
@@ -8160,7 +8160,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         static flagset disabled_arg_handler(Args&&... args) {
             flag_collector.reset();
 
-            if VMAWARE_CONSTEXPR(is_empty<Args...>()) {
+            if VMAWARE_CONSTEXPR (is_empty<Args...>()) {
                 throw std::invalid_argument("VM::DISABLE must contain a flag");
             }
 
@@ -8589,7 +8589,7 @@ MSVC_ENABLE_WARNING(ASSIGNMENT_OPERATOR NO_INLINE_FUNC SPECTRE)
 
 
 // scoreboard list of brands, if a VM detection technique detects a brand, that will be incremented here as a single point.
-std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard{
+std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard {
     { VM::VBOX, 0 },
     { VM::VMWARE, 0 },
     { VM::VMWARE_EXPRESS, 0 },
