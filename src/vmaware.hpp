@@ -3558,7 +3558,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         HANDLE h;
         const u8 count = 2;
         std::string strs[count];
-        char message[200];
 
         strs[0] = "\\\\.\\HGFS";
         strs[1] = "\\\\.\\vmci";
@@ -7474,11 +7473,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 u32 not_used : 1;   //!< [31] Always 0 (a.k.a. HypervisorPresent)
             } fields;
         };
-        
-        if (sizeof(CpuFeaturesEcx) != 4) {
-            debug("HYPERV_CPUID: Size is not 4 bytes for union structure, returning false");
-            return 0;
-        }
 
         i32 cpu_info[4] = {};
         cpu::cpuid(cpu_info, 0x40000001);
