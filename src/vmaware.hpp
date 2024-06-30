@@ -342,6 +342,7 @@ public:
         AUDIO,             // GPL
         QEMU_DIR,          // GPL 
         VMWARE_DEVICES,    // GPL
+        MOUSE_DEVICE,      // GPL
         VM_PROCESSES,
         LINUX_USER_HOST,
         GAMARUE,
@@ -396,6 +397,7 @@ public:
         HYPERV_HOSTNAME,
         GENERAL_HOSTNAME,
         SCREEN_RESOLUTION,
+        DEVICE_STRING,
 
         // start of non-technique flags (THE ORDERING IS VERY SPECIFIC AND MIGHT BREAK SOMETHING IDK)
         EXTREME,
@@ -2869,7 +2871,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             vbox > 0 &&
             vmware > 0 &&
             vbox == vmware
-            ) {
+        ) {
+            return true;
+        }
+
+        // general VM file, not sure which brand it belongs to though
+        if (util::exists("C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\StartUp\\agent.pyw")) {
             return true;
         }
 
@@ -3551,7 +3558,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         HANDLE h;
         const u8 count = 2;
         std::string strs[count];
-        char message[200];
 
         strs[0] = "\\\\.\\HGFS";
         strs[1] = "\\\\.\\vmci";
@@ -3894,6 +3900,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         // if neither amd or intel, return false
         if (!(intel ^ amd)) {
+            debug("BOCHS_CPU: neither AMD or Intel detect, returned false");
             return false;
         }
 
@@ -7466,11 +7473,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 u32 not_used : 1;   //!< [31] Always 0 (a.k.a. HypervisorPresent)
             } fields;
         };
-        
-        if (sizeof(CpuFeaturesEcx) != 4) {
-            debug("HYPERV_CPUID: Size is not 4 bytes for union structure, returning false");
-            return 0;
-        }
 
         i32 cpu_info[4] = {};
         cpu::cpuid(cpu_info, 0x40000001);
@@ -7637,7 +7639,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         std::string hostname = util::get_hostname();
 
         // most Hyper-V hostnames under Azure have the hostname format of fv-azXXX-XXX where the X is a digit
-        std::regex pattern("fv-az\\d{3}-\\d{3}");
+        std::regex pattern("fv-az\\d+-\\d+");
 
         if (std::regex_match(hostname, pattern)) {
            return core::add(HYPERV);
@@ -7656,6 +7658,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Windows, Linux
      * @note Idea from Thomas Roccia (fr0gger)
      * @link https://unprotect.it/technique/detecting-hostname-username/
+     * @copyright MIT
      */ 
     [[nodiscard]] static bool general_hostname() try {
 #if (!(MSVC || LINUX))
@@ -7690,10 +7693,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     
 
     /**
-     * @brief Check for preset window resolutions
+     * @brief Check for known window resolutions in VMs
      * @category Windows
      * @note Idea from Thomas Roccia (fr0gger)
      * @link https://unprotect.it/technique/checking-screen-resolution/
+     * @copyright MIT
      */ 
     [[nodiscard]] static bool screen_resolution() try {
 #if (!MSVC)
@@ -7707,7 +7711,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         debug("SCREEN_RESOLUTION: horizontal = ", horiz, ", vertical = ", verti);
 
-        if (horiz < 1024) {
+        if (
+            (horiz == 1024 && verti == 768) ||
+            (horiz == 800 && verti == 600) ||
+            (horiz == 640 && verti == 480)
+        ) {
             return true;
         }
 
@@ -7719,15 +7727,46 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
     
 
+    /**
+     * @brief Check if bogus device string would succeed
+     * @category Windows
+     * @author Huntress Research Team 
+     * @link https://unprotect.it/technique/buildcommdcbandtimeouta/
+     * @copyright MIT
+     */ 
+    [[nodiscard]] static bool device_string() try {
+#if (!MSVC)
+        return false;
+#else
+        return (BuildCommDCBAndTimeouts("jhl46745fghb", NULL, NULL));
+#endif
+    } catch (...) {
+        debug("DEVICE_STRING: catched error, returned false");
+        return false;
+    }
+    
 
-
-
-
-
-
-
-
-
+    /**
+     * @brief Check for the presence of a mouse device
+     * @category Windows
+     * @author a0rtega
+     * @link https://github.com/a0rtega/pafish/blob/master/pafish/rtt.c
+     * @note from pafish project
+     * @copyright GPL
+     */ 
+    [[nodiscard]] static bool mouse_device() try {
+#if (!MSVC)
+        return false;
+#else
+        int res;
+        res = GetSystemMetrics(SM_MOUSEPRESENT);
+        return (res == 0);
+#endif
+    } catch (...) {
+        debug("MOUSE_DEVICE: catched error, returned false");
+        return false;
+    }
+    
 
 
 
@@ -7747,7 +7786,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         };
         MSVC_ENABLE_WARNING(PADDING)
 
-        static const std::map<u8, technique> table;
+        static const std::map<u8, technique> technique_table;
 
         static std::vector<technique> custom_table;
 
@@ -7844,7 +7883,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             const u16 threshold_points = (core::is_enabled(flags, HIGH_THRESHOLD) ? maximum_points : 200);
 
             // for main technique table
-            for (const auto& tmp : table) {
+            for (const auto& tmp : technique_table) {
                 const u8 technique_macro = tmp.first;
 
                 // check if it's disabled
@@ -8137,10 +8176,10 @@ public: // START OF PUBLIC FUNCTIONS
 
         // check if the bit is a non-technique flag, which shouldn't be allowed
         if (
-            (flag_bit == NO_MEMO) || \
-            (flag_bit == EXTREME) || \
-            (flag_bit == HIGH_THRESHOLD) || \
-            (flag_bit == ENABLE_HYPERV_HOST) || \
+            (flag_bit == NO_MEMO) || 
+            (flag_bit == EXTREME) || 
+            (flag_bit == HIGH_THRESHOLD) || 
+            (flag_bit == ENABLE_HYPERV_HOST) || 
             (flag_bit == WIN_HYPERV_DEFAULT_MACRO) ||  // deprecated
             (flag_bit == MULTIPLE)
         ) {
@@ -8158,8 +8197,8 @@ public: // START OF PUBLIC FUNCTIONS
         }
 
         // check if the flag even exists
-        auto it = core::table.find(flag_bit);
-        if (it == core::table.end()) {
+        auto it = core::technique_table.find(flag_bit);
+        if (it == core::technique_table.end()) {
             throw_error("Flag is not known");
         }
 
@@ -8625,7 +8664,7 @@ std::vector<VM::core::technique> VM::core::custom_table = {
 
 
 // the 0~100 points are debatable, but I think it's fine how it is. Feel free to disagree.
-const std::map<VM::u8, VM::core::technique> VM::core::table = {
+const std::map<VM::u8, VM::core::technique> VM::core::technique_table = {
     { VM::VMID, { 100, VM::vmid }},
     { VM::CPU_BRAND, { 50, VM::cpu_brand }},
     { VM::HYPERVISOR_BIT, { 100, VM::hypervisor_bit }},
@@ -8667,6 +8706,7 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::AUDIO, { 35, VM::check_audio }},                   // GPL
     { VM::QEMU_DIR, { 45, VM::qemu_dir }},                   // GPL
     { VM::VMWARE_DEVICES, { 60, VM::vmware_devices }},       // GPL
+    { VM::MOUSE_DEVICE, { 20, VM::mouse_device }},           // GPL
     { VM::VM_PROCESSES, { 30, VM::vm_processes }},
     { VM::LINUX_USER_HOST, { 25, VM::linux_user_host }},
     { VM::GAMARUE, { 40, VM::gamarue }},
@@ -8720,7 +8760,8 @@ const std::map<VM::u8, VM::core::technique> VM::core::table = {
     { VM::USB_DRIVE, { 30, VM::usb_drive }},
     { VM::HYPERV_HOSTNAME, { 50, VM::hyperv_hostname }},
     { VM::GENERAL_HOSTNAME, { 20, VM::general_hostname }},
-    { VM::SCREEN_RESOLUTION, { 10, VM::screen_resolution }}
+    { VM::SCREEN_RESOLUTION, { 30, VM::screen_resolution }},
+    { VM::DEVICE_STRING, { 25, VM::device_string }},
 
     // __TABLE_LABEL, add your technique above
     // { VM::FUNCTION, { POINTS, FUNCTION_POINTER }}
