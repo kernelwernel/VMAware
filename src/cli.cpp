@@ -278,7 +278,6 @@ void general(const bool enable_hyperv = true) {
     checker(VM::HYPERV_CPUID, "Hyper-V CPUID");
     checker(VM::CUCKOO_DIR, "Cuckoo directory");
     checker(VM::CUCKOO_PIPE, "Cuckoo pipe");
-    checker(VM::USB_DRIVE, "USB drive absence");
     checker(VM::HYPERV_HOSTNAME, "Hyper-V Azure hostname");
     checker(VM::GENERAL_HOSTNAME, "general VM hostnames");
     checker(VM::SCREEN_RESOLUTION, "screen resolution");
