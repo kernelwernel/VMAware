@@ -393,7 +393,6 @@ public:
         HYPERV_CPUID,
         CUCKOO_DIR,
         CUCKOO_PIPE,
-        USB_DRIVE,
         HYPERV_HOSTNAME,
         GENERAL_HOSTNAME,
         SCREEN_RESOLUTION,
@@ -7609,34 +7608,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
 
 
-    /**
-     * @brief Check for presence of USB drive
-     * @category Windows
-     * @author Thomas Roccia (fr0gger)
-     * @link https://unprotect.it/technique/detecting-usb-drive/
-     * @copyright MIT
-     */
-    [[nodiscard]] static bool usb_drive() try {
-#if (!MSVC)
-        return false;
-#else
-        UINT drives = GetLogicalDrives();
-
-        for (int i = 0; i < 26; i++) {
-            if ((drives & (1 << i)) && GetDriveTypeA((char)('A' + i) + ":\\") == DRIVE_REMOVABLE) {
-                debug("USB drive detected: ", 'A' + i, ", returning false");
-                return false;
-            }
-        }
-
-        // at this point, no drives have been detected
-        return true;
-#endif
-    }
-    catch (...) {
-        debug("USB_DRIVE: caught error, returned false");
-        return false;
-    }
 
 
     /**
@@ -8800,7 +8771,6 @@ const std::map<VM::u8, VM::core::technique> VM::core::technique_table = {
     { VM::HYPERV_CPUID, { 35, VM::hyperv_cpuid }},
     { VM::CUCKOO_DIR, { 15, VM::cuckoo_dir }},
     { VM::CUCKOO_PIPE, { 20, VM::cuckoo_pipe }},
-    { VM::USB_DRIVE, { 30, VM::usb_drive }},
     { VM::HYPERV_HOSTNAME, { 50, VM::hyperv_hostname }},
     { VM::GENERAL_HOSTNAME, { 20, VM::general_hostname }},
     { VM::SCREEN_RESOLUTION, { 30, VM::screen_resolution }},
