@@ -20,7 +20,7 @@ The library is:
 - Header-only
 - Available with C++11 and above
 - Able to detect VMware, VirtualBox, QEMU, KVM, Parallels, and [much more](https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmbrand)
-- Able to detect semi-VM technologies like hypervisors, docker, and wine
+- Able to detect various semi-VM technologies like hypervisors, docker, emulators, and wine
 - Able to guess the VM brand
 - Memoized, meaning past results are cached and retrieved if ran again for performance benefits 
 - Contains separate MIT and GPL-3.0 compliant library header files
@@ -91,6 +91,8 @@ sudo make install
 cmake -S . -B build/ -G "Visual Studio 16 2019"
 ```
 
+If you just want the binaries, head over to the latest [release section](https://github.com/kernelwernel/VMAware/releases/latest)
+
 <br>
 
 ## Documentation 📒
@@ -117,9 +119,6 @@ You can view the full docs [here](docs/documentation.md). Trust me, it's not too
 - Why GPL 3.0 and MIT? 
 > I would've made it strictly MIT so proprietary software can make use of the library, but some of the techniques employed are from GPL 3.0 projects, and I have no choice but to use the same license for legal reasons. This gave me an idea to make an MIT version without all of the GPL code so it can also be used without forcing your code to be open-source. It should be noted that the MIT version removes **10** techniques out of 85 (as of 1.4 version), and the lesser the number of mechanisms, the less accurate the overall result might be.
 
-- The tool has many false positives under a Windows 11 host, why?
-> This is because it is in fact running under a VM. More specifically, Hyper-V might be used by default for every program that's running in Windows 11. 
-
 - I have linker errors when compiling
 > If you're compiling with gcc or clang, add the `-lm` and `-lstdc++` flags, or use g++/clang++ compilers instead. If you're receiving linker errors from a brand new VM environment on Linux, update your system with `sudo apt/dnf/yum update -y` to install the necessary C++ components.
 
@@ -134,8 +133,6 @@ And if you found this project useful, a star would be appreciated :)
 
 ## Projects using VMAware
 **[CrashLoggerSSE](https://github.com/alandtse/CrashLoggerSSE)** - SKSE/SKSEVR plugin that generates crash logs
-
-**[screenshare-tool](https://github.com/NotRequiem/screenshare-tool)** - Screenshare tool for Windows
 
 **[Some malware I randomly found on MalwareBazaar's database lol](https://bazaar.abuse.ch/browse/tag/vmaware/)**
 

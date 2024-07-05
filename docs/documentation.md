@@ -407,7 +407,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::HYPERV_CPUID` | Check for Hyper-V specific CPUID results in ecx |  | 35% |  |  |  |
 | `VM::CUCKOO_DIR` | Check for Cuckoo specific directory | Windows | 15% |  |  |  |
 | `VM::CUCKOO_PIPE` | Check for Cuckoo specific piping mechanism | Windows | 20% |  |  |  |
-| `VM::USB_DRIVE` | Check for absence of USB drives | Windows | 30% |  |  |  |
+| `VM::USB_DRIVE` | Check for absence of USB drives | Windows | 5% |  |  |  |
 | `VM::HYPERV_HOSTNAME` | Check for default Azure hostname format (Azure uses Hyper-V as their base VM brand) | Windows, Linux | 50% |  |  |  |
 | `VM::GENERAL_HOSTNAME` | Check for general hostnames that match with certain VM brands | Windows, Linux | 20% |  |  |  |
 | `VM::SCREEN_RESOLUTION` | Check for pre-set screen resolutions commonly found in VMs | Windows | 10% |  |  |  |

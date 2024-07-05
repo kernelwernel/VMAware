@@ -283,6 +283,7 @@ void general(const bool enable_hyperv = true) {
     checker(VM::SCREEN_RESOLUTION, "screen resolution");
     checker(VM::DEVICE_STRING, "bogus device string");
     checker(VM::MOUSE_DEVICE, "mouse device");
+    checker(VM::BLUESTACKS_FOLDERS, "BlueStacks folders");
 
 
     std::printf("\n");
@@ -442,6 +443,7 @@ OpenBSD VMM
 Intel HAXM
 Unisys s-Par
 Cuckoo
+BlueStacks
 )";
             return 0;
         } else if (arg("--disable-hyperv-host")) {

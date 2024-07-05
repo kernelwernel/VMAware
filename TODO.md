@@ -37,6 +37,7 @@
 - [X] use the [[assume()]] attribute in C++23 for certain areas (not sure where exactly) 
 - [X] maybe add [[deprecated]]?
 - [ ] implement techniques from here https://stackoverflow.com/questions/43026032/detect-running-on-virtual-machine
+- [ ] add a .clang_format thingy
 
 # Distant plans
 - add the library to conan.io when released
