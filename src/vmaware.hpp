@@ -610,9 +610,10 @@ private:
         // check for POSSIBILITY of hyperthreading, I don't think there's a 
         // full-proof method to detect if you're actually hyperthreading imo.
         [[nodiscard]] static bool has_hyperthreading() {
-            u32 eax, ebx, ecx, edx;
+            u32 unused, ebx, edx;
 
-            cpuid(eax, ebx, ecx, edx, 1);
+            cpuid(unused, ebx, unused, edx, 1);
+            UNUSED(unused);
 
             bool htt_available = (edx & (1 << 28));
 
