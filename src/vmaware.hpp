@@ -393,11 +393,11 @@ public:
         HYPERV_CPUID,
         CUCKOO_DIR,
         CUCKOO_PIPE,
-        USB_DRIVE,
         HYPERV_HOSTNAME,
         GENERAL_HOSTNAME,
         SCREEN_RESOLUTION,
         DEVICE_STRING,
+        BLUESTACKS_FOLDERS,
 
         // start of non-technique flags (THE ORDERING IS VERY SPECIFIC AND MIGHT BREAK SOMETHING IDK)
         EXTREME,
@@ -502,8 +502,9 @@ private:
     static constexpr const char* UNISYS = "Unisys s-Par";
     static constexpr const char* LMHS = "Lockheed Martin LMHS"; // yes, you read that right. The library can now detect VMs running on US military fighter jets, apparently.
     static constexpr const char* CUCKOO = "Cuckoo";
+    static constexpr const char* BLUESTACKS = "BlueStacks";
 
-    // macro for bypassing unused parameter/variable warnings
+// macro for bypassing unused parameter/variable warnings
 #define UNUSED(x) ((void)(x))
 
 // likely and unlikely macros
@@ -658,11 +659,11 @@ private:
             constexpr std::size_t buffer_size = sizeof(int32_t) * buffer.size();
             std::array<char, 64> charbuffer{};
 
-            constexpr std::array<u32, 3> ids = { {
+            constexpr std::array<u32, 3> ids = {{
                 cpu::leaf::brand1,
                 cpu::leaf::brand2,
                 cpu::leaf::brand3
-            } };
+            }};
 
             std::string brand = "";
 
@@ -1003,19 +1004,18 @@ private:
 #if (MSVC)
             return (GetFileAttributesA(path) != INVALID_FILE_ATTRIBUTES) || (GetLastError() != ERROR_FILE_NOT_FOUND);
 #else 
-#if (CPP >= 17)
+    #if (CPP >= 17)
             return std::filesystem::exists(path);
-#elif (CPP >= 11)
+    #elif (CPP >= 11)
             struct stat buffer;
             return (stat(path, &buffer) == 0);
-#endif
+    #endif
 #endif
         }
 
 #if (MSVC) && (_UNICODE)
         // handle TCHAR conversion
-        [[nodiscard]] static bool exists(const TCHAR* path)
-        {
+        [[nodiscard]] static bool exists(const TCHAR* path) {
             char c_szText[_MAX_PATH];
             wcstombs(c_szText, path, wcslen(path) + 1);
             return exists(c_szText);
@@ -1041,7 +1041,7 @@ private:
             return (
                 (uid != euid) ||
                 (euid == 0)
-                );
+            );
 #elif (MSVC)
             BOOL is_admin = FALSE;
             HANDLE hToken = NULL;
@@ -1858,12 +1858,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         std::string brand = cpu::get_brand();
 
         // TODO: might add more potential keywords, be aware that it could (theoretically) cause false positives
-        constexpr std::array<const char*, 16> vmkeywords{ {
+        constexpr std::array<const char*, 16> vmkeywords {{
             "qemu", "kvm", "virtual", "vm",
             "vbox", "virtualbox", "vmm", "monitor",
             "bhyve", "hyperv", "hypervisor", "hvisor",
             "parallels", "vmware", "hvm", "qnx"
-        } };
+        }};
 
         u8 match_count = 0;
 
@@ -2224,7 +2224,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // better expression to fix code duplication
         auto compare = [=](const u8 mac1, const u8 mac2, const u8 mac3) noexcept -> bool {
             return (mac[0] == mac1 && mac[1] == mac2 && mac[2] == mac3);
-            };
+        };
 
         if (compare(0x08, 0x00, 0x27)) {
             return core::add(VBOX);
@@ -2235,7 +2235,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             (compare(0x00, 0x1C, 0x14)) ||
             (compare(0x00, 0x50, 0x56)) ||
             (compare(0x00, 0x05, 0x69))
-            ) {
+        ) {
             return core::add(VMWARE);
         }
 
@@ -2373,7 +2373,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!LINUX)
         return false;
 #else
-        return (util::exists("/.dockerenv") || util::exists("/.dockerinit"));
+        if (util::exists("/.dockerenv") || util::exists("/.dockerinit")) {
+            return core::add(DOCKER);
+        }
+
+        return false;
 #endif
     }
     catch (...) {
@@ -2528,7 +2532,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     core::add(p_brand);
                 }
             }
-            };
+        };
 
         // general
         key("", "HKLM\\Software\\Classes\\Folder\\shell\\sandbox");
@@ -2639,7 +2643,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return (
             (0 == _tcscmp(user, _T("USER"))) ||      // Sandbox
             (0 == _tcscmp(user, _T("currentuser")))  // Normal
-            );
+        );
 #endif
     }
     catch (...) {
@@ -2814,37 +2818,37 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         u8 vbox = 0;
         u8 vmware = 0;
 
-        constexpr std::array<const TCHAR*, 26> files = { {
-                // VMware
-                _T("C:\\windows\\System32\\Drivers\\Vmmouse.sys"),
-                _T("C:\\windows\\System32\\Drivers\\vm3dgl.dll"),
-                _T("C:\\windows\\System32\\Drivers\\vmdum.dll"),
-                _T("C:\\windows\\System32\\Drivers\\VmGuestLibJava.dll"),
-                _T("C:\\windows\\System32\\Drivers\\vm3dver.dll"),
-                _T("C:\\windows\\System32\\Drivers\\vmtray.dll"),
-                _T("C:\\windows\\System32\\Drivers\\VMToolsHook.dll"),
-                _T("C:\\windows\\System32\\Drivers\\vmGuestLib.dll"),
-                _T("C:\\windows\\System32\\Drivers\\vmhgfs.dll"),
+        constexpr std::array<const TCHAR*, 26> files = {{
+            // VMware
+            _T("C:\\windows\\System32\\Drivers\\Vmmouse.sys"),
+            _T("C:\\windows\\System32\\Drivers\\vm3dgl.dll"),
+            _T("C:\\windows\\System32\\Drivers\\vmdum.dll"),
+            _T("C:\\windows\\System32\\Drivers\\VmGuestLibJava.dll"),
+            _T("C:\\windows\\System32\\Drivers\\vm3dver.dll"),
+            _T("C:\\windows\\System32\\Drivers\\vmtray.dll"),
+            _T("C:\\windows\\System32\\Drivers\\VMToolsHook.dll"),
+            _T("C:\\windows\\System32\\Drivers\\vmGuestLib.dll"),
+            _T("C:\\windows\\System32\\Drivers\\vmhgfs.dll"),
 
-                // VBox
-                _T("C:\\windows\\System32\\Drivers\\VBoxMouse.sys"),
-                _T("C:\\windows\\System32\\Drivers\\VBoxGuest.sys"),
-                _T("C:\\windows\\System32\\Drivers\\VBoxSF.sys"),
-                _T("C:\\windows\\System32\\Drivers\\VBoxVideo.sys"),
-                _T("C:\\windows\\System32\\vboxoglpackspu.dll"),
-                _T("C:\\windows\\System32\\vboxoglpassthroughspu.dll"),
-                _T("C:\\windows\\System32\\vboxservice.exe"),
-                _T("C:\\windows\\System32\\vboxoglcrutil.dll"),
-                _T("C:\\windows\\System32\\vboxdisp.dll"),
-                _T("C:\\windows\\System32\\vboxhook.dll"),
-                _T("C:\\windows\\System32\\vboxmrxnp.dll"),
-                _T("C:\\windows\\System32\\vboxogl.dll"),
-                _T("C:\\windows\\System32\\vboxtray.exe"),
-                _T("C:\\windows\\System32\\VBoxControl.exe"),
-                _T("C:\\windows\\System32\\vboxoglerrorspu.dll"),
-                _T("C:\\windows\\System32\\vboxoglfeedbackspu.dll"),
-                _T("c:\\windows\\system32\\vboxoglarrayspu.dll")
-            } };
+            // VBox
+            _T("C:\\windows\\System32\\Drivers\\VBoxMouse.sys"),
+            _T("C:\\windows\\System32\\Drivers\\VBoxGuest.sys"),
+            _T("C:\\windows\\System32\\Drivers\\VBoxSF.sys"),
+            _T("C:\\windows\\System32\\Drivers\\VBoxVideo.sys"),
+            _T("C:\\windows\\System32\\vboxoglpackspu.dll"),
+            _T("C:\\windows\\System32\\vboxoglpassthroughspu.dll"),
+            _T("C:\\windows\\System32\\vboxservice.exe"),
+            _T("C:\\windows\\System32\\vboxoglcrutil.dll"),
+            _T("C:\\windows\\System32\\vboxdisp.dll"),
+            _T("C:\\windows\\System32\\vboxhook.dll"),
+            _T("C:\\windows\\System32\\vboxmrxnp.dll"),
+            _T("C:\\windows\\System32\\vboxogl.dll"),
+            _T("C:\\windows\\System32\\vboxtray.exe"),
+            _T("C:\\windows\\System32\\VBoxControl.exe"),
+            _T("C:\\windows\\System32\\vboxoglerrorspu.dll"),
+            _T("C:\\windows\\System32\\vboxoglfeedbackspu.dll"),
+            _T("c:\\windows\\system32\\vboxoglarrayspu.dll")
+        }};
 
         for (const auto file : files) {
             if (util::exists(file)) {
@@ -2874,7 +2878,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             vbox > 0 &&
             vmware > 0 &&
             vbox == vmware
-            ) {
+        ) {
             return true;
         }
 
@@ -2997,7 +3001,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             return "unknown";
-            };
+        };
 
         const std::string distro = get_distro();
 
@@ -3015,7 +3019,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             "gentoo" == distro ||
             "fedora" == distro ||
             "debian" == distro
-            ) {
+        ) {
             return ((8 == disk) && (1 == ram));
         }
 
@@ -3104,7 +3108,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         k32 = GetModuleHandle(TEXT("kernel32.dll"));
 
         if (k32 != NULL) {
-            return (GetProcAddress(k32, "wine_get_unix_file_name") != NULL);
+            if (GetProcAddress(k32, "wine_get_unix_file_name") != NULL) {
+                return core::add(WINE);
+            }
         }
 
         return false;
@@ -3132,7 +3138,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         auto compare = [&](const std::string& s) -> bool {
             return (std::strcmp((LPCSTR)comp_name.data(), s.c_str()) == 0);
-            };
+        };
 
         debug("COMPUTER_NAME: fetched = ", (LPCSTR)comp_name.data());
 
@@ -3239,7 +3245,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #else
         HMODULE hDll;
 
-        constexpr std::array<const char*, 12> szDlls = { {
+        constexpr std::array<const char*, 12> szDlls = {{
             "avghookx.dll",    // AVG
             "avghooka.dll",    // AVG
             "snxhk.dll",       // Avast
@@ -3252,7 +3258,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             "wpespy.dll",      // WPE Pro
             "cmdvrt64.dll",    // Comodo Container
             "cmdvrt32.dll",    // Comodo Container
-        } };
+        }};
 
         for (const auto& key : szDlls) {
             const char* dll = key;
@@ -3299,9 +3305,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             return false;
-            };
+        };
 
-        constexpr std::array<const TCHAR*, 7> keys = { {
+        constexpr std::array<const TCHAR*, 7> keys = {{
             _T("SYSTEM\\ControlSet001\\Services\\vioscsi"),
             _T("SYSTEM\\ControlSet001\\Services\\viostor"),
             _T("SYSTEM\\ControlSet001\\Services\\VirtIO-FS Service"),
@@ -3309,7 +3315,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             _T("SYSTEM\\ControlSet001\\Services\\BALLOON"),
             _T("SYSTEM\\ControlSet001\\Services\\BalloonService"),
             _T("SYSTEM\\ControlSet001\\Services\\netkvm"),
-        } };
+        }};
 
         for (const auto& key : keys) {
             if (registry_exists(key)) {
@@ -3522,8 +3528,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         };
 
         WORD iLength = sizeof(szDirectories) / sizeof(szDirectories[0]);
-        for (int i = 0; i < iLength; i++)
-        {
+        for (int i = 0; i < iLength; i++) {
             TCHAR msg[256] = _T("");
 
             if (util::is_wow64())
@@ -3617,7 +3622,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             return false;
-            };
+        };
 
         if (check_proc(_T("joeboxserver.exe")) || check_proc(_T("joeboxcontrol.exe"))) {
             return core::add(JOEBOX);
@@ -3643,7 +3648,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             check_proc(_T("vmwareuser.exe")) ||
             check_proc(_T("vmware.exe")) ||
             check_proc(_T("vmount2.exe"))
-            ) {
+        ) {
             return core::add(VMWARE);
         }
 
@@ -3681,7 +3686,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return (
             (strcmp(username, "liveuser") == 0) &&
             (strcmp(hostname, "localhost-live") == 0)
-            );
+        );
 #endif
     }
     catch (...) {
@@ -3782,7 +3787,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         const bool all_digits = std::all_of(extract.cbegin(), extract.cend(), [](const char c) {
             return std::isdigit(c);
-            });
+        });
 
         if (all_digits) {
             if (extract == "0") {
@@ -3829,13 +3834,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         auto compare = [](const std::string& str) -> bool {
             std::regex pattern("Parallels", std::regex_constants::icase);
             return std::regex_match(str, pattern);
-            };
+        };
 
         if (
             compare(info->get_manufacturer()) ||
             compare(info->get_productname()) ||
             compare(info->get_family())
-            ) {
+        ) {
             return core::add(PARALLELS);
         }
 
@@ -4257,7 +4262,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         LONG result = RegOpenKeyExW(HKEY_LOCAL_MACHINE, reinterpret_cast<LPCWSTR>(registryPath), 0, KEY_READ, &hKey);
 
         if (result != ERROR_SUCCESS) {
-            debug("HYPERV_WMI: Error opening registry key. Code: ", result);
+            debug("HYPERV_REGISTRY: Error opening registry key. Code: ", result);
             return false;
         }
 
@@ -4297,7 +4302,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif 
     }
     catch (...) {
-        debug("HYPERV_WMI: ", "caught error, returned false");
+        debug("HYPERV_REGISTRY: ", "caught error, returned false");
         return false;
     }
 
@@ -4405,21 +4410,21 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
             }
 
-            return 0;
-            };
+            return 0;  
+        };
 
         auto AllToUpper = [](char* str, std::size_t len) {
             for (std::size_t i = 0; i < len; ++i) {
                 str[i] = static_cast<char>(std::toupper(static_cast<unsigned char>(str[i])));
             }
-            };
+        };
 
         AllToUpper(p, length);
 
         // cleaner and better shortcut than typing reinterpret_cast<unsigned char*> a million times
         auto cast = [](char* p) -> unsigned char* {
             return reinterpret_cast<unsigned char*>(p);
-            };
+        };
 
         unsigned char* x1 = ScanDataForString(cast(p), length, (unsigned char*)("INNOTEK GMBH"));
         unsigned char* x2 = ScanDataForString(cast(p), length, (unsigned char*)("VIRTUALBOX"));
@@ -4530,7 +4535,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             return (platform == "0");
-            };
+        };
 
         auto check_board = [&]() -> bool {
             debug("IO_KIT: ", "board = ", board);
@@ -4552,7 +4557,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             return false;
-            };
+        };
 
         auto check_manufacturer = [&]() -> bool {
             debug("IO_KIT: ", "manufacturer = ", manufacturer);
@@ -4570,13 +4575,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             return false;
-            };
+        };
 
         return (
             check_platform() ||
             check_board() ||
             check_manufacturer()
-            );
+        );
 
         return false;
 #endif            
@@ -4609,7 +4614,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             return false;
-            };
+        };
 
         auto check_general = []() -> bool {
             std::unique_ptr<std::string> sys_vbox = util::sys_result("ioreg -l | grep -i -c -e \"virtualbox\" -e \"oracle\"");
@@ -4625,7 +4630,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             return false;
-            };
+        };
 
         auto check_rom = []() -> bool {
             std::unique_ptr<std::string> sys_rom = util::sys_result("system_profiler SPHardwareDataType | grep \"Boot ROM Version\"");
@@ -4636,13 +4641,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             return false;
-            };
+        };
 
         return (
             check_usb() ||
             check_general() ||
             check_rom()
-            );
+        );
 #endif
     }
     catch (...) {
@@ -4706,7 +4711,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             else {
                 debug("Failed to open registry key for \"", subKey, "\"");
             }
-            };
+        };
 
         check_key(BOCHS, "HARDWARE\\Description\\System", "SystemBiosVersion", "BOCHS");
         check_key(BOCHS, "HARDWARE\\Description\\System", "VideoBiosVersion", "BOCHS");
@@ -4838,11 +4843,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!MSVC)
         return false;
 #else
-        constexpr std::array<const TCHAR*, 3> qemu_proc_strings = { {
+        constexpr std::array<const TCHAR*, 3> qemu_proc_strings = {{
             _T("qemu-ga.exe"),
             _T("vdagent.exe"),
             _T("vdservice.exe")
-        } };
+        }};
 
         for (const auto str : qemu_proc_strings) {
             if (util::is_proc_running(str)) {
@@ -4867,10 +4872,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!MSVC)
         return false;
 #else
-        constexpr std::array<const TCHAR*, 2> vpc_proc_strings = { {
+        constexpr std::array<const TCHAR*, 2> vpc_proc_strings = {{
             _T("VMSrvc.exe"),
             _T("VMUSrvc.exe")
-        } };
+        }};
 
         for (const auto str : vpc_proc_strings) {
             if (util::is_proc_running(str)) {
@@ -4904,7 +4909,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             ctx->Eip += 4; // skip past the "call VPC" opcodes
             return static_cast<DWORD>(EXCEPTION_CONTINUE_EXECUTION);
             // we can safely resume execution since we skipped faulty instruction
-            };
+        };
 
         __try {
             __asm {
@@ -5325,7 +5330,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!MSVC)
         return false;
 #else
-        constexpr std::array<std::pair<const char*, const char*>, 9> files = { {
+        constexpr std::array<std::pair<const char*, const char*>, 9> files = {{
             { VPC, "c:\\windows\\system32\\drivers\\vmsrvc.sys" },
             { VPC, "c:\\windows\\system32\\drivers\\vpc-s3.sys" },
             { PARALLELS, "c:\\windows\\system32\\drivers\\prleth.sys" },
@@ -5335,7 +5340,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             { PARALLELS, "c:\\windows\\system32\\drivers\\prltime.sys" },
             { PARALLELS, "c:\\windows\\system32\\drivers\\prl_pv32.sys" },
             { PARALLELS, "c:\\windows\\system32\\drivers\\prl_paravirt_32.sys" }
-        } };
+        }};
 
         for (const auto& file_pair : files) {
             if (util::exists(file_pair.second)) {
@@ -5539,11 +5544,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         if (is_vm) {
             switch (b) {
-            case 1:  return core::add(VMWARE_EXPRESS);
-            case 2:  return core::add(VMWARE_ESX);
-            case 3:  return core::add(VMWARE_GSX);
-            case 4:  return core::add(VMWARE_WORKSTATION);
-            default: return core::add(VMWARE);
+                case 1:  return core::add(VMWARE_EXPRESS);
+                case 2:  return core::add(VMWARE_ESX);
+                case 3:  return core::add(VMWARE_GSX);
+                case 4:  return core::add(VMWARE_WORKSTATION);
+                default: return core::add(VMWARE);
             }
         }
 
@@ -5619,7 +5624,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return (
             (((reax >> 24) & 0xFF) == 0xCC) &&
             (((reax >> 16) & 0xFF) == 0xCC)
-            );
+        );
 #else
         return false;
 #endif
@@ -5657,12 +5662,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             return (dwError == ERROR_ALREADY_EXISTS);
-            };
+        };
 
         if (
             supMutexExist("Sandboxie_SingleInstanceMutex_Control") ||
             supMutexExist("SBIE_BOXED_ServiceInitComplete_Mutex1")
-            ) {
+        ) {
             return core::add(SANDBOXIE);
         }
 
@@ -5778,53 +5783,53 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 steps.family == celeron_family &&
                 steps.extmodel == celeron_extmodel &&
                 steps.model == celeron_model
-                );
-            };
+            );
+        };
 
         // check if the microarchitecture was made before 2006, which was around the time multi-core processors were implemented
         auto old_microarchitecture = [&steps]() -> bool {
-            constexpr std::array<std::array<u8, 3>, 32> old_archs = { {
-                    // 80486
-                    {{ 0x4, 0x0, 0x1 }},
-                    {{ 0x4, 0x0, 0x2 }},
-                    {{ 0x4, 0x0, 0x3 }},
-                    {{ 0x4, 0x0, 0x4 }},
-                    {{ 0x4, 0x0, 0x5 }},
-                    {{ 0x4, 0x0, 0x7 }},
-                    {{ 0x4, 0x0, 0x8 }},
-                    {{ 0x4, 0x0, 0x9 }},
+            constexpr std::array<std::array<u8, 3>, 32> old_archs = {{
+                // 80486
+                {{ 0x4, 0x0, 0x1 }},
+                {{ 0x4, 0x0, 0x2 }},
+                {{ 0x4, 0x0, 0x3 }},
+                {{ 0x4, 0x0, 0x4 }},
+                {{ 0x4, 0x0, 0x5 }},
+                {{ 0x4, 0x0, 0x7 }},
+                {{ 0x4, 0x0, 0x8 }},
+                {{ 0x4, 0x0, 0x9 }},
 
-                    // P5
-                    {{ 0x5, 0x0, 0x1 }},
-                    {{ 0x5, 0x0, 0x2 }},
-                    {{ 0x5, 0x0, 0x4 }},
-                    {{ 0x5, 0x0, 0x7 }},
-                    {{ 0x5, 0x0, 0x8 }},
+                // P5
+                {{ 0x5, 0x0, 0x1 }},
+                {{ 0x5, 0x0, 0x2 }},
+                {{ 0x5, 0x0, 0x4 }},
+                {{ 0x5, 0x0, 0x7 }},
+                {{ 0x5, 0x0, 0x8 }},
 
-                    // P6
-                    {{ 0x6, 0x0, 0x1 }},
-                    {{ 0x6, 0x0, 0x3 }},
-                    {{ 0x6, 0x0, 0x5 }},
-                    {{ 0x6, 0x0, 0x6 }},
-                    {{ 0x6, 0x0, 0x7 }},
-                    {{ 0x6, 0x0, 0x8 }},
-                    {{ 0x6, 0x0, 0xA }},
-                    {{ 0x6, 0x0, 0xB }},
+                // P6
+                {{ 0x6, 0x0, 0x1 }},
+                {{ 0x6, 0x0, 0x3 }},
+                {{ 0x6, 0x0, 0x5 }},
+                {{ 0x6, 0x0, 0x6 }},
+                {{ 0x6, 0x0, 0x7 }},
+                {{ 0x6, 0x0, 0x8 }},
+                {{ 0x6, 0x0, 0xA }},
+                {{ 0x6, 0x0, 0xB }},
 
-                    // Netburst
-                    {{ 0xF, 0x0, 0x6 }},
-                    {{ 0xF, 0x0, 0x4 }},
-                    {{ 0xF, 0x0, 0x3 }},
-                    {{ 0xF, 0x0, 0x2 }},
-                    {{ 0xF, 0x0, 0x10 }},
+                // Netburst
+                {{ 0xF, 0x0, 0x6 }},
+                {{ 0xF, 0x0, 0x4 }},
+                {{ 0xF, 0x0, 0x3 }},
+                {{ 0xF, 0x0, 0x2 }},
+                {{ 0xF, 0x0, 0x10 }},
 
-                    {{ 0x6, 0x1, 0x5 }}, // Pentium M (Talopai)
-                    {{ 0x6, 0x1, 0x6 }}, // Core (Client)
-                    {{ 0x6, 0x0, 0x9 }}, // Pentium M
-                    {{ 0x6, 0x0, 0xD }}, // Pentium M
-                    {{ 0x6, 0x0, 0xE }}, // Modified Pentium M
-                    {{ 0x6, 0x0, 0xF }}  // Core (Client)
-                } };
+                {{ 0x6, 0x1, 0x5 }}, // Pentium M (Talopai)
+                {{ 0x6, 0x1, 0x6 }}, // Core (Client)
+                {{ 0x6, 0x0, 0x9 }}, // Pentium M
+                {{ 0x6, 0x0, 0xD }}, // Pentium M
+                {{ 0x6, 0x0, 0xE }}, // Modified Pentium M
+                {{ 0x6, 0x0, 0xF }}  // Core (Client)
+            }};
 
             constexpr u8 FAMILY = 0;
             constexpr u8 EXTMODEL = 1;
@@ -5835,13 +5840,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     steps.family == arch.at(FAMILY) &&
                     steps.extmodel == arch.at(EXTMODEL) &&
                     steps.model == arch.at(MODEL)
-                    ) {
+                ) {
                     return true;
                 }
             }
 
             return false;
-            };
+        };
 
         // self-explanatory
         if (!(cpu::is_intel() || cpu::is_amd())) {
@@ -5901,7 +5906,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         auto push = [&thread_database](const char* brand_str, const u8 thread_count) -> void {
             thread_database->emplace(brand_str, thread_count);
-            };
+        };
 
         // i3 series
         push("i3-1000G1", 4);
@@ -6908,7 +6913,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         auto xeon_push = [&xeon_thread_database](const char* brand_str, const u8 thread_count) -> void {
             xeon_thread_database->emplace(brand_str, thread_count);
-            };
+        };
 
         // Xeon D
         xeon_push("D-1518", 8);
@@ -7192,10 +7197,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         };
 
         /* registry keys for resource maps */
-#define VM_RESOURCE_CHECK_REGKEY_PHYSICAL 0
-#define VM_RESOURCE_CHECK_REGKEY_RESERVED 1
-#define VM_RESOURCE_CHECK_REGKEY_LOADER_RESERVED 2
-#define ResourceRegistryKeysLength 3
+        #define VM_RESOURCE_CHECK_REGKEY_PHYSICAL 0
+        #define VM_RESOURCE_CHECK_REGKEY_RESERVED 1
+        #define VM_RESOURCE_CHECK_REGKEY_LOADER_RESERVED 2
+        #define ResourceRegistryKeysLength 3
 
         const struct map_key ResourceRegistryKeys[ResourceRegistryKeysLength] = {
             {
@@ -7216,56 +7221,56 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         auto parse_memory_map = [](
             struct memory_region* regions,
             struct map_key key
-            ) -> DWORD {
-                HKEY hKey = NULL;
-                LPTSTR pszSubKey = key.KeyPath;
-                LPTSTR pszValueName = key.ValueName;
-                LPBYTE lpData = NULL;
-                DWORD dwLength = 0, count = 0, type = 0;;
-                DWORD result;
-                if ((result = RegOpenKeyW(HKEY_LOCAL_MACHINE, reinterpret_cast<LPCWSTR>(pszSubKey), &hKey)) != ERROR_SUCCESS) {
-                    debug("NETTITUDE_VM_MEMORY: Could not get reg key: ", result, " / ", GetLastError());
-                    return 0;
-                }
+        ) -> DWORD {
+            HKEY hKey = NULL;
+            LPTSTR pszSubKey = key.KeyPath;
+            LPTSTR pszValueName = key.ValueName;
+            LPBYTE lpData = NULL;
+            DWORD dwLength = 0, count = 0, type = 0;;
+            DWORD result;
+            if ((result = RegOpenKeyW(HKEY_LOCAL_MACHINE, reinterpret_cast<LPCWSTR>(pszSubKey), &hKey)) != ERROR_SUCCESS) {
+                debug("NETTITUDE_VM_MEMORY: Could not get reg key: ", result, " / ", GetLastError());
+                return 0;
+            }
 
-                if ((result = RegQueryValueExW(hKey, reinterpret_cast<LPCWSTR>(pszValueName), 0, &type, NULL, &dwLength)) != ERROR_SUCCESS) {
-                    debug("NETTITUDE_VM_MEMORY: Could not query hardware key: ", result, " / ", GetLastError());
-                    return 0;
-                }
+            if ((result = RegQueryValueExW(hKey, reinterpret_cast<LPCWSTR>(pszValueName), 0, &type, NULL, &dwLength)) != ERROR_SUCCESS) {
+                debug("NETTITUDE_VM_MEMORY: Could not query hardware key: ", result, " / ", GetLastError());
+                return 0;
+            }
 
-                lpData = (LPBYTE)malloc(dwLength);
-                RegQueryValueEx(hKey, pszValueName, 0, &type, lpData, &dwLength);
-                CM_RESOURCE_LIST* resource_list = (CM_RESOURCE_LIST*)lpData;
-                for (DWORD i = 0; i < resource_list->Count; i++)
+            lpData = (LPBYTE)malloc(dwLength);
+            RegQueryValueEx(hKey, pszValueName, 0, &type, lpData, &dwLength);
+            CM_RESOURCE_LIST* resource_list = (CM_RESOURCE_LIST*)lpData;
+            for (DWORD i = 0; i < resource_list->Count; i++)
+            {
+                for (DWORD j = 0; j < resource_list->List[0].PartialResourceList.Count; j++)
                 {
-                    for (DWORD j = 0; j < resource_list->List[0].PartialResourceList.Count; j++)
+                    if (resource_list->List[i].PartialResourceList.PartialDescriptors[j].Type == 3)
                     {
-                        if (resource_list->List[i].PartialResourceList.PartialDescriptors[j].Type == 3)
+                        if (regions != NULL)
                         {
-                            if (regions != NULL)
-                            {
-                                regions->address = resource_list->List[i].PartialResourceList.PartialDescriptors[j].u.Memory.Start.QuadPart;
-                                regions->size = resource_list->List[i].PartialResourceList.PartialDescriptors[j].u.Memory.Length;
-                                regions++;
-                            }
-                            count++;
+                            regions->address = resource_list->List[i].PartialResourceList.PartialDescriptors[j].u.Memory.Start.QuadPart;
+                            regions->size = resource_list->List[i].PartialResourceList.PartialDescriptors[j].u.Memory.Length;
+                            regions++;
                         }
+                        count++;
                     }
                 }
-                return count;
-            };
+            }
+            return count;
+        };
 
-#define VM_RESOURCE_CHECK_ERROR -1
-#define VM_RESOURCE_CHECK_NO_VM 0
-#define VM_RESOURCE_CHECK_HYPERV 1
-#define VM_RESOURCE_CHECK_VBOX 2
-#define VM_RESOURCE_CHECK_UNKNOWN_PLATFORM 99
+        #define VM_RESOURCE_CHECK_ERROR -1
+        #define VM_RESOURCE_CHECK_NO_VM 0
+        #define VM_RESOURCE_CHECK_HYPERV 1
+        #define VM_RESOURCE_CHECK_VBOX 2
+        #define VM_RESOURCE_CHECK_UNKNOWN_PLATFORM 99
 
         auto vm_resource_check = [](
             struct memory_region* phys, int phys_count,
             struct memory_region* reserved, int reserved_count,
             struct memory_region* loader_reserved, int loader_reserved_count
-            ) -> int {
+        ) -> int {
                 const ULONG64 VBOX_PHYS_LO = 0x0000000000001000ULL;
                 const ULONG64 VBOX_PHYS_HI = 0x000000000009f000ULL;
                 const ULONG64 HYPERV_PHYS_LO = 0x0000000000001000ULL;
@@ -7273,28 +7278,25 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
                 const ULONG64 RESERVED_ADDR_LOW = 0x0000000000001000ULL;
                 const ULONG64 LOADER_RESERVED_ADDR_LOW = 0x0000000000000000ULL;
-                if (phys_count <= 0 || reserved_count <= 0 || loader_reserved_count <= 0)
-                {
+                if (phys_count <= 0 || reserved_count <= 0 || loader_reserved_count <= 0) {
                     return VM_RESOURCE_CHECK_ERROR;
                 }
-                if (phys == NULL || reserved == NULL || loader_reserved == NULL)
-                {
+
+                if (phys == NULL || reserved == NULL || loader_reserved == NULL) {
                     return VM_RESOURCE_CHECK_ERROR;
                 }
 
                 /* find the reserved address range starting
                 RESERVED_ADDR_LOW, and record its end address */
                 ULONG64 lowestReservedAddrRangeEnd = 0;
-                for (int i = 0; i < reserved_count; i++)
-                {
-                    if (reserved[i].address == RESERVED_ADDR_LOW)
-                    {
+                for (int i = 0; i < reserved_count; i++) {
+                    if (reserved[i].address == RESERVED_ADDR_LOW) {
                         lowestReservedAddrRangeEnd = reserved[i].address + reserved[i].size;
                         break;
                     }
                 }
-                if (lowestReservedAddrRangeEnd == 0)
-                {
+
+                if (lowestReservedAddrRangeEnd == 0) {
                     /* every system tested had a range starting at RESERVED_ADDR_LOW */
                     /* this is an outlier. error. */
                     return VM_RESOURCE_CHECK_ERROR;
@@ -7303,37 +7305,32 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 /* find the loader reserved address range starting
                 LOADER_RESERVED_ADDR_LOW, and record its end address */
                 ULONG64 lowestLoaderReservedAddrRangeEnd = 0;
-                for (int i = 0; i < loader_reserved_count; i++)
-                {
-                    if (loader_reserved[i].address == LOADER_RESERVED_ADDR_LOW)
-                    {
+                for (int i = 0; i < loader_reserved_count; i++) {
+                    if (loader_reserved[i].address == LOADER_RESERVED_ADDR_LOW) {
                         lowestLoaderReservedAddrRangeEnd = loader_reserved[i].address + loader_reserved[i].size;
                         break;
                     }
                 }
-                if (lowestLoaderReservedAddrRangeEnd == 0)
-                {
+
+                if (lowestLoaderReservedAddrRangeEnd == 0) {
                     /* every system tested had a range starting at LOADER_RESERVED_ADDR_LOW */
                     /* this is an outlier. error. */
                     return VM_RESOURCE_CHECK_ERROR;
                 }
 
                 /* check if the end addresses are equal. if not, we haven't detected a VM */
-                if (lowestReservedAddrRangeEnd != lowestLoaderReservedAddrRangeEnd)
-                {
+                if (lowestReservedAddrRangeEnd != lowestLoaderReservedAddrRangeEnd) {
                     return VM_RESOURCE_CHECK_NO_VM;
                 }
 
                 /* now find the type of VM by its known physical memory range */
-                for (int i = 0; i < phys_count; i++)
-                {
-                    if (phys[i].address == HYPERV_PHYS_LO && (phys[i].address + phys[i].size) == HYPERV_PHYS_HI)
-                    {
+                for (int i = 0; i < phys_count; i++) {
+                    if (phys[i].address == HYPERV_PHYS_LO && (phys[i].address + phys[i].size) == HYPERV_PHYS_HI) {
                         /* hyper-v */
                         return VM_RESOURCE_CHECK_HYPERV;
                     }
-                    if (phys[i].address == VBOX_PHYS_LO && (phys[i].address + phys[i].size) == VBOX_PHYS_HI)
-                    {
+                    
+                    if (phys[i].address == VBOX_PHYS_LO && (phys[i].address + phys[i].size) == VBOX_PHYS_HI) {
                         /* vbox */
                         return VM_RESOURCE_CHECK_VBOX;
                     }
@@ -7347,8 +7344,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         struct memory_region* regions[ResourceRegistryKeysLength]{};
         int region_counts[ResourceRegistryKeysLength]{};
 
-        for (int i = 0; i < ResourceRegistryKeysLength; i++)
-        {
+        for (int i = 0; i < ResourceRegistryKeysLength; i++) {
             debug(
                 "NETTITUDE_VM_MEMORY: Reading data from ",
                 ResourceRegistryKeys[i].KeyPath,
@@ -7357,17 +7353,17 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             );
 
             count = parse_memory_map(NULL, ResourceRegistryKeys[i]);
-            if (count == 0)
-            {
+
+            if (count == 0) {
                 debug("NETTITUDE_VM_MEMORY: Could not find memory region, returning 0.");
                 return 0;
             }
+
             regions[i] = (struct memory_region*)malloc(sizeof(struct memory_region) * count);
 
             count = parse_memory_map(regions[i], ResourceRegistryKeys[i]);
             region_counts[i] = count;
-            for (DWORD r = 0; r < count; r++)
-            {
+            for (DWORD r = 0; r < count; r++) {
                 debug(
                     "NETTITUDE_VM_MEMORY: --> Memory region found: ",
                     regions[i][r].address,
@@ -7386,42 +7382,41 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             region_counts[VM_RESOURCE_CHECK_REGKEY_LOADER_RESERVED]
         );
 
-        switch (check_result)
-        {
+        switch (check_result) {
             // error
-        case VM_RESOURCE_CHECK_ERROR:
-            debug("NETTITUDE_VM_MEMORY: unknown error, returned false");
-            return false;
-            break;
+            case VM_RESOURCE_CHECK_ERROR:
+                debug("NETTITUDE_VM_MEMORY: unknown error, returned false");
+                return false;
+                break;
 
             // no VM
-        case VM_RESOURCE_CHECK_NO_VM:
-            debug("NETTITUDE_VM_MEMORY: no VM detected");
-            return false;
-            break;
+            case VM_RESOURCE_CHECK_NO_VM:
+                debug("NETTITUDE_VM_MEMORY: no VM detected");
+                return false;
+                break;
 
             // Hyper-V
-        case VM_RESOURCE_CHECK_HYPERV:
-            debug("NETTITUDE_VM_MEMORY: Hyper-V detected");
-            return core::add(HYPERV);
-            break;
+            case VM_RESOURCE_CHECK_HYPERV:
+                debug("NETTITUDE_VM_MEMORY: Hyper-V detected");
+                return core::add(HYPERV);
+                break;
 
             // VirtualBox
-        case VM_RESOURCE_CHECK_VBOX:
-            debug("NETTITUDE_VM_MEMORY: Vbox detected");
-            return core::add(VBOX);
-            break;
+            case VM_RESOURCE_CHECK_VBOX:
+                debug("NETTITUDE_VM_MEMORY: Vbox detected");
+                return core::add(VBOX);
+                break;
 
             // Unknown brand, but likely VM
-        case VM_RESOURCE_CHECK_UNKNOWN_PLATFORM:
-            debug("NETTITUDE_VM_MEMORY: unknown brand, but likely VM (returned true)");
-            return true;
-            break;
+            case VM_RESOURCE_CHECK_UNKNOWN_PLATFORM:
+                debug("NETTITUDE_VM_MEMORY: unknown brand, but likely VM (returned true)");
+                return true;
+                break;
 
-        default:
-            debug("NETTITUDE_VM_MEMORY: returned false as default case");
-            return false;
-            break;
+            default:
+                debug("NETTITUDE_VM_MEMORY: returned false as default case");
+                return false;
+                break;
         }
 #endif
     }
@@ -7523,7 +7518,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             return false;
-            };
+        };
 
         // win api
         auto IsDirectory1 = [](std::string& strDirName) -> bool {
@@ -7546,7 +7541,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             return true;
-            };
+        };
 
         // crt
         auto IsDirectory = [](std::string& strDirName) -> bool {
@@ -7555,7 +7550,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             return false;
-            };
+        };
 
         std::string strDirName = "C:\\Cuckoo";
 
@@ -7563,7 +7558,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             IsDirectory(strDirName) ||
             IsDirectory1(strDirName) ||
             IsDirectory2(strDirName)
-            ) {
+        ) {
             return core::add(CUCKOO);
         }
 
@@ -7605,36 +7600,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
     catch (...) {
         debug("CUCKOO_PIPE: caught error, returned false");
-        return false;
-    }
-
-
-    /**
-     * @brief Check for presence of USB drive
-     * @category Windows
-     * @author Thomas Roccia (fr0gger)
-     * @link https://unprotect.it/technique/detecting-usb-drive/
-     * @copyright MIT
-     */
-    [[nodiscard]] static bool usb_drive() try {
-#if (!MSVC)
-        return false;
-#else
-        UINT drives = GetLogicalDrives();
-
-        for (int i = 0; i < 26; i++) {
-            if ((drives & (1 << i)) && GetDriveTypeA((char)('A' + i) + ":\\") == DRIVE_REMOVABLE) {
-                debug("USB drive detected: ", 'A' + i, ", returning false");
-                return false;
-            }
-        }
-
-        // at this point, no drives have been detected
-        return true;
-#endif
-    }
-    catch (...) {
-        debug("USB_DRIVE: caught error, returned false");
         return false;
     }
 
@@ -7688,7 +7653,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             cmp("Malware") ||
             cmp("malsand") ||
             cmp("ClonePC")
-            ) {
+        ) {
             return true;
         }
 
@@ -7728,7 +7693,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             (horiz == 1024 && verti == 768) ||
             (horiz == 800 && verti == 600) ||
             (horiz == 640 && verti == 480)
-            ) {
+        ) {
             return true;
         }
 
@@ -7749,20 +7714,20 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @copyright MIT
      */
     [[nodiscard]] static bool device_string() try {
-    #if (!MSVC)
-            return false;
-    #else
-            DCB dcb = { 0 };
-            COMMTIMEOUTS timeouts = { 0 };
+#if (!MSVC)
+        return false;
+#else
+        DCB dcb = { 0 };
+        COMMTIMEOUTS timeouts = { 0 };
 
-            if (BuildCommDCBAndTimeouts("jhl46745fghb", &dcb, &timeouts)) {
-                return true;
-            }
-            else {
-                debug("DEVICE_STRING: BuildCommDCBAndTimeouts failed");
-                return false;
-            }
-    #endif
+        if (BuildCommDCBAndTimeouts("jhl46745fghb", &dcb, &timeouts)) {
+            return true;
+        }
+        else {
+            debug("DEVICE_STRING: BuildCommDCBAndTimeouts failed");
+            return false;
+        }
+#endif
     }
     catch (...) {
         debug("DEVICE_STRING: caught error, returned false");
@@ -7792,9 +7757,32 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
 
 
+    /**
+     * @brief Check for the presence of a mouse device
+     * @category Windows
+     * @author a0rtega
+     * @link https://github.com/a0rtega/pafish/blob/master/pafish/rtt.c
+     * @note from pafish project
+     * @copyright GPL
+     */
+    [[nodiscard]] static bool bluestacks() try {
+#if (!ARM)
+        return false;
+#else
+        if (
+            util::exists("/mnt/windows/BstSharedFolder")  ||
+            util::exists("/sdcard/windows/BstSharedFolder")
+        ) {
+            return core::add(BLUESTACKS);
+        }
 
-
-
+        return false;
+#endif
+    }
+    catch (...) {
+        debug("BLUESTACKS_FOLDERS: caught error, returned false");
+        return false;
+    }
 
 
 
@@ -7810,7 +7798,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         };
         MSVC_ENABLE_WARNING(PADDING)
 
-            static const std::map<u8, technique> technique_table;
+        static const std::map<u8, technique> technique_table;
 
         static std::vector<technique> custom_table;
 
@@ -8196,7 +8184,7 @@ public: // START OF PUBLIC FUNCTIONS
 #endif
             ss << ". Consult the documentation's flag handler for VM::check()";
             throw std::invalid_argument(std::string(text) + ss.str());
-            };
+        };
 
         // check if flag is out of range
         if (flag_bit > enum_size) {
@@ -8539,7 +8527,7 @@ public: // START OF PUBLIC FUNCTIONS
 #endif
             ss << ". Consult the documentation's parameters for VM::add_custom()";
             throw std::invalid_argument(std::string(text) + ss.str());
-            };
+        };
 
         if (percent > 100) {
             throw_error("Percentage parameter must be between 0 and 100");
@@ -8578,7 +8566,7 @@ public: // START OF PUBLIC FUNCTIONS
 
         return flags;
     }
-    };
+};
 
 MSVC_ENABLE_WARNING(ASSIGNMENT_OPERATOR NO_INLINE_FUNC SPECTRE)
 
@@ -8623,7 +8611,8 @@ std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard {
     { VM::INTEL_HAXM, 0 },
     { VM::UNISYS, 0 },
     { VM::LMHS, 0 },
-    { VM::CUCKOO, 0 }
+    { VM::CUCKOO, 0 },
+    { VM::BLUESTACKS, 0 }
 };
 
 
@@ -8658,7 +8647,7 @@ VM::flagset VM::DEFAULT = []() -> flagset {
     tmp.flip(MULTIPLE);
 
     return tmp;
-    }();
+}();
 
 
 // flag to enable every technique, basically VM::DEFAULT but with VM::CURSOR technique
@@ -8666,7 +8655,7 @@ VM::flagset VM::ALL = []() -> flagset {
     flagset tmp = DEFAULT;
     tmp.set(CURSOR);
     return tmp;
-    }();
+}();
 
 
 std::vector<VM::u8> VM::technique_vector = []() -> std::vector<VM::u8> {
@@ -8678,7 +8667,7 @@ std::vector<VM::u8> VM::technique_vector = []() -> std::vector<VM::u8> {
     }
 
     return tmp;
-    }();
+}();
 
 
 // check if cpuid is supported
@@ -8697,7 +8686,7 @@ bool VM::core::cpuid_supported = []() -> bool {
 #else
     return false;
 #endif
-    }();
+}();
 
 
 // this is initialised as empty, because this is where custom techniques can be added at runtime 
@@ -8710,7 +8699,7 @@ std::vector<VM::core::technique> VM::core::custom_table = {
 const std::map<VM::u8, VM::core::technique> VM::core::technique_table = {
     { VM::VMID, { 100, VM::vmid }},
     { VM::CPU_BRAND, { 50, VM::cpu_brand }},
-    { VM::HYPERVISOR_BIT, { 100, VM::hypervisor_bit }},
+    { VM::HYPERVISOR_BIT, { 100, VM::hypervisor_bit }}, 
     { VM::CPUID_0X4, { 70, VM::cpuid_0x4 }},
     { VM::HYPERVISOR_STR, { 45, VM::hypervisor_brand }},
     { VM::RDTSC, { 10, VM::rdtsc_check }},
@@ -8800,11 +8789,11 @@ const std::map<VM::u8, VM::core::technique> VM::core::technique_table = {
     { VM::HYPERV_CPUID, { 35, VM::hyperv_cpuid }},
     { VM::CUCKOO_DIR, { 15, VM::cuckoo_dir }},
     { VM::CUCKOO_PIPE, { 20, VM::cuckoo_pipe }},
-    { VM::USB_DRIVE, { 30, VM::usb_drive }},
     { VM::HYPERV_HOSTNAME, { 50, VM::hyperv_hostname }},
     { VM::GENERAL_HOSTNAME, { 20, VM::general_hostname }},
     { VM::SCREEN_RESOLUTION, { 30, VM::screen_resolution }},
     { VM::DEVICE_STRING, { 25, VM::device_string }},
+    { VM::BLUESTACKS_FOLDERS, { 20, VM::bluestacks }}
 
     // __TABLE_LABEL, add your technique above
     // { VM::FUNCTION, { POINTS, FUNCTION_POINTER }}

@@ -278,12 +278,12 @@ void general(const bool enable_hyperv = true) {
     checker(VM::HYPERV_CPUID, "Hyper-V CPUID");
     checker(VM::CUCKOO_DIR, "Cuckoo directory");
     checker(VM::CUCKOO_PIPE, "Cuckoo pipe");
-    checker(VM::USB_DRIVE, "USB drive absence");
     checker(VM::HYPERV_HOSTNAME, "Hyper-V Azure hostname");
     checker(VM::GENERAL_HOSTNAME, "general VM hostnames");
     checker(VM::SCREEN_RESOLUTION, "screen resolution");
     checker(VM::DEVICE_STRING, "bogus device string");
     checker(VM::MOUSE_DEVICE, "mouse device");
+    checker(VM::BLUESTACKS_FOLDERS, "BlueStacks folders");
 
 
     std::printf("\n");
@@ -443,6 +443,7 @@ OpenBSD VMM
 Intel HAXM
 Unisys s-Par
 Cuckoo
+BlueStacks
 )";
             return 0;
         } else if (arg("--disable-hyperv-host")) {
