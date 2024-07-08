@@ -36,8 +36,8 @@
     #include <windows.h>
 #endif
 
-constexpr const char* ver = "1.5";
-constexpr const char* date = "June 2024";
+constexpr const char* ver = "1.6";
+constexpr const char* date = "July 2024";
 
 constexpr const char* bold = "\033[1m";
 constexpr const char* ansi_exit = "\x1B[0m";
@@ -297,7 +297,7 @@ void general(const bool enable_hyperv = true) {
     std::cout << "VM brand: " << (brand == "Unknown" ? red : green) << brand << ansi_exit << "\n";
 
     const char* percent_color = "";
-    const std::uint8_t percent = (enable_hyperv ? VM::percentage(/*VM::ENABLE_HYPERV_HOST*/) : VM::percentage());
+    const std::uint8_t percent = (enable_hyperv ? VM::percentage(VM::ENABLE_HYPERV_HOST) : VM::percentage());
 
     if      (percent == 0) { percent_color = red; }
     else if (percent < 25) { percent_color = red_orange; }
@@ -307,7 +307,7 @@ void general(const bool enable_hyperv = true) {
 
     std::cout << "VM likeliness: " << percent_color << static_cast<std::uint32_t>(percent) << "%" << ansi_exit << "\n";
 
-    const bool is_detected = (enable_hyperv ? VM::detect(/*VM::ENABLE_HYPERV_HOST*/) : VM::detect());
+    const bool is_detected = (enable_hyperv ? VM::detect(VM::ENABLE_HYPERV_HOST) : VM::detect());
 
     std::cout << "VM confirmation: " << (is_detected ? green : red) << std::boolalpha << is_detected << std::noboolalpha << ansi_exit << "\n";
 
