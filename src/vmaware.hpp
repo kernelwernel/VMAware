@@ -1032,7 +1032,7 @@ private:
         // handle TCHAR conversion
         [[nodiscard]] static bool exists(const TCHAR* path) {
             char c_szText[_MAX_PATH];
-            wcstombs(c_szText, path, wcslen(path) + 1);
+            wcsombs_s(c_szText, path, wcslen(path) + 1);
             return exists(c_szText);
         }
 #endif
