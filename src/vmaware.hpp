@@ -786,7 +786,7 @@ private:
                 }
 
                 return true;
-                };
+            };
 
             std::string brand = "";
             u32 sig_reg[3] = { 0 };
@@ -798,7 +798,7 @@ private:
             auto strconvert = [](u64 n) -> std::string {
                 const std::string& str(reinterpret_cast<char*>(&n));
                 return str;
-                };
+            };
 
             std::stringstream ss1;
             std::stringstream ss2;
@@ -886,7 +886,7 @@ private:
 
             return false;
         }
-        };
+    };
 
     // memoization
     struct memo {
@@ -918,12 +918,26 @@ private:
             return cache_table.at(technique_macro);
         }
 
+        static std::vector<u8> cache_fetch_all() {
+            std::vector<u8> vec;
+
+            for (auto it = cache_table.cbegin(); it != cache_table.cend(); ++it) {
+                const data_t data = it->second;
+
+                if (data.result == true) {
+                    const u8 macro = it->first;
+                    vec.push_back(macro);
+                }
+            }
+
+            return vec;
+        }
+
         // basically checks whether all the techniques were cached (with exception of VM::CURSOR)
         static bool all_present() {
             if (cache_table.size() == technique_count) {
                 return true;
-            }
-            else if (cache_table.size() == static_cast<std::size_t>(technique_count) - 1) {
+            } else if (cache_table.size() == static_cast<std::size_t>(technique_count) - 1) {
                 return (!cache_keys.test(CURSOR));
             }
 
@@ -1018,7 +1032,7 @@ private:
         // handle TCHAR conversion
         [[nodiscard]] static bool exists(const TCHAR* path) {
             char c_szText[_MAX_PATH];
-            wcstombs(c_szText, path, wcslen(path) + 1);
+            wcsombs_s(c_szText, path, wcslen(path) + 1);
             return exists(c_szText);
         }
 #endif
@@ -1266,9 +1280,7 @@ private:
                 nullptr                     // Total number of free bytes on the disk (not needed for total size)
             )) {
                 size = static_cast<u32>(totalNumberOfBytes.QuadPart) / GB;
-            }
-
-            else {
+            } else {
                 debug("util::get_disk_size(: ", "failed to fetch size in GB");
             }
 #endif
@@ -1315,8 +1327,7 @@ private:
                 if (std::isdigit(c)) {
                     number_str += c;
                     in_number = true;
-                }
-                else if (in_number) {
+                } else if (in_number) {
                     break;
                 }
             }
@@ -2176,8 +2187,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         if (success) {
             std::memcpy(mac, ifr.ifr_hwaddr.sa_data, 6);
-        }
-        else {
+        } else {
             debug("MAC: ", "not successful");
         }
 #elif (MSVC)
@@ -2352,8 +2362,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         if (util::exists(chassis)) {
             return (stoi(util::read_file(chassis)) == 1);
-        }
-        else {
+        } else {
             debug("CTYPE: ", "file doesn't exist");
         }
 
@@ -2410,20 +2419,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (*result == "" || result == nullptr) {
             debug("DMIDECODE: ", "invalid output");
             return false;
-        }
-        else if (*result == "QEMU") {
+        } else if (*result == "QEMU") {
             return core::add(QEMU);
-        }
-        else if (*result == "VirtualBox") {
+        } else if (*result == "VirtualBox") {
             return core::add(VBOX);
-        }
-        else if (*result == "KVM") {
+        } else if (*result == "KVM") {
             return core::add(KVM);
-        }
-        else if (std::atoi(result->c_str()) >= 1) {
+        } else if (std::atoi(result->c_str()) >= 1) {
             return true;
-        }
-        else {
+        } else {
             debug("DMIDECODE: ", "output = ", *result);
         }
 
@@ -2457,17 +2461,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         if (*result == "" || result == nullptr) {
             return false;
-        }
-        else if (*result == "KVM") {
+        } else if (*result == "KVM") {
             return core::add(KVM);
-        }
-        else if (*result == "QEMU") {
+        } else if (*result == "QEMU") {
             return core::add(QEMU);
-        }
-        else if (std::atoi(result->c_str())) {
+        } else if (std::atoi(result->c_str())) {
             return true;
-        }
-        else {
+        } else {
             debug("DMESG: ", "output = ", *result);
         }
 
@@ -2516,8 +2516,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 MultiByteToWideChar(CP_ACP, 0, regkey_s, -1, wRegKey, MAX_PATH);
 
                 ret = RegOpenKeyExW(HKEY_LOCAL_MACHINE, wRegKey, 0, KEY_READ | KEY_WOW64_64KEY, &regkey);
-            }
-            else {
+            } else {
                 wchar_t wRegKey[MAX_PATH];
                 MultiByteToWideChar(CP_ACP, 0, regkey_s, -1, wRegKey, MAX_PATH);
 
@@ -2858,8 +2857,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 if (std::regex_search(_T("vbox"), regex)) {
                     //TODO Ansi: debug("VM_FILES: found vbox file = ", file);
                     vbox++;
-                }
-                else {
+                } else {
                     //TODO Ansi: debug("VM_FILES: found vmware file = ", file);
                     vmware++;
                 }
@@ -2871,11 +2869,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         if (vbox > vmware) {
             return core::add(VBOX);
-        }
-        else if (vbox < vmware) {
+        } else if (vbox < vmware) {
             return core::add(VMWARE);
-        }
-        else if (
+        } else if (
             vbox > 0 &&
             vmware > 0 &&
             vbox == vmware
@@ -3409,8 +3405,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         if (util::is_wow64()) {
             ExpandEnvironmentStrings(_T("%ProgramW6432%"), szProgramFile, ARRAYSIZE(szProgramFile));
-        }
-        else {
+        } else {
             SHGetSpecialFolderPath(NULL, szProgramFile, CSIDL_PROGRAM_FILES, FALSE);
         }
 
@@ -3738,16 +3733,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 if (strcmp(szBuff, "55274-640-2673064-23950") == 0) { // joebox
                     free(szBuff);
                     return core::add(JOEBOX);
-                }
-                else if (strcmp(szBuff, "76487-644-3177037-23510") == 0) { // CW Sandbox
+                } else if (strcmp(szBuff, "76487-644-3177037-23510") == 0) { // CW Sandbox
                     free(szBuff);
                     return core::add(CWSANDBOX);
-                }
-                else if (strcmp(szBuff, "76487-337-8429955-22614") == 0) { // anubis
+                } else if (strcmp(szBuff, "76487-337-8429955-22614") == 0) { // anubis
                     free(szBuff);
                     return core::add(ANUBIS);
-                }
-                else {
+                } else {
                     free(szBuff);
                     return false;
                 }
@@ -3920,8 +3912,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             if (brand == "              Intel(R) Pentium(R) 4 CPU        ") {
                 return core::add(BOCHS);
             }
-        }
-        else if (amd) {
+        } else if (amd) {
             // technique 2: "processor" should have a capital P
             if (brand == "AMD Athlon(tm) processor") {
                 return core::add(BOCHS);
@@ -4702,14 +4693,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                         core::add(p_brand);
                         count++;
                     }
-                }
-                else {
+                } else {
                     debug("Failed to query value for \"", subKey, "\"");
                 }
 
                 RegCloseKey(hKey);
-            }
-            else {
+            } else {
                 debug("Failed to open registry key for \"", subKey, "\"");
             }
         };
@@ -7723,8 +7712,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         if (BuildCommDCBAndTimeouts("jhl46745fghb", &dcb, &timeouts)) {
             return true;
-        }
-        else {
+        } else {
             debug("DEVICE_STRING: BuildCommDCBAndTimeouts failed");
             return false;
         }
@@ -7883,7 +7871,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 flags.test(ENABLE_HYPERV_HOST) ||
                 flags.test(WIN_HYPERV_DEFAULT_MACRO) || // deprecated
                 flags.test(MULTIPLE)
-                ) {
+            ) {
                 flags |= DEFAULT;
             }
         }
@@ -7954,44 +7942,170 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return points;
         }
 
+
+        template <typename ...Args>
+        static std::vector<const char*> brand_vector(Args ...args) {
+            flagset flags = core::arg_handler(args...);
+
+            // are all the techiques already run? if not, run all of them to get the necessary info to fetch the brand
+            if (!memo::all_present() || core::is_enabled(flags, NO_MEMO)) {
+                u16 tmp = core::run_all(flags);
+                UNUSED(tmp);
+            }
+
+            std::vector<const char*> tmp_vec;
+
+            for (
+                auto it = core::brand_scoreboard.cbegin();
+                it != core::brand_scoreboard.cend();
+                ++it
+            ) {
+                const char* brand = it->first;
+                const brand_score_t points = it->second;
+
+                if (points > 0) {
+                    tmp_vec.push_back(brand);
+                }
+            }
+
+            return tmp_vec;
+        }
+
         // check if Hyper-V is running 
-        static bool hyperv_default_check(const flagset& flags) {
+        static bool hyperv_host_virtualisation_check(const flagset& flags) {
             if (
                 core::is_enabled(flags, ENABLE_HYPERV_HOST) ||
                 core::is_enabled(flags, WIN_HYPERV_DEFAULT_MACRO) // deprecated
-                ) {
+            ) {
                 core_debug("HYPERV_CHECK: returned false through flag check");
                 return false;
             }
 
-#if (MSVC)
-            const u8 version = util::get_windows_version();
+            std::vector<const char*> brand_vec = brand_vector(flags);
 
-            if (version == 0) {
-                return true;
+            bool is_hyperv_present = false;
+
+            for (const auto p_brand : brand_vec) {
+                if (p_brand == HYPERV) {
+                    is_hyperv_present = true;
+                }
             }
 
-            if (version < 10) {
-                core_debug("HYPERV_CHECK: returned false through insufficient windows version (version ", static_cast<u32>(version), ")");
+            if (is_hyperv_present == false) {
                 return false;
             }
-#endif
-            std::string tmp_brand;
 
-            if (memo::brand::is_cached()) {
-                tmp_brand = memo::brand::fetch();
-            }
-            else {
-                tmp_brand = brand();
-            }
+            auto valid_version = []() -> bool {
+#if (MSVC)
+                const u8 version = util::get_windows_version();
+
+                if (version == 0) {
+                    return true;
+                }
+
+                if (version < 10) {
+                    core_debug("HYPERV_CHECK: returned false through insufficient windows version (version ", static_cast<u32>(version), ")");
+                    return false;
+                }
+#else 
+                core_debug("HYPERV_HOST_CHECK: valid_version = ", false);
+                return false;
+#endif
+            };
+
+            auto diff_brand_check = [&]() -> bool {
+                bool is_hyperv = false;
+                bool is_vpc = false;
+                bool is_other = false;
+
+                for (const auto p_brand : brand_vec) {
+                    if (p_brand == HYPERV) {
+                        is_hyperv = true;
+                    } else if (p_brand == VPC) {
+                        is_vpc = true;
+                    } else {
+                        is_other = true;
+                    }
+                }
+
+                if (is_vpc && !(is_hyperv || is_other)) {
+                    core_debug("HYPERV_HOST_CHECK: diff_brand_check = ", false);
+                    return false;
+                }
+
+                if ((is_hyperv || is_vpc) && (!is_other)) {
+                    core_debug("HYPERV_HOST_CHECK: diff_brand_check = ", true);
+                    return true;
+                }
+
+                core_debug("HYPERV_HOST_CHECK: diff_brand_check = ", false);
+                return false;
+            };
+
+            auto technique_check = []() -> bool {
+                std::vector<u8> techniques = memo::cache_fetch_all();
+
+                constexpr std::array<u8, 36> non_brand_returners = {{
+                    VM::HYPERVISOR_BIT,
+                    VM::CPUID_0X4,
+                    VM::HYPERVISOR_STR,
+                    VM::RDTSC,
+                    VM::THREADCOUNT,
+                    VM::TEMPERATURE,
+                    VM::SYSTEMD,
+                    VM::CTYPE,
+                    VM::HWMON,
+                    VM::SIDT5,
+                    VM::CURSOR,
+                    VM::DLL,
+                    VM::DISK_SIZE,
+                    VM::HOSTNAME,
+                    VM::MEMORY,
+                    VM::AUDIO,
+                    VM::MOUSE_DEVICE,
+                    VM::LINUX_USER_HOST,
+                    VM::RDTSC_VMEXIT,
+                    VM::BIOS_SERIAL,
+                    VM::MAC_MEMSIZE,
+                    VM::MAC_SIP,
+                    VM::VALID_MSR,
+                    VM::SIDT,
+                    VM::SGDT,
+                    VM::SLDT,
+                    VM::OFFSEC_SIDT,
+                    VM::OFFSEC_SGDT,
+                    VM::OFFSEC_SLDT,
+                    VM::SMSW,
+                    VM::UPTIME,
+                    VM::ODD_CPU_THREADS,
+                    VM::INTEL_THREAD_MISMATCH,
+                    VM::XEON_THREAD_MISMATCH,
+                    VM::SCREEN_RESOLUTION,
+                    VM::DEVICE_STRING
+                }};
+
+                bool no_possible_brand = true;
+
+                for (const u8 macro : techniques) {
+                    auto it = std::find(non_brand_returners.cbegin(), non_brand_returners.cend(), macro);
+
+                    if (it == non_brand_returners.end()) {
+                        no_possible_brand = false;
+                    }
+                }
+
+                core_debug("HYPERV_HOST_CHECK: technique_check = ", no_possible_brand);
+
+                return (no_possible_brand);
+            };
 
             const bool result = (
-                tmp_brand == HYPERV ||
-                tmp_brand == VPC ||
-                tmp_brand == "Microsoft Virtual PC/Hyper-V"
-                );
+                diff_brand_check() || 
+                valid_version() ||
+                technique_check()
+            );
 
-            core_debug("HYPERV_CHECK: is Hyper-V brand check = ", result);
+            core_debug("HYPERV_HOST_CHECK: is Hyper-V host brand check = ", result);
 
             return result;
         }
@@ -8000,7 +8114,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
          * basically what this entire template fuckery does is manage the
          * variadic arguments being given through the arg_handler function,
          * which could either be a std::bitset<N>, a uint8_t, or a combination
-         * of both of them. This will handle both argument types and implement
+         * of both of them. Thisz will handle both argument types and implement
          * them depending on what their types are. If it's a std::bitset<N>,
          * do the |= operation. If it's a uint8_t, simply .set() that into
          * the flag_collector bitset. That's the gist of it.
@@ -8080,11 +8194,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             if (isType<flagset>(first)) {
                 dispatch(first, bitsetHandler);
-            }
-            else if (isType<enum_flags>(first)) {
+            } else if (isType<enum_flags>(first)) {
                 dispatch(first, uint8Handler);
-            }
-            else {
+            } else {
                 const std::string msg =
                     "Arguments must either be a std::bitset<" +
                     std::to_string(static_cast<u32>(enum_size + 1)) +
@@ -8104,11 +8216,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             if (isType<flagset>(first)) {
                 throw std::invalid_argument("Arguments must not contain VM::DEFAULT or VM::ALL, only technique flags are accepted (view the documentation for a full list)");
-            }
-            else if (isType<enum_flags>(first)) {
+            } else if (isType<enum_flags>(first)) {
                 dispatch(first, uint8Handler);
-            }
-            else {
+            } else {
                 throw std::invalid_argument("Arguments must be a technique flag, aborting");
             }
 
@@ -8269,8 +8379,7 @@ public: // START OF PUBLIC FUNCTIONS
                     core_debug("VM::brand(): returned multi brand from cache");
                     return memo::multi_brand::fetch();
                 }
-            }
-            else {
+            } else {
                 if (memo::brand::is_cached()) {
                     core_debug("VM::brand(): returned brand from cache");
                     return memo::brand::fetch();
@@ -8326,53 +8435,7 @@ public: // START OF PUBLIC FUNCTIONS
         constexpr const char* TMP_HYPERV = HYPERV;
 #endif
 
-        if (
-            brands.at(TMP_KVM) > 0 &&
-            brands.at(TMP_KVM_HYPERV) > 0
-            ) {
-            current_brand = TMP_KVM_HYPERV;
-        }
-        else if (
-            brands.at(TMP_QEMU) > 0 &&
-            brands.at(TMP_KVM) > 0
-            ) {
-            current_brand = "QEMU+KVM";
-        }
-        else if (
-            brands.at(TMP_VPC) > 0 &&
-            brands.at(TMP_HYPERV) > 0
-            ) {
-#if (MSVC)
-            const u8 version = util::get_windows_version();
-
-            if (
-                (version < 10) &&
-                (version != 0)
-                ) {
-                current_brand = TMP_VPC;
-            }
-            else {
-                current_brand = TMP_HYPERV;
-            }
-#else
-            current_brand = "Microsoft Virtual PC/Hyper-V";
-#endif
-        }
-        else if (brands.at(TMP_VMWARE) > 0) {
-            if (brands.at(TMP_EXPRESS) > 0) {
-                current_brand = TMP_EXPRESS;
-            }
-            else if (brands.at(TMP_ESX) > 0) {
-                current_brand = TMP_ESX;
-            }
-            else if (brands.at(TMP_GSX) > 0) {
-                current_brand = TMP_GSX;
-            }
-            else if (brands.at(TMP_WORKSTATION) > 0) {
-                current_brand = TMP_WORKSTATION;
-            }
-        }
-        else if (is_multiple) {
+        if (is_multiple) {
             std::vector<std::string> potential_brands;
 
             for (auto it = brands.cbegin(); it != brands.cend(); ++it) {
@@ -8393,14 +8456,51 @@ public: // START OF PUBLIC FUNCTIONS
                 ss << potential_brands.at(i);
             }
             current_brand = ss.str();
+        } else if (
+            brands.at(TMP_KVM) > 0 &&
+            brands.at(TMP_KVM_HYPERV) > 0
+        ) {
+            current_brand = TMP_KVM_HYPERV;
+        } else if (
+            brands.at(TMP_QEMU) > 0 &&
+            brands.at(TMP_KVM) > 0
+        ) {
+            current_brand = "QEMU+KVM";
+        } else if (
+            brands.at(TMP_VPC) > 0 &&
+            brands.at(TMP_HYPERV) > 0
+        ) {
+#if (MSVC)
+            const u8 version = util::get_windows_version();
+
+            if (
+                (version < 10) &&
+                (version != 0)
+            ) {
+                current_brand = TMP_VPC;
+            } else {
+                current_brand = TMP_HYPERV;
+            }
+#else
+            current_brand = "Microsoft Virtual PC/Hyper-V";
+#endif
+        } else if (brands.at(TMP_VMWARE) > 0) {
+            if (brands.at(TMP_EXPRESS) > 0) {
+                current_brand = TMP_EXPRESS;
+            } else if (brands.at(TMP_ESX) > 0) {
+                current_brand = TMP_ESX;
+            } else if (brands.at(TMP_GSX) > 0) {
+                current_brand = TMP_GSX;
+            } else if (brands.at(TMP_WORKSTATION) > 0) {
+                current_brand = TMP_WORKSTATION;
+            }
         }
 
         if (core::is_disabled(flags, NO_MEMO)) {
             if (is_multiple) {
                 core_debug("VM::brand(): cached multiple brand string");
                 memo::multi_brand::store(current_brand);
-            }
-            else {
+            } else {
                 core_debug("VM::brand(): cached brand string");
                 memo::brand::store(current_brand);
             }
@@ -8437,15 +8537,13 @@ public: // START OF PUBLIC FUNCTIONS
 
         if (core::is_enabled(flags, EXTREME)) {
             result = (points > 0);
-        }
-        else if (core::is_enabled(flags, HIGH_THRESHOLD)) {
+        } else if (core::is_enabled(flags, HIGH_THRESHOLD)) {
             result = (points > high_threshold_score);
-        }
-        else {
+        } else {
             result = (points >= 100);
         }
 
-        if (core::hyperv_default_check(flags)) {
+        if (core::hyperv_host_virtualisation_check(flags)) {
             core_debug("VM::detect(): returned false due to Hyper-V default check");
             return false;
         }
@@ -8490,15 +8588,13 @@ public: // START OF PUBLIC FUNCTIONS
 
         if (points >= threshold) {
             percent = 100;
-        }
-        else if (points >= 100) {
+        } else if (points >= 100) {
             percent = 99;
-        }
-        else {
+        } else {
             percent = static_cast<u8>(points);
         }
 
-        if (core::hyperv_default_check(flags)) {
+        if (core::hyperv_host_virtualisation_check(flags)) {
             core_debug("VM::percentage(): returned 0 due to Hyper-V default check");
             return 0;
         }
@@ -8794,7 +8890,7 @@ const std::map<VM::u8, VM::core::technique> VM::core::technique_table = {
     { VM::GENERAL_HOSTNAME, { 20, VM::general_hostname }},
     { VM::SCREEN_RESOLUTION, { 30, VM::screen_resolution }},
     { VM::DEVICE_STRING, { 25, VM::device_string }},
-    { VM::BLUESTACKS_FOLDERS, { 20, VM::bluestacks }}
+    { VM::BLUESTACKS_FOLDERS, { 15, VM::bluestacks }}
 
     // __TABLE_LABEL, add your technique above
     // { VM::FUNCTION, { POINTS, FUNCTION_POINTER }}

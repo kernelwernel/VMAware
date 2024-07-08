@@ -134,8 +134,6 @@ And if you found this project useful, a star would be appreciated :)
 ## Projects using VMAware
 **[CrashLoggerSSE](https://github.com/alandtse/CrashLoggerSSE)** - SKSE/SKSEVR plugin that generates crash logs
 
-**[Some malware I randomly found on MalwareBazaar's database lol](https://bazaar.abuse.ch/browse/tag/vmaware/)**
-
 If you know a project, or if you're working on a project that uses VMAware, let me know and I'll add it here.
 
 <br>

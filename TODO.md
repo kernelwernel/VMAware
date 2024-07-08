@@ -38,6 +38,7 @@
 - [X] maybe add [[deprecated]]?
 - [ ] implement techniques from here https://stackoverflow.com/questions/43026032/detect-running-on-virtual-machine
 - [ ] add a .clang_format thingy
+- [ ] maybe add internal is_cached functionalities in the cache fetchers
 
 # Distant plans
 - add the library to conan.io when released
