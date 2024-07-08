@@ -145,7 +145,7 @@ std::string message(const std::uint8_t score, const std::string &brand) {
         very_likely = "Very likely a " + brand + " VM";
         inside_vm = "Running inside a " + brand + " VM";
     }
-    
+
     if      (score == 0)   { return baremetal; } 
     else if (score <= 12)  { return very_unlikely; } 
     else if (score <= 25)  { return unlikely; } 
@@ -297,7 +297,7 @@ void general(const bool enable_hyperv = true) {
     std::cout << "VM brand: " << (brand == "Unknown" ? red : green) << brand << ansi_exit << "\n";
 
     const char* percent_color = "";
-    const std::uint8_t percent = (enable_hyperv ? VM::percentage(VM::ENABLE_HYPERV_HOST) : VM::percentage());
+    const std::uint8_t percent = (enable_hyperv ? VM::percentage(/*VM::ENABLE_HYPERV_HOST*/) : VM::percentage());
 
     if      (percent == 0) { percent_color = red; }
     else if (percent < 25) { percent_color = red_orange; }
@@ -307,10 +307,9 @@ void general(const bool enable_hyperv = true) {
 
     std::cout << "VM likeliness: " << percent_color << static_cast<std::uint32_t>(percent) << "%" << ansi_exit << "\n";
 
-    const bool is_detected = (enable_hyperv ? VM::detect(VM::ENABLE_HYPERV_HOST) : VM::detect());
+    const bool is_detected = (enable_hyperv ? VM::detect(/*VM::ENABLE_HYPERV_HOST*/) : VM::detect());
 
     std::cout << "VM confirmation: " << (is_detected ? green : red) << std::boolalpha << is_detected << std::noboolalpha << ansi_exit << "\n";
-
 
     const char* count_color = "";
 

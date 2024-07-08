@@ -8365,12 +8365,6 @@ public: // START OF PUBLIC FUNCTIONS
 
 #define brands core::brand_scoreboard
 
-        // this gets annoying really fast 
-        //#ifdef __VMAWARE_DEBUG__
-        //    for (const auto p : brands) {
-        //        core_debug("scoreboard: ", (int)p.second, " : ", p.first);
-        //    }
-        //#endif
 
         // check if it's already cached and return that instead
         if (core::is_disabled(flags, NO_MEMO)) {
@@ -8505,6 +8499,13 @@ public: // START OF PUBLIC FUNCTIONS
                 memo::brand::store(current_brand);
             }
         }
+
+        // this gets annoying really fast 
+        #ifdef __VMAWARE_DEBUG__
+            for (const auto p : brands) {
+                core_debug("scoreboard: ", (int)p.second, " : ", p.first);
+            }
+        #endif
 
         return current_brand;
     }
