@@ -4,7 +4,7 @@
  * ██║   ██║██╔████╔██║███████║██║ █╗ ██║███████║██████╔╝█████╗
  * ╚██╗ ██╔╝██║╚██╔╝██║██╔══██║██║███╗██║██╔══██║██╔══██╗██╔══╝
  *  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
- *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ 1.5 (June 2024)
+ *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ 1.6 (July 2024)
  *
  *  C++ VM detection library
  *
@@ -22,14 +22,14 @@
  *
  *
  * ================================ SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 293
- * - struct for internal cpu operations        => line 488
- * - struct for internal memoization           => line 859
- * - struct for internal utility functions     => line 949
- * - struct for internal core components       => line 7337
- * - start of internal VM detection techniques => line 1727
- * - start of public VM detection functions    => line 7693
- * - start of externally defined variables     => line 8038
+ * - enums for publicly accessible techniques  => line 302
+ * - struct for internal cpu operations        => line 519
+ * - struct for internal memoization           => line 891
+ * - struct for internal utility functions     => line 996
+ * - struct for internal core components       => line 7781
+ * - start of internal VM detection techniques => line 1815
+ * - start of public VM detection functions    => line 8277
+ * - start of externally defined variables     => line 8672
  *
  *
  * ================================ EXAMPLE ==================================
@@ -8096,6 +8096,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
                 core_debug("HYPERV_HOST_CHECK: technique_check = ", no_possible_brand);
 
+                // by the end of this, if it doesn't find it possible to have Hyper-V then that assumes the result has been tampered somehow
                 return (no_possible_brand);
             };
 
@@ -8365,12 +8366,6 @@ public: // START OF PUBLIC FUNCTIONS
 
 #define brands core::brand_scoreboard
 
-        // this gets annoying really fast 
-        //#ifdef __VMAWARE_DEBUG__
-        //    for (const auto p : brands) {
-        //        core_debug("scoreboard: ", (int)p.second, " : ", p.first);
-        //    }
-        //#endif
 
         // check if it's already cached and return that instead
         if (core::is_disabled(flags, NO_MEMO)) {
@@ -8505,6 +8500,13 @@ public: // START OF PUBLIC FUNCTIONS
                 memo::brand::store(current_brand);
             }
         }
+
+        // this gets annoying really fast 
+        #ifdef __VMAWARE_DEBUG__
+            for (const auto p : brands) {
+                core_debug("scoreboard: ", (int)p.second, " : ", p.first);
+            }
+        #endif
 
         return current_brand;
     }

@@ -36,8 +36,8 @@
     #include <windows.h>
 #endif
 
-constexpr const char* ver = "1.5";
-constexpr const char* date = "June 2024";
+constexpr const char* ver = "1.6";
+constexpr const char* date = "July 2024";
 
 constexpr const char* bold = "\033[1m";
 constexpr const char* ansi_exit = "\x1B[0m";
@@ -145,7 +145,7 @@ std::string message(const std::uint8_t score, const std::string &brand) {
         very_likely = "Very likely a " + brand + " VM";
         inside_vm = "Running inside a " + brand + " VM";
     }
-    
+
     if      (score == 0)   { return baremetal; } 
     else if (score <= 12)  { return very_unlikely; } 
     else if (score <= 25)  { return unlikely; } 
@@ -310,7 +310,6 @@ void general(const bool enable_hyperv = true) {
     const bool is_detected = (enable_hyperv ? VM::detect(VM::ENABLE_HYPERV_HOST) : VM::detect());
 
     std::cout << "VM confirmation: " << (is_detected ? green : red) << std::boolalpha << is_detected << std::noboolalpha << ansi_exit << "\n";
-
 
     const char* count_color = "";
 
