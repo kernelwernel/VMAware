@@ -2267,9 +2267,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return core::add(PARALLELS);
         }
 
-        if (compare(0x0A, 0x00, 0x27)) {
-            return core::add(HYBRID);
-        }
+        //if (compare(0x0A, 0x00, 0x27)) {
+        //    return core::add(HYBRID);
+        //}
 
         return false;
     }
