@@ -324,7 +324,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::RDTSC` | Benchmark RDTSC and evaluate its speed, usually it's very slow in VMs | Linux and Windows | 10% |  |  |  |
 | `VM::SIDT5` | Check if the 5th byte after sidt is null | Linux | 45% |  |  |  |
 | `VM::THREADCOUNT` | Check if there are only 1 or 2 threads, which is a common pattern in VMs with default settings (nowadays physical CPUs should have at least 4 threads for modern CPUs) |  | 35% |  |  |  |
-| `VM::MAC` | Check if the system's MAC address matches with preset values for certain VMs | Linux and Windows | 90% |  |  |  |
+| `VM::MAC` | Check if the system's MAC address matches with preset values for certain VMs | Linux and Windows | 60% |  |  |  |
 | `VM::TEMPERATURE` | Check for the presence of CPU temperature sensors (mostly not present in VMs) | Linux | 15% |    |  |
 | `VM::SYSTEMD` | Get output from systemd-detect-virt tool | Linux | 70% |  |  |  |
 | `VM::CVENDOR` | Check if the chassis has any VM-related keywords | Linux | 65% |  |  |  |
