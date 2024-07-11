@@ -7975,10 +7975,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     core_debug("HYPERV_CHECK: returned false through insufficient windows version (version ", static_cast<u32>(version), ")");
                     return false;
                 }
-#else 
+#endif
+                
                 core_debug("HYPERV_HOST_CHECK: valid_version = ", false);
                 return false;
-#endif
             };
 
             auto diff_brand_check = [&]() -> bool {
