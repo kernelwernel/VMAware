@@ -191,7 +191,7 @@ This will essentially return the VM brand as a `std::string`. The exact possible
 - `Cuckoo`
 
 
-If none were detected, it will return `Unknown`. It's often NOT going to produce a satisfying result due to technical difficulties with accomplishing this, on top of being highly dependent on what mechanisms detected a VM. Don't rely on this function for critical operations as if it's your golden bullet. It's very unreliable and it'll most likely return `Unknown` (assuming it is actually running under a VM).
+If none were detected, it will return `Unknown`. It's often NOT going to produce a satisfying result due to technical difficulties with accomplishing this, on top of being highly dependent on what mechanisms detected a VM. Don't rely on this function for critical operations as if it's your golden bullet. It's arguably unreliable and it'll most likely return `Unknown` (assuming it is actually running under a VM).
 
 ```cpp
 #include "vmaware.hpp"
@@ -225,9 +225,8 @@ int main() {
     // example output: "VMware or Bochs"
     std::cout << result << "\n";
 
-    // keep in mind that there's no limit to how many conflicts there can be
-
-    // and if there's no conflict, it'll revert back to giving the brand string
+    // Keep in mind that there's no limit to how many conflicts there can be.
+    // And if there's no conflict, it'll revert back to giving the brand string
     // normally as if the VM::MULTIPLE wasn't there
 }
 ```
@@ -244,7 +243,7 @@ int main() {
 ## `VM::check()`
 This takes a single flag argument and returns a `bool`. It's essentially the same as `VM::detect()` but it doesn't have a scoring system. It only returns the technique's effective output. The reason why this exists is because it allows end-users to have fine-grained control over what is being executed and what isn't. 
 
-`VM::detect()` is meant for a range of techniques to be evaluated in the bigger picture with weights and biases in its scoring system, while `VM::check()` is meant for a single technique to be evaluated without any points or anything extra. It very simply just gives you what the technique has found on its own. For example:
+`VM::detect()` is meant for a range of techniques to be evaluated in the bigger picture with weights and biases in its scoring system, while `VM::check()` is meant for a single technique to be evaluated without any weights or anything extra. It very simply just gives you what the technique has found on its own. For example:
 
 ```cpp
 #include "vmaware.hpp"
