@@ -8335,7 +8335,6 @@ public:
 
 #define brands core::brand_scoreboard
 
-
         // check if it's already cached and return that instead
         if (core::is_disabled(flags, NO_MEMO)) {
             if (is_multiple) {
@@ -8399,28 +8398,7 @@ public:
         constexpr const char* TMP_HYPERV = HYPERV;
 #endif
 
-        if (is_multiple) {
-            std::vector<std::string> potential_brands;
-
-            for (auto it = brands.cbegin(); it != brands.cend(); ++it) {
-                const brand_score_t points = it->second;
-                const std::string brand = it->first;
-
-                if (points > 0) {
-                    potential_brands.push_back(brand);
-                }
-            }
-
-            std::stringstream ss;
-            u8 i = 1;
-
-            ss << potential_brands.front();
-            for (; i < potential_brands.size(); i++) {
-                ss << " or ";
-                ss << potential_brands.at(i);
-            }
-            current_brand = ss.str();
-        } else if (
+        if (
             brands.at(TMP_KVM) > 0 &&
             brands.at(TMP_KVM_HYPERV) > 0
         ) {
@@ -8458,6 +8436,27 @@ public:
             } else if (brands.at(TMP_WORKSTATION) > 0) {
                 current_brand = TMP_WORKSTATION;
             }
+        } else if (is_multiple) {
+            std::vector<std::string> potential_brands;
+
+            for (auto it = brands.cbegin(); it != brands.cend(); ++it) {
+                const brand_score_t points = it->second;
+                const std::string brand = it->first;
+
+                if (points > 0) {
+                    potential_brands.push_back(brand);
+                }
+            }
+
+            std::stringstream ss;
+            u8 i = 1;
+
+            ss << potential_brands.front();
+            for (; i < potential_brands.size(); i++) {
+                ss << " or ";
+                ss << potential_brands.at(i);
+            }
+            current_brand = ss.str();
         }
 
         if (core::is_disabled(flags, NO_MEMO)) {
