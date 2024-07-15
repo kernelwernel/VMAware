@@ -219,6 +219,8 @@
 #pragma comment(lib, "uuid.lib")
 #pragma comment(lib, "ntdll.lib")
 
+#pragma calling_convention(__fastcall) // credits to @NotRequiem for this idea
+
 #ifdef _UNICODE
 #define tregex std::wregex
 #else
@@ -7951,15 +7953,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             std::vector<const char*> brand_vec = brand_vector(flags);
 
-            bool is_hyperv_present = false;
+            bool is_hyperv_vpc_present = false;
 
             for (const auto p_brand : brand_vec) {
-                if (p_brand == HYPERV) {
-                    is_hyperv_present = true;
+                if (p_brand == HYPERV || p_brand == VPC) {
+                    is_hyperv_vpc_present = true;
                 }
             }
 
-            if (is_hyperv_present == false) {
+            if (is_hyperv_vpc_present == false) {
                 return false;
             }
 
