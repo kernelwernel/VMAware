@@ -377,7 +377,14 @@ void general(const bool enable_hyperv = true) {
 
 
     if (enable_hyperv && diff_brand_check() && brand_vec()) {
-        std::cout << note << " If you know you are running on host, Hyper-V virtualises all applications by default within the host system. This result is in fact correct and NOT a false positive. If you do not want Hyper-V's default virtualisation enabled, run with the \"--discard-hyperv-host\" argument. See here https://github.com/kernelwernel/VMAware/issues/75\n";
+        std::cout << note << 
+        " If you know you are running on host, Hyper-V virtualises \
+        all applications by default within the host system. This \
+        result is in fact correct and NOT a false positive. If you \
+        do not want Hyper-V's default virtualisation in the result, run \
+        with the \"--discard-hyperv-host\" argument, or disable \
+        Hyper-V in your system. See here for more information \
+        https://github.com/kernelwernel/VMAware/issues/75\n";
     }
 
     const char* conclusion_color   = color(percent);
