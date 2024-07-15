@@ -365,21 +365,18 @@ void general(const bool enable_hyperv = true) {
         }
 
         if (is_vpc && !(is_hyperv || is_other)) {
-            core_debug("HYPERV_HOST_CHECK: diff_brand_check = ", false);
             return false;
         }
 
         if ((is_hyperv || is_vpc) && (!is_other)) {
-            core_debug("HYPERV_HOST_CHECK: diff_brand_check = ", true);
             return true;
         }
 
-        core_debug("HYPERV_HOST_CHECK: diff_brand_check = ", false);
         return false;
     };
 
 
-    if (enable_hyperv && (diff_brand_check() && brand_vec())) {
+    if (enable_hyperv && diff_brand_check() && brand_vec()) {
         std::cout << note << " If you know you are running on host, Hyper-V virtualises all applications by default within the host system. This result is in fact correct and NOT a false positive. If you do not want Hyper-V's default virtualisation enabled, run with the \"--discard-hyperv-host\" argument. See here https://github.com/kernelwernel/VMAware/issues/75\n";
     }
 
