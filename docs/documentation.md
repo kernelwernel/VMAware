@@ -404,7 +404,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::XEON_THREAD_MISMATCH` | Check if Intel Xeon CPUs have mismatched threads (same as above technique) |  | 85% |  |  |  |
 | `VM::NETTITUDE_VM_MEMORY` | Check for specific VM memory regions | Windows | 75% |  |  |  |
 | `VM::VMWARE_DEVICES` | Check for VMware device systems | Windows | 60% |  | GPL |  |
-| `VM::HYPERV_CPUID` | Check for Hyper-V specific CPUID results in ecx |  | 35% |  |  |  |
+| `VM::HYPERV_CPUID` | Check for specific CPUID bit results in ecx |  | 20% |  |  |  |
 | `VM::CUCKOO_DIR` | Check for Cuckoo specific directory | Windows | 15% |  |  |  |
 | `VM::CUCKOO_PIPE` | Check for Cuckoo specific piping mechanism | Windows | 20% |  |  |  |
 | `VM::HYPERV_HOSTNAME` | Check for default Azure hostname format (Azure uses Hyper-V as their base VM brand) | Windows, Linux | 50% |  |  |  |
