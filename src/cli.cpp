@@ -274,7 +274,7 @@ void general(const bool enable_hyperv = true) {
     checker(VM::INTEL_THREAD_MISMATCH, "Intel thread count mismatch");
     checker(VM::XEON_THREAD_MISMATCH, "Intel Xeon thread count mismatch");
     checker(VM::NETTITUDE_VM_MEMORY, "VM memory regions");
-    checker(VM::HYPERV_CPUID, "Hyper-V CPUID");
+    checker(VM::CPUID_BITSET, "CPUID bitset");
     checker(VM::CUCKOO_DIR, "Cuckoo directory");
     checker(VM::CUCKOO_PIPE, "Cuckoo pipe");
     checker(VM::HYPERV_HOSTNAME, "Hyper-V Azure hostname");
@@ -332,17 +332,51 @@ void general(const bool enable_hyperv = true) {
         ansi_exit <<
         "\n\n";
 
+    std::vector<const char*> brand_vector = VM::brand_vector();
 
-    brand = VM::brand(); // no VM::MULTIPLE this time
-    
-    if (
-        enable_hyperv == true &&
-        (
-            brand == "Microsoft Hyper-V" ||
-            brand == "Virtual PC" ||
-            brand == "Microsoft Virtual PC/Hyper-V"
-        )
-    ) {
+    auto brand_vec = [&]() -> bool {
+        bool is_hyperv_vpc_present = false;
+
+        for (const char* p_brand : brand_vector) {
+            if (
+                (std::strcmp(p_brand, "Microsoft Hyper-V") == 0) || 
+                (std::strcmp(p_brand, "Virtual PC") == 0)
+            ) {
+                is_hyperv_vpc_present = true;
+            }
+        }
+
+        return is_hyperv_vpc_present;
+    };
+
+    auto diff_brand_check = [&]() -> bool {
+        bool is_hyperv = false;
+        bool is_vpc = false;
+        bool is_other = false;
+
+        for (const auto p_brand : brand_vector) {
+            if (std::strcmp(p_brand, "Microsoft Hyper-V") == 0) {
+                is_hyperv = true;
+            } else if (std::strcmp(p_brand, "Virtual PC") == 0) {
+                is_vpc = true;
+            } else {
+                is_other = true;
+            }
+        }
+
+        if (is_vpc && !(is_hyperv || is_other)) {
+            return false;
+        }
+
+        if ((is_hyperv || is_vpc) && (!is_other)) {
+            return true;
+        }
+
+        return false;
+    };
+
+
+    if (enable_hyperv && diff_brand_check() && brand_vec()) {
         std::cout << note << " If you know you are running on host, Hyper-V virtualises all applications by default within the host system. This result is in fact correct and NOT a false positive. If you do not want Hyper-V's default virtualisation enabled, run with the \"--discard-hyperv-host\" argument. See here https://github.com/kernelwernel/VMAware/issues/75\n";
     }
 

@@ -219,6 +219,8 @@
 #pragma comment(lib, "uuid.lib")
 #pragma comment(lib, "ntdll.lib")
 
+#pragma calling_convention(__fastcall) // credits to @NotRequiem for this idea
+
 #ifdef _UNICODE
 #define tregex std::wregex
 #else
@@ -389,7 +391,7 @@ public:
         INTEL_THREAD_MISMATCH,
         XEON_THREAD_MISMATCH,
         NETTITUDE_VM_MEMORY,
-        HYPERV_CPUID,
+        CPUID_BITSET,
         CUCKOO_DIR,
         CUCKOO_PIPE,
         HYPERV_HOSTNAME,
@@ -1909,7 +1911,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Match for QEMU CPU brand
+     * @brief Match for CPU brands with "Virtual" text
      * @category x86
      */
     [[nodiscard]] static bool cpu_brand_qemu() try {
@@ -1922,9 +1924,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         std::string brand = cpu::get_brand();
 
-        std::regex pattern("QEMU Virtual CPU", std::regex_constants::icase);
+        std::regex qemu_pattern("QEMU Virtual CPU", std::regex_constants::icase);
 
-        if (std::regex_match(brand, pattern)) {
+        if (std::regex_match(brand, qemu_pattern)) {
             return core::add(QEMU);
         }
 
@@ -7385,13 +7387,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check for Hyper-V CPUID technique by checking whether all the bits equate to more than 4000 (not sure how this works if i'm honest)
+     * @brief Check for CPUID technique by checking whether all the bits equate to more than 4000 (not sure how this works if i'm honest)
      * @category x86
      * @author 一半人生
      * @link https://unprotect.it/snippet/vmcpuid/195/
      * @copyright MIT
      */
-    [[nodiscard]] static bool hyperv_cpuid() try {
+    [[nodiscard]] static bool cpuid_bitset() try {
 #if (!x86)
         return false;
 #else
@@ -7440,7 +7442,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         vid = (i32)cpu_info[0];
 
         if (vid >= 4000) {
-            return core::add(HYPERV);
+            return true;
         }
 
         return false;
@@ -7743,10 +7745,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
 
-
-
-
-
     struct core {
         MSVC_DISABLE_WARNING(PADDING)
             struct technique {
@@ -7911,34 +7909,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
 
-        template <typename ...Args>
-        static std::vector<const char*> brand_vector(Args ...args) {
-            flagset flags = core::arg_handler(args...);
-
-            // are all the techiques already run? if not, run all of them to get the necessary info to fetch the brand
-            if (!memo::all_present() || core::is_enabled(flags, NO_MEMO)) {
-                u16 tmp = core::run_all(flags);
-                UNUSED(tmp);
-            }
-
-            std::vector<const char*> tmp_vec;
-
-            for (
-                auto it = core::brand_scoreboard.cbegin();
-                it != core::brand_scoreboard.cend();
-                ++it
-            ) {
-                const char* brand = it->first;
-                const brand_score_t points = it->second;
-
-                if (points > 0) {
-                    tmp_vec.push_back(brand);
-                }
-            }
-
-            return tmp_vec;
-        }
-
         // check if Hyper-V is running 
         static bool hyperv_host_virtualisation_check(const flagset& flags) {
             if (
@@ -7949,17 +7919,17 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return false;
             }
 
-            std::vector<const char*> brand_vec = brand_vector(flags);
+            std::vector<const char*> brand_vec = VM::brand_vector(flags);
 
-            bool is_hyperv_present = false;
+            bool is_hyperv_vpc_present = false;
 
             for (const auto p_brand : brand_vec) {
-                if (p_brand == HYPERV) {
-                    is_hyperv_present = true;
+                if (p_brand == HYPERV || p_brand == VPC) {
+                    is_hyperv_vpc_present = true;
                 }
             }
 
-            if (is_hyperv_present == false) {
+            if (is_hyperv_vpc_present == false) {
                 return false;
             }
 
@@ -7975,10 +7945,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     core_debug("HYPERV_CHECK: returned false through insufficient windows version (version ", static_cast<u32>(version), ")");
                     return false;
                 }
-#else 
+#endif
+                
                 core_debug("HYPERV_HOST_CHECK: valid_version = ", false);
                 return false;
-#endif
             };
 
             auto diff_brand_check = [&]() -> bool {
@@ -8013,7 +7983,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             auto technique_check = []() -> bool {
                 std::vector<u8> techniques = memo::cache_fetch_all();
 
-                constexpr std::array<u8, 36> non_brand_returners = {{
+                constexpr std::array<u8, 37> non_brand_returners = {{
                     VM::HYPERVISOR_BIT,
                     VM::CPUID_0X4,
                     VM::HYPERVISOR_STR,
@@ -8049,7 +8019,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     VM::INTEL_THREAD_MISMATCH,
                     VM::XEON_THREAD_MISMATCH,
                     VM::SCREEN_RESOLUTION,
-                    VM::DEVICE_STRING
+                    VM::DEVICE_STRING,
+                    VM::CPUID_BITSET
                 }};
 
                 bool no_possible_brand = true;
@@ -8244,6 +8215,36 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
 public: // START OF PUBLIC FUNCTIONS
+
+public:     
+    template <typename ...Args>
+    static std::vector<const char*> brand_vector(Args ...args) {
+        flagset flags = core::arg_handler(args...);
+
+        // are all the techiques already run? if not, run all of them to get the necessary info to fetch the brand
+        if (!memo::all_present() || core::is_enabled(flags, NO_MEMO)) {
+            u16 tmp = core::run_all(flags);
+            UNUSED(tmp);
+        }
+
+        std::vector<const char*> tmp_vec;
+
+        for (
+            auto it = core::brand_scoreboard.cbegin();
+            it != core::brand_scoreboard.cend();
+            ++it
+        ) {
+            const char* brand = it->first;
+            const brand_score_t points = it->second;
+
+            if (points > 0) {
+                tmp_vec.push_back(brand);
+            }
+        }
+
+        return tmp_vec;
+    }
+
     /**
      * @brief Check for a specific technique based on flag argument
      * @param u8 (flags from VM wrapper)
@@ -8852,7 +8853,7 @@ const std::map<VM::u8, VM::core::technique> VM::core::technique_table = {
     { VM::INTEL_THREAD_MISMATCH, { 85, VM::intel_thread_mismatch }},
     { VM::XEON_THREAD_MISMATCH, { 85, VM::xeon_thread_mismatch }},
     { VM::NETTITUDE_VM_MEMORY, { 75, VM::nettitude_vm_memory }},
-    { VM::HYPERV_CPUID, { 35, VM::hyperv_cpuid }},
+    { VM::CPUID_BITSET, { 20, VM::cpuid_bitset }},
     { VM::CUCKOO_DIR, { 15, VM::cuckoo_dir }},
     { VM::CUCKOO_PIPE, { 20, VM::cuckoo_pipe }},
     { VM::HYPERV_HOSTNAME, { 50, VM::hyperv_hostname }},
