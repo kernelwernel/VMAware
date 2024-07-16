@@ -7975,15 +7975,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
         };
 
-        debug("EAX: ", fetch_register(EAX, 0x4000000B));
-        debug("EBX: ", fetch_register(EBX, 0x4000000B));
-        debug("ECX: ", fetch_register(ECX, 0x4000000B));
-        debug("EDX: ", fetch_register(EDX, 0x4000000B));
-
-        debug("EAX: ", fetch_register(EAX, 0x4000000C));
-        debug("EBX: ", fetch_register(EBX, 0x4000000C));
-        debug("ECX: ", fetch_register(ECX, 0x4000000C));
-        debug("EDX: ", fetch_register(EDX, 0x4000000C));
+        debug("03: ", leaf_03());
+        debug("04: ", leaf_04());
+        debug("05: ", leaf_05());
+        debug("06: ", leaf_06());
+        debug("09: ", leaf_09());
+        debug("0A: ", leaf_0A());
 
         if (
             leaf_03() &&
