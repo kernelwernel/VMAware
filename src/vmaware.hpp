@@ -7855,7 +7855,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         debug("HYPERV_BITMASK: max leaf = ", max_leaf);
 
-        if (max_leaf != 0x4000000A) {
+        if (max_leaf < 0x4000000A) {
             return false; // returned false because we want the most feature leafs as possible for Hyper-V
         }
 
@@ -7974,6 +7974,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 );
             }
         };
+
+        debug("EAX: ", fetch_register(EAX, 0x4000000B));
+        debug("EBX: ", fetch_register(EBX, 0x4000000B));
+        debug("ECX: ", fetch_register(ECX, 0x4000000B));
+        debug("EDX: ", fetch_register(EDX, 0x4000000B));
+
+        debug("EAX: ", fetch_register(EAX, 0x4000000C));
+        debug("EBX: ", fetch_register(EBX, 0x4000000C));
+        debug("ECX: ", fetch_register(ECX, 0x4000000C));
+        debug("EDX: ", fetch_register(EDX, 0x4000000C));
 
         if (
             leaf_03() &&
