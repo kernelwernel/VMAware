@@ -21,7 +21,7 @@
  *  - License: GPL 3.0
  */ 
 
-#include "vmaware.hpp"
+#define __VMAWARE_DEV__ 1 // enable developer-specific functions, such as VM::brand_vector()
 
 #include <string>
 #include <iostream>
@@ -35,6 +35,8 @@
 #if (MSVC)
     #include <windows.h>
 #endif
+
+#include "vmaware.hpp"
 
 constexpr const char* ver = "1.6";
 constexpr const char* date = "July 2024";

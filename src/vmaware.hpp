@@ -402,6 +402,8 @@ public:
         HYPERV_SIGNATURE,
         HYPERV_BITMASK,
         KVM_BITMASK,
+        CPUID_SPACING,
+        KGT_SIGNATURE,
 
         // start of non-technique flags (THE ORDERING IS VERY SPECIFIC AND MIGHT BREAK SOMETHING IDK)
         EXTREME,
@@ -500,7 +502,7 @@ private:
     static constexpr const char* COMODO = "Comodo";
     static constexpr const char* BOCHS = "Bochs";
     static constexpr const char* KVM_HYPERV = "KVM Hyper-V Enlightenment";
-    static constexpr const char* NVMM = "NVMM";
+    static constexpr const char* NVMM = "NetBSD NVMM";
     static constexpr const char* BSD_VMM = "OpenBSD VMM";
     static constexpr const char* INTEL_HAXM = "Intel HAXM";
     static constexpr const char* UNISYS = "Unisys s-Par";
@@ -509,6 +511,7 @@ private:
     static constexpr const char* BLUESTACKS = "BlueStacks";
     static constexpr const char* JAILHOUSE = "Jailhouse";
     static constexpr const char* APPLE_VZ = "Apple VZ";
+    static constexpr const char* INTEL_KGT = "Intel KGT (Trusty)";
     
 
 // macro for bypassing unused parameter/variable warnings
@@ -784,7 +787,8 @@ private:
                 unisys = "UnisysSpar64",
                 lmhs = "SRESRESRESRE",
                 jailhouse = "Jailhouse\0\0\0",
-                apple_vz = "Apple VZ";
+                apple_vz = "Apple VZ",
+                intel_kgt = "EVMMEVMMEVMM";
 
             auto cpuid_thingy = [](const u32 p_leaf, u32* regs, std::size_t start = 0, std::size_t end = 4) -> bool {
                 u32 x[4]{};
@@ -859,6 +863,7 @@ private:
                 if (tmp_brand == lmhs) { return core::add(LMHS); }
                 if (tmp_brand == jailhouse) { return core::add(JAILHOUSE); }
                 if (tmp_brand == apple_vz) { return core::add(APPLE_VZ); }
+                if (tmp_brand == intel_kgt) { return core::add(INTEL_KGT); }
 
                 // both Hyper-V and VirtualPC have the same string value
                 if (tmp_brand == hyperv) {
@@ -7854,7 +7859,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false; // returned false because we want the most feature leafs as possible for Hyper-V
         }
 
-        auto leaf_03 = []() -> bool {
+        auto leaf_03 = [&]() -> bool {
             const u32 ecx = fetch_register(ECX, 0x40000003);
             const u32 edx = fetch_register(EDX, 0x40000003);
 
@@ -7872,7 +7877,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
         };
 
-        auto leaf_04 = []() -> bool {
+        auto leaf_04 = [&]() -> bool {
             const u32 eax = fetch_register(EAX, 0x40000004);
             const u32 ecx = fetch_register(ECX, 0x40000004);
             const u32 edx = fetch_register(EDX, 0x40000004);
@@ -7894,12 +7899,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
         };
 
-        auto leaf_05 = []() -> bool {
+        auto leaf_05 = [&]() -> bool {
             const u32 edx = fetch_register(EDX, 0x40000005);
             return (edx == 0);
         };
 
-        auto leaf_06 = []() -> bool {
+        auto leaf_06 = [&]() -> bool {
             u32 eax, ebx, ecx, edx = 0;
             cpu::cpuid(eax, ebx, ecx, edx, 0x40000006);
 
@@ -7921,7 +7926,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
         };
 
-        auto leaf_09 = []() -> bool {
+        auto leaf_09 = [&]() -> bool {
             u32 eax, ebx, ecx, edx = 0;
             cpu::cpuid(eax, ebx, ecx, edx, 0x40000009);
 
@@ -7942,13 +7947,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     (ecx == 0) &&
                     ((edx & 0b1111) == 0) &&
                     (((edx >> 5) & 0b1111111111) == 0) &&
-                    (edx & (1 << 16) == 0) &&
+                    ((edx & (1 << 16)) == 0) &&
                     ((edx >> 18) == 0)
                 );
             }
         };
 
-        auto leaf_0A = []() -> bool {
+        auto leaf_0A = [&]() -> bool {
             const u32 eax = fetch_register(EAX, 0x4000000A);
             const u32 ecx = fetch_register(ECX, 0x4000000A);
             const u32 edx = fetch_register(EDX, 0x4000000A);
@@ -7980,6 +7985,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         ) {
             return core::add(HYPERV);
         }
+
+        return false;
 #endif
     }
     catch (...) {
@@ -8011,13 +8018,45 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const bool is_top_active = (eax + ebx + ecx + edx != 0);
 
         return (is_base_active && is_top_active);
+#endif
+    }
+    catch (...) {
+        debug("CPUID_SPACING: caught error, returned false");
+        return false;
+    }
+
+
+    /**
+     * @brief Check for Intel KGT hypervisor signature in CPUID
+     * @link https://github.com/intel/ikgt-core/blob/7dfd4d1614d788ec43b02602cce7a272ef8d5931/vmm/vmexit/vmexit_cpuid.c
+     * @category x86
+     */
+    [[nodiscard]] static bool intel_kgt_signature() try {
+#if (!x86)
+        return false;
+#else
+        u32 unused, ecx, edx = 0;
+        cpu::cpuid(unused, unused, ecx, edx, 3);
+
+        if (
+            // ecx should be "EVMM" and edx is "INTC".
+            // Not sure if it's little endian or big endian, so i'm comparing both
+            ((ecx == 0x4D4D5645) && (edx == 0x43544E49)) ||
+            ((ecx == 0x45564D4D) && (edx == 0x494E5443))
+        ) {
+            return core::add(INTEL_KGT);
+        }
+        
         return false;
 #endif
     }
     catch (...) {
-        debug("BLUESTACKS_FOLDERS: caught error, returned false");
+        debug("KGT_SIGNATURE: caught error, returned false");
         return false;
     }
+
+
+    
 
 
 
@@ -8030,8 +8069,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
 // Intel KGT (Trusty) 	"EVMMEVMMEVMM"[122] 	On "trusty" branch of KGT only, which is used for the Intel x86 Architecture Distribution of Trusty OS (archive)
-
-(KGT also returns a signature in CPUID leaf 3: ECX=0x4D4D5645 "EVMM" and EDX=0x43544E49 "INTC") 
+//(KGT also returns a signature in CPUID leaf 3: ECX=0x4D4D5645 "EVMM" and EDX=0x43544E49 "INTC") 
 
 
 // https://github.com/systemd/systemd/blob/main/src/basic/virt.c
@@ -8511,7 +8549,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 public: // START OF PUBLIC FUNCTIONS
 
-public:     
+#ifdef __VMAWARE_DEV__
     template <typename ...Args>
     static std::vector<const char*> brand_vector(Args ...args) {
         flagset flags = core::arg_handler(args...);
@@ -8539,6 +8577,7 @@ public:
 
         return tmp_vec;
     }
+#endif
 
     /**
      * @brief Check for a specific technique based on flag argument
@@ -8976,7 +9015,8 @@ std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard {
     { VM::CUCKOO, 0 },
     { VM::BLUESTACKS, 0 },
     { VM::JAILHOUSE, 0 },
-    { VM::APPLE_VZ, 0 }
+    { VM::APPLE_VZ, 0 },
+    { VM::INTEL_KGT, 0 }
 };
 
 
@@ -9157,11 +9197,9 @@ const std::map<VM::u8, VM::core::technique> VM::core::technique_table = {
     { VM::SCREEN_RESOLUTION, { 30, VM::screen_resolution }},
     { VM::DEVICE_STRING, { 25, VM::device_string }},
     { VM::BLUESTACKS_FOLDERS, { 15, VM::bluestacks }},
-    { VM::HYPERV_SIGNATURE, { , VM::hyperv_eax_signature }},
-    { VM::HYPERV_BITMASK, { , VM::hyperv_bitmask }},
-    { VM::KVM_BITMASK, { , VM::kvm_bitmask }},
-
-    // __TABLE_LABEL, add your technique above
-    // { VM::FUNCTION, { POINTS, FUNCTION_POINTER }}
-    // ^ template 
+    { VM::HYPERV_SIGNATURE, { 95, VM::hyperv_eax_signature }},
+    { VM::HYPERV_BITMASK, { 40, VM::hyperv_bitmask }},
+    { VM::KVM_BITMASK, { 10, VM::kvm_bitmask }},
+    { VM::CPUID_SPACING, { 60, VM::cpuid_spacing }},
+    { VM::KGT_SIGNATURE, { 80, VM::intel_kgt_signature }}
 };
