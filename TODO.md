@@ -9,7 +9,7 @@
 - [X] update the cli tool image in the readme
 - [X] focus on hyperv detection (https://labs.nettitude.com/blog/vm-detection-tricks-part-3-hyper-v-raw-network-protocol/)
 - [X] add percentage overload functionality for VM::detect()
-- [ ] maybe document the project in codeproject.com when a 1.0 is ready
+- [X] maybe document the project in codeproject.com when a 1.0 is ready
 - [X] add a cpuid fuzzer (baremetal and VM)
 - [ ] organise the registry existence function better and group them together as a single utility function
 - [X] add <source_location> for error handling
@@ -24,7 +24,7 @@
 - [ ] upload the lib to dnf 
 - [ ] upload the lib to apt 
 - [X] add ARM support
-- [ ] look into what `fv-az663-325` is
+- [X] look into what `fv-az663-325` is
 - [ ] implement techniques from [here](https://labs.nettitude.com/blog/vm-detection-tricks-part-3-hyper-v-raw-network-protocol/)
 - [X] add multiple choice for VM::brand()
 - [ ] add c++20 module support 
@@ -39,7 +39,11 @@
 - [ ] implement techniques from here https://stackoverflow.com/questions/43026032/detect-running-on-virtual-machine
 - [ ] add a .clang_format thingy
 - [ ] maybe add internal is_cached functionalities in the cache fetchers
+- [ ] make the whole cache table into a mutex so i can claim it's thread-safe
+- [ ] make a medium post about it
 
 # Distant plans
 - add the library to conan.io when released
-- maybe add a python version of the library (or any other lang for that matter)
+- add a python version of the library (or any other lang for that matter)
+- add a GUI version of the lib
+- add a rust version of the lib
