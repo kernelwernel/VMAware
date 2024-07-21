@@ -21,7 +21,7 @@
  *  - License: GPL 3.0
  */ 
 
-#include "vmaware.hpp"
+#define __VMAWARE_DEV__ 1 // enable developer-specific functions, such as VM::brand_vector()
 
 #include <string>
 #include <iostream>
@@ -35,6 +35,8 @@
 #if (MSVC)
     #include <windows.h>
 #endif
+
+#include "vmaware.hpp"
 
 constexpr const char* ver = "1.6";
 constexpr const char* date = "July 2024";
@@ -283,6 +285,10 @@ void general(const bool enable_hyperv = true) {
     checker(VM::DEVICE_STRING, "bogus device string");
     checker(VM::MOUSE_DEVICE, "mouse device");
     checker(VM::BLUESTACKS_FOLDERS, "BlueStacks folders");
+    checker(VM::HYPERV_SIGNATURE, "Hyper-V CPUID signature");
+    checker(VM::HYPERV_BITMASK, "Hyper-V CPUID reserved bitmask");
+    checker(VM::KVM_BITMASK, "KVM CPUID reserved bitmask");
+
 
 
     std::printf("\n");
@@ -378,13 +384,7 @@ void general(const bool enable_hyperv = true) {
 
     if (enable_hyperv && diff_brand_check() && brand_vec()) {
         std::cout << note << 
-        " If you know you are running on host, Hyper-V virtualises \
-        all applications by default within the host system. This \
-        result is in fact correct and NOT a false positive. If you \
-        do not want Hyper-V's default virtualisation in the result, run \
-        with the \"--discard-hyperv-host\" argument, or disable \
-        Hyper-V in your system. See here for more information \
-        https://github.com/kernelwernel/VMAware/issues/75\n";
+        " If you know you are running on host, Hyper-V virtualises all applications by default within the host system. This result is in fact correct and NOT a false positive. If you do not want Hyper-V's default virtualisation in the result, run with the \"--discard-hyperv-host\" argument, or disable Hyper-V in your system. See here for more information https://github.com/kernelwernel/VMAware/issues/75\n";
     }
 
     const char* conclusion_color   = color(percent);
@@ -483,6 +483,7 @@ Intel HAXM
 Unisys s-Par
 Cuckoo
 BlueStacks
+Jailhouse
 )";
             return 0;
         } else if (arg("--disable-hyperv-host")) {

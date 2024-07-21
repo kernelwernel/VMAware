@@ -399,6 +399,11 @@ public:
         SCREEN_RESOLUTION,
         DEVICE_STRING,
         BLUESTACKS_FOLDERS,
+        HYPERV_SIGNATURE,
+        HYPERV_BITMASK,
+        KVM_BITMASK,
+        CPUID_SPACING,
+        KGT_SIGNATURE,
 
         // start of non-technique flags (THE ORDERING IS VERY SPECIFIC AND MIGHT BREAK SOMETHING IDK)
         EXTREME,
@@ -497,13 +502,17 @@ private:
     static constexpr const char* COMODO = "Comodo";
     static constexpr const char* BOCHS = "Bochs";
     static constexpr const char* KVM_HYPERV = "KVM Hyper-V Enlightenment";
-    static constexpr const char* NVMM = "NVMM";
+    static constexpr const char* NVMM = "NetBSD NVMM";
     static constexpr const char* BSD_VMM = "OpenBSD VMM";
     static constexpr const char* INTEL_HAXM = "Intel HAXM";
     static constexpr const char* UNISYS = "Unisys s-Par";
     static constexpr const char* LMHS = "Lockheed Martin LMHS"; // yes, you read that right. The library can now detect VMs running on US military fighter jets, apparently.
     static constexpr const char* CUCKOO = "Cuckoo";
     static constexpr const char* BLUESTACKS = "BlueStacks";
+    static constexpr const char* JAILHOUSE = "Jailhouse";
+    static constexpr const char* APPLE_VZ = "Apple VZ";
+    static constexpr const char* INTEL_KGT = "Intel KGT (Trusty)";
+    
 
 // macro for bypassing unused parameter/variable warnings
 #define UNUSED(x) ((void)(x))
@@ -776,7 +785,10 @@ private:
                 intel_haxm = "HAXMHAXMHAXM",
                 virtapple = "VirtualApple",
                 unisys = "UnisysSpar64",
-                lmhs = "SRESRESRESRE";
+                lmhs = "SRESRESRESRE",
+                jailhouse = "Jailhouse\0\0\0",
+                apple_vz = "Apple VZ",
+                intel_kgt = "EVMMEVMMEVMM";
 
             auto cpuid_thingy = [](const u32 p_leaf, u32* regs, std::size_t start = 0, std::size_t end = 4) -> bool {
                 u32 x[4]{};
@@ -849,6 +861,9 @@ private:
                 if (tmp_brand == intel_haxm) { return core::add(INTEL_HAXM); }
                 if (tmp_brand == unisys) { return core::add(UNISYS); }
                 if (tmp_brand == lmhs) { return core::add(LMHS); }
+                if (tmp_brand == jailhouse) { return core::add(JAILHOUSE); }
+                if (tmp_brand == apple_vz) { return core::add(APPLE_VZ); }
+                if (tmp_brand == intel_kgt) { return core::add(INTEL_KGT); }
 
                 // both Hyper-V and VirtualPC have the same string value
                 if (tmp_brand == hyperv) {
@@ -7717,15 +7732,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check for the presence of a mouse device
-     * @category Windows
-     * @author a0rtega
-     * @link https://github.com/a0rtega/pafish/blob/master/pafish/rtt.c
-     * @note from pafish project
-     * @copyright GPL
+     * @brief Check for the presence of BlueStacks-specific folders
+     * @category ARM, Linux
      */
     [[nodiscard]] static bool bluestacks() try {
-#if (!ARM)
+#if (!(ARM && LINUX))
         return false;
 #else
         if (
@@ -7742,6 +7753,335 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         debug("BLUESTACKS_FOLDERS: caught error, returned false");
         return false;
     }
+
+
+    /**
+     * @brief Check for Hyper-V signature of "Hv#1" in CPUID
+     * @category x86
+     */
+    [[nodiscard]] static bool hyperv_eax_signature() try {
+#if (!x86)
+        return false;
+#else
+        u32 eax, unused = 0;
+        cpu::cpuid(eax, unused, unused, unused, 0x40000001);
+        UNUSED(unused);
+
+        constexpr u32 signature = 0x31237648; // "Hv#1"
+
+        if (eax == signature) {
+            return core::add(HYPERV);
+        }
+
+        return false;
+#endif
+    }
+    catch (...) {
+        debug("HYPERV_SIGNATURE: caught error, returned false");
+        return false;
+    }
+
+
+    /**
+     * @brief Check for KVM CPUID bitmask range for reserved values
+     * @category x86
+     */
+    [[nodiscard]] static bool kvm_bitmask() try {
+#if (!x86)
+        return false;
+#else
+        u32 eax, ebx, ecx, edx = 0;
+        cpu::cpuid(eax, ebx, ecx, edx, 0x40000000);
+
+        // KVM brand and max leaf check
+        if (!(
+            (eax == 0x40000001) &&
+            (ebx == 0x4b4d564b) &&
+            (ecx == 0x564b4d56) &&
+            (edx == 0x4d)
+        )) {
+            return false;
+        }
+
+        cpu::cpuid(eax, ebx, ecx, edx, 0x40000001);
+
+        if (
+            (eax & (1 << 8)) &&
+            (((eax >> 13) & 0b1111111111) == 0) &&
+            ((eax >> 24) == 0)
+        ) {
+            return core::add(KVM);
+        }
+
+        return false;
+#endif
+    }
+    catch (...) {
+        debug("KVM_BITMASK: caught error, returned false");
+        return false;
+    }
+
+
+    /**
+     * @brief Check for Hyper-V CPUID bitmask range for reserved values
+     * @category x86
+     */
+    [[nodiscard]] static bool hyperv_bitmask() try {
+#if (!x86)
+        return false;
+#else
+        enum registers : u8 {
+            EAX = 1,
+            EBX,
+            ECX,
+            EDX
+        };
+
+        auto fetch_register = [](const registers register_id, const u32 leaf) -> u32 {
+            u32 eax, ebx, ecx, edx = 0;
+            cpu::cpuid(eax, ebx, ecx, edx, leaf);
+            
+            switch (register_id) {
+                case EAX: return eax;
+                case EBX: return ebx;
+                case ECX: return ecx;
+                case EDX: return edx;
+            }
+
+            return 0;
+        };
+
+        const u32 max_leaf = fetch_register(EAX, 0x40000000);
+
+        debug("HYPERV_BITMASK: max leaf = ", max_leaf);
+
+        if (max_leaf < 0x4000000A) {
+            return false; // returned false because we want the most feature leafs as possible for Hyper-V
+        }
+
+        auto leaf_03 = [&]() -> bool {
+            const u32 ecx = fetch_register(ECX, 0x40000003);
+            const u32 edx = fetch_register(EDX, 0x40000003);
+
+            if (ecx == 0 || edx == 0) {
+                return false;
+            } else {
+                return (
+                    ((ecx & 0b11111) == 0) && 
+                    ((ecx >> 9) == 0) &&
+                    ((edx & (1 << 16)) == 0) &&
+                    ((edx & (1 << 22)) == 0) &&
+                    (((edx >> 24) & 0b11) == 0) &&
+                    ((edx >> 27) == 0)
+                );
+            }
+        };
+
+        auto leaf_04 = [&]() -> bool {
+            const u32 eax = fetch_register(EAX, 0x40000004);
+            const u32 ecx = fetch_register(ECX, 0x40000004);
+            const u32 edx = fetch_register(EDX, 0x40000004);
+
+            if (
+                eax == 0 ||
+                ecx == 0 ||
+                edx != 0   // edx is supposed to be null
+            ) {
+                return false;
+            } else {
+                return (
+                    ((eax & (1 << 8)) == 0) &&
+                    ((eax & (1 << 16)) == 0) &&
+                    ((eax >> 19) == 0) &&
+                    ((ecx >> 7) == 0) && 
+                    (edx == 0)
+                );
+            }
+        };
+
+        auto leaf_05 = [&]() -> bool {
+            const u32 edx = fetch_register(EDX, 0x40000005);
+            return (edx == 0);
+        };
+
+        auto leaf_06 = [&]() -> bool {
+            u32 eax, ebx, ecx, edx = 0;
+            cpu::cpuid(eax, ebx, ecx, edx, 0x40000006);
+
+            if (
+                eax == 0 ||
+                ebx != 0 ||
+                ecx != 0 ||
+                edx != 0   // edx is supposed to be null
+            ) {
+                return false;
+            } else {
+                return (
+                    ((eax & (1 << 15)) == 0) &&
+                    ((eax >> 25) == 0) &&
+                    (ebx == 0) &&
+                    (ecx == 0) &&
+                    (edx == 0)
+                );
+            }
+        };
+
+        auto leaf_09 = [&]() -> bool {
+            u32 eax, ebx, ecx, edx = 0;
+            cpu::cpuid(eax, ebx, ecx, edx, 0x40000009);
+
+            if (
+                eax == 0 ||
+                ebx != 0 ||
+                ecx != 0 ||
+                edx == 0
+            ) {
+                return false;
+            } else {
+                return (
+                    ((eax & 0b11) == 0) &&
+                    ((eax & (1 << 3)) == 0) &&
+                    (((eax >> 7) & 0b11111) == 0) &&
+                    ((eax >> 13) == 0) &&
+                    (ebx == 0) &&
+                    (ecx == 0) &&
+                    ((edx & 0b1111) == 0) &&
+                    (((edx >> 5) & 0b1111111111) == 0) &&
+                    ((edx & (1 << 16)) == 0) &&
+                    ((edx >> 18) == 0)
+                );
+            }
+        };
+
+        auto leaf_0A = [&]() -> bool {
+            const u32 eax = fetch_register(EAX, 0x4000000A);
+            const u32 ecx = fetch_register(ECX, 0x4000000A);
+            const u32 edx = fetch_register(EDX, 0x4000000A);
+
+            if (
+                eax == 0 ||
+                ecx != 0 ||
+                edx != 0
+            ) {
+                return false;
+            } else {
+                return (
+                    // ebx is left out on purpose due to how likely it can result the overall result to be a false negative
+                    ((eax & (1 << 16)) == 0) &&
+                    ((eax >> 21) == 0) &&
+                    (ecx == 0) &&
+                    (edx == 0)
+                );
+            }
+        };
+
+        debug("03: ", leaf_03());
+        debug("04: ", leaf_04());
+        debug("05: ", leaf_05());
+        debug("06: ", leaf_06());
+        debug("09: ", leaf_09());
+        debug("0A: ", leaf_0A());
+
+        if (
+            leaf_03() &&
+            leaf_04() &&
+            leaf_05() &&
+            leaf_06() &&
+            leaf_09() &&
+            leaf_0A()
+        ) {
+            return core::add(HYPERV);
+        }
+
+        return false;
+#endif
+    }
+    catch (...) {
+        debug("HYPERV_BITMASK: caught error, returned false");
+        return false;
+    }
+
+
+    /**
+     * @brief Check for presence of 0x100 spacing in CPUID
+     * @note Hypervisors that expose more than one hypervisor 
+     *       interface may provide additional sets of CPUID 
+     *       leaves for the additional interfaces, at a spacing 
+     *       of 100h leaves per interface. For example, when QEMU 
+     *       is configured to provide both Hyper-V and KVM interfaces, 
+     *       it will provide Hyper-V information starting from CPUID 
+     *       leaf 40000000h and KVM information starting from leaf 40000100h.
+     * @link https://en.wikipedia.org/wiki/CPUID#EAX=40000000h-4FFFFFFFh:_Reserved_for_Hypervisor_use
+     * @category ARM, Linux
+     */
+    [[nodiscard]] static bool cpuid_spacing() try {
+#if (!x86)
+        return false;
+#else
+        u32 eax, ebx, ecx, edx = 0;
+        cpu::cpuid(eax, ebx, ecx, edx, 0x40000000);
+        const bool is_base_active = (eax + ebx + ecx + edx != 0);
+        cpu::cpuid(eax, ebx, ecx, edx, 0x40000100);
+        const bool is_top_active = (eax + ebx + ecx + edx != 0);
+
+        return (is_base_active && is_top_active);
+#endif
+    }
+    catch (...) {
+        debug("CPUID_SPACING: caught error, returned false");
+        return false;
+    }
+
+
+    /**
+     * @brief Check for Intel KGT hypervisor signature in CPUID
+     * @link https://github.com/intel/ikgt-core/blob/7dfd4d1614d788ec43b02602cce7a272ef8d5931/vmm/vmexit/vmexit_cpuid.c
+     * @category x86
+     */
+    [[nodiscard]] static bool intel_kgt_signature() try {
+#if (!x86)
+        return false;
+#else
+        u32 unused, ecx, edx = 0;
+        cpu::cpuid(unused, unused, ecx, edx, 3);
+
+        if (
+            // ecx should be "EVMM" and edx is "INTC".
+            // Not sure if it's little endian or big endian, so i'm comparing both
+            ((ecx == 0x4D4D5645) && (edx == 0x43544E49)) ||
+            ((ecx == 0x45564D4D) && (edx == 0x494E5443))
+        ) {
+            return core::add(INTEL_KGT);
+        }
+        
+        return false;
+#endif
+    }
+    catch (...) {
+        debug("KGT_SIGNATURE: caught error, returned false");
+        return false;
+    }
+
+
+    
+
+
+
+// https://learn.microsoft.com/en-us/virtualization/hyper-v-on-windows/tlfs/feature-discovery
+
+
+// Hypervisors that expose more than one hypervisor interface may provide additional sets of CPUID leaves for the additional interfaces, at a spacing of 100h leaves per interface. For example, when QEMU is configured to provide both Hyper-V and KVM interfaces, it will provide Hyper-V information starting from CPUID leaf 40000000h and KVM information starting from leaf 40000100h.[105][106]
+
+
+
+
+// Intel KGT (Trusty) 	"EVMMEVMMEVMM"[122] 	On "trusty" branch of KGT only, which is used for the Intel x86 Architecture Distribution of Trusty OS (archive)
+//(KGT also returns a signature in CPUID leaf 3: ECX=0x4D4D5645 "EVMM" and EDX=0x43544E49 "INTC") 
+
+
+// https://github.com/systemd/systemd/blob/main/src/basic/virt.c
+
+
 
 
 
@@ -8216,7 +8556,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 public: // START OF PUBLIC FUNCTIONS
 
-public:     
+#ifdef __VMAWARE_DEV__
     template <typename ...Args>
     static std::vector<const char*> brand_vector(Args ...args) {
         flagset flags = core::arg_handler(args...);
@@ -8244,6 +8584,7 @@ public:
 
         return tmp_vec;
     }
+#endif
 
     /**
      * @brief Check for a specific technique based on flag argument
@@ -8493,7 +8834,7 @@ public:
         if (
             core::is_enabled(flags, EXTREME) && \
             core::is_enabled(flags, HIGH_THRESHOLD)
-            ) {
+        ) {
             throw std::invalid_argument("VM::EXTREME and VM::HIGH_THRESHOLD should not be set at the same time. Use either options instead of both");
         }
 
@@ -8508,7 +8849,7 @@ public:
         if (core::is_enabled(flags, EXTREME)) {
             result = (points > 0);
         } else if (core::is_enabled(flags, HIGH_THRESHOLD)) {
-            result = (points > high_threshold_score);
+            result = (points >= high_threshold_score);
         } else {
             result = (points >= 100);
         }
@@ -8679,7 +9020,10 @@ std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard {
     { VM::UNISYS, 0 },
     { VM::LMHS, 0 },
     { VM::CUCKOO, 0 },
-    { VM::BLUESTACKS, 0 }
+    { VM::BLUESTACKS, 0 },
+    { VM::JAILHOUSE, 0 },
+    { VM::APPLE_VZ, 0 },
+    { VM::INTEL_KGT, 0 }
 };
 
 
@@ -8859,9 +9203,10 @@ const std::map<VM::u8, VM::core::technique> VM::core::technique_table = {
     { VM::GENERAL_HOSTNAME, { 20, VM::general_hostname }},
     { VM::SCREEN_RESOLUTION, { 30, VM::screen_resolution }},
     { VM::DEVICE_STRING, { 25, VM::device_string }},
-    { VM::BLUESTACKS_FOLDERS, { 15, VM::bluestacks }}
-
-    // __TABLE_LABEL, add your technique above
-    // { VM::FUNCTION, { POINTS, FUNCTION_POINTER }}
-    // ^ template 
+    { VM::BLUESTACKS_FOLDERS, { 15, VM::bluestacks }},
+    { VM::HYPERV_SIGNATURE, { 95, VM::hyperv_eax_signature }},
+    { VM::HYPERV_BITMASK, { 40, VM::hyperv_bitmask }},
+    { VM::KVM_BITMASK, { 10, VM::kvm_bitmask }},
+    { VM::CPUID_SPACING, { 60, VM::cpuid_spacing }},
+    { VM::KGT_SIGNATURE, { 80, VM::intel_kgt_signature }}
 };
