@@ -67,7 +67,7 @@
 #define APPLE 0
 #endif
 
- // shorter and succinct macros
+// shorter and succinct macros
 #if __cplusplus > 202100L
 #define CPP 23
 #ifdef __VMAWARE_DEBUG__
@@ -405,19 +405,17 @@ public:
         CPUID_SPACING,
         KGT_SIGNATURE,
 
-        // start of non-technique flags (THE ORDERING IS VERY SPECIFIC AND MIGHT BREAK SOMETHING IDK)
+        // start of non-technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
         EXTREME,
         NO_MEMO,
         HIGH_THRESHOLD,
         ENABLE_HYPERV_HOST,
-        WIN_HYPERV_DEFAULT [[deprecated("Use VM::ENABLE_HYPERV_HOST instead")]],
         MULTIPLE
     };
 
 private:
     static constexpr u8 enum_size = MULTIPLE; // get enum size through value of last element
     static constexpr u8 non_technique_count = MULTIPLE - EXTREME + 1; // get number of non-technique flags like VM::NO_MEMO for example
-    static constexpr u8 WIN_HYPERV_DEFAULT_MACRO = ENABLE_HYPERV_HOST + 1; // can't use orignal enum value because that would give compiler warnings of deprecated usage
     static constexpr u8 INVALID = 255; // explicit invalid technique macro
     static constexpr u16 maximum_points = 4765; // theoretical total points if all VM detections returned true (which is practically impossible)
     static constexpr u16 high_threshold_score = 350; // new threshold score from 100 to 350 if VM::HIGH_THRESHOLD flag is enabled
@@ -480,6 +478,7 @@ private:
     static constexpr const char* VMWARE_ESX = "VMware ESX";
     static constexpr const char* VMWARE_GSX = "VMware GSX";
     static constexpr const char* VMWARE_WORKSTATION = "VMware Workstation";
+    static constexpr const char* VMWARE_FUSION = "VMware Fusion";
     static constexpr const char* KVM = "KVM";
     static constexpr const char* BHYVE = "bhyve";
     static constexpr const char* QEMU = "QEMU";
@@ -512,7 +511,8 @@ private:
     static constexpr const char* JAILHOUSE = "Jailhouse";
     static constexpr const char* APPLE_VZ = "Apple VZ";
     static constexpr const char* INTEL_KGT = "Intel KGT (Trusty)";
-    
+    static constexpr const char* AZURE_HYPERV = "Microsoft Azure Hyper-V";
+
 
 // macro for bypassing unused parameter/variable warnings
 #define UNUSED(x) ((void)(x))
@@ -862,14 +862,11 @@ private:
                 if (tmp_brand == unisys) { return core::add(UNISYS); }
                 if (tmp_brand == lmhs) { return core::add(LMHS); }
                 if (tmp_brand == jailhouse) { return core::add(JAILHOUSE); }
-                if (tmp_brand == apple_vz) { return core::add(APPLE_VZ); }
                 if (tmp_brand == intel_kgt) { return core::add(INTEL_KGT); }
 
                 // both Hyper-V and VirtualPC have the same string value
                 if (tmp_brand == hyperv) {
-                    bool tmp = core::add(VPC);
-                    UNUSED(tmp);
-                    return core::add(HYPERV);
+                    return core::add(HYPERV, VPC);
                 }
 
                 /**
@@ -885,18 +882,25 @@ private:
 
                 /**
                  * i'm honestly not sure about this one,
-                 * it's supposed to have 12 characters but
-                 * Wikipedia tells me it has 8, so i'm just
+                 * they're supposed to have 12 characters but
+                 * Wikipedia tells me it these brands have 
+                 * less characters (both 8), so i'm just
                  * going to scan for the entire string ig
                  */
 #if (CPP >= 17)
                 const char* qnx_sample = qnx2.data();
+                const char* applevz_sample = apple_vz.data();
 #else
                 const char* qnx_sample = qnx2.c_str();
+                const char* applevz_sample = apple_vz.c_str();
 #endif
 
                 if (util::find(tmp_brand, qnx_sample)) {
                     return core::add(QNX);
+                }
+
+                if (util::find(tmp_brand, applevz_sample)) {
+                    return core::add(APPLE);
                 }
             }
 
@@ -3744,7 +3748,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
     /**
      * @brief Check if the BIOS serial is valid
-     * @category Linux
+     * @category Windows
      */
     [[nodiscard]] static bool bios_serial() try {
 #if (!MSVC)
@@ -7593,7 +7597,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         std::regex pattern("fv-az\\d+-\\d+");
 
         if (std::regex_match(hostname, pattern)) {
-            return core::add(HYPERV);
+            return core::add(AZURE_HYPERV);
         }
 
         return false;
@@ -7853,7 +7857,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         const u32 max_leaf = fetch_register(EAX, 0x40000000);
 
-        debug("HYPERV_BITMASK: max leaf = ", max_leaf);
+        debug("HYPERV_BITMASK: max leaf = ", std::hex, max_leaf);
 
         if (max_leaf < 0x4000000A) {
             return false; // returned false because we want the most feature leafs as possible for Hyper-V
@@ -7862,6 +7866,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         auto leaf_03 = [&]() -> bool {
             const u32 ecx = fetch_register(ECX, 0x40000003);
             const u32 edx = fetch_register(EDX, 0x40000003);
+
+            debug("03 ecx = ", std::bitset<31>(ecx));
+            debug("03 edx = ", std::bitset<31>(edx));
 
             if (ecx == 0 || edx == 0) {
                 return false;
@@ -7882,6 +7889,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             const u32 ecx = fetch_register(ECX, 0x40000004);
             const u32 edx = fetch_register(EDX, 0x40000004);
 
+            debug("04 eax = ", std::bitset<31>(eax));
+            debug("04 ecx = ", std::bitset<31>(ecx));
+            debug("04 edx = ", std::bitset<31>(edx));
+
             if (
                 eax == 0 ||
                 ecx == 0 ||
@@ -7901,6 +7912,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         auto leaf_05 = [&]() -> bool {
             const u32 edx = fetch_register(EDX, 0x40000005);
+            debug("05 edx = ", std::bitset<31>(edx));
             return (edx == 0);
         };
 
@@ -7908,6 +7920,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             u32 eax, ebx, ecx, edx = 0;
             cpu::cpuid(eax, ebx, ecx, edx, 0x40000006);
 
+            debug("06 eax = ", std::bitset<31>(eax));
+            debug("06 ebx = ", std::bitset<31>(ebx));
+            debug("06 ecx = ", std::bitset<31>(ecx));
+            debug("06 edx = ", std::bitset<31>(edx));
+            
             if (
                 eax == 0 ||
                 ebx != 0 ||
@@ -7929,6 +7946,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         auto leaf_09 = [&]() -> bool {
             u32 eax, ebx, ecx, edx = 0;
             cpu::cpuid(eax, ebx, ecx, edx, 0x40000009);
+
+            debug("09 eax = ", std::bitset<31>(eax));
+            debug("09 ebx = ", std::bitset<31>(ebx));
+            debug("09 ecx = ", std::bitset<31>(ecx));
+            debug("09 edx = ", std::bitset<31>(edx));
 
             if (
                 eax == 0 ||
@@ -7957,6 +7979,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             const u32 eax = fetch_register(EAX, 0x4000000A);
             const u32 ecx = fetch_register(ECX, 0x4000000A);
             const u32 edx = fetch_register(EDX, 0x4000000A);
+
+            debug("0A eax = ", std::bitset<31>(eax));
+            debug("0A ebx = ", std::bitset<31>(ebx));
+            debug("0A ecx = ", std::bitset<31>(ecx));
+            debug("0A edx = ", std::bitset<31>(edx));
 
             if (
                 eax == 0 ||
@@ -8063,6 +8090,30 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
 
 
+    /**
+     * @brief Check for Intel KGT hypervisor signature in CPUID
+     * @link https://knowledge.broadcom.com/external/article?legacyId=1009458
+     * @category Windows
+     */
+    [[nodiscard]] static bool vmware_dmi() try {
+#if (!MSVC)
+        return false;
+#else
+        std::unique_ptr<util::sys_info> info = util::make_unique<util::sys_info>();
+
+        const std::string str = info->get_serialnumber();
+
+        if (util::find(str, "VMware-")) {
+            return core::add(VMWARE);
+        }
+
+        if (util::find(str, "VMW")) {
+            return core::add(VMWARE_FUSION);
+        }
+
+        return false;
+#endif
+} 
     
 
 
@@ -8108,8 +8159,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #elif (LINUX)
         [[gnu::const]]
 #endif
-        static inline bool add(const char* p_brand) noexcept {
+        static inline bool add(const char* p_brand, const char* extra_brand = "") noexcept {
             core::brand_scoreboard.at(p_brand)++;
+            if (std::strcmp(extra_brand, "") != 0) {
+                core::brand_scoreboard.at(p_brand)++;
+            }
             return true;
         }
 
@@ -8175,7 +8229,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 flags.test(NO_MEMO) ||
                 flags.test(HIGH_THRESHOLD) ||
                 flags.test(ENABLE_HYPERV_HOST) ||
-                flags.test(WIN_HYPERV_DEFAULT_MACRO) || // deprecated
                 flags.test(MULTIPLE)
             ) {
                 flags |= DEFAULT;
@@ -8252,8 +8305,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // check if Hyper-V is running 
         static bool hyperv_host_virtualisation_check(const flagset& flags) {
             if (
-                core::is_enabled(flags, ENABLE_HYPERV_HOST) ||
-                core::is_enabled(flags, WIN_HYPERV_DEFAULT_MACRO) // deprecated
+                core::is_enabled(flags, ENABLE_HYPERV_HOST)
             ) {
                 core_debug("HYPERV_CHECK: returned false through flag check");
                 return false;
@@ -8556,36 +8608,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 public: // START OF PUBLIC FUNCTIONS
 
-#ifdef __VMAWARE_DEV__
-    template <typename ...Args>
-    static std::vector<const char*> brand_vector(Args ...args) {
-        flagset flags = core::arg_handler(args...);
-
-        // are all the techiques already run? if not, run all of them to get the necessary info to fetch the brand
-        if (!memo::all_present() || core::is_enabled(flags, NO_MEMO)) {
-            u16 tmp = core::run_all(flags);
-            UNUSED(tmp);
-        }
-
-        std::vector<const char*> tmp_vec;
-
-        for (
-            auto it = core::brand_scoreboard.cbegin();
-            it != core::brand_scoreboard.cend();
-            ++it
-        ) {
-            const char* brand = it->first;
-            const brand_score_t points = it->second;
-
-            if (points > 0) {
-                tmp_vec.push_back(brand);
-            }
-        }
-
-        return tmp_vec;
-    }
-#endif
-
     /**
      * @brief Check for a specific technique based on flag argument
      * @param u8 (flags from VM wrapper)
@@ -8619,7 +8641,6 @@ public: // START OF PUBLIC FUNCTIONS
             (flag_bit == EXTREME) ||
             (flag_bit == HIGH_THRESHOLD) ||
             (flag_bit == ENABLE_HYPERV_HOST) ||
-            (flag_bit == WIN_HYPERV_DEFAULT_MACRO) ||  // deprecated
             (flag_bit == MULTIPLE)
             ) {
             throw_error("Flag argument must be a technique flag and not a settings flag");
@@ -8721,9 +8742,11 @@ public: // START OF PUBLIC FUNCTIONS
         constexpr const char* TMP_ESX = "VMware ESX";
         constexpr const char* TMP_GSX = "VMware GSX";
         constexpr const char* TMP_WORKSTATION = "VMware Workstation";
+        constexpr const char* TMP_FUSION = "VMware Fusion";
 
         constexpr const char* TMP_VPC = "Virtual PC";
         constexpr const char* TMP_HYPERV = "Microsoft Hyper-V";
+        constexpr const char* TMP_AZURE = "Microsoft Azure Hyper-V";
 #else
         constexpr const char* TMP_QEMU = QEMU;
         constexpr const char* TMP_KVM = KVM;
@@ -8734,24 +8757,31 @@ public: // START OF PUBLIC FUNCTIONS
         constexpr const char* TMP_ESX = VMWARE_ESX;
         constexpr const char* TMP_GSX = VMWARE_GSX;
         constexpr const char* TMP_WORKSTATION = VMWARE_WORKSTATION;
+        constexpr const char* TMP_FUSION = VMWARE_FUSION;
 
         constexpr const char* TMP_VPC = VPC;
         constexpr const char* TMP_HYPERV = HYPERV;
+        constexpr const char* TMP_AZURE = AZURE_HYPERV;
 #endif
 
         if (
-            brands.at(TMP_KVM) > 0 &&
-            brands.at(TMP_KVM_HYPERV) > 0
+            (brands.at(TMP_KVM) > 0) &&
+            (brands.at(TMP_KVM_HYPERV) > 0)
         ) {
             current_brand = TMP_KVM_HYPERV;
         } else if (
-            brands.at(TMP_QEMU) > 0 &&
-            brands.at(TMP_KVM) > 0
+            (brands.at(TMP_QEMU) > 0) &&
+            (brands.at(TMP_KVM) > 0)
         ) {
             current_brand = "QEMU+KVM";
         } else if (
-            brands.at(TMP_VPC) > 0 &&
-            brands.at(TMP_HYPERV) > 0
+            (brands.at(TMP_AZURE) > 0) &&
+            ((brands.at(TMP_HYPERV) > 0) || (brands.at(TMP_VPC) > 0))
+        ) {
+            current_brand = TMP_AZURE;
+        } else if (
+            (brands.at(TMP_VPC) > 0) &&
+            (brands.at(TMP_HYPERV) > 0)
         ) {
 #if (MSVC)
             const u8 version = util::get_windows_version();
@@ -8767,16 +8797,21 @@ public: // START OF PUBLIC FUNCTIONS
 #else
             current_brand = "Microsoft Virtual PC/Hyper-V";
 #endif
+        } else if (
+            // if only VMware Fusion is detected, set it. Otherwise, ignore this (the Fusion detection mechanisms are very weak as of 1.6 release)
+            (brands.at(TMP_FUSION) > 0) &&
+            (brands.at(TMP_EXPRESS) == 0) &&
+            (brands.at(TMP_ESX) == 0) &&
+            (brands.at(TMP_GSX) == 0) &&
+            (brands.at(TMP_WORKSTATION) == 0) &&
+            (brands.at(TMP_VMWARE) == 0)
+        ) {
+            current_brand = TMP_FUSION;
         } else if (brands.at(TMP_VMWARE) > 0) {
-            if (brands.at(TMP_EXPRESS) > 0) {
-                current_brand = TMP_EXPRESS;
-            } else if (brands.at(TMP_ESX) > 0) {
-                current_brand = TMP_ESX;
-            } else if (brands.at(TMP_GSX) > 0) {
-                current_brand = TMP_GSX;
-            } else if (brands.at(TMP_WORKSTATION) > 0) {
-                current_brand = TMP_WORKSTATION;
-            }
+            if (brands.at(TMP_EXPRESS) > 0) { current_brand = TMP_EXPRESS; } 
+            else if (brands.at(TMP_ESX) > 0) { current_brand = TMP_ESX; }
+            else if (brands.at(TMP_GSX) > 0) { current_brand = TMP_GSX; } 
+            else if (brands.at(TMP_WORKSTATION) > 0) { current_brand = TMP_WORKSTATION; }
         } else if (is_multiple) {
             std::vector<std::string> potential_brands;
 
@@ -8969,10 +9004,43 @@ public: // START OF PUBLIC FUNCTIONS
         flags.set(EXTREME, 0);
         flags.set(HIGH_THRESHOLD, 0);
         flags.set(ENABLE_HYPERV_HOST, 0);
-        flags.set(WIN_HYPERV_DEFAULT_MACRO, 0); // deprecated
         flags.set(MULTIPLE, 0);
 
         return flags;
+    }
+
+
+    /**
+     * @brief return a vector of detected brand strings (DEVELOPMENT FUNCTION, NOT MEANT FOR PUBLIC USE)
+     * @param any flag combination in VM structure or nothing
+     * @warning ⚠️ FOR DEVELOPMENT USAGE ONLY, NOT MEANT FOR PUBLIC USE ⚠️
+     */
+    template <typename ...Args>
+    static std::vector<const char*> brand_vector(Args ...args) {
+        flagset flags = core::arg_handler(args...);
+
+        // are all the techiques already run? if not, run all of them to get the necessary info to fetch the brand
+        if (!memo::all_present() || core::is_enabled(flags, NO_MEMO)) {
+            u16 tmp = core::run_all(flags);
+            UNUSED(tmp);
+        }
+
+        std::vector<const char*> tmp_vec;
+
+        for (
+            auto it = core::brand_scoreboard.cbegin();
+            it != core::brand_scoreboard.cend();
+            ++it
+        ) {
+            const char* brand = it->first;
+            const brand_score_t points = it->second;
+
+            if (points > 0) {
+                tmp_vec.push_back(brand);
+            }
+        }
+
+        return tmp_vec;
     }
 };
 
@@ -8992,6 +9060,7 @@ std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard {
     { VM::VMWARE_ESX, 0 },
     { VM::VMWARE_GSX, 0 },
     { VM::VMWARE_WORKSTATION, 0 },
+    { VM::VMWARE_FUSION, 0 },
     { VM::BHYVE, 0 },
     { VM::QEMU, 0 },
     { VM::KVM, 0 },
@@ -9023,7 +9092,8 @@ std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard {
     { VM::BLUESTACKS, 0 },
     { VM::JAILHOUSE, 0 },
     { VM::APPLE_VZ, 0 },
-    { VM::INTEL_KGT, 0 }
+    { VM::INTEL_KGT, 0 },
+    { VM::AZURE_HYPERV, 0 }
 };
 
 
@@ -9054,7 +9124,6 @@ VM::flagset VM::DEFAULT = []() -> flagset {
     tmp.flip(CURSOR);
     tmp.flip(HIGH_THRESHOLD);
     tmp.flip(ENABLE_HYPERV_HOST);
-    tmp.flip(WIN_HYPERV_DEFAULT_MACRO); // deprecated
     tmp.flip(MULTIPLE);
 
     return tmp;
@@ -9206,7 +9275,7 @@ const std::map<VM::u8, VM::core::technique> VM::core::technique_table = {
     { VM::BLUESTACKS_FOLDERS, { 15, VM::bluestacks }},
     { VM::HYPERV_SIGNATURE, { 95, VM::hyperv_eax_signature }},
     { VM::HYPERV_BITMASK, { 40, VM::hyperv_bitmask }},
-    { VM::KVM_BITMASK, { 10, VM::kvm_bitmask }},
+    { VM::KVM_BITMASK, { 40, VM::kvm_bitmask }},
     { VM::CPUID_SPACING, { 60, VM::cpuid_spacing }},
     { VM::KGT_SIGNATURE, { 80, VM::intel_kgt_signature }}
 };

@@ -15,10 +15,10 @@ The library is:
 - Very easy to use, with only 5 functions in its public interface
 - Cross-platform (Windows + MacOS + Linux)
 - Compatible with x86 and ARM, with backwards compatibility for 32-bit systems
-- Features up to 95+ unique VM detection techniques ([list](https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#flag-table))
-- Able to detect 30+ VM brands including VMware, VirtualBox, QEMU, Hyper-V, Parallels, and [much more](https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmbrand)
+- Features up to 100+ unique VM detection techniques ([list](https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#flag-table))
+- Able to detect 40 VM brands including VMware, VirtualBox, QEMU, Hyper-V, Parallels, and [much more](https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmbrand)
 - Very flexible, with total fine-grained control over which techniques get executed
-- Able to detect various semi-VM technologies like hypervisors, docker, emulators, and wine
+- Able to detect various semi-VM technologies like hypervisors, emulators, containers, and Wine
 - Able to guess the VM brand
 - Available with C++11 and above
 - Header-only
@@ -160,6 +160,7 @@ If you know a project, or if you're working on a project that uses VMAware, let 
 - [Waleedassar](http://waleedassar.blogspot.com)
 - [一半人生](https://github.com/TimelifeCzy)
 - [Thomas Roccia (fr0gger)](https://github.com/fr0gger)
+- [systemd project](https://github.com/systemd/systemd)
 
 <br>
 
