@@ -36,21 +36,21 @@ int main() {
 
 
     /**
-     * Essentially means only the brand, MAC, and hypervisor bit techniques 
+     * Essentially means only the CPU brand, MAC, and hypervisor bit techniques 
      * should be performed. Note that the less flags you provide, the more 
      * likely the result will not be accurate. If you just want to check for 
      * a single technique, use VM::check() instead. Also, read the flag table
      * at the end of this doc file for a full list of technique flags.
      */
-    bool is_vm3 = VM::detect(VM::BRAND, VM::MAC, VM::HYPERVISOR_BIT);
+    bool is_vm3 = VM::detect(VM::CPU_BRAND, VM::MAC, VM::HYPERVISOR_BIT);
 
 
     /**
      * All checks are performed including the cursor check, 
      * which waits 5 seconds for any human mouse interaction 
      * to detect automated virtual environments. This is the 
-     * only technique that's disabled by default but if you 
-     * want to include it, add VM::ALL which is NOT RECOMMENDED
+     * only technique that's disabled by default but if you're 
+     * fine with having a 5 second delay, add VM::ALL 
      */ 
     bool is_vm4 = VM::detect(VM::ALL);
 
@@ -61,7 +61,7 @@ int main() {
      * It's recommended to use this flag if you're only using one function
      * from the public interface a single time in total, so no unneccessary 
      * caching will be operated when you're not going to re-use the previously 
-     * stored result. 
+     * stored result at the end. 
      */ 
     bool is_vm5 = VM::detect(VM::NO_MEMO);
 
@@ -98,13 +98,14 @@ int main() {
 
 
     /**
-     * Hyper-V may be run on host systems where every host program could be virtualised
-     * by default. This is a Hyper-V specific problem where the library would make it
-     * seem like it gave you a false positive on a host system, even though it is in 
-     * fact running inside a Hyper-V VM. the library will disable all Hyper-V brand 
-     * detections a "not running in a VM". This flag will disable this mechanism. 
+     * Hyper-V may be run on host systems where every host program could be virtualised by 
+     * default. This is a Hyper-V specific problem where the library would make it seem 
+     * like it gave you a false positive on a host system, even though it is in fact 
+     * running inside a Hyper-V VM. The library will heuristically detect and disable 
+     * Hyper-V default host virtualisations as "not running in a VM". This flag will
+     * disable this heuristic mechanism. 
      * 
-     * For further information, please check the VM::ENABLE_HYPER_HOST flag information
+     * For further information, please check the VM::ENABLE_HYPERV_HOST flag information
      * in the non-technique flags section (situated around the end of this documentation).
      */ 
     bool is_vm10 = VM::detect(VM::ENABLE_HYPERV_HOST);
@@ -122,7 +123,7 @@ int main() {
 <br>
 
 ## `VM::percentage()`
-This will return a `std::uint8_t` between 0 and 100. It'll return the certainty of whether it has detected a VM based on all the techniques available as a percentage. The lower the value, the less chance it's a VM. The higher the value, the more likely it is. The parameters are treated the exact same way with the `VM::detect()` function.
+This will return a `std::uint8_t` between 0 and 100. It'll return the certainty of whether it has detected a VM based on all the techniques available as a percentage. The lower the value, the less chance it's a VM. The higher the value, the more likely it is. 
 
 ```cpp
 #include "vmaware.hpp"
@@ -159,6 +160,7 @@ This will essentially return the VM brand as a `std::string`. The exact possible
 - `VMware ESX`
 - `VMware GSX`
 - `VMware Workstation`
+- `VMware Fusion`
 - `bhyve`
 - `QEMU`
 - `KVM`
@@ -192,9 +194,9 @@ This will essentially return the VM brand as a `std::string`. The exact possible
 - `BlueStacks`
 - `Jailhouse`
 - `Apple VZ`
+- `Intel KGT (Trusty)`
 
-
-If none were detected, it will return `Unknown`. It's often NOT going to produce a satisfying result due to technical difficulties with accomplishing this, on top of being highly dependent on what mechanisms detected a VM. Don't rely on this function for critical operations as if it's your golden bullet. It's arguably unreliable and it'll most likely return `Unknown` (assuming it is actually running under a VM).
+If none were detected, it will return `Unknown`. It's often NOT going to produce a satisfying result due to technical difficulties with accomplishing this, on top of being highly dependent on what mechanisms detected a VM. This is especially true for VMware sub-versions (ESX, GSX, Fusion, etc...) Don't rely on this function for critical operations as if it's your golden bullet. It's arguably unreliable and it'll most likely return `Unknown` (assuming it is actually running under a VM).
 
 ```cpp
 #include "vmaware.hpp"
@@ -416,7 +418,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | 95 | `VM::MOUSE_DEVICE` | Check for presence of mouse device | Windows | 20% |  | GPL |  |
 | 96 | `VM::HYPERV_SIGNATURE` | Check for "Hv#1" string in CPUID |  | 95% |  |  |  |
 | 97 | `VM::HYPERV_BITMASK` | Check for reserved Hyper-V CPUID bitmask |  | 40% |  |  |  |
-| 98 | `VM::KVM_BITMASK` | Check for reserved Hyper-V CPUID bitmask |  | 10% |  |  |  |
+| 98 | `VM::KVM_BITMASK` | Check for reserved Hyper-V CPUID bitmask |  | 40% |  |  |  |
 | 99 | `VM::CPUID_SPACING` | Check for 0x100 spacing in hypervisor leaf |  | 60% |  |  |  |
 | 100 | `VM::KGT_SIGNATURE` | Check for Intel KGT (Trusty branch) hypervisor signature in CPUID |  | 80% |  |  |  |
 

@@ -21,8 +21,6 @@
  *  - License: GPL 3.0
  */ 
 
-#define __VMAWARE_DEV__ 1 // enable developer-specific functions, such as VM::brand_vector()
-
 #include <string>
 #include <iostream>
 #include <vector>
@@ -90,6 +88,7 @@ void help(void) {
     std::cout << 
 R"(Usage: 
  vmaware [option] [extra]
+ (do not run with any options if you want the full summary)
 
 Options:
  -h | --help        prints this help menu
@@ -452,6 +451,7 @@ VMware Express
 VMware ESX
 VMware GSX
 VMware Workstation
+VMware Fusion
 bhyve
 QEMU
 KVM
@@ -484,6 +484,8 @@ Unisys s-Par
 Cuckoo
 BlueStacks
 Jailhouse
+Apple VZ
+Intel KGT (Trusty)
 )";
             return 0;
         } else if (arg("--disable-hyperv-host")) {
