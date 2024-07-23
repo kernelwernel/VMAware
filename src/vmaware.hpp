@@ -7981,7 +7981,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             const u32 edx = fetch_register(EDX, 0x4000000A);
 
             debug("0A eax = ", std::bitset<31>(eax));
-            debug("0A ebx = ", std::bitset<31>(ebx));
             debug("0A ecx = ", std::bitset<31>(ecx));
             debug("0A edx = ", std::bitset<31>(edx));
 
