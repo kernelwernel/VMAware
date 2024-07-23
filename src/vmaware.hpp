@@ -8113,7 +8113,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         return false;
 #endif
-} 
+    } catch (...) {
+        debug("VMWARE_DMI: caught error, returned false");
+        return false;
+    }
     
 
 
@@ -8121,17 +8124,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 // https://learn.microsoft.com/en-us/virtualization/hyper-v-on-windows/tlfs/feature-discovery
 
 
-// Hypervisors that expose more than one hypervisor interface may provide additional sets of CPUID leaves for the additional interfaces, at a spacing of 100h leaves per interface. For example, when QEMU is configured to provide both Hyper-V and KVM interfaces, it will provide Hyper-V information starting from CPUID leaf 40000000h and KVM information starting from leaf 40000100h.[105][106]
-
-
-
-
-// Intel KGT (Trusty) 	"EVMMEVMMEVMM"[122] 	On "trusty" branch of KGT only, which is used for the Intel x86 Architecture Distribution of Trusty OS (archive)
-//(KGT also returns a signature in CPUID leaf 3: ECX=0x4D4D5645 "EVMM" and EDX=0x43544E49 "INTC") 
-
-
 // https://github.com/systemd/systemd/blob/main/src/basic/virt.c
-
 
 
 
@@ -8303,7 +8296,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
         // check if Hyper-V is running 
-        static bool hyperv_host_virtualisation_check(const flagset& flags) {
+        static bool hyperv_host_virt_check(const flagset& flags) {
             if (
                 core::is_enabled(flags, ENABLE_HYPERV_HOST)
             ) {
@@ -8889,7 +8882,7 @@ public: // START OF PUBLIC FUNCTIONS
             result = (points >= 100);
         }
 
-        if (core::hyperv_host_virtualisation_check(flags)) {
+        if (core::hyperv_host_virt_check(flags)) {
             core_debug("VM::detect(): returned false due to Hyper-V default check");
             return false;
         }
@@ -8940,7 +8933,7 @@ public: // START OF PUBLIC FUNCTIONS
             percent = static_cast<u8>(points);
         }
 
-        if (core::hyperv_host_virtualisation_check(flags)) {
+        if (core::hyperv_host_virt_check(flags)) {
             core_debug("VM::percentage(): returned 0 due to Hyper-V default check");
             return 0;
         }
