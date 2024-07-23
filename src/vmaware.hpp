@@ -163,6 +163,12 @@
 
 #if (MSVC)
 #pragma warning(push, 0) // disable the windows SDK errors temporarily
+
+#pragma warning(disable : 4244)
+#include <functional>
+#pragma warning(default : 4244)
+#elif
+#include <functional>
 #endif
 
 #include <functional>
@@ -218,8 +224,6 @@
 #pragma comment(lib, "strmiids.lib")
 #pragma comment(lib, "uuid.lib")
 #pragma comment(lib, "ntdll.lib")
-
-#pragma calling_convention(__fastcall) // credits to @NotRequiem for this idea
 
 #ifdef _UNICODE
 #define tregex std::wregex
