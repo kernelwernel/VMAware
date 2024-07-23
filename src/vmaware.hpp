@@ -167,7 +167,7 @@
 #pragma warning(disable : 4244)
 #include <functional>
 #pragma warning(default : 4244)
-#elif
+#else
 #include <functional>
 #endif
 

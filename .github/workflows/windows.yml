@@ -7,7 +7,7 @@
       - "run": "cmd.exe /c .github\\workflows\\build_run_win_64_debug.bat"
       - "uses": "actions/upload-artifact@main"
         "with":
-          "path": "build\\Release\\vmaware.exe"
+          "path": "build\\Debug\\vmaware.exe"
           "name": "vmaware64_debug.exe"
   "build_run_win_32_debug":
     "runs-on": "windows-latest"
@@ -16,7 +16,7 @@
       - "run": "cmd.exe /c .github\\workflows\\build_run_win_32_debug.bat"
       - "uses": "actions/upload-artifact@main"
         "with":
-          "path": "build\\Release\\vmaware.exe"
+          "path": "build\\Debug\\vmaware.exe"
           "name": "vmaware32_debug.exe"
   "build_run_win_32_release":
     "runs-on": "windows-latest"
