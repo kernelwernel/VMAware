@@ -2643,7 +2643,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
     /**
      * @brief checks for default usernames, often a sign of a VM
-     * @author: Some guy in a russian underground forum from a screenshot I saw, idk I don't speak russian ¯\_(ツ)_/¯
      * @category Windows
      */
     [[nodiscard]] static bool user_check() try {
@@ -2656,22 +2655,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         //TODO Ansi: debug("USER: ", "output = ", user);
 
-        if (0 == _tcscmp(user, _T("username"))) {
-            return core::add(THREADEXPERT);
-        }
-
         if (0 == _tcscmp(user, _T("vmware"))) {
             return core::add(VMWARE);
         }
-
-        if (0 == _tcscmp(user, _T("user"))) {
-            return core::add(SANDBOXIE);
-        }
-
-        return (
-            (0 == _tcscmp(user, _T("USER"))) ||      // Sandbox
-            (0 == _tcscmp(user, _T("currentuser")))  // Normal
-        );
 #endif
     }
     catch (...) {
