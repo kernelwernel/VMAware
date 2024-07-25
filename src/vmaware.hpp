@@ -1156,7 +1156,7 @@ private:
             print_to_stream(std::cout, message...);
 #endif
 
-            std::cout << "\n";
+            std::cout << dec << "\n";
         }
 
         template <typename... Args>
@@ -1181,7 +1181,7 @@ private:
             print_to_stream(std::cout, message...);
 #endif
 
-            std::cout << "\n";
+            std::cout << std::dec << "\n";
         }
 #endif
 
