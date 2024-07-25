@@ -287,8 +287,8 @@ void general(const bool enable_hyperv = true) {
     checker(VM::HYPERV_SIGNATURE, "Hyper-V CPUID signature");
     checker(VM::HYPERV_BITMASK, "Hyper-V CPUID reserved bitmask");
     checker(VM::KVM_BITMASK, "KVM CPUID reserved bitmask");
-
-
+    checker(VM::CPUID_SPACING, "CPUID 0x100 spacing");
+    checker(VM::KGT_SIGNATURE, "Intel KGT signature");
 
     std::printf("\n");
 
@@ -380,12 +380,6 @@ void general(const bool enable_hyperv = true) {
         return false;
     };
 
-
-    if (enable_hyperv && diff_brand_check() && brand_vec()) {
-        std::cout << note << 
-        " If you know you are running on host, Hyper-V virtualises all applications by default within the host system. This result is in fact correct and NOT a false positive. If you do not want Hyper-V's default virtualisation in the result, run with the \"--discard-hyperv-host\" argument, or disable Hyper-V in your system. See here for more information https://github.com/kernelwernel/VMAware/issues/75\n";
-    }
-
     const char* conclusion_color   = color(percent);
     std::string conclusion_message = message(percent, brand);
 
@@ -398,6 +392,14 @@ void general(const bool enable_hyperv = true) {
         << "======"
         << ansi_exit
         << "\n\n";
+
+    if (enable_hyperv && diff_brand_check() && brand_vec()) {
+        std::cout << note << 
+        " If you know you are running on host, Hyper-V virtualises all applications by default within the host system. This result is in fact correct and NOT a false positive. If you do not want Hyper-V's default virtualisation in the result, run with the \"--discard-hyperv-host\" argument, or disable Hyper-V in your system. See here for more information https://github.com/kernelwernel/VMAware/issues/75\n\n";
+    } else {
+        std::cout << note << 
+        " If you found a false positive, please make sure to create an issue at https://github.com/kernelwernel/VMAware/issues\n\n";
+    }
 }
 
 

@@ -162,11 +162,11 @@
 #endif
 
 #if (MSVC)
-#pragma warning(push, 0) // disable the windows SDK errors temporarily
-
 #pragma warning(disable : 4244)
 #include <functional>
 #pragma warning(default : 4244)
+
+#pragma warning(push, 0) // disable the windows SDK errors temporarily
 #else
 #include <functional>
 #endif
@@ -410,7 +410,6 @@ public:
         KGT_SIGNATURE,
 
         // start of non-technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
-        EXTREME,
         NO_MEMO,
         HIGH_THRESHOLD,
         ENABLE_HYPERV_HOST,
@@ -419,22 +418,22 @@ public:
 
 private:
     static constexpr u8 enum_size = MULTIPLE; // get enum size through value of last element
-    static constexpr u8 non_technique_count = MULTIPLE - EXTREME + 1; // get number of non-technique flags like VM::NO_MEMO for example
+    static constexpr u8 non_technique_count = MULTIPLE - NO_MEMO + 1; // get number of non-technique flags like VM::NO_MEMO for example
     static constexpr u8 INVALID = 255; // explicit invalid technique macro
     static constexpr u16 maximum_points = 4765; // theoretical total points if all VM detections returned true (which is practically impossible)
-    static constexpr u16 high_threshold_score = 350; // new threshold score from 100 to 350 if VM::HIGH_THRESHOLD flag is enabled
+    static constexpr u16 high_threshold_score = 300; // new threshold score from 100 to 350 if VM::HIGH_THRESHOLD flag is enabled
     static constexpr bool SHORTCUT = true; // macro for whether VM::core::run_all() should take a shortcut by skipping the rest of the techniques if the threshold score is already met
 
     // intended for loop indexes
     static constexpr u8 enum_begin = 0;
     static constexpr u8 enum_end = enum_size + 1;
     static constexpr u8 technique_begin = enum_begin;
-    static constexpr u8 technique_end = EXTREME;
-    static constexpr u8 non_technique_begin = EXTREME;
+    static constexpr u8 technique_end = NO_MEMO;
+    static constexpr u8 non_technique_begin = NO_MEMO;
     static constexpr u8 non_technique_end = enum_end;
 
 public:
-    static constexpr u8 technique_count = EXTREME; // get total number of techniques
+    static constexpr u8 technique_count = NO_MEMO; // get total number of techniques
     static std::vector<u8> technique_vector;
 #ifdef __VMAWARE_DEBUG__
     static u16 total_points;
@@ -2001,13 +2000,26 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        u32 a, b, c, d = 0;
+        u32 eax, ebx, ecx, edx = 0;
 
         for (u8 i = 0; i < 0xFF; ++i) {
-            cpu::cpuid(a, b, c, d, (cpu::leaf::hypervisor + i));
-            if ((a + b + c + d) != 0) {
-                return true;
+            cpu::cpuid(eax, ebx, ecx, edx, (cpu::leaf::hypervisor + i));
+
+            if (
+                (eax == 0) &&
+                (ebx == 0) &&
+                (ecx == 0) &&
+                (edx == 0)
+            ) {
+                continue;
             }
+
+            debug("CPUID_0X4: found leaf = ", cpu::leaf::hypervisor + i);
+            debug("CPUID_0X4: eax = ", eax);
+            debug("CPUID_0X4: ebx = ", ebx);
+            debug("CPUID_0X4: ecx = ", ecx);
+            debug("CPUID_0X4: edx = ", edx);
+            return true;
         }
 
         return false;
@@ -2658,6 +2670,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (0 == _tcscmp(user, _T("vmware"))) {
             return core::add(VMWARE);
         }
+
+        return false;
 #endif
     }
     catch (...) {
@@ -8207,7 +8221,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             // at this stage, only non-technique flags are asserted to be set
             if (
-                flags.test(EXTREME) ||
                 flags.test(NO_MEMO) ||
                 flags.test(HIGH_THRESHOLD) ||
                 flags.test(ENABLE_HYPERV_HOST) ||
@@ -8620,7 +8633,6 @@ public: // START OF PUBLIC FUNCTIONS
         // check if the bit is a non-technique flag, which shouldn't be allowed
         if (
             (flag_bit == NO_MEMO) ||
-            (flag_bit == EXTREME) ||
             (flag_bit == HIGH_THRESHOLD) ||
             (flag_bit == ENABLE_HYPERV_HOST) ||
             (flag_bit == MULTIPLE)
@@ -8848,13 +8860,6 @@ public: // START OF PUBLIC FUNCTIONS
     static bool detect(Args ...args) {
         flagset flags = core::arg_handler(args...);
 
-        if (
-            core::is_enabled(flags, EXTREME) && \
-            core::is_enabled(flags, HIGH_THRESHOLD)
-        ) {
-            throw std::invalid_argument("VM::EXTREME and VM::HIGH_THRESHOLD should not be set at the same time. Use either options instead of both");
-        }
-
         const u16 points = core::run_all(flags, SHORTCUT);
 
 #if (CPP >= 23)
@@ -8863,9 +8868,7 @@ public: // START OF PUBLIC FUNCTIONS
 
         bool result = false;
 
-        if (core::is_enabled(flags, EXTREME)) {
-            result = (points > 0);
-        } else if (core::is_enabled(flags, HIGH_THRESHOLD)) {
+        if (core::is_enabled(flags, HIGH_THRESHOLD)) {
             result = (points >= high_threshold_score);
         } else {
             result = (points >= 100);
@@ -8890,13 +8893,6 @@ public: // START OF PUBLIC FUNCTIONS
     static u8 percentage(Args ...args) {
         flagset flags = core::arg_handler(args...);
 
-        if (
-            core::is_enabled(flags, EXTREME) && \
-            core::is_enabled(flags, HIGH_THRESHOLD)
-            ) {
-            throw std::invalid_argument("VM::EXTREME and VM::HIGH_THRESHOLD should not be set at the same time. Use either options instead of both");
-        }
-
         const u16 points = core::run_all(flags, SHORTCUT);
         u8 percent = 0;
 
@@ -8904,14 +8900,10 @@ public: // START OF PUBLIC FUNCTIONS
         [[assume(points < maximum_points)]];
 #endif
 
-        u16 threshold = 200;
+        u16 threshold = 150;
 
         if (core::is_enabled(flags, HIGH_THRESHOLD)) {
             threshold = high_threshold_score;
-        }
-
-        if (core::is_enabled(flags, EXTREME)) {
-            threshold = 0;
         }
 
         if (points >= threshold) {
@@ -8983,7 +8975,6 @@ public: // START OF PUBLIC FUNCTIONS
 
         flags.flip();
         flags.set(NO_MEMO, 0);
-        flags.set(EXTREME, 0);
         flags.set(HIGH_THRESHOLD, 0);
         flags.set(ENABLE_HYPERV_HOST, 0);
         flags.set(MULTIPLE, 0);
@@ -9101,7 +9092,6 @@ VM::flagset VM::DEFAULT = []() -> flagset {
     tmp.set();
 
     // disable all the non-default flags
-    tmp.flip(EXTREME);
     tmp.flip(NO_MEMO);
     tmp.flip(CURSOR);
     tmp.flip(HIGH_THRESHOLD);
@@ -9162,7 +9152,7 @@ const std::map<VM::u8, VM::core::technique> VM::core::technique_table = {
     { VM::VMID, { 100, VM::vmid }},
     { VM::CPU_BRAND, { 50, VM::cpu_brand }},
     { VM::HYPERVISOR_BIT, { 100, VM::hypervisor_bit }}, 
-    { VM::CPUID_0X4, { 70, VM::cpuid_0x4 }},
+    { VM::CPUID_0X4, { 20, VM::cpuid_0x4 }},
     { VM::HYPERVISOR_STR, { 45, VM::hypervisor_brand }},
     { VM::RDTSC, { 10, VM::rdtsc_check }},
     { VM::THREADCOUNT, { 35, VM::thread_count }},
