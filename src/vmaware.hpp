@@ -189,6 +189,7 @@
 #include <bitset>
 #include <type_traits>
 
+
 #if (MSVC)
 #include <windows.h>
 #include <intrin.h>
@@ -1156,7 +1157,7 @@ private:
             print_to_stream(std::cout, message...);
 #endif
 
-            std::cout << dec << "\n";
+            std::cout << std::dec << "\n";
         }
 
         template <typename... Args>
