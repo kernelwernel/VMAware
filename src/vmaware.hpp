@@ -2024,9 +2024,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     #ifdef __VMAWARE_DEBUG__
             debug("CPUID_0X4: found leaf = ", std::hex, cpu::leaf::hypervisor + i);
             debug("CPUID_0X4: eax = ", std::bitset<31>(eax), "(0x", std::hex, eax, ")");
-            debug("CPUID_0X4: ebx = ", std::bitset<31>(ebx), "(0x", std::hex, eax, ")");
-            debug("CPUID_0X4: ecx = ", std::bitset<31>(ecx), "(0x", std::hex, eax, ")");
-            debug("CPUID_0X4: edx = ", std::bitset<31>(edx), "(0x", std::hex, eax, ")");
+            debug("CPUID_0X4: ebx = ", std::bitset<31>(ebx), "(0x", std::hex, ebx, ")");
+            debug("CPUID_0X4: ecx = ", std::bitset<31>(ecx), "(0x", std::hex, ecx, ")");
+            debug("CPUID_0X4: edx = ", std::bitset<31>(edx), "(0x", std::hex, edx, ")");
             found = true;
     #else
             return true;
