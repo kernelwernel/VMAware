@@ -284,7 +284,7 @@ void general(const bool enable_hyperv = true) {
     checker(VM::DEVICE_STRING, "bogus device string");
     checker(VM::MOUSE_DEVICE, "mouse device");
     checker(VM::BLUESTACKS_FOLDERS, "BlueStacks folders");
-    checker(VM::HYPERV_SIGNATURE, "Hyper-V CPUID signature");
+    checker(VM::CPUID_SIGNATURE, "CPUID signatures");
     checker(VM::HYPERV_BITMASK, "Hyper-V CPUID reserved bitmask");
     checker(VM::KVM_BITMASK, "KVM CPUID reserved bitmask");
     checker(VM::CPUID_SPACING, "CPUID 0x100 spacing");
@@ -488,6 +488,9 @@ BlueStacks
 Jailhouse
 Apple VZ
 Intel KGT (Trusty)
+Microsoft Azure Hyper-V
+Xbox NanoVisor (Hyper-V)
+SimpleVisor
 )";
             return 0;
         } else if (arg("--disable-hyperv-host")) {

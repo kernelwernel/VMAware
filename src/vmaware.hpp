@@ -404,7 +404,7 @@ public:
         SCREEN_RESOLUTION,
         DEVICE_STRING,
         BLUESTACKS_FOLDERS,
-        HYPERV_SIGNATURE,
+        CPUID_SIGNATURE,
         HYPERV_BITMASK,
         KVM_BITMASK,
         CPUID_SPACING,
@@ -516,6 +516,8 @@ private:
     static constexpr const char* APPLE_VZ = "Apple VZ";
     static constexpr const char* INTEL_KGT = "Intel KGT (Trusty)";
     static constexpr const char* AZURE_HYPERV = "Microsoft Azure Hyper-V";
+    static constexpr const char* NANOVISOR = "Xbox NanoVisor (Hyper-V)";
+    static constexpr const char* SIMPLEVISOR = "SimpleVisor";
 
 
 // macro for bypassing unused parameter/variable warnings
@@ -2003,6 +2005,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         u32 eax, ebx, ecx, edx = 0;
 
+    #ifdef __VMAWARE_DEBUG__ 
+        bool found = false;
+    #endif
+
         for (u8 i = 0; i < 0xFF; ++i) {
             cpu::cpuid(eax, ebx, ecx, edx, (cpu::leaf::hypervisor + i));
 
@@ -2015,15 +2021,23 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 continue;
             }
 
-            debug("CPUID_0X4: found leaf = ", cpu::leaf::hypervisor + i);
-            debug("CPUID_0X4: eax = ", eax);
-            debug("CPUID_0X4: ebx = ", ebx);
-            debug("CPUID_0X4: ecx = ", ecx);
-            debug("CPUID_0X4: edx = ", edx);
+    #ifdef __VMAWARE_DEBUG__
+            debug("CPUID_0X4: found leaf = ", std::hex, cpu::leaf::hypervisor + i);
+            debug("CPUID_0X4: eax = ", std::bitset<31>(eax), "(0x", std::hex, eax, ")");
+            debug("CPUID_0X4: ebx = ", std::bitset<31>(ebx), "(0x", std::hex, eax, ")");
+            debug("CPUID_0X4: ecx = ", std::bitset<31>(ecx), "(0x", std::hex, eax, ")");
+            debug("CPUID_0X4: edx = ", std::bitset<31>(edx), "(0x", std::hex, eax, ")");
+            found = true;
+    #else
             return true;
+    #endif
         }
 
+    #ifdef __VMAWARE_DEBUG__
+        return found;
+    #else
         return false;
+    #endif
 #endif
     }
     catch (...) {
@@ -7473,7 +7487,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     catch (...) {
-        debug("HYPERV_CPUID: caught error, returned false");
+        debug("CPUID_BITSET: caught error, returned false");
         return false;
     }
 
@@ -7765,10 +7779,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check for Hyper-V signature of "Hv#1" in CPUID
+     * @brief Check for signatures in leaf 0x40000001 in CPUID
+     * @link https://www.geoffchappell.com/studies/windows/km/ntoskrnl/inc/shared/hvgdk_mini/hv_hypervisor_interface.htm
+     * @link https://github.com/ionescu007/SimpleVisor/blob/master/shvvp.c
      * @category x86
      */
-    [[nodiscard]] static bool hyperv_eax_signature() try {
+    [[nodiscard]] static bool cpuid_signature() try {
 #if (!x86)
         return false;
 #else
@@ -7776,10 +7792,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         cpu::cpuid(eax, unused, unused, unused, 0x40000001);
         UNUSED(unused);
 
-        constexpr u32 signature = 0x31237648; // "Hv#1"
+        constexpr u32 hyperv = 0x31237648; // "Hv#1"
+        constexpr u32 nanovisor = 0x766E6258; // "Xbnv" 
+        constexpr u32 simplevisor = 0x00766853; // " vhS"
 
-        if (eax == signature) {
-            return core::add(HYPERV);
+        switch (eax) {
+            case hyperv: return core::add(HYPERV);
+            case nanovisor: return core::add(NANOVISOR);
+            case simplevisor: return core::add(SIMPLEVISOR);
         }
 
         return false;
@@ -8121,8 +8141,22 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         debug("VMWARE_DMI: caught error, returned false");
         return false;
     }
-    
 
+
+
+
+
+
+
+
+
+// https://medium.com/@matterpreter/hypervisor-detection-with-systemhypervisordetailinformation-26e44a57f80e
+
+// idea: maybe try to get the hyper-v version and check for those values in cpuid
+
+/*
+EAX=21h: Reserved for TDX enumerationWhen Intel TDX (Trust Domain Extensions) is active, attempts to execute the CPUID instruction by a TD (Trust Domain) guest will be intercepted by the TDX module. This module will, when CPUID is invoked with EAX=21h and ECX=0 (leaf 21h, sub-leaf 0), return the index of the highest supported sub-leaf for leaf 21h in EAX and a TDX module vendor ID string as a 12-byte ASCII string in EBX,EDX,ECX (in that order). Intel's own module implementation returns the vendor ID string "IntelTDX    " (with four trailing spaces)[102] - for this module, additional feature information is not available through CPUID and must instead be obtained through the TDX-specific TDCALL instruction. 
+*/
 
 
 // https://learn.microsoft.com/en-us/virtualization/hyper-v-on-windows/tlfs/feature-discovery
@@ -8742,6 +8776,7 @@ public: // START OF PUBLIC FUNCTIONS
         constexpr const char* TMP_VPC = "Virtual PC";
         constexpr const char* TMP_HYPERV = "Microsoft Hyper-V";
         constexpr const char* TMP_AZURE = "Microsoft Azure Hyper-V";
+        constexpr const char* TMP_NANOVISOR = "Xbox NanoVisor (Hyper-V)";
 #else
         constexpr const char* TMP_QEMU = QEMU;
         constexpr const char* TMP_KVM = KVM;
@@ -8757,6 +8792,7 @@ public: // START OF PUBLIC FUNCTIONS
         constexpr const char* TMP_VPC = VPC;
         constexpr const char* TMP_HYPERV = HYPERV;
         constexpr const char* TMP_AZURE = AZURE_HYPERV;
+        constexpr const char* TMP_NANOVISOR = NANOVISOR;
 #endif
 
         if (
@@ -8774,6 +8810,11 @@ public: // START OF PUBLIC FUNCTIONS
             ((brands.at(TMP_HYPERV) > 0) || (brands.at(TMP_VPC) > 0))
         ) {
             current_brand = TMP_AZURE;
+        } else if (
+            (brands.at(TMP_NANOVISOR) > 0) &&
+            ((brands.at(TMP_HYPERV) > 0) || (brands.at(TMP_VPC) > 0))
+        ) {
+            current_brand = TMP_NANOVISOR;
         } else if (
             (brands.at(TMP_VPC) > 0) &&
             (brands.at(TMP_HYPERV) > 0)
@@ -9067,7 +9108,9 @@ std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard {
     { VM::JAILHOUSE, 0 },
     { VM::APPLE_VZ, 0 },
     { VM::INTEL_KGT, 0 },
-    { VM::AZURE_HYPERV, 0 }
+    { VM::AZURE_HYPERV, 0 },
+    { VM::NANOVISOR, 0 },
+    { VM::SIMPLEVISOR, 0 }
 };
 
 
@@ -9246,7 +9289,7 @@ const std::map<VM::u8, VM::core::technique> VM::core::technique_table = {
     { VM::SCREEN_RESOLUTION, { 30, VM::screen_resolution }},
     { VM::DEVICE_STRING, { 25, VM::device_string }},
     { VM::BLUESTACKS_FOLDERS, { 15, VM::bluestacks }},
-    { VM::HYPERV_SIGNATURE, { 95, VM::hyperv_eax_signature }},
+    { VM::CPUID_SIGNATURE, { 95, VM::cpuid_signature }},
     { VM::HYPERV_BITMASK, { 40, VM::hyperv_bitmask }},
     { VM::KVM_BITMASK, { 40, VM::kvm_bitmask }},
     { VM::CPUID_SPACING, { 60, VM::cpuid_spacing }},

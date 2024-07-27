@@ -186,6 +186,8 @@ This will essentially return the VM brand as a `std::string`. The exact possible
 - `Jailhouse`
 - `Apple VZ`
 - `Intel KGT (Trusty)`
+- `Microsoft Azure Hyper-V`
+- `Xbox NanoVisor (Hyper-V)`
 
 If none were detected, it will return `Unknown`. It's often NOT going to produce a satisfying result due to technical difficulties with accomplishing this, on top of being highly dependent on what mechanisms detected a VM. This is especially true for VMware sub-versions (ESX, GSX, Fusion, etc...) Don't rely on this function for critical operations as if it's your golden bullet. It's arguably unreliable and it'll most likely return `Unknown` (assuming it is actually running under a VM).
 
@@ -399,7 +401,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | 85 | `VM::XEON_THREAD_MISMATCH` | Check if Intel Xeon CPUs have mismatched threads (same as above technique) |  | 85% |  |  |  |
 | 86 | `VM::NETTITUDE_VM_MEMORY` | Check for specific VM memory regions | Windows | 75% |  |  |  |
 | 87 | `VM::VMWARE_DEVICES` | Check for VMware device systems | Windows | 60% |  | GPL |  |
-| 88 | `VM::HYPERV_CPUID` | Check for specific CPUID bit results in ecx |  | 20% |  |  |  |
+| 88 | `VM::CPUID_BITSET` | Check for specific CPUID bit results in ecx |  | 20% |  |  |  |
 | 89 | `VM::CUCKOO_DIR` | Check for Cuckoo specific directory | Windows | 15% |  |  |  |
 | 90 | `VM::CUCKOO_PIPE` | Check for Cuckoo specific piping mechanism | Windows | 20% |  |  |  |
 | 91 | `VM::HYPERV_HOSTNAME` | Check for default Azure hostname format (Azure uses Hyper-V as their base VM brand) | Windows, Linux | 50% |  |  |  |
@@ -407,11 +409,12 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | 93 | `VM::SCREEN_RESOLUTION` | Check for pre-set screen resolutions commonly found in VMs | Windows | 10% |  |  |  |
 | 94 | `VM::DEVICE_STRING` | Check for acceptance of bogus device string | Windows | 25% |  |  |  |
 | 95 | `VM::MOUSE_DEVICE` | Check for presence of mouse device | Windows | 20% |  | GPL |  |
-| 96 | `VM::HYPERV_SIGNATURE` | Check for "Hv#1" string in CPUID |  | 95% |  |  |  |
+| 96 | `VM::CPUID_SIGNATURE` | Check for "Hv#1" string in CPUID |  | 95% |  |  |  |
 | 97 | `VM::HYPERV_BITMASK` | Check for reserved Hyper-V CPUID bitmask |  | 40% |  |  |  |
 | 98 | `VM::KVM_BITMASK` | Check for reserved Hyper-V CPUID bitmask |  | 40% |  |  |  |
 | 99 | `VM::CPUID_SPACING` | Check for 0x100 spacing in hypervisor leaf |  | 60% |  |  |  |
 | 100 | `VM::KGT_SIGNATURE` | Check for Intel KGT (Trusty branch) hypervisor signature in CPUID |  | 80% |  |  |  |
+| 101 | `VM::BLUESTACKS_FOLDERS` | Check for BlueStacks folders | Linux | 15% |  |  |  |
 
 
 <br>
