@@ -161,6 +161,7 @@ If you know a project, or if you're working on a project that uses VMAware, let 
 - [一半人生](https://github.com/TimelifeCzy)
 - [Thomas Roccia (fr0gger)](https://github.com/fr0gger)
 - [systemd project](https://github.com/systemd/systemd)
+- mrjaxser
 
 <br>
 

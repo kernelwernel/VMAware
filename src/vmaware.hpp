@@ -311,7 +311,6 @@ public:
         VMID = 0,
         CPU_BRAND,
         HYPERVISOR_BIT,
-        CPUID_0X4,
         HYPERVISOR_STR,
         RDTSC,
         THREADCOUNT,
@@ -407,7 +406,6 @@ public:
         CPUID_SIGNATURE,
         HYPERV_BITMASK,
         KVM_BITMASK,
-        CPUID_SPACING,
         KGT_SIGNATURE,
 
         // start of non-technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
@@ -1991,62 +1989,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check if 0x40000000~0x400000FF cpuid input is present (mostly present in VMs, according to VMware)
-     * @link https://kb.vmware.com/s/article/1009458
-     * @category x86
-     */
-    [[nodiscard]] static bool cpuid_0x4() try {
-#if (!x86)
-        return false;
-#else
-        if (!core::cpuid_supported) {
-            return false;
-        }
-
-        u32 eax, ebx, ecx, edx = 0;
-
-    #ifdef __VMAWARE_DEBUG__ 
-        bool found = false;
-    #endif
-
-        for (u8 i = 0; i < 0xFF; ++i) {
-            cpu::cpuid(eax, ebx, ecx, edx, (cpu::leaf::hypervisor + i));
-
-            if (
-                (eax == 0) &&
-                (ebx == 0) &&
-                (ecx == 0) &&
-                (edx == 0)
-            ) {
-                continue;
-            }
-
-    #ifdef __VMAWARE_DEBUG__
-            debug("CPUID_0X4: found leaf = ", std::hex, cpu::leaf::hypervisor + i);
-            debug("CPUID_0X4: eax = ", std::bitset<31>(eax), "(0x", std::hex, eax, ")");
-            debug("CPUID_0X4: ebx = ", std::bitset<31>(ebx), "(0x", std::hex, ebx, ")");
-            debug("CPUID_0X4: ecx = ", std::bitset<31>(ecx), "(0x", std::hex, ecx, ")");
-            debug("CPUID_0X4: edx = ", std::bitset<31>(edx), "(0x", std::hex, edx, ")");
-            found = true;
-    #else
-            return true;
-    #endif
-        }
-
-    #ifdef __VMAWARE_DEBUG__
-        return found;
-    #else
-        return false;
-    #endif
-#endif
-    }
-    catch (...) {
-        debug("CPUID_0x4: caught error, returned false");
-        return false;
-    }
-
-
-    /**
      * @brief Check for hypervisor brand string length (would be around 2 characters in a host machine)
      * @category x86
      */
@@ -2276,10 +2218,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         ss << std::setw(2) << std::setfill('0') << std::hex
             << static_cast<int32_t>(mac[0]) << ":"
             << static_cast<int32_t>(mac[1]) << ":"
-            << static_cast<int32_t>(mac[2]) << ":"
-            << static_cast<int32_t>(mac[3]) << ":"
-            << static_cast<int32_t>(mac[4]) << ":"
-            << static_cast<int32_t>(mac[5]);
+            << static_cast<int32_t>(mac[2]) << ":";
+            // removed for privacy reasons, cuz only the first 3 bytes are needed
+            //<< static_cast<int32_t>(mac[3]) << ":"  
+            //<< static_cast<int32_t>(mac[4]) << ":"
+            //<< static_cast<int32_t>(mac[5]);
         debug("MAC: ", ss.str());
 #endif
 
@@ -8054,37 +7997,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check for presence of 0x100 spacing in CPUID
-     * @note Hypervisors that expose more than one hypervisor 
-     *       interface may provide additional sets of CPUID 
-     *       leaves for the additional interfaces, at a spacing 
-     *       of 100h leaves per interface. For example, when QEMU 
-     *       is configured to provide both Hyper-V and KVM interfaces, 
-     *       it will provide Hyper-V information starting from CPUID 
-     *       leaf 40000000h and KVM information starting from leaf 40000100h.
-     * @link https://en.wikipedia.org/wiki/CPUID#EAX=40000000h-4FFFFFFFh:_Reserved_for_Hypervisor_use
-     * @category ARM, Linux
-     */
-    [[nodiscard]] static bool cpuid_spacing() try {
-#if (!x86)
-        return false;
-#else
-        u32 eax, ebx, ecx, edx = 0;
-        cpu::cpuid(eax, ebx, ecx, edx, 0x40000000);
-        const bool is_base_active = (eax + ebx + ecx + edx != 0);
-        cpu::cpuid(eax, ebx, ecx, edx, 0x40000100);
-        const bool is_top_active = (eax + ebx + ecx + edx != 0);
-
-        return (is_base_active && is_top_active);
-#endif
-    }
-    catch (...) {
-        debug("CPUID_SPACING: caught error, returned false");
-        return false;
-    }
-
-
-    /**
      * @brief Check for Intel KGT hypervisor signature in CPUID
      * @link https://github.com/intel/ikgt-core/blob/7dfd4d1614d788ec43b02602cce7a272ef8d5931/vmm/vmexit/vmexit_cpuid.c
      * @category x86
@@ -8115,7 +8027,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check for Intel KGT hypervisor signature in CPUID
+     * @brief Check for VMware DMI strings in BIOS serial number
      * @link https://knowledge.broadcom.com/external/article?legacyId=1009458
      * @category Windows
      */
@@ -8163,6 +8075,12 @@ EAX=21h: Reserved for TDX enumerationWhen Intel TDX (Trust Domain Extensions) is
 
 
 // https://github.com/systemd/systemd/blob/main/src/basic/virt.c
+
+
+
+
+
+
 
 
 
@@ -8407,7 +8325,6 @@ EAX=21h: Reserved for TDX enumerationWhen Intel TDX (Trust Domain Extensions) is
 
                 constexpr std::array<u8, 37> non_brand_returners = {{
                     VM::HYPERVISOR_BIT,
-                    VM::CPUID_0X4,
                     VM::HYPERVISOR_STR,
                     VM::RDTSC,
                     VM::THREADCOUNT,
@@ -9196,7 +9113,6 @@ const std::map<VM::u8, VM::core::technique> VM::core::technique_table = {
     { VM::VMID, { 100, VM::vmid }},
     { VM::CPU_BRAND, { 50, VM::cpu_brand }},
     { VM::HYPERVISOR_BIT, { 100, VM::hypervisor_bit }}, 
-    { VM::CPUID_0X4, { 20, VM::cpuid_0x4 }},
     { VM::HYPERVISOR_STR, { 45, VM::hypervisor_brand }},
     { VM::RDTSC, { 10, VM::rdtsc_check }},
     { VM::THREADCOUNT, { 35, VM::thread_count }},
@@ -9292,6 +9208,5 @@ const std::map<VM::u8, VM::core::technique> VM::core::technique_table = {
     { VM::CPUID_SIGNATURE, { 95, VM::cpuid_signature }},
     { VM::HYPERV_BITMASK, { 40, VM::hyperv_bitmask }},
     { VM::KVM_BITMASK, { 40, VM::kvm_bitmask }},
-    { VM::CPUID_SPACING, { 60, VM::cpuid_spacing }},
     { VM::KGT_SIGNATURE, { 80, VM::intel_kgt_signature }}
 };
