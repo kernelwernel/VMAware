@@ -201,7 +201,7 @@ Wine
 Virtual Apple
 Anubis
 JoeBox
-Thread Expert
+ThreatExpert
 CWSandbox
 Comodo
 Bochs
@@ -442,6 +442,95 @@ void general(const bool hyperv_setting, const bool enable_notes) {
 
         return false;
     };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/*
+
+// container 
+Docker
+
+
+// Either type 1 or 2
+Microsoft Virtual PC/Hyper-V
+
+// hypervisor (unknown type)
+Lockheed Martin LMHS
+
+
+// type 1:
+VMWare vSphere, Citrix
+Xen Server, Microsoft Hyper-V…
+VMware ESXI
+ACRN
+QNX hypervisor
+Microsoft Hyper-V
+Microsoft Azure Hyper-V
+Xbox NanoVisor (Hyper-V)
+KVM 
+bhyve
+KVM Hyper-V Enlightenment
+KVM
+QEMU+KVM
+Intel HAXM
+Intel KGT (Trusty)
+SimpleVisor
+
+
+// type 2:
+VirtualBox
+VMware
+VMware Express
+VMware GSX
+VMware Workstation
+VMware Fusion
+Parallels
+Virtual PC
+Virtual Apple
+NVMM
+OpenBSD VMM
+
+
+// compatibility layer
+Wine
+
+
+// emulator:
+bochs
+BlueStacks
+Microsoft x86-to-ARM
+QEMU
+
+// sandbox
+Cuckoo
+Sandboxie
+Hybrid Analysis
+CWSandbox
+JoeBox
+Anubis (discontinued)
+Comodo
+ThreatExpert
+
+// partitioning hypervisor
+Jailhouse
+Unisys s-Par
+
+// unknown
+Apple VZ
+*/
+
+
 
     const char* conclusion_color   = color(percent);
     std::string conclusion_message = message(percent, brand);
