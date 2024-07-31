@@ -1,15 +1,23 @@
 "on": "push"
 "jobs":
-  "build_run_win_32":
+  "build_run_win_64_debug":
     "runs-on": "windows-latest"
     "steps":
       - "uses": "actions/checkout@main"
-      - "run": "cmd.exe /c .github\\workflows\\build_run_win_32.bat"
-  "build_run_win_64":
+      - "run": "cmd.exe /c .github\\workflows\\build_run_win_64_debug.bat"
+      - "uses": "actions/upload-artifact@main"
+        "with":
+          "path": "build\\Debug\\vmaware.exe"
+          "name": "vmaware64_debug.exe"
+  "build_run_win_32_debug":
     "runs-on": "windows-latest"
     "steps":
       - "uses": "actions/checkout@main"
-      - "run": "cmd.exe /c .github\\workflows\\build_run_win_64.bat"
+      - "run": "cmd.exe /c .github\\workflows\\build_run_win_32_debug.bat"
+      - "uses": "actions/upload-artifact@main"
+        "with":
+          "path": "build\\Debug\\vmaware.exe"
+          "name": "vmaware32_debug.exe"
   "build_run_win_32_release":
     "runs-on": "windows-latest"
     "steps":

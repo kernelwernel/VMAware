@@ -33,7 +33,7 @@ def fetch():
     header_content.reverse()
 
     # breakpoint
-    keyword = "const std::map<VM::u8, VM::core::technique> VM::core::table = {"
+    keyword = "const std::map<VM::u8, VM::core::technique> VM::core::technique_table = {"
 
     # fetch index of breakpoint
     index_of_keyword = next((i for i, line in enumerate(header_content) if keyword in line), None)

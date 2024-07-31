@@ -25,6 +25,7 @@
 #include <iostream>
 #include <vector>
 #include <cstdint>
+#include <bit>
 
 #if (defined(__GNUC__) || defined(__linux__))
     #include <unistd.h>
@@ -46,6 +47,13 @@ constexpr const char* orange = "\x1B[38;2;255;180;5m";
 constexpr const char* green = "\x1B[38;2;94;214;114m";
 constexpr const char* red_orange = "\x1B[38;2;247;127;40m";
 constexpr const char* green_orange = "\x1B[38;2;174;197;59m";
+
+constexpr bool ENABLE_HYPERV = true;
+constexpr bool ENABLE_NOTES = true;
+constexpr bool DISABLE_HYPERV = false;
+constexpr bool DISABLE_NOTES = false;
+
+std::bitset<12> arg_bitset;
 
 #if (MSVC)
 class win_ansi_enabler_t
@@ -84,7 +92,7 @@ private:
 std::uint8_t detected_count = 0;
 
 
-void help(void) {
+[[noreturn]] void help(void) {
     std::cout << 
 R"(Usage: 
  vmaware [option] [extra]
@@ -103,16 +111,21 @@ Options:
 
 Extra:
  --disable-hyperv-host  disable the possibility of Hyper-V default virtualisation result on host OS
+ --disable-notes        no notes will be provided
+
 )";
+    std::exit(0);
 }
 
-void version(void) {
+[[noreturn]] void version(void) {
     std::cout << "vmaware " << "v" << ver << " (" << date << ")\n\n" <<
     "Derived project of VMAware library at https://github.com/kernelwernel/VMAware"
     "License GPLv3+: GNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>.\n" << 
     "This is free software: you are free to change and redistribute it.\n" <<
     "There is NO WARRANTY, to the extent permitted by law.\n" <<
     "Developed and maintained by kernelwernel, see https://github.com/kernelwernel\n";
+
+    std::exit(0);
 }
 
 const char* color(const std::uint8_t score) {
@@ -159,8 +172,58 @@ std::string message(const std::uint8_t score, const std::string &brand) {
     return "Unknown error";
 }
 
+[[noreturn]] void brand_list() {
+    std::cout << 
+R"(VirtualBox
+VMware
+VMware Express
+VMware ESX
+VMware GSX
+VMware Workstation
+VMware Fusion
+bhyve
+QEMU
+KVM
+KVM Hyper-V Enlightenment
+QEMU+KVM
+Virtual PC
+Microsoft Hyper-V
+Microsoft Virtual PC/Hyper-V
+Microsoft x86-to-ARM
+Parallels
+Xen HVM
+ACRN
+QNX hypervisor
+Hybrid Analysis
+Sandboxie
+Docker
+Wine
+Virtual Apple
+Anubis
+JoeBox
+ThreatExpert
+CWSandbox
+Comodo
+Bochs
+Lockheed Martin LMHS
+NVMM
+OpenBSD VMM
+Intel HAXM
+Unisys s-Par
+Cuckoo
+BlueStacks
+Jailhouse
+Apple VZ
+Intel KGT (Trusty)
+Microsoft Azure Hyper-V
+Xbox NanoVisor (Hyper-V)
+SimpleVisor
+)";
 
-void general(const bool enable_hyperv = true) {
+    std::exit(0);
+}
+
+void general(const bool hyperv_setting, const bool enable_notes) {
     const std::string detected = ("[  " + std::string(green) + "DETECTED" + std::string(ansi_exit) + "  ]");
     const std::string not_detected = ("[" + std::string(red) + "NOT DETECTED" + std::string(ansi_exit) + "]");
     const std::string note = ("[    NOTE    ]");
@@ -175,23 +238,24 @@ void general(const bool enable_hyperv = true) {
     };
 
     #if (defined(__GNUC__) || defined(__linux__))
-        const uid_t uid  = getuid();
-        const uid_t euid = geteuid();
+        if (enable_notes) {
+            const uid_t uid  = getuid();
+            const uid_t euid = geteuid();
 
-        const bool is_root = (
-            (uid != euid) || 
-            (euid == 0)
-        );
+            const bool is_root = (
+                (uid != euid) || 
+                (euid == 0)
+            );
 
-        if (!is_root) {
-            std::cout << note << " Running under root might give better results\n";
+            if (!is_root) {
+                std::cout << note << " Running under root might give better results\n";
+            }
         }
     #endif
 
     checker(VM::VMID, "VMID");
     checker(VM::CPU_BRAND, "CPU brand");
     checker(VM::HYPERVISOR_BIT, "CPUID hypervisor bit");
-    checker(VM::CPUID_0X4, "CPUID 0x4 leaf");
     checker(VM::HYPERVISOR_STR, "hypervisor brand");
     checker(VM::RDTSC, "RDTSC");
     checker(VM::SIDT5, "sidt null byte");
@@ -284,11 +348,10 @@ void general(const bool enable_hyperv = true) {
     checker(VM::DEVICE_STRING, "bogus device string");
     checker(VM::MOUSE_DEVICE, "mouse device");
     checker(VM::BLUESTACKS_FOLDERS, "BlueStacks folders");
-    checker(VM::HYPERV_SIGNATURE, "Hyper-V CPUID signature");
+    checker(VM::CPUID_SIGNATURE, "CPUID signatures");
     checker(VM::HYPERV_BITMASK, "Hyper-V CPUID reserved bitmask");
     checker(VM::KVM_BITMASK, "KVM CPUID reserved bitmask");
-
-
+    checker(VM::KGT_SIGNATURE, "Intel KGT signature");
 
     std::printf("\n");
 
@@ -301,7 +364,7 @@ void general(const bool enable_hyperv = true) {
     std::cout << "VM brand: " << (brand == "Unknown" ? red : green) << brand << ansi_exit << "\n";
 
     const char* percent_color = "";
-    const std::uint8_t percent = (enable_hyperv ? VM::percentage(VM::ENABLE_HYPERV_HOST) : VM::percentage());
+    const std::uint8_t percent = (hyperv_setting ? VM::percentage(VM::ENABLE_HYPERV_HOST) : VM::percentage());
 
     if      (percent == 0) { percent_color = red; }
     else if (percent < 25) { percent_color = red_orange; }
@@ -311,7 +374,7 @@ void general(const bool enable_hyperv = true) {
 
     std::cout << "VM likeliness: " << percent_color << static_cast<std::uint32_t>(percent) << "%" << ansi_exit << "\n";
 
-    const bool is_detected = (enable_hyperv ? VM::detect(VM::ENABLE_HYPERV_HOST) : VM::detect());
+    const bool is_detected = (hyperv_setting ? VM::detect(VM::ENABLE_HYPERV_HOST) : VM::detect());
 
     std::cout << "VM confirmation: " << (is_detected ? green : red) << std::boolalpha << is_detected << std::noboolalpha << ansi_exit << "\n";
 
@@ -381,10 +444,93 @@ void general(const bool enable_hyperv = true) {
     };
 
 
-    if (enable_hyperv && diff_brand_check() && brand_vec()) {
-        std::cout << note << 
-        " If you know you are running on host, Hyper-V virtualises all applications by default within the host system. This result is in fact correct and NOT a false positive. If you do not want Hyper-V's default virtualisation in the result, run with the \"--discard-hyperv-host\" argument, or disable Hyper-V in your system. See here for more information https://github.com/kernelwernel/VMAware/issues/75\n";
-    }
+
+
+
+
+
+
+
+
+
+
+
+
+/*
+
+// container 
+Docker
+
+
+// Either type 1 or 2
+Microsoft Virtual PC/Hyper-V
+
+// hypervisor (unknown type)
+Lockheed Martin LMHS
+
+
+// type 1:
+VMWare vSphere, Citrix
+Xen Server, Microsoft Hyper-V…
+VMware ESXI
+ACRN
+QNX hypervisor
+Microsoft Hyper-V
+Microsoft Azure Hyper-V
+Xbox NanoVisor (Hyper-V)
+KVM 
+bhyve
+KVM Hyper-V Enlightenment
+KVM
+QEMU+KVM
+Intel HAXM
+Intel KGT (Trusty)
+SimpleVisor
+
+
+// type 2:
+VirtualBox
+VMware
+VMware Express
+VMware GSX
+VMware Workstation
+VMware Fusion
+Parallels
+Virtual PC
+Virtual Apple
+NVMM
+OpenBSD VMM
+
+
+// compatibility layer
+Wine
+
+
+// emulator:
+bochs
+BlueStacks
+Microsoft x86-to-ARM
+QEMU
+
+// sandbox
+Cuckoo
+Sandboxie
+Hybrid Analysis
+CWSandbox
+JoeBox
+Anubis (discontinued)
+Comodo
+ThreatExpert
+
+// partitioning hypervisor
+Jailhouse
+Unisys s-Par
+
+// unknown
+Apple VZ
+*/
+
+
 
     const char* conclusion_color   = color(percent);
     std::string conclusion_message = message(percent, brand);
@@ -398,6 +544,14 @@ void general(const bool enable_hyperv = true) {
         << "======"
         << ansi_exit
         << "\n\n";
+
+    if (hyperv_setting && diff_brand_check() && brand_vec() && enable_notes) {
+        std::cout << note << 
+        " If you know you are running on host, Hyper-V virtualises all applications by default within the host system. This result is in fact correct and NOT a false positive. If you do not want Hyper-V's default virtualisation in the result, run with the \"--discard-hyperv-host\" argument, or disable Hyper-V in your system. See here for more information https://github.com/kernelwernel/VMAware/issues/75\n\n";
+    } else if (enable_notes) {
+        std::cout << note << 
+        " If you found a false positive, please make sure to create an issue at https://github.com/kernelwernel/VMAware/issues\n\n";
+    }
 }
 
 
@@ -406,146 +560,175 @@ int main(int argc, char* argv[]) {
     win_ansi_enabler_t ansi_enabler;
 #endif
 
-    const std::vector<const char*> args(argv, argv + argc); // easier this way
+    const std::vector<const char*> args(argv + 1, argv + argc); // easier this way
     const std::uint32_t arg_count = argc - 1;
 
     if (arg_count == 0) {
-        general();
-    } else if (arg_count == 1) {
-        const char* argument = args.at(1);
+        general(ENABLE_HYPERV, ENABLE_NOTES);
+        std::exit(0);
+    } 
+    
+    enum arg_enum : std::uint8_t {
+        HELP,
+        VERSION,
+        DETECT,
+        STDOUT,
+        BRAND,
+        BRAND_LIST,
+        PERCENT,
+        CONCLUSION,
+        NUMBER,
+        HYPERV,
+        NOTES,
+        NULL_ARG
+    };
 
-        auto arg = [&argument](const char* option) -> bool {
-            return (std::strcmp(argument, option) == 0);
-        };
+    static constexpr std::array<std::pair<const char*, arg_enum>, 20> table {{
+        { "-h", HELP },
+        { "-v", VERSION },
+        { "-d", DETECT },
+        { "-s", STDOUT },
+        { "-b", BRAND },
+        { "-p", PERCENT },
+        { "-c", CONCLUSION },
+        { "-l", BRAND_LIST },
+        { "-n", NUMBER },
+        { "--help", HELP },
+        { "--version", VERSION },
+        { "--detect", DETECT },
+        { "--stdout", STDOUT },
+        { "--brand", BRAND },
+        { "--percent", PERCENT },
+        { "--conclusion", CONCLUSION },
+        { "--brand-list", BRAND_LIST },
+        { "--number", NUMBER },
+        { "--disable-hyperv-host", HYPERV },
+        { "--disable-notes", NOTES }
+    }};
 
-        if (arg("-s") || arg("--stdout")) {
-            return (!VM::detect(VM::NO_MEMO, VM::ENABLE_HYPERV_HOST));
-        } else if (arg("-h") || arg("--help")) {
-            help();
+    [[maybe_unused]] std::string potential_null_arg = "";
+
+    for (const auto arg_string : args) {
+        auto it = std::find_if(table.cbegin(), table.cend(), [&](const auto &p) {
+            return (std::strcmp(p.first, arg_string) == 0);
+        });
+
+        if (it == table.end()) {
+            arg_bitset.set(NULL_ARG);
+            potential_null_arg = arg_string;
+        } else {
+            arg_bitset.set(it->second);
+        }
+    }
+
+
+    // no critical returners
+    if (arg_bitset.test(NULL_ARG)) {
+        std::cerr << "Unknown argument \"" << potential_null_arg << "\", aborting\n";
+        return 1;
+    }
+
+    if (arg_bitset.test(HELP)) {
+        help();
+    } 
+
+    if (arg_bitset.test(VERSION)) {
+        version();
+    }
+
+    if (arg_bitset.test(BRAND_LIST)) {
+        brand_list();
+    }
+
+    if (arg_bitset.test(NUMBER)) {
+        std::cout << static_cast<std::uint32_t>(VM::technique_count) << "\n";
+        return 0;
+    }
+
+
+    // settings
+    bool hyperv_disable_setting;
+    bool notes_setting;
+
+    if (arg_bitset.test(HYPERV)) {
+        hyperv_disable_setting = DISABLE_HYPERV;
+    } else {
+        hyperv_disable_setting = ENABLE_HYPERV;
+    }
+
+    if (arg_bitset.test(NOTES)) {
+        notes_setting = DISABLE_NOTES;
+    } else {
+        notes_setting = ENABLE_NOTES;
+    }
+
+
+    // critical returners
+    const std::uint32_t returners = (
+        static_cast<std::uint8_t>(arg_bitset.test(STDOUT)) +
+        static_cast<std::uint8_t>(arg_bitset.test(PERCENT)) +
+        static_cast<std::uint8_t>(arg_bitset.test(DETECT)) +
+        static_cast<std::uint8_t>(arg_bitset.test(BRAND)) +
+        static_cast<std::uint8_t>(arg_bitset.test(CONCLUSION))
+    );
+
+    if (returners > 0) { // at least one of the options are set
+        if (returners > 1) { // more than 2 options are set
+            std::cerr << "--stdout, --percent, --detect, and --conclusion must NOT be a combination, choose only a single one\n";
+            return 1;
+        }
+
+        if (arg_bitset.test(STDOUT)) {
+            if (hyperv_disable_setting) {
+                return (!VM::detect(VM::NO_MEMO));
+            } else {
+                return (!VM::detect(VM::NO_MEMO, VM::ENABLE_HYPERV_HOST));
+            }
+        }
+
+        if (arg_bitset.test(PERCENT)) {
+            if (hyperv_disable_setting) {
+                std::cout << static_cast<std::uint32_t>(VM::percentage(VM::NO_MEMO)) << "\n";
+            } else {
+                std::cout << static_cast<std::uint32_t>(VM::percentage(VM::NO_MEMO, VM::ENABLE_HYPERV_HOST)) << "\n";
+            }
             return 0;
-        } else if (arg("-v") || arg("--version")) {
-            version();
+        }
+
+        if (arg_bitset.test(DETECT)) {
+            if (hyperv_disable_setting) {
+                std::cout << VM::detect(VM::NO_MEMO) << "\n";
+            } else {
+                std::cout << VM::detect(VM::NO_MEMO, VM::ENABLE_HYPERV_HOST) << "\n";
+            }
             return 0;
-        } else if (arg("-b") || arg("--brand")) {
-            std::cout << VM::brand(VM::NO_MEMO, VM::MULTIPLE) << "\n";
+        }
+
+        if (arg_bitset.test(BRAND)) {
+            if (hyperv_disable_setting) {
+                std::cout << VM::brand(VM::NO_MEMO, VM::MULTIPLE) << "\n";
+            } else {
+                std::cout << VM::brand(VM::NO_MEMO, VM::MULTIPLE, VM::ENABLE_HYPERV_HOST) << "\n";
+            }
             return 0;
-        } else if (arg("-p") || arg("--percent")) {
-            std::cout << static_cast<std::uint32_t>(VM::percentage(VM::NO_MEMO, VM::ENABLE_HYPERV_HOST)) << "\n";
-            return 0;
-        } else if (arg("-d") || arg("--detect")) {
-            std::cout << VM::detect(VM::NO_MEMO) << "\n";
-            return 0;
-        } else if (arg("-n") || arg("--number")) {
-            std::cout << static_cast<std::uint32_t>(VM::technique_count) << "\n";
-            return 0;
-        } else if (arg("-c") || arg("--conclusion")) {
-            const std::uint8_t percent = VM::percentage(VM::ENABLE_HYPERV_HOST);
+        }
+
+        if (arg_bitset.test(CONCLUSION)) {
+            std::uint8_t percent = 0;
+
+            if (hyperv_disable_setting) {
+                percent = VM::percentage();
+            } else {
+                percent = VM::percentage(VM::ENABLE_HYPERV_HOST);
+            }
+
             const std::string brand = VM::brand(VM::MULTIPLE);
             std::cout << message(percent, brand) << "\n";
             return 0;
-        } else if (arg("-l") || arg("--brand-list")) {
-            std::cout << 
-R"(VirtualBox
-VMware
-VMware Express
-VMware ESX
-VMware GSX
-VMware Workstation
-VMware Fusion
-bhyve
-QEMU
-KVM
-KVM Hyper-V Enlightenment
-QEMU+KVM
-Virtual PC
-Microsoft Hyper-V
-Microsoft Virtual PC/Hyper-V
-Microsoft x86-to-ARM
-Parallels
-Xen HVM
-ACRN
-QNX hypervisor
-Hybrid Analysis
-Sandboxie
-Docker
-Wine
-Virtual Apple
-Anubis
-JoeBox
-Thread Expert
-CWSandbox
-Comodo
-Bochs
-Lockheed Martin LMHS
-NVMM
-OpenBSD VMM
-Intel HAXM
-Unisys s-Par
-Cuckoo
-BlueStacks
-Jailhouse
-Apple VZ
-Intel KGT (Trusty)
-)";
-            return 0;
-        } else if (arg("--disable-hyperv-host")) {
-            general(false);
-            return 0;
-        } else {
-            std::cerr << "Unknown argument provided, consult the help menu with --help\n";
-            return 1;
         }
-    } else if (arg_count == 2) {
-        constexpr const char* hyperv_arg = "--disable-hyperv-host";
-
-        auto find = [&args](const char* option) -> bool {
-            for (const auto arg : args) {
-                if (std::strcmp(arg, option) == 0) {
-                    return true;
-                }
-            }
-
-            return false;
-        };
-
-        // check if the hyperv_arg option exists
-        if (!find(hyperv_arg)) {
-            std::cerr << hyperv_arg << " must be used with an option combination, consult the help menu with --help\n";
-            return 1;
-        }
-
-        const bool p_detect     = (find("-d") || find("--detect"));
-        const bool p_stdout     = (find("-s") || find("--stdout"));
-        const bool p_percent    = (find("-p") || find("--percent"));
-        const bool p_conclusion = (find("-c") || find("--conclusion"));
-
-        // check if combination of the option and hyperv exists
-        if (!(p_detect || p_stdout || p_percent || p_conclusion)) {
-            std::cerr << "Unknown or unsupported option with" << hyperv_arg << ", only --detect, --stdout, --percent, and --conclusion are supported\n";
-            return 1;
-        }
-
-        // run that option but with hyperv modification
-        if (p_detect) {
-            std::cout << VM::detect() << "\n";
-            return 0;
-        } else if (p_stdout) {
-            return (!VM::detect());
-        } else if (p_percent) {
-            std::cout << static_cast<std::uint32_t>(VM::percentage()) << "\n";
-            return 0;
-        } else if (p_conclusion) {
-            const std::uint8_t percent = VM::percentage();
-            const std::string brand = VM::brand();
-            std::cout << message(percent, brand) << "\n";
-        }
-    } else if (arg_count > 2) {
-        std::cerr << "Only 1, 2, or no arguments are expected, not " << arg_count << ". consult the help menu with --help\n";
-        return 1;
-    } else {
-        std::cerr << "Encountered unknown error, aborting\n";
-        return 1;
     }
-    
+
+    // at this point, it's assumed that the user's intention is for the general summary to be ran
+    general(hyperv_disable_setting, notes_setting);
     return 0;
 }
