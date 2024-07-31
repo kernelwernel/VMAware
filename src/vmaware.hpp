@@ -706,22 +706,37 @@ private:
             u8 extmodel;
         };
 
+        [[nodiscard]] static stepping_struct fetch_steppings() {
+            struct stepping_struct steps {};
+
+            u32 unused, eax = 0;
+            cpu::cpuid(eax, unused, unused, unused, 1);
+            UNUSED(unused);
+
+            steps.model = ((eax >> 4) & 0b1111);
+            steps.family = ((eax >> 8) & 0b1111);
+            steps.extmodel = ((eax >> 16) & 0b1111);
+
+            return steps;
+        }
+
         // check if the CPU is an intel celeron
-        [[nodiscard]] bool is_celeron(const stepping_struct steps) {
+        [[nodiscard]] static bool is_celeron(const stepping_struct steps) {
             if (!cpu::is_intel()) {
                 return false;
             }
 
+            constexpr u8 celeron_model = 0xA;
             constexpr u8 celeron_family = 0x6;
             constexpr u8 celeron_extmodel = 0x2;
-            constexpr u8 celeron_model = 0xA;
 
             return (
+                steps.model == celeron_model &&
                 steps.family == celeron_family &&
-                steps.extmodel == celeron_extmodel &&
-                steps.model == celeron_model
+                steps.extmodel == celeron_extmodel
             );
         }
+
 
         struct model_struct {
             bool found;
@@ -2066,12 +2081,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (x86)
         debug("THREADCOUNT: ", "threads = ", std::thread::hardware_concurrency());
     
-        if (cpu::is_celeron()) {
+        struct cpu::stepping_struct steps = cpu::fetch_steppings();
+
+        if (cpu::is_celeron(steps)) {
             return false;
         }
 
         return (std::thread::hardware_concurrency() <= 2);
-else 
+#else 
         return false;
 #endif
     }
@@ -5745,20 +5762,11 @@ else
 #else
         const u32 threads = std::thread::hardware_concurrency();
 
-        struct stepping_struct steps {};
-
-        u32 unused, eax = 0;
-        cpu::cpuid(eax, unused, unused, unused, 1);
-        UNUSED(unused);
-
-        steps.model = ((eax >> 4) & 0b1111);
-        steps.family = ((eax >> 8) & 0b1111);
-        steps.extmodel = ((eax >> 16) & 0b1111);
+        struct cpu::stepping_struct steps = cpu::fetch_steppings();
 
         debug("ODD_CPU_THREADS: model    = ", static_cast<u32>(steps.model));
         debug("ODD_CPU_THREADS: family   = ", static_cast<u32>(steps.family));
         debug("ODD_CPU_THREADS: extmodel = ", static_cast<u32>(steps.extmodel));
-
 
         // check if the microarchitecture was made before 2006, which was around the time multi-core processors were implemented
         auto old_microarchitecture = [&steps]() -> bool {
