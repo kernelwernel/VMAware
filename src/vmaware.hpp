@@ -3608,7 +3608,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (check_proc(_T("vmsrvc.exe")) || check_proc(_T("vmusrvc.exe"))) {
             return core::add(VPC);
         }
-
+/*
+        removed due to potential false positives
+        
         if (
             check_proc(_T("vmtoolsd.exe")) ||
             check_proc(_T("vmwaretrat.exe")) ||
@@ -3620,6 +3622,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         ) {
             return core::add(VMWARE);
         }
+*/ 
 
         if (check_proc(_T("xenservice.exe")) || check_proc(_T("xsvc_depriv.exe"))) {
             return core::add(XEN);
@@ -7757,6 +7760,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         constexpr u32 hyperv = 0x31237648; // "Hv#1"
         constexpr u32 nanovisor = 0x766E6258; // "Xbnv" 
         constexpr u32 simplevisor = 0x00766853; // " vhS"
+
+        debug("CPUID_SIGNATURE: eax = ", eax);
 
         switch (eax) {
             case hyperv: return core::add(HYPERV);

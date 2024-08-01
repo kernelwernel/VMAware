@@ -108,6 +108,7 @@ Options:
  -c | --conclusion  returns the conclusion message string
  -l | --brand-list  returns all the possible VM brand string values
  -n | --number      returns the number of VM detection techniques it performs
+ -t | --type        returns the VM type (if a VM was found)
 
 Extra:
  --disable-hyperv-host  disable the possibility of Hyper-V default virtualisation result on host OS
@@ -221,6 +222,76 @@ SimpleVisor
 )";
 
     std::exit(0);
+}
+
+std::string type(const std::string &brand_str) {
+    if (brand_str.find(" or ") != std::string::npos) {
+        return "Unknown";        
+    }
+
+    const std::map<const char*, const char*> type_table {
+        { "Xen HVM", "Hypervisor (type 1)" },
+        { "VMware ESX", "Hypervisor (type 1)" },
+        { "ACRN", "Hypervisor (type 1)" },
+        { "QNX hypervisor", "Hypervisor (type 1)" },
+        { "Microsoft Hyper-V", "Hypervisor (type 1)" },
+        { "Microsoft Azure Hyper-V", "Hypervisor (type 1)" },
+        { "Xbox NanoVisor (Hyper-V)", "Hypervisor (type 1)" },
+        { "KVM ", "Hypervisor (type 1)" },
+        { "bhyve", "Hypervisor (type 1)" },
+        { "KVM Hyper-V Enlightenment", "Hypervisor (type 1)" },
+        { "QEMU+KVM", "Hypervisor (type 1)" },
+        { "Intel HAXM", "Hypervisor (type 1)" },
+        { "Intel KGT (Trusty)", "Hypervisor (type 1)" },
+        { "SimpleVisor", "Hypervisor (type 1)" },
+
+        { "VirtualBox", "Hypervisor (type 2)" },
+        { "VMware", "Hypervisor (type 2)" },
+        { "VMware Express", "Hypervisor (type 2)" },
+        { "VMware GSX", "Hypervisor (type 2)" },
+        { "VMware Workstation", "Hypervisor (type 2)" },
+        { "VMware Fusion", "Hypervisor (type 2)" },
+        { "Parallels", "Hypervisor (type 2)" },
+        { "Virtual PC", "Hypervisor (type 2)" },
+        { "Virtual Apple", "Hypervisor (type 2)" },
+        { "NetBSD NVMM", "Hypervisor (type 2)" },
+        { "OpenBSD VMM", "Hypervisor (type 2)" },
+
+        { "Cuckoo", "Sandbox" },
+        { "Sandboxie", "Sandbox" },
+        { "Hybrid Analysis", "Sandbox" },
+        { "CWSandbox", "Sandbox" },
+        { "JoeBox", "Sandbox" },
+        { "Anubis", "Sandbox" },
+        { "Comodo", "Sandbox" },
+        { "ThreatExpert", "Sandbox" },
+
+        { "Bochs", "Emulator" },
+        { "BlueStacks", "Emulator" },
+        { "Microsoft x86-to-ARM", "Emulator" },
+        { "QEMU", "Emulator" },
+
+        { "Jailhouse", "Partitioning Hypervisor" },
+        { "Unisys s-Par", "Partitioning Hypervisor" },
+
+        { "Docker", "Container" },
+
+        { "Microsoft Virtual PC/Hyper-V", "Hypervisor (either type 1 or 2)" },
+
+        { "Lockheed Martin LMHS", "Hypervisor (unknown type)" },
+
+        { "Wine", "Compatibility layer" },
+
+        { "Apple VZ", "Unknown" }
+    };
+
+    auto it = type_table.find(brand_str.c_str());
+
+    if (it != type_table.end()) {
+        return it->second;
+    }
+
+    return "Unknown";
 }
 
 void general(const bool hyperv_setting, const bool enable_notes) {
@@ -363,6 +434,19 @@ void general(const bool hyperv_setting, const bool enable_notes) {
 
     std::cout << "VM brand: " << (brand == "Unknown" ? red : green) << brand << ansi_exit << "\n";
 
+    if (brand.find(" or ") == std::string::npos) {
+        const std::string brand = VM::brand(VM::MULTIPLE);
+        const std::string type_value = type(brand);
+
+        std::cout << "VM type: ";
+            
+        if (type_value == "Unknown") {
+            std::cout << red << "Unknown" << ansi_exit << "\n";
+        } else {
+            std::cout << green << type_value << ansi_exit << "\n";
+        }
+    }
+
     const char* percent_color = "";
     const std::uint8_t percent = (hyperv_setting ? VM::percentage(VM::ENABLE_HYPERV_HOST) : VM::percentage());
 
@@ -443,95 +527,6 @@ void general(const bool hyperv_setting, const bool enable_notes) {
         return false;
     };
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-/*
-
-// container 
-Docker
-
-
-// Either type 1 or 2
-Microsoft Virtual PC/Hyper-V
-
-// hypervisor (unknown type)
-Lockheed Martin LMHS
-
-
-// type 1:
-VMWare vSphere, Citrix
-Xen Server, Microsoft Hyper-V…
-VMware ESXI
-ACRN
-QNX hypervisor
-Microsoft Hyper-V
-Microsoft Azure Hyper-V
-Xbox NanoVisor (Hyper-V)
-KVM 
-bhyve
-KVM Hyper-V Enlightenment
-KVM
-QEMU+KVM
-Intel HAXM
-Intel KGT (Trusty)
-SimpleVisor
-
-
-// type 2:
-VirtualBox
-VMware
-VMware Express
-VMware GSX
-VMware Workstation
-VMware Fusion
-Parallels
-Virtual PC
-Virtual Apple
-NVMM
-OpenBSD VMM
-
-
-// compatibility layer
-Wine
-
-
-// emulator:
-bochs
-BlueStacks
-Microsoft x86-to-ARM
-QEMU
-
-// sandbox
-Cuckoo
-Sandboxie
-Hybrid Analysis
-CWSandbox
-JoeBox
-Anubis (discontinued)
-Comodo
-ThreatExpert
-
-// partitioning hypervisor
-Jailhouse
-Unisys s-Par
-
-// unknown
-Apple VZ
-*/
-
-
-
     const char* conclusion_color   = color(percent);
     std::string conclusion_message = message(percent, brand);
 
@@ -547,7 +542,7 @@ Apple VZ
 
     if (hyperv_setting && diff_brand_check() && brand_vec() && enable_notes) {
         std::cout << note << 
-        " If you know you are running on host, Hyper-V virtualises all applications by default within the host system. This result is in fact correct and NOT a false positive. If you do not want Hyper-V's default virtualisation in the result, run with the \"--discard-hyperv-host\" argument, or disable Hyper-V in your system. See here for more information https://github.com/kernelwernel/VMAware/issues/75\n\n";
+        " If you know you are running on host, Hyper-V virtualises all applications by default within the host system. This result is in fact correct and NOT a false positive. If you do not want Hyper-V's default virtualisation in the result, run with the \"--disable-hyperv-host\" argument, or disable Hyper-V in your system. See here for more information https://github.com/kernelwernel/VMAware/issues/75\n\n";
     } else if (enable_notes) {
         std::cout << note << 
         " If you found a false positive, please make sure to create an issue at https://github.com/kernelwernel/VMAware/issues\n\n";
@@ -578,12 +573,13 @@ int main(int argc, char* argv[]) {
         PERCENT,
         CONCLUSION,
         NUMBER,
+        TYPE,
         HYPERV,
         NOTES,
         NULL_ARG
     };
 
-    static constexpr std::array<std::pair<const char*, arg_enum>, 20> table {{
+    static constexpr std::array<std::pair<const char*, arg_enum>, 22> table {{
         { "-h", HELP },
         { "-v", VERSION },
         { "-d", DETECT },
@@ -593,6 +589,7 @@ int main(int argc, char* argv[]) {
         { "-c", CONCLUSION },
         { "-l", BRAND_LIST },
         { "-n", NUMBER },
+        { "-t", TYPE },
         { "--help", HELP },
         { "--version", VERSION },
         { "--detect", DETECT },
@@ -602,6 +599,7 @@ int main(int argc, char* argv[]) {
         { "--conclusion", CONCLUSION },
         { "--brand-list", BRAND_LIST },
         { "--number", NUMBER },
+        { "--type", TYPE },
         { "--disable-hyperv-host", HYPERV },
         { "--disable-notes", NOTES }
     }};
@@ -669,12 +667,13 @@ int main(int argc, char* argv[]) {
         static_cast<std::uint8_t>(arg_bitset.test(PERCENT)) +
         static_cast<std::uint8_t>(arg_bitset.test(DETECT)) +
         static_cast<std::uint8_t>(arg_bitset.test(BRAND)) +
+        static_cast<std::uint8_t>(arg_bitset.test(TYPE)) +
         static_cast<std::uint8_t>(arg_bitset.test(CONCLUSION))
     );
 
     if (returners > 0) { // at least one of the options are set
         if (returners > 1) { // more than 2 options are set
-            std::cerr << "--stdout, --percent, --detect, and --conclusion must NOT be a combination, choose only a single one\n";
+            std::cerr << "--stdout, --percent, --detect, --brand, --type, and --conclusion must NOT be a combination, choose only a single one\n";
             return 1;
         }
 
@@ -710,6 +709,12 @@ int main(int argc, char* argv[]) {
             } else {
                 std::cout << VM::brand(VM::NO_MEMO, VM::MULTIPLE, VM::ENABLE_HYPERV_HOST) << "\n";
             }
+            return 0;
+        }
+
+        if (arg_bitset.test(TYPE)) {
+            const std::string brand = VM::brand(VM::MULTIPLE);
+            std::cout << type(brand) << "\n";
             return 0;
         }
 
