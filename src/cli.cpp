@@ -542,7 +542,7 @@ void general(const bool hyperv_setting, const bool enable_notes) {
 
     if (hyperv_setting && diff_brand_check() && brand_vec() && enable_notes) {
         std::cout << note << 
-        " If you know you are running on host, Hyper-V virtualises all applications by default within the host system. This result is in fact correct and NOT a false positive. If you do not want Hyper-V's default virtualisation in the result, run with the \"--discard-hyperv-host\" argument, or disable Hyper-V in your system. See here for more information https://github.com/kernelwernel/VMAware/issues/75\n\n";
+        " If you know you are running on host, Hyper-V virtualises all applications by default within the host system. This result is in fact correct and NOT a false positive. If you do not want Hyper-V's default virtualisation in the result, run with the \"--disable-hyperv-host\" argument, or disable Hyper-V in your system. See here for more information https://github.com/kernelwernel/VMAware/issues/75\n\n";
     } else if (enable_notes) {
         std::cout << note << 
         " If you found a false positive, please make sure to create an issue at https://github.com/kernelwernel/VMAware/issues\n\n";
