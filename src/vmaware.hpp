@@ -4,7 +4,7 @@
  * ██║   ██║██╔████╔██║███████║██║ █╗ ██║███████║██████╔╝█████╗
  * ╚██╗ ██╔╝██║╚██╔╝██║██╔══██║██║███╗██║██╔══██║██╔══██╗██╔══╝
  *  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
- *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ 1.6 (July 2024)
+ *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ 1.7 (August 2024)
  *
  *  C++ VM detection library
  *
@@ -22,14 +22,14 @@
  *
  *
  * ================================ SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 302
- * - struct for internal cpu operations        => line 519
- * - struct for internal memoization           => line 891
- * - struct for internal utility functions     => line 996
- * - struct for internal core components       => line 7781
- * - start of internal VM detection techniques => line 1815
- * - start of public VM detection functions    => line 8277
- * - start of externally defined variables     => line 8672
+ * - enums for publicly accessible techniques  => line 309
+ * - struct for internal cpu operations        => line 534
+ * - struct for internal memoization           => line 954
+ * - struct for internal utility functions     => line 1059
+ * - struct for internal core components       => line 8150
+ * - start of internal VM detection techniques => line 1879
+ * - start of public VM detection functions    => line 8618
+ * - start of externally defined variables     => line 9044
  *
  *
  * ================================ EXAMPLE ==================================
@@ -3610,7 +3610,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 /*
         removed due to potential false positives
-        
+
         if (
             check_proc(_T("vmtoolsd.exe")) ||
             check_proc(_T("vmwaretrat.exe")) ||
