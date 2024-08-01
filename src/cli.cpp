@@ -53,7 +53,7 @@ constexpr bool ENABLE_NOTES = true;
 constexpr bool DISABLE_HYPERV = false;
 constexpr bool DISABLE_NOTES = false;
 
-std::bitset<12> arg_bitset;
+std::bitset<13> arg_bitset;
 
 #if (MSVC)
 class win_ansi_enabler_t
