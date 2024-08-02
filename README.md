@@ -26,16 +26,6 @@ The library is:
 - Contains separate MIT and GPL-3.0 compliant library header files
 
 
-> [!NOTE]
-> The library doesn't guarantee it'll be accurate. I've received a lot of false positives in the past from various people, and it's impossible to 100% detect a VM either due to:
-- VM artifacts such as system files being left from past VM usage depending on the brand
-- Unfamiliar mechanisms that are not widely known 
-- 
-
-If you found a false positive or a false negative then please create an issue with information on what your VM is, what OS you're using, and other relevant details.
->
-
-
 <br>
 
 ## Example 🧪

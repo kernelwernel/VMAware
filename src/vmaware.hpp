@@ -413,6 +413,8 @@ public:
         NO_MEMO,
         HIGH_THRESHOLD,
         ENABLE_HYPERV_HOST,
+        NULL_ARG, // does nothing as a placeholder
+        SPOOFABLE,
         MULTIPLE
     };
 
@@ -8150,15 +8152,21 @@ information about the hypervisor Linux is running on
 
     struct core {
         MSVC_DISABLE_WARNING(PADDING)
-            struct technique {
+        struct technique {
             u8 points;                 // this is the certainty score between 0 and 100
             std::function<bool()> run; // this is the technique function itself
+            bool spoofable;            // this is to indicate that the technique can be very easily spoofed (not guaranteed)
+        };
+
+        struct custom_technique {
+            u8 points;
+            std::function<bool()> run;
         };
         MSVC_ENABLE_WARNING(PADDING)
 
         static const std::map<u8, technique> technique_table;
 
-        static std::vector<technique> custom_table;
+        static std::vector<custom_technique> custom_table;
 
         static bool cpuid_supported;
 
@@ -8240,6 +8248,7 @@ information about the hypervisor Linux is running on
                 flags.test(NO_MEMO) ||
                 flags.test(HIGH_THRESHOLD) ||
                 flags.test(ENABLE_HYPERV_HOST) ||
+                flags.test(SPOOFABLE) ||
                 flags.test(MULTIPLE)
             ) {
                 flags |= DEFAULT;
@@ -8256,9 +8265,14 @@ information about the hypervisor Linux is running on
             // for main technique table
             for (const auto& tmp : technique_table) {
                 const u8 technique_macro = tmp.first;
+                const technique tuple = tmp.second;
 
                 // check if it's disabled
                 if (core::is_disabled(flags, technique_macro)) {
+                    continue;
+                }
+
+                if (tuple.spoofable && core::is_disabled(flags, SPOOFABLE)) {
                     continue;
                 }
 
@@ -8273,15 +8287,12 @@ information about the hypervisor Linux is running on
                     continue;
                 }
 
-                // initialise the technique structure
-                technique pair = tmp.second;
-
                 // run the technique
-                const bool result = pair.run();
+                const bool result = tuple.run();
 
                 // accumulate the points if technique detected a VM
                 if (result) {
-                    points += pair.points;
+                    points += tuple.points;
                 }
 
                 /**
@@ -8296,7 +8307,7 @@ information about the hypervisor Linux is running on
 
                 // store the current technique result to the cache
                 if (memo_enabled) {
-                    memo::cache_store(technique_macro, result, pair.points);
+                    memo::cache_store(technique_macro, result, tuple.points);
                 }
             }
 
@@ -8475,8 +8486,48 @@ information about the hypervisor Linux is running on
             if (
                 (flag == INVALID) ||
                 (flag > enum_size)
-                ) {
+            ) {
                 throw std::invalid_argument("Non-flag or invalid flag provided for VM::detect(), aborting");
+            }
+
+            if (flag == SPOOFABLE) {
+                flag_collector.set(VM::MAC);
+                flag_collector.set(VM::DOCKERENV);
+                flag_collector.set(VM::HWMON);
+                flag_collector.set(VM::CURSOR);
+                flag_collector.set(VM::VMWARE_REG);
+                flag_collector.set(VM::VBOX_REG);
+                flag_collector.set(VM::USER);
+                flag_collector.set(VM::DLL);
+                flag_collector.set(VM::REGISTRY);
+                flag_collector.set(VM::CWSANDBOX_VM);
+                flag_collector.set(VM::VM_FILES);
+                flag_collector.set(VM::HWMODEL);
+                flag_collector.set(VM::COMPUTER_NAME);
+                flag_collector.set(VM::HOSTNAME);
+                flag_collector.set(VM::KVM_REG);
+                flag_collector.set(VM::KVM_DRIVERS);
+                flag_collector.set(VM::KVM_DIRS);
+                flag_collector.set(VM::LOADED_DLLS);
+                flag_collector.set(VM::QEMU_DIR);
+                flag_collector.set(VM::MOUSE_DEVICE);
+                flag_collector.set(VM::VM_PROCESSES);
+                flag_collector.set(VM::LINUX_USER_HOST);
+                flag_collector.set(VM::HYPERV_REG);
+                flag_collector.set(VM::MAC_MEMSIZE);
+                flag_collector.set(VM::MAC_IOKIT);
+                flag_collector.set(VM::IOREG_GREP);
+                flag_collector.set(VM::MAC_SIP);
+                flag_collector.set(VM::HKLM_REGISTRIES);
+                flag_collector.set(VM::QEMU_GA);
+                flag_collector.set(VM::QEMU_PROC);
+                flag_collector.set(VM::VPC_PROC);
+                flag_collector.set(VM::VM_FILES_EXTRA);
+                flag_collector.set(VM::UPTIME);
+                flag_collector.set(VM::CUCKOO_DIR);
+                flag_collector.set(VM::HYPERV_HOSTNAME);
+                flag_collector.set(VM::GENERAL_HOSTNAME);
+                flag_collector.set(VM::BLUESTACKS_FOLDERS);
             }
 
             flag_collector.set(flag);
@@ -8650,8 +8701,9 @@ public: // START OF PUBLIC FUNCTIONS
             (flag_bit == NO_MEMO) ||
             (flag_bit == HIGH_THRESHOLD) ||
             (flag_bit == ENABLE_HYPERV_HOST) ||
+            (flag_bit == SPOOFABLE) ||
             (flag_bit == MULTIPLE)
-            ) {
+        ) {
             throw_error("Flag argument must be a technique flag and not a settings flag");
         }
 
@@ -8976,7 +9028,7 @@ public: // START OF PUBLIC FUNCTIONS
         [[assume(percent > 0 && percent <= 100)]];
 #endif
 
-        core::technique query{
+        core::custom_technique query{
             percent,
             detection_func
         };
@@ -8998,6 +9050,7 @@ public: // START OF PUBLIC FUNCTIONS
         flags.flip();
         flags.set(NO_MEMO, 0);
         flags.set(HIGH_THRESHOLD, 0);
+        flags.set(SPOOFABLE, 0);
         flags.set(ENABLE_HYPERV_HOST, 0);
         flags.set(MULTIPLE, 0);
 
@@ -9120,6 +9173,7 @@ VM::flagset VM::DEFAULT = []() -> flagset {
     tmp.flip(CURSOR);
     tmp.flip(HIGH_THRESHOLD);
     tmp.flip(ENABLE_HYPERV_HOST);
+    tmp.flip(SPOOFABLE);
     tmp.flip(MULTIPLE);
 
     return tmp;
@@ -9166,111 +9220,113 @@ bool VM::core::cpuid_supported = []() -> bool {
 
 
 // this is initialised as empty, because this is where custom techniques can be added at runtime 
-std::vector<VM::core::technique> VM::core::custom_table = {
+std::vector<VM::core::custom_technique> VM::core::custom_table = {
 
 };
 
 
 // the 0~100 points are debatable, but I think it's fine how it is. Feel free to disagree.
 const std::map<VM::u8, VM::core::technique> VM::core::technique_table = {
-    { VM::VMID, { 100, VM::vmid }},
-    { VM::CPU_BRAND, { 50, VM::cpu_brand }},
-    { VM::HYPERVISOR_BIT, { 100, VM::hypervisor_bit }}, 
-    { VM::HYPERVISOR_STR, { 45, VM::hypervisor_brand }},
-    { VM::RDTSC, { 10, VM::rdtsc_check }},
-    { VM::THREADCOUNT, { 35, VM::thread_count }},
-    { VM::MAC, { 60, VM::mac_address_check }},
-    { VM::TEMPERATURE, { 15, VM::temperature }},
-    { VM::SYSTEMD, { 70, VM::systemd_virt }},
-    { VM::CVENDOR, { 65, VM::chassis_vendor }},
-    { VM::CTYPE, { 10, VM::chassis_type }},
-    { VM::DOCKERENV, { 80, VM::dockerenv }},
-    { VM::DMIDECODE, { 55, VM::dmidecode }},
-    { VM::DMESG, { 55, VM::dmesg }},
-    { VM::HWMON, { 75, VM::hwmon }},
-    { VM::SIDT5, { 45, VM::sidt5 }},
-    { VM::CURSOR, { 5, VM::cursor_check }},
-    { VM::VMWARE_REG, { 65, VM::vmware_registry }},
-    { VM::VBOX_REG, { 65, VM::vbox_registry }},
-    { VM::USER, { 35, VM::user_check }},
-    { VM::DLL, { 50, VM::DLL_check }},
-    { VM::REGISTRY, { 75, VM::registry_key }},
-    { VM::CWSANDBOX_VM, { 10, VM::cwsandbox_check }},
-    { VM::VM_FILES, { 60, VM::vm_files }},
-    { VM::HWMODEL, { 75, VM::hwmodel }},
-    { VM::DISK_SIZE, { 60, VM::disk_size }},
-    { VM::VBOX_DEFAULT, { 55, VM::vbox_default_specs }},
-    { VM::VBOX_NETWORK, { 70, VM::vbox_network_share }},
-    { VM::WINE_CHECK, { 85, VM::wine }},                     // GPL
-    { VM::COMPUTER_NAME, { 15, VM::computer_name_match }},   // GPL
-    { VM::HOSTNAME, { 25, VM::hostname_match }},             // GPL
-    { VM::MEMORY, { 35, VM::low_memory_space }},             // GPL
-    { VM::VBOX_WINDOW_CLASS, { 10, VM::vbox_window_class }}, // GPL
-    { VM::KVM_REG, { 75, VM::kvm_registry }},                // GPL
-    { VM::KVM_DRIVERS, { 55, VM::kvm_drivers }},             // GPL
-    { VM::KVM_DIRS, { 55, VM::kvm_directories }},            // GPL
-    { VM::LOADED_DLLS, { 75, VM::loaded_dlls }},             // GPL
-    { VM::AUDIO, { 35, VM::check_audio }},                   // GPL
-    { VM::QEMU_DIR, { 45, VM::qemu_dir }},                   // GPL
-    { VM::MOUSE_DEVICE, { 20, VM::mouse_device }},           // GPL
-    { VM::VM_PROCESSES, { 30, VM::vm_processes }},
-    { VM::LINUX_USER_HOST, { 25, VM::linux_user_host }},
-    { VM::GAMARUE, { 40, VM::gamarue }},
-    { VM::VMID_0X4, { 90, VM::vmid_0x4 }},
-    { VM::PARALLELS_VM, { 50, VM::parallels }},
-    { VM::RDTSC_VMEXIT, { 25, VM::rdtsc_vmexit }},
-    { VM::QEMU_BRAND, { 100, VM::cpu_brand_qemu }},
-    { VM::BOCHS_CPU, { 95, VM::bochs_cpu }},
-    { VM::VPC_BOARD, { 20, VM::vpc_board }},
-    { VM::HYPERV_WMI, { 80, VM::hyperv_wmi }},
-    { VM::HYPERV_REG, { 80, VM::hyperv_registry }},
-    { VM::BIOS_SERIAL, { 60, VM::bios_serial }},
-    { VM::VBOX_FOLDERS, { 45, VM::vbox_shared_folders }},
-    { VM::MSSMBIOS, { 75, VM::mssmbios }},
-    { VM::MAC_MEMSIZE, { 30, VM::hw_memsize }},
-    { VM::MAC_IOKIT, { 80, VM::io_kit }},
-    { VM::IOREG_GREP, { 75, VM::ioreg_grep }},
-    { VM::MAC_SIP, { 85, VM::mac_sip }},
-    { VM::HKLM_REGISTRIES, { 70, VM::hklm_registries }},
-    { VM::QEMU_GA, { 20, VM::qemu_ga }},
-    { VM::VALID_MSR, { 35, VM::valid_msr }},
-    { VM::QEMU_PROC, { 30, VM::qemu_processes }},
-    { VM::VPC_PROC, { 30, VM::vpc_proc }},
-    { VM::VPC_INVALID, { 75, VM::vpc_invalid }},
-    { VM::SIDT, { 30, VM::sidt }},
-    { VM::SGDT, { 30, VM::sgdt }},
-    { VM::SLDT, { 15, VM::sldt }},
-    { VM::OFFSEC_SIDT, { 60, VM::offsec_sidt }},
-    { VM::OFFSEC_SGDT, { 60, VM::offsec_sgdt }},
-    { VM::OFFSEC_SLDT, { 20, VM::offsec_sldt }},
-    { VM::VPC_SIDT, { 15, VM::vpc_sidt }},
-    { VM::HYPERV_BOARD, { 45, VM::hyperv_board }},
-    { VM::VM_FILES_EXTRA, { 70, VM::vm_files_extra }},
-    { VM::VMWARE_IOMEM, { 65, VM::vmware_iomem }},
-    { VM::VMWARE_IOPORTS, { 70, VM::vmware_ioports }},
-    { VM::VMWARE_SCSI, { 40, VM::vmware_scsi }},
-    { VM::VMWARE_DMESG, { 65, VM::vmware_dmesg }},
-    { VM::VMWARE_STR, { 35, VM::vmware_str }},
-    { VM::VMWARE_BACKDOOR, { 100, VM::vmware_backdoor }},
-    { VM::VMWARE_PORT_MEM, { 85, VM::vmware_port_memory }},
-    { VM::SMSW, { 30, VM::smsw }},
-    { VM::MUTEX, { 85, VM::mutex }},
-    { VM::UPTIME, { 10, VM::uptime }},
-    { VM::ODD_CPU_THREADS, { 80, VM::odd_cpu_threads }},
-    { VM::INTEL_THREAD_MISMATCH, { 85, VM::intel_thread_mismatch }},
-    { VM::XEON_THREAD_MISMATCH, { 85, VM::xeon_thread_mismatch }},
-    { VM::NETTITUDE_VM_MEMORY, { 75, VM::nettitude_vm_memory }},
-    { VM::CPUID_BITSET, { 20, VM::cpuid_bitset }},
-    { VM::CUCKOO_DIR, { 15, VM::cuckoo_dir }},
-    { VM::CUCKOO_PIPE, { 20, VM::cuckoo_pipe }},
-    { VM::HYPERV_HOSTNAME, { 50, VM::hyperv_hostname }},
-    { VM::GENERAL_HOSTNAME, { 20, VM::general_hostname }},
-    { VM::SCREEN_RESOLUTION, { 30, VM::screen_resolution }},
-    { VM::DEVICE_STRING, { 25, VM::device_string }},
-    { VM::BLUESTACKS_FOLDERS, { 15, VM::bluestacks }},
-    { VM::CPUID_SIGNATURE, { 95, VM::cpuid_signature }},
-    { VM::HYPERV_BITMASK, { 40, VM::hyperv_bitmask }},
-    { VM::KVM_BITMASK, { 40, VM::kvm_bitmask }},
-    { VM::KGT_SIGNATURE, { 80, VM::intel_kgt_signature }},
-    { VM::VMWARE_DMI, { 30, VM::vmware_dmi }}
+    // FORMAT: VM::<ID> = { certainty%, function pointer, spoofable? }
+
+    { VM::VMID, { 100, VM::vmid, false }},
+    { VM::CPU_BRAND, { 50, VM::cpu_brand, false }},
+    { VM::HYPERVISOR_BIT, { 100, VM::hypervisor_bit , false}}, 
+    { VM::HYPERVISOR_STR, { 45, VM::hypervisor_brand, false }},
+    { VM::RDTSC, { 10, VM::rdtsc_check, false }},
+    { VM::THREADCOUNT, { 35, VM::thread_count, false }},
+    { VM::MAC, { 60, VM::mac_address_check, true }},
+    { VM::TEMPERATURE, { 15, VM::temperature, false }},
+    { VM::SYSTEMD, { 70, VM::systemd_virt, false }},
+    { VM::CVENDOR, { 65, VM::chassis_vendor, false }},
+    { VM::CTYPE, { 10, VM::chassis_type, false }},
+    { VM::DOCKERENV, { 80, VM::dockerenv, true }},
+    { VM::DMIDECODE, { 55, VM::dmidecode, false }},
+    { VM::DMESG, { 55, VM::dmesg, false }},
+    { VM::HWMON, { 75, VM::hwmon, true }},
+    { VM::SIDT5, { 45, VM::sidt5, false }},
+    { VM::CURSOR, { 5, VM::cursor_check, true }},
+    { VM::VMWARE_REG, { 65, VM::vmware_registry, true }},
+    { VM::VBOX_REG, { 65, VM::vbox_registry, true }},
+    { VM::USER, { 35, VM::user_check, true }},
+    { VM::DLL, { 50, VM::DLL_check, true }},
+    { VM::REGISTRY, { 75, VM::registry_key, true }},
+    { VM::CWSANDBOX_VM, { 10, VM::cwsandbox_check, true }},
+    { VM::VM_FILES, { 60, VM::vm_files, true }},
+    { VM::HWMODEL, { 75, VM::hwmodel, true }},
+    { VM::DISK_SIZE, { 60, VM::disk_size, false }},
+    { VM::VBOX_DEFAULT, { 55, VM::vbox_default_specs, false }},
+    { VM::VBOX_NETWORK, { 70, VM::vbox_network_share, false }},
+    { VM::WINE_CHECK, { 85, VM::wine, false }},                     // GPL
+    { VM::COMPUTER_NAME, { 15, VM::computer_name_match, true }},    // GPL
+    { VM::HOSTNAME, { 25, VM::hostname_match, true  }},             // GPL
+    { VM::MEMORY, { 35, VM::low_memory_space, false }},             // GPL
+    { VM::VBOX_WINDOW_CLASS, { 10, VM::vbox_window_class, false }}, // GPL
+    { VM::KVM_REG, { 75, VM::kvm_registry, true }},                 // GPL
+    { VM::KVM_DRIVERS, { 55, VM::kvm_drivers, true }},              // GPL
+    { VM::KVM_DIRS, { 55, VM::kvm_directories, true }},             // GPL
+    { VM::LOADED_DLLS, { 75, VM::loaded_dlls, true }},              // GPL
+    { VM::AUDIO, { 35, VM::check_audio, false }},                   // GPL
+    { VM::QEMU_DIR, { 45, VM::qemu_dir, true }},                    // GPL
+    { VM::MOUSE_DEVICE, { 20, VM::mouse_device, true }},            // GPL
+    { VM::VM_PROCESSES, { 30, VM::vm_processes, true }},
+    { VM::LINUX_USER_HOST, { 25, VM::linux_user_host, true }},
+    { VM::GAMARUE, { 40, VM::gamarue, false }},
+    { VM::VMID_0X4, { 90, VM::vmid_0x4, false }},
+    { VM::PARALLELS_VM, { 50, VM::parallels, false }},
+    { VM::RDTSC_VMEXIT, { 25, VM::rdtsc_vmexit, false }},
+    { VM::QEMU_BRAND, { 100, VM::cpu_brand_qemu, false }},
+    { VM::BOCHS_CPU, { 95, VM::bochs_cpu, false }},
+    { VM::VPC_BOARD, { 20, VM::vpc_board, false }},
+    { VM::HYPERV_WMI, { 80, VM::hyperv_wmi, false }},
+    { VM::HYPERV_REG, { 80, VM::hyperv_registry, true }},
+    { VM::BIOS_SERIAL, { 60, VM::bios_serial, false }},
+    { VM::VBOX_FOLDERS, { 45, VM::vbox_shared_folders, false }},
+    { VM::MSSMBIOS, { 75, VM::mssmbios, false }},
+    { VM::MAC_MEMSIZE, { 30, VM::hw_memsize, true }},
+    { VM::MAC_IOKIT, { 80, VM::io_kit, true }},
+    { VM::IOREG_GREP, { 75, VM::ioreg_grep, true }},
+    { VM::MAC_SIP, { 85, VM::mac_sip, true }},
+    { VM::HKLM_REGISTRIES, { 70, VM::hklm_registries, true }},
+    { VM::QEMU_GA, { 20, VM::qemu_ga, true }},
+    { VM::VALID_MSR, { 35, VM::valid_msr, false }},
+    { VM::QEMU_PROC, { 30, VM::qemu_processes, true }},
+    { VM::VPC_PROC, { 30, VM::vpc_proc, true }},
+    { VM::VPC_INVALID, { 75, VM::vpc_invalid, false }},
+    { VM::SIDT, { 30, VM::sidt, false }},
+    { VM::SGDT, { 30, VM::sgdt, false }},
+    { VM::SLDT, { 15, VM::sldt, false }},
+    { VM::OFFSEC_SIDT, { 60, VM::offsec_sidt, false }},
+    { VM::OFFSEC_SGDT, { 60, VM::offsec_sgdt, false }},
+    { VM::OFFSEC_SLDT, { 20, VM::offsec_sldt, false }},
+    { VM::VPC_SIDT, { 15, VM::vpc_sidt, false }},
+    { VM::HYPERV_BOARD, { 45, VM::hyperv_board, false }},
+    { VM::VM_FILES_EXTRA, { 70, VM::vm_files_extra, true }},
+    { VM::VMWARE_IOMEM, { 65, VM::vmware_iomem, false }},
+    { VM::VMWARE_IOPORTS, { 70, VM::vmware_ioports, false }},
+    { VM::VMWARE_SCSI, { 40, VM::vmware_scsi, false }},
+    { VM::VMWARE_DMESG, { 65, VM::vmware_dmesg, false }},
+    { VM::VMWARE_STR, { 35, VM::vmware_str, false }},
+    { VM::VMWARE_BACKDOOR, { 100, VM::vmware_backdoor, false }},
+    { VM::VMWARE_PORT_MEM, { 85, VM::vmware_port_memory, false }},
+    { VM::SMSW, { 30, VM::smsw, false }},
+    { VM::MUTEX, { 85, VM::mutex, false }},
+    { VM::UPTIME, { 10, VM::uptime, true }},
+    { VM::ODD_CPU_THREADS, { 80, VM::odd_cpu_threads, false }},
+    { VM::INTEL_THREAD_MISMATCH, { 85, VM::intel_thread_mismatch, false }},
+    { VM::XEON_THREAD_MISMATCH, { 85, VM::xeon_thread_mismatch, false }},
+    { VM::NETTITUDE_VM_MEMORY, { 75, VM::nettitude_vm_memory, false }},
+    { VM::CPUID_BITSET, { 20, VM::cpuid_bitset, false }},
+    { VM::CUCKOO_DIR, { 15, VM::cuckoo_dir, true }},
+    { VM::CUCKOO_PIPE, { 20, VM::cuckoo_pipe, false }},
+    { VM::HYPERV_HOSTNAME, { 50, VM::hyperv_hostname, true }},
+    { VM::GENERAL_HOSTNAME, { 20, VM::general_hostname, true }},
+    { VM::SCREEN_RESOLUTION, { 30, VM::screen_resolution, false }},
+    { VM::DEVICE_STRING, { 25, VM::device_string, false }},
+    { VM::BLUESTACKS_FOLDERS, { 15, VM::bluestacks, true }},
+    { VM::CPUID_SIGNATURE, { 95, VM::cpuid_signature, false }},
+    { VM::HYPERV_BITMASK, { 40, VM::hyperv_bitmask, false }},
+    { VM::KVM_BITMASK, { 40, VM::kvm_bitmask, false }},
+    { VM::KGT_SIGNATURE, { 80, VM::intel_kgt_signature, false }},
+    { VM::VMWARE_DMI, { 30, VM::vmware_dmi, false }}
 };

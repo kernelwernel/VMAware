@@ -46,13 +46,23 @@ int main() {
 
 
     /**
+     * There are roughly 1/3 of all techniques that are considered to be "spoofable",
+     * meaning that anybody can potentially cause a false positive by exploiting the
+     * fact that the "spoofable" techniques checks for things that anybody can modify
+     * (file, registry, directories, etc...). This category of techniques are disabled 
+     * by default, but they can be enabled with the VM::SPOOFABLE flag.
+     */
+    bool is_vm4 = VM::detect(VM::SPOOFABLE);
+
+
+    /**
      * All checks are performed including the cursor check, 
      * which waits 5 seconds for any human mouse interaction 
      * to detect automated virtual environments. This is the 
      * only technique that's disabled by default but if you're 
      * fine with having a 5 second delay, add VM::ALL 
      */ 
-    bool is_vm4 = VM::detect(VM::ALL);
+    bool is_vm5 = VM::detect(VM::ALL);
 
 
     /**
@@ -63,7 +73,7 @@ int main() {
      * caching will be operated when you're not going to re-use the previously 
      * stored result at the end. 
      */ 
-    bool is_vm5 = VM::detect(VM::NO_MEMO);
+    bool is_vm6 = VM::detect(VM::NO_MEMO);
 
 
     /**
@@ -71,7 +81,7 @@ int main() {
      * Use this if you want to be extremely sure if it's a VM, but this can risk the result
      * to be a false negative. Use VM::percentage() for a more precise result if you want.
      */ 
-    bool is_vm6 = VM::detect(VM::HIGH_THRESHOLD);
+    bool is_vm7 = VM::detect(VM::HIGH_THRESHOLD);
 
 
     /**
@@ -79,13 +89,13 @@ int main() {
      * This code snippet essentially means "perform all the default flags, but only 
      * disable the VM::RDTSC technique". 
      */ 
-    bool is_vm7 = VM::detect(VM::DISABLE(VM::RDTSC));
+    bool is_vm8 = VM::detect(VM::DISABLE(VM::RDTSC));
 
 
     /**
      * Same as above, but you can disable multiple techniques at the same time.
      */ 
-    bool is_vm8 = VM::detect(VM::DISABLE(VM::VMID, VM::RDTSC, VM::HYPERVISOR_BIT));
+    bool is_vm9 = VM::detect(VM::DISABLE(VM::VMID, VM::RDTSC, VM::HYPERVISOR_BIT));
 
 
     /**
@@ -99,14 +109,14 @@ int main() {
      * For further information, please check the VM::ENABLE_HYPERV_HOST flag information
      * in the non-technique flags section (situated around the end of this documentation).
      */ 
-    bool is_vm9 = VM::detect(VM::ENABLE_HYPERV_HOST);
+    bool is_vm10 = VM::detect(VM::ENABLE_HYPERV_HOST);
 
 
     /**
      * This is just an example to show that you can use a combination of different
      * flags and non-technique flags with the above examples. 
      */ 
-    bool is_vm10 = VM::detect(VM::DEFAULT, VM::NO_MEMO, VM::HIGH_THRESHOLD, VM::DISABLE(VM::RDTSC, VM::VMID));
+    bool is_vm11 = VM::detect(VM::DEFAULT, VM::NO_MEMO, VM::HIGH_THRESHOLD, VM::DISABLE(VM::RDTSC, VM::VMID));
 
 }
 ```
@@ -326,7 +336,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::CTYPE` | Check if the chassis type is valid (it's very often invalid in VMs) | Linux | 10% |  |  |  |
 | `VM::DOCKERENV` | Check if /.dockerenv or /.dockerinit file is present | Linux | 80% |  |  |  |
 | `VM::DMIDECODE` | Check if dmidecode output matches a VM brand | Linux | 55% | Admin |  |  |
-| `VM::DMESG` | Check if dmesg output matches a VM brand | Linux | 55% |  |  |  |
+| `VM::DMESG` | Check if dmesg output matches a VM brand | Linux | 55% | Admin |  |  |
 | `VM::HWMON` | Check if /sys/class/hwmon/ directory is present. If not, likely a VM | Linux | 75% |  |  |  |
 | `VM::SIDT5` | Check if the 5th byte after sidt is null | Linux | 45% |  |  |  |
 | `VM::CURSOR` |  Check if cursor isn't active for 5 seconds (sign of automated VM environment) | Windows | 5% |  |  |  |
@@ -389,7 +399,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::VMWARE_IOMEM` | Check for VMware string in /proc/iomem | Linux | 65% |  |  |  |
 | `VM::VMWARE_IOPORTS` | Check for VMware string in /proc/ioports | Linux | 70% |  |  |  |
 | `VM::VMWARE_SCSI` | Check for VMware string in /proc/scsi/scsi | Linux | 40% |  |  |  |
-| `VM::VMWARE_DMESG` | Check for VMware-specific device name in dmesg output | Linux | 65% |  |  |  |
+| `VM::VMWARE_DMESG` | Check for VMware-specific device name in dmesg output | Linux | 65% | Admin |  |  |
 | `VM::VMWARE_STR` | Check str assembly instruction method for VMware | Windows | 35% |  |  |  |
 | `VM::VMWARE_BACKDOOR` | Check for official VMware io port backdoor technique | Windows | 100% |  |  | 32-bit |
 | `VM::VMWARE_PORT_MEM` | Check for VMware memory using IO port backdoor | Windows | 85% |  |  | 32-bit |
@@ -426,6 +436,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::ENABLE_HYPERV_HOST` | Windows 11 (and 10 if enabled manually) may have Hyper-V as a default virtualisation solution for any host program even if the OS is running as host. There isn't a way to detect whether the host program is ran in default virtualisation mode, or manually intended virtualisation. This is a Hyper-V specific problem, and the library will use heuristical methods to discard Hyper-V's host virtualiser as not running in a VM by default. But if this flag is enabled then it will still count it regardless of the risk that it might be Hyper-V's default host virtualisation for every host program. So basically this flag means that "I'm aware this program might be running in a default virtualised environment on host, but I'll still count this as running in a VM anyway whether it's default virtualisation or manually intended virtualisation". |
 | `VM::MULTIPLE` | This is specific to `VM::brand()`. This will basically return a `std::string` message of what brands could be involved. For example, it could return "`VMware or VirtualBox`" instead of having a single brand string output. This has no effect if applied to any other functions than `VM::brand()`. |   
 | `VM::HIGH_THRESHOLD` | This is specific to `VM::detect()` and `VM::percentage()`, which will set the threshold bar to confidently detect a VM by 3x higher. |
+| `VM::SPOOFABLE` | This will enable all the "spoofable" techniques (which are 1/3 of the total amount of techniques) |
 
 <br>
 
@@ -449,7 +460,10 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | -c | --conclusion | Prints the conclusion message string |
 | -p | --percent | Prints the VM likeliness percentage between 0 and 100 |
 | -n | --number | Prints the number of VM detection techniques it can performs |
+| -t | --type | Returns the VM type (if a VM was found) |
 |    | --disable-hyperv-host | Disable the possibility of Hyper-V default virtualisation result on host OS (this can be used as a combination with the above commands) |
+|    | --disable-notes | No notes will be provided |
+|    | --spoofable | Allow spoofable techniques to be ran (not included by default)
 
 > [!NOTE]
 > If you want a general result of everything combined above, do not put any arguments. This is the intended way to use the CLI tool.
