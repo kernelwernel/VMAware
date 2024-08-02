@@ -43,7 +43,7 @@
 
 #include "vmaware.hpp"
 
-constexpr const char* ver = "1.7";
+constexpr const char* ver = "1.7.1";
 constexpr const char* date = "August 2024";
 
 constexpr const char* bold = "\033[1m";
@@ -353,6 +353,7 @@ bool is_spoofable(const VM::enum_flags flag) {
         case VM::VM_FILES_EXTRA:
         case VM::UPTIME:
         case VM::CUCKOO_DIR:
+        case VM::CUCKOO_PIPE:
         case VM::HYPERV_HOSTNAME:
         case VM::GENERAL_HOSTNAME:
         case VM::BLUESTACKS_FOLDERS: return true;

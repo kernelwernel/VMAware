@@ -4,7 +4,7 @@
  * ██║   ██║██╔████╔██║███████║██║ █╗ ██║███████║██████╔╝█████╗
  * ╚██╗ ██╔╝██║╚██╔╝██║██╔══██║██║███╗██║██╔══██║██╔══██╗██╔══╝
  *  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
- *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ 1.7 (August 2024)
+ *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ 1.7.1 (August 2024)
  *
  *  C++ VM detection library
  *
@@ -8523,6 +8523,7 @@ information about the hypervisor Linux is running on
                 flag_collector.set(VM::VM_FILES_EXTRA);
                 flag_collector.set(VM::UPTIME);
                 flag_collector.set(VM::CUCKOO_DIR);
+                flag_collector.set(VM::CUCKOO_PIPE);
                 flag_collector.set(VM::HYPERV_HOSTNAME);
                 flag_collector.set(VM::GENERAL_HOSTNAME);
                 flag_collector.set(VM::BLUESTACKS_FOLDERS);
@@ -9317,7 +9318,7 @@ const std::map<VM::u8, VM::core::technique> VM::core::technique_table = {
     { VM::NETTITUDE_VM_MEMORY, { 75, VM::nettitude_vm_memory, false }},
     { VM::CPUID_BITSET, { 20, VM::cpuid_bitset, false }},
     { VM::CUCKOO_DIR, { 15, VM::cuckoo_dir, true }},
-    { VM::CUCKOO_PIPE, { 20, VM::cuckoo_pipe, false }},
+    { VM::CUCKOO_PIPE, { 20, VM::cuckoo_pipe, true }},
     { VM::HYPERV_HOSTNAME, { 50, VM::hyperv_hostname, true }},
     { VM::GENERAL_HOSTNAME, { 20, VM::general_hostname, true }},
     { VM::SCREEN_RESOLUTION, { 30, VM::screen_resolution, false }},
