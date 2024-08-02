@@ -213,6 +213,7 @@ bhyve
 QEMU
 KVM
 KVM Hyper-V Enlightenment
+QEMU+KVM Hyper-V Enlightenment
 QEMU+KVM
 Virtual PC
 Microsoft Hyper-V
@@ -256,7 +257,7 @@ std::string type(const std::string &brand_str) {
         return "Unknown";        
     }
 
-    const std::map<const char*, const char*> type_table {
+    const std::map<std::string, std::string> type_table {
         { "Xen HVM", "Hypervisor (type 1)" },
         { "VMware ESX", "Hypervisor (type 1)" },
         { "ACRN", "Hypervisor (type 1)" },
@@ -267,6 +268,7 @@ std::string type(const std::string &brand_str) {
         { "KVM ", "Hypervisor (type 1)" },
         { "bhyve", "Hypervisor (type 1)" },
         { "KVM Hyper-V Enlightenment", "Hypervisor (type 1)" },
+        { "QEMU+KVM Hyper-V Enlightenment", "Hypervisor (type 1)" },
         { "QEMU+KVM", "Hypervisor (type 1)" },
         { "Intel HAXM", "Hypervisor (type 1)" },
         { "Intel KGT (Trusty)", "Hypervisor (type 1)" },
@@ -306,7 +308,7 @@ std::string type(const std::string &brand_str) {
         { "Apple VZ", "Unknown" }
     };
 
-    auto it = type_table.find(brand_str.c_str());
+    auto it = type_table.find(brand_str);
 
     if (it != type_table.end()) {
         return it->second;
@@ -608,15 +610,21 @@ void general() {
         ansi_exit <<
         "\n\n";
 
-    std::vector<const char*> brand_vector = VM::brand_vector();
+#if (MSVC)
+    using brand_score_t = std::int32_t;
+#else
+    using brand_score_t = std::uint8_t;
+#endif
+
+    std::map<const char*, brand_score_t> brand_map = VM::brand_map();
 
     auto brand_vec = [&]() -> bool {
         bool is_hyperv_vpc_present = false;
 
-        for (const char* p_brand : brand_vector) {
+        for (const auto p_brand : brand_map) {
             if (
-                (std::strcmp(p_brand, "Microsoft Hyper-V") == 0) || 
-                (std::strcmp(p_brand, "Virtual PC") == 0)
+                (std::strcmp(p_brand.first, "Microsoft Hyper-V") == 0) || 
+                (std::strcmp(p_brand.first, "Virtual PC") == 0)
             ) {
                 is_hyperv_vpc_present = true;
             }
@@ -630,10 +638,10 @@ void general() {
         bool is_vpc = false;
         bool is_other = false;
 
-        for (const auto p_brand : brand_vector) {
-            if (std::strcmp(p_brand, "Microsoft Hyper-V") == 0) {
+        for (const auto p_brand : brand_map) {
+            if (std::strcmp(p_brand.first, "Microsoft Hyper-V") == 0) {
                 is_hyperv = true;
-            } else if (std::strcmp(p_brand, "Virtual PC") == 0) {
+            } else if (std::strcmp(p_brand.first, "Virtual PC") == 0) {
                 is_vpc = true;
             } else {
                 is_other = true;

@@ -8333,12 +8333,10 @@ information about the hypervisor Linux is running on
                 return false;
             }
 
-            std::vector<const char*> brand_vec = VM::brand_vector(flags);
-
             bool is_hyperv_vpc_present = false;
 
-            for (const auto p_brand : brand_vec) {
-                if (p_brand == HYPERV || p_brand == VPC) {
+            for (const auto p_brand : brand_scoreboard) {
+                if (p_brand.first == HYPERV || p_brand.first == VPC) {
                     is_hyperv_vpc_present = true;
                 }
             }
@@ -8370,10 +8368,10 @@ information about the hypervisor Linux is running on
                 bool is_vpc = false;
                 bool is_other = false;
 
-                for (const auto p_brand : brand_vec) {
-                    if (p_brand == HYPERV) {
+                for (const auto p_brand : brand_scoreboard) {
+                    if (p_brand.first == HYPERV) {
                         is_hyperv = true;
-                    } else if (p_brand == VPC) {
+                    } else if (p_brand.first == VPC) {
                         is_vpc = true;
                     } else {
                         is_other = true;
@@ -8756,8 +8754,6 @@ public: // START OF PUBLIC FUNCTIONS
             UNUSED(tmp);
         }
 
-#define brands core::brand_scoreboard
-
         // check if it's already cached and return that instead
         if (core::is_disabled(flags, NO_MEMO)) {
             if (is_multiple) {
@@ -8773,30 +8769,13 @@ public: // START OF PUBLIC FUNCTIONS
             }
         }
 
-        std::string current_brand = "";
-        i32 max = 0;
-
-        // fetch the brand with the highest score
-        for (auto it = brands.cbegin(); it != brands.cend(); ++it) {
-            const char* brand = it->first;
-            const brand_score_t points = it->second;
-
-            if (points > max) {
-                current_brand = brand;
-                max = points;
-            }
-        }
-
-        // if no brand had a single point, return "Unknown"
-        if (max == 0) {
-            return "Unknown";
-        }
-
         // goofy ass C++11 and C++14 linker error workaround
 #if (CPP <= 14)
         constexpr const char* TMP_QEMU = "QEMU";
         constexpr const char* TMP_KVM = "KVM";
+        constexpr const char* TMP_QEMU_KVM = "QEMU+KVM";
         constexpr const char* TMP_KVM_HYPERV = "KVM Hyper-V Enlightenment";
+        constexpr const char* TMP_QEMU_KVM_HYPERV = "QEMU+KVM Hyper-V Enlightenment";
 
         constexpr const char* TMP_VMWARE = "VMware";
         constexpr const char* TMP_EXPRESS = "VMware Express";
@@ -8807,12 +8786,15 @@ public: // START OF PUBLIC FUNCTIONS
 
         constexpr const char* TMP_VPC = "Virtual PC";
         constexpr const char* TMP_HYPERV = "Microsoft Hyper-V";
+        constexpr const char* TMP_HYPERV_VPC = "Microsoft Virtual PC/Hyper-V";
         constexpr const char* TMP_AZURE = "Microsoft Azure Hyper-V";
         constexpr const char* TMP_NANOVISOR = "Xbox NanoVisor (Hyper-V)";
 #else
         constexpr const char* TMP_QEMU = QEMU;
         constexpr const char* TMP_KVM = KVM;
+        constexpr const char* TMP_QEMU_KVM = "QEMU+KVM";
         constexpr const char* TMP_KVM_HYPERV = KVM_HYPERV;
+        constexpr const char* TMP_QEMU_KVM_HYPERV = "QEMU+KVM Hyper-V Enlightenment";
 
         constexpr const char* TMP_VMWARE = VMWARE;
         constexpr const char* TMP_EXPRESS = VMWARE_EXPRESS;
@@ -8823,93 +8805,125 @@ public: // START OF PUBLIC FUNCTIONS
 
         constexpr const char* TMP_VPC = VPC;
         constexpr const char* TMP_HYPERV = HYPERV;
+        constexpr const char* TMP_HYPERV_VPC = "Microsoft Virtual PC/Hyper-V";
         constexpr const char* TMP_AZURE = AZURE_HYPERV;
         constexpr const char* TMP_NANOVISOR = NANOVISOR;
 #endif
 
-        if (
-            (brands.at(TMP_KVM) > 0) &&
-            (brands.at(TMP_KVM_HYPERV) > 0)
-        ) {
-            current_brand = TMP_KVM_HYPERV;
-        } else if (
-            (brands.at(TMP_QEMU) > 0) &&
-            (brands.at(TMP_KVM) > 0)
-        ) {
-            current_brand = "QEMU+KVM";
-        } else if (
-            (brands.at(TMP_AZURE) > 0) &&
-            ((brands.at(TMP_HYPERV) > 0) || (brands.at(TMP_VPC) > 0))
-        ) {
-            current_brand = TMP_AZURE;
-        } else if (
-            (brands.at(TMP_NANOVISOR) > 0) &&
-            ((brands.at(TMP_HYPERV) > 0) || (brands.at(TMP_VPC) > 0))
-        ) {
-            current_brand = TMP_NANOVISOR;
-        } else if (
-            (brands.at(TMP_VPC) > 0) &&
-            (brands.at(TMP_HYPERV) > 0)
-        ) {
-#if (MSVC)
-            const u8 version = util::get_windows_version();
+        std::map<const char*, brand_score_t> brands;
 
+        for (const auto &element : core::brand_scoreboard) {
+            if (element.second > 0) {
+                brands.insert(std::make_pair(element.first, element.second));
+            }
+        }
+
+        // if no brand had a single point, return "Unknown"
+        if (brands.empty()) {
+            return "Unknown";
+        }
+
+        if (brands.size() == 1) {
+            return brands.begin()->first;
+        }
+
+        auto merger = [&](const char* a, const char* b, const char* result) -> void {
             if (
-                (version < 10) &&
-                (version != 0)
+                (brands.count(a) > 0) &&
+                (brands.count(b) > 0)
             ) {
-                current_brand = TMP_VPC;
-            } else {
-                current_brand = TMP_HYPERV;
+                brands.erase(a);
+                brands.erase(b);
+                brands.emplace(std::make_pair(result, 2));
             }
-#else
-            current_brand = "Microsoft Virtual PC/Hyper-V";
-#endif
+        };
+
+        auto triple_merger = [&](const char* a, const char* b, const char* c, const char* result) -> void {
+            if (
+                (brands.count(a) > 0) &&
+                (brands.count(b) > 0) &&
+                (brands.count(c) > 0)
+            ) {
+                brands.erase(a);
+                brands.erase(b);
+                brands.erase(c);
+                brands.emplace(std::make_pair(result, 2));
+            }
+        };
+
+        if ((brands.count(TMP_HYPERV) > brands.count(TMP_VPC))) {
+            brands.erase(TMP_VPC);
         } else if (
-            // if only VMware Fusion is detected, set it. Otherwise, ignore this (the Fusion detection mechanisms are very weak as of 1.6 release)
-            (brands.at(TMP_FUSION) > 0) &&
-            (brands.at(TMP_EXPRESS) == 0) &&
-            (brands.at(TMP_ESX) == 0) &&
-            (brands.at(TMP_GSX) == 0) &&
-            (brands.at(TMP_WORKSTATION) == 0) &&
-            (brands.at(TMP_VMWARE) == 0)
+            (brands.count(TMP_HYPERV) == brands.count(TMP_VPC)) &&
+            ((brands.count(TMP_HYPERV) > 0) && (brands.count(TMP_VPC) > 0))
         ) {
-            current_brand = TMP_FUSION;
-        } else if (brands.at(TMP_VMWARE) > 0) {
-            if (brands.at(TMP_EXPRESS) > 0) { current_brand = TMP_EXPRESS; } 
-            else if (brands.at(TMP_ESX) > 0) { current_brand = TMP_ESX; }
-            else if (brands.at(TMP_GSX) > 0) { current_brand = TMP_GSX; } 
-            else if (brands.at(TMP_WORKSTATION) > 0) { current_brand = TMP_WORKSTATION; }
-        } else if (is_multiple) {
-            std::vector<std::string> potential_brands;
+            brands.erase(TMP_HYPERV);
+            brands.erase(TMP_VPC);
+            brands.emplace(std::make_pair(TMP_HYPERV_VPC, 2));
+        }
 
-            for (auto it = brands.cbegin(); it != brands.cend(); ++it) {
-                const brand_score_t points = it->second;
-                const std::string brand = it->first;
+        merger(TMP_AZURE, TMP_HYPERV, TMP_AZURE);
+        merger(TMP_AZURE, TMP_VPC, TMP_AZURE);
+        merger(TMP_AZURE, TMP_HYPERV_VPC, TMP_AZURE);
 
-                if (points > 0) {
-                    potential_brands.push_back(brand);
-                }
-            }
+        merger(TMP_NANOVISOR, TMP_HYPERV, TMP_NANOVISOR);
+        merger(TMP_NANOVISOR, TMP_VPC, TMP_NANOVISOR);
+        merger(TMP_NANOVISOR, TMP_HYPERV_VPC, TMP_NANOVISOR);
+        
+        merger(TMP_QEMU, TMP_KVM, TMP_QEMU_KVM);
+        merger(TMP_KVM, TMP_HYPERV, TMP_KVM_HYPERV);
+        merger(TMP_QEMU, TMP_HYPERV, TMP_QEMU_KVM_HYPERV);
+        merger(TMP_QEMU_KVM, TMP_HYPERV, TMP_QEMU_KVM_HYPERV);
+        merger(TMP_KVM, TMP_KVM_HYPERV, TMP_KVM_HYPERV);
+        merger(TMP_QEMU, TMP_KVM_HYPERV, TMP_QEMU_KVM_HYPERV);
+        merger(TMP_QEMU_KVM, TMP_KVM_HYPERV, TMP_QEMU_KVM_HYPERV);
+        triple_merger(TMP_QEMU, TMP_KVM, TMP_KVM_HYPERV, TMP_QEMU_KVM_HYPERV);
 
+        merger(TMP_VMWARE, TMP_FUSION, TMP_FUSION);
+        merger(TMP_VMWARE, TMP_EXPRESS, TMP_EXPRESS);
+        merger(TMP_VMWARE, TMP_ESX, TMP_ESX);
+        merger(TMP_VMWARE, TMP_GSX, TMP_GSX);
+        merger(TMP_VMWARE, TMP_WORKSTATION, TMP_WORKSTATION);
+
+        using brand_element_t = std::pair<const char*, brand_score_t>;
+
+        auto sorter = [&]() -> std::vector<brand_element_t> {
+            std::vector<brand_element_t> vec(brands.begin(), brands.end());
+
+            std::sort(vec.begin(), vec.end(), [](
+                const brand_element_t &a, 
+                const brand_element_t &b
+            ) {
+                return a.second < b.second;
+            });
+
+            return vec;
+        };
+        
+        std::vector<brand_element_t> vec = sorter();
+        std::string ret_str = "Unknown";
+
+        if (!is_multiple) {
+            ret_str = vec.front().first;
+        } else {
             std::stringstream ss;
             u8 i = 1;
 
-            ss << potential_brands.front();
-            for (; i < potential_brands.size(); i++) {
+            ss << vec.front().first;
+            for (; i < vec.size(); i++) {
                 ss << " or ";
-                ss << potential_brands.at(i);
+                ss << vec.at(i).first;
             }
-            current_brand = ss.str();
+            ret_str = ss.str();
         }
 
         if (core::is_disabled(flags, NO_MEMO)) {
             if (is_multiple) {
                 core_debug("VM::brand(): cached multiple brand string");
-                memo::multi_brand::store(current_brand);
+                memo::multi_brand::store(ret_str);
             } else {
                 core_debug("VM::brand(): cached brand string");
-                memo::brand::store(current_brand);
+                memo::brand::store(ret_str);
             }
         }
 
@@ -8920,7 +8934,7 @@ public: // START OF PUBLIC FUNCTIONS
             }
         #endif
 
-        return current_brand;
+        return ret_str;
     }
 
 
@@ -9064,7 +9078,7 @@ public: // START OF PUBLIC FUNCTIONS
      * @warning ⚠️ FOR DEVELOPMENT USAGE ONLY, NOT MEANT FOR PUBLIC USE ⚠️
      */
     template <typename ...Args>
-    static std::vector<const char*> brand_vector(Args ...args) {
+    static std::map<const char*, brand_score_t> brand_map(Args ...args) {
         flagset flags = core::arg_handler(args...);
 
         // are all the techiques already run? if not, run all of them to get the necessary info to fetch the brand
@@ -9073,22 +9087,7 @@ public: // START OF PUBLIC FUNCTIONS
             UNUSED(tmp);
         }
 
-        std::vector<const char*> tmp_vec;
-
-        for (
-            auto it = core::brand_scoreboard.cbegin();
-            it != core::brand_scoreboard.cend();
-            ++it
-        ) {
-            const char* brand = it->first;
-            const brand_score_t points = it->second;
-
-            if (points > 0) {
-                tmp_vec.push_back(brand);
-            }
-        }
-
-        return tmp_vec;
+        return core::brand_scoreboard;
     }
 };
 

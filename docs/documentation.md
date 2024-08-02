@@ -165,8 +165,9 @@ This will essentially return the VM brand as a `std::string`. The exact possible
 - `bhyve`
 - `QEMU`
 - `KVM`
-- `KVM Hyper-V Enlightenment`
 - `QEMU+KVM`
+- `KVM Hyper-V Enlightenment`
+- `QEMU+KVM Hyper-V Enlightenment`
 - `Virtual PC`
 - `Microsoft Hyper-V`
 - `Microsoft Virtual PC/Hyper-V`
