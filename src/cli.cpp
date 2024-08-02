@@ -29,10 +29,16 @@
 
 #if (defined(__GNUC__) || defined(__linux__))
     #include <unistd.h>
+    #define LINUX 1
+#else
+    #define LINUX 0
 #endif
 
-#if (MSVC)
+#if (defined(_MSC_VER) || defined(_WIN32) || defined(_WIN64) || defined(__MINGW32__))
+    #define MSVC 1
     #include <windows.h>
+#else
+    #define MSVC 0
 #endif
 
 #include "vmaware.hpp"
@@ -47,13 +53,33 @@ constexpr const char* orange = "\x1B[38;2;255;180;5m";
 constexpr const char* green = "\x1B[38;2;94;214;114m";
 constexpr const char* red_orange = "\x1B[38;2;247;127;40m";
 constexpr const char* green_orange = "\x1B[38;2;174;197;59m";
+constexpr const char* grey = "\x1B[38;2;108;108;108m";
 
 constexpr bool ENABLE_HYPERV = true;
 constexpr bool ENABLE_NOTES = true;
+constexpr bool ENABLE_SPOOF = false;
 constexpr bool DISABLE_HYPERV = false;
 constexpr bool DISABLE_NOTES = false;
+constexpr bool DISABLE_SPOOF = false;
 
-std::bitset<12> arg_bitset;
+enum arg_enum : std::uint8_t {
+    HELP,
+    VERSION,
+    DETECT,
+    STDOUT,
+    BRAND,
+    BRAND_LIST,
+    PERCENT,
+    CONCLUSION,
+    NUMBER,
+    TYPE,
+    HYPERV,
+    NOTES,
+    SPOOFABLE,
+    NULL_ARG
+};
+
+std::bitset<14> arg_bitset;
 
 #if (MSVC)
 class win_ansi_enabler_t
@@ -113,6 +139,7 @@ Options:
 Extra:
  --disable-hyperv-host  disable the possibility of Hyper-V default virtualisation result on host OS
  --disable-notes        no notes will be provided
+ --spoofable            allow spoofable techniques to be ran (not included by default)
 
 )";
     std::exit(0);
@@ -162,8 +189,8 @@ std::string message(const std::uint8_t score, const std::string &brand) {
     }
 
     if      (score == 0)   { return baremetal; } 
-    else if (score <= 12)  { return very_unlikely; } 
-    else if (score <= 25)  { return unlikely; } 
+    else if (score <= 20)  { return very_unlikely; } 
+    else if (score <= 35)  { return unlikely; } 
     else if (score < 50)   { return potentially; } 
     else if (score <= 62)  { return might; } 
     else if (score <= 75)  { return likely; } 
@@ -186,6 +213,7 @@ bhyve
 QEMU
 KVM
 KVM Hyper-V Enlightenment
+QEMU+KVM Hyper-V Enlightenment
 QEMU+KVM
 Virtual PC
 Microsoft Hyper-V
@@ -229,7 +257,7 @@ std::string type(const std::string &brand_str) {
         return "Unknown";        
     }
 
-    const std::map<const char*, const char*> type_table {
+    const std::map<std::string, std::string> type_table {
         { "Xen HVM", "Hypervisor (type 1)" },
         { "VMware ESX", "Hypervisor (type 1)" },
         { "ACRN", "Hypervisor (type 1)" },
@@ -240,6 +268,7 @@ std::string type(const std::string &brand_str) {
         { "KVM ", "Hypervisor (type 1)" },
         { "bhyve", "Hypervisor (type 1)" },
         { "KVM Hyper-V Enlightenment", "Hypervisor (type 1)" },
+        { "QEMU+KVM Hyper-V Enlightenment", "Hypervisor (type 1)" },
         { "QEMU+KVM", "Hypervisor (type 1)" },
         { "Intel HAXM", "Hypervisor (type 1)" },
         { "Intel KGT (Trusty)", "Hypervisor (type 1)" },
@@ -270,22 +299,16 @@ std::string type(const std::string &brand_str) {
         { "BlueStacks", "Emulator" },
         { "Microsoft x86-to-ARM", "Emulator" },
         { "QEMU", "Emulator" },
-
         { "Jailhouse", "Partitioning Hypervisor" },
         { "Unisys s-Par", "Partitioning Hypervisor" },
-
         { "Docker", "Container" },
-
         { "Microsoft Virtual PC/Hyper-V", "Hypervisor (either type 1 or 2)" },
-
         { "Lockheed Martin LMHS", "Hypervisor (unknown type)" },
-
         { "Wine", "Compatibility layer" },
-
         { "Apple VZ", "Unknown" }
     };
 
-    auto it = type_table.find(brand_str.c_str());
+    auto it = type_table.find(brand_str);
 
     if (it != type_table.end()) {
         return it->second;
@@ -294,12 +317,103 @@ std::string type(const std::string &brand_str) {
     return "Unknown";
 }
 
-void general(const bool hyperv_setting, const bool enable_notes) {
+bool is_spoofable(const VM::enum_flags flag) {
+    switch (flag) {
+        case VM::MAC:
+        case VM::DOCKERENV:
+        case VM::HWMON:
+        case VM::CURSOR:
+        case VM::VMWARE_REG:
+        case VM::VBOX_REG:
+        case VM::USER:
+        case VM::DLL:
+        case VM::REGISTRY:
+        case VM::CWSANDBOX_VM:
+        case VM::VM_FILES:
+        case VM::HWMODEL:
+        case VM::COMPUTER_NAME:
+        case VM::HOSTNAME:
+        case VM::KVM_REG:
+        case VM::KVM_DRIVERS:
+        case VM::KVM_DIRS:
+        case VM::LOADED_DLLS:
+        case VM::QEMU_DIR:
+        case VM::MOUSE_DEVICE:
+        case VM::VM_PROCESSES:
+        case VM::LINUX_USER_HOST:
+        case VM::HYPERV_REG:
+        case VM::MAC_MEMSIZE:
+        case VM::MAC_IOKIT:
+        case VM::IOREG_GREP:
+        case VM::MAC_SIP:
+        case VM::HKLM_REGISTRIES:
+        case VM::QEMU_GA:
+        case VM::QEMU_PROC:
+        case VM::VPC_PROC:
+        case VM::VM_FILES_EXTRA:
+        case VM::UPTIME:
+        case VM::CUCKOO_DIR:
+        case VM::HYPERV_HOSTNAME:
+        case VM::GENERAL_HOSTNAME:
+        case VM::BLUESTACKS_FOLDERS: return true;
+        default: return false;
+    }
+}
+
+#if (LINUX)
+bool is_admin() {
+    const uid_t uid  = getuid();
+    const uid_t euid = geteuid();
+
+    const bool is_root = (
+        (uid != euid) || 
+        (euid == 0)
+    );
+
+    return is_root;
+}
+#endif
+
+
+bool are_perms_required(const VM::enum_flags flag) {
+#if (LINUX)
+    if (is_admin()) {
+        return false;
+    }
+#endif
+
+    switch (flag) {
+        case VM::VBOX_DEFAULT: 
+        case VM::VMWARE_DMESG: 
+        case VM::DMIDECODE: 
+        case VM::DMESG: return true;
+        default: return false;
+    }
+}
+
+void general() {
     const std::string detected = ("[  " + std::string(green) + "DETECTED" + std::string(ansi_exit) + "  ]");
     const std::string not_detected = ("[" + std::string(red) + "NOT DETECTED" + std::string(ansi_exit) + "]");
-    const std::string note = ("[    NOTE    ]");
+    const std::string spoofable = ("[" + std::string(red) + " SPOOFABLE " + std::string(ansi_exit) + "]");
+    const std::string note = ("[    NOTE    ]");               
+    const std::string no_perms = ("[" + std::string(grey) + "  NO PERMS  " + std::string(ansi_exit) + "]");
+    const std::string tip = (std::string(green) + "TIP: " + std::string(ansi_exit));
 
-    auto checker = [&](const std::uint8_t flag, const char* message) -> void {
+    auto checker = [&](const VM::enum_flags flag, const char* message) -> void {
+        if (is_spoofable(flag)) {
+            if (!arg_bitset.test(SPOOFABLE)) {
+                std::cout << spoofable << "  Skipped " << message << "\n";
+                return;
+            }
+        }
+
+#if (LINUX)
+        if (are_perms_required(flag)) {
+            std::cout << no_perms << " Skipped " << message << "\n";
+            return;
+        }
+#endif
+
         if (VM::check(flag)) {
             std::cout << detected << " Checking " << message << "...\n";
             detected_count++;
@@ -308,19 +422,31 @@ void general(const bool hyperv_setting, const bool enable_notes) {
         }
     };
 
-    #if (defined(__GNUC__) || defined(__linux__))
-        if (enable_notes) {
-            const uid_t uid  = getuid();
-            const uid_t euid = geteuid();
+    bool notes_enabled = false;
+    VM::enum_flags hyperv_setting;
+    VM::enum_flags spoofable_setting;
 
-            const bool is_root = (
-                (uid != euid) || 
-                (euid == 0)
-            );
+    if (arg_bitset.test(NOTES)) {
+        notes_enabled = false;
+    } else {
+        notes_enabled = true;
+    }
 
-            if (!is_root) {
-                std::cout << note << " Running under root might give better results\n";
-            }
+    if (arg_bitset.test(HYPERV)) {
+        hyperv_setting = VM::NULL_ARG;
+    } else {
+        hyperv_setting = VM::ENABLE_HYPERV_HOST;
+    }
+
+    if (arg_bitset.test(SPOOFABLE)) {
+        spoofable_setting = VM::SPOOFABLE;
+    } else {
+        spoofable_setting = VM::NULL_ARG;
+    }
+
+    #if (LINUX)
+        if (notes_enabled && !is_admin()) {
+            std::cout << note << " Running under root might give better results\n";
         }
     #endif
 
@@ -430,12 +556,12 @@ void general(const bool hyperv_setting, const bool enable_notes) {
     std::cout << "[DEBUG] theoretical maximum points: " << VM::total_points << "\n";
 #endif
 
-    std::string brand = VM::brand(VM::MULTIPLE);
+    std::string brand = VM::brand(VM::MULTIPLE, spoofable_setting);
 
     std::cout << "VM brand: " << (brand == "Unknown" ? red : green) << brand << ansi_exit << "\n";
 
     if (brand.find(" or ") == std::string::npos) {
-        const std::string brand = VM::brand(VM::MULTIPLE);
+        const std::string brand = VM::brand(VM::MULTIPLE, spoofable_setting);
         const std::string type_value = type(brand);
 
         std::cout << "VM type: ";
@@ -448,7 +574,7 @@ void general(const bool hyperv_setting, const bool enable_notes) {
     }
 
     const char* percent_color = "";
-    const std::uint8_t percent = (hyperv_setting ? VM::percentage(VM::ENABLE_HYPERV_HOST) : VM::percentage());
+    const std::uint8_t percent = VM::percentage(hyperv_setting, spoofable_setting);
 
     if      (percent == 0) { percent_color = red; }
     else if (percent < 25) { percent_color = red_orange; }
@@ -458,7 +584,7 @@ void general(const bool hyperv_setting, const bool enable_notes) {
 
     std::cout << "VM likeliness: " << percent_color << static_cast<std::uint32_t>(percent) << "%" << ansi_exit << "\n";
 
-    const bool is_detected = (hyperv_setting ? VM::detect(VM::ENABLE_HYPERV_HOST) : VM::detect());
+    const bool is_detected = VM::detect(hyperv_setting, spoofable_setting);
 
     std::cout << "VM confirmation: " << (is_detected ? green : red) << std::boolalpha << is_detected << std::noboolalpha << ansi_exit << "\n";
 
@@ -484,15 +610,21 @@ void general(const bool hyperv_setting, const bool enable_notes) {
         ansi_exit <<
         "\n\n";
 
-    std::vector<const char*> brand_vector = VM::brand_vector();
+#if (MSVC)
+    using brand_score_t = std::int32_t;
+#else
+    using brand_score_t = std::uint8_t;
+#endif
+
+    std::map<const char*, brand_score_t> brand_map = VM::brand_map();
 
     auto brand_vec = [&]() -> bool {
         bool is_hyperv_vpc_present = false;
 
-        for (const char* p_brand : brand_vector) {
+        for (const auto p_brand : brand_map) {
             if (
-                (std::strcmp(p_brand, "Microsoft Hyper-V") == 0) || 
-                (std::strcmp(p_brand, "Virtual PC") == 0)
+                (std::strcmp(p_brand.first, "Microsoft Hyper-V") == 0) || 
+                (std::strcmp(p_brand.first, "Virtual PC") == 0)
             ) {
                 is_hyperv_vpc_present = true;
             }
@@ -506,10 +638,10 @@ void general(const bool hyperv_setting, const bool enable_notes) {
         bool is_vpc = false;
         bool is_other = false;
 
-        for (const auto p_brand : brand_vector) {
-            if (std::strcmp(p_brand, "Microsoft Hyper-V") == 0) {
+        for (const auto p_brand : brand_map) {
+            if (std::strcmp(p_brand.first, "Microsoft Hyper-V") == 0) {
                 is_hyperv = true;
-            } else if (std::strcmp(p_brand, "Virtual PC") == 0) {
+            } else if (std::strcmp(p_brand.first, "Virtual PC") == 0) {
                 is_vpc = true;
             } else {
                 is_other = true;
@@ -540,12 +672,14 @@ void general(const bool hyperv_setting, const bool enable_notes) {
         << ansi_exit
         << "\n\n";
 
-    if (hyperv_setting && diff_brand_check() && brand_vec() && enable_notes) {
-        std::cout << note << 
-        " If you know you are running on host, Hyper-V virtualises all applications by default within the host system. This result is in fact correct and NOT a false positive. If you do not want Hyper-V's default virtualisation in the result, run with the \"--disable-hyperv-host\" argument, or disable Hyper-V in your system. See here for more information https://github.com/kernelwernel/VMAware/issues/75\n\n";
-    } else if (enable_notes) {
-        std::cout << note << 
-        " If you found a false positive, please make sure to create an issue at https://github.com/kernelwernel/VMAware/issues\n\n";
+    if ((hyperv_setting == VM::ENABLE_HYPERV_HOST) && diff_brand_check() && brand_vec() && notes_enabled) {
+        std::cout << note << " If you know you are running on host, Hyper-V virtualises all applications by default within the host system. This result is in fact correct and NOT a false positive. If you do not want Hyper-V's default virtualisation to affect the result, disable Hyper-V in your system. See here for more information https://github.com/kernelwernel/VMAware/issues/75\n\n";
+    } else if (notes_enabled) {
+        if (!arg_bitset.test(SPOOFABLE)) {
+            std::cout << tip << "To enable spoofable techniques, run with the \"--spoofable\" argument\n\n";
+        } else {
+            std::cout << note << " If you found a false positive, please make sure to create an issue at https://github.com/kernelwernel/VMAware/issues\n\n";
+        }
     }
 }
 
@@ -559,27 +693,11 @@ int main(int argc, char* argv[]) {
     const std::uint32_t arg_count = argc - 1;
 
     if (arg_count == 0) {
-        general(ENABLE_HYPERV, ENABLE_NOTES);
+        general();
         std::exit(0);
     } 
-    
-    enum arg_enum : std::uint8_t {
-        HELP,
-        VERSION,
-        DETECT,
-        STDOUT,
-        BRAND,
-        BRAND_LIST,
-        PERCENT,
-        CONCLUSION,
-        NUMBER,
-        TYPE,
-        HYPERV,
-        NOTES,
-        NULL_ARG
-    };
 
-    static constexpr std::array<std::pair<const char*, arg_enum>, 22> table {{
+    static constexpr std::array<std::pair<const char*, arg_enum>, 23> table {{
         { "-h", HELP },
         { "-v", VERSION },
         { "-d", DETECT },
@@ -601,7 +719,8 @@ int main(int argc, char* argv[]) {
         { "--number", NUMBER },
         { "--type", TYPE },
         { "--disable-hyperv-host", HYPERV },
-        { "--disable-notes", NOTES }
+        { "--disable-notes", NOTES },
+        { "--spoofable", SPOOFABLE }
     }};
 
     [[maybe_unused]] std::string potential_null_arg = "";
@@ -644,23 +763,6 @@ int main(int argc, char* argv[]) {
     }
 
 
-    // settings
-    bool hyperv_disable_setting;
-    bool notes_setting;
-
-    if (arg_bitset.test(HYPERV)) {
-        hyperv_disable_setting = DISABLE_HYPERV;
-    } else {
-        hyperv_disable_setting = ENABLE_HYPERV;
-    }
-
-    if (arg_bitset.test(NOTES)) {
-        notes_setting = DISABLE_NOTES;
-    } else {
-        notes_setting = ENABLE_NOTES;
-    }
-
-
     // critical returners
     const std::uint32_t returners = (
         static_cast<std::uint8_t>(arg_bitset.test(STDOUT)) +
@@ -676,44 +778,44 @@ int main(int argc, char* argv[]) {
             std::cerr << "--stdout, --percent, --detect, --brand, --type, and --conclusion must NOT be a combination, choose only a single one\n";
             return 1;
         }
+            
+        const std::uint8_t max_bits = static_cast<std::uint8_t>(VM::MULTIPLE) + 1;
+
+        auto settings = [&]() -> std::bitset<max_bits> {
+            std::bitset<max_bits> setting_bits;
+
+            if (arg_bitset.test(HYPERV) == false) {
+                setting_bits.set(VM::ENABLE_HYPERV_HOST);
+            }
+
+            if (arg_bitset.test(SPOOFABLE)) {
+                setting_bits.set(VM::SPOOFABLE);
+            }
+
+            return setting_bits;
+        };
 
         if (arg_bitset.test(STDOUT)) {
-            if (hyperv_disable_setting) {
-                return (!VM::detect(VM::NO_MEMO));
-            } else {
-                return (!VM::detect(VM::NO_MEMO, VM::ENABLE_HYPERV_HOST));
-            }
+            return (!VM::detect(VM::NO_MEMO, settings()));
         }
 
         if (arg_bitset.test(PERCENT)) {
-            if (hyperv_disable_setting) {
-                std::cout << static_cast<std::uint32_t>(VM::percentage(VM::NO_MEMO)) << "\n";
-            } else {
-                std::cout << static_cast<std::uint32_t>(VM::percentage(VM::NO_MEMO, VM::ENABLE_HYPERV_HOST)) << "\n";
-            }
+            std::cout << static_cast<std::uint32_t>(VM::percentage(VM::NO_MEMO, settings())) << "\n";
             return 0;
         }
 
         if (arg_bitset.test(DETECT)) {
-            if (hyperv_disable_setting) {
-                std::cout << VM::detect(VM::NO_MEMO) << "\n";
-            } else {
-                std::cout << VM::detect(VM::NO_MEMO, VM::ENABLE_HYPERV_HOST) << "\n";
-            }
+            std::cout << VM::detect(VM::NO_MEMO, settings()) << "\n";
             return 0;
         }
 
         if (arg_bitset.test(BRAND)) {
-            if (hyperv_disable_setting) {
-                std::cout << VM::brand(VM::NO_MEMO, VM::MULTIPLE) << "\n";
-            } else {
-                std::cout << VM::brand(VM::NO_MEMO, VM::MULTIPLE, VM::ENABLE_HYPERV_HOST) << "\n";
-            }
+            std::cout << VM::brand(VM::NO_MEMO, VM::MULTIPLE, settings()) << "\n";
             return 0;
         }
 
         if (arg_bitset.test(TYPE)) {
-            const std::string brand = VM::brand(VM::MULTIPLE);
+            const std::string brand = VM::brand(VM::MULTIPLE, settings());
             std::cout << type(brand) << "\n";
             return 0;
         }
@@ -721,19 +823,15 @@ int main(int argc, char* argv[]) {
         if (arg_bitset.test(CONCLUSION)) {
             std::uint8_t percent = 0;
 
-            if (hyperv_disable_setting) {
-                percent = VM::percentage();
-            } else {
-                percent = VM::percentage(VM::ENABLE_HYPERV_HOST);
-            }
+            percent = VM::percentage(VM::ENABLE_HYPERV_HOST, settings());
 
-            const std::string brand = VM::brand(VM::MULTIPLE);
+            const std::string brand = VM::brand(VM::MULTIPLE, settings());
             std::cout << message(percent, brand) << "\n";
             return 0;
         }
     }
 
     // at this point, it's assumed that the user's intention is for the general summary to be ran
-    general(hyperv_disable_setting, notes_setting);
+    general();
     return 0;
 }

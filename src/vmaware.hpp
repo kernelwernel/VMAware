@@ -413,6 +413,8 @@ public:
         NO_MEMO,
         HIGH_THRESHOLD,
         ENABLE_HYPERV_HOST,
+        NULL_ARG, // does nothing as a placeholder
+        SPOOFABLE,
         MULTIPLE
     };
 
@@ -8150,15 +8152,21 @@ information about the hypervisor Linux is running on
 
     struct core {
         MSVC_DISABLE_WARNING(PADDING)
-            struct technique {
+        struct technique {
             u8 points;                 // this is the certainty score between 0 and 100
             std::function<bool()> run; // this is the technique function itself
+            bool spoofable;            // this is to indicate that the technique can be very easily spoofed (not guaranteed)
+        };
+
+        struct custom_technique {
+            u8 points;
+            std::function<bool()> run;
         };
         MSVC_ENABLE_WARNING(PADDING)
 
         static const std::map<u8, technique> technique_table;
 
-        static std::vector<technique> custom_table;
+        static std::vector<custom_technique> custom_table;
 
         static bool cpuid_supported;
 
@@ -8240,6 +8248,7 @@ information about the hypervisor Linux is running on
                 flags.test(NO_MEMO) ||
                 flags.test(HIGH_THRESHOLD) ||
                 flags.test(ENABLE_HYPERV_HOST) ||
+                flags.test(SPOOFABLE) ||
                 flags.test(MULTIPLE)
             ) {
                 flags |= DEFAULT;
@@ -8256,9 +8265,14 @@ information about the hypervisor Linux is running on
             // for main technique table
             for (const auto& tmp : technique_table) {
                 const u8 technique_macro = tmp.first;
+                const technique tuple = tmp.second;
 
                 // check if it's disabled
                 if (core::is_disabled(flags, technique_macro)) {
+                    continue;
+                }
+
+                if (tuple.spoofable && core::is_disabled(flags, SPOOFABLE)) {
                     continue;
                 }
 
@@ -8273,15 +8287,12 @@ information about the hypervisor Linux is running on
                     continue;
                 }
 
-                // initialise the technique structure
-                technique pair = tmp.second;
-
                 // run the technique
-                const bool result = pair.run();
+                const bool result = tuple.run();
 
                 // accumulate the points if technique detected a VM
                 if (result) {
-                    points += pair.points;
+                    points += tuple.points;
                 }
 
                 /**
@@ -8296,7 +8307,7 @@ information about the hypervisor Linux is running on
 
                 // store the current technique result to the cache
                 if (memo_enabled) {
-                    memo::cache_store(technique_macro, result, pair.points);
+                    memo::cache_store(technique_macro, result, tuple.points);
                 }
             }
 
@@ -8322,12 +8333,10 @@ information about the hypervisor Linux is running on
                 return false;
             }
 
-            std::vector<const char*> brand_vec = VM::brand_vector(flags);
-
             bool is_hyperv_vpc_present = false;
 
-            for (const auto p_brand : brand_vec) {
-                if (p_brand == HYPERV || p_brand == VPC) {
+            for (const auto p_brand : brand_scoreboard) {
+                if (p_brand.first == HYPERV || p_brand.first == VPC) {
                     is_hyperv_vpc_present = true;
                 }
             }
@@ -8359,10 +8368,10 @@ information about the hypervisor Linux is running on
                 bool is_vpc = false;
                 bool is_other = false;
 
-                for (const auto p_brand : brand_vec) {
-                    if (p_brand == HYPERV) {
+                for (const auto p_brand : brand_scoreboard) {
+                    if (p_brand.first == HYPERV) {
                         is_hyperv = true;
-                    } else if (p_brand == VPC) {
+                    } else if (p_brand.first == VPC) {
                         is_vpc = true;
                     } else {
                         is_other = true;
@@ -8475,8 +8484,48 @@ information about the hypervisor Linux is running on
             if (
                 (flag == INVALID) ||
                 (flag > enum_size)
-                ) {
+            ) {
                 throw std::invalid_argument("Non-flag or invalid flag provided for VM::detect(), aborting");
+            }
+
+            if (flag == SPOOFABLE) {
+                flag_collector.set(VM::MAC);
+                flag_collector.set(VM::DOCKERENV);
+                flag_collector.set(VM::HWMON);
+                flag_collector.set(VM::CURSOR);
+                flag_collector.set(VM::VMWARE_REG);
+                flag_collector.set(VM::VBOX_REG);
+                flag_collector.set(VM::USER);
+                flag_collector.set(VM::DLL);
+                flag_collector.set(VM::REGISTRY);
+                flag_collector.set(VM::CWSANDBOX_VM);
+                flag_collector.set(VM::VM_FILES);
+                flag_collector.set(VM::HWMODEL);
+                flag_collector.set(VM::COMPUTER_NAME);
+                flag_collector.set(VM::HOSTNAME);
+                flag_collector.set(VM::KVM_REG);
+                flag_collector.set(VM::KVM_DRIVERS);
+                flag_collector.set(VM::KVM_DIRS);
+                flag_collector.set(VM::LOADED_DLLS);
+                flag_collector.set(VM::QEMU_DIR);
+                flag_collector.set(VM::MOUSE_DEVICE);
+                flag_collector.set(VM::VM_PROCESSES);
+                flag_collector.set(VM::LINUX_USER_HOST);
+                flag_collector.set(VM::HYPERV_REG);
+                flag_collector.set(VM::MAC_MEMSIZE);
+                flag_collector.set(VM::MAC_IOKIT);
+                flag_collector.set(VM::IOREG_GREP);
+                flag_collector.set(VM::MAC_SIP);
+                flag_collector.set(VM::HKLM_REGISTRIES);
+                flag_collector.set(VM::QEMU_GA);
+                flag_collector.set(VM::QEMU_PROC);
+                flag_collector.set(VM::VPC_PROC);
+                flag_collector.set(VM::VM_FILES_EXTRA);
+                flag_collector.set(VM::UPTIME);
+                flag_collector.set(VM::CUCKOO_DIR);
+                flag_collector.set(VM::HYPERV_HOSTNAME);
+                flag_collector.set(VM::GENERAL_HOSTNAME);
+                flag_collector.set(VM::BLUESTACKS_FOLDERS);
             }
 
             flag_collector.set(flag);
@@ -8650,8 +8699,9 @@ public: // START OF PUBLIC FUNCTIONS
             (flag_bit == NO_MEMO) ||
             (flag_bit == HIGH_THRESHOLD) ||
             (flag_bit == ENABLE_HYPERV_HOST) ||
+            (flag_bit == SPOOFABLE) ||
             (flag_bit == MULTIPLE)
-            ) {
+        ) {
             throw_error("Flag argument must be a technique flag and not a settings flag");
         }
 
@@ -8704,8 +8754,6 @@ public: // START OF PUBLIC FUNCTIONS
             UNUSED(tmp);
         }
 
-#define brands core::brand_scoreboard
-
         // check if it's already cached and return that instead
         if (core::is_disabled(flags, NO_MEMO)) {
             if (is_multiple) {
@@ -8721,30 +8769,13 @@ public: // START OF PUBLIC FUNCTIONS
             }
         }
 
-        std::string current_brand = "";
-        i32 max = 0;
-
-        // fetch the brand with the highest score
-        for (auto it = brands.cbegin(); it != brands.cend(); ++it) {
-            const char* brand = it->first;
-            const brand_score_t points = it->second;
-
-            if (points > max) {
-                current_brand = brand;
-                max = points;
-            }
-        }
-
-        // if no brand had a single point, return "Unknown"
-        if (max == 0) {
-            return "Unknown";
-        }
-
         // goofy ass C++11 and C++14 linker error workaround
 #if (CPP <= 14)
         constexpr const char* TMP_QEMU = "QEMU";
         constexpr const char* TMP_KVM = "KVM";
+        constexpr const char* TMP_QEMU_KVM = "QEMU+KVM";
         constexpr const char* TMP_KVM_HYPERV = "KVM Hyper-V Enlightenment";
+        constexpr const char* TMP_QEMU_KVM_HYPERV = "QEMU+KVM Hyper-V Enlightenment";
 
         constexpr const char* TMP_VMWARE = "VMware";
         constexpr const char* TMP_EXPRESS = "VMware Express";
@@ -8755,12 +8786,15 @@ public: // START OF PUBLIC FUNCTIONS
 
         constexpr const char* TMP_VPC = "Virtual PC";
         constexpr const char* TMP_HYPERV = "Microsoft Hyper-V";
+        constexpr const char* TMP_HYPERV_VPC = "Microsoft Virtual PC/Hyper-V";
         constexpr const char* TMP_AZURE = "Microsoft Azure Hyper-V";
         constexpr const char* TMP_NANOVISOR = "Xbox NanoVisor (Hyper-V)";
 #else
         constexpr const char* TMP_QEMU = QEMU;
         constexpr const char* TMP_KVM = KVM;
+        constexpr const char* TMP_QEMU_KVM = "QEMU+KVM";
         constexpr const char* TMP_KVM_HYPERV = KVM_HYPERV;
+        constexpr const char* TMP_QEMU_KVM_HYPERV = "QEMU+KVM Hyper-V Enlightenment";
 
         constexpr const char* TMP_VMWARE = VMWARE;
         constexpr const char* TMP_EXPRESS = VMWARE_EXPRESS;
@@ -8771,93 +8805,125 @@ public: // START OF PUBLIC FUNCTIONS
 
         constexpr const char* TMP_VPC = VPC;
         constexpr const char* TMP_HYPERV = HYPERV;
+        constexpr const char* TMP_HYPERV_VPC = "Microsoft Virtual PC/Hyper-V";
         constexpr const char* TMP_AZURE = AZURE_HYPERV;
         constexpr const char* TMP_NANOVISOR = NANOVISOR;
 #endif
 
-        if (
-            (brands.at(TMP_KVM) > 0) &&
-            (brands.at(TMP_KVM_HYPERV) > 0)
-        ) {
-            current_brand = TMP_KVM_HYPERV;
-        } else if (
-            (brands.at(TMP_QEMU) > 0) &&
-            (brands.at(TMP_KVM) > 0)
-        ) {
-            current_brand = "QEMU+KVM";
-        } else if (
-            (brands.at(TMP_AZURE) > 0) &&
-            ((brands.at(TMP_HYPERV) > 0) || (brands.at(TMP_VPC) > 0))
-        ) {
-            current_brand = TMP_AZURE;
-        } else if (
-            (brands.at(TMP_NANOVISOR) > 0) &&
-            ((brands.at(TMP_HYPERV) > 0) || (brands.at(TMP_VPC) > 0))
-        ) {
-            current_brand = TMP_NANOVISOR;
-        } else if (
-            (brands.at(TMP_VPC) > 0) &&
-            (brands.at(TMP_HYPERV) > 0)
-        ) {
-#if (MSVC)
-            const u8 version = util::get_windows_version();
+        std::map<const char*, brand_score_t> brands;
 
+        for (const auto &element : core::brand_scoreboard) {
+            if (element.second > 0) {
+                brands.insert(std::make_pair(element.first, element.second));
+            }
+        }
+
+        // if no brand had a single point, return "Unknown"
+        if (brands.empty()) {
+            return "Unknown";
+        }
+
+        if (brands.size() == 1) {
+            return brands.begin()->first;
+        }
+
+        auto merger = [&](const char* a, const char* b, const char* result) -> void {
             if (
-                (version < 10) &&
-                (version != 0)
+                (brands.count(a) > 0) &&
+                (brands.count(b) > 0)
             ) {
-                current_brand = TMP_VPC;
-            } else {
-                current_brand = TMP_HYPERV;
+                brands.erase(a);
+                brands.erase(b);
+                brands.emplace(std::make_pair(result, 2));
             }
-#else
-            current_brand = "Microsoft Virtual PC/Hyper-V";
-#endif
+        };
+
+        auto triple_merger = [&](const char* a, const char* b, const char* c, const char* result) -> void {
+            if (
+                (brands.count(a) > 0) &&
+                (brands.count(b) > 0) &&
+                (brands.count(c) > 0)
+            ) {
+                brands.erase(a);
+                brands.erase(b);
+                brands.erase(c);
+                brands.emplace(std::make_pair(result, 2));
+            }
+        };
+
+        if ((brands.count(TMP_HYPERV) > brands.count(TMP_VPC))) {
+            brands.erase(TMP_VPC);
         } else if (
-            // if only VMware Fusion is detected, set it. Otherwise, ignore this (the Fusion detection mechanisms are very weak as of 1.6 release)
-            (brands.at(TMP_FUSION) > 0) &&
-            (brands.at(TMP_EXPRESS) == 0) &&
-            (brands.at(TMP_ESX) == 0) &&
-            (brands.at(TMP_GSX) == 0) &&
-            (brands.at(TMP_WORKSTATION) == 0) &&
-            (brands.at(TMP_VMWARE) == 0)
+            (brands.count(TMP_HYPERV) == brands.count(TMP_VPC)) &&
+            ((brands.count(TMP_HYPERV) > 0) && (brands.count(TMP_VPC) > 0))
         ) {
-            current_brand = TMP_FUSION;
-        } else if (brands.at(TMP_VMWARE) > 0) {
-            if (brands.at(TMP_EXPRESS) > 0) { current_brand = TMP_EXPRESS; } 
-            else if (brands.at(TMP_ESX) > 0) { current_brand = TMP_ESX; }
-            else if (brands.at(TMP_GSX) > 0) { current_brand = TMP_GSX; } 
-            else if (brands.at(TMP_WORKSTATION) > 0) { current_brand = TMP_WORKSTATION; }
-        } else if (is_multiple) {
-            std::vector<std::string> potential_brands;
+            brands.erase(TMP_HYPERV);
+            brands.erase(TMP_VPC);
+            brands.emplace(std::make_pair(TMP_HYPERV_VPC, 2));
+        }
 
-            for (auto it = brands.cbegin(); it != brands.cend(); ++it) {
-                const brand_score_t points = it->second;
-                const std::string brand = it->first;
+        merger(TMP_AZURE, TMP_HYPERV, TMP_AZURE);
+        merger(TMP_AZURE, TMP_VPC, TMP_AZURE);
+        merger(TMP_AZURE, TMP_HYPERV_VPC, TMP_AZURE);
 
-                if (points > 0) {
-                    potential_brands.push_back(brand);
-                }
-            }
+        merger(TMP_NANOVISOR, TMP_HYPERV, TMP_NANOVISOR);
+        merger(TMP_NANOVISOR, TMP_VPC, TMP_NANOVISOR);
+        merger(TMP_NANOVISOR, TMP_HYPERV_VPC, TMP_NANOVISOR);
+        
+        merger(TMP_QEMU, TMP_KVM, TMP_QEMU_KVM);
+        merger(TMP_KVM, TMP_HYPERV, TMP_KVM_HYPERV);
+        merger(TMP_QEMU, TMP_HYPERV, TMP_QEMU_KVM_HYPERV);
+        merger(TMP_QEMU_KVM, TMP_HYPERV, TMP_QEMU_KVM_HYPERV);
+        merger(TMP_KVM, TMP_KVM_HYPERV, TMP_KVM_HYPERV);
+        merger(TMP_QEMU, TMP_KVM_HYPERV, TMP_QEMU_KVM_HYPERV);
+        merger(TMP_QEMU_KVM, TMP_KVM_HYPERV, TMP_QEMU_KVM_HYPERV);
+        triple_merger(TMP_QEMU, TMP_KVM, TMP_KVM_HYPERV, TMP_QEMU_KVM_HYPERV);
 
+        merger(TMP_VMWARE, TMP_FUSION, TMP_FUSION);
+        merger(TMP_VMWARE, TMP_EXPRESS, TMP_EXPRESS);
+        merger(TMP_VMWARE, TMP_ESX, TMP_ESX);
+        merger(TMP_VMWARE, TMP_GSX, TMP_GSX);
+        merger(TMP_VMWARE, TMP_WORKSTATION, TMP_WORKSTATION);
+
+        using brand_element_t = std::pair<const char*, brand_score_t>;
+
+        auto sorter = [&]() -> std::vector<brand_element_t> {
+            std::vector<brand_element_t> vec(brands.begin(), brands.end());
+
+            std::sort(vec.begin(), vec.end(), [](
+                const brand_element_t &a, 
+                const brand_element_t &b
+            ) {
+                return a.second < b.second;
+            });
+
+            return vec;
+        };
+        
+        std::vector<brand_element_t> vec = sorter();
+        std::string ret_str = "Unknown";
+
+        if (!is_multiple) {
+            ret_str = vec.front().first;
+        } else {
             std::stringstream ss;
             u8 i = 1;
 
-            ss << potential_brands.front();
-            for (; i < potential_brands.size(); i++) {
+            ss << vec.front().first;
+            for (; i < vec.size(); i++) {
                 ss << " or ";
-                ss << potential_brands.at(i);
+                ss << vec.at(i).first;
             }
-            current_brand = ss.str();
+            ret_str = ss.str();
         }
 
         if (core::is_disabled(flags, NO_MEMO)) {
             if (is_multiple) {
                 core_debug("VM::brand(): cached multiple brand string");
-                memo::multi_brand::store(current_brand);
+                memo::multi_brand::store(ret_str);
             } else {
                 core_debug("VM::brand(): cached brand string");
-                memo::brand::store(current_brand);
+                memo::brand::store(ret_str);
             }
         }
 
@@ -8868,7 +8934,7 @@ public: // START OF PUBLIC FUNCTIONS
             }
         #endif
 
-        return current_brand;
+        return ret_str;
     }
 
 
@@ -8976,7 +9042,7 @@ public: // START OF PUBLIC FUNCTIONS
         [[assume(percent > 0 && percent <= 100)]];
 #endif
 
-        core::technique query{
+        core::custom_technique query{
             percent,
             detection_func
         };
@@ -8998,6 +9064,7 @@ public: // START OF PUBLIC FUNCTIONS
         flags.flip();
         flags.set(NO_MEMO, 0);
         flags.set(HIGH_THRESHOLD, 0);
+        flags.set(SPOOFABLE, 0);
         flags.set(ENABLE_HYPERV_HOST, 0);
         flags.set(MULTIPLE, 0);
 
@@ -9011,7 +9078,7 @@ public: // START OF PUBLIC FUNCTIONS
      * @warning ⚠️ FOR DEVELOPMENT USAGE ONLY, NOT MEANT FOR PUBLIC USE ⚠️
      */
     template <typename ...Args>
-    static std::vector<const char*> brand_vector(Args ...args) {
+    static std::map<const char*, brand_score_t> brand_map(Args ...args) {
         flagset flags = core::arg_handler(args...);
 
         // are all the techiques already run? if not, run all of them to get the necessary info to fetch the brand
@@ -9020,22 +9087,7 @@ public: // START OF PUBLIC FUNCTIONS
             UNUSED(tmp);
         }
 
-        std::vector<const char*> tmp_vec;
-
-        for (
-            auto it = core::brand_scoreboard.cbegin();
-            it != core::brand_scoreboard.cend();
-            ++it
-        ) {
-            const char* brand = it->first;
-            const brand_score_t points = it->second;
-
-            if (points > 0) {
-                tmp_vec.push_back(brand);
-            }
-        }
-
-        return tmp_vec;
+        return core::brand_scoreboard;
     }
 };
 
@@ -9120,6 +9172,7 @@ VM::flagset VM::DEFAULT = []() -> flagset {
     tmp.flip(CURSOR);
     tmp.flip(HIGH_THRESHOLD);
     tmp.flip(ENABLE_HYPERV_HOST);
+    tmp.flip(SPOOFABLE);
     tmp.flip(MULTIPLE);
 
     return tmp;
@@ -9166,111 +9219,113 @@ bool VM::core::cpuid_supported = []() -> bool {
 
 
 // this is initialised as empty, because this is where custom techniques can be added at runtime 
-std::vector<VM::core::technique> VM::core::custom_table = {
+std::vector<VM::core::custom_technique> VM::core::custom_table = {
 
 };
 
 
 // the 0~100 points are debatable, but I think it's fine how it is. Feel free to disagree.
 const std::map<VM::u8, VM::core::technique> VM::core::technique_table = {
-    { VM::VMID, { 100, VM::vmid }},
-    { VM::CPU_BRAND, { 50, VM::cpu_brand }},
-    { VM::HYPERVISOR_BIT, { 100, VM::hypervisor_bit }}, 
-    { VM::HYPERVISOR_STR, { 45, VM::hypervisor_brand }},
-    { VM::RDTSC, { 10, VM::rdtsc_check }},
-    { VM::THREADCOUNT, { 35, VM::thread_count }},
-    { VM::MAC, { 60, VM::mac_address_check }},
-    { VM::TEMPERATURE, { 15, VM::temperature }},
-    { VM::SYSTEMD, { 70, VM::systemd_virt }},
-    { VM::CVENDOR, { 65, VM::chassis_vendor }},
-    { VM::CTYPE, { 10, VM::chassis_type }},
-    { VM::DOCKERENV, { 80, VM::dockerenv }},
-    { VM::DMIDECODE, { 55, VM::dmidecode }},
-    { VM::DMESG, { 55, VM::dmesg }},
-    { VM::HWMON, { 75, VM::hwmon }},
-    { VM::SIDT5, { 45, VM::sidt5 }},
-    { VM::CURSOR, { 5, VM::cursor_check }},
-    { VM::VMWARE_REG, { 65, VM::vmware_registry }},
-    { VM::VBOX_REG, { 65, VM::vbox_registry }},
-    { VM::USER, { 35, VM::user_check }},
-    { VM::DLL, { 50, VM::DLL_check }},
-    { VM::REGISTRY, { 75, VM::registry_key }},
-    { VM::CWSANDBOX_VM, { 10, VM::cwsandbox_check }},
-    { VM::VM_FILES, { 60, VM::vm_files }},
-    { VM::HWMODEL, { 75, VM::hwmodel }},
-    { VM::DISK_SIZE, { 60, VM::disk_size }},
-    { VM::VBOX_DEFAULT, { 55, VM::vbox_default_specs }},
-    { VM::VBOX_NETWORK, { 70, VM::vbox_network_share }},
-    { VM::WINE_CHECK, { 85, VM::wine }},                     // GPL
-    { VM::COMPUTER_NAME, { 15, VM::computer_name_match }},   // GPL
-    { VM::HOSTNAME, { 25, VM::hostname_match }},             // GPL
-    { VM::MEMORY, { 35, VM::low_memory_space }},             // GPL
-    { VM::VBOX_WINDOW_CLASS, { 10, VM::vbox_window_class }}, // GPL
-    { VM::KVM_REG, { 75, VM::kvm_registry }},                // GPL
-    { VM::KVM_DRIVERS, { 55, VM::kvm_drivers }},             // GPL
-    { VM::KVM_DIRS, { 55, VM::kvm_directories }},            // GPL
-    { VM::LOADED_DLLS, { 75, VM::loaded_dlls }},             // GPL
-    { VM::AUDIO, { 35, VM::check_audio }},                   // GPL
-    { VM::QEMU_DIR, { 45, VM::qemu_dir }},                   // GPL
-    { VM::MOUSE_DEVICE, { 20, VM::mouse_device }},           // GPL
-    { VM::VM_PROCESSES, { 30, VM::vm_processes }},
-    { VM::LINUX_USER_HOST, { 25, VM::linux_user_host }},
-    { VM::GAMARUE, { 40, VM::gamarue }},
-    { VM::VMID_0X4, { 90, VM::vmid_0x4 }},
-    { VM::PARALLELS_VM, { 50, VM::parallels }},
-    { VM::RDTSC_VMEXIT, { 25, VM::rdtsc_vmexit }},
-    { VM::QEMU_BRAND, { 100, VM::cpu_brand_qemu }},
-    { VM::BOCHS_CPU, { 95, VM::bochs_cpu }},
-    { VM::VPC_BOARD, { 20, VM::vpc_board }},
-    { VM::HYPERV_WMI, { 80, VM::hyperv_wmi }},
-    { VM::HYPERV_REG, { 80, VM::hyperv_registry }},
-    { VM::BIOS_SERIAL, { 60, VM::bios_serial }},
-    { VM::VBOX_FOLDERS, { 45, VM::vbox_shared_folders }},
-    { VM::MSSMBIOS, { 75, VM::mssmbios }},
-    { VM::MAC_MEMSIZE, { 30, VM::hw_memsize }},
-    { VM::MAC_IOKIT, { 80, VM::io_kit }},
-    { VM::IOREG_GREP, { 75, VM::ioreg_grep }},
-    { VM::MAC_SIP, { 85, VM::mac_sip }},
-    { VM::HKLM_REGISTRIES, { 70, VM::hklm_registries }},
-    { VM::QEMU_GA, { 20, VM::qemu_ga }},
-    { VM::VALID_MSR, { 35, VM::valid_msr }},
-    { VM::QEMU_PROC, { 30, VM::qemu_processes }},
-    { VM::VPC_PROC, { 30, VM::vpc_proc }},
-    { VM::VPC_INVALID, { 75, VM::vpc_invalid }},
-    { VM::SIDT, { 30, VM::sidt }},
-    { VM::SGDT, { 30, VM::sgdt }},
-    { VM::SLDT, { 15, VM::sldt }},
-    { VM::OFFSEC_SIDT, { 60, VM::offsec_sidt }},
-    { VM::OFFSEC_SGDT, { 60, VM::offsec_sgdt }},
-    { VM::OFFSEC_SLDT, { 20, VM::offsec_sldt }},
-    { VM::VPC_SIDT, { 15, VM::vpc_sidt }},
-    { VM::HYPERV_BOARD, { 45, VM::hyperv_board }},
-    { VM::VM_FILES_EXTRA, { 70, VM::vm_files_extra }},
-    { VM::VMWARE_IOMEM, { 65, VM::vmware_iomem }},
-    { VM::VMWARE_IOPORTS, { 70, VM::vmware_ioports }},
-    { VM::VMWARE_SCSI, { 40, VM::vmware_scsi }},
-    { VM::VMWARE_DMESG, { 65, VM::vmware_dmesg }},
-    { VM::VMWARE_STR, { 35, VM::vmware_str }},
-    { VM::VMWARE_BACKDOOR, { 100, VM::vmware_backdoor }},
-    { VM::VMWARE_PORT_MEM, { 85, VM::vmware_port_memory }},
-    { VM::SMSW, { 30, VM::smsw }},
-    { VM::MUTEX, { 85, VM::mutex }},
-    { VM::UPTIME, { 10, VM::uptime }},
-    { VM::ODD_CPU_THREADS, { 80, VM::odd_cpu_threads }},
-    { VM::INTEL_THREAD_MISMATCH, { 85, VM::intel_thread_mismatch }},
-    { VM::XEON_THREAD_MISMATCH, { 85, VM::xeon_thread_mismatch }},
-    { VM::NETTITUDE_VM_MEMORY, { 75, VM::nettitude_vm_memory }},
-    { VM::CPUID_BITSET, { 20, VM::cpuid_bitset }},
-    { VM::CUCKOO_DIR, { 15, VM::cuckoo_dir }},
-    { VM::CUCKOO_PIPE, { 20, VM::cuckoo_pipe }},
-    { VM::HYPERV_HOSTNAME, { 50, VM::hyperv_hostname }},
-    { VM::GENERAL_HOSTNAME, { 20, VM::general_hostname }},
-    { VM::SCREEN_RESOLUTION, { 30, VM::screen_resolution }},
-    { VM::DEVICE_STRING, { 25, VM::device_string }},
-    { VM::BLUESTACKS_FOLDERS, { 15, VM::bluestacks }},
-    { VM::CPUID_SIGNATURE, { 95, VM::cpuid_signature }},
-    { VM::HYPERV_BITMASK, { 40, VM::hyperv_bitmask }},
-    { VM::KVM_BITMASK, { 40, VM::kvm_bitmask }},
-    { VM::KGT_SIGNATURE, { 80, VM::intel_kgt_signature }},
-    { VM::VMWARE_DMI, { 30, VM::vmware_dmi }}
+    // FORMAT: VM::<ID> = { certainty%, function pointer, spoofable? }
+
+    { VM::VMID, { 100, VM::vmid, false }},
+    { VM::CPU_BRAND, { 50, VM::cpu_brand, false }},
+    { VM::HYPERVISOR_BIT, { 100, VM::hypervisor_bit , false}}, 
+    { VM::HYPERVISOR_STR, { 45, VM::hypervisor_brand, false }},
+    { VM::RDTSC, { 10, VM::rdtsc_check, false }},
+    { VM::THREADCOUNT, { 35, VM::thread_count, false }},
+    { VM::MAC, { 60, VM::mac_address_check, true }},
+    { VM::TEMPERATURE, { 15, VM::temperature, false }},
+    { VM::SYSTEMD, { 70, VM::systemd_virt, false }},
+    { VM::CVENDOR, { 65, VM::chassis_vendor, false }},
+    { VM::CTYPE, { 10, VM::chassis_type, false }},
+    { VM::DOCKERENV, { 80, VM::dockerenv, true }},
+    { VM::DMIDECODE, { 55, VM::dmidecode, false }},
+    { VM::DMESG, { 55, VM::dmesg, false }},
+    { VM::HWMON, { 75, VM::hwmon, true }},
+    { VM::SIDT5, { 45, VM::sidt5, false }},
+    { VM::CURSOR, { 5, VM::cursor_check, true }},
+    { VM::VMWARE_REG, { 65, VM::vmware_registry, true }},
+    { VM::VBOX_REG, { 65, VM::vbox_registry, true }},
+    { VM::USER, { 35, VM::user_check, true }},
+    { VM::DLL, { 50, VM::DLL_check, true }},
+    { VM::REGISTRY, { 75, VM::registry_key, true }},
+    { VM::CWSANDBOX_VM, { 10, VM::cwsandbox_check, true }},
+    { VM::VM_FILES, { 60, VM::vm_files, true }},
+    { VM::HWMODEL, { 75, VM::hwmodel, true }},
+    { VM::DISK_SIZE, { 60, VM::disk_size, false }},
+    { VM::VBOX_DEFAULT, { 55, VM::vbox_default_specs, false }},
+    { VM::VBOX_NETWORK, { 70, VM::vbox_network_share, false }},
+    { VM::WINE_CHECK, { 85, VM::wine, false }},                     // GPL
+    { VM::COMPUTER_NAME, { 15, VM::computer_name_match, true }},    // GPL
+    { VM::HOSTNAME, { 25, VM::hostname_match, true  }},             // GPL
+    { VM::MEMORY, { 35, VM::low_memory_space, false }},             // GPL
+    { VM::VBOX_WINDOW_CLASS, { 10, VM::vbox_window_class, false }}, // GPL
+    { VM::KVM_REG, { 75, VM::kvm_registry, true }},                 // GPL
+    { VM::KVM_DRIVERS, { 55, VM::kvm_drivers, true }},              // GPL
+    { VM::KVM_DIRS, { 55, VM::kvm_directories, true }},             // GPL
+    { VM::LOADED_DLLS, { 75, VM::loaded_dlls, true }},              // GPL
+    { VM::AUDIO, { 35, VM::check_audio, false }},                   // GPL
+    { VM::QEMU_DIR, { 45, VM::qemu_dir, true }},                    // GPL
+    { VM::MOUSE_DEVICE, { 20, VM::mouse_device, true }},            // GPL
+    { VM::VM_PROCESSES, { 30, VM::vm_processes, true }},
+    { VM::LINUX_USER_HOST, { 25, VM::linux_user_host, true }},
+    { VM::GAMARUE, { 40, VM::gamarue, false }},
+    { VM::VMID_0X4, { 90, VM::vmid_0x4, false }},
+    { VM::PARALLELS_VM, { 50, VM::parallels, false }},
+    { VM::RDTSC_VMEXIT, { 25, VM::rdtsc_vmexit, false }},
+    { VM::QEMU_BRAND, { 100, VM::cpu_brand_qemu, false }},
+    { VM::BOCHS_CPU, { 95, VM::bochs_cpu, false }},
+    { VM::VPC_BOARD, { 20, VM::vpc_board, false }},
+    { VM::HYPERV_WMI, { 80, VM::hyperv_wmi, false }},
+    { VM::HYPERV_REG, { 80, VM::hyperv_registry, true }},
+    { VM::BIOS_SERIAL, { 60, VM::bios_serial, false }},
+    { VM::VBOX_FOLDERS, { 45, VM::vbox_shared_folders, false }},
+    { VM::MSSMBIOS, { 75, VM::mssmbios, false }},
+    { VM::MAC_MEMSIZE, { 30, VM::hw_memsize, true }},
+    { VM::MAC_IOKIT, { 80, VM::io_kit, true }},
+    { VM::IOREG_GREP, { 75, VM::ioreg_grep, true }},
+    { VM::MAC_SIP, { 85, VM::mac_sip, true }},
+    { VM::HKLM_REGISTRIES, { 70, VM::hklm_registries, true }},
+    { VM::QEMU_GA, { 20, VM::qemu_ga, true }},
+    { VM::VALID_MSR, { 35, VM::valid_msr, false }},
+    { VM::QEMU_PROC, { 30, VM::qemu_processes, true }},
+    { VM::VPC_PROC, { 30, VM::vpc_proc, true }},
+    { VM::VPC_INVALID, { 75, VM::vpc_invalid, false }},
+    { VM::SIDT, { 30, VM::sidt, false }},
+    { VM::SGDT, { 30, VM::sgdt, false }},
+    { VM::SLDT, { 15, VM::sldt, false }},
+    { VM::OFFSEC_SIDT, { 60, VM::offsec_sidt, false }},
+    { VM::OFFSEC_SGDT, { 60, VM::offsec_sgdt, false }},
+    { VM::OFFSEC_SLDT, { 20, VM::offsec_sldt, false }},
+    { VM::VPC_SIDT, { 15, VM::vpc_sidt, false }},
+    { VM::HYPERV_BOARD, { 45, VM::hyperv_board, false }},
+    { VM::VM_FILES_EXTRA, { 70, VM::vm_files_extra, true }},
+    { VM::VMWARE_IOMEM, { 65, VM::vmware_iomem, false }},
+    { VM::VMWARE_IOPORTS, { 70, VM::vmware_ioports, false }},
+    { VM::VMWARE_SCSI, { 40, VM::vmware_scsi, false }},
+    { VM::VMWARE_DMESG, { 65, VM::vmware_dmesg, false }},
+    { VM::VMWARE_STR, { 35, VM::vmware_str, false }},
+    { VM::VMWARE_BACKDOOR, { 100, VM::vmware_backdoor, false }},
+    { VM::VMWARE_PORT_MEM, { 85, VM::vmware_port_memory, false }},
+    { VM::SMSW, { 30, VM::smsw, false }},
+    { VM::MUTEX, { 85, VM::mutex, false }},
+    { VM::UPTIME, { 10, VM::uptime, true }},
+    { VM::ODD_CPU_THREADS, { 80, VM::odd_cpu_threads, false }},
+    { VM::INTEL_THREAD_MISMATCH, { 85, VM::intel_thread_mismatch, false }},
+    { VM::XEON_THREAD_MISMATCH, { 85, VM::xeon_thread_mismatch, false }},
+    { VM::NETTITUDE_VM_MEMORY, { 75, VM::nettitude_vm_memory, false }},
+    { VM::CPUID_BITSET, { 20, VM::cpuid_bitset, false }},
+    { VM::CUCKOO_DIR, { 15, VM::cuckoo_dir, true }},
+    { VM::CUCKOO_PIPE, { 20, VM::cuckoo_pipe, false }},
+    { VM::HYPERV_HOSTNAME, { 50, VM::hyperv_hostname, true }},
+    { VM::GENERAL_HOSTNAME, { 20, VM::general_hostname, true }},
+    { VM::SCREEN_RESOLUTION, { 30, VM::screen_resolution, false }},
+    { VM::DEVICE_STRING, { 25, VM::device_string, false }},
+    { VM::BLUESTACKS_FOLDERS, { 15, VM::bluestacks, true }},
+    { VM::CPUID_SIGNATURE, { 95, VM::cpuid_signature, false }},
+    { VM::HYPERV_BITMASK, { 40, VM::hyperv_bitmask, false }},
+    { VM::KVM_BITMASK, { 40, VM::kvm_bitmask, false }},
+    { VM::KGT_SIGNATURE, { 80, VM::intel_kgt_signature, false }},
+    { VM::VMWARE_DMI, { 30, VM::vmware_dmi, false }}
 };

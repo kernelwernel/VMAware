@@ -26,11 +26,6 @@ The library is:
 - Contains separate MIT and GPL-3.0 compliant library header files
 
 
-> [!NOTE]
-> The library doesn't guarantee it'll be accurate. If you found a false positive or a false negative then please create an issue with information on what your VM is, what OS you're using, and other relevant details.
->
-
-
 <br>
 
 ## Example 🧪
