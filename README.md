@@ -28,6 +28,12 @@ The library is:
 
 <br>
 
+> [!WARNING]
+**DO NOT USE THIS LIBRARY FOR CRITICAL SOFTWARE** (i.e. anti-cheats, proprietary software, paid software, etc...)
+> 
+> The full reason can be found [here](deprecation.md)
+
+
 ## Example 🧪
 ```cpp
 #include "vmaware.hpp"
