@@ -420,7 +420,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::DEVICE_STRING` | Check if bogus device string would be accepted | Windows | 25% |  |  |  |
 | `VM::BLUESTACKS_FOLDERS` |  Check for the presence of BlueStacks-specific folders | Linux | 15% |  |  |  |
 | `VM::CPUID_SIGNATURE` | Check for signatures in leaf 0x40000001 in CPUID |  | 95% |  |  |  |
-| `VM::HYPERV_BITMASK` | Check for Hyper-V CPUID bitmask range for reserved values |  | 40% |  |  |  |
+| `VM::HYPERV_BITMASK` | Check for Hyper-V CPUID bitmask range for reserved values |  | 20% |  |  |  |
 | `VM::KVM_BITMASK` | Check for KVM CPUID bitmask range for reserved values |  | 40% |  |  |  |
 | `VM::KGT_SIGNATURE` | Check for Intel KGT (Trusty branch) hypervisor signature in CPUID |  | 80% |  |  |  |
 | `VM::VMWARE_DMI` | Check for VMware DMI strings in BIOS serial number | Windows | 30% |  |  |  |

@@ -7782,6 +7782,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
     /**
      * @brief Check for Hyper-V CPUID bitmask range for reserved values
+     * @link https://learn.microsoft.com/en-us/virtualization/hyper-v-on-windows/tlfs/feature-discovery
      * @category x86
      */
     [[nodiscard]] static bool hyperv_bitmask() try {
@@ -7817,12 +7818,34 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false; // returned false because we want the most feature leafs as possible for Hyper-V
         }
 
+        auto leaf_01 = [&]() -> bool {
+            u32 eax, ebx, ecx, edx = 0;
+            cpu::cpuid(eax, ebx, ecx, edx, 0x40000001);
+
+            debug("01 eax = ", std::bitset<31>(eax));
+            debug("01 ebx = ", std::bitset<31>(ebx));
+            debug("          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
+            debug("01 ecx = ", std::bitset<31>(ecx));
+            debug("          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
+            debug("01 edx = ", std::bitset<31>(edx));
+            debug("          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
+
+            return (
+                (eax != 0) &&
+                (ebx == 0) &&
+                (ecx == 0) &&
+                (edx == 0)
+            );
+        };
+
         auto leaf_03 = [&]() -> bool {
             const u32 ecx = fetch_register(ECX, 0x40000003);
             const u32 edx = fetch_register(EDX, 0x40000003);
 
             debug("03 ecx = ", std::bitset<31>(ecx));
+            debug("          ^^^^^^^^^^^^^^^^^^^^^^^    ^^^^^");
             debug("03 edx = ", std::bitset<31>(edx));
+            debug("          ^^^^^ ^^ ^     ^                ");
 
             if (ecx == 0 || edx == 0) {
                 return false;
@@ -7844,8 +7867,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             const u32 edx = fetch_register(EDX, 0x40000004);
 
             debug("04 eax = ", std::bitset<31>(eax));
+            debug("                       ^^ ^^^^^^^ ^^^^^^^^");
             debug("04 ecx = ", std::bitset<31>(ecx));
+            debug("                                   ^^^^^^^");
             debug("04 edx = ", std::bitset<31>(edx));
+            debug("          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
 
             if (
                 eax == 0 ||
@@ -7867,6 +7893,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         auto leaf_05 = [&]() -> bool {
             const u32 edx = fetch_register(EDX, 0x40000005);
             debug("05 edx = ", std::bitset<31>(edx));
+            debug("          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
             return (edx == 0);
         };
 
@@ -7875,9 +7902,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             cpu::cpuid(eax, ebx, ecx, edx, 0x40000006);
 
             debug("06 eax = ", std::bitset<31>(eax));
+            debug("                 ^^^^^^^^^ ^^^^^^^^^^^^^^^");
             debug("06 ebx = ", std::bitset<31>(ebx));
+            debug("          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
             debug("06 ecx = ", std::bitset<31>(ecx));
+            debug("          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
             debug("06 edx = ", std::bitset<31>(edx));
+            debug("          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
             
             if (
                 eax == 0 ||
@@ -7902,9 +7933,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             cpu::cpuid(eax, ebx, ecx, edx, 0x40000009);
 
             debug("09 eax = ", std::bitset<31>(eax));
+            debug("                             ^     ^^^ ^  ");
             debug("09 ebx = ", std::bitset<31>(ebx));
+            debug("          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
             debug("09 ecx = ", std::bitset<31>(ecx));
+            debug("          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
             debug("09 edx = ", std::bitset<31>(edx));
+            debug("                        ^ ^          ^    ");
 
             if (
                 eax == 0 ||
@@ -7930,14 +7965,19 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         };
 
         auto leaf_0A = [&]() -> bool {
-            const u32 eax = fetch_register(EAX, 0x4000000A);
-            const u32 ecx = fetch_register(ECX, 0x4000000A);
-            const u32 edx = fetch_register(EDX, 0x4000000A);
+            u32 eax, ebx, ecx, edx = 0;
+            cpu::cpuid(eax, ebx, ecx, edx, 0x40000009);
 
             debug("0A eax = ", std::bitset<31>(eax));
+            debug("                     ^^^^ ^^^^^^^^^^^^^^^^");
+            debug("0A eax = ", std::bitset<31>(ebx));
+            debug("          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ ");
             debug("0A ecx = ", std::bitset<31>(ecx));
+            debug("          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
             debug("0A edx = ", std::bitset<31>(edx));
+            debug("          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
 
+            // ebx is left out on purpose due to how likely it can result the overall result to be a false negative
             if (
                 eax == 0 ||
                 ecx != 0 ||
@@ -7946,15 +7986,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return false;
             } else {
                 return (
-                    // ebx is left out on purpose due to how likely it can result the overall result to be a false negative
                     ((eax & (1 << 16)) == 0) &&
                     ((eax >> 21) == 0) &&
+                    ((ebx >> 30) == 0) &&
                     (ecx == 0) &&
                     (edx == 0)
                 );
             }
         };
 
+        debug("01: ", leaf_01());
         debug("03: ", leaf_03());
         debug("04: ", leaf_04());
         debug("05: ", leaf_05());
@@ -7963,6 +8004,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         debug("0A: ", leaf_0A());
 
         if (
+            leaf_01() &&
             leaf_03() &&
             leaf_04() &&
             leaf_05() &&
@@ -9227,7 +9269,7 @@ std::vector<VM::core::custom_technique> VM::core::custom_table = {
 
 // the 0~100 points are debatable, but I think it's fine how it is. Feel free to disagree.
 const std::map<VM::u8, VM::core::technique> VM::core::technique_table = {
-    // FORMAT: VM::<ID> = { certainty%, function pointer, spoofable? }
+    // FORMAT: VM::<ID> = { certainty%, function pointer, is spoofable? }
 
     { VM::VMID, { 100, VM::vmid, false }},
     { VM::CPU_BRAND, { 50, VM::cpu_brand, false }},
@@ -9325,7 +9367,7 @@ const std::map<VM::u8, VM::core::technique> VM::core::technique_table = {
     { VM::DEVICE_STRING, { 25, VM::device_string, false }},
     { VM::BLUESTACKS_FOLDERS, { 15, VM::bluestacks, true }},
     { VM::CPUID_SIGNATURE, { 95, VM::cpuid_signature, false }},
-    { VM::HYPERV_BITMASK, { 40, VM::hyperv_bitmask, false }},
+    { VM::HYPERV_BITMASK, { 20, VM::hyperv_bitmask, false }},
     { VM::KVM_BITMASK, { 40, VM::kvm_bitmask, false }},
     { VM::KGT_SIGNATURE, { 80, VM::intel_kgt_signature, false }},
     { VM::VMWARE_DMI, { 30, VM::vmware_dmi, false }}

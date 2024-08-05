@@ -454,7 +454,7 @@ void general() {
     checker(VM::VMID, "VMID");
     checker(VM::CPU_BRAND, "CPU brand");
     checker(VM::HYPERVISOR_BIT, "CPUID hypervisor bit");
-    checker(VM::HYPERVISOR_STR, "hypervisor brand");
+    checker(VM::HYPERVISOR_STR, "hypervisor str");
     checker(VM::RDTSC, "RDTSC");
     checker(VM::SIDT5, "sidt null byte");
     checker(VM::THREADCOUNT, "processor count");
@@ -550,6 +550,7 @@ void general() {
     checker(VM::HYPERV_BITMASK, "Hyper-V CPUID reserved bitmask");
     checker(VM::KVM_BITMASK, "KVM CPUID reserved bitmask");
     checker(VM::KGT_SIGNATURE, "Intel KGT signature");
+    checker(VM::VMWARE_DMI, "VMware DMI");
 
     std::printf("\n");
 
@@ -623,6 +624,10 @@ void general() {
         bool is_hyperv_vpc_present = false;
 
         for (const auto p_brand : brand_map) {
+            if (p_brand.second == 0) {
+                continue;
+            }
+
             if (
                 (std::strcmp(p_brand.first, "Microsoft Hyper-V") == 0) || 
                 (std::strcmp(p_brand.first, "Virtual PC") == 0)
@@ -640,6 +645,10 @@ void general() {
         bool is_other = false;
 
         for (const auto p_brand : brand_map) {
+            if (p_brand.second == 0) {
+                continue;
+            }
+
             if (std::strcmp(p_brand.first, "Microsoft Hyper-V") == 0) {
                 is_hyperv = true;
             } else if (std::strcmp(p_brand.first, "Virtual PC") == 0) {
@@ -674,7 +683,7 @@ void general() {
         << "\n\n";
 
     if ((hyperv_setting == VM::ENABLE_HYPERV_HOST) && diff_brand_check() && brand_vec() && notes_enabled) {
-        std::cout << note << " If you know you are running on host, Hyper-V virtualises all applications by default within the host system. This result is in fact correct and NOT a false positive. If you do not want Hyper-V's default virtualisation to affect the result, disable Hyper-V in your system. See here for more information https://github.com/kernelwernel/VMAware/issues/75\n\n";
+        std::cout << note << " If you know you are running on host, Hyper-V upon installation leaves VM artifacts such as registries, files, and CPUIDs which makes the system look like it's running in a VM when it's not. If you do not want this false positive, disable Hyper-V in your system.\n\n";
     } else if (notes_enabled) {
         if (!arg_bitset.test(SPOOFABLE)) {
             std::cout << tip << "To enable spoofable techniques, run with the \"--spoofable\" argument\n\n";
@@ -816,7 +825,7 @@ int main(int argc, char* argv[]) {
         }
 
         if (arg_bitset.test(TYPE)) {
-            const std::string brand = VM::brand(VM::MULTIPLE, settings());
+            const std::string brand = VM::brand(VM::NO_MEMO, VM::MULTIPLE, settings());
             std::cout << type(brand) << "\n";
             return 0;
         }
@@ -824,7 +833,7 @@ int main(int argc, char* argv[]) {
         if (arg_bitset.test(CONCLUSION)) {
             std::uint8_t percent = 0;
 
-            percent = VM::percentage(VM::ENABLE_HYPERV_HOST, settings());
+            percent = VM::percentage(VM::NO_MEMO, settings());
 
             const std::string brand = VM::brand(VM::MULTIPLE, settings());
             std::cout << message(percent, brand) << "\n";
