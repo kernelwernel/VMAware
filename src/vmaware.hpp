@@ -7822,13 +7822,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             u32 eax, ebx, ecx, edx = 0;
             cpu::cpuid(eax, ebx, ecx, edx, 0x40000001);
 
-            debug("01 eax = ", std::bitset<31>(eax));
-            debug("01 ebx = ", std::bitset<31>(ebx));
-            debug("          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
-            debug("01 ecx = ", std::bitset<31>(ecx));
-            debug("          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
-            debug("01 edx = ", std::bitset<31>(edx));
-            debug("          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
+            debug("01 eax = ", std::bitset<32>(eax));
+            debug("01 ebx = ", std::bitset<32>(ebx));
+            debug("         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
+            debug("01 ecx = ", std::bitset<32>(ecx));
+            debug("         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
+            debug("01 edx = ", std::bitset<32>(edx));
+            debug("         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
 
             return (
                 (eax != 0) &&
@@ -7842,10 +7842,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             const u32 ecx = fetch_register(ECX, 0x40000003);
             const u32 edx = fetch_register(EDX, 0x40000003);
 
-            debug("03 ecx = ", std::bitset<31>(ecx));
-            debug("          ^^^^^^^^^^^^^^^^^^^^^^^    ^^^^^");
-            debug("03 edx = ", std::bitset<31>(edx));
-            debug("          ^^^^^ ^^ ^     ^                ");
+            debug("03 ecx = ", std::bitset<32>(ecx));
+            debug("         ^^^^^^^^^^^^^^^^^^^^^^^    ^^^^^");
+            debug("03 edx = ", std::bitset<32>(edx));
+            debug("         ^^^^^ ^^ ^     ^                ");
 
             if (ecx == 0 || edx == 0) {
                 return false;
@@ -7866,12 +7866,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             const u32 ecx = fetch_register(ECX, 0x40000004);
             const u32 edx = fetch_register(EDX, 0x40000004);
 
-            debug("04 eax = ", std::bitset<31>(eax));
-            debug("                       ^^ ^^^^^^^ ^^^^^^^^");
-            debug("04 ecx = ", std::bitset<31>(ecx));
-            debug("                                   ^^^^^^^");
-            debug("04 edx = ", std::bitset<31>(edx));
-            debug("          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
+            debug("04 eax = ", std::bitset<32>(eax));
+            debug("                      ^^ ^^^^^^^ ^^^^^^^^");
+            debug("04 ecx = ", std::bitset<32>(ecx));
+            debug("                                  ^^^^^^^");
+            debug("04 edx = ", std::bitset<32>(edx));
+            debug("         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
 
             if (
                 eax == 0 ||
@@ -7892,8 +7892,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         auto leaf_05 = [&]() -> bool {
             const u32 edx = fetch_register(EDX, 0x40000005);
-            debug("05 edx = ", std::bitset<31>(edx));
-            debug("          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
+            debug("05 edx = ", std::bitset<32>(edx));
+            debug("         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
             return (edx == 0);
         };
 
@@ -7901,14 +7901,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             u32 eax, ebx, ecx, edx = 0;
             cpu::cpuid(eax, ebx, ecx, edx, 0x40000006);
 
-            debug("06 eax = ", std::bitset<31>(eax));
-            debug("                 ^^^^^^^^^ ^^^^^^^^^^^^^^^");
-            debug("06 ebx = ", std::bitset<31>(ebx));
-            debug("          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
-            debug("06 ecx = ", std::bitset<31>(ecx));
-            debug("          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
-            debug("06 edx = ", std::bitset<31>(edx));
-            debug("          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
+            debug("06 eax = ", std::bitset<32>(eax));
+            debug("                ^^^^^^^^^ ^^^^^^^^^^^^^^^");
+            debug("06 ebx = ", std::bitset<32>(ebx));
+            debug("         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
+            debug("06 ecx = ", std::bitset<32>(ecx));
+            debug("         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
+            debug("06 edx = ", std::bitset<32>(edx));
+            debug("         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
             
             if (
                 eax == 0 ||
@@ -7932,14 +7932,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             u32 eax, ebx, ecx, edx = 0;
             cpu::cpuid(eax, ebx, ecx, edx, 0x40000009);
 
-            debug("09 eax = ", std::bitset<31>(eax));
-            debug("                             ^     ^^^ ^  ");
-            debug("09 ebx = ", std::bitset<31>(ebx));
-            debug("          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
-            debug("09 ecx = ", std::bitset<31>(ecx));
-            debug("          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
-            debug("09 edx = ", std::bitset<31>(edx));
-            debug("                        ^ ^          ^    ");
+            debug("09 eax = ", std::bitset<32>(eax));
+            debug("                            ^     ^^^ ^  ");
+            debug("09 ebx = ", std::bitset<32>(ebx));
+            debug("         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
+            debug("09 ecx = ", std::bitset<32>(ecx));
+            debug("         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
+            debug("09 edx = ", std::bitset<32>(edx));
+            debug("                       ^ ^          ^    ");
 
             if (
                 eax == 0 ||
@@ -7968,14 +7968,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             u32 eax, ebx, ecx, edx = 0;
             cpu::cpuid(eax, ebx, ecx, edx, 0x40000009);
 
-            debug("0A eax = ", std::bitset<31>(eax));
-            debug("                     ^^^^ ^^^^^^^^^^^^^^^^");
-            debug("0A eax = ", std::bitset<31>(ebx));
-            debug("          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ ");
-            debug("0A ecx = ", std::bitset<31>(ecx));
-            debug("          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
-            debug("0A edx = ", std::bitset<31>(edx));
-            debug("          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
+            debug("0A eax = ", std::bitset<32>(eax));
+            debug("                    ^^^^ ^^^^^^^^^^^^^^^^");
+            debug("0A eax = ", std::bitset<32>(ebx));
+            debug("         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ ");
+            debug("0A ecx = ", std::bitset<32>(ecx));
+            debug("         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
+            debug("0A edx = ", std::bitset<32>(edx));
+            debug("         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
 
             // ebx is left out on purpose due to how likely it can result the overall result to be a false negative
             if (
