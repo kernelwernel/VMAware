@@ -707,15 +707,20 @@ private:
         // https://github.com/Obfuscator-Collections/VMProtect/blob/d70e027f9204c318e0190d336d9e0baa6048b197/runtime/loader.cc#L2478
         [[nodiscard]] static bool is_hyperv_root_partition() {
             if (cpu_manufacturer(cpu::leaf::hypervisor) != "Microsoft Hv") {
+                core_debug("HYPERV_ROOT: no partition found due to wrong manufacturer");
                 return false;
             }
 
             if (global_flags.test(ENABLE_HYPERV_HOST)) {
+                core_debug("HYPERV_ROOT: no partition found due to no flag");
                 return false;
             }
 
             u32 unused, ebx = 0;
             cpuid(unused, ebx, unused, unused, 0x40000003);
+            if (ebx & 1) {
+                core_debug("HYPERV_ROOT: found partition");
+            }
             return (ebx & 1);
         }
 
