@@ -620,7 +620,22 @@ void general() {
 
     std::map<const char*, brand_score_t> brand_map = VM::brand_map();
 
-    auto brand_vec = [&]() -> bool {
+    const char* conclusion_color   = color(percent);
+    std::string conclusion_message = message(percent, brand);
+
+    std::cout 
+        << bold 
+        << "====== CONCLUSION: "
+        << ansi_exit
+        << conclusion_color << conclusion_message << " " << ansi_exit
+        << bold
+        << "======"
+        << ansi_exit
+        << "\n\n";
+
+
+    auto is_hyperv_present = []() -> bool {
+         std::map<const char*, brand_score_t> brand_map = VM::brand_map();
         bool is_hyperv_vpc_present = false;
 
         for (const auto p_brand : brand_map) {
@@ -639,51 +654,8 @@ void general() {
         return is_hyperv_vpc_present;
     };
 
-    auto diff_brand_check = [&]() -> bool {
-        bool is_hyperv = false;
-        bool is_vpc = false;
-        bool is_other = false;
-
-        for (const auto p_brand : brand_map) {
-            if (p_brand.second == 0) {
-                continue;
-            }
-
-            if (std::strcmp(p_brand.first, "Microsoft Hyper-V") == 0) {
-                is_hyperv = true;
-            } else if (std::strcmp(p_brand.first, "Virtual PC") == 0) {
-                is_vpc = true;
-            } else {
-                is_other = true;
-            }
-        }
-
-        if (is_vpc && !(is_hyperv || is_other)) {
-            return false;
-        }
-
-        if ((is_hyperv || is_vpc) && (!is_other)) {
-            return true;
-        }
-
-        return false;
-    };
-
-    const char* conclusion_color   = color(percent);
-    std::string conclusion_message = message(percent, brand);
-
-    std::cout 
-        << bold 
-        << "====== CONCLUSION: "
-        << ansi_exit
-        << conclusion_color << conclusion_message << " " << ansi_exit
-        << bold
-        << "======"
-        << ansi_exit
-        << "\n\n";
-
-    if ((hyperv_setting == VM::ENABLE_HYPERV_HOST) && diff_brand_check() && brand_vec() && notes_enabled) {
-        std::cout << note << " If you know you are running on host, Hyper-V upon installation leaves VM artifacts such as registries, files, and CPUIDs which makes the system look like it's running in a VM when it's not. If you do not want this false positive, disable Hyper-V in your system.\n\n";
+    if ((hyperv_setting == VM::ENABLE_HYPERV_HOST) && is_hyperv_present() && notes_enabled) {
+        std::cout << note << " If you know you are running on host, Hyper-V leaves VM artifacts in CPUIDs which makes the system look like it's running in a Hyper-V VM when it's not. If you want to disable this mechanism, run with \"--disable-hyperv-host\", or disable Hyper-V in your system.\n\n";
     } else if (notes_enabled) {
         if (!arg_bitset.test(SPOOFABLE)) {
             std::cout << tip << "To enable spoofable techniques, run with the \"--spoofable\" argument\n\n";

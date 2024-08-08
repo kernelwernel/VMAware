@@ -520,6 +520,7 @@ private:
     static constexpr const char* NANOVISOR = "Xbox NanoVisor (Hyper-V)";
     static constexpr const char* SIMPLEVISOR = "SimpleVisor";
 
+    static flagset global_flags; // for certain techniques where the flags MUST be accessible
 
 // macro for bypassing unused parameter/variable warnings
 #define UNUSED(x) ((void)(x))
@@ -702,6 +703,66 @@ private:
 #endif
         }
 
+        // credits to VMProtect for the idea
+        // https://github.com/Obfuscator-Collections/VMProtect/blob/d70e027f9204c318e0190d336d9e0baa6048b197/runtime/loader.cc#L2478
+        [[nodiscard]] static bool is_hyperv_root_partition() {
+            if (cpu_manufacturer(cpu::leaf::hypervisor) != "Microsoft Hv") {
+                core_debug("HYPERV_ROOT: no partition found due to wrong manufacturer");
+                return false;
+            }
+
+            if (global_flags.test(ENABLE_HYPERV_HOST)) {
+                core_debug("HYPERV_ROOT: no partition found due to no flag");
+                return false;
+            }
+
+            u32 unused, ebx = 0;
+            cpuid(unused, ebx, unused, unused, 0x40000003);
+            if (ebx & 1) {
+                core_debug("HYPERV_ROOT: found partition");
+            }
+            return (ebx & 1);
+        }
+
+        [[nodiscard]] static std::string cpu_manufacturer(const u32 p_leaf) {
+            auto cpuid_thingy = [](const u32 p_leaf, u32* regs, std::size_t start = 0, std::size_t end = 4) -> bool {
+                u32 x[4]{};
+                cpu::cpuid(x[0], x[1], x[2], x[3], p_leaf);
+
+                for (; start < end; start++) {
+                    *regs++ = x[start];
+                }
+
+                return true;
+            };
+
+            std::string brand = "";
+            u32 sig_reg[3] = { 0 };
+
+            if (!cpuid_thingy(p_leaf, sig_reg, 1)) {
+                return "";
+            }
+
+            auto strconvert = [](u64 n) -> std::string {
+                const std::string& str(reinterpret_cast<char*>(&n));
+                return str;
+            };
+
+            std::stringstream ss;
+
+            ss << strconvert(sig_reg[0]);
+            ss << strconvert(sig_reg[2]);
+            ss << strconvert(sig_reg[1]);
+
+            std::string brand_str = ss.str();
+
+            if (brand_str.empty()) {
+                return "";
+            }
+
+            return brand_str;
+        }
+
         struct stepping_struct {
             u8 model;
             u8 family;
@@ -835,118 +896,77 @@ private:
                 apple_vz = "Apple VZ",
                 intel_kgt = "EVMMEVMMEVMM";
 
-            auto cpuid_thingy = [](const u32 p_leaf, u32* regs, std::size_t start = 0, std::size_t end = 4) -> bool {
-                u32 x[4]{};
-                cpu::cpuid(x[0], x[1], x[2], x[3], p_leaf);
+            const std::string brand_str = cpu_manufacturer(p_leaf);
 
-                for (; start < end; start++) {
-                    *regs++ = x[start];
-                }
-
-                return true;
-            };
-
-            std::string brand = "";
-            u32 sig_reg[3] = { 0 };
-
-            if (!cpuid_thingy(p_leaf, sig_reg, 1)) {
-                return false;
-            }
-
-            auto strconvert = [](u64 n) -> std::string {
-                const std::string& str(reinterpret_cast<char*>(&n));
-                return str;
-            };
-
-            std::stringstream ss1;
-            std::stringstream ss2;
-
-            ss1 << strconvert(sig_reg[0]);
-            ss1 << strconvert(sig_reg[1]);
-            ss1 << strconvert(sig_reg[2]);
-
-            ss2 << strconvert(sig_reg[0]);
-            ss2 << strconvert(sig_reg[2]);
-            ss2 << strconvert(sig_reg[1]);
-
-            std::string brand1 = ss1.str();
-            std::string brand2 = ss2.str();
-
-            if (brand1.empty() && brand2.empty()) {
-                return false;
-            }
-
-            debug(technique_name, brand1);
-            debug(technique_name, brand2);
+            debug(technique_name, brand_str);
 
 #if (CPP < 17)
             // bypass compiler warning about unused parameter, ignore this
             UNUSED(technique_name);
 #endif
 
-            const std::vector<std::string> brand_streams = { brand1, brand2 };
+            if (brand_str == qemu) { return core::add(QEMU); }
+            if (brand_str == vmware) { return core::add(VMWARE); }
+            if (brand_str == vbox) { return core::add(VBOX); }
+            if (brand_str == bhyve) { return core::add(BHYVE); }
+            if (brand_str == bhyve2) { return core::add(BHYVE); }
+            if (brand_str == kvm) { return core::add(KVM); }
+            if (brand_str == kvm_hyperv) { return core::add(KVM_HYPERV); }
+            if (brand_str == xta) { return core::add(MSXTA); }
+            if (brand_str == parallels) { return core::add(PARALLELS); }
+            if (brand_str == parallels2) { return core::add(PARALLELS); }
+            if (brand_str == xen) { return core::add(XEN); }
+            if (brand_str == acrn) { return core::add(ACRN); }
+            if (brand_str == qnx) { return core::add(QNX); }
+            if (brand_str == virtapple) { return core::add(VAPPLE); }
+            if (brand_str == nvmm) { return core::add(NVMM); }
+            if (brand_str == openbsd_vmm) { return core::add(BSD_VMM); }
+            if (brand_str == intel_haxm) { return core::add(INTEL_HAXM); }
+            if (brand_str == unisys) { return core::add(UNISYS); }
+            if (brand_str == lmhs) { return core::add(LMHS); }
+            if (brand_str == jailhouse) { return core::add(JAILHOUSE); }
+            if (brand_str == intel_kgt) { return core::add(INTEL_KGT); }
 
-            for (const auto& tmp_brand : brand_streams) {
-                if (tmp_brand == qemu) { return core::add(QEMU); }
-                if (tmp_brand == vmware) { return core::add(VMWARE); }
-                if (tmp_brand == vbox) { return core::add(VBOX); }
-                if (tmp_brand == bhyve) { return core::add(BHYVE); }
-                if (tmp_brand == bhyve2) { return core::add(BHYVE); }
-                if (tmp_brand == kvm) { return core::add(KVM); }
-                if (tmp_brand == kvm_hyperv) { return core::add(KVM_HYPERV); }
-                if (tmp_brand == xta) { return core::add(MSXTA); }
-                if (tmp_brand == parallels) { return core::add(PARALLELS); }
-                if (tmp_brand == parallels2) { return core::add(PARALLELS); }
-                if (tmp_brand == xen) { return core::add(XEN); }
-                if (tmp_brand == acrn) { return core::add(ACRN); }
-                if (tmp_brand == qnx) { return core::add(QNX); }
-                if (tmp_brand == virtapple) { return core::add(VAPPLE); }
-                if (tmp_brand == nvmm) { return core::add(NVMM); }
-                if (tmp_brand == openbsd_vmm) { return core::add(BSD_VMM); }
-                if (tmp_brand == intel_haxm) { return core::add(INTEL_HAXM); }
-                if (tmp_brand == unisys) { return core::add(UNISYS); }
-                if (tmp_brand == lmhs) { return core::add(LMHS); }
-                if (tmp_brand == jailhouse) { return core::add(JAILHOUSE); }
-                if (tmp_brand == intel_kgt) { return core::add(INTEL_KGT); }
-
-                // both Hyper-V and VirtualPC have the same string value
-                if (tmp_brand == hyperv) {
-                    return core::add(HYPERV, VPC);
+            // both Hyper-V and VirtualPC have the same string value
+            if (brand_str == hyperv) {
+                if (is_hyperv_root_partition()) {
+                    return false;
                 }
+                return core::add(HYPERV, VPC);
+            }
 
-                /**
-                 * this is added because there are inconsistent string
-                 * values for KVM's manufacturer ID. For example,
-                 * it gives me "KVMKMVMKV" when I run it under QEMU
-                 * but the Wikipedia article on CPUID says it's
-                 * "KVMKVMKVM\0\0\0", like wtf????
-                 */
-                if (util::find(tmp_brand, "KVM")) {
-                    return core::add(KVM);
-                }
+            /**
+             * this is added because there are inconsistent string
+             * values for KVM's manufacturer ID. For example,
+             * it gives me "KVMKMVMKV" when I run it under QEMU
+             * but the Wikipedia article on CPUID says it's
+             * "KVMKVMKVM\0\0\0", like wtf????
+             */
+            if (util::find(brand_str, "KVM")) {
+                return core::add(KVM);
+            }
 
-                /**
-                 * i'm honestly not sure about this one,
-                 * they're supposed to have 12 characters but
-                 * Wikipedia tells me it these brands have 
-                 * less characters (both 8), so i'm just
-                 * going to scan for the entire string ig
-                 */
+            /**
+             * i'm honestly not sure about this one,
+             * they're supposed to have 12 characters but
+             * Wikipedia tells me it these brands have 
+             * less characters (both 8), so i'm just
+             * going to scan for the entire string ig
+             */
 #if (CPP >= 17)
-                const char* qnx_sample = qnx2.data();
-                const char* applevz_sample = apple_vz.data();
+            const char* qnx_sample = qnx2.data();
+            const char* applevz_sample = apple_vz.data();
 #else
-                const char* qnx_sample = qnx2.c_str();
-                const char* applevz_sample = apple_vz.c_str();
+            const char* qnx_sample = qnx2.c_str();
+            const char* applevz_sample = apple_vz.c_str();
 #endif
 
-                if (util::find(tmp_brand, qnx_sample)) {
-                    return core::add(QNX);
-                }
+            if (util::find(brand_str, qnx_sample)) {
+                return core::add(QNX);
+            }
 
-                if (util::find(tmp_brand, applevz_sample)) {
-                    return core::add(APPLE);
-                }
+            if (util::find(brand_str, applevz_sample)) {
+                return core::add(APPLE);
             }
 
             return false;
@@ -1967,12 +1987,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        constexpr u8 hyperv_bit = 31;
+        if (cpu::is_hyperv_root_partition()) {
+            return false;
+        }
+
+        constexpr u8 hypervisor_bit = 31;
 
         u32 unused, ecx = 0;
         cpu::cpuid(unused, unused, ecx, unused, 1);
 
-        return (ecx & (1 << hyperv_bit));
+        return (ecx & (1 << hypervisor_bit));
 #endif
     }
     catch (...) {
@@ -1985,10 +2009,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for hypervisor brand string length (would be around 2 characters in a host machine)
      * @category x86
      */
-    [[nodiscard]] static bool hypervisor_brand() try {
+    [[nodiscard]] static bool hypervisor_str() try {
 #if (!x86)
         return false;
 #else
+        if (cpu::is_hyperv_root_partition()) {
+            return false;
+        }
+
         char out[sizeof(int32_t) * 4 + 1] = { 0 }; // e*x size + number of e*x registers + null terminator
         cpu::cpuid((int*)out, cpu::leaf::hypervisor);
 
@@ -2185,7 +2213,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         ss << std::setw(2) << std::setfill('0') << std::hex
             << static_cast<int32_t>(mac[0]) << ":"
             << static_cast<int32_t>(mac[1]) << ":"
-            << static_cast<int32_t>(mac[2]) << ":";
+            << static_cast<int32_t>(mac[2]) << ":XX:XX:XX";
             // removed for privacy reasons, cuz only the first 3 bytes are needed
             //<< static_cast<int32_t>(mac[3]) << ":"  
             //<< static_cast<int32_t>(mac[4]) << ":"
@@ -7424,6 +7452,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!x86)
         return false;
 #else
+        if (cpu::is_hyperv_root_partition()) {
+            return false;
+        }
+
         /// See: Feature Information Returned in the ECX Register
         union CpuFeaturesEcx {
             u32 all;
@@ -7755,6 +7787,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!x86)
         return false;
 #else
+        if (cpu::is_hyperv_root_partition()) {
+            return false;
+        }
+
         u32 eax, unused = 0;
         cpu::cpuid(eax, unused, unused, unused, 0x40000001);
         UNUSED(unused);
@@ -7789,6 +7825,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!x86)
         return false;
 #else
+        if (cpu::is_hyperv_root_partition()) {
+            return false;
+        }
+
         enum registers : u8 {
             EAX = 1,
             EBX,
@@ -7818,18 +7858,44 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false; // returned false because we want the most feature leafs as possible for Hyper-V
         }
 
+/* this is just a tool to check if all the arrows (^) are aligned correctly, think of it as a ruler and ignore this lol
+||||||||||||||||||||||9876543210
+|||||||||||||||||||||10 
+||||||||||||||||||||11 
+|||||||||||||||||||12 
+||||||||||||||||||13 
+|||||||||||||||||14 
+||||||||||||||||15 
+|||||||||||||||16 
+||||||||||||||17 
+|||||||||||||18 
+||||||||||||19 
+|||||||||||20 
+||||||||||21 
+|||||||||22 
+||||||||23 
+|||||||24 
+||||||25 
+|||||26 
+||||27 
+|||28 
+||29 
+|30 
+31 
+*/
+
         auto leaf_01 = [&]() -> bool {
             u32 eax, ebx, ecx, edx = 0;
             cpu::cpuid(eax, ebx, ecx, edx, 0x40000001);
 
             debug("01 eax = ", std::bitset<32>(eax));
             debug("01 ebx = ", std::bitset<32>(ebx));
-            debug("         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
+            debug("         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
             debug("01 ecx = ", std::bitset<32>(ecx));
-            debug("         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
+            debug("         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
             debug("01 edx = ", std::bitset<32>(edx));
-            debug("         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
-
+            debug("         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
+                                             
             return (
                 (eax != 0) &&
                 (ebx == 0) &&
@@ -7846,7 +7912,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             debug("         ^^^^^^^^^^^^^^^^^^^^^^^    ^^^^^");
             debug("03 edx = ", std::bitset<32>(edx));
             debug("         ^^^^^ ^^ ^     ^                ");
-
+                    
             if (ecx == 0 || edx == 0) {
                 return false;
             } else {
@@ -7867,9 +7933,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             const u32 edx = fetch_register(EDX, 0x40000004);
 
             debug("04 eax = ", std::bitset<32>(eax));
-            debug("                      ^^ ^^^^^^^ ^^^^^^^^");
+            debug("         ^^^^^^^^^^^^^  ^       ^        ");
             debug("04 ecx = ", std::bitset<32>(ecx));
-            debug("                                  ^^^^^^^");
+            debug("         ^^^^^^^^^^^^^^^^^^^^^^^^^       ");
             debug("04 edx = ", std::bitset<32>(edx));
             debug("         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
 
@@ -7902,7 +7968,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             cpu::cpuid(eax, ebx, ecx, edx, 0x40000006);
 
             debug("06 eax = ", std::bitset<32>(eax));
-            debug("                ^^^^^^^^^ ^^^^^^^^^^^^^^^");
+            debug("         ^^^^^^^         ^               ");
             debug("06 ebx = ", std::bitset<32>(ebx));
             debug("         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
             debug("06 ecx = ", std::bitset<32>(ecx));
@@ -7933,13 +7999,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             cpu::cpuid(eax, ebx, ecx, edx, 0x40000009);
 
             debug("09 eax = ", std::bitset<32>(eax));
-            debug("                            ^     ^^^ ^  ");
+            debug("         ^^^^^^^^^^^^^^^^^^^ ^^^^^   ^ ^^");
             debug("09 ebx = ", std::bitset<32>(ebx));
             debug("         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
             debug("09 ecx = ", std::bitset<32>(ecx));
             debug("         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
             debug("09 edx = ", std::bitset<32>(edx));
-            debug("                       ^ ^          ^    ");
+            debug("         ^^^^^^^^^^^^^^ ^ ^^^^^^^^^^ ^^^^");
 
             if (
                 eax == 0 ||
@@ -7969,7 +8035,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             cpu::cpuid(eax, ebx, ecx, edx, 0x40000009);
 
             debug("0A eax = ", std::bitset<32>(eax));
-            debug("                    ^^^^ ^^^^^^^^^^^^^^^^");
+            debug("         ^^^^^^^^^^^    ^                ");
             debug("0A eax = ", std::bitset<32>(ebx));
             debug("         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ ");
             debug("0A ecx = ", std::bitset<32>(ecx));
@@ -8366,143 +8432,6 @@ information about the hypervisor Linux is running on
         }
 
 
-        // check if Hyper-V is running 
-        static bool hyperv_host_virt_check(const flagset& flags) {
-            if (
-                core::is_enabled(flags, ENABLE_HYPERV_HOST)
-            ) {
-                core_debug("HYPERV_CHECK: returned false through flag check");
-                return false;
-            }
-
-            bool is_hyperv_vpc_present = false;
-
-            for (const auto p_brand : brand_scoreboard) {
-                if (p_brand.first == HYPERV || p_brand.first == VPC) {
-                    is_hyperv_vpc_present = true;
-                }
-            }
-
-            if (is_hyperv_vpc_present == false) {
-                return false;
-            }
-
-            auto valid_version = []() -> bool {
-#if (MSVC)
-                const u8 version = util::get_windows_version();
-
-                if (version == 0) {
-                    return true;
-                }
-
-                if (version < 10) {
-                    core_debug("HYPERV_CHECK: returned false through insufficient windows version (version ", static_cast<u32>(version), ")");
-                    return false;
-                }
-#endif
-                
-                core_debug("HYPERV_HOST_CHECK: valid_version = ", false);
-                return false;
-            };
-
-            auto diff_brand_check = [&]() -> bool {
-                bool is_hyperv = false;
-                bool is_vpc = false;
-                bool is_other = false;
-
-                for (const auto p_brand : brand_scoreboard) {
-                    if (p_brand.first == HYPERV) {
-                        is_hyperv = true;
-                    } else if (p_brand.first == VPC) {
-                        is_vpc = true;
-                    } else {
-                        is_other = true;
-                    }
-                }
-
-                if (is_vpc && !(is_hyperv || is_other)) {
-                    core_debug("HYPERV_HOST_CHECK: diff_brand_check = ", false);
-                    return false;
-                }
-
-                if ((is_hyperv || is_vpc) && (!is_other)) {
-                    core_debug("HYPERV_HOST_CHECK: diff_brand_check = ", true);
-                    return true;
-                }
-
-                core_debug("HYPERV_HOST_CHECK: diff_brand_check = ", false);
-                return false;
-            };
-
-            auto technique_check = []() -> bool {
-                std::vector<u8> techniques = memo::cache_fetch_all();
-
-                constexpr std::array<u8, 37> non_brand_returners = {{
-                    VM::HYPERVISOR_BIT,
-                    VM::HYPERVISOR_STR,
-                    VM::RDTSC,
-                    VM::THREADCOUNT,
-                    VM::TEMPERATURE,
-                    VM::SYSTEMD,
-                    VM::CTYPE,
-                    VM::HWMON,
-                    VM::SIDT5,
-                    VM::CURSOR,
-                    VM::DLL,
-                    VM::DISK_SIZE,
-                    VM::HOSTNAME,
-                    VM::MEMORY,
-                    VM::AUDIO,
-                    VM::MOUSE_DEVICE,
-                    VM::LINUX_USER_HOST,
-                    VM::RDTSC_VMEXIT,
-                    VM::BIOS_SERIAL,
-                    VM::MAC_MEMSIZE,
-                    VM::MAC_SIP,
-                    VM::VALID_MSR,
-                    VM::SIDT,
-                    VM::SGDT,
-                    VM::SLDT,
-                    VM::OFFSEC_SIDT,
-                    VM::OFFSEC_SGDT,
-                    VM::OFFSEC_SLDT,
-                    VM::SMSW,
-                    VM::UPTIME,
-                    VM::ODD_CPU_THREADS,
-                    VM::INTEL_THREAD_MISMATCH,
-                    VM::XEON_THREAD_MISMATCH,
-                    VM::SCREEN_RESOLUTION,
-                    VM::DEVICE_STRING,
-                    VM::CPUID_BITSET
-                }};
-
-                bool no_possible_brand = true;
-
-                for (const u8 macro : techniques) {
-                    auto it = std::find(non_brand_returners.cbegin(), non_brand_returners.cend(), macro);
-
-                    if (it == non_brand_returners.end()) {
-                        no_possible_brand = false;
-                    }
-                }
-
-                core_debug("HYPERV_HOST_CHECK: technique_check = ", no_possible_brand);
-
-                // by the end of this, if it doesn't find it possible to have Hyper-V then that assumes the result has been tampered somehow
-                return (no_possible_brand);
-            };
-
-            const bool result = (
-                diff_brand_check() || 
-                valid_version() ||
-                technique_check()
-            );
-
-            core_debug("HYPERV_HOST_CHECK: is Hyper-V host brand check = ", result);
-
-            return result;
-        }
-
         /**
          * basically what this entire template fuckery does is manage the
          * variadic arguments being given through the arg_handler function,
@@ -8684,6 +8613,8 @@ information about the hypervisor Linux is running on
             handleArgs(std::forward<Args>(args)...);
 
             core::flag_sanitizer(flag_collector);
+
+            global_flags = flag_collector;
 
             return flag_collector;
         }
@@ -9005,11 +8936,6 @@ public: // START OF PUBLIC FUNCTIONS
             result = (points >= 100);
         }
 
-        if (core::hyperv_host_virt_check(flags)) {
-            core_debug("VM::detect(): returned false due to Hyper-V default check");
-            return false;
-        }
-
         return result;
     }
 
@@ -9043,11 +8969,6 @@ public: // START OF PUBLIC FUNCTIONS
             percent = 99;
         } else {
             percent = static_cast<u8>(points);
-        }
-
-        if (core::hyperv_host_virt_check(flags)) {
-            core_debug("VM::percentage(): returned 0 due to Hyper-V default check");
-            return 0;
         }
 
         return percent;
@@ -9202,6 +9123,7 @@ VM::u16 VM::total_points = 0;
 // not even sure how to explain honestly, just pretend this doesn't exist idfk
 VM::flagset VM::core::flag_collector;
 
+VM::flagset VM::global_flags;
 
 // default flags 
 VM::flagset VM::DEFAULT = []() -> flagset {
@@ -9274,7 +9196,7 @@ const std::map<VM::u8, VM::core::technique> VM::core::technique_table = {
     { VM::VMID, { 100, VM::vmid, false }},
     { VM::CPU_BRAND, { 50, VM::cpu_brand, false }},
     { VM::HYPERVISOR_BIT, { 100, VM::hypervisor_bit , false}}, 
-    { VM::HYPERVISOR_STR, { 45, VM::hypervisor_brand, false }},
+    { VM::HYPERVISOR_STR, { 45, VM::hypervisor_str, false }},
     { VM::RDTSC, { 10, VM::rdtsc_check, false }},
     { VM::THREADCOUNT, { 35, VM::thread_count, false }},
     { VM::MAC, { 60, VM::mac_address_check, true }},
