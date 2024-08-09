@@ -137,7 +137,6 @@ Options:
  -t | --type        returns the VM type (if a VM was found)
 
 Extra:
- --disable-hyperv-host  disable the possibility of Hyper-V default virtualisation result on host OS
  --disable-notes        no notes will be provided
  --spoofable            allow spoofable techniques to be ran (not included by default)
 
@@ -247,6 +246,7 @@ Intel KGT (Trusty)
 Microsoft Azure Hyper-V
 Xbox NanoVisor (Hyper-V)
 SimpleVisor
+Hyper-V artifact (not an actual VM)
 )";
 
     std::exit(0);
@@ -258,6 +258,7 @@ std::string type(const std::string &brand_str) {
     }
 
     const std::map<std::string, std::string> type_table {
+        // type 1
         { "Xen HVM", "Hypervisor (type 1)" },
         { "VMware ESX", "Hypervisor (type 1)" },
         { "ACRN", "Hypervisor (type 1)" },
@@ -274,6 +275,7 @@ std::string type(const std::string &brand_str) {
         { "Intel KGT (Trusty)", "Hypervisor (type 1)" },
         { "SimpleVisor", "Hypervisor (type 1)" },
 
+        // type 2
         { "VirtualBox", "Hypervisor (type 2)" },
         { "VMware", "Hypervisor (type 2)" },
         { "VMware Express", "Hypervisor (type 2)" },
@@ -286,6 +288,7 @@ std::string type(const std::string &brand_str) {
         { "NetBSD NVMM", "Hypervisor (type 2)" },
         { "OpenBSD VMM", "Hypervisor (type 2)" },
 
+        // sandbox
         { "Cuckoo", "Sandbox" },
         { "Sandboxie", "Sandbox" },
         { "Hybrid Analysis", "Sandbox" },
@@ -295,6 +298,7 @@ std::string type(const std::string &brand_str) {
         { "Comodo", "Sandbox" },
         { "ThreatExpert", "Sandbox" },
 
+        // misc
         { "Bochs", "Emulator" },
         { "BlueStacks", "Emulator" },
         { "Microsoft x86-to-ARM", "Emulator" },
@@ -305,7 +309,8 @@ std::string type(const std::string &brand_str) {
         { "Microsoft Virtual PC/Hyper-V", "Hypervisor (either type 1 or 2)" },
         { "Lockheed Martin LMHS", "Hypervisor (unknown type)" },
         { "Wine", "Compatibility layer" },
-        { "Apple VZ", "Unknown" }
+        { "Apple VZ", "Unknown" },
+        { "Hyper-V artifact (not an actual VM)", "No VM" }
     };
 
     auto it = type_table.find(brand_str);
@@ -560,19 +565,24 @@ void general() {
 
     std::string brand = VM::brand(VM::MULTIPLE, spoofable_setting);
 
-    std::cout << "VM brand: " << (brand == "Unknown" ? red : green) << brand << ansi_exit << "\n";
+    std::cout << "VM brand: " << ((brand == "Unknown") || (brand == "Hyper-V artifact (not an actual VM)") ? red : green) << brand << ansi_exit << "\n";
 
+    // meaning "if there's no brand conflicts" 
     if (brand.find(" or ") == std::string::npos) {
         const std::string brand = VM::brand(VM::MULTIPLE, spoofable_setting);
         const std::string type_value = type(brand);
 
         std::cout << "VM type: ";
+
+        std::string color = "";
             
-        if (type_value == "Unknown") {
-            std::cout << red << "Unknown" << ansi_exit << "\n";
+        if (type_value == "Unknown" || type_value == "No VM") {
+            color = red;
         } else {
-            std::cout << green << type_value << ansi_exit << "\n";
+            color = green;
         }
+
+        std::cout << color << type_value << ansi_exit << "\n";
     }
 
     const char* percent_color = "";
@@ -634,28 +644,8 @@ void general() {
         << "\n\n";
 
 
-    auto is_hyperv_present = []() -> bool {
-         std::map<const char*, brand_score_t> brand_map = VM::brand_map();
-        bool is_hyperv_vpc_present = false;
-
-        for (const auto p_brand : brand_map) {
-            if (p_brand.second == 0) {
-                continue;
-            }
-
-            if (
-                (std::strcmp(p_brand.first, "Microsoft Hyper-V") == 0) || 
-                (std::strcmp(p_brand.first, "Virtual PC") == 0)
-            ) {
-                is_hyperv_vpc_present = true;
-            }
-        }
-
-        return is_hyperv_vpc_present;
-    };
-
-    if ((hyperv_setting == VM::ENABLE_HYPERV_HOST) && is_hyperv_present() && notes_enabled) {
-        std::cout << note << " If you know you are running on host, Hyper-V leaves VM artifacts in CPUIDs which makes the system look like it's running in a Hyper-V VM when it's not. If you want to disable this mechanism, run with \"--disable-hyperv-host\", or disable Hyper-V in your system.\n\n";
+    if ((hyperv_setting == VM::ENABLE_HYPERV_HOST) && (brand == "Hyper-V artifact (not an actual VM)") && notes_enabled) {
+        std::cout << note << " If you know you are running on host, Hyper-V leaves VM artifacts in CPUIDs which makes the system look like it's running in a Hyper-V VM when it's not. If you want to disable this mechanism, uninstall Hyper-V in your system.\n\n";
     } else if (notes_enabled) {
         if (!arg_bitset.test(SPOOFABLE)) {
             std::cout << tip << "To enable spoofable techniques, run with the \"--spoofable\" argument\n\n";
@@ -768,6 +758,9 @@ int main(int argc, char* argv[]) {
 
             if (arg_bitset.test(HYPERV) == false) {
                 setting_bits.set(VM::ENABLE_HYPERV_HOST);
+            } else {
+                std::cerr << "--disable-hyperv-host has been deprecated, the determination of whether it's a host Hyper-V or VM Hyper-V is now done automatically";
+                return 1;
             }
 
             if (arg_bitset.test(SPOOFABLE)) {

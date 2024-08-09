@@ -519,6 +519,7 @@ private:
     static constexpr const char* AZURE_HYPERV = "Microsoft Azure Hyper-V";
     static constexpr const char* NANOVISOR = "Xbox NanoVisor (Hyper-V)";
     static constexpr const char* SIMPLEVISOR = "SimpleVisor";
+    static constexpr const char* HYPERV_ARTIFACT = "Hyper-V artifact (not an actual VM)";
 
     static flagset global_flags; // for certain techniques where the flags MUST be accessible
 
@@ -1609,6 +1610,11 @@ private:
 
             auto add = [](const bool result) -> bool {
                 memo::hyperv::store(result);
+
+                if (result == true) {
+                    core::add(HYPERV_ARTIFACT);
+                }
+
                 return result;
             };
 
@@ -1944,9 +1950,9 @@ private:
                 return nullptr;
             }
 
-            bool is_vm = false;
             unsigned long type = 0;
             unsigned long length = 0;
+
             ret = RegQueryValueExW(hk, L"SMBiosData", 0, &type, 0, &length);
 
             if (ret != ERROR_SUCCESS) {
@@ -1974,6 +1980,7 @@ private:
                 return nullptr;
             }
 
+            RegCloseKey(hk);
             return p;
         }
 
@@ -4503,54 +4510,30 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #else
         const char* p = util::SMBIOS_string();
 
-        auto ScanDataForString = [](unsigned char* data, unsigned long data_length, unsigned char* string2) -> unsigned char* {
-            std::size_t string_length = strlen(reinterpret_cast<char*>(string2));
+        bool is_vm = false;
 
-            for (std::size_t i = 0; i <= (data_length - string_length); i++) {
-                if (strncmp(reinterpret_cast<char*>(&data[i]), reinterpret_cast<char*>(string2), string_length) == 0) {
-                    return &data[i];
-                }
-            }
-
-            return 0;  
-        };
-
-        auto AllToUpper = [](char* str, std::size_t len) {
-            for (std::size_t i = 0; i < len; ++i) {
-                str[i] = static_cast<char>(std::toupper(static_cast<unsigned char>(str[i])));
-            }
-        };
-
-        AllToUpper(p, length);
-
-        // cleaner and better shortcut than typing reinterpret_cast<unsigned char*> a million times
-        auto cast = [](char* p) -> unsigned char* {
-            return reinterpret_cast<unsigned char*>(p);
-        };
-
-        unsigned char* x1 = ScanDataForString(cast(p), length, (unsigned char*)("INNOTEK GMBH"));
-        unsigned char* x2 = ScanDataForString(cast(p), length, (unsigned char*)("VIRTUALBOX"));
-        unsigned char* x3 = ScanDataForString(cast(p), length, (unsigned char*)("SUN MICROSYSTEMS"));
-        unsigned char* x4 = ScanDataForString(cast(p), length, (unsigned char*)("VBOXVER"));
-        unsigned char* x5 = ScanDataForString(cast(p), length, (unsigned char*)("VIRTUAL MACHINE"));
+        const bool x1 = (std::strcmp(p, "INNOTEK GMBH") == 0);
+        const bool x2 = (std::strcmp(p, "VIRTUALBOX") == 0);
+        const bool x3 = (std::strcmp(p, "SUN MICROSYSTEMS") == 0);
+        const bool x4 = (std::strcmp(p, "VBOXVER") == 0);
+        const bool x5 = (std::strcmp(p, "VIRTUAL MACHINE") == 0);
 
         if (x1 || x2 || x3 || x4 || x5) {
             is_vm = true;
 #ifdef __VMAWARE_DEBUG__
-            if (x1) { debug("VBOX_MSSMBIOS: x1 = ", x1); }
-            if (x2) { debug("VBOX_MSSMBIOS: x2 = ", x2); }
-            if (x3) { debug("VBOX_MSSMBIOS: x3 = ", x3); }
-            if (x4) { debug("VBOX_MSSMBIOS: x4 = ", x4); }
-            if (x5) { debug("VBOX_MSSMBIOS: x5 = ", x5); }
+            if (x1) { debug("VBOX_MSSMBIOS: x1 = ", p); }
+            if (x2) { debug("VBOX_MSSMBIOS: x2 = ", p); }
+            if (x3) { debug("VBOX_MSSMBIOS: x3 = ", p); }
+            if (x4) { debug("VBOX_MSSMBIOS: x4 = ", p); }
+            if (x5) { debug("VBOX_MSSMBIOS: x5 = ", p); }
 #endif
         }
 
         LocalFree(p);
-        RegCloseKey(hk);
 
         if (is_vm) {
             if (x5) {
-                return true;
+                return true; // Hyper-V and VirtualBox both have the same BIOS string with "VIRTUAL MACHINE"
             }
 
             return core::add(VBOX);
@@ -9040,52 +9023,6 @@ public: // START OF PUBLIC FUNCTIONS
 
 
     /**
-     * @brief Change the certainty score of a technique
-     * @param technique flag, then the new percentage score to overwite
-     * @return void
-     * @warning ⚠️ FOR DEVELOPMENT USAGE ONLY, NOT MEANT FOR PUBLIC USE ⚠️
-     */
-    static void modify_score(
-        const enum_flags flag,
-        const std::uint8_t percent
-        // clang doesn't support std::source_location for some reason
-#if (CPP >= 20 && !CLANG)
-        , const std::source_location& loc = std::source_location::current()
-#endif
-    ) {
-        auto throw_error = [&](const char* text) -> void {
-            std::stringstream ss;
-#if (CPP >= 20 && !CLANG)
-            ss << ", error in " << loc.function_name() << " at " << loc.file_name() << ":" << loc.line() << ")";
-#endif
-            ss << ". Consult the documentation's parameters for VM::add_custom()";
-            throw std::invalid_argument(std::string(text) + ss.str());
-        };
-
-        if (percent > 100) {
-            throw_error("Percentage parameter must be between 0 and 100");
-        }
-
-#if (CPP >= 23)
-        [[assume(percent <= 100)]];
-#endif
-
-        if (static_cast<u8>(flag) < technique_end) {
-            throw_error("The flag is not a technique flag");
-        }
-
-        using table_t = std::map<u8, core::technique>;
-
-        auto modify = [](table_t &table, const enum_flags flag, const u8 percent) -> void {
-            core::technique &tmp = table.at(flag);
-            table[flag] = { percent, tmp.run, tmp.spoofable };
-        };
-
-        modify(const_cast<table_t&>(core::technique_table), flag, percent);
-    }
-
-
-    /**
      * @brief disable the provided technique flags so they are not counted to the overall result
      * @param technique flag(s) only
      * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmdetect
@@ -9122,6 +9059,52 @@ public: // START OF PUBLIC FUNCTIONS
         }
 
         return core::brand_scoreboard;
+    }
+
+
+    /**
+     * @brief Change the certainty score of a technique
+     * @param technique flag, then the new percentage score to overwite
+     * @return void
+     * @warning ⚠️ FOR DEVELOPMENT USAGE ONLY, NOT MEANT FOR PUBLIC USE ⚠️
+     */
+    static void modify_score(
+        const enum_flags flag,
+        const std::uint8_t percent
+        // clang doesn't support std::source_location for some reason
+#if (CPP >= 20 && !CLANG)
+        , const std::source_location& loc = std::source_location::current()
+#endif
+    ) {
+        auto throw_error = [&](const char* text) -> void {
+            std::stringstream ss;
+#if (CPP >= 20 && !CLANG)
+            ss << ", error in " << loc.function_name() << " at " << loc.file_name() << ":" << loc.line() << ")";
+#endif
+            ss << ". Consult the documentation's parameters for VM::add_custom()";
+            throw std::invalid_argument(std::string(text) + ss.str());
+        };
+
+        if (percent > 100) {
+            throw_error("Percentage parameter must be between 0 and 100");
+        }
+
+#if (CPP >= 23)
+        [[assume(percent <= 100)]];
+#endif
+
+        if (static_cast<u8>(flag) >= technique_end) {
+            throw_error("The flag is not a technique flag");
+        }
+
+        using table_t = std::map<u8, core::technique>;
+
+        auto modify = [](table_t &table, const enum_flags flag, const u8 percent) -> void {
+            core::technique &tmp = table.at(flag);
+            table[flag] = { percent, tmp.run, tmp.spoofable };
+        };
+
+        modify(const_cast<table_t&>(core::technique_table), flag, percent);
     }
 };
 
@@ -9176,7 +9159,8 @@ std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard {
     { VM::INTEL_KGT, 0 },
     { VM::AZURE_HYPERV, 0 },
     { VM::NANOVISOR, 0 },
-    { VM::SIMPLEVISOR, 0 }
+    { VM::SIMPLEVISOR, 0 },
+    { VM::HYPERV_ARTIFACT, 0 }
 };
 
 
