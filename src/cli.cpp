@@ -569,8 +569,8 @@ void general() {
 
     // meaning "if there's no brand conflicts" 
     if (brand.find(" or ") == std::string::npos) {
-        const std::string brand = VM::brand(VM::MULTIPLE, spoofable_setting);
-        const std::string type_value = type(brand);
+        const std::string tmp_brand = VM::brand(VM::MULTIPLE, spoofable_setting);
+        const std::string type_value = type(tmp_brand);
 
         std::cout << "VM type: ";
 

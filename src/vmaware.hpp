@@ -2214,12 +2214,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        constexpr u32 hypervisor_bit = (1 << 31);
-
         u32 unused, ecx = 0;
         cpu::cpuid(unused, unused, ecx, unused, 1);
 
-        return (ecx & hypervisor_bit);
+        return (ecx & (1 << 31));
 #endif
     }
     catch (...) {
@@ -4510,6 +4508,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #else
         const char* p = util::SMBIOS_string();
 
+        if (p == nullptr) {
+            debug("MSSMBIOS: nullptr detected, returned false");
+            return false;
+        }
+
         bool is_vm = false;
 
         const bool x1 = (std::strcmp(p, "INNOTEK GMBH") == 0);
@@ -4528,8 +4531,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             if (x5) { debug("VBOX_MSSMBIOS: x5 = ", p); }
 #endif
         }
-
-        LocalFree(p);
 
         if (is_vm) {
             if (x5) {
