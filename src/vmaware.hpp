@@ -2032,11 +2032,11 @@ private:
             if (x1 || x2 || x3 || x4 || x5) {
                 is_vm = true;
     #ifdef __VMAWARE_DEBUG__
-                if (x1) { debug("SMBIOS: x1 = ", x1); result = x1; }
-                if (x2) { debug("SMBIOS: x2 = ", x2); result = x2; }
-                if (x3) { debug("SMBIOS: x3 = ", x3); result = x3; }
-                if (x4) { debug("SMBIOS: x4 = ", x4); result = x4; }
-                if (x5) { debug("SMBIOS: x5 = ", x5); result = x5; }
+                if (x1) { debug("SMBIOS: x1 = ", x1); std::string tmp(x1); result = tmp; }
+                if (x2) { debug("SMBIOS: x2 = ", x2); std::string tmp(x2); result = tmp; }
+                if (x3) { debug("SMBIOS: x3 = ", x3); std::string tmp(x3); result = tmp; }
+                if (x4) { debug("SMBIOS: x4 = ", x4); std::string tmp(x4); result = tmp; }
+                if (x5) { debug("SMBIOS: x5 = ", x5); std::string tmp(x5); result = tmp; }
     #endif
             }
             LocalFree(p);
