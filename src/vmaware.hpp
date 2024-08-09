@@ -1605,6 +1605,7 @@ private:
             return false;
 #else
             if (memo::hyperv::is_cached()) {
+                core_debug("HYPERV_FUCKER: returned from cache = ", memo::hyperv::fetch());
                 return memo::hyperv::fetch();
             }
 
@@ -1620,15 +1621,22 @@ private:
 
             u32 eax, unused = 0;
             cpu::cpuid(eax, unused, unused, unused, cpu::leaf::hypervisor);
+            core_debug("HYPERV_FUCKER: eax = ", eax);
 
             if (eax == 12) {
                 const char* p = SMBIOS_string();
+
+                core_debug("HYPERV_FUCKER: SMBIOS string = ", p);
 
                 if (std::strcmp(p, "VIRTUAL MACHINE") == 0) {
                     return add(false);
                 }
 
-                if (motherboard_string(L"Microsoft Corporation")) {
+                const bool motherboard = motherboard_string(L"Microsoft Corporation");
+
+                core_debug("HYPERV_FUCKER: motherboard string = ", motherboard);
+
+                if (motherboard == true) {
                     return add(false);
                 }
 
@@ -8771,6 +8779,7 @@ public: // START OF PUBLIC FUNCTIONS
         constexpr const char* TMP_HYPERV_VPC = "Microsoft Virtual PC/Hyper-V";
         constexpr const char* TMP_AZURE = "Microsoft Azure Hyper-V";
         constexpr const char* TMP_NANOVISOR = "Xbox NanoVisor (Hyper-V)";
+        constexpr const char* TMP_HYPERV_ARTIFACT = "Hyper-V artifact (not an actual VM)";
 #else
         constexpr const char* TMP_QEMU = QEMU;
         constexpr const char* TMP_KVM = KVM;
@@ -8790,6 +8799,7 @@ public: // START OF PUBLIC FUNCTIONS
         constexpr const char* TMP_HYPERV_VPC = "Microsoft Virtual PC/Hyper-V";
         constexpr const char* TMP_AZURE = AZURE_HYPERV;
         constexpr const char* TMP_NANOVISOR = NANOVISOR;
+        constexpr const char* TMP_HYPERV_ARTIFACT = HYPERV_ARTIFACT;
 #endif
 
         std::map<const char*, brand_score_t> brands;
@@ -8844,27 +8854,32 @@ public: // START OF PUBLIC FUNCTIONS
             brands.emplace(std::make_pair(TMP_HYPERV_VPC, 2));
         }
 
-        merger(TMP_AZURE, TMP_HYPERV, TMP_AZURE);
-        merger(TMP_AZURE, TMP_VPC, TMP_AZURE);
+        merger(TMP_HYPERV,     TMP_HYPERV_ARTIFACT, TMP_HYPERV_ARTIFACT);
+        merger(TMP_VPC,        TMP_HYPERV_ARTIFACT, TMP_HYPERV_ARTIFACT);
+        merger(TMP_HYPERV_VPC, TMP_HYPERV_ARTIFACT, TMP_HYPERV_ARTIFACT);
+
+        merger(TMP_AZURE, TMP_HYPERV,     TMP_AZURE);
+        merger(TMP_AZURE, TMP_VPC,        TMP_AZURE);
         merger(TMP_AZURE, TMP_HYPERV_VPC, TMP_AZURE);
 
-        merger(TMP_NANOVISOR, TMP_HYPERV, TMP_NANOVISOR);
-        merger(TMP_NANOVISOR, TMP_VPC, TMP_NANOVISOR);
+        merger(TMP_NANOVISOR, TMP_HYPERV,     TMP_NANOVISOR);
+        merger(TMP_NANOVISOR, TMP_VPC,        TMP_NANOVISOR);
         merger(TMP_NANOVISOR, TMP_HYPERV_VPC, TMP_NANOVISOR);
         
-        merger(TMP_QEMU, TMP_KVM, TMP_QEMU_KVM);
-        merger(TMP_KVM, TMP_HYPERV, TMP_KVM_HYPERV);
-        merger(TMP_QEMU, TMP_HYPERV, TMP_QEMU_KVM_HYPERV);
-        merger(TMP_QEMU_KVM, TMP_HYPERV, TMP_QEMU_KVM_HYPERV);
-        merger(TMP_KVM, TMP_KVM_HYPERV, TMP_KVM_HYPERV);
-        merger(TMP_QEMU, TMP_KVM_HYPERV, TMP_QEMU_KVM_HYPERV);
-        merger(TMP_QEMU_KVM, TMP_KVM_HYPERV, TMP_QEMU_KVM_HYPERV);
+        merger(TMP_QEMU,      TMP_KVM,         TMP_QEMU_KVM);
+        merger(TMP_KVM,       TMP_HYPERV,      TMP_KVM_HYPERV);
+        merger(TMP_QEMU,      TMP_HYPERV,      TMP_QEMU_KVM_HYPERV);
+        merger(TMP_QEMU_KVM,  TMP_HYPERV,      TMP_QEMU_KVM_HYPERV);
+        merger(TMP_KVM,       TMP_KVM_HYPERV,  TMP_KVM_HYPERV);
+        merger(TMP_QEMU,      TMP_KVM_HYPERV,  TMP_QEMU_KVM_HYPERV);
+        merger(TMP_QEMU_KVM,  TMP_KVM_HYPERV,  TMP_QEMU_KVM_HYPERV);
+
         triple_merger(TMP_QEMU, TMP_KVM, TMP_KVM_HYPERV, TMP_QEMU_KVM_HYPERV);
 
-        merger(TMP_VMWARE, TMP_FUSION, TMP_FUSION);
-        merger(TMP_VMWARE, TMP_EXPRESS, TMP_EXPRESS);
-        merger(TMP_VMWARE, TMP_ESX, TMP_ESX);
-        merger(TMP_VMWARE, TMP_GSX, TMP_GSX);
+        merger(TMP_VMWARE, TMP_FUSION,      TMP_FUSION);
+        merger(TMP_VMWARE, TMP_EXPRESS,     TMP_EXPRESS);
+        merger(TMP_VMWARE, TMP_ESX,         TMP_ESX);
+        merger(TMP_VMWARE, TMP_GSX,         TMP_GSX);
         merger(TMP_VMWARE, TMP_WORKSTATION, TMP_WORKSTATION);
 
         using brand_element_t = std::pair<const char*, brand_score_t>;
