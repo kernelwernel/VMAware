@@ -1619,8 +1619,11 @@ private:
                 return result;
             };
 
-            u32 eax, unused = 0;
-            cpu::cpuid(eax, unused, unused, unused, cpu::leaf::hypervisor);
+            char out[sizeof(int32_t) * 4 + 1] = { 0 }; // e*x size + number of e*x registers + null terminator
+            cpu::cpuid((int*)out, cpu::leaf::hypervisor);
+
+            const u32 eax = static_cast<u32>(out[0]);
+
             core_debug("HYPERV_FUCKER: eax = ", eax);
 
             if (eax == 12) {
@@ -2249,7 +2252,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         char out[sizeof(int32_t) * 4 + 1] = { 0 }; // e*x size + number of e*x registers + null terminator
         cpu::cpuid((int*)out, cpu::leaf::hypervisor);
 
-        debug("HYPERV_STR: eax: ", static_cast<u32>(out[0]),
+        debug("HYPERVISOR_STR: eax: ", static_cast<u32>(out[0]),
             "\nebx: ", static_cast<u32>(out[1]),
             "\necx: ", static_cast<u32>(out[2]),
             "\nedx: ", static_cast<u32>(out[3])
