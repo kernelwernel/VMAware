@@ -1622,7 +1622,7 @@ private:
                     return add(false);
                 }
 
-                if (motherboard_string("Microsoft Corporation")) {
+                if (motherboard_string(L"Microsoft Corporation")) {
                     return add(false);
                 }
 
@@ -1937,7 +1937,7 @@ private:
         }
 
 
-        [[nodiscard]] char* SMBIOS_string() {
+        [[nodiscard]] static char* SMBIOS_string() {
             HKEY hk = 0;
             int ret = RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SYSTEM\\CurrentControlSet\\Services\\mssmbios\\data", 0, KEY_ALL_ACCESS, &hk);
             if (ret != ERROR_SUCCESS) {
@@ -1977,7 +1977,7 @@ private:
             return p;
         }
 
-        bool motherboard_string(const wstring_t vm_string) {
+        [[nodiscard]] static bool motherboard_string(const wchar_t* vm_string) {
             HRESULT hres;
 
             hres = CoInitializeEx(0, COINIT_MULTITHREADED);
@@ -2087,7 +2087,7 @@ private:
                 }
 
                 VARIANT vtProp;
-                VariantInit(&vtProp)
+                VariantInit(&vtProp);
                 hr = pclsObj->Get(L"Manufacturer", 0, &vtProp, 0, 0);
 
                 if (SUCCEEDED(hr)) {
@@ -4188,7 +4188,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!MSVC)
         return false;
 #else
-        const bool is_vm = util::motherboard_string("Microsoft Corporation");
+        const bool is_vm = util::motherboard_string(L"Microsoft Corporation");
 
         if (is_vm) {
             return core::add(VPC);
