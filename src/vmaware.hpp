@@ -1627,11 +1627,11 @@ private:
             core_debug("HYPERV_FUCKER: eax = ", eax);
 
             if (eax == 12) {
-                const char* p = SMBIOS_string();
+                std::string p = SMBIOS_string();
 
                 core_debug("HYPERV_FUCKER: SMBIOS string = ", p);
 
-                if (std::strcmp(p, "VIRTUAL MACHINE") == 0) {
+                if (p == "VIRTUAL MACHINE") {
                     return add(false);
                 }
 
@@ -1954,10 +1954,11 @@ private:
         }
 
 
-        [[nodiscard]] static char* SMBIOS_string() {
+        [[nodiscard]] static std::string SMBIOS_string() {
             HKEY hk = 0;
             int ret = RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SYSTEM\\CurrentControlSet\\Services\\mssmbios\\data", 0, KEY_ALL_ACCESS, &hk);
             if (ret != ERROR_SUCCESS) {
+                debug("SMBIOS_string(): ret = error");
                 return nullptr;
             }
 
@@ -1968,11 +1969,13 @@ private:
 
             if (ret != ERROR_SUCCESS) {
                 RegCloseKey(hk);
+                debug("SMBIOS_string(): ret = error 2");
                 return nullptr;
             }
 
             if (length == 0) {
                 RegCloseKey(hk);
+                debug("SMBIOS_string(): length = 0");
                 return nullptr;
             }
 
@@ -1980,6 +1983,7 @@ private:
 
             if (p == nullptr) {
                 RegCloseKey(hk);
+                debug("SMBIOS_string(): p = nullptr");
                 return nullptr;
             }
 
@@ -1988,11 +1992,13 @@ private:
             if (ret != ERROR_SUCCESS) {
                 LocalFree(p);
                 RegCloseKey(hk);
+                debug("SMBIOS_string(): ret = error 3");
                 return nullptr;
             }
 
             RegCloseKey(hk);
-            return p;
+            std::string tmp(p);
+            return tmp;
         }
 
         [[nodiscard]] static bool motherboard_string(const wchar_t* vm_string) {
@@ -4519,10 +4525,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #else
         const char* p = util::SMBIOS_string();
 
+
         if (p == nullptr) {
             debug("MSSMBIOS: nullptr detected, returned false");
             return false;
         }
+
+#ifdef __VMAWARE_DEBUG__
+        debug("VBOX_MSSMBIOS: string = ", p);
+#endif
 
         bool is_vm = false;
 
@@ -4534,13 +4545,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         if (x1 || x2 || x3 || x4 || x5) {
             is_vm = true;
-#ifdef __VMAWARE_DEBUG__
-            if (x1) { debug("VBOX_MSSMBIOS: x1 = ", p); }
-            if (x2) { debug("VBOX_MSSMBIOS: x2 = ", p); }
-            if (x3) { debug("VBOX_MSSMBIOS: x3 = ", p); }
-            if (x4) { debug("VBOX_MSSMBIOS: x4 = ", p); }
-            if (x5) { debug("VBOX_MSSMBIOS: x5 = ", p); }
-#endif
         }
 
         if (is_vm) {
