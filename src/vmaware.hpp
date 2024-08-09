@@ -4523,10 +4523,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!MSVC)
         return false;
 #else
-        const char* p = util::SMBIOS_string();
+        std::string p = util::SMBIOS_string();
 
-
-        if (p == nullptr) {
+        if (p.empty()) {
             debug("MSSMBIOS: nullptr detected, returned false");
             return false;
         }
@@ -4537,11 +4536,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         bool is_vm = false;
 
-        const bool x1 = (std::strcmp(p, "INNOTEK GMBH") == 0);
-        const bool x2 = (std::strcmp(p, "VIRTUALBOX") == 0);
-        const bool x3 = (std::strcmp(p, "SUN MICROSYSTEMS") == 0);
-        const bool x4 = (std::strcmp(p, "VBOXVER") == 0);
-        const bool x5 = (std::strcmp(p, "VIRTUAL MACHINE") == 0);
+        const bool x1 = (p == "INNOTEK GMBH");
+        const bool x2 = (p == "VIRTUALBOX");
+        const bool x3 = (p == "SUN MICROSYSTEMS");
+        const bool x4 = (p == "VBOXVER");
+        const bool x5 = (p == "VIRTUAL MACHINE");
 
         if (x1 || x2 || x3 || x4 || x5) {
             is_vm = true;
