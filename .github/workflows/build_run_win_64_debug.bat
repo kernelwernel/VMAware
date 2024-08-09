@@ -9,4 +9,3 @@ copy "C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\VC\Redist\M
 copy "C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\VC\Redist\MSVC\14.30.30704\debug_nonredist\x86\Microsoft.VC143.DebugCRT\msvcp140d.dll" Debug\
 cd Debug
 vmaware.exe
-vmaware.exe --disable-hyperv-host

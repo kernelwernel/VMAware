@@ -1996,7 +1996,6 @@ private:
                 return nullptr;
             }
 
-            // TODO: rewrite this, it sucks
             auto ScanDataForString = [](unsigned char* data, unsigned long data_length, unsigned char* string2) -> unsigned char* {
                 std::size_t string_length = strlen(reinterpret_cast<char*>(string2));
 
@@ -2006,7 +2005,7 @@ private:
                     }
                 }
 
-                return 0;
+                return 0;  
             };
 
             auto AllToUpper = [](char* str, std::size_t len) {
@@ -2017,20 +2016,37 @@ private:
 
             AllToUpper(p, length);
 
-            // cleaner and better shortcut than typing reinterpret_cast<unsigned char*> a million times
             auto cast = [](char* p) -> unsigned char* {
                 return reinterpret_cast<unsigned char*>(p);
             };
 
+            unsigned char* x1 = ScanDataForString(cast(p), length, (unsigned char*)("INNOTEK GMBH"));
+            unsigned char* x2 = ScanDataForString(cast(p), length, (unsigned char*)("VIRTUALBOX"));
+            unsigned char* x3 = ScanDataForString(cast(p), length, (unsigned char*)("SUN MICROSYSTEMS"));
+            unsigned char* x4 = ScanDataForString(cast(p), length, (unsigned char*)("VBOXVER"));
+            unsigned char* x5 = ScanDataForString(cast(p), length, (unsigned char*)("VIRTUAL MACHINE"));
+
+            std::string result = "";
+            bool is_vm = false;
+
+            if (x1 || x2 || x3 || x4 || x5) {
+                is_vm = true;
+    #ifdef __VMAWARE_DEBUG__
+                if (x1) { debug("SMBIOS: x1 = ", x1); result = x1; }
+                if (x2) { debug("SMBIOS: x2 = ", x2); result = x2; }
+                if (x3) { debug("SMBIOS: x3 = ", x3); result = x3; }
+                if (x4) { debug("SMBIOS: x4 = ", x4); result = x4; }
+                if (x5) { debug("SMBIOS: x5 = ", x5); result = x5; }
+    #endif
+            }
+            LocalFree(p);
             RegCloseKey(hk);
 
-            if (ScanDataForString(cast(p), length, (unsigned char*)("INNOTEK GMBH")))     { std::string tmp(p); return tmp; }
-            if (ScanDataForString(cast(p), length, (unsigned char*)("VIRTUALBOX")))       { std::string tmp(p); return tmp; }
-            if (ScanDataForString(cast(p), length, (unsigned char*)("SUN MICROSYSTEMS"))) { std::string tmp(p); return tmp; }
-            if (ScanDataForString(cast(p), length, (unsigned char*)("VBOXVER")))          { std::string tmp(p); return tmp; }
-            if (ScanDataForString(cast(p), length, (unsigned char*)("VIRTUAL MACHINE")))  { std::string tmp(p); return tmp; }
+            if (is_vm) {
+                return result;
+            }
 
-            return nullptr;
+            return "";
         }
 
         [[nodiscard]] static bool motherboard_string(const wchar_t* vm_string) {
@@ -4558,12 +4574,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const std::string p = util::SMBIOS_string();
 
         if (p.empty()) {
-            debug("MSSMBIOS: nullptr detected, returned false");
+            debug("MSSMBIOS: empty, returned false");
             return false;
         }
 
 #ifdef __VMAWARE_DEBUG__
-        debug("VBOX_MSSMBIOS: string = ", p);
+        debug("MSSMBIOS: string = ", p);
 #endif
 
         bool is_vm = false;
