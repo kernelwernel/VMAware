@@ -1627,7 +1627,7 @@ private:
             core_debug("HYPERV_FUCKER: eax = ", eax);
 
             if (eax == 12) {
-                std::string p = SMBIOS_string();
+                const std::string p = SMBIOS_string();
 
                 core_debug("HYPERV_FUCKER: SMBIOS string = ", p);
 
@@ -1996,9 +1996,41 @@ private:
                 return nullptr;
             }
 
+            // TODO: rewrite this, it sucks
+            auto ScanDataForString = [](unsigned char* data, unsigned long data_length, unsigned char* string2) -> unsigned char* {
+                std::size_t string_length = strlen(reinterpret_cast<char*>(string2));
+
+                for (std::size_t i = 0; i <= (data_length - string_length); i++) {
+                    if (strncmp(reinterpret_cast<char*>(&data[i]), reinterpret_cast<char*>(string2), string_length) == 0) {
+                        return &data[i];
+                    }
+                }
+
+                return 0;
+            };
+
+            auto AllToUpper = [](char* str, std::size_t len) {
+                for (std::size_t i = 0; i < len; ++i) {
+                    str[i] = static_cast<char>(std::toupper(static_cast<unsigned char>(str[i])));
+                }
+            };
+
+            AllToUpper(p, length);
+
+            // cleaner and better shortcut than typing reinterpret_cast<unsigned char*> a million times
+            auto cast = [](char* p) -> unsigned char* {
+                return reinterpret_cast<unsigned char*>(p);
+            };
+
             RegCloseKey(hk);
-            std::string tmp(p);
-            return tmp;
+
+            if (ScanDataForString(cast(p), length, (unsigned char*)("INNOTEK GMBH")))     { std::string tmp(p); return tmp; }
+            if (ScanDataForString(cast(p), length, (unsigned char*)("VIRTUALBOX")))       { std::string tmp(p); return tmp; }
+            if (ScanDataForString(cast(p), length, (unsigned char*)("SUN MICROSYSTEMS"))) { std::string tmp(p); return tmp; }
+            if (ScanDataForString(cast(p), length, (unsigned char*)("VBOXVER")))          { std::string tmp(p); return tmp; }
+            if (ScanDataForString(cast(p), length, (unsigned char*)("VIRTUAL MACHINE")))  { std::string tmp(p); return tmp; }
+
+            return nullptr;
         }
 
         [[nodiscard]] static bool motherboard_string(const wchar_t* vm_string) {
@@ -4523,7 +4555,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!MSVC)
         return false;
 #else
-        std::string p = util::SMBIOS_string();
+        const std::string p = util::SMBIOS_string();
 
         if (p.empty()) {
             debug("MSSMBIOS: nullptr detected, returned false");
