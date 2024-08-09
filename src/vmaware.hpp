@@ -703,26 +703,6 @@ private:
 #endif
         }
 
-        // credits to VMProtect for the idea
-        // https://github.com/Obfuscator-Collections/VMProtect/blob/d70e027f9204c318e0190d336d9e0baa6048b197/runtime/loader.cc#L2478
-        [[nodiscard]] static bool is_hyperv_root_partition() {
-            if (cpu_manufacturer(cpu::leaf::hypervisor) != "Microsoft Hv") {
-                core_debug("HYPERV_ROOT: no partition found due to wrong manufacturer");
-                return false;
-            }
-
-            if (global_flags.test(ENABLE_HYPERV_HOST)) {
-                core_debug("HYPERV_ROOT: no partition found due to no flag");
-                return false;
-            }
-
-            u32 unused, ebx = 0;
-            cpuid(unused, ebx, unused, unused, 0x40000003);
-            if (ebx & 1) {
-                core_debug("HYPERV_ROOT: found partition");
-            }
-            return (ebx & 1);
-        }
 
         [[nodiscard]] static std::string cpu_manufacturer(const u32 p_leaf) {
             auto cpuid_thingy = [](const u32 p_leaf, u32* regs, std::size_t start = 0, std::size_t end = 4) -> bool {
@@ -929,7 +909,7 @@ private:
 
             // both Hyper-V and VirtualPC have the same string value
             if (brand_str == hyperv) {
-                if (is_hyperv_root_partition()) {
+                if (util::hyperv_fucker()) {
                     return false;
                 }
                 return core::add(HYPERV, VPC);
@@ -1074,6 +1054,24 @@ private:
 
             static bool is_cached() {
                 return (!brand_cache.empty());
+            }
+        };
+
+        struct hyperv {
+            static bool is_hyperv_host;
+            static bool is_stored;
+
+            static bool fetch() {
+                return is_hyperv_host;
+            }
+
+            static void store(const bool p_is_hyperv_host) {
+                is_hyperv_host = p_is_hyperv_host;
+                is_stored = true;
+            }
+
+            static bool is_cached() {
+                return is_stored;
             }
         };
     };
@@ -1575,27 +1573,69 @@ private:
 #else
             return false;
 #endif
-            }
+        }
 
-            [[nodiscard]] static std::string get_hostname() {
+        [[nodiscard]] static std::string get_hostname() {
 #if (MSVC)
-                char ComputerName[MAX_COMPUTERNAME_LENGTH + 1];
-                DWORD cbComputerName = sizeof(ComputerName);
+            char ComputerName[MAX_COMPUTERNAME_LENGTH + 1];
+            DWORD cbComputerName = sizeof(ComputerName);
 
-                if (GetComputerName(ComputerName, &cbComputerName)) {
-                    return std::string(ComputerName);
-                }
+            if (GetComputerName(ComputerName, &cbComputerName)) {
+                return std::string(ComputerName);
+            }
 #elif (LINUX)
-                char hostname[HOST_NAME_MAX];
+            char hostname[HOST_NAME_MAX];
 
-                if (gethostname(hostname, sizeof(hostname)) == 0) {
-                    return std::string(hostname);
-                }
+            if (gethostname(hostname, sizeof(hostname)) == 0) {
+                return std::string(hostname);
+            }
 #endif
 
-                return std::string();
+            return std::string();
+        }
+
+
+        /**
+         * @brief Checks whether Hyper-V host artifacts are present instead of an actual Hyper-V VM
+         * @note idea and credits to Requiem (https://github.com/NotRequiem)
+         */
+        [[nodiscard]] static bool hyperv_fucker() {
+#if (!MSVC)
+            return false;
+#else
+            if (memo::hyperv::is_cached()) {
+                return memo::hyperv::fetch();
             }
 
+            auto add = [](const bool result) -> bool {
+                memo::hyperv::store(result);
+                return result;
+            };
+
+            u32 eax, unused = 0;
+            cpu::cpuid(eax, unused, unused, unused, cpu::leaf::hypervisor);
+
+            if (eax == 12) {
+                const char* p = SMBIOS_string();
+
+                if (std::strcmp(p, "VIRTUAL MACHINE") == 0) {
+                    return add(false);
+                }
+
+                if (motherboard_string("Microsoft Corporation")) {
+                    return add(false);
+                }
+
+                // at this point, it's fair to assume it's a Hyper-V on host
+                return add(true);
+            } else if (eax == 11) {
+                // actual Hyper-V VM
+                return add(false);
+            } else {
+                return add(false);
+            }
+#endif
+        }
 
 #if (MSVC)
         /**
@@ -1895,8 +1935,184 @@ private:
 
             return major_version;
         }
+
+
+        [[nodiscard]] char* SMBIOS_string() {
+            HKEY hk = 0;
+            int ret = RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SYSTEM\\CurrentControlSet\\Services\\mssmbios\\data", 0, KEY_ALL_ACCESS, &hk);
+            if (ret != ERROR_SUCCESS) {
+                return nullptr;
+            }
+
+            bool is_vm = false;
+            unsigned long type = 0;
+            unsigned long length = 0;
+            ret = RegQueryValueExW(hk, L"SMBiosData", 0, &type, 0, &length);
+
+            if (ret != ERROR_SUCCESS) {
+                RegCloseKey(hk);
+                return nullptr;
+            }
+
+            if (length == 0) {
+                RegCloseKey(hk);
+                return nullptr;
+            }
+
+            char* p = static_cast<char*>(LocalAlloc(LMEM_ZEROINIT, length));
+
+            if (p == nullptr) {
+                RegCloseKey(hk);
+                return nullptr;
+            }
+
+            ret = RegQueryValueExW(hk, L"SMBiosData", 0, &type, (unsigned char*)p, &length);
+
+            if (ret != ERROR_SUCCESS) {
+                LocalFree(p);
+                RegCloseKey(hk);
+                return nullptr;
+            }
+
+            return p;
+        }
+
+        bool motherboard_string(const wstring_t vm_string) {
+            HRESULT hres;
+
+            hres = CoInitializeEx(0, COINIT_MULTITHREADED);
+            if (FAILED(hres)) {
+                debug("VPC_BOARD: Failed to initialize COM library. Error code: ", hres);
+                return false;
+            }
+
+            hres = CoInitializeSecurity(
+                NULL,
+                -1,                          // use the default authentication service
+                NULL,                        // use the default authorization service
+                NULL,                        // reserved
+                RPC_C_AUTHN_LEVEL_DEFAULT,   // authentication
+                RPC_C_IMP_LEVEL_IMPERSONATE, // impersonation
+                NULL,                        // authentication info
+                EOAC_NONE,                   // additional capabilities
+                NULL                         // reserved
+            );
+
+            if (FAILED(hres)) {
+                debug("VPC_BOARD: Failed to initialize security. Error code: ", hres);
+                CoUninitialize();
+                return false;
+            }
+
+            IWbemLocator* pLoc = NULL;
+            IWbemServices* pSvc = NULL;
+
+            hres = CoCreateInstance(
+                CLSID_WbemLocator,
+                0,
+                CLSCTX_INPROC_SERVER,
+                IID_IWbemLocator,
+                (LPVOID*)&pLoc
+            );
+
+            if (FAILED(hres)) {
+                debug("VPC_BOARD: Failed to create IWbemLocator object. Error code: ", hres);
+                CoUninitialize();
+                return false;
+            }
+
+            hres = pLoc->ConnectServer(
+                _bstr_t(L"ROOT\\CIMV2"), // Namespace
+                NULL,                    // User name
+                NULL,                    // User password
+                0,                       // Locale
+                NULL,                    // Security flags
+                0,                       // Authority
+                0,                       // Context object pointer
+                &pSvc
+            );
+
+            if (FAILED(hres)) {
+                debug("VPC_BOARD: Failed to connect to WMI. Error code: ", hres);
+                pLoc->Release();
+                CoUninitialize();
+                return false;
+            }
+
+            hres = CoSetProxyBlanket(
+                pSvc,                        // Indicates the proxy to set
+                RPC_C_AUTHN_WINNT,           // RPC_C_AUTHN_xxx
+                RPC_C_AUTHZ_NONE,            // RPC_C_AUTHZ_xxx
+                NULL,                        // Server principal name
+                RPC_C_AUTHN_LEVEL_CALL,      // RPC_C_AUTHN_LEVEL_xxx
+                RPC_C_IMP_LEVEL_IMPERSONATE, // RPC_C_IMP_LEVEL_xxx
+                NULL,                        // client identity
+                EOAC_NONE                    // proxy capabilities
+            );
+
+            if (FAILED(hres)) {
+                debug("VPC_BOARD: Failed to set proxy blanket. Error code: ", hres);
+                pSvc->Release();
+                pLoc->Release();
+                CoUninitialize();
+                return false;
+            }
+
+            IEnumWbemClassObject* enumerator = NULL;
+            hres = pSvc->ExecQuery(
+                bstr_t("WQL"),
+                bstr_t("SELECT * FROM Win32_BaseBoard"),
+                WBEM_FLAG_FORWARD_ONLY | WBEM_FLAG_RETURN_IMMEDIATELY,
+                NULL,
+                &enumerator
+            );
+
+            if (FAILED(hres)) {
+                debug("VPC_BOARD: Query for Win32_BaseBoard failed. Error code: ", hres);
+                pSvc->Release();
+                pLoc->Release();
+                CoUninitialize();
+                return false;
+            }
+
+            IWbemClassObject* pclsObj = NULL;
+            ULONG uReturn = 0;
+            bool is_vm = false;
+
+            while (enumerator) {
+                HRESULT hr = enumerator->Next(WBEM_INFINITE, 1, &pclsObj, &uReturn);
+
+                if (uReturn == 0) {
+                    break;
+                }
+
+                VARIANT vtProp;
+                VariantInit(&vtProp)
+                hr = pclsObj->Get(L"Manufacturer", 0, &vtProp, 0, 0);
+
+                if (SUCCEEDED(hr)) {
+                    if (vtProp.vt == VT_BSTR && _wcsicmp(vtProp.bstrVal, vm_string) == 0) {
+                        is_vm = true;
+                        VariantClear(&vtProp);
+                        break;
+                    }
+
+                    VariantClear(&vtProp);
+                }
+
+                pclsObj->Release();
+            }
+
+            enumerator->Release();
+            pSvc->Release();
+            pLoc->Release();
+            CoUninitialize();
+
+            return is_vm;
+        }
+
 #endif
-        };
+    };
 
 
 private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
@@ -1987,16 +2203,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        if (cpu::is_hyperv_root_partition()) {
+        if (util::hyperv_fucker()) {
             return false;
         }
 
-        constexpr u8 hypervisor_bit = 31;
+        constexpr u32 hypervisor_bit = (1 << 31);
 
         u32 unused, ecx = 0;
         cpu::cpuid(unused, unused, ecx, unused, 1);
 
-        return (ecx & (1 << hypervisor_bit));
+        return (ecx & hypervisor_bit);
 #endif
     }
     catch (...) {
@@ -2013,7 +2229,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!x86)
         return false;
 #else
-        if (cpu::is_hyperv_root_partition()) {
+        if (util::hyperv_fucker()) {
             return false;
         }
 
@@ -3972,135 +4188,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!MSVC)
         return false;
 #else
-        HRESULT hres;
-
-        hres = CoInitializeEx(0, COINIT_MULTITHREADED);
-        if (FAILED(hres)) {
-            debug("VPC_BOARD: Failed to initialize COM library. Error code: ", hres);
-            return false;
-        }
-
-        hres = CoInitializeSecurity(
-            NULL,
-            -1,                          // use the default authentication service
-            NULL,                        // use the default authorization service
-            NULL,                        // reserved
-            RPC_C_AUTHN_LEVEL_DEFAULT,   // authentication
-            RPC_C_IMP_LEVEL_IMPERSONATE, // impersonation
-            NULL,                        // authentication info
-            EOAC_NONE,                   // additional capabilities
-            NULL                         // reserved
-        );
-
-        if (FAILED(hres)) {
-            debug("VPC_BOARD: Failed to initialize security. Error code: ", hres);
-            CoUninitialize();
-            return false;
-        }
-
-        IWbemLocator* pLoc = NULL;
-        IWbemServices* pSvc = NULL;
-
-        hres = CoCreateInstance(
-            CLSID_WbemLocator,
-            0,
-            CLSCTX_INPROC_SERVER,
-            IID_IWbemLocator,
-            (LPVOID*)&pLoc
-        );
-
-        if (FAILED(hres)) {
-            debug("VPC_BOARD: Failed to create IWbemLocator object. Error code: ", hres);
-            CoUninitialize();
-            return false;
-        }
-
-        hres = pLoc->ConnectServer(
-            _bstr_t(L"ROOT\\CIMV2"), // Namespace
-            NULL,                    // User name
-            NULL,                    // User password
-            0,                       // Locale
-            NULL,                    // Security flags
-            0,                       // Authority
-            0,                       // Context object pointer
-            &pSvc
-        );
-
-        if (FAILED(hres)) {
-            debug("VPC_BOARD: Failed to connect to WMI. Error code: ", hres);
-            pLoc->Release();
-            CoUninitialize();
-            return false;
-        }
-
-        hres = CoSetProxyBlanket(
-            pSvc,                        // Indicates the proxy to set
-            RPC_C_AUTHN_WINNT,           // RPC_C_AUTHN_xxx
-            RPC_C_AUTHZ_NONE,            // RPC_C_AUTHZ_xxx
-            NULL,                        // Server principal name
-            RPC_C_AUTHN_LEVEL_CALL,      // RPC_C_AUTHN_LEVEL_xxx
-            RPC_C_IMP_LEVEL_IMPERSONATE, // RPC_C_IMP_LEVEL_xxx
-            NULL,                        // client identity
-            EOAC_NONE                    // proxy capabilities
-        );
-
-        if (FAILED(hres)) {
-            debug("VPC_BOARD: Failed to set proxy blanket. Error code: ", hres);
-            pSvc->Release();
-            pLoc->Release();
-            CoUninitialize();
-            return false;
-        }
-
-        IEnumWbemClassObject* enumerator = NULL;
-        hres = pSvc->ExecQuery(
-            bstr_t("WQL"),
-            bstr_t("SELECT * FROM Win32_BaseBoard"),
-            WBEM_FLAG_FORWARD_ONLY | WBEM_FLAG_RETURN_IMMEDIATELY,
-            NULL,
-            &enumerator
-        );
-
-        if (FAILED(hres)) {
-            debug("VPC_BOARD: Query for Win32_BaseBoard failed. Error code: ", hres);
-            pSvc->Release();
-            pLoc->Release();
-            CoUninitialize();
-            return false;
-        }
-
-        IWbemClassObject* pclsObj = NULL;
-        ULONG uReturn = 0;
-        bool is_vm = false;
-
-        while (enumerator) {
-            HRESULT hr = enumerator->Next(WBEM_INFINITE, 1, &pclsObj, &uReturn);
-
-            if (uReturn == 0) {
-                break;
-            }
-
-            VARIANT vtProp;
-            VariantInit(&vtProp);
-            hr = pclsObj->Get(L"Manufacturer", 0, &vtProp, 0, 0);
-
-            if (SUCCEEDED(hr)) {
-                if (vtProp.vt == VT_BSTR && _wcsicmp(vtProp.bstrVal, L"Microsoft Corporation") == 0) {
-                    is_vm = true;
-                    VariantClear(&vtProp);
-                    break;
-                }
-
-                VariantClear(&vtProp);
-            }
-
-            pclsObj->Release();
-        }
-
-        enumerator->Release();
-        pSvc->Release();
-        pLoc->Release();
-        CoUninitialize();
+        const bool is_vm = util::motherboard_string("Microsoft Corporation");
 
         if (is_vm) {
             return core::add(VPC);
@@ -4413,41 +4501,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!MSVC)
         return false;
 #else
-        HKEY hk = 0;
-        int ret = RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SYSTEM\\CurrentControlSet\\Services\\mssmbios\\data", 0, KEY_ALL_ACCESS, &hk);
-        if (ret != ERROR_SUCCESS) {
-            return false;
-        }
-
-        bool is_vm = false;
-        unsigned long type = 0;
-        unsigned long length = 0;
-        ret = RegQueryValueExW(hk, L"SMBiosData", 0, &type, 0, &length);
-
-        if (ret != ERROR_SUCCESS) {
-            RegCloseKey(hk);
-            return false;
-        }
-
-        if (length == 0) {
-            RegCloseKey(hk);
-            return false;
-        }
-
-        char* p = static_cast<char*>(LocalAlloc(LMEM_ZEROINIT, length));
-
-        if (p == nullptr) {
-            RegCloseKey(hk);
-            return false;
-        }
-
-        ret = RegQueryValueExW(hk, L"SMBiosData", 0, &type, (unsigned char*)p, &length);
-
-        if (ret != ERROR_SUCCESS) {
-            LocalFree(p);
-            RegCloseKey(hk);
-            return false;
-        }
+        const char* p = util::SMBIOS_string();
 
         auto ScanDataForString = [](unsigned char* data, unsigned long data_length, unsigned char* string2) -> unsigned char* {
             std::size_t string_length = strlen(reinterpret_cast<char*>(string2));
@@ -7452,7 +7506,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!x86)
         return false;
 #else
-        if (cpu::is_hyperv_root_partition()) {
+        if (util::hyperv_fucker()) {
             return false;
         }
 
@@ -7787,7 +7841,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!x86)
         return false;
 #else
-        if (cpu::is_hyperv_root_partition()) {
+        if (util::hyperv_fucker()) {
             return false;
         }
 
@@ -7825,7 +7879,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!x86)
         return false;
 #else
-        if (cpu::is_hyperv_root_partition()) {
+        if (util::hyperv_fucker()) {
             return false;
         }
 
@@ -8460,44 +8514,14 @@ information about the hypervisor Linux is running on
             }
 
             if (flag == SPOOFABLE) {
-                flag_collector.set(VM::MAC);
-                flag_collector.set(VM::DOCKERENV);
-                flag_collector.set(VM::HWMON);
-                flag_collector.set(VM::CURSOR);
-                flag_collector.set(VM::VMWARE_REG);
-                flag_collector.set(VM::VBOX_REG);
-                flag_collector.set(VM::USER);
-                flag_collector.set(VM::DLL);
-                flag_collector.set(VM::REGISTRY);
-                flag_collector.set(VM::CWSANDBOX_VM);
-                flag_collector.set(VM::VM_FILES);
-                flag_collector.set(VM::HWMODEL);
-                flag_collector.set(VM::COMPUTER_NAME);
-                flag_collector.set(VM::HOSTNAME);
-                flag_collector.set(VM::KVM_REG);
-                flag_collector.set(VM::KVM_DRIVERS);
-                flag_collector.set(VM::KVM_DIRS);
-                flag_collector.set(VM::LOADED_DLLS);
-                flag_collector.set(VM::QEMU_DIR);
-                flag_collector.set(VM::MOUSE_DEVICE);
-                flag_collector.set(VM::VM_PROCESSES);
-                flag_collector.set(VM::LINUX_USER_HOST);
-                flag_collector.set(VM::HYPERV_REG);
-                flag_collector.set(VM::MAC_MEMSIZE);
-                flag_collector.set(VM::MAC_IOKIT);
-                flag_collector.set(VM::IOREG_GREP);
-                flag_collector.set(VM::MAC_SIP);
-                flag_collector.set(VM::HKLM_REGISTRIES);
-                flag_collector.set(VM::QEMU_GA);
-                flag_collector.set(VM::QEMU_PROC);
-                flag_collector.set(VM::VPC_PROC);
-                flag_collector.set(VM::VM_FILES_EXTRA);
-                flag_collector.set(VM::UPTIME);
-                flag_collector.set(VM::CUCKOO_DIR);
-                flag_collector.set(VM::CUCKOO_PIPE);
-                flag_collector.set(VM::HYPERV_HOSTNAME);
-                flag_collector.set(VM::GENERAL_HOSTNAME);
-                flag_collector.set(VM::BLUESTACKS_FOLDERS);
+                for (const auto& tmp : technique_table) {
+                    const u8 technique_macro = tmp.first;
+                    const technique &tuple = tmp.second;
+
+                    if (tuple.spoofable) {
+                        flag_collector.set(technique_macro);
+                    }
+                }
             }
 
             flag_collector.set(flag);
@@ -9016,6 +9040,52 @@ public: // START OF PUBLIC FUNCTIONS
 
 
     /**
+     * @brief Change the certainty score of a technique
+     * @param technique flag, then the new percentage score to overwite
+     * @return void
+     * @warning ⚠️ FOR DEVELOPMENT USAGE ONLY, NOT MEANT FOR PUBLIC USE ⚠️
+     */
+    static void modify_score(
+        const enum_flags flag,
+        const std::uint8_t percent
+        // clang doesn't support std::source_location for some reason
+#if (CPP >= 20 && !CLANG)
+        , const std::source_location& loc = std::source_location::current()
+#endif
+    ) {
+        auto throw_error = [&](const char* text) -> void {
+            std::stringstream ss;
+#if (CPP >= 20 && !CLANG)
+            ss << ", error in " << loc.function_name() << " at " << loc.file_name() << ":" << loc.line() << ")";
+#endif
+            ss << ". Consult the documentation's parameters for VM::add_custom()";
+            throw std::invalid_argument(std::string(text) + ss.str());
+        };
+
+        if (percent > 100) {
+            throw_error("Percentage parameter must be between 0 and 100");
+        }
+
+#if (CPP >= 23)
+        [[assume(percent <= 100)]];
+#endif
+
+        if (static_cast<u8>(flag) < technique_end) {
+            throw_error("The flag is not a technique flag");
+        }
+
+        using table_t = std::map<u8, core::technique>;
+
+        auto modify = [](table_t &table, const enum_flags flag, const u8 percent) -> void {
+            core::technique &tmp = table.at(flag);
+            table[flag] = { percent, tmp.run, tmp.spoofable };
+        };
+
+        modify(const_cast<table_t&>(core::technique_table), flag, percent);
+    }
+
+
+    /**
      * @brief disable the provided technique flags so they are not counted to the overall result
      * @param technique flag(s) only
      * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmdetect
@@ -9116,6 +9186,9 @@ VM::flagset VM::memo::cache_keys = 0;
 std::string VM::memo::brand::brand_cache = "";
 std::string VM::memo::multi_brand::brand_cache = "";
 std::string VM::memo::cpu_brand::brand_cache = "";
+bool VM::memo::hyperv::is_hyperv_host = false;
+bool VM::memo::hyperv::is_stored = false;
+
 #ifdef __VMAWARE_DEBUG__
 VM::u16 VM::total_points = 0;
 #endif
