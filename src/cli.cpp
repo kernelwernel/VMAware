@@ -55,10 +55,8 @@ constexpr const char* red_orange = "\x1B[38;2;247;127;40m";
 constexpr const char* green_orange = "\x1B[38;2;174;197;59m";
 constexpr const char* grey = "\x1B[38;2;108;108;108m";
 
-constexpr bool ENABLE_HYPERV = true;
 constexpr bool ENABLE_NOTES = true;
 constexpr bool ENABLE_SPOOF = false;
-constexpr bool DISABLE_HYPERV = false;
 constexpr bool DISABLE_NOTES = false;
 constexpr bool DISABLE_SPOOF = false;
 
@@ -73,7 +71,7 @@ enum arg_enum : std::uint8_t {
     CONCLUSION,
     NUMBER,
     TYPE,
-    HYPERV,
+    HYPERV, // will be removed in the next release
     NOTES,
     SPOOFABLE,
     NULL_ARG
@@ -429,19 +427,12 @@ void general() {
     };
 
     bool notes_enabled = false;
-    VM::enum_flags hyperv_setting;
     VM::enum_flags spoofable_setting;
 
     if (arg_bitset.test(NOTES)) {
         notes_enabled = false;
     } else {
         notes_enabled = true;
-    }
-
-    if (arg_bitset.test(HYPERV)) {
-        hyperv_setting = VM::NULL_ARG;
-    } else {
-        hyperv_setting = VM::ENABLE_HYPERV_HOST;
     }
 
     if (arg_bitset.test(SPOOFABLE)) {
@@ -587,7 +578,7 @@ void general() {
     }
 
     const char* percent_color = "";
-    const std::uint8_t percent = VM::percentage(hyperv_setting, spoofable_setting);
+    const std::uint8_t percent = VM::percentage(spoofable_setting);
 
     if      (percent == 0) { percent_color = red; }
     else if (percent < 25) { percent_color = red_orange; }
@@ -597,7 +588,7 @@ void general() {
 
     std::cout << "VM likeliness: " << percent_color << static_cast<std::uint32_t>(percent) << "%" << ansi_exit << "\n";
 
-    const bool is_detected = VM::detect(hyperv_setting, spoofable_setting);
+    const bool is_detected = VM::detect(spoofable_setting);
 
     std::cout << "VM confirmation: " << (is_detected ? green : red) << std::boolalpha << is_detected << std::noboolalpha << ansi_exit << "\n";
 
@@ -645,8 +636,8 @@ void general() {
         << "\n\n";
 
 
-    if ((hyperv_setting == VM::ENABLE_HYPERV_HOST) && (brand == "Hyper-V artifact (not an actual VM)") && notes_enabled) {
-        std::cout << note << " If you know you are running on host, Hyper-V leaves VM artifacts in CPUIDs which makes the system look like it's running in a Hyper-V VM when it's not. If you want to disable this mechanism, uninstall Hyper-V in your system.\n\n";
+    if ((brand == "Hyper-V artifact (not an actual VM)") && notes_enabled) {
+        std::cout << note << "The result means that the CLI has found Hyper-V, but as an artifact instead of an actual VM. This means that although the hardware values in fact match with Hyper-V due to how it's designed by Microsoft, the CLI has determined you are NOT in a Hyper-V VM.\n\n";
     } else if (notes_enabled) {
         if (!arg_bitset.test(SPOOFABLE)) {
             std::cout << tip << "To enable spoofable techniques, run with the \"--spoofable\" argument\n\n";
@@ -696,7 +687,7 @@ int main(int argc, char* argv[]) {
         { "--spoofable", SPOOFABLE }
     }};
 
-    [[maybe_unused]] std::string potential_null_arg = "";
+    std::string potential_null_arg = "";
 
     for (const auto arg_string : args) {
         auto it = std::find_if(table.cbegin(), table.cend(), [&](const auto &p) {
@@ -757,9 +748,7 @@ int main(int argc, char* argv[]) {
         auto settings = [&]() -> std::bitset<max_bits> {
             std::bitset<max_bits> setting_bits;
 
-            if (arg_bitset.test(HYPERV) == false) {
-                setting_bits.set(VM::ENABLE_HYPERV_HOST);
-            } else {
+            if (arg_bitset.test(HYPERV)) {
                 std::cerr << "--disable-hyperv-host has been deprecated, the determination of whether it's a host Hyper-V or VM Hyper-V is now done automatically";
                 return 1;
             }

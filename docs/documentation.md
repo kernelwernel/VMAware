@@ -463,7 +463,6 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | -p | --percent | Prints the VM likeliness percentage between 0 and 100 |
 | -n | --number | Prints the number of VM detection techniques it can performs |
 | -t | --type | Returns the VM type (if a VM was found) |
-|    | --disable-hyperv-host | Disable the possibility of Hyper-V default virtualisation result on host OS (this can be used as a combination with the above commands) |
 |    | --disable-notes | No notes will be provided |
 |    | --spoofable | Allow spoofable techniques to be ran (not included by default)
 

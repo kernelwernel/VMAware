@@ -8018,7 +8018,7 @@ information about the hypervisor Linux is running on
                 flag_collector.set(VM::QEMU_GA);
                 flag_collector.set(VM::QEMU_PROC);
                 flag_collector.set(VM::VPC_PROC);
-                flag_collector.set(VM::VM_FILES_EXTRA);
+                flag_collector.set(VM::VM_FILES_EXTRA)
                 flag_collector.set(VM::UPTIME);
                 flag_collector.set(VM::CUCKOO_DIR);
                 flag_collector.set(VM::CUCKOO_PIPE);
