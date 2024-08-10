@@ -416,8 +416,8 @@ public:
         // start of non-technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
         NO_MEMO,
         HIGH_THRESHOLD,
-        ENABLE_HYPERV_HOST,
-        NULL_ARG, // does nothing as a placeholder
+        ENABLE_HYPERV_HOST [[deprecated("This mechanism is done by default as of 1.8 release")]],
+        NULL_ARG, // does nothing, just a placeholder flag mainly for the CLI
         SPOOFABLE,
         MULTIPLE
     };
@@ -430,6 +430,7 @@ private:
     static constexpr u16 high_threshold_score = 300; // new threshold score from 100 to 350 if VM::HIGH_THRESHOLD flag is enabled
     static constexpr bool SHORTCUT = true; // macro for whether VM::core::run_all() should take a shortcut by skipping the rest of the techniques if the threshold score is already met
 
+
     // intended for loop indexes
     static constexpr u8 enum_begin = 0;
     static constexpr u8 enum_end = enum_size + 1;
@@ -437,6 +438,7 @@ private:
     static constexpr u8 technique_end = NO_MEMO;
     static constexpr u8 non_technique_begin = NO_MEMO;
     static constexpr u8 non_technique_end = enum_end;
+    static constexpr u8 ENABLE_HYPERV_HOST_REPLACEMENT = HIGH_THRESHOLD + 1;
 
 public:
     static constexpr u8 technique_count = NO_MEMO; // get total number of techniques
@@ -8620,10 +8622,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             if (
                 flags.test(NO_MEMO) ||
                 flags.test(HIGH_THRESHOLD) ||
-                flags.test(ENABLE_HYPERV_HOST) ||
                 flags.test(SPOOFABLE) ||
+                flags.test(ENABLE_HYPERV_HOST_REPLACEMENT) ||
                 flags.test(MULTIPLE)
-                ) {
+            ) {
                 flags |= DEFAULT;
             }
         }
@@ -8907,7 +8909,7 @@ public: // START OF PUBLIC FUNCTIONS
         if (
             (flag_bit == NO_MEMO) ||
             (flag_bit == HIGH_THRESHOLD) ||
-            (flag_bit == ENABLE_HYPERV_HOST) ||
+            (flag_bit == ENABLE_HYPERV_HOST_REPLACEMENT) ||
             (flag_bit == SPOOFABLE) ||
             (flag_bit == MULTIPLE)
             ) {
@@ -9271,7 +9273,7 @@ public: // START OF PUBLIC FUNCTIONS
         flags.set(NO_MEMO, 0);
         flags.set(HIGH_THRESHOLD, 0);
         flags.set(SPOOFABLE, 0);
-        flags.set(ENABLE_HYPERV_HOST, 0);
+        flags.set(ENABLE_HYPERV_HOST_REPLACEMENT, 0);
         flags.set(MULTIPLE, 0);
 
         return flags;
@@ -9430,12 +9432,12 @@ VM::flagset VM::DEFAULT = []() -> flagset {
     tmp.flip(RDTSC);
     tmp.flip(RDTSC_VMEXIT);
     tmp.flip(HIGH_THRESHOLD);
-    tmp.flip(ENABLE_HYPERV_HOST);
+    tmp.flip(ENABLE_HYPERV_HOST_REPLACEMENT);
     tmp.flip(SPOOFABLE);
     tmp.flip(MULTIPLE);
 
     return tmp;
-    }();
+}();
 
 
 // flag to enable every technique, basically VM::DEFAULT but with VM::CURSOR technique
@@ -9443,7 +9445,7 @@ VM::flagset VM::ALL = []() -> flagset {
     flagset tmp = DEFAULT;
     tmp.set(CURSOR);
     return tmp;
-    }();
+}();
 
 
 std::vector<VM::u8> VM::technique_vector = []() -> std::vector<VM::u8> {
@@ -9455,7 +9457,7 @@ std::vector<VM::u8> VM::technique_vector = []() -> std::vector<VM::u8> {
     }
 
     return tmp;
-    }();
+}();
 
 
 // check if cpuid is supported
@@ -9474,7 +9476,7 @@ bool VM::core::cpuid_supported = []() -> bool {
 #else
     return false;
 #endif
-    }();
+}();
 
 
 // this is initialised as empty, because this is where custom techniques can be added at runtime 
