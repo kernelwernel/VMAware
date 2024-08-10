@@ -214,6 +214,7 @@
 #include <io.h>
 #include <winspool.h>
 #include <wtypes.h>
+#include <winevt.h>
 
 #pragma comment(lib, "wbemuuid.lib")
 #pragma comment(lib, "iphlpapi.lib")
@@ -225,6 +226,8 @@
 #pragma comment(lib, "strmiids.lib")
 #pragma comment(lib, "uuid.lib")
 #pragma comment(lib, "ntdll.lib")
+#pragma comment(lib, "wevtapi.lib")
+
 
 #ifdef _UNICODE
 #define tregex std::wregex
@@ -408,6 +411,7 @@ public:
         KVM_BITMASK,
         KGT_SIGNATURE,
         VMWARE_DMI,
+        EVENT_LOGS,
 
         // start of non-technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
         NO_MEMO,
@@ -1575,7 +1579,7 @@ private:
 #else
             return false;
 #endif
-            }
+        }
 
         [[nodiscard]] static std::string get_hostname() {
 #if (MSVC)
@@ -1595,6 +1599,7 @@ private:
 
             return std::string();
         }
+
 
         /**
          * @brief Checks whether Hyper-V host artifacts are present instead of an actual Hyper-V VM
@@ -1966,6 +1971,7 @@ private:
             unsigned long length = 0;
 
             ret = RegQueryValueExW(hk, L"SMBiosData", 0, &type, 0, &length);
+
             if (ret != ERROR_SUCCESS) {
                 RegCloseKey(hk);
                 debug("SMBIOS_string(): ret = error 2");
@@ -1986,6 +1992,7 @@ private:
             }
 
             ret = RegQueryValueExW(hk, L"SMBiosData", 0, &type, reinterpret_cast<unsigned char*>(p), &length);
+
             if (ret != ERROR_SUCCESS) {
                 LocalFree(p);
                 RegCloseKey(hk);
@@ -2179,8 +2186,132 @@ private:
             return is_vm;
         }
 
+
+        /**
+         * @brief Retrieves the last error message from the Windows API. Useful for __VMAWARE_DEBUG__
+         * 
+         * @author Requiem (https://github.com/NotRequiem)
+         *
+         * @return A std::wstring containing the error message.
+         */
+        [[nodiscard]] static std::wstring GetLastErrorString() {
+            DWORD error = GetLastError();
+            LPWSTR messageBuffer = nullptr;
+            size_t size = FormatMessageW(
+                FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+                nullptr, error, 0, (LPWSTR)&messageBuffer, 0, nullptr
+            );
+
+            std::wstring message(messageBuffer, size);
+            LocalFree(messageBuffer);
+            return message;
+        }
+
+
+        /**
+         * @brief Searches for specific strings within events in a Windows Event Log.
+         *
+         * @param logName The name or path of the event log to search (e.g., "System", "Application", "Security", or a custom path).
+         * @param searchStrings A vector of strings to search for within the event messages.
+         * @param flags Query flags that define the direction of the search; default is EvtQueryReverseDirection.
+         * @param timeout The maximum amount of time (in milliseconds) to wait for events; default is INFINITE.
+         * @param maxEvents The maximum number of events to process; default is 1000.
+         *
+         * @author Requiem (https://github.com/NotRequiem)
+         * 
+         * @return True if any of the search strings are found in the events; otherwise, false.
+         */
+        [[nodiscard]] static bool query_event_logs(const std::wstring& logName,
+            const std::vector<std::wstring>& searchStrings,
+            DWORD flags = EvtQueryReverseDirection,
+            DWORD timeout = INFINITE,
+            DWORD maxEvents = 1000) {
+
+            EVT_HANDLE hLog = EvtOpenLog(nullptr, logName.c_str(), EvtOpenChannelPath);
+            if (!hLog) {
+                std::wcerr << L"Failed to open event log: " << logName << L". Error: " << GetLastErrorString() << std::endl;
+                return false;
+            }
+
+            EVT_HANDLE hResults = EvtQuery(nullptr, logName.c_str(), nullptr, flags);
+            if (!hResults) {
+                std::wcerr << L"Failed to query event log: " << logName << L". Error: " << GetLastErrorString() << std::endl;
+                EvtClose(hLog);
+                return false;
+            }
+
+            EVT_HANDLE hEvent = nullptr;
+            DWORD bufferUsed = 0;
+            DWORD bufferSize = 0;
+            DWORD count = 0;
+            WCHAR* pBuffer = nullptr;
+
+            // Iterate over events up to the maximum number specified
+            for (DWORD eventCount = 0; eventCount < maxEvents; ++eventCount) {
+                if (!EvtNext(hResults, 1, &hEvent, timeout, 0, &count)) {
+                    if (GetLastError() == ERROR_NO_MORE_ITEMS) {
+                        break; // No more events to process
+                    }
+                    std::wcerr << L"EvtNext failed. Error: " << GetLastErrorString() << std::endl;
+                    EvtClose(hResults);
+                    EvtClose(hLog);
+                    return false;
+                }
+
+                if (!EvtRender(nullptr, hEvent, EvtRenderEventXml, 0, nullptr, &bufferUsed, &count) &&
+                    GetLastError() == ERROR_INSUFFICIENT_BUFFER) {
+                    bufferSize = bufferUsed;
+                    pBuffer = new WCHAR[bufferSize];
+                    if (!pBuffer) {
+                        std::wcerr << L"Memory allocation failed." << std::endl;
+                        EvtClose(hResults);
+                        EvtClose(hLog);
+                        return false;
+                    }
+
+                    if (!EvtRender(nullptr, hEvent, EvtRenderEventXml, bufferSize, pBuffer, &bufferUsed, &count)) {
+                        std::wcerr << L"EvtRender failed. Error: " << GetLastErrorString() << std::endl;
+                        delete[] pBuffer;
+                        EvtClose(hResults);
+                        EvtClose(hLog);
+                        return false;
+                    }
+                }
+                else {
+                    std::wcerr << L"EvtRender failed. Error: " << GetLastErrorString() << std::endl;
+                    EvtClose(hResults);
+                    EvtClose(hLog);
+                    return false;
+                }
+
+                std::wstring eventMessage(pBuffer);
+                delete[] pBuffer;
+
+                // Check if any of the search strings are found in the event message, not in the event name
+                bool found = false;
+                for (const auto& searchString : searchStrings) {
+                    if (eventMessage.find(searchString) != std::wstring::npos) {
+                        found = true;
+                        break;
+                    }
+                }
+
+                if (found) {
+                    EvtClose(hResults);
+                    EvtClose(hLog);
+                    return true;
+                }
+
+                EvtClose(hEvent);
+            }
+
+            EvtClose(hResults);
+            EvtClose(hLog);
+
+            return false;
+        }
 #endif
-        };
+    };
 
 
 private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
@@ -7953,31 +8084,31 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false; // returned false because we want the most feature leafs as possible for Hyper-V
         }
 
-        /* this is just a tool to check if all the arrows (^) are aligned correctly, think of it as a ruler and ignore this lol
-        ||||||||||||||||||||||9876543210
-        |||||||||||||||||||||10
-        ||||||||||||||||||||11
-        |||||||||||||||||||12
-        ||||||||||||||||||13
-        |||||||||||||||||14
-        ||||||||||||||||15
-        |||||||||||||||16
-        ||||||||||||||17
-        |||||||||||||18
-        ||||||||||||19
-        |||||||||||20
-        ||||||||||21
-        |||||||||22
-        ||||||||23
-        |||||||24
-        ||||||25
-        |||||26
-        ||||27
-        |||28
-        ||29
-        |30
-        31
-        */
+/* this is just an ascii tool to check if all the arrows (^) are aligned correctly based on bit position, think of it as a ruler. (ignore this btw)
+||||||||||||||||||||||9876543210
+|||||||||||||||||||||10 
+||||||||||||||||||||11 
+|||||||||||||||||||12 
+||||||||||||||||||13 
+|||||||||||||||||14 
+||||||||||||||||15 
+|||||||||||||||16 
+||||||||||||||17 
+|||||||||||||18 
+||||||||||||19 
+|||||||||||20 
+||||||||||21 
+|||||||||22 
+||||||||23 
+|||||||24 
+||||||25 
+|||||26 
+||||27 
+|||28 
+||29 
+|30 
+31 
+*/
 
         auto leaf_01 = [&]() -> bool {
             u32 eax, ebx, ecx, edx = 0;
@@ -8284,10 +8415,33 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
 
 
+    /**
+     * @brief Check for presence of Hyper-V in the Windows Event Logs
+     * 
+     * @author Requiem (https://github.com/NotRequiem)
+     *
+     * @category Windows
+     */
+    [[nodiscard]] static bool hyperv_event_logs() try {
+#if (!MSVC)
+        return false;
+#else
+        // Define the log name and search strings
+        std::wstring logName = L"Microsoft-Windows-Kernel-PnP/Configuration"; // Example: "System", "Application", "Security", or a custom path. In this case, we use Microsoft-Windows-Kernel-PnP/Configuration as a Hyper-V VM artifact
+        std::vector<std::wstring> searchStrings = { L"Virtual_Machine", L"VMBUS" };
 
+        bool found = util::query_event_logs(logName, searchStrings);
 
+        if (found) {
+            return core::add(HYPERV);
+        }
 
-
+        return false;
+#endif
+    } catch (...) {
+        debug("EVENT_LOGS: caught error, returned false");
+        return false;
+    }
 
 
 
@@ -8557,7 +8711,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             if (flag == SPOOFABLE) {
                 for (const auto& tmp : technique_table) {
                     const u8 technique_macro = tmp.first;
-                    const technique& tuple = tmp.second;
+                    const technique &tuple = tmp.second;
 
                     if (tuple.spoofable) {
                         flag_collector.set(technique_macro);
@@ -8903,32 +9057,32 @@ public: // START OF PUBLIC FUNCTIONS
             brands.emplace(std::make_pair(TMP_HYPERV_VPC, 2));
         }
 
-        merger(TMP_HYPERV, TMP_HYPERV_ARTIFACT, TMP_HYPERV_ARTIFACT);
-        merger(TMP_VPC, TMP_HYPERV_ARTIFACT, TMP_HYPERV_ARTIFACT);
+        merger(TMP_HYPERV,     TMP_HYPERV_ARTIFACT, TMP_HYPERV_ARTIFACT);
+        merger(TMP_VPC,        TMP_HYPERV_ARTIFACT, TMP_HYPERV_ARTIFACT);
         merger(TMP_HYPERV_VPC, TMP_HYPERV_ARTIFACT, TMP_HYPERV_ARTIFACT);
 
-        merger(TMP_AZURE, TMP_HYPERV, TMP_AZURE);
-        merger(TMP_AZURE, TMP_VPC, TMP_AZURE);
+        merger(TMP_AZURE, TMP_HYPERV,     TMP_AZURE);
+        merger(TMP_AZURE, TMP_VPC,        TMP_AZURE);
         merger(TMP_AZURE, TMP_HYPERV_VPC, TMP_AZURE);
 
-        merger(TMP_NANOVISOR, TMP_HYPERV, TMP_NANOVISOR);
-        merger(TMP_NANOVISOR, TMP_VPC, TMP_NANOVISOR);
+        merger(TMP_NANOVISOR, TMP_HYPERV,     TMP_NANOVISOR);
+        merger(TMP_NANOVISOR, TMP_VPC,        TMP_NANOVISOR);
         merger(TMP_NANOVISOR, TMP_HYPERV_VPC, TMP_NANOVISOR);
-
-        merger(TMP_QEMU, TMP_KVM, TMP_QEMU_KVM);
-        merger(TMP_KVM, TMP_HYPERV, TMP_KVM_HYPERV);
-        merger(TMP_QEMU, TMP_HYPERV, TMP_QEMU_KVM_HYPERV);
-        merger(TMP_QEMU_KVM, TMP_HYPERV, TMP_QEMU_KVM_HYPERV);
-        merger(TMP_KVM, TMP_KVM_HYPERV, TMP_KVM_HYPERV);
-        merger(TMP_QEMU, TMP_KVM_HYPERV, TMP_QEMU_KVM_HYPERV);
-        merger(TMP_QEMU_KVM, TMP_KVM_HYPERV, TMP_QEMU_KVM_HYPERV);
+        
+        merger(TMP_QEMU,      TMP_KVM,         TMP_QEMU_KVM);
+        merger(TMP_KVM,       TMP_HYPERV,      TMP_KVM_HYPERV);
+        merger(TMP_QEMU,      TMP_HYPERV,      TMP_QEMU_KVM_HYPERV);
+        merger(TMP_QEMU_KVM,  TMP_HYPERV,      TMP_QEMU_KVM_HYPERV);
+        merger(TMP_KVM,       TMP_KVM_HYPERV,  TMP_KVM_HYPERV);
+        merger(TMP_QEMU,      TMP_KVM_HYPERV,  TMP_QEMU_KVM_HYPERV);
+        merger(TMP_QEMU_KVM,  TMP_KVM_HYPERV,  TMP_QEMU_KVM_HYPERV);
 
         triple_merger(TMP_QEMU, TMP_KVM, TMP_KVM_HYPERV, TMP_QEMU_KVM_HYPERV);
 
-        merger(TMP_VMWARE, TMP_FUSION, TMP_FUSION);
-        merger(TMP_VMWARE, TMP_EXPRESS, TMP_EXPRESS);
-        merger(TMP_VMWARE, TMP_ESX, TMP_ESX);
-        merger(TMP_VMWARE, TMP_GSX, TMP_GSX);
+        merger(TMP_VMWARE, TMP_FUSION,      TMP_FUSION);
+        merger(TMP_VMWARE, TMP_EXPRESS,     TMP_EXPRESS);
+        merger(TMP_VMWARE, TMP_ESX,         TMP_ESX);
+        merger(TMP_VMWARE, TMP_GSX,         TMP_GSX);
         merger(TMP_VMWARE, TMP_WORKSTATION, TMP_WORKSTATION);
 
         using brand_element_t = std::pair<const char*, brand_score_t>;
@@ -9164,14 +9318,14 @@ public: // START OF PUBLIC FUNCTIONS
 
         using table_t = std::map<u8, core::technique>;
 
-        auto modify = [](table_t& table, const enum_flags flag, const u8 percent) -> void {
-            core::technique& tmp = table.at(flag);
+        auto modify = [](table_t &table, const enum_flags flag, const u8 percent) -> void {
+            core::technique &tmp = table.at(flag);
             table[flag] = { percent, tmp.run, tmp.spoofable };
         };
 
         modify(const_cast<table_t&>(core::technique_table), flag, percent);
     }
-    };
+};
 
 MSVC_ENABLE_WARNING(ASSIGNMENT_OPERATOR NO_INLINE_FUNC SPECTRE)
 
@@ -9257,6 +9411,8 @@ VM::flagset VM::DEFAULT = []() -> flagset {
     // disable all the non-default flags
     tmp.flip(NO_MEMO);
     tmp.flip(CURSOR);
+    tmp.flip(RDTSC);
+    tmp.flip(RDTSC_VMEXIT);
     tmp.flip(HIGH_THRESHOLD);
     tmp.flip(ENABLE_HYPERV_HOST);
     tmp.flip(SPOOFABLE);
@@ -9315,104 +9471,105 @@ std::vector<VM::core::custom_technique> VM::core::custom_table = {
 const std::map<VM::u8, VM::core::technique> VM::core::technique_table = {
     // FORMAT: VM::<ID> = { certainty%, function pointer, is spoofable? }
 
-    { VM::VMID, { 100, VM::vmid, false }},
-    { VM::CPU_BRAND, { 50, VM::cpu_brand, false }},
-    { VM::HYPERVISOR_BIT, { 100, VM::hypervisor_bit , false}},
-    { VM::HYPERVISOR_STR, { 45, VM::hypervisor_str, false }},
-    { VM::RDTSC, { 10, VM::rdtsc_check, false }},
-    { VM::THREADCOUNT, { 35, VM::thread_count, false }},
-    { VM::MAC, { 60, VM::mac_address_check, true }},
-    { VM::TEMPERATURE, { 15, VM::temperature, false }},
-    { VM::SYSTEMD, { 70, VM::systemd_virt, false }},
-    { VM::CVENDOR, { 65, VM::chassis_vendor, false }},
-    { VM::CTYPE, { 10, VM::chassis_type, false }},
-    { VM::DOCKERENV, { 80, VM::dockerenv, true }},
-    { VM::DMIDECODE, { 55, VM::dmidecode, false }},
-    { VM::DMESG, { 55, VM::dmesg, false }},
-    { VM::HWMON, { 75, VM::hwmon, true }},
-    { VM::SIDT5, { 45, VM::sidt5, false }},
-    { VM::CURSOR, { 5, VM::cursor_check, true }},
-    { VM::VMWARE_REG, { 65, VM::vmware_registry, true }},
-    { VM::VBOX_REG, { 65, VM::vbox_registry, true }},
-    { VM::USER, { 35, VM::user_check, true }},
-    { VM::DLL, { 50, VM::DLL_check, true }},
-    { VM::REGISTRY, { 75, VM::registry_key, true }},
-    { VM::CWSANDBOX_VM, { 10, VM::cwsandbox_check, true }},
-    { VM::VM_FILES, { 60, VM::vm_files, true }},
-    { VM::HWMODEL, { 75, VM::hwmodel, true }},
-    { VM::DISK_SIZE, { 60, VM::disk_size, false }},
-    { VM::VBOX_DEFAULT, { 55, VM::vbox_default_specs, false }},
-    { VM::VBOX_NETWORK, { 70, VM::vbox_network_share, false }},
-    { VM::WINE_CHECK, { 85, VM::wine, false }},                     // GPL
-    { VM::COMPUTER_NAME, { 15, VM::computer_name_match, true }},    // GPL
-    { VM::HOSTNAME, { 25, VM::hostname_match, true  }},             // GPL
-    { VM::MEMORY, { 35, VM::low_memory_space, false }},             // GPL
-    { VM::VBOX_WINDOW_CLASS, { 10, VM::vbox_window_class, false }}, // GPL
-    { VM::KVM_REG, { 75, VM::kvm_registry, true }},                 // GPL
-    { VM::KVM_DRIVERS, { 55, VM::kvm_drivers, true }},              // GPL
-    { VM::KVM_DIRS, { 55, VM::kvm_directories, true }},             // GPL
-    { VM::LOADED_DLLS, { 75, VM::loaded_dlls, true }},              // GPL
-    { VM::AUDIO, { 35, VM::check_audio, false }},                   // GPL
-    { VM::QEMU_DIR, { 45, VM::qemu_dir, true }},                    // GPL
-    { VM::MOUSE_DEVICE, { 20, VM::mouse_device, true }},            // GPL
-    { VM::VM_PROCESSES, { 30, VM::vm_processes, true }},
-    { VM::LINUX_USER_HOST, { 25, VM::linux_user_host, true }},
-    { VM::GAMARUE, { 40, VM::gamarue, false }},
-    { VM::VMID_0X4, { 90, VM::vmid_0x4, false }},
-    { VM::PARALLELS_VM, { 50, VM::parallels, false }},
-    { VM::RDTSC_VMEXIT, { 25, VM::rdtsc_vmexit, false }},
-    { VM::QEMU_BRAND, { 100, VM::cpu_brand_qemu, false }},
-    { VM::BOCHS_CPU, { 95, VM::bochs_cpu, false }},
-    { VM::VPC_BOARD, { 20, VM::vpc_board, false }},
-    { VM::HYPERV_WMI, { 80, VM::hyperv_wmi, false }},
-    { VM::HYPERV_REG, { 80, VM::hyperv_registry, true }},
-    { VM::BIOS_SERIAL, { 60, VM::bios_serial, false }},
-    { VM::VBOX_FOLDERS, { 45, VM::vbox_shared_folders, false }},
-    { VM::MSSMBIOS, { 75, VM::mssmbios, false }},
-    { VM::MAC_MEMSIZE, { 30, VM::hw_memsize, true }},
-    { VM::MAC_IOKIT, { 80, VM::io_kit, true }},
-    { VM::IOREG_GREP, { 75, VM::ioreg_grep, true }},
-    { VM::MAC_SIP, { 85, VM::mac_sip, true }},
-    { VM::HKLM_REGISTRIES, { 70, VM::hklm_registries, true }},
-    { VM::QEMU_GA, { 20, VM::qemu_ga, true }},
-    { VM::VALID_MSR, { 35, VM::valid_msr, false }},
-    { VM::QEMU_PROC, { 30, VM::qemu_processes, true }},
-    { VM::VPC_PROC, { 30, VM::vpc_proc, true }},
-    { VM::VPC_INVALID, { 75, VM::vpc_invalid, false }},
-    { VM::SIDT, { 30, VM::sidt, false }},
-    { VM::SGDT, { 30, VM::sgdt, false }},
-    { VM::SLDT, { 15, VM::sldt, false }},
-    { VM::OFFSEC_SIDT, { 60, VM::offsec_sidt, false }},
-    { VM::OFFSEC_SGDT, { 60, VM::offsec_sgdt, false }},
-    { VM::OFFSEC_SLDT, { 20, VM::offsec_sldt, false }},
-    { VM::VPC_SIDT, { 15, VM::vpc_sidt, false }},
-    { VM::HYPERV_BOARD, { 45, VM::hyperv_board, false }},
-    { VM::VM_FILES_EXTRA, { 70, VM::vm_files_extra, true }},
-    { VM::VMWARE_IOMEM, { 65, VM::vmware_iomem, false }},
-    { VM::VMWARE_IOPORTS, { 70, VM::vmware_ioports, false }},
-    { VM::VMWARE_SCSI, { 40, VM::vmware_scsi, false }},
-    { VM::VMWARE_DMESG, { 65, VM::vmware_dmesg, false }},
-    { VM::VMWARE_STR, { 35, VM::vmware_str, false }},
-    { VM::VMWARE_BACKDOOR, { 100, VM::vmware_backdoor, false }},
-    { VM::VMWARE_PORT_MEM, { 85, VM::vmware_port_memory, false }},
-    { VM::SMSW, { 30, VM::smsw, false }},
-    { VM::MUTEX, { 85, VM::mutex, false }},
-    { VM::UPTIME, { 10, VM::uptime, true }},
-    { VM::ODD_CPU_THREADS, { 80, VM::odd_cpu_threads, false }},
-    { VM::INTEL_THREAD_MISMATCH, { 85, VM::intel_thread_mismatch, false }},
-    { VM::XEON_THREAD_MISMATCH, { 85, VM::xeon_thread_mismatch, false }},
-    { VM::NETTITUDE_VM_MEMORY, { 75, VM::nettitude_vm_memory, false }},
-    { VM::CPUID_BITSET, { 20, VM::cpuid_bitset, false }},
-    { VM::CUCKOO_DIR, { 15, VM::cuckoo_dir, true }},
-    { VM::CUCKOO_PIPE, { 20, VM::cuckoo_pipe, true }},
-    { VM::HYPERV_HOSTNAME, { 50, VM::hyperv_hostname, true }},
-    { VM::GENERAL_HOSTNAME, { 20, VM::general_hostname, true }},
-    { VM::SCREEN_RESOLUTION, { 30, VM::screen_resolution, false }},
-    { VM::DEVICE_STRING, { 25, VM::device_string, false }},
-    { VM::BLUESTACKS_FOLDERS, { 15, VM::bluestacks, true }},
-    { VM::CPUID_SIGNATURE, { 95, VM::cpuid_signature, false }},
-    { VM::HYPERV_BITMASK, { 20, VM::hyperv_bitmask, false }},
-    { VM::KVM_BITMASK, { 40, VM::kvm_bitmask, false }},
-    { VM::KGT_SIGNATURE, { 80, VM::intel_kgt_signature, false }},
-    { VM::VMWARE_DMI, { 30, VM::vmware_dmi, false }}
+    { VM::VMID, { 100, VM::vmid, false } },
+    { VM::CPU_BRAND, { 50, VM::cpu_brand, false } },
+    { VM::HYPERVISOR_BIT, { 100, VM::hypervisor_bit , false}} , 
+    { VM::HYPERVISOR_STR, { 45, VM::hypervisor_str, false } },
+    { VM::RDTSC, { 10, VM::rdtsc_check, false } },
+    { VM::THREADCOUNT, { 35, VM::thread_count, false } },
+    { VM::MAC, { 60, VM::mac_address_check, true } },
+    { VM::TEMPERATURE, { 15, VM::temperature, false } },
+    { VM::SYSTEMD, { 70, VM::systemd_virt, false } },
+    { VM::CVENDOR, { 65, VM::chassis_vendor, false } },
+    { VM::CTYPE, { 10, VM::chassis_type, false } },
+    { VM::DOCKERENV, { 80, VM::dockerenv, true } },
+    { VM::DMIDECODE, { 55, VM::dmidecode, false } },
+    { VM::DMESG, { 55, VM::dmesg, false } },
+    { VM::HWMON, { 75, VM::hwmon, true } },
+    { VM::SIDT5, { 45, VM::sidt5, false } },
+    { VM::CURSOR, { 5, VM::cursor_check, true } },
+    { VM::VMWARE_REG, { 65, VM::vmware_registry, true } },
+    { VM::VBOX_REG, { 65, VM::vbox_registry, true } },
+    { VM::USER, { 35, VM::user_check, true } },
+    { VM::DLL, { 50, VM::DLL_check, true } },
+    { VM::REGISTRY, { 75, VM::registry_key, true } },
+    { VM::CWSANDBOX_VM, { 10, VM::cwsandbox_check, true } },
+    { VM::VM_FILES, { 60, VM::vm_files, true } },
+    { VM::HWMODEL, { 75, VM::hwmodel, true } },
+    { VM::DISK_SIZE, { 60, VM::disk_size, false } },
+    { VM::VBOX_DEFAULT, { 55, VM::vbox_default_specs, false } },
+    { VM::VBOX_NETWORK, { 70, VM::vbox_network_share, false } },
+    { VM::WINE_CHECK, { 85, VM::wine, false } },                     // GPL
+    { VM::COMPUTER_NAME, { 15, VM::computer_name_match, true } },    // GPL
+    { VM::HOSTNAME, { 25, VM::hostname_match, true } },              // GPL
+    { VM::MEMORY, { 35, VM::low_memory_space, false } },             // GPL
+    { VM::VBOX_WINDOW_CLASS, { 10, VM::vbox_window_class, false } }, // GPL
+    { VM::KVM_REG, { 75, VM::kvm_registry, true } },                 // GPL
+    { VM::KVM_DRIVERS, { 55, VM::kvm_drivers, true } },              // GPL
+    { VM::KVM_DIRS, { 55, VM::kvm_directories, true } },             // GPL
+    { VM::LOADED_DLLS, { 75, VM::loaded_dlls, true } },              // GPL
+    { VM::AUDIO, { 35, VM::check_audio, false } },                   // GPL
+    { VM::QEMU_DIR, { 45, VM::qemu_dir, true } },                    // GPL
+    { VM::MOUSE_DEVICE, { 20, VM::mouse_device, true } },            // GPL
+    { VM::VM_PROCESSES, { 30, VM::vm_processes, true } },
+    { VM::LINUX_USER_HOST, { 25, VM::linux_user_host, true } },
+    { VM::GAMARUE, { 40, VM::gamarue, false } },
+    { VM::VMID_0X4, { 90, VM::vmid_0x4, false } },
+    { VM::PARALLELS_VM, { 50, VM::parallels, false } },
+    { VM::RDTSC_VMEXIT, { 15, VM::rdtsc_vmexit, false } },
+    { VM::QEMU_BRAND, { 100, VM::cpu_brand_qemu, false } },
+    { VM::BOCHS_CPU, { 95, VM::bochs_cpu, false } },
+    { VM::VPC_BOARD, { 20, VM::vpc_board, false } },
+    { VM::HYPERV_WMI, { 80, VM::hyperv_wmi, false } },
+    { VM::HYPERV_REG, { 80, VM::hyperv_registry, true } },
+    { VM::BIOS_SERIAL, { 60, VM::bios_serial, false } },
+    { VM::VBOX_FOLDERS, { 45, VM::vbox_shared_folders, false } },
+    { VM::MSSMBIOS, { 75, VM::mssmbios, false } },
+    { VM::MAC_MEMSIZE, { 30, VM::hw_memsize, true } },
+    { VM::MAC_IOKIT, { 80, VM::io_kit, true } },
+    { VM::IOREG_GREP, { 75, VM::ioreg_grep, true } },
+    { VM::MAC_SIP, { 85, VM::mac_sip, true } },
+    { VM::HKLM_REGISTRIES, { 70, VM::hklm_registries, true } },
+    { VM::QEMU_GA, { 20, VM::qemu_ga, true } },
+    { VM::VALID_MSR, { 35, VM::valid_msr, false } },
+    { VM::QEMU_PROC, { 30, VM::qemu_processes, true } },
+    { VM::VPC_PROC, { 30, VM::vpc_proc, true } },
+    { VM::VPC_INVALID, { 75, VM::vpc_invalid, false } },
+    { VM::SIDT, { 30, VM::sidt, false } },
+    { VM::SGDT, { 30, VM::sgdt, false } },
+    { VM::SLDT, { 15, VM::sldt, false } },
+    { VM::OFFSEC_SIDT, { 60, VM::offsec_sidt, false } },
+    { VM::OFFSEC_SGDT, { 60, VM::offsec_sgdt, false } },
+    { VM::OFFSEC_SLDT, { 20, VM::offsec_sldt, false } },
+    { VM::VPC_SIDT, { 15, VM::vpc_sidt, false } },
+    { VM::HYPERV_BOARD, { 45, VM::hyperv_board, false } },
+    { VM::VM_FILES_EXTRA, { 70, VM::vm_files_extra, true } },
+    { VM::VMWARE_IOMEM, { 65, VM::vmware_iomem, false } },
+    { VM::VMWARE_IOPORTS, { 70, VM::vmware_ioports, false } },
+    { VM::VMWARE_SCSI, { 40, VM::vmware_scsi, false } },
+    { VM::VMWARE_DMESG, { 65, VM::vmware_dmesg, false } },
+    { VM::VMWARE_STR, { 35, VM::vmware_str, false } },
+    { VM::VMWARE_BACKDOOR, { 100, VM::vmware_backdoor, false } },
+    { VM::VMWARE_PORT_MEM, { 85, VM::vmware_port_memory, false } },
+    { VM::SMSW, { 30, VM::smsw, false } },
+    { VM::MUTEX, { 85, VM::mutex, false } },
+    { VM::UPTIME, { 10, VM::uptime, true } },
+    { VM::ODD_CPU_THREADS, { 80, VM::odd_cpu_threads, false } },
+    { VM::INTEL_THREAD_MISMATCH, { 85, VM::intel_thread_mismatch, false } },
+    { VM::XEON_THREAD_MISMATCH, { 85, VM::xeon_thread_mismatch, false } },
+    { VM::NETTITUDE_VM_MEMORY, { 75, VM::nettitude_vm_memory, false } },
+    { VM::CPUID_BITSET, { 20, VM::cpuid_bitset, false } },
+    { VM::CUCKOO_DIR, { 15, VM::cuckoo_dir, true } },
+    { VM::CUCKOO_PIPE, { 20, VM::cuckoo_pipe, true } },
+    { VM::HYPERV_HOSTNAME, { 50, VM::hyperv_hostname, true } },
+    { VM::GENERAL_HOSTNAME, { 20, VM::general_hostname, true } },
+    { VM::SCREEN_RESOLUTION, { 30, VM::screen_resolution, false } },
+    { VM::DEVICE_STRING, { 25, VM::device_string, false } },
+    { VM::BLUESTACKS_FOLDERS, { 15, VM::bluestacks, true } },
+    { VM::CPUID_SIGNATURE, { 95, VM::cpuid_signature, false } },
+    { VM::HYPERV_BITMASK, { 20, VM::hyperv_bitmask, false } },
+    { VM::KVM_BITMASK, { 40, VM::kvm_bitmask, false } },
+    { VM::KGT_SIGNATURE, { 80, VM::intel_kgt_signature, false } },
+    { VM::VMWARE_DMI, { 30, VM::vmware_dmi, false } },
+    { VM::EVENT_LOGS, { 30, VM::hyperv_event_logs, true } }
 };

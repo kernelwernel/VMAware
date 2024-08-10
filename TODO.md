@@ -41,6 +41,7 @@
 - [ ] maybe add internal is_cached functionalities in the cache fetchers
 - [ ] make the whole cache table into a mutex so i can claim it's thread-safe
 - [ ] make a medium post about it
+- [ ] test the VM::modify_score() function
 
 # Distant plans
 - add the library to conan.io when released
