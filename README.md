@@ -28,13 +28,6 @@ The library is:
 
 <br>
 
-> [!CAUTION]
-**DO NOT USE THIS LIBRARY FOR CRITICAL SOFTWARE** (i.e. anti-cheats, proprietary software, paid software, etc...)
-> 
-> The full reason can be found [here](deprecation.md)
-
-<br>
-
 ## Example 🧪
 ```cpp
 #include "vmaware.hpp"
@@ -165,6 +158,7 @@ If you know a project, or if you're working on a project that uses VMAware, let 
 - [systemd project](https://github.com/systemd/systemd)
 - mrjaxser
 - [iMonket](https://github.com/PrimeMonket)
+- Eric Parker's discord community 
 
 <br>
 

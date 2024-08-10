@@ -1631,6 +1631,7 @@ private:
             core_debug("HYPERV_FUCKER: eax = ", eax);
 
             if (eax == 12) {
+                // SMBIOS check
                 const std::string p = SMBIOS_string();
 
                 core_debug("HYPERV_FUCKER: SMBIOS string = ", p);
@@ -1639,18 +1640,33 @@ private:
                     return add(false);
                 }
 
+
+                // motherboard check
                 const bool motherboard = motherboard_string(L"Microsoft Corporation");
 
                 core_debug("HYPERV_FUCKER: motherboard string = ", motherboard);
 
-                if (motherboard == true) {
+                if (motherboard) {
                     return add(false);
                 }
 
-                // at this point, it's fair to assume it's a Hyper-V on host
+
+                // event log check (slow, so in last place)
+                std::wstring logName = L"Microsoft-Windows-Kernel-PnP/Configuration";
+                std::vector<std::wstring> searchStrings = { L"Virtual_Machine", L"VMBUS" };
+        
+                const bool found = util::query_event_logs(logName, searchStrings);
+
+                if (found) {
+                    return add(false);
+                }
+
+
+                // at this point, it's fair to assume it's Hyper-V artifacts on 
+                // host since none of the "VM-only" techniques returned true
                 return add(true);
             } else if (eax == 11) {
-                // actual Hyper-V VM
+                // actual Hyper-V VM, might do something within this scope in the future idk
                 return add(false);
             } else {
                 return add(false);
