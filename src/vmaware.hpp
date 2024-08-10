@@ -214,6 +214,7 @@
 #include <io.h>
 #include <winspool.h>
 #include <wtypes.h>
+#include <winevt.h>
 
 #pragma comment(lib, "wbemuuid.lib")
 #pragma comment(lib, "iphlpapi.lib")
@@ -225,6 +226,8 @@
 #pragma comment(lib, "strmiids.lib")
 #pragma comment(lib, "uuid.lib")
 #pragma comment(lib, "ntdll.lib")
+#pragma comment(lib, "wevtapi.lib")
+
 
 #ifdef _UNICODE
 #define tregex std::wregex
