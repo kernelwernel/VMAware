@@ -5318,16 +5318,20 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for sldt instruction method
      * @category Windows, x86
+     * @note code documentation paper in https://www.aldeid.com/wiki/X86-assembly/Instructions/sldt
      */
     [[nodiscard]] static bool sldt() try {
 #if (x86_32 && MSVC)
-        unsigned short ldtr[5] = { 0xEF, 0xBE, 0xAD, 0xDE };
-        unsigned int ldt = 0;
+        unsigned char ldtr[5] = "\xef\xbe\xad\xde";
+        unsigned long ldt = 0;
 
-        _asm sldt ldtr;
-        ldt = *((u32*)&ldtr[0]);
+        __asm {
+            sldt word ptr ldtr  // 'word ptr' to indicate that we're working with a 16-bit value and avoid compiler warnings
+        }
 
-        return (ldt != 0xDEAD0000);
+        ldt = *((unsigned long*)&ldtr[0]);
+
+        return (ldt != 0xdead0000);
 #else
         return false;
 #endif
@@ -5745,20 +5749,18 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @note paper describing this technique is located at /papers/www.s21sec.com_vmware-eng.pdf (2006)
      * @category Windows
      */
-    [[nodiscard]] static bool vmware_str() try {
-#if (!MSVC || !x86)
-        return false;
-#elif (x86_32)
-        unsigned short mem[4] = { 0, 0, 0, 0 };
-
-        __asm str mem;
-
-        if ((mem[0] == 0x00) && (mem[1] == 0x40)) {
+        [[nodiscard]] static bool vmware_str() try {
+#if (MSVC && x86_32)
+        unsigned short tr = 0;
+        __asm {
+            str ax
+            mov tr, ax
+        }
+        if ((tr & 0xFF) == 0x00 && ((tr >> 8) & 0xFF) == 0x40) {
             return core::add(VMWARE);
         }
-#else
-        return false;
 #endif
+        return false;
     }
     catch (...) {
         debug("VMWARE_STR: caught error, returned false");
