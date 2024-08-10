@@ -556,6 +556,7 @@ void general() {
     checker(VM::KVM_BITMASK, "KVM CPUID reserved bitmask");
     checker(VM::KGT_SIGNATURE, "Intel KGT signature");
     checker(VM::VMWARE_DMI, "VMware DMI");
+    checker(VM::EVENT_LOGS, "Hyper-V event logs");
 
     std::printf("\n");
 
