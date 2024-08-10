@@ -2195,7 +2195,7 @@ private:
          *
          * @return A std::wstring containing the error message.
          */
-        [[nodiscard]] std::wstring GetLastErrorString() {
+        [[nodiscard]] static std::wstring GetLastErrorString() {
             DWORD error = GetLastError();
             LPWSTR messageBuffer = nullptr;
             size_t size = FormatMessageW(
@@ -2222,7 +2222,7 @@ private:
          * 
          * @return True if any of the search strings are found in the events; otherwise, false.
          */
-        [[nodiscard]] bool query_event_logs(const std::wstring& logName,
+        [[nodiscard]] static bool query_event_logs(const std::wstring& logName,
             const std::vector<std::wstring>& searchStrings,
             DWORD flags = EvtQueryReverseDirection,
             DWORD timeout = INFINITE,
@@ -8433,7 +8433,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         std::wstring logName = L"Microsoft-Windows-Kernel-PnP/Configuration"; // Example: "System", "Application", "Security", or a custom path. In this case, we use Microsoft-Windows-Kernel-PnP/Configuration as a Hyper-V VM artifact
         std::vector<std::wstring> searchStrings = { L"Virtual_Machine", L"VMBUS" };
 
-        const bool found = util::query_event_logs(logName, searchStrings);
+        bool found = util::query_event_logs(logName, searchStrings);
 
         if (found) {
             return core::add(HYPERV);
