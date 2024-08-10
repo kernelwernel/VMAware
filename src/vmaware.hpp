@@ -8433,7 +8433,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         std::wstring logName = L"Microsoft-Windows-Kernel-PnP/Configuration"; // Example: "System", "Application", "Security", or a custom path. In this case, we use Microsoft-Windows-Kernel-PnP/Configuration as a Hyper-V VM artifact
         std::vector<std::wstring> searchStrings = { L"Virtual_Machine", L"VMBUS" };
 
-        const bool found = query_event_logs(logName, searchStrings);
+        const bool found = util::query_event_logs(logName, searchStrings);
 
         if (found) {
             return core::add(HYPERV);
