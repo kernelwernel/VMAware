@@ -914,7 +914,7 @@ private:
 
             // both Hyper-V and VirtualPC have the same string value
             if (brand_str == hyperv) {
-                if (util::hyperv_fucker()) {
+                if (util::hyper_x()) {
                     return false;
                 }
                 return core::add(HYPERV, VPC);
@@ -1605,12 +1605,12 @@ private:
          * @brief Checks whether Hyper-V host artifacts are present instead of an actual Hyper-V VM
          * @note idea and credits to Requiem (https://github.com/NotRequiem)
          */
-        [[nodiscard]] static bool hyperv_fucker() {
+        [[nodiscard]] static bool hyper_x() {
 #if (!MSVC)
             return false;
 #else
             if (memo::hyperv::is_cached()) {
-                core_debug("HYPERV_FUCKER: returned from cache = ", memo::hyperv::fetch());
+                core_debug("HYPER_X: returned from cache = ", memo::hyperv::fetch());
                 return memo::hyperv::fetch();
             }
 
@@ -1629,12 +1629,12 @@ private:
 
             const u32 eax = static_cast<u32>(out[0]);
 
-            core_debug("HYPERV_FUCKER: eax = ", eax);
+            core_debug("HYPER_X: eax = ", eax);
 
             if (eax == 12) {
                 const std::string p = SMBIOS_string();
 
-                core_debug("HYPERV_FUCKER: SMBIOS string = ", p);
+                core_debug("HYPER_X: SMBIOS string = ", p);
 
                 if (p == "VIRTUAL MACHINE") {
                     return add(false);
@@ -1642,7 +1642,7 @@ private:
 
                 const bool motherboard = motherboard_string(L"Microsoft Corporation");
 
-                core_debug("HYPERV_FUCKER: motherboard string = ", motherboard);
+                core_debug("HYPER_X: motherboard string = ", motherboard);
 
                 if (motherboard == true) {
                     return add(false);
@@ -2402,7 +2402,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        if (util::hyperv_fucker()) {
+        if (util::hyper_x()) {
             return false;
         }
 
@@ -2426,7 +2426,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!x86)
         return false;
 #else
-        if (util::hyperv_fucker()) {
+        if (util::hyper_x()) {
             return false;
         }
 
@@ -7678,7 +7678,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!x86)
         return false;
 #else
-        if (util::hyperv_fucker()) {
+        if (util::hyper_x()) {
             return false;
         }
 
@@ -8013,7 +8013,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!x86)
         return false;
 #else
-        if (util::hyperv_fucker()) {
+        if (util::hyper_x()) {
             return false;
         }
 
@@ -8051,7 +8051,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!x86)
         return false;
 #else
-        if (util::hyperv_fucker()) {
+        if (util::hyper_x()) {
             return false;
         }
 
