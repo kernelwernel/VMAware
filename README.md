@@ -35,13 +35,13 @@ The library is:
 
 int main() {
     if (VM::detect()) {
-        std::cout << "Virtual machine detected!" << std::endl;
-        std::cout << "VM name: " << VM::brand() << std::endl;
+        std::cout << "Virtual machine detected!" << "\n";
+        std::cout << "VM name: " << VM::brand() << "\n";
     } else {
-        std::cout << "Running in baremetal" << std::endl;
+        std::cout << "Running in baremetal" << "\n";
     }
     
-    std::cout << "VM certainty: " << (int)VM::percentage() << "%" << std::endl;
+    std::cout << "VM certainty: " << (int)VM::percentage() << "%" << "\n";
 }
 ```
 
