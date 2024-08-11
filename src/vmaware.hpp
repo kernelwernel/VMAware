@@ -916,7 +916,7 @@ private:
 
             // both Hyper-V and VirtualPC have the same string value
             if (brand_str == hyperv) {
-                if (util::hyperv_fucker()) {
+                if (util::hyper_x()) {
                     return false;
                 }
                 return core::add(HYPERV, VPC);
@@ -1607,12 +1607,12 @@ private:
          * @brief Checks whether Hyper-V host artifacts are present instead of an actual Hyper-V VM
          * @note idea and credits to Requiem (https://github.com/NotRequiem)
          */
-        [[nodiscard]] static bool hyperv_fucker() {
+        [[nodiscard]] static bool hyper_x() {
 #if (!MSVC)
             return false;
 #else
             if (memo::hyperv::is_cached()) {
-                core_debug("HYPERV_FUCKER: returned from cache = ", memo::hyperv::fetch());
+                core_debug("HYPER_X: returned from cache = ", memo::hyperv::fetch());
                 return memo::hyperv::fetch();
             }
 
@@ -1631,13 +1631,13 @@ private:
 
             const u32 eax = static_cast<u32>(out[0]);
 
-            core_debug("HYPERV_FUCKER: eax = ", eax);
+            core_debug("HYPER_X: eax = ", eax);
 
             if (eax == 12) {
                 // SMBIOS check
                 const std::string p = SMBIOS_string();
 
-                core_debug("HYPERV_FUCKER: SMBIOS string = ", p);
+                core_debug("HYPER_X: SMBIOS string = ", p);
 
                 if (p == "VIRTUAL MACHINE") {
                     return add(false);
@@ -1647,7 +1647,7 @@ private:
                 // motherboard check
                 const bool motherboard = motherboard_string(L"Microsoft Corporation");
 
-                core_debug("HYPERV_FUCKER: motherboard string = ", motherboard);
+                core_debug("HYPER_X: motherboard string = ", motherboard);
 
                 if (motherboard) {
                     return add(false);
@@ -2420,7 +2420,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        if (util::hyperv_fucker()) {
+        if (util::hyper_x()) {
             return false;
         }
 
@@ -2444,7 +2444,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!x86)
         return false;
 #else
-        if (util::hyperv_fucker()) {
+        if (util::hyper_x()) {
             return false;
         }
 
@@ -5336,16 +5336,20 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for sldt instruction method
      * @category Windows, x86
+     * @note code documentation paper in https://www.aldeid.com/wiki/X86-assembly/Instructions/sldt
      */
     [[nodiscard]] static bool sldt() try {
 #if (x86_32 && MSVC)
-        unsigned short ldtr[5] = { 0xEF, 0xBE, 0xAD, 0xDE };
-        unsigned int ldt = 0;
+        unsigned char ldtr[5] = "\xef\xbe\xad\xde";
+        unsigned long ldt = 0;
 
-        _asm sldt ldtr;
-        ldt = *((u32*)&ldtr[0]);
+        __asm {
+            sldt word ptr ldtr  // 'word ptr' to indicate that we're working with a 16-bit value and avoid compiler warnings
+        }
 
-        return (ldt != 0xDEAD0000);
+        ldt = *((unsigned long*)&ldtr[0]);
+
+        return (ldt != 0xdead0000);
 #else
         return false;
 #endif
@@ -5763,20 +5767,18 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @note paper describing this technique is located at /papers/www.s21sec.com_vmware-eng.pdf (2006)
      * @category Windows
      */
-    [[nodiscard]] static bool vmware_str() try {
-#if (!MSVC || !x86)
-        return false;
-#elif (x86_32)
-        unsigned short mem[4] = { 0, 0, 0, 0 };
-
-        __asm str mem;
-
-        if ((mem[0] == 0x00) && (mem[1] == 0x40)) {
+        [[nodiscard]] static bool vmware_str() try {
+#if (MSVC && x86_32)
+        unsigned short tr = 0;
+        __asm {
+            str ax
+            mov tr, ax
+        }
+        if ((tr & 0xFF) == 0x00 && ((tr >> 8) & 0xFF) == 0x40) {
             return core::add(VMWARE);
         }
-#else
-        return false;
 #endif
+        return false;
     }
     catch (...) {
         debug("VMWARE_STR: caught error, returned false");
@@ -7696,7 +7698,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!x86)
         return false;
 #else
-        if (util::hyperv_fucker()) {
+        if (util::hyper_x()) {
             return false;
         }
 
@@ -8031,7 +8033,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!x86)
         return false;
 #else
-        if (util::hyperv_fucker()) {
+        if (util::hyper_x()) {
             return false;
         }
 
@@ -8069,7 +8071,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!x86)
         return false;
 #else
-        if (util::hyperv_fucker()) {
+        if (util::hyper_x()) {
             return false;
         }
 
