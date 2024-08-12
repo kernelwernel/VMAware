@@ -28,6 +28,15 @@ The library is:
 
 <br>
 
+> [!CAUTION]
+**DO NOT USE THIS LIBRARY FOR CRITICAL SOFTWARE** (i.e. anti-cheats, proprietary software, paid software, etc...)
+>
+> However, a solution is in development that will allow this in the next release which should be soon.
+> 
+> The full reason can be found [here](deprecation.md)
+
+
+
 ## Example 🧪
 ```cpp
 #include "vmaware.hpp"
@@ -35,13 +44,13 @@ The library is:
 
 int main() {
     if (VM::detect()) {
-        std::cout << "Virtual machine detected!" << std::endl;
-        std::cout << "VM name: " << VM::brand() << std::endl;
+        std::cout << "Virtual machine detected!" << "\n";
+        std::cout << "VM name: " << VM::brand() << "\n";
     } else {
-        std::cout << "Running in baremetal" << std::endl;
+        std::cout << "Running in baremetal" << "\n";
     }
     
-    std::cout << "VM certainty: " << (int)VM::percentage() << "%" << std::endl;
+    std::cout << "VM certainty: " << (int)VM::percentage() << "%" << "\n";
 }
 ```
 
@@ -86,6 +95,8 @@ sudo make install
 cmake -S . -B build/ -G "Visual Studio 16 2019"
 ```
 
+<br>
+
 If you just want the binaries, head over to the latest [release section](https://github.com/kernelwernel/VMAware/releases/latest)
 
 <br>
@@ -112,7 +123,7 @@ You can view the full docs [here](docs/documentation.md). All the details such a
 > This project is not soliciting the development of malware for obvious reasons. Even if you intend to use it for concealment purposes, it'll most likely be flagged by antiviruses anyway and nothing is obfuscated to begin with. 
 
 - Why GPL 3.0 and MIT? 
-> I would've made it strictly MIT so proprietary software can make use of the library, but some of the techniques employed are from GPL 3.0 projects, and I have no choice but to use the same license for legal reasons. This gave me an idea to make an MIT version without all of the GPL code so it can also be used without forcing your code to be open-source. It should be noted that the MIT version removes **10** techniques out of 85 (as of 1.4 version), and the lesser the number of mechanisms, the less accurate the overall result might be.
+> I would've made it strictly MIT so proprietary software can make use of the library, but some of the techniques employed are from GPL 3.0 projects, and I have no choice but to use the same license for legal reasons. This gave me an idea to make an MIT version without all of the GPL code so it can also be used without forcing your code to be open-source. It should be noted that the MIT version removes **12** techniques out of 85 (as of 1.7 version), and the lesser the number of mechanisms, the less accurate the overall result might be.
 
 - I have linker errors when compiling
 > If you're compiling with gcc or clang, add the `-lm` and `-lstdc++` flags, or use g++/clang++ compilers instead. If you're receiving linker errors from a brand new VM environment on Linux, update your system with `sudo apt/dnf/yum update -y` to install the necessary C++ components.
