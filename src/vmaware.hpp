@@ -8146,9 +8146,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!x86)
         return false;
 #else
-        return core::add(SANDBOXIE);
-
-        if (util::hyper_x()) {
+        if (util::hyperv_fucker()) {
             return false;
         }
 
