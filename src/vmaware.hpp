@@ -1252,7 +1252,7 @@ private:
                 case KVM_DIRS: return "VM::KVM_DIRS";
                 case AUDIO: return "VM::AUDIO";
                 case QEMU_DIR: return "VM::QEMU_DIR";
-                case MOUSE_DEVIC: return "VM::MOUSE_DEVIC";
+                case MOUSE_DEVICE: return "VM::MOUSE_DEVICE";
                 case VM_PROCESSES: return "VM::VM_PROCESSES";
                 case LINUX_USER_HOST: return "VM::LINUX_USER_HOST";
                 case GAMARUE: return "VM::GAMARUE";
@@ -8642,7 +8642,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
     struct core {
         MSVC_DISABLE_WARNING(PADDING)
-            struct technique {
+        struct technique {
             u8 points = 0;                // this is the certainty score between 0 and 100
             std::function<bool()> run;    // this is the technique function itself
             bool spoofable = false;       // this is to indicate that the technique can be very easily spoofed (not guaranteed)
@@ -8654,7 +8654,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         };
         MSVC_ENABLE_WARNING(PADDING)
 
-            static const std::map<u8, technique> technique_table;
+        static const std::map<enum_flags, technique> technique_table;
 
         static std::vector<custom_technique> custom_table;
 
@@ -8738,10 +8738,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 flags.test(NO_MEMO) ||
                 flags.test(HIGH_THRESHOLD) ||
                 flags.test(SPOOFABLE) ||
+                flags.test(NULL_ARG) ||
                 flags.test(ENABLE_HYPERV_HOST_REPLACEMENT) ||
                 flags.test(MULTIPLE)
             ) {
                 flags |= DEFAULT;
+            } else {
+                throw std::invalid_argument("Invalid flag option found, aborting");
             }
         }
 
@@ -8750,19 +8753,22 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             u16 points = 0;
             const bool memo_enabled = core::is_disabled(flags, NO_MEMO);
 
-            const u16 threshold_points = (core::is_enabled(flags, HIGH_THRESHOLD) ? maximum_points : 200);
+            const u16 threshold_points = (core::is_enabled(flags, HIGH_THRESHOLD) ? high_threshold_score : 200);
 
             // for main technique table
             for (const auto& tmp : technique_table) {
-                const u8 technique_macro = tmp.first;
+                const enum_flags technique_macro = tmp.first;
                 const technique tuple = tmp.second;
 
                 // check if it's disabled
                 if (core::is_disabled(flags, technique_macro)) {
+                    //debug("disabled: ", util::flag_to_string(technique_macro));
                     continue;
                 }
 
+                // check if it's spoofable, and whether it's enabled
                 if (tuple.spoofable && core::is_disabled(flags, SPOOFABLE)) {
+                    //debug("spoofable: ", util::flag_to_string(technique_macro));
                     continue;
                 }
 
@@ -8774,11 +8780,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                         points += data.points;
                     }
 
+                    //debug("added from cache: ", util::flag_to_string(technique_macro));
+
                     continue;
                 }
 
                 // run the technique
                 const bool result = tuple.run();
+
 
                 // accumulate the points if technique detected a VM
                 if (result) {
@@ -8791,12 +8800,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                  * there's no point in running the rest of the techniques
                  */
                 if (shortcut && points >= threshold_points) {
-                    core_debug("VM::run_all(): returned points early due to shortcut option");
+                    //core_debug("VM::run_all(): returned points early due to shortcut option");
                     return points;
                 }
 
                 // store the current technique result to the cache
                 if (memo_enabled) {
+                    //debug("cached: ", util::flag_to_string(technique_macro));
                     memo::cache_store(technique_macro, result, tuple.points);
                 }
             }
@@ -8839,17 +8849,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 (flag > enum_size)
             ) {
                 throw std::invalid_argument("Non-flag or invalid flag provided for VM::detect(), aborting");
-            }
-
-            if (flag == SPOOFABLE) {
-                for (const auto& tmp : technique_table) {
-                    const u8 technique_macro = tmp.first;
-                    const technique &tuple = tmp.second;
-
-                    if (tuple.spoofable) {
-                        flag_collector.set(technique_macro);
-                    }
-                }
             }
 
             flag_collector.set(flag);
@@ -8961,6 +8960,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             flag_collector.reset();
+            global_flags.reset();
 
             handleArgs(std::forward<Args>(args)...);
 
@@ -8999,7 +8999,7 @@ public: // START OF PUBLIC FUNCTIONS
      * @return bool
      * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmcheck
      */
-    [[nodiscard]] static bool check(const u8 flag_bit
+    [[nodiscard]] static bool check(const enum_flags flag_bit
         // clang doesn't support std::source_location for some reason
 #if (CPP >= 20 && !CLANG)
         , const std::source_location& loc = std::source_location::current()
@@ -9119,9 +9119,9 @@ public: // START OF PUBLIC FUNCTIONS
 #else
         constexpr const char* TMP_QEMU = QEMU;
         constexpr const char* TMP_KVM = KVM;
-        constexpr const char* TMP_QEMU_KVM = "QEMU+KVM";
+        constexpr const char* TMP_QEMU_KVM = QEMU_KVM;
         constexpr const char* TMP_KVM_HYPERV = KVM_HYPERV;
-        constexpr const char* TMP_QEMU_KVM_HYPERV = "QEMU+KVM Hyper-V Enlightenment";
+        constexpr const char* TMP_QEMU_KVM_HYPERV = QEMU_KVM_HYPERV;
 
         constexpr const char* TMP_VMWARE = VMWARE;
         constexpr const char* TMP_EXPRESS = VMWARE_EXPRESS;
@@ -9132,7 +9132,7 @@ public: // START OF PUBLIC FUNCTIONS
 
         constexpr const char* TMP_VPC = VPC;
         constexpr const char* TMP_HYPERV = HYPERV;
-        constexpr const char* TMP_HYPERV_VPC = "Microsoft Virtual PC/Hyper-V";
+        constexpr const char* TMP_HYPERV_VPC = HYPERV_VPC;
         constexpr const char* TMP_AZURE = AZURE_HYPERV;
         constexpr const char* TMP_NANOVISOR = NANOVISOR;
         constexpr const char* TMP_HYPERV_ARTIFACT = HYPERV_ARTIFACT;
@@ -9153,13 +9153,17 @@ public: // START OF PUBLIC FUNCTIONS
 
         if (brands.size() == 1) {
             return brands.begin()->first;
+        } else if (brands.size() > 1) {
+            if (brands.find(TMP_HYPERV_ARTIFACT) != brands.end()) {
+                brands.erase(TMP_HYPERV_ARTIFACT);
+            }
         }
 
         auto merger = [&](const char* a, const char* b, const char* result) -> void {
             if (
                 (brands.count(a) > 0) &&
                 (brands.count(b) > 0)
-                ) {
+            ) {
                 brands.erase(a);
                 brands.erase(b);
                 brands.emplace(std::make_pair(result, 2));
@@ -9171,7 +9175,7 @@ public: // START OF PUBLIC FUNCTIONS
                 (brands.count(a) > 0) &&
                 (brands.count(b) > 0) &&
                 (brands.count(c) > 0)
-                ) {
+            ) {
                 brands.erase(a);
                 brands.erase(b);
                 brands.erase(c);
@@ -9307,7 +9311,7 @@ public: // START OF PUBLIC FUNCTIONS
      */
     template <typename ...Args>
     static u8 percentage(Args ...args) {
-        flagset flags = core::arg_handler(args...);
+        const flagset flags = core::arg_handler(args...);
 
         const u16 points = core::run_all(flags, SHORTCUT);
         u8 percent = 0;
@@ -9449,7 +9453,7 @@ public: // START OF PUBLIC FUNCTIONS
             throw_error("The flag is not a technique flag");
         }
 
-        using table_t = std::map<u8, core::technique>;
+        using table_t = std::map<enum_flags, core::technique>;
 
         auto modify = [](table_t &table, const enum_flags flag, const u8 percent) -> void {
             core::technique &tmp = table.at(flag);
@@ -9515,7 +9519,7 @@ std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard{
     { VM::AZURE_HYPERV, 0 },
     { VM::NANOVISOR, 0 },
     { VM::SIMPLEVISOR, 0 },
-    { VM::HYPERV_ARTIFACT, 0 }
+    { VM::HYPERV_ARTIFACT, 1 }
 };
 
 
@@ -9604,7 +9608,7 @@ std::vector<VM::core::custom_technique> VM::core::custom_table = {
 
 
 // the 0~100 points are debatable, but I think it's fine how it is. Feel free to disagree.
-const std::map<VM::u8, VM::core::technique> VM::core::technique_table = {
+const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = {
     // FORMAT: VM::<ID> = { certainty%, function pointer, is spoofable? }
 
     { VM::VMID, { 100, VM::vmid, false } },

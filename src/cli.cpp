@@ -561,8 +561,7 @@ void general() {
 
     // meaning "if there's no brand conflicts" 
     if (brand.find(" or ") == std::string::npos) {
-        const std::string tmp_brand = VM::brand(VM::MULTIPLE, spoofable_setting);
-        const std::string type_value = type(tmp_brand);
+        const std::string type_value = type(brand);
 
         std::cout << "VM type: ";
 
@@ -578,7 +577,7 @@ void general() {
     }
 
     const char* percent_color = "";
-    const std::uint8_t percent = VM::percentage(spoofable_setting);
+    const std::uint8_t percent = VM::percentage(VM::NULL_ARG/*spoofable_setting*/);
 
     if      (percent == 0) { percent_color = red; }
     else if (percent < 25) { percent_color = red_orange; }
@@ -634,7 +633,6 @@ void general() {
         << "======"
         << ansi_exit
         << "\n\n";
-
 
     if ((brand == "Hyper-V artifact (not an actual VM)") && notes_enabled) {
         std::cout << note << " The result means that the CLI has found Hyper-V, but as an artifact instead of an actual VM. This means that although the hardware values in fact match with Hyper-V due to how it's designed by Microsoft, the CLI has determined you are NOT in a Hyper-V VM.\n\n";
