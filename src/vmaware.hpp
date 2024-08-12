@@ -8146,7 +8146,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!x86)
         return false;
 #else
-        if (util::hyperv_fucker()) {
+        if (util::hyper_x()) {
             return false;
         }
 
@@ -9517,7 +9517,7 @@ std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard{
     { VM::AZURE_HYPERV, 0 },
     { VM::NANOVISOR, 0 },
     { VM::SIMPLEVISOR, 0 },
-    { VM::HYPERV_ARTIFACT, 1 }
+    { VM::HYPERV_ARTIFACT, 0 }
 };
 
 
