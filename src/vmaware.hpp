@@ -412,6 +412,9 @@ public:
         KGT_SIGNATURE,
         VMWARE_DMI,
         EVENT_LOGS,
+        QEMU_VIRTUAL_DMI,
+        QEMU_USB,
+        HYPERVISOR_DIR,
 
         // start of non-technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
         NO_MEMO,
@@ -4266,11 +4269,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return core::add(SANDBOXIE);
         }
 
-        hMod = GetModuleHandleW(L"dbghelp.dll"); // Thread Expert
+        /* this gave a false positive
+        hMod = GetModuleHandleW(L"dbghelp.dll"); // ThreatExpert
         if (hMod != 0) {
             free(szBuff);
             return core::add(THREATEXPERT);
         }
+        */
 
         nRes = RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"Software\\Microsoft\\Windows\\CurrentVersion", 0L, KEY_QUERY_VALUE, &hOpen);
         if (nRes == ERROR_SUCCESS) {
@@ -8575,6 +8580,104 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
 
 
+    /**
+     * @brief Check for presence of QEMU in the /sys/devices/virtual/dmi/id directory
+     * @category Linux
+     */
+    [[nodiscard]] static bool qemu_virtual_dmi() try {
+#if (!LINUX)
+        return false;
+#else
+        const char* sys_vendor = "/sys/devices/virtual/dmi/id/sys_vendor";
+        const char* modalias = "/sys/devices/virtual/dmi/id/modalias";
+
+        if (
+            util::exists(sys_vendor) &&
+            util::exists(modalias)
+        ) {
+            const std::string sys_vendor_str = util::read_file(sys_vendor);
+            const std::string modalias_str = util::read_file(modalias);
+
+            return (
+                util::find(sys_vendor_str, "QEMU") &&
+                util::find(modalias_str, "QEMU")
+            );
+        }
+
+        return false;
+#endif
+    } catch (...) {
+        debug("QEMU_VIRTUAL_DMI: caught error, returned false");
+        return false;
+    }
+
+
+    /**
+     * @brief Check for presence of QEMU in the /sys/kernel/debug/usb/devices directory
+     * @category Linux
+     */
+    [[nodiscard]] static bool qemu_USB() try {
+#if (!LINUX)
+        return false;
+#else
+        if (!util::is_admin()) {
+            return false;
+        }
+
+        const char* usb_path = "/sys/kernel/debug/usb/devices";
+
+        if (util::exists(usb_path)) {
+            const std::string usb_path_str = util::read_file(usb_path);
+            return (util::find(usb_path_str, "QEMU"));
+        }
+
+        return false;
+#endif
+    } catch (...) {
+        debug("QEMU_USB: caught error, returned false");
+        return false;
+    }
+
+
+    /**
+     * @brief Check for presence of any files in /sys/hypervisor directory
+     * @category Linux
+     */
+    [[nodiscard]] static bool hypervisor_dir() try {
+#if (!LINUX)
+        return false;
+#else
+        DIR* dir = opendir("/sys/hypervisor");
+
+        if (dir == nullptr) {
+            return false;
+        }
+
+        struct dirent* entry;
+        int count = 0;
+
+        while ((entry = readdir(dir)) != nullptr) {
+            if (
+                (entry->d_name[0] == '.' && entry->d_name[1] == '\0') || 
+                (entry->d_name[1] == '.' && entry->d_name[2] == '\0')
+            ) {
+                continue;
+            }
+
+            count++;
+            break;
+        }
+
+        closedir(dir);
+
+        // check if there's a few files in that directory
+        return count != 0;
+#endif
+    } catch (...) {
+        debug("HYPERVISOR_DIR: caught error, returned false");
+        return false;
+    }
+
 
     // https://medium.com/@matterpreter/hypervisor-detection-with-systemhypervisordetailinformation-26e44a57f80e
 
@@ -8604,29 +8707,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
 
-
-
     // https://github.com/torvalds/linux/blob/31cc088a4f5d83481c6f5041bd6eb06115b974af/arch/x86/kernel/cpu/vmware.c
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -8760,13 +8841,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
                 // check if it's disabled
                 if (core::is_disabled(flags, technique_macro)) {
-                    //debug("disabled: ", util::flag_to_string(technique_macro));
                     continue;
                 }
 
                 // check if it's spoofable, and whether it's enabled
                 if (tuple.spoofable && core::is_disabled(flags, SPOOFABLE)) {
-                    //debug("spoofable: ", util::flag_to_string(technique_macro));
                     continue;
                 }
 
@@ -8777,8 +8856,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     if (data.result) {
                         points += data.points;
                     }
-
-                    //debug("added from cache: ", util::flag_to_string(technique_macro));
 
                     continue;
                 }
@@ -8798,13 +8875,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                  * there's no point in running the rest of the techniques
                  */
                 if (shortcut && points >= threshold_points) {
-                    //core_debug("VM::run_all(): returned points early due to shortcut option");
                     return points;
                 }
 
                 // store the current technique result to the cache
                 if (memo_enabled) {
-                    //debug("cached: ", util::flag_to_string(technique_macro));
                     memo::cache_store(technique_macro, result, tuple.points);
                 }
             }
@@ -9294,7 +9369,7 @@ public: // START OF PUBLIC FUNCTIONS
         if (core::is_enabled(flags, HIGH_THRESHOLD)) {
             result = (points >= high_threshold_score);
         } else {
-            result = (points >= 100);
+            result = (points >= 150);
         }
 
         return result;
@@ -9651,7 +9726,7 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::MOUSE_DEVICE, { 20, VM::mouse_device, true } },            // GPL
     { VM::VM_PROCESSES, { 30, VM::vm_processes, true } },
     { VM::LINUX_USER_HOST, { 25, VM::linux_user_host, true } },
-    { VM::GAMARUE, { 40, VM::gamarue, false } },
+    { VM::GAMARUE, { 40, VM::gamarue, true } },
     { VM::VMID_0X4, { 90, VM::vmid_0x4, false } },
     { VM::PARALLELS_VM, { 50, VM::parallels, false } },
     { VM::RDTSC_VMEXIT, { 15, VM::rdtsc_vmexit, false } },
@@ -9709,5 +9784,8 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::KVM_BITMASK, { 40, VM::kvm_bitmask, false } },
     { VM::KGT_SIGNATURE, { 80, VM::intel_kgt_signature, false } },
     { VM::VMWARE_DMI, { 30, VM::vmware_dmi, false } },
-    { VM::EVENT_LOGS, { 30, VM::hyperv_event_logs, true } }
+    { VM::EVENT_LOGS, { 30, VM::hyperv_event_logs, true } },
+    { VM::QEMU_VIRTUAL_DMI, { 40, VM::qemu_virtual_dmi, false } },
+    { VM::QEMU_USB, { 20, VM::qemu_USB, false } },
+    { VM::HYPERVISOR_DIR, { 20, VM::hypervisor_dir, false } }
 };

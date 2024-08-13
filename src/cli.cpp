@@ -359,7 +359,8 @@ bool is_spoofable(const VM::enum_flags flag) {
         case VM::CUCKOO_PIPE:
         case VM::HYPERV_HOSTNAME:
         case VM::GENERAL_HOSTNAME:
-        case VM::BLUESTACKS_FOLDERS: return true;
+        case VM::BLUESTACKS_FOLDERS: 
+        case VM::EVENT_LOGS: return true;
         default: return false;
     }
 }
@@ -390,7 +391,8 @@ bool are_perms_required(const VM::enum_flags flag) {
         case VM::VBOX_DEFAULT: 
         case VM::VMWARE_DMESG: 
         case VM::DMIDECODE: 
-        case VM::DMESG: return true;
+        case VM::DMESG: 
+        case VM::QEMU_USB: return true;
         default: return false;
     }
 }
@@ -548,6 +550,9 @@ void general() {
     checker(VM::KGT_SIGNATURE, "Intel KGT signature");
     checker(VM::VMWARE_DMI, "VMware DMI");
     checker(VM::EVENT_LOGS, "Hyper-V event logs");
+    checker(VM::QEMU_VIRTUAL_DMI, "QEMU virtual DMI directory");
+    checker(VM::QEMU_USB, "QEMU USB");
+    checker(VM::HYPERVISOR_DIR, "Hypervisor directory (Linux)");
 
     std::printf("\n");
 
@@ -577,7 +582,7 @@ void general() {
     }
 
     const char* percent_color = "";
-    const std::uint8_t percent = VM::percentage(VM::NULL_ARG/*spoofable_setting*/);
+    const std::uint8_t percent = VM::percentage(spoofable_setting);
 
     if      (percent == 0) { percent_color = red; }
     else if (percent < 25) { percent_color = red_orange; }
