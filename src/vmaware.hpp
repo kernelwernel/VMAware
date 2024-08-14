@@ -8732,6 +8732,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!LINUX)
         return false;
 #else
+        if (!util::is_admin()) {
+            return false;
+        }
+
         // Open /dev/kmsg
         int fd = open("/dev/kmsg", O_RDONLY | O_NONBLOCK);
         if (fd < 0) {

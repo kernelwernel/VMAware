@@ -395,7 +395,8 @@ bool are_perms_required(const VM::enum_flags flag) {
         case VM::VMWARE_DMESG: 
         case VM::DMIDECODE: 
         case VM::DMESG: 
-        case VM::QEMU_USB: return true;
+        case VM::QEMU_USB: 
+        case VM::KMSG: return true;
         default: return false;
     }
 }
