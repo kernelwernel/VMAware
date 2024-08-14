@@ -170,6 +170,7 @@ If you know a project, or if you're working on a project that uses VMAware, let 
 - mrjaxser
 - [iMonket](https://github.com/PrimeMonket)
 - Eric Parker's discord community 
+- [ShellCode33](https://github.com/ShellCode33)
 
 <br>
 

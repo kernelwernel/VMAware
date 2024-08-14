@@ -245,6 +245,7 @@ Microsoft Azure Hyper-V
 Xbox NanoVisor (Hyper-V)
 SimpleVisor
 Hyper-V artifact (not an actual VM)
+User-mode Linux
 )";
 
     std::exit(0);
@@ -285,6 +286,7 @@ std::string type(const std::string &brand_str) {
         { "Virtual Apple", "Hypervisor (type 2)" },
         { "NetBSD NVMM", "Hypervisor (type 2)" },
         { "OpenBSD VMM", "Hypervisor (type 2)" },
+        { "User-mode Linux", "Hypervisor (type 2)" },
 
         // sandbox
         { "Cuckoo", "Sandbox" },
@@ -360,7 +362,8 @@ bool is_spoofable(const VM::enum_flags flag) {
         case VM::HYPERV_HOSTNAME:
         case VM::GENERAL_HOSTNAME:
         case VM::BLUESTACKS_FOLDERS: 
-        case VM::EVENT_LOGS: return true;
+        case VM::EVENT_LOGS: 
+        case VM::KMSG: return true;
         default: return false;
     }
 }
@@ -553,6 +556,8 @@ void general() {
     checker(VM::QEMU_VIRTUAL_DMI, "QEMU virtual DMI directory");
     checker(VM::QEMU_USB, "QEMU USB");
     checker(VM::HYPERVISOR_DIR, "Hypervisor directory (Linux)");
+    checker(VM::UML_CPU, "User-mode Linux CPU");
+    checker(VM::KMSG, "/dev/kmsg hypervisor message");
 
     std::printf("\n");
 

@@ -415,6 +415,8 @@ public:
         QEMU_VIRTUAL_DMI,
         QEMU_USB,
         HYPERVISOR_DIR,
+        UML_CPU,
+        KMSG,
 
         // start of non-technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
         NO_MEMO,
@@ -532,6 +534,7 @@ private:
     static constexpr const char* NANOVISOR = "Xbox NanoVisor (Hyper-V)";
     static constexpr const char* SIMPLEVISOR = "SimpleVisor";
     static constexpr const char* HYPERV_ARTIFACT = "Hyper-V artifact (not an actual VM)";
+    static constexpr const char* UML = "User-mode Linux";
 
     static flagset global_flags; // for certain techniques where the flags MUST be accessible
 
@@ -8670,13 +8673,110 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         closedir(dir);
 
+        bool type = false;
+
+        if (util::exists("/sys/hypervisor/type")) {
+            type = true;
+        }
+
         // check if there's a few files in that directory
-        return count != 0;
+        return ((count != 0) && type);
 #endif
     } catch (...) {
         debug("HYPERVISOR_DIR: caught error, returned false");
         return false;
     }
+
+
+    /**
+     * @brief Check for the "UML" string in the CPU brand
+     * @note idea from https://github.com/ShellCode33/VM-Detection/blob/master/vmdetect/linux.go
+     * @category Linux
+     */
+    [[nodiscard]] static bool uml_cpu() try {
+#if (!LINUX)
+        return false;
+#else
+        // method 1, get the CPU brand model
+        const std::string brand = cpu::get_brand();
+
+        if (brand == "UML") {
+            return core::add(UML);
+        }
+
+        // method 2, match for the "User Mode Linux" string in /proc/cpuinfo
+        const char* file = "/proc/cpuinfo";
+
+        if (util::exists(file)) {
+            const std::string file_content = util::read_file(file);
+
+            if (util::find(file_content, "User Mode Linux")) {
+                return core::add(UML);
+            }
+        }
+
+        return false;
+#endif
+    } catch (...) {
+        debug("UML_CPU: caught error, returned false");
+        return false;
+    }
+
+
+    /**
+     * @brief Check for the "UML" string in the CPU brand
+     * @note idea from https://github.com/ShellCode33/VM-Detection/blob/master/vmdetect/linux.go
+     * @category Linux
+     */
+    [[nodiscard]] static bool kmsg() try {
+#if (!LINUX)
+        return false;
+#else
+        // Open /dev/kmsg
+        int fd = open("/dev/kmsg", O_RDONLY | O_NONBLOCK);
+        if (fd < 0) {
+            debug("KMSG: Failed to open /dev/kmsg");
+            return 1;
+        }
+
+        char buffer[1024];
+        std::stringstream ss;
+
+        while (true) {
+            ssize_t bytes_read = read(fd, buffer, sizeof(buffer) - 1);
+
+            if (bytes_read > 0) {
+                buffer[bytes_read] = '\0';
+                ss << buffer;
+            } else if (bytes_read == 0) {
+                usleep(100000); // Sleep for 100 milliseconds
+            } else {
+                if (errno == EAGAIN) {
+                    usleep(100000); // Sleep for 100 milliseconds
+                } else {
+                    debug("KMSG: Error reading /dev/kmsg");
+                    break;
+                }
+            }
+        }
+
+        close(fd);
+
+        const std::string content = ss.str();
+
+        if (content.empty()) {
+            return false;
+        }
+
+        return (util::find(content, "Hypervisor detected"));
+#endif
+    } catch (...) {
+        debug("KMSG: caught error, returned false");
+        return false;
+    }
+
+
+
 
 
     // https://medium.com/@matterpreter/hypervisor-detection-with-systemhypervisordetailinformation-26e44a57f80e
@@ -9592,7 +9692,8 @@ std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard{
     { VM::AZURE_HYPERV, 0 },
     { VM::NANOVISOR, 0 },
     { VM::SIMPLEVISOR, 0 },
-    { VM::HYPERV_ARTIFACT, 0 }
+    { VM::HYPERV_ARTIFACT, 0 },
+    { VM::UML, 0 }
 };
 
 
@@ -9787,5 +9888,7 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::EVENT_LOGS, { 30, VM::hyperv_event_logs, true } },
     { VM::QEMU_VIRTUAL_DMI, { 40, VM::qemu_virtual_dmi, false } },
     { VM::QEMU_USB, { 20, VM::qemu_USB, false } },
-    { VM::HYPERVISOR_DIR, { 20, VM::hypervisor_dir, false } }
+    { VM::HYPERVISOR_DIR, { 20, VM::hypervisor_dir, false } },
+    { VM::UML_CPU, { 80, VM::uml_cpu, false } },
+    { VM::KMSG, { 10, VM::kmsg, true } }
 };
