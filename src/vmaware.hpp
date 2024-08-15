@@ -8884,23 +8884,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
 
 
-    /**
-     * @brief Check for /proc/device-tree directory
-     * @note idea from https://github.com/ShellCode33/VM-Detection/blob/master/vmdetect/linux.go
-     * @category Linux
-     */
-    [[nodiscard]] static bool device_tree() try {
-#if (!LINUX)
-        return false;
-#else
-        return (util::exists("/proc/device-tree/hypervisor/compatible"));
-#endif
-    } catch (...) {
-        debug("DEVICE_TREE: caught error, returned false");
-        return false;
-    }
-
-
 
     // https://medium.com/@matterpreter/hypervisor-detection-with-systemhypervisordetailinformation-26e44a57f80e
 
