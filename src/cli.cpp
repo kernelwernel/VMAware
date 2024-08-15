@@ -363,7 +363,8 @@ bool is_spoofable(const VM::enum_flags flag) {
         case VM::GENERAL_HOSTNAME:
         case VM::BLUESTACKS_FOLDERS: 
         case VM::EVENT_LOGS: 
-        case VM::KMSG: return true;
+        case VM::KMSG: 
+        case VM::XEN_PROC: return true;
         default: return false;
     }
 }
@@ -559,6 +560,10 @@ void general() {
     checker(VM::HYPERVISOR_DIR, "Hypervisor directory (Linux)");
     checker(VM::UML_CPU, "User-mode Linux CPU");
     checker(VM::KMSG, "/dev/kmsg hypervisor message");
+    checker(VM::XEN_PROC, "/proc/xen");
+    checker(VM::VBOX_MODULE, "VBox kernel module");
+    checker(VM::SYSINFO_PROC, "/proc/sysinfo");
+    checker(VM::DEVICE_TREE, "/proc/device-tree");
 
     std::printf("\n");
 

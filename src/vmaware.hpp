@@ -417,6 +417,10 @@ public:
         HYPERVISOR_DIR,
         UML_CPU,
         KMSG,
+        XEN_PROC,
+        VBOX_MODULE,
+        SYSINFO_PROC,
+        DEVICE_TREE,
 
         // start of non-technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
         NO_MEMO,
@@ -4471,8 +4475,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const bool amd = cpu::is_amd();
 
         // if neither amd or intel, return false
-        if (!(intel ^ amd)) {
-            debug("BOCHS_CPU: neither AMD or Intel detect, returned false");
+        if (!(intel || amd)) {
+            debug("BOCHS_CPU: neither AMD or Intel detected, returned false");
             return false;
         }
 
@@ -8762,6 +8766,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     break;
                 }
             }
+
+            if (bytes_read == -1) {
+                break;
+            }
         }
 
         close(fd);
@@ -8780,6 +8788,117 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
 
 
+    /**
+     * @brief Check for a Xen VM process
+     * @note idea from https://github.com/ShellCode33/VM-Detection/blob/master/vmdetect/linux.go
+     * @category Linux
+     */
+    [[nodiscard]] static bool xen_proc() try {
+#if (!LINUX)
+        return false;
+#else
+        if (util::exists("/proc/xen")) {
+            return core::add(XEN);
+        }
+
+        return false;
+#endif
+    } catch (...) {
+        debug("XEN_PROC: caught error, returned false");
+        return false;
+    }
+
+
+    /**
+     * @brief Check for a VBox kernel module
+     * @note idea from https://github.com/ShellCode33/VM-Detection/blob/master/vmdetect/linux.go
+     * @category Linux
+     */
+    [[nodiscard]] static bool vbox_module() try {
+#if (!LINUX)
+        return false;
+#else
+        const char* file = "/proc/modules";
+
+        if (!util::exists(file)) {
+            return false;
+        }
+
+        const std::string content = util::read_file(file);
+
+        if (util::find(content, "vboxguest")) {
+            return core::add(VBOX);
+        }
+
+        return false;
+#endif
+    } catch (...) {
+        debug("VBOX_MODULE: caught error, returned false");
+        return false;
+    }
+
+
+    /**
+     * @brief Check for potential VM info in /proc/sysinfo
+     * @note idea from https://github.com/ShellCode33/VM-Detection/blob/master/vmdetect/linux.go
+     * @category Linux
+     */
+    [[nodiscard]] static bool sysinfo_proc() try {
+#if (!LINUX)
+        return false;
+#else
+        const char* file = "/proc/sysinfo";
+
+        if (!util::exists(file)) {
+            return false;
+        }
+
+        const std::string content = util::read_file(file);
+
+        if (util::find(content, "VM00")) {
+            return true;
+        }
+
+        return false;
+#endif
+    } catch (...) {
+        debug("SYSINFO_PROC: caught error, returned false");
+        return false;
+    }
+
+
+    /**
+     * @brief Check for /proc/device-tree directory
+     * @note idea from https://github.com/ShellCode33/VM-Detection/blob/master/vmdetect/linux.go
+     * @category Linux
+     */
+    [[nodiscard]] static bool device_tree() try {
+#if (!LINUX)
+        return false;
+#else
+        return (util::exists("/proc/device-tree/hypervisor/compatible"));
+#endif
+    } catch (...) {
+        debug("DEVICE_TREE: caught error, returned false");
+        return false;
+    }
+
+
+    /**
+     * @brief Check for /proc/device-tree directory
+     * @note idea from https://github.com/ShellCode33/VM-Detection/blob/master/vmdetect/linux.go
+     * @category Linux
+     */
+    [[nodiscard]] static bool device_tree() try {
+#if (!LINUX)
+        return false;
+#else
+        return (util::exists("/proc/device-tree/hypervisor/compatible"));
+#endif
+    } catch (...) {
+        debug("DEVICE_TREE: caught error, returned false");
+        return false;
+    }
 
 
 
@@ -8790,9 +8909,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /*
     EAX=21h: Reserved for TDX enumerationWhen Intel TDX (Trust Domain Extensions) is active, attempts to execute the CPUID instruction by a TD (Trust Domain) guest will be intercepted by the TDX module. This module will, when CPUID is invoked with EAX=21h and ECX=0 (leaf 21h, sub-leaf 0), return the index of the highest supported sub-leaf for leaf 21h in EAX and a TDX module vendor ID string as a 12-byte ASCII string in EBX,EDX,ECX (in that order). Intel's own module implementation returns the vendor ID string "IntelTDX    " (with four trailing spaces)[102] - for this module, additional feature information is not available through CPUID and must instead be obtained through the TDX-specific TDCALL instruction.
     */
-
-
-    // https://learn.microsoft.com/en-us/virtualization/hyper-v-on-windows/tlfs/feature-discovery
 
 
     // https://github.com/systemd/systemd/blob/main/src/basic/virt.c
@@ -8812,13 +8928,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     // https://github.com/torvalds/linux/blob/31cc088a4f5d83481c6f5041bd6eb06115b974af/arch/x86/kernel/cpu/vmware.c
-
-
-
-
-
-
-
 
 
 
@@ -9894,5 +10003,9 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::QEMU_USB, { 20, VM::qemu_USB, false } },
     { VM::HYPERVISOR_DIR, { 20, VM::hypervisor_dir, false } },
     { VM::UML_CPU, { 80, VM::uml_cpu, false } },
-    { VM::KMSG, { 10, VM::kmsg, true } }
+    { VM::KMSG, { 10, VM::kmsg, true } },
+    { VM::XEN_PROC, { 20, VM::xen_proc, true } },
+    { VM::VBOX_MODULE, { 15, VM::vbox_module, false } },
+    { VM::SYSINFO_PROC, { 15, VM::sysinfo_proc, false } },
+    { VM::DEVICE_TREE, { 20, VM::device_tree, false } }
 };

@@ -9,9 +9,11 @@
 - added 2 new VM brands: 
     - `Hyper-V artifacts (not an actual VM)`
     - `User-mode Linux`
-- added 5 new techniques:
+- added 7 new techniques:
     - `VM::QEMU_VIRTUAL_DMI`
     - `VM::QEMU_USB`
     - `VM::HYPERVISOR_DIR`
     - `VM::UML_CPU`
     - `VM::KMSG`
+    - `VM::XEN_PROC`
+    - `VM::VBOX_MODULE`

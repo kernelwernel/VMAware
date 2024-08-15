@@ -16,7 +16,7 @@ The library is:
 - Cross-platform (Windows + MacOS + Linux)
 - Compatible with x86 and ARM, with backwards compatibility for 32-bit systems
 - Features up to 100+ unique VM detection techniques [[list](https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#flag-table)]
-- Able to detect 40 VM brands including VMware, VirtualBox, QEMU, Hyper-V, Parallels, and [much more](https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmbrand)
+- Able to detect 40+ VM brands including VMware, VirtualBox, QEMU, Hyper-V, Parallels, and [much more](https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmbrand)
 - Very flexible, with total fine-grained control over which techniques get executed
 - Able to detect various semi-VM technologies like hypervisors, emulators, containers, and Wine
 - Able to guess the VM brand

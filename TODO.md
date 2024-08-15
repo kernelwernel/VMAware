@@ -42,6 +42,7 @@
 - [ ] make the whole cache table into a mutex so i can claim it's thread-safe
 - [ ] make a medium post about it
 - [ ] test the VM::modify_score() function
+- [ ] check if bios date in /sys/class/dmi/id/ could be useful under QEMU
 
 # Distant plans
 - add the library to conan.io when released
