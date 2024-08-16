@@ -137,13 +137,6 @@ And if you found this project useful, a star would be appreciated :)
 
 <br>
 
-## Projects using VMAware
-**[CrashLoggerSSE](https://github.com/alandtse/CrashLoggerSSE)** - SKSE/SKSEVR plugin that generates crash logs
-
-If you know a project, or if you're working on a project that uses VMAware, let me know and I'll add it here.
-
-<br>
-
 ## Credits and contributors ✒️
 - [Check Point Research](https://research.checkpoint.com/)
 - [Unprotect Project](https://unprotect.it/)

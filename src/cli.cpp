@@ -246,6 +246,7 @@ Xbox NanoVisor (Hyper-V)
 SimpleVisor
 Hyper-V artifact (not an actual VM)
 User-mode Linux
+IBM PowerVM
 )";
 
     std::exit(0);
@@ -564,6 +565,7 @@ void general() {
     checker(VM::VBOX_MODULE, "VBox kernel module");
     checker(VM::SYSINFO_PROC, "/proc/sysinfo");
     checker(VM::DEVICE_TREE, "/proc/device-tree");
+    checker(VM::DMI_SCAN, "DMI scan");
 
     std::printf("\n");
 

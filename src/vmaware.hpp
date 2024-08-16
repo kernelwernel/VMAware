@@ -421,6 +421,7 @@ public:
         VBOX_MODULE,
         SYSINFO_PROC,
         DEVICE_TREE,
+        DMI_SCAN,
 
         // start of non-technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
         NO_MEMO,
@@ -539,6 +540,11 @@ private:
     static constexpr const char* SIMPLEVISOR = "SimpleVisor";
     static constexpr const char* HYPERV_ARTIFACT = "Hyper-V artifact (not an actual VM)";
     static constexpr const char* UML = "User-mode Linux";
+    static constexpr const char* POWERVM = "IBM PowerVM";
+    static constexpr const char* GCE = "Google Compute Engine (KVM)";
+    static constexpr const char* OPENSTACK = "OpenStack (KVM)";
+    static constexpr const char* KUBEVIRT = "KubeVirt (KVM)";
+    static constexpr const char* AWS_NITRO = "AWS Nitro System (KVM-based)";
 
     static flagset global_flags; // for certain techniques where the flags MUST be accessible
 
@@ -2495,7 +2501,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         std::string brand = cpu::get_brand();
 
         // TODO: might add more potential keywords, be aware that it could (theoretically) cause false positives
-        constexpr std::array<const char*, 16> vmkeywords{{
+        constexpr std::array<const char*, 16> vmkeywords {{
             "qemu", "kvm", "virtual", "vm",
             "vbox", "virtualbox", "vmm", "monitor",
             "bhyve", "hyperv", "hypervisor", "hvisor",
@@ -3826,7 +3832,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             "vmcheck.dll",     // Virtual PC
             "wpespy.dll",      // WPE Pro
             "cmdvrt64.dll",    // Comodo Container
-            "cmdvrt32.dll",    // Comodo Container
+            "cmdvrt32.dll"     // Comodo Container
         }};
 
         for (const auto& key : szDlls) {
@@ -8868,7 +8874,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check for /proc/device-tree directory
+     * @brief Check for specific files in /proc/device-tree directory
      * @note idea from https://github.com/ShellCode33/VM-Detection/blob/master/vmdetect/linux.go
      * @category Linux
      */
@@ -8876,12 +8882,112 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!LINUX)
         return false;
 #else
+        if (util::exists("/proc/device-tree/fw-cfg")) {
+            return core::add(QEMU);
+        }
+
         return (util::exists("/proc/device-tree/hypervisor/compatible"));
 #endif
     } catch (...) {
         debug("DEVICE_TREE: caught error, returned false");
         return false;
     }
+
+
+    /**
+     * @brief Check for string matches of VM brands in the linux DMI
+     * @category Linux
+     */
+    [[nodiscard]] static bool dmi_scan() try {
+#if (!LINUX)
+        return false;
+#else
+        /*
+        cat: /sys/class/dmi/id/board_serial: Permission denied
+        cat: /sys/class/dmi/id/chassis_serial: Permission denied
+        cat: /sys/class/dmi/id/product_serial: Permission denied
+        cat: /sys/class/dmi/id/product_uuid: Permission denied
+        */
+
+        constexpr std::array<const char*, 7> dmi_array {
+            "/sys/class/dmi/id/bios_vendor",
+            "/sys/class/dmi/id/board_name",
+            "/sys/class/dmi/id/board_vendor",
+            "/sys/class/dmi/id/chassis_asset_tag",
+            "/sys/class/dmi/id/product_family",
+            "/sys/class/dmi/id/product_sku",
+            "/sys/class/dmi/id/sys_vendor"
+        };
+
+        constexpr std::array<std::pair<const char*, const char*>, 15> vm_table {{
+            { "kvm", KVM },
+            { "openstack", OPENSTACK },
+            { "kubevirt", KUBEVIRT },
+            { "amazon ec2", AWS_NITRO },
+            { "qemu", QEMU },
+            { "vmware", VMWARE },
+            { "innotek gmbh", VBOX },
+            { "virtualbox", VBOX },
+            { "oracle corporation", VBOX },
+            //{ "xen", XEN },
+            { "bochs", BOCHS },
+            { "parallels", PARALLELS },
+            { "bhyve", BHYVE },
+            { "hyper-v", HYPERV },
+            { "apple virtualization", APPLE_VZ },
+            { "google compute engine", GCE }
+        }};
+
+        auto to_lower = [](std::string &str) {
+            for (auto& c : str) {
+                if (c == ' ') {
+                    continue;
+                }
+
+                c = static_cast<char>(tolower(c));
+            }
+        };
+
+        for (const auto &vm_string : vm_table) {
+            for (const auto file : dmi_array) {
+                if (!util::exists(file)) {
+                    continue;
+                }
+
+                std::string content = util::read_file(file);
+
+                to_lower(content);
+
+                if (std::regex_search(content, std::regex(vm_string.first))) {
+                    debug("DMI_SCAN: content = ", content);
+                    return core::add(vm_string.second);
+                }
+            }
+        }
+
+        return false;
+#endif
+    } catch (...) {
+        debug("DMI_SCAN: caught error, returned false");
+        return false;
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -9454,13 +9560,13 @@ public: // START OF PUBLIC FUNCTIONS
 
         if ((brands.count(TMP_HYPERV) > brands.count(TMP_VPC))) {
             brands.erase(TMP_VPC);
+        } else if (brands.count(TMP_HYPERV) < brands.count(TMP_VPC)) {
+            brands.erase(TMP_HYPERV);
         } else if (
             (brands.count(TMP_HYPERV) == brands.count(TMP_VPC)) &&
             ((brands.count(TMP_HYPERV) > 0) && (brands.count(TMP_VPC) > 0))
         ) {
-            brands.erase(TMP_HYPERV);
-            brands.erase(TMP_VPC);
-            brands.emplace(std::make_pair(TMP_HYPERV_VPC, 2));
+            merger(TMP_VPC, TMP_HYPERV, TMP_HYPERV_VPC);
         }
 
         merger(TMP_HYPERV,     TMP_HYPERV_ARTIFACT, TMP_HYPERV_ARTIFACT);
@@ -9475,13 +9581,13 @@ public: // START OF PUBLIC FUNCTIONS
         merger(TMP_NANOVISOR, TMP_VPC,        TMP_NANOVISOR);
         merger(TMP_NANOVISOR, TMP_HYPERV_VPC, TMP_NANOVISOR);
         
-        merger(TMP_QEMU,      TMP_KVM,         TMP_QEMU_KVM);
-        merger(TMP_KVM,       TMP_HYPERV,      TMP_KVM_HYPERV);
-        merger(TMP_QEMU,      TMP_HYPERV,      TMP_QEMU_KVM_HYPERV);
-        merger(TMP_QEMU_KVM,  TMP_HYPERV,      TMP_QEMU_KVM_HYPERV);
-        merger(TMP_KVM,       TMP_KVM_HYPERV,  TMP_KVM_HYPERV);
-        merger(TMP_QEMU,      TMP_KVM_HYPERV,  TMP_QEMU_KVM_HYPERV);
-        merger(TMP_QEMU_KVM,  TMP_KVM_HYPERV,  TMP_QEMU_KVM_HYPERV);
+        merger(TMP_QEMU,     TMP_KVM,        TMP_QEMU_KVM);
+        merger(TMP_KVM,      TMP_HYPERV,     TMP_KVM_HYPERV);
+        merger(TMP_QEMU,     TMP_HYPERV,     TMP_QEMU_KVM_HYPERV);
+        merger(TMP_QEMU_KVM, TMP_HYPERV,     TMP_QEMU_KVM_HYPERV);
+        merger(TMP_KVM,      TMP_KVM_HYPERV, TMP_KVM_HYPERV);
+        merger(TMP_QEMU,     TMP_KVM_HYPERV, TMP_QEMU_KVM_HYPERV);
+        merger(TMP_QEMU_KVM, TMP_KVM_HYPERV, TMP_QEMU_KVM_HYPERV);
 
         triple_merger(TMP_QEMU, TMP_KVM, TMP_KVM_HYPERV, TMP_QEMU_KVM_HYPERV);
 
@@ -9789,7 +9895,8 @@ std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard{
     { VM::NANOVISOR, 0 },
     { VM::SIMPLEVISOR, 0 },
     { VM::HYPERV_ARTIFACT, 0 },
-    { VM::UML, 0 }
+    { VM::UML, 0 },
+    { VM::POWERVM, 0 }
 };
 
 
@@ -9990,5 +10097,6 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::XEN_PROC, { 20, VM::xen_proc, true } },
     { VM::VBOX_MODULE, { 15, VM::vbox_module, false } },
     { VM::SYSINFO_PROC, { 15, VM::sysinfo_proc, false } },
-    { VM::DEVICE_TREE, { 20, VM::device_tree, false } }
+    { VM::DEVICE_TREE, { 20, VM::device_tree, false } },
+    { VM::DMI_SCAN, { 50, VM::dmi_scan, false } }
 };

@@ -202,6 +202,7 @@ This will essentially return the VM brand as a `std::string`. The exact possible
 - `SimpleVisor`
 - `Hyper-V artifact (not an actual VM)`
 - `User-mode Linux`
+- `IBM PowerVM`
 
 If none were detected, it will return `Unknown`. It's often NOT going to produce a satisfying result due to technical difficulties with accomplishing this, on top of being highly dependent on what mechanisms detected a VM. This is especially true for VMware sub-versions (ESX, GSX, Fusion, etc...) Don't rely on this function for critical operations as if it's your golden bullet. It's arguably unreliable and it'll most likely return `Unknown` (assuming it is actually running under a VM).
 
