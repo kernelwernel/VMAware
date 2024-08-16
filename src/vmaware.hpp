@@ -422,6 +422,7 @@ public:
         SYSINFO_PROC,
         DEVICE_TREE,
         DMI_SCAN,
+        SMBIOS_VM_BIT,
 
         // start of non-technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
         NO_MEMO,
@@ -1112,14 +1113,14 @@ private:
     struct util {
 #if (LINUX)
         // fetch file data
-        [[nodiscard]] static std::string read_file(const char* dir) {
-            if (!exists(dir)) {
+        [[nodiscard]] static std::string read_file(const char* file_path) {
+            if (!exists(file_path)) {
                 return "";
             }
 
             std::ifstream file{};
             std::string data{};
-            file.open(dir);
+            file.open(file_path);
 
             if (file.is_open()) {
                 file >> data;
@@ -1130,6 +1131,24 @@ private:
         }
 #endif
 
+        // fetch the file but in binary form
+        [[nodiscard]] static std::vector<u8> read_file_binary(const char* file_path) {
+            std::ifstream file(file_path, std::ios::binary);
+    
+            if (!file) {
+                std::vector<u8> tmp{};
+                return tmp;
+            }
+
+            std::vector<u8> buffer((std::istreambuf_iterator<char>(file)),
+                                            std::istreambuf_iterator<char>());
+
+            file.close();
+
+            return buffer;
+        }
+
+        // check if file exists
         [[nodiscard]] static bool exists(const char* path) {
 #if (MSVC)
             return (GetFileAttributesA(path) != INVALID_FILE_ATTRIBUTES) || (GetLastError() != ERROR_FILE_NOT_FOUND);
@@ -8773,7 +8792,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
             }
 
-            if (bytes_read == -1) {
+            if (bytes_read < 0) {
                 break;
             }
         }
@@ -8973,8 +8992,89 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
 
 
+    /**
+     * @brief Check for the VM bit in the SMBIOS data
+     * @note idea from https://github.com/systemd/systemd/blob/main/src/basic/virt.c
+     * @category Linux
+     */
+    [[nodiscard]] static bool smbios_vm_bit() try {
+#if (!LINUX)
+        return false;
+#else
+        if (!util::is_admin()) {
+            return false;
+        }
 
+        const char* file = "/sys/firmware/dmi/entries/0-0/raw";
 
+        if (!util::exists(file)) {
+            return false;
+        }
+
+        const std::vector<u8> content = util::read_file_binary(file);
+
+        #if (__VMAWARE_DEBUG__)
+            debug("SMBIOS_VM_BIT: ");
+            const u8 limit = 3;
+            u8 increment = 1;
+    
+            for (const auto c : content) {
+                const char character = static_cast<char>(c);
+
+                bool is_null_char = false;
+
+                if ((character < 32) || (character == 127) || (character == 0)) {
+                    if (character < 0) {
+                        is_null_char = false;
+                    } else {
+                        is_null_char = true;
+                    }
+                }
+
+                std::cout << '\'' << character << (is_null_char ? " " : "") << "\' = " << (int)character;
+
+                u8 spacing = 0;
+
+                if (character >= 0) {
+                    if (character < 10) {
+                        spacing = 5;
+                    } else if (character < 100) {
+                        spacing = 4;
+                    } else {
+                        spacing = 3;
+                    }
+                } else {
+                    if (character > -10) {
+                        spacing = 4;
+                    } else if (character > -100) {
+                        spacing = 3;
+                    } else {
+                        spacing = 2;
+                    }
+                }
+
+                if (increment % limit == 0) {
+                    std::cout << "\n";
+                } else {
+                    for (u8 x = 0; x < spacing; x++) {
+                        std::cout << ' ';
+                    }
+                }
+
+                increment++;
+            }
+        #endif
+
+        if (content.size() < 20 || content.at(1) < 20) {
+            return false;
+        }
+
+        return (content.at(19) & (1 << 4));
+#endif
+    } catch (...) {
+        debug("SMBIOS_VM_BIT: caught error, returned false");
+        return false;
+    }
 
 
 
@@ -10098,5 +10198,6 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::VBOX_MODULE, { 15, VM::vbox_module, false } },
     { VM::SYSINFO_PROC, { 15, VM::sysinfo_proc, false } },
     { VM::DEVICE_TREE, { 20, VM::device_tree, false } },
-    { VM::DMI_SCAN, { 50, VM::dmi_scan, false } }
+    { VM::DMI_SCAN, { 50, VM::dmi_scan, false } },
+    { VM::SMBIOS_VM_BIT, { 50, VM::smbios_vm_bit, false } }
 };

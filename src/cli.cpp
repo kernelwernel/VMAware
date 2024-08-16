@@ -390,7 +390,6 @@ bool are_perms_required(const VM::enum_flags flag) {
     if (is_admin()) {
         return false;
     }
-#endif
 
     switch (flag) {
         case VM::VBOX_DEFAULT: 
@@ -398,9 +397,13 @@ bool are_perms_required(const VM::enum_flags flag) {
         case VM::DMIDECODE: 
         case VM::DMESG: 
         case VM::QEMU_USB: 
-        case VM::KMSG: return true;
+        case VM::KMSG: 
+        case VM::SMBIOS_VM_BIT: return true;
         default: return false;
     }
+#else 
+    return false;
+#endif
 }
 
 void general() {
@@ -566,6 +569,7 @@ void general() {
     checker(VM::SYSINFO_PROC, "/proc/sysinfo");
     checker(VM::DEVICE_TREE, "/proc/device-tree");
     checker(VM::DMI_SCAN, "DMI scan");
+    checker(VM::SMBIOS_VM_BIT, "SMBIOS VM bit");
 
     std::printf("\n");
 
