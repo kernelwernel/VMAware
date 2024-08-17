@@ -423,6 +423,8 @@ public:
         DEVICE_TREE,
         DMI_SCAN,
         SMBIOS_VM_BIT,
+        PODMAN_FILE,
+        WSL_PROC,
 
         // start of non-technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
         NO_MEMO,
@@ -546,6 +548,8 @@ private:
     static constexpr const char* OPENSTACK = "OpenStack (KVM)";
     static constexpr const char* KUBEVIRT = "KubeVirt (KVM)";
     static constexpr const char* AWS_NITRO = "AWS Nitro System (KVM-based)";
+    static constexpr const char* PODMAN = "Podman";
+    static constexpr const char* WSL = "WSL";
 
     static flagset global_flags; // for certain techniques where the flags MUST be accessible
 
@@ -8708,6 +8712,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             type = true;
         }
 
+        if (type) {
+            const std::string content = util::read_file("/sys/hypervisor/type");
+            if (util::find(content, "xen")) {
+                return core::add(XEN);
+            }
+        }
+
         // check if there's a few files in that directory
         return ((count != 0) && type);
 #endif
@@ -9077,10 +9088,60 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
 
 
+    /**
+     * @brief Check for podman file in /run/
+     * @note idea from https://github.com/systemd/systemd/blob/main/src/basic/virt.c
+     * @category Linux
+     */
+    [[nodiscard]] static bool podman_file() try {
+#if (!LINUX)
+        return false;
+#else
+        if (util::exists("/run/.containerenv")) {
+            return core::add(PODMAN);
+        }
+
+        return false;
+#endif
+    } catch (...) {
+        debug("PODMAN_FILE: caught error, returned false");
+        return false;
+    }
 
 
+    /**
+     * @brief Check for WSL or microsoft indications in /proc/ subdirectories
+     * @note idea from https://github.com/systemd/systemd/blob/main/src/basic/virt.c
+     * @category Linux
+     */
+    [[nodiscard]] static bool wsl_proc_subdir() try {
+#if (!LINUX)
+        return false;
+#else
+        const char* osrelease = "/proc/sys/kernel/osrelease";
+        const char* version = "/proc/version";
 
+        if (
+            util::exists(osrelease) &&
+            util::exists(version)
+        ) {
+            const std::string osrelease_content = util::read_file(osrelease);
+            const std::string version_content = util::read_file(version);
 
+            if (
+                (util::find(osrelease_content, "WSL") || util::find(osrelease_content, "Microsoft")) &&
+                (util::find(version, "WSL") || util::find(version, "Microsoft"))
+            ) {
+                return core::add(WSL);
+            }
+        }
+
+        return false;
+#endif
+    } catch (...) {
+        debug("WSL_PROC: caught error, returned false");
+        return false;
+    }
 
 
 
@@ -9996,7 +10057,13 @@ std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard{
     { VM::SIMPLEVISOR, 0 },
     { VM::HYPERV_ARTIFACT, 0 },
     { VM::UML, 0 },
-    { VM::POWERVM, 0 }
+    { VM::POWERVM, 0 },
+    { VM::GCE, 0 },
+    { VM::OPENSTACK, 0 },
+    { VM::KUBEVIRT, 0 },
+    { VM::AWS_NITRO, 0 },
+    { VM::PODMAN, 0 },
+    { VM::WSL, 0 }
 };
 
 
@@ -10099,7 +10166,7 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::SYSTEMD, { 70, VM::systemd_virt, false } },
     { VM::CVENDOR, { 65, VM::chassis_vendor, false } },
     { VM::CTYPE, { 10, VM::chassis_type, false } },
-    { VM::DOCKERENV, { 80, VM::dockerenv, true } },
+    { VM::DOCKERENV, { 15, VM::dockerenv, true } },
     { VM::DMIDECODE, { 55, VM::dmidecode, false } },
     { VM::DMESG, { 55, VM::dmesg, false } },
     { VM::HWMON, { 75, VM::hwmon, true } },
@@ -10199,5 +10266,7 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::SYSINFO_PROC, { 15, VM::sysinfo_proc, false } },
     { VM::DEVICE_TREE, { 20, VM::device_tree, false } },
     { VM::DMI_SCAN, { 50, VM::dmi_scan, false } },
-    { VM::SMBIOS_VM_BIT, { 50, VM::smbios_vm_bit, false } }
+    { VM::SMBIOS_VM_BIT, { 50, VM::smbios_vm_bit, false } },
+    { VM::PODMAN_FILE, { 15, VM::podman_file, true } },
+    { VM::WSL_PROC, { 30, VM::wsl_proc_subdir, false } }
 };

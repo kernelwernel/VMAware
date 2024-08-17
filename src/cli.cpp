@@ -570,6 +570,8 @@ void general() {
     checker(VM::DEVICE_TREE, "/proc/device-tree");
     checker(VM::DMI_SCAN, "DMI scan");
     checker(VM::SMBIOS_VM_BIT, "SMBIOS VM bit");
+    checker(VM::PODMAN_FILE, "Podman file");
+    checker(VM::WSL_PROC, "WSL string in /proc");
 
     std::printf("\n");
 
