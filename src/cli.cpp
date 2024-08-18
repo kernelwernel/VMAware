@@ -55,11 +55,6 @@ constexpr const char* red_orange = "\x1B[38;2;247;127;40m";
 constexpr const char* green_orange = "\x1B[38;2;174;197;59m";
 constexpr const char* grey = "\x1B[38;2;108;108;108m";
 
-constexpr bool ENABLE_NOTES = true;
-constexpr bool ENABLE_SPOOF = false;
-constexpr bool DISABLE_NOTES = false;
-constexpr bool DISABLE_SPOOF = false;
-
 enum arg_enum : std::uint8_t {
     HELP,
     VERSION,
