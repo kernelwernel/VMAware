@@ -28,14 +28,6 @@ The library is:
 
 <br>
 
-> [!CAUTION]
-**DO NOT USE THIS LIBRARY FOR CRITICAL SOFTWARE** (i.e. anti-cheats, proprietary software, paid software, etc...)
->
-> However, a solution is in development that will allow this in the next release which should be soon.
-> 
-> The full reason can be found [here](deprecation.md)
-
-
 
 ## Example 🧪
 ```cpp
