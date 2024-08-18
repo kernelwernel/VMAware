@@ -43,7 +43,7 @@
 
 #include "vmaware.hpp"
 
-constexpr const char* ver = "1.7.1";
+constexpr const char* ver = "1.8";
 constexpr const char* date = "August 2024";
 
 constexpr const char* bold = "\033[1m";
@@ -245,6 +245,15 @@ Microsoft Azure Hyper-V
 Xbox NanoVisor (Hyper-V)
 SimpleVisor
 Hyper-V artifact (not an actual VM)
+User-mode Linux
+IBM PowerVM
+Google Compute Engine (KVM)
+OpenStack (KVM)
+KubeVirt (KVM)
+AWS Nitro System (KVM-based)
+Podman
+WSL
+OpenVZ
 )";
 
     std::exit(0);
@@ -272,6 +281,11 @@ std::string type(const std::string &brand_str) {
         { "Intel HAXM", "Hypervisor (type 1)" },
         { "Intel KGT (Trusty)", "Hypervisor (type 1)" },
         { "SimpleVisor", "Hypervisor (type 1)" },
+        { "Google Compute Engine (KVM)", "Hypervisor (type 1)" },
+        { "OpenStack (KVM)", "Hypervisor (type 1)" },
+        { "KubeVirt (KVM)", "Hypervisor (type 1)" },
+        { "IBM PowerVM", "Hypervisor (type 1)" },
+        { "AWS Nitro System EC2 (KVM-based)", "Hypervisor (type 1)" },
 
         // type 2
         { "VirtualBox", "Hypervisor (type 2)" },
@@ -285,6 +299,7 @@ std::string type(const std::string &brand_str) {
         { "Virtual Apple", "Hypervisor (type 2)" },
         { "NetBSD NVMM", "Hypervisor (type 2)" },
         { "OpenBSD VMM", "Hypervisor (type 2)" },
+        { "User-mode Linux", "Hypervisor (type 2)" },
 
         // sandbox
         { "Cuckoo", "Sandbox" },
@@ -304,11 +319,15 @@ std::string type(const std::string &brand_str) {
         { "Jailhouse", "Partitioning Hypervisor" },
         { "Unisys s-Par", "Partitioning Hypervisor" },
         { "Docker", "Container" },
+        { "Podman", "Container" },
+        { "OpenVZ", "Container" },
         { "Microsoft Virtual PC/Hyper-V", "Hypervisor (either type 1 or 2)" },
         { "Lockheed Martin LMHS", "Hypervisor (unknown type)" },
         { "Wine", "Compatibility layer" },
         { "Apple VZ", "Unknown" },
-        { "Hyper-V artifact (not an actual VM)", "No VM" }
+        { "Hyper-V artifact (not an actual VM)", "No VM" },
+        { "User-mode Linux", "Paravirtualised" },
+        { "WSL", "Hybrid Hyper-V (type 1 and 2)" }, // debatable tbh
     };
 
     auto it = type_table.find(brand_str);
@@ -359,7 +378,11 @@ bool is_spoofable(const VM::enum_flags flag) {
         case VM::CUCKOO_PIPE:
         case VM::HYPERV_HOSTNAME:
         case VM::GENERAL_HOSTNAME:
-        case VM::BLUESTACKS_FOLDERS: return true;
+        case VM::BLUESTACKS_FOLDERS: 
+        case VM::EVENT_LOGS: 
+        case VM::KMSG: 
+        case VM::VM_PROCS: 
+        case VM::PODMAN_FILE: return true;
         default: return false;
     }
 }
@@ -384,15 +407,20 @@ bool are_perms_required(const VM::enum_flags flag) {
     if (is_admin()) {
         return false;
     }
-#endif
 
     switch (flag) {
         case VM::VBOX_DEFAULT: 
         case VM::VMWARE_DMESG: 
         case VM::DMIDECODE: 
-        case VM::DMESG: return true;
+        case VM::DMESG: 
+        case VM::QEMU_USB: 
+        case VM::KMSG: 
+        case VM::SMBIOS_VM_BIT: return true;
         default: return false;
     }
+#else 
+    return false;
+#endif
 }
 
 void general() {
@@ -548,6 +576,19 @@ void general() {
     checker(VM::KGT_SIGNATURE, "Intel KGT signature");
     checker(VM::VMWARE_DMI, "VMware DMI");
     checker(VM::EVENT_LOGS, "Hyper-V event logs");
+    checker(VM::QEMU_VIRTUAL_DMI, "QEMU virtual DMI directory");
+    checker(VM::QEMU_USB, "QEMU USB");
+    checker(VM::HYPERVISOR_DIR, "Hypervisor directory (Linux)");
+    checker(VM::UML_CPU, "User-mode Linux CPU");
+    checker(VM::KMSG, "/dev/kmsg hypervisor message");
+    checker(VM::VM_PROCS, "various VM files in /proc");
+    checker(VM::VBOX_MODULE, "VBox kernel module");
+    checker(VM::SYSINFO_PROC, "/proc/sysinfo");
+    checker(VM::DEVICE_TREE, "/proc/device-tree");
+    checker(VM::DMI_SCAN, "DMI scan");
+    checker(VM::SMBIOS_VM_BIT, "SMBIOS VM bit");
+    checker(VM::PODMAN_FILE, "Podman file");
+    checker(VM::WSL_PROC, "WSL string in /proc");
 
     std::printf("\n");
 
@@ -577,7 +618,7 @@ void general() {
     }
 
     const char* percent_color = "";
-    const std::uint8_t percent = VM::percentage(VM::NULL_ARG/*spoofable_setting*/);
+    const std::uint8_t percent = VM::percentage(spoofable_setting);
 
     if      (percent == 0) { percent_color = red; }
     else if (percent < 25) { percent_color = red_orange; }

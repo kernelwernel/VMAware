@@ -16,7 +16,7 @@ The library is:
 - Cross-platform (Windows + MacOS + Linux)
 - Compatible with x86 and ARM, with backwards compatibility for 32-bit systems
 - Features up to 100+ unique VM detection techniques [[list](https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#flag-table)]
-- Able to detect 40 VM brands including VMware, VirtualBox, QEMU, Hyper-V, Parallels, and [much more](https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmbrand)
+- Able to detect 40+ VM brands including VMware, VirtualBox, QEMU, Hyper-V, Parallels, and [much more](https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmbrand)
 - Very flexible, with total fine-grained control over which techniques get executed
 - Able to detect various semi-VM technologies like hypervisors, emulators, containers, and Wine
 - Able to guess the VM brand
@@ -137,13 +137,6 @@ And if you found this project useful, a star would be appreciated :)
 
 <br>
 
-## Projects using VMAware
-**[CrashLoggerSSE](https://github.com/alandtse/CrashLoggerSSE)** - SKSE/SKSEVR plugin that generates crash logs
-
-If you know a project, or if you're working on a project that uses VMAware, let me know and I'll add it here.
-
-<br>
-
 ## Credits and contributors ✒️
 - [Check Point Research](https://research.checkpoint.com/)
 - [Unprotect Project](https://unprotect.it/)
@@ -170,6 +163,7 @@ If you know a project, or if you're working on a project that uses VMAware, let 
 - mrjaxser
 - [iMonket](https://github.com/PrimeMonket)
 - Eric Parker's discord community 
+- [ShellCode33](https://github.com/ShellCode33)
 
 <br>
 

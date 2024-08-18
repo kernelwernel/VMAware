@@ -4,7 +4,7 @@
  * ██║   ██║██╔████╔██║███████║██║ █╗ ██║███████║██████╔╝█████╗
  * ╚██╗ ██╔╝██║╚██╔╝██║██╔══██║██║███╗██║██╔══██║██╔══██╗██╔══╝
  *  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
- *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ 1.7.1 (August 2024)
+ *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ 1.8 (August 2024)
  *
  *  C++ VM detection library
  *
@@ -22,14 +22,14 @@
  *
  *
  * ================================ SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 309
- * - struct for internal cpu operations        => line 534
- * - struct for internal memoization           => line 954
- * - struct for internal utility functions     => line 1059
- * - struct for internal core components       => line 8150
- * - start of internal VM detection techniques => line 1879
- * - start of public VM detection functions    => line 8618
- * - start of externally defined variables     => line 9044
+ * - enums for publicly accessible techniques  => line 312
+ * - struct for internal cpu operations        => line 569
+ * - struct for internal memoization           => line 995
+ * - struct for internal utility functions     => line 1118
+ * - struct for internal core components       => line 9196
+ * - start of internal VM detection techniques => line 2491
+ * - start of public VM detection functions    => line 9541
+ * - start of externally defined variables     => line 10017
  *
  *
  * ================================ EXAMPLE ==================================
@@ -412,6 +412,19 @@ public:
         KGT_SIGNATURE,
         VMWARE_DMI,
         EVENT_LOGS,
+        QEMU_VIRTUAL_DMI,
+        QEMU_USB,
+        HYPERVISOR_DIR,
+        UML_CPU,
+        KMSG,
+        VM_PROCS,
+        VBOX_MODULE,
+        SYSINFO_PROC,
+        DEVICE_TREE,
+        DMI_SCAN,
+        SMBIOS_VM_BIT,
+        PODMAN_FILE,
+        WSL_PROC,
 
         // start of non-technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
         NO_MEMO,
@@ -529,6 +542,15 @@ private:
     static constexpr const char* NANOVISOR = "Xbox NanoVisor (Hyper-V)";
     static constexpr const char* SIMPLEVISOR = "SimpleVisor";
     static constexpr const char* HYPERV_ARTIFACT = "Hyper-V artifact (not an actual VM)";
+    static constexpr const char* UML = "User-mode Linux";
+    static constexpr const char* POWERVM = "IBM PowerVM";
+    static constexpr const char* GCE = "Google Compute Engine (KVM)";
+    static constexpr const char* OPENSTACK = "OpenStack (KVM)";
+    static constexpr const char* KUBEVIRT = "KubeVirt (KVM)";
+    static constexpr const char* AWS_NITRO = "AWS Nitro System EC2 (KVM-based)";
+    static constexpr const char* PODMAN = "Podman";
+    static constexpr const char* WSL = "WSL";
+    static constexpr const char* OPENVZ = "OpenVZ";
 
     static flagset global_flags; // for certain techniques where the flags MUST be accessible
 
@@ -627,12 +649,13 @@ private:
 
         // check Intel
         [[nodiscard]] static bool is_intel() {
-            constexpr u32 intel_ecx = 0x6c65746e;
+            constexpr u32 intel_ecx1 = 0x6c65746e; // "ntel"
+            constexpr u32 intel_ecx2 = 0x6c65746f; // "otel", this is because some Intel CPUs have a rare manufacturer string of "GenuineIotel"
 
             u32 unused, ecx = 0;
             cpuid(unused, unused, ecx, unused, 0);
 
-            return (ecx == intel_ecx);
+            return ((ecx == intel_ecx1) || (ecx == intel_ecx2));
         }
 
         // check for POSSIBILITY of hyperthreading, I don't think there's a 
@@ -1096,14 +1119,14 @@ private:
     struct util {
 #if (LINUX)
         // fetch file data
-        [[nodiscard]] static std::string read_file(const char* dir) {
-            if (!exists(dir)) {
+        [[nodiscard]] static std::string read_file(const char* file_path) {
+            if (!exists(file_path)) {
                 return "";
             }
 
             std::ifstream file{};
             std::string data{};
-            file.open(dir);
+            file.open(file_path);
 
             if (file.is_open()) {
                 file >> data;
@@ -1114,6 +1137,24 @@ private:
         }
 #endif
 
+        // fetch the file but in binary form
+        [[nodiscard]] static std::vector<u8> read_file_binary(const char* file_path) {
+            std::ifstream file(file_path, std::ios::binary);
+    
+            if (!file) {
+                std::vector<u8> tmp{};
+                return tmp;
+            }
+
+            std::vector<u8> buffer((std::istreambuf_iterator<char>(file)),
+                                            std::istreambuf_iterator<char>());
+
+            file.close();
+
+            return buffer;
+        }
+
+        // check if file exists
         [[nodiscard]] static bool exists(const char* path) {
 #if (MSVC)
             return (GetFileAttributesA(path) != INVALID_FILE_ATTRIBUTES) || (GetLastError() != ERROR_FILE_NOT_FOUND);
@@ -2485,7 +2526,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         std::string brand = cpu::get_brand();
 
         // TODO: might add more potential keywords, be aware that it could (theoretically) cause false positives
-        constexpr std::array<const char*, 16> vmkeywords{{
+        constexpr std::array<const char*, 16> vmkeywords {{
             "qemu", "kvm", "virtual", "vm",
             "vbox", "virtualbox", "vmm", "monitor",
             "bhyve", "hyperv", "hypervisor", "hvisor",
@@ -3816,7 +3857,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             "vmcheck.dll",     // Virtual PC
             "wpespy.dll",      // WPE Pro
             "cmdvrt64.dll",    // Comodo Container
-            "cmdvrt32.dll",    // Comodo Container
+            "cmdvrt32.dll"     // Comodo Container
         }};
 
         for (const auto& key : szDlls) {
@@ -4266,11 +4307,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return core::add(SANDBOXIE);
         }
 
-        hMod = GetModuleHandleW(L"dbghelp.dll"); // Thread Expert
+        /* this gave a false positive
+        hMod = GetModuleHandleW(L"dbghelp.dll"); // ThreatExpert
         if (hMod != 0) {
             free(szBuff);
             return core::add(THREATEXPERT);
         }
+        */
 
         nRes = RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"Software\\Microsoft\\Windows\\CurrentVersion", 0L, KEY_QUERY_VALUE, &hOpen);
         if (nRes == ERROR_SUCCESS) {
@@ -4463,8 +4506,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const bool amd = cpu::is_amd();
 
         // if neither amd or intel, return false
-        if (!(intel ^ amd)) {
-            debug("BOCHS_CPU: neither AMD or Intel detect, returned false");
+        if (!(intel || amd)) {
+            debug("BOCHS_CPU: neither AMD or Intel detected, returned false");
             return false;
         }
 
@@ -8575,6 +8618,551 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
 
 
+    /**
+     * @brief Check for presence of QEMU in the /sys/devices/virtual/dmi/id directory
+     * @category Linux
+     */
+    [[nodiscard]] static bool qemu_virtual_dmi() try {
+#if (!LINUX)
+        return false;
+#else
+        const char* sys_vendor = "/sys/devices/virtual/dmi/id/sys_vendor";
+        const char* modalias = "/sys/devices/virtual/dmi/id/modalias";
+
+        if (
+            util::exists(sys_vendor) &&
+            util::exists(modalias)
+        ) {
+            const std::string sys_vendor_str = util::read_file(sys_vendor);
+            const std::string modalias_str = util::read_file(modalias);
+
+            return (
+                util::find(sys_vendor_str, "QEMU") &&
+                util::find(modalias_str, "QEMU")
+            );
+        }
+
+        return false;
+#endif
+    } catch (...) {
+        debug("QEMU_VIRTUAL_DMI: caught error, returned false");
+        return false;
+    }
+
+
+    /**
+     * @brief Check for presence of QEMU in the /sys/kernel/debug/usb/devices directory
+     * @category Linux
+     */
+    [[nodiscard]] static bool qemu_USB() try {
+#if (!LINUX)
+        return false;
+#else
+        if (!util::is_admin()) {
+            return false;
+        }
+
+        const char* usb_path = "/sys/kernel/debug/usb/devices";
+
+        if (util::exists(usb_path)) {
+            const std::string usb_path_str = util::read_file(usb_path);
+            return (util::find(usb_path_str, "QEMU"));
+        }
+
+        return false;
+#endif
+    } catch (...) {
+        debug("QEMU_USB: caught error, returned false");
+        return false;
+    }
+
+
+    /**
+     * @brief Check for presence of any files in /sys/hypervisor directory
+     * @category Linux
+     */
+    [[nodiscard]] static bool hypervisor_dir() try {
+#if (!LINUX)
+        return false;
+#else
+        DIR* dir = opendir("/sys/hypervisor");
+
+        if (dir == nullptr) {
+            return false;
+        }
+
+        struct dirent* entry;
+        int count = 0;
+
+        while ((entry = readdir(dir)) != nullptr) {
+            if (
+                (entry->d_name[0] == '.' && entry->d_name[1] == '\0') || 
+                (entry->d_name[1] == '.' && entry->d_name[2] == '\0')
+            ) {
+                continue;
+            }
+
+            count++;
+            break;
+        }
+
+        closedir(dir);
+
+        bool type = false;
+
+        if (util::exists("/sys/hypervisor/type")) {
+            type = true;
+        }
+
+        if (type) {
+            const std::string content = util::read_file("/sys/hypervisor/type");
+            if (util::find(content, "xen")) {
+                return core::add(XEN);
+            }
+        }
+
+        // check if there's a few files in that directory
+        return ((count != 0) && type);
+#endif
+    } catch (...) {
+        debug("HYPERVISOR_DIR: caught error, returned false");
+        return false;
+    }
+
+
+    /**
+     * @brief Check for the "UML" string in the CPU brand
+     * @note idea from https://github.com/ShellCode33/VM-Detection/blob/master/vmdetect/linux.go
+     * @category Linux
+     */
+    [[nodiscard]] static bool uml_cpu() try {
+#if (!LINUX)
+        return false;
+#else
+        // method 1, get the CPU brand model
+        const std::string brand = cpu::get_brand();
+
+        if (brand == "UML") {
+            return core::add(UML);
+        }
+
+        // method 2, match for the "User Mode Linux" string in /proc/cpuinfo
+        const char* file = "/proc/cpuinfo";
+
+        if (util::exists(file)) {
+            const std::string file_content = util::read_file(file);
+
+            if (util::find(file_content, "User Mode Linux")) {
+                return core::add(UML);
+            }
+        }
+
+        return false;
+#endif
+    } catch (...) {
+        debug("UML_CPU: caught error, returned false");
+        return false;
+    }
+
+
+    /**
+     * @brief Check for the "UML" string in the CPU brand
+     * @note idea from https://github.com/ShellCode33/VM-Detection/blob/master/vmdetect/linux.go
+     * @category Linux
+     */
+    [[nodiscard]] static bool kmsg() try {
+#if (!LINUX)
+        return false;
+#else
+        if (!util::is_admin()) {
+            return false;
+        }
+
+        // Open /dev/kmsg
+        int fd = open("/dev/kmsg", O_RDONLY | O_NONBLOCK);
+        if (fd < 0) {
+            debug("KMSG: Failed to open /dev/kmsg");
+            return 1;
+        }
+
+        char buffer[1024];
+        std::stringstream ss;
+
+        while (true) {
+            ssize_t bytes_read = read(fd, buffer, sizeof(buffer) - 1);
+
+            if (bytes_read > 0) {
+                buffer[bytes_read] = '\0';
+                ss << buffer;
+            } else if (bytes_read == 0) {
+                usleep(100000); // Sleep for 100 milliseconds
+            } else {
+                if (errno == EAGAIN) {
+                    usleep(100000); // Sleep for 100 milliseconds
+                } else {
+                    debug("KMSG: Error reading /dev/kmsg");
+                    break;
+                }
+            }
+
+            if (bytes_read < 0) {
+                break;
+            }
+        }
+
+        close(fd);
+
+        const std::string content = ss.str();
+
+        if (content.empty()) {
+            return false;
+        }
+
+        return (util::find(content, "Hypervisor detected"));
+#endif
+    } catch (...) {
+        debug("KMSG: caught error, returned false");
+        return false;
+    }
+
+
+    /**
+     * @brief Check for a Xen VM process
+     * @note idea from https://github.com/ShellCode33/VM-Detection/blob/master/vmdetect/linux.go
+     * @category Linux
+     */
+    [[nodiscard]] static bool vm_procs() try {
+#if (!LINUX)
+        return false;
+#else
+        if (util::exists("/proc/xen")) {
+            return core::add(XEN);
+        }
+
+        if (util::exists("/proc/vz")) {
+            return core::add(OPENVZ);
+        }
+
+        return false;
+#endif
+    } catch (...) {
+        debug("VM_PROCS: caught error, returned false");
+        return false;
+    }
+
+
+    /**
+     * @brief Check for a VBox kernel module
+     * @note idea from https://github.com/ShellCode33/VM-Detection/blob/master/vmdetect/linux.go
+     * @category Linux
+     */
+    [[nodiscard]] static bool vbox_module() try {
+#if (!LINUX)
+        return false;
+#else
+        const char* file = "/proc/modules";
+
+        if (!util::exists(file)) {
+            return false;
+        }
+
+        const std::string content = util::read_file(file);
+
+        if (util::find(content, "vboxguest")) {
+            return core::add(VBOX);
+        }
+
+        return false;
+#endif
+    } catch (...) {
+        debug("VBOX_MODULE: caught error, returned false");
+        return false;
+    }
+
+
+    /**
+     * @brief Check for potential VM info in /proc/sysinfo
+     * @note idea from https://github.com/ShellCode33/VM-Detection/blob/master/vmdetect/linux.go
+     * @category Linux
+     */
+    [[nodiscard]] static bool sysinfo_proc() try {
+#if (!LINUX)
+        return false;
+#else
+        const char* file = "/proc/sysinfo";
+
+        if (!util::exists(file)) {
+            return false;
+        }
+
+        const std::string content = util::read_file(file);
+
+        if (util::find(content, "VM00")) {
+            return true;
+        }
+
+        return false;
+#endif
+    } catch (...) {
+        debug("SYSINFO_PROC: caught error, returned false");
+        return false;
+    }
+
+
+    /**
+     * @brief Check for specific files in /proc/device-tree directory
+     * @note idea from https://github.com/ShellCode33/VM-Detection/blob/master/vmdetect/linux.go
+     * @category Linux
+     */
+    [[nodiscard]] static bool device_tree() try {
+#if (!LINUX)
+        return false;
+#else
+        if (util::exists("/proc/device-tree/fw-cfg")) {
+            return core::add(QEMU);
+        }
+
+        return (util::exists("/proc/device-tree/hypervisor/compatible"));
+#endif
+    } catch (...) {
+        debug("DEVICE_TREE: caught error, returned false");
+        return false;
+    }
+
+
+    /**
+     * @brief Check for string matches of VM brands in the linux DMI
+     * @category Linux
+     */
+    [[nodiscard]] static bool dmi_scan() try {
+#if (!LINUX)
+        return false;
+#else
+        /*
+        cat: /sys/class/dmi/id/board_serial: Permission denied
+        cat: /sys/class/dmi/id/chassis_serial: Permission denied
+        cat: /sys/class/dmi/id/product_serial: Permission denied
+        cat: /sys/class/dmi/id/product_uuid: Permission denied
+        */
+
+        constexpr std::array<const char*, 7> dmi_array {
+            "/sys/class/dmi/id/bios_vendor",
+            "/sys/class/dmi/id/board_name",
+            "/sys/class/dmi/id/board_vendor",
+            "/sys/class/dmi/id/chassis_asset_tag",
+            "/sys/class/dmi/id/product_family",
+            "/sys/class/dmi/id/product_sku",
+            "/sys/class/dmi/id/sys_vendor"
+        };
+
+        constexpr std::array<std::pair<const char*, const char*>, 15> vm_table {{
+            { "kvm", KVM },
+            { "openstack", OPENSTACK },
+            { "kubevirt", KUBEVIRT },
+            { "amazon ec2", AWS_NITRO },
+            { "qemu", QEMU },
+            { "vmware", VMWARE },
+            { "innotek gmbh", VBOX },
+            { "virtualbox", VBOX },
+            { "oracle corporation", VBOX },
+            //{ "xen", XEN },
+            { "bochs", BOCHS },
+            { "parallels", PARALLELS },
+            { "bhyve", BHYVE },
+            { "hyper-v", HYPERV },
+            { "apple virtualization", APPLE_VZ },
+            { "google compute engine", GCE }
+        }};
+
+        auto to_lower = [](std::string &str) {
+            for (auto& c : str) {
+                if (c == ' ') {
+                    continue;
+                }
+
+                c = static_cast<char>(tolower(c));
+            }
+        };
+
+        for (const auto &vm_string : vm_table) {
+            for (const auto file : dmi_array) {
+                if (!util::exists(file)) {
+                    continue;
+                }
+
+                std::string content = util::read_file(file);
+
+                to_lower(content);
+
+                if (std::regex_search(content, std::regex(vm_string.first))) {
+                    debug("DMI_SCAN: content = ", content);
+                    if (std::strcmp(vm_string.second, AWS_NITRO) == 0) {
+                        if (smbios_vm_bit()) {
+                            return core::add(AWS_NITRO);
+                        }
+                    } else {
+                        return core::add(vm_string.second);
+                    }
+                }
+            }
+        }
+
+        return false;
+#endif
+    } catch (...) {
+        debug("DMI_SCAN: caught error, returned false");
+        return false;
+    }
+
+
+    /**
+     * @brief Check for the VM bit in the SMBIOS data
+     * @note idea from https://github.com/systemd/systemd/blob/main/src/basic/virt.c
+     * @category Linux
+     */
+    [[nodiscard]] static bool smbios_vm_bit() try {
+#if (!LINUX)
+        return false;
+#else
+        if (!util::is_admin()) {
+            return false;
+        }
+
+        const char* file = "/sys/firmware/dmi/entries/0-0/raw";
+
+        if (!util::exists(file)) {
+            return false;
+        }
+
+        const std::vector<u8> content = util::read_file_binary(file);
+
+        #if (__VMAWARE_DEBUG__)
+            debug("SMBIOS_VM_BIT: ");
+            const u8 limit = 3;
+            u8 increment = 1;
+    
+            for (const auto c : content) {
+                const char character = static_cast<char>(c);
+
+                bool is_null_char = false;
+
+                if ((character < 32) || (character == 127) || (character == 0)) {
+                    if (character < 0) {
+                        is_null_char = false;
+                    } else {
+                        is_null_char = true;
+                    }
+                }
+
+                std::cout << '\'' << character << (is_null_char ? " " : "") << "\' = " << (int)character;
+
+                u8 spacing = 0;
+
+                if (character >= 0) {
+                    if (character < 10) {
+                        spacing = 5;
+                    } else if (character < 100) {
+                        spacing = 4;
+                    } else {
+                        spacing = 3;
+                    }
+                } else {
+                    if (character > -10) {
+                        spacing = 4;
+                    } else if (character > -100) {
+                        spacing = 3;
+                    } else {
+                        spacing = 2;
+                    }
+                }
+
+                if (increment % limit == 0) {
+                    std::cout << "\n";
+                } else {
+                    for (u8 x = 0; x < spacing; x++) {
+                        std::cout << ' ';
+                    }
+                }
+
+                increment++;
+            }
+        #endif
+
+        if (content.size() < 20 || content.at(1) < 20) {
+            return false;
+        }
+
+        return (content.at(19) & (1 << 4));
+#endif
+    } catch (...) {
+        debug("SMBIOS_VM_BIT: caught error, returned false");
+        return false;
+    }
+
+
+    /**
+     * @brief Check for podman file in /run/
+     * @note idea from https://github.com/systemd/systemd/blob/main/src/basic/virt.c
+     * @category Linux
+     */
+    [[nodiscard]] static bool podman_file() try {
+#if (!LINUX)
+        return false;
+#else
+        if (util::exists("/run/.containerenv")) {
+            return core::add(PODMAN);
+        }
+
+        return false;
+#endif
+    } catch (...) {
+        debug("PODMAN_FILE: caught error, returned false");
+        return false;
+    }
+
+
+    /**
+     * @brief Check for WSL or microsoft indications in /proc/ subdirectories
+     * @note idea from https://github.com/systemd/systemd/blob/main/src/basic/virt.c
+     * @category Linux
+     */
+    [[nodiscard]] static bool wsl_proc_subdir() try {
+#if (!LINUX)
+        return false;
+#else
+        const char* osrelease = "/proc/sys/kernel/osrelease";
+        const char* version = "/proc/version";
+
+        if (
+            util::exists(osrelease) &&
+            util::exists(version)
+        ) {
+            const std::string osrelease_content = util::read_file(osrelease);
+            const std::string version_content = util::read_file(version);
+
+            if (
+                (util::find(osrelease_content, "WSL") || util::find(osrelease_content, "Microsoft")) &&
+                (util::find(version, "WSL") || util::find(version, "Microsoft"))
+            ) {
+                return core::add(WSL);
+            }
+        }
+
+        return false;
+#endif
+    } catch (...) {
+        debug("WSL_PROC: caught error, returned false");
+        return false;
+    }
+
+
+
+
+
+
+
+
+
 
     // https://medium.com/@matterpreter/hypervisor-detection-with-systemhypervisordetailinformation-26e44a57f80e
 
@@ -8583,9 +9171,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /*
     EAX=21h: Reserved for TDX enumerationWhen Intel TDX (Trust Domain Extensions) is active, attempts to execute the CPUID instruction by a TD (Trust Domain) guest will be intercepted by the TDX module. This module will, when CPUID is invoked with EAX=21h and ECX=0 (leaf 21h, sub-leaf 0), return the index of the highest supported sub-leaf for leaf 21h in EAX and a TDX module vendor ID string as a 12-byte ASCII string in EBX,EDX,ECX (in that order). Intel's own module implementation returns the vendor ID string "IntelTDX    " (with four trailing spaces)[102] - for this module, additional feature information is not available through CPUID and must instead be obtained through the TDX-specific TDCALL instruction.
     */
-
-
-    // https://learn.microsoft.com/en-us/virtualization/hyper-v-on-windows/tlfs/feature-discovery
 
 
     // https://github.com/systemd/systemd/blob/main/src/basic/virt.c
@@ -8604,36 +9189,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
 
-
-
     // https://github.com/torvalds/linux/blob/31cc088a4f5d83481c6f5041bd6eb06115b974af/arch/x86/kernel/cpu/vmware.c
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -8760,13 +9316,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
                 // check if it's disabled
                 if (core::is_disabled(flags, technique_macro)) {
-                    //debug("disabled: ", util::flag_to_string(technique_macro));
                     continue;
                 }
 
                 // check if it's spoofable, and whether it's enabled
                 if (tuple.spoofable && core::is_disabled(flags, SPOOFABLE)) {
-                    //debug("spoofable: ", util::flag_to_string(technique_macro));
                     continue;
                 }
 
@@ -8777,8 +9331,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     if (data.result) {
                         points += data.points;
                     }
-
-                    //debug("added from cache: ", util::flag_to_string(technique_macro));
 
                     continue;
                 }
@@ -8798,13 +9350,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                  * there's no point in running the rest of the techniques
                  */
                 if (shortcut && points >= threshold_points) {
-                    //core_debug("VM::run_all(): returned points early due to shortcut option");
                     return points;
                 }
 
                 // store the current technique result to the cache
                 if (memo_enabled) {
-                    //debug("cached: ", util::flag_to_string(technique_macro));
                     memo::cache_store(technique_macro, result, tuple.points);
                 }
             }
@@ -9183,13 +9733,13 @@ public: // START OF PUBLIC FUNCTIONS
 
         if ((brands.count(TMP_HYPERV) > brands.count(TMP_VPC))) {
             brands.erase(TMP_VPC);
+        } else if (brands.count(TMP_HYPERV) < brands.count(TMP_VPC)) {
+            brands.erase(TMP_HYPERV);
         } else if (
             (brands.count(TMP_HYPERV) == brands.count(TMP_VPC)) &&
             ((brands.count(TMP_HYPERV) > 0) && (brands.count(TMP_VPC) > 0))
         ) {
-            brands.erase(TMP_HYPERV);
-            brands.erase(TMP_VPC);
-            brands.emplace(std::make_pair(TMP_HYPERV_VPC, 2));
+            merger(TMP_VPC, TMP_HYPERV, TMP_HYPERV_VPC);
         }
 
         merger(TMP_HYPERV,     TMP_HYPERV_ARTIFACT, TMP_HYPERV_ARTIFACT);
@@ -9204,13 +9754,13 @@ public: // START OF PUBLIC FUNCTIONS
         merger(TMP_NANOVISOR, TMP_VPC,        TMP_NANOVISOR);
         merger(TMP_NANOVISOR, TMP_HYPERV_VPC, TMP_NANOVISOR);
         
-        merger(TMP_QEMU,      TMP_KVM,         TMP_QEMU_KVM);
-        merger(TMP_KVM,       TMP_HYPERV,      TMP_KVM_HYPERV);
-        merger(TMP_QEMU,      TMP_HYPERV,      TMP_QEMU_KVM_HYPERV);
-        merger(TMP_QEMU_KVM,  TMP_HYPERV,      TMP_QEMU_KVM_HYPERV);
-        merger(TMP_KVM,       TMP_KVM_HYPERV,  TMP_KVM_HYPERV);
-        merger(TMP_QEMU,      TMP_KVM_HYPERV,  TMP_QEMU_KVM_HYPERV);
-        merger(TMP_QEMU_KVM,  TMP_KVM_HYPERV,  TMP_QEMU_KVM_HYPERV);
+        merger(TMP_QEMU,     TMP_KVM,        TMP_QEMU_KVM);
+        merger(TMP_KVM,      TMP_HYPERV,     TMP_KVM_HYPERV);
+        merger(TMP_QEMU,     TMP_HYPERV,     TMP_QEMU_KVM_HYPERV);
+        merger(TMP_QEMU_KVM, TMP_HYPERV,     TMP_QEMU_KVM_HYPERV);
+        merger(TMP_KVM,      TMP_KVM_HYPERV, TMP_KVM_HYPERV);
+        merger(TMP_QEMU,     TMP_KVM_HYPERV, TMP_QEMU_KVM_HYPERV);
+        merger(TMP_QEMU_KVM, TMP_KVM_HYPERV, TMP_QEMU_KVM_HYPERV);
 
         triple_merger(TMP_QEMU, TMP_KVM, TMP_KVM_HYPERV, TMP_QEMU_KVM_HYPERV);
 
@@ -9294,7 +9844,7 @@ public: // START OF PUBLIC FUNCTIONS
         if (core::is_enabled(flags, HIGH_THRESHOLD)) {
             result = (points >= high_threshold_score);
         } else {
-            result = (points >= 100);
+            result = (points >= 150);
         }
 
         return result;
@@ -9517,7 +10067,16 @@ std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard{
     { VM::AZURE_HYPERV, 0 },
     { VM::NANOVISOR, 0 },
     { VM::SIMPLEVISOR, 0 },
-    { VM::HYPERV_ARTIFACT, 0 }
+    { VM::HYPERV_ARTIFACT, 0 },
+    { VM::UML, 0 },
+    { VM::POWERVM, 0 },
+    { VM::GCE, 0 },
+    { VM::OPENSTACK, 0 },
+    { VM::KUBEVIRT, 0 },
+    { VM::AWS_NITRO, 0 },
+    { VM::PODMAN, 0 },
+    { VM::WSL, 0 },
+    { VM::OPENVZ, 0 }
 };
 
 
@@ -9620,7 +10179,7 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::SYSTEMD, { 70, VM::systemd_virt, false } },
     { VM::CVENDOR, { 65, VM::chassis_vendor, false } },
     { VM::CTYPE, { 10, VM::chassis_type, false } },
-    { VM::DOCKERENV, { 80, VM::dockerenv, true } },
+    { VM::DOCKERENV, { 15, VM::dockerenv, true } },
     { VM::DMIDECODE, { 55, VM::dmidecode, false } },
     { VM::DMESG, { 55, VM::dmesg, false } },
     { VM::HWMON, { 75, VM::hwmon, true } },
@@ -9651,7 +10210,7 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::MOUSE_DEVICE, { 20, VM::mouse_device, true } },            // GPL
     { VM::VM_PROCESSES, { 30, VM::vm_processes, true } },
     { VM::LINUX_USER_HOST, { 25, VM::linux_user_host, true } },
-    { VM::GAMARUE, { 40, VM::gamarue, false } },
+    { VM::GAMARUE, { 40, VM::gamarue, true } },
     { VM::VMID_0X4, { 90, VM::vmid_0x4, false } },
     { VM::PARALLELS_VM, { 50, VM::parallels, false } },
     { VM::RDTSC_VMEXIT, { 15, VM::rdtsc_vmexit, false } },
@@ -9709,5 +10268,18 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::KVM_BITMASK, { 40, VM::kvm_bitmask, false } },
     { VM::KGT_SIGNATURE, { 80, VM::intel_kgt_signature, false } },
     { VM::VMWARE_DMI, { 30, VM::vmware_dmi, false } },
-    { VM::EVENT_LOGS, { 30, VM::hyperv_event_logs, true } }
+    { VM::EVENT_LOGS, { 30, VM::hyperv_event_logs, true } },
+    { VM::QEMU_VIRTUAL_DMI, { 40, VM::qemu_virtual_dmi, false } },
+    { VM::QEMU_USB, { 20, VM::qemu_USB, false } },
+    { VM::HYPERVISOR_DIR, { 20, VM::hypervisor_dir, false } },
+    { VM::UML_CPU, { 80, VM::uml_cpu, false } },
+    { VM::KMSG, { 10, VM::kmsg, true } },
+    { VM::VM_PROCS, { 20, VM::vm_procs, true } },
+    { VM::VBOX_MODULE, { 15, VM::vbox_module, false } },
+    { VM::SYSINFO_PROC, { 15, VM::sysinfo_proc, false } },
+    { VM::DEVICE_TREE, { 20, VM::device_tree, false } },
+    { VM::DMI_SCAN, { 50, VM::dmi_scan, false } },
+    { VM::SMBIOS_VM_BIT, { 50, VM::smbios_vm_bit, false } },
+    { VM::PODMAN_FILE, { 15, VM::podman_file, true } },
+    { VM::WSL_PROC, { 30, VM::wsl_proc_subdir, false } }
 };
