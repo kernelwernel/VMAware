@@ -247,6 +247,13 @@ SimpleVisor
 Hyper-V artifact (not an actual VM)
 User-mode Linux
 IBM PowerVM
+Google Compute Engine (KVM)
+OpenStack (KVM)
+KubeVirt (KVM)
+AWS Nitro System (KVM-based)
+Podman
+WSL
+OpenVZ
 )";
 
     std::exit(0);
@@ -274,6 +281,11 @@ std::string type(const std::string &brand_str) {
         { "Intel HAXM", "Hypervisor (type 1)" },
         { "Intel KGT (Trusty)", "Hypervisor (type 1)" },
         { "SimpleVisor", "Hypervisor (type 1)" },
+        { "Google Compute Engine (KVM)", "Hypervisor (type 1)" },
+        { "OpenStack (KVM)", "Hypervisor (type 1)" },
+        { "KubeVirt (KVM)", "Hypervisor (type 1)" },
+        { "IBM PowerVM", "Hypervisor (type 1)" },
+        { "AWS Nitro System EC2 (KVM-based)", "Hypervisor (type 1)" },
 
         // type 2
         { "VirtualBox", "Hypervisor (type 2)" },
@@ -307,11 +319,15 @@ std::string type(const std::string &brand_str) {
         { "Jailhouse", "Partitioning Hypervisor" },
         { "Unisys s-Par", "Partitioning Hypervisor" },
         { "Docker", "Container" },
+        { "Podman", "Container" },
+        { "OpenVZ", "Container" },
         { "Microsoft Virtual PC/Hyper-V", "Hypervisor (either type 1 or 2)" },
         { "Lockheed Martin LMHS", "Hypervisor (unknown type)" },
         { "Wine", "Compatibility layer" },
         { "Apple VZ", "Unknown" },
-        { "Hyper-V artifact (not an actual VM)", "No VM" }
+        { "Hyper-V artifact (not an actual VM)", "No VM" },
+        { "User-mode Linux", "Paravirtualised" },
+        { "WSL", "Hybrid Hyper-V (type 1 and 2)" }, // debatable tbh
     };
 
     auto it = type_table.find(brand_str);
@@ -365,7 +381,8 @@ bool is_spoofable(const VM::enum_flags flag) {
         case VM::BLUESTACKS_FOLDERS: 
         case VM::EVENT_LOGS: 
         case VM::KMSG: 
-        case VM::XEN_PROC: return true;
+        case VM::VM_PROCS: 
+        case VM::PODMAN_FILE: return true;
         default: return false;
     }
 }
@@ -564,7 +581,7 @@ void general() {
     checker(VM::HYPERVISOR_DIR, "Hypervisor directory (Linux)");
     checker(VM::UML_CPU, "User-mode Linux CPU");
     checker(VM::KMSG, "/dev/kmsg hypervisor message");
-    checker(VM::XEN_PROC, "/proc/xen");
+    checker(VM::VM_PROCS, "various VM files in /proc");
     checker(VM::VBOX_MODULE, "VBox kernel module");
     checker(VM::SYSINFO_PROC, "/proc/sysinfo");
     checker(VM::DEVICE_TREE, "/proc/device-tree");

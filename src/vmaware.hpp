@@ -417,7 +417,7 @@ public:
         HYPERVISOR_DIR,
         UML_CPU,
         KMSG,
-        XEN_PROC,
+        VM_PROCS,
         VBOX_MODULE,
         SYSINFO_PROC,
         DEVICE_TREE,
@@ -547,9 +547,10 @@ private:
     static constexpr const char* GCE = "Google Compute Engine (KVM)";
     static constexpr const char* OPENSTACK = "OpenStack (KVM)";
     static constexpr const char* KUBEVIRT = "KubeVirt (KVM)";
-    static constexpr const char* AWS_NITRO = "AWS Nitro System (KVM-based)";
+    static constexpr const char* AWS_NITRO = "AWS Nitro System EC2 (KVM-based)";
     static constexpr const char* PODMAN = "Podman";
     static constexpr const char* WSL = "WSL";
+    static constexpr const char* OPENVZ = "OpenVZ";
 
     static flagset global_flags; // for certain techniques where the flags MUST be accessible
 
@@ -648,12 +649,13 @@ private:
 
         // check Intel
         [[nodiscard]] static bool is_intel() {
-            constexpr u32 intel_ecx = 0x6c65746e;
+            constexpr u32 intel_ecx1 = 0x6c65746e; // "ntel"
+            constexpr u32 intel_ecx2 = 0x6c65746f; // "otel", this is because some Intel CPUs have a rare manufacturer string of "GenuineIotel"
 
             u32 unused, ecx = 0;
             cpuid(unused, unused, ecx, unused, 0);
 
-            return (ecx == intel_ecx);
+            return ((ecx == intel_ecx1) || (ecx == intel_ecx2));
         }
 
         // check for POSSIBILITY of hyperthreading, I don't think there's a 
@@ -8829,7 +8831,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @note idea from https://github.com/ShellCode33/VM-Detection/blob/master/vmdetect/linux.go
      * @category Linux
      */
-    [[nodiscard]] static bool xen_proc() try {
+    [[nodiscard]] static bool vm_procs() try {
 #if (!LINUX)
         return false;
 #else
@@ -8837,10 +8839,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return core::add(XEN);
         }
 
+        if (util::exists("/proc/vz")) {
+            return core::add(OPENVZ);
+        }
+
         return false;
 #endif
     } catch (...) {
-        debug("XEN_PROC: caught error, returned false");
+        debug("VM_PROCS: caught error, returned false");
         return false;
     }
 
@@ -8990,7 +8996,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
                 if (std::regex_search(content, std::regex(vm_string.first))) {
                     debug("DMI_SCAN: content = ", content);
-                    return core::add(vm_string.second);
+                    if (std::strcmp(vm_string.second, AWS_NITRO) == 0) {
+                        if (smbios_vm_bit()) {
+                            return core::add(AWS_NITRO);
+                        }
+                    } else {
+                        return core::add(vm_string.second);
+                    }
                 }
             }
         }
@@ -10063,7 +10075,8 @@ std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard{
     { VM::KUBEVIRT, 0 },
     { VM::AWS_NITRO, 0 },
     { VM::PODMAN, 0 },
-    { VM::WSL, 0 }
+    { VM::WSL, 0 },
+    { VM::OPENVZ, 0 }
 };
 
 
@@ -10261,7 +10274,7 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::HYPERVISOR_DIR, { 20, VM::hypervisor_dir, false } },
     { VM::UML_CPU, { 80, VM::uml_cpu, false } },
     { VM::KMSG, { 10, VM::kmsg, true } },
-    { VM::XEN_PROC, { 20, VM::xen_proc, true } },
+    { VM::VM_PROCS, { 20, VM::vm_procs, true } },
     { VM::VBOX_MODULE, { 15, VM::vbox_module, false } },
     { VM::SYSINFO_PROC, { 15, VM::sysinfo_proc, false } },
     { VM::DEVICE_TREE, { 20, VM::device_tree, false } },
