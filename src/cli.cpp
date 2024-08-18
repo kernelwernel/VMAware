@@ -43,7 +43,7 @@
 
 #include "vmaware.hpp"
 
-constexpr const char* ver = "1.7.1";
+constexpr const char* ver = "1.8";
 constexpr const char* date = "August 2024";
 
 constexpr const char* bold = "\033[1m";
