@@ -10105,11 +10105,13 @@ VM::flagset VM::DEFAULT = []() -> flagset {
     // set all bits to 1
     tmp.set();
 
-    // disable all the non-default flags
-    tmp.flip(NO_MEMO);
+    // disable all non-default techniques
     tmp.flip(CURSOR);
     tmp.flip(RDTSC);
     tmp.flip(RDTSC_VMEXIT);
+
+    // disable all the non-technique flags
+    tmp.flip(NO_MEMO);
     tmp.flip(HIGH_THRESHOLD);
     tmp.flip(ENABLE_HYPERV_HOST_REPLACEMENT);
     tmp.flip(SPOOFABLE);
@@ -10119,10 +10121,20 @@ VM::flagset VM::DEFAULT = []() -> flagset {
 }();
 
 
-// flag to enable every technique, basically VM::DEFAULT but with VM::CURSOR technique
+// flag to enable every technique
 VM::flagset VM::ALL = []() -> flagset {
-    flagset tmp = DEFAULT;
-    tmp.set(CURSOR);
+    flagset tmp;
+
+    // set all bits to 1
+    tmp.set();
+
+    // disable all the non-technique flags
+    tmp.flip(NO_MEMO);
+    tmp.flip(HIGH_THRESHOLD);
+    tmp.flip(ENABLE_HYPERV_HOST_REPLACEMENT);
+    tmp.flip(SPOOFABLE);
+    tmp.flip(MULTIPLE);
+
     return tmp;
 }();
 
