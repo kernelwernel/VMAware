@@ -209,6 +209,7 @@ This will essentially return the VM brand as a `std::string`. The exact possible
 - `AWS Nitro System (KVM-based)`
 - `Podman`
 - `WSL`
+- `OpenVZ`
 
 If none were detected, it will return `Unknown`. It's often NOT going to produce a satisfying result due to technical difficulties with accomplishing this, on top of being highly dependent on what mechanisms detected a VM. This is especially true for VMware sub-versions (ESX, GSX, Fusion, etc...) Don't rely on this function for critical operations as if it's your golden bullet. It's arguably unreliable and it'll most likely return `Unknown` (assuming it is actually running under a VM).
 
@@ -434,6 +435,20 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::KVM_BITMASK` | Check for KVM CPUID bitmask range for reserved values |  | 40% |  |  |  |  |
 | `VM::KGT_SIGNATURE` | Check for Intel KGT (Trusty branch) hypervisor signature in CPUID |  | 80% |  |  |  |  |
 | `VM::VMWARE_DMI` | Check for VMware DMI strings in BIOS serial number | Windows | 30% |  |  |  |  |
+| `VM::EVENT_LOGS` | Check for presence of Hyper-V in the Windows Event Logs | Windows | 30% |  |  |  |  |
+| `VM::QEMU_VIRTUAL_DMI` | Check for presence of QEMU in the /sys/devices/virtual/dmi/id directory | Linux | 40% |  |  |  |  |
+| `VM::QEMU_USB` | Check for presence of QEMU in the /sys/kernel/debug/usb/devices directory | Linux | 20% |  |  |  |  |
+| `VM::HYPERVISOR_DIR` | Check for presence of any files in /sys/hypervisor directory | Linux | 20% |  |  |  |  |
+| `VM::UML_CPU` | Check for the "UML" string in the CPU brand | Linux | 80% |  |  |  |  |
+| `VM::KMSG` | Check for the "UML" string in the CPU brand | Linux | 10% |  |  |  |  |
+| `VM::VM_PROCS` | Check for a Xen VM process | Linux | 20% |  |  |  |  |
+| `VM::VBOX_MODULE` | Check for a VBox kernel module | Linux | 15% |  |  |  |  |
+| `VM::SYSINFO_PROC` | Check for potential VM info in /proc/sysinfo | Linux | 15% |  |  |  |  |
+| `VM::DEVICE_TREE` | Check for specific files in /proc/device-tree directory | Linux | 20% |  |  |  |  |
+| `VM::DMI_SCAN` | Check for string matches of VM brands in the linux DMI | Linux | 50% |  |  |  |  |
+| `VM::SMBIOS_VM_BIT` | Check for the VM bit in the SMBIOS data | Linux | 50% |  |  |  |  |
+| `VM::PODMAN_FILE` | Check for podman file in /run/ | Linux | 15% |  |  |  |  |
+| `VM::WSL_PROC` | Check for WSL or microsoft indications in /proc/ subdirectories | Linux | 30% |  |  |  |  |
 
 
 <br>
