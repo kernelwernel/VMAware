@@ -520,7 +520,7 @@ private:
     static constexpr const char* SANDBOXIE = "Sandboxie";
     static constexpr const char* DOCKER = "Docker";
     static constexpr const char* WINE = "Wine";
-    static constexpr const char* VAPPLE = "Virtual Apple";
+    static constexpr const char* APPLE_ROSETTA = "Apple Rosetta 2";
     static constexpr const char* VPC = "Virtual PC";
     static constexpr const char* ANUBIS = "Anubis";
     static constexpr const char* JOEBOX = "JoeBox";
@@ -936,7 +936,7 @@ private:
                 if (brand_str == xen) { return core::add(XEN); }
                 if (brand_str == acrn) { return core::add(ACRN); }
                 if (brand_str == qnx) { return core::add(QNX); }
-                if (brand_str == virtapple) { return core::add(VAPPLE); }
+                if (brand_str == virtapple) { return core::add(APPLE_ROSETTA); }
                 if (brand_str == nvmm) { return core::add(NVMM); }
                 if (brand_str == openbsd_vmm) { return core::add(BSD_VMM); }
                 if (brand_str == intel_haxm) { return core::add(INTEL_HAXM); }
@@ -984,7 +984,7 @@ private:
                 }
 
                 if (util::find(brand_str, applevz_sample)) {
-                    return core::add(APPLE);
+                    return core::add(APPLE_VZ);
                 }
             }
 
@@ -10046,7 +10046,7 @@ std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard{
     { VM::SANDBOXIE, 0 },
     { VM::DOCKER, 0 },
     { VM::WINE, 0 },
-    { VM::VAPPLE, 0 },
+    { VM::APPLE_ROSETTA, 0 },
     { VM::VPC, 0 },
     { VM::ANUBIS, 0 },
     { VM::JOEBOX, 0 },
@@ -10093,9 +10093,8 @@ bool VM::memo::hyperv::is_stored = false;
 VM::u16 VM::total_points = 0;
 #endif
 
-// not even sure how to explain honestly, just pretend this doesn't exist idfk
+// not even sure how to explain honestly, just pretend these don't exist idfk
 VM::flagset VM::core::flag_collector;
-
 VM::flagset VM::global_flags;
 
 // default flags 

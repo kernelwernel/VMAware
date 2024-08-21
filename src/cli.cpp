@@ -219,7 +219,7 @@ Hybrid Analysis
 Sandboxie
 Docker
 Wine
-Virtual Apple
+Apple Rosetta 2
 Anubis
 JoeBox
 ThreatExpert
@@ -291,7 +291,6 @@ std::string type(const std::string &brand_str) {
         { "VMware Fusion", "Hypervisor (type 2)" },
         { "Parallels", "Hypervisor (type 2)" },
         { "Virtual PC", "Hypervisor (type 2)" },
-        { "Virtual Apple", "Hypervisor (type 2)" },
         { "NetBSD NVMM", "Hypervisor (type 2)" },
         { "OpenBSD VMM", "Hypervisor (type 2)" },
         { "User-mode Linux", "Hypervisor (type 2)" },
@@ -323,6 +322,7 @@ std::string type(const std::string &brand_str) {
         { "Hyper-V artifact (not an actual VM)", "No VM" },
         { "User-mode Linux", "Paravirtualised" },
         { "WSL", "Hybrid Hyper-V (type 1 and 2)" }, // debatable tbh
+        { "Apple Rosetta 2", "Binary Translation Layer/Emulator" }
     };
 
     auto it = type_table.find(brand_str);

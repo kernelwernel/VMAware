@@ -12,14 +12,13 @@
 **VMAware** (VM + Aware) is a cross-platform C++ library for virtual machine detection.
 
 The library is:
-- Very easy to use, with only 5 functions in its public interface
+- Very easy to use
 - Cross-platform (Windows + MacOS + Linux)
 - Compatible with x86 and ARM, with backwards compatibility for 32-bit systems
 - Features up to 100+ unique VM detection techniques [[list](https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#flag-table)]
-- Able to detect 40+ VM brands including VMware, VirtualBox, QEMU, Hyper-V, Parallels, and [much more](https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmbrand)
+- Able to detect 40+ VM brands including VMware, VirtualBox, QEMU, Hyper-V, and much more [[list](https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmbrand)]
 - Very flexible, with total fine-grained control over which techniques get executed
-- Able to detect various semi-VM technologies like hypervisors, emulators, containers, and Wine
-- Able to guess the VM brand
+- Able to detect various semi-VM technologies like hypervisors, emulators, containers, and so on
 - Available with C++11 and above
 - Header-only
 - Memoized, meaning past results are cached and retrieved if ran again for performance benefits 
