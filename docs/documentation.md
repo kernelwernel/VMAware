@@ -56,11 +56,10 @@ int main() {
 
 
     /**
-     * All checks are performed including the cursor check, 
-     * which waits 5 seconds for any human mouse interaction 
-     * to detect automated virtual environments. This is the 
-     * only technique that's disabled by default but if you're 
-     * fine with having a 5 second delay, add VM::ALL 
+     * All checks are performed including SPOOFABLE techniques
+     * and the cursor check, which waits 5 seconds for any human
+     * mouse interaction to detect automated virtual environments.
+     * If you're fine with having a 5 second delay, add VM::ALL 
      */ 
     bool is_vm5 = VM::detect(VM::ALL);
 
@@ -456,7 +455,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 # Non-technique flags
 | Flag | Description |
 |------|-------------|
-| `VM::ALL` | This will enable all the technique flags, including the cursor check that's disabled by default. |
+| `VM::ALL` | This will enable all the technique flags, including spoofable techniques and cursor check that are disabled by default. |
 | `VM::NO_MEMO` | This will disable memoization, meaning the result will not be fetched through a previous computation of the `VM::detect()` function. Use this if you're only using a single function from the `VM` struct for a performance boost. |
 | `VM::DEFAULT` | This represents a range of flags which are enabled if no default argument is provided. |
 | `VM::MULTIPLE` | This is specific to `VM::brand()`. This will basically return a `std::string` message of what brands could be involved. For example, it could return "`VMware or VirtualBox`" instead of having a single brand string output. This has no effect if applied to any other functions than `VM::brand()`. |   
