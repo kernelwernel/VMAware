@@ -156,6 +156,7 @@ And if you found this project useful, a star would be appreciated :)
 - [iMonket](https://github.com/PrimeMonket)
 - Eric Parker's discord community 
 - [ShellCode33](https://github.com/ShellCode33)
+- [Georgii Gennadev (D00Movenok)](https://github.com/D00Movenok)
 
 <br>
 

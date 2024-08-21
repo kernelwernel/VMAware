@@ -15,6 +15,7 @@
  *      - Marek Knápek (https://github.com/MarekKnapek)
  *      - Vladyslav Miachkov (https://github.com/fameowner99)
  *      - Alan Tse (https://github.com/alandtse)
+ *      - Georgii Gennadev (https://github.com/D00Movenok)
  *  - Repository: https://github.com/kernelwernel/VMAware
  *  - Docs: https://github.com/kernelwernel/VMAware/docs/documentation.md
  *  - Full credits: https://github.com/kernelwernel/VMAware#credits-and-contributors-%EF%B8%8F
@@ -1355,6 +1356,19 @@ private:
                 case KGT_SIGNATURE: return "VM::KGT_SIGNATURE";
                 case VMWARE_DMI: return "VM::VMWARE_DMI";
                 case EVENT_LOGS: return "VM::EVENT_LOGS";
+                case QEMU_VIRTUAL_DMI: return "QEMU_VIRTUAL_DMI";
+                case QEMU_USB: return "QEMU_USB";
+                case HYPERVISOR_DIR: return "HYPERVISOR_DIR";
+                case UML_CPU: return "UML_CPU";
+                case KMSG: return "KMSG";
+                case VM_PROCS: return "VM_PROCS";
+                case VBOX_MODULE: return "VBOX_MODULE";
+                case SYSINFO_PROC: return "SYSINFO_PROC";
+                case DEVICE_TREE: return "DEVICE_TREE";
+                case DMI_SCAN: return "DMI_SCAN";
+                case SMBIOS_VM_BIT: return "SMBIOS_VM_BIT";
+                case PODMAN_FILE: return "PODMAN_FILE";
+                case WSL_PROC: return "WSL_PROC";
                 default: return "Unknown flag";
             }
         }
@@ -4386,18 +4400,18 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         std::unique_ptr<util::sys_info> info = util::make_unique<util::sys_info>();
 
 #ifdef __VMAWARE_DEBUG__
-        std::cout << std::left << ::std::setw(14) << "Manufacturer: " << info->get_manufacturer() << '\n'
-            << std::left << ::std::setw(14) << "Product Name: " << info->get_productname() << '\n'
-            << std::left << ::std::setw(14) << "Serial No: " << info->get_serialnumber() << '\n'
-            << std::left << ::std::setw(14) << "UUID: " << info->get_uuid() << '\n'
-            << std::left << ::std::setw(14) << "Version: " << info->get_version() << std::endl;
+        debug("Manufacturer: ", info->get_manufacturer());
+        debug("Product Name: ", info->get_productname());
+        debug("Serial No: ", info->get_serialnumber());
+        debug("UUID: ", info->get_uuid());
+        debug("Version: ", info->get_version());
 
         if (!info->get_family().empty()) {
-            std::cout << std::left << ::std::setw(14) << "Product family: " << info->get_family() << std::endl;
+            debug("Product family: ", info->get_family());
         }
 
         if (!info->get_sku().empty()) {
-            std::cout << std::left << ::std::setw(14) << "SKU/Configuration: " << info->get_sku() << std::endl;
+            debug("SKU/Configuration: ", info->get_sku());
         }
 #endif
 
@@ -9036,61 +9050,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         const std::vector<u8> content = util::read_file_binary(file);
 
-        #if (__VMAWARE_DEBUG__)
-            debug("SMBIOS_VM_BIT: ");
-            const u8 limit = 3;
-            u8 increment = 1;
-    
-            for (const auto c : content) {
-                const char character = static_cast<char>(c);
-
-                bool is_null_char = false;
-
-                if ((character < 32) || (character == 127) || (character == 0)) {
-                    if (character < 0) {
-                        is_null_char = false;
-                    } else {
-                        is_null_char = true;
-                    }
-                }
-
-                std::cout << '\'' << character << (is_null_char ? " " : "") << "\' = " << (int)character;
-
-                u8 spacing = 0;
-
-                if (character >= 0) {
-                    if (character < 10) {
-                        spacing = 5;
-                    } else if (character < 100) {
-                        spacing = 4;
-                    } else {
-                        spacing = 3;
-                    }
-                } else {
-                    if (character > -10) {
-                        spacing = 4;
-                    } else if (character > -100) {
-                        spacing = 3;
-                    } else {
-                        spacing = 2;
-                    }
-                }
-
-                if (increment % limit == 0) {
-                    std::cout << "\n";
-                } else {
-                    for (u8 x = 0; x < spacing; x++) {
-                        std::cout << ' ';
-                    }
-                }
-
-                increment++;
-            }
-        #endif
-
         if (content.size() < 20 || content.at(1) < 20) {
+            debug("SMBIOS_VM_BIT: ", "only read ", content.size(), " bytes, expected 20");
             return false;
         }
+
+        debug("SMBIOS_VM_BIT: ", "content.at(19)=", static_cast<int>(content.at(19)));
 
         return (content.at(19) & (1 << 4));
 #endif
@@ -10105,11 +10070,13 @@ VM::flagset VM::DEFAULT = []() -> flagset {
     // set all bits to 1
     tmp.set();
 
-    // disable all the non-default flags
-    tmp.flip(NO_MEMO);
+    // disable all non-default techniques
     tmp.flip(CURSOR);
     tmp.flip(RDTSC);
     tmp.flip(RDTSC_VMEXIT);
+
+    // disable all the non-technique flags
+    tmp.flip(NO_MEMO);
     tmp.flip(HIGH_THRESHOLD);
     tmp.flip(ENABLE_HYPERV_HOST_REPLACEMENT);
     tmp.flip(SPOOFABLE);
@@ -10119,10 +10086,20 @@ VM::flagset VM::DEFAULT = []() -> flagset {
 }();
 
 
-// flag to enable every technique, basically VM::DEFAULT but with VM::CURSOR technique
+// flag to enable every technique
 VM::flagset VM::ALL = []() -> flagset {
-    flagset tmp = DEFAULT;
-    tmp.set(CURSOR);
+    flagset tmp;
+
+    // set all bits to 1
+    tmp.set();
+
+    // disable all the non-technique flags
+    tmp.flip(NO_MEMO);
+    tmp.flip(HIGH_THRESHOLD);
+    tmp.flip(ENABLE_HYPERV_HOST_REPLACEMENT);
+    tmp.flip(SPOOFABLE);
+    tmp.flip(MULTIPLE);
+
     return tmp;
 }();
 
