@@ -10092,11 +10092,11 @@ VM::flagset VM::ALL = []() -> flagset {
     // set all bits to 1
     tmp.set();
 
-    // disable all the non-technique flags
+    // disable all the non-technique flags (except SPOOFABLE)
     tmp.flip(NO_MEMO);
     tmp.flip(HIGH_THRESHOLD);
     tmp.flip(ENABLE_HYPERV_HOST_REPLACEMENT);
-    tmp.flip(SPOOFABLE);
+    // tmp.flip(SPOOFABLE);
     tmp.flip(MULTIPLE);
 
     return tmp;
