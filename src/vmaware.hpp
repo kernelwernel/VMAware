@@ -1355,6 +1355,19 @@ private:
                 case KGT_SIGNATURE: return "VM::KGT_SIGNATURE";
                 case VMWARE_DMI: return "VM::VMWARE_DMI";
                 case EVENT_LOGS: return "VM::EVENT_LOGS";
+                case QEMU_VIRTUAL_DMI: return "QEMU_VIRTUAL_DMI";
+                case QEMU_USB: return "QEMU_USB";
+                case HYPERVISOR_DIR: return "HYPERVISOR_DIR";
+                case UML_CPU: return "UML_CPU";
+                case KMSG: return "KMSG";
+                case VM_PROCS: return "VM_PROCS";
+                case VBOX_MODULE: return "VBOX_MODULE";
+                case SYSINFO_PROC: return "SYSINFO_PROC";
+                case DEVICE_TREE: return "DEVICE_TREE";
+                case DMI_SCAN: return "DMI_SCAN";
+                case SMBIOS_VM_BIT: return "SMBIOS_VM_BIT";
+                case PODMAN_FILE: return "PODMAN_FILE";
+                case WSL_PROC: return "WSL_PROC";
                 default: return "Unknown flag";
             }
         }
