@@ -8935,7 +8935,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        debug("SMBIOS_VM_BIT: ", "content.at(19)=", static_cast<int>(content.at(19)));
+        debug("SMBIOS_VM_BIT: ", "content.at(19) = ", static_cast<int>(content.at(19)));
 
         return (content.at(19) & (1 << 4));
 #endif
