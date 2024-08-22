@@ -439,7 +439,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::QEMU_USB` | Check for presence of QEMU in the /sys/kernel/debug/usb/devices directory | Linux | 20% |  |  |  |  |
 | `VM::HYPERVISOR_DIR` | Check for presence of any files in /sys/hypervisor directory | Linux | 20% |  |  |  |  |
 | `VM::UML_CPU` | Check for the "UML" string in the CPU brand | Linux | 80% |  |  |  |  |
-| `VM::KMSG` | Check for the "UML" string in the CPU brand | Linux | 10% |  |  |  |  |
+| `VM::KMSG` | Check for any indications of hypervisors in the kernel message logs | Linux | 10% |  |  |  |  |
 | `VM::VM_PROCS` | Check for a Xen VM process | Linux | 20% |  |  |  |  |
 | `VM::VBOX_MODULE` | Check for a VBox kernel module | Linux | 15% |  |  |  |  |
 | `VM::SYSINFO_PROC` | Check for potential VM info in /proc/sysinfo | Linux | 15% |  |  |  |  |

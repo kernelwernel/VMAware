@@ -107,6 +107,12 @@ You can view the full docs [here](docs/documentation.md). All the details such a
 - Why another VM detection project?
 > There's already loads of projects that have the same goal such as [InviZzzible](https://github.com/CheckPointSW/InviZzzible), [pafish](https://github.com/a0rtega/pafish) and [Al-Khaser](https://github.com/LordNoteworthy/al-khaser). But the difference between the aforementioned projects is that they don't provide a programmable interface to interact with the detection mechanisms, on top of having little to no support for non-Windows systems. I wanted the core detection techniques to be accessible programmatically in a cross-platform way for everybody to get something useful out of it rather than providing just a CLI tool like those projects.
 
+- How can the library distinguish between Hyper-V artifacts and an actual Hyper-V VM in the system?
+> Hyper-V has an obscure feature where if it's enabled in the host system, the CPU hardware values makes it look like the whole system is running inside Hyper-V, which isn't true. This makes it a challenge to determine whether the hardware values the library is collecting is either a real Hyper-V VM, or just the artifacts of what Hyper-V has left as a consequence of having it enabled in the host system. The reason why this is a problem is because the library might falsely conclude that your the host system is running in Hyper-V, which is a false positive. This is where the **Hyper-X** mechanism comes into play to distinguish between these two. This was designed by [Requiem](https://github.com/NotRequiem)
+> <p align="center">
+> <img src="assets/Hyper-X.png" align="center" title="Hyper-X">
+> <br>
+
 - Is it possible to spoof the result?
 > Yes. There are some techniques that are trivially spoofable, and there's nothing the library can do about it whether it's a deliberate false positive or even a false negative. This is a problem that every VM detection project is facing, which is why the library is trying to test every technique possible to get the best result based on the environment it's running under. 
 

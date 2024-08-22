@@ -8660,7 +8660,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check for the "UML" string in the CPU brand
+     * @brief Check for any indications of hypervisors in the kernel message logs
      * @note idea from https://github.com/ShellCode33/VM-Detection/blob/master/vmdetect/linux.go
      * @category Linux
      */
@@ -9790,6 +9790,7 @@ public: // START OF PUBLIC FUNCTIONS
 
         return flags;
     }
+
 
     /**
      * @brief This will convert the technique flag into a string, which will correspond to the technique name
