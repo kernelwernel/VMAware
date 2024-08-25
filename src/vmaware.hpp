@@ -430,7 +430,6 @@ public:
         // start of non-technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
         NO_MEMO,
         HIGH_THRESHOLD,
-        ENABLE_HYPERV_HOST [[deprecated("This mechanism is done by default as of 1.8 release")]],
         NULL_ARG, // does nothing, just a placeholder flag mainly for the CLI
         SPOOFABLE,
         MULTIPLE
@@ -452,7 +451,6 @@ private:
     static constexpr u8 technique_end = NO_MEMO;
     static constexpr u8 non_technique_begin = NO_MEMO;
     static constexpr u8 non_technique_end = enum_end;
-    static constexpr u8 ENABLE_HYPERV_HOST_REPLACEMENT = HIGH_THRESHOLD + 1;
 
 public:
     static constexpr u8 technique_count = NO_MEMO; // get total number of techniques
@@ -640,7 +638,7 @@ private:
 
         // check AMD
         [[nodiscard]] static bool is_amd() {
-            constexpr u32 amd_ecx = 0x69746e65;
+            constexpr u32 amd_ecx = 0x444d4163; // "cAMD"
 
             u32 unused, ecx = 0;
             cpuid(unused, unused, ecx, unused, 0);
@@ -4419,6 +4417,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             // technique 3: Check for absence of AMD easter egg for K7 and K8 CPUs
+            // note: QEMU may also have this but i'm not sure
             u32 unused, eax = 0;
             cpu::cpuid(eax, unused, unused, unused, 1);
 
@@ -9033,6 +9032,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     */
 
 
+// https://unprotect.it/technique/retrieve-hdd-information/
+
 
     // https://github.com/torvalds/linux/blob/31cc088a4f5d83481c6f5041bd6eb06115b974af/arch/x86/kernel/cpu/vmware.c
 
@@ -9138,7 +9139,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 flags.test(HIGH_THRESHOLD) ||
                 flags.test(SPOOFABLE) ||
                 flags.test(NULL_ARG) ||
-                flags.test(ENABLE_HYPERV_HOST_REPLACEMENT) ||
                 flags.test(MULTIPLE)
             ) {
                 flags |= DEFAULT;
@@ -9417,7 +9417,6 @@ public: // START OF PUBLIC FUNCTIONS
         if (
             (flag_bit == NO_MEMO) ||
             (flag_bit == HIGH_THRESHOLD) ||
-            (flag_bit == ENABLE_HYPERV_HOST_REPLACEMENT) ||
             (flag_bit == SPOOFABLE) ||
             (flag_bit == MULTIPLE)
         ) {
@@ -9785,7 +9784,6 @@ public: // START OF PUBLIC FUNCTIONS
         flags.set(NO_MEMO, 0);
         flags.set(HIGH_THRESHOLD, 0);
         flags.set(SPOOFABLE, 0);
-        flags.set(ENABLE_HYPERV_HOST_REPLACEMENT, 0);
         flags.set(MULTIPLE, 0);
 
         return flags;
@@ -10083,7 +10081,6 @@ VM::flagset VM::DEFAULT = []() -> flagset {
     // disable all the non-technique flags
     tmp.flip(NO_MEMO);
     tmp.flip(HIGH_THRESHOLD);
-    tmp.flip(ENABLE_HYPERV_HOST_REPLACEMENT);
     tmp.flip(SPOOFABLE);
     tmp.flip(MULTIPLE);
 
@@ -10101,8 +10098,6 @@ VM::flagset VM::ALL = []() -> flagset {
     // disable all the non-technique flags (except SPOOFABLE)
     tmp.flip(NO_MEMO);
     tmp.flip(HIGH_THRESHOLD);
-    tmp.flip(ENABLE_HYPERV_HOST_REPLACEMENT);
-    // tmp.flip(SPOOFABLE);
     tmp.flip(MULTIPLE);
 
     return tmp;
@@ -10178,15 +10173,15 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::DISK_SIZE, { 60, VM::disk_size, false } },
     { VM::VBOX_DEFAULT, { 55, VM::vbox_default_specs, false } },
     { VM::VBOX_NETWORK, { 70, VM::vbox_network_share, false } },
-    { VM::WINE_CHECK, { 85, VM::wine, false } },                     // GPL
     { VM::COMPUTER_NAME, { 15, VM::computer_name_match, true } },    // GPL
+    { VM::WINE_CHECK, { 85, VM::wine, false } },                     // GPL
     { VM::HOSTNAME, { 25, VM::hostname_match, true } },              // GPL
     { VM::MEMORY, { 35, VM::low_memory_space, false } },             // GPL
     { VM::VBOX_WINDOW_CLASS, { 10, VM::vbox_window_class, false } }, // GPL
+    { VM::LOADED_DLLS, { 75, VM::loaded_dlls, true } },              // GPL
     { VM::KVM_REG, { 75, VM::kvm_registry, true } },                 // GPL
     { VM::KVM_DRIVERS, { 55, VM::kvm_drivers, true } },              // GPL
     { VM::KVM_DIRS, { 55, VM::kvm_directories, true } },             // GPL
-    { VM::LOADED_DLLS, { 75, VM::loaded_dlls, true } },              // GPL
     { VM::AUDIO, { 35, VM::check_audio, false } },                   // GPL
     { VM::QEMU_DIR, { 45, VM::qemu_dir, true } },                    // GPL
     { VM::MOUSE_DEVICE, { 20, VM::mouse_device, true } },            // GPL
