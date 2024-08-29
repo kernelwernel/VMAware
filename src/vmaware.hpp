@@ -341,10 +341,10 @@ public:
         VBOX_DEFAULT,
         VBOX_NETWORK,
         COMPUTER_NAME,     // GPL
-        WINE_CHECK,        // GPL
+        // WINE_CHECK,        // GPL
         HOSTNAME,          // GPL
         MEMORY,            // GPL
-        VBOX_WINDOW_CLASS, // GPL
+        // VBOX_WINDOW_CLASS, // GPL
         LOADED_DLLS,       // GPL
         KVM_REG,           // GPL
         KVM_DRIVERS,       // GPL
@@ -1036,12 +1036,16 @@ private:
             return vec;
         }
 
-        // basically checks whether all the techniques were cached (with exception of VM::CURSOR)
+        // basically checks whether all the techniques were cached (with exception of techniques disabled by default)
         static bool all_present() {
             if (cache_table.size() == technique_count) {
                 return true;
-            } else if (cache_table.size() == static_cast<std::size_t>(technique_count) - 1) {
-                return (!cache_keys.test(CURSOR));
+            } else if (cache_table.size() == static_cast<std::size_t>(technique_count) - 3) {
+                return (
+                    !cache_keys.test(CURSOR) &&
+                    !cache_keys.test(RDTSC_VMEXIT) &&
+                    !cache_keys.test(RDTSC)
+                );
             }
 
             return false;
@@ -3013,6 +3017,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Windows
      */
     [[nodiscard]] static bool cursor_check() try {
+        return true;
 #if (!MSVC)
         return false;
 #else
@@ -3631,6 +3636,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Windows
      * @copyright GPL-3.0
      */
+    /*
     [[nodiscard]] static bool wine() try {
 #if (!MSVC)
         return false;
@@ -3651,6 +3657,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         debug("WINE_CHECK: caught error, returned false");
         return false;
     }
+    */
 
 
     /**
@@ -3704,6 +3711,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @author Al-Khaser Project
      * @copyright GPL-3.0
      */
+    /*
     [[nodiscard]] static bool vbox_window_class() try {
 #if (!MSVC)
         return false;
@@ -3722,6 +3730,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         debug("VBOX_WINDOW_CLASS: caught error, returned false");
         return false;
     }
+    */
 
 
     /**
@@ -9826,10 +9835,10 @@ public: // START OF PUBLIC FUNCTIONS
             case VBOX_DEFAULT: return "VBOX_DEFAULT";
             case VBOX_NETWORK: return "VBOX_NETWORK";
             case COMPUTER_NAME: return "COMPUTER_NAME";
-            case WINE_CHECK: return "WINE_CHECK";
+            //case WINE_CHECK: return "WINE_CHECK";
             case HOSTNAME: return "HOSTNAME";
             case MEMORY: return "MEMORY";
-            case VBOX_WINDOW_CLASS: return "VBOX_WINDOW_CLASS";
+            //case VBOX_WINDOW_CLASS: return "VBOX_WINDOW_CLASS";
             case LOADED_DLLS: return "LOADED_DLLS";
             case KVM_REG: return "KVM_REG";
             case KVM_DRIVERS: return "KVM_DRIVERS";
@@ -10174,10 +10183,10 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::VBOX_DEFAULT, { 55, VM::vbox_default_specs, false } },
     { VM::VBOX_NETWORK, { 70, VM::vbox_network_share, false } },
     { VM::COMPUTER_NAME, { 15, VM::computer_name_match, true } },    // GPL
-    { VM::WINE_CHECK, { 85, VM::wine, false } },                     // GPL
+    //{ VM::WINE_CHECK, { 85, VM::wine, false } },                     // GPL
     { VM::HOSTNAME, { 25, VM::hostname_match, true } },              // GPL
     { VM::MEMORY, { 35, VM::low_memory_space, false } },             // GPL
-    { VM::VBOX_WINDOW_CLASS, { 10, VM::vbox_window_class, false } }, // GPL
+    //{ VM::VBOX_WINDOW_CLASS, { 10, VM::vbox_window_class, false } }, // GPL
     { VM::LOADED_DLLS, { 75, VM::loaded_dlls, true } },              // GPL
     { VM::KVM_REG, { 75, VM::kvm_registry, true } },                 // GPL
     { VM::KVM_DRIVERS, { 55, VM::kvm_drivers, true } },              // GPL

@@ -44,6 +44,7 @@
 - [ ] test the VM::modify_score() function
 - [ ] check if bios date in /sys/class/dmi/id/ could be useful under QEMU
 - [ ] make the cli demo in the readme for the 1.8 version
+- [ ] fix the percentage thing for the disabled techniques
 
 # Distant plans
 - add the library to conan.io when released
