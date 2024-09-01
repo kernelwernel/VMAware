@@ -341,10 +341,10 @@ public:
         VBOX_DEFAULT,
         VBOX_NETWORK,
         COMPUTER_NAME,     // GPL
-        // WINE_CHECK,        // GPL
+        WINE_CHECK,        // GPL
         HOSTNAME,          // GPL
         MEMORY,            // GPL
-        // VBOX_WINDOW_CLASS, // GPL
+        VBOX_WINDOW_CLASS, // GPL
         LOADED_DLLS,       // GPL
         KVM_REG,           // GPL
         KVM_DRIVERS,       // GPL
@@ -1679,20 +1679,25 @@ private:
                 return result;
             };
 
-            char out[sizeof(int32_t) * 4 + 1] = { 0 }; // e*x size + number of e*x registers + null terminator
-            cpu::cpuid((int*)out, cpu::leaf::hypervisor);
+//            char out[sizeof(int32_t) * 4 + 1] = { 0 }; // e*x size + number of e*x registers + null terminator
+//            cpu::cpuid((int*)out, cpu::leaf::hypervisor);
+//
+//            const u32 eax = static_cast<u32>(out[0]);
+//
+//            core_debug("HYPER_X: eax = ", eax);
 
-            const u32 eax = static_cast<u32>(out[0]);
+            const std::array<std::string, 2> cpu = cpu::cpu_manufacturer(cpu::leaf::hypervisor);
 
-            core_debug("HYPER_X: eax = ", eax);
-
-            if (eax == 12) {
+            if (
+                (cpu.at(0) == "Microsoft Hv") ||
+                (cpu.at(1) == "Microsoft Hv")
+            ) {
                 // SMBIOS check
-                const std::string p = SMBIOS_string();
+                const std::string smbios = SMBIOS_string();
 
                 core_debug("HYPER_X: SMBIOS string = ", p);
 
-                if (p == "VIRTUAL MACHINE") {
+                if (smbios == "VIRTUAL MACHINE") {
                     return add(false);
                 }
 
@@ -1711,9 +1716,9 @@ private:
                 std::wstring logName = L"Microsoft-Windows-Kernel-PnP/Configuration";
                 std::vector<std::wstring> searchStrings = { L"Virtual_Machine", L"VMBUS" };
         
-                const bool found = util::query_event_logs(logName, searchStrings);
+                const bool event_log = util::query_event_logs(logName, searchStrings);
 
-                if (found) {
+                if (event_log) {
                     return add(false);
                 }
 
@@ -1721,9 +1726,9 @@ private:
                 // at this point, it's fair to assume it's Hyper-V artifacts on 
                 // host since none of the "VM-only" techniques returned true
                 return add(true);
-            } else if (eax == 11) {
+            //} else if () {
                 // actual Hyper-V VM, might do something within this scope in the future idk
-                return add(false);
+                //return add(false);
             } else {
                 return add(false);
             }
@@ -3636,7 +3641,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Windows
      * @copyright GPL-3.0
      */
-    /*
     [[nodiscard]] static bool wine() try {
 #if (!MSVC)
         return false;
@@ -3657,7 +3661,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         debug("WINE_CHECK: caught error, returned false");
         return false;
     }
-    */
 
 
     /**
@@ -3711,7 +3714,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @author Al-Khaser Project
      * @copyright GPL-3.0
      */
-    /*
     [[nodiscard]] static bool vbox_window_class() try {
 #if (!MSVC)
         return false;
@@ -3730,7 +3732,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         debug("VBOX_WINDOW_CLASS: caught error, returned false");
         return false;
     }
-    */
 
 
     /**
@@ -5454,7 +5455,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @note code documentation paper in /papers/www.offensivecomputing.net_vm.pdf
      */
     [[nodiscard]] static bool offsec_sgdt() try {
-#if (!MSVC || !x86)
+#if (!MSVC || !x86 || GCC)
         return false;
 #elif (x86_32)
         unsigned char m[6]{};
@@ -9835,10 +9836,10 @@ public: // START OF PUBLIC FUNCTIONS
             case VBOX_DEFAULT: return "VBOX_DEFAULT";
             case VBOX_NETWORK: return "VBOX_NETWORK";
             case COMPUTER_NAME: return "COMPUTER_NAME";
-            //case WINE_CHECK: return "WINE_CHECK";
+            case WINE_CHECK: return "WINE_CHECK";
             case HOSTNAME: return "HOSTNAME";
             case MEMORY: return "MEMORY";
-            //case VBOX_WINDOW_CLASS: return "VBOX_WINDOW_CLASS";
+            case VBOX_WINDOW_CLASS: return "VBOX_WINDOW_CLASS";
             case LOADED_DLLS: return "LOADED_DLLS";
             case KVM_REG: return "KVM_REG";
             case KVM_DRIVERS: return "KVM_DRIVERS";
@@ -10183,10 +10184,10 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::VBOX_DEFAULT, { 55, VM::vbox_default_specs, false } },
     { VM::VBOX_NETWORK, { 70, VM::vbox_network_share, false } },
     { VM::COMPUTER_NAME, { 15, VM::computer_name_match, true } },    // GPL
-    //{ VM::WINE_CHECK, { 85, VM::wine, false } },                     // GPL
+    { VM::WINE_CHECK, { 85, VM::wine, false } },                     // GPL
     { VM::HOSTNAME, { 25, VM::hostname_match, true } },              // GPL
     { VM::MEMORY, { 35, VM::low_memory_space, false } },             // GPL
-    //{ VM::VBOX_WINDOW_CLASS, { 10, VM::vbox_window_class, false } }, // GPL
+    { VM::VBOX_WINDOW_CLASS, { 10, VM::vbox_window_class, false } }, // GPL
     { VM::LOADED_DLLS, { 75, VM::loaded_dlls, true } },              // GPL
     { VM::KVM_REG, { 75, VM::kvm_registry, true } },                 // GPL
     { VM::KVM_DRIVERS, { 55, VM::kvm_drivers, true } },              // GPL
