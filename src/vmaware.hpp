@@ -49,8 +49,6 @@
  * }
  */
 
-#define __VMAWARE_DEBUG__ 1
-
 #if (defined(_MSC_VER) || defined(_WIN32) || defined(_WIN64) || defined(__MINGW32__))
 #define MSVC 1
 #define LINUX 0
@@ -4430,14 +4428,31 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             // technique 3: Check for absence of AMD easter egg for K7 and K8 CPUs
-            // note: QEMU may also have this but i'm not sure
+            /*
             u32 unused, eax = 0;
             cpu::cpuid(eax, unused, unused, unused, 1);
 
             constexpr u8 AMD_K7 = 6;
             constexpr u8 AMD_K8 = 15;
 
-            const u32 family = ((eax >> 8) & 0xF);
+            auto is_k7 = [](const u32 eax) -> bool {
+                const u32 family = (eax >> 8) & 0xF;
+                const u32 model = (eax >> 4) & 0xF;
+                const u32 extended_family = (eax >> 20) & 0xFF;
+                const u32 extended_model = (eax >> 16) & 0xF;
+
+                if (family == 6 && extended_family == 0) {
+                    if (model == 1 || model == 2 || model == 3 || model == 4) {
+                        return true;
+                    }
+                }
+
+                return false;
+            };
+
+            auto is_k8 = [](const u32 eax) -> bool {
+                // TODO
+            };
 
             if (family != AMD_K7 && family != AMD_K8) {
                 return false;
@@ -4450,6 +4465,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 debug("BOCHS_CPU: technique 3 found");
                 return core::add(BOCHS);
             }
+            */
         }
 
         return false;
