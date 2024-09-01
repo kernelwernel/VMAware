@@ -1695,7 +1695,7 @@ private:
                 // SMBIOS check
                 const std::string smbios = SMBIOS_string();
 
-                core_debug("HYPER_X: SMBIOS string = ", p);
+                core_debug("HYPER_X: SMBIOS string = ", smbios);
 
                 if (smbios == "VIRTUAL MACHINE") {
                     return add(false);
@@ -4418,11 +4418,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (intel) {
             // technique 1: not a valid brand 
             if (brand == "              Intel(R) Pentium(R) 4 CPU        ") {
+                debug("BOCHS_CPU: technique 1 found");
                 return core::add(BOCHS);
             }
         } else if (amd) {
             // technique 2: "processor" should have a capital P
             if (brand == "AMD Athlon(tm) processor") {
+                debug("BOCHS_CPU: technique 2 found");
                 return core::add(BOCHS);
             }
 
@@ -4444,6 +4446,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             cpu::cpuid(unused, unused, ecx_bochs, unused, cpu::leaf::amd_easter_egg);
 
             if (ecx_bochs == 0) {
+                debug("BOCHS_CPU: technique 3 found");
                 return core::add(BOCHS);
             }
         }
