@@ -1678,19 +1678,23 @@ private:
                 return result;
             };
 
-//            char out[sizeof(int32_t) * 4 + 1] = { 0 }; // e*x size + number of e*x registers + null terminator
-//            cpu::cpuid((int*)out, cpu::leaf::hypervisor);
-//
-//            const u32 eax = static_cast<u32>(out[0]);
-//
-//            core_debug("HYPER_X: eax = ", eax);
+            char out[sizeof(int32_t) * 4 + 1] = { 0 }; // e*x size + number of e*x registers + null terminator
+            cpu::cpuid((int*)out, cpu::leaf::hypervisor);
+
+            const u32 eax = static_cast<u32>(out[0]);
+
+            core_debug("HYPER_X: eax = ", eax);
+
+            const bool is_eax_valid = ((eax == 11) || (eax == 12));
 
             const std::array<std::string, 2> cpu = cpu::cpu_manufacturer(cpu::leaf::hypervisor);
 
-            if (
+            const bool is_cpu_hyperv = (
                 (cpu.at(0) == "Microsoft Hv") ||
                 (cpu.at(1) == "Microsoft Hv")
-            ) {
+            );
+    
+            if (is_eax_valid || is_cpu_hyperv) {
                 // SMBIOS check
                 const std::string smbios = SMBIOS_string();
 
