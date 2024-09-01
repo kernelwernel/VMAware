@@ -49,7 +49,6 @@
  * }
  */
 
-
 #if (defined(_MSC_VER) || defined(_WIN32) || defined(_WIN64) || defined(__MINGW32__))
 #define MSVC 1
 #define LINUX 0
@@ -1036,12 +1035,16 @@ private:
             return vec;
         }
 
-        // basically checks whether all the techniques were cached (with exception of VM::CURSOR)
+        // basically checks whether all the techniques were cached (with exception of techniques disabled by default)
         static bool all_present() {
             if (cache_table.size() == technique_count) {
                 return true;
-            } else if (cache_table.size() == static_cast<std::size_t>(technique_count) - 1) {
-                return (!cache_keys.test(CURSOR));
+            } else if (cache_table.size() == static_cast<std::size_t>(technique_count) - 3) {
+                return (
+                    !cache_keys.test(CURSOR) &&
+                    !cache_keys.test(RDTSC_VMEXIT) &&
+                    !cache_keys.test(RDTSC)
+                );
             }
 
             return false;
@@ -1682,13 +1685,22 @@ private:
 
             core_debug("HYPER_X: eax = ", eax);
 
-            if (eax == 12) {
+            const bool is_eax_valid = ((eax == 11) || (eax == 12));
+
+            const std::array<std::string, 2> cpu = cpu::cpu_manufacturer(cpu::leaf::hypervisor);
+
+            const bool is_cpu_hyperv = (
+                (cpu.at(0) == "Microsoft Hv") ||
+                (cpu.at(1) == "Microsoft Hv")
+            );
+    
+            if (is_eax_valid || is_cpu_hyperv) {
                 // SMBIOS check
-                const std::string p = SMBIOS_string();
+                const std::string smbios = SMBIOS_string();
 
-                core_debug("HYPER_X: SMBIOS string = ", p);
+                core_debug("HYPER_X: SMBIOS string = ", smbios);
 
-                if (p == "VIRTUAL MACHINE") {
+                if (smbios == "VIRTUAL MACHINE") {
                     return add(false);
                 }
 
@@ -1707,9 +1719,9 @@ private:
                 std::wstring logName = L"Microsoft-Windows-Kernel-PnP/Configuration";
                 std::vector<std::wstring> searchStrings = { L"Virtual_Machine", L"VMBUS" };
         
-                const bool found = util::query_event_logs(logName, searchStrings);
+                const bool event_log = util::query_event_logs(logName, searchStrings);
 
-                if (found) {
+                if (event_log) {
                     return add(false);
                 }
 
@@ -1717,9 +1729,9 @@ private:
                 // at this point, it's fair to assume it's Hyper-V artifacts on 
                 // host since none of the "VM-only" techniques returned true
                 return add(true);
-            } else if (eax == 11) {
+            //} else if () {
                 // actual Hyper-V VM, might do something within this scope in the future idk
-                return add(false);
+                //return add(false);
             } else {
                 return add(false);
             }
@@ -3013,6 +3025,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Windows
      */
     [[nodiscard]] static bool cursor_check() try {
+        return true;
 #if (!MSVC)
         return false;
 #else
@@ -4408,23 +4421,42 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (intel) {
             // technique 1: not a valid brand 
             if (brand == "              Intel(R) Pentium(R) 4 CPU        ") {
+                debug("BOCHS_CPU: technique 1 found");
                 return core::add(BOCHS);
             }
         } else if (amd) {
             // technique 2: "processor" should have a capital P
             if (brand == "AMD Athlon(tm) processor") {
+                debug("BOCHS_CPU: technique 2 found");
                 return core::add(BOCHS);
             }
 
             // technique 3: Check for absence of AMD easter egg for K7 and K8 CPUs
-            // note: QEMU may also have this but i'm not sure
+            /*
             u32 unused, eax = 0;
             cpu::cpuid(eax, unused, unused, unused, 1);
 
             constexpr u8 AMD_K7 = 6;
             constexpr u8 AMD_K8 = 15;
 
-            const u32 family = ((eax >> 8) & 0xF);
+            auto is_k7 = [](const u32 eax) -> bool {
+                const u32 family = (eax >> 8) & 0xF;
+                const u32 model = (eax >> 4) & 0xF;
+                const u32 extended_family = (eax >> 20) & 0xFF;
+                const u32 extended_model = (eax >> 16) & 0xF;
+
+                if (family == 6 && extended_family == 0) {
+                    if (model == 1 || model == 2 || model == 3 || model == 4) {
+                        return true;
+                    }
+                }
+
+                return false;
+            };
+
+            auto is_k8 = [](const u32 eax) -> bool {
+                // TODO
+            };
 
             if (family != AMD_K7 && family != AMD_K8) {
                 return false;
@@ -4434,8 +4466,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             cpu::cpuid(unused, unused, ecx_bochs, unused, cpu::leaf::amd_easter_egg);
 
             if (ecx_bochs == 0) {
+                debug("BOCHS_CPU: technique 3 found");
                 return core::add(BOCHS);
             }
+            */
         }
 
         return false;
@@ -5445,7 +5479,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @note code documentation paper in /papers/www.offensivecomputing.net_vm.pdf
      */
     [[nodiscard]] static bool offsec_sgdt() try {
-#if (!MSVC || !x86)
+#if (!MSVC || !x86 || GCC)
         return false;
 #elif (x86_32)
         unsigned char m[6]{};

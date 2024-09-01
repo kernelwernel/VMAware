@@ -48,7 +48,7 @@ constexpr const char* date = "August 2024";
 
 constexpr const char* bold = "\033[1m";
 constexpr const char* ansi_exit = "\x1B[0m";
-constexpr const char* red = "\x1B[38;2;239;75;75m";
+constexpr const char* red = "\x1B[38;2;239;75;75m"; 
 constexpr const char* orange = "\x1B[38;2;255;180;5m";
 constexpr const char* green = "\x1B[38;2;94;214;114m";
 constexpr const char* red_orange = "\x1B[38;2;247;127;40m";
@@ -58,6 +58,7 @@ constexpr const char* grey = "\x1B[38;2;108;108;108m";
 enum arg_enum : std::uint8_t {
     HELP,
     VERSION,
+    ALL,
     DETECT,
     STDOUT,
     BRAND,
@@ -66,7 +67,6 @@ enum arg_enum : std::uint8_t {
     CONCLUSION,
     NUMBER,
     TYPE,
-    HYPERV, // will be removed in the next release
     NOTES,
     SPOOFABLE,
     NULL_ARG
@@ -120,6 +120,7 @@ R"(Usage:
 Options:
  -h | --help        prints this help menu
  -v | --version     print cli version and other details
+ -a | --all         run the result with ALL the techniques enabled (might contain false positives)
  -d | --detect      returns the result as a boolean (1 = VM, 0 = baremetal)
  -s | --stdout      returns either 0 or 1 to STDOUT without any text output (0 = VM, 1 = baremetal)
  -b | --brand       returns the VM brand string (consult documentation for full output list)
@@ -335,6 +336,10 @@ std::string type(const std::string &brand_str) {
 }
 
 bool is_spoofable(const VM::enum_flags flag) {
+    if (arg_bitset.test(ALL)) {
+        return false;
+    }
+
     switch (flag) {
         case VM::MAC:
         case VM::DOCKERENV:
@@ -418,12 +423,28 @@ bool are_perms_required(const VM::enum_flags flag) {
 #endif
 }
 
+
+bool is_disabled(const VM::enum_flags flag) {
+    if (arg_bitset.test(ALL)) {
+        return false;
+    }
+
+    switch (flag) {
+        case VM::RDTSC:
+        case VM::RDTSC_VMEXIT:
+        case VM::CURSOR: return true;
+        default: return false;
+    }
+}
+
+
 void general() {
     const std::string detected = ("[  " + std::string(green) + "DETECTED" + std::string(ansi_exit) + "  ]");
     const std::string not_detected = ("[" + std::string(red) + "NOT DETECTED" + std::string(ansi_exit) + "]");
     const std::string spoofable = ("[" + std::string(red) + " SPOOFABLE " + std::string(ansi_exit) + "]");
     const std::string note = ("[    NOTE    ]");               
     const std::string no_perms = ("[" + std::string(grey) + "  NO PERMS  " + std::string(ansi_exit) + "]");
+    const std::string disabled = ("[" + std::string(grey) + "  DISABLED  " + std::string(ansi_exit) + "]");
     const std::string tip = (std::string(green) + "TIP: " + std::string(ansi_exit));
 
     auto checker = [&](const VM::enum_flags flag, const char* message) -> void {
@@ -440,6 +461,11 @@ void general() {
             return;
         }
 #endif
+
+        if (is_disabled(flag)) {
+            std::cout << disabled << " Skipped " << message << "\n";
+            return;
+        }
 
         if (VM::check(flag)) {
             std::cout << detected << " Checking " << message << "...\n";
@@ -493,7 +519,7 @@ void general() {
     checker(VM::DLL, "DLLs");
     checker(VM::REGISTRY, "registry");
     checker(VM::CWSANDBOX_VM, "Sunbelt CWSandbox directory");
-    checker(VM::WINE_CHECK, "Wine");
+    //checker(VM::WINE_CHECK, "Wine");
     checker(VM::VM_FILES, "VM files");
     checker(VM::HWMODEL, "hw.model");
     checker(VM::DISK_SIZE, "disk size");
@@ -504,7 +530,7 @@ void general() {
     checker(VM::MEMORY, "low memory space");
     checker(VM::VM_PROCESSES, "VM processes");
     checker(VM::LINUX_USER_HOST, "default Linux user/host");
-    checker(VM::VBOX_WINDOW_CLASS, "VBox window class");
+    //checker(VM::VBOX_WINDOW_CLASS, "VBox window class");
     checker(VM::GAMARUE, "gamarue ransomware technique");
     checker(VM::VMID_0X4, "0x4 leaf of VMID");
     checker(VM::PARALLELS_VM, "Parallels techniques");
@@ -695,9 +721,10 @@ int main(int argc, char* argv[]) {
         std::exit(0);
     } 
 
-    static constexpr std::array<std::pair<const char*, arg_enum>, 23> table {{
+    static constexpr std::array<std::pair<const char*, arg_enum>, 24> table {{
         { "-h", HELP },
         { "-v", VERSION },
+        { "-a", ALL },
         { "-d", DETECT },
         { "-s", STDOUT },
         { "-b", BRAND },
@@ -708,6 +735,7 @@ int main(int argc, char* argv[]) {
         { "-t", TYPE },
         { "--help", HELP },
         { "--version", VERSION },
+        { "--all", ALL },
         { "--detect", DETECT },
         { "--stdout", STDOUT },
         { "--brand", BRAND },
@@ -716,7 +744,6 @@ int main(int argc, char* argv[]) {
         { "--brand-list", BRAND_LIST },
         { "--number", NUMBER },
         { "--type", TYPE },
-        { "--disable-hyperv-host", HYPERV },
         { "--disable-notes", NOTES },
         { "--spoofable", SPOOFABLE }
     }};
@@ -782,14 +809,16 @@ int main(int argc, char* argv[]) {
         auto settings = [&]() -> std::bitset<max_bits> {
             std::bitset<max_bits> setting_bits;
 
-            if (arg_bitset.test(HYPERV)) {
-                std::cerr << "--disable-hyperv-host has been deprecated, the determination of whether it's a host Hyper-V or VM Hyper-V is now done automatically";
-                return 1;
-            }
-
             if (arg_bitset.test(SPOOFABLE)) {
                 setting_bits.set(VM::SPOOFABLE);
             }
+
+            if (arg_bitset.test(ALL)) {
+                setting_bits |= VM::ALL;
+                setting_bits.set(VM::SPOOFABLE);
+            }
+
+            setting_bits.set(NULL_ARG);
 
             return setting_bits;
         };
