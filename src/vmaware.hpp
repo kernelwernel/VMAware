@@ -114,6 +114,12 @@
 #error "VMAware only supports C++11 or above, set your compiler flag to '-std=c++20' for gcc/clang, or '/std:c++20' for MSVC"
 #endif
 
+#if (WINVER == 0x0501) // Windows XP, 0x0701 for Windows 7
+#define WIN_XP 1
+#else 
+#define WIN_XP 0
+#endif
+
 #if (defined(__x86_64__) || defined(__i386__) || defined(_M_IX86) || defined(_M_X64))
 #define x86 1
 #else
@@ -202,7 +208,6 @@
 #include <winternl.h>
 #include <winnetwk.h>
 #include <winuser.h>
-#include <versionhelpers.h>
 #include <psapi.h>
 #include <comdef.h>
 #include <Wbemidl.h>
@@ -215,6 +220,10 @@
 #include <winspool.h>
 #include <wtypes.h>
 #include <winevt.h>
+
+#if (!WIN_XP)
+#include <versionhelpers.h>
+#endif
 
 #pragma comment(lib, "wbemuuid.lib")
 #pragma comment(lib, "iphlpapi.lib")
@@ -1494,6 +1503,30 @@ private:
 
             return number; // in GB
 #elif (MSVC)
+    #if (WIN_XP)
+            auto IsWindowsVistaOrGreaterLambda = []() -> {
+                OSVERSIONINFOEX osvi;
+                DWORDLONG dwlConditionMask = 0;
+
+                // Initialize the OSVERSIONINFOEX structure.
+                ZeroMemory(&osvi, sizeof(OSVERSIONINFOEX));
+                osvi.dwOSVersionInfoSize = sizeof(OSVERSIONINFOEX);
+                osvi.dwMajorVersion = 6;  // Major version for Windows Vista
+                osvi.dwMinorVersion = 0;  // Minor version for Windows Vista
+
+                // Initialize the condition mask.
+                dwlConditionMask = VerSetConditionMask(dwlConditionMask, VER_MAJORVERSION, VER_GREATER_EQUAL);
+                dwlConditionMask = VerSetConditionMask(dwlConditionMask, VER_MINORVERSION, VER_GREATER_EQUAL);
+
+                // Perform the version check.
+                return VerifyVersionInfo(&osvi, VER_MAJORVERSION | VER_MINORVERSION, dwlConditionMask);
+            };
+
+            if (!IsWindowsVistaOrGreaterLambda()) {
+                return 0;
+            }
+    #endif
+
             if (!IsWindowsVistaOrGreater()) {
                 return 0;
             }
