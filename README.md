@@ -98,32 +98,75 @@ You can view the full docs [here](docs/documentation.md). All the details such a
 <br>
 
 ## Q&A ❓
-- How does it work?
-> It utilises a comprehensive list of low-level and high-level anti-VM techniques that gets accounted in a scoring system. The scores (0-100) for each technique are arbitrarily given, and every technique that has detected a VM will have their score added to a single accumulative point, where a threshold point number will decide whether it's actually running in a VM.
 
-- Who is this library for and what are the use cases?
+<details>
+<summary>How does it work?</summary>
+<br>
+It utilises a comprehensive list of low-level and high-level anti-VM techniques that gets accounted in a scoring system. The scores (0-100) for each technique are arbitrarily given, and every technique that has detected a VM will have their score added to a single accumulative point, where a threshold point number will decide whether it's actually running in a VM.
+</details>
+
+<details>
+<summary>Who is this library for and what are the use cases?</summary>
+<br>
+
+
+
+
 > It's designed for security researchers, VM engineers, gamer developers, and pretty much anybody who needs a practical and rock-solid VM detection mechanism in their project. For example, the library is suitable if you're making a VM and you're testing the effectiveness of concealing itself, if you're a game developer/proprietary software developer, the library is useful to thwart against reverse engineers. If you're a malware analyst and you want to check the concealment capability of your VM, this would be the perfect tool to benchmark how well-concealed your VM is against malware. Additionally, software could optimize performance or resource usage based on the detected environment, and some applications might want to restrict usage in VMs to prevent unauthorized distribution or testing.
 
-- Why another VM detection project?
-> There's already loads of projects that have the same goal such as [InviZzzible](https://github.com/CheckPointSW/InviZzzible), [pafish](https://github.com/a0rtega/pafish) and [Al-Khaser](https://github.com/LordNoteworthy/al-khaser). But the difference between the aforementioned projects is that they don't provide a programmable interface to interact with the detection mechanisms, on top of having little to no support for non-Windows systems. I wanted the core detection techniques to be accessible programmatically in a cross-platform way for everybody to get something useful out of it rather than providing just a CLI tool. It also contains a larger quantity of techniques, so it's basically just a VM detection library and tool on steroids with maximum flexibility.
 
-- How can the library distinguish between Hyper-V artifacts and an actual Hyper-V VM in the system?
-> Hyper-V has an obscure feature where if it's enabled in the host system, the CPU hardware values makes it look like the whole system is running inside Hyper-V, which isn't true. This makes it a challenge to determine whether the hardware values the library is collecting is either a real Hyper-V VM, or just the artifacts of what Hyper-V has left as a consequence of having it enabled in the host system. The reason why this is a problem is because the library might falsely conclude that your the host system is running in Hyper-V, which is a false positive. This is where the **Hyper-X** mechanism comes into play to distinguish between these two. This was designed by [Requiem](https://github.com/NotRequiem)
-> <p align="center">
-> <img src="assets/Hyper-X.png" align="center" title="Hyper-X">
-> <br>
 
-- Is it possible to spoof the result?
-> Yes. There are some techniques that are trivially spoofable, and there's nothing the library can do about it whether it's a deliberate false positive or even a false negative. This is a problem that every VM detection project is facing, which is why the library is trying to test every technique possible to get the best result based on the environment it's running under. 
+</details>
 
-- What about using this for malware?
-> This project is not soliciting the development of malware for obvious reasons. Even if you intend to use it for concealment purposes, it'll most likely be flagged by antiviruses anyway and nothing is obfuscated to begin with. Good fucking luck obfuscating 10k+ lines of C++ code lmao.
+<details>
+<summary>Why another VM detection project?</summary>
+<br>
+There's already loads of projects that have the same goal such as 
+<a href="https://github.com/CheckPointSW/InviZzzible">InviZzzible</a>, <a href="https://github.com/a0rtega/pafish">pafish</a> and <a href="https://github.com/LordNoteworthy/al-khaser">Al-Khaser</a>. But the difference between the aforementioned projects is that they don't provide a programmable interface to interact with the detection mechanisms, on top of having little to no support for non-Windows systems. I wanted the core detection techniques to be accessible programmatically in a cross-platform way for everybody to get something useful out of it rather than providing just a CLI tool. It also contains a larger quantity of techniques, so it's basically just a VM detection library and tool on steroids with maximum flexibility.
+</details>
 
-- Why GPL 3.0 and MIT? 
-> I would've made it strictly MIT so proprietary software can make use of the library, but some of the techniques employed are from GPL 3.0 projects, and I have no choice but to use the same license for legal reasons. This gave me an idea to make an MIT version without all of the GPL code so it can also be used without forcing your code to be open-source. It should be noted that the MIT version removes **12** techniques out of 114 (as of 1.8 version), and the lesser the number of mechanisms, the less accurate the overall result might be.
 
-- I have linker errors when compiling
-> If you're compiling with gcc or clang, add the `-lm` and `-lstdc++` flags, or use g++/clang++ compilers instead. If you're receiving linker errors from a brand new VM environment on Linux, update your system with `sudo apt/dnf/yum update -y` to install the necessary C++ components.
+<details>
+<summary>How does it compare to paid VM detection libraries? Wouldn't it make it inferior for having it open source?</summary>
+<br>
+There are a few paid software to protect the licensing of other software against against reverse engineers or software cracking, such as <a href="https://docs.sentinel.thalesgroup.com/home.htm">Thales' Sentinel RMS</a> and <a href="https://vmpsoft.com/">VMProtect</a>. Although these are not meant to ONLY be VM detection libraries, they are limited in their capabilities in different ways. Sentinel RMS' VM detection does not have as many VM brands (not to mention the pricing is only meant for corporations, not individuals), and VMProtect has a <a href="https://cyber.wtf/2023/02/09/defeating-vmprotects-latest-tricks/">very limited number of detection techniques</a>, where some of them don't require a lot of effort to bypass with only a few configurations to the VM (the detection mechanism has also been <a href="https://github.com/jmpoep/vmprotect-3.5.1/blob/d8fcb7c0ffd4fb45a8cfbd770c8b117d7dbe52b5/runtime/loader.cc#L2464">leaked</a>, so there's no benefit of having it closed source now). Speaking of which, the only downside to VMAware is that it's fully open source, which makes the job of bypassers easier compared to having it closed source. However, I'd argue that's a worthy tradeoff by having as many VM detection techniques in an open and interactive way, including having valuable community feedback to make the library more effective and accurate.
+</details>
+
+
+<details>
+<summary>How can the library distinguish between Hyper-V artifacts and an actual Hyper-V VM in the system?</summary>
+<br>
+Hyper-V has an obscure feature where if it's enabled in the host system, the CPU hardware values makes it look like the whole system is running inside Hyper-V, which isn't true. This makes it a challenge to determine whether the hardware values the library is collecting is either a real Hyper-V VM, or just the artifacts of what Hyper-V has left as a consequence of having it enabled in the host system. The reason why this is a problem is because the library might falsely conclude that your the host system is running in Hyper-V, which is a false positive. This is where the **Hyper-X** mechanism comes into play to distinguish between these two. This was designed by <a href="https://github.com/NotRequiem">Requiem</a>
+<p align="center">
+<img src="assets/Hyper-X.png" align="center" title="Hyper-X">
+<br>
+</details>
+
+
+<details>
+<summary>Is it possible to spoof the result?</summary>
+<br>
+Yes. There are some techniques that are trivially spoofable, and there's nothing the library can do about it whether it's a deliberate false positive or even a false negative. This is a problem that every VM detection project is facing, which is why the library is trying to test every technique possible to get the best result based on the environment it's running under. Remember, EVERYTHING is technically spoofable.
+</details>
+
+<details>
+<summary>What about using this for malware?</summary>
+<br>
+This project is not soliciting the development of malware for obvious reasons. Even if you intend to use it for concealment purposes, it'll most likely be flagged by antiviruses anyway and nothing is obfuscated to begin with. Good fucking luck obfuscating 10k+ lines of C++ code lmao.
+</details>
+
+<details>
+<summary>Why GPL 3.0 and MIT?</summary>
+<br>
+I would've made it strictly MIT so proprietary software can make use of the library, but some of the techniques employed are from GPL 3.0 projects, and I have no choice but to use the same license for legal reasons. This gave me an idea to make an MIT version without all of the GPL code so it can also be used without forcing your code to be open-source. It should be noted that the MIT version removes <b>12</b> techniques out of 114 (as of 1.8 version), and the lesser the number of mechanisms, the less accurate the overall result might be.
+</details>
+
+<details>
+<summary>I have linker errors when compiling</summary>
+<br>
+If you're compiling with gcc or clang, add the <code>-lm</code> and <code>-lstdc++</code> flags, or use g++/clang++ compilers instead. If you're receiving linker errors from a brand new VM environment on Linux, update your system with `sudo apt/dnf/yum update -y` to install the necessary C++ components.
+</details>
+
 
 <br>
 
