@@ -19,7 +19,7 @@
  *  - Repository: https://github.com/kernelwernel/VMAware
  *  - Docs: https://github.com/kernelwernel/VMAware/docs/documentation.md
  *  - Full credits: https://github.com/kernelwernel/VMAware#credits-and-contributors-%EF%B8%8F
- *  - License: GPL-3.0
+ *  - License: GPL-3.0 (https://www.gnu.org/licenses/gpl-3.0.html)
  *
  *
  * ================================ SECTIONS ==================================
@@ -215,6 +215,10 @@
 #include <winspool.h>
 #include <wtypes.h>
 #include <winevt.h>
+
+#define PHNT_VERSION PHNT_WIN11
+#include <phnt_windows.h>
+#include <phnt.h>
 
 #pragma comment(lib, "wbemuuid.lib")
 #pragma comment(lib, "iphlpapi.lib")
@@ -425,6 +429,8 @@ public:
         SMBIOS_VM_BIT,
         PODMAN_FILE,
         WSL_PROC,
+        ANYRUN_DRIVER,
+        ANYRUN_DIRECTORY,
 
         // start of non-technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
         NO_MEMO,
@@ -549,6 +555,8 @@ private:
     static constexpr const char* PODMAN = "Podman";
     static constexpr const char* WSL = "WSL";
     static constexpr const char* OPENVZ = "OpenVZ";
+    static constexpr const char* ANYRUN = "ANY.RUN";
+
 
     static flagset global_flags; // for certain techniques where the flags MUST be accessible
 
@@ -3506,7 +3514,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             return "unknown";
-            };
+        };
 
         const std::string distro = get_distro();
 
@@ -3524,7 +3532,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             "gentoo" == distro ||
             "fedora" == distro ||
             "debian" == distro
-            ) {
+        ) {
             return ((8 == disk) && (1 == ram));
         }
 
@@ -3670,6 +3678,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check if hostname is specific
      * @author InviZzzible project
      * @category Windows
+     * @copyright GPL-3.0
      */
     [[nodiscard]] static bool hostname_match() try {
 #if (!MSVC)
@@ -4401,7 +4410,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      */
     [[nodiscard]] static bool bochs_cpu() try {
 #if (!x86)
-        return false;
+        return false;z
 #else
         if (!core::cpuid_supported) {
             return false;
@@ -9034,6 +9043,97 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
 
 
+    /**
+     * @brief Check for any.run driver presence
+     * @category Windows
+     * @author kkent030315
+     * @link https://github.com/kkent030315/detect-anyrun/blob/main/detect.cc
+     * @copyright MIT
+     */
+    [[nodiscard]] static bool anyrun_driver() try {
+#if (!MSVC)
+        return false;
+#else
+        HANDLE hFile;
+
+        hFile = CreateFile(
+            /*lpFileName*/TEXT("\\\\?\\\\A3E64E55_fl"),
+            /*dwDesiredAccess*/GENERIC_READ,
+            /*dwShareMode*/0,
+            /*lpSecurityAttributes*/NULL,
+            /*dwCreationDisposition*/OPEN_EXISTING,
+            /*dwFlagsAndAttributes*/0,
+            /*hTemplateFile*/NULL
+        );
+
+        if (hFile == INVALID_HANDLE_VALUE) {
+            return false;
+        }
+
+        CloseHandle(hFile);
+
+        return core::add(ANYRUN);
+#endif
+    } catch (...) {
+        debug("ANYRUN_DRIVER: caught error, returned false");
+        return false;
+    }
+
+
+    /**
+     * @brief Check for any.run directory and handle the status code
+     * @category Windows
+     * @author kkent030315
+     * @link https://github.com/kkent030315/detect-anyrun/blob/main/detect.cc
+     * @copyright MIT
+     */
+    [[nodiscard]] static bool anyrun_directory() try {
+#if (!MSVC)
+        return false;
+#else
+        NTSTATUS status;
+
+        UNICODE_STRING name;
+        RtlInitUnicodeString(&name, L"\\??\\C:\\Program Files\\KernelLogger");
+
+        HANDLE hFile;
+        IO_STATUS_BLOCK iosb = { 0 };
+        OBJECT_ATTRIBUTES attrs;
+        InitializeObjectAttributes(&attrs, &name, 0, NULL, NULL);
+
+        status = NtCreateFile(
+            /*FileHandle*/&hFile,
+            /*DesiredAccess*/GENERIC_READ | SYNCHRONIZE,
+            /*ObjectAttributes*/&attrs,
+            /*IoStatusBlock*/&iosb,
+            /*AllocationSize*/NULL,
+            /*FileAttributes*/FILE_ATTRIBUTE_DIRECTORY,
+            /*ShareAccess*/FILE_SHARE_READ,
+            /*CreateDisposition*/FILE_OPEN,
+            /*CreateOptions*/FILE_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT,
+            /*EaBuffer*/NULL,
+            /*EaLength*/0
+        );
+
+        // ANY.RUN minifilter returns non-standard status code, STATUS_NO_SUCH_FILE
+        // If this status code is returned, it means that the directory is protected
+        // by the ANY.RUN minifilter driver.
+        // To patch this detection, I would recommend returning STATUS_OBJECT_NAME_NOT_FOUND
+        // that is a standard status code for this situation.
+        if (status == STATUS_NO_SUCH_FILE)
+            return core::add(ANYRUN);
+
+        // Not actually the case, maybe conflict with other software installation.
+        if (NT_SUCCESS(status))
+            NtClose(hFile);
+
+        return false;
+#endif
+    } catch (...) {
+        debug("ANYRUN_DIRECTORY: caught error, returned false");
+        return false;
+    }
+
 
 
 
@@ -10079,7 +10179,8 @@ std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard{
     { VM::AWS_NITRO, 0 },
     { VM::PODMAN, 0 },
     { VM::WSL, 0 },
-    { VM::OPENVZ, 0 }
+    { VM::OPENVZ, 0 },
+    { VM::ANYRUN, 0 }
 };
 
 
@@ -10292,5 +10393,7 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::DMI_SCAN, { 50, VM::dmi_scan, false } },
     { VM::SMBIOS_VM_BIT, { 50, VM::smbios_vm_bit, false } },
     { VM::PODMAN_FILE, { 15, VM::podman_file, true } },
-    { VM::WSL_PROC, { 30, VM::wsl_proc_subdir, false } }
+    { VM::WSL_PROC, { 30, VM::wsl_proc_subdir, false } },
+    { VM::ANYRUN_DRIVER, { 65, VM::anyrun_driver, false } },
+    { VM::ANYRUN_DIRECTORY, { 35, VM::anyrun_directory, false } }
 };

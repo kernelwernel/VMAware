@@ -250,6 +250,7 @@ AWS Nitro System (KVM-based)
 Podman
 WSL
 OpenVZ
+ANY.RUN
 )";
 
     std::exit(0);
@@ -305,6 +306,7 @@ std::string type(const std::string &brand_str) {
         { "Anubis", "Sandbox" },
         { "Comodo", "Sandbox" },
         { "ThreatExpert", "Sandbox" },
+        { "ANY.RUN", "Sandbox"},
 
         // misc
         { "Bochs", "Emulator" },
@@ -323,7 +325,7 @@ std::string type(const std::string &brand_str) {
         { "Hyper-V artifact (not an actual VM)", "No VM" },
         { "User-mode Linux", "Paravirtualised" },
         { "WSL", "Hybrid Hyper-V (type 1 and 2)" }, // debatable tbh
-        { "Apple Rosetta 2", "Binary Translation Layer/Emulator" }
+        { "Apple Rosetta 2", "Binary Translation Layer/Emulator" },
     };
 
     auto it = type_table.find(brand_str);
@@ -610,6 +612,8 @@ void general() {
     checker(VM::SMBIOS_VM_BIT, "SMBIOS VM bit");
     checker(VM::PODMAN_FILE, "Podman file");
     checker(VM::WSL_PROC, "WSL string in /proc");
+    checker(VM::ANYRUN_DRIVER, "ANY.RUN driver");
+    checker(VM::ANYRUN_DIRECTORY, "ANY.RUN directory");
 
     std::printf("\n");
 
