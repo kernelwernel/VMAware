@@ -216,8 +216,6 @@
 #include <wtypes.h>
 #include <winevt.h>
 
-#include <phnt.h>
-
 #pragma comment(lib, "wbemuuid.lib")
 #pragma comment(lib, "iphlpapi.lib")
 #pragma comment(lib, "Shlwapi.lib")
