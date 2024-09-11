@@ -1996,27 +1996,27 @@ private:
             typedef NTSTATUS(WINAPI* RtlGetVersionFunc)(PRTL_OSVERSIONINFOW);
 
             const std::map<DWORD, u8> windowsVersions = {
-                { 6002, 6 }, // windows vista, technically no number but this function is just for great than operations anyway so it doesn't matter
-                { 7601, 7 },
-                { 9200, 8 },
-                { 9600, 8 },
-                { 10240, 10 },
-                { 10586, 10 },
-                { 14393, 10 },
-                { 15063, 10 },
-                { 16299, 10 },
-                { 17134, 10 },
-                { 17763, 10 },
-                { 18362, 10 },
-                { 18363, 10 },
-                { 19041, 10 },
-                { 19042, 10 },
-                { 19043, 10 },
-                { 19044, 10 },
-                { 19045, 10 },
-                { 22000, 11 },
-                { 22621, 11 },
-                { 22631, 11 }
+                { 6002, static_cast<u8>(6) }, // windows vista, technically no number but this function is just for great than operations anyway so it doesn't matter
+                { 7601, static_cast<u8>(7) },
+                { 9200, static_cast<u8>(8) },
+                { 9600, static_cast<u8>(8) },
+                { 10240, static_cast<u8>(10) },
+                { 10586, static_cast<u8>(10) },
+                { 14393, static_cast<u8>(10) },
+                { 15063, static_cast<u8>(10) },
+                { 16299, static_cast<u8>(10) },
+                { 17134, static_cast<u8>(10) },
+                { 17763, static_cast<u8>(10) },
+                { 18362, static_cast<u8>(10) },
+                { 18363, static_cast<u8>(10) },
+                { 19041, static_cast<u8>(10) },
+                { 19042, static_cast<u8>(10) },
+                { 19043, static_cast<u8>(10) },
+                { 19044, static_cast<u8>(10) },
+                { 19045, static_cast<u8>(10) },
+                { 22000, static_cast<u8>(11) },
+                { 22621, static_cast<u8>(11) },
+                { 22631, static_cast<u8>(11) }
             };
 
             HMODULE ntdll = LoadLibraryW(L"ntdll.dll");
