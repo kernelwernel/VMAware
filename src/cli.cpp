@@ -43,8 +43,8 @@
 
 #include "vmaware.hpp"
 
-constexpr const char* ver = "1.8";
-constexpr const char* date = "August 2024";
+constexpr const char* ver = "1.9";
+constexpr const char* date = "September 2024";
 
 constexpr const char* bold = "\033[1m";
 constexpr const char* ansi_exit = "\x1B[0m";
@@ -73,6 +73,7 @@ enum arg_enum : std::uint8_t {
 };
 
 std::bitset<14> arg_bitset;
+const std::uint8_t max_bits = static_cast<std::uint8_t>(VM::MULTIPLE) + 1;
 
 #if (MSVC)
 class win_ansi_enabler_t
@@ -131,8 +132,8 @@ Options:
  -t | --type        returns the VM type (if a VM was found)
 
 Extra:
- --disable-notes        no notes will be provided
- --spoofable            allow spoofable techniques to be ran (not included by default)
+ --disable-notes    no notes will be provided
+ --spoofable        allow spoofable techniques to be ran (not included by default)
 
 )";
     std::exit(0);
@@ -440,6 +441,22 @@ bool is_disabled(const VM::enum_flags flag) {
 }
 
 
+std::bitset<max_bits> settings() {
+    std::bitset<max_bits> tmp;
+
+    if (arg_bitset.test(SPOOFABLE)) {
+        tmp.set(VM::SPOOFABLE);
+    }
+
+    if (arg_bitset.test(ALL)) {
+        tmp |= VM::ALL;
+        tmp.set(VM::SPOOFABLE);
+    }
+
+    return tmp;
+}
+
+
 void general() {
     const std::string detected = ("[  " + std::string(green) + "DETECTED" + std::string(ansi_exit) + "  ]");
     const std::string not_detected = ("[" + std::string(red) + "NOT DETECTED" + std::string(ansi_exit) + "]");
@@ -478,21 +495,6 @@ void general() {
     };
 
     bool notes_enabled = false;
-    const std::uint8_t max_bits = static_cast<std::uint8_t>(VM::MULTIPLE) + 1;
-
-    auto settings = [&]() -> std::bitset<max_bits> {
-        std::bitset<max_bits> tmp;
-
-        if (arg_bitset.test(SPOOFABLE)) {
-            tmp.set(VM::SPOOFABLE);
-        }
-
-        if (arg_bitset.test(ALL)) {
-            tmp |= VM::ALL;
-        }
-
-        return tmp;
-    };
 
     if (arg_bitset.test(NOTES)) {
         notes_enabled = false;
@@ -815,26 +817,6 @@ int main(int argc, char* argv[]) {
             std::cerr << "--stdout, --percent, --detect, --brand, --type, and --conclusion must NOT be a combination, choose only a single one\n";
             return 1;
         }
-            
-        const std::uint8_t max_bits = static_cast<std::uint8_t>(VM::MULTIPLE) + 1;
-
-        auto settings = [&]() -> std::bitset<max_bits> {
-            std::bitset<max_bits> setting_bits;
-
-            if (arg_bitset.test(SPOOFABLE)) {
-                setting_bits.set(VM::SPOOFABLE);
-            }
-
-            if (arg_bitset.test(ALL)) {
-                std::cout << "\n\n\n\n\nALL SET\n\n\n\n";
-                setting_bits |= VM::ALL;
-                setting_bits.set(VM::SPOOFABLE);
-            }
-
-            setting_bits.set(NULL_ARG);
-
-            return setting_bits;
-        };
 
         if (arg_bitset.test(STDOUT)) {
             return (!VM::detect(VM::NO_MEMO, settings()));

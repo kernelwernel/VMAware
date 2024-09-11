@@ -4,7 +4,7 @@
  * ██║   ██║██╔████╔██║███████║██║ █╗ ██║███████║██████╔╝█████╗
  * ╚██╗ ██╔╝██║╚██╔╝██║██╔══██║██║███╗██║██╔══██║██╔══██╗██╔══╝
  *  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
- *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ 1.8 (August 2024)
+ *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ 1.9 (September 2024)
  *
  *  C++ VM detection library
  *
@@ -23,14 +23,14 @@
  *
  *
  * ================================ SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 312
- * - struct for internal cpu operations        => line 569
- * - struct for internal memoization           => line 995
- * - struct for internal utility functions     => line 1118
- * - struct for internal core components       => line 9196
- * - start of internal VM detection techniques => line 2491
- * - start of public VM detection functions    => line 9541
- * - start of externally defined variables     => line 10017
+ * - enums for publicly accessible techniques  => line 322
+ * - struct for internal cpu operations        => line 581
+ * - struct for internal memoization           => line 1007
+ * - struct for internal utility functions     => line 1134
+ * - struct for internal core components       => line 9152
+ * - start of internal VM detection techniques => line 2409
+ * - start of public VM detection functions    => line 9495
+ * - start of externally defined variables     => line 10095
  *
  *
  * ================================ EXAMPLE ==================================
@@ -10020,6 +10020,8 @@ public: // START OF PUBLIC FUNCTIONS
             case SMBIOS_VM_BIT: return "SMBIOS_VM_BIT";
             case PODMAN_FILE: return "PODMAN_FILE";
             case WSL_PROC: return "WSL_PROC";
+            case ANYRUN_DRIVER: return "ANYRUN_DRIVER";
+            case ANYRUN_DIRECTORY: return "ANYRUN_DIRECTORY";
             default: return "Unknown flag";
         }
     }
