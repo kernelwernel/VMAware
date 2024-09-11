@@ -478,18 +478,26 @@ void general() {
     };
 
     bool notes_enabled = false;
-    VM::enum_flags spoofable_setting;
+    const std::uint8_t max_bits = static_cast<std::uint8_t>(VM::MULTIPLE) + 1;
+
+    auto settings = [&]() -> std::bitset<max_bits> {
+        std::bitset<max_bits> tmp;
+
+        if (arg_bitset.test(SPOOFABLE)) {
+            tmp.set(VM::SPOOFABLE);
+        }
+
+        if (arg_bitset.test(ALL)) {
+            tmp |= VM::ALL;
+        }
+
+        return tmp;
+    };
 
     if (arg_bitset.test(NOTES)) {
         notes_enabled = false;
     } else {
         notes_enabled = true;
-    }
-
-    if (arg_bitset.test(SPOOFABLE)) {
-        spoofable_setting = VM::SPOOFABLE;
-    } else {
-        spoofable_setting = VM::NULL_ARG;
     }
 
     #if (LINUX)
@@ -521,7 +529,7 @@ void general() {
     checker(VM::DLL, "DLLs");
     checker(VM::REGISTRY, "registry");
     checker(VM::CWSANDBOX_VM, "Sunbelt CWSandbox directory");
-    //checker(VM::WINE_CHECK, "Wine");
+    checker(VM::WINE_CHECK, "Wine");
     checker(VM::VM_FILES, "VM files");
     checker(VM::HWMODEL, "hw.model");
     checker(VM::DISK_SIZE, "disk size");
@@ -532,7 +540,7 @@ void general() {
     checker(VM::MEMORY, "low memory space");
     checker(VM::VM_PROCESSES, "VM processes");
     checker(VM::LINUX_USER_HOST, "default Linux user/host");
-    //checker(VM::VBOX_WINDOW_CLASS, "VBox window class");
+    checker(VM::VBOX_WINDOW_CLASS, "VBox window class");
     checker(VM::GAMARUE, "gamarue ransomware technique");
     checker(VM::VMID_0X4, "0x4 leaf of VMID");
     checker(VM::PARALLELS_VM, "Parallels techniques");
@@ -621,7 +629,7 @@ void general() {
     std::cout << "[DEBUG] theoretical maximum points: " << VM::total_points << "\n";
 #endif
 
-    std::string brand = VM::brand(VM::MULTIPLE, spoofable_setting);
+    std::string brand = VM::brand(VM::MULTIPLE, settings());
 
     std::cout << "VM brand: " << ((brand == "Unknown") || (brand == "Hyper-V artifact (not an actual VM)") ? red : green) << brand << ansi_exit << "\n";
 
@@ -643,7 +651,7 @@ void general() {
     }
 
     const char* percent_color = "";
-    const std::uint8_t percent = VM::percentage(spoofable_setting);
+    const std::uint8_t percent = VM::percentage(settings());
 
     if      (percent == 0) { percent_color = red; }
     else if (percent < 25) { percent_color = red_orange; }
@@ -653,7 +661,7 @@ void general() {
 
     std::cout << "VM likeliness: " << percent_color << static_cast<std::uint32_t>(percent) << "%" << ansi_exit << "\n";
 
-    const bool is_detected = VM::detect(spoofable_setting);
+    const bool is_detected = VM::detect(settings());
 
     std::cout << "VM confirmation: " << (is_detected ? green : red) << std::boolalpha << is_detected << std::noboolalpha << ansi_exit << "\n";
 
@@ -818,6 +826,7 @@ int main(int argc, char* argv[]) {
             }
 
             if (arg_bitset.test(ALL)) {
+                std::cout << "\n\n\n\n\nALL SET\n\n\n\n";
                 setting_bits |= VM::ALL;
                 setting_bits.set(VM::SPOOFABLE);
             }

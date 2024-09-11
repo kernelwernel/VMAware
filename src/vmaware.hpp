@@ -3039,7 +3039,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Windows
      */
     [[nodiscard]] static bool cursor_check() try {
-        return true;
 #if (!MSVC)
         return false;
 #else
@@ -4352,8 +4351,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     // this is added so no sanitizers can potentially cause unwanted delays while measuring rdtsc in a debug compilation
     __attribute__((no_sanitize("address", "leak", "thread", "undefined")))
 #endif
-        static bool rdtsc_vmexit() try {
-
+    static bool rdtsc_vmexit() try {
 #if (!x86)
         return false;
 #else
@@ -4447,18 +4445,19 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             // technique 3: Check for absence of AMD easter egg for K7 and K8 CPUs
-            /*
+            constexpr u32 AMD_EASTER_EGG = 0x8fffffff; // this is the CPUID leaf of the AMD easter egg
+
+            if (!cpu::is_leaf_supported(AMD_EASTER_EGG)) {
+                return false;
+            }
+
             u32 unused, eax = 0;
             cpu::cpuid(eax, unused, unused, unused, 1);
-
-            constexpr u8 AMD_K7 = 6;
-            constexpr u8 AMD_K8 = 15;
 
             auto is_k7 = [](const u32 eax) -> bool {
                 const u32 family = (eax >> 8) & 0xF;
                 const u32 model = (eax >> 4) & 0xF;
                 const u32 extended_family = (eax >> 20) & 0xFF;
-                const u32 extended_model = (eax >> 16) & 0xF;
 
                 if (family == 6 && extended_family == 0) {
                     if (model == 1 || model == 2 || model == 3 || model == 4) {
@@ -4470,21 +4469,28 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             };
 
             auto is_k8 = [](const u32 eax) -> bool {
-                // TODO
+                const u32 family = (eax >> 8) & 0xF;
+                const u32 extended_family = (eax >> 20) & 0xFF;
+
+                if (family == 0xF) {
+                    if (extended_family == 0x00 || extended_family == 0x01) {
+                        return true;
+                    }
+                }
+
+                return false;
             };
 
-            if (family != AMD_K7 && family != AMD_K8) {
+            if (!(is_k7(eax) || is_k8(eax))) {
                 return false;
             }
 
             u32 ecx_bochs = 0;
-            cpu::cpuid(unused, unused, ecx_bochs, unused, cpu::leaf::amd_easter_egg);
+            cpu::cpuid(unused, unused, ecx_bochs, unused, AMD_EASTER_EGG);
 
             if (ecx_bochs == 0) {
-                debug("BOCHS_CPU: technique 3 found");
-                return core::add(BOCHS);
+                return true;
             }
-            */
         }
 
         return false;
@@ -5035,13 +5041,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             return false;
-            };
+        };
 
         return (
             check_usb() ||
             check_general() ||
             check_rom()
-            );
+        );
 #endif
     }
     catch (...) {
@@ -9144,42 +9150,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
 
-
-
-
-
-    // https://medium.com/@matterpreter/hypervisor-detection-with-systemhypervisordetailinformation-26e44a57f80e
-
-    // idea: maybe try to get the hyper-v version and check for those values in cpuid
-
-    /*
-    EAX=21h: Reserved for TDX enumerationWhen Intel TDX (Trust Domain Extensions) is active, attempts to execute the CPUID instruction by a TD (Trust Domain) guest will be intercepted by the TDX module. This module will, when CPUID is invoked with EAX=21h and ECX=0 (leaf 21h, sub-leaf 0), return the index of the highest supported sub-leaf for leaf 21h in EAX and a TDX module vendor ID string as a 12-byte ASCII string in EBX,EDX,ECX (in that order). Intel's own module implementation returns the vendor ID string "IntelTDX    " (with four trailing spaces)[102] - for this module, additional feature information is not available through CPUID and must instead be obtained through the TDX-specific TDCALL instruction.
-    */
-
-
-    // https://github.com/systemd/systemd/blob/main/src/basic/virt.c
-
-
-    /*
-    In the same way, a lot of these virtual files can provide information on the environment, including –
-    but not limited to – /proc/sysinfo (in which some distribution expose data about virtual machines),
-    /proc/device-tree (that lists the devices on the machine), /proc/xen (a file created by the Xen
-    Server) or /proc/modules (that contains information about the loaded kernel modules, modules
-    that are used by hypervisors to optimize the guests).
-    Like procfs (mounted in /proc), sysfs can be useful. Its role is to provide to the user an access to the
-    devices and their drivers. The file /sys/hypervisor/type, for instance, is sometimes used to store
-    information about the hypervisor Linux is running on
-    */
-
-
-// https://unprotect.it/technique/retrieve-hdd-information/
-
-
-    // https://github.com/torvalds/linux/blob/31cc088a4f5d83481c6f5041bd6eb06115b974af/arch/x86/kernel/cpu/vmware.c
-
-
-
-
     struct core {
         MSVC_DISABLE_WARNING(PADDING)
         struct technique {
@@ -9322,7 +9292,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
                 // run the technique
                 const bool result = tuple.run();
-
 
                 // accumulate the points if technique detected a VM
                 if (result) {
