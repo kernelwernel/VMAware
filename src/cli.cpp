@@ -43,8 +43,8 @@
 
 #include "vmaware.hpp"
 
-constexpr const char* ver = "1.8";
-constexpr const char* date = "August 2024";
+constexpr const char* ver = "1.9";
+constexpr const char* date = "September 2024";
 
 constexpr const char* bold = "\033[1m";
 constexpr const char* ansi_exit = "\x1B[0m";
@@ -73,6 +73,7 @@ enum arg_enum : std::uint8_t {
 };
 
 std::bitset<14> arg_bitset;
+const std::uint8_t max_bits = static_cast<std::uint8_t>(VM::MULTIPLE) + 1;
 
 #if (MSVC)
 class win_ansi_enabler_t
@@ -131,8 +132,8 @@ Options:
  -t | --type        returns the VM type (if a VM was found)
 
 Extra:
- --disable-notes        no notes will be provided
- --spoofable            allow spoofable techniques to be ran (not included by default)
+ --disable-notes    no notes will be provided
+ --spoofable        allow spoofable techniques to be ran (not included by default)
 
 )";
     std::exit(0);
@@ -250,6 +251,7 @@ AWS Nitro System (KVM-based)
 Podman
 WSL
 OpenVZ
+ANY.RUN
 )";
 
     std::exit(0);
@@ -305,6 +307,7 @@ std::string type(const std::string &brand_str) {
         { "Anubis", "Sandbox" },
         { "Comodo", "Sandbox" },
         { "ThreatExpert", "Sandbox" },
+        { "ANY.RUN", "Sandbox"},
 
         // misc
         { "Bochs", "Emulator" },
@@ -323,7 +326,7 @@ std::string type(const std::string &brand_str) {
         { "Hyper-V artifact (not an actual VM)", "No VM" },
         { "User-mode Linux", "Paravirtualised" },
         { "WSL", "Hybrid Hyper-V (type 1 and 2)" }, // debatable tbh
-        { "Apple Rosetta 2", "Binary Translation Layer/Emulator" }
+        { "Apple Rosetta 2", "Binary Translation Layer/Emulator" },
     };
 
     auto it = type_table.find(brand_str);
@@ -438,6 +441,22 @@ bool is_disabled(const VM::enum_flags flag) {
 }
 
 
+std::bitset<max_bits> settings() {
+    std::bitset<max_bits> tmp;
+
+    if (arg_bitset.test(SPOOFABLE)) {
+        tmp.set(VM::SPOOFABLE);
+    }
+
+    if (arg_bitset.test(ALL)) {
+        tmp |= VM::ALL;
+        tmp.set(VM::SPOOFABLE);
+    }
+
+    return tmp;
+}
+
+
 void general() {
     const std::string detected = ("[  " + std::string(green) + "DETECTED" + std::string(ansi_exit) + "  ]");
     const std::string not_detected = ("[" + std::string(red) + "NOT DETECTED" + std::string(ansi_exit) + "]");
@@ -476,18 +495,11 @@ void general() {
     };
 
     bool notes_enabled = false;
-    VM::enum_flags spoofable_setting;
 
     if (arg_bitset.test(NOTES)) {
         notes_enabled = false;
     } else {
         notes_enabled = true;
-    }
-
-    if (arg_bitset.test(SPOOFABLE)) {
-        spoofable_setting = VM::SPOOFABLE;
-    } else {
-        spoofable_setting = VM::NULL_ARG;
     }
 
     #if (LINUX)
@@ -519,7 +531,7 @@ void general() {
     checker(VM::DLL, "DLLs");
     checker(VM::REGISTRY, "registry");
     checker(VM::CWSANDBOX_VM, "Sunbelt CWSandbox directory");
-    //checker(VM::WINE_CHECK, "Wine");
+    checker(VM::WINE_CHECK, "Wine");
     checker(VM::VM_FILES, "VM files");
     checker(VM::HWMODEL, "hw.model");
     checker(VM::DISK_SIZE, "disk size");
@@ -530,7 +542,7 @@ void general() {
     checker(VM::MEMORY, "low memory space");
     checker(VM::VM_PROCESSES, "VM processes");
     checker(VM::LINUX_USER_HOST, "default Linux user/host");
-    //checker(VM::VBOX_WINDOW_CLASS, "VBox window class");
+    checker(VM::VBOX_WINDOW_CLASS, "VBox window class");
     checker(VM::GAMARUE, "gamarue ransomware technique");
     checker(VM::VMID_0X4, "0x4 leaf of VMID");
     checker(VM::PARALLELS_VM, "Parallels techniques");
@@ -610,6 +622,8 @@ void general() {
     checker(VM::SMBIOS_VM_BIT, "SMBIOS VM bit");
     checker(VM::PODMAN_FILE, "Podman file");
     checker(VM::WSL_PROC, "WSL string in /proc");
+    checker(VM::ANYRUN_DRIVER, "ANY.RUN driver");
+    checker(VM::ANYRUN_DIRECTORY, "ANY.RUN directory");
 
     std::printf("\n");
 
@@ -617,7 +631,7 @@ void general() {
     std::cout << "[DEBUG] theoretical maximum points: " << VM::total_points << "\n";
 #endif
 
-    std::string brand = VM::brand(VM::MULTIPLE, spoofable_setting);
+    std::string brand = VM::brand(VM::MULTIPLE, settings());
 
     std::cout << "VM brand: " << ((brand == "Unknown") || (brand == "Hyper-V artifact (not an actual VM)") ? red : green) << brand << ansi_exit << "\n";
 
@@ -639,7 +653,7 @@ void general() {
     }
 
     const char* percent_color = "";
-    const std::uint8_t percent = VM::percentage(spoofable_setting);
+    const std::uint8_t percent = VM::percentage(settings());
 
     if      (percent == 0) { percent_color = red; }
     else if (percent < 25) { percent_color = red_orange; }
@@ -649,7 +663,7 @@ void general() {
 
     std::cout << "VM likeliness: " << percent_color << static_cast<std::uint32_t>(percent) << "%" << ansi_exit << "\n";
 
-    const bool is_detected = VM::detect(spoofable_setting);
+    const bool is_detected = VM::detect(settings());
 
     std::cout << "VM confirmation: " << (is_detected ? green : red) << std::boolalpha << is_detected << std::noboolalpha << ansi_exit << "\n";
 
@@ -803,25 +817,6 @@ int main(int argc, char* argv[]) {
             std::cerr << "--stdout, --percent, --detect, --brand, --type, and --conclusion must NOT be a combination, choose only a single one\n";
             return 1;
         }
-            
-        const std::uint8_t max_bits = static_cast<std::uint8_t>(VM::MULTIPLE) + 1;
-
-        auto settings = [&]() -> std::bitset<max_bits> {
-            std::bitset<max_bits> setting_bits;
-
-            if (arg_bitset.test(SPOOFABLE)) {
-                setting_bits.set(VM::SPOOFABLE);
-            }
-
-            if (arg_bitset.test(ALL)) {
-                setting_bits |= VM::ALL;
-                setting_bits.set(VM::SPOOFABLE);
-            }
-
-            setting_bits.set(NULL_ARG);
-
-            return setting_bits;
-        };
 
         if (arg_bitset.test(STDOUT)) {
             return (!VM::detect(VM::NO_MEMO, settings()));

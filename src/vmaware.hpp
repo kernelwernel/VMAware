@@ -4,7 +4,7 @@
  * ██║   ██║██╔████╔██║███████║██║ █╗ ██║███████║██████╔╝█████╗
  * ╚██╗ ██╔╝██║╚██╔╝██║██╔══██║██║███╗██║██╔══██║██╔══██╗██╔══╝
  *  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
- *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ 1.8 (August 2024)
+ *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ 1.9 (September 2024)
  *
  *  C++ VM detection library
  *
@@ -19,18 +19,18 @@
  *  - Repository: https://github.com/kernelwernel/VMAware
  *  - Docs: https://github.com/kernelwernel/VMAware/docs/documentation.md
  *  - Full credits: https://github.com/kernelwernel/VMAware#credits-and-contributors-%EF%B8%8F
- *  - License: GPL-3.0
+ *  - License: GPL-3.0 (https://www.gnu.org/licenses/gpl-3.0.html)
  *
  *
  * ================================ SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 312
- * - struct for internal cpu operations        => line 569
- * - struct for internal memoization           => line 995
- * - struct for internal utility functions     => line 1118
- * - struct for internal core components       => line 9196
- * - start of internal VM detection techniques => line 2491
- * - start of public VM detection functions    => line 9541
- * - start of externally defined variables     => line 10017
+ * - enums for publicly accessible techniques  => line 322
+ * - struct for internal cpu operations        => line 581
+ * - struct for internal memoization           => line 1007
+ * - struct for internal utility functions     => line 1134
+ * - struct for internal core components       => line 9152
+ * - start of internal VM detection techniques => line 2409
+ * - start of public VM detection functions    => line 9495
+ * - start of externally defined variables     => line 10095
  *
  *
  * ================================ EXAMPLE ==================================
@@ -112,6 +112,13 @@
 
 #if (CPP < 11 && !MSVC)
 #error "VMAware only supports C++11 or above, set your compiler flag to '-std=c++20' for gcc/clang, or '/std:c++20' for MSVC"
+#endif
+
+// unused for now, maybe in the future idk
+#if (WINVER == 0x0501) // Windows XP, (0x0701 for Windows 7)
+#define WIN_XP 1
+#else 
+#define WIN_XP 0
 #endif
 
 #if (defined(__x86_64__) || defined(__i386__) || defined(_M_IX86) || defined(_M_X64))
@@ -202,7 +209,6 @@
 #include <winternl.h>
 #include <winnetwk.h>
 #include <winuser.h>
-#include <versionhelpers.h>
 #include <psapi.h>
 #include <comdef.h>
 #include <Wbemidl.h>
@@ -215,6 +221,10 @@
 #include <winspool.h>
 #include <wtypes.h>
 #include <winevt.h>
+
+#if (!WIN_XP)
+#include <versionhelpers.h>
+#endif
 
 #pragma comment(lib, "wbemuuid.lib")
 #pragma comment(lib, "iphlpapi.lib")
@@ -425,6 +435,8 @@ public:
         SMBIOS_VM_BIT,
         PODMAN_FILE,
         WSL_PROC,
+        ANYRUN_DRIVER,
+        ANYRUN_DIRECTORY,
 
         // start of non-technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
         NO_MEMO,
@@ -549,6 +561,8 @@ private:
     static constexpr const char* PODMAN = "Podman";
     static constexpr const char* WSL = "WSL";
     static constexpr const char* OPENVZ = "OpenVZ";
+    static constexpr const char* ANYRUN = "ANY.RUN";
+
 
     static flagset global_flags; // for certain techniques where the flags MUST be accessible
 
@@ -3025,7 +3039,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Windows
      */
     [[nodiscard]] static bool cursor_check() try {
-        return true;
 #if (!MSVC)
         return false;
 #else
@@ -3506,7 +3519,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             return "unknown";
-            };
+        };
 
         const std::string distro = get_distro();
 
@@ -3524,7 +3537,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             "gentoo" == distro ||
             "fedora" == distro ||
             "debian" == distro
-            ) {
+        ) {
             return ((8 == disk) && (1 == ram));
         }
 
@@ -3670,6 +3683,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check if hostname is specific
      * @author InviZzzible project
      * @category Windows
+     * @copyright GPL-3.0
      */
     [[nodiscard]] static bool hostname_match() try {
 #if (!MSVC)
@@ -4337,8 +4351,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     // this is added so no sanitizers can potentially cause unwanted delays while measuring rdtsc in a debug compilation
     __attribute__((no_sanitize("address", "leak", "thread", "undefined")))
 #endif
-        static bool rdtsc_vmexit() try {
-
+    static bool rdtsc_vmexit() try {
 #if (!x86)
         return false;
 #else
@@ -4401,7 +4414,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      */
     [[nodiscard]] static bool bochs_cpu() try {
 #if (!x86)
-        return false;
+        return false;z
 #else
         if (!core::cpuid_supported) {
             return false;
@@ -4432,18 +4445,19 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             // technique 3: Check for absence of AMD easter egg for K7 and K8 CPUs
-            /*
+            constexpr u32 AMD_EASTER_EGG = 0x8fffffff; // this is the CPUID leaf of the AMD easter egg
+
+            if (!cpu::is_leaf_supported(AMD_EASTER_EGG)) {
+                return false;
+            }
+
             u32 unused, eax = 0;
             cpu::cpuid(eax, unused, unused, unused, 1);
-
-            constexpr u8 AMD_K7 = 6;
-            constexpr u8 AMD_K8 = 15;
 
             auto is_k7 = [](const u32 eax) -> bool {
                 const u32 family = (eax >> 8) & 0xF;
                 const u32 model = (eax >> 4) & 0xF;
                 const u32 extended_family = (eax >> 20) & 0xFF;
-                const u32 extended_model = (eax >> 16) & 0xF;
 
                 if (family == 6 && extended_family == 0) {
                     if (model == 1 || model == 2 || model == 3 || model == 4) {
@@ -4455,21 +4469,28 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             };
 
             auto is_k8 = [](const u32 eax) -> bool {
-                // TODO
+                const u32 family = (eax >> 8) & 0xF;
+                const u32 extended_family = (eax >> 20) & 0xFF;
+
+                if (family == 0xF) {
+                    if (extended_family == 0x00 || extended_family == 0x01) {
+                        return true;
+                    }
+                }
+
+                return false;
             };
 
-            if (family != AMD_K7 && family != AMD_K8) {
+            if (!(is_k7(eax) || is_k8(eax))) {
                 return false;
             }
 
             u32 ecx_bochs = 0;
-            cpu::cpuid(unused, unused, ecx_bochs, unused, cpu::leaf::amd_easter_egg);
+            cpu::cpuid(unused, unused, ecx_bochs, unused, AMD_EASTER_EGG);
 
             if (ecx_bochs == 0) {
-                debug("BOCHS_CPU: technique 3 found");
-                return core::add(BOCHS);
+                return true;
             }
-            */
         }
 
         return false;
@@ -5020,13 +5041,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             return false;
-            };
+        };
 
         return (
             check_usb() ||
             check_general() ||
             check_rom()
-            );
+        );
 #endif
     }
     catch (...) {
@@ -9034,42 +9055,97 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
 
 
+    /**
+     * @brief Check for any.run driver presence
+     * @category Windows
+     * @author kkent030315
+     * @link https://github.com/kkent030315/detect-anyrun/blob/main/detect.cc
+     * @copyright MIT
+     */
+    [[nodiscard]] static bool anyrun_driver() try {
+#if (!MSVC)
+        return false;
+#else
+        HANDLE hFile;
+
+        hFile = CreateFile(
+            /*lpFileName*/TEXT("\\\\?\\\\A3E64E55_fl"),
+            /*dwDesiredAccess*/GENERIC_READ,
+            /*dwShareMode*/0,
+            /*lpSecurityAttributes*/NULL,
+            /*dwCreationDisposition*/OPEN_EXISTING,
+            /*dwFlagsAndAttributes*/0,
+            /*hTemplateFile*/NULL
+        );
+
+        if (hFile == INVALID_HANDLE_VALUE) {
+            return false;
+        }
+
+        CloseHandle(hFile);
+
+        return core::add(ANYRUN);
+#endif
+    } catch (...) {
+        debug("ANYRUN_DRIVER: caught error, returned false");
+        return false;
+    }
 
 
+    /**
+     * @brief Check for any.run directory and handle the status code
+     * @category Windows
+     * @author kkent030315
+     * @link https://github.com/kkent030315/detect-anyrun/blob/main/detect.cc
+     * @copyright MIT
+     */
+    [[nodiscard]] static bool anyrun_directory() try {
+#if (!MSVC)
+        return false;
+#else
+        NTSTATUS status;
 
+        UNICODE_STRING name;
+        RtlInitUnicodeString(&name, L"\\??\\C:\\Program Files\\KernelLogger");
 
+        HANDLE hFile;
+        IO_STATUS_BLOCK iosb = { 0 };
+        OBJECT_ATTRIBUTES attrs;
+        InitializeObjectAttributes(&attrs, &name, 0, NULL, NULL);
 
+        status = NtCreateFile(
+            /*FileHandle*/&hFile,
+            /*DesiredAccess*/GENERIC_READ | SYNCHRONIZE,
+            /*ObjectAttributes*/&attrs,
+            /*IoStatusBlock*/&iosb,
+            /*AllocationSize*/NULL,
+            /*FileAttributes*/FILE_ATTRIBUTE_DIRECTORY,
+            /*ShareAccess*/FILE_SHARE_READ,
+            /*CreateDisposition*/FILE_OPEN,
+            /*CreateOptions*/FILE_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT,
+            /*EaBuffer*/NULL,
+            /*EaLength*/0
+        );
 
+        // ANY.RUN minifilter returns non-standard status code, STATUS_NO_SUCH_FILE
+        // If this status code is returned, it means that the directory is protected
+        // by the ANY.RUN minifilter driver.
+        // To patch this detection, I would recommend returning STATUS_OBJECT_NAME_NOT_FOUND
+        // that is a standard status code for this situation.
+        if (status == 0xC000000F) // STATUS_NOT_SUCH_FILE
+            return core::add(ANYRUN);
 
+        // Not actually the case, maybe conflict with other software installation.
+        if (NT_SUCCESS(status))
+            NtClose(hFile);
 
-    // https://medium.com/@matterpreter/hypervisor-detection-with-systemhypervisordetailinformation-26e44a57f80e
+        return false;
+#endif
+    } catch (...) {
+        debug("ANYRUN_DIRECTORY: caught error, returned false");
+        return false;
+    }
 
-    // idea: maybe try to get the hyper-v version and check for those values in cpuid
-
-    /*
-    EAX=21h: Reserved for TDX enumerationWhen Intel TDX (Trust Domain Extensions) is active, attempts to execute the CPUID instruction by a TD (Trust Domain) guest will be intercepted by the TDX module. This module will, when CPUID is invoked with EAX=21h and ECX=0 (leaf 21h, sub-leaf 0), return the index of the highest supported sub-leaf for leaf 21h in EAX and a TDX module vendor ID string as a 12-byte ASCII string in EBX,EDX,ECX (in that order). Intel's own module implementation returns the vendor ID string "IntelTDX    " (with four trailing spaces)[102] - for this module, additional feature information is not available through CPUID and must instead be obtained through the TDX-specific TDCALL instruction.
-    */
-
-
-    // https://github.com/systemd/systemd/blob/main/src/basic/virt.c
-
-
-    /*
-    In the same way, a lot of these virtual files can provide information on the environment, including –
-    but not limited to – /proc/sysinfo (in which some distribution expose data about virtual machines),
-    /proc/device-tree (that lists the devices on the machine), /proc/xen (a file created by the Xen
-    Server) or /proc/modules (that contains information about the loaded kernel modules, modules
-    that are used by hypervisors to optimize the guests).
-    Like procfs (mounted in /proc), sysfs can be useful. Its role is to provide to the user an access to the
-    devices and their drivers. The file /sys/hypervisor/type, for instance, is sometimes used to store
-    information about the hypervisor Linux is running on
-    */
-
-
-// https://unprotect.it/technique/retrieve-hdd-information/
-
-
-    // https://github.com/torvalds/linux/blob/31cc088a4f5d83481c6f5041bd6eb06115b974af/arch/x86/kernel/cpu/vmware.c
 
 
 
@@ -9216,7 +9292,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
                 // run the technique
                 const bool result = tuple.run();
-
 
                 // accumulate the points if technique detected a VM
                 if (result) {
@@ -9945,6 +10020,8 @@ public: // START OF PUBLIC FUNCTIONS
             case SMBIOS_VM_BIT: return "SMBIOS_VM_BIT";
             case PODMAN_FILE: return "PODMAN_FILE";
             case WSL_PROC: return "WSL_PROC";
+            case ANYRUN_DRIVER: return "ANYRUN_DRIVER";
+            case ANYRUN_DIRECTORY: return "ANYRUN_DIRECTORY";
             default: return "Unknown flag";
         }
     }
@@ -10079,7 +10156,8 @@ std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard{
     { VM::AWS_NITRO, 0 },
     { VM::PODMAN, 0 },
     { VM::WSL, 0 },
-    { VM::OPENVZ, 0 }
+    { VM::OPENVZ, 0 },
+    { VM::ANYRUN, 0 }
 };
 
 
@@ -10292,5 +10370,7 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::DMI_SCAN, { 50, VM::dmi_scan, false } },
     { VM::SMBIOS_VM_BIT, { 50, VM::smbios_vm_bit, false } },
     { VM::PODMAN_FILE, { 15, VM::podman_file, true } },
-    { VM::WSL_PROC, { 30, VM::wsl_proc_subdir, false } }
+    { VM::WSL_PROC, { 30, VM::wsl_proc_subdir, false } },
+    { VM::ANYRUN_DRIVER, { 65, VM::anyrun_driver, false } },
+    { VM::ANYRUN_DIRECTORY, { 35, VM::anyrun_directory, false } }
 };

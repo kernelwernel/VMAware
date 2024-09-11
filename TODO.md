@@ -45,6 +45,8 @@
 - [ ] check if bios date in /sys/class/dmi/id/ could be useful under QEMU
 - [ ] make the cli demo in the readme for the 1.8 version
 - [ ] fix the percentage thing for the disabled techniques
+- [ ] adopt the firmware technique from the vmprotect source code leak
+- [ ] update the Hyper-X graph with the cpu manufacturer part
 
 # Distant plans
 - add the library to conan.io when released
