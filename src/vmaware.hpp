@@ -220,9 +220,10 @@ typedef struct IUnknown IUnknown;
 #include <stdio.h>
 #include <io.h>
 #include <winspool.h>
+#if (!WIN_XP)
 #include <winevt.h>
+#endif
 #include <wtypes.h>
-#include <winevt.h>
 
 #if (!WIN_XP)
 #include <versionhelpers.h>
