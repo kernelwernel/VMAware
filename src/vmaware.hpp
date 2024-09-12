@@ -1324,23 +1324,6 @@ private:
             std::cout << std::dec << "\n";
         }
 #endif
-        static BOOL IsWindowsVistaOrGreater() {
-            OSVERSIONINFOEX osvi;
-            DWORDLONG dwlConditionMask = 0;
-
-            // Initialize the OSVERSIONINFOEX structure.
-            ZeroMemory(&osvi, sizeof(OSVERSIONINFOEX));
-            osvi.dwOSVersionInfoSize = sizeof(OSVERSIONINFOEX);
-            osvi.dwMajorVersion = 6;
-            osvi.dwMinorVersion = 0;
-
-            // Initialize the condition mask.
-            dwlConditionMask = VerSetConditionMask(dwlConditionMask, VER_MAJORVERSION, VER_GREATER_EQUAL);
-            dwlConditionMask = VerSetConditionMask(dwlConditionMask, VER_MINORVERSION, VER_GREATER_EQUAL);
-
-            // Perform the version check.
-            return VerifyVersionInfo(&osvi, VER_MAJORVERSION | VER_MINORVERSION, dwlConditionMask);
-        }
 
         // basically std::system but it runs in the background with std::string output
         [[nodiscard]] static std::unique_ptr<std::string> sys_result(const TCHAR* cmd) try {
@@ -2073,6 +2056,26 @@ private:
 
             return major_version;
         }
+
+
+        [[nodiscard]] static bool IsWindowsVistaOrGreater() {
+            OSVERSIONINFOEX osvi;
+            DWORDLONG dwlConditionMask = 0;
+
+            // Initialize the OSVERSIONINFOEX structure.
+            ZeroMemory(&osvi, sizeof(OSVERSIONINFOEX));
+            osvi.dwOSVersionInfoSize = sizeof(OSVERSIONINFOEX);
+            osvi.dwMajorVersion = 6;
+            osvi.dwMinorVersion = 0;
+
+            // Initialize the condition mask.
+            dwlConditionMask = VerSetConditionMask(dwlConditionMask, VER_MAJORVERSION, VER_GREATER_EQUAL);
+            dwlConditionMask = VerSetConditionMask(dwlConditionMask, VER_MINORVERSION, VER_GREATER_EQUAL);
+
+            // Perform the version check.
+            return VerifyVersionInfo(&osvi, VER_MAJORVERSION | VER_MINORVERSION, dwlConditionMask);
+        }
+
 
 
         [[nodiscard]] static std::string SMBIOS_string() {
