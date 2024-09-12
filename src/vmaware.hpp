@@ -2077,7 +2077,6 @@ private:
         }
 
 
-
         [[nodiscard]] static std::string SMBIOS_string() {
             HKEY hk = 0;
             int ret = RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SYSTEM\\CurrentControlSet\\Services\\mssmbios\\data", 0, KEY_ALL_ACCESS, &hk);

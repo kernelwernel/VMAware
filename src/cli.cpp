@@ -405,7 +405,7 @@ bool is_admin() {
 #endif
 
 
-bool are_perms_required(const VM::enum_flags flag) {
+bool are_perms_required(const VM::enum_flags &flag) {
 #if (LINUX)
     if (is_admin()) {
         return false;
