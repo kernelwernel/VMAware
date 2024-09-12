@@ -114,9 +114,10 @@
 #error "VMAware only supports C++11 or above, set your compiler flag to '-std=c++20' for gcc/clang, or '/std:c++20' for MSVC"
 #endif
 
-// unused for now, maybe in the future idk
 #if (WINVER == 0x0501) // Windows XP, (0x0701 for Windows 7)
 #define WIN_XP 1
+// fix IUnknown build error
+typedef struct IUnknown IUnknown;
 #else 
 #define WIN_XP 0
 #endif
@@ -213,12 +214,13 @@
 #include <comdef.h>
 #include <Wbemidl.h>
 #include <shlwapi.h>
-#include <shlobj_core.h>
+#include <shlobj.h>
 #include <strmif.h>
 #include <dshow.h>
 #include <stdio.h>
 #include <io.h>
 #include <winspool.h>
+#include <winevt.h>
 #include <wtypes.h>
 #include <winevt.h>
 
@@ -235,7 +237,10 @@
 #pragma comment(lib, "shell32.lib")
 #pragma comment(lib, "strmiids.lib")
 #pragma comment(lib, "uuid.lib")
+// winxp build tools not have ntdll.lib
+#if (!WIN_XP)
 #pragma comment(lib, "ntdll.lib")
+#endif
 #pragma comment(lib, "wevtapi.lib")
 
 
@@ -1318,6 +1323,23 @@ private:
             std::cout << std::dec << "\n";
         }
 #endif
+        static BOOL IsWindowsVistaOrGreater() {
+            OSVERSIONINFOEX osvi;
+            DWORDLONG dwlConditionMask = 0;
+
+            // Initialize the OSVERSIONINFOEX structure.
+            ZeroMemory(&osvi, sizeof(OSVERSIONINFOEX));
+            osvi.dwOSVersionInfoSize = sizeof(OSVERSIONINFOEX);
+            osvi.dwMajorVersion = 6;
+            osvi.dwMinorVersion = 0;
+
+            // Initialize the condition mask.
+            dwlConditionMask = VerSetConditionMask(dwlConditionMask, VER_MAJORVERSION, VER_GREATER_EQUAL);
+            dwlConditionMask = VerSetConditionMask(dwlConditionMask, VER_MINORVERSION, VER_GREATER_EQUAL);
+
+            // Perform the version check.
+            return VerifyVersionInfo(&osvi, VER_MAJORVERSION | VER_MINORVERSION, dwlConditionMask);
+        }
 
         // basically std::system but it runs in the background with std::string output
         [[nodiscard]] static std::unique_ptr<std::string> sys_result(const TCHAR* cmd) try {
@@ -1674,7 +1696,7 @@ private:
          * @note idea and credits to Requiem (https://github.com/NotRequiem)
          */
         [[nodiscard]] static bool hyper_x() {
-#if (!MSVC)
+#if (!MSVC || WIN_XP)
             return false;
 #else
             if (memo::hyperv::is_cached()) {
@@ -2314,6 +2336,7 @@ private:
          * 
          * @return True if any of the search strings are found in the events; otherwise, false.
          */
+#if (WINVER >= _WIN32_WINNT_LONGHORN)
         [[nodiscard]] static bool query_event_logs(const std::wstring& logName,
             const std::vector<std::wstring>& searchStrings,
             DWORD flags = EvtQueryReverseDirection,
@@ -2403,9 +2426,10 @@ private:
 
             return false;
         }
+
+#endif
 #endif
     };
-
 
 private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
@@ -2578,7 +2602,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         return (acc / 100 > 350);
 #elif (MSVC)
+#ifndef LODWORD
 #define LODWORD(_qw)    ((DWORD)(_qw))
+#endif
         u64 tsc1 = 0;
         u64 tsc2 = 0;
         u64 tsc3 = 0;
@@ -8545,7 +8571,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Windows
      */
     [[nodiscard]] static bool hyperv_event_logs() try {
-#if (!MSVC)
+#if (!MSVC || WIN_XP)
         return false;
 #else
         // Define the log name and search strings
@@ -9100,7 +9126,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @copyright MIT
      */
     [[nodiscard]] static bool anyrun_directory() try {
-#if (!MSVC)
+#if (!MSVC || WIN_XP)
         return false;
 #else
         NTSTATUS status;
@@ -9188,16 +9214,20 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         // assert if the flag is enabled, far better expression than typing std::bitset member functions
-#if (LINUX && __has_cpp_attribute(gnu::pure))
+#if (LINUX)
+#if (__has_cpp_attribute(gnu::pure))
         [[gnu::pure]]
+#endif
 #endif
         [[nodiscard]] static inline bool is_disabled(const flagset& flags, const u8 flag_bit) noexcept {
             return (!flags.test(flag_bit));
         }
 
         // same as above but for checking enabled flags
-#if (LINUX && __has_cpp_attribute(gnu::pure))
+#if (LINUX)
+#if (__has_cpp_attribute(gnu::pure))
         [[gnu::pure]]
+#endif
 #endif
         [[nodiscard]] static inline bool is_enabled(const flagset& flags, const u8 flag_bit) noexcept {
             return (flags.test(flag_bit));
