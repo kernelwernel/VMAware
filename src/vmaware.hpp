@@ -49,6 +49,9 @@
  * }
  */
 
+// TEMPORARY, REMOVE LATER
+#define __VMAWARE_DEBUG__ 1
+
 #if (defined(_MSC_VER) || defined(_WIN32) || defined(_WIN64) || defined(__MINGW32__))
 #define MSVC 1
 #define LINUX 0
