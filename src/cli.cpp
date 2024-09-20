@@ -124,10 +124,10 @@ Options:
  -a | --all         run the result with ALL the techniques enabled (might contain false positives)
  -d | --detect      returns the result as a boolean (1 = VM, 0 = baremetal)
  -s | --stdout      returns either 0 or 1 to STDOUT without any text output (0 = VM, 1 = baremetal)
- -b | --brand       returns the VM brand string (consult documentation for full output list)
+ -b | --brand       returns the VM brand string
+ -l | --brand-list  returns all the possible VM brand string values
  -p | --percent     returns the VM percentage between 0 and 100
  -c | --conclusion  returns the conclusion message string
- -l | --brand-list  returns all the possible VM brand string values
  -n | --number      returns the number of VM detection techniques it performs
  -t | --type        returns the VM type (if a VM was found)
 
