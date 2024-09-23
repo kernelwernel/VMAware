@@ -1,4 +1,4 @@
-/**
+/*
  * ██╗   ██╗███╗   ███╗ █████╗ ██╗    ██╗ █████╗ ██████╗ ███████╗
  * ██║   ██║████╗ ████║██╔══██╗██║    ██║██╔══██╗██╔══██╗██╔════╝
  * ██║   ██║██╔████╔██║███████║██║ █╗ ██║███████║██████╔╝█████╗
@@ -437,6 +437,7 @@ public:
         WSL_PROC,
         ANYRUN_DRIVER,
         ANYRUN_DIRECTORY,
+        DXDIAG_CHECK,
 
         // start of non-technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
         NO_MEMO,
@@ -9054,6 +9055,51 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
     }
 
+     /**
+     * @brief Use dxdiag CLI to query for VM information 
+     * @category Windows
+     * @author utoshu
+     */
+    [[nodiscard]] static bool dxdiag_check() try {
+#if (!MSVC)
+        return false;
+#else
+        if (system("dxdiag /t output.txt") != 0) {
+            debug("DXDIAG_CHECK: failed to run dxdiag");
+            return false;
+        }
+
+        std::ifstream infile("output.txt");
+        if (!infile.is_open()) {
+            debug("DXDIAG_CHECK: failed to open output.txt");
+            return false;
+        }
+
+        std::string line;
+        bool found = false;
+        while (std::getline(infile, line)) {
+            std::transform(line.begin(), line.end(), line.begin(), ::tolower);
+            if (line.find("virtualbox") != std::string::npos || line.find("vmware") != std::string::npos || line.find("hyper-v") != std::string::npos) {
+                found = true;
+                break;
+            }
+        }
+
+        infile.close();
+
+        if (found) {
+            return core::add(VMWARE);
+            std::remove("output.txt");
+        }
+
+        return false;
+#endif
+    }
+    catch (...) {
+        debug("DXDIAG_CHECK: caught error, returned false");
+        return false;
+    }
+
 
     /**
      * @brief Check for any.run driver presence
@@ -10372,5 +10418,6 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::PODMAN_FILE, { 15, VM::podman_file, true } },
     { VM::WSL_PROC, { 30, VM::wsl_proc_subdir, false } },
     { VM::ANYRUN_DRIVER, { 65, VM::anyrun_driver, false } },
-    { VM::ANYRUN_DIRECTORY, { 35, VM::anyrun_directory, false } }
+    { VM::ANYRUN_DIRECTORY, { 35, VM::anyrun_directory, false } },
+    { VM::DXDIAG_CHECK, { 100, VM::dxdiag_check, false }}
 };
