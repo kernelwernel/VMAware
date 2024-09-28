@@ -465,6 +465,11 @@ private:
     static constexpr u8 non_technique_begin = NO_MEMO;
     static constexpr u8 non_technique_end = enum_end;
 
+
+    // this is specifically meant for VM::detected_count() to 
+    // get the total number of techniques that detected a VM
+    static u8 detected_count_num; 
+
 public:
     static constexpr u8 technique_count = NO_MEMO; // get total number of techniques
     static std::vector<u8> technique_vector;
@@ -9307,6 +9312,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 // accumulate the points if technique detected a VM
                 if (result) {
                     points += tuple.points;
+                    detected_count_num++;
                 }
 
                 /**
@@ -9597,8 +9603,7 @@ public: // START OF PUBLIC FUNCTIONS
         // are all the techiques already run? if not, run them 
         // to fetch the necessary info to determine the brand
         if (!memo::all_present() || core::is_enabled(flags, NO_MEMO)) {
-            u16 tmp = core::run_all(flags);
-            UNUSED(tmp);
+            core::run_all(flags);
         }
 
         // check if the result is already cached and return that instead
@@ -9975,7 +9980,7 @@ public: // START OF PUBLIC FUNCTIONS
     /**
      * @brief This will convert the technique flag into a string, which will correspond to the technique name
      * @param single technique flag in VM structure
-     * @warning ⚠️ FOR DEVELOPMENT USAGE ONLY, NOT MEANT FOR PUBLIC USE ⚠️
+     * @warning ⚠️ FOR DEVELOPMENT USAGE ONLY, NOT MEANT FOR PUBLIC USE FOR NOW ⚠️
      */
     [[nodiscard]] static std::string flag_to_string(const enum_flags flag) {
         switch (flag) {
@@ -10103,7 +10108,7 @@ public: // START OF PUBLIC FUNCTIONS
     /**
      * @brief return a vector of detected brand strings
      * @param any flag combination in VM structure or nothing
-     * @warning ⚠️ FOR DEVELOPMENT USAGE ONLY, NOT MEANT FOR PUBLIC USE ⚠️
+     * @warning ⚠️ FOR DEVELOPMENT USAGE ONLY, NOT MEANT FOR PUBLIC USE FOR NOW ⚠️
      */
     template <typename ...Args>
     static std::map<const char*, brand_score_t> brand_map(Args ...args) {
@@ -10111,8 +10116,7 @@ public: // START OF PUBLIC FUNCTIONS
 
         // are all the techiques already run? if not, run all of them to get the necessary info to fetch the brand
         if (!memo::all_present() || core::is_enabled(flags, NO_MEMO)) {
-            u16 tmp = core::run_all(flags);
-            UNUSED(tmp);
+            core::run_all(flags);
         }
 
         return core::brand_scoreboard;
@@ -10123,11 +10127,11 @@ public: // START OF PUBLIC FUNCTIONS
      * @brief Change the certainty score of a technique
      * @param technique flag, then the new percentage score to overwite
      * @return void
-     * @warning ⚠️ FOR DEVELOPMENT USAGE ONLY, NOT MEANT FOR PUBLIC USE ⚠️
+     * @warning ⚠️ FOR DEVELOPMENT USAGE ONLY, NOT MEANT FOR PUBLIC USE FOR NOW ⚠️
      */
     static void modify_score(
         const enum_flags flag,
-        const std::uint8_t percent
+        const u8 percent
         // clang doesn't support std::source_location for some reason
 #if (CPP >= 20 && !CLANG)
         , const std::source_location& loc = std::source_location::current()
@@ -10166,6 +10170,191 @@ public: // START OF PUBLIC FUNCTIONS
 
         modify(const_cast<table_t&>(core::technique_table), flag, percent);
     }
+
+
+    /**
+     * @brief Fetch the total number of detected techniques
+     * @param any flag combination in VM structure or nothing
+     * @return std::uint8_t
+     * @warning ⚠️ FOR DEVELOPMENT USAGE ONLY, NOT MEANT FOR PUBLIC USE FOR NOW ⚠️
+     */
+    template <typename ...Args>
+    static u8 detected_count(Args ...args) {
+        flagset flags = core::arg_handler(args...);
+
+        // run all the techniques, which will set the detected_count variable 
+        core::run_all(flags);
+
+        return detected_count_num;
+    }
+
+
+    /**
+     * @brief Fetch the total number of detected techniques
+     * @param any flag combination in VM structure or nothing
+     * @return std::uint8_t
+     * @warning ⚠️ FOR DEVELOPMENT USAGE ONLY, NOT MEANT FOR PUBLIC USE FOR NOW ⚠️
+     */
+    template <typename ...Args>
+    static std::string type(Args ...args) {
+        flagset flags = core::arg_handler(args...);
+
+        const std::string brand_str = brand(flags);
+
+        // if multiple brands were found, return unknown
+        if (brand_str.find(" or ") != std::string::npos) {
+            return "Unknown";
+        }
+
+        const std::map<std::string, std::string> type_table {
+            // type 1
+            { "Xen HVM", "Hypervisor (type 1)" },
+            { "VMware ESX", "Hypervisor (type 1)" },
+            { "ACRN", "Hypervisor (type 1)" },
+            { "QNX hypervisor", "Hypervisor (type 1)" },
+            { "Microsoft Hyper-V", "Hypervisor (type 1)" },
+            { "Microsoft Azure Hyper-V", "Hypervisor (type 1)" },
+            { "Xbox NanoVisor (Hyper-V)", "Hypervisor (type 1)" },
+            { "KVM ", "Hypervisor (type 1)" },
+            { "bhyve", "Hypervisor (type 1)" },
+            { "KVM Hyper-V Enlightenment", "Hypervisor (type 1)" },
+            { "QEMU+KVM Hyper-V Enlightenment", "Hypervisor (type 1)" },
+            { "QEMU+KVM", "Hypervisor (type 1)" },
+            { "Intel HAXM", "Hypervisor (type 1)" },
+            { "Intel KGT (Trusty)", "Hypervisor (type 1)" },
+            { "SimpleVisor", "Hypervisor (type 1)" },
+            { "Google Compute Engine (KVM)", "Hypervisor (type 1)" },
+            { "OpenStack (KVM)", "Hypervisor (type 1)" },
+            { "KubeVirt (KVM)", "Hypervisor (type 1)" },
+            { "IBM PowerVM", "Hypervisor (type 1)" },
+            { "AWS Nitro System EC2 (KVM-based)", "Hypervisor (type 1)" },
+
+            // type 2
+            { "VirtualBox", "Hypervisor (type 2)" },
+            { "VMware", "Hypervisor (type 2)" },
+            { "VMware Express", "Hypervisor (type 2)" },
+            { "VMware GSX", "Hypervisor (type 2)" },
+            { "VMware Workstation", "Hypervisor (type 2)" },
+            { "VMware Fusion", "Hypervisor (type 2)" },
+            { "Parallels", "Hypervisor (type 2)" },
+            { "Virtual PC", "Hypervisor (type 2)" },
+            { "NetBSD NVMM", "Hypervisor (type 2)" },
+            { "OpenBSD VMM", "Hypervisor (type 2)" },
+            { "User-mode Linux", "Hypervisor (type 2)" },
+
+            // sandbox
+            { "Cuckoo", "Sandbox" },
+            { "Sandboxie", "Sandbox" },
+            { "Hybrid Analysis", "Sandbox" },
+            { "CWSandbox", "Sandbox" },
+            { "JoeBox", "Sandbox" },
+            { "Anubis", "Sandbox" },
+            { "Comodo", "Sandbox" },
+            { "ThreatExpert", "Sandbox" },
+            { "ANY.RUN", "Sandbox"},
+
+            // misc
+            { "Bochs", "Emulator" },
+            { "BlueStacks", "Emulator" },
+            { "Microsoft x86-to-ARM", "Emulator" },
+            { "QEMU", "Emulator/Hypervisor (type 2)" },
+            { "Jailhouse", "Partitioning Hypervisor" },
+            { "Unisys s-Par", "Partitioning Hypervisor" },
+            { "Docker", "Container" },
+            { "Podman", "Container" },
+            { "OpenVZ", "Container" },
+            { "Microsoft Virtual PC/Hyper-V", "Hypervisor (either type 1 or 2)" },
+            { "Lockheed Martin LMHS", "Hypervisor (unknown type)" },
+            { "Wine", "Compatibility layer" },
+            { "Apple VZ", "Unknown" },
+            { "Hyper-V artifact (not an actual VM)", "No VM" },
+            { "User-mode Linux", "Paravirtualised" },
+            { "WSL", "Hybrid Hyper-V (type 1 and 2)" }, // debatable tbh
+            { "Apple Rosetta 2", "Binary Translation Layer/Emulator" },
+        };
+
+        auto it = type_table.find(brand_str);
+
+        if (it != type_table.end()) {
+            return it->second;
+        }
+
+        return "Unknown";
+    }
+
+
+    /**
+     * @brief Fetch the conclusion message based on the brand and percentage
+     * @param any flag combination in VM structure or nothing
+     * @return std::string
+     * @warning ⚠️ FOR DEVELOPMENT USAGE ONLY, NOT MEANT FOR PUBLIC USE FOR NOW ⚠️
+     */
+    template <typename ...Args>
+    static std::string conclusion(Args ...args) {
+        flagset flags = core::arg_handler(args...);
+
+        const std::string brand_tmp = brand(flags);
+        const u8 percent_tmp = percentage(flags);
+
+        constexpr const char* baremetal = "Running in baremetal";
+        constexpr const char* very_unlikely = "Very unlikely a VM";
+        constexpr const char* unlikely = "Unlikely a VM";
+
+        std::string potentially = "Potentially a VM";
+        std::string might = "Might be a VM";
+        std::string likely = "Likely a VM";
+        std::string very_likely = "Very likely a VM";
+        std::string inside_vm = "Running inside a VM";
+
+        if (brand_tmp != "Unknown") {
+            potentially = "Potentially a " + brand_tmp + " VM";
+            might = "Might be a " + brand_tmp + " VM";
+            likely = "Likely a " + brand_tmp + " VM";
+            very_likely = "Very likely a " + brand_tmp + " VM";
+            inside_vm = "Running inside a " + brand_tmp + " VM";
+        }
+
+        if      (percent_tmp == 0)   { return baremetal; } 
+        else if (percent_tmp <= 20)  { return very_unlikely; } 
+        else if (percent_tmp <= 35)  { return unlikely; } 
+        else if (percent_tmp < 50)   { return potentially; } 
+        else if (percent_tmp <= 62)  { return might; } 
+        else if (percent_tmp <= 75)  { return likely; } 
+        else if (percent_tmp < 100)  { return very_likely; } 
+        else if (percent_tmp == 100) { return inside_vm; }
+
+        return "Unknown error";
+    }
+
+
+
+    struct vmaware {
+        bool is_vm;
+        u8 percentage;
+        u8 detected_count;
+        u8 technique_count;
+        std::string brand;
+        std::string type;
+        std::string conclusion;
+
+        vmaware() = default;
+
+        template <typename ...Args>
+        vmaware(Args ...args) {
+            flagset flags = core::arg_handler(args...);
+
+            is_vm = VM::detect(flags);
+            percentage = VM::percentage(flags);
+            detected_count = VM::detected_count(flags);
+            technique_count = VM::technique_count;
+            brand = VM::brand(flags);
+            type = VM::type(flags);
+            conclusion = VM::conclusion(flags);
+        }
+    };
+
+
+
 };
 
 MSVC_ENABLE_WARNING(ASSIGNMENT_OPERATOR NO_INLINE_FUNC SPECTRE)
@@ -10256,12 +10445,16 @@ VM::u16 VM::total_points = 0;
 // collected in this flagset (std::bitset) variable, and eventually be the 
 // return value for actual end-user functions like VM::detect() to rely 
 // and work on. VM::global_flags is just a copy of the flags but visible 
-// globally throughout the whole VM struct.
+// globally throughout the whole VM struct, as the name implies.
 VM::flagset VM::core::flag_collector;
 VM::flagset VM::global_flags;
 
+
+VM::u8 VM::detected_count_num = 0;
+
+
 // default flags 
-VM::flagset VM::DEFAULT = []() -> flagset {
+VM::flagset VM::DEFAULT = []() noexcept -> flagset {
     flagset tmp;
 
     // set all bits to 1
@@ -10283,7 +10476,7 @@ VM::flagset VM::DEFAULT = []() -> flagset {
 
 
 // flag to enable every technique
-VM::flagset VM::ALL = []() -> flagset {
+VM::flagset VM::ALL = []() noexcept -> flagset {
     flagset tmp;
 
     // set all bits to 1
@@ -10337,7 +10530,7 @@ std::vector<VM::core::custom_technique> VM::core::custom_table = {
 
 // the 0~100 points are debatable, but I think it's fine how it is. Feel free to disagree.
 const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = {
-    // FORMAT: VM::<ID> = { certainty%, function pointer, is spoofable? }
+    // FORMAT: { VM::<ID>, { certainty%, function pointer, is spoofable? } },
 
     { VM::VMID, { 100, VM::vmid, false } },
     { VM::CPU_BRAND, { 50, VM::cpu_brand, false } },

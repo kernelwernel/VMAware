@@ -55,7 +55,10 @@ constexpr const char* red_orange = "\x1B[38;2;247;127;40m";
 constexpr const char* green_orange = "\x1B[38;2;174;197;59m";
 constexpr const char* grey = "\x1B[38;2;108;108;108m";
 
-enum arg_enum : std::uint8_t {
+using u8  = std::uint8_t;
+using u32 = std::uint32_t;
+
+enum arg_enum : u8 {
     HELP,
     VERSION,
     ALL,
@@ -73,7 +76,7 @@ enum arg_enum : std::uint8_t {
 };
 
 std::bitset<14> arg_bitset;
-const std::uint8_t max_bits = static_cast<std::uint8_t>(VM::MULTIPLE) + 1;
+const u8 max_bits = static_cast<u8>(VM::MULTIPLE) + 1;
 
 #if (MSVC)
 class win_ansi_enabler_t
@@ -107,9 +110,6 @@ private:
   HANDLE m_out;
 };
 #endif
-
-// for the technique counts
-std::uint8_t detected_count = 0;
 
 
 [[noreturn]] void help(void) {
@@ -150,7 +150,7 @@ Extra:
     std::exit(0);
 }
 
-const char* color(const std::uint8_t score) {
+const char* color(const u8 score) {
     if      (score == 0)   { return red; }
     else if (score <= 12)  { return red; }
     else if (score <= 25)  { return red_orange; }
@@ -163,36 +163,6 @@ const char* color(const std::uint8_t score) {
     return "";
 }
 
-std::string message(const std::uint8_t score, const std::string &brand) {
-    constexpr const char* baremetal = "Running in baremetal";
-    constexpr const char* very_unlikely = "Very unlikely a VM";
-    constexpr const char* unlikely = "Unlikely a VM";
-
-    std::string potentially = "Potentially a VM";
-    std::string might = "Might be a VM";
-    std::string likely = "Likely a VM";
-    std::string very_likely = "Very likely a VM";
-    std::string inside_vm = "Running inside a VM";
-
-    if (brand != "Unknown") {
-        potentially = "Potentially a " + brand + " VM";
-        might = "Might be a " + brand + " VM";
-        likely = "Likely a " + brand + " VM";
-        very_likely = "Very likely a " + brand + " VM";
-        inside_vm = "Running inside a " + brand + " VM";
-    }
-
-    if      (score == 0)   { return baremetal; } 
-    else if (score <= 20)  { return very_unlikely; } 
-    else if (score <= 35)  { return unlikely; } 
-    else if (score < 50)   { return potentially; } 
-    else if (score <= 62)  { return might; } 
-    else if (score <= 75)  { return likely; } 
-    else if (score < 100)  { return very_likely; } 
-    else if (score == 100) { return inside_vm; }
-
-    return "Unknown error";
-}
 
 [[noreturn]] void brand_list() {
     std::cout << 
@@ -255,87 +225,6 @@ ANY.RUN
 )";
 
     std::exit(0);
-}
-
-std::string type(const std::string &brand_str) {
-    if (brand_str.find(" or ") != std::string::npos) {
-        return "Unknown";        
-    }
-
-    const std::map<std::string, std::string> type_table {
-        // type 1
-        { "Xen HVM", "Hypervisor (type 1)" },
-        { "VMware ESX", "Hypervisor (type 1)" },
-        { "ACRN", "Hypervisor (type 1)" },
-        { "QNX hypervisor", "Hypervisor (type 1)" },
-        { "Microsoft Hyper-V", "Hypervisor (type 1)" },
-        { "Microsoft Azure Hyper-V", "Hypervisor (type 1)" },
-        { "Xbox NanoVisor (Hyper-V)", "Hypervisor (type 1)" },
-        { "KVM ", "Hypervisor (type 1)" },
-        { "bhyve", "Hypervisor (type 1)" },
-        { "KVM Hyper-V Enlightenment", "Hypervisor (type 1)" },
-        { "QEMU+KVM Hyper-V Enlightenment", "Hypervisor (type 1)" },
-        { "QEMU+KVM", "Hypervisor (type 1)" },
-        { "Intel HAXM", "Hypervisor (type 1)" },
-        { "Intel KGT (Trusty)", "Hypervisor (type 1)" },
-        { "SimpleVisor", "Hypervisor (type 1)" },
-        { "Google Compute Engine (KVM)", "Hypervisor (type 1)" },
-        { "OpenStack (KVM)", "Hypervisor (type 1)" },
-        { "KubeVirt (KVM)", "Hypervisor (type 1)" },
-        { "IBM PowerVM", "Hypervisor (type 1)" },
-        { "AWS Nitro System EC2 (KVM-based)", "Hypervisor (type 1)" },
-
-        // type 2
-        { "VirtualBox", "Hypervisor (type 2)" },
-        { "VMware", "Hypervisor (type 2)" },
-        { "VMware Express", "Hypervisor (type 2)" },
-        { "VMware GSX", "Hypervisor (type 2)" },
-        { "VMware Workstation", "Hypervisor (type 2)" },
-        { "VMware Fusion", "Hypervisor (type 2)" },
-        { "Parallels", "Hypervisor (type 2)" },
-        { "Virtual PC", "Hypervisor (type 2)" },
-        { "NetBSD NVMM", "Hypervisor (type 2)" },
-        { "OpenBSD VMM", "Hypervisor (type 2)" },
-        { "User-mode Linux", "Hypervisor (type 2)" },
-
-        // sandbox
-        { "Cuckoo", "Sandbox" },
-        { "Sandboxie", "Sandbox" },
-        { "Hybrid Analysis", "Sandbox" },
-        { "CWSandbox", "Sandbox" },
-        { "JoeBox", "Sandbox" },
-        { "Anubis", "Sandbox" },
-        { "Comodo", "Sandbox" },
-        { "ThreatExpert", "Sandbox" },
-        { "ANY.RUN", "Sandbox"},
-
-        // misc
-        { "Bochs", "Emulator" },
-        { "BlueStacks", "Emulator" },
-        { "Microsoft x86-to-ARM", "Emulator" },
-        { "QEMU", "Emulator" },
-        { "Jailhouse", "Partitioning Hypervisor" },
-        { "Unisys s-Par", "Partitioning Hypervisor" },
-        { "Docker", "Container" },
-        { "Podman", "Container" },
-        { "OpenVZ", "Container" },
-        { "Microsoft Virtual PC/Hyper-V", "Hypervisor (either type 1 or 2)" },
-        { "Lockheed Martin LMHS", "Hypervisor (unknown type)" },
-        { "Wine", "Compatibility layer" },
-        { "Apple VZ", "Unknown" },
-        { "Hyper-V artifact (not an actual VM)", "No VM" },
-        { "User-mode Linux", "Paravirtualised" },
-        { "WSL", "Hybrid Hyper-V (type 1 and 2)" }, // debatable tbh
-        { "Apple Rosetta 2", "Binary Translation Layer/Emulator" },
-    };
-
-    auto it = type_table.find(brand_str);
-
-    if (it != type_table.end()) {
-        return it->second;
-    }
-
-    return "Unknown";
 }
 
 bool is_spoofable(const VM::enum_flags flag) {
@@ -460,7 +349,8 @@ std::bitset<max_bits> settings() {
 void general() {
     const std::string detected = ("[  " + std::string(green) + "DETECTED" + std::string(ansi_exit) + "  ]");
     const std::string not_detected = ("[" + std::string(red) + "NOT DETECTED" + std::string(ansi_exit) + "]");
-    const std::string spoofable = ("[" + std::string(red) + " SPOOFABLE " + std::string(ansi_exit) + "]");
+    //const std::string spoofable = ("[" + std::string(red) + " SPOOFABLE " + std::string(ansi_exit) + "]");
+    const std::string spoofable = ("[" + std::string(red) + " EASY SPOOF " + std::string(ansi_exit) + "]");
     const std::string note = ("[    NOTE    ]");               
     const std::string no_perms = ("[" + std::string(grey) + "  NO PERMS  " + std::string(ansi_exit) + "]");
     const std::string disabled = ("[" + std::string(grey) + "  DISABLED  " + std::string(ansi_exit) + "]");
@@ -469,7 +359,7 @@ void general() {
     auto checker = [&](const VM::enum_flags flag, const char* message) -> void {
         if (is_spoofable(flag)) {
             if (!arg_bitset.test(SPOOFABLE)) {
-                std::cout << spoofable << "  Skipped " << message << "\n";
+                std::cout << spoofable << " Skipped " << message << "\n";
                 return;
             }
         }
@@ -488,7 +378,6 @@ void general() {
 
         if (VM::check(flag)) {
             std::cout << detected << " Checking " << message << "...\n";
-            detected_count++;
         } else {
             std::cout << not_detected << " Checking " << message << "...\n";
         }
@@ -631,90 +520,104 @@ void general() {
     std::cout << "[DEBUG] theoretical maximum points: " << VM::total_points << "\n";
 #endif
 
-    std::string brand = VM::brand(VM::MULTIPLE, settings());
+    // struct containing the whole overview of the VM data
+    VM::vmaware vm(VM::MULTIPLE, settings());
 
-    std::cout << "VM brand: " << ((brand == "Unknown") || (brand == "Hyper-V artifact (not an actual VM)") ? red : green) << brand << ansi_exit << "\n";
 
-    // meaning "if there's no brand conflicts" 
-    if (brand.find(" or ") == std::string::npos) {
-        const std::string type_value = type(brand);
+    // brand manager
+    {
+        std::cout << "VM brand: " << ((vm.brand == "Unknown") || (vm.brand == "Hyper-V artifact (not an actual VM)") ? red : green) << vm.brand << ansi_exit << "\n";
+    }
 
-        std::cout << "VM type: ";
 
-        std::string color = "";
-            
-        if (type_value == "Unknown" || type_value == "No VM") {
-            color = red;
-        } else {
-            color = green;
+    // type manager
+    {
+        if (vm.brand.find(" or ") == std::string::npos) {  // meaning "if there's no brand conflicts" 
+            std::cout << "VM type: ";
+
+            std::string color = "";
+
+            if (vm.type == "Unknown") {
+                color = red;
+            } else {
+                color = green;
+            }
+
+            std::cout << color << vm.type << ansi_exit << "\n";
+        }
+    }
+
+
+    // percentage manager
+    {
+        const char* percent_color = "";
+
+        if      (vm.percentage == 0) { percent_color = red; }
+        else if (vm.percentage < 25) { percent_color = red_orange; }
+        else if (vm.percentage < 50) { percent_color = orange; }
+        else if (vm.percentage < 75) { percent_color = green_orange; }
+        else                      { percent_color = green; }
+
+        std::cout << "VM likeliness: " << percent_color << static_cast<u32>(vm.percentage) << "%" << ansi_exit << "\n";
+    }
+
+
+    // VM confirmation manager
+    {
+        std::cout << "VM confirmation: " << (vm.is_vm ? green : red) << std::boolalpha << vm.is_vm << std::noboolalpha << ansi_exit << "\n";
+    }
+
+
+    // detection count manager
+    {
+        const char* count_color = "";
+
+        switch (vm.detected_count) {
+            case 0: count_color = red; break;
+            case 1: count_color = red_orange; break;
+            case 2: count_color = orange; break;
+            case 3: count_color = orange; break;
+            case 4: count_color = green_orange; break;
+            default:
+                // anything over 4 is green
+                count_color = green;
         }
 
-        std::cout << color << type_value << ansi_exit << "\n";
+        std::cout << 
+            "VM detections: " << 
+            count_color << 
+            static_cast<u32>(vm.detected_count) << 
+            "/" <<
+            static_cast<u32>(vm.technique_count) << 
+            ansi_exit <<
+            "\n\n";
     }
 
-    const char* percent_color = "";
-    const std::uint8_t percent = VM::percentage(settings());
 
-    if      (percent == 0) { percent_color = red; }
-    else if (percent < 25) { percent_color = red_orange; }
-    else if (percent < 50) { percent_color = orange; }
-    else if (percent < 75) { percent_color = green_orange; }
-    else                   { percent_color = green; }
+    // conclusion manager
+    {
+        const char* conclusion_color = color(vm.percentage);
 
-    std::cout << "VM likeliness: " << percent_color << static_cast<std::uint32_t>(percent) << "%" << ansi_exit << "\n";
-
-    const bool is_detected = VM::detect(settings());
-
-    std::cout << "VM confirmation: " << (is_detected ? green : red) << std::boolalpha << is_detected << std::noboolalpha << ansi_exit << "\n";
-
-    const char* count_color = "";
-
-    switch (detected_count) {
-        case 0: count_color = red; break;
-        case 1: count_color = red_orange; break;
-        case 2: count_color = orange; break;
-        case 3: count_color = orange; break;
-        case 4: count_color = green_orange; break;
-        default:
-            // anything over 4 is green
-            count_color = green;
+        std::cout
+            << bold
+            << "====== CONCLUSION: "
+            << ansi_exit
+            << conclusion_color << vm.conclusion << " " << ansi_exit
+            << bold
+            << "======"
+            << ansi_exit
+            << "\n\n";
     }
+    
 
-    std::cout << 
-        "VM detections: " << 
-        count_color << 
-        static_cast<std::uint32_t>(detected_count) << 
-        "/" <<
-        static_cast<std::uint32_t>(VM::technique_count) << 
-        ansi_exit <<
-        "\n\n";
+    // finishing touches with notes
+    if (notes_enabled) {
+        if ((vm.brand == "Hyper-V artifact (not an actual VM)")) {
+            std::cout << note << " The result means that the CLI has found Hyper-V, but as an artifact instead of an actual VM. This means that although the hardware values in fact match with Hyper-V due to how it's designed by Microsoft, the CLI has determined you are NOT in a Hyper-V VM.\n\n";
+        } 
 
-#if (MSVC)
-    using brand_score_t = std::int32_t;
-#else
-    using brand_score_t = std::uint8_t;
-#endif
-
-    std::map<const char*, brand_score_t> brand_map = VM::brand_map();
-
-    const char* conclusion_color   = color(percent);
-    std::string conclusion_message = message(percent, brand);
-
-    std::cout 
-        << bold 
-        << "====== CONCLUSION: "
-        << ansi_exit
-        << conclusion_color << conclusion_message << " " << ansi_exit
-        << bold
-        << "======"
-        << ansi_exit
-        << "\n\n";
-
-    if ((brand == "Hyper-V artifact (not an actual VM)") && notes_enabled) {
-        std::cout << note << " The result means that the CLI has found Hyper-V, but as an artifact instead of an actual VM. This means that although the hardware values in fact match with Hyper-V due to how it's designed by Microsoft, the CLI has determined you are NOT in a Hyper-V VM.\n\n";
-    } else if (notes_enabled) {
         if (!arg_bitset.test(SPOOFABLE)) {
-            std::cout << tip << "To enable spoofable techniques, run with the \"--spoofable\" argument\n\n";
+            std::cout << tip << "To enable easily spoofable techniques, run with the \"--spoofable\" argument\n\n";
         } else {
             std::cout << note << " If you found a false positive, please make sure to create an issue at https://github.com/kernelwernel/VMAware/issues\n\n";
         }
@@ -728,7 +631,7 @@ int main(int argc, char* argv[]) {
 #endif
 
     const std::vector<const char*> args(argv + 1, argv + argc); // easier this way
-    const std::uint32_t arg_count = argc - 1;
+    const u32 arg_count = argc - 1;
 
     if (arg_count == 0) {
         general();
@@ -797,19 +700,19 @@ int main(int argc, char* argv[]) {
     }
 
     if (arg_bitset.test(NUMBER)) {
-        std::cout << static_cast<std::uint32_t>(VM::technique_count) << "\n";
+        std::cout << static_cast<u32>(VM::technique_count) << "\n";
         return 0;
     }
 
 
     // critical returners
-    const std::uint32_t returners = (
-        static_cast<std::uint8_t>(arg_bitset.test(STDOUT)) +
-        static_cast<std::uint8_t>(arg_bitset.test(PERCENT)) +
-        static_cast<std::uint8_t>(arg_bitset.test(DETECT)) +
-        static_cast<std::uint8_t>(arg_bitset.test(BRAND)) +
-        static_cast<std::uint8_t>(arg_bitset.test(TYPE)) +
-        static_cast<std::uint8_t>(arg_bitset.test(CONCLUSION))
+    const u32 returners = (
+        static_cast<u8>(arg_bitset.test(STDOUT)) +
+        static_cast<u8>(arg_bitset.test(PERCENT)) +
+        static_cast<u8>(arg_bitset.test(DETECT)) +
+        static_cast<u8>(arg_bitset.test(BRAND)) +
+        static_cast<u8>(arg_bitset.test(TYPE)) +
+        static_cast<u8>(arg_bitset.test(CONCLUSION))
     );
 
     if (returners > 0) { // at least one of the options are set
@@ -823,7 +726,7 @@ int main(int argc, char* argv[]) {
         }
 
         if (arg_bitset.test(PERCENT)) {
-            std::cout << static_cast<std::uint32_t>(VM::percentage(VM::NO_MEMO, settings())) << "\n";
+            std::cout << static_cast<u32>(VM::percentage(VM::NO_MEMO, settings())) << "\n";
             return 0;
         }
 
@@ -838,18 +741,12 @@ int main(int argc, char* argv[]) {
         }
 
         if (arg_bitset.test(TYPE)) {
-            const std::string brand = VM::brand(VM::NO_MEMO, VM::MULTIPLE, settings());
-            std::cout << type(brand) << "\n";
+            std::cout << VM::type(VM::NO_MEMO, VM::MULTIPLE, settings()) << "\n";
             return 0;
         }
 
         if (arg_bitset.test(CONCLUSION)) {
-            std::uint8_t percent = 0;
-
-            percent = VM::percentage(VM::NO_MEMO, settings());
-
-            const std::string brand = VM::brand(VM::MULTIPLE, settings());
-            std::cout << message(percent, brand) << "\n";
+            std::cout << VM::conclusion(VM::NO_MEMO, VM::MULTIPLE, settings()) << "\n";
             return 0;
         }
     }

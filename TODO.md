@@ -48,6 +48,7 @@
 - [ ] adopt the firmware technique from the vmprotect source code leak
 - [ ] update the Hyper-X graph with the cpu manufacturer part
 - [ ] add a .so, .dll, and .dylib shared object files in the release 
+- [ ] make a struct version as an alternative
 
 # Distant plans
 - add the library to conan.io when released
