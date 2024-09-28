@@ -89,10 +89,11 @@ set_property(TARGET ${TARGET} PROPERTY CXX_STANDARD_REQUIRED ON)
 # CTest stuff
 include(CTest)
 enable_testing()
+set(ARGUMENTS "--all")
 if(MSVC)
-add_test(executable, "${BUILD_DIR}/Release/${TARGET} --all")
+add_test(NAME TARGET COMMAND "${BUILD_DIR}/Release/${TARGET}" ${ARGUMENTS})
 else()
-add_test(executable, "${BUILD_DIR}/${TARGET} --all")
+add_test(NAME TARGET COMMAND "${BUILD_DIR}/${TARGET}" ${ARGUMENTS})
 endif()
 
 
