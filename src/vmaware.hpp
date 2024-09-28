@@ -10352,9 +10352,6 @@ public: // START OF PUBLIC FUNCTIONS
             conclusion = VM::conclusion(flags);
         }
     };
-
-
-
 };
 
 MSVC_ENABLE_WARNING(ASSIGNMENT_OPERATOR NO_INLINE_FUNC SPECTRE)
