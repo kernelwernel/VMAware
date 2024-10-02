@@ -268,10 +268,6 @@ int main() {
 
 <br>
 
-
-
-<br>
-
 ## `VM::add_custom()`
 This function allows you to add your own custom VM detection techniques to the scoring system. The first parameter is the percentage score (0 to 100) of how likely it's a VM if your custom code returns `true`, and the second parameter should either be a lambda, a function pointer, or a `std::function<bool()>`
 
@@ -314,6 +310,74 @@ VM::add_custom(50, new_technique);
 ```
 
 <br>
+
+## `VM::type()`
+This will return the VM type as a `std::string` based on the brand found. The possible return values can be:
+- `Hypervisor (type 1)`
+- `Hypervisor (type 2)`
+- `Sandbox`
+- `Emulator`
+- `Emulator/Hypervisor (type 2)`
+- `Partitioning Hypervisor`
+- `Container`
+- `Hypervisor (either type 1 or 2)`
+- `Hypervisor (unknown type)`
+- `Compatibility layer`
+- `Paravirtualised/Hypervisor (type 2)`
+- `Hybrid Hyper-V (type 1 and 2)`
+- `Binary Translation Layer/Emulator`
+- `Unknown`
+
+<br>
+
+## `VM::conclusion()`
+This will return the "conclusion" message of what the overall result is as a `std::string`. The `[brand]` part might contain a brand or may as well be empty, depending on whether a brand has been found.
+- `Running in baremetal`
+- `Very unlikely a [brand] VM`
+- `Unlikely a [brand] VM`
+- `Potentially a [brand] VM`
+- `Might be a [brand] VM`
+- `Likely a [brand] VM`
+- `Very likely a [brand] VM`
+- `Running inside a [brand] VM`
+
+<br>
+
+# vmaware struct
+If you prefer having an object to store all the relevant information about the program's environment, you can use the `VM::vmaware` struct:
+
+```cpp
+struct vmaware {
+    bool is_vm;
+    std::uint8_t percentage;
+    std::uint8_t detected_count;
+    std::uint8_t technique_count;
+    std::string brand;
+    std::string type;
+    std::string conclusion;
+}; 
+```
+
+example:
+```cpp
+#include "vmaware.hpp"
+#include <iostream>
+
+int main() {
+    VM::vmaware vm;
+
+    std::cout << "Is this a VM? = " << vm.is_vm << "\n";
+    std::cout << "How many techniques detected a VM? = " << vm.detected_count << "%\n";
+    std::cout << "What's the overview in a human-readable message?" << vm.conclusion << "\n";
+}
+```
+
+> [!NOTE]
+> the flag system is compatible for the struct constructor.
+
+
+<br>
+
 
 # Flag table
 VMAware provides a convenient way to not only check for VMs, but also have the flexibility and freedom for the end-user to choose what techniques are used with complete control over what gets executed or not. This is handled with a flag system.

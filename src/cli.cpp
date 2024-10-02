@@ -499,7 +499,7 @@ void general() {
     checker(VM::VMWARE_DMI, "VMware DMI");
     checker(VM::EVENT_LOGS, "Hyper-V event logs");
     checker(VM::QEMU_VIRTUAL_DMI, "QEMU virtual DMI directory");
-    checker(VM::QEMU_USB, "QEMU USB");
+    //checker(VM::QEMU_USB, "QEMU USB");
     checker(VM::HYPERVISOR_DIR, "Hypervisor directory (Linux)");
     checker(VM::UML_CPU, "User-mode Linux CPU");
     checker(VM::KMSG, "/dev/kmsg hypervisor message");

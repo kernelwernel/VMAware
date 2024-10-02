@@ -48,7 +48,10 @@
 - [ ] adopt the firmware technique from the vmprotect source code leak
 - [ ] update the Hyper-X graph with the cpu manufacturer part
 - [ ] add a .so, .dll, and .dylib shared object files in the release 
-- [ ] make a struct version as an alternative
+- [X] make a struct version as an alternative
+- [ ] add the license style like in ffmpeg https://github.com/FFmpeg/FFmpeg/tree/master?tab=License-1-ov-file
+- [ ] fix the issue of VM::QEMU_USB being ultra slow
+
 
 # Distant plans
 - add the library to conan.io when released

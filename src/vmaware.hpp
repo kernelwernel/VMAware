@@ -1138,6 +1138,7 @@ private:
         };
     };
 
+
     // miscellaneous functionalities
     struct util {
 #if (LINUX)
@@ -1170,7 +1171,7 @@ private:
             }
 
             std::vector<u8> buffer((std::istreambuf_iterator<char>(file)),
-                                            std::istreambuf_iterator<char>());
+                                    std::istreambuf_iterator<char>());
 
             file.close();
 
@@ -1220,7 +1221,7 @@ private:
             return (
                 (uid != euid) ||
                 (euid == 0)
-                );
+            );
 #elif (MSVC)
             BOOL is_admin = FALSE;
             HANDLE hToken = NULL;
@@ -1708,23 +1709,35 @@ private:
                 return result;
             };
 
-            char out[sizeof(int32_t) * 4 + 1] = { 0 }; // e*x size + number of e*x registers + null terminator
-            cpu::cpuid((int*)out, cpu::leaf::hypervisor);
+            auto root_partition = []() -> bool {
+                u32 ebx, unused = 0;
+                cpu::cpuid(unused, ebx, unused, unused, 0x40000003);
+                return (ebx & 1);
+            };
 
-            const u32 eax = static_cast<u32>(out[0]);
+            auto eax = []() -> bool {
+                char out[sizeof(int32_t) * 4 + 1] = { 0 }; // e*x size + number of e*x registers + null terminator
+                cpu::cpuid((int*)out, cpu::leaf::hypervisor);
 
-            core_debug("HYPER_X: eax = ", eax);
+                const u32 eax = static_cast<u32>(out[0]);
 
-            const bool is_eax_valid = ((eax == 11) || (eax == 12));
+                core_debug("HYPER_X: eax = ", eax);
 
-            const std::array<std::string, 2> cpu = cpu::cpu_manufacturer(cpu::leaf::hypervisor);
+                return ((eax == 11) || (eax == 12));
+            };
 
-            const bool is_cpu_hyperv = (
-                (cpu.at(0) == "Microsoft Hv") ||
-                (cpu.at(1) == "Microsoft Hv")
-            );
-    
-            if (is_eax_valid || is_cpu_hyperv) {
+            auto cpu_vmid = []() -> bool {
+                const std::array<std::string, 2> cpu = cpu::cpu_manufacturer(cpu::leaf::hypervisor);
+
+                return (
+                    (cpu.at(0) == "Microsoft Hv") ||
+                    (cpu.at(1) == "Microsoft Hv")
+                );
+            };
+
+            const u8 points = (root_partition() + eax() + cpu_vmid());
+
+            if (points >= 2) {
                 // SMBIOS check
                 const std::string smbios = SMBIOS_string();
 
@@ -9171,7 +9184,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         struct technique {
             u8 points = 0;                // this is the certainty score between 0 and 100
             std::function<bool()> run;    // this is the technique function itself
-            bool spoofable = false;       // this is to indicate that the technique can be very easily spoofed (not guaranteed)
+            bool is_spoofable = false;    // this is to indicate that the technique can be very easily spoofed (not guaranteed)
         };
 
         struct custom_technique {
@@ -9276,22 +9289,26 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // run every VM detection mechanism in the technique table
         static u16 run_all(const flagset& flags, const bool shortcut = false) {
             u16 points = 0;
+
             const bool memo_enabled = core::is_disabled(flags, NO_MEMO);
 
             const u16 threshold_points = (core::is_enabled(flags, HIGH_THRESHOLD) ? high_threshold_score : 200);
 
-            // for main technique table
+            // loop through technique table, where all the techniques are stored
             for (const auto& tmp : technique_table) {
                 const enum_flags technique_macro = tmp.first;
-                const technique tuple = tmp.second;
+                const technique technique_data = tmp.second;
 
-                // check if it's disabled
+                // check if the technique is disabled
                 if (core::is_disabled(flags, technique_macro)) {
                     continue;
                 }
 
                 // check if it's spoofable, and whether it's enabled
-                if (tuple.spoofable && core::is_disabled(flags, SPOOFABLE)) {
+                if (
+                    technique_data.is_spoofable && 
+                    core::is_disabled(flags, SPOOFABLE)
+                ) {
                     continue;
                 }
 
@@ -9307,26 +9324,27 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
 
                 // run the technique
-                const bool result = tuple.run();
+                const bool result = technique_data.run();
 
                 // accumulate the points if technique detected a VM
                 if (result) {
-                    points += tuple.points;
+                    points += technique_data.points;
+
+                    // this is specific to VM::detected_count() which returns 
+                    // the number of techniques that returned a positive
                     detected_count_num++;
                 }
-
-                /**
-                 * for things like VM::detect() and VM::percentage(),
-                 * a score of 200+ is guaranteed to be a VM, so
-                 * there's no point in running the rest of the techniques
-                 */
+                
+                // for things like VM::detect() and VM::percentage(),
+                // a score of 200+ is guaranteed to be a VM, so
+                // there's no point in running the rest of the techniques
                 if (shortcut && points >= threshold_points) {
                     return points;
                 }
 
                 // store the current technique result to the cache
                 if (memo_enabled) {
-                    memo::cache_store(technique_macro, result, tuple.points);
+                    memo::cache_store(technique_macro, result, technique_data.points);
                 }
             }
 
@@ -9347,13 +9365,20 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
          * basically what this entire template fuckery does is manage the
          * variadic arguments being given through the arg_handler function,
          * which could either be a std::bitset<N>, a uint8_t, or a combination
-         * of both of them. Thisz will handle both argument types and implement
+         * of both of them. This will handle both argument types and implement
          * them depending on what their types are. If it's a std::bitset<N>,
-         * do the |= operation. If it's a uint8_t, simply .set() that into
-         * the flag_collector bitset. That's the gist of it.
+         * do the |= operation on flag_collector. If it's a uint8_t, simply 
+         * .set() that into the flag_collector. That's the gist of it.
          *
          * Also I won't even deny, the majority of this section was 90% generated
          * by chatgpt. Can't be arsed with this C++ templatisation shit.
+         * Like is it really my fault that I have a hard time understanging C++'s 
+         * god awful metaprogramming designs? And don't even get me started on SNIFAE. 
+         * 
+         * You don't need an IQ of 3 digits to realise how dogshit this language
+         * is, when you end up in situations where there's a few correct solutions
+         * to a problem, but with a billion ways you can do the same thing but in 
+         * the "wrong" way. I genuinely can't wait for Carbon to come out.
          */
     private:
         static flagset flag_collector;
@@ -9575,6 +9600,10 @@ public: // START OF PUBLIC FUNCTIONS
         const core::technique& pair = it->second;
         const bool result = pair.run();
 
+        if (result) {
+            detected_count_num++;
+        }
+
 #ifdef __VMAWARE_DEBUG__
         total_points += pair.points;
 #endif
@@ -9740,7 +9769,7 @@ public: // START OF PUBLIC FUNCTIONS
         }
 
 
-        // this is the section where post-processing will be done. 
+        // this is the section where brand post-processing will be done. 
         // The reason why this part is necessary is because it will
         // output a more accurate picture on the VM brand. For example, 
         // Azure's cloud is based on Hyper-V, but Hyper-V may have 
@@ -10165,7 +10194,7 @@ public: // START OF PUBLIC FUNCTIONS
 
         auto modify = [](table_t &table, const enum_flags flag, const u8 percent) -> void {
             core::technique &tmp = table.at(flag);
-            table[flag] = { percent, tmp.run, tmp.spoofable };
+            table[flag] = { percent, tmp.run, tmp.is_spoofable };
         };
 
         modify(const_cast<table_t&>(core::technique_table), flag, percent);
@@ -10176,7 +10205,6 @@ public: // START OF PUBLIC FUNCTIONS
      * @brief Fetch the total number of detected techniques
      * @param any flag combination in VM structure or nothing
      * @return std::uint8_t
-     * @warning ⚠️ FOR DEVELOPMENT USAGE ONLY, NOT MEANT FOR PUBLIC USE FOR NOW ⚠️
      */
     template <typename ...Args>
     static u8 detected_count(Args ...args) {
@@ -10193,7 +10221,6 @@ public: // START OF PUBLIC FUNCTIONS
      * @brief Fetch the total number of detected techniques
      * @param any flag combination in VM structure or nothing
      * @return std::uint8_t
-     * @warning ⚠️ FOR DEVELOPMENT USAGE ONLY, NOT MEANT FOR PUBLIC USE FOR NOW ⚠️
      */
     template <typename ...Args>
     static std::string type(Args ...args) {
@@ -10202,78 +10229,77 @@ public: // START OF PUBLIC FUNCTIONS
         const std::string brand_str = brand(flags);
 
         // if multiple brands were found, return unknown
-        if (brand_str.find(" or ") != std::string::npos) {
+        if (util::find(brand_str, " or ")) {
             return "Unknown";
         }
 
-        const std::map<std::string, std::string> type_table {
+        const std::map<const char*, const char*> type_table {
             // type 1
-            { "Xen HVM", "Hypervisor (type 1)" },
-            { "VMware ESX", "Hypervisor (type 1)" },
-            { "ACRN", "Hypervisor (type 1)" },
-            { "QNX hypervisor", "Hypervisor (type 1)" },
-            { "Microsoft Hyper-V", "Hypervisor (type 1)" },
-            { "Microsoft Azure Hyper-V", "Hypervisor (type 1)" },
-            { "Xbox NanoVisor (Hyper-V)", "Hypervisor (type 1)" },
-            { "KVM ", "Hypervisor (type 1)" },
-            { "bhyve", "Hypervisor (type 1)" },
-            { "KVM Hyper-V Enlightenment", "Hypervisor (type 1)" },
-            { "QEMU+KVM Hyper-V Enlightenment", "Hypervisor (type 1)" },
-            { "QEMU+KVM", "Hypervisor (type 1)" },
-            { "Intel HAXM", "Hypervisor (type 1)" },
-            { "Intel KGT (Trusty)", "Hypervisor (type 1)" },
-            { "SimpleVisor", "Hypervisor (type 1)" },
-            { "Google Compute Engine (KVM)", "Hypervisor (type 1)" },
-            { "OpenStack (KVM)", "Hypervisor (type 1)" },
-            { "KubeVirt (KVM)", "Hypervisor (type 1)" },
-            { "IBM PowerVM", "Hypervisor (type 1)" },
-            { "AWS Nitro System EC2 (KVM-based)", "Hypervisor (type 1)" },
+            { XEN, "Hypervisor (type 1)" },
+            { VMWARE_ESX, "Hypervisor (type 1)" },
+            { ACRN, "Hypervisor (type 1)" },
+            { QNX, "Hypervisor (type 1)" },
+            { HYPERV, "Hypervisor (type 1)" },
+            { AZURE_HYPERV, "Hypervisor (type 1)" },
+            { NANOVISOR, "Hypervisor (type 1)" },
+            { KVM, "Hypervisor (type 1)" },
+            { BHYVE, "Hypervisor (type 1)" },
+            { KVM_HYPERV, "Hypervisor (type 1)" },
+            { QEMU_KVM_HYPERV, "Hypervisor (type 1)" },
+            { QEMU_KVM, "Hypervisor (type 1)" },
+            { INTEL_HAXM, "Hypervisor (type 1)" },
+            { INTEL_KGT, "Hypervisor (type 1)" },
+            { SIMPLEVISOR, "Hypervisor (type 1)" },
+            { GCE, "Hypervisor (type 1)" },
+            { OPENSTACK, "Hypervisor (type 1)" },
+            { KUBEVIRT, "Hypervisor (type 1)" },
+            { POWERVM, "Hypervisor (type 1)" },
+            { AWS_NITRO, "Hypervisor (type 1)" },
 
             // type 2
-            { "VirtualBox", "Hypervisor (type 2)" },
-            { "VMware", "Hypervisor (type 2)" },
-            { "VMware Express", "Hypervisor (type 2)" },
-            { "VMware GSX", "Hypervisor (type 2)" },
-            { "VMware Workstation", "Hypervisor (type 2)" },
-            { "VMware Fusion", "Hypervisor (type 2)" },
-            { "Parallels", "Hypervisor (type 2)" },
-            { "Virtual PC", "Hypervisor (type 2)" },
-            { "NetBSD NVMM", "Hypervisor (type 2)" },
-            { "OpenBSD VMM", "Hypervisor (type 2)" },
-            { "User-mode Linux", "Hypervisor (type 2)" },
+            { VBOX, "Hypervisor (type 2)" },
+            { VMWARE, "Hypervisor (type 2)" },
+            { VMWARE_EXPRESS, "Hypervisor (type 2)" },
+            { VMWARE_GSX, "Hypervisor (type 2)" },
+            { VMWARE_WORKSTATION, "Hypervisor (type 2)" },
+            { VMWARE_FUSION, "Hypervisor (type 2)" },
+            { PARALLELS, "Hypervisor (type 2)" },
+            { VPC, "Hypervisor (type 2)" },
+            { NVMM, "Hypervisor (type 2)" },
+            { BSD_VMM, "Hypervisor (type 2)" },
 
             // sandbox
-            { "Cuckoo", "Sandbox" },
-            { "Sandboxie", "Sandbox" },
-            { "Hybrid Analysis", "Sandbox" },
-            { "CWSandbox", "Sandbox" },
-            { "JoeBox", "Sandbox" },
-            { "Anubis", "Sandbox" },
-            { "Comodo", "Sandbox" },
-            { "ThreatExpert", "Sandbox" },
-            { "ANY.RUN", "Sandbox"},
+            { CUCKOO, "Sandbox" },
+            { SANDBOXIE, "Sandbox" },
+            { HYBRID, "Sandbox" },
+            { CWSANDBOX, "Sandbox" },
+            { JOEBOX, "Sandbox" },
+            { ANUBIS, "Sandbox" },
+            { COMODO, "Sandbox" },
+            { THREATEXPERT, "Sandbox" },
+            { ANYRUN, "Sandbox"},
 
             // misc
-            { "Bochs", "Emulator" },
-            { "BlueStacks", "Emulator" },
-            { "Microsoft x86-to-ARM", "Emulator" },
-            { "QEMU", "Emulator/Hypervisor (type 2)" },
-            { "Jailhouse", "Partitioning Hypervisor" },
-            { "Unisys s-Par", "Partitioning Hypervisor" },
-            { "Docker", "Container" },
-            { "Podman", "Container" },
-            { "OpenVZ", "Container" },
-            { "Microsoft Virtual PC/Hyper-V", "Hypervisor (either type 1 or 2)" },
-            { "Lockheed Martin LMHS", "Hypervisor (unknown type)" },
-            { "Wine", "Compatibility layer" },
-            { "Apple VZ", "Unknown" },
-            { "Hyper-V artifact (not an actual VM)", "No VM" },
-            { "User-mode Linux", "Paravirtualised" },
-            { "WSL", "Hybrid Hyper-V (type 1 and 2)" }, // debatable tbh
-            { "Apple Rosetta 2", "Binary Translation Layer/Emulator" },
+            { BOCHS, "Emulator" },
+            { BLUESTACKS, "Emulator" },
+            { MSXTA, "Emulator" },
+            { QEMU, "Emulator/Hypervisor (type 2)" },
+            { JAILHOUSE, "Partitioning Hypervisor" },
+            { UNISYS, "Partitioning Hypervisor" },
+            { DOCKER, "Container" },
+            { PODMAN, "Container" },
+            { OPENVZ, "Container" },
+            { HYPERV_VPC, "Hypervisor (either type 1 or 2)" },
+            { LMHS, "Hypervisor (unknown type)" },
+            { WINE, "Compatibility layer" },
+            { APPLE_VZ, "Unknown" },
+            { HYPERV_ARTIFACT, "Unknown" },
+            { UML, "Paravirtualised/Hypervisor (type 2)" },
+            { WSL, "Hybrid Hyper-V (type 1 and 2)" }, // debatable tbh
+            { APPLE_ROSETTA, "Binary Translation Layer/Emulator" },
         };
 
-        auto it = type_table.find(brand_str);
+        auto it = type_table.find(brand_str.c_str());
 
         if (it != type_table.end()) {
             return it->second;
@@ -10287,7 +10313,6 @@ public: // START OF PUBLIC FUNCTIONS
      * @brief Fetch the conclusion message based on the brand and percentage
      * @param any flag combination in VM structure or nothing
      * @return std::string
-     * @warning ⚠️ FOR DEVELOPMENT USAGE ONLY, NOT MEANT FOR PUBLIC USE FOR NOW ⚠️
      */
     template <typename ...Args>
     static std::string conclusion(Args ...args) {
@@ -10321,11 +10346,8 @@ public: // START OF PUBLIC FUNCTIONS
         else if (percent_tmp <= 62)  { return might; } 
         else if (percent_tmp <= 75)  { return likely; } 
         else if (percent_tmp < 100)  { return very_likely; } 
-        else if (percent_tmp == 100) { return inside_vm; }
-
-        return "Unknown error";
+        else                         { return inside_vm; }
     }
-
 
 
     struct vmaware {
@@ -10631,7 +10653,7 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::VMWARE_DMI, { 30, VM::vmware_dmi, false } },
     { VM::EVENT_LOGS, { 30, VM::hyperv_event_logs, true } },
     { VM::QEMU_VIRTUAL_DMI, { 40, VM::qemu_virtual_dmi, false } },
-    { VM::QEMU_USB, { 20, VM::qemu_USB, false } },
+    //{ VM::QEMU_USB, { 20, VM::qemu_USB, false } },
     { VM::HYPERVISOR_DIR, { 20, VM::hypervisor_dir, false } },
     { VM::UML_CPU, { 80, VM::uml_cpu, false } },
     { VM::KMSG, { 10, VM::kmsg, true } },
