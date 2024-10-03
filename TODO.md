@@ -51,6 +51,8 @@
 - [X] make a struct version as an alternative
 - [ ] add the license style like in ffmpeg https://github.com/FFmpeg/FFmpeg/tree/master?tab=License-1-ov-file
 - [ ] fix the issue of VM::QEMU_USB being ultra slow
+- [ ] make a MIT transformer python script from GPL to MIT
+- [ ] /sys/class/dmi/id/product_name check this in qemu
 
 
 # Distant plans

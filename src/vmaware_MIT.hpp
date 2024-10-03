@@ -45,14 +45,14 @@
  *
  *
  * ================================ SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 322
- * - struct for internal cpu operations        => line 581
- * - struct for internal memoization           => line 1007
- * - struct for internal utility functions     => line 1134
- * - struct for internal core components       => line 9152
- * - start of internal VM detection techniques => line 2409
- * - start of public VM detection functions    => line 9495
- * - start of externally defined variables     => line 10095
+ * - enums for publicly accessible techniques  => line 346
+ * - struct for internal cpu operations        => line 598
+ * - struct for internal memoization           => line 1024
+ * - struct for internal utility functions     => line 1152
+ * - struct for internal core components       => line 8712
+ * - start of internal VM detection techniques => line 2448
+ * - start of public VM detection functions    => line 9074
+ * - start of externally defined variables     => line 9900
  *
  *
  * ================================ EXAMPLE ==================================
@@ -70,6 +70,8 @@
  *     std::cout << "VM certainty: " << (int)VM::percentage() << "%" << std::endl;
  * }
  */
+
+#pragma once
 
 #if (defined(_MSC_VER) || defined(_WIN32) || defined(_WIN64) || defined(__MINGW32__))
 #define MSVC 1
@@ -448,7 +450,7 @@ public:
         ANYRUN_DRIVER,
         ANYRUN_DIRECTORY,
 
-        // start of non-technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
+        // start of settings technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
         NO_MEMO,
         HIGH_THRESHOLD,
         NULL_ARG, // does nothing, just a placeholder flag mainly for the CLI
@@ -458,7 +460,7 @@ public:
 
 private:
     static constexpr u8 enum_size = MULTIPLE; // get enum size through value of last element
-    static constexpr u8 non_technique_count = MULTIPLE - NO_MEMO + 1; // get number of non-technique flags like VM::NO_MEMO for example
+    static constexpr u8 non_technique_count = MULTIPLE - NO_MEMO + 1; // get number of settings technique flags like VM::NO_MEMO for example
     static constexpr u8 INVALID = 255; // explicit invalid technique macro
     static constexpr u16 maximum_points = 4765; // theoretical total points if all VM detections returned true (which is practically impossible)
     static constexpr u16 high_threshold_score = 300; // new threshold score from 100 to 350 if VM::HIGH_THRESHOLD flag is enabled
@@ -472,6 +474,11 @@ private:
     static constexpr u8 technique_end = NO_MEMO;
     static constexpr u8 non_technique_begin = NO_MEMO;
     static constexpr u8 non_technique_end = enum_end;
+
+
+    // this is specifically meant for VM::detected_count() to 
+    // get the total number of techniques that detected a VM
+    static u8 detected_count_num; 
 
 public:
     static constexpr u8 technique_count = NO_MEMO; // get total number of techniques
@@ -1141,6 +1148,7 @@ private:
         };
     };
 
+
     // miscellaneous functionalities
     struct util {
 #if (LINUX)
@@ -1173,7 +1181,7 @@ private:
             }
 
             std::vector<u8> buffer((std::istreambuf_iterator<char>(file)),
-                                            std::istreambuf_iterator<char>());
+                                    std::istreambuf_iterator<char>());
 
             file.close();
 
@@ -1223,7 +1231,7 @@ private:
             return (
                 (uid != euid) ||
                 (euid == 0)
-                );
+            );
 #elif (MSVC)
             BOOL is_admin = FALSE;
             HANDLE hToken = NULL;
@@ -1681,7 +1689,16 @@ private:
 
         /**
          * @brief Checks whether Hyper-V host artifacts are present instead of an actual Hyper-V VM
-         * @note idea and credits to Requiem (https://github.com/NotRequiem)
+         * @note Hyper-V has an obscure feature where if it's enabled in the host system, the CPU 
+         *       hardware values makes it look like the whole system is running inside Hyper-V, 
+         *       which isn't true. This makes it a challenge to determine whether the hardware 
+         *       values the library is collecting is either a real Hyper-V VM, or just the artifacts 
+         *       of what Hyper-V has left as a consequence of having it enabled in the host system. 
+         *       The reason why this is a problem is because the library might falsely conclude that 
+         *       your the host system is running in Hyper-V, which is a false positive. This is where 
+         *       the Hyper-X mechanism comes into play to distinguish between these two.
+         * @author idea by Requiem (https://github.com/NotRequiem)
+         * @link graph to explain how this works: https://github.com/kernelwernel/VMAware/blob/main/assets/Hyper-X.png
          */
         [[nodiscard]] static bool hyper_x() {
 #if (!MSVC)
@@ -1702,23 +1719,35 @@ private:
                 return result;
             };
 
-            char out[sizeof(int32_t) * 4 + 1] = { 0 }; // e*x size + number of e*x registers + null terminator
-            cpu::cpuid((int*)out, cpu::leaf::hypervisor);
+            auto root_partition = []() -> bool {
+                u32 ebx, unused = 0;
+                cpu::cpuid(unused, ebx, unused, unused, 0x40000003);
+                return (ebx & 1);
+            };
 
-            const u32 eax = static_cast<u32>(out[0]);
+            auto eax = []() -> bool {
+                char out[sizeof(int32_t) * 4 + 1] = { 0 }; // e*x size + number of e*x registers + null terminator
+                cpu::cpuid((int*)out, cpu::leaf::hypervisor);
 
-            core_debug("HYPER_X: eax = ", eax);
+                const u32 eax = static_cast<u32>(out[0]);
 
-            const bool is_eax_valid = ((eax == 11) || (eax == 12));
+                core_debug("HYPER_X: eax = ", eax);
 
-            const std::array<std::string, 2> cpu = cpu::cpu_manufacturer(cpu::leaf::hypervisor);
+                return ((eax == 11) || (eax == 12));
+            };
 
-            const bool is_cpu_hyperv = (
-                (cpu.at(0) == "Microsoft Hv") ||
-                (cpu.at(1) == "Microsoft Hv")
-            );
-    
-            if (is_eax_valid || is_cpu_hyperv) {
+            auto cpu_vmid = []() -> bool {
+                const std::array<std::string, 2> cpu = cpu::cpu_manufacturer(cpu::leaf::hypervisor);
+
+                return (
+                    (cpu.at(0) == "Microsoft Hv") ||
+                    (cpu.at(1) == "Microsoft Hv")
+                );
+            };
+
+            const u8 points = (root_partition() + eax() + cpu_vmid());
+
+            if (points >= 2) {
                 // SMBIOS check
                 const std::string smbios = SMBIOS_string();
 
@@ -2006,27 +2035,27 @@ private:
             typedef NTSTATUS(WINAPI* RtlGetVersionFunc)(PRTL_OSVERSIONINFOW);
 
             const std::map<DWORD, u8> windowsVersions = {
-                { 6002, 6 }, // windows vista, technically no number but this function is just for great than operations anyway so it doesn't matter
-                { 7601, 7 },
-                { 9200, 8 },
-                { 9600, 8 },
-                { 10240, 10 },
-                { 10586, 10 },
-                { 14393, 10 },
-                { 15063, 10 },
-                { 16299, 10 },
-                { 17134, 10 },
-                { 17763, 10 },
-                { 18362, 10 },
-                { 18363, 10 },
-                { 19041, 10 },
-                { 19042, 10 },
-                { 19043, 10 },
-                { 19044, 10 },
-                { 19045, 10 },
-                { 22000, 11 },
-                { 22621, 11 },
-                { 22631, 11 }
+                { 6002, static_cast<u8>(6) }, // windows vista, technically no number but this function is just for great than operations anyway so it doesn't matter
+                { 7601, static_cast<u8>(7) },
+                { 9200, static_cast<u8>(8) },
+                { 9600, static_cast<u8>(8) },
+                { 10240, static_cast<u8>(10) },
+                { 10586, static_cast<u8>(10) },
+                { 14393, static_cast<u8>(10) },
+                { 15063, static_cast<u8>(10) },
+                { 16299, static_cast<u8>(10) },
+                { 17134, static_cast<u8>(10) },
+                { 17763, static_cast<u8>(10) },
+                { 18362, static_cast<u8>(10) },
+                { 18363, static_cast<u8>(10) },
+                { 19041, static_cast<u8>(10) },
+                { 19042, static_cast<u8>(10) },
+                { 19043, static_cast<u8>(10) },
+                { 19044, static_cast<u8>(10) },
+                { 19045, static_cast<u8>(10) },
+                { 22000, static_cast<u8>(11) },
+                { 22621, static_cast<u8>(11) },
+                { 22631, static_cast<u8>(11) }
             };
 
             HMODULE ntdll = LoadLibraryW(L"ntdll.dll");
@@ -3619,6 +3648,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         debug("VBOX_NETWORK: caught error, returned false");
         return false;
     }
+
+
 
 
     /**
@@ -8684,7 +8715,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         struct technique {
             u8 points = 0;                // this is the certainty score between 0 and 100
             std::function<bool()> run;    // this is the technique function itself
-            bool spoofable = false;       // this is to indicate that the technique can be very easily spoofed (not guaranteed)
+            bool is_spoofable = false;    // this is to indicate that the technique can be very easily spoofed (not guaranteed)
         };
 
         struct custom_technique {
@@ -8742,7 +8773,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        [[nodiscard]] static bool is_non_technique_set(const flagset& flags) {
+        [[nodiscard]] static bool is_setting_flag_set(const flagset& flags) {
             for (std::size_t i = non_technique_begin; i < non_technique_end; i++) {
                 if (flags.test(i)) {
                     return true;
@@ -8768,11 +8799,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return;
             }
 
-            if (!core::is_non_technique_set(flags)) {
+            if (!core::is_setting_flag_set(flags)) {
                 throw std::invalid_argument("Invalid flag option for function parameter found, either leave it empty or add the VM::DEFAULT flag");
             }
 
-            // at this stage, only non-technique flags are asserted to be set
+            // at this stage, only settings technique flags are asserted to be set
             if (
                 flags.test(NO_MEMO) ||
                 flags.test(HIGH_THRESHOLD) ||
@@ -8789,22 +8820,26 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // run every VM detection mechanism in the technique table
         static u16 run_all(const flagset& flags, const bool shortcut = false) {
             u16 points = 0;
+
             const bool memo_enabled = core::is_disabled(flags, NO_MEMO);
 
             const u16 threshold_points = (core::is_enabled(flags, HIGH_THRESHOLD) ? high_threshold_score : 200);
 
-            // for main technique table
+            // loop through technique table, where all the techniques are stored
             for (const auto& tmp : technique_table) {
                 const enum_flags technique_macro = tmp.first;
-                const technique tuple = tmp.second;
+                const technique technique_data = tmp.second;
 
-                // check if it's disabled
+                // check if the technique is disabled
                 if (core::is_disabled(flags, technique_macro)) {
                     continue;
                 }
 
                 // check if it's spoofable, and whether it's enabled
-                if (tuple.spoofable && core::is_disabled(flags, SPOOFABLE)) {
+                if (
+                    technique_data.is_spoofable && 
+                    core::is_disabled(flags, SPOOFABLE)
+                ) {
                     continue;
                 }
 
@@ -8820,25 +8855,27 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
 
                 // run the technique
-                const bool result = tuple.run();
+                const bool result = technique_data.run();
 
                 // accumulate the points if technique detected a VM
                 if (result) {
-                    points += tuple.points;
-                }
+                    points += technique_data.points;
 
-                /**
-                 * for things like VM::detect() and VM::percentage(),
-                 * a score of 200+ is guaranteed to be a VM, so
-                 * there's no point in running the rest of the techniques
-                 */
+                    // this is specific to VM::detected_count() which returns 
+                    // the number of techniques that returned a positive
+                    detected_count_num++;
+                }
+                
+                // for things like VM::detect() and VM::percentage(),
+                // a score of 200+ is guaranteed to be a VM, so
+                // there's no point in running the rest of the techniques
                 if (shortcut && points >= threshold_points) {
                     return points;
                 }
 
                 // store the current technique result to the cache
                 if (memo_enabled) {
-                    memo::cache_store(technique_macro, result, tuple.points);
+                    memo::cache_store(technique_macro, result, technique_data.points);
                 }
             }
 
@@ -8859,13 +8896,20 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
          * basically what this entire template fuckery does is manage the
          * variadic arguments being given through the arg_handler function,
          * which could either be a std::bitset<N>, a uint8_t, or a combination
-         * of both of them. Thisz will handle both argument types and implement
+         * of both of them. This will handle both argument types and implement
          * them depending on what their types are. If it's a std::bitset<N>,
-         * do the |= operation. If it's a uint8_t, simply .set() that into
-         * the flag_collector bitset. That's the gist of it.
+         * do the |= operation on flag_collector. If it's a uint8_t, simply 
+         * .set() that into the flag_collector. That's the gist of it.
          *
          * Also I won't even deny, the majority of this section was 90% generated
          * by chatgpt. Can't be arsed with this C++ templatisation shit.
+         * Like is it really my fault that I have a hard time understanging C++'s 
+         * god awful metaprogramming designs? And don't even get me started on SNIFAE. 
+         * 
+         * You don't need an IQ of 3 digits to realise how dogshit this language
+         * is, when you end up in situations where there's a few correct solutions
+         * to a problem, but with a billion ways you can do the same thing but in 
+         * the "wrong" way. I genuinely can't wait for Carbon to come out.
          */
     private:
         static flagset flag_collector;
@@ -8983,18 +9027,23 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
 
     public:
-        // Function template to test variadic arguments
+        // fetch the flags, could be an enum value OR a std::bitset.
+        // This will then generate a different std::bitset as the 
+        // return value by enabling the bits based on the argument.
         template <typename... Args>
         static flagset arg_handler(Args&&... args) {
-            if VMAWARE_CONSTEXPR(is_empty<Args...>()) {
+            if VMAWARE_CONSTEXPR (is_empty<Args...>()) {
                 return DEFAULT;
             }
 
             flag_collector.reset();
             global_flags.reset();
 
+            // set the bits in the flag, can take in 
+            // either an enum value or a std::bitset
             handleArgs(std::forward<Args>(args)...);
 
+            // handle edgecases
             core::flag_sanitizer(flag_collector);
 
             global_flags = flag_collector;
@@ -9007,14 +9056,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         static flagset disabled_arg_handler(Args&&... args) {
             flag_collector.reset();
 
-            if VMAWARE_CONSTEXPR(is_empty<Args...>()) {
-                throw std::invalid_argument("VM::DISABLE must contain a flag");
+            if VMAWARE_CONSTEXPR (is_empty<Args...>()) {
+                throw std::invalid_argument("VM::DISABLE() must contain a flag");
             }
 
             handle_disabled_args(std::forward<Args>(args)...);
 
-            if (core::is_non_technique_set(flag_collector)) {
-                throw std::invalid_argument("VM::DISABLE must not contain a non-technique flag, they are disabled by default anyway");
+            // check if a settings flag is set, which is not valid
+            if (core::is_setting_flag_set(flag_collector)) {
+                throw std::invalid_argument("VM::DISABLE() must not contain a settings flag, they are disabled by default anyway");
             }
 
             return flag_collector;
@@ -9051,7 +9101,7 @@ public: // START OF PUBLIC FUNCTIONS
             throw_error("Flag argument must be a valid");
         }
 
-        // check if the bit is a non-technique flag, which shouldn't be allowed
+        // check if the bit is a settings flag, which shouldn't be allowed
         if (
             (flag_bit == NO_MEMO) ||
             (flag_bit == HIGH_THRESHOLD) ||
@@ -9081,6 +9131,10 @@ public: // START OF PUBLIC FUNCTIONS
         const core::technique& pair = it->second;
         const bool result = pair.run();
 
+        if (result) {
+            detected_count_num++;
+        }
+
 #ifdef __VMAWARE_DEBUG__
         total_points += pair.points;
 #endif
@@ -9102,15 +9156,17 @@ public: // START OF PUBLIC FUNCTIONS
     [[nodiscard]] static std::string brand(Args ...args) {
         flagset flags = core::arg_handler(args...);
 
+        // is the multiple setting flag enabled? (meaning multiple 
+        // brand strings will be outputted if there's a conflict)
         const bool is_multiple = core::is_enabled(flags, MULTIPLE);
 
-        // are all the techiques already run? if not, run all of them to get the necessary info to fetch the brand
+        // are all the techiques already run? if not, run them 
+        // to fetch the necessary info to determine the brand
         if (!memo::all_present() || core::is_enabled(flags, NO_MEMO)) {
-            u16 tmp = core::run_all(flags);
-            UNUSED(tmp);
+            core::run_all(flags);
         }
 
-        // check if it's already cached and return that instead
+        // check if the result is already cached and return that instead
         if (core::is_disabled(flags, NO_MEMO)) {
             if (is_multiple) {
                 if (memo::multi_brand::is_cached()) {
@@ -9125,7 +9181,8 @@ public: // START OF PUBLIC FUNCTIONS
             }
         }
 
-        // goofy ass C++11 and C++14 linker error workaround
+        // goofy ass C++11 and C++14 linker error workaround, 
+        // and yes, this does look indeed stupid.
 #if (CPP <= 14)
         constexpr const char* TMP_QEMU = "QEMU";
         constexpr const char* TMP_KVM = "KVM";
@@ -9168,27 +9225,42 @@ public: // START OF PUBLIC FUNCTIONS
         constexpr const char* TMP_HYPERV_ARTIFACT = HYPERV_ARTIFACT;
 #endif
 
+        // this is where all the RELEVANT brands are stored.
+        // The ones with no points will be filtered out.
         std::map<const char*, brand_score_t> brands;
 
+        // add the relevant brands with at least 1 point
         for (const auto &element : core::brand_scoreboard) {
             if (element.second > 0) {
                 brands.insert(std::make_pair(element.first, element.second));
             }
         }
 
-        // if no brand had a single point, return "Unknown"
+        // if all brands had a point of 0, return 
+        // "Unknown" (no relevant brands were found)
         if (brands.empty()) {
             return "Unknown";
         }
 
+        // if there's only a single brand, return it. 
+        // This will skip the rest of the function
+        // where it will process and merge certain
+        // brands 
         if (brands.size() == 1) {
             return brands.begin()->first;
-        } else if (brands.size() > 1) {
+        }
+        
+        // remove Hyper-V artifacts if found with other 
+        // brands, because that's not a VM. It's added 
+        // only for the sake of information cuz of the 
+        // fucky wucky Hyper-V problem (see Hyper-X)
+        if (brands.size() > 1) {
             if (brands.find(TMP_HYPERV_ARTIFACT) != brands.end()) {
                 brands.erase(TMP_HYPERV_ARTIFACT);
             }
         }
 
+        // merge 2 brands, and make a single brand out of it.
         auto merger = [&](const char* a, const char* b, const char* result) -> void {
             if (
                 (brands.count(a) > 0) &&
@@ -9200,6 +9272,7 @@ public: // START OF PUBLIC FUNCTIONS
             }
         };
 
+        // same as above, but for 3
         auto triple_merger = [&](const char* a, const char* b, const char* c, const char* result) -> void {
             if (
                 (brands.count(a) > 0) &&
@@ -9213,6 +9286,8 @@ public: // START OF PUBLIC FUNCTIONS
             }
         };
 
+        // some edgecase handling for Hyper-V and VirtualPC since
+        // they're very similar, and they're both from Microsoft (ew)
         if ((brands.count(TMP_HYPERV) > brands.count(TMP_VPC))) {
             brands.erase(TMP_VPC);
         } else if (brands.count(TMP_HYPERV) < brands.count(TMP_VPC)) {
@@ -9224,9 +9299,19 @@ public: // START OF PUBLIC FUNCTIONS
             merger(TMP_VPC, TMP_HYPERV, TMP_HYPERV_VPC);
         }
 
-        merger(TMP_HYPERV,     TMP_HYPERV_ARTIFACT, TMP_HYPERV_ARTIFACT);
-        merger(TMP_VPC,        TMP_HYPERV_ARTIFACT, TMP_HYPERV_ARTIFACT);
-        merger(TMP_HYPERV_VPC, TMP_HYPERV_ARTIFACT, TMP_HYPERV_ARTIFACT);
+
+        // this is the section where brand post-processing will be done. 
+        // The reason why this part is necessary is because it will
+        // output a more accurate picture on the VM brand. For example, 
+        // Azure's cloud is based on Hyper-V, but Hyper-V may have 
+        // a higher score due to the prevalence of it in a practical 
+        // setting, which will put Azure to the side. This is stupid 
+        // because there should be an indication that Azure is involved
+        // since it's a better idea to let the end-user know that the
+        // brand is "Azure Hyper-V" instead of just "Hyper-V". So what
+        // this section does is "merge" the brands together to form
+        // a more accurate idea of the brand(s) involved.
+
 
         merger(TMP_AZURE, TMP_HYPERV,     TMP_AZURE);
         merger(TMP_AZURE, TMP_VPC,        TMP_AZURE);
@@ -9252,8 +9337,11 @@ public: // START OF PUBLIC FUNCTIONS
         merger(TMP_VMWARE, TMP_GSX,         TMP_GSX);
         merger(TMP_VMWARE, TMP_WORKSTATION, TMP_WORKSTATION);
 
+        // the brand element, which stores the NAME (const char*) and the SCORE (u8)
         using brand_element_t = std::pair<const char*, brand_score_t>;
 
+        // sort the "brands" map so that the brands with the
+        // highest score appears first in descending order
         auto sorter = [&]() -> std::vector<brand_element_t> {
             std::vector<brand_element_t> vec(brands.begin(), brands.end());
 
@@ -9270,11 +9358,15 @@ public: // START OF PUBLIC FUNCTIONS
         std::vector<brand_element_t> vec = sorter();
         std::string ret_str = "Unknown";
 
+        // if the multiple setting flag is NOT set, return the
+        // brand with the highest score. Else, return a std::string
+        // of the brand message (i.e. "VirtualBox or VMware").
+        // See VM::MULTIPLE flag in docs for more information.
         if (!is_multiple) {
             ret_str = vec.front().first;
         } else {
             std::stringstream ss;
-            u8 i = 1;
+            std::size_t i = 1;
 
             ss << vec.front().first;
             for (; i < vec.size(); i++) {
@@ -9284,6 +9376,7 @@ public: // START OF PUBLIC FUNCTIONS
             ret_str = ss.str();
         }
 
+        // cache the result if memoization is enabled
         if (core::is_disabled(flags, NO_MEMO)) {
             if (is_multiple) {
                 core_debug("VM::brand(): cached multiple brand string");
@@ -9294,7 +9387,7 @@ public: // START OF PUBLIC FUNCTIONS
             }
         }
 
-        // this gets annoying really fast 
+        // debug stuff to see the brand scoreboard, ignore this
 #ifdef __VMAWARE_DEBUG__
         for (const auto p : brands) {
             core_debug("scoreboard: ", (int)p.second, " : ", p.first);
@@ -9313,23 +9406,26 @@ public: // START OF PUBLIC FUNCTIONS
      */
     template <typename ...Args>
     static bool detect(Args ...args) {
+        // fetch all the flags in a std::bitset
         flagset flags = core::arg_handler(args...);
 
+        // run all the techniques based on the 
+        // flags above, and get a total score
         const u16 points = core::run_all(flags, SHORTCUT);
 
 #if (CPP >= 23)
         [[assume(points < maximum_points)]];
 #endif
 
-        bool result = false;
+        u16 threshold = 150;
 
+        // if high threshold is set, the points 
+        // will be 300. If not, leave it as 150.
         if (core::is_enabled(flags, HIGH_THRESHOLD)) {
-            result = (points >= high_threshold_score);
-        } else {
-            result = (points >= 150);
+            threshold = high_threshold_score;
         }
 
-        return result;
+        return (points >= threshold);
     }
 
 
@@ -9341,21 +9437,29 @@ public: // START OF PUBLIC FUNCTIONS
      */
     template <typename ...Args>
     static u8 percentage(Args ...args) {
+        // fetch all the flags in a std::bitset
         const flagset flags = core::arg_handler(args...);
 
+        // run all the techniques based on the 
+        // flags above, and get a total score
         const u16 points = core::run_all(flags, SHORTCUT);
-        u8 percent = 0;
 
 #if (CPP >= 23)
         [[assume(points < maximum_points)]];
 #endif
 
+        u8 percent = 0;
         u16 threshold = 150;
 
+        // set to 300 if high threshold is enabled
         if (core::is_enabled(flags, HIGH_THRESHOLD)) {
             threshold = high_threshold_score;
         }
 
+        // the percentage will be set to 99%, because a score 
+        // of 100 is not entirely robust. 150 is more robust
+        // in my opinion, which is why you need a score of
+        // above 150 to get to 100% 
         if (points >= threshold) {
             percent = 100;
         } else if (points >= 100) {
@@ -9382,6 +9486,7 @@ public: // START OF PUBLIC FUNCTIONS
         , const std::source_location& loc = std::source_location::current()
 #endif
     ) {
+        // lambda to throw the error
         auto throw_error = [&](const char* text) -> void {
             std::stringstream ss;
 #if (CPP >= 20 && !CLANG)
@@ -9399,11 +9504,13 @@ public: // START OF PUBLIC FUNCTIONS
         [[assume(percent > 0 && percent <= 100)]];
 #endif
 
+        // generate the custom technique struct
         core::custom_technique query{
             percent,
             detection_func
         };
 
+        // push it to the custome_table vector
         core::custom_table.emplace_back(query);
     }
 
@@ -9416,6 +9523,8 @@ public: // START OF PUBLIC FUNCTIONS
      */
     template <typename ...Args>
     static flagset DISABLE(Args ...args) {
+        // basically core::arg_handler but in reverse,
+        // it'll clear the bits of the provided flags
         flagset flags = core::disabled_arg_handler(args...);
 
         flags.flip();
@@ -9431,7 +9540,7 @@ public: // START OF PUBLIC FUNCTIONS
     /**
      * @brief This will convert the technique flag into a string, which will correspond to the technique name
      * @param single technique flag in VM structure
-     * @warning ⚠️ FOR DEVELOPMENT USAGE ONLY, NOT MEANT FOR PUBLIC USE ⚠️
+     * @warning ⚠️ FOR DEVELOPMENT USAGE ONLY, NOT MEANT FOR PUBLIC USE FOR NOW ⚠️
      */
     [[nodiscard]] static std::string flag_to_string(const enum_flags flag) {
         switch (flag) {
@@ -9545,9 +9654,9 @@ public: // START OF PUBLIC FUNCTIONS
 
 
     /**
-     * @brief return a vector of detected brand strings (DEVELOPMENT FUNCTION, NOT MEANT FOR PUBLIC USE)
+     * @brief return a vector of detected brand strings
      * @param any flag combination in VM structure or nothing
-     * @warning ⚠️ FOR DEVELOPMENT USAGE ONLY, NOT MEANT FOR PUBLIC USE ⚠️
+     * @warning ⚠️ FOR DEVELOPMENT USAGE ONLY, NOT MEANT FOR PUBLIC USE FOR NOW ⚠️
      */
     template <typename ...Args>
     static std::map<const char*, brand_score_t> brand_map(Args ...args) {
@@ -9555,8 +9664,7 @@ public: // START OF PUBLIC FUNCTIONS
 
         // are all the techiques already run? if not, run all of them to get the necessary info to fetch the brand
         if (!memo::all_present() || core::is_enabled(flags, NO_MEMO)) {
-            u16 tmp = core::run_all(flags);
-            UNUSED(tmp);
+            core::run_all(flags);
         }
 
         return core::brand_scoreboard;
@@ -9567,16 +9675,17 @@ public: // START OF PUBLIC FUNCTIONS
      * @brief Change the certainty score of a technique
      * @param technique flag, then the new percentage score to overwite
      * @return void
-     * @warning ⚠️ FOR DEVELOPMENT USAGE ONLY, NOT MEANT FOR PUBLIC USE ⚠️
+     * @warning ⚠️ FOR DEVELOPMENT USAGE ONLY, NOT MEANT FOR PUBLIC USE FOR NOW ⚠️
      */
     static void modify_score(
         const enum_flags flag,
-        const std::uint8_t percent
+        const u8 percent
         // clang doesn't support std::source_location for some reason
 #if (CPP >= 20 && !CLANG)
         , const std::source_location& loc = std::source_location::current()
 #endif
     ) {
+        // lambda to throw the error
         auto throw_error = [&](const char* text) -> void {
             std::stringstream ss;
 #if (CPP >= 20 && !CLANG)
@@ -9594,19 +9703,196 @@ public: // START OF PUBLIC FUNCTIONS
         [[assume(percent <= 100)]];
 #endif
 
+        // check if the flag provided is a setting flag, which isn't valid.
         if (static_cast<u8>(flag) >= technique_end) {
             throw_error("The flag is not a technique flag");
         }
 
+        // replica type alias of the technique table
         using table_t = std::map<enum_flags, core::technique>;
 
         auto modify = [](table_t &table, const enum_flags flag, const u8 percent) -> void {
             core::technique &tmp = table.at(flag);
-            table[flag] = { percent, tmp.run, tmp.spoofable };
+            table[flag] = { percent, tmp.run, tmp.is_spoofable };
         };
 
         modify(const_cast<table_t&>(core::technique_table), flag, percent);
     }
+
+
+    /**
+     * @brief Fetch the total number of detected techniques
+     * @param any flag combination in VM structure or nothing
+     * @return std::uint8_t
+     */
+    template <typename ...Args>
+    static u8 detected_count(Args ...args) {
+        flagset flags = core::arg_handler(args...);
+
+        // run all the techniques, which will set the detected_count variable 
+        core::run_all(flags);
+
+        return detected_count_num;
+    }
+
+
+    /**
+     * @brief Fetch the total number of detected techniques
+     * @param any flag combination in VM structure or nothing
+     * @return std::uint8_t
+     */
+    template <typename ...Args>
+    static std::string type(Args ...args) {
+        flagset flags = core::arg_handler(args...);
+
+        const std::string brand_str = brand(flags);
+
+        // if multiple brands were found, return unknown
+        if (util::find(brand_str, " or ")) {
+            return "Unknown";
+        }
+
+        const std::map<const char*, const char*> type_table {
+            // type 1
+            { XEN, "Hypervisor (type 1)" },
+            { VMWARE_ESX, "Hypervisor (type 1)" },
+            { ACRN, "Hypervisor (type 1)" },
+            { QNX, "Hypervisor (type 1)" },
+            { HYPERV, "Hypervisor (type 1)" },
+            { AZURE_HYPERV, "Hypervisor (type 1)" },
+            { NANOVISOR, "Hypervisor (type 1)" },
+            { KVM, "Hypervisor (type 1)" },
+            { BHYVE, "Hypervisor (type 1)" },
+            { KVM_HYPERV, "Hypervisor (type 1)" },
+            { QEMU_KVM_HYPERV, "Hypervisor (type 1)" },
+            { QEMU_KVM, "Hypervisor (type 1)" },
+            { INTEL_HAXM, "Hypervisor (type 1)" },
+            { INTEL_KGT, "Hypervisor (type 1)" },
+            { SIMPLEVISOR, "Hypervisor (type 1)" },
+            { GCE, "Hypervisor (type 1)" },
+            { OPENSTACK, "Hypervisor (type 1)" },
+            { KUBEVIRT, "Hypervisor (type 1)" },
+            { POWERVM, "Hypervisor (type 1)" },
+            { AWS_NITRO, "Hypervisor (type 1)" },
+
+            // type 2
+            { VBOX, "Hypervisor (type 2)" },
+            { VMWARE, "Hypervisor (type 2)" },
+            { VMWARE_EXPRESS, "Hypervisor (type 2)" },
+            { VMWARE_GSX, "Hypervisor (type 2)" },
+            { VMWARE_WORKSTATION, "Hypervisor (type 2)" },
+            { VMWARE_FUSION, "Hypervisor (type 2)" },
+            { PARALLELS, "Hypervisor (type 2)" },
+            { VPC, "Hypervisor (type 2)" },
+            { NVMM, "Hypervisor (type 2)" },
+            { BSD_VMM, "Hypervisor (type 2)" },
+
+            // sandbox
+            { CUCKOO, "Sandbox" },
+            { SANDBOXIE, "Sandbox" },
+            { HYBRID, "Sandbox" },
+            { CWSANDBOX, "Sandbox" },
+            { JOEBOX, "Sandbox" },
+            { ANUBIS, "Sandbox" },
+            { COMODO, "Sandbox" },
+            { THREATEXPERT, "Sandbox" },
+            { ANYRUN, "Sandbox"},
+
+            // misc
+            { BOCHS, "Emulator" },
+            { BLUESTACKS, "Emulator" },
+            { MSXTA, "Emulator" },
+            { QEMU, "Emulator/Hypervisor (type 2)" },
+            { JAILHOUSE, "Partitioning Hypervisor" },
+            { UNISYS, "Partitioning Hypervisor" },
+            { DOCKER, "Container" },
+            { PODMAN, "Container" },
+            { OPENVZ, "Container" },
+            { HYPERV_VPC, "Hypervisor (either type 1 or 2)" },
+            { LMHS, "Hypervisor (unknown type)" },
+            { WINE, "Compatibility layer" },
+            { APPLE_VZ, "Unknown" },
+            { HYPERV_ARTIFACT, "Unknown" },
+            { UML, "Paravirtualised/Hypervisor (type 2)" },
+            { WSL, "Hybrid Hyper-V (type 1 and 2)" }, // debatable tbh
+            { APPLE_ROSETTA, "Binary Translation Layer/Emulator" },
+        };
+
+        auto it = type_table.find(brand_str.c_str());
+
+        if (it != type_table.end()) {
+            return it->second;
+        }
+
+        return "Unknown";
+    }
+
+
+    /**
+     * @brief Fetch the conclusion message based on the brand and percentage
+     * @param any flag combination in VM structure or nothing
+     * @return std::string
+     */
+    template <typename ...Args>
+    static std::string conclusion(Args ...args) {
+        flagset flags = core::arg_handler(args...);
+
+        const std::string brand_tmp = brand(flags);
+        const u8 percent_tmp = percentage(flags);
+
+        constexpr const char* baremetal = "Running in baremetal";
+        constexpr const char* very_unlikely = "Very unlikely a VM";
+        constexpr const char* unlikely = "Unlikely a VM";
+
+        std::string potentially = "Potentially a VM";
+        std::string might = "Might be a VM";
+        std::string likely = "Likely a VM";
+        std::string very_likely = "Very likely a VM";
+        std::string inside_vm = "Running inside a VM";
+
+        if (brand_tmp != "Unknown") {
+            potentially = "Potentially a " + brand_tmp + " VM";
+            might = "Might be a " + brand_tmp + " VM";
+            likely = "Likely a " + brand_tmp + " VM";
+            very_likely = "Very likely a " + brand_tmp + " VM";
+            inside_vm = "Running inside a " + brand_tmp + " VM";
+        }
+
+        if      (percent_tmp == 0)   { return baremetal; } 
+        else if (percent_tmp <= 20)  { return very_unlikely; } 
+        else if (percent_tmp <= 35)  { return unlikely; } 
+        else if (percent_tmp < 50)   { return potentially; } 
+        else if (percent_tmp <= 62)  { return might; } 
+        else if (percent_tmp <= 75)  { return likely; } 
+        else if (percent_tmp < 100)  { return very_likely; } 
+        else                         { return inside_vm; }
+    }
+
+
+    struct vmaware {
+        bool is_vm;
+        u8 percentage;
+        u8 detected_count;
+        u8 technique_count;
+        std::string brand;
+        std::string type;
+        std::string conclusion;
+
+        vmaware() = default;
+
+        template <typename ...Args>
+        vmaware(Args ...args) {
+            flagset flags = core::arg_handler(args...);
+
+            is_vm = VM::detect(flags);
+            percentage = VM::percentage(flags);
+            detected_count = VM::detected_count(flags);
+            technique_count = VM::technique_count;
+            brand = VM::brand(flags);
+            type = VM::type(flags);
+            conclusion = VM::conclusion(flags);
+        }
+    };
 };
 
 MSVC_ENABLE_WARNING(ASSIGNMENT_OPERATOR NO_INLINE_FUNC SPECTRE)
@@ -9691,12 +9977,22 @@ bool VM::memo::hyperv::is_stored = false;
 VM::u16 VM::total_points = 0;
 #endif
 
-// not even sure how to explain honestly, just pretend these don't exist idfk
+// these are basically the base values for the core::arg_handler function.
+// It's like a bucket that will collect all the bits enabled. If for example 
+// VM::detect(VM::HIGH_THRESHOLD) is passed, the HIGH_THRESHOLD bit will be 
+// collected in this flagset (std::bitset) variable, and eventually be the 
+// return value for actual end-user functions like VM::detect() to rely 
+// and work on. VM::global_flags is just a copy of the flags but visible 
+// globally throughout the whole VM struct, as the name implies.
 VM::flagset VM::core::flag_collector;
 VM::flagset VM::global_flags;
 
+
+VM::u8 VM::detected_count_num = 0;
+
+
 // default flags 
-VM::flagset VM::DEFAULT = []() -> flagset {
+VM::flagset VM::DEFAULT = []() noexcept -> flagset {
     flagset tmp;
 
     // set all bits to 1
@@ -9707,7 +10003,7 @@ VM::flagset VM::DEFAULT = []() -> flagset {
     tmp.flip(RDTSC);
     tmp.flip(RDTSC_VMEXIT);
 
-    // disable all the non-technique flags
+    // disable all the settings flags
     tmp.flip(NO_MEMO);
     tmp.flip(HIGH_THRESHOLD);
     tmp.flip(SPOOFABLE);
@@ -9718,13 +10014,13 @@ VM::flagset VM::DEFAULT = []() -> flagset {
 
 
 // flag to enable every technique
-VM::flagset VM::ALL = []() -> flagset {
+VM::flagset VM::ALL = []() noexcept -> flagset {
     flagset tmp;
 
     // set all bits to 1
     tmp.set();
 
-    // disable all the non-technique flags (except SPOOFABLE)
+    // disable all the settings technique flags (except SPOOFABLE)
     tmp.flip(NO_MEMO);
     tmp.flip(HIGH_THRESHOLD);
     tmp.flip(MULTIPLE);
@@ -9769,10 +10065,9 @@ std::vector<VM::core::custom_technique> VM::core::custom_table = {
 
 };
 
-
 // the 0~100 points are debatable, but I think it's fine how it is. Feel free to disagree.
 const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = {
-    // FORMAT: VM::<ID> = { certainty%, function pointer, is spoofable? }
+    // FORMAT: { VM::<ID>, { certainty%, function pointer, is spoofable? } },
 
     { VM::VMID, { 100, VM::vmid, false } },
     { VM::CPU_BRAND, { 50, VM::cpu_brand, false } },
@@ -9846,7 +10141,7 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::MUTEX, { 85, VM::mutex, false } },
     { VM::UPTIME, { 10, VM::uptime, true } },
     { VM::ODD_CPU_THREADS, { 80, VM::odd_cpu_threads, false } },
-    { VM::INTEL_THREAD_MISMATCH, { 85, VM::intel_thread_mismatch, false } },
+    { VM::INTEL_THREAD_MISMATCH, { 60, VM::intel_thread_mismatch, false } },
     { VM::XEON_THREAD_MISMATCH, { 85, VM::xeon_thread_mismatch, false } },
     { VM::NETTITUDE_VM_MEMORY, { 75, VM::nettitude_vm_memory, false } },
     { VM::CPUID_BITSET, { 20, VM::cpuid_bitset, false } },

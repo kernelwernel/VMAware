@@ -10,10 +10,21 @@
 # 
 # ===============================================================
 # 
-#  This is an internal script to update the VMAware
-#  header file's banner automatically and much more reliably.
-#  For example, it'll update the line numbers for the sections
-#  header, and other basic information.
+#  This is an internal script to update various stuff of the project:
+#    1.  Check whether all of the techniques are actually updated since 
+#        keeping track of the docs, the CLI, and the table isn't easy,
+#        so I'm automating the checks in case I forget to update any.
+# 
+#    2.  Update the line numbers for the sections header based on what
+#        line they are located, so it's a (tiny) bit easier to understand
+#        the structure of the headers for anybody reading it for the first
+#        time, it's more of a guide to point which parts are this and that.
+# 
+#    3.  Convert the GPL file (vmaware.hpp) into an MIT file (vmaware_MIT.hpp).
+#        In other words, it'll remove all the GPL code so that it qualifies 
+#        as MIT compliant.  
+# 
+#    4. Update the dates in the banner, example: "1.9 (Septmber 2024)"
 # 
 # ===============================================================
 # 
@@ -22,8 +33,229 @@
 #  - License: GPL 3.0
 
 
+import sys
+import re
 
-def update(filename):
+def arg_check():
+    def fetch():
+        # fetch file content
+        with open("../src/vmaware.hpp", 'r') as vmaware:
+            header_content = vmaware.readlines()
+
+        # reversed since the table is at the very end of the vmaware.hpp file 
+        header_content.reverse()
+
+        # breakpoint
+        keyword = "const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = {"
+
+        # fetch index of breakpoint
+        index_of_keyword = next((i for i, line in enumerate(header_content) if keyword in line), None)
+
+        # remove everything before the breakpoint for simplification
+        if index_of_keyword is not None:
+            header_content = header_content[:index_of_keyword + 1]
+
+        return header_content
+
+
+
+    def filter(raw_content):
+        trimmed_content = []
+
+        # filter
+        trimmed_content = [s for s in raw_content if not (
+            s.isspace() or 
+            "//" in s or 
+            ";" in s or
+            "VM::core::technique" in s
+        )]
+
+        # strip all whitespace
+        trimmed_content = [s.strip() for s in trimmed_content]
+
+        return trimmed_content
+
+
+
+    def tokenize(trimmed_content):
+        flag_array = []
+
+        # pattern for VM::FLAG_EXAMPLE1
+        pattern = r'\bVM::([A-Z0-9_]+)\b'
+
+        # match and push to flag_array[]
+        for line in trimmed_content:
+            match = re.search(pattern, line)
+
+            if match:
+                flag_array.append(match.group(0))
+            else:
+                print("Unable to find flag variable for " + line)
+                sys.exit(1)
+
+        return flag_array
+
+
+
+    def check_docs(flag_array):
+        # fetch docs content
+        with open("../docs/documentation.md", 'r') as docs:
+            docs_content = docs.readlines()
+
+        # strip whitespace
+        docs_content = [s.strip() for s in docs_content]
+
+        # find indices
+        start = "# Flag table"
+        end = "# Non-technique flags"
+
+        # extract the indexes
+        try:
+            start_index = docs_content.index(start)
+            end_index = docs_content.index(end)
+        except ValueError:
+            print("Couldn't find range index point \"# Flag table\" or \"# Non-technique flags\"")
+            start_index = end_index = None
+            sys.exit(1)
+
+        # extract the range between the aforementioned indexes
+        if start_index is not None and end_index is not None:
+            extracted_range = docs_content[start_index + 1:end_index]
+            docs_content = extracted_range
+
+        # filter elements with whitespace
+        docs_content = [s for s in docs_content if not s.isspace() and s and "VM::" in s]
+
+        # extract flag string for every line
+        docs_flags = []
+        pattern = r'`([^`]+)`'
+        for line in docs_content:
+            match = re.search(pattern, line)
+
+            if match:
+                docs_flags.append(match.group(1))
+            else:
+                print("Pattern not found in the line \"" + line + "\"")
+                sys.exit(1)
+
+        set1 = set(docs_flags)
+        set2 = set(flag_array)
+
+        # Check if every element in set1 has a corresponding element in set2
+        all_elements_have_pair = set1.issubset(set2) and set2.issubset(set1)
+
+        not_paired = set1.symmetric_difference(set2)
+
+        if not_paired:
+            print("Mismatched elements found in documentation.md and vmaware.hpp, make sure to include the technique in both files")
+            print("Elements without a pair:", not_paired)
+            sys.exit(1)
+
+
+
+
+    def check_cli(flag_array):
+        # fetch docs content
+        with open("../src/cli.cpp", 'r') as cli:
+            cli_content = cli.readlines()
+
+        # strip whitespace
+        cli_content = [s.strip() for s in cli_content]
+
+        # filter elements with whitespace
+        cli_content = [s for s in cli_content if ("checker(" in s)]
+
+        # extract the flags
+        cli_flags = []
+        pattern = r'checker\((.*?),'
+        for line in cli_content:
+            match = re.search(pattern, line)
+
+            if match:
+                cli_flags.append(match.group(1).strip())
+            else:
+                print("Pattern not found in the string.")
+        
+        set1 = set(cli_flags)
+        set2 = set(flag_array)
+
+        # check if every element in set1 has a corresponding element in set2
+        not_paired = set1.symmetric_difference(set2)
+
+        if not_paired:
+            print("Mismatched elements found in cli.cpp and vmaware.hpp, make sure to include the technique in both files")
+            print("Elements without a pair:", not_paired)
+            sys.exit(1)
+
+
+    raw_content = fetch()
+    trimmed_content = filter(raw_content)
+    flags = tokenize(trimmed_content)
+
+    check_docs(flags)
+    check_cli(flags)
+
+
+
+
+
+
+
+
+
+
+
+def update_MIT():
+    original = '../src/vmaware.hpp'
+    mit = '../src/vmaware_MIT.hpp'
+    gpl_string = '/* GPL */'
+    license_string = ' *  - License: GPL-3.0 (https://www.gnu.org/licenses/gpl-3.0.html)'
+    mit_full_license = ''' *  - License: MIT
+ * 
+ *                               MIT License
+ *  
+ *  Copyright (c) 2024 kernelwernel
+ *  
+ *  Permission is hereby granted, free of charge, to any person obtaining a copy
+ *  of this software and associated documentation files (the "Software"), to deal
+ *  in the Software without restriction, including without limitation the rights
+ *  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ *  copies of the Software, and to permit persons to whom the Software is
+ *  furnished to do so, subject to the following conditions:
+ *  
+ *  The above copyright notice and this permission notice shall be included in all
+ *  copies or substantial portions of the Software.
+ *  
+ *  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ *  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ *  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ *  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ *  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ *  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ *  SOFTWARE.
+'''
+
+    with open(original, 'r') as file:
+        lines = file.readlines()
+
+    add_string_added = False
+
+    filtered_lines = []
+    for line in lines:
+        if gpl_string in line:
+            # skip
+            continue
+        if license_string in line:
+            filtered_lines.append(mit_full_license)
+        else:
+            filtered_lines.append(line)
+
+    with open(mit, 'w') as file:
+        file.writelines(filtered_lines)
+
+
+
+def update_sections(filename):
     with open(filename, 'r') as vmaware_read:
         header_content = vmaware_read.readlines()
 
@@ -120,5 +352,38 @@ def update(filename):
         file.writelines(header_content)
 
 
-update("../src/vmaware.hpp")
-update("../src/vmaware_MIT.hpp")
+
+def update_date(filename):
+    with open(filename, 'r') as file:
+        header_content = file.readlines()
+
+    index = 1
+    banner_line = " *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ "
+
+    for line in header_content:
+        if (banner_line not in line):
+            index += 1
+        else:
+            break
+
+    
+    if 0 < index <= len(header_content):
+        header_content[index - 1] = new_content + '\n'
+    else:
+        print(f"Line number {line_number} is out of range.")
+        return
+
+    with open(filename, 'w') as file:
+        file.writelines(header_content)    
+
+
+args = sys.argv
+first_arg = args[1] if len(args) > 1 else None
+
+
+arg_check()
+update_MIT()
+update_sections("../src/vmaware.hpp")
+update_sections("../src/vmaware_MIT.hpp")
+update_date("../src/vmaware.hpp")
+update_date("../src/vmaware_MIT.hpp")
