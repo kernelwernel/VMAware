@@ -7582,7 +7582,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             cmp("Malware") ||
             cmp("malsand") ||
             cmp("ClonePC")
-            ) {
+        ) {
             return true;
         }
 

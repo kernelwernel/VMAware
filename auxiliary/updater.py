@@ -35,6 +35,8 @@
 
 import sys
 import re
+from datetime import datetime
+
 
 def arg_check():
     def fetch():
@@ -354,31 +356,66 @@ def update_sections(filename):
 
 
 def update_date(filename):
+    # fetch the first arg, which is supposed to be the new version number for a new release
+    args = sys.argv
+    first_arg = args[1] if len(args) > 1 else None
+
+
     with open(filename, 'r') as file:
         header_content = file.readlines()
 
-    index = 1
+    index = 0
     banner_line = " *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ "
 
+    # fetch the index of where the line should be updated
     for line in header_content:
         if (banner_line not in line):
             index += 1
         else:
             break
 
-    
+    # find "X.X", where X is an integral
+    def find_pattern(base_str):
+        pattern = r'\d+\.\d+'
+
+        # Search for the pattern in the text
+        match = re.search(pattern, base_str)
+
+        # find match
+        if match:
+            return match.group()
+            print("match found")
+        else:
+            print(f"Version number not found for {base_str}, aborting")
+            sys.exit(1)
+
+
+    # fetch the new version
+    header_version = find_pattern(header_content[index])
+    if first_arg == None:
+        arg_version = header_version
+    else:
+        arg_version = find_pattern(first_arg)
+
+    new_version = ""
+    new_date = ""
+
+    # set the version and date
+    new_version = arg_version
+    new_date = datetime.now().strftime("%B") + " " + str(datetime.now().year)
+
+    # this will be the new content
+    new_content = banner_line + new_version + " (" + new_date + ")"
+
     if 0 < index <= len(header_content):
-        header_content[index - 1] = new_content + '\n'
+        header_content[index] = new_content + '\n'
     else:
         print(f"Line number {line_number} is out of range.")
-        return
+        sys.exit(1)
 
     with open(filename, 'w') as file:
         file.writelines(header_content)    
 
-
-args = sys.argv
-first_arg = args[1] if len(args) > 1 else None
 
 
 arg_check()
