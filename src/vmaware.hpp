@@ -23,14 +23,14 @@
  *
  *
  * ================================ SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 322
- * - struct for internal cpu operations        => line 581
- * - struct for internal memoization           => line 1007
- * - struct for internal utility functions     => line 1134
- * - struct for internal core components       => line 9152
- * - start of internal VM detection techniques => line 2409
- * - start of public VM detection functions    => line 9495
- * - start of externally defined variables     => line 10095
+ * - enums for publicly accessible techniques  => line 324
+ * - struct for internal cpu operations        => line 588
+ * - struct for internal memoization           => line 1014
+ * - struct for internal utility functions     => line 1142
+ * - struct for internal core components       => line 9157
+ * - start of internal VM detection techniques => line 2438
+ * - start of public VM detection functions    => line 9519
+ * - start of externally defined variables     => line 10357
  *
  *
  * ================================ EXAMPLE ==================================
@@ -48,6 +48,8 @@
  *     std::cout << "VM certainty: " << (int)VM::percentage() << "%" << std::endl;
  * }
  */
+
+#pragma once
 
 #if (defined(_MSC_VER) || defined(_WIN32) || defined(_WIN64) || defined(__MINGW32__))
 #define MSVC 1
@@ -349,18 +351,18 @@ public:
         DISK_SIZE,
         VBOX_DEFAULT,
         VBOX_NETWORK,
-        COMPUTER_NAME,     // GPL
-        WINE_CHECK,        // GPL
-        HOSTNAME,          // GPL
-        MEMORY,            // GPL
-        VBOX_WINDOW_CLASS, // GPL
-        LOADED_DLLS,       // GPL
-        KVM_REG,           // GPL
-        KVM_DRIVERS,       // GPL
-        KVM_DIRS,          // GPL
-        AUDIO,             // GPL
-        QEMU_DIR,          // GPL 
-        MOUSE_DEVICE,      // GPL
+/* GPL */ COMPUTER_NAME,
+/* GPL */ WINE_CHECK,
+/* GPL */ HOSTNAME,
+/* GPL */ MEMORY,
+/* GPL */ VBOX_WINDOW_CLASS,
+/* GPL */ LOADED_DLLS,
+/* GPL */ KVM_REG,
+/* GPL */ KVM_DRIVERS,
+/* GPL */ KVM_DIRS,
+/* GPL */ AUDIO,
+/* GPL */ QEMU_DIR,
+/* GPL */ MOUSE_DEVICE,
         VM_PROCESSES,
         LINUX_USER_HOST,
         GAMARUE,
@@ -438,7 +440,7 @@ public:
         ANYRUN_DRIVER,
         ANYRUN_DIRECTORY,
 
-        // start of non-technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
+        // start of settings technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
         NO_MEMO,
         HIGH_THRESHOLD,
         NULL_ARG, // does nothing, just a placeholder flag mainly for the CLI
@@ -448,7 +450,7 @@ public:
 
 private:
     static constexpr u8 enum_size = MULTIPLE; // get enum size through value of last element
-    static constexpr u8 non_technique_count = MULTIPLE - NO_MEMO + 1; // get number of non-technique flags like VM::NO_MEMO for example
+    static constexpr u8 non_technique_count = MULTIPLE - NO_MEMO + 1; // get number of settings technique flags like VM::NO_MEMO for example
     static constexpr u8 INVALID = 255; // explicit invalid technique macro
     static constexpr u16 maximum_points = 4765; // theoretical total points if all VM detections returned true (which is practically impossible)
     static constexpr u16 high_threshold_score = 300; // new threshold score from 100 to 350 if VM::HIGH_THRESHOLD flag is enabled
@@ -462,6 +464,11 @@ private:
     static constexpr u8 technique_end = NO_MEMO;
     static constexpr u8 non_technique_begin = NO_MEMO;
     static constexpr u8 non_technique_end = enum_end;
+
+
+    // this is specifically meant for VM::detected_count() to 
+    // get the total number of techniques that detected a VM
+    static u8 detected_count_num; 
 
 public:
     static constexpr u8 technique_count = NO_MEMO; // get total number of techniques
@@ -763,6 +770,14 @@ private:
 
             u32 sig_reg[3] = { 0 };
 
+            if (
+                (sig_reg[0] == 0) &&
+                (sig_reg[1] == 0) &&
+                (sig_reg[2] == 0)
+            ) {
+                return { "", "" };
+            }
+
             if (!cpuid_thingy(p_leaf, sig_reg, 1)) {
                 return { "", "" };
             }
@@ -772,6 +787,11 @@ private:
                 return str;
             };
 
+            // the reason why there's 2 is because depending on the leaf, 
+            // the last 4 characters might be switched with the middle 
+            // characters for some fuckin reason, idk why this is even a thing
+            // so this function basically returns the same string but with 
+            // the 4~8 and 8~12 characters switched for one, and the other isn't.
             std::stringstream ss;
             std::stringstream ss2;
 
@@ -1131,6 +1151,7 @@ private:
         };
     };
 
+
     // miscellaneous functionalities
     struct util {
 #if (LINUX)
@@ -1163,7 +1184,7 @@ private:
             }
 
             std::vector<u8> buffer((std::istreambuf_iterator<char>(file)),
-                                            std::istreambuf_iterator<char>());
+                                    std::istreambuf_iterator<char>());
 
             file.close();
 
@@ -1213,7 +1234,7 @@ private:
             return (
                 (uid != euid) ||
                 (euid == 0)
-                );
+            );
 #elif (MSVC)
             BOOL is_admin = FALSE;
             HANDLE hToken = NULL;
@@ -1671,7 +1692,16 @@ private:
 
         /**
          * @brief Checks whether Hyper-V host artifacts are present instead of an actual Hyper-V VM
-         * @note idea and credits to Requiem (https://github.com/NotRequiem)
+         * @note Hyper-V has an obscure feature where if it's enabled in the host system, the CPU 
+         *       hardware values makes it look like the whole system is running inside Hyper-V, 
+         *       which isn't true. This makes it a challenge to determine whether the hardware 
+         *       values the library is collecting is either a real Hyper-V VM, or just the artifacts 
+         *       of what Hyper-V has left as a consequence of having it enabled in the host system. 
+         *       The reason why this is a problem is because the library might falsely conclude that 
+         *       your the host system is running in Hyper-V, which is a false positive. This is where 
+         *       the Hyper-X mechanism comes into play to distinguish between these two.
+         * @author idea by Requiem (https://github.com/NotRequiem)
+         * @link graph to explain how this works: https://github.com/kernelwernel/VMAware/blob/main/assets/Hyper-X.png
          */
         [[nodiscard]] static bool hyper_x() {
 #if (!MSVC)
@@ -1682,73 +1712,81 @@ private:
                 return memo::hyperv::fetch();
             }
 
-            auto add = [](const bool result) -> bool {
-                memo::hyperv::store(result);
 
-                if (result == true) {
-                    core::add(HYPERV_ARTIFACT);
-                }
-
-                return result;
+            auto root_partition = []() -> bool {
+                u32 ebx, unused = 0;
+                cpu::cpuid(unused, ebx, unused, unused, 0x40000003);
+                return (ebx & 1);
             };
 
-            char out[sizeof(int32_t) * 4 + 1] = { 0 }; // e*x size + number of e*x registers + null terminator
-            cpu::cpuid((int*)out, cpu::leaf::hypervisor);
+            auto eax = []() -> bool {
+                char out[sizeof(int32_t) * 4 + 1] = { 0 }; // e*x size + number of e*x registers + null terminator
+                cpu::cpuid((int*)out, cpu::leaf::hypervisor);
 
-            const u32 eax = static_cast<u32>(out[0]);
+                const u32 eax = static_cast<u32>(out[0]);
 
-            core_debug("HYPER_X: eax = ", eax);
+                core_debug("HYPER_X: eax = ", eax);
 
-            const bool is_eax_valid = ((eax == 11) || (eax == 12));
+                return ((eax == 11) || (eax == 12));
+            };
 
-            const std::array<std::string, 2> cpu = cpu::cpu_manufacturer(cpu::leaf::hypervisor);
+            auto cpu_vmid = []() -> bool {
+                const auto cpu = cpu::cpu_manufacturer(cpu::leaf::hypervisor);
 
-            const bool is_cpu_hyperv = (
-                (cpu.at(0) == "Microsoft Hv") ||
-                (cpu.at(1) == "Microsoft Hv")
-            );
-    
-            if (is_eax_valid || is_cpu_hyperv) {
+                return (
+                    (cpu.at(0) == "Microsoft Hv") ||
+                    (cpu.at(1) == "Microsoft Hv")
+                );
+            };
+
+            // must require at least 2 to continue
+            const u8 points = (root_partition() + eax() + cpu_vmid());
+
+            if (points >= 2) {
                 // SMBIOS check
-                const std::string smbios = SMBIOS_string();
-
-                core_debug("HYPER_X: SMBIOS string = ", smbios);
-
-                if (smbios == "VIRTUAL MACHINE") {
-                    return add(false);
-                }
+                auto is_smbios_hyperv = []() -> bool {
+                    const std::string smbios = SMBIOS_string();
+                    core_debug("HYPER_X: SMBIOS string = ", smbios);
+                    return (smbios == "VIRTUAL MACHINE");
+                };
 
 
                 // motherboard check
-                const bool motherboard = motherboard_string(L"Microsoft Corporation");
-
-                core_debug("HYPER_X: motherboard string = ", motherboard);
-
-                if (motherboard) {
-                    return add(false);
-                }
+                auto is_motherboard_hyperv = []() -> bool {
+                    const bool motherboard = motherboard_string(L"Microsoft Corporation");
+                    core_debug("HYPER_X: motherboard string match = ", motherboard);
+                    return motherboard;
+                };
 
 
                 // event log check (slow, so in last place)
-                std::wstring logName = L"Microsoft-Windows-Kernel-PnP/Configuration";
-                std::vector<std::wstring> searchStrings = { L"Virtual_Machine", L"VMBUS" };
-        
-                const bool event_log = util::query_event_logs(logName, searchStrings);
+                auto is_event_log_hyperv = []() -> bool {
+                    std::wstring logName = L"Microsoft-Windows-Kernel-PnP/Configuration";
+                    std::vector<std::wstring> searchStrings = { L"Virtual_Machine", L"VMBUS" };
+            
+                    return (util::query_event_logs(logName, searchStrings));
+                };
 
-                if (event_log) {
-                    return add(false);
+
+                // "if it's hyper-v and NOT an artifact"
+                const bool is_hyperv = (
+                    is_smbios_hyperv() || 
+                    is_motherboard_hyperv() || 
+                    is_event_log_hyperv()
+                );
+
+                memo::hyperv::store(is_hyperv);
+
+                if (is_hyperv) {
+                    return true;
+                } else {
+                    core::add(HYPERV_ARTIFACT);
+                    return false;
                 }
-
-
-                // at this point, it's fair to assume it's Hyper-V artifacts on 
-                // host since none of the "VM-only" techniques returned true
-                return add(true);
-            //} else if () {
-                // actual Hyper-V VM, might do something within this scope in the future idk
-                //return add(false);
-            } else {
-                return add(false);
             }
+
+            memo::hyperv::store(false);
+            return false;
 #endif
         }
 
@@ -3611,485 +3649,461 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
 
 
-    /**
-     * @brief Check if the computer name (not username to be clear) is VM-specific
-     * @category Windows
-     * @author InviZzzible project
-     * @copyright GPL-3.0
-     */
-    [[nodiscard]] static bool computer_name_match() try {
-#if (!MSVC)
-        return false;
-#else
-        auto out_length = MAX_PATH;
-        std::vector<u8> comp_name(static_cast<u32>(out_length), 0);
-        GetComputerNameA((LPSTR)comp_name.data(), (LPDWORD)&out_length);
-
-        auto compare = [&](const std::string& s) -> bool {
-            return (std::strcmp((LPCSTR)comp_name.data(), s.c_str()) == 0);
-            };
-
-        debug("COMPUTER_NAME: fetched = ", (LPCSTR)comp_name.data());
-
-        if (compare("InsideTm") || compare("TU-4NH09SMCG1HC")) { // anubis
-            debug("COMPUTER_NAME: detected Anubis");
-            return core::add(ANUBIS);
-        }
-
-        if (compare("klone_x64-pc") || compare("tequilaboomboom")) { // general
-            debug("COMPUTER_NAME: detected general (VM but unknown)");
-            return true;
-        }
-
-        return false;
-#endif
-    }
-    catch (...) {
-        debug("COMPUTER_NAME: caught error, returned false");
-        return false;
-    }
-
-
-    /**
-     * @brief Check wine_get_unix_file_name file for Wine
-     * @author pafish project
-     * @link https://github.com/a0rtega/pafish/blob/master/pafish/wine.c
-     * @category Windows
-     * @copyright GPL-3.0
-     */
-    [[nodiscard]] static bool wine() try {
-#if (!MSVC)
-        return false;
-#else
-        HMODULE k32;
-        k32 = GetModuleHandle(TEXT("kernel32.dll"));
-
-        if (k32 != NULL) {
-            if (GetProcAddress(k32, "wine_get_unix_file_name") != NULL) {
-                return core::add(WINE);
-            }
-        }
-
-        return false;
-#endif
-    }
-    catch (...) {
-        debug("WINE_CHECK: caught error, returned false");
-        return false;
-    }
-
-
-    /**
-     * @brief Check if hostname is specific
-     * @author InviZzzible project
-     * @category Windows
-     * @copyright GPL-3.0
-     */
-    [[nodiscard]] static bool hostname_match() try {
-#if (!MSVC)
-        return false;
-#else
-        auto out_length = MAX_PATH;
-        std::vector<u8> dns_host_name(static_cast<u32>(out_length), 0);
-        GetComputerNameExA(ComputerNameDnsHostname, (LPSTR)dns_host_name.data(), (LPDWORD)&out_length);
-
-        debug("HOSTNAME: ", (LPCSTR)dns_host_name.data());
-
-        return (!lstrcmpiA((LPCSTR)dns_host_name.data(), "SystemIT"));
-#endif
-    }
-    catch (...) {
-        debug("HOSTNAME: caught error, returned false");
-        return false;
-    }
-
-
-    /**
-     * @brief Check if memory space is far too low for a physical machine
-     * @author Al-Khaser project
-     * @category x86?
-     * @copyright GPL-3.0
-     */
-    [[nodiscard]] static bool low_memory_space() try {
-        constexpr u64 min_ram_1gb = (1024LL * (1024LL * (1024LL * 1LL)));
-        const u64 ram = util::get_memory_space();
-
-        debug("MEMORY: ram size (GB) = ", ram);
-        debug("MEMORY: minimum ram size (GB) = ", min_ram_1gb);
-
-        return (ram < min_ram_1gb);
-    }
-    catch (...) {
-        debug("MEMORY: caught error, returned false");
-        return false;
-    }
-
-
-    /**
-     * @brief Check for the window class for VirtualBox
-     * @category Windows
-     * @author Al-Khaser Project
-     * @copyright GPL-3.0
-     */
-    [[nodiscard]] static bool vbox_window_class() try {
-#if (!MSVC)
-        return false;
-#else
-        HWND hClass = FindWindow(_T("VBoxTrayToolWndClass"), NULL);
-        HWND hWindow = FindWindow(NULL, _T("VBoxTrayToolWnd"));
-
-        if (hClass || hWindow) {
-            return core::add(VBOX);
-        }
-
-        return false;
-#endif
-    }
-    catch (...) {
-        debug("VBOX_WINDOW_CLASS: caught error, returned false");
-        return false;
-    }
-
-
-    /**
-     * @brief Check for loaded DLLs in the process
-     * @category Windows
-     * @author LordNoteworthy
-     * @note modified code from Al-Khaser project
-     * @link https://github.com/LordNoteworthy/al-khaser/blob/c68fbd7ba0ba46315e819b490a2c782b80262fcd/al-khaser/Anti%20VM/Generic.cpp
-     */
-    [[nodiscard]] static bool loaded_dlls() try {
-#if (!MSVC)
-        return false;
-#else
-        HMODULE hDll;
-
-        constexpr std::array<const char*, 12> szDlls = {{
-            "avghookx.dll",    // AVG
-            "avghooka.dll",    // AVG
-            "snxhk.dll",       // Avast
-            "sbiedll.dll",     // Sandboxie
-            "dbghelp.dll",     // WindBG
-            "api_log.dll",     // iDefense Lab
-            "dir_watch.dll",   // iDefense Lab
-            "pstorec.dll",     // SunBelt CWSandbox
-            "vmcheck.dll",     // Virtual PC
-            "wpespy.dll",      // WPE Pro
-            "cmdvrt64.dll",    // Comodo Container
-            "cmdvrt32.dll"     // Comodo Container
-        }};
-
-        for (const auto& key : szDlls) {
-            const char* dll = key;
-
-            hDll = GetModuleHandleA(dll);  // Use GetModuleHandleA for ANSI strings
-
-            if (hDll != NULL && dll != NULL) {
-                if (strcmp(dll, "sbiedll.dll") == 0) { return core::add(SANDBOXIE); }
-                if (strcmp(dll, "pstorec.dll") == 0) { return core::add(CWSANDBOX); }
-                if (strcmp(dll, "vmcheck.dll") == 0) { return core::add(VPC); }
-                if (strcmp(dll, "cmdvrt32.dll") == 0) { return core::add(COMODO); }
-                if (strcmp(dll, "cmdvrt64.dll") == 0) { return core::add(COMODO); }
-
-                return true;
-            }
-        }
-
-        return false;
-#endif
-    }
-    catch (...) {
-        debug("LOADED_DLLS:", "caught error, returned false");
-        return false;
-    }
-
-
-    /**
-     * @brief Check for KVM-specific registry strings
-     * @category Windows
-     * @note idea is from Al-Khaser, slightly modified code
-     * @author LordNoteWorthy
-     * @link https://github.com/LordNoteworthy/al-khaser/blob/0f31a3866bafdfa703d2ed1ee1a242ab31bf5ef0/al-khaser/AntiVM/KVM.cpp
-     */
-    [[nodiscard]] static bool kvm_registry() try {
-#if (!MSVC)
-        return false;
-#else
-        auto registry_exists = [](const TCHAR* key) -> bool {
-            HKEY keyHandle;
-
-            if (RegOpenKeyEx(HKEY_LOCAL_MACHINE, key, 0, KEY_QUERY_VALUE, &keyHandle) == ERROR_SUCCESS) {
-                RegCloseKey(keyHandle);
-                return true;
-            }
-
-            return false;
-            };
-
-        constexpr std::array<const TCHAR*, 7> keys = {{
-            _T("SYSTEM\\ControlSet001\\Services\\vioscsi"),
-            _T("SYSTEM\\ControlSet001\\Services\\viostor"),
-            _T("SYSTEM\\ControlSet001\\Services\\VirtIO-FS Service"),
-            _T("SYSTEM\\ControlSet001\\Services\\VirtioSerial"),
-            _T("SYSTEM\\ControlSet001\\Services\\BALLOON"),
-            _T("SYSTEM\\ControlSet001\\Services\\BalloonService"),
-            _T("SYSTEM\\ControlSet001\\Services\\netkvm"),
-        }};
-
-        for (const auto& key : keys) {
-            if (registry_exists(key)) {
-                return core::add(KVM);
-            }
-        }
-
-        return false;
-#endif
-    }
-    catch (...) {
-        debug("KVM_REG: ", "caught error, returned false");
-        return false;
-    }
-
-
-    /**
-     * @brief Check for KVM-specific .sys files in system driver directory
-     * @category Windows
-     * @note idea is from Al-Khaser, slightly modified code
-     * @author LordNoteWorthy
-     * @link https://github.com/LordNoteworthy/al-khaser/blob/0f31a3866bafdfa703d2ed1ee1a242ab31bf5ef0/al-khaser/AntiVM/KVM.cpp
-     */
-    [[nodiscard]] static bool kvm_drivers() try {
-#if (!MSVC)
-        return false;
-#else
-        constexpr std::array<const TCHAR*, 10> keys = { {
-            _T("System32\\drivers\\balloon.sys"),
-            _T("System32\\drivers\\netkvm.sys"),
-            _T("System32\\drivers\\pvpanic.sys"),
-            _T("System32\\drivers\\viofs.sys"),
-            _T("System32\\drivers\\viogpudo.sys"),
-            _T("System32\\drivers\\vioinput.sys"),
-            _T("System32\\drivers\\viorng.sys"),
-            _T("System32\\drivers\\vioscsi.sys"),
-            _T("System32\\drivers\\vioser.sys"),
-            _T("System32\\drivers\\viostor.sys")
-        } };
-
-        TCHAR szWinDir[MAX_PATH] = _T("");
-        TCHAR szPath[MAX_PATH] = _T("");
-        PVOID OldValue = NULL;
-
-        if (GetWindowsDirectory(szWinDir, MAX_PATH) == 0) {
-            return false;
-        }
-
-        if (util::is_wow64()) {
-            Wow64DisableWow64FsRedirection(&OldValue);
-        }
-
-        bool is_vm = false;
-
-        for (const auto& key : keys) {
-            PathCombine(szPath, szWinDir, key);
-            if (util::exists(szPath)) {
-                is_vm = true;
-                break;
-            }
-        }
-
-        if (util::is_wow64()) {
-            Wow64RevertWow64FsRedirection(&OldValue);
-        }
-
-        return is_vm;
-#endif
-    }
-    catch (...) {
-        debug("KVM_DRIVERS: ", "caught error, returned false");
-        return false;
-    }
-
-
-    /**
-     * @brief Check for KVM directory "Virtio-Win"
-     * @category Windows
-     * @author LordNoteWorthy
-     * @note from Al-Khaser project
-     * @link https://github.com/LordNoteworthy/al-khaser/blob/0f31a3866bafdfa703d2ed1ee1a242ab31bf5ef0/al-khaser/AntiVM/KVM.cpp
-     */
-    [[nodiscard]] static bool kvm_directories() try {
-#if (!MSVC)
-        return false;
-#else
-        TCHAR szProgramFile[MAX_PATH];
-        TCHAR szPath[MAX_PATH] = _T("");
-        TCHAR szTarget[MAX_PATH] = _T("Virtio-Win\\");
-
-        if (util::is_wow64()) {
-            ExpandEnvironmentStrings(_T("%ProgramW6432%"), szProgramFile, ARRAYSIZE(szProgramFile));
-        } else {
-            SHGetSpecialFolderPath(NULL, szProgramFile, CSIDL_PROGRAM_FILES, FALSE);
-        }
-
-        PathCombine(szPath, szProgramFile, szTarget);
-        return util::exists(szPath);
-#endif
-    }
-    catch (...) {
-        debug("KVM_DIRS: ", "caught error, returned false");
-        return false;
-    }
-
-
-    /**
-     * @brief Check if audio device is present
-     * @category Windows
-     * @author CheckPointSW (InviZzzible project)
-     * @link https://github.com/CheckPointSW/InviZzzible/blob/master/SandboxEvasion/helper.cpp
-     * @copyright GPL-3.0
-     */
-    [[nodiscard]] static bool check_audio() try {
-#if (!MSVC)
-        return false;
-#else
-        PCWSTR wszfilterName = L"audio_device_random_name";
-
-        if (FAILED(CoInitialize(NULL)))
-            return false;
-
-        IGraphBuilder* pGraph = nullptr;
-        if (FAILED(CoCreateInstance(CLSID_FilterGraph, NULL, CLSCTX_INPROC_SERVER, IID_IGraphBuilder, (void**)&pGraph)))
-            return false;
-
-        // First anti-emulation check: If AddFilter is called with NULL as a first argument it should return the E_POINTER error code. 
-        // Some emulators may implement unknown COM interfaces in a generic way, so they will probably fail here.
-        if (E_POINTER != pGraph->AddFilter(NULL, wszfilterName))
-            return true;
-
-        // Initializes a simple Audio Renderer, error code is not checked, 
-        // but pBaseFilter will be set to NULL upon failure and the code will eventually fail later.
-        IBaseFilter* pBaseFilter = nullptr;
-
-        HRESULT hr = CoCreateInstance(CLSID_AudioRender, NULL, CLSCTX_INPROC_SERVER, IID_IBaseFilter, (void**)&pBaseFilter);
-        if (FAILED(hr)) {
-            return false;
-        }
-
-        // Adds the previously created Audio Renderer to the Filter Graph, no error checks
-        pGraph->AddFilter(pBaseFilter, wszfilterName);
-
-        // Tries to find the filter that was just added; in case of any previously not checked error (or wrong emulation) 
-        // this function won't find the filter and the sandbox/emulator will be successfully detected.
-        IBaseFilter* pBaseFilter2 = nullptr;
-        pGraph->FindFilterByName(wszfilterName, &pBaseFilter2);
-        if (nullptr == pBaseFilter2)
-            return true;
-
-        // Checks if info.achName is equal to the previously added filterName, if not - poor API emulation
-        FILTER_INFO info = { 0 };
-        pBaseFilter2->QueryFilterInfo(&info);
-        if (0 != wcscmp(info.achName, wszfilterName))
-            return false;
-
-        // Checks if the API sets a proper IReferenceClock pointer
-        IReferenceClock* pClock = nullptr;
-        if (0 != pBaseFilter2->GetSyncSource(&pClock))
-            return false;
-        if (0 != pClock)
-            return false;
-
-        // Checks if CLSID is different from 0
-        CLSID clsID = { 0 };
-        pBaseFilter2->GetClassID(&clsID);
-        if (clsID.Data1 == 0)
-            return true;
-
-        if (nullptr == pBaseFilter2)
-            return true;
-
-        // Just checks if the call was successful
-        IEnumPins* pEnum = nullptr;
-        if (0 != pBaseFilter2->EnumPins(&pEnum))
-            return true;
-
-        // The reference count returned by AddRef has to be higher than 0
-        if (0 == pBaseFilter2->AddRef())
-            return true;
-
-        return false;
-#endif
-    }
-    catch (...) {
-        debug("AUDIO: ", "caught error, returned false");
-        return false;
-    }
-
-
-    /**
-     * @brief Check for QEMU-specific blacklisted directories
-     * @author LordNoteworthy
-     * @link https://github.com/LordNoteworthy/al-khaser/blob/master/al-khaser/AntiVM/Qemu.cpp
-     * @category Windows
-     * @note from al-khaser project
-     * @copyright GPL-3.0
-     */
-    [[nodiscard]] static bool qemu_dir() try {
-#if (!MSVC)
-        return false;
-#else
-        TCHAR szProgramFile[MAX_PATH];
-        TCHAR szPath[MAX_PATH] = _T("");
-
-        const TCHAR* szDirectories[] = {
-            _T("qemu-ga"),	// QEMU guest agent.
-            _T("SPICE Guest Tools"), // SPICE guest tools.
-        };
-
-        WORD iLength = sizeof(szDirectories) / sizeof(szDirectories[0]);
-        for (int i = 0; i < iLength; i++) {
-            TCHAR msg[256] = _T("");
-
-            if (util::is_wow64())
-                ExpandEnvironmentStrings(_T("%ProgramW6432%"), szProgramFile, ARRAYSIZE(szProgramFile));
-            else
-                SHGetSpecialFolderPath(NULL, szProgramFile, CSIDL_PROGRAM_FILES, FALSE);
-
-            PathCombine(szPath, szProgramFile, szDirectories[i]);
-
-            if (util::exists(szPath))
-                return core::add(QEMU);
-        }
-
-        return false;
-#endif
-    }
-    catch (...) {
-        debug("QEMU_DIR: ", "caught error, returned false");
-        return false;
-    }
-
-
-    /**
-     * @brief Check for the presence of a mouse device
-     * @category Windows
-     * @author a0rtega
-     * @link https://github.com/a0rtega/pafish/blob/master/pafish/rtt.c
-     * @note from pafish project
-     * @copyright GPL
-     */
-    [[nodiscard]] static bool mouse_device() try {
-#if (!MSVC)
-        return false;
-#else
-        int res;
-        res = GetSystemMetrics(SM_MOUSEPRESENT);
-        return (res == 0);
-#endif
-    }
-    catch (...) {
-        debug("MOUSE_DEVICE: caught error, returned false");
-        return false;
-    }
+/* GPL */     // @brief Check if the computer name (not username to be clear) is VM-specific
+/* GPL */     // @category Windows
+/* GPL */     // @author InviZzzible project
+/* GPL */     // @copyright GPL-3.0
+/* GPL */     [[nodiscard]] static bool computer_name_match() try {
+/* GPL */ #if (!MSVC)
+/* GPL */         return false;
+/* GPL */ #else
+/* GPL */         auto out_length = MAX_PATH;
+/* GPL */         std::vector<u8> comp_name(static_cast<u32>(out_length), 0);
+/* GPL */         GetComputerNameA((LPSTR)comp_name.data(), (LPDWORD)&out_length);
+/* GPL */ 
+/* GPL */         auto compare = [&](const std::string& s) -> bool {
+/* GPL */             return (std::strcmp((LPCSTR)comp_name.data(), s.c_str()) == 0);
+/* GPL */             };
+/* GPL */ 
+/* GPL */         debug("COMPUTER_NAME: fetched = ", (LPCSTR)comp_name.data());
+/* GPL */ 
+/* GPL */         if (compare("InsideTm") || compare("TU-4NH09SMCG1HC")) { // anubis
+/* GPL */             debug("COMPUTER_NAME: detected Anubis");
+/* GPL */             return core::add(ANUBIS);
+/* GPL */         }
+/* GPL */ 
+/* GPL */         if (compare("klone_x64-pc") || compare("tequilaboomboom")) { // general
+/* GPL */             debug("COMPUTER_NAME: detected general (VM but unknown)");
+/* GPL */             return true;
+/* GPL */         }
+/* GPL */ 
+/* GPL */         return false;
+/* GPL */ #endif
+/* GPL */     }
+/* GPL */     catch (...) {
+/* GPL */         debug("COMPUTER_NAME: caught error, returned false");
+/* GPL */         return false;
+/* GPL */     }
+/* GPL */ 
+/* GPL */ 
+/* GPL */     // @brief Check wine_get_unix_file_name file for Wine
+/* GPL */     // @author pafish project
+/* GPL */     // @link https://github.com/a0rtega/pafish/blob/master/pafish/wine.c
+/* GPL */     // @category Windows
+/* GPL */     // @copyright GPL-3.0
+/* GPL */     [[nodiscard]] static bool wine() try {
+/* GPL */ #if (!MSVC)
+/* GPL */         return false;
+/* GPL */ #else
+/* GPL */         HMODULE k32;
+/* GPL */         k32 = GetModuleHandle(TEXT("kernel32.dll"));
+/* GPL */ 
+/* GPL */         if (k32 != NULL) {
+/* GPL */             if (GetProcAddress(k32, "wine_get_unix_file_name") != NULL) {
+/* GPL */                 return core::add(WINE);
+/* GPL */             }
+/* GPL */         }
+/* GPL */ 
+/* GPL */         return false;
+/* GPL */ #endif
+/* GPL */     }
+/* GPL */     catch (...) {
+/* GPL */         debug("WINE_CHECK: caught error, returned false");
+/* GPL */         return false;
+/* GPL */     }
+/* GPL */ 
+/* GPL */ 
+/* GPL */     // @brief Check if hostname is specific
+/* GPL */     // @author InviZzzible project
+/* GPL */     // @category Windows
+/* GPL */     // @copyright GPL-3.0
+/* GPL */     [[nodiscard]] static bool hostname_match() try {
+/* GPL */ #if (!MSVC)
+/* GPL */         return false;
+/* GPL */ #else
+/* GPL */         auto out_length = MAX_PATH;
+/* GPL */         std::vector<u8> dns_host_name(static_cast<u32>(out_length), 0);
+/* GPL */         GetComputerNameExA(ComputerNameDnsHostname, (LPSTR)dns_host_name.data(), (LPDWORD)&out_length);
+/* GPL */ 
+/* GPL */         debug("HOSTNAME: ", (LPCSTR)dns_host_name.data());
+/* GPL */ 
+/* GPL */         return (!lstrcmpiA((LPCSTR)dns_host_name.data(), "SystemIT"));
+/* GPL */ #endif
+/* GPL */     }
+/* GPL */     catch (...) {
+/* GPL */         debug("HOSTNAME: caught error, returned false");
+/* GPL */         return false;
+/* GPL */     }
+/* GPL */ 
+/* GPL */ 
+/* GPL */     // @brief Check if memory space is far too low for a physical machine
+/* GPL */     // @author Al-Khaser project
+/* GPL */     // @category x86?
+/* GPL */     // @copyright GPL-3.0
+/* GPL */     [[nodiscard]] static bool low_memory_space() try {
+/* GPL */         constexpr u64 min_ram_1gb = (1024LL * (1024LL * (1024LL * 1LL)));
+/* GPL */         const u64 ram = util::get_memory_space();
+/* GPL */ 
+/* GPL */         debug("MEMORY: ram size (GB) = ", ram);
+/* GPL */         debug("MEMORY: minimum ram size (GB) = ", min_ram_1gb);
+/* GPL */ 
+/* GPL */         return (ram < min_ram_1gb);
+/* GPL */     }
+/* GPL */     catch (...) {
+/* GPL */         debug("MEMORY: caught error, returned false");
+/* GPL */         return false;
+/* GPL */     }
+/* GPL */ 
+/* GPL */ 
+/* GPL */     // @brief Check for the window class for VirtualBox
+/* GPL */     // @category Windows
+/* GPL */     // @author Al-Khaser Project
+/* GPL */     // @copyright GPL-3.0
+/* GPL */     [[nodiscard]] static bool vbox_window_class() try {
+/* GPL */ #if (!MSVC)
+/* GPL */         return false;
+/* GPL */ #else
+/* GPL */         HWND hClass = FindWindow(_T("VBoxTrayToolWndClass"), NULL);
+/* GPL */         HWND hWindow = FindWindow(NULL, _T("VBoxTrayToolWnd"));
+/* GPL */ 
+/* GPL */         if (hClass || hWindow) {
+/* GPL */             return core::add(VBOX);
+/* GPL */         }
+/* GPL */ 
+/* GPL */         return false;
+/* GPL */ #endif
+/* GPL */     }
+/* GPL */     catch (...) {
+/* GPL */         debug("VBOX_WINDOW_CLASS: caught error, returned false");
+/* GPL */         return false;
+/* GPL */     }
+/* GPL */ 
+/* GPL */ 
+/* GPL */     // @brief Check for loaded DLLs in the process
+/* GPL */     // @category Windows
+/* GPL */     // @author LordNoteworthy
+/* GPL */     // @note modified code from Al-Khaser project
+/* GPL */     // @link https://github.com/LordNoteworthy/al-khaser/blob/c68fbd7ba0ba46315e819b490a2c782b80262fcd/al-khaser/Anti%20VM/Generic.cpp
+/* GPL */     [[nodiscard]] static bool loaded_dlls() try {
+/* GPL */ #if (!MSVC)
+/* GPL */         return false;
+/* GPL */ #else
+/* GPL */         HMODULE hDll;
+/* GPL */ 
+/* GPL */         constexpr std::array<const char*, 12> szDlls = {{
+/* GPL */             "avghookx.dll",    // AVG
+/* GPL */             "avghooka.dll",    // AVG
+/* GPL */             "snxhk.dll",       // Avast
+/* GPL */             "sbiedll.dll",     // Sandboxie
+/* GPL */             "dbghelp.dll",     // WindBG
+/* GPL */             "api_log.dll",     // iDefense Lab
+/* GPL */             "dir_watch.dll",   // iDefense Lab
+/* GPL */             "pstorec.dll",     // SunBelt CWSandbox
+/* GPL */             "vmcheck.dll",     // Virtual PC
+/* GPL */             "wpespy.dll",      // WPE Pro
+/* GPL */             "cmdvrt64.dll",    // Comodo Container
+/* GPL */             "cmdvrt32.dll"     // Comodo Container
+/* GPL */         }};
+/* GPL */ 
+/* GPL */         for (const auto& key : szDlls) {
+/* GPL */             const char* dll = key;
+/* GPL */ 
+/* GPL */             hDll = GetModuleHandleA(dll);  // Use GetModuleHandleA for ANSI strings
+/* GPL */ 
+/* GPL */             if (hDll != NULL && dll != NULL) {
+/* GPL */                 if (strcmp(dll, "sbiedll.dll") == 0) { return core::add(SANDBOXIE); }
+/* GPL */                 if (strcmp(dll, "pstorec.dll") == 0) { return core::add(CWSANDBOX); }
+/* GPL */                 if (strcmp(dll, "vmcheck.dll") == 0) { return core::add(VPC); }
+/* GPL */                 if (strcmp(dll, "cmdvrt32.dll") == 0) { return core::add(COMODO); }
+/* GPL */                 if (strcmp(dll, "cmdvrt64.dll") == 0) { return core::add(COMODO); }
+/* GPL */ 
+/* GPL */                 return true;
+/* GPL */             }
+/* GPL */         }
+/* GPL */ 
+/* GPL */         return false;
+/* GPL */ #endif
+/* GPL */     }
+/* GPL */     catch (...) {
+/* GPL */         debug("LOADED_DLLS:", "caught error, returned false");
+/* GPL */         return false;
+/* GPL */     }
+/* GPL */ 
+/* GPL */ 
+/* GPL */     // @brief Check for KVM-specific registry strings
+/* GPL */     // @category Windows
+/* GPL */     // @note idea is from Al-Khaser, slightly modified code
+/* GPL */     // @author LordNoteWorthy
+/* GPL */     // @link https://github.com/LordNoteworthy/al-khaser/blob/0f31a3866bafdfa703d2ed1ee1a242ab31bf5ef0/al-khaser/AntiVM/KVM.cpp
+/* GPL */     [[nodiscard]] static bool kvm_registry() try {
+/* GPL */ #if (!MSVC)
+/* GPL */         return false;
+/* GPL */ #else
+/* GPL */         auto registry_exists = [](const TCHAR* key) -> bool {
+/* GPL */             HKEY keyHandle;
+/* GPL */ 
+/* GPL */             if (RegOpenKeyEx(HKEY_LOCAL_MACHINE, key, 0, KEY_QUERY_VALUE, &keyHandle) == ERROR_SUCCESS) {
+/* GPL */                 RegCloseKey(keyHandle);
+/* GPL */                 return true;
+/* GPL */             }
+/* GPL */ 
+/* GPL */             return false;
+/* GPL */             };
+/* GPL */ 
+/* GPL */         constexpr std::array<const TCHAR*, 7> keys = {{
+/* GPL */             _T("SYSTEM\\ControlSet001\\Services\\vioscsi"),
+/* GPL */             _T("SYSTEM\\ControlSet001\\Services\\viostor"),
+/* GPL */             _T("SYSTEM\\ControlSet001\\Services\\VirtIO-FS Service"),
+/* GPL */             _T("SYSTEM\\ControlSet001\\Services\\VirtioSerial"),
+/* GPL */             _T("SYSTEM\\ControlSet001\\Services\\BALLOON"),
+/* GPL */             _T("SYSTEM\\ControlSet001\\Services\\BalloonService"),
+/* GPL */             _T("SYSTEM\\ControlSet001\\Services\\netkvm"),
+/* GPL */         }};
+/* GPL */ 
+/* GPL */         for (const auto& key : keys) {
+/* GPL */             if (registry_exists(key)) {
+/* GPL */                 return core::add(KVM);
+/* GPL */             }
+/* GPL */         }
+/* GPL */ 
+/* GPL */         return false;
+/* GPL */ #endif
+/* GPL */     }
+/* GPL */     catch (...) {
+/* GPL */         debug("KVM_REG: ", "caught error, returned false");
+/* GPL */         return false;
+/* GPL */     }
+/* GPL */ 
+/* GPL */ 
+/* GPL */     // @brief Check for KVM-specific .sys files in system driver directory
+/* GPL */     // @category Windows
+/* GPL */     // @note idea is from Al-Khaser, slightly modified code
+/* GPL */     // @author LordNoteWorthy
+/* GPL */     // @link https://github.com/LordNoteworthy/al-khaser/blob/0f31a3866bafdfa703d2ed1ee1a242ab31bf5ef0/al-khaser/AntiVM/KVM.cpp
+/* GPL */     [[nodiscard]] static bool kvm_drivers() try {
+/* GPL */ #if (!MSVC)
+/* GPL */         return false;
+/* GPL */ #else
+/* GPL */         constexpr std::array<const TCHAR*, 10> keys = { {
+/* GPL */             _T("System32\\drivers\\balloon.sys"),
+/* GPL */             _T("System32\\drivers\\netkvm.sys"),
+/* GPL */             _T("System32\\drivers\\pvpanic.sys"),
+/* GPL */             _T("System32\\drivers\\viofs.sys"),
+/* GPL */             _T("System32\\drivers\\viogpudo.sys"),
+/* GPL */             _T("System32\\drivers\\vioinput.sys"),
+/* GPL */             _T("System32\\drivers\\viorng.sys"),
+/* GPL */             _T("System32\\drivers\\vioscsi.sys"),
+/* GPL */             _T("System32\\drivers\\vioser.sys"),
+/* GPL */             _T("System32\\drivers\\viostor.sys")
+/* GPL */         } };
+/* GPL */ 
+/* GPL */         TCHAR szWinDir[MAX_PATH] = _T("");
+/* GPL */         TCHAR szPath[MAX_PATH] = _T("");
+/* GPL */         PVOID OldValue = NULL;
+/* GPL */ 
+/* GPL */         if (GetWindowsDirectory(szWinDir, MAX_PATH) == 0) {
+/* GPL */             return false;
+/* GPL */         }
+/* GPL */ 
+/* GPL */         if (util::is_wow64()) {
+/* GPL */             Wow64DisableWow64FsRedirection(&OldValue);
+/* GPL */         }
+/* GPL */ 
+/* GPL */         bool is_vm = false;
+/* GPL */ 
+/* GPL */         for (const auto& key : keys) {
+/* GPL */             PathCombine(szPath, szWinDir, key);
+/* GPL */             if (util::exists(szPath)) {
+/* GPL */                 is_vm = true;
+/* GPL */                 break;
+/* GPL */             }
+/* GPL */         }
+/* GPL */ 
+/* GPL */         if (util::is_wow64()) {
+/* GPL */             Wow64RevertWow64FsRedirection(&OldValue);
+/* GPL */         }
+/* GPL */ 
+/* GPL */         return is_vm;
+/* GPL */ #endif
+/* GPL */     }
+/* GPL */     catch (...) {
+/* GPL */         debug("KVM_DRIVERS: ", "caught error, returned false");
+/* GPL */         return false;
+/* GPL */     }
+/* GPL */ 
+/* GPL */ 
+/* GPL */     // @brief Check for KVM directory "Virtio-Win"
+/* GPL */     // @category Windows
+/* GPL */     // @author LordNoteWorthy
+/* GPL */     // @note from Al-Khaser project
+/* GPL */     // @link https://github.com/LordNoteworthy/al-khaser/blob/0f31a3866bafdfa703d2ed1ee1a242ab31bf5ef0/al-khaser/AntiVM/KVM.cpp
+/* GPL */     [[nodiscard]] static bool kvm_directories() try {
+/* GPL */ #if (!MSVC)
+/* GPL */         return false;
+/* GPL */ #else
+/* GPL */         TCHAR szProgramFile[MAX_PATH];
+/* GPL */         TCHAR szPath[MAX_PATH] = _T("");
+/* GPL */         TCHAR szTarget[MAX_PATH] = _T("Virtio-Win\\");
+/* GPL */ 
+/* GPL */         if (util::is_wow64()) {
+/* GPL */             ExpandEnvironmentStrings(_T("%ProgramW6432%"), szProgramFile, ARRAYSIZE(szProgramFile));
+/* GPL */         } else {
+/* GPL */             SHGetSpecialFolderPath(NULL, szProgramFile, CSIDL_PROGRAM_FILES, FALSE);
+/* GPL */         }
+/* GPL */ 
+/* GPL */         PathCombine(szPath, szProgramFile, szTarget);
+/* GPL */         return util::exists(szPath);
+/* GPL */ #endif
+/* GPL */     }
+/* GPL */     catch (...) {
+/* GPL */         debug("KVM_DIRS: ", "caught error, returned false");
+/* GPL */         return false;
+/* GPL */     }
+/* GPL */ 
+/* GPL */     
+/* GPL */     // @brief Check if audio device is present
+/* GPL */     // @category Windows
+/* GPL */     // @author CheckPointSW (InviZzzible project)
+/* GPL */     // @link https://github.com/CheckPointSW/InviZzzible/blob/master/SandboxEvasion/helper.cpp
+/* GPL */     // @copyright GPL-3.0
+/* GPL */     [[nodiscard]] static bool check_audio() try {
+/* GPL */ #if (!MSVC)
+/* GPL */         return false;
+/* GPL */ #else
+/* GPL */         PCWSTR wszfilterName = L"audio_device_random_name";
+/* GPL */ 
+/* GPL */         if (FAILED(CoInitialize(NULL)))
+/* GPL */             return false;
+/* GPL */ 
+/* GPL */         IGraphBuilder* pGraph = nullptr;
+/* GPL */         if (FAILED(CoCreateInstance(CLSID_FilterGraph, NULL, CLSCTX_INPROC_SERVER, IID_IGraphBuilder, (void**)&pGraph)))
+/* GPL */             return false;
+/* GPL */ 
+/* GPL */         // First anti-emulation check: If AddFilter is called with NULL as a first argument it should return the E_POINTER error code. 
+/* GPL */         // Some emulators may implement unknown COM interfaces in a generic way, so they will probably fail here.
+/* GPL */         if (E_POINTER != pGraph->AddFilter(NULL, wszfilterName))
+/* GPL */             return true;
+/* GPL */ 
+/* GPL */         // Initializes a simple Audio Renderer, error code is not checked, 
+/* GPL */         // but pBaseFilter will be set to NULL upon failure and the code will eventually fail later.
+/* GPL */         IBaseFilter* pBaseFilter = nullptr;
+/* GPL */ 
+/* GPL */         HRESULT hr = CoCreateInstance(CLSID_AudioRender, NULL, CLSCTX_INPROC_SERVER, IID_IBaseFilter, (void**)&pBaseFilter);
+/* GPL */         if (FAILED(hr)) {
+/* GPL */             return false;
+/* GPL */         }
+/* GPL */ 
+/* GPL */         // Adds the previously created Audio Renderer to the Filter Graph, no error checks
+/* GPL */         pGraph->AddFilter(pBaseFilter, wszfilterName);
+/* GPL */ 
+/* GPL */         // Tries to find the filter that was just added; in case of any previously not checked error (or wrong emulation) 
+/* GPL */         // this function won't find the filter and the sandbox/emulator will be successfully detected.
+/* GPL */         IBaseFilter* pBaseFilter2 = nullptr;
+/* GPL */         pGraph->FindFilterByName(wszfilterName, &pBaseFilter2);
+/* GPL */         if (nullptr == pBaseFilter2)
+/* GPL */             return true;
+/* GPL */ 
+/* GPL */         // Checks if info.achName is equal to the previously added filterName, if not - poor API emulation
+/* GPL */         FILTER_INFO info = { 0 };
+/* GPL */         pBaseFilter2->QueryFilterInfo(&info);
+/* GPL */         if (0 != wcscmp(info.achName, wszfilterName))
+/* GPL */             return false;
+/* GPL */ 
+/* GPL */         // Checks if the API sets a proper IReferenceClock pointer
+/* GPL */         IReferenceClock* pClock = nullptr;
+/* GPL */         if (0 != pBaseFilter2->GetSyncSource(&pClock))
+/* GPL */             return false;
+/* GPL */         if (0 != pClock)
+/* GPL */             return false;
+/* GPL */ 
+/* GPL */         // Checks if CLSID is different from 0
+/* GPL */         CLSID clsID = { 0 };
+/* GPL */         pBaseFilter2->GetClassID(&clsID);
+/* GPL */         if (clsID.Data1 == 0)
+/* GPL */             return true;
+/* GPL */ 
+/* GPL */         if (nullptr == pBaseFilter2)
+/* GPL */             return true;
+/* GPL */ 
+/* GPL */         // Just checks if the call was successful
+/* GPL */         IEnumPins* pEnum = nullptr;
+/* GPL */         if (0 != pBaseFilter2->EnumPins(&pEnum))
+/* GPL */             return true;
+/* GPL */ 
+/* GPL */         // The reference count returned by AddRef has to be higher than 0
+/* GPL */         if (0 == pBaseFilter2->AddRef())
+/* GPL */             return true;
+/* GPL */ 
+/* GPL */         return false;
+/* GPL */ #endif
+/* GPL */     }
+/* GPL */     catch (...) {
+/* GPL */         debug("AUDIO: ", "caught error, returned false");
+/* GPL */         return false;
+/* GPL */     }
+/* GPL */ 
+/* GPL */ 
+/* GPL */     // @brief Check for QEMU-specific blacklisted directories
+/* GPL */     // @author LordNoteworthy
+/* GPL */     // @link https://github.com/LordNoteworthy/al-khaser/blob/master/al-khaser/AntiVM/Qemu.cpp
+/* GPL */     // @category Windows
+/* GPL */     // @note from al-khaser project
+/* GPL */     // @copyright GPL-3.0
+/* GPL */     [[nodiscard]] static bool qemu_dir() try {
+/* GPL */ #if (!MSVC)
+/* GPL */         return false;
+/* GPL */ #else
+/* GPL */         TCHAR szProgramFile[MAX_PATH];
+/* GPL */         TCHAR szPath[MAX_PATH] = _T("");
+/* GPL */ 
+/* GPL */         const TCHAR* szDirectories[] = {
+/* GPL */             _T("qemu-ga"),	// QEMU guest agent.
+/* GPL */             _T("SPICE Guest Tools"), // SPICE guest tools.
+/* GPL */         };
+/* GPL */ 
+/* GPL */         WORD iLength = sizeof(szDirectories) / sizeof(szDirectories[0]);
+/* GPL */         for (int i = 0; i < iLength; i++) {
+/* GPL */             TCHAR msg[256] = _T("");
+/* GPL */ 
+/* GPL */             if (util::is_wow64())
+/* GPL */                 ExpandEnvironmentStrings(_T("%ProgramW6432%"), szProgramFile, ARRAYSIZE(szProgramFile));
+/* GPL */             else
+/* GPL */                 SHGetSpecialFolderPath(NULL, szProgramFile, CSIDL_PROGRAM_FILES, FALSE);
+/* GPL */ 
+/* GPL */             PathCombine(szPath, szProgramFile, szDirectories[i]);
+/* GPL */ 
+/* GPL */             if (util::exists(szPath))
+/* GPL */                 return core::add(QEMU);
+/* GPL */         }
+/* GPL */ 
+/* GPL */         return false;
+/* GPL */ #endif
+/* GPL */     }
+/* GPL */     catch (...) {
+/* GPL */         debug("QEMU_DIR: ", "caught error, returned false");
+/* GPL */         return false;
+/* GPL */     }
+/* GPL */ 
+/* GPL */ 
+/* GPL */     // @brief Check for the presence of a mouse device
+/* GPL */     // @category Windows
+/* GPL */     // @author a0rtega
+/* GPL */     // @link https://github.com/a0rtega/pafish/blob/master/pafish/rtt.c
+/* GPL */     // @note from pafish project
+/* GPL */     // @copyright GPL
+/* GPL */     [[nodiscard]] static bool mouse_device() try {
+/* GPL */ #if (!MSVC)
+/* GPL */         return false;
+/* GPL */ #else
+/* GPL */         int res;
+/* GPL */         res = GetSystemMetrics(SM_MOUSEPRESENT);
+/* GPL */         return (res == 0);
+/* GPL */ #endif
+/* GPL */     }
+/* GPL */     catch (...) {
+/* GPL */         debug("MOUSE_DEVICE: caught error, returned false");
+/* GPL */         return false;
+/* GPL */     }
 
 
     /**
@@ -8022,7 +8036,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             cmp("Malware") ||
             cmp("malsand") ||
             cmp("ClonePC")
-            ) {
+        ) {
             return true;
         }
 
@@ -9155,7 +9169,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         struct technique {
             u8 points = 0;                // this is the certainty score between 0 and 100
             std::function<bool()> run;    // this is the technique function itself
-            bool spoofable = false;       // this is to indicate that the technique can be very easily spoofed (not guaranteed)
+            bool is_spoofable = false;    // this is to indicate that the technique can be very easily spoofed (not guaranteed)
         };
 
         struct custom_technique {
@@ -9213,7 +9227,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        [[nodiscard]] static bool is_non_technique_set(const flagset& flags) {
+        [[nodiscard]] static bool is_setting_flag_set(const flagset& flags) {
             for (std::size_t i = non_technique_begin; i < non_technique_end; i++) {
                 if (flags.test(i)) {
                     return true;
@@ -9239,11 +9253,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return;
             }
 
-            if (!core::is_non_technique_set(flags)) {
+            if (!core::is_setting_flag_set(flags)) {
                 throw std::invalid_argument("Invalid flag option for function parameter found, either leave it empty or add the VM::DEFAULT flag");
             }
 
-            // at this stage, only non-technique flags are asserted to be set
+            // at this stage, only settings technique flags are asserted to be set
             if (
                 flags.test(NO_MEMO) ||
                 flags.test(HIGH_THRESHOLD) ||
@@ -9260,22 +9274,26 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // run every VM detection mechanism in the technique table
         static u16 run_all(const flagset& flags, const bool shortcut = false) {
             u16 points = 0;
+
             const bool memo_enabled = core::is_disabled(flags, NO_MEMO);
 
             const u16 threshold_points = (core::is_enabled(flags, HIGH_THRESHOLD) ? high_threshold_score : 200);
 
-            // for main technique table
+            // loop through technique table, where all the techniques are stored
             for (const auto& tmp : technique_table) {
                 const enum_flags technique_macro = tmp.first;
-                const technique tuple = tmp.second;
+                const technique technique_data = tmp.second;
 
-                // check if it's disabled
+                // check if the technique is disabled
                 if (core::is_disabled(flags, technique_macro)) {
                     continue;
                 }
 
                 // check if it's spoofable, and whether it's enabled
-                if (tuple.spoofable && core::is_disabled(flags, SPOOFABLE)) {
+                if (
+                    technique_data.is_spoofable && 
+                    core::is_disabled(flags, SPOOFABLE)
+                ) {
                     continue;
                 }
 
@@ -9291,25 +9309,27 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
 
                 // run the technique
-                const bool result = tuple.run();
+                const bool result = technique_data.run();
 
                 // accumulate the points if technique detected a VM
                 if (result) {
-                    points += tuple.points;
-                }
+                    points += technique_data.points;
 
-                /**
-                 * for things like VM::detect() and VM::percentage(),
-                 * a score of 200+ is guaranteed to be a VM, so
-                 * there's no point in running the rest of the techniques
-                 */
+                    // this is specific to VM::detected_count() which returns 
+                    // the number of techniques that returned a positive
+                    detected_count_num++;
+                }
+                
+                // for things like VM::detect() and VM::percentage(),
+                // a score of 200+ is guaranteed to be a VM, so
+                // there's no point in running the rest of the techniques
                 if (shortcut && points >= threshold_points) {
                     return points;
                 }
 
                 // store the current technique result to the cache
                 if (memo_enabled) {
-                    memo::cache_store(technique_macro, result, tuple.points);
+                    memo::cache_store(technique_macro, result, technique_data.points);
                 }
             }
 
@@ -9330,13 +9350,20 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
          * basically what this entire template fuckery does is manage the
          * variadic arguments being given through the arg_handler function,
          * which could either be a std::bitset<N>, a uint8_t, or a combination
-         * of both of them. Thisz will handle both argument types and implement
+         * of both of them. This will handle both argument types and implement
          * them depending on what their types are. If it's a std::bitset<N>,
-         * do the |= operation. If it's a uint8_t, simply .set() that into
-         * the flag_collector bitset. That's the gist of it.
+         * do the |= operation on flag_collector. If it's a uint8_t, simply 
+         * .set() that into the flag_collector. That's the gist of it.
          *
          * Also I won't even deny, the majority of this section was 90% generated
          * by chatgpt. Can't be arsed with this C++ templatisation shit.
+         * Like is it really my fault that I have a hard time understanging C++'s 
+         * god awful metaprogramming designs? And don't even get me started on SNIFAE. 
+         * 
+         * You don't need an IQ of 3 digits to realise how dogshit this language
+         * is, when you end up in situations where there's a few correct solutions
+         * to a problem, but with a billion ways you can do the same thing but in 
+         * the "wrong" way. I genuinely can't wait for Carbon to come out.
          */
     private:
         static flagset flag_collector;
@@ -9454,18 +9481,23 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
 
     public:
-        // Function template to test variadic arguments
+        // fetch the flags, could be an enum value OR a std::bitset.
+        // This will then generate a different std::bitset as the 
+        // return value by enabling the bits based on the argument.
         template <typename... Args>
         static flagset arg_handler(Args&&... args) {
-            if VMAWARE_CONSTEXPR(is_empty<Args...>()) {
+            if VMAWARE_CONSTEXPR (is_empty<Args...>()) {
                 return DEFAULT;
             }
 
             flag_collector.reset();
             global_flags.reset();
 
+            // set the bits in the flag, can take in 
+            // either an enum value or a std::bitset
             handleArgs(std::forward<Args>(args)...);
 
+            // handle edgecases
             core::flag_sanitizer(flag_collector);
 
             global_flags = flag_collector;
@@ -9478,14 +9510,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         static flagset disabled_arg_handler(Args&&... args) {
             flag_collector.reset();
 
-            if VMAWARE_CONSTEXPR(is_empty<Args...>()) {
-                throw std::invalid_argument("VM::DISABLE must contain a flag");
+            if VMAWARE_CONSTEXPR (is_empty<Args...>()) {
+                throw std::invalid_argument("VM::DISABLE() must contain a flag");
             }
 
             handle_disabled_args(std::forward<Args>(args)...);
 
-            if (core::is_non_technique_set(flag_collector)) {
-                throw std::invalid_argument("VM::DISABLE must not contain a non-technique flag, they are disabled by default anyway");
+            // check if a settings flag is set, which is not valid
+            if (core::is_setting_flag_set(flag_collector)) {
+                throw std::invalid_argument("VM::DISABLE() must not contain a settings flag, they are disabled by default anyway");
             }
 
             return flag_collector;
@@ -9522,7 +9555,7 @@ public: // START OF PUBLIC FUNCTIONS
             throw_error("Flag argument must be a valid");
         }
 
-        // check if the bit is a non-technique flag, which shouldn't be allowed
+        // check if the bit is a settings flag, which shouldn't be allowed
         if (
             (flag_bit == NO_MEMO) ||
             (flag_bit == HIGH_THRESHOLD) ||
@@ -9552,6 +9585,10 @@ public: // START OF PUBLIC FUNCTIONS
         const core::technique& pair = it->second;
         const bool result = pair.run();
 
+        if (result) {
+            detected_count_num++;
+        }
+
 #ifdef __VMAWARE_DEBUG__
         total_points += pair.points;
 #endif
@@ -9573,15 +9610,17 @@ public: // START OF PUBLIC FUNCTIONS
     [[nodiscard]] static std::string brand(Args ...args) {
         flagset flags = core::arg_handler(args...);
 
+        // is the multiple setting flag enabled? (meaning multiple 
+        // brand strings will be outputted if there's a conflict)
         const bool is_multiple = core::is_enabled(flags, MULTIPLE);
 
-        // are all the techiques already run? if not, run all of them to get the necessary info to fetch the brand
+        // are all the techiques already run? if not, run them 
+        // to fetch the necessary info to determine the brand
         if (!memo::all_present() || core::is_enabled(flags, NO_MEMO)) {
-            u16 tmp = core::run_all(flags);
-            UNUSED(tmp);
+            core::run_all(flags);
         }
 
-        // check if it's already cached and return that instead
+        // check if the result is already cached and return that instead
         if (core::is_disabled(flags, NO_MEMO)) {
             if (is_multiple) {
                 if (memo::multi_brand::is_cached()) {
@@ -9596,7 +9635,8 @@ public: // START OF PUBLIC FUNCTIONS
             }
         }
 
-        // goofy ass C++11 and C++14 linker error workaround
+        // goofy ass C++11 and C++14 linker error workaround, 
+        // and yes, this does look indeed stupid.
 #if (CPP <= 14)
         constexpr const char* TMP_QEMU = "QEMU";
         constexpr const char* TMP_KVM = "KVM";
@@ -9639,27 +9679,42 @@ public: // START OF PUBLIC FUNCTIONS
         constexpr const char* TMP_HYPERV_ARTIFACT = HYPERV_ARTIFACT;
 #endif
 
+        // this is where all the RELEVANT brands are stored.
+        // The ones with no points will be filtered out.
         std::map<const char*, brand_score_t> brands;
 
+        // add the relevant brands with at least 1 point
         for (const auto &element : core::brand_scoreboard) {
             if (element.second > 0) {
                 brands.insert(std::make_pair(element.first, element.second));
             }
         }
 
-        // if no brand had a single point, return "Unknown"
+        // if all brands had a point of 0, return 
+        // "Unknown" (no relevant brands were found)
         if (brands.empty()) {
             return "Unknown";
         }
 
+        // if there's only a single brand, return it. 
+        // This will skip the rest of the function
+        // where it will process and merge certain
+        // brands 
         if (brands.size() == 1) {
             return brands.begin()->first;
-        } else if (brands.size() > 1) {
+        }
+        
+        // remove Hyper-V artifacts if found with other 
+        // brands, because that's not a VM. It's added 
+        // only for the sake of information cuz of the 
+        // fucky wucky Hyper-V problem (see Hyper-X)
+        if (brands.size() > 1) {
             if (brands.find(TMP_HYPERV_ARTIFACT) != brands.end()) {
                 brands.erase(TMP_HYPERV_ARTIFACT);
             }
         }
 
+        // merge 2 brands, and make a single brand out of it.
         auto merger = [&](const char* a, const char* b, const char* result) -> void {
             if (
                 (brands.count(a) > 0) &&
@@ -9671,6 +9726,7 @@ public: // START OF PUBLIC FUNCTIONS
             }
         };
 
+        // same as above, but for 3
         auto triple_merger = [&](const char* a, const char* b, const char* c, const char* result) -> void {
             if (
                 (brands.count(a) > 0) &&
@@ -9684,6 +9740,8 @@ public: // START OF PUBLIC FUNCTIONS
             }
         };
 
+        // some edgecase handling for Hyper-V and VirtualPC since
+        // they're very similar, and they're both from Microsoft (ew)
         if ((brands.count(TMP_HYPERV) > brands.count(TMP_VPC))) {
             brands.erase(TMP_VPC);
         } else if (brands.count(TMP_HYPERV) < brands.count(TMP_VPC)) {
@@ -9695,9 +9753,19 @@ public: // START OF PUBLIC FUNCTIONS
             merger(TMP_VPC, TMP_HYPERV, TMP_HYPERV_VPC);
         }
 
-        merger(TMP_HYPERV,     TMP_HYPERV_ARTIFACT, TMP_HYPERV_ARTIFACT);
-        merger(TMP_VPC,        TMP_HYPERV_ARTIFACT, TMP_HYPERV_ARTIFACT);
-        merger(TMP_HYPERV_VPC, TMP_HYPERV_ARTIFACT, TMP_HYPERV_ARTIFACT);
+
+        // this is the section where brand post-processing will be done. 
+        // The reason why this part is necessary is because it will
+        // output a more accurate picture on the VM brand. For example, 
+        // Azure's cloud is based on Hyper-V, but Hyper-V may have 
+        // a higher score due to the prevalence of it in a practical 
+        // setting, which will put Azure to the side. This is stupid 
+        // because there should be an indication that Azure is involved
+        // since it's a better idea to let the end-user know that the
+        // brand is "Azure Hyper-V" instead of just "Hyper-V". So what
+        // this section does is "merge" the brands together to form
+        // a more accurate idea of the brand(s) involved.
+
 
         merger(TMP_AZURE, TMP_HYPERV,     TMP_AZURE);
         merger(TMP_AZURE, TMP_VPC,        TMP_AZURE);
@@ -9723,8 +9791,11 @@ public: // START OF PUBLIC FUNCTIONS
         merger(TMP_VMWARE, TMP_GSX,         TMP_GSX);
         merger(TMP_VMWARE, TMP_WORKSTATION, TMP_WORKSTATION);
 
+        // the brand element, which stores the NAME (const char*) and the SCORE (u8)
         using brand_element_t = std::pair<const char*, brand_score_t>;
 
+        // sort the "brands" map so that the brands with the
+        // highest score appears first in descending order
         auto sorter = [&]() -> std::vector<brand_element_t> {
             std::vector<brand_element_t> vec(brands.begin(), brands.end());
 
@@ -9741,11 +9812,15 @@ public: // START OF PUBLIC FUNCTIONS
         std::vector<brand_element_t> vec = sorter();
         std::string ret_str = "Unknown";
 
+        // if the multiple setting flag is NOT set, return the
+        // brand with the highest score. Else, return a std::string
+        // of the brand message (i.e. "VirtualBox or VMware").
+        // See VM::MULTIPLE flag in docs for more information.
         if (!is_multiple) {
             ret_str = vec.front().first;
         } else {
             std::stringstream ss;
-            u8 i = 1;
+            std::size_t i = 1;
 
             ss << vec.front().first;
             for (; i < vec.size(); i++) {
@@ -9755,6 +9830,7 @@ public: // START OF PUBLIC FUNCTIONS
             ret_str = ss.str();
         }
 
+        // cache the result if memoization is enabled
         if (core::is_disabled(flags, NO_MEMO)) {
             if (is_multiple) {
                 core_debug("VM::brand(): cached multiple brand string");
@@ -9765,7 +9841,7 @@ public: // START OF PUBLIC FUNCTIONS
             }
         }
 
-        // this gets annoying really fast 
+        // debug stuff to see the brand scoreboard, ignore this
 #ifdef __VMAWARE_DEBUG__
         for (const auto p : brands) {
             core_debug("scoreboard: ", (int)p.second, " : ", p.first);
@@ -9784,23 +9860,26 @@ public: // START OF PUBLIC FUNCTIONS
      */
     template <typename ...Args>
     static bool detect(Args ...args) {
+        // fetch all the flags in a std::bitset
         flagset flags = core::arg_handler(args...);
 
+        // run all the techniques based on the 
+        // flags above, and get a total score
         const u16 points = core::run_all(flags, SHORTCUT);
 
 #if (CPP >= 23)
         [[assume(points < maximum_points)]];
 #endif
 
-        bool result = false;
+        u16 threshold = 150;
 
+        // if high threshold is set, the points 
+        // will be 300. If not, leave it as 150.
         if (core::is_enabled(flags, HIGH_THRESHOLD)) {
-            result = (points >= high_threshold_score);
-        } else {
-            result = (points >= 150);
+            threshold = high_threshold_score;
         }
 
-        return result;
+        return (points >= threshold);
     }
 
 
@@ -9812,21 +9891,29 @@ public: // START OF PUBLIC FUNCTIONS
      */
     template <typename ...Args>
     static u8 percentage(Args ...args) {
+        // fetch all the flags in a std::bitset
         const flagset flags = core::arg_handler(args...);
 
+        // run all the techniques based on the 
+        // flags above, and get a total score
         const u16 points = core::run_all(flags, SHORTCUT);
-        u8 percent = 0;
 
 #if (CPP >= 23)
         [[assume(points < maximum_points)]];
 #endif
 
+        u8 percent = 0;
         u16 threshold = 150;
 
+        // set to 300 if high threshold is enabled
         if (core::is_enabled(flags, HIGH_THRESHOLD)) {
             threshold = high_threshold_score;
         }
 
+        // the percentage will be set to 99%, because a score 
+        // of 100 is not entirely robust. 150 is more robust
+        // in my opinion, which is why you need a score of
+        // above 150 to get to 100% 
         if (points >= threshold) {
             percent = 100;
         } else if (points >= 100) {
@@ -9853,6 +9940,7 @@ public: // START OF PUBLIC FUNCTIONS
         , const std::source_location& loc = std::source_location::current()
 #endif
     ) {
+        // lambda to throw the error
         auto throw_error = [&](const char* text) -> void {
             std::stringstream ss;
 #if (CPP >= 20 && !CLANG)
@@ -9870,11 +9958,13 @@ public: // START OF PUBLIC FUNCTIONS
         [[assume(percent > 0 && percent <= 100)]];
 #endif
 
+        // generate the custom technique struct
         core::custom_technique query{
             percent,
             detection_func
         };
 
+        // push it to the custome_table vector
         core::custom_table.emplace_back(query);
     }
 
@@ -9887,6 +9977,8 @@ public: // START OF PUBLIC FUNCTIONS
      */
     template <typename ...Args>
     static flagset DISABLE(Args ...args) {
+        // basically core::arg_handler but in reverse,
+        // it'll clear the bits of the provided flags
         flagset flags = core::disabled_arg_handler(args...);
 
         flags.flip();
@@ -9902,7 +9994,7 @@ public: // START OF PUBLIC FUNCTIONS
     /**
      * @brief This will convert the technique flag into a string, which will correspond to the technique name
      * @param single technique flag in VM structure
-     * @warning ⚠️ FOR DEVELOPMENT USAGE ONLY, NOT MEANT FOR PUBLIC USE ⚠️
+     * @warning ⚠️ FOR DEVELOPMENT USAGE ONLY, NOT MEANT FOR PUBLIC USE FOR NOW ⚠️
      */
     [[nodiscard]] static std::string flag_to_string(const enum_flags flag) {
         switch (flag) {
@@ -9934,18 +10026,18 @@ public: // START OF PUBLIC FUNCTIONS
             case DISK_SIZE: return "DISK_SIZE";
             case VBOX_DEFAULT: return "VBOX_DEFAULT";
             case VBOX_NETWORK: return "VBOX_NETWORK";
-            case COMPUTER_NAME: return "COMPUTER_NAME";
-            case WINE_CHECK: return "WINE_CHECK";
-            case HOSTNAME: return "HOSTNAME";
-            case MEMORY: return "MEMORY";
-            case VBOX_WINDOW_CLASS: return "VBOX_WINDOW_CLASS";
-            case LOADED_DLLS: return "LOADED_DLLS";
-            case KVM_REG: return "KVM_REG";
-            case KVM_DRIVERS: return "KVM_DRIVERS";
-            case KVM_DIRS: return "KVM_DIRS";
-            case AUDIO: return "AUDIO";
-            case QEMU_DIR: return "QEMU_DIR";
-            case MOUSE_DEVICE: return "MOUSE_DEVICE";
+/* GPL */   case COMPUTER_NAME: return "COMPUTER_NAME";
+/* GPL */   case WINE_CHECK: return "WINE_CHECK";
+/* GPL */   case HOSTNAME: return "HOSTNAME";
+/* GPL */   case MEMORY: return "MEMORY";
+/* GPL */   case VBOX_WINDOW_CLASS: return "VBOX_WINDOW_CLASS";
+/* GPL */   case LOADED_DLLS: return "LOADED_DLLS";
+/* GPL */   case KVM_REG: return "KVM_REG";
+/* GPL */   case KVM_DRIVERS: return "KVM_DRIVERS";
+/* GPL */   case KVM_DIRS: return "KVM_DIRS";
+/* GPL */   case AUDIO: return "AUDIO";
+/* GPL */   case QEMU_DIR: return "QEMU_DIR";
+/* GPL */   case MOUSE_DEVICE: return "MOUSE_DEVICE";
             case VM_PROCESSES: return "VM_PROCESSES";
             case LINUX_USER_HOST: return "LINUX_USER_HOST";
             case GAMARUE: return "GAMARUE";
@@ -10028,9 +10120,9 @@ public: // START OF PUBLIC FUNCTIONS
 
 
     /**
-     * @brief return a vector of detected brand strings (DEVELOPMENT FUNCTION, NOT MEANT FOR PUBLIC USE)
+     * @brief return a vector of detected brand strings
      * @param any flag combination in VM structure or nothing
-     * @warning ⚠️ FOR DEVELOPMENT USAGE ONLY, NOT MEANT FOR PUBLIC USE ⚠️
+     * @warning ⚠️ FOR DEVELOPMENT USAGE ONLY, NOT MEANT FOR PUBLIC USE FOR NOW ⚠️
      */
     template <typename ...Args>
     static std::map<const char*, brand_score_t> brand_map(Args ...args) {
@@ -10038,8 +10130,7 @@ public: // START OF PUBLIC FUNCTIONS
 
         // are all the techiques already run? if not, run all of them to get the necessary info to fetch the brand
         if (!memo::all_present() || core::is_enabled(flags, NO_MEMO)) {
-            u16 tmp = core::run_all(flags);
-            UNUSED(tmp);
+            core::run_all(flags);
         }
 
         return core::brand_scoreboard;
@@ -10050,16 +10141,17 @@ public: // START OF PUBLIC FUNCTIONS
      * @brief Change the certainty score of a technique
      * @param technique flag, then the new percentage score to overwite
      * @return void
-     * @warning ⚠️ FOR DEVELOPMENT USAGE ONLY, NOT MEANT FOR PUBLIC USE ⚠️
+     * @warning ⚠️ FOR DEVELOPMENT USAGE ONLY, NOT MEANT FOR PUBLIC USE FOR NOW ⚠️
      */
     static void modify_score(
         const enum_flags flag,
-        const std::uint8_t percent
+        const u8 percent
         // clang doesn't support std::source_location for some reason
 #if (CPP >= 20 && !CLANG)
         , const std::source_location& loc = std::source_location::current()
 #endif
     ) {
+        // lambda to throw the error
         auto throw_error = [&](const char* text) -> void {
             std::stringstream ss;
 #if (CPP >= 20 && !CLANG)
@@ -10077,19 +10169,196 @@ public: // START OF PUBLIC FUNCTIONS
         [[assume(percent <= 100)]];
 #endif
 
+        // check if the flag provided is a setting flag, which isn't valid.
         if (static_cast<u8>(flag) >= technique_end) {
             throw_error("The flag is not a technique flag");
         }
 
+        // replica type alias of the technique table
         using table_t = std::map<enum_flags, core::technique>;
 
         auto modify = [](table_t &table, const enum_flags flag, const u8 percent) -> void {
             core::technique &tmp = table.at(flag);
-            table[flag] = { percent, tmp.run, tmp.spoofable };
+            table[flag] = { percent, tmp.run, tmp.is_spoofable };
         };
 
         modify(const_cast<table_t&>(core::technique_table), flag, percent);
     }
+
+
+    /**
+     * @brief Fetch the total number of detected techniques
+     * @param any flag combination in VM structure or nothing
+     * @return std::uint8_t
+     */
+    template <typename ...Args>
+    static u8 detected_count(Args ...args) {
+        flagset flags = core::arg_handler(args...);
+
+        // run all the techniques, which will set the detected_count variable 
+        core::run_all(flags);
+
+        return detected_count_num;
+    }
+
+
+    /**
+     * @brief Fetch the total number of detected techniques
+     * @param any flag combination in VM structure or nothing
+     * @return std::uint8_t
+     */
+    template <typename ...Args>
+    static std::string type(Args ...args) {
+        flagset flags = core::arg_handler(args...);
+
+        const std::string brand_str = brand(flags);
+
+        // if multiple brands were found, return unknown
+        if (util::find(brand_str, " or ")) {
+            return "Unknown";
+        }
+
+        const std::map<const char*, const char*> type_table {
+            // type 1
+            { XEN, "Hypervisor (type 1)" },
+            { VMWARE_ESX, "Hypervisor (type 1)" },
+            { ACRN, "Hypervisor (type 1)" },
+            { QNX, "Hypervisor (type 1)" },
+            { HYPERV, "Hypervisor (type 1)" },
+            { AZURE_HYPERV, "Hypervisor (type 1)" },
+            { NANOVISOR, "Hypervisor (type 1)" },
+            { KVM, "Hypervisor (type 1)" },
+            { BHYVE, "Hypervisor (type 1)" },
+            { KVM_HYPERV, "Hypervisor (type 1)" },
+            { QEMU_KVM_HYPERV, "Hypervisor (type 1)" },
+            { QEMU_KVM, "Hypervisor (type 1)" },
+            { INTEL_HAXM, "Hypervisor (type 1)" },
+            { INTEL_KGT, "Hypervisor (type 1)" },
+            { SIMPLEVISOR, "Hypervisor (type 1)" },
+            { GCE, "Hypervisor (type 1)" },
+            { OPENSTACK, "Hypervisor (type 1)" },
+            { KUBEVIRT, "Hypervisor (type 1)" },
+            { POWERVM, "Hypervisor (type 1)" },
+            { AWS_NITRO, "Hypervisor (type 1)" },
+
+            // type 2
+            { VBOX, "Hypervisor (type 2)" },
+            { VMWARE, "Hypervisor (type 2)" },
+            { VMWARE_EXPRESS, "Hypervisor (type 2)" },
+            { VMWARE_GSX, "Hypervisor (type 2)" },
+            { VMWARE_WORKSTATION, "Hypervisor (type 2)" },
+            { VMWARE_FUSION, "Hypervisor (type 2)" },
+            { PARALLELS, "Hypervisor (type 2)" },
+            { VPC, "Hypervisor (type 2)" },
+            { NVMM, "Hypervisor (type 2)" },
+            { BSD_VMM, "Hypervisor (type 2)" },
+
+            // sandbox
+            { CUCKOO, "Sandbox" },
+            { SANDBOXIE, "Sandbox" },
+            { HYBRID, "Sandbox" },
+            { CWSANDBOX, "Sandbox" },
+            { JOEBOX, "Sandbox" },
+            { ANUBIS, "Sandbox" },
+            { COMODO, "Sandbox" },
+            { THREATEXPERT, "Sandbox" },
+            { ANYRUN, "Sandbox"},
+
+            // misc
+            { BOCHS, "Emulator" },
+            { BLUESTACKS, "Emulator" },
+            { MSXTA, "Emulator" },
+            { QEMU, "Emulator/Hypervisor (type 2)" },
+            { JAILHOUSE, "Partitioning Hypervisor" },
+            { UNISYS, "Partitioning Hypervisor" },
+            { DOCKER, "Container" },
+            { PODMAN, "Container" },
+            { OPENVZ, "Container" },
+            { HYPERV_VPC, "Hypervisor (either type 1 or 2)" },
+            { LMHS, "Hypervisor (unknown type)" },
+            { WINE, "Compatibility layer" },
+            { APPLE_VZ, "Unknown" },
+            { HYPERV_ARTIFACT, "Unknown" },
+            { UML, "Paravirtualised/Hypervisor (type 2)" },
+            { WSL, "Hybrid Hyper-V (type 1 and 2)" }, // debatable tbh
+            { APPLE_ROSETTA, "Binary Translation Layer/Emulator" },
+        };
+
+        auto it = type_table.find(brand_str.c_str());
+
+        if (it != type_table.end()) {
+            return it->second;
+        }
+
+        return "Unknown";
+    }
+
+
+    /**
+     * @brief Fetch the conclusion message based on the brand and percentage
+     * @param any flag combination in VM structure or nothing
+     * @return std::string
+     */
+    template <typename ...Args>
+    static std::string conclusion(Args ...args) {
+        flagset flags = core::arg_handler(args...);
+
+        const std::string brand_tmp = brand(flags);
+        const u8 percent_tmp = percentage(flags);
+
+        constexpr const char* baremetal = "Running in baremetal";
+        constexpr const char* very_unlikely = "Very unlikely a VM";
+        constexpr const char* unlikely = "Unlikely a VM";
+
+        std::string potentially = "Potentially a VM";
+        std::string might = "Might be a VM";
+        std::string likely = "Likely a VM";
+        std::string very_likely = "Very likely a VM";
+        std::string inside_vm = "Running inside a VM";
+
+        if (brand_tmp != "Unknown") {
+            potentially = "Potentially a " + brand_tmp + " VM";
+            might = "Might be a " + brand_tmp + " VM";
+            likely = "Likely a " + brand_tmp + " VM";
+            very_likely = "Very likely a " + brand_tmp + " VM";
+            inside_vm = "Running inside a " + brand_tmp + " VM";
+        }
+
+        if      (percent_tmp == 0)   { return baremetal; } 
+        else if (percent_tmp <= 20)  { return very_unlikely; } 
+        else if (percent_tmp <= 35)  { return unlikely; } 
+        else if (percent_tmp < 50)   { return potentially; } 
+        else if (percent_tmp <= 62)  { return might; } 
+        else if (percent_tmp <= 75)  { return likely; } 
+        else if (percent_tmp < 100)  { return very_likely; } 
+        else                         { return inside_vm; }
+    }
+
+
+    struct vmaware {
+        std::string brand;
+        std::string type;
+        std::string conclusion;
+        bool is_vm;
+        u8 percentage;
+        u8 detected_count;
+        u8 technique_count;
+
+        vmaware() = default;
+
+        template <typename ...Args>
+        vmaware(Args ...args) {
+            flagset flags = core::arg_handler(args...);
+
+            brand = VM::brand(flags);
+            type = VM::type(flags);
+            conclusion = VM::conclusion(flags);
+            is_vm = VM::detect(flags);
+            percentage = VM::percentage(flags);
+            detected_count = VM::detected_count(flags);
+            technique_count = VM::technique_count;
+        }
+    };
 };
 
 MSVC_ENABLE_WARNING(ASSIGNMENT_OPERATOR NO_INLINE_FUNC SPECTRE)
@@ -10174,12 +10443,22 @@ bool VM::memo::hyperv::is_stored = false;
 VM::u16 VM::total_points = 0;
 #endif
 
-// not even sure how to explain honestly, just pretend these don't exist idfk
+// these are basically the base values for the core::arg_handler function.
+// It's like a bucket that will collect all the bits enabled. If for example 
+// VM::detect(VM::HIGH_THRESHOLD) is passed, the HIGH_THRESHOLD bit will be 
+// collected in this flagset (std::bitset) variable, and eventually be the 
+// return value for actual end-user functions like VM::detect() to rely 
+// and work on. VM::global_flags is just a copy of the flags but visible 
+// globally throughout the whole VM struct, as the name implies.
 VM::flagset VM::core::flag_collector;
 VM::flagset VM::global_flags;
 
+
+VM::u8 VM::detected_count_num = 0;
+
+
 // default flags 
-VM::flagset VM::DEFAULT = []() -> flagset {
+VM::flagset VM::DEFAULT = []() noexcept -> flagset {
     flagset tmp;
 
     // set all bits to 1
@@ -10190,7 +10469,7 @@ VM::flagset VM::DEFAULT = []() -> flagset {
     tmp.flip(RDTSC);
     tmp.flip(RDTSC_VMEXIT);
 
-    // disable all the non-technique flags
+    // disable all the settings flags
     tmp.flip(NO_MEMO);
     tmp.flip(HIGH_THRESHOLD);
     tmp.flip(SPOOFABLE);
@@ -10201,13 +10480,13 @@ VM::flagset VM::DEFAULT = []() -> flagset {
 
 
 // flag to enable every technique
-VM::flagset VM::ALL = []() -> flagset {
+VM::flagset VM::ALL = []() noexcept -> flagset {
     flagset tmp;
 
     // set all bits to 1
     tmp.set();
 
-    // disable all the non-technique flags (except SPOOFABLE)
+    // disable all the settings technique flags (except SPOOFABLE)
     tmp.flip(NO_MEMO);
     tmp.flip(HIGH_THRESHOLD);
     tmp.flip(MULTIPLE);
@@ -10252,10 +10531,9 @@ std::vector<VM::core::custom_technique> VM::core::custom_table = {
 
 };
 
-
 // the 0~100 points are debatable, but I think it's fine how it is. Feel free to disagree.
 const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = {
-    // FORMAT: VM::<ID> = { certainty%, function pointer, is spoofable? }
+    // FORMAT: { VM::<ID>, { certainty%, function pointer, is spoofable? } },
 
     { VM::VMID, { 100, VM::vmid, false } },
     { VM::CPU_BRAND, { 50, VM::cpu_brand, false } },
@@ -10285,18 +10563,18 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::DISK_SIZE, { 60, VM::disk_size, false } },
     { VM::VBOX_DEFAULT, { 55, VM::vbox_default_specs, false } },
     { VM::VBOX_NETWORK, { 70, VM::vbox_network_share, false } },
-    { VM::COMPUTER_NAME, { 15, VM::computer_name_match, true } },    // GPL
-    { VM::WINE_CHECK, { 85, VM::wine, false } },                     // GPL
-    { VM::HOSTNAME, { 25, VM::hostname_match, true } },              // GPL
-    { VM::MEMORY, { 35, VM::low_memory_space, false } },             // GPL
-    { VM::VBOX_WINDOW_CLASS, { 10, VM::vbox_window_class, false } }, // GPL
-    { VM::LOADED_DLLS, { 75, VM::loaded_dlls, true } },              // GPL
-    { VM::KVM_REG, { 75, VM::kvm_registry, true } },                 // GPL
-    { VM::KVM_DRIVERS, { 55, VM::kvm_drivers, true } },              // GPL
-    { VM::KVM_DIRS, { 55, VM::kvm_directories, true } },             // GPL
-    { VM::AUDIO, { 35, VM::check_audio, false } },                   // GPL
-    { VM::QEMU_DIR, { 45, VM::qemu_dir, true } },                    // GPL
-    { VM::MOUSE_DEVICE, { 20, VM::mouse_device, true } },            // GPL
+/* GPL */ { VM::COMPUTER_NAME, { 15, VM::computer_name_match, true } },
+/* GPL */ { VM::WINE_CHECK, { 85, VM::wine, false } },
+/* GPL */ { VM::HOSTNAME, { 25, VM::hostname_match, true } },
+/* GPL */ { VM::MEMORY, { 35, VM::low_memory_space, false } },
+/* GPL */ { VM::VBOX_WINDOW_CLASS, { 10, VM::vbox_window_class, false } },
+/* GPL */ { VM::LOADED_DLLS, { 75, VM::loaded_dlls, true } },
+/* GPL */ { VM::KVM_REG, { 75, VM::kvm_registry, true } },
+/* GPL */ { VM::KVM_DRIVERS, { 55, VM::kvm_drivers, true } },
+/* GPL */ { VM::KVM_DIRS, { 55, VM::kvm_directories, true } },
+/* GPL */ { VM::AUDIO, { 35, VM::check_audio, false } },
+/* GPL */ { VM::QEMU_DIR, { 45, VM::qemu_dir, true } },
+/* GPL */ { VM::MOUSE_DEVICE, { 20, VM::mouse_device, true } },
     { VM::VM_PROCESSES, { 30, VM::vm_processes, true } },
     { VM::LINUX_USER_HOST, { 25, VM::linux_user_host, true } },
     { VM::GAMARUE, { 40, VM::gamarue, true } },
@@ -10341,7 +10619,7 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::MUTEX, { 85, VM::mutex, false } },
     { VM::UPTIME, { 10, VM::uptime, true } },
     { VM::ODD_CPU_THREADS, { 80, VM::odd_cpu_threads, false } },
-    { VM::INTEL_THREAD_MISMATCH, { 85, VM::intel_thread_mismatch, false } },
+    { VM::INTEL_THREAD_MISMATCH, { 60, VM::intel_thread_mismatch, false } },
     { VM::XEON_THREAD_MISMATCH, { 85, VM::xeon_thread_mismatch, false } },
     { VM::NETTITUDE_VM_MEMORY, { 75, VM::nettitude_vm_memory, false } },
     { VM::CPUID_BITSET, { 20, VM::cpuid_bitset, false } },

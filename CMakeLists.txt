@@ -88,12 +88,12 @@ set_property(TARGET ${TARGET} PROPERTY CXX_STANDARD_REQUIRED ON)
 
 # CTest stuff
 include(CTest)
-#find_package(Python REQUIRED)
 enable_testing()
+set(ARGUMENTS "--all")
 if(MSVC)
 add_test(executable, "${BUILD_DIR}/Release/${TARGET}")
 else()
-add_test(executable, "${BUILD_DIR}/${TARGET}")
+add_test(NAME TARGET COMMAND "${BUILD_DIR}/${TARGET}" ${ARGUMENTS})
 endif()
 
 

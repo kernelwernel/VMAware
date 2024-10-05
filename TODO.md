@@ -43,10 +43,17 @@
 - [ ] make a medium post about it
 - [ ] test the VM::modify_score() function
 - [ ] check if bios date in /sys/class/dmi/id/ could be useful under QEMU
-- [ ] make the cli demo in the readme for the 1.8 version
-- [ ] fix the percentage thing for the disabled techniques
-- [ ] adopt the firmware technique from the vmprotect source code leak
+- [ ] make the cli demo in the readme for the 1.9 version
+- [X] fix the percentage thing for the disabled techniques
+- [X] adopt the firmware technique from the vmprotect source code leak
 - [ ] update the Hyper-X graph with the cpu manufacturer part
+- [ ] add a .so, .dll, and .dylib shared object files in the release 
+- [X] make a struct version as an alternative
+- [X] add the license style like in ffmpeg https://github.com/FFmpeg/FFmpeg/tree/master?tab=License-1-ov-file
+- [ ] fix the issue of VM::QEMU_USB being ultra slow
+- [X] make a MIT transformer python script from GPL to MIT
+- [ ] /sys/class/dmi/id/product_name check this in qemu
+
 
 # Distant plans
 - add the library to conan.io when released
