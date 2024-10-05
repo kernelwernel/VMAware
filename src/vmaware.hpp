@@ -1785,7 +1785,7 @@ private:
                 }
             }
 
-            memo::hyperv::store(is_hyperv);
+            memo::hyperv::store(false);
             return false;
 #endif
         }
@@ -10336,13 +10336,13 @@ public: // START OF PUBLIC FUNCTIONS
 
 
     struct vmaware {
+        std::string brand;
+        std::string type;
+        std::string conclusion;
         bool is_vm;
         u8 percentage;
         u8 detected_count;
         u8 technique_count;
-        std::string brand;
-        std::string type;
-        std::string conclusion;
 
         vmaware() = default;
 
@@ -10350,13 +10350,13 @@ public: // START OF PUBLIC FUNCTIONS
         vmaware(Args ...args) {
             flagset flags = core::arg_handler(args...);
 
+            brand = VM::brand(flags);
+            type = VM::type(flags);
+            conclusion = VM::conclusion(flags);
             is_vm = VM::detect(flags);
             percentage = VM::percentage(flags);
             detected_count = VM::detected_count(flags);
             technique_count = VM::technique_count;
-            brand = VM::brand(flags);
-            type = VM::type(flags);
-            conclusion = VM::conclusion(flags);
         }
     };
 };
