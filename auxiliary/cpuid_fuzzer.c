@@ -27,7 +27,6 @@
 #include <stdatomic.h>
 #include <string.h>
 #include <stdlib.h>
-#include <unistd.h>
 
 #if (defined(_MSC_VER) || defined(_WIN32) || defined(_WIN64) || defined(__MINGW32__))
     #define MSVC 1
@@ -40,11 +39,13 @@
 #endif
 
 #if (LINUX)
-    #define _GNU_SOURCE
     #include <cpuid.h>
     #include <sched.h>
     #include <pthread.h>
+    #include <unistd.h>
     #include <sys/sysinfo.h>
+#else 
+    #include <intrin.h>
 #endif
 
 // branching macros
@@ -76,6 +77,10 @@
 #define proc_trace 0x00000014 // ecx = 0
 #define aes 0x00000019
 #define avx10 0x00000024 // ecx = 0
+#define vm0 0x40000000
+#define vm1 0x40000001
+#define vm2 0x40000002
+#define vm3 0x40000003
 #define extended_proc_info 0x80000001
 #define hypervisor 0x40000000
 #define max_leaf 0x80000000
@@ -108,114 +113,6 @@
 #define breakpoint 10000000
 
 
-typedef struct {
-    void (*taskFunction)(void*); // Function pointer to the task
-    void* arg;                   // Argument to the task function
-} Task;
-
-typedef struct {
-    pthread_t* threads; // Array of thread IDs
-    Task* taskQueue;    // Array to hold tasks
-    int queueSize;      // Size of the task queue
-    int nextTaskIndex;  // Index to insert the next task
-    int shutdown;       // Flag to indicate pool shutdown
-    pthread_mutex_t mutex; // Mutex for synchronization
-    pthread_cond_t condition; // Condition variable for task availability
-} ThreadPool;
-
-// function executed by each thread in the pool
-void* threadFunction(void* arg) {
-    ThreadPool* pool = (ThreadPool*)arg;
-
-    while (1) {
-        pthread_mutex_lock(&pool->mutex);
-
-        while (pool->nextTaskIndex == 0 && !pool->shutdown) {
-            pthread_cond_wait(&pool->condition, &pool->mutex);
-        }
-
-        if (pool->shutdown) {
-            pthread_mutex_unlock(&pool->mutex);
-            pthread_exit(NULL);
-        }
-
-        Task task = pool->taskQueue[--pool->nextTaskIndex];
-
-        pthread_mutex_unlock(&pool->mutex);
-
-        task.taskFunction(task.arg);
-    }
-
-    return NULL;
-}
-
-// initialize the thread pool
-ThreadPool* initializeThreadPool(int poolSize) {
-    ThreadPool* pool = (ThreadPool*)malloc(sizeof(ThreadPool));
-    if (!pool) {
-        perror("Error creating thread pool");
-        exit(EXIT_FAILURE);
-    }
-
-    pool->threads = (pthread_t*)malloc(poolSize * sizeof(pthread_t));
-    pool->taskQueue = (Task*)malloc(poolSize * sizeof(Task));
-    pool->queueSize = poolSize;
-    pool->nextTaskIndex = 0;
-    pool->shutdown = 0;
-
-    pthread_mutex_init(&pool->mutex, NULL);
-    pthread_cond_init(&pool->condition, NULL);
-
-    for (int i = 0; i < poolSize; i++) {
-        if (pthread_create(&pool->threads[i], NULL, threadFunction, (void*)pool) != 0) {
-            perror("Error creating thread");
-            exit(EXIT_FAILURE);
-        }
-    }
-
-    return pool;
-}
-
-// submit a task to the thread pool
-void submitTask(ThreadPool* pool, void (*taskFunction)(void*), void* arg) {
-    pthread_mutex_lock(&pool->mutex);
-
-    if (pool->nextTaskIndex == pool->queueSize) {
-        fprintf(stderr, "Task queue is full. Task not submitted.\n");
-        pthread_mutex_unlock(&pool->mutex);
-        return;
-    }
-
-    pool->taskQueue[pool->nextTaskIndex].taskFunction = taskFunction;
-    pool->taskQueue[pool->nextTaskIndex].arg = arg;
-    pool->nextTaskIndex++;
-
-    pthread_cond_signal(&pool->condition);
-
-    pthread_mutex_unlock(&pool->mutex);
-}
-
-// shutdown the thread pool
-void shutdownThreadPool(ThreadPool* pool) {
-    pthread_mutex_lock(&pool->mutex);
-
-    pool->shutdown = 1;
-
-    pthread_cond_broadcast(&pool->condition);
-
-    pthread_mutex_unlock(&pool->mutex);
-
-    for (int i = 0; i < pool->queueSize; i++) {
-        pthread_join(pool->threads[i], NULL);
-    }
-
-    free(pool->threads);
-    free(pool->taskQueue);
-    free(pool);
-}
-
-
-
 // basic cpuid wrapper
 static void cpuid
 (
@@ -240,7 +137,7 @@ static uint32_t get_highest_leaf() {
 // scan for predetermined leafs
 void leaf_mode_fuzzer(const uint64_t p_max_leaf) {
     uint32_t reg[4];
-    const uint32_t leafs[36] = { 
+    const uint32_t leafs[40] = { 
         manufacturer, proc_info, cache_tlb, 
         serial, topology, topology2, 
         management, extended, extended2, 
@@ -252,10 +149,11 @@ void leaf_mode_fuzzer(const uint64_t p_max_leaf) {
         brand2, brand3, L1_cache, 
         L2_cache, capabilities, virtual, 
         svm, enc_mem_cap, ext_info2, 
-        amd_easter_egg, centaur_ext, centaur_feature
+        amd_easter_egg, centaur_ext, centaur_feature,
+        vm0, vm1, vm2, vm3
     };
 
-    const size_t leaf_arr_size = (sizeof(leafs) / sizeof(leafs[0]));
+    const size_t leaf_arr_size = (sizeof(leafs) / sizeof(leafs[0]));    
 
     for (int i = 0; i < leaf_arr_size; i++) {
         if (leafs[i] >= p_max_leaf) {
@@ -271,82 +169,13 @@ void leaf_mode_fuzzer(const uint64_t p_max_leaf) {
             reg[edx]
         )) {
             printf("leaf = %d\n", i);
-            printf("eax = %d\n", reg[eax]);
-            printf("ebx = %d\n", reg[ebx]);
-            printf("ecx = %d\n", reg[ecx]);
-            printf("edx = %d\n\n", reg[edx]);
+            printf("eax = 0x%0X\n", reg[eax]);
+            printf("ebx = 0x%0X\n", reg[ebx]);
+            printf("ecx = 0x%0X\n", reg[ecx]);
+            printf("edx = 0x%0X\n\n", reg[edx]);
         }
     }
 }
-
-/*
-atomic_int counter; 
-
-void scan_mode_worker() {
-    for (int i = 0; i < divisor; i++) {
-        int x = start;
-
-        for (; x < limit; x++) {
-            uint32_t reg[4];
-            cpuid(reg, x, null_leaf);
-
-            if (unlikely(
-                reg[eax] || \
-                reg[ebx] || \
-                reg[ecx] || \
-                reg[edx]
-            )) {
-                printf("leaf = %d\n", i);
-                printf("eax = %d\n", reg[eax]);
-                printf("ebx = %d\n", reg[ebx]);
-                printf("ecx = %d\n", reg[ecx]);
-                printf("edx = %d\n\n", reg[edx]);
-                fprintf(file, "%s\n", logMessage);
-            }
-        }
-
-        const int percent = (((i + 1) * 100) / p_max_leaf);
-
-        printf("[LOG] Reached eax leaf %d (%d%%)\n", atomic_load(&counter), percent);
-        limit += breakpoint;
-        start += breakpoint;
-    }
-
-}
-
-// scan mode fuzzer
-void scan_mode_fuzzer(const uint64_t p_max_leaf, const int32_t thread_count) {
-    uint32_t limit = breakpoint;
-    uint32_t start = 0;
-
-    const int32_t threads = get_nprocs();
-
-    const uint32_t divisor = (uint32_t)(p_max_leaf / breakpoint);
-    printf("divisor = %d\n", divisor);
-
-    atomic_init(&counter, 0);
-    ThreadPool* pool = initializeThreadPool(8);
-
-    // Submit example tasks to the thread pool
-    for (int i = 0; i < 10; i++) {
-        int* taskNumber = (int*)malloc(sizeof(int));
-        *taskNumber = i;
-        submitTask(pool, exampleTask, (void*)taskNumber);
-    }
-
-    // Sleep to allow tasks to complete
-    sleep(2);
-
-    // Shutdown the thread pool
-    shutdownThreadPool(pool);
-}
-
-
-void exampleTask(void* low_bound, void* upper_bound) {
-    int taskNumber = *(int*)arg;
-    printf("Task %d executed by thread %lu\n", taskNumber, pthread_self());
-}
-*/
 
 
 int main(int argc, char *argv[]) {
@@ -357,8 +186,6 @@ int main(int argc, char *argv[]) {
     } else if (argc == 2) {
         if (strcmp(argv[2], "--leaf") == 0) {
             flags |= leaf_mode;
-        } else if (strcmp(argv[2], "--scan") == 0) {
-            flags |= scan_mode;
         } else {
             printf("%s", "Unknown flag provided, aborting\n");
             return 1;

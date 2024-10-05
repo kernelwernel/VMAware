@@ -770,6 +770,14 @@ private:
 
             u32 sig_reg[3] = { 0 };
 
+            if (
+                (sig_reg[0] == 0) &&
+                (sig_reg[1] == 0) &&
+                (sig_reg[2] == 0)
+            ) {
+                return { "", "" };
+            }
+
             if (!cpuid_thingy(p_leaf, sig_reg, 1)) {
                 return { "", "" };
             }
@@ -779,6 +787,11 @@ private:
                 return str;
             };
 
+            // the reason why there's 2 is because depending on the leaf, 
+            // the last 4 characters might be switched with the middle 
+            // characters for some fuckin reason, idk why this is even a thing
+            // so this function basically returns the same string but with 
+            // the 4~8 and 8~12 characters switched for one, and the other isn't.
             std::stringstream ss;
             std::stringstream ss2;
 
@@ -1699,15 +1712,6 @@ private:
                 return memo::hyperv::fetch();
             }
 
-            auto add = [](const bool result) -> bool {
-                memo::hyperv::store(result);
-
-                if (result == true) {
-                    core::add(HYPERV_ARTIFACT);
-                }
-
-                return result;
-            };
 
             auto root_partition = []() -> bool {
                 u32 ebx, unused = 0;
@@ -1727,7 +1731,7 @@ private:
             };
 
             auto cpu_vmid = []() -> bool {
-                const std::array<std::string, 2> cpu = cpu::cpu_manufacturer(cpu::leaf::hypervisor);
+                const auto cpu = cpu::cpu_manufacturer(cpu::leaf::hypervisor);
 
                 return (
                     (cpu.at(0) == "Microsoft Hv") ||
@@ -1735,49 +1739,54 @@ private:
                 );
             };
 
+            // must require at least 2 to continue
             const u8 points = (root_partition() + eax() + cpu_vmid());
 
             if (points >= 2) {
                 // SMBIOS check
-                const std::string smbios = SMBIOS_string();
-
-                core_debug("HYPER_X: SMBIOS string = ", smbios);
-
-                if (smbios == "VIRTUAL MACHINE") {
-                    return add(false);
-                }
+                auto is_smbios_hyperv = []() -> bool {
+                    const std::string smbios = SMBIOS_string();
+                    core_debug("HYPER_X: SMBIOS string = ", smbios);
+                    return (smbios == "VIRTUAL MACHINE");
+                };
 
 
                 // motherboard check
-                const bool motherboard = motherboard_string(L"Microsoft Corporation");
-
-                core_debug("HYPER_X: motherboard string = ", motherboard);
-
-                if (motherboard) {
-                    return add(false);
-                }
+                auto is_motherboard_hyperv = []() -> bool {
+                    const bool motherboard = motherboard_string(L"Microsoft Corporation");
+                    core_debug("HYPER_X: motherboard string match = ", motherboard);
+                    return motherboard;
+                };
 
 
                 // event log check (slow, so in last place)
-                std::wstring logName = L"Microsoft-Windows-Kernel-PnP/Configuration";
-                std::vector<std::wstring> searchStrings = { L"Virtual_Machine", L"VMBUS" };
-        
-                const bool event_log = util::query_event_logs(logName, searchStrings);
+                auto is_event_log_hyperv = []() -> bool {
+                    std::wstring logName = L"Microsoft-Windows-Kernel-PnP/Configuration";
+                    std::vector<std::wstring> searchStrings = { L"Virtual_Machine", L"VMBUS" };
+            
+                    return (util::query_event_logs(logName, searchStrings));
+                };
 
-                if (event_log) {
-                    return add(false);
+
+                // "if it's hyper-v and NOT an artifact"
+                const bool is_hyperv = (
+                    is_smbios_hyperv() || 
+                    is_motherboard_hyperv() || 
+                    is_event_log_hyperv()
+                );
+
+                memo::hyperv::store(is_hyperv);
+
+                if (is_hyperv) {
+                    return true;
+                } else {
+                    core::add(HYPERV_ARTIFACT);
+                    return false;
                 }
-
-
-                // at this point, it's fair to assume it's Hyper-V artifacts on 
-                // host since none of the "VM-only" techniques returned true
-                return add(true);
-            //} else if () {
-                // actual Hyper-V VM, might do something within this scope in the future idk
-                //return add(false);
-            } else {
-                return add(false);
             }
+
+            memo::hyperv::store(is_hyperv);
+            return false;
 #endif
         }
 
