@@ -574,16 +574,23 @@ private:
     static flagset global_flags; // for certain techniques where the flags MUST be accessible
 
     // macro for bypassing unused parameter/variable warnings
-#define UNUSED(x) ((void)(x))
+    #define UNUSED(x) ((void)(x))
 
 // likely and unlikely macros
 #if (LINUX)
-#define VMAWARE_UNLIKELY(x) __builtin_expect(!!(x), 0)
-#define VMAWARE_LIKELY(x)   __builtin_expect(!!(x), 1)
+#   define VMAWARE_UNLIKELY(x) __builtin_expect(!!(x), 0)
+#   define VMAWARE_LIKELY(x)   __builtin_expect(!!(x), 1)
 #else
-#define VMAWARE_UNLIKELY
-#define VMAWARE_LIKELY
+#   define VMAWARE_UNLIKELY
+#   define VMAWARE_LIKELY
 #endif
+
+    // specifically for util::hyper_x() and memo::hyperv
+    enum hyperx_state : u8 {
+        HYPERV_REAL_VM = 1,
+        HYPERV_ARTIFACT_VM,
+        UNKNOWN
+    };
 
     // various cpu operation stuff
     struct cpu {
@@ -1132,21 +1139,19 @@ private:
             }
         };
 
-        struct hyperv {
-            static bool is_hyperv_host;
-            static bool is_stored;
+        struct hyperx {
+            static hyperx_state state;
 
-            static bool fetch() {
-                return is_hyperv_host;
+            static hyperx_state fetch() {
+                return state;
             }
 
-            static void store(const bool p_is_hyperv_host) {
-                is_hyperv_host = p_is_hyperv_host;
-                is_stored = true;
+            static void store(const hyperx_state p_state) {
+                state = p_state;
             }
 
             static bool is_cached() {
-                return is_stored;
+                return (state == hyperx_state::UNKNOWN);
             }
         };
     };
@@ -1701,23 +1706,50 @@ private:
          *       your the host system is running in Hyper-V, which is a false positive. This is where 
          *       the Hyper-X mechanism comes into play to distinguish between these two.
          * @author idea by Requiem (https://github.com/NotRequiem)
-         * @link graph to explain how this works: https://github.com/kernelwernel/VMAware/blob/main/assets/Hyper-X.png
+         * @link graph to explain how this works: https://github.com/kernelwernel/VMAware/blob/main/assets/Hyper-X_version_3.png
          */
         [[nodiscard]] static bool hyper_x() {
 #if (!MSVC)
             return false;
 #else
             if (memo::hyperv::is_cached()) {
-                core_debug("HYPER_X: returned from cache = ", memo::hyperv::fetch());
-                return memo::hyperv::fetch();
+                core_debug("HYPER_X: returned from cache");
+                return (memo::hyperv::fetch() == hyperx_state::HYPERV_ARTIFACT_VM);
             }
 
 
-            auto root_partition = []() -> bool {
+            // SMBIOS check
+            auto is_smbios_hyperv = []() -> bool {
+                const std::string smbios = SMBIOS_string();
+                core_debug("HYPER_X: SMBIOS string = ", smbios);
+                return (smbios == "VIRTUAL MACHINE");
+            };
+
+
+            // motherboard check
+            auto is_motherboard_hyperv = []() -> bool {
+                const bool motherboard = motherboard_string(L"Microsoft Corporation");
+                core_debug("HYPER_X: motherboard string match = ", motherboard);
+                return motherboard;
+            };
+
+
+            // event log check (slow, so in last place)
+            auto is_event_log_hyperv = []() -> bool {
+                std::wstring logName = L"Microsoft-Windows-Kernel-PnP/Configuration";
+                std::vector<std::wstring> searchStrings = { L"Virtual_Machine", L"VMBUS" };
+        
+                return (util::query_event_logs(logName, searchStrings));
+            };
+
+
+            // VMProtect method for Hyper-V artifact detection
+            auto is_root_partition = []() -> bool {
                 u32 ebx, unused = 0;
                 cpu::cpuid(unused, ebx, unused, unused, 0x40000003);
                 return (ebx & 1);
             };
+
 
             auto eax = []() -> bool {
                 char out[sizeof(int32_t) * 4 + 1] = { 0 }; // e*x size + number of e*x registers + null terminator
@@ -1730,63 +1762,33 @@ private:
                 return ((eax == 11) || (eax == 12));
             };
 
-            auto cpu_vmid = []() -> bool {
-                const auto cpu = cpu::cpu_manufacturer(cpu::leaf::hypervisor);
-
-                return (
-                    (cpu.at(0) == "Microsoft Hv") ||
-                    (cpu.at(1) == "Microsoft Hv")
-                );
-            };
-
-            // must require at least 2 to continue
-            const u8 points = (root_partition() + eax() + cpu_vmid());
-
-            if (points >= 2) {
-                // SMBIOS check
-                auto is_smbios_hyperv = []() -> bool {
-                    const std::string smbios = SMBIOS_string();
-                    core_debug("HYPER_X: SMBIOS string = ", smbios);
-                    return (smbios == "VIRTUAL MACHINE");
-                };
-
-
-                // motherboard check
-                auto is_motherboard_hyperv = []() -> bool {
-                    const bool motherboard = motherboard_string(L"Microsoft Corporation");
-                    core_debug("HYPER_X: motherboard string match = ", motherboard);
-                    return motherboard;
-                };
-
-
-                // event log check (slow, so in last place)
-                auto is_event_log_hyperv = []() -> bool {
-                    std::wstring logName = L"Microsoft-Windows-Kernel-PnP/Configuration";
-                    std::vector<std::wstring> searchStrings = { L"Virtual_Machine", L"VMBUS" };
             
-                    return (util::query_event_logs(logName, searchStrings));
-                };
+            const bool has_hyperv_indications = (
+                is_smbios_hyperv() || 
+                is_motherboard_hyperv() || 
+                is_event_log_hyperv() ||
+                is_root_partition()
+            );
 
+            const bool is_real_hyperv_vm = (eax() && has_hyperv_indications);
 
-                // "if it's hyper-v and NOT an artifact"
-                const bool is_hyperv = (
-                    is_smbios_hyperv() || 
-                    is_motherboard_hyperv() || 
-                    is_event_log_hyperv()
-                );
+            enum hyperx_state state;
 
-                memo::hyperv::store(is_hyperv);
-
-                if (is_hyperv) {
-                    return true;
-                } else {
-                    core::add(HYPERV_ARTIFACT);
-                    return false;
-                }
+            if (is_real_hyperv_vm) {
+                state = hyperx_state::HYPERV_REAL_VM;
+            } else {
+                state = hyperx_state::HYPERV_ARTIFACT_VM;
             }
 
-            memo::hyperv::store(false);
-            return false;
+            memo::hyperv::store(state);
+
+            if (is_real_hyperv_vm) {
+                core::add(HYPERV);
+                return false;
+            } else {
+                core::add(HYPERV_ARTIFACT_VM);
+                return true;
+            }
 #endif
         }
 
@@ -10430,14 +10432,13 @@ std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard{
 };
 
 
-// initial definitions for cache items
+// initial definitions for cache items because ISO C++ forbids in-class initializations
 std::map<VM::u8, VM::memo::data_t> VM::memo::cache_table;
 VM::flagset VM::memo::cache_keys = 0;
 std::string VM::memo::brand::brand_cache = "";
 std::string VM::memo::multi_brand::brand_cache = "";
 std::string VM::memo::cpu_brand::brand_cache = "";
-bool VM::memo::hyperv::is_hyperv_host = false;
-bool VM::memo::hyperv::is_stored = false;
+VM::hyperx_state VM::memo::hyperx::state = VM::hyperx_state::UNKNOWN;
 
 #ifdef __VMAWARE_DEBUG__
 VM::u16 VM::total_points = 0;
