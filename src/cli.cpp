@@ -513,6 +513,7 @@ void general() {
     checker(VM::WSL_PROC, "WSL string in /proc");
     checker(VM::ANYRUN_DRIVER, "ANY.RUN driver");
     checker(VM::ANYRUN_DIRECTORY, "ANY.RUN directory");
+    checker(VM::DXDIAG_CHECK, "DXDIAG check");
 
     std::printf("\n");
 
