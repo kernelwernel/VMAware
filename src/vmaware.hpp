@@ -586,7 +586,7 @@ private:
 #endif
 
     // specifically for util::hyper_x() and memo::hyperv
-    enum hyperx_state : u8 {
+    enum class hyperx_state : u8 {
         HYPERV_REAL_VM = 1,
         HYPERV_ARTIFACT_VM,
         UNKNOWN
@@ -1151,7 +1151,7 @@ private:
             }
 
             static bool is_cached() {
-                return (state == hyperx_state::UNKNOWN);
+                return (state != hyperx_state::UNKNOWN);
             }
         };
     };
@@ -1713,9 +1713,9 @@ private:
 #if (!MSVC)
             return false;
 #else
-            if (memo::hyperv::is_cached()) {
+            if (memo::hyperx::is_cached()) {
                 core_debug("HYPER_X: returned from cache");
-                return (memo::hyperv::fetch() == hyperx_state::HYPERV_ARTIFACT_VM);
+                return (memo::hyperx::fetch() == hyperx_state::HYPERV_ARTIFACT_VM);
             }
 
 
@@ -1768,7 +1768,7 @@ private:
 
             // neither an artifact nor a real VM
             if (!eax_result) {
-                memo::hyperv::store(hyperx_state::UNKNOWN);
+                memo::hyperx::store(hyperx_state::UNKNOWN);
                 return false;
             }
             
@@ -1791,7 +1791,7 @@ private:
                 core::add(HYPERV_ARTIFACT_VM);
             }
 
-            memo::hyperv::store(state);
+            memo::hyperx::store(state);
 
             // false means it's an artifact, which is what the 
             // point of this whole function is supposed to do
@@ -10350,13 +10350,13 @@ public: // START OF PUBLIC FUNCTIONS
 
 
     struct vmaware {
-        std::string brand;
-        std::string type;
-        std::string conclusion;
         bool is_vm;
         u8 percentage;
         u8 detected_count;
         u8 technique_count;
+        std::string brand;
+        std::string type;
+        std::string conclusion;
 
         template <typename ...Args>
         vmaware(Args ...args) {
