@@ -5,8 +5,7 @@
 <br>
 <img align="center" src="https://img.shields.io/github/actions/workflow/status/kernelwernel/VMAware/cmake-multi-platform.yml">
 <img align="center" src="https://img.shields.io/github/downloads/kernelwernel/VMAware/total">
-<img align="center" src="https://img.shields.io/github/license/a0rtega/pafish
-">
+<img align="center" src="https://img.shields.io/github/license/a0rtega/pafish">
 <img align="center" src="https://img.shields.io/github/license/kernelwernel/Tourneys-bot">
 </p>
 
@@ -112,7 +111,7 @@ You can view the full docs [here](docs/documentation.md). All the details such a
 <summary>Who is this library for and what are the use cases?</summary>
 <br>
 
-> It's designed for security researchers, VM engineers, gamer developers, and pretty much anybody who needs a practical and rock-solid VM detection mechanism in their project. For example, the library is suitable if you're making a VM and you're testing the effectiveness of concealing itself, if you're a game developer/proprietary software developer, the library is useful to thwart against reverse engineers. If you're a malware analyst and you want to check the concealment capability of your VM, this would be the perfect tool to benchmark how well-concealed your VM is against malware. Additionally, software could optimize performance or resource usage based on the detected environment, and some applications might want to restrict usage in VMs to prevent unauthorized distribution or testing.
+> It's designed for security researchers, VM engineers, gamer developers, and pretty much anybody who needs a practical and rock-solid VM detection mechanism in their project. For example, the library is suitable if you're making a VM and you're testing the effectiveness of concealing itself. If you're a game developer/proprietary software developer, the library is useful to thwart against reverse engineers. If you're a malware analyst and you want to check the concealment capability of your VM, this would be the perfect tool to benchmark how well-concealed your VM is against malware. Additionally, software could optimize performance or resource usage based on the detected environment, and some applications might want to restrict usage in VMs to prevent unauthorized distribution or testing.
 
 </details>
 
@@ -164,10 +163,10 @@ You can view the full docs [here](docs/documentation.md). All the details such a
 </details>
 
 <details>
-<summary>Why GPL 3.0 and MIT?</summary>
+<summary>Why GPL-3.0 and MIT?</summary>
 <br>
 
-> I would've made it strictly MIT so proprietary software can make use of the library, but some of the techniques employed are from GPL 3.0 projects, and I have no choice but to use the same license for legal reasons. This gave me an idea to make an MIT version without all of the GPL code so it can also be used without forcing your code to be open-source. It should be noted that the MIT version removes <b>12</b> techniques out of 114 (as of 1.8 version), and the lesser the number of mechanisms, the less accurate the overall result might be.
+> I would've made it strictly MIT so proprietary software can make use of the library, but some of the techniques employed are from GPL 3.0 projects, and I have no choice but to use the same license for legal reasons. This gave me an idea to make an MIT version without all of the GPL code so it can also be used without forcing your code to be open-source. It should be noted that the MIT version removes <b>12</b> techniques out of 116 (as of 1.9 version), and the lesser the number of techniques, the less accurate the overall result might be.
 
 </details>
 
@@ -223,4 +222,4 @@ And if you found this project useful, a star would be appreciated :)
 ## Legal 📜
 I am not responsible nor liable for any damage you cause through any malicious usage of this project. 
 
-License: GPL-3.0
+License: GPL-3.0/MIT

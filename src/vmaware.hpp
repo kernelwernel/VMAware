@@ -1706,6 +1706,7 @@ private:
          *       your the host system is running in Hyper-V, which is a false positive. This is where 
          *       the Hyper-X mechanism comes into play to distinguish between these two.
          * @author idea by Requiem (https://github.com/NotRequiem)
+         * @returns boolean, true = Hyper-V artifact, false = Real Hyper-V VM
          * @link graph to explain how this works: https://github.com/kernelwernel/VMAware/blob/main/assets/Hyper-X_version_3.png
          */
         [[nodiscard]] static bool hyper_x() {
@@ -1751,6 +1752,7 @@ private:
             };
 
 
+            // check if eax is either 11 or 12 after running VM::HYPERVISOR_STR technique
             auto eax = []() -> bool {
                 char out[sizeof(int32_t) * 4 + 1] = { 0 }; // e*x size + number of e*x registers + null terminator
                 cpu::cpuid((int*)out, cpu::leaf::hypervisor);
@@ -1762,6 +1764,13 @@ private:
                 return ((eax == 11) || (eax == 12));
             };
 
+            const bool eax_result = eax();
+
+            // neither an artifact nor a real VM
+            if (!eax_result) {
+                memo::hyperv::store(hyperx_state::UNKNOWN);
+                return false;
+            }
             
             const bool has_hyperv_indications = (
                 is_smbios_hyperv() || 
@@ -1770,24 +1779,27 @@ private:
                 is_root_partition()
             );
 
-            const bool is_real_hyperv_vm = (eax() && has_hyperv_indications);
+            const bool is_real_hyperv_vm = (eax_result && has_hyperv_indications);
 
             enum hyperx_state state;
 
             if (is_real_hyperv_vm) {
                 state = hyperx_state::HYPERV_REAL_VM;
+                core::add(HYPERV);
             } else {
                 state = hyperx_state::HYPERV_ARTIFACT_VM;
+                core::add(HYPERV_ARTIFACT_VM);
             }
 
             memo::hyperv::store(state);
 
-            if (is_real_hyperv_vm) {
-                core::add(HYPERV);
-                return false;
-            } else {
-                core::add(HYPERV_ARTIFACT_VM);
-                return true;
+            // false means it's an artifact, which is what the 
+            // point of this whole function is supposed to do
+            switch (state) {
+                case hyperx_state::HYPERV_ARTIFACT_VM: return true;
+                case hyperx_state::HYPERV_REAL_VM:     return false;
+                case hyperx_state::UNKNOWN:            return false;
+                default: return false;
             }
 #endif
         }
@@ -10345,8 +10357,6 @@ public: // START OF PUBLIC FUNCTIONS
         u8 percentage;
         u8 detected_count;
         u8 technique_count;
-
-        vmaware() = default;
 
         template <typename ...Args>
         vmaware(Args ...args) {

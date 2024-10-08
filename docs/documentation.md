@@ -344,17 +344,17 @@ This will return the "conclusion" message of what the overall result is as a `st
 <br>
 
 # vmaware struct
-If you prefer having an object to store all the relevant information about the program's environment, you can use the `VM::vmaware` struct:
+If you prefer having an object to store all the relevant information about the program's environment instead of calling static member functions, you can use the `VM::vmaware` struct:
 
 ```cpp
 struct vmaware {
+    std::string brand;
+    std::string type;
+    std::string conclusion;
     bool is_vm;
     std::uint8_t percentage;
     std::uint8_t detected_count;
     std::uint8_t technique_count;
-    std::string brand;
-    std::string type;
-    std::string conclusion;
 }; 
 ```
 

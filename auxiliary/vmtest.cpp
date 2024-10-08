@@ -34,5 +34,12 @@ int main(void) {
     //const std::string test8 = VM::brand();
     //const uint8_t test9 = VM::percentage(VM::SPOOFABLE);
     //std::cout << (int)test9 << "\n";
+
+    VM::vmaware vm;
+
+    std::cout << "Is this a VM? = " << vm.is_vm << "\n";
+    std::cout << "How many techniques detected a VM? = " << static_cast<int>(vm.detected_count) << "\n";
+    std::cout << "What's the overview in a human-readable message? = " << vm.conclusion << "\n";
+
     return 0;
 }
