@@ -1788,7 +1788,7 @@ private:
                 core::add(HYPERV);
             } else {
                 state = hyperx_state::HYPERV_ARTIFACT_VM;
-                core::add(HYPERV_ARTIFACT_VM);
+                core::add(HYPERV_ARTIFACT);
             }
 
             memo::hyperx::store(state);
@@ -10348,15 +10348,15 @@ public: // START OF PUBLIC FUNCTIONS
         else                         { return inside_vm; }
     }
 
-
+    #pragma pack(push, 1)
     struct vmaware {
+        std::string brand;
+        std::string type;
+        std::string conclusion;
         bool is_vm;
         u8 percentage;
         u8 detected_count;
         u8 technique_count;
-        std::string brand;
-        std::string type;
-        std::string conclusion;
 
         template <typename ...Args>
         vmaware(Args ...args) {
@@ -10371,6 +10371,7 @@ public: // START OF PUBLIC FUNCTIONS
             technique_count = VM::technique_count;
         }
     };
+    #pragma pack(pop)
 };
 
 MSVC_ENABLE_WARNING(ASSIGNMENT_OPERATOR NO_INLINE_FUNC SPECTRE)
