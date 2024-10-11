@@ -1739,7 +1739,6 @@ private:
             auto is_event_log_hyperv = []() -> bool {
                 std::wstring logName = L"Microsoft-Windows-Kernel-PnP/Configuration";
                 std::vector<std::wstring> searchStrings = { L"Virtual_Machine", L"VMBUS" };
-
                 return (util::query_event_logs(logName, searchStrings));
             };
 
@@ -1753,6 +1752,8 @@ private:
                 if (result) {
                     core_debug("HYPER_X: root partition returned true");
                 }
+
+                return result;
             };
 
 
