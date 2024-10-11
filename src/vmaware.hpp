@@ -1739,7 +1739,7 @@ private:
             auto is_event_log_hyperv = []() -> bool {
                 std::wstring logName = L"Microsoft-Windows-Kernel-PnP/Configuration";
                 std::vector<std::wstring> searchStrings = { L"Virtual_Machine", L"VMBUS" };
-        
+
                 return (util::query_event_logs(logName, searchStrings));
             };
 
@@ -1748,7 +1748,11 @@ private:
             auto is_root_partition = []() -> bool {
                 u32 ebx, unused = 0;
                 cpu::cpuid(unused, ebx, unused, unused, 0x40000003);
-                return (ebx & 1);
+                const bool result = (ebx & 1);
+
+                if (result) {
+                    core_debug("HYPER_X: root partition returned true");
+                }
             };
 
 
@@ -1768,6 +1772,7 @@ private:
 
             // neither an artifact nor a real VM
             if (!eax_result) {
+                core_debug("HYPER_X: none detected");
                 memo::hyperx::store(hyperx_state::UNKNOWN);
                 return false;
             }
@@ -1786,11 +1791,14 @@ private:
             if (is_real_hyperv_vm) {
                 state = hyperx_state::HYPERV_REAL_VM;
                 core::add(HYPERV);
+                core_debug("HYPER_X: added Hyper-V real VM");
             } else {
                 state = hyperx_state::HYPERV_ARTIFACT_VM;
                 core::add(HYPERV_ARTIFACT);
+                core_debug("HYPER_X: added Hyper-V artifact VM");
             }
 
+            core_debug("HYPER_X: cached");
             memo::hyperx::store(state);
 
             // false means it's an artifact, which is what the 
