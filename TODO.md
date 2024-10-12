@@ -55,6 +55,7 @@
 - [ ] update sourceforge
 - [X] fix the VM::vmaware struct
 - [ ] do the ACPI technique and add it to hyper-x
+- [ ] 
 
 # Distant plans
 - add the library to conan.io when released

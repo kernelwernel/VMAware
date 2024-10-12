@@ -1790,7 +1790,7 @@ private:
 
             switch (eax()) {
                 case 11: run_mechanism = false; break; // real hyper-v vm
-                case 12: run_mechanim = true; break; // artifact hyper-v vm
+                case 12: run_mechanism = true; break; // artifact hyper-v vm
                 default:
                     // fallback in case eax fails
                     if (is_root_partition()) {
