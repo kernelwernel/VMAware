@@ -1816,6 +1816,8 @@ private:
                 } else {
                     state = hyperx_state::HYPERV_ARTIFACT_VM;
                 }
+            } else if (eax() == 11) {
+                state = hyperx_state::HYPERV_REAL_VM;
             } else {
                 core_debug("HYPER_X: none detected");
                 state = hyperx_state::UNKNOWN;
