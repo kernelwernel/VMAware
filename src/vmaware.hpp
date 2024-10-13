@@ -439,6 +439,7 @@ public:
         WSL_PROC,
         ANYRUN_DRIVER,
         ANYRUN_DIRECTORY,
+        GPU_CHIPTYPE,
 
         // start of settings technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
         NO_MEMO,
@@ -9127,6 +9128,49 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
     }
 
+         /**
+     * @brief Use wmic to get the GPU/videocontrollers chip type.
+     * @category Windows
+     * @author utoshu
+     */
+
+[[nodiscard]] static bool gpu_chiptype() try {
+#if (!MSVC)
+    return false;
+#else
+    std::string command = "wmic path win32_videocontroller get videoprocessor";
+    std::string result = "";
+
+    FILE* pipe = _popen(command.c_str(), "r");
+    if (!pipe) {
+        debug("GPU_CHIPTYPE: failed to run wmic command");
+        return false;
+    }
+
+    char buffer[128];
+    while (!feof(pipe)) {
+        if (fgets(buffer, 128, pipe) != NULL)
+            result += buffer;
+    }
+    _pclose(pipe);
+
+    std::transform(result.begin(), result.end(), result.begin(), ::tolower);
+
+    if (result.find("vmware") != std::string::npos ||
+        result.find("virtualbox") != std::string::npos ||
+        result.find("hyper-v") != std::string::npos) {
+        core::add(VMWARE);
+        return true;
+    }
+
+    return false;
+#endif
+}
+catch (...) {
+    debug("GPU_CHIPTYPE: caught error, returned false");
+    return false;
+}
+
 
     /**
      * @brief Check for any.run driver presence
@@ -10708,5 +10752,6 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::PODMAN_FILE, { 15, VM::podman_file, true } },
     { VM::WSL_PROC, { 30, VM::wsl_proc_subdir, false } },
     { VM::ANYRUN_DRIVER, { 65, VM::anyrun_driver, false } },
-    { VM::ANYRUN_DIRECTORY, { 35, VM::anyrun_directory, false } }
+    { VM::ANYRUN_DIRECTORY, { 35, VM::anyrun_directory, false } },
+    { VM::GPU_CHIPTYPE, { 100, VM::gpu_chiptype, false }}
 };
