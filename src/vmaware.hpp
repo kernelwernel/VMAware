@@ -9139,7 +9139,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!MSVC)
         return false;
 #else
-        std::string command = "wmic path win32_videocontroller get videoprocessor";
+        const char* command = "wmic path win32_videocontroller get videoprocessor";
         auto ptr = util::sys_result(command);
 
         const std::string result = *ptr;
