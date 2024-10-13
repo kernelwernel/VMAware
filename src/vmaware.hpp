@@ -9139,10 +9139,21 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!MSVC)
         return false;
 #else
-        const char* command = "wmic path win32_videocontroller get videoprocessor";
-        auto ptr = util::sys_result(command);
-
-        std::string result = *ptr;
+        std::string command = "wmic path win32_videocontroller get videoprocessor";
+        std::string result = "";
+    
+        FILE* pipe = _popen(command.c_str(), "r");
+        if (!pipe) {
+            debug("GPU_CHIPTYPE: failed to run wmic command");
+            return false;
+        }
+    
+        char buffer[128];
+        while (!feof(pipe)) {
+            if (fgets(buffer, 128, pipe) != NULL)
+                result += buffer;
+        }
+        _pclose(pipe);
 
         std::transform(result.begin(), result.end(), result.begin(), ::tolower);
 
