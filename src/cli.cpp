@@ -311,6 +311,7 @@ bool are_perms_required(const VM::enum_flags flag) {
         default: return false;
     }
 #else 
+    (void)flag;
     return false;
 #endif
 }
