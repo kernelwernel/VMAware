@@ -9142,7 +9142,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const char* command = "wmic path win32_videocontroller get videoprocessor";
         auto ptr = util::sys_result(command);
 
-        const std::string result = *ptr;
+        std::string result = *ptr;
 
         std::transform(result.begin(), result.end(), result.begin(), ::tolower);
 
