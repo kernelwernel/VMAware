@@ -9129,48 +9129,42 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
     }
 
-         /**
+
+    /**
      * @brief Use wmic to get the GPU/videocontrollers chip type.
      * @category Windows
      * @author utoshu
      */
-
-[[nodiscard]] static bool gpu_chiptype() try {
+    [[nodiscard]] static bool gpu_chiptype() try {
 #if (!MSVC)
-    return false;
+        return false;
 #else
-    std::string command = "wmic path win32_videocontroller get videoprocessor";
-    std::string result = "";
+        std::string command = "wmic path win32_videocontroller get videoprocessor";
+        auto ptr = util::sys_result(command);
 
-    FILE* pipe = _popen(command.c_str(), "r");
-    if (!pipe) {
-        debug("GPU_CHIPTYPE: failed to run wmic command");
+        const std::string result = *ptr;
+
+        std::transform(result.begin(), result.end(), result.begin(), ::tolower);
+
+        if (util::find(result, "vmware")) {
+            return core::add(VMWARE);
+        }
+
+        if (util::find(result, "virtualbox")) {
+            return core::add(VBOX);
+        }
+
+        if (util::find(result, "hyper-v")) {
+            return core::add(HYPERV);
+        }
+
+        return false;
+    #endif
+    }
+    catch (...) {
+        debug("GPU_CHIPTYPE: caught error, returned false");
         return false;
     }
-
-    char buffer[128];
-    while (!feof(pipe)) {
-        if (fgets(buffer, 128, pipe) != NULL)
-            result += buffer;
-    }
-    _pclose(pipe);
-
-    std::transform(result.begin(), result.end(), result.begin(), ::tolower);
-
-    if (result.find("vmware") != std::string::npos ||
-        result.find("virtualbox") != std::string::npos ||
-        result.find("hyper-v") != std::string::npos) {
-        core::add(VMWARE);
-        return true;
-    }
-
-    return false;
-#endif
-}
-catch (...) {
-    debug("GPU_CHIPTYPE: caught error, returned false");
-    return false;
-}
 
 
     /**
