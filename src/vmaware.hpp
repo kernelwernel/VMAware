@@ -8993,22 +8993,28 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         std::vector<WMIWrapper::Result> results =
             WMIWrapper::executeQuery(L"SELECT * FROM Win32_VideoController", { L"VideoProcessor" });
 
-        std::string result;
+        std::string result = "";
         for (const auto& res : results) {
             if (res.type == WMIWrapper::ResultType::String) {
                 result += res.strValue + "\n"; // Collect video processor names
             }
         }
 
-        std::transform(result.begin(), result.end(), result.begin(), ::tolower);
+        std::transform(result.begin(), result.end(), result.begin(), 
+            [](unsigned char c) { 
+                return static_cast<char>(::tolower(c));
+            }
+        );
 
-        if (result.find("vmware") != std::string::npos) {
+        if (util::find(result, "vmware")) {
             return core::add(VMWARE);
         }
-        if (result.find("virtualbox") != std::string::npos) {
+
+        if (util::find(result, "virtualbox")) {
             return core::add(VBOX);
         }
-        if (result.find("hyper-v") != std::string::npos) {
+
+        if (util::find(result, "hyper-v")) {
             return core::add(HYPERV);
         }
 
