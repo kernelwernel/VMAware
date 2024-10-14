@@ -1184,6 +1184,45 @@ private:
 
             Result(double dbl) : type(ResultType::Double), doubleValue(dbl) {}
 
+            Result(const Result& other) : type(other.type) {
+                if (type == ResultType::String) {
+                    new (&strValue) std::string(other.strValue);
+                } else if (type == ResultType::Integer) {
+                    intValue = other.intValue;
+                } else if (type == ResultType::Double) {
+                    doubleValue = other.doubleValue;
+                }
+            }
+
+            Result& operator=(const Result& other) {
+                if (this != &other) {
+                    if (type == ResultType::String) {
+                        strValue.~basic_string();
+                    }
+                    type = other.type;
+                    if (type == ResultType::String) {
+                        new (&strValue) std::string(other.strValue);
+                    } else if (type == ResultType::Integer) {
+                        intValue = other.intValue;
+                    } else if (type == ResultType::Double) {
+                        doubleValue = other.doubleValue;
+                    }
+                }
+                return *this;
+            }
+
+
+
+
+
+
+
+
+
+
+
+
+
             ~Result() {
                 if (type == ResultType::String) {
                     strValue.~basic_string();
