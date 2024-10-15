@@ -26,29 +26,65 @@
 #include <vector>
 #include <cstdint>
 #include <bit>
-#include <intrin.h>
-#include <Windows.h>
 
-void checkXsetbvVmException() {
-    UINT64 xcr0 = _xgetbv(0);
+#include <cstring>
 
-    __try {
-        _xsetbv(0, xcr0 & ~1);
+#ifdef _MSC_VER
+#include <intrin.h>  // For __sidt on MSVC
+#else
+#include <x86intrin.h>  // For GCC/Clang
+#endif
 
-        std::cout << "No exception occurred. Likely running on bare metal.\n";
+#pragma pack(push, 1)
+struct IDTR {
+    uint16_t limit;  // Limit (size of the table)
+    uint64_t base;   // Base address of the IDT
+};
+#pragma pack(pop)
 
+bool check_virtualization() {
+    IDTR idtr;
+
+#ifdef _MSC_VER
+    __sidt(&idtr);  // MSVC intrinsic for storing IDTR
+#else
+    asm volatile ("sidt %0" : "=m" (idtr));  // Assembly code for GCC/Clang
+#endif
+
+    uint64_t idt_base = idtr.base;
+    std::cout << "IDT base address: 0x" << std::hex << idt_base << std::endl;
+
+    // Common virtualization signature checks
+    // Known IDT base address ranges for virtualized environments
+    if (idt_base >= 0xF0000000 && idt_base <= 0xF0800000) {
+        std::cout << "VMware detected based on IDT base address!" << std::endl;
+        return true;
     }
-    __except (EXCEPTION_EXECUTE_HANDLER) {
-        std::cout << "Exception caught! VM likely detected (GP fault triggered).\n";
+    else if (idt_base >= 0xE0000000 && idt_base <= 0xE0800000) {
+        std::cout << "VirtualBox detected based on IDT base address!" << std::endl;
+        return true;
     }
+    else if (idt_base == 0xFFFA0000) {
+        std::cout << "QEMU detected based on IDT base address!" << std::endl;
+        return true;
+    }
+    else {
+        std::cout << "No known virtualization detected based on IDT base address." << std::endl;
+    }
+
+    return false;
 }
 
 int main() {
-    checkXsetbvVmException();
+    if (check_virtualization()) {
+        std::cout << "Virtualization detected!" << std::endl;
+    }
+    else {
+        std::cout << "No virtualization detected." << std::endl;
+    }
 
     return 0;
 }
-
 /*
 #if (defined(__GNUC__) || defined(__linux__))
     #include <unistd.h>
