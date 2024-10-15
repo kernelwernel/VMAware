@@ -26,7 +26,30 @@
 #include <vector>
 #include <cstdint>
 #include <bit>
+#include <intrin.h>
+#include <Windows.h>
 
+void checkXsetbvVmException() {
+    UINT64 xcr0 = _xgetbv(0);
+
+    __try {
+        _xsetbv(0, xcr0 & ~1);
+
+        std::cout << "No exception occurred. Likely running on bare metal.\n";
+
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER) {
+        std::cout << "Exception caught! VM likely detected (GP fault triggered).\n";
+    }
+}
+
+int main() {
+    checkXsetbvVmException();
+
+    return 0;
+}
+
+/*
 #if (defined(__GNUC__) || defined(__linux__))
     #include <unistd.h>
     #define LINUX 1
@@ -756,3 +779,4 @@ int main(int argc, char* argv[]) {
     general();
     return 0;
 }
+*/

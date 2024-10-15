@@ -48,16 +48,16 @@ int main() {
     /**
      * There are roughly 1/3 of all techniques that are considered to be "spoofable",
      * meaning that anybody can potentially cause a false positive by exploiting the
-     * fact that the "spoofable" techniques checks for things that anybody can modify
-     * (file, registry, directories, etc...). This category of techniques are disabled 
+     * fact that the spoofable techniques checks for things that anybody can modify
+     * (file data, registry, directories, etc...). This category of techniques are disabled 
      * by default, but they can be enabled with the VM::SPOOFABLE flag.
      */
     bool is_vm4 = VM::detect(VM::SPOOFABLE);
 
 
     /**
-     * All checks are performed including SPOOFABLE techniques
-     * and the cursor check, which waits 5 seconds for any human
+     * All checks are performed including spoofable techniques
+     * and a few techniques that are disabled by default, which waits 5 seconds for any human
      * mouse interaction to detect automated virtual environments.
      * If you're fine with having a 5 second delay, add VM::ALL 
      */ 
@@ -123,9 +123,9 @@ int main() {
     if (percent == 100) {
         std::cout << "Definitely a VM!\n";
     } else if (percent == 0) {
-        std::cout << "Definitely NOT a VM";
+        std::cout << "Definitely NOT a VM\n";
     } else {
-        std::cout << "Unsure if it's a VM";
+        std::cout << "Unsure if it's a VM\n";
     }
 
     // converted to std::uint32_t for console character encoding reasons
@@ -340,6 +340,11 @@ This will return the "conclusion" message of what the overall result is as a `st
 - `Likely a [brand] VM`
 - `Very likely a [brand] VM`
 - `Running inside a [brand] VM`
+
+<br>
+
+## `VM::detected_count()`
+This will fetch the number of techniques that have been detected as a `std::uint8_t`. Can't get any more simpler than that ¯\_(ツ)_/¯
 
 <br>
 

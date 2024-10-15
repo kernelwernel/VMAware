@@ -570,6 +570,8 @@ private:
     static constexpr const char* WSL = "WSL";
     static constexpr const char* OPENVZ = "OpenVZ";
     static constexpr const char* ANYRUN = "ANY.RUN";
+    static constexpr const char* NULL_BRAND = "";
+
 
 
     static flagset global_flags; // for certain techniques where the flags MUST be accessible
@@ -1150,6 +1152,7 @@ private:
 
             static void store(const hyperx_state p_state) {
                 state = p_state;
+                cached = true;
             }
 
             static bool is_cached() {
@@ -1930,7 +1933,7 @@ private:
          *       the Hyper-X mechanism comes into play to distinguish between these two.
          * @author idea by Requiem (https://github.com/NotRequiem)
          * @returns boolean, true = Hyper-V artifact, false = Real Hyper-V VM
-         * @link graph to explain how this works: https://github.com/kernelwernel/VMAware/blob/main/assets/Hyper-X_version_3.png
+         * @link graph to explain how this works: https://github.com/kernelwernel/VMAware/blob/main/assets/hyper-x/v4/Hyper-X_version_4.drawio.png
          */
         [[nodiscard]] static bool hyper_x() {
 #if (!MSVC)
@@ -3956,40 +3959,35 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */ #if (!MSVC)
 /* GPL */         return false;
 /* GPL */ #else
-/* GPL */         HMODULE hDll;
-/* GPL */ 
-/* GPL */         constexpr std::array<const char*, 12> szDlls = {{
-/* GPL */             "avghookx.dll",    // AVG
-/* GPL */             "avghooka.dll",    // AVG
-/* GPL */             "snxhk.dll",       // Avast
-/* GPL */             "sbiedll.dll",     // Sandboxie
-/* GPL */             "dbghelp.dll",     // WindBG
-/* GPL */             "api_log.dll",     // iDefense Lab
-/* GPL */             "dir_watch.dll",   // iDefense Lab
-/* GPL */             "pstorec.dll",     // SunBelt CWSandbox
-/* GPL */             "vmcheck.dll",     // Virtual PC
-/* GPL */             "wpespy.dll",      // WPE Pro
-/* GPL */             "cmdvrt64.dll",    // Comodo Container
-/* GPL */             "cmdvrt32.dll"     // Comodo Container
-/* GPL */         }};
-/* GPL */ 
-/* GPL */         for (const auto& key : szDlls) {
-/* GPL */             const char* dll = key;
-/* GPL */ 
-/* GPL */             hDll = GetModuleHandleA(dll);  // Use GetModuleHandleA for ANSI strings
-/* GPL */ 
-/* GPL */             if (hDll != NULL && dll != NULL) {
-/* GPL */                 if (strcmp(dll, "sbiedll.dll") == 0) { return core::add(SANDBOXIE); }
-/* GPL */                 if (strcmp(dll, "pstorec.dll") == 0) { return core::add(CWSANDBOX); }
-/* GPL */                 if (strcmp(dll, "vmcheck.dll") == 0) { return core::add(VPC); }
-/* GPL */                 if (strcmp(dll, "cmdvrt32.dll") == 0) { return core::add(COMODO); }
-/* GPL */                 if (strcmp(dll, "cmdvrt64.dll") == 0) { return core::add(COMODO); }
-/* GPL */ 
-/* GPL */                 return true;
-/* GPL */             }
+/* GPL */         std::unordered_map<std::string, const char*> dllMap = {
+/* GPL */             { "sbiedll.dll",   SANDBOXIE },  // Sandboxie
+/* GPL */             { "pstorec.dll",   CWSANDBOX },  // CWSandbox
+/* GPL */             { "vmcheck.dll",   VPC },        // VirtualPC
+/* GPL */             { "cmdvrt32.dll",  COMODO },     // Comodo
+/* GPL */             { "cmdvrt64.dll",  COMODO },     // Comodo
+/* GPL */             { "dbghelp.dll",   NULL_BRAND }, // WindBG
+/* GPL */             { "avghookx.dll",  NULL_BRAND }, // AVG
+/* GPL */             { "avghooka.dll",  NULL_BRAND }, // AVG
+/* GPL */             { "snxhk.dll",     NULL_BRAND }, // Avast
+/* GPL */             { "api_log.dll",   NULL_BRAND }, // iDefense Lab
+/* GPL */             { "dir_watch.dll", NULL_BRAND }, // iDefense Lab
+/* GPL */             { "pstorec.dll",   NULL_BRAND }, // SunBelt CWSandbox
+/* GPL */             { "vmcheck.dll",   NULL_BRAND }, // Virtual PC
+/* GPL */             { "wpespy.dll",    NULL_BRAND }  // WPE Pro
 /* GPL */         }
-/* GPL */ 
-/* GPL */         return false;
+/* GPL */
+/* GPL */         for (const auto& key : dllMap) {
+/* GPL */             hDll = GetModuleHandleA(key);
+/* GPL */
+/* GPL */              if (hDll != NULL) {
+/* GPL */                  auto it = dllMap.find(key);
+/* GPL */                  if (it != dllMap.end()) {
+/* GPL */                      return core::add(it->second); 
+/* GPL */                  }
+/* GPL */              }
+/* GPL */          }
+/* GPL */
+/* GPL */           return false;
 /* GPL */ #endif
 /* GPL */     }
 /* GPL */     catch (...) {
@@ -5436,22 +5434,22 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         u32 idt_entry = 0;
 
 #if (MSVC)
-#if (x86_32)
+#   if (x86_32)
         _asm sidt idtr
-#elif (x86)
-#pragma pack(1)
+#   elif (x86)
+#       pragma pack(1)
         struct IDTR {
             u16 limit;
             u64 base;
         };
-#pragma pack()
+#       pragma pack()
 
         IDTR idtrStruct;
         __sidt(&idtrStruct);
         std::memcpy(idtr, &idtrStruct, sizeof(IDTR));
-#else
+#   else
         return false;
-#endif
+#   endif
 
         idt_entry = *reinterpret_cast<unsigned long*>(&idtr[2]);
 #elif (LINUX)
@@ -9532,7 +9530,9 @@ public: // START OF PUBLIC FUNCTIONS
      * @return bool
      * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmcheck
      */
-    [[nodiscard]] static bool check(const enum_flags flag_bit
+    [[nodiscard]] static bool check(
+        const enum_flags flag_bit, 
+        const enum_flags memo_arg = NULL_ARG
         // clang doesn't support std::source_location for some reason
 #if (CPP >= 20 && !CLANG)
         , const std::source_location& loc = std::source_location::current()
@@ -9563,12 +9563,21 @@ public: // START OF PUBLIC FUNCTIONS
             throw_error("Flag argument must be a technique flag and not a settings flag");
         }
 
+        if (
+            (memo_arg != NO_MEMO) && 
+            (memo_arg != NULL_ARG)
+        ) {
+            throw_error("Flag argument for memoization must be either VM::NO_MEMO or left empty");
+        }
+
+        const bool is_memoized = (memo_arg != NO_MEMO);
+
 #if (CPP >= 23)
         [[assume(flag_bit < technique_end)]];
 #endif
 
         // if the technique is already cached, return the cached value instead
-        if (memo::is_cached(flag_bit)) {
+        if (memo::is_cached(flag_bit) && is_memoized) {
             const memo::data_t data = memo::cache_fetch(flag_bit);
             return data.result;
         }
@@ -9592,7 +9601,9 @@ public: // START OF PUBLIC FUNCTIONS
 #endif
 
         // store the technique result in the cache table
-        memo::cache_store(flag_bit, result, pair.points);
+        if (is_memoized) {
+            memo::cache_store(flag_bit, result, pair.points);
+        }
 
         return result;
     }
@@ -10423,7 +10434,8 @@ std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard{
     { VM::PODMAN, 0 },
     { VM::WSL, 0 },
     { VM::OPENVZ, 0 },
-    { VM::ANYRUN, 0 }
+    { VM::ANYRUN, 0 },
+    { VM::NULL_BRAND, 0 }
 };
 
 
