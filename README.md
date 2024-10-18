@@ -216,6 +216,7 @@ And if you found this project useful, a star would be appreciated :)
 - Eric Parker's discord community 
 - [ShellCode33](https://github.com/ShellCode33)
 - [Georgii Gennadev (D00Movenok)](https://github.com/D00Movenok)
+- [utoshu](https://github.com/utoshu)
 
 <br>
 
