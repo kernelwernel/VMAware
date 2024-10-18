@@ -1200,7 +1200,7 @@ private:
 
             result& operator=(const result& other) {
                 if (this != &other) {
-                    if (result_type::String) {
+                    if (type == result_type::String) {
                         strValue.~basic_string();
                     }
                     type = other.type;
