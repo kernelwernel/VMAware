@@ -1162,72 +1162,60 @@ private:
     };
 
 #if (MSVC)
-    struct WMIWrapper {
+    struct wmi {
         static IWbemLocator* pLoc;
         static IWbemServices* pSvc;
 
-        enum class ResultType {
+        enum class result_type {
             String,
             Integer,
             Double,
             None
         };
 
-        struct Result {
-            ResultType type;
+        struct result {
+            result_type type;
             union {
                 std::string strValue;
                 int intValue;
                 double doubleValue;
             };
 
-            Result(const std::string& str) : type(ResultType::String), strValue(str) {}
+            result(const std::string& str) : type(result_type::String), strValue(str) {}
 
-            Result(int integer) : type(ResultType::Integer), intValue(integer) {}
+            result(int integer) : type(result_type::Integer), intValue(integer) {}
 
-            Result(double dbl) : type(ResultType::Double), doubleValue(dbl) {}
+            result(double dbl) : type(result_type::Double), doubleValue(dbl) {}
 
-            Result(const Result& other) : type(other.type) {
-                if (type == ResultType::String) {
+            result(const result& other) : type(other.type) {
+                if (type == result_type::String) {
                     new (&strValue) std::string(other.strValue);
-                } else if (type == ResultType::Integer) {
+                } else if (type == result_type::Integer) {
                     intValue = other.intValue;
-                } else if (type == ResultType::Double) {
+                } else if (type == result_type::Double) {
                     doubleValue = other.doubleValue;
                 }
             }
 
-            Result& operator=(const Result& other) {
+            result& operator=(const result& other) {
                 if (this != &other) {
-                    if (type == ResultType::String) {
+                    if result_type::String) {
                         strValue.~basic_string();
                     }
                     type = other.type;
-                    if (type == ResultType::String) {
+                    if (type == result_type::String) {
                         new (&strValue) std::string(other.strValue);
-                    } else if (type == ResultType::Integer) {
+                    } else if (type == result_type::Integer) {
                         intValue = other.intValue;
-                    } else if (type == ResultType::Double) {
+                    } else if (type == result_type::Double) {
                         doubleValue = other.doubleValue;
                     }
                 }
                 return *this;
             }
 
-
-
-
-
-
-
-
-
-
-
-
-
-            ~Result() {
-                if (type == ResultType::String) {
+            ~result() {
+                if (type == result_type::String) {
                     strValue.~basic_string();
                 }
             }
@@ -1240,7 +1228,7 @@ private:
 
             HRESULT hres = CoInitializeEx(0, COINIT_MULTITHREADED);
             if (FAILED(hres)) {
-                debug("WMIWrapper: Failed to initialize COM library. Error code = ", hres);
+                debug("wmi: Failed to initialize COM library. Error code = ", hres);
                 return false;
             }
 
@@ -1258,7 +1246,7 @@ private:
 
             if (FAILED(hres)) {
                 CoUninitialize();
-                debug("WMIWrapper: Failed to initialize security. Error code = ", hres);
+                debug("wmi: Failed to initialize security. Error code = ", hres);
                 return false;
             }
 
@@ -1272,7 +1260,7 @@ private:
 
             if (FAILED(hres)) {
                 CoUninitialize();
-                debug("WMIWrapper: Failed to create IWbemLocator object. Error code = ", hres);
+                debug("wmi: Failed to create IWbemLocator object. Error code = ", hres);
                 return false;
             }
 
@@ -1290,7 +1278,7 @@ private:
             if (FAILED(hres)) {
                 pLoc->Release();
                 CoUninitialize();
-                debug("WMIWrapper: Could not connect to WMI server. Error code = ", hres);
+                debug("wmi: Could not connect to WMI server. Error code = ", hres);
                 return false;
             }
 
@@ -1309,15 +1297,15 @@ private:
                 pSvc->Release();
                 pLoc->Release();
                 CoUninitialize();
-                debug("WMIWrapper: Could not set proxy blanket. Error code = ", hres);
+                debug("wmi: Could not set proxy blanket. Error code = ", hres);
                 return false;
             }
 
             return true;
         }
 
-        static std::vector<Result> executeQuery(const std::wstring& query, const std::vector<std::wstring>& properties) {
-            std::vector<Result> results;
+        static std::vector<result> execute(const std::wstring& query, const std::vector<std::wstring>& properties) {
+            std::vector<result> results;
 
             IEnumWbemClassObject* pEnumerator = NULL;
             HRESULT hres = pSvc->ExecQuery(
@@ -1329,7 +1317,7 @@ private:
             );
 
             if (FAILED(hres)) {
-                debug("WMIWrapper: ExecQuery failed. Error code = ", hres);
+                debug("wmi: ExecQuery failed. Error code = ", hres);
                 return results;
             }
 
@@ -2469,16 +2457,16 @@ private:
 
 
         [[nodiscard]] static bool motherboard_string(const char* vm_string) {
-            if (!WMIWrapper::initialize()) {
+            if (!wmi::initialize()) {
                 std::cerr << "Failed to initialize WMI.\n";
                 return false;
             }
 
-            std::vector<WMIWrapper::Result> results =
-                WMIWrapper::executeQuery(L"SELECT * FROM Win32_BaseBoard", { L"Manufacturer" });
+            std::vector<wmi::result> results =
+                wmi::execute(L"SELECT * FROM Win32_BaseBoard", { L"Manufacturer" });
 
             for (const auto& res : results) {
-                if (res.type == WMIWrapper::ResultType::String) {
+                if (res.type == wmi::result_type::String) {
                     if (_stricmp(res.strValue.c_str(), vm_string) == 0) {
                         return true;
                     }
@@ -4715,16 +4703,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!MSVC)
         return false;
 #else
-        if (!WMIWrapper::initialize()) {
+        if (!wmi::initialize()) {
             std::cerr << "Failed to initialize WMI.\n";
             return false;
         }
 
-        std::vector<WMIWrapper::Result> results =
-            WMIWrapper::executeQuery(L"SELECT * FROM Win32_NetworkProtocol", { L"Name" });
+        std::vector<wmi::result> results =
+            wmi::execute(L"SELECT * FROM Win32_NetworkProtocol", { L"Name" });
 
         for (const auto& res : results) {
-            if (res.type == WMIWrapper::ResultType::String) {
+            if (res.type == wmi::result_type::String) {
                 if (res.strValue == "Hyper-V RAW") {
                     return true;
                 }
@@ -5626,16 +5614,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!MSVC)
         return false;
 #else
-        if (!WMIWrapper::initialize()) {
+        if (!wmi::initialize()) {
             std::cerr << "Failed to initialize WMI.\n";
             return false;
         }
 
-        std::vector<WMIWrapper::Result> results =
-            WMIWrapper::executeQuery(L"SELECT * FROM Win32_BaseBoard", { L"Manufacturer" });
+        std::vector<wmi::result> results =
+            wmi::execute(L"SELECT * FROM Win32_BaseBoard", { L"Manufacturer" });
 
         for (const auto& res : results) {
-            if (res.type == WMIWrapper::ResultType::String) {
+            if (res.type == wmi::result_type::String) {
                 if (_stricmp(res.strValue.c_str(), "Microsoft Corporation Virtual Machine") == 0) {
                     return core::add(HYPERV);
                 }
@@ -9022,17 +9010,17 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!MSVC)
         return false;
 #else
-        if (!WMIWrapper::initialize()) {
+        if (!wmi::initialize()) {
             std::cerr << "Failed to initialize WMI.\n";
             return false;
         }
 
-        std::vector<WMIWrapper::Result> results =
-            WMIWrapper::executeQuery(L"SELECT * FROM Win32_VideoController", { L"VideoProcessor" });
+        std::vector<wmi::result> results =
+            wmi::execute(L"SELECT * FROM Win32_VideoController", { L"VideoProcessor" });
 
         std::string result = "";
         for (const auto& res : results) {
-            if (res.type == WMIWrapper::ResultType::String) {
+            if (res.type == wmi::result_type::String) {
                 result += res.strValue + "\n"; // Collect video processor names
             }
         }
@@ -9055,7 +9043,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return core::add(HYPERV);
         }
 
-        WMIWrapper::cleanup();
+        wmi::cleanup();
 
         return false;
 #endif
@@ -10448,8 +10436,8 @@ std::string VM::memo::cpu_brand::brand_cache = "";
 VM::hyperx_state VM::memo::hyperx::state = VM::hyperx_state::UNKNOWN;
 bool VM::memo::hyperx::cached = false;
 #if (MSVC)
-IWbemLocator* VM::WMIWrapper::pLoc = nullptr;
-IWbemServices* VM::WMIWrapper::pSvc = nullptr;
+IWbemLocator* VM::wmi::pLoc = nullptr;
+IWbemServices* VM::wmi::pSvc = nullptr;
 #endif
 
 #ifdef __VMAWARE_DEBUG__
