@@ -57,8 +57,9 @@ int main() {
 
     /**
      * All checks are performed including spoofable techniques
-     * and a few techniques that are disabled by default, which waits 5 seconds for any human
-     * mouse interaction to detect automated virtual environments.
+     * and a few other techniques that are disabled by default,
+     * one of which is VM::CURSOR which waits 5 seconds for any 
+     * human mouse interaction to detect automated virtual environments.
      * If you're fine with having a 5 second delay, add VM::ALL 
      */ 
     bool is_vm5 = VM::detect(VM::ALL);
@@ -466,7 +467,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::VMWARE_IOMEM` | Check for VMware string in /proc/iomem | Linux | 65% |  |  |  |  |  |
 | `VM::VMWARE_IOPORTS` | Check for VMware string in /proc/ioports | Linux | 70% |  |  |  |  |  |
 | `VM::VMWARE_SCSI` | Check for VMware string in /proc/scsi/scsi | Linux | 40% |  |  |  |  |  |
-| `VM::VMWARE_DMESG` | Check for VMware-specific device name in dmesg output | Linux | 65% | Admin |  |  |  |  |
+| `VM::VMWARE_DMESG` | Check for VMware-specific device name in dmesg output | Linux | 65% | Admin |  |  |  | Disabled by default |
 | `VM::VMWARE_STR` | Check str assembly instruction method for VMware | Windows | 35% |  |  |  |  |  |
 | `VM::VMWARE_BACKDOOR` | Check for official VMware io port backdoor technique | Windows | 100% |  |  | 32-bit |  |  |
 | `VM::VMWARE_PORT_MEM` | Check for VMware memory using IO port backdoor | Windows | 85% |  |  | 32-bit |  |  |
@@ -506,6 +507,8 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::WSL_PROC` | Check for WSL or microsoft indications in /proc/ subdirectories | Linux | 30% |  |  |  |  |  |
 | `VM::ANYRUN_DRIVER` | Check for any.run driver presence | Windows | 65% |  |  |  |  |  |
 | `VM::ANYRUN_DIRECTORY` | Check for any.run directory and handle the status code | Windows | 35% |  |  |  |  |  |
+| `VM::GPU_CHIPTYPE` | Check for known VM vendors in the GPU chip manufacturer | Windows | 100% |  |  |  |  |  |
+
 
 
 <br>

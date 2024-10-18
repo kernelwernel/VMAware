@@ -1087,7 +1087,8 @@ private:
                 return (
                     !cache_keys.test(CURSOR) &&
                     !cache_keys.test(RDTSC_VMEXIT) &&
-                    !cache_keys.test(RDTSC)
+                    !cache_keys.test(RDTSC) &&
+                    !cache_keys.test(VMWARE_DMESG)
                 );
             }
 
@@ -1199,7 +1200,7 @@ private:
 
             result& operator=(const result& other) {
                 if (this != &other) {
-                    if result_type::String) {
+                    if (result_type::String) {
                         strValue.~basic_string();
                     }
                     type = other.type;
@@ -10111,6 +10112,7 @@ public: // START OF PUBLIC FUNCTIONS
             case WSL_PROC: return "WSL_PROC";
             case ANYRUN_DRIVER: return "ANYRUN_DRIVER";
             case ANYRUN_DIRECTORY: return "ANYRUN_DIRECTORY";
+            case GPU_CHIPTYPE: return "GPU_CHIPTYPE";
             default: return "Unknown flag";
         }
     }
@@ -10307,28 +10309,32 @@ public: // START OF PUBLIC FUNCTIONS
         constexpr const char* very_unlikely = "Very unlikely a VM";
         constexpr const char* unlikely = "Unlikely a VM";
 
-        std::string potentially = "Potentially a VM";
-        std::string might = "Might be a VM";
-        std::string likely = "Likely a VM";
-        std::string very_likely = "Very likely a VM";
-        std::string inside_vm = "Running inside a VM";
+        const std::string potentially = "Potentially";
+        const std::string might = "Might be";
+        const std::string likely = "Likely";
+        const std::string very_likely = "Very likely";
+        const std::string inside_vm = "Running inside";
 
-        if (brand_tmp != "Unknown") {
-            potentially = "Potentially a " + brand_tmp + " VM";
-            might = "Might be a " + brand_tmp + " VM";
-            likely = "Likely a " + brand_tmp + " VM";
-            very_likely = "Very likely a " + brand_tmp + " VM";
-            inside_vm = "Running inside a " + brand_tmp + " VM";
-        }
+        auto make_conclusion = [&](const std::string &category) -> std::string {
+            std::string article = "";   
+
+            if (brand_tmp == "Unknown") {
+                article = " an ";
+            } else {
+                article = " a ";
+            }
+
+            return (category + article + brand_tmp + " VM"); 
+        };
 
         if      (percent_tmp == 0)   { return baremetal; } 
         else if (percent_tmp <= 20)  { return very_unlikely; } 
         else if (percent_tmp <= 35)  { return unlikely; } 
-        else if (percent_tmp < 50)   { return potentially; } 
-        else if (percent_tmp <= 62)  { return might; } 
-        else if (percent_tmp <= 75)  { return likely; } 
-        else if (percent_tmp < 100)  { return very_likely; } 
-        else                         { return inside_vm; }
+        else if (percent_tmp < 50)   { return make_conclusion(potentially); } 
+        else if (percent_tmp <= 62)  { return make_conclusion(might); } 
+        else if (percent_tmp <= 75)  { return make_conclusion(likely); } 
+        else if (percent_tmp < 100)  { return make_conclusion(very_likely); } 
+        else                         { return make_conclusion(inside_vm); }
     }
 
     #pragma pack(push, 1)
@@ -10469,6 +10475,7 @@ VM::flagset VM::DEFAULT = []() noexcept -> flagset {
     tmp.flip(CURSOR);
     tmp.flip(RDTSC);
     tmp.flip(RDTSC_VMEXIT);
+    tmp.flip(VMWARE_DMESG);
 
     // disable all the settings flags
     tmp.flip(NO_MEMO);
