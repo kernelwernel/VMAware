@@ -618,7 +618,7 @@ void general() {
             std::cout << note << " The result means that the CLI has found Hyper-V, but as an artifact instead of an actual VM. This means that although the hardware values in fact match with Hyper-V due to how it's designed by Microsoft, the CLI has determined you are NOT in a Hyper-V VM.\n\n";
         } 
 
-        if (!arg_bitset.test(SPOOFABLE)) {
+        if (!arg_bitset.test(SPOOFABLE) && !arg_bitset.test(ALL)) {
             std::cout << tip << "To enable easily spoofable techniques, run with the \"--spoofable\" argument\n\n";
         } else {
             std::cout << note << " If you found a false positive, please make sure to create an issue at https://github.com/kernelwernel/VMAware/issues\n\n";

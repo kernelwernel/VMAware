@@ -48,17 +48,18 @@ int main() {
     /**
      * There are roughly 1/3 of all techniques that are considered to be "spoofable",
      * meaning that anybody can potentially cause a false positive by exploiting the
-     * fact that the "spoofable" techniques checks for things that anybody can modify
-     * (file, registry, directories, etc...). This category of techniques are disabled 
+     * fact that the spoofable techniques checks for things that anybody can modify
+     * (file data, registry, directories, etc...). This category of techniques are disabled 
      * by default, but they can be enabled with the VM::SPOOFABLE flag.
      */
     bool is_vm4 = VM::detect(VM::SPOOFABLE);
 
 
     /**
-     * All checks are performed including SPOOFABLE techniques
-     * and the cursor check, which waits 5 seconds for any human
-     * mouse interaction to detect automated virtual environments.
+     * All checks are performed including spoofable techniques
+     * and a few other techniques that are disabled by default,
+     * one of which is VM::CURSOR which waits 5 seconds for any 
+     * human mouse interaction to detect automated virtual environments.
      * If you're fine with having a 5 second delay, add VM::ALL 
      */ 
     bool is_vm5 = VM::detect(VM::ALL);
@@ -123,9 +124,9 @@ int main() {
     if (percent == 100) {
         std::cout << "Definitely a VM!\n";
     } else if (percent == 0) {
-        std::cout << "Definitely NOT a VM";
+        std::cout << "Definitely NOT a VM\n";
     } else {
-        std::cout << "Unsure if it's a VM";
+        std::cout << "Unsure if it's a VM\n";
     }
 
     // converted to std::uint32_t for console character encoding reasons
@@ -343,6 +344,11 @@ This will return the "conclusion" message of what the overall result is as a `st
 
 <br>
 
+## `VM::detected_count()`
+This will fetch the number of techniques that have been detected as a `std::uint8_t`. Can't get any more simpler than that ¯\_(ツ)_/¯
+
+<br>
+
 # vmaware struct
 If you prefer having an object to store all the relevant information about the program's environment instead of calling static member functions, you can use the `VM::vmaware` struct:
 
@@ -461,7 +467,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::VMWARE_IOMEM` | Check for VMware string in /proc/iomem | Linux | 65% |  |  |  |  |  |
 | `VM::VMWARE_IOPORTS` | Check for VMware string in /proc/ioports | Linux | 70% |  |  |  |  |  |
 | `VM::VMWARE_SCSI` | Check for VMware string in /proc/scsi/scsi | Linux | 40% |  |  |  |  |  |
-| `VM::VMWARE_DMESG` | Check for VMware-specific device name in dmesg output | Linux | 65% | Admin |  |  |  |  |
+| `VM::VMWARE_DMESG` | Check for VMware-specific device name in dmesg output | Linux | 65% | Admin |  |  |  | Disabled by default |
 | `VM::VMWARE_STR` | Check str assembly instruction method for VMware | Windows | 35% |  |  |  |  |  |
 | `VM::VMWARE_BACKDOOR` | Check for official VMware io port backdoor technique | Windows | 100% |  |  | 32-bit |  |  |
 | `VM::VMWARE_PORT_MEM` | Check for VMware memory using IO port backdoor | Windows | 85% |  |  | 32-bit |  |  |
@@ -501,6 +507,8 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::WSL_PROC` | Check for WSL or microsoft indications in /proc/ subdirectories | Linux | 30% |  |  |  |  |  |
 | `VM::ANYRUN_DRIVER` | Check for any.run driver presence | Windows | 65% |  |  |  |  |  |
 | `VM::ANYRUN_DIRECTORY` | Check for any.run directory and handle the status code | Windows | 35% |  |  |  |  |  |
+| `VM::GPU_CHIPTYPE` | Check for known VM vendors in the GPU chip manufacturer | Windows | 100% |  |  |  |  |  |
+
 
 
 <br>

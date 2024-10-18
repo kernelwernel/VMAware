@@ -571,6 +571,8 @@ private:
     static constexpr const char* WSL = "WSL";
     static constexpr const char* OPENVZ = "OpenVZ";
     static constexpr const char* ANYRUN = "ANY.RUN";
+    static constexpr const char* NULL_BRAND = "";
+
 
 
     static flagset global_flags; // for certain techniques where the flags MUST be accessible
@@ -1086,7 +1088,8 @@ private:
                 return (
                     !cache_keys.test(CURSOR) &&
                     !cache_keys.test(RDTSC_VMEXIT) &&
-                    !cache_keys.test(RDTSC)
+                    !cache_keys.test(RDTSC) &&
+                    !cache_keys.test(VMWARE_DMESG)
                 );
             }
 
@@ -1151,6 +1154,7 @@ private:
 
             static void store(const hyperx_state p_state) {
                 state = p_state;
+                cached = true;
             }
 
             static bool is_cached() {
@@ -1159,6 +1163,215 @@ private:
         };
     };
 
+#if (MSVC)
+    struct wmi {
+        static IWbemLocator* pLoc;
+        static IWbemServices* pSvc;
+
+        enum class result_type {
+            String,
+            Integer,
+            Double,
+            None
+        };
+
+        struct result {
+            result_type type;
+            union {
+                std::string strValue;
+                int intValue;
+                double doubleValue;
+            };
+
+            result(const std::string& str) : type(result_type::String), strValue(str) {}
+
+            result(int integer) : type(result_type::Integer), intValue(integer) {}
+
+            result(double dbl) : type(result_type::Double), doubleValue(dbl) {}
+
+            result(const result& other) : type(other.type) {
+                if (type == result_type::String) {
+                    new (&strValue) std::string(other.strValue);
+                } else if (type == result_type::Integer) {
+                    intValue = other.intValue;
+                } else if (type == result_type::Double) {
+                    doubleValue = other.doubleValue;
+                }
+            }
+
+            result& operator=(const result& other) {
+                if (this != &other) {
+                    if (result_type::String) {
+                        strValue.~basic_string();
+                    }
+                    type = other.type;
+                    if (type == result_type::String) {
+                        new (&strValue) std::string(other.strValue);
+                    } else if (type == result_type::Integer) {
+                        intValue = other.intValue;
+                    } else if (type == result_type::Double) {
+                        doubleValue = other.doubleValue;
+                    }
+                }
+                return *this;
+            }
+
+            ~result() {
+                if (type == result_type::String) {
+                    strValue.~basic_string();
+                }
+            }
+        };
+
+        static bool initialize() {
+            if (pSvc != nullptr) {
+                return true;
+            }
+
+            HRESULT hres = CoInitializeEx(0, COINIT_MULTITHREADED);
+            if (FAILED(hres)) {
+                debug("wmi: Failed to initialize COM library. Error code = ", hres);
+                return false;
+            }
+
+            hres = CoInitializeSecurity(
+                NULL,
+                -1,
+                NULL,
+                NULL,
+                RPC_C_AUTHN_LEVEL_DEFAULT,
+                RPC_C_IMP_LEVEL_IMPERSONATE,
+                NULL,
+                EOAC_NONE,
+                NULL
+            );
+
+            if (FAILED(hres)) {
+                CoUninitialize();
+                debug("wmi: Failed to initialize security. Error code = ", hres);
+                return false;
+            }
+
+            hres = CoCreateInstance(
+                CLSID_WbemLocator,
+                0,
+                CLSCTX_INPROC_SERVER,
+                IID_IWbemLocator,
+                (LPVOID*)&pLoc
+            );
+
+            if (FAILED(hres)) {
+                CoUninitialize();
+                debug("wmi: Failed to create IWbemLocator object. Error code = ", hres);
+                return false;
+            }
+
+            hres = pLoc->ConnectServer(
+                _bstr_t(L"ROOT\\CIMV2"),
+                NULL,
+                NULL,
+                0,
+                NULL,
+                0,
+                0,
+                &pSvc
+            );
+
+            if (FAILED(hres)) {
+                pLoc->Release();
+                CoUninitialize();
+                debug("wmi: Could not connect to WMI server. Error code = ", hres);
+                return false;
+            }
+
+            hres = CoSetProxyBlanket(
+                pSvc,
+                RPC_C_AUTHN_WINNT,
+                RPC_C_AUTHZ_NONE,
+                NULL,
+                RPC_C_AUTHN_LEVEL_CALL,
+                RPC_C_IMP_LEVEL_IMPERSONATE,
+                NULL,
+                EOAC_NONE
+            );
+
+            if (FAILED(hres)) {
+                pSvc->Release();
+                pLoc->Release();
+                CoUninitialize();
+                debug("wmi: Could not set proxy blanket. Error code = ", hres);
+                return false;
+            }
+
+            return true;
+        }
+
+        static std::vector<result> execute(const std::wstring& query, const std::vector<std::wstring>& properties) {
+            std::vector<result> results;
+
+            IEnumWbemClassObject* pEnumerator = NULL;
+            HRESULT hres = pSvc->ExecQuery(
+                _bstr_t(L"WQL"),
+                _bstr_t(query.c_str()),
+                WBEM_FLAG_FORWARD_ONLY | WBEM_FLAG_RETURN_IMMEDIATELY,
+                NULL,
+                &pEnumerator
+            );
+
+            if (FAILED(hres)) {
+                debug("wmi: ExecQuery failed. Error code = ", hres);
+                return results;
+            }
+
+            IWbemClassObject* pclsObj = NULL;
+            ULONG uReturn = 0;
+
+            while (pEnumerator) {
+                HRESULT hr = pEnumerator->Next(WBEM_INFINITE, 1, &pclsObj, &uReturn);
+
+                if (0 == uReturn || FAILED(hr)) {
+                    break;
+                }
+
+                for (const auto& prop : properties) {
+                    VARIANT vtProp;
+                    VariantInit(&vtProp);
+                    hr = pclsObj->Get(prop.c_str(), 0, &vtProp, 0, 0);
+
+                    if (SUCCEEDED(hr)) {
+                        if (vtProp.vt == VT_BSTR) {
+                            results.emplace_back(_com_util::ConvertBSTRToString(vtProp.bstrVal));
+                        }
+                        else if (vtProp.vt == VT_I4) {
+                            results.emplace_back(vtProp.intVal);
+                        }
+                        else if (vtProp.vt == VT_R8) {
+                            results.emplace_back(vtProp.dblVal);
+                        }
+                    }
+                    VariantClear(&vtProp);
+                }
+
+                pclsObj->Release();
+            }
+
+            pEnumerator->Release();
+            return results;
+        }
+
+        static void cleanup() {
+            if (pSvc) {
+                pSvc->Release();
+                pSvc = nullptr;
+            }
+            if (pLoc) {
+                pLoc->Release();
+                pLoc = nullptr;
+            }
+            CoUninitialize();
+        }
+    };
+#endif
 
     // miscellaneous functionalities
     struct util {
@@ -1710,7 +1923,7 @@ private:
          *       the Hyper-X mechanism comes into play to distinguish between these two.
          * @author idea by Requiem (https://github.com/NotRequiem)
          * @returns boolean, true = Hyper-V artifact, false = Real Hyper-V VM
-         * @link graph to explain how this works: https://github.com/kernelwernel/VMAware/blob/main/assets/Hyper-X_version_3.png
+         * @link graph to explain how this works: https://github.com/kernelwernel/VMAware/blob/main/assets/hyper-x/v4/Hyper-X_version_4.drawio.png
          */
         [[nodiscard]] static bool hyper_x() {
 #if (!MSVC)
@@ -1738,7 +1951,7 @@ private:
 
             // motherboard check
             auto is_motherboard_hyperv = []() -> bool {
-                const bool motherboard = motherboard_string(L"Microsoft Corporation");
+                const bool motherboard = motherboard_string("Microsoft Corporation");
 
                 if (motherboard) {
                     core_debug("HYPER_X: motherboard string match = ", motherboard);
@@ -2244,138 +2457,25 @@ private:
             return "";
         }
 
-        [[nodiscard]] static bool motherboard_string(const wchar_t* vm_string) {
-            HRESULT hres;
 
-            hres = CoInitializeEx(0, COINIT_MULTITHREADED);
-            if (FAILED(hres)) {
-                debug("VPC_BOARD: Failed to initialize COM library. Error code: ", hres);
+        [[nodiscard]] static bool motherboard_string(const char* vm_string) {
+            if (!wmi::initialize()) {
+                std::cerr << "Failed to initialize WMI.\n";
                 return false;
             }
 
-            hres = CoInitializeSecurity(
-                NULL,
-                -1,                          // use the default authentication service
-                NULL,                        // use the default authorization service
-                NULL,                        // reserved
-                RPC_C_AUTHN_LEVEL_DEFAULT,   // authentication
-                RPC_C_IMP_LEVEL_IMPERSONATE, // impersonation
-                NULL,                        // authentication info
-                EOAC_NONE,                   // additional capabilities
-                NULL                         // reserved
-            );
+            std::vector<wmi::result> results =
+                wmi::execute(L"SELECT * FROM Win32_BaseBoard", { L"Manufacturer" });
 
-            if (FAILED(hres)) {
-                debug("VPC_BOARD: Failed to initialize security. Error code: ", hres);
-                CoUninitialize();
-                return false;
-            }
-
-            IWbemLocator* pLoc = NULL;
-            IWbemServices* pSvc = NULL;
-
-            hres = CoCreateInstance(
-                CLSID_WbemLocator,
-                0,
-                CLSCTX_INPROC_SERVER,
-                IID_IWbemLocator,
-                (LPVOID*)&pLoc
-            );
-
-            if (FAILED(hres)) {
-                debug("VPC_BOARD: Failed to create IWbemLocator object. Error code: ", hres);
-                CoUninitialize();
-                return false;
-            }
-
-            hres = pLoc->ConnectServer(
-                _bstr_t(L"ROOT\\CIMV2"), // Namespace
-                NULL,                    // User name
-                NULL,                    // User password
-                0,                       // Locale
-                NULL,                    // Security flags
-                0,                       // Authority
-                0,                       // Context object pointer
-                &pSvc
-            );
-
-            if (FAILED(hres)) {
-                debug("VPC_BOARD: Failed to connect to WMI. Error code: ", hres);
-                pLoc->Release();
-                CoUninitialize();
-                return false;
-            }
-
-            hres = CoSetProxyBlanket(
-                pSvc,                        // Indicates the proxy to set
-                RPC_C_AUTHN_WINNT,           // RPC_C_AUTHN_xxx
-                RPC_C_AUTHZ_NONE,            // RPC_C_AUTHZ_xxx
-                NULL,                        // Server principal name
-                RPC_C_AUTHN_LEVEL_CALL,      // RPC_C_AUTHN_LEVEL_xxx
-                RPC_C_IMP_LEVEL_IMPERSONATE, // RPC_C_IMP_LEVEL_xxx
-                NULL,                        // client identity
-                EOAC_NONE                    // proxy capabilities
-            );
-
-            if (FAILED(hres)) {
-                debug("VPC_BOARD: Failed to set proxy blanket. Error code: ", hres);
-                pSvc->Release();
-                pLoc->Release();
-                CoUninitialize();
-                return false;
-            }
-
-            IEnumWbemClassObject* enumerator = NULL;
-            hres = pSvc->ExecQuery(
-                bstr_t("WQL"),
-                bstr_t("SELECT * FROM Win32_BaseBoard"),
-                WBEM_FLAG_FORWARD_ONLY | WBEM_FLAG_RETURN_IMMEDIATELY,
-                NULL,
-                &enumerator
-            );
-
-            if (FAILED(hres)) {
-                debug("VPC_BOARD: Query for Win32_BaseBoard failed. Error code: ", hres);
-                pSvc->Release();
-                pLoc->Release();
-                CoUninitialize();
-                return false;
-            }
-
-            IWbemClassObject* pclsObj = NULL;
-            ULONG uReturn = 0;
-            bool is_vm = false;
-
-            while (enumerator) {
-                HRESULT hr = enumerator->Next(WBEM_INFINITE, 1, &pclsObj, &uReturn);
-
-                if (uReturn == 0) {
-                    break;
-                }
-
-                VARIANT vtProp;
-                VariantInit(&vtProp);
-                hr = pclsObj->Get(L"Manufacturer", 0, &vtProp, 0, 0);
-
-                if (SUCCEEDED(hr)) {
-                    if (vtProp.vt == VT_BSTR && _wcsicmp(vtProp.bstrVal, vm_string) == 0) {
-                        is_vm = true;
-                        VariantClear(&vtProp);
-                        break;
+            for (const auto& res : results) {
+                if (res.type == wmi::result_type::String) {
+                    if (_stricmp(res.strValue.c_str(), vm_string) == 0) {
+                        return true;
                     }
-
-                    VariantClear(&vtProp);
                 }
-
-                pclsObj->Release();
             }
 
-            enumerator->Release();
-            pSvc->Release();
-            pLoc->Release();
-            CoUninitialize();
-
-            return is_vm;
+            return false;
         }
 
 
@@ -2421,13 +2521,13 @@ private:
 
             EVT_HANDLE hLog = EvtOpenLog(nullptr, logName.c_str(), EvtOpenChannelPath);
             if (!hLog) {
-                std::wcerr << L"Failed to open event log: " << logName << L". Error: " << GetLastErrorString() << std::endl;
+                std::wcerr << L"Failed to open event log: " << logName << L". Error: " << GetLastErrorString() << "\n";
                 return false;
             }
 
             EVT_HANDLE hResults = EvtQuery(nullptr, logName.c_str(), nullptr, flags);
             if (!hResults) {
-                std::wcerr << L"Failed to query event log: " << logName << L". Error: " << GetLastErrorString() << std::endl;
+                std::wcerr << L"Failed to query event log: " << logName << L". Error: " << GetLastErrorString() << "\n";
                 EvtClose(hLog);
                 return false;
             }
@@ -2444,7 +2544,7 @@ private:
                     if (GetLastError() == ERROR_NO_MORE_ITEMS) {
                         break; // No more events to process
                     }
-                    std::wcerr << L"EvtNext failed. Error: " << GetLastErrorString() << std::endl;
+                    std::wcerr << L"EvtNext failed. Error: " << GetLastErrorString() << "\n";
                     EvtClose(hResults);
                     EvtClose(hLog);
                     return false;
@@ -2455,14 +2555,14 @@ private:
                     bufferSize = bufferUsed;
                     pBuffer = new WCHAR[bufferSize];
                     if (!pBuffer) {
-                        std::wcerr << L"Memory allocation failed." << std::endl;
+                        std::wcerr << L"Memory allocation failed.\n";
                         EvtClose(hResults);
                         EvtClose(hLog);
                         return false;
                     }
 
                     if (!EvtRender(nullptr, hEvent, EvtRenderEventXml, bufferSize, pBuffer, &bufferUsed, &count)) {
-                        std::wcerr << L"EvtRender failed. Error: " << GetLastErrorString() << std::endl;
+                        std::wcerr << L"EvtRender failed. Error: " << GetLastErrorString() << "\n";
                         delete[] pBuffer;
                         EvtClose(hResults);
                         EvtClose(hLog);
@@ -2470,7 +2570,7 @@ private:
                     }
                 }
                 else {
-                    std::wcerr << L"EvtRender failed. Error: " << GetLastErrorString() << std::endl;
+                    std::wcerr << L"EvtRender failed. Error: " << GetLastErrorString() << "\n";
                     EvtClose(hResults);
                     EvtClose(hLog);
                     return false;
@@ -3849,40 +3949,35 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */ #if (!MSVC)
 /* GPL */         return false;
 /* GPL */ #else
-/* GPL */         HMODULE hDll;
-/* GPL */ 
-/* GPL */         constexpr std::array<const char*, 12> szDlls = {{
-/* GPL */             "avghookx.dll",    // AVG
-/* GPL */             "avghooka.dll",    // AVG
-/* GPL */             "snxhk.dll",       // Avast
-/* GPL */             "sbiedll.dll",     // Sandboxie
-/* GPL */             "dbghelp.dll",     // WindBG
-/* GPL */             "api_log.dll",     // iDefense Lab
-/* GPL */             "dir_watch.dll",   // iDefense Lab
-/* GPL */             "pstorec.dll",     // SunBelt CWSandbox
-/* GPL */             "vmcheck.dll",     // Virtual PC
-/* GPL */             "wpespy.dll",      // WPE Pro
-/* GPL */             "cmdvrt64.dll",    // Comodo Container
-/* GPL */             "cmdvrt32.dll"     // Comodo Container
-/* GPL */         }};
-/* GPL */ 
-/* GPL */         for (const auto& key : szDlls) {
-/* GPL */             const char* dll = key;
-/* GPL */ 
-/* GPL */             hDll = GetModuleHandleA(dll);  // Use GetModuleHandleA for ANSI strings
-/* GPL */ 
-/* GPL */             if (hDll != NULL && dll != NULL) {
-/* GPL */                 if (strcmp(dll, "sbiedll.dll") == 0) { return core::add(SANDBOXIE); }
-/* GPL */                 if (strcmp(dll, "pstorec.dll") == 0) { return core::add(CWSANDBOX); }
-/* GPL */                 if (strcmp(dll, "vmcheck.dll") == 0) { return core::add(VPC); }
-/* GPL */                 if (strcmp(dll, "cmdvrt32.dll") == 0) { return core::add(COMODO); }
-/* GPL */                 if (strcmp(dll, "cmdvrt64.dll") == 0) { return core::add(COMODO); }
-/* GPL */ 
-/* GPL */                 return true;
-/* GPL */             }
+/* GPL */         std::unordered_map<std::string, const char*> dllMap = {
+/* GPL */             { "sbiedll.dll",   SANDBOXIE },  // Sandboxie
+/* GPL */             { "pstorec.dll",   CWSANDBOX },  // CWSandbox
+/* GPL */             { "vmcheck.dll",   VPC },        // VirtualPC
+/* GPL */             { "cmdvrt32.dll",  COMODO },     // Comodo
+/* GPL */             { "cmdvrt64.dll",  COMODO },     // Comodo
+/* GPL */             { "dbghelp.dll",   NULL_BRAND }, // WindBG
+/* GPL */             { "avghookx.dll",  NULL_BRAND }, // AVG
+/* GPL */             { "avghooka.dll",  NULL_BRAND }, // AVG
+/* GPL */             { "snxhk.dll",     NULL_BRAND }, // Avast
+/* GPL */             { "api_log.dll",   NULL_BRAND }, // iDefense Lab
+/* GPL */             { "dir_watch.dll", NULL_BRAND }, // iDefense Lab
+/* GPL */             { "pstorec.dll",   NULL_BRAND }, // SunBelt CWSandbox
+/* GPL */             { "vmcheck.dll",   NULL_BRAND }, // Virtual PC
+/* GPL */             { "wpespy.dll",    NULL_BRAND }  // WPE Pro
 /* GPL */         }
-/* GPL */ 
-/* GPL */         return false;
+/* GPL */
+/* GPL */         for (const auto& key : dllMap) {
+/* GPL */             hDll = GetModuleHandleA(key);
+/* GPL */
+/* GPL */              if (hDll != NULL) {
+/* GPL */                  auto it = dllMap.find(key);
+/* GPL */                  if (it != dllMap.end()) {
+/* GPL */                      return core::add(it->second); 
+/* GPL */                  }
+/* GPL */              }
+/* GPL */          }
+/* GPL */
+/* GPL */           return false;
 /* GPL */ #endif
 /* GPL */     }
 /* GPL */     catch (...) {
@@ -4585,7 +4680,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!MSVC)
         return false;
 #else
-        const bool is_vm = util::motherboard_string(L"Microsoft Corporation");
+        const bool is_vm = util::motherboard_string("Microsoft Corporation");
 
         if (is_vm) {
             return core::add(VPC);
@@ -4610,131 +4705,27 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!MSVC)
         return false;
 #else
-        HRESULT hres = CoInitializeEx(0, COINIT_MULTITHREADED);
-        if (FAILED(hres)) {
-            debug("HYPERV_WMI: Failed to initialize COM library. Error code = ", hres);
+        if (!wmi::initialize()) {
+            std::cerr << "Failed to initialize WMI.\n";
             return false;
         }
 
-        hres = CoInitializeSecurity(
-            NULL,
-            -1,                          // COM authentication
-            NULL,                        // Authentication services
-            NULL,                        // Reserved
-            RPC_C_AUTHN_LEVEL_DEFAULT,   // Default authentication
-            RPC_C_IMP_LEVEL_IMPERSONATE, // Default Impersonation
-            NULL,                        // Authentication info
-            EOAC_NONE,                   // Additional capabilities
-            NULL                         // Reserved
-        );
+        std::vector<wmi::result> results =
+            wmi::execute(L"SELECT * FROM Win32_NetworkProtocol", { L"Name" });
 
-        if (FAILED(hres)) {
-            debug("HYPERV_WMI: Failed to initialize security. Error code = ", hres);
-            CoUninitialize();
-            return false;
-        }
-
-        // Connect to WMI
-        IWbemLocator* pLoc = NULL;
-        hres = CoCreateInstance(CLSID_WbemLocator, 0, CLSCTX_INPROC_SERVER, IID_IWbemLocator, (LPVOID*)&pLoc);
-
-        if (FAILED(hres)) {
-            debug("HYPERV_WMI: Failed to create IWbemLocator object. Error code = ", hres);
-            CoUninitialize();
-            return false;
-        }
-
-        IWbemServices* pSvc = NULL;
-        hres = pLoc->ConnectServer(
-            _bstr_t(L"\\\\.\\root\\CIMV2"),   // Object path of WMI namespace
-            NULL,                             // User name. NULL = current user
-            NULL,                             // User password. NULL = current
-            0,                                // Locale. NULL indicates current
-            NULL,                             // Security flags.
-            0,                                // Authority (e.g. Kerberos)
-            0,                                // Context object
-            &pSvc                             // pointer to IWbemServices proxy
-        );
-
-        if (FAILED(hres)) {
-            debug("HYPERV_WMI: Could not connect. Error code = ", hres);
-            pLoc->Release();
-            CoUninitialize();
-            return false;
-        }
-
-        hres = CoSetProxyBlanket(
-            pSvc,                        // Indicates the proxy to set
-            RPC_C_AUTHN_WINNT,           // RPC_C_AUTHN_xxx
-            RPC_C_AUTHZ_NONE,            // RPC_C_AUTHZ_xxx
-            NULL,                        // Server principal name
-            RPC_C_AUTHN_LEVEL_CALL,      // RPC_C_AUTHN_LEVEL_xxx
-            RPC_C_IMP_LEVEL_IMPERSONATE, // RPC_C_IMP_LEVEL_xxx
-            NULL,                        // client identity
-            EOAC_NONE                    // proxy capabilities
-        );
-
-        if (FAILED(hres)) {
-            debug("HYPERV_WMI: Could not set proxy blanket. Error code = ", hres);
-            pSvc->Release();
-            pLoc->Release();
-            CoUninitialize();
-            return false;
-        }
-
-        IEnumWbemClassObject* pEnumerator = NULL;
-        hres = pSvc->ExecQuery(
-            _bstr_t(L"WQL"),
-            _bstr_t(L"SELECT * FROM Win32_NetworkProtocol"),
-            WBEM_FLAG_FORWARD_ONLY | WBEM_FLAG_RETURN_IMMEDIATELY,
-            NULL,
-            &pEnumerator
-        );
-
-        if (FAILED(hres)) {
-            debug("HYPERV_WMI: ExecQuery failed. Error code = ", hres);
-            pSvc->Release();
-            pLoc->Release();
-            CoUninitialize();
-            return false;
-        }
-
-        IWbemClassObject* pclsObj = NULL;
-        ULONG uReturn = 0;
-        bool is_vm = false;
-
-        while (pEnumerator) {
-            HRESULT hr = pEnumerator->Next(WBEM_INFINITE, 1, &pclsObj, &uReturn);
-
-            if (uReturn == 0 || FAILED(hr)) {
-                break;
-            }
-
-            VARIANT vtProp;
-            VariantInit(&vtProp);
-            hr = pclsObj->Get(L"Name", 0, &vtProp, 0, 0);
-
-            if (!FAILED(hr)) {
-                if (vtProp.vt == VT_BSTR) {
-                    is_vm = (wcscmp(vtProp.bstrVal, L"Hyper-V RAW") == 0);
+        for (const auto& res : results) {
+            if (res.type == wmi::result_type::String) {
+                if (res.strValue == "Hyper-V RAW") {
+                    return true;
                 }
             }
-
-            VariantClear(&vtProp);
-            pclsObj->Release();
-            pclsObj = NULL;
         }
 
-        pSvc->Release();
-        pLoc->Release();
-        pEnumerator->Release();
-        CoUninitialize();
-
-        return is_vm;
+        return false;
 #endif
     }
     catch (...) {
-        debug("HYPERV_WMI: ", "caught error, returned false");
+        debug("HYPERV_WMI: caught error, returned false");
         return false;
     }
 
@@ -5433,22 +5424,22 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         u32 idt_entry = 0;
 
 #if (MSVC)
-#if (x86_32)
+#   if (x86_32)
         _asm sidt idtr
-#elif (x86)
-#pragma pack(1)
+#   elif (x86)
+#       pragma pack(1)
         struct IDTR {
             u16 limit;
             u64 base;
         };
-#pragma pack()
+#       pragma pack()
 
         IDTR idtrStruct;
         __sidt(&idtrStruct);
         std::memcpy(idtr, &idtrStruct, sizeof(IDTR));
-#else
+#   else
         return false;
-#endif
+#   endif
 
         idt_entry = *reinterpret_cast<unsigned long*>(&idtr[2]);
 #elif (LINUX)
@@ -5625,145 +5616,27 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!MSVC)
         return false;
 #else
-        HRESULT hres;
-
-        hres = CoInitializeEx(0, COINIT_MULTITHREADED);
-        if (FAILED(hres)) {
-            debug("VPC_BOARD: Failed to initialize COM library. Error code: ", hres);
+        if (!wmi::initialize()) {
+            std::cerr << "Failed to initialize WMI.\n";
             return false;
         }
 
-        hres = CoInitializeSecurity(
-            NULL,
-            -1,                          // use the default authentication service
-            NULL,                        // use the default authorization service
-            NULL,                        // reserved
-            RPC_C_AUTHN_LEVEL_DEFAULT,   // authentication
-            RPC_C_IMP_LEVEL_IMPERSONATE, // impersonation
-            NULL,                        // authentication info
-            EOAC_NONE,                   // additional capabilities
-            NULL                         // reserved
-        );
+        std::vector<wmi::result> results =
+            wmi::execute(L"SELECT * FROM Win32_BaseBoard", { L"Manufacturer" });
 
-        if (FAILED(hres)) {
-            debug("VPC_BOARD: Failed to initialize security. Error code: ", hres);
-            CoUninitialize();
-            return false;
-        }
-
-        IWbemLocator* pLoc = NULL;
-        IWbemServices* pSvc = NULL;
-
-        hres = CoCreateInstance(
-            CLSID_WbemLocator,
-            0,
-            CLSCTX_INPROC_SERVER,
-            IID_IWbemLocator,
-            (LPVOID*)&pLoc
-        );
-
-        if (FAILED(hres)) {
-            debug("VPC_BOARD: Failed to create IWbemLocator object. Error code: ", hres);
-            CoUninitialize();
-            return false;
-        }
-
-        hres = pLoc->ConnectServer(
-            _bstr_t(L"ROOT\\CIMV2"), // Namespace
-            NULL,                    // User name
-            NULL,                    // User password
-            0,                       // Locale
-            NULL,                    // Security flags
-            0,                       // Authority
-            0,                       // Context object pointer
-            &pSvc
-        );
-
-        if (FAILED(hres)) {
-            debug("VPC_BOARD: Failed to connect to WMI. Error code: ", hres);
-            pLoc->Release();
-            CoUninitialize();
-            return false;
-        }
-
-        hres = CoSetProxyBlanket(
-            pSvc,                        // Indicates the proxy to set
-            RPC_C_AUTHN_WINNT,           // RPC_C_AUTHN_xxx
-            RPC_C_AUTHZ_NONE,            // RPC_C_AUTHZ_xxx
-            NULL,                        // Server principal name
-            RPC_C_AUTHN_LEVEL_CALL,      // RPC_C_AUTHN_LEVEL_xxx
-            RPC_C_IMP_LEVEL_IMPERSONATE, // RPC_C_IMP_LEVEL_xxx
-            NULL,                        // client identity
-            EOAC_NONE                    // proxy capabilities
-        );
-
-        if (FAILED(hres)) {
-            debug("VPC_BOARD: Failed to set proxy blanket. Error code: ", hres);
-            pSvc->Release();
-            pLoc->Release();
-            CoUninitialize();
-            return false;
-        }
-
-        IEnumWbemClassObject* enumerator = NULL;
-        hres = pSvc->ExecQuery(
-            bstr_t("WQL"),
-            bstr_t("SELECT * FROM Win32_BaseBoard"),
-            WBEM_FLAG_FORWARD_ONLY | WBEM_FLAG_RETURN_IMMEDIATELY,
-            NULL,
-            &enumerator
-        );
-
-        if (FAILED(hres)) {
-            debug("VPC_BOARD: Query for Win32_BaseBoard failed. Error code: ", hres);
-            pSvc->Release();
-            pLoc->Release();
-            CoUninitialize();
-            return false;
-        }
-
-        IWbemClassObject* pclsObj = NULL;
-        ULONG uReturn = 0;
-        bool is_vm = false;
-
-        while (enumerator) {
-            HRESULT hr = enumerator->Next(WBEM_INFINITE, 1, &pclsObj, &uReturn);
-
-            if (uReturn == 0) {
-                break;
-            }
-
-            VARIANT vtProp;
-            VariantInit(&vtProp);
-            hr = pclsObj->Get(L"Manufacturer", 0, &vtProp, 0, 0);
-
-            if (SUCCEEDED(hr)) {
-                if (vtProp.vt == VT_BSTR && _wcsicmp(vtProp.bstrVal, L"Microsoft Corporation Virtual Machine") == 0) {
-                    is_vm = true;
-                    VariantClear(&vtProp);
-                    break;
+        for (const auto& res : results) {
+            if (res.type == wmi::result_type::String) {
+                if (_stricmp(res.strValue.c_str(), "Microsoft Corporation Virtual Machine") == 0) {
+                    return core::add(HYPERV);
                 }
-
-                VariantClear(&vtProp);
             }
-
-            pclsObj->Release();
         }
 
-        enumerator->Release();
-        pSvc->Release();
-        pLoc->Release();
-        CoUninitialize();
-
-        if (is_vm) {
-            return core::add(HYPERV);
-        }
-
-        return false;
+        return false; // No match found
 #endif
     }
     catch (...) {
-        debug("HYPERV_BOARD:", "caught error, returned false");
+        debug("HYPERV_BOARD: caught error, returned false");
         return false;
     }
 
@@ -9139,23 +9012,26 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!MSVC)
         return false;
 #else
-        std::string command = "wmic path win32_videocontroller get videoprocessor";
-        std::string result = "";
-    
-        FILE* pipe = _popen(command.c_str(), "r");
-        if (!pipe) {
-            debug("GPU_CHIPTYPE: failed to run wmic command");
+        if (!wmi::initialize()) {
+            std::cerr << "Failed to initialize WMI.\n";
             return false;
         }
-    
-        char buffer[128];
-        while (!feof(pipe)) {
-            if (fgets(buffer, 128, pipe) != NULL)
-                result += buffer;
-        }
-        _pclose(pipe);
 
-        std::transform(result.begin(), result.end(), result.begin(), ::tolower);
+        std::vector<wmi::result> results =
+            wmi::execute(L"SELECT * FROM Win32_VideoController", { L"VideoProcessor" });
+
+        std::string result = "";
+        for (const auto& res : results) {
+            if (res.type == wmi::result_type::String) {
+                result += res.strValue + "\n"; // Collect video processor names
+            }
+        }
+
+        std::transform(result.begin(), result.end(), result.begin(), 
+            [](unsigned char c) { 
+                return static_cast<char>(::tolower(c));
+            }
+        );
 
         if (util::find(result, "vmware")) {
             return core::add(VMWARE);
@@ -9169,8 +9045,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return core::add(HYPERV);
         }
 
+        wmi::cleanup();
+
         return false;
-    #endif
+#endif
     }
     catch (...) {
         debug("GPU_CHIPTYPE: caught error, returned false");
@@ -9233,7 +9111,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         HANDLE hFile;
         IO_STATUS_BLOCK iosb = { 0 };
-        OBJECT_ATTRIBUTES attrs;
+        OBJECT_ATTRIBUTES attrs{};
         InitializeObjectAttributes(&attrs, &name, 0, NULL, NULL);
 
         status = NtCreateFile(
@@ -9643,7 +9521,9 @@ public: // START OF PUBLIC FUNCTIONS
      * @return bool
      * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmcheck
      */
-    [[nodiscard]] static bool check(const enum_flags flag_bit
+    [[nodiscard]] static bool check(
+        const enum_flags flag_bit, 
+        const enum_flags memo_arg = NULL_ARG
         // clang doesn't support std::source_location for some reason
 #if (CPP >= 20 && !CLANG)
         , const std::source_location& loc = std::source_location::current()
@@ -9674,12 +9554,21 @@ public: // START OF PUBLIC FUNCTIONS
             throw_error("Flag argument must be a technique flag and not a settings flag");
         }
 
+        if (
+            (memo_arg != NO_MEMO) && 
+            (memo_arg != NULL_ARG)
+        ) {
+            throw_error("Flag argument for memoization must be either VM::NO_MEMO or left empty");
+        }
+
+        const bool is_memoized = (memo_arg != NO_MEMO);
+
 #if (CPP >= 23)
         [[assume(flag_bit < technique_end)]];
 #endif
 
         // if the technique is already cached, return the cached value instead
-        if (memo::is_cached(flag_bit)) {
+        if (memo::is_cached(flag_bit) && is_memoized) {
             const memo::data_t data = memo::cache_fetch(flag_bit);
             return data.result;
         }
@@ -9703,7 +9592,9 @@ public: // START OF PUBLIC FUNCTIONS
 #endif
 
         // store the technique result in the cache table
-        memo::cache_store(flag_bit, result, pair.points);
+        if (is_memoized) {
+            memo::cache_store(flag_bit, result, pair.points);
+        }
 
         return result;
     }
@@ -10223,6 +10114,7 @@ public: // START OF PUBLIC FUNCTIONS
             case WSL_PROC: return "WSL_PROC";
             case ANYRUN_DRIVER: return "ANYRUN_DRIVER";
             case ANYRUN_DIRECTORY: return "ANYRUN_DIRECTORY";
+            case GPU_CHIPTYPE: return "GPU_CHIPTYPE";
             default: return "Unknown flag";
         }
     }
@@ -10327,7 +10219,7 @@ public: // START OF PUBLIC FUNCTIONS
             return "Unknown";
         }
 
-        const std::map<const char*, const char*> type_table {
+        const std::map<std::string, const char*> type_table {
             // type 1
             { XEN, "Hypervisor (type 1)" },
             { VMWARE_ESX, "Hypervisor (type 1)" },
@@ -10419,28 +10311,32 @@ public: // START OF PUBLIC FUNCTIONS
         constexpr const char* very_unlikely = "Very unlikely a VM";
         constexpr const char* unlikely = "Unlikely a VM";
 
-        std::string potentially = "Potentially a VM";
-        std::string might = "Might be a VM";
-        std::string likely = "Likely a VM";
-        std::string very_likely = "Very likely a VM";
-        std::string inside_vm = "Running inside a VM";
+        const std::string potentially = "Potentially";
+        const std::string might = "Might be";
+        const std::string likely = "Likely";
+        const std::string very_likely = "Very likely";
+        const std::string inside_vm = "Running inside";
 
-        if (brand_tmp != "Unknown") {
-            potentially = "Potentially a " + brand_tmp + " VM";
-            might = "Might be a " + brand_tmp + " VM";
-            likely = "Likely a " + brand_tmp + " VM";
-            very_likely = "Very likely a " + brand_tmp + " VM";
-            inside_vm = "Running inside a " + brand_tmp + " VM";
-        }
+        auto make_conclusion = [&](const std::string &category) -> std::string {
+            std::string article = "";   
+
+            if (brand_tmp == "Unknown") {
+                article = " an ";
+            } else {
+                article = " a ";
+            }
+
+            return (category + article + brand_tmp + " VM"); 
+        };
 
         if      (percent_tmp == 0)   { return baremetal; } 
         else if (percent_tmp <= 20)  { return very_unlikely; } 
         else if (percent_tmp <= 35)  { return unlikely; } 
-        else if (percent_tmp < 50)   { return potentially; } 
-        else if (percent_tmp <= 62)  { return might; } 
-        else if (percent_tmp <= 75)  { return likely; } 
-        else if (percent_tmp < 100)  { return very_likely; } 
-        else                         { return inside_vm; }
+        else if (percent_tmp < 50)   { return make_conclusion(potentially); } 
+        else if (percent_tmp <= 62)  { return make_conclusion(might); } 
+        else if (percent_tmp <= 75)  { return make_conclusion(likely); } 
+        else if (percent_tmp < 100)  { return make_conclusion(very_likely); } 
+        else                         { return make_conclusion(inside_vm); }
     }
 
     #pragma pack(push, 1)
@@ -10534,7 +10430,8 @@ std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard{
     { VM::PODMAN, 0 },
     { VM::WSL, 0 },
     { VM::OPENVZ, 0 },
-    { VM::ANYRUN, 0 }
+    { VM::ANYRUN, 0 },
+    { VM::NULL_BRAND, 0 }
 };
 
 
@@ -10546,6 +10443,10 @@ std::string VM::memo::multi_brand::brand_cache = "";
 std::string VM::memo::cpu_brand::brand_cache = "";
 VM::hyperx_state VM::memo::hyperx::state = VM::hyperx_state::UNKNOWN;
 bool VM::memo::hyperx::cached = false;
+#if (MSVC)
+IWbemLocator* VM::wmi::pLoc = nullptr;
+IWbemServices* VM::wmi::pSvc = nullptr;
+#endif
 
 #ifdef __VMAWARE_DEBUG__
 VM::u16 VM::total_points = 0;
@@ -10576,6 +10477,7 @@ VM::flagset VM::DEFAULT = []() noexcept -> flagset {
     tmp.flip(CURSOR);
     tmp.flip(RDTSC);
     tmp.flip(RDTSC_VMEXIT);
+    tmp.flip(VMWARE_DMESG);
 
     // disable all the settings flags
     tmp.flip(NO_MEMO);
@@ -10759,5 +10661,5 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::WSL_PROC, { 30, VM::wsl_proc_subdir, false } },
     { VM::ANYRUN_DRIVER, { 65, VM::anyrun_driver, false } },
     { VM::ANYRUN_DIRECTORY, { 35, VM::anyrun_directory, false } },
-    { VM::GPU_CHIPTYPE, { 100, VM::gpu_chiptype, false }}
+    { VM::GPU_CHIPTYPE, { 100, VM::gpu_chiptype, false } }
 };
