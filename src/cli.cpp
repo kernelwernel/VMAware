@@ -27,65 +27,6 @@
 #include <cstdint>
 #include <bit>
 
-#include <cstring>
-
-#ifdef _MSC_VER
-#include <intrin.h>  // For __sidt on MSVC
-#else
-#include <x86intrin.h>  // For GCC/Clang
-#endif
-
-#pragma pack(push, 1)
-struct IDTR {
-    uint16_t limit;  // Limit (size of the table)
-    uint64_t base;   // Base address of the IDT
-};
-#pragma pack(pop)
-
-bool check_virtualization() {
-    IDTR idtr;
-
-#ifdef _MSC_VER
-    __sidt(&idtr);  // MSVC intrinsic for storing IDTR
-#else
-    asm volatile ("sidt %0" : "=m" (idtr));  // Assembly code for GCC/Clang
-#endif
-
-    uint64_t idt_base = idtr.base;
-    std::cout << "IDT base address: 0x" << std::hex << idt_base << std::endl;
-
-    // Common virtualization signature checks
-    // Known IDT base address ranges for virtualized environments
-    if (idt_base >= 0xF0000000 && idt_base <= 0xF0800000) {
-        std::cout << "VMware detected based on IDT base address!" << std::endl;
-        return true;
-    }
-    else if (idt_base >= 0xE0000000 && idt_base <= 0xE0800000) {
-        std::cout << "VirtualBox detected based on IDT base address!" << std::endl;
-        return true;
-    }
-    else if (idt_base == 0xFFFA0000) {
-        std::cout << "QEMU detected based on IDT base address!" << std::endl;
-        return true;
-    }
-    else {
-        std::cout << "No known virtualization detected based on IDT base address." << std::endl;
-    }
-
-    return false;
-}
-
-int main() {
-    if (check_virtualization()) {
-        std::cout << "Virtualization detected!" << std::endl;
-    }
-    else {
-        std::cout << "No virtualization detected." << std::endl;
-    }
-
-    return 0;
-}
-/*
 #if (defined(__GNUC__) || defined(__linux__))
     #include <unistd.h>
     #define LINUX 1
@@ -676,7 +617,7 @@ void general() {
             std::cout << note << " The result means that the CLI has found Hyper-V, but as an artifact instead of an actual VM. This means that although the hardware values in fact match with Hyper-V due to how it's designed by Microsoft, the CLI has determined you are NOT in a Hyper-V VM.\n\n";
         } 
 
-        if (!arg_bitset.test(SPOOFABLE)) {
+        if (!arg_bitset.test(SPOOFABLE) && !arg_bitset.test(ALL)) {
             std::cout << tip << "To enable easily spoofable techniques, run with the \"--spoofable\" argument\n\n";
         } else {
             std::cout << note << " If you found a false positive, please make sure to create an issue at https://github.com/kernelwernel/VMAware/issues\n\n";
@@ -815,4 +756,3 @@ int main(int argc, char* argv[]) {
     general();
     return 0;
 }
-*/

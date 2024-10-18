@@ -10227,7 +10227,7 @@ public: // START OF PUBLIC FUNCTIONS
             return "Unknown";
         }
 
-        const std::map<const char*, const char*> type_table {
+        const std::map<std::string, const char*> type_table {
             // type 1
             { XEN, "Hypervisor (type 1)" },
             { VMWARE_ESX, "Hypervisor (type 1)" },
