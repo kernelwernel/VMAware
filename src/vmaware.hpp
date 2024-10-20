@@ -8613,11 +8613,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
-    catch (...) {
-        debug("GPU_CHIPTYPE: caught error, returned false");
-        return false;
-    }
-
 
     struct core {
         MSVC_DISABLE_WARNING(PADDING)
