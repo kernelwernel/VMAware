@@ -59,6 +59,7 @@
 - [X] fix the DMESG error thing
 - [ ] do the IDT thing
 - [ ] filesystem idea from requiemn
+- [ ] update the graph with the scanner and wmi modules
 
 # Distant plans
 - add the library to conan.io when released

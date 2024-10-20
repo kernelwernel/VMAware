@@ -437,8 +437,6 @@ public:
         SMBIOS_VM_BIT,
         PODMAN_FILE,
         WSL_PROC,
-        ANYRUN_DRIVER,
-        ANYRUN_DIRECTORY,
         GPU_CHIPTYPE,
 
         // start of settings technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
@@ -453,6 +451,7 @@ private:
     static constexpr u8 enum_size = MULTIPLE; // get enum size through value of last element
     static constexpr u8 non_technique_count = MULTIPLE - NO_MEMO + 1; // get number of settings technique flags like VM::NO_MEMO for example
     static constexpr u8 INVALID = 255; // explicit invalid technique macro
+    static constexpr u16 base_technique_count = NO_MEMO; // original technique count, constant on purpose
     static constexpr u16 maximum_points = 4765; // theoretical total points if all VM detections returned true (which is practically impossible)
     static constexpr u16 high_threshold_score = 300; // new threshold score from 100 to 350 if VM::HIGH_THRESHOLD flag is enabled
     static constexpr bool SHORTCUT = true; // macro for whether VM::core::run_all() should take a shortcut by skipping the rest of the techniques if the threshold score is already met
@@ -466,17 +465,9 @@ private:
     static constexpr u8 non_technique_begin = NO_MEMO;
     static constexpr u8 non_technique_end = enum_end;
 
-
     // this is specifically meant for VM::detected_count() to 
     // get the total number of techniques that detected a VM
     static u8 detected_count_num; 
-
-public:
-    static constexpr u8 technique_count = NO_MEMO; // get total number of techniques
-    static std::vector<u8> technique_vector;
-#ifdef __VMAWARE_DEBUG__
-    static u16 total_points;
-#endif
 
 private:
 
@@ -569,7 +560,6 @@ private:
     static constexpr const char* PODMAN = "Podman";
     static constexpr const char* WSL = "WSL";
     static constexpr const char* OPENVZ = "OpenVZ";
-    static constexpr const char* ANYRUN = "ANY.RUN";
     static constexpr const char* NULL_BRAND = "";
 
 
@@ -1047,31 +1037,31 @@ private:
         };
 
     private:
-        static std::map<u8, data_t> cache_table;
+        static std::map<u16, data_t> cache_table;
         static flagset cache_keys;
 
     public:
-        static void cache_store(const u8 technique_macro, const result_t result, const points_t points) {
+        static void cache_store(const u16 technique_macro, const result_t result, const points_t points) {
             cache_table[technique_macro] = { result, points };
             cache_keys.set(technique_macro);
         }
 
-        static bool is_cached(const u8 technique_macro) {
+        static bool is_cached(const u16 technique_macro) {
             return cache_keys.test(technique_macro);
         }
 
-        static data_t cache_fetch(const u8 technique_macro) {
+        static data_t cache_fetch(const u16 technique_macro) {
             return cache_table.at(technique_macro);
         }
 
-        static std::vector<u8> cache_fetch_all() {
-            std::vector<u8> vec;
+        static std::vector<u16> cache_fetch_all() {
+            std::vector<u16> vec;
 
             for (auto it = cache_table.cbegin(); it != cache_table.cend(); ++it) {
                 const data_t data = it->second;
 
                 if (data.result == true) {
-                    const u8 macro = it->first;
+                    const u16 macro = it->first;
                     vec.push_back(macro);
                 }
             }
@@ -8622,92 +8612,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
 
 
-    /**
-     * @brief Check for any.run driver presence
-     * @category Windows
-     * @author kkent030315
-     * @link https://github.com/kkent030315/detect-anyrun/blob/main/detect.cc
-     * @copyright MIT
-     */
-    [[nodiscard]] static bool anyrun_driver() {
-#if (!MSVC)
-        return false;
-#else
-        HANDLE hFile;
-
-        hFile = CreateFile(
-            /*lpFileName*/TEXT("\\\\?\\\\A3E64E55_fl"),
-            /*dwDesiredAccess*/GENERIC_READ,
-            /*dwShareMode*/0,
-            /*lpSecurityAttributes*/NULL,
-            /*dwCreationDisposition*/OPEN_EXISTING,
-            /*dwFlagsAndAttributes*/0,
-            /*hTemplateFile*/NULL
-        );
-
-        if (hFile == INVALID_HANDLE_VALUE) {
-            return false;
-        }
-
-        CloseHandle(hFile);
-
-        return core::add(ANYRUN);
-#endif
-    }
-
-
-    /**
-     * @brief Check for any.run directory and handle the status code
-     * @category Windows
-     * @author kkent030315
-     * @link https://github.com/kkent030315/detect-anyrun/blob/main/detect.cc
-     * @copyright MIT
-     */
-    [[nodiscard]] static bool anyrun_directory() {
-#if (!MSVC)
-        return false;
-#else
-        NTSTATUS status;
-
-        UNICODE_STRING name;
-        RtlInitUnicodeString(&name, L"\\??\\C:\\Program Files\\KernelLogger");
-
-        HANDLE hFile;
-        IO_STATUS_BLOCK iosb = { 0 };
-        OBJECT_ATTRIBUTES attrs{};
-        InitializeObjectAttributes(&attrs, &name, 0, NULL, NULL);
-
-        status = NtCreateFile(
-            /*FileHandle*/&hFile,
-            /*DesiredAccess*/GENERIC_READ | SYNCHRONIZE,
-            /*ObjectAttributes*/&attrs,
-            /*IoStatusBlock*/&iosb,
-            /*AllocationSize*/NULL,
-            /*FileAttributes*/FILE_ATTRIBUTE_DIRECTORY,
-            /*ShareAccess*/FILE_SHARE_READ,
-            /*CreateDisposition*/FILE_OPEN,
-            /*CreateOptions*/FILE_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT,
-            /*EaBuffer*/NULL,
-            /*EaLength*/0
-        );
-
-        // ANY.RUN minifilter returns non-standard status code, STATUS_NO_SUCH_FILE
-        // If this status code is returned, it means that the directory is protected
-        // by the ANY.RUN minifilter driver.
-        // To patch this detection, I would recommend returning STATUS_OBJECT_NAME_NOT_FOUND
-        // that is a standard status code for this situation.
-        if (status == 0xC000000F) // STATUS_NOT_SUCH_FILE
-            return core::add(ANYRUN);
-
-        // Not actually the case, maybe conflict with other software installation.
-        if (NT_SUCCESS(status))
-            NtClose(hFile);
-
-        return false;
-#endif
-    } 
-
-
     struct core {
         MSVC_DISABLE_WARNING(PADDING)
         struct technique {
@@ -8718,6 +8622,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         struct custom_technique {
             u8 points;
+            u16 id;
             std::function<bool()> run;
         };
         MSVC_ENABLE_WARNING(PADDING)
@@ -8877,11 +8782,32 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
             }
 
-            // for custom VM techniques
+            // for custom VM techniques, won't be used most of the time
             if (!custom_table.empty()) {
-                for (const auto& pair : custom_table) {
-                    if (pair.run()) {
-                        points += pair.points;
+                for (const auto& technique : custom_table) {
+                    if (memo_enabled && memo::is_cached(technique.id)) {
+                        const memo::data_t data = memo::cache_fetch(technique.id);
+
+                        if (data.result) {
+                            points += data.points;
+                        }
+
+                        continue;
+                    }
+
+                    const bool result = technique.run();
+
+                    if (result) {
+                        points += technique.points;
+                        detected_count_num++;
+                    }
+
+                    if (memo_enabled) {
+                        memo::cache_store(
+                            technique.id,
+                            result, 
+                            technique.points
+                        );
                     }
                 }
             }
@@ -9515,11 +9441,18 @@ public: // START OF PUBLIC FUNCTIONS
         [[assume(percent > 0 && percent <= 100)]];
 #endif
 
+        static u16 id = 0;
+        id++;
+
         // generate the custom technique struct
         core::custom_technique query{
             percent,
+            // this fucking sucks
+            static_cast<u16>(static_cast<int>(base_technique_count) + static_cast<int>(id)),
             detection_func
         };
+
+        technique_count++;
 
         // push it to the custome_table vector
         core::custom_table.emplace_back(query);
@@ -9669,8 +9602,6 @@ public: // START OF PUBLIC FUNCTIONS
             case SMBIOS_VM_BIT: return "SMBIOS_VM_BIT";
             case PODMAN_FILE: return "PODMAN_FILE";
             case WSL_PROC: return "WSL_PROC";
-            case ANYRUN_DRIVER: return "ANYRUN_DRIVER";
-            case ANYRUN_DIRECTORY: return "ANYRUN_DIRECTORY";
             case GPU_CHIPTYPE: return "GPU_CHIPTYPE";
             default: return "Unknown flag";
         }
@@ -9715,7 +9646,7 @@ public: // START OF PUBLIC FUNCTIONS
 #if (CPP >= 20 && !CLANG)
             ss << ", error in " << loc.function_name() << " at " << loc.file_name() << ":" << loc.line() << ")";
 #endif
-            ss << ". Consult the documentation's parameters for VM::add_custom()";
+            ss << ". Consult the documentation's parameters for VM::modify_score()";
             throw std::invalid_argument(std::string(text) + ss.str());
         };
 
@@ -9820,7 +9751,6 @@ public: // START OF PUBLIC FUNCTIONS
             { ANUBIS, "Sandbox" },
             { COMODO, "Sandbox" },
             { THREATEXPERT, "Sandbox" },
-            { ANYRUN, "Sandbox"},
 
             // misc
             { BOCHS, "Emulator" },
@@ -9904,7 +9834,7 @@ public: // START OF PUBLIC FUNCTIONS
         bool is_vm;
         u8 percentage;
         u8 detected_count;
-        u8 technique_count;
+        u16 technique_count;
 
         template <typename ...Args>
         vmaware(Args ...args) {
@@ -9920,6 +9850,13 @@ public: // START OF PUBLIC FUNCTIONS
         }
     };
     #pragma pack(pop)
+
+
+    static u16 technique_count; // get total number of techniques
+    static std::vector<u8> technique_vector;
+#ifdef __VMAWARE_DEBUG__
+    static u16 total_points;
+#endif
 };
 
 MSVC_ENABLE_WARNING(ASSIGNMENT_OPERATOR NO_INLINE_FUNC SPECTRE)
@@ -9987,13 +9924,12 @@ std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard{
     { VM::PODMAN, 0 },
     { VM::WSL, 0 },
     { VM::OPENVZ, 0 },
-    { VM::ANYRUN, 0 },
     { VM::NULL_BRAND, 0 }
 };
 
 
 // initial definitions for cache items because ISO C++ forbids in-class initializations
-std::map<VM::u8, VM::memo::data_t> VM::memo::cache_table;
+std::map<VM::u16, VM::memo::data_t> VM::memo::cache_table;
 VM::flagset VM::memo::cache_keys = 0;
 std::string VM::memo::brand::brand_cache = "";
 std::string VM::memo::multi_brand::brand_cache = "";
@@ -10072,6 +10008,10 @@ std::vector<VM::u8> VM::technique_vector = []() -> std::vector<VM::u8> {
 
     return tmp;
 }();
+
+
+// this value is incremented each time VM::add_custom is called
+VM::u16 VM::technique_count = base_technique_count;
 
 
 // check if cpuid is supported
@@ -10216,7 +10156,5 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::SMBIOS_VM_BIT, { 50, VM::smbios_vm_bit, false } },
     { VM::PODMAN_FILE, { 15, VM::podman_file, true } },
     { VM::WSL_PROC, { 30, VM::wsl_proc_subdir, false } },
-    { VM::ANYRUN_DRIVER, { 65, VM::anyrun_driver, false } },
-    { VM::ANYRUN_DIRECTORY, { 35, VM::anyrun_directory, false } },
     { VM::GPU_CHIPTYPE, { 100, VM::gpu_chiptype, false } }
 };
