@@ -55,6 +55,13 @@ constexpr const char* red_orange = "\x1B[38;2;247;127;40m";
 constexpr const char* green_orange = "\x1B[38;2;174;197;59m";
 constexpr const char* grey = "\x1B[38;2;108;108;108m";
 
+const std::string detected = ("[  " + std::string(green) + "DETECTED" + std::string(ansi_exit) + "  ]");
+const std::string not_detected = ("[" + std::string(red) + "NOT DETECTED" + std::string(ansi_exit) + "]");
+const std::string spoofable = ("[" + std::string(red) + " EASY SPOOF " + std::string(ansi_exit) + "]");
+const std::string no_perms = ("[" + std::string(grey) + "  NO PERMS  " + std::string(ansi_exit) + "]");
+const std::string note = ("[    NOTE    ]");               
+const std::string disabled = ("[" + std::string(grey) + "  DISABLED  " + std::string(ansi_exit) + "]");
+
 using u8  = std::uint8_t;
 using u32 = std::uint32_t;
 
@@ -72,11 +79,13 @@ enum arg_enum : u8 {
     TYPE,
     NOTES,
     SPOOFABLE,
+    HIGH_THRESHOLD,
     NULL_ARG
 };
 
-std::bitset<14> arg_bitset;
-const u8 max_bits = static_cast<u8>(VM::MULTIPLE) + 1;
+constexpr u8 max_bits = static_cast<u8>(VM::MULTIPLE) + 1;
+constexpr u8 arg_bits = static_cast<u8>(NULL_ARG) + 1;
+std::bitset<arg_bits> arg_bitset;
 
 #if (MSVC)
 class win_ansi_enabler_t
@@ -134,6 +143,7 @@ Options:
 Extra:
  --disable-notes    no notes will be provided
  --spoofable        allow spoofable techniques to be ran (not included by default)
+ --high-threshold   a higher theshold bar for a VM detection will be applied
 
 )";
     std::exit(0);
@@ -338,6 +348,10 @@ std::bitset<max_bits> settings() {
         tmp.set(VM::SPOOFABLE);
     }
 
+    if (arg_bitset.test(HIGH_THRESHOLD)) {
+        tmp.set(VM::HIGH_THRESHOLD);
+    }
+
     if (arg_bitset.test(ALL)) {
         tmp |= VM::ALL;
         tmp.set(VM::SPOOFABLE);
@@ -347,42 +361,148 @@ std::bitset<max_bits> settings() {
 }
 
 
-void general() {
-    const std::string detected = ("[  " + std::string(green) + "DETECTED" + std::string(ansi_exit) + "  ]");
-    const std::string not_detected = ("[" + std::string(red) + "NOT DETECTED" + std::string(ansi_exit) + "]");
-    //const std::string spoofable = ("[" + std::string(red) + " SPOOFABLE " + std::string(ansi_exit) + "]");
-    const std::string spoofable = ("[" + std::string(red) + " EASY SPOOF " + std::string(ansi_exit) + "]");
-    const std::string note = ("[    NOTE    ]");               
-    const std::string no_perms = ("[" + std::string(grey) + "  NO PERMS  " + std::string(ansi_exit) + "]");
-    const std::string disabled = ("[" + std::string(grey) + "  DISABLED  " + std::string(ansi_exit) + "]");
-    const std::string tip = (std::string(green) + "TIP: " + std::string(ansi_exit));
+// just a simple string replacer
+void replace(std::string &text, const std::string &original, const std::string &new_brand) {
+    size_t start_pos = 0;
+    while ((start_pos = text.find(original, start_pos)) != std::string::npos) {
+        text.replace(start_pos, original.length(), new_brand);
+        start_pos += new_brand.length();
+    }
+}
 
-    auto checker = [&](const VM::enum_flags flag, const char* message) -> void {
-        if (is_spoofable(flag)) {
-            if (!arg_bitset.test(SPOOFABLE)) {
-                std::cout << spoofable << " Skipped " << message << "\n";
-                return;
-            }
+
+/**
+ * @brief Check for any.run driver presence
+ * @category Windows
+ * @author kkent030315
+ * @link https://github.com/kkent030315/detect-anyrun/blob/main/detect.cc
+ * @copyright MIT
+ */
+[[nodiscard]] static bool anyrun_driver() {
+#if (!MSVC)
+    return false;
+#else
+    HANDLE hFile;
+
+    hFile = CreateFile(
+        /*lpFileName*/TEXT("\\\\?\\\\A3E64E55_fl"),
+        /*dwDesiredAccess*/GENERIC_READ,
+        /*dwShareMode*/0,
+        /*lpSecurityAttributes*/NULL,
+        /*dwCreationDisposition*/OPEN_EXISTING,
+        /*dwFlagsAndAttributes*/0,
+        /*hTemplateFile*/NULL
+    );
+
+    if (hFile == INVALID_HANDLE_VALUE) {
+        return false;
+    }
+
+    CloseHandle(hFile);
+
+    return true;
+#endif
+}
+
+
+/**
+ * @brief Check for any.run directory and handle the status code
+ * @category Windows
+ * @author kkent030315
+ * @link https://github.com/kkent030315/detect-anyrun/blob/main/detect.cc
+ * @copyright MIT
+ */
+[[nodiscard]] static bool anyrun_directory() {
+#if (!MSVC)
+    return false;
+#else
+    NTSTATUS status;
+
+    UNICODE_STRING name;
+    RtlInitUnicodeString(&name, L"\\??\\C:\\Program Files\\KernelLogger");
+
+    HANDLE hFile;
+    IO_STATUS_BLOCK iosb = { 0 };
+    OBJECT_ATTRIBUTES attrs{};
+    InitializeObjectAttributes(&attrs, &name, 0, NULL, NULL);
+
+    status = NtCreateFile(
+        /*FileHandle*/&hFile,
+        /*DesiredAccess*/GENERIC_READ | SYNCHRONIZE,
+        /*ObjectAttributes*/&attrs,
+        /*IoStatusBlock*/&iosb,
+        /*AllocationSize*/NULL,
+        /*FileAttributes*/FILE_ATTRIBUTE_DIRECTORY,
+        /*ShareAccess*/FILE_SHARE_READ,
+        /*CreateDisposition*/FILE_OPEN,
+        /*CreateOptions*/FILE_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT,
+        /*EaBuffer*/NULL,
+        /*EaLength*/0
+    );
+
+    // ANY.RUN minifilter returns non-standard status code, STATUS_NO_SUCH_FILE
+    // If this status code is returned, it means that the directory is protected
+    // by the ANY.RUN minifilter driver.
+    // To patch this detection, I would recommend returning STATUS_OBJECT_NAME_NOT_FOUND
+    // that is a standard status code for this situation.
+    if (status == 0xC000000F) // STATUS_NOT_SUCH_FILE
+        return true;
+
+    // Not actually the case, maybe conflict with other software installation.
+    if (NT_SUCCESS(status))
+        NtClose(hFile);
+
+    return false;
+#endif
+} 
+
+
+void checker(const VM::enum_flags flag, const char* message) {
+    if (is_spoofable(flag)) {
+        if (!arg_bitset.test(SPOOFABLE)) {
+            std::cout << spoofable << " Skipped " << message << "\n";
+            return;
         }
+    }
 
 #if (LINUX)
-        if (are_perms_required(flag)) {
-            std::cout << no_perms << " Skipped " << message << "\n";
-            return;
-        }
+    if (are_perms_required(flag)) {
+        std::cout << no_perms << " Skipped " << message << "\n";
+        return;
+    }
 #endif
 
-        if (is_disabled(flag)) {
-            std::cout << disabled << " Skipped " << message << "\n";
-            return;
-        }
+    if (is_disabled(flag)) {
+        std::cout << disabled << " Skipped " << message << "\n";
+        return;
+    }
 
-        if (VM::check(flag)) {
-            std::cout << detected << " Checking " << message << "...\n";
-        } else {
-            std::cout << not_detected << " Checking " << message << "...\n";
-        }
-    };
+    std::cout << 
+        (VM::check(flag) ? detected : not_detected) << 
+        " Checking " << 
+        message << 
+        "...\n";
+}
+
+
+// overload for std::function, this is specific for any.run techniques
+// that are embedded in the CLI because it was removed in the lib as of 2.0
+void checker(const std::function<bool()> func, const char* message) {
+    std::cout << 
+        (func() ? detected : not_detected) << 
+        " Checking " << 
+        message << 
+        "...\n";
+}
+
+
+const bool is_anyrun_directory = anyrun_directory();
+const bool is_anyrun_driver = anyrun_driver();
+const bool is_anyrun = (is_anyrun_directory || is_anyrun_driver);
+
+
+void general() {
+    const std::string tip = (std::string(green) + "TIP: " + std::string(ansi_exit));
 
     bool notes_enabled = false;
 
@@ -512,9 +632,8 @@ void general() {
     checker(VM::SMBIOS_VM_BIT, "SMBIOS VM bit");
     checker(VM::PODMAN_FILE, "Podman file");
     checker(VM::WSL_PROC, "WSL string in /proc");
-    checker(VM::ANYRUN_DRIVER, "ANY.RUN driver");
-    checker(VM::ANYRUN_DIRECTORY, "ANY.RUN directory");
-    checker(VM::GPU_CHIPTYPE, "GPU Chiptype");
+    checker(anyrun_driver, "ANY.RUN driver");
+    checker(anyrun_directory, "ANY.RUN directory");
 
     std::printf("\n");
 
@@ -528,24 +647,38 @@ void general() {
 
     // brand manager
     {
-        std::cout << "VM brand: " << ((vm.brand == "Unknown") || (vm.brand == "Hyper-V artifact (not an actual VM)") ? red : green) << vm.brand << ansi_exit << "\n";
+        std::string brand = vm.brand;
+
+        if (is_anyrun && (brand == "Unknown")) {
+            brand = "ANY.RUN";
+        }
+
+        const bool is_red = (
+            (brand == "Unknown") || 
+            (brand == "Hyper-V artifact (not an actual VM)")
+        );
+
+        std::cout << "VM brand: " << (is_red ? red : green) << brand << ansi_exit << "\n";
     }
 
 
     // type manager
     {
         if (vm.brand.find(" or ") == std::string::npos) {  // meaning "if there's no brand conflicts" 
-            std::cout << "VM type: ";
-
             std::string color = "";
+            std::string &type = vm.type;
 
-            if (vm.type == "Unknown") {
+            if (is_anyrun && (type == "Unknown")) {
+                type = "Sandbox";
+            }
+
+            if (type == "Unknown") {
                 color = red;
             } else {
                 color = green;
             }
 
-            std::cout << color << vm.type << ansi_exit << "\n";
+            std::cout << "VM type: " <<  color << type << ansi_exit << "\n";
         }
     }
 
@@ -635,12 +768,17 @@ int main(int argc, char* argv[]) {
     const std::vector<const char*> args(argv + 1, argv + argc); // easier this way
     const u32 arg_count = argc - 1;
 
+    // this was removed on the lib due to ethical concerns, 
+    // so it's added in the CLI instead
+    VM::add_custom(65, anyrun_driver);
+    VM::add_custom(35, anyrun_directory);
+
     if (arg_count == 0) {
         general();
         std::exit(0);
-    } 
+    }
 
-    static constexpr std::array<std::pair<const char*, arg_enum>, 24> table {{
+    static constexpr std::array<std::pair<const char*, arg_enum>, 25> table {{
         { "-h", HELP },
         { "-v", VERSION },
         { "-a", ALL },
@@ -664,7 +802,8 @@ int main(int argc, char* argv[]) {
         { "--number", NUMBER },
         { "--type", TYPE },
         { "--disable-notes", NOTES },
-        { "--spoofable", SPOOFABLE }
+        { "--spoofable", SPOOFABLE },
+        { "--high-threshold", HIGH_THRESHOLD }
     }};
 
     std::string potential_null_arg = "";
@@ -706,7 +845,6 @@ int main(int argc, char* argv[]) {
         return 0;
     }
 
-
     // critical returners
     const u32 returners = (
         static_cast<u8>(arg_bitset.test(STDOUT)) +
@@ -738,17 +876,40 @@ int main(int argc, char* argv[]) {
         }
 
         if (arg_bitset.test(BRAND)) {
-            std::cout << VM::brand(VM::NO_MEMO, VM::MULTIPLE, settings()) << "\n";
+            std::string brand = VM::brand(VM::NO_MEMO, VM::MULTIPLE, settings());
+            
+            if (is_anyrun && (brand == "Unknown")) {
+                brand = "ANY.RUN";
+            }
+
+            std::cout << brand << "\n";
+
             return 0;
         }
 
         if (arg_bitset.test(TYPE)) {
-            std::cout << VM::type(VM::NO_MEMO, VM::MULTIPLE, settings()) << "\n";
+            std::string type = VM::type(VM::NO_MEMO, VM::MULTIPLE, settings());
+            
+            if (is_anyrun && (type == "Unknown")) {
+                type = "Sandbox";
+            }
+
+            std::cout << type << "\n";
+
             return 0;
         }
 
         if (arg_bitset.test(CONCLUSION)) {
-            std::cout << VM::conclusion(VM::NO_MEMO, VM::MULTIPLE, settings()) << "\n";
+            std::string conclusion = VM::conclusion(VM::NO_MEMO, VM::MULTIPLE, settings());
+            
+            if (is_anyrun) {
+                const std::string original = "Unknown";
+                const std::string new_brand = "ANY.RUN";
+
+                replace(conclusion, original, new_brand);
+            }
+
+            std::cout << conclusion << "\n";
             return 0;
         }
     }

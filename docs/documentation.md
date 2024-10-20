@@ -505,8 +505,8 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::SMBIOS_VM_BIT` | Check for the VM bit in the SMBIOS data | Linux | 50% |  |  |  |  |  |
 | `VM::PODMAN_FILE` | Check for podman file in /run/ | Linux | 15% |  |  |  | Spoofable |  |
 | `VM::WSL_PROC` | Check for WSL or microsoft indications in /proc/ subdirectories | Linux | 30% |  |  |  |  |  |
-| `VM::ANYRUN_DRIVER` | Check for any.run driver presence | Windows | 65% |  |  |  |  |  |
-| `VM::ANYRUN_DIRECTORY` | Check for any.run directory and handle the status code | Windows | 35% |  |  |  |  |  |
+| `VM::ANYRUN_DRIVER` | Check for any.run driver presence | Windows | 65% |  |  |  |  | Removed from the lib, only available in the CLI |
+| `VM::ANYRUN_DIRECTORY` | Check for any.run directory and handle the status code | Windows | 35% |  |  |  |  | Removed from the lib, only available in the CLI |
 | `VM::GPU_CHIPTYPE` | Check for known VM vendors in the GPU chip manufacturer | Windows | 100% |  |  |  |  |  |
 
 
@@ -528,7 +528,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 # Variables
 | Variable | Type | Description |
 |----------|------|-------------|
-| `VM::technique_count` | `std::uint8_t` | This will store the number of VM detection techniques |
+| `VM::technique_count` | `std::uint16_t` | This will store the number of VM detection techniques |
 | `VM::technique_vector` | `std::vector<std::uint8_t>` | This will store all the technique macros as a vector. Useful if you're trying to loop through all the techniques for whatever operation you're performing. |
 
 <br>
@@ -547,8 +547,8 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | -n | --number | Prints the number of VM detection techniques it can performs |
 | -t | --type | Returns the VM type (if a VM was found) |
 |    | --disable-notes | No notes will be provided |
-|    | --spoofable | Allow spoofable techniques to be ran (not included by default)
-
+|    | --spoofable | Allow spoofable techniques to be ran (not included by default) |
+|    | --high-threshold | A higher theshold bar for a VM detection will be applied |
 > [!NOTE]
 > If you want a general result of everything combined above, do not put any arguments. This is the intended way to use the CLI tool.
 >
