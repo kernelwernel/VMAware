@@ -3801,39 +3801,39 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */     [[nodiscard]] static bool loaded_dlls() {
 /* GPL */ #if (!MSVC)
 /* GPL */         return false;
- #else
-         HMODULE hDll;
-
-         std::unordered_map<std::string, const char*> dllMap = {
-             { "sbiedll.dll",   SANDBOXIE },  // Sandboxie
-             { "pstorec.dll",   CWSANDBOX },  // CWSandbox
-             { "vmcheck.dll",   VPC },        // VirtualPC
-             { "cmdvrt32.dll",  COMODO },     // Comodo
-             { "cmdvrt64.dll",  COMODO },     // Comodo
-             { "dbghelp.dll",   NULL_BRAND }, // WindBG
-             { "avghookx.dll",  NULL_BRAND }, // AVG
-             { "avghooka.dll",  NULL_BRAND }, // AVG
-             { "snxhk.dll",     NULL_BRAND }, // Avast
-             { "api_log.dll",   NULL_BRAND }, // iDefense Lab
-             { "dir_watch.dll", NULL_BRAND }, // iDefense Lab
-             { "pstorec.dll",   NULL_BRAND }, // SunBelt CWSandbox
-             { "vmcheck.dll",   NULL_BRAND }, // Virtual PC
-             { "wpespy.dll",    NULL_BRAND }  // WPE Pro
-         };
-
-         for (const auto& key : dllMap) {
-             hDll = GetModuleHandleA(key.first.c_str());
- 
-             if (hDll != NULL) {
-                 auto it = dllMap.find(key.first.c_str());
-                 if (it != dllMap.end()) {
-                     return core::add(it->second); 
-                 }
-             }
-         }
-
-           return false;
- #endif
+/* GPL */ #else
+/* GPL */         HMODULE hDll;
+/* GPL */
+/* GPL */         std::unordered_map<std::string, const char*> dllMap = {
+/* GPL */             { "sbiedll.dll",   SANDBOXIE },  // Sandboxie
+/* GPL */             { "pstorec.dll",   CWSANDBOX },  // CWSandbox
+/* GPL */             { "vmcheck.dll",   VPC },        // VirtualPC
+/* GPL */             { "cmdvrt32.dll",  COMODO },     // Comodo
+/* GPL */             { "cmdvrt64.dll",  COMODO },     // Comodo
+/* GPL */             { "dbghelp.dll",   NULL_BRAND }, // WindBG
+/* GPL */             { "avghookx.dll",  NULL_BRAND }, // AVG
+/* GPL */             { "avghooka.dll",  NULL_BRAND }, // AVG
+/* GPL */             { "snxhk.dll",     NULL_BRAND }, // Avast
+/* GPL */             { "api_log.dll",   NULL_BRAND }, // iDefense Lab
+/* GPL */             { "dir_watch.dll", NULL_BRAND }, // iDefense Lab
+/* GPL */             { "pstorec.dll",   NULL_BRAND }, // SunBelt CWSandbox
+/* GPL */             { "vmcheck.dll",   NULL_BRAND }, // Virtual PC
+/* GPL */             { "wpespy.dll",    NULL_BRAND }  // WPE Pro
+/* GPL */         };
+/* GPL */
+/* GPL */         for (const auto& key : dllMap) {
+/* GPL */             hDll = GetModuleHandleA(key.first.c_str());
+/* GPL */ 
+/* GPL */             if (hDll != NULL) {
+/* GPL */                 auto it = dllMap.find(key.first.c_str());
+/* GPL */                 if (it != dllMap.end()) {
+/* GPL */                     return core::add(it->second); 
+/* GPL */                 }
+/* GPL */             }
+/* GPL */         }
+/* GPL */
+/* GPL */           return false;
+/* GPL */ #endif
 /* GPL */     }
 /* GPL */ 
 /* GPL */ 
