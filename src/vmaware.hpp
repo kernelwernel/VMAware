@@ -560,7 +560,7 @@ private:
     static constexpr const char* PODMAN = "Podman";
     static constexpr const char* WSL = "WSL";
     static constexpr const char* OPENVZ = "OpenVZ";
-    static constexpr const char* NULL_BRAND = "";
+    static constexpr const char* NULL_BRAND = "Unknown";
 
 
 
@@ -3817,7 +3817,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */             { "pstorec.dll",   NULL_BRAND }, // SunBelt CWSandbox
 /* GPL */             { "vmcheck.dll",   NULL_BRAND }, // Virtual PC
 /* GPL */             { "wpespy.dll",    NULL_BRAND }  // WPE Pro
-/* GPL */         }
+/* GPL */         };
 /* GPL */
 /* GPL */         for (const auto& key : dllMap) {
 /* GPL */             hDll = GetModuleHandleA(key);
