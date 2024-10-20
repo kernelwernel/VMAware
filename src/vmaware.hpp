@@ -1561,7 +1561,7 @@ private:
 #endif
 
         // basically std::system but it runs in the background with std::string output
-        [[nodiscard]] static std::unique_ptr<std::string> sys_result(const TCHAR* cmd) try {
+        [[nodiscard]] static std::unique_ptr<std::string> sys_result(const TCHAR* cmd) {
 #if (CPP < 14)
             std::unique_ptr<std::string> tmp(nullptr);
             UNUSED(cmd);
@@ -1646,11 +1646,6 @@ private:
             return util::make_unique<std::string>(result);
 #endif
 #endif
-        }
-        catch (...) {
-            debug("sys_result: ", "caught error, returning nullptr");
-            std::unique_ptr<std::string> tmp(nullptr);
-            return tmp;
         }
 
         // get disk size in GB
@@ -2610,7 +2605,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check CPUID output of manufacturer ID for known VMs/hypervisors at leaf 0
      * @category x86
      */
-    [[nodiscard]] static bool vmid() try {
+    [[nodiscard]] static bool vmid() {
 #if (!x86)
         return false;
 #else
@@ -2621,17 +2616,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return cpu::vmid_template(0, "VMID: ");
 #endif
     }
-    catch (...) {
-        debug("VMID: caught error, returned false");
-        return false;
-    }
 
 
     /**
      * @brief Check if CPU brand model contains any VM-specific string snippets
      * @category x86
      */
-    [[nodiscard]] static bool cpu_brand() try {
+    [[nodiscard]] static bool cpu_brand() {
 #if (!x86)
         return false;
 #else
@@ -2675,17 +2666,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return (match_count >= 1);
 #endif
     }
-    catch (...) {
-        debug("CPU_BRANDS: caught error, returned false");
-        return false;
-    }
 
 
     /**
      * @brief Check if hypervisor feature bit in CPUID eax bit 31 is enabled (always false for physical CPUs)
      * @category x86
      */
-    [[nodiscard]] static bool hypervisor_bit() try {
+    [[nodiscard]] static bool hypervisor_bit() {
 #if (!x86)
         return false;
 #else
@@ -2703,17 +2690,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return (ecx & (1 << 31));
 #endif
     }
-    catch (...) {
-        debug("HYPERVISOR_BIT: caught error, returned false");
-        return false;
-    }
 
 
     /**
      * @brief Check for hypervisor brand string length (would be around 2 characters in a host machine)
      * @category x86
      */
-    [[nodiscard]] static bool hypervisor_str() try {
+    [[nodiscard]] static bool hypervisor_str() {
 #if (!x86)
         return false;
 #else
@@ -2733,10 +2716,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return (std::strlen(out + 4) >= 4);
 #endif
     }
-    catch (...) {
-        debug("HYPERVISOR_STR: caught error, returned false");
-        return false;
-    }
 
 
     /**
@@ -2748,7 +2727,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     // this is added so no sanitizers can potentially cause unwanted delays while measuring rdtsc in a debug compilation
     __attribute__((no_sanitize("address", "leak", "thread", "undefined")))
 #endif
-        static bool rdtsc_check() try {
+        static bool rdtsc_check() {
 #if (!x86)
         return false;
 #else
@@ -2801,17 +2780,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
 #endif
     }
-    catch (...) {
-        debug("RDTSC: caught error, returned false");
-        return false;
-    }
 
 
     /**
      * @brief Check if there are only 1 or 2 threads, which is a common pattern in VMs with default settings (nowadays physical CPUs should have at least 4 threads for modern CPUs
      * @category x86 (ARM might have very low thread counts, which si why it should be only for x86)
      */
-    [[nodiscard]] static bool thread_count() try {
+    [[nodiscard]] static bool thread_count() {
 #if (x86)
         debug("THREADCOUNT: ", "threads = ", std::thread::hardware_concurrency());
 
@@ -2826,17 +2801,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
-    catch (...) {
-        debug("THREADCOUNT: caught error, returned false");
-        return false;
-    }
 
 
     /**
      * @brief Check if mac address starts with certain VM designated values
      * @category All systems (I think)
      */
-    [[nodiscard]] static bool mac_address_check() try {
+    [[nodiscard]] static bool mac_address_check() {
         // C-style array on purpose
         u8 mac[6] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 
@@ -2961,26 +2932,18 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         return false;
     }
-    catch (...) {
-        debug("MAC: caught error, returned false");
-        return false;
-    }
 
 
     /**
      * @brief Check if thermal directory in linux is present, might not be present in VMs
      * @category Linux
      */
-    [[nodiscard]] static bool temperature() try {
+    [[nodiscard]] static bool temperature() {
 #if (!LINUX)
         return false;
 #else
         return (!util::exists("/sys/class/thermal/thermal_zone0/"));
 #endif
-    }
-    catch (...) {
-        debug("TEMPERATURE: caught error, returned false");
-        return false;
     }
 
 
@@ -2988,7 +2951,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check result from systemd-detect-virt tool
      * @category Linux
      */
-    [[nodiscard]] static bool systemd_virt() try {
+    [[nodiscard]] static bool systemd_virt() {
 #if (!LINUX)
         return false;
 #else
@@ -3009,17 +2972,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return (*result != "none");
 #endif
     }
-    catch (...) {
-        debug("SYSTEMD: caught error, returned false");
-        return false;
-    }
 
 
     /**
      * @brief Check if the chassis vendor is a VM vendor
      * @category Linux
      */
-    [[nodiscard]] static bool chassis_vendor() try {
+    [[nodiscard]] static bool chassis_vendor() {
 #if (!LINUX)
         return false;
 #else
@@ -3041,17 +3000,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
-    catch (...) {
-        debug("CVENDOR: caught error, returned false");
-        return false;
-    }
 
 
     /**
      * @brief Check if the chassis type is valid (it's very often invalid in VMs)
      * @category Linux
      */
-    [[nodiscard]] static bool chassis_type() try {
+    [[nodiscard]] static bool chassis_type() {
 #if (!LINUX)
         return false;
 #else
@@ -3066,17 +3021,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
-    catch (...) {
-        debug("CTYPE: caught error, returned false");
-        return false;
-    }
 
 
     /**
      * @brief Check if /.dockerenv or /.dockerinit file is present
      * @category Linux
      */
-    [[nodiscard]] static bool dockerenv() try {
+    [[nodiscard]] static bool dockerenv() {
 #if (!LINUX)
         return false;
 #else
@@ -3087,17 +3038,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
-    catch (...) {
-        debug("DOCKERENV: caught error, returned false");
-        return false;
-    }
 
 
     /**
      * @brief Check if dmidecode output matches a VM brand
      * @category Linux
      */
-    [[nodiscard]] static bool dmidecode() try {
+    [[nodiscard]] static bool dmidecode() {
 #if (!LINUX)
         return false;
 #else
@@ -3131,17 +3078,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
-    catch (...) {
-        debug("DMIDECODE: caught error, returned false");
-        return false;
-    }
 
 
     /**
      * @brief Check if dmesg output matches a VM brand
      * @category Linux
      */
-    [[nodiscard]] static bool dmesg() try {
+    [[nodiscard]] static bool dmesg() {
 #if (!LINUX || CPP <= 11)
         return false;
 #else
@@ -3171,26 +3114,18 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
-    catch (...) {
-        debug("DMESG: caught error, returned false");
-        return false;
-    }
 
 
     /**
      * @brief Check if /sys/class/hwmon/ directory is present. If not, likely a VM
      * @category Linux
      */
-    [[nodiscard]] static bool hwmon() try {
+    [[nodiscard]] static bool hwmon() {
 #if (!LINUX)
         return false;
 #else
         return (!util::exists("/sys/class/hwmon/"));
 #endif
-    }
-    catch (...) {
-        debug("HWMON: caught error, returned false");
-        return false;
     }
 
 
@@ -3200,7 +3135,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @link https://www.matteomalvica.com/blog/2018/12/05/detecting-vmware-on-64-bit-systems/
      * @category x86
      */
-    [[nodiscard]] static bool sidt5() try {
+    [[nodiscard]] static bool sidt5() {
 #if (!x86 || !LINUX || GCC)
         return false;
 #else
@@ -3224,10 +3159,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return (values[5] == 0x00);
 #endif
     }
-    catch (...) {
-        debug("SIDT5: caught error, returned false");
-        return false;
-    }
 
 
     /**
@@ -3236,7 +3167,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @note Disabled by default due to performance reasons
      * @category Windows
      */
-    [[nodiscard]] static bool cursor_check() try {
+    [[nodiscard]] static bool cursor_check() {
 #if (!MSVC)
         return false;
 #else
@@ -3257,17 +3188,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return ((pos1.x == pos2.x) && (pos1.y == pos2.y));
 #endif
     }
-    catch (...) {
-        debug("CURSOR: caught error, returned false");
-        return false;
-    }
 
 
     /**
      * @brief Find for registries of VMware tools
      * @category Windows
      */
-    [[nodiscard]] static bool vmware_registry() try {
+    [[nodiscard]] static bool vmware_registry() {
 #if (!MSVC)
         return false;
 #else
@@ -3284,17 +3211,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return result;
 #endif
     }
-    catch (...) {
-        debug("VMWARE_REG: caught error, returned false");
-        return false;
-    }
 
 
     /**
      * @brief Check for VBox RdrDN
      * @category Windows
      */
-    [[nodiscard]] static bool vbox_registry() try {
+    [[nodiscard]] static bool vbox_registry() {
 #if (!MSVC)
         return false;
 #else
@@ -3308,17 +3231,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
-    catch (...) {
-        debug("VBOX_REG: caught error, returned false");
-        return false;
-    }
 
 
     /**
      * @brief checks for default usernames, often a sign of a VM
      * @category Windows
      */
-    [[nodiscard]] static bool user_check() try {
+    [[nodiscard]] static bool user_check() {
 #if (!MSVC)
         return false;
 #else
@@ -3335,16 +3254,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
-    catch (...) {
-        debug("USER: caught error, returned false");
-        return false;
-    }
+
 
     /**
      * @brief Check for VM-specific DLLs
      * @category Windows
      */
-    [[nodiscard]] static bool DLL_check() try {
+    [[nodiscard]] static bool DLL_check() {
 #if (!MSVC)
         return false;
 #else
@@ -3382,17 +3298,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
-    catch (...) {
-        debug("DLL: caught error, returned false");
-        return false;
-    }
 
 
     /**
      * @brief Check for VM-specific registry values
      * @category Windows
      */
-    [[nodiscard]] static bool registry_key() try {
+    [[nodiscard]] static bool registry_key() {
 #if (!MSVC)
         return false;
 #else
@@ -3498,17 +3410,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return (score >= 1);
 #endif
     }
-    catch (...) {
-        debug("REGISTRY: caught error, returned false");
-        return false;
-    }
 
 
     /**
      * @brief Check if CWSandbox-specific file exists
      * @category Windows
      */
-    [[nodiscard]] static bool cwsandbox_check() try {
+    [[nodiscard]] static bool cwsandbox_check() {
 #if (!MSVC)
         return false;
 #else
@@ -3519,17 +3427,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
-    catch (...) {
-        debug("CWSANDBOX_VM: caught error, returned false");
-        return false;
-    }
 
 
     /**
      * @brief Find for VMware and VBox specific files
      * @category Windows
      */
-    [[nodiscard]] static bool vm_files() try {
+    [[nodiscard]] static bool vm_files() {
 #if (!MSVC)
         return false;
 #else
@@ -3606,10 +3510,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
-    catch (...) {
-        debug("VM_FILES: caught error, returned false");
-        return false;
-    }
 
 
     /**
@@ -3617,7 +3517,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @author MacRansom ransomware
      * @category MacOS
      */
-    [[nodiscard]] static bool hwmodel() try {
+    [[nodiscard]] static bool hwmodel() {
 #if (!APPLE)
         return false;
 #else
@@ -3646,17 +3546,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return true;
 #endif
     }
-    catch (...) {
-        debug("HWMODEL: caught error, returned false");
-        return false;
-    }
 
 
     /**
      * @brief Check if disk size is under or equal to 50GB
      * @category Linux (for now)
      */
-    [[nodiscard]] static bool disk_size() try {
+    [[nodiscard]] static bool disk_size() {
 #if (!LINUX)
         return false;
 #else
@@ -3666,10 +3562,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         return (size <= 60); // in GB
 #endif
-    }
-    catch (...) {
-        debug("DISK_SIZE: caught error, returned false");
-        return false;
     }
 
 
@@ -3686,7 +3578,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @todo: check if it still applies to host systems with larger RAM and disk size than what I have
      * @category Linux, Windows
      */
-    [[nodiscard]] static bool vbox_default_specs() try {
+    [[nodiscard]] static bool vbox_default_specs() {
 #if (APPLE)
         return false;
 #else
@@ -3774,17 +3666,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
         return false;
     }
-    catch (...) {
-        debug("VBOX_DEFAULT: caught error, returned false");
-        return false;
-    }
 
 
     /**
      * @brief Check for VirtualBox network provider string
      * @category Windows
      */
-    [[nodiscard]] static bool vbox_network_share() try {
+    [[nodiscard]] static bool vbox_network_share() {
 #if (!MSVC)
         return false;
 #else
@@ -3803,17 +3691,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
-    catch (...) {
-        debug("VBOX_NETWORK: caught error, returned false");
-        return false;
-    }
 
 
 /* GPL */     // @brief Check if the computer name (not username to be clear) is VM-specific
 /* GPL */     // @category Windows
 /* GPL */     // @author InviZzzible project
 /* GPL */     // @copyright GPL-3.0
-/* GPL */     [[nodiscard]] static bool computer_name_match() try {
+/* GPL */     [[nodiscard]] static bool computer_name_match() {
 /* GPL */ #if (!MSVC)
 /* GPL */         return false;
 /* GPL */ #else
@@ -3840,10 +3724,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */         return false;
 /* GPL */ #endif
 /* GPL */     }
-/* GPL */     catch (...) {
-/* GPL */         debug("COMPUTER_NAME: caught error, returned false");
-/* GPL */         return false;
-/* GPL */     }
 /* GPL */ 
 /* GPL */ 
 /* GPL */     // @brief Check wine_get_unix_file_name file for Wine
@@ -3851,7 +3731,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */     // @link https://github.com/a0rtega/pafish/blob/master/pafish/wine.c
 /* GPL */     // @category Windows
 /* GPL */     // @copyright GPL-3.0
-/* GPL */     [[nodiscard]] static bool wine() try {
+/* GPL */     [[nodiscard]] static bool wine() {
 /* GPL */ #if (!MSVC)
 /* GPL */         return false;
 /* GPL */ #else
@@ -3867,17 +3747,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */         return false;
 /* GPL */ #endif
 /* GPL */     }
-/* GPL */     catch (...) {
-/* GPL */         debug("WINE_CHECK: caught error, returned false");
-/* GPL */         return false;
-/* GPL */     }
 /* GPL */ 
 /* GPL */ 
 /* GPL */     // @brief Check if hostname is specific
 /* GPL */     // @author InviZzzible project
 /* GPL */     // @category Windows
 /* GPL */     // @copyright GPL-3.0
-/* GPL */     [[nodiscard]] static bool hostname_match() try {
+/* GPL */     [[nodiscard]] static bool hostname_match() {
 /* GPL */ #if (!MSVC)
 /* GPL */         return false;
 /* GPL */ #else
@@ -3890,17 +3766,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */         return (!lstrcmpiA((LPCSTR)dns_host_name.data(), "SystemIT"));
 /* GPL */ #endif
 /* GPL */     }
-/* GPL */     catch (...) {
-/* GPL */         debug("HOSTNAME: caught error, returned false");
-/* GPL */         return false;
-/* GPL */     }
 /* GPL */ 
 /* GPL */ 
 /* GPL */     // @brief Check if memory space is far too low for a physical machine
 /* GPL */     // @author Al-Khaser project
 /* GPL */     // @category x86?
 /* GPL */     // @copyright GPL-3.0
-/* GPL */     [[nodiscard]] static bool low_memory_space() try {
+/* GPL */     [[nodiscard]] static bool low_memory_space() {
 /* GPL */         constexpr u64 min_ram_1gb = (1024LL * (1024LL * (1024LL * 1LL)));
 /* GPL */         const u64 ram = util::get_memory_space();
 /* GPL */ 
@@ -3909,17 +3781,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */ 
 /* GPL */         return (ram < min_ram_1gb);
 /* GPL */     }
-/* GPL */     catch (...) {
-/* GPL */         debug("MEMORY: caught error, returned false");
-/* GPL */         return false;
-/* GPL */     }
 /* GPL */ 
 /* GPL */ 
 /* GPL */     // @brief Check for the window class for VirtualBox
 /* GPL */     // @category Windows
 /* GPL */     // @author Al-Khaser Project
 /* GPL */     // @copyright GPL-3.0
-/* GPL */     [[nodiscard]] static bool vbox_window_class() try {
+/* GPL */     [[nodiscard]] static bool vbox_window_class() {
 /* GPL */ #if (!MSVC)
 /* GPL */         return false;
 /* GPL */ #else
@@ -3933,10 +3801,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */         return false;
 /* GPL */ #endif
 /* GPL */     }
-/* GPL */     catch (...) {
-/* GPL */         debug("VBOX_WINDOW_CLASS: caught error, returned false");
-/* GPL */         return false;
-/* GPL */     }
 /* GPL */ 
 /* GPL */ 
 /* GPL */     // @brief Check for loaded DLLs in the process
@@ -3944,7 +3808,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */     // @author LordNoteworthy
 /* GPL */     // @note modified code from Al-Khaser project
 /* GPL */     // @link https://github.com/LordNoteworthy/al-khaser/blob/c68fbd7ba0ba46315e819b490a2c782b80262fcd/al-khaser/Anti%20VM/Generic.cpp
-/* GPL */     [[nodiscard]] static bool loaded_dlls() try {
+/* GPL */     [[nodiscard]] static bool loaded_dlls() {
 /* GPL */ #if (!MSVC)
 /* GPL */         return false;
 /* GPL */ #else
@@ -3979,10 +3843,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */           return false;
 /* GPL */ #endif
 /* GPL */     }
-/* GPL */     catch (...) {
-/* GPL */         debug("LOADED_DLLS:", "caught error, returned false");
-/* GPL */         return false;
-/* GPL */     }
 /* GPL */ 
 /* GPL */ 
 /* GPL */     // @brief Check for KVM-specific registry strings
@@ -3990,7 +3850,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */     // @note idea is from Al-Khaser, slightly modified code
 /* GPL */     // @author LordNoteWorthy
 /* GPL */     // @link https://github.com/LordNoteworthy/al-khaser/blob/0f31a3866bafdfa703d2ed1ee1a242ab31bf5ef0/al-khaser/AntiVM/KVM.cpp
-/* GPL */     [[nodiscard]] static bool kvm_registry() try {
+/* GPL */     [[nodiscard]] static bool kvm_registry() {
 /* GPL */ #if (!MSVC)
 /* GPL */         return false;
 /* GPL */ #else
@@ -4024,10 +3884,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */         return false;
 /* GPL */ #endif
 /* GPL */     }
-/* GPL */     catch (...) {
-/* GPL */         debug("KVM_REG: ", "caught error, returned false");
-/* GPL */         return false;
-/* GPL */     }
 /* GPL */ 
 /* GPL */ 
 /* GPL */     // @brief Check for KVM-specific .sys files in system driver directory
@@ -4035,7 +3891,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */     // @note idea is from Al-Khaser, slightly modified code
 /* GPL */     // @author LordNoteWorthy
 /* GPL */     // @link https://github.com/LordNoteworthy/al-khaser/blob/0f31a3866bafdfa703d2ed1ee1a242ab31bf5ef0/al-khaser/AntiVM/KVM.cpp
-/* GPL */     [[nodiscard]] static bool kvm_drivers() try {
+/* GPL */     [[nodiscard]] static bool kvm_drivers() {
 /* GPL */ #if (!MSVC)
 /* GPL */         return false;
 /* GPL */ #else
@@ -4081,10 +3937,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */         return is_vm;
 /* GPL */ #endif
 /* GPL */     }
-/* GPL */     catch (...) {
-/* GPL */         debug("KVM_DRIVERS: ", "caught error, returned false");
-/* GPL */         return false;
-/* GPL */     }
 /* GPL */ 
 /* GPL */ 
 /* GPL */     // @brief Check for KVM directory "Virtio-Win"
@@ -4092,7 +3944,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */     // @author LordNoteWorthy
 /* GPL */     // @note from Al-Khaser project
 /* GPL */     // @link https://github.com/LordNoteworthy/al-khaser/blob/0f31a3866bafdfa703d2ed1ee1a242ab31bf5ef0/al-khaser/AntiVM/KVM.cpp
-/* GPL */     [[nodiscard]] static bool kvm_directories() try {
+/* GPL */     [[nodiscard]] static bool kvm_directories() {
 /* GPL */ #if (!MSVC)
 /* GPL */         return false;
 /* GPL */ #else
@@ -4110,10 +3962,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */         return util::exists(szPath);
 /* GPL */ #endif
 /* GPL */     }
-/* GPL */     catch (...) {
-/* GPL */         debug("KVM_DIRS: ", "caught error, returned false");
-/* GPL */         return false;
-/* GPL */     }
 /* GPL */ 
 /* GPL */     
 /* GPL */     // @brief Check if audio device is present
@@ -4121,7 +3969,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */     // @author CheckPointSW (InviZzzible project)
 /* GPL */     // @link https://github.com/CheckPointSW/InviZzzible/blob/master/SandboxEvasion/helper.cpp
 /* GPL */     // @copyright GPL-3.0
-/* GPL */     [[nodiscard]] static bool check_audio() try {
+/* GPL */     [[nodiscard]] static bool check_audio() {
 /* GPL */ #if (!MSVC)
 /* GPL */         return false;
 /* GPL */ #else
@@ -4192,10 +4040,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */         return false;
 /* GPL */ #endif
 /* GPL */     }
-/* GPL */     catch (...) {
-/* GPL */         debug("AUDIO: ", "caught error, returned false");
-/* GPL */         return false;
-/* GPL */     }
 /* GPL */ 
 /* GPL */ 
 /* GPL */     // @brief Check for QEMU-specific blacklisted directories
@@ -4204,7 +4048,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */     // @category Windows
 /* GPL */     // @note from al-khaser project
 /* GPL */     // @copyright GPL-3.0
-/* GPL */     [[nodiscard]] static bool qemu_dir() try {
+/* GPL */     [[nodiscard]] static bool qemu_dir() {
 /* GPL */ #if (!MSVC)
 /* GPL */         return false;
 /* GPL */ #else
@@ -4234,10 +4078,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */         return false;
 /* GPL */ #endif
 /* GPL */     }
-/* GPL */     catch (...) {
-/* GPL */         debug("QEMU_DIR: ", "caught error, returned false");
-/* GPL */         return false;
-/* GPL */     }
 /* GPL */ 
 /* GPL */ 
 /* GPL */     // @brief Check for the presence of a mouse device
@@ -4246,7 +4086,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */     // @link https://github.com/a0rtega/pafish/blob/master/pafish/rtt.c
 /* GPL */     // @note from pafish project
 /* GPL */     // @copyright GPL
-/* GPL */     [[nodiscard]] static bool mouse_device() try {
+/* GPL */     [[nodiscard]] static bool mouse_device() {
 /* GPL */ #if (!MSVC)
 /* GPL */         return false;
 /* GPL */ #else
@@ -4255,17 +4095,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */         return (res == 0);
 /* GPL */ #endif
 /* GPL */     }
-/* GPL */     catch (...) {
-/* GPL */         debug("MOUSE_DEVICE: caught error, returned false");
-/* GPL */         return false;
-/* GPL */     }
 
 
     /**
      * @brief Check for any VM processes that are active
      * @category Windows
      */
-    [[nodiscard]] static bool vm_processes() try {
+    [[nodiscard]] static bool vm_processes() {
 #if (!MSVC)
         return false;
 #else
@@ -4337,17 +4173,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
-    catch (...) {
-        debug("VM_PROCESSES: caught error, returned false");
-        return false;
-    }
 
 
     /**
      * @brief Check for default VM username and hostname for linux
      * @category Linux
      */
-    [[nodiscard]] static bool linux_user_host() try {
+    [[nodiscard]] static bool linux_user_host() {
 #if (!LINUX)
         return false;
 #else
@@ -4367,17 +4199,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             );
 #endif
     }
-    catch (...) {
-        debug("LINUX_USER_HOST: caught error, returned false");
-        return false;
-    }
 
 
     /**
      * @brief Check for Gamarue ransomware technique which compares VM-specific Window product IDs
      * @category Windows
      */
-    [[nodiscard]] static bool gamarue() try {
+    [[nodiscard]] static bool gamarue() {
 #if (!MSVC) 
         return false;
 #else
@@ -4435,17 +4263,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
-    catch (...) {
-        debug("GAMARUE: caught error, returned false");
-        return false;
-    }
 
 
     /**
      * @brief Check if the CPU manufacturer ID matches that of a VM brand with leaf 0x40000000
      * @category x86
      */
-    [[nodiscard]] static bool vmid_0x4() try {
+    [[nodiscard]] static bool vmid_0x4() {
 #if (!x86)
         return false;
 #else
@@ -4456,10 +4280,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return cpu::vmid_template(cpu::leaf::hypervisor, "VMID_0x4: ");
 #endif
     }
-    catch (...) {
-        debug("VMID_0x4: caught error, returned false");
-        return false;
-    }
 
 
     /**
@@ -4467,7 +4287,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @link https://stackoverflow.com/questions/1370586/detect-if-windows-is-running-from-within-parallels
      * @category Windows
      */
-    [[nodiscard]] static bool parallels() try {
+    [[nodiscard]] static bool parallels() {
 #if (!MSVC)
         return false;
 #else
@@ -4505,10 +4325,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
-    catch (...) {
-        debug("PARALLELS_VM:", "caught error, returned false");
-        return false;
-    }
 
 
     /**
@@ -4520,7 +4336,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     // this is added so no sanitizers can potentially cause unwanted delays while measuring rdtsc in a debug compilation
     __attribute__((no_sanitize("address", "leak", "thread", "undefined")))
 #endif
-    static bool rdtsc_vmexit() try {
+    static bool rdtsc_vmexit() {
 #if (!x86)
         return false;
 #else
@@ -4541,17 +4357,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return (avg >= 1500 || avg == 0);
 #endif
     }
-    catch (...) {
-        debug("RDTSC_VMEXIT:", "caught error, returned false");
-        return false;
-    }
 
 
     /**
      * @brief Match for QEMU CPU brands with "QEMU Virtual CPU" string
      * @category x86
      */
-    [[nodiscard]] static bool cpu_brand_qemu() try {
+    [[nodiscard]] static bool cpu_brand_qemu() {
 #if (!x86)
         return false;
 #else
@@ -4570,10 +4382,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
-    catch (...) {
-        debug("QEMU_BRAND: caught error, returned false");
-        return false;
-    }
 
 
     /**
@@ -4581,7 +4389,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category x86
      * @note Discovered by Peter Ferrie, Senior Principal Researcher, Symantec Advanced Threat Research peter_ferrie@symantec.com
      */
-    [[nodiscard]] static bool bochs_cpu() try {
+    [[nodiscard]] static bool bochs_cpu() {
 #if (!x86)
         return false;z
 #else
@@ -4665,17 +4473,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
-    catch (...) {
-        debug("BOCHS_CPU:", "caught error, returned false");
-        return false;
-    }
 
 
     /**
      * @brief Check through the motherboard and match for VirtualPC-specific string
      * @category Windows
      */
-    [[nodiscard]] static bool vpc_board() try {
+    [[nodiscard]] static bool vpc_board() {
 #if (!MSVC)
         return false;
 #else
@@ -4688,10 +4492,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
-    catch (...) {
-        debug("VPC_BOARD:", "caught error, returned false");
-        return false;
-    }
 
 
     /**
@@ -4700,7 +4500,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @note idea is from nettitude
      * @link https://labs.nettitude.com/blog/vm-detection-tricks-part-3-hyper-v-raw-network-protocol/
      */
-    [[nodiscard]] static bool hyperv_wmi() try {
+    [[nodiscard]] static bool hyperv_wmi() {
 #if (!MSVC)
         return false;
 #else
@@ -4723,10 +4523,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
-    catch (...) {
-        debug("HYPERV_WMI: caught error, returned false");
-        return false;
-    }
 
 
     /**
@@ -4735,7 +4531,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @note idea is from nettitude
      * @link https://labs.nettitude.com/blog/vm-detection-tricks-part-3-hyper-v-raw-network-protocol/
      */
-    [[nodiscard]] static bool hyperv_registry() try {
+    [[nodiscard]] static bool hyperv_registry() {
 #if (!MSVC)
         return false;
 #else
@@ -4784,17 +4580,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return is_vm;
 #endif 
     }
-    catch (...) {
-        debug("HYPERV_REGISTRY: ", "caught error, returned false");
-        return false;
-    }
 
 
     /**
      * @brief Check if the BIOS serial is valid (null = VM)
      * @category Windows
      */
-    [[nodiscard]] static bool bios_serial() try {
+    [[nodiscard]] static bool bios_serial() {
 #if (!MSVC)
         return false;
 #else
@@ -4824,10 +4616,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
-    catch (...) {
-        debug("BIOS_SERIAL: caught error, returned false");
-        return false;
-    }
 
 
     /**
@@ -4837,7 +4625,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @author @waleedassar
      * @link https://pastebin.com/xhFABpPL
      */
-    [[nodiscard]] static bool vbox_shared_folders() try {
+    [[nodiscard]] static bool vbox_shared_folders() {
 #if (!MSVC)
         return false;
 #else
@@ -4871,10 +4659,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 #endif
     }
-    catch (...) {
-        debug("VBOX_FOLDERS: ", "caught error, returned false");
-        return false;
-    }
 
 
     /**
@@ -4884,7 +4668,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @author @waleedassar
      * @link https://pastebin.com/fPY4MiYq
      */
-    [[nodiscard]] static bool mssmbios() try {
+    [[nodiscard]] static bool mssmbios() {
 #if (!MSVC)
         return false;
 #else
@@ -4922,10 +4706,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
-    catch (...) {
-        debug("VBOX_MSSMBIOS: ", "caught error, returned false");
-        return false;
-    }
 
 
     /**
@@ -4933,7 +4713,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category MacOS
      * @link https://evasions.checkpoint.com/techniques/macos.html
      */
-    [[nodiscard]] static bool hw_memsize() try {
+    [[nodiscard]] static bool hw_memsize() {
 #if (!APPLE)
         return false;
 #else
@@ -4962,10 +4742,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return (ram_u64 <= limit);
 #endif
     }
-    catch (...) {
-        debug("MAC_MEMSIZE: ", "caught error, returned false");
-        return false;
-    }
 
 
     /**
@@ -4973,7 +4749,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category MacOS
      * @link https://evasions.checkpoint.com/techniques/macos.html
      */
-    [[nodiscard]] static bool io_kit() try {
+    [[nodiscard]] static bool io_kit() {
 #if (!APPLE)
         return false;
 #else
@@ -5051,10 +4827,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif            
     }
-    catch (...) {
-        debug("MAC_IOKIT: ", "caught error, returned false");
-        return false;
-    }
 
 
     /**
@@ -5062,7 +4834,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category MacOS
      * @link https://evasions.checkpoint.com/techniques/macos.html
      */
-    [[nodiscard]] static bool ioreg_grep() try {
+    [[nodiscard]] static bool ioreg_grep() {
 #if (!APPLE)
         return false;
 #else
@@ -5115,10 +4887,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         );
 #endif
     }
-    catch (...) {
-        debug("IOREG_GREP: ", "caught error, returned false");
-        return false;
-    }
 
 
     /**
@@ -5126,7 +4894,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category MacOS
      * @link https://evasions.checkpoint.com/techniques/macos.html
      */
-    [[nodiscard]] static bool mac_sip() try {
+    [[nodiscard]] static bool mac_sip() {
 #if (!APPLE)
         return false;
 #else
@@ -5138,17 +4906,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return (util::find(tmp, "disabled") || (!util::find(tmp, "enabled")));
 #endif
     }
-    catch (...) {
-        debug("MAC_SIP: ", "caught error, returned false");
-        return false;
-    }
 
 
     /**
      * @brief Check HKLM registries for specific VM strings
      * @category Windows
      */
-    [[nodiscard]] static bool hklm_registries() try {
+    [[nodiscard]] static bool hklm_registries() {
 #if (!MSVC)
         return false;
 #else
@@ -5244,17 +5008,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return (count > 0);
 #endif
     }
-    catch (...) {
-        debug("KHLM_REGISTRIES: ", "caught error, returned false");
-        return false;
-    }
 
 
     /**
      * @brief Check for "qemu-ga" process
      * @category Linux
      */
-    [[nodiscard]] static bool qemu_ga() try {
+    [[nodiscard]] static bool qemu_ga() {
 #if (!LINUX)
         return false;
 #else
@@ -5266,10 +5026,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         return false;
 #endif
-    }
-    catch (...) {
-        debug("QEMU_GA: ", "caught error, returned false");
-        return false;
     }
 
 
@@ -5302,7 +5058,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for QEMU processes
      * @category Windows
      */
-    [[nodiscard]] static bool qemu_processes() try {
+    [[nodiscard]] static bool qemu_processes() {
 #if (!MSVC)
         return false;
 #else
@@ -5321,17 +5077,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
-    catch (...) {
-        debug("QEMU_PROC: ", "caught error, returned false");
-        return false;
-    }
 
 
     /**
      * @brief Check for VPC processes
      * @category Windows
      */
-    [[nodiscard]] static bool vpc_proc() try {
+    [[nodiscard]] static bool vpc_proc() {
 #if (!MSVC)
         return false;
 #else
@@ -5348,10 +5100,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         return false;
 #endif
-    }
-    catch (...) {
-        debug("VPC_PROC: ", "caught error, returned false");
-        return false;
     }
 
 
@@ -5413,7 +5161,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for sidt instruction method
      * @category Linux, Windows, x86
      */
-    [[nodiscard]] static bool sidt() try {
+    [[nodiscard]] static bool sidt() {
         // gcc/g++ causes a stack smashing error at runtime for some reason
         if (GCC) {
             return false;
@@ -5476,17 +5224,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         return false;
     }
-    catch (...) {
-        debug("SIDT: ", "caught error, returned false");
-        return false;
-    }
 
 
     /**
      * @brief Check for sgdt instruction method
      * @category Windows, x86
      */
-    [[nodiscard]] static bool sgdt() try {
+    [[nodiscard]] static bool sgdt() {
 #if (x86_32 && MSVC)
         u8 gdtr[6]{};
         u32 gdt = 0;
@@ -5499,10 +5243,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
-    catch (...) {
-        debug("SGDT: ", "caught error, returned false");
-        return false;
-    }
 
 
     /**
@@ -5510,7 +5250,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Windows, x86
      * @note code documentation paper in https://www.aldeid.com/wiki/X86-assembly/Instructions/sldt
      */
-    [[nodiscard]] static bool sldt() try {
+    [[nodiscard]] static bool sldt() {
 #if (x86_32 && MSVC)
         unsigned char ldtr[5] = "\xef\xbe\xad\xde";
         unsigned long ldt = 0;
@@ -5526,10 +5266,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
-    catch (...) {
-        debug("SLDT: ", "caught error, returned false");
-        return false;
-    }
 
 
     /**
@@ -5539,7 +5275,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @author Val Smith (mvalsmith@metasploit.com)
      * @note code documentation paper in /papers/www.offensivecomputing.net_vm.pdf
      */
-    [[nodiscard]] static bool offsec_sidt() try {
+    [[nodiscard]] static bool offsec_sidt() {
 #if (!MSVC || !x86)
         return false;
 #elif (x86_32)
@@ -5551,10 +5287,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
-    catch (...) {
-        debug("OFFSEC_SIDT: ", "caught error, returned false");
-        return false;
-    }
 
 
     /**
@@ -5564,7 +5296,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @author Val Smith (mvalsmith@metasploit.com)
      * @note code documentation paper in /papers/www.offensivecomputing.net_vm.pdf
      */
-    [[nodiscard]] static bool offsec_sgdt() try {
+    [[nodiscard]] static bool offsec_sgdt() {
 #if (!MSVC || !x86 || GCC)
         return false;
 #elif (x86_32)
@@ -5576,10 +5308,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
-    catch (...) {
-        debug("OFFSEC_SGDT: ", "caught error, returned false");
-        return false;
-    }
 
 
     /**
@@ -5589,7 +5317,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @author Val Smith (mvalsmith@metasploit.com)
      * @note code documentation paper in /papers/www.offensivecomputing.net_vm.pdf
      */
-    [[nodiscard]] static bool offsec_sldt() try {
+    [[nodiscard]] static bool offsec_sldt() {
 #if (!MSVC || !x86)
         return false;
 #elif (x86_32)
@@ -5601,17 +5329,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
-    catch (...) {
-        debug("OFFSEC_SLDT: ", "caught error, returned false");
-        return false;
-    }
 
 
     /**
      * @brief Check for Hyper-V specific string in motherboard
      * @category Windows
      */
-    [[nodiscard]] static bool hyperv_board() try {
+    [[nodiscard]] static bool hyperv_board() {
 #if (!MSVC)
         return false;
 #else
@@ -5634,17 +5358,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false; // No match found
 #endif
     }
-    catch (...) {
-        debug("HYPERV_BOARD: caught error, returned false");
-        return false;
-    }
 
 
     /**
      * @brief Check for VPC and Parallels files
      * @category Windows
      */
-    [[nodiscard]] static bool vm_files_extra() try {
+    [[nodiscard]] static bool vm_files_extra() {
 #if (!MSVC)
         return false;
 #else
@@ -5669,10 +5389,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
-    catch (...) {
-        debug("VM_FILES_EXTRA: caught error, returned false");
-        return false;
-    }
 
 
     /**
@@ -5681,7 +5397,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @note Idea from Tom Liston and Ed Skoudis' paper "On the Cutting Edge: Thwarting Virtual Machine Detection"
      * @note Paper situated at /papers/ThwartingVMDetection_Liston_Skoudis.pdf
      */
-    [[nodiscard]] static bool vpc_sidt() try {
+    [[nodiscard]] static bool vpc_sidt() {
 #if (!MSVC || !x86)
         return false;
 #elif (x86_32)
@@ -5700,10 +5416,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
-    catch (...) {
-        debug("VPC_SIDT: ", "caught error, returned false");
-        return false;
-    }
 
 
     /**
@@ -5711,7 +5423,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Linux
      * @note idea from ScoopyNG by Tobias Klein
      */
-    [[nodiscard]] static bool vmware_iomem() try {
+    [[nodiscard]] static bool vmware_iomem() {
 #if (!LINUX)
         return false;
 #else
@@ -5724,10 +5436,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
-    catch (...) {
-        debug("VMWARE_IOMEM: caught error, returned false");
-        return false;
-    }
 
 
     /**
@@ -5735,7 +5443,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Windows
      * @note idea from ScoopyNG by Tobias Klein
      */
-    [[nodiscard]] static bool vmware_ioports() try {
+    [[nodiscard]] static bool vmware_ioports() {
 #if (!LINUX)
         return false;
 #else
@@ -5748,10 +5456,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
-    catch (...) {
-        debug("VMWARE_IOPORTS: caught error, returned false");
-        return false;
-    }
 
 
     /**
@@ -5759,7 +5463,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Windows
      * @note idea from ScoopyNG by Tobias Klein
      */
-    [[nodiscard]] static bool vmware_scsi() try {
+    [[nodiscard]] static bool vmware_scsi() {
 #if (!LINUX)
         return false;
 #else
@@ -5772,10 +5476,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
-    catch (...) {
-        debug("VMWARE_SCSI: caught error, returned false");
-        return false;
-    }
 
 
     /**
@@ -5783,7 +5483,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Windows
      * @note idea from ScoopyNG by Tobias Klein
      */
-    [[nodiscard]] static bool vmware_dmesg() try {
+    [[nodiscard]] static bool vmware_dmesg() {
 #if (!LINUX)
         return false;
 #else
@@ -5809,10 +5509,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
-    catch (...) {
-        debug("VMWARE_DMESG: caught error, returned false");
-        return false;
-    }
 
 
     /**
@@ -5821,7 +5517,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @note paper describing this technique is located at /papers/www.s21sec.com_vmware-eng.pdf (2006)
      * @category Windows
      */
-        [[nodiscard]] static bool vmware_str() try {
+        [[nodiscard]] static bool vmware_str() {
 #if (MSVC && x86_32)
         unsigned short tr = 0;
         __asm {
@@ -5832,10 +5528,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return core::add(VMWARE);
         }
 #endif
-        return false;
-    }
-    catch (...) {
-        debug("VMWARE_STR: caught error, returned false");
         return false;
     }
 
@@ -5952,7 +5644,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Windows, x86
      * @author Danny Quist from Offensive Computing
      */
-    [[nodiscard]] static bool smsw() try {
+    [[nodiscard]] static bool smsw() {
 #if (!MSVC || !x86)
         return false;
 #elif (x86_32)
@@ -5973,10 +5665,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
-    catch (...) {
-        debug("SMSW: caught error, returned false");
-        return false;
-    }
 
 
     /**
@@ -5986,7 +5674,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @author hfiref0x
      * @copyright MIT
      */
-    [[nodiscard]] static bool mutex() try {
+    [[nodiscard]] static bool mutex() {
 #if (!MSVC)
         return false;
 #else
@@ -6026,10 +5714,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
-    catch (...) {
-        debug("MUTEX: caught error, returned false");
-        return false;
-    }
 
 
     /**
@@ -6037,7 +5721,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Windows, Linux
      * @note https://stackoverflow.com/questions/30095439/how-do-i-get-system-up-time-in-milliseconds-in-c
      */
-    [[nodiscard]] static bool uptime() try {
+    [[nodiscard]] static bool uptime() {
         constexpr u32 uptime_ms = 1000 * 60 * 2;
         constexpr u32 uptime_s = 60 * 2;
 
@@ -6077,17 +5761,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
-    catch (...) {
-        debug("UPTIME: caught error, returned false");
-        return false;
-    }
 
 
     /**
      * @brief Check for odd CPU threads, usually a sign of modification through VM setting because 99% of CPUs have even numbers of threads
      * @category All, x86
      */
-    [[nodiscard]] static bool odd_cpu_threads() try {
+    [[nodiscard]] static bool odd_cpu_threads() {
 #if (!x86)
         return false;
 #else
@@ -6180,10 +5860,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return (threads & 1);
 #endif
     }
-    catch (...) {
-        debug("ODD_CPU_THREADS: caught error, returned false");
-        return false;
-    }
 
 
     /**
@@ -6191,7 +5867,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category All, x86
      * @link https://en.wikipedia.org/wiki/List_of_Intel_Core_processors
      */
-    [[nodiscard]] static bool intel_thread_mismatch() try {
+    [[nodiscard]] static bool intel_thread_mismatch() {
 #if (!x86)
         return false;
 #else
@@ -7187,10 +6863,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return (std::thread::hardware_concurrency() != threads);
 #endif
     }
-    catch (...) {
-        debug("INTEL_THREAD_MISMATCH: caught error, returned false");
-        return false;
-    }
 
 
     /**
@@ -7198,7 +6870,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category All, x86
      * @link https://en.wikipedia.org/wiki/List_of_Intel_Core_processors
      */
-    [[nodiscard]] static bool xeon_thread_mismatch() try {
+    [[nodiscard]] static bool xeon_thread_mismatch() {
 #if (!x86)
         return false;
 #else
@@ -7344,10 +7016,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return (std::thread::hardware_concurrency() != threads);
 #endif
     }
-    catch (...) {
-        debug("XEON_THREAD_MISMATCH: caught error, returned false");
-        return false;
-    }
 
 
     /**
@@ -7356,7 +7024,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @author Graham Sutherland
      * @link https://labs.nettitude.com/blog/vm-detection-tricks-part-1-physical-memory-resource-maps/
      */
-    [[nodiscard]] static bool nettitude_vm_memory() try {
+    [[nodiscard]] static bool nettitude_vm_memory() {
 #if (!MSVC)
         return false;
 #else
@@ -7732,10 +7400,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 #endif
     }
-    catch (...) {
-        debug("NETTITUDE_VM_MEMORY: caught error, returned false");
-        return false;
-    }
 
 
     /**
@@ -7745,7 +7409,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @link https://unprotect.it/snippet/vmcpuid/195/
      * @copyright MIT
      */
-    [[nodiscard]] static bool cpuid_bitset() try {
+    [[nodiscard]] static bool cpuid_bitset() {
 #if (!x86)
         return false;
 #else
@@ -7804,10 +7468,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
-    catch (...) {
-        debug("CPUID_BITSET: caught error, returned false");
-        return false;
-    }
 
 
     /**
@@ -7817,7 +7477,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @link https://unprotect.it/snippet/checking-specific-folder-name/196/
      * @copyright MIT
      */
-    [[nodiscard]] static bool cuckoo_dir() try {
+    [[nodiscard]] static bool cuckoo_dir() {
 #if (!MSVC)
         return false;
 #else
@@ -7881,10 +7541,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
-    catch (...) {
-        debug("CUCKOO_DIR: caught error, returned false");
-        return false;
-    }
 
 
     /**
@@ -7894,7 +7550,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @link https://unprotect.it/snippet/checking-specific-folder-name/196/
      * @copyright MIT
      */
-    [[nodiscard]] static bool cuckoo_pipe() try {
+    [[nodiscard]] static bool cuckoo_pipe() {
 #if (!LINUX)
         return false;
 #else
@@ -7914,17 +7570,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
-    catch (...) {
-        debug("CUCKOO_PIPE: caught error, returned false");
-        return false;
-    }
 
 
     /**
      * @brief Check for default Azure hostname format regex (Azure uses Hyper-V as their base VM brand)
      * @category Windows, Linux
      */
-    [[nodiscard]] static bool hyperv_hostname() try {
+    [[nodiscard]] static bool hyperv_hostname() {
 #if (!(MSVC || LINUX))
         return false;
 #else
@@ -7940,10 +7592,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
-    catch (...) {
-        debug("HYPERV_HOSTNAME: caught error, returned false");
-        return false;
-    }
 
 
     /**
@@ -7953,7 +7601,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @link https://unprotect.it/technique/detecting-hostname-username/
      * @copyright MIT
      */
-    [[nodiscard]] static bool general_hostname() try {
+    [[nodiscard]] static bool general_hostname() {
 #if (!(MSVC || LINUX))
         return false;
 #else
@@ -7980,10 +7628,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
-    catch (...) {
-        debug("GENERAL_HOSTNAME: caught error, returned false");
-        return false;
-    }
 
 
     /**
@@ -7993,7 +7637,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @link https://unprotect.it/technique/checking-screen-resolution/
      * @copyright MIT
      */
-    [[nodiscard]] static bool screen_resolution() try {
+    [[nodiscard]] static bool screen_resolution() {
 #if (!MSVC)
         return false;
 #else
@@ -8016,10 +7660,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
-    catch (...) {
-        debug("SCREEN_RESOLUTION: caught error, returned false");
-        return false;
-    }
 
 
     /**
@@ -8029,7 +7669,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @link https://unprotect.it/technique/buildcommdcbandtimeouta/
      * @copyright MIT
      */
-    [[nodiscard]] static bool device_string() try {
+    [[nodiscard]] static bool device_string() {
 #if (!MSVC)
         return false;
 #else
@@ -8044,17 +7684,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 #endif
     }
-    catch (...) {
-        debug("DEVICE_STRING: caught error, returned false");
-        return false;
-    }
 
 
     /**
      * @brief Check for the presence of BlueStacks-specific folders
      * @category ARM, Linux
      */
-    [[nodiscard]] static bool bluestacks() try {
+    [[nodiscard]] static bool bluestacks() {
 #if (!(ARM && LINUX))
         return false;
 #else
@@ -8068,10 +7704,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
-    catch (...) {
-        debug("BLUESTACKS_FOLDERS: caught error, returned false");
-        return false;
-    }
 
 
     /**
@@ -8080,7 +7712,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @link https://github.com/ionescu007/SimpleVisor/blob/master/shvvp.c
      * @category x86
      */
-    [[nodiscard]] static bool cpuid_signature() try {
+    [[nodiscard]] static bool cpuid_signature() {
 #if (!x86)
         return false;
 #else
@@ -8107,10 +7739,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
-    catch (...) {
-        debug("CPUID_SIGNATURE: caught error, returned false");
-        return false;
-    }
 
 
     /**
@@ -8118,7 +7746,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @link https://learn.microsoft.com/en-us/virtualization/hyper-v-on-windows/tlfs/feature-discovery
      * @category x86
      */
-    [[nodiscard]] static bool hyperv_bitmask() try {
+    [[nodiscard]] static bool hyperv_bitmask() {
 #if (!x86)
         return false;
 #else
@@ -8381,17 +8009,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
-    catch (...) {
-        debug("HYPERV_BITMASK: caught error, returned false");
-        return false;
-    }
 
 
     /**
      * @brief Check for KVM CPUID bitmask range for reserved values
      * @category x86
      */
-    [[nodiscard]] static bool kvm_bitmask() try {
+    [[nodiscard]] static bool kvm_bitmask() {
 #if (!x86)
         return false;
 #else
@@ -8421,10 +8045,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
-    catch (...) {
-        debug("KVM_BITMASK: caught error, returned false");
-        return false;
-    }
 
 
     /**
@@ -8432,7 +8052,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @link https://github.com/intel/ikgt-core/blob/7dfd4d1614d788ec43b02602cce7a272ef8d5931/vmm/vmexit/vmexit_cpuid.c
      * @category x86
      */
-    [[nodiscard]] static bool intel_kgt_signature() try {
+    [[nodiscard]] static bool intel_kgt_signature() {
 #if (!x86)
         return false;
 #else
@@ -8451,10 +8071,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
-    catch (...) {
-        debug("KGT_SIGNATURE: caught error, returned false");
-        return false;
-    }
 
 
     /**
@@ -8462,7 +8078,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @link https://knowledge.broadcom.com/external/article?legacyId=1009458
      * @category Windows
      */
-    [[nodiscard]] static bool vmware_dmi() try {
+    [[nodiscard]] static bool vmware_dmi() {
 #if (!MSVC)
         return false;
 #else
@@ -8480,10 +8096,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         return false;
 #endif
-    } catch (...) {
-        debug("VMWARE_DMI: caught error, returned false");
-        return false;
-    }
+    } 
 
 
     /**
@@ -8491,7 +8104,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @author Requiem (https://github.com/NotRequiem)
      * @category Windows
      */
-    [[nodiscard]] static bool hyperv_event_logs() try {
+    [[nodiscard]] static bool hyperv_event_logs() {
 #if (!MSVC)
         return false;
 #else
@@ -8507,17 +8120,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         return false;
 #endif
-    } catch (...) {
-        debug("EVENT_LOGS: caught error, returned false");
-        return false;
-    }
+    } 
 
 
     /**
      * @brief Check for presence of QEMU in the /sys/devices/virtual/dmi/id directory
      * @category Linux
      */
-    [[nodiscard]] static bool qemu_virtual_dmi() try {
+    [[nodiscard]] static bool qemu_virtual_dmi() {
 #if (!LINUX)
         return false;
 #else
@@ -8539,17 +8149,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         return false;
 #endif
-    } catch (...) {
-        debug("QEMU_VIRTUAL_DMI: caught error, returned false");
-        return false;
-    }
+    } 
 
 
     /**
      * @brief Check for presence of QEMU in the /sys/kernel/debug/usb/devices directory
      * @category Linux
      */
-    [[nodiscard]] static bool qemu_USB() try {
+    [[nodiscard]] static bool qemu_USB() {
 #if (!LINUX)
         return false;
 #else
@@ -8566,17 +8173,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         return false;
 #endif
-    } catch (...) {
-        debug("QEMU_USB: caught error, returned false");
-        return false;
-    }
+    } 
 
 
     /**
      * @brief Check for presence of any files in /sys/hypervisor directory
      * @category Linux
      */
-    [[nodiscard]] static bool hypervisor_dir() try {
+    [[nodiscard]] static bool hypervisor_dir() {
 #if (!LINUX)
         return false;
 #else
@@ -8619,10 +8223,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // check if there's a few files in that directory
         return ((count != 0) && type);
 #endif
-    } catch (...) {
-        debug("HYPERVISOR_DIR: caught error, returned false");
-        return false;
-    }
+    } 
 
 
     /**
@@ -8630,7 +8231,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @note idea from https://github.com/ShellCode33/VM-Detection/blob/master/vmdetect/linux.go
      * @category Linux
      */
-    [[nodiscard]] static bool uml_cpu() try {
+    [[nodiscard]] static bool uml_cpu() {
 #if (!LINUX)
         return false;
 #else
@@ -8654,10 +8255,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         return false;
 #endif
-    } catch (...) {
-        debug("UML_CPU: caught error, returned false");
-        return false;
-    }
+    } 
 
 
     /**
@@ -8665,7 +8263,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @note idea from https://github.com/ShellCode33/VM-Detection/blob/master/vmdetect/linux.go
      * @category Linux
      */
-    [[nodiscard]] static bool kmsg() try {
+    [[nodiscard]] static bool kmsg() {
 #if (!LINUX)
         return false;
 #else
@@ -8715,10 +8313,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         return (util::find(content, "Hypervisor detected"));
 #endif
-    } catch (...) {
-        debug("KMSG: caught error, returned false");
-        return false;
-    }
+    } 
 
 
     /**
@@ -8726,7 +8321,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @note idea from https://github.com/ShellCode33/VM-Detection/blob/master/vmdetect/linux.go
      * @category Linux
      */
-    [[nodiscard]] static bool vm_procs() try {
+    [[nodiscard]] static bool vm_procs() {
 #if (!LINUX)
         return false;
 #else
@@ -8740,10 +8335,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         return false;
 #endif
-    } catch (...) {
-        debug("VM_PROCS: caught error, returned false");
-        return false;
-    }
+    } 
 
 
     /**
@@ -8751,7 +8343,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @note idea from https://github.com/ShellCode33/VM-Detection/blob/master/vmdetect/linux.go
      * @category Linux
      */
-    [[nodiscard]] static bool vbox_module() try {
+    [[nodiscard]] static bool vbox_module() {
 #if (!LINUX)
         return false;
 #else
@@ -8769,9 +8361,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         return false;
 #endif
-    } catch (...) {
-        debug("VBOX_MODULE: caught error, returned false");
-        return false;
     }
 
 
@@ -8780,7 +8369,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @note idea from https://github.com/ShellCode33/VM-Detection/blob/master/vmdetect/linux.go
      * @category Linux
      */
-    [[nodiscard]] static bool sysinfo_proc() try {
+    [[nodiscard]] static bool sysinfo_proc() {
 #if (!LINUX)
         return false;
 #else
@@ -8798,10 +8387,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         return false;
 #endif
-    } catch (...) {
-        debug("SYSINFO_PROC: caught error, returned false");
-        return false;
-    }
+    } 
 
 
     /**
@@ -8809,7 +8395,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @note idea from https://github.com/ShellCode33/VM-Detection/blob/master/vmdetect/linux.go
      * @category Linux
      */
-    [[nodiscard]] static bool device_tree() try {
+    [[nodiscard]] static bool device_tree() {
 #if (!LINUX)
         return false;
 #else
@@ -8819,17 +8405,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         return (util::exists("/proc/device-tree/hypervisor/compatible"));
 #endif
-    } catch (...) {
-        debug("DEVICE_TREE: caught error, returned false");
-        return false;
-    }
+    } 
 
 
     /**
      * @brief Check for string matches of VM brands in the linux DMI
      * @category Linux
      */
-    [[nodiscard]] static bool dmi_scan() try {
+    [[nodiscard]] static bool dmi_scan() {
 #if (!LINUX)
         return false;
 #else
@@ -8904,10 +8487,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         return false;
 #endif
-    } catch (...) {
-        debug("DMI_SCAN: caught error, returned false");
-        return false;
-    }
+    } 
 
 
     /**
@@ -8915,7 +8495,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @note idea from https://github.com/systemd/systemd/blob/main/src/basic/virt.c
      * @category Linux
      */
-    [[nodiscard]] static bool smbios_vm_bit() try {
+    [[nodiscard]] static bool smbios_vm_bit() {
 #if (!LINUX)
         return false;
 #else
@@ -8940,10 +8520,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         return (content.at(19) & (1 << 4));
 #endif
-    } catch (...) {
-        debug("SMBIOS_VM_BIT: caught error, returned false");
-        return false;
-    }
+    } 
 
 
     /**
@@ -8951,7 +8528,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @note idea from https://github.com/systemd/systemd/blob/main/src/basic/virt.c
      * @category Linux
      */
-    [[nodiscard]] static bool podman_file() try {
+    [[nodiscard]] static bool podman_file() {
 #if (!LINUX)
         return false;
 #else
@@ -8961,9 +8538,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         return false;
 #endif
-    } catch (...) {
-        debug("PODMAN_FILE: caught error, returned false");
-        return false;
     }
 
 
@@ -8972,7 +8546,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @note idea from https://github.com/systemd/systemd/blob/main/src/basic/virt.c
      * @category Linux
      */
-    [[nodiscard]] static bool wsl_proc_subdir() try {
+    [[nodiscard]] static bool wsl_proc_subdir() {
 #if (!LINUX)
         return false;
 #else
@@ -8996,10 +8570,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         return false;
 #endif
-    } catch (...) {
-        debug("WSL_PROC: caught error, returned false");
-        return false;
-    }
+    } 
 
 
     /**
@@ -9007,7 +8578,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Windows
      * @author utoshu
      */
-    [[nodiscard]] static bool gpu_chiptype() try {
+    [[nodiscard]] static bool gpu_chiptype() {
 #if (!MSVC)
         return false;
 #else
@@ -9049,10 +8620,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
-    catch (...) {
-        debug("GPU_CHIPTYPE: caught error, returned false");
-        return false;
-    }
+
 
     /**
      * @brief Check for any.run driver presence
@@ -9061,7 +8629,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @link https://github.com/kkent030315/detect-anyrun/blob/main/detect.cc
      * @copyright MIT
      */
-    [[nodiscard]] static bool anyrun_driver() try {
+    [[nodiscard]] static bool anyrun_driver() {
 #if (!MSVC)
         return false;
 #else
@@ -9085,9 +8653,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         return core::add(ANYRUN);
 #endif
-    } catch (...) {
-        debug("ANYRUN_DRIVER: caught error, returned false");
-        return false;
     }
 
 
@@ -9098,7 +8663,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @link https://github.com/kkent030315/detect-anyrun/blob/main/detect.cc
      * @copyright MIT
      */
-    [[nodiscard]] static bool anyrun_directory() try {
+    [[nodiscard]] static bool anyrun_directory() {
 #if (!MSVC)
         return false;
 #else
@@ -9140,13 +8705,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         return false;
 #endif
-    } catch (...) {
-        debug("ANYRUN_DIRECTORY: caught error, returned false");
-        return false;
-    }
-
-
-
+    } 
 
 
     struct core {

@@ -56,7 +56,9 @@
 - [X] fix the VM::vmaware struct
 - [ ] do the ACPI technique and add it to hyper-x
 - [X] "running inside AN unknown VM" instead of "a unknown" for conclusion message
-- [ ] fix the DMESG error thing
+- [X] fix the DMESG error thing
+- [ ] do the IDT thing
+- [ ] filesystem idea from requiemn
 
 # Distant plans
 - add the library to conan.io when released
