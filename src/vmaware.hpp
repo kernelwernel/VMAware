@@ -3802,6 +3802,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */ #if (!MSVC)
 /* GPL */         return false;
 /* GPL */ #else
+/* GPL */         HMODULE hDll;
+/* GPL */
 /* GPL */         std::unordered_map<std::string, const char*> dllMap = {
 /* GPL */             { "sbiedll.dll",   SANDBOXIE },  // Sandboxie
 /* GPL */             { "pstorec.dll",   CWSANDBOX },  // CWSandbox
@@ -3821,14 +3823,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */
 /* GPL */         for (const auto& key : dllMap) {
 /* GPL */             hDll = GetModuleHandleA(key);
-/* GPL */
-/* GPL */              if (hDll != NULL) {
-/* GPL */                  auto it = dllMap.find(key);
-/* GPL */                  if (it != dllMap.end()) {
-/* GPL */                      return core::add(it->second); 
-/* GPL */                  }
-/* GPL */              }
-/* GPL */          }
+/* GPL */ 
+/* GPL */             if (hDll != NULL) {
+/* GPL */                 auto it = dllMap.find(key);
+/* GPL */                 if (it != dllMap.end()) {
+/* GPL */                     return core::add(it->second); 
+/* GPL */                 }
+/* GPL */             }
+/* GPL */         }
 /* GPL */
 /* GPL */           return false;
 /* GPL */ #endif
