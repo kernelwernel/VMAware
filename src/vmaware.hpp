@@ -8,7 +8,7 @@
  *
  *  C++ VM detection library
  *
- *  - Made by: @kernelwernel (https://github.com/kernelwernel)
+ *  - Made by: kernelwernel (https://github.com/kernelwernel)
  *  - Contributed by:
  *      - Requiem (https://github.com/NotRequiem)
  *      - Alex (https://github.com/greenozon)
@@ -16,6 +16,7 @@
  *      - Vladyslav Miachkov (https://github.com/fameowner99)
  *      - Alan Tse (https://github.com/alandtse)
  *      - Georgii Gennadev (https://github.com/D00Movenok)
+ *      - utoshu (https://github.com/utoshu)
  *  - Repository: https://github.com/kernelwernel/VMAware
  *  - Docs: https://github.com/kernelwernel/VMAware/docs/documentation.md
  *  - Full credits: https://github.com/kernelwernel/VMAware#credits-and-contributors-%EF%B8%8F
@@ -8611,6 +8612,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         return false;
 #endif
+    }
+    catch (...) {
+        debug("GPU_CHIPTYPE: caught error, returned false");
+        return false;
     }
 
 
