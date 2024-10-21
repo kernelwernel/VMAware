@@ -8541,7 +8541,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Windows
      * @author Requiem (https://github.com/NotRequiem)
      */
-    [[nodiscard]] bool driver_names() {
+    [[nodiscard]] static bool driver_names() {
+#if (!MSVC)
+        return false;
+#else
         const int maxDrivers = 1024;
         std::vector<LPVOID> drivers(maxDrivers);
         DWORD cbNeeded;
@@ -8569,6 +8572,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
         }
         return false;
+#endif
     }
 
 
