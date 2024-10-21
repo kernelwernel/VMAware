@@ -440,6 +440,7 @@ public:
         WSL_PROC,
         GPU_CHIPTYPE,
         DRIVER_NAMES,
+        VBOX_IDT,
 
         // start of settings technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
         NO_MEMO,
@@ -8576,8 +8577,32 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
 
 
+    /**
+     * @brief Check for the VirtualBox IDT base address
+     * @category Windows
+     * @author Requiem (https://github.com/NotRequiem)
+     */
+    [[nodiscard]] static bool vbox_idt() {
+#if (!MSVC || !x86) 
+        return false;
+#else
+        u16 idt_limit;
+        u64 idt_base;
 
+        struct { uint16_t limit; uint64_t base; } idtr;
+        __sidt(&idtr);
+        idt_limit = idtr.limit;
+        idt_base = idtr.base;
 
+        constexpr u64 known_hyperv_exclusion = 0xfffff80000001000;
+
+        if ((idt_base & 0xFFFF000000000000) == 0xFFFF000000000000 && idt_base != known_hyperv_exclusion) {
+            return core::add(VBOX);
+        }
+
+        return false;
+#endif
+    }
 
 
 
@@ -10158,5 +10183,6 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::PODMAN_FILE, { 15, VM::podman_file, true } },
     { VM::WSL_PROC, { 30, VM::wsl_proc_subdir, false } },
     { VM::GPU_CHIPTYPE, { 100, VM::gpu_chiptype, false } },
-    { VM::DRIVER_NAMES, { 30, VM::driver_names, false } }
+    { VM::DRIVER_NAMES, { 30, VM::driver_names, false } },
+    { VM::VBOX_IDT, { 80, VM::vbox_idt, false } }
 };

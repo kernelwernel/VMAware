@@ -634,6 +634,7 @@ void general() {
     checker(anyrun_directory, "ANY.RUN directory");
     checker(VM::GPU_CHIPTYPE, "GPU chip name");
     checker(VM::DRIVER_NAMES, "driver names");
+    checker(VM::VBOX_IDT, "VirtualBox SIDT");
 
     std::printf("\n");
 
