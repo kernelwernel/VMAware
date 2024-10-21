@@ -1179,12 +1179,14 @@ private:
 
             result(double dbl) : type(result_type::Double), doubleValue(dbl) {}
 
-            result(const result& other) : type(other.type) {
+            result(const result& other) : type(other.type), strValue() {
                 if (type == result_type::String) {
                     new (&strValue) std::string(other.strValue);
-                } else if (type == result_type::Integer) {
+                }
+                else if (type == result_type::Integer) {
                     intValue = other.intValue;
-                } else if (type == result_type::Double) {
+                }
+                else if (type == result_type::Double) {
                     doubleValue = other.doubleValue;
                 }
             }
@@ -4483,93 +4485,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
 
 
-    /**
-     * @brief Check WMI query for "Hyper-V RAW" string
-     * @category Windows
-     * @note idea is from nettitude
-     * @link https://labs.nettitude.com/blog/vm-detection-tricks-part-3-hyper-v-raw-network-protocol/
-     */
-    [[nodiscard]] static bool hyperv_wmi() {
-#if (!MSVC)
-        return false;
-#else
-        if (!wmi::initialize()) {
-            std::cerr << "Failed to initialize WMI.\n";
-            return false;
-        }
-
-        std::vector<wmi::result> results =
-            wmi::execute(L"SELECT * FROM Win32_NetworkProtocol", { L"Name" });
-
-        for (const auto& res : results) {
-            if (res.type == wmi::result_type::String) {
-                if (res.strValue == "Hyper-V RAW") {
-                    return true;
-                }
-            }
-        }
-
-        return false;
-#endif
-    }
-
-
-    /**
-     * @brief Check presence for Hyper-V specific string in registry
-     * @category Windows
-     * @note idea is from nettitude
-     * @link https://labs.nettitude.com/blog/vm-detection-tricks-part-3-hyper-v-raw-network-protocol/
-     */
-    [[nodiscard]] static bool hyperv_registry() {
-#if (!MSVC)
-        return false;
-#else
-        constexpr const char* registryPath = "SYSTEM\\CurrentControlSet\\Services\\WinSock2\\Parameters\\Protocol_Catalog9\\Catalog_Entries";
-
-        HKEY hKey;
-        LONG result = RegOpenKeyExW(HKEY_LOCAL_MACHINE, reinterpret_cast<LPCWSTR>(registryPath), 0, KEY_READ, &hKey);
-
-        if (result != ERROR_SUCCESS) {
-            debug("HYPERV_REGISTRY: Error opening registry key. Code: ", result);
-            return false;
-        }
-
-        bool is_vm = false;
-
-        DWORD index = 0;
-        wchar_t subkeyName[256];
-        DWORD subkeyNameSize = sizeof(subkeyName) / sizeof(subkeyName[0]);
-
-        while (RegEnumKeyExW(hKey, index++, subkeyName, &subkeyNameSize, NULL, NULL, NULL, NULL) == ERROR_SUCCESS) {
-            HKEY subkey;
-            result = RegOpenKeyExW(hKey, subkeyName, 0, KEY_READ, &subkey);
-
-            if (result == ERROR_SUCCESS) {
-                wchar_t protocolName[256]{};
-                DWORD dataSize = sizeof(protocolName);
-
-                // Check if the "ProtocolName" value exists
-                result = RegQueryValueExW(subkey, L"ProtocolName", NULL, NULL, reinterpret_cast<LPBYTE>(protocolName), &dataSize);
-
-                if (result == ERROR_SUCCESS) {
-                    if (wcscmp(protocolName, L"Hyper-V RAW") == 0) {
-                        is_vm = true;
-                        break;
-                    }
-                }
-
-                RegCloseKey(subkey);
-            }
-
-            subkeyNameSize = sizeof(subkeyName) / sizeof(subkeyName[0]);
-        }
-
-        RegCloseKey(hKey);
-
-        return is_vm;
-#endif 
-    }
-
 
     /**
      * @brief Check if the BIOS serial is valid (null = VM)
@@ -5019,27 +4934,28 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief check for valid MSR value 0x40000000
+     * @brief Check for valid MSR value 0x40000000
      * @category Windows
      * @author LukeGoule
      * @link https://github.com/LukeGoule/compact_vm_detector/tree/main
      * @copyright MIT
      */
     [[nodiscard]] static bool valid_msr() {
-#if (!MSVC)
-        return false;
-#else
-        __try
-        {
-            __readmsr(cpu::leaf::hypervisor);
-        }
-        __except (EXCEPTION_EXECUTE_HANDLER)
-        {
-            return false;
-        }
+    #if (!MSVC)
+            return false;  // Only valid on MSVC
+    #else
+            __try {
+                // Attempt to read the hypervisor MSR from Ring 3
+                __readmsr(0x40000000); // Reading MSR 0x40000000, which typically indicates hypervisor presence
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER) {
+                // If an exception occurs, return false
+                return false;
+            }
 
-        return true;
-#endif
+            // If we reached this point, the read was successful, so return true
+            return true;
+    #endif
     }
 
 
@@ -7501,9 +7417,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return false;
             }
 
-            if (hFile) {
-                CloseHandle(hFile);
-            }
+            CloseHandle(hFile);
 
             return true;
         };
@@ -10089,8 +10003,6 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::QEMU_BRAND, { 100, VM::cpu_brand_qemu, false } },
     { VM::BOCHS_CPU, { 95, VM::bochs_cpu, false } },
     { VM::VPC_BOARD, { 20, VM::vpc_board, false } },
-    { VM::HYPERV_WMI, { 80, VM::hyperv_wmi, false } },
-    { VM::HYPERV_REG, { 80, VM::hyperv_registry, true } },
     { VM::BIOS_SERIAL, { 60, VM::bios_serial, false } },
     { VM::VBOX_FOLDERS, { 45, VM::vbox_shared_folders, false } },
     { VM::MSSMBIOS, { 75, VM::mssmbios, false } },
