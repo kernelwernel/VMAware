@@ -441,6 +441,7 @@ public:
         GPU_CHIPTYPE,
         DRIVER_NAMES,
         VBOX_IDT,
+        HDD_SERIAL,
 
         // start of settings technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
         NO_MEMO,
@@ -8605,7 +8606,35 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
 
 
+    /**
+     * @brief Check for HDD serial number
+     * @category Windows
+     * @author Requiem (https://github.com/NotRequiem)
+     */
+    [[nodiscard]] static bool hdd_serial_number() {
+#if (!MSVC) 
+        return false;
+#else
+        if (!wmi::initialize()) {
+            debug("HDD serial number: Failed to initialize WMI");
+            return false;
+        }
 
+        const char* targetSerial = "VBbd5bbffd-59166c24";
+
+        std::vector<wmi::result> results = wmi::execute(L"SELECT SerialNumber FROM Win32_DiskDrive", { L"SerialNumber" });
+
+        for (const auto& res : results) {
+            if (res.type == wmi::result_type::String) {
+                if (_stricmp(res.strValue.c_str(), targetSerial) == 0) {
+                    return core::add(VBOX);
+                }
+            }
+        }
+
+        return false;
+#endif
+    };
 
 
 
@@ -10184,5 +10213,6 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::WSL_PROC, { 30, VM::wsl_proc_subdir, false } },
     { VM::GPU_CHIPTYPE, { 100, VM::gpu_chiptype, false } },
     { VM::DRIVER_NAMES, { 30, VM::driver_names, false } },
-    { VM::VBOX_IDT, { 80, VM::vbox_idt, false } }
+    { VM::VBOX_IDT, { 80, VM::vbox_idt, false } },
+    { VM::HDD_SERIAL, { 95, VM::hdd_serial_number, false } }
 };

@@ -59,7 +59,8 @@
 - [X] fix the DMESG error thing
 - [ ] do the IDT thing
 - [ ] filesystem idea from requiemn
-- [ ] update the graph with the scanner and wmi modules
+- [ ] update the graph with the scanner and wmi 
+- [ ] add linux support for the hdd_serial_number technique
 
 # Distant plans
 - add the library to conan.io when released
