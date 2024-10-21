@@ -384,7 +384,7 @@ void replace(std::string &text, const std::string &original, const std::string &
 #else
     HANDLE hFile;
 
-    hFile = CreateFile(
+    hFile = CreateFileA(
         /*lpFileName*/TEXT("\\\\?\\\\A3E64E55_fl"),
         /*dwDesiredAccess*/GENERIC_READ,
         /*dwShareMode*/0,
@@ -562,8 +562,6 @@ void general() {
     checker(VM::BOCHS_CPU, "BOCHS CPU techniques");
     checker(VM::VPC_BOARD, "VirtualPC motherboard");
     checker(VM::BIOS_SERIAL, "BIOS serial number");
-    checker(VM::HYPERV_REG, "Hyper-V registry");
-    checker(VM::HYPERV_WMI, "Hyper-V WMI output");
     checker(VM::VBOX_FOLDERS, "VirtualBox shared folders");
     checker(VM::MSSMBIOS, "MSSMBIOS");
     checker(VM::MAC_MEMSIZE, "MacOS hw.memsize");

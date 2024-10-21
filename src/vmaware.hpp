@@ -1179,12 +1179,14 @@ private:
 
             result(double dbl) : type(result_type::Double), doubleValue(dbl) {}
 
-            result(const result& other) : type(other.type) {
+            result(const result& other) : type(other.type), strValue() {
                 if (type == result_type::String) {
                     new (&strValue) std::string(other.strValue);
-                } else if (type == result_type::Integer) {
+                }
+                else if (type == result_type::Integer) {
                     intValue = other.intValue;
-                } else if (type == result_type::Double) {
+                }
+                else if (type == result_type::Double) {
                     doubleValue = other.doubleValue;
                 }
             }
@@ -1469,9 +1471,7 @@ private:
                 }
             }
 
-            if (hToken) {
-                CloseHandle(hToken);
-            }
+            CloseHandle(hToken); 
 
             return is_admin;
 #endif
@@ -1783,7 +1783,7 @@ private:
             DWORD numProcesses = bytesReturned / sizeof(DWORD);
 
             for (DWORD i = 0; i < numProcesses; ++i) {
-                HANDLE process = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, processes[i]);
+                const HANDLE process = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, processes[i]);
                 if (process != nullptr) {
                     TCHAR processName[MAX_PATH];
                     if (GetModuleBaseName(process, nullptr, processName, sizeof(processName) / sizeof(TCHAR))) {
@@ -2267,7 +2267,7 @@ private:
             NTSTATUS(WINAPI * RtlGetVersion)(LPOSVERSIONINFOEXW) = nullptr;
             OSVERSIONINFOEXW osInfo{};
 
-            HMODULE ntdllModule = GetModuleHandleA("ntdll");
+            const HMODULE ntdllModule = GetModuleHandleA("ntdll.dll");
 
             if (ntdllModule == nullptr) {
                 return false;
@@ -2316,7 +2316,7 @@ private:
                 { 22631, static_cast<u8>(11) }
             };
 
-            HMODULE ntdll = LoadLibraryW(L"ntdll.dll");
+            const HMODULE ntdll = GetModuleHandleA("ntdll.dll");
             if (!ntdll) {
                 return util::get_windows_version_backup();
             }
@@ -2339,8 +2339,6 @@ private:
                 major_version = windowsVersions.at(osvi.dwBuildNumber);
             }
 
-            FreeLibrary(ntdll);
-
             if (major_version == 0) {
                 return util::get_windows_version_backup();
             }
@@ -2351,7 +2349,7 @@ private:
 
         [[nodiscard]] static std::string SMBIOS_string() {
             HKEY hk = 0;
-            int ret = RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SYSTEM\\CurrentControlSet\\Services\\mssmbios\\data", 0, KEY_ALL_ACCESS, &hk);
+            int ret = RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SYSTEM\\CurrentControlSet\\Services\\mssmbios\\data", 0, KEY_ALL_ACCESS, &hk);
             if (ret != ERROR_SUCCESS) {
                 debug("SMBIOS_string(): ret = error");
                 return "";
@@ -2360,7 +2358,7 @@ private:
             unsigned long type = 0;
             unsigned long length = 0;
 
-            ret = RegQueryValueExW(hk, L"SMBiosData", 0, &type, 0, &length);
+            ret = RegQueryValueExA(hk, "SMBiosData", 0, &type, 0, &length);
 
             if (ret != ERROR_SUCCESS) {
                 RegCloseKey(hk);
@@ -2381,7 +2379,7 @@ private:
                 return "";
             }
 
-            ret = RegQueryValueExW(hk, L"SMBiosData", 0, &type, reinterpret_cast<unsigned char*>(p), &length);
+            ret = RegQueryValueExA(hk, "SMBiosData", 0, &type, reinterpret_cast<unsigned char*>(p), &length);
 
             if (ret != ERROR_SUCCESS) {
                 LocalFree(p);
@@ -2472,7 +2470,7 @@ private:
          * @return A std::wstring containing the error message.
          */
         [[nodiscard]] static std::wstring GetLastErrorString() {
-            DWORD error = GetLastError();
+            const DWORD error = GetLastError();
             LPWSTR messageBuffer = nullptr;
             size_t size = FormatMessageW(
                 FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
@@ -2540,7 +2538,7 @@ private:
                     bufferSize = bufferUsed;
                     pBuffer = new WCHAR[bufferSize];
                     if (!pBuffer) {
-                        std::wcerr << L"Memory allocation failed.\n";
+                        std::cerr <<"Memory allocation failed.\n";
                         EvtClose(hResults);
                         EvtClose(hLog);
                         return false;
@@ -3191,7 +3189,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #else
         HKEY hKey;
         // Use wide string literal
-        bool result = (RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\VMware, Inc.\\VMware Tools", 0, KEY_QUERY_VALUE, &hKey) == ERROR_SUCCESS);
+        bool result = (RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SOFTWARE\\VMware, Inc.\\VMware Tools", 0, KEY_QUERY_VALUE, &hKey) == ERROR_SUCCESS);
 
         debug("VMWARE_REG: result = ", result);
 
@@ -3255,40 +3253,38 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!MSVC)
         return false;
 #else
-        std::vector<const char*> real_dlls = {
+        const char* real_dlls[] = {
             "kernel32.dll",
             "networkexplorer.dll",
-            "NlsData0000.dll"
+            "NlsData0000.dll",
         };
 
-        std::vector<const char*> false_dlls = {
+        const char* false_dlls[] = {
             "NetProjW.dll",
             "Ghofr.dll",
-            "fg122.dll"
+            "fg122.dll",
         };
 
-        HMODULE lib_inst;
-
-        for (auto& dll : real_dlls) {
-            lib_inst = LoadLibraryA(dll);
-            if (lib_inst == nullptr) {
+        // Check for real DLLs
+        for (const char* dll : real_dlls) {
+            if (GetModuleHandleA(dll) == nullptr) {
                 debug("DLL: ", "LIB_INST detected true for real dll = ", dll);
-                return true;
+                return true; // Detected a missing real DLL
             }
-            FreeLibrary(lib_inst);
         }
 
-        for (auto& dll : false_dlls) {
-            lib_inst = LoadLibraryA(dll);
-            if (lib_inst != nullptr) {
+        // Check for false DLLs
+        for (const char* dll : false_dlls) {
+            if (GetModuleHandleA(dll) != nullptr) {
                 debug("DLL: ", "LIB_INST detected true for false dll = ", dll);
-                return true;
+                return true; // Detected a loaded false DLL
             }
         }
 
-        return false;
+        return false; // No DLLs detected
 #endif
     }
+
 
 
     /**
@@ -4110,7 +4106,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             for (DWORD i = 0; i < numProcesses; ++i) {
                 // Open the process
-                HANDLE process = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, processes[i]);
+                const HANDLE process = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, processes[i]);
                 if (process != nullptr) {
                     // Get the process name
                     TCHAR processName[MAX_PATH];
@@ -4205,29 +4201,28 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         HKEY hOpen;
         char* szBuff;
         int iBuffSize;
-        HANDLE hMod;
         LONG nRes;
 
         szBuff = (char*)calloc(512, sizeof(char));
 
-        hMod = GetModuleHandleW(L"SbieDll.dll"); // Sandboxie
+        const HANDLE hMod = GetModuleHandleA("SbieDll.dll"); // Sandboxie
         if (hMod != 0) {
             free(szBuff);
             return core::add(SANDBOXIE);
         }
 
         /* this gave a false positive
-        hMod = GetModuleHandleW(L"dbghelp.dll"); // ThreatExpert
+        hMod = GetModuleHandleA("dbghelp.dll"); // ThreatExpert
         if (hMod != 0) {
             free(szBuff);
             return core::add(THREATEXPERT);
         }
         */
 
-        nRes = RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"Software\\Microsoft\\Windows\\CurrentVersion", 0L, KEY_QUERY_VALUE, &hOpen);
+        nRes = RegOpenKeyExA(HKEY_LOCAL_MACHINE, "Software\\Microsoft\\Windows\\CurrentVersion", 0L, KEY_QUERY_VALUE, &hOpen);
         if (nRes == ERROR_SUCCESS) {
             iBuffSize = sizeof(szBuff);
-            nRes = RegQueryValueExW(hOpen, L"ProductId", NULL, NULL, (unsigned char*)szBuff, reinterpret_cast<LPDWORD>(&iBuffSize));
+            nRes = RegQueryValueExA(hOpen, "ProductId", NULL, NULL, (unsigned char*)szBuff, reinterpret_cast<LPDWORD>(&iBuffSize));
             if (nRes == ERROR_SUCCESS) {
                 // Check if szBuff is not NULL before using strcmp
                 if (szBuff == NULL) {
@@ -4486,93 +4481,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
 
-
-    /**
-     * @brief Check WMI query for "Hyper-V RAW" string
-     * @category Windows
-     * @note idea is from nettitude
-     * @link https://labs.nettitude.com/blog/vm-detection-tricks-part-3-hyper-v-raw-network-protocol/
-     */
-    [[nodiscard]] static bool hyperv_wmi() {
-#if (!MSVC)
-        return false;
-#else
-        if (!wmi::initialize()) {
-            std::cerr << "Failed to initialize WMI.\n";
-            return false;
-        }
-
-        std::vector<wmi::result> results =
-            wmi::execute(L"SELECT * FROM Win32_NetworkProtocol", { L"Name" });
-
-        for (const auto& res : results) {
-            if (res.type == wmi::result_type::String) {
-                if (res.strValue == "Hyper-V RAW") {
-                    return true;
-                }
-            }
-        }
-
-        return false;
-#endif
-    }
-
-
-    /**
-     * @brief Check presence for Hyper-V specific string in registry
-     * @category Windows
-     * @note idea is from nettitude
-     * @link https://labs.nettitude.com/blog/vm-detection-tricks-part-3-hyper-v-raw-network-protocol/
-     */
-    [[nodiscard]] static bool hyperv_registry() {
-#if (!MSVC)
-        return false;
-#else
-        constexpr const char* registryPath = "SYSTEM\\CurrentControlSet\\Services\\WinSock2\\Parameters\\Protocol_Catalog9\\Catalog_Entries";
-
-        HKEY hKey;
-        LONG result = RegOpenKeyExW(HKEY_LOCAL_MACHINE, reinterpret_cast<LPCWSTR>(registryPath), 0, KEY_READ, &hKey);
-
-        if (result != ERROR_SUCCESS) {
-            debug("HYPERV_REGISTRY: Error opening registry key. Code: ", result);
-            return false;
-        }
-
-        bool is_vm = false;
-
-        DWORD index = 0;
-        wchar_t subkeyName[256];
-        DWORD subkeyNameSize = sizeof(subkeyName) / sizeof(subkeyName[0]);
-
-        while (RegEnumKeyExW(hKey, index++, subkeyName, &subkeyNameSize, NULL, NULL, NULL, NULL) == ERROR_SUCCESS) {
-            HKEY subkey;
-            result = RegOpenKeyExW(hKey, subkeyName, 0, KEY_READ, &subkey);
-
-            if (result == ERROR_SUCCESS) {
-                wchar_t protocolName[256]{};
-                DWORD dataSize = sizeof(protocolName);
-
-                // Check if the "ProtocolName" value exists
-                result = RegQueryValueExW(subkey, L"ProtocolName", NULL, NULL, reinterpret_cast<LPBYTE>(protocolName), &dataSize);
-
-                if (result == ERROR_SUCCESS) {
-                    if (wcscmp(protocolName, L"Hyper-V RAW") == 0) {
-                        is_vm = true;
-                        break;
-                    }
-                }
-
-                RegCloseKey(subkey);
-            }
-
-            subkeyNameSize = sizeof(subkeyName) / sizeof(subkeyName[0]);
-        }
-
-        RegCloseKey(hKey);
-
-        return is_vm;
-#endif 
-    }
 
 
     /**
@@ -5023,27 +4931,28 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief check for valid MSR value 0x40000000
+     * @brief Check for valid MSR value 0x40000000
      * @category Windows
      * @author LukeGoule
      * @link https://github.com/LukeGoule/compact_vm_detector/tree/main
      * @copyright MIT
      */
     [[nodiscard]] static bool valid_msr() {
-#if (!MSVC)
-        return false;
-#else
-        __try
-        {
-            __readmsr(cpu::leaf::hypervisor);
-        }
-        __except (EXCEPTION_EXECUTE_HANDLER)
-        {
-            return false;
-        }
+    #if (!MSVC)
+            return false;  // Only valid on MSVC
+    #else
+            __try {
+                // Attempt to read the hypervisor MSR from Ring 3
+                __readmsr(0x40000000); // Reading MSR 0x40000000, which typically indicates hypervisor presence
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER) {
+                // If an exception occurs, return false
+                return false;
+            }
 
-        return true;
-#endif
+            // If we reached this point, the read was successful, so return true
+            return true;
+    #endif
     }
 
 
@@ -7334,7 +7243,20 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             regions[i] = (struct memory_region*)malloc(sizeof(struct memory_region) * count);
 
+            if (regions[i] == NULL) {
+                debug("NETTITUDE_VM_MEMORY: Memory allocation failed for regions[i].");
+                return 0;
+            }
+
             count = parse_memory_map(regions[i], ResourceRegistryKeys[i]);
+
+            if (count <= 0) {
+                debug("NETTITUDE_VM_MEMORY: No regions parsed, freeing allocated memory.");
+                free(regions[i]);  
+                regions[i] = NULL;
+                continue;
+            }
+
             region_counts[i] = count;
             for (DWORD r = 0; r < count; r++) {
                 debug(
@@ -7505,9 +7427,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return false;
             }
 
-            if (hFile) {
-                CloseHandle(hFile);
-            }
+            CloseHandle(hFile);
 
             return true;
         };
@@ -10093,8 +10013,6 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::QEMU_BRAND, { 100, VM::cpu_brand_qemu, false } },
     { VM::BOCHS_CPU, { 95, VM::bochs_cpu, false } },
     { VM::VPC_BOARD, { 20, VM::vpc_board, false } },
-    { VM::HYPERV_WMI, { 80, VM::hyperv_wmi, false } },
-    { VM::HYPERV_REG, { 80, VM::hyperv_registry, true } },
     { VM::BIOS_SERIAL, { 60, VM::bios_serial, false } },
     { VM::VBOX_FOLDERS, { 45, VM::vbox_shared_folders, false } },
     { VM::MSSMBIOS, { 75, VM::mssmbios, false } },
