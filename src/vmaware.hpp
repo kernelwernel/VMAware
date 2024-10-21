@@ -4201,19 +4201,18 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         HKEY hOpen;
         char* szBuff;
         int iBuffSize;
-        HANDLE hMod;
         LONG nRes;
 
         szBuff = (char*)calloc(512, sizeof(char));
 
-        hMod = GetModuleHandleA("SbieDll.dll"); // Sandboxie
+        const HANDLE hMod = GetModuleHandleA("SbieDll.dll"); // Sandboxie
         if (hMod != 0) {
             free(szBuff);
             return core::add(SANDBOXIE);
         }
 
         /* this gave a false positive
-        hMod = GetModuleHandleW(L"dbghelp.dll"); // ThreatExpert
+        hMod = GetModuleHandleA("dbghelp.dll"); // ThreatExpert
         if (hMod != 0) {
             free(szBuff);
             return core::add(THREATEXPERT);
@@ -7244,7 +7243,20 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             regions[i] = (struct memory_region*)malloc(sizeof(struct memory_region) * count);
 
+            if (regions[i] == NULL) {
+                debug("NETTITUDE_VM_MEMORY: Memory allocation failed for regions[i].");
+                return 0;
+            }
+
             count = parse_memory_map(regions[i], ResourceRegistryKeys[i]);
+
+            if (count <= 0) {
+                debug("NETTITUDE_VM_MEMORY: No regions parsed, freeing allocated memory.");
+                free(regions[i]);  
+                regions[i] = NULL;
+                continue;
+            }
+
             region_counts[i] = count;
             for (DWORD r = 0; r < count; r++) {
                 debug(
