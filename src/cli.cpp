@@ -632,6 +632,8 @@ void general() {
     checker(VM::WSL_PROC, "WSL string in /proc");
     checker(anyrun_driver, "ANY.RUN driver");
     checker(anyrun_directory, "ANY.RUN directory");
+    checker(VM::GPU_CHIPTYPE, "GPU chip name");
+    checker(VM::DRIVER_NAMES, "driver names");
 
     std::printf("\n");
 

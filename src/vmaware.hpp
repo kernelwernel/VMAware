@@ -9,8 +9,8 @@
  *  C++ VM detection library
  *
  *  - Made by: kernelwernel (https://github.com/kernelwernel)
+ *  - Co-maintained by: Requiem (https://github.com/NotRequiem)
  *  - Contributed by:
- *      - Requiem (https://github.com/NotRequiem)
  *      - Alex (https://github.com/greenozon)
  *      - Marek Knápek (https://github.com/MarekKnapek)
  *      - Vladyslav Miachkov (https://github.com/fameowner99)
@@ -24,14 +24,14 @@
  *
  *
  * ================================ SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 324
- * - struct for internal cpu operations        => line 588
- * - struct for internal memoization           => line 1014
- * - struct for internal utility functions     => line 1142
- * - struct for internal core components       => line 9157
- * - start of internal VM detection techniques => line 2438
- * - start of public VM detection functions    => line 9519
- * - start of externally defined variables     => line 10357
+ * - enums for publicly accessible techniques  => line 325
+ * - struct for internal cpu operations        => line 589
+ * - struct for internal memoization           => line 1028
+ * - struct for internal utility functions     => line 1368
+ * - struct for internal core components       => line 8536
+ * - start of internal VM detection techniques => line 2591
+ * - start of public VM detection functions    => line 8920
+ * - start of externally defined variables     => line 9786
  *
  *
  * ================================ EXAMPLE ==================================
@@ -439,6 +439,7 @@ public:
         PODMAN_FILE,
         WSL_PROC,
         GPU_CHIPTYPE,
+        DRIVER_NAMES,
 
         // start of settings technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
         NO_MEMO,
@@ -8534,6 +8535,82 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
 
+
+    /**
+     * @brief Check for VM-specific names for drivers
+     * @category Windows
+     * @author Requiem (https://github.com/NotRequiem)
+     */
+    [[nodiscard]] bool driver_names() {
+        const int maxDrivers = 1024;
+        std::vector<LPVOID> drivers(maxDrivers);
+        DWORD cbNeeded;
+
+        if (!EnumDeviceDrivers(drivers.data(), maxDrivers * sizeof(LPVOID), &cbNeeded)) {
+            debug("Failed to enumerate device drivers");
+            return false;
+        }
+
+        int count = cbNeeded / sizeof(LPVOID);
+        char driverName[MAX_PATH];
+
+        for (int i = 0; i < count; ++i) {
+            if (GetDeviceDriverBaseNameA(drivers[i], driverName, sizeof(driverName))) {
+                if (
+                    strcmp(driverName, "VBoxGuest") == 0 ||
+                    strcmp(driverName, "VBoxMouse") == 0 ||
+                    strcmp(driverName, "VBoxSF") == 0
+                ) {
+                    return core::add(VBOX);
+                }
+            } else {
+                debug("Failed to retrieve driver name");
+                return false;
+            }
+        }
+        return false;
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     struct core {
         MSVC_DISABLE_WARNING(PADDING)
         struct technique {
@@ -10076,5 +10153,6 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::SMBIOS_VM_BIT, { 50, VM::smbios_vm_bit, false } },
     { VM::PODMAN_FILE, { 15, VM::podman_file, true } },
     { VM::WSL_PROC, { 30, VM::wsl_proc_subdir, false } },
-    { VM::GPU_CHIPTYPE, { 100, VM::gpu_chiptype, false } }
+    { VM::GPU_CHIPTYPE, { 100, VM::gpu_chiptype, false } },
+    { VM::DRIVER_NAMES, { 30, VM::driver_names, false } }
 };
