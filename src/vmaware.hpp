@@ -1469,9 +1469,7 @@ private:
                 }
             }
 
-            if (hToken) {
-                CloseHandle(hToken);
-            }
+            CloseHandle(hToken); 
 
             return is_admin;
 #endif
@@ -1783,7 +1781,7 @@ private:
             DWORD numProcesses = bytesReturned / sizeof(DWORD);
 
             for (DWORD i = 0; i < numProcesses; ++i) {
-                HANDLE process = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, processes[i]);
+                const HANDLE process = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, processes[i]);
                 if (process != nullptr) {
                     TCHAR processName[MAX_PATH];
                     if (GetModuleBaseName(process, nullptr, processName, sizeof(processName) / sizeof(TCHAR))) {
@@ -2351,7 +2349,7 @@ private:
 
         [[nodiscard]] static std::string SMBIOS_string() {
             HKEY hk = 0;
-            int ret = RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SYSTEM\\CurrentControlSet\\Services\\mssmbios\\data", 0, KEY_ALL_ACCESS, &hk);
+            int ret = RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SYSTEM\\CurrentControlSet\\Services\\mssmbios\\data", 0, KEY_ALL_ACCESS, &hk);
             if (ret != ERROR_SUCCESS) {
                 debug("SMBIOS_string(): ret = error");
                 return "";
@@ -2360,7 +2358,7 @@ private:
             unsigned long type = 0;
             unsigned long length = 0;
 
-            ret = RegQueryValueExW(hk, L"SMBiosData", 0, &type, 0, &length);
+            ret = RegQueryValueExA(hk, "SMBiosData", 0, &type, 0, &length);
 
             if (ret != ERROR_SUCCESS) {
                 RegCloseKey(hk);
@@ -2381,7 +2379,7 @@ private:
                 return "";
             }
 
-            ret = RegQueryValueExW(hk, L"SMBiosData", 0, &type, reinterpret_cast<unsigned char*>(p), &length);
+            ret = RegQueryValueExA(hk, "SMBiosData", 0, &type, reinterpret_cast<unsigned char*>(p), &length);
 
             if (ret != ERROR_SUCCESS) {
                 LocalFree(p);
@@ -2472,7 +2470,7 @@ private:
          * @return A std::wstring containing the error message.
          */
         [[nodiscard]] static std::wstring GetLastErrorString() {
-            DWORD error = GetLastError();
+            const DWORD error = GetLastError();
             LPWSTR messageBuffer = nullptr;
             size_t size = FormatMessageW(
                 FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
@@ -3191,7 +3189,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #else
         HKEY hKey;
         // Use wide string literal
-        bool result = (RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\VMware, Inc.\\VMware Tools", 0, KEY_QUERY_VALUE, &hKey) == ERROR_SUCCESS);
+        bool result = (RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SOFTWARE\\VMware, Inc.\\VMware Tools", 0, KEY_QUERY_VALUE, &hKey) == ERROR_SUCCESS);
 
         debug("VMWARE_REG: result = ", result);
 
@@ -3255,40 +3253,38 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!MSVC)
         return false;
 #else
-        std::vector<const char*> real_dlls = {
+        const char* real_dlls[] = {
             "kernel32.dll",
             "networkexplorer.dll",
-            "NlsData0000.dll"
+            "NlsData0000.dll",
         };
 
-        std::vector<const char*> false_dlls = {
+        const char* false_dlls[] = {
             "NetProjW.dll",
             "Ghofr.dll",
-            "fg122.dll"
+            "fg122.dll",
         };
 
-        HMODULE lib_inst;
-
-        for (auto& dll : real_dlls) {
-            lib_inst = LoadLibraryA(dll);
-            if (lib_inst == nullptr) {
+        // Check for real DLLs
+        for (const char* dll : real_dlls) {
+            if (GetModuleHandleA(dll) == nullptr) {
                 debug("DLL: ", "LIB_INST detected true for real dll = ", dll);
-                return true;
+                return true; // Detected a missing real DLL
             }
-            FreeLibrary(lib_inst);
         }
 
-        for (auto& dll : false_dlls) {
-            lib_inst = LoadLibraryA(dll);
-            if (lib_inst != nullptr) {
+        // Check for false DLLs
+        for (const char* dll : false_dlls) {
+            if (GetModuleHandleA(dll) != nullptr) {
                 debug("DLL: ", "LIB_INST detected true for false dll = ", dll);
-                return true;
+                return true; // Detected a loaded false DLL
             }
         }
 
-        return false;
+        return false; // No DLLs detected
 #endif
     }
+
 
 
     /**
@@ -4110,7 +4106,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             for (DWORD i = 0; i < numProcesses; ++i) {
                 // Open the process
-                HANDLE process = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, processes[i]);
+                const HANDLE process = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, processes[i]);
                 if (process != nullptr) {
                     // Get the process name
                     TCHAR processName[MAX_PATH];
@@ -4210,7 +4206,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         szBuff = (char*)calloc(512, sizeof(char));
 
-        hMod = GetModuleHandleW(L"SbieDll.dll"); // Sandboxie
+        hMod = GetModuleHandleA("SbieDll.dll"); // Sandboxie
         if (hMod != 0) {
             free(szBuff);
             return core::add(SANDBOXIE);
@@ -4224,10 +4220,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
         */
 
-        nRes = RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"Software\\Microsoft\\Windows\\CurrentVersion", 0L, KEY_QUERY_VALUE, &hOpen);
+        nRes = RegOpenKeyEx(HKEY_LOCAL_MACHINE, "Software\\Microsoft\\Windows\\CurrentVersion", 0L, KEY_QUERY_VALUE, &hOpen);
         if (nRes == ERROR_SUCCESS) {
             iBuffSize = sizeof(szBuff);
-            nRes = RegQueryValueExW(hOpen, L"ProductId", NULL, NULL, (unsigned char*)szBuff, reinterpret_cast<LPDWORD>(&iBuffSize));
+            nRes = RegQueryValueEx(hOpen, "ProductId", NULL, NULL, (unsigned char*)szBuff, reinterpret_cast<LPDWORD>(&iBuffSize));
             if (nRes == ERROR_SUCCESS) {
                 // Check if szBuff is not NULL before using strcmp
                 if (szBuff == NULL) {
