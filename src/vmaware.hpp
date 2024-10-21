@@ -2267,7 +2267,7 @@ private:
             NTSTATUS(WINAPI * RtlGetVersion)(LPOSVERSIONINFOEXW) = nullptr;
             OSVERSIONINFOEXW osInfo{};
 
-            HMODULE ntdllModule = GetModuleHandleA("ntdll");
+            const HMODULE ntdllModule = GetModuleHandleA("ntdll.dll");
 
             if (ntdllModule == nullptr) {
                 return false;
@@ -2316,7 +2316,7 @@ private:
                 { 22631, static_cast<u8>(11) }
             };
 
-            HMODULE ntdll = LoadLibraryW(L"ntdll.dll");
+            const HMODULE ntdll = GetModuleHandleA("ntdll.dll");
             if (!ntdll) {
                 return util::get_windows_version_backup();
             }
@@ -2338,8 +2338,6 @@ private:
             if (windowsVersions.find(osvi.dwBuildNumber) != windowsVersions.end()) {
                 major_version = windowsVersions.at(osvi.dwBuildNumber);
             }
-
-            FreeLibrary(ntdll);
 
             if (major_version == 0) {
                 return util::get_windows_version_backup();
@@ -2540,7 +2538,7 @@ private:
                     bufferSize = bufferUsed;
                     pBuffer = new WCHAR[bufferSize];
                     if (!pBuffer) {
-                        std::wcerr << L"Memory allocation failed.\n";
+                        std::cerr <<"Memory allocation failed.\n";
                         EvtClose(hResults);
                         EvtClose(hLog);
                         return false;
@@ -4222,10 +4220,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
         */
 
-        nRes = RegOpenKeyEx(HKEY_LOCAL_MACHINE, "Software\\Microsoft\\Windows\\CurrentVersion", 0L, KEY_QUERY_VALUE, &hOpen);
+        nRes = RegOpenKeyExA(HKEY_LOCAL_MACHINE, "Software\\Microsoft\\Windows\\CurrentVersion", 0L, KEY_QUERY_VALUE, &hOpen);
         if (nRes == ERROR_SUCCESS) {
             iBuffSize = sizeof(szBuff);
-            nRes = RegQueryValueEx(hOpen, "ProductId", NULL, NULL, (unsigned char*)szBuff, reinterpret_cast<LPDWORD>(&iBuffSize));
+            nRes = RegQueryValueExA(hOpen, "ProductId", NULL, NULL, (unsigned char*)szBuff, reinterpret_cast<LPDWORD>(&iBuffSize));
             if (nRes == ERROR_SUCCESS) {
                 // Check if szBuff is not NULL before using strcmp
                 if (szBuff == NULL) {
