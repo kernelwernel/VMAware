@@ -54,7 +54,7 @@
 - [ ] /sys/class/dmi/id/product_name check this in qemu
 - [ ] update sourceforge
 - [X] fix the VM::vmaware struct
-- [ ] do the ACPI technique and add it to hyper-x
+- [X] do the ACPI technique and add it to hyper-x
 - [X] "running inside AN unknown VM" instead of "a unknown" for conclusion message
 - [X] fix the DMESG error thing
 - [ ] do the IDT thing
