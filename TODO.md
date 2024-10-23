@@ -25,12 +25,12 @@
 - [ ] upload the lib to apt 
 - [X] add ARM support
 - [X] look into what `fv-az663-325` is
-- [ ] implement techniques from [here](https://labs.nettitude.com/blog/vm-detection-tricks-part-3-hyper-v-raw-network-protocol/)
+- [X] implement techniques from [here](https://labs.nettitude.com/blog/vm-detection-tricks-part-3-hyper-v-raw-network-protocol/)
 - [X] add multiple choice for VM::brand()
 - [ ] add c++20 module support 
 - [X] design a way to disable some techniques way easier
 - [ ] make a man file in markdown for the cli tool
-- [ ] implement smbios version technique [here](https://github.com/Print3M/Anti-VM/blob/eb524ed89e783b36c149acc450b2350d4198b06b/detectors.cpp#L88)
+- [X] implement smbios version technique [here](https://github.com/Print3M/Anti-VM/blob/eb524ed89e783b36c149acc450b2350d4198b06b/detectors.cpp#L88)
 - [ ] implement a display size technique for linux with EDID 
 - [X] implement a technique that matches the CPU product name and match it with a database of core counts for that specific CPU product
 - [X] add usage example in the .hpp file directly below the banner
@@ -54,12 +54,13 @@
 - [ ] /sys/class/dmi/id/product_name check this in qemu
 - [ ] update sourceforge
 - [X] fix the VM::vmaware struct
-- [ ] do the ACPI technique and add it to hyper-x
+- [X] do the ACPI technique and add it to hyper-x
 - [X] "running inside AN unknown VM" instead of "a unknown" for conclusion message
 - [X] fix the DMESG error thing
 - [ ] do the IDT thing
 - [ ] filesystem idea from requiemn
-- [ ] update the graph with the scanner and wmi modules
+- [ ] update the graph with the scanner and wmi 
+- [ ] add linux support for the hdd_serial_number technique
 
 # Distant plans
 - add the library to conan.io when released

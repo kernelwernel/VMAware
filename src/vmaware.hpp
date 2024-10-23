@@ -9,8 +9,8 @@
  *  C++ VM detection library
  *
  *  - Made by: kernelwernel (https://github.com/kernelwernel)
+ *  - Co-maintained by: Requiem (https://github.com/NotRequiem)
  *  - Contributed by:
- *      - Requiem (https://github.com/NotRequiem)
  *      - Alex (https://github.com/greenozon)
  *      - Marek Knápek (https://github.com/MarekKnapek)
  *      - Vladyslav Miachkov (https://github.com/fameowner99)
@@ -24,14 +24,14 @@
  *
  *
  * ================================ SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 324
- * - struct for internal cpu operations        => line 588
- * - struct for internal memoization           => line 1014
- * - struct for internal utility functions     => line 1142
- * - struct for internal core components       => line 9157
- * - start of internal VM detection techniques => line 2438
- * - start of public VM detection functions    => line 9519
- * - start of externally defined variables     => line 10357
+ * - enums for publicly accessible techniques  => line 325
+ * - struct for internal cpu operations        => line 589
+ * - struct for internal memoization           => line 1028
+ * - struct for internal utility functions     => line 1368
+ * - struct for internal core components       => line 8536
+ * - start of internal VM detection techniques => line 2591
+ * - start of public VM detection functions    => line 8920
+ * - start of externally defined variables     => line 9786
  *
  *
  * ================================ EXAMPLE ==================================
@@ -439,6 +439,9 @@ public:
         PODMAN_FILE,
         WSL_PROC,
         GPU_CHIPTYPE,
+        DRIVER_NAMES,
+        VBOX_IDT,
+        HDD_SERIAL,
 
         // start of settings technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
         NO_MEMO,
@@ -1933,6 +1936,18 @@ private:
                 return result;
             };
 
+            // ACPI Data check
+            auto is_acpi_hyperv = []() -> bool {
+                const std::string acpi_data = AcpiData_string();
+                const bool result = (acpi_data == "VRTUAL MICROSFT");
+
+                if (result) {
+                    core_debug("HYPER_X: ACPI string = ", acpi_data);
+                    core_debug("HYPER_X: ACPI string returned true");
+                }
+
+                return result;
+            };
 
             // motherboard check
             auto is_motherboard_hyperv = []() -> bool {
@@ -2003,6 +2018,7 @@ private:
             if (run_mechanism) {
                 const bool has_hyperv_indications = (
                     is_smbios_hyperv() || 
+                    is_acpi_hyperv() ||
                     is_motherboard_hyperv() || 
                     is_event_log_hyperv()
                 );
@@ -2349,7 +2365,7 @@ private:
 
         [[nodiscard]] static std::string SMBIOS_string() {
             HKEY hk = 0;
-            int ret = RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SYSTEM\\CurrentControlSet\\Services\\mssmbios\\data", 0, KEY_ALL_ACCESS, &hk);
+            int ret = RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SYSTEM\\CurrentControlSet\\Services\\mssmbios\\Data", 0, KEY_ALL_ACCESS, &hk);
             if (ret != ERROR_SUCCESS) {
                 debug("SMBIOS_string(): ret = error");
                 return "";
@@ -2434,6 +2450,93 @@ private:
             RegCloseKey(hk);
 
             if (is_vm) {
+                return result;
+            }
+
+            return "";
+        }
+
+
+        [[nodiscard]] static std::string AcpiData_string() {
+            HKEY hk = 0;
+            int ret = RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SYSTEM\\CurrentControlSet\\Services\\mssmbios\\Data", 0, KEY_ALL_ACCESS, &hk);
+            if (ret != ERROR_SUCCESS) {
+                debug("AcpiData_string(): ret = error");
+                return "";
+            }
+
+            unsigned long type = 0;
+            unsigned long length = 0;
+
+            ret = RegQueryValueExA(hk, "AcpiData", 0, &type, 0, &length);
+
+            if (ret != ERROR_SUCCESS) {
+                RegCloseKey(hk);
+                debug("AcpiData_string(): ret = error 2");
+                return "";
+            }
+
+            if (length == 0) {
+                RegCloseKey(hk);
+                debug("AcpiData_string(): length = 0");
+                return "";
+            }
+
+            char* p = static_cast<char*>(LocalAlloc(LMEM_ZEROINIT, length));
+            if (p == nullptr) {
+                RegCloseKey(hk);
+                debug("AcpiData_string(): p = nullptr");
+                return "";
+            }
+
+            ret = RegQueryValueExA(hk, "AcpiData", 0, &type, reinterpret_cast<unsigned char*>(p), &length);
+
+            if (ret != ERROR_SUCCESS) {
+                LocalFree(p);
+                RegCloseKey(hk);
+                debug("AcpiData_string(): ret = error 3");
+                return "";
+            }
+
+            auto ScanDataForString = [](const unsigned char* data, unsigned long data_length, const unsigned char* string2) -> const unsigned char* {
+                std::size_t string_length = strlen(reinterpret_cast<const char*>(string2));
+                for (std::size_t i = 0; i <= (data_length - string_length); i++) {
+                    if (strncmp(reinterpret_cast<const char*>(&data[i]), reinterpret_cast<const char*>(string2), string_length) == 0) {
+                        return &data[i];
+                    }
+                }
+                return nullptr;
+                };
+
+            auto AllToUpper = [](char* str, std::size_t len) {
+                for (std::size_t i = 0; i < len; ++i) {
+                    str[i] = static_cast<char>(std::toupper(static_cast<unsigned char>(str[i])));
+                }
+                };
+
+            AllToUpper(p, length);
+
+            auto cast = [](char* p) -> unsigned char* {
+                return reinterpret_cast<unsigned char*>(p);
+                };
+
+            const unsigned char* x1 = ScanDataForString(cast(p), length, reinterpret_cast<const unsigned char*>("VRTUAL MICROSFT"));
+
+            std::string result = "";
+            bool is_virtual = false;
+
+            if (x1) {
+                is_virtual = true;
+#ifdef __VMAWARE_DEBUG__
+                debug("AcpiData: x1 = ", x1);
+                result = std::string(reinterpret_cast<const char*>(x1));
+#endif
+            }
+
+            LocalFree(p);
+            RegCloseKey(hk);
+
+            if (is_virtual) {
                 return result;
             }
 
@@ -8534,6 +8637,138 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
 
+
+    /**
+     * @brief Check for VM-specific names for drivers
+     * @category Windows
+     * @author Requiem (https://github.com/NotRequiem)
+     */
+    [[nodiscard]] static bool driver_names() {
+#if (!MSVC)
+        return false;
+#else
+        const int maxDrivers = 1024;
+        std::vector<LPVOID> drivers(maxDrivers);
+        DWORD cbNeeded;
+
+        if (!EnumDeviceDrivers(drivers.data(), maxDrivers * sizeof(LPVOID), &cbNeeded)) {
+            debug("Failed to enumerate device drivers");
+            return false;
+        }
+
+        int count = cbNeeded / sizeof(LPVOID);
+        char driverName[MAX_PATH];
+
+        for (int i = 0; i < count; ++i) {
+            if (GetDeviceDriverBaseNameA(drivers[i], driverName, sizeof(driverName))) {
+                if (
+                    strcmp(driverName, "VBoxGuest") == 0 ||
+                    strcmp(driverName, "VBoxMouse") == 0 ||
+                    strcmp(driverName, "VBoxSF") == 0
+                ) {
+                    return core::add(VBOX);
+                }
+            } else {
+                debug("Failed to retrieve driver name");
+                return false;
+            }
+        }
+        return false;
+#endif
+    }
+
+
+    /**
+     * @brief Check for the VirtualBox IDT base address
+     * @category Windows
+     * @author Requiem (https://github.com/NotRequiem)
+     */
+    [[nodiscard]] static bool vbox_idt() {
+#if (!MSVC || !x86) 
+        return false;
+#else
+        u16 idt_limit;
+        u64 idt_base;
+
+        struct { uint16_t limit; uint64_t base; } idtr;
+        __sidt(&idtr);
+        idt_limit = idtr.limit;
+        idt_base = idtr.base;
+
+        constexpr u64 known_hyperv_exclusion = 0xfffff80000001000;
+
+        if ((idt_base & 0xFFFF000000000000) == 0xFFFF000000000000 && idt_base != known_hyperv_exclusion) {
+            return core::add(VBOX);
+        }
+
+        return false;
+#endif
+    }
+
+
+    /**
+     * @brief Check for HDD serial number
+     * @category Windows
+     * @author Requiem (https://github.com/NotRequiem)
+     */
+    [[nodiscard]] static bool hdd_serial_number() {
+#if (!MSVC) 
+        return false;
+#else
+        if (!wmi::initialize()) {
+            debug("HDD serial number: Failed to initialize WMI");
+            return false;
+        }
+
+        const char* targetSerial = "VBbd5bbffd-59166c24";
+
+        std::vector<wmi::result> results = wmi::execute(L"SELECT SerialNumber FROM Win32_DiskDrive", { L"SerialNumber" });
+
+        for (const auto& res : results) {
+            if (res.type == wmi::result_type::String) {
+                if (_stricmp(res.strValue.c_str(), targetSerial) == 0) {
+                    return core::add(VBOX);
+                }
+            }
+        }
+
+        return false;
+#endif
+    };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     struct core {
         MSVC_DISABLE_WARNING(PADDING)
         struct technique {
@@ -10076,5 +10311,8 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::SMBIOS_VM_BIT, { 50, VM::smbios_vm_bit, false } },
     { VM::PODMAN_FILE, { 15, VM::podman_file, true } },
     { VM::WSL_PROC, { 30, VM::wsl_proc_subdir, false } },
-    { VM::GPU_CHIPTYPE, { 100, VM::gpu_chiptype, false } }
+    { VM::GPU_CHIPTYPE, { 100, VM::gpu_chiptype, false } },
+    { VM::DRIVER_NAMES, { 30, VM::driver_names, false } },
+    { VM::VBOX_IDT, { 80, VM::vbox_idt, false } },
+    { VM::HDD_SERIAL, { 95, VM::hdd_serial_number, false } }
 };

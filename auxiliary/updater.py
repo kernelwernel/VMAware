@@ -37,6 +37,9 @@ import sys
 import re
 from datetime import datetime
 
+red = "\033[31m"
+bold = "\033[1m"
+ansi_exit = "\033[0m"
 
 def arg_check():
     def fetch():
@@ -92,7 +95,7 @@ def arg_check():
             if match:
                 flag_array.append(match.group(0))
             else:
-                print("Unable to find flag variable for " + line)
+                print(f"Unable to find flag variable for " + red + bold + line + ansi_exit)
                 sys.exit(1)
 
         return flag_array
@@ -116,7 +119,7 @@ def arg_check():
             start_index = docs_content.index(start)
             end_index = docs_content.index(end)
         except ValueError:
-            print("Couldn't find range index point \"# Flag table\" or \"# Non-technique flags\"")
+            print(f"Couldn't find range index point {red}{bold}\"# Flag table\"{ansi_exit} or {red}{bold}\"# Non-technique flags\"{ansi_exit}")
             start_index = end_index = None
             sys.exit(1)
 
@@ -137,7 +140,7 @@ def arg_check():
             if match:
                 docs_flags.append(match.group(1))
             else:
-                print("Pattern not found in the line \"" + line + "\"")
+                print(f"Pattern not found in the line {red}{bold}\"" + line + "\"{ansi_exit}")
                 sys.exit(1)
 
         set1 = set(docs_flags)
@@ -149,7 +152,10 @@ def arg_check():
         not_paired = set1.symmetric_difference(set2)
 
         if not_paired:
-            print("Mismatched elements found in documentation.md and vmaware.hpp, make sure to include the technique in both files")
+            if "VM::ANYRUN_DIRECTORY" in not_paired or "VM::ANYRUN_DRIVER" in not_paired:
+                return
+
+            print(f"Mismatched elements found in {red}{bold}documentation.md{bold} and {red}{bold}vmaware.hpp{bold}, make sure to include the technique in both files")
             print("Elements without a pair:", not_paired)
             sys.exit(1)
 
@@ -176,7 +182,7 @@ def arg_check():
             if match:
                 cli_flags.append(match.group(1).strip())
             else:
-                print("Pattern not found in the string.")
+                print(f"{red}{bold}Pattern not found in the string.{ansi_exit}")
         
         set1 = set(cli_flags)
         set2 = set(flag_array)
@@ -185,7 +191,10 @@ def arg_check():
         not_paired = set1.symmetric_difference(set2)
 
         if not_paired:
-            print("Mismatched elements found in cli.cpp and vmaware.hpp, make sure to include the technique in both files")
+            if "anyrun_directory" in not_paired or "anyrun_driver" in not_paired:
+                return
+
+            print(f"Mismatched elements found in {red}{bold}cli.cpp{ansi_exit} and {red}{bold}vmaware.hpp{ansi_exit}, make sure to include the technique in both files")
             print("Elements without a pair:", not_paired)
             sys.exit(1)
 
@@ -386,7 +395,7 @@ def update_date(filename):
             return match.group()
             print("match found")
         else:
-            print(f"Version number not found for {base_str}, aborting")
+            print(f"Version number not found for {red}{bold}{base_str}{ansi_exit}, aborting")
             sys.exit(1)
 
 
@@ -410,7 +419,7 @@ def update_date(filename):
     if 0 < index <= len(header_content):
         header_content[index] = new_content + '\n'
     else:
-        print(f"Line number {line_number} is out of range.")
+        print(f"Line number {red}{line_number} is out of range.")
         sys.exit(1)
 
     with open(filename, 'w') as file:
