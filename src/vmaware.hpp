@@ -8742,16 +8742,20 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @author @unusual-aspect (https://github.com/unusual-aspect)
      */
     [[nodiscard]] static bool port_connectors() {
+#if (!MSVC) 
+        return false;
+#else
         if (!wmi::initialize()) {
             return false;
-    }
+        }
 
         std::vector<wmi::result> results = wmi::execute(L"SELECT * FROM Win32_PortConnector", { L"Caption" });
 
         wmi::cleanup();
 
         return results.empty();
-    }
+#endif
+    };
 
 
 
