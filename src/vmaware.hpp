@@ -1402,6 +1402,8 @@ private:
             }
 
             CoUninitialize();
+
+            core_debug("WMI has been cleaned");
         }
     };
 
@@ -8787,8 +8789,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         std::vector<wmi::result> results = wmi::execute(L"SELECT * FROM Win32_PortConnector", { L"Caption" });
 
-        wmi::cleanup();
-
         return results.empty();
 #endif
     };
@@ -8816,8 +8816,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
             }
         }
-
-        wmi::cleanup();
 
         return false;
 #endif
