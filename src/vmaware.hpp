@@ -1366,6 +1366,8 @@ private:
             CoUninitialize();
         }
     };
+
+    using wmi_result = std::vector<wmi::result>;
 #endif
 
     // miscellaneous functionalities
@@ -2450,8 +2452,7 @@ private:
                 return false;
             }
 
-            std::vector<wmi::result> results =
-                wmi::execute(L"SELECT * FROM Win32_BaseBoard", { L"Manufacturer" });
+            wmi_result results = wmi::execute(L"SELECT * FROM Win32_BaseBoard", { L"Manufacturer" });
 
             for (const auto& res : results) {
                 if (res.type == wmi::result_type::String) {
@@ -5249,8 +5250,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        std::vector<wmi::result> results =
-            wmi::execute(L"SELECT * FROM Win32_BaseBoard", { L"Manufacturer" });
+        wmi_result results = wmi::execute(L"SELECT * FROM Win32_BaseBoard", { L"Manufacturer" });
 
         for (const auto& res : results) {
             if (res.type == wmi::result_type::String) {
@@ -8503,8 +8503,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        std::vector<wmi::result> results =
-            wmi::execute(L"SELECT * FROM Win32_VideoController", { L"VideoProcessor" });
+        wmi_result results = wmi::execute(L"SELECT * FROM Win32_VideoController", { L"VideoProcessor" });
 
         std::string result = "";
         for (const auto& res : results) {
@@ -8622,7 +8621,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         const char* targetSerial = "VBbd5bbffd-59166c24";
 
-        std::vector<wmi::result> results = wmi::execute(L"SELECT SerialNumber FROM Win32_DiskDrive", { L"SerialNumber" });
+        wmi_result results = wmi::execute(L"SELECT SerialNumber FROM Win32_DiskDrive", { L"SerialNumber" });
 
         for (const auto& res : results) {
             if (res.type == wmi::result_type::String) {

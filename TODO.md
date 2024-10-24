@@ -61,6 +61,7 @@
 - [ ] filesystem idea from requiemn
 - [ ] update the graph with the scanner and wmi 
 - [ ] add linux support for the hdd_serial_number technique
+- [ ] update the hyper-x graph to v5 with the acpi thingy
 
 # Distant plans
 - add the library to conan.io when released

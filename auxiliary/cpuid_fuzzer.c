@@ -178,14 +178,41 @@ void leaf_mode_fuzzer(const uint64_t p_max_leaf) {
 }
 
 
+// scan for a range of leafs
+void scan_mode_fuzzer(const uint64_t p_max_leaf) {
+    printf("%s", "Scan mode fuzzer \n");
+    uint32_t reg[4];
+
+    for (int i = 0; i < 0x10000; i++) {
+        cpuid(reg, 0x40000000 + i, null_leaf);
+
+        if (likely(
+            reg[eax] || \
+            reg[ebx] || \
+            reg[ecx] || \
+            reg[edx]
+        )) {
+            printf("leaf = %d\n", i);
+            printf("eax = 0x%0X\n", reg[eax]);
+            printf("ebx = 0x%0X\n", reg[ebx]);
+            printf("ecx = 0x%0X\n", reg[ecx]);
+            printf("edx = 0x%0X\n\n", reg[edx]);
+        }
+    }
+}
+
+
 int main(int argc, char *argv[]) {
     uint8_t flags = 0;
 
     if (argc == 1) {
         flags |= leaf_mode;
+        flags |= scan_mode;
     } else if (argc == 2) {
         if (strcmp(argv[2], "--leaf") == 0) {
             flags |= leaf_mode;
+        } else if (strcmp(argv[2], "--scan") == 0) {
+            flags |= scan_mode;
         } else {
             printf("%s", "Unknown flag provided, aborting\n");
             return 1;
@@ -200,10 +227,10 @@ int main(int argc, char *argv[]) {
 
     if (flags & leaf_mode) {
         leaf_mode_fuzzer(high_leaf);
-    } else if (flags & scan_mode) {
-        //scan_mode_fuzzer(high_leaf);
-    } else {
-        return 1;
+    }
+    
+    if (flags & scan_mode) {
+        scan_mode_fuzzer(high_leaf);
     }
 
     return 0;
