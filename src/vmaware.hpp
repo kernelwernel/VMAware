@@ -10179,7 +10179,7 @@ bool VM::memo::hyperx::cached = false;
 IWbemLocator* VM::wmi::pLoc = nullptr;
 IWbemServices* VM::wmi::pSvc = nullptr;
 bool VM::memo::wmi::cached = false;
-bool VM::memo::wmi::stored = false;
+bool VM::memo::wmi::status = false;
 #endif
 
 #ifdef __VMAWARE_DEBUG__
