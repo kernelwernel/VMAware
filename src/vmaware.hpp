@@ -442,6 +442,7 @@ public:
         DRIVER_NAMES,
         VBOX_IDT,
         HDD_SERIAL,
+        PORT_CONNECTORS,
 
         // start of settings technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
         NO_MEMO,
@@ -2603,7 +2604,7 @@ private:
             const std::vector<std::wstring>& searchStrings,
             DWORD flags = EvtQueryReverseDirection,
             DWORD timeout = INFINITE,
-            DWORD maxEvents = 1000) {
+            const DWORD maxEvents = 1000) {
 
             EVT_HANDLE hLog = EvtOpenLog(nullptr, logName.c_str(), EvtOpenChannelPath);
             if (!hLog) {
@@ -8631,8 +8632,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return core::add(HYPERV);
         }
 
-        wmi::cleanup();
-
         return false;
 #endif
     }
@@ -8737,7 +8736,22 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     };
 
 
+    /**
+     * @brief Check for physical connection ports
+     * @category Windows
+     * @author @unusual-aspect (https://github.com/unusual-aspect)
+     */
+    [[nodiscard]] static bool port_connectors() {
+        if (!wmi::initialize()) {
+            return false;
+    }
 
+        std::vector<wmi::result> results = wmi::execute(L"SELECT * FROM Win32_PortConnector", { L"Caption" });
+
+        wmi::cleanup();
+
+        return results.empty();
+    }
 
 
 
@@ -10314,5 +10328,7 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::GPU_CHIPTYPE, { 100, VM::gpu_chiptype, false } },
     { VM::DRIVER_NAMES, { 30, VM::driver_names, false } },
     { VM::VBOX_IDT, { 80, VM::vbox_idt, false } },
-    { VM::HDD_SERIAL, { 95, VM::hdd_serial_number, false } }
+    { VM::HDD_SERIAL, { 95, VM::hdd_serial_number, false } },
+    { VM::PORT_CONNECTORS, { 50, VM::port_connectors, false } }
+
 };

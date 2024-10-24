@@ -636,6 +636,7 @@ void general() {
     checker(VM::DRIVER_NAMES, "driver names");
     checker(VM::VBOX_IDT, "VirtualBox SIDT");
     checker(VM::HDD_SERIAL, "HDD serial number");
+    checker(VM::PORT_CONNECTORS, "HDD serial number");
 
     std::printf("\n");
 
