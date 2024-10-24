@@ -442,6 +442,7 @@ public:
         DRIVER_NAMES,
         VBOX_IDT,
         HDD_SERIAL,
+        PORT_CONNECTORS,
 
         // start of settings technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
         NO_MEMO,
@@ -1938,6 +1939,18 @@ private:
                 return result;
             };
 
+            // ACPI Data check
+            auto is_acpi_hyperv = []() -> bool {
+                const std::string acpi_data = AcpiData_string();
+                const bool result = (acpi_data == "VRTUAL MICROSFT");
+
+                if (result) {
+                    core_debug("HYPER_X: ACPI string = ", acpi_data);
+                    core_debug("HYPER_X: ACPI string returned true");
+                }
+
+                return result;
+            };
 
             // motherboard check
             auto is_motherboard_hyperv = []() -> bool {
@@ -2008,6 +2021,7 @@ private:
             if (run_mechanism) {
                 const bool has_hyperv_indications = (
                     is_smbios_hyperv() || 
+                    is_acpi_hyperv() ||
                     is_motherboard_hyperv() || 
                     is_event_log_hyperv()
                 );
@@ -2354,7 +2368,7 @@ private:
 
         [[nodiscard]] static std::string SMBIOS_string() {
             HKEY hk = 0;
-            int ret = RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SYSTEM\\CurrentControlSet\\Services\\mssmbios\\data", 0, KEY_ALL_ACCESS, &hk);
+            int ret = RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SYSTEM\\CurrentControlSet\\Services\\mssmbios\\Data", 0, KEY_ALL_ACCESS, &hk);
             if (ret != ERROR_SUCCESS) {
                 debug("SMBIOS_string(): ret = error");
                 return "";
@@ -2446,6 +2460,93 @@ private:
         }
 
 
+        [[nodiscard]] static std::string AcpiData_string() {
+            HKEY hk = 0;
+            int ret = RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SYSTEM\\CurrentControlSet\\Services\\mssmbios\\Data", 0, KEY_ALL_ACCESS, &hk);
+            if (ret != ERROR_SUCCESS) {
+                debug("AcpiData_string(): ret = error");
+                return "";
+            }
+
+            unsigned long type = 0;
+            unsigned long length = 0;
+
+            ret = RegQueryValueExA(hk, "AcpiData", 0, &type, 0, &length);
+
+            if (ret != ERROR_SUCCESS) {
+                RegCloseKey(hk);
+                debug("AcpiData_string(): ret = error 2");
+                return "";
+            }
+
+            if (length == 0) {
+                RegCloseKey(hk);
+                debug("AcpiData_string(): length = 0");
+                return "";
+            }
+
+            char* p = static_cast<char*>(LocalAlloc(LMEM_ZEROINIT, length));
+            if (p == nullptr) {
+                RegCloseKey(hk);
+                debug("AcpiData_string(): p = nullptr");
+                return "";
+            }
+
+            ret = RegQueryValueExA(hk, "AcpiData", 0, &type, reinterpret_cast<unsigned char*>(p), &length);
+
+            if (ret != ERROR_SUCCESS) {
+                LocalFree(p);
+                RegCloseKey(hk);
+                debug("AcpiData_string(): ret = error 3");
+                return "";
+            }
+
+            auto ScanDataForString = [](const unsigned char* data, unsigned long data_length, const unsigned char* string2) -> const unsigned char* {
+                std::size_t string_length = strlen(reinterpret_cast<const char*>(string2));
+                for (std::size_t i = 0; i <= (data_length - string_length); i++) {
+                    if (strncmp(reinterpret_cast<const char*>(&data[i]), reinterpret_cast<const char*>(string2), string_length) == 0) {
+                        return &data[i];
+                    }
+                }
+                return nullptr;
+                };
+
+            auto AllToUpper = [](char* str, std::size_t len) {
+                for (std::size_t i = 0; i < len; ++i) {
+                    str[i] = static_cast<char>(std::toupper(static_cast<unsigned char>(str[i])));
+                }
+                };
+
+            AllToUpper(p, length);
+
+            auto cast = [](char* p) -> unsigned char* {
+                return reinterpret_cast<unsigned char*>(p);
+                };
+
+            const unsigned char* x1 = ScanDataForString(cast(p), length, reinterpret_cast<const unsigned char*>("VRTUAL MICROSFT"));
+
+            std::string result = "";
+            bool is_virtual = false;
+
+            if (x1) {
+                is_virtual = true;
+#ifdef __VMAWARE_DEBUG__
+                debug("AcpiData: x1 = ", x1);
+                result = std::string(reinterpret_cast<const char*>(x1));
+#endif
+            }
+
+            LocalFree(p);
+            RegCloseKey(hk);
+
+            if (is_virtual) {
+                return result;
+            }
+
+            return "";
+        }
+
+
         [[nodiscard]] static bool motherboard_string(const char* vm_string) {
             if (!wmi::initialize()) {
                 std::cerr << "Failed to initialize WMI.\n";
@@ -2504,7 +2605,7 @@ private:
             const std::vector<std::wstring>& searchStrings,
             DWORD flags = EvtQueryReverseDirection,
             DWORD timeout = INFINITE,
-            DWORD maxEvents = 1000) {
+            const DWORD maxEvents = 1000) {
 
             EVT_HANDLE hLog = EvtOpenLog(nullptr, logName.c_str(), EvtOpenChannelPath);
             if (!hLog) {
@@ -8530,8 +8631,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return core::add(HYPERV);
         }
 
-        wmi::cleanup();
-
         return false;
 #endif
     }
@@ -8636,7 +8735,26 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     };
 
 
+    /**
+     * @brief Check for physical connection ports
+     * @category Windows
+     * @author @unusual-aspect (https://github.com/unusual-aspect)
+     */
+    [[nodiscard]] static bool port_connectors() {
+#if (!MSVC) 
+        return false;
+#else
+        if (!wmi::initialize()) {
+            return false;
+        }
 
+        std::vector<wmi::result> results = wmi::execute(L"SELECT * FROM Win32_PortConnector", { L"Caption" });
+
+        wmi::cleanup();
+
+        return results.empty();
+#endif
+    };
 
 
 
@@ -10213,5 +10331,7 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::GPU_CHIPTYPE, { 100, VM::gpu_chiptype, false } },
     { VM::DRIVER_NAMES, { 30, VM::driver_names, false } },
     { VM::VBOX_IDT, { 80, VM::vbox_idt, false } },
-    { VM::HDD_SERIAL, { 95, VM::hdd_serial_number, false } }
+    { VM::HDD_SERIAL, { 95, VM::hdd_serial_number, false } },
+    { VM::PORT_CONNECTORS, { 50, VM::port_connectors, false } }
+
 };
