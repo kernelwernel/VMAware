@@ -8787,7 +8787,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        std::vector<wmi::result> results = wmi::execute(L"SELECT * FROM Win32_PortConnector", { L"Caption" });
+        wmi_result results = wmi::execute(L"SELECT * FROM Win32_PortConnector", { L"Caption" });
 
         return results.empty();
 #endif
@@ -8806,7 +8806,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        std::vector<wmi::result> results = wmi::execute(L"SELECT Model FROM Win32_DiskDrive", { L"Model" });
+        wmi_result results = wmi::execute(L"SELECT Model FROM Win32_DiskDrive", { L"Model" });
 
         for (const auto& res : results) {
             if (res.type == wmi::result_type::String) {
