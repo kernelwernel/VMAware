@@ -86,6 +86,19 @@ sudo make install
 cmake -S . -B build/ -G "Visual Studio 16 2019"
 ```
 
+### CMake installation
+```cmake
+set(DESTINATION "/path/to/destination/vmaware.hpp") # set this manually
+
+if (NOT EXISTS ${DESTINATION})
+    message(STATUS "Downloading VMAware")
+    set(URL "https://github.com/kernelwernel/VMAware/releases/latest/download/vmaware.hpp")
+    file(DOWNLOAD ${URL} ${DESTINATION} SHOW_PROGRESS)
+else()
+    message(STATUS "VMAware already downloaded, skipping")
+endif()
+```
+
 <br>
 
 If you just want the binaries, head over to the latest [release section](https://github.com/kernelwernel/VMAware/releases/latest)
