@@ -442,6 +442,8 @@ public:
         DRIVER_NAMES,
         VBOX_IDT,
         HDD_SERIAL,
+        PORT_CONNECTORS,
+        QEMU_HDD,
 
         // start of settings technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
         NO_MEMO,
@@ -1154,6 +1156,26 @@ private:
                 return cached;
             }
         };
+
+#if (MSVC)
+        struct wmi {
+            static bool cached;
+            static bool status;
+
+            static void store(const bool p_status) {
+                cached = true;
+                status = p_status;
+            }
+
+            static bool is_cached() {
+                return cached;
+            }
+
+            static bool fetch() {
+                return status;
+            }
+        };
+#endif
     };
 
 #if (MSVC)
@@ -1219,13 +1241,22 @@ private:
         };
 
         static bool initialize() {
+            if (memo::wmi::is_cached()) {
+                return memo::wmi::fetch();
+            }
+
+            // this will clean up wmi when the program terminates
+            std::atexit(wmi::cleanup);
+
             if (pSvc != nullptr) {
+                memo::wmi::store(true);
                 return true;
             }
 
             HRESULT hres = CoInitializeEx(0, COINIT_MULTITHREADED);
             if (FAILED(hres)) {
                 debug("wmi: Failed to initialize COM library. Error code = ", hres);
+                memo::wmi::store(false);
                 return false;
             }
 
@@ -1244,6 +1275,7 @@ private:
             if (FAILED(hres)) {
                 CoUninitialize();
                 debug("wmi: Failed to initialize security. Error code = ", hres);
+                memo::wmi::store(false);
                 return false;
             }
 
@@ -1258,6 +1290,7 @@ private:
             if (FAILED(hres)) {
                 CoUninitialize();
                 debug("wmi: Failed to create IWbemLocator object. Error code = ", hres);
+                memo::wmi::store(false);
                 return false;
             }
 
@@ -1276,6 +1309,7 @@ private:
                 pLoc->Release();
                 CoUninitialize();
                 debug("wmi: Could not connect to WMI server. Error code = ", hres);
+                memo::wmi::store(false);
                 return false;
             }
 
@@ -1295,9 +1329,11 @@ private:
                 pLoc->Release();
                 CoUninitialize();
                 debug("wmi: Could not set proxy blanket. Error code = ", hres);
+                memo::wmi::store(false);
                 return false;
             }
 
+            memo::wmi::store(true);
             return true;
         }
 
@@ -1359,13 +1395,19 @@ private:
                 pSvc->Release();
                 pSvc = nullptr;
             }
+
             if (pLoc) {
                 pLoc->Release();
                 pLoc = nullptr;
             }
+
             CoUninitialize();
+
+            core_debug("WMI has been cleaned");
         }
     };
+
+    using wmi_result = std::vector<wmi::result>;
 #endif
 
     // miscellaneous functionalities
@@ -2550,8 +2592,7 @@ private:
                 return false;
             }
 
-            std::vector<wmi::result> results =
-                wmi::execute(L"SELECT * FROM Win32_BaseBoard", { L"Manufacturer" });
+            wmi_result results = wmi::execute(L"SELECT * FROM Win32_BaseBoard", { L"Manufacturer" });
 
             for (const auto& res : results) {
                 if (res.type == wmi::result_type::String) {
@@ -2603,7 +2644,7 @@ private:
             const std::vector<std::wstring>& searchStrings,
             DWORD flags = EvtQueryReverseDirection,
             DWORD timeout = INFINITE,
-            DWORD maxEvents = 1000) {
+            const DWORD maxEvents = 1000) {
 
             EVT_HANDLE hLog = EvtOpenLog(nullptr, logName.c_str(), EvtOpenChannelPath);
             if (!hLog) {
@@ -5349,8 +5390,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        std::vector<wmi::result> results =
-            wmi::execute(L"SELECT * FROM Win32_BaseBoard", { L"Manufacturer" });
+        wmi_result results = wmi::execute(L"SELECT * FROM Win32_BaseBoard", { L"Manufacturer" });
 
         for (const auto& res : results) {
             if (res.type == wmi::result_type::String) {
@@ -8603,8 +8643,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        std::vector<wmi::result> results =
-            wmi::execute(L"SELECT * FROM Win32_VideoController", { L"VideoProcessor" });
+        wmi_result results = wmi::execute(L"SELECT * FROM Win32_VideoController", { L"VideoProcessor" });
 
         std::string result = "";
         for (const auto& res : results) {
@@ -8630,8 +8669,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (util::find(result, "hyper-v")) {
             return core::add(HYPERV);
         }
-
-        wmi::cleanup();
 
         return false;
 #endif
@@ -8722,7 +8759,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         const char* targetSerial = "VBbd5bbffd-59166c24";
 
-        std::vector<wmi::result> results = wmi::execute(L"SELECT SerialNumber FROM Win32_DiskDrive", { L"SerialNumber" });
+        wmi_result results = wmi::execute(L"SELECT SerialNumber FROM Win32_DiskDrive", { L"SerialNumber" });
 
         for (const auto& res : results) {
             if (res.type == wmi::result_type::String) {
@@ -8737,7 +8774,52 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     };
 
 
+    /**
+     * @brief Check for physical connection ports
+     * @category Windows
+     * @author @unusual-aspect (https://github.com/unusual-aspect)
+     */
+    [[nodiscard]] static bool port_connectors() {
+#if (!MSVC) 
+        return false;
+#else
+        if (!wmi::initialize()) {
+            return false;
+        }
 
+        wmi_result results = wmi::execute(L"SELECT * FROM Win32_PortConnector", { L"Caption" });
+
+        return results.empty();
+#endif
+    };
+
+
+    /**
+     * @brief Check for QEMU keyword in HDD model
+     * @category Windows
+     */
+    [[nodiscard]] static bool qemu_hdd() {
+#if (!MSVC) 
+        return false;
+#else
+        if (!wmi::initialize()) {
+            return false;
+        }
+
+        wmi_result results = wmi::execute(L"SELECT Model FROM Win32_DiskDrive", { L"Model" });
+
+        for (const auto& res : results) {
+            if (res.type == wmi::result_type::String) {
+                debug("QEMU_HDD: model = ", res.strValue);
+                if (util::find(res.strValue, "QEMU")) {
+                    return core::add(QEMU);
+                }
+            }
+        }
+
+        return false;
+#endif
+    };
 
 
 
@@ -9161,7 +9243,7 @@ public: // START OF PUBLIC FUNCTIONS
      * @return bool
      * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmcheck
      */
-    [[nodiscard]] static bool check(
+    static bool check(
         const enum_flags flag_bit, 
         const enum_flags memo_arg = NULL_ARG
         // clang doesn't support std::source_location for some reason
@@ -9247,7 +9329,7 @@ public: // START OF PUBLIC FUNCTIONS
      * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmbrand
      */
     template <typename ...Args>
-    [[nodiscard]] static std::string brand(Args ...args) {
+    static std::string brand(Args ...args) {
         flagset flags = core::arg_handler(args...);
 
         // is the multiple setting flag enabled? (meaning multiple 
@@ -10096,6 +10178,8 @@ bool VM::memo::hyperx::cached = false;
 #if (MSVC)
 IWbemLocator* VM::wmi::pLoc = nullptr;
 IWbemServices* VM::wmi::pSvc = nullptr;
+bool VM::memo::wmi::cached = false;
+bool VM::memo::wmi::status = false;
 #endif
 
 #ifdef __VMAWARE_DEBUG__
@@ -10314,5 +10398,7 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::GPU_CHIPTYPE, { 100, VM::gpu_chiptype, false } },
     { VM::DRIVER_NAMES, { 30, VM::driver_names, false } },
     { VM::VBOX_IDT, { 80, VM::vbox_idt, false } },
-    { VM::HDD_SERIAL, { 95, VM::hdd_serial_number, false } }
+    { VM::HDD_SERIAL, { 95, VM::hdd_serial_number, false } },
+    { VM::PORT_CONNECTORS, { 50, VM::port_connectors, false } },
+    { VM::QEMU_HDD, { 60, VM::qemu_hdd, false } }
 };

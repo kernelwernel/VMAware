@@ -468,6 +468,10 @@ void checker(const VM::enum_flags flag, const char* message) {
 #if (LINUX)
     if (are_perms_required(flag)) {
         std::cout << no_perms << " Skipped " << message << "\n";
+
+        // memoize it, it's going to be ran later anyway with stuff like VM::detect()
+        VM::check(flag);
+
         return;
     }
 #endif
@@ -636,6 +640,8 @@ void general() {
     checker(VM::DRIVER_NAMES, "driver names");
     checker(VM::VBOX_IDT, "VirtualBox SIDT");
     checker(VM::HDD_SERIAL, "HDD serial number");
+    checker(VM::PORT_CONNECTORS, "Physical connection ports");
+    checker(VM::QEMU_HDD, "QEMU in HDD model");
 
     std::printf("\n");
 
