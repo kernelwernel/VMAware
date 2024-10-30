@@ -569,9 +569,6 @@ private:
     static constexpr const char* NULL_BRAND = "Unknown";
 
 
-
-    static flagset global_flags; // for certain techniques where the flags MUST be accessible
-
     // macro for bypassing unused parameter/variable warnings
     #define UNUSED(x) ((void)(x))
 
@@ -8945,7 +8942,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 throw std::invalid_argument("Invalid flag option for function parameter found, either leave it empty or add the VM::DEFAULT flag");
             }
 
-            // at this stage, only settings technique flags are asserted to be set
+            // at this stage, only setting flags are asserted to be set
             if (
                 flags.test(NO_MEMO) ||
                 flags.test(HIGH_THRESHOLD) ||
@@ -9200,7 +9197,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             flag_collector.reset();
-            global_flags.reset();
 
             // set the bits in the flag, can take in 
             // either an enum value or a std::bitset
@@ -9208,8 +9204,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             // handle edgecases
             core::flag_sanitizer(flag_collector);
-
-            global_flags = flag_collector;
 
             return flag_collector;
         }
@@ -10191,10 +10185,8 @@ VM::u16 VM::total_points = 0;
 // VM::detect(VM::HIGH_THRESHOLD) is passed, the HIGH_THRESHOLD bit will be 
 // collected in this flagset (std::bitset) variable, and eventually be the 
 // return value for actual end-user functions like VM::detect() to rely 
-// and work on. VM::global_flags is just a copy of the flags but visible 
-// globally throughout the whole VM struct, as the name implies.
+// and work on.
 VM::flagset VM::core::flag_collector;
-VM::flagset VM::global_flags;
 
 
 VM::u8 VM::detected_count_num = 0;
