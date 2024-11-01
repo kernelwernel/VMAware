@@ -8965,9 +8965,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             const bool memo_enabled = core::is_disabled(flags, NO_MEMO);
 
-            const u16 threshold_points = (core::is_enabled(flags, HIGH_THRESHOLD) ? high_threshold_score : 200);
+            u16 threshold_points = 150;
+            
+            // set it to 300 if high threshold is enabled
+            if (core::is_enabled(flags, HIGH_THRESHOLD)) {
+                threshold_points = high_threshold_score;
+            }
 
-            // loop through technique table, where all the techniques are stored
+            // loop through the technique table, where all the techniques are stored
             for (const auto& tmp : technique_table) {
                 const enum_flags technique_macro = tmp.first;
                 const technique technique_data = tmp.second;
@@ -9009,7 +9014,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
                 
                 // for things like VM::detect() and VM::percentage(),
-                // a score of 200+ is guaranteed to be a VM, so
+                // a score of 150+ is guaranteed to be a VM, so
                 // there's no point in running the rest of the techniques
                 if (shortcut && points >= threshold_points) {
                     return points;
@@ -9024,6 +9029,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             // for custom VM techniques, won't be used most of the time
             if (!custom_table.empty()) {
                 for (const auto& technique : custom_table) {
+
+                    // if cached, return that result
                     if (memo_enabled && memo::is_cached(technique.id)) {
                         const memo::data_t data = memo::cache_fetch(technique.id);
 
@@ -9034,13 +9041,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                         continue;
                     }
 
+                    // run the custom technique
                     const bool result = technique.run();
 
+                    // accumulate a few important values
                     if (result) {
                         points += technique.points;
                         detected_count_num++;
                     }
 
+                    // cache the result
                     if (memo_enabled) {
                         memo::cache_store(
                             technique.id,
@@ -9358,7 +9368,7 @@ public: // START OF PUBLIC FUNCTIONS
         }
 
         // goofy ass C++11 and C++14 linker error workaround, 
-        // and yes, this does look indeed stupid.
+        // and yes, this does look stupid.
 #if (CPP <= 14)
         constexpr const char* TMP_QEMU = "QEMU";
         constexpr const char* TMP_KVM = "KVM";
@@ -9586,7 +9596,7 @@ public: // START OF PUBLIC FUNCTIONS
         flagset flags = core::arg_handler(args...);
 
         // run all the techniques based on the 
-        // flags above, and get a total score
+        // flags above, and get a total score 
         const u16 points = core::run_all(flags, SHORTCUT);
 
 #if (CPP >= 23)
