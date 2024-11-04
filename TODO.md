@@ -62,6 +62,11 @@
 - [ ] update the graph with the scanner and wmi 
 - [ ] add linux support for the hdd_serial_number technique
 - [ ] update the hyper-x graph to v5 with the acpi thingy
+- [ ] add a VM brand information summary if one was detected (i.e. "VMware is a type 2 hypervisor by Broadcom released in 1999, etc etc")
+- [ ] fix "dmidecode not found" error
+- [ ] fix /dev/mem not found in vbox default
+- [ ] dxdiag technique from utoshu
+
 
 # Distant plans
 - add the library to conan.io when released

@@ -59,3 +59,4 @@ personal_todo.md
 notes.txt
 auxiliary/test_template.cpp
 release_notes.md
+src/gui/lib/*
