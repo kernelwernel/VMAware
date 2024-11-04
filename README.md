@@ -88,7 +88,11 @@ cmake -S . -B build/ -G "Visual Studio 16 2019"
 
 ### CMake installation
 ```cmake
-set(DESTINATION "/path/to/destination/vmaware.hpp") # set this manually
+# edit the path manually
+set(DESTINATION "/path/to/destination/vmaware.hpp")
+
+# for MIT
+# set(DESTINATION "/path/to/destination/vmaware_MIT.hpp") 
 
 if (NOT EXISTS ${DESTINATION})
     message(STATUS "Downloading VMAware")

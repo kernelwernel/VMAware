@@ -11,7 +11,7 @@
 - [`VM::detected_count()`](#vmdetected_count)
 - [`VM::vmaware struct`](#vmaware-struct)
 - [Flag table](#flag-table)
-- [Non-technique flags](#non-technique-flags)
+- [Setting flags](#setting-flags)
 - [Variables](#variables)
 - [CLI arguments](#cli-documentation)
 
@@ -40,23 +40,13 @@ int main() {
 
 
     /**
-     * Essentially means only the CPU brand, MAC, and hypervisor bit techniques 
-     * should be performed. Note that the less flags you provide, the more 
-     * likely the result will not be accurate. If you just want to check for 
-     * a single technique, use VM::check() instead. Also, read the flag table
-     * at the end of this doc file for a full list of technique flags.
-     */
-    bool is_vm3 = VM::detect(VM::CPU_BRAND, VM::MAC, VM::HYPERVISOR_BIT);
-
-
-    /**
      * There are roughly 1/3 of all techniques that are considered to be "spoofable",
      * meaning that anybody can potentially cause a false positive by exploiting the
      * fact that the spoofable techniques checks for things that anybody can modify
      * (file data, registry, directories, etc...). This category of techniques are disabled 
      * by default, but they can be enabled with the VM::SPOOFABLE flag.
      */
-    bool is_vm4 = VM::detect(VM::SPOOFABLE);
+    bool is_vm3 = VM::detect(VM::SPOOFABLE);
 
 
     /**
@@ -66,7 +56,7 @@ int main() {
      * human mouse interaction to detect automated virtual environments.
      * If you're fine with having a 5 second delay, add VM::ALL 
      */ 
-    bool is_vm5 = VM::detect(VM::ALL);
+    bool is_vm4 = VM::detect(VM::ALL);
 
 
     /**
@@ -77,7 +67,7 @@ int main() {
      * caching will be operated when you're not going to re-use the previously 
      * stored result at the end. 
      */ 
-    bool is_vm6 = VM::detect(VM::NO_MEMO);
+    bool is_vm5 = VM::detect(VM::NO_MEMO);
 
 
     /**
@@ -85,7 +75,17 @@ int main() {
      * Use this if you want to be extremely sure if it's a VM, but this can risk the result
      * to be a false negative. Use VM::percentage() for a more precise result if you want.
      */ 
-    bool is_vm7 = VM::detect(VM::HIGH_THRESHOLD);
+    bool is_vm6 = VM::detect(VM::HIGH_THRESHOLD);
+
+
+    /**
+     * Essentially means only the CPU brand, MAC, and hypervisor bit techniques 
+     * should be performed. Note that the less flags you provide, the more 
+     * likely the result will not be accurate. If you just want to check for 
+     * a single technique, use VM::check() instead. Also, read the flag table
+     * at the end of this doc file for a full list of technique flags.
+     */
+    bool is_vm7 = VM::detect(VM::CPU_BRAND, VM::MAC, VM::HYPERVISOR_BIT);
 
 
     /**
@@ -103,8 +103,8 @@ int main() {
 
 
     /**
-     * This is just an example to show that you can use a combination of different
-     * flags and non-technique flags with the above examples. 
+     * This is just an example to show that you can use a combination of 
+     * different flags and non-technique flags with the above examples. 
      */ 
     bool is_vm10 = VM::detect(VM::DEFAULT, VM::NO_MEMO, VM::HIGH_THRESHOLD, VM::DISABLE(VM::RDTSC, VM::VMID));
 
@@ -177,7 +177,7 @@ This will essentially return the VM brand as a `std::string`. The exact possible
 - `CWSandbox`
 - `Comodo`
 - `Bochs`
-- `Lockheed Martin LMHS`   (yes, you read that right. The library can detect VMs running on US military fighter jets)
+- `Lockheed Martin LMHS`   (Yes, you read that right. The library can detect VMs running on US military fighter jets, apparently)
 - `NVMM`
 - `OpenBSD VMM`
 - `Intel HAXM`
@@ -517,7 +517,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 
 <br>
 
-# Non-technique flags
+# Setting flags
 | Flag | Description |
 |------|-------------|
 | `VM::ALL` | This will enable all the technique flags, including spoofable techniques and cursor check that are disabled by default. |

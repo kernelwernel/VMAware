@@ -569,9 +569,6 @@ private:
     static constexpr const char* NULL_BRAND = "Unknown";
 
 
-
-    static flagset global_flags; // for certain techniques where the flags MUST be accessible
-
     // macro for bypassing unused parameter/variable warnings
     #define UNUSED(x) ((void)(x))
 
@@ -2766,11 +2763,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         std::string brand = cpu::get_brand();
 
         // TODO: might add more potential keywords, be aware that it could (theoretically) cause false positives
-        constexpr std::array<const char*, 16> vmkeywords {{
-            "qemu", "kvm", "virtual", "vm",
-            "vbox", "virtualbox", "vmm", "monitor",
-            "bhyve", "hyperv", "hypervisor", "hvisor",
-            "parallels", "vmware", "hvm", "qnx"
+        constexpr std::array<const char*, 12> vmkeywords {{
+            "qemu", "kvm", "virtual",
+            "vbox", "virtualbox", "monitor",
+            "bhyve", "hyperv", "hypervisor", 
+            "hvisor", "parallels", "vmware"
         }};
 
         u8 match_count = 0;
@@ -3397,38 +3394,22 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!MSVC)
         return false;
 #else
-        const char* real_dlls[] = {
-            "kernel32.dll",
-            "networkexplorer.dll",
-            "NlsData0000.dll",
-        };
-
         const char* false_dlls[] = {
             "NetProjW.dll",
             "Ghofr.dll",
             "fg122.dll",
         };
 
-        // Check for real DLLs
-        for (const char* dll : real_dlls) {
-            if (GetModuleHandleA(dll) == nullptr) {
-                debug("DLL: ", "LIB_INST detected true for real dll = ", dll);
-                return true; // Detected a missing real DLL
-            }
-        }
-
-        // Check for false DLLs
         for (const char* dll : false_dlls) {
             if (GetModuleHandleA(dll) != nullptr) {
                 debug("DLL: ", "LIB_INST detected true for false dll = ", dll);
-                return true; // Detected a loaded false DLL
+                return true;
             }
         }
 
-        return false; // No DLLs detected
+        return false;
 #endif
     }
-
 
 
     /**
@@ -3633,9 +3614,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return true;
         }
 
-        // general VM file, not sure which brand it belongs to though
+        // general VM file
         if (util::exists("C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\StartUp\\agent.pyw")) {
-            return true;
+            return core::add(CUCKOO);
         }
 
         return false;
@@ -3814,8 +3795,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         if (retv == NO_ERROR) {
             bool result = (lstrcmpi(provider, _T("VirtualBox Shared Folders")) == 0);
-            delete[] provider;
-            return result;
         }
 
         delete[] provider;
@@ -3838,7 +3817,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */ 
 /* GPL */         auto compare = [&](const std::string& s) -> bool {
 /* GPL */             return (std::strcmp((LPCSTR)comp_name.data(), s.c_str()) == 0);
-/* GPL */             };
+/* GPL */         };
 /* GPL */ 
 /* GPL */         debug("COMPUTER_NAME: fetched = ", (LPCSTR)comp_name.data());
 /* GPL */ 
@@ -3898,7 +3877,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */ #endif
 /* GPL */     }
 /* GPL */ 
-/* GPL */ 
+/* GPL */
 /* GPL */     // @brief Check if memory space is far too low for a physical machine
 /* GPL */     // @author Al-Khaser project
 /* GPL */     // @category x86?
@@ -3912,8 +3891,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */ 
 /* GPL */         return (ram < min_ram_1gb);
 /* GPL */     }
-/* GPL */ 
-/* GPL */ 
+/* GPL */
+/* GPL */
 /* GPL */     // @brief Check for the window class for VirtualBox
 /* GPL */     // @category Windows
 /* GPL */     // @author Al-Khaser Project
@@ -3951,9 +3930,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */             { "vmcheck.dll",   VPC },        // VirtualPC
 /* GPL */             { "cmdvrt32.dll",  COMODO },     // Comodo
 /* GPL */             { "cmdvrt64.dll",  COMODO },     // Comodo
-/* GPL */             { "dbghelp.dll",   NULL_BRAND }, // WindBG
-/* GPL */             { "avghookx.dll",  NULL_BRAND }, // AVG
-/* GPL */             { "avghooka.dll",  NULL_BRAND }, // AVG
+/* GPL */             //{ "dbghelp.dll",   NULL_BRAND }, // WindBG
+/* GPL */             //{ "avghookx.dll",  NULL_BRAND }, // AVG
+/* GPL */             //{ "avghooka.dll",  NULL_BRAND }, // AVG
 /* GPL */             { "snxhk.dll",     NULL_BRAND }, // Avast
 /* GPL */             { "api_log.dll",   NULL_BRAND }, // iDefense Lab
 /* GPL */             { "dir_watch.dll", NULL_BRAND }, // iDefense Lab
@@ -4211,8 +4190,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */         return false;
 /* GPL */ #endif
 /* GPL */     }
-/* GPL */ 
-/* GPL */ 
+/* GPL */     
+/* GPL */     
 /* GPL */     // @brief Check for the presence of a mouse device
 /* GPL */     // @category Windows
 /* GPL */     // @author a0rtega
@@ -4228,7 +4207,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */         return (res == 0);
 /* GPL */ #endif
 /* GPL */     }
-
 
     /**
      * @brief Check for any VM processes that are active
@@ -4250,7 +4228,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             for (DWORD i = 0; i < numProcesses; ++i) {
                 // Open the process
-                const HANDLE process = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, processes[i]);
+                const HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, processes[i]);
                 if (process != nullptr) {
                     // Get the process name
                     TCHAR processName[MAX_PATH];
@@ -4266,7 +4244,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             return false;
-            };
+        };
 
         if (check_proc(_T("joeboxserver.exe")) || check_proc(_T("joeboxcontrol.exe"))) {
             return core::add(JOEBOX);
@@ -4329,7 +4307,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return (
             (strcmp(username, "liveuser") == 0) &&
             (strcmp(hostname, "localhost-live") == 0)
-            );
+        );
 #endif
     }
 
@@ -4444,7 +4422,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         auto compare = [](const std::string& str) -> bool {
             std::regex pattern("Parallels", std::regex_constants::icase);
             return std::regex_match(str, pattern);
-            };
+        };
 
         if (
             compare(info->get_manufacturer()) ||
@@ -4503,7 +4481,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        std::string brand = cpu::get_brand();
+        const std::string brand = cpu::get_brand();
 
         std::regex qemu_pattern("QEMU Virtual CPU", std::regex_constants::icase);
 
@@ -5083,18 +5061,19 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      */
     [[nodiscard]] static bool valid_msr() {
     #if (!MSVC)
-            return false;  // Only valid on MSVC
+            return false;
     #else
-            __try {
-                // Attempt to read the hypervisor MSR from Ring 3
-                __readmsr(0x40000000); // Reading MSR 0x40000000, which typically indicates hypervisor presence
-            }
-            __except (EXCEPTION_EXECUTE_HANDLER) {
-                // If an exception occurs, return false
+            if (!util::is_admin()) {
                 return false;
             }
 
-            // If we reached this point, the read was successful, so return true
+            __try {
+                __readmsr(0x40000000);
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER) {
+                return false;
+            }
+
             return true;
     #endif
     }
@@ -5238,6 +5217,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #elif (LINUX)
         // false positive with root for some reason
         if (util::is_admin()) {
+            return false;
+        }
+
+        if (!util::exists("/dev/mem")) {
             return false;
         }
 
@@ -5533,6 +5516,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #else
         if (!util::is_admin()) {
+            return false;
+        }
+
+        if (!util::exists("/usr/bin/dmesg")) {
             return false;
         }
 
@@ -8945,7 +8932,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 throw std::invalid_argument("Invalid flag option for function parameter found, either leave it empty or add the VM::DEFAULT flag");
             }
 
-            // at this stage, only settings technique flags are asserted to be set
+            // at this stage, only setting flags are asserted to be set
             if (
                 flags.test(NO_MEMO) ||
                 flags.test(HIGH_THRESHOLD) ||
@@ -8965,9 +8952,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             const bool memo_enabled = core::is_disabled(flags, NO_MEMO);
 
-            const u16 threshold_points = (core::is_enabled(flags, HIGH_THRESHOLD) ? high_threshold_score : 200);
+            u16 threshold_points = 150;
+            
+            // set it to 300 if high threshold is enabled
+            if (core::is_enabled(flags, HIGH_THRESHOLD)) {
+                threshold_points = high_threshold_score;
+            }
 
-            // loop through technique table, where all the techniques are stored
+            // loop through the technique table, where all the techniques are stored
             for (const auto& tmp : technique_table) {
                 const enum_flags technique_macro = tmp.first;
                 const technique technique_data = tmp.second;
@@ -9009,7 +9001,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
                 
                 // for things like VM::detect() and VM::percentage(),
-                // a score of 200+ is guaranteed to be a VM, so
+                // a score of 150+ is guaranteed to be a VM, so
                 // there's no point in running the rest of the techniques
                 if (shortcut && points >= threshold_points) {
                     return points;
@@ -9024,6 +9016,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             // for custom VM techniques, won't be used most of the time
             if (!custom_table.empty()) {
                 for (const auto& technique : custom_table) {
+
+                    // if cached, return that result
                     if (memo_enabled && memo::is_cached(technique.id)) {
                         const memo::data_t data = memo::cache_fetch(technique.id);
 
@@ -9034,13 +9028,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                         continue;
                     }
 
+                    // run the custom technique
                     const bool result = technique.run();
 
+                    // accumulate a few important values
                     if (result) {
                         points += technique.points;
                         detected_count_num++;
                     }
 
+                    // cache the result
                     if (memo_enabled) {
                         memo::cache_store(
                             technique.id,
@@ -9200,7 +9197,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             flag_collector.reset();
-            global_flags.reset();
 
             // set the bits in the flag, can take in 
             // either an enum value or a std::bitset
@@ -9208,8 +9204,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             // handle edgecases
             core::flag_sanitizer(flag_collector);
-
-            global_flags = flag_collector;
 
             return flag_collector;
         }
@@ -9358,7 +9352,7 @@ public: // START OF PUBLIC FUNCTIONS
         }
 
         // goofy ass C++11 and C++14 linker error workaround, 
-        // and yes, this does look indeed stupid.
+        // and yes, this does look stupid.
 #if (CPP <= 14)
         constexpr const char* TMP_QEMU = "QEMU";
         constexpr const char* TMP_KVM = "KVM";
@@ -9586,7 +9580,7 @@ public: // START OF PUBLIC FUNCTIONS
         flagset flags = core::arg_handler(args...);
 
         // run all the techniques based on the 
-        // flags above, and get a total score
+        // flags above, and get a total score 
         const u16 points = core::run_all(flags, SHORTCUT);
 
 #if (CPP >= 23)
@@ -10191,10 +10185,8 @@ VM::u16 VM::total_points = 0;
 // VM::detect(VM::HIGH_THRESHOLD) is passed, the HIGH_THRESHOLD bit will be 
 // collected in this flagset (std::bitset) variable, and eventually be the 
 // return value for actual end-user functions like VM::detect() to rely 
-// and work on. VM::global_flags is just a copy of the flags but visible 
-// globally throughout the whole VM struct, as the name implies.
+// and work on.
 VM::flagset VM::core::flag_collector;
-VM::flagset VM::global_flags;
 
 
 VM::u8 VM::detected_count_num = 0;
@@ -10286,52 +10278,52 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::VMID, { 100, VM::vmid, false } },
     { VM::CPU_BRAND, { 50, VM::cpu_brand, false } },
     { VM::HYPERVISOR_BIT, { 100, VM::hypervisor_bit , false}} , 
-    { VM::HYPERVISOR_STR, { 45, VM::hypervisor_str, false } },
-    { VM::RDTSC, { 10, VM::rdtsc_check, false } },
-    { VM::THREADCOUNT, { 35, VM::thread_count, false } },
-    { VM::MAC, { 60, VM::mac_address_check, true } },
+    { VM::HYPERVISOR_STR, { 75, VM::hypervisor_str, false } },
+    { VM::RDTSC, { 5, VM::rdtsc_check, false } },
+    { VM::THREADCOUNT, { 25, VM::thread_count, false } },
+    { VM::MAC, { 45, VM::mac_address_check, true } },
     { VM::TEMPERATURE, { 15, VM::temperature, false } },
-    { VM::SYSTEMD, { 70, VM::systemd_virt, false } },
+    { VM::SYSTEMD, { 70, VM::systemd_virt, true } },
     { VM::CVENDOR, { 65, VM::chassis_vendor, false } },
-    { VM::CTYPE, { 10, VM::chassis_type, false } },
-    { VM::DOCKERENV, { 15, VM::dockerenv, true } },
+    { VM::CTYPE, { 20, VM::chassis_type, false } },
+    { VM::DOCKERENV, { 60, VM::dockerenv, true } },
     { VM::DMIDECODE, { 55, VM::dmidecode, false } },
     { VM::DMESG, { 55, VM::dmesg, false } },
     { VM::HWMON, { 75, VM::hwmon, true } },
     { VM::SIDT5, { 45, VM::sidt5, false } },
     { VM::CURSOR, { 5, VM::cursor_check, true } },
-    { VM::VMWARE_REG, { 65, VM::vmware_registry, true } },
-    { VM::VBOX_REG, { 65, VM::vbox_registry, true } },
-    { VM::USER, { 35, VM::user_check, true } },
+    { VM::VMWARE_REG, { 100, VM::vmware_registry, true } },
+    { VM::VBOX_REG, { 100, VM::vbox_registry, true } },
+    { VM::USER, { 15, VM::user_check, true } },
     { VM::DLL, { 50, VM::DLL_check, true } },
-    { VM::REGISTRY, { 75, VM::registry_key, true } },
+    { VM::REGISTRY, { 100, VM::registry_key, true } },
     { VM::CWSANDBOX_VM, { 10, VM::cwsandbox_check, true } },
-    { VM::VM_FILES, { 60, VM::vm_files, true } },
+    { VM::VM_FILES, { 50, VM::vm_files, true } },
     { VM::HWMODEL, { 75, VM::hwmodel, true } },
     { VM::DISK_SIZE, { 60, VM::disk_size, false } },
-    { VM::VBOX_DEFAULT, { 55, VM::vbox_default_specs, false } },
-    { VM::VBOX_NETWORK, { 70, VM::vbox_network_share, false } },
-/* GPL */ { VM::COMPUTER_NAME, { 15, VM::computer_name_match, true } },
-/* GPL */ { VM::WINE_CHECK, { 85, VM::wine, false } },
+    { VM::VBOX_DEFAULT, { 25, VM::vbox_default_specs, false } },
+    { VM::VBOX_NETWORK, { 100, VM::vbox_network_share, false } },
+/* GPL */ { VM::COMPUTER_NAME, { 25, VM::computer_name_match, true } },
+/* GPL */ { VM::WINE_CHECK, { 100, VM::wine, false } },
 /* GPL */ { VM::HOSTNAME, { 25, VM::hostname_match, true } },
 /* GPL */ { VM::MEMORY, { 35, VM::low_memory_space, false } },
-/* GPL */ { VM::VBOX_WINDOW_CLASS, { 10, VM::vbox_window_class, false } },
+/* GPL */ { VM::VBOX_WINDOW_CLASS, { 100, VM::vbox_window_class, false } },
 /* GPL */ { VM::LOADED_DLLS, { 75, VM::loaded_dlls, true } },
-/* GPL */ { VM::KVM_REG, { 75, VM::kvm_registry, true } },
-/* GPL */ { VM::KVM_DRIVERS, { 55, VM::kvm_drivers, true } },
-/* GPL */ { VM::KVM_DIRS, { 55, VM::kvm_directories, true } },
-/* GPL */ { VM::AUDIO, { 35, VM::check_audio, false } },
-/* GPL */ { VM::QEMU_DIR, { 45, VM::qemu_dir, true } },
+/* GPL */ { VM::KVM_REG, { 100, VM::kvm_registry, true } },
+/* GPL */ { VM::KVM_DRIVERS, { 50, VM::kvm_drivers, true } },
+/* GPL */ { VM::KVM_DIRS, { 75, VM::kvm_directories, true } },
+/* GPL */ { VM::AUDIO, { 25, VM::check_audio, false } },
+/* GPL */ { VM::QEMU_DIR, { 75, VM::qemu_dir, true } },
 /* GPL */ { VM::MOUSE_DEVICE, { 20, VM::mouse_device, true } },
     { VM::VM_PROCESSES, { 30, VM::vm_processes, true } },
     { VM::LINUX_USER_HOST, { 25, VM::linux_user_host, true } },
-    { VM::GAMARUE, { 40, VM::gamarue, true } },
-    { VM::VMID_0X4, { 90, VM::vmid_0x4, false } },
+    { VM::GAMARUE, { 25, VM::gamarue, true } },
+    { VM::VMID_0X4, { 100, VM::vmid_0x4, false } },
     { VM::PARALLELS_VM, { 50, VM::parallels, false } },
-    { VM::RDTSC_VMEXIT, { 15, VM::rdtsc_vmexit, false } },
+    { VM::RDTSC_VMEXIT, { 5, VM::rdtsc_vmexit, false } },
     { VM::QEMU_BRAND, { 100, VM::cpu_brand_qemu, false } },
     { VM::BOCHS_CPU, { 95, VM::bochs_cpu, false } },
-    { VM::VPC_BOARD, { 20, VM::vpc_board, false } },
+    { VM::VPC_BOARD, { 25, VM::vpc_board, false } },
     { VM::BIOS_SERIAL, { 60, VM::bios_serial, false } },
     { VM::VBOX_FOLDERS, { 45, VM::vbox_shared_folders, false } },
     { VM::MSSMBIOS, { 75, VM::mssmbios, false } },
@@ -10339,21 +10331,21 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::MAC_IOKIT, { 80, VM::io_kit, true } },
     { VM::IOREG_GREP, { 75, VM::ioreg_grep, true } },
     { VM::MAC_SIP, { 85, VM::mac_sip, true } },
-    { VM::HKLM_REGISTRIES, { 70, VM::hklm_registries, true } },
+    { VM::HKLM_REGISTRIES, { 50, VM::hklm_registries, true } },
     { VM::QEMU_GA, { 20, VM::qemu_ga, true } },
     { VM::VALID_MSR, { 35, VM::valid_msr, false } },
-    { VM::QEMU_PROC, { 30, VM::qemu_processes, true } },
-    { VM::VPC_PROC, { 30, VM::vpc_proc, true } },
+    { VM::QEMU_PROC, { 100, VM::qemu_processes, true } },
+    { VM::VPC_PROC, { 100, VM::vpc_proc, true } },
     { VM::VPC_INVALID, { 75, VM::vpc_invalid, false } },
-    { VM::SIDT, { 30, VM::sidt, false } },
+    { VM::SIDT, { 25, VM::sidt, false } },
     { VM::SGDT, { 30, VM::sgdt, false } },
     { VM::SLDT, { 15, VM::sldt, false } },
     { VM::OFFSEC_SIDT, { 60, VM::offsec_sidt, false } },
     { VM::OFFSEC_SGDT, { 60, VM::offsec_sgdt, false } },
     { VM::OFFSEC_SLDT, { 20, VM::offsec_sldt, false } },
     { VM::VPC_SIDT, { 15, VM::vpc_sidt, false } },
-    { VM::HYPERV_BOARD, { 45, VM::hyperv_board, false } },
-    { VM::VM_FILES_EXTRA, { 70, VM::vm_files_extra, true } },
+    { VM::HYPERV_BOARD, { 100, VM::hyperv_board, false } },
+    { VM::VM_FILES_EXTRA, { 75, VM::vm_files_extra, true } },
     { VM::VMWARE_IOMEM, { 65, VM::vmware_iomem, false } },
     { VM::VMWARE_IOPORTS, { 70, VM::vmware_ioports, false } },
     { VM::VMWARE_SCSI, { 40, VM::vmware_scsi, false } },
@@ -10363,25 +10355,25 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::VMWARE_PORT_MEM, { 85, VM::vmware_port_memory, false } },
     { VM::SMSW, { 30, VM::smsw, false } },
     { VM::MUTEX, { 85, VM::mutex, false } },
-    { VM::UPTIME, { 10, VM::uptime, true } },
+    { VM::UPTIME, { 5, VM::uptime, true } },
     { VM::ODD_CPU_THREADS, { 80, VM::odd_cpu_threads, false } },
     { VM::INTEL_THREAD_MISMATCH, { 60, VM::intel_thread_mismatch, false } },
     { VM::XEON_THREAD_MISMATCH, { 85, VM::xeon_thread_mismatch, false } },
-    { VM::NETTITUDE_VM_MEMORY, { 75, VM::nettitude_vm_memory, false } },
-    { VM::CPUID_BITSET, { 20, VM::cpuid_bitset, false } },
-    { VM::CUCKOO_DIR, { 15, VM::cuckoo_dir, true } },
+    { VM::NETTITUDE_VM_MEMORY, { 100, VM::nettitude_vm_memory, false } },
+    { VM::CPUID_BITSET, { 25, VM::cpuid_bitset, false } },
+    { VM::CUCKOO_DIR, { 75, VM::cuckoo_dir, true } },
     { VM::CUCKOO_PIPE, { 20, VM::cuckoo_pipe, true } },
-    { VM::HYPERV_HOSTNAME, { 50, VM::hyperv_hostname, true } },
-    { VM::GENERAL_HOSTNAME, { 20, VM::general_hostname, true } },
-    { VM::SCREEN_RESOLUTION, { 30, VM::screen_resolution, false } },
-    { VM::DEVICE_STRING, { 25, VM::device_string, false } },
+    { VM::HYPERV_HOSTNAME, { 25, VM::hyperv_hostname, true } },
+    { VM::GENERAL_HOSTNAME, { 25, VM::general_hostname, true } },
+    { VM::SCREEN_RESOLUTION, { 20, VM::screen_resolution, false } },
+    { VM::DEVICE_STRING, { 25, VM::device_string, false } },\
     { VM::BLUESTACKS_FOLDERS, { 15, VM::bluestacks, true } },
     { VM::CPUID_SIGNATURE, { 95, VM::cpuid_signature, false } },
     { VM::HYPERV_BITMASK, { 20, VM::hyperv_bitmask, false } },
     { VM::KVM_BITMASK, { 40, VM::kvm_bitmask, false } },
     { VM::KGT_SIGNATURE, { 80, VM::intel_kgt_signature, false } },
-    { VM::VMWARE_DMI, { 30, VM::vmware_dmi, false } },
-    { VM::EVENT_LOGS, { 30, VM::hyperv_event_logs, true } },
+    { VM::VMWARE_DMI, { 40, VM::vmware_dmi, false } },
+    { VM::EVENT_LOGS, { 25, VM::hyperv_event_logs, true } },
     { VM::QEMU_VIRTUAL_DMI, { 40, VM::qemu_virtual_dmi, false } },
     { VM::QEMU_USB, { 20, VM::qemu_USB, false } },
     { VM::HYPERVISOR_DIR, { 20, VM::hypervisor_dir, false } },
@@ -10396,9 +10388,9 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::PODMAN_FILE, { 15, VM::podman_file, true } },
     { VM::WSL_PROC, { 30, VM::wsl_proc_subdir, false } },
     { VM::GPU_CHIPTYPE, { 100, VM::gpu_chiptype, false } },
-    { VM::DRIVER_NAMES, { 30, VM::driver_names, false } },
-    { VM::VBOX_IDT, { 80, VM::vbox_idt, false } },
-    { VM::HDD_SERIAL, { 95, VM::hdd_serial_number, false } },
+    { VM::DRIVER_NAMES, { 50, VM::driver_names, false } },
+    { VM::VBOX_IDT, { 75, VM::vbox_idt, false } },
+    { VM::HDD_SERIAL, { 100, VM::hdd_serial_number, false } },
     { VM::PORT_CONNECTORS, { 50, VM::port_connectors, false } },
-    { VM::QEMU_HDD, { 60, VM::qemu_hdd, false } }
+    { VM::QEMU_HDD, { 75, VM::qemu_hdd, false } }
 };

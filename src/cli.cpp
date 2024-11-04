@@ -491,7 +491,7 @@ void checker(const VM::enum_flags flag, const char* message) {
 
 // overload for std::function, this is specific for any.run techniques
 // that are embedded in the CLI because it was removed in the lib as of 2.0
-void checker(const std::function<bool()> func, const char* message) {
+void checker(const std::function<bool()> &func, const char* message) {
     std::cout << 
         (func() ? detected : not_detected) << 
         " Checking " << 
@@ -538,13 +538,13 @@ void general() {
     checker(VM::DMIDECODE, "dmidecode output");
     checker(VM::DMESG, "dmesg output");
     checker(VM::HWMON, "hwmon presence");
-    checker(VM::CURSOR, "cursor");
+    //checker(VM::CURSOR, "cursor");
     checker(VM::VMWARE_REG, "VMware registry");
     checker(VM::VBOX_REG, "VBox registry");
     checker(VM::USER, "users");
     checker(VM::DLL, "DLLs");
     checker(VM::REGISTRY, "registry");
-    checker(VM::CWSANDBOX_VM, "Sunbelt CWSandbox directory");
+    //checker(VM::CWSANDBOX_VM, "Sunbelt CWSandbox directory");
     checker(VM::WINE_CHECK, "Wine");
     checker(VM::VM_FILES, "VM files");
     checker(VM::HWMODEL, "hw.model");
@@ -776,8 +776,8 @@ int main(int argc, char* argv[]) {
     const std::vector<const char*> args(argv + 1, argv + argc); // easier this way
     const u32 arg_count = argc - 1;
 
-    // this was removed on the lib due to ethical concerns, 
-    // so it's added in the CLI instead
+    // this was removed from the lib due to ethical 
+    // concerns, so it's added in the CLI instead
     VM::add_custom(65, anyrun_driver);
     VM::add_custom(35, anyrun_directory);
 
