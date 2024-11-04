@@ -457,7 +457,7 @@ void replace(std::string &text, const std::string &original, const std::string &
 } 
 
 
-void checker(const VM::enum_flags flag, const char* message) {
+void checker(const VM::enum_flags flag, const char* message, const std::source_location& loc = std::source_location::current()) {
     if (is_spoofable(flag)) {
         if (!arg_bitset.test(SPOOFABLE)) {
             std::cout << spoofable << " Skipped " << message << "\n";
