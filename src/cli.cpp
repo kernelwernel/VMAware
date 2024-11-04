@@ -26,6 +26,7 @@
 #include <vector>
 #include <cstdint>
 #include <bit>
+#include <source_location>
 
 #if (defined(__GNUC__) || defined(__linux__))
     #include <unistd.h>
