@@ -481,6 +481,8 @@ void checker(const VM::enum_flags flag, const char* message, const std::source_l
         return;
     }
 
+    std::cout << loc.function_name() << " at " << loc.file_name() << ":" << loc.line() << "\n";
+
     std::cout << 
         (VM::check(flag) ? detected : not_detected) << 
         " Checking " << 
