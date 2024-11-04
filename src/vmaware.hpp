@@ -3292,6 +3292,35 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
+     * @brief Check if the mouse coordinates have changed after 5 seconds
+     * @note Some VMs are automatic without a human due to mass malware scanning being a thing
+     * @note Disabled by default due to performance reasons
+     * @category Windows
+     */
+    [[nodiscard]] static bool cursor_check() {
+#if (!MSVC)
+        return false;
+#else
+        POINT pos1, pos2;
+        GetCursorPos(&pos1);
+
+        debug("CURSOR: pos1.x = ", pos1.x);
+        debug("CURSOR: pos1.y = ", pos1.y);
+
+        Sleep(5000);
+        GetCursorPos(&pos2);
+
+        debug("CURSOR: pos1.x = ", pos1.x);
+        debug("CURSOR: pos1.y = ", pos1.y);
+        debug("CURSOR: pos2.x = ", pos2.x);
+        debug("CURSOR: pos2.y = ", pos2.y);
+
+        return ((pos1.x == pos2.x) && (pos1.y == pos2.y));
+#endif
+    }
+
+
+    /**
      * @brief Find for registries of VMware tools
      * @category Windows
      */
@@ -3491,6 +3520,23 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         debug("REGISTRY: ", "score = ", static_cast<u32>(score));
 
         return (score >= 1);
+#endif
+    }
+
+
+    /**
+     * @brief Check if CWSandbox-specific file exists
+     * @category Windows
+     */
+    [[nodiscard]] static bool cwsandbox_check() {
+#if (!MSVC)
+        return false;
+#else
+        if (util::exists(_T("C:\\analysis"))) {
+            return core::add(CWSANDBOX);
+        }
+
+        return false;
 #endif
     }
 
@@ -10245,11 +10291,13 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::DMESG, { 55, VM::dmesg, false } },
     { VM::HWMON, { 75, VM::hwmon, true } },
     { VM::SIDT5, { 45, VM::sidt5, false } },
+    { VM::CURSOR, { 5, VM::cursor_check, true } },
     { VM::VMWARE_REG, { 100, VM::vmware_registry, true } },
     { VM::VBOX_REG, { 100, VM::vbox_registry, true } },
     { VM::USER, { 15, VM::user_check, true } },
     { VM::DLL, { 50, VM::DLL_check, true } },
     { VM::REGISTRY, { 100, VM::registry_key, true } },
+    { VM::CWSANDBOX_VM, { 10, VM::cwsandbox_check, true } },
     { VM::VM_FILES, { 50, VM::vm_files, true } },
     { VM::HWMODEL, { 75, VM::hwmodel, true } },
     { VM::DISK_SIZE, { 60, VM::disk_size, false } },

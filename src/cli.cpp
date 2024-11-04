@@ -26,7 +26,6 @@
 #include <vector>
 #include <cstdint>
 #include <bit>
-#include <source_location>
 
 #if (defined(__GNUC__) || defined(__linux__))
     #include <unistd.h>
@@ -458,7 +457,7 @@ void replace(std::string &text, const std::string &original, const std::string &
 } 
 
 
-void checker(const VM::enum_flags flag, const char* message, const std::source_location& loc = std::source_location::current()) {
+void checker(const VM::enum_flags flag, const char* message) {
     if (is_spoofable(flag)) {
         if (!arg_bitset.test(SPOOFABLE)) {
             std::cout << spoofable << " Skipped " << message << "\n";
@@ -481,8 +480,6 @@ void checker(const VM::enum_flags flag, const char* message, const std::source_l
         std::cout << disabled << " Skipped " << message << "\n";
         return;
     }
-
-    std::cout << loc.function_name() << " at " << loc.file_name() << ":" << loc.line() << "\n";
 
     std::cout << 
         (VM::check(flag) ? detected : not_detected) << 
@@ -541,13 +538,13 @@ void general() {
     checker(VM::DMIDECODE, "dmidecode output");
     checker(VM::DMESG, "dmesg output");
     checker(VM::HWMON, "hwmon presence");
-    checker(VM::CURSOR, "cursor");
+    //checker(VM::CURSOR, "cursor");
     checker(VM::VMWARE_REG, "VMware registry");
     checker(VM::VBOX_REG, "VBox registry");
     checker(VM::USER, "users");
     checker(VM::DLL, "DLLs");
     checker(VM::REGISTRY, "registry");
-    checker(VM::CWSANDBOX_VM, "Sunbelt CWSandbox directory");
+    //checker(VM::CWSANDBOX_VM, "Sunbelt CWSandbox directory");
     checker(VM::WINE_CHECK, "Wine");
     checker(VM::VM_FILES, "VM files");
     checker(VM::HWMODEL, "hw.model");
