@@ -10,7 +10,8 @@
 # 
 # ===============================================================
 # 
-#  This is an internal script to update various stuff of the project:
+#  This is an internal script to update various stuff of the project automatically:
+# 
 #    1.  Check whether all of the techniques are actually updated since 
 #        keeping track of the docs, the CLI, and the table isn't easy,
 #        so I'm automating the checks in case I forget to update any.

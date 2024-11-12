@@ -66,6 +66,7 @@
 - [ ] fix "dmidecode not found" error
 - [ ] fix /dev/mem not found in vbox default
 - [ ] dxdiag technique from utoshu
+- [ ] redesign the cli so that it has the "NO SUPPORT" category of techniques (and also make a table instead)
 
 
 # Distant plans

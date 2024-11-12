@@ -158,7 +158,7 @@ You can view the full docs [here](docs/documentation.md). All the details such a
 > Hyper-V has an obscure feature where if it's enabled in the host system, the CPU hardware values makes it look like the whole system is running inside Hyper-V, which isn't true. This makes it a challenge to determine whether the hardware values the library is collecting is either a real Hyper-V VM, or just the artifacts of what Hyper-V has left as a consequence of having it enabled in the host system. The reason why this is a problem is because the library might falsely conclude that your the host system is running in Hyper-V, which is a false positive. This is where the **Hyper-X** mechanism comes into play to distinguish between these two. This was designed by <a href="https://github.com/NotRequiem">Requiem</a>
 
 <p align="center">
-<img src="assets/hyper-x/v4/Hyper-X_version_4.drawio.png" align="center" title="Hyper-X">
+<img src="assets/hyper-x/v5/Hyper-X_version_5.drawio.png" align="center" title="Hyper-X">
 <br>
 </details>
 
@@ -194,7 +194,6 @@ You can view the full docs [here](docs/documentation.md). All the details such a
 > If you're compiling with gcc or clang, add the <code>-lm</code> and <code>-lstdc++</code> flags, or use g++/clang++ compilers instead. If you're receiving linker errors from a brand new VM environment on Linux, update your system with `sudo apt/dnf/yum update -y` to install the necessary C++ components.
 
 </details>
-
 
 <br>
 

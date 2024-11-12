@@ -12,7 +12,7 @@
  *
  *  This program will scan for IDT values based on the execution
  *  of multiple threads, which allows us to collect IDT information
- *  which could be potentially used for VM detections.
+ *  that could be potentially used for VM detections.
  * 
  * ===============================================================
  * 
