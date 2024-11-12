@@ -2076,7 +2076,7 @@ public:
                 state = HYPERV_REAL_VM;
             } else {
                 core_debug("HYPER_X: none detected");
-                state = UNKNOWN;
+                state = HYPERV_UNKNOWN_VM;
             }
 
             memo::hyperx::store(state);
@@ -2095,7 +2095,7 @@ public:
                     core::add(brands::HYPERV);
                     return false;
 
-                case UNKNOWN:
+                case HYPERV_UNKNOWN_VM:
                     core_debug("HYPER_X: none detected");
                     return false;
 
@@ -3445,7 +3445,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
                 if (std::string(p_brand) != "") {
                     debug("REGISTRY: ", "detected = ", p_brand);
-                    core::add(brands::p_brand);
+                    core::add(p_brand);
                 }
             }
             };
@@ -3454,69 +3454,69 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         key("", "HKLM\\Software\\Classes\\Folder\\shell\\sandbox");
 
         // hyper-v
-        key(HYPERV, "HKLM\\SOFTWARE\\Microsoft\\Hyper-V");
-        key(HYPERV, "HKLM\\SOFTWARE\\Microsoft\\VirtualMachine");
-        key(HYPERV, "HKLM\\SOFTWARE\\Microsoft\\Virtual Machine\\Guest\\Parameters");
-        key(HYPERV, "HKLM\\SYSTEM\\ControlSet001\\Services\\vmicheartbeat");
-        key(HYPERV, "HKLM\\SYSTEM\\ControlSet001\\Services\\vmicvss");
-        key(HYPERV, "HKLM\\SYSTEM\\ControlSet001\\Services\\vmicshutdown");
-        key(HYPERV, "HKLM\\SYSTEM\\ControlSet001\\Services\\vmicexchange");
+        key(brands::HYPERV, "HKLM\\SOFTWARE\\Microsoft\\Hyper-V");
+        key(brands::HYPERV, "HKLM\\SOFTWARE\\Microsoft\\VirtualMachine");
+        key(brands::HYPERV, "HKLM\\SOFTWARE\\Microsoft\\Virtual Machine\\Guest\\Parameters");
+        key(brands::HYPERV, "HKLM\\SYSTEM\\ControlSet001\\Services\\vmicheartbeat");
+        key(brands::HYPERV, "HKLM\\SYSTEM\\ControlSet001\\Services\\vmicvss");
+        key(brands::HYPERV, "HKLM\\SYSTEM\\ControlSet001\\Services\\vmicshutdown");
+        key(brands::HYPERV, "HKLM\\SYSTEM\\ControlSet001\\Services\\vmicexchange");
 
         // parallels
-        key(PARALLELS, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_1AB8*");
+        key(brands::PARALLELS, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_1AB8*");
 
         // sandboxie
-        key(SANDBOXIE, "HKLM\\SYSTEM\\CurrentControlSet\\Services\\SbieDrv");
-        key(SANDBOXIE, "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Sandboxie");
+        key(brands::SANDBOXIE, "HKLM\\SYSTEM\\CurrentControlSet\\Services\\SbieDrv");
+        key(brands::SANDBOXIE, "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Sandboxie");
 
         // virtualbox
-        key(VBOX, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_80EE*");
-        key(VBOX, "HKLM\\HARDWARE\\ACPI\\DSDT\\VBOX__");
-        key(VBOX, "HKLM\\HARDWARE\\ACPI\\FADT\\VBOX__");
-        key(VBOX, "HKLM\\HARDWARE\\ACPI\\RSDT\\VBOX__");
-        key(VBOX, "HKLM\\SOFTWARE\\Oracle\\VirtualBox Guest Additions");
-        key(VBOX, "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxGuest");
-        key(VBOX, "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxMouse");
-        key(VBOX, "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxService");
-        key(VBOX, "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxSF");
-        key(VBOX, "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxVideo");
+        key(brands::VBOX, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_80EE*");
+        key(brands::VBOX, "HKLM\\HARDWARE\\ACPI\\DSDT\\VBOX__");
+        key(brands::VBOX, "HKLM\\HARDWARE\\ACPI\\FADT\\VBOX__");
+        key(brands::VBOX, "HKLM\\HARDWARE\\ACPI\\RSDT\\VBOX__");
+        key(brands::VBOX, "HKLM\\SOFTWARE\\Oracle\\VirtualBox Guest Additions");
+        key(brands::VBOX, "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxGuest");
+        key(brands::VBOX, "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxMouse");
+        key(brands::VBOX, "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxService");
+        key(brands::VBOX, "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxSF");
+        key(brands::VBOX, "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxVideo");
 
         // virtualpc
-        key(VPC, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_5333*");
-        key(VPC, "HKLM\\SYSTEM\\ControlSet001\\Services\\vpcbus");
-        key(VPC, "HKLM\\SYSTEM\\ControlSet001\\Services\\vpc-s3");
-        key(VPC, "HKLM\\SYSTEM\\ControlSet001\\Services\\vpcuhub");
-        key(VPC, "HKLM\\SYSTEM\\ControlSet001\\Services\\msvmmouf");
+        key(brands::VPC, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_5333*");
+        key(brands::VPC, "HKLM\\SYSTEM\\ControlSet001\\Services\\vpcbus");
+        key(brands::VPC, "HKLM\\SYSTEM\\ControlSet001\\Services\\vpc-s3");
+        key(brands::VPC, "HKLM\\SYSTEM\\ControlSet001\\Services\\vpcuhub");
+        key(brands::VPC, "HKLM\\SYSTEM\\ControlSet001\\Services\\msvmmouf");
 
         // vmware
-        key(VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_15AD*");
-        key(VMWARE, "HKCU\\SOFTWARE\\VMware, Inc.\\VMware Tools");
-        key(VMWARE, "HKLM\\SOFTWARE\\VMware, Inc.\\VMware Tools");
-        key(VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Services\\vmdebug");
-        key(VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Services\\vmmouse");
-        key(VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Services\\VMTools");
-        key(VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Services\\VMMEMCTL");
-        key(VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Services\\vmware");
-        key(VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Services\\vmci");
-        key(VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Services\\vmx86");
-        key(VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\IDE\\CdRomNECVMWar_VMware_IDE_CD*");
-        key(VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\IDE\\CdRomNECVMWar_VMware_SATA_CD*");
-        key(VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\IDE\\DiskVMware_Virtual_IDE_Hard_Drive*");
-        key(VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\IDE\\DiskVMware_Virtual_SATA_Hard_Drive*");
+        key(brands::VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_15AD*");
+        key(brands::VMWARE, "HKCU\\SOFTWARE\\VMware, Inc.\\VMware Tools");
+        key(brands::VMWARE, "HKLM\\SOFTWARE\\VMware, Inc.\\VMware Tools");
+        key(brands::VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Services\\vmdebug");
+        key(brands::VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Services\\vmmouse");
+        key(brands::VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Services\\VMTools");
+        key(brands::VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Services\\VMMEMCTL");
+        key(brands::VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Services\\vmware");
+        key(brands::VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Services\\vmci");
+        key(brands::VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Services\\vmx86");
+        key(brands::VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\IDE\\CdRomNECVMWar_VMware_IDE_CD*");
+        key(brands::VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\IDE\\CdRomNECVMWar_VMware_SATA_CD*");
+        key(brands::VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\IDE\\DiskVMware_Virtual_IDE_Hard_Drive*");
+        key(brands::VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\IDE\\DiskVMware_Virtual_SATA_Hard_Drive*");
 
         // wine
-        key(WINE, "HKCU\\SOFTWARE\\Wine");
-        key(WINE, "HKLM\\SOFTWARE\\Wine");
+        key(brands::WINE, "HKCU\\SOFTWARE\\Wine");
+        key(brands::WINE, "HKLM\\SOFTWARE\\Wine");
 
         // xen
-        key(XEN, "HKLM\\HARDWARE\\ACPI\\DSDT\\xen");
-        key(XEN, "HKLM\\HARDWARE\\ACPI\\FADT\\xen");
-        key(XEN, "HKLM\\HARDWARE\\ACPI\\RSDT\\xen");
-        key(XEN, "HKLM\\SYSTEM\\ControlSet001\\Services\\xenevtchn");
-        key(XEN, "HKLM\\SYSTEM\\ControlSet001\\Services\\xennet");
-        key(XEN, "HKLM\\SYSTEM\\ControlSet001\\Services\\xennet6");
-        key(XEN, "HKLM\\SYSTEM\\ControlSet001\\Services\\xensvc");
-        key(XEN, "HKLM\\SYSTEM\\ControlSet001\\Services\\xenvdb");
+        key(brands::XEN, "HKLM\\HARDWARE\\ACPI\\DSDT\\xen");
+        key(brands::XEN, "HKLM\\HARDWARE\\ACPI\\FADT\\xen");
+        key(brands::XEN, "HKLM\\HARDWARE\\ACPI\\RSDT\\xen");
+        key(brands::XEN, "HKLM\\SYSTEM\\ControlSet001\\Services\\xenevtchn");
+        key(brands::XEN, "HKLM\\SYSTEM\\ControlSet001\\Services\\xennet");
+        key(brands::XEN, "HKLM\\SYSTEM\\ControlSet001\\Services\\xennet6");
+        key(brands::XEN, "HKLM\\SYSTEM\\ControlSet001\\Services\\xensvc");
+        key(brands::XEN, "HKLM\\SYSTEM\\ControlSet001\\Services\\xenvdb");
 
         debug("REGISTRY: ", "score = ", static_cast<u32>(score));
 
@@ -3926,20 +3926,20 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */         HMODULE hDll;
 /* GPL */
 /* GPL */         std::unordered_map<std::string, const char*> dllMap = {
-/* GPL */             { "sbiedll.dll",   SANDBOXIE },  // Sandboxie
-/* GPL */             { "pstorec.dll",   CWSANDBOX },  // CWSandbox
-/* GPL */             { "vmcheck.dll",   VPC },        // VirtualPC
-/* GPL */             { "cmdvrt32.dll",  COMODO },     // Comodo
-/* GPL */             { "cmdvrt64.dll",  COMODO },     // Comodo
+/* GPL */             { "sbiedll.dll",   brands::SANDBOXIE },  // Sandboxie
+/* GPL */             { "pstorec.dll",   brands::CWSANDBOX },  // CWSandbox
+/* GPL */             { "vmcheck.dll",   brands::VPC },        // VirtualPC
+/* GPL */             { "cmdvrt32.dll",  brands::COMODO },     // Comodo
+/* GPL */             { "cmdvrt64.dll",  brands::COMODO },     // Comodo
 /* GPL */             //{ "dbghelp.dll",   NULL_BRAND }, // WindBG
 /* GPL */             //{ "avghookx.dll",  NULL_BRAND }, // AVG
 /* GPL */             //{ "avghooka.dll",  NULL_BRAND }, // AVG
-/* GPL */             { "snxhk.dll",     NULL_BRAND }, // Avast
-/* GPL */             { "api_log.dll",   NULL_BRAND }, // iDefense Lab
-/* GPL */             { "dir_watch.dll", NULL_BRAND }, // iDefense Lab
-/* GPL */             { "pstorec.dll",   NULL_BRAND }, // SunBelt CWSandbox
-/* GPL */             { "vmcheck.dll",   NULL_BRAND }, // Virtual PC
-/* GPL */             { "wpespy.dll",    NULL_BRAND }  // WPE Pro
+/* GPL */             { "snxhk.dll",     brands::NULL_BRAND }, // Avast
+/* GPL */             { "api_log.dll",   brands::NULL_BRAND }, // iDefense Lab
+/* GPL */             { "dir_watch.dll", brands::NULL_BRAND }, // iDefense Lab
+/* GPL */             { "pstorec.dll",   brands::NULL_BRAND }, // SunBelt CWSandbox
+/* GPL */             { "vmcheck.dll",   brands::NULL_BRAND }, // Virtual PC
+/* GPL */             { "wpespy.dll",    brands::NULL_BRAND }  // WPE Pro
 /* GPL */         };
 /* GPL */
 /* GPL */         for (const auto& key : dllMap) {
@@ -3948,7 +3948,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */             if (hDll != NULL) {
 /* GPL */                 auto it = dllMap.find(key.first.c_str());
 /* GPL */                 if (it != dllMap.end()) {
-/* GPL */                     return core::add(brands::it->second); 
+/* GPL */                     return core::add(it->second); 
 /* GPL */                 }
 /* GPL */             }
 /* GPL */         }
@@ -4951,7 +4951,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, subKey, 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
                 if (RegQueryValueExA(hKey, valueName, NULL, &dwType, reinterpret_cast<LPBYTE>(buffer), &bufferSize) == ERROR_SUCCESS) {
                     if (strcmp(buffer, comp_string) == 0) {
-                        core::add(brands::p_brand);
+                        core::add(p_brand);
                         count++;
                     }
                 } else {
@@ -4964,70 +4964,70 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
         };
 
-        check_key(BOCHS, "HARDWARE\\Description\\System", "SystemBiosVersion", "BOCHS");
-        check_key(BOCHS, "HARDWARE\\Description\\System", "VideoBiosVersion", "BOCHS");
+        check_key(brands::BOCHS, "HARDWARE\\Description\\System", "SystemBiosVersion", "BOCHS");
+        check_key(brands::BOCHS, "HARDWARE\\Description\\System", "VideoBiosVersion", "BOCHS");
 
-        check_key(ANUBIS, "SOFTWARE\\Microsoft\\Windows\\CurrentVersion", "ProductID", "76487-337-8429955-22614");
-        check_key(ANUBIS, "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", "ProductID", "76487-337-8429955-22614");
+        check_key(brands::ANUBIS, "SOFTWARE\\Microsoft\\Windows\\CurrentVersion", "ProductID", "76487-337-8429955-22614");
+        check_key(brands::ANUBIS, "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", "ProductID", "76487-337-8429955-22614");
 
-        check_key(CWSANDBOX, "SOFTWARE\\Microsoft\\Windows\\CurrentVersion", "ProductID", "76487-644-3177037-23510");
-        check_key(CWSANDBOX, "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", "ProductID", "76487-644-3177037-23510");
+        check_key(brands::CWSANDBOX, "SOFTWARE\\Microsoft\\Windows\\CurrentVersion", "ProductID", "76487-644-3177037-23510");
+        check_key(brands::CWSANDBOX, "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", "ProductID", "76487-644-3177037-23510");
 
-        check_key(JOEBOX, "SOFTWARE\\Microsoft\\Windows\\CurrentVersion", "ProductID", "55274-640-2673064-23950");
-        check_key(JOEBOX, "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", "ProductID", "55274-640-2673064-23950");
+        check_key(brands::JOEBOX, "SOFTWARE\\Microsoft\\Windows\\CurrentVersion", "ProductID", "55274-640-2673064-23950");
+        check_key(brands::JOEBOX, "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", "ProductID", "55274-640-2673064-23950");
 
-        check_key(PARALLELS, "HARDWARE\\Description\\System", "SystemBiosVersion", "PARALLELS");
-        check_key(PARALLELS, "HARDWARE\\Description\\System", "VideoBiosVersion", "PARALLELS");
+        check_key(brands::PARALLELS, "HARDWARE\\Description\\System", "SystemBiosVersion", "PARALLELS");
+        check_key(brands::PARALLELS, "HARDWARE\\Description\\System", "VideoBiosVersion", "PARALLELS");
 
-        check_key(QEMU, "HARDWARE\\DEVICEMAP\\Scsi\\Scsi Port 0\\Scsi Bus 0\\Target Id 0\\Logical Unit Id 0", "Identifier", "QEMU");
-        check_key(QEMU, "HARDWARE\\Description\\System", "SystemBiosVersion", "QEMU");
-        check_key(QEMU, "HARDWARE\\Description\\System", "VideoBiosVersion", "QEMU");
-        check_key(QEMU, "HARDWARE\\Description\\System\\BIOS", "SystemManufacturer", "QEMU");
+        check_key(brands::QEMU, "HARDWARE\\DEVICEMAP\\Scsi\\Scsi Port 0\\Scsi Bus 0\\Target Id 0\\Logical Unit Id 0", "Identifier", "QEMU");
+        check_key(brands::QEMU, "HARDWARE\\Description\\System", "SystemBiosVersion", "QEMU");
+        check_key(brands::QEMU, "HARDWARE\\Description\\System", "VideoBiosVersion", "QEMU");
+        check_key(brands::QEMU, "HARDWARE\\Description\\System\\BIOS", "SystemManufacturer", "QEMU");
 
-        check_key(VBOX, "HARDWARE\\DEVICEMAP\\Scsi\\Scsi Port 0\\Scsi Bus 0\\Target Id 0\\Logical Unit Id 0", "Identifier", "VBOX");
-        check_key(VBOX, "HARDWARE\\DEVICEMAP\\Scsi\\Scsi Port 1\\Scsi Bus 0\\Target Id 0\\Logical Unit Id 0", "Identifier", "VBOX");
-        check_key(VBOX, "HARDWARE\\DEVICEMAP\\Scsi\\Scsi Port 2\\Scsi Bus 0\\Target Id 0\\Logical Unit Id 0", "Identifier", "VBOX");
-        check_key(VBOX, "HARDWARE\\Description\\System", "SystemBiosVersion", "VBOX");
-        check_key(VBOX, "HARDWARE\\Description\\System", "VideoBiosVersion", "VIRTUALBOX");
-        check_key(VBOX, "HARDWARE\\Description\\System\\BIOS", "SystemProductName", "VIRTUAL");
-        check_key(VBOX, "SYSTEM\\ControlSet001\\Services\\Disk\\Enum", "DeviceDesc", "VBOX");
-        check_key(VBOX, "SYSTEM\\ControlSet001\\Services\\Disk\\Enum", "FriendlyName", "VBOX");
-        check_key(VBOX, "SYSTEM\\ControlSet002\\Services\\Disk\\Enum", "DeviceDesc", "VBOX");
-        check_key(VBOX, "SYSTEM\\ControlSet002\\Services\\Disk\\Enum", "FriendlyName", "VBOX");
-        check_key(VBOX, "SYSTEM\\ControlSet003\\Services\\Disk\\Enum", "DeviceDesc", "VBOX");
-        check_key(VBOX, "SYSTEM\\ControlSet003\\Services\\Disk\\Enum", "FriendlyName", "VBOX");
-        check_key(VBOX, "SYSTEM\\CurrentControlSet\\Control\\SystemInformation", "SystemProductName", "VIRTUAL");
-        check_key(VBOX, "SYSTEM\\CurrentControlSet\\Control\\SystemInformation", "SystemProductName", "VIRTUALBOX");
+        check_key(brands::VBOX, "HARDWARE\\DEVICEMAP\\Scsi\\Scsi Port 0\\Scsi Bus 0\\Target Id 0\\Logical Unit Id 0", "Identifier", "VBOX");
+        check_key(brands::VBOX, "HARDWARE\\DEVICEMAP\\Scsi\\Scsi Port 1\\Scsi Bus 0\\Target Id 0\\Logical Unit Id 0", "Identifier", "VBOX");
+        check_key(brands::VBOX, "HARDWARE\\DEVICEMAP\\Scsi\\Scsi Port 2\\Scsi Bus 0\\Target Id 0\\Logical Unit Id 0", "Identifier", "VBOX");
+        check_key(brands::VBOX, "HARDWARE\\Description\\System", "SystemBiosVersion", "VBOX");
+        check_key(brands::VBOX, "HARDWARE\\Description\\System", "VideoBiosVersion", "VIRTUALBOX");
+        check_key(brands::VBOX, "HARDWARE\\Description\\System\\BIOS", "SystemProductName", "VIRTUAL");
+        check_key(brands::VBOX, "SYSTEM\\ControlSet001\\Services\\Disk\\Enum", "DeviceDesc", "VBOX");
+        check_key(brands::VBOX, "SYSTEM\\ControlSet001\\Services\\Disk\\Enum", "FriendlyName", "VBOX");
+        check_key(brands::VBOX, "SYSTEM\\ControlSet002\\Services\\Disk\\Enum", "DeviceDesc", "VBOX");
+        check_key(brands::VBOX, "SYSTEM\\ControlSet002\\Services\\Disk\\Enum", "FriendlyName", "VBOX");
+        check_key(brands::VBOX, "SYSTEM\\ControlSet003\\Services\\Disk\\Enum", "DeviceDesc", "VBOX");
+        check_key(brands::VBOX, "SYSTEM\\ControlSet003\\Services\\Disk\\Enum", "FriendlyName", "VBOX");
+        check_key(brands::VBOX, "SYSTEM\\CurrentControlSet\\Control\\SystemInformation", "SystemProductName", "VIRTUAL");
+        check_key(brands::VBOX, "SYSTEM\\CurrentControlSet\\Control\\SystemInformation", "SystemProductName", "VIRTUALBOX");
 
-        check_key(VMWARE, "HARDWARE\\DEVICEMAP\\Scsi\\Scsi Port 0\\Scsi Bus 0\\Target Id 0\\Logical Unit Id 0", "Identifier", "VMWARE");
-        check_key(VMWARE, "HARDWARE\\DEVICEMAP\\Scsi\\Scsi Port 1\\Scsi Bus 0\\Target Id 0\\Logical Unit Id 0", "Identifier", "VMWARE");
-        check_key(VMWARE, "HARDWARE\\DEVICEMAP\\Scsi\\Scsi Port 2\\Scsi Bus 0\\Target Id 0\\Logical Unit Id 0", "Identifier", "VMWARE");
-        check_key(VMWARE, "HARDWARE\\Description\\System", "SystemBiosVersion", "VMWARE");
-        check_key(VMWARE, "HARDWARE\\Description\\System", "SystemBiosVersion", "INTEL - 6040000");
-        check_key(VMWARE, "HARDWARE\\Description\\System", "VideoBiosVersion", "VMWARE");
-        check_key(VMWARE, "HARDWARE\\Description\\System\\BIOS", "SystemProductName", "VMware");
-        check_key(VMWARE, "SYSTEM\\ControlSet001\\Services\\Disk\\Enum", "0", "VMware");
-        check_key(VMWARE, "SYSTEM\\ControlSet001\\Services\\Disk\\Enum", "1", "VMware");
-        check_key(VMWARE, "SYSTEM\\ControlSet001\\Services\\Disk\\Enum", "DeviceDesc", "VMware");
-        check_key(VMWARE, "SYSTEM\\ControlSet001\\Services\\Disk\\Enum", "FriendlyName", "VMware");
-        check_key(VMWARE, "SYSTEM\\ControlSet002\\Services\\Disk\\Enum", "DeviceDesc", "VMware");
-        check_key(VMWARE, "SYSTEM\\ControlSet002\\Services\\Disk\\Enum", "FriendlyName", "VMware");
-        check_key(VMWARE, "SYSTEM\\ControlSet003\\Services\\Disk\\Enum", "DeviceDesc", "VMware");
-        check_key(VMWARE, "SYSTEM\\ControlSet003\\Services\\Disk\\Enum", "FriendlyName", "VMware");
+        check_key(brands::VMWARE, "HARDWARE\\DEVICEMAP\\Scsi\\Scsi Port 0\\Scsi Bus 0\\Target Id 0\\Logical Unit Id 0", "Identifier", "VMWARE");
+        check_key(brands::VMWARE, "HARDWARE\\DEVICEMAP\\Scsi\\Scsi Port 1\\Scsi Bus 0\\Target Id 0\\Logical Unit Id 0", "Identifier", "VMWARE");
+        check_key(brands::VMWARE, "HARDWARE\\DEVICEMAP\\Scsi\\Scsi Port 2\\Scsi Bus 0\\Target Id 0\\Logical Unit Id 0", "Identifier", "VMWARE");
+        check_key(brands::VMWARE, "HARDWARE\\Description\\System", "SystemBiosVersion", "VMWARE");
+        check_key(brands::VMWARE, "HARDWARE\\Description\\System", "SystemBiosVersion", "INTEL - 6040000");
+        check_key(brands::VMWARE, "HARDWARE\\Description\\System", "VideoBiosVersion", "VMWARE");
+        check_key(brands::VMWARE, "HARDWARE\\Description\\System\\BIOS", "SystemProductName", "VMware");
+        check_key(brands::VMWARE, "SYSTEM\\ControlSet001\\Services\\Disk\\Enum", "0", "VMware");
+        check_key(brands::VMWARE, "SYSTEM\\ControlSet001\\Services\\Disk\\Enum", "1", "VMware");
+        check_key(brands::VMWARE, "SYSTEM\\ControlSet001\\Services\\Disk\\Enum", "DeviceDesc", "VMware");
+        check_key(brands::VMWARE, "SYSTEM\\ControlSet001\\Services\\Disk\\Enum", "FriendlyName", "VMware");
+        check_key(brands::VMWARE, "SYSTEM\\ControlSet002\\Services\\Disk\\Enum", "DeviceDesc", "VMware");
+        check_key(brands::VMWARE, "SYSTEM\\ControlSet002\\Services\\Disk\\Enum", "FriendlyName", "VMware");
+        check_key(brands::VMWARE, "SYSTEM\\ControlSet003\\Services\\Disk\\Enum", "DeviceDesc", "VMware");
+        check_key(brands::VMWARE, "SYSTEM\\ControlSet003\\Services\\Disk\\Enum", "FriendlyName", "VMware");
         //check_key(HKCR\Installer\Products 	ProductName 	vmware tools
         //check_key(HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall 	DisplayName 	vmware tools
-        check_key(VMWARE, "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall", "DisplayName", "vmware tools");
-        check_key(VMWARE, "SYSTEM\\ControlSet001\\Control\\Class\\{4D36E968-E325-11CE-BFC1-08002BE10318}\\0000", "CoInstallers32", "*vmx*");
-        check_key(VMWARE, "SYSTEM\\ControlSet001\\Control\\Class\\{4D36E968-E325-11CE-BFC1-08002BE10318}\\0000", "DriverDesc", "VMware*");
-        check_key(VMWARE, "SYSTEM\\ControlSet001\\Control\\Class\\{4D36E968-E325-11CE-BFC1-08002BE10318}\\0000", "InfSection", "vmx*");
-        check_key(VMWARE, "SYSTEM\\ControlSet001\\Control\\Class\\{4D36E968-E325-11CE-BFC1-08002BE10318}\\0000", "ProviderName", "VMware*");
-        check_key(VMWARE, "SYSTEM\\ControlSet001\\Control\\Class\\{4D36E968-E325-11CE-BFC1-08002BE10318}\\0000\\Settings", "Device Description", "VMware*");
-        check_key(VMWARE, "SYSTEM\\CurrentControlSet\\Control\\SystemInformation", "SystemProductName", "VMWARE");
-        check_key(VMWARE, "SYSTEM\\CurrentControlSet\\Control\\Video\\{GUID}\\Video", "Service", "vm3dmp");
-        check_key(VMWARE, "SYSTEM\\CurrentControlSet\\Control\\Video\\{GUID}\\Video", "Service", "vmx_svga");
-        check_key(VMWARE, "SYSTEM\\CurrentControlSet\\Control\\Video\\{GUID}\\0000", "Device Description", "VMware SVGA*");
+        check_key(brands::VMWARE, "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall", "DisplayName", "vmware tools");
+        check_key(brands::VMWARE, "SYSTEM\\ControlSet001\\Control\\Class\\{4D36E968-E325-11CE-BFC1-08002BE10318}\\0000", "CoInstallers32", "*vmx*");
+        check_key(brands::VMWARE, "SYSTEM\\ControlSet001\\Control\\Class\\{4D36E968-E325-11CE-BFC1-08002BE10318}\\0000", "DriverDesc", "VMware*");
+        check_key(brands::VMWARE, "SYSTEM\\ControlSet001\\Control\\Class\\{4D36E968-E325-11CE-BFC1-08002BE10318}\\0000", "InfSection", "vmx*");
+        check_key(brands::VMWARE, "SYSTEM\\ControlSet001\\Control\\Class\\{4D36E968-E325-11CE-BFC1-08002BE10318}\\0000", "ProviderName", "VMware*");
+        check_key(brands::VMWARE, "SYSTEM\\ControlSet001\\Control\\Class\\{4D36E968-E325-11CE-BFC1-08002BE10318}\\0000\\Settings", "Device Description", "VMware*");
+        check_key(brands::VMWARE, "SYSTEM\\CurrentControlSet\\Control\\SystemInformation", "SystemProductName", "VMWARE");
+        check_key(brands::VMWARE, "SYSTEM\\CurrentControlSet\\Control\\Video\\{GUID}\\Video", "Service", "vm3dmp");
+        check_key(brands::VMWARE, "SYSTEM\\CurrentControlSet\\Control\\Video\\{GUID}\\Video", "Service", "vmx_svga");
+        check_key(brands::VMWARE, "SYSTEM\\CurrentControlSet\\Control\\Video\\{GUID}\\0000", "Device Description", "VMware SVGA*");
 
-        check_key(XEN, "HARDWARE\\Description\\System\\BIOS", "SystemProductName", "Xen");
+        check_key(brands::XEN, "HARDWARE\\Description\\System\\BIOS", "SystemProductName", "Xen");
 
         return (count > 0);
 #endif
