@@ -5398,20 +5398,20 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #else
         constexpr std::array<std::pair<const char*, const char*>, 9> files = {{
-            { VPC, "c:\\windows\\system32\\drivers\\vmsrvc.sys" },
-            { VPC, "c:\\windows\\system32\\drivers\\vpc-s3.sys" },
-            { PARALLELS, "c:\\windows\\system32\\drivers\\prleth.sys" },
-            { PARALLELS, "c:\\windows\\system32\\drivers\\prlfs.sys" },
-            { PARALLELS, "c:\\windows\\system32\\drivers\\prlmouse.sys" },
-            { PARALLELS, "c:\\windows\\system32\\drivers\\prlvideo.sys" },
-            { PARALLELS, "c:\\windows\\system32\\drivers\\prltime.sys" },
-            { PARALLELS, "c:\\windows\\system32\\drivers\\prl_pv32.sys" },
-            { PARALLELS, "c:\\windows\\system32\\drivers\\prl_paravirt_32.sys" }
+            { brands::VPC, "c:\\windows\\system32\\drivers\\vmsrvc.sys" },
+            { brands::VPC, "c:\\windows\\system32\\drivers\\vpc-s3.sys" },
+            { brands::PARALLELS, "c:\\windows\\system32\\drivers\\prleth.sys" },
+            { brands::PARALLELS, "c:\\windows\\system32\\drivers\\prlfs.sys" },
+            { brands::PARALLELS, "c:\\windows\\system32\\drivers\\prlmouse.sys" },
+            { brands::PARALLELS, "c:\\windows\\system32\\drivers\\prlvideo.sys" },
+            { brands::PARALLELS, "c:\\windows\\system32\\drivers\\prltime.sys" },
+            { brands::PARALLELS, "c:\\windows\\system32\\drivers\\prl_pv32.sys" },
+            { brands::PARALLELS, "c:\\windows\\system32\\drivers\\prl_paravirt_32.sys" }
         }};
 
         for (const auto& file_pair : files) {
             if (util::exists(file_pair.second)) {
-                return core::add(brands::file_pair.first);
+                return core::add(file_pair.first);
             }
         }
 
@@ -8819,7 +8819,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!MSVC) 
         return false;
 #else
-        return (AcpiData_string() == "VRTUAL MICROSFT");
+        return (util::AcpiData_string() == "VRTUAL MICROSFT");
 #endif
     };
 
