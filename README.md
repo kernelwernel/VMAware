@@ -50,7 +50,7 @@ int main() {
 ## Structure ⚙️
 
 <p align="center">
-<img src="assets/vmaware.drawio.png" align="center" title="VMAware">
+<img src="assets/vmaware_new.drawio.png" align="center" title="VMAware">
 <br>
 </p>
 
@@ -88,15 +88,25 @@ cmake -S . -B build/ -G "Visual Studio 16 2019"
 
 ### CMake installation
 ```cmake
-# edit the path manually
-set(DESTINATION "/path/to/destination/vmaware.hpp")
+# edit this
+set(DIRECTORY "/path/to/your/directory/")
 
-# for MIT
-# set(DESTINATION "/path/to/destination/vmaware_MIT.hpp") 
+# if you want the MIT version, toggle this to ON
+option(MIT "MIT version" OFF)
+
+if (MIT)
+    set(EXTENSION "_MIT")
+else()
+    set(EXTENSION "")
+endif()
+
+set(DESTINATION "${DIRECTORY}vmaware${EXTENSION}.hpp")
+
+message(STATUS "${DESTINATION}")
 
 if (NOT EXISTS ${DESTINATION})
     message(STATUS "Downloading VMAware")
-    set(URL "https://github.com/kernelwernel/VMAware/releases/latest/download/vmaware.hpp")
+    set(URL "https://github.com/kernelwernel/VMAware/releases/latest/download/vmaware${EXTENSION}.hpp")
     file(DOWNLOAD ${URL} ${DESTINATION} SHOW_PROGRESS)
 else()
     message(STATUS "VMAware already downloaded, skipping")
