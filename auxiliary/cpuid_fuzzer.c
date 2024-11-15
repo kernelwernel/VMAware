@@ -186,7 +186,7 @@ void scan_mode_fuzzer(const uint64_t p_max_leaf) {
     for (int i = 0; i < 0x10000; i++) {
         cpuid(reg, 0x40000000 + i, null_leaf);
 
-        if (likely(
+        if (unlikely(
             reg[eax] || \
             reg[ebx] || \
             reg[ecx] || \

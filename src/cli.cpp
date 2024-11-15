@@ -46,21 +46,14 @@
 constexpr const char* ver = "1.9";
 constexpr const char* date = "September 2024";
 
-constexpr const char* bold = "\033[1m";
-constexpr const char* ansi_exit = "\x1B[0m";
-constexpr const char* red = "\x1B[38;2;239;75;75m"; 
-constexpr const char* orange = "\x1B[38;2;255;180;5m";
-constexpr const char* green = "\x1B[38;2;94;214;114m";
-constexpr const char* red_orange = "\x1B[38;2;247;127;40m";
-constexpr const char* green_orange = "\x1B[38;2;174;197;59m";
-constexpr const char* grey = "\x1B[38;2;108;108;108m";
-
-const std::string detected = ("[  " + std::string(green) + "DETECTED" + std::string(ansi_exit) + "  ]");
-const std::string not_detected = ("[" + std::string(red) + "NOT DETECTED" + std::string(ansi_exit) + "]");
-const std::string spoofable = ("[" + std::string(red) + " EASY SPOOF " + std::string(ansi_exit) + "]");
-const std::string no_perms = ("[" + std::string(grey) + "  NO PERMS  " + std::string(ansi_exit) + "]");
-const std::string note = ("[    NOTE    ]");               
-const std::string disabled = ("[" + std::string(grey) + "  DISABLED  " + std::string(ansi_exit) + "]");
+std::string bold = "\033[1m";
+std::string ansi_exit = "\x1B[0m";
+std::string red = "\x1B[38;2;239;75;75m"; 
+std::string orange = "\x1B[38;2;255;180;5m";
+std::string green = "\x1B[38;2;94;214;114m";
+std::string red_orange = "\x1B[38;2;247;127;40m";
+std::string green_orange = "\x1B[38;2;174;197;59m";
+std::string grey = "\x1B[38;2;108;108;108m";
 
 using u8  = std::uint8_t;
 using u32 = std::uint32_t;
@@ -80,12 +73,20 @@ enum arg_enum : u8 {
     NOTES,
     SPOOFABLE,
     HIGH_THRESHOLD,
+    NO_COLOR,
     NULL_ARG
 };
 
 constexpr u8 max_bits = static_cast<u8>(VM::MULTIPLE) + 1;
 constexpr u8 arg_bits = static_cast<u8>(NULL_ARG) + 1;
 std::bitset<arg_bits> arg_bitset;
+
+std::string detected = ("[  " + green + "DETECTED" + ansi_exit + "  ]");
+std::string not_detected = ("[" + red + "NOT DETECTED" + ansi_exit + "]");
+std::string spoofable = ("[" + red + " EASY SPOOF " + ansi_exit + "]");
+std::string no_perms = ("[" + grey + "  NO PERMS  " + ansi_exit + "]");
+std::string note = ("[    NOTE    ]");               
+std::string disabled = ("[" + grey + "  DISABLED  " + ansi_exit + "]");
 
 #if (MSVC)
 class win_ansi_enabler_t
@@ -144,6 +145,7 @@ Extra:
  --disable-notes    no notes will be provided
  --spoofable        allow spoofable techniques to be ran (not included by default)
  --high-threshold   a higher theshold bar for a VM detection will be applied
+ --no-color         self explanatory
 
 )";
     std::exit(0);
@@ -161,14 +163,18 @@ Extra:
 }
 
 const char* color(const u8 score) {
-    if      (score == 0)   { return red; }
-    else if (score <= 12)  { return red; }
-    else if (score <= 25)  { return red_orange; }
-    else if (score < 50)   { return red_orange; }
-    else if (score <= 62)  { return orange; }
-    else if (score <= 75)  { return green_orange; }
-    else if (score < 100)  { return green; }
-    else if (score == 100) { return green; }
+    if (arg_bitset.test(NO_COLOR)) {
+        return "";
+    }
+
+    if      (score == 0)   { return red.c_str(); }
+    else if (score <= 12)  { return red.c_str(); }
+    else if (score <= 25)  { return red_orange.c_str(); }
+    else if (score < 50)   { return red_orange.c_str(); }
+    else if (score <= 62)  { return orange.c_str(); }
+    else if (score <= 75)  { return green_orange.c_str(); }
+    else if (score < 100)  { return green.c_str(); }
+    else if (score == 100) { return green.c_str(); }
 
     return "";
 }
@@ -506,9 +512,25 @@ const bool is_anyrun = (is_anyrun_directory || is_anyrun_driver);
 
 
 void general() {
-    const std::string tip = (std::string(green) + "TIP: " + std::string(ansi_exit));
-
     bool notes_enabled = false;
+
+    if (arg_bitset.test(NO_COLOR)) {
+        detected = ("[  DETECTED  ]");
+        not_detected = ("[NOT DETECTED]");
+        spoofable = ("[ EASY SPOOF ]");
+        no_perms = ("[  NO PERMS  ]");
+        note = ("[    NOTE    ]");               
+        disabled = ("[  DISABLED  ]");
+
+        bold = "";
+        ansi_exit = "";
+        red = ""; 
+        orange = "";
+        green = "";
+        red_orange = "";
+        green_orange = "";
+        grey = "";
+    }
 
     if (arg_bitset.test(NOTES)) {
         notes_enabled = false;
@@ -538,13 +560,13 @@ void general() {
     checker(VM::DMIDECODE, "dmidecode output");
     checker(VM::DMESG, "dmesg output");
     checker(VM::HWMON, "hwmon presence");
-    //checker(VM::CURSOR, "cursor");
+    checker(VM::CURSOR, "cursor");
     checker(VM::VMWARE_REG, "VMware registry");
     checker(VM::VBOX_REG, "VBox registry");
     checker(VM::USER, "users");
     checker(VM::DLL, "DLLs");
     checker(VM::REGISTRY, "registry");
-    //checker(VM::CWSANDBOX_VM, "Sunbelt CWSandbox directory");
+    checker(VM::CWSANDBOX_VM, "Sunbelt CWSandbox directory");
     checker(VM::WINE_CHECK, "Wine");
     checker(VM::VM_FILES, "VM files");
     checker(VM::HWMODEL, "hw.model");
@@ -642,6 +664,7 @@ void general() {
     checker(VM::HDD_SERIAL, "HDD serial number");
     checker(VM::PORT_CONNECTORS, "Physical connection ports");
     checker(VM::QEMU_HDD, "QEMU in HDD model");
+    checker(VM::ACPI_HYPERV, "ACPI Hyper-V");
 
     std::printf("\n");
 
@@ -695,11 +718,11 @@ void general() {
     {
         const char* percent_color = "";
 
-        if      (vm.percentage == 0) { percent_color = red; }
-        else if (vm.percentage < 25) { percent_color = red_orange; }
-        else if (vm.percentage < 50) { percent_color = orange; }
-        else if (vm.percentage < 75) { percent_color = green_orange; }
-        else                      { percent_color = green; }
+        if      (vm.percentage == 0) { percent_color = red.c_str(); }
+        else if (vm.percentage < 25) { percent_color = red_orange.c_str(); }
+        else if (vm.percentage < 50) { percent_color = orange.c_str(); }
+        else if (vm.percentage < 75) { percent_color = green_orange.c_str(); }
+        else                         { percent_color = green.c_str(); }
 
         std::cout << "VM likeliness: " << percent_color << static_cast<u32>(vm.percentage) << "%" << ansi_exit << "\n";
     }
@@ -716,14 +739,14 @@ void general() {
         const char* count_color = "";
 
         switch (vm.detected_count) {
-            case 0: count_color = red; break;
-            case 1: count_color = red_orange; break;
-            case 2: count_color = orange; break;
-            case 3: count_color = orange; break;
-            case 4: count_color = green_orange; break;
+            case 0: count_color = red.c_str(); break;
+            case 1: count_color = red_orange.c_str(); break;
+            case 2: count_color = orange.c_str(); break;
+            case 3: count_color = orange.c_str(); break;
+            case 4: count_color = green_orange.c_str(); break;
             default:
                 // anything over 4 is green
-                count_color = green;
+                count_color = green.c_str();
         }
 
         std::cout << 
@@ -760,6 +783,7 @@ void general() {
         } 
 
         if (!arg_bitset.test(SPOOFABLE) && !arg_bitset.test(ALL)) {
+            const std::string tip = (green + "TIP: " + ansi_exit);
             std::cout << tip << "To enable easily spoofable techniques, run with the \"--spoofable\" argument\n\n";
         } else {
             std::cout << note << " If you found a false positive, please make sure to create an issue at https://github.com/kernelwernel/VMAware/issues\n\n";
@@ -786,7 +810,7 @@ int main(int argc, char* argv[]) {
         std::exit(0);
     }
 
-    static constexpr std::array<std::pair<const char*, arg_enum>, 25> table {{
+    static constexpr std::array<std::pair<const char*, arg_enum>, 26> table {{
         { "-h", HELP },
         { "-v", VERSION },
         { "-a", ALL },
@@ -811,7 +835,8 @@ int main(int argc, char* argv[]) {
         { "--type", TYPE },
         { "--disable-notes", NOTES },
         { "--spoofable", SPOOFABLE },
-        { "--high-threshold", HIGH_THRESHOLD }
+        { "--high-threshold", HIGH_THRESHOLD },
+        { "--no-color", NO_COLOR }
     }};
 
     std::string potential_null_arg = "";

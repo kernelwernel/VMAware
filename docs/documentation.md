@@ -177,7 +177,7 @@ This will essentially return the VM brand as a `std::string`. The exact possible
 - `CWSandbox`
 - `Comodo`
 - `Bochs`
-- `Lockheed Martin LMHS`   (Yes, you read that right. The library can detect VMs running on US military fighter jets, apparently)
+- `Lockheed Martin LMHS`
 - `NVMM`
 - `OpenBSD VMM`
 - `Intel HAXM`
@@ -252,9 +252,8 @@ int main() {
 <br>
 
 ## `VM::check()`
-This takes a single flag argument and returns a `bool`. It's essentially the same as `VM::detect()` but it doesn't have a scoring system. It only returns the technique's effective output. The reason why this exists is because it allows end-users to have fine-grained control over what is being executed and what isn't. 
+This takes a single technique argument and returns a `bool`. It essentially returns a technique's effective output. Nothing more, nothing less.
 
-`VM::detect()` is meant for a range of techniques to be evaluated in the bigger picture with weights and biases in its scoring system, while `VM::check()` is meant for a single technique to be evaluated without any weights or anything extra. It very simply just gives you what the technique has found on its own. For example:
 
 ```cpp
 #include "vmaware.hpp"
@@ -337,7 +336,7 @@ This will return the VM type as a `std::string` based on the brand found. The po
 
 ## `VM::conclusion()`
 This will return the "conclusion" message of what the overall result is as a `std::string`. The `[brand]` part might contain a brand or may as well be empty, depending on whether a brand has been found.
-- `Running in baremetal`
+- `Running on baremetal`
 - `Very unlikely a [brand] VM`
 - `Unlikely a [brand] VM`
 - `Potentially a [brand] VM`
@@ -517,6 +516,73 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 
 <br>
 
+# Brand table
+
+This is the table of all the brands the library supports.
+
+| Variable alias | String | VM type | Notes |
+| -------------- | ------ | ------- | ----- |
+| `VM::brands::VBOX` | VirtualBox | Hypervisor (type 2) |  |
+| `VM::brands::VMWARE` | VMware | Hypervisor (type 2) |  |
+| `VM::brands::VMWARE_EXPRESS` | VMware Express | Hypervisor (type 2) |  |
+| `VM::brands::VMWARE_ESX` | VMware ESX | Hypervisor (type 1) |  |
+| `VM::brands::VMWARE_GSX` | VMware GSX | Hypervisor (type 2) |  |
+| `VM::brands::VMWARE_WORKSTATION` | VMware Workstation | Hypervisor (type 2) |  |
+| `VM::brands::VMWARE_FUSION` | VMware Fusion | Hypervisor (type 2) |  |
+| `VM::brands::BHYVE` | bhyve | Hypervisor (type 1) |  |
+| `VM::brands::KVM` | KVM | Hypervisor (type 1) |  |
+| `VM::brands::QEMU` | QEMU | Emulator/Hypervisor (type 2) |  |
+| `VM::brands::QEMU_KVM` | QEMU+KVM | Hypervisor (type 1) |  |
+| `VM::brands::KVM_HYPERV` | KVM Hyper-V Enlightenment | Hypervisor (type 1) |  |
+| `VM::brands::QEMU_KVM_HYPERV` | QEMU+KVM Hyper-V Enlightenment | Hypervisor (type 1) |  |
+| `VM::brands::HYPERV` | Microsoft Hyper-V | Hypervisor (type 1) |  |
+| `VM::brands::HYPERV_VPC` | Microsoft Virtual PC/Hyper-V | Hypervisor (either type 1 or 2) |  |
+| `VM::brands::MSXTA` | Microsoft x86-to-ARM | Emulator |  |
+| `VM::brands::PARALLELS` | Parallels | Hypervisor (type 2) |  |
+| `VM::brands::XEN` | Xen HVM | Hypervisor (type 1) |  |
+| `VM::brands::ACRN` | ACRN | Hypervisor (type 1) |  |
+| `VM::brands::QNX` | QNX hypervisor | Hypervisor (type 1) |  |
+| `VM::brands::HYBRID` | Hybrid Analysis | Sandbox |  |
+| `VM::brands::SANDBOXIE` | Sandboxie | Sandbox |  |
+| `VM::brands::DOCKER` | Docker | Container |  |
+| `VM::brands::WINE` | Wine | Compatibility layer |  |
+| `VM::brands::APPLE_ROSETTA` | Apple Rosetta 2 | Binary Translation Layer/Emulator |  |
+| `VM::brands::VPC` | Virtual PC | Hypervisor (type 2) |  |
+| `VM::brands::ANUBIS` | Anubis | Sandbox |  |
+| `VM::brands::JOEBOX` | JoeBox | Sandbox |  |
+| `VM::brands::THREATEXPERT` | ThreatExpert | Sandbox |  |
+| `VM::brands::CWSANDBOX` | CWSandbox | Sandbox |  |
+| `VM::brands::COMODO` | Comodo | Sandbox |  |
+| `VM::brands::BOCHS` | Bochs | Emulator |  |
+| `VM::brands::NVMM` | NetBSD NVMM | Hypervisor (type 2) |  |
+| `VM::brands::BSD_VMM` | OpenBSD VMM | Hypervisor (type 2) |  |
+| `VM::brands::INTEL_HAXM` | Intel HAXM | Hypervisor (type 1) |  |
+| `VM::brands::UNISYS` | Unisys s-Par | Partitioning Hypervisor |  |
+| `VM::brands::LMHS` | Lockheed Martin LMHS | Hypervisor (unknown type) | Yes, you read that right. The library can detect VMs running on US military fighter jets, apparently |
+| `VM::brands::CUCKOO` | Cuckoo | Sandbox |  |
+| `VM::brands::BLUESTACKS` | BlueStacks | Emulator |  |
+| `VM::brands::JAILHOUSE` | Jailhouse | Partitioning Hypervisor |  |
+| `VM::brands::APPLE_VZ` | Apple VZ | Unknown |  |
+| `VM::brands::INTEL_KGT` | Intel KGT (Trusty) | Hypervisor (type 1) |  |
+| `VM::brands::AZURE_HYPERV` | Microsoft Azure Hyper-V | Hypervisor (type 1) |  |
+| `VM::brands::NANOVISOR` | Xbox NanoVisor (Hyper-V) | Hypervisor (type 1) |  |
+| `VM::brands::SIMPLEVISOR` | SimpleVisor | Hypervisor (type 1) |  |
+| `VM::brands::HYPERV_ARTIFACT` | Hyper-V artifact (not an actual VM) | Unknown |  |
+| `VM::brands::UML` | User-mode Linux | Paravirtualised/Hypervisor (type 2) |  |
+| `VM::brands::POWERVM` | IBM PowerVM | Hypervisor (type 1) |  |
+| `VM::brands::GCE` | Google Compute Engine (KVM) | Hypervisor (type 1) |  |
+| `VM::brands::OPENSTACK` | OpenStack (KVM) | Hypervisor (type 1) |  |
+| `VM::brands::KUBEVIRT` | KubeVirt (KVM) | Hypervisor (type 1) |  |
+| `VM::brands::AWS_NITRO` | AWS Nitro System EC2 (KVM-based) | Hypervisor (type 1) |  |
+| `VM::brands::PODMAN` | Podman | Container |  |
+| `VM::brands::WSL` | WSL | Hybrid Hyper-V (type 1 and 2) | The type is debatable |
+| `VM::brands::OPENVZ` | OpenVZ | Container |  |
+| `VM::brands::NULL_BRAND` | Unknown | Unknown |  |
+
+
+
+<br>
+
 # Setting flags
 | Flag | Description |
 |------|-------------|
@@ -548,7 +614,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | -l | --brand-list | Prints all the possible VM brand strings the CLI supports |
 | -c | --conclusion | Prints the conclusion message string |
 | -p | --percent | Prints the VM likeliness percentage between 0 and 100 |
-| -n | --number | Prints the number of VM detection techniques it can performs |
+| -n | --number | Prints the number of VM detection techniques it can perform |
 | -t | --type | Returns the VM type (if a VM was found) |
 |    | --disable-notes | No notes will be provided |
 |    | --spoofable | Allow spoofable techniques to be ran (not included by default) |
