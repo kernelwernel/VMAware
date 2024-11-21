@@ -1,5 +1,3 @@
-<h1 align="center">VMAware</h1>
-<br>
 <p align="center">
 <img src="assets/banner.jpg" align="center" width="500" title="VMAware">
 <br>
@@ -14,11 +12,11 @@
 The library is:
 - Very easy to use
 - Cross-platform (Windows + MacOS + Linux)
-- Compatible with x86 and ARM, with backwards compatibility for 32-bit systems
 - Features up to 100+ unique VM detection techniques [[list](https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#flag-table)]
-- Able to detect 50+ VM brands including VMware, VirtualBox, QEMU, Hyper-V, and much more [[list](https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmbrand)]
+- Able to detect 50+ VM brands including VMware, VirtualBox, QEMU, Hyper-V, and much more [[list](https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#brand-table)]
+- Compatible with x86 and ARM, with backwards compatibility for 32-bit systems
 - Very flexible, with total fine-grained control over which techniques get executed
-- Able to detect various semi-VM technologies like hypervisors, emulators, containers, and so on
+- Able to detect various VM and semi-VM technologies like hypervisors, emulators, containers, sandboxes, and so on
 - Available with C++11 and above
 - Header-only
 - Memoized, meaning past results are cached and retrieved if ran again for performance benefits 
@@ -36,13 +34,22 @@ The library is:
 int main() {
     if (VM::detect()) {
         std::cout << "Virtual machine detected!" << "\n";
-        std::cout << "VM name: " << VM::brand() << "\n";
     } else {
-        std::cout << "Running in baremetal" << "\n";
+        std::cout << "Running on baremetal" << "\n";
     }
     
+    std::cout << "VM name: " << VM::brand() << "\n";
+    std::cout << "VM type: " << VM::type() << "\n";
     std::cout << "VM certainty: " << (int)VM::percentage() << "%" << "\n";
 }
+```
+
+possible output:
+```
+Virtual machine detected!
+VM name: VirtualBox
+VM type: Hypervisor (type 2)
+VM certainty: 100%
 ```
 
 <br>
@@ -59,18 +66,20 @@ int main() {
 ## CLI tool 🔧
 This project also provides a tiny, but handy CLI tool utilising the full potential of what the library can do. It'll give you all sorts of details about the environment it's running under.
 
-<img src="assets/demo.jpg" width="500" title="cli">
+<img src="assets/demo.jpg" title="cli">
 
 <br>
 
 ## Installation 📥
-To install the library, download the `vmaware.hpp` file in the latest [release section](https://github.com/kernelwernel/VMAware/releases/latest) to your project. No CMake or shared object linkages are necessary, it's literally that simple.
+To install the library, download the `vmaware.hpp` file in the latest [release section](https://github.com/kernelwernel/VMAware/releases/latest) to your project. The binaries are also located there. No CMake or shared object linkages are necessary, it's literally that simple.
 
 However, if you want the full project (globally accessible headers with <vmaware.hpp> and the CLI tool), follow these commands:
 ```bash
 git clone https://github.com/kernelwernel/VMAware 
 cd VMAware
 ```
+
+<br>
 
 ### FOR LINUX:
 ```bash
@@ -102,8 +111,6 @@ endif()
 
 set(DESTINATION "${DIRECTORY}vmaware${EXTENSION}.hpp")
 
-message(STATUS "${DESTINATION}")
-
 if (NOT EXISTS ${DESTINATION})
     message(STATUS "Downloading VMAware")
     set(URL "https://github.com/kernelwernel/VMAware/releases/latest/download/vmaware${EXTENSION}.hpp")
@@ -113,9 +120,6 @@ else()
 endif()
 ```
 
-<br>
-
-If you just want the binaries, head over to the latest [release section](https://github.com/kernelwernel/VMAware/releases/latest)
 
 <br>
 
