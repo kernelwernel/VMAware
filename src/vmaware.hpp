@@ -9473,23 +9473,21 @@ public: // START OF PUBLIC FUNCTIONS
             }
         };
 
+
         // some edgecase handling for Hyper-V and VirtualPC since
         // they're very similar, and they're both from Microsoft (ew)
-        if ((brands.count(TMP_HYPERV) > brands.count(TMP_VPC))) {
-            brands.erase(TMP_VPC);
-        } else if (brands.count(TMP_HYPERV) < brands.count(TMP_VPC)) {
-            brands.erase(TMP_HYPERV);
-        } else if (
-            (brands.count(TMP_HYPERV) == brands.count(TMP_VPC)) &&
-            ((brands.count(TMP_HYPERV) > 0) && (brands.count(TMP_VPC) > 0))
-        ) {
-            merger(TMP_VPC, TMP_HYPERV, TMP_HYPERV_VPC);
+        if ((brands.count(TMP_HYPERV) > 0) && (brands.count(TMP_VPC) > 0)) {
+            if (brands.count(TMP_HYPERV) == brands.count(TMP_VPC)) {
+                merger(TMP_VPC, TMP_HYPERV, TMP_HYPERV_VPC);
+            } else {
+                brands.erase(TMP_VPC);
+            }
         }
-
+        
 
         // this is the section where brand post-processing will be done. 
         // The reason why this part is necessary is because it will
-        // output a more accurate picture on the VM brand. For example, 
+        // output a more accurate picture of the VM brand. For example, 
         // Azure's cloud is based on Hyper-V, but Hyper-V may have 
         // a higher score due to the prevalence of it in a practical 
         // setting, which will put Azure to the side. This is stupid 

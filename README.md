@@ -37,7 +37,7 @@ int main() {
     } else {
         std::cout << "Running on baremetal" << "\n";
     }
-    
+
     std::cout << "VM name: " << VM::brand() << "\n";
     std::cout << "VM type: " << VM::type() << "\n";
     std::cout << "VM certainty: " << (int)VM::percentage() << "%" << "\n";
