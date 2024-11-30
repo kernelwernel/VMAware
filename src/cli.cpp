@@ -252,13 +252,11 @@ bool is_spoofable(const VM::enum_flags flag) {
         case VM::MAC:
         case VM::DOCKERENV:
         case VM::HWMON:
-        case VM::CURSOR:
         case VM::VMWARE_REG:
         case VM::VBOX_REG:
         case VM::USER:
         case VM::DLL:
         case VM::REGISTRY:
-        case VM::CWSANDBOX_VM:
         case VM::VM_FILES:
         case VM::HWMODEL:
         case VM::COMPUTER_NAME:
@@ -268,7 +266,6 @@ bool is_spoofable(const VM::enum_flags flag) {
         case VM::KVM_DIRS:
         case VM::LOADED_DLLS:
         case VM::QEMU_DIR:
-        case VM::MOUSE_DEVICE:
         case VM::VM_PROCESSES:
         case VM::LINUX_USER_HOST:
         case VM::HYPERV_REG:
@@ -340,8 +337,8 @@ bool is_disabled(const VM::enum_flags flag) {
 
     switch (flag) {
         case VM::RDTSC:
-        case VM::RDTSC_VMEXIT:
-        case VM::CURSOR: return true;
+        case VM::RDTSC_VMEXIT: 
+        case VM::VMWARE_DMESG: return true;
         default: return false;
     }
 }
@@ -560,13 +557,11 @@ void general() {
     checker(VM::DMIDECODE, "dmidecode output");
     checker(VM::DMESG, "dmesg output");
     checker(VM::HWMON, "hwmon presence");
-    checker(VM::CURSOR, "cursor");
     checker(VM::VMWARE_REG, "VMware registry");
     checker(VM::VBOX_REG, "VBox registry");
     checker(VM::USER, "users");
     checker(VM::DLL, "DLLs");
     checker(VM::REGISTRY, "registry");
-    checker(VM::CWSANDBOX_VM, "Sunbelt CWSandbox directory");
     checker(VM::WINE_CHECK, "Wine");
     checker(VM::VM_FILES, "VM files");
     checker(VM::HWMODEL, "hw.model");
@@ -575,7 +570,6 @@ void general() {
     checker(VM::VBOX_NETWORK, "VBox network provider match");
     checker(VM::COMPUTER_NAME, "computer name");
     checker(VM::HOSTNAME, "hostname");
-    checker(VM::MEMORY, "low memory space");
     checker(VM::VM_PROCESSES, "VM processes");
     checker(VM::LINUX_USER_HOST, "default Linux user/host");
     checker(VM::VBOX_WINDOW_CLASS, "VBox window class");
@@ -588,7 +582,6 @@ void general() {
     checker(VM::BOCHS_CPU, "BOCHS CPU techniques");
     checker(VM::VPC_BOARD, "VirtualPC motherboard");
     checker(VM::BIOS_SERIAL, "BIOS serial number");
-    checker(VM::VBOX_FOLDERS, "VirtualBox shared folders");
     checker(VM::MSSMBIOS, "MSSMBIOS");
     checker(VM::MAC_MEMSIZE, "MacOS hw.memsize");
     checker(VM::MAC_IOKIT, "MacOS registry IO-kit");
@@ -635,7 +628,6 @@ void general() {
     checker(VM::GENERAL_HOSTNAME, "general VM hostnames");
     checker(VM::SCREEN_RESOLUTION, "screen resolution");
     checker(VM::DEVICE_STRING, "bogus device string");
-    checker(VM::MOUSE_DEVICE, "mouse device");
     checker(VM::BLUESTACKS_FOLDERS, "BlueStacks folders");
     checker(VM::CPUID_SIGNATURE, "CPUID signatures");
     checker(VM::HYPERV_BITMASK, "Hyper-V CPUID reserved bitmask");
