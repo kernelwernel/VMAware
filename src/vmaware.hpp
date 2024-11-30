@@ -52,8 +52,6 @@
 
 #pragma once
 
-#define __VMAWARE_DEBUG__ 1 // tmp
-
 #if (defined(_MSC_VER) || defined(_WIN32) || defined(_WIN64) || defined(__MINGW32__))
 #define MSVC 1
 #define LINUX 0
@@ -342,13 +340,11 @@ public:
         DMESG,
         HWMON,
         SIDT5,
-        CURSOR,
         VMWARE_REG,
         VBOX_REG,
         USER,
         DLL,
         REGISTRY,
-        CWSANDBOX_VM,
         VM_FILES,
         HWMODEL,
         DISK_SIZE,
@@ -357,7 +353,6 @@ public:
 /* GPL */ COMPUTER_NAME,
 /* GPL */ WINE_CHECK,
 /* GPL */ HOSTNAME,
-/* GPL */ MEMORY,
 /* GPL */ VBOX_WINDOW_CLASS,
 /* GPL */ LOADED_DLLS,
 /* GPL */ KVM_REG,
@@ -365,7 +360,6 @@ public:
 /* GPL */ KVM_DIRS,
 /* GPL */ AUDIO,
 /* GPL */ QEMU_DIR,
-/* GPL */ MOUSE_DEVICE,
         VM_PROCESSES,
         LINUX_USER_HOST,
         GAMARUE,
@@ -378,7 +372,6 @@ public:
         HYPERV_WMI,
         HYPERV_REG,
         BIOS_SERIAL,
-        VBOX_FOLDERS,
         MSSMBIOS,
         MAC_MEMSIZE,
         MAC_IOKIT,
@@ -499,7 +492,7 @@ public:
     VM(VM&&) = delete;
 
     static flagset DEFAULT; // default bitset that will be run if no parameters are specified
-    static flagset ALL; // same as default, but with cursor check included
+    static flagset ALL; // same as default, but with disabled techniques included
 
     /**
      * Official aliases for VM brands. This is added to avoid accidental typos
@@ -1081,7 +1074,6 @@ public:
                 return true;
             } else if (cache_table.size() == static_cast<std::size_t>(technique_count) - 3) {
                 return (
-                    !cache_keys.test(CURSOR) &&
                     !cache_keys.test(RDTSC_VMEXIT) &&
                     !cache_keys.test(RDTSC) &&
                     !cache_keys.test(VMWARE_DMESG)
@@ -3295,35 +3287,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check if the mouse coordinates have changed after 5 seconds
-     * @note Some VMs are automatic without a human due to mass malware scanning being a thing
-     * @note Disabled by default due to performance reasons
-     * @category Windows
-     */
-    [[nodiscard]] static bool cursor_check() {
-#if (!MSVC)
-        return false;
-#else
-        POINT pos1, pos2;
-        GetCursorPos(&pos1);
-
-        debug("CURSOR: pos1.x = ", pos1.x);
-        debug("CURSOR: pos1.y = ", pos1.y);
-
-        Sleep(5000);
-        GetCursorPos(&pos2);
-
-        debug("CURSOR: pos1.x = ", pos1.x);
-        debug("CURSOR: pos1.y = ", pos1.y);
-        debug("CURSOR: pos2.x = ", pos2.x);
-        debug("CURSOR: pos2.y = ", pos2.y);
-
-        return ((pos1.x == pos2.x) && (pos1.y == pos2.y));
-#endif
-    }
-
-
-    /**
      * @brief Find for registries of VMware tools
      * @category Windows
      */
@@ -3523,23 +3486,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         debug("REGISTRY: ", "score = ", static_cast<u32>(score));
 
         return (score >= 1);
-#endif
-    }
-
-
-    /**
-     * @brief Check if CWSandbox-specific file exists
-     * @category Windows
-     */
-    [[nodiscard]] static bool cwsandbox_check() {
-#if (!MSVC)
-        return false;
-#else
-        if (util::exists(_T("C:\\analysis"))) {
-            return core::add(brands::CWSANDBOX);
-        }
-
-        return false;
 #endif
     }
 
@@ -3879,21 +3825,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */         return (!lstrcmpiA((LPCSTR)dns_host_name.data(), "SystemIT"));
 /* GPL */ #endif
 /* GPL */     }
-/* GPL */ 
-/* GPL */
-/* GPL */     // @brief Check if memory space is far too low for a physical machine
-/* GPL */     // @author Al-Khaser project
-/* GPL */     // @category x86?
-/* GPL */     // @copyright GPL-3.0
-/* GPL */     [[nodiscard]] static bool low_memory_space() {
-/* GPL */         constexpr u64 min_ram_1gb = (1024LL * (1024LL * (1024LL * 1LL)));
-/* GPL */         const u64 ram = util::get_memory_space();
-/* GPL */ 
-/* GPL */         debug("MEMORY: ram size (GB) = ", ram);
-/* GPL */         debug("MEMORY: minimum ram size (GB) = ", min_ram_1gb);
-/* GPL */ 
-/* GPL */         return (ram < min_ram_1gb);
-/* GPL */     }
 /* GPL */
 /* GPL */
 /* GPL */     // @brief Check for the window class for VirtualBox
@@ -4193,23 +4124,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */         return false;
 /* GPL */ #endif
 /* GPL */     }
-/* GPL */     
-/* GPL */     
-/* GPL */     // @brief Check for the presence of a mouse device
-/* GPL */     // @category Windows
-/* GPL */     // @author a0rtega
-/* GPL */     // @link https://github.com/a0rtega/pafish/blob/master/pafish/rtt.c
-/* GPL */     // @note from pafish project
-/* GPL */     // @copyright GPL
-/* GPL */     [[nodiscard]] static bool mouse_device() {
-/* GPL */ #if (!MSVC)
-/* GPL */         return false;
-/* GPL */ #else
-/* GPL */         int res;
-/* GPL */         res = GetSystemMetrics(SM_MOUSEPRESENT);
-/* GPL */         return (res == 0);
-/* GPL */ #endif
-/* GPL */     }
+
 
     /**
      * @brief Check for any VM processes that are active
@@ -9473,23 +9388,21 @@ public: // START OF PUBLIC FUNCTIONS
             }
         };
 
+
         // some edgecase handling for Hyper-V and VirtualPC since
         // they're very similar, and they're both from Microsoft (ew)
-        if ((brands.count(TMP_HYPERV) > brands.count(TMP_VPC))) {
-            brands.erase(TMP_VPC);
-        } else if (brands.count(TMP_HYPERV) < brands.count(TMP_VPC)) {
-            brands.erase(TMP_HYPERV);
-        } else if (
-            (brands.count(TMP_HYPERV) == brands.count(TMP_VPC)) &&
-            ((brands.count(TMP_HYPERV) > 0) && (brands.count(TMP_VPC) > 0))
-        ) {
-            merger(TMP_VPC, TMP_HYPERV, TMP_HYPERV_VPC);
+        if ((brands.count(TMP_HYPERV) > 0) && (brands.count(TMP_VPC) > 0)) {
+            if (brands.count(TMP_HYPERV) == brands.count(TMP_VPC)) {
+                merger(TMP_VPC, TMP_HYPERV, TMP_HYPERV_VPC);
+            } else {
+                brands.erase(TMP_VPC);
+            }
         }
-
+        
 
         // this is the section where brand post-processing will be done. 
         // The reason why this part is necessary is because it will
-        // output a more accurate picture on the VM brand. For example, 
+        // output a more accurate picture of the VM brand. For example, 
         // Azure's cloud is based on Hyper-V, but Hyper-V may have 
         // a higher score due to the prevalence of it in a practical 
         // setting, which will put Azure to the side. This is stupid 
@@ -9754,13 +9667,11 @@ public: // START OF PUBLIC FUNCTIONS
             case DMESG: return "DMESG";
             case HWMON: return "HWMON";
             case SIDT5: return "SIDT5";
-            case CURSOR: return "CURSOR";
             case VMWARE_REG: return "VMWARE_REG";
             case VBOX_REG: return "VBOX_REG";
             case USER: return "USER";
             case DLL: return "DLL";
             case REGISTRY: return "REGISTRY";
-            case CWSANDBOX_VM: return "CWSANDBOX_VM";
             case VM_FILES: return "VM_FILES";
             case HWMODEL: return "HWMODEL";
             case DISK_SIZE: return "DISK_SIZE";
@@ -9769,7 +9680,6 @@ public: // START OF PUBLIC FUNCTIONS
 /* GPL */   case COMPUTER_NAME: return "COMPUTER_NAME";
 /* GPL */   case WINE_CHECK: return "WINE_CHECK";
 /* GPL */   case HOSTNAME: return "HOSTNAME";
-/* GPL */   case MEMORY: return "MEMORY";
 /* GPL */   case VBOX_WINDOW_CLASS: return "VBOX_WINDOW_CLASS";
 /* GPL */   case LOADED_DLLS: return "LOADED_DLLS";
 /* GPL */   case KVM_REG: return "KVM_REG";
@@ -9777,7 +9687,6 @@ public: // START OF PUBLIC FUNCTIONS
 /* GPL */   case KVM_DIRS: return "KVM_DIRS";
 /* GPL */   case AUDIO: return "AUDIO";
 /* GPL */   case QEMU_DIR: return "QEMU_DIR";
-/* GPL */   case MOUSE_DEVICE: return "MOUSE_DEVICE";
             case VM_PROCESSES: return "VM_PROCESSES";
             case LINUX_USER_HOST: return "LINUX_USER_HOST";
             case GAMARUE: return "GAMARUE";
@@ -9790,7 +9699,6 @@ public: // START OF PUBLIC FUNCTIONS
             case HYPERV_WMI: return "HYPERV_WMI";
             case HYPERV_REG: return "HYPERV_REG";
             case BIOS_SERIAL: return "BIOS_SERIAL";
-            case VBOX_FOLDERS: return "VBOX_FOLDERS";
             case MSSMBIOS: return "MSSMBIOS";
             case MAC_MEMSIZE: return "MAC_MEMSIZE";
             case MAC_IOKIT: return "MAC_IOKIT";
@@ -9853,6 +9761,12 @@ public: // START OF PUBLIC FUNCTIONS
             case PODMAN_FILE: return "PODMAN_FILE";
             case WSL_PROC: return "WSL_PROC";
             case GPU_CHIPTYPE: return "GPU_CHIPTYPE";
+            case DRIVER_NAMES: return "DRIVER_NAMES";
+            case VBOX_IDT: return "VBOX_IDT";
+            case HDD_SERIAL: return "HDD_SERIAL";
+            case PORT_CONNECTORS: return "PORT_CONNECTORS";
+            case QEMU_HDD: return "QEMU_HDD";
+            case ACPI_HYPERV: return "ACPI_HYPERV";
             default: return "Unknown flag";
         }
     }
@@ -10217,7 +10131,6 @@ VM::flagset VM::DEFAULT = []() noexcept -> flagset {
     tmp.set();
 
     // disable all non-default techniques
-    tmp.flip(CURSOR);
     tmp.flip(RDTSC);
     tmp.flip(RDTSC_VMEXIT);
     tmp.flip(VMWARE_DMESG);
@@ -10308,102 +10221,97 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::DMESG, { 55, VM::dmesg, false } },
     { VM::HWMON, { 75, VM::hwmon, true } },
     { VM::SIDT5, { 45, VM::sidt5, false } },
-    { VM::CURSOR, { 5, VM::cursor_check, true } },
     { VM::VMWARE_REG, { 100, VM::vmware_registry, true } },
     { VM::VBOX_REG, { 100, VM::vbox_registry, true } },
     { VM::USER, { 15, VM::user_check, true } },
     { VM::DLL, { 50, VM::DLL_check, true } },
     { VM::REGISTRY, { 100, VM::registry_key, true } },
-    { VM::CWSANDBOX_VM, { 10, VM::cwsandbox_check, true } },
     { VM::VM_FILES, { 50, VM::vm_files, true } },
-    { VM::HWMODEL, { 75, VM::hwmodel, true } },
-    { VM::DISK_SIZE, { 60, VM::disk_size, false } },
+    { VM::HWMODEL, { 75, VM::hwmodel, true } }, // TODO: update score
+    { VM::DISK_SIZE, { 60, VM::disk_size, false } }, // TODO: update score
     { VM::VBOX_DEFAULT, { 25, VM::vbox_default_specs, false } },
-    { VM::VBOX_NETWORK, { 100, VM::vbox_network_share, false } },
+    { VM::VBOX_NETWORK, { 100, VM::vbox_network_share, false } },  // used to be 70, debatable
 /* GPL */ { VM::COMPUTER_NAME, { 25, VM::computer_name_match, true } },
 /* GPL */ { VM::WINE_CHECK, { 100, VM::wine, false } },
 /* GPL */ { VM::HOSTNAME, { 25, VM::hostname_match, true } },
-/* GPL */ { VM::MEMORY, { 35, VM::low_memory_space, false } },
-/* GPL */ { VM::VBOX_WINDOW_CLASS, { 100, VM::vbox_window_class, false } },
+/* GPL */ { VM::VBOX_WINDOW_CLASS, { 100, VM::vbox_window_class, false } }, // used to be 10, debatable
 /* GPL */ { VM::LOADED_DLLS, { 75, VM::loaded_dlls, true } },
 /* GPL */ { VM::KVM_REG, { 100, VM::kvm_registry, true } },
 /* GPL */ { VM::KVM_DRIVERS, { 50, VM::kvm_drivers, true } },
 /* GPL */ { VM::KVM_DIRS, { 75, VM::kvm_directories, true } },
 /* GPL */ { VM::AUDIO, { 25, VM::check_audio, false } },
 /* GPL */ { VM::QEMU_DIR, { 75, VM::qemu_dir, true } },
-/* GPL */ { VM::MOUSE_DEVICE, { 20, VM::mouse_device, true } },
     { VM::VM_PROCESSES, { 30, VM::vm_processes, true } },
-    { VM::LINUX_USER_HOST, { 25, VM::linux_user_host, true } },
+    { VM::LINUX_USER_HOST, { 25, VM::linux_user_host, true } }, // TODO: update score
     { VM::GAMARUE, { 25, VM::gamarue, true } },
     { VM::VMID_0X4, { 100, VM::vmid_0x4, false } },
     { VM::PARALLELS_VM, { 50, VM::parallels, false } },
     { VM::RDTSC_VMEXIT, { 5, VM::rdtsc_vmexit, false } },
     { VM::QEMU_BRAND, { 100, VM::cpu_brand_qemu, false } },
-    { VM::BOCHS_CPU, { 95, VM::bochs_cpu, false } },
+    { VM::BOCHS_CPU, { 100, VM::bochs_cpu, false } },
     { VM::VPC_BOARD, { 25, VM::vpc_board, false } },
-    { VM::BIOS_SERIAL, { 60, VM::bios_serial, false } },
-    { VM::VBOX_FOLDERS, { 45, VM::vbox_shared_folders, false } },
+    { VM::BIOS_SERIAL, { 60, VM::bios_serial, false } }, // debatable
     { VM::MSSMBIOS, { 75, VM::mssmbios, false } },
-    { VM::MAC_MEMSIZE, { 30, VM::hw_memsize, true } },
-    { VM::MAC_IOKIT, { 80, VM::io_kit, true } },
-    { VM::IOREG_GREP, { 75, VM::ioreg_grep, true } },
-    { VM::MAC_SIP, { 85, VM::mac_sip, true } },
+    { VM::MAC_MEMSIZE, { 30, VM::hw_memsize, true } }, // TODO: update score
+    { VM::MAC_IOKIT, { 80, VM::io_kit, true } }, // TODO: update score
+    { VM::IOREG_GREP, { 75, VM::ioreg_grep, true } }, // TODO: update score
+    { VM::MAC_SIP, { 85, VM::mac_sip, true } }, // TODO: update score
     { VM::HKLM_REGISTRIES, { 50, VM::hklm_registries, true } },
-    { VM::QEMU_GA, { 20, VM::qemu_ga, true } },
+    { VM::QEMU_GA, { 20, VM::qemu_ga, true } }, // TODO: update score
     { VM::VALID_MSR, { 35, VM::valid_msr, false } },
-    { VM::QEMU_PROC, { 100, VM::qemu_processes, true } },
-    { VM::VPC_PROC, { 100, VM::vpc_proc, true } },
-    { VM::VPC_INVALID, { 75, VM::vpc_invalid, false } },
+    { VM::QEMU_PROC, { 100, VM::qemu_processes, true } }, // debatable
+    { VM::VPC_PROC, { 100, VM::vpc_proc, true } }, // debatable
+    { VM::VPC_INVALID, { 75, VM::vpc_invalid, false } }, // TODO: update score
     { VM::SIDT, { 25, VM::sidt, false } },
-    { VM::SGDT, { 30, VM::sgdt, false } },
-    { VM::SLDT, { 15, VM::sldt, false } },
-    { VM::OFFSEC_SIDT, { 60, VM::offsec_sidt, false } },
-    { VM::OFFSEC_SGDT, { 60, VM::offsec_sgdt, false } },
-    { VM::OFFSEC_SLDT, { 20, VM::offsec_sldt, false } },
-    { VM::VPC_SIDT, { 15, VM::vpc_sidt, false } },
+    { VM::SGDT, { 30, VM::sgdt, false } }, // TODO: update score
+    { VM::SLDT, { 15, VM::sldt, false } }, // TODO: update score
+    { VM::OFFSEC_SIDT, { 60, VM::offsec_sidt, false } }, // TODO: update score
+    { VM::OFFSEC_SGDT, { 60, VM::offsec_sgdt, false } }, // TODO: update score
+    { VM::OFFSEC_SLDT, { 20, VM::offsec_sldt, false } }, // TODO: update score
+    { VM::VPC_SIDT, { 15, VM::vpc_sidt, false } }, // debatable
     { VM::HYPERV_BOARD, { 100, VM::hyperv_board, false } },
     { VM::VM_FILES_EXTRA, { 75, VM::vm_files_extra, true } },
-    { VM::VMWARE_IOMEM, { 65, VM::vmware_iomem, false } },
-    { VM::VMWARE_IOPORTS, { 70, VM::vmware_ioports, false } },
-    { VM::VMWARE_SCSI, { 40, VM::vmware_scsi, false } },
-    { VM::VMWARE_DMESG, { 65, VM::vmware_dmesg, false } },
-    { VM::VMWARE_STR, { 35, VM::vmware_str, false } },
-    { VM::VMWARE_BACKDOOR, { 100, VM::vmware_backdoor, false } },
-    { VM::VMWARE_PORT_MEM, { 85, VM::vmware_port_memory, false } },
-    { VM::SMSW, { 30, VM::smsw, false } },
-    { VM::MUTEX, { 85, VM::mutex, false } },
+    { VM::VMWARE_IOMEM, { 65, VM::vmware_iomem, false } }, // debatable
+    { VM::VMWARE_IOPORTS, { 70, VM::vmware_ioports, false } }, // debatable
+    { VM::VMWARE_SCSI, { 40, VM::vmware_scsi, false } }, // debatable
+    { VM::VMWARE_DMESG, { 65, VM::vmware_dmesg, false } }, // debatable
+    { VM::VMWARE_STR, { 35, VM::vmware_str, false } }, // debatable
+    { VM::VMWARE_BACKDOOR, { 100, VM::vmware_backdoor, false } }, // debatable
+    { VM::VMWARE_PORT_MEM, { 85, VM::vmware_port_memory, false } }, // debatable
+    { VM::SMSW, { 30, VM::smsw, false } }, // debatable
+    { VM::MUTEX, { 85, VM::mutex, false } }, // could be 100, debatable
     { VM::UPTIME, { 5, VM::uptime, true } },
     { VM::ODD_CPU_THREADS, { 80, VM::odd_cpu_threads, false } },
     { VM::INTEL_THREAD_MISMATCH, { 60, VM::intel_thread_mismatch, false } },
-    { VM::XEON_THREAD_MISMATCH, { 85, VM::xeon_thread_mismatch, false } },
+    { VM::XEON_THREAD_MISMATCH, { 85, VM::xeon_thread_mismatch, false } }, // debatable
     { VM::NETTITUDE_VM_MEMORY, { 100, VM::nettitude_vm_memory, false } },
-    { VM::CPUID_BITSET, { 25, VM::cpuid_bitset, false } },
+    { VM::CPUID_BITSET, { 25, VM::cpuid_bitset, false } }, // debatable
     { VM::CUCKOO_DIR, { 75, VM::cuckoo_dir, true } },
-    { VM::CUCKOO_PIPE, { 20, VM::cuckoo_pipe, true } },
+    { VM::CUCKOO_PIPE, { 20, VM::cuckoo_pipe, true } }, // debatable
     { VM::HYPERV_HOSTNAME, { 25, VM::hyperv_hostname, true } },
     { VM::GENERAL_HOSTNAME, { 25, VM::general_hostname, true } },
     { VM::SCREEN_RESOLUTION, { 20, VM::screen_resolution, false } },
-    { VM::DEVICE_STRING, { 25, VM::device_string, false } },\
-    { VM::BLUESTACKS_FOLDERS, { 15, VM::bluestacks, true } },
-    { VM::CPUID_SIGNATURE, { 95, VM::cpuid_signature, false } },
-    { VM::HYPERV_BITMASK, { 20, VM::hyperv_bitmask, false } },
-    { VM::KVM_BITMASK, { 40, VM::kvm_bitmask, false } },
-    { VM::KGT_SIGNATURE, { 80, VM::intel_kgt_signature, false } },
+    { VM::DEVICE_STRING, { 25, VM::device_string, false } },
+    { VM::BLUESTACKS_FOLDERS, { 15, VM::bluestacks, true } }, // debatable
+    { VM::CPUID_SIGNATURE, { 95, VM::cpuid_signature, false } }, // debatable
+    { VM::HYPERV_BITMASK, { 20, VM::hyperv_bitmask, false } }, // debatable
+    { VM::KVM_BITMASK, { 40, VM::kvm_bitmask, false } }, // debatable
+    { VM::KGT_SIGNATURE, { 80, VM::intel_kgt_signature, false } }, // debatable
     { VM::VMWARE_DMI, { 40, VM::vmware_dmi, false } },
     { VM::EVENT_LOGS, { 25, VM::hyperv_event_logs, true } },
     { VM::QEMU_VIRTUAL_DMI, { 40, VM::qemu_virtual_dmi, false } },
-    { VM::QEMU_USB, { 20, VM::qemu_USB, false } },
-    { VM::HYPERVISOR_DIR, { 20, VM::hypervisor_dir, false } },
-    { VM::UML_CPU, { 80, VM::uml_cpu, false } },
-    { VM::KMSG, { 10, VM::kmsg, true } },
-    { VM::VM_PROCS, { 20, VM::vm_procs, true } },
-    { VM::VBOX_MODULE, { 15, VM::vbox_module, false } },
-    { VM::SYSINFO_PROC, { 15, VM::sysinfo_proc, false } },
-    { VM::DEVICE_TREE, { 20, VM::device_tree, false } },
-    { VM::DMI_SCAN, { 50, VM::dmi_scan, false } },
-    { VM::SMBIOS_VM_BIT, { 50, VM::smbios_vm_bit, false } },
-    { VM::PODMAN_FILE, { 15, VM::podman_file, true } },
-    { VM::WSL_PROC, { 30, VM::wsl_proc_subdir, false } },
+    { VM::QEMU_USB, { 20, VM::qemu_USB, false } }, // debatable
+    { VM::HYPERVISOR_DIR, { 20, VM::hypervisor_dir, false } }, // debatable
+    { VM::UML_CPU, { 80, VM::uml_cpu, false } }, // debatable
+    { VM::KMSG, { 10, VM::kmsg, true } }, // debatable
+    { VM::VM_PROCS, { 20, VM::vm_procs, true } }, // debatable
+    { VM::VBOX_MODULE, { 15, VM::vbox_module, false } }, // debatable
+    { VM::SYSINFO_PROC, { 15, VM::sysinfo_proc, false } }, // debatable
+    { VM::DEVICE_TREE, { 20, VM::device_tree, false } }, // debatable
+    { VM::DMI_SCAN, { 50, VM::dmi_scan, false } }, // debatable
+    { VM::SMBIOS_VM_BIT, { 50, VM::smbios_vm_bit, false } }, // debatable
+    { VM::PODMAN_FILE, { 15, VM::podman_file, true } }, // debatable
+    { VM::WSL_PROC, { 30, VM::wsl_proc_subdir, false } }, // debatable
     { VM::GPU_CHIPTYPE, { 100, VM::gpu_chiptype, false } },
     { VM::DRIVER_NAMES, { 50, VM::driver_names, false } },
     { VM::VBOX_IDT, { 75, VM::vbox_idt, false } },

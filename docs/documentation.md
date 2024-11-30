@@ -11,6 +11,7 @@
 - [`VM::detected_count()`](#vmdetected_count)
 - [`VM::vmaware struct`](#vmaware-struct)
 - [Flag table](#flag-table)
+- [Brand table](#brand-table)
 - [Setting flags](#setting-flags)
 - [Variables](#variables)
 - [CLI arguments](#cli-documentation)
@@ -144,65 +145,9 @@ int main() {
 <br>
 
 ## `VM::brand()`
-This will essentially return the VM brand as a `std::string`. The exact possible brand string return values are: 
-- `VirtualBox`
-- `VMware`
-- `VMware Express`
-- `VMware ESX`
-- `VMware GSX`
-- `VMware Workstation`
-- `VMware Fusion`
-- `bhyve`
-- `QEMU`
-- `KVM`
-- `QEMU+KVM`
-- `KVM Hyper-V Enlightenment`
-- `QEMU+KVM Hyper-V Enlightenment`
-- `Virtual PC`
-- `Microsoft Hyper-V`
-- `Microsoft Virtual PC/Hyper-V`
-- `Microsoft x86-to-ARM`
-- `Parallels`
-- `Xen HVM`
-- `ACRN`
-- `QNX hypervisor`
-- `Hybrid Analysis`
-- `Sandboxie`
-- `Docker`
-- `Wine`
-- `Virtual Apple`
-- `Anubis`
-- `JoeBox`
-- `ThreatExpert`
-- `CWSandbox`
-- `Comodo`
-- `Bochs`
-- `Lockheed Martin LMHS`
-- `NVMM`
-- `OpenBSD VMM`
-- `Intel HAXM`
-- `Unisys s-Par`
-- `Cuckoo`
-- `BlueStacks`
-- `Jailhouse`
-- `Apple VZ`
-- `Intel KGT (Trusty)`
-- `Microsoft Azure Hyper-V`
-- `Xbox NanoVisor (Hyper-V)`
-- `SimpleVisor`
-- `Hyper-V artifact (not an actual VM)`
-- `User-mode Linux`
-- `IBM PowerVM`
-- `Google Compute Engine (KVM)`
-- `OpenStack (KVM)`
-- `KubeVirt (KVM)`
-- `AWS Nitro System (KVM-based)`
-- `Podman`
-- `WSL`
-- `OpenVZ`
-- `ANY.RUN`
+This will essentially return the VM brand as a `std::string`. All the brands are listed [here](#brand-table)
 
-If none were detected, it will return `Unknown`. It's often NOT going to produce a satisfying result due to technical difficulties with accomplishing this, on top of being highly dependent on what mechanisms detected a VM. This is especially true for VMware sub-versions (ESX, GSX, Fusion, etc...) Don't rely on this function for critical operations as if it's your golden bullet. It's arguably unreliable and it'll most likely return `Unknown` (assuming it is actually running under a VM).
+If none were detected, it will return `Unknown`. It should be noted that this could be a common scenario even if you're running inside a VM due to technical difficulties with accomplishing this. This is especially true for VMware sub-versions (ESX, GSX, Fusion, etc...). It's not recommended to rely on this function for critical operations as if your whole program depends on it.
 
 ```cpp
 #include "vmaware.hpp"
@@ -316,21 +261,18 @@ VM::add_custom(50, new_technique);
 <br>
 
 ## `VM::type()`
-This will return the VM type as a `std::string` based on the brand found. The possible return values can be:
-- `Hypervisor (type 1)`
-- `Hypervisor (type 2)`
-- `Sandbox`
-- `Emulator`
-- `Emulator/Hypervisor (type 2)`
-- `Partitioning Hypervisor`
-- `Container`
-- `Hypervisor (either type 1 or 2)`
-- `Hypervisor (unknown type)`
-- `Compatibility layer`
-- `Paravirtualised/Hypervisor (type 2)`
-- `Hybrid Hyper-V (type 1 and 2)`
-- `Binary Translation Layer/Emulator`
-- `Unknown`
+This will return the VM type (or architecture) as a `std::string` based on the brand found. The possible return values are listed [here](#brand-table) in the `type` column.
+
+```cpp
+#include "vmaware.hpp"
+#include <iostream>
+
+int main() {
+    // example output: VirtualBox is a Hypervisor (type 2) VM
+    std::cout << VM::brand() " is a " << VM::type() << " VM\n";
+}
+```
+
 
 <br>
 
@@ -348,7 +290,7 @@ This will return the "conclusion" message of what the overall result is as a `st
 <br>
 
 ## `VM::detected_count()`
-This will fetch the number of techniques that have been detected as a `std::uint8_t`. Can't get any more simpler than that ¯\_(ツ)_/¯
+This will fetch the number of techniques that have been detected as a `std::uint8_t`. Can't get any more simpler than that ¯\_(ツ)_/¯, how's your day btw?
 
 <br>
 
@@ -377,6 +319,7 @@ int main() {
 
     std::cout << "Is this a VM? = " << vm.is_vm << "\n";
     std::cout << "How many techniques detected a VM? = " << vm.detected_count << "%\n";
+    std::cout << "What's the VM's type? = " << vm.type << "%\n";
     std::cout << "What's the overview in a human-readable message?" << vm.conclusion << "\n";
 }
 ```
@@ -511,7 +454,12 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::ANYRUN_DRIVER` | Check for any.run driver presence | Windows | 65% |  |  |  |  | Removed from the lib, only available in the CLI |
 | `VM::ANYRUN_DIRECTORY` | Check for any.run directory and handle the status code | Windows | 35% |  |  |  |  | Removed from the lib, only available in the CLI |
 | `VM::GPU_CHIPTYPE` | Check for known VM vendors in the GPU chip manufacturer | Windows | 100% |  |  |  |  |  |
-
+| `VM::DRIVER_NAMES` | Check for VM-specific names for drivers | Windows | 50% |  |  |  |  |  |
+| `VM::VBOX_IDT` | Check for the VirtualBox IDT base address | Windows | 75% |  |  |  |  |  |
+| `VM::HDD_SERIAL` | Check for HDD serial number | Windows | 100% |  |  |  |  |  |
+| `VM::PORT_CONNECTORS` | Check for physical connection ports | Windows | 50% |  |  |  |  |  |
+| `VM::QEMU_HDD` | Check for QEMU keyword in HDD model | Windows | 75% |  |  |  |  |  |
+| `VM::ACPI_HYPERV` | Check for Hyper-V string in ACPI data | Windows | 85% |  |  |  |  |  |
 
 
 <br>
@@ -522,6 +470,7 @@ This is the table of all the brands the library supports.
 
 | Variable alias | String | VM type | Notes |
 | -------------- | ------ | ------- | ----- |
+| `VM::brands::NULL_BRAND` | Unknown | Unknown |  |
 | `VM::brands::VBOX` | VirtualBox | Hypervisor (type 2) |  |
 | `VM::brands::VMWARE` | VMware | Hypervisor (type 2) |  |
 | `VM::brands::VMWARE_EXPRESS` | VMware Express | Hypervisor (type 2) |  |
@@ -577,7 +526,7 @@ This is the table of all the brands the library supports.
 | `VM::brands::PODMAN` | Podman | Container |  |
 | `VM::brands::WSL` | WSL | Hybrid Hyper-V (type 1 and 2) | The type is debatable |
 | `VM::brands::OPENVZ` | OpenVZ | Container |  |
-| `VM::brands::NULL_BRAND` | Unknown | Unknown |  |
+| N/A | ANY.RUN | Sandbox | Removed from the lib, available only in the CLI |
 
 
 
@@ -619,6 +568,7 @@ This is the table of all the brands the library supports.
 |    | --disable-notes | No notes will be provided |
 |    | --spoofable | Allow spoofable techniques to be ran (not included by default) |
 |    | --high-threshold | A higher theshold bar for a VM detection will be applied |
+|    | --no-color | Removes all the color, this is added due to some terminals not supporting ANSI escape codes while cluttering the output |
 > [!NOTE]
 > If you want a general result of everything combined above, do not put any arguments. This is the intended way to use the CLI tool.
 >
