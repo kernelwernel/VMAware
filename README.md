@@ -9,6 +9,8 @@
 
 **VMAware** (VM + Aware) is a cross-platform C++ library for virtual machine detection.
 
+- - -
+
 The library is:
 - Very easy to use
 - Cross-platform (Windows + MacOS + Linux)
@@ -134,7 +136,7 @@ You can view the full docs [here](docs/documentation.md). All the details such a
 <summary>How does it work?</summary>
 <br>
 
-> It utilises a comprehensive list of low-level and high-level anti-VM techniques that gets accounted in a scoring system. The scores (0-100) for each technique are arbitrarily given, and every technique that has detected a VM will have their score added to a single accumulative point, where a threshold point number will decide whether it's actually running in a VM.
+> It utilises a comprehensive list of low-level (CPU, GPU, HDD, and firmware) and high-level anti-VM techniques that gets accounted in a scoring system. The scores (0-100) for each technique are arbitrarily given, and every technique that has detected a VM will have their score added to a single accumulative point, where a threshold point number will decide whether it's actually running in a VM.
 
 </details>
 

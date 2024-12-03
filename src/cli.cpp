@@ -655,8 +655,11 @@ void general() {
     checker(VM::VBOX_IDT, "VirtualBox SIDT");
     checker(VM::HDD_SERIAL, "HDD serial number");
     checker(VM::PORT_CONNECTORS, "Physical connection ports");
-    checker(VM::QEMU_HDD, "QEMU in HDD model");
+    checker(VM::VM_HDD, "VM keywords in HDD model");
     checker(VM::ACPI_HYPERV, "ACPI Hyper-V");
+    checker(VM::GPU_NAME, "GPU name");
+    checker(VM::VMWARE_DEVICES, "VMware devices");
+    checker(VM::VMWARE_ADAPTER, "VMware adapter name");
 
     std::printf("\n");
 

@@ -113,14 +113,14 @@ def arg_check():
 
         # find indices
         start = "# Flag table"
-        end = "# Non-technique flags"
+        end = "# Setting flags"
 
         # extract the indexes
         try:
             start_index = docs_content.index(start)
             end_index = docs_content.index(end)
         except ValueError:
-            print(f"Couldn't find range index point {red}{bold}\"# Flag table\"{ansi_exit} or {red}{bold}\"# Non-technique flags\"{ansi_exit}")
+            print(f"Couldn't find range index point {red}{bold}\"# Flag table\"{ansi_exit} or {red}{bold}\"# Setting flags\"{ansi_exit}")
             start_index = end_index = None
             sys.exit(1)
 
