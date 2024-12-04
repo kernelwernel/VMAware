@@ -201,6 +201,7 @@
 
 
 #if (MSVC)
+#include <winsock2.h> 
 #include <windows.h>
 #include <intrin.h>
 #include <tchar.h>
@@ -2738,6 +2739,22 @@ public:
 
             return false;
         }
+
+
+        static DWORD FindProcessIdByServiceName(const std::string& serviceName) {
+            const std::wstring query = L"SELECT ProcessId, Name FROM Win32_Service WHERE Name='" +
+                std::wstring(serviceName.begin(), serviceName.end()) + L"'";
+            const std::vector<std::wstring> properties = { L"ProcessId" };
+
+            auto results = wmi::execute(query, properties);
+            for (const auto& res : results) {
+                if (res.type == wmi::result_type::Integer) {
+                    return static_cast<DWORD>(res.intValue);
+                }
+            }
+
+            return 0;
+        }
 #endif
     };
 
@@ -3783,13 +3800,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         TCHAR* provider = new TCHAR[pnsize];
 
         u32 retv = WNetGetProviderName(WNNC_NET_RDR2SAMPLE, provider, reinterpret_cast<LPDWORD>(&pnsize));
+        bool result = false;
 
         if (retv == NO_ERROR) {
-            bool result = (lstrcmpi(provider, _T("VirtualBox Shared Folders")) == 0);
+            result = (lstrcmpi(provider, _T("VirtualBox Shared Folders")) == 0);
         }
 
         delete[] provider;
-        return false;
+
+        return result;
 #endif
     }
 
@@ -4181,7 +4200,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */         unsigned long alist_size = 0, ret;
 /* GPL */         wchar_t aux[1024];
 /* GPL */ 
-/* GPL */         mbstowcs(aux, "VMware", sizeof(aux)-sizeof(aux[0]));
+/* GPL */         mbstowcs-s(aux, "VMware", sizeof(aux)-sizeof(aux[0]));
 /* GPL */ 
 /* GPL */         ret = GetAdaptersAddresses(AF_UNSPEC, 0, 0, 0, &alist_size);
 /* GPL */         if (ret == ERROR_BUFFER_OVERFLOW) {
@@ -8896,20 +8915,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!MSVC)
         return false;
 #else
-        HANDLE h1 = CreateFile("\\\\.\\HGFS", GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-        HANDLE h2 = CreateFile("\\\\.\\vmci", GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+        HANDLE h1 = CreateFileA("\\\\.\\HGFS", GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 
         bool result = false;
 
-        if (
-            (h1 != INVALID_HANDLE_VALUE) ||
-            (h2 != INVALID_HANDLE_VALUE)
-        ) {
+        if (h1 != INVALID_HANDLE_VALUE) {
             result = true;
         }
 
         CloseHandle(h1);
-        CloseHandle(h2);
 
         if (result) {
             return core::add(brands::VMWARE);
