@@ -221,6 +221,7 @@ And if you found this project useful, a star would be appreciated :)
 <br>
 
 ## Credits and contributors ✒️
+- [Requiem](https://github.com/NotRequiem) (Co-maintainer)
 - [Check Point Research](https://research.checkpoint.com/)
 - [Unprotect Project](https://unprotect.it/)
 - [Al-Khaser](https://github.com/LordNoteworthy/al-khaser)
@@ -229,7 +230,6 @@ And if you found this project useful, a star would be appreciated :)
 - N. Rin, EP_X0FF
 - [Peter Ferrie, Symantec](https://github.com/peterferrie)
 - [Graham Sutherland, LRQA Nettitude](https://www.nettitude.com/uk/)
-- [Requiem](https://github.com/NotRequiem)
 - [Alex](https://github.com/greenozon)
 - [Marek Knápek](https://github.com/MarekKnapek)
 - [Vladyslav Miachkov](https://github.com/fameowner99)

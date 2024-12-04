@@ -201,9 +201,10 @@
 
 
 #if (MSVC)
-#define WIN32_LEAN_AND_MEAN
+#pragma warning(disable : 4005) // disable macro redefinition warnings
 #include <winsock2.h> 
 #include <windows.h>
+#pragma warning(default : 4005) // re-enable warnings afterward
 #include <intrin.h>
 #include <tchar.h>
 #include <stdbool.h>
@@ -4188,7 +4189,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */     }
 /* GPL */ 
 /* GPL */ 
-/* GPL */ 
 /* GPL */     // @brief Check for VMware adapter
 /* GPL */     // @author a0rtega
 /* GPL */     // @category Windows
@@ -4199,32 +4199,41 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */         return false;
 /* GPL */ #else
 /* GPL */         unsigned long alist_size = 0, ret;
-/* GPL */         wchar_t aux[1024];
-/* GPL */ 
-/* GPL */         mbstowcs-s(aux, "VMware", sizeof(aux)-sizeof(aux[0]));
-/* GPL */ 
-/* GPL */         ret = GetAdaptersAddresses(AF_UNSPEC, 0, 0, 0, &alist_size);
-/* GPL */         if (ret == ERROR_BUFFER_OVERFLOW) {
-/* GPL */             IP_ADAPTER_ADDRESSES *palist = (IP_ADAPTER_ADDRESSES*)LocalAlloc(LMEM_ZEROINIT, alist_size);
-/* GPL */             void * palist_free = palist;
-/* GPL */             if (palist) {
-/* GPL */                 if (GetAdaptersAddresses(AF_UNSPEC, 0, 0, palist, &alist_size) == ERROR_SUCCESS) {
-/* GPL */                     while (palist) {
-/* GPL */                         if (wcsstr(palist->Description, aux)) {
-/* GPL */                             LocalFree(palist_free);
-/* GPL */                             return true;
-/* GPL */                         }
-/* GPL */                         palist = palist->Next;
-/* GPL */                     }
-/* GPL */                 }
-/* GPL */                 LocalFree(palist_free);
-/* GPL */             }
-/* GPL */         }
-/* GPL */ 
-/* GPL */         return false;
+/* GPL */
+/* GPL */    wchar_t aux[256];
+/* GPL */    const char* source = "VMware";
+/* GPL */    size_t converted = 0;
+/* GPL */
+/* GPL */    // Correct use of mbstowcs_s
+/* GPL */    errno_t err = mbstowcs_s(&converted, aux, sizeof(aux) / sizeof(aux[0]), source, _TRUNCATE);
+/* GPL */
+/* GPL */    if (err != 0) {
+/* GPL */        return false;
+/* GPL */    }
+/* GPL */
+/* GPL */       //mbstowcs_s(aux, "VMware", sizeof(aux)-sizeof(aux[0]));
+/* GPL */
+/* GPL */        ret = GetAdaptersAddresses(AF_UNSPEC, 0, 0, 0, &alist_size);
+/* GPL */        if (ret == ERROR_BUFFER_OVERFLOW) {
+/* GPL */            IP_ADAPTER_ADDRESSES *palist = (IP_ADAPTER_ADDRESSES*)LocalAlloc(LMEM_ZEROINIT, alist_size);
+/* GPL */            void * palist_free = palist;
+/* GPL */            if (palist) {
+/* GPL */                if (GetAdaptersAddresses(AF_UNSPEC, 0, 0, palist, &alist_size) == ERROR_SUCCESS) {
+/* GPL */                    while (palist) {
+/* GPL */                        if (wcsstr(palist->Description, aux)) {
+/* GPL */                            LocalFree(palist_free);
+/* GPL */                            return true;
+/* GPL */                        }
+/* GPL */                        palist = palist->Next;
+/* GPL */                    }
+/* GPL */                }
+/* GPL */                LocalFree(palist_free);
+/* GPL */            }
+/* GPL */        }
+/* GPL */
+/* GPL */        return false;
 /* GPL */ #endif
 /* GPL */     }
-
 
     /**
      * @brief Check for any VM processes that are active
