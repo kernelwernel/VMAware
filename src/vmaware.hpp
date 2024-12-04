@@ -4174,7 +4174,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */     // @category Windows
 /* GPL */     // @note from pafish project
 /* GPL */     // @copyright GPL-3.0
-/* GPL */     [[odiscard]] static bool vmware_adapter() {
+/* GPL */     [[nodiscard]] static bool vmware_adapter() {
 /* GPL */ #if (!MSVC)
 /* GPL */         return false;
 /* GPL */ #else
