@@ -431,7 +431,8 @@ public:
         KVM_BITMASK,
         KGT_SIGNATURE,
         VMWARE_DMI,
-        EVENT_LOGS,
+        HYPERV_EVENT_LOGS,
+        VMWARE_EVENT_LOGS,
         QEMU_VIRTUAL_DMI,
         QEMU_USB,
         HYPERVISOR_DIR,
@@ -454,7 +455,7 @@ public:
         ACPI_DETECT,
         GPU_NAME,
         VMWARE_DEVICES,
-        VMWARE_ADAPTER,
+        VMWARE_MEMORY,
 
         // start of settings technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
         NO_MEMO,
@@ -7760,18 +7761,17 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
     /**
      * @brief Check for presence of Hyper-V in the Windows Event Logs
-     * @author Requiem (https://github.com/NotRequiem)
      * @category Windows
+     * @author Requiem (https://github.com/NotRequiem)
      */
     [[nodiscard]] static bool hyperv_event_logs() {
 #if (!MSVC)
         return false;
 #else
-        // Define the log name and search strings
         std::wstring logName = L"Microsoft-Windows-Kernel-PnP/Configuration"; // Example: "System", "Application", "Security", or a custom path. In this case, we use Microsoft-Windows-Kernel-PnP/Configuration as a Hyper-V VM artifact
         std::vector<std::wstring> searchStrings = { L"Virtual_Machine", L"VMBUS" };
 
-        bool found = util::query_event_logs(logName, searchStrings);
+        const bool found = util::query_event_logs(logName, searchStrings);
 
         if (found) {
             return core::add(brands::HYPERV);
@@ -7779,7 +7779,36 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         return false;
 #endif
-    } 
+    }
+
+
+    /**
+     * @brief Check for presence of VMware in the Windows Event Logs
+     * @category Windows
+     * @author Requiem (https://github.com/NotRequiem)
+     */
+    [[nodiscard]] static bool vmware_event_logs() {
+#if (!MSVC)
+        return false;
+#else
+        std::vector<std::wstring> logNames = {
+            L"Microsoft-Windows-Kernel-PnP/Configuration",
+            L"Microsoft-Windows-StorageSpaces-Driver/Operational",
+            L"Microsoft-Windows-Ntfs/Operational",
+            L"Microsoft-Windows-DeviceSetupManager/Admin"
+        };
+        std::vector<std::wstring> searchStrings = { L"VMware Virtual NVMe Disk", L"_VMware_" };
+
+        for (const auto& logName : logNames) {
+            const bool found = util::query_event_logs(logName, searchStrings);
+            if (found) {
+                return core::add(brands::VMWARE);
+            }
+        }
+
+        return false;
+#endif
+    }
 
 
     /**
@@ -8522,7 +8551,55 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }    
 
 
+    /**
+     * @brief Check for VMware-specific memory trace in a specific process.
+     * @category Windows
+     * @author Requiem
+     */
+    [[nodiscard]] static bool vmware_memory() {
+#if (!MSVC)
+        return false;
+#else
+        const char* searchString = "_VMWARE_";
 
+        const DWORD pid = util::FindProcessIdByServiceName("PlugPlay");
+        if (pid == 0) return true; // Process missing; potentially tampered   
+
+        util::EnableDebugPrivilege();
+
+        const HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid);
+        if (!hProcess) return false; // Not running as admin or insufficient permissions
+
+        MEMORY_BASIC_INFORMATION mbi;
+        DWORD_PTR address = 0;
+        const SIZE_T searchLength = strlen(searchString);
+
+        while (VirtualQueryEx(hProcess, (LPCVOID)address, &mbi, sizeof(mbi)) == sizeof(mbi)) {
+            if ((mbi.State == MEM_COMMIT) &&
+                (mbi.Protect & PAGE_READWRITE) &&
+                !(mbi.Protect & PAGE_GUARD) &&
+                !(mbi.Protect & PAGE_NOACCESS)) {
+
+                SIZE_T bytesToRead = (SIZE_T)(mbi.RegionSize);
+                std::vector<unsigned char> buffer(bytesToRead);
+                SIZE_T bytesRead;
+
+                if (ReadProcessMemory(hProcess, (LPCVOID)address, buffer.data(), bytesToRead, &bytesRead)) {
+                    for (SIZE_T i = 0; i <= bytesRead - searchLength; ++i) {
+                        if (memcmp(buffer.data() + i, searchString, searchLength) == 0) {
+                            CloseHandle(hProcess);
+                            return core::add(brands::VMWARE);
+                        }
+                    }
+                }
+            }
+
+            address += mbi.RegionSize;
+        }
+
+        CloseHandle(hProcess);
+        return false;
+#endif
 
 
 
@@ -9511,7 +9588,8 @@ public: // START OF PUBLIC FUNCTIONS
             case KVM_BITMASK: return "KVM_BITMASK";
             case KGT_SIGNATURE: return "KGT_SIGNATURE";
             case VMWARE_DMI: return "VMWARE_DMI";
-            case EVENT_LOGS: return "EVENT_LOGS";
+            case HYPERV_EVENT_LOGS: return "HYPERV_EVENT_LOGS";
+            case VMWARE_EVENT_LOGS: return "VMWARE_EVENT_LOGS";
             case QEMU_VIRTUAL_DMI: return "QEMU_VIRTUAL_DMI";
             case QEMU_USB: return "QEMU_USB";
             case HYPERVISOR_DIR: return "HYPERVISOR_DIR";
@@ -9975,7 +10053,7 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
 
     { VM::VMID, { 100, VM::vmid, false } },
     { VM::CPU_BRAND, { 50, VM::cpu_brand, false } },
-    { VM::HYPERVISOR_BIT, { 100, VM::hypervisor_bit , false}} , 
+    { VM::HYPERVISOR_BIT, { 100, VM::hypervisor_bit , false}} ,
     { VM::HYPERVISOR_STR, { 75, VM::hypervisor_str, false } },
     { VM::RDTSC, { 5, VM::rdtsc_check, false } },
     { VM::THREADCOUNT, { 25, VM::thread_count, false } },
@@ -10056,7 +10134,8 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::KVM_BITMASK, { 40, VM::kvm_bitmask, false } }, // debatable
     { VM::KGT_SIGNATURE, { 80, VM::intel_kgt_signature, false } }, // debatable
     { VM::VMWARE_DMI, { 40, VM::vmware_dmi, false } },
-    { VM::EVENT_LOGS, { 25, VM::hyperv_event_logs, true } },
+    { VM::HYPERV_EVENT_LOGS, { 50, VM::hyperv_event_logs, false } },
+    { VM::VMWARE_EVENT_LOGS, { 25, VM::vmware_event_logs, false } },
     { VM::QEMU_VIRTUAL_DMI, { 40, VM::qemu_virtual_dmi, false } },
     { VM::QEMU_USB, { 20, VM::qemu_USB, false } }, // debatable
     { VM::HYPERVISOR_DIR, { 20, VM::hypervisor_dir, false } }, // debatable
@@ -10079,5 +10158,5 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::ACPI_DETECT, { 85, VM::acpi_detect, false } },
     { VM::GPU_NAME, { 100, VM::vm_gpu, false } },
     { VM::VMWARE_DEVICES, { 90, VM::vmware_devices, true } },
-    { VM::VMWARE_ADAPTER, { 100, VM::vmware_adapter, false } }
+    { VM::VMWARE_MEMORY, { 50, VM::vmware_memory, false } }
 };
