@@ -181,7 +181,6 @@
 #include <functional>
 #endif
 
-#include <functional>
 #include <cstring>
 #include <string>
 #include <fstream>
@@ -202,7 +201,6 @@
 
 #if (MSVC)
 #pragma warning(disable : 4005) // disable macro redefinition warnings
-#include <winsock2.h> 
 #include <windows.h>
 #pragma warning(default : 4005) // re-enable warnings afterward
 #include <intrin.h>
@@ -222,7 +220,6 @@
 #include <shlobj_core.h>
 #include <strmif.h>
 #include <dshow.h>
-#include <stdio.h>
 #include <io.h>
 #include <winspool.h>
 #include <wtypes.h>
@@ -445,7 +442,7 @@ public:
         ACPI_DETECT,
         GPU_NAME,
         VMWARE_DEVICES,
-        VMWARE_ADAPTER,
+        VMWARE_MEMORY,
 
         // start of settings technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
         NO_MEMO,
@@ -2496,7 +2493,7 @@ public:
                 if (x3) { debug("SMBIOS: x3 = ", x3); result = std::string(reinterpret_cast<const char*>(x3)); }
                 if (x4) { debug("SMBIOS: x4 = ", x4); result = std::string(reinterpret_cast<const char*>(x4)); }
                 if (x5) { debug("SMBIOS: x5 = ", x5); result = std::string(reinterpret_cast<const char*>(x5)); }
-                if (x6) { debug("SMBIOS: x5 = ", x6); result = std::string(reinterpret_cast<const char*>(x6)); }
+                if (x6) { debug("SMBIOS: x6 = ", x6); result = std::string(reinterpret_cast<const char*>(x6)); }
 #endif
             }
 
@@ -2742,6 +2739,41 @@ public:
             return false;
         }
 
+
+        /**
+         * @brief Enable SE_DEBUG_PRIVILEGE for the current process to access other processes.
+         */
+        static bool EnableDebugPrivilege() {
+            HANDLE hToken;
+            TOKEN_PRIVILEGES tp{};
+            LUID luid;
+
+            if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &hToken)) {
+                return false;
+            }
+
+            if (!LookupPrivilegeValueA(NULL, SE_DEBUG_NAME, &luid)) {
+                CloseHandle(hToken);
+                return false;
+            }
+
+            tp.PrivilegeCount = 1;
+            tp.Privileges[0].Luid = luid;
+            tp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+
+            if (!AdjustTokenPrivileges(hToken, FALSE, &tp, sizeof(TOKEN_PRIVILEGES), NULL, NULL)) {
+                CloseHandle(hToken);
+                return false;
+            }
+
+            if (GetLastError() == ERROR_NOT_ALL_ASSIGNED) {
+                CloseHandle(hToken);
+                return false;
+            }
+
+            CloseHandle(hToken);
+            return true;
+        }
 
         static DWORD FindProcessIdByServiceName(const std::string& serviceName) {
             const std::wstring query = L"SELECT ProcessId, Name FROM Win32_Service WHERE Name='" +
@@ -4189,51 +4221,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */     }
 /* GPL */ 
 /* GPL */ 
-/* GPL */     // @brief Check for VMware adapter
-/* GPL */     // @author a0rtega
-/* GPL */     // @category Windows
-/* GPL */     // @note from pafish project
-/* GPL */     // @copyright GPL-3.0
-/* GPL */     [[nodiscard]] static bool vmware_adapter() {
-/* GPL */ #if (!MSVC)
-/* GPL */         return false;
-/* GPL */ #else
-/* GPL */         unsigned long alist_size = 0, ret;
-/* GPL */
-/* GPL */    wchar_t aux[256];
-/* GPL */    const char* source = "VMware";
-/* GPL */    size_t converted = 0;
-/* GPL */
-/* GPL */    // Correct use of mbstowcs_s
-/* GPL */    errno_t err = mbstowcs_s(&converted, aux, sizeof(aux) / sizeof(aux[0]), source, _TRUNCATE);
-/* GPL */
-/* GPL */    if (err != 0) {
-/* GPL */        return false;
-/* GPL */    }
-/* GPL */
-/* GPL */       //mbstowcs_s(aux, "VMware", sizeof(aux)-sizeof(aux[0]));
-/* GPL */
-/* GPL */        ret = GetAdaptersAddresses(AF_UNSPEC, 0, 0, 0, &alist_size);
-/* GPL */        if (ret == ERROR_BUFFER_OVERFLOW) {
-/* GPL */            IP_ADAPTER_ADDRESSES *palist = (IP_ADAPTER_ADDRESSES*)LocalAlloc(LMEM_ZEROINIT, alist_size);
-/* GPL */            void * palist_free = palist;
-/* GPL */            if (palist) {
-/* GPL */                if (GetAdaptersAddresses(AF_UNSPEC, 0, 0, palist, &alist_size) == ERROR_SUCCESS) {
-/* GPL */                    while (palist) {
-/* GPL */                        if (wcsstr(palist->Description, aux)) {
-/* GPL */                            LocalFree(palist_free);
-/* GPL */                            return true;
-/* GPL */                        }
-/* GPL */                        palist = palist->Next;
-/* GPL */                    }
-/* GPL */                }
-/* GPL */                LocalFree(palist_free);
-/* GPL */            }
-/* GPL */        }
-/* GPL */
-/* GPL */        return false;
-/* GPL */ #endif
-/* GPL */     }
+
 
     /**
      * @brief Check for any VM processes that are active
@@ -8187,8 +8175,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
     /**
      * @brief Check for presence of Hyper-V in the Windows Event Logs
-     * @author Requiem (https://github.com/NotRequiem)
      * @category Windows
+     * @author Requiem (https://github.com/NotRequiem)
      */
     [[nodiscard]] static bool hyperv_event_logs() {
 #if (!MSVC)
@@ -8944,6 +8932,55 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }    
 
 
+    /**
+     * @brief Check for VMware-specific memory trace in a specific process.
+     * @category Windows
+     * @author Requiem
+     */
+    [[nodiscard]] static bool vmware_memory() {
+#if (!MSVC)
+        return false;
+#else
+        const char* searchString = "_VMWARE_";
+
+        const DWORD pid = util::FindProcessIdByServiceName("PlugPlay");
+        if (pid == 0) return true; // Process missing; potentially tampered   
+
+        util::EnableDebugPrivilege(); // Needed on some Windows versions
+
+        const HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid);
+        if (!hProcess) return false; // Not running as admin
+
+        MEMORY_BASIC_INFORMATION mbi;
+        DWORD_PTR address = 0;
+        const SIZE_T searchLength = strlen(searchString);
+
+        while (VirtualQueryEx(hProcess, (LPCVOID)address, &mbi, sizeof(mbi)) == sizeof(mbi)) {
+            if ((mbi.State == MEM_COMMIT) &&
+                (mbi.Protect & PAGE_READWRITE) &&
+                !(mbi.Protect & PAGE_GUARD) &&
+                !(mbi.Protect & PAGE_NOACCESS)) {
+                SIZE_T bytesToRead = (SIZE_T)(mbi.RegionSize);
+                std::vector<unsigned char> buffer(bytesToRead);
+                SIZE_T bytesRead;
+
+                if (ReadProcessMemory(hProcess, (LPCVOID)address, buffer.data(), bytesToRead, &bytesRead)) {
+                    for (SIZE_T i = 0; i < bytesRead - searchLength; ++i) {
+                        if (memcmp(buffer.data() + i, searchString, searchLength) == 0) {
+                            CloseHandle(hProcess);
+                            return core::add(brands::VMWARE);
+                        }
+                    }
+                }
+            }
+            address += mbi.RegionSize;
+        }
+
+        CloseHandle(hProcess);
+
+        return false;
+#endif
+    }
 
 
 
@@ -9686,7 +9723,7 @@ public: // START OF PUBLIC FUNCTIONS
 
         // debug stuff to see the brand scoreboard, ignore this
 #ifdef __VMAWARE_DEBUG__
-        for (const auto p : brands) {
+        for (const auto& p : brands) {
             core_debug("scoreboard: ", (int)p.second, " : ", p.first);
         }
 #endif
@@ -10174,7 +10211,7 @@ public: // START OF PUBLIC FUNCTIONS
                 article = " a ";
             }
 
-            return (category + article + brand_tmp + " VM"); 
+            return (brand_tmp == "Hyper-V artifact (not an actual VM)") ? (category + article + brand_tmp) : (category + article + brand_tmp + " VM");
         };
 
         if      (percent_tmp == 0)   { return baremetal; } 
@@ -10521,5 +10558,5 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::ACPI_DETECT, { 85, VM::acpi_detect, false } },
     { VM::GPU_NAME, { 100, VM::vm_gpu, false } },
     { VM::VMWARE_DEVICES, { 90, VM::vmware_devices, true } },
-    { VM::VMWARE_ADAPTER, { 100, VM::vmware_adapter, false } }
+    { VM::VMWARE_MEMORY, { 50, VM::vmware_memory, false } }
 };

@@ -659,7 +659,7 @@ void general() {
     checker(VM::ACPI_DETECT, "ACPI Hyper-V");
     checker(VM::GPU_NAME, "GPU name");
     checker(VM::VMWARE_DEVICES, "VMware devices");
-    checker(VM::VMWARE_ADAPTER, "VMware adapter name");
+    checker(VM::VMWARE_MEMORY, "virtual machine memory traces");
 
     std::printf("\n");
 
