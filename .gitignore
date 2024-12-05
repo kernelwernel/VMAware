@@ -62,3 +62,8 @@ release_notes.md
 src/gui/lib/*
 pafish/
 list.txt
+/.vs
+/.vs/CMake Overview
+/.vs/ProjectSettings.json
+/.vs/slnx.sqlite
+/.vs/VSWorkspaceState.json
