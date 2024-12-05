@@ -181,6 +181,15 @@
 #warning "Unknown OS detected, tests will be severely limited"
 #endif
 
+#ifdef _MSC_VER
+#pragma warning(push) // Save current warning state and disable all warnings for external header files
+#pragma warning(disable : 4820)
+#pragma warning(disable : 4365)
+#pragma warning(disable : 4668)
+#pragma warning(disable : 5204)
+#pragma warning(disable : 5039)
+#endif
+
 #if (CPP >= 23)
 #include <limits>
 #endif
@@ -195,16 +204,6 @@
 #ifdef __VMAWARE_DEBUG__
 #include <iomanip>
 #include <ios>
-#endif
-
-#if (WINDOWS)
-#pragma warning(disable : 4244)
-#include <functional>
-#pragma warning(default : 4244)
-
-#pragma warning(push, 0) // disable the windows SDK errors temporarily
-#else
-#include <functional>
 #endif
 
 #include <functional>
@@ -245,15 +244,10 @@
 #include <shlobj_core.h>
 #include <strmif.h>
 #include <dshow.h>
-#include <stdio.h>
 #include <io.h>
 #include <winspool.h>
 #include <wtypes.h>
 #include <winevt.h>
-
-#if (!WIN_XP)
-#include <versionhelpers.h>
-#endif
 
 #pragma comment(lib, "wbemuuid.lib")
 #pragma comment(lib, "iphlpapi.lib")
@@ -266,13 +260,6 @@
 #pragma comment(lib, "uuid.lib")
 #pragma comment(lib, "ntdll.lib")
 #pragma comment(lib, "wevtapi.lib")
-
-
-#ifdef _UNICODE
-#define tregex std::wregex
-#else
-#define tregex std::regex
-#endif
 
 #elif (LINUX)
 #if (x86)
@@ -303,12 +290,18 @@
 #include <chrono>
 #endif
 
+#ifdef _MSC_VER
+#pragma warning(pop)  // Restore external header file warnings
+#endif
+
 #if (!WINDOWS)
 #define TCHAR char
 #endif
 
-#if (WINDOWS)
-#pragma warning(pop) // enable all warnings
+#ifdef _UNICODE
+#define tregex std::wregex
+#else
+#define tregex std::regex
 #endif
 
 // macro shortcut to disable MSVC warnings
@@ -460,6 +453,7 @@ public:
         GPU_NAME,
         VMWARE_DEVICES,
         VMWARE_MEMORY,
+        CPU_CORES,
 
         // start of settings technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
         NO_MEMO,
@@ -8655,7 +8649,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid);
         if (!hProcess) return false; // Not running as admin or insufficient permissions
 
-        const SIZE_T searchLength = strlen(searchString);
         MEMORY_BASIC_INFORMATION mbi{};
         uintptr_t address = 0;
 
@@ -10299,5 +10292,6 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::ACPI_DETECT, { 85, VM::acpi_detect, false } },
     { VM::GPU_NAME, { 100, VM::vm_gpu, false } },
     { VM::VMWARE_DEVICES, { 90, VM::vmware_devices, true } },
-    { VM::VMWARE_MEMORY, { 50, VM::vmware_memory, false } }
+    { VM::VMWARE_MEMORY, { 50, VM::vmware_memory, false } },
+    { VM::CPU_CORES, { 50, VM::cpu_cores, false } }
 };
