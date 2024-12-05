@@ -41,6 +41,8 @@
     #define MSVC 0
 #endif
 
+#pragma warning(disable : 4061)
+
 #include "vmaware.hpp"
 
 constexpr const char* ver = "1.9";
@@ -284,7 +286,8 @@ bool is_spoofable(const VM::enum_flags flag) {
         case VM::HYPERV_HOSTNAME:
         case VM::GENERAL_HOSTNAME:
         case VM::BLUESTACKS_FOLDERS: 
-        case VM::EVENT_LOGS: 
+        case VM::HYPERV_EVENT_LOGS:
+        case VM::VMWARE_EVENT_LOGS:
         case VM::KMSG: 
         case VM::VM_PROCS: 
         case VM::PODMAN_FILE: return true;
@@ -634,7 +637,8 @@ void general() {
     checker(VM::KVM_BITMASK, "KVM CPUID reserved bitmask");
     checker(VM::KGT_SIGNATURE, "Intel KGT signature");
     checker(VM::VMWARE_DMI, "VMware DMI");
-    checker(VM::EVENT_LOGS, "Hyper-V event logs");
+    checker(VM::HYPERV_EVENT_LOGS, "Hyper-V event logs");
+    checker(VM::VMWARE_EVENT_LOGS, "VMware event logs");
     checker(VM::QEMU_VIRTUAL_DMI, "QEMU virtual DMI directory");
     checker(VM::QEMU_USB, "QEMU USB");
     checker(VM::HYPERVISOR_DIR, "Hypervisor directory (Linux)");

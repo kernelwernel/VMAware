@@ -58,7 +58,7 @@
 - [X] "running inside AN unknown VM" instead of "a unknown" for conclusion message
 - [X] fix the DMESG error thing
 - [ ] do the IDT thing
-- [ ] filesystem idea from requiemn
+- [X] filesystem idea from requiem
 - [X] update the graph with wmi 
 - [ ] add linux support for the hdd_serial_number technique
 - [X] update the hyper-x graph to v5 with the acpi thingy

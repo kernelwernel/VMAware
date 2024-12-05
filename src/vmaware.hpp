@@ -171,16 +171,12 @@
 #include <ios>
 #endif
 
-#if (MSVC)
-#pragma warning(disable : 4244)
-#include <functional>
-#pragma warning(default : 4244)
-
-#pragma warning(push, 0) // disable the windows SDK errors temporarily
-#else
-#include <functional>
+#ifdef _MSC_VER
+#pragma warning(push)          // Save current warning state
+#pragma warning(disable : 0)   // Disable all warnings for external header files
 #endif
 
+#include <functional>
 #include <cstring>
 #include <string>
 #include <fstream>
@@ -200,9 +196,7 @@
 
 
 #if (MSVC)
-#pragma warning(disable : 4005) // disable macro redefinition warnings
 #include <windows.h>
-#pragma warning(default : 4005) // re-enable warnings afterward
 #include <intrin.h>
 #include <tchar.h>
 #include <stdbool.h>
@@ -225,10 +219,6 @@
 #include <wtypes.h>
 #include <winevt.h>
 
-#if (!WIN_XP)
-#include <versionhelpers.h>
-#endif
-
 #pragma comment(lib, "wbemuuid.lib")
 #pragma comment(lib, "iphlpapi.lib")
 #pragma comment(lib, "Shlwapi.lib")
@@ -241,6 +231,9 @@
 #pragma comment(lib, "ntdll.lib")
 #pragma comment(lib, "wevtapi.lib")
 
+#ifdef _MSC_VER
+#pragma warning(pop)           // Restore warnings
+#endif
 
 #ifdef _UNICODE
 #define tregex std::wregex
@@ -419,7 +412,8 @@ public:
         KVM_BITMASK,
         KGT_SIGNATURE,
         VMWARE_DMI,
-        EVENT_LOGS,
+        HYPERV_EVENT_LOGS,
+        VMWARE_EVENT_LOGS,
         QEMU_VIRTUAL_DMI,
         QEMU_USB,
         HYPERVISOR_DIR,
@@ -1397,7 +1391,7 @@ public:
             return results;
         }
 
-        static void cleanup() {
+        static void cleanup() noexcept {
             if (pSvc) {
                 pSvc->Release();
                 pSvc = nullptr;
@@ -1783,10 +1777,6 @@ public:
 
             return number; // in GB
 #elif (MSVC)
-            if (!IsWindowsVistaOrGreater()) {
-                return 0;
-            }
-
             ULONGLONG total_memory_kb = 0;
 
             if (GetPhysicallyInstalledSystemMemory(&total_memory_kb) == ERROR_INVALID_DATA) {
@@ -2775,6 +2765,49 @@ public:
             return true;
         }
 
+        /**
+         * @brief Sliding window substring search to handle memory page overlaps based on KMP
+         */
+        static bool findSubstring(const char* buffer, size_t bufferSize, const std::string& searchString) {
+            size_t searchLength = searchString.length();
+            if (searchLength > bufferSize) return false;
+
+            // Knuth-Morris-Pratt algorithm: Precompute the "partial match" table
+            std::vector<size_t> lps(searchLength, 0);
+            size_t j = 0; // Length of the previous longest prefix suffix
+            for (size_t i = 1; i < searchLength; ++i) {
+                while (j > 0 && searchString[i] != searchString[j]) {
+                    j = lps[j - 1];
+                }
+                if (searchString[i] == searchString[j]) {
+                    ++j;
+                }
+                lps[i] = j;
+            }
+
+            // Sliding window to search the substring
+            size_t i = 0; // Index for buffer
+            j = 0;        // Index for searchString
+            while (i < bufferSize) {
+                if (buffer[i] == searchString[j]) {
+                    ++i;
+                    ++j;
+                    if (j == searchLength) {
+                        return true;
+                    }
+                }
+                else if (j > 0) {
+                    j = lps[j - 1];
+                }
+                else {
+                    ++i;
+                }
+            }
+
+            return false;
+        }
+
+
         static DWORD FindProcessIdByServiceName(const std::string& serviceName) {
             const std::wstring query = L"SELECT ProcessId, Name FROM Win32_Service WHERE Name='" +
                 std::wstring(serviceName.begin(), serviceName.end()) + L"'";
@@ -2977,7 +3010,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
     /**
      * @brief Check if there are only 1 or 2 threads, which is a common pattern in VMs with default settings (nowadays physical CPUs should have at least 4 threads for modern CPUs
-     * @category x86 (ARM might have very low thread counts, which si why it should be only for x86)
+     * @category x86 (ARM might have very low thread counts, which is why it should be only for x86)
      */
     [[nodiscard]] static bool thread_count() {
 #if (x86)
@@ -7479,7 +7512,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check for CPUID technique by checking whether all the bits equate to more than 4000 (not sure how this works if i'm honest)
+     * @brief Check for CPUID technique by checking whether all the bits equate to more than 4000
      * @category x86
      * @author 一半人生
      * @link https://unprotect.it/snippet/vmcpuid/195/
@@ -8182,11 +8215,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!MSVC)
         return false;
 #else
-        // Define the log name and search strings
         std::wstring logName = L"Microsoft-Windows-Kernel-PnP/Configuration"; // Example: "System", "Application", "Security", or a custom path. In this case, we use Microsoft-Windows-Kernel-PnP/Configuration as a Hyper-V VM artifact
         std::vector<std::wstring> searchStrings = { L"Virtual_Machine", L"VMBUS" };
 
-        bool found = util::query_event_logs(logName, searchStrings);
+        const bool found = util::query_event_logs(logName, searchStrings);
 
         if (found) {
             return core::add(brands::HYPERV);
@@ -8195,6 +8227,35 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     } 
+
+
+    /**
+     * @brief Check for presence of VMware in the Windows Event Logs
+     * @category Windows
+     * @author Requiem (https://github.com/NotRequiem)
+     */
+    [[nodiscard]] static bool vmware_event_logs() {
+#if (!MSVC)
+        return false;
+#else
+        std::vector<std::wstring> logNames = {
+            L"Microsoft-Windows-Kernel-PnP/Configuration",
+            L"Microsoft-Windows-StorageSpaces-Driver/Operational",
+            L"Microsoft-Windows-Ntfs/Operational",
+            L"Microsoft-Windows-DeviceSetupManager/Admin"
+        };
+        std::vector<std::wstring> searchStrings = { L"VMware Virtual NVMe Disk", L"_VMware_" };
+
+        for (const auto& logName : logNames) {
+            const bool found = util::query_event_logs(logName, searchStrings);
+            if (found) {
+                return core::add(brands::VMWARE);
+            }
+        }
+
+        return false;
+#endif
+    }
 
 
     /**
@@ -8715,22 +8776,23 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         char driverName[MAX_PATH];
 
         for (int i = 0; i < count; ++i) {
-            if (GetDeviceDriverBaseNameA(drivers[i], driverName, sizeof(driverName))) {
+            if (GetDeviceDriverBaseNameA(drivers[i], driverName, static_cast<DWORD>(sizeof(driverName)))) {
                 if (
                     strcmp(driverName, "VBoxGuest") == 0 ||
                     strcmp(driverName, "VBoxMouse") == 0 ||
                     strcmp(driverName, "VBoxSF") == 0
-                ) {
+                    ) {
                     return core::add(brands::VBOX);
                 }
 
                 if (
                     strcmp(driverName, "vmusbmouse") == 0 ||
                     strcmp(driverName, "vmmouse") == 0
-                ) {
+                    ) {
                     return core::add(brands::VMWARE);
                 }
-            } else {
+            }
+            else {
                 debug("Failed to retrieve driver name");
                 return false;
             }
@@ -8946,38 +9008,36 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const DWORD pid = util::FindProcessIdByServiceName("PlugPlay");
         if (pid == 0) return true; // Process missing; potentially tampered   
 
-        util::EnableDebugPrivilege(); // Needed on some Windows versions
+        util::EnableDebugPrivilege();
 
         const HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid);
-        if (!hProcess) return false; // Not running as admin
+        if (!hProcess) return false; // Not running as admin or insufficient permissions
 
-        MEMORY_BASIC_INFORMATION mbi;
-        DWORD_PTR address = 0;
         const SIZE_T searchLength = strlen(searchString);
+        MEMORY_BASIC_INFORMATION mbi{};
+        uintptr_t address = 0;
 
-        while (VirtualQueryEx(hProcess, (LPCVOID)address, &mbi, sizeof(mbi)) == sizeof(mbi)) {
+        while (VirtualQueryEx(hProcess, reinterpret_cast<LPCVOID>(address), &mbi, sizeof(mbi)) == sizeof(mbi)) {
             if ((mbi.State == MEM_COMMIT) &&
                 (mbi.Protect & PAGE_READWRITE) &&
                 !(mbi.Protect & PAGE_GUARD) &&
                 !(mbi.Protect & PAGE_NOACCESS)) {
-                SIZE_T bytesToRead = (SIZE_T)(mbi.RegionSize);
-                std::vector<unsigned char> buffer(bytesToRead);
-                SIZE_T bytesRead;
 
-                if (ReadProcessMemory(hProcess, (LPCVOID)address, buffer.data(), bytesToRead, &bytesRead)) {
-                    for (SIZE_T i = 0; i < bytesRead - searchLength; ++i) {
-                        if (memcmp(buffer.data() + i, searchString, searchLength) == 0) {
-                            CloseHandle(hProcess);
-                            return core::add(brands::VMWARE);
-                        }
+                std::vector<char> buffer(static_cast<size_t>(mbi.RegionSize));
+                SIZE_T bytesRead = 0;
+
+                if (ReadProcessMemory(hProcess, reinterpret_cast<LPCVOID>(address), buffer.data(), buffer.size(), &bytesRead) && bytesRead > 0) {
+                    if (util::findSubstring(buffer.data(), bytesRead, searchString)) {
+                        CloseHandle(hProcess);
+                        return core::add(brands::VMWARE);
                     }
                 }
             }
+
             address += mbi.RegionSize;
         }
 
         CloseHandle(hProcess);
-
         return false;
 #endif
     }
@@ -9980,7 +10040,8 @@ public: // START OF PUBLIC FUNCTIONS
             case KVM_BITMASK: return "KVM_BITMASK";
             case KGT_SIGNATURE: return "KGT_SIGNATURE";
             case VMWARE_DMI: return "VMWARE_DMI";
-            case EVENT_LOGS: return "EVENT_LOGS";
+            case HYPERV_EVENT_LOGS: return "HYPERV_EVENT_LOGS";
+            case VMWARE_EVENT_LOGS: return "VMWARE_EVENT_LOGS";
             case QEMU_VIRTUAL_DMI: return "QEMU_VIRTUAL_DMI";
             case QEMU_USB: return "QEMU_USB";
             case HYPERVISOR_DIR: return "HYPERVISOR_DIR";
@@ -10535,7 +10596,8 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::KVM_BITMASK, { 40, VM::kvm_bitmask, false } }, // debatable
     { VM::KGT_SIGNATURE, { 80, VM::intel_kgt_signature, false } }, // debatable
     { VM::VMWARE_DMI, { 40, VM::vmware_dmi, false } },
-    { VM::EVENT_LOGS, { 25, VM::hyperv_event_logs, true } },
+    { VM::HYPERV_EVENT_LOGS, { 50, VM::hyperv_event_logs, false } },
+    { VM::VMWARE_EVENT_LOGS, { 25, VM::vmware_event_logs, false } },
     { VM::QEMU_VIRTUAL_DMI, { 40, VM::qemu_virtual_dmi, false } },
     { VM::QEMU_USB, { 20, VM::qemu_USB, false } }, // debatable
     { VM::HYPERVISOR_DIR, { 20, VM::hypervisor_dir, false } }, // debatable
