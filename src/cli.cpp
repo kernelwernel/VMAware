@@ -656,14 +656,14 @@ void general() {
     checker(anyrun_directory, "ANY.RUN directory");
     checker(VM::GPU_CHIPTYPE, "GPU chip name");
     checker(VM::DRIVER_NAMES, "driver names");
-    checker(VM::VBOX_SIDT, "VirtualBox SIDT");
+    checker(VM::VM_SIDT, "VM SIDT");
     checker(VM::HDD_SERIAL, "HDD serial number");
     checker(VM::PORT_CONNECTORS, "Physical connection ports");
     checker(VM::VM_HDD, "VM keywords in HDD model");
     checker(VM::ACPI_DETECT, "ACPI Hyper-V");
     checker(VM::GPU_NAME, "GPU name");
     checker(VM::VMWARE_DEVICES, "VMware devices");
-    checker(VM::VMWARE_MEMORY, "virtual machine memory traces");
+    checker(VM::VMWARE_MEMORY, "VM memory traces");
     checker(VM::CPU_CORES, "CPU cores");
 
     std::printf("\n");
