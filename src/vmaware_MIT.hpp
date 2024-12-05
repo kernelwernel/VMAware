@@ -445,7 +445,7 @@ public:
         WSL_PROC,
         GPU_CHIPTYPE,
         DRIVER_NAMES,
-        VBOX_SIDT,
+        VM_SIDT,
         HDD_SERIAL,
         PORT_CONNECTORS,
         VM_HDD,
@@ -1849,7 +1849,7 @@ public:
                 const HANDLE process = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, processes[i]);
                 if (process != nullptr) {
                     TCHAR processName[MAX_PATH];
-                    if (GetModuleBaseName(process, nullptr, processName, sizeof(processName) / sizeof(TCHAR))) {
+                    if (GetModuleBaseNameA(process, nullptr, processName, sizeof(processName) / sizeof(TCHAR))) {
                         if (!_tcsicmp(processName, executable)) {
                             CloseHandle(process);
                             return true;
@@ -2789,7 +2789,7 @@ public:
         /**
          * @brief Sliding window substring search to handle memory page overlaps based on KMP
          */
-        static bool findSubstring(const char* buffer, size_t bufferSize, const std::string& searchString) {
+        static bool findSubstring(const wchar_t* buffer, size_t bufferSize, const std::wstring& searchString) {
             size_t searchLength = searchString.length();
             if (searchLength > bufferSize) return false;
 
@@ -3439,10 +3439,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!WINDOWS)
         return false;
 #else
-        HANDLE handle1 = CreateFile(_T("\\\\.\\VBoxMiniRdrDN"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-        HANDLE handle2 = CreateFile(_T("\\\\.\\pipe\\VBoxMiniRdDN"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-        HANDLE handle3 = CreateFile(_T("\\\\.\\VBoxTrayIPC"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-        HANDLE handle4 = CreateFile(_T("\\\\.\\pipe\\VBoxTrayIPC"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+        const HANDLE handle1 = CreateFileA(_T("\\\\.\\VBoxMiniRdrDN"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+        const HANDLE handle2 = CreateFileA(_T("\\\\.\\pipe\\VBoxMiniRdDN"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+        const HANDLE handle3 = CreateFileA(_T("\\\\.\\VBoxTrayIPC"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+        const HANDLE handle4 = CreateFileA(_T("\\\\.\\pipe\\VBoxTrayIPC"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
         
         bool result = false;
 
@@ -3925,7 +3925,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 if (process != nullptr) {
                     // Get the process name
                     TCHAR processName[MAX_PATH];
-                    if (GetModuleBaseName(process, nullptr, processName, sizeof(processName) / sizeof(TCHAR))) {
+                    if (GetModuleBaseNameA(process, nullptr, processName, sizeof(processName) / sizeof(TCHAR))) {
                         // Check if the process name matches the desired executable
                         if (_tcscmp(processName, proc) == 0) {
                             CloseHandle(process);
@@ -6960,7 +6960,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             lpData = (LPBYTE)malloc(dwLength);
-            RegQueryValueEx(hKey, pszValueName, 0, &type, lpData, &dwLength);
+            RegQueryValueExA(hKey, pszValueName, 0, &type, lpData, &dwLength);
             CM_RESOURCE_LIST* resource_list = (CM_RESOURCE_LIST*)lpData;
             for (DWORD i = 0; i < resource_list->Count; i++)
             {
@@ -8447,11 +8447,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check for the VirtualBox IDT base address
+     * @brief Check for the unkown Windows IDT base address
      * @category Windows
      * @author Requiem (https://github.com/NotRequiem)
      */
-    [[nodiscard]] static bool vbox_sidt() {
+    [[nodiscard]] static bool vm_sidt() {
 #if (!WINDOWS || !x86) 
         return false;
 #else
@@ -8465,7 +8465,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         constexpr u64 known_hyperv_exclusion = 0xfffff80000001000;
 
         if ((idt_base & 0xFFFF000000000000) == 0xFFFF000000000000 && idt_base != known_hyperv_exclusion) {
-            return core::add(brands::VBOX);
+            return true;
         }
 
         return false;
@@ -8582,7 +8582,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!WINDOWS)
         return false;
 #else
-        const std::vector<std::string> vm_gpu_names = {
+        constexpr std::array<const char*, 8> vm_gpu_names = {
             "VMware SVGA 3D",
             "Microsoft Basic Render Driver",
             "VirtualBox Graphics Adapter",
@@ -8598,8 +8598,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         DWORD deviceNum = 0;
 
         while (EnumDisplayDevicesA(nullptr, deviceNum, &dd, 0)) {
+            const std::string deviceString(dd.DeviceString);
             for (const auto& vm_gpu : vm_gpu_names) {
-                if (std::string(dd.DeviceString) == vm_gpu) {
+                if (deviceString == vm_gpu) {
                     return true;
                 }
             }
@@ -8629,50 +8630,74 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }    
 
-
     /**
-     * @brief Check for VMware-specific memory trace in a specific process.
-     * @category Windows
+     * @brief Check if the IDT and GDT limit addresses mismatch between different CPU cores.
+     * In theory, they should mismatch because Windows has different interrupt handlers registered for different CPU cores, but in practice, they seem to share the same virtual address.
+     * @category Windows, x64
      * @author Requiem (https://github.com/NotRequiem)
      */
     [[nodiscard]] static bool vmware_memory() {
 #if (!WINDOWS)
         return false;
 #else
-        const char* searchString = "_VMWARE_";
+        const std::wstring searchString1 = L"_VMWARE_";
+        const std::wstring searchString2 = L"VMware, Inc.";
 
-        const DWORD pid = util::FindProcessIdByServiceName("PlugPlay");
-        if (pid == 0) return true; // Process missing; potentially tampered   
+        auto search_service_memory = [](const std::wstring& searchString, const std::string& serviceName) -> bool {
+            const DWORD pid = util::FindProcessIdByServiceName(serviceName);
+            if (pid == 0) return false; // Process missing; potentially tampered
 
-        util::EnableDebugPrivilege();
+            util::EnableDebugPrivilege();
 
-        const HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid);
-        if (!hProcess) return false; // Not running as admin or insufficient permissions
+            const HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid);
+            if (!hProcess) return false; // Not running as admin or insufficient permissions
 
-        MEMORY_BASIC_INFORMATION mbi{};
-        uintptr_t address = 0;
+            MEMORY_BASIC_INFORMATION mbi{};
+            uintptr_t address = 0x1000;
 
-        while (VirtualQueryEx(hProcess, reinterpret_cast<LPCVOID>(address), &mbi, sizeof(mbi)) == sizeof(mbi)) {
-            if ((mbi.State == MEM_COMMIT) &&
-                (mbi.Protect & PAGE_READWRITE) &&
-                !(mbi.Protect & PAGE_GUARD) &&
-                !(mbi.Protect & PAGE_NOACCESS)) {
+            while (VirtualQueryEx(hProcess, reinterpret_cast<LPCVOID>(address), &mbi, sizeof(mbi)) == sizeof(mbi)) {
+                uintptr_t regionBase = reinterpret_cast<uintptr_t>(mbi.BaseAddress);
+                if (regionBase == 0 || address == 0) {
+                    address += mbi.RegionSize;
+                    continue;
+                }
 
-                std::vector<char> buffer(static_cast<size_t>(mbi.RegionSize));
-                SIZE_T bytesRead = 0;
+                if ((mbi.State == MEM_COMMIT) &&
+                    (mbi.Protect & (PAGE_READWRITE)) &&
+                    !(mbi.Protect & PAGE_GUARD) &&
+                    !(mbi.Protect & PAGE_NOACCESS)) {
 
-                if (ReadProcessMemory(hProcess, reinterpret_cast<LPCVOID>(address), buffer.data(), buffer.size(), &bytesRead) && bytesRead > 0) {
-                    if (util::findSubstring(buffer.data(), bytesRead, searchString)) {
-                        CloseHandle(hProcess);
-                        return core::add(brands::VMWARE);
+                    size_t regionSize = static_cast<size_t>(mbi.RegionSize);
+                    std::vector<wchar_t> buffer(regionSize / sizeof(wchar_t));
+                    SIZE_T bytesRead = 0;
+
+                    if (ReadProcessMemory(hProcess, reinterpret_cast<LPCVOID>(regionBase), buffer.data(), buffer.size() * sizeof(wchar_t), &bytesRead) && bytesRead > 0) {
+                        if (util::findSubstring(buffer.data(), bytesRead / sizeof(wchar_t), searchString)) {
+                            CloseHandle(hProcess);
+                            return true;
+                        }
                     }
                 }
+
+                address = regionBase + mbi.RegionSize;
             }
 
-            address += mbi.RegionSize;
+            CloseHandle(hProcess);
+            return false;
+            };
+
+        if (search_service_memory(searchString1, "PlugPlay")) {
+            return core::add(brands::VMWARE);
         }
 
-        CloseHandle(hProcess);
+        if (search_service_memory(searchString2, "Winmgmt")) {
+            return core::add(brands::VMWARE);
+        }
+
+        if (search_service_memory(searchString2, "CDPSvc")) {
+            return core::add(brands::VMWARE);
+        }
+
         return false;
 #endif
     }
@@ -8697,22 +8722,24 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         for (unsigned int i = 0; i < num_threads; ++i) {
             threads.emplace_back([i, &gdtResults, &idtResults]() {
                 const HANDLE thread = GetCurrentThread();
-                DWORD_PTR affinity_mask = 1ULL << i;  // Binding thread to core i
+                DWORD_PTR affinity_mask = 1ULL << i; // Bind thread to core i
                 SetThreadAffinityMask(thread, affinity_mask);
 
 #pragma pack(push, 1)
-                struct IDTR { uint16_t limit;  uint64_t base; };
+                struct DescriptorTablePointer {
+                    uint16_t limit;
+                    uint64_t base;
+                };
 #pragma pack(pop)
-                IDTR idtr;
+
+                DescriptorTablePointer idtr = {};
+                DescriptorTablePointer gdtr = {};
 
                 __sidt(&idtr);
-                uint64_t idt = idtr.base;
+                _sgdt(&gdtr);
 
-                unsigned short gdt;
-                _sgdt(&gdt);
-
-                gdtResults[i] = std::to_string(gdt);
-                idtResults[i] = std::to_string(idt);
+                gdtResults[i] = std::to_string(gdtr.base);
+                idtResults[i] = std::to_string(idtr.base);
                 });
         }
 
@@ -8733,6 +8760,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
+
+
+
+
+
+
+
 
 
 
@@ -9637,114 +9671,128 @@ public: // START OF PUBLIC FUNCTIONS
      */
     [[nodiscard]] static std::string flag_to_string(const enum_flags flag) {
         switch (flag) {
-            case VMID: return "VMID";
-            case CPU_BRAND: return "CPU_BRAND";
-            case HYPERVISOR_BIT: return "HYPERVISOR_BIT";
-            case HYPERVISOR_STR: return "HYPERVISOR_STR";
-            case RDTSC: return "RDTSC";
-            case THREADCOUNT: return "THREADCOUNT";
-            case MAC: return "MAC";
-            case TEMPERATURE: return "TEMPERATURE";
-            case SYSTEMD: return "SYSTEMD";
-            case CVENDOR: return "CVENDOR";
-            case CTYPE: return "CTYPE";
-            case DOCKERENV: return "DOCKERENV";
-            case DMIDECODE: return "DMIDECODE";
-            case DMESG: return "DMESG";
-            case HWMON: return "HWMON";
-            case SIDT5: return "SIDT5";
-            case VMWARE_REG: return "VMWARE_REG";
-            case VBOX_REG: return "VBOX_REG";
-            case USER: return "USER";
-            case DLL: return "DLL";
-            case REGISTRY: return "REGISTRY";
-            case VM_FILES: return "VM_FILES";
-            case HWMODEL: return "HWMODEL";
-            case DISK_SIZE: return "DISK_SIZE";
-            case VBOX_DEFAULT: return "VBOX_DEFAULT";
-            case VBOX_NETWORK: return "VBOX_NETWORK";
-            case VM_PROCESSES: return "VM_PROCESSES";
-            case LINUX_USER_HOST: return "LINUX_USER_HOST";
-            case GAMARUE: return "GAMARUE";
-            case VMID_0X4: return "VMID_0X4";
-            case PARALLELS_VM: return "PARALLELS_VM";
-            case RDTSC_VMEXIT: return "RDTSC_VMEXIT";
-            case QEMU_BRAND: return "QEMU_BRAND";
-            case BOCHS_CPU: return "BOCHS_CPU";
-            case VPC_BOARD: return "VPC_BOARD";
-            case HYPERV_WMI: return "HYPERV_WMI";
-            case HYPERV_REG: return "HYPERV_REG";
-            case BIOS_SERIAL: return "BIOS_SERIAL";
-            case MSSMBIOS: return "MSSMBIOS";
-            case MAC_MEMSIZE: return "MAC_MEMSIZE";
-            case MAC_IOKIT: return "MAC_IOKIT";
-            case IOREG_GREP: return "IOREG_GREP";
-            case MAC_SIP: return "MAC_SIP";
-            case HKLM_REGISTRIES: return "HKLM_REGISTRIES";
-            case QEMU_GA: return "QEMU_GA";
-            case VALID_MSR: return "VALID_MSR";
-            case QEMU_PROC: return "QEMU_PROC";
-            case VPC_PROC: return "VPC_PROC";
-            case VPC_INVALID: return "VPC_INVALID";
-            case SIDT: return "SIDT";
-            case SGDT: return "SGDT";
-            case SLDT: return "SLDT";
-            case OFFSEC_SIDT: return "OFFSEC_SIDT";
-            case OFFSEC_SGDT: return "OFFSEC_SGDT";
-            case OFFSEC_SLDT: return "OFFSEC_SLDT";
-            case HYPERV_BOARD: return "HYPERV_BOARD";
-            case VM_FILES_EXTRA: return "VM_FILES_EXTRA";
-            case VPC_SIDT: return "VPC_SIDT";
-            case VMWARE_IOMEM: return "VMWARE_IOMEM";
-            case VMWARE_IOPORTS: return "VMWARE_IOPORTS";
-            case VMWARE_SCSI: return "VMWARE_SCSI";
-            case VMWARE_DMESG: return "VMWARE_DMESG";
-            case VMWARE_STR: return "VMWARE_STR";
-            case VMWARE_BACKDOOR: return "VMWARE_BACKDOOR";
-            case VMWARE_PORT_MEM: return "VMWARE_PORT_MEM";
-            case SMSW: return "SMSW";
-            case MUTEX: return "MUTEX";
-            case UPTIME: return "UPTIME";
-            case ODD_CPU_THREADS: return "ODD_CPU_THREADS";
-            case INTEL_THREAD_MISMATCH: return "INTEL_THREAD_MISMATCH";
-            case XEON_THREAD_MISMATCH: return "XEON_THREAD_MISMATCH";
-            case NETTITUDE_VM_MEMORY: return "NETTITUDE_VM_MEMORY";
-            case CPUID_BITSET: return "CPUID_BITSET";
-            case CUCKOO_DIR: return "CUCKOO_DIR";
-            case CUCKOO_PIPE: return "CUCKOO_PIPE";
-            case HYPERV_HOSTNAME: return "HYPERV_HOSTNAME";
-            case GENERAL_HOSTNAME: return "GENERAL_HOSTNAME";
-            case SCREEN_RESOLUTION: return "SCREEN_RESOLUTION";
-            case DEVICE_STRING: return "DEVICE_STRING";
-            case BLUESTACKS_FOLDERS: return "BLUESTACKS_FOLDERS";
-            case CPUID_SIGNATURE: return "CPUID_SIGNATURE";
-            case HYPERV_BITMASK: return "HYPERV_BITMASK";
-            case KVM_BITMASK: return "KVM_BITMASK";
-            case KGT_SIGNATURE: return "KGT_SIGNATURE";
-            case VMWARE_DMI: return "VMWARE_DMI";
-            case HYPERV_EVENT_LOGS: return "HYPERV_EVENT_LOGS";
-            case VMWARE_EVENT_LOGS: return "VMWARE_EVENT_LOGS";
-            case QEMU_VIRTUAL_DMI: return "QEMU_VIRTUAL_DMI";
-            case QEMU_USB: return "QEMU_USB";
-            case HYPERVISOR_DIR: return "HYPERVISOR_DIR";
-            case UML_CPU: return "UML_CPU";
-            case KMSG: return "KMSG";
-            case VM_PROCS: return "VM_PROCS";
-            case VBOX_MODULE: return "VBOX_MODULE";
-            case SYSINFO_PROC: return "SYSINFO_PROC";
-            case DEVICE_TREE: return "DEVICE_TREE";
-            case DMI_SCAN: return "DMI_SCAN";
-            case SMBIOS_VM_BIT: return "SMBIOS_VM_BIT";
-            case PODMAN_FILE: return "PODMAN_FILE";
-            case WSL_PROC: return "WSL_PROC";
-            case GPU_CHIPTYPE: return "GPU_CHIPTYPE";
-            case DRIVER_NAMES: return "DRIVER_NAMES";
-            case VBOX_SIDT: return "VBOX_SIDT";
-            case HDD_SERIAL: return "HDD_SERIAL";
-            case PORT_CONNECTORS: return "PORT_CONNECTORS";
-            case VM_HDD: return "VM_HDD";
-            case ACPI_DETECT: return "ACPI_DETECT";
-            default: return "Unknown flag";
+        case VMID: return "VMID";
+        case CPU_BRAND: return "CPU_BRAND";
+        case HYPERVISOR_BIT: return "HYPERVISOR_BIT";
+        case HYPERVISOR_STR: return "HYPERVISOR_STR";
+        case RDTSC: return "RDTSC";
+        case THREADCOUNT: return "THREADCOUNT";
+        case MAC: return "MAC";
+        case TEMPERATURE: return "TEMPERATURE";
+        case SYSTEMD: return "SYSTEMD";
+        case CVENDOR: return "CVENDOR";
+        case CTYPE: return "CTYPE";
+        case DOCKERENV: return "DOCKERENV";
+        case DMIDECODE: return "DMIDECODE";
+        case DMESG: return "DMESG";
+        case HWMON: return "HWMON";
+        case SIDT5: return "SIDT5";
+        case VMWARE_REG: return "VMWARE_REG";
+        case VBOX_REG: return "VBOX_REG";
+        case USER: return "USER";
+        case DLL: return "DLL";
+        case REGISTRY: return "REGISTRY";
+        case VM_FILES: return "VM_FILES";
+        case HWMODEL: return "HWMODEL";
+        case DISK_SIZE: return "DISK_SIZE";
+        case VBOX_DEFAULT: return "VBOX_DEFAULT";
+        case VBOX_NETWORK: return "VBOX_NETWORK";
+        /* GPL */   case COMPUTER_NAME: return "COMPUTER_NAME";
+        /* GPL */   case WINE_CHECK: return "WINE_CHECK";
+        /* GPL */   case HOSTNAME: return "HOSTNAME";
+        /* GPL */   case VBOX_WINDOW_CLASS: return "VBOX_WINDOW_CLASS";
+        /* GPL */   case LOADED_DLLS: return "LOADED_DLLS";
+        /* GPL */   case KVM_REG: return "KVM_REG";
+        /* GPL */   case KVM_DRIVERS: return "KVM_DRIVERS";
+        /* GPL */   case KVM_DIRS: return "KVM_DIRS";
+        /* GPL */   case AUDIO: return "AUDIO";
+        /* GPL */   case QEMU_DIR: return "QEMU_DIR";
+        case VM_PROCESSES: return "VM_PROCESSES";
+        case LINUX_USER_HOST: return "LINUX_USER_HOST";
+        case GAMARUE: return "GAMARUE";
+        case VMID_0X4: return "VMID_0X4";
+        case PARALLELS_VM: return "PARALLELS_VM";
+        case RDTSC_VMEXIT: return "RDTSC_VMEXIT";
+        case QEMU_BRAND: return "QEMU_BRAND";
+        case BOCHS_CPU: return "BOCHS_CPU";
+        case VPC_BOARD: return "VPC_BOARD";
+        case HYPERV_WMI: return "HYPERV_WMI";
+        case HYPERV_REG: return "HYPERV_REG";
+        case BIOS_SERIAL: return "BIOS_SERIAL";
+        case MSSMBIOS: return "MSSMBIOS";
+        case MAC_MEMSIZE: return "MAC_MEMSIZE";
+        case MAC_IOKIT: return "MAC_IOKIT";
+        case IOREG_GREP: return "IOREG_GREP";
+        case MAC_SIP: return "MAC_SIP";
+        case HKLM_REGISTRIES: return "HKLM_REGISTRIES";
+        case QEMU_GA: return "QEMU_GA";
+        case VALID_MSR: return "VALID_MSR";
+        case QEMU_PROC: return "QEMU_PROC";
+        case VPC_PROC: return "VPC_PROC";
+        case VPC_INVALID: return "VPC_INVALID";
+        case SIDT: return "SIDT";
+        case SGDT: return "SGDT";
+        case SLDT: return "SLDT";
+        case OFFSEC_SIDT: return "OFFSEC_SIDT";
+        case OFFSEC_SGDT: return "OFFSEC_SGDT";
+        case OFFSEC_SLDT: return "OFFSEC_SLDT";
+        case HYPERV_BOARD: return "HYPERV_BOARD";
+        case VM_FILES_EXTRA: return "VM_FILES_EXTRA";
+        case VPC_SIDT: return "VPC_SIDT";
+        case VMWARE_IOMEM: return "VMWARE_IOMEM";
+        case VMWARE_IOPORTS: return "VMWARE_IOPORTS";
+        case VMWARE_SCSI: return "VMWARE_SCSI";
+        case VMWARE_DMESG: return "VMWARE_DMESG";
+        case VMWARE_STR: return "VMWARE_STR";
+        case VMWARE_BACKDOOR: return "VMWARE_BACKDOOR";
+        case VMWARE_PORT_MEM: return "VMWARE_PORT_MEM";
+        case SMSW: return "SMSW";
+        case MUTEX: return "MUTEX";
+        case UPTIME: return "UPTIME";
+        case ODD_CPU_THREADS: return "ODD_CPU_THREADS";
+        case INTEL_THREAD_MISMATCH: return "INTEL_THREAD_MISMATCH";
+        case XEON_THREAD_MISMATCH: return "XEON_THREAD_MISMATCH";
+        case NETTITUDE_VM_MEMORY: return "NETTITUDE_VM_MEMORY";
+        case CPUID_BITSET: return "CPUID_BITSET";
+        case CUCKOO_DIR: return "CUCKOO_DIR";
+        case CUCKOO_PIPE: return "CUCKOO_PIPE";
+        case HYPERV_HOSTNAME: return "HYPERV_HOSTNAME";
+        case GENERAL_HOSTNAME: return "GENERAL_HOSTNAME";
+        case SCREEN_RESOLUTION: return "SCREEN_RESOLUTION";
+        case DEVICE_STRING: return "DEVICE_STRING";
+        case BLUESTACKS_FOLDERS: return "BLUESTACKS_FOLDERS";
+        case CPUID_SIGNATURE: return "CPUID_SIGNATURE";
+        case HYPERV_BITMASK: return "HYPERV_BITMASK";
+        case KVM_BITMASK: return "KVM_BITMASK";
+        case KGT_SIGNATURE: return "KGT_SIGNATURE";
+        case VMWARE_DMI: return "VMWARE_DMI";
+        case HYPERV_EVENT_LOGS: return "HYPERV_EVENT_LOGS";
+        case VMWARE_EVENT_LOGS: return "VMWARE_EVENT_LOGS";
+        case QEMU_VIRTUAL_DMI: return "QEMU_VIRTUAL_DMI";
+        case QEMU_USB: return "QEMU_USB";
+        case HYPERVISOR_DIR: return "HYPERVISOR_DIR";
+        case UML_CPU: return "UML_CPU";
+        case KMSG: return "KMSG";
+        case VM_PROCS: return "VM_PROCS";
+        case VBOX_MODULE: return "VBOX_MODULE";
+        case SYSINFO_PROC: return "SYSINFO_PROC";
+        case DEVICE_TREE: return "DEVICE_TREE";
+        case DMI_SCAN: return "DMI_SCAN";
+        case SMBIOS_VM_BIT: return "SMBIOS_VM_BIT";
+        case PODMAN_FILE: return "PODMAN_FILE";
+        case WSL_PROC: return "WSL_PROC";
+        case GPU_CHIPTYPE: return "GPU_CHIPTYPE";
+        case DRIVER_NAMES: return "DRIVER_NAMES";
+        case VM_SIDT: return "VM_SIDT";
+        case HDD_SERIAL: return "HDD_SERIAL";
+        case PORT_CONNECTORS: return "PORT_CONNECTORS";
+        case VM_HDD: return "VM_HDD";
+        case ACPI_DETECT: return "ACPI_DETECT";
+        case GPU_NAME: return "GPU_NAME";
+        case VMWARE_DEVICES: return "VMWARE_DEVICES";
+        case VMWARE_MEMORY: return "VMWARE_MEMORY";
+        case CPU_CORES: return "CPU_CORES";
+        default: return "Unknown flag";
         }
     }
 
@@ -10285,7 +10333,7 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::WSL_PROC, { 30, VM::wsl_proc_subdir, false } }, // debatable
     { VM::GPU_CHIPTYPE, { 100, VM::gpu_chiptype, false } },
     { VM::DRIVER_NAMES, { 50, VM::driver_names, false } },
-    { VM::VBOX_SIDT, { 100, VM::vbox_sidt, false } },
+    { VM::VM_SIDT, { 100, VM::vm_sidt, false } },
     { VM::HDD_SERIAL, { 100, VM::hdd_serial_number, false } },
     { VM::PORT_CONNECTORS, { 50, VM::port_connectors, false } },
     { VM::VM_HDD, { 90, VM::vm_hdd, false } },
@@ -10293,5 +10341,5 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::GPU_NAME, { 100, VM::vm_gpu, false } },
     { VM::VMWARE_DEVICES, { 90, VM::vmware_devices, true } },
     { VM::VMWARE_MEMORY, { 50, VM::vmware_memory, false } },
-    { VM::CPU_CORES, { 50, VM::cpu_cores, false } }
+    { VM::CPU_CORES, { 50, VM::cpu_cores, false } },
 };

@@ -433,7 +433,7 @@ public:
         WSL_PROC,
         GPU_CHIPTYPE,
         DRIVER_NAMES,
-        VBOX_SIDT,
+        VM_SIDT,
         HDD_SERIAL,
         PORT_CONNECTORS,
         VM_HDD,
@@ -1833,7 +1833,7 @@ public:
                 const HANDLE process = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, processes[i]);
                 if (process != nullptr) {
                     TCHAR processName[MAX_PATH];
-                    if (GetModuleBaseName(process, nullptr, processName, sizeof(processName) / sizeof(TCHAR))) {
+                    if (GetModuleBaseNameA(process, nullptr, processName, sizeof(processName) / sizeof(TCHAR))) {
                         if (!_tcsicmp(processName, executable)) {
                             CloseHandle(process);
                             return true;
@@ -2771,9 +2771,9 @@ public:
         }
 
         /**
-         * @brief Sliding window substring search to handle memory page overlaps based on KMP
+         * @brief Sliding window substring search to handle wide-character strings using the KMP algorithm.
          */
-        static bool findSubstring(const char* buffer, size_t bufferSize, const std::string& searchString) {
+        static bool findSubstring(const wchar_t* buffer, size_t bufferSize, const std::wstring& searchString) {
             size_t searchLength = searchString.length();
             if (searchLength > bufferSize) return false;
 
@@ -3423,10 +3423,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!WINDOWS)
         return false;
 #else
-        HANDLE handle1 = CreateFile(_T("\\\\.\\VBoxMiniRdrDN"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-        HANDLE handle2 = CreateFile(_T("\\\\.\\pipe\\VBoxMiniRdDN"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-        HANDLE handle3 = CreateFile(_T("\\\\.\\VBoxTrayIPC"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-        HANDLE handle4 = CreateFile(_T("\\\\.\\pipe\\VBoxTrayIPC"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+        const HANDLE handle1 = CreateFileA(_T("\\\\.\\VBoxMiniRdrDN"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+        const HANDLE handle2 = CreateFileA(_T("\\\\.\\pipe\\VBoxMiniRdDN"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+        const HANDLE handle3 = CreateFileA(_T("\\\\.\\VBoxTrayIPC"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+        const HANDLE handle4 = CreateFileA(_T("\\\\.\\pipe\\VBoxTrayIPC"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
         
         bool result = false;
 
@@ -3871,7 +3871,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         u32 pnsize = 0x1000;
         TCHAR* provider = new TCHAR[pnsize];
 
-        u32 retv = WNetGetProviderName(WNNC_NET_RDR2SAMPLE, provider, reinterpret_cast<LPDWORD>(&pnsize));
+        u32 retv = WNetGetProviderNameA(WNNC_NET_RDR2SAMPLE, provider, reinterpret_cast<LPDWORD>(&pnsize));
         bool result = false;
 
         if (retv == NO_ERROR) {
@@ -3927,8 +3927,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */ #if (!WINDOWS)
 /* GPL */         return false;
 /* GPL */ #else
-/* GPL */         HMODULE k32;
-/* GPL */         k32 = GetModuleHandle(TEXT("kernel32.dll"));
+/* GPL */         
+/* GPL */         const HMODULE k32 = GetModuleHandleA(TEXT("kernel32.dll"));
 /* GPL */ 
 /* GPL */         if (k32 != NULL) {
 /* GPL */             if (GetProcAddress(k32, "wine_get_unix_file_name") != NULL) {
@@ -3968,8 +3968,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */ #if (!WINDOWS)
 /* GPL */         return false;
 /* GPL */ #else
-/* GPL */         HWND hClass = FindWindow(_T("VBoxTrayToolWndClass"), NULL);
-/* GPL */         HWND hWindow = FindWindow(NULL, _T("VBoxTrayToolWnd"));
+/* GPL */         const HWND hClass = FindWindowA(_T("VBoxTrayToolWndClass"), NULL);
+/* GPL */         const HWND hWindow = FindWindowA(NULL, _T("VBoxTrayToolWnd"));
 /* GPL */ 
 /* GPL */         if (hClass || hWindow) {
 /* GPL */             return core::add(brands::VBOX);
@@ -4036,7 +4036,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */         auto registry_exists = [](const TCHAR* key) -> bool {
 /* GPL */             HKEY keyHandle;
 /* GPL */ 
-/* GPL */             if (RegOpenKeyEx(HKEY_LOCAL_MACHINE, key, 0, KEY_QUERY_VALUE, &keyHandle) == ERROR_SUCCESS) {
+/* GPL */             if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, key, 0, KEY_QUERY_VALUE, &keyHandle) == ERROR_SUCCESS) {
 /* GPL */                 RegCloseKey(keyHandle);
 /* GPL */                 return true;
 /* GPL */             }
@@ -4091,7 +4091,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */         TCHAR szPath[MAX_PATH] = _T("");
 /* GPL */         PVOID OldValue = NULL;
 /* GPL */ 
-/* GPL */         if (GetWindowsDirectory(szWinDir, MAX_PATH) == 0) {
+/* GPL */         if (GetWindowsDirectoryA(szWinDir, MAX_PATH) == 0) {
 /* GPL */             return false;
 /* GPL */         }
 /* GPL */ 
@@ -4102,7 +4102,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */         bool is_vm = false;
 /* GPL */ 
 /* GPL */         for (const auto& key : keys) {
-/* GPL */             PathCombine(szPath, szWinDir, key);
+/* GPL */             PathCombineA(szPath, szWinDir, key);
 /* GPL */             if (util::exists(szPath)) {
 /* GPL */                 is_vm = true;
 /* GPL */                 break;
@@ -4132,12 +4132,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */         TCHAR szTarget[MAX_PATH] = _T("Virtio-Win\\");
 /* GPL */ 
 /* GPL */         if (util::is_wow64()) {
-/* GPL */             ExpandEnvironmentStrings(_T("%ProgramW6432%"), szProgramFile, ARRAYSIZE(szProgramFile));
+/* GPL */             ExpandEnvironmentStringsA(_T("%ProgramW6432%"), szProgramFile, ARRAYSIZE(szProgramFile));
 /* GPL */         } else {
-/* GPL */             SHGetSpecialFolderPath(NULL, szProgramFile, CSIDL_PROGRAM_FILES, FALSE);
+/* GPL */             SHGetSpecialFolderPathA(NULL, szProgramFile, CSIDL_PROGRAM_FILES, FALSE);
 /* GPL */         }
 /* GPL */ 
-/* GPL */         PathCombine(szPath, szProgramFile, szTarget);
+/* GPL */         PathCombineA(szPath, szProgramFile, szTarget);
 /* GPL */         return util::exists(szPath);
 /* GPL */ #endif
 /* GPL */     }
@@ -4244,11 +4244,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */             TCHAR msg[256] = _T("");
 /* GPL */ 
 /* GPL */             if (util::is_wow64())
-/* GPL */                 ExpandEnvironmentStrings(_T("%ProgramW6432%"), szProgramFile, ARRAYSIZE(szProgramFile));
+/* GPL */                 ExpandEnvironmentStringsA(_T("%ProgramW6432%"), szProgramFile, ARRAYSIZE(szProgramFile));
 /* GPL */             else
-/* GPL */                 SHGetSpecialFolderPath(NULL, szProgramFile, CSIDL_PROGRAM_FILES, FALSE);
+/* GPL */                 SHGetSpecialFolderPathA(NULL, szProgramFile, CSIDL_PROGRAM_FILES, FALSE);
 /* GPL */ 
-/* GPL */             PathCombine(szPath, szProgramFile, szDirectories[i]);
+/* GPL */             PathCombineA(szPath, szProgramFile, szDirectories[i]);
 /* GPL */ 
 /* GPL */             if (util::exists(szPath))
 /* GPL */                 return core::add(brands::QEMU);
@@ -4285,7 +4285,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 if (process != nullptr) {
                     // Get the process name
                     TCHAR processName[MAX_PATH];
-                    if (GetModuleBaseName(process, nullptr, processName, sizeof(processName) / sizeof(TCHAR))) {
+                    if (GetModuleBaseNameA(process, nullptr, processName, sizeof(processName) / sizeof(TCHAR))) {
                         // Check if the process name matches the desired executable
                         if (_tcscmp(processName, proc) == 0) {
                             CloseHandle(process);
@@ -8804,11 +8804,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check for the VirtualBox IDT base address
+     * @brief Check for unknown IDT base address
      * @category Windows
      * @author Requiem (https://github.com/NotRequiem)
      */
-    [[nodiscard]] static bool vbox_sidt() {
+    [[nodiscard]] static bool vm_sidt() {
 #if (!WINDOWS || !x86) 
         return false;
 #else
@@ -8822,7 +8822,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         constexpr u64 known_hyperv_exclusion = 0xfffff80000001000;
 
         if ((idt_base & 0xFFFF000000000000) == 0xFFFF000000000000 && idt_base != known_hyperv_exclusion) {
-            return core::add(brands::VBOX);
+            return true;
         }
 
         return false;
@@ -8939,7 +8939,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!WINDOWS)
         return false;
 #else
-        const std::vector<std::string> vm_gpu_names = {
+        constexpr std::array<const char*, 8> vm_gpu_names = {
             "VMware SVGA 3D",
             "Microsoft Basic Render Driver",
             "VirtualBox Graphics Adapter",
@@ -8955,8 +8955,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         DWORD deviceNum = 0;
 
         while (EnumDisplayDevicesA(nullptr, deviceNum, &dd, 0)) {
+            const std::string deviceString(dd.DeviceString);
             for (const auto& vm_gpu : vm_gpu_names) {
-                if (std::string(dd.DeviceString) == vm_gpu) {
+                if (deviceString == vm_gpu) {
                     return true;
                 }
             }
@@ -9003,43 +9004,68 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!WINDOWS)
         return false;
 #else
-        const char* searchString = "_VMWARE_";
+        const std::wstring searchString1 = L"_VMWARE_";
+        const std::wstring searchString2 = L"VMware, Inc.";
 
-        const DWORD pid = util::FindProcessIdByServiceName("PlugPlay");
-        if (pid == 0) return true; // Process missing; potentially tampered   
+        auto search_service_memory = [](const std::wstring& searchString, const std::string& serviceName) -> bool {
+            const DWORD pid = util::FindProcessIdByServiceName(serviceName);
+            if (pid == 0) return false; // Process missing; potentially tampered
 
-        util::EnableDebugPrivilege();
+            util::EnableDebugPrivilege();
 
-        const HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid);
-        if (!hProcess) return false; // Not running as admin or insufficient permissions
+            const HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid);
+            if (!hProcess) return false; // Not running as admin or insufficient permissions
 
-        MEMORY_BASIC_INFORMATION mbi{};
-        uintptr_t address = 0;
+            MEMORY_BASIC_INFORMATION mbi{};
+            uintptr_t address = 0x1000;
 
-        while (VirtualQueryEx(hProcess, reinterpret_cast<LPCVOID>(address), &mbi, sizeof(mbi)) == sizeof(mbi)) {
-            if ((mbi.State == MEM_COMMIT) &&
-                (mbi.Protect & PAGE_READWRITE) &&
-                !(mbi.Protect & PAGE_GUARD) &&
-                !(mbi.Protect & PAGE_NOACCESS)) {
+            while (VirtualQueryEx(hProcess, reinterpret_cast<LPCVOID>(address), &mbi, sizeof(mbi)) == sizeof(mbi)) {
+                uintptr_t regionBase = reinterpret_cast<uintptr_t>(mbi.BaseAddress);
+                if (regionBase == 0 || address == 0) {
+                    address += mbi.RegionSize;
+                    continue;
+                }
 
-                std::vector<char> buffer(static_cast<size_t>(mbi.RegionSize));
-                SIZE_T bytesRead = 0;
+                if ((mbi.State == MEM_COMMIT) &&
+                    (mbi.Protect & (PAGE_READWRITE)) &&
+                    !(mbi.Protect & PAGE_GUARD) &&
+                    !(mbi.Protect & PAGE_NOACCESS)) {
 
-                if (ReadProcessMemory(hProcess, reinterpret_cast<LPCVOID>(address), buffer.data(), buffer.size(), &bytesRead) && bytesRead > 0) {
-                    if (util::findSubstring(buffer.data(), bytesRead, searchString)) {
-                        CloseHandle(hProcess);
-                        return core::add(brands::VMWARE);
+                    size_t regionSize = static_cast<size_t>(mbi.RegionSize);
+                    std::vector<wchar_t> buffer(regionSize / sizeof(wchar_t));
+                    SIZE_T bytesRead = 0;
+
+                    if (ReadProcessMemory(hProcess, reinterpret_cast<LPCVOID>(regionBase), buffer.data(), buffer.size() * sizeof(wchar_t), &bytesRead) && bytesRead > 0) {
+                        if (util::findSubstring(buffer.data(), bytesRead / sizeof(wchar_t), searchString)) {
+                            CloseHandle(hProcess);
+                            return true;
+                        }
                     }
                 }
+
+                address = regionBase + mbi.RegionSize;
             }
 
-            address += mbi.RegionSize;
+            CloseHandle(hProcess);
+            return false;
+            };
+
+        if (search_service_memory(searchString1, "PlugPlay")) {
+            return core::add(brands::VMWARE);
         }
 
-        CloseHandle(hProcess);
+        if (search_service_memory(searchString2, "Winmgmt")) {
+            return core::add(brands::VMWARE);
+        }
+
+        if (search_service_memory(searchString2, "CDPSvc")) {
+            return core::add(brands::VMWARE);
+        }
+
         return false;
 #endif
     }
+
 
 
     /**
@@ -9099,6 +9125,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -10112,11 +10148,15 @@ public: // START OF PUBLIC FUNCTIONS
             case WSL_PROC: return "WSL_PROC";
             case GPU_CHIPTYPE: return "GPU_CHIPTYPE";
             case DRIVER_NAMES: return "DRIVER_NAMES";
-            case VBOX_SIDT: return "VBOX_SIDT";
+            case VM_SIDT: return "VM_SIDT";
             case HDD_SERIAL: return "HDD_SERIAL";
             case PORT_CONNECTORS: return "PORT_CONNECTORS";
             case VM_HDD: return "VM_HDD";
             case ACPI_DETECT: return "ACPI_DETECT";
+            case GPU_NAME: return "GPU_NAME";
+            case VMWARE_DEVICES: return "VMWARE_DEVICES";
+            case VMWARE_MEMORY: return "VMWARE_MEMORY";
+            case CPU_CORES: return "CPU_CORES";
             default: return "Unknown flag";
         }
     }
@@ -10668,7 +10708,7 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::WSL_PROC, { 30, VM::wsl_proc_subdir, false } }, // debatable
     { VM::GPU_CHIPTYPE, { 100, VM::gpu_chiptype, false } },
     { VM::DRIVER_NAMES, { 50, VM::driver_names, false } },
-    { VM::VBOX_SIDT, { 100, VM::vbox_sidt, false } },
+    { VM::VM_SIDT, { 100, VM::vm_sidt, false } },
     { VM::HDD_SERIAL, { 100, VM::hdd_serial_number, false } },
     { VM::PORT_CONNECTORS, { 50, VM::port_connectors, false } },
     { VM::VM_HDD, { 90, VM::vm_hdd, false } },
@@ -10676,5 +10716,5 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::GPU_NAME, { 100, VM::vm_gpu, false } },
     { VM::VMWARE_DEVICES, { 90, VM::vmware_devices, true } },
     { VM::VMWARE_MEMORY, { 50, VM::vmware_memory, false } },
-    { VM::CPU_CORES, {25, VM::cpu_cores, false }}
+    { VM::CPU_CORES, {50, VM::cpu_cores, false }},
 };
