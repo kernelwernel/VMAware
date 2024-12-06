@@ -74,6 +74,7 @@ enum arg_enum : u8 {
     SPOOFABLE,
     HIGH_THRESHOLD,
     NO_COLOR,
+    DYNAMIC,
     NULL_ARG
 };
 
@@ -146,6 +147,7 @@ Extra:
  --spoofable        allow spoofable techniques to be ran (not included by default)
  --high-threshold   a higher theshold bar for a VM detection will be applied
  --no-color         self explanatory
+ --dynamic          allow the conclusion message to be dynamic (8 possibilities instead of only 2)
 
 )";
     std::exit(0);
@@ -167,14 +169,22 @@ const char* color(const u8 score) {
         return "";
     }
 
-    if      (score == 0)   { return red.c_str(); }
-    else if (score <= 12)  { return red.c_str(); }
-    else if (score <= 25)  { return red_orange.c_str(); }
-    else if (score < 50)   { return red_orange.c_str(); }
-    else if (score <= 62)  { return orange.c_str(); }
-    else if (score <= 75)  { return green_orange.c_str(); }
-    else if (score < 100)  { return green.c_str(); }
-    else if (score == 100) { return green.c_str(); }
+    if (arg_bitset.test(DYNAMIC)) {
+        if      (score == 0)   { return red.c_str(); }
+        else if (score <= 12)  { return red.c_str(); }
+        else if (score <= 25)  { return red_orange.c_str(); }
+        else if (score < 50)   { return red_orange.c_str(); }
+        else if (score <= 62)  { return orange.c_str(); }
+        else if (score <= 75)  { return green_orange.c_str(); }
+        else if (score < 100)  { return green.c_str(); }
+        else if (score == 100) { return green.c_str(); }
+    } else {
+        if (score == 100) {
+            return green.c_str();
+        } else {
+            return red.c_str();
+        }
+    }
 
     return "";
 }
@@ -358,6 +368,10 @@ std::bitset<max_bits> settings() {
     if (arg_bitset.test(ALL)) {
         tmp |= VM::ALL;
         tmp.set(VM::SPOOFABLE);
+    }
+
+    if (arg_bitset.test(DYNAMIC)) {
+        tmp.set(VM::DYNAMIC);
     }
 
     return tmp;
@@ -769,7 +783,7 @@ void general() {
             << ansi_exit
             << "\n\n";
     }
-    
+
 
     // finishing touches with notes
     if (notes_enabled) {
@@ -780,7 +794,7 @@ void general() {
         if (!arg_bitset.test(SPOOFABLE) && !arg_bitset.test(ALL)) {
             const std::string tip = (green + "TIP: " + ansi_exit);
             std::cout << tip << "To enable easily spoofable techniques, run with the \"--spoofable\" argument\n\n";
-        } else {
+        } else if (vm.detected_count != 0) {
             std::cout << note << " If you found a false positive, please make sure to create an issue at https://github.com/kernelwernel/VMAware/issues\n\n";
         }
     }
@@ -805,7 +819,7 @@ int main(int argc, char* argv[]) {
         std::exit(0);
     }
 
-    static constexpr std::array<std::pair<const char*, arg_enum>, 26> table {{
+    static constexpr std::array<std::pair<const char*, arg_enum>, 27> table {{
         { "-h", HELP },
         { "-v", VERSION },
         { "-a", ALL },
@@ -831,6 +845,7 @@ int main(int argc, char* argv[]) {
         { "--disable-notes", NOTES },
         { "--spoofable", SPOOFABLE },
         { "--high-threshold", HIGH_THRESHOLD },
+        { "--dynamic", DYNAMIC },
         { "--no-color", NO_COLOR }
     }};
 
@@ -917,7 +932,7 @@ int main(int argc, char* argv[]) {
 
         if (arg_bitset.test(TYPE)) {
             std::string type = VM::type(VM::NO_MEMO, VM::MULTIPLE, settings());
-            
+
             if (is_anyrun && (type == "Unknown")) {
                 type = "Sandbox";
             }

@@ -68,6 +68,7 @@
 - [ ] dxdiag technique from utoshu
 - [ ] redesign the cli so that it has the "NO SUPPORT" category of techniques (and also make a table instead)
 - [ ] double check the vmid_template function
+- [ ] fix is_spoofable in the CLI, some techniques might not be spoofable and need updating
 
 # Distant plans
 - add the library to conan.io when released

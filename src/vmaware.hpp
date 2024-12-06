@@ -450,6 +450,7 @@ public:
         // start of settings technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
         NO_MEMO,
         HIGH_THRESHOLD,
+        DYNAMIC,
         NULL_ARG, // does nothing, just a placeholder flag mainly for the CLI
         SPOOFABLE,
         MULTIPLE
@@ -9065,6 +9066,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             if (
                 flags.test(NO_MEMO) ||
                 flags.test(HIGH_THRESHOLD) ||
+                flags.test(DYNAMIC) ||
                 flags.test(SPOOFABLE) ||
                 flags.test(NULL_ARG) ||
                 flags.test(MULTIPLE)
@@ -9393,6 +9395,7 @@ public: // START OF PUBLIC FUNCTIONS
         if (
             (flag_bit == NO_MEMO) ||
             (flag_bit == HIGH_THRESHOLD) ||
+            (flag_bit == DYNAMIC) ||
             (flag_bit == SPOOFABLE) ||
             (flag_bit == MULTIPLE)
         ) {
@@ -9834,6 +9837,7 @@ public: // START OF PUBLIC FUNCTIONS
         flags.flip();
         flags.set(NO_MEMO, 0);
         flags.set(HIGH_THRESHOLD, 0);
+        flags.set(DYNAMIC, 0);
         flags.set(SPOOFABLE, 0);
         flags.set(MULTIPLE, 0);
 
@@ -10177,14 +10181,22 @@ public: // START OF PUBLIC FUNCTIONS
             return (category + article + brand_tmp + " VM"); 
         };
 
-        if      (percent_tmp == 0)   { return baremetal; } 
-        else if (percent_tmp <= 20)  { return very_unlikely; } 
-        else if (percent_tmp <= 35)  { return unlikely; } 
-        else if (percent_tmp < 50)   { return make_conclusion(potentially); } 
-        else if (percent_tmp <= 62)  { return make_conclusion(might); } 
-        else if (percent_tmp <= 75)  { return make_conclusion(likely); } 
-        else if (percent_tmp < 100)  { return make_conclusion(very_likely); } 
-        else                         { return make_conclusion(inside_vm); }
+        if (core::is_enabled(flags, DYNAMIC)) {
+            if      (percent_tmp == 0)   { return baremetal; } 
+            else if (percent_tmp <= 20)  { return very_unlikely; } 
+            else if (percent_tmp <= 35)  { return unlikely; } 
+            else if (percent_tmp < 50)   { return make_conclusion(potentially); } 
+            else if (percent_tmp <= 62)  { return make_conclusion(might); } 
+            else if (percent_tmp <= 75)  { return make_conclusion(likely); } 
+            else if (percent_tmp < 100)  { return make_conclusion(very_likely); } 
+            else                         { return make_conclusion(inside_vm); }
+        }
+
+        if (percent_tmp == 100) {
+            return make_conclusion(inside_vm);
+        } else {
+            return baremetal;
+        }
     }
 
     #pragma pack(push, 1)
@@ -10338,6 +10350,7 @@ VM::flagset VM::DEFAULT = []() noexcept -> flagset {
     // disable all the settings flags
     tmp.flip(NO_MEMO);
     tmp.flip(HIGH_THRESHOLD);
+    tmp.flip(DYNAMIC);
     tmp.flip(SPOOFABLE);
     tmp.flip(MULTIPLE);
 
@@ -10355,6 +10368,7 @@ VM::flagset VM::ALL = []() noexcept -> flagset {
     // disable all the settings technique flags (except SPOOFABLE)
     tmp.flip(NO_MEMO);
     tmp.flip(HIGH_THRESHOLD);
+    tmp.flip(DYNAMIC);
     tmp.flip(MULTIPLE);
 
     return tmp;
