@@ -2613,9 +2613,7 @@ public:
 
         /**
          * @brief Retrieves the last error message from the Windows API. Useful for __VMAWARE_DEBUG__
-         * 
          * @author Requiem (https://github.com/NotRequiem)
-         *
          * @return A std::wstring containing the error message.
          */
         [[nodiscard]] static std::wstring GetLastErrorString() {
@@ -2770,6 +2768,7 @@ public:
             CloseHandle(hToken);
             return true;
         }
+
 
         /**
          * @brief Sliding window substring search to handle wide-character strings using the KMP algorithm.
@@ -9027,11 +9026,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     continue;
                 }
 
-                if ((mbi.State == MEM_COMMIT) &&
+                if (
+                    (mbi.State == MEM_COMMIT) &&
                     (mbi.Protect & (PAGE_READWRITE)) &&
                     !(mbi.Protect & PAGE_GUARD) &&
-                    !(mbi.Protect & PAGE_NOACCESS)) {
-
+                    !(mbi.Protect & PAGE_NOACCESS)
+                ) {
                     size_t regionSize = static_cast<size_t>(mbi.RegionSize);
                     std::vector<wchar_t> buffer(regionSize / sizeof(wchar_t));
                     SIZE_T bytesRead = 0;
@@ -9049,7 +9049,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             CloseHandle(hProcess);
             return false;
-            };
+        };
 
         if (search_service_memory(searchString1, "PlugPlay")) {
             return core::add(brands::VMWARE);
@@ -9066,7 +9066,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
-
 
 
     /**
@@ -9106,7 +9105,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
                 gdtResults[i] = std::to_string(gdtr.base);
                 idtResults[i] = std::to_string(idtr.base);
-                });
+            });
         }
 
         for (auto& thread : threads) {
@@ -10730,5 +10729,5 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::GPU_NAME, { 100, VM::vm_gpu, false } },
     { VM::VMWARE_DEVICES, { 90, VM::vmware_devices, true } },
     { VM::VMWARE_MEMORY, { 50, VM::vmware_memory, false } },
-    { VM::CPU_CORES, {50, VM::cpu_cores, false }},
+    { VM::CPU_CORES, { 50, VM::cpu_cores, false } },
 };

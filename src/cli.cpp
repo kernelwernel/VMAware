@@ -41,7 +41,9 @@
     #define MSVC 0
 #endif
 
+#if (MSVC)
 #pragma warning(disable : 4061)
+#endif
 
 #include "vmaware.hpp"
 
