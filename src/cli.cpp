@@ -35,11 +35,13 @@
 #endif
 
 #if (defined(_MSC_VER) || defined(_WIN32) || defined(_WIN64) || defined(__MINGW32__))
-    #define MSVC 1
+    #define WINDOWS 1
     #include <windows.h>
 #else
     #define MSVC 0
 #endif
+
+#pragma warning(disable : 4061)
 
 #include "vmaware.hpp"
 
@@ -89,7 +91,7 @@ std::string no_perms = ("[" + grey + "  NO PERMS  " + ansi_exit + "]");
 std::string note = ("[    NOTE    ]");               
 std::string disabled = ("[" + grey + "  DISABLED  " + ansi_exit + "]");
 
-#if (MSVC)
+#if (WINDOWS)
 class win_ansi_enabler_t
 {
 public:
@@ -294,7 +296,8 @@ bool is_spoofable(const VM::enum_flags flag) {
         case VM::HYPERV_HOSTNAME:
         case VM::GENERAL_HOSTNAME:
         case VM::BLUESTACKS_FOLDERS: 
-        case VM::EVENT_LOGS: 
+        case VM::HYPERV_EVENT_LOGS:
+        case VM::VMWARE_EVENT_LOGS:
         case VM::KMSG: 
         case VM::VM_PROCS: 
         case VM::PODMAN_FILE: return true;
@@ -396,7 +399,7 @@ void replace(std::string &text, const std::string &original, const std::string &
  * @copyright MIT
  */
 [[nodiscard]] static bool anyrun_driver() {
-#if (!MSVC)
+#if (!WINDOWS)
     return false;
 #else
     HANDLE hFile;
@@ -430,7 +433,7 @@ void replace(std::string &text, const std::string &original, const std::string &
  * @copyright MIT
  */
 [[nodiscard]] static bool anyrun_directory() {
-#if (!MSVC)
+#if (!WINDOWS)
     return false;
 #else
     NTSTATUS status;
@@ -648,7 +651,8 @@ void general() {
     checker(VM::KVM_BITMASK, "KVM CPUID reserved bitmask");
     checker(VM::KGT_SIGNATURE, "Intel KGT signature");
     checker(VM::VMWARE_DMI, "VMware DMI");
-    checker(VM::EVENT_LOGS, "Hyper-V event logs");
+    checker(VM::HYPERV_EVENT_LOGS, "Hyper-V event logs");
+    checker(VM::VMWARE_EVENT_LOGS, "VMware event logs");
     checker(VM::QEMU_VIRTUAL_DMI, "QEMU virtual DMI directory");
     checker(VM::QEMU_USB, "QEMU USB");
     checker(VM::HYPERVISOR_DIR, "Hypervisor directory (Linux)");
@@ -666,14 +670,15 @@ void general() {
     checker(anyrun_directory, "ANY.RUN directory");
     checker(VM::GPU_CHIPTYPE, "GPU chip name");
     checker(VM::DRIVER_NAMES, "driver names");
-    checker(VM::VBOX_IDT, "VirtualBox SIDT");
+    checker(VM::VM_SIDT, "VM SIDT");
     checker(VM::HDD_SERIAL, "HDD serial number");
     checker(VM::PORT_CONNECTORS, "Physical connection ports");
     checker(VM::VM_HDD, "VM keywords in HDD model");
     checker(VM::ACPI_DETECT, "ACPI Hyper-V");
     checker(VM::GPU_NAME, "GPU name");
     checker(VM::VMWARE_DEVICES, "VMware devices");
-    checker(VM::VMWARE_ADAPTER, "VMware adapter name");
+    checker(VM::VMWARE_MEMORY, "VM memory traces");
+    checker(VM::CPU_CORES, "CPU cores");
 
     std::printf("\n");
 
@@ -802,7 +807,7 @@ void general() {
 
 
 int main(int argc, char* argv[]) {
-#if (MSVC)
+#if (WINDOWS)
     win_ansi_enabler_t ansi_enabler;
 #endif
 
