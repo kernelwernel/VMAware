@@ -10617,39 +10617,39 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::HYPERVISOR_STR, { 75, VM::hypervisor_str, false } },
     { VM::RDTSC, { 5, VM::rdtsc_check, false } },
     { VM::THREADCOUNT, { 25, VM::thread_count, false } },
-    { VM::MAC, { 45, VM::mac_address_check, true } },
+    { VM::MAC, { 20, VM::mac_address_check, true } },
     { VM::TEMPERATURE, { 15, VM::temperature, false } },
-    { VM::SYSTEMD, { 70, VM::systemd_virt, true } },
+    { VM::SYSTEMD, { 35, VM::systemd_virt, true } },
     { VM::CVENDOR, { 65, VM::chassis_vendor, false } },
     { VM::CTYPE, { 20, VM::chassis_type, false } },
-    { VM::DOCKERENV, { 60, VM::dockerenv, true } },
+    { VM::DOCKERENV, { 30, VM::dockerenv, true } },
     { VM::DMIDECODE, { 55, VM::dmidecode, false } },
     { VM::DMESG, { 55, VM::dmesg, false } },
-    { VM::HWMON, { 75, VM::hwmon, true } },
+    { VM::HWMON, { 35, VM::hwmon, true } },
     { VM::SIDT5, { 45, VM::sidt5, false } },
-    { VM::VMWARE_REG, { 100, VM::vmware_registry, true } },
-    { VM::VBOX_REG, { 100, VM::vbox_registry, true } },
-    { VM::USER, { 15, VM::user_check, true } },
-    { VM::DLL, { 50, VM::DLL_check, true } },
-    { VM::REGISTRY, { 100, VM::registry_key, true } },
-    { VM::VM_FILES, { 50, VM::vm_files, true } },
-    { VM::HWMODEL, { 75, VM::hwmodel, true } }, // TODO: update score
+    { VM::VMWARE_REG, { 50, VM::vmware_registry, true } },
+    { VM::VBOX_REG, { 50, VM::vbox_registry, true } },
+    { VM::USER, { 5, VM::user_check, true } },
+    { VM::DLL, { 25, VM::DLL_check, true } },
+    { VM::REGISTRY, { 50, VM::registry_key, true } },
+    { VM::VM_FILES, { 25, VM::vm_files, true } },
+    { VM::HWMODEL, { 35, VM::hwmodel, true } }, // TODO: update score
     { VM::DISK_SIZE, { 60, VM::disk_size, false } }, // TODO: update score
     { VM::VBOX_DEFAULT, { 25, VM::vbox_default_specs, false } },
     { VM::VBOX_NETWORK, { 100, VM::vbox_network_share, false } },  // used to be 70, debatable
-/* GPL */ { VM::COMPUTER_NAME, { 25, VM::computer_name_match, true } },
+/* GPL */ { VM::COMPUTER_NAME, { 10, VM::computer_name_match, true } },
 /* GPL */ { VM::WINE_CHECK, { 100, VM::wine, false } },
-/* GPL */ { VM::HOSTNAME, { 25, VM::hostname_match, true } },
+/* GPL */ { VM::HOSTNAME, { 10, VM::hostname_match, true } },
 /* GPL */ { VM::VBOX_WINDOW_CLASS, { 100, VM::vbox_window_class, false } }, // used to be 10, debatable
-/* GPL */ { VM::LOADED_DLLS, { 75, VM::loaded_dlls, true } },
-/* GPL */ { VM::KVM_REG, { 100, VM::kvm_registry, true } },
-/* GPL */ { VM::KVM_DRIVERS, { 50, VM::kvm_drivers, true } },
-/* GPL */ { VM::KVM_DIRS, { 75, VM::kvm_directories, true } },
+/* GPL */ { VM::LOADED_DLLS, { 35, VM::loaded_dlls, true } }, 
+/* GPL */ { VM::KVM_REG, { 50, VM::kvm_registry, true } },
+/* GPL */ { VM::KVM_DRIVERS, { 25, VM::kvm_drivers, true } },
+/* GPL */ { VM::KVM_DIRS, { 30, VM::kvm_directories, true } },
 /* GPL */ { VM::AUDIO, { 25, VM::check_audio, false } },
-/* GPL */ { VM::QEMU_DIR, { 75, VM::qemu_dir, true } },
-    { VM::VM_PROCESSES, { 30, VM::vm_processes, true } },
-    { VM::LINUX_USER_HOST, { 25, VM::linux_user_host, true } }, // TODO: update score
-    { VM::GAMARUE, { 25, VM::gamarue, true } },
+/* GPL */ { VM::QEMU_DIR, { 30, VM::qemu_dir, true } },
+    { VM::VM_PROCESSES, { 15, VM::vm_processes, true } }, 
+    { VM::LINUX_USER_HOST, { 10, VM::linux_user_host, true } }, // TODO: update score
+    { VM::GAMARUE, { 10, VM::gamarue, true } },
     { VM::VMID_0X4, { 100, VM::vmid_0x4, false } },
     { VM::PARALLELS_VM, { 50, VM::parallels, false } },
     { VM::RDTSC_VMEXIT, { 5, VM::rdtsc_vmexit, false } },
@@ -10658,15 +10658,15 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::VPC_BOARD, { 25, VM::vpc_board, false } },
     { VM::BIOS_SERIAL, { 60, VM::bios_serial, false } }, // debatable
     { VM::MSSMBIOS, { 75, VM::mssmbios, false } },
-    { VM::MAC_MEMSIZE, { 30, VM::hw_memsize, true } }, // TODO: update score
-    { VM::MAC_IOKIT, { 80, VM::io_kit, true } }, // TODO: update score
-    { VM::IOREG_GREP, { 75, VM::ioreg_grep, true } }, // TODO: update score
-    { VM::MAC_SIP, { 85, VM::mac_sip, true } }, // TODO: update score
-    { VM::HKLM_REGISTRIES, { 50, VM::hklm_registries, true } },
-    { VM::QEMU_GA, { 20, VM::qemu_ga, true } }, // TODO: update score
+    { VM::MAC_MEMSIZE, { 15, VM::hw_memsize, true } }, // TODO: update score
+    { VM::MAC_IOKIT, { 40, VM::io_kit, true } }, // TODO: update score
+    { VM::IOREG_GREP, { 30, VM::ioreg_grep, true } }, // TODO: update score
+    { VM::MAC_SIP, { 40, VM::mac_sip, true } }, // TODO: update score
+    { VM::HKLM_REGISTRIES, { 25, VM::hklm_registries, true } },
+    { VM::QEMU_GA, { 10, VM::qemu_ga, true } }, // TODO: update score
     { VM::VALID_MSR, { 35, VM::valid_msr, false } },
-    { VM::QEMU_PROC, { 100, VM::qemu_processes, true } }, // debatable
-    { VM::VPC_PROC, { 100, VM::vpc_proc, true } }, // debatable
+    { VM::QEMU_PROC, { 50, VM::qemu_processes, true } }, // debatable
+    { VM::VPC_PROC, { 50, VM::vpc_proc, true } }, // debatable 
     { VM::VPC_INVALID, { 75, VM::vpc_invalid, false } }, // TODO: update score
     { VM::SIDT, { 25, VM::sidt, false } },
     { VM::SGDT, { 30, VM::sgdt, false } }, // TODO: update score
@@ -10676,7 +10676,7 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::OFFSEC_SLDT, { 20, VM::offsec_sldt, false } }, // TODO: update score
     { VM::VPC_SIDT, { 15, VM::vpc_sidt, false } }, // debatable
     { VM::HYPERV_BOARD, { 100, VM::hyperv_board, false } },
-    { VM::VM_FILES_EXTRA, { 75, VM::vm_files_extra, true } },
+    { VM::VM_FILES_EXTRA, { 30, VM::vm_files_extra, true } },
     { VM::VMWARE_IOMEM, { 65, VM::vmware_iomem, false } }, // debatable
     { VM::VMWARE_IOPORTS, { 70, VM::vmware_ioports, false } }, // debatable
     { VM::VMWARE_SCSI, { 40, VM::vmware_scsi, false } }, // debatable
@@ -10692,13 +10692,13 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::XEON_THREAD_MISMATCH, { 85, VM::xeon_thread_mismatch, false } }, // debatable
     { VM::NETTITUDE_VM_MEMORY, { 100, VM::nettitude_vm_memory, false } },
     { VM::CPUID_BITSET, { 25, VM::cpuid_bitset, false } }, // debatable
-    { VM::CUCKOO_DIR, { 75, VM::cuckoo_dir, true } },
-    { VM::CUCKOO_PIPE, { 20, VM::cuckoo_pipe, true } }, // debatable
-    { VM::HYPERV_HOSTNAME, { 25, VM::hyperv_hostname, true } },
-    { VM::GENERAL_HOSTNAME, { 25, VM::general_hostname, true } },
+    { VM::CUCKOO_DIR, { 30, VM::cuckoo_dir, true } },
+    { VM::CUCKOO_PIPE, { 30, VM::cuckoo_pipe, true } }, // debatable
+    { VM::HYPERV_HOSTNAME, { 30, VM::hyperv_hostname, true } },
+    { VM::GENERAL_HOSTNAME, { 10, VM::general_hostname, true } },
     { VM::SCREEN_RESOLUTION, { 20, VM::screen_resolution, false } },
     { VM::DEVICE_STRING, { 25, VM::device_string, false } },
-    { VM::BLUESTACKS_FOLDERS, { 15, VM::bluestacks, true } }, // debatable
+    { VM::BLUESTACKS_FOLDERS, { 5, VM::bluestacks, true } }, // debatable
     { VM::CPUID_SIGNATURE, { 95, VM::cpuid_signature, false } }, // debatable
     { VM::HYPERV_BITMASK, { 20, VM::hyperv_bitmask, false } }, // debatable
     { VM::KVM_BITMASK, { 40, VM::kvm_bitmask, false } }, // debatable
@@ -10710,14 +10710,14 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::QEMU_USB, { 20, VM::qemu_USB, false } }, // debatable
     { VM::HYPERVISOR_DIR, { 20, VM::hypervisor_dir, false } }, // debatable
     { VM::UML_CPU, { 80, VM::uml_cpu, false } }, // debatable
-    { VM::KMSG, { 10, VM::kmsg, true } }, // debatable
-    { VM::VM_PROCS, { 20, VM::vm_procs, true } }, // debatable
+    { VM::KMSG, { 5, VM::kmsg, true } }, // debatable
+    { VM::VM_PROCS, { 10, VM::vm_procs, true } }, // debatable
     { VM::VBOX_MODULE, { 15, VM::vbox_module, false } }, // debatable
     { VM::SYSINFO_PROC, { 15, VM::sysinfo_proc, false } }, // debatable
     { VM::DEVICE_TREE, { 20, VM::device_tree, false } }, // debatable
     { VM::DMI_SCAN, { 50, VM::dmi_scan, false } }, // debatable
     { VM::SMBIOS_VM_BIT, { 50, VM::smbios_vm_bit, false } }, // debatable
-    { VM::PODMAN_FILE, { 15, VM::podman_file, true } }, // debatable
+    { VM::PODMAN_FILE, { 5, VM::podman_file, true } }, // debatable
     { VM::WSL_PROC, { 30, VM::wsl_proc_subdir, false } }, // debatable
     { VM::GPU_CHIPTYPE, { 100, VM::gpu_chiptype, false } },
     { VM::DRIVER_NAMES, { 50, VM::driver_names, false } },
@@ -10727,7 +10727,7 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::VM_HDD, { 90, VM::vm_hdd, false } },
     { VM::ACPI_DETECT, { 85, VM::acpi_detect, false } },
     { VM::GPU_NAME, { 100, VM::vm_gpu, false } },
-    { VM::VMWARE_DEVICES, { 90, VM::vmware_devices, true } },
+    { VM::VMWARE_DEVICES, { 45, VM::vmware_devices, true } }, 
     { VM::VMWARE_MEMORY, { 50, VM::vmware_memory, false } },
     { VM::CPU_CORES, { 50, VM::cpu_cores, false } },
 };
