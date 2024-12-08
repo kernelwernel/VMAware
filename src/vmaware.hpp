@@ -202,22 +202,21 @@
 #include <bitset>
 #include <type_traits>
 
-
 #if (WINDOWS)
 #include <windows.h>
 #include <intrin.h>
 #include <tchar.h>
 #include <stdbool.h>
 #include <stdio.h>
-#include <Iphlpapi.h>
-#include <Assert.h>
+#include <iphlpapi.h>
+#include <assert.h>
 #include <excpt.h>
 #include <winternl.h>
 #include <winnetwk.h>
 #include <winuser.h>
 #include <psapi.h>
 #include <comdef.h>
-#include <Wbemidl.h>
+#include <wbemidl.h>
 #include <shlwapi.h>
 #include <shlobj_core.h>
 #include <strmif.h>
@@ -226,10 +225,12 @@
 #include <winspool.h>
 #include <wtypes.h>
 #include <winevt.h>
+#include <powerbase.h>
+#include <setupapi.h>
 
 #pragma comment(lib, "wbemuuid.lib")
 #pragma comment(lib, "iphlpapi.lib")
-#pragma comment(lib, "Shlwapi.lib")
+#pragma comment(lib, "shlwapi.lib")
 #pragma comment(lib, "MPR")
 #pragma comment(lib, "advapi32.lib")
 #pragma comment(lib, "kernel32.lib")
@@ -238,6 +239,8 @@
 #pragma comment(lib, "uuid.lib")
 #pragma comment(lib, "ntdll.lib")
 #pragma comment(lib, "wevtapi.lib")
+#pragma comment(lib, "setupapi.lib")
+#pragma comment(lib, "powrprof.lib")
 
 #elif (LINUX)
 #if (x86)
@@ -442,6 +445,16 @@ public:
         VMWARE_DEVICES,
         VMWARE_MEMORY,
         CPU_CORES,
+        PROCESSOR_NUMBER,
+        NUMBER_OF_CORES,
+        WMI_MODEL,
+        WMI_MANUFACTURER,
+        WMI_TEMPERATURE,
+        PROCESSOR_ID,
+        CPU_FANS,
+        POWER_CAPABILITIES,
+        SETUPAPI_DISK,
+        
 
         // start of settings technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
         NO_MEMO,
@@ -1691,17 +1704,21 @@ public:
 #endif
         }
 
-        // get disk size in GB
+        /**
+         * @brief Get the disk size in GB
+         * @category Linux, Windows
+         * @returns Disk size in GB
+         */
         [[nodiscard]] static u32 get_disk_size() {
             u32 size = 0;
-            constexpr u64 GB = (static_cast<u64>(1024 * 1024) * 1024);
+            constexpr u64 GB = (static_cast<u64>(1024) * 1024 * 1024);  // Size of 1 GB in bytes
 
 #if (LINUX)
             struct statvfs stat;
 
             if (statvfs("/", &stat) != 0) {
                 debug("private util::get_disk_size( function: ", "failed to fetch disk size");
-                return false;
+                return 0; // Return 0 to indicate failure
             }
 
             // in gigabytes
@@ -1710,27 +1727,25 @@ public:
             ULARGE_INTEGER totalNumberOfBytes;
 
             if (GetDiskFreeSpaceExW(
-                L"C:",                      // Drive or directory path (use wide character string)
-                nullptr,                    // Free bytes available to the caller (not needed for total size)
-                reinterpret_cast<PULARGE_INTEGER>(&totalNumberOfBytes),  // Total number of bytes on the disk
-                nullptr                     // Total number of free bytes on the disk (not needed for total size)
+                L"C:",  // Drive or directory path (use wide character string)
+                nullptr,  // Free bytes available to the caller (not needed for total size)
+                &totalNumberOfBytes,  // Total number of bytes on the disk
+                nullptr  // Total number of free bytes on the disk (not needed for total size)
             )) {
-                size = static_cast<u32>(totalNumberOfBytes.QuadPart) / GB;
-            } else {
+                // Convert bytes to GB
+                size = static_cast<u32>(totalNumberOfBytes.QuadPart / GB);
+            }
+            else {
                 debug("util::get_disk_size(: ", "failed to fetch size in GB");
             }
 #endif
 
-            if (size == 0) {
-                return false;
-            }
+            if (size == 0)
+                return 81;
+            
+            debug("private util::get_disk_size( function: ", "disk size = ", size, "GB");
 
-            // round to the nearest factor of 10
-            const u32 result = static_cast<u32>(std::round((size / 10.0) * 10));
-
-            debug("private util::get_disk_size( function: ", "disk size = ", result, "GB");
-
-            return result;
+            return size;  // Return disk size in GB
         }
 
         // get physical RAM size in GB
@@ -3742,17 +3757,24 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
     /**
      * @brief Check if disk size is under or equal to 50GB
-     * @category Linux (for now)
+     * @category Linux, Windows
      */
     [[nodiscard]] static bool disk_size() {
-#if (!LINUX)
-        return false;
-#else
+#if (LINUX)
         const u32 size = util::get_disk_size();
 
         debug("DISK_SIZE: size = ", size);
 
-        return (size <= 60); // in GB
+        return (size <= 80); // Check if disk size is <= 80GB
+#elif (WINDOWS)
+        const u32 size = util::get_disk_size();
+        const u32 min_size = 80;
+
+        debug("DISK_SIZE: size = ", size);
+
+        return (size <= min_size); // Check if disk size is <= 80GB
+#else
+        return false;
 #endif
     }
 
@@ -3767,7 +3789,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * ORACLE:      1024MB, 12GB
      * OTHER LINUX: 512MB,  8GB
 
-     * @todo: check if it still applies to host systems with larger RAM and disk size than what I have
      * @category Linux, Windows
      */
     [[nodiscard]] static bool vbox_default_specs() {
@@ -8788,7 +8809,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
                 if (
                     strcmp(driverName, "vmusbmouse") == 0 ||
-                    strcmp(driverName, "vmmouse") == 0
+                    strcmp(driverName, "vmmouse") == 0 ||
+                    strcmp(driverName, "vmmemctl") == 0
                     ) {
                     return core::add(brands::VMWARE);
                 }
@@ -9070,7 +9092,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
     /**
      * @brief Check if the IDT and GDT limit addresses mismatch between different CPU cores. 
-     * In theory, they should mismatch because Windows has different interrupt handlers registered for different CPU cores, but in practice, they seem to share the same virtual address.
+     * Despite the Windows kernel having different interrupt handlers registered for each CPU core, Windows typically uses identical virtual addresses for GDT and IDT across cores.
+     * While the interrupt handlers (the actual ISR code) are typically the same across cores, each core may maintain its own IDT to handle specific local or processor-specific interrupts.
+     * The virtual memory system allows mapping different physical memory locations to the same virtual address to minimize context switching overhead.
+     * The CPU core's descriptor registers (GDTR and IDTR) are then used to point to the correct physical addresses of these tables.
      * @category Windows, x64
      * @author Requiem (https://github.com/NotRequiem)
      */
@@ -9127,11 +9152,255 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
 
 
+    /**
+     * @brief Check for number of processors
+     * @category Windows
+     * @author Al-Khaser Project
+     */
+    [[nodiscard]] static bool processor_number()
+    {
+#if (x86_32)
+        PULONG ulNumberProcessors = (PULONG)(__readfsdword(0x30) + 0x64);
+
+#else
+        PULONG ulNumberProcessors = (PULONG)(__readgsqword(0x60) + 0xB8);
+#endif
+
+        if (*ulNumberProcessors < 2)
+            return true;
+        else
+            return false;
+    }
 
 
+    /**
+     * @brief Check for number of cores
+     * @category Windows
+     * @author Al-Khaser Project
+     */
+    [[nodiscard]] static bool number_of_cores() {
+        if (!wmi::initialize()) {
+            return false;
+        }
+
+        std::wstring query = L"SELECT NumberOfCores FROM Win32_Processor";
+        std::vector<std::wstring> properties = { L"NumberOfCores" };
+
+        wmi_result results = wmi::execute(query, properties);
+
+        for (const auto& result : results) {
+            if (result.type == wmi::result_type::Integer) {
+                if (result.intValue < 2) {
+                    return true; 
+                }
+            }
+        }
+
+        return false;
+    }
 
 
+    /**
+     * @brief Check for device's model using WMI
+     * @category Windows
+     * @author Al-Khaser Project
+     */
+    [[nodiscard]] static bool wmi_model() {
+        if (!wmi::initialize()) {
+            return false;
+        }
 
+        std::wstring query = L"SELECT Model FROM Win32_ComputerSystem";
+        std::vector<std::wstring> properties = { L"Model" };
+        wmi_result results = wmi::execute(query, properties);
+
+        for (const auto& result : results) {
+            if (result.type == wmi::result_type::String) {
+                if (result.strValue == "VirtualBox" || result.strValue == "HVM domU" || result.strValue == "VMWare") {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+
+    /**
+     * @brief Check for device's manufacturer using WMI
+     * @category Windows
+     * @author Al-Khaser Project
+     */
+    [[nodiscard]] static bool wmi_manufacturer() {
+        if (!wmi::initialize()) {
+            return false;
+        }
+
+        std::wstring query = L"SELECT Manufacturer FROM Win32_ComputerSystem";
+        std::vector<std::wstring> properties = { L"Manufacturer" };
+        wmi_result results = wmi::execute(query, properties);
+
+        for (const auto& result : results) {
+            if (result.type == wmi::result_type::String) {
+                if (result.strValue == "VMWare" || result.strValue == "innotek GmbH" || result.strValue == "Xen" || result.strValue == "QEMU") {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+
+    /**
+     * @brief Check for device's temperature
+     * @category Windows
+     * @author Al-Khaser Project
+     */
+    [[nodiscard]] static bool wmi_temperature() {
+        if (!wmi::initialize()) {
+            return false;
+        }
+
+        std::wstring query = L"SELECT * FROM MSAcpi_ThermalZoneTemperature";
+        std::vector<std::wstring> properties = { L"CurrentTemperature" };
+
+        std::vector<wmi::result> results = wmi::execute(query, properties);
+
+        for (const auto& res : results) {
+            if (res.type == wmi::result_type::Integer) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+
+    /**
+     * @brief Check for empty processor ids using wmi
+     * @category Windows
+     * @author Al-Khaser Project
+     */
+    [[nodiscard]] static bool processor_id() {
+        if (!wmi::initialize()) {
+            return false;
+        }
+
+        std::wstring query = L"SELECT ProcessorId FROM Win32_Processor";
+        std::vector<std::wstring> properties = { L"ProcessorId" };
+        wmi_result results = wmi::execute(query, properties);
+
+        for (const auto& result : results) {
+            if (result.type == wmi::result_type::String) {
+                if (result.strValue.empty()) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+
+    /**
+     * @brief Check for CPU Fans
+     * @category Windows
+     * @author Al-Khaser Project
+     */
+    [[nodiscard]] static bool cpu_fans() {
+        if (!wmi::initialize()) {
+            return false;
+        }
+
+        std::wstring query = L"SELECT * FROM Win32_Fan";
+        std::vector<std::wstring> properties = { };
+        wmi_result results = wmi::execute(query, properties);
+
+        return !results.empty();
+    }
+
+
+    /**
+     * @brief Check what power states are enabled
+     * @category Windows
+     * @author Al-Khaser Project
+     */
+    [[nodiscard]] static bool power_capabilities()
+    {
+        SYSTEM_POWER_CAPABILITIES powerCaps;
+        bool power_stats = false;
+        if (GetPwrCapabilities(&powerCaps) == TRUE)
+        {
+            if ((powerCaps.SystemS1 | powerCaps.SystemS2 | powerCaps.SystemS3 | powerCaps.SystemS4) == FALSE)
+            {
+                power_stats = (powerCaps.ThermalControl == FALSE);
+            }
+        }
+
+        return power_stats;
+    }
+
+
+     /**
+      * @brief Checks for virtual machine signatures in disk drive device identifiers
+      * @category Windows
+      * @author Al-Khaser Project
+      */
+    [[nodiscard]] static bool setupapi_disk()
+    {
+        HDEVINFO hDevInfo;
+        SP_DEVINFO_DATA DeviceInfoData{};
+        DWORD i;
+
+        constexpr GUID GUID_DEVCLASS_DISKDRIVE = {
+            0x4d36e967L, 0xe325, 0x11ce,
+            { 0xbf, 0xc1, 0x08, 0x00, 0x2b, 0xe1, 0x03, 0x18 }
+        };
+
+        hDevInfo = SetupDiGetClassDevsA((LPGUID)&GUID_DEVCLASS_DISKDRIVE,
+            0,
+            0,
+            DIGCF_PRESENT);
+
+        if (hDevInfo == INVALID_HANDLE_VALUE)
+            return FALSE;
+
+        DeviceInfoData.cbSize = sizeof(SP_DEVINFO_DATA);
+        DWORD dwPropertyRegDataType;
+        LPTSTR buffer = NULL;
+        DWORD dwSize = 0;
+
+        for (i = 0; SetupDiEnumDeviceInfo(hDevInfo, i, &DeviceInfoData); i++)
+        {
+            while (!SetupDiGetDeviceRegistryPropertyA(hDevInfo, &DeviceInfoData, SPDRP_HARDWAREID,
+                &dwPropertyRegDataType, (PBYTE)buffer, dwSize, &dwSize))
+            {
+                if (GetLastError() == ERROR_INSUFFICIENT_BUFFER) {
+                    if (buffer)LocalFree(buffer);
+                    buffer = (LPTSTR)LocalAlloc(LPTR, dwSize * 2);
+                    if (buffer == NULL)
+                        break;
+                }
+                else
+                    break;
+
+            }
+
+            if (buffer) {
+                if ((StrStrIA(buffer, _T("vbox")) != NULL) ||
+                    (StrStrIA(buffer, _T("vmware")) != NULL) ||
+                    (StrStrIA(buffer, _T("qemu")) != NULL) ||
+                    (StrStrIA(buffer, _T("virtual")) != NULL))
+                {
+                    return true;
+                }
+            }
+        }
+
+        if (buffer) LocalFree(buffer);
+        SetupDiDestroyDeviceInfoList(hDevInfo);
+        if (GetLastError() != NO_ERROR && GetLastError() != ERROR_NO_MORE_ITEMS) return FALSE;
+
+        return false;
+    }
 
 
 
@@ -10160,6 +10429,15 @@ public: // START OF PUBLIC FUNCTIONS
             case VMWARE_DEVICES: return "VMWARE_DEVICES";
             case VMWARE_MEMORY: return "VMWARE_MEMORY";
             case CPU_CORES: return "CPU_CORES";
+            case PROCESSOR_NUMBER: return "PROCESSOR_NUMBER";
+            case NUMBER_OF_CORES: return "NUMBER_OF_CORES";
+            case WMI_MODEL: return "WMI_MODEL";
+            case WMI_MANUFACTURER: return "WMI_MANUFACTURER";
+            case WMI_TEMPERATURE: return "WMI_TEMPERATURE";
+            case PROCESSOR_ID: return "PROCESSOR_ID";
+            case CPU_FANS: return "CPU_FANS";
+            case POWER_CAPABILITIES: return "POWER_CAPABILITIES";
+            case SETUPAPI_DISK: return "SETUPAPI_DISK";
             default: return "Unknown flag";
         }
     }
@@ -10634,7 +10912,7 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::REGISTRY, { 100, VM::registry_key, true } },
     { VM::VM_FILES, { 50, VM::vm_files, true } },
     { VM::HWMODEL, { 75, VM::hwmodel, true } }, // TODO: update score
-    { VM::DISK_SIZE, { 60, VM::disk_size, false } }, // TODO: update score
+    { VM::DISK_SIZE, { 35, VM::disk_size, false } },
     { VM::VBOX_DEFAULT, { 25, VM::vbox_default_specs, false } },
     { VM::VBOX_NETWORK, { 100, VM::vbox_network_share, false } },  // used to be 70, debatable
 /* GPL */ { VM::COMPUTER_NAME, { 25, VM::computer_name_match, true } },
@@ -10729,5 +11007,14 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::GPU_NAME, { 100, VM::vm_gpu, false } },
     { VM::VMWARE_DEVICES, { 90, VM::vmware_devices, true } },
     { VM::VMWARE_MEMORY, { 50, VM::vmware_memory, false } },
-    { VM::CPU_CORES, { 50, VM::cpu_cores, false } },
+    { VM::CPU_CORES, { 25, VM::cpu_cores, false } },
+    { VM::PROCESSOR_NUMBER, { 25, VM::processor_number, false } },
+    { VM::NUMBER_OF_CORES, { 50, VM::number_of_cores, false } },
+    { VM::WMI_MODEL, { 50, VM::wmi_model, false } },
+    { VM::WMI_MANUFACTURER, { 50, VM::wmi_manufacturer, false } },
+    { VM::WMI_TEMPERATURE, { 50, VM::wmi_temperature, false } },
+    { VM::PROCESSOR_ID, { 50, VM::processor_id, false } },
+    { VM::CPU_FANS, { 50, VM::cpu_fans, false } },
+    { VM::POWER_CAPABILITIES, { 50, VM::power_capabilities, false } },
+    { VM::SETUPAPI_DISK, { 50, VM::setupapi_disk, false } },
 };

@@ -680,8 +680,17 @@ void general() {
     checker(VM::GPU_NAME, "GPU name");
     checker(VM::VMWARE_DEVICES, "VMware devices");
     checker(VM::VMWARE_MEMORY, "VM memory traces");
-    checker(VM::CPU_CORES, "CPU cores");
+    checker(VM::PROCESSOR_NUMBER, "Processor count");
+    checker(VM::NUMBER_OF_CORES, "CPU core count");
+    checker(VM::WMI_MODEL, "Hardware model");
+    checker(VM::WMI_MANUFACTURER, "Hardware manufacturer");
+    checker(VM::WMI_TEMPERATURE, "WMI temperature");
+    checker(VM::PROCESSOR_ID, "Processor ID");
+    checker(VM::CPU_FANS, "CPU fans");
+    checker(VM::POWER_CAPABILITIES, "Power capabilities");
+    checker(VM::SETUPAPI_DISK, "SETUPDI diskdrive");
 
+  
     std::printf("\n");
 
 #ifdef __VMAWARE_DEBUG__
