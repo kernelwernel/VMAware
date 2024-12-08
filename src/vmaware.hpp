@@ -9159,6 +9159,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      */
     [[nodiscard]] static bool processor_number()
     {
+#if (!WINDOWS)
+        return false;
+#else
 #if (x86_32)
         PULONG ulNumberProcessors = (PULONG)(__readfsdword(0x30) + 0x64);
 
@@ -9170,6 +9173,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return true;
         else
             return false;
+#endif
     }
 
 
@@ -9179,6 +9183,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @author Al-Khaser Project
      */
     [[nodiscard]] static bool number_of_cores() {
+#if (!WINDOWS)
+        return false;
+#else
         if (!wmi::initialize()) {
             return false;
         }
@@ -9197,6 +9204,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         return false;
+#endif
     }
 
 
@@ -9206,6 +9214,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @author Al-Khaser Project
      */
     [[nodiscard]] static bool wmi_model() {
+#if (!WINDOWS)
+        return false;
+#else
         if (!wmi::initialize()) {
             return false;
         }
@@ -9222,6 +9233,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
         }
         return false;
+#endif
     }
 
 
@@ -9231,6 +9243,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @author Al-Khaser Project
      */
     [[nodiscard]] static bool wmi_manufacturer() {
+#if (!WINDOWS)
+        return false;
+#else
         if (!wmi::initialize()) {
             return false;
         }
@@ -9247,6 +9262,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
         }
         return false;
+#endif
     }
 
 
@@ -9256,6 +9272,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @author Al-Khaser Project
      */
     [[nodiscard]] static bool wmi_temperature() {
+#if (!WINDOWS)
+        return false;
+#else
         if (!wmi::initialize()) {
             return false;
         }
@@ -9272,6 +9291,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         return false;
+#endif
     }
 
 
@@ -9281,6 +9301,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @author Al-Khaser Project
      */
     [[nodiscard]] static bool processor_id() {
+#if (!WINDOWS)
+        return false;
+#else
         if (!wmi::initialize()) {
             return false;
         }
@@ -9297,6 +9320,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
         }
         return false;
+#endif
     }
 
 
@@ -9306,6 +9330,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @author Al-Khaser Project
      */
     [[nodiscard]] static bool cpu_fans() {
+#if (!WINDOWS)
+        return false;
+#else
         if (!wmi::initialize()) {
             return false;
         }
@@ -9315,6 +9342,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         wmi_result results = wmi::execute(query, properties);
 
         return !results.empty();
+#endif
     }
 
 
@@ -9323,8 +9351,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Windows
      * @author Al-Khaser Project
      */
-    [[nodiscard]] static bool power_capabilities()
-    {
+    [[nodiscard]] static bool power_capabilities() {
+#if (!WINDOWS)
+        return false;
+#else
         SYSTEM_POWER_CAPABILITIES powerCaps;
         bool power_stats = false;
         if (GetPwrCapabilities(&powerCaps) == TRUE)
@@ -9336,6 +9366,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         return power_stats;
+#endif
     }
 
 
@@ -9344,8 +9375,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
       * @category Windows
       * @author Al-Khaser Project
       */
-    [[nodiscard]] static bool setupapi_disk()
-    {
+    [[nodiscard]] static bool setupapi_disk() {
+#if (!WINDOWS)
+        return false;
+#else
         HDEVINFO hDevInfo;
         SP_DEVINFO_DATA DeviceInfoData{};
         DWORD i;
@@ -9361,7 +9394,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             DIGCF_PRESENT);
 
         if (hDevInfo == INVALID_HANDLE_VALUE)
-            return FALSE;
+            return false;
 
         DeviceInfoData.cbSize = sizeof(SP_DEVINFO_DATA);
         DWORD dwPropertyRegDataType;
@@ -9375,7 +9408,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             {
                 if (GetLastError() == ERROR_INSUFFICIENT_BUFFER) {
                     if (buffer)LocalFree(buffer);
-                    buffer = (LPTSTR)LocalAlloc(LPTR, dwSize * 2);
+                    buffer = (LPTSTR)LocalAlloc(LPTR, static_cast<SIZE_T>(dwSize) * 2);
                     if (buffer == NULL)
                         break;
                 }
@@ -9397,9 +9430,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         if (buffer) LocalFree(buffer);
         SetupDiDestroyDeviceInfoList(hDevInfo);
-        if (GetLastError() != NO_ERROR && GetLastError() != ERROR_NO_MORE_ITEMS) return FALSE;
+        if (GetLastError() != NO_ERROR && GetLastError() != ERROR_NO_MORE_ITEMS) return false;
 
         return false;
+#endif
     }
 
 
