@@ -80,6 +80,7 @@ enum arg_enum : u8 {
     NO_COLOR,
     DYNAMIC,
     VERBOSE,
+    IGNORE,
     NULL_ARG
 };
 
@@ -155,11 +156,12 @@ Options:
 
 Extra:
  --disable-notes    no notes will be provided
- --spoofable        allow spoofable techniques to be ran (not included by default)
  --high-threshold   a higher theshold bar for a VM detection will be applied
  --no-color         self explanatory
  --dynamic          allow the conclusion message to be dynamic (8 possibilities instead of only 2)
  --verbose          add more information to the output
+ --ignore           ignore the unsupported techniques from the CLI output
+
 )";
     std::exit(0);
 }
@@ -259,60 +261,14 @@ Podman
 WSL
 OpenVZ
 ANY.RUN
+Barevisor
+HyperPlatform
+MiniVisor
 )";
 
     std::exit(0);
 }
 
-//bool is_spoofable(const VM::enum_flags flag) {
-//    if (arg_bitset.test(ALL)) {
-//        return false;
-//    }
-//
-//    switch (flag) {
-//        case VM::MAC:
-//        case VM::DOCKERENV:
-//        case VM::HWMON:
-//        case VM::VMWARE_REG:
-//        case VM::VBOX_REG:
-//        case VM::USER:
-//        case VM::DLL:
-//        case VM::REGISTRY:
-//        case VM::VM_FILES:
-//        case VM::HWMODEL:
-//        case VM::COMPUTER_NAME:
-//        case VM::HOSTNAME:
-//        case VM::KVM_REG:
-//        case VM::KVM_DRIVERS:
-//        case VM::KVM_DIRS:
-//        case VM::LOADED_DLLS:
-//        case VM::QEMU_DIR:
-//        case VM::VM_PROCESSES:
-//        case VM::LINUX_USER_HOST:
-//        case VM::HYPERV_REG:
-//        case VM::MAC_MEMSIZE:
-//        case VM::MAC_IOKIT:
-//        case VM::IOREG_GREP:
-//        case VM::MAC_SIP:
-//        case VM::HKLM_REGISTRIES:
-//        case VM::QEMU_GA:
-//        case VM::QEMU_PROC:
-//        case VM::VPC_PROC:
-//        case VM::VM_FILES_EXTRA:
-//        case VM::UPTIME:
-//        case VM::CUCKOO_DIR:
-//        case VM::CUCKOO_PIPE:
-//        case VM::HYPERV_HOSTNAME:
-//        case VM::GENERAL_HOSTNAME:
-//        case VM::BLUESTACKS_FOLDERS: 
-//        case VM::HYPERV_EVENT_LOGS:
-//        case VM::VMWARE_EVENT_LOGS:
-//        case VM::KMSG: 
-//        case VM::VM_PROCS: 
-//        case VM::PODMAN_FILE: return true;
-//        default: return false;
-//    }
-//}
 
 #if (LINUX)
 bool is_admin() {
@@ -700,6 +656,15 @@ void checker(const VM::enum_flags flag, const char* message) {
     //    }
     //}
 
+    if (is_unsupported(flag)) {
+        unsupported_count++;
+        if (arg_bitset.test(IGNORE)) {
+            return;
+        }
+    } else {
+        supported_count++;
+    }
+
 #if (LINUX)
     if (are_perms_required(flag)) {
         std::cout << no_perms << " Skipped " << message << "\n";
@@ -712,14 +677,6 @@ void checker(const VM::enum_flags flag, const char* message) {
         return;
     }
 #endif
-
-    if (arg_bitset.test(VERBOSE)) {
-        if (is_unsupported(flag)) {
-            unsupported_count++;
-        } else {
-            supported_count++;
-        }
-    }
 
 
     if (is_disabled(flag)) {
@@ -740,8 +697,11 @@ void checker(const VM::enum_flags flag, const char* message) {
 // overload for std::function, this is specific for any.run techniques
 // that are embedded in the CLI because it was removed in the lib as of 2.0
 void checker(const std::function<bool()> &func, const char* message) {
-    if (!WINDOWS && arg_bitset.test(VERBOSE)) {
+    if (!WINDOWS) {
         unsupported_count++;
+        if (arg_bitset.test(IGNORE)) {
+            return;
+        }
     } else {
         supported_count++;
     }
@@ -1081,7 +1041,7 @@ int main(int argc, char* argv[]) {
         std::exit(0);
     }
 
-    static constexpr std::array<std::pair<const char*, arg_enum>, 29> table {{
+    static constexpr std::array<std::pair<const char*, arg_enum>, 30> table {{
         { "-h", HELP },
         { "-v", VERSION },
         { "-a", ALL },
@@ -1110,6 +1070,7 @@ int main(int argc, char* argv[]) {
         { "--high-threshold", HIGH_THRESHOLD },
         { "--dynamic", DYNAMIC },
         { "--verbose", VERBOSE },
+        { "--ignore", IGNORE },
         { "--no-color", NO_COLOR }
     }};
 

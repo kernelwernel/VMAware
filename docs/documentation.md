@@ -580,6 +580,7 @@ This is the table of all the brands the library supports.
 |    | --no-color | Removes all the color, this is added due to some terminals not supporting ANSI escape codes while cluttering the output |
 |    | --dynamic | allow the conclusion message to be dynamic (8 possibilities instead of only 2) |
 |    | --verbose | add more information to the output  |
+|    | --ignore | ignore the unsupported techniques from the CLI output |
 > [!NOTE]
 > If you want a general result of everything combined above, do not put any arguments. This is the intended way to use the CLI tool.
 >
