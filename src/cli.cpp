@@ -80,7 +80,7 @@ enum arg_enum : u8 {
     NO_COLOR,
     DYNAMIC,
     VERBOSE,
-    IGNORE,
+    COMPACT,
     NULL_ARG
 };
 
@@ -160,7 +160,7 @@ Extra:
  --no-color         self explanatory
  --dynamic          allow the conclusion message to be dynamic (8 possibilities instead of only 2)
  --verbose          add more information to the output
- --ignore           ignore the unsupported techniques from the CLI output
+ --compact          ignore the unsupported techniques from the CLI output
 
 )";
     std::exit(0);
@@ -531,17 +531,12 @@ bool is_unsupported(VM::enum_flags flag) {
 std::bitset<max_bits> settings() {
     std::bitset<max_bits> tmp;
 
-    if (arg_bitset.test(SPOOFABLE)) {
-        tmp.set(VM::SPOOFABLE);
-    }
-
     if (arg_bitset.test(HIGH_THRESHOLD)) {
         tmp.set(VM::HIGH_THRESHOLD);
     }
 
     if (arg_bitset.test(ALL)) {
         tmp |= VM::ALL;
-        tmp.set(VM::SPOOFABLE);
     }
 
     if (arg_bitset.test(DYNAMIC)) {
@@ -657,16 +652,21 @@ void checker(const VM::enum_flags flag, const char* message) {
     //}
 
     if (is_unsupported(flag)) {
-        unsupported_count++;
-        if (arg_bitset.test(IGNORE)) {
+        if (arg_bitset.test(COMPACT)) {
             return;
         }
+
+        unsupported_count++;
     } else {
         supported_count++;
     }
 
 #if (LINUX)
     if (are_perms_required(flag)) {
+        if (arg_bitset.test(COMPACT)) {
+            return;
+        }
+
         std::cout << no_perms << " Skipped " << message << "\n";
 
         no_perms_count++;
@@ -680,6 +680,9 @@ void checker(const VM::enum_flags flag, const char* message) {
 
 
     if (is_disabled(flag)) {
+        if (arg_bitset.test(COMPACT)) {
+            return;
+        }
         std::cout << disabled << " Skipped " << message << "\n";
         disabled_count++;
         return;
@@ -699,7 +702,7 @@ void checker(const VM::enum_flags flag, const char* message) {
 void checker(const std::function<bool()> &func, const char* message) {
     if (!WINDOWS) {
         unsupported_count++;
-        if (arg_bitset.test(IGNORE)) {
+        if (arg_bitset.test(COMPACT)) {
             return;
         }
     } else {
@@ -725,7 +728,7 @@ void general() {
     if (arg_bitset.test(NO_COLOR)) {
         detected = ("[  DETECTED  ]");
         not_detected = ("[NOT DETECTED]");
-        spoofable = ("[ EASY SPOOF ]");
+        no_support = ("[ NO SUPPORT ]");
         no_perms = ("[  NO PERMS  ]");
         note = ("[    NOTE    ]");               
         disabled = ("[  DISABLED  ]");
@@ -1070,7 +1073,7 @@ int main(int argc, char* argv[]) {
         { "--high-threshold", HIGH_THRESHOLD },
         { "--dynamic", DYNAMIC },
         { "--verbose", VERBOSE },
-        { "--ignore", IGNORE },
+        { "--compact", COMPACT },
         { "--no-color", NO_COLOR }
     }};
 

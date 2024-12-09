@@ -461,7 +461,7 @@ public:
         HIGH_THRESHOLD,
         DYNAMIC,
         NULL_ARG, // does nothing, just a placeholder flag mainly for the CLI
-        SPOOFABLE,
+        //SPOOFABLE,
         MULTIPLE
     };
 
@@ -9544,7 +9544,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 flags.test(NO_MEMO) ||
                 flags.test(HIGH_THRESHOLD) ||
                 flags.test(DYNAMIC) ||
-                flags.test(SPOOFABLE) ||
                 flags.test(NULL_ARG) ||
                 flags.test(MULTIPLE)
             ) {
@@ -9873,7 +9872,6 @@ public: // START OF PUBLIC FUNCTIONS
             (flag_bit == NO_MEMO) ||
             (flag_bit == HIGH_THRESHOLD) ||
             (flag_bit == DYNAMIC) ||
-            (flag_bit == SPOOFABLE) ||
             (flag_bit == MULTIPLE)
         ) {
             throw_error("Flag argument must be a technique flag and not a settings flag");
@@ -10315,7 +10313,6 @@ public: // START OF PUBLIC FUNCTIONS
         flags.set(NO_MEMO, 0);
         flags.set(HIGH_THRESHOLD, 0);
         flags.set(DYNAMIC, 0);
-        flags.set(SPOOFABLE, 0);
         flags.set(MULTIPLE, 0);
 
         return flags;
@@ -10842,7 +10839,6 @@ VM::flagset VM::DEFAULT = []() noexcept -> flagset {
     tmp.flip(NO_MEMO);
     tmp.flip(HIGH_THRESHOLD);
     tmp.flip(DYNAMIC);
-    tmp.flip(SPOOFABLE);
     tmp.flip(MULTIPLE);
 
     return tmp;
@@ -10856,7 +10852,7 @@ VM::flagset VM::ALL = []() noexcept -> flagset {
     // set all bits to 1
     tmp.set();
 
-    // disable all the settings technique flags (except SPOOFABLE)
+    // disable all the settings technique flags
     tmp.flip(NO_MEMO);
     tmp.flip(HIGH_THRESHOLD);
     tmp.flip(DYNAMIC);
