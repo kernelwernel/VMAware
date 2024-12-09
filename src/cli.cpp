@@ -35,10 +35,14 @@
 #endif
 
 #if (defined(_MSC_VER) || defined(_WIN32) || defined(_WIN64) || defined(__MINGW32__))
-    #define MSVC 1
+    #define WINDOWS 1
     #include <windows.h>
 #else
     #define MSVC 0
+#endif
+
+#if (MSVC)
+#pragma warning(disable : 4061)
 #endif
 
 #include "vmaware.hpp"
@@ -74,21 +78,29 @@ enum arg_enum : u8 {
     SPOOFABLE,
     HIGH_THRESHOLD,
     NO_COLOR,
+    DYNAMIC,
+    VERBOSE,
     NULL_ARG
 };
 
 constexpr u8 max_bits = static_cast<u8>(VM::MULTIPLE) + 1;
 constexpr u8 arg_bits = static_cast<u8>(NULL_ARG) + 1;
 std::bitset<arg_bits> arg_bitset;
+u8 unsupported_count = 0;
+u8 supported_count = 0;
+u8 no_perms_count = 0;
+u8 disabled_count = 0;
+
 
 std::string detected = ("[  " + green + "DETECTED" + ansi_exit + "  ]");
 std::string not_detected = ("[" + red + "NOT DETECTED" + ansi_exit + "]");
+std::string no_support = ("[ " + grey + "NO SUPPORT" + ansi_exit + " ]");
 std::string spoofable = ("[" + red + " EASY SPOOF " + ansi_exit + "]");
 std::string no_perms = ("[" + grey + "  NO PERMS  " + ansi_exit + "]");
 std::string note = ("[    NOTE    ]");               
-std::string disabled = ("[" + grey + "  DISABLED  " + ansi_exit + "]");
+std::string disabled = ("[" + red + "  DISABLED  " + ansi_exit + "]");
 
-#if (MSVC)
+#if (WINDOWS)
 class win_ansi_enabler_t
 {
 public:
@@ -146,7 +158,8 @@ Extra:
  --spoofable        allow spoofable techniques to be ran (not included by default)
  --high-threshold   a higher theshold bar for a VM detection will be applied
  --no-color         self explanatory
-
+ --dynamic          allow the conclusion message to be dynamic (8 possibilities instead of only 2)
+ --verbose          add more information to the output
 )";
     std::exit(0);
 }
@@ -167,14 +180,22 @@ const char* color(const u8 score) {
         return "";
     }
 
-    if      (score == 0)   { return red.c_str(); }
-    else if (score <= 12)  { return red.c_str(); }
-    else if (score <= 25)  { return red_orange.c_str(); }
-    else if (score < 50)   { return red_orange.c_str(); }
-    else if (score <= 62)  { return orange.c_str(); }
-    else if (score <= 75)  { return green_orange.c_str(); }
-    else if (score < 100)  { return green.c_str(); }
-    else if (score == 100) { return green.c_str(); }
+    if (arg_bitset.test(DYNAMIC)) {
+        if      (score == 0)   { return red.c_str(); }
+        else if (score <= 12)  { return red.c_str(); }
+        else if (score <= 25)  { return red_orange.c_str(); }
+        else if (score < 50)   { return red_orange.c_str(); }
+        else if (score <= 62)  { return orange.c_str(); }
+        else if (score <= 75)  { return green_orange.c_str(); }
+        else if (score < 100)  { return green.c_str(); }
+        else if (score == 100) { return green.c_str(); }
+    } else {
+        if (score == 100) {
+            return green.c_str();
+        } else {
+            return red.c_str();
+        }
+    }
 
     return "";
 }
@@ -243,54 +264,55 @@ ANY.RUN
     std::exit(0);
 }
 
-bool is_spoofable(const VM::enum_flags flag) {
-    if (arg_bitset.test(ALL)) {
-        return false;
-    }
-
-    switch (flag) {
-        case VM::MAC:
-        case VM::DOCKERENV:
-        case VM::HWMON:
-        case VM::VMWARE_REG:
-        case VM::VBOX_REG:
-        case VM::USER:
-        case VM::DLL:
-        case VM::REGISTRY:
-        case VM::VM_FILES:
-        case VM::HWMODEL:
-        case VM::COMPUTER_NAME:
-        case VM::HOSTNAME:
-        case VM::KVM_REG:
-        case VM::KVM_DRIVERS:
-        case VM::KVM_DIRS:
-        case VM::LOADED_DLLS:
-        case VM::QEMU_DIR:
-        case VM::VM_PROCESSES:
-        case VM::LINUX_USER_HOST:
-        case VM::HYPERV_REG:
-        case VM::MAC_MEMSIZE:
-        case VM::MAC_IOKIT:
-        case VM::IOREG_GREP:
-        case VM::MAC_SIP:
-        case VM::HKLM_REGISTRIES:
-        case VM::QEMU_GA:
-        case VM::QEMU_PROC:
-        case VM::VPC_PROC:
-        case VM::VM_FILES_EXTRA:
-        case VM::UPTIME:
-        case VM::CUCKOO_DIR:
-        case VM::CUCKOO_PIPE:
-        case VM::HYPERV_HOSTNAME:
-        case VM::GENERAL_HOSTNAME:
-        case VM::BLUESTACKS_FOLDERS: 
-        case VM::EVENT_LOGS: 
-        case VM::KMSG: 
-        case VM::VM_PROCS: 
-        case VM::PODMAN_FILE: return true;
-        default: return false;
-    }
-}
+//bool is_spoofable(const VM::enum_flags flag) {
+//    if (arg_bitset.test(ALL)) {
+//        return false;
+//    }
+//
+//    switch (flag) {
+//        case VM::MAC:
+//        case VM::DOCKERENV:
+//        case VM::HWMON:
+//        case VM::VMWARE_REG:
+//        case VM::VBOX_REG:
+//        case VM::USER:
+//        case VM::DLL:
+//        case VM::REGISTRY:
+//        case VM::VM_FILES:
+//        case VM::HWMODEL:
+//        case VM::COMPUTER_NAME:
+//        case VM::HOSTNAME:
+//        case VM::KVM_REG:
+//        case VM::KVM_DRIVERS:
+//        case VM::KVM_DIRS:
+//        case VM::LOADED_DLLS:
+//        case VM::QEMU_DIR:
+//        case VM::VM_PROCESSES:
+//        case VM::LINUX_USER_HOST:
+//        case VM::HYPERV_REG:
+//        case VM::MAC_MEMSIZE:
+//        case VM::MAC_IOKIT:
+//        case VM::IOREG_GREP:
+//        case VM::MAC_SIP:
+//        case VM::HKLM_REGISTRIES:
+//        case VM::QEMU_GA:
+//        case VM::QEMU_PROC:
+//        case VM::VPC_PROC:
+//        case VM::VM_FILES_EXTRA:
+//        case VM::UPTIME:
+//        case VM::CUCKOO_DIR:
+//        case VM::CUCKOO_PIPE:
+//        case VM::HYPERV_HOSTNAME:
+//        case VM::GENERAL_HOSTNAME:
+//        case VM::BLUESTACKS_FOLDERS: 
+//        case VM::HYPERV_EVENT_LOGS:
+//        case VM::VMWARE_EVENT_LOGS:
+//        case VM::KMSG: 
+//        case VM::VM_PROCS: 
+//        case VM::PODMAN_FILE: return true;
+//        default: return false;
+//    }
+//}
 
 #if (LINUX)
 bool is_admin() {
@@ -344,6 +366,212 @@ bool is_disabled(const VM::enum_flags flag) {
 }
 
 
+bool is_unsupported(VM::enum_flags flag) {
+    auto linux_techniques = [](VM::enum_flags p_flag) {
+        switch (p_flag) {
+            case VM::VMID:
+            case VM::CPU_BRAND:
+            case VM::HYPERVISOR_BIT:
+            case VM::HYPERVISOR_STR:
+            case VM::RDTSC:
+            case VM::THREADCOUNT:
+            case VM::MAC:
+            case VM::TEMPERATURE:
+            case VM::SYSTEMD:
+            case VM::CVENDOR:
+            case VM::CTYPE:
+            case VM::DOCKERENV:
+            case VM::DMIDECODE:
+            case VM::DMESG:
+            case VM::HWMON:
+            case VM::SIDT5:
+            case VM::DISK_SIZE:
+            case VM::VBOX_DEFAULT:
+            case VM::LINUX_USER_HOST:
+            case VM::VMID_0X4:
+            case VM::RDTSC_VMEXIT:
+            case VM::QEMU_BRAND:
+            case VM::BOCHS_CPU:
+            case VM::QEMU_GA:
+            case VM::SIDT:
+            case VM::VMWARE_IOMEM:
+            case VM::VMWARE_IOPORTS:
+            case VM::VMWARE_SCSI:
+            case VM::VMWARE_DMESG:
+            case VM::UPTIME:
+            case VM::ODD_CPU_THREADS:
+            case VM::INTEL_THREAD_MISMATCH:
+            case VM::XEON_THREAD_MISMATCH:
+            case VM::CPUID_BITSET:
+            case VM::HYPERV_HOSTNAME:
+            case VM::GENERAL_HOSTNAME:
+            case VM::BLUESTACKS_FOLDERS:
+            case VM::CPUID_SIGNATURE:
+            case VM::HYPERV_BITMASK:
+            case VM::KVM_BITMASK:
+            case VM::KGT_SIGNATURE:
+            case VM::QEMU_VIRTUAL_DMI:
+            case VM::QEMU_USB:
+            case VM::HYPERVISOR_DIR:
+            case VM::UML_CPU:
+            case VM::KMSG:
+            case VM::VM_PROCS:
+            case VM::VBOX_MODULE:
+            case VM::SYSINFO_PROC:
+            case VM::DEVICE_TREE:
+            case VM::DMI_SCAN:
+            case VM::SMBIOS_VM_BIT:
+            case VM::PODMAN_FILE:
+            case VM::WSL_PROC: return false;
+            default: return true;
+        }        
+    };
+
+
+    auto windows_techniques = [](VM::enum_flags p_flag) {
+        switch (p_flag) {
+            case VM::VMID:
+            case VM::CPU_BRAND:
+            case VM::HYPERVISOR_BIT:
+            case VM::HYPERVISOR_STR:
+            case VM::RDTSC:
+            case VM::THREADCOUNT:
+            case VM::MAC:
+            case VM::VMWARE_REG:
+            case VM::VBOX_REG:
+            case VM::USER:
+            case VM::DLL:
+            case VM::REGISTRY:
+            case VM::VM_FILES:
+            case VM::VBOX_DEFAULT:
+            case VM::VBOX_NETWORK:
+            case VM::COMPUTER_NAME:
+            case VM::WINE_CHECK:
+            case VM::HOSTNAME:
+            case VM::VBOX_WINDOW_CLASS:
+            case VM::LOADED_DLLS:
+            case VM::KVM_REG:
+            case VM::KVM_DRIVERS:
+            case VM::KVM_DIRS:
+            case VM::AUDIO:
+            case VM::QEMU_DIR:
+            case VM::VM_PROCESSES:
+            case VM::GAMARUE:
+            case VM::VMID_0X4:
+            case VM::PARALLELS_VM:
+            case VM::RDTSC_VMEXIT:
+            case VM::QEMU_BRAND:
+            case VM::BOCHS_CPU:
+            case VM::VPC_BOARD:
+            case VM::HYPERV_WMI:
+            case VM::HYPERV_REG:
+            case VM::BIOS_SERIAL:
+            case VM::MSSMBIOS:
+            case VM::HKLM_REGISTRIES:
+            case VM::VALID_MSR:
+            case VM::QEMU_PROC:
+            case VM::VPC_PROC:
+            case VM::VPC_INVALID:
+            case VM::SIDT:
+            case VM::SGDT:
+            case VM::SLDT:
+            case VM::OFFSEC_SIDT:
+            case VM::OFFSEC_SGDT:
+            case VM::OFFSEC_SLDT:
+            case VM::HYPERV_BOARD:
+            case VM::VM_FILES_EXTRA:
+            case VM::VPC_SIDT:
+            case VM::VMWARE_STR:
+            case VM::VMWARE_BACKDOOR:
+            case VM::VMWARE_PORT_MEM:
+            case VM::SMSW:
+            case VM::MUTEX:
+            case VM::UPTIME:
+            case VM::ODD_CPU_THREADS:
+            case VM::INTEL_THREAD_MISMATCH:
+            case VM::XEON_THREAD_MISMATCH:
+            case VM::NETTITUDE_VM_MEMORY:
+            case VM::CPUID_BITSET:
+            case VM::CUCKOO_DIR:
+            case VM::CUCKOO_PIPE:
+            case VM::HYPERV_HOSTNAME:
+            case VM::GENERAL_HOSTNAME:
+            case VM::SCREEN_RESOLUTION:
+            case VM::DEVICE_STRING:
+            case VM::CPUID_SIGNATURE:
+            case VM::HYPERV_BITMASK:
+            case VM::KVM_BITMASK:
+            case VM::KGT_SIGNATURE:
+            case VM::VMWARE_DMI:
+            case VM::HYPERV_EVENT_LOGS:
+            case VM::VMWARE_EVENT_LOGS:
+            case VM::GPU_CHIPTYPE:
+            case VM::DRIVER_NAMES:
+            case VM::VM_SIDT:
+            case VM::HDD_SERIAL:
+            case VM::PORT_CONNECTORS:
+            case VM::VM_HDD:
+            case VM::ACPI_DETECT:
+            case VM::GPU_NAME:
+            case VM::VMWARE_DEVICES:
+            case VM::VMWARE_MEMORY:
+            case VM::IDT_GDT_MISMATCH:
+            case VM::PROCESSOR_NUMBER:
+            case VM::NUMBER_OF_CORES:
+            case VM::WMI_MODEL:
+            case VM::WMI_MANUFACTURER:
+            case VM::WMI_TEMPERATURE:
+            case VM::PROCESSOR_ID:
+            case VM::CPU_FANS:
+            case VM::POWER_CAPABILITIES:
+            case VM::SETUPAPI_DISK: return false;
+            default: return true;
+        }
+    };
+
+
+    auto macos_techniques = [](VM::enum_flags p_flag) {
+        switch (p_flag) {
+            case VM::VMID:
+            case VM::CPU_BRAND:
+            case VM::HYPERVISOR_BIT:
+            case VM::HYPERVISOR_STR:
+            case VM::THREADCOUNT:
+            case VM::HWMODEL:
+            case VM::VMID_0X4:
+            case VM::RDTSC_VMEXIT:
+            case VM::QEMU_BRAND:
+            case VM::BOCHS_CPU:
+            case VM::VPC_BOARD:
+            case VM::MAC_MEMSIZE:
+            case VM::MAC_IOKIT:
+            case VM::IOREG_GREP:
+            case VM::MAC_SIP:
+            case VM::UPTIME:
+            case VM::ODD_CPU_THREADS:
+            case VM::INTEL_THREAD_MISMATCH:
+            case VM::XEON_THREAD_MISMATCH:
+            case VM::CPUID_BITSET:
+            case VM::CPUID_SIGNATURE:
+            case VM::HYPERV_BITMASK:
+            case VM::KVM_BITMASK:
+            case VM::KGT_SIGNATURE: return false;
+            default: return true;
+        }
+    };
+
+
+    if constexpr (LINUX) {
+        return linux_techniques(flag);
+    } else if constexpr (WINDOWS) {
+        return windows_techniques(flag);
+    } else if constexpr (APPLE) {
+        return macos_techniques(flag);
+    } else {
+        return true;
+    }
+}
+
 std::bitset<max_bits> settings() {
     std::bitset<max_bits> tmp;
 
@@ -358,6 +586,10 @@ std::bitset<max_bits> settings() {
     if (arg_bitset.test(ALL)) {
         tmp |= VM::ALL;
         tmp.set(VM::SPOOFABLE);
+    }
+
+    if (arg_bitset.test(DYNAMIC)) {
+        tmp.set(VM::DYNAMIC);
     }
 
     return tmp;
@@ -382,7 +614,7 @@ void replace(std::string &text, const std::string &original, const std::string &
  * @copyright MIT
  */
 [[nodiscard]] static bool anyrun_driver() {
-#if (!MSVC)
+#if (!WINDOWS)
     return false;
 #else
     HANDLE hFile;
@@ -416,7 +648,7 @@ void replace(std::string &text, const std::string &original, const std::string &
  * @copyright MIT
  */
 [[nodiscard]] static bool anyrun_directory() {
-#if (!MSVC)
+#if (!WINDOWS)
     return false;
 #else
     NTSTATUS status;
@@ -461,16 +693,18 @@ void replace(std::string &text, const std::string &original, const std::string &
 
 
 void checker(const VM::enum_flags flag, const char* message) {
-    if (is_spoofable(flag)) {
-        if (!arg_bitset.test(SPOOFABLE)) {
-            std::cout << spoofable << " Skipped " << message << "\n";
-            return;
-        }
-    }
+    //if (is_spoofable(flag)) {
+    //    if (!arg_bitset.test(SPOOFABLE)) {
+    //        std::cout << spoofable << " Skipped " << message << "\n";
+    //        return;
+    //    }
+    //}
 
 #if (LINUX)
     if (are_perms_required(flag)) {
         std::cout << no_perms << " Skipped " << message << "\n";
+
+        no_perms_count++;
 
         // memoize it, it's going to be ran later anyway with stuff like VM::detect()
         VM::check(flag);
@@ -479,10 +713,21 @@ void checker(const VM::enum_flags flag, const char* message) {
     }
 #endif
 
+    if (arg_bitset.test(VERBOSE)) {
+        if (is_unsupported(flag)) {
+            unsupported_count++;
+        } else {
+            supported_count++;
+        }
+    }
+
+
     if (is_disabled(flag)) {
         std::cout << disabled << " Skipped " << message << "\n";
+        disabled_count++;
         return;
     }
+
 
     std::cout << 
         (VM::check(flag) ? detected : not_detected) << 
@@ -495,6 +740,12 @@ void checker(const VM::enum_flags flag, const char* message) {
 // overload for std::function, this is specific for any.run techniques
 // that are embedded in the CLI because it was removed in the lib as of 2.0
 void checker(const std::function<bool()> &func, const char* message) {
+    if (!WINDOWS && arg_bitset.test(VERBOSE)) {
+        unsupported_count++;
+    } else {
+        supported_count++;
+    }
+
     std::cout << 
         (func() ? detected : not_detected) << 
         " Checking " << 
@@ -634,7 +885,8 @@ void general() {
     checker(VM::KVM_BITMASK, "KVM CPUID reserved bitmask");
     checker(VM::KGT_SIGNATURE, "Intel KGT signature");
     checker(VM::VMWARE_DMI, "VMware DMI");
-    checker(VM::EVENT_LOGS, "Hyper-V event logs");
+    checker(VM::HYPERV_EVENT_LOGS, "Hyper-V event logs");
+    checker(VM::VMWARE_EVENT_LOGS, "VMware event logs");
     checker(VM::QEMU_VIRTUAL_DMI, "QEMU virtual DMI directory");
     checker(VM::QEMU_USB, "QEMU USB");
     checker(VM::HYPERVISOR_DIR, "Hypervisor directory (Linux)");
@@ -652,11 +904,24 @@ void general() {
     checker(anyrun_directory, "ANY.RUN directory");
     checker(VM::GPU_CHIPTYPE, "GPU chip name");
     checker(VM::DRIVER_NAMES, "driver names");
-    checker(VM::VBOX_IDT, "VirtualBox SIDT");
+    checker(VM::VM_SIDT, "VM SIDT");
     checker(VM::HDD_SERIAL, "HDD serial number");
     checker(VM::PORT_CONNECTORS, "Physical connection ports");
-    checker(VM::QEMU_HDD, "QEMU in HDD model");
-    checker(VM::ACPI_HYPERV, "ACPI Hyper-V");
+    checker(VM::VM_HDD, "VM keywords in HDD model");
+    checker(VM::ACPI_DETECT, "ACPI Hyper-V");
+    checker(VM::GPU_NAME, "GPU name");
+    checker(VM::VMWARE_DEVICES, "VMware devices");
+    checker(VM::VMWARE_MEMORY, "VM memory traces");
+    checker(VM::IDT_GDT_MISMATCH, "IDT GDT mismatch");
+    checker(VM::PROCESSOR_NUMBER, "Processor count");
+    checker(VM::NUMBER_OF_CORES, "CPU core count");
+    checker(VM::WMI_MODEL, "Hardware model");
+    checker(VM::WMI_MANUFACTURER, "Hardware manufacturer");
+    checker(VM::WMI_TEMPERATURE, "WMI temperature");
+    checker(VM::PROCESSOR_ID, "Processor ID");
+    checker(VM::CPU_FANS, "CPU fans");
+    checker(VM::POWER_CAPABILITIES, "Power capabilities");
+    checker(VM::SETUPAPI_DISK, "SETUPDI diskdrive");
 
     std::printf("\n");
 
@@ -748,7 +1013,20 @@ void general() {
             "/" <<
             static_cast<u32>(vm.technique_count) << 
             ansi_exit <<
-            "\n\n";
+            "\n";
+    }
+
+
+    // misc manager
+    {
+        if (arg_bitset.test(VERBOSE)) {
+            std::cout << "\nUnsupported detections: " << static_cast<u32>(unsupported_count) << "\n";
+            std::cout << "Supported detections: " << static_cast<u32>(supported_count) << "\n";
+            std::cout << "No permission detections: " << static_cast<u32>(no_perms_count) << "\n";
+            std::cout << "Disabled detections: " << static_cast<u32>(disabled_count) << "\n";
+        }
+
+        std::printf("\n");
     }
 
 
@@ -766,18 +1044,19 @@ void general() {
             << ansi_exit
             << "\n\n";
     }
-    
+
 
     // finishing touches with notes
     if (notes_enabled) {
         if ((vm.brand == "Hyper-V artifact (not an actual VM)")) {
             std::cout << note << " The result means that the CLI has found Hyper-V, but as an artifact instead of an actual VM. This means that although the hardware values in fact match with Hyper-V due to how it's designed by Microsoft, the CLI has determined you are NOT in a Hyper-V VM.\n\n";
-        } 
+        } else
 
-        if (!arg_bitset.test(SPOOFABLE) && !arg_bitset.test(ALL)) {
-            const std::string tip = (green + "TIP: " + ansi_exit);
-            std::cout << tip << "To enable easily spoofable techniques, run with the \"--spoofable\" argument\n\n";
-        } else {
+        //if (!arg_bitset.test(SPOOFABLE) && !arg_bitset.test(ALL)) {
+        //    const std::string tip = (green + "TIP: " + ansi_exit);
+        //    std::cout << tip << "To enable easily spoofable techniques, run with the \"--spoofable\" argument\n\n";
+        //} else 
+        if (vm.detected_count != 0) {
             std::cout << note << " If you found a false positive, please make sure to create an issue at https://github.com/kernelwernel/VMAware/issues\n\n";
         }
     }
@@ -785,7 +1064,7 @@ void general() {
 
 
 int main(int argc, char* argv[]) {
-#if (MSVC)
+#if (WINDOWS)
     win_ansi_enabler_t ansi_enabler;
 #endif
 
@@ -802,7 +1081,7 @@ int main(int argc, char* argv[]) {
         std::exit(0);
     }
 
-    static constexpr std::array<std::pair<const char*, arg_enum>, 26> table {{
+    static constexpr std::array<std::pair<const char*, arg_enum>, 29> table {{
         { "-h", HELP },
         { "-v", VERSION },
         { "-a", ALL },
@@ -814,6 +1093,7 @@ int main(int argc, char* argv[]) {
         { "-l", BRAND_LIST },
         { "-n", NUMBER },
         { "-t", TYPE },
+        { "help", HELP },
         { "--help", HELP },
         { "--version", VERSION },
         { "--all", ALL },
@@ -828,6 +1108,8 @@ int main(int argc, char* argv[]) {
         { "--disable-notes", NOTES },
         { "--spoofable", SPOOFABLE },
         { "--high-threshold", HIGH_THRESHOLD },
+        { "--dynamic", DYNAMIC },
+        { "--verbose", VERBOSE },
         { "--no-color", NO_COLOR }
     }};
 
@@ -914,7 +1196,7 @@ int main(int argc, char* argv[]) {
 
         if (arg_bitset.test(TYPE)) {
             std::string type = VM::type(VM::NO_MEMO, VM::MULTIPLE, settings());
-            
+
             if (is_anyrun && (type == "Unknown")) {
                 type = "Sandbox";
             }

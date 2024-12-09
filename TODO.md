@@ -52,13 +52,12 @@
 - [ ] fix the issue of VM::QEMU_USB being ultra slow
 - [X] make a MIT transformer python script from GPL to MIT
 - [ ] /sys/class/dmi/id/product_name check this in qemu
-- [ ] update sourceforge
 - [X] fix the VM::vmaware struct
 - [X] do the ACPI technique and add it to hyper-x
 - [X] "running inside AN unknown VM" instead of "a unknown" for conclusion message
 - [X] fix the DMESG error thing
 - [ ] do the IDT thing
-- [ ] filesystem idea from requiemn
+- [X] filesystem idea from requiem
 - [X] update the graph with wmi 
 - [ ] add linux support for the hdd_serial_number technique
 - [X] update the hyper-x graph to v5 with the acpi thingy
@@ -68,6 +67,11 @@
 - [ ] dxdiag technique from utoshu
 - [ ] redesign the cli so that it has the "NO SUPPORT" category of techniques (and also make a table instead)
 - [ ] double check the vmid_template function
+- [ ] update sourceforge
+- [ ] scan for QEMU strings in QEMU VM
+- [ ] add a python script that will automatically add a new technique in the header, CLI, and docs without manually configuring it and potentially forgetting to update one of them
+- [ ] rearrange the techniques so that the more likely ones will be executed first
+- [ ] add VM::DYNAMIC to the conclusion function docs
 
 # Distant plans
 - add the library to conan.io when released
