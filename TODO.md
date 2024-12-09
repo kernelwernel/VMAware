@@ -52,7 +52,6 @@
 - [ ] fix the issue of VM::QEMU_USB being ultra slow
 - [X] make a MIT transformer python script from GPL to MIT
 - [ ] /sys/class/dmi/id/product_name check this in qemu
-- [ ] update sourceforge
 - [X] fix the VM::vmaware struct
 - [X] do the ACPI technique and add it to hyper-x
 - [X] "running inside AN unknown VM" instead of "a unknown" for conclusion message
@@ -68,7 +67,8 @@
 - [ ] dxdiag technique from utoshu
 - [ ] redesign the cli so that it has the "NO SUPPORT" category of techniques (and also make a table instead)
 - [ ] double check the vmid_template function
-- [ ] fix is_spoofable in the CLI, some techniques might not be spoofable and need updating
+- [ ] update sourceforge
+- [ ] scan for QEMU strings in QEMU VM
 
 # Distant plans
 - add the library to conan.io when released

@@ -257,55 +257,55 @@ ANY.RUN
     std::exit(0);
 }
 
-bool is_spoofable(const VM::enum_flags flag) {
-    if (arg_bitset.test(ALL)) {
-        return false;
-    }
-
-    switch (flag) {
-        case VM::MAC:
-        case VM::DOCKERENV:
-        case VM::HWMON:
-        case VM::VMWARE_REG:
-        case VM::VBOX_REG:
-        case VM::USER:
-        case VM::DLL:
-        case VM::REGISTRY:
-        case VM::VM_FILES:
-        case VM::HWMODEL:
-        case VM::COMPUTER_NAME:
-        case VM::HOSTNAME:
-        case VM::KVM_REG:
-        case VM::KVM_DRIVERS:
-        case VM::KVM_DIRS:
-        case VM::LOADED_DLLS:
-        case VM::QEMU_DIR:
-        case VM::VM_PROCESSES:
-        case VM::LINUX_USER_HOST:
-        case VM::HYPERV_REG:
-        case VM::MAC_MEMSIZE:
-        case VM::MAC_IOKIT:
-        case VM::IOREG_GREP:
-        case VM::MAC_SIP:
-        case VM::HKLM_REGISTRIES:
-        case VM::QEMU_GA:
-        case VM::QEMU_PROC:
-        case VM::VPC_PROC:
-        case VM::VM_FILES_EXTRA:
-        case VM::UPTIME:
-        case VM::CUCKOO_DIR:
-        case VM::CUCKOO_PIPE:
-        case VM::HYPERV_HOSTNAME:
-        case VM::GENERAL_HOSTNAME:
-        case VM::BLUESTACKS_FOLDERS: 
-        case VM::HYPERV_EVENT_LOGS:
-        case VM::VMWARE_EVENT_LOGS:
-        case VM::KMSG: 
-        case VM::VM_PROCS: 
-        case VM::PODMAN_FILE: return true;
-        default: return false;
-    }
-}
+//bool is_spoofable(const VM::enum_flags flag) {
+//    if (arg_bitset.test(ALL)) {
+//        return false;
+//    }
+//
+//    switch (flag) {
+//        case VM::MAC:
+//        case VM::DOCKERENV:
+//        case VM::HWMON:
+//        case VM::VMWARE_REG:
+//        case VM::VBOX_REG:
+//        case VM::USER:
+//        case VM::DLL:
+//        case VM::REGISTRY:
+//        case VM::VM_FILES:
+//        case VM::HWMODEL:
+//        case VM::COMPUTER_NAME:
+//        case VM::HOSTNAME:
+//        case VM::KVM_REG:
+//        case VM::KVM_DRIVERS:
+//        case VM::KVM_DIRS:
+//        case VM::LOADED_DLLS:
+//        case VM::QEMU_DIR:
+//        case VM::VM_PROCESSES:
+//        case VM::LINUX_USER_HOST:
+//        case VM::HYPERV_REG:
+//        case VM::MAC_MEMSIZE:
+//        case VM::MAC_IOKIT:
+//        case VM::IOREG_GREP:
+//        case VM::MAC_SIP:
+//        case VM::HKLM_REGISTRIES:
+//        case VM::QEMU_GA:
+//        case VM::QEMU_PROC:
+//        case VM::VPC_PROC:
+//        case VM::VM_FILES_EXTRA:
+//        case VM::UPTIME:
+//        case VM::CUCKOO_DIR:
+//        case VM::CUCKOO_PIPE:
+//        case VM::HYPERV_HOSTNAME:
+//        case VM::GENERAL_HOSTNAME:
+//        case VM::BLUESTACKS_FOLDERS: 
+//        case VM::HYPERV_EVENT_LOGS:
+//        case VM::VMWARE_EVENT_LOGS:
+//        case VM::KMSG: 
+//        case VM::VM_PROCS: 
+//        case VM::PODMAN_FILE: return true;
+//        default: return false;
+//    }
+//}
 
 #if (LINUX)
 bool is_admin() {
@@ -480,12 +480,12 @@ void replace(std::string &text, const std::string &original, const std::string &
 
 
 void checker(const VM::enum_flags flag, const char* message) {
-    if (is_spoofable(flag)) {
-        if (!arg_bitset.test(SPOOFABLE)) {
-            std::cout << spoofable << " Skipped " << message << "\n";
-            return;
-        }
-    }
+    //if (is_spoofable(flag)) {
+    //    if (!arg_bitset.test(SPOOFABLE)) {
+    //        std::cout << spoofable << " Skipped " << message << "\n";
+    //        return;
+    //    }
+    //}
 
 #if (LINUX)
     if (are_perms_required(flag)) {
@@ -680,7 +680,7 @@ void general() {
     checker(VM::GPU_NAME, "GPU name");
     checker(VM::VMWARE_DEVICES, "VMware devices");
     checker(VM::VMWARE_MEMORY, "VM memory traces");
-    checker(VM::CPU_CORES, "CPU cores");
+    checker(VM::CPU_CORES, "IDT & GDT mismatch");
 
     std::printf("\n");
 

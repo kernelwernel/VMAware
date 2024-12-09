@@ -570,6 +570,7 @@ This is the table of all the brands the library supports.
 |    | --spoofable | Allow spoofable techniques to be ran (not included by default) |
 |    | --high-threshold | A higher theshold bar for a VM detection will be applied |
 |    | --no-color | Removes all the color, this is added due to some terminals not supporting ANSI escape codes while cluttering the output |
+|    | --dynamic | allow the conclusion message to be dynamic (8 possibilities instead of only 2) |
 > [!NOTE]
 > If you want a general result of everything combined above, do not put any arguments. This is the intended way to use the CLI tool.
 >

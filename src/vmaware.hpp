@@ -2593,7 +2593,7 @@ public:
 
         [[nodiscard]] static bool motherboard_string(const char* vm_string) {
             if (!wmi::initialize()) {
-                std::cerr << "Failed to initialize WMI.\n";
+                core_debug("Failed to initialize WMI");
                 return false;
             }
 
@@ -5434,7 +5434,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #else
         if (!wmi::initialize()) {
-            std::cerr << "Failed to initialize WMI.\n";
+            core_debug("Failed to initialize WMI");
             return false;
         }
 
@@ -8719,7 +8719,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #else
         if (!wmi::initialize()) {
-            std::cerr << "Failed to initialize WMI.\n";
+            core_debug("Failed to initialize WMI");
             return false;
         }
 
@@ -8840,7 +8840,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #else
         if (!wmi::initialize()) {
-            debug("HDD serial number: Failed to initialize WMI");
+            core_debug("HDD serial number: Failed to initialize WMI");
             return false;
         }
 
@@ -9287,13 +9287,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     continue;
                 }
 
-                // check if it's spoofable, and whether it's enabled
-                if (
-                    technique_data.is_spoofable && 
-                    core::is_disabled(flags, SPOOFABLE)
-                ) {
-                    continue;
-                }
+                // check if it's spoofable, and whether it's enabled (NOTE: SPOOFABILITY IS DEPRECATED)
+                //if (
+                //    technique_data.is_spoofable && 
+                //    core::is_disabled(flags, SPOOFABLE)
+                //) {
+                //    continue;
+                //}
 
                 // check if the technique is cached already
                 if (memo_enabled && memo::is_cached(technique_macro)) {
@@ -10729,5 +10729,5 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::GPU_NAME, { 100, VM::vm_gpu, false } },
     { VM::VMWARE_DEVICES, { 45, VM::vmware_devices, true } }, 
     { VM::VMWARE_MEMORY, { 50, VM::vmware_memory, false } },
-    { VM::CPU_CORES, { 50, VM::cpu_cores, false } },
+    { VM::CPU_CORES, { 50, VM::cpu_cores, false } }
 };
