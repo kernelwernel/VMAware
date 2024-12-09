@@ -455,11 +455,24 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::ANYRUN_DIRECTORY` | Check for any.run directory and handle the status code | Windows | 35% |  |  |  |  | Removed from the lib, only available in the CLI |
 | `VM::GPU_CHIPTYPE` | Check for known VM vendors in the GPU chip manufacturer | Windows | 100% |  |  |  |  |  |
 | `VM::DRIVER_NAMES` | Check for VM-specific names for drivers | Windows | 50% |  |  |  |  |  |
-| `VM::VBOX_IDT` | Check for the VirtualBox IDT base address | Windows | 75% |  |  |  |  |  |
+| `VM::VM_SIDT` | Check for the VirtualBox IDT base address | Windows | 75% |  |  |  |  |  |
 | `VM::HDD_SERIAL` | Check for HDD serial number | Windows | 100% |  |  |  |  |  |
 | `VM::PORT_CONNECTORS` | Check for physical connection ports | Windows | 50% |  |  |  |  |  |
 | `VM::VM_HDD` | Check for QEMU keyword in HDD model | Windows | 75% |  |  |  |  |  |
-| `VM::ACPI_HYPERV` | Check for Hyper-V string in ACPI data | Windows | 85% |  |  |  |  |  |
+| `VM::ACPI_DETECT` | Check for Hyper-V string in ACPI data | Windows | 85% |  |  |  |  |  |
+| `VM::GPU_NAME` | Check for VM specific device names in GPUs | Windows | 100% |  |  |  |  |  |
+| `VM::VMWARE_DEVICES` | Check for VMware-specific devices | Windows | 45% |  |  |  | Spoofable |  |
+| `VM::VMWARE_MEMORY` | Check for VMware-specific memory trace in a specific process | Windows | 50% |  |  |  |  |  |
+| `VM::IDT_GDT_MISMATCH` | Check if the IDT and GDT limit addresses mismatch between different CPU cores | Windows | 25% |  |  |  | Spoofable |  |
+| `VM::PROCESSOR_NUMBER` | Check for number of processors | Windows | 25% |  |  |  |  |  |
+| `VM::NUMBER_OF_CORES` | Check for number of cores | Windows | 50% |  |  |  |  |  |
+| `VM::WMI_MODEL` | Check for device's model using WMI | Windows | 100% |  |  |  |  |  |
+| `VM::WMI_MANUFACTURER` | Check for device's manufacturer using WMI | Windows | 100% |  |  |  |  |  |
+| `VM::WMI_TEMPERATURE` | Check for device's temperature | Windows | 25% |  |  |  |  |  |
+| `VM::PROCESSOR_ID` | Check for empty processor ids using WMI | Windows | 25% |  |  |  |  |  |
+| `VM::CPU_FANS` | Check for CPU Fans | Windows | 35% |  |  |  |  |  |
+| `VM::POWER_CAPABILITIES` | Check what power states are enabled | Windows | 25% |  | GPL |  |  |  |
+| `VM::SETUPAPI_DISK` | Checks for virtual machine signatures in disk drive device identifiers | Windows | 20% |  | GPL |  |  |  |
 
 
 <br>

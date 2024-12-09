@@ -360,6 +360,8 @@ public:
 /* GPL */ KVM_DIRS,
 /* GPL */ AUDIO,
 /* GPL */ QEMU_DIR,
+/* GPL */ POWER_CAPABILITIES,
+/* GPL */ SETUPAPI_DISK,
         VM_PROCESSES,
         LINUX_USER_HOST,
         GAMARUE,
@@ -444,7 +446,7 @@ public:
         GPU_NAME,
         VMWARE_DEVICES,
         VMWARE_MEMORY,
-        CPU_CORES,
+        IDT_GDT_MISMATCH,
         PROCESSOR_NUMBER,
         NUMBER_OF_CORES,
         WMI_MODEL,
@@ -452,8 +454,6 @@ public:
         WMI_TEMPERATURE,
         PROCESSOR_ID,
         CPU_FANS,
-        POWER_CAPABILITIES,
-        SETUPAPI_DISK,
         
 
         // start of settings technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
@@ -3760,21 +3760,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Linux, Windows
      */
     [[nodiscard]] static bool disk_size() {
-#if (LINUX)
+#if (!LINUX && !WINDOWS)
+        return false;
+#else
         const u32 size = util::get_disk_size();
 
         debug("DISK_SIZE: size = ", size);
 
         return (size <= 80); // Check if disk size is <= 80GB
-#elif (WINDOWS)
-        const u32 size = util::get_disk_size();
-        const u32 min_size = 80;
-
-        debug("DISK_SIZE: size = ", size);
-
-        return (size <= min_size); // Check if disk size is <= 80GB
-#else
-        return false;
 #endif
     }
 
@@ -4280,6 +4273,91 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */     }
 /* GPL */ 
 /* GPL */ 
+/* GPL */     // @brief Check what power states are enabled
+/* GPL */     // @category Windows
+/* GPL */     // @author Al-Khaser project
+/* GPL */     [[nodiscard]] static bool power_capabilities() {
+/* GPL */ #if (!WINDOWS)
+/* GPL */         return false;
+/* GPL */ #else
+/* GPL */         SYSTEM_POWER_CAPABILITIES powerCaps;
+/* GPL */         bool power_stats = false;
+/* GPL */         if (GetPwrCapabilities(&powerCaps) == TRUE)
+/* GPL */         {
+/* GPL */             if ((powerCaps.SystemS1 | powerCaps.SystemS2 | powerCaps.SystemS3 | powerCaps.SystemS4) == FALSE)
+/* GPL */             {
+/* GPL */                 power_stats = (powerCaps.ThermalControl == FALSE);
+/* GPL */             }
+/* GPL */         }
+/* GPL */ 
+/* GPL */         return power_stats;
+/* GPL */ #endif
+/* GPL */     }
+/* GPL */ 
+/* GPL */ 
+/* GPL */     // @brief Checks for virtual machine signatures in disk drive device identifiers
+/* GPL */     // @category Windows
+/* GPL */     // @author Al-Khaser project
+/* GPL */     [[nodiscard]] static bool setupapi_disk() {
+/* GPL */ #if (!WINDOWS)
+/* GPL */         return false;
+/* GPL */ #else
+/* GPL */         HDEVINFO hDevInfo;
+/* GPL */         SP_DEVINFO_DATA DeviceInfoData{};
+/* GPL */         DWORD i;
+/* GPL */ 
+/* GPL */         constexpr GUID GUID_DEVCLASS_DISKDRIVE = {
+/* GPL */             0x4d36e967L, 0xe325, 0x11ce,
+/* GPL */             { 0xbf, 0xc1, 0x08, 0x00, 0x2b, 0xe1, 0x03, 0x18 }
+/* GPL */         };
+/* GPL */ 
+/* GPL */         hDevInfo = SetupDiGetClassDevsA((LPGUID)&GUID_DEVCLASS_DISKDRIVE,
+/* GPL */             0,
+/* GPL */             0,
+/* GPL */             DIGCF_PRESENT);
+/* GPL */ 
+/* GPL */         if (hDevInfo == INVALID_HANDLE_VALUE)
+/* GPL */             return false;
+/* GPL */ 
+/* GPL */         DeviceInfoData.cbSize = sizeof(SP_DEVINFO_DATA);
+/* GPL */         DWORD dwPropertyRegDataType;
+/* GPL */         LPTSTR buffer = NULL;
+/* GPL */         DWORD dwSize = 0;
+/* GPL */ 
+/* GPL */         for (i = 0; SetupDiEnumDeviceInfo(hDevInfo, i, &DeviceInfoData); i++)
+/* GPL */         {
+/* GPL */             while (!SetupDiGetDeviceRegistryPropertyA(hDevInfo, &DeviceInfoData, SPDRP_HARDWAREID,
+/* GPL */                 &dwPropertyRegDataType, (PBYTE)buffer, dwSize, &dwSize))
+/* GPL */             {
+/* GPL */                 if (GetLastError() == ERROR_INSUFFICIENT_BUFFER) {
+/* GPL */                     if (buffer)LocalFree(buffer);
+/* GPL */                     buffer = (LPTSTR)LocalAlloc(LPTR, static_cast<SIZE_T>(dwSize) * 2);
+/* GPL */                     if (buffer == NULL)
+/* GPL */                         break;
+/* GPL */                 }
+/* GPL */                 else
+/* GPL */                     break;
+/* GPL */ 
+/* GPL */             }
+/* GPL */ 
+/* GPL */             if (buffer) {
+/* GPL */                 if ((StrStrIA(buffer, _T("vbox")) != NULL) ||
+/* GPL */                     (StrStrIA(buffer, _T("vmware")) != NULL) ||
+/* GPL */                     (StrStrIA(buffer, _T("qemu")) != NULL) ||
+/* GPL */                     (StrStrIA(buffer, _T("virtual")) != NULL))
+/* GPL */                 {
+/* GPL */                     return true;
+/* GPL */                 }
+/* GPL */             }
+/* GPL */         }
+/* GPL */ 
+/* GPL */         if (buffer) LocalFree(buffer);
+/* GPL */         SetupDiDestroyDeviceInfoList(hDevInfo);
+/* GPL */         if (GetLastError() != NO_ERROR && GetLastError() != ERROR_NO_MORE_ITEMS) return false;
+/* GPL */ 
+/* GPL */         return false;
+/* GPL */ #endif
+/* GPL */     }
 
 
     /**
@@ -9099,7 +9177,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Windows, x64
      * @author Requiem (https://github.com/NotRequiem)
      */
-    [[nodiscard]] static bool cpu_cores() {
+    [[nodiscard]] static bool idt_gdt_mismatch() {
 #if (!WINDOWS)
         return false;
 #else
@@ -9155,7 +9233,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for number of processors
      * @category Windows
-     * @author Al-Khaser Project
+     * @author idea from Al-Khaser project
      */
     [[nodiscard]] static bool processor_number()
     {
@@ -9180,7 +9258,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for number of cores
      * @category Windows
-     * @author Al-Khaser Project
+     * @author idea from Al-Khaser project
      */
     [[nodiscard]] static bool number_of_cores() {
 #if (!WINDOWS)
@@ -9211,7 +9289,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for device's model using WMI
      * @category Windows
-     * @author Al-Khaser Project
+     * @author idea from Al-Khaser project
      */
     [[nodiscard]] static bool wmi_model() {
 #if (!WINDOWS)
@@ -9240,7 +9318,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for device's manufacturer using WMI
      * @category Windows
-     * @author Al-Khaser Project
+     * @author idea from Al-Khaser project
      */
     [[nodiscard]] static bool wmi_manufacturer() {
 #if (!WINDOWS)
@@ -9269,7 +9347,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for device's temperature
      * @category Windows
-     * @author Al-Khaser Project
+     * @author idea from Al-Khaser project
      */
     [[nodiscard]] static bool wmi_temperature() {
 #if (!WINDOWS)
@@ -9298,7 +9376,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for empty processor ids using wmi
      * @category Windows
-     * @author Al-Khaser Project
+     * @author idea from Al-Khaser project
      */
     [[nodiscard]] static bool processor_id() {
 #if (!WINDOWS)
@@ -9327,7 +9405,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for CPU Fans
      * @category Windows
-     * @author Al-Khaser Project
+     * @author idea from Al-Khaser project
      */
     [[nodiscard]] static bool cpu_fans() {
 #if (!WINDOWS)
@@ -9342,97 +9420,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         wmi_result results = wmi::execute(query, properties);
 
         return !results.empty();
-#endif
-    }
-
-
-    /**
-     * @brief Check what power states are enabled
-     * @category Windows
-     * @author Al-Khaser Project
-     */
-    [[nodiscard]] static bool power_capabilities() {
-#if (!WINDOWS)
-        return false;
-#else
-        SYSTEM_POWER_CAPABILITIES powerCaps;
-        bool power_stats = false;
-        if (GetPwrCapabilities(&powerCaps) == TRUE)
-        {
-            if ((powerCaps.SystemS1 | powerCaps.SystemS2 | powerCaps.SystemS3 | powerCaps.SystemS4) == FALSE)
-            {
-                power_stats = (powerCaps.ThermalControl == FALSE);
-            }
-        }
-
-        return power_stats;
-#endif
-    }
-
-
-     /**
-      * @brief Checks for virtual machine signatures in disk drive device identifiers
-      * @category Windows
-      * @author Al-Khaser Project
-      */
-    [[nodiscard]] static bool setupapi_disk() {
-#if (!WINDOWS)
-        return false;
-#else
-        HDEVINFO hDevInfo;
-        SP_DEVINFO_DATA DeviceInfoData{};
-        DWORD i;
-
-        constexpr GUID GUID_DEVCLASS_DISKDRIVE = {
-            0x4d36e967L, 0xe325, 0x11ce,
-            { 0xbf, 0xc1, 0x08, 0x00, 0x2b, 0xe1, 0x03, 0x18 }
-        };
-
-        hDevInfo = SetupDiGetClassDevsA((LPGUID)&GUID_DEVCLASS_DISKDRIVE,
-            0,
-            0,
-            DIGCF_PRESENT);
-
-        if (hDevInfo == INVALID_HANDLE_VALUE)
-            return false;
-
-        DeviceInfoData.cbSize = sizeof(SP_DEVINFO_DATA);
-        DWORD dwPropertyRegDataType;
-        LPTSTR buffer = NULL;
-        DWORD dwSize = 0;
-
-        for (i = 0; SetupDiEnumDeviceInfo(hDevInfo, i, &DeviceInfoData); i++)
-        {
-            while (!SetupDiGetDeviceRegistryPropertyA(hDevInfo, &DeviceInfoData, SPDRP_HARDWAREID,
-                &dwPropertyRegDataType, (PBYTE)buffer, dwSize, &dwSize))
-            {
-                if (GetLastError() == ERROR_INSUFFICIENT_BUFFER) {
-                    if (buffer)LocalFree(buffer);
-                    buffer = (LPTSTR)LocalAlloc(LPTR, static_cast<SIZE_T>(dwSize) * 2);
-                    if (buffer == NULL)
-                        break;
-                }
-                else
-                    break;
-
-            }
-
-            if (buffer) {
-                if ((StrStrIA(buffer, _T("vbox")) != NULL) ||
-                    (StrStrIA(buffer, _T("vmware")) != NULL) ||
-                    (StrStrIA(buffer, _T("qemu")) != NULL) ||
-                    (StrStrIA(buffer, _T("virtual")) != NULL))
-                {
-                    return true;
-                }
-            }
-        }
-
-        if (buffer) LocalFree(buffer);
-        SetupDiDestroyDeviceInfoList(hDevInfo);
-        if (GetLastError() != NO_ERROR && GetLastError() != ERROR_NO_MORE_ITEMS) return false;
-
-        return false;
 #endif
     }
 
@@ -10462,7 +10449,7 @@ public: // START OF PUBLIC FUNCTIONS
             case GPU_NAME: return "GPU_NAME";
             case VMWARE_DEVICES: return "VMWARE_DEVICES";
             case VMWARE_MEMORY: return "VMWARE_MEMORY";
-            case CPU_CORES: return "CPU_CORES";
+            case IDT_GDT_MISMATCH: return "CPU_CORES";
             case PROCESSOR_NUMBER: return "PROCESSOR_NUMBER";
             case NUMBER_OF_CORES: return "NUMBER_OF_CORES";
             case WMI_MODEL: return "WMI_MODEL";
@@ -10959,6 +10946,8 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
 /* GPL */ { VM::KVM_DIRS, { 30, VM::kvm_directories, true } },
 /* GPL */ { VM::AUDIO, { 25, VM::check_audio, false } },
 /* GPL */ { VM::QEMU_DIR, { 30, VM::qemu_dir, true } },
+/* GPL */ { VM::POWER_CAPABILITIES, { 25, VM::power_capabilities, false } },
+/* GPL */ { VM::SETUPAPI_DISK, { 20, VM::setupapi_disk, false } },
     { VM::VM_PROCESSES, { 15, VM::vm_processes, true } }, 
     { VM::LINUX_USER_HOST, { 10, VM::linux_user_host, true } }, // TODO: update score
     { VM::GAMARUE, { 10, VM::gamarue, true } },
@@ -11041,14 +11030,12 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::GPU_NAME, { 100, VM::vm_gpu, false } },
     { VM::VMWARE_DEVICES, { 45, VM::vmware_devices, true } }, 
     { VM::VMWARE_MEMORY, { 50, VM::vmware_memory, false } },
-    { VM::CPU_CORES, { 25, VM::cpu_cores, false } },
+    { VM::IDT_GDT_MISMATCH, { 25, VM::idt_gdt_mismatch, false } },
     { VM::PROCESSOR_NUMBER, { 25, VM::processor_number, false } },
     { VM::NUMBER_OF_CORES, { 50, VM::number_of_cores, false } },
     { VM::WMI_MODEL, { 100, VM::wmi_model, false } },
     { VM::WMI_MANUFACTURER, { 100, VM::wmi_manufacturer, false } },
     { VM::WMI_TEMPERATURE, { 25, VM::wmi_temperature, false } },
     { VM::PROCESSOR_ID, { 25, VM::processor_id, false } },
-    { VM::CPU_FANS, { 35, VM::cpu_fans, false } },
-    { VM::POWER_CAPABILITIES, { 25, VM::power_capabilities, false } },
-    { VM::SETUPAPI_DISK, { 20, VM::setupapi_disk, false } },
+    { VM::CPU_FANS, { 35, VM::cpu_fans, false } }
 };

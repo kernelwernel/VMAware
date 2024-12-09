@@ -680,7 +680,7 @@ void general() {
     checker(VM::GPU_NAME, "GPU name");
     checker(VM::VMWARE_DEVICES, "VMware devices");
     checker(VM::VMWARE_MEMORY, "VM memory traces");
-    checker(VM::CPU_CORES, "CPU cores");
+    checker(VM::IDT_GDT_MISMATCH, "IDT GDT mismatch");
     checker(VM::PROCESSOR_NUMBER, "Processor count");
     checker(VM::NUMBER_OF_CORES, "CPU core count");
     checker(VM::WMI_MODEL, "Hardware model");
