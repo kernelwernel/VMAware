@@ -353,13 +353,11 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::DMESG` | Check if dmesg output matches a VM brand | Linux | 55% | Admin |  |  |  |  |
 | `VM::HWMON` | Check if /sys/class/hwmon/ directory is present. If not, likely a VM | Linux | 75% |  |  |  | Spoofable |  |
 | `VM::SIDT5` | Check if the 5th byte after sidt is null | Linux | 45% |  |  |  |  |  |
-| `VM::CURSOR` |  Check if cursor isn't active for 5 seconds (sign of automated VM environment) | Windows | 5% |  |  |  | Spoofable | Disabled by default |
 | `VM::VMWARE_REG` | Check for VBox RdrDN | Windows | 65% |  |  |  | Spoofable |  |
 | `VM::VBOX_REG` | Look for any VirtualBox-specific registry data | Windows | 65% |  |  |  | Spoofable |  |
 | `VM::USER` | checks for default usernames, often a sign of a VM | Windows | 35% |  |  |  | Spoofable |  |
 | `VM::DLL` | Check for VM-specific DLLs | Windows | 50% |  |  |  | Spoofable |  |
 | `VM::REGISTRY` |  Check for VM-specific registry values | Windows | 75% |  |  |  | Spoofable |  |
-| `VM::CWSANDBOX_VM` | Check if CWSandbox-specific file exists | Windows | 10% |  |  |  | Spoofable |  |
 | `VM::VM_FILES` | Find for VMware and VBox specific files | Windows | 10% |  |  |  | Spoofable |  |
 | `VM::HWMODEL` | Check if the sysctl for the hwmodel does not contain the "Mac" string | MacOS | 75% |  |  |  | Spoofable |  |
 | `VM::DISK_SIZE` | Check if disk size is under or equal to 50GB | Linux | 60% |  |  |  |  |  |
@@ -368,7 +366,6 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::COMPUTER_NAME` | Check if the computer name (not username to be clear) is VM-specific | Windows | 40% |  | GPL |  | Spoofable |  |
 | `VM::WINE_CHECK` | Check wine_get_unix_file_name file for Wine | Windows | 85% |  | GPL |  |  |  |
 | `VM::HOSTNAME` | Check if hostname is specific | Windows | 25% |  | GPL |  | Spoofable |  |
-| `VM::MEMORY` | Check if memory space is far too low for a physical machine | Windows | 35% |  | GPL |  |  |  |
 | `VM::VBOX_WINDOW_CLASS` | Check for the window class for VirtualBox | Windows | 10% |  | GPL |  |  |  |
 | `VM::LOADED_DLLS` | Check for loaded DLLs in the process | Windows | 75% |  | GPL |  | Spoofable |  |
 | `VM::KVM_REG` | Check for KVM-specific registry strings | Windows | 75% |  | GPL |  | Spoofable |  |
@@ -376,7 +373,6 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::KVM_DIRS` | Check for KVM directory "Virtio-Win" | Windows | 55% |  | GPL |  | Spoofable |  |
 | `VM::AUDIO` | Check if audio device is present | Windows | 35% |  | GPL |  |  |  |
 | `VM::QEMU_DIR` | Check for QEMU-specific blacklisted directories | Windows | 45% |  | GPL |  | Spoofable |  |
-| `VM::MOUSE_DEVICE` | Check for the presence of a mouse device | Windows | 20% |  | GPL |  | Spoofable |  |
 | `VM::VM_PROCESSES` | Check for any VM processes that are active | Windows | 30% |  |  |  | Spoofable |  |
 | `VM::LINUX_USER_HOST` | Check for default VM username and hostname for linux | Linux | 25% |  |  |  | Spoofable |  |
 | `VM::GAMARUE` | Check for Gamarue ransomware technique which compares VM-specific Window product IDs | Windows | 40% |  |  |  | Spoofable |  |
@@ -389,7 +385,6 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::HYPERV_WMI` | Check WMI query for "Hyper-V RAW" string | Windows | 80% |  |  |  |  |  |
 | `VM::HYPERV_REG` | Check presence for Hyper-V specific string in registry | Windows | 80% |  |  |  | Spoofable |  |
 | `VM::BIOS_SERIAL` | Check if the BIOS serial is valid (null = VM) | Windows | 60% |  |  |  |  |  |
-| `VM::VBOX_FOLDERS` | Check for VirtualBox-specific string for shared folder ID | Windows | 45% |  |  |  |  |  |
 | `VM::MSSMBIOS` | Check MSSMBIOS registry for VM-specific strings | Windows | 75% |  |  |  |  |  |
 | `VM::MAC_MEMSIZE` | Check if memory is too low for MacOS system | MacOS | 30% |  |  |  | Spoofable |  |
 | `VM::MAC_IOKIT` | Check MacOS' IO kit registry for VM-specific strings | MacOS | 80% |  |  |  | Spoofable |  |
@@ -437,7 +432,8 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::KVM_BITMASK` | Check for KVM CPUID bitmask range for reserved values |  | 40% |  |  |  |  |  |
 | `VM::KGT_SIGNATURE` | Check for Intel KGT (Trusty branch) hypervisor signature in CPUID |  | 80% |  |  |  |  |  |
 | `VM::VMWARE_DMI` | Check for VMware DMI strings in BIOS serial number | Windows | 30% |  |  |  |  |  |
-| `VM::EVENT_LOGS` | Check for presence of Hyper-V in the Windows Event Logs | Windows | 30% |  |  |  | Spoofable |  |
+| `VM::HYPERV_EVENT_LOGS` | Check for presence of Hyper-V in the Windows Event Logs | Windows | 30% |  |  |  |  |  |
+| `VM::VMWARE_EVENT_LOGS` | Check for presence of VMware in the Windows Event Logs | Windows | 25% |  |  |  |  |  |
 | `VM::QEMU_VIRTUAL_DMI` | Check for presence of QEMU in the /sys/devices/virtual/dmi/id directory | Linux | 40% |  |  |  |  |  |
 | `VM::QEMU_USB` | Check for presence of QEMU in the /sys/kernel/debug/usb/devices directory | Linux | 20% |  |  |  |  |  |
 | `VM::HYPERVISOR_DIR` | Check for presence of any files in /sys/hypervisor directory | Linux | 20% |  |  |  |  |  |
@@ -554,7 +550,6 @@ This is the table of all the brands the library supports.
 | `VM::DEFAULT` | This represents a range of flags which are enabled if no default argument is provided. |
 | `VM::MULTIPLE` | This is specific to `VM::brand()`. This will basically return a `std::string` message of what brands could be involved. For example, it could return "`VMware or VirtualBox`" instead of having a single brand string output. This has no effect if applied to any other functions than `VM::brand()`. |   
 | `VM::HIGH_THRESHOLD` | This is specific to `VM::detect()` and `VM::percentage()`, which will set the threshold bar to confidently detect a VM by 3x higher. |
-| `VM::SPOOFABLE` | This will enable all the "spoofable" techniques (which are 1/3 of the total amount of techniques) |
 
 <br>
 
@@ -584,6 +579,7 @@ This is the table of all the brands the library supports.
 |    | --high-threshold | A higher theshold bar for a VM detection will be applied |
 |    | --no-color | Removes all the color, this is added due to some terminals not supporting ANSI escape codes while cluttering the output |
 |    | --dynamic | allow the conclusion message to be dynamic (8 possibilities instead of only 2) |
+|    | --verbose | add more information to the output  |
 > [!NOTE]
 > If you want a general result of everything combined above, do not put any arguments. This is the intended way to use the CLI tool.
 >
