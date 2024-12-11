@@ -72,6 +72,8 @@
 - [ ] add a python script that will automatically add a new technique in the header, CLI, and docs without manually configuring it and potentially forgetting to update one of them
 - [ ] rearrange the techniques so that the more likely ones will be executed first
 - [ ] add VM::DYNAMIC to the conclusion function docs
+- [ ] add all the pafish techniques
+- [ ] make a raw assembly version of reading files to avoid hooking 
 
 # Distant plans
 - add the library to conan.io when released

@@ -75,7 +75,6 @@ enum arg_enum : u8 {
     NUMBER,
     TYPE,
     NOTES,
-    SPOOFABLE,
     HIGH_THRESHOLD,
     NO_COLOR,
     DYNAMIC,
@@ -96,7 +95,6 @@ u8 disabled_count = 0;
 std::string detected = ("[  " + green + "DETECTED" + ansi_exit + "  ]");
 std::string not_detected = ("[" + red + "NOT DETECTED" + ansi_exit + "]");
 std::string no_support = ("[ " + grey + "NO SUPPORT" + ansi_exit + " ]");
-std::string spoofable = ("[" + red + " EASY SPOOF " + ansi_exit + "]");
 std::string no_perms = ("[" + grey + "  NO PERMS  " + ansi_exit + "]");
 std::string note = ("[    NOTE    ]");               
 std::string disabled = ("[" + red + "  DISABLED  " + ansi_exit + "]");
@@ -644,13 +642,6 @@ void replace(std::string &text, const std::string &original, const std::string &
 
 
 void checker(const VM::enum_flags flag, const char* message) {
-    //if (is_spoofable(flag)) {
-    //    if (!arg_bitset.test(SPOOFABLE)) {
-    //        std::cout << spoofable << " Skipped " << message << "\n";
-    //        return;
-    //    }
-    //}
-
     if (is_unsupported(flag)) {
         if (arg_bitset.test(COMPACT)) {
             return;
@@ -1013,13 +1004,7 @@ void general() {
     if (notes_enabled) {
         if ((vm.brand == "Hyper-V artifact (not an actual VM)")) {
             std::cout << note << " The result means that the CLI has found Hyper-V, but as an artifact instead of an actual VM. This means that although the hardware values in fact match with Hyper-V due to how it's designed by Microsoft, the CLI has determined you are NOT in a Hyper-V VM.\n\n";
-        } else
-
-        //if (!arg_bitset.test(SPOOFABLE) && !arg_bitset.test(ALL)) {
-        //    const std::string tip = (green + "TIP: " + ansi_exit);
-        //    std::cout << tip << "To enable easily spoofable techniques, run with the \"--spoofable\" argument\n\n";
-        //} else 
-        if (vm.detected_count != 0) {
+        } else if (vm.detected_count != 0) {
             std::cout << note << " If you found a false positive, please make sure to create an issue at https://github.com/kernelwernel/VMAware/issues\n\n";
         }
     }
@@ -1069,7 +1054,6 @@ int main(int argc, char* argv[]) {
         { "--number", NUMBER },
         { "--type", TYPE },
         { "--disable-notes", NOTES },
-        { "--spoofable", SPOOFABLE },
         { "--high-threshold", HIGH_THRESHOLD },
         { "--dynamic", DYNAMIC },
         { "--verbose", VERBOSE },
