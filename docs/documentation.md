@@ -458,7 +458,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::ACPI_DETECT` | Check for Hyper-V string in ACPI data | Windows | 85% |  |  |  |  |
 | `VM::GPU_NAME` | Check for VM specific device names in GPUs | Windows | 100% |  |  |  |  |
 | `VM::VMWARE_DEVICES` | Check for VMware-specific devices | Windows | 45% |  |  |  |  |
-| `VM::VMWARE_MEMORY` | Check for VMware-specific memory trace in a specific process | Windows | 50% |  |  |  |  |
+| `VM::VMWARE_MEMORY` | Check for VMware-specific memory traces in certain process | Windows | 50% |  |  |  |  |
 | `VM::IDT_GDT_MISMATCH` | Check if the IDT and GDT limit addresses mismatch between different CPU cores | Windows | 25% |  |  |  |  |
 | `VM::PROCESSOR_NUMBER` | Check for number of processors | Windows | 25% |  |  |  |  |
 | `VM::NUMBER_OF_CORES` | Check for number of cores | Windows | 50% |  |  |  |  |
