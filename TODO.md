@@ -56,7 +56,7 @@
 - [X] do the ACPI technique and add it to hyper-x
 - [X] "running inside AN unknown VM" instead of "a unknown" for conclusion message
 - [X] fix the DMESG error thing
-- [ ] do the IDT thing
+- [X] do the IDT thing
 - [X] filesystem idea from requiem
 - [X] update the graph with wmi 
 - [ ] add linux support for the hdd_serial_number technique
@@ -71,12 +71,8 @@
 - [ ] scan for QEMU strings in QEMU VM
 - [ ] add a python script that will automatically add a new technique in the header, CLI, and docs without manually configuring it and potentially forgetting to update one of them
 - [ ] rearrange the techniques so that the more likely ones will be executed first
-- [ ] add VM::DYNAMIC to the conclusion function docs
-- [ ] make a raw assembly version of reading files to avoid hooking 
-- [ ] make techniques for QEMU detection on linux with the vm_hw.txt output 
-- [ ] make a feature where vmwarehardenedloader can be detected
-- [ ] tell requiem about the vmwarehardenedloader "7" thing
-- [ ] make a readme in auxiliary for all the documented tools
+- [x] add VM::DYNAMIC to the conclusion function docs
+- [x] make a raw assembly version of reading files to avoid hooking 
 
 # Distant plans
 - add the library to conan.io when released

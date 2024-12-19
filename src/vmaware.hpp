@@ -1358,6 +1358,14 @@ public:
         static std::vector<result> execute(const std::wstring& query, const std::vector<std::wstring>& properties) {
             std::vector<result> results;
 
+            if (!pSvc) {
+                debug("wmi: pSvc is nullptr, attempting to initialize WMI.");
+                if (!initialize()) {
+                    debug("wmi: Failed to initialize WMI.");
+                    return results;
+                }
+            }
+
             IEnumWbemClassObject* pEnumerator = NULL;
             HRESULT hres = pSvc->ExecQuery(
                 _bstr_t(L"WQL"),
