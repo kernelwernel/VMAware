@@ -75,11 +75,11 @@ enum arg_enum : u8 {
     NUMBER,
     TYPE,
     NOTES,
-    SPOOFABLE,
     HIGH_THRESHOLD,
     NO_COLOR,
     DYNAMIC,
     VERBOSE,
+    COMPACT,
     NULL_ARG
 };
 
@@ -95,7 +95,6 @@ u8 disabled_count = 0;
 std::string detected = ("[  " + green + "DETECTED" + ansi_exit + "  ]");
 std::string not_detected = ("[" + red + "NOT DETECTED" + ansi_exit + "]");
 std::string no_support = ("[ " + grey + "NO SUPPORT" + ansi_exit + " ]");
-std::string spoofable = ("[" + red + " EASY SPOOF " + ansi_exit + "]");
 std::string no_perms = ("[" + grey + "  NO PERMS  " + ansi_exit + "]");
 std::string note = ("[    NOTE    ]");               
 std::string disabled = ("[" + red + "  DISABLED  " + ansi_exit + "]");
@@ -155,11 +154,12 @@ Options:
 
 Extra:
  --disable-notes    no notes will be provided
- --spoofable        allow spoofable techniques to be ran (not included by default)
  --high-threshold   a higher theshold bar for a VM detection will be applied
  --no-color         self explanatory
  --dynamic          allow the conclusion message to be dynamic (8 possibilities instead of only 2)
  --verbose          add more information to the output
+ --compact          ignore the unsupported techniques from the CLI output
+
 )";
     std::exit(0);
 }
@@ -259,60 +259,14 @@ Podman
 WSL
 OpenVZ
 ANY.RUN
+Barevisor
+HyperPlatform
+MiniVisor
 )";
 
     std::exit(0);
 }
 
-//bool is_spoofable(const VM::enum_flags flag) {
-//    if (arg_bitset.test(ALL)) {
-//        return false;
-//    }
-//
-//    switch (flag) {
-//        case VM::MAC:
-//        case VM::DOCKERENV:
-//        case VM::HWMON:
-//        case VM::VMWARE_REG:
-//        case VM::VBOX_REG:
-//        case VM::USER:
-//        case VM::DLL:
-//        case VM::REGISTRY:
-//        case VM::VM_FILES:
-//        case VM::HWMODEL:
-//        case VM::COMPUTER_NAME:
-//        case VM::HOSTNAME:
-//        case VM::KVM_REG:
-//        case VM::KVM_DRIVERS:
-//        case VM::KVM_DIRS:
-//        case VM::LOADED_DLLS:
-//        case VM::QEMU_DIR:
-//        case VM::VM_PROCESSES:
-//        case VM::LINUX_USER_HOST:
-//        case VM::HYPERV_REG:
-//        case VM::MAC_MEMSIZE:
-//        case VM::MAC_IOKIT:
-//        case VM::IOREG_GREP:
-//        case VM::MAC_SIP:
-//        case VM::HKLM_REGISTRIES:
-//        case VM::QEMU_GA:
-//        case VM::QEMU_PROC:
-//        case VM::VPC_PROC:
-//        case VM::VM_FILES_EXTRA:
-//        case VM::UPTIME:
-//        case VM::CUCKOO_DIR:
-//        case VM::CUCKOO_PIPE:
-//        case VM::HYPERV_HOSTNAME:
-//        case VM::GENERAL_HOSTNAME:
-//        case VM::BLUESTACKS_FOLDERS: 
-//        case VM::HYPERV_EVENT_LOGS:
-//        case VM::VMWARE_EVENT_LOGS:
-//        case VM::KMSG: 
-//        case VM::VM_PROCS: 
-//        case VM::PODMAN_FILE: return true;
-//        default: return false;
-//    }
-//}
 
 #if (LINUX)
 bool is_admin() {
@@ -358,8 +312,6 @@ bool is_disabled(const VM::enum_flags flag) {
     }
 
     switch (flag) {
-        case VM::RDTSC:
-        case VM::RDTSC_VMEXIT: 
         case VM::VMWARE_DMESG: return true;
         default: return false;
     }
@@ -389,7 +341,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::VBOX_DEFAULT:
             case VM::LINUX_USER_HOST:
             case VM::VMID_0X4:
-            case VM::RDTSC_VMEXIT:
             case VM::QEMU_BRAND:
             case VM::BOCHS_CPU:
             case VM::QEMU_GA:
@@ -459,7 +410,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::GAMARUE:
             case VM::VMID_0X4:
             case VM::PARALLELS_VM:
-            case VM::RDTSC_VMEXIT:
             case VM::QEMU_BRAND:
             case VM::BOCHS_CPU:
             case VM::VPC_BOARD:
@@ -539,7 +489,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::THREADCOUNT:
             case VM::HWMODEL:
             case VM::VMID_0X4:
-            case VM::RDTSC_VMEXIT:
             case VM::QEMU_BRAND:
             case VM::BOCHS_CPU:
             case VM::VPC_BOARD:
@@ -590,17 +539,12 @@ bool is_unsupported(VM::enum_flags flag) {
 std::bitset<max_bits> settings() {
     std::bitset<max_bits> tmp;
 
-    if (arg_bitset.test(SPOOFABLE)) {
-        tmp.set(VM::SPOOFABLE);
-    }
-
     if (arg_bitset.test(HIGH_THRESHOLD)) {
         tmp.set(VM::HIGH_THRESHOLD);
     }
 
     if (arg_bitset.test(ALL)) {
         tmp |= VM::ALL;
-        tmp.set(VM::SPOOFABLE);
     }
 
     if (arg_bitset.test(DYNAMIC)) {
@@ -708,15 +652,22 @@ void replace(std::string &text, const std::string &original, const std::string &
 
 
 void checker(const VM::enum_flags flag, const char* message) {
-    //if (is_spoofable(flag)) {
-    //    if (!arg_bitset.test(SPOOFABLE)) {
-    //        std::cout << spoofable << " Skipped " << message << "\n";
-    //        return;
-    //    }
-    //}
+    if (is_unsupported(flag)) {
+        if (arg_bitset.test(COMPACT)) {
+            return;
+        }
+
+        unsupported_count++;
+    } else {
+        supported_count++;
+    }
 
 #if (LINUX)
     if (are_perms_required(flag)) {
+        if (arg_bitset.test(COMPACT)) {
+            return;
+        }
+
         std::cout << no_perms << " Skipped " << message << "\n";
 
         no_perms_count++;
@@ -728,16 +679,11 @@ void checker(const VM::enum_flags flag, const char* message) {
     }
 #endif
 
-    if (arg_bitset.test(VERBOSE)) {
-        if (is_unsupported(flag)) {
-            unsupported_count++;
-        } else {
-            supported_count++;
-        }
-    }
-
 
     if (is_disabled(flag)) {
+        if (arg_bitset.test(COMPACT)) {
+            return;
+        }
         std::cout << disabled << " Skipped " << message << "\n";
         disabled_count++;
         return;
@@ -799,7 +745,7 @@ void general() {
     if (arg_bitset.test(NO_COLOR)) {
         detected = ("[  DETECTED  ]");
         not_detected = ("[NOT DETECTED]");
-        spoofable = ("[ EASY SPOOF ]");
+        no_support = ("[ NO SUPPORT ]");
         no_perms = ("[  NO PERMS  ]");
         note = ("[    NOTE    ]");               
         disabled = ("[  DISABLED  ]");
@@ -861,7 +807,6 @@ void general() {
     checker(VM::GAMARUE, "gamarue ransomware technique");
     checker(VM::VMID_0X4, "0x4 leaf of VMID");
     checker(VM::PARALLELS_VM, "Parallels techniques");
-    checker(VM::RDTSC_VMEXIT, "RDTSC VMEXIT");
     checker(VM::LOADED_DLLS, "loaded DLLs");
     checker(VM::QEMU_BRAND, "QEMU CPU brand");
     checker(VM::BOCHS_CPU, "BOCHS CPU techniques");
@@ -1084,13 +1029,7 @@ void general() {
     if (notes_enabled) {
         if ((vm.brand == "Hyper-V artifact (not an actual VM)")) {
             std::cout << note << " The result means that the CLI has found Hyper-V, but as an artifact instead of an actual VM. This means that although the hardware values in fact match with Hyper-V due to how it's designed by Microsoft, the CLI has determined you are NOT in a Hyper-V VM.\n\n";
-        } else
-
-        //if (!arg_bitset.test(SPOOFABLE) && !arg_bitset.test(ALL)) {
-        //    const std::string tip = (green + "TIP: " + ansi_exit);
-        //    std::cout << tip << "To enable easily spoofable techniques, run with the \"--spoofable\" argument\n\n";
-        //} else 
-        if (vm.detected_count != 0) {
+        } else if (vm.detected_count != 0) {
             std::cout << note << " If you found a false positive, please make sure to create an issue at https://github.com/kernelwernel/VMAware/issues\n\n";
         }
     }
@@ -1115,7 +1054,7 @@ int main(int argc, char* argv[]) {
         std::exit(0);
     }
 
-    static constexpr std::array<std::pair<const char*, arg_enum>, 29> table {{
+    static constexpr std::array<std::pair<const char*, arg_enum>, 30> table {{
         { "-h", HELP },
         { "-v", VERSION },
         { "-a", ALL },
@@ -1140,10 +1079,10 @@ int main(int argc, char* argv[]) {
         { "--number", NUMBER },
         { "--type", TYPE },
         { "--disable-notes", NOTES },
-        { "--spoofable", SPOOFABLE },
         { "--high-threshold", HIGH_THRESHOLD },
         { "--dynamic", DYNAMIC },
         { "--verbose", VERBOSE },
+        { "--compact", COMPACT },
         { "--no-color", NO_COLOR }
     }};
 

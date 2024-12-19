@@ -47,13 +47,13 @@
  *
  * ================================ SECTIONS ==================================
  * - enums for publicly accessible techniques  => line 347
- * - struct for internal cpu operations        => line 605
- * - struct for internal memoization           => line 1053
- * - struct for internal utility functions     => line 1432
- * - struct for internal core components       => line 8547
- * - start of internal VM detection techniques => line 2756
- * - start of public VM detection functions    => line 8938
- * - start of externally defined variables     => line 9793
+ * - struct for internal cpu operations        => line 616
+ * - struct for internal memoization           => line 1064
+ * - struct for internal utility functions     => line 1443
+ * - struct for internal core components       => line 8998
+ * - start of internal VM detection techniques => line 2858
+ * - start of public VM detection functions    => line 9389
+ * - start of externally defined variables     => line 10266
  *
  *
  * ================================ EXAMPLE ==================================
@@ -224,22 +224,21 @@
 #include <bitset>
 #include <type_traits>
 
-
 #if (WINDOWS)
 #include <windows.h>
 #include <intrin.h>
 #include <tchar.h>
 #include <stdbool.h>
 #include <stdio.h>
-#include <Iphlpapi.h>
-#include <Assert.h>
+#include <iphlpapi.h>
+#include <assert.h>
 #include <excpt.h>
 #include <winternl.h>
 #include <winnetwk.h>
 #include <winuser.h>
 #include <psapi.h>
 #include <comdef.h>
-#include <Wbemidl.h>
+#include <wbemidl.h>
 #include <shlwapi.h>
 #include <shlobj_core.h>
 #include <strmif.h>
@@ -248,10 +247,12 @@
 #include <winspool.h>
 #include <wtypes.h>
 #include <winevt.h>
+#include <powerbase.h>
+#include <setupapi.h>
 
 #pragma comment(lib, "wbemuuid.lib")
 #pragma comment(lib, "iphlpapi.lib")
-#pragma comment(lib, "Shlwapi.lib")
+#pragma comment(lib, "shlwapi.lib")
 #pragma comment(lib, "MPR")
 #pragma comment(lib, "advapi32.lib")
 #pragma comment(lib, "kernel32.lib")
@@ -260,6 +261,8 @@
 #pragma comment(lib, "uuid.lib")
 #pragma comment(lib, "ntdll.lib")
 #pragma comment(lib, "wevtapi.lib")
+#pragma comment(lib, "setupapi.lib")
+#pragma comment(lib, "powrprof.lib")
 
 #elif (LINUX)
 #if (x86)
@@ -453,13 +456,22 @@ public:
         GPU_NAME,
         VMWARE_DEVICES,
         VMWARE_MEMORY,
-        CPU_CORES,
+        IDT_GDT_MISMATCH,
+        PROCESSOR_NUMBER,
+        NUMBER_OF_CORES,
+        WMI_MODEL,
+        WMI_MANUFACTURER,
+        WMI_TEMPERATURE,
+        PROCESSOR_ID,
+        CPU_FANS,
+        
 
         // start of settings technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
         NO_MEMO,
         HIGH_THRESHOLD,
+        DYNAMIC,
         NULL_ARG, // does nothing, just a placeholder flag mainly for the CLI
-        SPOOFABLE,
+        //SPOOFABLE,
         MULTIPLE
     };
 
@@ -1408,7 +1420,7 @@ public:
             return results;
         }
 
-        static void cleanup() {
+        static void cleanup() noexcept {
             if (pSvc) {
                 pSvc->Release();
                 pSvc = nullptr;
@@ -1702,17 +1714,21 @@ public:
 #endif
         }
 
-        // get disk size in GB
+        /**
+         * @brief Get the disk size in GB
+         * @category Linux, Windows
+         * @returns Disk size in GB
+         */
         [[nodiscard]] static u32 get_disk_size() {
             u32 size = 0;
-            constexpr u64 GB = (static_cast<u64>(1024 * 1024) * 1024);
+            constexpr u64 GB = (static_cast<u64>(1024) * 1024 * 1024);  // Size of 1 GB in bytes
 
 #if (LINUX)
             struct statvfs stat;
 
             if (statvfs("/", &stat) != 0) {
                 debug("private util::get_disk_size( function: ", "failed to fetch disk size");
-                return false;
+                return 0; // Return 0 to indicate failure
             }
 
             // in gigabytes
@@ -1721,27 +1737,25 @@ public:
             ULARGE_INTEGER totalNumberOfBytes;
 
             if (GetDiskFreeSpaceExW(
-                L"C:",                      // Drive or directory path (use wide character string)
-                nullptr,                    // Free bytes available to the caller (not needed for total size)
-                reinterpret_cast<PULARGE_INTEGER>(&totalNumberOfBytes),  // Total number of bytes on the disk
-                nullptr                     // Total number of free bytes on the disk (not needed for total size)
+                L"C:",  // Drive or directory path (use wide character string)
+                nullptr,  // Free bytes available to the caller (not needed for total size)
+                &totalNumberOfBytes,  // Total number of bytes on the disk
+                nullptr  // Total number of free bytes on the disk (not needed for total size)
             )) {
-                size = static_cast<u32>(totalNumberOfBytes.QuadPart) / GB;
-            } else {
+                // Convert bytes to GB
+                size = static_cast<u32>(totalNumberOfBytes.QuadPart / GB);
+            }
+            else {
                 debug("util::get_disk_size(: ", "failed to fetch size in GB");
             }
 #endif
 
-            if (size == 0) {
-                return false;
-            }
+            if (size == 0)
+                return 81;
+            
+            debug("private util::get_disk_size( function: ", "disk size = ", size, "GB");
 
-            // round to the nearest factor of 10
-            const u32 result = static_cast<u32>(std::round((size / 10.0) * 10));
-
-            debug("private util::get_disk_size( function: ", "disk size = ", result, "GB");
-
-            return result;
+            return size;  // Return disk size in GB
         }
 
         // get physical RAM size in GB
@@ -1794,10 +1808,6 @@ public:
 
             return number; // in GB
 #elif (WINDOWS)
-            if (!IsWindowsVistaOrGreater()) {
-                return 0;
-            }
-
             ULONGLONG total_memory_kb = 0;
 
             if (GetPhysicallyInstalledSystemMemory(&total_memory_kb) == ERROR_INVALID_DATA) {
@@ -2504,7 +2514,7 @@ public:
                 if (x3) { debug("SMBIOS: x3 = ", x3); result = std::string(reinterpret_cast<const char*>(x3)); }
                 if (x4) { debug("SMBIOS: x4 = ", x4); result = std::string(reinterpret_cast<const char*>(x4)); }
                 if (x5) { debug("SMBIOS: x5 = ", x5); result = std::string(reinterpret_cast<const char*>(x5)); }
-                if (x6) { debug("SMBIOS: x5 = ", x6); result = std::string(reinterpret_cast<const char*>(x6)); }
+                if (x6) { debug("SMBIOS: x6 = ", x6); result = std::string(reinterpret_cast<const char*>(x6)); }
 #endif
             }
 
@@ -2608,7 +2618,7 @@ public:
 
         [[nodiscard]] static bool motherboard_string(const char* vm_string) {
             if (!wmi::initialize()) {
-                std::cerr << "Failed to initialize WMI.\n";
+                core_debug("Failed to initialize WMI");
                 return false;
             }
 
@@ -2628,9 +2638,7 @@ public:
 
         /**
          * @brief Retrieves the last error message from the Windows API. Useful for __VMAWARE_DEBUG__
-         * 
          * @author Requiem (https://github.com/NotRequiem)
-         *
          * @return A std::wstring containing the error message.
          */
         [[nodiscard]] static std::wstring GetLastErrorString() {
@@ -2786,8 +2794,9 @@ public:
             return true;
         }
 
+
         /**
-         * @brief Sliding window substring search to handle memory page overlaps based on KMP
+         * @brief Sliding window substring search to handle wide-character strings using the KMP algorithm.
          */
         static bool findSubstring(const wchar_t* buffer, size_t bufferSize, const std::wstring& searchString) {
             size_t searchLength = searchString.length();
@@ -3031,7 +3040,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
     /**
      * @brief Check if there are only 1 or 2 threads, which is a common pattern in VMs with default settings (nowadays physical CPUs should have at least 4 threads for modern CPUs
-     * @category x86 (ARM might have very low thread counts, which si why it should be only for x86)
+     * @category x86 (ARM might have very low thread counts, which is why it should be only for x86)
      */
     [[nodiscard]] static bool thread_count() {
 #if (x86)
@@ -3758,17 +3767,17 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
     /**
      * @brief Check if disk size is under or equal to 50GB
-     * @category Linux (for now)
+     * @category Linux, Windows
      */
     [[nodiscard]] static bool disk_size() {
-#if (!LINUX)
+#if (!LINUX && !WINDOWS)
         return false;
 #else
         const u32 size = util::get_disk_size();
 
         debug("DISK_SIZE: size = ", size);
 
-        return (size <= 60); // in GB
+        return (size <= 80); // Check if disk size is <= 80GB
 #endif
     }
 
@@ -3783,7 +3792,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * ORACLE:      1024MB, 12GB
      * OTHER LINUX: 512MB,  8GB
 
-     * @todo: check if it still applies to host systems with larger RAM and disk size than what I have
      * @category Linux, Windows
      */
     [[nodiscard]] static bool vbox_default_specs() {
@@ -3887,14 +3895,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         u32 pnsize = 0x1000;
         TCHAR* provider = new TCHAR[pnsize];
 
-        u32 retv = WNetGetProviderName(WNNC_NET_RDR2SAMPLE, provider, reinterpret_cast<LPDWORD>(&pnsize));
+        u32 retv = WNetGetProviderNameA(WNNC_NET_RDR2SAMPLE, provider, reinterpret_cast<LPDWORD>(&pnsize));
+        bool result = false;
 
         if (retv == NO_ERROR) {
-            bool result = (lstrcmpi(provider, _T("VirtualBox Shared Folders")) == 0);
+            result = (lstrcmpi(provider, _T("VirtualBox Shared Folders")) == 0);
         }
 
         delete[] provider;
-        return false;
+
+        return result;
 #endif
     }
 
@@ -4989,7 +4999,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @note code documentation paper in https://www.aldeid.com/wiki/X86-assembly/Instructions/sldt
      */
     [[nodiscard]] static bool sldt() {
-#if (x86_32 && WINDOWS)
+#if (!MSVC && WINDOWS)
         unsigned char ldtr[5] = "\xef\xbe\xad\xde";
         unsigned long ldt = 0;
 
@@ -5014,9 +5024,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @note code documentation paper in /papers/www.offensivecomputing.net_vm.pdf
      */
     [[nodiscard]] static bool offsec_sidt() {
-#if (!WINDOWS || !x86)
-        return false;
-#elif (x86_32)
+#if (!MSVC && WINDOWS)
         unsigned char m[6]{};
         __asm sidt m;
 
@@ -5035,9 +5043,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @note code documentation paper in /papers/www.offensivecomputing.net_vm.pdf
      */
     [[nodiscard]] static bool offsec_sgdt() {
-#if (!WINDOWS || !x86 || GCC)
-        return false;
-#elif (x86_32)
+#if (!MSVC && WINDOWS)
         unsigned char m[6]{};
         __asm sgdt m;
 
@@ -5078,7 +5084,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #else
         if (!wmi::initialize()) {
-            std::cerr << "Failed to initialize WMI.\n";
+            core_debug("Failed to initialize WMI");
             return false;
         }
 
@@ -6960,7 +6966,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             lpData = (LPBYTE)malloc(dwLength);
-            RegQueryValueExA(hKey, pszValueName, 0, &type, lpData, &dwLength);
+            RegQueryValueEx(hKey, pszValueName, 0, &type, lpData, &dwLength);
             CM_RESOURCE_LIST* resource_list = (CM_RESOURCE_LIST*)lpData;
             for (DWORD i = 0; i < resource_list->Count; i++)
             {
@@ -7157,7 +7163,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check for CPUID technique by checking whether all the bits equate to more than 4000 (not sure how this works if i'm honest)
+     * @brief Check for CPUID technique by checking whether all the bits equate to more than 4000
      * @category x86
      * @author 一半人生
      * @link https://unprotect.it/snippet/vmcpuid/195/
@@ -7871,7 +7877,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         return false;
 #endif
-    }
+    } 
 
 
     /**
@@ -8363,7 +8369,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #else
         if (!wmi::initialize()) {
-            std::cerr << "Failed to initialize WMI.\n";
+            core_debug("Failed to initialize WMI");
             return false;
         }
 
@@ -8421,22 +8427,24 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         char driverName[MAX_PATH];
 
         for (int i = 0; i < count; ++i) {
-            if (GetDeviceDriverBaseNameA(drivers[i], driverName, sizeof(driverName))) {
+            if (GetDeviceDriverBaseNameA(drivers[i], driverName, static_cast<DWORD>(sizeof(driverName)))) {
                 if (
                     strcmp(driverName, "VBoxGuest") == 0 ||
                     strcmp(driverName, "VBoxMouse") == 0 ||
                     strcmp(driverName, "VBoxSF") == 0
-                ) {
+                    ) {
                     return core::add(brands::VBOX);
                 }
 
                 if (
                     strcmp(driverName, "vmusbmouse") == 0 ||
-                    strcmp(driverName, "vmmouse") == 0
-                ) {
+                    strcmp(driverName, "vmmouse") == 0 ||
+                    strcmp(driverName, "vmmemctl") == 0
+                    ) {
                     return core::add(brands::VMWARE);
                 }
-            } else {
+            }
+            else {
                 debug("Failed to retrieve driver name");
                 return false;
             }
@@ -8447,7 +8455,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check for the unkown Windows IDT base address
+     * @brief Check for unknown IDT base address
      * @category Windows
      * @author Requiem (https://github.com/NotRequiem)
      */
@@ -8483,7 +8491,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #else
         if (!wmi::initialize()) {
-            debug("HDD serial number: Failed to initialize WMI");
+            core_debug("HDD serial number: Failed to initialize WMI");
             return false;
         }
 
@@ -8619,10 +8627,17 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!WINDOWS)
         return false;
 #else
-        const HANDLE h1 = CreateFileA("\\\\.\\HGFS", GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+        HANDLE h1 = CreateFileA("\\\\.\\HGFS", GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+
+        bool result = false;
 
         if (h1 != INVALID_HANDLE_VALUE) {
-            CloseHandle(h1);
+            result = true;
+        }
+
+        CloseHandle(h1);
+
+        if (result) {
             return core::add(brands::VMWARE);
         }
 
@@ -8630,10 +8645,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }    
 
+
     /**
-     * @brief Check if the IDT and GDT limit addresses mismatch between different CPU cores.
-     * In theory, they should mismatch because Windows has different interrupt handlers registered for different CPU cores, but in practice, they seem to share the same virtual address.
-     * @category Windows, x64
+     * @brief Check for VMware-specific memory trace in a specific process.
+     * @category Windows
      * @author Requiem (https://github.com/NotRequiem)
      */
     [[nodiscard]] static bool vmware_memory() {
@@ -8662,11 +8677,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     continue;
                 }
 
-                if ((mbi.State == MEM_COMMIT) &&
+                if (
+                    (mbi.State == MEM_COMMIT) &&
                     (mbi.Protect & (PAGE_READWRITE)) &&
                     !(mbi.Protect & PAGE_GUARD) &&
-                    !(mbi.Protect & PAGE_NOACCESS)) {
-
+                    !(mbi.Protect & PAGE_NOACCESS)
+                ) {
                     size_t regionSize = static_cast<size_t>(mbi.RegionSize);
                     std::vector<wchar_t> buffer(regionSize / sizeof(wchar_t));
                     SIZE_T bytesRead = 0;
@@ -8684,7 +8700,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             CloseHandle(hProcess);
             return false;
-            };
+        };
 
         if (search_service_memory(searchString1, "PlugPlay")) {
             return core::add(brands::VMWARE);
@@ -8704,12 +8720,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check if the IDT and GDT limit addresses mismatch between different CPU cores.
-     * In theory, they should mismatch because Windows has different interrupt handlers registered for different CPU cores, but in practice, they seem to share the same virtual address.
+     * @brief Check if the IDT and GDT limit addresses mismatch between different CPU cores. 
+     * Despite the Windows kernel having different interrupt handlers registered for each CPU core, Windows typically uses identical virtual addresses for GDT and IDT across cores.
+     * While the interrupt handlers (the actual ISR code) are typically the same across cores, each core may maintain its own IDT to handle specific local or processor-specific interrupts.
+     * The virtual memory system allows mapping different physical memory locations to the same virtual address to minimize context switching overhead.
+     * The CPU core's descriptor registers (GDTR and IDTR) are then used to point to the correct physical addresses of these tables.
      * @category Windows, x64
      * @author Requiem (https://github.com/NotRequiem)
      */
-    [[nodiscard]] static bool cpu_cores() {
+    [[nodiscard]] static bool idt_gdt_mismatch() {
 #if (!WINDOWS)
         return false;
 #else
@@ -8728,7 +8747,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #pragma pack(push, 1)
                 struct DescriptorTablePointer {
                     uint16_t limit;
-                    uint64_t base;
+                    uint64_t base;   
                 };
 #pragma pack(pop)
 
@@ -8736,11 +8755,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 DescriptorTablePointer gdtr = {};
 
                 __sidt(&idtr);
-                _sgdt(&gdtr);
+                _sgdt(&gdtr);  
 
                 gdtResults[i] = std::to_string(gdtr.base);
                 idtResults[i] = std::to_string(idtr.base);
-                });
+            });
         }
 
         for (auto& thread : threads) {
@@ -8762,11 +8781,198 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
 
 
+    /**
+     * @brief Check for number of processors
+     * @category Windows
+     * @author idea from Al-Khaser project
+     */
+    [[nodiscard]] static bool processor_number()
+    {
+#if (!WINDOWS)
+        return false;
+#else
+#if (x86_32)
+        PULONG ulNumberProcessors = (PULONG)(__readfsdword(0x30) + 0x64);
+
+#else
+        PULONG ulNumberProcessors = (PULONG)(__readgsqword(0x60) + 0xB8);
+#endif
+
+        if (*ulNumberProcessors < 2)
+            return true;
+        else
+            return false;
+#endif
+    }
 
 
+    /**
+     * @brief Check for number of cores
+     * @category Windows
+     * @author idea from Al-Khaser project
+     */
+    [[nodiscard]] static bool number_of_cores() {
+#if (!WINDOWS)
+        return false;
+#else
+        if (!wmi::initialize()) {
+            return false;
+        }
+
+        std::wstring query = L"SELECT NumberOfCores FROM Win32_Processor";
+        std::vector<std::wstring> properties = { L"NumberOfCores" };
+
+        wmi_result results = wmi::execute(query, properties);
+
+        for (const auto& result : results) {
+            if (result.type == wmi::result_type::Integer) {
+                if (result.intValue < 2) {
+                    return true; 
+                }
+            }
+        }
+
+        return false;
+#endif
+    }
 
 
+    /**
+     * @brief Check for device's model using WMI
+     * @category Windows
+     * @author idea from Al-Khaser project
+     */
+    [[nodiscard]] static bool wmi_model() {
+#if (!WINDOWS)
+        return false;
+#else
+        if (!wmi::initialize()) {
+            return false;
+        }
 
+        std::wstring query = L"SELECT Model FROM Win32_ComputerSystem";
+        std::vector<std::wstring> properties = { L"Model" };
+        wmi_result results = wmi::execute(query, properties);
+
+        for (const auto& result : results) {
+            if (result.type == wmi::result_type::String) {
+                if (result.strValue == "VirtualBox" || result.strValue == "HVM domU" || result.strValue == "VMWare") {
+                    return true;
+                }
+            }
+        }
+        return false;
+#endif
+    }
+
+
+    /**
+     * @brief Check for device's manufacturer using WMI
+     * @category Windows
+     * @author idea from Al-Khaser project
+     */
+    [[nodiscard]] static bool wmi_manufacturer() {
+#if (!WINDOWS)
+        return false;
+#else
+        if (!wmi::initialize()) {
+            return false;
+        }
+
+        std::wstring query = L"SELECT Manufacturer FROM Win32_ComputerSystem";
+        std::vector<std::wstring> properties = { L"Manufacturer" };
+        wmi_result results = wmi::execute(query, properties);
+
+        for (const auto& result : results) {
+            if (result.type == wmi::result_type::String) {
+                if (result.strValue == "VMWare" || result.strValue == "innotek GmbH" || result.strValue == "Xen" || result.strValue == "QEMU") {
+                    return true;
+                }
+            }
+        }
+        return false;
+#endif
+    }
+
+
+    /**
+     * @brief Check for device's temperature
+     * @category Windows
+     * @author idea from Al-Khaser project
+     */
+    [[nodiscard]] static bool wmi_temperature() {
+#if (!WINDOWS)
+        return false;
+#else
+        if (!wmi::initialize()) {
+            return false;
+        }
+
+        std::wstring query = L"SELECT * FROM MSAcpi_ThermalZoneTemperature";
+        std::vector<std::wstring> properties = { L"CurrentTemperature" };
+
+        std::vector<wmi::result> results = wmi::execute(query, properties);
+
+        for (const auto& res : results) {
+            if (res.type == wmi::result_type::Integer) {
+                return true;
+            }
+        }
+
+        return false;
+#endif
+    }
+
+
+    /**
+     * @brief Check for empty processor ids using wmi
+     * @category Windows
+     * @author idea from Al-Khaser project
+     */
+    [[nodiscard]] static bool processor_id() {
+#if (!WINDOWS)
+        return false;
+#else
+        if (!wmi::initialize()) {
+            return false;
+        }
+
+        std::wstring query = L"SELECT ProcessorId FROM Win32_Processor";
+        std::vector<std::wstring> properties = { L"ProcessorId" };
+        wmi_result results = wmi::execute(query, properties);
+
+        for (const auto& result : results) {
+            if (result.type == wmi::result_type::String) {
+                if (result.strValue.empty()) {
+                    return true;
+                }
+            }
+        }
+        return false;
+#endif
+    }
+
+
+    /**
+     * @brief Check for CPU Fans
+     * @category Windows
+     * @author idea from Al-Khaser project
+     */
+    [[nodiscard]] static bool cpu_fans() {
+#if (!WINDOWS)
+        return false;
+#else
+        if (!wmi::initialize()) {
+            return false;
+        }
+
+        std::wstring query = L"SELECT * FROM Win32_Fan";
+        std::vector<std::wstring> properties = { };
+        wmi_result results = wmi::execute(query, properties);
+
+        return !results.empty();
+#endif
+    }
 
 
 
@@ -8888,7 +9094,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             if (
                 flags.test(NO_MEMO) ||
                 flags.test(HIGH_THRESHOLD) ||
-                flags.test(SPOOFABLE) ||
+                flags.test(DYNAMIC) ||
                 flags.test(NULL_ARG) ||
                 flags.test(MULTIPLE)
             ) {
@@ -8921,13 +9127,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     continue;
                 }
 
-                // check if it's spoofable, and whether it's enabled
-                if (
-                    technique_data.is_spoofable && 
-                    core::is_disabled(flags, SPOOFABLE)
-                ) {
-                    continue;
-                }
+                // check if it's spoofable, and whether it's enabled (NOTE: SPOOFABILITY IS DEPRECATED)
+                //if (
+                //    technique_data.is_spoofable && 
+                //    core::is_disabled(flags, SPOOFABLE)
+                //) {
+                //    continue;
+                //}
 
                 // check if the technique is cached already
                 if (memo_enabled && memo::is_cached(technique_macro)) {
@@ -9216,7 +9422,7 @@ public: // START OF PUBLIC FUNCTIONS
         if (
             (flag_bit == NO_MEMO) ||
             (flag_bit == HIGH_THRESHOLD) ||
-            (flag_bit == SPOOFABLE) ||
+            (flag_bit == DYNAMIC) ||
             (flag_bit == MULTIPLE)
         ) {
             throw_error("Flag argument must be a technique flag and not a settings flag");
@@ -9509,7 +9715,7 @@ public: // START OF PUBLIC FUNCTIONS
 
         // debug stuff to see the brand scoreboard, ignore this
 #ifdef __VMAWARE_DEBUG__
-        for (const auto p : brands) {
+        for (const auto& p : brands) {
             core_debug("scoreboard: ", (int)p.second, " : ", p.first);
         }
 #endif
@@ -9657,7 +9863,7 @@ public: // START OF PUBLIC FUNCTIONS
         flags.flip();
         flags.set(NO_MEMO, 0);
         flags.set(HIGH_THRESHOLD, 0);
-        flags.set(SPOOFABLE, 0);
+        flags.set(DYNAMIC, 0);
         flags.set(MULTIPLE, 0);
 
         return flags;
@@ -9671,128 +9877,127 @@ public: // START OF PUBLIC FUNCTIONS
      */
     [[nodiscard]] static std::string flag_to_string(const enum_flags flag) {
         switch (flag) {
-        case VMID: return "VMID";
-        case CPU_BRAND: return "CPU_BRAND";
-        case HYPERVISOR_BIT: return "HYPERVISOR_BIT";
-        case HYPERVISOR_STR: return "HYPERVISOR_STR";
-        case RDTSC: return "RDTSC";
-        case THREADCOUNT: return "THREADCOUNT";
-        case MAC: return "MAC";
-        case TEMPERATURE: return "TEMPERATURE";
-        case SYSTEMD: return "SYSTEMD";
-        case CVENDOR: return "CVENDOR";
-        case CTYPE: return "CTYPE";
-        case DOCKERENV: return "DOCKERENV";
-        case DMIDECODE: return "DMIDECODE";
-        case DMESG: return "DMESG";
-        case HWMON: return "HWMON";
-        case SIDT5: return "SIDT5";
-        case VMWARE_REG: return "VMWARE_REG";
-        case VBOX_REG: return "VBOX_REG";
-        case USER: return "USER";
-        case DLL: return "DLL";
-        case REGISTRY: return "REGISTRY";
-        case VM_FILES: return "VM_FILES";
-        case HWMODEL: return "HWMODEL";
-        case DISK_SIZE: return "DISK_SIZE";
-        case VBOX_DEFAULT: return "VBOX_DEFAULT";
-        case VBOX_NETWORK: return "VBOX_NETWORK";
-        /* GPL */   case COMPUTER_NAME: return "COMPUTER_NAME";
-        /* GPL */   case WINE_CHECK: return "WINE_CHECK";
-        /* GPL */   case HOSTNAME: return "HOSTNAME";
-        /* GPL */   case VBOX_WINDOW_CLASS: return "VBOX_WINDOW_CLASS";
-        /* GPL */   case LOADED_DLLS: return "LOADED_DLLS";
-        /* GPL */   case KVM_REG: return "KVM_REG";
-        /* GPL */   case KVM_DRIVERS: return "KVM_DRIVERS";
-        /* GPL */   case KVM_DIRS: return "KVM_DIRS";
-        /* GPL */   case AUDIO: return "AUDIO";
-        /* GPL */   case QEMU_DIR: return "QEMU_DIR";
-        case VM_PROCESSES: return "VM_PROCESSES";
-        case LINUX_USER_HOST: return "LINUX_USER_HOST";
-        case GAMARUE: return "GAMARUE";
-        case VMID_0X4: return "VMID_0X4";
-        case PARALLELS_VM: return "PARALLELS_VM";
-        case RDTSC_VMEXIT: return "RDTSC_VMEXIT";
-        case QEMU_BRAND: return "QEMU_BRAND";
-        case BOCHS_CPU: return "BOCHS_CPU";
-        case VPC_BOARD: return "VPC_BOARD";
-        case HYPERV_WMI: return "HYPERV_WMI";
-        case HYPERV_REG: return "HYPERV_REG";
-        case BIOS_SERIAL: return "BIOS_SERIAL";
-        case MSSMBIOS: return "MSSMBIOS";
-        case MAC_MEMSIZE: return "MAC_MEMSIZE";
-        case MAC_IOKIT: return "MAC_IOKIT";
-        case IOREG_GREP: return "IOREG_GREP";
-        case MAC_SIP: return "MAC_SIP";
-        case HKLM_REGISTRIES: return "HKLM_REGISTRIES";
-        case QEMU_GA: return "QEMU_GA";
-        case VALID_MSR: return "VALID_MSR";
-        case QEMU_PROC: return "QEMU_PROC";
-        case VPC_PROC: return "VPC_PROC";
-        case VPC_INVALID: return "VPC_INVALID";
-        case SIDT: return "SIDT";
-        case SGDT: return "SGDT";
-        case SLDT: return "SLDT";
-        case OFFSEC_SIDT: return "OFFSEC_SIDT";
-        case OFFSEC_SGDT: return "OFFSEC_SGDT";
-        case OFFSEC_SLDT: return "OFFSEC_SLDT";
-        case HYPERV_BOARD: return "HYPERV_BOARD";
-        case VM_FILES_EXTRA: return "VM_FILES_EXTRA";
-        case VPC_SIDT: return "VPC_SIDT";
-        case VMWARE_IOMEM: return "VMWARE_IOMEM";
-        case VMWARE_IOPORTS: return "VMWARE_IOPORTS";
-        case VMWARE_SCSI: return "VMWARE_SCSI";
-        case VMWARE_DMESG: return "VMWARE_DMESG";
-        case VMWARE_STR: return "VMWARE_STR";
-        case VMWARE_BACKDOOR: return "VMWARE_BACKDOOR";
-        case VMWARE_PORT_MEM: return "VMWARE_PORT_MEM";
-        case SMSW: return "SMSW";
-        case MUTEX: return "MUTEX";
-        case UPTIME: return "UPTIME";
-        case ODD_CPU_THREADS: return "ODD_CPU_THREADS";
-        case INTEL_THREAD_MISMATCH: return "INTEL_THREAD_MISMATCH";
-        case XEON_THREAD_MISMATCH: return "XEON_THREAD_MISMATCH";
-        case NETTITUDE_VM_MEMORY: return "NETTITUDE_VM_MEMORY";
-        case CPUID_BITSET: return "CPUID_BITSET";
-        case CUCKOO_DIR: return "CUCKOO_DIR";
-        case CUCKOO_PIPE: return "CUCKOO_PIPE";
-        case HYPERV_HOSTNAME: return "HYPERV_HOSTNAME";
-        case GENERAL_HOSTNAME: return "GENERAL_HOSTNAME";
-        case SCREEN_RESOLUTION: return "SCREEN_RESOLUTION";
-        case DEVICE_STRING: return "DEVICE_STRING";
-        case BLUESTACKS_FOLDERS: return "BLUESTACKS_FOLDERS";
-        case CPUID_SIGNATURE: return "CPUID_SIGNATURE";
-        case HYPERV_BITMASK: return "HYPERV_BITMASK";
-        case KVM_BITMASK: return "KVM_BITMASK";
-        case KGT_SIGNATURE: return "KGT_SIGNATURE";
-        case VMWARE_DMI: return "VMWARE_DMI";
-        case HYPERV_EVENT_LOGS: return "HYPERV_EVENT_LOGS";
-        case VMWARE_EVENT_LOGS: return "VMWARE_EVENT_LOGS";
-        case QEMU_VIRTUAL_DMI: return "QEMU_VIRTUAL_DMI";
-        case QEMU_USB: return "QEMU_USB";
-        case HYPERVISOR_DIR: return "HYPERVISOR_DIR";
-        case UML_CPU: return "UML_CPU";
-        case KMSG: return "KMSG";
-        case VM_PROCS: return "VM_PROCS";
-        case VBOX_MODULE: return "VBOX_MODULE";
-        case SYSINFO_PROC: return "SYSINFO_PROC";
-        case DEVICE_TREE: return "DEVICE_TREE";
-        case DMI_SCAN: return "DMI_SCAN";
-        case SMBIOS_VM_BIT: return "SMBIOS_VM_BIT";
-        case PODMAN_FILE: return "PODMAN_FILE";
-        case WSL_PROC: return "WSL_PROC";
-        case GPU_CHIPTYPE: return "GPU_CHIPTYPE";
-        case DRIVER_NAMES: return "DRIVER_NAMES";
-        case VM_SIDT: return "VM_SIDT";
-        case HDD_SERIAL: return "HDD_SERIAL";
-        case PORT_CONNECTORS: return "PORT_CONNECTORS";
-        case VM_HDD: return "VM_HDD";
-        case ACPI_DETECT: return "ACPI_DETECT";
-        case GPU_NAME: return "GPU_NAME";
-        case VMWARE_DEVICES: return "VMWARE_DEVICES";
-        case VMWARE_MEMORY: return "VMWARE_MEMORY";
-        case CPU_CORES: return "CPU_CORES";
-        default: return "Unknown flag";
+            case VMID: return "VMID";
+            case CPU_BRAND: return "CPU_BRAND";
+            case HYPERVISOR_BIT: return "HYPERVISOR_BIT";
+            case HYPERVISOR_STR: return "HYPERVISOR_STR";
+            case RDTSC: return "RDTSC";
+            case THREADCOUNT: return "THREADCOUNT";
+            case MAC: return "MAC";
+            case TEMPERATURE: return "TEMPERATURE";
+            case SYSTEMD: return "SYSTEMD";
+            case CVENDOR: return "CVENDOR";
+            case CTYPE: return "CTYPE";
+            case DOCKERENV: return "DOCKERENV";
+            case DMIDECODE: return "DMIDECODE";
+            case DMESG: return "DMESG";
+            case HWMON: return "HWMON";
+            case SIDT5: return "SIDT5";
+            case VMWARE_REG: return "VMWARE_REG";
+            case VBOX_REG: return "VBOX_REG";
+            case USER: return "USER";
+            case DLL: return "DLL";
+            case REGISTRY: return "REGISTRY";
+            case VM_FILES: return "VM_FILES";
+            case HWMODEL: return "HWMODEL";
+            case DISK_SIZE: return "DISK_SIZE";
+            case VBOX_DEFAULT: return "VBOX_DEFAULT";
+            case VBOX_NETWORK: return "VBOX_NETWORK";
+            case VM_PROCESSES: return "VM_PROCESSES";
+            case LINUX_USER_HOST: return "LINUX_USER_HOST";
+            case GAMARUE: return "GAMARUE";
+            case VMID_0X4: return "VMID_0X4";
+            case PARALLELS_VM: return "PARALLELS_VM";
+            case RDTSC_VMEXIT: return "RDTSC_VMEXIT";
+            case QEMU_BRAND: return "QEMU_BRAND";
+            case BOCHS_CPU: return "BOCHS_CPU";
+            case VPC_BOARD: return "VPC_BOARD";
+            case HYPERV_WMI: return "HYPERV_WMI";
+            case HYPERV_REG: return "HYPERV_REG";
+            case BIOS_SERIAL: return "BIOS_SERIAL";
+            case MSSMBIOS: return "MSSMBIOS";
+            case MAC_MEMSIZE: return "MAC_MEMSIZE";
+            case MAC_IOKIT: return "MAC_IOKIT";
+            case IOREG_GREP: return "IOREG_GREP";
+            case MAC_SIP: return "MAC_SIP";
+            case HKLM_REGISTRIES: return "HKLM_REGISTRIES";
+            case QEMU_GA: return "QEMU_GA";
+            case VALID_MSR: return "VALID_MSR";
+            case QEMU_PROC: return "QEMU_PROC";
+            case VPC_PROC: return "VPC_PROC";
+            case VPC_INVALID: return "VPC_INVALID";
+            case SIDT: return "SIDT";
+            case SGDT: return "SGDT";
+            case SLDT: return "SLDT";
+            case OFFSEC_SIDT: return "OFFSEC_SIDT";
+            case OFFSEC_SGDT: return "OFFSEC_SGDT";
+            case OFFSEC_SLDT: return "OFFSEC_SLDT";
+            case HYPERV_BOARD: return "HYPERV_BOARD";
+            case VM_FILES_EXTRA: return "VM_FILES_EXTRA";
+            case VPC_SIDT: return "VPC_SIDT";
+            case VMWARE_IOMEM: return "VMWARE_IOMEM";
+            case VMWARE_IOPORTS: return "VMWARE_IOPORTS";
+            case VMWARE_SCSI: return "VMWARE_SCSI";
+            case VMWARE_DMESG: return "VMWARE_DMESG";
+            case VMWARE_STR: return "VMWARE_STR";
+            case VMWARE_BACKDOOR: return "VMWARE_BACKDOOR";
+            case VMWARE_PORT_MEM: return "VMWARE_PORT_MEM";
+            case SMSW: return "SMSW";
+            case MUTEX: return "MUTEX";
+            case UPTIME: return "UPTIME";
+            case ODD_CPU_THREADS: return "ODD_CPU_THREADS";
+            case INTEL_THREAD_MISMATCH: return "INTEL_THREAD_MISMATCH";
+            case XEON_THREAD_MISMATCH: return "XEON_THREAD_MISMATCH";
+            case NETTITUDE_VM_MEMORY: return "NETTITUDE_VM_MEMORY";
+            case CPUID_BITSET: return "CPUID_BITSET";
+            case CUCKOO_DIR: return "CUCKOO_DIR";
+            case CUCKOO_PIPE: return "CUCKOO_PIPE";
+            case HYPERV_HOSTNAME: return "HYPERV_HOSTNAME";
+            case GENERAL_HOSTNAME: return "GENERAL_HOSTNAME";
+            case SCREEN_RESOLUTION: return "SCREEN_RESOLUTION";
+            case DEVICE_STRING: return "DEVICE_STRING";
+            case BLUESTACKS_FOLDERS: return "BLUESTACKS_FOLDERS";
+            case CPUID_SIGNATURE: return "CPUID_SIGNATURE";
+            case HYPERV_BITMASK: return "HYPERV_BITMASK";
+            case KVM_BITMASK: return "KVM_BITMASK";
+            case KGT_SIGNATURE: return "KGT_SIGNATURE";
+            case VMWARE_DMI: return "VMWARE_DMI";
+            case HYPERV_EVENT_LOGS: return "HYPERV_EVENT_LOGS";
+            case VMWARE_EVENT_LOGS: return "VMWARE_EVENT_LOGS";
+            case QEMU_VIRTUAL_DMI: return "QEMU_VIRTUAL_DMI";
+            case QEMU_USB: return "QEMU_USB";
+            case HYPERVISOR_DIR: return "HYPERVISOR_DIR";
+            case UML_CPU: return "UML_CPU";
+            case KMSG: return "KMSG";
+            case VM_PROCS: return "VM_PROCS";
+            case VBOX_MODULE: return "VBOX_MODULE";
+            case SYSINFO_PROC: return "SYSINFO_PROC";
+            case DEVICE_TREE: return "DEVICE_TREE";
+            case DMI_SCAN: return "DMI_SCAN";
+            case SMBIOS_VM_BIT: return "SMBIOS_VM_BIT";
+            case PODMAN_FILE: return "PODMAN_FILE";
+            case WSL_PROC: return "WSL_PROC";
+            case GPU_CHIPTYPE: return "GPU_CHIPTYPE";
+            case DRIVER_NAMES: return "DRIVER_NAMES";
+            case VM_SIDT: return "VM_SIDT";
+            case HDD_SERIAL: return "HDD_SERIAL";
+            case PORT_CONNECTORS: return "PORT_CONNECTORS";
+            case VM_HDD: return "VM_HDD";
+            case ACPI_DETECT: return "ACPI_DETECT";
+            case GPU_NAME: return "GPU_NAME";
+            case VMWARE_DEVICES: return "VMWARE_DEVICES";
+            case VMWARE_MEMORY: return "VMWARE_MEMORY";
+            case IDT_GDT_MISMATCH: return "CPU_CORES";
+            case PROCESSOR_NUMBER: return "PROCESSOR_NUMBER";
+            case NUMBER_OF_CORES: return "NUMBER_OF_CORES";
+            case WMI_MODEL: return "WMI_MODEL";
+            case WMI_MANUFACTURER: return "WMI_MANUFACTURER";
+            case WMI_TEMPERATURE: return "WMI_TEMPERATURE";
+            case PROCESSOR_ID: return "PROCESSOR_ID";
+            case CPU_FANS: return "CPU_FANS";
+            case POWER_CAPABILITIES: return "POWER_CAPABILITIES";
+            case SETUPAPI_DISK: return "SETUPAPI_DISK";
+            default: return "Unknown flag";
         }
     }
 
@@ -10002,17 +10207,25 @@ public: // START OF PUBLIC FUNCTIONS
                 article = " a ";
             }
 
-            return (category + article + brand_tmp + " VM"); 
+            return (brand_tmp == "Hyper-V artifact (not an actual VM)") ? (category + article + brand_tmp) : (category + article + brand_tmp + " VM");
         };
 
-        if      (percent_tmp == 0)   { return baremetal; } 
-        else if (percent_tmp <= 20)  { return very_unlikely; } 
-        else if (percent_tmp <= 35)  { return unlikely; } 
-        else if (percent_tmp < 50)   { return make_conclusion(potentially); } 
-        else if (percent_tmp <= 62)  { return make_conclusion(might); } 
-        else if (percent_tmp <= 75)  { return make_conclusion(likely); } 
-        else if (percent_tmp < 100)  { return make_conclusion(very_likely); } 
-        else                         { return make_conclusion(inside_vm); }
+        if (core::is_enabled(flags, DYNAMIC)) {
+            if      (percent_tmp == 0)   { return baremetal; } 
+            else if (percent_tmp <= 20)  { return very_unlikely; } 
+            else if (percent_tmp <= 35)  { return unlikely; } 
+            else if (percent_tmp < 50)   { return make_conclusion(potentially); } 
+            else if (percent_tmp <= 62)  { return make_conclusion(might); } 
+            else if (percent_tmp <= 75)  { return make_conclusion(likely); } 
+            else if (percent_tmp < 100)  { return make_conclusion(very_likely); } 
+            else                         { return make_conclusion(inside_vm); }
+        }
+
+        if (percent_tmp == 100) {
+            return make_conclusion(inside_vm);
+        } else {
+            return baremetal;
+        }
     }
 
     #pragma pack(push, 1)
@@ -10166,7 +10379,7 @@ VM::flagset VM::DEFAULT = []() noexcept -> flagset {
     // disable all the settings flags
     tmp.flip(NO_MEMO);
     tmp.flip(HIGH_THRESHOLD);
-    tmp.flip(SPOOFABLE);
+    tmp.flip(DYNAMIC);
     tmp.flip(MULTIPLE);
 
     return tmp;
@@ -10180,9 +10393,10 @@ VM::flagset VM::ALL = []() noexcept -> flagset {
     // set all bits to 1
     tmp.set();
 
-    // disable all the settings technique flags (except SPOOFABLE)
+    // disable all the settings technique flags
     tmp.flip(NO_MEMO);
     tmp.flip(HIGH_THRESHOLD);
+    tmp.flip(DYNAMIC);
     tmp.flip(MULTIPLE);
 
     return tmp;
@@ -10235,33 +10449,33 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
 
     { VM::VMID, { 100, VM::vmid, false } },
     { VM::CPU_BRAND, { 50, VM::cpu_brand, false } },
-    { VM::HYPERVISOR_BIT, { 100, VM::hypervisor_bit , false}} ,
+    { VM::HYPERVISOR_BIT, { 100, VM::hypervisor_bit , false}} , 
     { VM::HYPERVISOR_STR, { 75, VM::hypervisor_str, false } },
     { VM::RDTSC, { 5, VM::rdtsc_check, false } },
     { VM::THREADCOUNT, { 25, VM::thread_count, false } },
-    { VM::MAC, { 45, VM::mac_address_check, true } },
+    { VM::MAC, { 20, VM::mac_address_check, true } },
     { VM::TEMPERATURE, { 15, VM::temperature, false } },
-    { VM::SYSTEMD, { 70, VM::systemd_virt, true } },
+    { VM::SYSTEMD, { 35, VM::systemd_virt, true } },
     { VM::CVENDOR, { 65, VM::chassis_vendor, false } },
     { VM::CTYPE, { 20, VM::chassis_type, false } },
-    { VM::DOCKERENV, { 60, VM::dockerenv, true } },
+    { VM::DOCKERENV, { 30, VM::dockerenv, true } },
     { VM::DMIDECODE, { 55, VM::dmidecode, false } },
     { VM::DMESG, { 55, VM::dmesg, false } },
-    { VM::HWMON, { 75, VM::hwmon, true } },
+    { VM::HWMON, { 35, VM::hwmon, true } },
     { VM::SIDT5, { 45, VM::sidt5, false } },
-    { VM::VMWARE_REG, { 100, VM::vmware_registry, true } },
-    { VM::VBOX_REG, { 100, VM::vbox_registry, true } },
-    { VM::USER, { 15, VM::user_check, true } },
-    { VM::DLL, { 50, VM::DLL_check, true } },
-    { VM::REGISTRY, { 100, VM::registry_key, true } },
-    { VM::VM_FILES, { 50, VM::vm_files, true } },
-    { VM::HWMODEL, { 75, VM::hwmodel, true } }, // TODO: update score
+    { VM::VMWARE_REG, { 50, VM::vmware_registry, true } },
+    { VM::VBOX_REG, { 50, VM::vbox_registry, true } },
+    { VM::USER, { 5, VM::user_check, true } },
+    { VM::DLL, { 25, VM::DLL_check, true } },
+    { VM::REGISTRY, { 50, VM::registry_key, true } },
+    { VM::VM_FILES, { 25, VM::vm_files, true } },
+    { VM::HWMODEL, { 35, VM::hwmodel, true } }, // TODO: update score
     { VM::DISK_SIZE, { 60, VM::disk_size, false } }, // TODO: update score
     { VM::VBOX_DEFAULT, { 25, VM::vbox_default_specs, false } },
     { VM::VBOX_NETWORK, { 100, VM::vbox_network_share, false } },  // used to be 70, debatable
-    { VM::VM_PROCESSES, { 30, VM::vm_processes, true } },
-    { VM::LINUX_USER_HOST, { 25, VM::linux_user_host, true } }, // TODO: update score
-    { VM::GAMARUE, { 25, VM::gamarue, true } },
+    { VM::VM_PROCESSES, { 15, VM::vm_processes, true } }, 
+    { VM::LINUX_USER_HOST, { 10, VM::linux_user_host, true } }, // TODO: update score
+    { VM::GAMARUE, { 10, VM::gamarue, true } },
     { VM::VMID_0X4, { 100, VM::vmid_0x4, false } },
     { VM::PARALLELS_VM, { 50, VM::parallels, false } },
     { VM::RDTSC_VMEXIT, { 5, VM::rdtsc_vmexit, false } },
@@ -10270,15 +10484,15 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::VPC_BOARD, { 25, VM::vpc_board, false } },
     { VM::BIOS_SERIAL, { 60, VM::bios_serial, false } }, // debatable
     { VM::MSSMBIOS, { 75, VM::mssmbios, false } },
-    { VM::MAC_MEMSIZE, { 30, VM::hw_memsize, true } }, // TODO: update score
-    { VM::MAC_IOKIT, { 80, VM::io_kit, true } }, // TODO: update score
-    { VM::IOREG_GREP, { 75, VM::ioreg_grep, true } }, // TODO: update score
-    { VM::MAC_SIP, { 85, VM::mac_sip, true } }, // TODO: update score
-    { VM::HKLM_REGISTRIES, { 50, VM::hklm_registries, true } },
-    { VM::QEMU_GA, { 20, VM::qemu_ga, true } }, // TODO: update score
+    { VM::MAC_MEMSIZE, { 15, VM::hw_memsize, true } }, // TODO: update score
+    { VM::MAC_IOKIT, { 40, VM::io_kit, true } }, // TODO: update score
+    { VM::IOREG_GREP, { 30, VM::ioreg_grep, true } }, // TODO: update score
+    { VM::MAC_SIP, { 40, VM::mac_sip, true } }, // TODO: update score
+    { VM::HKLM_REGISTRIES, { 25, VM::hklm_registries, true } },
+    { VM::QEMU_GA, { 10, VM::qemu_ga, true } }, // TODO: update score
     { VM::VALID_MSR, { 35, VM::valid_msr, false } },
-    { VM::QEMU_PROC, { 100, VM::qemu_processes, true } }, // debatable
-    { VM::VPC_PROC, { 100, VM::vpc_proc, true } }, // debatable
+    { VM::QEMU_PROC, { 50, VM::qemu_processes, true } }, // debatable
+    { VM::VPC_PROC, { 50, VM::vpc_proc, true } }, // debatable 
     { VM::VPC_INVALID, { 75, VM::vpc_invalid, false } }, // TODO: update score
     { VM::SIDT, { 25, VM::sidt, false } },
     { VM::SGDT, { 30, VM::sgdt, false } }, // TODO: update score
@@ -10288,7 +10502,7 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::OFFSEC_SLDT, { 20, VM::offsec_sldt, false } }, // TODO: update score
     { VM::VPC_SIDT, { 15, VM::vpc_sidt, false } }, // debatable
     { VM::HYPERV_BOARD, { 100, VM::hyperv_board, false } },
-    { VM::VM_FILES_EXTRA, { 75, VM::vm_files_extra, true } },
+    { VM::VM_FILES_EXTRA, { 30, VM::vm_files_extra, true } },
     { VM::VMWARE_IOMEM, { 65, VM::vmware_iomem, false } }, // debatable
     { VM::VMWARE_IOPORTS, { 70, VM::vmware_ioports, false } }, // debatable
     { VM::VMWARE_SCSI, { 40, VM::vmware_scsi, false } }, // debatable
@@ -10304,13 +10518,13 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::XEON_THREAD_MISMATCH, { 85, VM::xeon_thread_mismatch, false } }, // debatable
     { VM::NETTITUDE_VM_MEMORY, { 100, VM::nettitude_vm_memory, false } },
     { VM::CPUID_BITSET, { 25, VM::cpuid_bitset, false } }, // debatable
-    { VM::CUCKOO_DIR, { 75, VM::cuckoo_dir, true } },
-    { VM::CUCKOO_PIPE, { 20, VM::cuckoo_pipe, true } }, // debatable
-    { VM::HYPERV_HOSTNAME, { 25, VM::hyperv_hostname, true } },
-    { VM::GENERAL_HOSTNAME, { 25, VM::general_hostname, true } },
+    { VM::CUCKOO_DIR, { 30, VM::cuckoo_dir, true } },
+    { VM::CUCKOO_PIPE, { 30, VM::cuckoo_pipe, true } }, // debatable
+    { VM::HYPERV_HOSTNAME, { 30, VM::hyperv_hostname, true } },
+    { VM::GENERAL_HOSTNAME, { 10, VM::general_hostname, true } },
     { VM::SCREEN_RESOLUTION, { 20, VM::screen_resolution, false } },
     { VM::DEVICE_STRING, { 25, VM::device_string, false } },
-    { VM::BLUESTACKS_FOLDERS, { 15, VM::bluestacks, true } }, // debatable
+    { VM::BLUESTACKS_FOLDERS, { 5, VM::bluestacks, true } }, // debatable
     { VM::CPUID_SIGNATURE, { 95, VM::cpuid_signature, false } }, // debatable
     { VM::HYPERV_BITMASK, { 20, VM::hyperv_bitmask, false } }, // debatable
     { VM::KVM_BITMASK, { 40, VM::kvm_bitmask, false } }, // debatable
@@ -10322,14 +10536,14 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::QEMU_USB, { 20, VM::qemu_USB, false } }, // debatable
     { VM::HYPERVISOR_DIR, { 20, VM::hypervisor_dir, false } }, // debatable
     { VM::UML_CPU, { 80, VM::uml_cpu, false } }, // debatable
-    { VM::KMSG, { 10, VM::kmsg, true } }, // debatable
-    { VM::VM_PROCS, { 20, VM::vm_procs, true } }, // debatable
+    { VM::KMSG, { 5, VM::kmsg, true } }, // debatable
+    { VM::VM_PROCS, { 10, VM::vm_procs, true } }, // debatable
     { VM::VBOX_MODULE, { 15, VM::vbox_module, false } }, // debatable
     { VM::SYSINFO_PROC, { 15, VM::sysinfo_proc, false } }, // debatable
     { VM::DEVICE_TREE, { 20, VM::device_tree, false } }, // debatable
     { VM::DMI_SCAN, { 50, VM::dmi_scan, false } }, // debatable
     { VM::SMBIOS_VM_BIT, { 50, VM::smbios_vm_bit, false } }, // debatable
-    { VM::PODMAN_FILE, { 15, VM::podman_file, true } }, // debatable
+    { VM::PODMAN_FILE, { 5, VM::podman_file, true } }, // debatable
     { VM::WSL_PROC, { 30, VM::wsl_proc_subdir, false } }, // debatable
     { VM::GPU_CHIPTYPE, { 100, VM::gpu_chiptype, false } },
     { VM::DRIVER_NAMES, { 50, VM::driver_names, false } },
@@ -10339,7 +10553,14 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::VM_HDD, { 90, VM::vm_hdd, false } },
     { VM::ACPI_DETECT, { 85, VM::acpi_detect, false } },
     { VM::GPU_NAME, { 100, VM::vm_gpu, false } },
-    { VM::VMWARE_DEVICES, { 90, VM::vmware_devices, true } },
+    { VM::VMWARE_DEVICES, { 45, VM::vmware_devices, true } }, 
     { VM::VMWARE_MEMORY, { 50, VM::vmware_memory, false } },
-    { VM::CPU_CORES, { 50, VM::cpu_cores, false } },
+    { VM::IDT_GDT_MISMATCH, { 25, VM::idt_gdt_mismatch, false } },
+    { VM::PROCESSOR_NUMBER, { 25, VM::processor_number, false } },
+    { VM::NUMBER_OF_CORES, { 50, VM::number_of_cores, false } },
+    { VM::WMI_MODEL, { 100, VM::wmi_model, false } },
+    { VM::WMI_MANUFACTURER, { 100, VM::wmi_manufacturer, false } },
+    { VM::WMI_TEMPERATURE, { 25, VM::wmi_temperature, false } },
+    { VM::PROCESSOR_ID, { 25, VM::processor_id, false } },
+    { VM::CPU_FANS, { 35, VM::cpu_fans, false } }
 };
