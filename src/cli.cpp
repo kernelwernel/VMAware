@@ -312,8 +312,6 @@ bool is_disabled(const VM::enum_flags flag) {
     }
 
     switch (flag) {
-        case VM::RDTSC:
-        case VM::RDTSC_VMEXIT: 
         case VM::VMWARE_DMESG: return true;
         default: return false;
     }
@@ -343,7 +341,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::VBOX_DEFAULT:
             case VM::LINUX_USER_HOST:
             case VM::VMID_0X4:
-            case VM::RDTSC_VMEXIT:
             case VM::QEMU_BRAND:
             case VM::BOCHS_CPU:
             case VM::QEMU_GA:
@@ -413,7 +410,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::GAMARUE:
             case VM::VMID_0X4:
             case VM::PARALLELS_VM:
-            case VM::RDTSC_VMEXIT:
             case VM::QEMU_BRAND:
             case VM::BOCHS_CPU:
             case VM::VPC_BOARD:
@@ -493,7 +489,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::THREADCOUNT:
             case VM::HWMODEL:
             case VM::VMID_0X4:
-            case VM::RDTSC_VMEXIT:
             case VM::QEMU_BRAND:
             case VM::BOCHS_CPU:
             case VM::VPC_BOARD:
@@ -781,7 +776,6 @@ void general() {
     checker(VM::GAMARUE, "gamarue ransomware technique");
     checker(VM::VMID_0X4, "0x4 leaf of VMID");
     checker(VM::PARALLELS_VM, "Parallels techniques");
-    checker(VM::RDTSC_VMEXIT, "RDTSC VMEXIT");
     checker(VM::LOADED_DLLS, "loaded DLLs");
     checker(VM::QEMU_BRAND, "QEMU CPU brand");
     checker(VM::BOCHS_CPU, "BOCHS CPU techniques");

@@ -72,8 +72,11 @@
 - [ ] add a python script that will automatically add a new technique in the header, CLI, and docs without manually configuring it and potentially forgetting to update one of them
 - [ ] rearrange the techniques so that the more likely ones will be executed first
 - [ ] add VM::DYNAMIC to the conclusion function docs
-- [ ] add all the pafish techniques
 - [ ] make a raw assembly version of reading files to avoid hooking 
+- [ ] make techniques for QEMU detection on linux with the vm_hw.txt output 
+- [ ] make a feature where vmwarehardenedloader can be detected
+- [ ] tell requiem about the vmwarehardenedloader "7" thing
+- [ ] make a readme in auxiliary for all the documented tools
 
 # Distant plans
 - add the library to conan.io when released

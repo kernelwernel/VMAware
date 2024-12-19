@@ -25,28 +25,29 @@
  *
  * ================================ SECTIONS ==================================
  * - enums for publicly accessible techniques  => line 325
- * - struct for internal cpu operations        => line 593
- * - struct for internal memoization           => line 1041
- * - struct for internal utility functions     => line 1420
- * - struct for internal core components       => line 8945
- * - start of internal VM detection techniques => line 2744
- * - start of public VM detection functions    => line 9336
- * - start of externally defined variables     => line 10201
+ * - struct for internal cpu operations        => line 606
+ * - struct for internal memoization           => line 1054
+ * - struct for internal utility functions     => line 1433
+ * - struct for internal core components       => line 9447
+ * - start of internal VM detection techniques => line 2848
+ * - start of public VM detection functions    => line 9838
+ * - start of externally defined variables     => line 10725
  *
  *
  * ================================ EXAMPLE ==================================
  * #include "vmaware.hpp"
  * #include <iostream>
- *
+ * 
  * int main() {
  *     if (VM::detect()) {
- *         std::cout << "Virtual machine detected!" << std::endl;
- *         std::cout << "VM name: " << VM::brand() << std::endl;
+ *         std::cout << "Virtual machine detected!" << "\n";
  *     } else {
- *         std::cout << "Running in baremetal" << std::endl;
+ *         std::cout << "Running on baremetal" << "\n";
  *     }
- *
- *     std::cout << "VM certainty: " << (int)VM::percentage() << "%" << std::endl;
+ * 
+ *     std::cout << "VM name: " << VM::brand() << "\n";
+ *     std::cout << "VM type: " << VM::type() << "\n";
+ *     std::cout << "VM certainty: " << (int)VM::percentage() << "%" << "\n";
  * }
  */
 
@@ -367,7 +368,6 @@ public:
         GAMARUE,
         VMID_0X4,
         PARALLELS_VM,
-        RDTSC_VMEXIT,
         QEMU_BRAND,
         BOCHS_CPU,
         VPC_BOARD,
@@ -454,22 +454,20 @@ public:
         WMI_TEMPERATURE,
         PROCESSOR_ID,
         CPU_FANS,
-        
 
         // start of settings technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
         NO_MEMO,
         HIGH_THRESHOLD,
         DYNAMIC,
         NULL_ARG, // does nothing, just a placeholder flag mainly for the CLI
-        //SPOOFABLE,
         MULTIPLE
     };
 
 private:
     static constexpr u8 enum_size = MULTIPLE; // get enum size through value of last element
-    static constexpr u8 non_technique_count = MULTIPLE - NO_MEMO + 1; // get number of settings technique flags like VM::NO_MEMO for example
+    static constexpr u8 settings_count = MULTIPLE - NO_MEMO + 1; // get number of settings technique flags like VM::NO_MEMO for example
     static constexpr u8 INVALID = 255; // explicit invalid technique macro
-    static constexpr u16 base_technique_count = NO_MEMO; // original technique count, constant on purpose
+    static constexpr u16 base_technique_count = NO_MEMO; // original technique count, constant on purpose (can also be used as a base count value if custom techniques are added)
     static constexpr u16 maximum_points = 4765; // theoretical total points if all VM detections returned true (which is practically impossible)
     static constexpr u16 high_threshold_score = 300; // new threshold score from 100 to 350 if VM::HIGH_THRESHOLD flag is enabled
     static constexpr bool SHORTCUT = true; // macro for whether VM::core::run_all() should take a shortcut by skipping the rest of the techniques if the threshold score is already met
@@ -480,8 +478,9 @@ private:
     static constexpr u8 enum_end = enum_size + 1;
     static constexpr u8 technique_begin = enum_begin;
     static constexpr u8 technique_end = NO_MEMO;
-    static constexpr u8 non_technique_begin = NO_MEMO;
-    static constexpr u8 non_technique_end = enum_end;
+    static constexpr u8 settings_begin = NO_MEMO;
+    static constexpr u8 settings_end = enum_end;
+
 
     // this is specifically meant for VM::detected_count() to 
     // get the total number of techniques that detected a VM
@@ -529,6 +528,7 @@ public:
         static constexpr const char* VMWARE_GSX = "VMware GSX";
         static constexpr const char* VMWARE_WORKSTATION = "VMware Workstation";
         static constexpr const char* VMWARE_FUSION = "VMware Fusion";
+        static constexpr const char* VMWARE_HARD = "VMware (with VmwareHardenedLoader)";
         static constexpr const char* BHYVE = "bhyve";
         static constexpr const char* KVM = "KVM";
         static constexpr const char* QEMU = "QEMU";
@@ -900,7 +900,7 @@ public:
                 }
 
                 return false;
-                };
+            };
 
             bool found = false;
             bool is_xeon = false;
@@ -1102,8 +1102,6 @@ public:
                 return true;
             } else if (cache_table.size() == static_cast<std::size_t>(technique_count) - 3) {
                 return (
-                    !cache_keys.test(RDTSC_VMEXIT) &&
-                    !cache_keys.test(RDTSC) &&
                     !cache_keys.test(VMWARE_DMESG)
                 );
             }
@@ -2842,6 +2840,67 @@ public:
 
             return 0;
         }
+
+
+        [[nodiscard]] static bool does_threadcount_mismatch() {
+            auto GetThreadsUsingOSAPI = []() -> int {
+                DWORD bufferSize = 0;
+                GetLogicalProcessorInformationEx(RelationProcessorCore, nullptr, &bufferSize);
+
+                std::vector<char> buffer(bufferSize);
+                if (!GetLogicalProcessorInformationEx(RelationProcessorCore, reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(buffer.data()), &bufferSize)) {
+                    std::cerr << "Failed to get logical processor information.\n";
+                    return -1;
+                }
+
+                int threadCount = 0;
+                char* ptr = buffer.data();
+                while (ptr < buffer.data() + bufferSize) {
+                    auto info = reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(ptr);
+                    if (info->Relationship == RelationProcessorCore) {
+                        threadCount += __popcnt64(info->Processor.GroupMask[0].Mask);
+                    }
+                    ptr += info->Size;
+                }
+
+                return threadCount;
+            };
+
+            auto GetThreadsUsingWMI = []() -> int {
+                if (!wmi::initialize()) {
+                    std::cerr << "Failed to initialize WMI.\n";
+                    return -1;
+                }
+
+                wmi_result results = wmi::execute(L"SELECT NumberOfLogicalProcessors FROM Win32_Processor", { L"NumberOfLogicalProcessors" });
+                for (const auto& res : results) {
+                    if (res.type == wmi::result_type::Integer) {
+                        return res.intValue;
+                    }
+                }
+
+                return -1;
+            };
+
+            auto GetThreadsUsingCPUID = []() -> int {
+                int cpuInfo[4] = { 0 };
+                __cpuid(cpuInfo, 0x0B);
+
+                // CPUID leaf 0x0B, EBX contains logical processors per package
+                int threadsPerPackage = cpuInfo[1] & 0xFFFF;
+                return threadsPerPackage;
+            };
+
+            int cpuidThreads = GetThreadsUsingCPUID();
+            int wmiThreads = GetThreadsUsingWMI();
+            int osThreads = GetThreadsUsingOSAPI();
+
+            std::cout << "CPUID Threads: " << cpuidThreads << "\n";
+            std::cout << "WMI Threads: " << wmiThreads << "\n";
+            std::cout << "OS Threads: " << osThreads << "\n";
+
+            return !(cpuidThreads == wmiThreads && wmiThreads == osThreads);
+        }
 #endif
     };
 
@@ -2960,70 +3019,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         );
 
         return (std::strlen(out + 4) >= 4);
-#endif
-    }
-
-
-    /**
-     * @brief Benchmark RDTSC and evaluate its speed, usually it's very slow in VMs
-     * @category x86
-     */
-    [[nodiscard]]
-#if (LINUX)
-    // this is added so no sanitizers can potentially cause unwanted delays while measuring rdtsc in a debug compilation
-    __attribute__((no_sanitize("address", "leak", "thread", "undefined")))
-#endif
-        static bool rdtsc_check() {
-#if (!x86)
-        return false;
-#else
-#if (LINUX)
-        u32 a, b, c, d = 0;
-
-        // check if rdtsc is available
-        if (!__get_cpuid(cpu::leaf::proc_ext, &a, &b, &c, &d)) {
-            if (!(d & (1 << 27))) {
-                return false;
-            }
-        }
-
-        u64 s, acc = 0;
-        int32_t out[4];
-
-        for (std::size_t i = 0; i < 100; ++i) {
-            s = __rdtsc();
-            cpu::cpuid(out, 0, 0);
-            acc += __rdtsc() - s;
-        }
-
-        debug("RDTSC: ", "acc = ", acc);
-        debug("RDTSC: ", "acc/100 = ", acc / 100);
-
-        return (acc / 100 > 350);
-#elif (WINDOWS)
-#define LODWORD(_qw)    ((DWORD)(_qw))
-        u64 tsc1 = 0;
-        u64 tsc2 = 0;
-        u64 tsc3 = 0;
-        for (INT i = 0; i < 10; i++) {
-            tsc1 = __rdtsc();
-            GetProcessHeap();  // delay
-            tsc2 = __rdtsc();
-#pragma warning(push)
-#pragma warning(disable: 6387)
-            CloseHandle(0);
-#pragma warning(pop)
-            tsc3 = __rdtsc();
-            const bool condition = ((LODWORD(tsc3) - LODWORD(tsc2)) / (LODWORD(tsc2) - LODWORD(tsc1)) >= 10);
-            if (condition) {
-                return false;
-            }
-        }
-
-        return true;
-#else
-        return false;
-#endif
 #endif
     }
 
@@ -4597,38 +4592,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief check through alternative RDTSC technique with VMEXIT
-     * @category x86
-     */
-    [[nodiscard]]
-#if (LINUX)
-    // this is added so no sanitizers can potentially cause unwanted delays while measuring rdtsc in a debug compilation
-    __attribute__((no_sanitize("address", "leak", "thread", "undefined")))
-#endif
-    static bool rdtsc_vmexit() {
-#if (!x86)
-        return false;
-#else
-        u64 tsc1 = 0;
-        u64 tsc2 = 0;
-        u64 avg = 0;
-        i32 reg[4] = {};
-
-        for (std::size_t i = 0; i < 10; i++) {
-            tsc1 = __rdtsc();
-            cpu::cpuid(reg, 0);
-            tsc2 = __rdtsc();
-            avg += (tsc2 - tsc1);
-        }
-
-        avg /= 10;
-
-        return (avg >= 1500 || avg == 0);
-#endif
-    }
-
-
-    /**
      * @brief Match for QEMU CPU brands with "QEMU Virtual CPU" string
      * @category x86
      */
@@ -6085,974 +6048,977 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
+#if (WINDOWS)
+        if (util::does_threadcount_mismatch()) {
+            debug("INTEL_THREAD_MISMATCH: Thread tampering detected");
+            return false;
+        }
+#endif
+
         debug("INTEL_THREAD_MISMATCH: CPU model = ", model.string);
 
-        auto thread_database = util::make_unique<std::unordered_map<std::string, uint8_t>>();
+        std::map<const char*, u8> thread_database = {
+            // i3 series
+            { "i3-1000G1", 4 },
+            { "i3-1000G4", 4 },
+            { "i3-1000NG4", 4 },
+            { "i3-1005G1", 4 },
+            { "i3-10100", 8 },
+            { "i3-10100E", 8 },
+            { "i3-10100F", 8 },
+            { "i3-10100T", 8 },
+            { "i3-10100TE", 8 },
+            { "i3-10100Y", 4 },
+            { "i3-10105", 8 },
+            { "i3-10105F", 8 },
+            { "i3-10105T", 8 },
+            { "i3-10110U", 4 },
+            { "i3-10110Y", 4 },
+            { "i3-10300", 8 },
+            { "i3-10300T", 8 },
+            { "i3-10305", 8 },
+            { "i3-10305T", 8 },
+            { "i3-10320", 8 },
+            { "i3-10325", 8 },
+            { "i3-11100B", 8 },
+            { "i3-11100HE", 8 },
+            { "i3-1110G4", 4 },
+            { "i3-1115G4E", 4 },
+            { "i3-1115GRE", 4 },
+            { "i3-1120G4", 8 },
+            { "i3-12100", 8 },
+            { "i3-12100F", 8 },
+            { "i3-12100T", 8 },
+            { "i3-1210U", 4 },
+            { "i3-1215U", 4 },
+            { "i3-1215UE", 4 },
+            { "i3-1215UL", 4 },
+            { "i3-12300", 8 },
+            { "i3-12300T", 8 },
+            { "i3-13100", 8 },
+            { "i3-13100F", 8 },
+            { "i3-13100T", 8 },
+            { "i3-1315U", 4 },
+            { "i3-1315UE", 4 },
+            { "i3-14100", 8 },
+            { "i3-14100F", 8 },
+            { "i3-14100T", 8 },
+            { "i3-2100", 4 },
+            { "i3-2100T", 4 },
+            { "i3-2102", 4 },
+            { "i3-2105", 4 },
+            { "i3-2120", 4 },
+            { "i3-2120T", 4 },
+            { "i3-2125", 4 },
+            { "i3-2130", 4 },
+            { "i3-2308M", 4 },
+            { "i3-2310E", 4 },
+            { "i3-2310M", 4 },
+            { "i3-2312M", 4 },
+            { "i3-2328M", 4 },
+            { "i3-2330E", 4 },
+            { "i3-2330M", 4 },
+            { "i3-2332M", 4 },
+            { "i3-2340UE", 4 },
+            { "i3-2348M", 4 },
+            { "i3-2350LM", 4 },
+            { "i3-2350M", 4 },
+            { "i3-2355M", 4 },
+            { "i3-2357M", 4 },
+            { "i3-2365M", 4 },
+            { "i3-2367M", 4 },
+            { "i3-2370LM", 4 },
+            { "i3-2370M", 4 },
+            { "i3-2375M", 4 },
+            { "i3-2377M", 4 },
+            { "i3-2390M", 4 },
+            { "i3-2393M", 4 },
+            { "i3-2394M", 4 },
+            { "i3-2395M", 4 },
+            { "i3-2397M", 4 },
+            { "i3-3110M", 4 },
+            { "i3-3115C", 4 },
+            { "i3-3120M", 4 },
+            { "i3-3120ME", 4 },
+            { "i3-3130M", 4 },
+            { "i3-3210", 4 },
+            { "i3-3217U", 4 },
+            { "i3-3217UE", 4 },
+            { "i3-3220", 4 },
+            { "i3-3220T", 4 },
+            { "i3-3225", 4 },
+            { "i3-3227U", 4 },
+            { "i3-3229Y", 4 },
+            { "i3-3240", 4 },
+            { "i3-3240T", 4 },
+            { "i3-3245", 4 },
+            { "i3-3250", 4 },
+            { "i3-3250T", 4 },
+            { "i3-330E", 4 },
+            { "i3-330M", 4 },
+            { "i3-330UM", 4 },
+            { "i3-350M", 4 },
+            { "i3-370M", 4 },
+            { "i3-380M", 4 },
+            { "i3-380UM", 4 },
+            { "i3-390M", 4 },
+            { "i3-4000M", 4 },
+            { "i3-4005U", 4 },
+            { "i3-4010M", 4 },
+            { "i3-4010U", 4 },
+            { "i3-4010Y", 4 },
+            { "i3-4012Y", 4 },
+            { "i3-4020Y", 4 },
+            { "i3-4025U", 4 },
+            { "i3-4030U", 4 },
+            { "i3-4030Y", 4 },
+            { "i3-4100E", 4 },
+            { "i3-4100M", 4 },
+            { "i3-4100U", 4 },
+            { "i3-4102E", 4 },
+            { "i3-4110E", 4 },
+            { "i3-4110M", 4 },
+            { "i3-4112E", 4 },
+            { "i3-4120U", 4 },
+            { "i3-4130", 4 },
+            { "i3-4130T", 4 },
+            { "i3-4150", 4 },
+            { "i3-4150T", 4 },
+            { "i3-4158U", 4 },
+            { "i3-4160", 4 },
+            { "i3-4160T", 4 },
+            { "i3-4170", 4 },
+            { "i3-4170T", 4 },
+            { "i3-4330", 4 },
+            { "i3-4330T", 4 },
+            { "i3-4330TE", 4 },
+            { "i3-4340", 4 },
+            { "i3-4340TE", 4 },
+            { "i3-4350", 4 },
+            { "i3-4350T", 4 },
+            { "i3-4360", 4 },
+            { "i3-4360T", 4 },
+            { "i3-4370", 4 },
+            { "i3-4370T", 4 },
+            { "i3-5005U", 4 },
+            { "i3-5010U", 4 },
+            { "i3-5015U", 4 },
+            { "i3-5020U", 4 },
+            { "i3-5157U", 4 },
+            { "i3-530", 4 },
+            { "i3-540", 4 },
+            { "i3-550", 4 },
+            { "i3-560", 4 },
+            { "i3-6006U", 4 },
+            { "i3-6098P", 4 },
+            { "i3-6100", 4 },
+            { "i3-6100E", 4 },
+            { "i3-6100H", 4 },
+            { "i3-6100T", 4 },
+            { "i3-6100TE", 4 },
+            { "i3-6100U", 4 },
+            { "i3-6102E", 4 },
+            { "i3-6120T", 4 },
+            { "i3-6157U", 4 },
+            { "i3-6167U", 4 },
+            { "i3-6300", 4 },
+            { "i3-6300T", 4 },
+            { "i3-6320", 4 },
+            { "i3-6320T", 4 },
+            { "i3-7007U", 4 },
+            { "i3-7020U", 4 },
+            { "i3-7100", 4 },
+            { "i3-7100E", 4 },
+            { "i3-7100H", 4 },
+            { "i3-7100T", 4 },
+            { "i3-7100U", 4 },
+            { "i3-7101E", 4 },
+            { "i3-7101TE", 4 },
+            { "i3-7102E", 4 },
+            { "i3-7110U", 4 },
+            { "i3-7120", 4 },
+            { "i3-7120T", 4 },
+            { "i3-7130U", 4 },
+            { "i3-7167U", 4 },
+            { "i3-7300", 4 },
+            { "i3-7300T", 4 },
+            { "i3-7310T", 4 },
+            { "i3-7310U", 4 },
+            { "i3-7320", 4 },
+            { "i3-7320T", 4 },
+            { "i3-7340", 4 },
+            { "i3-7350K", 4 },
+            { "i3-8000", 4 },
+            { "i3-8000T", 4 },
+            { "i3-8020", 4 },
+            { "i3-8020T", 4 },
+            { "i3-8100", 4 },
+            { "i3-8100B", 4 },
+            { "i3-8100F", 4 },
+            { "i3-8100H", 4 },
+            { "i3-8100T", 4 },
+            { "i3-8109U", 4 },
+            { "i3-8120", 4 },
+            { "i3-8120T", 4 },
+            { "i3-8121U", 4 },
+            { "i3-8130U", 4 },
+            { "i3-8130U", 4 },
+            { "i3-8140U", 4 },
+            { "i3-8145U", 4 },
+            { "i3-8145UE", 4 },
+            { "i3-8300", 4 },
+            { "i3-8300T", 4 },
+            { "i3-8320", 4 },
+            { "i3-8320T", 4 },
+            { "i3-8350K", 4 },
+            { "i3-9100", 4 },
+            { "i3-9100E", 4 },
+            { "i3-9100F", 4 },
+            { "i3-9100HL", 4 },
+            { "i3-9100T", 4 },
+            { "i3-9100TE", 4 },
+            { "i3-9300", 4 },
+            { "i3-9300T", 4 },
+            { "i3-9320", 4 },
+            { "i3-9350K", 4 },
+            { "i3-9350KF", 4 },
+            { "i3-N300", 8 },
+            { "i3-N305", 8 },
 
-        auto push = [&thread_database](const char* brand_str, const u8 thread_count) -> void {
-            thread_database->emplace(brand_str, thread_count);
+            // i5 series
+            { "i5-10200H", 8 },
+            { "i5-10210U", 4 },
+            { "i5-10210Y", 8 },
+            { "i5-10300H", 8 },
+            { "i5-1030G4", 8 },
+            { "i5-1030G7", 8 },
+            { "i5-1030NG7", 8 },
+            { "i5-10310U", 4 },
+            { "i5-10310Y", 8 },
+            { "i5-1035G1", 8 },
+            { "i5-1035G4", 8 },
+            { "i5-1035G7", 8 },
+            { "i5-1038NG7", 8 },
+            { "i5-10400", 12 },
+            { "i5-10400F", 12 },
+            { "i5-10400H", 8 },
+            { "i5-10400T", 12 },
+            { "i5-10500", 12 },
+            { "i5-10500E", 12 },
+            { "i5-10500H", 12 },
+            { "i5-10500T", 12 },
+            { "i5-10500TE", 12 },
+            { "i5-10505", 12 },
+            { "i5-10600", 12 },
+            { "i5-10600K", 12 },
+            { "i5-10600KF", 12 },
+            { "i5-10600T", 12 },
+            { "i5-1115G4", 4 },
+            { "i5-1125G4", 8 },
+            { "i5-11260H", 12 },
+            { "i5-11300H", 8 },
+            { "i5-1130G7", 8 },
+            { "i5-11320H", 8 },
+            { "i5-1135G7", 8 },
+            { "i5-11400", 12 },
+            { "i5-11400F", 12 },
+            { "i5-11400H", 12 },
+            { "i5-11400T", 12 },
+            { "i5-1140G7", 8 },
+            { "i5-1145G7", 8 },
+            { "i5-1145G7E", 8 },
+            { "i5-1145GRE", 8 },
+            { "i5-11500", 12 },
+            { "i5-11500B", 12 },
+            { "i5-11500H", 12 },
+            { "i5-11500HE", 12 },
+            { "i5-11500T", 12 },
+            { "i5-1155G7", 8 },
+            { "i5-11600", 12 },
+            { "i5-11600K", 12 },
+            { "i5-11600KF", 12 },
+            { "i5-11600T", 12 },
+            { "i5-1230U", 4 },
+            { "i5-1235U", 4 },
+            { "i5-12400", 12 },
+            { "i5-12400F", 12 },
+            { "i5-12400T", 12 },
+            { "i5-1240P", 8 },
+            { "i5-1240U", 4 },
+            { "i5-1245U", 4 },
+            { "i5-12490F", 12 },
+            { "i5-12500", 12 },
+            { "i5-12500H", 8 },
+            { "i5-12500HL", 8 },
+            { "i5-12500T", 12 },
+            { "i5-1250P", 8 },
+            { "i5-1250PE", 8 },
+            { "i5-12600", 12 },
+            { "i5-12600H", 8 },
+            { "i5-12600HE", 8 },
+            { "i5-12600HL", 8 },
+            { "i5-12600HX", 8 },
+            { "i5-12600K", 12 },
+            { "i5-12600KF", 12 },
+            { "i5-12600T", 12 },
+            { "i5-13400", 12 },
+            { "i5-13400F", 12 },
+            { "i5-13400T", 12 },
+            { "i5-1340P", 8 },
+            { "i5-1340PE", 8 },
+            { "i5-13490F", 12 },
+            { "i5-13500", 12 },
+            { "i5-13500H", 8 },
+            { "i5-13500T", 12 },
+            { "i5-13505H", 8 },
+            { "i5-1350P", 8 },
+            { "i5-1350PE", 8 },
+            { "i5-13600", 12 },
+            { "i5-13600H", 8 },
+            { "i5-13600HE", 8 },
+            { "i5-13600K", 12 },
+            { "i5-13600K", 20 },
+            { "i5-13600KF", 12 },
+            { "i5-13600KF", 20 },
+            { "i5-13600T", 12 },
+            { "i5-2300", 4 },
+            { "i5-2310", 4 },
+            { "i5-2320", 4 },
+            { "i5-2380P", 4 },
+            { "i5-2390T", 4 },
+            { "i5-2400", 4 },
+            { "i5-2400S", 4 },
+            { "i5-2405S", 4 },
+            { "i5-2410M", 4 },
+            { "i5-2415M", 4 },
+            { "i5-2430M", 4 },
+            { "i5-2435M", 4 },
+            { "i5-2450M", 4 },
+            { "i5-2450P", 4 },
+            { "i5-2467M", 4 },
+            { "i5-2475M", 4 },
+            { "i5-2477M", 4 },
+            { "i5-2487M", 4 },
+            { "i5-2490M", 4 },
+            { "i5-2497M", 4 },
+            { "i5-2500", 4 },
+            { "i5-2500K", 4 },
+            { "i5-2500S", 4 },
+            { "i5-2500T", 4 },
+            { "i5-2510E", 4 },
+            { "i5-2515E", 4 },
+            { "i5-2520M", 4 },
+            { "i5-2537M", 4 },
+            { "i5-2540LM", 4 },
+            { "i5-2540M", 4 },
+            { "i5-2547M", 4 },
+            { "i5-2550K", 4 },
+            { "i5-2557M", 4 },
+            { "i5-2560LM", 4 },
+            { "i5-2560M", 4 },
+            { "i5-2580M", 4 },
+            { "i5-3210M", 4 },
+            { "i5-3230M", 4 },
+            { "i5-3317U", 4 },
+            { "i5-3320M", 4 },
+            { "i5-3330", 4 },
+            { "i5-3330S", 4 },
+            { "i5-3335S", 4 },
+            { "i5-3337U", 4 },
+            { "i5-3339Y", 4 },
+            { "i5-3340", 4 },
+            { "i5-3340M", 4 },
+            { "i5-3340S", 4 },
+            { "i5-3350P", 4 },
+            { "i5-3360M", 4 },
+            { "i5-3380M", 4 },
+            { "i5-3427U", 4 },
+            { "i5-3437U", 4 },
+            { "i5-3439Y", 4 },
+            { "i5-3450", 4 },
+            { "i5-3450S", 4 },
+            { "i5-3470", 4 },
+            { "i5-3470S", 4 },
+            { "i5-3470T", 4 },
+            { "i5-3475S", 4 },
+            { "i5-3550", 4 },
+            { "i5-3550S", 4 },
+            { "i5-3570", 4 },
+            { "i5-3570K", 4 },
+            { "i5-3570S", 4 },
+            { "i5-3570T", 4 },
+            { "i5-3610ME", 4 },
+            { "i5-4200H", 4 },
+            { "i5-4200M", 4 },
+            { "i5-4200U", 4 },
+            { "i5-4200Y", 4 },
+            { "i5-4202Y", 4 },
+            { "i5-4210H", 4 },
+            { "i5-4210M", 4 },
+            { "i5-4210U", 4 },
+            { "i5-4210Y", 4 },
+            { "i5-4220Y", 4 },
+            { "i5-4250U", 4 },
+            { "i5-4258U", 4 },
+            { "i5-4260U", 4 },
+            { "i5-4278U", 4 },
+            { "i5-4288U", 4 },
+            { "i5-4300M", 4 },
+            { "i5-4300U", 4 },
+            { "i5-4300Y", 4 },
+            { "i5-4302Y", 4 },
+            { "i5-4308U", 4 },
+            { "i5-430M", 4 },
+            { "i5-430UM", 4 },
+            { "i5-4310M", 4 },
+            { "i5-4310U", 4 },
+            { "i5-4330M", 4 },
+            { "i5-4340M", 4 },
+            { "i5-4350U", 4 },
+            { "i5-4360U", 4 },
+            { "i5-4400E", 4 },
+            { "i5-4402E", 4 },
+            { "i5-4402EC", 4 },
+            { "i5-4410E", 4 },
+            { "i5-4422E", 4 },
+            { "i5-4430", 4 },
+            { "i5-4430S", 4 },
+            { "i5-4440", 4 },
+            { "i5-4440S", 4 },
+            { "i5-4460", 4 },
+            { "i5-4460S", 4 },
+            { "i5-4460T", 4 },
+            { "i5-4470", 4 },
+            { "i5-450M", 4 },
+            { "i5-4570", 4 },
+            { "i5-4570R", 4 },
+            { "i5-4570S", 4 },
+            { "i5-4570T", 4 },
+            { "i5-4570TE", 4 },
+            { "i5-4590", 4 },
+            { "i5-4590S", 4 },
+            { "i5-4590T", 4 },
+            { "i5-460M", 4 },
+            { "i5-4670", 4 },
+            { "i5-4670K", 4 },
+            { "i5-4670R", 4 },
+            { "i5-4670S", 4 },
+            { "i5-4670T", 4 },
+            { "i5-4690", 4 },
+            { "i5-4690K", 4 },
+            { "i5-4690S", 4 },
+            { "i5-4690T", 4 },
+            { "i5-470UM", 4 },
+            { "i5-480M", 4 },
+            { "i5-5200U", 4 },
+            { "i5-520E", 4 },
+            { "i5-520M", 4 },
+            { "i5-520UM", 4 },
+            { "i5-5250U", 4 },
+            { "i5-5257U", 4 },
+            { "i5-5287U", 4 },
+            { "i5-5300U", 4 },
+            { "i5-5350H", 4 },
+            { "i5-5350U", 4 },
+            { "i5-540M", 4 },
+            { "i5-540UM", 4 },
+            { "i5-5575R", 4 },
+            { "i5-560M", 4 },
+            { "i5-560UM", 4 },
+            { "i5-5675C", 4 },
+            { "i5-5675R", 4 },
+            { "i5-580M", 4 },
+            { "i5-6198DU", 4 },
+            { "i5-6200U", 4 },
+            { "i5-6260U", 4 },
+            { "i5-6267U", 4 },
+            { "i5-6287U", 4 },
+            { "i5-6300HQ", 4 },
+            { "i5-6300U", 4 },
+            { "i5-6350HQ", 4 },
+            { "i5-6360U", 4 },
+            { "i5-6400", 4 },
+            { "i5-6400T", 4 },
+            { "i5-6402P", 4 },
+            { "i5-6440EQ", 4 },
+            { "i5-6440HQ", 4 },
+            { "i5-6442EQ", 4 },
+            { "i5-650", 4 },
+            { "i5-6500", 4 },
+            { "i5-6500T", 4 },
+            { "i5-6500TE", 4 },
+            { "i5-655K", 4 },
+            { "i5-6585R", 4 },
+            { "i5-660", 4 },
+            { "i5-6600", 4 },
+            { "i5-6600K", 4 },
+            { "i5-6600T", 4 },
+            { "i5-661", 4 },
+            { "i5-6685R", 4 },
+            { "i5-670", 4 },
+            { "i5-680", 4 },
+            { "i5-7200U", 4 },
+            { "i5-7210U", 4 },
+            { "i5-7260U", 4 },
+            { "i5-7267U", 4 },
+            { "i5-7287U", 4 },
+            { "i5-7300HQ", 4 },
+            { "i5-7300U", 4 },
+            { "i5-7360U", 4 },
+            { "i5-7400", 4 },
+            { "i5-7400T", 4 },
+            { "i5-7440EQ", 4 },
+            { "i5-7440HQ", 4 },
+            { "i5-7442EQ", 4 },
+            { "i5-750", 4 },
+            { "i5-7500", 4 },
+            { "i5-7500T", 4 },
+            { "i5-750S", 4 },
+            { "i5-760", 4 },
+            { "i5-7600", 4 },
+            { "i5-7600K", 4 },
+            { "i5-7600T", 4 },
+            { "i5-7640X", 4 },
+            { "i5-7Y54", 4 },
+            { "i5-7Y57", 4 },
+            { "i5-8200Y", 4 },
+            { "i5-8210Y", 4 },
+            { "i5-8250U", 8 },
+            { "i5-8257U", 8 },
+            { "i5-8259U", 8 },
+            { "i5-8260U", 8 },
+            { "i5-8265U", 8 },
+            { "i5-8269U", 8 },
+            { "i5-8279U", 8 },
+            { "i5-8300H", 8 },
+            { "i5-8305G", 8 },
+            { "i5-8310Y", 4 },
+            { "i5-8350U", 8 },
+            { "i5-8365U", 8 },
+            { "i5-8365UE", 8 },
+            { "i5-8400", 6 },
+            { "i5-8400B", 6 },
+            { "i5-8400H", 8 },
+            { "i5-8400T", 6 },
+            { "i5-8420", 6 },
+            { "i5-8420T", 6 },
+            { "i5-8500", 6 },
+            { "i5-8500B", 6 },
+            { "i5-8500T", 6 },
+            { "i5-8550", 6 },
+            { "i5-8600", 6 },
+            { "i5-8600K", 6 },
+            { "i5-8600T", 6 },
+            { "i5-8650", 6 },
+            { "i5-9300H", 8 },
+            { "i5-9300HF", 8 },
+            { "i5-9400", 6 },
+            { "i5-9400F", 6 },
+            { "i5-9400H", 8 },
+            { "i5-9400T", 6 },
+            { "i5-9500", 6 },
+            { "i5-9500E", 6 },
+            { "i5-9500F", 6 },
+            { "i5-9500T", 6 },
+            { "i5-9500TE", 6 },
+            { "i5-9600", 6 },
+            { "i5-9600K", 6 },
+            { "i5-9600KF", 6 },
+            { "i5-9600T", 6 },
+
+            // i7 series
+            { "i7-10510U", 8 },
+            { "i7-10510Y", 8 },
+            { "i7-1060G7", 8 },
+            { "i7-10610U", 8 },
+            { "i7-1065G7", 8 },
+            { "i7-1068G7", 8 },
+            { "i7-1068NG7", 8 },
+            { "i7-10700", 16 },
+            { "i7-10700E", 16 },
+            { "i7-10700F", 16 },
+            { "i7-10700K", 16 },
+            { "i7-10700KF", 16 },
+            { "i7-10700T", 16 },
+            { "i7-10700TE", 16 },
+            { "i7-10710U", 8 },
+            { "i7-10750H", 12 },
+            { "i7-10810U", 12 },
+            { "i7-10850H", 12 },
+            { "i7-10870H", 16 },
+            { "i7-10875H", 16 },
+            { "i7-11370H", 8 },
+            { "i7-11375H", 8 },
+            { "i7-11390H", 8 },
+            { "i7-11600H", 12 },
+            { "i7-1160G7", 8 },
+            { "i7-1165G7", 8 },
+            { "i7-11700", 16 },
+            { "i7-11700B", 16 },
+            { "i7-11700F", 16 },
+            { "i7-11700K", 16 },
+            { "i7-11700KF", 16 },
+            { "i7-11700T", 16 },
+            { "i7-11800H", 16 },
+            { "i7-1180G7", 8 },
+            { "i7-11850H", 16 },
+            { "i7-11850HE", 16 },
+            { "i7-1185G7", 8 },
+            { "i7-1185G7E", 8 },
+            { "i7-1185GRE", 8 },
+            { "i7-1195G7", 8 },
+            { "i7-1250U", 4 },
+            { "i7-1255U", 4 },
+            { "i7-1260P", 8 },
+            { "i7-1260U", 4 },
+            { "i7-1265U", 4 },
+            { "i7-12700", 16 },
+            { "i7-12700F", 16 },
+            { "i7-12700KF", 16 },
+            { "i7-12700T", 16 },
+            { "i7-1270P", 8 },
+            { "i7-1270PE", 8 },
+            { "i7-1360P", 8 },
+            { "i7-13700", 16 },
+            { "i7-13700F", 16 },
+            { "i7-13700K", 16 },
+            { "i7-13700KF", 16 },
+            { "i7-13700T", 16 },
+            { "i7-13790F", 16 },
+            { "i7-2535QM", 8 },
+            { "i7-2570QM", 8 },
+            { "i7-2600", 8 },
+            { "i7-2600K", 8 },
+            { "i7-2600S", 8 },
+            { "i7-2610UE", 4 },
+            { "i7-2617M", 4 },
+            { "i7-2620M", 4 },
+            { "i7-2627M", 4 },
+            { "i7-2629M", 4 },
+            { "i7-2630QM", 8 },
+            { "i7-2635QM", 8 },
+            { "i7-2637M", 4 },
+            { "i7-2640M", 4 },
+            { "i7-2649M", 4 },
+            { "i7-2655LE", 4 },
+            { "i7-2655QM", 8 },
+            { "i7-2657M", 4 },
+            { "i7-2660M", 4 },
+            { "i7-2667M", 4 },
+            { "i7-2669M", 4 },
+            { "i7-2670QM", 8 },
+            { "i7-2675QM", 8 },
+            { "i7-2677M", 4 },
+            { "i7-2685QM", 8 },
+            { "i7-2689M", 4 },
+            { "i7-2700K", 8 },
+            { "i7-2710QE", 8 },
+            { "i7-2715QE", 8 },
+            { "i7-2720QM", 8 },
+            { "i7-2740QM", 8 },
+            { "i7-2760QM", 8 },
+            { "i7-2820QM", 8 },
+            { "i7-2840QM", 8 },
+            { "i7-2860QM", 8 },
+            { "i7-2920XM", 8 },
+            { "i7-2960XM", 8 },
+            { "i7-3517U", 4 },
+            { "i7-3517UE", 4 },
+            { "i7-3520M", 4 },
+            { "i7-3537U", 4 },
+            { "i7-3540M", 4 },
+            { "i7-3555LE", 4 },
+            { "i7-3610QE", 8 },
+            { "i7-3610QM", 8 },
+            { "i7-3612QE", 8 },
+            { "i7-3612QM", 8 },
+            { "i7-3615QE", 8 },
+            { "i7-3615QM", 8 },
+            { "i7-3630QM", 8 },
+            { "i7-3632QM", 8 },
+            { "i7-3635QM", 8 },
+            { "i7-3667U", 4 },
+            { "i7-3687U", 4 },
+            { "i7-3689Y", 4 },
+            { "i7-3720QM", 8 },
+            { "i7-3740QM", 8 },
+            { "i7-3770", 8 },
+            { "i7-3770K", 8 },
+            { "i7-3770S", 8 },
+            { "i7-3770T", 8 },
+            { "i7-3820", 8 },
+            { "i7-3820QM", 8 },
+            { "i7-3840QM", 8 },
+            { "i7-3920XM", 8 },
+            { "i7-3930K", 12 },
+            { "i7-3940XM", 8 },
+            { "i7-3960X", 12 },
+            { "i7-3970X", 12 },
+            { "i7-4500U", 4 },
+            { "i7-4510U", 4 },
+            { "i7-4550U", 4 },
+            { "i7-4558U", 4 },
+            { "i7-4578U", 4 },
+            { "i7-4600M", 4 },
+            { "i7-4600U", 4 },
+            { "i7-4610M", 8 },
+            { "i7-4610Y", 4 },
+            { "i7-4650U", 4 },
+            { "i7-4700EC", 8 },
+            { "i7-4700EQ", 8 },
+            { "i7-4700HQ", 8 },
+            { "i7-4700MQ", 8 },
+            { "i7-4701EQ", 8 },
+            { "i7-4702EC", 8 },
+            { "i7-4702HQ", 8 },
+            { "i7-4702MQ", 8 },
+            { "i7-4710HQ", 8 },
+            { "i7-4710MQ", 8 },
+            { "i7-4712HQ", 8 },
+            { "i7-4712MQ", 8 },
+            { "i7-4720HQ", 8 },
+            { "i7-4722HQ", 8 },
+            { "i7-4750HQ", 8 },
+            { "i7-4760HQ", 8 },
+            { "i7-4765T", 8 },
+            { "i7-4770", 8 },
+            { "i7-4770HQ", 8 },
+            { "i7-4770K", 8 },
+            { "i7-4770R", 8 },
+            { "i7-4770S", 8 },
+            { "i7-4770T", 8 },
+            { "i7-4770TE", 8 },
+            { "i7-4771", 8 },
+            { "i7-4785T", 8 },
+            { "i7-4790", 8 },
+            { "i7-4790K", 8 },
+            { "i7-4790S", 8 },
+            { "i7-4790T", 8 },
+            { "i7-4800MQ", 8 },
+            { "i7-4810MQ", 8 },
+            { "i7-4820K", 8 },
+            { "i7-4850EQ", 8 },
+            { "i7-4850HQ", 8 },
+            { "i7-4860EQ", 8 },
+            { "i7-4860HQ", 8 },
+            { "i7-4870HQ", 8 },
+            { "i7-4900MQ", 8 },
+            { "i7-4910MQ", 8 },
+            { "i7-4930K", 12 },
+            { "i7-4930MX", 8 },
+            { "i7-4940MX", 8 },
+            { "i7-4950HQ", 8 },
+            { "i7-4960HQ", 8 },
+            { "i7-4960X", 12 },
+            { "i7-4980HQ", 8 },
+            { "i7-5500U", 4 },
+            { "i7-5550U", 4 },
+            { "i7-5557U", 4 },
+            { "i7-5600U", 4 },
+            { "i7-5650U", 4 },
+            { "i7-5700EQ", 8 },
+            { "i7-5700HQ", 8 },
+            { "i7-5750HQ", 8 },
+            { "i7-5775C", 8 },
+            { "i7-5775R", 8 },
+            { "i7-5820K", 12 },
+            { "i7-5850EQ", 8 },
+            { "i7-5850HQ", 8 },
+            { "i7-5930K", 12 },
+            { "i7-5950HQ", 8 },
+            { "i7-5960X", 16 },
+            { "i7-610E", 4 },
+            { "i7-620LE", 4 },
+            { "i7-620LM", 4 },
+            { "i7-620M", 4 },
+            { "i7-620UE", 4 },
+            { "i7-620UM", 4 },
+            { "i7-640LM", 4 },
+            { "i7-640M", 4 },
+            { "i7-640UM", 4 },
+            { "i7-6498DU", 4 },
+            { "i7-6500U", 4 },
+            { "i7-6560U", 4 },
+            { "i7-6567U", 4 },
+            { "i7-6600U", 4 },
+            { "i7-660LM", 4 },
+            { "i7-660UE", 4 },
+            { "i7-660UM", 4 },
+            { "i7-6650U", 4 },
+            { "i7-6660U", 4 },
+            { "i7-6700", 8 },
+            { "i7-6700HQ", 8 },
+            { "i7-6700K", 8 },
+            { "i7-6700T", 8 },
+            { "i7-6700TE", 8 },
+            { "i7-6770HQ", 8 },
+            { "i7-6785R", 8 },
+            { "i7-6800K", 12 },
+            { "i7-680UM", 4 },
+            { "i7-6820EQ", 8 },
+            { "i7-6820HK", 8 },
+            { "i7-6820HQ", 8 },
+            { "i7-6822EQ", 8 },
+            { "i7-6850K", 12 },
+            { "i7-6870HQ", 8 },
+            { "i7-6900K", 16 },
+            { "i7-6920HQ", 8 },
+            { "i7-6950X", 20 },
+            { "i7-6970HQ", 8 },
+            { "i7-720QM", 8 },
+            { "i7-740QM", 8 },
+            { "i7-7500U", 4 },
+            { "i7-7510U", 4 },
+            { "i7-7560U", 4 },
+            { "i7-7567U", 4 },
+            { "i7-7600U", 4 },
+            { "i7-7660U", 4 },
+            { "i7-7700", 8 },
+            { "i7-7700HQ", 8 },
+            { "i7-7700K", 8 },
+            { "i7-7700T", 8 },
+            { "i7-7740X", 8 },
+            { "i7-7800X", 12 },
+            { "i7-7820EQ", 8 },
+            { "i7-7820HK", 8 },
+            { "i7-7820HQ", 8 },
+            { "i7-7820X", 16 },
+            { "i7-7920HQ", 8 },
+            { "i7-7Y75", 4 },
+            { "i7-8086K", 12 },
+            { "i7-820QM", 8 },
+            { "i7-840QM", 8 },
+            { "i7-8500Y", 4 },
+            { "i7-8550U", 8 },
+            { "i7-8557U", 8 },
+            { "i7-8559U", 8 },
+            { "i7-8565U", 8 },
+            { "i7-8569U", 8 },
+            { "i7-860", 8 },
+            { "i7-860S", 8 },
+            { "i7-8650U", 8 },
+            { "i7-8665U", 8 },
+            { "i7-8665UE", 8 },
+            { "i7-8670", 12 },
+            { "i7-8670T", 12 },
+            { "i7-870", 8 },
+            { "i7-8700", 12 },
+            { "i7-8700B", 12 },
+            { "i7-8700K", 12 },
+            { "i7-8700T", 12 },
+            { "i7-8705G", 8 },
+            { "i7-8706G", 8 },
+            { "i7-8709G", 8 },
+            { "i7-870S", 8 },
+            { "i7-8750H", 12 },
+            { "i7-875K", 8 },
+            { "i7-880", 8 },
+            { "i7-8809G", 8 },
+            { "i7-8850H", 12 },
+            { "i7-920", 8 },
+            { "i7-920XM", 8 },
+            { "i7-930", 8 },
+            { "i7-940", 8 },
+            { "i7-940XM", 8 },
+            { "i7-950", 8 },
+            { "i7-960", 8 },
+            { "i7-965", 8 },
+            { "i7-970", 12 },
+            { "i7-9700", 8 },
+            { "i7-9700E", 8 },
+            { "i7-9700F", 8 },
+            { "i7-9700K", 8 },
+            { "i7-9700KF", 8 },
+            { "i7-9700T", 8 },
+            { "i7-9700TE", 8 },
+            { "i7-975", 8 },
+            { "i7-9750H", 12 },
+            { "i7-9750HF", 12 },
+            { "i7-980", 12 },
+            { "i7-9800X", 16 },
+            { "i7-980X", 12 },
+            { "i7-9850H", 12 },
+            { "i7-9850HE", 12 },
+            { "i7-9850HL", 12 },
+            { "i7-990X", 12 },
+
+            // i9 series
+            { "i9-10850K", 20 },
+            { "i9-10885H", 16 },
+            { "i9-10900", 20 },
+            { "i9-10900E", 20 },
+            { "i9-10900F ", 20 },
+            { "i9-10900K", 20 },
+            { "i9-10900KF", 20 },
+            { "i9-10900T", 20 },
+            { "i9-10900TE", 20 },
+            { "i9-10900X", 20 },
+            { "i9-10910", 20 },
+            { "i9-10920X", 24 },
+            { "i9-10940X", 28 },
+            { "i9-10980HK", 16 },
+            { "i9-10980XE", 36 },
+            { "i9-11900", 16 },
+            { "i9-11900F", 16 },
+            { "i9-11900H", 16 },
+            { "i9-11900K", 16 },
+            { "i9-11900KB", 16 },
+            { "i9-11900KF", 16 },
+            { "i9-11900T", 16 },
+            { "i9-11950H", 16 },
+            { "i9-11980HK", 16 },
+            { "i9-12900", 16 },
+            { "i9-12900F", 16 },
+            { "i9-12900K", 16 },
+            { "i9-12900KF", 16 },
+            { "i9-12900KS", 16 },
+            { "i9-12900T", 16 },
+            { "i9-13900", 16 },
+            { "i9-13900E", 16 },
+            { "i9-13900F", 16 },
+            { "i9-13900HX", 16 },
+            { "i9-13900K", 16 },
+            { "i9-13900KF", 16 },
+            { "i9-13900KS", 16 },
+            { "i9-13900T", 16 },
+            { "i9-13900TE", 16 },
+            { "i9-13950HX", 16 },
+            { "i9-13980HX", 16 },
+            { "i9-14900", 16 },
+            { "i9-14900F", 16 },
+            { "i9-14900HX", 16 },
+            { "i9-14900K", 16 },
+            { "i9-14900KF", 16 },
+            { "i9-14900KS", 16 },
+            { "i9-14900T", 16 },
+            { "i9-7900X", 20 },
+            { "i9-7920X", 24 },
+            { "i9-7940X", 28 },
+            { "i9-7960X", 32 },
+            { "i9-7980XE", 36 },
+            { "i9-8950HK", 12 },
+            { "i9-9820X", 20 },
+            { "i9-9880H", 16 },
+            { "i9-9900", 16 },
+            { "i9-9900K", 16 },
+            { "i9-9900KF", 16 },
+            { "i9-9900KS", 16 },
+            { "i9-9900T", 16 },
+            { "i9-9900X", 20 },
+            { "i9-9920X", 24 },
+            { "i9-9940X", 28 },
+            { "i9-9960X", 32 },
+            { "i9-9980HK", 16 },
+            { "i9-9980XE", 36 },
+            { "i9-9990XE", 28 }
         };
 
-        // i3 series
-        push("i3-1000G1", 4);
-        push("i3-1000G4", 4);
-        push("i3-1000NG4", 4);
-        push("i3-1005G1", 4);
-        push("i3-10100", 8);
-        push("i3-10100E", 8);
-        push("i3-10100F", 8);
-        push("i3-10100T", 8);
-        push("i3-10100TE", 8);
-        push("i3-10100Y", 4);
-        push("i3-10105", 8);
-        push("i3-10105F", 8);
-        push("i3-10105T", 8);
-        push("i3-10110U", 4);
-        push("i3-10110Y", 4);
-        push("i3-10300", 8);
-        push("i3-10300T", 8);
-        push("i3-10305", 8);
-        push("i3-10305T", 8);
-        push("i3-10320", 8);
-        push("i3-10325", 8);
-        push("i3-11100B", 8);
-        push("i3-11100HE", 8);
-        push("i3-1110G4", 4);
-        push("i3-1115G4E", 4);
-        push("i3-1115GRE", 4);
-        push("i3-1120G4", 8);
-        push("i3-12100", 8);
-        push("i3-12100F", 8);
-        push("i3-12100T", 8);
-        push("i3-1210U", 4);
-        push("i3-1215U", 4);
-        push("i3-1215UE", 4);
-        push("i3-1215UL", 4);
-        push("i3-12300", 8);
-        push("i3-12300T", 8);
-        push("i3-13100", 8);
-        push("i3-13100F", 8);
-        push("i3-13100T", 8);
-        push("i3-1315U", 4);
-        push("i3-1315UE", 4);
-        push("i3-14100", 8);
-        push("i3-14100F", 8);
-        push("i3-14100T", 8);
-        push("i3-2100", 4);
-        push("i3-2100T", 4);
-        push("i3-2102", 4);
-        push("i3-2105", 4);
-        push("i3-2120", 4);
-        push("i3-2120T", 4);
-        push("i3-2125", 4);
-        push("i3-2130", 4);
-        push("i3-2308M", 4);
-        push("i3-2310E", 4);
-        push("i3-2310M", 4);
-        push("i3-2312M", 4);
-        push("i3-2328M", 4);
-        push("i3-2330E", 4);
-        push("i3-2330M", 4);
-        push("i3-2332M", 4);
-        push("i3-2340UE", 4);
-        push("i3-2348M", 4);
-        push("i3-2350LM", 4);
-        push("i3-2350M", 4);
-        push("i3-2355M", 4);
-        push("i3-2357M", 4);
-        push("i3-2365M", 4);
-        push("i3-2367M", 4);
-        push("i3-2370LM", 4);
-        push("i3-2370M", 4);
-        push("i3-2375M", 4);
-        push("i3-2377M", 4);
-        push("i3-2390M", 4);
-        push("i3-2393M", 4);
-        push("i3-2394M", 4);
-        push("i3-2395M", 4);
-        push("i3-2397M", 4);
-        push("i3-3110M", 4);
-        push("i3-3115C", 4);
-        push("i3-3120M", 4);
-        push("i3-3120ME", 4);
-        push("i3-3130M", 4);
-        push("i3-3210", 4);
-        push("i3-3217U", 4);
-        push("i3-3217UE", 4);
-        push("i3-3220", 4);
-        push("i3-3220T", 4);
-        push("i3-3225", 4);
-        push("i3-3227U", 4);
-        push("i3-3229Y", 4);
-        push("i3-3240", 4);
-        push("i3-3240T", 4);
-        push("i3-3245", 4);
-        push("i3-3250", 4);
-        push("i3-3250T", 4);
-        push("i3-330E", 4);
-        push("i3-330M", 4);
-        push("i3-330UM", 4);
-        push("i3-350M", 4);
-        push("i3-370M", 4);
-        push("i3-380M", 4);
-        push("i3-380UM", 4);
-        push("i3-390M", 4);
-        push("i3-4000M", 4);
-        push("i3-4005U", 4);
-        push("i3-4010M", 4);
-        push("i3-4010U", 4);
-        push("i3-4010Y", 4);
-        push("i3-4012Y", 4);
-        push("i3-4020Y", 4);
-        push("i3-4025U", 4);
-        push("i3-4030U", 4);
-        push("i3-4030Y", 4);
-        push("i3-4100E", 4);
-        push("i3-4100M", 4);
-        push("i3-4100U", 4);
-        push("i3-4102E", 4);
-        push("i3-4110E", 4);
-        push("i3-4110M", 4);
-        push("i3-4112E", 4);
-        push("i3-4120U", 4);
-        push("i3-4130", 4);
-        push("i3-4130T", 4);
-        push("i3-4150", 4);
-        push("i3-4150T", 4);
-        push("i3-4158U", 4);
-        push("i3-4160", 4);
-        push("i3-4160T", 4);
-        push("i3-4170", 4);
-        push("i3-4170T", 4);
-        push("i3-4330", 4);
-        push("i3-4330T", 4);
-        push("i3-4330TE", 4);
-        push("i3-4340", 4);
-        push("i3-4340TE", 4);
-        push("i3-4350", 4);
-        push("i3-4350T", 4);
-        push("i3-4360", 4);
-        push("i3-4360T", 4);
-        push("i3-4370", 4);
-        push("i3-4370T", 4);
-        push("i3-5005U", 4);
-        push("i3-5010U", 4);
-        push("i3-5015U", 4);
-        push("i3-5020U", 4);
-        push("i3-5157U", 4);
-        push("i3-530", 4);
-        push("i3-540", 4);
-        push("i3-550", 4);
-        push("i3-560", 4);
-        push("i3-6006U", 4);
-        push("i3-6098P", 4);
-        push("i3-6100", 4);
-        push("i3-6100E", 4);
-        push("i3-6100H", 4);
-        push("i3-6100T", 4);
-        push("i3-6100TE", 4);
-        push("i3-6100U", 4);
-        push("i3-6102E", 4);
-        push("i3-6120T", 4);
-        push("i3-6157U", 4);
-        push("i3-6167U", 4);
-        push("i3-6300", 4);
-        push("i3-6300T", 4);
-        push("i3-6320", 4);
-        push("i3-6320T", 4);
-        push("i3-7007U", 4);
-        push("i3-7020U", 4);
-        push("i3-7100", 4);
-        push("i3-7100E", 4);
-        push("i3-7100H", 4);
-        push("i3-7100T", 4);
-        push("i3-7100U", 4);
-        push("i3-7101E", 4);
-        push("i3-7101TE", 4);
-        push("i3-7102E", 4);
-        push("i3-7110U", 4);
-        push("i3-7120", 4);
-        push("i3-7120T", 4);
-        push("i3-7130U", 4);
-        push("i3-7167U", 4);
-        push("i3-7300", 4);
-        push("i3-7300T", 4);
-        push("i3-7310T", 4);
-        push("i3-7310U", 4);
-        push("i3-7320", 4);
-        push("i3-7320T", 4);
-        push("i3-7340", 4);
-        push("i3-7350K", 4);
-        push("i3-8000", 4);
-        push("i3-8000T", 4);
-        push("i3-8020", 4);
-        push("i3-8020T", 4);
-        push("i3-8100", 4);
-        push("i3-8100B", 4);
-        push("i3-8100F", 4);
-        push("i3-8100H", 4);
-        push("i3-8100T", 4);
-        push("i3-8109U", 4);
-        push("i3-8120", 4);
-        push("i3-8120T", 4);
-        push("i3-8121U", 4);
-        push("i3-8130U", 4);
-        push("i3-8130U", 4);
-        push("i3-8140U", 4);
-        push("i3-8145U", 4);
-        push("i3-8145UE", 4);
-        push("i3-8300", 4);
-        push("i3-8300T", 4);
-        push("i3-8320", 4);
-        push("i3-8320T", 4);
-        push("i3-8350K", 4);
-        push("i3-9100", 4);
-        push("i3-9100E", 4);
-        push("i3-9100F", 4);
-        push("i3-9100HL", 4);
-        push("i3-9100T", 4);
-        push("i3-9100TE", 4);
-        push("i3-9300", 4);
-        push("i3-9300T", 4);
-        push("i3-9320", 4);
-        push("i3-9350K", 4);
-        push("i3-9350KF", 4);
-        push("i3-N300", 8);
-        push("i3-N305", 8);
-
-        // i5 series
-        push("i5-10200H", 8);
-        push("i5-10210U", 4);
-        push("i5-10210Y", 8);
-        push("i5-10300H", 8);
-        push("i5-1030G4", 8);
-        push("i5-1030G7", 8);
-        push("i5-1030NG7", 8);
-        push("i5-10310U", 4);
-        push("i5-10310Y", 8);
-        push("i5-1035G1", 8);
-        push("i5-1035G4", 8);
-        push("i5-1035G7", 8);
-        push("i5-1038NG7", 8);
-        push("i5-10400", 12);
-        push("i5-10400F", 12);
-        push("i5-10400H", 8);
-        push("i5-10400T", 12);
-        push("i5-10500", 12);
-        push("i5-10500E", 12);
-        push("i5-10500H", 12);
-        push("i5-10500T", 12);
-        push("i5-10500TE", 12);
-        push("i5-10505", 12);
-        push("i5-10600", 12);
-        push("i5-10600K", 12);
-        push("i5-10600KF", 12);
-        push("i5-10600T", 12);
-        push("i5-1115G4", 4);
-        push("i5-1125G4", 8);
-        push("i5-11260H", 12);
-        push("i5-11300H", 8);
-        push("i5-1130G7", 8);
-        push("i5-11320H", 8);
-        push("i5-1135G7", 8);
-        push("i5-11400", 12);
-        push("i5-11400F", 12);
-        push("i5-11400H", 12);
-        push("i5-11400T", 12);
-        push("i5-1140G7", 8);
-        push("i5-1145G7", 8);
-        push("i5-1145G7E", 8);
-        push("i5-1145GRE", 8);
-        push("i5-11500", 12);
-        push("i5-11500B", 12);
-        push("i5-11500H", 12);
-        push("i5-11500HE", 12);
-        push("i5-11500T", 12);
-        push("i5-1155G7", 8);
-        push("i5-11600", 12);
-        push("i5-11600K", 12);
-        push("i5-11600KF", 12);
-        push("i5-11600T", 12);
-        push("i5-1230U", 4);
-        push("i5-1235U", 4);
-        push("i5-12400", 12);
-        push("i5-12400F", 12);
-        push("i5-12400T", 12);
-        push("i5-1240P", 8);
-        push("i5-1240U", 4);
-        push("i5-1245U", 4);
-        push("i5-12490F", 12);
-        push("i5-12500", 12);
-        push("i5-12500H", 8);
-        push("i5-12500HL", 8);
-        push("i5-12500T", 12);
-        push("i5-1250P", 8);
-        push("i5-1250PE", 8);
-        push("i5-12600", 12);
-        push("i5-12600H", 8);
-        push("i5-12600HE", 8);
-        push("i5-12600HL", 8);
-        push("i5-12600HX", 8);
-        push("i5-12600K", 12);
-        push("i5-12600KF", 12);
-        push("i5-12600T", 12);
-        push("i5-13400", 12);
-        push("i5-13400F", 12);
-        push("i5-13400T", 12);
-        push("i5-1340P", 8);
-        push("i5-1340PE", 8);
-        push("i5-13490F", 12);
-        push("i5-13500", 12);
-        push("i5-13500H", 8);
-        push("i5-13500T", 12);
-        push("i5-13505H", 8);
-        push("i5-1350P", 8);
-        push("i5-1350PE", 8);
-        push("i5-13600", 12);
-        push("i5-13600H", 8);
-        push("i5-13600HE", 8);
-        push("i5-13600K", 12);
-        push("i5-13600K", 20);
-        push("i5-13600KF", 12);
-        push("i5-13600KF", 20);
-        push("i5-13600T", 12);
-        push("i5-2300", 4);
-        push("i5-2310", 4);
-        push("i5-2320", 4);
-        push("i5-2380P", 4);
-        push("i5-2390T", 4);
-        push("i5-2400", 4);
-        push("i5-2400S", 4);
-        push("i5-2405S", 4);
-        push("i5-2410M", 4);
-        push("i5-2415M", 4);
-        push("i5-2430M", 4);
-        push("i5-2435M", 4);
-        push("i5-2450M", 4);
-        push("i5-2450P", 4);
-        push("i5-2467M", 4);
-        push("i5-2475M", 4);
-        push("i5-2477M", 4);
-        push("i5-2487M", 4);
-        push("i5-2490M", 4);
-        push("i5-2497M", 4);
-        push("i5-2500", 4);
-        push("i5-2500K", 4);
-        push("i5-2500S", 4);
-        push("i5-2500T", 4);
-        push("i5-2510E", 4);
-        push("i5-2515E", 4);
-        push("i5-2520M", 4);
-        push("i5-2537M", 4);
-        push("i5-2540LM", 4);
-        push("i5-2540M", 4);
-        push("i5-2547M", 4);
-        push("i5-2550K", 4);
-        push("i5-2557M", 4);
-        push("i5-2560LM", 4);
-        push("i5-2560M", 4);
-        push("i5-2580M", 4);
-        push("i5-3210M", 4);
-        push("i5-3230M", 4);
-        push("i5-3317U", 4);
-        push("i5-3320M", 4);
-        push("i5-3330", 4);
-        push("i5-3330S", 4);
-        push("i5-3335S", 4);
-        push("i5-3337U", 4);
-        push("i5-3339Y", 4);
-        push("i5-3340", 4);
-        push("i5-3340M", 4);
-        push("i5-3340S", 4);
-        push("i5-3350P", 4);
-        push("i5-3360M", 4);
-        push("i5-3380M", 4);
-        push("i5-3427U", 4);
-        push("i5-3437U", 4);
-        push("i5-3439Y", 4);
-        push("i5-3450", 4);
-        push("i5-3450S", 4);
-        push("i5-3470", 4);
-        push("i5-3470S", 4);
-        push("i5-3470T", 4);
-        push("i5-3475S", 4);
-        push("i5-3550", 4);
-        push("i5-3550S", 4);
-        push("i5-3570", 4);
-        push("i5-3570K", 4);
-        push("i5-3570S", 4);
-        push("i5-3570T", 4);
-        push("i5-3610ME", 4);
-        push("i5-4200H", 4);
-        push("i5-4200M", 4);
-        push("i5-4200U", 4);
-        push("i5-4200Y", 4);
-        push("i5-4202Y", 4);
-        push("i5-4210H", 4);
-        push("i5-4210M", 4);
-        push("i5-4210U", 4);
-        push("i5-4210Y", 4);
-        push("i5-4220Y", 4);
-        push("i5-4250U", 4);
-        push("i5-4258U", 4);
-        push("i5-4260U", 4);
-        push("i5-4278U", 4);
-        push("i5-4288U", 4);
-        push("i5-4300M", 4);
-        push("i5-4300U", 4);
-        push("i5-4300Y", 4);
-        push("i5-4302Y", 4);
-        push("i5-4308U", 4);
-        push("i5-430M", 4);
-        push("i5-430UM", 4);
-        push("i5-4310M", 4);
-        push("i5-4310U", 4);
-        push("i5-4330M", 4);
-        push("i5-4340M", 4);
-        push("i5-4350U", 4);
-        push("i5-4360U", 4);
-        push("i5-4400E", 4);
-        push("i5-4402E", 4);
-        push("i5-4402EC", 4);
-        push("i5-4410E", 4);
-        push("i5-4422E", 4);
-        push("i5-4430", 4);
-        push("i5-4430S", 4);
-        push("i5-4440", 4);
-        push("i5-4440S", 4);
-        push("i5-4460", 4);
-        push("i5-4460S", 4);
-        push("i5-4460T", 4);
-        push("i5-4470", 4);
-        push("i5-450M", 4);
-        push("i5-4570", 4);
-        push("i5-4570R", 4);
-        push("i5-4570S", 4);
-        push("i5-4570T", 4);
-        push("i5-4570TE", 4);
-        push("i5-4590", 4);
-        push("i5-4590S", 4);
-        push("i5-4590T", 4);
-        push("i5-460M", 4);
-        push("i5-4670", 4);
-        push("i5-4670K", 4);
-        push("i5-4670R", 4);
-        push("i5-4670S", 4);
-        push("i5-4670T", 4);
-        push("i5-4690", 4);
-        push("i5-4690K", 4);
-        push("i5-4690S", 4);
-        push("i5-4690T", 4);
-        push("i5-470UM", 4);
-        push("i5-480M", 4);
-        push("i5-5200U", 4);
-        push("i5-520E", 4);
-        push("i5-520M", 4);
-        push("i5-520UM", 4);
-        push("i5-5250U", 4);
-        push("i5-5257U", 4);
-        push("i5-5287U", 4);
-        push("i5-5300U", 4);
-        push("i5-5350H", 4);
-        push("i5-5350U", 4);
-        push("i5-540M", 4);
-        push("i5-540UM", 4);
-        push("i5-5575R", 4);
-        push("i5-560M", 4);
-        push("i5-560UM", 4);
-        push("i5-5675C", 4);
-        push("i5-5675R", 4);
-        push("i5-580M", 4);
-        push("i5-6198DU", 4);
-        push("i5-6200U", 4);
-        push("i5-6260U", 4);
-        push("i5-6267U", 4);
-        push("i5-6287U", 4);
-        push("i5-6300HQ", 4);
-        push("i5-6300U", 4);
-        push("i5-6350HQ", 4);
-        push("i5-6360U", 4);
-        push("i5-6400", 4);
-        push("i5-6400T", 4);
-        push("i5-6402P", 4);
-        push("i5-6440EQ", 4);
-        push("i5-6440HQ", 4);
-        push("i5-6442EQ", 4);
-        push("i5-650", 4);
-        push("i5-6500", 4);
-        push("i5-6500T", 4);
-        push("i5-6500TE", 4);
-        push("i5-655K", 4);
-        push("i5-6585R", 4);
-        push("i5-660", 4);
-        push("i5-6600", 4);
-        push("i5-6600K", 4);
-        push("i5-6600T", 4);
-        push("i5-661", 4);
-        push("i5-6685R", 4);
-        push("i5-670", 4);
-        push("i5-680", 4);
-        push("i5-7200U", 4);
-        push("i5-7210U", 4);
-        push("i5-7260U", 4);
-        push("i5-7267U", 4);
-        push("i5-7287U", 4);
-        push("i5-7300HQ", 4);
-        push("i5-7300U", 4);
-        push("i5-7360U", 4);
-        push("i5-7400", 4);
-        push("i5-7400T", 4);
-        push("i5-7440EQ", 4);
-        push("i5-7440HQ", 4);
-        push("i5-7442EQ", 4);
-        push("i5-750", 4);
-        push("i5-7500", 4);
-        push("i5-7500T", 4);
-        push("i5-750S", 4);
-        push("i5-760", 4);
-        push("i5-7600", 4);
-        push("i5-7600K", 4);
-        push("i5-7600T", 4);
-        push("i5-7640X", 4);
-        push("i5-7Y54", 4);
-        push("i5-7Y57", 4);
-        push("i5-8200Y", 4);
-        push("i5-8210Y", 4);
-        push("i5-8250U", 8);
-        push("i5-8257U", 8);
-        push("i5-8259U", 8);
-        push("i5-8260U", 8);
-        push("i5-8265U", 8);
-        push("i5-8269U", 8);
-        push("i5-8279U", 8);
-        push("i5-8300H", 8);
-        push("i5-8305G", 8);
-        push("i5-8310Y", 4);
-        push("i5-8350U", 8);
-        push("i5-8365U", 8);
-        push("i5-8365UE", 8);
-        push("i5-8400", 6);
-        push("i5-8400B", 6);
-        push("i5-8400H", 8);
-        push("i5-8400T", 6);
-        push("i5-8420", 6);
-        push("i5-8420T", 6);
-        push("i5-8500", 6);
-        push("i5-8500B", 6);
-        push("i5-8500T", 6);
-        push("i5-8550", 6);
-        push("i5-8600", 6);
-        push("i5-8600K", 6);
-        push("i5-8600T", 6);
-        push("i5-8650", 6);
-        push("i5-9300H", 8);
-        push("i5-9300HF", 8);
-        push("i5-9400", 6);
-        push("i5-9400F", 6);
-        push("i5-9400H", 8);
-        push("i5-9400T", 6);
-        push("i5-9500", 6);
-        push("i5-9500E", 6);
-        push("i5-9500F", 6);
-        push("i5-9500T", 6);
-        push("i5-9500TE", 6);
-        push("i5-9600", 6);
-        push("i5-9600K", 6);
-        push("i5-9600KF", 6);
-        push("i5-9600T", 6);
-
-        // i7 series
-        push("i7-10510U", 8);
-        push("i7-10510Y", 8);
-        push("i7-1060G7", 8);
-        push("i7-10610U", 8);
-        push("i7-1065G7", 8);
-        push("i7-1068G7", 8);
-        push("i7-1068NG7", 8);
-        push("i7-10700", 16);
-        push("i7-10700E", 16);
-        push("i7-10700F", 16);
-        push("i7-10700K", 16);
-        push("i7-10700KF", 16);
-        push("i7-10700T", 16);
-        push("i7-10700TE", 16);
-        push("i7-10710U", 8);
-        push("i7-10750H", 12);
-        push("i7-10810U", 12);
-        push("i7-10850H", 12);
-        push("i7-10870H", 16);
-        push("i7-10875H", 16);
-        push("i7-11370H", 8);
-        push("i7-11375H", 8);
-        push("i7-11390H", 8);
-        push("i7-11600H", 12);
-        push("i7-1160G7", 8);
-        push("i7-1165G7", 8);
-        push("i7-11700", 16);
-        push("i7-11700B", 16);
-        push("i7-11700F", 16);
-        push("i7-11700K", 16);
-        push("i7-11700KF", 16);
-        push("i7-11700T", 16);
-        push("i7-11800H", 16);
-        push("i7-1180G7", 8);
-        push("i7-11850H", 16);
-        push("i7-11850HE", 16);
-        push("i7-1185G7", 8);
-        push("i7-1185G7E", 8);
-        push("i7-1185GRE", 8);
-        push("i7-1195G7", 8);
-        push("i7-1250U", 4);
-        push("i7-1255U", 4);
-        push("i7-1260P", 8);
-        push("i7-1260U", 4);
-        push("i7-1265U", 4);
-        push("i7-12700", 16);
-        push("i7-12700F", 16);
-        push("i7-12700KF", 16);
-        push("i7-12700T", 16);
-        push("i7-1270P", 8);
-        push("i7-1270PE", 8);
-        push("i7-1360P", 8);
-        push("i7-13700", 16);
-        push("i7-13700F", 16);
-        push("i7-13700K", 16);
-        push("i7-13700KF", 16);
-        push("i7-13700T", 16);
-        push("i7-13790F", 16);
-        push("i7-2535QM", 8);
-        push("i7-2570QM", 8);
-        push("i7-2600", 8);
-        push("i7-2600K", 8);
-        push("i7-2600S", 8);
-        push("i7-2610UE", 4);
-        push("i7-2617M", 4);
-        push("i7-2620M", 4);
-        push("i7-2627M", 4);
-        push("i7-2629M", 4);
-        push("i7-2630QM", 8);
-        push("i7-2635QM", 8);
-        push("i7-2637M", 4);
-        push("i7-2640M", 4);
-        push("i7-2649M", 4);
-        push("i7-2655LE", 4);
-        push("i7-2655QM", 8);
-        push("i7-2657M", 4);
-        push("i7-2660M", 4);
-        push("i7-2667M", 4);
-        push("i7-2669M", 4);
-        push("i7-2670QM", 8);
-        push("i7-2675QM", 8);
-        push("i7-2677M", 4);
-        push("i7-2685QM", 8);
-        push("i7-2689M", 4);
-        push("i7-2700K", 8);
-        push("i7-2710QE", 8);
-        push("i7-2715QE", 8);
-        push("i7-2720QM", 8);
-        push("i7-2740QM", 8);
-        push("i7-2760QM", 8);
-        push("i7-2820QM", 8);
-        push("i7-2840QM", 8);
-        push("i7-2860QM", 8);
-        push("i7-2920XM", 8);
-        push("i7-2960XM", 8);
-        push("i7-3517U", 4);
-        push("i7-3517UE", 4);
-        push("i7-3520M", 4);
-        push("i7-3537U", 4);
-        push("i7-3540M", 4);
-        push("i7-3555LE", 4);
-        push("i7-3610QE", 8);
-        push("i7-3610QM", 8);
-        push("i7-3612QE", 8);
-        push("i7-3612QM", 8);
-        push("i7-3615QE", 8);
-        push("i7-3615QM", 8);
-        push("i7-3630QM", 8);
-        push("i7-3632QM", 8);
-        push("i7-3635QM", 8);
-        push("i7-3667U", 4);
-        push("i7-3687U", 4);
-        push("i7-3689Y", 4);
-        push("i7-3720QM", 8);
-        push("i7-3740QM", 8);
-        push("i7-3770", 8);
-        push("i7-3770K", 8);
-        push("i7-3770S", 8);
-        push("i7-3770T", 8);
-        push("i7-3820", 8);
-        push("i7-3820QM", 8);
-        push("i7-3840QM", 8);
-        push("i7-3920XM", 8);
-        push("i7-3930K", 12);
-        push("i7-3940XM", 8);
-        push("i7-3960X", 12);
-        push("i7-3970X", 12);
-        push("i7-4500U", 4);
-        push("i7-4510U", 4);
-        push("i7-4550U", 4);
-        push("i7-4558U", 4);
-        push("i7-4578U", 4);
-        push("i7-4600M", 4);
-        push("i7-4600U", 4);
-        push("i7-4610M", 8);
-        push("i7-4610Y", 4);
-        push("i7-4650U", 4);
-        push("i7-4700EC", 8);
-        push("i7-4700EQ", 8);
-        push("i7-4700HQ", 8);
-        push("i7-4700MQ", 8);
-        push("i7-4701EQ", 8);
-        push("i7-4702EC", 8);
-        push("i7-4702HQ", 8);
-        push("i7-4702MQ", 8);
-        push("i7-4710HQ", 8);
-        push("i7-4710MQ", 8);
-        push("i7-4712HQ", 8);
-        push("i7-4712MQ", 8);
-        push("i7-4720HQ", 8);
-        push("i7-4722HQ", 8);
-        push("i7-4750HQ", 8);
-        push("i7-4760HQ", 8);
-        push("i7-4765T", 8);
-        push("i7-4770", 8);
-        push("i7-4770HQ", 8);
-        push("i7-4770K", 8);
-        push("i7-4770R", 8);
-        push("i7-4770S", 8);
-        push("i7-4770T", 8);
-        push("i7-4770TE", 8);
-        push("i7-4771", 8);
-        push("i7-4785T", 8);
-        push("i7-4790", 8);
-        push("i7-4790K", 8);
-        push("i7-4790S", 8);
-        push("i7-4790T", 8);
-        push("i7-4800MQ", 8);
-        push("i7-4810MQ", 8);
-        push("i7-4820K", 8);
-        push("i7-4850EQ", 8);
-        push("i7-4850HQ", 8);
-        push("i7-4860EQ", 8);
-        push("i7-4860HQ", 8);
-        push("i7-4870HQ", 8);
-        push("i7-4900MQ", 8);
-        push("i7-4910MQ", 8);
-        push("i7-4930K", 12);
-        push("i7-4930MX", 8);
-        push("i7-4940MX", 8);
-        push("i7-4950HQ", 8);
-        push("i7-4960HQ", 8);
-        push("i7-4960X", 12);
-        push("i7-4980HQ", 8);
-        push("i7-5500U", 4);
-        push("i7-5550U", 4);
-        push("i7-5557U", 4);
-        push("i7-5600U", 4);
-        push("i7-5650U", 4);
-        push("i7-5700EQ", 8);
-        push("i7-5700HQ", 8);
-        push("i7-5750HQ", 8);
-        push("i7-5775C", 8);
-        push("i7-5775R", 8);
-        push("i7-5820K", 12);
-        push("i7-5850EQ", 8);
-        push("i7-5850HQ", 8);
-        push("i7-5930K", 12);
-        push("i7-5950HQ", 8);
-        push("i7-5960X", 16);
-        push("i7-610E", 4);
-        push("i7-620LE", 4);
-        push("i7-620LM", 4);
-        push("i7-620M", 4);
-        push("i7-620UE", 4);
-        push("i7-620UM", 4);
-        push("i7-640LM", 4);
-        push("i7-640M", 4);
-        push("i7-640UM", 4);
-        push("i7-6498DU", 4);
-        push("i7-6500U", 4);
-        push("i7-6560U", 4);
-        push("i7-6567U", 4);
-        push("i7-6600U", 4);
-        push("i7-660LM", 4);
-        push("i7-660UE", 4);
-        push("i7-660UM", 4);
-        push("i7-6650U", 4);
-        push("i7-6660U", 4);
-        push("i7-6700", 8);
-        push("i7-6700HQ", 8);
-        push("i7-6700K", 8);
-        push("i7-6700T", 8);
-        push("i7-6700TE", 8);
-        push("i7-6770HQ", 8);
-        push("i7-6785R", 8);
-        push("i7-6800K", 12);
-        push("i7-680UM", 4);
-        push("i7-6820EQ", 8);
-        push("i7-6820HK", 8);
-        push("i7-6820HQ", 8);
-        push("i7-6822EQ", 8);
-        push("i7-6850K", 12);
-        push("i7-6870HQ", 8);
-        push("i7-6900K", 16);
-        push("i7-6920HQ", 8);
-        push("i7-6950X", 20);
-        push("i7-6970HQ", 8);
-        push("i7-720QM", 8);
-        push("i7-740QM", 8);
-        push("i7-7500U", 4);
-        push("i7-7510U", 4);
-        push("i7-7560U", 4);
-        push("i7-7567U", 4);
-        push("i7-7600U", 4);
-        push("i7-7660U", 4);
-        push("i7-7700", 8);
-        push("i7-7700HQ", 8);
-        push("i7-7700K", 8);
-        push("i7-7700T", 8);
-        push("i7-7740X", 8);
-        push("i7-7800X", 12);
-        push("i7-7820EQ", 8);
-        push("i7-7820HK", 8);
-        push("i7-7820HQ", 8);
-        push("i7-7820X", 16);
-        push("i7-7920HQ", 8);
-        push("i7-7Y75", 4);
-        push("i7-8086K", 12);
-        push("i7-820QM", 8);
-        push("i7-840QM", 8);
-        push("i7-8500Y", 4);
-        push("i7-8550U", 8);
-        push("i7-8557U", 8);
-        push("i7-8559U", 8);
-        push("i7-8565U", 8);
-        push("i7-8569U", 8);
-        push("i7-860", 8);
-        push("i7-860S", 8);
-        push("i7-8650U", 8);
-        push("i7-8665U", 8);
-        push("i7-8665UE", 8);
-        push("i7-8670", 12);
-        push("i7-8670T", 12);
-        push("i7-870", 8);
-        push("i7-8700", 12);
-        push("i7-8700B", 12);
-        push("i7-8700K", 12);
-        push("i7-8700T", 12);
-        push("i7-8705G", 8);
-        push("i7-8706G", 8);
-        push("i7-8709G", 8);
-        push("i7-870S", 8);
-        push("i7-8750H", 12);
-        push("i7-875K", 8);
-        push("i7-880", 8);
-        push("i7-8809G", 8);
-        push("i7-8850H", 12);
-        push("i7-920", 8);
-        push("i7-920XM", 8);
-        push("i7-930", 8);
-        push("i7-940", 8);
-        push("i7-940XM", 8);
-        push("i7-950", 8);
-        push("i7-960", 8);
-        push("i7-965", 8);
-        push("i7-970", 12);
-        push("i7-9700", 8);
-        push("i7-9700E", 8);
-        push("i7-9700F", 8);
-        push("i7-9700K", 8);
-        push("i7-9700KF", 8);
-        push("i7-9700T", 8);
-        push("i7-9700TE", 8);
-        push("i7-975", 8);
-        push("i7-9750H", 12);
-        push("i7-9750HF", 12);
-        push("i7-980", 12);
-        push("i7-9800X", 16);
-        push("i7-980X", 12);
-        push("i7-9850H", 12);
-        push("i7-9850HE", 12);
-        push("i7-9850HL", 12);
-        push("i7-990X", 12);
-
-        // i9 series
-        push("i9-10850K", 20);
-        push("i9-10885H", 16);
-        push("i9-10900", 20);
-        push("i9-10900E", 20);
-        push("i9-10900F ", 20);
-        push("i9-10900K", 20);
-        push("i9-10900KF", 20);
-        push("i9-10900T", 20);
-        push("i9-10900TE", 20);
-        push("i9-10900X", 20);
-        push("i9-10910", 20);
-        push("i9-10920X", 24);
-        push("i9-10940X", 28);
-        push("i9-10980HK", 16);
-        push("i9-10980XE", 36);
-        push("i9-11900", 16);
-        push("i9-11900F", 16);
-        push("i9-11900H", 16);
-        push("i9-11900K", 16);
-        push("i9-11900KB", 16);
-        push("i9-11900KF", 16);
-        push("i9-11900T", 16);
-        push("i9-11950H", 16);
-        push("i9-11980HK", 16);
-        push("i9-12900", 16);
-        push("i9-12900F", 16);
-        push("i9-12900K", 16);
-        push("i9-12900KF", 16);
-        push("i9-12900KS", 16);
-        push("i9-12900T", 16);
-        push("i9-13900", 16);
-        push("i9-13900E", 16);
-        push("i9-13900F", 16);
-        push("i9-13900HX", 16);
-        push("i9-13900K", 16);
-        push("i9-13900KF", 16);
-        push("i9-13900KS", 16);
-        push("i9-13900T", 16);
-        push("i9-13900TE", 16);
-        push("i9-13950HX", 16);
-        push("i9-13980HX", 16);
-        push("i9-14900", 16);
-        push("i9-14900F", 16);
-        push("i9-14900HX", 16);
-        push("i9-14900K", 16);
-        push("i9-14900KF", 16);
-        push("i9-14900KS", 16);
-        push("i9-14900T", 16);
-        push("i9-7900X", 20);
-        push("i9-7920X", 24);
-        push("i9-7940X", 28);
-        push("i9-7960X", 32);
-        push("i9-7980XE", 36);
-        push("i9-8950HK", 12);
-        push("i9-9820X", 20);
-        push("i9-9880H", 16);
-        push("i9-9900", 16);
-        push("i9-9900K", 16);
-        push("i9-9900KF", 16);
-        push("i9-9900KS", 16);
-        push("i9-9900T", 16);
-        push("i9-9900X", 20);
-        push("i9-9920X", 24);
-        push("i9-9940X", 28);
-        push("i9-9960X", 32);
-        push("i9-9980HK", 16);
-        push("i9-9980XE", 36);
-        push("i9-9990XE", 28);
-
-        // basically means "if there's 0 matches in the database, return false"
-        if (thread_database->count(model.string) == 0) {
+        // if it doesn't exist, return false
+        if (thread_database.find(model.string.c_str()) == thread_database.end()) {
             return false;
         }
 
-        const u8 threads = thread_database->at(model.string);
+        const u8 threads = thread_database.at(model.string.c_str());
 
         debug("INTEL_THREAD_MISMATCH: thread in database = ", static_cast<u32>(threads));
 
@@ -7090,122 +7056,126 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         debug("XEON_THREAD_MISMATCH: CPU model = ", model.string);
 
-        auto xeon_thread_database = util::make_unique<std::unordered_map<std::string, uint8_t>>();
+        #if (WINDOWS)
+            if (util::does_threadcount_mismatch()) {
+                debug("INTEL_THREAD_MISMATCH: Thread tampering detected");
+                return false;
+            }
+        #endif
 
-        auto xeon_push = [&xeon_thread_database](const char* brand_str, const u8 thread_count) -> void {
-            xeon_thread_database->emplace(brand_str, thread_count);
+        std::map<const char*, u8> thread_database = {
+            // Xeon D
+            { "D-1518", 8 },
+            { "D-1520", 8 },
+            { "D-1521", 8 },
+            { "D-1527", 8 },
+            { "D-1528", 12 },
+            { "D-1529", 8 },
+            { "D-1531", 12 },
+            { "D-1537", 16 },
+            { "D-1539", 16 },
+            { "D-1540", 16 },
+            { "D-1541", 16 },
+            { "D-1548", 16 },
+            { "D-1557", 24 },
+            { "D-1559", 24 },
+            { "D-1567", 24 },
+            { "D-1571", 32 },
+            { "D-1577", 32 },
+            { "D-1581", 32 },
+            { "D-1587", 32 },
+            { "D-1513N", 8 },
+            { "D-1523N", 8 },
+            { "D-1533N", 12 },
+            { "D-1543N", 16 },
+            { "D-1553N", 16 },
+            { "D-1602", 4 },
+            { "D-1612", 8 },
+            { "D-1622", 8 },
+            { "D-1627", 8 },
+            { "D-1632", 16 },
+            { "D-1637", 12 },
+            { "D-1623N", 8 },
+            { "D-1633N", 12 },
+            { "D-1649N", 16 },
+            { "D-1653N", 16 },
+            { "D-2141I", 16 },
+            { "D-2161I", 24 },
+            { "D-2191", 36 },
+            { "D-2123IT", 8 },
+            { "D-2142IT", 16 },
+            { "D-2143IT", 16 },
+            { "D-2163IT", 24 },
+            { "D-2173IT", 28 },
+            { "D-2183IT", 32 },
+            { "D-2145NT", 16 },
+            { "D-2146NT", 16 },
+            { "D-2166NT", 24 },
+            { "D-2177NT", 28 },
+            { "D-2187NT", 32 },
+
+            // Xeon E
+            { "E-2104G", 4 },
+            { "E-2124", 4 },
+            { "E-2124G", 4 },
+            { "E-2126G", 6 },
+            { "E-2134", 8 },
+            { "E-2136", 12 },
+            { "E-2144G", 8 },
+            { "E-2146G", 12 },
+            { "E-2174G", 8 },
+            { "E-2176G", 12 },
+            { "E-2186G", 12 },
+            { "E-2176M", 12 },
+            { "E-2186M", 12 },
+            { "E-2224", 4 },
+            { "E-2224G", 4 },
+            { "E-2226G", 6 },
+            { "E-2234", 8 },
+            { "E-2236", 12 },
+            { "E-2244G", 8 },
+            { "E-2246G", 12 },
+            { "E-2274G", 8 },
+            { "E-2276G", 12 },
+            { "E-2278G", 16 },
+            { "E-2286G", 12 },
+            { "E-2288G", 16 },
+            { "E-2276M", 12 },
+            { "E-2286M", 16 },
+
+            // Xeon W
+            { "W-2102", 4 },
+            { "W-2104", 4 },
+            { "W-2123", 8 },
+            { "W-2125", 8 },
+            { "W-2133", 12 },
+            { "W-2135", 12 },
+            { "W-2140B", 16 },
+            { "W-2145", 16 },
+            { "W-2150B", 20 },
+            { "W-2155", 20 },
+            { "W-2170B", 28 },
+            { "W-2175", 28 },
+            { "W-2191B", 36 },
+            { "W-2195", 36 },
+            { "W-3175X", 56 },
+            { "W-3223", 16 },
+            { "W-3225", 16 },
+            { "W-3235", 24 },
+            { "W-3245", 32 },
+            { "W-3245M", 32 },
+            { "W-3265", 48 },
+            { "W-3265M", 48 },
+            { "W-3275", 56 },
+            { "W-3275M", 56 }
         };
 
-        // Xeon D
-        xeon_push("D-1518", 8);
-        xeon_push("D-1520", 8);
-        xeon_push("D-1521", 8);
-        xeon_push("D-1527", 8);
-        xeon_push("D-1528", 12);
-        xeon_push("D-1529", 8);
-        xeon_push("D-1531", 12);
-        xeon_push("D-1537", 16);
-        xeon_push("D-1539", 16);
-        xeon_push("D-1540", 16);
-        xeon_push("D-1541", 16);
-        xeon_push("D-1548", 16);
-        xeon_push("D-1557", 24);
-        xeon_push("D-1559", 24);
-        xeon_push("D-1567", 24);
-        xeon_push("D-1571", 32);
-        xeon_push("D-1577", 32);
-        xeon_push("D-1581", 32);
-        xeon_push("D-1587", 32);
-        xeon_push("D-1513N", 8);
-        xeon_push("D-1523N", 8);
-        xeon_push("D-1533N", 12);
-        xeon_push("D-1543N", 16);
-        xeon_push("D-1553N", 16);
-        xeon_push("D-1602", 4);
-        xeon_push("D-1612", 8);
-        xeon_push("D-1622", 8);
-        xeon_push("D-1627", 8);
-        xeon_push("D-1632", 16);
-        xeon_push("D-1637", 12);
-        xeon_push("D-1623N", 8);
-        xeon_push("D-1633N", 12);
-        xeon_push("D-1649N", 16);
-        xeon_push("D-1653N", 16);
-        xeon_push("D-2141I", 16);
-        xeon_push("D-2161I", 24);
-        xeon_push("D-2191", 36);
-        xeon_push("D-2123IT", 8);
-        xeon_push("D-2142IT", 16);
-        xeon_push("D-2143IT", 16);
-        xeon_push("D-2163IT", 24);
-        xeon_push("D-2173IT", 28);
-        xeon_push("D-2183IT", 32);
-        xeon_push("D-2145NT", 16);
-        xeon_push("D-2146NT", 16);
-        xeon_push("D-2166NT", 24);
-        xeon_push("D-2177NT", 28);
-        xeon_push("D-2187NT", 32);
-
-        // Xeon E
-        xeon_push("E-2104G", 4);
-        xeon_push("E-2124", 4);
-        xeon_push("E-2124G", 4);
-        xeon_push("E-2126G", 6);
-        xeon_push("E-2134", 8);
-        xeon_push("E-2136", 12);
-        xeon_push("E-2144G", 8);
-        xeon_push("E-2146G", 12);
-        xeon_push("E-2174G", 8);
-        xeon_push("E-2176G", 12);
-        xeon_push("E-2186G", 12);
-        xeon_push("E-2176M", 12);
-        xeon_push("E-2186M", 12);
-        xeon_push("E-2224", 4);
-        xeon_push("E-2224G", 4);
-        xeon_push("E-2226G", 6);
-        xeon_push("E-2234", 8);
-        xeon_push("E-2236", 12);
-        xeon_push("E-2244G", 8);
-        xeon_push("E-2246G", 12);
-        xeon_push("E-2274G", 8);
-        xeon_push("E-2276G", 12);
-        xeon_push("E-2278G", 16);
-        xeon_push("E-2286G", 12);
-        xeon_push("E-2288G", 16);
-        xeon_push("E-2276M", 12);
-        xeon_push("E-2286M", 16);
-
-        // Xeon W
-        xeon_push("W-2102", 4);
-        xeon_push("W-2104", 4);
-        xeon_push("W-2123", 8);
-        xeon_push("W-2125", 8);
-        xeon_push("W-2133", 12);
-        xeon_push("W-2135", 12);
-        xeon_push("W-2140B", 16);
-        xeon_push("W-2145", 16);
-        xeon_push("W-2150B", 20);
-        xeon_push("W-2155", 20);
-        xeon_push("W-2170B", 28);
-        xeon_push("W-2175", 28);
-        xeon_push("W-2191B", 36);
-        xeon_push("W-2195", 36);
-        xeon_push("W-3175X", 56);
-        xeon_push("W-3223", 16);
-        xeon_push("W-3225", 16);
-        xeon_push("W-3235", 24);
-        xeon_push("W-3245", 32);
-        xeon_push("W-3245M", 32);
-        xeon_push("W-3265", 48);
-        xeon_push("W-3265M", 48);
-        xeon_push("W-3275", 56);
-        xeon_push("W-3275M", 56);
-
-        if (xeon_thread_database->count(model.string) == 0) {
+        // if it doesn't exist, return false
+        if (thread_database.find(model.string.c_str()) == thread_database.end()) {
             return false;
         }
 
-        const u8 threads = xeon_thread_database->at(model.string);
+        const u8 threads = thread_database.at(model.string.c_str());
 
         debug("XEON_THREAD_MISMATCH: thread in database = ", static_cast<u32>(threads));
 
@@ -9424,6 +9394,54 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
 
 
+    /**
+     * @brief Check RDTSC
+     * @category Windows
+     * @note This has been revised multiple times with previously removed techniques
+     */
+    [[nodiscard]] 
+#if (LINUX)
+    // this is added so that no sanitizers can potentially cause unwanted delays while measuring rdtsc in a debug compilation
+    __attribute__((no_sanitize("address", "leak", "thread", "undefined")))
+#endif
+
+static bool rdtsc() {
+#if (!LINUX && !WINDOWS)
+        return false;
+#else
+
+        u64 start, end, total_cycles = 0;
+        u32 eax, ebx, ecx, edx;
+        i32 cpu_info[4];
+
+        constexpr i32 iterations = 10000;
+        constexpr u32 threshold = 25000;
+
+        for (int i = 0; i < iterations; i++) {
+            start = __rdtsc();
+    #if (WINDOWS)
+            __cpuid(cpu_info, 0);
+    #elif (LINUX)
+            __cpuid(0, eax, ebx, ecx, edx);
+    #endif
+            end = __rdtsc();
+
+            total_cycles += (end - start);
+        }
+
+        UNUSED(eax);
+        UNUSED(ebx);
+        UNUSED(ecx);
+        UNUSED(edx);
+        UNUSED(cpu_info);
+
+        double average_cycles = (double)total_cycles / iterations;
+
+        return (average_cycles >= threshold);
+#endif    
+    }
+
+
 
 
 
@@ -9460,10 +9478,17 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         };
         MSVC_ENABLE_WARNING(PADDING)
 
-        static const std::map<enum_flags, technique> technique_table;
+        // initial technique list, this is where all the techniques are stored
+        static std::pair<enum_flags, technique> technique_list[];
+    
+        // the actual table, which is derived from the list above and will be 
+        // used for most functionalities related to technique interactions
+        static std::map<enum_flags, technique> technique_table;
 
+        // specific to VM::add_custom(), where custom techniques will be stored here
         static std::vector<custom_technique> custom_table;
-
+        
+        // self-explanatory
         static bool cpuid_supported;
 
         // VM scoreboard table specifically for VM::brand()
@@ -9510,7 +9535,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         [[nodiscard]] static bool is_setting_flag_set(const flagset& flags) {
-            for (std::size_t i = non_technique_begin; i < non_technique_end; i++) {
+            for (std::size_t i = settings_begin; i < settings_end; i++) {
                 if (flags.test(i)) {
                     return true;
                 }
@@ -10367,7 +10392,6 @@ public: // START OF PUBLIC FUNCTIONS
             case GAMARUE: return "GAMARUE";
             case VMID_0X4: return "VMID_0X4";
             case PARALLELS_VM: return "PARALLELS_VM";
-            case RDTSC_VMEXIT: return "RDTSC_VMEXIT";
             case QEMU_BRAND: return "QEMU_BRAND";
             case BOCHS_CPU: return "BOCHS_CPU";
             case VPC_BOARD: return "VPC_BOARD";
@@ -10516,15 +10540,14 @@ public: // START OF PUBLIC FUNCTIONS
             throw_error("The flag is not a technique flag");
         }
 
-        // replica type alias of the technique table
-        using table_t = std::map<enum_flags, core::technique>;
+        using table_t =  std::map<enum_flags, core::technique>;
 
         auto modify = [](table_t &table, const enum_flags flag, const u8 percent) -> void {
             core::technique &tmp = table.at(flag);
             table[flag] = { percent, tmp.run, tmp.is_spoofable };
         };
 
-        modify(const_cast<table_t&>(core::technique_table), flag, percent);
+        modify(core::technique_table, flag, percent);
     }
 
 
@@ -10737,6 +10760,7 @@ std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard{
     { VM::brands::VMWARE_GSX, 0 },
     { VM::brands::VMWARE_WORKSTATION, 0 },
     { VM::brands::VMWARE_FUSION, 0 },
+    { VM::brands::VMWARE_HARD, 0 },
     { VM::brands::BHYVE, 0 },
     { VM::brands::KVM, 0 },
     { VM::brands::QEMU, 0 },
@@ -10831,8 +10855,6 @@ VM::flagset VM::DEFAULT = []() noexcept -> flagset {
     tmp.set();
 
     // disable all non-default techniques
-    tmp.flip(RDTSC);
-    tmp.flip(RDTSC_VMEXIT);
     tmp.flip(VMWARE_DMESG);
 
     // disable all the settings flags
@@ -10897,20 +10919,14 @@ bool VM::core::cpuid_supported = []() -> bool {
 }();
 
 
-// this is initialised as empty, because this is where custom techniques can be added at runtime 
-std::vector<VM::core::custom_technique> VM::core::custom_table = {
-
-};
-
 // the 0~100 points are debatable, but I think it's fine how it is. Feel free to disagree.
-const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = {
+std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     // FORMAT: { VM::<ID>, { certainty%, function pointer, is spoofable? } },
-
     { VM::VMID, { 100, VM::vmid, false } },
     { VM::CPU_BRAND, { 50, VM::cpu_brand, false } },
     { VM::HYPERVISOR_BIT, { 100, VM::hypervisor_bit , false}} , 
     { VM::HYPERVISOR_STR, { 75, VM::hypervisor_str, false } },
-    { VM::RDTSC, { 5, VM::rdtsc_check, false } },
+    { VM::RDTSC, { 40, VM::rdtsc, false } },
     { VM::THREADCOUNT, { 25, VM::thread_count, false } },
     { VM::MAC, { 20, VM::mac_address_check, true } },
     { VM::TEMPERATURE, { 15, VM::temperature, false } },
@@ -10949,7 +10965,6 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::GAMARUE, { 10, VM::gamarue, true } },
     { VM::VMID_0X4, { 100, VM::vmid_0x4, false } },
     { VM::PARALLELS_VM, { 50, VM::parallels, false } },
-    { VM::RDTSC_VMEXIT, { 5, VM::rdtsc_vmexit, false } },
     { VM::QEMU_BRAND, { 100, VM::cpu_brand_qemu, false } },
     { VM::BOCHS_CPU, { 100, VM::bochs_cpu, false } },
     { VM::VPC_BOARD, { 25, VM::vpc_board, false } },
@@ -11035,3 +11050,20 @@ const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = 
     { VM::PROCESSOR_ID, { 25, VM::processor_id, false } },
     { VM::CPU_FANS, { 35, VM::cpu_fans, false } }
 };
+
+
+// this is initialised as empty, because this is where custom techniques can be added at runtime 
+std::vector<VM::core::custom_technique> VM::core::custom_table = {
+
+};
+
+#define table_t std::map<VM::enum_flags, VM::core::technique>
+
+// the reason why the map isn't directly initialized is due to potential SDK errors on windows combined with older C++ standards
+table_t VM::core::technique_table = []() -> table_t {
+    table_t table;
+    for (const auto& technique : VM::core::technique_list) {
+        table.insert(technique);
+    }
+    return table;
+}();
