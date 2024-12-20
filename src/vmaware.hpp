@@ -454,6 +454,7 @@ public:
         WMI_TEMPERATURE,
         PROCESSOR_ID,
         CPU_FANS,
+        // ADD NEW TECHNIQUE ENUM NAME HERE
 
         // start of settings technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
         NO_MEMO,
@@ -9450,7 +9451,7 @@ static bool rdtsc() {
     }
 
 
-
+    // ADD NEW TECHNIQUE FUNCTION HERE
 
 
 
@@ -10488,26 +10489,9 @@ public: // START OF PUBLIC FUNCTIONS
             case CPU_FANS: return "CPU_FANS";
             case POWER_CAPABILITIES: return "POWER_CAPABILITIES";
             case SETUPAPI_DISK: return "SETUPAPI_DISK";
+            // ADD NEW CASE HERE FOR NEW TECHNIQUE
             default: return "Unknown flag";
         }
-    }
-
-
-    /**
-     * @brief return a vector of detected brand strings
-     * @param any flag combination in VM structure or nothing
-     * @warning ⚠️ FOR DEVELOPMENT USAGE ONLY, NOT MEANT FOR PUBLIC USE FOR NOW ⚠️
-     */
-    template <typename ...Args>
-    static std::map<const char*, brand_score_t> brand_map(Args ...args) {
-        flagset flags = core::arg_handler(args...);
-
-        // are all the techiques already run? if not, run all of them to get the necessary info to fetch the brand
-        if (!memo::all_present() || core::is_enabled(flags, NO_MEMO)) {
-            core::run_all(flags);
-        }
-
-        return core::brand_scoreboard;
     }
 
 
@@ -11056,7 +11040,8 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::WMI_MANUFACTURER, { 100, VM::wmi_manufacturer, false } },
     { VM::WMI_TEMPERATURE, { 25, VM::wmi_temperature, false } },
     { VM::PROCESSOR_ID, { 25, VM::processor_id, false } },
-    { VM::CPU_FANS, { 35, VM::cpu_fans, false } }
+    { VM::CPU_FANS, { 35, VM::cpu_fans, false } },
+    // ADD NEW TECHNIQUE STRUCTURE HERE
 };
 
 
