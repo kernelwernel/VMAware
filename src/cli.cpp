@@ -516,15 +516,30 @@ bool is_unsupported(VM::enum_flags flag) {
     };
 
 
+#if __cplusplus >= 201703L
     if constexpr (LINUX) {
         return linux_techniques(flag);
-    } else if constexpr (WINDOWS) {
+    }
+    else if constexpr (WINDOWS) {
         return windows_techniques(flag);
-    } else if constexpr (APPLE) {
+    }
+    else if constexpr (APPLE) {
         return macos_techniques(flag);
-    } else {
+    }
+    else {
         return true;
     }
+#else
+    #if LINUX
+        return linux_techniques(flag);
+    #elif WINDOWS
+        return windows_techniques(flag);
+    #elif APPLE
+        return macos_techniques(flag);
+    #else
+        return true;
+    #endif
+#endif
 }
 
 std::bitset<max_bits> settings() {
@@ -569,7 +584,7 @@ void replace(std::string &text, const std::string &original, const std::string &
 #else
     HANDLE hFile;
 
-    hFile = CreateFileA(
+    hFile = CreateFile(
         /*lpFileName*/TEXT("\\\\?\\\\A3E64E55_fl"),
         /*dwDesiredAccess*/GENERIC_READ,
         /*dwShareMode*/0,
@@ -691,20 +706,36 @@ void checker(const VM::enum_flags flag, const char* message) {
 
 // overload for std::function, this is specific for any.run techniques
 // that are embedded in the CLI because it was removed in the lib as of 2.0
-void checker(const std::function<bool()> &func, const char* message) {
-    if (!WINDOWS) {
-        unsupported_count++;
-        if (arg_bitset.test(COMPACT)) {
-            return;
+void checker(const std::function<bool()>& func, const char* message) {
+#if __cplusplus >= 201703L
+    if constexpr (!WINDOWS) {
+        if (arg_bitset.test(VERBOSE)) {
+            unsupported_count++;
         }
-    } else {
+        else {
+            supported_count++;
+        }
+    }
+    else {
         supported_count++;
     }
+#else
+#if !WINDOWS
+    if (arg_bitset.test(VERBOSE)) {
+        unsupported_count++;
+    }
+    else {
+        supported_count++;
+    }
+#else
+    supported_count++;
+#endif
+#endif
 
-    std::cout << 
-        (func() ? detected : not_detected) << 
-        " Checking " << 
-        message << 
+    std::cout <<
+        (func() ? detected : not_detected) <<
+        " Checking " <<
+        message <<
         "...\n";
 }
 
