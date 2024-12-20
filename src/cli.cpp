@@ -907,6 +907,8 @@ void general() {
     checker(VM::CPU_FANS, "CPU fans");
     checker(VM::POWER_CAPABILITIES, "Power capabilities");
     checker(VM::SETUPAPI_DISK, "SETUPDI diskdrive");
+    checker(VM::VMWARE_HARDENER, "VMWARE HARDENER");
+    checker(VM::WMI_QUERIES, "WMI QUERIES");
     // ADD NEW TECHNIQUE CHECKER HERE
 
     std::printf("\n");
