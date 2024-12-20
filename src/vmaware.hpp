@@ -454,6 +454,9 @@ public:
         WMI_TEMPERATURE,
         PROCESSOR_ID,
         CPU_FANS,
+        VMWARE_HARDENER,
+        WMI_QUERIES,
+        // ADD NEW TECHNIQUE ENUM NAME HERE
 
         // start of settings technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
         NO_MEMO,
@@ -1428,8 +1431,6 @@ public:
             }
 
             CoUninitialize();
-
-            core_debug("WMI has been cleaned");
         }
     };
 
@@ -1852,7 +1853,7 @@ public:
             DWORD numProcesses = bytesReturned / sizeof(DWORD);
 
             for (DWORD i = 0; i < numProcesses; ++i) {
-                const HANDLE process = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, processes[i]);
+                const HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, processes[i]);
                 if (process != nullptr) {
                     TCHAR processName[MAX_PATH];
                     if (GetModuleBaseName(process, nullptr, processName, sizeof(processName) / sizeof(TCHAR))) {
@@ -2614,7 +2615,7 @@ public:
 
         [[nodiscard]] static bool motherboard_string(const char* vm_string) {
             if (!wmi::initialize()) {
-                core_debug("Failed to initialize WMI");
+                core_debug("Failed to initialize WMI in motherboard_string");
                 return false;
             }
 
@@ -2876,7 +2877,7 @@ public:
 
             auto GetThreadsUsingWMI = []() -> int {
                 if (!wmi::initialize()) {
-                    std::cerr << "Failed to initialize WMI.\n";
+                    std::cerr << "Failed to initialize WMI in GetThreadsUsingWMI.\n";
                     return -1;
                 }
 
@@ -2902,10 +2903,6 @@ public:
             int cpuidThreads = GetThreadsUsingCPUID();
             int wmiThreads = GetThreadsUsingWMI();
             int osThreads = GetThreadsUsingOSAPI();
-
-            std::cout << "CPUID Threads: " << cpuidThreads << "\n";
-            std::cout << "WMI Threads: " << wmiThreads << "\n";
-            std::cout << "OS Threads: " << osThreads << "\n";
 
             return !(cpuidThreads == wmiThreads && wmiThreads == osThreads);
         }
@@ -4361,6 +4358,40 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */         return false;
 /* GPL */ #endif
 /* GPL */     }
+/* GPL */     // @brief Executes generic WMI queries that always return more than 0 entries in physical machines and checks if any query returns zero entries 
+/* GPL */     // @category Windows
+/* GPL */     // @author idea from Al-Khaser project
+/* GPL */     // @return True if all queries return non - zero results; false otherwise
+/* GPL */     [[nodiscard]] static bool wmi_queries() {
+/* GPL */ #if (!WINDOWS)
+/* GPL */         return false;
+/* GPL */ #else
+/* GPL */         if (!wmi::initialize()) {
+/* GPL */             core_debug("Failed to initialize WMI in wmi_queries.");
+/* GPL */             return false;
+/* GPL */         }
+/* GPL */
+/* GPL */        std::vector<std::wstring> queries = {
+/* GPL */           L"SELECT * FROM Win32_VoltageProbe",
+/* GPL */           L"SELECT * FROM Win32_PerfFormattedData_Counters_ThermalZoneInformation",
+/* GPL */           L"SELECT * FROM CIM_Sensor",
+/* GPL */           L"SELECT * FROM CIM_NumericSensor",
+/* GPL */           L"SELECT * FROM CIM_TemperatureSensor",
+/* GPL */           L"SELECT * FROM CIM_VoltageSensor"
+/* GPL */        };
+/* GPL */
+/* GPL */        for (const auto& query : queries) {
+/* GPL */           auto results = wmi::execute(query, {});
+/* GPL */           int count = results.size();
+/* GPL */
+/* GPL */           if (count > 0) {
+/* GPL */               return true;
+/* GPL */           }
+/* GPL */         }
+/* GPL */         return false;
+/* GPL */ #endif
+/* GPL */     }
+
 
 
     /**
@@ -5504,7 +5535,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #else
         if (!wmi::initialize()) {
-            core_debug("Failed to initialize WMI");
+            core_debug("Failed to initialize WMI in hyperv_board");
             return false;
         }
 
@@ -6059,7 +6090,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (WINDOWS)
         if (util::does_threadcount_mismatch()) {
             debug("INTEL_THREAD_MISMATCH: Thread tampering detected");
-            return false;
+            return true;
         }
 #endif
 
@@ -8796,7 +8827,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #else
         if (!wmi::initialize()) {
-            core_debug("Failed to initialize WMI");
+            core_debug("Failed to initialize WMI in gpu_chiptype");
             return false;
         }
 
@@ -8918,7 +8949,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #else
         if (!wmi::initialize()) {
-            core_debug("HDD serial number: Failed to initialize WMI");
+            core_debug("Failed to initialize WMI in hdd_serial_number");
             return false;
         }
 
@@ -8949,6 +8980,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #else
         if (!wmi::initialize()) {
+            core_debug("Failed to initialize WMI in port_connectors");
             return false;
         }
 
@@ -8968,6 +9000,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #else
         if (!wmi::initialize()) {
+            core_debug("Failed to initialize WMI in vm_hdd");
             return false;
         }
 
@@ -9244,6 +9277,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #else
         if (!wmi::initialize()) {
+            core_debug("Failed to initialize WMI in number_of_cores");
             return false;
         }
 
@@ -9275,6 +9309,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #else
         if (!wmi::initialize()) {
+            core_debug("Failed to initialize WMI in number_of_cores");
             return false;
         }
 
@@ -9304,6 +9339,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #else
         if (!wmi::initialize()) {
+            core_debug("Failed to initialize WMI in wmi_manufacturer");
             return false;
         }
 
@@ -9333,6 +9369,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #else
         if (!wmi::initialize()) {
+            core_debug("Failed to initialize WMI in wmi_temperature");
             return false;
         }
 
@@ -9362,6 +9399,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #else
         if (!wmi::initialize()) {
+            core_debug("Failed to initialize WMI in processor_id");
             return false;
         }
 
@@ -9391,6 +9429,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #else
         if (!wmi::initialize()) {
+            core_debug("Failed to initialize WMI in cpu_fans");
             return false;
         }
 
@@ -9420,7 +9459,7 @@ static bool rdtsc() {
 #else
 
         u64 start, end, total_cycles = 0;
-        u32 eax, ebx, ecx, edx;
+        u32 eax = 0, ebx = 0, ecx = 0, edx = 0;
         i32 cpu_info[4];
 
         constexpr i32 iterations = 10000;
@@ -9451,7 +9490,70 @@ static bool rdtsc() {
     }
 
 
+    /*
+     * @brief Detects VMwareHardenerLoader's technique to remove firmware signatures
+     * @category Windows
+     * @author MegaMax
+     */
+    [[nodiscard]] static bool vmware_hardener()
+    {
+#if (!WINDOWS)
+        return false;
+#else
+        static const DWORD kProviders[] = { 'ACPI', 'RSMB', 'FIRM' };
+        static const char* kPatchedStrings[] = { "VMware", "VMWARE", "Virtual" };
 
+        for (DWORD provider : kProviders)
+        {
+            DWORD bufferSize = EnumSystemFirmwareTables(provider, NULL, 0);
+            if (bufferSize == 0)
+            {
+                return false;
+            }
+
+            std::vector<char> tableNames(bufferSize);
+            if (EnumSystemFirmwareTables(provider, tableNames.data(), (DWORD)tableNames.size()) == 0)
+            {
+                return false;
+            }
+
+            for (size_t i = 0; i < tableNames.size(); i += 4)
+            {
+                DWORD signature = *(DWORD*)&tableNames[i];
+
+                DWORD requiredSize = GetSystemFirmwareTable(provider, signature, NULL, 0);
+                if (requiredSize == 0)
+                {
+                    continue;
+                }
+
+                std::vector<BYTE> tableBuffer(requiredSize);
+                if (GetSystemFirmwareTable(provider, signature, tableBuffer.data(), requiredSize) == 0)
+                {
+                    continue;
+                }
+
+                std::string tableData((char*)tableBuffer.data(), tableBuffer.size());
+                for (const char* original : kPatchedStrings)
+                {
+                    size_t orig_len = strlen(original);
+                    if (tableData.find(original) == std::string::npos)
+                    {
+                        std::string replaced(orig_len, '7');
+                        if (tableData.find(replaced) != std::string::npos)
+                        {
+                            return core::add(brands::VMWARE);
+                        }
+                    }
+                }
+            }
+        }
+
+        return false;
+#endif
+    }
+ 
+    // ADD NEW TECHNIQUE FUNCTION HERE
 
 
 
@@ -10489,26 +10591,11 @@ public: // START OF PUBLIC FUNCTIONS
             case CPU_FANS: return "CPU_FANS";
             case POWER_CAPABILITIES: return "POWER_CAPABILITIES";
             case SETUPAPI_DISK: return "SETUPAPI_DISK";
+            case VMWARE_HARDENER: return "VMWARE_HARDENER_LOADER";
+            case WMI_QUERIES: return "WMI_QUERIES";
+            // ADD NEW CASE HERE FOR NEW TECHNIQUE
             default: return "Unknown flag";
         }
-    }
-
-
-    /**
-     * @brief return a vector of detected brand strings
-     * @param any flag combination in VM structure or nothing
-     * @warning ⚠️ FOR DEVELOPMENT USAGE ONLY, NOT MEANT FOR PUBLIC USE FOR NOW ⚠️
-     */
-    template <typename ...Args>
-    static std::map<const char*, brand_score_t> brand_map(Args ...args) {
-        flagset flags = core::arg_handler(args...);
-
-        // are all the techiques already run? if not, run all of them to get the necessary info to fetch the brand
-        if (!memo::all_present() || core::is_enabled(flags, NO_MEMO)) {
-            core::run_all(flags);
-        }
-
-        return core::brand_scoreboard;
     }
 
 
@@ -10969,6 +11056,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
 /* GPL */ { VM::QEMU_DIR, { 30, VM::qemu_dir, true } },
 /* GPL */ { VM::POWER_CAPABILITIES, { 25, VM::power_capabilities, false } },
 /* GPL */ { VM::SETUPAPI_DISK, { 20, VM::setupapi_disk, false } },
+/* GPL */ { VM::WMI_QUERIES, { 50, VM::wmi_queries, false } },
     { VM::VM_PROCESSES, { 15, VM::vm_processes, true } }, 
     { VM::LINUX_USER_HOST, { 10, VM::linux_user_host, true } }, // TODO: update score
     { VM::GAMARUE, { 10, VM::gamarue, true } },
@@ -11057,7 +11145,9 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::WMI_MANUFACTURER, { 100, VM::wmi_manufacturer, false } },
     { VM::WMI_TEMPERATURE, { 25, VM::wmi_temperature, false } },
     { VM::PROCESSOR_ID, { 25, VM::processor_id, false } },
-    { VM::CPU_FANS, { 35, VM::cpu_fans, false } }
+    { VM::CPU_FANS, { 35, VM::cpu_fans, false } },
+    { VM::VMWARE_HARDENER, { 50, VM::vmware_hardener, false } },
+    // ADD NEW TECHNIQUE STRUCTURE HERE
 };
 
 

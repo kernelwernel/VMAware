@@ -373,7 +373,9 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::DMI_SCAN:
             case VM::SMBIOS_VM_BIT:
             case VM::PODMAN_FILE:
-            case VM::WSL_PROC: return false;
+            case VM::WSL_PROC: 
+            // ADD LINUX FLAG
+            return false;
             default: return true;
         }        
     };
@@ -474,7 +476,9 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::PROCESSOR_ID:
             case VM::CPU_FANS:
             case VM::POWER_CAPABILITIES:
-            case VM::SETUPAPI_DISK: return false;
+            case VM::SETUPAPI_DISK: 
+            // ADD WINDOWS FLAG
+            return false;
             default: return true;
         }
     };
@@ -504,7 +508,9 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::CPUID_SIGNATURE:
             case VM::HYPERV_BITMASK:
             case VM::KVM_BITMASK:
-            case VM::KGT_SIGNATURE: return false;
+            case VM::KGT_SIGNATURE:
+            // ADD MACOS FLAG
+            return false;
             default: return true;
         }
     };
@@ -901,6 +907,9 @@ void general() {
     checker(VM::CPU_FANS, "CPU fans");
     checker(VM::POWER_CAPABILITIES, "Power capabilities");
     checker(VM::SETUPAPI_DISK, "SETUPDI diskdrive");
+    checker(VM::VMWARE_HARDENER, "VMWARE HARDENER");
+    checker(VM::WMI_QUERIES, "WMI QUERIES");
+    // ADD NEW TECHNIQUE CHECKER HERE
 
     std::printf("\n");
 

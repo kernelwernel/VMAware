@@ -469,7 +469,10 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::CPU_FANS` | Check for CPU Fans | Windows | 35% |  |  |  |  |
 | `VM::POWER_CAPABILITIES` | Check what power states are enabled | Windows | 25% |  | GPL |  |  |
 | `VM::SETUPAPI_DISK` | Checks for virtual machine signatures in disk drive device identifiers | Windows | 20% |  | GPL |  |  |
+| `VM::HARDENER_LOADER` | Checks for VMwareHardenerLoader's method of patching firmware detection by setting its signatures with "7" | Windows | 50% |  |  |  |  |
+| `VM::WMI_QUERIES` | Executes generic WMI queries that always return more than 0 entries in physical machines and checks if any query returns zero entries | Windows | 50% |  | GPL |  |  |
 
+<!-- ADD DETAILS HERE -->
 
 <br>
 
