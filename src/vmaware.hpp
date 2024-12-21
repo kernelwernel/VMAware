@@ -2867,7 +2867,17 @@ public:
                 while (ptr < buffer.data() + bufferSize) {
                     auto info = reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(ptr);
                     if (info->Relationship == RelationProcessorCore) {
+#if (x86_32)
+                        u64 mask = info->Processor.GroupMask[0].Mask;
+
+                        u32 low = static_cast<u32>(mask); // low 32-bits
+                        u32 high = static_cast<u32>(mask >> 32); // high 32-bits
+
+                        threadCount += __popcnt(low);
+                        threadCount += __popcnt(high);
+#else
                         threadCount += __popcnt64(info->Processor.GroupMask[0].Mask);
+#endif
                     }
                     ptr += info->Size;
                 }
@@ -4358,6 +4368,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */         return false;
 /* GPL */ #endif
 /* GPL */     }
+/* GPL */
+/* GPL */
 /* GPL */     // @brief Executes generic WMI queries that always return more than 0 entries in physical machines and checks if any query returns zero entries 
 /* GPL */     // @category Windows
 /* GPL */     // @author idea from Al-Khaser project
@@ -9542,7 +9554,7 @@ static bool rdtsc() {
                         std::string replaced(orig_len, '7');
                         if (tableData.find(replaced) != std::string::npos)
                         {
-                            return core::add(brands::VMWARE);
+                            return core::add(brands::VMWARE, brands::VMWARE_HARD);
                         }
                     }
                 }

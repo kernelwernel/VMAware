@@ -195,6 +195,7 @@ def write_header(options):
         lines = file.readlines()
 
     new_code = []
+    update_count = 0
 
     for line in lines:
         # if the line is empty, skip
@@ -205,7 +206,11 @@ def write_header(options):
 
         # modify the enum
         if "// ADD NEW TECHNIQUE ENUM NAME HERE" in line:
-            new_code.append("\t\t" + options.enum_name + ",\n")
+            if options.is_gpl:
+                new_code.append("/* GPL */\t " + options.enum_name + ",\n")
+            else:
+                new_code.append("\t\t" + options.enum_name + ",\n")
+            update_count += 1
 
 
         # append the technique function to the function list section
@@ -266,20 +271,34 @@ def write_header(options):
 
             # extra lines
             new_code.append("\n\n")
+            update_count += 1
 
 
         # modify the technique table with the new technique appended
         if "// ADD NEW TECHNIQUE STRUCTURE HERE" in line:
-            new_code.append(
-                "\t" + 
-                "{ VM::" + 
-                options.enum_name + 
-                ", { " + 
-                str(options.score) + 
-                ", VM::" + 
-                options.function_name +
-                ", false } },\n"
-            )
+            if options.is_gpl:
+                new_code.append(
+                    "/* GPL */ " + 
+                    "{ VM::" + 
+                    options.enum_name + 
+                    ", { " + 
+                    str(options.score) + 
+                    ", VM::" + 
+                    options.function_name +
+                    ", false } },\n"
+                )
+            else:
+                new_code.append(
+                    "\t" + 
+                    "{ VM::" + 
+                    options.enum_name + 
+                    ", { " + 
+                    str(options.score) + 
+                    ", VM::" + 
+                    options.function_name +
+                    ", false } },\n"
+                )
+            update_count += 1
 
 
         # modify the VM::flag_to_string function with the new technique
@@ -291,9 +310,13 @@ def write_header(options):
                 options.enum_name + 
                 "\";\n"
             )
+            update_count += 1
 
         # add the line in the buffer array
         new_code.append(line)
+
+    if update_count not 4:
+        raise ValueError("Not all sections have been update, try to check if the search key values have been modified")
 
 
     # commit the new changes from the buffer array
