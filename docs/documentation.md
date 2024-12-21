@@ -477,7 +477,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 
 This is the table of all the brands the library supports.
 
-| Variable alias | String | VM type | Notes |
+| String | Variable alias | VM type | Notes |
 | -------------- | ------ | ------- | ----- |
 | Unknown | `VM::brands::NULL_BRAND` | Unknown |  |
 | VirtualBox | `VM::brands::VBOX` | Hypervisor (type 2) |  |
