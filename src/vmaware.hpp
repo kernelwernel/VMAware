@@ -10116,6 +10116,7 @@ public: // START OF PUBLIC FUNCTIONS
         constexpr const char* TMP_QEMU_KVM_HYPERV = "QEMU+KVM Hyper-V Enlightenment";
 
         constexpr const char* TMP_VMWARE = "VMware";
+        constexpr const char* TMP_VMWARE_HARD = "VMware (with VmwareHardenedLoader)";
         constexpr const char* TMP_EXPRESS = "VMware Express";
         constexpr const char* TMP_ESX = "VMware ESX";
         constexpr const char* TMP_GSX = "VMware GSX";
@@ -10136,6 +10137,7 @@ public: // START OF PUBLIC FUNCTIONS
         constexpr const char* TMP_QEMU_KVM_HYPERV = brands::QEMU_KVM_HYPERV;
 
         constexpr const char* TMP_VMWARE = brands::VMWARE;
+        constexpr const char* TMP_VMWARE_HARD = brands::VMWARE_HARD;
         constexpr const char* TMP_EXPRESS = brands::VMWARE_EXPRESS;
         constexpr const char* TMP_ESX = brands::VMWARE_ESX;
         constexpr const char* TMP_GSX = brands::VMWARE_GSX;
@@ -10259,6 +10261,13 @@ public: // START OF PUBLIC FUNCTIONS
         merger(TMP_VMWARE, TMP_ESX,         TMP_ESX);
         merger(TMP_VMWARE, TMP_GSX,         TMP_GSX);
         merger(TMP_VMWARE, TMP_WORKSTATION, TMP_WORKSTATION);
+
+        merger(TMP_VMWARE_HARD, TMP_VMWARE,      TMP_VMWARE_HARD);
+        merger(TMP_VMWARE_HARD, TMP_FUSION,      TMP_VMWARE_HARD);
+        merger(TMP_VMWARE_HARD, TMP_EXPRESS,     TMP_VMWARE_HARD);
+        merger(TMP_VMWARE_HARD, TMP_ESX,         TMP_VMWARE_HARD);
+        merger(TMP_VMWARE_HARD, TMP_GSX,         TMP_VMWARE_HARD);
+        merger(TMP_VMWARE_HARD, TMP_WORKSTATION, TMP_VMWARE_HARD);
 
         // the brand element, which stores the NAME (const char*) and the SCORE (u8)
         using brand_element_t = std::pair<const char*, brand_score_t>;

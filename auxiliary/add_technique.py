@@ -197,6 +197,7 @@ def write_header(options):
     new_code = []
     update_count = 0
 
+
     for line in lines:
         # if the line is empty, skip
         if not line:
@@ -207,7 +208,7 @@ def write_header(options):
         # modify the enum
         if "// ADD NEW TECHNIQUE ENUM NAME HERE" in line:
             if options.is_gpl:
-                new_code.append("/* GPL */\t " + options.enum_name + ",\n")
+                new_code.append("/* GPL */ " + options.enum_name + ",\n")
             else:
                 new_code.append("\t\t" + options.enum_name + ",\n")
             update_count += 1
@@ -216,6 +217,7 @@ def write_header(options):
         # append the technique function to the function list section
         if "// ADD NEW TECHNIQUE FUNCTION HERE" in line:
             full_technique = []
+            new_code.append("\n")
 
             # manage the category string of the technique
             category_list = []
@@ -263,11 +265,16 @@ def write_header(options):
             # add the GPL specifier for every line 
             if options.is_gpl:
                 for i in range(len(full_technique)):
-                    full_technique[i] = "/* GPL */ " + full_technique[i]
+                    full_technique[i] = "/* GPL */     " + full_technique[i]
 
             # commit the full technique in the buffer 
-            for technique_line in full_technique:
-                new_code.append("\t" + technique_line)
+            if options.is_gpl:
+                for technique_line in full_technique:
+                    new_code.append(technique_line)
+            else:
+                for technique_line in full_technique:
+                    new_code.append("\t" + technique_line)
+
 
             # extra lines
             new_code.append("\n\n")
@@ -315,7 +322,7 @@ def write_header(options):
         # add the line in the buffer array
         new_code.append(line)
 
-    if update_count not 4:
+    if update_count != 4:
         raise ValueError("Not all sections have been update, try to check if the search key values have been modified")
 
 
@@ -428,7 +435,7 @@ def write_docs(options):
 
             query = "| " + " | ".join(query_list) + " |"
 
-            new_docs.append(query)
+            new_docs.append(query + "\n")
 
         
         # add the line in the buffer array
