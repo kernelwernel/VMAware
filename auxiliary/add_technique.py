@@ -67,10 +67,15 @@ def prompt():
     if not file_path.endswith(".cpp") and not file_path.endswith(".cc"):
         raise ValueError("file input MUST be a .cpp file")
     with open(file_path, 'r') as file:
+        is_static = False
         for line in file:
             if "#include" in line.lower():
                 raise ValueError("The cpp file will be directly copied to the lib verbatim, do not add #include as this will end up in vmaware.hpp")
-
+            if "static" in line:
+                is_static = True
+        
+        if not is_static:
+            raise ValueError("The function must be set as static")
 
     # 3: function name
     function_name = questionary.text("What's the name of the technqiue function in your .cpp file?").ask()
@@ -117,8 +122,8 @@ def prompt():
     # 6: description
     description = ""
     while True:
-        text = questionary.text("What's the description of your technique? (50-100 characters)").ask()
-        if len(text) < 50:
+        text = questionary.text("What's the description of your technique? (30-100 characters)").ask()
+        if len(text) < 30:
             print("Too short, try again\n")
             continue
         if len(text) > 100:
@@ -262,18 +267,27 @@ def write_header(options):
                 technique_code = technique_file.readlines()
                 full_technique = full_technique + technique_code
 
+            
+
             # add the GPL specifier for every line 
             if options.is_gpl:
                 for i in range(len(full_technique)):
                     full_technique[i] = "/* GPL */     " + full_technique[i]
 
             # commit the full technique in the buffer 
+            preprocessors = ["#endif", "#elif", "#else", "#if"]
             if options.is_gpl:
                 for technique_line in full_technique:
-                    new_code.append(technique_line)
+                    if all(sub in technique_line for sub in preprocessors):
+                        new_code.append(technique_line.lstrip())
+                    else:
+                        new_code.append(technique_line)
             else:
                 for technique_line in full_technique:
-                    new_code.append("\t" + technique_line)
+                    if all(sub in technique_line for sub in preprocessors):
+                        new_code.append(technique_line.lstrip())
+                    else:
+                        new_code.append("\t" + technique_line)
 
 
             # extra lines

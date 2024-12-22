@@ -456,6 +456,8 @@ public:
         CPU_FANS,
         VMWARE_HARDENER,
         WMI_QUERIES,
+		SYS_QEMU,
+		LSHW_QEMU,
         // ADD NEW TECHNIQUE ENUM NAME HERE
 
         // start of settings technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
@@ -9565,6 +9567,82 @@ static bool rdtsc() {
 #endif
     }
  
+
+	/**
+	 * @brief Check for existence of qemu_fw_cfg directories within sys/module and /sys/firmware
+	 * @category Linux
+	 * @note 
+	 */
+	[[nodiscard]] static bool sys_qemu_dir() {
+#if (!LINUX)
+	    return false;
+#else
+	    const std::string module_path = "/sys/module/qemu_fw_cfg/";
+	    const std::string firmware_path = "/sys/firmware/qemu_fw_cfg/";
+	
+    #if (CPP >= 17)
+        namespace fs = std::filesystem;
+
+	    return (
+	        fs::is_directory(module_path) && 
+	        fs::is_directory(firmware_path) &&
+	        fs::exists(module_path) &&
+	        fs::exists(firmware_path)
+	    );
+    #else
+        auto is_directory(const std::string& path) -> bool {
+            struct stat info;
+            if (stat(path.c_str(), &info) != 0) {
+                return false;
+            }
+            return (info.st_mode & S_IFDIR); // check if directory
+        };
+
+    	return (
+	        is_directory(module_path) && 
+	        is_directory(firmware_path) &&
+	        util::exists(module_path) &&
+	        util::exists(firmware_path)
+	    );
+    #endif
+#endif
+	}
+
+
+	/**
+	 * @brief Check for QEMU string instances with lshw command
+	 * @category Linux
+	 * @note 
+	 */
+	[[nodiscard]] static bool lshw_qemu() {
+#if (!LINUX)
+	    return false;
+#else
+	    if (!(util::exists("/usr/bin/lshw") || util::exists("/bin/lshw"))) {
+	        debug("LSHW_QEMU: ", "binary doesn't exist");
+	        return false;
+	    }
+	
+	    const std::unique_ptr<std::string> result = util::sys_result("lshw");
+	
+	    if (result == nullptr) {
+	        debug("LSHW_QEMU: ", "invalid stdout output from lshw");
+	        return false;
+	    }
+	
+	    const std::string full_command = *result;
+	
+	    u8 score = 0;
+	
+	    if (util::find(full_command, "QEMU PCIe Root port")) { score++; }
+	    if (util::find(full_command, "QEMU XHCI Host Controller")) { score++; }
+	    if (util::find(full_command, "QEMU DVD-ROM")) { score++; }
+	    if (util::find(full_command, "QEMU QEMU USB Tablet")) { score++; }
+	
+	    return (score >= 3);
+#endif
+	}
+
     // ADD NEW TECHNIQUE FUNCTION HERE
 
 
@@ -10614,6 +10692,8 @@ public: // START OF PUBLIC FUNCTIONS
             case SETUPAPI_DISK: return "SETUPAPI_DISK";
             case VMWARE_HARDENER: return "VMWARE_HARDENER_LOADER";
             case WMI_QUERIES: return "WMI_QUERIES";
+			case SYS_QEMU: return "SYS_QEMU";
+			case LSHW_QEMU: return "LSHW_QEMU";
             // ADD NEW CASE HERE FOR NEW TECHNIQUE
             default: return "Unknown flag";
         }
@@ -11168,6 +11248,8 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::PROCESSOR_ID, { 25, VM::processor_id, false } },
     { VM::CPU_FANS, { 35, VM::cpu_fans, false } },
     { VM::VMWARE_HARDENER, { 50, VM::vmware_hardener, false } },
+	{ VM::SYS_QEMU, { 70, VM::sys_qemu_dir, false } },
+	{ VM::LSHW_QEMU, { 80, VM::lshw_qemu, false } },
     // ADD NEW TECHNIQUE STRUCTURE HERE
 };
 

@@ -374,6 +374,8 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::SMBIOS_VM_BIT:
             case VM::PODMAN_FILE:
             case VM::WSL_PROC: 
+			case VM::SYS_QEMU:
+			case VM::LSHW_QEMU:
             // ADD LINUX FLAG
             return false;
             default: return true;
@@ -477,6 +479,8 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::CPU_FANS:
             case VM::POWER_CAPABILITIES:
             case VM::SETUPAPI_DISK: 
+            case VM::VMWARE_HARDENER:
+            case VM::WMI_QUERIES:
             // ADD WINDOWS FLAG
             return false;
             default: return true;
@@ -909,6 +913,8 @@ void general() {
     checker(VM::SETUPAPI_DISK, "SETUPDI diskdrive");
     checker(VM::VMWARE_HARDENER, "VMWARE HARDENER");
     checker(VM::WMI_QUERIES, "WMI QUERIES");
+	checker(VM::SYS_QEMU, "QEMU in /sys");
+	checker(VM::LSHW_QEMU, "QEMU in lshw output");
     // ADD NEW TECHNIQUE CHECKER HERE
 
     std::printf("\n");

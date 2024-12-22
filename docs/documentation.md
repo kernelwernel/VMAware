@@ -469,8 +469,10 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::CPU_FANS` | Check for CPU Fans | Windows | 35% |  |  |  |  |
 | `VM::POWER_CAPABILITIES` | Check what power states are enabled | Windows | 25% |  | GPL |  |  |
 | `VM::SETUPAPI_DISK` | Checks for virtual machine signatures in disk drive device identifiers | Windows | 20% |  | GPL |  |  |
-| `VM::HARDENER_LOADER` | Checks for VMwareHardenerLoader's method of patching firmware detection by setting its signatures with "7" | Windows | 50% |  |  |  |  |
+| `VM::VMWARE_HARDENER` | Checks for VMwareHardenerLoader's method of patching firmware detection by setting its signatures with "7" | Windows | 50% |  |  |  |  |
 | `VM::WMI_QUERIES` | Executes generic WMI queries that always return more than 0 entries in physical machines and checks if any query returns zero entries | Windows | 50% |  | GPL |  |  |
+| `VM::SYS_QEMU` | Check for existence of "qemu_fw_cfg" directories within /sys/module and /sys/firmware | Linux | 70% |  |  |  |  |
+| `VM::LSHW_QEMU` | Check for QEMU string instances with lshw command | Linux | 80% |  |  |  |  |
 <!-- ADD DETAILS HERE -->
 
 <br>
@@ -489,6 +491,7 @@ This is the table of all the brands the library supports.
 | VMware GSX | `VM::brands::VMWARE_GSX` | Hypervisor (type 2) |  |
 | VMware Workstation | `VM::brands::VMWARE_WORKSTATION` | Hypervisor (type 2) |  |
 | VMware Fusion | `VM::brands::VMWARE_FUSION` | Hypervisor (type 2) |  |
+| VMware (with VmwareHardenedLoader) | `VM::brands::VMWARE_HARD` | Hypervisor (type 2) | See the [repository](https://github.com/hzqst/VmwareHardenedLoader) |
 | bhyve | `VM::brands::BHYVE` | Hypervisor (type 1) |  |
 | KVM | `VM::brands::KVM` | Hypervisor (type 1) |  |
 | QEMU | `VM::brands::QEMU` | Emulator/Hypervisor (type 2) |  |
