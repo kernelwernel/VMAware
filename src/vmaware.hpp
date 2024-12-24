@@ -724,7 +724,19 @@ public:
 #elif (LINUX)
             physical_cores = static_cast<i32>(sysconf(_SC_NPROCESSORS_CONF));
 #elif (APPLE)
-            sysctlbyname("hw.physicalcpu", &physical_cores, sizeof(physical_cores), NULL, 0);
+            // sysctlbyname("hw.physicalcpu", &physical_cores, sizeof(physical_cores), NULL, 0);
+            // the code under this is the same as the one commented right above, removed due to non-backwards compatibility
+
+            i32 mib[2];
+            std::size_t size = sizeof(physical_cores);
+
+            mib[0] = CTL_HW;         // hardware information
+            mib[1] = HW_PHYSICALCPU; // physical CPU count
+
+            if (sysctl(mib, 2, &physical_cores, &size, NULL, 0) != 0) {
+                debug("HAS_HYPERTHREADING(): sysctl failed, returned false");
+                return false;
+            }
 #else
             return false;
 #endif
@@ -5968,7 +5980,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             (static_cast<u64>(ts.tv_usec) / 1000ULL)
         );
 
-        return (uptime < uptime_ms);
+        return (uptime < std::chrono::milliseconds(uptime_ms));
 #else
         return false;
 #endif

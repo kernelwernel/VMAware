@@ -30,8 +30,6 @@ The library is:
 <br>
 
 
-
-
 ## Example 🧪
 ```cpp
 #include "vmaware.hpp"

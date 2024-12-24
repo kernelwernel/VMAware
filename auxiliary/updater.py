@@ -52,7 +52,7 @@ def arg_check():
         header_content.reverse()
 
         # breakpoint
-        keyword = "const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = {"
+        keyword = "std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {"
 
         # fetch index of breakpoint
         index_of_keyword = next((i for i, line in enumerate(header_content) if keyword in line), None)
