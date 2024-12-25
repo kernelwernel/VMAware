@@ -731,7 +731,7 @@ public:
             std::size_t size = sizeof(physical_cores);
 
             mib[0] = CTL_HW;         // hardware information
-            mib[1] = HW_PHYSICALCPU; // physical CPU count
+            mib[1] = HW_NCPU; // physical CPU count
 
             if (sysctl(mib, 2, &physical_cores, &size, NULL, 0) != 0) {
                 debug("HAS_HYPERTHREADING(): sysctl failed, returned false");
