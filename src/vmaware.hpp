@@ -2881,7 +2881,6 @@ public:
                 while (ptr < buffer.data() + bufferSize) {
                     auto info = reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(ptr);
                     if (info->Relationship == RelationProcessorCore) {
-#if (x86_32)
                         u64 mask = info->Processor.GroupMask[0].Mask;
 
                         u32 low = static_cast<u32>(mask); // low 32-bits
@@ -2889,9 +2888,6 @@ public:
 
                         threadCount += __popcnt(low);
                         threadCount += __popcnt(high);
-#else
-                        threadCount += __popcnt64(info->Processor.GroupMask[0].Mask);
-#endif
                     }
                     ptr += info->Size;
                 }

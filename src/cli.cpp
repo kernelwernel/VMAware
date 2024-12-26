@@ -1069,7 +1069,7 @@ int main(int argc, char* argv[]) {
         std::exit(0);
     }
 
-    static constexpr std::array<std::pair<const char*, arg_enum>, 30> table {{
+    static constexpr std::array<std::pair<const char*, arg_enum>, 29> table {{
         { "-h", HELP },
         { "-v", VERSION },
         { "-a", ALL },
