@@ -2866,34 +2866,27 @@ public:
 
 
         [[nodiscard]] static bool does_threadcount_mismatch() {
-            auto GetThreadsUsingOSAPI = []() -> int {
+            auto GetThreadsUsingOSAPI = []() -> unsigned long long {
                 DWORD bufferSize = 0;
                 GetLogicalProcessorInformationEx(RelationProcessorCore, nullptr, &bufferSize);
-
+            
                 std::vector<char> buffer(bufferSize);
                 if (!GetLogicalProcessorInformationEx(RelationProcessorCore, reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(buffer.data()), &bufferSize)) {
-                    std::cerr << "Failed to get logical processor information.\n";
-                    return -1;
+                    return 0;
                 }
-
-                int threadCount = 0;
+            
+                unsigned long long threadCount = 0; 
                 char* ptr = buffer.data();
                 while (ptr < buffer.data() + bufferSize) {
                     auto info = reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(ptr);
                     if (info->Relationship == RelationProcessorCore) {
-                        u64 mask = info->Processor.GroupMask[0].Mask;
-
-                        u32 low = static_cast<u32>(mask); // low 32-bits
-                        u32 high = static_cast<u32>(mask >> 32); // high 32-bits
-
-                        threadCount += __popcnt(low);
-                        threadCount += __popcnt(high);
+                        threadCount += __popcnt64(info->Processor.GroupMask[0].Mask);
                     }
                     ptr += info->Size;
                 }
-
+            
                 return threadCount;
-            };
+		    };
 
             auto GetThreadsUsingWMI = []() -> int {
                 if (!wmi::initialize()) {
@@ -2922,7 +2915,7 @@ public:
 
             int cpuidThreads = GetThreadsUsingCPUID();
             int wmiThreads = GetThreadsUsingWMI();
-            int osThreads = GetThreadsUsingOSAPI();
+            unsigned __int64 osThreads = GetThreadsUsingOSAPI();
 
             return !(cpuidThreads == wmiThreads && wmiThreads == osThreads);
         }
@@ -4404,7 +4397,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */
 /* GPL */        for (const auto& query : queries) {
 /* GPL */           auto results = wmi::execute(query, {});
-/* GPL */           int count = results.size();
+/* GPL */           size_t count = results.size();
 /* GPL */
 /* GPL */           if (count > 0) {
 /* GPL */               return true;
