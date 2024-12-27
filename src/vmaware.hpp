@@ -4,7 +4,7 @@
  * ██║   ██║██╔████╔██║███████║██║ █╗ ██║███████║██████╔╝█████╗
  * ╚██╗ ██╔╝██║╚██╔╝██║██╔══██║██║███╗██║██╔══██║██╔══██╗██╔══╝
  *  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
- *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ 1.9 (December 2024)
+ *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ 2.0 (December 2024)
  *
  *  C++ VM detection library
  *
@@ -24,14 +24,14 @@
  *
  *
  * ================================ SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 325
- * - struct for internal cpu operations        => line 606
- * - struct for internal memoization           => line 1054
- * - struct for internal utility functions     => line 1433
- * - struct for internal core components       => line 9447
- * - start of internal VM detection techniques => line 2848
- * - start of public VM detection functions    => line 9838
- * - start of externally defined variables     => line 10725
+ * - enums for publicly accessible techniques  => line 326
+ * - struct for internal cpu operations        => line 611
+ * - struct for internal memoization           => line 1071
+ * - struct for internal utility functions     => line 1454
+ * - struct for internal core components       => line 9673
+ * - start of internal VM detection techniques => line 2931
+ * - start of public VM detection functions    => line 10071
+ * - start of externally defined variables     => line 10952
  *
  *
  * ================================ EXAMPLE ==================================
@@ -2880,7 +2880,13 @@ public:
                 while (ptr < buffer.data() + bufferSize) {
                     auto info = reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(ptr);
                     if (info->Relationship == RelationProcessorCore) {
-                        threadCount += __popcnt64(info->Processor.GroupMask[0].Mask);
+                        u64 mask = info->Processor.GroupMask[0].Mask;
+
+                        u32 low = static_cast<u32>(mask); // low 32-bits
+                        u32 high = static_cast<u32>(mask >> 32); // high 32-bits
+
+                        threadCount += __popcnt(low);
+                        threadCount += __popcnt(high);
                     }
                     ptr += info->Size;
                 }
