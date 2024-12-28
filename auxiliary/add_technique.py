@@ -67,10 +67,15 @@ def prompt():
     if not file_path.endswith(".cpp") and not file_path.endswith(".cc"):
         raise ValueError("file input MUST be a .cpp file")
     with open(file_path, 'r') as file:
+        is_static = False
         for line in file:
             if "#include" in line.lower():
                 raise ValueError("The cpp file will be directly copied to the lib verbatim, do not add #include as this will end up in vmaware.hpp")
-
+            if "static" in line:
+                is_static = True
+        
+        if not is_static:
+            raise ValueError("The function must be set as static")
 
     # 3: function name
     function_name = questionary.text("What's the name of the technqiue function in your .cpp file?").ask()
@@ -117,8 +122,8 @@ def prompt():
     # 6: description
     description = ""
     while True:
-        text = questionary.text("What's the description of your technique? (50-100 characters)").ask()
-        if len(text) < 50:
+        text = questionary.text("What's the description of your technique? (30-100 characters)").ask()
+        if len(text) < 30:
             print("Too short, try again\n")
             continue
         if len(text) > 100:
@@ -195,6 +200,8 @@ def write_header(options):
         lines = file.readlines()
 
     new_code = []
+    update_count = 0
+
 
     for line in lines:
         # if the line is empty, skip
@@ -205,12 +212,17 @@ def write_header(options):
 
         # modify the enum
         if "// ADD NEW TECHNIQUE ENUM NAME HERE" in line:
-            new_code.append("\t\t" + options.enum_name + ",\n")
+            if options.is_gpl:
+                new_code.append("/* GPL */ " + options.enum_name + ",\n")
+            else:
+                new_code.append("\t\t" + options.enum_name + ",\n")
+            update_count += 1
 
 
         # append the technique function to the function list section
         if "// ADD NEW TECHNIQUE FUNCTION HERE" in line:
             full_technique = []
+            new_code.append("\n")
 
             # manage the category string of the technique
             category_list = []
@@ -255,31 +267,59 @@ def write_header(options):
                 technique_code = technique_file.readlines()
                 full_technique = full_technique + technique_code
 
+            
+
             # add the GPL specifier for every line 
             if options.is_gpl:
                 for i in range(len(full_technique)):
-                    full_technique[i] = "/* GPL */ " + full_technique[i]
+                    full_technique[i] = "/* GPL */     " + full_technique[i]
 
             # commit the full technique in the buffer 
-            for technique_line in full_technique:
-                new_code.append("\t" + technique_line)
+            preprocessors = ["#endif", "#elif", "#else", "#if"]
+            if options.is_gpl:
+                for technique_line in full_technique:
+                    if all(sub in technique_line for sub in preprocessors):
+                        new_code.append(technique_line.lstrip())
+                    else:
+                        new_code.append(technique_line)
+            else:
+                for technique_line in full_technique:
+                    if all(sub in technique_line for sub in preprocessors):
+                        new_code.append(technique_line.lstrip())
+                    else:
+                        new_code.append("\t" + technique_line)
+
 
             # extra lines
             new_code.append("\n\n")
+            update_count += 1
 
 
         # modify the technique table with the new technique appended
         if "// ADD NEW TECHNIQUE STRUCTURE HERE" in line:
-            new_code.append(
-                "\t" + 
-                "{ VM::" + 
-                options.enum_name + 
-                ", { " + 
-                str(options.score) + 
-                ", VM::" + 
-                options.function_name +
-                ", false } },\n"
-            )
+            if options.is_gpl:
+                new_code.append(
+                    "/* GPL */ " + 
+                    "{ VM::" + 
+                    options.enum_name + 
+                    ", { " + 
+                    str(options.score) + 
+                    ", VM::" + 
+                    options.function_name +
+                    ", false } },\n"
+                )
+            else:
+                new_code.append(
+                    "\t" + 
+                    "{ VM::" + 
+                    options.enum_name + 
+                    ", { " + 
+                    str(options.score) + 
+                    ", VM::" + 
+                    options.function_name +
+                    ", false } },\n"
+                )
+            update_count += 1
 
 
         # modify the VM::flag_to_string function with the new technique
@@ -291,9 +331,13 @@ def write_header(options):
                 options.enum_name + 
                 "\";\n"
             )
+            update_count += 1
 
         # add the line in the buffer array
         new_code.append(line)
+
+    if update_count != 4:
+        raise ValueError("Not all sections have been update, try to check if the search key values have been modified")
 
 
     # commit the new changes from the buffer array
@@ -405,7 +449,7 @@ def write_docs(options):
 
             query = "| " + " | ".join(query_list) + " |"
 
-            new_docs.append(query)
+            new_docs.append(query + "\n")
 
         
         # add the line in the buffer array

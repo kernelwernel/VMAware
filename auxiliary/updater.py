@@ -43,6 +43,7 @@ bold = "\033[1m"
 ansi_exit = "\033[0m"
 
 def arg_check():
+    # get the raw technique table which includes a lot of junk
     def fetch():
         # fetch file content
         with open("../src/vmaware.hpp", 'r') as vmaware:
@@ -52,7 +53,7 @@ def arg_check():
         header_content.reverse()
 
         # breakpoint
-        keyword = "const std::map<VM::enum_flags, VM::core::technique> VM::core::technique_table = {"
+        keyword = "// FORMAT: { VM::<ID>, { certainty%, function pointer, is spoofable? } },"
 
         # fetch index of breakpoint
         index_of_keyword = next((i for i, line in enumerate(header_content) if keyword in line), None)
@@ -64,16 +65,18 @@ def arg_check():
         return header_content
 
 
-
+    # filter the junk, and only leave the actual technique formats
     def filter(raw_content):
         trimmed_content = []
 
         # filter
         trimmed_content = [s for s in raw_content if not (
             s.isspace() or 
-            "//" in s or 
             ";" in s or
-            "VM::core::technique" in s
+            s.lstrip().startswith("//") or
+            "VM::core::custom_technique" in s or
+            "VM::core::technique" in s or
+            s.lstrip().startswith("}")
         )]
 
         # strip all whitespace
@@ -82,7 +85,7 @@ def arg_check():
         return trimmed_content
 
 
-
+    # extract the flag from those technique formats
     def tokenize(trimmed_content):
         flag_array = []
 

@@ -41,23 +41,13 @@ int main() {
 
 
     /**
-     * There are roughly 1/3 of all techniques that are considered to be "spoofable",
-     * meaning that anybody can potentially cause a false positive by exploiting the
-     * fact that the spoofable techniques checks for things that anybody can modify
-     * (file data, registry, directories, etc...). This category of techniques are disabled 
-     * by default, but they can be enabled with the VM::SPOOFABLE flag.
-     */
-    bool is_vm3 = VM::detect(VM::SPOOFABLE);
-
-
-    /**
      * All checks are performed including spoofable techniques
      * and a few other techniques that are disabled by default,
      * one of which is VM::CURSOR which waits 5 seconds for any 
      * human mouse interaction to detect automated virtual environments.
      * If you're fine with having a 5 second delay, add VM::ALL 
      */ 
-    bool is_vm4 = VM::detect(VM::ALL);
+    bool is_vm3 = VM::detect(VM::ALL);
 
 
     /**
@@ -68,7 +58,7 @@ int main() {
      * caching will be operated when you're not going to re-use the previously 
      * stored result at the end. 
      */ 
-    bool is_vm5 = VM::detect(VM::NO_MEMO);
+    bool is_vm4 = VM::detect(VM::NO_MEMO);
 
 
     /**
@@ -76,7 +66,7 @@ int main() {
      * Use this if you want to be extremely sure if it's a VM, but this can risk the result
      * to be a false negative. Use VM::percentage() for a more precise result if you want.
      */ 
-    bool is_vm6 = VM::detect(VM::HIGH_THRESHOLD);
+    bool is_vm5 = VM::detect(VM::HIGH_THRESHOLD);
 
 
     /**
@@ -86,7 +76,7 @@ int main() {
      * a single technique, use VM::check() instead. Also, read the flag table
      * at the end of this doc file for a full list of technique flags.
      */
-    bool is_vm7 = VM::detect(VM::CPU_BRAND, VM::MAC, VM::HYPERVISOR_BIT);
+    bool is_vm6 = VM::detect(VM::CPU_BRAND, VM::MAC, VM::HYPERVISOR_BIT);
 
 
     /**
@@ -94,20 +84,20 @@ int main() {
      * This code snippet essentially means "perform all the default flags, but only 
      * disable the VM::RDTSC technique". 
      */ 
-    bool is_vm8 = VM::detect(VM::DISABLE(VM::RDTSC));
+    bool is_vm7 = VM::detect(VM::DISABLE(VM::RDTSC));
 
 
     /**
      * Same as above, but you can disable multiple techniques at the same time.
      */ 
-    bool is_vm9 = VM::detect(VM::DISABLE(VM::VMID, VM::RDTSC, VM::HYPERVISOR_BIT));
+    bool is_vm8 = VM::detect(VM::DISABLE(VM::VMID, VM::RDTSC, VM::HYPERVISOR_BIT));
 
 
     /**
      * This is just an example to show that you can use a combination of 
      * different flags and non-technique flags with the above examples. 
      */ 
-    bool is_vm10 = VM::detect(VM::DEFAULT, VM::NO_MEMO, VM::HIGH_THRESHOLD, VM::DISABLE(VM::RDTSC, VM::VMID));
+    bool is_vm9 = VM::detect(VM::DEFAULT, VM::NO_MEMO, VM::HIGH_THRESHOLD, VM::DISABLE(VM::RDTSC, VM::VMID));
 
 }
 ```
@@ -469,9 +459,10 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::CPU_FANS` | Check for CPU Fans | Windows | 35% |  |  |  |  |
 | `VM::POWER_CAPABILITIES` | Check what power states are enabled | Windows | 25% |  | GPL |  |  |
 | `VM::SETUPAPI_DISK` | Checks for virtual machine signatures in disk drive device identifiers | Windows | 20% |  | GPL |  |  |
-| `VM::HARDENER_LOADER` | Checks for VMwareHardenerLoader's method of patching firmware detection by setting its signatures with "7" | Windows | 50% |  |  |  |  |
+| `VM::VMWARE_HARDENER` | Checks for VMwareHardenerLoader's method of patching firmware detection by setting its signatures with "7" | Windows | 50% |  |  |  |  |
 | `VM::WMI_QUERIES` | Executes generic WMI queries that always return more than 0 entries in physical machines and checks if any query returns zero entries | Windows | 50% |  | GPL |  |  |
-
+| `VM::SYS_QEMU` | Check for existence of "qemu_fw_cfg" directories within /sys/module and /sys/firmware | Linux | 70% |  |  |  |  |
+| `VM::LSHW_QEMU` | Check for QEMU string instances with lshw command | Linux | 80% |  |  |  |  |
 <!-- ADD DETAILS HERE -->
 
 <br>
@@ -480,7 +471,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 
 This is the table of all the brands the library supports.
 
-| Variable alias | String | VM type | Notes |
+| String | Variable alias | VM type | Notes |
 | -------------- | ------ | ------- | ----- |
 | Unknown | `VM::brands::NULL_BRAND` | Unknown |  |
 | VirtualBox | `VM::brands::VBOX` | Hypervisor (type 2) |  |
@@ -490,6 +481,7 @@ This is the table of all the brands the library supports.
 | VMware GSX | `VM::brands::VMWARE_GSX` | Hypervisor (type 2) |  |
 | VMware Workstation | `VM::brands::VMWARE_WORKSTATION` | Hypervisor (type 2) |  |
 | VMware Fusion | `VM::brands::VMWARE_FUSION` | Hypervisor (type 2) |  |
+| VMware (with VmwareHardenedLoader) | `VM::brands::VMWARE_HARD` | Hypervisor (type 2) | See the [repository](https://github.com/hzqst/VmwareHardenedLoader) |
 | bhyve | `VM::brands::BHYVE` | Hypervisor (type 1) |  |
 | KVM | `VM::brands::KVM` | Hypervisor (type 1) |  |
 | QEMU | `VM::brands::QEMU` | Emulator/Hypervisor (type 2) |  |

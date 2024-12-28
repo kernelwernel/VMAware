@@ -4,7 +4,7 @@
  * ██║   ██║██╔████╔██║███████║██║ █╗ ██║███████║██████╔╝█████╗
  * ╚██╗ ██╔╝██║╚██╔╝██║██╔══██║██║███╗██║██╔══██║██╔══██╗██╔══╝
  *  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
- *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ 1.9 (December 2024)
+ *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ 2.0 (December 2024)
  *
  *  C++ VM detection library
  *
@@ -24,14 +24,14 @@
  *
  *
  * ================================ SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 325
- * - struct for internal cpu operations        => line 606
- * - struct for internal memoization           => line 1054
- * - struct for internal utility functions     => line 1433
- * - struct for internal core components       => line 9447
- * - start of internal VM detection techniques => line 2848
- * - start of public VM detection functions    => line 9838
- * - start of externally defined variables     => line 10725
+ * - enums for publicly accessible techniques  => line 326
+ * - struct for internal cpu operations        => line 611
+ * - struct for internal memoization           => line 1071
+ * - struct for internal utility functions     => line 1454
+ * - struct for internal core components       => line 9673
+ * - start of internal VM detection techniques => line 2931
+ * - start of public VM detection functions    => line 10071
+ * - start of externally defined variables     => line 10952
  *
  *
  * ================================ EXAMPLE ==================================
@@ -456,6 +456,8 @@ public:
         CPU_FANS,
         VMWARE_HARDENER,
         WMI_QUERIES,
+		SYS_QEMU,
+		LSHW_QEMU,
         // ADD NEW TECHNIQUE ENUM NAME HERE
 
         // start of settings technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
@@ -722,7 +724,19 @@ public:
 #elif (LINUX)
             physical_cores = static_cast<i32>(sysconf(_SC_NPROCESSORS_CONF));
 #elif (APPLE)
-            sysctlbyname("hw.physicalcpu", &physical_cores, sizeof(physical_cores), NULL, 0);
+            // sysctlbyname("hw.physicalcpu", &physical_cores, sizeof(physical_cores), NULL, 0);
+            // the code under this is the same as the one commented right above, removed due to non-backwards compatibility
+
+            i32 mib[2];
+            std::size_t size = sizeof(physical_cores);
+
+            mib[0] = CTL_HW;         // hardware information
+            mib[1] = HW_NCPU; // physical CPU count
+
+            if (sysctl(mib, 2, &physical_cores, &size, NULL, 0) != 0) {
+                debug("HAS_HYPERTHREADING(): sysctl failed, returned false");
+                return false;
+            }
 #else
             return false;
 #endif
@@ -2852,28 +2866,33 @@ public:
 
 
         [[nodiscard]] static bool does_threadcount_mismatch() {
-            auto GetThreadsUsingOSAPI = []() -> int {
+            auto GetThreadsUsingOSAPI = []() -> unsigned long long {
                 DWORD bufferSize = 0;
                 GetLogicalProcessorInformationEx(RelationProcessorCore, nullptr, &bufferSize);
-
+            
                 std::vector<char> buffer(bufferSize);
                 if (!GetLogicalProcessorInformationEx(RelationProcessorCore, reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(buffer.data()), &bufferSize)) {
-                    std::cerr << "Failed to get logical processor information.\n";
-                    return -1;
+                    return 0;
                 }
-
-                int threadCount = 0;
+            
+                unsigned long long threadCount = 0; 
                 char* ptr = buffer.data();
                 while (ptr < buffer.data() + bufferSize) {
                     auto info = reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(ptr);
                     if (info->Relationship == RelationProcessorCore) {
-                        threadCount += __popcnt64(info->Processor.GroupMask[0].Mask);
+                        u64 mask = info->Processor.GroupMask[0].Mask;
+
+                        u32 low = static_cast<u32>(mask); // low 32-bits
+                        u32 high = static_cast<u32>(mask >> 32); // high 32-bits
+
+                        threadCount += __popcnt(low);
+                        threadCount += __popcnt(high);
                     }
                     ptr += info->Size;
                 }
-
+            
                 return threadCount;
-            };
+		    };
 
             auto GetThreadsUsingWMI = []() -> int {
                 if (!wmi::initialize()) {
@@ -2902,7 +2921,7 @@ public:
 
             int cpuidThreads = GetThreadsUsingCPUID();
             int wmiThreads = GetThreadsUsingWMI();
-            int osThreads = GetThreadsUsingOSAPI();
+            unsigned __int64 osThreads = GetThreadsUsingOSAPI();
 
             return !(cpuidThreads == wmiThreads && wmiThreads == osThreads);
         }
@@ -4358,6 +4377,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */         return false;
 /* GPL */ #endif
 /* GPL */     }
+/* GPL */
+/* GPL */
 /* GPL */     // @brief Executes generic WMI queries that always return more than 0 entries in physical machines and checks if any query returns zero entries 
 /* GPL */     // @category Windows
 /* GPL */     // @author idea from Al-Khaser project
@@ -4382,7 +4403,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */
 /* GPL */        for (const auto& query : queries) {
 /* GPL */           auto results = wmi::execute(query, {});
-/* GPL */           int count = results.size();
+/* GPL */           size_t count = results.size();
 /* GPL */
 /* GPL */           if (count > 0) {
 /* GPL */               return true;
@@ -5954,7 +5975,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             (static_cast<u64>(ts.tv_usec) / 1000ULL)
         );
 
-        return (uptime < uptime_ms);
+        return (uptime < std::chrono::milliseconds(uptime_ms));
 #else
         return false;
 #endif
@@ -9542,7 +9563,7 @@ static bool rdtsc() {
                         std::string replaced(orig_len, '7');
                         if (tableData.find(replaced) != std::string::npos)
                         {
-                            return core::add(brands::VMWARE);
+                            return core::add(brands::VMWARE, brands::VMWARE_HARD);
                         }
                     }
                 }
@@ -9553,6 +9574,82 @@ static bool rdtsc() {
 #endif
     }
  
+
+	/**
+	 * @brief Check for existence of qemu_fw_cfg directories within sys/module and /sys/firmware
+	 * @category Linux
+	 * @note 
+	 */
+	[[nodiscard]] static bool sys_qemu_dir() {
+#if (!LINUX)
+	    return false;
+#else
+	    const std::string module_path = "/sys/module/qemu_fw_cfg/";
+	    const std::string firmware_path = "/sys/firmware/qemu_fw_cfg/";
+	
+    #if (CPP >= 17)
+        namespace fs = std::filesystem;
+
+	    return (
+	        fs::is_directory(module_path) && 
+	        fs::is_directory(firmware_path) &&
+	        fs::exists(module_path) &&
+	        fs::exists(firmware_path)
+	    );
+    #else
+        auto is_directory(const std::string& path) -> bool {
+            struct stat info;
+            if (stat(path.c_str(), &info) != 0) {
+                return false;
+            }
+            return (info.st_mode & S_IFDIR); // check if directory
+        };
+
+    	return (
+	        is_directory(module_path) && 
+	        is_directory(firmware_path) &&
+	        util::exists(module_path) &&
+	        util::exists(firmware_path)
+	    );
+    #endif
+#endif
+	}
+
+
+	/**
+	 * @brief Check for QEMU string instances with lshw command
+	 * @category Linux
+	 * @note 
+	 */
+	[[nodiscard]] static bool lshw_qemu() {
+#if (!LINUX)
+	    return false;
+#else
+	    if (!(util::exists("/usr/bin/lshw") || util::exists("/bin/lshw"))) {
+	        debug("LSHW_QEMU: ", "binary doesn't exist");
+	        return false;
+	    }
+	
+	    const std::unique_ptr<std::string> result = util::sys_result("lshw");
+	
+	    if (result == nullptr) {
+	        debug("LSHW_QEMU: ", "invalid stdout output from lshw");
+	        return false;
+	    }
+	
+	    const std::string full_command = *result;
+	
+	    u8 score = 0;
+	
+	    if (util::find(full_command, "QEMU PCIe Root port")) { score++; }
+	    if (util::find(full_command, "QEMU XHCI Host Controller")) { score++; }
+	    if (util::find(full_command, "QEMU DVD-ROM")) { score++; }
+	    if (util::find(full_command, "QEMU QEMU USB Tablet")) { score++; }
+	
+	    return (score >= 3);
+#endif
+	}
+
     // ADD NEW TECHNIQUE FUNCTION HERE
 
 
@@ -10104,6 +10201,7 @@ public: // START OF PUBLIC FUNCTIONS
         constexpr const char* TMP_QEMU_KVM_HYPERV = "QEMU+KVM Hyper-V Enlightenment";
 
         constexpr const char* TMP_VMWARE = "VMware";
+        constexpr const char* TMP_VMWARE_HARD = "VMware (with VmwareHardenedLoader)";
         constexpr const char* TMP_EXPRESS = "VMware Express";
         constexpr const char* TMP_ESX = "VMware ESX";
         constexpr const char* TMP_GSX = "VMware GSX";
@@ -10124,6 +10222,7 @@ public: // START OF PUBLIC FUNCTIONS
         constexpr const char* TMP_QEMU_KVM_HYPERV = brands::QEMU_KVM_HYPERV;
 
         constexpr const char* TMP_VMWARE = brands::VMWARE;
+        constexpr const char* TMP_VMWARE_HARD = brands::VMWARE_HARD;
         constexpr const char* TMP_EXPRESS = brands::VMWARE_EXPRESS;
         constexpr const char* TMP_ESX = brands::VMWARE_ESX;
         constexpr const char* TMP_GSX = brands::VMWARE_GSX;
@@ -10247,6 +10346,13 @@ public: // START OF PUBLIC FUNCTIONS
         merger(TMP_VMWARE, TMP_ESX,         TMP_ESX);
         merger(TMP_VMWARE, TMP_GSX,         TMP_GSX);
         merger(TMP_VMWARE, TMP_WORKSTATION, TMP_WORKSTATION);
+
+        merger(TMP_VMWARE_HARD, TMP_VMWARE,      TMP_VMWARE_HARD);
+        merger(TMP_VMWARE_HARD, TMP_FUSION,      TMP_VMWARE_HARD);
+        merger(TMP_VMWARE_HARD, TMP_EXPRESS,     TMP_VMWARE_HARD);
+        merger(TMP_VMWARE_HARD, TMP_ESX,         TMP_VMWARE_HARD);
+        merger(TMP_VMWARE_HARD, TMP_GSX,         TMP_VMWARE_HARD);
+        merger(TMP_VMWARE_HARD, TMP_WORKSTATION, TMP_VMWARE_HARD);
 
         // the brand element, which stores the NAME (const char*) and the SCORE (u8)
         using brand_element_t = std::pair<const char*, brand_score_t>;
@@ -10593,6 +10699,8 @@ public: // START OF PUBLIC FUNCTIONS
             case SETUPAPI_DISK: return "SETUPAPI_DISK";
             case VMWARE_HARDENER: return "VMWARE_HARDENER_LOADER";
             case WMI_QUERIES: return "WMI_QUERIES";
+			case SYS_QEMU: return "SYS_QEMU";
+			case LSHW_QEMU: return "LSHW_QEMU";
             // ADD NEW CASE HERE FOR NEW TECHNIQUE
             default: return "Unknown flag";
         }
@@ -11147,6 +11255,8 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::PROCESSOR_ID, { 25, VM::processor_id, false } },
     { VM::CPU_FANS, { 35, VM::cpu_fans, false } },
     { VM::VMWARE_HARDENER, { 50, VM::vmware_hardener, false } },
+	{ VM::SYS_QEMU, { 70, VM::sys_qemu_dir, false } },
+	{ VM::LSHW_QEMU, { 80, VM::lshw_qemu, false } },
     // ADD NEW TECHNIQUE STRUCTURE HERE
 };
 

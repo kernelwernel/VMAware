@@ -15,7 +15,9 @@ The library is:
 - Very easy to use
 - Cross-platform (Windows + MacOS + Linux)
 - Features up to 130+ unique VM detection techniques [[list](https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#flag-table)]
+- Features the most cutting-edge techniques with the most 
 - Able to detect 50+ VM brands including VMware, VirtualBox, QEMU, Hyper-V, and much more [[list](https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#brand-table)]
+- Able to beat certain [VM hardeners
 - Compatible with x86 and ARM, with backwards compatibility for 32-bit systems
 - Very flexible, with total fine-grained control over which techniques get executed
 - Able to detect various VM and semi-VM technologies like hypervisors, emulators, containers, sandboxes, and so on
@@ -155,7 +157,9 @@ You can view the full docs [here](docs/documentation.md). All the details such a
 <br>
 
 > There's already loads of projects that have the same goal such as 
-<a href="https://github.com/CheckPointSW/InviZzzible">InviZzzible</a>, <a href="https://github.com/a0rtega/pafish">pafish</a> and <a href="https://github.com/LordNoteworthy/al-khaser">Al-Khaser</a>. But the difference between the aforementioned projects is that they don't provide a programmable interface to interact with the detection mechanisms, on top of having little to no support for non-Windows systems. I wanted the core detection techniques to be accessible programmatically in a cross-platform way for everybody to get something useful out of it rather than providing just a CLI tool. It also contains a larger quantity of techniques, so it's basically just a VM detection library and tool on steroids with maximum flexibility.
+<a href="https://github.com/CheckPointSW/InviZzzible">InviZzzible</a>, <a href="https://github.com/a0rtega/pafish">pafish</a> and <a href="https://github.com/LordNoteworthy/al-khaser">Al-Khaser</a>. But the difference between the aforementioned projects is that they don't provide a programmable interface to interact with the detection mechanisms, on top of having little to no support for non-Windows systems. 
+
+I wanted the core detection techniques to be accessible programmatically in a cross-platform way for everybody to get something useful out of it rather than providing just a CLI tool. It also contains a larger quantity of techniques, so it's basically just a VM detection library and tool on steroids with maximum flexibility.
 
 </details>
 
@@ -164,7 +168,9 @@ You can view the full docs [here](docs/documentation.md). All the details such a
 <summary>How does it compare to paid VM detection libraries? Wouldn't it make it inferior for having it open source?</summary>
 <br>
 
-> There are a few paid software to protect the licensing of other software against against reverse engineers or software cracking, such as <a href="https://docs.sentinel.thalesgroup.com/home.htm">Thales' Sentinel RMS</a> and <a href="https://vmpsoft.com/">VMProtect</a>. Although these are not meant to ONLY be VM detection libraries, they are limited in their capabilities in different ways. Sentinel RMS' VM detection does not have as many VM brands (not to mention the pricing is only meant for corporations, not individuals), and VMProtect has a <a href="https://cyber.wtf/2023/02/09/defeating-vmprotects-latest-tricks/">very limited number of detection techniques</a>, where some of them don't require a lot of effort to bypass with only a few configurations to the VM (the detection mechanism has also been <a href="https://github.com/jmpoep/vmprotect-3.5.1/blob/d8fcb7c0ffd4fb45a8cfbd770c8b117d7dbe52b5/runtime/loader.cc#L2464">leaked</a>, so there's no benefit of having it closed source now). Speaking of which, the only downside to VMAware is that it's fully open source, which makes the job of bypassers easier compared to having it closed source. However, I'd argue that's a worthy tradeoff by having as many VM detection techniques in an open and interactive way, including having valuable community feedback to make the library more effective and accurate.
+> There are a few paid software to protect the licensing of other software against against reverse engineers or software cracking, such as <a href="https://docs.sentinel.thalesgroup.com/home.htm">Thales' Sentinel RMS</a> and <a href="https://vmpsoft.com/">VMProtect</a>. Although these are not meant to ONLY be VM detection libraries, they are limited in their capabilities in different ways. Sentinel RMS' VM detection does not have as many VM brands (not to mention the pricing is only meant for corporations, not individuals), and VMProtect has a <a href="https://cyber.wtf/2023/02/09/defeating-vmprotects-latest-tricks/">very limited number of detection techniques</a>, where some of them don't require a lot of effort to bypass with only a few configurations to the VM (the detection mechanism has also been <a href="https://github.com/jmpoep/vmprotect-3.5.1/blob/d8fcb7c0ffd4fb45a8cfbd770c8b117d7dbe52b5/runtime/loader.cc#L2464">leaked</a>, so there's no benefit of having it closed source now).
+
+Speaking of which, the only downside to VMAware is that it's fully open source, which makes the job of bypassers easier compared to having it closed source. However, I'd argue that's a worthy tradeoff by having as many VM detection techniques in an open and interactive way, including having valuable community feedback to make the library more effective and accurate.
 
 </details>
 
@@ -173,11 +179,22 @@ You can view the full docs [here](docs/documentation.md). All the details such a
 <summary>How can the library distinguish between Hyper-V artifacts and an actual Hyper-V VM in the system?</summary>
 <br>
 
-> Hyper-V has an obscure feature where if it's enabled in the host system, the CPU hardware values makes it look like the whole system is running inside Hyper-V, which isn't true. This makes it a challenge to determine whether the hardware values the library is collecting is either a real Hyper-V VM, or just the artifacts of what Hyper-V has left as a consequence of having it enabled in the host system. The reason why this is a problem is because the library might falsely conclude that your the host system is running in Hyper-V, which is a false positive. This is where the **Hyper-X** mechanism comes into play to distinguish between these two. This was designed by <a href="https://github.com/NotRequiem">Requiem</a>
+> Hyper-V has an obscure feature where if it's enabled in the host system, the CPU hardware values makes it look like the whole system is running inside Hyper-V, which isn't true. This makes it a challenge to determine whether the hardware values the library is collecting is either a real Hyper-V VM, or just the artifacts of what Hyper-V has left as a consequence of having it enabled in the host system. 
+
+The reason why this is a problem is because the library might falsely conclude that your the host system is running in Hyper-V, which is a false positive. This is where the **Hyper-X** mechanism comes into play to distinguish between these two. This was designed by <a href="https://github.com/NotRequiem">Requiem</a>
 
 <p align="center">
 <img src="assets/hyper-x/v5/Hyper-X_version_5.drawio.png" align="center" title="Hyper-X">
 <br>
+</details>
+
+
+<details>
+<summary>How effective are VM hardeners against the lib?</summary>
+<br>
+
+> Hardeners like [VmwareHardenedLoader](https://github.com/hzqst/VmwareHardenedLoader) are not effective (specifically because that project doesn't take into account VM strings on the GPU and has certain flaws in its design), but this doesn't mean that the lib is immune to hardeners. The project is by far the most famous one we know, and that's why we created a bypass against it as our main focus. Custom hardeners that we may not be aware of might have a theoretical advantage, but they are substantially more difficult to produce.
+
 </details>
 
 
@@ -201,7 +218,9 @@ You can view the full docs [here](docs/documentation.md). All the details such a
 <summary>Why GPL-3.0 and MIT?</summary>
 <br>
 
-> I would've made it strictly MIT so proprietary software can make use of the library, but some of the techniques employed are from GPL 3.0 projects, and I have no choice but to use the same license for legal reasons. This gave me an idea to make an MIT version without all of the GPL code so it can also be used without forcing your code to be open-source. It should be noted that the MIT version removes <b>12</b> techniques out of 116 (as of 1.9 version), and the lesser the number of techniques, the less accurate the overall result might be.
+> I would've made it strictly MIT so proprietary software can make use of the library, but some of the techniques employed are from GPL 3.0 projects, and I have no choice but to use the same license for legal reasons. 
+
+This gave me an idea to make an MIT version without all of the GPL code so it can also be used without forcing your code to be open-source. It should be noted that the MIT version removes <b>12</b> techniques out of 116 (as of 1.9 version), and the lesser the number of techniques, the less accurate the overall result might be.
 
 </details>
 
