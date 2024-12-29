@@ -15,9 +15,9 @@ The library is:
 - Very easy to use
 - Cross-platform (Windows + MacOS + Linux)
 - Features up to 130+ unique VM detection techniques [[list](https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#flag-table)]
-- Features the most cutting-edge techniques with the most 
+- Features the most cutting-edge techniques
 - Able to detect 50+ VM brands including VMware, VirtualBox, QEMU, Hyper-V, and much more [[list](https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#brand-table)]
-- Able to beat certain [VM hardeners
+- Able to beat certain [VM hardeners](https://github.com/hzqst/VmwareHardenedLoader)
 - Compatible with x86 and ARM, with backwards compatibility for 32-bit systems
 - Very flexible, with total fine-grained control over which techniques get executed
 - Able to detect various VM and semi-VM technologies like hypervisors, emulators, containers, sandboxes, and so on
