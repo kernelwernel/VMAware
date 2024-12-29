@@ -9480,7 +9480,7 @@ static bool rdtsc() {
 #else
 
         u64 start, end, total_cycles = 0;
-        u32 eax = 0, ebx = 0, ecx = 0, edx = 0;
+        u32 eax = 0, ebx = 0, ecx = 0, edx = 0;po
         i32 cpu_info[4];
 
         constexpr i32 iterations = 10000;
