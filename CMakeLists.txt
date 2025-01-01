@@ -74,6 +74,9 @@ elseif(LINUX)
             set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mcpu=native")
         endif()
     endif()
+else()
+    MESSAGE(STATUS "Build set to release mode")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2")
 endif()
 
 
