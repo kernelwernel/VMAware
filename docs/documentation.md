@@ -267,7 +267,11 @@ int main() {
 <br>
 
 ## `VM::conclusion()`
-This will return the "conclusion" message of what the overall result is as a `std::string`. The `[brand]` part might contain a brand or may as well be empty, depending on whether a brand has been found.
+This will return the "conclusion" message of what the overall result is as a `std::string`. By default, there are 2 possible outputs:
+- `Running on baremetal`
+- `Running inside a [brand] VM`
+
+The `[brand]` part might contain a brand or may as well be empty, depending on whether a brand has been found. Additionally, you can extend this by adding the `VM::DYNAMIC` flag which will now allow much more variadic  potential outputs:
 - `Running on baremetal`
 - `Very unlikely a [brand] VM`
 - `Unlikely a [brand] VM`
@@ -276,6 +280,7 @@ This will return the "conclusion" message of what the overall result is as a `st
 - `Likely a [brand] VM`
 - `Very likely a [brand] VM`
 - `Running inside a [brand] VM`
+
 
 <br>
 
@@ -538,13 +543,15 @@ This is the table of all the brands the library supports.
 <br>
 
 # Setting flags
-| Flag | Description |
-|------|-------------|
-| `VM::ALL` | This will enable all the technique flags, including checks that are disabled by default. |
-| `VM::NO_MEMO` | This will disable memoization, meaning the result will not be fetched through a previous computation of the `VM::detect()` function. Use this if you're only using a single function from the `VM` struct for a performance boost. |
+| Flag | Description | Specific to |
+|------|-------------|-------------|
+| `VM::ALL` | This will enable all the technique flags, including checks that are disabled by default. |  |
+| `VM::NO_MEMO` | This will disable memoization, meaning the result will not be fetched through a previous computation of the techniques. For example, if you run all the techniques with VM::detect(), this will save all the technique results in a small cache and if you decide to use VM::percentage() afterwards, the result for that function will retrieve the precomputed results from that cache. Use this if you're only using a single total number of functions from the `VM` struct so that no unnecessary caching will be performed. |  |
 | `VM::DEFAULT` | This represents a range of flags which are enabled if no default argument is provided. |
-| `VM::MULTIPLE` | This is specific to `VM::brand()`. This will basically return a `std::string` message of what brands could be involved. For example, it could return "`VMware or VirtualBox`" instead of having a single brand string output. This has no effect if applied to any other functions than `VM::brand()`. |   
-| `VM::HIGH_THRESHOLD` | This is specific to `VM::detect()` and `VM::percentage()`, which will set the threshold bar to confidently detect a VM by 3x higher. |
+| `VM::MULTIPLE` | This will basically return a `std::string` message of what brands could be involved. For example, it could return "`VMware or VirtualBox`" instead of having a single brand string output. | VM::brand() |   
+| `VM::HIGH_THRESHOLD` | This will set the threshold bar to confidently detect a VM by 3x higher. | VM::detect() and VM::percentage() |
+| `VM::DYNAMIC` | This will add 8 options to the conclusion message rather than 2, each with their own varying likelihoods. | VM::conclusion() |
+| `VM::NULL_ARG` | Does nothing, meant as a placeholder flag mainly for CLI purposes. It's best to ignore this.|  |
 
 <br>
 
@@ -574,7 +581,7 @@ This is the table of all the brands the library supports.
 |    | --no-color | Removes all the color, this is added due to some terminals not supporting ANSI escape codes while cluttering the output |
 |    | --dynamic | allow the conclusion message to be dynamic (8 possibilities instead of only 2) |
 |    | --verbose | add more information to the output  |
-|    | --ignore | ignore the unsupported techniques from the CLI output |
+|    | --compact | ignore the unsupported techniques from the CLI output and thus make it more compact |
 > [!NOTE]
 > If you want a general result of everything combined above, do not put any arguments. This is the intended way to use the CLI tool.
 >

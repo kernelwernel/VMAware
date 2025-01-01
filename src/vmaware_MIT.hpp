@@ -4,7 +4,7 @@
  * ██║   ██║██╔████╔██║███████║██║ █╗ ██║███████║██████╔╝█████╗
  * ╚██╗ ██╔╝██║╚██╔╝██║██╔══██║██║███╗██║██╔══██║██╔══██╗██╔══╝
  *  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
- *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ 2.0 (December 2024)
+ *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ 2.0 (January 2025)
  *
  *  C++ VM detection library
  *
@@ -466,8 +466,8 @@ public:
         CPU_FANS,
         VMWARE_HARDENER,
         WMI_QUERIES,
-		SYS_QEMU,
-		LSHW_QEMU,
+        SYS_QEMU,
+        LSHW_QEMU,
         // ADD NEW TECHNIQUE ENUM NAME HERE
 
         // start of settings technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
@@ -4199,7 +4199,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      */
     [[nodiscard]] static bool bochs_cpu() {
 #if (!x86)
-        return false;z
+        return false;
 #else
         if (!core::cpuid_supported) {
             return false;
@@ -10748,8 +10748,8 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::PROCESSOR_ID, { 25, VM::processor_id, false } },
     { VM::CPU_FANS, { 35, VM::cpu_fans, false } },
     { VM::VMWARE_HARDENER, { 50, VM::vmware_hardener, false } },
-	{ VM::SYS_QEMU, { 70, VM::sys_qemu_dir, false } },
-	{ VM::LSHW_QEMU, { 80, VM::lshw_qemu, false } },
+    { VM::SYS_QEMU, { 70, VM::sys_qemu_dir, false } },
+    { VM::LSHW_QEMU, { 80, VM::lshw_qemu, false } },
     // ADD NEW TECHNIQUE STRUCTURE HERE
 };
 
