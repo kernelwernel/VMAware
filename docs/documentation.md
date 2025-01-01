@@ -267,7 +267,11 @@ int main() {
 <br>
 
 ## `VM::conclusion()`
-This will return the "conclusion" message of what the overall result is as a `std::string`. The `[brand]` part might contain a brand or may as well be empty, depending on whether a brand has been found.
+This will return the "conclusion" message of what the overall result is as a `std::string`. By default, there are 2 possible outputs:
+- `Running on baremetal`
+- `Running inside a [brand] VM`
+
+The `[brand]` part might contain a brand or may as well be empty, depending on whether a brand has been found. Additionally, you can extend this by adding the `VM::DYNAMIC` flag which will now allow much more variadic  potential outputs:
 - `Running on baremetal`
 - `Very unlikely a [brand] VM`
 - `Unlikely a [brand] VM`
@@ -276,6 +280,7 @@ This will return the "conclusion" message of what the overall result is as a `st
 - `Likely a [brand] VM`
 - `Very likely a [brand] VM`
 - `Running inside a [brand] VM`
+
 
 <br>
 
