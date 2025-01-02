@@ -50,10 +50,10 @@
  * - struct for internal cpu operations        => line 621
  * - struct for internal memoization           => line 1081
  * - struct for internal utility functions     => line 1464
- * - struct for internal core components       => line 9189
+ * - struct for internal core components       => line 9200
  * - start of internal VM detection techniques => line 2941
- * - start of public VM detection functions    => line 9587
- * - start of externally defined variables     => line 10458
+ * - start of public VM detection functions    => line 9598
+ * - start of externally defined variables     => line 10469
  *
  *
  * ================================ EXAMPLE ==================================
@@ -9141,12 +9141,16 @@ static bool rdtsc() {
 #if (!LINUX)
 	    return false;
 #else
-	    if (!(util::exists("/usr/bin/lshw") || util::exists("/bin/lshw"))) {
+	    if (!(
+            (util::exists("/usr/bin/lshw")) || 
+            (util::exists("/bin/lshw")) ||
+            (util::exists("/usr/sbin/lshw"))
+        )) {
 	        debug("LSHW_QEMU: ", "binary doesn't exist");
 	        return false;
 	    }
-	
-	    const std::unique_ptr<std::string> result = util::sys_result("lshw");
+
+	    const std::unique_ptr<std::string> result = util::sys_result("lshw 2>&1");
 	
 	    if (result == nullptr) {
 	        debug("LSHW_QEMU: ", "invalid stdout output from lshw");
@@ -9156,11 +9160,18 @@ static bool rdtsc() {
 	    const std::string full_command = *result;
 	
 	    u8 score = 0;
+
+        auto qemu_finder = [&](const char* str) -> void {
+            if (util::find(full_command, str)) { 
+                debug("LSHW_QEMU: found ", str);
+                score++; 
+            }
+        };
 	
-	    if (util::find(full_command, "QEMU PCIe Root port")) { score++; }
-	    if (util::find(full_command, "QEMU XHCI Host Controller")) { score++; }
-	    if (util::find(full_command, "QEMU DVD-ROM")) { score++; }
-	    if (util::find(full_command, "QEMU QEMU USB Tablet")) { score++; }
+	    qemu_finder("QEMU PCIe Root port");
+	    qemu_finder("QEMU XHCI Host Controller");
+	    qemu_finder("QEMU DVD-ROM");
+	    qemu_finder("QEMU QEMU USB Tablet");
 	
 	    return (score >= 3);
 #endif
@@ -10747,7 +10758,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::WMI_TEMPERATURE, { 25, VM::wmi_temperature, false } },
     { VM::PROCESSOR_ID, { 25, VM::processor_id, false } },
     { VM::CPU_FANS, { 35, VM::cpu_fans, false } },
-    { VM::VMWARE_HARDENER, { 50, VM::vmware_hardener, false } },
+    { VM::VMWARE_HARDENER, { 60, VM::vmware_hardener, false } },
     { VM::SYS_QEMU, { 70, VM::sys_qemu_dir, false } },
     { VM::LSHW_QEMU, { 80, VM::lshw_qemu, false } },
     // ADD NEW TECHNIQUE STRUCTURE HERE
