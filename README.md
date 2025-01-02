@@ -94,10 +94,19 @@ cmake ..
 sudo make install
 ```
 
+### FOR MACOS:
+```bash
+mkdir build
+cd build
+cmake ..
+sudo make install
+```
+
 ### FOR WINDOWS:
 ```bash
 cmake -S . -B build/ -G "Visual Studio 16 2019"
 ```
+
 
 ### CMake installation
 ```cmake
