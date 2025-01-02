@@ -9634,7 +9634,7 @@ static bool rdtsc() {
 	        return false;
 	    }
 
-	    const std::unique_ptr<std::string> result = util::sys_result("lshw");
+	    const std::unique_ptr<std::string> result = util::sys_result("lshw 2>&1");
 	
 	    if (result == nullptr) {
 	        debug("LSHW_QEMU: ", "invalid stdout output from lshw");
