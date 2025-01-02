@@ -9628,7 +9628,7 @@ static bool rdtsc() {
 	    if (!(
             (util::exists("/usr/bin/lshw")) || 
             (util::exists("/bin/lshw")) ||
-            (util::exists("/usr/sbin/lshw")) ||
+            (util::exists("/usr/sbin/lshw"))
         )) {
 	        debug("LSHW_QEMU: ", "binary doesn't exist");
 	        return false;
