@@ -9625,12 +9625,16 @@ static bool rdtsc() {
 #if (!LINUX)
 	    return false;
 #else
-	    if (!(util::exists("/usr/bin/lshw") || util::exists("/bin/lshw"))) {
+	    if (!(
+            (util::exists("/usr/bin/lshw")) || 
+            (util::exists("/bin/lshw")) ||
+            (util::exists("/usr/sbin/lshw"))
+        )) {
 	        debug("LSHW_QEMU: ", "binary doesn't exist");
 	        return false;
 	    }
-	
-	    const std::unique_ptr<std::string> result = util::sys_result("lshw");
+
+	    const std::unique_ptr<std::string> result = util::sys_result("lshw 2>&1");
 	
 	    if (result == nullptr) {
 	        debug("LSHW_QEMU: ", "invalid stdout output from lshw");
@@ -9640,11 +9644,18 @@ static bool rdtsc() {
 	    const std::string full_command = *result;
 	
 	    u8 score = 0;
+
+        auto qemu_finder = [&](const char* str) -> void {
+            if (util::find(full_command, str)) { 
+                debug("LSHW_QEMU: found ", str);
+                score++; 
+            }
+        };
 	
-	    if (util::find(full_command, "QEMU PCIe Root port")) { score++; }
-	    if (util::find(full_command, "QEMU XHCI Host Controller")) { score++; }
-	    if (util::find(full_command, "QEMU DVD-ROM")) { score++; }
-	    if (util::find(full_command, "QEMU QEMU USB Tablet")) { score++; }
+	    qemu_finder("QEMU PCIe Root port");
+	    qemu_finder("QEMU XHCI Host Controller");
+	    qemu_finder("QEMU DVD-ROM");
+	    qemu_finder("QEMU QEMU USB Tablet");
 	
 	    return (score >= 3);
 #endif
