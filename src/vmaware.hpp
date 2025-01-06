@@ -11251,7 +11251,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::DRIVER_NAMES, { 50, VM::driver_names, false } },
     { VM::VM_SIDT, { 100, VM::vm_sidt, false } },
     { VM::HDD_SERIAL, { 100, VM::hdd_serial_number, false } },
-    { VM::PORT_CONNECTORS, { 50, VM::port_connectors, false } },
+    { VM::PORT_CONNECTORS, { 15, VM::port_connectors, false } },
     { VM::VM_HDD, { 90, VM::vm_hdd, false } },
     { VM::ACPI_DETECT, { 85, VM::acpi_detect, false } },
     { VM::GPU_NAME, { 100, VM::vm_gpu, false } },
