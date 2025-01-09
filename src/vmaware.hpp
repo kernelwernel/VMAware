@@ -403,7 +403,6 @@ public:
         VMWARE_PORT_MEM,
         SMSW,
         MUTEX,
-        UPTIME,
         ODD_CPU_THREADS,
         INTEL_THREAD_MISMATCH,
         XEON_THREAD_MISMATCH,
@@ -2924,6 +2923,32 @@ public:
             unsigned __int64 osThreads = GetThreadsUsingOSAPI();
 
             return !(cpuidThreads == wmiThreads && wmiThreads == osThreads);
+        }
+
+        // Manual implementation of GetProcAddress
+        [[nodiscard]] static bool GetFunctionAddresses(HMODULE hModule, const char* names[], void** functions, size_t count) {
+            const PIMAGE_DOS_HEADER dosHeader = reinterpret_cast<PIMAGE_DOS_HEADER>(hModule);
+            const PIMAGE_NT_HEADERS ntHeaders = reinterpret_cast<PIMAGE_NT_HEADERS>(
+                reinterpret_cast<BYTE*>(hModule) + dosHeader->e_lfanew);
+            const PIMAGE_EXPORT_DIRECTORY exportDirectory = reinterpret_cast<PIMAGE_EXPORT_DIRECTORY>(
+                reinterpret_cast<BYTE*>(hModule) + ntHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress);
+
+            const DWORD* nameOffsets = reinterpret_cast<DWORD*>(reinterpret_cast<BYTE*>(hModule) + exportDirectory->AddressOfNames);
+            const DWORD* funcOffsets = reinterpret_cast<DWORD*>(reinterpret_cast<BYTE*>(hModule) + exportDirectory->AddressOfFunctions);
+            const WORD* ordinals = reinterpret_cast<WORD*>(reinterpret_cast<BYTE*>(hModule) + exportDirectory->AddressOfNameOrdinals);
+
+            size_t resolved = 0;
+            for (DWORD i = 0; i < exportDirectory->NumberOfNames && resolved < count; ++i) {
+                const char* exportName = reinterpret_cast<const char*>(reinterpret_cast<BYTE*>(hModule) + nameOffsets[i]);
+                for (size_t j = 0; j < count; ++j) {
+                    if (functions[j] == nullptr && strcmp(exportName, names[j]) == 0) {
+                        functions[j] = reinterpret_cast<void*>(reinterpret_cast<BYTE*>(hModule) + funcOffsets[ordinals[i]]);
+                        ++resolved;
+                    }
+                }
+            }
+
+            return resolved == count;
         }
 #endif
     };
@@ -5936,53 +5961,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check if uptime is less than or equal to 2 minutes
-     * @category Windows, Linux
-     * @note https://stackoverflow.com/questions/30095439/how-do-i-get-system-up-time-in-milliseconds-in-c
-     */
-    [[nodiscard]] static bool uptime() {
-        constexpr u32 uptime_ms = 1000 * 60 * 2;
-        constexpr u32 uptime_s = 60 * 2;
-
-#if (WINDOWS)
-        UNUSED(uptime_s);
-        return (GetTickCount64() <= uptime_ms);
-#elif (LINUX)
-        UNUSED(uptime_ms);
-        struct sysinfo info;
-
-        if (sysinfo(&info) != 0) {
-            debug("UPTIME: sysinfo failed");
-            return false;
-        }
-
-        return (info.uptime < uptime_s);
-#elif (APPLE)
-        UNUSED(uptime_s);
-        std::chrono::milliseconds uptime(0u);
-
-        struct timeval ts;
-        std::size_t len = sizeof(ts);
-
-        int mib[2] = { CTL_KERN, KERN_BOOTTIME };
-
-        if (sysctl(mib, 2, &ts, &len, NULL, 0) != 0) {
-            return false;
-        }
-
-        uptime = std::chrono::milliseconds(
-            (static_cast<u64>(ts.tv_sec) * 1000ULL) +
-            (static_cast<u64>(ts.tv_usec) / 1000ULL)
-        );
-
-        return (uptime < std::chrono::milliseconds(uptime_ms));
-#else
-        return false;
-#endif
-    }
-
-
-    /**
      * @brief Check for odd CPU threads, usually a sign of modification through VM setting because 99% of CPUs have even numbers of threads
      * @category All, x86
      */
@@ -8884,50 +8862,110 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
 
 
+    typedef struct _SYSTEM_MODULE_INFORMATION {
+        PVOID  Reserved[2];
+        PVOID  ImageBaseAddress;
+        ULONG  ImageSize;
+        ULONG  Flags;
+        USHORT Index;
+        USHORT NameLength;
+        USHORT LoadCount;
+        USHORT PathLength;
+        CHAR   ImageName[256];
+    } SYSTEM_MODULE_INFORMATION, * PSYSTEM_MODULE_INFORMATION;
+
+    typedef struct _SYSTEM_MODULE_INFORMATION_EX {
+        ULONG  NumberOfModules;
+        SYSTEM_MODULE_INFORMATION Module[1];
+    } SYSTEM_MODULE_INFORMATION_EX, * PSYSTEM_MODULE_INFORMATION_EX;
+
+    typedef NTSTATUS(__stdcall* NtQuerySystemInformationFn)(
+        ULONG SystemInformationClass,
+        PVOID SystemInformation,
+        ULONG SystemInformationLength,
+        PULONG ReturnLength
+        );
+
+    typedef NTSTATUS(__stdcall* NtAllocateVirtualMemoryFn)(
+        HANDLE ProcessHandle,
+        PVOID* BaseAddress,
+        ULONG_PTR ZeroBits,
+        PSIZE_T RegionSize,
+        ULONG AllocationType,
+        ULONG Protect
+        );
+
+    typedef NTSTATUS(__stdcall* NtFreeVirtualMemoryFn)(
+        HANDLE ProcessHandle,
+        PVOID* BaseAddress,
+        PSIZE_T RegionSize,
+        ULONG FreeType
+        );
+
+#define STATUS_INFO_LENGTH_MISMATCH      ((NTSTATUS)0xC0000004L)
+
     /**
      * @brief Check for VM-specific names for drivers
      * @category Windows
-     * @author Requiem (https://github.com/NotRequiem)
+     * @author Requiem
      */
     [[nodiscard]] static bool driver_names() {
 #if (!WINDOWS)
         return false;
 #else
-        const int maxDrivers = 1024;
-        std::vector<LPVOID> drivers(maxDrivers);
-        DWORD cbNeeded;
+        constexpr ULONG SystemModuleInformation = 11;
+        const HMODULE hModule = LoadLibraryA("ntdll.dll");
+        if (!hModule) return false;
 
-        if (!EnumDeviceDrivers(drivers.data(), maxDrivers * sizeof(LPVOID), &cbNeeded)) {
-            debug("Failed to enumerate device drivers");
+        const char* functionNames[] = { "NtQuerySystemInformation", "NtAllocateVirtualMemory", "NtFreeVirtualMemory" };
+        void* functionPointers[3] = { nullptr, nullptr, nullptr };
+
+        if (!util::GetFunctionAddresses(hModule, functionNames, functionPointers, 3)) return false;
+
+        const auto ntQuerySystemInformation = reinterpret_cast<NtQuerySystemInformationFn>(functionPointers[0]);
+        const auto ntAllocateVirtualMemory = reinterpret_cast<NtAllocateVirtualMemoryFn>(functionPointers[1]);
+        const auto ntFreeVirtualMemory = reinterpret_cast<NtFreeVirtualMemoryFn>(functionPointers[2]);
+
+        if (ntQuerySystemInformation == nullptr || ntAllocateVirtualMemory == nullptr || ntFreeVirtualMemory == nullptr) // just to avoid compiler warnings
+            return false;
+        
+        ULONG ulSize = 0;
+        NTSTATUS status = ntQuerySystemInformation(SystemModuleInformation, nullptr, 0, &ulSize);
+        if (status != STATUS_INFO_LENGTH_MISMATCH) return false;
+
+        const HANDLE hProcess = GetCurrentProcess();
+        PVOID allocatedMemory = nullptr;
+        SIZE_T regionSize = ulSize;
+        ntAllocateVirtualMemory(hProcess, &allocatedMemory, 0, &regionSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+
+        auto pSystemModuleInfoEx = reinterpret_cast<PSYSTEM_MODULE_INFORMATION_EX>(allocatedMemory);
+        status = ntQuerySystemInformation(SystemModuleInformation, pSystemModuleInfoEx, ulSize, &ulSize);
+        if (!NT_SUCCESS(status)) {
+            ntFreeVirtualMemory(hProcess, &allocatedMemory, &regionSize, MEM_RELEASE);
             return false;
         }
 
-        int count = cbNeeded / sizeof(LPVOID);
-        char driverName[MAX_PATH];
-
-        for (int i = 0; i < count; ++i) {
-            if (GetDeviceDriverBaseNameA(drivers[i], driverName, static_cast<DWORD>(sizeof(driverName)))) {
-                if (
-                    strcmp(driverName, "VBoxGuest") == 0 ||
-                    strcmp(driverName, "VBoxMouse") == 0 ||
-                    strcmp(driverName, "VBoxSF") == 0
-                    ) {
-                    return core::add(brands::VBOX);
-                }
-
-                if (
-                    strcmp(driverName, "vmusbmouse") == 0 ||
-                    strcmp(driverName, "vmmouse") == 0 ||
-                    strcmp(driverName, "vmmemctl") == 0
-                    ) {
-                    return core::add(brands::VMWARE);
-                }
+        for (ULONG i = 0; i < pSystemModuleInfoEx->NumberOfModules; ++i) {
+            const char* driverPath = reinterpret_cast<const char*>(pSystemModuleInfoEx->Module[i].ImageName);
+            if (
+                strstr(driverPath, "VBoxGuest") ||
+                strstr(driverPath, "VBoxMouse") ||
+                strstr(driverPath, "VBoxSF")
+                ) {
+                return core::add(brands::VBOX);
             }
-            else {
-                debug("Failed to retrieve driver name");
-                return false;
+
+            if (
+                strstr(driverPath, "vmusbmouse") ||
+                strstr(driverPath, "vmmouse") ||
+                strstr(driverPath, "vmmemctl")
+                ) {
+                return core::add(brands::VMWARE);
             }
         }
+
+        ntFreeVirtualMemory(hProcess, &allocatedMemory, &regionSize, MEM_RELEASE);
+
         return false;
 #endif
     }
@@ -9203,10 +9241,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
     /**
      * @brief Check if the IDT and GDT limit addresses mismatch between different CPU cores. 
-     * Despite the Windows kernel having different interrupt handlers registered for each CPU core, Windows typically uses identical virtual addresses for GDT and IDT across cores.
-     * While the interrupt handlers (the actual ISR code) are typically the same across cores, each core may maintain its own IDT to handle specific local or processor-specific interrupts.
-     * The virtual memory system allows mapping different physical memory locations to the same virtual address to minimize context switching overhead.
-     * The CPU core's descriptor registers (GDTR and IDTR) are then used to point to the correct physical addresses of these tables.
+     * The Windows kernel has different interrupt handlers registered for each CPU core, thus resulting in different virtual addresses when calling SIDT and SGDT in kernel-mode
+     * However, if virtualization (Hyper-V) is enabled, the IDT and GDT base address will always point to the same virtual location across all CPU cores if called from user-mode
+     * In a VM, the IDT and GDT base and limit will likely mismatch between different CPU cores whe retrieved from user-mode, apart from be mapped in higher memory regions than the host
      * @category Windows, x64
      * @author Requiem (https://github.com/NotRequiem)
      */
@@ -10655,7 +10692,6 @@ public: // START OF PUBLIC FUNCTIONS
             case VMWARE_PORT_MEM: return "VMWARE_PORT_MEM";
             case SMSW: return "SMSW";
             case MUTEX: return "MUTEX";
-            case UPTIME: return "UPTIME";
             case ODD_CPU_THREADS: return "ODD_CPU_THREADS";
             case INTEL_THREAD_MISMATCH: return "INTEL_THREAD_MISMATCH";
             case XEON_THREAD_MISMATCH: return "XEON_THREAD_MISMATCH";
@@ -11214,7 +11250,6 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::VMWARE_PORT_MEM, { 85, VM::vmware_port_memory, false } }, // debatable
     { VM::SMSW, { 30, VM::smsw, false } }, // debatable
     { VM::MUTEX, { 85, VM::mutex, false } }, // could be 100, debatable
-    { VM::UPTIME, { 5, VM::uptime, true } },
     { VM::ODD_CPU_THREADS, { 80, VM::odd_cpu_threads, false } },
     { VM::INTEL_THREAD_MISMATCH, { 60, VM::intel_thread_mismatch, false } },
     { VM::XEON_THREAD_MISMATCH, { 85, VM::xeon_thread_mismatch, false } }, // debatable
@@ -11257,7 +11292,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::GPU_NAME, { 100, VM::vm_gpu, false } },
     { VM::VMWARE_DEVICES, { 45, VM::vmware_devices, true } }, 
     { VM::VMWARE_MEMORY, { 50, VM::vmware_memory, false } },
-    { VM::IDT_GDT_MISMATCH, { 25, VM::idt_gdt_mismatch, false } },
+    { VM::IDT_GDT_MISMATCH, { 50, VM::idt_gdt_mismatch, false } },
     { VM::PROCESSOR_NUMBER, { 25, VM::processor_number, false } },
     { VM::NUMBER_OF_CORES, { 50, VM::number_of_cores, false } },
     { VM::WMI_MODEL, { 100, VM::wmi_model, false } },
