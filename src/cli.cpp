@@ -349,7 +349,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::VMWARE_IOPORTS:
             case VM::VMWARE_SCSI:
             case VM::VMWARE_DMESG:
-            case VM::UPTIME:
             case VM::ODD_CPU_THREADS:
             case VM::INTEL_THREAD_MISMATCH:
             case VM::XEON_THREAD_MISMATCH:
@@ -440,7 +439,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::VMWARE_PORT_MEM:
             case VM::SMSW:
             case VM::MUTEX:
-            case VM::UPTIME:
             case VM::ODD_CPU_THREADS:
             case VM::INTEL_THREAD_MISMATCH:
             case VM::XEON_THREAD_MISMATCH:
@@ -504,7 +502,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::MAC_IOKIT:
             case VM::IOREG_GREP:
             case VM::MAC_SIP:
-            case VM::UPTIME:
             case VM::ODD_CPU_THREADS:
             case VM::INTEL_THREAD_MISMATCH:
             case VM::XEON_THREAD_MISMATCH:
@@ -856,7 +853,6 @@ void general() {
     checker(VM::VMWARE_PORT_MEM, "VMware port memory");
     checker(VM::SMSW, "SMSW instruction");
     checker(VM::MUTEX, "mutex strings");
-    checker(VM::UPTIME, "uptime");
     checker(VM::ODD_CPU_THREADS, "unusual thread count");
     checker(VM::INTEL_THREAD_MISMATCH, "Intel thread count mismatch");
     checker(VM::XEON_THREAD_MISMATCH, "Intel Xeon thread count mismatch");
@@ -911,8 +907,8 @@ void general() {
     checker(VM::CPU_FANS, "CPU fans");
     checker(VM::POWER_CAPABILITIES, "Power capabilities");
     checker(VM::SETUPAPI_DISK, "SETUPDI diskdrive");
-    checker(VM::VMWARE_HARDENER, "VMWARE HARDENER");
-    checker(VM::WMI_QUERIES, "WMI QUERIES");
+    checker(VM::VMWARE_HARDENER, "VMware hardener");
+    checker(VM::WMI_QUERIES, "WMI outputs");
 	checker(VM::SYS_QEMU, "QEMU in /sys");
 	checker(VM::LSHW_QEMU, "QEMU in lshw output");
     // ADD NEW TECHNIQUE CHECKER HERE
