@@ -8862,48 +8862,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
 
 
-    typedef struct _SYSTEM_MODULE_INFORMATION {
-        PVOID  Reserved[2];
-        PVOID  ImageBaseAddress;
-        ULONG  ImageSize;
-        ULONG  Flags;
-        USHORT Index;
-        USHORT NameLength;
-        USHORT LoadCount;
-        USHORT PathLength;
-        CHAR   ImageName[256];
-    } SYSTEM_MODULE_INFORMATION, * PSYSTEM_MODULE_INFORMATION;
-
-    typedef struct _SYSTEM_MODULE_INFORMATION_EX {
-        ULONG  NumberOfModules;
-        SYSTEM_MODULE_INFORMATION Module[1];
-    } SYSTEM_MODULE_INFORMATION_EX, * PSYSTEM_MODULE_INFORMATION_EX;
-
-    typedef NTSTATUS(__stdcall* NtQuerySystemInformationFn)(
-        ULONG SystemInformationClass,
-        PVOID SystemInformation,
-        ULONG SystemInformationLength,
-        PULONG ReturnLength
-        );
-
-    typedef NTSTATUS(__stdcall* NtAllocateVirtualMemoryFn)(
-        HANDLE ProcessHandle,
-        PVOID* BaseAddress,
-        ULONG_PTR ZeroBits,
-        PSIZE_T RegionSize,
-        ULONG AllocationType,
-        ULONG Protect
-        );
-
-    typedef NTSTATUS(__stdcall* NtFreeVirtualMemoryFn)(
-        HANDLE ProcessHandle,
-        PVOID* BaseAddress,
-        PSIZE_T RegionSize,
-        ULONG FreeType
-        );
-
-#define STATUS_INFO_LENGTH_MISMATCH      ((NTSTATUS)0xC0000004L)
-
     /**
      * @brief Check for VM-specific names for drivers
      * @category Windows
@@ -8913,6 +8871,49 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!WINDOWS)
         return false;
 #else
+
+        typedef struct _SYSTEM_MODULE_INFORMATION {
+            PVOID  Reserved[2];
+            PVOID  ImageBaseAddress;
+            ULONG  ImageSize;
+            ULONG  Flags;
+            USHORT Index;
+            USHORT NameLength;
+            USHORT LoadCount;
+            USHORT PathLength;
+            CHAR   ImageName[256];
+        } SYSTEM_MODULE_INFORMATION, * PSYSTEM_MODULE_INFORMATION;
+
+        typedef struct _SYSTEM_MODULE_INFORMATION_EX {
+            ULONG  NumberOfModules;
+            SYSTEM_MODULE_INFORMATION Module[1];
+        } SYSTEM_MODULE_INFORMATION_EX, * PSYSTEM_MODULE_INFORMATION_EX;
+
+        typedef NTSTATUS(__stdcall* NtQuerySystemInformationFn)(
+            ULONG SystemInformationClass,
+            PVOID SystemInformation,
+            ULONG SystemInformationLength,
+            PULONG ReturnLength
+            );
+
+        typedef NTSTATUS(__stdcall* NtAllocateVirtualMemoryFn)(
+            HANDLE ProcessHandle,
+            PVOID* BaseAddress,
+            ULONG_PTR ZeroBits,
+            PSIZE_T RegionSize,
+            ULONG AllocationType,
+            ULONG Protect
+            );
+
+        typedef NTSTATUS(__stdcall* NtFreeVirtualMemoryFn)(
+            HANDLE ProcessHandle,
+            PVOID* BaseAddress,
+            PSIZE_T RegionSize,
+            ULONG FreeType
+            );
+
+#define STATUS_INFO_LENGTH_MISMATCH      ((NTSTATUS)0xC0000004L)
+
         constexpr ULONG SystemModuleInformation = 11;
         const HMODULE hModule = LoadLibraryA("ntdll.dll");
         if (!hModule) return false;
@@ -11283,7 +11284,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::PODMAN_FILE, { 5, VM::podman_file, true } }, // debatable
     { VM::WSL_PROC, { 30, VM::wsl_proc_subdir, false } }, // debatable
     { VM::GPU_CHIPTYPE, { 100, VM::gpu_chiptype, false } },
-    { VM::DRIVER_NAMES, { 50, VM::driver_names, false } },
+    { VM::DRIVER_NAMES, { 80, VM::driver_names, false } },
     { VM::VM_SIDT, { 100, VM::vm_sidt, false } },
     { VM::HDD_SERIAL, { 100, VM::hdd_serial_number, false } },
     { VM::PORT_CONNECTORS, { 15, VM::port_connectors, false } },
