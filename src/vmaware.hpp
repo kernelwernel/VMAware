@@ -2806,7 +2806,22 @@ public:
 
 
         /**
-         * @brief Sliding window substring search to handle wide-character strings using the KMP algorithm.
+         * @brief Searches for a wide-character substring within a buffer using the Knuth-Morris-Pratt (KMP) algorithm.
+         *
+         * This function performs an efficient substring search to find a wide-character string (`searchString`)
+         * inside another wide-character string (`buffer`) using the Knuth-Morris-Pratt (KMP) algorithm.
+         * The KMP algorithm preprocesses the `searchString` to build a "partial match" table (also known as
+         * the "longest prefix suffix" or LPS table), which allows the search to skip over portions of the text
+         * that have already been matched, improving search performance over brute force methods.
+         *
+         * The function uses a sliding window approach to compare characters in the buffer against the search string.
+         * If the `searchString` is found in the `buffer`, it returns `true`. Otherwise, it returns `false`.
+         *
+         * @param buffer The wide-character buffer (wstring or wchar_t array) in which to search for the substring.
+         * @param bufferSize The size of the buffer (number of characters in `buffer`).
+         * @param searchString The wide-character substring to search for within the `buffer`.
+         *
+         * @return bool `true` if `searchString` is found in `buffer`, `false` otherwise.
          */
         static bool findSubstring(const wchar_t* buffer, size_t bufferSize, const std::wstring& searchString) {
             size_t searchLength = searchString.length();
@@ -2863,70 +2878,24 @@ public:
             return 0;
         }
 
-
-        [[nodiscard]] static bool does_threadcount_mismatch() {
-            auto GetThreadsUsingOSAPI = []() -> unsigned long long {
-                DWORD bufferSize = 0;
-                GetLogicalProcessorInformationEx(RelationProcessorCore, nullptr, &bufferSize);
-            
-                std::vector<char> buffer(bufferSize);
-                if (!GetLogicalProcessorInformationEx(RelationProcessorCore, reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(buffer.data()), &bufferSize)) {
-                    return 0;
-                }
-            
-                unsigned long long threadCount = 0; 
-                char* ptr = buffer.data();
-                while (ptr < buffer.data() + bufferSize) {
-                    auto info = reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(ptr);
-                    if (info->Relationship == RelationProcessorCore) {
-                        u64 mask = info->Processor.GroupMask[0].Mask;
-
-                        u32 low = static_cast<u32>(mask); // low 32-bits
-                        u32 high = static_cast<u32>(mask >> 32); // high 32-bits
-
-                        threadCount += __popcnt(low);
-                        threadCount += __popcnt(high);
-                    }
-                    ptr += info->Size;
-                }
-            
-                return threadCount;
-		    };
-
-            auto GetThreadsUsingWMI = []() -> int {
-                if (!wmi::initialize()) {
-                    std::cerr << "Failed to initialize WMI in GetThreadsUsingWMI.\n";
-                    return -1;
-                }
-
-                wmi_result results = wmi::execute(L"SELECT NumberOfLogicalProcessors FROM Win32_Processor", { L"NumberOfLogicalProcessors" });
-                for (const auto& res : results) {
-                    if (res.type == wmi::result_type::Integer) {
-                        return res.intValue;
-                    }
-                }
-
-                return -1;
-            };
-
-            auto GetThreadsUsingCPUID = []() -> int {
-                int cpuInfo[4] = { 0 };
-                __cpuid(cpuInfo, 0x0B);
-
-                // CPUID leaf 0x0B, EBX contains logical processors per package
-                int threadsPerPackage = cpuInfo[1] & 0xFFFF;
-                return threadsPerPackage;
-            };
-
-            int cpuidThreads = GetThreadsUsingCPUID();
-            int wmiThreads = GetThreadsUsingWMI();
-            unsigned __int64 osThreads = GetThreadsUsingOSAPI();
-
-            return !(cpuidThreads == wmiThreads && wmiThreads == osThreads);
-        }
-
-        // Manual implementation of GetProcAddress
-        [[nodiscard]] static bool GetFunctionAddresses(HMODULE hModule, const char* names[], void** functions, size_t count) {
+        /**
+         * @brief Retrieves the addresses of specified functions from a loaded module using the export directory.
+         *
+         * This function dynamically resolves the addresses of specified functions in a given module by accessing
+         * the export directory of the module. It searches for functions by their names and populates an array of
+         * function pointers with the resolved addresses.
+         *
+         * The function relies on the module's export directory and uses the standard Windows PE format (Portable Executable)
+         * structure to retrieve the function addresses. It returns `true` if all requested functions were resolved successfully.
+         *
+         * @param hModule Handle to the loaded module (DLL or EXE) in which to resolve the function addresses.
+         * @param names An array of function names (strings) to be resolved in the module.
+         * @param functions An array of function pointers where the resolved function addresses will be stored.
+         * @param count The number of functions to resolve.
+         *
+         * @return bool `true` if all requested function addresses were successfully resolved, `false` otherwise.
+         */
+        [[nodiscard]] static bool GetFunctionAddresses(const HMODULE hModule, const char* names[], void** functions, size_t count) {
             const PIMAGE_DOS_HEADER dosHeader = reinterpret_cast<PIMAGE_DOS_HEADER>(hModule);
             const PIMAGE_NT_HEADERS ntHeaders = reinterpret_cast<PIMAGE_NT_HEADERS>(
                 reinterpret_cast<BYTE*>(hModule) + dosHeader->e_lfanew);
@@ -2949,6 +2918,123 @@ public:
             }
 
             return resolved == count;
+        }
+
+        /**
+         * @brief Checks if the number of logical processors obtained by various methods match.
+         *
+         * This function retrieves the number of logical processors in the system using five different
+         * methods and compares them to ensure consistency. The methods include:
+         * - `GetLogicalProcessorInformationEx` API
+         * - Windows Management Instrumentation (WMI)
+         * - `GetSystemInfo` function
+         * - `GetProcessAffinityMask` function
+         * - `NtQuerySystemInformation` function (dynamically loaded)
+         *
+         * The function returns true if there is any mismatch in the thread count obtained by these methods,
+         * and `false` if all methods return the same result.
+         *
+         * @return bool true if there is a mismatch in thread counts from different methods, false otherwise.
+         */
+        [[nodiscard]] static bool does_threadcount_mismatch() {
+            auto GetThreadsUsingGetLogicalProcessorInformationEx = []() -> unsigned long long {
+                DWORD bufferSize = 0;
+                GetLogicalProcessorInformationEx(RelationProcessorCore, nullptr, &bufferSize);
+
+                std::vector<char> buffer(bufferSize);
+                if (!GetLogicalProcessorInformationEx(RelationProcessorCore, reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(buffer.data()), &bufferSize)) {
+                    return 0;
+                }
+
+                unsigned long long threadCount = 0;
+                char* ptr = buffer.data();
+                while (ptr < buffer.data() + bufferSize) {
+                    auto info = reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(ptr);
+                    if (info->Relationship == RelationProcessorCore) {
+                        u64 mask = info->Processor.GroupMask[0].Mask;
+
+                        u32 low = static_cast<u32>(mask); // low 32-bits
+                        u32 high = static_cast<u32>(mask >> 32); // high 32-bits
+
+                        threadCount += __popcnt(low);
+                        threadCount += __popcnt(high);
+                    }
+                    ptr += info->Size;
+                }
+
+                return threadCount;
+                };
+
+            auto GetThreadsUsingWMI = []() -> int {
+                if (!wmi::initialize()) {
+                    std::cerr << "Failed to initialize WMI in GetThreadsUsingWMI.\n";
+                    return 1;
+                }
+
+                wmi_result results = wmi::execute(L"SELECT NumberOfLogicalProcessors FROM Win32_Processor", { L"NumberOfLogicalProcessors" });
+                for (const auto& res : results) {
+                    if (res.type == wmi::result_type::Integer) {
+                        return res.intValue;
+                    }
+                }
+
+                return 1;
+                };
+
+            auto GetThreadsUsingGetSystemInfo = []() -> int {
+                SYSTEM_INFO sysinfo;
+                GetSystemInfo(&sysinfo);
+                return sysinfo.dwNumberOfProcessors;
+                };
+
+            auto GetThreadsUsingGetProcessAffinityMask = []() -> int {
+                DWORD_PTR processAffinityMask, systemAffinityMask;
+                if (GetProcessAffinityMask(GetCurrentProcess(), &processAffinityMask, &systemAffinityMask)) {
+                    return std::bitset<sizeof(DWORD_PTR) * 8>(processAffinityMask).count();
+                }
+                return 0; 
+                };
+
+            auto GetThreadsUsingNtQuerySystemInformation = []() -> int {
+                HMODULE hModule = GetModuleHandleA("ntdll.dll");
+                if (!hModule) {
+                    return 0;
+                }
+
+                const char* functionNames[] = { "NtQuerySystemInformation" };
+                void* functions[1] = { nullptr };
+
+                if (!GetFunctionAddresses(hModule, functionNames, functions, 1)) {
+                    return 0;
+                }
+
+                typedef NTSTATUS(__stdcall* NtQuerySystemInformationFunc)(
+                    SYSTEM_INFORMATION_CLASS SystemInformationClass,
+                    PVOID SystemInformation,
+                    ULONG SystemInformationLength,
+                    PULONG ReturnLength
+                    );
+
+                NtQuerySystemInformationFunc NtQuerySystemInformation = reinterpret_cast<NtQuerySystemInformationFunc>(functions[0]);
+
+                SYSTEM_BASIC_INFORMATION sbi{};
+                ULONG len;
+                NTSTATUS status = NtQuerySystemInformation(SystemBasicInformation, &sbi, sizeof(sbi), &len);
+
+                if (status == 0) {
+                    return sbi.NumberOfProcessors;
+                }
+
+                return 0;
+                };
+
+            int wmiThreads = GetThreadsUsingWMI();
+            int sysinfoThreads = GetThreadsUsingGetSystemInfo();
+            int affinityMaskThreads = GetThreadsUsingGetProcessAffinityMask();
+            int ntQueryThreads = GetThreadsUsingNtQuerySystemInformation();
+            unsigned __int64 osThreads = GetThreadsUsingGetLogicalProcessorInformationEx();
+
+            return !(wmiThreads == osThreads && osThreads == sysinfoThreads && sysinfoThreads == affinityMaskThreads && affinityMaskThreads == ntQueryThreads);
         }
 #endif
     };
@@ -6069,10 +6155,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #else
         if (!cpu::is_intel()) {
-            return false;
-        }
-
-        if (cpu::has_hyperthreading()) {
             return false;
         }
 
@@ -9571,14 +9653,14 @@ static bool rdtsc() {
             }
 
             std::vector<char> tableNames(bufferSize);
-            if (EnumSystemFirmwareTables(provider, tableNames.data(), (DWORD)tableNames.size()) == 0)
+            if (EnumSystemFirmwareTables(provider, tableNames.data(), bufferSize) == 0)
             {
                 return false;
             }
 
-            for (size_t i = 0; i < tableNames.size(); i += 4)
+            for (size_t i = 0; i < bufferSize; i += 4)
             {
-                DWORD signature = *(DWORD*)&tableNames[i];
+                DWORD signature = *reinterpret_cast<DWORD*>(&tableNames[i]);
 
                 DWORD requiredSize = GetSystemFirmwareTable(provider, signature, NULL, 0);
                 if (requiredSize == 0)
@@ -9592,14 +9674,35 @@ static bool rdtsc() {
                     continue;
                 }
 
-                std::string tableData((char*)tableBuffer.data(), tableBuffer.size());
+#if (CPP >= 17)
+                std::string_view tableData(reinterpret_cast<const char*>(tableBuffer.data()), requiredSize);
+#else
+                std::string tableData(reinterpret_cast<const char*>(tableBuffer.data()), requiredSize);
+#endif
+
                 for (const char* original : kPatchedStrings)
                 {
                     size_t orig_len = strlen(original);
-                    if (tableData.find(original) == std::string::npos)
+                    if (tableData.find(original) ==
+#if (CPP >= 17)
+                        std::string_view::npos
+#else
+                        std::string::npos
+#endif
+                        )
                     {
+#if (CPP >= 17)
+                        std::string_view replaced(std::string(orig_len, '7'));
+#else
                         std::string replaced(orig_len, '7');
-                        if (tableData.find(replaced) != std::string::npos)
+#endif
+                        if (tableData.find(replaced) !=
+#if (CPP >= 17)
+                            std::string_view::npos
+#else
+                            std::string::npos
+#endif
+                            )
                         {
                             return core::add(brands::VMWARE, brands::VMWARE_HARD);
                         }
@@ -9611,7 +9714,7 @@ static bool rdtsc() {
         return false;
 #endif
     }
- 
+
 
 	/**
 	 * @brief Check for existence of qemu_fw_cfg directories within sys/module and /sys/firmware
@@ -11252,7 +11355,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::SMSW, { 30, VM::smsw, false } }, // debatable
     { VM::MUTEX, { 85, VM::mutex, false } }, // could be 100, debatable
     { VM::ODD_CPU_THREADS, { 80, VM::odd_cpu_threads, false } },
-    { VM::INTEL_THREAD_MISMATCH, { 60, VM::intel_thread_mismatch, false } },
+    { VM::INTEL_THREAD_MISMATCH, { 50, VM::intel_thread_mismatch, false } },
     { VM::XEON_THREAD_MISMATCH, { 85, VM::xeon_thread_mismatch, false } }, // debatable
     { VM::NETTITUDE_VM_MEMORY, { 100, VM::nettitude_vm_memory, false } },
     { VM::CPUID_BITSET, { 25, VM::cpuid_bitset, false } }, // debatable
