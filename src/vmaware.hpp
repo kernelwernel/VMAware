@@ -2926,7 +2926,7 @@ public:
         }
 
         // Manual implementation of GetProcAddress
-        [[nodiscard]] static bool GetFunctionAddresses(HMODULE hModule, const char* names[], void** functions, size_t count) {
+        [[nodiscard]] static bool GetFunctionAddresses(const HMODULE hModule, const char* names[], void** functions, size_t count) {
             const PIMAGE_DOS_HEADER dosHeader = reinterpret_cast<PIMAGE_DOS_HEADER>(hModule);
             const PIMAGE_NT_HEADERS ntHeaders = reinterpret_cast<PIMAGE_NT_HEADERS>(
                 reinterpret_cast<BYTE*>(hModule) + dosHeader->e_lfanew);
@@ -9571,14 +9571,14 @@ static bool rdtsc() {
             }
 
             std::vector<char> tableNames(bufferSize);
-            if (EnumSystemFirmwareTables(provider, tableNames.data(), (DWORD)tableNames.size()) == 0)
+            if (EnumSystemFirmwareTables(provider, tableNames.data(), bufferSize) == 0)
             {
                 return false;
             }
 
-            for (size_t i = 0; i < tableNames.size(); i += 4)
+            for (size_t i = 0; i < bufferSize; i += 4)
             {
-                DWORD signature = *(DWORD*)&tableNames[i];
+                DWORD signature = *reinterpret_cast<DWORD*>(&tableNames[i]);
 
                 DWORD requiredSize = GetSystemFirmwareTable(provider, signature, NULL, 0);
                 if (requiredSize == 0)
@@ -9592,14 +9592,35 @@ static bool rdtsc() {
                     continue;
                 }
 
-                std::string tableData((char*)tableBuffer.data(), tableBuffer.size());
+#if (CPP >= 17)
+                std::string_view tableData(reinterpret_cast<const char*>(tableBuffer.data()), requiredSize);
+#else
+                std::string tableData(reinterpret_cast<const char*>(tableBuffer.data()), requiredSize);
+#endif
+
                 for (const char* original : kPatchedStrings)
                 {
                     size_t orig_len = strlen(original);
-                    if (tableData.find(original) == std::string::npos)
+                    if (tableData.find(original) ==
+#if (CPP >= 17)
+                        std::string_view::npos
+#else
+                        std::string::npos
+#endif
+                        )
                     {
+#if (CPP >= 17)
+                        std::string_view replaced(std::string(orig_len, '7'));
+#else
                         std::string replaced(orig_len, '7');
-                        if (tableData.find(replaced) != std::string::npos)
+#endif
+                        if (tableData.find(replaced) !=
+#if (CPP >= 17)
+                            std::string_view::npos
+#else
+                            std::string::npos
+#endif
+                            )
                         {
                             return core::add(brands::VMWARE, brands::VMWARE_HARD);
                         }
@@ -9611,7 +9632,7 @@ static bool rdtsc() {
         return false;
 #endif
     }
- 
+
 
 	/**
 	 * @brief Check for existence of qemu_fw_cfg directories within sys/module and /sys/firmware
