@@ -130,9 +130,9 @@
 #endif
 
 #if (defined(__x86_64__) || defined(__i386__) || defined(_M_IX86) || defined(_M_X64))
-#define x86 1
+#define x86_64 1
 #else
-#define x86 0
+#define x86_64 0
 #endif
 #if (defined(_M_IX86))
 #define x86_32 1
@@ -244,7 +244,7 @@
 #pragma comment(lib, "powrprof.lib")
 
 #elif (LINUX)
-#if (x86)
+#if (x86_64)
 #include <cpuid.h>
 #include <x86intrin.h>
 #include <immintrin.h>
@@ -341,9 +341,6 @@ public:
         DMESG,
         HWMON,
         SIDT5,
-        VMWARE_REG,
-        VBOX_REG,
-        USER,
         DLL,
         REGISTRY,
         VM_FILES,
@@ -354,10 +351,7 @@ public:
 /* GPL */ COMPUTER_NAME,
 /* GPL */ WINE_CHECK,
 /* GPL */ HOSTNAME,
-/* GPL */ VBOX_WINDOW_CLASS,
 /* GPL */ LOADED_DLLS,
-/* GPL */ KVM_REG,
-/* GPL */ KVM_DRIVERS,
 /* GPL */ KVM_DIRS,
 /* GPL */ AUDIO,
 /* GPL */ QEMU_DIR,
@@ -381,9 +375,6 @@ public:
         MAC_SIP,
         HKLM_REGISTRIES,
         QEMU_GA,
-        VALID_MSR,
-        QEMU_PROC,
-        VPC_PROC,
         VPC_INVALID,
         SIDT,
         SGDT,
@@ -392,7 +383,6 @@ public:
         OFFSEC_SGDT,
         OFFSEC_SLDT,
         HYPERV_BOARD,
-        VM_FILES_EXTRA,
         VPC_SIDT,
         VMWARE_IOMEM,
         VMWARE_IOPORTS,
@@ -420,7 +410,6 @@ public:
         KVM_BITMASK,
         KGT_SIGNATURE,
         VMWARE_DMI,
-        HYPERV_EVENT_LOGS,
         VMWARE_EVENT_LOGS,
         QEMU_VIRTUAL_DMI,
         QEMU_USB,
@@ -443,7 +432,7 @@ public:
         VM_HDD,
         ACPI_DETECT,
         GPU_NAME,
-        VMWARE_DEVICES,
+        VM_DEVICES,
         VMWARE_MEMORY,
         IDT_GDT_MISMATCH,
         PROCESSOR_NUMBER,
@@ -628,7 +617,7 @@ public:
             const u32 a_leaf,
             const u32 c_leaf = 0xFF  // dummy value if not set manually
         ) {
-#if (x86)
+#if (x86_64)
             // may be unmodified for older 32-bit processors, clearing just in case
             b = 0;
             c = 0;
@@ -654,7 +643,7 @@ public:
             const u32 a_leaf,
             const u32 c_leaf = 0xFF
         ) {
-#if (x86)
+#if (x86_64)
             // may be unmodified for older 32-bit processors, clearing just in case
             x[1] = 0;
             x[2] = 0;
@@ -753,7 +742,7 @@ public:
                 return "Unknown";
             }
 
-#if (!x86)
+#if (!x86_64)
             return "Unknown";
 #else
             if (!cpu::is_leaf_supported(cpu::leaf::brand3)) {
@@ -1980,18 +1969,13 @@ public:
 
 
         /**
-         * @brief Checks whether Hyper-V host artifacts are present instead of an actual Hyper-V VM
-         * @note Hyper-V has an obscure feature where if it's enabled in the host system, the CPU 
-         *       hardware values makes it look like the whole system is running inside Hyper-V, 
-         *       which isn't true. This makes it a challenge to determine whether the hardware 
-         *       values the library is collecting is either a real Hyper-V VM, or just the artifacts 
-         *       of what Hyper-V has left as a consequence of having it enabled in the host system. 
-         *       The reason why this is a problem is because the library might falsely conclude that 
-         *       your the host system is running in Hyper-V, which is a false positive. This is where 
-         *       the Hyper-X mechanism comes into play to distinguish between these two.
+         * @brief Checks whether the system is running in a Hyper-V virtual machine or if the host system has Hyper-V enabled
+         * @note Hyper-V's presence on a host system can set certain hypervisor-related CPU flags that may appear similar to those in a virtualized environment, which can make it challenging to differentiate between an actual Hyper-V virtual machine (VM) and a host system with Hyper-V enabled.
+         *       This can lead to false conclusions, where the system might mistakenly be identified as running in a Hyper-V VM, when in reality, it's simply the host system with Hyper-V features active.
+         *       This check aims to distinguish between these two cases by identifying specific CPU flags and hypervisor-related artifacts that are indicative of a Hyper-V VM rather than a host system with Hyper-V enabled.
          * @author idea by Requiem (https://github.com/NotRequiem)
-         * @returns boolean, true = Hyper-V artifact, false = Real Hyper-V VM
-         * @link graph to explain how this works: https://github.com/kernelwernel/VMAware/blob/main/assets/hyper-x/v4/Hyper-X_version_4.drawio.png
+         * @returns boolean, true = Hyper-V artifact (host system with Hyper-V enabled), false = Real Hyper-V VM
+         * @link graph to explain how this works: https://github.com/kernelwernel/VMAware/blob/main/assets/hyper-x/v5/Hyper-X_version_5.drawio.png
          */
         [[nodiscard]] static bool hyper_x() {
 #if (!WINDOWS)
@@ -2081,40 +2065,23 @@ public:
                 return eax;
             };
 
-            bool run_mechanism = false;
-
-            switch (eax()) {
-                case 11: run_mechanism = false; break; // real hyper-v vm
-                case 12: run_mechanism = true; break; // artifact hyper-v vm
-                default:
-                    // fallback in case eax fails
-                    if (is_root_partition()) {
-                        run_mechanism = true;
-                    }
-            }
-
             enum hyperx_state state;
 
-            if (run_mechanism) {
-                const bool has_hyperv_indications = (
-                    is_smbios_hyperv() || 
-                    is_acpi_hyperv() ||
-                    is_motherboard_hyperv() || 
-                    is_event_log_hyperv()
+            const bool has_hyperv_indications = (
+                eax() == 11 ||
+                is_smbios_hyperv() ||
+                is_acpi_hyperv() ||
+                is_motherboard_hyperv() ||
+                is_event_log_hyperv()
                 );
 
-                const bool eax_result = (eax() == 11 || eax() == 12);
-
-                const bool is_real_hyperv_vm = (eax_result && has_hyperv_indications);
-
-                if (is_real_hyperv_vm) {
-                    state = HYPERV_REAL_VM;
-                } else {
-                    state = HYPERV_ARTIFACT_VM;
-                }
-            } else if (eax() == 11) {
+            if (has_hyperv_indications) {
                 state = HYPERV_REAL_VM;
-            } else {
+            }
+            else if (eax() == 12) {
+                state = HYPERV_ARTIFACT_VM;
+            }
+            else {
                 core_debug("HYPER_X: none detected");
                 state = HYPERV_UNKNOWN_VM;
             }
@@ -2136,7 +2103,6 @@ public:
                     return false;
 
                 case HYPERV_UNKNOWN_VM:
-                    core_debug("HYPER_X: none detected");
                     return false;
 
                 default: 
@@ -2937,7 +2903,7 @@ public:
          * @return bool true if there is a mismatch in thread counts from different methods, false otherwise.
          */
         [[nodiscard]] static bool does_threadcount_mismatch() {
-            auto GetThreadsUsingGetLogicalProcessorInformationEx = []() -> unsigned long long {
+            auto GetThreadsUsingGetLogicalProcessorInformationEx = []() -> int {
                 DWORD bufferSize = 0;
                 GetLogicalProcessorInformationEx(RelationProcessorCore, nullptr, &bufferSize);
 
@@ -2946,7 +2912,7 @@ public:
                     return 0;
                 }
 
-                unsigned long long threadCount = 0;
+                int threadCount = 0;
                 char* ptr = buffer.data();
                 while (ptr < buffer.data() + bufferSize) {
                     auto info = reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(ptr);
@@ -2990,9 +2956,9 @@ public:
             auto GetThreadsUsingGetProcessAffinityMask = []() -> int {
                 DWORD_PTR processAffinityMask, systemAffinityMask;
                 if (GetProcessAffinityMask(GetCurrentProcess(), &processAffinityMask, &systemAffinityMask)) {
-                    return std::bitset<sizeof(DWORD_PTR) * 8>(processAffinityMask).count();
+                    return static_cast<int>(std::bitset<sizeof(DWORD_PTR) * 8>(processAffinityMask).count());
                 }
-                return 0; 
+                return 0;
                 };
 
             auto GetThreadsUsingNtQuerySystemInformation = []() -> int {
@@ -3017,12 +2983,14 @@ public:
 
                 NtQuerySystemInformationFunc NtQuerySystemInformation = reinterpret_cast<NtQuerySystemInformationFunc>(functions[0]);
 
-                SYSTEM_BASIC_INFORMATION sbi{};
-                ULONG len;
-                NTSTATUS status = NtQuerySystemInformation(SystemBasicInformation, &sbi, sizeof(sbi), &len);
+                if (NtQuerySystemInformation) {
+                    SYSTEM_BASIC_INFORMATION sbi{};
+                    ULONG len;
+                    const NTSTATUS status = NtQuerySystemInformation(SystemBasicInformation, &sbi, sizeof(sbi), &len);
 
-                if (status == 0) {
-                    return sbi.NumberOfProcessors;
+                    if (status == 0) {
+                        return sbi.NumberOfProcessors;
+                    }
                 }
 
                 return 0;
@@ -3032,9 +3000,29 @@ public:
             int sysinfoThreads = GetThreadsUsingGetSystemInfo();
             int affinityMaskThreads = GetThreadsUsingGetProcessAffinityMask();
             int ntQueryThreads = GetThreadsUsingNtQuerySystemInformation();
-            unsigned __int64 osThreads = GetThreadsUsingGetLogicalProcessorInformationEx();
+            int osThreads = GetThreadsUsingGetLogicalProcessorInformationEx();
 
-            return !(wmiThreads == osThreads && osThreads == sysinfoThreads && sysinfoThreads == affinityMaskThreads && affinityMaskThreads == ntQueryThreads);
+            std::vector<int> validThreads;
+            validThreads.reserve(5);
+
+            if (osThreads > 0) validThreads.push_back(osThreads);
+            if (wmiThreads > 0) validThreads.push_back(wmiThreads);
+            if (sysinfoThreads > 0) validThreads.push_back(sysinfoThreads);
+            if (affinityMaskThreads > 0) validThreads.push_back(affinityMaskThreads);
+            if (ntQueryThreads > 0) validThreads.push_back(ntQueryThreads);
+
+            if (validThreads.size() < 2) {
+                return false; // Not enough valid data to compare
+            }
+
+            int first = validThreads[0];
+            for (const int threadCount : validThreads) {
+                if (threadCount != first) {
+                    return true; // Thread count mismatch
+                }
+            }
+
+            return false;
         }
 #endif
     };
@@ -3046,7 +3034,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category x86
      */
     [[nodiscard]] static bool vmid() {
-#if (!x86)
+#if (!x86_64)
         return false;
 #else
         if (!core::cpuid_supported) {
@@ -3063,7 +3051,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category x86
      */
     [[nodiscard]] static bool cpu_brand() {
-#if (!x86)
+#if (!x86_64)
         return false;
 #else
         if (!core::cpuid_supported) {
@@ -3113,7 +3101,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category x86
      */
     [[nodiscard]] static bool hypervisor_bit() {
-#if (!x86)
+#if (!x86_64)
         return false;
 #else
         if (!core::cpuid_supported) {
@@ -3137,7 +3125,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category x86
      */
     [[nodiscard]] static bool hypervisor_str() {
-#if (!x86)
+#if (!x86_64)
         return false;
 #else
         if (util::hyper_x()) {
@@ -3163,7 +3151,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category x86 (ARM might have very low thread counts, which is why it should be only for x86)
      */
     [[nodiscard]] static bool thread_count() {
-#if (x86)
+#if (x86_64)
         debug("THREADCOUNT: ", "threads = ", std::thread::hardware_concurrency());
 
         struct cpu::stepping_struct steps = cpu::fetch_steppings();
@@ -3265,10 +3253,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             << static_cast<int32_t>(mac[0]) << ":"
             << static_cast<int32_t>(mac[1]) << ":"
             << static_cast<int32_t>(mac[2]) << ":XX:XX:XX";
-        // removed for privacy reasons, cuz only the first 3 bytes are needed
-        //<< static_cast<int32_t>(mac[3]) << ":"  
-        //<< static_cast<int32_t>(mac[4]) << ":"
-        //<< static_cast<int32_t>(mac[5]);
+        /* removed for privacy reasons, cuz only the first 3 bytes are needed
+            << static_cast<int32_t>(mac[3]) << ":"  
+            << static_cast<int32_t>(mac[4]) << ":"
+            << static_cast<int32_t>(mac[5]);
+        */
         debug("MAC: ", ss.str());
 #endif
 
@@ -3299,11 +3288,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         /*
-        see https://github.com/kernelwernel/VMAware/issues/105
+            see https://github.com/kernelwernel/VMAware/issues/105
 
-        if (compare(0x0A, 0x00, 0x27)) {
-            return core::add(brands::HYBRID);
-        }
+            if (compare(0x0A, 0x00, 0x27)) {
+                return core::add(brands::HYBRID);
+            }
         */
 
         return false;
@@ -3509,114 +3498,50 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check if the 5th byte after sidt is null
      * @author Matteo Malvica
      * @link https://www.matteomalvica.com/blog/2018/12/05/detecting-vmware-on-64-bit-systems/
-     * @category x86
+     * @category Linux
      */
     [[nodiscard]] static bool sidt5() {
-#if (!x86 || !LINUX || GCC)
-        return false;
-#else
-        u8 values[10];
-        std::memset(values, 0, 10);
+#if (LINUX && (GCC || CLANG))
+        u8 values[10] = { 0 };
 
         fflush(stdout);
+
+#if x86_64
+        // 64-bit Linux: IDT descriptor is 10 bytes (2-byte limit + 8-byte base)
         __asm__ __volatile__("sidt %0" : "=m"(values));
 
 #ifdef __VMAWARE_DEBUG__
-        u32 result = 0;
-
+        u64 result = 0;
         for (u8 i = 0; i < 10; i++) {
             result <<= 8;
             result |= values[i];
         }
-
         debug("SIDT5: ", "values = 0x", std::hex, std::setw(16), std::setfill('0'), result);
 #endif
 
-        return (values[5] == 0x00);
+        return (values[9] == 0x00);  // 10th byte in x64 mode
+
+#elif x86_32
+        // 32-bit Linux: IDT descriptor is 6 bytes (2-byte limit + 4-byte base)
+        __asm__ __volatile__("sidt %0" : "=m"(values));
+
+#ifdef __VMAWARE_DEBUG__
+        u32 result = 0;
+        for (u8 i = 0; i < 6; i++) {
+            result <<= 8;
+            result |= values[i];
+        }
+        debug("SIDT5: ", "values = 0x", std::hex, std::setw(16), std::setfill('0'), result);
 #endif
-    }
 
+        return (values[5] == 0x00);  // 6th byte in x86 mode
 
-    /**
-     * @brief Find for registries of VMware tools
-     * @category Windows
-     */
-    [[nodiscard]] static bool vmware_registry() {
-#if (!WINDOWS)
-        return false;
 #else
-        HKEY hKey;
-        // Use wide string literal
-        bool result = (RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SOFTWARE\\VMware, Inc.\\VMware Tools", 0, KEY_QUERY_VALUE, &hKey) == ERROR_SUCCESS);
-
-        debug("VMWARE_REG: result = ", result);
-
-        if (result == true) {
-            return core::add(brands::VMWARE);
-        }
-
-        return result;
-#endif
-    }
-
-
-    /**
-     * @brief Check for VBox RdrDN
-     * @category Windows
-     */
-    [[nodiscard]] static bool vbox_registry() {
-#if (!WINDOWS)
-        return false;
-#else
-        const HANDLE handle1 = CreateFile(_T("\\\\.\\VBoxMiniRdrDN"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-        const HANDLE handle2 = CreateFile(_T("\\\\.\\pipe\\VBoxMiniRdDN"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-        const HANDLE handle3 = CreateFile(_T("\\\\.\\VBoxTrayIPC"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-        const HANDLE handle4 = CreateFile(_T("\\\\.\\pipe\\VBoxTrayIPC"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-        
-        bool result = false;
-
-        if (
-            (handle1 != INVALID_HANDLE_VALUE) ||
-            (handle2 != INVALID_HANDLE_VALUE) ||
-            (handle3 != INVALID_HANDLE_VALUE) ||
-            (handle4 != INVALID_HANDLE_VALUE)
-        ) {
-            result = true;
-        }
-
-        CloseHandle(handle1);
-        CloseHandle(handle2);
-        CloseHandle(handle3);
-        CloseHandle(handle4);
-
-        if (result) {
-            return core::add(brands::VBOX);
-        }
-
         return false;
 #endif
-    }
 
-
-    /**
-     * @brief checks for default usernames, often a sign of a VM
-     * @category Windows
-     */
-    [[nodiscard]] static bool user_check() {
-#if (!WINDOWS)
-        return false;
 #else
-        TCHAR user[UNLEN + 1]{};
-        DWORD user_len = UNLEN + 1;
-        GetUserName(user, &user_len);
-
-        //TODO Ansi: debug("USER: ", "output = ", user);
-
-        if (0 == _tcscmp(user, _T("vmware"))) {
-            return core::add(brands::VMWARE);
-        }
-
-        return false;
+        return false; 
 #endif
     }
 
@@ -3758,6 +3683,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         key(brands::XEN, "HKLM\\SYSTEM\\ControlSet001\\Services\\xensvc");
         key(brands::XEN, "HKLM\\SYSTEM\\ControlSet001\\Services\\xenvdb");
 
+        // KVM
+        key(brands::KVM, "HKLM\\SYSTEM\\ControlSet001\\Services\\vioscsi");
+        key(brands::KVM, "HKLM\\SYSTEM\\ControlSet001\\Services\\viostor");
+        key(brands::KVM, "HKLM\\SYSTEM\\ControlSet001\\Services\\VirtIO-FS Service");
+        key(brands::KVM, "HKLM\\SYSTEM\\ControlSet001\\Services\\VirtioSerial");
+        key(brands::KVM, "HKLM\\SYSTEM\\ControlSet001\\Services\\BALLOON");
+        key(brands::KVM, "HKLM\\SYSTEM\\ControlSet001\\Services\\BalloonService");
+        key(brands::KVM, "HKLM\\SYSTEM\\ControlSet001\\Services\\netkvm");
+
         debug("REGISTRY: ", "score = ", static_cast<u32>(score));
 
         return (score >= 1);
@@ -3770,76 +3704,146 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Windows
      */
     [[nodiscard]] static bool vm_files() {
-#if (!WINDOWS)
+#if !WINDOWS
         return false;
 #else
-        // points
-        u8 vbox = 0;
-        u8 vmware = 0;
+        PVOID oldValue = nullptr;
+        bool wow64RedirectDisabled = false;
 
-        constexpr std::array<const TCHAR*, 27> files = {{
-                // VMware
-                _T("C:\\windows\\System32\\Drivers\\Vmmouse.sys"),
-                _T("C:\\windows\\System32\\Drivers\\Vmusbmouse.sys"),
-                _T("C:\\windows\\System32\\Drivers\\vm3dgl.dll"),
-                _T("C:\\windows\\System32\\Drivers\\vmdum.dll"),
-                _T("C:\\windows\\System32\\Drivers\\VmGuestLibJava.dll"),
-                _T("C:\\windows\\System32\\Drivers\\vm3dver.dll"),
-                _T("C:\\windows\\System32\\Drivers\\vmtray.dll"),
-                _T("C:\\windows\\System32\\Drivers\\VMToolsHook.dll"),
-                _T("C:\\windows\\System32\\Drivers\\vmGuestLib.dll"),
-                _T("C:\\windows\\System32\\Drivers\\vmhgfs.dll"),
+        if (util::is_wow64()) {
+            Wow64DisableWow64FsRedirection(&oldValue);
+            wow64RedirectDisabled = true;
+        }
 
-                // VBox
-                _T("C:\\windows\\System32\\Drivers\\VBoxMouse.sys"),
-                _T("C:\\windows\\System32\\Drivers\\VBoxGuest.sys"),
-                _T("C:\\windows\\System32\\Drivers\\VBoxSF.sys"),
-                _T("C:\\windows\\System32\\Drivers\\VBoxVideo.sys"),
-                _T("C:\\windows\\System32\\vboxoglpackspu.dll"),
-                _T("C:\\windows\\System32\\vboxoglpassthroughspu.dll"),
-                _T("C:\\windows\\System32\\vboxservice.exe"),
-                _T("C:\\windows\\System32\\vboxoglcrutil.dll"),
-                _T("C:\\windows\\System32\\vboxdisp.dll"),
-                _T("C:\\windows\\System32\\vboxhook.dll"),
-                _T("C:\\windows\\System32\\vboxmrxnp.dll"),
-                _T("C:\\windows\\System32\\vboxogl.dll"),
-                _T("C:\\windows\\System32\\vboxtray.exe"),
-                _T("C:\\windows\\System32\\VBoxControl.exe"),
-                _T("C:\\windows\\System32\\vboxoglerrorspu.dll"),
-                _T("C:\\windows\\System32\\vboxoglfeedbackspu.dll"),
-                _T("c:\\windows\\system32\\vboxoglarrayspu.dll")
-            }};
+        char szWinDir[MAX_PATH] = { 0 };
+        if (GetWindowsDirectoryA(szWinDir, MAX_PATH) == 0) {
+            return false;
+        }
 
-        for (const auto file : files) {
-            if (util::exists(file)) {
-                const auto regex = tregex(file, std::regex::icase);
+        constexpr std::array<const char*, 27> vbox_and_vmware = { {
+            "System32\\Drivers\\Vmmouse.sys",       // VMware
+            "System32\\Drivers\\Vmusbmouse.sys",    // VMware
+            "System32\\Drivers\\vm3dgl.dll",        // VMware
+            "System32\\Drivers\\vmdum.dll",         // VMware
+            "System32\\Drivers\\VmGuestLibJava.dll",// VMware
+            "System32\\Drivers\\vm3dver.dll",       // VMware
+            "System32\\Drivers\\vmtray.dll",        // VMware
+            "System32\\Drivers\\VMToolsHook.dll",   // VMware
+            "System32\\Drivers\\vmGuestLib.dll",    // VMware
+            "System32\\Drivers\\vmhgfs.dll",        // VMware
+            "System32\\Drivers\\VBoxMouse.sys",     // VBox
+            "System32\\Drivers\\VBoxGuest.sys",     // VBox
+            "System32\\Drivers\\VBoxSF.sys",        // VBox
+            "System32\\Drivers\\VBoxVideo.sys",     // VBox
+            "System32\\vboxoglpackspu.dll",         // VBox
+            "System32\\vboxoglpassthroughspu.dll",  // VBox
+            "System32\\vboxservice.exe",            // VBox
+            "System32\\vboxoglcrutil.dll",          // VBox
+            "System32\\vboxdisp.dll",               // VBox
+            "System32\\vboxhook.dll",               // VBox
+            "System32\\vboxmrxnp.dll",              // VBox
+            "System32\\vboxogl.dll",                // VBox
+            "System32\\vboxtray.exe",               // VBox
+            "System32\\VBoxControl.exe",            // VBox
+            "System32\\vboxoglerrorspu.dll",        // VBox
+            "System32\\vboxoglfeedbackspu.dll",     // VBox
+            "System32\\vboxoglarrayspu.dll"         // VBox
+        } };
 
-                if (std::regex_search(_T("vbox"), regex)) {
-                    //TODO Ansi: debug("VM_FILES: found vbox file = ", file);
+        constexpr std::array<const char*, 10> kvmFiles = { {
+            "System32\\drivers\\balloon.sys",       // KVM
+            "System32\\drivers\\netkvm.sys",        // KVM
+            "System32\\drivers\\pvpanic.sys",       // KVM
+            "System32\\drivers\\viofs.sys",         // KVM
+            "System32\\drivers\\viogpudo.sys",      // KVM
+            "System32\\drivers\\vioinput.sys",      // KVM
+            "System32\\drivers\\viorng.sys",        // KVM
+            "System32\\drivers\\vioscsi.sys",       // KVM
+            "System32\\drivers\\vioser.sys",        // KVM
+            "System32\\drivers\\viostor.sys"        // KVM
+        } };
+
+        constexpr std::array<const char*, 7> parallelsFiles = { {
+            "System32\\drivers\\prleth.sys",        // Parallels
+            "System32\\drivers\\prlfs.sys",         // Parallels
+            "System32\\drivers\\prlmouse.sys",      // Parallels
+            "System32\\drivers\\prlvideo.sys",      // Parallels
+            "System32\\drivers\\prltime.sys",       // Parallels
+            "System32\\drivers\\prl_pv32.sys",      // Parallels
+            "System32\\drivers\\prl_paravirt_32.sys"// Parallels
+        } };
+
+        constexpr std::array<const char*, 2> vpcFiles = { {
+            "System32\\drivers\\vmsrvc.sys",       // VPC
+            "System32\\drivers\\vpc-s3.sys"        // VPC
+        } };
+
+        u8 vbox = 0, vmware = 0, kvm = 0, vpc = 0, parallels = 0;
+        for (const auto& relativePath : vbox_and_vmware) {
+            char szPath[MAX_PATH] = { 0 };
+            PathCombineA(szPath, szWinDir, relativePath);
+            if (util::exists(szPath)) {
+                if (std::string(relativePath).find("VBox") != std::string::npos) {
                     vbox++;
-                } else {
-                    //TODO Ansi: debug("VM_FILES: found vmware file = ", file);
+                }
+                else {
                     vmware++;
                 }
             }
         }
 
+        for (const auto& relativePath : kvmFiles) {
+            char szPath[MAX_PATH] = { 0 };
+            PathCombineA(szPath, szWinDir, relativePath);
+            if (util::exists(szPath)) {
+                kvm++;
+            }
+        }
+        for (const auto& relativePath : parallelsFiles) {
+            char szPath[MAX_PATH] = { 0 };
+            PathCombineA(szPath, szWinDir, relativePath);
+            if (util::exists(szPath)) {
+                parallels++;
+            }
+        }
+        for (const auto& relativePath : vpcFiles) {
+            char szPath[MAX_PATH] = { 0 };
+            PathCombineA(szPath, szWinDir, relativePath);
+            if (util::exists(szPath)) {
+                vpc++;
+            }
+        }
+
         debug("VM_FILES: vmware score: ", static_cast<u32>(vmware));
         debug("VM_FILES: vbox score: ", static_cast<u32>(vbox));
+        debug("KVM_FILES: kvm score: ", static_cast<u32>(kvm));
+        debug("VPC_FILES: vpc score: ", static_cast<u32>(vpc));
+        debug("PARALLELS_FILES: parallels score: ", static_cast<u32>(parallels));
 
-        if (vbox > vmware) {
+        if (vbox > vmware && vbox > kvm && vbox > vpc && vbox > parallels) {
             return core::add(brands::VBOX);
-        } else if (vbox < vmware) {
+        }
+        else if (vmware > vbox && vmware > kvm && vmware > vpc && vmware > parallels) {
             return core::add(brands::VMWARE);
-        } else if (
-            vbox > 0 &&
-            vmware > 0 &&
-            vbox == vmware
-            ) {
+        }
+        else if (kvm > vbox && kvm > vmware && kvm > vpc && kvm > parallels) {
+            return core::add(brands::KVM);
+        }
+        else if (vpc > vbox && vpc > vmware && vpc > kvm && vpc > parallels) {
+            return core::add(brands::VPC);
+        }
+        else if (parallels > vbox && parallels > vmware && parallels > kvm && parallels > vpc) {
+            return core::add(brands::PARALLELS);
+        }
+        // if we reach here: vbox == vmware == cuckoo == kvm == vpc == parallels
+        else if (vbox > 0 && vmware > 0 && kvm > 0 && vpc > 0 && parallels > 0) {
             return true;
         }
 
-        // general VM file
+        if (wow64RedirectDisabled) {
+             Wow64RevertWow64FsRedirection(&oldValue);
+        }
+
         if (util::exists("C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\StartUp\\agent.pyw")) {
             return core::add(brands::CUCKOO);
         }
@@ -4103,26 +4107,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */ #endif
 /* GPL */     }
 /* GPL */
-/* GPL */
-/* GPL */     // @brief Check for the window class for VirtualBox
-/* GPL */     // @category Windows
-/* GPL */     // @author Al-Khaser Project
-/* GPL */     // @copyright GPL-3.0
-/* GPL */     [[nodiscard]] static bool vbox_window_class() {
-/* GPL */ #if (!WINDOWS)
-/* GPL */         return false;
-/* GPL */ #else
-/* GPL */         const HWND hClass = FindWindow(_T("VBoxTrayToolWndClass"), NULL);
-/* GPL */         const HWND hWindow = FindWindow(NULL, _T("VBoxTrayToolWnd"));
-/* GPL */ 
-/* GPL */         if (hClass || hWindow) {
-/* GPL */             return core::add(brands::VBOX);
-/* GPL */         }
-/* GPL */ 
-/* GPL */         return false;
-/* GPL */ #endif
-/* GPL */     }
-/* GPL */ 
 /* GPL */ 
 /* GPL */     // @brief Check for loaded DLLs in the process
 /* GPL */     // @category Windows
@@ -4141,9 +4125,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */             { "vmcheck.dll",   brands::VPC },        // VirtualPC
 /* GPL */             { "cmdvrt32.dll",  brands::COMODO },     // Comodo
 /* GPL */             { "cmdvrt64.dll",  brands::COMODO },     // Comodo
-/* GPL */             //{ "dbghelp.dll",   NULL_BRAND }, // WindBG
-/* GPL */             //{ "avghookx.dll",  NULL_BRAND }, // AVG
-/* GPL */             //{ "avghooka.dll",  NULL_BRAND }, // AVG
+/* GPL */          // { "dbghelp.dll",   NULL_BRAND },         // WindBG
+/* GPL */          // { "avghookx.dll",  NULL_BRAND },         // AVG
+/* GPL */          // { "avghooka.dll",  NULL_BRAND },         // AVG
 /* GPL */             { "snxhk.dll",     brands::NULL_BRAND }, // Avast
 /* GPL */             { "api_log.dll",   brands::NULL_BRAND }, // iDefense Lab
 /* GPL */             { "dir_watch.dll", brands::NULL_BRAND }, // iDefense Lab
@@ -4164,100 +4148,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */         }
 /* GPL */
 /* GPL */           return false;
-/* GPL */ #endif
-/* GPL */     }
-/* GPL */ 
-/* GPL */ 
-/* GPL */     // @brief Check for KVM-specific registry strings
-/* GPL */     // @category Windows
-/* GPL */     // @note idea is from Al-Khaser, slightly modified code
-/* GPL */     // @author LordNoteWorthy
-/* GPL */     // @link https://github.com/LordNoteworthy/al-khaser/blob/0f31a3866bafdfa703d2ed1ee1a242ab31bf5ef0/al-khaser/AntiVM/KVM.cpp
-/* GPL */     [[nodiscard]] static bool kvm_registry() {
-/* GPL */ #if (!WINDOWS)
-/* GPL */         return false;
-/* GPL */ #else
-/* GPL */         auto registry_exists = [](const TCHAR* key) -> bool {
-/* GPL */             HKEY keyHandle;
-/* GPL */ 
-/* GPL */             if (RegOpenKeyEx(HKEY_LOCAL_MACHINE, key, 0, KEY_QUERY_VALUE, &keyHandle) == ERROR_SUCCESS) {
-/* GPL */                 RegCloseKey(keyHandle);
-/* GPL */                 return true;
-/* GPL */             }
-/* GPL */ 
-/* GPL */             return false;
-/* GPL */             };
-/* GPL */ 
-/* GPL */         constexpr std::array<const TCHAR*, 7> keys = {{
-/* GPL */             _T("SYSTEM\\ControlSet001\\Services\\vioscsi"),
-/* GPL */             _T("SYSTEM\\ControlSet001\\Services\\viostor"),
-/* GPL */             _T("SYSTEM\\ControlSet001\\Services\\VirtIO-FS Service"),
-/* GPL */             _T("SYSTEM\\ControlSet001\\Services\\VirtioSerial"),
-/* GPL */             _T("SYSTEM\\ControlSet001\\Services\\BALLOON"),
-/* GPL */             _T("SYSTEM\\ControlSet001\\Services\\BalloonService"),
-/* GPL */             _T("SYSTEM\\ControlSet001\\Services\\netkvm"),
-/* GPL */         }};
-/* GPL */ 
-/* GPL */         for (const auto& key : keys) {
-/* GPL */             if (registry_exists(key)) {
-/* GPL */                 return core::add(brands::KVM);
-/* GPL */             }
-/* GPL */         }
-/* GPL */ 
-/* GPL */         return false;
-/* GPL */ #endif
-/* GPL */     }
-/* GPL */ 
-/* GPL */ 
-/* GPL */     // @brief Check for KVM-specific .sys files in system driver directory
-/* GPL */     // @category Windows
-/* GPL */     // @note idea is from Al-Khaser, slightly modified code
-/* GPL */     // @author LordNoteWorthy
-/* GPL */     // @link https://github.com/LordNoteworthy/al-khaser/blob/0f31a3866bafdfa703d2ed1ee1a242ab31bf5ef0/al-khaser/AntiVM/KVM.cpp
-/* GPL */     [[nodiscard]] static bool kvm_drivers() {
-/* GPL */ #if (!WINDOWS)
-/* GPL */         return false;
-/* GPL */ #else
-/* GPL */         constexpr std::array<const TCHAR*, 10> keys = { {
-/* GPL */             _T("System32\\drivers\\balloon.sys"),
-/* GPL */             _T("System32\\drivers\\netkvm.sys"),
-/* GPL */             _T("System32\\drivers\\pvpanic.sys"),
-/* GPL */             _T("System32\\drivers\\viofs.sys"),
-/* GPL */             _T("System32\\drivers\\viogpudo.sys"),
-/* GPL */             _T("System32\\drivers\\vioinput.sys"),
-/* GPL */             _T("System32\\drivers\\viorng.sys"),
-/* GPL */             _T("System32\\drivers\\vioscsi.sys"),
-/* GPL */             _T("System32\\drivers\\vioser.sys"),
-/* GPL */             _T("System32\\drivers\\viostor.sys")
-/* GPL */         } };
-/* GPL */ 
-/* GPL */         TCHAR szWinDir[MAX_PATH] = _T("");
-/* GPL */         TCHAR szPath[MAX_PATH] = _T("");
-/* GPL */         PVOID OldValue = NULL;
-/* GPL */ 
-/* GPL */         if (GetWindowsDirectory(szWinDir, MAX_PATH) == 0) {
-/* GPL */             return false;
-/* GPL */         }
-/* GPL */ 
-/* GPL */         if (util::is_wow64()) {
-/* GPL */             Wow64DisableWow64FsRedirection(&OldValue);
-/* GPL */         }
-/* GPL */ 
-/* GPL */         bool is_vm = false;
-/* GPL */ 
-/* GPL */         for (const auto& key : keys) {
-/* GPL */             PathCombine(szPath, szWinDir, key);
-/* GPL */             if (util::exists(szPath)) {
-/* GPL */                 is_vm = true;
-/* GPL */                 break;
-/* GPL */             }
-/* GPL */         }
-/* GPL */ 
-/* GPL */         if (util::is_wow64()) {
-/* GPL */             Wow64RevertWow64FsRedirection(&OldValue);
-/* GPL */         }
-/* GPL */ 
-/* GPL */         return is_vm;
 /* GPL */ #endif
 /* GPL */     }
 /* GPL */ 
@@ -4534,73 +4424,32 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!WINDOWS)
         return false;
 #else
-        auto check_proc = [](const TCHAR* proc) -> bool {
-            DWORD processes[1024], bytesReturned;
-
-            // Retrieve the list of process identifiers
-            if (!EnumProcesses(processes, sizeof(processes), &bytesReturned))
-                return false;
-
-            // Calculate how many process identifiers were returned
-            DWORD numProcesses = bytesReturned / sizeof(DWORD);
-
-            for (DWORD i = 0; i < numProcesses; ++i) {
-                // Open the process
-                const HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, processes[i]);
-                if (process != nullptr) {
-                    // Get the process name
-                    TCHAR processName[MAX_PATH];
-                    if (GetModuleBaseName(process, nullptr, processName, sizeof(processName) / sizeof(TCHAR))) {
-                        // Check if the process name matches the desired executable
-                        if (_tcscmp(processName, proc) == 0) {
-                            CloseHandle(process);
-                            return true;
-                        }
-                    }
-                    CloseHandle(process);
-                }
-            }
-
-            return false;
-        };
-
-        if (check_proc(_T("joeboxserver.exe")) || check_proc(_T("joeboxcontrol.exe"))) {
+        if (util::is_proc_running(_T("joeboxserver.exe")) || util::is_proc_running(_T("joeboxcontrol.exe"))) {
             return core::add(brands::JOEBOX);
         }
 
-        if (check_proc(_T("prl_cc.exe")) || check_proc(_T("prl_tools.exe"))) {
+        if (util::is_proc_running(_T("prl_cc.exe")) || util::is_proc_running(_T("prl_tools.exe"))) {
             return core::add(brands::PARALLELS);
         }
 
-        if (check_proc(_T("vboxservice.exe")) || check_proc(_T("vboxtray.exe"))) {
+        if (util::is_proc_running(_T("vboxservice.exe")) || util::is_proc_running(_T("vboxtray.exe"))) {
             return core::add(brands::VBOX);
         }
 
-        if (check_proc(_T("vmsrvc.exe")) || check_proc(_T("vmusrvc.exe"))) {
+        if (util::is_proc_running(_T("vmsrvc.exe")) || util::is_proc_running(_T("vmusrvc.exe"))) {
             return core::add(brands::VPC);
         }
-        /*
-                removed due to potential false positives
 
-                if (
-                    check_proc(_T("vmtoolsd.exe")) ||
-                    check_proc(_T("vmwaretrat.exe")) ||
-                    check_proc(_T("vmacthlp.exe")) ||
-                    check_proc(_T("vmwaretray.exe")) ||
-                    check_proc(_T("vmwareuser.exe")) ||
-                    check_proc(_T("vmware.exe")) ||
-                    check_proc(_T("vmount2.exe"))
-                ) {
-                    return core::add(brands::VMWARE);
-                }
-        */
-
-        if (check_proc(_T("xenservice.exe")) || check_proc(_T("xsvc_depriv.exe"))) {
+        if (util::is_proc_running(_T("xenservice.exe")) || util::is_proc_running(_T("xsvc_depriv.exe"))) {
             return core::add(brands::XEN);
         }
 
-        if (check_proc(_T("vm3dservice.exe"))) {
+        if (util::is_proc_running(_T("vm3dservice.exe"))) {
             return core::add(brands::VMWARE);
+        }
+
+        if (util::is_proc_running(_T("qemu-ga.exe")) || util::is_proc_running(_T("vdagent.exe")) || util::is_proc_running(_T("vdservice.exe"))) {
+            return core::add(brands::QEMU);
         }
 
         return false;
@@ -4702,7 +4551,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category x86
      */
     [[nodiscard]] static bool vmid_0x4() {
-#if (!x86)
+#if (!x86_64)
         return false;
 #else
         if (!core::cpuid_supported) {
@@ -4767,7 +4616,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category x86
      */
     [[nodiscard]] static bool cpu_brand_qemu() {
-#if (!x86)
+#if (!x86_64)
         return false;
 #else
         if (!core::cpuid_supported) {
@@ -4793,7 +4642,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @note Discovered by Peter Ferrie, Senior Principal Researcher, Symantec Advanced Threat Research peter_ferrie@symantec.com
      */
     [[nodiscard]] static bool bochs_cpu() {
-#if (!x86)
+#if (!x86_64)
         return false;
 #else
         if (!core::cpuid_supported) {
@@ -4897,7 +4746,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
 
 
-
     /**
      * @brief Check if the BIOS serial is valid (null = VM)
      * @category Windows
@@ -4972,7 +4820,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         LocalFree(provider);
 
         return false;
-
 #endif
     }
 
@@ -5313,8 +5160,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         check_key(brands::VMWARE, "SYSTEM\\ControlSet002\\Services\\Disk\\Enum", "FriendlyName", "VMware");
         check_key(brands::VMWARE, "SYSTEM\\ControlSet003\\Services\\Disk\\Enum", "DeviceDesc", "VMware");
         check_key(brands::VMWARE, "SYSTEM\\ControlSet003\\Services\\Disk\\Enum", "FriendlyName", "VMware");
-        //check_key(HKCR\Installer\Products 	ProductName 	vmware tools
-        //check_key(HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall 	DisplayName 	vmware tools
+     // check_key(HKCR\Installer\Products 	ProductName 	vmware tools
+     // check_key(HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall 	DisplayName 	vmware tools
         check_key(brands::VMWARE, "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall", "DisplayName", "vmware tools");
         check_key(brands::VMWARE, "SYSTEM\\ControlSet001\\Control\\Class\\{4D36E968-E325-11CE-BFC1-08002BE10318}\\0000", "CoInstallers32", "*vmx*");
         check_key(brands::VMWARE, "SYSTEM\\ControlSet001\\Control\\Class\\{4D36E968-E325-11CE-BFC1-08002BE10318}\\0000", "DriverDesc", "VMware*");
@@ -5355,87 +5202,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check for valid MSR value 0x40000000
-     * @category Windows
-     * @author LukeGoule
-     * @link https://github.com/LukeGoule/compact_vm_detector/tree/main
-     * @copyright MIT
-     */
-    [[nodiscard]] static bool valid_msr() {
-    #if (!WINDOWS)
-            return false;
-    #else
-            if (!util::is_admin()) {
-                return false;
-            }
-
-            __try {
-                __readmsr(0x40000000);
-            }
-            __except (EXCEPTION_EXECUTE_HANDLER) {
-                return false;
-            }
-
-            return true;
-    #endif
-    }
-
-
-    /**
-     * @brief Check for QEMU processes
-     * @category Windows
-     */
-    [[nodiscard]] static bool qemu_processes() {
-#if (!WINDOWS)
-        return false;
-#else
-        constexpr std::array<const TCHAR*, 3> qemu_proc_strings = {{
-            _T("qemu-ga.exe"),
-            _T("vdagent.exe"),
-            _T("vdservice.exe")
-        }};
-
-        for (const auto str : qemu_proc_strings) {
-            if (util::is_proc_running(str)) {
-                return core::add(brands::QEMU);
-            }
-        }
-
-        return false;
-#endif
-    }
-
-
-    /**
-     * @brief Check for VPC processes
-     * @category Windows
-     */
-    [[nodiscard]] static bool vpc_proc() {
-#if (!WINDOWS)
-        return false;
-#else
-        constexpr std::array<const TCHAR*, 2> vpc_proc_strings = {{
-            _T("VMSrvc.exe"),
-            _T("VMUSrvc.exe")
-        }};
-
-        for (const auto str : vpc_proc_strings) {
-            if (util::is_proc_running(str)) {
-                return core::add(brands::VPC);
-            }
-        }
-
-        return false;
-#endif
-    }
-
-
-    /**
      * @brief Check for official VPC method
      * @category Windows, x86
      */
     [[nodiscard]] static bool vpc_invalid() {
-#if (!WINDOWS || !x86)
+#if (!WINDOWS || !x86_64)
         return false;
 #elif (x86_32)
         bool rc = false;
@@ -5500,7 +5271,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (WINDOWS)
 #   if (x86_32)
         _asm sidt idtr
-#   elif (x86)
+#   elif (x86_64)
 #       pragma pack(1)
         struct IDTR {
             u16 limit;
@@ -5645,7 +5416,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @note code documentation paper in /papers/www.offensivecomputing.net_vm.pdf
      */
     [[nodiscard]] static bool offsec_sldt() {
-#if (!WINDOWS || !x86)
+#if (!WINDOWS || !x86_64)
         return false;
 #elif (x86_32)
         unsigned short m[6]{};
@@ -5687,44 +5458,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check for VPC and Parallels files
-     * @category Windows
-     */
-    [[nodiscard]] static bool vm_files_extra() {
-#if (!WINDOWS)
-        return false;
-#else
-        constexpr std::array<std::pair<const char*, const char*>, 9> files = {{
-            { brands::VPC, "c:\\windows\\system32\\drivers\\vmsrvc.sys" },
-            { brands::VPC, "c:\\windows\\system32\\drivers\\vpc-s3.sys" },
-            { brands::PARALLELS, "c:\\windows\\system32\\drivers\\prleth.sys" },
-            { brands::PARALLELS, "c:\\windows\\system32\\drivers\\prlfs.sys" },
-            { brands::PARALLELS, "c:\\windows\\system32\\drivers\\prlmouse.sys" },
-            { brands::PARALLELS, "c:\\windows\\system32\\drivers\\prlvideo.sys" },
-            { brands::PARALLELS, "c:\\windows\\system32\\drivers\\prltime.sys" },
-            { brands::PARALLELS, "c:\\windows\\system32\\drivers\\prl_pv32.sys" },
-            { brands::PARALLELS, "c:\\windows\\system32\\drivers\\prl_paravirt_32.sys" }
-        }};
-
-        for (const auto& file_pair : files) {
-            if (util::exists(file_pair.second)) {
-                return core::add(file_pair.first);
-            }
-        }
-
-        return false;
-#endif
-    }
-
-
-    /**
      * @brief Check for sidt method with VPC's 0xE8XXXXXX range
      * @category Windows, x86
      * @note Idea from Tom Liston and Ed Skoudis' paper "On the Cutting Edge: Thwarting Virtual Machine Detection"
      * @note Paper situated at /papers/ThwartingVMDetection_Liston_Skoudis.pdf
      */
     [[nodiscard]] static bool vpc_sidt() {
-#if (!WINDOWS || !x86)
+#if (!WINDOWS || !x86_64)
         return false;
 #elif (x86_32)
         u8	idtr[6]{};
@@ -5870,7 +5610,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @copyright BSD clause 2
      */
     [[nodiscard]] static bool vmware_backdoor() {
-#if (!WINDOWS || !x86)
+#if (!WINDOWS || !x86_64)
         return false;
 #elif (x86_32)
         u32 a = 0;
@@ -5932,7 +5672,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @copyright BSD clause 2
      */
     [[nodiscard]] static bool vmware_port_memory() {
-#if (!WINDOWS || !x86)
+#if (!WINDOWS || !x86_64)
         return false;
 #elif (x86_32)
         unsigned int a = 0;
@@ -5975,7 +5715,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @author Danny Quist from Offensive Computing
      */
     [[nodiscard]] static bool smsw() {
-#if (!WINDOWS || !x86)
+#if (!WINDOWS || !x86_64)
         return false;
 #elif (x86_32)
         unsigned int reax = 0;
@@ -6051,7 +5791,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category All, x86
      */
     [[nodiscard]] static bool odd_cpu_threads() {
-#if (!x86)
+#if (!x86_64)
         return false;
 #else
         const u32 threads = std::thread::hardware_concurrency();
@@ -6151,7 +5891,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @link https://en.wikipedia.org/wiki/List_of_Intel_Core_processors
      */
     [[nodiscard]] static bool intel_thread_mismatch() {
-#if (!x86)
+#if (!x86_64)
         return false;
 #else
         if (!cpu::is_intel()) {
@@ -7153,7 +6893,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @link https://en.wikipedia.org/wiki/List_of_Intel_Core_processors
      */
     [[nodiscard]] static bool xeon_thread_mismatch() {
-#if (!x86)
+#if (!x86_64)
         return false;
 #else
         if (!cpu::is_intel()) {
@@ -7709,7 +7449,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @copyright MIT
      */
     [[nodiscard]] static bool cpuid_bitset() {
-#if (!x86)
+#if (!x86_64)
         return false;
 #else
         if (util::hyper_x()) {
@@ -8010,7 +7750,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category x86
      */
     [[nodiscard]] static bool cpuid_signature() {
-#if (!x86)
+#if (!x86_64)
         return false;
 #else
         if (util::hyper_x()) {
@@ -8044,7 +7784,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category x86
      */
     [[nodiscard]] static bool hyperv_bitmask() {
-#if (!x86)
+#if (!x86_64)
         return false;
 #else
         if (util::hyper_x()) {
@@ -8313,7 +8053,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category x86
      */
     [[nodiscard]] static bool kvm_bitmask() {
-#if (!x86)
+#if (!x86_64)
         return false;
 #else
         u32 eax, ebx, ecx, edx = 0;
@@ -8350,7 +8090,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category x86
      */
     [[nodiscard]] static bool intel_kgt_signature() {
-#if (!x86)
+#if (!x86_64)
         return false;
 #else
         u32 unused, ecx, edx = 0;
@@ -8389,29 +8129,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         if (util::find(str, "VMW")) {
             return core::add(brands::VMWARE_FUSION);
-        }
-
-        return false;
-#endif
-    } 
-
-
-    /**
-     * @brief Check for presence of Hyper-V in the Windows Event Logs
-     * @category Windows
-     * @author Requiem (https://github.com/NotRequiem)
-     */
-    [[nodiscard]] static bool hyperv_event_logs() {
-#if (!WINDOWS)
-        return false;
-#else
-        std::wstring logName = L"Microsoft-Windows-Kernel-PnP/Configuration"; // Example: "System", "Application", "Security", or a custom path. In this case, we use Microsoft-Windows-Kernel-PnP/Configuration as a Hyper-V VM artifact
-        std::vector<std::wstring> searchStrings = { L"Virtual_Machine", L"VMBUS" };
-
-        const bool found = util::query_event_logs(logName, searchStrings);
-
-        if (found) {
-            return core::add(brands::HYPERV);
         }
 
         return false;
@@ -9048,7 +8765,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         ntFreeVirtualMemory(hProcess, &allocatedMemory, &regionSize, MEM_RELEASE);
-
         return false;
 #endif
     }
@@ -9060,7 +8776,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @author Requiem (https://github.com/NotRequiem)
      */
     [[nodiscard]] static bool vm_sidt() {
-#if (!WINDOWS || !x86) 
+#if (!WINDOWS || !x86_64) 
         return false;
 #else
 #pragma pack(push, 1)
@@ -9223,25 +8939,39 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check for VMware-specific devices
+     * @brief Check for vm-specific devices
      * @category Windows
      */
-    [[nodiscard]] static bool vmware_devices() {
+    [[nodiscard]] static bool vm_devices() {
 #if (!WINDOWS)
         return false;
 #else
-        HANDLE h1 = CreateFileA("\\\\.\\HGFS", GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+        const HANDLE handle1 = CreateFile(_T("\\\\.\\VBoxMiniRdrDN"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+        const HANDLE handle2 = CreateFile(_T("\\\\.\\pipe\\VBoxMiniRdDN"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+        const HANDLE handle3 = CreateFile(_T("\\\\.\\VBoxTrayIPC"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+        const HANDLE handle4 = CreateFile(_T("\\\\.\\pipe\\VBoxTrayIPC"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+        const HANDLE handle5 = CreateFile(_T("\\\\.\\HGFS"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 
         bool result = false;
 
-        if (h1 != INVALID_HANDLE_VALUE) {
+        if (
+            (handle1 != INVALID_HANDLE_VALUE) ||
+            (handle2 != INVALID_HANDLE_VALUE) ||
+            (handle3 != INVALID_HANDLE_VALUE) ||
+            (handle4 != INVALID_HANDLE_VALUE) ||
+            (handle5 != INVALID_HANDLE_VALUE)
+            ) {
             result = true;
         }
 
-        CloseHandle(h1);
+        CloseHandle(handle1);
+        CloseHandle(handle2);
+        CloseHandle(handle3);
+        CloseHandle(handle4);
+        CloseHandle(handle5);
 
         if (result) {
-            return core::add(brands::VMWARE);
+            return core::add(brands::VBOX);
         }
 
         return false;
@@ -9250,7 +8980,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check for VMware-specific memory trace in a specific process.
+     * @brief Check for VMware-specific memory traces in a specific process.
      * @category Windows
      * @author Requiem (https://github.com/NotRequiem)
      */
@@ -9325,8 +9055,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check if the IDT and GDT limit addresses mismatch between different CPU cores. 
      * The Windows kernel has different interrupt handlers registered for each CPU core, thus resulting in different virtual addresses when calling SIDT and SGDT in kernel-mode
-     * However, if virtualization (Hyper-V) is enabled, the IDT and GDT base address will always point to the same virtual location across all CPU cores if called from user-mode
-     * In a VM, the IDT and GDT base and limit will likely mismatch between different CPU cores whe retrieved from user-mode, apart from be mapped in higher memory regions than the host
+     * However, in legitimate cases (when Windows is running under its Hyper-V), the IDT and GDT base address will always point to the same virtual location across all CPU cores if called from user-mode
      * @category Windows, x64
      * @author Requiem (https://github.com/NotRequiem)
      */
@@ -9394,10 +9123,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #else
 #if (x86_32)
-        PULONG ulNumberProcessors = (PULONG)(__readfsdword(0x30) + 0x64);
+        const PULONG ulNumberProcessors = (PULONG)(__readfsdword(0x30) + 0x64);
 
 #else
-        PULONG ulNumberProcessors = (PULONG)(__readgsqword(0x60) + 0xB8);
+        const PULONG ulNumberProcessors = (PULONG)(__readgsqword(0x60) + 0xB8);
 #endif
 
         if (*ulNumberProcessors < 2)
@@ -10736,9 +10465,6 @@ public: // START OF PUBLIC FUNCTIONS
             case DMESG: return "DMESG";
             case HWMON: return "HWMON";
             case SIDT5: return "SIDT5";
-            case VMWARE_REG: return "VMWARE_REG";
-            case VBOX_REG: return "VBOX_REG";
-            case USER: return "USER";
             case DLL: return "DLL";
             case REGISTRY: return "REGISTRY";
             case VM_FILES: return "VM_FILES";
@@ -10749,10 +10475,7 @@ public: // START OF PUBLIC FUNCTIONS
 /* GPL */   case COMPUTER_NAME: return "COMPUTER_NAME";
 /* GPL */   case WINE_CHECK: return "WINE_CHECK";
 /* GPL */   case HOSTNAME: return "HOSTNAME";
-/* GPL */   case VBOX_WINDOW_CLASS: return "VBOX_WINDOW_CLASS";
 /* GPL */   case LOADED_DLLS: return "LOADED_DLLS";
-/* GPL */   case KVM_REG: return "KVM_REG";
-/* GPL */   case KVM_DRIVERS: return "KVM_DRIVERS";
 /* GPL */   case KVM_DIRS: return "KVM_DIRS";
 /* GPL */   case AUDIO: return "AUDIO";
 /* GPL */   case QEMU_DIR: return "QEMU_DIR";
@@ -10774,9 +10497,6 @@ public: // START OF PUBLIC FUNCTIONS
             case MAC_SIP: return "MAC_SIP";
             case HKLM_REGISTRIES: return "HKLM_REGISTRIES";
             case QEMU_GA: return "QEMU_GA";
-            case VALID_MSR: return "VALID_MSR";
-            case QEMU_PROC: return "QEMU_PROC";
-            case VPC_PROC: return "VPC_PROC";
             case VPC_INVALID: return "VPC_INVALID";
             case SIDT: return "SIDT";
             case SGDT: return "SGDT";
@@ -10785,7 +10505,6 @@ public: // START OF PUBLIC FUNCTIONS
             case OFFSEC_SGDT: return "OFFSEC_SGDT";
             case OFFSEC_SLDT: return "OFFSEC_SLDT";
             case HYPERV_BOARD: return "HYPERV_BOARD";
-            case VM_FILES_EXTRA: return "VM_FILES_EXTRA";
             case VPC_SIDT: return "VPC_SIDT";
             case VMWARE_IOMEM: return "VMWARE_IOMEM";
             case VMWARE_IOPORTS: return "VMWARE_IOPORTS";
@@ -10813,7 +10532,6 @@ public: // START OF PUBLIC FUNCTIONS
             case KVM_BITMASK: return "KVM_BITMASK";
             case KGT_SIGNATURE: return "KGT_SIGNATURE";
             case VMWARE_DMI: return "VMWARE_DMI";
-            case HYPERV_EVENT_LOGS: return "HYPERV_EVENT_LOGS";
             case VMWARE_EVENT_LOGS: return "VMWARE_EVENT_LOGS";
             case QEMU_VIRTUAL_DMI: return "QEMU_VIRTUAL_DMI";
             case QEMU_USB: return "QEMU_USB";
@@ -10836,7 +10554,7 @@ public: // START OF PUBLIC FUNCTIONS
             case VM_HDD: return "VM_HDD";
             case ACPI_DETECT: return "ACPI_DETECT";
             case GPU_NAME: return "GPU_NAME";
-            case VMWARE_DEVICES: return "VMWARE_DEVICES";
+            case VM_DEVICES: return "GPU_NAME";
             case VMWARE_MEMORY: return "VMWARE_MEMORY";
             case IDT_GDT_MISMATCH: return "CPU_CORES";
             case PROCESSOR_NUMBER: return "PROCESSOR_NUMBER";
@@ -11257,7 +10975,7 @@ VM::u16 VM::technique_count = base_technique_count;
 
 // check if cpuid is supported
 bool VM::core::cpuid_supported = []() -> bool {
-#if (x86)
+#if (x86_64)
 #if (WINDOWS)
     int32_t info[4];
     __cpuid(info, 0);
@@ -11293,9 +11011,6 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::DMESG, { 55, VM::dmesg, false } },
     { VM::HWMON, { 35, VM::hwmon, true } },
     { VM::SIDT5, { 45, VM::sidt5, false } },
-    { VM::VMWARE_REG, { 50, VM::vmware_registry, true } },
-    { VM::VBOX_REG, { 50, VM::vbox_registry, true } },
-    { VM::USER, { 5, VM::user_check, true } },
     { VM::DLL, { 25, VM::DLL_check, true } },
     { VM::REGISTRY, { 50, VM::registry_key, true } },
     { VM::VM_FILES, { 25, VM::vm_files, true } },
@@ -11306,10 +11021,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
 /* GPL */ { VM::COMPUTER_NAME, { 10, VM::computer_name_match, true } },
 /* GPL */ { VM::WINE_CHECK, { 100, VM::wine, false } },
 /* GPL */ { VM::HOSTNAME, { 10, VM::hostname_match, true } },
-/* GPL */ { VM::VBOX_WINDOW_CLASS, { 100, VM::vbox_window_class, false } }, // used to be 10, debatable
 /* GPL */ { VM::LOADED_DLLS, { 35, VM::loaded_dlls, true } }, 
-/* GPL */ { VM::KVM_REG, { 50, VM::kvm_registry, true } },
-/* GPL */ { VM::KVM_DRIVERS, { 25, VM::kvm_drivers, true } },
 /* GPL */ { VM::KVM_DIRS, { 30, VM::kvm_directories, true } },
 /* GPL */ { VM::AUDIO, { 25, VM::check_audio, false } },
 /* GPL */ { VM::QEMU_DIR, { 30, VM::qemu_dir, true } },
@@ -11332,9 +11044,6 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::MAC_SIP, { 40, VM::mac_sip, true } }, // TODO: update score
     { VM::HKLM_REGISTRIES, { 25, VM::hklm_registries, true } },
     { VM::QEMU_GA, { 10, VM::qemu_ga, true } }, // TODO: update score
-    { VM::VALID_MSR, { 35, VM::valid_msr, false } },
-    { VM::QEMU_PROC, { 50, VM::qemu_processes, true } }, // debatable
-    { VM::VPC_PROC, { 50, VM::vpc_proc, true } }, // debatable 
     { VM::VPC_INVALID, { 75, VM::vpc_invalid, false } }, // TODO: update score
     { VM::SIDT, { 25, VM::sidt, false } },
     { VM::SGDT, { 30, VM::sgdt, false } }, // TODO: update score
@@ -11344,7 +11053,6 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::OFFSEC_SLDT, { 20, VM::offsec_sldt, false } }, // TODO: update score
     { VM::VPC_SIDT, { 15, VM::vpc_sidt, false } }, // debatable
     { VM::HYPERV_BOARD, { 100, VM::hyperv_board, false } },
-    { VM::VM_FILES_EXTRA, { 30, VM::vm_files_extra, true } },
     { VM::VMWARE_IOMEM, { 65, VM::vmware_iomem, false } }, // debatable
     { VM::VMWARE_IOPORTS, { 70, VM::vmware_ioports, false } }, // debatable
     { VM::VMWARE_SCSI, { 40, VM::vmware_scsi, false } }, // debatable
@@ -11371,7 +11079,6 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::KVM_BITMASK, { 40, VM::kvm_bitmask, false } }, // debatable
     { VM::KGT_SIGNATURE, { 80, VM::intel_kgt_signature, false } }, // debatable
     { VM::VMWARE_DMI, { 40, VM::vmware_dmi, false } },
-    { VM::HYPERV_EVENT_LOGS, { 50, VM::hyperv_event_logs, false } },
     { VM::VMWARE_EVENT_LOGS, { 25, VM::vmware_event_logs, false } },
     { VM::QEMU_VIRTUAL_DMI, { 40, VM::qemu_virtual_dmi, false } },
     { VM::QEMU_USB, { 20, VM::qemu_USB, false } }, // debatable
@@ -11394,7 +11101,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::VM_HDD, { 90, VM::vm_hdd, false } },
     { VM::ACPI_DETECT, { 85, VM::acpi_detect, false } },
     { VM::GPU_NAME, { 100, VM::vm_gpu, false } },
-    { VM::VMWARE_DEVICES, { 45, VM::vmware_devices, true } }, 
+    { VM::VM_DEVICES, { 45, VM::vm_devices, true } },
     { VM::VMWARE_MEMORY, { 50, VM::vmware_memory, false } },
     { VM::IDT_GDT_MISMATCH, { 50, VM::idt_gdt_mismatch, false } },
     { VM::PROCESSOR_NUMBER, { 25, VM::processor_number, false } },
