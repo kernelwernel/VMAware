@@ -4,7 +4,7 @@
 <img align="center" src="https://img.shields.io/github/actions/workflow/status/kernelwernel/VMAware/cmake-multi-platform.yml">
 <img align="center" src="https://img.shields.io/github/downloads/kernelwernel/VMAware/total">
 <img align="center" src="https://img.shields.io/github/license/a0rtega/pafish">
-<img align="center" src="https://img.shields.io/github/license/kernelwernel/Tourneys-bot">
+<img align="center" src="https://img.shields.io/github/license/kernelwernel/auto-stuff">
 </p>
 
 **VMAware** (VM + Aware) is a cross-platform C++ library for virtual machine detection.
