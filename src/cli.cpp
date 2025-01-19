@@ -466,7 +466,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::POWER_CAPABILITIES:
             case VM::SETUPAPI_DISK: 
             case VM::VMWARE_HARDENER:
-            case VM::WMI_QUERIES:
             // ADD WINDOWS FLAG
             return false;
             default: return true;
@@ -810,7 +809,7 @@ void general() {
     checker(VM::MAC_SIP, "MacOS SIP");
     checker(VM::KVM_DIRS, "KVM directories");
     checker(VM::HKLM_REGISTRIES, "HKLM registries");
-    checker(VM::AUDIO, "Audio device");
+    checker(VM::AUDIO, "audio device");
     checker(VM::QEMU_GA, "qemu-ga process");
     checker(VM::QEMU_DIR, "QEMU directories");
     checker(VM::VPC_INVALID, "VPC invalid instructions");
@@ -876,7 +875,7 @@ void general() {
     checker(VM::IDT_GDT_MISMATCH, "IDT GDT mismatch");
     checker(VM::PROCESSOR_NUMBER, "Processor count");
     checker(VM::NUMBER_OF_CORES, "CPU core count");
-    checker(VM::WMI_MODEL, "Hardware model");
+    checker(VM::WMI_MODEL, "hardware model");
     checker(VM::WMI_MANUFACTURER, "Hardware manufacturer");
     checker(VM::WMI_TEMPERATURE, "WMI temperature");
     checker(VM::PROCESSOR_ID, "Processor ID");
@@ -884,9 +883,9 @@ void general() {
     checker(VM::POWER_CAPABILITIES, "Power capabilities");
     checker(VM::SETUPAPI_DISK, "SETUPDI diskdrive");
     checker(VM::VMWARE_HARDENER, "VMware hardener");
-    checker(VM::WMI_QUERIES, "WMI outputs");
 	checker(VM::SYS_QEMU, "QEMU in /sys");
 	checker(VM::LSHW_QEMU, "QEMU in lshw output");
+    checker(VM::VIRTUAL_PROCESSORS, "virtual processors");
     // ADD NEW TECHNIQUE CHECKER HERE
 
     std::printf("\n");
