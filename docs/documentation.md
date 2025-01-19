@@ -399,7 +399,6 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::VMWARE_PORT_MEM` | Check for VMware memory using IO port backdoor | Windows | 85% |  |  | 32-bit |  |
 | `VM::SMSW` | Check for SMSW assembly instruction technique | Windows | 30% |  |  | 32-bit |  |
 | `VM::MUTEX` | Check for mutex strings of VM brands | Windows | 85% |  |  |  |  |
-| `VM::UPTIME` | Check if uptime is less than or equal to 2 minutes |  | 10% |  |  |  |  |
 | `VM::ODD_CPU_THREADS` | Check for odd CPU threads, usually a sign of modification through VM setting because 99% of CPUs have even numbers of threads |  | 80% |  |  |  |  |
 | `VM::INTEL_THREAD_MISMATCH` | Check for Intel CPU thread count database if it matches the system's thread count |  | 60% |  |  |  |  |
 | `VM::XEON_THREAD_MISMATCH` | Same as above, but for Xeon Intel CPUs |  | 85% |  |  |  |  |
@@ -457,6 +456,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::WMI_QUERIES` | Executes generic WMI queries that always return more than 0 entries in physical machines and checks if any query returns zero entries | Windows | 50% |  | GPL |  |  |
 | `VM::SYS_QEMU` | Check for existence of "qemu_fw_cfg" directories within /sys/module and /sys/firmware | Linux | 70% |  |  |  |  |
 | `VM::LSHW_QEMU` | Check for QEMU string instances with lshw command | Linux | 80% |  |  |  |  |
+| `VM::VIRTUAL_PROCESSORS` | Checks if the number of maximum virtual processors matches the maximum number of logical processors | Windows | 35% |  |  |  |  |
 <!-- ADD DETAILS HERE -->
 
 <br>
