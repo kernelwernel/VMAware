@@ -24,14 +24,14 @@
  *
  *
  * ================================ SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 326
- * - struct for internal cpu operations        => line 611
- * - struct for internal memoization           => line 1071
- * - struct for internal utility functions     => line 1454
- * - struct for internal core components       => line 9684
- * - start of internal VM detection techniques => line 2931
- * - start of public VM detection functions    => line 10082
- * - start of externally defined variables     => line 10963
+ * - enums for publicly accessible techniques  => line 327
+ * - struct for internal cpu operations        => line 601
+ * - struct for internal memoization           => line 1061
+ * - struct for internal utility functions     => line 1444
+ * - struct for internal core components       => line 9586
+ * - start of internal VM detection techniques => line 3040
+ * - start of public VM detection functions    => line 9984
+ * - start of externally defined variables     => line 10854
  *
  *
  * ================================ EXAMPLE ==================================
@@ -443,9 +443,9 @@ public:
         PROCESSOR_ID,
         CPU_FANS,
         VMWARE_HARDENER,
-        WMI_QUERIES,
         SYS_QEMU,
         LSHW_QEMU,
+        VIRTUAL_PROCESSORS,
         // ADD NEW TECHNIQUE ENUM NAME HERE
 
         // start of settings technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
@@ -2027,6 +2027,9 @@ public:
 
             // event log check (slow, so in last place)
             auto is_event_log_hyperv = []() -> bool {
+#if (!x86_64)
+                return false;
+#else
                 std::wstring logName = L"Microsoft-Windows-Kernel-PnP/Configuration";
                 std::vector<std::wstring> searchStrings = { L"Virtual_Machine", L"VMBUS" };
                 const bool result = (util::query_event_logs(logName, searchStrings));
@@ -2036,6 +2039,7 @@ public:
                 }
 
                 return result;
+#endif
             };
 
 
@@ -2649,6 +2653,9 @@ public:
             DWORD flags = EvtQueryReverseDirection,
             DWORD timeout = INFINITE,
             const DWORD maxEvents = 1000) {
+#if (!x86_64)
+            return false;
+#else
 
             EVT_HANDLE hLog = EvtOpenLog(nullptr, logName.c_str(), EvtOpenChannelPath);
             if (!hLog) {
@@ -2732,6 +2739,7 @@ public:
             EvtClose(hLog);
 
             return false;
+#endif
         }
 
 
@@ -4380,40 +4388,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */     }
 /* GPL */
 /* GPL */
-/* GPL */     // @brief Executes generic WMI queries that always return more than 0 entries in physical machines and checks if any query returns zero entries 
-/* GPL */     // @category Windows
-/* GPL */     // @author idea from Al-Khaser project
-/* GPL */     // @return True if all queries return non - zero results; false otherwise
-/* GPL */     [[nodiscard]] static bool wmi_queries() {
-/* GPL */ #if (!WINDOWS)
-/* GPL */         return false;
-/* GPL */ #else
-/* GPL */         if (!wmi::initialize()) {
-/* GPL */             core_debug("Failed to initialize WMI in wmi_queries.");
-/* GPL */             return false;
-/* GPL */         }
-/* GPL */
-/* GPL */        std::vector<std::wstring> queries = {
-/* GPL */           L"SELECT * FROM Win32_VoltageProbe",
-/* GPL */           L"SELECT * FROM Win32_PerfFormattedData_Counters_ThermalZoneInformation",
-/* GPL */           L"SELECT * FROM CIM_Sensor",
-/* GPL */           L"SELECT * FROM CIM_NumericSensor",
-/* GPL */           L"SELECT * FROM CIM_TemperatureSensor",
-/* GPL */           L"SELECT * FROM CIM_VoltageSensor"
-/* GPL */        };
-/* GPL */
-/* GPL */        for (const auto& query : queries) {
-/* GPL */           auto results = wmi::execute(query, {});
-/* GPL */           size_t count = results.size();
-/* GPL */
-/* GPL */           if (count > 0) {
-/* GPL */               return true;
-/* GPL */           }
-/* GPL */         }
-/* GPL */         return false;
-/* GPL */ #endif
-/* GPL */     }
-
 
 
     /**
@@ -8142,7 +8116,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @author Requiem (https://github.com/NotRequiem)
      */
     [[nodiscard]] static bool vmware_event_logs() {
-#if (!WINDOWS)
+#if (!WINDOWS || !x86_64)
         return false;
 #else
         std::vector<std::wstring> logNames = {
@@ -9370,68 +9344,54 @@ static bool rdtsc() {
 #if (!WINDOWS)
         return false;
 #else
-        static const DWORD kProviders[] = { 'ACPI', 'RSMB', 'FIRM' };
-        static const char* kPatchedStrings[] = { "VMware", "VMWARE", "Virtual" };
+        static constexpr DWORD kProviders[] = { 'ACPI', 'RSMB', 'FIRM' };
+        static constexpr const char* kPatchedStrings[] = { "VMware", "VMWARE", "Virtual" };
 
         for (DWORD provider : kProviders)
         {
-            DWORD bufferSize = EnumSystemFirmwareTables(provider, NULL, 0);
+            DWORD bufferSize = EnumSystemFirmwareTables(provider, nullptr, 0);
             if (bufferSize == 0)
             {
-                return false;
+                continue;
             }
 
             std::vector<char> tableNames(bufferSize);
             if (EnumSystemFirmwareTables(provider, tableNames.data(), bufferSize) == 0)
             {
-                return false;
+                continue;
             }
+
+            std::vector<BYTE> tableBuffer;
 
             for (size_t i = 0; i < bufferSize; i += 4)
             {
                 DWORD signature = *reinterpret_cast<DWORD*>(&tableNames[i]);
 
-                DWORD requiredSize = GetSystemFirmwareTable(provider, signature, NULL, 0);
+                DWORD requiredSize = GetSystemFirmwareTable(provider, signature, nullptr, 0);
                 if (requiredSize == 0)
                 {
                     continue;
                 }
 
-                std::vector<BYTE> tableBuffer(requiredSize);
+                tableBuffer.resize(requiredSize);
                 if (GetSystemFirmwareTable(provider, signature, tableBuffer.data(), requiredSize) == 0)
                 {
                     continue;
                 }
 
-#if (CPP >= 17)
-                std::string_view tableData(reinterpret_cast<const char*>(tableBuffer.data()), requiredSize);
-#else
-                std::string tableData(reinterpret_cast<const char*>(tableBuffer.data()), requiredSize);
-#endif
-
                 for (const char* original : kPatchedStrings)
                 {
                     size_t orig_len = strlen(original);
-                    if (tableData.find(original) ==
-#if (CPP >= 17)
-                        std::string_view::npos
-#else
-                        std::string::npos
-#endif
-                        )
+                    auto it = std::search(tableBuffer.begin(), tableBuffer.end(),
+                        original, original + orig_len);
+
+                    if (it == tableBuffer.end())
                     {
-#if (CPP >= 17)
-                        std::string_view replaced(std::string(orig_len, '7'));
-#else
-                        std::string replaced(orig_len, '7');
-#endif
-                        if (tableData.find(replaced) !=
-#if (CPP >= 17)
-                            std::string_view::npos
-#else
-                            std::string::npos
-#endif
-                            )
+                        std::vector<BYTE> replaced(orig_len, '7');
+                        auto replacedIt = std::search(tableBuffer.begin(), tableBuffer.end(),
+                            replaced.begin(), replaced.end());
+
+                        if (replacedIt != tableBuffer.end())
                         {
                             return core::add(brands::VMWARE, brands::VMWARE_HARD);
                         }
@@ -9530,6 +9490,41 @@ static bool rdtsc() {
 	    return (score >= 3);
 #endif
 	}
+
+    /**
+    * @brief Check if the maximum number of virtual processors matches the maximum number of logical processors
+    * @category Windows
+    * @note https://medium.com/@matterpreter/hypervisor-detection-with-systemhypervisordetailinformation-26e44a57f80e
+    */
+    [[nodiscard]] static bool virtual_processors() {
+#if (!WINDOWS || !x86_64)
+        return false;
+#else       
+        struct Registers {
+            int eax = 0;
+            int ebx = 0;
+            int ecx = 0;
+            int edx = 0;
+        };
+        struct ImplementationLimits {
+            unsigned int MaxVirtualProcessors = 0;
+            unsigned int MaxLogicalProcessors = 0;
+        };
+
+        Registers registers;
+        __cpuid(&registers.eax, 0x40000005);
+
+        ImplementationLimits implementationLimits;
+        implementationLimits.MaxVirtualProcessors = registers.eax;
+        implementationLimits.MaxLogicalProcessors = registers.ebx;
+
+        if (implementationLimits.MaxLogicalProcessors != implementationLimits.MaxVirtualProcessors) {
+            return true;
+        }
+
+        return false;
+#endif
+    }
 
     // ADD NEW TECHNIQUE FUNCTION HERE
 
@@ -10567,9 +10562,9 @@ public: // START OF PUBLIC FUNCTIONS
             case POWER_CAPABILITIES: return "POWER_CAPABILITIES";
             case SETUPAPI_DISK: return "SETUPAPI_DISK";
             case VMWARE_HARDENER: return "VMWARE_HARDENER_LOADER";
-            case WMI_QUERIES: return "WMI_QUERIES";
 			case SYS_QEMU: return "SYS_QEMU";
 			case LSHW_QEMU: return "LSHW_QEMU";
+            case VIRTUAL_PROCESSORS: return "VIRTUAL_PROCESSORS";
             // ADD NEW CASE HERE FOR NEW TECHNIQUE
             default: return "Unknown flag";
         }
@@ -11014,10 +11009,10 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::DLL, { 25, VM::DLL_check, true } },
     { VM::REGISTRY, { 50, VM::registry_key, true } },
     { VM::VM_FILES, { 25, VM::vm_files, true } },
-    { VM::HWMODEL, { 35, VM::hwmodel, true } }, // TODO: update score
-    { VM::DISK_SIZE, { 60, VM::disk_size, false } }, // TODO: update score
+    { VM::HWMODEL, { 35, VM::hwmodel, true } },
+    { VM::DISK_SIZE, { 60, VM::disk_size, false } }, 
     { VM::VBOX_DEFAULT, { 25, VM::vbox_default_specs, false } },
-    { VM::VBOX_NETWORK, { 100, VM::vbox_network_share, false } },  // used to be 70, debatable
+    { VM::VBOX_NETWORK, { 100, VM::vbox_network_share, false } },
 /* GPL */ { VM::COMPUTER_NAME, { 10, VM::computer_name_match, true } },
 /* GPL */ { VM::WINE_CHECK, { 100, VM::wine, false } },
 /* GPL */ { VM::HOSTNAME, { 10, VM::hostname_match, true } },
@@ -11027,72 +11022,71 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
 /* GPL */ { VM::QEMU_DIR, { 30, VM::qemu_dir, true } },
 /* GPL */ { VM::POWER_CAPABILITIES, { 25, VM::power_capabilities, false } },
 /* GPL */ { VM::SETUPAPI_DISK, { 20, VM::setupapi_disk, false } },
-/* GPL */ { VM::WMI_QUERIES, { 50, VM::wmi_queries, false } },
     { VM::VM_PROCESSES, { 15, VM::vm_processes, true } }, 
-    { VM::LINUX_USER_HOST, { 10, VM::linux_user_host, true } }, // TODO: update score
+    { VM::LINUX_USER_HOST, { 10, VM::linux_user_host, true } },
     { VM::GAMARUE, { 10, VM::gamarue, true } },
     { VM::VMID_0X4, { 100, VM::vmid_0x4, false } },
     { VM::PARALLELS_VM, { 50, VM::parallels, false } },
     { VM::QEMU_BRAND, { 100, VM::cpu_brand_qemu, false } },
     { VM::BOCHS_CPU, { 100, VM::bochs_cpu, false } },
     { VM::VPC_BOARD, { 25, VM::vpc_board, false } },
-    { VM::BIOS_SERIAL, { 60, VM::bios_serial, false } }, // debatable
+    { VM::BIOS_SERIAL, { 60, VM::bios_serial, false } },
     { VM::MSSMBIOS, { 75, VM::mssmbios, false } },
-    { VM::MAC_MEMSIZE, { 15, VM::hw_memsize, true } }, // TODO: update score
-    { VM::MAC_IOKIT, { 40, VM::io_kit, true } }, // TODO: update score
-    { VM::IOREG_GREP, { 30, VM::ioreg_grep, true } }, // TODO: update score
-    { VM::MAC_SIP, { 40, VM::mac_sip, true } }, // TODO: update score
+    { VM::MAC_MEMSIZE, { 15, VM::hw_memsize, true } },
+    { VM::MAC_IOKIT, { 40, VM::io_kit, true } },
+    { VM::IOREG_GREP, { 30, VM::ioreg_grep, true } }, 
+    { VM::MAC_SIP, { 40, VM::mac_sip, true } }, 
     { VM::HKLM_REGISTRIES, { 25, VM::hklm_registries, true } },
-    { VM::QEMU_GA, { 10, VM::qemu_ga, true } }, // TODO: update score
-    { VM::VPC_INVALID, { 75, VM::vpc_invalid, false } }, // TODO: update score
+    { VM::QEMU_GA, { 10, VM::qemu_ga, true } }, 
+    { VM::VPC_INVALID, { 75, VM::vpc_invalid, false } }, 
     { VM::SIDT, { 25, VM::sidt, false } },
-    { VM::SGDT, { 30, VM::sgdt, false } }, // TODO: update score
-    { VM::SLDT, { 15, VM::sldt, false } }, // TODO: update score
-    { VM::OFFSEC_SIDT, { 60, VM::offsec_sidt, false } }, // TODO: update score
-    { VM::OFFSEC_SGDT, { 60, VM::offsec_sgdt, false } }, // TODO: update score
-    { VM::OFFSEC_SLDT, { 20, VM::offsec_sldt, false } }, // TODO: update score
-    { VM::VPC_SIDT, { 15, VM::vpc_sidt, false } }, // debatable
+    { VM::SGDT, { 30, VM::sgdt, false } }, 
+    { VM::SLDT, { 15, VM::sldt, false } }, 
+    { VM::OFFSEC_SIDT, { 60, VM::offsec_sidt, false } }, 
+    { VM::OFFSEC_SGDT, { 60, VM::offsec_sgdt, false } }, 
+    { VM::OFFSEC_SLDT, { 20, VM::offsec_sldt, false } }, 
+    { VM::VPC_SIDT, { 15, VM::vpc_sidt, false } }, 
     { VM::HYPERV_BOARD, { 100, VM::hyperv_board, false } },
-    { VM::VMWARE_IOMEM, { 65, VM::vmware_iomem, false } }, // debatable
-    { VM::VMWARE_IOPORTS, { 70, VM::vmware_ioports, false } }, // debatable
-    { VM::VMWARE_SCSI, { 40, VM::vmware_scsi, false } }, // debatable
-    { VM::VMWARE_DMESG, { 65, VM::vmware_dmesg, false } }, // debatable
-    { VM::VMWARE_STR, { 35, VM::vmware_str, false } }, // debatable
-    { VM::VMWARE_BACKDOOR, { 100, VM::vmware_backdoor, false } }, // debatable
-    { VM::VMWARE_PORT_MEM, { 85, VM::vmware_port_memory, false } }, // debatable
-    { VM::SMSW, { 30, VM::smsw, false } }, // debatable
-    { VM::MUTEX, { 85, VM::mutex, false } }, // could be 100, debatable
+    { VM::VMWARE_IOMEM, { 65, VM::vmware_iomem, false } }, 
+    { VM::VMWARE_IOPORTS, { 70, VM::vmware_ioports, false } },
+    { VM::VMWARE_SCSI, { 40, VM::vmware_scsi, false } }, 
+    { VM::VMWARE_DMESG, { 65, VM::vmware_dmesg, false } },
+    { VM::VMWARE_STR, { 35, VM::vmware_str, false } }, 
+    { VM::VMWARE_BACKDOOR, { 100, VM::vmware_backdoor, false } },
+    { VM::VMWARE_PORT_MEM, { 85, VM::vmware_port_memory, false } }, 
+    { VM::SMSW, { 30, VM::smsw, false } }, 
+    { VM::MUTEX, { 85, VM::mutex, false } }, 
     { VM::ODD_CPU_THREADS, { 80, VM::odd_cpu_threads, false } },
     { VM::INTEL_THREAD_MISMATCH, { 50, VM::intel_thread_mismatch, false } },
-    { VM::XEON_THREAD_MISMATCH, { 85, VM::xeon_thread_mismatch, false } }, // debatable
+    { VM::XEON_THREAD_MISMATCH, { 85, VM::xeon_thread_mismatch, false } }, 
     { VM::NETTITUDE_VM_MEMORY, { 100, VM::nettitude_vm_memory, false } },
-    { VM::CPUID_BITSET, { 25, VM::cpuid_bitset, false } }, // debatable
+    { VM::CPUID_BITSET, { 25, VM::cpuid_bitset, false } },
     { VM::CUCKOO_DIR, { 30, VM::cuckoo_dir, true } },
-    { VM::CUCKOO_PIPE, { 30, VM::cuckoo_pipe, true } }, // debatable
+    { VM::CUCKOO_PIPE, { 30, VM::cuckoo_pipe, true } }, 
     { VM::HYPERV_HOSTNAME, { 30, VM::hyperv_hostname, true } },
     { VM::GENERAL_HOSTNAME, { 10, VM::general_hostname, true } },
     { VM::SCREEN_RESOLUTION, { 20, VM::screen_resolution, false } },
     { VM::DEVICE_STRING, { 25, VM::device_string, false } },
-    { VM::BLUESTACKS_FOLDERS, { 5, VM::bluestacks, true } }, // debatable
-    { VM::CPUID_SIGNATURE, { 95, VM::cpuid_signature, false } }, // debatable
-    { VM::HYPERV_BITMASK, { 20, VM::hyperv_bitmask, false } }, // debatable
-    { VM::KVM_BITMASK, { 40, VM::kvm_bitmask, false } }, // debatable
-    { VM::KGT_SIGNATURE, { 80, VM::intel_kgt_signature, false } }, // debatable
+    { VM::BLUESTACKS_FOLDERS, { 5, VM::bluestacks, true } }, 
+    { VM::CPUID_SIGNATURE, { 95, VM::cpuid_signature, false } }, 
+    { VM::HYPERV_BITMASK, { 20, VM::hyperv_bitmask, false } }, 
+    { VM::KVM_BITMASK, { 40, VM::kvm_bitmask, false } }, 
+    { VM::KGT_SIGNATURE, { 80, VM::intel_kgt_signature, false } }, 
     { VM::VMWARE_DMI, { 40, VM::vmware_dmi, false } },
     { VM::VMWARE_EVENT_LOGS, { 25, VM::vmware_event_logs, false } },
     { VM::QEMU_VIRTUAL_DMI, { 40, VM::qemu_virtual_dmi, false } },
-    { VM::QEMU_USB, { 20, VM::qemu_USB, false } }, // debatable
-    { VM::HYPERVISOR_DIR, { 20, VM::hypervisor_dir, false } }, // debatable
-    { VM::UML_CPU, { 80, VM::uml_cpu, false } }, // debatable
-    { VM::KMSG, { 5, VM::kmsg, true } }, // debatable
-    { VM::VM_PROCS, { 10, VM::vm_procs, true } }, // debatable
-    { VM::VBOX_MODULE, { 15, VM::vbox_module, false } }, // debatable
-    { VM::SYSINFO_PROC, { 15, VM::sysinfo_proc, false } }, // debatable
-    { VM::DEVICE_TREE, { 20, VM::device_tree, false } }, // debatable
-    { VM::DMI_SCAN, { 50, VM::dmi_scan, false } }, // debatable
-    { VM::SMBIOS_VM_BIT, { 50, VM::smbios_vm_bit, false } }, // debatable
-    { VM::PODMAN_FILE, { 5, VM::podman_file, true } }, // debatable
-    { VM::WSL_PROC, { 30, VM::wsl_proc_subdir, false } }, // debatable
+    { VM::QEMU_USB, { 20, VM::qemu_USB, false } },
+    { VM::HYPERVISOR_DIR, { 20, VM::hypervisor_dir, false } }, 
+    { VM::UML_CPU, { 80, VM::uml_cpu, false } },
+    { VM::KMSG, { 5, VM::kmsg, true } }, 
+    { VM::VM_PROCS, { 10, VM::vm_procs, true } }, 
+    { VM::VBOX_MODULE, { 15, VM::vbox_module, false } }, 
+    { VM::SYSINFO_PROC, { 15, VM::sysinfo_proc, false } }, 
+    { VM::DEVICE_TREE, { 20, VM::device_tree, false } }, 
+    { VM::DMI_SCAN, { 50, VM::dmi_scan, false } }, 
+    { VM::SMBIOS_VM_BIT, { 50, VM::smbios_vm_bit, false } }, 
+    { VM::PODMAN_FILE, { 5, VM::podman_file, true } }, 
+    { VM::WSL_PROC, { 30, VM::wsl_proc_subdir, false } }, 
     { VM::GPU_CHIPTYPE, { 100, VM::gpu_chiptype, false } },
     { VM::DRIVER_NAMES, { 80, VM::driver_names, false } },
     { VM::VM_SIDT, { 100, VM::vm_sidt, false } },
@@ -11114,6 +11108,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::VMWARE_HARDENER, { 60, VM::vmware_hardener, false } },
     { VM::SYS_QEMU, { 70, VM::sys_qemu_dir, false } },
     { VM::LSHW_QEMU, { 80, VM::lshw_qemu, false } },
+    { VM::VIRTUAL_PROCESSORS, { 35, VM::virtual_processors, false } },
     // ADD NEW TECHNIQUE STRUCTURE HERE
 };
 
