@@ -24,14 +24,14 @@
  *
  *
  * ================================ SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 326
- * - struct for internal cpu operations        => line 611
- * - struct for internal memoization           => line 1071
- * - struct for internal utility functions     => line 1454
- * - struct for internal core components       => line 9684
- * - start of internal VM detection techniques => line 2931
- * - start of public VM detection functions    => line 10082
- * - start of externally defined variables     => line 10963
+ * - enums for publicly accessible techniques  => line 327
+ * - struct for internal cpu operations        => line 601
+ * - struct for internal memoization           => line 1061
+ * - struct for internal utility functions     => line 1444
+ * - struct for internal core components       => line 9586
+ * - start of internal VM detection techniques => line 3040
+ * - start of public VM detection functions    => line 9984
+ * - start of externally defined variables     => line 10854
  *
  *
  * ================================ EXAMPLE ==================================
@@ -443,9 +443,9 @@ public:
         PROCESSOR_ID,
         CPU_FANS,
         VMWARE_HARDENER,
-        WMI_QUERIES,
         SYS_QEMU,
         LSHW_QEMU,
+        VIRTUAL_PROCESSORS,
         // ADD NEW TECHNIQUE ENUM NAME HERE
 
         // start of settings technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
@@ -2027,6 +2027,9 @@ public:
 
             // event log check (slow, so in last place)
             auto is_event_log_hyperv = []() -> bool {
+#if (!x86_64)
+                return false;
+#else
                 std::wstring logName = L"Microsoft-Windows-Kernel-PnP/Configuration";
                 std::vector<std::wstring> searchStrings = { L"Virtual_Machine", L"VMBUS" };
                 const bool result = (util::query_event_logs(logName, searchStrings));
@@ -2036,6 +2039,7 @@ public:
                 }
 
                 return result;
+#endif
             };
 
 
@@ -2649,6 +2653,9 @@ public:
             DWORD flags = EvtQueryReverseDirection,
             DWORD timeout = INFINITE,
             const DWORD maxEvents = 1000) {
+#if (!x86_64)
+            return false;
+#else
 
             EVT_HANDLE hLog = EvtOpenLog(nullptr, logName.c_str(), EvtOpenChannelPath);
             if (!hLog) {
@@ -2732,6 +2739,7 @@ public:
             EvtClose(hLog);
 
             return false;
+#endif
         }
 
 
@@ -4380,40 +4388,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */     }
 /* GPL */
 /* GPL */
-/* GPL */     // @brief Executes generic WMI queries that always return more than 0 entries in physical machines and checks if any query returns zero entries 
-/* GPL */     // @category Windows
-/* GPL */     // @author idea from Al-Khaser project
-/* GPL */     // @return True if all queries return non - zero results; false otherwise
-/* GPL */     [[nodiscard]] static bool wmi_queries() {
-/* GPL */ #if (!WINDOWS)
-/* GPL */         return false;
-/* GPL */ #else
-/* GPL */         if (!wmi::initialize()) {
-/* GPL */             core_debug("Failed to initialize WMI in wmi_queries.");
-/* GPL */             return false;
-/* GPL */         }
-/* GPL */
-/* GPL */        std::vector<std::wstring> queries = {
-/* GPL */           L"SELECT * FROM Win32_VoltageProbe",
-/* GPL */           L"SELECT * FROM Win32_PerfFormattedData_Counters_ThermalZoneInformation",
-/* GPL */           L"SELECT * FROM CIM_Sensor",
-/* GPL */           L"SELECT * FROM CIM_NumericSensor",
-/* GPL */           L"SELECT * FROM CIM_TemperatureSensor",
-/* GPL */           L"SELECT * FROM CIM_VoltageSensor"
-/* GPL */        };
-/* GPL */
-/* GPL */        for (const auto& query : queries) {
-/* GPL */           auto results = wmi::execute(query, {});
-/* GPL */           size_t count = results.size();
-/* GPL */
-/* GPL */           if (count > 0) {
-/* GPL */               return true;
-/* GPL */           }
-/* GPL */         }
-/* GPL */         return false;
-/* GPL */ #endif
-/* GPL */     }
-
 
 
     /**
@@ -8142,7 +8116,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @author Requiem (https://github.com/NotRequiem)
      */
     [[nodiscard]] static bool vmware_event_logs() {
-#if (!WINDOWS)
+#if (!WINDOWS || !x86_64)
         return false;
 #else
         std::vector<std::wstring> logNames = {
@@ -9370,68 +9344,54 @@ static bool rdtsc() {
 #if (!WINDOWS)
         return false;
 #else
-        static const DWORD kProviders[] = { 'ACPI', 'RSMB', 'FIRM' };
-        static const char* kPatchedStrings[] = { "VMware", "VMWARE", "Virtual" };
+        static constexpr DWORD kProviders[] = { 'ACPI', 'RSMB', 'FIRM' };
+        static constexpr const char* kPatchedStrings[] = { "VMware", "VMWARE", "Virtual" };
 
         for (DWORD provider : kProviders)
         {
-            DWORD bufferSize = EnumSystemFirmwareTables(provider, NULL, 0);
+            DWORD bufferSize = EnumSystemFirmwareTables(provider, nullptr, 0);
             if (bufferSize == 0)
             {
-                return false;
+                continue;
             }
 
             std::vector<char> tableNames(bufferSize);
             if (EnumSystemFirmwareTables(provider, tableNames.data(), bufferSize) == 0)
             {
-                return false;
+                continue;
             }
+
+            std::vector<BYTE> tableBuffer;
 
             for (size_t i = 0; i < bufferSize; i += 4)
             {
                 DWORD signature = *reinterpret_cast<DWORD*>(&tableNames[i]);
 
-                DWORD requiredSize = GetSystemFirmwareTable(provider, signature, NULL, 0);
+                DWORD requiredSize = GetSystemFirmwareTable(provider, signature, nullptr, 0);
                 if (requiredSize == 0)
                 {
                     continue;
                 }
 
-                std::vector<BYTE> tableBuffer(requiredSize);
+                tableBuffer.resize(requiredSize);
                 if (GetSystemFirmwareTable(provider, signature, tableBuffer.data(), requiredSize) == 0)
                 {
                     continue;
                 }
 
-#if (CPP >= 17)
-                std::string_view tableData(reinterpret_cast<const char*>(tableBuffer.data()), requiredSize);
-#else
-                std::string tableData(reinterpret_cast<const char*>(tableBuffer.data()), requiredSize);
-#endif
-
                 for (const char* original : kPatchedStrings)
                 {
                     size_t orig_len = strlen(original);
-                    if (tableData.find(original) ==
-#if (CPP >= 17)
-                        std::string_view::npos
-#else
-                        std::string::npos
-#endif
-                        )
+                    auto it = std::search(tableBuffer.begin(), tableBuffer.end(),
+                        original, original + orig_len);
+
+                    if (it == tableBuffer.end())
                     {
-#if (CPP >= 17)
-                        std::string_view replaced(std::string(orig_len, '7'));
-#else
-                        std::string replaced(orig_len, '7');
-#endif
-                        if (tableData.find(replaced) !=
-#if (CPP >= 17)
-                            std::string_view::npos
-#else
-                            std::string::npos
-#endif
-                            )
+                        std::vector<BYTE> replaced(orig_len, '7');
+                        auto replacedIt = std::search(tableBuffer.begin(), tableBuffer.end(),
+                            replaced.begin(), replaced.end());
+
+                        if (replacedIt != tableBuffer.end())
                         {
                             return core::add(brands::VMWARE, brands::VMWARE_HARD);
                         }
@@ -9530,6 +9490,41 @@ static bool rdtsc() {
 	    return (score >= 3);
 #endif
 	}
+
+    /**
+    * @brief Check if the maximum number of virtual processors matches the maximum number of logical processors
+    * @category Windows
+    * @note https://medium.com/@matterpreter/hypervisor-detection-with-systemhypervisordetailinformation-26e44a57f80e
+    */
+    [[nodiscard]] static bool virtual_processors() {
+#if (!WINDOWS || !x86_64)
+        return false;
+#else       
+        struct Registers {
+            int eax = 0;
+            int ebx = 0;
+            int ecx = 0;
+            int edx = 0;
+        };
+        struct ImplementationLimits {
+            unsigned int MaxVirtualProcessors = 0;
+            unsigned int MaxLogicalProcessors = 0;
+        };
+
+        Registers registers;
+        __cpuid(&registers.eax, 0x40000005);
+
+        ImplementationLimits implementationLimits;
+        implementationLimits.MaxVirtualProcessors = registers.eax;
+        implementationLimits.MaxLogicalProcessors = registers.ebx;
+
+        if (implementationLimits.MaxLogicalProcessors != implementationLimits.MaxVirtualProcessors) {
+            return true;
+        }
+
+        return false;
+#endif
+    }
 
     // ADD NEW TECHNIQUE FUNCTION HERE
 
@@ -10567,9 +10562,9 @@ public: // START OF PUBLIC FUNCTIONS
             case POWER_CAPABILITIES: return "POWER_CAPABILITIES";
             case SETUPAPI_DISK: return "SETUPAPI_DISK";
             case VMWARE_HARDENER: return "VMWARE_HARDENER_LOADER";
-            case WMI_QUERIES: return "WMI_QUERIES";
 			case SYS_QEMU: return "SYS_QEMU";
 			case LSHW_QEMU: return "LSHW_QEMU";
+            case VIRTUAL_PROCESSORS: return "VIRTUAL_PROCESSORS";
             // ADD NEW CASE HERE FOR NEW TECHNIQUE
             default: return "Unknown flag";
         }
@@ -11027,7 +11022,6 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
 /* GPL */ { VM::QEMU_DIR, { 30, VM::qemu_dir, true } },
 /* GPL */ { VM::POWER_CAPABILITIES, { 25, VM::power_capabilities, false } },
 /* GPL */ { VM::SETUPAPI_DISK, { 20, VM::setupapi_disk, false } },
-/* GPL */ { VM::WMI_QUERIES, { 50, VM::wmi_queries, false } },
     { VM::VM_PROCESSES, { 15, VM::vm_processes, true } }, 
     { VM::LINUX_USER_HOST, { 10, VM::linux_user_host, true } },
     { VM::GAMARUE, { 10, VM::gamarue, true } },
@@ -11114,6 +11108,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::VMWARE_HARDENER, { 60, VM::vmware_hardener, false } },
     { VM::SYS_QEMU, { 70, VM::sys_qemu_dir, false } },
     { VM::LSHW_QEMU, { 80, VM::lshw_qemu, false } },
+    { VM::VIRTUAL_PROCESSORS, { 35, VM::virtual_processors, false } },
     // ADD NEW TECHNIQUE STRUCTURE HERE
 };
 
