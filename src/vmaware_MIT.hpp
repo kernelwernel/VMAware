@@ -25,13 +25,13 @@
  *
  * ================================ SECTIONS ==================================
  * - enums for publicly accessible techniques  => line 327
- * - struct for internal cpu operations        => line 592
- * - struct for internal memoization           => line 1053
- * - struct for internal utility functions     => line 1439
- * - struct for internal core components       => line 9227
- * - start of internal VM detection techniques => line 3036
- * - start of public VM detection functions    => line 9630
- * - start of externally defined variables     => line 10501
+ * - struct for internal cpu operations        => line 499
+ * - struct for internal memoization           => line 1059
+ * - struct for internal utility functions     => line 1431
+ * - struct for internal core components       => line 9453
+ * - start of internal VM detection techniques => line 2990
+ * - start of public VM detection functions    => line 9851
+ * - start of externally defined variables     => line 10720
  *
  *
  * ================================ EXAMPLE ==================================
@@ -355,7 +355,6 @@ public:
         PARALLELS_VM,
         QEMU_BRAND,
         BOCHS_CPU,
-        VPC_BOARD,
         HYPERV_WMI,
         HYPERV_REG,
         BIOS_SERIAL,
@@ -373,7 +372,6 @@ public:
         OFFSEC_SIDT,
         OFFSEC_SGDT,
         OFFSEC_SLDT,
-        HYPERV_BOARD,
         VPC_SIDT,
         VMWARE_IOMEM,
         VMWARE_IOPORTS,
@@ -434,10 +432,10 @@ public:
         PROCESSOR_ID,
         CPU_FANS,
         VMWARE_HARDENER,
-        WMI_QUERIES,
         SYS_QEMU,
         LSHW_QEMU,
         VIRTUAL_PROCESSORS,
+        MOTHERBOARD_PRODUCT,
         // ADD NEW TECHNIQUE ENUM NAME HERE
 
         // start of settings technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
@@ -1264,7 +1262,6 @@ public:
                 return memo::wmi::fetch();
             }
 
-            // this will clean up wmi when the program terminates
             std::atexit(wmi::cleanup);
 
             if (pSvc != nullptr) {
@@ -1273,80 +1270,70 @@ public:
             }
 
             HRESULT hres = CoInitializeEx(0, COINIT_MULTITHREADED);
+            bool shouldUninitialize = false;
+
             if (FAILED(hres)) {
-                debug("wmi: Failed to initialize COM library. Error code = ", hres);
-                memo::wmi::store(false);
-                return false;
+                if (hres == RPC_E_CHANGED_MODE) {
+                    debug("wmi: COM already initialized with a different mode, continuing...");
+                }
+                else {
+                    debug("wmi: Failed to initialize COM library. Error code = ", hres);
+                    memo::wmi::store(false);
+                    return false;
+                }
+            }
+            else {
+                shouldUninitialize = true;
             }
 
             hres = CoInitializeSecurity(
-                NULL,
-                -1,
-                NULL,
-                NULL,
+                NULL, -1, NULL, NULL,
                 RPC_C_AUTHN_LEVEL_DEFAULT,
                 RPC_C_IMP_LEVEL_IMPERSONATE,
-                NULL,
-                EOAC_NONE,
-                NULL
+                NULL, EOAC_NONE, NULL
             );
 
             if (FAILED(hres)) {
-                CoUninitialize();
+                if (shouldUninitialize) CoUninitialize();
                 debug("wmi: Failed to initialize security. Error code = ", hres);
                 memo::wmi::store(false);
                 return false;
             }
 
             hres = CoCreateInstance(
-                CLSID_WbemLocator,
-                0,
-                CLSCTX_INPROC_SERVER,
-                IID_IWbemLocator,
-                (LPVOID*)&pLoc
+                CLSID_WbemLocator, 0, CLSCTX_INPROC_SERVER,
+                IID_IWbemLocator, (LPVOID*)&pLoc
             );
 
             if (FAILED(hres)) {
-                CoUninitialize();
+                if (shouldUninitialize) CoUninitialize();
                 debug("wmi: Failed to create IWbemLocator object. Error code = ", hres);
                 memo::wmi::store(false);
                 return false;
             }
 
             hres = pLoc->ConnectServer(
-                _bstr_t(L"ROOT\\CIMV2"),
-                NULL,
-                NULL,
-                0,
-                NULL,
-                0,
-                0,
-                &pSvc
+                _bstr_t(L"ROOT\\CIMV2"), NULL, NULL, 0, NULL, 0, 0, &pSvc
             );
 
             if (FAILED(hres)) {
                 pLoc->Release();
-                CoUninitialize();
+                if (shouldUninitialize) CoUninitialize();
                 debug("wmi: Could not connect to WMI server. Error code = ", hres);
                 memo::wmi::store(false);
                 return false;
             }
 
             hres = CoSetProxyBlanket(
-                pSvc,
-                RPC_C_AUTHN_WINNT,
-                RPC_C_AUTHZ_NONE,
-                NULL,
-                RPC_C_AUTHN_LEVEL_CALL,
-                RPC_C_IMP_LEVEL_IMPERSONATE,
-                NULL,
-                EOAC_NONE
+                pSvc, RPC_C_AUTHN_WINNT, RPC_C_AUTHZ_NONE, NULL,
+                RPC_C_AUTHN_LEVEL_CALL, RPC_C_IMP_LEVEL_IMPERSONATE,
+                NULL, EOAC_NONE
             );
 
             if (FAILED(hres)) {
                 pSvc->Release();
                 pLoc->Release();
-                CoUninitialize();
+                if (shouldUninitialize) CoUninitialize();
                 debug("wmi: Could not set proxy blanket. Error code = ", hres);
                 memo::wmi::store(false);
                 return false;
@@ -2010,17 +1997,6 @@ public:
                 return result;
                 };
 
-            // motherboard check
-            auto is_motherboard_hyperv = []() -> bool {
-                const bool motherboard = motherboard_string("Microsoft Corporation");
-
-                if (motherboard) {
-                    core_debug("HYPER_X: motherboard string match = ", motherboard);
-                }
-
-                return motherboard;
-                };
-
 
             // event log check (slow, so in last place)
             auto is_event_log_hyperv = []() -> bool {
@@ -2072,7 +2048,6 @@ public:
                 eax() == 11 ||
                 is_smbios_hyperv() ||
                 is_acpi_hyperv() ||
-                is_motherboard_hyperv() ||
                 is_event_log_hyperv()
                 );
 
@@ -2593,26 +2568,6 @@ public:
         }
 
 
-        [[nodiscard]] static bool motherboard_string(const char* vm_string) {
-            if (!wmi::initialize()) {
-                core_debug("Failed to initialize WMI in motherboard_string");
-                return false;
-            }
-
-            wmi_result results = wmi::execute(L"SELECT * FROM Win32_BaseBoard", { L"Manufacturer" });
-
-            for (const auto& res : results) {
-                if (res.type == wmi::result_type::String) {
-                    if (_stricmp(res.strValue.c_str(), vm_string) == 0) {
-                        return true;
-                    }
-                }
-            }
-
-            return false;
-        }
-
-
         /**
          * @brief Retrieves the last error message from the Windows API. Useful for __VMAWARE_DEBUG__
          * @author Requiem (https://github.com/NotRequiem)
@@ -2937,11 +2892,6 @@ public:
                 };
 
             auto GetThreadsUsingWMI = []() -> int {
-                if (!wmi::initialize()) {
-                    std::cerr << "Failed to initialize WMI in GetThreadsUsingWMI.\n";
-                    return 1;
-                }
-
                 wmi_result results = wmi::execute(L"SELECT NumberOfLogicalProcessors FROM Win32_Processor", { L"NumberOfLogicalProcessors" });
                 for (const auto& res : results) {
                     if (res.type == wmi::result_type::Integer) {
@@ -2949,7 +2899,7 @@ public:
                     }
                 }
 
-                return 1;
+                return 0;
                 };
 
             auto GetThreadsUsingGetSystemInfo = []() -> int {
@@ -4366,25 +4316,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check through the motherboard and match for VirtualPC-specific string
-     * @category Windows
-     */
-    [[nodiscard]] static bool vpc_board() {
-#if (!WINDOWS)
-        return false;
-#else
-        const bool is_vm = util::motherboard_string("Microsoft Corporation");
-
-        if (is_vm) {
-            return core::add(brands::VPC);
-        }
-
-        return false;
-#endif
-    }
-
-
-    /**
      * @brief Check if the BIOS serial is valid (null = VM)
      * @category Windows
      */
@@ -5066,34 +4997,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return (m[0] != 0x00 && m[1] != 0x00);
 #else
         return false;
-#endif
-    }
-
-
-    /**
-     * @brief Check for Hyper-V specific string in motherboard
-     * @category Windows
-     */
-    [[nodiscard]] static bool hyperv_board() {
-#if (!WINDOWS)
-        return false;
-#else
-        if (!wmi::initialize()) {
-            core_debug("Failed to initialize WMI in hyperv_board");
-            return false;
-        }
-
-        wmi_result results = wmi::execute(L"SELECT * FROM Win32_BaseBoard", { L"Manufacturer" });
-
-        for (const auto& res : results) {
-            if (res.type == wmi::result_type::String) {
-                if (_stricmp(res.strValue.c_str(), "Microsoft Corporation Virtual Machine") == 0) {
-                    return core::add(brands::HYPERV);
-                }
-            }
-        }
-
-        return false; // No match found
 #endif
     }
 
@@ -8275,11 +8178,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!WINDOWS)
         return false;
 #else
-        if (!wmi::initialize()) {
-            core_debug("Failed to initialize WMI in gpu_chiptype");
-            return false;
-        }
-
         wmi_result results = wmi::execute(L"SELECT * FROM Win32_VideoController", { L"VideoProcessor" });
 
         std::string result = "";
@@ -8457,11 +8355,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!WINDOWS) 
         return false;
 #else
-        if (!wmi::initialize()) {
-            core_debug("Failed to initialize WMI in hdd_serial_number");
-            return false;
-        }
-
         const char* targetSerial = "VBbd5bbffd-59166c24";
 
         wmi_result results = wmi::execute(L"SELECT SerialNumber FROM Win32_DiskDrive", { L"SerialNumber" });
@@ -8488,12 +8381,22 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!WINDOWS) 
         return false;
 #else
-        if (!wmi::initialize()) {
-            core_debug("Failed to initialize WMI in port_connectors");
-            return false;
+        std::wstring query = L"SELECT Product FROM Win32_BaseBoard";
+        std::vector<std::wstring> properties = { L"Product" };
+        wmi_result results = wmi::execute(query, properties);
+
+        for (const auto& res : results) {
+            if (res.type == wmi::result_type::String) {
+                std::string lowerStr = res.strValue;
+                std::transform(lowerStr.begin(), lowerStr.end(), lowerStr.begin(), ::tolower);
+
+                if (lowerStr.find("surface") != std::string::npos) { // This WMI query returns false for Surface Pro devices
+                    return false;
+                }
+            }
         }
 
-        wmi_result results = wmi::execute(L"SELECT * FROM Win32_PortConnector", { L"Caption" });
+        wmi_result portResults = wmi::execute(L"SELECT * FROM Win32_PortConnector", { L"Caption" });
 
         return results.empty();
 #endif
@@ -8508,11 +8411,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!WINDOWS) 
         return false;
 #else
-        if (!wmi::initialize()) {
-            core_debug("Failed to initialize WMI in vm_hdd");
-            return false;
-        }
-
         wmi_result results = wmi::execute(L"SELECT Model FROM Win32_DiskDrive", { L"Model" });
 
         for (const auto& res : results) {
@@ -8797,11 +8695,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!WINDOWS)
         return false;
 #else
-        if (!wmi::initialize()) {
-            core_debug("Failed to initialize WMI in number_of_cores");
-            return false;
-        }
-
         std::wstring query = L"SELECT NumberOfCores FROM Win32_Processor";
         std::vector<std::wstring> properties = { L"NumberOfCores" };
 
@@ -8829,11 +8722,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!WINDOWS)
         return false;
 #else
-        if (!wmi::initialize()) {
-            core_debug("Failed to initialize WMI in number_of_cores");
-            return false;
-        }
-
         std::wstring query = L"SELECT Model FROM Win32_ComputerSystem";
         std::vector<std::wstring> properties = { L"Model" };
         wmi_result results = wmi::execute(query, properties);
@@ -8859,11 +8747,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!WINDOWS)
         return false;
 #else
-        if (!wmi::initialize()) {
-            core_debug("Failed to initialize WMI in wmi_manufacturer");
-            return false;
-        }
-
         std::wstring query = L"SELECT Manufacturer FROM Win32_ComputerSystem";
         std::vector<std::wstring> properties = { L"Manufacturer" };
         wmi_result results = wmi::execute(query, properties);
@@ -8889,11 +8772,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!WINDOWS)
         return false;
 #else
-        if (!wmi::initialize()) {
-            core_debug("Failed to initialize WMI in wmi_temperature");
-            return false;
-        }
-
         std::wstring query = L"SELECT * FROM MSAcpi_ThermalZoneTemperature";
         std::vector<std::wstring> properties = { L"CurrentTemperature" };
 
@@ -8919,11 +8797,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!WINDOWS)
         return false;
 #else
-        if (!wmi::initialize()) {
-            core_debug("Failed to initialize WMI in processor_id");
-            return false;
-        }
-
         std::wstring query = L"SELECT ProcessorId FROM Win32_Processor";
         std::vector<std::wstring> properties = { L"ProcessorId" };
         wmi_result results = wmi::execute(query, properties);
@@ -8949,11 +8822,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!WINDOWS)
         return false;
 #else
-        if (!wmi::initialize()) {
-            core_debug("Failed to initialize WMI in cpu_fans");
-            return false;
-        }
-
         std::wstring query = L"SELECT * FROM Win32_Fan";
         std::vector<std::wstring> properties = { };
         wmi_result results = wmi::execute(query, properties);
@@ -9085,7 +8953,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for existence of qemu_fw_cfg directories within sys/module and /sys/firmware
      * @category Linux
-     * @note
      */
     [[nodiscard]] static bool sys_qemu_dir() {
 #if (!LINUX)
@@ -9126,7 +8993,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for QEMU string instances with lshw command
      * @category Linux
-     * @note
      */
     [[nodiscard]] static bool lshw_qemu() {
 #if (!LINUX)
@@ -9174,7 +9040,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     * @note https://medium.com/@matterpreter/hypervisor-detection-with-systemhypervisordetailinformation-26e44a57f80e
     */
     [[nodiscard]] static bool virtual_processors() {
-#if (!WINDOWS || !x86_64)
+#if (!WINDOWS)
         return false;
 #else       
         struct Registers {
@@ -9197,6 +9063,30 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         if (implementationLimits.MaxLogicalProcessors != implementationLimits.MaxVirtualProcessors) {
             return true;
+        }
+
+        return false;
+#endif
+    }
+
+
+    /*
+     * @brief Detects if the motherboard product matches the signature of a virtual machine
+     * @category Windows
+     * @author Requiem
+     */
+    [[nodiscard]] static bool motherboard_product() {
+#if (!WINDOWS)
+        return false;
+#else  
+        std::wstring query = L"SELECT Product FROM Win32_BaseBoard";
+        std::vector<std::wstring> properties = { L"Product" };
+        wmi_result results = wmi::execute(query, properties);
+
+        for (const auto& res : results) {
+            if (res.type == wmi::result_type::String && res.strValue == "Virtual Machine") {
+                return true;
+            }
         }
 
         return false;
@@ -10162,7 +10052,6 @@ public: // START OF PUBLIC FUNCTIONS
         case PARALLELS_VM: return "PARALLELS_VM";
         case QEMU_BRAND: return "QEMU_BRAND";
         case BOCHS_CPU: return "BOCHS_CPU";
-        case VPC_BOARD: return "VPC_BOARD";
         case HYPERV_WMI: return "HYPERV_WMI";
         case HYPERV_REG: return "HYPERV_REG";
         case BIOS_SERIAL: return "BIOS_SERIAL";
@@ -10180,7 +10069,6 @@ public: // START OF PUBLIC FUNCTIONS
         case OFFSEC_SIDT: return "OFFSEC_SIDT";
         case OFFSEC_SGDT: return "OFFSEC_SGDT";
         case OFFSEC_SLDT: return "OFFSEC_SLDT";
-        case HYPERV_BOARD: return "HYPERV_BOARD";
         case VPC_SIDT: return "VPC_SIDT";
         case VMWARE_IOMEM: return "VMWARE_IOMEM";
         case VMWARE_IOPORTS: return "VMWARE_IOPORTS";
@@ -10240,10 +10128,14 @@ public: // START OF PUBLIC FUNCTIONS
         case WMI_TEMPERATURE: return "WMI_TEMPERATURE";
         case PROCESSOR_ID: return "PROCESSOR_ID";
         case CPU_FANS: return "CPU_FANS";
+        case POWER_CAPABILITIES: return "POWER_CAPABILITIES";
+        case SETUPAPI_DISK: return "SETUPAPI_DISK";
         case VMWARE_HARDENER: return "VMWARE_HARDENER_LOADER";
         case SYS_QEMU: return "SYS_QEMU";
         case LSHW_QEMU: return "LSHW_QEMU";
         case VIRTUAL_PROCESSORS: return "VIRTUAL_PROCESSORS";
+        case MOTHERBOARD_PRODUCT: return "MOTHERBOARD_PRODUCT";
+
             // ADD NEW CASE HERE FOR NEW TECHNIQUE
         default: return "Unknown flag";
         }
@@ -10340,7 +10232,6 @@ public: // START OF PUBLIC FUNCTIONS
             { brands::AZURE_HYPERV, "Hypervisor (type 1)" },
             { brands::NANOVISOR, "Hypervisor (type 1)" },
             { brands::KVM, "Hypervisor (type 1)" },
-            { brands::BHYVE, "Hypervisor (type 1)" },
             { brands::KVM_HYPERV, "Hypervisor (type 1)" },
             { brands::QEMU_KVM_HYPERV, "Hypervisor (type 1)" },
             { brands::QEMU_KVM, "Hypervisor (type 1)" },
@@ -10354,6 +10245,7 @@ public: // START OF PUBLIC FUNCTIONS
             { brands::AWS_NITRO, "Hypervisor (type 1)" },
 
             // type 2
+            { brands::BHYVE, "Hypervisor (type 2)" },
             { brands::VBOX, "Hypervisor (type 2)" },
             { brands::VMWARE, "Hypervisor (type 2)" },
             { brands::VMWARE_EXPRESS, "Hypervisor (type 2)" },
@@ -10694,94 +10586,93 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::DISK_SIZE, { 60, VM::disk_size, false } },
     { VM::VBOX_DEFAULT, { 25, VM::vbox_default_specs, false } },
     { VM::VBOX_NETWORK, { 100, VM::vbox_network_share, false } },
-        { VM::VM_PROCESSES, { 15, VM::vm_processes, true } },
-        { VM::LINUX_USER_HOST, { 10, VM::linux_user_host, true } },
-        { VM::GAMARUE, { 10, VM::gamarue, true } },
-        { VM::VMID_0X4, { 100, VM::vmid_0x4, false } },
-        { VM::PARALLELS_VM, { 50, VM::parallels, false } },
-        { VM::QEMU_BRAND, { 100, VM::cpu_brand_qemu, false } },
-        { VM::BOCHS_CPU, { 100, VM::bochs_cpu, false } },
-        { VM::VPC_BOARD, { 25, VM::vpc_board, false } },
-        { VM::BIOS_SERIAL, { 60, VM::bios_serial, false } },
-        { VM::MSSMBIOS, { 75, VM::mssmbios, false } },
-        { VM::MAC_MEMSIZE, { 15, VM::hw_memsize, true } },
-        { VM::MAC_IOKIT, { 40, VM::io_kit, true } },
-        { VM::IOREG_GREP, { 30, VM::ioreg_grep, true } },
-        { VM::MAC_SIP, { 40, VM::mac_sip, true } },
-        { VM::HKLM_REGISTRIES, { 25, VM::hklm_registries, true } },
-        { VM::QEMU_GA, { 10, VM::qemu_ga, true } },
-        { VM::VPC_INVALID, { 75, VM::vpc_invalid, false } },
-        { VM::SIDT, { 25, VM::sidt, false } },
-        { VM::SGDT, { 30, VM::sgdt, false } },
-        { VM::SLDT, { 15, VM::sldt, false } },
-        { VM::OFFSEC_SIDT, { 60, VM::offsec_sidt, false } },
-        { VM::OFFSEC_SGDT, { 60, VM::offsec_sgdt, false } },
-        { VM::OFFSEC_SLDT, { 20, VM::offsec_sldt, false } },
-        { VM::VPC_SIDT, { 15, VM::vpc_sidt, false } },
-        { VM::HYPERV_BOARD, { 100, VM::hyperv_board, false } },
-        { VM::VMWARE_IOMEM, { 65, VM::vmware_iomem, false } },
-        { VM::VMWARE_IOPORTS, { 70, VM::vmware_ioports, false } },
-        { VM::VMWARE_SCSI, { 40, VM::vmware_scsi, false } },
-        { VM::VMWARE_DMESG, { 65, VM::vmware_dmesg, false } },
-        { VM::VMWARE_STR, { 35, VM::vmware_str, false } },
-        { VM::VMWARE_BACKDOOR, { 100, VM::vmware_backdoor, false } },
-        { VM::VMWARE_PORT_MEM, { 85, VM::vmware_port_memory, false } },
-        { VM::SMSW, { 30, VM::smsw, false } },
-        { VM::MUTEX, { 85, VM::mutex, false } },
-        { VM::ODD_CPU_THREADS, { 80, VM::odd_cpu_threads, false } },
-        { VM::INTEL_THREAD_MISMATCH, { 50, VM::intel_thread_mismatch, false } },
-        { VM::XEON_THREAD_MISMATCH, { 85, VM::xeon_thread_mismatch, false } },
-        { VM::NETTITUDE_VM_MEMORY, { 100, VM::nettitude_vm_memory, false } },
-        { VM::CPUID_BITSET, { 25, VM::cpuid_bitset, false } },
-        { VM::CUCKOO_DIR, { 30, VM::cuckoo_dir, true } },
-        { VM::CUCKOO_PIPE, { 30, VM::cuckoo_pipe, true } },
-        { VM::HYPERV_HOSTNAME, { 30, VM::hyperv_hostname, true } },
-        { VM::GENERAL_HOSTNAME, { 10, VM::general_hostname, true } },
-        { VM::SCREEN_RESOLUTION, { 20, VM::screen_resolution, false } },
-        { VM::DEVICE_STRING, { 25, VM::device_string, false } },
-        { VM::BLUESTACKS_FOLDERS, { 5, VM::bluestacks, true } },
-        { VM::CPUID_SIGNATURE, { 95, VM::cpuid_signature, false } },
-        { VM::HYPERV_BITMASK, { 20, VM::hyperv_bitmask, false } },
-        { VM::KVM_BITMASK, { 40, VM::kvm_bitmask, false } },
-        { VM::KGT_SIGNATURE, { 80, VM::intel_kgt_signature, false } },
-        { VM::VMWARE_DMI, { 40, VM::vmware_dmi, false } },
-        { VM::VMWARE_EVENT_LOGS, { 25, VM::vmware_event_logs, false } },
-        { VM::QEMU_VIRTUAL_DMI, { 40, VM::qemu_virtual_dmi, false } },
-        { VM::QEMU_USB, { 20, VM::qemu_USB, false } },
-        { VM::HYPERVISOR_DIR, { 20, VM::hypervisor_dir, false } },
-        { VM::UML_CPU, { 80, VM::uml_cpu, false } },
-        { VM::KMSG, { 5, VM::kmsg, true } },
-        { VM::VM_PROCS, { 10, VM::vm_procs, true } },
-        { VM::VBOX_MODULE, { 15, VM::vbox_module, false } },
-        { VM::SYSINFO_PROC, { 15, VM::sysinfo_proc, false } },
-        { VM::DEVICE_TREE, { 20, VM::device_tree, false } },
-        { VM::DMI_SCAN, { 50, VM::dmi_scan, false } },
-        { VM::SMBIOS_VM_BIT, { 50, VM::smbios_vm_bit, false } },
-        { VM::PODMAN_FILE, { 5, VM::podman_file, true } },
-        { VM::WSL_PROC, { 30, VM::wsl_proc_subdir, false } },
-        { VM::GPU_CHIPTYPE, { 100, VM::gpu_chiptype, false } },
-        { VM::DRIVER_NAMES, { 80, VM::driver_names, false } },
-        { VM::VM_SIDT, { 100, VM::vm_sidt, false } },
-        { VM::HDD_SERIAL, { 100, VM::hdd_serial_number, false } },
-        { VM::PORT_CONNECTORS, { 15, VM::port_connectors, false } },
-        { VM::VM_HDD, { 90, VM::vm_hdd, false } },
-        { VM::ACPI_DETECT, { 85, VM::acpi_detect, false } },
-        { VM::GPU_NAME, { 100, VM::vm_gpu, false } },
-        { VM::VM_DEVICES, { 45, VM::vm_devices, true } },
-        { VM::VMWARE_MEMORY, { 50, VM::vmware_memory, false } },
-        { VM::IDT_GDT_MISMATCH, { 50, VM::idt_gdt_mismatch, false } },
-        { VM::PROCESSOR_NUMBER, { 25, VM::processor_number, false } },
-        { VM::NUMBER_OF_CORES, { 50, VM::number_of_cores, false } },
-        { VM::WMI_MODEL, { 100, VM::wmi_model, false } },
-        { VM::WMI_MANUFACTURER, { 100, VM::wmi_manufacturer, false } },
-        { VM::WMI_TEMPERATURE, { 25, VM::wmi_temperature, false } },
-        { VM::PROCESSOR_ID, { 25, VM::processor_id, false } },
-        { VM::CPU_FANS, { 35, VM::cpu_fans, false } },
-        { VM::VMWARE_HARDENER, { 60, VM::vmware_hardener, false } },
-        { VM::SYS_QEMU, { 70, VM::sys_qemu_dir, false } },
-        { VM::LSHW_QEMU, { 80, VM::lshw_qemu, false } },
-        { VM::VIRTUAL_PROCESSORS, { 35, VM::virtual_processors, false } },
-        // ADD NEW TECHNIQUE STRUCTURE HERE
+    { VM::VM_PROCESSES, { 15, VM::vm_processes, true } },
+    { VM::LINUX_USER_HOST, { 10, VM::linux_user_host, true } },
+    { VM::GAMARUE, { 10, VM::gamarue, true } },
+    { VM::VMID_0X4, { 100, VM::vmid_0x4, false } },
+    { VM::PARALLELS_VM, { 50, VM::parallels, false } },
+    { VM::QEMU_BRAND, { 100, VM::cpu_brand_qemu, false } },
+    { VM::BOCHS_CPU, { 100, VM::bochs_cpu, false } },
+    { VM::BIOS_SERIAL, { 60, VM::bios_serial, false } },
+    { VM::MSSMBIOS, { 75, VM::mssmbios, false } },
+    { VM::MAC_MEMSIZE, { 15, VM::hw_memsize, true } },
+    { VM::MAC_IOKIT, { 40, VM::io_kit, true } },
+    { VM::IOREG_GREP, { 30, VM::ioreg_grep, true } },
+    { VM::MAC_SIP, { 40, VM::mac_sip, true } },
+    { VM::HKLM_REGISTRIES, { 25, VM::hklm_registries, true } },
+    { VM::QEMU_GA, { 10, VM::qemu_ga, true } },
+    { VM::VPC_INVALID, { 75, VM::vpc_invalid, false } },
+    { VM::SIDT, { 25, VM::sidt, false } },
+    { VM::SGDT, { 30, VM::sgdt, false } },
+    { VM::SLDT, { 15, VM::sldt, false } },
+    { VM::OFFSEC_SIDT, { 60, VM::offsec_sidt, false } },
+    { VM::OFFSEC_SGDT, { 60, VM::offsec_sgdt, false } },
+    { VM::OFFSEC_SLDT, { 20, VM::offsec_sldt, false } },
+    { VM::VPC_SIDT, { 15, VM::vpc_sidt, false } },
+    { VM::VMWARE_IOMEM, { 65, VM::vmware_iomem, false } },
+    { VM::VMWARE_IOPORTS, { 70, VM::vmware_ioports, false } },
+    { VM::VMWARE_SCSI, { 40, VM::vmware_scsi, false } },
+    { VM::VMWARE_DMESG, { 65, VM::vmware_dmesg, false } },
+    { VM::VMWARE_STR, { 35, VM::vmware_str, false } },
+    { VM::VMWARE_BACKDOOR, { 100, VM::vmware_backdoor, false } },
+    { VM::VMWARE_PORT_MEM, { 85, VM::vmware_port_memory, false } },
+    { VM::SMSW, { 30, VM::smsw, false } },
+    { VM::MUTEX, { 85, VM::mutex, false } },
+    { VM::ODD_CPU_THREADS, { 80, VM::odd_cpu_threads, false } },
+    { VM::INTEL_THREAD_MISMATCH, { 50, VM::intel_thread_mismatch, false } },
+    { VM::XEON_THREAD_MISMATCH, { 85, VM::xeon_thread_mismatch, false } },
+    { VM::NETTITUDE_VM_MEMORY, { 100, VM::nettitude_vm_memory, false } },
+    { VM::CPUID_BITSET, { 25, VM::cpuid_bitset, false } },
+    { VM::CUCKOO_DIR, { 30, VM::cuckoo_dir, true } },
+    { VM::CUCKOO_PIPE, { 30, VM::cuckoo_pipe, true } },
+    { VM::HYPERV_HOSTNAME, { 30, VM::hyperv_hostname, true } },
+    { VM::GENERAL_HOSTNAME, { 10, VM::general_hostname, true } },
+    { VM::SCREEN_RESOLUTION, { 20, VM::screen_resolution, false } },
+    { VM::DEVICE_STRING, { 25, VM::device_string, false } },
+    { VM::BLUESTACKS_FOLDERS, { 5, VM::bluestacks, true } },
+    { VM::CPUID_SIGNATURE, { 95, VM::cpuid_signature, false } },
+    { VM::HYPERV_BITMASK, { 20, VM::hyperv_bitmask, false } },
+    { VM::KVM_BITMASK, { 40, VM::kvm_bitmask, false } },
+    { VM::KGT_SIGNATURE, { 80, VM::intel_kgt_signature, false } },
+    { VM::VMWARE_DMI, { 40, VM::vmware_dmi, false } },
+    { VM::VMWARE_EVENT_LOGS, { 25, VM::vmware_event_logs, false } },
+    { VM::QEMU_VIRTUAL_DMI, { 40, VM::qemu_virtual_dmi, false } },
+    { VM::QEMU_USB, { 20, VM::qemu_USB, false } },
+    { VM::HYPERVISOR_DIR, { 20, VM::hypervisor_dir, false } },
+    { VM::UML_CPU, { 80, VM::uml_cpu, false } },
+    { VM::KMSG, { 5, VM::kmsg, true } },
+    { VM::VM_PROCS, { 10, VM::vm_procs, true } },
+    { VM::VBOX_MODULE, { 15, VM::vbox_module, false } },
+    { VM::SYSINFO_PROC, { 15, VM::sysinfo_proc, false } },
+    { VM::DEVICE_TREE, { 20, VM::device_tree, false } },
+    { VM::DMI_SCAN, { 50, VM::dmi_scan, false } },
+    { VM::SMBIOS_VM_BIT, { 50, VM::smbios_vm_bit, false } },
+    { VM::PODMAN_FILE, { 5, VM::podman_file, true } },
+    { VM::WSL_PROC, { 30, VM::wsl_proc_subdir, false } },
+    { VM::GPU_CHIPTYPE, { 100, VM::gpu_chiptype, false } },
+    { VM::DRIVER_NAMES, { 80, VM::driver_names, false } },
+    { VM::VM_SIDT, { 100, VM::vm_sidt, false } },
+    { VM::HDD_SERIAL, { 100, VM::hdd_serial_number, false } },
+    { VM::PORT_CONNECTORS, { 10, VM::port_connectors, false } },
+    { VM::VM_HDD, { 90, VM::vm_hdd, false } },
+    { VM::ACPI_DETECT, { 85, VM::acpi_detect, false } },
+    { VM::GPU_NAME, { 100, VM::vm_gpu, false } },
+    { VM::VM_DEVICES, { 45, VM::vm_devices, true } },
+    { VM::VMWARE_MEMORY, { 50, VM::vmware_memory, false } },
+    { VM::IDT_GDT_MISMATCH, { 50, VM::idt_gdt_mismatch, false } },
+    { VM::PROCESSOR_NUMBER, { 25, VM::processor_number, false } },
+    { VM::NUMBER_OF_CORES, { 50, VM::number_of_cores, false } },
+    { VM::WMI_MODEL, { 100, VM::wmi_model, false } },
+    { VM::WMI_MANUFACTURER, { 100, VM::wmi_manufacturer, false } },
+    { VM::WMI_TEMPERATURE, { 25, VM::wmi_temperature, false } },
+    { VM::PROCESSOR_ID, { 25, VM::processor_id, false } },
+    { VM::CPU_FANS, { 35, VM::cpu_fans, false } },
+    { VM::VMWARE_HARDENER, { 60, VM::vmware_hardener, false } },
+    { VM::SYS_QEMU, { 70, VM::sys_qemu_dir, false } },
+    { VM::LSHW_QEMU, { 80, VM::lshw_qemu, false } },
+    { VM::VIRTUAL_PROCESSORS, { 35, VM::virtual_processors, false } },
+    { VM::MOTHERBOARD_PRODUCT, { 25, VM::motherboard_product, false } },
+    // ADD NEW TECHNIQUE STRUCTURE HERE
 };
 
 
