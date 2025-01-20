@@ -348,9 +348,6 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::DMESG` | Check if dmesg output matches a VM brand | Linux | 55% | Admin |  |  |  |
 | `VM::HWMON` | Check if /sys/class/hwmon/ directory is present. If not, likely a VM | Linux | 75% |  |  |  |  |
 | `VM::SIDT5` | Check if the 5th byte after sidt is null | Linux | 45% |  |  |  |  |
-| `VM::VMWARE_REG` | Check for VBox RdrDN | Windows | 65% |  |  |  |  |
-| `VM::VBOX_REG` | Look for any VirtualBox-specific registry data | Windows | 65% |  |  |  |  |
-| `VM::USER` | checks for default usernames, often a sign of a VM | Windows | 35% |  |  |  |  |
 | `VM::DLL` | Check for VM-specific DLLs | Windows | 50% |  |  |  |  |
 | `VM::REGISTRY` |  Check for VM-specific registry values | Windows | 75% |  |  |  |  |
 | `VM::VM_FILES` | Find for VMware and VBox specific files | Windows | 10% |  |  |  |  |
@@ -361,10 +358,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::COMPUTER_NAME` | Check if the computer name (not username to be clear) is VM-specific | Windows | 40% |  | GPL |  |  |
 | `VM::WINE_CHECK` | Check wine_get_unix_file_name file for Wine | Windows | 85% |  | GPL |  |  |
 | `VM::HOSTNAME` | Check if hostname is specific | Windows | 25% |  | GPL |  |  |
-| `VM::VBOX_WINDOW_CLASS` | Check for the window class for VirtualBox | Windows | 10% |  | GPL |  |  |
 | `VM::LOADED_DLLS` | Check for loaded DLLs in the process | Windows | 75% |  | GPL |  |  |
-| `VM::KVM_REG` | Check for KVM-specific registry strings | Windows | 75% |  | GPL |  |  |
-| `VM::KVM_DRIVERS` | Check for KVM-specific .sys files in system driver directory | Windows | 55% |  | GPL |  |  |
 | `VM::KVM_DIRS` | Check for KVM directory "Virtio-Win" | Windows | 55% |  | GPL |  |  |
 | `VM::AUDIO` | Check if audio device is present | Windows | 35% |  | GPL |  |  |
 | `VM::QEMU_DIR` | Check for QEMU-specific blacklisted directories | Windows | 45% |  | GPL |  |  |
@@ -387,9 +381,6 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::MAC_SIP` | Check if System Integrity Protection is disabled (likely a VM if it is) | MacOS | 85% |  |  |  |  |
 | `VM::HKLM_REGISTRIES` | Check HKLM registries for specific VM strings | Windows | 70% |  |  |  |  |
 | `VM::QEMU_GA` | Check for "qemu-ga" process | Linux | 20% |  |  |  |  |
-| `VM::VALID_MSR` | check for valid MSR value 0x40000000 | Windows | 35% |  |  |  |  |
-| `VM::QEMU_PROC` | Check for QEMU processes | Windows | 30% |  |  |  |  |
-| `VM::VPC_PROC` | Check for VPC processes | Windows | 30% |  |  |  |  |
 | `VM::VPC_INVALID` | Check for official VPC method | Windows | 75% |  |  | 32-bit |  |
 | `VM::SIDT` | Check for sidt instruction method | Linux, Windows | 30% |  |  |  |  |
 | `VM::SGDT` | Check for sgdt instruction method | Windows | 30% |  |  | 32-bit |  |
@@ -398,7 +389,6 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::OFFSEC_SGDT` | Check for Offensive Security SGDT method | Windows | 60% |  |  | 32-bit |  |
 | `VM::OFFSEC_SLDT` | Check for Offensive Security SLDT method | Windows | 20% |  |  | 32-bit |  |
 | `VM::HYPERV_BOARD` | Check for Hyper-V specific string in motherboard | Windows | 45% |  |  |  |  |
-| `VM::VM_FILES_EXTRA` | Check for VPC and Parallels files | Windows | 70% |  |  |  |  |
 | `VM::VPC_SIDT` | Check for sidt method with VPC's 0xE8XXXXXX range | Windows | 15% |  |  | 32-bit |  |
 | `VM::VMWARE_IOMEM` | Check for VMware string in /proc/iomem | Linux | 65% |  |  |  |  |
 | `VM::VMWARE_IOPORTS` | Check for VMware string in /proc/ioports | Linux | 70% |  |  |  |  |
@@ -409,7 +399,6 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::VMWARE_PORT_MEM` | Check for VMware memory using IO port backdoor | Windows | 85% |  |  | 32-bit |  |
 | `VM::SMSW` | Check for SMSW assembly instruction technique | Windows | 30% |  |  | 32-bit |  |
 | `VM::MUTEX` | Check for mutex strings of VM brands | Windows | 85% |  |  |  |  |
-| `VM::UPTIME` | Check if uptime is less than or equal to 2 minutes |  | 10% |  |  |  |  |
 | `VM::ODD_CPU_THREADS` | Check for odd CPU threads, usually a sign of modification through VM setting because 99% of CPUs have even numbers of threads |  | 80% |  |  |  |  |
 | `VM::INTEL_THREAD_MISMATCH` | Check for Intel CPU thread count database if it matches the system's thread count |  | 60% |  |  |  |  |
 | `VM::XEON_THREAD_MISMATCH` | Same as above, but for Xeon Intel CPUs |  | 85% |  |  |  |  |
@@ -427,7 +416,6 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::KVM_BITMASK` | Check for KVM CPUID bitmask range for reserved values |  | 40% |  |  |  |  |
 | `VM::KGT_SIGNATURE` | Check for Intel KGT (Trusty branch) hypervisor signature in CPUID |  | 80% |  |  |  |  |
 | `VM::VMWARE_DMI` | Check for VMware DMI strings in BIOS serial number | Windows | 30% |  |  |  |  |
-| `VM::HYPERV_EVENT_LOGS` | Check for presence of Hyper-V in the Windows Event Logs | Windows | 30% |  |  |  |  |
 | `VM::VMWARE_EVENT_LOGS` | Check for presence of VMware in the Windows Event Logs | Windows | 25% |  |  |  |  |
 | `VM::QEMU_VIRTUAL_DMI` | Check for presence of QEMU in the /sys/devices/virtual/dmi/id directory | Linux | 40% |  |  |  |  |
 | `VM::QEMU_USB` | Check for presence of QEMU in the /sys/kernel/debug/usb/devices directory | Linux | 20% |  |  |  |  |
@@ -452,7 +440,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::VM_HDD` | Check for QEMU keyword in HDD model | Windows | 75% |  |  |  |  |
 | `VM::ACPI_DETECT` | Check for Hyper-V string in ACPI data | Windows | 85% |  |  |  |  |
 | `VM::GPU_NAME` | Check for VM specific device names in GPUs | Windows | 100% |  |  |  |  |
-| `VM::VMWARE_DEVICES` | Check for VMware-specific devices | Windows | 45% |  |  |  |  |
+| `VM::VM_DEVICES` | Check for VM-specific devices | Windows | 45% |  |  |  |  |
 | `VM::VMWARE_MEMORY` | Check for VMware-specific memory traces in certain processes | Windows | 50% |  |  |  |  |
 | `VM::IDT_GDT_MISMATCH` | Check if the IDT and GDT limit addresses mismatch between different CPU cores | Windows | 25% |  |  |  |  |
 | `VM::PROCESSOR_NUMBER` | Check for number of processors | Windows | 25% |  |  |  |  |
@@ -468,6 +456,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::WMI_QUERIES` | Executes generic WMI queries that always return more than 0 entries in physical machines and checks if any query returns zero entries | Windows | 50% |  | GPL |  |  |
 | `VM::SYS_QEMU` | Check for existence of "qemu_fw_cfg" directories within /sys/module and /sys/firmware | Linux | 70% |  |  |  |  |
 | `VM::LSHW_QEMU` | Check for QEMU string instances with lshw command | Linux | 80% |  |  |  |  |
+| `VM::VIRTUAL_PROCESSORS` | Checks if the number of maximum virtual processors matches the maximum number of logical processors | Windows | 35% |  |  |  |  |
 <!-- ADD DETAILS HERE -->
 
 <br>

@@ -349,7 +349,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::VMWARE_IOPORTS:
             case VM::VMWARE_SCSI:
             case VM::VMWARE_DMESG:
-            case VM::UPTIME:
             case VM::ODD_CPU_THREADS:
             case VM::INTEL_THREAD_MISMATCH:
             case VM::XEON_THREAD_MISMATCH:
@@ -392,9 +391,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::RDTSC:
             case VM::THREADCOUNT:
             case VM::MAC:
-            case VM::VMWARE_REG:
-            case VM::VBOX_REG:
-            case VM::USER:
             case VM::DLL:
             case VM::REGISTRY:
             case VM::VM_FILES:
@@ -403,10 +399,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::COMPUTER_NAME:
             case VM::WINE_CHECK:
             case VM::HOSTNAME:
-            case VM::VBOX_WINDOW_CLASS:
             case VM::LOADED_DLLS:
-            case VM::KVM_REG:
-            case VM::KVM_DRIVERS:
             case VM::KVM_DIRS:
             case VM::AUDIO:
             case VM::QEMU_DIR:
@@ -422,9 +415,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::BIOS_SERIAL:
             case VM::MSSMBIOS:
             case VM::HKLM_REGISTRIES:
-            case VM::VALID_MSR:
-            case VM::QEMU_PROC:
-            case VM::VPC_PROC:
             case VM::VPC_INVALID:
             case VM::SIDT:
             case VM::SGDT:
@@ -433,14 +423,12 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::OFFSEC_SGDT:
             case VM::OFFSEC_SLDT:
             case VM::HYPERV_BOARD:
-            case VM::VM_FILES_EXTRA:
             case VM::VPC_SIDT:
             case VM::VMWARE_STR:
             case VM::VMWARE_BACKDOOR:
             case VM::VMWARE_PORT_MEM:
             case VM::SMSW:
             case VM::MUTEX:
-            case VM::UPTIME:
             case VM::ODD_CPU_THREADS:
             case VM::INTEL_THREAD_MISMATCH:
             case VM::XEON_THREAD_MISMATCH:
@@ -457,7 +445,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::KVM_BITMASK:
             case VM::KGT_SIGNATURE:
             case VM::VMWARE_DMI:
-            case VM::HYPERV_EVENT_LOGS:
             case VM::VMWARE_EVENT_LOGS:
             case VM::GPU_CHIPTYPE:
             case VM::DRIVER_NAMES:
@@ -467,7 +454,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::VM_HDD:
             case VM::ACPI_DETECT:
             case VM::GPU_NAME:
-            case VM::VMWARE_DEVICES:
             case VM::VMWARE_MEMORY:
             case VM::IDT_GDT_MISMATCH:
             case VM::PROCESSOR_NUMBER:
@@ -480,7 +466,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::POWER_CAPABILITIES:
             case VM::SETUPAPI_DISK: 
             case VM::VMWARE_HARDENER:
-            case VM::WMI_QUERIES:
             // ADD WINDOWS FLAG
             return false;
             default: return true;
@@ -504,7 +489,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::MAC_IOKIT:
             case VM::IOREG_GREP:
             case VM::MAC_SIP:
-            case VM::UPTIME:
             case VM::ODD_CPU_THREADS:
             case VM::INTEL_THREAD_MISMATCH:
             case VM::XEON_THREAD_MISMATCH:
@@ -883,9 +867,6 @@ void general() {
     checker(VM::DMIDECODE, "dmidecode output");
     checker(VM::DMESG, "dmesg output");
     checker(VM::HWMON, "hwmon presence");
-    checker(VM::VMWARE_REG, "VMware registry");
-    checker(VM::VBOX_REG, "VBox registry");
-    checker(VM::USER, "users");
     checker(VM::DLL, "DLLs");
     checker(VM::REGISTRY, "registry");
     checker(VM::WINE_CHECK, "Wine");
@@ -898,7 +879,6 @@ void general() {
     checker(VM::HOSTNAME, "hostname");
     checker(VM::VM_PROCESSES, "VM processes");
     checker(VM::LINUX_USER_HOST, "default Linux user/host");
-    checker(VM::VBOX_WINDOW_CLASS, "VBox window class");
     checker(VM::GAMARUE, "gamarue ransomware technique");
     checker(VM::VMID_0X4, "0x4 leaf of VMID");
     checker(VM::PARALLELS_VM, "Parallels techniques");
@@ -912,16 +892,11 @@ void general() {
     checker(VM::MAC_IOKIT, "MacOS registry IO-kit");
     checker(VM::IOREG_GREP, "IO registry grep");
     checker(VM::MAC_SIP, "MacOS SIP");
-    checker(VM::KVM_REG, "KVM registries");
-    checker(VM::KVM_DRIVERS, "KVM drivers");
     checker(VM::KVM_DIRS, "KVM directories");
     checker(VM::HKLM_REGISTRIES, "HKLM registries");
-    checker(VM::AUDIO, "Audio device");
+    checker(VM::AUDIO, "audio device");
     checker(VM::QEMU_GA, "qemu-ga process");
-    checker(VM::VALID_MSR, "MSR validity");
-    checker(VM::QEMU_PROC, "QEMU processes");
     checker(VM::QEMU_DIR, "QEMU directories");
-    checker(VM::VPC_PROC, "VPC processes");
     checker(VM::VPC_INVALID, "VPC invalid instructions");
     checker(VM::SIDT, "SIDT");
     checker(VM::SGDT, "SGDT");
@@ -931,7 +906,6 @@ void general() {
     checker(VM::OFFSEC_SLDT, "Offensive Security SLDT");
     checker(VM::VPC_SIDT, "VirtualPC SIDT");
     checker(VM::HYPERV_BOARD, "Hyper-V motherboard");
-    checker(VM::VM_FILES_EXTRA, "Extra VM files");
     checker(VM::VMWARE_IOMEM, "/proc/iomem file");
     checker(VM::VMWARE_IOPORTS, "/proc/ioports file");
     checker(VM::VMWARE_SCSI, "/proc/scsi/scsi file");
@@ -941,7 +915,6 @@ void general() {
     checker(VM::VMWARE_PORT_MEM, "VMware port memory");
     checker(VM::SMSW, "SMSW instruction");
     checker(VM::MUTEX, "mutex strings");
-    checker(VM::UPTIME, "uptime");
     checker(VM::ODD_CPU_THREADS, "unusual thread count");
     checker(VM::INTEL_THREAD_MISMATCH, "Intel thread count mismatch");
     checker(VM::XEON_THREAD_MISMATCH, "Intel Xeon thread count mismatch");
@@ -959,7 +932,6 @@ void general() {
     checker(VM::KVM_BITMASK, "KVM CPUID reserved bitmask");
     checker(VM::KGT_SIGNATURE, "Intel KGT signature");
     checker(VM::VMWARE_DMI, "VMware DMI");
-    checker(VM::HYPERV_EVENT_LOGS, "Hyper-V event logs");
     checker(VM::VMWARE_EVENT_LOGS, "VMware event logs");
     checker(VM::QEMU_VIRTUAL_DMI, "QEMU virtual DMI directory");
     checker(VM::QEMU_USB, "QEMU USB");
@@ -984,22 +956,21 @@ void general() {
     checker(VM::VM_HDD, "VM keywords in HDD model");
     checker(VM::ACPI_DETECT, "ACPI Hyper-V");
     checker(VM::GPU_NAME, "GPU name");
-    checker(VM::VMWARE_DEVICES, "VMware devices");
     checker(VM::VMWARE_MEMORY, "VM memory traces");
     checker(VM::IDT_GDT_MISMATCH, "IDT GDT mismatch");
     checker(VM::PROCESSOR_NUMBER, "Processor count");
     checker(VM::NUMBER_OF_CORES, "CPU core count");
-    checker(VM::WMI_MODEL, "Hardware model");
+    checker(VM::WMI_MODEL, "hardware model");
     checker(VM::WMI_MANUFACTURER, "Hardware manufacturer");
     checker(VM::WMI_TEMPERATURE, "WMI temperature");
     checker(VM::PROCESSOR_ID, "Processor ID");
     checker(VM::CPU_FANS, "CPU fans");
     checker(VM::POWER_CAPABILITIES, "Power capabilities");
     checker(VM::SETUPAPI_DISK, "SETUPDI diskdrive");
-    checker(VM::VMWARE_HARDENER, "VMWARE HARDENER");
-    checker(VM::WMI_QUERIES, "WMI QUERIES");
+    checker(VM::VMWARE_HARDENER, "VMware hardener");
 	checker(VM::SYS_QEMU, "QEMU in /sys");
 	checker(VM::LSHW_QEMU, "QEMU in lshw output");
+    checker(VM::VIRTUAL_PROCESSORS, "virtual processors");
     // ADD NEW TECHNIQUE CHECKER HERE
 
     std::printf("\n");

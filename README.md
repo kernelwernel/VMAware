@@ -4,7 +4,7 @@
 <img align="center" src="https://img.shields.io/github/actions/workflow/status/kernelwernel/VMAware/cmake-multi-platform.yml">
 <img align="center" src="https://img.shields.io/github/downloads/kernelwernel/VMAware/total">
 <img align="center" src="https://img.shields.io/github/license/a0rtega/pafish">
-<img align="center" src="https://img.shields.io/github/license/kernelwernel/Tourneys-bot">
+<img align="center" src="https://img.shields.io/github/license/kernelwernel/auto-stuff">
 </p>
 
 **VMAware** (VM + Aware) is a cross-platform C++ library for virtual machine detection.
@@ -14,7 +14,7 @@
 The library is:
 - Very easy to use
 - Cross-platform (Windows + MacOS + Linux)
-- Features up to 130+ unique VM detection techniques [[list](https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#flag-table)]
+- Features up to 120+ unique VM detection techniques [[list](https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#flag-table)]
 - Features the most cutting-edge techniques
 - Able to detect 50+ VM brands including VMware, VirtualBox, QEMU, Hyper-V, and much more [[list](https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#brand-table)]
 - Able to beat certain [VM hardeners](https://github.com/hzqst/VmwareHardenedLoader)
