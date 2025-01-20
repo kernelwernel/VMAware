@@ -287,4 +287,7 @@ And if you found this project useful, a star would be appreciated :)
 ## Legal 📜
 I am not responsible nor liable for any damage you cause through any malicious usage of this project. 
 
-License: GPL-3.0/MIT
+<p>
+<img src="assets/metrics_license.svg" title="VMAware license">
+<br>
+</p>

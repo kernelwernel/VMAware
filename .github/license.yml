@@ -1,0 +1,8 @@
+name: Licenses and permissions
+with:
+  filename: metrics_license.svg
+  token: ${{ secrets.METRICS_TOKEN }}
+  base: ""
+  template: repository
+  repo: VMAware
+  plugin_licenses: yes
