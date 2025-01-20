@@ -25,13 +25,13 @@
  *
  * ================================ SECTIONS ==================================
  * - enums for publicly accessible techniques  => line 327
- * - struct for internal cpu operations        => line 601
- * - struct for internal memoization           => line 1061
- * - struct for internal utility functions     => line 1444
- * - struct for internal core components       => line 9586
- * - start of internal VM detection techniques => line 3040
- * - start of public VM detection functions    => line 9984
- * - start of externally defined variables     => line 10854
+ * - struct for internal cpu operations        => line 499
+ * - struct for internal memoization           => line 1059
+ * - struct for internal utility functions     => line 1431
+ * - struct for internal core components       => line 9453
+ * - start of internal VM detection techniques => line 2990
+ * - start of public VM detection functions    => line 9851
+ * - start of externally defined variables     => line 10720
  *
  *
  * ================================ EXAMPLE ==================================
@@ -364,7 +364,6 @@ public:
         PARALLELS_VM,
         QEMU_BRAND,
         BOCHS_CPU,
-        VPC_BOARD,
         HYPERV_WMI,
         HYPERV_REG,
         BIOS_SERIAL,
@@ -382,7 +381,6 @@ public:
         OFFSEC_SIDT,
         OFFSEC_SGDT,
         OFFSEC_SLDT,
-        HYPERV_BOARD,
         VPC_SIDT,
         VMWARE_IOMEM,
         VMWARE_IOPORTS,
@@ -446,6 +444,7 @@ public:
         SYS_QEMU,
         LSHW_QEMU,
         VIRTUAL_PROCESSORS,
+        MOTHERBOARD_PRODUCT,
         // ADD NEW TECHNIQUE ENUM NAME HERE
 
         // start of settings technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
@@ -1268,7 +1267,6 @@ public:
                 return memo::wmi::fetch();
             }
 
-            // this will clean up wmi when the program terminates
             std::atexit(wmi::cleanup);
 
             if (pSvc != nullptr) {
@@ -1277,80 +1275,70 @@ public:
             }
 
             HRESULT hres = CoInitializeEx(0, COINIT_MULTITHREADED);
+            bool shouldUninitialize = false;
+
             if (FAILED(hres)) {
-                debug("wmi: Failed to initialize COM library. Error code = ", hres);
-                memo::wmi::store(false);
-                return false;
+                if (hres == RPC_E_CHANGED_MODE) {
+                    debug("wmi: COM already initialized with a different mode, continuing...");
+                }
+                else {
+                    debug("wmi: Failed to initialize COM library. Error code = ", hres);
+                    memo::wmi::store(false);
+                    return false;
+                }
+            }
+            else {
+                shouldUninitialize = true;
             }
 
             hres = CoInitializeSecurity(
-                NULL,
-                -1,
-                NULL,
-                NULL,
+                NULL, -1, NULL, NULL,
                 RPC_C_AUTHN_LEVEL_DEFAULT,
                 RPC_C_IMP_LEVEL_IMPERSONATE,
-                NULL,
-                EOAC_NONE,
-                NULL
+                NULL, EOAC_NONE, NULL
             );
 
             if (FAILED(hres)) {
-                CoUninitialize();
+                if (shouldUninitialize) CoUninitialize();
                 debug("wmi: Failed to initialize security. Error code = ", hres);
                 memo::wmi::store(false);
                 return false;
             }
 
             hres = CoCreateInstance(
-                CLSID_WbemLocator,
-                0,
-                CLSCTX_INPROC_SERVER,
-                IID_IWbemLocator,
-                (LPVOID*)&pLoc
+                CLSID_WbemLocator, 0, CLSCTX_INPROC_SERVER,
+                IID_IWbemLocator, (LPVOID*)&pLoc
             );
 
             if (FAILED(hres)) {
-                CoUninitialize();
+                if (shouldUninitialize) CoUninitialize();
                 debug("wmi: Failed to create IWbemLocator object. Error code = ", hres);
                 memo::wmi::store(false);
                 return false;
             }
 
             hres = pLoc->ConnectServer(
-                _bstr_t(L"ROOT\\CIMV2"),
-                NULL,
-                NULL,
-                0,
-                NULL,
-                0,
-                0,
-                &pSvc
+                _bstr_t(L"ROOT\\CIMV2"), NULL, NULL, 0, NULL, 0, 0, &pSvc
             );
 
             if (FAILED(hres)) {
                 pLoc->Release();
-                CoUninitialize();
+                if (shouldUninitialize) CoUninitialize();
                 debug("wmi: Could not connect to WMI server. Error code = ", hres);
                 memo::wmi::store(false);
                 return false;
             }
 
             hres = CoSetProxyBlanket(
-                pSvc,
-                RPC_C_AUTHN_WINNT,
-                RPC_C_AUTHZ_NONE,
-                NULL,
-                RPC_C_AUTHN_LEVEL_CALL,
-                RPC_C_IMP_LEVEL_IMPERSONATE,
-                NULL,
-                EOAC_NONE
+                pSvc, RPC_C_AUTHN_WINNT, RPC_C_AUTHZ_NONE, NULL,
+                RPC_C_AUTHN_LEVEL_CALL, RPC_C_IMP_LEVEL_IMPERSONATE,
+                NULL, EOAC_NONE
             );
 
             if (FAILED(hres)) {
                 pSvc->Release();
                 pLoc->Release();
-                CoUninitialize();
+                if (shouldUninitialize) CoUninitialize();
                 debug("wmi: Could not set proxy blanket. Error code = ", hres);
                 memo::wmi::store(false);
                 return false;
@@ -2013,17 +2001,6 @@ public:
                 return result;
             };
 
-            // motherboard check
-            auto is_motherboard_hyperv = []() -> bool {
-                const bool motherboard = motherboard_string("Microsoft Corporation");
-
-                if (motherboard) {
-                    core_debug("HYPER_X: motherboard string match = ", motherboard);
-                }
-
-                return motherboard;
-            };
-
 
             // event log check (slow, so in last place)
             auto is_event_log_hyperv = []() -> bool {
@@ -2075,7 +2052,6 @@ public:
                 eax() == 11 ||
                 is_smbios_hyperv() ||
                 is_acpi_hyperv() ||
-                is_motherboard_hyperv() ||
                 is_event_log_hyperv()
                 );
 
@@ -2596,26 +2572,6 @@ public:
         }
 
 
-        [[nodiscard]] static bool motherboard_string(const char* vm_string) {
-            if (!wmi::initialize()) {
-                core_debug("Failed to initialize WMI in motherboard_string");
-                return false;
-            }
-
-            wmi_result results = wmi::execute(L"SELECT * FROM Win32_BaseBoard", { L"Manufacturer" });
-
-            for (const auto& res : results) {
-                if (res.type == wmi::result_type::String) {
-                    if (_stricmp(res.strValue.c_str(), vm_string) == 0) {
-                        return true;
-                    }
-                }
-            }
-
-            return false;
-        }
-
-
         /**
          * @brief Retrieves the last error message from the Windows API. Useful for __VMAWARE_DEBUG__
          * @author Requiem (https://github.com/NotRequiem)
@@ -2940,11 +2896,6 @@ public:
                 };
 
             auto GetThreadsUsingWMI = []() -> int {
-                if (!wmi::initialize()) {
-                    std::cerr << "Failed to initialize WMI in GetThreadsUsingWMI.\n";
-                    return 1;
-                }
-
                 wmi_result results = wmi::execute(L"SELECT NumberOfLogicalProcessors FROM Win32_Processor", { L"NumberOfLogicalProcessors" });
                 for (const auto& res : results) {
                     if (res.type == wmi::result_type::Integer) {
@@ -2952,7 +2903,7 @@ public:
                     }
                 }
 
-                return 1;
+                return 0;
                 };
 
             auto GetThreadsUsingGetSystemInfo = []() -> int {
@@ -4190,74 +4141,86 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */     // @author CheckPointSW (InviZzzible project)
 /* GPL */     // @link https://github.com/CheckPointSW/InviZzzible/blob/master/SandboxEvasion/helper.cpp
 /* GPL */     // @copyright GPL-3.0
-/* GPL */     [[nodiscard]] static bool check_audio() {
+/* GPL */ [[nodiscard]] static bool check_audio() {
 /* GPL */ #if (!WINDOWS)
 /* GPL */         return false;
 /* GPL */ #else
 /* GPL */         PCWSTR wszfilterName = L"audio_device_random_name";
-/* GPL */ 
-/* GPL */         if (FAILED(CoInitialize(NULL)))
-/* GPL */             return false;
-/* GPL */ 
+/* GPL */
+/* GPL */         HRESULT hres = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
+/* GPL */         bool shouldUninitialize = false;
+/* GPL */
+/* GPL */         if (FAILED(hres)) {
+/* GPL */             if (hres == RPC_E_CHANGED_MODE) {
+/* GPL */                 debug("check_audio: COM is already initialized with a different mode. Using existing COM context.");
+/* GPL */              }
+/* GPL */              else {
+/* GPL */                 return false;
+/* GPL */              }                     
+/* GPL */          }   
+/* GPL */          else {
+/* GPL */               shouldUninitialize = true;
+/* GPL */           }
+/* GPL */
 /* GPL */         IGraphBuilder* pGraph = nullptr;
-/* GPL */         if (FAILED(CoCreateInstance(CLSID_FilterGraph, NULL, CLSCTX_INPROC_SERVER, IID_IGraphBuilder, (void**)&pGraph)))
-/* GPL */             return false;
-/* GPL */ 
-/* GPL */         // First anti-emulation check: If AddFilter is called with NULL as a first argument it should return the E_POINTER error code. 
-/* GPL */         // Some emulators may implement unknown COM interfaces in a generic way, so they will probably fail here.
-/* GPL */         if (E_POINTER != pGraph->AddFilter(NULL, wszfilterName))
-/* GPL */             return true;
-/* GPL */ 
-/* GPL */         // Initializes a simple Audio Renderer, error code is not checked, 
-/* GPL */         // but pBaseFilter will be set to NULL upon failure and the code will eventually fail later.
-/* GPL */         IBaseFilter* pBaseFilter = nullptr;
-/* GPL */ 
-/* GPL */         HRESULT hr = CoCreateInstance(CLSID_AudioRender, NULL, CLSCTX_INPROC_SERVER, IID_IBaseFilter, (void**)&pBaseFilter);
-/* GPL */         if (FAILED(hr)) {
+/* GPL */         if (FAILED(CoCreateInstance(CLSID_FilterGraph, NULL, CLSCTX_INPROC_SERVER, IID_IGraphBuilder, (void**)&pGraph))) {
+/* GPL */             if (shouldUninitialize) CoUninitialize();
 /* GPL */             return false;
 /* GPL */         }
-/* GPL */ 
-/* GPL */         // Adds the previously created Audio Renderer to the Filter Graph, no error checks
+/* GPL */
+/* GPL */         if (E_POINTER != pGraph->AddFilter(NULL, wszfilterName)) {
+/* GPL */             if (shouldUninitialize) CoUninitialize();
+/* GPL */             return true;
+/* GPL */          }
+/* GPL */
+/* GPL */         IBaseFilter* pBaseFilter = nullptr;
+/* GPL */         HRESULT hr = CoCreateInstance(CLSID_AudioRender, NULL, CLSCTX_INPROC_SERVER, IID_IBaseFilter, (void**)&pBaseFilter);
+/* GPL */         if (FAILED(hr)) {
+/* GPL */             if (shouldUninitialize) CoUninitialize();
+/* GPL */             return false;
+/* GPL */         }
+/* GPL */
 /* GPL */         pGraph->AddFilter(pBaseFilter, wszfilterName);
-/* GPL */ 
-/* GPL */         // Tries to find the filter that was just added; in case of any previously not checked error (or wrong emulation) 
-/* GPL */         // this function won't find the filter and the sandbox/emulator will be successfully detected.
+/* GPL */
 /* GPL */         IBaseFilter* pBaseFilter2 = nullptr;
 /* GPL */         pGraph->FindFilterByName(wszfilterName, &pBaseFilter2);
-/* GPL */         if (nullptr == pBaseFilter2)
+/* GPL */         if (nullptr == pBaseFilter2) {
+/* GPL */             if (shouldUninitialize) CoUninitialize();
 /* GPL */             return true;
-/* GPL */ 
-/* GPL */         // Checks if info.achName is equal to the previously added filterName, if not - poor API emulation
+/* GPL */         }
+/* GPL */
 /* GPL */         FILTER_INFO info = { 0 };
 /* GPL */         pBaseFilter2->QueryFilterInfo(&info);
-/* GPL */         if (0 != wcscmp(info.achName, wszfilterName))
+/* GPL */         if (0 != wcscmp(info.achName, wszfilterName)) {
+/* GPL */             if (shouldUninitialize) CoUninitialize();
 /* GPL */             return false;
-/* GPL */ 
-/* GPL */         // Checks if the API sets a proper IReferenceClock pointer
+/* GPL */         }
+/* GPL */
 /* GPL */         IReferenceClock* pClock = nullptr;
-/* GPL */         if (0 != pBaseFilter2->GetSyncSource(&pClock))
+/* GPL */         if (0 != pBaseFilter2->GetSyncSource(&pClock) || pClock != nullptr) {
+/* GPL */             if (shouldUninitialize) CoUninitialize();
 /* GPL */             return false;
-/* GPL */         if (0 != pClock)
-/* GPL */             return false;
-/* GPL */ 
-/* GPL */         // Checks if CLSID is different from 0
+/* GPL */         }
+/* GPL */
 /* GPL */         CLSID clsID = { 0 };
 /* GPL */         pBaseFilter2->GetClassID(&clsID);
-/* GPL */         if (clsID.Data1 == 0)
+/* GPL */         if (clsID.Data1 == 0) {
+/* GPL */             if (shouldUninitialize) CoUninitialize();
 /* GPL */             return true;
-/* GPL */ 
-/* GPL */         if (nullptr == pBaseFilter2)
-/* GPL */             return true;
-/* GPL */ 
-/* GPL */         // Just checks if the call was successful
+/* GPL */         }
+/* GPL */
 /* GPL */         IEnumPins* pEnum = nullptr;
-/* GPL */         if (0 != pBaseFilter2->EnumPins(&pEnum))
+/* GPL */         if (0 != pBaseFilter2->EnumPins(&pEnum)) {
+/* GPL */             if (shouldUninitialize) CoUninitialize();
 /* GPL */             return true;
-/* GPL */ 
-/* GPL */         // The reference count returned by AddRef has to be higher than 0
-/* GPL */         if (0 == pBaseFilter2->AddRef())
+/* GPL */          }
+/* GPL */
+/* GPL */         if (0 == pBaseFilter2->AddRef()) {
+/* GPL */             if (shouldUninitialize) CoUninitialize();
 /* GPL */             return true;
-/* GPL */ 
+/* GPL */         }
+/* GPL */
+/* GPL */         if (shouldUninitialize) CoUninitialize();
 /* GPL */         return false;
 /* GPL */ #endif
 /* GPL */     }
@@ -4694,25 +4657,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             if (ecx_bochs == 0) {
                 return true;
             }
-        }
-
-        return false;
-#endif
-    }
-
-
-    /**
-     * @brief Check through the motherboard and match for VirtualPC-specific string
-     * @category Windows
-     */
-    [[nodiscard]] static bool vpc_board() {
-#if (!WINDOWS)
-        return false;
-#else
-        const bool is_vm = util::motherboard_string("Microsoft Corporation");
-
-        if (is_vm) {
-            return core::add(brands::VPC);
         }
 
         return false;
@@ -5399,34 +5343,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return (m[0] != 0x00 && m[1] != 0x00);
 #else
         return false;
-#endif
-    }
-
-
-    /**
-     * @brief Check for Hyper-V specific string in motherboard
-     * @category Windows
-     */
-    [[nodiscard]] static bool hyperv_board() {
-#if (!WINDOWS)
-        return false;
-#else
-        if (!wmi::initialize()) {
-            core_debug("Failed to initialize WMI in hyperv_board");
-            return false;
-        }
-
-        wmi_result results = wmi::execute(L"SELECT * FROM Win32_BaseBoard", { L"Manufacturer" });
-
-        for (const auto& res : results) {
-            if (res.type == wmi::result_type::String) {
-                if (_stricmp(res.strValue.c_str(), "Microsoft Corporation Virtual Machine") == 0) {
-                    return core::add(brands::HYPERV);
-                }
-            }
-        }
-
-        return false; // No match found
 #endif
     }
 
@@ -8598,11 +8514,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!WINDOWS)
         return false;
 #else
-        if (!wmi::initialize()) {
-            core_debug("Failed to initialize WMI in gpu_chiptype");
-            return false;
-        }
-
         wmi_result results = wmi::execute(L"SELECT * FROM Win32_VideoController", { L"VideoProcessor" });
 
         std::string result = "";
@@ -8780,11 +8691,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!WINDOWS) 
         return false;
 #else
-        if (!wmi::initialize()) {
-            core_debug("Failed to initialize WMI in hdd_serial_number");
-            return false;
-        }
-
         const char* targetSerial = "VBbd5bbffd-59166c24";
 
         wmi_result results = wmi::execute(L"SELECT SerialNumber FROM Win32_DiskDrive", { L"SerialNumber" });
@@ -8811,13 +8717,23 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!WINDOWS) 
         return false;
 #else
-        if (!wmi::initialize()) {
-            core_debug("Failed to initialize WMI in port_connectors");
-            return false;
+        std::wstring query = L"SELECT Product FROM Win32_BaseBoard";
+        std::vector<std::wstring> properties = { L"Product" };
+        wmi_result results = wmi::execute(query, properties);
+
+        for (const auto& res : results) {
+            if (res.type == wmi::result_type::String) {
+                std::string lowerStr = res.strValue;
+                std::transform(lowerStr.begin(), lowerStr.end(), lowerStr.begin(), ::tolower);
+
+                if (lowerStr.find("surface") != std::string::npos) { // This WMI query returns false for Surface Pro devices
+                    return false;
+                }
+            }
         }
 
-        wmi_result results = wmi::execute(L"SELECT * FROM Win32_PortConnector", { L"Caption" });
-
+        wmi_result portResults = wmi::execute(L"SELECT * FROM Win32_PortConnector", { L"Caption" });
+            
         return results.empty();
 #endif
     };
@@ -8831,11 +8747,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!WINDOWS) 
         return false;
 #else
-        if (!wmi::initialize()) {
-            core_debug("Failed to initialize WMI in vm_hdd");
-            return false;
-        }
-
         wmi_result results = wmi::execute(L"SELECT Model FROM Win32_DiskDrive", { L"Model" });
 
         for (const auto& res : results) {
@@ -9120,11 +9031,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!WINDOWS)
         return false;
 #else
-        if (!wmi::initialize()) {
-            core_debug("Failed to initialize WMI in number_of_cores");
-            return false;
-        }
-
         std::wstring query = L"SELECT NumberOfCores FROM Win32_Processor";
         std::vector<std::wstring> properties = { L"NumberOfCores" };
 
@@ -9152,11 +9058,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!WINDOWS)
         return false;
 #else
-        if (!wmi::initialize()) {
-            core_debug("Failed to initialize WMI in number_of_cores");
-            return false;
-        }
-
         std::wstring query = L"SELECT Model FROM Win32_ComputerSystem";
         std::vector<std::wstring> properties = { L"Model" };
         wmi_result results = wmi::execute(query, properties);
@@ -9182,11 +9083,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!WINDOWS)
         return false;
 #else
-        if (!wmi::initialize()) {
-            core_debug("Failed to initialize WMI in wmi_manufacturer");
-            return false;
-        }
-
         std::wstring query = L"SELECT Manufacturer FROM Win32_ComputerSystem";
         std::vector<std::wstring> properties = { L"Manufacturer" };
         wmi_result results = wmi::execute(query, properties);
@@ -9212,11 +9108,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!WINDOWS)
         return false;
 #else
-        if (!wmi::initialize()) {
-            core_debug("Failed to initialize WMI in wmi_temperature");
-            return false;
-        }
-
         std::wstring query = L"SELECT * FROM MSAcpi_ThermalZoneTemperature";
         std::vector<std::wstring> properties = { L"CurrentTemperature" };
 
@@ -9242,11 +9133,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!WINDOWS)
         return false;
 #else
-        if (!wmi::initialize()) {
-            core_debug("Failed to initialize WMI in processor_id");
-            return false;
-        }
-
         std::wstring query = L"SELECT ProcessorId FROM Win32_Processor";
         std::vector<std::wstring> properties = { L"ProcessorId" };
         wmi_result results = wmi::execute(query, properties);
@@ -9272,11 +9158,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!WINDOWS)
         return false;
 #else
-        if (!wmi::initialize()) {
-            core_debug("Failed to initialize WMI in cpu_fans");
-            return false;
-        }
-
         std::wstring query = L"SELECT * FROM Win32_Fan";
         std::vector<std::wstring> properties = { };
         wmi_result results = wmi::execute(query, properties);
@@ -9408,7 +9289,6 @@ static bool rdtsc() {
 	/**
 	 * @brief Check for existence of qemu_fw_cfg directories within sys/module and /sys/firmware
 	 * @category Linux
-	 * @note 
 	 */
 	[[nodiscard]] static bool sys_qemu_dir() {
 #if (!LINUX)
@@ -9449,7 +9329,6 @@ static bool rdtsc() {
 	/**
 	 * @brief Check for QEMU string instances with lshw command
 	 * @category Linux
-	 * @note 
 	 */
 	[[nodiscard]] static bool lshw_qemu() {
 #if (!LINUX)
@@ -9497,7 +9376,7 @@ static bool rdtsc() {
     * @note https://medium.com/@matterpreter/hypervisor-detection-with-systemhypervisordetailinformation-26e44a57f80e
     */
     [[nodiscard]] static bool virtual_processors() {
-#if (!WINDOWS || !x86_64)
+#if (!WINDOWS)
         return false;
 #else       
         struct Registers {
@@ -9520,6 +9399,30 @@ static bool rdtsc() {
 
         if (implementationLimits.MaxLogicalProcessors != implementationLimits.MaxVirtualProcessors) {
             return true;
+        }
+
+        return false;
+#endif
+    }
+
+
+    /*
+     * @brief Detects if the motherboard product matches the signature of a virtual machine
+     * @category Windows
+     * @author Requiem
+     */
+    [[nodiscard]] static bool motherboard_product() {
+#if (!WINDOWS)
+        return false;
+#else  
+        std::wstring query = L"SELECT Product FROM Win32_BaseBoard";
+        std::vector<std::wstring> properties = { L"Product" };
+        wmi_result results = wmi::execute(query, properties);
+
+        for (const auto& res : results) {
+            if (res.type == wmi::result_type::String && res.strValue == "Virtual Machine") {
+                return true;
+            }
         }
 
         return false;
@@ -10481,7 +10384,6 @@ public: // START OF PUBLIC FUNCTIONS
             case PARALLELS_VM: return "PARALLELS_VM";
             case QEMU_BRAND: return "QEMU_BRAND";
             case BOCHS_CPU: return "BOCHS_CPU";
-            case VPC_BOARD: return "VPC_BOARD";
             case HYPERV_WMI: return "HYPERV_WMI";
             case HYPERV_REG: return "HYPERV_REG";
             case BIOS_SERIAL: return "BIOS_SERIAL";
@@ -10499,7 +10401,6 @@ public: // START OF PUBLIC FUNCTIONS
             case OFFSEC_SIDT: return "OFFSEC_SIDT";
             case OFFSEC_SGDT: return "OFFSEC_SGDT";
             case OFFSEC_SLDT: return "OFFSEC_SLDT";
-            case HYPERV_BOARD: return "HYPERV_BOARD";
             case VPC_SIDT: return "VPC_SIDT";
             case VMWARE_IOMEM: return "VMWARE_IOMEM";
             case VMWARE_IOPORTS: return "VMWARE_IOPORTS";
@@ -10565,6 +10466,8 @@ public: // START OF PUBLIC FUNCTIONS
 			case SYS_QEMU: return "SYS_QEMU";
 			case LSHW_QEMU: return "LSHW_QEMU";
             case VIRTUAL_PROCESSORS: return "VIRTUAL_PROCESSORS";
+            case MOTHERBOARD_PRODUCT: return "MOTHERBOARD_PRODUCT";
+
             // ADD NEW CASE HERE FOR NEW TECHNIQUE
             default: return "Unknown flag";
         }
@@ -11029,7 +10932,6 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::PARALLELS_VM, { 50, VM::parallels, false } },
     { VM::QEMU_BRAND, { 100, VM::cpu_brand_qemu, false } },
     { VM::BOCHS_CPU, { 100, VM::bochs_cpu, false } },
-    { VM::VPC_BOARD, { 25, VM::vpc_board, false } },
     { VM::BIOS_SERIAL, { 60, VM::bios_serial, false } },
     { VM::MSSMBIOS, { 75, VM::mssmbios, false } },
     { VM::MAC_MEMSIZE, { 15, VM::hw_memsize, true } },
@@ -11046,7 +10948,6 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::OFFSEC_SGDT, { 60, VM::offsec_sgdt, false } }, 
     { VM::OFFSEC_SLDT, { 20, VM::offsec_sldt, false } }, 
     { VM::VPC_SIDT, { 15, VM::vpc_sidt, false } }, 
-    { VM::HYPERV_BOARD, { 100, VM::hyperv_board, false } },
     { VM::VMWARE_IOMEM, { 65, VM::vmware_iomem, false } }, 
     { VM::VMWARE_IOPORTS, { 70, VM::vmware_ioports, false } },
     { VM::VMWARE_SCSI, { 40, VM::vmware_scsi, false } }, 
@@ -11091,7 +10992,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::DRIVER_NAMES, { 80, VM::driver_names, false } },
     { VM::VM_SIDT, { 100, VM::vm_sidt, false } },
     { VM::HDD_SERIAL, { 100, VM::hdd_serial_number, false } },
-    { VM::PORT_CONNECTORS, { 15, VM::port_connectors, false } },
+    { VM::PORT_CONNECTORS, { 10, VM::port_connectors, false } },
     { VM::VM_HDD, { 90, VM::vm_hdd, false } },
     { VM::ACPI_DETECT, { 85, VM::acpi_detect, false } },
     { VM::GPU_NAME, { 100, VM::vm_gpu, false } },
@@ -11109,6 +11010,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::SYS_QEMU, { 70, VM::sys_qemu_dir, false } },
     { VM::LSHW_QEMU, { 80, VM::lshw_qemu, false } },
     { VM::VIRTUAL_PROCESSORS, { 35, VM::virtual_processors, false } },
+    { VM::MOTHERBOARD_PRODUCT, { 25, VM::motherboard_product, false } },
     // ADD NEW TECHNIQUE STRUCTURE HERE
 };
 
