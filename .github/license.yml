@@ -1,6 +1,6 @@
 name: Licenses and permissions
 with:
-  filename: metrics.plugin.licenses.svg
+  filename: assets/metrics.plugin.licenses.svg
   token: ${{ secrets.METRICS_TOKEN }}
   base: ""
   template: repository
