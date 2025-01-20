@@ -487,7 +487,7 @@ This is the table of all the brands the library supports.
 | VMware Workstation | `VM::brands::VMWARE_WORKSTATION` | Hypervisor (type 2) |  |
 | VMware Fusion | `VM::brands::VMWARE_FUSION` | Hypervisor (type 2) |  |
 | VMware (with VmwareHardenedLoader) | `VM::brands::VMWARE_HARD` | Hypervisor (type 2) | See the [repository](https://github.com/hzqst/VmwareHardenedLoader) |
-| bhyve | `VM::brands::BHYVE` | Hypervisor (type 1) |  |
+| bhyve | `VM::brands::BHYVE` | Hypervisor (type 2) |  |
 | KVM | `VM::brands::KVM` | Hypervisor (type 1) |  |
 | QEMU | `VM::brands::QEMU` | Emulator/Hypervisor (type 2) |  |
 | QEMU+KVM | `VM::brands::QEMU_KVM` | Hypervisor (type 1) |  |

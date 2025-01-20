@@ -574,6 +574,91 @@ void replace(std::string &text, const std::string &original, const std::string &
     }
 }
 
+bool is_vm_brand_multiple(const std::string_view vm_brand) {
+    return (vm_brand.find(" or ") != std::string::npos);
+}
+
+
+
+std::string vm_description(const std::string_view vm_brand) {
+
+    // if there's multiple brands, return null
+    if (is_vm_brand_multiple(vm_brand)) {
+        return "";
+    }
+
+    std::map<std::string, const char*> description_table {
+        { VM::brands::VBOX, "Oracle VirtualBox (formerly Sun VirtualBox, Sun xVM VirtualBox and InnoTek VirtualBox) is a free and commercial hosted hypervisor for x86 and Apple ARM64 virtualization developed by Oracle Corporation initially released in 2007. It supports Intel's VT-x and AMD's AMD-V hardware-assisted virtualization, while providing an extensive feature set as a staple of its flexibility and wide use cases." },
+        { VM::brands::VMWARE, "VMware is a free and commercial type 2 hypervisor initially released in 1999 and acquired by EMC, then Dell, and finally Broadcom Inc in 2023. It was the first commercially successful company to virtualize the x86 architecture, and has since produced many sub-versions of the hypervisor since its inception. It uses binary translation to re-write the code dynamically for a faster performance." },
+        { VM::brands::VMWARE_EXPRESS, "" },
+        { VM::brands::VMWARE_ESX, "" },
+        { VM::brands::VMWARE_GSX, "discontinued" },
+        { VM::brands::VMWARE_WORKSTATION, "" },
+        { VM::brands::VMWARE_FUSION, "discontinued on 30 April 2024" },
+        { VM::brands::VMWARE_HARD, "" },
+        { VM::brands::BHYVE, "bhyve (pronounced \"bee hive\", formerly written as BHyVe for \"BSD hypervisor\") is a free type 2 hosted hypervisor initially written for FreeBSD. It can also be used on a number of illumos based distributions including SmartOS, OpenIndiana, and OmniOS. bhyve has a modern codebase and uses fewer resources compared to its competitors. In the case of FreeBSD, the resource management is more efficient." },
+        { VM::brands::KVM, "KVM is a free and open source module of the Linux kernel released in 2007. It uses hardware virtualization extensions, and has had support for hot swappable vCPUs, dynamic memory management, and Live Migration. It also reduces the impact that memory write-intensive workloads have on the migration process. KVM emulates very little hardware components, and it defers to a higher-level client application such as QEMU." },
+        { VM::brands::QEMU, "" },
+        { VM::brands::QEMU_KVM, "" },
+        { VM::brands::KVM_HYPERV, "" },
+        { VM::brands::QEMU_KVM_HYPERV, "" },
+        { VM::brands::HYPERV, "Hyper-V is Microsoft's proprietary native hypervisor that can create x86 VMs on Windows. Released in 2008, it supercedes previous virtualization solutions such as Microsoft Virtual Server and Windows VirtualPC. Hyper-V uses partitioning to isolate the guest OSs, and has \"enlightenment\" features for bypassing device emulation layers, allowing for faster execution including when Windows is virtualization on Linux." },
+        { VM::brands::HYPERV_VPC, "" },
+        { VM::brands::MSXTA, "" },
+        { VM::brands::PARALLELS, "Parallels is a hypervisor providing hardware virtualization for Mac computers. It was released in 2006 and is developed by Parallels, a subsidiary of Corel. It is a hardware emulation virtualization software, using hypervisor technology that works by mapping the host computer's hardware resources directly to the VM's resources. Each VM thus operates with virtually all the resources of a physical computer." },
+        { VM::brands::XEN, "Xen is a free and open-source type 1 hypervisor. Originally developed by the University of Cambridge Computer Laboratory and is now being developed by the Linux Foundation with support from Intel, Arm Ltd, Huawei, AWS, Alibaba Cloud, AMD, and more. It runs in a more privileged CPU state than any other software on the machine, except for firmware. It uses GNU GRUB as its bootloader, and then loads a paravirtualized host OS into the host domain (dom0)." },
+        { VM::brands::ACRN, "" },
+        { VM::brands::QNX, "" },
+        { VM::brands::HYBRID, "" },
+        { VM::brands::SANDBOXIE, "" },
+        { VM::brands::DOCKER, "Docker is a set of platform as a service (PaaS) products that use OS-level virtualization to deliver software in packages called containers. The service has both free and premium tiers. The software that hosts the containers is called Docker Engine. It's used to automate the deployment of applications in lightweight containers so that applications can work efficiently in different environments in isolation." },
+        { VM::brands::WINE, "Wine is a free and open-source compatibility layer to allow application software and computer games developed for Microsoft Windows to run on Unix-like operating systems. Developers can compile Windows applications against WineLib to help port them to Unix-like systems. Wine is predominantly written using black-box testing reverse-engineering, to avoid copyright issues. No code emulation or virtualization occurs." },
+        { VM::brands::APPLE_ROSETTA, "" },
+        { VM::brands::VPC, "" },
+        { VM::brands::ANUBIS, "" },
+        { VM::brands::JOEBOX, "" },
+        { VM::brands::THREATEXPERT, "" },
+        { VM::brands::CWSANDBOX, "" },
+        { VM::brands::COMODO, "" },
+        { VM::brands::BOCHS, "Bochs (pronounced \"box\") is a free and open-source portable IA-32 and x86-64 IBM PC compatible emulator and debugger mostly written in C++. Bochs is mostly used for OS development and to run other guest OSs inside already running host OSs, while emulating the hardware needed such as hard drives, CD drives, and floppy drives. It doesn't utilize any host CPU virtualization features, therefore is slower than most virtualization software." },
+        { VM::brands::NVMM, "NVMM (NetBSD Virtual Machine Monitor) is NetBSD's native hypervisor for NetBSD 9.0. It provides a virtualization API, libnvmm, that can be leveraged by emulators such as QEMU. A unique property of NVMM is that the kernel never accesses guest VM memory, only creating it. Intel's Hardware Accelerated Execution Manager (HAXM) provides an alternative solution for acceleration in QEMU for Intel CPUs only, similar to Linux's KVM." },
+        { VM::brands::BSD_VMM, "" },
+        { VM::brands::INTEL_HAXM, "" },
+        { VM::brands::UNISYS, "" },
+        { VM::brands::LMHS, "" },
+        { VM::brands::CUCKOO, "" },
+        { VM::brands::BLUESTACKS, "BlueStacks is a chain of cloud-based cross-platform products developed by the San Francisco-based company of the same name. The BlueStacks App Player enables the execution of Android applications on computers running Microsoft Windows or macOS. It functions through an Android emulator referred to as App Player. The basic features of the software are available for free, while advanced features require a paid monthly subscription." },
+        { VM::brands::JAILHOUSE, "" },
+        { VM::brands::APPLE_VZ, "" },
+        { VM::brands::INTEL_KGT, "" },
+        { VM::brands::AZURE_HYPERV, "" },
+        { VM::brands::NANOVISOR, "NanoVisor is a Hyper-V modification serving as the host OS of Xbox's devices: the Xbox System Software. It contains 2 partitions: the \"Exclusive\" partition is a custom VM for games, while the other partition, called the \"Shared\" partition is a custom VM for running multiple apps including the OS itself. The OS was based on Windows 8 Core at the Xbox One launch in 2013." },
+        { VM::brands::SIMPLEVISOR, "" },
+        { VM::brands::HYPERV_ARTIFACT, "" },
+        { VM::brands::UML, "" },
+        { VM::brands::POWERVM, "" },
+        { VM::brands::GCE, "" },
+        { VM::brands::OPENSTACK, "" },
+        { VM::brands::KUBEVIRT, "KubeVirt is a VM management add-on for Kubernetes. It provides a common ground for virtualization solutions on top of Kubernetes by extending its core by adding additional virtualization resource types where the Kubernetes API can be used to manage these VM resources alongside all other resources Kubernetes provides. Its functionality is to provide a runtime in order to define and manage VMs. " },
+        { VM::brands::AWS_NITRO, "" },
+        { VM::brands::PODMAN, "" },
+        { VM::brands::WSL, "Windows Subsystem for Linux (WSL) is a feature of Microsoft Windows that allows for using a Linux environment without the need for a separate VM or dual booting. WSL requires fewer resources (CPU, memory, and storage) than a full virtual machine (a common alternative for using Linux in Windows), while also allowing the use of both Windows and Linux tools on the same set of files." },
+        { VM::brands::OPENVZ, "" },
+        { VM::brands::BAREVISOR, "" },
+        { VM::brands::HYPERPLATFORM, "" },
+        { VM::brands::MINIVISOR, "" },
+        { VM::brands::NULL_BRAND, "" }
+    };
+
+    auto it = description_table.find(vm_brand.data());
+
+    if (it != description_table.end()) {
+        return it->second;
+    }
+
+    return "";
+}
+
 
 /**
  * @brief Check for any.run driver presence
@@ -940,13 +1025,13 @@ void general() {
             (brand == "Hyper-V artifact (not an actual VM)")
         );
 
-        std::cout << "VM brand: " << (is_red ? red : green) << brand << ansi_exit << "\n";
+        std::cout << bold << "VM brand: " << ansi_exit << (is_red ? red : green) << brand << ansi_exit << "\n";
     }
 
 
     // type manager
     {
-        if (vm.brand.find(" or ") == std::string::npos) {  // meaning "if there's no brand conflicts" 
+        if (is_vm_brand_multiple(vm.brand) == false) {
             std::string color = "";
             std::string &type = vm.type;
 
@@ -960,7 +1045,7 @@ void general() {
                 color = green;
             }
 
-            std::cout << "VM type: " <<  color << type << ansi_exit << "\n";
+            std::cout << bold << "VM type: " << ansi_exit <<  color << type << ansi_exit << "\n";
         }
     }
 
@@ -975,13 +1060,13 @@ void general() {
         else if (vm.percentage < 75) { percent_color = green_orange.c_str(); }
         else                         { percent_color = green.c_str(); }
 
-        std::cout << "VM likeliness: " << percent_color << static_cast<u32>(vm.percentage) << "%" << ansi_exit << "\n";
+        std::cout << bold << "VM likeliness: " << ansi_exit << percent_color << static_cast<u32>(vm.percentage) << "%" << ansi_exit << "\n";
     }
 
 
     // VM confirmation manager
     {
-        std::cout << "VM confirmation: " << (vm.is_vm ? green : red) << std::boolalpha << vm.is_vm << std::noboolalpha << ansi_exit << "\n";
+        std::cout << bold << "VM confirmation: " << ansi_exit << (vm.is_vm ? green : red) << std::boolalpha << vm.is_vm << std::noboolalpha << ansi_exit << "\n";
     }
 
 
@@ -1001,7 +1086,9 @@ void general() {
         }
 
         std::cout << 
+            bold <<
             "VM detections: " << 
+            ansi_exit <<
             count_color << 
             static_cast<u32>(vm.detected_count) << 
             "/" <<
@@ -1014,13 +1101,27 @@ void general() {
     // misc manager
     {
         if (arg_bitset.test(VERBOSE)) {
-            std::cout << "\nUnsupported detections: " << static_cast<u32>(unsupported_count) << "\n";
-            std::cout << "Supported detections: " << static_cast<u32>(supported_count) << "\n";
-            std::cout << "No permission detections: " << static_cast<u32>(no_perms_count) << "\n";
-            std::cout << "Disabled detections: " << static_cast<u32>(disabled_count) << "\n";
+            std::cout << bold << "\nUnsupported detections: " << ansi_exit << static_cast<u32>(unsupported_count) << "\n";
+            std::cout << bold << "Supported detections: " << ansi_exit << static_cast<u32>(supported_count) << "\n";
+            std::cout << bold << "No permission detections: " << ansi_exit << static_cast<u32>(no_perms_count) << "\n";
+            std::cout << bold << "Disabled detections: " << ansi_exit << static_cast<u32>(disabled_count) << "\n";
         }
 
         std::printf("\n");
+    }
+
+
+    // description manager
+    {
+        if (vm.brand != VM::brands::NULL_BRAND) {
+
+            std::string description = vm_description(vm.brand);
+
+            if (!description.empty()) {
+                std::cout << bold << "VM description: " << ansi_exit << "\n" << "   " << description << "\n\n";
+                //std::cout << note << " The result means that the CLI has found Hyper-V, but as an artifact instead of an actual VM. This means that although the hardware values in fact match with Hyper-V due to how it's designed by Microsoft, the CLI has determined you are NOT in a Hyper-V VM.\n\n";
+            }
+        }
     }
 
 
@@ -1042,9 +1143,7 @@ void general() {
 
     // finishing touches with notes
     if (notes_enabled) {
-        if ((vm.brand == "Hyper-V artifact (not an actual VM)")) {
-            std::cout << note << " The result means that the CLI has found Hyper-V, but as an artifact instead of an actual VM. This means that although the hardware values in fact match with Hyper-V due to how it's designed by Microsoft, the CLI has determined you are NOT in a Hyper-V VM.\n\n";
-        } else if (vm.detected_count != 0) {
+        if (vm.detected_count != 0) {
             std::cout << note << " If you found a false positive, please make sure to create an issue at https://github.com/kernelwernel/VMAware/issues\n\n";
         }
     }

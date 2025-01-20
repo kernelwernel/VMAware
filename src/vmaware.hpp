@@ -10808,7 +10808,6 @@ public: // START OF PUBLIC FUNCTIONS
             { brands::AZURE_HYPERV, "Hypervisor (type 1)" },
             { brands::NANOVISOR, "Hypervisor (type 1)" },
             { brands::KVM, "Hypervisor (type 1)" },
-            { brands::BHYVE, "Hypervisor (type 1)" },
             { brands::KVM_HYPERV, "Hypervisor (type 1)" },
             { brands::QEMU_KVM_HYPERV, "Hypervisor (type 1)" },
             { brands::QEMU_KVM, "Hypervisor (type 1)" },
@@ -10822,6 +10821,7 @@ public: // START OF PUBLIC FUNCTIONS
             { brands::AWS_NITRO, "Hypervisor (type 1)" },
 
             // type 2
+            { brands::BHYVE, "Hypervisor (type 2)" },
             { brands::VBOX, "Hypervisor (type 2)" },
             { brands::VMWARE, "Hypervisor (type 2)" },
             { brands::VMWARE_EXPRESS, "Hypervisor (type 2)" },
