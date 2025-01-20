@@ -1,4 +1,5 @@
 name: Licenses and permissions
+uses: lowlighter/metrics@latest
 with:
   filename: assets/metrics.plugin.licenses.svg
   token: ${{ secrets.METRICS_TOKEN }}
@@ -6,3 +7,4 @@ with:
   template: repository
   repo: VMAware
   plugin_licenses: yes
+  plugin_licenses_legal: yes
