@@ -409,7 +409,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::PARALLELS_VM:
             case VM::QEMU_BRAND:
             case VM::BOCHS_CPU:
-            case VM::VPC_BOARD:
             case VM::HYPERV_WMI:
             case VM::HYPERV_REG:
             case VM::BIOS_SERIAL:
@@ -422,7 +421,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::OFFSEC_SIDT:
             case VM::OFFSEC_SGDT:
             case VM::OFFSEC_SLDT:
-            case VM::HYPERV_BOARD:
             case VM::VPC_SIDT:
             case VM::VMWARE_STR:
             case VM::VMWARE_BACKDOOR:
@@ -467,6 +465,11 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::SETUPAPI_DISK: 
             case VM::VMWARE_HARDENER:
             case VM::VIRTUAL_PROCESSORS:
+<<<<<<< HEAD
+=======
+            case VM::MOTHERBOARD_PRODUCT:
+            case VM::HVLQUERYDETAILINFO:
+>>>>>>> d6b88811dd5e1f0b73c8a3fd08718ccab5294f75
             // ADD WINDOWS FLAG
             return false;
             default: return true;
@@ -485,7 +488,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::VMID_0X4:
             case VM::QEMU_BRAND:
             case VM::BOCHS_CPU:
-            case VM::VPC_BOARD:
             case VM::MAC_MEMSIZE:
             case VM::MAC_IOKIT:
             case VM::IOREG_GREP:
@@ -559,13 +561,13 @@ void replace(std::string &text, const std::string &original, const std::string &
     }
 }
 
-bool is_vm_brand_multiple(const std::string_view vm_brand) {
+bool is_vm_brand_multiple(const std::string& vm_brand) {
     return (vm_brand.find(" or ") != std::string::npos);
 }
 
 
 
-std::string vm_description(const std::string_view vm_brand) {
+std::string vm_description(const std::string& vm_brand) {
 
     // if there's multiple brands, return null
     if (is_vm_brand_multiple(vm_brand)) {
@@ -635,8 +637,7 @@ std::string vm_description(const std::string_view vm_brand) {
         { VM::brands::NULL_BRAND, "" }
     };
 
-    auto it = description_table.find(vm_brand.data());
-
+    std::map<std::string, const char*>::const_iterator it = description_table.find(vm_brand);
     if (it != description_table.end()) {
         return it->second;
     }
@@ -886,7 +887,6 @@ void general() {
     checker(VM::LOADED_DLLS, "loaded DLLs");
     checker(VM::QEMU_BRAND, "QEMU CPU brand");
     checker(VM::BOCHS_CPU, "BOCHS CPU techniques");
-    checker(VM::VPC_BOARD, "VirtualPC motherboard");
     checker(VM::BIOS_SERIAL, "BIOS serial number");
     checker(VM::MSSMBIOS, "MSSMBIOS");
     checker(VM::MAC_MEMSIZE, "MacOS hw.memsize");
@@ -906,7 +906,6 @@ void general() {
     checker(VM::OFFSEC_SGDT, "Offensive Security SGDT");
     checker(VM::OFFSEC_SLDT, "Offensive Security SLDT");
     checker(VM::VPC_SIDT, "VirtualPC SIDT");
-    checker(VM::HYPERV_BOARD, "Hyper-V motherboard");
     checker(VM::VMWARE_IOMEM, "/proc/iomem file");
     checker(VM::VMWARE_IOPORTS, "/proc/ioports file");
     checker(VM::VMWARE_SCSI, "/proc/scsi/scsi file");
@@ -972,6 +971,8 @@ void general() {
 	checker(VM::SYS_QEMU, "QEMU in /sys");
 	checker(VM::LSHW_QEMU, "QEMU in lshw output");
     checker(VM::VIRTUAL_PROCESSORS, "virtual processors");
+    checker(VM::MOTHERBOARD_PRODUCT, "motherboard product");
+    checker(VM::HVLQUERYDETAILINFO, "HvlQueryDetailInfo");
     // ADD NEW TECHNIQUE CHECKER HERE
 
     std::printf("\n");
