@@ -466,6 +466,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::VMWARE_HARDENER:
             case VM::VIRTUAL_PROCESSORS:
             case VM::MOTHERBOARD_PRODUCT:
+            case VM::HVLQUERYDETAILINFO:
             // ADD WINDOWS FLAG
             return false;
             default: return true;
@@ -968,6 +969,7 @@ void general() {
 	checker(VM::LSHW_QEMU, "QEMU in lshw output");
     checker(VM::VIRTUAL_PROCESSORS, "virtual processors");
     checker(VM::MOTHERBOARD_PRODUCT, "motherboard product");
+    checker(VM::HVLQUERYDETAILINFO, "HvlQueryDetailInfo");
     // ADD NEW TECHNIQUE CHECKER HERE
 
     std::printf("\n");

@@ -194,6 +194,7 @@
 #include <cstdint>
 #include <map>
 #include <unordered_map>
+#include <unordered_set>
 #include <array>
 #include <algorithm>
 #include <iostream>
@@ -445,6 +446,7 @@ public:
         LSHW_QEMU,
         VIRTUAL_PROCESSORS,
         MOTHERBOARD_PRODUCT,
+        HVLQUERYDETAILINFO,
         // ADD NEW TECHNIQUE ENUM NAME HERE
 
         // start of settings technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
@@ -2004,9 +2006,6 @@ public:
 
             // event log check (slow, so in last place)
             auto is_event_log_hyperv = []() -> bool {
-#if (!x86_64)
-                return false;
-#else
                 std::wstring logName = L"Microsoft-Windows-Kernel-PnP/Configuration";
                 std::vector<std::wstring> searchStrings = { L"Virtual_Machine", L"VMBUS" };
                 const bool result = (util::query_event_logs(logName, searchStrings));
@@ -2016,7 +2015,6 @@ public:
                 }
 
                 return result;
-#endif
             };
 
 
@@ -2574,7 +2572,6 @@ public:
 
         /**
          * @brief Retrieves the last error message from the Windows API. Useful for __VMAWARE_DEBUG__
-         * @author Requiem (https://github.com/NotRequiem)
          * @return A std::wstring containing the error message.
          */
         [[nodiscard]] static std::wstring GetLastErrorString() {
@@ -2609,9 +2606,6 @@ public:
             DWORD flags = EvtQueryReverseDirection,
             DWORD timeout = INFINITE,
             const DWORD maxEvents = 1000) {
-#if (!x86_64)
-            return false;
-#else
 
             EVT_HANDLE hLog = EvtOpenLog(nullptr, logName.c_str(), EvtOpenChannelPath);
             if (!hLog) {
@@ -2632,11 +2626,10 @@ public:
             DWORD count = 0;
             WCHAR* pBuffer = nullptr;
 
-            // Iterate over events up to the maximum number specified
             for (DWORD eventCount = 0; eventCount < maxEvents; ++eventCount) {
                 if (!EvtNext(hResults, 1, &hEvent, timeout, 0, &count)) {
                     if (GetLastError() == ERROR_NO_MORE_ITEMS) {
-                        break; // No more events to process
+                        break;
                     }
                     std::wcerr << L"EvtNext failed. Error: " << GetLastErrorString() << "\n";
                     EvtClose(hResults);
@@ -2695,7 +2688,6 @@ public:
             EvtClose(hLog);
 
             return false;
-#endif
         }
 
 
@@ -2753,7 +2745,7 @@ public:
          *
          * @return bool `true` if `searchString` is found in `buffer`, `false` otherwise.
          */
-        static bool findSubstring(const wchar_t* buffer, size_t bufferSize, const std::wstring& searchString) {
+        static bool findSubstring(const wchar_t* buffer, const size_t bufferSize, const std::wstring& searchString) {
             size_t searchLength = searchString.length();
             if (searchLength > bufferSize) return false;
 
@@ -5004,27 +4996,41 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #else
         u8 count = 0;
 
-        auto check_key = [&count](const char* p_brand, const char* subKey, const char* valueName, const char* comp_string) {
+        std::unordered_set<std::string> failedKeys;
+
+        auto check_key = [&failedKeys, &count](const char* p_brand, const char* subKey, const char* valueName, const char* comp_string) {
+            if (failedKeys.find(subKey) != failedKeys.end()) {
+                return;
+            }
+
             HKEY hKey;
-            DWORD dwType = REG_SZ;
-            char buffer[1024]{};
+            DWORD dwType;
+            char buffer[1024] = {};
             DWORD bufferSize = sizeof(buffer);
 
-            if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, subKey, 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
-                if (RegQueryValueExA(hKey, valueName, NULL, &dwType, reinterpret_cast<LPBYTE>(buffer), &bufferSize) == ERROR_SUCCESS) {
-                    if (strstr(buffer, comp_string) != nullptr) {
-                        core::add(p_brand);
-                        count++;
+            if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, subKey, 0, KEY_READ | KEY_WOW64_64KEY, &hKey) == ERROR_SUCCESS) {
+                if (RegQueryValueExA(hKey, valueName, nullptr, &dwType, reinterpret_cast<LPBYTE>(buffer), &bufferSize) == ERROR_SUCCESS) {
+                    if (dwType == REG_SZ || dwType == REG_EXPAND_SZ || dwType == REG_MULTI_SZ) {
+                        buffer[bufferSize - 1] = '\0';
+                        if (strstr(buffer, comp_string) != nullptr) {
+                            core::add(p_brand);
+                            count++;
+                        }
                     }
-                } else {
-                    debug("Failed to query value for \"", subKey, "\"");
+                    else {
+                        std::cerr << "[DEBUG] Value type is not a string for \"" << subKey << "\\" << valueName << "\"\n";
+                    }
                 }
-
+                else {
+                    std::cerr << "[DEBUG] Failed to query value for \"" << subKey << "\\" << valueName << "\". Error: " << GetLastError() << "\n";
+                }
                 RegCloseKey(hKey);
-            } else {
-                debug("Failed to open registry key for \"", subKey, "\"");
             }
-        };
+            else {
+                std::cerr << "[DEBUG] Failed to open registry key \"" << subKey << "\". Error: " << GetLastError() << "\n";
+                failedKeys.insert(subKey);
+            }
+            };
 
         check_key(brands::BOCHS, "HARDWARE\\Description\\System", "SystemBiosVersion", "BOCHS");
         check_key(brands::BOCHS, "HARDWARE\\Description\\System", "VideoBiosVersion", "BOCHS");
@@ -8032,7 +8038,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @author Requiem (https://github.com/NotRequiem)
      */
     [[nodiscard]] static bool vmware_event_logs() {
-#if (!WINDOWS || !x86_64)
+#if (!WINDOWS)
         return false;
 #else
         std::vector<std::wstring> logNames = {
@@ -8876,7 +8882,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const std::wstring searchString1 = L"_VMWARE_";
         const std::wstring searchString2 = L"VMware, Inc.";
 
-        auto search_service_memory = [](const std::wstring& searchString, const std::string& serviceName) -> bool {
+        auto scan_service_memory = [](const std::wstring& searchString, const std::string& serviceName) -> bool {
             const DWORD pid = util::FindProcessIdByServiceName(serviceName);
             if (pid == 0) return false; // Process missing; potentially tampered
 
@@ -8920,15 +8926,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         };
 
-        if (search_service_memory(searchString1, "PlugPlay")) {
+        if (scan_service_memory(searchString1, "PlugPlay")) {
             return core::add(brands::VMWARE);
         }
 
-        if (search_service_memory(searchString2, "Winmgmt")) {
+        if (scan_service_memory(searchString2, "Winmgmt")) {
             return core::add(brands::VMWARE);
         }
 
-        if (search_service_memory(searchString2, "CDPSvc")) {
+        if (scan_service_memory(searchString2, "CDPSvc")) {
             return core::add(brands::VMWARE);
         }
 
@@ -9370,6 +9376,7 @@ static bool rdtsc() {
 #endif
 	}
 
+
     /**
     * @brief Check if the maximum number of virtual processors matches the maximum number of logical processors
     * @category Windows
@@ -9421,6 +9428,70 @@ static bool rdtsc() {
 
         for (const auto& res : results) {
             if (res.type == wmi::result_type::String && res.strValue == "Virtual Machine") {
+                return true;
+            }
+        }
+
+        return false;
+#endif
+    }
+
+
+    /*
+     * @brief Checks if a call to NtQuerySystemInformation with the 0x9f leaf fills a _SYSTEM_HYPERVISOR_DETAIL_INFORMATION structure
+     * @category Windows
+     */
+    [[nodiscard]] static bool hvlquerydetailinfo() {
+#if (!WINDOWS)
+        return false;
+#else 
+        if (util::hyper_x()) {
+            return false;
+        }
+
+        typedef struct _HV_DETAILS {
+            ULONG Data[4];
+        } HV_DETAILS, * PHV_DETAILS;
+
+        typedef struct _SYSTEM_HYPERVISOR_DETAIL_INFORMATION {
+            HV_DETAILS HvVendorAndMaxFunction;
+            HV_DETAILS HypervisorInterface;
+            HV_DETAILS HypervisorVersion;
+            HV_DETAILS HvFeatures;
+            HV_DETAILS HwFeatures;
+            HV_DETAILS EnlightenmentInfo;
+            HV_DETAILS ImplementationLimits;
+        } SYSTEM_HYPERVISOR_DETAIL_INFORMATION, * PSYSTEM_HYPERVISOR_DETAIL_INFORMATION;
+
+        typedef NTSTATUS(NTAPI* FN_NtQuerySystemInformation)(
+            SYSTEM_INFORMATION_CLASS SystemInformationClass,
+            PVOID SystemInformation,
+            ULONG SystemInformationLength,
+            PULONG ReturnLength
+            );
+
+        const HMODULE hNtdll = GetModuleHandleA("ntdll.dll");
+        if (!hNtdll) {
+            return false;
+        }
+
+        const char* functionNames[] = { "NtQuerySystemInformation" };
+        void* functions[1] = { nullptr };
+
+        if (!util::GetFunctionAddresses(hNtdll, functionNames, functions, 1)) {
+            return false;
+        }
+
+        FN_NtQuerySystemInformation pNtQuerySystemInformation = reinterpret_cast<FN_NtQuerySystemInformation>(functions[0]);
+        if (pNtQuerySystemInformation) {
+            SYSTEM_HYPERVISOR_DETAIL_INFORMATION hvInfo = { 0 };
+            const NTSTATUS status = pNtQuerySystemInformation(static_cast<SYSTEM_INFORMATION_CLASS>(0x9F), &hvInfo, sizeof(hvInfo), nullptr);
+
+            if (status != 0) {
+                return false;
+            }
+
+            if (hvInfo.HvVendorAndMaxFunction.Data[0] != 0) {
                 return true;
             }
         }
@@ -10467,7 +10538,7 @@ public: // START OF PUBLIC FUNCTIONS
 			case LSHW_QEMU: return "LSHW_QEMU";
             case VIRTUAL_PROCESSORS: return "VIRTUAL_PROCESSORS";
             case MOTHERBOARD_PRODUCT: return "MOTHERBOARD_PRODUCT";
-
+            case HVLQUERYDETAILINFO: return "HVLQUERYDETAILINFO";
             // ADD NEW CASE HERE FOR NEW TECHNIQUE
             default: return "Unknown flag";
         }
@@ -11009,8 +11080,9 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::VMWARE_HARDENER, { 60, VM::vmware_hardener, false } },
     { VM::SYS_QEMU, { 70, VM::sys_qemu_dir, false } },
     { VM::LSHW_QEMU, { 80, VM::lshw_qemu, false } },
-    { VM::VIRTUAL_PROCESSORS, { 35, VM::virtual_processors, false } },
-    { VM::MOTHERBOARD_PRODUCT, { 25, VM::motherboard_product, false } },
+    { VM::VIRTUAL_PROCESSORS, { 50, VM::virtual_processors, false } },
+    { VM::MOTHERBOARD_PRODUCT, { 50, VM::motherboard_product, false } },
+    { VM::HVLQUERYDETAILINFO, { 50, VM::hvlquerydetailinfo, false } },
     // ADD NEW TECHNIQUE STRUCTURE HERE
 };
 
