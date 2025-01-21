@@ -461,7 +461,7 @@ private:
     static constexpr u8 settings_count = MULTIPLE - NO_MEMO + 1; // get number of settings technique flags like VM::NO_MEMO for example
     static constexpr u8 INVALID = 255; // explicit invalid technique macro
     static constexpr u16 base_technique_count = NO_MEMO; // original technique count, constant on purpose (can also be used as a base count value if custom techniques are added)
-    static constexpr u16 maximum_points = 4765; // theoretical total points if all VM detections returned true (which is practically impossible)
+    static constexpr u16 maximum_points = 5510; // theoretical total points if all VM detections returned true (which is practically impossible)
     static constexpr u16 high_threshold_score = 300; // new threshold score from 100 to 350 if VM::HIGH_THRESHOLD flag is enabled
     static constexpr bool SHORTCUT = true; // macro for whether VM::core::run_all() should take a shortcut by skipping the rest of the techniques if the threshold score is already met
 
@@ -2937,12 +2937,12 @@ public:
                 }
 
                 return threadCount;
-                };
+            };
 
             auto GetThreadsUsingWMI = []() -> int {
                 if (!wmi::initialize()) {
                     std::cerr << "Failed to initialize WMI in GetThreadsUsingWMI.\n";
-                    return 1;
+                    return 0;
                 }
 
                 wmi_result results = wmi::execute(L"SELECT NumberOfLogicalProcessors FROM Win32_Processor", { L"NumberOfLogicalProcessors" });
@@ -2952,14 +2952,14 @@ public:
                     }
                 }
 
-                return 1;
-                };
+                return 0;
+            };
 
             auto GetThreadsUsingGetSystemInfo = []() -> int {
                 SYSTEM_INFO sysinfo;
                 GetSystemInfo(&sysinfo);
                 return sysinfo.dwNumberOfProcessors;
-                };
+            };
 
             auto GetThreadsUsingGetProcessAffinityMask = []() -> int {
                 DWORD_PTR processAffinityMask, systemAffinityMask;
@@ -2967,7 +2967,7 @@ public:
                     return static_cast<int>(std::bitset<sizeof(DWORD_PTR) * 8>(processAffinityMask).count());
                 }
                 return 0;
-                };
+            };
 
             auto GetThreadsUsingNtQuerySystemInformation = []() -> int {
                 HMODULE hModule = GetModuleHandleA("ntdll.dll");
@@ -2987,7 +2987,7 @@ public:
                     PVOID SystemInformation,
                     ULONG SystemInformationLength,
                     PULONG ReturnLength
-                    );
+                );
 
                 NtQuerySystemInformationFunc NtQuerySystemInformation = reinterpret_cast<NtQuerySystemInformationFunc>(functions[0]);
 
@@ -3002,7 +3002,7 @@ public:
                 }
 
                 return 0;
-                };
+            };
 
             int wmiThreads = GetThreadsUsingWMI();
             int sysinfoThreads = GetThreadsUsingGetSystemInfo();
@@ -8287,11 +8287,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        // Open /dev/kmsg
         int fd = open("/dev/kmsg", O_RDONLY | O_NONBLOCK);
         if (fd < 0) {
             debug("KMSG: Failed to open /dev/kmsg");
-            return 1;
+            return false;
         }
 
         char buffer[1024];
@@ -9487,9 +9486,10 @@ static bool rdtsc() {
 	    qemu_finder("QEMU DVD-ROM");
 	    qemu_finder("QEMU QEMU USB Tablet");
 	
-	    return (score >= 3);
+	    return (score >= 3); // if one of the strings above were detected 3 times, flag as VM
 #endif
 	}
+
 
     /**
     * @brief Check if the maximum number of virtual processors matches the maximum number of logical processors
@@ -9499,7 +9499,11 @@ static bool rdtsc() {
     [[nodiscard]] static bool virtual_processors() {
 #if (!WINDOWS || !x86_64)
         return false;
-#else       
+#else
+        if (!cpu::is_leaf_supported(0x40000005)) {
+            return false;
+        }
+
         struct Registers {
             int eax = 0;
             int ebx = 0;

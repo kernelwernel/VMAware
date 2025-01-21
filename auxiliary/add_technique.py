@@ -16,10 +16,10 @@
 #  the updated components are:
 #   - documentation
 #   - technique table 
-#   - CLI check list
+#   - CLI checklist
 #   - technique enums
 #   - flag_to_string()
-#   - is_<os> functionality in CLI
+#   - <os>_technique lambda functionality in CLI
 #   - adding the technique itself in vmaware.hpp
 # 
 # ===============================================================

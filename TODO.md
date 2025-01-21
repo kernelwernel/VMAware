@@ -22,6 +22,7 @@
 - [ ] rearrange the techniques so that the more likely ones will be executed first
 - [ ] update the conclusion with the VM type
 - [ ] add a description of every vm brand detected in the CLI
+- [ ] make a hardware scanner module where it'll find for VM strings in all sorts of devices
 
 # Distant plans
 - add the library to conan.io when released

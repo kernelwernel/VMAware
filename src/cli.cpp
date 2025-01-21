@@ -466,6 +466,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::POWER_CAPABILITIES:
             case VM::SETUPAPI_DISK: 
             case VM::VMWARE_HARDENER:
+            case VM::VIRTUAL_PROCESSORS:
             // ADD WINDOWS FLAG
             return false;
             default: return true;
