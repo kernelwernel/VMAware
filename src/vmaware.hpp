@@ -1843,7 +1843,7 @@ public:
 #endif
         }
 
-
+        // Checks if a process is running
         [[nodiscard]] static bool is_proc_running(const TCHAR* executable) {
 #if (WINDOWS)
             DWORD processes[1024], bytesReturned;
@@ -1947,6 +1947,7 @@ public:
 #endif
         }
 
+        // Retrieves the computer name
         [[nodiscard]] static std::string get_hostname() {
 #if (WINDOWS)
             char ComputerName[MAX_COMPUTERNAME_LENGTH + 1];
@@ -2304,13 +2305,34 @@ public:
             std::string version_;
         };
 
+
+        /**
+         * @brief Determines if the current process is running under WOW64.
+         *
+         * WOW64 (Windows-on-Windows 64-bit) is a subsystem that allows 32-bit
+         * applications to run on 64-bit Windows. This function checks whether the
+         * current process is a 32-bit application running on a 64-bit OS.
+         *
+         * @return `true` if the process is running under WOW64, otherwise `false`.
+         */
         [[nodiscard]] static bool is_wow64() {
             BOOL isWow64 = FALSE;
-            BOOL tmp = IsWow64Process(GetCurrentProcess(), &isWow64);
-            return (tmp && isWow64);
+            BOOL pbool = IsWow64Process(GetCurrentProcess(), &isWow64);
+            return (pbool && isWow64);
         }
 
-        // backup function in case the main get_windows_version function fails
+
+        /**
+         * @brief Retrieves the Windows major version using a fallback method.
+         *
+         * This function attempts to get the Windows version using the RtlGetVersion
+         * function from ntdll.dll. If it fails, it returns 0.
+         * 
+         * This function is the fallback function of get_windows_version.
+         *
+         * @return The major version of Windows (e.g., 6 for Vista/7, 10 for Windows 10),
+         *         or 0 if the version cannot be determined.
+         */
         [[nodiscard]] static u8 get_windows_version_backup() {
             u8 ret = 0;
             NTSTATUS(WINAPI * RtlGetVersion)(LPOSVERSIONINFOEXW) = nullptr;
@@ -2337,7 +2359,17 @@ public:
             return ret;
         }
 
-        // credits to @Requiem for the code, thanks man :)
+
+        /**
+         * @brief Retrieves the Windows major version using `RtlGetVersion`.
+         *
+         * This function queries the `ntdll.dll` library to obtain the Windows version.
+         * It maps the build number to a major Windows version using a predefined map.
+         * If the primary method fails, it falls back to `get_windows_version_backup()`.
+         *
+         * @return The major version of Windows (e.g., 6 for Vista/7, 10 for Windows 10),
+         *         or the backup method's result if the primary method fails.
+         */
         [[nodiscard]] static u8 get_windows_version() {
             typedef NTSTATUS(WINAPI* RtlGetVersionFunc)(PRTL_OSVERSIONINFOW);
 
@@ -2396,6 +2428,15 @@ public:
         }
 
 
+        /**
+         * @brief Retrieves SMBIOS data as a string from the system registry.
+         *
+         * This function accesses the SMBIOS data stored in the Windows registry
+         * and scans it for known virtual machine signatures.
+         *
+         * @return A string containing SMBIOS data if virtual machine indicators are found,
+         *         otherwise an empty string.
+         */
         [[nodiscard]] static std::string SMBIOS_string() {
             HKEY hk = 0;
             int ret = RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SYSTEM\\CurrentControlSet\\Services\\mssmbios\\Data", 0, KEY_ALL_ACCESS, &hk);
@@ -2492,6 +2533,14 @@ public:
         }
 
 
+        /**
+         * @brief Retrieves ACPI data as a string from the system registry.
+         *
+         * This function accesses the Windows registry to fetch ACPI-related data,
+         * processes it, and checks for virtual machine indicators.
+         *
+         * @return A string containing ACPI data if found, otherwise an empty string.
+         */
         [[nodiscard]] static std::string AcpiData_string() {
             HKEY hk = 0;
             int ret = RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SYSTEM\\CurrentControlSet\\Services\\mssmbios\\Data", 0, KEY_ALL_ACCESS, &hk);
@@ -2701,9 +2750,14 @@ public:
 
 
         /**
-         * @brief Enable SE_DEBUG_PRIVILEGE for the current process to access other processes.
+         * @brief Enables the SE_DEBUG_NAME privilege for the current process.
+         *
+         * This function adjusts the token privileges to enable debugging rights,
+         * which are required for the lib to access the memory of certain processes.
+         *
+         * @return `true` if the privilege was successfully enabled, otherwise `false`.
          */
-        static bool EnableDebugPrivilege() {
+        [[nodiscard]] static bool EnableDebugPrivilege() {
             HANDLE hToken;
             TOKEN_PRIVILEGES tp{};
             LUID luid;
@@ -2754,7 +2808,7 @@ public:
          *
          * @return bool `true` if `searchString` is found in `buffer`, `false` otherwise.
          */
-        static bool findSubstring(const wchar_t* buffer, const size_t bufferSize, const std::wstring& searchString) {
+        [[nodiscard]] static bool findSubstring(const wchar_t* buffer, const size_t bufferSize, const std::wstring& searchString) {
             size_t searchLength = searchString.length();
             if (searchLength > bufferSize) return false;
 
@@ -2794,7 +2848,16 @@ public:
         }
 
 
-        static DWORD FindProcessIdByServiceName(const std::string& serviceName) {
+        /**
+         * @brief Finds the process ID (PID) of a service by its name.
+         *
+         * This function queries WMI to retrieve the process ID of a service running on the system. 
+         * This is needed when trying to access processes with the "svchost" name.
+         *
+         * @param serviceName The name of the service to search for.
+         * @return The process ID (PID) if found, otherwise returns `0`.
+         */
+        [[nodiscard]] static DWORD FindProcessIdByServiceName(const std::string& serviceName) {
             const std::wstring query = L"SELECT ProcessId, Name FROM Win32_Service WHERE Name='" +
                 std::wstring(serviceName.begin(), serviceName.end()) + L"'";
             const std::vector<std::wstring> properties = { L"ProcessId" };
@@ -2808,6 +2871,7 @@ public:
 
             return 0;
         }
+
 
         /**
          * @brief Retrieves the addresses of specified functions from a loaded module using the export directory.
@@ -2850,6 +2914,7 @@ public:
 
             return resolved == count;
         }
+
 
         /**
          * @brief Checks if the number of logical processors obtained by various methods match.
@@ -2988,6 +3053,23 @@ public:
             }
 
             return false;
+        }
+
+        /**
+         * @brief Checks if the Hyper-V CPUID leaf is present.
+         *
+         * This function uses the CPUID instruction to determine if the system supports
+         * the Hyper-V-specific CPUID leaf (0x40000000).
+         *
+         * @return `true` if the Hyper-V CPUID leaf is present, otherwise `false`.
+         */
+        [[nodiscard]] static bool is_hyperv_leaf_present() {
+            char out[sizeof(int32_t) * 4 + 1] = { 0 }; // e*x size + number of e*x registers + null terminator
+            cpu::cpuid((int*)out, cpu::leaf::hypervisor);
+
+            const u32 eax = static_cast<u32>(out[0]);
+
+            return eax != 0;
         }
 #endif
     };
@@ -8683,9 +8765,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!WINDOWS || !x86_64) 
         return false;
 #else
+        if (!util::is_hyperv_leaf_present()) {
+            return false;
+        }
+
 #pragma pack(push, 1)
         struct IDTR { uint16_t limit;  uint64_t base; };
 #pragma pack(pop)
+
         IDTR idtr;
         __sidt(&idtr);
         u64 idt_base = idtr.base;
@@ -8957,9 +9044,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check if the IDT and GDT limit addresses mismatch between different CPU cores. 
-     * The Windows kernel has different interrupt handlers registered for each CPU core, thus resulting in different virtual addresses when calling SIDT and SGDT in kernel-mode
-     * However, in legitimate cases (when Windows is running under its Hyper-V), the IDT and GDT base address will always point to the same virtual location across all CPU cores if called from user-mode
+     * @brief Check if the IDT and GDT limit addresses mismatch between different CPU cores
+     * @note  The Windows kernel has different interrupt handlers registered for each CPU core, thus resulting in different virtual addresses when calling SIDT and SGDT in kernel-mode
+     *        However, in legitimate cases (when Windows is running under its Hyper-V), the IDT and GDT base address will always point to the same virtual location across all CPU cores if called from user-mode
      * @category Windows, x64
      * @author Requiem (https://github.com/NotRequiem)
      */
@@ -8967,6 +9054,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!WINDOWS)
         return false;
 #else
+        if (!util::is_hyperv_leaf_present()) {
+            return false;
+        }
+
         unsigned int num_threads = std::thread::hardware_concurrency();
 
         std::vector<std::thread> threads;
@@ -9393,13 +9484,16 @@ static bool rdtsc() {
     /**
     * @brief Check if the maximum number of virtual processors matches the maximum number of logical processors
     * @category Windows
-    * @note https://medium.com/@matterpreter/hypervisor-detection-with-systemhypervisordetailinformation-26e44a57f80e
+    * @author Requiem
     */
     [[nodiscard]] static bool virtual_processors() {
 #if (!WINDOWS)
         return false;
 #else
         if (!cpu::is_leaf_supported(0x40000005)) {
+            return false;
+        }
+        if (!util::is_hyperv_leaf_present()) {
             return false;
         }
 
@@ -9524,7 +9618,7 @@ static bool rdtsc() {
 	 * @note https://learn.microsoft.com/en-us/windows/arm/apps-on-arm-x86-emulation#detecting-emulation
 	 */
 	[[nodiscard]] static bool microsoft_x86_emulation() {
-	#if (!(WINDOWS && x86))
+	#if (!(WINDOWS && x86_32))
 	    return false;
 	#else
 	    USHORT process_machine = 0
