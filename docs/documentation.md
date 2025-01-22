@@ -29,7 +29,7 @@ This is basically the main function you're looking for, which returns a bool. If
 int main() {
     /**
      * The basic way to detect a VM where the default checks will 
-     * be performed. This is the recommended usage of the library.
+     * be performed. This is the recommended usage of the lib.
      */ 
     bool is_vm = VM::detect();
 
@@ -456,19 +456,19 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::LSHW_QEMU` | Check for QEMU string instances with lshw command | Linux | 80% |  |  |  |  |
 | `VM::VIRTUAL_PROCESSORS` | Checks if the number of maximum virtual processors matches the maximum number of logical processors | Windows | 50% |  |  |  |  |
 | `VM::MOTHERBOARD_PRODUCT` | Check if the motherboard product string matches "Virtual Machine" | Windows | 50% |  |  |  |  |
-| `VM::HVLQUERYDETAILINFO` | Checks if a call to NtQuerySystemInformation with the 0x9f leaf fills a _SYSTEM_HYPERVISOR_DETAIL_INFORMATION structure | Windows | 50% |  |  |  |  |
-
+| `VM::HYPERV_QUERY` | Checks if a call to NtQuerySystemInformation with the 0x9f leaf fills a _SYSTEM_HYPERVISOR_DETAIL_INFORMATION structure | Windows | 50% |  |  |  |  |
+| `VM::MICROSOFT_EMU` | Check for x86 emulation by a "Windows on ARM" OS  | Windows | 60% |  |  |  |  |
 <!-- ADD DETAILS HERE -->
 
 <br>
 
 # Brand table
 
-This is the table of all the brands the library supports.
+This is the table of all the brands the lib supports.
 
 | String | Variable alias | VM type | Notes |
 | -------------- | ------ | ------- | ----- |
-| Unknown | `VM::brands::NULL_BRAND` | Unknown |  |
+| Unknown | `VM::brands::NULL_BRAND` | Unknown | This is the default brand it returns if none were found |
 | VirtualBox | `VM::brands::VBOX` | Hypervisor (type 2) |  |
 | VMware | `VM::brands::VMWARE` | Hypervisor (type 2) |  |
 | VMware Express | `VM::brands::VMWARE_EXPRESS` | Hypervisor (type 2) |  |
@@ -494,7 +494,7 @@ This is the table of all the brands the library supports.
 | Sandboxie | `VM::brands::SANDBOXIE` | Sandbox |  |
 | Docker | `VM::brands::DOCKER` | Container |  |
 | Wine | `VM::brands::WINE` | Compatibility layer |  |
-| Apple Rosetta 2 | `VM::brands::APPLE_ROSETTA` | Binary Translation Layer/Emulator |  |
+| Apple Rosetta 2 | `VM::brands::APPLE_ROSETTA` | Binary Translation Layer/Emulator | Debatable if this should even be in the lib in the first place |
 | Virtual PC  | `VM::brands::VPC` | Hypervisor (type 2) |  |
 | Anubis | `VM::brands::ANUBIS` | Sandbox |  |
 | JoeBox | `VM::brands::JOEBOX` | Sandbox |  |
@@ -506,7 +506,7 @@ This is the table of all the brands the library supports.
 | OpenBSD VMM | `VM::brands::BSD_VMM` | Hypervisor (type 2) |  |
 | Intel HAXM | `VM::brands::INTEL_HAXM` | Hypervisor (type 1) |  |
 | Unisys s-Par | `VM::brands::UNISYS` | Partitioning Hypervisor |  |
-| Lockheed Martin LMHS  | `VM::brands::LMHS` | Hypervisor (unknown type) | Yes, you read that right. The library can detect VMs running on US military fighter jets, apparently |
+| Lockheed Martin LMHS  | `VM::brands::LMHS` | Hypervisor (unknown type) | Yes, you read that right. The lib can detect VMs running on US military fighter jets, apparently |
 | Cuckoo | `VM::brands::CUCKOO` | Sandbox |  |
 | BlueStacks | `VM::brands::BLUESTACKS` | Emulator |  |
 | Jailhouse | `VM::brands::JAILHOUSE` | Partitioning Hypervisor |  |
@@ -523,12 +523,14 @@ This is the table of all the brands the library supports.
 | KubeVirt (KVM) | `VM::brands::KUBEVIRT` | Hypervisor (type 1) |  |
 | AWS Nitro System EC2 (KVM-based) | `VM::brands::AWS_NITRO` | Hypervisor (type 1) |  |
 | Podman | `VM::brands::PODMAN` | Container |  |
-| WSL | `VM::brands::WSL` | Hybrid Hyper-V (type 1 and 2) | The type is debatable |
+| WSL | `VM::brands::WSL` | Hybrid Hyper-V (type 1 and 2) | The type is debatable, it's not exactly clear |
 | OpenVZ | `VM::brands::OPENVZ` | Container |  |
 | ANY.RUN | N/A | Sandbox | Removed from the lib, available only in the CLI |
 | Barevisor | `VM::brands::BAREVISOR` | Hypervisor (type 1) |  |
 | HyperPlatform | `VM::brands::HYPERPLATFORM` | Hypervisor (type 1) |  |
 | MiniVisor | `VM::brands::MINIVISOR` | Hypervisor (type 1) |  |
+| Microsoft Prism | `VM::brands::MICROSOFT_PRISM` | Emulator |  |
+| Microsoft x86 Emulator | `VM::brands::MICROSOFT_X86_EMU` | Emulator |  |
 
 <br>
 

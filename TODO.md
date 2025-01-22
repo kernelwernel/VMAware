@@ -23,6 +23,7 @@
 - [ ] update the conclusion with the VM type
 - [ ] add a description of every vm brand detected in the CLI
 - [ ] make a hardware scanner module where it'll find for VM strings in all sorts of devices
+- [ ] add more QEMU techniques
 
 # Distant plans
 - add the library to conan.io when released

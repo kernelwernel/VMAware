@@ -38,7 +38,7 @@
     #define WINDOWS 1
     #include <windows.h>
 #else
-    #define MSVC 0
+    #define WINDOWS 0
 #endif
 
 #if (MSVC)
@@ -141,7 +141,7 @@ R"(Usage:
 
 Options:
  -h | --help        prints this help menu
- -v | --version     print cli version and other details
+ -v | --version     print CLI version and other details
  -a | --all         run the result with ALL the techniques enabled (might contain false positives)
  -d | --detect      returns the result as a boolean (1 = VM, 0 = baremetal)
  -s | --stdout      returns either 0 or 1 to STDOUT without any text output (0 = VM, 1 = baremetal)
@@ -465,11 +465,9 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::SETUPAPI_DISK: 
             case VM::VMWARE_HARDENER:
             case VM::VIRTUAL_PROCESSORS:
-<<<<<<< HEAD
-=======
             case VM::MOTHERBOARD_PRODUCT:
-            case VM::HVLQUERYDETAILINFO:
->>>>>>> d6b88811dd5e1f0b73c8a3fd08718ccab5294f75
+            case VM::HYPERV_QUERY:
+			case VM::MICROSOFT_EMU:
             // ADD WINDOWS FLAG
             return false;
             default: return true;
@@ -585,8 +583,8 @@ std::string vm_description(const std::string& vm_brand) {
         { VM::brands::VMWARE_HARD, "" },
         { VM::brands::BHYVE, "bhyve (pronounced \"bee hive\", formerly written as BHyVe for \"BSD hypervisor\") is a free type 2 hosted hypervisor initially written for FreeBSD. It can also be used on a number of illumos based distributions including SmartOS, OpenIndiana, and OmniOS. bhyve has a modern codebase and uses fewer resources compared to its competitors. In the case of FreeBSD, the resource management is more efficient." },
         { VM::brands::KVM, "KVM is a free and open source module of the Linux kernel released in 2007. It uses hardware virtualization extensions, and has had support for hot swappable vCPUs, dynamic memory management, and Live Migration. It also reduces the impact that memory write-intensive workloads have on the migration process. KVM emulates very little hardware components, and it defers to a higher-level client application such as QEMU." },
-        { VM::brands::QEMU, "" },
-        { VM::brands::QEMU_KVM, "" },
+        { VM::brands::QEMU, "The Quick Emulator (QEMU) is a free and open-source emulator that uses dynamic binary translation to emulate a computer's processor. It translates the emulated binary codes to an equivalent binary format which is executed by the machine. It provides a variety of hardware and device models for the VM, while often being combined with KVM. However, no concrete evidence of KVM was found for this system." },
+        { VM::brands::QEMU_KVM, "The Quick Emulator (QEMU) is a free and open-source emulator that uses dynamic binary translation to emulate a computer's processor. It translates the emulated binary codes to an equivalent binary format which is executed by the machine. It provides a variety of hardware and device models for the VM, while often being combined with KVM which the library has detected as the case for this system." },
         { VM::brands::KVM_HYPERV, "" },
         { VM::brands::QEMU_KVM_HYPERV, "" },
         { VM::brands::HYPERV, "Hyper-V is Microsoft's proprietary native hypervisor that can create x86 VMs on Windows. Released in 2008, it supercedes previous virtualization solutions such as Microsoft Virtual Server and Windows VirtualPC. Hyper-V uses partitioning to isolate the guest OSs, and has \"enlightenment\" features for bypassing device emulation layers, allowing for faster execution including when Windows is virtualization on Linux." },
@@ -606,22 +604,22 @@ std::string vm_description(const std::string& vm_brand) {
         { VM::brands::JOEBOX, "" },
         { VM::brands::THREATEXPERT, "" },
         { VM::brands::CWSANDBOX, "" },
-        { VM::brands::COMODO, "" },
+        { VM::brands::COMODO, "Comodo is a proprietary sandbox running an isolated operating environment. Comodo have integrated sandboxing technology directly into the security architecture of Comodo Internet Security to complement and strengthen the Firewall, Defense+ and Antivirus modules of their product line. It features a hybrid of user mode hooks along with a kernel mode driver, preventing any modification to files or registry on the host machine." },
         { VM::brands::BOCHS, "Bochs (pronounced \"box\") is a free and open-source portable IA-32 and x86-64 IBM PC compatible emulator and debugger mostly written in C++. Bochs is mostly used for OS development and to run other guest OSs inside already running host OSs, while emulating the hardware needed such as hard drives, CD drives, and floppy drives. It doesn't utilize any host CPU virtualization features, therefore is slower than most virtualization software." },
         { VM::brands::NVMM, "NVMM (NetBSD Virtual Machine Monitor) is NetBSD's native hypervisor for NetBSD 9.0. It provides a virtualization API, libnvmm, that can be leveraged by emulators such as QEMU. A unique property of NVMM is that the kernel never accesses guest VM memory, only creating it. Intel's Hardware Accelerated Execution Manager (HAXM) provides an alternative solution for acceleration in QEMU for Intel CPUs only, similar to Linux's KVM." },
         { VM::brands::BSD_VMM, "" },
-        { VM::brands::INTEL_HAXM, "" },
+        { VM::brands::INTEL_HAXM, "HAXM is a cross-platform hardware-assisted virtualization engine (hypervisor), widely used as an accelerator for Android Emulator and QEMU. HAXM runs as a kernel-mode driver on the host operating system thereby enabling applications like QEMU to utilize the hardware virtualization capabilities built into modern Intel CPUs, namely Intel Virtualization Technology. The project has been discontinued as of 2023." },
         { VM::brands::UNISYS, "" },
-        { VM::brands::LMHS, "" },
+        { VM::brands::LMHS, "LMHS is Lockheed Martin's native hypervisor. I assume you got this result because you're an employee in the company and you're doing security testing. But if you're not, how the hell did you get this result? Did you steal a US military fighter jet or something? I'm genuinely curious. I really don't expect anybody to have this result frankly but I'll assume it's just a false positive (please create an issue in the repo if it is)." },
         { VM::brands::CUCKOO, "" },
         { VM::brands::BLUESTACKS, "BlueStacks is a chain of cloud-based cross-platform products developed by the San Francisco-based company of the same name. The BlueStacks App Player enables the execution of Android applications on computers running Microsoft Windows or macOS. It functions through an Android emulator referred to as App Player. The basic features of the software are available for free, while advanced features require a paid monthly subscription." },
-        { VM::brands::JAILHOUSE, "" },
+        { VM::brands::JAILHOUSE, "Jailhouse is a free and open source partitioning Hypervisor based on Linux, made by Siemens. It is able to run bare-metal applications or (adapted) operating systems besides Linux. For this purpose, it configures CPU and device virtualization features of the hardware platform in a way that none of these domains, called \"cells\", can interfere with each other in an unacceptable way." },
         { VM::brands::APPLE_VZ, "" },
         { VM::brands::INTEL_KGT, "" },
         { VM::brands::AZURE_HYPERV, "" },
         { VM::brands::NANOVISOR, "NanoVisor is a Hyper-V modification serving as the host OS of Xbox's devices: the Xbox System Software. It contains 2 partitions: the \"Exclusive\" partition is a custom VM for games, while the other partition, called the \"Shared\" partition is a custom VM for running multiple apps including the OS itself. The OS was based on Windows 8 Core at the Xbox One launch in 2013." },
         { VM::brands::SIMPLEVISOR, "" },
-        { VM::brands::HYPERV_ARTIFACT, "" },
+        { VM::brands::HYPERV_ARTIFACT, "The result means that the CLI has found Hyper-V, but as an artifact instead of an actual VM. Although the hardware values do in fact match with the brand due to how it's designed by Microsoft, the CLI has determined you are NOT in a Hyper-V VM from our \"Hyper-X\" mechanism which differentiates between an actual Hyper-V and a false Hyper-V VM that left out breadcrumbs in the system, making it seem like it's a real Hyper-V VM." },
         { VM::brands::UML, "" },
         { VM::brands::POWERVM, "" },
         { VM::brands::GCE, "" },
@@ -634,6 +632,8 @@ std::string vm_description(const std::string& vm_brand) {
         { VM::brands::BAREVISOR, "" },
         { VM::brands::HYPERPLATFORM, "" },
         { VM::brands::MINIVISOR, "" },
+        { VM::brands::MICROSOFT_PRISM, "Prism is the new emulator included with Windows 11. Relative to previous emulation technology included in Windows, it includes significant optimizations that improve the performance and lower CPU usage of apps under emulation. Prism is optimized and tuned specifically for Qualcomm Snapdragon processors, and Prism is available for all supported \"Windows 11 on Arm\" devices with Windows 11." },
+        { VM::brands::MICROSOFT_X86_EMU, "" },
         { VM::brands::NULL_BRAND, "" }
     };
 
@@ -972,7 +972,8 @@ void general() {
 	checker(VM::LSHW_QEMU, "QEMU in lshw output");
     checker(VM::VIRTUAL_PROCESSORS, "virtual processors");
     checker(VM::MOTHERBOARD_PRODUCT, "motherboard product");
-    checker(VM::HVLQUERYDETAILINFO, "HvlQueryDetailInfo");
+    checker(VM::HYPERV_QUERY, "Hyper-V query");
+	checker(VM::MICROSOFT_EMU, "Microsoft x86 emulation");
     // ADD NEW TECHNIQUE CHECKER HERE
 
     std::printf("\n");

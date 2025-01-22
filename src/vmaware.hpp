@@ -446,7 +446,8 @@ public:
         LSHW_QEMU,
         VIRTUAL_PROCESSORS,
         MOTHERBOARD_PRODUCT,
-        HVLQUERYDETAILINFO,
+        HYPERV_QUERY,
+		MICROSOFT_EMU,
         // ADD NEW TECHNIQUE ENUM NAME HERE
 
         // start of settings technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
@@ -463,7 +464,7 @@ private:
     static constexpr u8 INVALID = 255; // explicit invalid technique macro
     static constexpr u16 base_technique_count = NO_MEMO; // original technique count, constant on purpose (can also be used as a base count value if custom techniques are added)
     static constexpr u16 maximum_points = 5510; // theoretical total points if all VM detections returned true (which is practically impossible)
-    static constexpr u16 high_threshold_score = 300; // new threshold score from 100 to 350 if VM::HIGH_THRESHOLD flag is enabled
+    static constexpr u16 high_threshold_score = 300; // new threshold score from 150 to 300 if VM::HIGH_THRESHOLD flag is enabled
     static constexpr bool SHORTCUT = true; // macro for whether VM::core::run_all() should take a shortcut by skipping the rest of the techniques if the threshold score is already met
 
 
@@ -574,6 +575,8 @@ public:
         static constexpr const char* BAREVISOR = "Barevisor";
         static constexpr const char* HYPERPLATFORM = "HyperPlatform";
         static constexpr const char* MINIVISOR = "MiniVisor";
+        static constexpr const char* MICROSOFT_PRISM = "Microsoft Prism";
+        static constexpr const char* MICROSOFT_X86_EMU = "Microsoft x86 Emulator";
         static constexpr const char* NULL_BRAND = "Unknown";
     };
 
@@ -9449,7 +9452,7 @@ static bool rdtsc() {
      * @brief Checks if a call to NtQuerySystemInformation with the 0x9f leaf fills a _SYSTEM_HYPERVISOR_DETAIL_INFORMATION structure
      * @category Windows
      */
-    [[nodiscard]] static bool hvlquerydetailinfo() {
+    [[nodiscard]] static bool hyperv_query() {
 #if (!WINDOWS)
         return false;
 #else 
@@ -9507,6 +9510,48 @@ static bool rdtsc() {
         return false;
 #endif
     }
+
+
+	/**
+	 * @brief Check for x86 emulation by a "Windows on ARM" OS 
+	 * @category Windows
+	 * @note https://learn.microsoft.com/en-us/windows/arm/apps-on-arm-x86-emulation#detecting-emulation
+	 */
+	[[nodiscard]] static bool microsoft_x86_emulation() {
+	#if (!(WINDOWS && x86))
+	    return false;
+	#else
+	    USHORT process_machine = 0
+	    USHORT native_machine = 0;
+	
+	    if (IsWoW64Process2(GetCurrentProcess(), &process_machine, &native_machine)) {
+	        debug("MICROSOFT_PRISM: process Machine: ", process_machine);
+	        debug("MICROSOFT_PRISM: native Machine: ", native_machine);
+	
+	        bool is_emulated = (
+	            (native_machine == IMAGE_FILE_MACHINE_ARM64) &&
+	            (
+	                (process_machine == IMAGE_FILE_MACHINE_AMD64) || // not to be misread as "ARM64"
+	                (process_machine == IMAGE_FILE_MACHINE_I386) 
+	            )
+	        );
+	
+	        if (is_emulated) {
+	            const u8 version = util::get_windows_version();
+	
+	            if (version == 11) {
+	                return core::add(brands::MICROSOFT_PRISM);
+	            } else if (version == 10) {
+	                return core::add(brands::MICROSOFT_X86_EMU);
+	            }
+	        }
+	    } else {
+	        debug("MICROSOFT_EMU: failed to run IsWow64Process2()");
+	    }
+	
+	    return false;
+	#endif
+	} 
 
     // ADD NEW TECHNIQUE FUNCTION HERE
 
@@ -10546,7 +10591,8 @@ public: // START OF PUBLIC FUNCTIONS
 			case LSHW_QEMU: return "LSHW_QEMU";
             case VIRTUAL_PROCESSORS: return "VIRTUAL_PROCESSORS";
             case MOTHERBOARD_PRODUCT: return "MOTHERBOARD_PRODUCT";
-            case HVLQUERYDETAILINFO: return "HVLQUERYDETAILINFO";
+            case HYPERV_QUERY: return "HYPERV_QUERY";
+            case MICROSOFT_EMU: return "MICROSOFT_EMU";
             // ADD NEW CASE HERE FOR NEW TECHNIQUE
             default: return "Unknown flag";
         }
@@ -10680,6 +10726,8 @@ public: // START OF PUBLIC FUNCTIONS
 
             // misc
             { brands::BOCHS, "Emulator" },
+            { brands::MICROSOFT_PRISM, "Emulator" },
+            { brands::MICROSOFT_X86_EMU, "Emulator" },
             { brands::BLUESTACKS, "Emulator" },
             { brands::MSXTA, "Emulator" },
             { brands::QEMU, "Emulator/Hypervisor (type 2)" },
@@ -10703,6 +10751,8 @@ public: // START OF PUBLIC FUNCTIONS
         if (it != type_table.end()) {
             return it->second;
         }
+
+        debug("VM::type(): No known brand found, something went terribly wrong here...");
 
         return "Unknown";
     }
@@ -10862,6 +10912,8 @@ std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard{
     { VM::brands::BAREVISOR, 0 },
     { VM::brands::HYPERPLATFORM, 0 },
     { VM::brands::MINIVISOR, 0 },
+    { VM::brands::MICROSOFT_PRISM, 0 },
+    { VM::brands::MICROSOFT_X86_EMU, 0 },
     { VM::brands::NULL_BRAND, 0 }
 };
 
@@ -11090,7 +11142,8 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::LSHW_QEMU, { 80, VM::lshw_qemu, false } },
     { VM::VIRTUAL_PROCESSORS, { 50, VM::virtual_processors, false } },
     { VM::MOTHERBOARD_PRODUCT, { 50, VM::motherboard_product, false } },
-    { VM::HVLQUERYDETAILINFO, { 50, VM::hvlquerydetailinfo, false } },
+    { VM::HYPERV_QUERY, { 50, VM::hyperv_query, false } },
+	{ VM::MICROSOFT_EMU, { 60, VM::microsoft_x86_emulation, false } },
     // ADD NEW TECHNIQUE STRUCTURE HERE
 };
 
