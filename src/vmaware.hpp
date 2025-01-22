@@ -577,6 +577,8 @@ public:
         static constexpr const char* MINIVISOR = "MiniVisor";
         static constexpr const char* MICROSOFT_PRISM = "Microsoft Prism";
         static constexpr const char* MICROSOFT_X86_EMU = "Microsoft x86 Emulator";
+        static constexpr const char* INTEL_TDX = "Intel TDX";
+        static constexpr const char* LKVM = "LKVM";
         static constexpr const char* NULL_BRAND = "Unknown";
     };
 
@@ -972,7 +974,9 @@ public:
                 intel_kgt = "EVMMEVMMEVMM",
                 barevisor = "Barevisor!\0\0",
                 hyperplatform = "PpyH",
-                minivisor = "MiniVisor\0\0\0";
+                minivisor = "MiniVisor\0\0\0",
+                intel_tdx = "IntelTDX    ", // source: virt-what
+                lkvm = "LKVMLKVMLKVM";
 
             const std::array<std::string, 2> brand_strings = cpu_manufacturer(p_leaf);
 
@@ -1008,6 +1012,8 @@ public:
                 if (brand_str == intel_kgt) { return core::add(brands::INTEL_KGT); }
                 if (brand_str == barevisor) { return core::add(brands::BAREVISOR); }
                 if (brand_str == minivisor) { return core::add(brands::MINIVISOR); }
+                if (brand_str == intel_tdx) { return core::add(brands::INTEL_TDX); }
+                if (brand_str == lkvm) { return core::add(brands::LKVM); }
 
                 // both Hyper-V and VirtualPC have the same string value
                 if (brand_str == hyperv) {
@@ -2054,7 +2060,7 @@ public:
                 is_smbios_hyperv() ||
                 is_acpi_hyperv() ||
                 is_event_log_hyperv()
-                );
+            );
 
             if (has_hyperv_indications) {
                 state = HYPERV_REAL_VM;
@@ -10700,6 +10706,7 @@ public: // START OF PUBLIC FUNCTIONS
             { brands::KUBEVIRT, "Hypervisor (type 1)" },
             { brands::POWERVM, "Hypervisor (type 1)" },
             { brands::AWS_NITRO, "Hypervisor (type 1)" },
+            { brands::LKVM, "Hypervisor (type 1)" },
 
             // type 2
             { brands::BHYVE, "Hypervisor (type 2)" },
@@ -10739,6 +10746,7 @@ public: // START OF PUBLIC FUNCTIONS
             { brands::HYPERV_VPC, "Hypervisor (either type 1 or 2)" },
             { brands::LMHS, "Hypervisor (unknown type)" },
             { brands::WINE, "Compatibility layer" },
+            { brands::INTEL_TDX, "Trusted Domain" },
             { brands::APPLE_VZ, "Unknown" },
             { brands::HYPERV_ARTIFACT, "Unknown" },
             { brands::UML, "Paravirtualised/Hypervisor (type 2)" },
@@ -10914,6 +10922,8 @@ std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard{
     { VM::brands::MINIVISOR, 0 },
     { VM::brands::MICROSOFT_PRISM, 0 },
     { VM::brands::MICROSOFT_X86_EMU, 0 },
+    { VM::brands::INTEL_TDX, 0 },
+    { VM::brands::LKVM, 0 },
     { VM::brands::NULL_BRAND, 0 }
 };
 

@@ -634,6 +634,8 @@ std::string vm_description(const std::string& vm_brand) {
         { VM::brands::MINIVISOR, "" },
         { VM::brands::MICROSOFT_PRISM, "Prism is the new emulator included with Windows 11. Relative to previous emulation technology included in Windows, it includes significant optimizations that improve the performance and lower CPU usage of apps under emulation. Prism is optimized and tuned specifically for Qualcomm Snapdragon processors, and Prism is available for all supported \"Windows 11 on Arm\" devices with Windows 11." },
         { VM::brands::MICROSOFT_X86_EMU, "" },
+        { VM::brands::INTEL_TDX, "" },
+        { VM::brands::LKVM, "" },
         { VM::brands::NULL_BRAND, "" }
     };
 
@@ -760,7 +762,6 @@ void checker(const VM::enum_flags flag, const char* message) {
     }
 #endif
 
-
     if (is_disabled(flag)) {
         if (arg_bitset.test(COMPACT)) {
             return;
@@ -770,12 +771,11 @@ void checker(const VM::enum_flags flag, const char* message) {
         return;
     }
 
-
-    std::cout << 
-        (VM::check(flag) ? detected : not_detected) << 
-        " Checking " << 
-        message << 
-        "...\n";
+    if (VM::check(flag)) {
+        std::cout << detected << bold << " Checking " << message << "..." << ansi_exit << "\n";
+    } else {
+        std::cout << not_detected << " Checking " << message << "...\n";
+    }
 }
 
 

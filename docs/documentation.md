@@ -531,6 +531,8 @@ This is the table of all the brands the lib supports.
 | MiniVisor | `VM::brands::MINIVISOR` | Hypervisor (type 1) |  |
 | Microsoft Prism | `VM::brands::MICROSOFT_PRISM` | Emulator |  |
 | Microsoft x86 Emulator | `VM::brands::MICROSOFT_X86_EMU` | Emulator |  |
+| Intel TDX | `VM::brands::INTEL_TDX` | Trusted Domain |  |
+| LKVM | `VM::brands::LKVM` | Hypervisor (type 1) |  |
 
 <br>
 

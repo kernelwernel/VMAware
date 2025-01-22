@@ -24,6 +24,8 @@
 - [ ] add a description of every vm brand detected in the CLI
 - [ ] make a hardware scanner module where it'll find for VM strings in all sorts of devices
 - [ ] add more QEMU techniques
+- [ ] implement techniques from here https://www.cyberciti.biz/faq/linux-determine-virtualization-technology-command/
+- [ ] implement techniques from virt-what
 
 # Distant plans
 - add the library to conan.io when released
