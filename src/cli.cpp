@@ -41,7 +41,7 @@
     #define WINDOWS 0
 #endif
 
-#if (MSVC)
+#if (_MSC_VER)
 #pragma warning(disable : 4061)
 #endif
 
@@ -467,7 +467,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::VIRTUAL_PROCESSORS:
             case VM::MOTHERBOARD_PRODUCT:
             case VM::HYPERV_QUERY:
-			case VM::MICROSOFT_EMU:
             // ADD WINDOWS FLAG
             return false;
             default: return true;
@@ -888,7 +887,7 @@ void general() {
     checker(VM::QEMU_BRAND, "QEMU CPU brand");
     checker(VM::BOCHS_CPU, "BOCHS CPU techniques");
     checker(VM::BIOS_SERIAL, "BIOS serial number");
-    checker(VM::MSSMBIOS, "MSSMBIOS");
+    checker(VM::MSSMBIOS, "MSSMBIOS data");
     checker(VM::MAC_MEMSIZE, "MacOS hw.memsize");
     checker(VM::MAC_IOKIT, "MacOS registry IO-kit");
     checker(VM::IOREG_GREP, "IO registry grep");
@@ -954,7 +953,7 @@ void general() {
     checker(VM::HDD_SERIAL, "HDD serial number");
     checker(VM::PORT_CONNECTORS, "Physical connection ports");
     checker(VM::VM_HDD, "VM keywords in HDD model");
-    checker(VM::ACPI_DETECT, "ACPI Hyper-V");
+    checker(VM::ACPI_DETECT, "ACPI data");
     checker(VM::GPU_NAME, "GPU name");
     checker(VM::VMWARE_MEMORY, "VM memory traces");
     checker(VM::IDT_GDT_MISMATCH, "IDT GDT mismatch");
@@ -973,7 +972,6 @@ void general() {
     checker(VM::VIRTUAL_PROCESSORS, "virtual processors");
     checker(VM::MOTHERBOARD_PRODUCT, "motherboard product");
     checker(VM::HYPERV_QUERY, "Hyper-V query");
-	checker(VM::MICROSOFT_EMU, "Microsoft x86 emulation");
     // ADD NEW TECHNIQUE CHECKER HERE
 
     std::printf("\n");
@@ -1130,7 +1128,7 @@ int main(int argc, char* argv[]) {
 #endif
 
     const std::vector<const char*> args(argv + 1, argv + argc); // easier this way
-    const u32 arg_count = argc - 1;
+    const u32 arg_count = static_cast<u32>(argc - 1);
 
     // this was removed from the lib due to ethical 
     // concerns, so it's added in the CLI instead
@@ -1215,13 +1213,13 @@ int main(int argc, char* argv[]) {
 
     // critical returners
     const u32 returners = (
-        static_cast<u8>(arg_bitset.test(STDOUT)) +
-        static_cast<u8>(arg_bitset.test(PERCENT)) +
-        static_cast<u8>(arg_bitset.test(DETECT)) +
-        static_cast<u8>(arg_bitset.test(BRAND)) +
-        static_cast<u8>(arg_bitset.test(TYPE)) +
-        static_cast<u8>(arg_bitset.test(CONCLUSION))
-    );
+        static_cast<u32>(arg_bitset.test(STDOUT)) +
+        static_cast<u32>(arg_bitset.test(PERCENT)) +
+        static_cast<u32>(arg_bitset.test(DETECT)) +
+        static_cast<u32>(arg_bitset.test(BRAND)) +
+        static_cast<u32>(arg_bitset.test(TYPE)) +
+        static_cast<u32>(arg_bitset.test(CONCLUSION))
+        );
 
     if (returners > 0) { // at least one of the options are set
         if (returners > 1) { // more than 2 options are set

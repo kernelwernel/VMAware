@@ -436,7 +436,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::HDD_SERIAL` | Check for HDD serial number | Windows | 100% |  |  |  |  |
 | `VM::PORT_CONNECTORS` | Check for physical connection ports | Windows | 50% |  |  |  |  |
 | `VM::VM_HDD` | Check for QEMU keyword in HDD model | Windows | 75% |  |  |  |  |
-| `VM::ACPI_DETECT` | Check for Hyper-V string in ACPI data | Windows | 85% |  |  |  |  |
+| `VM::ACPI_DETECT` | Check for VM related strings in ACPI data | Windows | 85% |  |  |  |  |
 | `VM::GPU_NAME` | Check for VM specific device names in GPUs | Windows | 100% |  |  |  |  |
 | `VM::VM_DEVICES` | Check for VM-specific devices | Windows | 45% |  |  |  |  |
 | `VM::VMWARE_MEMORY` | Check for VMware-specific memory traces in certain processes | Windows | 50% |  |  |  |  |
@@ -457,7 +457,6 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::VIRTUAL_PROCESSORS` | Checks if the number of maximum virtual processors matches the maximum number of logical processors | Windows | 50% |  |  |  |  |
 | `VM::MOTHERBOARD_PRODUCT` | Check if the motherboard product string matches "Virtual Machine" | Windows | 50% |  |  |  |  |
 | `VM::HYPERV_QUERY` | Checks if a call to NtQuerySystemInformation with the 0x9f leaf fills a _SYSTEM_HYPERVISOR_DETAIL_INFORMATION structure | Windows | 50% |  |  |  |  |
-| `VM::MICROSOFT_EMU` | Check for x86 emulation by a "Windows on ARM" OS  | Windows | 60% |  |  |  |  |
 <!-- ADD DETAILS HERE -->
 
 <br>
