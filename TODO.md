@@ -26,6 +26,7 @@
 - [ ] add more QEMU techniques
 - [ ] implement techniques from here https://www.cyberciti.biz/faq/linux-determine-virtualization-technology-command/
 - [ ] implement techniques from virt-what
+- [ ] https://cloud.google.com/compute/docs/instances/detect-compute-engine
 
 # Distant plans
 - add the library to conan.io when released

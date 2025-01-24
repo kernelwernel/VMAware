@@ -245,8 +245,8 @@ You can view the full docs [here](docs/documentation.md). All the details such a
 
 <br>
 
-## Issues and pull requests 📬
-If you have any suggestions, ideas, or any sort of contribution, feel free to ask! I'll be more than happy to discuss in the [issue](https://github.com/kernelwernel/VMAware/issues) section. If you want to personally ask something in private, my discord is `kr.nl`
+## Issues, discussions, pull requests, and inquiries 📬
+If you have any suggestions, ideas, or any sort of contribution, feel free to ask! I'll be more than happy to discuss either in the [issue](https://github.com/kernelwernel/VMAware/issues) or [discussion](https://github.com/kernelwernel/VMAware/discussions) sections, I usually reply fairly quickly. If you want to personally ask something in private, my discord is `kr.nl`
 
 And if you found this project useful, a star would be appreciated :)
 
@@ -287,4 +287,4 @@ And if you found this project useful, a star would be appreciated :)
 ## Legal 📜
 I am not responsible nor liable for any damage you cause through any malicious usage of this project. 
 
-![Metrics](/assets/metrics.plugin.licenses.svg)
+License: GPL-3.0/MIT
