@@ -493,7 +493,6 @@ This is the table of all the brands the lib supports.
 | Sandboxie | `VM::brands::SANDBOXIE` | Sandbox |  |
 | Docker | `VM::brands::DOCKER` | Container |  |
 | Wine | `VM::brands::WINE` | Compatibility layer |  |
-| Apple Rosetta 2 | `VM::brands::APPLE_ROSETTA` | Binary Translation Layer/Emulator | Debatable if this should even be in the lib in the first place |
 | Virtual PC  | `VM::brands::VPC` | Hypervisor (type 2) |  |
 | Anubis | `VM::brands::ANUBIS` | Sandbox |  |
 | JoeBox | `VM::brands::JOEBOX` | Sandbox |  |
@@ -528,10 +527,9 @@ This is the table of all the brands the lib supports.
 | Barevisor | `VM::brands::BAREVISOR` | Hypervisor (type 1) |  |
 | HyperPlatform | `VM::brands::HYPERPLATFORM` | Hypervisor (type 1) |  |
 | MiniVisor | `VM::brands::MINIVISOR` | Hypervisor (type 1) |  |
-| Microsoft Prism | `VM::brands::MICROSOFT_PRISM` | Emulator |  |
-| Microsoft x86 Emulator | `VM::brands::MICROSOFT_X86_EMU` | Emulator |  |
 | Intel TDX | `VM::brands::INTEL_TDX` | Trusted Domain |  |
 | LKVM | `VM::brands::LKVM` | Hypervisor (type 1) |  |
+
 
 <br>
 
@@ -575,6 +573,7 @@ This is the table of all the brands the lib supports.
 |    | --dynamic | allow the conclusion message to be dynamic (8 possibilities instead of only 2) |
 |    | --verbose | add more information to the output  |
 |    | --compact | ignore the unsupported techniques from the CLI output and thus make it more compact |
+|    | --mit | ignore the GPL techniques and run only the MIT-supported ones |
 > [!NOTE]
-> If you want a general result of everything combined above, do not put any arguments. This is the intended way to use the CLI tool.
+> If you want a general result with the default settings, do not put any arguments. This is the intended way to use the CLI tool.
 >

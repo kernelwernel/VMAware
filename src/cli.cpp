@@ -80,6 +80,7 @@ enum arg_enum : u8 {
     DYNAMIC,
     VERBOSE,
     COMPACT,
+    MIT,
     NULL_ARG
 };
 
@@ -159,6 +160,7 @@ Extra:
  --dynamic          allow the conclusion message to be dynamic (8 possibilities instead of only 2)
  --verbose          add more information to the output
  --compact          ignore the unsupported techniques from the CLI output
+ --mit              ignore the GPL techniques and run only the MIT-supported ones
 
 )";
     std::exit(0);
@@ -228,7 +230,6 @@ Hybrid Analysis
 Sandboxie
 Docker
 Wine
-Apple Rosetta 2
 Anubis
 JoeBox
 ThreatExpert
@@ -262,6 +263,8 @@ ANY.RUN
 Barevisor
 HyperPlatform
 MiniVisor
+Intel TDX
+LKVM
 )";
 
     std::exit(0);
@@ -530,6 +533,23 @@ bool is_unsupported(VM::enum_flags flag) {
 #endif
 }
 
+
+bool is_gpl(const VM::enum_flags flag) {
+    switch (flag) {
+        case VM::COMPUTER_NAME: 
+        case VM::WINE_CHECK: 
+        case VM::HOSTNAME: 
+        case VM::LOADED_DLLS: 
+        case VM::KVM_DIRS: 
+        case VM::AUDIO: 
+        case VM::QEMU_DIR: 
+        case VM::POWER_CAPABILITIES: 
+        case VM::SETUPAPI_DISK: return true;
+        default: return false;
+    }
+}
+
+
 std::bitset<max_bits> settings() {
     std::bitset<max_bits> tmp;
 
@@ -597,7 +617,6 @@ std::string vm_description(const std::string& vm_brand) {
         { VM::brands::SANDBOXIE, "" },
         { VM::brands::DOCKER, "Docker is a set of platform as a service (PaaS) products that use OS-level virtualization to deliver software in packages called containers. The service has both free and premium tiers. The software that hosts the containers is called Docker Engine. It's used to automate the deployment of applications in lightweight containers so that applications can work efficiently in different environments in isolation." },
         { VM::brands::WINE, "Wine is a free and open-source compatibility layer to allow application software and computer games developed for Microsoft Windows to run on Unix-like operating systems. Developers can compile Windows applications against WineLib to help port them to Unix-like systems. Wine is predominantly written using black-box testing reverse-engineering, to avoid copyright issues. No code emulation or virtualization occurs." },
-        { VM::brands::APPLE_ROSETTA, "" },
         { VM::brands::VPC, "" },
         { VM::brands::ANUBIS, "" },
         { VM::brands::JOEBOX, "" },
@@ -631,8 +650,6 @@ std::string vm_description(const std::string& vm_brand) {
         { VM::brands::BAREVISOR, "" },
         { VM::brands::HYPERPLATFORM, "" },
         { VM::brands::MINIVISOR, "" },
-        { VM::brands::MICROSOFT_PRISM, "Prism is the new emulator included with Windows 11. Relative to previous emulation technology included in Windows, it includes significant optimizations that improve the performance and lower CPU usage of apps under emulation. Prism is optimized and tuned specifically for Qualcomm Snapdragon processors, and Prism is available for all supported \"Windows 11 on Arm\" devices with Windows 11." },
-        { VM::brands::MICROSOFT_X86_EMU, "" },
         { VM::brands::INTEL_TDX, "" },
         { VM::brands::LKVM, "" },
         { VM::brands::NULL_BRAND, "" }
@@ -761,7 +778,7 @@ void checker(const VM::enum_flags flag, const char* message) {
     }
 #endif
 
-    if (is_disabled(flag)) {
+    if (is_disabled(flag) || (arg_bitset.test(MIT) && is_gpl(flag))) {
         if (arg_bitset.test(COMPACT)) {
             return;
         }
@@ -1140,7 +1157,7 @@ int main(int argc, char* argv[]) {
         std::exit(0);
     }
 
-    static constexpr std::array<std::pair<const char*, arg_enum>, 29> table {{
+    static constexpr std::array<std::pair<const char*, arg_enum>, 30> table {{
         { "-h", HELP },
         { "-v", VERSION },
         { "-a", ALL },
@@ -1169,6 +1186,7 @@ int main(int argc, char* argv[]) {
         { "--dynamic", DYNAMIC },
         { "--verbose", VERBOSE },
         { "--compact", COMPACT },
+        { "--mit", MIT },
         { "--no-color", NO_COLOR }
     }};
 

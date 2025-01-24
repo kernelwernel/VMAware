@@ -540,7 +540,6 @@ public:
         static constexpr const char* SANDBOXIE = "Sandboxie";
         static constexpr const char* DOCKER = "Docker";
         static constexpr const char* WINE = "Wine";
-        static constexpr const char* APPLE_ROSETTA = "Apple Rosetta 2";
         static constexpr const char* VPC = "Virtual PC";
         static constexpr const char* ANUBIS = "Anubis";
         static constexpr const char* JOEBOX = "JoeBox";
@@ -574,8 +573,6 @@ public:
         static constexpr const char* BAREVISOR = "Barevisor";
         static constexpr const char* HYPERPLATFORM = "HyperPlatform";
         static constexpr const char* MINIVISOR = "MiniVisor";
-        static constexpr const char* MICROSOFT_PRISM = "Microsoft Prism";
-        static constexpr const char* MICROSOFT_X86_EMU = "Microsoft x86 Emulator";
         static constexpr const char* INTEL_TDX = "Intel TDX";
         static constexpr const char* LKVM = "LKVM";
         static constexpr const char* NULL_BRAND = "Unknown";
@@ -633,7 +630,7 @@ public:
             b = static_cast<u32>(x[1]);
             c = static_cast<u32>(x[2]);
             d = static_cast<u32>(x[3]);
-#elif (LINUX)
+#elif (LINUX || APPLE)
             __cpuid_count(a_leaf, c_leaf, a, b, c, d);
 #endif
 #else
@@ -654,7 +651,7 @@ public:
             x[2] = 0;
 #if (WINDOWS)
             __cpuidex((int32_t*)x, static_cast<int>(a_leaf), static_cast<int>(c_leaf));
-#elif (LINUX)
+#elif (LINUX || APPLE)
             __cpuid_count(a_leaf, c_leaf, x[0], x[1], x[2], x[3]);
 #endif
 #else
@@ -961,7 +958,6 @@ public:
                 nvmm = "___ NVMM ___",
                 openbsd_vmm = "OpenBSDVMM58",
                 intel_haxm = "HAXMHAXMHAXM",
-                virtapple = "VirtualApple",
                 unisys = "UnisysSpar64",
                 lmhs = "SRESRESRESRE",
                 jailhouse = "Jailhouse\0\0\0",
@@ -997,7 +993,6 @@ public:
                 if (brand_str == xen) { return core::add(brands::XEN); }
                 if (brand_str == acrn) { return core::add(brands::ACRN); }
                 if (brand_str == qnx) { return core::add(brands::QNX); }
-                if (brand_str == virtapple) { return core::add(brands::APPLE_ROSETTA); }
                 if (brand_str == nvmm) { return core::add(brands::NVMM); }
                 if (brand_str == openbsd_vmm) { return core::add(brands::BSD_VMM); }
                 if (brand_str == intel_haxm) { return core::add(brands::INTEL_HAXM); }
@@ -10579,8 +10574,6 @@ public: // START OF PUBLIC FUNCTIONS
 
             // misc
             { brands::BOCHS, "Emulator" },
-            { brands::MICROSOFT_PRISM, "Emulator" },
-            { brands::MICROSOFT_X86_EMU, "Emulator" },
             { brands::BLUESTACKS, "Emulator" },
             { brands::MSXTA, "Emulator" },
             { brands::QEMU, "Emulator/Hypervisor (type 2)" },
@@ -10597,7 +10590,6 @@ public: // START OF PUBLIC FUNCTIONS
             { brands::HYPERV_ARTIFACT, "Unknown" },
             { brands::UML, "Paravirtualised/Hypervisor (type 2)" },
             { brands::WSL, "Hybrid Hyper-V (type 1 and 2)" }, // debatable tbh
-            { brands::APPLE_ROSETTA, "Binary Translation Layer/Emulator" }
         };
 
         auto it = type_table.find(brand_str.c_str());
@@ -10732,7 +10724,6 @@ std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard{
     { VM::brands::SANDBOXIE, 0 },
     { VM::brands::DOCKER, 0 },
     { VM::brands::WINE, 0 },
-    { VM::brands::APPLE_ROSETTA, 0 },
     { VM::brands::VPC, 0 },
     { VM::brands::ANUBIS, 0 },
     { VM::brands::JOEBOX, 0 },
@@ -10766,8 +10757,6 @@ std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard{
     { VM::brands::BAREVISOR, 0 },
     { VM::brands::HYPERPLATFORM, 0 },
     { VM::brands::MINIVISOR, 0 },
-    { VM::brands::MICROSOFT_PRISM, 0 },
-    { VM::brands::MICROSOFT_X86_EMU, 0 },
     { VM::brands::INTEL_TDX, 0 },
     { VM::brands::LKVM, 0 },
     { VM::brands::NULL_BRAND, 0 }
