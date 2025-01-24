@@ -29,7 +29,7 @@ This is basically the main function you're looking for, which returns a bool. If
 int main() {
     /**
      * The basic way to detect a VM where the default checks will 
-     * be performed. This is the recommended usage of the library.
+     * be performed. This is the recommended usage of the lib.
      */ 
     bool is_vm = VM::detect();
 
@@ -370,7 +370,6 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::RDTSC_VMEXIT` | check through alternative RDTSC technique with VMEXIT |  | 25% |  |  |  | Disabled by default |
 | `VM::QEMU_BRAND` | Match for QEMU CPU brands with "QEMU Virtual CPU" string |  | 100% |  |  |  |  |
 | `VM::BOCHS_CPU` | Check for various Bochs-related emulation oversights through CPU checks |  | 95% |  |  |  |  |
-| `VM::VPC_BOARD` | Check through the motherboard and match for VirtualPC-specific string | Windows | 20% |  |  |  |  |
 | `VM::HYPERV_WMI` | Check WMI query for "Hyper-V RAW" string | Windows | 80% |  |  |  |  |
 | `VM::HYPERV_REG` | Check presence for Hyper-V specific string in registry | Windows | 80% |  |  |  |  |
 | `VM::BIOS_SERIAL` | Check if the BIOS serial is valid (null = VM) | Windows | 60% |  |  |  |  |
@@ -388,7 +387,6 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::OFFSEC_SIDT` | Check for Offensive Security SIDT method | Windows | 60% |  |  | 32-bit |  |
 | `VM::OFFSEC_SGDT` | Check for Offensive Security SGDT method | Windows | 60% |  |  | 32-bit |  |
 | `VM::OFFSEC_SLDT` | Check for Offensive Security SLDT method | Windows | 20% |  |  | 32-bit |  |
-| `VM::HYPERV_BOARD` | Check for Hyper-V specific string in motherboard | Windows | 45% |  |  |  |  |
 | `VM::VPC_SIDT` | Check for sidt method with VPC's 0xE8XXXXXX range | Windows | 15% |  |  | 32-bit |  |
 | `VM::VMWARE_IOMEM` | Check for VMware string in /proc/iomem | Linux | 65% |  |  |  |  |
 | `VM::VMWARE_IOPORTS` | Check for VMware string in /proc/ioports | Linux | 70% |  |  |  |  |
@@ -438,7 +436,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::HDD_SERIAL` | Check for HDD serial number | Windows | 100% |  |  |  |  |
 | `VM::PORT_CONNECTORS` | Check for physical connection ports | Windows | 50% |  |  |  |  |
 | `VM::VM_HDD` | Check for QEMU keyword in HDD model | Windows | 75% |  |  |  |  |
-| `VM::ACPI_DETECT` | Check for Hyper-V string in ACPI data | Windows | 85% |  |  |  |  |
+| `VM::ACPI_DETECT` | Check for VM related strings in ACPI data | Windows | 85% |  |  |  |  |
 | `VM::GPU_NAME` | Check for VM specific device names in GPUs | Windows | 100% |  |  |  |  |
 | `VM::VM_DEVICES` | Check for VM-specific devices | Windows | 45% |  |  |  |  |
 | `VM::VMWARE_MEMORY` | Check for VMware-specific memory traces in certain processes | Windows | 50% |  |  |  |  |
@@ -456,18 +454,20 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::WMI_QUERIES` | Executes generic WMI queries that always return more than 0 entries in physical machines and checks if any query returns zero entries | Windows | 50% |  | GPL |  |  |
 | `VM::SYS_QEMU` | Check for existence of "qemu_fw_cfg" directories within /sys/module and /sys/firmware | Linux | 70% |  |  |  |  |
 | `VM::LSHW_QEMU` | Check for QEMU string instances with lshw command | Linux | 80% |  |  |  |  |
-| `VM::VIRTUAL_PROCESSORS` | Checks if the number of maximum virtual processors matches the maximum number of logical processors | Windows | 35% |  |  |  |  |
+| `VM::VIRTUAL_PROCESSORS` | Checks if the number of maximum virtual processors matches the maximum number of logical processors | Windows | 50% |  |  |  |  |
+| `VM::MOTHERBOARD_PRODUCT` | Check if the motherboard product string matches "Virtual Machine" | Windows | 50% |  |  |  |  |
+| `VM::HYPERV_QUERY` | Checks if a call to NtQuerySystemInformation with the 0x9f leaf fills a _SYSTEM_HYPERVISOR_DETAIL_INFORMATION structure | Windows | 50% |  |  |  |  |
 <!-- ADD DETAILS HERE -->
 
 <br>
 
 # Brand table
 
-This is the table of all the brands the library supports.
+This is the table of all the brands the lib supports.
 
 | String | Variable alias | VM type | Notes |
 | -------------- | ------ | ------- | ----- |
-| Unknown | `VM::brands::NULL_BRAND` | Unknown |  |
+| Unknown | `VM::brands::NULL_BRAND` | Unknown | This is the default brand it returns if none were found |
 | VirtualBox | `VM::brands::VBOX` | Hypervisor (type 2) |  |
 | VMware | `VM::brands::VMWARE` | Hypervisor (type 2) |  |
 | VMware Express | `VM::brands::VMWARE_EXPRESS` | Hypervisor (type 2) |  |
@@ -476,7 +476,7 @@ This is the table of all the brands the library supports.
 | VMware Workstation | `VM::brands::VMWARE_WORKSTATION` | Hypervisor (type 2) |  |
 | VMware Fusion | `VM::brands::VMWARE_FUSION` | Hypervisor (type 2) |  |
 | VMware (with VmwareHardenedLoader) | `VM::brands::VMWARE_HARD` | Hypervisor (type 2) | See the [repository](https://github.com/hzqst/VmwareHardenedLoader) |
-| bhyve | `VM::brands::BHYVE` | Hypervisor (type 1) |  |
+| bhyve | `VM::brands::BHYVE` | Hypervisor (type 2) |  |
 | KVM | `VM::brands::KVM` | Hypervisor (type 1) |  |
 | QEMU | `VM::brands::QEMU` | Emulator/Hypervisor (type 2) |  |
 | QEMU+KVM | `VM::brands::QEMU_KVM` | Hypervisor (type 1) |  |
@@ -493,7 +493,7 @@ This is the table of all the brands the library supports.
 | Sandboxie | `VM::brands::SANDBOXIE` | Sandbox |  |
 | Docker | `VM::brands::DOCKER` | Container |  |
 | Wine | `VM::brands::WINE` | Compatibility layer |  |
-| Apple Rosetta 2 | `VM::brands::APPLE_ROSETTA` | Binary Translation Layer/Emulator |  |
+| Apple Rosetta 2 | `VM::brands::APPLE_ROSETTA` | Binary Translation Layer/Emulator | Debatable if this should even be in the lib in the first place |
 | Virtual PC  | `VM::brands::VPC` | Hypervisor (type 2) |  |
 | Anubis | `VM::brands::ANUBIS` | Sandbox |  |
 | JoeBox | `VM::brands::JOEBOX` | Sandbox |  |
@@ -505,7 +505,7 @@ This is the table of all the brands the library supports.
 | OpenBSD VMM | `VM::brands::BSD_VMM` | Hypervisor (type 2) |  |
 | Intel HAXM | `VM::brands::INTEL_HAXM` | Hypervisor (type 1) |  |
 | Unisys s-Par | `VM::brands::UNISYS` | Partitioning Hypervisor |  |
-| Lockheed Martin LMHS  | `VM::brands::LMHS` | Hypervisor (unknown type) | Yes, you read that right. The library can detect VMs running on US military fighter jets, apparently |
+| Lockheed Martin LMHS  | `VM::brands::LMHS` | Hypervisor (unknown type) | Yes, you read that right. The lib can detect VMs running on US military fighter jets, apparently |
 | Cuckoo | `VM::brands::CUCKOO` | Sandbox |  |
 | BlueStacks | `VM::brands::BLUESTACKS` | Emulator |  |
 | Jailhouse | `VM::brands::JAILHOUSE` | Partitioning Hypervisor |  |
@@ -522,12 +522,16 @@ This is the table of all the brands the library supports.
 | KubeVirt (KVM) | `VM::brands::KUBEVIRT` | Hypervisor (type 1) |  |
 | AWS Nitro System EC2 (KVM-based) | `VM::brands::AWS_NITRO` | Hypervisor (type 1) |  |
 | Podman | `VM::brands::PODMAN` | Container |  |
-| WSL | `VM::brands::WSL` | Hybrid Hyper-V (type 1 and 2) | The type is debatable |
+| WSL | `VM::brands::WSL` | Hybrid Hyper-V (type 1 and 2) | The type is debatable, it's not exactly clear |
 | OpenVZ | `VM::brands::OPENVZ` | Container |  |
 | ANY.RUN | N/A | Sandbox | Removed from the lib, available only in the CLI |
 | Barevisor | `VM::brands::BAREVISOR` | Hypervisor (type 1) |  |
 | HyperPlatform | `VM::brands::HYPERPLATFORM` | Hypervisor (type 1) |  |
 | MiniVisor | `VM::brands::MINIVISOR` | Hypervisor (type 1) |  |
+| Microsoft Prism | `VM::brands::MICROSOFT_PRISM` | Emulator |  |
+| Microsoft x86 Emulator | `VM::brands::MICROSOFT_X86_EMU` | Emulator |  |
+| Intel TDX | `VM::brands::INTEL_TDX` | Trusted Domain |  |
+| LKVM | `VM::brands::LKVM` | Hypervisor (type 1) |  |
 
 <br>
 
