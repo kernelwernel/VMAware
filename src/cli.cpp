@@ -416,8 +416,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::PARALLELS_VM:
             case VM::QEMU_BRAND:
             case VM::BOCHS_CPU:
-            case VM::HYPERV_WMI:
-            case VM::HYPERV_REG:
             case VM::BIOS_SERIAL:
             case VM::MSSMBIOS:
             case VM::HKLM_REGISTRIES:
