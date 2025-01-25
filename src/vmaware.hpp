@@ -25,13 +25,13 @@
  *
  * ================================ SECTIONS ==================================
  * - enums for publicly accessible techniques  => line 328
- * - struct for internal cpu operations        => line 605
- * - struct for internal memoization           => line 1065
- * - struct for internal utility functions     => line 1447
- * - struct for internal core components       => line 9426
+ * - struct for internal cpu operations        => line 603
+ * - struct for internal memoization           => line 1059
+ * - struct for internal utility functions     => line 1449
+ * - struct for internal core components       => line 9714
  * - start of internal VM detection techniques => line 2861
- * - start of public VM detection functions    => line 9830
- * - start of externally defined variables     => line 10705
+ * - start of public VM detection functions    => line 10116
+ * - start of externally defined variables     => line 10987
  *
  *
  * ================================ EXAMPLE ==================================
@@ -365,8 +365,6 @@ public:
         PARALLELS_VM,
         QEMU_BRAND,
         BOCHS_CPU,
-        HYPERV_WMI,
-        HYPERV_REG,
         BIOS_SERIAL,
         MSSMBIOS,
         MAC_MEMSIZE,
@@ -10651,8 +10649,6 @@ public: // START OF PUBLIC FUNCTIONS
             case PARALLELS_VM: return "PARALLELS_VM";
             case QEMU_BRAND: return "QEMU_BRAND";
             case BOCHS_CPU: return "BOCHS_CPU";
-            case HYPERV_WMI: return "HYPERV_WMI";
-            case HYPERV_REG: return "HYPERV_REG";
             case BIOS_SERIAL: return "BIOS_SERIAL";
             case MSSMBIOS: return "MSSMBIOS";
             case MAC_MEMSIZE: return "MAC_MEMSIZE";
