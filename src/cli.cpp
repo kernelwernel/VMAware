@@ -470,6 +470,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::VIRTUAL_PROCESSORS:
             case VM::MOTHERBOARD_PRODUCT:
             case VM::HYPERV_QUERY:
+            case VM::BAD_POOLS:
             // ADD WINDOWS FLAG
             return false;
             default: return true;
@@ -988,7 +989,8 @@ void general() {
 	checker(VM::LSHW_QEMU, "QEMU in lshw output");
     checker(VM::VIRTUAL_PROCESSORS, "virtual processors");
     checker(VM::MOTHERBOARD_PRODUCT, "motherboard product");
-    checker(VM::HYPERV_QUERY, "Hyper-V query");
+    checker(VM::HYPERV_QUERY, "hypervisor query");
+    checker(VM::BAD_POOLS, "bad pools");
     // ADD NEW TECHNIQUE CHECKER HERE
 
     std::printf("\n");
@@ -1107,7 +1109,7 @@ void general() {
             std::string description = vm_description(vm.brand);
 
             if (!description.empty()) {
-                std::cout << bold << "VM description: " << ansi_exit << "\n" << "   " << description << "\n\n";
+                std::cout << bold << "VM description: " << ansi_exit << "\n" << description << "\n\n";
                 //std::cout << note << " The result means that the CLI has found Hyper-V, but as an artifact instead of an actual VM. This means that although the hardware values in fact match with Hyper-V due to how it's designed by Microsoft, the CLI has determined you are NOT in a Hyper-V VM.\n\n";
             }
         }
