@@ -25,13 +25,13 @@
  *
  * ================================ SECTIONS ==================================
  * - enums for publicly accessible techniques  => line 328
- * - struct for internal cpu operations        => line 596
- * - struct for internal memoization           => line 1057
- * - struct for internal utility functions     => line 1440
- * - struct for internal core components       => line 9084
- * - start of internal VM detection techniques => line 2855
- * - start of public VM detection functions    => line 9493
- * - start of externally defined variables     => line 10367
+ * - struct for internal cpu operations        => line 605
+ * - struct for internal memoization           => line 1065
+ * - struct for internal utility functions     => line 1447
+ * - struct for internal core components       => line 9426
+ * - start of internal VM detection techniques => line 2861
+ * - start of public VM detection functions    => line 9830
+ * - start of externally defined variables     => line 10705
  *
  *
  * ================================ EXAMPLE ==================================
@@ -438,6 +438,7 @@ public:
         VIRTUAL_PROCESSORS,
         MOTHERBOARD_PRODUCT,
         HYPERV_QUERY,
+        BAD_POOLS,
         // ADD NEW TECHNIQUE ENUM NAME HERE
 
         // start of settings technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
@@ -531,7 +532,6 @@ public:
         static constexpr const char* SANDBOXIE = "Sandboxie";
         static constexpr const char* DOCKER = "Docker";
         static constexpr const char* WINE = "Wine";
-        static constexpr const char* APPLE_ROSETTA = "Apple Rosetta 2";
         static constexpr const char* VPC = "Virtual PC";
         static constexpr const char* ANUBIS = "Anubis";
         static constexpr const char* JOEBOX = "JoeBox";
@@ -565,8 +565,6 @@ public:
         static constexpr const char* BAREVISOR = "Barevisor";
         static constexpr const char* HYPERPLATFORM = "HyperPlatform";
         static constexpr const char* MINIVISOR = "MiniVisor";
-        static constexpr const char* MICROSOFT_PRISM = "Microsoft Prism";
-        static constexpr const char* MICROSOFT_X86_EMU = "Microsoft x86 Emulator";
         static constexpr const char* INTEL_TDX = "Intel TDX";
         static constexpr const char* LKVM = "LKVM";
         static constexpr const char* NULL_BRAND = "Unknown";
@@ -624,7 +622,7 @@ public:
             b = static_cast<u32>(x[1]);
             c = static_cast<u32>(x[2]);
             d = static_cast<u32>(x[3]);
-#elif (LINUX)
+#elif (LINUX || APPLE)
             __cpuid_count(a_leaf, c_leaf, a, b, c, d);
 #endif
 #else
@@ -645,7 +643,7 @@ public:
             x[2] = 0;
 #if (WINDOWS)
             __cpuidex((int32_t*)x, static_cast<int>(a_leaf), static_cast<int>(c_leaf));
-#elif (LINUX)
+#elif (LINUX || APPLE)
             __cpuid_count(a_leaf, c_leaf, x[0], x[1], x[2], x[3]);
 #endif
 #else
@@ -953,7 +951,6 @@ public:
                 nvmm = "___ NVMM ___",
                 openbsd_vmm = "OpenBSDVMM58",
                 intel_haxm = "HAXMHAXMHAXM",
-                virtapple = "VirtualApple",
                 unisys = "UnisysSpar64",
                 lmhs = "SRESRESRESRE",
                 jailhouse = "Jailhouse\0\0\0",
@@ -989,7 +986,6 @@ public:
                 if (brand_str == xen) { return core::add(brands::XEN); }
                 if (brand_str == acrn) { return core::add(brands::ACRN); }
                 if (brand_str == qnx) { return core::add(brands::QNX); }
-                if (brand_str == virtapple) { return core::add(brands::APPLE_ROSETTA); }
                 if (brand_str == nvmm) { return core::add(brands::NVMM); }
                 if (brand_str == openbsd_vmm) { return core::add(brands::BSD_VMM); }
                 if (brand_str == intel_haxm) { return core::add(brands::INTEL_HAXM); }
@@ -1219,13 +1215,13 @@ public:
                 double doubleValue;
             };
 
-            result(const std::string& str) : type(result_type::String) {
-                new (&strValue) std::string(str);
-            }
+            result(const std::string& str) : type(result_type::String), strValue(str) {}
 
             result(int integer) : type(result_type::Integer), intValue(integer) {}
 
             result(double dbl) : type(result_type::Double), doubleValue(dbl) {}
+
+            result() : type(result_type::Integer), intValue(0) {}
 
             result(const result& other) : type(other.type) {
                 switch (type) {
@@ -1233,10 +1229,13 @@ public:
                     new (&strValue) std::string(other.strValue);
                     break;
                 case result_type::Integer:
-                    new (&intValue) int(other.intValue);
+                    intValue = other.intValue;
                     break;
                 case result_type::Double:
-                    new (&doubleValue) double(other.doubleValue);
+                    doubleValue = other.doubleValue;
+                    break;
+                default:
+                    doubleValue = 0.0;
                     break;
                 }
             }
@@ -1249,14 +1248,19 @@ public:
 
                     type = other.type;
 
-                    if (type == result_type::String) {
+                    switch (type) {
+                    case result_type::String:
                         new (&strValue) std::string(other.strValue);
-                    }
-                    else if (type == result_type::Integer) {
+                        break;
+                    case result_type::Integer:
                         intValue = other.intValue;
-                    }
-                    else if (type == result_type::Double) {
+                        break;
+                    case result_type::Double:
                         doubleValue = other.doubleValue;
+                        break;
+                    default:
+                        doubleValue = 0.0;
+                        break;
                     }
                 }
                 return *this;
@@ -2847,7 +2851,7 @@ public:
             return eax != 0;
         }
 #endif
-    };
+        };
 
 
 private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
@@ -3865,6 +3869,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return result;
 #endif
     }
+
 
     /**
      * @brief Check for any VM processes that are active
@@ -8227,13 +8232,17 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         for (const auto& res : results) {
             if (res.type == wmi::result_type::String) {
-                debug("QEMU_HDD: model = ", res.strValue);
+                debug("VM_HDD: model = ", res.strValue);
                 if (util::find(res.strValue, "QEMU")) {
                     return core::add(brands::QEMU);
                 }
 
                 if (util::find(res.strValue, "Virtual HD ATA Device")) {
                     return core::add(brands::HYPERV);
+                }
+
+                if (util::find(res.strValue, "VMware Virtual NVMe Disk")) {
+                    return core::add(brands::VMWARE);
                 }
             }
         }
@@ -9056,6 +9065,288 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         return false;
+#endif
+    }
+
+    /*
+     * @brief Checks for system pools allocated by hypervisors
+     * @category Windows
+     */
+    [[nodiscard]] static bool bad_pools() {
+#if (!WINDOWS)
+        return false;
+#else
+#pragma warning (disable : 4459) // We need to declare our own undocumented internal structure to be able to locate kernel pools
+        typedef enum _SYSTEM_INFORMATION_CLASS
+        {
+            SystemBasicInformation, // q: SYSTEM_BASIC_INFORMATION
+            SystemProcessorInformation, // q: SYSTEM_PROCESSOR_INFORMATION
+            SystemPerformanceInformation, // q: SYSTEM_PERFORMANCE_INFORMATION
+            SystemTimeOfDayInformation, // q: SYSTEM_TIMEOFDAY_INFORMATION
+            SystemPathInformation, // not implemented
+            SystemProcessInformation, // q: SYSTEM_PROCESS_INFORMATION
+            SystemCallCountInformation, // q: SYSTEM_CALL_COUNT_INFORMATION
+            SystemDeviceInformation, // q: SYSTEM_DEVICE_INFORMATION
+            SystemProcessorPerformanceInformation, // q: SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION
+            SystemFlagsInformation, // q: SYSTEM_FLAGS_INFORMATION
+            SystemCallTimeInformation, // not implemented // SYSTEM_CALL_TIME_INFORMATION // 10
+            SystemModuleInformation, // q: RTL_PROCESS_MODULES
+            SystemLocksInformation, // q: RTL_PROCESS_LOCKS
+            SystemStackTraceInformation, // q: RTL_PROCESS_BACKTRACES
+            SystemPagedPoolInformation, // not implemented
+            SystemNonPagedPoolInformation, // not implemented
+            SystemHandleInformation, // q: SYSTEM_HANDLE_INFORMATION
+            SystemObjectInformation, // q: SYSTEM_OBJECTTYPE_INFORMATION mixed with SYSTEM_OBJECT_INFORMATION
+            SystemPageFileInformation, // q: SYSTEM_PAGEFILE_INFORMATION
+            SystemVdmInstemulInformation, // q
+            SystemVdmBopInformation, // not implemented // 20
+            SystemFileCacheInformation, // q: SYSTEM_FILECACHE_INFORMATION; s (requires SeIncreaseQuotaPrivilege) (info for WorkingSetTypeSystemCache)
+            SystemPoolTagInformation, // q: SYSTEM_POOLTAG_INFORMATION
+            SystemInterruptInformation, // q: SYSTEM_INTERRUPT_INFORMATION
+            SystemDpcBehaviorInformation, // q: SYSTEM_DPC_BEHAVIOR_INFORMATION; s: SYSTEM_DPC_BEHAVIOR_INFORMATION (requires SeLoadDriverPrivilege)
+            SystemFullMemoryInformation, // not implemented
+            SystemLoadGdiDriverInformation, // s (kernel-mode only)
+            SystemUnloadGdiDriverInformation, // s (kernel-mode only)
+            SystemTimeAdjustmentInformation, // q: SYSTEM_QUERY_TIME_ADJUST_INFORMATION; s: SYSTEM_SET_TIME_ADJUST_INFORMATION (requires SeSystemtimePrivilege)
+            SystemSummaryMemoryInformation, // not implemented
+            SystemMirrorMemoryInformation, // s (requires license value "Kernel-MemoryMirroringSupported") (requires SeShutdownPrivilege) // 30
+            SystemPerformanceTraceInformation, // q; s: (type depends on EVENT_TRACE_INFORMATION_CLASS)
+            SystemObsolete0, // not implemented
+            SystemExceptionInformation, // q: SYSTEM_EXCEPTION_INFORMATION
+            SystemCrashDumpStateInformation, // s (requires SeDebugPrivilege)
+            SystemKernelDebuggerInformation, // q: SYSTEM_KERNEL_DEBUGGER_INFORMATION
+            SystemContextSwitchInformation, // q: SYSTEM_CONTEXT_SWITCH_INFORMATION
+            SystemRegistryQuotaInformation, // q: SYSTEM_REGISTRY_QUOTA_INFORMATION; s (requires SeIncreaseQuotaPrivilege)
+            SystemExtendServiceTableInformation, // s (requires SeLoadDriverPrivilege) // loads win32k only
+            SystemPrioritySeperation, // s (requires SeTcbPrivilege)
+            SystemVerifierAddDriverInformation, // s (requires SeDebugPrivilege) // 40
+            SystemVerifierRemoveDriverInformation, // s (requires SeDebugPrivilege)
+            SystemProcessorIdleInformation, // q: SYSTEM_PROCESSOR_IDLE_INFORMATION
+            SystemLegacyDriverInformation, // q: SYSTEM_LEGACY_DRIVER_INFORMATION
+            SystemCurrentTimeZoneInformation, // q
+            SystemLookasideInformation, // q: SYSTEM_LOOKASIDE_INFORMATION
+            SystemTimeSlipNotification, // s (requires SeSystemtimePrivilege)
+            SystemSessionCreate, // not implemented
+            SystemSessionDetach, // not implemented
+            SystemSessionInformation, // not implemented
+            SystemRangeStartInformation, // q: SYSTEM_RANGE_START_INFORMATION // 50
+            SystemVerifierInformation, // q: SYSTEM_VERIFIER_INFORMATION; s (requires SeDebugPrivilege)
+            SystemVerifierThunkExtend, // s (kernel-mode only)
+            SystemSessionProcessInformation, // q: SYSTEM_SESSION_PROCESS_INFORMATION
+            SystemLoadGdiDriverInSystemSpace, // s (kernel-mode only) (same as SystemLoadGdiDriverInformation)
+            SystemNumaProcessorMap, // q
+            SystemPrefetcherInformation, // q: PREFETCHER_INFORMATION; s: PREFETCHER_INFORMATION // PfSnQueryPrefetcherInformation
+            SystemExtendedProcessInformation, // q: SYSTEM_PROCESS_INFORMATION
+            SystemRecommendedSharedDataAlignment, // q
+            SystemComPlusPackage, // q; s
+            SystemNumaAvailableMemory, // 60
+            SystemProcessorPowerInformation, // q: SYSTEM_PROCESSOR_POWER_INFORMATION
+            SystemEmulationBasicInformation, // q
+            SystemEmulationProcessorInformation,
+            SystemExtendedHandleInformation, // q: SYSTEM_HANDLE_INFORMATION_EX
+            SystemLostDelayedWriteInformation, // q: ULONG
+            SystemBigPoolInformation, // q: SYSTEM_BIGPOOL_INFORMATION
+            SystemSessionPoolTagInformation, // q: SYSTEM_SESSION_POOLTAG_INFORMATION
+            SystemSessionMappedViewInformation, // q: SYSTEM_SESSION_MAPPED_VIEW_INFORMATION
+            SystemHotpatchInformation, // q; s
+            SystemObjectSecurityMode, // q // 70
+            SystemWatchdogTimerHandler, // s (kernel-mode only)
+            SystemWatchdogTimerInformation, // q (kernel-mode only); s (kernel-mode only)
+            SystemLogicalProcessorInformation, // q: SYSTEM_LOGICAL_PROCESSOR_INFORMATION
+            SystemWow64SharedInformationObsolete, // not implemented
+            SystemRegisterFirmwareTableInformationHandler, // s (kernel-mode only)
+            SystemFirmwareTableInformation, // SYSTEM_FIRMWARE_TABLE_INFORMATION
+            SystemModuleInformationEx, // q: RTL_PROCESS_MODULE_INFORMATION_EX
+            SystemVerifierTriageInformation, // not implemented
+            SystemSuperfetchInformation, // q; s: SUPERFETCH_INFORMATION // PfQuerySuperfetchInformation
+            SystemMemoryListInformation, // q: SYSTEM_MEMORY_LIST_INFORMATION; s: SYSTEM_MEMORY_LIST_COMMAND (requires SeProfileSingleProcessPrivilege) // 80
+            SystemFileCacheInformationEx, // q: SYSTEM_FILECACHE_INFORMATION; s (requires SeIncreaseQuotaPrivilege) (same as SystemFileCacheInformation)
+            SystemThreadPriorityClientIdInformation, // s: SYSTEM_THREAD_CID_PRIORITY_INFORMATION (requires SeIncreaseBasePriorityPrivilege)
+            SystemProcessorIdleCycleTimeInformation, // q: SYSTEM_PROCESSOR_IDLE_CYCLE_TIME_INFORMATION[]
+            SystemVerifierCancellationInformation, // not implemented // name:wow64:whNT32QuerySystemVerifierCancellationInformation
+            SystemProcessorPowerInformationEx, // not implemented
+            SystemRefTraceInformation, // q; s: SYSTEM_REF_TRACE_INFORMATION // ObQueryRefTraceInformation
+            SystemSpecialPoolInformation, // q; s (requires SeDebugPrivilege) // MmSpecialPoolTag, then MmSpecialPoolCatchOverruns != 0
+            SystemProcessIdInformation, // q: SYSTEM_PROCESS_ID_INFORMATION
+            SystemErrorPortInformation, // s (requires SeTcbPrivilege)
+            SystemBootEnvironmentInformation, // q: SYSTEM_BOOT_ENVIRONMENT_INFORMATION // 90
+            SystemHypervisorInformation, // q; s (kernel-mode only)
+            SystemVerifierInformationEx, // q; s: SYSTEM_VERIFIER_INFORMATION_EX
+            SystemTimeZoneInformation, // s (requires SeTimeZonePrivilege)
+            SystemImageFileExecutionOptionsInformation, // s: SYSTEM_IMAGE_FILE_EXECUTION_OPTIONS_INFORMATION (requires SeTcbPrivilege)
+            SystemCoverageInformation, // q; s // name:wow64:whNT32QuerySystemCoverageInformation; ExpCovQueryInformation
+            SystemPrefetchPatchInformation, // not implemented
+            SystemVerifierFaultsInformation, // s (requires SeDebugPrivilege)
+            SystemSystemPartitionInformation, // q: SYSTEM_SYSTEM_PARTITION_INFORMATION
+            SystemSystemDiskInformation, // q: SYSTEM_SYSTEM_DISK_INFORMATION
+            SystemProcessorPerformanceDistribution, // q: SYSTEM_PROCESSOR_PERFORMANCE_DISTRIBUTION // 100
+            SystemNumaProximityNodeInformation, // q
+            SystemDynamicTimeZoneInformation, // q; s (requires SeTimeZonePrivilege)
+            SystemCodeIntegrityInformation, // q: SYSTEM_CODEINTEGRITY_INFORMATION // SeCodeIntegrityQueryInformation
+            SystemProcessorMicrocodeUpdateInformation, // s
+            SystemProcessorBrandString, // q // HaliQuerySystemInformation -> HalpGetProcessorBrandString, info class 23
+            SystemVirtualAddressInformation, // q: SYSTEM_VA_LIST_INFORMATION[]; s: SYSTEM_VA_LIST_INFORMATION[] (requires SeIncreaseQuotaPrivilege) // MmQuerySystemVaInformation
+            SystemLogicalProcessorAndGroupInformation, // q: SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX // since WIN7 // KeQueryLogicalProcessorRelationship
+            SystemProcessorCycleTimeInformation, // q: SYSTEM_PROCESSOR_CYCLE_TIME_INFORMATION[]
+            SystemStoreInformation, // q; s // SmQueryStoreInformation
+            SystemRegistryAppendString, // s: SYSTEM_REGISTRY_APPEND_STRING_PARAMETERS // 110
+            SystemAitSamplingValue, // s: ULONG (requires SeProfileSingleProcessPrivilege)
+            SystemVhdBootInformation, // q: SYSTEM_VHD_BOOT_INFORMATION
+            SystemCpuQuotaInformation, // q; s // PsQueryCpuQuotaInformation
+            SystemNativeBasicInformation, // not implemented
+            SystemSpare1, // not implemented
+            SystemLowPriorityIoInformation, // q: SYSTEM_LOW_PRIORITY_IO_INFORMATION
+            SystemTpmBootEntropyInformation, // q: TPM_BOOT_ENTROPY_NT_RESULT // ExQueryTpmBootEntropyInformation
+            SystemVerifierCountersInformation, // q: SYSTEM_VERIFIER_COUNTERS_INFORMATION
+            SystemPagedPoolInformationEx, // q: SYSTEM_FILECACHE_INFORMATION; s (requires SeIncreaseQuotaPrivilege) (info for WorkingSetTypePagedPool)
+            SystemSystemPtesInformationEx, // q: SYSTEM_FILECACHE_INFORMATION; s (requires SeIncreaseQuotaPrivilege) (info for WorkingSetTypeSystemPtes) // 120
+            SystemNodeDistanceInformation, // q
+            SystemAcpiAuditInformation, // q: SYSTEM_ACPI_AUDIT_INFORMATION // HaliQuerySystemInformation -> HalpAuditQueryResults, info class 26
+            SystemBasicPerformanceInformation, // q: SYSTEM_BASIC_PERFORMANCE_INFORMATION // name:wow64:whNtQuerySystemInformation_SystemBasicPerformanceInformation
+            SystemQueryPerformanceCounterInformation, // q: SYSTEM_QUERY_PERFORMANCE_COUNTER_INFORMATION // since WIN7 SP1
+            SystemSessionBigPoolInformation, // q: SYSTEM_SESSION_POOLTAG_INFORMATION // since WIN8
+            SystemBootGraphicsInformation, // q; s: SYSTEM_BOOT_GRAPHICS_INFORMATION (kernel-mode only)
+            SystemScrubPhysicalMemoryInformation, // q; s: MEMORY_SCRUB_INFORMATION
+            SystemBadPageInformation,
+            SystemProcessorProfileControlArea, // q; s: SYSTEM_PROCESSOR_PROFILE_CONTROL_AREA
+            SystemCombinePhysicalMemoryInformation, // s: MEMORY_COMBINE_INFORMATION, MEMORY_COMBINE_INFORMATION_EX, MEMORY_COMBINE_INFORMATION_EX2 // 130
+            SystemEntropyInterruptTimingCallback,
+            SystemConsoleInformation, // q: SYSTEM_CONSOLE_INFORMATION
+            SystemPlatformBinaryInformation, // q: SYSTEM_PLATFORM_BINARY_INFORMATION
+            SystemThrottleNotificationInformation,
+            SystemHypervisorProcessorCountInformation, // q: SYSTEM_HYPERVISOR_PROCESSOR_COUNT_INFORMATION
+            SystemDeviceDataInformation, // q: SYSTEM_DEVICE_DATA_INFORMATION
+            SystemDeviceDataEnumerationInformation,
+            SystemMemoryTopologyInformation, // q: SYSTEM_MEMORY_TOPOLOGY_INFORMATION
+            SystemMemoryChannelInformation, // q: SYSTEM_MEMORY_CHANNEL_INFORMATION
+            SystemBootLogoInformation, // q: SYSTEM_BOOT_LOGO_INFORMATION // 140
+            SystemProcessorPerformanceInformationEx, // q: SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION_EX // since WINBLUE
+            SystemSpare0,
+            SystemSecureBootPolicyInformation, // q: SYSTEM_SECUREBOOT_POLICY_INFORMATION
+            SystemPageFileInformationEx, // q: SYSTEM_PAGEFILE_INFORMATION_EX
+            SystemSecureBootInformation, // q: SYSTEM_SECUREBOOT_INFORMATION
+            SystemEntropyInterruptTimingRawInformation,
+            SystemPortableWorkspaceEfiLauncherInformation, // q: SYSTEM_PORTABLE_WORKSPACE_EFI_LAUNCHER_INFORMATION
+            SystemFullProcessInformation, // q: SYSTEM_PROCESS_INFORMATION with SYSTEM_PROCESS_INFORMATION_EXTENSION (requires admin)
+            SystemKernelDebuggerInformationEx, // q: SYSTEM_KERNEL_DEBUGGER_INFORMATION_EX
+            SystemBootMetadataInformation, // 150
+            SystemSoftRebootInformation,
+            SystemElamCertificateInformation, // s: SYSTEM_ELAM_CERTIFICATE_INFORMATION
+            SystemOfflineDumpConfigInformation,
+            SystemProcessorFeaturesInformation, // q: SYSTEM_PROCESSOR_FEATURES_INFORMATION
+            SystemRegistryReconciliationInformation,
+            SystemEdidInformation,
+            SystemManufacturingInformation, // q: SYSTEM_MANUFACTURING_INFORMATION // since THRESHOLD
+            SystemEnergyEstimationConfigInformation, // q: SYSTEM_ENERGY_ESTIMATION_CONFIG_INFORMATION
+            SystemHypervisorDetailInformation, // q: SYSTEM_HYPERVISOR_DETAIL_INFORMATION
+            SystemProcessorCycleStatsInformation, // q: SYSTEM_PROCESSOR_CYCLE_STATS_INFORMATION // 160
+            SystemVmGenerationCountInformation,
+            SystemTrustedPlatformModuleInformation, // q: SYSTEM_TPM_INFORMATION
+            SystemKernelDebuggerFlags,
+            SystemCodeIntegrityPolicyInformation, // q: SYSTEM_CODEINTEGRITYPOLICY_INFORMATION
+            SystemIsolatedUserModeInformation, // q: SYSTEM_ISOLATED_USER_MODE_INFORMATION
+            SystemHardwareSecurityTestInterfaceResultsInformation,
+            SystemSingleModuleInformation, // q: SYSTEM_SINGLE_MODULE_INFORMATION
+            SystemAllowedCpuSetsInformation,
+            SystemDmaProtectionInformation, // q: SYSTEM_DMA_PROTECTION_INFORMATION
+            SystemInterruptCpuSetsInformation, // q: SYSTEM_INTERRUPT_CPU_SET_INFORMATION // 170
+            SystemSecureBootPolicyFullInformation, // q: SYSTEM_SECUREBOOT_POLICY_FULL_INFORMATION
+            SystemCodeIntegrityPolicyFullInformation,
+            SystemAffinitizedInterruptProcessorInformation,
+            SystemRootSiloInformation, // q: SYSTEM_ROOT_SILO_INFORMATION
+            SystemCpuSetInformation, // q: SYSTEM_CPU_SET_INFORMATION // since THRESHOLD2
+            SystemCpuSetTagInformation, // q: SYSTEM_CPU_SET_TAG_INFORMATION
+            SystemWin32WerStartCallout,
+            SystemSecureKernelProfileInformation, // q: SYSTEM_SECURE_KERNEL_HYPERGUARD_PROFILE_INFORMATION
+            SystemCodeIntegrityPlatformManifestInformation, // q: SYSTEM_SECUREBOOT_PLATFORM_MANIFEST_INFORMATION // since REDSTONE
+            SystemInterruptSteeringInformation, // 180
+            SystemSupportedProcessorArchitectures,
+            SystemMemoryUsageInformation, // q: SYSTEM_MEMORY_USAGE_INFORMATION
+            SystemCodeIntegrityCertificateInformation, // q: SYSTEM_CODEINTEGRITY_CERTIFICATE_INFORMATION
+            SystemPhysicalMemoryInformation, // q: SYSTEM_PHYSICAL_MEMORY_INFORMATION // since REDSTONE2
+            SystemControlFlowTransition,
+            SystemKernelDebuggingAllowed,
+            SystemActivityModerationExeState, // SYSTEM_ACTIVITY_MODERATION_EXE_STATE
+            SystemActivityModerationUserSettings, // SYSTEM_ACTIVITY_MODERATION_USER_SETTINGS
+            SystemCodeIntegrityPoliciesFullInformation,
+            SystemCodeIntegrityUnlockInformation, // SYSTEM_CODEINTEGRITY_UNLOCK_INFORMATION // 190
+            SystemIntegrityQuotaInformation,
+            SystemFlushInformation, // q: SYSTEM_FLUSH_INFORMATION
+            MaxSystemInfoClass
+        } SYSTEM_INFORMATION_CLASS;
+#pragma warning (default : 4459)
+        typedef struct _SYSTEM_POOLTAG
+        {
+            union
+            {
+                UCHAR Tag[4];
+                ULONG TagUlong;
+            };
+            ULONG PagedAllocs;
+            ULONG PagedFrees;
+            SIZE_T PagedUsed;
+            ULONG NonPagedAllocs;
+            ULONG NonPagedFrees;
+            SIZE_T NonPagedUsed;
+        }SYSTEM_POOLTAG, * PSYSTEM_POOLTAG;
+
+        typedef struct _SYSTEM_POOLTAG_INFORMATION
+        {
+            ULONG Count;
+            SYSTEM_POOLTAG TagInfo[1];
+        }SYSTEM_POOLTAG_INFORMATION, * PSYSTEM_POOLTAG_INFORMATION;
+
+        std::unique_ptr<BYTE[]> buffer_pool_info;
+        ULONG ret_length = 0;
+        NTSTATUS nt_status = ((NTSTATUS)0xC0000001L);
+
+        const HMODULE ntdll = GetModuleHandleA("ntdll.dll");
+        if (!ntdll) return false;
+
+        const char* funcNames[] = { "NtQuerySystemInformation" };
+        void* funcPtrs[] = { nullptr };
+        if (!util::GetFunctionAddresses(ntdll, funcNames, funcPtrs, 1)) return false;
+
+        typedef NTSTATUS(__stdcall* NtQuerySystemInformationFunc)(
+            SYSTEM_INFORMATION_CLASS SystemInformationClass,
+            PVOID SystemInformation,
+            ULONG SystemInformationLength,
+            PULONG ReturnLength
+            );
+
+        NtQuerySystemInformationFunc NtQuerySystemInformation = reinterpret_cast<NtQuerySystemInformationFunc>(funcPtrs[0]);
+
+        const CHAR* ListBadPool[] = {
+            "VM3D", "vmmp", "CTGC", "HGCC", "HGNM", "VMBL", "VBDM", "VBGA"
+        };
+
+        if (NtQuerySystemInformation)
+            nt_status = NtQuerySystemInformation(SystemPoolTagInformation, nullptr, 0, &ret_length);
+
+        while (nt_status == ((NTSTATUS)0xC0000004L)) {
+            buffer_pool_info = std::make_unique<BYTE[]>(ret_length);
+            nt_status = NtQuerySystemInformation(SystemPoolTagInformation, buffer_pool_info.get(), ret_length, &ret_length);
+        }
+
+        if (!((NTSTATUS)(nt_status) >= 0)) {
+            return false;
+        }
+
+        auto system_pool_tagInfo = reinterpret_cast<PSYSTEM_POOLTAG_INFORMATION>(buffer_pool_info.get());
+        if (!system_pool_tagInfo) {
+            return false;
+        }
+
+        size_t bad_pool_number = 0;
+        for (ULONG i = 0; i < system_pool_tagInfo->Count; i++) {
+            auto system_pool_tag = system_pool_tagInfo->TagInfo[i];
+            for (const auto& badTag : ListBadPool) {
+                if (memcmp(system_pool_tag.Tag, badTag, 4) == 0) {
+                    bad_pool_number++;
+                }
+            }
+        }
+        return bad_pool_number >= 2;
 #endif
     }
     // ADD NEW TECHNIQUE FUNCTION HERE
@@ -10099,13 +10390,16 @@ public: // START OF PUBLIC FUNCTIONS
         case WMI_TEMPERATURE: return "WMI_TEMPERATURE";
         case PROCESSOR_ID: return "PROCESSOR_ID";
         case CPU_FANS: return "CPU_FANS";
+        case POWER_CAPABILITIES: return "POWER_CAPABILITIES";
+        case SETUPAPI_DISK: return "SETUPAPI_DISK";
         case VMWARE_HARDENER: return "VMWARE_HARDENER_LOADER";
         case SYS_QEMU: return "SYS_QEMU";
         case LSHW_QEMU: return "LSHW_QEMU";
         case VIRTUAL_PROCESSORS: return "VIRTUAL_PROCESSORS";
         case MOTHERBOARD_PRODUCT: return "MOTHERBOARD_PRODUCT";
         case HYPERV_QUERY: return "HYPERV_QUERY";
-        // ADD NEW CASE HERE FOR NEW TECHNIQUE
+        case BAD_POOLS: return "BAD_POOLS";
+            // ADD NEW CASE HERE FOR NEW TECHNIQUE
         default: return "Unknown flag";
         }
     }
@@ -10239,8 +10533,6 @@ public: // START OF PUBLIC FUNCTIONS
 
             // misc
             { brands::BOCHS, "Emulator" },
-            { brands::MICROSOFT_PRISM, "Emulator" },
-            { brands::MICROSOFT_X86_EMU, "Emulator" },
             { brands::BLUESTACKS, "Emulator" },
             { brands::MSXTA, "Emulator" },
             { brands::QEMU, "Emulator/Hypervisor (type 2)" },
@@ -10257,7 +10549,6 @@ public: // START OF PUBLIC FUNCTIONS
             { brands::HYPERV_ARTIFACT, "Unknown" },
             { brands::UML, "Paravirtualised/Hypervisor (type 2)" },
             { brands::WSL, "Hybrid Hyper-V (type 1 and 2)" }, // debatable tbh
-            { brands::APPLE_ROSETTA, "Binary Translation Layer/Emulator" }
         };
 
         auto it = type_table.find(brand_str.c_str());
@@ -10394,7 +10685,6 @@ std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard{
     { VM::brands::SANDBOXIE, 0 },
     { VM::brands::DOCKER, 0 },
     { VM::brands::WINE, 0 },
-    { VM::brands::APPLE_ROSETTA, 0 },
     { VM::brands::VPC, 0 },
     { VM::brands::ANUBIS, 0 },
     { VM::brands::JOEBOX, 0 },
@@ -10428,8 +10718,6 @@ std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard{
     { VM::brands::BAREVISOR, 0 },
     { VM::brands::HYPERPLATFORM, 0 },
     { VM::brands::MINIVISOR, 0 },
-    { VM::brands::MICROSOFT_PRISM, 0 },
-    { VM::brands::MICROSOFT_X86_EMU, 0 },
     { VM::brands::INTEL_TDX, 0 },
     { VM::brands::LKVM, 0 },
     { VM::brands::NULL_BRAND, 0 }
@@ -10598,7 +10886,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::SMSW, { 30, VM::smsw, false } },
     { VM::MUTEX, { 85, VM::mutex, false } },
     { VM::ODD_CPU_THREADS, { 80, VM::odd_cpu_threads, false } },
-    { VM::INTEL_THREAD_MISMATCH, { 50, VM::intel_thread_mismatch, false } },
+    { VM::INTEL_THREAD_MISMATCH, { 100, VM::intel_thread_mismatch, false } },
     { VM::XEON_THREAD_MISMATCH, { 85, VM::xeon_thread_mismatch, false } },
     { VM::NETTITUDE_VM_MEMORY, { 100, VM::nettitude_vm_memory, false } },
     { VM::CPUID_BITSET, { 25, VM::cpuid_bitset, false } },
@@ -10652,6 +10940,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::VIRTUAL_PROCESSORS, { 50, VM::virtual_processors, false } },
     { VM::MOTHERBOARD_PRODUCT, { 50, VM::motherboard_product, false } },
     { VM::HYPERV_QUERY, { 50, VM::hyperv_query, false } },
+    { VM::BAD_POOLS, { 80, VM::bad_pools, false } },
     // ADD NEW TECHNIQUE STRUCTURE HERE
 };
 

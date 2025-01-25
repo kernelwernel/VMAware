@@ -470,6 +470,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::VIRTUAL_PROCESSORS:
             case VM::MOTHERBOARD_PRODUCT:
             case VM::HYPERV_QUERY:
+            case VM::BAD_POOLS:
             // ADD WINDOWS FLAG
             return false;
             default: return true;
@@ -988,7 +989,8 @@ void general() {
 	checker(VM::LSHW_QEMU, "QEMU in lshw output");
     checker(VM::VIRTUAL_PROCESSORS, "virtual processors");
     checker(VM::MOTHERBOARD_PRODUCT, "motherboard product");
-    checker(VM::HYPERV_QUERY, "Hyper-V query");
+    checker(VM::HYPERV_QUERY, "hypervisor query");
+    checker(VM::BAD_POOLS, "bad pools");
     // ADD NEW TECHNIQUE CHECKER HERE
 
     std::printf("\n");
