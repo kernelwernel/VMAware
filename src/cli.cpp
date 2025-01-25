@@ -1107,7 +1107,7 @@ void general() {
             std::string description = vm_description(vm.brand);
 
             if (!description.empty()) {
-                std::cout << bold << "VM description: " << ansi_exit << "\n" << "   " << description << "\n\n";
+                std::cout << bold << "VM description: " << ansi_exit << "\n" << description << "\n\n";
                 //std::cout << note << " The result means that the CLI has found Hyper-V, but as an artifact instead of an actual VM. This means that although the hardware values in fact match with Hyper-V due to how it's designed by Microsoft, the CLI has determined you are NOT in a Hyper-V VM.\n\n";
             }
         }
