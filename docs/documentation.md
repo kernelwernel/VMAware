@@ -370,8 +370,6 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::RDTSC_VMEXIT` | check through alternative RDTSC technique with VMEXIT |  | 25% |  |  |  | Disabled by default |
 | `VM::QEMU_BRAND` | Match for QEMU CPU brands with "QEMU Virtual CPU" string |  | 100% |  |  |  |  |
 | `VM::BOCHS_CPU` | Check for various Bochs-related emulation oversights through CPU checks |  | 95% |  |  |  |  |
-| `VM::HYPERV_WMI` | Check WMI query for "Hyper-V RAW" string | Windows | 80% |  |  |  |  |
-| `VM::HYPERV_REG` | Check presence for Hyper-V specific string in registry | Windows | 80% |  |  |  |  |
 | `VM::BIOS_SERIAL` | Check if the BIOS serial is valid (null = VM) | Windows | 60% |  |  |  |  |
 | `VM::MSSMBIOS` | Check MSSMBIOS registry for VM-specific strings | Windows | 75% |  |  |  |  |
 | `VM::MAC_MEMSIZE` | Check if memory is too low for MacOS system | MacOS | 30% |  |  |  |  |
@@ -435,7 +433,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::VM_SIDT` | Check for the IDT base address | Windows | 75% |  |  |  |  |
 | `VM::HDD_SERIAL` | Check for HDD serial number | Windows | 100% |  |  |  |  |
 | `VM::PORT_CONNECTORS` | Check for physical connection ports | Windows | 50% |  |  |  |  |
-| `VM::VM_HDD` | Check for QEMU keyword in HDD model | Windows | 75% |  |  |  |  |
+| `VM::VM_HDD` | Check for VM related keywords in HDD models | Windows | 75% |  |  |  |  |
 | `VM::ACPI_DETECT` | Check for VM related strings in ACPI data | Windows | 85% |  |  |  |  |
 | `VM::GPU_NAME` | Check for VM specific device names in GPUs | Windows | 100% |  |  |  |  |
 | `VM::VM_DEVICES` | Check for VM-specific devices | Windows | 45% |  |  |  |  |
