@@ -27,6 +27,7 @@
 - [ ] implement techniques from here https://www.cyberciti.biz/faq/linux-determine-virtualization-technology-command/
 - [ ] implement techniques from virt-what
 - [ ] https://cloud.google.com/compute/docs/instances/detect-compute-engine
+- [ ] find for potential things that can be used here https://en.wikipedia.org/wiki/CPUID#EAX=8000'000Ah:_SVM_features
 
 # Distant plans
 - add the library to conan.io when released
