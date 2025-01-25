@@ -2005,7 +2005,7 @@ public:
                 };
 
 
-            // VMProtect method for Hyper-V artifact detection
+            // https://learn.microsoft.com/en-us/virtualization/hyper-v-on-windows/tlfs/feature-discovery
             auto is_root_partition = []() -> bool {
                 u32 ebx, unused = 0;
                 cpu::cpuid(unused, ebx, unused, unused, 0x40000003);
@@ -2018,6 +2018,18 @@ public:
                 return result;
                 };
 
+            /**
+              * On Hyper-V virtual machines, the cpuid function reports an EAX value of 11.
+              * This value is tied to the Hyper-V partition model, where each virtual machine runs as a child partition.
+              * These child partitions have limited privileges and access to hypervisor resources,
+              * which is reflected in the maximum input value for hypervisor CPUID information as 11.
+              * Essentially, it indicates that the hypervisor is managing the VM and that the VM is not running directly on hardware but rather in a virtualized environment.
+              *
+              * On the other hand, in bare-metal systems running Hyper-V, the EAX value is 12.
+              * This higher value corresponds to the root partition, which has more privileges and control over virtualization resources compared to child partitions.
+              * The root partition is responsible for managing other child partitions and interacts more closely with the hardware.
+              * The EAX value of 12 indicates that additional CPUID leaves (up to 12) are available to the root partition, which exposes more functionality than in a guest VM.
+            */
 
             // check if eax is either 11 or 12 after running VM::HYPERVISOR_STR technique
             auto eax = []() -> u32 {
@@ -2026,8 +2038,6 @@ public:
 
                 const u32 eax = static_cast<u32>(out[0]);
 
-                core_debug("HYPER_X: eax = ", eax);
-
                 return eax;
                 };
 
@@ -2035,7 +2045,8 @@ public:
 
             const bool has_hyperv_indications = (
                 eax() == 11 ||
-                is_event_log_hyperv()
+                is_event_log_hyperv() ||
+                !is_root_partition()
                 );
 
             if (has_hyperv_indications) {
