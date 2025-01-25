@@ -9100,10 +9100,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
 
 static bool rdtsc() {
-#if (!LINUX && !WINDOWS)
+#if (ARM && !x86)
         return false;
 #else
-
         u64 start, end, total_cycles = 0;
         u32 eax = 0, ebx = 0, ecx = 0, edx = 0;
         i32 cpu_info[4];
@@ -9115,7 +9114,7 @@ static bool rdtsc() {
             start = __rdtsc();
     #if (WINDOWS)
             __cpuid(cpu_info, 0);
-    #elif (LINUX)
+    #elif (LINUX || APPLE)
             __cpuid(0, eax, ebx, ecx, edx);
     #endif
             end = __rdtsc();
