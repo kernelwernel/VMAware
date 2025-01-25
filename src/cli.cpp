@@ -265,6 +265,9 @@ HyperPlatform
 MiniVisor
 Intel TDX
 LKVM
+AMD SEV
+AMD SEV-ES
+AMD SEV-SNP
 )";
 
     std::exit(0);
@@ -378,6 +381,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::WSL_PROC: 
 			case VM::SYS_QEMU:
 			case VM::LSHW_QEMU:
+			case VM::AMD_SEV:
             // ADD LINUX FLAG
             return false;
             default: return true;
@@ -471,6 +475,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::MOTHERBOARD_PRODUCT:
             case VM::HYPERV_QUERY:
             case VM::BAD_POOLS:
+			case VM::AMD_SEV:
             // ADD WINDOWS FLAG
             return false;
             default: return true;
@@ -501,6 +506,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::HYPERV_BITMASK:
             case VM::KVM_BITMASK:
             case VM::KGT_SIGNATURE:
+			case VM::AMD_SEV:
             // ADD MACOS FLAG
             return false;
             default: return true;
@@ -653,6 +659,9 @@ std::string vm_description(const std::string& vm_brand) {
         { VM::brands::MINIVISOR, "" },
         { VM::brands::INTEL_TDX, "" },
         { VM::brands::LKVM, "" },
+        { VM::brands::AMD_SEV, "" },
+        { VM::brands::AMD_SEV_ES, "" },
+        { VM::brands::AMD_SEV_SNP, "" },
         { VM::brands::NULL_BRAND, "" }
     };
 
@@ -952,7 +961,7 @@ void general() {
     checker(VM::VMWARE_EVENT_LOGS, "VMware event logs");
     checker(VM::QEMU_VIRTUAL_DMI, "QEMU virtual DMI directory");
     checker(VM::QEMU_USB, "QEMU USB");
-    checker(VM::HYPERVISOR_DIR, "Hypervisor directory (Linux)");
+    checker(VM::HYPERVISOR_DIR, "hypervisor directory (Linux)");
     checker(VM::UML_CPU, "User-mode Linux CPU");
     checker(VM::KMSG, "/dev/kmsg hypervisor message");
     checker(VM::VM_PROCS, "various VM files in /proc");
@@ -961,7 +970,7 @@ void general() {
     checker(VM::DEVICE_TREE, "/proc/device-tree");
     checker(VM::DMI_SCAN, "DMI scan");
     checker(VM::SMBIOS_VM_BIT, "SMBIOS VM bit");
-    checker(VM::PODMAN_FILE, "Podman file");
+    checker(VM::PODMAN_FILE, "podman file");
     checker(VM::WSL_PROC, "WSL string in /proc");
     checker(anyrun_driver, "ANY.RUN driver");
     checker(anyrun_directory, "ANY.RUN directory");
@@ -969,18 +978,18 @@ void general() {
     checker(VM::DRIVER_NAMES, "driver names");
     checker(VM::VM_SIDT, "VM SIDT");
     checker(VM::HDD_SERIAL, "HDD serial number");
-    checker(VM::PORT_CONNECTORS, "Physical connection ports");
+    checker(VM::PORT_CONNECTORS, "physical connection ports");
     checker(VM::VM_HDD, "VM keywords in HDD model");
     checker(VM::ACPI_DETECT, "ACPI data");
     checker(VM::GPU_NAME, "GPU name");
     checker(VM::VMWARE_MEMORY, "VM memory traces");
     checker(VM::IDT_GDT_MISMATCH, "IDT GDT mismatch");
-    checker(VM::PROCESSOR_NUMBER, "Processor count");
+    checker(VM::PROCESSOR_NUMBER, "processor count");
     checker(VM::NUMBER_OF_CORES, "CPU core count");
     checker(VM::WMI_MODEL, "hardware model");
-    checker(VM::WMI_MANUFACTURER, "Hardware manufacturer");
+    checker(VM::WMI_MANUFACTURER, "hardware manufacturer");
     checker(VM::WMI_TEMPERATURE, "WMI temperature");
-    checker(VM::PROCESSOR_ID, "Processor ID");
+    checker(VM::PROCESSOR_ID, "processor ID");
     checker(VM::CPU_FANS, "CPU fans");
     checker(VM::POWER_CAPABILITIES, "Power capabilities");
     checker(VM::SETUPAPI_DISK, "SETUPDI diskdrive");
@@ -990,7 +999,8 @@ void general() {
     checker(VM::VIRTUAL_PROCESSORS, "virtual processors");
     checker(VM::MOTHERBOARD_PRODUCT, "motherboard product");
     checker(VM::HYPERV_QUERY, "hypervisor query");
-    checker(VM::BAD_POOLS, "bad pools");
+    checker(VM::BAD_POOLS, "bad memory pools");
+	checker(VM::AMD_SEV, "AMD-SEV MSR");
     // ADD NEW TECHNIQUE CHECKER HERE
 
     std::printf("\n");

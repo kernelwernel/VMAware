@@ -458,7 +458,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::MOTHERBOARD_PRODUCT` | Check if the motherboard product string matches "Virtual Machine" | Windows | 50% |  |  |  |  |
 | `VM::HYPERV_QUERY` | Checks if a call to NtQuerySystemInformation with the 0x9f leaf fills a _SYSTEM_HYPERVISOR_DETAIL_INFORMATION structure | Windows | 50% |  |  |  |  |
 | `VM::BAD_POOLS` | Checks for system pools allocated by hypervisors | Windows | 80% |  |  |  |  |
-
+| `VM::AMD_SEV` | Check for AMD-SEV MSR running on the system |  | 50% | Admin |  |  |  |
 <!-- ADD DETAILS HERE -->
 
 <br>

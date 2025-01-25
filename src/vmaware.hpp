@@ -448,6 +448,7 @@ public:
         MOTHERBOARD_PRODUCT,
         HYPERV_QUERY,
         BAD_POOLS,
+        AMD_SEV,
         // ADD NEW TECHNIQUE ENUM NAME HERE
 
         // start of settings technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
@@ -576,6 +577,9 @@ public:
         static constexpr const char* MINIVISOR = "MiniVisor";
         static constexpr const char* INTEL_TDX = "Intel TDX";
         static constexpr const char* LKVM = "LKVM";
+        static constexpr const char* AMD_SEV = "AMD SEV";
+        static constexpr const char* AMD_SEV_ES = "AMD SEV-ES";
+        static constexpr const char* AMD_SEV_SNP = "AMD SEV-SNP";
         static constexpr const char* NULL_BRAND = "Unknown";
     };
 
@@ -9690,6 +9694,69 @@ static bool rdtsc() {
         return bad_pool_number >= 2;
 #endif
     }
+
+
+	/**
+	 * @brief Check for AMD-SEV MSR running on the system
+	 * @category x86
+	 * @note idea from virt-what
+	 */
+	[[nodiscard]] static bool amd_sev() {
+#if (!x86)
+	    return false;
+#else
+	    if (!cpu::is_amd()) {
+	        return false;
+	    }
+	
+	    if (!util::is_admin()) {
+	        return false;
+	    }
+	
+	    constexpr u32 encrypted_memory_capability = 0x8000001f;
+	    constexpr u32 msr_index = 0xc0010131;
+	  
+	    if (!cpu::is_leaf_supported(encrypted_memory_capability)) {
+	        return false;
+	    }
+	    
+	    u32 eax, unused = 0;
+	    cpu::cpuid(eax, unused, unused, unused, encrypted_memory_capability);
+	
+	    if (!(eax & (1 << 1))) {
+	        return false;
+	    }
+	
+	    u64 result = 0;
+	  
+	    #if (LINUX || APPLE)
+	        const std::string msr_device = "/dev/cpu/0/msr";
+	        std::ifstream msr_file(msr_device, std::ios::binary);
+	
+	        if (!msr_file.is_open()) {
+	            debug("AMD_SEV: unable to open MSR file");
+	            return false;
+	        }
+	
+	        msr_file.seekg(msr_index);
+	        msr_file.read(reinterpret_cast<char*>(&result), sizeof(result));
+	
+	        if (!msr_file) {
+	            debug("AMD_SEV: unable to open MSR file");
+	            return false;
+	        }
+	    #elif (WINDOWS)
+	        result = __readmsr(msr_index);
+	    #endif
+	
+	    if (result & (1 << 2)) { return core::add(brands::AMD_SEV_SNP); }
+	    else if (result & (1 << 1)) { return core::add(brands::AMD_SEV_ES); }
+	    else if (result & 1) { return core::add(brands::AMD_SEV); }
+	
+	    return false;
+#endif
+	}
+
     // ADD NEW TECHNIQUE FUNCTION HERE
 
 
@@ -10736,6 +10803,7 @@ public: // START OF PUBLIC FUNCTIONS
             case MOTHERBOARD_PRODUCT: return "MOTHERBOARD_PRODUCT";
             case HYPERV_QUERY: return "HYPERV_QUERY";
             case BAD_POOLS: return "BAD_POOLS";
+			case AMD_SEV: return "AMD_SEV";
             // ADD NEW CASE HERE FOR NEW TECHNIQUE
             default: return "Unknown flag";
         }
@@ -10882,6 +10950,9 @@ public: // START OF PUBLIC FUNCTIONS
             { brands::LMHS, "Hypervisor (unknown type)" },
             { brands::WINE, "Compatibility layer" },
             { brands::INTEL_TDX, "Trusted Domain" },
+            { brands::AMD_SEV, "" },
+            { brands::AMD_SEV_ES, "" },
+            { brands::AMD_SEV_SNP, "" },
             { brands::APPLE_VZ, "Unknown" },
             { brands::HYPERV_ARTIFACT, "Unknown" },
             { brands::UML, "Paravirtualised/Hypervisor (type 2)" },
@@ -11055,6 +11126,9 @@ std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard{
     { VM::brands::MINIVISOR, 0 },
     { VM::brands::INTEL_TDX, 0 },
     { VM::brands::LKVM, 0 },
+    { VM::brands::AMD_SEV, 0 },
+    { VM::brands::AMD_SEV_ES, 0 },
+    { VM::brands::AMD_SEV_SNP, 0 },
     { VM::brands::NULL_BRAND, 0 }
 };
 
@@ -11285,6 +11359,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::MOTHERBOARD_PRODUCT, { 50, VM::motherboard_product, false } },
     { VM::HYPERV_QUERY, { 50, VM::hyperv_query, false } },
     { VM::BAD_POOLS, { 80, VM::bad_pools, false } },
+	{ VM::AMD_SEV, { 50, VM::amd_sev, false } },
     // ADD NEW TECHNIQUE STRUCTURE HERE
 };
 
