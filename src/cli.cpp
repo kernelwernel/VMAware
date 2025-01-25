@@ -473,7 +473,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::MOTHERBOARD_PRODUCT:
             case VM::HYPERV_QUERY:
             case VM::BAD_POOLS:
-			case VM::AMD_SEV:
             // ADD WINDOWS FLAG
             return false;
             default: return true;

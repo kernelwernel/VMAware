@@ -371,7 +371,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::QEMU_BRAND` | Match for QEMU CPU brands with "QEMU Virtual CPU" string |  | 100% |  |  |  |  |
 | `VM::BOCHS_CPU` | Check for various Bochs-related emulation oversights through CPU checks |  | 95% |  |  |  |  |
 | `VM::BIOS_SERIAL` | Check if the BIOS serial is valid (null = VM) | Windows | 60% |  |  |  |  |
-| `VM::MSSMBIOS` | Check MSSMBIOS registry for VM-specific strings | Windows | 75% |  |  |  |  |
+| `VM::MSSMBIOS` | Check MSSMBIOS registry for VM-specific strings | Windows | 85% |  |  |  |  |
 | `VM::MAC_MEMSIZE` | Check if memory is too low for MacOS system | MacOS | 30% |  |  |  |  |
 | `VM::MAC_IOKIT` | Check MacOS' IO kit registry for VM-specific strings | MacOS | 80% |  |  |  |  |
 | `VM::IOREG_GREP` | Check for VM-strings in ioreg commands for MacOS | MacOS | 75% |  |  |  |  |
@@ -439,7 +439,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::VM_DEVICES` | Check for VM-specific devices | Windows | 45% |  |  |  |  |
 | `VM::VMWARE_MEMORY` | Check for VMware-specific memory traces in certain processes | Windows | 50% |  |  |  |  |
 | `VM::IDT_GDT_MISMATCH` | Check if the IDT and GDT limit addresses mismatch between different CPU cores | Windows | 25% |  |  |  |  |
-| `VM::PROCESSOR_NUMBER` | Check for number of processors | Windows | 25% |  |  |  |  |
+| `VM::PROCESSOR_NUMBER` | Check for number of processors | Windows | 50% |  |  |  |  |
 | `VM::NUMBER_OF_CORES` | Check for number of cores | Windows | 50% |  |  |  |  |
 | `VM::WMI_MODEL` | Check for device's model using WMI | Windows | 100% |  |  |  |  |
 | `VM::WMI_MANUFACTURER` | Check for device's manufacturer using WMI | Windows | 100% |  |  |  |  |
@@ -456,7 +456,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::MOTHERBOARD_PRODUCT` | Check if the motherboard product string matches "Virtual Machine" | Windows | 50% |  |  |  |  |
 | `VM::HYPERV_QUERY` | Checks if a call to NtQuerySystemInformation with the 0x9f leaf fills a _SYSTEM_HYPERVISOR_DETAIL_INFORMATION structure | Windows | 50% |  |  |  |  |
 | `VM::BAD_POOLS` | Checks for system pools allocated by hypervisors | Windows | 80% |  |  |  |  |
-| `VM::AMD_SEV` | Check for AMD-SEV MSR running on the system |  | 50% | Admin |  |  |  |
+| `VM::AMD_SEV` | Check for AMD-SEV MSR running on the system | Linux and MacOS | 50% | Admin |  |  |  |
 <!-- ADD DETAILS HERE -->
 
 <br>
