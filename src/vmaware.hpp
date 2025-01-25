@@ -10987,13 +10987,14 @@ public: // START OF PUBLIC FUNCTIONS
     static std::string conclusion(Args ...args) {
         flagset flags = core::arg_handler(args...);
 
-        const std::string brand_tmp = brand(flags);
+        std::string brand_tmp = brand(flags);
         const u8 percent_tmp = percentage(flags);
 
         constexpr const char* baremetal = "Running on baremetal";
         constexpr const char* very_unlikely = "Very unlikely a VM";
         constexpr const char* unlikely = "Unlikely a VM";
 
+        // std::string_view would be useful here, but it'll be annoying to have #if (CPP > 17) directives everywhere
         const std::string potentially = "Potentially";
         const std::string might = "Might be";
         const std::string likely = "Likely";
@@ -11003,13 +11004,37 @@ public: // START OF PUBLIC FUNCTIONS
         auto make_conclusion = [&](const std::string &category) -> std::string {
             std::string article = "";   
 
-            if (brand_tmp == "Unknown") {
+            if (brand_tmp == brands::NULL_BRAND) {
+                brand_tmp = "unknown"; // this is basically just to remove the capital "U", since it would look weird to see "an Unknown"
+            }
+
+            if (
+                (brand_tmp == brands::ACRN) ||
+                (brand_tmp == brands::ANUBIS) ||
+                (brand_tmp == brands::BSD_VMM) ||
+                (brand_tmp == brands::INTEL_HAXM) ||
+                (brand_tmp == brands::APPLE_VZ) ||
+                (brand_tmp == brands::INTEL_KGT) ||
+                (brand_tmp == brands::POWERVM) ||
+                (brand_tmp == brands::OPENSTACK) ||
+                (brand_tmp == brands::AWS_NITRO) ||
+                (brand_tmp == brands::OPENVZ) ||
+                (brand_tmp == brands::INTEL_TDX) ||
+                (brand_tmp == brands::AMD_SEV) ||
+                (brand_tmp == brands::AMD_SEV_ES) ||
+                (brand_tmp == brands::AMD_SEV_SNP) ||
+                (brand_tmp == brands::NULL_BRAND)
+            ) {
                 article = " an ";
             } else {
                 article = " a ";
             }
 
-            return (brand_tmp == "Hyper-V artifact (not an actual VM)") ? (category + article + brand_tmp) : (category + article + brand_tmp + " VM");
+            if (brand_tmp == brands::HYPERV_ARTIFACT) {
+               return (category + article + brand_tmp);
+            } else {
+                return (category + article + brand_tmp + " VM");
+            }
         };
 
         if (core::is_enabled(flags, DYNAMIC)) {
