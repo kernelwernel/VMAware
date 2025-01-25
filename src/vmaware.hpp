@@ -1014,7 +1014,7 @@ public:
 
                 // both Hyper-V and VirtualPC have the same string value
                 if (brand_str == hyperv) {
-                    if (util::hyper_x()) {
+                    if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
                         return false;
                     }
                     return core::add(brands::HYPERV, brands::VPC);
@@ -1992,20 +1992,20 @@ public:
          *       This can lead to false conclusions, where the system might mistakenly be identified as running in a Hyper-V VM, when in reality, it's simply the host system with Hyper-V features active.
          *       This check aims to distinguish between these two cases by identifying specific CPU flags and hypervisor-related artifacts that are indicative of a Hyper-V VM rather than a host system with Hyper-V enabled.
          * @author idea by Requiem (https://github.com/NotRequiem)
-         * @returns boolean, true = Hyper-V artifact (host system with Hyper-V enabled), false = Real Hyper-V VM
-         * @link graph to explain how this works: https://github.com/kernelwernel/VMAware/blob/main/assets/hyper-x/v5/Hyper-X_version_5.drawio.png
+         * @returns hyperx_state enum indicating the detected state:
+         *          - HYPERV_ARTIFACT_VM for host with Hyper-V enabled
+         *          - HYPERV_REAL_VM for real Hyper-V VM
+         *          - HYPERV_UNKNOWN_VM for unknown/undetected state
          */
-        [[nodiscard]] static bool hyper_x() {
+        [[nodiscard]] static hyperx_state hyper_x() {
 #if (!WINDOWS)
-            return false;
+            return HYPERV_UNKNOWN_VM;
 #else
             if (memo::hyperx::is_cached()) {
                 core_debug("HYPER_X: returned from cache");
-                return (memo::hyperx::fetch() == HYPERV_ARTIFACT_VM);
+                return memo::hyperx::fetch();
             }
 
-
-            // event log check (slow, so in last place)
             auto is_event_log_hyperv = []() -> bool {
                 std::wstring logName = L"Microsoft-Windows-Kernel-PnP/Configuration";
                 std::vector<std::wstring> searchStrings = { L"Virtual_Machine", L"VMBUS" };
@@ -2016,7 +2016,7 @@ public:
                 }
 
                 return result;
-            };
+                };
 
 
             // https://learn.microsoft.com/en-us/virtualization/hyper-v-on-windows/tlfs/feature-discovery
@@ -2030,7 +2030,7 @@ public:
                 }
 
                 return result;
-            };
+                };
 
             /**
               * On Hyper-V virtual machines, the cpuid function reports an EAX value of 11. 
@@ -2053,9 +2053,9 @@ public:
                 const u32 eax = static_cast<u32>(out[0]);
 
                 return eax;
-            };
+                };
 
-            enum hyperx_state state;
+            hyperx_state state;
 
             const bool has_hyperv_indications = (
                 eax() == 11 ||
@@ -2076,25 +2076,7 @@ public:
             memo::hyperx::store(state);
             core_debug("HYPER_X: cached");
 
-            // false means it's an artifact, which is what the 
-            // point of this whole function is supposed to do
-            switch (state) {
-                case HYPERV_ARTIFACT_VM:
-                    core_debug("HYPER_X: added Hyper-V artifact VM");
-                    core::add(brands::HYPERV_ARTIFACT);
-                    return true;
-
-                case HYPERV_REAL_VM:
-                    core_debug("HYPER_X: added Hyper-V real VM");
-                    core::add(brands::HYPERV);
-                    return false;
-
-                case HYPERV_UNKNOWN_VM:
-                    return false;
-
-                default: 
-                    return false;
-            }
+            return state;
 #endif
         }
 
@@ -2915,7 +2897,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        if (util::hyper_x()) {
+        if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
             return false;
         }
 
@@ -2935,7 +2917,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!x86)
         return false;
 #else
-        if (util::hyper_x()) {
+        if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
             return false;
         }
 
@@ -7134,7 +7116,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!x86)
         return false;
 #else
-        if (util::hyper_x()) {
+        if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
             return false;
         }
 
@@ -7434,7 +7416,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!x86)
         return false;
 #else
-        if (util::hyper_x()) {
+        if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
             return false;
         }
 
@@ -7466,7 +7448,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!x86)
         return false;
 #else
-        if (util::hyper_x()) {
+        if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
             return false;
         }
 
@@ -8699,12 +8681,24 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         while (EnumDisplayDevices(nullptr, deviceNum, &dd, 0)) {
             const std::basic_string<TCHAR> deviceString(dd.DeviceString);
+
+#if CPP >= 17
             for (const auto& [vm_gpu, brand] : vm_gpu_names) {
                 if (deviceString == vm_gpu) {
                     core::add(brand);
                     return true;
                 }
             }
+#else
+            for (const auto& pair : vm_gpu_names) {
+                const TCHAR* vm_gpu = pair.first;
+                const char* brand = pair.second;
+                if (deviceString == vm_gpu) {
+                    core::add(brand);
+                    return true;
+                }
+            }
+#endif
             ++deviceNum;
         }
         return false;
@@ -9338,7 +9332,7 @@ static bool rdtsc() {
 #if (!WINDOWS)
         return false;
 #else 
-        if (util::hyper_x()) {
+        if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
             return false;
         }
 
@@ -9682,7 +9676,7 @@ static bool rdtsc() {
 	 * @note idea from virt-what
 	 */
 	[[nodiscard]] static bool amd_sev() {
-#if (!x86 || !LINUX || !APPLE)
+#if (!x86 && !LINUX && !APPLE)
 	    return false;
 #else
         
