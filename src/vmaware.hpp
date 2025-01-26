@@ -129,21 +129,24 @@
 #define WIN_XP 0
 #endif
 
-#if (defined(__x86_64__) || defined(__i386__) || defined(_M_IX86) || defined(_M_X64))
+#if defined(__x86_64__) || defined(_M_X64)
 #define x86_64 1
 #else
 #define x86_64 0
 #endif
-#if (defined(_M_IX86))
+
+#if defined(__i386__) || defined(_M_IX86)
 #define x86_32 1
 #else
 #define x86_32 0
 #endif
-#if (defined(x86_32) || defined(x86_64))
+
+#if x86_32 || x86_64
 #define x86 1
 #else
 #define x86 0
 #endif
+
 #if (defined(__arm__) || defined(__ARM_LINUX_COMPILER__) || defined(__aarch64__) || defined(_M_ARM64))
 #define ARM 1
 #else
@@ -2063,9 +2066,13 @@ public:
             );
 
             if (has_hyperv_indications) {
+                core_debug("HYPER_X: added Hyper-V real VM");
+                core::add(brands::HYPERV);
                 state = HYPERV_REAL_VM;
             }
             else if (eax() == 12 || is_root_partition()) {
+                core_debug("HYPER_X: added Hyper-V artifact VM");
+                core::add(brands::HYPERV_ARTIFACT);
                 state = HYPERV_ARTIFACT_VM;
             }
             else {
@@ -2408,13 +2415,11 @@ public:
 
             EVT_HANDLE hLog = EvtOpenLog(nullptr, logName.c_str(), EvtOpenChannelPath);
             if (!hLog) {
-                std::wcerr << L"Failed to open event log: " << logName << L". Error: " << GetLastErrorString() << "\n";
                 return false;
             }
 
             EVT_HANDLE hResults = EvtQuery(nullptr, logName.c_str(), nullptr, flags);
             if (!hResults) {
-                std::wcerr << L"Failed to query event log: " << logName << L". Error: " << GetLastErrorString() << "\n";
                 EvtClose(hLog);
                 return false;
             }
@@ -2430,7 +2435,6 @@ public:
                     if (GetLastError() == ERROR_NO_MORE_ITEMS) {
                         break;
                     }
-                    std::wcerr << L"EvtNext failed. Error: " << GetLastErrorString() << "\n";
                     EvtClose(hResults);
                     EvtClose(hLog);
                     return false;
@@ -2441,14 +2445,12 @@ public:
                     bufferSize = bufferUsed;
                     pBuffer = new WCHAR[bufferSize];
                     if (!pBuffer) {
-                        std::cerr <<"Memory allocation failed.\n";
                         EvtClose(hResults);
                         EvtClose(hLog);
                         return false;
                     }
 
                     if (!EvtRender(nullptr, hEvent, EvtRenderEventXml, bufferSize, pBuffer, &bufferUsed, &count)) {
-                        std::wcerr << L"EvtRender failed. Error: " << GetLastErrorString() << "\n";
                         delete[] pBuffer;
                         EvtClose(hResults);
                         EvtClose(hLog);
@@ -2456,7 +2458,6 @@ public:
                     }
                 }
                 else {
-                    std::wcerr << L"EvtRender failed. Error: " << GetLastErrorString() << "\n";
                     EvtClose(hResults);
                     EvtClose(hLog);
                     return false;
@@ -2705,7 +2706,6 @@ public:
 
             auto GetThreadsUsingWMI = []() -> int {
                 if (!wmi::initialize()) {
-                    std::cerr << "Failed to initialize WMI in GetThreadsUsingWMI.\n";
                     return 0;
                 }
 
@@ -3865,7 +3865,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */         return false;
 /* GPL */ #else
 /* GPL */         
-/* GPL */         const HMODULE k32 = GetModuleHandle(TEXT("kernel32.dll"));
+/* GPL */         const HMODULE k32 = GetModuleHandleA("kernel32.dll");
 /* GPL */ 
 /* GPL */         if (k32 != NULL) {
 /* GPL */             if (GetProcAddress(k32, "wine_get_unix_file_name") != NULL) {
@@ -8714,11 +8714,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!WINDOWS)
         return false;
 #else
-        const HANDLE handle1 = CreateFile(_T("\\\\.\\VBoxMiniRdrDN"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-        const HANDLE handle2 = CreateFile(_T("\\\\.\\pipe\\VBoxMiniRdDN"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-        const HANDLE handle3 = CreateFile(_T("\\\\.\\VBoxTrayIPC"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-        const HANDLE handle4 = CreateFile(_T("\\\\.\\pipe\\VBoxTrayIPC"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-        const HANDLE handle5 = CreateFile(_T("\\\\.\\HGFS"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+        const HANDLE handle1 = CreateFileA(("\\\\.\\VBoxMiniRdrDN"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+        const HANDLE handle2 = CreateFileA(("\\\\.\\pipe\\VBoxMiniRdDN"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+        const HANDLE handle3 = CreateFileA(("\\\\.\\VBoxTrayIPC"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+        const HANDLE handle4 = CreateFileA(("\\\\.\\pipe\\VBoxTrayIPC"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+        const HANDLE handle5 = CreateFileA(("\\\\.\\HGFS"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 
         bool result = false;
 
@@ -8728,7 +8728,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             (handle3 != INVALID_HANDLE_VALUE) ||
             (handle4 != INVALID_HANDLE_VALUE) ||
             (handle5 != INVALID_HANDLE_VALUE)
-            ) {
+           ) {
             result = true;
         }
 
@@ -8910,7 +8910,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check for number of cores
+     * @brief Check for number of physical cores
      * @category Windows
      * @author idea from Al-Khaser project
      */
@@ -8925,6 +8925,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         for (const auto& result : results) {
             if (result.type == wmi::result_type::Integer) {
+                std::wcout << result.intValue << std::endl;
                 if (result.intValue < 2) {
                     return true; 
                 }
@@ -8951,8 +8952,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         for (const auto& result : results) {
             if (result.type == wmi::result_type::String) {
-                if (result.strValue == "VirtualBox" || result.strValue == "HVM domU" || result.strValue == "VMWare") {
-                    return true;
+                if (result.strValue == "VirtualBox") {
+                    return core::add(brands::VBOX);
+                }
+                if (result.strValue == "HVM domU") {
+                    return core::add(brands::XEN);
+                }
+                if (result.strValue == "VMWare") {
+                    return core::add(brands::VMWARE);
                 }
             }
         }
@@ -8976,8 +8983,17 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         for (const auto& result : results) {
             if (result.type == wmi::result_type::String) {
-                if (result.strValue == "VMWare" || result.strValue == "innotek GmbH" || result.strValue == "Xen" || result.strValue == "QEMU") {
-                    return true;
+                if (result.strValue == "VMWare") {
+                    return core::add(brands::VMWARE);
+                }
+                if (result.strValue == "innotek GmbH") {
+                    return core::add(brands::VBOX);
+                } 
+                if (result.strValue == "Xen") {
+                    return core::add(brands::XEN);
+                }
+                if (result.strValue == "QEMU") {
+                    return core::add(brands::QEMU);
                 }
             }
         }
@@ -9031,6 +9047,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
             }
         }
+
         return false;
 #endif
     }
@@ -9672,7 +9689,7 @@ static bool rdtsc() {
 
 	/**
 	 * @brief Check for AMD-SEV MSR running on the system
-	 * @category x86
+	 * @category x86, Linux, MacOS
 	 * @note idea from virt-what
 	 */
 	[[nodiscard]] static bool amd_sev() {
