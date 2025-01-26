@@ -484,7 +484,6 @@ This is the table of all the brands the lib supports.
 | QEMU+KVM Hyper-V Enlightenment | `VM::brands::QEMU_KVM_HYPERV` | Hypervisor (type 1) |  |
 | Microsoft Hyper-V | `VM::brands::HYPERV` | Hypervisor (type 1) |  |
 | Microsoft Virtual PC/Hyper-V | `VM::brands::HYPERV_VPC` | Hypervisor (either type 1 or 2) |  |
-| Microsoft x86-to-ARM | `VM::brands::MSXTA` | Emulator |  |
 | Parallels | `VM::brands::PARALLELS` | Hypervisor (type 2) |  |
 | Xen HVM | `VM::brands::XEN` | Hypervisor (type 1) |  |
 | ACRN | `VM::brands::ACRN` | Hypervisor (type 1) |  |

@@ -221,7 +221,6 @@ QEMU+KVM
 Virtual PC
 Microsoft Hyper-V
 Microsoft Virtual PC/Hyper-V
-Microsoft x86-to-ARM
 Parallels
 Xen HVM
 ACRN
@@ -612,7 +611,6 @@ std::string vm_description(const std::string& vm_brand) {
         { VM::brands::QEMU_KVM_HYPERV, "" },
         { VM::brands::HYPERV, "Hyper-V is Microsoft's proprietary native hypervisor that can create x86 VMs on Windows. Released in 2008, it supercedes previous virtualization solutions such as Microsoft Virtual Server and Windows VirtualPC. Hyper-V uses partitioning to isolate the guest OSs, and has \"enlightenment\" features for bypassing device emulation layers, allowing for faster execution including when Windows is virtualization on Linux." },
         { VM::brands::HYPERV_VPC, "" },
-        { VM::brands::MSXTA, "" },
         { VM::brands::PARALLELS, "Parallels is a hypervisor providing hardware virtualization for Mac computers. It was released in 2006 and is developed by Parallels, a subsidiary of Corel. It is a hardware emulation virtualization software, using hypervisor technology that works by mapping the host computer's hardware resources directly to the VM's resources. Each VM thus operates with virtually all the resources of a physical computer." },
         { VM::brands::XEN, "Xen is a free and open-source type 1 hypervisor. Originally developed by the University of Cambridge Computer Laboratory and is now being developed by the Linux Foundation with support from Intel, Arm Ltd, Huawei, AWS, Alibaba Cloud, AMD, and more. It runs in a more privileged CPU state than any other software on the machine, except for firmware. It uses GNU GRUB as its bootloader, and then loads a paravirtualized host OS into the host domain (dom0)." },
         { VM::brands::ACRN, "" },
