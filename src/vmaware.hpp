@@ -129,21 +129,24 @@
 #define WIN_XP 0
 #endif
 
-#if (defined(__x86_64__) || defined(__i386__) || defined(_M_IX86) || defined(_M_X64))
+#if defined(__x86_64__) || defined(_M_X64)
 #define x86_64 1
 #else
 #define x86_64 0
 #endif
-#if (defined(_M_IX86))
+
+#if defined(__i386__) || defined(_M_IX86)
 #define x86_32 1
 #else
 #define x86_32 0
 #endif
-#if (defined(x86_32) || defined(x86_64))
+
+#if x86_32 || x86_64
 #define x86 1
 #else
 #define x86 0
 #endif
+
 #if (defined(__arm__) || defined(__ARM_LINUX_COMPILER__) || defined(__aarch64__) || defined(_M_ARM64))
 #define ARM 1
 #else
@@ -1011,7 +1014,7 @@ public:
 
                 // both Hyper-V and VirtualPC have the same string value
                 if (brand_str == hyperv) {
-                    if (util::hyper_x()) {
+                    if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
                         return false;
                     }
                     return core::add(brands::HYPERV, brands::VPC);
@@ -1989,20 +1992,20 @@ public:
          *       This can lead to false conclusions, where the system might mistakenly be identified as running in a Hyper-V VM, when in reality, it's simply the host system with Hyper-V features active.
          *       This check aims to distinguish between these two cases by identifying specific CPU flags and hypervisor-related artifacts that are indicative of a Hyper-V VM rather than a host system with Hyper-V enabled.
          * @author idea by Requiem (https://github.com/NotRequiem)
-         * @returns boolean, true = Hyper-V artifact (host system with Hyper-V enabled), false = Real Hyper-V VM
-         * @link graph to explain how this works: https://github.com/kernelwernel/VMAware/blob/main/assets/hyper-x/v5/Hyper-X_version_5.drawio.png
+         * @returns hyperx_state enum indicating the detected state:
+         *          - HYPERV_ARTIFACT_VM for host with Hyper-V enabled
+         *          - HYPERV_REAL_VM for real Hyper-V VM
+         *          - HYPERV_UNKNOWN_VM for unknown/undetected state
          */
-        [[nodiscard]] static bool hyper_x() {
+        [[nodiscard]] static hyperx_state hyper_x() {
 #if (!WINDOWS)
-            return false;
+            return HYPERV_UNKNOWN_VM;
 #else
             if (memo::hyperx::is_cached()) {
                 core_debug("HYPER_X: returned from cache");
-                return (memo::hyperx::fetch() == HYPERV_ARTIFACT_VM);
+                return memo::hyperx::fetch();
             }
 
-
-            // event log check (slow, so in last place)
             auto is_event_log_hyperv = []() -> bool {
                 std::wstring logName = L"Microsoft-Windows-Kernel-PnP/Configuration";
                 std::vector<std::wstring> searchStrings = { L"Virtual_Machine", L"VMBUS" };
@@ -2013,7 +2016,7 @@ public:
                 }
 
                 return result;
-            };
+                };
 
 
             // https://learn.microsoft.com/en-us/virtualization/hyper-v-on-windows/tlfs/feature-discovery
@@ -2027,7 +2030,7 @@ public:
                 }
 
                 return result;
-            };
+                };
 
             /**
               * On Hyper-V virtual machines, the cpuid function reports an EAX value of 11. 
@@ -2050,9 +2053,9 @@ public:
                 const u32 eax = static_cast<u32>(out[0]);
 
                 return eax;
-            };
+                };
 
-            enum hyperx_state state;
+            hyperx_state state;
 
             const bool has_hyperv_indications = (
                 eax() == 11 ||
@@ -2060,9 +2063,13 @@ public:
             );
 
             if (has_hyperv_indications) {
+                core_debug("HYPER_X: added Hyper-V real VM");
+                core::add(brands::HYPERV);
                 state = HYPERV_REAL_VM;
             }
             else if (eax() == 12 || is_root_partition()) {
+                core_debug("HYPER_X: added Hyper-V artifact VM");
+                core::add(brands::HYPERV_ARTIFACT);
                 state = HYPERV_ARTIFACT_VM;
             }
             else {
@@ -2073,25 +2080,7 @@ public:
             memo::hyperx::store(state);
             core_debug("HYPER_X: cached");
 
-            // false means it's an artifact, which is what the 
-            // point of this whole function is supposed to do
-            switch (state) {
-                case HYPERV_ARTIFACT_VM:
-                    core_debug("HYPER_X: added Hyper-V artifact VM");
-                    core::add(brands::HYPERV_ARTIFACT);
-                    return true;
-
-                case HYPERV_REAL_VM:
-                    core_debug("HYPER_X: added Hyper-V real VM");
-                    core::add(brands::HYPERV);
-                    return false;
-
-                case HYPERV_UNKNOWN_VM:
-                    return false;
-
-                default: 
-                    return false;
-            }
+            return state;
 #endif
         }
 
@@ -2423,13 +2412,11 @@ public:
 
             EVT_HANDLE hLog = EvtOpenLog(nullptr, logName.c_str(), EvtOpenChannelPath);
             if (!hLog) {
-                std::wcerr << L"Failed to open event log: " << logName << L". Error: " << GetLastErrorString() << "\n";
                 return false;
             }
 
             EVT_HANDLE hResults = EvtQuery(nullptr, logName.c_str(), nullptr, flags);
             if (!hResults) {
-                std::wcerr << L"Failed to query event log: " << logName << L". Error: " << GetLastErrorString() << "\n";
                 EvtClose(hLog);
                 return false;
             }
@@ -2445,7 +2432,6 @@ public:
                     if (GetLastError() == ERROR_NO_MORE_ITEMS) {
                         break;
                     }
-                    std::wcerr << L"EvtNext failed. Error: " << GetLastErrorString() << "\n";
                     EvtClose(hResults);
                     EvtClose(hLog);
                     return false;
@@ -2456,14 +2442,12 @@ public:
                     bufferSize = bufferUsed;
                     pBuffer = new WCHAR[bufferSize];
                     if (!pBuffer) {
-                        std::cerr <<"Memory allocation failed.\n";
                         EvtClose(hResults);
                         EvtClose(hLog);
                         return false;
                     }
 
                     if (!EvtRender(nullptr, hEvent, EvtRenderEventXml, bufferSize, pBuffer, &bufferUsed, &count)) {
-                        std::wcerr << L"EvtRender failed. Error: " << GetLastErrorString() << "\n";
                         delete[] pBuffer;
                         EvtClose(hResults);
                         EvtClose(hLog);
@@ -2471,7 +2455,6 @@ public:
                     }
                 }
                 else {
-                    std::wcerr << L"EvtRender failed. Error: " << GetLastErrorString() << "\n";
                     EvtClose(hResults);
                     EvtClose(hLog);
                     return false;
@@ -2720,7 +2703,6 @@ public:
 
             auto GetThreadsUsingWMI = []() -> int {
                 if (!wmi::initialize()) {
-                    std::cerr << "Failed to initialize WMI in GetThreadsUsingWMI.\n";
                     return 0;
                 }
 
@@ -2912,7 +2894,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        if (util::hyper_x()) {
+        if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
             return false;
         }
 
@@ -2932,7 +2914,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!x86)
         return false;
 #else
-        if (util::hyper_x()) {
+        if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
             return false;
         }
 
@@ -3880,7 +3862,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */         return false;
 /* GPL */ #else
 /* GPL */         
-/* GPL */         const HMODULE k32 = GetModuleHandle(TEXT("kernel32.dll"));
+/* GPL */         const HMODULE k32 = GetModuleHandleA("kernel32.dll");
 /* GPL */ 
 /* GPL */         if (k32 != NULL) {
 /* GPL */             if (GetProcAddress(k32, "wine_get_unix_file_name") != NULL) {
@@ -7131,7 +7113,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!x86)
         return false;
 #else
-        if (util::hyper_x()) {
+        if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
             return false;
         }
 
@@ -7431,7 +7413,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!x86)
         return false;
 #else
-        if (util::hyper_x()) {
+        if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
             return false;
         }
 
@@ -7463,7 +7445,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!x86)
         return false;
 #else
-        if (util::hyper_x()) {
+        if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
             return false;
         }
 
@@ -8696,12 +8678,24 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         while (EnumDisplayDevices(nullptr, deviceNum, &dd, 0)) {
             const std::basic_string<TCHAR> deviceString(dd.DeviceString);
+
+#if CPP >= 17
             for (const auto& [vm_gpu, brand] : vm_gpu_names) {
                 if (deviceString == vm_gpu) {
                     core::add(brand);
                     return true;
                 }
             }
+#else
+            for (const auto& pair : vm_gpu_names) {
+                const TCHAR* vm_gpu = pair.first;
+                const char* brand = pair.second;
+                if (deviceString == vm_gpu) {
+                    core::add(brand);
+                    return true;
+                }
+            }
+#endif
             ++deviceNum;
         }
         return false;
@@ -8717,11 +8711,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!WINDOWS)
         return false;
 #else
-        const HANDLE handle1 = CreateFile(_T("\\\\.\\VBoxMiniRdrDN"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-        const HANDLE handle2 = CreateFile(_T("\\\\.\\pipe\\VBoxMiniRdDN"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-        const HANDLE handle3 = CreateFile(_T("\\\\.\\VBoxTrayIPC"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-        const HANDLE handle4 = CreateFile(_T("\\\\.\\pipe\\VBoxTrayIPC"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-        const HANDLE handle5 = CreateFile(_T("\\\\.\\HGFS"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+        const HANDLE handle1 = CreateFileA(("\\\\.\\VBoxMiniRdrDN"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+        const HANDLE handle2 = CreateFileA(("\\\\.\\pipe\\VBoxMiniRdDN"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+        const HANDLE handle3 = CreateFileA(("\\\\.\\VBoxTrayIPC"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+        const HANDLE handle4 = CreateFileA(("\\\\.\\pipe\\VBoxTrayIPC"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+        const HANDLE handle5 = CreateFileA(("\\\\.\\HGFS"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 
         bool result = false;
 
@@ -8731,7 +8725,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             (handle3 != INVALID_HANDLE_VALUE) ||
             (handle4 != INVALID_HANDLE_VALUE) ||
             (handle5 != INVALID_HANDLE_VALUE)
-            ) {
+           ) {
             result = true;
         }
 
@@ -8913,7 +8907,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check for number of cores
+     * @brief Check for number of physical cores
      * @category Windows
      * @author idea from Al-Khaser project
      */
@@ -8928,6 +8922,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         for (const auto& result : results) {
             if (result.type == wmi::result_type::Integer) {
+                std::wcout << result.intValue << std::endl;
                 if (result.intValue < 2) {
                     return true; 
                 }
@@ -8954,8 +8949,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         for (const auto& result : results) {
             if (result.type == wmi::result_type::String) {
-                if (result.strValue == "VirtualBox" || result.strValue == "HVM domU" || result.strValue == "VMWare") {
-                    return true;
+                if (result.strValue == "VirtualBox") {
+                    return core::add(brands::VBOX);
+                }
+                if (result.strValue == "HVM domU") {
+                    return core::add(brands::XEN);
+                }
+                if (result.strValue == "VMWare") {
+                    return core::add(brands::VMWARE);
                 }
             }
         }
@@ -8979,8 +8980,17 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         for (const auto& result : results) {
             if (result.type == wmi::result_type::String) {
-                if (result.strValue == "VMWare" || result.strValue == "innotek GmbH" || result.strValue == "Xen" || result.strValue == "QEMU") {
-                    return true;
+                if (result.strValue == "VMWare") {
+                    return core::add(brands::VMWARE);
+                }
+                if (result.strValue == "innotek GmbH") {
+                    return core::add(brands::VBOX);
+                } 
+                if (result.strValue == "Xen") {
+                    return core::add(brands::XEN);
+                }
+                if (result.strValue == "QEMU") {
+                    return core::add(brands::QEMU);
                 }
             }
         }
@@ -9034,6 +9044,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
             }
         }
+
         return false;
 #endif
     }
@@ -9335,7 +9346,7 @@ static bool rdtsc() {
 #if (!WINDOWS)
         return false;
 #else 
-        if (util::hyper_x()) {
+        if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
             return false;
         }
 
@@ -9675,11 +9686,11 @@ static bool rdtsc() {
 
 	/**
 	 * @brief Check for AMD-SEV MSR running on the system
-	 * @category x86
+	 * @category x86, Linux, MacOS
 	 * @note idea from virt-what
 	 */
 	[[nodiscard]] static bool amd_sev() {
-#if (!x86 || !LINUX || !APPLE)
+#if (!x86 && !LINUX && !APPLE)
 	    return false;
 #else
         
