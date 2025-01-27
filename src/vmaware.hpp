@@ -253,7 +253,7 @@
 #pragma comment(lib, "powrprof.lib")
 
 #elif (LINUX)
-#if (x86_64)
+#if (x86)
 #include <cpuid.h>
 #include <x86intrin.h>
 #include <immintrin.h>
@@ -3503,135 +3503,89 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         char szWinDir[MAX_PATH] = { 0 };
         if (GetWindowsDirectoryA(szWinDir, MAX_PATH) == 0) {
+            if (wow64RedirectDisabled) {
+                Wow64RevertWow64FsRedirection(&oldValue);
+            }
             return false;
         }
 
         constexpr std::array<const char*, 27> vbox_and_vmware = { {
-            "System32\\Drivers\\Vmmouse.sys",       // VMware
-            "System32\\Drivers\\Vmusbmouse.sys",    // VMware
-            "System32\\Drivers\\vm3dgl.dll",        // VMware
-            "System32\\Drivers\\vmdum.dll",         // VMware
-            "System32\\Drivers\\VmGuestLibJava.dll",// VMware
-            "System32\\Drivers\\vm3dver.dll",       // VMware
-            "System32\\Drivers\\vmtray.dll",        // VMware
-            "System32\\Drivers\\VMToolsHook.dll",   // VMware
-            "System32\\Drivers\\vmGuestLib.dll",    // VMware
-            "System32\\Drivers\\vmhgfs.dll",        // VMware
-            "System32\\Drivers\\VBoxMouse.sys",     // VBox
-            "System32\\Drivers\\VBoxGuest.sys",     // VBox
-            "System32\\Drivers\\VBoxSF.sys",        // VBox
-            "System32\\Drivers\\VBoxVideo.sys",     // VBox
-            "System32\\vboxoglpackspu.dll",         // VBox
-            "System32\\vboxoglpassthroughspu.dll",  // VBox
-            "System32\\vboxservice.exe",            // VBox
-            "System32\\vboxoglcrutil.dll",          // VBox
-            "System32\\vboxdisp.dll",               // VBox
-            "System32\\vboxhook.dll",               // VBox
-            "System32\\vboxmrxnp.dll",              // VBox
-            "System32\\vboxogl.dll",                // VBox
-            "System32\\vboxtray.exe",               // VBox
-            "System32\\VBoxControl.exe",            // VBox
-            "System32\\vboxoglerrorspu.dll",        // VBox
-            "System32\\vboxoglfeedbackspu.dll",     // VBox
-            "System32\\vboxoglarrayspu.dll"         // VBox
+            "Drivers\\Vmmouse.sys", "Drivers\\Vmusbmouse.sys", "Drivers\\vm3dgl.dll",
+            "Drivers\\vmdum.dll", "Drivers\\VmGuestLibJava.dll", "Drivers\\vm3dver.dll",
+            "Drivers\\vmtray.dll", "Drivers\\VMToolsHook.dll", "Drivers\\vmGuestLib.dll",
+            "Drivers\\vmhgfs.dll", "Drivers\\VBoxMouse.sys", "Drivers\\VBoxGuest.sys",
+            "Drivers\\VBoxSF.sys", "Drivers\\VBoxVideo.sys", "vboxoglpackspu.dll",
+            "vboxoglpassthroughspu.dll", "vboxservice.exe", "vboxoglcrutil.dll",
+            "vboxdisp.dll", "vboxhook.dll", "vboxmrxnp.dll", "vboxogl.dll",
+            "vboxtray.exe", "VBoxControl.exe", "vboxoglerrorspu.dll",
+            "vboxoglfeedbackspu.dll", "vboxoglarrayspu.dll"
         } };
 
-        constexpr std::array<const char*, 10> kvmFiles = { {
-            "System32\\drivers\\balloon.sys",       // KVM
-            "System32\\drivers\\netkvm.sys",        // KVM
-            "System32\\drivers\\pvpanic.sys",       // KVM
-            "System32\\drivers\\viofs.sys",         // KVM
-            "System32\\drivers\\viogpudo.sys",      // KVM
-            "System32\\drivers\\vioinput.sys",      // KVM
-            "System32\\drivers\\viorng.sys",        // KVM
-            "System32\\drivers\\vioscsi.sys",       // KVM
-            "System32\\drivers\\vioser.sys",        // KVM
-            "System32\\drivers\\viostor.sys"        // KVM
-        } };
+        constexpr std::array<const char*, 10> kvmFiles = {
+            "Drivers\\balloon.sys", "Drivers\\netkvm.sys", "Drivers\\pvpanic.sys",
+            "Drivers\\viofs.sys", "Drivers\\viogpudo.sys", "Drivers\\vioinput.sys",
+            "Drivers\\viorng.sys", "Drivers\\vioscsi.sys", "Drivers\\vioser.sys",
+            "Drivers\\viostor.sys"
+        };
 
-        constexpr std::array<const char*, 7> parallelsFiles = { {
-            "System32\\drivers\\prleth.sys",        // Parallels
-            "System32\\drivers\\prlfs.sys",         // Parallels
-            "System32\\drivers\\prlmouse.sys",      // Parallels
-            "System32\\drivers\\prlvideo.sys",      // Parallels
-            "System32\\drivers\\prltime.sys",       // Parallels
-            "System32\\drivers\\prl_pv32.sys",      // Parallels
-            "System32\\drivers\\prl_paravirt_32.sys"// Parallels
-        } };
+        constexpr std::array<const char*, 7> parallelsFiles = {
+            "Drivers\\prleth.sys", "Drivers\\prlfs.sys", "Drivers\\prlmouse.sys",
+            "Drivers\\prlvideo.sys", "Drivers\\prltime.sys", "Drivers\\prl_pv32.sys",
+            "Drivers\\prl_paravirt_32.sys"
+        };
 
-        constexpr std::array<const char*, 2> vpcFiles = { {
-            "System32\\drivers\\vmsrvc.sys",       // VPC
-            "System32\\drivers\\vpc-s3.sys"        // VPC
-        } };
+        constexpr std::array<const char*, 2> vpcFiles = {
+            "Drivers\\vmsrvc.sys", "Drivers\\vpc-s3.sys"
+        };
 
         u8 vbox = 0, vmware = 0, kvm = 0, vpc = 0, parallels = 0;
-        for (const auto& relativePath : vbox_and_vmware) {
-            char szPath[MAX_PATH] = { 0 };
-            PathCombineA(szPath, szWinDir, relativePath);
-            if (util::exists(szPath)) {
-                if (std::string(relativePath).find("VBox") != std::string::npos) {
-                    vbox++;
-                }
-                else {
-                    vmware++;
+
+        auto file_exists = [](const char* path) -> bool {
+            DWORD attrs = GetFileAttributesA(path);
+            return (attrs != INVALID_FILE_ATTRIBUTES) && !(attrs & FILE_ATTRIBUTE_DIRECTORY);
+            };
+
+        auto checkFiles = [&](const auto& files, u8& count, const char* vm_brand) {
+            for (const auto& relativePath : files) {
+                char szPath[MAX_PATH] = { 0 };
+                PathCombineA(szPath, szWinDir, relativePath);
+                if (file_exists(szPath)) {
+                    count++;
                 }
             }
+            debug(std::string(vm_brand) + " score: ", static_cast<u32>(count));
+            };
+
+        checkFiles(vbox_and_vmware, vbox, "VBOX/VMWARE");
+        checkFiles(kvmFiles, kvm, "KVM");
+        checkFiles(parallelsFiles, parallels, "PARALLELS");
+        checkFiles(vpcFiles, vpc, "VPC");
+
+        if (wow64RedirectDisabled) {
+            Wow64RevertWow64FsRedirection(&oldValue);
         }
 
-        for (const auto& relativePath : kvmFiles) {
-            char szPath[MAX_PATH] = { 0 };
-            PathCombineA(szPath, szWinDir, relativePath);
-            if (util::exists(szPath)) {
-                kvm++;
-            }
+        if (file_exists("C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\StartUp\\agent.pyw")) {
+            return core::add(brands::CUCKOO);
         }
-        for (const auto& relativePath : parallelsFiles) {
-            char szPath[MAX_PATH] = { 0 };
-            PathCombineA(szPath, szWinDir, relativePath);
-            if (util::exists(szPath)) {
-                parallels++;
-            }
-        }
-        for (const auto& relativePath : vpcFiles) {
-            char szPath[MAX_PATH] = { 0 };
-            PathCombineA(szPath, szWinDir, relativePath);
-            if (util::exists(szPath)) {
-                vpc++;
-            }
-        }
-
-        debug("VM_FILES: vmware score: ", static_cast<u32>(vmware));
-        debug("VM_FILES: vbox score: ", static_cast<u32>(vbox));
-        debug("KVM_FILES: kvm score: ", static_cast<u32>(kvm));
-        debug("VPC_FILES: vpc score: ", static_cast<u32>(vpc));
-        debug("PARALLELS_FILES: parallels score: ", static_cast<u32>(parallels));
 
         if (vbox > vmware && vbox > kvm && vbox > vpc && vbox > parallels) {
             return core::add(brands::VBOX);
         }
-        else if (vmware > vbox && vmware > kvm && vmware > vpc && vmware > parallels) {
+        if (vmware > vbox && vmware > kvm && vmware > vpc && vmware > parallels) {
             return core::add(brands::VMWARE);
         }
-        else if (kvm > vbox && kvm > vmware && kvm > vpc && kvm > parallels) {
+        if (kvm > vbox && kvm > vmware && kvm > vpc && kvm > parallels) {
             return core::add(brands::KVM);
         }
-        else if (vpc > vbox && vpc > vmware && vpc > kvm && vpc > parallels) {
+        if (vpc > vbox && vpc > vmware && vpc > kvm && vpc > parallels) {
             return core::add(brands::VPC);
         }
-        else if (parallels > vbox && parallels > vmware && parallels > kvm && parallels > vpc) {
+        if (parallels > vbox && parallels > vmware && parallels > kvm && parallels > vpc) {
             return core::add(brands::PARALLELS);
         }
-        // if we reach here: vbox == vmware == cuckoo == kvm == vpc == parallels
-        else if (vbox > 0 && vmware > 0 && kvm > 0 && vpc > 0 && parallels > 0) {
+        if (vbox > 0 && vmware > 0 && kvm > 0 && vpc > 0 && parallels > 0) {
             return true;
-        }
-
-        if (wow64RedirectDisabled) {
-             Wow64RevertWow64FsRedirection(&oldValue);
-        }
-
-        if (util::exists("C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\StartUp\\agent.pyw")) {
-            return core::add(brands::CUCKOO);
         }
 
         return false;
@@ -3711,7 +3665,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const u32 disk = util::get_disk_size();
         const u64 ram = util::get_physical_ram_size();
 
-        debug("VBOX_DEFAULT: disk = ", disk);
         debug("VBOX_DEFAULT: ram = ", ram);
 
         if ((disk > 80) || (ram > 4)) {
@@ -4642,35 +4595,29 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return reinterpret_cast<unsigned char*>(p);
             };
 
-        const unsigned char* x1 = ScanDataForString(cast(p), length, reinterpret_cast<const unsigned char*>("INNOTEK GMBH"));
-        const unsigned char* x2 = ScanDataForString(cast(p), length, reinterpret_cast<const unsigned char*>("VIRTUALBOX"));
-        const unsigned char* x3 = ScanDataForString(cast(p), length, reinterpret_cast<const unsigned char*>("SUN MICROSYSTEMS"));
-        const unsigned char* x4 = ScanDataForString(cast(p), length, reinterpret_cast<const unsigned char*>("VBOXVER"));
-        const unsigned char* x5 = ScanDataForString(cast(p), length, reinterpret_cast<const unsigned char*>("VIRTUAL MACHINE"));
-        const unsigned char* x6 = ScanDataForString(cast(p), length, reinterpret_cast<const unsigned char*>("VMWARE"));
+        constexpr std::array<const char*, 6> strings_to_scan = {
+            "INNOTEK GMBH",
+            "VIRTUALBOX",
+            "SUN MICROSYSTEMS",
+            "VBOXVER",
+            "VIRTUAL MACHINE",
+            "VMWARE"
+        };
 
-        std::string result = "";
-        bool is_vm = false;
-
-        if (x1 || x2 || x3 || x4 || x5 || x6) {
-            is_vm = true;
+        for (const char* search_str : strings_to_scan) {
+            const unsigned char* found = ScanDataForString(cast(p), length, reinterpret_cast<const unsigned char*>(search_str));
+            if (found) {
 #ifdef __VMAWARE_DEBUG__
-            if (x1) { debug("SMBIOS: x1 = ", x1); result = std::string(reinterpret_cast<const char*>(x1)); }
-            if (x2) { debug("SMBIOS: x2 = ", x2); result = std::string(reinterpret_cast<const char*>(x2)); }
-            if (x3) { debug("SMBIOS: x3 = ", x3); result = std::string(reinterpret_cast<const char*>(x3)); }
-            if (x4) { debug("SMBIOS: x4 = ", x4); result = std::string(reinterpret_cast<const char*>(x4)); }
-            if (x5) { debug("SMBIOS: x5 = ", x5); result = std::string(reinterpret_cast<const char*>(x5)); }
-            if (x6) { debug("SMBIOS: x6 = ", x6); result = std::string(reinterpret_cast<const char*>(x6)); }
+                debug("SMBIOS: found = ", found);
 #endif
+                LocalFree(p);
+                RegCloseKey(hk);
+                return true;
+            }
         }
 
         LocalFree(p);
         RegCloseKey(hk);
-
-        if (is_vm) {
-            return true;
-        }
-
         return false;
 #endif
     }
@@ -8460,16 +8407,17 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @author Requiem (https://github.com/NotRequiem)
      */
     [[nodiscard]] static bool hdd_serial_number() {
-#if (!WINDOWS) 
+#if (!WINDOWS)
         return false;
 #else
-        const char* vboxSerial = "VBbd5bbffd-59166c24";
+        static const std::regex vboxRegex(R"(^VB[0-9a-f]{8}-[0-9a-f]{8}$)", std::regex_constants::icase);
         const char* vmwareSerial = "39D8_B594_A8C5_AEF2_000C_296C_C5CE_FE12";
+
         wmi_result results = wmi::execute(L"SELECT SerialNumber FROM Win32_DiskDrive", { L"SerialNumber" });
 
         for (const auto& res : results) {
             if (res.type == wmi::result_type::String) {
-                if (_stricmp(res.strValue.c_str(), vboxSerial) == 0) {
+                if (std::regex_match(res.strValue, vboxRegex)) {
                     return core::add(brands::VBOX);
                 }
                 if (_stricmp(res.strValue.c_str(), vmwareSerial) == 0) {
@@ -8538,6 +8486,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
                 if (util::find(res.strValue, "VMware Virtual NVMe Disk")) {
                     return core::add(brands::VMWARE);
+                }
+
+                if (util::find(res.strValue, "VBOX HARDDISK")) {
+                    return core::add(brands::VBOX);
                 }
             }
         }
@@ -8618,35 +8570,29 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return reinterpret_cast<unsigned char*>(p);
             };
 
-        const unsigned char* x1 = ScanDataForString(cast(p), length, reinterpret_cast<const unsigned char*>("INNOTEK GMBH"));
-        const unsigned char* x2 = ScanDataForString(cast(p), length, reinterpret_cast<const unsigned char*>("VIRTUALBOX"));
-        const unsigned char* x3 = ScanDataForString(cast(p), length, reinterpret_cast<const unsigned char*>("SUN MICROSYSTEMS"));
-        const unsigned char* x4 = ScanDataForString(cast(p), length, reinterpret_cast<const unsigned char*>("VBOXVER"));
-        const unsigned char* x5 = ScanDataForString(cast(p), length, reinterpret_cast<const unsigned char*>("VIRTUAL MACHINE"));
-        const unsigned char* x6 = ScanDataForString(cast(p), length, reinterpret_cast<const unsigned char*>("VMWARE"));
+        constexpr std::array<const char*, 6> strings_to_scan = {
+             "INNOTEK GMBH",
+             "VBOXAPIC",
+             "SUN MICROSYSTEMS",
+             "VBOXVER",
+             "VIRTUAL MACHINE",
+             "VMWARE"
+        };
 
-        std::string result = "";
-        bool is_vm = false;
-
-        if (x1 || x2 || x3 || x4 || x5 || x6) {
-            is_vm = true;
+        for (const char* search_str : strings_to_scan) {
+            const unsigned char* found = ScanDataForString(cast(p), length, reinterpret_cast<const unsigned char*>(search_str));
+            if (found) {
 #ifdef __VMAWARE_DEBUG__
-            if (x1) { debug("SMBIOS: x1 = ", x1); result = std::string(reinterpret_cast<const char*>(x1)); }
-            if (x2) { debug("SMBIOS: x2 = ", x2); result = std::string(reinterpret_cast<const char*>(x2)); }
-            if (x3) { debug("SMBIOS: x3 = ", x3); result = std::string(reinterpret_cast<const char*>(x3)); }
-            if (x4) { debug("SMBIOS: x4 = ", x4); result = std::string(reinterpret_cast<const char*>(x4)); }
-            if (x5) { debug("SMBIOS: x5 = ", x5); result = std::string(reinterpret_cast<const char*>(x5)); }
-            if (x6) { debug("SMBIOS: x6 = ", x6); result = std::string(reinterpret_cast<const char*>(x6)); }
+                debug("SMBIOS: found = ", found);
 #endif
+                LocalFree(p);
+                RegCloseKey(hk);
+                return true;
+            }
         }
 
         LocalFree(p);
         RegCloseKey(hk);
-
-        if (is_vm) {
-            return true;
-        }
-
         return false;
 #endif
     };
@@ -8689,8 +8635,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #else
             for (const auto& pair : vm_gpu_names) {
                 const TCHAR* vm_gpu = pair.first;
-                const char* brand = pair.second;
-                if (deviceString == vm_gpu) {
+                if (deviceString.find(vm_gpu) != std::basic_string<TCHAR>::npos) {
+                    const char* brand = pair.second;
                     core::add(brand);
                     return true;
                 }
@@ -8922,7 +8868,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         for (const auto& result : results) {
             if (result.type == wmi::result_type::Integer) {
-                std::wcout << result.intValue << std::endl;
                 if (result.intValue < 2) {
                     return true; 
                 }
@@ -9305,7 +9250,10 @@ static bool rdtsc() {
         implementationLimits.MaxVirtualProcessors = static_cast<unsigned int>(registers.eax);
         implementationLimits.MaxLogicalProcessors = static_cast<unsigned int>(registers.ebx);
 
-        if (implementationLimits.MaxLogicalProcessors != implementationLimits.MaxVirtualProcessors) {
+        if (implementationLimits.MaxVirtualProcessors != implementationLimits.MaxLogicalProcessors) {
+            return true;
+        }
+        if (implementationLimits.MaxVirtualProcessors == 0 || implementationLimits.MaxLogicalProcessors == 0) {
             return true;
         }
 
