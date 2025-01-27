@@ -245,7 +245,7 @@
 #pragma comment(lib, "powrprof.lib")
 
 #elif (LINUX)
-#if (x86_64)
+#if (x86)
 #include <cpuid.h>
 #include <x86intrin.h>
 #include <immintrin.h>
