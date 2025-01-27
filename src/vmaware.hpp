@@ -539,7 +539,6 @@ public:
         static constexpr const char* QEMU_KVM_HYPERV = "QEMU+KVM Hyper-V Enlightenment";
         static constexpr const char* HYPERV = "Microsoft Hyper-V";
         static constexpr const char* HYPERV_VPC = "Microsoft Virtual PC/Hyper-V";
-        static constexpr const char* MSXTA = "Microsoft x86-to-ARM";
         static constexpr const char* PARALLELS = "Parallels";
         static constexpr const char* XEN = "Xen HVM";
         static constexpr const char* ACRN = "ACRN";
@@ -957,7 +956,6 @@ public:
                 kvm_hyperv = "Linux KVM Hv",
                 qemu = "TCGTCGTCGTCG",
                 hyperv = "Microsoft Hv",
-                xta = "MicrosoftXTA",
                 parallels = " prl hyperv ",
                 parallels2 = " lrpepyh  vr",
                 vmware = "VMwareVMware",
@@ -997,7 +995,6 @@ public:
                 if (brand_str == bhyve2) { return core::add(brands::BHYVE); }
                 if (brand_str == kvm) { return core::add(brands::KVM); }
                 if (brand_str == kvm_hyperv) { return core::add(brands::KVM_HYPERV); }
-                if (brand_str == xta) { return core::add(brands::MSXTA); }
                 if (brand_str == parallels) { return core::add(brands::PARALLELS); }
                 if (brand_str == parallels2) { return core::add(brands::PARALLELS); }
                 if (brand_str == xen) { return core::add(brands::XEN); }
@@ -10875,7 +10872,6 @@ public: // START OF PUBLIC FUNCTIONS
             // misc
             { brands::BOCHS, "Emulator" },
             { brands::BLUESTACKS, "Emulator" },
-            { brands::MSXTA, "Emulator" },
             { brands::QEMU, "Emulator/Hypervisor (type 2)" },
             { brands::JAILHOUSE, "Partitioning Hypervisor" },
             { brands::UNISYS, "Partitioning Hypervisor" },
@@ -11043,7 +11039,6 @@ std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard{
     { VM::brands::QEMU_KVM_HYPERV, 0 },
     { VM::brands::HYPERV, 0 },
     { VM::brands::HYPERV_VPC, 0 },
-    { VM::brands::MSXTA, 0 },
     { VM::brands::PARALLELS, 0 },
     { VM::brands::XEN, 0 },
     { VM::brands::ACRN, 0 },

@@ -221,7 +221,6 @@ QEMU+KVM
 Virtual PC
 Microsoft Hyper-V
 Microsoft Virtual PC/Hyper-V
-Microsoft x86-to-ARM
 Parallels
 Xen HVM
 ACRN
@@ -612,7 +611,6 @@ std::string vm_description(const std::string& vm_brand) {
         { VM::brands::QEMU_KVM_HYPERV, "A QEMU/KVM virtual machine with Hyper-V enlightenments. These features make Windows and Hyper-V guests think they’re running on top of a Hyper-V compatible hypervisor and use Hyper-V specific features." },
         { VM::brands::HYPERV, "Hyper-V is Microsoft's proprietary native hypervisor that can create x86 VMs on Windows. Released in 2008, it supercedes previous virtualization solutions such as Microsoft Virtual Server and Windows VirtualPC. Hyper-V uses partitioning to isolate the guest OSs, and has \"enlightenment\" features for bypassing device emulation layers, allowing for faster execution including when Windows is virtualization on Linux." },
         { VM::brands::HYPERV_VPC, "Either Hyper-V or VirtualPC were detected. Hyper-V is Microsoft's proprietary native hypervisor that can create x86 VMs on Windows. Virtual PC is a discontinued x86 emulator software for Microsoft Windows hosts and PowerPC-based Mac hosts." },
-        { VM::brands::MSXTA, "Windows 11 on Arm is an emulation layer for both x86 and x64 apps made by Microsoft, performance has been enhanced with the introduction of the new emulator Prism in Windows 11 24H2. Windows 10 on Arm also supports emulation, but only for x86 apps." },
         { VM::brands::PARALLELS, "Parallels is a hypervisor providing hardware virtualization for Mac computers. It was released in 2006 and is developed by Parallels, a subsidiary of Corel. It is a hardware emulation virtualization software, using hypervisor technology that works by mapping the host computer's hardware resources directly to the VM's resources. Each VM thus operates with virtually all the resources of a physical computer." },
         { VM::brands::XEN, "Xen is a free and open-source type 1 hypervisor. Originally developed by the University of Cambridge Computer Laboratory and is now being developed by the Linux Foundation with support from Intel, Arm Ltd, Huawei, AWS, Alibaba Cloud, AMD, and more. It runs in a more privileged CPU state than any other software on the machine, except for firmware. It uses GNU GRUB as its bootloader, and then loads a paravirtualized host OS into the host domain (dom0)." },
         { VM::brands::ACRN, "ACRN is an open source reference type 1 hypervisor stack made by the Linux Foundation Project targeting the IoT, Embedded, Edge segments. Its objective is to cater to the needs of those who require to run Virtual Machines with Real-Time characteristics, or where Functional Safety workloads need to be isolated from other workloads running on the same hardware platform." },
