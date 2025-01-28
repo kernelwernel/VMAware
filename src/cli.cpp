@@ -475,6 +475,9 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::HYPERV_QUERY:
             case VM::BAD_POOLS:
 			case VM::AMD_THREAD_MISMATCH:
+            case VM::NATIVE_VHD:
+            case VM::VIRTUAL_REGISTRY:
+            case VM::FIRMWARE_SCAN:
             // ADD WINDOWS FLAG
             return false;
             default: return true;
@@ -1003,6 +1006,10 @@ void general() {
 	checker(VM::AMD_SEV, "AMD-SEV MSR");
     checker(VM::AMD_RESERVED, "AMD reserved bits");
 	checker(VM::AMD_THREAD_MISMATCH, "AMD thread count mismatch");
+    checker(VM::NATIVE_VHD, "VHD containers");
+    checker(VM::VIRTUAL_REGISTRY, "registry emulation");
+    checker(VM::FIRMWARE_SCAN, "firmware signatures");
+
     // ADD NEW TECHNIQUE CHECKER HERE
 
     std::printf("\n");
