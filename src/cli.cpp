@@ -456,7 +456,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::VM_HDD:
             case VM::ACPI_DETECT:
             case VM::GPU_NAME:
-            case VM::VMWARE_MEMORY:
+            case VM::VM_MEMORY:
             case VM::IDT_GDT_MISMATCH:
             case VM::PROCESSOR_NUMBER:
             case VM::NUMBER_OF_CORES:
@@ -977,7 +977,7 @@ void general() {
     checker(VM::VM_HDD, "VM keywords in HDD model");
     checker(VM::ACPI_DETECT, "ACPI data");
     checker(VM::GPU_NAME, "GPU name");
-    checker(VM::VMWARE_MEMORY, "VM memory traces");
+    checker(VM::VM_MEMORY, "VM memory traces");
     checker(VM::IDT_GDT_MISMATCH, "IDT GDT mismatch");
     checker(VM::PROCESSOR_NUMBER, "processor count");
     checker(VM::NUMBER_OF_CORES, "CPU core count");
@@ -996,6 +996,7 @@ void general() {
     checker(VM::HYPERV_QUERY, "hypervisor query");
     checker(VM::BAD_POOLS, "bad memory pools");
 	checker(VM::AMD_SEV, "AMD-SEV MSR");
+    checker(VM::AMD_RESERVED, "AMD reserved bits");
     // ADD NEW TECHNIQUE CHECKER HERE
 
     std::printf("\n");

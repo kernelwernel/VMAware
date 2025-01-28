@@ -187,6 +187,7 @@
 #endif
 #if (CPP >= 17)
 #include <filesystem>
+#include <optional>
 #endif
 #ifdef __VMAWARE_DEBUG__
 #include <iomanip>
@@ -238,6 +239,7 @@
 #include <powerbase.h>
 #include <setupapi.h>
 
+#pragma comment(lib, "setupapi.lib")
 #pragma comment(lib, "wbemuuid.lib")
 #pragma comment(lib, "iphlpapi.lib")
 #pragma comment(lib, "shlwapi.lib")
@@ -438,7 +440,7 @@ public:
         ACPI_DETECT,
         GPU_NAME,
         VM_DEVICES,
-        VMWARE_MEMORY,
+        VM_MEMORY,
         IDT_GDT_MISMATCH,
         PROCESSOR_NUMBER,
         NUMBER_OF_CORES,
@@ -455,6 +457,7 @@ public:
         HYPERV_QUERY,
         BAD_POOLS,
         AMD_SEV,
+        AMD_RESERVED,
         // ADD NEW TECHNIQUE ENUM NAME HERE
 
         // start of settings technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
@@ -1862,11 +1865,11 @@ public:
         }
 
         // Checks if a process is running
-        [[nodiscard]] static bool is_proc_running(const TCHAR* executable) {
+        [[nodiscard]] static bool is_proc_running(const char* executable) {
 #if (WINDOWS)
             DWORD processes[1024], bytesReturned;
 
-            if (!EnumProcesses(processes, sizeof(processes), &bytesReturned))
+            if (!K32EnumProcesses(processes, sizeof(processes), &bytesReturned))
                 return false;
 
             DWORD numProcesses = bytesReturned / sizeof(DWORD);
@@ -1874,9 +1877,9 @@ public:
             for (DWORD i = 0; i < numProcesses; ++i) {
                 const HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, processes[i]);
                 if (process != nullptr) {
-                    TCHAR processName[MAX_PATH];
-                    if (GetModuleBaseName(process, nullptr, processName, sizeof(processName) / sizeof(TCHAR))) {
-                        if (!_tcsicmp(processName, executable)) {
+                    char processName[MAX_PATH];
+                    if (K32GetModuleBaseNameA(process, nullptr, processName, sizeof(processName))) {
+                        if (_stricmp(processName, executable) == 0) {
                             CloseHandle(process);
                             return true;
                         }
@@ -2795,12 +2798,12 @@ public:
         }
 
         /**
-         * @brief Checks if the Hyper-V CPUID leaf is present.
+         * @brief Checks if hypervisor CPUID specific leaves are present.
          *
          * This function uses the CPUID instruction to determine if the system supports
-         * the Hyper-V-specific CPUID leaf (0x40000000).
+         * the hypervisor-specific CPUID leaf (0x40000000).
          *
-         * @return `true` if the Hyper-V CPUID leaf is present, otherwise `false`.
+         * @return `true` if hypervisor CPUID information is present, otherwise `false`.
          */
         [[nodiscard]] static bool is_hyperv_leaf_present() {
             char out[sizeof(int32_t) * 4 + 1] = { 0 }; // e*x size + number of e*x registers + null terminator
@@ -3510,33 +3513,62 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         constexpr std::array<const char*, 27> vbox_and_vmware = { {
-            "Drivers\\Vmmouse.sys", "Drivers\\Vmusbmouse.sys", "Drivers\\vm3dgl.dll",
-            "Drivers\\vmdum.dll", "Drivers\\VmGuestLibJava.dll", "Drivers\\vm3dver.dll",
-            "Drivers\\vmtray.dll", "Drivers\\VMToolsHook.dll", "Drivers\\vmGuestLib.dll",
-            "Drivers\\vmhgfs.dll", "Drivers\\VBoxMouse.sys", "Drivers\\VBoxGuest.sys",
-            "Drivers\\VBoxSF.sys", "Drivers\\VBoxVideo.sys", "vboxoglpackspu.dll",
-            "vboxoglpassthroughspu.dll", "vboxservice.exe", "vboxoglcrutil.dll",
-            "vboxdisp.dll", "vboxhook.dll", "vboxmrxnp.dll", "vboxogl.dll",
-            "vboxtray.exe", "VBoxControl.exe", "vboxoglerrorspu.dll",
-            "vboxoglfeedbackspu.dll", "vboxoglarrayspu.dll"
+             "Drivers\\Vmmouse.sys",
+             "Drivers\\Vmusbmouse.sys",
+             "Drivers\\vm3dgl.dll",
+             "Drivers\\vmdum.dll",
+             "Drivers\\VmGuestLibJava.dll",
+             "Drivers\\vm3dver.dll",
+             "Drivers\\vmtray.dll",
+             "Drivers\\VMToolsHook.dll",
+             "Drivers\\vmGuestLib.dll",
+             "Drivers\\vmhgfs.dll",
+             "Drivers\\VBoxMouse.sys",
+             "Drivers\\VBoxGuest.sys",
+             "Drivers\\VBoxSF.sys",
+             "Drivers\\VBoxVideo.sys",
+             "vboxoglpackspu.dll",
+             "vboxoglpassthroughspu.dll",
+             "vboxservice.exe",
+             "vboxoglcrutil.dll",
+             "vboxdisp.dll",
+             "vboxhook.dll",
+             "vboxmrxnp.dll",
+             "vboxogl.dll",
+             "vboxtray.exe",
+             "VBoxControl.exe",
+             "vboxoglerrorspu.dll",
+             "vboxoglfeedbackspu.dll",
+             "vboxoglarrayspu.dll"
+         } };
+
+        constexpr std::array<const char*, 10> kvmFiles = { {
+            "Drivers\\balloon.sys",
+            "Drivers\\netkvm.sys",
+            "Drivers\\pvpanic.sys",
+            "Drivers\\viofs.sys",
+            "Drivers\\viogpudo.sys",
+            "Drivers\\vioinput.sys",
+            "Drivers\\viorng.sys",
+            "Drivers\\vioscsi.sys",
+            "Drivers\\vioser.sys",
+            "Drivers\\viostor.sys"
         } };
 
-        constexpr std::array<const char*, 10> kvmFiles = {
-            "Drivers\\balloon.sys", "Drivers\\netkvm.sys", "Drivers\\pvpanic.sys",
-            "Drivers\\viofs.sys", "Drivers\\viogpudo.sys", "Drivers\\vioinput.sys",
-            "Drivers\\viorng.sys", "Drivers\\vioscsi.sys", "Drivers\\vioser.sys",
-            "Drivers\\viostor.sys"
-        };
-
-        constexpr std::array<const char*, 7> parallelsFiles = {
-            "Drivers\\prleth.sys", "Drivers\\prlfs.sys", "Drivers\\prlmouse.sys",
-            "Drivers\\prlvideo.sys", "Drivers\\prltime.sys", "Drivers\\prl_pv32.sys",
+        constexpr std::array<const char*, 7> parallelsFiles = { {
+            "Drivers\\prleth.sys",
+            "Drivers\\prlfs.sys",
+            "Drivers\\prlmouse.sys",
+            "Drivers\\prlvideo.sys",
+            "Drivers\\prltime.sys",
+            "Drivers\\prl_pv32.sys",
             "Drivers\\prl_paravirt_32.sys"
-        };
+        } };
 
-        constexpr std::array<const char*, 2> vpcFiles = {
-            "Drivers\\vmsrvc.sys", "Drivers\\vpc-s3.sys"
-        };
+        constexpr std::array<const char*, 2> vpcFiles = { {
+            "Drivers\\vmsrvc.sys",
+            "Drivers\\vpc-s3.sys"
+        } };
 
         u8 vbox = 0, vmware = 0, kvm = 0, vpc = 0, parallels = 0;
 
@@ -3545,7 +3577,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return (attrs != INVALID_FILE_ATTRIBUTES) && !(attrs & FILE_ATTRIBUTE_DIRECTORY);
             };
 
-        auto checkFiles = [&](const auto& files, u8& count, const char* vm_brand) {
+        auto checkFiles = [&](const auto& files, u8& count, const char* brand) {
             for (const auto& relativePath : files) {
                 char szPath[MAX_PATH] = { 0 };
                 PathCombineA(szPath, szWinDir, relativePath);
@@ -3553,7 +3585,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     count++;
                 }
             }
-            debug(std::string(vm_brand) + " score: ", static_cast<u32>(count));
+
+            debug("%s score: %u", (std::string(brand) + " score: ").c_str(), static_cast<u32>(count));
+            (void)brand;
             };
 
         checkFiles(vbox_and_vmware, vbox, "VBOX/VMWARE");
@@ -3720,30 +3754,21 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #elif (WINDOWS)
         const u8 version = util::get_windows_version();
 
-        if (version == 0) {
-            return false;
-        }
-
-        // less than windows 10
         if (version < 10) {
-            debug("VBOX_DEFAULT: less than windows 10 detected");
             return false;
         }
 
-        // windows 10
-        if (10 == version) {
-            debug("VBOX_DEFAULT: windows 10 detected");
+        // For Windows 10/11 and newer versions
+        if (version == 10) {
+            debug("VBOX_DEFAULT: Windows 10 detected");
             return ((50 == disk) && (2 == ram));
         }
 
-        // windows 11
-        if (11 == version) {
-            debug("VBOX_DEFAULT: windows 11 detected");
-            return ((80 == disk) && (4 == ram));
-        }
+        // Windows 11 check (version 11+)
+        debug("VBOX_DEFAULT: Windows 11 detected");
+        return ((80 == disk) && (4 == ram));
 #endif
 #endif
-        return false;
     }
 
 
@@ -3755,17 +3780,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!WINDOWS)
         return false;
 #else
-        u32 pnsize = 0x1000;
-        TCHAR* provider = new TCHAR[pnsize];
+        DWORD pnsize = 0x1000;
+        char provider[0x1000];
 
-        u32 retv = WNetGetProviderName(WNNC_NET_RDR2SAMPLE, provider, reinterpret_cast<LPDWORD>(&pnsize));
+        DWORD retv = WNetGetProviderNameA(WNNC_NET_RDR2SAMPLE, provider, &pnsize);
         bool result = false;
 
         if (retv == NO_ERROR) {
-            result = (lstrcmpi(provider, _T("VirtualBox Shared Folders")) == 0);
+            result = (_stricmp(provider, "VirtualBox Shared Folders") == 0);
         }
-
-        delete[] provider;
 
         return result;
 #endif
@@ -4141,31 +4164,31 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!WINDOWS)
         return false;
 #else
-        if (util::is_proc_running(_T("joeboxserver.exe")) || util::is_proc_running(_T("joeboxcontrol.exe"))) {
+        if (util::is_proc_running(("joeboxserver.exe")) || util::is_proc_running(("joeboxcontrol.exe"))) {
             return core::add(brands::JOEBOX);
         }
 
-        if (util::is_proc_running(_T("prl_cc.exe")) || util::is_proc_running(_T("prl_tools.exe"))) {
+        if (util::is_proc_running(("prl_cc.exe")) || util::is_proc_running(("prl_tools.exe"))) {
             return core::add(brands::PARALLELS);
         }
 
-        if (util::is_proc_running(_T("vboxservice.exe")) || util::is_proc_running(_T("vboxtray.exe"))) {
+        if (util::is_proc_running(("vboxservice.exe")) || util::is_proc_running(("vboxtray.exe"))) {
             return core::add(brands::VBOX);
         }
 
-        if (util::is_proc_running(_T("vmsrvc.exe")) || util::is_proc_running(_T("vmusrvc.exe"))) {
+        if (util::is_proc_running(("vmsrvc.exe")) || util::is_proc_running(("vmusrvc.exe"))) {
             return core::add(brands::VPC);
         }
 
-        if (util::is_proc_running(_T("xenservice.exe")) || util::is_proc_running(_T("xsvc_depriv.exe"))) {
+        if (util::is_proc_running(("xenservice.exe")) || util::is_proc_running(("xsvc_depriv.exe"))) {
             return core::add(brands::XEN);
         }
 
-        if (util::is_proc_running(_T("vm3dservice.exe"))) {
+        if (util::is_proc_running(("vm3dservice.exe")) || util::is_proc_running(("VGAuthService.exe")) || util::is_proc_running(("vmtoolsd.exe"))) {
             return core::add(brands::VMWARE);
         }
 
-        if (util::is_proc_running(_T("qemu-ga.exe")) || util::is_proc_running(_T("vdagent.exe")) || util::is_proc_running(_T("vdservice.exe"))) {
+        if (util::is_proc_running(("qemu-ga.exe")) || util::is_proc_running(("vdagent.exe")) || util::is_proc_running(("vdservice.exe"))) {
             return core::add(brands::QEMU);
         }
 
@@ -4215,26 +4238,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         szBuff = (char*)calloc(512, sizeof(char));
 
-        const HANDLE hMod = GetModuleHandleA("SbieDll.dll"); // Sandboxie
-        if (hMod != 0) {
-            free(szBuff);
-            return core::add(brands::SANDBOXIE);
-        }
-
-        /* this gave a false positive
-        hMod = GetModuleHandleA("dbghelp.dll"); // ThreatExpert
-        if (hMod != 0) {
-            free(szBuff);
-            return core::add(brands::THREATEXPERT);
-        }
-        */
-
         nRes = RegOpenKeyExA(HKEY_LOCAL_MACHINE, "Software\\Microsoft\\Windows\\CurrentVersion", 0L, KEY_QUERY_VALUE, &hOpen);
         if (nRes == ERROR_SUCCESS) {
             iBuffSize = sizeof(szBuff);
             nRes = RegQueryValueExA(hOpen, "ProductId", NULL, NULL, (unsigned char*)szBuff, reinterpret_cast<LPDWORD>(&iBuffSize));
             if (nRes == ERROR_SUCCESS) {
-                // Check if szBuff is not NULL before using strcmp
                 if (szBuff == NULL) {
                     RegCloseKey(hOpen);
                     return false;
@@ -4256,7 +4264,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
             RegCloseKey(hOpen);
         }
-        // Set szBuff to NULL after freeing to avoid double free issues
         free(szBuff);
         return false;
 #endif
@@ -4595,14 +4602,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return reinterpret_cast<unsigned char*>(p);
             };
 
-        constexpr std::array<const char*, 6> strings_to_scan = {
+        constexpr std::array<const char*, 6> strings_to_scan = { {
             "INNOTEK GMBH",
             "VIRTUALBOX",
             "SUN MICROSYSTEMS",
             "VBOXVER",
             "VIRTUAL MACHINE",
             "VMWARE"
-        };
+        } };
 
         for (const char* search_str : strings_to_scan) {
             const unsigned char* found = ScanDataForString(cast(p), length, reinterpret_cast<const unsigned char*>(search_str));
@@ -8263,7 +8270,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for VM-specific names for drivers
      * @category Windows
-     * @author Requiem
+     * @author Requiem (https://github.com/NotRequiem)
      */
     [[nodiscard]] static bool driver_names() {
 #if (!WINDOWS)
@@ -8570,14 +8577,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return reinterpret_cast<unsigned char*>(p);
             };
 
-        constexpr std::array<const char*, 6> strings_to_scan = {
+        constexpr std::array<const char*, 6> strings_to_scan = {{
              "INNOTEK GMBH",
              "VBOXAPIC",
              "SUN MICROSYSTEMS",
              "VBOXVER",
              "VIRTUAL MACHINE",
              "VMWARE"
-        };
+        }};
 
         for (const char* search_str : strings_to_scan) {
             const unsigned char* found = ScanDataForString(cast(p), length, reinterpret_cast<const unsigned char*>(search_str));
@@ -8691,50 +8698,67 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check for VMware-specific memory traces in a specific process.
+     * @brief Check for specific VM memory traces in certain processes
      * @category Windows
      * @author Requiem (https://github.com/NotRequiem)
      */
-    [[nodiscard]] static bool vmware_memory() {
+    [[nodiscard]] static bool vm_memory() {
 #if (!WINDOWS)
         return false;
 #else
-        const std::wstring searchString1 = L"_VMWARE_";
-        const std::wstring searchString2 = L"VMware, Inc.";
-
-        auto scan_service_memory = [](const std::wstring& searchString, const std::wstring& serviceName) -> bool {
+#if CPP >= 17
+        auto scan_service_for_brands = [](const std::wstring& serviceName, const std::vector<std::pair<std::wstring, const char*>>& checks) -> std::optional<const char*> {
+#else
+        auto scan_service_for_brands = [](const std::wstring& serviceName, const std::vector<std::pair<std::wstring, const char*>>& checks, const char*& result) -> bool {
+#endif
             const DWORD pid = util::FindProcessIdByServiceName(serviceName);
-            if (pid == 0) return false; // Process missing; potentially tampered
+            if (pid == 0) {
+                return false;
+            }
 
-            util::EnableDebugPrivilege();
+            if (!util::EnableDebugPrivilege()) {
+                return false;
+            }
 
             const HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid);
-            if (!hProcess) return false; // Not running as admin or insufficient permissions
+            if (!hProcess) {
+                return false;
+            }
 
             MEMORY_BASIC_INFORMATION mbi{};
             uintptr_t address = 0x1000;
+            bool found = false;
+            const char* foundBrand = nullptr;
 
-            while (VirtualQueryEx(hProcess, reinterpret_cast<LPCVOID>(address), &mbi, sizeof(mbi)) == sizeof(mbi)) {
-                uintptr_t regionBase = reinterpret_cast<uintptr_t>(mbi.BaseAddress);
-                if (regionBase == 0 || address == 0) {
+            while (!found && VirtualQueryEx(hProcess, reinterpret_cast<LPCVOID>(address), &mbi, sizeof(mbi)) == sizeof(mbi)) {
+                const uintptr_t regionBase = reinterpret_cast<uintptr_t>(mbi.BaseAddress);
+                if (regionBase == 0) {
                     address += mbi.RegionSize;
                     continue;
                 }
 
-                if (
-                    (mbi.State == MEM_COMMIT) &&
-                    (mbi.Protect & (PAGE_READWRITE)) &&
-                    !(mbi.Protect & PAGE_GUARD) &&
-                    !(mbi.Protect & PAGE_NOACCESS)
-                ) {
-                    size_t regionSize = static_cast<size_t>(mbi.RegionSize);
+                if ((mbi.State == MEM_COMMIT) &&
+                    (mbi.Protect & (PAGE_READWRITE | PAGE_EXECUTE_READWRITE)) &&
+                    !(mbi.Protect & (PAGE_GUARD | PAGE_NOACCESS)))
+                {
+                    const size_t regionSize = static_cast<size_t>(mbi.RegionSize);
                     std::vector<wchar_t> buffer(regionSize / sizeof(wchar_t));
                     SIZE_T bytesRead = 0;
 
                     if (ReadProcessMemory(hProcess, reinterpret_cast<LPCVOID>(regionBase), buffer.data(), buffer.size() * sizeof(wchar_t), &bytesRead) && bytesRead > 0) {
-                        if (util::findSubstring(buffer.data(), bytesRead / sizeof(wchar_t), searchString)) {
-                            CloseHandle(hProcess);
-                            return true;
+                        const size_t charCount = bytesRead / sizeof(wchar_t);
+#if CPP >= 17
+                        for (const auto& [searchString, brand] : checks) {
+#else
+                        for (const auto& check_pair : checks) {
+                            const std::wstring& searchString = check_pair.first;
+                            const char* brand = check_pair.second;
+#endif
+                            if (util::findSubstring(buffer.data(), charCount, searchString)) {
+                                found = true;
+                                foundBrand = brand;
+                                break;
+                            }
                         }
                     }
                 }
@@ -8743,20 +8767,58 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             CloseHandle(hProcess);
-            return false;
+
+#if CPP >= 17
+            return found ? std::optional<const char*>(foundBrand) : std::nullopt;
+#else
+            if (found) result = foundBrand;
+            return found;
+#endif
+            };
+
+        // CDPSvc check for manufacturer
+#if CPP >= 17
+        if (const auto brand = scan_service_for_brands(L"CDPSvc", { { L"VMware, Inc.", VM::brands::VMWARE } })) {
+            return core::add(*brand);
+        }
+#else
+        const char* cdpsvcBrand;
+        if (scan_service_for_brands(L"CDPSvc", { { L"VMware, Inc.", VM::brands::VMWARE } }, cdpsvcBrand)) {
+            return core::add(cdpsvcBrand);
+        }
+#endif
+
+        // Diagnostic Policy Service checks based on file execution detection in the System Resource Usage Monitor database
+        const std::vector<std::pair<std::wstring, const char*>> dps_checks = {
+            { L"VBoxTray", VM::brands::VBOX },
+            { L"joeboxserver.exe", VM::brands::JOEBOX },
+            { L"joeboxcontrol.exe", VM::brands::JOEBOX },
+            { L"prl_cc.exe", VM::brands::PARALLELS },
+            { L"prl_tools.exe", VM::brands::PARALLELS },
+            { L"vboxservice.exe", VM::brands::VBOX },
+            { L"vboxtray.exe", VM::brands::VBOX },
+            { L"vmsrvc.exe", VM::brands::VPC },
+            { L"vmusrvc.exe", VM::brands::VPC },
+            { L"xenservice.exe", VM::brands::XEN },
+            { L"xsvc_depriv.exe", VM::brands::XEN },
+            { L"vm3dservice.exe", VM::brands::VMWARE },
+            { L"VGAuthService.exe", VM::brands::VMWARE },
+            { L"vmtoolsd.exe", VM::brands::VMWARE },
+            { L"qemu-ga.exe", VM::brands::QEMU },
+            { L"vdagent.exe", VM::brands::QEMU },
+            { L"vdservice.exe", VM::brands::QEMU }
         };
 
-        if (scan_service_memory(searchString1, L"PlugPlay")) {
-            return core::add(brands::VMWARE);
+#if CPP >= 17
+        if (const auto brand = scan_service_for_brands(L"Diagnostic Policy Service", dps_checks)) {
+            return core::add(*brand);
         }
-
-        if (scan_service_memory(searchString2, L"Winmgmt")) {
-            return core::add(brands::VMWARE);
+#else
+        const char* dpsBrand;
+        if (scan_service_for_brands(L"Diagnostic Policy Service", dps_checks, dpsBrand)) {
+            return core::add(dpsBrand);
         }
-
-        if (scan_service_memory(searchString2, L"CDPSvc")) {
-            return core::add(brands::VMWARE);
-        }
+#endif
 
         return false;
 #endif
@@ -9219,7 +9281,7 @@ static bool rdtsc() {
     /**
     * @brief Check if the maximum number of virtual processors matches the maximum number of logical processors
     * @category Windows
-    * @author Requiem
+    * @author Requiem (https://github.com/NotRequiem)
     */
     [[nodiscard]] static bool virtual_processors() {
 #if (!WINDOWS)
@@ -9265,7 +9327,7 @@ static bool rdtsc() {
     /*
      * @brief Detects if the motherboard product matches the signature of a virtual machine
      * @category Windows
-     * @author Requiem
+     * @author Requiem (https://github.com/NotRequiem)
      */
     [[nodiscard]] static bool motherboard_product() {
 #if (!WINDOWS)
@@ -9641,7 +9703,6 @@ static bool rdtsc() {
 #if (!x86 && !LINUX && !APPLE)
 	    return false;
 #else
-        
 	    if (!cpu::is_amd()) {
 	        return false;
 	    }
@@ -9651,8 +9712,7 @@ static bool rdtsc() {
 	    }
 	
 	    constexpr u32 encrypted_memory_capability = 0x8000001f;
-	    constexpr u32 msr_index = 0xc0010131;
-	  
+	    constexpr u32 msr_index = 0xc0010131;	  
         
 	    if (!cpu::is_leaf_supported(encrypted_memory_capability)) {
 	        return false;
@@ -9692,6 +9752,50 @@ static bool rdtsc() {
 #endif
 	}
 
+
+    /**
+     * @brief Check for bits that should be reserved in leaf 8000000Ah
+     * @category x86
+     * @note https://en.wikipedia.org/wiki/CPUID#EAX=8000'000Ah:_SVM_features
+     */
+    [[nodiscard]] static bool amd_reserved() {
+#if (!x86)
+        return false;
+#else
+        if (!cpu::is_amd()) {
+            return false;
+        }
+
+        if (!cpu::is_leaf_supported(0x8000000A)) {
+            return false;
+        }
+
+        u32 eax = 0, ebx = 0, ecx = 0, edx = 0;
+        cpu::cpuid(eax, ebx, ecx, edx, 0x8000000A, 0);
+
+        // EAX: Check bits 31:8
+        if (eax & 0xFFFFFF00) {
+            return true;
+        }
+
+        // EBX: Check bits 31:8
+        if (ebx & 0xFFFFFF00) {
+            return true;
+        }
+
+        // ECX must be zero
+        if (ecx != 0) {
+            return true;
+        }
+
+        // EDX: Check reserved bits 9,11,14,22
+        if (edx & ((1 << 9) | (1 << 11) | (1 << 14) | (1 << 22))) {
+            return true;
+        }
+
+        return false;
+#endif
+    }
     // ADD NEW TECHNIQUE FUNCTION HERE
 
 
@@ -10718,7 +10822,7 @@ public: // START OF PUBLIC FUNCTIONS
             case ACPI_DETECT: return "ACPI_DETECT";
             case GPU_NAME: return "GPU_NAME";
             case VM_DEVICES: return "VM_DEVICES";
-            case VMWARE_MEMORY: return "VMWARE_MEMORY";
+            case VM_MEMORY: return "VM_MEMORY";
             case IDT_GDT_MISMATCH: return "IDT_GDT_MISMATCH";
             case PROCESSOR_NUMBER: return "PROCESSOR_NUMBER";
             case NUMBER_OF_CORES: return "NUMBER_OF_CORES";
@@ -10737,6 +10841,7 @@ public: // START OF PUBLIC FUNCTIONS
             case HYPERV_QUERY: return "HYPERV_QUERY";
             case BAD_POOLS: return "BAD_POOLS";
 			case AMD_SEV: return "AMD_SEV";
+            case AMD_RESERVED: return "AMD_RESERVED";
             // ADD NEW CASE HERE FOR NEW TECHNIQUE
             default: return "Unknown flag";
         }
@@ -11299,7 +11404,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::ACPI_DETECT, { 85, VM::acpi, false } },
     { VM::GPU_NAME, { 100, VM::vm_gpu, false } },
     { VM::VM_DEVICES, { 45, VM::vm_devices, true } },
-    { VM::VMWARE_MEMORY, { 50, VM::vmware_memory, false } },
+    { VM::VM_MEMORY, { 80, VM::vm_memory, false } },
     { VM::IDT_GDT_MISMATCH, { 50, VM::idt_gdt_mismatch, false } },
     { VM::PROCESSOR_NUMBER, { 50, VM::processor_number, false } },
     { VM::NUMBER_OF_CORES, { 50, VM::number_of_cores, false } },
@@ -11316,6 +11421,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::HYPERV_QUERY, { 50, VM::hyperv_query, false } },
     { VM::BAD_POOLS, { 80, VM::bad_pools, false } },
 	{ VM::AMD_SEV, { 50, VM::amd_sev, false } },
+    { VM::AMD_RESERVED, { 50, VM::amd_reserved, false } },
     // ADD NEW TECHNIQUE STRUCTURE HERE
 };
 
