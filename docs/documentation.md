@@ -437,7 +437,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::ACPI_DETECT` | Check for VM related strings in ACPI data | Windows | 85% |  |  |  |  |
 | `VM::GPU_NAME` | Check for VM specific device names in GPUs | Windows | 100% |  |  |  |  |
 | `VM::VM_DEVICES` | Check for VM-specific devices | Windows | 45% |  |  |  |  |
-| `VM::VMWARE_MEMORY` | Check for VMware-specific memory traces in certain processes | Windows | 50% |  |  |  |  |
+| `VM::VMWARE_MEMORY` | Check for specific VM memory traces in certain processes | Windows | 80% |  |  |  |  |
 | `VM::IDT_GDT_MISMATCH` | Check if the IDT and GDT limit addresses mismatch between different CPU cores | Windows | 25% |  |  |  |  |
 | `VM::PROCESSOR_NUMBER` | Check for number of processors | Windows | 50% |  |  |  |  |
 | `VM::NUMBER_OF_CORES` | Check for number of cores | Windows | 50% |  |  |  |  |
@@ -457,6 +457,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::HYPERV_QUERY` | Checks if a call to NtQuerySystemInformation with the 0x9f leaf fills a _SYSTEM_HYPERVISOR_DETAIL_INFORMATION structure | Windows | 50% |  |  |  |  |
 | `VM::BAD_POOLS` | Checks for system pools allocated by hypervisors | Windows | 80% |  |  |  |  |
 | `VM::AMD_SEV` | Check for AMD-SEV MSR running on the system | Linux and MacOS | 50% | Admin |  |  |  |
+| `VM::AMD_RESERVED` | Check for bits that should be reserved in leaf 8000000Ah | 50% |  |  |  |  |
 <!-- ADD DETAILS HERE -->
 
 <br>
