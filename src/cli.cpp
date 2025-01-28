@@ -267,6 +267,7 @@ LKVM
 AMD SEV
 AMD SEV-ES
 AMD SEV-SNP
+Neko Project II
 )";
 
     std::exit(0);
@@ -657,6 +658,7 @@ std::string vm_description(const std::string& vm_brand) {
         { VM::brands::AMD_SEV, "AMD Secure Encrypted Virtualization (SEV) encrypts VM memory with EPYC processor-based AES keys. Isolates guests from hypervisors using ASIDs (Address Space Identifiers), protecting against physical attacks and malicious cloud providers. Supported in Linux/KVM via libvirt SEV options." },
         { VM::brands::AMD_SEV_ES, "AMD SEV-Encrypted State (SEV-ES) extends SEV by encrypting CPU register states during VM exits. Prevents hypervisors from inspecting guest register contents, mitigating attacks using VMRUN/VMEXIT timing side channels. Requires guest OS modifications for secure interrupt handling." },
         { VM::brands::AMD_SEV_SNP, "AMD SEV-Secure Nested Paging (SEV-SNP) adds memory integrity protection to SEV-ES. Uses reverse map tables (RMP) to prevent hypervisor-mediated replay/spoofing attacks. Enables attested launch for cloud workloads via guest policy certificates and AMD's Key Distribution Service (KDS)." },
+        { VM::brands::NEKO_PROJECT, "Neko Project II is an emulator designed for emulating PC-98 computers. They are a lineup of Japanese 16-bit and 32-bit personal computers manufactured by NEC from 1982 to 2003. While based on Intel processors, it uses an in-house architecture making it incompatible with IBM clones." },
         { VM::brands::NULL_BRAND, "Indicates no detectable virtualization brand. This result may occur on bare-metal systems, unsupported/obscure hypervisors, or when anti-detection techniques (e.g., VM escaping) are employed by the guest environment." }
     };
 

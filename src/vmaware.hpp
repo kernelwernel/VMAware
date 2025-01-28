@@ -588,6 +588,7 @@ public:
         static constexpr const char* AMD_SEV = "AMD SEV";
         static constexpr const char* AMD_SEV_ES = "AMD SEV-ES";
         static constexpr const char* AMD_SEV_SNP = "AMD SEV-SNP";
+        static constexpr const char* NEKO_PROJECT = "Neko Project II";
         static constexpr const char* NULL_BRAND = "Unknown";
     };
 
@@ -896,7 +897,7 @@ public:
 
             constexpr const char* intel_i_series_regex = "i[0-9]-[A-Z0-9]{1,7}";
             constexpr const char* intel_xeon_series_regex = "[DEW]-[A-Z0-9]{1,7}";
-            constexpr const char* amd_ryzen_regex = "^(PRO)?[A-Z0-9]{1,7}";
+            constexpr const char* amd_ryzen_regex = "AMD Ryzen ^(PRO)?[A-Z0-9]{1,7}";
 
             std::string match_str = "";
 
@@ -933,6 +934,7 @@ public:
                 }
             }
 
+            // example: AMD Ryzen 9 3950X 16-Core Processor
             if (cpu::is_amd()) {
                 if (match(amd_ryzen_regex)) {
                     found = true;
@@ -979,7 +981,8 @@ public:
                 hyperplatform = "PpyH",
                 minivisor = "MiniVisor\0\0\0",
                 intel_tdx = "IntelTDX    ", // source: virt-what
-                lkvm = "LKVMLKVMLKVM";
+                lkvm = "LKVMLKVMLKVM",
+                neko = "Neko Project";
 
             const std::array<std::string, 2> brand_strings = cpu_manufacturer(p_leaf);
             debug(technique_name, brand_strings.at(0));
@@ -1014,6 +1017,7 @@ public:
                 if (brand_str == minivisor) { return core::add(brands::MINIVISOR); }
                 if (brand_str == intel_tdx) { return core::add(brands::INTEL_TDX); }
                 if (brand_str == lkvm) { return core::add(brands::LKVM); }
+                if (brand_str == neko) { return core::add(brands::NEKO_PROJECT); }
 
                 // both Hyper-V and VirtualPC have the same string value
                 if (brand_str == hyperv) {
@@ -10979,6 +10983,7 @@ public: // START OF PUBLIC FUNCTIONS
             // misc
             { brands::BOCHS, "Emulator" },
             { brands::BLUESTACKS, "Emulator" },
+            { brands::NEKO_PROJECT, "Emulator" },
             { brands::QEMU, "Emulator/Hypervisor (type 2)" },
             { brands::JAILHOUSE, "Partitioning Hypervisor" },
             { brands::UNISYS, "Partitioning Hypervisor" },
@@ -10996,6 +11001,9 @@ public: // START OF PUBLIC FUNCTIONS
             { brands::HYPERV_ARTIFACT, "Unknown" },
             { brands::UML, "Paravirtualised/Hypervisor (type 2)" },
             { brands::WSL, "Hybrid Hyper-V (type 1 and 2)" }, // debatable tbh
+            { brands::AMD_SEV, "VM encryptor" },
+            { brands::AMD_SEV_ES, "VM encryptor" },
+            { brands::AMD_SEV_SNP, "VM encryptor" },
         };
 
         auto it = type_table.find(brand_str.c_str());
@@ -11192,6 +11200,7 @@ std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard{
     { VM::brands::AMD_SEV, 0 },
     { VM::brands::AMD_SEV_ES, 0 },
     { VM::brands::AMD_SEV_SNP, 0 },
+    { VM::brands::NEKO_PROJECT, 0 },
     { VM::brands::NULL_BRAND, 0 }
 };
 

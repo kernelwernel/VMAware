@@ -529,7 +529,10 @@ This is the table of all the brands the lib supports.
 | MiniVisor | `VM::brands::MINIVISOR` | Hypervisor (type 1) |  |
 | Intel TDX | `VM::brands::INTEL_TDX` | Trusted Domain |  |
 | LKVM | `VM::brands::LKVM` | Hypervisor (type 1) |  |
-
+| AMD SEV | `VM::brands::AMD_SEV` | VM encryptor |  |
+| AMD SEV-ES | `VM::brands::AMD_SEV_ES` | VM encryptor |  |
+| AMD SEV-SNP | `VM::brands::AMD_SEV_SNP` | VM encryptor |  |
+| Neko Project II | `VM::brands::NEKO_PROJECT` | Emulator |  | 
 
 <br>
 
