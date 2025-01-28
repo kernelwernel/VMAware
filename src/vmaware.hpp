@@ -7823,16 +7823,23 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        const char* usb_path = "/sys/kernel/debug/usb/devices";
+        constexpr const char* usb_path = "/sys/kernel/debug/usb/devices";
 
-        if (util::exists(usb_path)) {
-            const std::string usb_path_str = util::read_file(usb_path);
-            return (util::find(usb_path_str, "QEMU"));
+        std::ifstream file(usb_path);
+        if (!file) {
+            return false;
+        }
+
+        std::string line;
+        while (std::getline(file, line)) {
+            if (line.find("QEMU") != std::string::npos) {
+                return true;
+            }
         }
 
         return false;
 #endif
-    } 
+    }
 
 
     /**
@@ -8815,12 +8822,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         };
 
 #if CPP >= 17
-        if (const auto brand = scan_service_for_brands(L"Diagnostic Policy Service", dps_checks)) {
+        if (const auto brand = scan_service_for_brands(L"DPS", dps_checks)) {
             return core::add(*brand);
         }
 #else
         const char* dpsBrand;
-        if (scan_service_for_brands(L"Diagnostic Policy Service", dps_checks, dpsBrand)) {
+        if (scan_service_for_brands(L"DPS", dps_checks, dpsBrand)) {
             return core::add(dpsBrand);
         }
 #endif
