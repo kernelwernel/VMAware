@@ -38,10 +38,10 @@
     #define WINDOWS 1
     #include <windows.h>
 #else
-    #define MSVC 0
+    #define WINDOWS 0
 #endif
 
-#if (MSVC)
+#if (_MSC_VER)
 #pragma warning(disable : 4061)
 #endif
 
@@ -80,6 +80,7 @@ enum arg_enum : u8 {
     DYNAMIC,
     VERBOSE,
     COMPACT,
+    MIT,
     NULL_ARG
 };
 
@@ -141,7 +142,7 @@ R"(Usage:
 
 Options:
  -h | --help        prints this help menu
- -v | --version     print cli version and other details
+ -v | --version     print CLI version and other details
  -a | --all         run the result with ALL the techniques enabled (might contain false positives)
  -d | --detect      returns the result as a boolean (1 = VM, 0 = baremetal)
  -s | --stdout      returns either 0 or 1 to STDOUT without any text output (0 = VM, 1 = baremetal)
@@ -159,6 +160,7 @@ Extra:
  --dynamic          allow the conclusion message to be dynamic (8 possibilities instead of only 2)
  --verbose          add more information to the output
  --compact          ignore the unsupported techniques from the CLI output
+ --mit              ignore the GPL techniques and run only the MIT-supported ones
 
 )";
     std::exit(0);
@@ -219,7 +221,6 @@ QEMU+KVM
 Virtual PC
 Microsoft Hyper-V
 Microsoft Virtual PC/Hyper-V
-Microsoft x86-to-ARM
 Parallels
 Xen HVM
 ACRN
@@ -228,7 +229,6 @@ Hybrid Analysis
 Sandboxie
 Docker
 Wine
-Apple Rosetta 2
 Anubis
 JoeBox
 ThreatExpert
@@ -262,6 +262,11 @@ ANY.RUN
 Barevisor
 HyperPlatform
 MiniVisor
+Intel TDX
+LKVM
+AMD SEV
+AMD SEV-ES
+AMD SEV-SNP
 )";
 
     std::exit(0);
@@ -349,7 +354,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::VMWARE_IOPORTS:
             case VM::VMWARE_SCSI:
             case VM::VMWARE_DMESG:
-            case VM::UPTIME:
             case VM::ODD_CPU_THREADS:
             case VM::INTEL_THREAD_MISMATCH:
             case VM::XEON_THREAD_MISMATCH:
@@ -376,6 +380,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::WSL_PROC: 
 			case VM::SYS_QEMU:
 			case VM::LSHW_QEMU:
+			case VM::AMD_SEV:
             // ADD LINUX FLAG
             return false;
             default: return true;
@@ -392,9 +397,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::RDTSC:
             case VM::THREADCOUNT:
             case VM::MAC:
-            case VM::VMWARE_REG:
-            case VM::VBOX_REG:
-            case VM::USER:
             case VM::DLL:
             case VM::REGISTRY:
             case VM::VM_FILES:
@@ -403,10 +405,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::COMPUTER_NAME:
             case VM::WINE_CHECK:
             case VM::HOSTNAME:
-            case VM::VBOX_WINDOW_CLASS:
             case VM::LOADED_DLLS:
-            case VM::KVM_REG:
-            case VM::KVM_DRIVERS:
             case VM::KVM_DIRS:
             case VM::AUDIO:
             case VM::QEMU_DIR:
@@ -416,15 +415,9 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::PARALLELS_VM:
             case VM::QEMU_BRAND:
             case VM::BOCHS_CPU:
-            case VM::VPC_BOARD:
-            case VM::HYPERV_WMI:
-            case VM::HYPERV_REG:
             case VM::BIOS_SERIAL:
             case VM::MSSMBIOS:
             case VM::HKLM_REGISTRIES:
-            case VM::VALID_MSR:
-            case VM::QEMU_PROC:
-            case VM::VPC_PROC:
             case VM::VPC_INVALID:
             case VM::SIDT:
             case VM::SGDT:
@@ -432,15 +425,12 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::OFFSEC_SIDT:
             case VM::OFFSEC_SGDT:
             case VM::OFFSEC_SLDT:
-            case VM::HYPERV_BOARD:
-            case VM::VM_FILES_EXTRA:
             case VM::VPC_SIDT:
             case VM::VMWARE_STR:
             case VM::VMWARE_BACKDOOR:
             case VM::VMWARE_PORT_MEM:
             case VM::SMSW:
             case VM::MUTEX:
-            case VM::UPTIME:
             case VM::ODD_CPU_THREADS:
             case VM::INTEL_THREAD_MISMATCH:
             case VM::XEON_THREAD_MISMATCH:
@@ -457,7 +447,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::KVM_BITMASK:
             case VM::KGT_SIGNATURE:
             case VM::VMWARE_DMI:
-            case VM::HYPERV_EVENT_LOGS:
             case VM::VMWARE_EVENT_LOGS:
             case VM::GPU_CHIPTYPE:
             case VM::DRIVER_NAMES:
@@ -467,7 +456,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::VM_HDD:
             case VM::ACPI_DETECT:
             case VM::GPU_NAME:
-            case VM::VMWARE_DEVICES:
             case VM::VMWARE_MEMORY:
             case VM::IDT_GDT_MISMATCH:
             case VM::PROCESSOR_NUMBER:
@@ -480,7 +468,10 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::POWER_CAPABILITIES:
             case VM::SETUPAPI_DISK: 
             case VM::VMWARE_HARDENER:
-            case VM::WMI_QUERIES:
+            case VM::VIRTUAL_PROCESSORS:
+            case VM::MOTHERBOARD_PRODUCT:
+            case VM::HYPERV_QUERY:
+            case VM::BAD_POOLS:
             // ADD WINDOWS FLAG
             return false;
             default: return true;
@@ -499,12 +490,10 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::VMID_0X4:
             case VM::QEMU_BRAND:
             case VM::BOCHS_CPU:
-            case VM::VPC_BOARD:
             case VM::MAC_MEMSIZE:
             case VM::MAC_IOKIT:
             case VM::IOREG_GREP:
             case VM::MAC_SIP:
-            case VM::UPTIME:
             case VM::ODD_CPU_THREADS:
             case VM::INTEL_THREAD_MISMATCH:
             case VM::XEON_THREAD_MISMATCH:
@@ -513,6 +502,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::HYPERV_BITMASK:
             case VM::KVM_BITMASK:
             case VM::KGT_SIGNATURE:
+			case VM::AMD_SEV:
             // ADD MACOS FLAG
             return false;
             default: return true;
@@ -546,6 +536,23 @@ bool is_unsupported(VM::enum_flags flag) {
 #endif
 }
 
+
+bool is_gpl(const VM::enum_flags flag) {
+    switch (flag) {
+        case VM::COMPUTER_NAME: 
+        case VM::WINE_CHECK: 
+        case VM::HOSTNAME: 
+        case VM::LOADED_DLLS: 
+        case VM::KVM_DIRS: 
+        case VM::AUDIO: 
+        case VM::QEMU_DIR: 
+        case VM::POWER_CAPABILITIES: 
+        case VM::SETUPAPI_DISK: return true;
+        default: return false;
+    }
+}
+
+
 std::bitset<max_bits> settings() {
     std::bitset<max_bits> tmp;
 
@@ -572,6 +579,93 @@ void replace(std::string &text, const std::string &original, const std::string &
         text.replace(start_pos, original.length(), new_brand);
         start_pos += new_brand.length();
     }
+}
+
+bool is_vm_brand_multiple(const std::string& vm_brand) {
+    return (vm_brand.find(" or ") != std::string::npos);
+}
+
+
+
+std::string vm_description(const std::string& vm_brand) {
+
+    // if there's multiple brands, return null
+    if (is_vm_brand_multiple(vm_brand)) {
+        return "";
+    }
+
+    std::map<std::string, const char*> description_table{
+        { VM::brands::VBOX, "Oracle VirtualBox (formerly Sun VirtualBox, Sun xVM VirtualBox and InnoTek VirtualBox) is a free and commercial hosted hypervisor for x86 and Apple ARM64 virtualization developed by Oracle Corporation initially released in 2007. It supports Intel's VT-x and AMD's AMD-V hardware-assisted virtualization, while providing an extensive feature set as a staple of its flexibility and wide use cases." },
+        { VM::brands::VMWARE, "VMware is a free and commercial type 2 hypervisor initially released in 1999 and acquired by EMC, then Dell, and finally Broadcom Inc in 2023. It was the first commercially successful company to virtualize the x86 architecture, and has since produced many sub-versions of the hypervisor since its inception. It uses binary translation to re-write the code dynamically for a faster performance." },
+        { VM::brands::VMWARE_EXPRESS, "VMware Express (formerly VMware GSX Server Express) was a free entry-level version of VMware's hosted hypervisor for small-scale virtualization. Released in 2003, it offered basic VM management capabilities but lacked advanced features like VMotion. Discontinued in 2006 as VMware shifted focus to enterprise solutions like ESX and vSphere." },
+        { VM::brands::VMWARE_ESX, "VMware ESX (Elastic Sky X) was a type 1 bare-metal hypervisor released in 2001 for enterprise environments. It introduced VMFS clustered filesystems and direct hardware access through its service console. Deprecated in 2010 in favor of the lighter ESXi architecture, which removed the Linux-based service console for improved security." },
+        { VM::brands::VMWARE_GSX, "VMware GSX Server (Ground Storm X) was a commercial type 2 hypervisor (2001-2006) for Windows/Linux hosts, targeting departmental server consolidation. Supported features like VM snapshots and remote management through VI Web Access. Discontinued as VMware transitioned to ESX's bare-metal architecture for better performance in enterprise environments." },
+        { VM::brands::VMWARE_WORKSTATION, "VMware Workstation is a commercial type 2 hypervisor for Windows/Linux hosts, first released in 1999. Enables nested virtualization, 4K display support, and DirectX 11/OpenGL 4.1 acceleration. Popular with developers for testing multi-tier configurations and legacy OS compatibility through its Unity view mode." },
+        { VM::brands::VMWARE_FUSION, "VMware Fusion was a macOS-hosted hypervisor (2007-2024) that allowed Intel-based Macs to run Windows/Linux VMs with Metal graphics acceleration and Retina display support. Discontinued due to Apple's transition to ARM64 architecture with Apple Silicon chips, which required significant architectural changes incompatible with x86 virtualization." },
+        { VM::brands::VMWARE_HARD, "VMWare Hardener Loader is an open-source detection mitigation loader to harden vmware virtual machines against VM detection for Windows (vista~win10) x64 guests." },
+        { VM::brands::BHYVE, "bhyve (pronounced \"bee hive\", formerly written as BHyVe for \"BSD hypervisor\") is a free type 2 hosted hypervisor initially written for FreeBSD. It can also be used on a number of illumos based distributions including SmartOS, OpenIndiana, and OmniOS. bhyve has a modern codebase and uses fewer resources compared to its competitors. In the case of FreeBSD, the resource management is more efficient." },
+        { VM::brands::KVM, "KVM is a free and open source module of the Linux kernel released in 2007. It uses hardware virtualization extensions, and has had support for hot swappable vCPUs, dynamic memory management, and Live Migration. It also reduces the impact that memory write-intensive workloads have on the migration process. KVM emulates very little hardware components, and it defers to a higher-level client application such as QEMU." },
+        { VM::brands::QEMU, "The Quick Emulator (QEMU) is a free and open-source emulator that uses dynamic binary translation to emulate a computer's processor. It translates the emulated binary codes to an equivalent binary format which is executed by the machine. It provides a variety of hardware and device models for the VM, while often being combined with KVM. However, no concrete evidence of KVM was found for this system." },
+        { VM::brands::QEMU_KVM, "QEMU (a free and open-source emulator that uses dynamic binary translation to emulate a computer's processor) is being used with Kernel-based Virtual Machine (KVM, a free and open source module of the Linux kernel) to emulate hardware at near-native speeds." },
+        { VM::brands::KVM_HYPERV, "KVM-HyperV integration allows Linux KVM hosts to expose Hyper-V-compatible paravirtualization interfaces to Windows guests. Enables performance optimizations like enlightened VMCS (Virtual Machine Control Structure) and TSC (Time Stamp Counter) synchronization, reducing overhead for Windows VMs running on Linux hypervisors." },
+        { VM::brands::QEMU_KVM_HYPERV, "A QEMU/KVM virtual machine with Hyper-V enlightenments. These features make Windows and Hyper-V guests think they’re running on top of a Hyper-V compatible hypervisor and use Hyper-V specific features." },
+        { VM::brands::HYPERV, "Hyper-V is Microsoft's proprietary native hypervisor that can create x86 VMs on Windows. Released in 2008, it supercedes previous virtualization solutions such as Microsoft Virtual Server and Windows VirtualPC. Hyper-V uses partitioning to isolate the guest OSs, and has \"enlightenment\" features for bypassing device emulation layers, allowing for faster execution including when Windows is virtualization on Linux." },
+        { VM::brands::HYPERV_VPC, "Either Hyper-V or VirtualPC were detected. Hyper-V is Microsoft's proprietary native hypervisor that can create x86 VMs on Windows. Virtual PC is a discontinued x86 emulator software for Microsoft Windows hosts and PowerPC-based Mac hosts." },
+        { VM::brands::PARALLELS, "Parallels is a hypervisor providing hardware virtualization for Mac computers. It was released in 2006 and is developed by Parallels, a subsidiary of Corel. It is a hardware emulation virtualization software, using hypervisor technology that works by mapping the host computer's hardware resources directly to the VM's resources. Each VM thus operates with virtually all the resources of a physical computer." },
+        { VM::brands::XEN, "Xen is a free and open-source type 1 hypervisor. Originally developed by the University of Cambridge Computer Laboratory and is now being developed by the Linux Foundation with support from Intel, Arm Ltd, Huawei, AWS, Alibaba Cloud, AMD, and more. It runs in a more privileged CPU state than any other software on the machine, except for firmware. It uses GNU GRUB as its bootloader, and then loads a paravirtualized host OS into the host domain (dom0)." },
+        { VM::brands::ACRN, "ACRN is an open source reference type 1 hypervisor stack made by the Linux Foundation Project targeting the IoT, Embedded, Edge segments. Its objective is to cater to the needs of those who require to run Virtual Machines with Real-Time characteristics, or where Functional Safety workloads need to be isolated from other workloads running on the same hardware platform." },
+        { VM::brands::QNX, "QNX Hypervisor is a real-time virtualization platform for embedded systems, enabling concurrent execution of QNX Neutrino RTOS and Linux/Android on ARM/x86. Provides time partitioning with <1 microsecond interrupt latency for automotive systems, certified to ISO 26262 ASIL D safety standards. Used in Audi MIB3 and BMW iDrive systems." },
+        { VM::brands::HYBRID, "Hybrid Analysis is a sandbox that combines basic and dynamic analysis techniques to detect malicious code that is trying to hide. It extracts indicators of compromise (IOCs) from both runtime data and memory dump analysis, providing a comprehensive approach to malware analysis." },
+        { VM::brands::SANDBOXIE, "Sandboxie is an open-source OS-level virtualization solution for Microsoft Windows, an application sandbox for Windows that redirects file/registry writes to virtualized storage. Acquired by Sophos in 2019 and open-sourced in 2020, it uses kernel-mode drivers (SbieDrv.sys) to isolate processes without full VM overhead. Commonly used for testing untrusted software or browsing securely." },
+        { VM::brands::DOCKER, "Docker is a set of platform as a service (PaaS) products that use OS-level virtualization to deliver software in packages called containers. The service has both free and premium tiers. The software that hosts the containers is called Docker Engine. It's used to automate the deployment of applications in lightweight containers so that applications can work efficiently in different environments in isolation." },
+        { VM::brands::WINE, "Wine is a free and open-source compatibility layer to allow application software and computer games developed for Microsoft Windows to run on Unix-like operating systems. Developers can compile Windows applications against WineLib to help port them to Unix-like systems. Wine is predominantly written using black-box testing reverse-engineering, to avoid copyright issues. No code emulation or virtualization occurs." },
+        { VM::brands::VPC, "Microsoft Virtual PC (2004-2011) was a consumer-focused type 2 hypervisor for running Windows XP/Vista guests. Featured \"Undo Disks\" for rollback capability and host-guest integration components. Discontinued after Windows 7's XP Mode due to Hyper-V's emergence, lacking hardware-assisted virtualization support." },
+        { VM::brands::ANUBIS, "Anubis is a tool for analyzing the behavior of Windows PE-executables with special focus on the analysis of malware. Execution of Anubis results in the generation of a report file that contains enough information to give a human user a very good impression about the purpose and the actions of the analyzed binary. The generated report includes detailed data about modifications made to the Windows registry or the file system, about interactions with the Windows Service Manager or other processes and of course it logs all generated network traffic." },
+        { VM::brands::JOEBOX, "Joe Sandbox (formerly JoeBox) is a cloud-based malware analysis solution with Deep Learning classification. Features multi-OS analysis (Windows/Linux/Android), memory forensics, and MITRE ATT&CK mapping. Offers hybrid analysis combining static/dynamic techniques with 400+ behavioral indicators for enterprise threat hunting." },
+        { VM::brands::THREATEXPERT, "ThreatExpert was an automated malware analysis service (2007-2013) that provided behavioral reports via web API. Pioneered mass-scale analysis with heuristic detection of packers/rootkits. Discontinued as competing services like VirusTotal and Hybrid Analysis adopted similar cloud-based approaches with richer feature sets." },
+        { VM::brands::CWSANDBOX, "CWSandbox is a tool for malware analysis, developed by Carsten Willems as part of his thesis and Ph.D. studies." },
+        { VM::brands::COMODO, "Comodo is a proprietary sandbox running an isolated operating environment. Comodo have integrated sandboxing technology directly into the security architecture of Comodo Internet Security to complement and strengthen the Firewall, Defense+ and Antivirus modules of their product line. It features a hybrid of user mode hooks along with a kernel mode driver, preventing any modification to files or registry on the host machine." },
+        { VM::brands::BOCHS, "Bochs (pronounced \"box\") is a free and open-source portable IA-32 and x86-64 IBM PC compatible emulator and debugger mostly written in C++. Bochs is mostly used for OS development and to run other guest OSs inside already running host OSs, while emulating the hardware needed such as hard drives, CD drives, and floppy drives. It doesn't utilize any host CPU virtualization features, therefore is slower than most virtualization software." },
+        { VM::brands::NVMM, "NVMM (NetBSD Virtual Machine Monitor) is NetBSD's native hypervisor for NetBSD 9.0. It provides a virtualization API, libnvmm, that can be leveraged by emulators such as QEMU. A unique property of NVMM is that the kernel never accesses guest VM memory, only creating it. Intel's Hardware Accelerated Execution Manager (HAXM) provides an alternative solution for acceleration in QEMU for Intel CPUs only, similar to Linux's KVM." },
+        { VM::brands::BSD_VMM, "BSD VMM is FreeBSD's kernel subsystem powering the bhyve hypervisor. Implements Intel VT-x/AMD-V virtualization with direct device assignment (PCI passthrough). Supports UEFI boot and VirtIO paravirtualized devices, optimized for FreeBSD guests with FreeBSD-specific virtio_net(4) and virtio_blk(4) drivers." },
+        { VM::brands::INTEL_HAXM, "HAXM was created to bring Intel Virtualization Technology to Windows and macOS users. Today both Microsoft Hyper-V and macOS HVF have added support for Intel Virtual Machine Extensions. The project is discontinued." },
+        { VM::brands::UNISYS, "Unisys Secure Partitioning (s-Par®) is firmware made by ClearPath Forward that provides the capability to run multiple operating environments concurrently on the same computer hardware: for example, Linux and Windows operating environments. Unlike virtualization technologies and virtual machines, each s-Par operating environment has dedicated hardware resources—instruction processor cores, memory, and input/output components. Each s-Par operating environment is referred to as a secure partition (or just “partition,” for short). A secure partition is sometimes referred to as a hard partition." },
+        { VM::brands::LMHS, "LMHS is Lockheed Martin's native hypervisor. I assume you got this result because you're an employee in the company and you're doing security testing. But if you're not, how the hell did you get this result? Did you steal a US military fighter jet or something? I'm genuinely curious. I really don't expect anybody to have this result frankly but I'll assume it's just a false positive (please create an issue in the repo if it is)." },
+        { VM::brands::CUCKOO, "Cuckoo Sandbox is an open-source automated malware analysis system. Executes files in isolated environments (VirtualBox/QEMU) while monitoring API calls, network traffic, and memory changes. Features YARA rule matching and CAPE (Customized Automated Processing Engine) extensions for advanced threat hunting and IOC extraction." },
+        { VM::brands::BLUESTACKS, "BlueStacks is a chain of cloud-based cross-platform products developed by the San Francisco-based company of the same name. The BlueStacks App Player enables the execution of Android applications on computers running Microsoft Windows or macOS. It functions through an Android emulator referred to as App Player. The basic features of the software are available for free, while advanced features require a paid monthly subscription." },
+        { VM::brands::JAILHOUSE, "Jailhouse is a free and open source partitioning Hypervisor based on Linux, made by Siemens. It is able to run bare-metal applications or (adapted) operating systems besides Linux. For this purpose, it configures CPU and device virtualization features of the hardware platform in a way that none of these domains, called \"cells\", can interfere with each other in an unacceptable way." },
+        { VM::brands::APPLE_VZ, "Apple Virtualization Framework (VZ) is a macOS 12+ API for creating ARM64 VMs on Apple Silicon. Provides para-virtualized devices via VirtIO and Rosetta 2 binary translation for x86_64 Linux guests. Used by Lima and UTM to run Linux distributions natively on M1/M2 Macs without traditional hypervisor overhead." },
+        { VM::brands::INTEL_KGT, "Intel Kernel Guard Technology (KGT) is a policy specification and enforcement framework for ensuring runtime integrity of kernel and platform assets. Demonstrated secure enclaves for critical OS components using VT-x/EPT before being superseded by CET (Control-flow Enforcement Technology) and HyperGuard in Windows 10." },
+        { VM::brands::AZURE_HYPERV, "Azure Hyper-V is Microsoft's cloud-optimized hypervisor variant powering Azure VMs. Implements Azure-specific virtual devices like NVMe Accelerated Networking and vTPMs. Supports nested virtualization for running Hyper-V/containers within Azure VMs, enabling cloud-based CI/CD pipelines and dev/test environments." },
+        { VM::brands::NANOVISOR, "NanoVisor is a Hyper-V modification serving as the host OS of Xbox's devices: the Xbox System Software. It contains 2 partitions: the \"Exclusive\" partition is a custom VM for games, while the other partition, called the \"Shared\" partition is a custom VM for running multiple apps including the OS itself. The OS was based on Windows 8 Core at the Xbox One launch in 2013." },
+        { VM::brands::SIMPLEVISOR, "SimpleVisor is a minimalist Intel VT-x hypervisor by Alex Ionescu for Windows/Linux research. Demonstrates EPT-based memory isolation and hypercall handling. Used to study VM escapes and hypervisor rootkits, with hooks for intercepting CR3 changes and MSR accesses." },
+        { VM::brands::HYPERV_ARTIFACT, "The result means that the CLI has found Hyper-V, but as an artifact instead of an actual VM. Although the hardware values do in fact match with the brand due to how it's designed by Microsoft, the CLI has determined you are NOT in a Hyper-V VM from our \"Hyper-X\" mechanism which differentiates between an actual Hyper-V and a false Hyper-V VM that left out breadcrumbs in the system, making it seem like it's a real Hyper-V VM." },
+        { VM::brands::UML, "User-Mode Linux (UML) allows running Linux kernels as user-space processes using ptrace-based virtualization. Primarily used for kernel debugging and network namespace testing. Offers lightweight isolation without hardware acceleration, but requires host/guest kernel version matching for stable operation." },
+        { VM::brands::POWERVM, "IBM PowerVM is a type 1 hypervisor for POWER9/10 systems, supporting Live Partition Mobility and Shared Processor Pools. Implements VIOS (Virtual I/O Server) for storage/networking virtualization, enabling concurrent AIX, IBM i, and Linux workloads with RAS features like predictive failure analysis." },
+        { VM::brands::GCE, "Google Compute Engine (GCE) utilizes KVM-based virtualization with custom Titanium security chips for hardware root of trust. Features live migration during host maintenance and shielded VMs with UEFI secure boot. Underpins Google Cloud's Confidential Computing offering using AMD SEV-SNP memory encryption." },
+        { VM::brands::OPENSTACK, "OpenStack is an open-source cloud OS managing compute (Nova), networking (Neutron), and storage (Cinder) resources. Supports multiple hypervisors (KVM/Xen/Hyper-V) through driver plugins. Widely used in private clouds with features like Heat orchestration and Octavia load balancing." },
+        { VM::brands::KUBEVIRT, "KubeVirt is a VM management add-on for Kubernetes. It provides a common ground for virtualization solutions on top of Kubernetes by extending its core by adding additional virtualization resource types where the Kubernetes API can be used to manage these VM resources alongside all other resources Kubernetes provides. Its functionality is to provide a runtime in order to define and manage VMs." },
+        { VM::brands::AWS_NITRO, "AWS Nitro is Amazon's hypervisor for EC2, offloading network/storage to dedicated Nitro Cards. Uses Firecracker microVMs for Lambda/Fargate serverless compute. Provides bare-metal instance types (i3en.metal) with 3x better EBS throughput compared to traditional Xen-based instances." },
+        { VM::brands::PODMAN, "Podman is a daemonless container engine by Red Hat using Linux namespaces/cgroups. Supports rootless containers and Docker-compatible CLI syntax. Integrates with systemd for service management and Quadlet for declarative container definitions. Part of the Podman Desktop suite for Kubernetes development." },
+        { VM::brands::WSL, "Windows Subsystem for Linux (WSL) is a feature of Microsoft Windows that allows for using a Linux environment without the need for a separate VM or dual booting. WSL requires fewer resources (CPU, memory, and storage) than a full virtual machine (a common alternative for using Linux in Windows), while also allowing the use of both Windows and Linux tools on the same set of files." },
+        { VM::brands::OPENVZ, "OpenVZ is a container-based virtualization for Linux using kernel-level isolation. Provides checkpointing and live migration through ploop storage. Requires matching host/guest kernel versions, largely superseded by LXC/LXD due to Docker's popularity and kernel namespace flexibility." },
+        { VM::brands::BAREVISOR, "BareVisor is a research-focused type 1 hypervisor emphasizing minimal TCB (Trusted Computing Base). Supports x86/ARM with <10K LoC for secure enclave experiments. Used in academia to study TEEs (Trusted Execution Environments) and hypervisor-based intrusion detection systems." },
+        { VM::brands::HYPERPLATFORM, "HyperPlatform is an Intel VT-x research hypervisor for Windows kernel introspection. Provides APIs for EPT hooking and MSR filtering. Used to develop anti-cheat systems and kernel exploit detectors by monitoring CR3 switches and exception handling." },
+        { VM::brands::MINIVISOR, "MiniVisor is a research hypervisor written as a UEFI and Windows driver for the educational purpose for Intel processors. This MiniVisor, as a UEFI driver, provides the ability to inspect system activities even before the operating system boots, while as a Windows driver, allows developers to debug it with familiar tools like WinDbg." },
+        { VM::brands::INTEL_TDX, "Intel TDX (Trust Domain Extensions) enhances VM confidentiality in cloud environments. Encrypts VM memory and registers using MKTME (Multi-Key Total Memory Encryption), isolating \"trust domains\" from hypervisors. Part of Intel's vPro platform for confidential computing on Xeon Scalable processors." },
+        { VM::brands::LKVM, "LKVM (Linux Kernel Virtual Machine) is a minimal KVM frontend for Linux kernel testing. Provides CLI tools like `lkvm run` for quick VM creation with built-in 9pfs support. Used alongside QEMU for rapid boot testing and kernel panic debugging." },
+        { VM::brands::AMD_SEV, "AMD Secure Encrypted Virtualization (SEV) encrypts VM memory with EPYC processor-based AES keys. Isolates guests from hypervisors using ASIDs (Address Space Identifiers), protecting against physical attacks and malicious cloud providers. Supported in Linux/KVM via libvirt SEV options." },
+        { VM::brands::AMD_SEV_ES, "AMD SEV-Encrypted State (SEV-ES) extends SEV by encrypting CPU register states during VM exits. Prevents hypervisors from inspecting guest register contents, mitigating attacks using VMRUN/VMEXIT timing side channels. Requires guest OS modifications for secure interrupt handling." },
+        { VM::brands::AMD_SEV_SNP, "AMD SEV-Secure Nested Paging (SEV-SNP) adds memory integrity protection to SEV-ES. Uses reverse map tables (RMP) to prevent hypervisor-mediated replay/spoofing attacks. Enables attested launch for cloud workloads via guest policy certificates and AMD's Key Distribution Service (KDS)." },
+        { VM::brands::NULL_BRAND, "Indicates no detectable virtualization brand. This result may occur on bare-metal systems, unsupported/obscure hypervisors, or when anti-detection techniques (e.g., VM escaping) are employed by the guest environment." }
+    };
+
+    std::map<std::string, const char*>::const_iterator it = description_table.find(vm_brand);
+    if (it != description_table.end()) {
+        return it->second;
+    }
+
+    return "";
 }
 
 
@@ -689,8 +783,7 @@ void checker(const VM::enum_flags flag, const char* message) {
     }
 #endif
 
-
-    if (is_disabled(flag)) {
+    if (is_disabled(flag) || (arg_bitset.test(MIT) && is_gpl(flag))) {
         if (arg_bitset.test(COMPACT)) {
             return;
         }
@@ -699,12 +792,11 @@ void checker(const VM::enum_flags flag, const char* message) {
         return;
     }
 
-
-    std::cout << 
-        (VM::check(flag) ? detected : not_detected) << 
-        " Checking " << 
-        message << 
-        "...\n";
+    if (VM::check(flag)) {
+        std::cout << detected << bold << " Checking " << message << "..." << ansi_exit << "\n";
+    } else {
+        std::cout << not_detected << " Checking " << message << "...\n";
+    }
 }
 
 
@@ -798,9 +890,6 @@ void general() {
     checker(VM::DMIDECODE, "dmidecode output");
     checker(VM::DMESG, "dmesg output");
     checker(VM::HWMON, "hwmon presence");
-    checker(VM::VMWARE_REG, "VMware registry");
-    checker(VM::VBOX_REG, "VBox registry");
-    checker(VM::USER, "users");
     checker(VM::DLL, "DLLs");
     checker(VM::REGISTRY, "registry");
     checker(VM::WINE_CHECK, "Wine");
@@ -813,30 +902,23 @@ void general() {
     checker(VM::HOSTNAME, "hostname");
     checker(VM::VM_PROCESSES, "VM processes");
     checker(VM::LINUX_USER_HOST, "default Linux user/host");
-    checker(VM::VBOX_WINDOW_CLASS, "VBox window class");
     checker(VM::GAMARUE, "gamarue ransomware technique");
     checker(VM::VMID_0X4, "0x4 leaf of VMID");
     checker(VM::PARALLELS_VM, "Parallels techniques");
     checker(VM::LOADED_DLLS, "loaded DLLs");
     checker(VM::QEMU_BRAND, "QEMU CPU brand");
     checker(VM::BOCHS_CPU, "BOCHS CPU techniques");
-    checker(VM::VPC_BOARD, "VirtualPC motherboard");
     checker(VM::BIOS_SERIAL, "BIOS serial number");
-    checker(VM::MSSMBIOS, "MSSMBIOS");
+    checker(VM::MSSMBIOS, "MSSMBIOS data");
     checker(VM::MAC_MEMSIZE, "MacOS hw.memsize");
     checker(VM::MAC_IOKIT, "MacOS registry IO-kit");
     checker(VM::IOREG_GREP, "IO registry grep");
     checker(VM::MAC_SIP, "MacOS SIP");
-    checker(VM::KVM_REG, "KVM registries");
-    checker(VM::KVM_DRIVERS, "KVM drivers");
     checker(VM::KVM_DIRS, "KVM directories");
     checker(VM::HKLM_REGISTRIES, "HKLM registries");
-    checker(VM::AUDIO, "Audio device");
+    checker(VM::AUDIO, "audio device");
     checker(VM::QEMU_GA, "qemu-ga process");
-    checker(VM::VALID_MSR, "MSR validity");
-    checker(VM::QEMU_PROC, "QEMU processes");
     checker(VM::QEMU_DIR, "QEMU directories");
-    checker(VM::VPC_PROC, "VPC processes");
     checker(VM::VPC_INVALID, "VPC invalid instructions");
     checker(VM::SIDT, "SIDT");
     checker(VM::SGDT, "SGDT");
@@ -845,8 +927,6 @@ void general() {
     checker(VM::OFFSEC_SGDT, "Offensive Security SGDT");
     checker(VM::OFFSEC_SLDT, "Offensive Security SLDT");
     checker(VM::VPC_SIDT, "VirtualPC SIDT");
-    checker(VM::HYPERV_BOARD, "Hyper-V motherboard");
-    checker(VM::VM_FILES_EXTRA, "Extra VM files");
     checker(VM::VMWARE_IOMEM, "/proc/iomem file");
     checker(VM::VMWARE_IOPORTS, "/proc/ioports file");
     checker(VM::VMWARE_SCSI, "/proc/scsi/scsi file");
@@ -856,7 +936,6 @@ void general() {
     checker(VM::VMWARE_PORT_MEM, "VMware port memory");
     checker(VM::SMSW, "SMSW instruction");
     checker(VM::MUTEX, "mutex strings");
-    checker(VM::UPTIME, "uptime");
     checker(VM::ODD_CPU_THREADS, "unusual thread count");
     checker(VM::INTEL_THREAD_MISMATCH, "Intel thread count mismatch");
     checker(VM::XEON_THREAD_MISMATCH, "Intel Xeon thread count mismatch");
@@ -874,11 +953,10 @@ void general() {
     checker(VM::KVM_BITMASK, "KVM CPUID reserved bitmask");
     checker(VM::KGT_SIGNATURE, "Intel KGT signature");
     checker(VM::VMWARE_DMI, "VMware DMI");
-    checker(VM::HYPERV_EVENT_LOGS, "Hyper-V event logs");
     checker(VM::VMWARE_EVENT_LOGS, "VMware event logs");
     checker(VM::QEMU_VIRTUAL_DMI, "QEMU virtual DMI directory");
     checker(VM::QEMU_USB, "QEMU USB");
-    checker(VM::HYPERVISOR_DIR, "Hypervisor directory (Linux)");
+    checker(VM::HYPERVISOR_DIR, "hypervisor directory (Linux)");
     checker(VM::UML_CPU, "User-mode Linux CPU");
     checker(VM::KMSG, "/dev/kmsg hypervisor message");
     checker(VM::VM_PROCS, "various VM files in /proc");
@@ -887,7 +965,7 @@ void general() {
     checker(VM::DEVICE_TREE, "/proc/device-tree");
     checker(VM::DMI_SCAN, "DMI scan");
     checker(VM::SMBIOS_VM_BIT, "SMBIOS VM bit");
-    checker(VM::PODMAN_FILE, "Podman file");
+    checker(VM::PODMAN_FILE, "podman file");
     checker(VM::WSL_PROC, "WSL string in /proc");
     checker(anyrun_driver, "ANY.RUN driver");
     checker(anyrun_directory, "ANY.RUN directory");
@@ -895,26 +973,29 @@ void general() {
     checker(VM::DRIVER_NAMES, "driver names");
     checker(VM::VM_SIDT, "VM SIDT");
     checker(VM::HDD_SERIAL, "HDD serial number");
-    checker(VM::PORT_CONNECTORS, "Physical connection ports");
+    checker(VM::PORT_CONNECTORS, "physical connection ports");
     checker(VM::VM_HDD, "VM keywords in HDD model");
-    checker(VM::ACPI_DETECT, "ACPI Hyper-V");
+    checker(VM::ACPI_DETECT, "ACPI data");
     checker(VM::GPU_NAME, "GPU name");
-    checker(VM::VMWARE_DEVICES, "VMware devices");
     checker(VM::VMWARE_MEMORY, "VM memory traces");
     checker(VM::IDT_GDT_MISMATCH, "IDT GDT mismatch");
-    checker(VM::PROCESSOR_NUMBER, "Processor count");
+    checker(VM::PROCESSOR_NUMBER, "processor count");
     checker(VM::NUMBER_OF_CORES, "CPU core count");
-    checker(VM::WMI_MODEL, "Hardware model");
-    checker(VM::WMI_MANUFACTURER, "Hardware manufacturer");
+    checker(VM::WMI_MODEL, "hardware model");
+    checker(VM::WMI_MANUFACTURER, "hardware manufacturer");
     checker(VM::WMI_TEMPERATURE, "WMI temperature");
-    checker(VM::PROCESSOR_ID, "Processor ID");
+    checker(VM::PROCESSOR_ID, "processor ID");
     checker(VM::CPU_FANS, "CPU fans");
     checker(VM::POWER_CAPABILITIES, "Power capabilities");
     checker(VM::SETUPAPI_DISK, "SETUPDI diskdrive");
-    checker(VM::VMWARE_HARDENER, "VMWARE HARDENER");
-    checker(VM::WMI_QUERIES, "WMI QUERIES");
+    checker(VM::VMWARE_HARDENER, "VMware hardener");
 	checker(VM::SYS_QEMU, "QEMU in /sys");
 	checker(VM::LSHW_QEMU, "QEMU in lshw output");
+    checker(VM::VIRTUAL_PROCESSORS, "virtual processors");
+    checker(VM::MOTHERBOARD_PRODUCT, "motherboard product");
+    checker(VM::HYPERV_QUERY, "hypervisor query");
+    checker(VM::BAD_POOLS, "bad memory pools");
+	checker(VM::AMD_SEV, "AMD-SEV MSR");
     // ADD NEW TECHNIQUE CHECKER HERE
 
     std::printf("\n");
@@ -940,13 +1021,13 @@ void general() {
             (brand == "Hyper-V artifact (not an actual VM)")
         );
 
-        std::cout << "VM brand: " << (is_red ? red : green) << brand << ansi_exit << "\n";
+        std::cout << bold << "VM brand: " << ansi_exit << (is_red ? red : green) << brand << ansi_exit << "\n";
     }
 
 
     // type manager
     {
-        if (vm.brand.find(" or ") == std::string::npos) {  // meaning "if there's no brand conflicts" 
+        if (is_vm_brand_multiple(vm.brand) == false) {
             std::string color = "";
             std::string &type = vm.type;
 
@@ -960,7 +1041,7 @@ void general() {
                 color = green;
             }
 
-            std::cout << "VM type: " <<  color << type << ansi_exit << "\n";
+            std::cout << bold << "VM type: " << ansi_exit <<  color << type << ansi_exit << "\n";
         }
     }
 
@@ -975,13 +1056,13 @@ void general() {
         else if (vm.percentage < 75) { percent_color = green_orange.c_str(); }
         else                         { percent_color = green.c_str(); }
 
-        std::cout << "VM likeliness: " << percent_color << static_cast<u32>(vm.percentage) << "%" << ansi_exit << "\n";
+        std::cout << bold << "VM likeliness: " << ansi_exit << percent_color << static_cast<u32>(vm.percentage) << "%" << ansi_exit << "\n";
     }
 
 
     // VM confirmation manager
     {
-        std::cout << "VM confirmation: " << (vm.is_vm ? green : red) << std::boolalpha << vm.is_vm << std::noboolalpha << ansi_exit << "\n";
+        std::cout << bold << "VM confirmation: " << ansi_exit << (vm.is_vm ? green : red) << std::boolalpha << vm.is_vm << std::noboolalpha << ansi_exit << "\n";
     }
 
 
@@ -1001,7 +1082,9 @@ void general() {
         }
 
         std::cout << 
+            bold <<
             "VM detections: " << 
+            ansi_exit <<
             count_color << 
             static_cast<u32>(vm.detected_count) << 
             "/" <<
@@ -1014,13 +1097,27 @@ void general() {
     // misc manager
     {
         if (arg_bitset.test(VERBOSE)) {
-            std::cout << "\nUnsupported detections: " << static_cast<u32>(unsupported_count) << "\n";
-            std::cout << "Supported detections: " << static_cast<u32>(supported_count) << "\n";
-            std::cout << "No permission detections: " << static_cast<u32>(no_perms_count) << "\n";
-            std::cout << "Disabled detections: " << static_cast<u32>(disabled_count) << "\n";
+            std::cout << bold << "\nUnsupported detections: " << ansi_exit << static_cast<u32>(unsupported_count) << "\n";
+            std::cout << bold << "Supported detections: " << ansi_exit << static_cast<u32>(supported_count) << "\n";
+            std::cout << bold << "No permission detections: " << ansi_exit << static_cast<u32>(no_perms_count) << "\n";
+            std::cout << bold << "Disabled detections: " << ansi_exit << static_cast<u32>(disabled_count) << "\n";
         }
 
         std::printf("\n");
+    }
+
+
+    // description manager
+    {
+        if (vm.brand != VM::brands::NULL_BRAND) {
+
+            std::string description = vm_description(vm.brand);
+
+            if (!description.empty()) {
+                std::cout << bold << "VM description: " << ansi_exit << "\n" << description << "\n\n";
+                //std::cout << note << " The result means that the CLI has found Hyper-V, but as an artifact instead of an actual VM. This means that although the hardware values in fact match with Hyper-V due to how it's designed by Microsoft, the CLI has determined you are NOT in a Hyper-V VM.\n\n";
+            }
+        }
     }
 
 
@@ -1042,9 +1139,7 @@ void general() {
 
     // finishing touches with notes
     if (notes_enabled) {
-        if ((vm.brand == "Hyper-V artifact (not an actual VM)")) {
-            std::cout << note << " The result means that the CLI has found Hyper-V, but as an artifact instead of an actual VM. This means that although the hardware values in fact match with Hyper-V due to how it's designed by Microsoft, the CLI has determined you are NOT in a Hyper-V VM.\n\n";
-        } else if (vm.detected_count != 0) {
+        if (vm.detected_count != 0) {
             std::cout << note << " If you found a false positive, please make sure to create an issue at https://github.com/kernelwernel/VMAware/issues\n\n";
         }
     }
@@ -1057,7 +1152,7 @@ int main(int argc, char* argv[]) {
 #endif
 
     const std::vector<const char*> args(argv + 1, argv + argc); // easier this way
-    const u32 arg_count = argc - 1;
+    const u32 arg_count = static_cast<u32>(argc - 1);
 
     // this was removed from the lib due to ethical 
     // concerns, so it's added in the CLI instead
@@ -1069,7 +1164,7 @@ int main(int argc, char* argv[]) {
         std::exit(0);
     }
 
-    static constexpr std::array<std::pair<const char*, arg_enum>, 29> table {{
+    static constexpr std::array<std::pair<const char*, arg_enum>, 30> table {{
         { "-h", HELP },
         { "-v", VERSION },
         { "-a", ALL },
@@ -1098,6 +1193,7 @@ int main(int argc, char* argv[]) {
         { "--dynamic", DYNAMIC },
         { "--verbose", VERBOSE },
         { "--compact", COMPACT },
+        { "--mit", MIT },
         { "--no-color", NO_COLOR }
     }};
 
@@ -1142,13 +1238,13 @@ int main(int argc, char* argv[]) {
 
     // critical returners
     const u32 returners = (
-        static_cast<u8>(arg_bitset.test(STDOUT)) +
-        static_cast<u8>(arg_bitset.test(PERCENT)) +
-        static_cast<u8>(arg_bitset.test(DETECT)) +
-        static_cast<u8>(arg_bitset.test(BRAND)) +
-        static_cast<u8>(arg_bitset.test(TYPE)) +
-        static_cast<u8>(arg_bitset.test(CONCLUSION))
-    );
+        static_cast<u32>(arg_bitset.test(STDOUT)) +
+        static_cast<u32>(arg_bitset.test(PERCENT)) +
+        static_cast<u32>(arg_bitset.test(DETECT)) +
+        static_cast<u32>(arg_bitset.test(BRAND)) +
+        static_cast<u32>(arg_bitset.test(TYPE)) +
+        static_cast<u32>(arg_bitset.test(CONCLUSION))
+        );
 
     if (returners > 0) { // at least one of the options are set
         if (returners > 1) { // more than 2 options are set
