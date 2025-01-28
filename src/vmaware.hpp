@@ -10561,137 +10561,114 @@ static bool rdtsc() {
         } SYSTEM_FIRMWARE_TABLE_INFORMATION, * PSYSTEM_FIRMWARE_TABLE_INFORMATION;
 #pragma warning (default : 4459)
 
-        typedef NTSTATUS(NTAPI* PNtQuerySystemInformation)(
-            SYSTEM_INFORMATION_CLASS SystemInformationClass,
-            PVOID SystemInformation,
-            ULONG SystemInformationLength,
-            PULONG ReturnLength
-            );
+        typedef NTSTATUS(NTAPI* PNtQuerySystemInformation)(ULONG, PVOID, ULONG, PULONG);
+        constexpr ULONG STATUS_BUFFER_TOO_SMALL = 0xC0000023;
+        constexpr DWORD ACPI_SIG = 'ACPI';
+        constexpr DWORD RSMB_SIG = 'RSMB';
+        constexpr DWORD FIRM_SIG = 'FIRM';
+
+        const HMODULE hNtdll = GetModuleHandleA("ntdll.dll");
+        if (!hNtdll) return false;
+
+        const auto NtQuery = reinterpret_cast<PNtQuerySystemInformation>(
+            GetProcAddress(hNtdll, "NtQuerySystemInformation"));
+        if (!NtQuery) return false;
 
         const char* targets[] = {
-            "Parallels Software International",
-            "Parallels(R)",
-            "innotek",
-            "Oracle",
-            "VirtualBox",
-            "VS2005R2", // Microsoft Virtual Server 2005 R2 
-            "VMware, Inc.",
-            "VMware",
-            "S3 Corp."
+            "Parallels Software International", "Parallels(R)", "innotek",
+            "Oracle", "VirtualBox", "VS2005R2", "VMware, Inc.",
+            "VMware", "S3 Corp.", "Virtual Machine", "Qemu"
         };
 
-        // Check SMBIOS
-        const HMODULE hNtdll = GetModuleHandleA("ntdll.dll");
-        if (hNtdll) return false;
-#pragma warning (disable : 4191)
-        PNtQuerySystemInformation NtQuery = reinterpret_cast<PNtQuerySystemInformation>(
-            GetProcAddress(hNtdll, "NtQuerySystemInformation"));
-#pragma warning (default : 4191)
-        if (NtQuery) {
-            PSYSTEM_FIRMWARE_TABLE_INFORMATION info = static_cast<PSYSTEM_FIRMWARE_TABLE_INFORMATION>(
-                malloc(sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION)));
-            if (info) {
-                info->ProviderSignature = 'RSMB';
-                info->Action = 1;
-                info->TableID = 0;
-                info->TableBufferLength = 0;
+        auto check_firmware_table = [&](DWORD signature, ULONG tableID) -> bool {
+            PSYSTEM_FIRMWARE_TABLE_INFORMATION info = nullptr;
+            ULONG retLen = 0;
+            NTSTATUS status;
 
-                ULONG returnLength = 0;
-                NTSTATUS status = NtQuery(SystemFirmwareTableInformation, info, sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION), &returnLength);
-                if (status == 0xC0000023) { // STATUS_BUFFER_TOO_SMALL
-                    free(info);
-                    info = static_cast<PSYSTEM_FIRMWARE_TABLE_INFORMATION>(malloc(returnLength));
-                    if (info) {
-                        info->ProviderSignature = 'RSMB';
-                        info->Action = 1;
-                        info->TableID = 0;
-                        info->TableBufferLength = returnLength - sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION);
+            info = static_cast<PSYSTEM_FIRMWARE_TABLE_INFORMATION>(malloc(sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION)));
+            if (!info) return false;
 
-                        status = NtQuery(SystemFirmwareTableInformation, info, returnLength, &returnLength);
-                        if (status >= 0) {
-                            ULONG bufferSize = info->TableBufferLength;
-                            PVOID buffer = malloc(bufferSize);
-                            if (buffer) {
-                                memcpy(buffer, info->TableBuffer, bufferSize);
-                                // Check for targets
-                                for (size_t i = 0; i < sizeof(targets) / sizeof(targets[0]); ++i) {
-                                    const char* target = targets[i];
-                                    size_t targetLen = strlen(target);
-                                    if (targetLen == 0 || bufferSize < targetLen) continue;
-                                    for (size_t j = 0; j <= bufferSize - targetLen; ++j) {
-                                        if (memcmp(static_cast<const char*>(buffer) + j, target, targetLen) == 0) {
-                                            free(buffer);
-                                            free(info);
-                                            return true;
-                                        }
-                                    }
-                                }
-                                free(buffer);
-                            }
-                        }
-                    }
-                    free(info);
-                }
-                else {
-                    free(info);
-                }
-            }
-        }
-
-        // Check FIRM ROM
-        const ULONG addresses[] = { 0xC0000, 0xE0000 };
-        for (int addrIdx = 0; addrIdx < 2; ++addrIdx) {
-            PSYSTEM_FIRMWARE_TABLE_INFORMATION info = static_cast<PSYSTEM_FIRMWARE_TABLE_INFORMATION>(
-                malloc(sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION)));
-            if (!info) continue;
-
-            info->ProviderSignature = 'FIRM';
+            info->ProviderSignature = signature;
             info->Action = 1;
-            info->TableID = addresses[addrIdx];
+            info->TableID = tableID;
             info->TableBufferLength = 0;
 
-            ULONG returnLength = 0;
-            
-            NTSTATUS status = NtQuery(SystemFirmwareTableInformation, info, sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION), &returnLength);
-            if (status == 0xC0000023) { // STATUS_BUFFER_TOO_SMALL
+            status = NtQuery(76, info, sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION), &retLen);
+            if (status == STATUS_BUFFER_TOO_SMALL) {
                 free(info);
-                info = static_cast<PSYSTEM_FIRMWARE_TABLE_INFORMATION>(malloc(returnLength));
-                if (info) {
-                    info->ProviderSignature = 'FIRM';
-                    info->Action = 1;
-                    info->TableID = addresses[addrIdx];
-                    info->TableBufferLength = returnLength - sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION);
+                info = static_cast<PSYSTEM_FIRMWARE_TABLE_INFORMATION>(malloc(retLen));
+                if (!info) return false;
 
-                    status = NtQuery(SystemFirmwareTableInformation, info, returnLength, &returnLength);
-                    if (status >= 0) {
-                        ULONG bufferSize = info->TableBufferLength;
-                        PVOID buffer = malloc(bufferSize);
-                        if (buffer) {
-                            memcpy(buffer, info->TableBuffer, bufferSize);
-                            // Check for targets
-                            for (size_t i = 0; i < sizeof(targets) / sizeof(targets[0]); ++i) {
-                                const char* target = targets[i];
-                                size_t targetLen = strlen(target);
-                                if (targetLen == 0 || bufferSize < targetLen) continue;
-                                for (size_t j = 0; j <= bufferSize - targetLen; ++j) {
-                                    if (memcmp(static_cast<const char*>(buffer) + j, target, targetLen) == 0) {
-                                        free(buffer);
-                                        free(info);
-                                        return true;
-                                    }
+                info->ProviderSignature = signature;
+                info->Action = 1;
+                info->TableID = tableID;
+                info->TableBufferLength = retLen - sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION);
+
+                status = NtQuery(76, info, retLen, &retLen);
+                if (status >= 0) {
+                    void* buffer = malloc(info->TableBufferLength);
+                    if (buffer) {
+                        memcpy(buffer, info->TableBuffer, info->TableBufferLength);
+                        for (const char* target : targets) {
+                            size_t len = strlen(target);
+                            for (size_t j = 0; j <= info->TableBufferLength - len; ++j) {
+                                if (memcmp((char*)buffer + j, target, len) == 0) {
+                                    free(buffer);
+                                    free(info);
+                                    return true;
                                 }
                             }
-                            free(buffer);
                         }
+                        free(buffer);
                     }
                 }
-                free(info);
             }
-            else {
-                free(info);
-            }
+            free(info);
+            return false;
+            };
+
+        if (check_firmware_table(RSMB_SIG, 0)) return true;
+        for (ULONG addr : { 0xC0000, 0xE0000 }) {
+            if (check_firmware_table(FIRM_SIG, addr)) return true;
         }
 
+        PSYSTEM_FIRMWARE_TABLE_INFORMATION acpiEnum = nullptr;
+        ULONG retLen = 0;
+        NTSTATUS status;
+
+        acpiEnum = static_cast<PSYSTEM_FIRMWARE_TABLE_INFORMATION>(malloc(sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION)));
+        if (!acpiEnum) return false;
+
+        acpiEnum->ProviderSignature = ACPI_SIG;
+        acpiEnum->Action = 0;
+        acpiEnum->TableID = 0;
+        acpiEnum->TableBufferLength = 0;
+
+        status = NtQuery(76, acpiEnum, sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION), &retLen);
+        if (status == STATUS_BUFFER_TOO_SMALL) {
+            free(acpiEnum);
+            acpiEnum = static_cast<PSYSTEM_FIRMWARE_TABLE_INFORMATION>(malloc(retLen));
+            if (!acpiEnum) return false;
+
+            acpiEnum->ProviderSignature = ACPI_SIG;
+            acpiEnum->Action = 0;
+            acpiEnum->TableID = 0;
+            acpiEnum->TableBufferLength = retLen - sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION);
+
+            status = NtQuery(76, acpiEnum, retLen, &retLen);
+            if (status >= 0) {
+                const DWORD* tables = reinterpret_cast<const DWORD*>(acpiEnum->TableBuffer);
+                ULONG tableCount = acpiEnum->TableBufferLength / sizeof(DWORD);
+
+                for (ULONG t = 0; t < tableCount; ++t) {
+                    if (check_firmware_table(ACPI_SIG, tables[t])) {
+                        free(acpiEnum);
+                        return true;
+                    }
+                }
+            }
+        }
+        free(acpiEnum);
         return false;
 #endif
     }
