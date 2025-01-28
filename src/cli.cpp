@@ -382,6 +382,7 @@ bool is_unsupported(VM::enum_flags flag) {
 			case VM::SYS_QEMU:
 			case VM::LSHW_QEMU:
 			case VM::AMD_SEV:
+			case VM::AMD_THREAD_MISMATCH:
             // ADD LINUX FLAG
             return false;
             default: return true;
@@ -473,6 +474,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::MOTHERBOARD_PRODUCT:
             case VM::HYPERV_QUERY:
             case VM::BAD_POOLS:
+			case VM::AMD_THREAD_MISMATCH:
             // ADD WINDOWS FLAG
             return false;
             default: return true;
@@ -504,6 +506,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::KVM_BITMASK:
             case VM::KGT_SIGNATURE:
 			case VM::AMD_SEV:
+			case VM::AMD_THREAD_MISMATCH:
             // ADD MACOS FLAG
             return false;
             default: return true;
@@ -999,6 +1002,7 @@ void general() {
     checker(VM::BAD_POOLS, "bad memory pools");
 	checker(VM::AMD_SEV, "AMD-SEV MSR");
     checker(VM::AMD_RESERVED, "AMD reserved bits");
+	checker(VM::AMD_THREAD_MISMATCH, "AMD thread count mismatch");
     // ADD NEW TECHNIQUE CHECKER HERE
 
     std::printf("\n");

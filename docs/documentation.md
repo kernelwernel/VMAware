@@ -458,6 +458,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::BAD_POOLS` | Checks for system pools allocated by hypervisors | Windows | 80% |  |  |  |  |
 | `VM::AMD_SEV` | Check for AMD-SEV MSR running on the system | Linux and MacOS | 50% | Admin |  |  |  |
 | `VM::AMD_RESERVED` | Check for bits that should be reserved in leaf 8000000Ah | 50% |  |  |  |  |
+| `VM::AMD_THREAD_MISMATCH` | Check for AMD CPU thread count database if it matches the system's thread count |  | 100% |  |  |  |  |
 <!-- ADD DETAILS HERE -->
 
 <br>
