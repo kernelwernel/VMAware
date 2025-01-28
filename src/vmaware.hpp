@@ -3305,12 +3305,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         __asm__ __volatile__("sidt %0" : "=m"(values));
 
 #ifdef __VMAWARE_DEBUG__
-        u64 result = 0;
-        for (u8 i = 0; i < 10; i++) {
-            result <<= 8;
-            result |= values[i];
+        debug("SIDT5: values = ");
+        for (u8 i = 0; i < 10; ++i) {
+            debug(std::hex, std::setw(2), std::setfill('0'), static_cast<unsigned>(values[i]));
+            if (i < 9) debug(" ");
         }
-        debug("SIDT5: ", "values = 0x", std::hex, std::setw(16), std::setfill('0'), result);
 #endif
 
         return (values[9] == 0x00);  // 10th byte in x64 mode
@@ -3320,12 +3319,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         __asm__ __volatile__("sidt %0" : "=m"(values));
 
 #ifdef __VMAWARE_DEBUG__
-        u32 result = 0;
-        for (u8 i = 0; i < 6; i++) {
-            result <<= 8;
-            result |= values[i];
+        debug("SIDT5: values = ");
+        for (u8 i = 0; i < 6; ++i) {
+            debug(std::hex, std::setw(2), std::setfill('0'), static_cast<unsigned>(values[i]));
+            if (i < 5) debug(" ");
         }
-        debug("SIDT5: ", "values = 0x", std::hex, std::setw(16), std::setfill('0'), result);
 #endif
 
         return (values[5] == 0x00);  // 6th byte in x86 mode
@@ -3335,7 +3333,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
 
 #else
-        return false; 
+        return false;
 #endif
     }
 
@@ -3711,7 +3709,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-    #if (LINUX)
+#if (LINUX)
         auto get_distro = []() -> std::string {
             std::ifstream osReleaseFile("/etc/os-release");
             std::string line;
@@ -3727,7 +3725,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             return "unknown";
-        };
+            };
 
         const std::string distro = get_distro();
 
@@ -3745,7 +3743,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             "gentoo" == distro ||
             "fedora" == distro ||
             "debian" == distro
-        ) {
+            ) {
             return ((8 == disk) && (1 == ram));
         }
 
@@ -3756,7 +3754,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if ("ol" == distro) { // ol = oracle
             return ((12 == disk) && (1 == ram));
         }
-    #elif (WINDOWS)
+
+        return false;
+#elif (WINDOWS)
         const u8 version = util::get_windows_version();
 
         if (version < 10) {
@@ -3772,7 +3772,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // Windows 11 check (version 11+)
         debug("VBOX_DEFAULT: Windows 11 detected");
         return ((80 == disk) && (4 == ram));
-    #endif
+#endif
 #endif
     }
 
@@ -10399,12 +10399,12 @@ static bool rdtsc() {
 	
 	        bool found = false;
 	
-	        for (const auto& pair : thread_database) {
-	            if (model.find(pair.first) != std::string::npos) {
-	                found = (std::thread::hardware_concurrency() == pair.second);
-	                break;
-	            }
-	        }
+            for (const auto& pair : thread_database) {
+                if (model.find(pair.first) != std::string::npos) {
+                    found = (std::thread::hardware_concurrency() == static_cast<unsigned>(pair.second));
+                    break;
+                }
+            }
 	
 	        return found;
 #endif
