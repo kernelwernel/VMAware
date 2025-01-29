@@ -459,6 +459,9 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::AMD_SEV` | Check for AMD-SEV MSR running on the system | Linux and MacOS | 50% | Admin |  |  |  |
 | `VM::AMD_RESERVED` | Check for bits that should be reserved in leaf 8000000Ah | 50% |  |  |  |  |
 | `VM::AMD_THREAD_MISMATCH` | Check for AMD CPU thread count database if it matches the system's thread count |  | 100% |  |  |  |  |
+| `VM::NATIVE_VHD` | Checks if the OS was booted from a VHD container |  | 100% |  |  |  |  |
+| `VM::VIRTUAL_REGISTRY` | Checks for particular object directory which is present in Sandboxie virtual environment but not in usual host systems |  | 65% |  |  |  |  |
+| `VM::FIRMWARE_SCAN` | Checks for VM signatures in firmware |  | 90% |  |  |  |  |
 <!-- ADD DETAILS HERE -->
 
 <br>
