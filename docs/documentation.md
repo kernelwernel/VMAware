@@ -457,7 +457,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::HYPERV_QUERY` | Checks if a call to NtQuerySystemInformation with the 0x9f leaf fills a _SYSTEM_HYPERVISOR_DETAIL_INFORMATION structure | Windows | 50% |  |  |  |  |
 | `VM::BAD_POOLS` | Checks for system pools allocated by hypervisors | Windows | 80% |  |  |  |  |
 | `VM::AMD_SEV` | Check for AMD-SEV MSR running on the system | Linux and MacOS | 50% | Admin |  |  |  |
-| `VM::AMD_RESERVED` | Check for bits that should be reserved in leaf 8000000Ah | 50% |  |  |  |  |
+| `VM::AMD_RESERVED` | Check for bits that should be reserved in leaf 8000000Ah |  | 50% |  |  |  |
 | `VM::AMD_THREAD_MISMATCH` | Check for AMD CPU thread count database if it matches the system's thread count |  | 100% |  |  |  |  |
 | `VM::NATIVE_VHD` | Checks if the OS was booted from a VHD container |  | 100% |  |  |  |  |
 | `VM::VIRTUAL_REGISTRY` | Checks for particular object directory which is present in Sandboxie virtual environment but not in usual host systems |  | 65% |  |  |  |  |
@@ -520,7 +520,6 @@ This is the table of all the brands the lib supports.
 | Hyper-V artifact (not an actual VM) | `VM::brands::HYPERV_ARTIFACT` | Unknown |  |
 | User-mode Linux | `VM::brands::UML` | Paravirtualised/Hypervisor (type 2) |  |
 | IBM PowerVM | `VM::brands::POWERVM` | Hypervisor (type 1) |  |
-| Google Compute Engine (KVM) | `VM::brands::GCE` | Hypervisor (type 1) |  |
 | OpenStack (KVM) | `VM::brands::OPENSTACK` | Hypervisor (type 1) |  |
 | KubeVirt (KVM) | `VM::brands::KUBEVIRT` | Hypervisor (type 1) |  |
 | AWS Nitro System EC2 (KVM-based) | `VM::brands::AWS_NITRO` | Hypervisor (type 1) |  |
@@ -537,6 +536,7 @@ This is the table of all the brands the lib supports.
 | AMD SEV-ES | `VM::brands::AMD_SEV_ES` | VM encryptor |  |
 | AMD SEV-SNP | `VM::brands::AMD_SEV_SNP` | VM encryptor |  |
 | Neko Project II | `VM::brands::NEKO_PROJECT` | Emulator |  | 
+| Google Compute Engine (KVM) | `VM::brands::GCE` | Cloud VM service |  |
 
 <br>
 
