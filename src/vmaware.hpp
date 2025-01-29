@@ -590,6 +590,7 @@ public:
         static constexpr const char* AMD_SEV_ES = "AMD SEV-ES";
         static constexpr const char* AMD_SEV_SNP = "AMD SEV-SNP";
         static constexpr const char* NEKO_PROJECT = "Neko Project II";
+        static constexpr const char* NOIRVISOR = "NoirVisor";
         static constexpr const char* NULL_BRAND = "Unknown";
     };
 
@@ -983,7 +984,8 @@ public:
                 minivisor = "MiniVisor\0\0\0",
                 intel_tdx = "IntelTDX    ", // source: virt-what
                 lkvm = "LKVMLKVMLKVM",
-                neko = "Neko Project";
+                neko = "Neko Project",
+                noir = "NoirVisor ZT";
 
             const std::array<std::string, 2> brand_strings = cpu_manufacturer(p_leaf);
             debug(technique_name, brand_strings.at(0));
@@ -1019,6 +1021,8 @@ public:
                 if (brand_str == intel_tdx) { return core::add(brands::INTEL_TDX); }
                 if (brand_str == lkvm) { return core::add(brands::LKVM); }
                 if (brand_str == neko) { return core::add(brands::NEKO_PROJECT); }
+                if (brand_str == noir) { return core::add(brands::NOIRVISOR); }
+
 
                 // both Hyper-V and VirtualPC have the same string value
                 if (brand_str == hyperv) {
@@ -11567,6 +11571,7 @@ public: // START OF PUBLIC FUNCTIONS
             { brands::POWERVM, "Hypervisor (type 1)" },
             { brands::AWS_NITRO, "Hypervisor (type 1)" },
             { brands::LKVM, "Hypervisor (type 1)" },
+            { brands::NOIRVISOR, "Hypervisor (type 1)" },
 
             // type 2
             { brands::BHYVE, "Hypervisor (type 2)" },
@@ -11812,6 +11817,7 @@ std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard{
     { VM::brands::AMD_SEV_ES, 0 },
     { VM::brands::AMD_SEV_SNP, 0 },
     { VM::brands::NEKO_PROJECT, 0 },
+    { VM::brands::NOIRVISOR, 0 },
     { VM::brands::NULL_BRAND, 0 }
 };
 
