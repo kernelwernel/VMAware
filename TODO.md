@@ -2,9 +2,9 @@
 - [ ] add github metrics for license (looks cool af)
 - [ ] organise the registry existence function better and group them together as a single utility function
 - [ ] add C++20 concepts for the VM::add_custom() function
+- [ ] add c++20 module support 
 - [ ] upload the lib to dnf 
 - [ ] upload the lib to apt 
-- [ ] add c++20 module support 
 - [ ] make a man file in markdown for the cli tool
 - [ ] implement techniques from here https://stackoverflow.com/questions/43026032/detect-running-on-virtual-machine
 - [ ] add a .clang_format thingy
@@ -21,11 +21,12 @@
 - [ ] update sourceforge
 - [ ] rearrange the techniques so that the more likely ones will be executed first
 - [ ] update the conclusion with the VM type
-- [ ] add a description of every vm brand detected in the CLI
 - [ ] make a hardware scanner module where it'll find for VM strings in all sorts of devices
 - [ ] add more QEMU techniques
 - [ ] implement techniques from here https://www.cyberciti.biz/faq/linux-determine-virtualization-technology-command/
 - [ ] implement techniques from virt-what
+- [ ] https://cloud.google.com/compute/docs/instances/detect-compute-engine
+- [ ] support the odd_thread_count technique for AMD
 
 # Distant plans
 - add the library to conan.io when released

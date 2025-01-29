@@ -370,10 +370,8 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::RDTSC_VMEXIT` | check through alternative RDTSC technique with VMEXIT |  | 25% |  |  |  | Disabled by default |
 | `VM::QEMU_BRAND` | Match for QEMU CPU brands with "QEMU Virtual CPU" string |  | 100% |  |  |  |  |
 | `VM::BOCHS_CPU` | Check for various Bochs-related emulation oversights through CPU checks |  | 95% |  |  |  |  |
-| `VM::HYPERV_WMI` | Check WMI query for "Hyper-V RAW" string | Windows | 80% |  |  |  |  |
-| `VM::HYPERV_REG` | Check presence for Hyper-V specific string in registry | Windows | 80% |  |  |  |  |
 | `VM::BIOS_SERIAL` | Check if the BIOS serial is valid (null = VM) | Windows | 60% |  |  |  |  |
-| `VM::MSSMBIOS` | Check MSSMBIOS registry for VM-specific strings | Windows | 75% |  |  |  |  |
+| `VM::MSSMBIOS` | Check MSSMBIOS registry for VM-specific strings | Windows | 85% |  |  |  |  |
 | `VM::MAC_MEMSIZE` | Check if memory is too low for MacOS system | MacOS | 30% |  |  |  |  |
 | `VM::MAC_IOKIT` | Check MacOS' IO kit registry for VM-specific strings | MacOS | 80% |  |  |  |  |
 | `VM::IOREG_GREP` | Check for VM-strings in ioreg commands for MacOS | MacOS | 75% |  |  |  |  |
@@ -398,7 +396,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::SMSW` | Check for SMSW assembly instruction technique | Windows | 30% |  |  | 32-bit |  |
 | `VM::MUTEX` | Check for mutex strings of VM brands | Windows | 85% |  |  |  |  |
 | `VM::ODD_CPU_THREADS` | Check for odd CPU threads, usually a sign of modification through VM setting because 99% of CPUs have even numbers of threads |  | 80% |  |  |  |  |
-| `VM::INTEL_THREAD_MISMATCH` | Check for Intel CPU thread count database if it matches the system's thread count |  | 60% |  |  |  |  |
+| `VM::INTEL_THREAD_MISMATCH` | Check for Intel CPU thread count database if it matches the system's thread count |  | 100% |  |  |  |  |
 | `VM::XEON_THREAD_MISMATCH` | Same as above, but for Xeon Intel CPUs |  | 85% |  |  |  |  |
 | `VM::NETTITUDE_VM_MEMORY` | Check for memory regions to detect VM-specific brands | Windows | 75% |  |  |  |  |
 | `VM::CPUID_BITSET` |  Check for CPUID technique by checking whether all the bits equate to more than 4000 |  | 20% |  |  |  |  |
@@ -435,13 +433,13 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::VM_SIDT` | Check for the IDT base address | Windows | 75% |  |  |  |  |
 | `VM::HDD_SERIAL` | Check for HDD serial number | Windows | 100% |  |  |  |  |
 | `VM::PORT_CONNECTORS` | Check for physical connection ports | Windows | 50% |  |  |  |  |
-| `VM::VM_HDD` | Check for QEMU keyword in HDD model | Windows | 75% |  |  |  |  |
+| `VM::VM_HDD` | Check for VM related keywords in HDD models | Windows | 75% |  |  |  |  |
 | `VM::ACPI_DETECT` | Check for VM related strings in ACPI data | Windows | 85% |  |  |  |  |
 | `VM::GPU_NAME` | Check for VM specific device names in GPUs | Windows | 100% |  |  |  |  |
 | `VM::VM_DEVICES` | Check for VM-specific devices | Windows | 45% |  |  |  |  |
-| `VM::VMWARE_MEMORY` | Check for VMware-specific memory traces in certain processes | Windows | 50% |  |  |  |  |
+| `VM::VMWARE_MEMORY` | Check for specific VM memory traces in certain processes | Windows | 80% |  |  |  |  |
 | `VM::IDT_GDT_MISMATCH` | Check if the IDT and GDT limit addresses mismatch between different CPU cores | Windows | 25% |  |  |  |  |
-| `VM::PROCESSOR_NUMBER` | Check for number of processors | Windows | 25% |  |  |  |  |
+| `VM::PROCESSOR_NUMBER` | Check for number of processors | Windows | 50% |  |  |  |  |
 | `VM::NUMBER_OF_CORES` | Check for number of cores | Windows | 50% |  |  |  |  |
 | `VM::WMI_MODEL` | Check for device's model using WMI | Windows | 100% |  |  |  |  |
 | `VM::WMI_MANUFACTURER` | Check for device's manufacturer using WMI | Windows | 100% |  |  |  |  |
@@ -457,6 +455,13 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::VIRTUAL_PROCESSORS` | Checks if the number of maximum virtual processors matches the maximum number of logical processors | Windows | 50% |  |  |  |  |
 | `VM::MOTHERBOARD_PRODUCT` | Check if the motherboard product string matches "Virtual Machine" | Windows | 50% |  |  |  |  |
 | `VM::HYPERV_QUERY` | Checks if a call to NtQuerySystemInformation with the 0x9f leaf fills a _SYSTEM_HYPERVISOR_DETAIL_INFORMATION structure | Windows | 50% |  |  |  |  |
+| `VM::BAD_POOLS` | Checks for system pools allocated by hypervisors | Windows | 80% |  |  |  |  |
+| `VM::AMD_SEV` | Check for AMD-SEV MSR running on the system | Linux and MacOS | 50% | Admin |  |  |  |
+| `VM::AMD_RESERVED` | Check for bits that should be reserved in leaf 8000000Ah | 50% |  |  |  |  |
+| `VM::AMD_THREAD_MISMATCH` | Check for AMD CPU thread count database if it matches the system's thread count |  | 100% |  |  |  |  |
+| `VM::NATIVE_VHD` | Checks if the OS was booted from a VHD container |  | 100% |  |  |  |  |
+| `VM::VIRTUAL_REGISTRY` | Checks for particular object directory which is present in Sandboxie virtual environment but not in usual host systems |  | 65% |  |  |  |  |
+| `VM::FIRMWARE_SCAN` | Checks for VM signatures in firmware |  | 90% |  |  |  |  |
 <!-- ADD DETAILS HERE -->
 
 <br>
@@ -484,7 +489,6 @@ This is the table of all the brands the lib supports.
 | QEMU+KVM Hyper-V Enlightenment | `VM::brands::QEMU_KVM_HYPERV` | Hypervisor (type 1) |  |
 | Microsoft Hyper-V | `VM::brands::HYPERV` | Hypervisor (type 1) |  |
 | Microsoft Virtual PC/Hyper-V | `VM::brands::HYPERV_VPC` | Hypervisor (either type 1 or 2) |  |
-| Microsoft x86-to-ARM | `VM::brands::MSXTA` | Emulator |  |
 | Parallels | `VM::brands::PARALLELS` | Hypervisor (type 2) |  |
 | Xen HVM | `VM::brands::XEN` | Hypervisor (type 1) |  |
 | ACRN | `VM::brands::ACRN` | Hypervisor (type 1) |  |
@@ -493,7 +497,6 @@ This is the table of all the brands the lib supports.
 | Sandboxie | `VM::brands::SANDBOXIE` | Sandbox |  |
 | Docker | `VM::brands::DOCKER` | Container |  |
 | Wine | `VM::brands::WINE` | Compatibility layer |  |
-| Apple Rosetta 2 | `VM::brands::APPLE_ROSETTA` | Binary Translation Layer/Emulator | Debatable if this should even be in the lib in the first place |
 | Virtual PC  | `VM::brands::VPC` | Hypervisor (type 2) |  |
 | Anubis | `VM::brands::ANUBIS` | Sandbox |  |
 | JoeBox | `VM::brands::JOEBOX` | Sandbox |  |
@@ -528,10 +531,12 @@ This is the table of all the brands the lib supports.
 | Barevisor | `VM::brands::BAREVISOR` | Hypervisor (type 1) |  |
 | HyperPlatform | `VM::brands::HYPERPLATFORM` | Hypervisor (type 1) |  |
 | MiniVisor | `VM::brands::MINIVISOR` | Hypervisor (type 1) |  |
-| Microsoft Prism | `VM::brands::MICROSOFT_PRISM` | Emulator |  |
-| Microsoft x86 Emulator | `VM::brands::MICROSOFT_X86_EMU` | Emulator |  |
 | Intel TDX | `VM::brands::INTEL_TDX` | Trusted Domain |  |
 | LKVM | `VM::brands::LKVM` | Hypervisor (type 1) |  |
+| AMD SEV | `VM::brands::AMD_SEV` | VM encryptor |  |
+| AMD SEV-ES | `VM::brands::AMD_SEV_ES` | VM encryptor |  |
+| AMD SEV-SNP | `VM::brands::AMD_SEV_SNP` | VM encryptor |  |
+| Neko Project II | `VM::brands::NEKO_PROJECT` | Emulator |  | 
 
 <br>
 
@@ -575,6 +580,7 @@ This is the table of all the brands the lib supports.
 |    | --dynamic | allow the conclusion message to be dynamic (8 possibilities instead of only 2) |
 |    | --verbose | add more information to the output  |
 |    | --compact | ignore the unsupported techniques from the CLI output and thus make it more compact |
+|    | --mit | ignore the GPL techniques and run only the MIT-supported ones |
 > [!NOTE]
-> If you want a general result of everything combined above, do not put any arguments. This is the intended way to use the CLI tool.
+> If you want a general result with the default settings, do not put any arguments. This is the intended way to use the CLI tool.
 >

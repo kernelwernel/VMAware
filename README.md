@@ -17,7 +17,7 @@ The library is:
 - Features up to 120+ unique VM detection techniques [[list](https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#flag-table)]
 - Features the most cutting-edge techniques
 - Able to detect 50+ VM brands including VMware, VirtualBox, QEMU, Hyper-V, and much more [[list](https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#brand-table)]
-- Able to beat certain [VM hardeners](https://github.com/hzqst/VmwareHardenedLoader)
+- Able to beat VM hardeners
 - Compatible with x86 and ARM, with backwards compatibility for 32-bit systems
 - Very flexible, with total fine-grained control over which techniques get executed
 - Able to detect various VM and semi-VM technologies like hypervisors, emulators, containers, sandboxes, and so on
@@ -149,7 +149,7 @@ You can view the full docs [here](docs/documentation.md). All the details such a
 <summary>How does it work?</summary>
 <br>
 
-> It utilises a comprehensive list of low-level (CPU, GPU, HDD, and firmware) and high-level anti-VM techniques that gets accounted in a scoring system. The scores (0-100) for each technique are arbitrarily given, and every technique that has detected a VM will have their score added to a single accumulative point, where a threshold point number will decide whether it's actually running in a VM.
+> It utilises a comprehensive list of low-level and high-level anti-VM techniques that gets accounted in a scoring system. The scores (0-100) for each technique are arbitrarily given, and every technique that has detected a VM will have their score added to a single accumulative point, where a threshold point number will decide whether it's actually running in a VM.
 
 </details>
 
@@ -157,7 +157,7 @@ You can view the full docs [here](docs/documentation.md). All the details such a
 <summary>Who is this library for and what are the use cases?</summary>
 <br>
 
-> It's designed for security researchers, VM engineers, gamer developers, and pretty much anybody who needs a practical and rock-solid VM detection mechanism in their project. For example, the library is suitable if you're making a VM and you're testing the effectiveness of concealing itself. If you're a game developer or a proprietary software developer, the library is useful to thwart against reverse engineers. If you're a malware analyst and you want to check the concealment capability of your VM, this would be the perfect tool to benchmark how well-concealed your VM is against malware. 
+> It's designed for security researchers, VM engineers, gamer developers, and pretty much anybody who needs a practical and rock-solid VM detection mechanism in their project. For example, the library is suitable if you're making a VM and you're testing the effectiveness of concealing itself. If you're a proprietary software developer, the library is useful to thwart against reverse engineers. If you're a malware analyst and you want to check the concealment capability of your VM, this would be the perfect tool to benchmark how well-concealed your VM is against malware. 
 > 
 > Additionally, software could adjust the behaviour of their program base on the detected environment. It could be useful for debugging and testing purposes, system administrators could manage configurations differently, and some applications might want to restrict usage in VMs to prevent unauthorized distribution or testing.
 
@@ -169,6 +169,7 @@ You can view the full docs [here](docs/documentation.md). All the details such a
 
 > There's already loads of projects that have the same goal such as 
 <a href="https://github.com/CheckPointSW/InviZzzible">InviZzzible</a>, <a href="https://github.com/a0rtega/pafish">pafish</a> and <a href="https://github.com/LordNoteworthy/al-khaser">Al-Khaser</a>. But the difference between the aforementioned projects is that they don't provide a programmable interface to interact with the detection mechanisms, on top of having little to no support for non-Windows systems. 
+> Pafish and InviZzzible have been abandoned for years, while Al-Khaser does receive updates and has a wide scope of detection that includes anti-debuggers, anti-injection, and so on, but the VM detections are not sophisticated enough to be practically applied to real-world scenarios, while most of the technique they implement are bypassable.
 > 
 > I wanted the core detection techniques to be accessible programmatically in a cross-platform way for everybody to get something useful out of it rather than providing just a CLI tool. It also contains a larger quantity of techniques, so it's basically just a VM detection library and tool on steroids with maximum flexibility.
 
@@ -179,9 +180,9 @@ You can view the full docs [here](docs/documentation.md). All the details such a
 <summary>How does it compare to paid VM detection libraries? Wouldn't it make it inferior for having it open source?</summary>
 <br>
 
-> There are a few paid software to protect the licensing of other software against against reverse engineers or software cracking, such as <a href="https://docs.sentinel.thalesgroup.com/home.htm">Thales' Sentinel RMS</a> and <a href="https://vmpsoft.com/">VMProtect</a>. Although these are not meant to ONLY be VM detection libraries, they are limited in their capabilities in different ways. Sentinel RMS' VM detection does not have as many VM brands (not to mention the pricing is only meant for corporations, not individuals), and VMProtect has a <a href="https://cyber.wtf/2023/02/09/defeating-vmprotects-latest-tricks/">very limited number of detection techniques</a>, where some of them don't require a lot of effort to bypass with only a few configurations to the VM (the detection mechanism has also been <a href="https://github.com/jmpoep/vmprotect-3.5.1/blob/d8fcb7c0ffd4fb45a8cfbd770c8b117d7dbe52b5/runtime/loader.cc#L2464">leaked</a>, so there's no benefit of having it closed source now).
+> There are several paid software solutions available for protecting software licenses from reverse engineering or cracking, such as <a href="https://docs.sentinel.thalesgroup.com/home.htm">Thales' Sentinel RMS</a> and <a href="https://vmpsoft.com/">VMProtect</a>. These tools include VM detection as part of their feature set, though their primary focus is not VM detection unlike this project.
 > 
-> Speaking of which, the only downside to VMAware is that it's fully open source, which makes the job of bypassers easier compared to having it closed source. However, I'd argue that's a worthy tradeoff by having as many VM detection techniques in an open and interactive way, including having valuable community feedback to make the library more effective and accurate.
+> Speaking of which, the only downside to VMAware is that it's fully open source, which makes the job of bypassers easier compared to having it closed source. However, I'd argue that's a worthy tradeoff by having as many VM detection techniques in an open and interactive way, including having valuable community feedback to make the library more effective and accurate. 
 
 </details>
 
@@ -204,7 +205,7 @@ You can view the full docs [here](docs/documentation.md). All the details such a
 <summary>How effective are VM hardeners against the lib?</summary>
 <br>
 
-> Hardeners like [VmwareHardenedLoader](https://github.com/hzqst/VmwareHardenedLoader) are not effective (specifically because that project doesn't take into account VM strings on the GPU and has certain flaws in its design), but this doesn't mean that the lib is immune to hardeners. The project is by far the most famous one we know, and that's why we created a bypass against it as our main focus. Custom hardeners that we may not be aware of might have a theoretical advantage, but they are substantially more difficult to produce.
+> Publicly known hardeners are not effective and most of them on Windows have been beaten, but this doesn't mean that the lib is immune to them. We challenged the most famous ones we know, and that's why we created a bypass against them as our main focus. Custom hardeners that we may not be aware of might have a theoretical advantage, but they are substantially more difficult to produce.
 
 </details>
 
@@ -231,7 +232,7 @@ You can view the full docs [here](docs/documentation.md). All the details such a
 
 > I would've made it strictly MIT so proprietary software can make use of the library, but some of the techniques employed are from GPL 3.0 projects, and I have no choice but to use the same license for legal reasons. 
 > 
-> This gave me an idea to make an MIT version without all of the GPL code so it can also be used without forcing your code to be open-source. It should be noted that the MIT version removes <b>12</b> techniques out of 116 (as of 1.9 version), and the lesser the number of techniques, the less accurate the overall result might be.
+> This gave me an idea to make an MIT version without all of the GPL code so it can also be used without forcing your code to be open-source. It should be noted that the MIT version removes <b>9</b> techniques out of 120 (as of 2.0 version), and the lesser the number of techniques, the less accurate the overall result might be.
 
 </details>
 
@@ -245,8 +246,8 @@ You can view the full docs [here](docs/documentation.md). All the details such a
 
 <br>
 
-## Issues and pull requests 📬
-If you have any suggestions, ideas, or any sort of contribution, feel free to ask! I'll be more than happy to discuss in the [issue](https://github.com/kernelwernel/VMAware/issues) section. If you want to personally ask something in private, my discord is `kr.nl`
+## Issues, discussions, pull requests, and inquiries 📬
+If you have any suggestions, ideas, or any sort of contribution, feel free to ask! I'll be more than happy to discuss either in the [issue](https://github.com/kernelwernel/VMAware/issues) or [discussion](https://github.com/kernelwernel/VMAware/discussions) sections, I usually reply fairly quickly. If you want to personally ask something in private, my discord is `kr.nl`
 
 And if you found this project useful, a star would be appreciated :)
 
@@ -287,4 +288,4 @@ And if you found this project useful, a star would be appreciated :)
 ## Legal 📜
 I am not responsible nor liable for any damage you cause through any malicious usage of this project. 
 
-![Metrics](/assets/metrics.plugin.licenses.svg)
+License: GPL-3.0/MIT
