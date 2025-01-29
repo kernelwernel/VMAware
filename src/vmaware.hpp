@@ -24,14 +24,14 @@
  *
  *
  * ================================ SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 328
- * - struct for internal cpu operations        => line 603
- * - struct for internal memoization           => line 1059
- * - struct for internal utility functions     => line 1449
- * - struct for internal core components       => line 9714
- * - start of internal VM detection techniques => line 2861
- * - start of public VM detection functions    => line 10116
- * - start of externally defined variables     => line 10987
+ * - enums for publicly accessible techniques  => line 338
+ * - struct for internal cpu operations        => line 620
+ * - struct for internal memoization           => line 1078
+ * - struct for internal utility functions     => line 1472
+ * - struct for internal core components       => line 10709
+ * - start of internal VM detection techniques => line 2831
+ * - start of public VM detection functions    => line 11113
+ * - start of externally defined variables     => line 12018
  *
  *
  * ================================ EXAMPLE ==================================
@@ -9021,6 +9021,19 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
             }
         }
+
+        query = L"SELECT Model FROM Win32_ComputerSystem";
+        properties = { L"Model" };
+        results = wmi::execute(query, properties);
+
+        for (const auto& result : results) {
+            if (result.type == wmi::result_type::String) {
+                if (result.strValue == "Google Compute Engine") {
+                    return core::add(brands::GCE);
+                }
+            }
+        }
+
         return false;
 #endif
     }
@@ -11824,7 +11837,6 @@ public: // START OF PUBLIC FUNCTIONS
             { brands::INTEL_HAXM, "Hypervisor (type 1)" },
             { brands::INTEL_KGT, "Hypervisor (type 1)" },
             { brands::SIMPLEVISOR, "Hypervisor (type 1)" },
-            { brands::GCE, "Hypervisor (type 1)" },
             { brands::OPENSTACK, "Hypervisor (type 1)" },
             { brands::KUBEVIRT, "Hypervisor (type 1)" },
             { brands::POWERVM, "Hypervisor (type 1)" },
@@ -11868,9 +11880,6 @@ public: // START OF PUBLIC FUNCTIONS
             { brands::LMHS, "Hypervisor (unknown type)" },
             { brands::WINE, "Compatibility layer" },
             { brands::INTEL_TDX, "Trusted Domain" },
-            { brands::AMD_SEV, "" },
-            { brands::AMD_SEV_ES, "" },
-            { brands::AMD_SEV_SNP, "" },
             { brands::APPLE_VZ, "Unknown" },
             { brands::HYPERV_ARTIFACT, "Unknown" },
             { brands::UML, "Paravirtualised/Hypervisor (type 2)" },
@@ -11878,6 +11887,7 @@ public: // START OF PUBLIC FUNCTIONS
             { brands::AMD_SEV, "VM encryptor" },
             { brands::AMD_SEV_ES, "VM encryptor" },
             { brands::AMD_SEV_SNP, "VM encryptor" },
+            { brands::GCE, "Cloud VM service" },
         };
 
         auto it = type_table.find(brand_str.c_str());
