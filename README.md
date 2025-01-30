@@ -157,7 +157,7 @@ You can view the full docs [here](docs/documentation.md). All the details such a
 <summary>Who is this library for and what are the use cases?</summary>
 <br>
 
-> It's designed for security researchers, VM engineers, gamer developers, and pretty much anybody who needs a practical and rock-solid VM detection mechanism in their project. For example, the library is suitable if you're making a VM and you're testing the effectiveness of concealing itself. If you're a proprietary software developer, the library is useful to thwart against reverse engineers. If you're a malware analyst and you want to check the concealment capability of your VM, this would be the perfect tool to benchmark how well-concealed your VM is against malware. 
+> It's designed for security researchers, VM engineers, anticheat developers, and pretty much anybody who needs a practical and rock-solid VM detection mechanism in their project. For example, the library is suitable if you're making a VM and you're testing the effectiveness of concealing itself. If you're a proprietary software developer, the library is useful to thwart against reverse engineers. If you're a malware analyst and you want to check the concealment capability of your VM, this would be the perfect tool to benchmark how well-concealed your VM is against malware. 
 > 
 > Additionally, software could adjust the behaviour of their program base on the detected environment. It could be useful for debugging and testing purposes, system administrators could manage configurations differently, and some applications might want to restrict usage in VMs to prevent unauthorized distribution or testing.
 
@@ -169,7 +169,7 @@ You can view the full docs [here](docs/documentation.md). All the details such a
 
 > There's already loads of projects that have the same goal such as 
 <a href="https://github.com/CheckPointSW/InviZzzible">InviZzzible</a>, <a href="https://github.com/a0rtega/pafish">pafish</a> and <a href="https://github.com/LordNoteworthy/al-khaser">Al-Khaser</a>. But the difference between the aforementioned projects is that they don't provide a programmable interface to interact with the detection mechanisms, on top of having little to no support for non-Windows systems. 
-> Pafish and InviZzzible have been abandoned for years, while Al-Khaser does receive updates and has a wide scope of detection that includes anti-debuggers, anti-injection, and so on, but the VM detections are not sophisticated enough to be practically applied to real-world scenarios, while most of the technique they implement are bypassable.
+> Pafish and InviZzzible have been abandoned for years, while Al-Khaser does receive updates and has a wide scope of detection that includes anti-debuggers, anti-injection, and so on, but the VM detections are not sophisticated enough to be practically applied to real-world scenarios.
 > 
 > I wanted the core detection techniques to be accessible programmatically in a cross-platform way for everybody to get something useful out of it rather than providing just a CLI tool. It also contains a larger quantity of techniques, so it's basically just a VM detection library and tool on steroids with maximum flexibility.
 
@@ -184,20 +184,6 @@ You can view the full docs [here](docs/documentation.md). All the details such a
 > 
 > Speaking of which, the only downside to VMAware is that it's fully open source, which makes the job of bypassers easier compared to having it closed source. However, I'd argue that's a worthy tradeoff by having as many VM detection techniques in an open and interactive way, including having valuable community feedback to make the library more effective and accurate. 
 
-</details>
-
-
-<details>
-<summary>How can the library distinguish between Hyper-V artifacts and an actual Hyper-V VM in the system?</summary>
-<br>
-
-> Hyper-V has an obscure feature where if it's enabled in the host system, the CPU hardware values makes it look like the whole system is running inside Hyper-V, which isn't true. This makes it a challenge to determine whether the hardware values the library is collecting is either a real Hyper-V VM, or just the artifacts of what Hyper-V has left as a consequence of having it enabled in the host system. 
-> 
-> The reason why this is a problem is because the library might falsely conclude that your the host system is running in Hyper-V, which is a false positive. This is where the **Hyper-X** mechanism comes into play to distinguish between these two. This was designed by <a href="https://github.com/NotRequiem">Requiem</a>
-
-<p align="center">
-<img src="assets/hyper-x/v5/Hyper-X_version_5.drawio.png" align="center" title="Hyper-X">
-<br>
 </details>
 
 
@@ -222,7 +208,7 @@ You can view the full docs [here](docs/documentation.md). All the details such a
 <summary>What about using this for malware?</summary>
 <br>
 
-> This project is not soliciting the development of malware for obvious reasons. Even if you intend to use it for concealment purposes, it'll most likely be flagged by antiviruses anyway and nothing is obfuscated to begin with. Good fucking luck obfuscating 10k+ lines of C++ code lmao.
+> This project is not soliciting the development of malware for obvious reasons. Even if you intend to use it for concealment purposes, it'll most likely be flagged by antiviruses anyway and nothing is obfuscated to begin with. Good fucking luck obfuscating 12k+ lines of C++ code lmao.
 
 </details>
 
@@ -232,7 +218,7 @@ You can view the full docs [here](docs/documentation.md). All the details such a
 
 > I would've made it strictly MIT so proprietary software can make use of the library, but some of the techniques employed are from GPL 3.0 projects, and I have no choice but to use the same license for legal reasons. 
 > 
-> This gave me an idea to make an MIT version without all of the GPL code so it can also be used without forcing your code to be open-source. It should be noted that the MIT version removes <b>9</b> techniques out of 120 (as of 2.0 version), and the lesser the number of techniques, the less accurate the overall result might be.
+> This gave me an idea to make an MIT version without all of the GPL code so it can also be used without forcing your code to be open-source. It should be noted that the MIT version removes <b>9</b> techniques out of 128 (as of 2.0 version), and the lesser the number of techniques, the less accurate the overall result might be.
 
 </details>
 
