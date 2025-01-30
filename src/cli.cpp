@@ -268,6 +268,7 @@ AMD SEV
 AMD SEV-ES
 AMD SEV-SNP
 Neko Project II
+NoirVisor
 )";
 
     std::exit(0);
