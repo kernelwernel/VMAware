@@ -829,14 +829,15 @@ public:
             std::stringstream ss;
             std::stringstream ss2;
 
-            /* Two permutations are generated because the order of CPUID registers(EBX, ECX, EDX)
-             * varies depending on the leaf. For example:
-             *
-             * - Standard vendor strings (leaf 0x0) use EBX → EDX → ECX
-             * - Hypervisor vendor strings (leaf 0x40000000) often use EBX → ECX → EDX
-             *
-             * This function returns both permutations to ensure detection across all cases
-             */
+            /*
+                * Two permutations are generated because the order of CPUID registers(EBX, ECX, EDX)
+                * varies depending on the leaf. For example:
+                *
+                * - Standard vendor strings (leaf 0x0) use EBX → EDX → ECX
+                * - Hypervisor vendor strings (leaf 0x40000000) often use EBX → ECX → EDX
+                *
+                * This function returns both permutations to ensure detection across all cases
+            */
 
             ss << strconvert(sig_reg[0]);
             ss << strconvert(sig_reg[2]);
@@ -10584,9 +10585,11 @@ static bool rdtsc() {
 
         const HMODULE hNtdll = GetModuleHandleA("ntdll.dll");
         if (!hNtdll) return false;
-
+#pragma warning (disable : 4191)
         const auto NtQuery = reinterpret_cast<PNtQuerySystemInformation>(
             GetProcAddress(hNtdll, "NtQuerySystemInformation"));
+#pragma warning (default : 4191)
+
         if (!NtQuery) return false;
 
         const char* targets[] = {
@@ -10642,8 +10645,8 @@ static bool rdtsc() {
             return false;
             };
 
-        if (check_firmware_table(RSMB_SIG, 0)) return true;
-        for (ULONG addr : { 0xC0000, 0xE0000 }) {
+        if (check_firmware_table(RSMB_SIG, 0UL)) return true;
+        for (ULONG addr : { 0xC0000UL, 0xE0000UL }) {
             if (check_firmware_table(FIRM_SIG, addr)) return true;
         }
 

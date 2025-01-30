@@ -820,14 +820,15 @@ public:
             std::stringstream ss;
             std::stringstream ss2;
 
-           /* Two permutations are generated because the order of CPUID registers(EBX, ECX, EDX)
-            * varies depending on the leaf. For example:
-            * 
-            * - Standard vendor strings (leaf 0x0) use EBX → EDX → ECX
-            * - Hypervisor vendor strings (leaf 0x40000000) often use EBX → ECX → EDX
-            * 
-            * This function returns both permutations to ensure detection across all cases
-            */
+            /*
+                 * Two permutations are generated because the order of CPUID registers(EBX, ECX, EDX)
+                 * varies depending on the leaf. For example:
+                 *
+                 * - Standard vendor strings (leaf 0x0) use EBX → EDX → ECX
+                 * - Hypervisor vendor strings (leaf 0x40000000) often use EBX → ECX → EDX
+                 *
+                 * This function returns both permutations to ensure detection across all cases
+             */
 
             ss << strconvert(sig_reg[0]);
             ss << strconvert(sig_reg[2]);
@@ -3945,7 +3946,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         return (
             cpu::vmid_template(cpu::leaf::hypervisor, "VMID_0x4: ") ||
-            cpu::vmid_template(cpu::leaf::hypervisor + 1, "VMID_0x4 + 1: ")
+            cpu::vmid_template(cpu::leaf::hypervisor + 1, "VMID_0x4 + 1: ") // Some VM brands can have their cpu manufacturer ID as 0x4000'0001
             );
 #endif
     }
@@ -10301,8 +10302,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
             };
 
-        if (check_firmware_table(RSMB_SIG, 0)) return true;
-        for (ULONG addr : { 0xC0000, 0xE0000 }) {
+        if (check_firmware_table(RSMB_SIG, 0UL)) return true;
+        for (ULONG addr : { 0xC0000UL, 0xE0000UL }) {
             if (check_firmware_table(FIRM_SIG, addr)) return true;
         }
 
