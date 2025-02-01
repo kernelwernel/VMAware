@@ -2700,6 +2700,7 @@ public:
          * @return bool true if there is a mismatch in thread counts from different methods, false otherwise.
          */
         [[nodiscard]] static bool does_threadcount_mismatch() {
+#pragma warning (disable : 4191) // supress useless warnings about unsafe conversions from 'FARPROC' to 'VM::util::does_threadcount_mismatch::<lambda_X>
             auto GetThreadsUsingGetLogicalProcessorInformationEx = []() -> int {
                 DWORD bufferSize = 0;
                 GetLogicalProcessorInformationEx(RelationProcessorCore, nullptr, &bufferSize);
@@ -2863,9 +2864,15 @@ public:
                 };
 
             auto GetThreadsUsingEnvironmentVariable = []() -> int {
-                if (const char* env = std::getenv("NUMBER_OF_PROCESSORS")) {
-                    return std::atoi(env);
+                char* env = nullptr;
+                size_t len = 0;
+
+                if (_dupenv_s(&env, &len, "NUMBER_OF_PROCESSORS") == 0 && env != nullptr) {
+                    int num = std::atoi(env);
+                    free(env);
+                    return num;
                 }
+
                 return 0;
                 };
 
@@ -2972,6 +2979,7 @@ public:
                 }
                 return totalCount;
                 };
+#pragma warning (default : 4191)
 
             const int wmiThreads = GetThreadsUsingWMI();
             const int sysinfoThreads = GetThreadsUsingGetSystemInfo();
