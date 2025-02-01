@@ -432,7 +432,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::DRIVER_NAMES` | Check for VM-specific names for drivers | Windows | 100% |  |  |  |  |
 | `VM::VM_SIDT` | Check for unknown IDT base address | Windows | 100% |  |  |  |  |
 | `VM::HDD_SERIAL` | Check for HDD serial number | Windows | 100% |  |  |  |  |
-| `VM::PORT_CONNECTORS` | Check for physical connection ports | Windows | 10% |  |  |  |  |
+| `VM::PORT_CONNECTORS` | Check for physical connection ports | Windows | 25% |  |  |  |  |
 | `VM::VM_HDD` | Check for VM related keywords in HDD models | Windows | 100% |  |  |  |  |
 | `VM::ACPI_REGISTRY` | Check for VM related strings in ACPI data | Windows | 100% |  |  |  |  |
 | `VM::GPU_NAME` | Check for VM specific device names in GPUs | Windows | 100% |  |  |  |  |
@@ -533,6 +533,8 @@ This is the table of all the brands the lib supports.
 | AMD SEV-SNP | `VM::brands::AMD_SEV_SNP` | VM encryptor |  |
 | Neko Project II | `VM::brands::NEKO_PROJECT` | Emulator |  | 
 | Google Compute Engine (KVM) | `VM::brands::GCE` | Cloud VM service |  |
+| NoirVisor | `VM::brands::NOIRVISOR` | Cloud VM service |  |
+| Qihoo 360 Sandbox | `VM::brands::QIHOO` | Sandbox |  |
 
 <br>
 

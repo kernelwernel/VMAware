@@ -592,6 +592,7 @@ public:
         static constexpr const char* AMD_SEV_SNP = "AMD SEV-SNP";
         static constexpr const char* NEKO_PROJECT = "Neko Project II";
         static constexpr const char* NOIRVISOR = "NoirVisor";
+        static constexpr const char* QIHOO = "Qihoo 360 Sandbox";
         static constexpr const char* NULL_BRAND = "Unknown";
     };
 
@@ -3580,6 +3581,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             { "cmdvrt64.dll",  brands::COMODO },
             { "pstorec.dll",   brands::CWSANDBOX },
             { "vmcheck.dll",   brands::VPC },
+            { "cuckoomon.dll", brands::CUCKOO },
+            { "SxIn.dll",      brands::QIHOO },
             { "wpespy.dll",    brands::NULL_BRAND }
         };
 
@@ -4384,7 +4387,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return core::add(brands::VMWARE);
         }
 
-        if (util::is_proc_running(("qemu-ga.exe")) || util::is_proc_running(("vdagent.exe")) || util::is_proc_running(("vdservice.exe"))) {
+        if (util::is_proc_running(("qemu-ga.exe")) || util::is_proc_running(("vdagent.exe")) || util::is_proc_running(("vdservice.exe")) || util::is_proc_running(("qemuwmi.exe"))) {
             return core::add(brands::QEMU);
         }
 
@@ -8872,6 +8875,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const HANDLE handle3 = CreateFileA(("\\\\.\\VBoxTrayIPC"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
         const HANDLE handle4 = CreateFileA(("\\\\.\\pipe\\VBoxTrayIPC"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
         const HANDLE handle5 = CreateFileA(("\\\\.\\HGFS"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+        const HANDLE handle6 = CreateFileA(("\\\\.\\pipe\\cuckoo"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 
         bool result = false;
 
@@ -8897,7 +8901,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             CloseHandle(handle5);
             return core::add(brands::VMWARE);
         }
+        if (handle6 != INVALID_HANDLE_VALUE) {
+            CloseHandle(handle6);
+            return core::add(brands::CUCKOO);
+        }
+
         CloseHandle(handle5);
+        CloseHandle(handle6);
 
         return false;
 #endif
@@ -12006,6 +12016,7 @@ public: // START OF PUBLIC FUNCTIONS
             { brands::ANUBIS, "Sandbox" },
             { brands::COMODO, "Sandbox" },
             { brands::THREATEXPERT, "Sandbox" },
+            { brands::QIHOO, "Sandbox" },
 
             // misc
             { brands::BOCHS, "Emulator" },
@@ -12435,7 +12446,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::DRIVER_NAMES, { 100, VM::driver_names, false } },
     { VM::VM_SIDT, { 100, VM::vm_sidt, false } },
     { VM::HDD_SERIAL, { 100, VM::hdd_serial_number, false } },
-    { VM::PORT_CONNECTORS, { 10, VM::port_connectors, false } },
+    { VM::PORT_CONNECTORS, { 25, VM::port_connectors, false } },
     { VM::VM_HDD, { 100, VM::vm_hdd, false } },
     { VM::ACPI_REGISTRY, { 100, VM::acpi, false } },
     { VM::GPU_NAME, { 100, VM::vm_gpu, false } },
