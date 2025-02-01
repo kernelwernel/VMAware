@@ -25,13 +25,13 @@
  *
  * ================================ SECTIONS ==================================
  * - enums for publicly accessible techniques  => line 338
- * - struct for internal cpu operations        => line 611
- * - struct for internal memoization           => line 1070
- * - struct for internal utility functions     => line 1465
- * - struct for internal core components       => line 10368
- * - start of internal VM detection techniques => line 2825
- * - start of public VM detection functions    => line 10777
- * - start of externally defined variables     => line 11682
+ * - struct for internal cpu operations        => line 620
+ * - struct for internal memoization           => line 1078
+ * - struct for internal utility functions     => line 1472
+ * - struct for internal core components       => line 10709
+ * - start of internal VM detection techniques => line 2831
+ * - start of public VM detection functions    => line 11113
+ * - start of externally defined variables     => line 12018
  *
  *
  * ================================ EXAMPLE ==================================
@@ -428,7 +428,7 @@ public:
         HDD_SERIAL,
         PORT_CONNECTORS,
         VM_HDD,
-        ACPI_DETECT,
+        ACPI_REGISTRY,
         GPU_NAME,
         VM_DEVICES,
         VM_MEMORY,
@@ -584,6 +584,7 @@ public:
         static constexpr const char* AMD_SEV_ES = "AMD SEV-ES";
         static constexpr const char* AMD_SEV_SNP = "AMD SEV-SNP";
         static constexpr const char* NEKO_PROJECT = "Neko Project II";
+        static constexpr const char* NOIRVISOR = "NoirVisor";
         static constexpr const char* NULL_BRAND = "Unknown";
     };
 
@@ -821,14 +822,14 @@ public:
             std::stringstream ss2;
 
             /*
-                 * Two permutations are generated because the order of CPUID registers(EBX, ECX, EDX)
-                 * varies depending on the leaf. For example:
-                 *
-                 * - Standard vendor strings (leaf 0x0) use EBX → EDX → ECX
-                 * - Hypervisor vendor strings (leaf 0x40000000) often use EBX → ECX → EDX
-                 *
-                 * This function returns both permutations to ensure detection across all cases
-             */
+                * Two permutations are generated because the order of CPUID registers(EBX, ECX, EDX)
+                * varies depending on the leaf. For example:
+                *
+                * - Standard vendor strings (leaf 0x0) use EBX → EDX → ECX
+                * - Hypervisor vendor strings (leaf 0x40000000) often use EBX → ECX → EDX
+                *
+                * This function returns both permutations to ensure detection across all cases
+            */
 
             ss << strconvert(sig_reg[0]);
             ss << strconvert(sig_reg[2]);
@@ -981,7 +982,8 @@ public:
                 minivisor = "MiniVisor\0\0\0",
                 intel_tdx = "IntelTDX    ", // source: virt-what
                 lkvm = "LKVMLKVMLKVM",
-                neko = "Neko Project";
+                neko = "Neko Project",
+                noir = "NoirVisor ZT";
 
             const std::array<std::string, 2> brand_strings = cpu_manufacturer(p_leaf);
             debug(technique_name, brand_strings.at(0));
@@ -1017,6 +1019,8 @@ public:
                 if (brand_str == intel_tdx) { return core::add(brands::INTEL_TDX); }
                 if (brand_str == lkvm) { return core::add(brands::LKVM); }
                 if (brand_str == neko) { return core::add(brands::NEKO_PROJECT); }
+                if (brand_str == noir) { return core::add(brands::NOIRVISOR); }
+
 
                 // both Hyper-V and VirtualPC have the same string value
                 if (brand_str == hyperv) {
@@ -2718,25 +2722,25 @@ public:
                 }
 
                 wmi_result results = wmi::execute(L"SELECT NumberOfLogicalProcessors FROM Win32_Processor", { L"NumberOfLogicalProcessors" });
+                int total = 0;
                 for (const auto& res : results) {
                     if (res.type == wmi::result_type::Integer) {
-                        return res.intValue;
+                        total += res.intValue;
                     }
                 }
-
-                return 0;
+                return total;
                 };
 
             auto GetThreadsUsingGetSystemInfo = []() -> int {
                 SYSTEM_INFO sysinfo;
                 GetSystemInfo(&sysinfo);
-                return static_cast<int>(sysinfo.dwNumberOfProcessors); // This is safe as long as the value of dwNumberOfProcessors is within the range of the int type (which it usually will be)
+                return static_cast<int>(sysinfo.dwNumberOfProcessors);
                 };
 
             auto GetThreadsUsingGetProcessAffinityMask = []() -> int {
                 DWORD_PTR processAffinityMask, systemAffinityMask;
                 if (GetProcessAffinityMask(GetCurrentProcess(), &processAffinityMask, &systemAffinityMask)) {
-                    return static_cast<int>(std::bitset<sizeof(DWORD_PTR) * 8>(processAffinityMask).count());
+                    return static_cast<int>(std::bitset<sizeof(DWORD_PTR) * 8>(systemAffinityMask).count());
                 }
                 return 0;
                 };
@@ -2776,29 +2780,83 @@ public:
                 return 0;
                 };
 
+            auto GetThreadsUsingGetActiveProcessorCount = []() -> int {
+                HMODULE hKernel32 = GetModuleHandleA("kernel32.dll");
+                if (hKernel32) {
+                    typedef DWORD(WINAPI* GetActiveProcessorCountFunc)(WORD);
+                    auto pGetActiveProcessorCount = reinterpret_cast<GetActiveProcessorCountFunc>(
+                        GetProcAddress(hKernel32, "GetActiveProcessorCount"));
+                    if (pGetActiveProcessorCount) {
+                        return static_cast<int>(pGetActiveProcessorCount(ALL_PROCESSOR_GROUPS));
+                    }
+                }
+                return 0;
+                };
+
+            auto GetThreadsUsingWMI_ComputerSystem = []() -> int {
+                if (!wmi::initialize()) {
+                    return 0;
+                }
+
+                wmi_result results = wmi::execute(L"SELECT NumberOfLogicalProcessors FROM Win32_ComputerSystem", { L"NumberOfLogicalProcessors" });
+                for (const auto& res : results) {
+                    if (res.type == wmi::result_type::Integer) {
+                        return res.intValue;
+                    }
+                }
+                return 0;
+                };
+
+            auto GetThreadsUsingGetLogicalProcessorInformation = []() -> int {
+                DWORD bufferSize = 0;
+                if (!GetLogicalProcessorInformation(nullptr, &bufferSize) && GetLastError() != ERROR_INSUFFICIENT_BUFFER) {
+                    return 0;
+                }
+
+                std::vector<SYSTEM_LOGICAL_PROCESSOR_INFORMATION> buffer(bufferSize / sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION));
+                if (!GetLogicalProcessorInformation(buffer.data(), &bufferSize)) {
+                    return 0;
+                }
+
+                int threadCount = 0;
+                for (const auto& info : buffer) {
+                    if (info.Relationship == RelationProcessorCore) {
+                        threadCount += static_cast<int>(std::bitset<sizeof(ULONG_PTR) * 8>(info.ProcessorMask).count());
+                    }
+                }
+
+                return threadCount;
+                };
+
             int wmiThreads = GetThreadsUsingWMI();
             int sysinfoThreads = GetThreadsUsingGetSystemInfo();
             int affinityMaskThreads = GetThreadsUsingGetProcessAffinityMask();
             int ntQueryThreads = GetThreadsUsingNtQuerySystemInformation();
             int osThreads = GetThreadsUsingGetLogicalProcessorInformationEx();
+            int activeProcCount = GetThreadsUsingGetActiveProcessorCount();
+            int wmiCSThreads = GetThreadsUsingWMI_ComputerSystem();
+            int oldLogicalProcInfoThreads = GetThreadsUsingGetLogicalProcessorInformation();
 
             std::vector<int> validThreads;
-            validThreads.reserve(5);
+            validThreads.reserve(8);
 
             if (osThreads > 0) validThreads.push_back(osThreads);
             if (wmiThreads > 0) validThreads.push_back(wmiThreads);
             if (sysinfoThreads > 0) validThreads.push_back(sysinfoThreads);
             if (affinityMaskThreads > 0) validThreads.push_back(affinityMaskThreads);
             if (ntQueryThreads > 0) validThreads.push_back(ntQueryThreads);
+            if (activeProcCount > 0) validThreads.push_back(activeProcCount);
+            if (wmiCSThreads > 0) validThreads.push_back(wmiCSThreads);
+            if (oldLogicalProcInfoThreads > 0) validThreads.push_back(oldLogicalProcInfoThreads);
 
             if (validThreads.size() < 2) {
-                return false; // Not enough valid data to compare
+                return false;
             }
 
             int first = validThreads[0];
             for (const int threadCount : validThreads) {
                 if (threadCount != first) {
-                    return true; // Thread count mismatch
+                    return true;
                 }
             }
 
@@ -3356,20 +3414,29 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for VM-specific DLLs
      * @category Windows
      */
-    [[nodiscard]] static bool DLL_check() {
+    [[nodiscard]] static bool dll_check() {
 #if (!WINDOWS)
         return false;
 #else
-        const char* false_dlls[] = {
-            "NetProjW.dll",
-            "Ghofr.dll",
-            "fg122.dll",
+        std::unordered_map<std::string, const char*> dll_list = {
+            { "sbiedll.dll",   brands::SANDBOXIE },
+            { "pstorec.dll",   brands::CWSANDBOX },
+            { "vmcheck.dll",   brands::VPC },
+            { "cmdvrt32.dll",  brands::COMODO },
+            { "cmdvrt64.dll",  brands::COMODO },
+            { "pstorec.dll",   brands::CWSANDBOX },
+            { "vmcheck.dll",   brands::VPC },
+            { "wpespy.dll",    brands::NULL_BRAND }
         };
 
-        for (const char* dll : false_dlls) {
-            if (GetModuleHandleA(dll) != nullptr) {
-                debug("DLL: ", "LIB_INST detected true for false dll = ", dll);
-                return true;
+        for (const auto& key : dll_list) {
+            const HMODULE dll = GetModuleHandleA(key.first.c_str());
+
+            if (dll) {
+                auto it = dll_list.find(key.first.c_str());
+                if (it != dll_list.end()) {
+                    return core::add(it->second);
+                }
             }
         }
 
@@ -3604,7 +3671,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
             }
 
-            debug("%s score: %u", (std::string(brand) + " score: ").c_str(), static_cast<u32>(count));
+            debug((std::string(brand) + " score: ").c_str(), static_cast<u32>(count));
             (void)brand;
             };
 
@@ -10079,8 +10146,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             { "ryzen threadripper pro 7975wx ", 64 },
             { "ryzen threadripper pro 7985wx ", 128 },
             { "ryzen threadripper pro 7995wx ", 192 },
-            { "ryzen z1 ", 12 },
             { "ryzen z1 extreme ", 16 },
+            { "ryzen z1 ", 12 },
             { "sempron 2650 ", 2 },
             { "sempron 3850 ", 4 },
             { "x940 ", 4 },
@@ -10244,9 +10311,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         const HMODULE hNtdll = GetModuleHandleA("ntdll.dll");
         if (!hNtdll) return false;
-
+#pragma warning (disable : 4191)
         const auto NtQuery = reinterpret_cast<PNtQuerySystemInformation>(
             GetProcAddress(hNtdll, "NtQuerySystemInformation"));
+#pragma warning (default : 4191)
+
         if (!NtQuery) return false;
 
         const char* targets[] = {
@@ -11374,7 +11443,7 @@ public: // START OF PUBLIC FUNCTIONS
         case HDD_SERIAL: return "HDD_SERIAL";
         case PORT_CONNECTORS: return "PORT_CONNECTORS";
         case VM_HDD: return "VM_HDD";
-        case ACPI_DETECT: return "ACPI_DETECT";
+        case ACPI_REGISTRY: return "ACPI_DETECT";
         case GPU_NAME: return "GPU_NAME";
         case VM_DEVICES: return "VM_DEVICES";
         case VM_MEMORY: return "VM_MEMORY";
@@ -11386,6 +11455,8 @@ public: // START OF PUBLIC FUNCTIONS
         case WMI_TEMPERATURE: return "WMI_TEMPERATURE";
         case PROCESSOR_ID: return "PROCESSOR_ID";
         case CPU_FANS: return "CPU_FANS";
+        case POWER_CAPABILITIES: return "POWER_CAPABILITIES";
+        case SETUPAPI_DISK: return "SETUPAPI_DISK";
         case VMWARE_HARDENER: return "VMWARE_HARDENER";
         case SYS_QEMU: return "SYS_QEMU";
         case LSHW_QEMU: return "LSHW_QEMU";
@@ -11399,7 +11470,7 @@ public: // START OF PUBLIC FUNCTIONS
         case NATIVE_VHD: return "NATIVE_VHD";
         case VIRTUAL_REGISTRY: return "VIRTUAL_REGISTRY";
         case FIRMWARE_SCAN: return "FIRMWARE_SCAN";
-        // ADD NEW CASE HERE FOR NEW TECHNIQUE
+            // ADD NEW CASE HERE FOR NEW TECHNIQUE
         default: return "Unknown flag";
         }
     }
@@ -11506,6 +11577,7 @@ public: // START OF PUBLIC FUNCTIONS
             { brands::POWERVM, "Hypervisor (type 1)" },
             { brands::AWS_NITRO, "Hypervisor (type 1)" },
             { brands::LKVM, "Hypervisor (type 1)" },
+            { brands::NOIRVISOR, "Hypervisor (type 1)" },
 
             // type 2
             { brands::BHYVE, "Hypervisor (type 2)" },
@@ -11752,6 +11824,7 @@ std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard{
     { VM::brands::AMD_SEV_ES, 0 },
     { VM::brands::AMD_SEV_SNP, 0 },
     { VM::brands::NEKO_PROJECT, 0 },
+    { VM::brands::NOIRVISOR, 0 },
     { VM::brands::NULL_BRAND, 0 }
 };
 
@@ -11867,7 +11940,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::HYPERVISOR_BIT, { 100, VM::hypervisor_bit , false}} ,
     { VM::HYPERVISOR_STR, { 75, VM::hypervisor_str, false } },
     { VM::RDTSC, { 40, VM::rdtsc, false } },
-    { VM::THREADCOUNT, { 25, VM::thread_count, false } },
+    { VM::THREADCOUNT, { 35, VM::thread_count, false } },
     { VM::MAC, { 20, VM::mac_address_check, true } },
     { VM::TEMPERATURE, { 15, VM::temperature, false } },
     { VM::SYSTEMD, { 35, VM::systemd_virt, true } },
@@ -11878,13 +11951,13 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::DMESG, { 55, VM::dmesg, false } },
     { VM::HWMON, { 35, VM::hwmon, true } },
     { VM::SIDT5, { 45, VM::sidt5, false } },
-    { VM::DLL, { 25, VM::DLL_check, true } },
+    { VM::DLL, { 25, VM::dll_check, true } },
     { VM::REGISTRY, { 50, VM::registry_key, true } },
     { VM::VM_FILES, { 25, VM::vm_files, true } },
     { VM::HWMODEL, { 35, VM::hwmodel, true } },
     { VM::DISK_SIZE, { 60, VM::disk_size, false } },
     { VM::VBOX_DEFAULT, { 25, VM::vbox_default_specs, false } },
-    { VM::VBOX_NETWORK, { 100, VM::vbox_network_share, false } },,
+    { VM::VBOX_NETWORK, { 100, VM::vbox_network_share, false } },
     { VM::VM_PROCESSES, { 15, VM::vm_processes, true } },
     { VM::LINUX_USER_HOST, { 10, VM::linux_user_host, true } },
     { VM::GAMARUE, { 10, VM::gamarue, true } },
@@ -11893,7 +11966,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::QEMU_BRAND, { 100, VM::cpu_brand_qemu, false } },
     { VM::BOCHS_CPU, { 100, VM::bochs_cpu, false } },
     { VM::BIOS_SERIAL, { 60, VM::bios_serial, false } },
-    { VM::MSSMBIOS, { 85, VM::mssmbios, false } },
+    { VM::MSSMBIOS, { 100, VM::mssmbios, false } },
     { VM::MAC_MEMSIZE, { 15, VM::hw_memsize, true } },
     { VM::MAC_IOKIT, { 40, VM::io_kit, true } },
     { VM::IOREG_GREP, { 30, VM::ioreg_grep, true } },
@@ -11949,15 +12022,15 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::PODMAN_FILE, { 5, VM::podman_file, true } },
     { VM::WSL_PROC, { 30, VM::wsl_proc_subdir, false } },
     { VM::GPU_CHIPTYPE, { 100, VM::gpu_chiptype, false } },
-    { VM::DRIVER_NAMES, { 80, VM::driver_names, false } },
+    { VM::DRIVER_NAMES, { 100, VM::driver_names, false } },
     { VM::VM_SIDT, { 100, VM::vm_sidt, false } },
     { VM::HDD_SERIAL, { 100, VM::hdd_serial_number, false } },
     { VM::PORT_CONNECTORS, { 10, VM::port_connectors, false } },
-    { VM::VM_HDD, { 90, VM::vm_hdd, false } },
-    { VM::ACPI_DETECT, { 85, VM::acpi, false } },
+    { VM::VM_HDD, { 100, VM::vm_hdd, false } },
+    { VM::ACPI_REGISTRY, { 100, VM::acpi, false } },
     { VM::GPU_NAME, { 100, VM::vm_gpu, false } },
     { VM::VM_DEVICES, { 45, VM::vm_devices, true } },
-    { VM::VM_MEMORY, { 80, VM::vm_memory, false } },
+    { VM::VM_MEMORY, { 65, VM::vm_memory, false } },
     { VM::IDT_GDT_MISMATCH, { 50, VM::idt_gdt_mismatch, false } },
     { VM::PROCESSOR_NUMBER, { 50, VM::processor_number, false } },
     { VM::NUMBER_OF_CORES, { 50, VM::number_of_cores, false } },
@@ -11971,7 +12044,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::LSHW_QEMU, { 80, VM::lshw_qemu, false } },
     { VM::VIRTUAL_PROCESSORS, { 50, VM::virtual_processors, false } },
     { VM::MOTHERBOARD_PRODUCT, { 50, VM::motherboard_product, false } },
-    { VM::HYPERV_QUERY, { 50, VM::hyperv_query, false } },
+    { VM::HYPERV_QUERY, { 100, VM::hyperv_query, false } },
     { VM::BAD_POOLS, { 80, VM::bad_pools, false } },
     { VM::AMD_SEV, { 50, VM::amd_sev, false } },
     { VM::AMD_RESERVED, { 50, VM::amd_reserved, false } },
