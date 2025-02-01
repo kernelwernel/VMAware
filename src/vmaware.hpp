@@ -810,30 +810,35 @@ public:
                 }
 
                 return true;
-            };
+                };
 
             u32 sig_reg[3] = { 0 };
-
-            if ((sig_reg[0] == 0) && (sig_reg[1] == 0) && (sig_reg[2] == 0)) {
-                return std::array<std::string, 2>{{ "", "" }};
-            }
 
             if (!cpuid_thingy(p_leaf, sig_reg, 1)) {
                 return std::array<std::string, 2>{{ "", "" }};
             }
 
-            auto strconvert = [](u64 n) -> std::string {
-                const std::string& str(reinterpret_cast<char*>(&n));
-                return str;
-            };
+            if ((sig_reg[0] == 0) && (sig_reg[1] == 0) && (sig_reg[2] == 0)) {
+                return std::array<std::string, 2>{{ "", "" }};
+            }
 
-            // the reason why there's 2 is because depending on the leaf, 
-            // the last 4 characters might be switched with the middle 
-            // characters for some fuckin reason, idk why this is even a thing
-            // so this function basically returns the same string but with 
-            // the 4~8 and 8~12 characters switched for one, and the other isn't.
+            auto strconvert = [](u32 n) -> std::string {
+                const char* bytes = reinterpret_cast<const char*>(&n);
+                return std::string(bytes, 4);
+                };
+
             std::stringstream ss;
             std::stringstream ss2;
+
+            /*
+                * Two permutations are generated because the order of CPUID registers(EBX, ECX, EDX)
+                * varies depending on the leaf. For example:
+                *
+                * - Standard vendor strings (leaf 0x0) use EBX → EDX → ECX
+                * - Hypervisor vendor strings (leaf 0x40000000) often use EBX → ECX → EDX
+                *
+                * This function returns both permutations to ensure detection across all cases
+            */
 
             ss << strconvert(sig_reg[0]);
             ss << strconvert(sig_reg[2]);
@@ -846,9 +851,7 @@ public:
             std::string brand_str = ss.str();
             std::string brand_str2 = ss2.str();
 
-            const std::array<std::string, 2> result = { brand_str, brand_str2 };
-
-            return result;
+            return { brand_str, brand_str2 };
         }
 
         struct stepping_struct {
@@ -4299,7 +4302,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         return (
             cpu::vmid_template(cpu::leaf::hypervisor, "VMID_0x4: ") ||
-            cpu::vmid_template(cpu::leaf::hypervisor + 1, "VMID_0x4 + 1: ")
+            cpu::vmid_template(cpu::leaf::hypervisor + 1, "VMID_0x4 + 1: ") // Some VM brands can have their cpu manufacturer ID as 0x4000'0001
         );
 #endif
     }
@@ -10586,9 +10589,11 @@ static bool rdtsc() {
 
         const HMODULE hNtdll = GetModuleHandleA("ntdll.dll");
         if (!hNtdll) return false;
-
+#pragma warning (disable : 4191)
         const auto NtQuery = reinterpret_cast<PNtQuerySystemInformation>(
             GetProcAddress(hNtdll, "NtQuerySystemInformation"));
+#pragma warning (default : 4191)
+
         if (!NtQuery) return false;
 
         const char* targets[] = {
@@ -10644,8 +10649,8 @@ static bool rdtsc() {
             return false;
             };
 
-        if (check_firmware_table(RSMB_SIG, 0)) return true;
-        for (ULONG addr : { 0xC0000, 0xE0000 }) {
+        if (check_firmware_table(RSMB_SIG, 0UL)) return true;
+        for (ULONG addr : { 0xC0000UL, 0xE0000UL }) {
             if (check_firmware_table(FIRM_SIG, addr)) return true;
         }
 

@@ -1,6 +1,3 @@
-- [ ] analyse the UUID check technique's efficiency
-- [ ] add github metrics for license (looks cool af)
-- [ ] organise the registry existence function better and group them together as a single utility function
 - [ ] add C++20 concepts for the VM::add_custom() function
 - [ ] add c++20 module support 
 - [ ] upload the lib to dnf 
@@ -8,19 +5,16 @@
 - [ ] make a man file in markdown for the cli tool
 - [ ] implement techniques from here https://stackoverflow.com/questions/43026032/detect-running-on-virtual-machine
 - [ ] add a .clang_format thingy
-- [ ] make the whole cache table into a mutex so i can claim it's thread-safe
 - [ ] make a medium post about it
 - [ ] check if bios date in /sys/class/dmi/id/ could be useful under QEMU
 - [ ] add a .so, .dll, and .dylib shared object files in the release 
-- [ ] fix the issue of VM::QEMU_USB being ultra slow
+- [ ] fix the issue of VM::QEMU_USB being ultra slow in some edge-cases
 - [ ] /sys/class/dmi/id/product_name check this in qemu
 - [ ] add linux support for the hdd_serial_number technique
 - [ ] fix "dmidecode not found" error
 - [ ] fix /dev/mem not found in vbox default
-- [ ] double check the vmid_template function
 - [ ] update sourceforge
 - [ ] rearrange the techniques so that the more likely ones will be executed first
-- [ ] update the conclusion with the VM type
 - [ ] make a hardware scanner module where it'll find for VM strings in all sorts of devices
 - [ ] add more QEMU techniques
 - [ ] implement techniques from here https://www.cyberciti.biz/faq/linux-determine-virtualization-technology-command/
