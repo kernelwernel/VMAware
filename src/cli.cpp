@@ -268,6 +268,7 @@ AMD SEV
 AMD SEV-ES
 AMD SEV-SNP
 Neko Project II
+NoirVisor
 )";
 
     std::exit(0);
@@ -407,7 +408,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::COMPUTER_NAME:
             case VM::WINE_CHECK:
             case VM::HOSTNAME:
-            case VM::LOADED_DLLS:
             case VM::KVM_DIRS:
             case VM::AUDIO:
             case VM::QEMU_DIR:
@@ -456,7 +456,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::HDD_SERIAL:
             case VM::PORT_CONNECTORS:
             case VM::VM_HDD:
-            case VM::ACPI_DETECT:
+            case VM::ACPI_REGISTRY:
             case VM::GPU_NAME:
             case VM::VM_MEMORY:
             case VM::IDT_GDT_MISMATCH:
@@ -549,7 +549,6 @@ bool is_gpl(const VM::enum_flags flag) {
         case VM::COMPUTER_NAME: 
         case VM::WINE_CHECK: 
         case VM::HOSTNAME: 
-        case VM::LOADED_DLLS: 
         case VM::KVM_DIRS: 
         case VM::AUDIO: 
         case VM::QEMU_DIR: 
@@ -665,6 +664,7 @@ std::string vm_description(const std::string& vm_brand) {
         { VM::brands::AMD_SEV_ES, "AMD SEV-Encrypted State (SEV-ES) extends SEV by encrypting CPU register states during VM exits. Prevents hypervisors from inspecting guest register contents, mitigating attacks using VMRUN/VMEXIT timing side channels. Requires guest OS modifications for secure interrupt handling." },
         { VM::brands::AMD_SEV_SNP, "AMD SEV-Secure Nested Paging (SEV-SNP) adds memory integrity protection to SEV-ES. Uses reverse map tables (RMP) to prevent hypervisor-mediated replay/spoofing attacks. Enables attested launch for cloud workloads via guest policy certificates and AMD's Key Distribution Service (KDS)." },
         { VM::brands::NEKO_PROJECT, "Neko Project II is an emulator designed for emulating PC-98 computers. They are a lineup of Japanese 16-bit and 32-bit personal computers manufactured by NEC from 1982 to 2003. While based on Intel processors, it uses an in-house architecture making it incompatible with IBM clones." },
+        { VM::brands::NOIRVISOR, "NoirVisor is a hardware-accelerated hypervisor with support to complex functions and purposes. It is designed to support processors based on x86 architecture with hardware-accelerated virtualization feature. For example, Intel processors supporting Intel VT-x or AMD processors supporting AMD-V meet the requirement. It was made by Zero-Tang." },
         { VM::brands::NULL_BRAND, "Indicates no detectable virtualization brand. This result may occur on bare-metal systems, unsupported/obscure hypervisors, or when anti-detection techniques (e.g., VM escaping) are employed by the guest environment." }
     };
 
@@ -913,7 +913,6 @@ void general() {
     checker(VM::GAMARUE, "gamarue ransomware technique");
     checker(VM::VMID_0X4, "0x4 leaf of VMID");
     checker(VM::PARALLELS_VM, "Parallels techniques");
-    checker(VM::LOADED_DLLS, "loaded DLLs");
     checker(VM::QEMU_BRAND, "QEMU CPU brand");
     checker(VM::BOCHS_CPU, "BOCHS CPU techniques");
     checker(VM::BIOS_SERIAL, "BIOS serial number");
@@ -983,7 +982,7 @@ void general() {
     checker(VM::HDD_SERIAL, "HDD serial number");
     checker(VM::PORT_CONNECTORS, "physical connection ports");
     checker(VM::VM_HDD, "VM keywords in HDD model");
-    checker(VM::ACPI_DETECT, "ACPI data");
+    checker(VM::ACPI_REGISTRY, "ACPI data");
     checker(VM::GPU_NAME, "GPU name");
     checker(VM::VM_MEMORY, "VM memory traces");
     checker(VM::IDT_GDT_MISMATCH, "IDT GDT mismatch");
@@ -1004,7 +1003,6 @@ void general() {
     checker(VM::HYPERV_QUERY, "hypervisor query");
     checker(VM::BAD_POOLS, "bad memory pools");
 	checker(VM::AMD_SEV, "AMD-SEV MSR");
-    checker(VM::AMD_RESERVED, "AMD reserved bits");
 	checker(VM::AMD_THREAD_MISMATCH, "AMD thread count mismatch");
     checker(VM::NATIVE_VHD, "VHD containers");
     checker(VM::VIRTUAL_REGISTRY, "registry emulation");

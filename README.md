@@ -208,7 +208,7 @@ You can view the full docs [here](docs/documentation.md). All the details such a
 <summary>What about using this for malware?</summary>
 <br>
 
-> This project is not soliciting the development of malware for obvious reasons. Even if you intend to use it for concealment purposes, it'll most likely be flagged by antiviruses anyway and nothing is obfuscated to begin with. Good fucking luck obfuscating 12k+ lines of C++ code lmao.
+> This project is not soliciting the development of malware for obvious reasons. Even if you intend to use it for concealment purposes, it'll most likely be flagged by antiviruses anyway and nothing is obfuscated to begin with.
 
 </details>
 

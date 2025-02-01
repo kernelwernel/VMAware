@@ -335,51 +335,51 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::VMID` | Check CPUID output of manufacturer ID for known VMs/hypervisors at leaf 0 |  | 100% |  |  |  |  |
 | `VM::CPU_BRAND` | Check if CPU brand model contains any VM-specific string snippets |  | 50% |  |  |  |  |  |
 | `VM::HYPERVISOR_BIT` | Check if hypervisor feature bit in CPUID eax bit 31 is enabled (always false for physical CPUs) |  | 100% |  |  |  |  |
-| `VM::HYPERVISOR_STR` | Check for hypervisor brand string length (would be around 2 characters in a host machine) |  | 45% |  |  |  |  |
-| `VM::RDTSC` | Benchmark RDTSC and evaluate its speed, usually it's very slow in VMs | Linux and Windows | 10% |  |  |  |  | Disabled by default |
+| `VM::HYPERVISOR_STR` | Check for hypervisor brand string length (would be around 2 characters in a host machine) |  | 75% |  |  |  |  |
+| `VM::RDTSC` | Benchmark RDTSC and evaluate its speed, usually it's very slow in VMs | Linux and Windows | 40% |  |  |  |  |  |
 | `VM::THREADCOUNT` | Check if there are only 1 or 2 threads, which is a common pattern in VMs with default settings (nowadays physical CPUs should have at least 4 threads for modern CPUs) |  | 35% |  |  |  |  |
-| `VM::MAC` | Check if mac address starts with certain VM designated values | Linux and Windows | 60% |  |  |  |  |
+| `VM::MAC` | Check if mac address starts with certain VM designated values | Linux and Windows | 20% |  |  |  |  |
 | `VM::TEMPERATURE` | Check if thermal directory in linux is present, might not be present in VMs | Linux | 15% |    |  |  |
-| `VM::SYSTEMD` | Check result from systemd-detect-virt tool | Linux | 70% |  |  |  |  |
+| `VM::SYSTEMD` | Check result from systemd-detect-virt tool | Linux | 35% |  |  |  |  |
 | `VM::CVENDOR` | Check if the chassis vendor is a VM vendor | Linux | 65% |  |  |  |  |
-| `VM::CTYPE` | Check if the chassis type is valid (it's very often invalid in VMs) | Linux | 10% |  |  |  |  |
-| `VM::DOCKERENV` | Check if /.dockerenv or /.dockerinit file is present | Linux | 80% |  |  |  |  |
+| `VM::CTYPE` | Check if the chassis type is valid (it's very often invalid in VMs) | Linux | 20% |  |  |  |  |
+| `VM::DOCKERENV` | Check if /.dockerenv or /.dockerinit file is present | Linux | 30% |  |  |  |  |
 | `VM::DMIDECODE` | Check if dmidecode output matches a VM brand | Linux | 55% | Admin |  |  |  |
 | `VM::DMESG` | Check if dmesg output matches a VM brand | Linux | 55% | Admin |  |  |  |
-| `VM::HWMON` | Check if /sys/class/hwmon/ directory is present. If not, likely a VM | Linux | 75% |  |  |  |  |
+| `VM::HWMON` | Check if /sys/class/hwmon/ directory is present. If not, likely a VM | Linux | 35% |  |  |  |  |
 | `VM::SIDT5` | Check if the 5th byte after sidt is null | Linux | 45% |  |  |  |  |
-| `VM::DLL` | Check for VM-specific DLLs | Windows | 50% |  |  |  |  |
-| `VM::REGISTRY` |  Check for VM-specific registry values | Windows | 75% |  |  |  |  |
-| `VM::VM_FILES` | Find for VMware and VBox specific files | Windows | 10% |  |  |  |  |
-| `VM::HWMODEL` | Check if the sysctl for the hwmodel does not contain the "Mac" string | MacOS | 75% |  |  |  |  |
+| `VM::DLL` | Check for VM-specific DLLs | Windows | 25% |  |  |  |  |
+| `VM::REGISTRY` |  Check for VM-specific registry values | Windows | 50% |  |  |  |  |
+| `VM::VM_FILES` | Find for VM-specific specific files | Windows | 25% |  |  |  |  |
+| `VM::HWMODEL` | Check if the sysctl for the hwmodel does not contain the "Mac" string | MacOS | 100% |  |  |  |  |
 | `VM::DISK_SIZE` | Check if disk size is under or equal to 50GB | Linux | 60% |  |  |  |  |
-| `VM::VBOX_DEFAULT` | Check for default RAM and DISK sizes set by VirtualBox | Linux and Windows | 55% | Admin |  |  |  |
-| `VM::VBOX_NETWORK` | Check for VirtualBox network provider string | Windows | 70% |  |  |   |  |
-| `VM::COMPUTER_NAME` | Check if the computer name (not username to be clear) is VM-specific | Windows | 40% |  | GPL |  |  |
-| `VM::WINE_CHECK` | Check wine_get_unix_file_name file for Wine | Windows | 85% |  | GPL |  |  |
-| `VM::HOSTNAME` | Check if hostname is specific | Windows | 25% |  | GPL |  |  |
-| `VM::LOADED_DLLS` | Check for loaded DLLs in the process | Windows | 75% |  | GPL |  |  |
-| `VM::KVM_DIRS` | Check for KVM directory "Virtio-Win" | Windows | 55% |  | GPL |  |  |
-| `VM::AUDIO` | Check if audio device is present | Windows | 35% |  | GPL |  |  |
-| `VM::QEMU_DIR` | Check for QEMU-specific blacklisted directories | Windows | 45% |  | GPL |  |  |
-| `VM::VM_PROCESSES` | Check for any VM processes that are active | Windows | 30% |  |  |  |  |
-| `VM::LINUX_USER_HOST` | Check for default VM username and hostname for linux | Linux | 25% |  |  |  |  |
-| `VM::GAMARUE` | Check for Gamarue ransomware technique which compares VM-specific Window product IDs | Windows | 40% |  |  |  |  |
+| `VM::VBOX_DEFAULT` | Check for default RAM and DISK sizes set by VirtualBox | Linux and Windows | 25% | Admin |  |  |  |
+| `VM::VBOX_NETWORK` | Check for VirtualBox network provider string | Windows | 100% |  |  |   |  |
+| `VM::COMPUTER_NAME` | Check if the computer name (not username to be clear) is VM-specific | Windows | 10% |  | GPL |  |  |
+| `VM::WINE_CHECK` | Check wine_get_unix_file_name file for Wine | Windows | 100% |  | GPL |  |  |
+| `VM::HOSTNAME` | Check if hostname is specific | Windows | 10% |  | GPL |  |  |
+| `VM::KVM_DIRS` | Check for KVM directory "Virtio-Win" | Windows | 30% |  | GPL |  |  |
+| `VM::AUDIO` | Check if audio device is present | Windows | 25% |  | GPL |  |  |
+| `VM::QEMU_DIR` | Check for QEMU-specific blacklisted directories | Windows | 30% |  | GPL |  |  |
+| `VM::POWER_CAPABILITIES` | Check what power states are enabled | Windows | 25% |  | GPL |  |  |
+| `VM::SETUPAPI_DISK` | Checks for virtual machine signatures in disk drive device identifiers | Windows | 20% |  | GPL |  |  |
+| `VM::VM_PROCESSES` | Check for any VM processes that are active | Windows | 15% |  |  |  |  |
+| `VM::LINUX_USER_HOST` | Check for default VM username and hostname for linux | Linux | 10% |  |  |  |  |
+| `VM::GAMARUE` | Check for Gamarue ransomware technique which compares VM-specific Window product IDs | Windows | 10% |  |  |  |  |
 | `VM::VMID_0X4` | Check if the CPU manufacturer ID matches that of a VM brand with leaf 0x40000000 |  | 100% |  |  |  |  |
 | `VM::PARALLELS_VM` | Check for any indication of Parallels VM through BIOS data | Windows | 50% |  |  |  |  |
-| `VM::RDTSC_VMEXIT` | check through alternative RDTSC technique with VMEXIT |  | 25% |  |  |  | Disabled by default |
 | `VM::QEMU_BRAND` | Match for QEMU CPU brands with "QEMU Virtual CPU" string |  | 100% |  |  |  |  |
-| `VM::BOCHS_CPU` | Check for various Bochs-related emulation oversights through CPU checks |  | 95% |  |  |  |  |
+| `VM::BOCHS_CPU` | Check for various Bochs-related emulation oversights through CPU checks |  | 100% |  |  |  |  |
 | `VM::BIOS_SERIAL` | Check if the BIOS serial is valid (null = VM) | Windows | 60% |  |  |  |  |
-| `VM::MSSMBIOS` | Check MSSMBIOS registry for VM-specific strings | Windows | 85% |  |  |  |  |
-| `VM::MAC_MEMSIZE` | Check if memory is too low for MacOS system | MacOS | 30% |  |  |  |  |
-| `VM::MAC_IOKIT` | Check MacOS' IO kit registry for VM-specific strings | MacOS | 80% |  |  |  |  |
-| `VM::IOREG_GREP` | Check for VM-strings in ioreg commands for MacOS | MacOS | 75% |  |  |  |  |
-| `VM::MAC_SIP` | Check if System Integrity Protection is disabled (likely a VM if it is) | MacOS | 85% |  |  |  |  |
-| `VM::HKLM_REGISTRIES` | Check HKLM registries for specific VM strings | Windows | 70% |  |  |  |  |
-| `VM::QEMU_GA` | Check for "qemu-ga" process | Linux | 20% |  |  |  |  |
+| `VM::MSSMBIOS` | Check MSSMBIOS registry for VM-specific strings | Windows | 100% |  |  |  |  |
+| `VM::MAC_MEMSIZE` | Check if memory is too low for MacOS system | MacOS | 15% |  |  |  |  |
+| `VM::MAC_IOKIT` | Check MacOS' IO kit registry for VM-specific strings | MacOS | 100% |  |  |  |  |
+| `VM::IOREG_GREP` | Check for VM-strings in ioreg commands for MacOS | MacOS | 100% |  |  |  |  |
+| `VM::MAC_SIP` | Check if System Integrity Protection is disabled (likely a VM if it is) | MacOS | 40% |  |  |  |  |
+| `VM::HKLM_REGISTRIES` | Check HKLM registries for specific VM strings | Windows | 25% |  |  |  |  |
+| `VM::QEMU_GA` | Check for "qemu-ga" process | Linux | 10% |  |  |  |  |
 | `VM::VPC_INVALID` | Check for official VPC method | Windows | 75% |  |  | 32-bit |  |
-| `VM::SIDT` | Check for sidt instruction method | Linux, Windows | 30% |  |  |  |  |
+| `VM::SIDT` | Check for sidt instruction method | Linux, Windows | 25% |  |  |  |  |
 | `VM::SGDT` | Check for sgdt instruction method | Windows | 30% |  |  | 32-bit |  |
 | `VM::SLDT` | Check for sldt instruction method | Windows | 15% |  |  | 32-bit |  |
 | `VM::OFFSEC_SIDT` | Check for Offensive Security SIDT method | Windows | 60% |  |  | 32-bit |  |
@@ -398,47 +398,47 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::ODD_CPU_THREADS` | Check for odd CPU threads, usually a sign of modification through VM setting because 99% of CPUs have even numbers of threads |  | 80% |  |  |  |  |
 | `VM::INTEL_THREAD_MISMATCH` | Check for Intel CPU thread count database if it matches the system's thread count |  | 100% |  |  |  |  |
 | `VM::XEON_THREAD_MISMATCH` | Same as above, but for Xeon Intel CPUs |  | 85% |  |  |  |  |
-| `VM::NETTITUDE_VM_MEMORY` | Check for memory regions to detect VM-specific brands | Windows | 75% |  |  |  |  |
-| `VM::CPUID_BITSET` |  Check for CPUID technique by checking whether all the bits equate to more than 4000 |  | 20% |  |  |  |  |
-| `VM::CUCKOO_DIR` | Check for cuckoo directory using crt and WIN API directory functions | Windows | 15% |  |  |  |  |
-| `VM::CUCKOO_PIPE` | Check for Cuckoo specific piping mechanism | Windows | 20% |  |  |  |  |
-| `VM::HYPERV_HOSTNAME` | Check for default Azure hostname format regex (Azure uses Hyper-V as their base VM brand) | Windows, Linux | 50% |  |  |  |  |
-| `VM::GENERAL_HOSTNAME` | Check for commonly set hostnames by certain VM brands | Windows, Linux | 20% |  |  |  |  |
-| `VM::SCREEN_RESOLUTION` | Check for pre-set screen resolutions commonly found in VMs | Windows | 10% |  |  |  |  |
+| `VM::NETTITUDE_VM_MEMORY` | Check for memory regions to detect VM-specific brands | Windows | 100% |  |  |  |  |
+| `VM::CPUID_BITSET` |  Check for CPUID technique by checking whether all the bits equate to more than 4000 |  | 25% |  |  |  |  |
+| `VM::CUCKOO_DIR` | Check for cuckoo directory using crt and WIN API directory functions | Windows | 30% |  |  |  |  |
+| `VM::CUCKOO_PIPE` | Check for Cuckoo specific piping mechanism | Windows | 30% |  |  |  |  |
+| `VM::HYPERV_HOSTNAME` | Check for default Azure hostname format regex (Azure uses Hyper-V as their base VM brand) | Windows, Linux | 30% |  |  |  |  |
+| `VM::GENERAL_HOSTNAME` | Check for commonly set hostnames by certain VM brands | Windows, Linux | 10% |  |  |  |  |
+| `VM::SCREEN_RESOLUTION` | Check for pre-set screen resolutions commonly found in VMs | Windows | 20% |  |  |  |  |
 | `VM::DEVICE_STRING` | Check if bogus device string would be accepted | Windows | 25% |  |  |  |  |
-| `VM::BLUESTACKS_FOLDERS` |  Check for the presence of BlueStacks-specific folders | Linux | 15% |  |  |  |  |
+| `VM::BLUESTACKS_FOLDERS` |  Check for the presence of BlueStacks-specific folders | Linux | 5% |  |  |  |  |
 | `VM::CPUID_SIGNATURE` | Check for signatures in leaf 0x40000001 in CPUID |  | 95% |  |  |  |  |
 | `VM::HYPERV_BITMASK` | Check for Hyper-V CPUID bitmask range for reserved values |  | 20% |  |  |  |  |
 | `VM::KVM_BITMASK` | Check for KVM CPUID bitmask range for reserved values |  | 40% |  |  |  |  |
 | `VM::KGT_SIGNATURE` | Check for Intel KGT (Trusty branch) hypervisor signature in CPUID |  | 80% |  |  |  |  |
-| `VM::VMWARE_DMI` | Check for VMware DMI strings in BIOS serial number | Windows | 30% |  |  |  |  |
+| `VM::VMWARE_DMI` | Check for VMware DMI strings in BIOS serial number | Windows | 40% |  |  |  |  |
 | `VM::VMWARE_EVENT_LOGS` | Check for presence of VMware in the Windows Event Logs | Windows | 25% |  |  |  |  |
 | `VM::QEMU_VIRTUAL_DMI` | Check for presence of QEMU in the /sys/devices/virtual/dmi/id directory | Linux | 40% |  |  |  |  |
 | `VM::QEMU_USB` | Check for presence of QEMU in the /sys/kernel/debug/usb/devices directory | Linux | 20% |  |  |  |  |
 | `VM::HYPERVISOR_DIR` | Check for presence of any files in /sys/hypervisor directory | Linux | 20% |  |  |  |  |
 | `VM::UML_CPU` | Check for the "UML" string in the CPU brand | Linux | 80% |  |  |  |  |
-| `VM::KMSG` | Check for any indications of hypervisors in the kernel message logs | Linux | 10% |  |  |  |  |
-| `VM::VM_PROCS` | Check for a Xen VM process | Linux | 20% |  |  |  |  |
+| `VM::KMSG` | Check for any indications of hypervisors in the kernel message logs | Linux | 5% |  |  |  |  |
+| `VM::VM_PROCS` | Check for a Xen VM process | Linux | 10% |  |  |  |  |
 | `VM::VBOX_MODULE` | Check for a VBox kernel module | Linux | 15% |  |  |  |  |
 | `VM::SYSINFO_PROC` | Check for potential VM info in /proc/sysinfo | Linux | 15% |  |  |  |  |
 | `VM::DEVICE_TREE` | Check for specific files in /proc/device-tree directory | Linux | 20% |  |  |  |  |
 | `VM::DMI_SCAN` | Check for string matches of VM brands in the linux DMI | Linux | 50% |  |  |  |  |
 | `VM::SMBIOS_VM_BIT` | Check for the VM bit in the SMBIOS data | Linux | 50% |  |  |  |  |
-| `VM::PODMAN_FILE` | Check for podman file in /run/ | Linux | 15% |  |  |  |  |
+| `VM::PODMAN_FILE` | Check for podman file in /run/ | Linux | 5% |  |  |  |  |
 | `VM::WSL_PROC` | Check for WSL or microsoft indications in /proc/ subdirectories | Linux | 30% |  |  |  |  |
 | `VM::ANYRUN_DRIVER` | Check for any.run driver presence | Windows | 65% |  |  |  |  | Removed from the lib, only available in the CLI |
 | `VM::ANYRUN_DIRECTORY` | Check for any.run directory and handle the status code | Windows | 35% |  |  |  |  | Removed from the lib, only available in the CLI |
 | `VM::GPU_CHIPTYPE` | Check for known VM vendors in the GPU chip manufacturer | Windows | 100% |  |  |  |  |
-| `VM::DRIVER_NAMES` | Check for VM-specific names for drivers | Windows | 50% |  |  |  |  |
-| `VM::VM_SIDT` | Check for the IDT base address | Windows | 75% |  |  |  |  |
+| `VM::DRIVER_NAMES` | Check for VM-specific names for drivers | Windows | 100% |  |  |  |  |
+| `VM::VM_SIDT` | Check for unknown IDT base address | Windows | 100% |  |  |  |  |
 | `VM::HDD_SERIAL` | Check for HDD serial number | Windows | 100% |  |  |  |  |
-| `VM::PORT_CONNECTORS` | Check for physical connection ports | Windows | 50% |  |  |  |  |
-| `VM::VM_HDD` | Check for VM related keywords in HDD models | Windows | 75% |  |  |  |  |
-| `VM::ACPI_DETECT` | Check for VM related strings in ACPI data | Windows | 85% |  |  |  |  |
+| `VM::PORT_CONNECTORS` | Check for physical connection ports | Windows | 10% |  |  |  |  |
+| `VM::VM_HDD` | Check for VM related keywords in HDD models | Windows | 100% |  |  |  |  |
+| `VM::ACPI_REGISTRY` | Check for VM related strings in ACPI data | Windows | 100% |  |  |  |  |
 | `VM::GPU_NAME` | Check for VM specific device names in GPUs | Windows | 100% |  |  |  |  |
 | `VM::VM_DEVICES` | Check for VM-specific devices | Windows | 45% |  |  |  |  |
-| `VM::VMWARE_MEMORY` | Check for specific VM memory traces in certain processes | Windows | 80% |  |  |  |  |
-| `VM::IDT_GDT_MISMATCH` | Check if the IDT and GDT limit addresses mismatch between different CPU cores | Windows | 25% |  |  |  |  |
+| `VM::VM_MEMORY` | Check for specific VM memory traces in certain processes | Windows | 65% |  |  |  |  |
+| `VM::IDT_GDT_MISMATCH` | Check if the IDT and GDT limit addresses mismatch between different CPU cores | Windows | 50% |  |  |  |  |
 | `VM::PROCESSOR_NUMBER` | Check for number of processors | Windows | 50% |  |  |  |  |
 | `VM::NUMBER_OF_CORES` | Check for number of cores | Windows | 50% |  |  |  |  |
 | `VM::WMI_MODEL` | Check for device's model using WMI | Windows | 100% |  |  |  |  |
@@ -446,18 +446,14 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::WMI_TEMPERATURE` | Check for device's temperature | Windows | 25% |  |  |  |  |
 | `VM::PROCESSOR_ID` | Check for empty processor ids using WMI | Windows | 25% |  |  |  |  |
 | `VM::CPU_FANS` | Check for CPU Fans | Windows | 35% |  |  |  |  |
-| `VM::POWER_CAPABILITIES` | Check what power states are enabled | Windows | 25% |  | GPL |  |  |
-| `VM::SETUPAPI_DISK` | Checks for virtual machine signatures in disk drive device identifiers | Windows | 20% |  | GPL |  |  |
-| `VM::VMWARE_HARDENER` | Checks for VMwareHardenerLoader's method of patching firmware detection by setting its signatures with "7" | Windows | 50% |  |  |  |  |
-| `VM::WMI_QUERIES` | Executes generic WMI queries that always return more than 0 entries in physical machines and checks if any query returns zero entries | Windows | 50% |  | GPL |  |  |
+| `VM::VMWARE_HARDENER` | Checks for VMwareHardenerLoader's method of patching firmware detection by setting its signatures with "7" | Windows | 60% |  |  |  |  |
 | `VM::SYS_QEMU` | Check for existence of "qemu_fw_cfg" directories within /sys/module and /sys/firmware | Linux | 70% |  |  |  |  |
 | `VM::LSHW_QEMU` | Check for QEMU string instances with lshw command | Linux | 80% |  |  |  |  |
 | `VM::VIRTUAL_PROCESSORS` | Checks if the number of maximum virtual processors matches the maximum number of logical processors | Windows | 50% |  |  |  |  |
 | `VM::MOTHERBOARD_PRODUCT` | Check if the motherboard product string matches "Virtual Machine" | Windows | 50% |  |  |  |  |
-| `VM::HYPERV_QUERY` | Checks if a call to NtQuerySystemInformation with the 0x9f leaf fills a _SYSTEM_HYPERVISOR_DETAIL_INFORMATION structure | Windows | 50% |  |  |  |  |
+| `VM::HYPERV_QUERY` | Checks if a call to NtQuerySystemInformation with the 0x9f leaf fills a _SYSTEM_HYPERVISOR_DETAIL_INFORMATION structure | Windows | 100% |  |  |  |  |
 | `VM::BAD_POOLS` | Checks for system pools allocated by hypervisors | Windows | 80% |  |  |  |  |
 | `VM::AMD_SEV` | Check for AMD-SEV MSR running on the system | Linux and MacOS | 50% | Admin |  |  |  |
-| `VM::AMD_RESERVED` | Check for bits that should be reserved in leaf 8000000Ah |  | 50% |  |  |  |
 | `VM::AMD_THREAD_MISMATCH` | Check for AMD CPU thread count database if it matches the system's thread count |  | 100% |  |  |  |  |
 | `VM::NATIVE_VHD` | Checks if the OS was booted from a VHD container |  | 100% |  |  |  |  |
 | `VM::VIRTUAL_REGISTRY` | Checks for particular object directory which is present in Sandboxie virtual environment but not in usual host systems |  | 65% |  |  |  |  |
