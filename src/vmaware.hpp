@@ -25,13 +25,13 @@
  *
  * ================================ SECTIONS ==================================
  * - enums for publicly accessible techniques  => line 338
- * - struct for internal cpu operations        => line 620
- * - struct for internal memoization           => line 1078
- * - struct for internal utility functions     => line 1472
- * - struct for internal core components       => line 10709
- * - start of internal VM detection techniques => line 2831
- * - start of public VM detection functions    => line 11113
- * - start of externally defined variables     => line 12018
+ * - struct for internal cpu operations        => line 619
+ * - struct for internal memoization           => line 1083
+ * - struct for internal utility functions     => line 1477
+ * - struct for internal core components       => line 10851
+ * - start of internal VM detection techniques => line 3051
+ * - start of public VM detection functions    => line 11255
+ * - start of externally defined variables     => line 12159
  *
  *
  * ================================ EXAMPLE ==================================
@@ -456,7 +456,6 @@ public:
         HYPERV_QUERY,
         BAD_POOLS,
         AMD_SEV,
-        AMD_RESERVED,
 		AMD_THREAD_MISMATCH,
         NATIVE_VHD,
         VIRTUAL_REGISTRY,
@@ -9972,51 +9971,6 @@ static bool rdtsc() {
 	}
 
 
-    /**
-     * @brief Check for bits that should be reserved in leaf 8000000Ah
-     * @category x86
-     * @note https://en.wikipedia.org/wiki/CPUID#EAX=8000'000Ah:_SVM_features
-     */
-    [[nodiscard]] static bool amd_reserved() {
-#if (!x86)
-        return false;
-#else
-        if (!cpu::is_amd()) {
-            return false;
-        }
-
-        if (!cpu::is_leaf_supported(0x8000000A)) {
-            return false;
-        }
-
-        u32 eax = 0, ebx = 0, ecx = 0, edx = 0;
-        cpu::cpuid(eax, ebx, ecx, edx, 0x8000000A, 0);
-
-        // EAX: Check bits 31:8
-        if (eax & 0xFFFFFF00) {
-            return true;
-        }
-
-        // EBX: Check bits 31:8
-        if (ebx & 0xFFFFFF00) {
-            return true;
-        }
-
-        // ECX must be zero
-        if (ecx != 0) {
-            return true;
-        }
-
-        // EDX: Check reserved bits 9,11,14,22
-        if (edx & ((1 << 9) | (1 << 11) | (1 << 14) | (1 << 22))) {
-            return true;
-        }
-
-        return false;
-#endif
-    }
-
-
 	/**
 	 * @brief Check for AMD CPU thread count database if it matches the system's thread count
 	 * @link https://www.amd.com/en/products/specifications/processors.html
@@ -10034,7 +9988,7 @@ static bool rdtsc() {
         if (cpu::has_hyperthreading()) {
             return false;
         }
-
+        
         std::string model = cpu::get_brand();
 
         for (char& c : model) {
@@ -10612,16 +10566,16 @@ static bool rdtsc() {
             { "z2 go ", 8 }
         } };
 
-        bool found = false;
+        bool mismatch = false;
 
         for (const auto& pair : thread_database) {
             if (model.find(pair.first) != std::string::npos) {
-                found = (std::thread::hardware_concurrency() == static_cast<unsigned>(pair.second));
+                mismatch = !(std::thread::hardware_concurrency() == static_cast<unsigned>(pair.second));
                 break;
             }
         }
 
-        return found;
+        return mismatch;
 #endif
 	}
 
@@ -11917,7 +11871,6 @@ public: // START OF PUBLIC FUNCTIONS
             case HYPERV_QUERY: return "HYPERV_QUERY";
             case BAD_POOLS: return "BAD_POOLS";
 			case AMD_SEV: return "AMD_SEV";
-            case AMD_RESERVED: return "AMD_RESERVED";
 			case AMD_THREAD_MISMATCH: return "AMD_THREAD_MISMATCH";
             case NATIVE_VHD: return "NATIVE_VHD";
             case VIRTUAL_REGISTRY: return "VIRTUAL_REGISTRY";
@@ -12504,7 +12457,6 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::HYPERV_QUERY, { 100, VM::hyperv_query, false } },
     { VM::BAD_POOLS, { 80, VM::bad_pools, false } },
 	{ VM::AMD_SEV, { 50, VM::amd_sev, false } },
-    { VM::AMD_RESERVED, { 50, VM::amd_reserved, false } },
 	{ VM::AMD_THREAD_MISMATCH, { 100, VM::amd_thread_mismatch, false } },
     { VM::NATIVE_VHD, { 100, VM::native_vhd, false } },
     { VM::VIRTUAL_REGISTRY, { 65, VM::virtual_registry, false } },

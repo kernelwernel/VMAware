@@ -1003,7 +1003,6 @@ void general() {
     checker(VM::HYPERV_QUERY, "hypervisor query");
     checker(VM::BAD_POOLS, "bad memory pools");
 	checker(VM::AMD_SEV, "AMD-SEV MSR");
-    checker(VM::AMD_RESERVED, "AMD reserved bits");
 	checker(VM::AMD_THREAD_MISMATCH, "AMD thread count mismatch");
     checker(VM::NATIVE_VHD, "VHD containers");
     checker(VM::VIRTUAL_REGISTRY, "registry emulation");

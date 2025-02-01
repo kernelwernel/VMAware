@@ -25,13 +25,13 @@
  *
  * ================================ SECTIONS ==================================
  * - enums for publicly accessible techniques  => line 338
- * - struct for internal cpu operations        => line 620
- * - struct for internal memoization           => line 1078
- * - struct for internal utility functions     => line 1472
- * - struct for internal core components       => line 10709
- * - start of internal VM detection techniques => line 2831
- * - start of public VM detection functions    => line 11113
- * - start of externally defined variables     => line 12018
+ * - struct for internal cpu operations        => line 611
+ * - struct for internal memoization           => line 1076
+ * - struct for internal utility functions     => line 1471
+ * - struct for internal core components       => line 10555
+ * - start of internal VM detection techniques => line 3046
+ * - start of public VM detection functions    => line 10964
+ * - start of externally defined variables     => line 11877
  *
  *
  * ================================ EXAMPLE ==================================
@@ -448,7 +448,6 @@ public:
         HYPERV_QUERY,
         BAD_POOLS,
         AMD_SEV,
-        AMD_RESERVED,
         AMD_THREAD_MISMATCH,
         NATIVE_VHD,
         VIRTUAL_REGISTRY,
@@ -2674,20 +2673,28 @@ public:
         /**
          * @brief Checks if the number of logical processors obtained by various methods match.
          *
-         * This function retrieves the number of logical processors in the system using five different
+         * This function retrieves the number of logical processors in the system using several different
          * methods and compares them to ensure consistency. The methods include:
-         * - `GetLogicalProcessorInformationEx` API
-         * - Windows Management Instrumentation (WMI)
-         * - `GetSystemInfo` function
-         * - `GetProcessAffinityMask` function
-         * - `NtQuerySystemInformation` function (dynamically loaded)
-         *
-         * The function returns true if there is any mismatch in the thread count obtained by these methods,
-         * and `false` if all methods return the same result.
+         * - GetLogicalProcessorInformationEx API (using RelationProcessorCore and RelationNumaNode)
+         * - Windows Management Instrumentation via Win32_Processor
+         * - GetSystemInfo function
+         * - GetProcessAffinityMask function
+         * - NtQuerySystemInformation functionwith SystemBasicInformation
+         * - GetActiveProcessorCount API (across all processor groups)
+         * - Windows Management Instrumentation via Win32_ComputerSystem
+         * - GetLogicalProcessorInformation API
+         * - The NUMBER_OF_PROCESSORS environment variable
+         * - Registry query from "HARDWARE\DESCRIPTION\System\CentralProcessor" (processor packages)
+         * - GetNativeSystemInfo function for native system information
+         * - GetMaximumProcessorCount API
+         * - NtQuerySystemInformation with SystemProcessorPerformanceInformation (processor performance info)
+         * - NUMA API functions (GetNumaHighestNodeNumber and GetNumaNodeProcessorMaskEx) to enumerate processors by NUMA node
+         * - Enumeration of processor groups via GetActiveProcessorGroupCount and GetActiveProcessorCount for each group
          *
          * @return bool true if there is a mismatch in thread counts from different methods, false otherwise.
          */
         [[nodiscard]] static bool does_threadcount_mismatch() {
+#pragma warning (disable : 4191) // supress useless warnings about unsafe conversions from 'FARPROC' to 'VM::util::does_threadcount_mismatch::<lambda_X>
             auto GetThreadsUsingGetLogicalProcessorInformationEx = []() -> int {
                 DWORD bufferSize = 0;
                 GetLogicalProcessorInformationEx(RelationProcessorCore, nullptr, &bufferSize);
@@ -2697,7 +2704,7 @@ public:
                     return 0;
                 }
 
-                int threadCount = 0;
+                int threadCountProcessorCore = 0;
                 char* ptr = buffer.data();
                 while (ptr < buffer.data() + bufferSize) {
                     auto info = reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(ptr);
@@ -2707,13 +2714,35 @@ public:
                         u32 low = static_cast<u32>(mask); // low 32-bits
                         u32 high = static_cast<u32>(mask >> 32); // high 32-bits
 
-                        threadCount += __popcnt(low);
-                        threadCount += __popcnt(high);
+                        threadCountProcessorCore += __popcnt(low);
+                        threadCountProcessorCore += __popcnt(high);
                     }
                     ptr += info->Size;
                 }
 
-                return threadCount;
+                bufferSize = 0;
+                GetLogicalProcessorInformationEx(RelationNumaNode, nullptr, &bufferSize);
+                if (!GetLogicalProcessorInformationEx(RelationNumaNode, reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(buffer.data()), &bufferSize)) {
+                    return 0;
+                }
+                int threadCountNuma = 0;
+                ptr = buffer.data();
+                while (ptr < buffer.data() + bufferSize) {
+                    auto info = reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(ptr);
+                    if (info->Relationship == RelationNumaNode) {
+                        GROUP_AFFINITY affinity = info->NumaNode.GroupMask;
+                        u64 mask = affinity.Mask;
+                        u32 low = static_cast<u32>(mask);
+                        u32 high = static_cast<u32>(mask >> 32);
+                        threadCountNuma += __popcnt(low);
+                        threadCountNuma += __popcnt(high);
+                    }
+                    ptr += info->Size;
+                }
+
+                if (threadCountNuma != threadCountProcessorCore) return 1000; // force a mismatch
+
+                return threadCountProcessorCore;
                 };
 
             auto GetThreadsUsingWMI = []() -> int {
@@ -2781,7 +2810,7 @@ public:
                 };
 
             auto GetThreadsUsingGetActiveProcessorCount = []() -> int {
-                HMODULE hKernel32 = GetModuleHandleA("kernel32.dll");
+                const HMODULE hKernel32 = GetModuleHandleA("kernel32.dll");
                 if (hKernel32) {
                     typedef DWORD(WINAPI* GetActiveProcessorCountFunc)(WORD);
                     auto pGetActiveProcessorCount = reinterpret_cast<GetActiveProcessorCountFunc>(
@@ -2828,17 +2857,141 @@ public:
                 return threadCount;
                 };
 
-            int wmiThreads = GetThreadsUsingWMI();
-            int sysinfoThreads = GetThreadsUsingGetSystemInfo();
-            int affinityMaskThreads = GetThreadsUsingGetProcessAffinityMask();
-            int ntQueryThreads = GetThreadsUsingNtQuerySystemInformation();
-            int osThreads = GetThreadsUsingGetLogicalProcessorInformationEx();
-            int activeProcCount = GetThreadsUsingGetActiveProcessorCount();
-            int wmiCSThreads = GetThreadsUsingWMI_ComputerSystem();
-            int oldLogicalProcInfoThreads = GetThreadsUsingGetLogicalProcessorInformation();
+            auto GetThreadsUsingEnvironmentVariable = []() -> int {
+                char* env = nullptr;
+                size_t len = 0;
 
+                if (_dupenv_s(&env, &len, "NUMBER_OF_PROCESSORS") == 0 && env != nullptr) {
+                    int num = std::atoi(env);
+                    free(env);
+                    return num;
+                }
+
+                return 0;
+                };
+
+            // this value represents the number of processor packages (sockets) and may not account for hyper-threading
+            auto GetThreadsUsingRegistry = []() -> int {
+                HKEY hKey;
+                if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, "HARDWARE\\DESCRIPTION\\System\\CentralProcessor", 0, KEY_READ, &hKey) != ERROR_SUCCESS) {
+                    return 0;
+                }
+                int processorCount = 0;
+                char subKeyName[256];
+                DWORD subKeyNameSize;
+                DWORD index = 0;
+                while (true) {
+                    subKeyNameSize = sizeof(subKeyName);
+                    LONG ret = RegEnumKeyExA(hKey, index, subKeyName, &subKeyNameSize, nullptr, nullptr, nullptr, nullptr);
+                    if (ret == ERROR_NO_MORE_ITEMS) {
+                        break;
+                    }
+                    if (ret == ERROR_SUCCESS) {
+                        processorCount++;
+                    }
+                    index++;
+                }
+                RegCloseKey(hKey);
+                return processorCount;
+                };
+
+            auto GetThreadsUsingGetNativeSystemInfo = []() -> int {
+                SYSTEM_INFO sysinfo;
+                GetNativeSystemInfo(&sysinfo);
+                return static_cast<int>(sysinfo.dwNumberOfProcessors);
+                };
+
+            auto GetThreadsUsingGetMaximumProcessorCount = []() -> int {
+                const HMODULE hKernel32 = GetModuleHandleA("kernel32.dll");
+                if (hKernel32) {
+                    typedef DWORD(WINAPI* GetMaximumProcessorCountFunc)(WORD);
+                    auto pGetMaximumProcessorCount = reinterpret_cast<GetMaximumProcessorCountFunc>(
+                        GetProcAddress(hKernel32, "GetMaximumProcessorCount"));
+                    if (pGetMaximumProcessorCount) {
+                        return static_cast<int>(pGetMaximumProcessorCount(ALL_PROCESSOR_GROUPS));
+                    }
+                }
+                return 0;
+                };
+
+            auto GetThreadsUsingNtQueryProcessorPerformanceInformation = []() -> int {
+                typedef NTSTATUS(WINAPI* NtQuerySystemInformationFunc)(
+                    SYSTEM_INFORMATION_CLASS SystemInformationClass,
+                    PVOID SystemInformation,
+                    ULONG SystemInformationLength,
+                    PULONG ReturnLength
+                    );
+                const HMODULE hNtdll = GetModuleHandleA("ntdll.dll");
+                if (!hNtdll) {
+                    return 0;
+                }
+                auto pNtQuerySystemInformation = reinterpret_cast<NtQuerySystemInformationFunc>(
+                    GetProcAddress(hNtdll, "NtQuerySystemInformation"));
+                if (!pNtQuerySystemInformation) {
+                    return 0;
+                }
+                ULONG bufferSize = 0;
+
+                NTSTATUS status = pNtQuerySystemInformation(static_cast<SYSTEM_INFORMATION_CLASS>(8), nullptr, 0, &bufferSize);
+                if (status != ((NTSTATUS)0xC0000004L)) {
+                    return 0;
+                }
+                std::vector<char> buffer(bufferSize);
+                status = pNtQuerySystemInformation(static_cast<SYSTEM_INFORMATION_CLASS>(8), buffer.data(), bufferSize, &bufferSize);
+                if (status != 0) {
+                    return 0;
+                }
+
+                int count = static_cast<int>(bufferSize / sizeof(SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION));
+                return count;
+                };
+
+            auto GetThreadsUsingNumaAPIs = []() -> int {
+                ULONG highestNode = 0;
+                if (!GetNumaHighestNodeNumber(&highestNode)) {
+                    return 0;
+                }
+                int totalCount = 0;
+                for (USHORT node = 0; node <= highestNode; node++) {
+                    GROUP_AFFINITY affinity = {};
+                    if (GetNumaNodeProcessorMaskEx(node, &affinity)) {
+                        u64 mask = affinity.Mask;
+                        u32 low = static_cast<u32>(mask);
+                        u32 high = static_cast<u32>(mask >> 32);
+                        totalCount += __popcnt(low);
+                        totalCount += __popcnt(high);
+                    }
+                }
+                return totalCount;
+                };
+
+            auto GetThreadsUsingProcessorGroupsEnumeration = []() -> int {
+                WORD groupCount = GetActiveProcessorGroupCount();
+                int totalCount = 0;
+                for (WORD group = 0; group < groupCount; ++group) {
+                    totalCount += static_cast<int>(GetActiveProcessorCount(group));
+                }
+                return totalCount;
+                };
+#pragma warning (default : 4191)
+
+            const int wmiThreads = GetThreadsUsingWMI();
+            const int sysinfoThreads = GetThreadsUsingGetSystemInfo();
+            const int affinityMaskThreads = GetThreadsUsingGetProcessAffinityMask();
+            const int ntQueryThreads = GetThreadsUsingNtQuerySystemInformation();
+            const int osThreads = GetThreadsUsingGetLogicalProcessorInformationEx();
+            const int activeProcCount = GetThreadsUsingGetActiveProcessorCount();
+            const int wmiCSThreads = GetThreadsUsingWMI_ComputerSystem();
+            const int oldLogicalProcInfoThreads = GetThreadsUsingGetLogicalProcessorInformation();
+            const int envThreads = GetThreadsUsingEnvironmentVariable();
+            const int registryThreads = GetThreadsUsingRegistry();
+            const int nativeSysInfoThreads = GetThreadsUsingGetNativeSystemInfo();
+            const int maxProcCountThreads = GetThreadsUsingGetMaximumProcessorCount();
+            const int ntProcPerfThreads = GetThreadsUsingNtQueryProcessorPerformanceInformation();
+            const int numaApisThreads = GetThreadsUsingNumaAPIs();
+            const int processorGroupsThreads = GetThreadsUsingProcessorGroupsEnumeration();
             std::vector<int> validThreads;
-            validThreads.reserve(8);
+            validThreads.reserve(15);
 
             if (osThreads > 0) validThreads.push_back(osThreads);
             if (wmiThreads > 0) validThreads.push_back(wmiThreads);
@@ -2848,6 +3001,13 @@ public:
             if (activeProcCount > 0) validThreads.push_back(activeProcCount);
             if (wmiCSThreads > 0) validThreads.push_back(wmiCSThreads);
             if (oldLogicalProcInfoThreads > 0) validThreads.push_back(oldLogicalProcInfoThreads);
+            if (envThreads > 0) validThreads.push_back(envThreads);
+            if (registryThreads > 0) validThreads.push_back(registryThreads);
+            if (nativeSysInfoThreads > 0) validThreads.push_back(nativeSysInfoThreads);
+            if (maxProcCountThreads > 0) validThreads.push_back(maxProcCountThreads);
+            if (ntProcPerfThreads > 0) validThreads.push_back(ntProcPerfThreads);
+            if (numaApisThreads > 0) validThreads.push_back(numaApisThreads);
+            if (processorGroupsThreads > 0) validThreads.push_back(processorGroupsThreads);
 
             if (validThreads.size() < 2) {
                 return false;
@@ -3880,7 +4040,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return result;
 #endif
     }
-
+  
 
     /**
      * @brief Check for any VM processes that are active
@@ -9516,51 +9676,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check for bits that should be reserved in leaf 8000000Ah
-     * @category x86
-     * @note https://en.wikipedia.org/wiki/CPUID#EAX=8000'000Ah:_SVM_features
-     */
-    [[nodiscard]] static bool amd_reserved() {
-#if (!x86)
-        return false;
-#else
-        if (!cpu::is_amd()) {
-            return false;
-        }
-
-        if (!cpu::is_leaf_supported(0x8000000A)) {
-            return false;
-        }
-
-        u32 eax = 0, ebx = 0, ecx = 0, edx = 0;
-        cpu::cpuid(eax, ebx, ecx, edx, 0x8000000A, 0);
-
-        // EAX: Check bits 31:8
-        if (eax & 0xFFFFFF00) {
-            return true;
-        }
-
-        // EBX: Check bits 31:8
-        if (ebx & 0xFFFFFF00) {
-            return true;
-        }
-
-        // ECX must be zero
-        if (ecx != 0) {
-            return true;
-        }
-
-        // EDX: Check reserved bits 9,11,14,22
-        if (edx & ((1 << 9) | (1 << 11) | (1 << 14) | (1 << 22))) {
-            return true;
-        }
-
-        return false;
-#endif
-    }
-
-
-    /**
      * @brief Check for AMD CPU thread count database if it matches the system's thread count
      * @link https://www.amd.com/en/products/specifications/processors.html
      * @category x86
@@ -10155,16 +10270,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             { "z2 go ", 8 }
         } };
 
-        bool found = false;
+        bool mismatch = false;
 
         for (const auto& pair : thread_database) {
             if (model.find(pair.first) != std::string::npos) {
-                found = (std::thread::hardware_concurrency() == static_cast<unsigned>(pair.second));
+                mismatch = !(std::thread::hardware_concurrency() == static_cast<unsigned>(pair.second));
                 break;
             }
         }
 
-        return found;
+        return mismatch;
 #endif
     }
 
@@ -11374,6 +11489,12 @@ public: // START OF PUBLIC FUNCTIONS
         case DISK_SIZE: return "DISK_SIZE";
         case VBOX_DEFAULT: return "VBOX_DEFAULT";
         case VBOX_NETWORK: return "VBOX_NETWORK";
+        /* GPL */   case COMPUTER_NAME: return "COMPUTER_NAME";
+        /* GPL */   case WINE_CHECK: return "WINE_CHECK";
+        /* GPL */   case HOSTNAME: return "HOSTNAME";
+        /* GPL */   case KVM_DIRS: return "KVM_DIRS";
+        /* GPL */   case AUDIO: return "AUDIO";
+        /* GPL */   case QEMU_DIR: return "QEMU_DIR";
         case VM_PROCESSES: return "VM_PROCESSES";
         case LINUX_USER_HOST: return "LINUX_USER_HOST";
         case GAMARUE: return "GAMARUE";
@@ -11465,7 +11586,6 @@ public: // START OF PUBLIC FUNCTIONS
         case HYPERV_QUERY: return "HYPERV_QUERY";
         case BAD_POOLS: return "BAD_POOLS";
         case AMD_SEV: return "AMD_SEV";
-        case AMD_RESERVED: return "AMD_RESERVED";
         case AMD_THREAD_MISMATCH: return "AMD_THREAD_MISMATCH";
         case NATIVE_VHD: return "NATIVE_VHD";
         case VIRTUAL_REGISTRY: return "VIRTUAL_REGISTRY";
@@ -11954,7 +12074,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::DLL, { 25, VM::dll_check, true } },
     { VM::REGISTRY, { 50, VM::registry_key, true } },
     { VM::VM_FILES, { 25, VM::vm_files, true } },
-    { VM::HWMODEL, { 35, VM::hwmodel, true } },
+    { VM::HWMODEL, { 100, VM::hwmodel, true } },
     { VM::DISK_SIZE, { 60, VM::disk_size, false } },
     { VM::VBOX_DEFAULT, { 25, VM::vbox_default_specs, false } },
     { VM::VBOX_NETWORK, { 100, VM::vbox_network_share, false } },
@@ -11968,8 +12088,8 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::BIOS_SERIAL, { 60, VM::bios_serial, false } },
     { VM::MSSMBIOS, { 100, VM::mssmbios, false } },
     { VM::MAC_MEMSIZE, { 15, VM::hw_memsize, true } },
-    { VM::MAC_IOKIT, { 40, VM::io_kit, true } },
-    { VM::IOREG_GREP, { 30, VM::ioreg_grep, true } },
+    { VM::MAC_IOKIT, { 100, VM::io_kit, true } },
+    { VM::IOREG_GREP, { 100, VM::ioreg_grep, true } },
     { VM::MAC_SIP, { 40, VM::mac_sip, true } },
     { VM::HKLM_REGISTRIES, { 25, VM::hklm_registries, true } },
     { VM::QEMU_GA, { 10, VM::qemu_ga, true } },
@@ -12047,7 +12167,6 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::HYPERV_QUERY, { 100, VM::hyperv_query, false } },
     { VM::BAD_POOLS, { 80, VM::bad_pools, false } },
     { VM::AMD_SEV, { 50, VM::amd_sev, false } },
-    { VM::AMD_RESERVED, { 50, VM::amd_reserved, false } },
     { VM::AMD_THREAD_MISMATCH, { 100, VM::amd_thread_mismatch, false } },
     { VM::NATIVE_VHD, { 100, VM::native_vhd, false } },
     { VM::VIRTUAL_REGISTRY, { 65, VM::virtual_registry, false } },
