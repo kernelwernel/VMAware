@@ -397,7 +397,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::MUTEX` | Check for mutex strings of VM brands | Windows | 85% |  |  |  |  |
 | `VM::ODD_CPU_THREADS` | Check for odd CPU threads, usually a sign of modification through VM setting because 99% of CPUs have even numbers of threads |  | 80% |  |  |  |  |
 | `VM::INTEL_THREAD_MISMATCH` | Check for Intel CPU thread count database if it matches the system's thread count |  | 100% |  |  |  |  |
-| `VM::XEON_THREAD_MISMATCH` | Same as above, but for Xeon Intel CPUs |  | 85% |  |  |  |  |
+| `VM::XEON_THREAD_MISMATCH` | Same as above, but for Xeon Intel CPUs |  | 100% |  |  |  |  |
 | `VM::NETTITUDE_VM_MEMORY` | Check for memory regions to detect VM-specific brands | Windows | 100% |  |  |  |  |
 | `VM::CPUID_BITSET` |  Check for CPUID technique by checking whether all the bits equate to more than 4000 |  | 25% |  |  |  |  |
 | `VM::CUCKOO_DIR` | Check for cuckoo directory using crt and WIN API directory functions | Windows | 30% |  |  |  |  |
@@ -533,7 +533,7 @@ This is the table of all the brands the lib supports.
 | AMD SEV-SNP | `VM::brands::AMD_SEV_SNP` | VM encryptor |  |
 | Neko Project II | `VM::brands::NEKO_PROJECT` | Emulator |  | 
 | Google Compute Engine (KVM) | `VM::brands::GCE` | Cloud VM service |  |
-| NoirVisor | `VM::brands::NOIRVISOR` | Cloud VM service |  |
+| NoirVisor | `VM::brands::NOIRVISOR` | Hypervisor (type 1) |  |
 | Qihoo 360 Sandbox | `VM::brands::QIHOO` | Sandbox |  |
 
 <br>
