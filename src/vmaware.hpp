@@ -9842,7 +9842,6 @@ static bool rdtsc() {
 	 * @brief Check for AMD CPU thread count database if it matches the system's thread count
 	 * @link https://www.amd.com/en/products/specifications/processors.html
 	 * @category x86
-	 * @note 
 	 */
 	[[nodiscard]] static bool amd_thread_mismatch() {
 #if (!x86)
@@ -9871,7 +9870,11 @@ static bool rdtsc() {
 
         debug("AMD_THREAD_MISMATCH: CPU model = ", model);
 
-        constexpr std::array<std::pair<const char*, int>, 559> thread_database = { {
+        // all of these have spaces at the end on purpose, because some of these could 
+        // accidentally match different brands. Like for example: "a10-6700" could be 
+        // detected when scanning the string in "a10-6700t", which are both different 
+        // and obviously incorrect. So to fix this, spaces are added at the end.
+        constexpr std::array<std::pair<const char*, int>, 559> amd_thread_database = { {
             { "3015ce ", 4 },
             { "3015e ", 4 },
             { "3020e ", 2 },
@@ -10433,16 +10436,22 @@ static bool rdtsc() {
             { "z2 go ", 8 }
         } };
 
+        bool mismatch = false;
         bool found = false;
 
-        for (const auto& pair : thread_database) {
+        for (const auto& pair : amd_thread_database) {
             if (model.find(pair.first) != std::string::npos) {
-                found = (std::thread::hardware_concurrency() == static_cast<unsigned>(pair.second));
+                mismatch = (std::thread::hardware_concurrency() != static_cast<unsigned>(pair.second));
+                found = true;
                 break;
             }
         }
 
-        return found;
+        if (found) {
+            debug("AMD_THREAD_MISMATCH: Unknown brand found for AMD = ", model);
+        }
+
+        return mismatch;
 #endif
 	}
 
