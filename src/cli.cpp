@@ -408,7 +408,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::COMPUTER_NAME:
             case VM::WINE_CHECK:
             case VM::HOSTNAME:
-            case VM::LOADED_DLLS:
             case VM::KVM_DIRS:
             case VM::AUDIO:
             case VM::QEMU_DIR:
@@ -457,7 +456,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::HDD_SERIAL:
             case VM::PORT_CONNECTORS:
             case VM::VM_HDD:
-            case VM::ACPI_DETECT:
+            case VM::ACPI_REGISTRY:
             case VM::GPU_NAME:
             case VM::VM_MEMORY:
             case VM::IDT_GDT_MISMATCH:
@@ -550,7 +549,6 @@ bool is_gpl(const VM::enum_flags flag) {
         case VM::COMPUTER_NAME: 
         case VM::WINE_CHECK: 
         case VM::HOSTNAME: 
-        case VM::LOADED_DLLS: 
         case VM::KVM_DIRS: 
         case VM::AUDIO: 
         case VM::QEMU_DIR: 
@@ -915,7 +913,6 @@ void general() {
     checker(VM::GAMARUE, "gamarue ransomware technique");
     checker(VM::VMID_0X4, "0x4 leaf of VMID");
     checker(VM::PARALLELS_VM, "Parallels techniques");
-    checker(VM::LOADED_DLLS, "loaded DLLs");
     checker(VM::QEMU_BRAND, "QEMU CPU brand");
     checker(VM::BOCHS_CPU, "BOCHS CPU techniques");
     checker(VM::BIOS_SERIAL, "BIOS serial number");
@@ -985,7 +982,7 @@ void general() {
     checker(VM::HDD_SERIAL, "HDD serial number");
     checker(VM::PORT_CONNECTORS, "physical connection ports");
     checker(VM::VM_HDD, "VM keywords in HDD model");
-    checker(VM::ACPI_DETECT, "ACPI data");
+    checker(VM::ACPI_REGISTRY, "ACPI data");
     checker(VM::GPU_NAME, "GPU name");
     checker(VM::VM_MEMORY, "VM memory traces");
     checker(VM::IDT_GDT_MISMATCH, "IDT GDT mismatch");
@@ -1006,7 +1003,6 @@ void general() {
     checker(VM::HYPERV_QUERY, "hypervisor query");
     checker(VM::BAD_POOLS, "bad memory pools");
 	checker(VM::AMD_SEV, "AMD-SEV MSR");
-    checker(VM::AMD_RESERVED, "AMD reserved bits");
 	checker(VM::AMD_THREAD_MISMATCH, "AMD thread count mismatch");
     checker(VM::NATIVE_VHD, "VHD containers");
     checker(VM::VIRTUAL_REGISTRY, "registry emulation");
