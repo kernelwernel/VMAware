@@ -3065,6 +3065,7 @@ public:
          */
         [[nodiscard]] static bool verify_cpu_data() {
             std::vector<std::string> sources;
+	    sources.reserve(3);
 
             // 1. WMI Source
             if (wmi::initialize()) {
