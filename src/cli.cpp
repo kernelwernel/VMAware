@@ -51,6 +51,7 @@ constexpr const char* ver = "2.0";
 constexpr const char* date = "January 2025";
 
 std::string bold = "\033[1m";
+std::string underline = "\033[4m";
 std::string ansi_exit = "\x1B[0m";
 std::string red = "\x1B[38;2;239;75;75m"; 
 std::string orange = "\x1B[38;2;255;180;5m";
@@ -76,7 +77,7 @@ enum arg_enum : u8 {
     TYPE,
     NOTES,
     HIGH_THRESHOLD,
-    NO_COLOR,
+    NO_ANSI,
     DYNAMIC,
     VERBOSE,
     COMPACT,
@@ -156,7 +157,7 @@ Options:
 Extra:
  --disable-notes    no notes will be provided
  --high-threshold   a higher theshold bar for a VM detection will be applied
- --no-color         self explanatory
+ --no-ansi          removes color and ansi escape codes from the output
  --dynamic          allow the conclusion message to be dynamic (8 possibilities instead of only 2)
  --verbose          add more information to the output
  --compact          ignore the unsupported techniques from the CLI output
@@ -178,7 +179,7 @@ Extra:
 }
 
 const char* color(const u8 score) {
-    if (arg_bitset.test(NO_COLOR)) {
+    if (arg_bitset.test(NO_ANSI)) {
         return "";
     }
 
@@ -268,6 +269,7 @@ AMD SEV
 AMD SEV-ES
 AMD SEV-SNP
 Neko Project II
+Qihoo 360 Sandbox
 NoirVisor
 )";
 
@@ -855,7 +857,7 @@ const bool is_anyrun = (is_anyrun_directory || is_anyrun_driver);
 void general() {
     bool notes_enabled = false;
 
-    if (arg_bitset.test(NO_COLOR)) {
+    if (arg_bitset.test(NO_ANSI)) {
         detected = ("[  DETECTED  ]");
         not_detected = ("[NOT DETECTED]");
         no_support = ("[ NO SUPPORT ]");
@@ -864,6 +866,7 @@ void general() {
         disabled = ("[  DISABLED  ]");
 
         bold = "";
+        underline = "";
         ansi_exit = "";
         red = ""; 
         orange = "";
@@ -1127,11 +1130,40 @@ void general() {
     {
         if (vm.brand != VM::brands::NULL_BRAND) {
 
-            std::string description = vm_description(vm.brand);
+            const std::string description = vm_description(vm.brand);
 
             if (!description.empty()) {
-                std::cout << bold << "VM description: " << ansi_exit << "\n" << description << "\n\n";
-                //std::cout << note << " The result means that the CLI has found Hyper-V, but as an artifact instead of an actual VM. This means that although the hardware values in fact match with Hyper-V due to how it's designed by Microsoft, the CLI has determined you are NOT in a Hyper-V VM.\n\n";
+                std::cout << bold << underline << "VM description:" << ansi_exit << "\n";
+
+                // this basically adds a \n for every 50 characters after a space
+                // so that the output doesn't wrap around the console while making
+                // it harder to read. Kinda like how this comment you're reading is
+                // structured by breaking the lines in a clean and organised way. 
+                const u8 max_line_length = 60;
+
+                std::size_t current_pos = 0;
+                std::size_t input_length = description.length();
+
+                while (current_pos < input_length) {
+                    std::size_t next_break_pos = current_pos + max_line_length;
+
+                    if (next_break_pos >= input_length) {
+                        std::cout << description.substr(current_pos) << "\n";
+                        break;
+                    }
+
+                    std::size_t space_pos = description.find(' ', next_break_pos);
+
+                    if (space_pos == std::string::npos || space_pos <= current_pos) {
+                        std::cout << description.substr(current_pos) << "\n";
+                        break;
+                    }
+
+                    std::cout << description.substr(current_pos, space_pos - current_pos) << "\n";
+                    current_pos = space_pos + 1;
+                }
+
+                std::printf("\n\n");
             }
         }
     }
@@ -1210,7 +1242,7 @@ int main(int argc, char* argv[]) {
         { "--verbose", VERBOSE },
         { "--compact", COMPACT },
         { "--mit", MIT },
-        { "--no-color", NO_COLOR }
+        { "--no-color", NO_ANSI }
     }};
 
     std::string potential_null_arg = "";

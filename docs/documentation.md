@@ -455,19 +455,13 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::BAD_POOLS` | Check for system pools allocated by hypervisors | Windows | 80% |  |  |  |  |
 | `VM::AMD_SEV` | Check for AMD-SEV MSR running on the system | Linux and MacOS | 50% | Admin |  |  |  |
 | `VM::AMD_THREAD_MISMATCH` | Check for AMD CPU thread count database if it matches the system's thread count |  | 100% |  |  |  |  |
-<<<<<<< HEAD
 | `VM::NATIVE_VHD` | Checks if the OS was booted from a VHD container |  | 100% |  |  |  |  |
-| `VM::VIRTUAL_REGISTRY` | Checks for particular object directory which is present in Sandboxie virtual environment but not in usual host systems |  | 65% |  |  |  |  |
-| `VM::FIRMWARE_SCAN` | Checks for VM signatures in firmware |  | 90% |  |  |  |  |
-| `VM::FILE_ACCESS_HISTORY` | Check if the number of accessed files are too low for a human-managed environment | Linux | 15% |  |  |  |  |
-=======
 | `VM::NATIVE_VHD` | Check for OS being booted from a VHD container | Windows | 100% |  |  |  |  |
 | `VM::VIRTUAL_REGISTRY` | Check for particular object directory which is present in Sandboxie virtual environment but not in usual host systems | Windows | 65% |  |  |  |  |
 | `VM::FIRMWARE_SCAN` | Check for VM signatures in firmware | Windows | 90% |  |  |  |  |
-| `VM::NX_BIT_` | Check for AMD64/Intel64 architecture without NX support | Windows | 50% |  |  |  |  |
+| `VM::NX_BIT` | Check for AMD64/Intel64 architecture without NX support | Windows | 50% |  |  |  |  |
+| `VM::FILE_ACCESS_HISTORY` | Check if the number of accessed files are too low for a human-managed environment | Linux | 15% |  |  |  |  |
 
->>>>>>> 7ec660c9b7d73f7ca3d875e6393ceea5c79b9cc3
-<!-- ADD DETAILS HERE -->
 
 <br>
 
@@ -583,7 +577,7 @@ This is the table of all the brands the lib supports.
 | -t | --type | Returns the VM type (if a VM was found) |
 |    | --disable-notes | No notes will be provided |
 |    | --high-threshold | A higher theshold bar for a VM detection will be applied |
-|    | --no-color | Removes all the color, this is added due to some terminals not supporting ANSI escape codes while cluttering the output |
+|    | --no-ansi | Removes all the ANSI encodings (color and text style). This is added due to some terminals not supporting ANSI escape codes while cluttering the output |
 |    | --dynamic | allow the conclusion message to be dynamic (8 possibilities instead of only 2) |
 |    | --verbose | add more information to the output  |
 |    | --compact | ignore the unsupported techniques from the CLI output and thus make it more compact |

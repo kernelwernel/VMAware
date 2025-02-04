@@ -12389,7 +12389,7 @@ std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard{
     { VM::brands::AZURE_HYPERV, 0 },
     { VM::brands::NANOVISOR, 0 },
     { VM::brands::SIMPLEVISOR, 0 },
-    { VM::brands::HYPERV_ARTIFACT, 0 },
+    { VM::brands::HYPERV_ARTIFACT, 1 },
     { VM::brands::UML, 0 },
     { VM::brands::POWERVM, 0 },
     { VM::brands::GCE, 0 },
@@ -12408,6 +12408,7 @@ std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard{
     { VM::brands::AMD_SEV_ES, 0 },
     { VM::brands::AMD_SEV_SNP, 0 },
     { VM::brands::NEKO_PROJECT, 0 },
+    { VM::brands::QIHOO, 0 },
     { VM::brands::NOIRVISOR, 0 },
     { VM::brands::NULL_BRAND, 0 }
 };
