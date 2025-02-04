@@ -460,6 +460,7 @@ public:
         NATIVE_VHD,
         VIRTUAL_REGISTRY,
         FIRMWARE_SCAN,
+        NX_BIT,
 		FILE_ACCESS_HISTORY,
         // ADD NEW TECHNIQUE ENUM NAME HERE
 
@@ -2695,7 +2696,7 @@ public:
 
 
         /**
-         * @brief Checks if the number of logical processors obtained by various methods match.
+         * @brief Checks if the number of logical processors obtained by various methods match
          *
          * This function retrieves the number of logical processors in the system using several different
          * methods and compares them to ensure consistency. The methods include:
@@ -2714,10 +2715,11 @@ public:
          * - NtQuerySystemInformation with SystemProcessorPerformanceInformation (processor performance info)
          * - NUMA API functions (GetNumaHighestNodeNumber and GetNumaNodeProcessorMaskEx) to enumerate processors by NUMA node
          * - Enumeration of processor groups via GetActiveProcessorGroupCount and GetActiveProcessorCount for each group
+         * - Dynamically testing each available processor by setting the thread affinity mask
          *
-         * @return bool true if there is a mismatch in thread counts from different methods, false otherwise.
+         * @return bool false if there is a mismatch in thread counts from different methods, true otherwise
          */
-        [[nodiscard]] static bool does_threadcount_mismatch() {
+        [[nodiscard]] static bool verify_thread_data() {
 #pragma warning (disable : 4191) // supress useless warnings about unsafe conversions from 'FARPROC' to 'VM::util::does_threadcount_mismatch::<lambda_X>
             auto GetThreadsUsingGetLogicalProcessorInformationEx = []() -> int {
                 DWORD bufferSize = 0;
@@ -2997,6 +2999,29 @@ public:
                 }
                 return totalCount;
                 };
+            
+            auto GetThreadsUsingAffinityTest = []() -> int {
+                DWORD_PTR originalMask = 0;
+                if (!GetProcessAffinityMask(GetCurrentProcess(), &originalMask, &originalMask)) {
+                    return 0;
+                }
+                if (originalMask == 0) {
+                    return 0;
+                }
+                int count = 0;
+
+                for (int bit = 0; bit < static_cast<int>(sizeof(DWORD_PTR) * 8); ++bit) {
+                    DWORD_PTR testMask = (DWORD_PTR(1) << bit);
+                    if (originalMask & testMask) {
+                        DWORD_PTR previous = SetThreadAffinityMask(GetCurrentThread(), testMask);
+                        if (previous != 0) {
+                            count++;
+                        }
+                    }
+                }
+                SetThreadAffinityMask(GetCurrentThread(), originalMask);
+                return count;
+                };
 #pragma warning (default : 4191)
 
             const int wmiThreads = GetThreadsUsingWMI();
@@ -3014,8 +3039,9 @@ public:
             const int ntProcPerfThreads = GetThreadsUsingNtQueryProcessorPerformanceInformation();
             const int numaApisThreads = GetThreadsUsingNumaAPIs();
             const int processorGroupsThreads = GetThreadsUsingProcessorGroupsEnumeration();
+            const int affinityTestThreads = GetThreadsUsingAffinityTest();
             std::vector<int> validThreads;
-            validThreads.reserve(15);
+            validThreads.reserve(16);
 
             if (osThreads > 0) validThreads.push_back(osThreads);
             if (wmiThreads > 0) validThreads.push_back(wmiThreads);
@@ -3032,19 +3058,69 @@ public:
             if (ntProcPerfThreads > 0) validThreads.push_back(ntProcPerfThreads);
             if (numaApisThreads > 0) validThreads.push_back(numaApisThreads);
             if (processorGroupsThreads > 0) validThreads.push_back(processorGroupsThreads);
+            if (affinityTestThreads > 0) validThreads.push_back(affinityTestThreads);
 
             if (validThreads.size() < 2) {
-                return false;
+                return true;
             }
 
             int first = validThreads[0];
             for (const int threadCount : validThreads) {
                 if (threadCount != first) {
-                    return true;
+                    return false;
                 }
             }
 
-            return false;
+            return true;
+        }
+
+
+        /**
+         * @brief Checks if the name of the CPU obtained by various methods match
+         *
+         * @return bool false if there is a mismatch in thread counts from different methods, true otherwise
+         */
+        [[nodiscard]] static bool verify_cpu_data() {
+            std::vector<std::string> sources;
+	    sources.reserve(3);
+
+            // 1. WMI Source
+            if (wmi::initialize()) {
+                wmi_result results = wmi::execute(
+                    L"SELECT Name FROM Win32_Processor", { L"Name" }
+                );
+                if (!results.empty() && results[0].type == wmi::result_type::String) {
+                    sources.push_back(results[0].strValue);
+                }
+            }
+
+            // 2. Registry ProcessorNameString
+            HKEY hKey;
+            char reg_name[512]{};
+            DWORD buf_size = sizeof(reg_name);
+            if (RegOpenKeyExA(HKEY_LOCAL_MACHINE,
+                "HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0",
+                0, KEY_READ, &hKey) == ERROR_SUCCESS) {
+                if (RegQueryValueExA(hKey, "ProcessorNameString",
+                    nullptr, nullptr, (LPBYTE)reg_name, &buf_size) == ERROR_SUCCESS) {
+                    sources.push_back(reg_name);
+                }
+                RegCloseKey(hKey);
+            }
+
+            // 3. cpuid
+            const std::string cpuid_model = cpu::get_brand();
+            sources.push_back(cpuid_model);
+
+            if (sources.empty()) return false;
+
+            const std::string& first = sources[0];
+            for (const auto& source : sources) {
+                if (source != first) {
+                    return false;
+                }
+            }
+            return true;
         }
 
         /**
@@ -5859,8 +5935,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
 #if (WINDOWS)
-        if (util::does_threadcount_mismatch()) {
-            debug("INTEL_THREAD_MISMATCH: thread count sources mismatch");
+        if (!util::verify_thread_data()) {
+            debug("INTEL_THREAD_MISMATCH: Thread tampering detected");
+            return true;
+        }
+        if (!util::verify_cpu_data()) {
+            debug("INTEL_THREAD_MISMATCH: CPU model tampering detected");
             return true;
         }
 #endif
@@ -6866,12 +6946,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         debug("XEON_THREAD_MISMATCH: CPU model = ", model.string);
 
-        #if (WINDOWS)
-            if (util::does_threadcount_mismatch()) {
-                debug("INTEL_THREAD_MISMATCH: Thread tampering detected");
-                return false;
-            }
-        #endif
+#if (WINDOWS)
+        if (!util::verify_thread_data()) {
+            debug("INTEL_THREAD_MISMATCH: Thread tampering detected");
+            return true;
+        }
+        if (!util::verify_cpu_data()) {
+            debug("INTEL_THREAD_MISMATCH: CPU model tampering detected");
+            return true;
+        }
+#endif
 
         std::map<const char*, int> thread_database = {
             // Xeon D
@@ -10023,8 +10107,12 @@ static bool rdtsc() {
         }
 
 #if (WINDOWS)
-        if (util::does_threadcount_mismatch()) {
-            debug("AMD_THREAD_MISMATCH: Thread tampering detected");
+        if (!util::verify_thread_data()) {
+            debug("INTEL_THREAD_MISMATCH: Thread tampering detected");
+            return true;
+        }
+        if (!util::verify_cpu_data()) {
+            debug("INTEL_THREAD_MISMATCH: CPU model tampering detected");
             return true;
         }
 #endif
@@ -10866,6 +10954,29 @@ static bool rdtsc() {
     }
 
 
+    /**
+     * @brief Check for AMD64/Intel64 architecture without NX support
+     * @category Windows
+     */
+    [[nodiscard]] static bool nx_bit() {
+#if (!WINDOWS)
+        return false;
+#else
+        SYSTEM_INFO sysInfo;
+        GetNativeSystemInfo(&sysInfo);
+
+        const bool nxSupported = IsProcessorFeaturePresent(PF_NX_ENABLED);
+
+        if ((sysInfo.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_AMD64 ||
+            sysInfo.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_IA64) && !nxSupported) {
+            return true;
+        }
+
+        return false;
+#endif
+    }
+
+
 	/**
 	 * @brief Check if the number of accessed files are too low for a human-managed environment
 	 * @category Linux
@@ -10895,7 +11006,6 @@ static bool rdtsc() {
 	    return (count <= 10); 
 #endif
 	}
-
     // ADD NEW TECHNIQUE FUNCTION HERE
 
 
@@ -11944,6 +12054,7 @@ public: // START OF PUBLIC FUNCTIONS
             case NATIVE_VHD: return "NATIVE_VHD";
             case VIRTUAL_REGISTRY: return "VIRTUAL_REGISTRY";
             case FIRMWARE_SCAN: return "FIRMWARE_SCAN";
+            case NX_BIT: return "NX_BIT";
 			case FILE_ACCESS_HISTORY: return "FILE_ACCESS_HISTORY";
             // ADD NEW CASE HERE FOR NEW TECHNIQUE
             default: return "Unknown flag";
@@ -12473,7 +12584,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::MUTEX, { 85, VM::mutex, false } }, 
     { VM::ODD_CPU_THREADS, { 80, VM::odd_cpu_threads, false } },
     { VM::INTEL_THREAD_MISMATCH, { 100, VM::intel_thread_mismatch, false } },
-    { VM::XEON_THREAD_MISMATCH, { 85, VM::xeon_thread_mismatch, false } }, 
+    { VM::XEON_THREAD_MISMATCH, { 100, VM::xeon_thread_mismatch, false } }, 
     { VM::NETTITUDE_VM_MEMORY, { 100, VM::nettitude_vm_memory, false } },
     { VM::CPUID_BITSET, { 25, VM::cpuid_bitset, false } },
     { VM::CUCKOO_DIR, { 30, VM::cuckoo_dir, true } },
@@ -12532,6 +12643,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::NATIVE_VHD, { 100, VM::native_vhd, false } },
     { VM::VIRTUAL_REGISTRY, { 65, VM::virtual_registry, false } },
     { VM::FIRMWARE_SCAN, { 90, VM::firmware_scan, false } },
+    { VM::NX_BIT, { 50, VM::nx_bit, false } },
 	{ VM::FILE_ACCESS_HISTORY, { 15, VM::file_access_history, false } },
     // ADD NEW TECHNIQUE STRUCTURE HERE
 };
