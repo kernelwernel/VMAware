@@ -460,6 +460,7 @@ public:
         NATIVE_VHD,
         VIRTUAL_REGISTRY,
         FIRMWARE_SCAN,
+        NX_BIT,
         // ADD NEW TECHNIQUE ENUM NAME HERE
 
         // start of settings technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
@@ -10934,6 +10935,25 @@ static bool rdtsc() {
         return false;
 #endif
     }
+
+
+    /**
+     * @brief Check for AMD64/Intel64 architecture without NX support
+     * @category Windows
+     */
+    [[nodiscard]] static bool nx_bit() {
+        SYSTEM_INFO sysInfo;
+        GetNativeSystemInfo(&sysInfo);
+
+        const bool nxSupported = IsProcessorFeaturePresent(PF_NX_ENABLED);
+
+        if ((sysInfo.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_AMD64 ||
+            sysInfo.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_IA64) && !nxSupported) {
+            return true;
+        }
+
+        return false;
+    }
     // ADD NEW TECHNIQUE FUNCTION HERE
 
 
@@ -11982,6 +12002,7 @@ public: // START OF PUBLIC FUNCTIONS
             case NATIVE_VHD: return "NATIVE_VHD";
             case VIRTUAL_REGISTRY: return "VIRTUAL_REGISTRY";
             case FIRMWARE_SCAN: return "FIRMWARE_SCAN";
+            case NX_BIT: return "NX_BIT";
             // ADD NEW CASE HERE FOR NEW TECHNIQUE
             default: return "Unknown flag";
         }
@@ -12569,6 +12590,8 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::NATIVE_VHD, { 100, VM::native_vhd, false } },
     { VM::VIRTUAL_REGISTRY, { 65, VM::virtual_registry, false } },
     { VM::FIRMWARE_SCAN, { 90, VM::firmware_scan, false } },
+    { VM::NX_BIT, { 50, VM::nx_bit, false } },
+
     // ADD NEW TECHNIQUE STRUCTURE HERE
 };
 
