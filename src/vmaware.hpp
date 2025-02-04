@@ -460,6 +460,7 @@ public:
         NATIVE_VHD,
         VIRTUAL_REGISTRY,
         FIRMWARE_SCAN,
+		FILE_ACCESS_HISTORY,
         // ADD NEW TECHNIQUE ENUM NAME HERE
 
         // start of settings technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
@@ -1478,17 +1479,34 @@ public:
     struct util {
 #if (LINUX)
         // fetch file data
-        [[nodiscard]] static std::string read_file(const char* file_path) {
-            if (!exists(file_path)) {
+        [[nodiscard]] static std::string read_file(const char* raw_path) {
+            std::string path = "";
+            const std::string raw_path_str = raw_path;
+
+            // replace the "~" part with the home directory
+            if (raw_path[0] == '~') {
+                const char* home = std::getenv("HOME");
+                if (home) {
+                    path = std::string(home) + raw_path_str.substr(1);
+                }
+            } else {
+                path = raw_path;
+            }
+
+            if (!exists(path.c_str())) {
                 return "";
             }
 
             std::ifstream file{};
             std::string data{};
-            file.open(file_path);
+            std::string line{};
+
+            file.open(path);
 
             if (file.is_open()) {
-                file >> data;
+                while (std::getline(file, line)) {
+                    data += line + "\n";
+                }
             }
 
             file.close();
@@ -10846,6 +10864,38 @@ static bool rdtsc() {
         return false;
 #endif
     }
+
+
+	/**
+	 * @brief Check if the number of accessed files are too low for a human-managed environment
+	 * @category Linux
+	 * @note idea from https://unprotect.it/technique/xbel-recently-opened-files-check/
+	 */
+	[[nodiscard]] static bool file_access_history() {
+#if (!LINUX)
+	    return false;
+#else 
+	    const std::string xbel_file = util::read_file("~/.local/share/recently-used.xbel");
+	    
+        if (xbel_file.empty()) {
+            debug("FILE_ACCESS_HISTORY: file content is empty");
+            return false;
+        }
+    
+        const std::string key = "href";
+	
+	    u32 count = 0;
+	    std::size_t pos = 0;
+	
+	    while ((pos = xbel_file.find(key, pos)) != std::string::npos) {
+	        count++;
+	        pos += key.length();
+	    }
+
+	    return (count <= 10); 
+#endif
+	}
+
     // ADD NEW TECHNIQUE FUNCTION HERE
 
 
@@ -11894,6 +11944,7 @@ public: // START OF PUBLIC FUNCTIONS
             case NATIVE_VHD: return "NATIVE_VHD";
             case VIRTUAL_REGISTRY: return "VIRTUAL_REGISTRY";
             case FIRMWARE_SCAN: return "FIRMWARE_SCAN";
+			case FILE_ACCESS_HISTORY: return "FILE_ACCESS_HISTORY";
             // ADD NEW CASE HERE FOR NEW TECHNIQUE
             default: return "Unknown flag";
         }
@@ -12481,6 +12532,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::NATIVE_VHD, { 100, VM::native_vhd, false } },
     { VM::VIRTUAL_REGISTRY, { 65, VM::virtual_registry, false } },
     { VM::FIRMWARE_SCAN, { 90, VM::firmware_scan, false } },
+	{ VM::FILE_ACCESS_HISTORY, { 15, VM::file_access_history, false } },
     // ADD NEW TECHNIQUE STRUCTURE HERE
 };
 

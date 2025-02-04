@@ -458,6 +458,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::NATIVE_VHD` | Checks if the OS was booted from a VHD container |  | 100% |  |  |  |  |
 | `VM::VIRTUAL_REGISTRY` | Checks for particular object directory which is present in Sandboxie virtual environment but not in usual host systems |  | 65% |  |  |  |  |
 | `VM::FIRMWARE_SCAN` | Checks for VM signatures in firmware |  | 90% |  |  |  |  |
+| `VM::FILE_ACCESS_HISTORY` | Check if the number of accessed files are too low for a human-managed environment | Linux | 15% |  |  |  |  |
 <!-- ADD DETAILS HERE -->
 
 <br>

@@ -384,6 +384,7 @@ bool is_unsupported(VM::enum_flags flag) {
 			case VM::LSHW_QEMU:
 			case VM::AMD_SEV:
 			case VM::AMD_THREAD_MISMATCH:
+			case VM::FILE_ACCESS_HISTORY:
             // ADD LINUX FLAG
             return false;
             default: return true;
@@ -1007,7 +1008,7 @@ void general() {
     checker(VM::NATIVE_VHD, "VHD containers");
     checker(VM::VIRTUAL_REGISTRY, "registry emulation");
     checker(VM::FIRMWARE_SCAN, "firmware signatures");
-
+	checker(VM::FILE_ACCESS_HISTORY, "low file access count");
     // ADD NEW TECHNIQUE CHECKER HERE
 
     std::printf("\n");
