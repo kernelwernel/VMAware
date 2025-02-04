@@ -478,6 +478,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::NATIVE_VHD:
             case VM::VIRTUAL_REGISTRY:
             case VM::FIRMWARE_SCAN:
+            case VM::NX_BIT:
             // ADD WINDOWS FLAG
             return false;
             default: return true;
@@ -1008,7 +1009,7 @@ void general() {
     checker(VM::NATIVE_VHD, "VHD containers");
     checker(VM::VIRTUAL_REGISTRY, "registry emulation");
     checker(VM::FIRMWARE_SCAN, "firmware signatures");
-
+    checker(VM::NX_BIT, "NX/XD anomalies");
     // ADD NEW TECHNIQUE CHECKER HERE
 
     std::printf("\n");
