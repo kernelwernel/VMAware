@@ -2991,8 +2991,6 @@ public:
                     return 0;
                 }
                 int count = 0;
-                DWORD_PTR thread = reinterpret_cast<DWORD_PTR>(GetCurrentThread());
-                DWORD_PTR savedMask = SetThreadAffinityMask(GetCurrentThread(), originalMask);
 
                 for (int bit = 0; bit < static_cast<int>(sizeof(DWORD_PTR) * 8); ++bit) {
                     DWORD_PTR testMask = (DWORD_PTR(1) << bit);
@@ -10943,6 +10941,9 @@ static bool rdtsc() {
      * @category Windows
      */
     [[nodiscard]] static bool nx_bit() {
+#if (!WINDOWS)
+        return false;
+#else
         SYSTEM_INFO sysInfo;
         GetNativeSystemInfo(&sysInfo);
 
@@ -10954,6 +10955,7 @@ static bool rdtsc() {
         }
 
         return false;
+#endif
     }
     // ADD NEW TECHNIQUE FUNCTION HERE
 
