@@ -139,7 +139,7 @@ The module file and function version is located [here](auxiliary/vmaware_downloa
 <br>
 
 ## Documentation 📒
-You can view the full docs [here](docs/documentation.md). All the details such as functions, techniques, settings and examples are provided. Trust me, it's not too intimidating ;)
+You can view the full docs [here](docs/documentation.md). All the details such as functions, techniques, settings, and examples are provided. Trust me, it's not too intimidating ;)
 
 <br>
 
@@ -239,7 +239,7 @@ And if you found this project useful, a star would be appreciated :)
 
 <br>
 
-## Credits and contributors ✒️
+## Credits, contributors, and acknowledgements ✒️
 - [Requiem](https://github.com/NotRequiem) (Co-maintainer)
 - [Check Point Research](https://research.checkpoint.com/)
 - [Unprotect Project](https://unprotect.it/)

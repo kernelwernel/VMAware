@@ -23,7 +23,7 @@
  *  - License: GPL-3.0 (https://www.gnu.org/licenses/gpl-3.0.html)
  *
  *
- * ================================ SECTIONS ==================================
+ * ============================== SECTIONS ==================================
  * - enums for publicly accessible techniques  => line 338
  * - struct for internal cpu operations        => line 619
  * - struct for internal memoization           => line 1083
@@ -34,7 +34,7 @@
  * - start of externally defined variables     => line 12159
  *
  *
- * ================================ EXAMPLE ==================================
+ * ============================== EXAMPLE ===================================
  * #include "vmaware.hpp"
  * #include <iostream>
  * 
@@ -49,6 +49,136 @@
  *     std::cout << "VM type: " << VM::type() << "\n";
  *     std::cout << "VM certainty: " << (int)VM::percentage() << "%" << "\n";
  * }
+ * 
+ *
+ * ========================== CODE DOCUMENTATION =============================
+ * 
+ * Welcome! This is just a preliminary text to lay the context of how it works, 
+ * how it's structured, and guide anybody who's trying to understand the whole code. 
+ * Reading over 12k+ lines of other people's C++ code is obviously not an easy task, 
+ * and that's perfectly understandable. I'd struggle as well if I was in your position
+ * while not even knowing where to start. So here's a more human-friendly explanation.
+ * 
+ * 
+ * Firstly, the lib is completely static, meaning that there's no need for struct 
+ * constructors to be initiated (unless you're using the VM::vmaware struct).
+ * The main focus of the lib are the tables:
+ *  - the TECHNIQUE table stores all the VM detection technique information in a std::map 
+ * 
+ *  - the BRAND table stores every VM brand as a std::map as well, but as a scoreboard. 
+ *    This mean that if a VM detection has detected a VM brand, that brand will have an
+ *    incremented score. After every technique is run, the brand with the highest score
+ *    is chosen as the officially detected brand. 
+ * 
+ * 
+ * Secondly, there are multiple modules in the lib that are combined to integrate with
+ * the functionalities needed:
+ *    - core module:
+ *        This contains many important components such as the aforementioned tables, 
+ *        the standard structure for how VM techniques are organised, functionalities 
+ *        to run all the techniques in the technique table, functionalities to run
+ *        custom-made techniques by the user, and an argument handler based on the 
+ *        arguments inputted by the user.
+ *
+ *    - cpu module:
+ *        As the name suggests, this contains functionalities for the CPU. There are
+ *        many techniques that utilise some kind of low-level CPU interaction, so 
+ *        this module was added to further standardise it.
+ * 
+ *    - memo module:
+ *        This contains functionalities for memoizing technique results (not to be
+ *        confused with "memorization"). More specifically, this allows us to cache 
+ *        a technique result in a table where each entry contains a technique and its
+ *        result. This allows us to avoid re-running techniques which happens a lot
+ *        internally. Some techniques are more costlier than others in terms of 
+ *        performance, so this is a crucial module that allows us to save a lot of
+ *        time. Additionally, it contains other memoization caches for various other
+ *        things for utility purposes. 
+ * 
+ *    - util module:
+ *        This contains many utility functionalities to be used by the techniques.
+ *        Examples of functionalities include file I/O, registries, permission 
+ *        checks, system commands, HDD sizes, RAM sizes, debugs, process checking, 
+ *        OS queries, Hyper-X, and so on. (It should be mentioned that this is 
+ *        probably the least enjoyable part of the lib to read, since it's really messy)
+ * 
+ *    - wmi module:
+ *        This is a Windows-specific module that acts as a wrapper for WMI queries.
+ *        WMI is an interface for the programmer to interact with the Windows system
+ *        at a deeper level, which the library utilises occasionally. 
+ * 
+ * 
+ * Thirdly, I'll explain in this section how all of these facets of the lib interact with 
+ * each other. Let's take an example with VM::detect(), where it returns a boolean true or 
+ * false if a VM has been detected or not. The chain of steps it takes goes like this:
+ *    1. The function tries to handle the user arguments (if there's 
+ *       any), and return a std::bitset. This bitset has a length of 
+ *       every VM detection technique + settings, where each bit 
+ *       corresponds to whether this technique will be ran or not, 
+ *       and which settings were selected. 
+ * 
+ *    2. After the bitset has been generated, this information is then 
+ *       passed to the core module of the lib. It analyses the bitset, 
+ *       and runs every VM detection technique that has been selected, 
+ *       while ignoring the ones that aren't selected (by default most 
+ *       of them are already selected anyway). The function that does 
+ *       this mechanism is core::run_all()
+ * 
+ *    3. While the core::run_all() function is being ran, it checks if 
+ *       each technique has already been memoized or not. If it has, 
+ *       retrieve the result from the cache and move to the next technique. 
+ *       If it hasn't, run the technique and cache the  result to the 
+ *       cache table. 
+ * 
+ *    4. After every technique has been looped through, this generates a 
+ *       uint16_t score. Every technique has a score value between 0 to 
+ *       100, and if they are detected then this score is accumulated to 
+ *       a total score. If the total is above 150, that means it's a VM[1]. 
+ * 
+ * 
+ * There are other functions such as VM::brand(), which returns a std::string of the most 
+ * likely brand that your system is running on. It has a bit of a different mechanism:
+ *    1. Same as step 1 in VM::detect()
+ * 
+ *    2. Check if the majority of techniques have been run already and stored
+ *       in the cache. If not, invoke core::run_all(). The reason why this is
+ *       important is because a lot of techniques increment a point for its 
+ *       respected brand that was detected. For example, if the VM::QEMU_USB
+ *       technique has detected a VM, it'll add a score to the QEMU brand in
+ *       the scoreboard. If no technique has been ran, then there's no way to
+ *       populate the scoreboard with any points. After every VM detection 
+ *       technique has been invoked/retrieved, the brand scoreboard is now
+ *       ready to be analysed.
+ * 
+ *    3. Create a filter for the scoreboard, where every brand that has a score
+ *       of 0 are erased for abstraction purposes. Now the scoreboard is only
+ *       populated with relevant brands where they all have at least a single
+ *       point. These are the contenders for which brand will be outputted.
+ * 
+ *    4. Merge certain brand combinations together. For example, Azure's cloud 
+ *       is based on Hyper-V, but Hyper-V may have a higher score due to the 
+ *       prevalence of it in a practical setting, which will put Azure to the 
+ *       side. In reality, there should be an indication that Azure is involved
+ *       since it's a better idea to let the user know that the brand is "Azure 
+ *       Hyper-V" instead of just "Hyper-V". So what this step does is "merge" 
+ *       the brands together to form a more accurate idea of the brand(s) involved.
+ * 
+ *    5. After all of this, the scoreboard is sorted in descending order, where
+ *       the brands with the highest points are now selected as the official 
+ *       output of the VM::brand() function.
+ * 
+ *    6. The result is then cached to the memo module, so if another function
+ *       invokes VM:brand() again, the result is retrieved from the cache
+ *       without having it run all of the previous steps mentioned.
+ *      
+ * (NOTE: it's a bit more complicated than this, but that's the gist of how this function works)
+ * 
+ * Most of the functions provided usually depend on the 2 techniques covered. 
+ * And they serve as a functionality base for other components of the lib.
+ *      
+ *  
+ *  [1]: If the user has inputted a setting argument called VM::HIGH_THRESHOLD, 
+ *       the threshold becomes 300 instead of 150.
  */
 
 #pragma once
@@ -11024,9 +11154,6 @@ static bool rdtsc() {
 
 
 
-
-
-
     struct core {
         MSVC_DISABLE_WARNING(PADDING)
         struct technique {
@@ -11610,10 +11737,10 @@ public: // START OF PUBLIC FUNCTIONS
             }
         }
 
-        // if all brands had a point of 0, return 
+        // if all brands have a point of 0, return 
         // "Unknown" (no relevant brands were found)
         if (brands.empty()) {
-            return "Unknown";
+            return brands::NULL_BRAND;
         }
 
         // if there's only a single brand, return it. 
@@ -11635,7 +11762,7 @@ public: // START OF PUBLIC FUNCTIONS
         }
 
         // merge 2 brands, and make a single brand out of it.
-        auto merger = [&](const char* a, const char* b, const char* result) -> void {
+        auto merge = [&](const char* a, const char* b, const char* result) -> void {
             if (
                 (brands.count(a) > 0) &&
                 (brands.count(b) > 0)
@@ -11647,7 +11774,7 @@ public: // START OF PUBLIC FUNCTIONS
         };
 
         // same as above, but for 3
-        auto triple_merger = [&](const char* a, const char* b, const char* c, const char* result) -> void {
+        auto triple_merge = [&](const char* a, const char* b, const char* c, const char* result) -> void {
             if (
                 (brands.count(a) > 0) &&
                 (brands.count(b) > 0) &&
@@ -11665,7 +11792,7 @@ public: // START OF PUBLIC FUNCTIONS
         // they're very similar, and they're both from Microsoft (ew)
         if ((brands.count(TMP_HYPERV) > 0) && (brands.count(TMP_VPC) > 0)) {
             if (brands.count(TMP_HYPERV) == brands.count(TMP_VPC)) {
-                merger(TMP_VPC, TMP_HYPERV, TMP_HYPERV_VPC);
+                merge(TMP_VPC, TMP_HYPERV, TMP_HYPERV_VPC);
             } else {
                 brands.erase(TMP_VPC);
             }
@@ -11685,57 +11812,52 @@ public: // START OF PUBLIC FUNCTIONS
         // a more accurate idea of the brand(s) involved.
 
 
-        merger(TMP_AZURE, TMP_HYPERV,     TMP_AZURE);
-        merger(TMP_AZURE, TMP_VPC,        TMP_AZURE);
-        merger(TMP_AZURE, TMP_HYPERV_VPC, TMP_AZURE);
+        merge(TMP_AZURE, TMP_HYPERV,     TMP_AZURE);
+        merge(TMP_AZURE, TMP_VPC,        TMP_AZURE);
+        merge(TMP_AZURE, TMP_HYPERV_VPC, TMP_AZURE);
 
-        merger(TMP_NANOVISOR, TMP_HYPERV,     TMP_NANOVISOR);
-        merger(TMP_NANOVISOR, TMP_VPC,        TMP_NANOVISOR);
-        merger(TMP_NANOVISOR, TMP_HYPERV_VPC, TMP_NANOVISOR);
+        merge(TMP_NANOVISOR, TMP_HYPERV,     TMP_NANOVISOR);
+        merge(TMP_NANOVISOR, TMP_VPC,        TMP_NANOVISOR);
+        merge(TMP_NANOVISOR, TMP_HYPERV_VPC, TMP_NANOVISOR);
         
-        merger(TMP_QEMU,     TMP_KVM,        TMP_QEMU_KVM);
-        merger(TMP_KVM,      TMP_HYPERV,     TMP_KVM_HYPERV);
-        merger(TMP_QEMU,     TMP_HYPERV,     TMP_QEMU_KVM_HYPERV);
-        merger(TMP_QEMU_KVM, TMP_HYPERV,     TMP_QEMU_KVM_HYPERV);
-        merger(TMP_KVM,      TMP_KVM_HYPERV, TMP_KVM_HYPERV);
-        merger(TMP_QEMU,     TMP_KVM_HYPERV, TMP_QEMU_KVM_HYPERV);
-        merger(TMP_QEMU_KVM, TMP_KVM_HYPERV, TMP_QEMU_KVM_HYPERV);
+        merge(TMP_QEMU,     TMP_KVM,        TMP_QEMU_KVM);
+        merge(TMP_KVM,      TMP_HYPERV,     TMP_KVM_HYPERV);
+        merge(TMP_QEMU,     TMP_HYPERV,     TMP_QEMU_KVM_HYPERV);
+        merge(TMP_QEMU_KVM, TMP_HYPERV,     TMP_QEMU_KVM_HYPERV);
+        merge(TMP_KVM,      TMP_KVM_HYPERV, TMP_KVM_HYPERV);
+        merge(TMP_QEMU,     TMP_KVM_HYPERV, TMP_QEMU_KVM_HYPERV);
+        merge(TMP_QEMU_KVM, TMP_KVM_HYPERV, TMP_QEMU_KVM_HYPERV);
 
-        triple_merger(TMP_QEMU, TMP_KVM, TMP_KVM_HYPERV, TMP_QEMU_KVM_HYPERV);
+        triple_merge(TMP_QEMU, TMP_KVM, TMP_KVM_HYPERV, TMP_QEMU_KVM_HYPERV);
 
-        merger(TMP_VMWARE, TMP_FUSION,      TMP_FUSION);
-        merger(TMP_VMWARE, TMP_EXPRESS,     TMP_EXPRESS);
-        merger(TMP_VMWARE, TMP_ESX,         TMP_ESX);
-        merger(TMP_VMWARE, TMP_GSX,         TMP_GSX);
-        merger(TMP_VMWARE, TMP_WORKSTATION, TMP_WORKSTATION);
+        merge(TMP_VMWARE, TMP_FUSION,      TMP_FUSION);
+        merge(TMP_VMWARE, TMP_EXPRESS,     TMP_EXPRESS);
+        merge(TMP_VMWARE, TMP_ESX,         TMP_ESX);
+        merge(TMP_VMWARE, TMP_GSX,         TMP_GSX);
+        merge(TMP_VMWARE, TMP_WORKSTATION, TMP_WORKSTATION);
 
-        merger(TMP_VMWARE_HARD, TMP_VMWARE,      TMP_VMWARE_HARD);
-        merger(TMP_VMWARE_HARD, TMP_FUSION,      TMP_VMWARE_HARD);
-        merger(TMP_VMWARE_HARD, TMP_EXPRESS,     TMP_VMWARE_HARD);
-        merger(TMP_VMWARE_HARD, TMP_ESX,         TMP_VMWARE_HARD);
-        merger(TMP_VMWARE_HARD, TMP_GSX,         TMP_VMWARE_HARD);
-        merger(TMP_VMWARE_HARD, TMP_WORKSTATION, TMP_VMWARE_HARD);
+        merge(TMP_VMWARE_HARD, TMP_VMWARE,      TMP_VMWARE_HARD);
+        merge(TMP_VMWARE_HARD, TMP_FUSION,      TMP_VMWARE_HARD);
+        merge(TMP_VMWARE_HARD, TMP_EXPRESS,     TMP_VMWARE_HARD);
+        merge(TMP_VMWARE_HARD, TMP_ESX,         TMP_VMWARE_HARD);
+        merge(TMP_VMWARE_HARD, TMP_GSX,         TMP_VMWARE_HARD);
+        merge(TMP_VMWARE_HARD, TMP_WORKSTATION, TMP_VMWARE_HARD);
 
         // the brand element, which stores the NAME (const char*) and the SCORE (u8)
         using brand_element_t = std::pair<const char*, brand_score_t>;
 
+        std::vector<brand_element_t> vec(brands.begin(), brands.end());
+
         // sort the "brands" map so that the brands with the
         // highest score appears first in descending order
-        auto sorter = [&]() -> std::vector<brand_element_t> {
-            std::vector<brand_element_t> vec(brands.begin(), brands.end());
+        std::sort(vec.begin(), vec.end(), [](
+            const brand_element_t &a,
+            const brand_element_t &b
+        ) {
+            return a.second < b.second;
+        });
 
-            std::sort(vec.begin(), vec.end(), [](
-                const brand_element_t &a,
-                const brand_element_t &b
-            ) {
-                return a.second < b.second;
-            });
-
-            return vec;
-        };
-
-        std::vector<brand_element_t> vec = sorter();
-        std::string ret_str = "Unknown";
+        std::string ret_str = brands::NULL_BRAND;
 
         // if the multiple setting flag is NOT set, return the
         // brand with the highest score. Else, return a std::string
@@ -12346,7 +12468,7 @@ MSVC_ENABLE_WARNING(ASSIGNMENT_OPERATOR NO_INLINE_FUNC SPECTRE)
 // scoreboard list of brands, if a VM detection technique detects a brand, that will be incremented here as a single point.
 std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard{
     { VM::brands::VBOX, 0 },
-    { VM::brands::VMWARE, 0 },
+    { VM::brands::VMWARE, 1 },
     { VM::brands::VMWARE_EXPRESS, 0 },
     { VM::brands::VMWARE_ESX, 0 },
     { VM::brands::VMWARE_GSX, 0 },
@@ -12389,7 +12511,7 @@ std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard{
     { VM::brands::AZURE_HYPERV, 0 },
     { VM::brands::NANOVISOR, 0 },
     { VM::brands::SIMPLEVISOR, 0 },
-    { VM::brands::HYPERV_ARTIFACT, 1 },
+    { VM::brands::HYPERV_ARTIFACT, 0 },
     { VM::brands::UML, 0 },
     { VM::brands::POWERVM, 0 },
     { VM::brands::GCE, 0 },
@@ -12657,7 +12779,8 @@ std::vector<VM::core::custom_technique> VM::core::custom_table = {
 
 #define table_t std::map<VM::enum_flags, VM::core::technique>
 
-// the reason why the map isn't directly initialized is due to potential SDK errors on windows combined with older C++ standards
+// the reason why the map isn't directly initialized is due to potential 
+// SDK errors on windows combined with older C++ standards
 table_t VM::core::technique_table = []() -> table_t {
     table_t table;
     for (const auto& technique : VM::core::technique_list) {

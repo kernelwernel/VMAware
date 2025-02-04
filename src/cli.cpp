@@ -1292,7 +1292,7 @@ int main(int argc, char* argv[]) {
         static_cast<u32>(arg_bitset.test(BRAND)) +
         static_cast<u32>(arg_bitset.test(TYPE)) +
         static_cast<u32>(arg_bitset.test(CONCLUSION))
-        );
+    );
 
     if (returners > 0) { // at least one of the options are set
         if (returners > 1) { // more than 2 options are set
