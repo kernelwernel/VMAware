@@ -12468,7 +12468,7 @@ MSVC_ENABLE_WARNING(ASSIGNMENT_OPERATOR NO_INLINE_FUNC SPECTRE)
 // scoreboard list of brands, if a VM detection technique detects a brand, that will be incremented here as a single point.
 std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard{
     { VM::brands::VBOX, 0 },
-    { VM::brands::VMWARE, 1 },
+    { VM::brands::VMWARE, 0 },
     { VM::brands::VMWARE_EXPRESS, 0 },
     { VM::brands::VMWARE_ESX, 0 },
     { VM::brands::VMWARE_GSX, 0 },

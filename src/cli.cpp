@@ -61,6 +61,7 @@ std::string green_orange = "\x1B[38;2;174;197;59m";
 std::string grey = "\x1B[38;2;108;108;108m";
 
 using u8  = std::uint8_t;
+using u16 = std::uint16_t;
 using u32 = std::uint32_t;
 
 enum arg_enum : u8 {
@@ -1140,27 +1141,36 @@ void general() {
                 // it harder to read. Kinda like how this comment you're reading is
                 // structured by breaking the lines in a clean and organised way. 
                 const u8 max_line_length = 60;
+                
+                std::vector<std::string> divided_description;
 
-                std::size_t current_pos = 0;
-                std::size_t input_length = description.length();
+                std::istringstream stream(description);
+                std::string word_snippet;
 
-                while (current_pos < input_length) {
-                    std::size_t next_break_pos = current_pos + max_line_length;
+                // extract words separated by spaces
+                while (stream >> word_snippet) {
+                    divided_description.push_back(word_snippet);
+                }
 
-                    if (next_break_pos >= input_length) {
-                        std::cout << description.substr(current_pos) << "\n";
-                        break;
+                std::size_t char_count = 0;
+
+                for (auto it = divided_description.begin(); it != divided_description.end(); ++it) {
+                    char_count += it->length() + 1; // +1 because of the space
+
+                    if (char_count <= 60) {
+                        continue;
+                    } else {
+                        if ((char_count - 1) >= (max_line_length + 3)) {
+                            it = divided_description.insert(it + 1, "\n");
+                            char_count = it->length() + 1;
+                        } else {
+                            continue;
+                        }
                     }
+                }
 
-                    std::size_t space_pos = description.find(' ', next_break_pos);
-
-                    if (space_pos == std::string::npos || space_pos <= current_pos) {
-                        std::cout << description.substr(current_pos) << "\n";
-                        break;
-                    }
-
-                    std::cout << description.substr(current_pos, space_pos - current_pos) << "\n";
-                    current_pos = space_pos + 1;
+                for (const auto& str : divided_description) {
+                    std::cout << str << ((str != "\n") ? " " : "");
                 }
 
                 std::printf("\n\n");
