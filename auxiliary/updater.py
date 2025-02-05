@@ -353,7 +353,7 @@ def update_sections(filename):
 
     # get the index file line of the section string
     section_line = 0
-    section_str = " * ================================ SECTIONS =================================="
+    section_str = " * ============================== SECTIONS =================================="
     for line in header_content:
         if section_str in line:
             break

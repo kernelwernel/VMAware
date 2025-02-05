@@ -51,6 +51,7 @@ constexpr const char* ver = "2.0";
 constexpr const char* date = "January 2025";
 
 std::string bold = "\033[1m";
+std::string underline = "\033[4m";
 std::string ansi_exit = "\x1B[0m";
 std::string red = "\x1B[38;2;239;75;75m"; 
 std::string orange = "\x1B[38;2;255;180;5m";
@@ -60,6 +61,7 @@ std::string green_orange = "\x1B[38;2;174;197;59m";
 std::string grey = "\x1B[38;2;108;108;108m";
 
 using u8  = std::uint8_t;
+using u16 = std::uint16_t;
 using u32 = std::uint32_t;
 
 enum arg_enum : u8 {
@@ -76,7 +78,7 @@ enum arg_enum : u8 {
     TYPE,
     NOTES,
     HIGH_THRESHOLD,
-    NO_COLOR,
+    NO_ANSI,
     DYNAMIC,
     VERBOSE,
     COMPACT,
@@ -156,7 +158,7 @@ Options:
 Extra:
  --disable-notes    no notes will be provided
  --high-threshold   a higher theshold bar for a VM detection will be applied
- --no-color         self explanatory
+ --no-ansi          removes color and ansi escape codes from the output
  --dynamic          allow the conclusion message to be dynamic (8 possibilities instead of only 2)
  --verbose          add more information to the output
  --compact          ignore the unsupported techniques from the CLI output
@@ -178,7 +180,7 @@ Extra:
 }
 
 const char* color(const u8 score) {
-    if (arg_bitset.test(NO_COLOR)) {
+    if (arg_bitset.test(NO_ANSI)) {
         return "";
     }
 
@@ -268,6 +270,7 @@ AMD SEV
 AMD SEV-ES
 AMD SEV-SNP
 Neko Project II
+Qihoo 360 Sandbox
 NoirVisor
 )";
 
@@ -384,6 +387,7 @@ bool is_unsupported(VM::enum_flags flag) {
 			case VM::LSHW_QEMU:
 			case VM::AMD_SEV:
 			case VM::AMD_THREAD_MISMATCH:
+			case VM::FILE_ACCESS_HISTORY:
             // ADD LINUX FLAG
             return false;
             default: return true;
@@ -478,6 +482,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::NATIVE_VHD:
             case VM::VIRTUAL_REGISTRY:
             case VM::FIRMWARE_SCAN:
+            case VM::NX_BIT:
             // ADD WINDOWS FLAG
             return false;
             default: return true;
@@ -665,6 +670,7 @@ std::string vm_description(const std::string& vm_brand) {
         { VM::brands::AMD_SEV_SNP, "AMD SEV-Secure Nested Paging (SEV-SNP) adds memory integrity protection to SEV-ES. Uses reverse map tables (RMP) to prevent hypervisor-mediated replay/spoofing attacks. Enables attested launch for cloud workloads via guest policy certificates and AMD's Key Distribution Service (KDS)." },
         { VM::brands::NEKO_PROJECT, "Neko Project II is an emulator designed for emulating PC-98 computers. They are a lineup of Japanese 16-bit and 32-bit personal computers manufactured by NEC from 1982 to 2003. While based on Intel processors, it uses an in-house architecture making it incompatible with IBM clones." },
         { VM::brands::NOIRVISOR, "NoirVisor is a hardware-accelerated hypervisor with support to complex functions and purposes. It is designed to support processors based on x86 architecture with hardware-accelerated virtualization feature. For example, Intel processors supporting Intel VT-x or AMD processors supporting AMD-V meet the requirement. It was made by Zero-Tang." },
+        { VM::brands::QIHOO, "360 sandbox is a part of 360 Total Security. Similar to other sandbox software, it provides a virtualized environment where potentially malicious or untrusted programs can run without affecting the actual system. Qihoo 360 Sandbox is commonly used for testing unknown applications, analyzing malware behavior, and protecting users from zero-day threats." },
         { VM::brands::NULL_BRAND, "Indicates no detectable virtualization brand. This result may occur on bare-metal systems, unsupported/obscure hypervisors, or when anti-detection techniques (e.g., VM escaping) are employed by the guest environment." }
     };
 
@@ -852,7 +858,7 @@ const bool is_anyrun = (is_anyrun_directory || is_anyrun_driver);
 void general() {
     bool notes_enabled = false;
 
-    if (arg_bitset.test(NO_COLOR)) {
+    if (arg_bitset.test(NO_ANSI)) {
         detected = ("[  DETECTED  ]");
         not_detected = ("[NOT DETECTED]");
         no_support = ("[ NO SUPPORT ]");
@@ -861,6 +867,7 @@ void general() {
         disabled = ("[  DISABLED  ]");
 
         bold = "";
+        underline = "";
         ansi_exit = "";
         red = ""; 
         orange = "";
@@ -1007,7 +1014,8 @@ void general() {
     checker(VM::NATIVE_VHD, "VHD containers");
     checker(VM::VIRTUAL_REGISTRY, "registry emulation");
     checker(VM::FIRMWARE_SCAN, "firmware signatures");
-
+    checker(VM::NX_BIT, "NX/XD anomalies");
+	checker(VM::FILE_ACCESS_HISTORY, "low file access count");
     // ADD NEW TECHNIQUE CHECKER HERE
 
     std::printf("\n");
@@ -1123,11 +1131,49 @@ void general() {
     {
         if (vm.brand != VM::brands::NULL_BRAND) {
 
-            std::string description = vm_description(vm.brand);
+            const std::string description = vm_description(vm.brand);
 
             if (!description.empty()) {
-                std::cout << bold << "VM description: " << ansi_exit << "\n" << description << "\n\n";
-                //std::cout << note << " The result means that the CLI has found Hyper-V, but as an artifact instead of an actual VM. This means that although the hardware values in fact match with Hyper-V due to how it's designed by Microsoft, the CLI has determined you are NOT in a Hyper-V VM.\n\n";
+                std::cout << bold << underline << "VM description:" << ansi_exit << "\n";
+
+                // this basically adds a \n for every 50 characters after a space
+                // so that the output doesn't wrap around the console while making
+                // it harder to read. Kinda like how this comment you're reading is
+                // structured by breaking the lines in a clean and organised way. 
+                const u8 max_line_length = 60;
+                
+                std::vector<std::string> divided_description;
+
+                std::istringstream stream(description);
+                std::string word_snippet;
+
+                // extract words separated by spaces
+                while (stream >> word_snippet) {
+                    divided_description.push_back(word_snippet);
+                }
+
+                std::size_t char_count = 0;
+
+                for (auto it = divided_description.begin(); it != divided_description.end(); ++it) {
+                    char_count += it->length() + 1; // +1 because of the space
+
+                    if (char_count <= 60) {
+                        continue;
+                    } else {
+                        if ((char_count - 1) >= (max_line_length + 3)) {
+                            it = divided_description.insert(it + 1, "\n");
+                            char_count = it->length() + 1;
+                        } else {
+                            continue;
+                        }
+                    }
+                }
+
+                for (const auto& str : divided_description) {
+                    std::cout << str << ((str != "\n") ? " " : "");
+                }
+
+                std::printf("\n\n");
             }
         }
     }
@@ -1206,7 +1252,7 @@ int main(int argc, char* argv[]) {
         { "--verbose", VERBOSE },
         { "--compact", COMPACT },
         { "--mit", MIT },
-        { "--no-color", NO_COLOR }
+        { "--no-color", NO_ANSI }
     }};
 
     std::string potential_null_arg = "";
@@ -1256,7 +1302,7 @@ int main(int argc, char* argv[]) {
         static_cast<u32>(arg_bitset.test(BRAND)) +
         static_cast<u32>(arg_bitset.test(TYPE)) +
         static_cast<u32>(arg_bitset.test(CONCLUSION))
-        );
+    );
 
     if (returners > 0) { // at least one of the options are set
         if (returners > 1) { // more than 2 options are set

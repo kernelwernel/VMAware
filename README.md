@@ -16,7 +16,7 @@ The library is:
 - Cross-platform (Windows + MacOS + Linux)
 - Features up to 120+ unique VM detection techniques [[list](https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#flag-table)]
 - Features the most cutting-edge techniques
-- Able to detect 50+ VM brands including VMware, VirtualBox, QEMU, Hyper-V, and much more [[list](https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#brand-table)]
+- Able to detect 60+ VM brands including VMware, VirtualBox, QEMU, Hyper-V, and much more [[list](https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#brand-table)]
 - Able to beat VM hardeners
 - Compatible with x86 and ARM, with backwards compatibility for 32-bit systems
 - Very flexible, with total fine-grained control over which techniques get executed
@@ -136,10 +136,16 @@ endif()
 The module file and function version is located [here](auxiliary/vmaware_download.cmake)
 
 
+### Vcpkg installation
+```
+vcpkg install vmaware-vm-detection
+```
+
+
 <br>
 
 ## Documentation 📒
-You can view the full docs [here](docs/documentation.md). All the details such as functions, techniques, settings and examples are provided. Trust me, it's not too intimidating ;)
+You can view the full docs [here](docs/documentation.md). All the details such as functions, techniques, settings, and examples are provided. Trust me, it's not too intimidating ;)
 
 <br>
 
@@ -218,7 +224,7 @@ You can view the full docs [here](docs/documentation.md). All the details such a
 
 > I would've made it strictly MIT so proprietary software can make use of the library, but some of the techniques employed are from GPL 3.0 projects, and I have no choice but to use the same license for legal reasons. 
 > 
-> This gave me an idea to make an MIT version without all of the GPL code so it can also be used without forcing your code to be open-source. It should be noted that the MIT version removes <b>9</b> techniques out of 128 (as of 2.0 version), and the lesser the number of techniques, the less accurate the overall result might be.
+> This gave me an idea to make an MIT version without all of the GPL code so it can also be used without forcing your code to be open-source. It should be noted that the MIT version removes <b>9</b> techniques out of 126 (as of 2.0 version), and the lesser the number of techniques, the less accurate the overall result might be.
 
 </details>
 
@@ -239,7 +245,7 @@ And if you found this project useful, a star would be appreciated :)
 
 <br>
 
-## Credits and contributors ✒️
+## Credits, contributors, and acknowledgements ✒️
 - [Requiem](https://github.com/NotRequiem) (Co-maintainer)
 - [Check Point Research](https://research.checkpoint.com/)
 - [Unprotect Project](https://unprotect.it/)

@@ -397,7 +397,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::MUTEX` | Check for mutex strings of VM brands | Windows | 85% |  |  |  |  |
 | `VM::ODD_CPU_THREADS` | Check for odd CPU threads, usually a sign of modification through VM setting because 99% of CPUs have even numbers of threads |  | 80% |  |  |  |  |
 | `VM::INTEL_THREAD_MISMATCH` | Check for Intel CPU thread count database if it matches the system's thread count |  | 100% |  |  |  |  |
-| `VM::XEON_THREAD_MISMATCH` | Same as above, but for Xeon Intel CPUs |  | 85% |  |  |  |  |
+| `VM::XEON_THREAD_MISMATCH` | Same as above, but for Xeon Intel CPUs |  | 100% |  |  |  |  |
 | `VM::NETTITUDE_VM_MEMORY` | Check for memory regions to detect VM-specific brands | Windows | 100% |  |  |  |  |
 | `VM::CPUID_BITSET` |  Check for CPUID technique by checking whether all the bits equate to more than 4000 |  | 25% |  |  |  |  |
 | `VM::CUCKOO_DIR` | Check for cuckoo directory using crt and WIN API directory functions | Windows | 30% |  |  |  |  |
@@ -432,7 +432,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::DRIVER_NAMES` | Check for VM-specific names for drivers | Windows | 100% |  |  |  |  |
 | `VM::VM_SIDT` | Check for unknown IDT base address | Windows | 100% |  |  |  |  |
 | `VM::HDD_SERIAL` | Check for HDD serial number | Windows | 100% |  |  |  |  |
-| `VM::PORT_CONNECTORS` | Check for physical connection ports | Windows | 10% |  |  |  |  |
+| `VM::PORT_CONNECTORS` | Check for physical connection ports | Windows | 25% |  |  |  |  |
 | `VM::VM_HDD` | Check for VM related keywords in HDD models | Windows | 100% |  |  |  |  |
 | `VM::ACPI_REGISTRY` | Check for VM related strings in ACPI data | Windows | 100% |  |  |  |  |
 | `VM::GPU_NAME` | Check for VM specific device names in GPUs | Windows | 100% |  |  |  |  |
@@ -449,16 +449,19 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::VMWARE_HARDENER` | Checks for VMwareHardenerLoader's method of patching firmware detection by setting its signatures with "7" | Windows | 60% |  |  |  |  |
 | `VM::SYS_QEMU` | Check for existence of "qemu_fw_cfg" directories within /sys/module and /sys/firmware | Linux | 70% |  |  |  |  |
 | `VM::LSHW_QEMU` | Check for QEMU string instances with lshw command | Linux | 80% |  |  |  |  |
-| `VM::VIRTUAL_PROCESSORS` | Checks if the number of maximum virtual processors matches the maximum number of logical processors | Windows | 50% |  |  |  |  |
+| `VM::VIRTUAL_PROCESSORS` | Check if the number of maximum virtual processors matches the maximum number of logical processors | Windows | 50% |  |  |  |  |
 | `VM::MOTHERBOARD_PRODUCT` | Check if the motherboard product string matches "Virtual Machine" | Windows | 50% |  |  |  |  |
-| `VM::HYPERV_QUERY` | Checks if a call to NtQuerySystemInformation with the 0x9f leaf fills a _SYSTEM_HYPERVISOR_DETAIL_INFORMATION structure | Windows | 100% |  |  |  |  |
-| `VM::BAD_POOLS` | Checks for system pools allocated by hypervisors | Windows | 80% |  |  |  |  |
+| `VM::HYPERV_QUERY` | Check if a call to NtQuerySystemInformation with the 0x9f leaf fills a _SYSTEM_HYPERVISOR_DETAIL_INFORMATION structure | Windows | 100% |  |  |  |  |
+| `VM::BAD_POOLS` | Check for system pools allocated by hypervisors | Windows | 80% |  |  |  |  |
 | `VM::AMD_SEV` | Check for AMD-SEV MSR running on the system | Linux and MacOS | 50% | Admin |  |  |  |
 | `VM::AMD_THREAD_MISMATCH` | Check for AMD CPU thread count database if it matches the system's thread count |  | 100% |  |  |  |  |
 | `VM::NATIVE_VHD` | Checks if the OS was booted from a VHD container |  | 100% |  |  |  |  |
-| `VM::VIRTUAL_REGISTRY` | Checks for particular object directory which is present in Sandboxie virtual environment but not in usual host systems |  | 65% |  |  |  |  |
-| `VM::FIRMWARE_SCAN` | Checks for VM signatures in firmware |  | 90% |  |  |  |  |
-<!-- ADD DETAILS HERE -->
+| `VM::NATIVE_VHD` | Check for OS being booted from a VHD container | Windows | 100% |  |  |  |  |
+| `VM::VIRTUAL_REGISTRY` | Check for particular object directory which is present in Sandboxie virtual environment but not in usual host systems | Windows | 65% |  |  |  |  |
+| `VM::FIRMWARE_SCAN` | Check for VM signatures in firmware | Windows | 90% |  |  |  |  |
+| `VM::NX_BIT` | Check for AMD64/Intel64 architecture without NX support | Windows | 50% |  |  |  |  |
+| `VM::FILE_ACCESS_HISTORY` | Check if the number of accessed files are too low for a human-managed environment | Linux | 15% |  |  |  |  |
+
 
 <br>
 
@@ -533,6 +536,8 @@ This is the table of all the brands the lib supports.
 | AMD SEV-SNP | `VM::brands::AMD_SEV_SNP` | VM encryptor |  |
 | Neko Project II | `VM::brands::NEKO_PROJECT` | Emulator |  | 
 | Google Compute Engine (KVM) | `VM::brands::GCE` | Cloud VM service |  |
+| NoirVisor | `VM::brands::NOIRVISOR` | Hypervisor (type 1) |  |
+| Qihoo 360 Sandbox | `VM::brands::QIHOO` | Sandbox |  |
 
 <br>
 
@@ -572,7 +577,7 @@ This is the table of all the brands the lib supports.
 | -t | --type | Returns the VM type (if a VM was found) |
 |    | --disable-notes | No notes will be provided |
 |    | --high-threshold | A higher theshold bar for a VM detection will be applied |
-|    | --no-color | Removes all the color, this is added due to some terminals not supporting ANSI escape codes while cluttering the output |
+|    | --no-ansi | Removes all the ANSI encodings (color and text style). This is added due to some terminals not supporting ANSI escape codes while cluttering the output |
 |    | --dynamic | allow the conclusion message to be dynamic (8 possibilities instead of only 2) |
 |    | --verbose | add more information to the output  |
 |    | --compact | ignore the unsupported techniques from the CLI output and thus make it more compact |

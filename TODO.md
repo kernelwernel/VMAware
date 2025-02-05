@@ -21,6 +21,7 @@
 - [ ] implement techniques from virt-what
 - [ ] https://cloud.google.com/compute/docs/instances/detect-compute-engine
 - [ ] support the odd_thread_count technique for AMD
+- [ ] add WMI memo line details in sections category of the banner 
 
 # Distant plans
 - add the library to conan.io when released
