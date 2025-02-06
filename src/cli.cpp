@@ -1209,7 +1209,7 @@ int main(int argc, char* argv[]) {
     win_ansi_enabler_t ansi_enabler;
 #endif
 
-    const std::vector<const char*> args(argv + 1, argv + argc); // easier this way
+    const std::vector<const char*> args(argv + 1, argv + argc); // easier to handle args this way
     const u32 arg_count = static_cast<u32>(argc - 1);
 
     // this was removed from the lib due to ethical 

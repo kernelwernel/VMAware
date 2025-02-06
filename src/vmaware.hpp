@@ -29,7 +29,7 @@
  * - struct for internal memoization           => line 1215
  * - struct for internal utility functions     => line 1609
  * - struct for internal core components       => line 11156
- * - start of internal VM detection techniques => line 3275
+ * - start of VM detection technique list      => line 3275
  * - start of public VM detection functions    => line 11560
  * - start of externally defined variables     => line 12462
  *
@@ -57,7 +57,7 @@
  * how it's structured, and guide anybody who's trying to understand the whole code. 
  * Reading over 12k+ lines of other people's C++ code is obviously not an easy task, 
  * and that's perfectly understandable. I'd struggle as well if I was in your position
- * while not even knowing where to start. So here's a more human-friendly explanation.
+ * while not even knowing where to start. So here's a more human-friendly explanation:
  * 
  * 
  * Firstly, the lib is completely static, meaning that there's no need for struct 
@@ -69,6 +69,10 @@
  *    This mean that if a VM detection has detected a VM brand, that brand will have an
  *    incremented score. After every technique is run, the brand with the highest score
  *    is chosen as the officially detected brand. 
+ * 
+ * The techniques are all static functions, which all return a boolean. There are a few 
+ * categories of techniques that target vastly different things such as OS queires, CPU
+ * values, other hardware values, firmware data, and system files just to name a few. 
  * 
  * 
  * Secondly, there are multiple modules in the lib that are combined to integrate with
@@ -93,7 +97,7 @@
  *        internally. Some techniques are more costlier than others in terms of 
  *        performance, so this is a crucial module that allows us to save a lot of
  *        time. Additionally, it contains other memoization caches for various other
- *        things for utility purposes. 
+ *        things for convenience purposes. 
  * 
  *    - util module:
  *        This contains many utility functionalities to be used by the techniques.
@@ -105,14 +109,14 @@
  *    - wmi module:
  *        This is a Windows-specific module that acts as a wrapper for WMI queries.
  *        WMI is an interface for the programmer to interact with the Windows system
- *        at a deeper level, which the library utilises occasionally. 
+ *        at a deeper level, which the library uses occasionally. 
  * 
  * 
  * Thirdly, I'll explain in this section how all of these facets of the lib interact with 
  * each other. Let's take an example with VM::detect(), where it returns a boolean true or 
  * false if a VM has been detected or not. The chain of steps it takes goes like this:
  *    1. The function tries to handle the user arguments (if there's 
- *       any), and return a std::bitset. This bitset has a length of 
+ *       any), and generates a std::bitset. This bitset has a length of 
  *       every VM detection technique + settings, where each bit 
  *       corresponds to whether this technique will be ran or not, 
  *       and which settings were selected. 
@@ -120,14 +124,14 @@
  *    2. After the bitset has been generated, this information is then 
  *       passed to the core module of the lib. It analyses the bitset, 
  *       and runs every VM detection technique that has been selected, 
- *       while ignoring the ones that aren't selected (by default most 
+ *       while ignoring the ones that weren't selected (by default most 
  *       of them are already selected anyway). The function that does 
  *       this mechanism is core::run_all()
  * 
  *    3. While the core::run_all() function is being ran, it checks if 
  *       each technique has already been memoized or not. If it has, 
  *       retrieve the result from the cache and move to the next technique. 
- *       If it hasn't, run the technique and cache the  result to the 
+ *       If it hasn't, run the technique and cache the result to the 
  *       cache table. 
  * 
  *    4. After every technique has been looped through, this generates a 
