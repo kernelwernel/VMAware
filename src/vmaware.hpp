@@ -4543,7 +4543,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */ 
 /* GPL */         for (i = 0; SetupDiEnumDeviceInfo(hDevInfo, i, &DeviceInfoData); i++)
 /* GPL */         {
-/* GPL */             while (!SetupDiGetDeviceRegistryPropertyA(hDevInfo, &DeviceInfoData, SPDRP_HARDWAREID,
+/* GPL */             while (!SetupDiGetDeviceRegistryProperty(hDevInfo, &DeviceInfoData, SPDRP_HARDWAREID,
 /* GPL */                 &dwPropertyRegDataType, (PBYTE)buffer, dwSize, &dwSize))
 /* GPL */             {
 /* GPL */                 if (GetLastError() == ERROR_INSUFFICIENT_BUFFER) {
