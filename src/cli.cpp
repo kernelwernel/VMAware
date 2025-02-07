@@ -422,6 +422,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::QEMU_BRAND:
             case VM::BOCHS_CPU:
             case VM::BIOS_SERIAL:
+            case VM::VBOX_SHARED_FOLDERS:
             case VM::MSSMBIOS:
             case VM::HKLM_REGISTRIES:
             case VM::VPC_INVALID:
@@ -923,6 +924,7 @@ void general() {
     checker(VM::QEMU_BRAND, "QEMU CPU brand");
     checker(VM::BOCHS_CPU, "BOCHS CPU techniques");
     checker(VM::BIOS_SERIAL, "BIOS serial number");
+    checker(VM::VBOX_SHARED_FOLDERS, "VBox shared folders");
     checker(VM::MSSMBIOS, "MSSMBIOS data");
     checker(VM::MAC_MEMSIZE, "MacOS hw.memsize");
     checker(VM::MAC_IOKIT, "MacOS registry IO-kit");

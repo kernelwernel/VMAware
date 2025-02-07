@@ -17,6 +17,7 @@
  *      - Alan Tse (https://github.com/alandtse)
  *      - Georgii Gennadev (https://github.com/D00Movenok)
  *      - utoshu (https://github.com/utoshu)
+ *      - Jyd (https://github.com/jyd519)
  *  - Repository: https://github.com/kernelwernel/VMAware
  *  - Docs: https://github.com/kernelwernel/VMAware/docs/documentation.md
  *  - Full credits: https://github.com/kernelwernel/VMAware#credits-and-contributors-%EF%B8%8F
@@ -509,6 +510,7 @@ public:
         QEMU_BRAND,
         BOCHS_CPU,
         BIOS_SERIAL,
+        VBOX_SHARED_FOLDERS,
         MSSMBIOS,
         MAC_MEMSIZE,
         MAC_IOKIT,
@@ -3281,6 +3283,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check CPUID output of manufacturer ID for known VMs/hypervisors at leaf 0
      * @category x86
+     * @implements VM::VMID
      */
     [[nodiscard]] static bool vmid() {
 #if (!x86)
@@ -3298,6 +3301,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check if CPU brand model contains any VM-specific string snippets
      * @category x86
+     * @implements VM::CPU_BRAND
      */
     [[nodiscard]] static bool cpu_brand() {
 #if (!x86)
@@ -3348,6 +3352,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check if hypervisor feature bit in CPUID eax bit 31 is enabled (always false for physical CPUs)
      * @category x86
+     * @implements VM::HYPERVISOR_BIT
      */
     [[nodiscard]] static bool hypervisor_bit() {
 #if (!x86)
@@ -3372,6 +3377,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for hypervisor brand string length (would be around 2 characters in a host machine)
      * @category x86
+     * @implements VM::HYPERVISOR_STR
      */
     [[nodiscard]] static bool hypervisor_str() {
 #if (!x86)
@@ -3398,6 +3404,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check if there are only 1 or 2 threads, which is a common pattern in VMs with default settings (nowadays physical CPUs should have at least 4 threads for modern CPUs
      * @category x86 (ARM might have very low thread counts, which is why it should be only for x86)
+     * @implements VM::THREADCOUNT
      */
     [[nodiscard]] static bool thread_count() {
 #if (x86)
@@ -3419,6 +3426,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check if mac address starts with certain VM designated values
      * @category All systems (I think)
+     * @implements VM::MAC
      */
     [[nodiscard]] static bool mac_address_check() {
         // C-style array on purpose
@@ -3551,6 +3559,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check if thermal directory in linux is present, might not be present in VMs
      * @category Linux
+     * @implements VM::TEMPERATURE
      */
     [[nodiscard]] static bool temperature() {
 #if (!LINUX)
@@ -3564,6 +3573,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check result from systemd-detect-virt tool
      * @category Linux
+     * @implements VM::SYSTEMD
      */
     [[nodiscard]] static bool systemd_virt() {
 #if (!LINUX)
@@ -3591,6 +3601,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check if the chassis vendor is a VM vendor
      * @category Linux
+     * @implements VM::CVENDOR
      */
     [[nodiscard]] static bool chassis_vendor() {
 #if (!LINUX)
@@ -3619,6 +3630,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check if the chassis type is valid (it's very often invalid in VMs)
      * @category Linux
+     * @implements VM::CTYPE
      */
     [[nodiscard]] static bool chassis_type() {
 #if (!LINUX)
@@ -3640,6 +3652,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check if /.dockerenv or /.dockerinit file is present
      * @category Linux
+     * @implements VM::DOCKERENV
      */
     [[nodiscard]] static bool dockerenv() {
 #if (!LINUX)
@@ -3657,6 +3670,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check if dmidecode output matches a VM brand
      * @category Linux
+     * @implements VM::DMIDECODE
      */
     [[nodiscard]] static bool dmidecode() {
 #if (!LINUX)
@@ -3697,6 +3711,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check if dmesg output matches a VM brand
      * @category Linux
+     * @implements VM::DMESG
      */
     [[nodiscard]] static bool dmesg() {
 #if (!LINUX || CPP <= 11)
@@ -3733,6 +3748,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check if /sys/class/hwmon/ directory is present. If not, likely a VM
      * @category Linux
+     * @implements VM::HWMON
      */
     [[nodiscard]] static bool hwmon() {
 #if (!LINUX)
@@ -3748,6 +3764,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @author Matteo Malvica
      * @link https://www.matteomalvica.com/blog/2018/12/05/detecting-vmware-on-64-bit-systems/
      * @category Linux
+     * @implements VM::SIDT5
      */
     [[nodiscard]] static bool sidt5() {
 #if (LINUX && (GCC || CLANG))
@@ -3792,10 +3809,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
 
-
     /**
      * @brief Check for VM-specific DLLs
      * @category Windows
+     * @implements VM::DLL
      */
     [[nodiscard]] static bool dll_check() {
 #if (!WINDOWS)
@@ -3833,6 +3850,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for VM-specific registry values
      * @category Windows
+     * @implements VM::REGISTRY
      */
     [[nodiscard]] static bool registry_key() {
 #if (!WINDOWS)
@@ -3960,6 +3978,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Find for VMware and VBox specific files
      * @category Windows
+     * @implements VM::VM_FILES
      */
     [[nodiscard]] static bool vm_files() {
 #if !WINDOWS
@@ -4100,6 +4119,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check if the sysctl for the hwmodel does not contain the "Mac" string
      * @author MacRansom ransomware
      * @category MacOS
+     * @implements VM::HWMODEL
      */
     [[nodiscard]] static bool hwmodel() {
 #if (!APPLE)
@@ -4135,6 +4155,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check if disk size is under or equal to 50GB
      * @category Linux, Windows
+     * @implements VM::DISK_SIZE
      */
     [[nodiscard]] static bool disk_size() {
 #if (!LINUX && !WINDOWS)
@@ -4160,6 +4181,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * OTHER LINUX: 512MB,  8GB
 
      * @category Linux, Windows
+     * @implements VM::VBOX_DEFAULT
      */
     [[nodiscard]] static bool vbox_default_specs() {
 #if (APPLE)
@@ -4246,6 +4268,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for VirtualBox network provider string
      * @category Windows
+     * @implements VM::VBOX_NETWORK
      */
     [[nodiscard]] static bool vbox_network_share() {
 #if (!WINDOWS)
@@ -4269,7 +4292,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */     // @brief Check if the computer name (not username to be clear) is VM-specific
 /* GPL */     // @category Windows
 /* GPL */     // @author InviZzzible project
-/* GPL */     // @copyright GPL-3.0
+/* GPL */     // @copyright GPL-3.
+/* GPL */     // @implements VM::COMPUTER_NAME
 /* GPL */     [[nodiscard]] static bool computer_name_match() {
 /* GPL */ #if (!WINDOWS)
 /* GPL */         return false;
@@ -4304,6 +4328,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */     // @link https://github.com/a0rtega/pafish/blob/master/pafish/wine.c
 /* GPL */     // @category Windows
 /* GPL */     // @copyright GPL-3.0
+/* GPL */     // @implements VM::WINE_CHECK
 /* GPL */     [[nodiscard]] static bool wine() {
 /* GPL */ #if (!WINDOWS)
 /* GPL */         return false;
@@ -4326,6 +4351,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */     // @author InviZzzible project
 /* GPL */     // @category Windows
 /* GPL */     // @copyright GPL-3.0
+/* GPL */     // @implements VM::HOSTNAME
 /* GPL */     [[nodiscard]] static bool hostname_match() {
 /* GPL */ #if (!WINDOWS)
 /* GPL */         return false;
@@ -4346,6 +4372,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */     // @author LordNoteWorthy
 /* GPL */     // @note from Al-Khaser project
 /* GPL */     // @link https://github.com/LordNoteworthy/al-khaser/blob/0f31a3866bafdfa703d2ed1ee1a242ab31bf5ef0/al-khaser/AntiVM/KVM.cpp
+/* GPL */     // @implements VM::KVM_DIRS
 /* GPL */     [[nodiscard]] static bool kvm_directories() {
 /* GPL */ #if (!WINDOWS)
 /* GPL */         return false;
@@ -4371,6 +4398,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */     // @author CheckPointSW (InviZzzible project)
 /* GPL */     // @link https://github.com/CheckPointSW/InviZzzible/blob/master/SandboxEvasion/helper.cpp
 /* GPL */     // @copyright GPL-3.0
+/* GPL */     // @implements VM::AUDIO 
 /* GPL */ [[nodiscard]] static bool check_audio() {
 /* GPL */ #if (!WINDOWS)
 /* GPL */         return false;
@@ -4462,6 +4490,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */     // @category Windows
 /* GPL */     // @note from al-khaser project
 /* GPL */     // @copyright GPL-3.0
+/* GPL */     // @implements VM::QEMU_DIR
 /* GPL */     [[nodiscard]] static bool qemu_dir() {
 /* GPL */ #if (!WINDOWS)
 /* GPL */         return false;
@@ -4497,6 +4526,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */     // @brief Check what power states are enabled
 /* GPL */     // @category Windows
 /* GPL */     // @author Al-Khaser project
+/* GPL */     // @implements VM::POWER_CAPABILITIES
 /* GPL */     [[nodiscard]] static bool power_capabilities() {
 /* GPL */ #if (!WINDOWS)
 /* GPL */         return false;
@@ -4519,6 +4549,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */     // @brief Checks for virtual machine signatures in disk drive device identifiers
 /* GPL */     // @category Windows
 /* GPL */     // @author Al-Khaser project
+/* GPL */     // @implements VM::SETUPAPI_DISK
 /* GPL */     [[nodiscard]] static bool setupapi_disk() {
 /* GPL */ #if (!WINDOWS)
 /* GPL */         return false;
@@ -4586,6 +4617,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for any VM processes that are active
      * @category Windows
+     * @implements VM::VM_PROCESSES
      */
     [[nodiscard]] static bool vm_processes() {
 #if (!WINDOWS)
@@ -4627,6 +4659,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for default VM username and hostname for linux
      * @category Linux
+     * @implements VM::LINUX_USER_HOST
      */
     [[nodiscard]] static bool linux_user_host() {
 #if (!LINUX)
@@ -4653,6 +4686,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for Gamarue ransomware technique which compares VM-specific Window product IDs
      * @category Windows
+     * @implements VM::GAMARUE
      */
     [[nodiscard]] static bool gamarue() {
 #if (!WINDOWS) 
@@ -4700,6 +4734,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check if the CPU manufacturer ID matches that of a VM brand with leaf 0x40000000
      * @category x86
+     * @implements VM::VMID_0X4
      */
     [[nodiscard]] static bool vmid_0x4() {
 #if (!x86)
@@ -4721,6 +4756,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for any indication of Parallels VM through BIOS data
      * @link https://stackoverflow.com/questions/1370586/detect-if-windows-is-running-from-within-parallels
      * @category Windows
+     * @implements VM::PARALLELS_VM
      */
     [[nodiscard]] static bool parallels() {
 #if (!WINDOWS)
@@ -4765,6 +4801,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Match for QEMU CPU brands with "QEMU Virtual CPU" string
      * @category x86
+     * @implements VM::QEMU_BRAND
      */
     [[nodiscard]] static bool cpu_brand_qemu() {
 #if (!x86)
@@ -4791,6 +4828,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for various Bochs-related emulation oversights through CPU checks
      * @category x86
      * @note Discovered by Peter Ferrie, Senior Principal Researcher, Symantec Advanced Threat Research peter_ferrie@symantec.com
+     * @implements VM::BOCHS_CPU
      */
     [[nodiscard]] static bool bochs_cpu() {
 #if (!x86)
@@ -4881,6 +4919,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check if the BIOS serial is valid (null = VM)
      * @category Windows
+     * @implements VM::BIOS_SERIAL
      */
     [[nodiscard]] static bool bios_serial() {
 #if (!WINDOWS)
@@ -4920,6 +4959,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @note slightly modified code from original
      * @author @waleedassar
      * @link https://pastebin.com/xhFABpPL
+     * @implements VM::VBOX_SHARED_FOLDERS
      */
     [[nodiscard]] static bool vbox_shared_folders() {
 #if (!WINDOWS)
@@ -4962,6 +5002,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @note slightly modified from original code
      * @author @waleedassar
      * @link https://pastebin.com/fPY4MiYq
+     * @implements VM::MSSMBIOS
      */
     [[nodiscard]] static bool mssmbios() {
 #if (!WINDOWS)
@@ -5061,6 +5102,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check if memory is too low for MacOS system
      * @category MacOS
      * @link https://evasions.checkpoint.com/techniques/macos.html
+     * @implements VM::MAC_MEMSIZE
      */
     [[nodiscard]] static bool hw_memsize() {
 #if (!APPLE)
@@ -5097,6 +5139,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check MacOS' IO kit registry for VM-specific strings
      * @category MacOS
      * @link https://evasions.checkpoint.com/techniques/macos.html
+     * @implements VM::MAC_IOKIT
      */
     [[nodiscard]] static bool io_kit() {
 #if (!APPLE)
@@ -5182,6 +5225,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for VM-strings in ioreg commands for MacOS
      * @category MacOS
      * @link https://evasions.checkpoint.com/techniques/macos.html
+     * @implements VM::IOREG_GREP
      */
     [[nodiscard]] static bool ioreg_grep() {
 #if (!APPLE)
@@ -5242,6 +5286,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check if System Integrity Protection is disabled (likely a VM if it is)
      * @category MacOS
      * @link https://evasions.checkpoint.com/techniques/macos.html
+     * @implements VM::MAC_SIP
      */
     [[nodiscard]] static bool mac_sip() {
 #if (!APPLE)
@@ -5260,6 +5305,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check HKLM registries for specific VM strings
      * @category Windows
+     * @implements VM::HKLM_REGISTRIES
      */
     [[nodiscard]] static bool hklm_registries() {
 #if (!WINDOWS)
@@ -5373,6 +5419,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for "qemu-ga" process
      * @category Linux
+     * @implements VM::QEMU_GA
      */
     [[nodiscard]] static bool qemu_ga() {
 #if (!LINUX)
@@ -5392,6 +5439,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for official VPC method
      * @category Windows, x86
+     * @implements VM::VPC_INVALID
      */
     [[nodiscard]] static bool vpc_invalid() {
 #if (!WINDOWS || !x86_64)
@@ -5446,6 +5494,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for sidt instruction method
      * @category Linux, Windows, x86
+     * @implements VM::SIDT
      */
     [[nodiscard]] static bool sidt() {
         // gcc/g++ causes a stack smashing error at runtime for some reason
@@ -5519,6 +5568,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for sgdt instruction method
      * @category Windows, x86
+     * @implements VM::SGDT
      */
     [[nodiscard]] static bool sgdt() {
 #if (x86_32 && WINDOWS)
@@ -5539,6 +5589,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for sldt instruction method
      * @category Windows, x86
      * @note code documentation paper in https://www.aldeid.com/wiki/X86-assembly/Instructions/sldt
+     * @implements VM::SLDT
      */
     [[nodiscard]] static bool sldt() {
 #if (!MSVC && WINDOWS)
@@ -5564,6 +5615,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @author Danny Quist (chamuco@gmail.com)
      * @author Val Smith (mvalsmith@metasploit.com)
      * @note code documentation paper in /papers/www.offensivecomputing.net_vm.pdf
+     * @implements VM::OFFSEC_SIDT
      */
     [[nodiscard]] static bool offsec_sidt() {
 #if (!MSVC && WINDOWS)
@@ -5583,6 +5635,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @author Danny Quist (chamuco@gmail.com)
      * @author Val Smith (mvalsmith@metasploit.com)
      * @note code documentation paper in /papers/www.offensivecomputing.net_vm.pdf
+     * @implements VM::OFFSEC_SGDT
      */
     [[nodiscard]] static bool offsec_sgdt() {
 #if (!MSVC && WINDOWS)
@@ -5602,6 +5655,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @author Danny Quist (chamuco@gmail.com)
      * @author Val Smith (mvalsmith@metasploit.com)
      * @note code documentation paper in /papers/www.offensivecomputing.net_vm.pdf
+     * @implements VM::OFFSEC_SLDT
      */
     [[nodiscard]] static bool offsec_sldt() {
 #if (!WINDOWS || !x86_64)
@@ -5622,6 +5676,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Windows, x86
      * @note Idea from Tom Liston and Ed Skoudis' paper "On the Cutting Edge: Thwarting Virtual Machine Detection"
      * @note Paper situated at /papers/ThwartingVMDetection_Liston_Skoudis.pdf
+     * @implements VM::VPC_SIDT
      */
     [[nodiscard]] static bool vpc_sidt() {
 #if (!WINDOWS || !x86_64)
@@ -5648,6 +5703,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for VMware string in /proc/iomem
      * @category Linux
      * @note idea from ScoopyNG by Tobias Klein
+     * @implements VM::VMWARE_IOMEM
      */
     [[nodiscard]] static bool vmware_iomem() {
 #if (!LINUX)
@@ -5668,6 +5724,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for VMware string in /proc/ioports
      * @category Windows
      * @note idea from ScoopyNG by Tobias Klein
+     * @implements VM::VMWARE_IOPORTS
      */
     [[nodiscard]] static bool vmware_ioports() {
 #if (!LINUX)
@@ -5688,6 +5745,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for VMware string in /proc/scsi/scsi
      * @category Windows
      * @note idea from ScoopyNG by Tobias Klein
+     * @implements VM::VMWARE_SCSI
      */
     [[nodiscard]] static bool vmware_scsi() {
 #if (!LINUX)
@@ -5708,6 +5766,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for VMware-specific device name in dmesg output
      * @category Windows
      * @note idea from ScoopyNG by Tobias Klein
+     * @implements VM::VMWARE_DMESG
      */
     [[nodiscard]] static bool vmware_dmesg() {
 #if (!LINUX)
@@ -5746,6 +5805,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @note Alfredo Omella's (S21sec) STR technique
      * @note paper describing this technique is located at /papers/www.s21sec.com_vmware-eng.pdf (2006)
      * @category Windows
+     * @implements VM::VMWARE_STR
      */
         [[nodiscard]] static bool vmware_str() {
 #if (WINDOWS && x86_32)
@@ -5768,6 +5828,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @note Code from ScoopyNG by Tobias Klein
      * @note Technique founded by Ken Kato
      * @copyright BSD clause 2
+     * @implements VM::VMWARE_BACKDOOR
      */
     [[nodiscard]] static bool vmware_backdoor() {
 #if (!WINDOWS || !x86_64)
@@ -5830,6 +5891,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Windows, x86
      * @note Code from ScoopyNG by Tobias Klein
      * @copyright BSD clause 2
+     * @implements VM::VMWARE_PORT_MEM
      */
     [[nodiscard]] static bool vmware_port_memory() {
 #if (!WINDOWS || !x86_64)
@@ -5873,6 +5935,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for SMSW assembly instruction technique
      * @category Windows, x86
      * @author Danny Quist from Offensive Computing
+     * @implements VM::SMSW
      */
     [[nodiscard]] static bool smsw() {
 #if (!WINDOWS || !x86_64)
@@ -5903,6 +5966,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @note from VMDE project
      * @author hfiref0x
      * @copyright MIT
+     * @implements VM::MUTEX
      */
     [[nodiscard]] static bool mutex() {
 #if (!WINDOWS)
@@ -5949,6 +6013,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for odd CPU threads, usually a sign of modification through VM setting because 99% of CPUs have even numbers of threads
      * @category All, x86
+     * @implements VM::ODD_CPU_THREADS
      */
     [[nodiscard]] static bool odd_cpu_threads() {
 #if (!x86)
@@ -6049,6 +6114,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for Intel CPU thread count database if it matches the system's thread count
      * @category All, x86
      * @link https://en.wikipedia.org/wiki/List_of_Intel_Core_processors
+     * @implements VM::INTEL_THREAD_MISMATCH
      */
     [[nodiscard]] static bool intel_thread_mismatch() {
 #if (!x86)
@@ -7055,6 +7121,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Same as above, but for Xeon Intel CPUs
      * @category All, x86
      * @link https://en.wikipedia.org/wiki/List_of_Intel_Core_processors
+     * @implements VM::XEON_THREAD_MISMATCH
      */
     [[nodiscard]] static bool xeon_thread_mismatch() {
 #if (!x86)
@@ -7217,6 +7284,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Windows
      * @author Graham Sutherland
      * @link https://labs.nettitude.com/blog/vm-detection-tricks-part-1-physical-memory-resource-maps/
+     * @implements VM::NETTITUDE_VM_MEMORY
      */
     [[nodiscard]] static bool nettitude_vm_memory() {
 #if (!WINDOWS)
@@ -7497,6 +7565,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @author 一半人生
      * @link https://unprotect.it/snippet/vmcpuid/195/
      * @copyright MIT
+     * @implements VM::CPUID_BITSET
      */
     [[nodiscard]] static bool cpuid_bitset() {
 #if (!x86)
@@ -7565,6 +7634,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @author 一半人生
      * @link https://unprotect.it/snippet/checking-specific-folder-name/196/
      * @copyright MIT
+     * @implements VM::CUCKOO_DIR
      */
     [[nodiscard]] static bool cuckoo_dir() {
 #if (!WINDOWS)
@@ -7636,6 +7706,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @author Thomas Roccia (fr0gger)
      * @link https://unprotect.it/snippet/checking-specific-folder-name/196/
      * @copyright MIT
+     * @implements VM::CUCKOO_PIPE
      */
     [[nodiscard]] static bool cuckoo_pipe() {
 #if (!LINUX)
@@ -7662,6 +7733,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for default Azure hostname format regex (Azure uses Hyper-V as their base VM brand)
      * @category Windows, Linux
+     * @implements VM::HYPERV_HOSTNAME
      */
     [[nodiscard]] static bool hyperv_hostname() {
 #if (!(WINDOWS || LINUX))
@@ -7687,6 +7759,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @note Idea from Thomas Roccia (fr0gger)
      * @link https://unprotect.it/technique/detecting-hostname-username/
      * @copyright MIT
+     * @implements VM::GENERAL_HOSTNAME
      */
     [[nodiscard]] static bool general_hostname() {
 #if (!(WINDOWS || LINUX))
@@ -7723,6 +7796,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @note Idea from Thomas Roccia (fr0gger)
      * @link https://unprotect.it/technique/checking-screen-resolution/
      * @copyright MIT
+     * @implements VM::SCREEN_RESOLUTION
      */
     [[nodiscard]] static bool screen_resolution() {
 #if (!WINDOWS)
@@ -7755,6 +7829,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @author Huntress Research Team
      * @link https://unprotect.it/technique/buildcommdcbandtimeouta/
      * @copyright MIT
+     * @implements VM::DEVICE_STRING
      */
     [[nodiscard]] static bool device_string() {
 #if (!WINDOWS)
@@ -7775,6 +7850,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for the presence of BlueStacks-specific folders
      * @category ARM, Linux
+     * @implements VM::BLUESTACKS_FOLDERS
      */
     [[nodiscard]] static bool bluestacks() {
 #if (!(ARM && LINUX))
@@ -7797,6 +7873,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @link https://www.geoffchappell.com/studies/windows/km/ntoskrnl/inc/shared/hvgdk_mini/hv_hypervisor_interface.htm
      * @link https://github.com/ionescu007/SimpleVisor/blob/master/shvvp.c
      * @category x86
+     * @implements VM::CPUID_SIGNATURE
      */
     [[nodiscard]] static bool cpuid_signature() {
 #if (!x86)
@@ -7829,6 +7906,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for Hyper-V CPUID bitmask range for reserved values
      * @link https://learn.microsoft.com/en-us/virtualization/hyper-v-on-windows/tlfs/feature-discovery
      * @category x86
+     * @implements VM::HYPERV_BITMASK
      */
     [[nodiscard]] static bool hyperv_bitmask() {
 #if (!x86)
@@ -8098,6 +8176,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for KVM CPUID bitmask range for reserved values
      * @category x86
+     * @implements VM::KVM_BITMASK
      */
     [[nodiscard]] static bool kvm_bitmask() {
 #if (!x86)
@@ -8135,6 +8214,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for Intel KGT (Trusty branch) hypervisor signature in CPUID
      * @link https://github.com/intel/ikgt-core/blob/7dfd4d1614d788ec43b02602cce7a272ef8d5931/vmm/vmexit/vmexit_cpuid.c
      * @category x86
+     * @implements VM::KGT_SIGNATURE
      */
     [[nodiscard]] static bool intel_kgt_signature() {
 #if (!x86)
@@ -8161,6 +8241,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for VMware DMI strings in BIOS serial number
      * @link https://knowledge.broadcom.com/external/article?legacyId=1009458
      * @category Windows
+     * @implements VM::VMWARE_DMI
      */
     [[nodiscard]] static bool vmware_dmi() {
 #if (!WINDOWS)
@@ -8187,6 +8268,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for presence of VMware in the Windows Event Logs
      * @category Windows
      * @author Requiem (https://github.com/NotRequiem)
+     * @implements VM::VMWARE_EVENT_LOGS
      */
     [[nodiscard]] static bool vmware_event_logs() {
 #if (!WINDOWS)
@@ -8215,6 +8297,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for presence of QEMU in the /sys/devices/virtual/dmi/id directory
      * @category Linux
+     * @implements VM::QEMU_VIRTUAL_DMI
      */
     [[nodiscard]] static bool qemu_virtual_dmi() {
 #if (!LINUX)
@@ -8244,6 +8327,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for presence of QEMU in the /sys/kernel/debug/usb/devices directory
      * @category Linux
+     * @implements VM::QEMU_USB
      */
     [[nodiscard]] static bool qemu_USB() {
 #if (!LINUX)
@@ -8275,6 +8359,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for presence of any files in /sys/hypervisor directory
      * @category Linux
+     * @implements VM::HYPERVISOR_DIR
      */
     [[nodiscard]] static bool hypervisor_dir() {
 #if (!LINUX)
@@ -8326,6 +8411,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for the "UML" string in the CPU brand
      * @note idea from https://github.com/ShellCode33/VM-Detection/blob/master/vmdetect/linux.go
      * @category Linux
+     * @implements VM::UML_CPU
      */
     [[nodiscard]] static bool uml_cpu() {
 #if (!LINUX)
@@ -8358,6 +8444,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for any indications of hypervisors in the kernel message logs
      * @note idea from https://github.com/ShellCode33/VM-Detection/blob/master/vmdetect/linux.go
      * @category Linux
+     * @implements VM::KMSG
      */
     [[nodiscard]] static bool kmsg() {
 #if (!LINUX)
@@ -8415,6 +8502,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for a Xen VM process
      * @note idea from https://github.com/ShellCode33/VM-Detection/blob/master/vmdetect/linux.go
      * @category Linux
+     * @implements VM::VM_PROCS
      */
     [[nodiscard]] static bool vm_procs() {
 #if (!LINUX)
@@ -8437,6 +8525,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for a VBox kernel module
      * @note idea from https://github.com/ShellCode33/VM-Detection/blob/master/vmdetect/linux.go
      * @category Linux
+     * @implements VM::VBOX_MODULE
      */
     [[nodiscard]] static bool vbox_module() {
 #if (!LINUX)
@@ -8463,6 +8552,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for potential VM info in /proc/sysinfo
      * @note idea from https://github.com/ShellCode33/VM-Detection/blob/master/vmdetect/linux.go
      * @category Linux
+     * @implements VM::SYSINFO_PROC
      */
     [[nodiscard]] static bool sysinfo_proc() {
 #if (!LINUX)
@@ -8489,6 +8579,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for specific files in /proc/device-tree directory
      * @note idea from https://github.com/ShellCode33/VM-Detection/blob/master/vmdetect/linux.go
      * @category Linux
+     * @implements VM::DEVICE_TREE
      */
     [[nodiscard]] static bool device_tree() {
 #if (!LINUX)
@@ -8506,6 +8597,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for string matches of VM brands in the linux DMI
      * @category Linux
+     * @implements VM::DMI_SCAN
      */
     [[nodiscard]] static bool dmi_scan() {
 #if (!LINUX)
@@ -8589,6 +8681,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for the VM bit in the SMBIOS data
      * @note idea from https://github.com/systemd/systemd/blob/main/src/basic/virt.c
      * @category Linux
+     * @implements VM::SMBIOS_VM_BIT
      */
     [[nodiscard]] static bool smbios_vm_bit() {
 #if (!LINUX)
@@ -8622,6 +8715,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for podman file in /run/
      * @note idea from https://github.com/systemd/systemd/blob/main/src/basic/virt.c
      * @category Linux
+     * @implements VM::PODMAN_FILE
      */
     [[nodiscard]] static bool podman_file() {
 #if (!LINUX)
@@ -8640,6 +8734,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for WSL or microsoft indications in /proc/ subdirectories
      * @note idea from https://github.com/systemd/systemd/blob/main/src/basic/virt.c
      * @category Linux
+     * @implements VM::WSL_PROC
      */
     [[nodiscard]] static bool wsl_proc_subdir() {
 #if (!LINUX)
@@ -8672,6 +8767,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Use wmic to get the GPU/videocontrollers chip type.
      * @category Windows
      * @author utoshu
+     * @implements VM::GPU_CHIPTYPE
      */
     [[nodiscard]] static bool gpu_chiptype() {
 #if (!WINDOWS)
@@ -8713,6 +8809,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for VM-specific names for drivers
      * @category Windows
      * @author Requiem (https://github.com/NotRequiem)
+     * @implements VM::DRIVER_NAMES
      */
     [[nodiscard]] static bool driver_names() {
 #if (!WINDOWS)
@@ -8822,6 +8919,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for unknown IDT base address
      * @category Windows
      * @author Requiem (https://github.com/NotRequiem)
+     * @implements VM::VM_SIDT
      */
     [[nodiscard]] static bool vm_sidt() {
 #if (!WINDOWS || !x86) 
@@ -8854,6 +8952,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for HDD serial number
      * @category Windows
      * @author Requiem (https://github.com/NotRequiem)
+     * @implements VM::HDD_SERIAL
      */
     [[nodiscard]] static bool hdd_serial_number() {
 #if (!WINDOWS)
@@ -8884,6 +8983,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for physical connection ports
      * @category Windows
      * @author @unusual-aspect (https://github.com/unusual-aspect)
+     * @implements VM::PORT_CONNECTORS
      */
     [[nodiscard]] static bool port_connectors() {
 #if (!WINDOWS) 
@@ -8915,6 +9015,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for VM keywords in HDD model
      * @category Windows
+     * @implements VM::VM_HDD
      */
     [[nodiscard]] static bool vm_hdd() {
 #if (!WINDOWS) 
@@ -8952,6 +9053,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for VM related strings in ACPI data
      * @category Windows
      * @author idea by Requiem
+     * @implements VM::ACPI_REGISTRY
      */
     [[nodiscard]] static bool acpi() {
 #if (!WINDOWS) 
@@ -9051,6 +9153,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for VM specific device names in GPUs
      * @category Windows
      * @author Requiem (https://github.com/NotRequiem)
+     * @implements VM::GPU_NAME
      */
     [[nodiscard]] static bool vm_gpu() {
 #if (!WINDOWS)
@@ -9101,6 +9204,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for vm-specific devices
      * @category Windows
+     * @implements VM::VM_DEVICES
      */
     [[nodiscard]] static bool vm_devices() {
 #if (!WINDOWS)
@@ -9154,6 +9258,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for specific VM memory traces in certain processes
      * @category Windows
      * @author Requiem (https://github.com/NotRequiem)
+     * @implements VM::VM_MEMORY
      */
     [[nodiscard]] static bool vm_memory() {
 #if (!WINDOWS)
@@ -9282,6 +9387,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      *        However, in legitimate cases (when Windows is running under its Hyper-V), the IDT and GDT base address will always point to the same virtual location across all CPU cores if called from user-mode
      * @category Windows, x64
      * @author Requiem (https://github.com/NotRequiem)
+     * @implements VM::IDT_GDT_MISMATCH
      */
     [[nodiscard]] static bool idt_gdt_mismatch() {
 #if (!WINDOWS)
@@ -9344,6 +9450,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for number of logical processors
      * @category Windows
      * @author idea from Al-Khaser project
+     * @implements VM::PROCESSOR_NUMBER
      */
     [[nodiscard]] static bool processor_number()
     {
@@ -9369,6 +9476,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for number of physical cores
      * @category Windows
      * @author idea from Al-Khaser project
+     * @implements VM::NUMBER_OF_CORES
      */
     [[nodiscard]] static bool number_of_cores() {
 #if (!WINDOWS)
@@ -9396,6 +9504,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for device's model using WMI
      * @category Windows
      * @author idea from Al-Khaser project
+     * @implements VM::WMI_MODEL
      */
     [[nodiscard]] static bool wmi_model() {
 #if (!WINDOWS)
@@ -9427,6 +9536,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for device's manufacturer using WMI
      * @category Windows
      * @author idea from Al-Khaser project
+     * @implements VM::WMI_MANUFACTURER
      */
     [[nodiscard]] static bool wmi_manufacturer() {
 #if (!WINDOWS)
@@ -9474,6 +9584,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for device's temperature
      * @category Windows
      * @author idea from Al-Khaser project
+     * @implements VM::WMI_TEMPERATURE
      */
     [[nodiscard]] static bool wmi_temperature() {
 #if (!WINDOWS)
@@ -9499,6 +9610,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for empty processor ids using wmi
      * @category Windows
      * @author idea from Al-Khaser project
+     * @implements VM::PROCESSOR_ID
      */
     [[nodiscard]] static bool processor_id() {
 #if (!WINDOWS)
@@ -9525,6 +9637,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for CPU Fans
      * @category Windows
      * @author idea from Al-Khaser project
+     * @implements VM::CPU_FANS
      */
     [[nodiscard]] static bool cpu_fans() {
 #if (!WINDOWS)
@@ -9543,6 +9656,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check RDTSC
      * @category Windows
      * @note This has been revised multiple times with previously removed techniques
+     * @implements VM::RDTSC
      */
     [[nodiscard]] 
 #if (LINUX)
@@ -9590,6 +9704,7 @@ static bool rdtsc() {
      * @brief Detects VMwareHardenerLoader's technique to remove firmware signatures
      * @category Windows
      * @author MegaMax
+     * @implements VM::VMWARE_HARDENER
      */
     [[nodiscard]] static bool vmware_hardener()
     {
@@ -9660,6 +9775,7 @@ static bool rdtsc() {
 	/**
 	 * @brief Check for existence of qemu_fw_cfg directories within sys/module and /sys/firmware
 	 * @category Linux
+     * @implements VM::SYS_QEMU
 	 */
 	[[nodiscard]] static bool sys_qemu_dir() {
 #if (!LINUX)
@@ -9700,6 +9816,7 @@ static bool rdtsc() {
 	/**
 	 * @brief Check for QEMU string instances with lshw command
 	 * @category Linux
+     * @implements VM::LSHW_QEMU
 	 */
 	[[nodiscard]] static bool lshw_qemu() {
 #if (!LINUX)
@@ -9743,10 +9860,11 @@ static bool rdtsc() {
 
 
     /**
-    * @brief Check if the maximum number of virtual processors matches the maximum number of logical processors
-    * @category Windows
-    * @author Requiem (https://github.com/NotRequiem)
-    */
+     * @brief Check if the maximum number of virtual processors matches the maximum number of logical processors
+     * @category Windows
+     * @author Requiem (https://github.com/NotRequiem)
+     * @implements VM::VIRTUAL_PROCESSORS
+     */
     [[nodiscard]] static bool virtual_processors() {
 #if (!WINDOWS)
         return false;
@@ -9788,10 +9906,11 @@ static bool rdtsc() {
     }
 
 
-    /*
+    /**
      * @brief Detects if the motherboard product matches the signature of a virtual machine
      * @category Windows
      * @author Requiem (https://github.com/NotRequiem)
+     * @implements VM::MOTHERBOARD_PRODUCT
      */
     [[nodiscard]] static bool motherboard_product() {
 #if (!WINDOWS)
@@ -9812,9 +9931,10 @@ static bool rdtsc() {
     }
 
 
-    /*
+    /**
      * @brief Checks if a call to NtQuerySystemInformation with the 0x9f leaf fills a _SYSTEM_HYPERVISOR_DETAIL_INFORMATION structure
      * @category Windows
+     * @implements VM::HYPERV_QUERY
      */
     [[nodiscard]] static bool hyperv_query() {
 #if (!WINDOWS)
@@ -9875,9 +9995,11 @@ static bool rdtsc() {
 #endif
     }
 
-    /*
+
+    /**
      * @brief Checks for system pools allocated by hypervisors
      * @category Windows
+     * @implements VM::BAD_POOLS
      */
     [[nodiscard]] static bool bad_pools() {
 #if (!WINDOWS)
@@ -10162,6 +10284,7 @@ static bool rdtsc() {
 	 * @brief Check for AMD-SEV MSR running on the system
 	 * @category x86, Linux, MacOS
 	 * @note idea from virt-what
+     * @implements VM::AMD_SEV
 	 */
 	[[nodiscard]] static bool amd_sev() {
 #if (!x86 && !LINUX && !APPLE)
@@ -10221,6 +10344,7 @@ static bool rdtsc() {
 	 * @brief Check for AMD CPU thread count database if it matches the system's thread count
 	 * @link https://www.amd.com/en/products/specifications/processors.html
 	 * @category x86
+     * @implements VM::AMD_THREAD_MISMATCH
 	 */
 	[[nodiscard]] static bool amd_thread_mismatch() {
 #if (!x86)
@@ -10842,6 +10966,7 @@ static bool rdtsc() {
     /**
      * @brief Checks if the OS was booted from a VHD container
      * @category Windows
+     * @implements VM::NATIVE_VHD
      */
     [[nodiscard]] static bool native_vhd() {
 #if (!WINDOWS) 
@@ -10862,6 +10987,7 @@ static bool rdtsc() {
      * @brief Checks for particular object directory which is present in Sandboxie virtual environment but not in usual host systems
      * @category Windows
      * @note https://evasions.checkpoint.com/src/Evasions/techniques/global-os-objects.html
+     * @implements VM::VIRTUAL_REGISTRY
      */
     [[nodiscard]] static bool virtual_registry() {
 #if (!WINDOWS) 
@@ -10954,6 +11080,7 @@ static bool rdtsc() {
      * @brief Checks for VM signatures in firmware
      * @category Windows
      * @note https://github.com/hfiref0x/VMDE/blob/master/src/vmde/detect.c
+     * @implements VM::FIRMWARE_SCAN
      */
     [[nodiscard]] static bool firmware_scan() {
 #if (!WINDOWS) 
@@ -11091,6 +11218,7 @@ static bool rdtsc() {
     /**
      * @brief Check for AMD64/Intel64 architecture without NX support
      * @category Windows
+     * @implements VM::NX_BIT
      */
     [[nodiscard]] static bool nx_bit() {
 #if (!WINDOWS)
@@ -11115,7 +11243,8 @@ static bool rdtsc() {
 	 * @brief Check if the number of accessed files are too low for a human-managed environment
 	 * @category Linux
 	 * @note idea from https://unprotect.it/technique/xbel-recently-opened-files-check/
-	 */
+	 * @implements VM::FILE_ACCESS_HISTORY
+     */
 	[[nodiscard]] static bool file_access_history() {
 #if (!LINUX)
 	    return false;
@@ -12093,6 +12222,7 @@ public: // START OF PUBLIC FUNCTIONS
             case QEMU_BRAND: return "QEMU_BRAND";
             case BOCHS_CPU: return "BOCHS_CPU";
             case BIOS_SERIAL: return "BIOS_SERIAL";
+            case VBOX_SHARED_FOLDERS: return "VBOX_SHARED_FOLDERS";
             case MSSMBIOS: return "MSSMBIOS";
             case MAC_MEMSIZE: return "MAC_MEMSIZE";
             case MAC_IOKIT: return "MAC_IOKIT";
@@ -12772,6 +12902,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::FIRMWARE_SCAN, { 90, VM::firmware_scan, false } },
     { VM::NX_BIT, { 50, VM::nx_bit, false } },
 	{ VM::FILE_ACCESS_HISTORY, { 15, VM::file_access_history, false } },
+    { VM::VBOX_SHARED_FOLDERS, { 20, VM::vbox_shared_folders, false } }
     // ADD NEW TECHNIQUE STRUCTURE HERE
 };
 
