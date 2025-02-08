@@ -1483,7 +1483,6 @@ public:
                 }
             }
 
-        restart_initialization:
             std::atexit(wmi::cleanup);
 
             HRESULT hres = CoInitializeEx(0, COINIT_MULTITHREADED);
@@ -12874,6 +12873,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::QEMU_BRAND, { 100, VM::cpu_brand_qemu } },
     { VM::BOCHS_CPU, { 100, VM::bochs_cpu } },
     { VM::BIOS_SERIAL, { 60, VM::bios_serial } },
+    { VM::VBOX_SHARED_FOLDERS, { 70, VM::vbox_shared_folders } },
     { VM::MSSMBIOS, { 100, VM::mssmbios } },
     { VM::MAC_MEMSIZE, { 15, VM::hw_memsize } },
     { VM::MAC_IOKIT, { 100, VM::io_kit } },

@@ -1020,7 +1020,7 @@ void general() {
     checker(VM::FIRMWARE_SCAN, "firmware signatures");
     checker(VM::NX_BIT, "NX/XD anomalies");
 	checker(VM::FILE_ACCESS_HISTORY, "low file access count");
-    checker(VM::UNKNOWN_MANUFACTURER, "unknown manufacturer id");
+    checker(VM::UNKNOWN_MANUFACTURER, "unknown manufacturer ids");
 
     // ADD NEW TECHNIQUE CHECKER HERE
 
