@@ -359,10 +359,9 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::WINE_CHECK` | Check wine_get_unix_file_name file for Wine | Windows | 100% |  | GPL |  |  |
 | `VM::HOSTNAME` | Check if hostname is specific | Windows | 10% |  | GPL |  |  |
 | `VM::KVM_DIRS` | Check for KVM directory "Virtio-Win" | Windows | 30% |  | GPL |  |  |
-| `VM::AUDIO` | Check if audio device is present | Windows | 25% |  | GPL |  |  |
 | `VM::QEMU_DIR` | Check for QEMU-specific blacklisted directories | Windows | 30% |  | GPL |  |  |
-| `VM::POWER_CAPABILITIES` | Check what power states are enabled | Windows | 25% |  | GPL |  |  |
-| `VM::SETUPAPI_DISK` | Checks for virtual machine signatures in disk drive device identifiers | Windows | 20% |  | GPL |  |  |
+| `VM::POWER_CAPABILITIES` | Check what power states are enabled | Windows | 50% |  | GPL |  |  |
+| `VM::SETUPAPI_DISK` | Checks for virtual machine signatures in disk drive device identifiers | Windows | 100% |  | GPL |  |  |
 | `VM::VM_PROCESSES` | Check for any VM processes that are active | Windows | 15% |  |  |  |  |
 | `VM::LINUX_USER_HOST` | Check for default VM username and hostname for linux | Linux | 10% |  |  |  |  |
 | `VM::GAMARUE` | Check for Gamarue ransomware technique which compares VM-specific Window product IDs | Windows | 10% |  |  |  |  |
@@ -398,7 +397,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::ODD_CPU_THREADS` | Check for odd CPU threads, usually a sign of modification through VM setting because 99% of CPUs have even numbers of threads |  | 80% |  |  |  |  |
 | `VM::INTEL_THREAD_MISMATCH` | Check for Intel CPU thread count database if it matches the system's thread count |  | 100% |  |  |  |  |
 | `VM::XEON_THREAD_MISMATCH` | Same as above, but for Xeon Intel CPUs |  | 100% |  |  |  |  |
-| `VM::NETTITUDE_VM_MEMORY` | Check for memory regions to detect VM-specific brands | Windows | 100% |  |  |  |  |
+| `VM::NETTITUDE_VM_MEMORY` | Check for memory regions to detect VM-specific brands | Windows | 100% | |  |  |  |
 | `VM::CPUID_BITSET` |  Check for CPUID technique by checking whether all the bits equate to more than 4000 |  | 25% |  |  |  |  |
 | `VM::CUCKOO_DIR` | Check for cuckoo directory using crt and WIN API directory functions | Windows | 30% |  |  |  |  |
 | `VM::CUCKOO_PIPE` | Check for Cuckoo specific piping mechanism | Windows | 30% |  |  |  |  |
@@ -438,12 +437,12 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::GPU_NAME` | Check for VM specific device names in GPUs | Windows | 100% |  |  |  |  |
 | `VM::VM_DEVICES` | Check for VM-specific devices | Windows | 45% |  |  |  |  |
 | `VM::VM_MEMORY` | Check for specific VM memory traces in certain processes | Windows | 65% |  |  |  |  |
-| `VM::IDT_GDT_MISMATCH` | Check if the IDT and GDT limit addresses mismatch between different CPU cores | Windows | 50% |  |  |  |  |
+| `VM::IDT_GDT_MISMATCH` | Check if the IDT and GDT limit addresses mismatch between different CPU cores | Windows | 50% | Admin |  |  |  |
 | `VM::PROCESSOR_NUMBER` | Check for number of processors | Windows | 50% |  |  |  |  |
 | `VM::NUMBER_OF_CORES` | Check for number of cores | Windows | 50% |  |  |  |  |
 | `VM::WMI_MODEL` | Check for device's model using WMI | Windows | 100% |  |  |  |  |
 | `VM::WMI_MANUFACTURER` | Check for device's manufacturer using WMI | Windows | 100% |  |  |  |  |
-| `VM::WMI_TEMPERATURE` | Check for device's temperature | Windows | 25% |  |  |  |  |
+| `VM::WMI_TEMPERATURE` | Check for device's temperature | Windows | 25% | Admin |  |  |  |
 | `VM::PROCESSOR_ID` | Check for empty processor ids using WMI | Windows | 25% |  |  |  |  |
 | `VM::CPU_FANS` | Check for CPU Fans | Windows | 35% |  |  |  |  |
 | `VM::VMWARE_HARDENER` | Checks for VMwareHardenerLoader's method of patching firmware detection by setting its signatures with "7" | Windows | 60% |  |  |  |  |
@@ -461,6 +460,8 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::FIRMWARE_SCAN` | Check for VM signatures in firmware | Windows | 90% |  |  |  |  |
 | `VM::NX_BIT` | Check for AMD64/Intel64 architecture without NX support | Windows | 50% |  |  |  |  |
 | `VM::FILE_ACCESS_HISTORY` | Check if the number of accessed files are too low for a human-managed environment | Linux | 15% |  |  |  |  |
+| `VM::AUDIO` | Check if audio device is present | Windows | 25% |  |  |  |  |
+| `VM::UNKNOWN_MANUFACTURER` | Check if the CPU manufacturer is not known |  | 50% |  |  |  |  |
 
 
 <br>

@@ -388,6 +388,7 @@ bool is_unsupported(VM::enum_flags flag) {
 			case VM::AMD_SEV:
 			case VM::AMD_THREAD_MISMATCH:
 			case VM::FILE_ACCESS_HISTORY:
+            case VM::UNKNOWN_MANUFACTURER:
             // ADD LINUX FLAG
             return false;
             default: return true;
@@ -483,6 +484,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::VIRTUAL_REGISTRY:
             case VM::FIRMWARE_SCAN:
             case VM::NX_BIT:
+            case VM::UNKNOWN_MANUFACTURER:
             // ADD WINDOWS FLAG
             return false;
             default: return true;
@@ -515,6 +517,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::KGT_SIGNATURE:
 			case VM::AMD_SEV:
 			case VM::AMD_THREAD_MISMATCH:
+            case VM::UNKNOWN_MANUFACTURER:
             // ADD MACOS FLAG
             return false;
             default: return true;
@@ -555,7 +558,6 @@ bool is_gpl(const VM::enum_flags flag) {
         case VM::WINE_CHECK: 
         case VM::HOSTNAME: 
         case VM::KVM_DIRS: 
-        case VM::AUDIO: 
         case VM::QEMU_DIR: 
         case VM::POWER_CAPABILITIES: 
         case VM::SETUPAPI_DISK: return true;
@@ -1016,6 +1018,8 @@ void general() {
     checker(VM::FIRMWARE_SCAN, "firmware signatures");
     checker(VM::NX_BIT, "NX/XD anomalies");
 	checker(VM::FILE_ACCESS_HISTORY, "low file access count");
+    checker(VM::UNKNOWN_MANUFACTURER, "unknown manufacturer id");
+
     // ADD NEW TECHNIQUE CHECKER HERE
 
     std::printf("\n");
