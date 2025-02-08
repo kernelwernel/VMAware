@@ -11234,6 +11234,7 @@ static bool rdtsc() {
     /* @brief Check if audio device is present
      * @category Windows
      * @link https://www.joesecurity.org/blog/6933341622592617830
+     * @implements VM::AUDIO
      */
     [[nodiscard]] static bool check_audio() {
 #if (!WINDOWS)
