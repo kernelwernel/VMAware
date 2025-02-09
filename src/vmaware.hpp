@@ -582,7 +582,6 @@ public:
         WMI_MANUFACTURER,
         WMI_TEMPERATURE,
         PROCESSOR_ID,
-        CPU_FANS,
         VMWARE_HARDENER,
         SYS_QEMU,
         LSHW_QEMU,
@@ -599,6 +598,7 @@ public:
 		FILE_ACCESS_HISTORY,
         AUDIO,
         UNKNOWN_MANUFACTURER,
+        SENSORS,
         // ADD NEW TECHNIQUE ENUM NAME HERE
 
         // start of settings technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
@@ -1402,10 +1402,10 @@ public:
                     new (&strValue) std::string(other.strValue);
                     break;
                 case result_type::Integer:
-                    intValue = other.intValue;
+                    new (&intValue) int(other.intValue);
                     break;
                 case result_type::Double:
-                    doubleValue = other.doubleValue;
+                    new (&doubleValue) double(other.doubleValue);
                     break;
                 default:
                     break;
@@ -1449,6 +1449,7 @@ public:
             if (results.empty()) {
                 std::cout << "No results\n";
             }
+
             for (const auto& res : results) {
                 switch (res.type) {
                 case result_type::String:
@@ -1563,7 +1564,8 @@ public:
             return true;
         }
 
-        // Execute a WQL query. The caller can choose which namespace to use via the optional 'cim' parameter.
+        // Execute a WQL query. The caller can choose which namespace to use via the optional 'cim' parameter. 
+        // If no property is specified, the wmi wrapper will execute the query and count the number of entries.
         static std::vector<result> execute(const std::wstring& query,
             const std::vector<std::wstring>& properties,
             bool cim = true) {
@@ -1603,34 +1605,53 @@ public:
 
             IWbemClassObject* pclsObj = nullptr;
             ULONG uReturn = 0;
-            while (pEnumerator) {
-                HRESULT hr = pEnumerator->Next(WBEM_INFINITE, 1, &pclsObj, &uReturn);
-                if (0 == uReturn || FAILED(hr)) {
-                    break;
-                }
 
-                for (const auto& prop : properties) {
-                    VARIANT vtProp;
-                    VariantInit(&vtProp);
-                    hr = pclsObj->Get(prop.c_str(), 0, &vtProp, 0, 0);
-                    if (SUCCEEDED(hr)) {
-                        if (vtProp.vt == VT_BSTR) {
-                            results.emplace_back(_com_util::ConvertBSTRToString(vtProp.bstrVal));
-                        }
-                        else if (vtProp.vt == VT_I4) {
-                            results.emplace_back(vtProp.intVal);
-                        }
-                        else if (vtProp.vt == VT_R8) {
-                            results.emplace_back(vtProp.dblVal);
-                        }
+            if (properties.empty()) {
+                int count = 0;
+                while (true) {
+                    HRESULT hr = pEnumerator->Next(WBEM_INFINITE, 1, &pclsObj, &uReturn);
+                    if (FAILED(hr) || uReturn == 0) {
+                        break;
                     }
-                    VariantClear(&vtProp);
+                    count++;
+                    pclsObj->Release();
+                    pclsObj = nullptr;
                 }
-                pclsObj->Release();
+                results.emplace_back(count);
             }
+            else {
+                while (true) {
+                    HRESULT hr = pEnumerator->Next(WBEM_INFINITE, 1, &pclsObj, &uReturn);
+                    if (FAILED(hr) || uReturn == 0) {
+                        break;
+                    }
+
+                    for (const auto& prop : properties) {
+                        VARIANT vtProp;
+                        VariantInit(&vtProp);
+                        hr = pclsObj->Get(prop.c_str(), 0, &vtProp, 0, 0);
+                        if (SUCCEEDED(hr)) {
+                            if (vtProp.vt == VT_BSTR) {
+                                results.emplace_back(_com_util::ConvertBSTRToString(vtProp.bstrVal));
+                            }
+                            else if (vtProp.vt == VT_I4) {
+                                results.emplace_back(vtProp.intVal);
+                            }
+                            else if (vtProp.vt == VT_R8) {
+                                results.emplace_back(vtProp.dblVal);
+                            }
+                        }
+                        VariantClear(&vtProp);
+                    }
+                    pclsObj->Release();
+                    pclsObj = nullptr;
+                }
+            }
+
             pEnumerator->Release();
             return results;
         }
+
 
         static void cleanup() noexcept {
             if (pSvc) {
@@ -9594,25 +9615,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check for CPU Fans
-     * @category Windows
-     * @author idea from Al-Khaser project
-     * @implements VM::CPU_FANS
-     */
-    [[nodiscard]] static bool cpu_fans() {
-#if (!WINDOWS)
-        return false;
-#else
-        std::wstring query = L"SELECT * FROM Win32_Fan";
-        std::vector<std::wstring> properties = { };
-        wmi_result results = wmi::execute(query, properties);
-
-        return !results.empty();
-#endif
-    }
-
-
-    /**
      * @brief Check RDTSC
      * @category Windows
      * @note This has been revised multiple times with previously removed techniques
@@ -11323,9 +11325,10 @@ static bool rdtsc() {
 
     /* @brief Check if the CPU manufacturer is not known
      * @category x86
+     * @implements VM::UNKNOWN_MANUFACTURER
      */
     [[nodiscard]] static bool unknown_manufacturer() {
-        constexpr std::array<const char*, 21> known_ids = {
+        constexpr std::array<const char*, 21> known_ids = {{
             "AuthenticAMD", "CentaurHauls", "CyrixInstead",
             "GenuineIntel", "GenuineIotel", "TransmetaCPU",
             "GenuineTMx86", "Geode by NSC", "NexGenDriven",
@@ -11333,7 +11336,7 @@ static bool rdtsc() {
             "Vortex86 SoC", "  Shanghai  ", "HygonGenuine",
             "Genuine  RDC", "E2K MACHINE", "VIA VIA VIA ",
             "AMD ISBETTER", "GenuineAO486", "MiSTer AO486"
-        };
+        }};
 
         const auto brands = cpu::cpu_manufacturer(0);
         const std::string& brand1 = brands[0];
@@ -11346,9 +11349,40 @@ static bool rdtsc() {
                     return s == id;
                 }
             );
-            };
+        };
 
         return !matches(brand1) && !matches(brand2);
+    }
+
+
+    /*
+     * @brief Check if the system reports any information from hardware sensors
+     * @category Windows
+     * @implements VM::SENSORS
+     */
+    [[nodiscard]] static bool sensors() {
+#if (!WINDOWS)
+        return false;
+#else
+        const std::vector<std::wstring> queries = {
+            L"SELECT * FROM Win32_VoltageProbe",
+            L"SELECT * FROM Win32_PerfFormattedData_Counters_ThermalZoneInformation",
+        //  L"SELECT * FROM CIM_Sensor",
+            L"SELECT * FROM CIM_NumericSensor",
+            L"SELECT * FROM CIM_TemperatureSensor",
+            L"SELECT * FROM CIM_VoltageSensor",
+            L"SELECT * FROM Win32_Fan"
+        };
+
+        for (const auto& query : queries) {
+            const auto results = wmi::execute(query, {});
+            if (results.empty()) {
+                return true;
+            }
+        }
+
+        return false;
+#endif
     }
     // ADD NEW TECHNIQUE FUNCTION HERE
 
@@ -12372,7 +12406,6 @@ public: // START OF PUBLIC FUNCTIONS
             case WMI_MANUFACTURER: return "WMI_MANUFACTURER";
             case WMI_TEMPERATURE: return "WMI_TEMPERATURE";
             case PROCESSOR_ID: return "PROCESSOR_ID";
-            case CPU_FANS: return "CPU_FANS";
             case POWER_CAPABILITIES: return "POWER_CAPABILITIES";
             case SETUPAPI_DISK: return "SETUPAPI_DISK";
             case VMWARE_HARDENER: return "VMWARE_HARDENER";
@@ -12391,6 +12424,7 @@ public: // START OF PUBLIC FUNCTIONS
 			case FILE_ACCESS_HISTORY: return "FILE_ACCESS_HISTORY";
             case AUDIO: return "AUDIO";
             case UNKNOWN_MANUFACTURER: return "UNKNOWN_MANUFACTURER";
+            case SENSORS: return "SENSORS";
             // ADD NEW CASE HERE FOR NEW TECHNIQUE
             default: return "Unknown flag";
         }
@@ -12900,7 +12934,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::SMSW, { 30, VM::smsw } }, 
     { VM::MUTEX, { 85, VM::mutex } }, 
     { VM::ODD_CPU_THREADS, { 80, VM::odd_cpu_threads } },
-    { VM::INTEL_THREAD_MISMATCH, { 100, VM::intel_thread_mismatch } },
+    { VM::INTEL_THREAD_MISMATCH, { 150, VM::intel_thread_mismatch } },
     { VM::XEON_THREAD_MISMATCH, { 100, VM::xeon_thread_mismatch } }, 
     { VM::NETTITUDE_VM_MEMORY, { 100, VM::nettitude_vm_memory } },
     { VM::CPUID_BITSET, { 25, VM::cpuid_bitset } },
@@ -12947,7 +12981,6 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::WMI_MANUFACTURER, { 100, VM::wmi_manufacturer } },
     { VM::WMI_TEMPERATURE, { 25, VM::wmi_temperature } },
     { VM::PROCESSOR_ID, { 25, VM::processor_id } },
-    { VM::CPU_FANS, { 35, VM::cpu_fans } },
     { VM::VMWARE_HARDENER, { 60, VM::vmware_hardener } },
     { VM::SYS_QEMU, { 70, VM::sys_qemu_dir } },
     { VM::LSHW_QEMU, { 80, VM::lshw_qemu } },
@@ -12964,6 +12997,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
 	{ VM::FILE_ACCESS_HISTORY, { 15, VM::file_access_history } },
     { VM::AUDIO, { 25, VM::check_audio } },
     { VM::UNKNOWN_MANUFACTURER, { 50, VM::unknown_manufacturer } },
+    { VM::SENSORS, { 35, VM::sensors } },
     // ADD NEW TECHNIQUE STRUCTURE HERE
 };
 
