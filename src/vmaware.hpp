@@ -599,6 +599,7 @@ public:
         AUDIO,
         UNKNOWN_MANUFACTURER,
         SENSORS,
+        BOOT_FLAGS,
         // ADD NEW TECHNIQUE ENUM NAME HERE
 
         // start of settings technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
@@ -2927,6 +2928,7 @@ public:
          * - NUMA API functions (GetNumaHighestNodeNumber and GetNumaNodeProcessorMaskEx) to enumerate processors by NUMA node
          * - Enumeration of processor groups via GetActiveProcessorGroupCount and GetActiveProcessorCount for each group
          * - Dynamically testing each available processor by setting the thread affinity mask
+         * - SystemHypervisorProcessorCountInformation with NtQuerySystemInformation
          *
          * @return bool false if there is a mismatch in thread counts from different methods, true otherwise
          */
@@ -3008,7 +3010,7 @@ public:
                 };
 
             auto GetThreadsUsingNtQuerySystemInformation = []() -> int {
-                HMODULE hModule = GetModuleHandleA("ntdll.dll");
+                const HMODULE hModule = GetModuleHandleA("ntdll.dll");
                 if (!hModule) {
                     return 0;
                 }
@@ -3020,23 +3022,45 @@ public:
                     return 0;
                 }
 
-                typedef NTSTATUS(__stdcall* NtQuerySystemInformationFunc)(
+                using NtQuerySystemInformationFunc = NTSTATUS(__stdcall*)(
                     SYSTEM_INFORMATION_CLASS SystemInformationClass,
                     PVOID SystemInformation,
                     ULONG SystemInformationLength,
                     PULONG ReturnLength
                     );
 
-                NtQuerySystemInformationFunc NtQuerySystemInformation = reinterpret_cast<NtQuerySystemInformationFunc>(functions[0]);
+                auto NtQuerySystemInformation = reinterpret_cast<NtQuerySystemInformationFunc>(functions[0]);
 
                 if (NtQuerySystemInformation) {
                     SYSTEM_BASIC_INFORMATION sbi{};
-                    ULONG len;
-                    const NTSTATUS status = NtQuerySystemInformation(SystemBasicInformation, &sbi, sizeof(sbi), &len);
+                    ULONG len = 0;
+                    NTSTATUS status = NtQuerySystemInformation(SystemBasicInformation, &sbi, sizeof(sbi), &len);
 
+                    int sbiProcessors = 0;
                     if (status == 0) {
-                        return sbi.NumberOfProcessors;
+                        sbiProcessors = static_cast<int>(sbi.NumberOfProcessors);
                     }
+
+#if (x86_64)
+                    struct SYSTEM_HYPERVISOR_PROCESSOR_COUNT_INFORMATION {
+                        ULONG NumberOfLogicalProcessors;
+                        ULONG NumberOfCores;
+                    };
+
+                    BYTE buffer[4096] = { 0 };
+                    memset(buffer, 0, sizeof(buffer));
+                    status = NtQuerySystemInformation(static_cast<SYSTEM_INFORMATION_CLASS>(135), buffer, sizeof(buffer), &len);
+
+                    int hpciProcessors = 0;
+                    if (status == 0) {
+                        auto hvProcCount = reinterpret_cast<SYSTEM_HYPERVISOR_PROCESSOR_COUNT_INFORMATION*>(buffer);
+                        hpciProcessors = static_cast<int>(hvProcCount->NumberOfLogicalProcessors);
+                    }
+
+                    return (sbiProcessors == hpciProcessors) ? sbiProcessors : 1000;
+#else
+                    return sbiProcessors;
+#endif
                 }
 
                 return 0;
@@ -5458,7 +5482,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 #if (WINDOWS)
 #   if (x86_32)
-        _asm sidt idtr
+        __try {
+            _asm sidt idtr
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER) {
+            return false; // umip
+        }
 #   elif (x86_64)
 #       pragma pack(1)
         struct IDTR {
@@ -5468,7 +5497,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #       pragma pack()
 
         IDTR idtrStruct;
-        __sidt(&idtrStruct);
+        __try {
+            __sidt(&idtrStruct);
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER) {
+            return false; // umip
+        }
         std::memcpy(idtr, &idtrStruct, sizeof(IDTR));
 #   else
         return false;
@@ -5491,7 +5525,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         } __attribute__((packed));
 
         IDTR idtr_struct;
-
+        
         __asm__ __volatile__(
             "sidt %0"
             : "=m" (idtr_struct)
@@ -5522,18 +5556,26 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::SGDT
      */
     [[nodiscard]] static bool sgdt() {
-#if (x86_32 && WINDOWS)
-        u8 gdtr[6]{};
-        u32 gdt = 0;
-
-        _asm sgdt gdtr
-        gdt = *((unsigned long*)&gdtr[2]);
-
-        return ((gdt >> 24) == 0xFF);
+#if defined(_M_IX86) && defined(_WIN32)
+        
+            unsigned char gdtr[6] = { 0 };
+            unsigned int gdt = 0;
+        __try {
+            __asm {
+                sgdt gdtr
+            }
+            gdt = *reinterpret_cast<unsigned int*>(&gdtr[2]);
+            return ((gdt >> 24) == 0xFF);
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER) {
+            // umip
+            return false;
+        }
 #else
         return false;
 #endif
     }
+
 
 
     /**
@@ -5546,9 +5588,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!MSVC && WINDOWS)
         unsigned char ldtr[5] = "\xef\xbe\xad\xde";
         unsigned long ldt = 0;
-
-        __asm {
-            sldt word ptr ldtr  // 'word ptr' to indicate that we're working with a 16-bit value and avoid compiler warnings
+        __try {
+            __asm {
+                sldt word ptr ldtr  // 'word ptr' to indicate that we're working with a 16-bit value and avoid compiler warnings
+            }
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER) {
+            // umip
+            return false;
         }
 
         ldt = *((unsigned long*)&ldtr[0]);
@@ -5571,7 +5618,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     [[nodiscard]] static bool offsec_sidt() {
 #if (!MSVC && WINDOWS)
         unsigned char m[6]{};
-        __asm sidt m;
+        __try {
+            __asm sidt m;
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER) {
+            return false; // umip
+        }
 
         return (m[5] > 0xD0);
 #else
@@ -5591,7 +5643,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     [[nodiscard]] static bool offsec_sgdt() {
 #if (!MSVC && WINDOWS)
         unsigned char m[6]{};
-        __asm sgdt m;
+        __try {
+            __asm sgdt m;
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER) {
+            // umip
+            return false;
+        }
 
         return (m[5] > 0xD0);
 #else
@@ -5613,8 +5671,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #elif (x86_32)
         unsigned short m[6]{};
-        __asm sldt m;
-
+        __try {
+            __asm sldt m;
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER) {
+            // umip
+            return false;
+        }
         return (m[0] != 0x00 && m[1] != 0x00);
 #else
         return false;
@@ -5635,8 +5698,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #elif (x86_32)
         u8	idtr[6]{};
         u32	idt = 0;
-
-        _asm sidt idtr
+        __try {
+            _asm sidt idtr
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER) {
+            return false; // umip
+        }
         idt = *((unsigned long*)&idtr[2]);
 
         if ((idt >> 24) == 0xE8) {
@@ -5782,9 +5849,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::VMWARE_BACKDOOR
      */
     [[nodiscard]] static bool vmware_backdoor() {
-#if (!WINDOWS || !x86_64)
-        return false;
-#elif (x86_32)
+#if (WINDOWS && x86_32)
         u32 a = 0;
         u32 b = 0;
 
@@ -5832,8 +5897,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 default: return core::add(brands::VMWARE);
             }
         }
-#endif
+
         return false;
+#else
+        return false;
+#endif
     }
 
 
@@ -8886,7 +8954,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #pragma pack(pop)
 
         IDTR idtr;
-        __sidt(&idtr);
+        __try {
+            __sidt(&idtr);
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER) {
+            return false; // umip
+        }
         u64 idt_base = idtr.base;
 
         constexpr u64 known_hyperv_exclusion = 0xfffff80000001000;
@@ -9381,27 +9454,32 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         std::vector<std::string> idtResults(num_threads);
 
         for (unsigned int i = 0; i < num_threads; ++i) {
-            threads.emplace_back([i, &gdtResults, &idtResults]() {
-                const HANDLE thread = GetCurrentThread();
-                DWORD_PTR affinity_mask = 1ULL << i; // Bind thread to core i
-                SetThreadAffinityMask(thread, affinity_mask);
+            try {
+                threads.emplace_back([i, &gdtResults, &idtResults]() {
+                    const HANDLE thread = GetCurrentThread();
+                    DWORD_PTR affinity_mask = 1ULL << i; // Bind thread to core i
+                    SetThreadAffinityMask(thread, affinity_mask);
 
 #pragma pack(push, 1)
-                struct DescriptorTablePointer {
-                    uint16_t limit;
-                    uint64_t base;   
-                };
+                    struct DescriptorTablePointer {
+                        uint16_t limit;
+                        uint64_t base;
+                    };
 #pragma pack(pop)
 
-                DescriptorTablePointer idtr = {};
-                DescriptorTablePointer gdtr = {};
+                    DescriptorTablePointer idtr = {};
+                    DescriptorTablePointer gdtr = {};
 
-                __sidt(&idtr);
-                _sgdt(&gdtr);  
+                    __sidt(&idtr);
+                    _sgdt(&gdtr);
 
-                gdtResults[i] = std::to_string(gdtr.base);
-                idtResults[i] = std::to_string(idtr.base);
-            });
+                    gdtResults[i] = std::to_string(gdtr.base);
+                    idtResults[i] = std::to_string(idtr.base);
+                    });
+            }
+            catch (...) {
+                return false; // umip
+            }
         }
 
         for (auto& thread : threads) {
@@ -11366,8 +11444,7 @@ static bool rdtsc() {
 #else
         const std::vector<std::wstring> queries = {
             L"SELECT * FROM Win32_VoltageProbe",
-            L"SELECT * FROM Win32_PerfFormattedData_Counters_ThermalZoneInformation",
-        //  L"SELECT * FROM CIM_Sensor",
+            L"SELECT * FROM CIM_Sensor",
             L"SELECT * FROM CIM_NumericSensor",
             L"SELECT * FROM CIM_TemperatureSensor",
             L"SELECT * FROM CIM_VoltageSensor",
@@ -11378,6 +11455,73 @@ static bool rdtsc() {
             const auto results = wmi::execute(query, {});
             if (results.empty()) {
                 return true;
+            }
+        }
+
+        return false;
+#endif
+    }
+
+
+    /**
+     * @brief Detects the presence of a hypervisor by querying system boot flags.
+     * @category Windows
+     * @implements VM::BOOT_FLAGS
+     */
+    [[nodiscard]] static bool boot_flags() {
+#if (!WINDOWS)
+        return false;
+#else
+        HMODULE hNtdll = GetModuleHandleA("ntdll.dll");
+        if (!hNtdll)
+            return false;
+
+        typedef NTSTATUS(NTAPI* pNtQuerySystemInformation)(
+            ULONG SystemInformationClass,
+            PVOID SystemInformation,
+            ULONG SystemInformationLength,
+            PULONG ReturnLength
+            );
+
+        const char* names[] = { "NtQuerySystemInformation" };
+        void* functions[1] = {};
+        if (!util::GetFunctionAddresses(hNtdll, names, functions, 1)) {
+            return false;
+        }
+        auto NtQuerySystemInformation = reinterpret_cast<pNtQuerySystemInformation>(functions[0]);
+        
+        if (!NtQuerySystemInformation)
+            return false;
+
+        NTSTATUS status;
+        ULONG retLen = 0;
+#pragma warning (disable : 4201)
+        typedef struct _SYSTEM_BOOT_ENVIRONMENT_INFORMATION {
+            GUID BootIdentifier;
+            enum _FIRMWARE_TYPE FirmwareType;
+            union {
+                ULONG64 BootFlags;
+                struct {
+                    ULONG64 DbgMenuOsSelection : 1;
+                    ULONG64 DbgHiberBoot : 1;
+                    ULONG64 DbgSoftBoot : 1;
+                    ULONG64 DbgMeasuredLaunch : 1;
+                    ULONG64 DbgMeasuredLaunchCapable : 1;
+                    ULONG64 DbgSystemHiveReplace : 1;
+                    ULONG64 DbgMeasuredLaunchSmmProtections : 1;
+                    ULONG64 DbgMeasuredLaunchSmmLevel : 7;
+                };
+            };
+        } SYSTEM_BOOT_ENVIRONMENT_INFORMATION, * PSYSTEM_BOOT_ENVIRONMENT_INFORMATION;
+#pragma warning (default : 4201)
+
+        {
+            BYTE localBuffer[4096] = { 0 };
+            status = NtQuerySystemInformation(90, localBuffer, sizeof(localBuffer), &retLen);
+            if (status == ((NTSTATUS)0x00000000)) {
+                auto bootEnv = reinterpret_cast<PSYSTEM_BOOT_ENVIRONMENT_INFORMATION>(localBuffer);
+                if (bootEnv->BootFlags == 0x0)
+                    return true;
             }
         }
 
@@ -12425,6 +12569,7 @@ public: // START OF PUBLIC FUNCTIONS
             case AUDIO: return "AUDIO";
             case UNKNOWN_MANUFACTURER: return "UNKNOWN_MANUFACTURER";
             case SENSORS: return "SENSORS";
+            case BOOT_FLAGS: return "BOOT_FLAGS";
             // ADD NEW CASE HERE FOR NEW TECHNIQUE
             default: return "Unknown flag";
         }
@@ -12998,6 +13143,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::AUDIO, { 25, VM::check_audio } },
     { VM::UNKNOWN_MANUFACTURER, { 50, VM::unknown_manufacturer } },
     { VM::SENSORS, { 35, VM::sensors } },
+    { VM::BOOT_FLAGS, { 45, VM::boot_flags } },
     // ADD NEW TECHNIQUE STRUCTURE HERE
 };
 
