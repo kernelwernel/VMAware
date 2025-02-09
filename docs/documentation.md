@@ -396,7 +396,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::SMSW` | Check for SMSW assembly instruction technique | Windows | 30% |  |  | 32-bit |  |
 | `VM::MUTEX` | Check for mutex strings of VM brands | Windows | 85% |  |  |  |  |
 | `VM::ODD_CPU_THREADS` | Check for odd CPU threads, usually a sign of modification through VM setting because 99% of CPUs have even numbers of threads |  | 80% |  |  |  |  |
-| `VM::INTEL_THREAD_MISMATCH` | Check for Intel CPU thread count database if it matches the system's thread count |  | 100% |  |  |  |  |
+| `VM::INTEL_THREAD_MISMATCH` | Check for Intel CPU thread count database if it matches the system's thread count |  | 150% |  |  |  |  |
 | `VM::XEON_THREAD_MISMATCH` | Same as above, but for Xeon Intel CPUs |  | 100% |  |  |  |  |
 | `VM::NETTITUDE_VM_MEMORY` | Check for memory regions to detect VM-specific brands | Windows | 100% | |  |  |  |
 | `VM::CPUID_BITSET` |  Check for CPUID technique by checking whether all the bits equate to more than 4000 |  | 25% |  |  |  |  |
@@ -445,7 +445,6 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::WMI_MANUFACTURER` | Check for device's manufacturer using WMI | Windows | 100% |  |  |  |  |
 | `VM::WMI_TEMPERATURE` | Check for device's temperature | Windows | 25% | Admin |  |  |  |
 | `VM::PROCESSOR_ID` | Check for empty processor ids using WMI | Windows | 25% |  |  |  |  |
-| `VM::CPU_FANS` | Check for CPU Fans | Windows | 35% |  |  |  |  |
 | `VM::VMWARE_HARDENER` | Checks for VMwareHardenerLoader's method of patching firmware detection by setting its signatures with "7" | Windows | 60% |  |  |  |  |
 | `VM::SYS_QEMU` | Check for existence of "qemu_fw_cfg" directories within /sys/module and /sys/firmware | Linux | 70% |  |  |  |  |
 | `VM::LSHW_QEMU` | Check for QEMU string instances with lshw command | Linux | 80% |  |  |  |  |
@@ -463,6 +462,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::FILE_ACCESS_HISTORY` | Check if the number of accessed files are too low for a human-managed environment | Linux | 15% |  |  |  |  |
 | `VM::AUDIO` | Check if audio device is present | Windows | 25% |  |  |  |  |
 | `VM::UNKNOWN_MANUFACTURER` | Check if the CPU manufacturer is not known |  | 50% |  |  |  |  |
+| `VM::SENSORS` | Check if the system reports any information from hardware sensors | Windows | 35% |  |  |  |  |
 
 
 <br>

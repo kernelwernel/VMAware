@@ -472,7 +472,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::WMI_MANUFACTURER:
             case VM::WMI_TEMPERATURE:
             case VM::PROCESSOR_ID:
-            case VM::CPU_FANS:
             case VM::POWER_CAPABILITIES:
             case VM::SETUPAPI_DISK: 
             case VM::VMWARE_HARDENER:
@@ -486,6 +485,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::FIRMWARE_SCAN:
             case VM::NX_BIT:
             case VM::UNKNOWN_MANUFACTURER:
+            case VM::SENSORS:
             // ADD WINDOWS FLAG
             return false;
             default: return true;
@@ -1003,7 +1003,6 @@ void general() {
     checker(VM::WMI_MANUFACTURER, "hardware manufacturer");
     checker(VM::WMI_TEMPERATURE, "WMI temperature");
     checker(VM::PROCESSOR_ID, "processor ID");
-    checker(VM::CPU_FANS, "CPU fans");
     checker(VM::POWER_CAPABILITIES, "Power capabilities");
     checker(VM::SETUPAPI_DISK, "SETUPDI diskdrive");
     checker(VM::VMWARE_HARDENER, "VMware hardener");
@@ -1021,6 +1020,7 @@ void general() {
     checker(VM::NX_BIT, "NX/XD anomalies");
 	checker(VM::FILE_ACCESS_HISTORY, "low file access count");
     checker(VM::UNKNOWN_MANUFACTURER, "unknown manufacturer ids");
+    checker(VM::SENSORS, "sensors");
 
     // ADD NEW TECHNIQUE CHECKER HERE
 
