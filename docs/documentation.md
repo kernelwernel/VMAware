@@ -460,8 +460,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::FILE_ACCESS_HISTORY` | Check if the number of accessed files are too low for a human-managed environment | Linux | 15% |  |  |  |  |
 | `VM::AUDIO` | Check if audio device is present | Windows | 25% |  |  |  |  |
 | `VM::UNKNOWN_MANUFACTURER` | Check if the CPU manufacturer is not known |  | 50% |  |  |  |  |
-| `VM::SENSORS` | Check if the system reports any information from hardware sensors | Windows | 35% |  |  |  |  |
-| `VM::OSXSAVE` | Check if running xgetbv in the XCR0 extended feature register triggers an exception | Windows | 45% |  |  | 32-bit |  |
+| `VM::OSXSAVE` | Check if running xgetbv in the XCR0 extended feature register triggers an exception | Windows | 50% |  |  |  |  |
 
 <br>
 
