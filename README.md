@@ -168,6 +168,8 @@ You can view the full docs [here](docs/documentation.md). All the details such a
 > It's designed for security researchers, VM engineers, anticheat developers, and pretty much anybody who needs a practical and rock-solid VM detection mechanism in their project. For example, the library is suitable if you're making a VM and you're testing the effectiveness of concealing itself. If you're a proprietary software developer, the library is useful to thwart against reverse engineers. If you're a malware analyst and you want to check the concealment capability of your VM, this would be the perfect tool to benchmark how well-concealed your VM is against malware. 
 > 
 > Additionally, software could adjust the behaviour of their program based on the detected environment. It could be useful for debugging and testing purposes, while system administrators could manage configurations differently. Additionally, some applications might want to legally restrict usage in VMs as a license clause to prevent unauthorized distribution or testing.
+>
+> There are also projects that utilise our tool such as [Hypervisor-Phantom](https://github.com/Scrut1ny/Hypervisor-Phantom?tab=readme-ov-file), which is an advanced malware analysis project that we helped strengthen their hypervisor environment and undetectability.
 
 </details>
 
@@ -185,12 +187,20 @@ You can view the full docs [here](docs/documentation.md). All the details such a
 
 
 <details>
-<summary>How does it compare to paid VM detection libraries? Wouldn't it make it inferior for having it open source?</summary>
+<summary>How does it compare to paid VM detection libraries?</summary>
 <br>
 
 > There are several paid software solutions available for protecting software licenses from reverse engineering or cracking, such as <a href="https://docs.sentinel.thalesgroup.com/home.htm">Thales' Sentinel RMS</a> and <a href="https://vmpsoft.com/">VMProtect</a>. These tools include VM detection as part of their feature set, though their primary focus is not VM detection unlike this project.
-> 
-> Speaking of which, the only downside to VMAware is that it's fully open source, which makes the job of bypassers easier compared to having it closed source. However, I'd argue that's a worthy tradeoff by having as many VM detection techniques in an open and interactive way, including having valuable community feedback to make the library more effective and accurate. 
+
+</details>
+
+<details>
+<summary>Wouldn't it make it inferior for having it open source?</summary>
+<br>
+
+> The only downside to VMAware is that it's fully open source, which makes the job of bypassers easier compared to having it closed source. However, I'd argue that's a worthy tradeoff by having as many VM detection techniques in an open and interactive way rather than trying to obfuscate it. Having it open source means we can have valuable community feedback to strengthen the library more effectively and accurately through discussions, collaborations, and competition against anti-anti-vm projects and malware analysis tools which try to hide it's a VM. All of this combined further advances the forefront innovations in the field of VM detections much more productively, compared to having it closed source. 
+>
+> In other words, it's about quality, feedback, and openness over security through obfuscation.
 
 </details>
 

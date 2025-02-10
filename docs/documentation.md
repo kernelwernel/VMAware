@@ -371,6 +371,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::QEMU_BRAND` | Match for QEMU CPU brands with "QEMU Virtual CPU" string |  | 100% |  |  |  |  |
 | `VM::BOCHS_CPU` | Check for various Bochs-related emulation oversights through CPU checks |  | 100% |  |  |  |  |
 | `VM::BIOS_SERIAL` | Check if the BIOS serial is valid (null = VM) | Windows | 60% |  |  |  |  |
+| `VM::VBOX_SHARED_FOLDERS` | Check for presence of Vbox's shared folder system | Windows | 20% |  |  |  |  |
 | `VM::MSSMBIOS` | Check MSSMBIOS registry for VM-specific strings | Windows | 100% |  |  |  |  |
 | `VM::MAC_MEMSIZE` | Check if memory is too low for MacOS system | MacOS | 15% |  |  |  |  |
 | `VM::MAC_IOKIT` | Check MacOS' IO kit registry for VM-specific strings | MacOS | 100% |  |  |  |  |
