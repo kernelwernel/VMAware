@@ -483,7 +483,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::FIRMWARE_SCAN:
             case VM::NX_BIT:
             case VM::UNKNOWN_MANUFACTURER:
-            case VM::SENSORS:
             case VM::OSXSAVE:
             // ADD WINDOWS FLAG
             return false;
@@ -1017,7 +1016,6 @@ void general() {
     checker(VM::NX_BIT, "NX/XD anomalies");
 	checker(VM::FILE_ACCESS_HISTORY, "low file access count");
     checker(VM::UNKNOWN_MANUFACTURER, "unknown manufacturer ids");
-    checker(VM::SENSORS, "sensors");
     checker(VM::OSXSAVE, "xgetbv");
 
     // ADD NEW TECHNIQUE CHECKER HERE

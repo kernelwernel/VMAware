@@ -596,7 +596,6 @@ public:
 		FILE_ACCESS_HISTORY,
         AUDIO,
         UNKNOWN_MANUFACTURER,
-        SENSORS,
         OSXSAVE,
         // ADD NEW TECHNIQUE ENUM NAME HERE
 
@@ -11427,42 +11426,12 @@ static bool rdtsc() {
 
 
     /*
-     * @brief Check if the system reports any information from hardware sensors
-     * @category Windows
-     * @implements VM::SENSORS
-     */
-    [[nodiscard]] static bool sensors() {
-#if (!WINDOWS)
-        return false;
-#else
-        const std::vector<std::wstring> queries = {
-            L"SELECT * FROM Win32_VoltageProbe",
-            L"SELECT * FROM CIM_Sensor",
-            L"SELECT * FROM CIM_NumericSensor",
-            L"SELECT * FROM CIM_TemperatureSensor",
-            L"SELECT * FROM CIM_VoltageSensor",
-            L"SELECT * FROM Win32_Fan"
-        };
-
-        for (const auto& query : queries) {
-            const wmi_result results = wmi::execute(query, {});
-            if (results.empty()) {
-                return true;
-            }
-        }
-
-        return false;
-#endif
-    }
-
-
-    /*
      * @brief Check if running xgetbv in the XCR0 extended feature register triggers an exception
      * @category Windows
      * @implements VM::OSXSAVE
      */
     [[nodiscard]] static bool osxsave() {
-#if (!WINDOWS || !x86_32)
+#if (!WINDOWS)
         return false;
 #else
         typedef void (*FuncPtr)();
@@ -12531,7 +12500,6 @@ public: // START OF PUBLIC FUNCTIONS
 			case FILE_ACCESS_HISTORY: return "FILE_ACCESS_HISTORY";
             case AUDIO: return "AUDIO";
             case UNKNOWN_MANUFACTURER: return "UNKNOWN_MANUFACTURER";
-            case SENSORS: return "SENSORS";
             case OSXSAVE: return "OSXSAVE";
             // ADD NEW CASE HERE FOR NEW TECHNIQUE
             default: return "Unknown flag";
@@ -13103,8 +13071,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
 	{ VM::FILE_ACCESS_HISTORY, { 15, VM::file_access_history } },
     { VM::AUDIO, { 25, VM::check_audio } },
     { VM::UNKNOWN_MANUFACTURER, { 50, VM::unknown_manufacturer } },
-    { VM::SENSORS, { 35, VM::sensors } },
-    { VM::OSXSAVE, { 45, VM::osxsave } },
+    { VM::OSXSAVE, { 50, VM::osxsave } },
     // ADD NEW TECHNIQUE STRUCTURE HERE
 };
 
