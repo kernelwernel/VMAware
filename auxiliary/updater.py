@@ -53,7 +53,7 @@ def arg_check():
         header_content.reverse()
 
         # breakpoint
-        keyword = "// FORMAT: { VM::<ID>, { certainty%, function pointer, is spoofable? } },"
+        keyword = "// START OF TECHNIQUE TABLE"
 
         # fetch index of breakpoint
         index_of_keyword = next((i for i, line in enumerate(header_content) if keyword in line), None)

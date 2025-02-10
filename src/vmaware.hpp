@@ -25,14 +25,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 467
- * - struct for internal cpu operations        => line 751
- * - struct for internal memoization           => line 1215
- * - struct for internal utility functions     => line 1609
- * - struct for internal core components       => line 11156
- * - start of VM detection technique list      => line 3275
- * - start of public VM detection functions    => line 11560
- * - start of externally defined variables     => line 12462
+ * - enums for publicly accessible techniques  => line 472
+ * - struct for internal cpu operations        => line 756
+ * - struct for internal memoization           => line 1216
+ * - struct for internal utility functions     => line 1669
+ * - struct for internal core components       => line 11482
+ * - start of VM detection technique list      => line 3352
+ * - start of public VM detection functions    => line 11883
+ * - start of externally defined variables     => line 12785
  *
  *
  * ============================== EXAMPLE ===================================
@@ -12943,9 +12943,17 @@ std::vector<VM::u8> VM::technique_vector = []() -> std::vector<VM::u8> {
 // this value is incremented each time VM::add_custom is called
 VM::u16 VM::technique_count = base_technique_count;
 
+// this is initialised as empty, because this is where custom techniques can be added at runtime 
+std::vector<VM::core::custom_technique> VM::core::custom_table = {
+
+};
+
+#define table_t std::map<VM::enum_flags, VM::core::technique>
+
 // the 0~100 points are debatable, but I think it's fine how it is. Feel free to disagree.
 std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     // FORMAT: { VM::<ID>, { certainty%, function pointer } },
+    // START OF TECHNIQUE TABLE
     { VM::VMID, { 100, VM::vmid } },
     { VM::CPU_BRAND, { 50, VM::cpu_brand } },
     { VM::HYPERVISOR_BIT, { 100, VM::hypervisor_bit}} , 
@@ -13075,13 +13083,6 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     // ADD NEW TECHNIQUE STRUCTURE HERE
 };
 
-
-// this is initialised as empty, because this is where custom techniques can be added at runtime 
-std::vector<VM::core::custom_technique> VM::core::custom_table = {
-
-};
-
-#define table_t std::map<VM::enum_flags, VM::core::technique>
 
 // the reason why the map isn't directly initialized is due to potential 
 // SDK errors on windows combined with older C++ standards
