@@ -461,8 +461,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::AUDIO` | Check if audio device is present | Windows | 25% |  |  |  |  |
 | `VM::UNKNOWN_MANUFACTURER` | Check if the CPU manufacturer is not known |  | 50% |  |  |  |  |
 | `VM::SENSORS` | Check if the system reports any information from hardware sensors | Windows | 35% |  |  |  |  |
-| `VM::BOOT_FLAGS_` | Detects the presence of a hypervisor by querying system boot flags | Windows | 45% |  |  |  |  |
-
+| `VM::OSXSAVE` | Check if running xgetbv in the XCR0 extended feature register triggers an exception | Windows | 45% |  |  | 32-bit |  |
 
 <br>
 

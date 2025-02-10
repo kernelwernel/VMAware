@@ -484,7 +484,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::NX_BIT:
             case VM::UNKNOWN_MANUFACTURER:
             case VM::SENSORS:
-            case VM::BOOT_FLAGS:
+            case VM::OSXSAVE:
             // ADD WINDOWS FLAG
             return false;
             default: return true;
@@ -1018,7 +1018,7 @@ void general() {
 	checker(VM::FILE_ACCESS_HISTORY, "low file access count");
     checker(VM::UNKNOWN_MANUFACTURER, "unknown manufacturer ids");
     checker(VM::SENSORS, "sensors");
-    checker(VM::BOOT_FLAGS, "boot flags");
+    checker(VM::OSXSAVE, "xgetbv");
 
     // ADD NEW TECHNIQUE CHECKER HERE
 

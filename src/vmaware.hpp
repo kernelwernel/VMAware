@@ -597,7 +597,7 @@ public:
         AUDIO,
         UNKNOWN_MANUFACTURER,
         SENSORS,
-        BOOT_FLAGS,
+        OSXSAVE,
         // ADD NEW TECHNIQUE ENUM NAME HERE
 
         // start of settings technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
@@ -2982,7 +2982,7 @@ public:
                 };
 
             auto GetThreadsUsingWMI = []() -> int {
-                wmi_result results = wmi::execute(L"SELECT NumberOfLogicalProcessors FROM Win32_Processor", { L"NumberOfLogicalProcessors" });
+                const wmi_result results = wmi::execute(L"SELECT NumberOfLogicalProcessors FROM Win32_Processor", { L"NumberOfLogicalProcessors" });
                 int total = 0;
                 for (const auto& res : results) {
                     if (res.type == wmi::result_type::Integer) {
@@ -3077,7 +3077,7 @@ public:
                 };
 
             auto GetThreadsUsingWMI_ComputerSystem = []() -> int {
-                wmi_result results = wmi::execute(L"SELECT NumberOfLogicalProcessors FROM Win32_ComputerSystem", { L"NumberOfLogicalProcessors" });
+                const wmi_result results = wmi::execute(L"SELECT NumberOfLogicalProcessors FROM Win32_ComputerSystem", { L"NumberOfLogicalProcessors" });
                 for (const auto& res : results) {
                     if (res.type == wmi::result_type::Integer) {
                         return res.intValue;
@@ -3309,7 +3309,7 @@ public:
 	        sources.reserve(3);
 
             // 1. WMI Source          
-            wmi_result results = wmi::execute(
+            const wmi_result results = wmi::execute(
                 L"SELECT Name FROM Win32_Processor", { L"Name" }
             );
             if (!results.empty() && results[0].type == wmi::result_type::String) {
@@ -5919,7 +5919,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         u32 a = 0;
         u32 b = 0;
 
-        constexpr std::array<i16, 2> ioports = { 'VX' , 'VY' };
+        constexpr std::array<i16, 2> ioports = { { 'VX' , 'VY' } };
         i16 ioport;
         bool is_vm = false;
 
@@ -9012,7 +9012,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         static const std::regex vboxRegex(R"(^VB[0-9a-f]{8}-[0-9a-f]{8}$)", std::regex_constants::icase);
         const char* vmwareSerial = "39D8_B594_A8C5_AEF2_000C_296C_C5CE_FE12";
 
-        wmi_result results = wmi::execute(L"SELECT SerialNumber FROM Win32_DiskDrive", { L"SerialNumber" });
+        const wmi_result results = wmi::execute(L"SELECT SerialNumber FROM Win32_DiskDrive", { L"SerialNumber" });
 
         for (const auto& res : results) {
             if (res.type == wmi::result_type::String) {
@@ -9062,7 +9062,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
         }
 
-        wmi_result portResults = wmi::execute(L"SELECT * FROM Win32_PortConnector", {});
+        results = wmi::execute(L"SELECT * FROM Win32_PortConnector", {});
             
         return results.empty();
 #endif
@@ -9078,7 +9078,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!WINDOWS) 
         return false;
 #else
-        wmi_result results = wmi::execute(L"SELECT Model FROM Win32_DiskDrive", { L"Model" });
+        const wmi_result results = wmi::execute(L"SELECT Model FROM Win32_DiskDrive", { L"Model" });
 
         for (const auto& res : results) {
             if (res.type == wmi::result_type::String) {
@@ -9572,7 +9572,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         std::wstring query = L"SELECT NumberOfCores FROM Win32_Processor";
         std::vector<std::wstring> properties = { L"NumberOfCores" };
 
-        wmi_result results = wmi::execute(query, properties);
+        const wmi_result results = wmi::execute(query, properties);
 
         for (const auto& result : results) {
             if (result.type == wmi::result_type::Integer) {
@@ -9599,7 +9599,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #else
         std::wstring query = L"SELECT Model FROM Win32_ComputerSystem";
         std::vector<std::wstring> properties = { L"Model" };
-        wmi_result results = wmi::execute(query, properties);
+        const wmi_result results = wmi::execute(query, properties);
 
         for (const auto& result : results) {
             if (result.type == wmi::result_type::String) {
@@ -9681,7 +9681,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        wmi_result results = wmi::execute
+        const wmi_result results = wmi::execute
         ( L"SELECT * FROM MSAcpi_ThermalZoneTemperature",
         { L"CurrentTemperature" },
           false );
@@ -9709,7 +9709,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #else
         std::wstring query = L"SELECT ProcessorId FROM Win32_Processor";
         std::vector<std::wstring> properties = { L"ProcessorId" };
-        wmi_result results = wmi::execute(query, properties);
+        const wmi_result results = wmi::execute(query, properties);
 
         for (const auto& result : results) {
             if (result.type == wmi::result_type::String) {
@@ -11459,7 +11459,7 @@ static bool rdtsc() {
         };
 
         for (const auto& query : queries) {
-            const auto results = wmi::execute(query, {});
+            const wmi_result results = wmi::execute(query, {});
             if (results.empty()) {
                 return true;
             }
@@ -11470,67 +11470,39 @@ static bool rdtsc() {
     }
 
 
-    /**
-     * @brief Detects the presence of a hypervisor by querying system boot flags.
+    /*
+     * @brief Check if running xgetbv in the XCR0 extended feature register triggers an exception
      * @category Windows
-     * @implements VM::BOOT_FLAGS
+     * @implements VM::OSXSAVE
      */
-    [[nodiscard]] static bool boot_flags() {
-#if (!WINDOWS)
+    [[nodiscard]] static bool osxsave() {
+#if (!WINDOWS || !x86_32)
         return false;
 #else
-        HMODULE hNtdll = GetModuleHandleA("ntdll.dll");
-        if (!hNtdll)
-            return false;
+        typedef void (*FuncPtr)();
 
-        typedef NTSTATUS(NTAPI* pNtQuerySystemInformation)(
-            ULONG SystemInformationClass,
-            PVOID SystemInformation,
-            ULONG SystemInformationLength,
-            PULONG ReturnLength
-            );
+        //   31 C9         => xor ecx, ecx
+        //   0F 01 D0      => xgetbv
+        //   C3            => ret
+        unsigned char code[] = { 0x31, 0xC9, 0x0F, 0x01, 0xD0, 0xC3 };
 
-        const char* names[] = { "NtQuerySystemInformation" };
-        void* functions[1] = {};
-        if (!util::GetFunctionAddresses(hNtdll, names, functions, 1)) {
+        void* mem = VirtualAlloc(NULL, sizeof(code), MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+        if (!mem) {
             return false;
         }
-        auto NtQuerySystemInformation = reinterpret_cast<pNtQuerySystemInformation>(functions[0]);
-        
-        if (!NtQuerySystemInformation)
-            return false;
 
-        NTSTATUS status;
-        ULONG retLen = 0;
-#pragma warning (disable : 4201)
-        typedef struct _SYSTEM_BOOT_ENVIRONMENT_INFORMATION {
-            GUID BootIdentifier;
-            enum _FIRMWARE_TYPE FirmwareType;
-            union {
-                ULONG64 BootFlags;
-                struct {
-                    ULONG64 DbgMenuOsSelection : 1;
-                    ULONG64 DbgHiberBoot : 1;
-                    ULONG64 DbgSoftBoot : 1;
-                    ULONG64 DbgMeasuredLaunch : 1;
-                    ULONG64 DbgMeasuredLaunchCapable : 1;
-                    ULONG64 DbgSystemHiveReplace : 1;
-                    ULONG64 DbgMeasuredLaunchSmmProtections : 1;
-                    ULONG64 DbgMeasuredLaunchSmmLevel : 7;
-                };
-            };
-        } SYSTEM_BOOT_ENVIRONMENT_INFORMATION, * PSYSTEM_BOOT_ENVIRONMENT_INFORMATION;
-#pragma warning (default : 4201)
+        memcpy(mem, code, sizeof(code));
 
-        {
-            BYTE localBuffer[4096] = { 0 };
-            status = NtQuerySystemInformation(90, localBuffer, sizeof(localBuffer), &retLen);
-            if (status == ((NTSTATUS)0x00000000)) {
-                auto bootEnv = reinterpret_cast<PSYSTEM_BOOT_ENVIRONMENT_INFORMATION>(localBuffer);
-                if (bootEnv->BootFlags == 0x0)
-                    return true;
-            }
+        FuncPtr func = reinterpret_cast<FuncPtr>(mem);
+
+        __try {
+            func();
         }
+        __except (EXCEPTION_EXECUTE_HANDLER) {
+            return true;
+        }
+
+        VirtualFree(mem, 0, MEM_RELEASE);
 
         return false;
 #endif
@@ -12574,7 +12546,7 @@ public: // START OF PUBLIC FUNCTIONS
             case AUDIO: return "AUDIO";
             case UNKNOWN_MANUFACTURER: return "UNKNOWN_MANUFACTURER";
             case SENSORS: return "SENSORS";
-            case BOOT_FLAGS: return "BOOT_FLAGS";
+            case OSXSAVE: return "OSXSAVE";
             // ADD NEW CASE HERE FOR NEW TECHNIQUE
             default: return "Unknown flag";
         }
@@ -13146,7 +13118,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::AUDIO, { 25, VM::check_audio } },
     { VM::UNKNOWN_MANUFACTURER, { 50, VM::unknown_manufacturer } },
     { VM::SENSORS, { 35, VM::sensors } },
-    { VM::BOOT_FLAGS, { 45, VM::boot_flags } },
+    { VM::OSXSAVE, { 45, VM::osxsave } },
     // ADD NEW TECHNIQUE STRUCTURE HERE
 };
 
