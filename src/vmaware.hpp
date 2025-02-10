@@ -2924,7 +2924,6 @@ public:
          * - NtQuerySystemInformation with SystemProcessorPerformanceInformation (processor performance info)
          * - NUMA API functions (GetNumaHighestNodeNumber and GetNumaNodeProcessorMaskEx) to enumerate processors by NUMA node
          * - Enumeration of processor groups via GetActiveProcessorGroupCount and GetActiveProcessorCount for each group
-         * - Dynamically testing each available processor by setting the thread affinity mask
          * - SystemHypervisorProcessorCountInformation with NtQuerySystemInformation
          *
          * @return bool false if there is a mismatch in thread counts from different methods, true otherwise
@@ -2998,14 +2997,6 @@ public:
                 return static_cast<int>(sysinfo.dwNumberOfProcessors);
                 };
 
-            auto GetThreadsUsingGetProcessAffinityMask = []() -> int {
-                DWORD_PTR processAffinityMask, systemAffinityMask;
-                if (GetProcessAffinityMask(GetCurrentProcess(), &processAffinityMask, &systemAffinityMask)) {
-                    return static_cast<int>(std::bitset<sizeof(DWORD_PTR) * 8>(systemAffinityMask).count());
-                }
-                return 0;
-                };
-
             auto GetThreadsUsingNtQuerySystemInformation = []() -> int {
                 const HMODULE hModule = GetModuleHandleA("ntdll.dll");
                 if (!hModule) {
@@ -3038,7 +3029,6 @@ public:
                         sbiProcessors = static_cast<int>(sbi.NumberOfProcessors);
                     }
 
-#if (x86_64)
                     struct SYSTEM_HYPERVISOR_PROCESSOR_COUNT_INFORMATION {
                         ULONG NumberOfLogicalProcessors;
                         ULONG NumberOfCores;
@@ -3052,12 +3042,10 @@ public:
                     if (status == 0) {
                         auto hvProcCount = reinterpret_cast<SYSTEM_HYPERVISOR_PROCESSOR_COUNT_INFORMATION*>(buffer);
                         hpciProcessors = static_cast<int>(hvProcCount->NumberOfLogicalProcessors);
+                        return (sbiProcessors == hpciProcessors) ? sbiProcessors : 1000;
                     }
 
-                    return (sbiProcessors == hpciProcessors) ? sbiProcessors : 1000;
-#else
                     return sbiProcessors;
-#endif
                 }
 
                 return 0;
@@ -3223,7 +3211,7 @@ public:
                 }
                 return totalCount;
                 };
-            
+
             auto GetThreadsUsingAffinityTest = []() -> int {
                 DWORD_PTR originalMask = 0;
                 if (!GetProcessAffinityMask(GetCurrentProcess(), &originalMask, &originalMask)) {
@@ -3250,7 +3238,6 @@ public:
 
             const int wmiThreads = GetThreadsUsingWMI();
             const int sysinfoThreads = GetThreadsUsingGetSystemInfo();
-            const int affinityMaskThreads = GetThreadsUsingGetProcessAffinityMask();
             const int ntQueryThreads = GetThreadsUsingNtQuerySystemInformation();
             const int osThreads = GetThreadsUsingGetLogicalProcessorInformationEx();
             const int activeProcCount = GetThreadsUsingGetActiveProcessorCount();
@@ -3265,12 +3252,11 @@ public:
             const int processorGroupsThreads = GetThreadsUsingProcessorGroupsEnumeration();
             const int affinityTestThreads = GetThreadsUsingAffinityTest();
             std::vector<int> validThreads;
-            validThreads.reserve(16);
+            validThreads.reserve(15);
 
             if (osThreads > 0) validThreads.push_back(osThreads);
             if (wmiThreads > 0) validThreads.push_back(wmiThreads);
             if (sysinfoThreads > 0) validThreads.push_back(sysinfoThreads);
-            if (affinityMaskThreads > 0) validThreads.push_back(affinityMaskThreads);
             if (ntQueryThreads > 0) validThreads.push_back(ntQueryThreads);
             if (activeProcCount > 0) validThreads.push_back(activeProcCount);
             if (wmiCSThreads > 0) validThreads.push_back(wmiCSThreads);
