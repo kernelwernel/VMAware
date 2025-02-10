@@ -12609,6 +12609,7 @@ public: // START OF PUBLIC FUNCTIONS
             { brands::AWS_NITRO, "Hypervisor (type 1)" },
             { brands::LKVM, "Hypervisor (type 1)" },
             { brands::NOIRVISOR, "Hypervisor (type 1)" },
+            { brands::HYPERV_ARTIFACT, "Hypervisor (type 1)" },
 
             // type 2
             { brands::BHYVE, "Hypervisor (type 2)" },
@@ -12622,6 +12623,8 @@ public: // START OF PUBLIC FUNCTIONS
             { brands::VPC, "Hypervisor (type 2)" },
             { brands::NVMM, "Hypervisor (type 2)" },
             { brands::BSD_VMM, "Hypervisor (type 2)" },
+            { brands::HYPERV, "Hypervisor (type 2)" },
+            { brands::HYPERV_VPC, "Hypervisor (type 2)" },
 
             // sandbox
             { brands::CUCKOO, "Sandbox" },
@@ -12644,12 +12647,10 @@ public: // START OF PUBLIC FUNCTIONS
             { brands::DOCKER, "Container" },
             { brands::PODMAN, "Container" },
             { brands::OPENVZ, "Container" },
-            { brands::HYPERV_VPC, "Hypervisor (either type 1 or 2)" },
             { brands::LMHS, "Hypervisor (unknown type)" },
             { brands::WINE, "Compatibility layer" },
             { brands::INTEL_TDX, "Trusted Domain" },
             { brands::APPLE_VZ, "Unknown" },
-            { brands::HYPERV_ARTIFACT, "Unknown" },
             { brands::UML, "Paravirtualised/Hypervisor (type 2)" },
             { brands::WSL, "Hybrid Hyper-V (type 1 and 2)" }, // debatable tbh
             { brands::AMD_SEV, "VM encryptor" },
