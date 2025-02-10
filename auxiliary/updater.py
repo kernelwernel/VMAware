@@ -53,7 +53,7 @@ def arg_check():
         header_content.reverse()
 
         # breakpoint
-        keyword = "// FORMAT: { VM::<ID>, { certainty%, function pointer, is spoofable? } },"
+        keyword = "// START OF TECHNIQUE TABLE"
 
         # fetch index of breakpoint
         index_of_keyword = next((i for i, line in enumerate(header_content) if keyword in line), None)
@@ -332,7 +332,7 @@ def update_sections(filename):
         " * - struct for internal cpu operations        => line __CPU__",
         " * - struct for internal memoization           => line __MEMO__",
         " * - struct for internal utility functions     => line __UTIL__",
-        " * - start of internal VM detection techniques => line __TECHNIQUES__",
+        " * - start of VM detection technique list      => line __TECHNIQUES__",
         " * - struct for internal core components       => line __CORE__",
         " * - start of public VM detection functions    => line __PUBLIC__",
         " * - start of externally defined variables     => line __EXTERNAL__"

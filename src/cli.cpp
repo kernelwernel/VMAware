@@ -388,6 +388,7 @@ bool is_unsupported(VM::enum_flags flag) {
 			case VM::AMD_SEV:
 			case VM::AMD_THREAD_MISMATCH:
 			case VM::FILE_ACCESS_HISTORY:
+            case VM::UNKNOWN_MANUFACTURER:
             // ADD LINUX FLAG
             return false;
             default: return true;
@@ -422,6 +423,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::QEMU_BRAND:
             case VM::BOCHS_CPU:
             case VM::BIOS_SERIAL:
+            case VM::VBOX_SHARED_FOLDERS:
             case VM::MSSMBIOS:
             case VM::HKLM_REGISTRIES:
             case VM::VPC_INVALID:
@@ -453,8 +455,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::KVM_BITMASK:
             case VM::KGT_SIGNATURE:
             case VM::VMWARE_DMI:
-            case VM::VMWARE_EVENT_LOGS:
-            case VM::GPU_CHIPTYPE:
+            case VM::VM_EVENT_LOGS:
             case VM::DRIVER_NAMES:
             case VM::VM_SIDT:
             case VM::HDD_SERIAL:
@@ -470,12 +471,10 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::WMI_MANUFACTURER:
             case VM::WMI_TEMPERATURE:
             case VM::PROCESSOR_ID:
-            case VM::CPU_FANS:
             case VM::POWER_CAPABILITIES:
             case VM::SETUPAPI_DISK: 
             case VM::VMWARE_HARDENER:
             case VM::VIRTUAL_PROCESSORS:
-            case VM::MOTHERBOARD_PRODUCT:
             case VM::HYPERV_QUERY:
             case VM::BAD_POOLS:
 			case VM::AMD_THREAD_MISMATCH:
@@ -483,6 +482,8 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::VIRTUAL_REGISTRY:
             case VM::FIRMWARE_SCAN:
             case VM::NX_BIT:
+            case VM::UNKNOWN_MANUFACTURER:
+            case VM::OSXSAVE:
             // ADD WINDOWS FLAG
             return false;
             default: return true;
@@ -515,6 +516,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::KGT_SIGNATURE:
 			case VM::AMD_SEV:
 			case VM::AMD_THREAD_MISMATCH:
+            case VM::UNKNOWN_MANUFACTURER:
             // ADD MACOS FLAG
             return false;
             default: return true;
@@ -555,7 +557,6 @@ bool is_gpl(const VM::enum_flags flag) {
         case VM::WINE_CHECK: 
         case VM::HOSTNAME: 
         case VM::KVM_DIRS: 
-        case VM::AUDIO: 
         case VM::QEMU_DIR: 
         case VM::POWER_CAPABILITIES: 
         case VM::SETUPAPI_DISK: return true;
@@ -906,7 +907,7 @@ void general() {
     checker(VM::DMESG, "dmesg output");
     checker(VM::HWMON, "hwmon presence");
     checker(VM::DLL, "DLLs");
-    checker(VM::REGISTRY, "registry");
+    checker(VM::REGISTRY, "registry keys");
     checker(VM::WINE_CHECK, "Wine");
     checker(VM::VM_FILES, "VM files");
     checker(VM::HWMODEL, "hw.model");
@@ -923,13 +924,14 @@ void general() {
     checker(VM::QEMU_BRAND, "QEMU CPU brand");
     checker(VM::BOCHS_CPU, "BOCHS CPU techniques");
     checker(VM::BIOS_SERIAL, "BIOS serial number");
+    checker(VM::VBOX_SHARED_FOLDERS, "VBox shared folders");
     checker(VM::MSSMBIOS, "MSSMBIOS data");
     checker(VM::MAC_MEMSIZE, "MacOS hw.memsize");
     checker(VM::MAC_IOKIT, "MacOS registry IO-kit");
     checker(VM::IOREG_GREP, "IO registry grep");
     checker(VM::MAC_SIP, "MacOS SIP");
     checker(VM::KVM_DIRS, "KVM directories");
-    checker(VM::HKLM_REGISTRIES, "HKLM registries");
+    checker(VM::HKLM_REGISTRIES, "registry values");
     checker(VM::AUDIO, "audio device");
     checker(VM::QEMU_GA, "qemu-ga process");
     checker(VM::QEMU_DIR, "QEMU directories");
@@ -967,7 +969,7 @@ void general() {
     checker(VM::KVM_BITMASK, "KVM CPUID reserved bitmask");
     checker(VM::KGT_SIGNATURE, "Intel KGT signature");
     checker(VM::VMWARE_DMI, "VMware DMI");
-    checker(VM::VMWARE_EVENT_LOGS, "VMware event logs");
+    checker(VM::VM_EVENT_LOGS, "event logs");
     checker(VM::QEMU_VIRTUAL_DMI, "QEMU virtual DMI directory");
     checker(VM::QEMU_USB, "QEMU USB");
     checker(VM::HYPERVISOR_DIR, "hypervisor directory (Linux)");
@@ -983,7 +985,6 @@ void general() {
     checker(VM::WSL_PROC, "WSL string in /proc");
     checker(anyrun_driver, "ANY.RUN driver");
     checker(anyrun_directory, "ANY.RUN directory");
-    checker(VM::GPU_CHIPTYPE, "GPU chip name");
     checker(VM::DRIVER_NAMES, "driver names");
     checker(VM::VM_SIDT, "VM SIDT");
     checker(VM::HDD_SERIAL, "HDD serial number");
@@ -999,14 +1000,12 @@ void general() {
     checker(VM::WMI_MANUFACTURER, "hardware manufacturer");
     checker(VM::WMI_TEMPERATURE, "WMI temperature");
     checker(VM::PROCESSOR_ID, "processor ID");
-    checker(VM::CPU_FANS, "CPU fans");
     checker(VM::POWER_CAPABILITIES, "Power capabilities");
     checker(VM::SETUPAPI_DISK, "SETUPDI diskdrive");
     checker(VM::VMWARE_HARDENER, "VMware hardener");
 	checker(VM::SYS_QEMU, "QEMU in /sys");
 	checker(VM::LSHW_QEMU, "QEMU in lshw output");
     checker(VM::VIRTUAL_PROCESSORS, "virtual processors");
-    checker(VM::MOTHERBOARD_PRODUCT, "motherboard product");
     checker(VM::HYPERV_QUERY, "hypervisor query");
     checker(VM::BAD_POOLS, "bad memory pools");
 	checker(VM::AMD_SEV, "AMD-SEV MSR");
@@ -1016,6 +1015,9 @@ void general() {
     checker(VM::FIRMWARE_SCAN, "firmware signatures");
     checker(VM::NX_BIT, "NX/XD anomalies");
 	checker(VM::FILE_ACCESS_HISTORY, "low file access count");
+    checker(VM::UNKNOWN_MANUFACTURER, "unknown manufacturer ids");
+    checker(VM::OSXSAVE, "xgetbv");
+
     // ADD NEW TECHNIQUE CHECKER HERE
 
     std::printf("\n");
@@ -1209,7 +1211,7 @@ int main(int argc, char* argv[]) {
     win_ansi_enabler_t ansi_enabler;
 #endif
 
-    const std::vector<const char*> args(argv + 1, argv + argc); // easier this way
+    const std::vector<const char*> args(argv + 1, argv + argc); // easier to handle args this way
     const u32 arg_count = static_cast<u32>(argc - 1);
 
     // this was removed from the lib due to ethical 
