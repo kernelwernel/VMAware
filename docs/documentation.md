@@ -412,7 +412,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::KVM_BITMASK` | Check for KVM CPUID bitmask range for reserved values |  | 40% |  |  |  |  |
 | `VM::KGT_SIGNATURE` | Check for Intel KGT (Trusty branch) hypervisor signature in CPUID |  | 80% |  |  |  |  |
 | `VM::VMWARE_DMI` | Check for VMware DMI strings in BIOS serial number | Windows | 40% |  |  |  |  |
-| `VM::VMWARE_EVENT_LOGS` | Check for presence of VMware in the Windows Event Logs | Windows | 25% |  |  |  |  |
+| `VM::VM_EVENT_LOGS` | Check for presence of VMs in the Windows Event Logs | Windows | 50% |  |  |  |  |
 | `VM::QEMU_VIRTUAL_DMI` | Check for presence of QEMU in the /sys/devices/virtual/dmi/id directory | Linux | 40% |  |  |  |  |
 | `VM::QEMU_USB` | Check for presence of QEMU in the /sys/kernel/debug/usb/devices directory | Linux | 20% |  |  |  |  |
 | `VM::HYPERVISOR_DIR` | Check for presence of any files in /sys/hypervisor directory | Linux | 20% |  |  |  |  |
@@ -428,7 +428,6 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::WSL_PROC` | Check for WSL or microsoft indications in /proc/ subdirectories | Linux | 30% |  |  |  |  |
 | `VM::ANYRUN_DRIVER` | Check for any.run driver presence | Windows | 65% |  |  |  |  | Removed from the lib, only available in the CLI |
 | `VM::ANYRUN_DIRECTORY` | Check for any.run directory and handle the status code | Windows | 35% |  |  |  |  | Removed from the lib, only available in the CLI |
-| `VM::GPU_CHIPTYPE` | Check for known VM vendors in the GPU chip manufacturer | Windows | 100% |  |  |  |  |
 | `VM::DRIVER_NAMES` | Check for VM-specific names for drivers | Windows | 100% |  |  |  |  |
 | `VM::VM_SIDT` | Check for unknown IDT base address | Windows | 100% |  |  |  |  |
 | `VM::HDD_SERIAL` | Check for HDD serial number | Windows | 100% |  |  |  |  |
@@ -449,7 +448,6 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::SYS_QEMU` | Check for existence of "qemu_fw_cfg" directories within /sys/module and /sys/firmware | Linux | 70% |  |  |  |  |
 | `VM::LSHW_QEMU` | Check for QEMU string instances with lshw command | Linux | 80% |  |  |  |  |
 | `VM::VIRTUAL_PROCESSORS` | Check if the number of maximum virtual processors matches the maximum number of logical processors | Windows | 50% |  |  |  |  |
-| `VM::MOTHERBOARD_PRODUCT` | Check if the motherboard product string matches "Virtual Machine" | Windows | 50% |  |  |  |  |
 | `VM::HYPERV_QUERY` | Check if a call to NtQuerySystemInformation with the 0x9f leaf fills a _SYSTEM_HYPERVISOR_DETAIL_INFORMATION structure | Windows | 100% |  |  |  |  |
 | `VM::BAD_POOLS` | Check for system pools allocated by hypervisors | Windows | 80% |  |  |  |  |
 | `VM::AMD_SEV` | Check for AMD-SEV MSR running on the system | Linux and MacOS | 50% | Admin |  |  |  |

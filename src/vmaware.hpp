@@ -551,7 +551,7 @@ public:
         KVM_BITMASK,
         KGT_SIGNATURE,
         VMWARE_DMI,
-        VMWARE_EVENT_LOGS,
+        VM_EVENT_LOGS,
         QEMU_VIRTUAL_DMI,
         QEMU_USB,
         HYPERVISOR_DIR,
@@ -565,7 +565,6 @@ public:
         SMBIOS_VM_BIT,
         PODMAN_FILE,
         WSL_PROC,
-        GPU_CHIPTYPE,
         DRIVER_NAMES,
         VM_SIDT,
         HDD_SERIAL,
@@ -586,7 +585,6 @@ public:
         SYS_QEMU,
         LSHW_QEMU,
         VIRTUAL_PROCESSORS,
-        MOTHERBOARD_PRODUCT,
         HYPERV_QUERY,
         BAD_POOLS,
         AMD_SEV,
@@ -1599,8 +1597,8 @@ public:
                 &pEnumerator
             );
 
+            // If the query is invalid or not supported (or any error occurred), return empty results, as this is what we want for some techniques
             if (FAILED(hres)) {
-                debug("wmi: ExecQuery failed. Error code = ", hres);
                 return results;
             }
 
@@ -1652,7 +1650,6 @@ public:
             pEnumerator->Release();
             return results;
         }
-
 
         static void cleanup() noexcept {
             if (pSvc) {
@@ -2108,9 +2105,9 @@ public:
             DWORD numProcesses = bytesReturned / sizeof(DWORD);
 
             for (DWORD i = 0; i < numProcesses; ++i) {
-                const HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, processes[i]);
+                const HANDLE process = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, processes[i]);
                 if (process != nullptr) {
-                    char processName[MAX_PATH];
+                    char processName[MAX_PATH] = { 0 };
                     if (K32GetModuleBaseNameA(process, nullptr, processName, sizeof(processName))) {
                         if (_stricmp(processName, executable) == 0) {
                             CloseHandle(process);
@@ -2244,7 +2241,7 @@ public:
 
             auto is_event_log_hyperv = []() -> bool {
                 std::wstring logName = L"Microsoft-Windows-Kernel-PnP/Configuration";
-                std::vector<std::wstring> searchStrings = { L"Virtual_Machine", L"VMBUS" };
+                std::vector<std::wstring> searchStrings = { L"VMBUS" };
                 const bool result = (util::query_event_logs(logName, searchStrings));
 
                 if (result) {
@@ -3937,52 +3934,121 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         u8 score = 0;
 
         auto key = [&score](const char* p_brand, const char* regkey_s) -> void {
-            HKEY regkey;
-            LONG ret;
-
-            if (util::is_wow64()) {
-                wchar_t wRegKey[MAX_PATH];
-                MultiByteToWideChar(CP_ACP, 0, regkey_s, -1, wRegKey, MAX_PATH);
-
-                ret = RegOpenKeyExW(HKEY_LOCAL_MACHINE, wRegKey, 0, KEY_READ | KEY_WOW64_64KEY, &regkey);
-            } else {
-                wchar_t wRegKey[MAX_PATH];
-                MultiByteToWideChar(CP_ACP, 0, regkey_s, -1, wRegKey, MAX_PATH);
-
-                ret = RegOpenKeyExW(HKEY_LOCAL_MACHINE, wRegKey, 0, KEY_READ, &regkey);
+            std::string regkey_str(regkey_s);
+            size_t root_end = regkey_str.find('\\');
+            if (root_end == std::string::npos) {
+                return;
             }
 
-            if (ret == ERROR_SUCCESS) {
-                RegCloseKey(regkey);
-                score++;
+            std::string root_part = regkey_str.substr(0, root_end);
+            std::string subkey_part = regkey_str.substr(root_end + 1);
 
-                if (std::string(p_brand) != "") {
-                    debug("REGISTRY: ", "detected = ", p_brand);
-                    core::add(p_brand);
+            HKEY hRoot;
+            if (root_part == "HKLM") {
+                hRoot = HKEY_LOCAL_MACHINE;
+            }
+            else if (root_part == "HKCU") {
+                hRoot = HKEY_CURRENT_USER;
+            }
+            else {
+                return;
+            }
+
+            bool has_wildcard = subkey_part.find('*') != std::string::npos || subkey_part.find('?') != std::string::npos;
+
+            if (has_wildcard) {
+                size_t last_backslash = subkey_part.find_last_of('\\');
+                std::string parent_str, pattern_str;
+
+                if (last_backslash == std::string::npos) {
+                    parent_str = "";
+                    pattern_str = subkey_part;
+                }
+                else {
+                    parent_str = subkey_part.substr(0, last_backslash);
+                    pattern_str = subkey_part.substr(last_backslash + 1);
+                }
+
+                wchar_t wParent[MAX_PATH];
+                if (MultiByteToWideChar(CP_ACP, 0, parent_str.c_str(), -1, wParent, MAX_PATH) == 0) {
+                    return;
+                }
+
+                wchar_t wPattern[MAX_PATH];
+                if (MultiByteToWideChar(CP_ACP, 0, pattern_str.c_str(), -1, wPattern, MAX_PATH) == 0) {
+                    return;
+                }
+
+                HKEY hParent;
+                REGSAM samDesired = KEY_READ;
+                if (util::is_wow64()) {
+                    samDesired |= KEY_WOW64_64KEY;
+                }
+
+                LONG ret = RegOpenKeyExW(hRoot, wParent, 0, samDesired, &hParent);
+                if (ret != ERROR_SUCCESS) {
+                    return;
+                }
+
+                DWORD index = 0;
+                wchar_t subkeyName[MAX_PATH];
+                DWORD subkeyNameSize = MAX_PATH;
+                bool found = false;
+
+                while (RegEnumKeyExW(hParent, index, subkeyName, &subkeyNameSize, nullptr, nullptr, nullptr, nullptr) == ERROR_SUCCESS) {
+                    if (PathMatchSpecW(subkeyName, wPattern)) {
+                        found = true;
+                        break;
+                    }
+                    index++;
+                    subkeyNameSize = MAX_PATH;
+                }
+
+                RegCloseKey(hParent);
+
+                if (found) {
+                    score++;
+                    if (std::string(p_brand) != "") {
+                        debug("REGISTRY: ", "detected = ", p_brand);
+                        core::add(p_brand);
+                    }
+                }
+            }
+            else {
+                wchar_t wSubkey[MAX_PATH];
+                if (MultiByteToWideChar(CP_ACP, 0, subkey_part.c_str(), -1, wSubkey, MAX_PATH) == 0) {
+                    return;
+                }
+
+                REGSAM samDesired = KEY_READ;
+                if (util::is_wow64()) {
+                    samDesired |= KEY_WOW64_64KEY;
+                }
+
+                HKEY hKey;
+                LONG ret = RegOpenKeyExW(hRoot, wSubkey, 0, samDesired, &hKey);
+                if (ret == ERROR_SUCCESS) {
+                    RegCloseKey(hKey);
+                    score++;
+                    if (std::string(p_brand) != "") {
+                        debug("REGISTRY: ", "detected = ", p_brand);
+                        core::add(p_brand);
+                    }
                 }
             }
             };
 
-        // general
+        // General
         key("", "HKLM\\Software\\Classes\\Folder\\shell\\sandbox");
 
-        // hyper-v
-        key(brands::HYPERV, "HKLM\\SOFTWARE\\Microsoft\\Hyper-V");
-        key(brands::HYPERV, "HKLM\\SOFTWARE\\Microsoft\\VirtualMachine");
-        key(brands::HYPERV, "HKLM\\SOFTWARE\\Microsoft\\Virtual Machine\\Guest\\Parameters");
-        key(brands::HYPERV, "HKLM\\SYSTEM\\ControlSet001\\Services\\vmicheartbeat");
-        key(brands::HYPERV, "HKLM\\SYSTEM\\ControlSet001\\Services\\vmicvss");
-        key(brands::HYPERV, "HKLM\\SYSTEM\\ControlSet001\\Services\\vmicshutdown");
-        key(brands::HYPERV, "HKLM\\SYSTEM\\ControlSet001\\Services\\vmicexchange");
-
-        // parallels
+        // Parallels
         key(brands::PARALLELS, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_1AB8*");
 
-        // sandboxie
+        // Sandboxie
         key(brands::SANDBOXIE, "HKLM\\SYSTEM\\CurrentControlSet\\Services\\SbieDrv");
         key(brands::SANDBOXIE, "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Sandboxie");
 
-        // virtualbox
+        // VirtualBox
         key(brands::VBOX, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_80EE*");
         key(brands::VBOX, "HKLM\\HARDWARE\\ACPI\\DSDT\\VBOX__");
         key(brands::VBOX, "HKLM\\HARDWARE\\ACPI\\FADT\\VBOX__");
@@ -3994,14 +4060,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         key(brands::VBOX, "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxSF");
         key(brands::VBOX, "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxVideo");
 
-        // virtualpc
+        // VirtualPC
         key(brands::VPC, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_5333*");
         key(brands::VPC, "HKLM\\SYSTEM\\ControlSet001\\Services\\vpcbus");
         key(brands::VPC, "HKLM\\SYSTEM\\ControlSet001\\Services\\vpc-s3");
         key(brands::VPC, "HKLM\\SYSTEM\\ControlSet001\\Services\\vpcuhub");
         key(brands::VPC, "HKLM\\SYSTEM\\ControlSet001\\Services\\msvmmouf");
 
-        // vmware
+        // VMware
         key(brands::VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_15AD*");
         key(brands::VMWARE, "HKCU\\SOFTWARE\\VMware, Inc.\\VMware Tools");
         key(brands::VMWARE, "HKLM\\SOFTWARE\\VMware, Inc.\\VMware Tools");
@@ -4018,16 +4084,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         key(brands::VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\IDE\\CdRomNECVMWar_VMware_SATA_CD*");
         key(brands::VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\IDE\\DiskVMware_Virtual_IDE_Hard_Drive*");
         key(brands::VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\IDE\\DiskVMware_Virtual_SATA_Hard_Drive*");
-        key(brands::VMWARE, "SYSTEM\\ControlSet001\\Enum\\ACPI\\VMW0003");
-        key(brands::VMWARE, "SYSTEM\\ControlSet001\\Enum\\ACPI\\VMW0003");
-        key(brands::VMWARE, "SYSTEM\\CurrentControlSet\\Services\\vmmouse");
-        key(brands::VMWARE, "SYSTEM\\CurrentControlSet\\Services\\vmusbmouse");
+        key(brands::VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Enum\\ACPI\\VMW0003");
+        key(brands::VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Enum\\ACPI\\VMW0003");
+        key(brands::VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Services\\vmmouse");
+        key(brands::VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Services\\vmusbmouse");
 
-        // wine
+        // Wine
         key(brands::WINE, "HKCU\\SOFTWARE\\Wine");
         key(brands::WINE, "HKLM\\SOFTWARE\\Wine");
 
-        // xen
+        // Xen
         key(brands::XEN, "HKLM\\HARDWARE\\ACPI\\DSDT\\xen");
         key(brands::XEN, "HKLM\\HARDWARE\\ACPI\\FADT\\xen");
         key(brands::XEN, "HKLM\\HARDWARE\\ACPI\\RSDT\\xen");
@@ -8285,12 +8351,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check for presence of VMware in the Windows Event Logs
+     * @brief Check for presence of VMs in the Windows Event Logs
      * @category Windows
      * @author Requiem (https://github.com/NotRequiem)
-     * @implements VM::VMWARE_EVENT_LOGS
+     * @implements VM::VM_EVENT_LOGS
      */
-    [[nodiscard]] static bool vmware_event_logs() {
+    [[nodiscard]] static bool vm_event_logs() {
 #if (!WINDOWS)
         return false;
 #else
@@ -8303,13 +8369,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         std::vector<std::wstring> searchStrings = { L"VMware Virtual NVMe Disk", L"_VMware_" };
 
         for (const auto& logName : logNames) {
-            const bool found = util::query_event_logs(logName, searchStrings);
-            if (found) {
+            if (util::query_event_logs(logName, searchStrings)) {
                 return core::add(brands::VMWARE);
             }
         }
 
-        return false;
+        std::wstring logName = L"Microsoft-Windows-Kernel-PnP/Configuration";
+        searchStrings = { L"VMBUS" };
+
+        return util::query_event_logs(logName, searchStrings);
 #endif
     }
 
@@ -8784,48 +8852,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Use wmic to get the GPU/videocontrollers chip type.
-     * @category Windows
-     * @author utoshu
-     * @implements VM::GPU_CHIPTYPE
-     */
-    [[nodiscard]] static bool gpu_chiptype() {
-#if (!WINDOWS)
-        return false;
-#else
-        wmi_result results = wmi::execute(L"SELECT * FROM Win32_VideoController", { L"VideoProcessor" });
-
-        std::string result = "";
-        for (const auto& res : results) {
-            if (res.type == wmi::result_type::String) {
-                result += res.strValue + "\n"; // Collect video processor names
-            }
-        }
-
-        std::transform(result.begin(), result.end(), result.begin(), 
-            [](unsigned char c) { 
-                return static_cast<char>(::tolower(c));
-            }
-        );
-
-        if (util::find(result, "vmware")) {
-            return core::add(brands::VMWARE);
-        }
-
-        if (util::find(result, "virtualbox")) {
-            return core::add(brands::VBOX);
-        }
-
-        if (util::find(result, "hyper-v")) {
-            return core::add(brands::HYPERV);
-        }
-
-        return false;
-#endif
-    }
-
-
-    /**
      * @brief Check for VM-specific names for drivers
      * @category Windows
      * @author Requiem (https://github.com/NotRequiem)
@@ -9007,14 +9033,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for physical connection ports
      * @category Windows
-     * @author @unusual-aspect (https://github.com/unusual-aspect)
+     * @author idea by @unusual-aspect (https://github.com/unusual-aspect)
      * @implements VM::PORT_CONNECTORS
      */
     [[nodiscard]] static bool port_connectors() {
 #if (!WINDOWS) 
         return false;
 #else
-        std::wstring query = L"SELECT Product FROM Win32_BaseBoard";
+        std::wstring query = L"SELECT Product FROM Win32_BaseBoard"; // first query to know if we are on Surface Pro devices
         std::vector<std::wstring> properties = { L"Product" };
         wmi_result results = wmi::execute(query, properties);
 
@@ -9024,13 +9050,19 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 std::transform(lowerStr.begin(), lowerStr.end(), lowerStr.begin(),
                     [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
 
-                if (lowerStr.find("surface") != std::string::npos) { // This WMI query returns false for Surface Pro devices
+                if (lowerStr.find("virtualbox") != std::string::npos) {
+                    return core::add(VM::brands::VBOX);
+                }
+                else if (lowerStr.find("virtual machine") != std::string::npos) {
+                    return true;
+                }
+                else if (lowerStr.find("surface") != std::string::npos) { // This WMI query returns false for Surface Pro devices
                     return false;
                 }
             }
         }
 
-        wmi_result portResults = wmi::execute(L"SELECT * FROM Win32_PortConnector", { L"Caption" });
+        wmi_result portResults = wmi::execute(L"SELECT * FROM Win32_PortConnector", {});
             
         return results.empty();
 #endif
@@ -9051,20 +9083,20 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         for (const auto& res : results) {
             if (res.type == wmi::result_type::String) {
                 debug("VM_HDD: model = ", res.strValue);
-                if (util::find(res.strValue, "QEMU")) {
-                    return core::add(brands::QEMU);
-                }
-
-                if (util::find(res.strValue, "Virtual HD ATA Device")) {
-                    return core::add(brands::HYPERV);
-                }
-
                 if (util::find(res.strValue, "VMware Virtual NVMe Disk")) {
                     return core::add(brands::VMWARE);
                 }
 
                 if (util::find(res.strValue, "VBOX HARDDISK")) {
                     return core::add(brands::VBOX);
+                }
+
+                if (util::find(res.strValue, "QEMU")) {
+                    return core::add(brands::QEMU);
+                }
+
+                if (util::find(res.strValue, "Virtual HD ATA Device")) {
+                    return core::add(brands::HYPERV);
                 }
             }
         }
@@ -9178,15 +9210,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for VM specific device names in GPUs
      * @category Windows
      * @author Requiem (https://github.com/NotRequiem)
+     * @note utoshi did this with WMI in a removed technique (VM::GPU_CHIPTYPE)
      * @implements VM::GPU_NAME
      */
     [[nodiscard]] static bool vm_gpu() {
 #if (!WINDOWS)
         return false;
 #else
-        constexpr std::array<std::pair<const TCHAR*, const char*>, 8> vm_gpu_names = { {
+        constexpr std::array<std::pair<const TCHAR*, const char*>, 7> vm_gpu_names = { {
             { _T("VMware SVGA 3D"), brands::VMWARE },
-            { _T("Microsoft Basic Render Driver"), brands::HYPERV },
             { _T("VirtualBox Graphics Adapter"), brands::VBOX },
             { _T("Parallels Display Adapter (WDDM)"), brands::PARALLELS },
             { _T("QXL GPU"), brands::KVM },
@@ -9649,13 +9681,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        std::vector<wmi::result> results = wmi::execute
+        wmi_result results = wmi::execute
         ( L"SELECT * FROM MSAcpi_ThermalZoneTemperature",
         { L"CurrentTemperature" },
           false );
 
         for (const auto& res : results) {
-            if (res.type != wmi::result_type::Integer) {
+            if (res.type != wmi::result_type::Integer) {          
                 return true;
             }
         }
@@ -9939,31 +9971,6 @@ static bool rdtsc() {
         }
         if (implementationLimits.MaxVirtualProcessors == 0 || implementationLimits.MaxLogicalProcessors == 0) {
             return true;
-        }
-
-        return false;
-#endif
-    }
-
-
-    /**
-     * @brief Detects if the motherboard product matches the signature of a virtual machine
-     * @category Windows
-     * @author Requiem (https://github.com/NotRequiem)
-     * @implements VM::MOTHERBOARD_PRODUCT
-     */
-    [[nodiscard]] static bool motherboard_product() {
-#if (!WINDOWS)
-        return false;
-#else  
-        std::wstring query = L"SELECT Product FROM Win32_BaseBoard";
-        std::vector<std::wstring> properties = { L"Product" };
-        wmi_result results = wmi::execute(query, properties);
-
-        for (const auto& res : results) {
-            if (res.type == wmi::result_type::String && res.strValue == "Virtual Machine") {
-                return true;
-            }
         }
 
         return false;
@@ -12519,7 +12526,7 @@ public: // START OF PUBLIC FUNCTIONS
             case KVM_BITMASK: return "KVM_BITMASK";
             case KGT_SIGNATURE: return "KGT_SIGNATURE";
             case VMWARE_DMI: return "VMWARE_DMI";
-            case VMWARE_EVENT_LOGS: return "VMWARE_EVENT_LOGS";
+            case VM_EVENT_LOGS: return "VMWARE_EVENT_LOGS";
             case QEMU_VIRTUAL_DMI: return "QEMU_VIRTUAL_DMI";
             case QEMU_USB: return "QEMU_USB";
             case HYPERVISOR_DIR: return "HYPERVISOR_DIR";
@@ -12533,7 +12540,6 @@ public: // START OF PUBLIC FUNCTIONS
             case SMBIOS_VM_BIT: return "SMBIOS_VM_BIT";
             case PODMAN_FILE: return "PODMAN_FILE";
             case WSL_PROC: return "WSL_PROC";
-            case GPU_CHIPTYPE: return "GPU_CHIPTYPE";
             case DRIVER_NAMES: return "DRIVER_NAMES";
             case VM_SIDT: return "VM_SIDT";
             case HDD_SERIAL: return "HDD_SERIAL";
@@ -12556,7 +12562,6 @@ public: // START OF PUBLIC FUNCTIONS
 			case SYS_QEMU: return "SYS_QEMU";
 			case LSHW_QEMU: return "LSHW_QEMU";
             case VIRTUAL_PROCESSORS: return "VIRTUAL_PROCESSORS";
-            case MOTHERBOARD_PRODUCT: return "MOTHERBOARD_PRODUCT";
             case HYPERV_QUERY: return "HYPERV_QUERY";
             case BAD_POOLS: return "BAD_POOLS";
 			case AMD_SEV: return "AMD_SEV";
@@ -13095,7 +13100,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::KVM_BITMASK, { 40, VM::kvm_bitmask } }, 
     { VM::KGT_SIGNATURE, { 80, VM::intel_kgt_signature } }, 
     { VM::VMWARE_DMI, { 40, VM::vmware_dmi } },
-    { VM::VMWARE_EVENT_LOGS, { 25, VM::vmware_event_logs } },
+    { VM::VM_EVENT_LOGS, { 50, VM::vm_event_logs } },
     { VM::QEMU_VIRTUAL_DMI, { 40, VM::qemu_virtual_dmi } },
     { VM::QEMU_USB, { 20, VM::qemu_USB } },
     { VM::HYPERVISOR_DIR, { 20, VM::hypervisor_dir } }, 
@@ -13109,7 +13114,6 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::SMBIOS_VM_BIT, { 50, VM::smbios_vm_bit } }, 
     { VM::PODMAN_FILE, { 5, VM::podman_file } }, 
     { VM::WSL_PROC, { 30, VM::wsl_proc_subdir } }, 
-    { VM::GPU_CHIPTYPE, { 100, VM::gpu_chiptype } },
     { VM::DRIVER_NAMES, { 100, VM::driver_names } },
     { VM::VM_SIDT, { 100, VM::vm_sidt } },
     { VM::HDD_SERIAL, { 100, VM::hdd_serial_number } },
@@ -13130,7 +13134,6 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::SYS_QEMU, { 70, VM::sys_qemu_dir } },
     { VM::LSHW_QEMU, { 80, VM::lshw_qemu } },
     { VM::VIRTUAL_PROCESSORS, { 50, VM::virtual_processors } },
-    { VM::MOTHERBOARD_PRODUCT, { 50, VM::motherboard_product } },
     { VM::HYPERV_QUERY, { 100, VM::hyperv_query } },
     { VM::BAD_POOLS, { 80, VM::bad_pools } },
 	{ VM::AMD_SEV, { 50, VM::amd_sev } },

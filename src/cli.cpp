@@ -455,8 +455,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::KVM_BITMASK:
             case VM::KGT_SIGNATURE:
             case VM::VMWARE_DMI:
-            case VM::VMWARE_EVENT_LOGS:
-            case VM::GPU_CHIPTYPE:
+            case VM::VM_EVENT_LOGS:
             case VM::DRIVER_NAMES:
             case VM::VM_SIDT:
             case VM::HDD_SERIAL:
@@ -476,7 +475,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::SETUPAPI_DISK: 
             case VM::VMWARE_HARDENER:
             case VM::VIRTUAL_PROCESSORS:
-            case VM::MOTHERBOARD_PRODUCT:
             case VM::HYPERV_QUERY:
             case VM::BAD_POOLS:
 			case VM::AMD_THREAD_MISMATCH:
@@ -910,7 +908,7 @@ void general() {
     checker(VM::DMESG, "dmesg output");
     checker(VM::HWMON, "hwmon presence");
     checker(VM::DLL, "DLLs");
-    checker(VM::REGISTRY, "registry");
+    checker(VM::REGISTRY, "registry keys");
     checker(VM::WINE_CHECK, "Wine");
     checker(VM::VM_FILES, "VM files");
     checker(VM::HWMODEL, "hw.model");
@@ -934,7 +932,7 @@ void general() {
     checker(VM::IOREG_GREP, "IO registry grep");
     checker(VM::MAC_SIP, "MacOS SIP");
     checker(VM::KVM_DIRS, "KVM directories");
-    checker(VM::HKLM_REGISTRIES, "HKLM registries");
+    checker(VM::HKLM_REGISTRIES, "registry values");
     checker(VM::AUDIO, "audio device");
     checker(VM::QEMU_GA, "qemu-ga process");
     checker(VM::QEMU_DIR, "QEMU directories");
@@ -972,7 +970,7 @@ void general() {
     checker(VM::KVM_BITMASK, "KVM CPUID reserved bitmask");
     checker(VM::KGT_SIGNATURE, "Intel KGT signature");
     checker(VM::VMWARE_DMI, "VMware DMI");
-    checker(VM::VMWARE_EVENT_LOGS, "VMware event logs");
+    checker(VM::VM_EVENT_LOGS, "event logs");
     checker(VM::QEMU_VIRTUAL_DMI, "QEMU virtual DMI directory");
     checker(VM::QEMU_USB, "QEMU USB");
     checker(VM::HYPERVISOR_DIR, "hypervisor directory (Linux)");
@@ -988,7 +986,6 @@ void general() {
     checker(VM::WSL_PROC, "WSL string in /proc");
     checker(anyrun_driver, "ANY.RUN driver");
     checker(anyrun_directory, "ANY.RUN directory");
-    checker(VM::GPU_CHIPTYPE, "GPU chip name");
     checker(VM::DRIVER_NAMES, "driver names");
     checker(VM::VM_SIDT, "VM SIDT");
     checker(VM::HDD_SERIAL, "HDD serial number");
@@ -1010,7 +1007,6 @@ void general() {
 	checker(VM::SYS_QEMU, "QEMU in /sys");
 	checker(VM::LSHW_QEMU, "QEMU in lshw output");
     checker(VM::VIRTUAL_PROCESSORS, "virtual processors");
-    checker(VM::MOTHERBOARD_PRODUCT, "motherboard product");
     checker(VM::HYPERV_QUERY, "hypervisor query");
     checker(VM::BAD_POOLS, "bad memory pools");
 	checker(VM::AMD_SEV, "AMD-SEV MSR");
