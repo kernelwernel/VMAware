@@ -335,7 +335,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::CPU_BRAND:
             case VM::HYPERVISOR_BIT:
             case VM::HYPERVISOR_STR:
-            case VM::RDTSC:
+            case VM::TIMER:
             case VM::THREADCOUNT:
             case VM::MAC:
             case VM::TEMPERATURE:
@@ -402,7 +402,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::CPU_BRAND:
             case VM::HYPERVISOR_BIT:
             case VM::HYPERVISOR_STR:
-            case VM::RDTSC:
+            case VM::TIMER:
             case VM::THREADCOUNT:
             case VM::MAC:
             case VM::DLL:
@@ -497,6 +497,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::CPU_BRAND:
             case VM::HYPERVISOR_BIT:
             case VM::HYPERVISOR_STR:
+            case VM::TIMER:
             case VM::THREADCOUNT:
             case VM::HWMODEL:
             case VM::VMID_0X4:
@@ -894,7 +895,7 @@ void general() {
     checker(VM::CPU_BRAND, "CPU brand");
     checker(VM::HYPERVISOR_BIT, "CPUID hypervisor bit");
     checker(VM::HYPERVISOR_STR, "hypervisor str");
-    checker(VM::RDTSC, "RDTSC");
+    checker(VM::TIMER, "timing anomalies");
     checker(VM::SIDT5, "sidt null byte");
     checker(VM::THREADCOUNT, "processor count");
     checker(VM::MAC, "MAC address");
