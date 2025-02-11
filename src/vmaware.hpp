@@ -475,7 +475,7 @@ public:
         CPU_BRAND,
         HYPERVISOR_BIT,
         HYPERVISOR_STR,
-        RDTSC,
+        TIMER,
         THREADCOUNT,
         MAC,
         TEMPERATURE,
@@ -9710,52 +9710,147 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check RDTSC
-     * @category Windows
-     * @note This has been revised multiple times with previously removed techniques
-     * @implements VM::RDTSC
+     * @brief Check for timing anomalies in the system
+     * @category x86
+     * @implements VM::TIMER
      */
-    [[nodiscard]] 
+    [[nodiscard]]
 #if (LINUX)
-    // this is added so that no sanitizers can potentially cause unwanted delays while measuring rdtsc in a debug compilation
+    // This is added so that no sanitizers can potentially cause unwanted delays while measuring rdtsc in debug
     __attribute__((no_sanitize("address", "leak", "thread", "undefined")))
 #endif
-
-static bool rdtsc() {
+        static bool timer() {
 #if (ARM && !x86)
         return false;
 #else
         u64 start, end, total_cycles = 0;
-        u32 eax = 0, ebx = 0, ecx = 0, edx = 0;
-        i32 cpu_info[4];
+        constexpr i32 iterations = 10; // Reduced due to sleep delays, originally 10000 iterations with no execution delay
+        constexpr u32 threshold = 23000;
+        std::atomic<bool> stop_spammer{ false };
 
-        constexpr i32 iterations = 10000;
-        constexpr u32 threshold = 25000;
-
+        // 1. Classic rdtsc+cpuid+rdtsc check with sleep variance
         for (int i = 0; i < iterations; i++) {
             start = __rdtsc();
-    #if (WINDOWS)
+#if (WINDOWS)
+            // CPUID serializes pipeline and is frequently intercepted by hypervisors
+            int cpu_info[4];
             __cpuid(cpu_info, 0);
-    #elif (LINUX || APPLE)
+            UNUSED(cpu_info);
+#elif (LINUX || APPLE)
+            u32 eax = 0, ebx = 0, ecx = 0, edx = 0;
             __cpuid(0, eax, ebx, ecx, edx);
-    #endif
+            UNUSED(eax);
+            UNUSED(ebx);
+            UNUSED(ecx);
+            UNUSED(edx);
+#endif
             end = __rdtsc();
-
             total_cycles += (end - start);
+
+            // Sleep to induce cache flushing
+            std::this_thread::sleep_for(std::chrono::microseconds(500));
         }
 
-        UNUSED(eax);
-        UNUSED(ebx);
-        UNUSED(ecx);
-        UNUSED(edx);
-        UNUSED(cpu_info);
+        // 2. Multi-CPU check: rdtsc+cpuid+rdtsc on CPU1 while CPU2 spams cpuid. This detection tries to detect invariant TSC to flag hypervisors that share the same timer across multiple vCPUs
+        std::thread spammer([&stop_spammer] {
+#if (WINDOWS)
+            // Pin spammer to core 2
+            SetThreadAffinityMask(GetCurrentThread(), 2);
+#elif (LINUX)
+            cpu_set_t cpuset;
+            CPU_ZERO(&cpuset);
+            CPU_SET(1, &cpuset);  // Core 1 (0-indexed)
+            pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
+#elif (APPLE)
+            thread_affinity_policy_data_t policy = { 1 };
+            thread_policy_set(pthread_mach_thread_np(pthread_self()),
+                THREAD_AFFINITY_POLICY,
+                (thread_policy_t)&policy, 1);
+#endif
+            // Spam CPUID to create hypervisor trap pressure
+            while (!stop_spammer.load()) {
+#if (WINDOWS)
+                int cpu_info[4];
+                __cpuid(cpu_info, 0);
+#elif (LINUX || APPLE)
+                u32 eax = 0, ebx = 0, ecx = 0, edx = 0;
+                __cpuid(0, eax, ebx, ecx, edx);
+#endif
+            }
+            });
 
-        double average_cycles = (double)total_cycles / iterations;
+#if (WINDOWS)
+        // Pin measurement to core 1
+        DWORD_PTR old_mask = SetThreadAffinityMask(GetCurrentThread(), 1);
+#elif (LINUX || APPLE)
+        // Increase priority to minimize scheduling delays
+        sched_param param{};
+        sched_setscheduler(0, SCHED_FIFO, &param);
+#endif
 
-        return (average_cycles >= threshold);
-#endif    
+        // Take measurements under spammer load
+        u64 measurement = 0;
+        int cpu_info[4];
+        for (int i = 0; i < 1000; i++) {
+            start = __rdtsc();
+#if (WINDOWS)
+            __cpuid(cpu_info, 0);
+#elif (LINUX || APPLE)
+            u32 eax = 0, ebx = 0, ecx = 0, edx = 0;
+            __cpuid(0, eax, ebx, ecx, edx);
+#endif
+            end = __rdtsc();
+            measurement += (end - start);
+        }
+
+        stop_spammer.store(true);
+        spammer.join();
+
+    #if (WINDOWS)
+        SetThreadAffinityMask(GetCurrentThread(), old_mask);
+    #endif  
+
+        const double average_cycles = static_cast<double>(total_cycles) / iterations;
+        const bool sleep_variance_detected = average_cycles >= threshold;
+        const bool spammer_detected = (measurement / 1000) > 55000;
+
+    #if (WINDOWS)
+        // Windows-specific QPC check: Compare trapping vs non-trapping instruction timing
+        LARGE_INTEGER startQPC, endQPC;
+        QueryPerformanceCounter(&startQPC);
+        for (int i = 0; i < 100000; i++) {
+            __cpuid(cpu_info, 0);
+        }
+        QueryPerformanceCounter(&endQPC);
+        LONGLONG cpuIdTime = endQPC.QuadPart - startQPC.QuadPart;
+
+        // Non-trapping dummy loop baseline
+        QueryPerformanceCounter(&startQPC);
+        volatile int dummy = 0;
+        for (int i = 0; i < 100000; i++) {
+            dummy ^= i; // prevent optimization
+            _ReadWriteBarrier(); 
+        }
+        QueryPerformanceCounter(&endQPC);
+        LONGLONG dummyTime = endQPC.QuadPart - startQPC.QuadPart;
+
+        const bool qpc_check = (dummyTime != 0) && ((cpuIdTime / dummyTime) > 1100);
+
+        // TSC sync check across cores. Try reading the invariant TSC on two different cores to attempt to detect VCPU timers being shared
+        unsigned aux;
+        SetThreadAffinityMask(GetCurrentThread(), 1);
+        u64 tsc_core1 = __rdtscp(&aux);  // Core 1 TSC
+        SetThreadAffinityMask(GetCurrentThread(), 2);
+        u64 tsc_core2 = __rdtscp(&aux);  // Core 2 TSC
+        SetThreadAffinityMask(GetCurrentThread(), old_mask);
+        const bool tsc_sync_check = std::llabs(static_cast<long long>(tsc_core2 - tsc_core1)) > 10000000LL;
+
+        return sleep_variance_detected || spammer_detected || qpc_check || tsc_sync_check;
+    #else
+        return sleep_variance_detected || spammer_detected;
+    #endif
+#endif
     }
-
 
     /*
      * @brief Detects VMwareHardenerLoader's technique to remove firmware signatures
@@ -12379,7 +12474,7 @@ public: // START OF PUBLIC FUNCTIONS
             case CPU_BRAND: return "CPU_BRAND";
             case HYPERVISOR_BIT: return "HYPERVISOR_BIT";
             case HYPERVISOR_STR: return "HYPERVISOR_STR";
-            case RDTSC: return "RDTSC";
+            case TIMER: return "TIMER";
             case THREADCOUNT: return "THREADCOUNT";
             case MAC: return "MAC";
             case TEMPERATURE: return "TEMPERATURE";
@@ -12951,7 +13046,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::CPU_BRAND, { 50, VM::cpu_brand } },
     { VM::HYPERVISOR_BIT, { 100, VM::hypervisor_bit}} , 
     { VM::HYPERVISOR_STR, { 75, VM::hypervisor_str } },
-    { VM::RDTSC, { 40, VM::rdtsc } },
+    { VM::TIMER, { 45, VM::timer } },
     { VM::THREADCOUNT, { 35, VM::thread_count } },
     { VM::MAC, { 20, VM::mac_address_check } },
     { VM::TEMPERATURE, { 15, VM::temperature } },
