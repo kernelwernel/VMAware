@@ -25,14 +25,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 467
- * - struct for internal cpu operations        => line 751
- * - struct for internal memoization           => line 1215
- * - struct for internal utility functions     => line 1609
- * - struct for internal core components       => line 11156
- * - start of VM detection technique list      => line 3275
- * - start of public VM detection functions    => line 11560
- * - start of externally defined variables     => line 12462
+ * - enums for publicly accessible techniques  => line 466
+ * - struct for internal cpu operations        => line 748
+ * - struct for internal memoization           => line 120
+ * - struct for internal utility functions     => line 1661
+ * - struct for internal core components       => line 11472
+ * - start of VM detection technique list      => line 3344
+ * - start of public VM detection functions    => line 11873
+ * - start of externally defined variables     => line 12774
  *
  *
  * ============================== EXAMPLE ===================================
@@ -352,24 +352,17 @@
 #include <windows.h>
 #include <intrin.h>
 #include <tchar.h>
-#include <stdbool.h>
-#include <stdio.h>
 #include <iphlpapi.h>
-#include <assert.h>
-#include <excpt.h>
 #include <winternl.h>
-#include <winnetwk.h>
 #include <winuser.h>
 #include <psapi.h>
 #include <comdef.h>
 #include <wbemidl.h>
 #include <shlwapi.h>
 #include <shlobj_core.h>
-#include <strmif.h>
 #include <dshow.h>
 #include <io.h>
 #include <winspool.h>
-#include <wtypes.h>
 #include <winevt.h>
 #include <powerbase.h>
 #include <setupapi.h>
@@ -505,7 +498,6 @@ public:
         LINUX_USER_HOST,
         GAMARUE,
         VMID_0X4,
-        PARALLELS_VM,
         QEMU_BRAND,
         BOCHS_CPU,
         BIOS_SERIAL,
@@ -592,7 +584,6 @@ public:
         NATIVE_VHD,
         VIRTUAL_REGISTRY,
         FIRMWARE_SCAN,
-        NX_BIT,
 		FILE_ACCESS_HISTORY,
         AUDIO,
         UNKNOWN_MANUFACTURER,
@@ -4326,7 +4317,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-#if (LINUX)
+    #if (LINUX)
         auto get_distro = []() -> std::string {
             std::ifstream osReleaseFile("/etc/os-release");
             std::string line;
@@ -4373,7 +4364,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         return false;
-#elif (WINDOWS)
+    #elif (WINDOWS)
         const u8 version = util::get_windows_version();
 
         if (version < 10) {
@@ -4389,7 +4380,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // Windows 11 check (version 11+)
         debug("VBOX_DEFAULT: Windows 11 detected");
         return ((80 == disk) && (4 == ram));
-#endif
+    #endif
 #endif
     }
 
@@ -4782,52 +4773,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             cpu::vmid_template(cpu::leaf::hypervisor, "VMID_0x4: ") ||
             cpu::vmid_template(cpu::leaf::hypervisor + 1, "VMID_0x4 + 1: ") // Some VM brands can have their cpu manufacturer ID as 0x4000'0001
         );
-#endif
-    }
-
-
-    /**
-     * @brief Check for any indication of Parallels VM through BIOS data
-     * @link https://stackoverflow.com/questions/1370586/detect-if-windows-is-running-from-within-parallels
-     * @category Windows
-     * @implements VM::PARALLELS_VM
-     */
-    [[nodiscard]] static bool parallels() {
-#if (!WINDOWS)
-        return false;
-#else
-        std::unique_ptr<util::sys_info> info = util::make_unique<util::sys_info>();
-
-#ifdef __VMAWARE_DEBUG__
-        debug("Manufacturer: ", info->get_manufacturer());
-        debug("Product Name: ", info->get_productname());
-        debug("Serial No: ", info->get_serialnumber());
-        debug("UUID: ", info->get_uuid());
-        debug("Version: ", info->get_version());
-
-        if (!info->get_family().empty()) {
-            debug("Product family: ", info->get_family());
-        }
-
-        if (!info->get_sku().empty()) {
-            debug("SKU/Configuration: ", info->get_sku());
-        }
-#endif
-
-        auto compare = [](const std::string& str) -> bool {
-            std::regex pattern("Parallels", std::regex_constants::icase);
-            return std::regex_match(str, pattern);
-        };
-
-        if (
-            compare(info->get_manufacturer()) ||
-            compare(info->get_productname()) ||
-            compare(info->get_family())
-            ) {
-            return core::add(brands::PARALLELS);
-        }
-
-        return false;
 #endif
     }
 
@@ -5523,7 +5468,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::SIDT
      */
     [[nodiscard]] static bool sidt() {
-        // gcc/g++ causes a stack smashing error at runtime for some reason
+        // gcc/g++ causes a stack smashing error at runtime
         if (GCC) {
             return false;
         }
@@ -5560,33 +5505,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #   endif
 
         idt_entry = *reinterpret_cast<unsigned long*>(&idtr[2]);
-#elif (LINUX)
-        // false positive with root for some reason
-        if (util::is_admin()) {
-            return false;
-        }
-
-        if (!util::exists("/dev/mem")) {
-            return false;
-        }
-
-        struct IDTR {
-            u16 limit;
-            u32 base;
-        } __attribute__((packed));
-
-        IDTR idtr_struct;
-        
-        __asm__ __volatile__(
-            "sidt %0"
-            : "=m" (idtr_struct)
-        );
-
-        std::ifstream mem("/dev/mem", std::ios::binary);
-        mem.seekg(idtr_struct.base + 8, std::ios::beg);
-        mem.read(reinterpret_cast<char*>(&idt_entry), sizeof(idt_entry));
-        mem.close();
-        UNUSED(idtr);
 #else
         UNUSED(idtr);
         UNUSED(idt_entry);
@@ -11342,30 +11260,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
 
 
-    /**
-     * @brief Check for AMD64/Intel64 architecture without NX support
-     * @category Windows
-     * @implements VM::NX_BIT
-     */
-    [[nodiscard]] static bool nx_bit() {
-#if (!WINDOWS)
-        return false;
-#else
-        SYSTEM_INFO sysInfo;
-        GetNativeSystemInfo(&sysInfo);
-
-        const bool nxSupported = IsProcessorFeaturePresent(PF_NX_ENABLED);
-
-        if ((sysInfo.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_AMD64 ||
-            sysInfo.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_IA64) && !nxSupported) {
-            return true;
-        }
-
-        return false;
-#endif
-    }
-
-
 	/**
 	 * @brief Check if the number of accessed files are too low for a human-managed environment
 	 * @category Linux
@@ -12502,7 +12396,6 @@ public: // START OF PUBLIC FUNCTIONS
             case LINUX_USER_HOST: return "LINUX_USER_HOST";
             case GAMARUE: return "GAMARUE";
             case VMID_0X4: return "VMID_0X4";
-            case PARALLELS_VM: return "PARALLELS_VM";
             case QEMU_BRAND: return "QEMU_BRAND";
             case BOCHS_CPU: return "BOCHS_CPU";
             case BIOS_SERIAL: return "BIOS_SERIAL";
@@ -12591,7 +12484,6 @@ public: // START OF PUBLIC FUNCTIONS
             case NATIVE_VHD: return "NATIVE_VHD";
             case VIRTUAL_REGISTRY: return "VIRTUAL_REGISTRY";
             case FIRMWARE_SCAN: return "FIRMWARE_SCAN";
-            case NX_BIT: return "NX_BIT";
 			case FILE_ACCESS_HISTORY: return "FILE_ACCESS_HISTORY";
             case AUDIO: return "AUDIO";
             case UNKNOWN_MANUFACTURER: return "UNKNOWN_MANUFACTURER";
@@ -13076,7 +12968,6 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::LINUX_USER_HOST, { 10, VM::linux_user_host } },
     { VM::GAMARUE, { 10, VM::gamarue } },
     { VM::VMID_0X4, { 100, VM::vmid_0x4 } },
-    { VM::PARALLELS_VM, { 50, VM::parallels } },
     { VM::QEMU_BRAND, { 100, VM::cpu_brand_qemu } },
     { VM::BOCHS_CPU, { 100, VM::bochs_cpu } },
     { VM::BIOS_SERIAL, { 60, VM::bios_serial } },
@@ -13163,7 +13054,6 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::NATIVE_VHD, { 100, VM::native_vhd } },
     { VM::VIRTUAL_REGISTRY, { 65, VM::virtual_registry } },
     { VM::FIRMWARE_SCAN, { 90, VM::firmware_scan } },
-    { VM::NX_BIT, { 50, VM::nx_bit } },
 	{ VM::FILE_ACCESS_HISTORY, { 15, VM::file_access_history } },
     { VM::AUDIO, { 25, VM::check_audio } },
     { VM::UNKNOWN_MANUFACTURER, { 50, VM::unknown_manufacturer } },
