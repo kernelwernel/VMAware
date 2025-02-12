@@ -72,6 +72,8 @@ This project also provides a tiny, but handy CLI tool utilising the full potenti
 
 <img src="assets/demo.jpg" title="cli">
 
+Try it out on [Compiler Explorer](https://godbolt.org/z/aGYTMzoEc)!
+
 <br>
 
 ## Installation 📥
