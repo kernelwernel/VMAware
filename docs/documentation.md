@@ -336,7 +336,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::CPU_BRAND` | Check if CPU brand model contains any VM-specific string snippets |  | 50% |  |  |  |  |  |
 | `VM::HYPERVISOR_BIT` | Check if hypervisor feature bit in CPUID eax bit 31 is enabled (always false for physical CPUs) |  | 100% |  |  |  |  |
 | `VM::HYPERVISOR_STR` | Check for hypervisor brand string length (would be around 2 characters in a host machine) |  | 75% |  |  |  |  |
-| `VM::RDTSC` | Benchmark RDTSC and evaluate its speed, usually it's very slow in VMs | Linux and Windows | 40% |  |  |  |  |  |
+| `VM::TIMER` | Check for timing anomalies in the system |  | 45% |  |  |  |  |  |
 | `VM::THREADCOUNT` | Check if there are only 1 or 2 threads, which is a common pattern in VMs with default settings (nowadays physical CPUs should have at least 4 threads for modern CPUs) |  | 35% |  |  |  |  |
 | `VM::MAC` | Check if mac address starts with certain VM designated values | Linux and Windows | 20% |  |  |  |  |
 | `VM::TEMPERATURE` | Check if thermal directory in linux is present, might not be present in VMs | Linux | 15% |    |  |  |
@@ -366,7 +366,6 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::LINUX_USER_HOST` | Check for default VM username and hostname for linux | Linux | 10% |  |  |  |  |
 | `VM::GAMARUE` | Check for Gamarue ransomware technique which compares VM-specific Window product IDs | Windows | 10% |  |  |  |  |
 | `VM::VMID_0X4` | Check if the CPU manufacturer ID matches that of a VM brand with leaf 0x40000000 |  | 100% |  |  |  |  |
-| `VM::PARALLELS_VM` | Check for any indication of Parallels VM through BIOS data | Windows | 50% |  |  |  |  |
 | `VM::QEMU_BRAND` | Match for QEMU CPU brands with "QEMU Virtual CPU" string |  | 100% |  |  |  |  |
 | `VM::BOCHS_CPU` | Check for various Bochs-related emulation oversights through CPU checks |  | 100% |  |  |  |  |
 | `VM::BIOS_SERIAL` | Check if the BIOS serial is valid (null = VM) | Windows | 60% |  |  |  |  |
@@ -379,7 +378,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::HKLM_REGISTRIES` | Check HKLM registries for specific VM strings | Windows | 25% |  |  |  |  |
 | `VM::QEMU_GA` | Check for "qemu-ga" process | Linux | 10% |  |  |  |  |
 | `VM::VPC_INVALID` | Check for official VPC method | Windows | 75% |  |  | 32-bit |  |
-| `VM::SIDT` | Check for sidt instruction method | Linux, Windows | 25% |  |  |  |  |
+| `VM::SIDT` | Check for sidt instruction method | Windows | 25% |  |  |  |  |
 | `VM::SGDT` | Check for sgdt instruction method | Windows | 30% |  |  | 32-bit |  |
 | `VM::SLDT` | Check for sldt instruction method | Windows | 15% |  |  | 32-bit |  |
 | `VM::OFFSEC_SIDT` | Check for Offensive Security SIDT method | Windows | 60% |  |  | 32-bit |  |
@@ -456,7 +455,6 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::NATIVE_VHD` | Check for OS being booted from a VHD container | Windows | 100% |  |  |  |  |
 | `VM::VIRTUAL_REGISTRY` | Check for particular object directory which is present in Sandboxie virtual environment but not in usual host systems | Windows | 65% |  |  |  |  |
 | `VM::FIRMWARE_SCAN` | Check for VM signatures in firmware | Windows | 90% |  |  |  |  |
-| `VM::NX_BIT` | Check for AMD64/Intel64 architecture without NX support | Windows | 50% |  |  |  |  |
 | `VM::FILE_ACCESS_HISTORY` | Check if the number of accessed files are too low for a human-managed environment | Linux | 15% |  |  |  |  |
 | `VM::AUDIO` | Check if audio device is present | Windows | 25% |  |  |  |  |
 | `VM::UNKNOWN_MANUFACTURER` | Check if the CPU manufacturer is not known |  | 50% |  |  |  |  |

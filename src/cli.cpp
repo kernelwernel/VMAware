@@ -335,7 +335,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::CPU_BRAND:
             case VM::HYPERVISOR_BIT:
             case VM::HYPERVISOR_STR:
-            case VM::RDTSC:
+            case VM::TIMER:
             case VM::THREADCOUNT:
             case VM::MAC:
             case VM::TEMPERATURE:
@@ -402,7 +402,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::CPU_BRAND:
             case VM::HYPERVISOR_BIT:
             case VM::HYPERVISOR_STR:
-            case VM::RDTSC:
+            case VM::TIMER:
             case VM::THREADCOUNT:
             case VM::MAC:
             case VM::DLL:
@@ -419,7 +419,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::VM_PROCESSES:
             case VM::GAMARUE:
             case VM::VMID_0X4:
-            case VM::PARALLELS_VM:
             case VM::QEMU_BRAND:
             case VM::BOCHS_CPU:
             case VM::BIOS_SERIAL:
@@ -481,7 +480,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::NATIVE_VHD:
             case VM::VIRTUAL_REGISTRY:
             case VM::FIRMWARE_SCAN:
-            case VM::NX_BIT:
             case VM::UNKNOWN_MANUFACTURER:
             case VM::OSXSAVE:
             // ADD WINDOWS FLAG
@@ -497,6 +495,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::CPU_BRAND:
             case VM::HYPERVISOR_BIT:
             case VM::HYPERVISOR_STR:
+            case VM::TIMER:
             case VM::THREADCOUNT:
             case VM::HWMODEL:
             case VM::VMID_0X4:
@@ -894,7 +893,7 @@ void general() {
     checker(VM::CPU_BRAND, "CPU brand");
     checker(VM::HYPERVISOR_BIT, "CPUID hypervisor bit");
     checker(VM::HYPERVISOR_STR, "hypervisor str");
-    checker(VM::RDTSC, "RDTSC");
+    checker(VM::TIMER, "timing anomalies");
     checker(VM::SIDT5, "sidt null byte");
     checker(VM::THREADCOUNT, "processor count");
     checker(VM::MAC, "MAC address");
@@ -920,7 +919,6 @@ void general() {
     checker(VM::LINUX_USER_HOST, "default Linux user/host");
     checker(VM::GAMARUE, "gamarue ransomware technique");
     checker(VM::VMID_0X4, "0x4 leaf of VMID");
-    checker(VM::PARALLELS_VM, "Parallels techniques");
     checker(VM::QEMU_BRAND, "QEMU CPU brand");
     checker(VM::BOCHS_CPU, "BOCHS CPU techniques");
     checker(VM::BIOS_SERIAL, "BIOS serial number");
@@ -1013,7 +1011,6 @@ void general() {
     checker(VM::NATIVE_VHD, "VHD containers");
     checker(VM::VIRTUAL_REGISTRY, "registry emulation");
     checker(VM::FIRMWARE_SCAN, "firmware signatures");
-    checker(VM::NX_BIT, "NX/XD anomalies");
 	checker(VM::FILE_ACCESS_HISTORY, "low file access count");
     checker(VM::UNKNOWN_MANUFACTURER, "unknown manufacturer ids");
     checker(VM::OSXSAVE, "xgetbv");
