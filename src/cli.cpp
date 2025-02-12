@@ -336,7 +336,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::CPU_BRAND:
             case VM::HYPERVISOR_BIT:
             case VM::HYPERVISOR_STR:
-            case VM::RDTSC:
+            case VM::TIMER:
             case VM::THREADCOUNT:
             case VM::MAC:
             case VM::TEMPERATURE:
@@ -404,7 +404,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::CPU_BRAND:
             case VM::HYPERVISOR_BIT:
             case VM::HYPERVISOR_STR:
-            case VM::RDTSC:
+            case VM::TIMER:
             case VM::THREADCOUNT:
             case VM::MAC:
             case VM::DLL:
@@ -421,7 +421,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::VM_PROCESSES:
             case VM::GAMARUE:
             case VM::VMID_0X4:
-            case VM::PARALLELS_VM:
             case VM::QEMU_BRAND:
             case VM::BOCHS_CPU:
             case VM::BIOS_SERIAL:
@@ -483,7 +482,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::NATIVE_VHD:
             case VM::VIRTUAL_REGISTRY:
             case VM::FIRMWARE_SCAN:
-            case VM::NX_BIT:
             case VM::UNKNOWN_MANUFACTURER:
             case VM::OSXSAVE:
             // ADD WINDOWS FLAG
@@ -499,6 +497,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::CPU_BRAND:
             case VM::HYPERVISOR_BIT:
             case VM::HYPERVISOR_STR:
+            case VM::TIMER:
             case VM::THREADCOUNT:
             case VM::HWMODEL:
             case VM::VMID_0X4:
@@ -653,7 +652,7 @@ std::string vm_description(const std::string& vm_brand) {
         { VM::brands::AZURE_HYPERV, "Azure Hyper-V is Microsoft's cloud-optimized hypervisor variant powering Azure VMs. Implements Azure-specific virtual devices like NVMe Accelerated Networking and vTPMs. Supports nested virtualization for running Hyper-V/containers within Azure VMs, enabling cloud-based CI/CD pipelines and dev/test environments." },
         { VM::brands::NANOVISOR, "NanoVisor is a Hyper-V modification serving as the host OS of Xbox's devices: the Xbox System Software. It contains 2 partitions: the \"Exclusive\" partition is a custom VM for games, while the other partition, called the \"Shared\" partition is a custom VM for running multiple apps including the OS itself. The OS was based on Windows 8 Core at the Xbox One launch in 2013." },
         { VM::brands::SIMPLEVISOR, "SimpleVisor is a minimalist Intel VT-x hypervisor by Alex Ionescu for Windows/Linux research. Demonstrates EPT-based memory isolation and hypercall handling. Used to study VM escapes and hypervisor rootkits, with hooks for intercepting CR3 changes and MSR accesses." },
-        { VM::brands::HYPERV_ARTIFACT, "The result means that the CLI has found Hyper-V, but as an artifact instead of an actual VM. Although the hardware values do in fact match with the brand due to how it's designed by Microsoft, the CLI has determined you are NOT in a Hyper-V VM from our \"Hyper-X\" mechanism which differentiates between an actual Hyper-V and a false Hyper-V VM that left out breadcrumbs in the system, making it seem like it's a real Hyper-V VM." },
+        { VM::brands::HYPERV_ARTIFACT, "The CLI detected Hyper-V operating as a Type 1 hypervisor, not as a guest virtual machine. Althought your hardware/firmware signatures match Microsoft's Hyper-V architecture, we determined that you're running on baremetal, with the help of our \"Hyper-X\" mechanism that differentiates between the root partition (host OS) and guest VM environments. This prevents false positives, as Windows sometimes runs under Hyper-V (type 1) hypervisor." },         
         { VM::brands::UML, "User-Mode Linux (UML) allows running Linux kernels as user-space processes using ptrace-based virtualization. Primarily used for kernel debugging and network namespace testing. Offers lightweight isolation without hardware acceleration, but requires host/guest kernel version matching for stable operation." },
         { VM::brands::POWERVM, "IBM PowerVM is a type 1 hypervisor for POWER9/10 systems, supporting Live Partition Mobility and Shared Processor Pools. Implements VIOS (Virtual I/O Server) for storage/networking virtualization, enabling concurrent AIX, IBM i, and Linux workloads with RAS features like predictive failure analysis." },
         { VM::brands::GCE, "Google Compute Engine (GCE) utilizes KVM-based virtualization with custom Titanium security chips for hardware root of trust. Features live migration during host maintenance and shielded VMs with UEFI secure boot. Underpins Google Cloud's Confidential Computing offering using AMD SEV-SNP memory encryption." },
@@ -897,7 +896,7 @@ void general() {
     checker(VM::CPU_BRAND, "CPU brand");
     checker(VM::HYPERVISOR_BIT, "CPUID hypervisor bit");
     checker(VM::HYPERVISOR_STR, "hypervisor str");
-    checker(VM::RDTSC, "RDTSC");
+    checker(VM::TIMER, "timing anomalies");
     checker(VM::SIDT5, "sidt null byte");
     checker(VM::THREADCOUNT, "processor count");
     checker(VM::MAC, "MAC address");
@@ -923,7 +922,6 @@ void general() {
     checker(VM::LINUX_USER_HOST, "default Linux user/host");
     checker(VM::GAMARUE, "gamarue ransomware technique");
     checker(VM::VMID_0X4, "0x4 leaf of VMID");
-    checker(VM::PARALLELS_VM, "Parallels techniques");
     checker(VM::QEMU_BRAND, "QEMU CPU brand");
     checker(VM::BOCHS_CPU, "BOCHS CPU techniques");
     checker(VM::BIOS_SERIAL, "BIOS serial number");
@@ -1016,7 +1014,6 @@ void general() {
     checker(VM::NATIVE_VHD, "VHD containers");
     checker(VM::VIRTUAL_REGISTRY, "registry emulation");
     checker(VM::FIRMWARE_SCAN, "firmware signatures");
-    checker(VM::NX_BIT, "NX/XD anomalies");
 	checker(VM::FILE_ACCESS_HISTORY, "low file access count");
     checker(VM::UNKNOWN_MANUFACTURER, "unknown manufacturer ids");
     checker(VM::OSXSAVE, "xgetbv");
