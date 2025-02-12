@@ -461,6 +461,8 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::AUDIO` | Check if audio device is present | Windows | 25% |  |  |  |  |
 | `VM::UNKNOWN_MANUFACTURER` | Check if the CPU manufacturer is not known |  | 50% |  |  |  |  |
 | `VM::OSXSAVE` | Check if running xgetbv in the XCR0 extended feature register triggers an exception | Windows | 50% |  |  |  |  |
+| `VM::NSJAIL_PID` | Check if process status matches with nsjail patterns with PID anomalies | Linux | 75% |  |  |  |  |
+<!-- ADD TECHNIQUE DETAILS HERE -->
 
 <br>
 
@@ -537,6 +539,7 @@ This is the table of all the brands the lib supports.
 | Google Compute Engine (KVM) | `VM::brands::GCE` | Cloud VM service |  |
 | NoirVisor | `VM::brands::NOIRVISOR` | Hypervisor (type 1) |  |
 | Qihoo 360 Sandbox | `VM::brands::QIHOO` | Sandbox |  |
+| nsjail | `VM::brands::NSJAIL` | Process isolator |  |
 
 <br>
 

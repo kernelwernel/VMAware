@@ -597,6 +597,7 @@ public:
         AUDIO,
         UNKNOWN_MANUFACTURER,
         OSXSAVE,
+		NSJAIL_PID,
         // ADD NEW TECHNIQUE ENUM NAME HERE
 
         // start of settings technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
@@ -730,6 +731,7 @@ public:
         static constexpr const char* NEKO_PROJECT = "Neko Project II";
         static constexpr const char* NOIRVISOR = "NoirVisor";
         static constexpr const char* QIHOO = "Qihoo 360 Sandbox";
+        static constexpr const char* NSJAIL = "nsjail";
         static constexpr const char* NULL_BRAND = "Unknown";
     };
 
@@ -5523,15 +5525,17 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::SIDT
      */
     [[nodiscard]] static bool sidt() {
+#if (!WINDOWS)
+    return false;
+#else
         // gcc/g++ causes a stack smashing error at runtime for some reason
-        if (GCC) {
-            return false;
-        }
+        //if (GCC) {
+        //    return false;
+        //}
 
         u8 idtr[10]{};
         u32 idt_entry = 0;
 
-#if (WINDOWS)
 #   if (x86_32)
         __try {
             _asm sidt idtr
@@ -5560,44 +5564,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #   endif
 
         idt_entry = *reinterpret_cast<unsigned long*>(&idtr[2]);
-#elif (LINUX)
-        // false positive with root for some reason
-        if (util::is_admin()) {
-            return false;
-        }
-
-        if (!util::exists("/dev/mem")) {
-            return false;
-        }
-
-        struct IDTR {
-            u16 limit;
-            u32 base;
-        } __attribute__((packed));
-
-        IDTR idtr_struct;
-        
-        __asm__ __volatile__(
-            "sidt %0"
-            : "=m" (idtr_struct)
-        );
-
-        std::ifstream mem("/dev/mem", std::ios::binary);
-        mem.seekg(idtr_struct.base + 8, std::ios::beg);
-        mem.read(reinterpret_cast<char*>(&idt_entry), sizeof(idt_entry));
-        mem.close();
-        UNUSED(idtr);
-#else
-        UNUSED(idtr);
-        UNUSED(idt_entry);
-        return false;
-#endif
 
         if ((idt_entry >> 24) == 0xFF) {
             return core::add(brands::VMWARE);
         }
 
         return false;
+#endif
     }
 
 
@@ -11462,6 +11435,61 @@ static bool rdtsc() {
         return false;
 #endif
     }
+
+
+	/**
+	 * @brief Check if process status matches with nsjail patterns with PID anomalies
+	 * @category Linux
+	 */
+	[[nodiscard]] static bool nsjail_proc_id() {
+	    std::ifstream status_file("/proc/self/status");
+	    std::string line;
+	    bool pid_match = false;
+	    bool ppid_match = false;
+	
+	    while (std::getline(status_file, line)) {
+	        if (line.find("Pid:") == 0) {
+	            std::string num_str = "";
+	            for (char ch : line) {
+	                if (isdigit(ch)) {
+	                    num_str += ch;
+	                }
+	            }
+	
+	            if (num_str.empty()) {
+	                return false;
+	            }
+	
+	            if (std::stoi(num_str) == 1) {
+	                pid_match = true;
+	            }
+	        }
+	
+	        if (line.find("PPid:") == 0) {
+	            std::string num_str = "";
+	            for (char ch : line) {
+	                if (isdigit(ch)) {
+	                    num_str += ch;
+	                }
+	            }
+	
+	            if (num_str.empty()) {
+	                return false;
+	            }
+	
+	            if (std::stoi(num_str) == 0) {
+	                ppid_match = true;
+	            }
+	        }
+	    }
+	
+	    if (pid_match && ppid_match) {
+            return core::add(brands::NSJAIL);
+        }
+
+        return false;
+	}
+
     // ADD NEW TECHNIQUE FUNCTION HERE
 
 
@@ -12501,6 +12529,7 @@ public: // START OF PUBLIC FUNCTIONS
             case AUDIO: return "AUDIO";
             case UNKNOWN_MANUFACTURER: return "UNKNOWN_MANUFACTURER";
             case OSXSAVE: return "OSXSAVE";
+			case NSJAIL_PID: return "NSJAIL_PID";
             // ADD NEW CASE HERE FOR NEW TECHNIQUE
             default: return "Unknown flag";
         }
@@ -12656,6 +12685,7 @@ public: // START OF PUBLIC FUNCTIONS
             { brands::AMD_SEV_ES, "VM encryptor" },
             { brands::AMD_SEV_SNP, "VM encryptor" },
             { brands::GCE, "Cloud VM service" },
+            { brands::NSJAIL, "Process isolator" },
         };
 
         auto it = type_table.find(brand_str.c_str());
@@ -12855,6 +12885,7 @@ std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard{
     { VM::brands::NEKO_PROJECT, 0 },
     { VM::brands::QIHOO, 0 },
     { VM::brands::NOIRVISOR, 0 },
+    { VM::brands::NSJAIL, 0 },
     { VM::brands::NULL_BRAND, 0 }
 };
 
@@ -13080,6 +13111,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::AUDIO, { 25, VM::check_audio } },
     { VM::UNKNOWN_MANUFACTURER, { 50, VM::unknown_manufacturer } },
     { VM::OSXSAVE, { 50, VM::osxsave } },
+	{ VM::NSJAIL_PID, { 75, VM::nsjail_proc_id } },
     // ADD NEW TECHNIQUE STRUCTURE HERE
 };
 

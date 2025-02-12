@@ -270,8 +270,9 @@ AMD SEV
 AMD SEV-ES
 AMD SEV-SNP
 Neko Project II
-Qihoo 360 Sandbox
 NoirVisor
+Qihoo 360 Sandbox
+nsjail
 )";
 
     std::exit(0);
@@ -389,6 +390,7 @@ bool is_unsupported(VM::enum_flags flag) {
 			case VM::AMD_THREAD_MISMATCH:
 			case VM::FILE_ACCESS_HISTORY:
             case VM::UNKNOWN_MANUFACTURER:
+			case VM::NSJAIL_PID:
             // ADD LINUX FLAG
             return false;
             default: return true;
@@ -672,6 +674,7 @@ std::string vm_description(const std::string& vm_brand) {
         { VM::brands::NEKO_PROJECT, "Neko Project II is an emulator designed for emulating PC-98 computers. They are a lineup of Japanese 16-bit and 32-bit personal computers manufactured by NEC from 1982 to 2003. While based on Intel processors, it uses an in-house architecture making it incompatible with IBM clones." },
         { VM::brands::NOIRVISOR, "NoirVisor is a hardware-accelerated hypervisor with support to complex functions and purposes. It is designed to support processors based on x86 architecture with hardware-accelerated virtualization feature. For example, Intel processors supporting Intel VT-x or AMD processors supporting AMD-V meet the requirement. It was made by Zero-Tang." },
         { VM::brands::QIHOO, "360 sandbox is a part of 360 Total Security. Similar to other sandbox software, it provides a virtualized environment where potentially malicious or untrusted programs can run without affecting the actual system. Qihoo 360 Sandbox is commonly used for testing unknown applications, analyzing malware behavior, and protecting users from zero-day threats." },
+        { VM::brands::NSJAIL, "nsjail is a process isolation tool for Linux. It utilizes Linux namespace subsystem, resource limits, and the seccomp-bpf syscall filters of the Linux kernel. It can be used for isolating networking services, CTF challenges, and containing invasive syscall-level OS fuzzers." },
         { VM::brands::NULL_BRAND, "Indicates no detectable virtualization brand. This result may occur on bare-metal systems, unsupported/obscure hypervisors, or when anti-detection techniques (e.g., VM escaping) are employed by the guest environment." }
     };
 
@@ -1017,7 +1020,7 @@ void general() {
 	checker(VM::FILE_ACCESS_HISTORY, "low file access count");
     checker(VM::UNKNOWN_MANUFACTURER, "unknown manufacturer ids");
     checker(VM::OSXSAVE, "xgetbv");
-
+	checker(VM::NSJAIL_PID, "nsjail PID");
     // ADD NEW TECHNIQUE CHECKER HERE
 
     std::printf("\n");
