@@ -4607,7 +4607,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */ 
 /* GPL */         for (i = 0; SetupDiEnumDeviceInfo(hDevInfo, i, &DeviceInfoData); i++)
 /* GPL */         {
-/* GPL */             while (!SetupDiGetDeviceRegistryPropertyA(hDevInfo, &DeviceInfoData, SPDRP_HARDWAREID,
+/* GPL */             while (!SetupDiGetDeviceRegistryProperty(hDevInfo, &DeviceInfoData, SPDRP_HARDWAREID,
 /* GPL */                 &dwPropertyRegDataType, (PBYTE)buffer, dwSize, &dwSize))
 /* GPL */             {
 /* GPL */                 if (GetLastError() == ERROR_INSUFFICIENT_BUFFER) {
@@ -12931,9 +12931,17 @@ std::vector<VM::u8> VM::technique_vector = []() -> std::vector<VM::u8> {
 // this value is incremented each time VM::add_custom is called
 VM::u16 VM::technique_count = base_technique_count;
 
+// this is initialised as empty, because this is where custom techniques can be added at runtime 
+std::vector<VM::core::custom_technique> VM::core::custom_table = {
+
+};
+
+#define table_t std::map<VM::enum_flags, VM::core::technique>
+
 // the 0~100 points are debatable, but I think it's fine how it is. Feel free to disagree.
 std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     // FORMAT: { VM::<ID>, { certainty%, function pointer } },
+    // START OF TECHNIQUE TABLE
     { VM::VMID, { 100, VM::vmid } },
     { VM::CPU_BRAND, { 50, VM::cpu_brand } },
     { VM::HYPERVISOR_BIT, { 100, VM::hypervisor_bit}} , 
@@ -13061,13 +13069,6 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     // ADD NEW TECHNIQUE STRUCTURE HERE
 };
 
-
-// this is initialised as empty, because this is where custom techniques can be added at runtime 
-std::vector<VM::core::custom_technique> VM::core::custom_table = {
-
-};
-
-#define table_t std::map<VM::enum_flags, VM::core::technique>
 
 // the reason why the map isn't directly initialized is due to potential 
 // SDK errors on windows combined with older C++ standards
