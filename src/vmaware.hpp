@@ -347,6 +347,7 @@
 #include <sstream>
 #include <bitset>
 #include <type_traits>
+#include <atomic>
 
 #if (WINDOWS)
 #include <windows.h>
@@ -723,6 +724,7 @@ public:
         static constexpr const char* NOIRVISOR = "NoirVisor";
         static constexpr const char* QIHOO = "Qihoo 360 Sandbox";
         static constexpr const char* NSJAIL = "nsjail";
+        static constexpr const char* COMPILER_EXPLORER = "Xen with nsjail (for Compiler Explorer)";
         static constexpr const char* NULL_BRAND = "Unknown";
     };
 
@@ -9638,7 +9640,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     __attribute__((no_sanitize("address", "leak", "thread", "undefined")))
 #endif
         static bool timer() {
-#if (ARM && !x86)
+#if (ARM || !x86)
         return false;
 #else
         u64 start, end, total_cycles = 0;
@@ -9708,10 +9710,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         // Take measurements under spammer load
         u64 measurement = 0;
-        int cpu_info[4];
         for (int i = 0; i < 1000; i++) {
             start = __rdtsc();
 #if (WINDOWS)
+            int cpu_info[4];
             __cpuid(cpu_info, 0);
 #elif (LINUX || APPLE)
             u32 eax = 0, ebx = 0, ecx = 0, edx = 0;
@@ -12070,6 +12072,10 @@ public: // START OF PUBLIC FUNCTIONS
         constexpr const char* TMP_AZURE = "Microsoft Azure Hyper-V";
         constexpr const char* TMP_NANOVISOR = "Xbox NanoVisor (Hyper-V)";
         constexpr const char* TMP_HYPERV_ARTIFACT = "Hyper-V artifact (not an actual VM)";
+
+        constexpr const char* TMP_NSJAIL = "nsjail";
+        constexpr const char* TMP_XEN = "Xen HVM";
+        constexpr const char* TMP_COMPILER_EXPLORER = "Xen with nsjail (for Compiler Explorer)";
 #else
         constexpr const char* TMP_QEMU = brands::QEMU;
         constexpr const char* TMP_KVM = brands::KVM;
@@ -12091,6 +12097,10 @@ public: // START OF PUBLIC FUNCTIONS
         constexpr const char* TMP_AZURE = brands::AZURE_HYPERV;
         constexpr const char* TMP_NANOVISOR = brands::NANOVISOR;
         constexpr const char* TMP_HYPERV_ARTIFACT = brands::HYPERV_ARTIFACT;
+
+        constexpr const char* TMP_NSJAIL = brands::NSJAIL;
+        constexpr const char* TMP_XEN = brands::XEN;
+        constexpr const char* TMP_COMPILER_EXPLORER = brands::COMPILER_EXPLORER;
 #endif
 
         // this is where all the RELEVANT brands are stored.
@@ -12209,6 +12219,10 @@ public: // START OF PUBLIC FUNCTIONS
         merge(TMP_VMWARE_HARD, TMP_ESX,         TMP_VMWARE_HARD);
         merge(TMP_VMWARE_HARD, TMP_GSX,         TMP_VMWARE_HARD);
         merge(TMP_VMWARE_HARD, TMP_WORKSTATION, TMP_VMWARE_HARD);
+
+        merge(TMP_NSJAIL, TMP_XEN, TMP_COMPILER_EXPLORER);
+
+
 
         // the brand element, which stores the NAME (const char*) and the SCORE (u8)
         using brand_element_t = std::pair<const char*, brand_score_t>;
@@ -12701,6 +12715,7 @@ public: // START OF PUBLIC FUNCTIONS
             { brands::AMD_SEV_SNP, "VM encryptor" },
             { brands::GCE, "Cloud VM service" },
             { brands::NSJAIL, "Process isolator" },
+            { brands::COMPILER_EXPLORER, "Type 1 hypervisor with process isolator" },
         };
 
         auto it = type_table.find(brand_str.c_str());
@@ -12901,6 +12916,7 @@ std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard{
     { VM::brands::QIHOO, 0 },
     { VM::brands::NOIRVISOR, 0 },
     { VM::brands::NSJAIL, 0 },
+    { VM::brands::COMPILER_EXPLORER, 0 },
     { VM::brands::NULL_BRAND, 0 }
 };
 

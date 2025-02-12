@@ -538,6 +538,7 @@ This is the table of all the brands the lib supports.
 | NoirVisor | `VM::brands::NOIRVISOR` | Hypervisor (type 1) |  |
 | Qihoo 360 Sandbox | `VM::brands::QIHOO` | Sandbox |  |
 | nsjail | `VM::brands::NSJAIL` | Process isolator |  |
+| Xen with nsjail (for Compiler Explorer) | `VM::brands::COMPILER_EXPLORER` | Type 1 hypervisor with process isolator |  |
 
 <br>
 

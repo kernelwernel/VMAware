@@ -273,6 +273,7 @@ Neko Project II
 NoirVisor
 Qihoo 360 Sandbox
 nsjail
+Xen with nsjail (for Compiler Explorer)
 )";
 
     std::exit(0);
@@ -674,6 +675,7 @@ std::string vm_description(const std::string& vm_brand) {
         { VM::brands::NOIRVISOR, "NoirVisor is a hardware-accelerated hypervisor with support to complex functions and purposes. It is designed to support processors based on x86 architecture with hardware-accelerated virtualization feature. For example, Intel processors supporting Intel VT-x or AMD processors supporting AMD-V meet the requirement. It was made by Zero-Tang." },
         { VM::brands::QIHOO, "360 sandbox is a part of 360 Total Security. Similar to other sandbox software, it provides a virtualized environment where potentially malicious or untrusted programs can run without affecting the actual system. Qihoo 360 Sandbox is commonly used for testing unknown applications, analyzing malware behavior, and protecting users from zero-day threats." },
         { VM::brands::NSJAIL, "nsjail is a process isolation tool for Linux. It utilizes Linux namespace subsystem, resource limits, and the seccomp-bpf syscall filters of the Linux kernel. It can be used for isolating networking services, CTF challenges, and containing invasive syscall-level OS fuzzers." },
+        { VM::brands::COMPILER_EXPLORER, "Compiler Explorer is an interactive web compiler that supports numerous languages. The backend uses nsjail for their executor to isolate processes, while an additional hypervisor layer is used called Xen."},
         { VM::brands::NULL_BRAND, "Indicates no detectable virtualization brand. This result may occur on bare-metal systems, unsupported/obscure hypervisors, or when anti-detection techniques (e.g., VM escaping) are employed by the guest environment." }
     };
 
