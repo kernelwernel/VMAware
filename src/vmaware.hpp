@@ -9738,6 +9738,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // Windows-specific QPC check: Compare trapping vs non-trapping instruction timing
         LARGE_INTEGER startQPC, endQPC;
         QueryPerformanceCounter(&startQPC);
+        int cpu_info[4];
         for (int i = 0; i < 100000; i++) {
             __cpuid(cpu_info, 0);
         }
