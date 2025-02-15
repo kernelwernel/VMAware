@@ -434,7 +434,6 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::NUMBER_OF_CORES` | Check for number of cores | Windows | 50% |  |  |  |  |
 | `VM::ACPI_TEMPERATURE` | Check for device's temperature | Windows | 25% |  |  |  |  |
 | `VM::PROCESSOR_ID` | Check if any processor has an empty Processor ID using SMBIOS data | Windows | 25% |  |  |  |  |
-| `VM::VMWARE_HARDENER` | Checks for VMwareHardenerLoader's method of patching firmware detection by setting its signatures with "7" | Windows | 60% |  |  |  |  |
 | `VM::SYS_QEMU` | Check for existence of "qemu_fw_cfg" directories within /sys/module and /sys/firmware | Linux | 70% |  |  |  |  |
 | `VM::LSHW_QEMU` | Check for QEMU string instances with lshw command | Linux | 80% |  |  |  |  |
 | `VM::VIRTUAL_PROCESSORS` | Check if the number of maximum virtual processors matches the maximum number of logical processors | Windows | 50% |  |  |  |  |
@@ -445,7 +444,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::NATIVE_VHD` | Checks if the OS was booted from a VHD container |  | 100% |  |  |  |  |
 | `VM::NATIVE_VHD` | Check for OS being booted from a VHD container | Windows | 100% |  |  |  |  |
 | `VM::VIRTUAL_REGISTRY` | Check for particular object directory which is present in Sandboxie virtual environment but not in usual host systems | Windows | 65% |  |  |  |  |
-| `VM::FIRMWARE` | Check for VM signatures in firmware, while ensuring the BIOS serial is valid | Windows | 90% |  |  |  |  |
+| `VM::FIRMWARE` | Check for VM signatures and patched strings by hardeners in firmware, while ensuring the BIOS serial is valid | Windows | 90% |  |  |  |  |
 | `VM::FILE_ACCESS_HISTORY` | Check if the number of accessed files are too low for a human-managed environment | Linux | 15% |  |  |  |  |
 | `VM::AUDIO` | Check if audio device is present | Windows | 25% |  |  |  |  |
 | `VM::UNKNOWN_MANUFACTURER` | Check if the CPU manufacturer is not known |  | 50% |  |  |  |  |

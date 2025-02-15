@@ -238,7 +238,7 @@ You can view the full docs [here](docs/documentation.md). All the details such a
 
 > I would've made it strictly MIT so proprietary software can make use of the library, but some of the techniques employed are from GPL projects, and I have no choice but to use the same license for legal reasons. 
 > 
-> This gave me an idea to make an MIT version without all of the GPL code so it can also be used without forcing your code to be open source. It should be noted that the MIT version removes <b>7</b> techniques out of 118 (as of 2.0 version), and the lesser the number of techniques, the less accurate the overall result might be.
+> This gave me an idea to make an MIT version without all of the GPL code so it can also be used without forcing your code to be open source. It should be noted that the MIT version removes <b>7</b> techniques out of 117 (as of 2.0 version), and the lesser the number of techniques, the less accurate the overall result might be.
 
 </details>
 

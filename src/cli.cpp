@@ -465,7 +465,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::PROCESSOR_ID:
             case VM::POWER_CAPABILITIES:
             case VM::SETUPAPI_DISK: 
-            case VM::VMWARE_HARDENER:
             case VM::VIRTUAL_PROCESSORS:
             case VM::HYPERV_QUERY:
             case VM::BAD_POOLS:
@@ -985,7 +984,6 @@ void general() {
     checker(VM::PROCESSOR_ID, "processor ID");
     checker(VM::POWER_CAPABILITIES, "Power capabilities");
     checker(VM::SETUPAPI_DISK, "SETUPDI diskdrive");
-    checker(VM::VMWARE_HARDENER, "VMware hardener");
 	checker(VM::SYS_QEMU, "QEMU in /sys");
 	checker(VM::LSHW_QEMU, "QEMU in lshw output");
     checker(VM::VIRTUAL_PROCESSORS, "virtual processors");
