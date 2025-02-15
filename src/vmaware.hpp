@@ -25,14 +25,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 469
- * - struct for internal cpu operations        => line 745
- * - struct for internal memoization           => line 1205
- * - struct for internal utility functions     => line 1330
- * - struct for internal core components       => line 10934
- * - start of VM detection technique list      => line 2868
- * - start of public VM detection functions    => line 11335
- * - start of externally defined variables     => line 12242
+ * - enums for publicly accessible techniques  => line 464
+ * - struct for internal cpu operations        => line 740
+ * - struct for internal memoization           => line 1200
+ * - struct for internal utility functions     => line 1325
+ * - struct for internal core components       => line 10946
+ * - start of VM detection technique list      => line 2863
+ * - start of public VM detection functions    => line 11347
+ * - start of externally defined variables     => line 12254
  *
  *
  * ============================== EXAMPLE ===================================
@@ -106,11 +106,6 @@
  *        checks, system commands, HDD sizes, RAM sizes, debugs, process checking, 
  *        OS queries, Hyper-X, and so on. (It should be mentioned that this is 
  *        probably the least enjoyable part of the lib to read, since it's really messy)
- * 
- *    - wmi module:
- *        This is a Windows-specific module that acts as a wrapper for WMI queries.
- *        WMI is an interface for the programmer to interact with the Windows system
- *        at a deeper level, which the library uses occasionally. 
  * 
  * 
  * Thirdly, I'll explain in this section how all of these facets of the lib interact with 
@@ -2382,7 +2377,7 @@ public:
         /**
          * @brief Finds the process ID (PID) of a service by its name.
          *
-         * This function queries the Service Control Manage to retrieve the process ID of a service running on the system. 
+         * This function queries the Service Control Manager to retrieve the process ID of a service running on the system. 
          * This is needed when trying to access processes with the "svchost" name.
          *
          * @param serviceName The name of the service to search for.
@@ -8342,15 +8337,26 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 continue;
             }
 
-            BYTE stackBuf[512];
-            auto buffer = (header.Size <= sizeof(stackBuf))
-                ? stackBuf
-                : static_cast<BYTE*>(LocalAlloc(LMEM_FIXED, header.Size));
+            BYTE stackBuf[512]{};
+            BYTE* buffer = nullptr;
+
+            if (header.Size <= sizeof(stackBuf)) {
+                buffer = stackBuf;
+            }
+            else {
+                buffer = static_cast<BYTE*>(LocalAlloc(LMEM_FIXED, header.Size));
+                if (buffer == nullptr) {
+                    CloseHandle(hDevice);
+                    continue;
+                }
+            }
 
             if (!DeviceIoControl(hDevice, IOCTL_STORAGE_QUERY_PROPERTY,
                 &query, sizeof(query), buffer, header.Size,
                 &bytesReturned, nullptr)) {
-                if (buffer != stackBuf) LocalFree(buffer);
+                if (buffer != stackBuf) {
+                    LocalFree(buffer);
+                }
                 CloseHandle(hDevice);
                 continue;
             }
@@ -8360,7 +8366,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             if (serialOffset > 0 && serialOffset < header.Size) {
                 const char* serial = reinterpret_cast<const char*>(buffer + serialOffset);
-                const size_t serialLen = strnlen(serial, header.Size - serialOffset);
+                const size_t serialLen = strnlen(serial, header.Size - static_cast<size_t>(serialOffset));
 
                 char upperSerial[256];
                 const size_t copyLen = (serialLen < sizeof(upperSerial))
@@ -8375,7 +8381,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
                 if (is_vbox_serial(upperSerial, copyLen)) {
                     result = core::add(brands::VBOX);
-                    if (buffer != stackBuf) LocalFree(buffer);
+                    if (buffer != stackBuf) {
+                        LocalFree(buffer);
+                    }
                     CloseHandle(hDevice);
                     return result;
                 }
@@ -8383,13 +8391,17 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 if (copyLen == vmware_serial_len &&
                     _strnicmp(upperSerial, vmware_serial, vmware_serial_len) == 0) {
                     result = core::add(brands::VMWARE_WORKSTATION);
-                    if (buffer != stackBuf) LocalFree(buffer);
+                    if (buffer != stackBuf) {
+                        LocalFree(buffer);
+                    }
                     CloseHandle(hDevice);
                     return result;
                 }
             }
 
-            if (buffer != stackBuf) LocalFree(buffer);
+            if (buffer != stackBuf) {
+                LocalFree(buffer);
+            }
             CloseHandle(hDevice);
         }
 
