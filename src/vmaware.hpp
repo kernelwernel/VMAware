@@ -362,6 +362,7 @@
 #include <mmdeviceapi.h>
 #include <Functiondiscoverykeys_devpkey.h>
 #include <mmsystem.h>
+#include <queue>
 
 #pragma comment(lib, "winmm.lib")
 #pragma comment(lib, "setupapi.lib")
@@ -2261,40 +2262,73 @@ public:
          * This function adjusts the token privileges to enable debugging rights,
          * which are required for the lib to access the memory of certain processes.
          */
-        [[nodiscard]] static void EnableDebugPrivilege() {
-            HANDLE hToken;
-            TOKEN_PRIVILEGES tp{};
-            LUID luid;
-
+        static bool SetDebugPrivilege(bool enable) {
+            HANDLE hToken = nullptr;
             if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &hToken)) {
-                return;
+                return false;
             }
 
-            if (!LookupPrivilegeValue(NULL, SE_DEBUG_NAME, &luid)) {
+            LUID debugLuid;
+            if (!LookupPrivilegeValue(nullptr, SE_DEBUG_NAME, &debugLuid)) {
                 CloseHandle(hToken);
-                return;
+                return false;
             }
 
+            DWORD dwSize = 0;
+            GetTokenInformation(hToken, TokenPrivileges, nullptr, 0, &dwSize);
+            if (dwSize == 0) {
+                CloseHandle(hToken);
+                return false;
+            }
+
+            std::vector<BYTE> buffer(dwSize);
+            if (!GetTokenInformation(hToken, TokenPrivileges, buffer.data(), dwSize, &dwSize)) {
+                CloseHandle(hToken);
+                return false;
+            }
+
+            auto* pPrivileges = reinterpret_cast<TOKEN_PRIVILEGES*>(buffer.data());
+            bool found = false;
+            for (DWORD i = 0; i < pPrivileges->PrivilegeCount; i++) {
+                if (pPrivileges->Privileges[i].Luid.LowPart == debugLuid.LowPart &&
+                    pPrivileges->Privileges[i].Luid.HighPart == debugLuid.HighPart)
+                {
+                    bool isEnabled = (pPrivileges->Privileges[i].Attributes & SE_PRIVILEGE_ENABLED) != 0;
+                    if ((enable && isEnabled) || (!enable && !isEnabled)) {
+                        CloseHandle(hToken);
+                        return false;
+                    }
+                    found = true;
+                    break;
+                }
+            }
+
+            if (!found && !enable) {
+                CloseHandle(hToken);
+                return false;
+            }
+
+            TOKEN_PRIVILEGES tp{};
             tp.PrivilegeCount = 1;
-            tp.Privileges[0].Luid = luid;
-            tp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+            tp.Privileges[0].Luid = debugLuid;
+            tp.Privileges[0].Attributes = enable ? SE_PRIVILEGE_ENABLED : 0;
 
-            if (!AdjustTokenPrivileges(hToken, FALSE, &tp, sizeof(TOKEN_PRIVILEGES), NULL, NULL)) {
+            if (!AdjustTokenPrivileges(hToken, FALSE, &tp, sizeof(tp), nullptr, nullptr)) {
                 CloseHandle(hToken);
-                return;
+                return false;
             }
-
             if (GetLastError() == ERROR_NOT_ALL_ASSIGNED) {
                 CloseHandle(hToken);
-                return;
+                return false;
             }
 
             CloseHandle(hToken);
+            return true;
         }
 
 
         /**
-         * @brief Searches for a wide-character substring within a buffer using the Knuth-Morris-Pratt algorithm.
+         * @brief Searches for a wide-character substring within a buffer using the Knuth-Morris-Pratt algorithm. Not used by the moment.
          *
          * This function performs an efficient substring search to find a wide-character string (searchString)
          * inside another wide-character string (buffer) using the Knuth-Morris-Pratt (KMP) algorithm.
@@ -2321,37 +2355,24 @@ public:
 #endif
             if (searchLength > bufferSize) return false;
 
-            // KMP algorithm
             std::vector<size_t> lps(searchLength, 0);
             size_t j = 0;
             for (size_t i = 1; i < searchLength; ++i) {
                 while (j > 0
-#if CPP >= 17
                     && searchString[i] != searchString[j]
-#else
-                    && searchString[i] != searchString[j]
-#endif
                     ) {
                     j = lps[j - 1];
                 }
-#if CPP >= 17
                 if (searchString[i] == searchString[j]) {
-#else
-                if (searchString[i] == searchString[j]) {
-#endif
                     ++j;
                 }
                 lps[i] = j;
-                }
+            }
 
             size_t i = 0; // buffer index
             j = 0;        // searchString index
             while (i < bufferSize) {
-#if CPP >= 17
                 if (buffer[i] == searchString[j]) {
-#else
-                if (buffer[i] == searchString[j]) {
-#endif
                     ++i;
                     ++j;
                     if (j == searchLength) {
@@ -2364,7 +2385,7 @@ public:
                 else {
                     ++i;
                 }
-                }
+            }
 
             return false;
         }
@@ -8552,30 +8573,85 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!WINDOWS)
         return false;
 #else
-#if CPP >= 17
-        using namespace std::literals; // For string_view literals
-        auto scan_service_for_brands = [](const std::wstring& serviceName, const std::vector<std::pair<std::wstring_view, const char*>>& checks) -> std::optional<const char*> {
-#else
         auto scan_service_for_brands = [](const std::wstring& serviceName, const std::vector<std::pair<std::wstring, const char*>>& checks, const char*& result) -> bool {
-#endif
             const DWORD pid = util::FindProcessIdByServiceName(serviceName);
             if (pid == 0) {
                 return false;
             }
 
-            util::EnableDebugPrivilege();
+            bool priv_cleanup = true;
+            if (!util::SetDebugPrivilege(true)) {
+                priv_cleanup = false;
+            }
 
             const HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid);
             if (!hProcess) {
+                if (priv_cleanup) util::SetDebugPrivilege(false);
                 return false;
             }
 
+            size_t minPatternLength = SIZE_MAX;
+            for (const auto& check : checks) {
+                minPatternLength = ((minPatternLength) < (check.first.size())) ? (minPatternLength) : (check.first.size());
+            }
+
+            // Aho-Corasick trie structure
+            struct Node {
+                std::map<wchar_t, Node*> children;
+                Node* failure = nullptr;
+                const char* brand = nullptr;
+            };
+            Node* root = new Node();
+            std::vector<Node*> nodesToDelete;
+
+            // Build the trie
+            for (const auto& check : checks) {
+                const std::wstring& str = check.first;
+                const char* brand = check.second;
+                Node* current = root;
+                for (wchar_t c : str) {
+                    if (current->children.find(c) == current->children.end()) {
+                        Node* newNode = new Node();
+                        current->children[c] = newNode;
+                        nodesToDelete.push_back(newNode);
+                    }
+                    current = current->children[c];
+                }
+                current->brand = brand;
+            }
+
+            // failure links using BFS
+            std::queue<Node*> q;
+            for (auto& child : root->children) {
+                child.second->failure = root;
+                q.push(child.second);
+            }
+
+            while (!q.empty()) {
+                Node* current = q.front();
+                q.pop();
+
+                for (auto& child : current->children) {
+                    wchar_t c = child.first;
+                    Node* node = child.second;
+                    q.push(node);
+
+                    Node* failure = current->failure;
+                    while (failure && failure->children.find(c) == failure->children.end()) {
+                        failure = failure->failure;
+                    }
+                    node->failure = (failure) ? failure->children[c] : root;
+                    if (!node->brand && node->failure->brand) {
+                        node->brand = node->failure->brand;
+                    }
+                }
+            }
+
+            bool found = false;
             MEMORY_BASIC_INFORMATION mbi{};
             uintptr_t address = 0x1000;
-            bool found = false;
-            const char* foundBrand = nullptr;
 
-            while (!found && VirtualQueryEx(hProcess, reinterpret_cast<LPCVOID>(address), &mbi, sizeof(mbi)) == sizeof(mbi)) {
+            while (VirtualQueryEx(hProcess, reinterpret_cast<LPCVOID>(address), &mbi, sizeof(mbi)) == sizeof(mbi)) {
                 const uintptr_t regionBase = reinterpret_cast<uintptr_t>(mbi.BaseAddress);
                 if (regionBase == 0) {
                     address += mbi.RegionSize;
@@ -8584,111 +8660,50 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
                 if ((mbi.State == MEM_COMMIT) &&
                     (mbi.Protect & (PAGE_READWRITE | PAGE_EXECUTE_READWRITE)) &&
-                    !(mbi.Protect & (PAGE_GUARD | PAGE_NOACCESS)))
-                {
-                    const size_t regionSize = static_cast<size_t>(mbi.RegionSize);
-                    std::vector<wchar_t> buffer(regionSize / sizeof(wchar_t));
+                    !(mbi.Protect & (PAGE_GUARD | PAGE_NOACCESS)) &&
+                    (mbi.RegionSize >= minPatternLength * sizeof(wchar_t))) {
+
+                    const size_t bufferSize = static_cast<size_t>(mbi.RegionSize);
+                    std::vector<wchar_t> buffer(bufferSize / sizeof(wchar_t));
                     SIZE_T bytesRead = 0;
 
-                    if (ReadProcessMemory(hProcess, reinterpret_cast<LPCVOID>(regionBase), buffer.data(), buffer.size() * sizeof(wchar_t), &bytesRead) && bytesRead > 0) {
+                    if (ReadProcessMemory(hProcess, reinterpret_cast<LPCVOID>(regionBase), buffer.data(), bufferSize, &bytesRead) && bytesRead > 0) {
                         const size_t charCount = bytesRead / sizeof(wchar_t);
-#if CPP >= 17
-                        std::wstring_view buffer_view(buffer.data(), charCount);
-                        for (const auto& [searchString, brand] : checks) {
-                            if (util::findSubstring(buffer_view, searchString)) {
-#else
-                        for (const auto& check_pair : checks) {
-                            const std::wstring& searchString = check_pair.first;
-                            const char* brand = check_pair.second;
-                            if (util::findSubstring(buffer.data(), charCount, searchString)) {
-#endif
+                        if (charCount < minPatternLength) continue;
+
+                        Node* current = root;
+                        for (size_t i = 0; i < charCount; ++i) {
+                            wchar_t c = buffer[i];
+                            while (current != root && current->children.find(c) == current->children.end()) {
+                                current = current->failure;
+                            }
+                            if (current->children.find(c) != current->children.end()) {
+                                current = current->children[c];
+                            }
+
+                            if (current->brand) {
+                                result = current->brand;
                                 found = true;
-                                foundBrand = brand;
                                 break;
                             }
                         }
-                            }
-                        }
-
-                address = regionBase + mbi.RegionSize;
+                        if (found) break;
                     }
+                }
+                address = regionBase + mbi.RegionSize;
+            }
 
+            for (Node* node : nodesToDelete) delete node;
+            delete root;
             CloseHandle(hProcess);
-
-#if CPP >= 17
-            return found ? std::optional<const char*>(foundBrand) : std::nullopt;
-#else
-            if (found) result = foundBrand;
+            if (priv_cleanup) util::SetDebugPrivilege(false);
             return found;
-#endif
-                };
+            };
 
-        // CDPSvc check for manufacturer
-#if CPP >= 17
-        if (const auto brand = scan_service_for_brands(L"CDPSvc", { { L"VMware, Inc."sv, VM::brands::VMWARE } })) {
-            return core::add(*brand);
-        }
-#else
         const char* cdpsvcBrand;
         if (scan_service_for_brands(L"CDPSvc", { { L"VMware, Inc.", VM::brands::VMWARE } }, cdpsvcBrand)) {
             return core::add(cdpsvcBrand);
         }
-#endif
-
-/*      // Diagnostic Policy Service checks
-#if CPP >= 17
-        const std::vector<std::pair<std::wstring_view, const char*>> dps_checks = {
-            { L"VBoxTray"sv, VM::brands::VBOX },
-            { L"joeboxserver.exe"sv, VM::brands::JOEBOX },
-            { L"joeboxcontrol.exe"sv, VM::brands::JOEBOX },
-            { L"prl_cc.exe"sv, VM::brands::PARALLELS },
-            { L"prl_tools.exe"sv, VM::brands::PARALLELS },
-            { L"vboxservice.exe"sv, VM::brands::VBOX },
-            { L"vboxtray.exe"sv, VM::brands::VBOX },
-            { L"vmsrvc.exe"sv, VM::brands::VPC },
-            { L"vmusrvc.exe"sv, VM::brands::VPC },
-            { L"xenservice.exe"sv, VM::brands::XEN },
-            { L"xsvc_depriv.exe"sv, VM::brands::XEN },
-            { L"vm3dservice.exe"sv, VM::brands::VMWARE },
-            { L"VGAuthService.exe"sv, VM::brands::VMWARE },
-            { L"vmtoolsd.exe"sv, VM::brands::VMWARE },
-            { L"qemu-ga.exe"sv, VM::brands::QEMU },
-            { L"vdagent.exe"sv, VM::brands::QEMU },
-            { L"vdservice.exe"sv, VM::brands::QEMU }
-        };
-#else
-        const std::vector<std::pair<std::wstring, const char*>> dps_checks = {
-            { L"VBoxTray", VM::brands::VBOX },
-            { L"joeboxserver.exe", VM::brands::JOEBOX },
-            { L"joeboxcontrol.exe", VM::brands::JOEBOX },
-            { L"prl_cc.exe", VM::brands::PARALLELS },
-            { L"prl_tools.exe", VM::brands::PARALLELS },
-            { L"vboxservice.exe", VM::brands::VBOX },
-            { L"vboxtray.exe", VM::brands::VBOX },
-            { L"vmsrvc.exe", VM::brands::VPC },
-            { L"vmusrvc.exe", VM::brands::VPC },
-            { L"xenservice.exe", VM::brands::XEN },
-            { L"xsvc_depriv.exe", VM::brands::XEN },
-            { L"vm3dservice.exe", VM::brands::VMWARE },
-            { L"VGAuthService.exe", VM::brands::VMWARE },
-            { L"vmtoolsd.exe", VM::brands::VMWARE },
-            { L"qemu-ga.exe", VM::brands::QEMU },
-            { L"vdagent.exe", VM::brands::QEMU },
-            { L"vdservice.exe", VM::brands::QEMU }
-        };
-#endif
-
-#if CPP >= 17
-        if (const auto brand = scan_service_for_brands(L"DPS", dps_checks)) {
-            return core::add(*brand);
-        }
-#else
-        const char* dpsBrand;
-        if (scan_service_for_brands(L"DPS", dps_checks, dpsBrand)) {
-            return core::add(dpsBrand);
-        }
-#endif
-*/
         return false;
 #endif
     }

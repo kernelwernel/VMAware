@@ -20,7 +20,6 @@
 - [ ] implement techniques from here https://www.cyberciti.biz/faq/linux-determine-virtualization-technology-command/
 - [ ] implement techniques from virt-what
 - [ ] https://cloud.google.com/compute/docs/instances/detect-compute-engine
-- [ ] add WMI memo line details in sections category of the banner 
 - [ ] update the updater.py script and fix it
 
 # Distant plans
