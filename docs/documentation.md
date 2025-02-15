@@ -366,11 +366,8 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::LINUX_USER_HOST` | Check for default VM username and hostname for linux | Linux | 10% |  |  |  |  |
 | `VM::GAMARUE` | Check for Gamarue ransomware technique which compares VM-specific Window product IDs | Windows | 10% |  |  |  |  |
 | `VM::VMID_0X4` | Check if the CPU manufacturer ID matches that of a VM brand with leaf 0x40000000 |  | 100% |  |  |  |  |
-| `VM::QEMU_BRAND` | Match for QEMU CPU brands with "QEMU Virtual CPU" string |  | 100% |  |  |  |  |
 | `VM::BOCHS_CPU` | Check for various Bochs-related emulation oversights through CPU checks |  | 100% |  |  |  |  |
-| `VM::BIOS_SERIAL` | Check if the BIOS serial is valid (null = VM) | Windows | 60% |  |  |  |  |
-| `VM::VBOX_SHARED_FOLDERS` | Check for VirtualBox-specific string for shared folder ID | Windows | 70% |  |  |  |  |
-| `VM::MSSMBIOS` | Check MSSMBIOS registry for VM-specific strings | Windows | 100% |  |  |  |  |
+| `VM::MSSMBIOS` | Check MSSMBIOS registry for VM-specific signatures | Windows | 100% |  |  |  |  |
 | `VM::MAC_MEMSIZE` | Check if memory is too low for MacOS system | MacOS | 15% |  |  |  |  |
 | `VM::MAC_IOKIT` | Check MacOS' IO kit registry for VM-specific strings | MacOS | 100% |  |  |  |  |
 | `VM::IOREG_GREP` | Check for VM-strings in ioreg commands for MacOS | MacOS | 100% |  |  |  |  |
@@ -410,8 +407,6 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::HYPERV_BITMASK` | Check for Hyper-V CPUID bitmask range for reserved values |  | 20% |  |  |  |  |
 | `VM::KVM_BITMASK` | Check for KVM CPUID bitmask range for reserved values |  | 40% |  |  |  |  |
 | `VM::KGT_SIGNATURE` | Check for Intel KGT (Trusty branch) hypervisor signature in CPUID |  | 80% |  |  |  |  |
-| `VM::VMWARE_DMI` | Check for VMware DMI strings in BIOS serial number | Windows | 40% |  |  |  |  |
-| `VM::VM_EVENT_LOGS` | Check for presence of VMs in the Windows Event Logs | Windows | 50% |  |  |  |  |
 | `VM::QEMU_VIRTUAL_DMI` | Check for presence of QEMU in the /sys/devices/virtual/dmi/id directory | Linux | 40% |  |  |  |  |
 | `VM::QEMU_USB` | Check for presence of QEMU in the /sys/kernel/debug/usb/devices directory | Linux | 20% |  |  |  |  |
 | `VM::HYPERVISOR_DIR` | Check for presence of any files in /sys/hypervisor directory | Linux | 20% |  |  |  |  |
@@ -430,19 +425,15 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::DRIVER_NAMES` | Check for VM-specific names for drivers | Windows | 100% |  |  |  |  |
 | `VM::VM_SIDT` | Check for unknown IDT base address | Windows | 100% |  |  |  |  |
 | `VM::HDD_SERIAL` | Check for HDD serial number | Windows | 100% |  |  |  |  |
-| `VM::PORT_CONNECTORS` | Check for physical connection ports | Windows | 25% |  |  |  |  |
-| `VM::VM_HDD` | Check for VM related keywords in HDD models | Windows | 100% |  |  |  |  |
-| `VM::ACPI_REGISTRY` | Check for VM related strings in ACPI data | Windows | 100% |  |  |  |  |
+| `VM::PORT_CONNECTORS` | Check for physical connection ports | Windows | 25% |  |  |  | This technique is known to false flag on devices like Surface Pro |
 | `VM::GPU_NAME` | Check for VM specific device names in GPUs | Windows | 100% |  |  |  |  |
 | `VM::VM_DEVICES` | Check for VM-specific devices | Windows | 45% |  |  |  |  |
 | `VM::VM_MEMORY` | Check for specific VM memory traces in certain processes | Windows | 65% |  |  |  |  |
 | `VM::IDT_GDT_MISMATCH` | Check if the IDT and GDT limit addresses mismatch between different CPU cores | Windows | 50% | Admin |  |  |  |
 | `VM::PROCESSOR_NUMBER` | Check for number of processors | Windows | 50% |  |  |  |  |
 | `VM::NUMBER_OF_CORES` | Check for number of cores | Windows | 50% |  |  |  |  |
-| `VM::WMI_MODEL` | Check for device's model using WMI | Windows | 100% |  |  |  |  |
-| `VM::WMI_MANUFACTURER` | Check for device's manufacturer using WMI | Windows | 100% |  |  |  |  |
-| `VM::WMI_TEMPERATURE` | Check for device's temperature | Windows | 25% | Admin |  |  |  |
-| `VM::PROCESSOR_ID` | Check for empty processor ids using WMI | Windows | 25% |  |  |  |  |
+| `VM::ACPI_TEMPERATURE` | Check for device's temperature | Windows | 25% |  |  |  |  |
+| `VM::PROCESSOR_ID` | Check if any processor has an empty Processor ID using SMBIOS data | Windows | 25% |  |  |  |  |
 | `VM::VMWARE_HARDENER` | Checks for VMwareHardenerLoader's method of patching firmware detection by setting its signatures with "7" | Windows | 60% |  |  |  |  |
 | `VM::SYS_QEMU` | Check for existence of "qemu_fw_cfg" directories within /sys/module and /sys/firmware | Linux | 70% |  |  |  |  |
 | `VM::LSHW_QEMU` | Check for QEMU string instances with lshw command | Linux | 80% |  |  |  |  |
@@ -454,11 +445,13 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::NATIVE_VHD` | Checks if the OS was booted from a VHD container |  | 100% |  |  |  |  |
 | `VM::NATIVE_VHD` | Check for OS being booted from a VHD container | Windows | 100% |  |  |  |  |
 | `VM::VIRTUAL_REGISTRY` | Check for particular object directory which is present in Sandboxie virtual environment but not in usual host systems | Windows | 65% |  |  |  |  |
-| `VM::FIRMWARE_SCAN` | Check for VM signatures in firmware | Windows | 90% |  |  |  |  |
+| `VM::FIRMWARE` | Check for VM signatures in firmware, while ensuring the BIOS serial is valid | Windows | 90% |  |  |  |  |
 | `VM::FILE_ACCESS_HISTORY` | Check if the number of accessed files are too low for a human-managed environment | Linux | 15% |  |  |  |  |
 | `VM::AUDIO` | Check if audio device is present | Windows | 25% |  |  |  |  |
 | `VM::UNKNOWN_MANUFACTURER` | Check if the CPU manufacturer is not known |  | 50% |  |  |  |  |
 | `VM::OSXSAVE` | Check if running xgetbv in the XCR0 extended feature register triggers an exception | Windows | 50% |  |  |  |  |
+| `VM::NSJAIL_PID` | Check if process status matches with nsjail patterns with PID anomalies | Linux | 75% |  |  |  |  |
+<!-- ADD TECHNIQUE DETAILS HERE -->
 
 <br>
 
@@ -535,6 +528,8 @@ This is the table of all the brands the lib supports.
 | Google Compute Engine (KVM) | `VM::brands::GCE` | Cloud VM service |  |
 | NoirVisor | `VM::brands::NOIRVISOR` | Hypervisor (type 1) |  |
 | Qihoo 360 Sandbox | `VM::brands::QIHOO` | Sandbox |  |
+| nsjail | `VM::brands::NSJAIL` | Process isolator |  |
+| Xen with nsjail (for Compiler Explorer) | `VM::brands::COMPILER_EXPLORER` | Type 1 hypervisor with process isolator |  |
 
 <br>
 

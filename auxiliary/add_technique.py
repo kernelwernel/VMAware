@@ -306,7 +306,7 @@ def write_header(options):
                     str(options.score) + 
                     ", VM::" + 
                     options.function_name +
-                    ", false } },\n"
+                    " } },\n"
                 )
             else:
                 new_code.append(
@@ -399,6 +399,7 @@ def write_docs(options):
         lines = file.readlines()
 
     new_docs = []
+    updated = False
 
     for line in lines:
         # if the line is empty, skip
@@ -406,7 +407,7 @@ def write_docs(options):
             new_code.append(line)
             continue
 
-        if "<!-- ADD DETAILS HERE -->" in line:
+        if "<!-- ADD TECHNIQUE DETAILS HERE -->" in line:
             query_list = []
 
             query_list.append("`VM::" + options.enum_name + "`")
@@ -450,11 +451,14 @@ def write_docs(options):
             query = "| " + " | ".join(query_list) + " |"
 
             new_docs.append(query + "\n")
+            updated = True
 
         
         # add the line in the buffer array
         new_docs.append(line)
 
+    if updated == False:
+        raise ValueError("Docs has not found the keyword breakpoint")
 
     # commit the new changes from the buffer array
     with open("../docs/documentation.md", "w") as file:

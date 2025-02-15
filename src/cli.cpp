@@ -270,8 +270,10 @@ AMD SEV
 AMD SEV-ES
 AMD SEV-SNP
 Neko Project II
-Qihoo 360 Sandbox
 NoirVisor
+Qihoo 360 Sandbox
+nsjail
+Xen with nsjail (for Compiler Explorer)
 )";
 
     std::exit(0);
@@ -351,7 +353,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::VBOX_DEFAULT:
             case VM::LINUX_USER_HOST:
             case VM::VMID_0X4:
-            case VM::QEMU_BRAND:
             case VM::BOCHS_CPU:
             case VM::QEMU_GA:
             case VM::SIDT:
@@ -389,6 +390,7 @@ bool is_unsupported(VM::enum_flags flag) {
 			case VM::AMD_THREAD_MISMATCH:
 			case VM::FILE_ACCESS_HISTORY:
             case VM::UNKNOWN_MANUFACTURER:
+			case VM::NSJAIL_PID:
             // ADD LINUX FLAG
             return false;
             default: return true;
@@ -419,10 +421,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::VM_PROCESSES:
             case VM::GAMARUE:
             case VM::VMID_0X4:
-            case VM::QEMU_BRAND:
             case VM::BOCHS_CPU:
-            case VM::BIOS_SERIAL:
-            case VM::VBOX_SHARED_FOLDERS:
             case VM::MSSMBIOS:
             case VM::HKLM_REGISTRIES:
             case VM::VPC_INVALID:
@@ -453,22 +452,16 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::HYPERV_BITMASK:
             case VM::KVM_BITMASK:
             case VM::KGT_SIGNATURE:
-            case VM::VMWARE_DMI:
-            case VM::VM_EVENT_LOGS:
             case VM::DRIVER_NAMES:
             case VM::VM_SIDT:
             case VM::HDD_SERIAL:
             case VM::PORT_CONNECTORS:
-            case VM::VM_HDD:
-            case VM::ACPI_REGISTRY:
             case VM::GPU_NAME:
             case VM::VM_MEMORY:
             case VM::IDT_GDT_MISMATCH:
             case VM::PROCESSOR_NUMBER:
             case VM::NUMBER_OF_CORES:
-            case VM::WMI_MODEL:
-            case VM::WMI_MANUFACTURER:
-            case VM::WMI_TEMPERATURE:
+            case VM::ACPI_TEMPERATURE:
             case VM::PROCESSOR_ID:
             case VM::POWER_CAPABILITIES:
             case VM::SETUPAPI_DISK: 
@@ -479,7 +472,7 @@ bool is_unsupported(VM::enum_flags flag) {
 			case VM::AMD_THREAD_MISMATCH:
             case VM::NATIVE_VHD:
             case VM::VIRTUAL_REGISTRY:
-            case VM::FIRMWARE_SCAN:
+            case VM::FIRMWARE:
             case VM::UNKNOWN_MANUFACTURER:
             case VM::OSXSAVE:
             // ADD WINDOWS FLAG
@@ -499,7 +492,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::THREADCOUNT:
             case VM::HWMODEL:
             case VM::VMID_0X4:
-            case VM::QEMU_BRAND:
             case VM::BOCHS_CPU:
             case VM::MAC_MEMSIZE:
             case VM::MAC_IOKIT:
@@ -671,6 +663,8 @@ std::string vm_description(const std::string& vm_brand) {
         { VM::brands::NEKO_PROJECT, "Neko Project II is an emulator designed for emulating PC-98 computers. They are a lineup of Japanese 16-bit and 32-bit personal computers manufactured by NEC from 1982 to 2003. While based on Intel processors, it uses an in-house architecture making it incompatible with IBM clones." },
         { VM::brands::NOIRVISOR, "NoirVisor is a hardware-accelerated hypervisor with support to complex functions and purposes. It is designed to support processors based on x86 architecture with hardware-accelerated virtualization feature. For example, Intel processors supporting Intel VT-x or AMD processors supporting AMD-V meet the requirement. It was made by Zero-Tang." },
         { VM::brands::QIHOO, "360 sandbox is a part of 360 Total Security. Similar to other sandbox software, it provides a virtualized environment where potentially malicious or untrusted programs can run without affecting the actual system. Qihoo 360 Sandbox is commonly used for testing unknown applications, analyzing malware behavior, and protecting users from zero-day threats." },
+        { VM::brands::NSJAIL, "nsjail is a process isolation tool for Linux. It utilizes Linux namespace subsystem, resource limits, and the seccomp-bpf syscall filters of the Linux kernel. It can be used for isolating networking services, CTF challenges, and containing invasive syscall-level OS fuzzers." },
+        { VM::brands::COMPILER_EXPLORER, "Compiler Explorer is an interactive web compiler that supports numerous languages. The backend uses nsjail for their executor to isolate processes, while an additional hypervisor layer is used called Xen."},
         { VM::brands::NULL_BRAND, "Indicates no detectable virtualization brand. This result may occur on bare-metal systems, unsupported/obscure hypervisors, or when anti-detection techniques (e.g., VM escaping) are employed by the guest environment." }
     };
 
@@ -919,10 +913,7 @@ void general() {
     checker(VM::LINUX_USER_HOST, "default Linux user/host");
     checker(VM::GAMARUE, "gamarue ransomware technique");
     checker(VM::VMID_0X4, "0x4 leaf of VMID");
-    checker(VM::QEMU_BRAND, "QEMU CPU brand");
     checker(VM::BOCHS_CPU, "BOCHS CPU techniques");
-    checker(VM::BIOS_SERIAL, "BIOS serial number");
-    checker(VM::VBOX_SHARED_FOLDERS, "VBox shared folders");
     checker(VM::MSSMBIOS, "MSSMBIOS data");
     checker(VM::MAC_MEMSIZE, "MacOS hw.memsize");
     checker(VM::MAC_IOKIT, "MacOS registry IO-kit");
@@ -966,8 +957,6 @@ void general() {
     checker(VM::HYPERV_BITMASK, "Hyper-V CPUID reserved bitmask");
     checker(VM::KVM_BITMASK, "KVM CPUID reserved bitmask");
     checker(VM::KGT_SIGNATURE, "Intel KGT signature");
-    checker(VM::VMWARE_DMI, "VMware DMI");
-    checker(VM::VM_EVENT_LOGS, "event logs");
     checker(VM::QEMU_VIRTUAL_DMI, "QEMU virtual DMI directory");
     checker(VM::QEMU_USB, "QEMU USB");
     checker(VM::HYPERVISOR_DIR, "hypervisor directory (Linux)");
@@ -987,16 +976,12 @@ void general() {
     checker(VM::VM_SIDT, "VM SIDT");
     checker(VM::HDD_SERIAL, "HDD serial number");
     checker(VM::PORT_CONNECTORS, "physical connection ports");
-    checker(VM::VM_HDD, "VM keywords in HDD model");
-    checker(VM::ACPI_REGISTRY, "ACPI data");
     checker(VM::GPU_NAME, "GPU name");
     checker(VM::VM_MEMORY, "VM memory traces");
     checker(VM::IDT_GDT_MISMATCH, "IDT GDT mismatch");
     checker(VM::PROCESSOR_NUMBER, "processor count");
     checker(VM::NUMBER_OF_CORES, "CPU core count");
-    checker(VM::WMI_MODEL, "hardware model");
-    checker(VM::WMI_MANUFACTURER, "hardware manufacturer");
-    checker(VM::WMI_TEMPERATURE, "WMI temperature");
+    checker(VM::ACPI_TEMPERATURE, "thermal devices");
     checker(VM::PROCESSOR_ID, "processor ID");
     checker(VM::POWER_CAPABILITIES, "Power capabilities");
     checker(VM::SETUPAPI_DISK, "SETUPDI diskdrive");
@@ -1005,16 +990,16 @@ void general() {
 	checker(VM::LSHW_QEMU, "QEMU in lshw output");
     checker(VM::VIRTUAL_PROCESSORS, "virtual processors");
     checker(VM::HYPERV_QUERY, "hypervisor query");
-    checker(VM::BAD_POOLS, "bad memory pools");
+    checker(VM::BAD_POOLS, "bad pools");
 	checker(VM::AMD_SEV, "AMD-SEV MSR");
 	checker(VM::AMD_THREAD_MISMATCH, "AMD thread count mismatch");
     checker(VM::NATIVE_VHD, "VHD containers");
     checker(VM::VIRTUAL_REGISTRY, "registry emulation");
-    checker(VM::FIRMWARE_SCAN, "firmware signatures");
+    checker(VM::FIRMWARE, "firmware signatures");
 	checker(VM::FILE_ACCESS_HISTORY, "low file access count");
     checker(VM::UNKNOWN_MANUFACTURER, "unknown manufacturer ids");
     checker(VM::OSXSAVE, "xgetbv");
-
+	checker(VM::NSJAIL_PID, "nsjail PID");
     // ADD NEW TECHNIQUE CHECKER HERE
 
     std::printf("\n");
