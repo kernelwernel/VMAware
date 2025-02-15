@@ -25,14 +25,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 464
- * - struct for internal cpu operations        => line 740
- * - struct for internal memoization           => line 1200
- * - struct for internal utility functions     => line 1325
- * - struct for internal core components       => line 10946
- * - start of VM detection technique list      => line 2863
- * - start of public VM detection functions    => line 11347
- * - start of externally defined variables     => line 12254
+ * - enums for publicly accessible techniques  => line 461
+ * - struct for internal cpu operations        => line 736
+ * - struct for internal memoization           => line 1196
+ * - struct for internal utility functions     => line 1321
+ * - struct for internal core components       => line 10824
+ * - start of VM detection technique list      => line 2859
+ * - start of public VM detection functions    => line 11225
+ * - start of externally defined variables     => line 12131
  *
  *
  * ============================== EXAMPLE ===================================
@@ -352,21 +352,19 @@
 #include <winternl.h>
 #include <winuser.h>
 #include <psapi.h>
-#include <comdef.h>
-#include <wbemidl.h>
 #include <shlwapi.h>
 #include <shlobj_core.h>
 #include <dshow.h>
 #include <io.h>
 #include <winspool.h>
-#include <winevt.h>
 #include <powerbase.h>
 #include <setupapi.h>
 #include <mmdeviceapi.h>
 #include <Functiondiscoverykeys_devpkey.h>
+#include <mmsystem.h>
 
+#pragma comment(lib, "winmm.lib")
 #pragma comment(lib, "setupapi.lib")
-#pragma comment(lib, "wbemuuid.lib")
 #pragma comment(lib, "iphlpapi.lib")
 #pragma comment(lib, "shlwapi.lib")
 #pragma comment(lib, "MPR")
@@ -376,7 +374,6 @@
 #pragma comment(lib, "strmiids.lib")
 #pragma comment(lib, "uuid.lib")
 #pragma comment(lib, "ntdll.lib")
-#pragma comment(lib, "wevtapi.lib")
 #pragma comment(lib, "setupapi.lib")
 #pragma comment(lib, "powrprof.lib")
 
@@ -562,7 +559,6 @@ public:
         NUMBER_OF_CORES,
         ACPI_TEMPERATURE,
         PROCESSOR_ID,
-        VMWARE_HARDENER,
         SYS_QEMU,
         LSHW_QEMU,
         VIRTUAL_PROCESSORS,
@@ -3397,7 +3393,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!WINDOWS)
         return false;
 #else
-        // Compile-time initialized array with direct brand mapping
         static constexpr struct {
             const char* dll_name;
             const char* brand;
@@ -4469,7 +4464,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             constexpr DWORD kStackThreshold = 4096;
-            char stack_buffer[kStackThreshold];
+            char stack_buffer[kStackThreshold] = { 0 };
             bool heap_allocated = false;
             char* buffer = nullptr;
 
@@ -6555,8 +6550,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             { "i9-9990XE", 28 }
         };
 
-        // if it doesn't exist, return false
-        if (thread_database.find(model.string.c_str()) == thread_database.end()) {
+        // if it doesn't exist 
+        if (thread_database.find(model.string.c_str()) == thread_database.end()) { // < 0.000005 seconds
             return false;
         }
 
@@ -7022,7 +7017,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category x86
      * @author 一半人生
      * @link https://unprotect.it/snippet/vmcpuid/195/
-     * @copyright MIT
      * @implements VM::CPUID_BITSET
      */
     [[nodiscard]] static bool cpuid_bitset() {
@@ -8199,7 +8193,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const auto ntAllocateVirtualMemory = reinterpret_cast<NtAllocateVirtualMemoryFn>(functionPointers[1]);
         const auto ntFreeVirtualMemory = reinterpret_cast<NtFreeVirtualMemoryFn>(functionPointers[2]);
 
-        if (ntQuerySystemInformation == nullptr || ntAllocateVirtualMemory == nullptr || ntFreeVirtualMemory == nullptr) // just to avoid compiler warnings
+        if (ntQuerySystemInformation == nullptr || ntAllocateVirtualMemory == nullptr || ntFreeVirtualMemory == nullptr)
             return false;
         
         ULONG ulSize = 0;
@@ -8443,8 +8437,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for VM specific device names in GPUs
      * @category Windows
-     * @author Requiem (https://github.com/NotRequiem)
-     * @note utoshi did this with WMI in a removed technique (VM::GPU_CHIPTYPE)
+     * @note utoshu did this with WMI in a removed technique (VM::GPU_CHIPTYPE)
      * @implements VM::GPU_NAME
      */
     [[nodiscard]] static bool vm_gpu() {
@@ -8477,19 +8470,18 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 #if CPP >= 17
             for (const auto& [name, brand, len] : vm_gpu_names) {
+#else
+            for (const auto& entry : vm_gpu_names) {
+                const wchar_t* name = entry.name;
+                const char* brand = entry.brand;
+                const size_t len = entry.length;
+#endif
                 if (deviceStrLen == len && wcscmp(deviceStr, name) == 0) {
                     core::add(brand);
                     return true;
                 }
             }
-#else
-            for (const auto& [name, brand, len] : vm_gpu_names) {
-                if (deviceStrLen >= len && wcsstr(deviceStr, name) != nullptr) {
-                    core::add(brand);
-                    return true;
-                }
-            }
-#endif
+
             ++deviceNum;
         }
         return false;
@@ -9102,77 +9094,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
 
-    /*
-     * @brief Detects VMwareHardenerLoader's technique to remove firmware signatures
-     * @category Windows
-     * @author MegaMax
-     * @implements VM::VMWARE_HARDENER
-     */
-    [[nodiscard]] static bool vmware_hardener()
-    {
-#if (!WINDOWS)
-        return false;
-#else
-        static constexpr DWORD kProviders[] = { 'ACPI', 'RSMB', 'FIRM' };
-        static constexpr const char* kPatchedStrings[] = { "VMware", "VMWARE", "Virtual" };
-
-        for (DWORD provider : kProviders)
-        {
-            DWORD bufferSize = EnumSystemFirmwareTables(provider, nullptr, 0);
-            if (bufferSize == 0)
-            {
-                continue;
-            }
-
-            std::vector<char> tableNames(bufferSize);
-            if (EnumSystemFirmwareTables(provider, tableNames.data(), bufferSize) == 0)
-            {
-                continue;
-            }
-
-            std::vector<BYTE> tableBuffer;
-
-            for (size_t i = 0; i < bufferSize; i += 4)
-            {
-                DWORD signature = *reinterpret_cast<DWORD*>(&tableNames[i]);
-
-                DWORD requiredSize = GetSystemFirmwareTable(provider, signature, nullptr, 0);
-                if (requiredSize == 0)
-                {
-                    continue;
-                }
-
-                tableBuffer.resize(requiredSize);
-                if (GetSystemFirmwareTable(provider, signature, tableBuffer.data(), requiredSize) == 0)
-                {
-                    continue;
-                }
-
-                for (const char* original : kPatchedStrings)
-                {
-                    size_t orig_len = strlen(original);
-                    auto it = std::search(tableBuffer.begin(), tableBuffer.end(),
-                        original, original + orig_len);
-
-                    if (it == tableBuffer.end())
-                    {
-                        std::vector<BYTE> replaced(orig_len, '7');
-                        auto replacedIt = std::search(tableBuffer.begin(), tableBuffer.end(),
-                            replaced.begin(), replaced.end());
-
-                        if (replacedIt != tableBuffer.end())
-                        {
-                            return core::add(brands::VMWARE, brands::VMWARE_HARD);
-                        }
-                    }
-                }
-            }
-        }
-
-        return false;
-#endif
-    }
-
 
 	/**
 	 * @brief Check for existence of qemu_fw_cfg directories within sys/module and /sys/firmware
@@ -9650,25 +9571,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         size_t bad_pool_number = 0;
         constexpr size_t badPoolCount = _countof(BadPoolDwords);
-
-        /*
-            __m128i tagVec = _mm_set1_epi32(currentTag);
-            __m128i badTags1 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(BadPoolDwords));
-            __m128i badTags2 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(BadPoolDwords + 4));
-
-            __m128i cmp1 = _mm_cmpeq_epi32(tagVec, badTags1);
-            __m128i cmp2 = _mm_cmpeq_epi32(tagVec, badTags2);
-
-            if (_mm_movemask_epi8(_mm_or_si128(cmp1, cmp2)) != 0)
-                ++bad_pool_number;
-
-                vmovdqa xmm0, xmmword ptr [rsp+40]
-                vpcmpeqd xmm1, xmm0, xmmword ptr [rip + .LCPI0_0]
-                vpcmpeqd xmm0, xmm0, xmmword ptr [rip + .LCPI0_1]
-                vpor xmm0, xmm1, xmm0
-                vpmovmskb eax, xmm0
-                test eax, eax
-        */
 
         for (ULONG i = 0; i < system_pool_tagInfo->Count && bad_pool_number < 2; ++i) {
             DWORD currentTag;
@@ -10488,6 +10390,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Checks for VM signatures in firmware
      * @category Windows
+     * @note Idea of detecting VMwareHardenerLoader was made by MegaMax
      * @implements VM::FIRMWARE
      */
     [[nodiscard]] static bool firmware_scan() {
@@ -10547,71 +10450,85 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         auto check_firmware_table = [&](DWORD signature, ULONG tableID) -> bool {
             PSYSTEM_FIRMWARE_TABLE_INFORMATION info = nullptr;
-            ULONG retLen = 0;
-            bool found = false;
+            ULONG reqSize = 0;
+            bool detected = false;
 
-            // First call to get buffer size
-            info = static_cast<PSYSTEM_FIRMWARE_TABLE_INFORMATION>(
-                malloc(sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION))
-                );
-            if (!info) return false;
-
+            // First call: query size.
+            info = (PSYSTEM_FIRMWARE_TABLE_INFORMATION)malloc(sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION));
+            if (!info)
+                return false;
             info->ProviderSignature = signature;
             info->Action = 1;
             info->TableID = tableID;
             info->TableBufferLength = 0;
 
-            NTSTATUS status = ntqsi(
-                static_cast<SYSTEM_INFORMATION_CLASS>(76),  // SystemFirmwareTableInformation
+            NTSTATUS status = ntqsi((ULONG)SystemFirmwareTableInformation,
                 info,
                 sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION),
-                &retLen
-            );
-
+                &reqSize);
             if (status == STATUS_BUFFER_TOO_SMALL) {
                 free(info);
-                info = static_cast<PSYSTEM_FIRMWARE_TABLE_INFORMATION>(malloc(retLen));
-                if (!info) return false;
-
+                info = (PSYSTEM_FIRMWARE_TABLE_INFORMATION)malloc(reqSize);
+                if (!info)
+                    return false;
                 info->ProviderSignature = signature;
                 info->Action = 1;
                 info->TableID = tableID;
-                info->TableBufferLength = retLen - sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION);
+                info->TableBufferLength = reqSize - sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION);
 
-                status = ntqsi(
-                    static_cast<SYSTEM_INFORMATION_CLASS>(76),
+                status = ntqsi((ULONG)SystemFirmwareTableInformation,
                     info,
-                    retLen,
-                    &retLen
-                );
-
+                    reqSize,
+                    &reqSize);
                 if (NT_SUCCESS(status)) {
-                    if (void* buffer = malloc(info->TableBufferLength)) {
+                    void* buffer = malloc(info->TableBufferLength);
+                    if (buffer) {
                         memcpy(buffer, info->TableBuffer, info->TableBufferLength);
-                        const char* bufferPtr = static_cast<const char*>(buffer);
-                        const size_t bufferLen = info->TableBufferLength;
+                        const unsigned char* buf = reinterpret_cast<const unsigned char*>(buffer);
+                        size_t bufLen = info->TableBufferLength;
 
-                        for (const auto& [len, targets] : lengthBuckets) {
-                            if (len > bufferLen) continue;
-
-                            for (size_t offset = 0; offset <= bufferLen - len; ++offset) {
-                                for (const char* target : targets) {
-                                    if (memcmp(bufferPtr + offset, target, len) == 0) {
-                                        found = true;
-                                        goto cleanup;
+                        bool foundVMware = false;
+                        for (size_t t = 0; t < sizeof(targets) / sizeof(targets[0]); t++) {
+                            const char* target = targets[t];
+                            size_t targetLen = strlen(target);
+                            if (bufLen < targetLen)
+                                continue;
+                            for (size_t offset = 0; offset <= bufLen - targetLen; offset++) {
+                                if (memcmp(buf + offset, target, targetLen) == 0) {
+                                    if (strcmp(target, "VMware") == 0) {
+                                        foundVMware = true;
+                                    }
+                                    else {
+                                        detected = true;
+                                        goto cleanup_buffer;
                                     }
                                 }
                             }
                         }
-
-                    cleanup:
+                        // Only if "VMware" was not found, check for a VMware replacement to detect VMwareHardenerLoader. Idea by MegaMax
+                        if (!foundVMware && bufLen >= 6) {
+                            const size_t vmwareLen = 6; 
+                            for (size_t offset = 0; offset <= bufLen - vmwareLen; offset++) {
+                                bool allSevens = true;
+                                for (size_t j = 0; j < vmwareLen; j++) {
+                                    if (buf[offset + j] != '7') {
+                                        allSevens = false;
+                                        break;
+                                    }
+                                }
+                                if (allSevens) {
+                                    free(buffer);
+                                    return core::add(brands::VMWARE, brands::VMWARE_HARD);
+                                }
+                            }
+                        }
+                    cleanup_buffer:
                         free(buffer);
                     }
                 }
             }
-
             free(info);
-            return found;
+            return detected;
             };
 
         if (check_firmware_table(RSMB_SIG, 0UL)) return true;
@@ -10730,6 +10647,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!WINDOWS)
         return false;
 #else
+        /*
         bool comInitialized = SUCCEEDED(CoInitializeEx(nullptr, COINIT_MULTITHREADED));
 
         IMMDeviceEnumerator* enumerator = nullptr;
@@ -10751,6 +10669,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (comInitialized) CoUninitialize();
 
         return !result;
+        */
+        return (waveOutGetNumDevs() == 0);
 #endif
     }
 
@@ -10773,53 +10693,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const auto brands = cpu::cpu_manufacturer(0);
         const std::string& brand1 = brands[0];
         const std::string& brand2 = brands[1];
-
-
-        /* 
-          static const auto known_vectors = []() {
-            std::array<__m128i, 21> vecs = { 0 };
-            for (size_t i = 0; i < known_ids.size(); ++i) {
-                alignas(16) char buffer[16] = {};
-                memcpy(buffer, known_ids[i], 12);
-                vecs[i] = _mm_load_si128(reinterpret_cast<__m128i*>(buffer));
-            }
-            return vecs;
-            }();
-
-           alignas(16) char brand_buffer[16] = {};
-           memcpy(brand_buffer, s.data(), 12);
-           const __m128i brand_vec = _mm_load_si128(
-               reinterpret_cast<__m128i*>(brand_buffer));
-
-pragma loop( no_vector )
-            for (const auto& id_vec : known_vectors) {
-                const __m128i cmp = _mm_cmpeq_epi8(brand_vec, id_vec);
-                const unsigned mask = static_cast<unsigned>(
-                    _mm_movemask_epi8(cmp));
-
-                if ((mask & 0x0FFF) == 0x0FFF) {
-                    return true;
-                }
-            }
-            return false;
-            };
-        */
-
-        /*
-            movdqu  xmm0, XMMWORD PTR [rsi]
-            movdqu  xmm1, XMMWORD PTR [rdi]
-            mov     rdx, QWORD PTR [rsi+8]
-            mov     rax, QWORD PTR [rdi+8]
-            pcmpeqb xmm1, xmm0
-            pmovmskb ecx, xmm1
-            cmp     rdx, rax
-            sete    dl
-            cmp     ecx, 65535
-            sete    cl
-            and     eax, ecx
-            and     eax, edx
-            ret
-        */
 
         const auto matches = [&](const std::string& s) {
             if (s.size() < 12) return false;
@@ -10875,8 +10748,12 @@ pragma loop( no_vector )
 	/**
 	 * @brief Check if process status matches with nsjail patterns with PID anomalies
 	 * @category Linux
+     * @implements VM::NSJAIL_PID
 	 */
 	[[nodiscard]] static bool nsjail_proc_id() {
+#if (!LINUX)
+        return false;
+#else
 	    std::ifstream status_file("/proc/self/status");
 	    std::string line;
 	    bool pid_match = false;
@@ -10923,6 +10800,7 @@ pragma loop( no_vector )
         }
 
         return false;
+#endif
 	}
 
     // ADD NEW TECHNIQUE FUNCTION HERE
@@ -11878,6 +11756,8 @@ public: // START OF PUBLIC FUNCTIONS
 /* GPL */   case HOSTNAME: return "HOSTNAME";
 /* GPL */   case KVM_DIRS: return "KVM_DIRS";
 /* GPL */   case QEMU_DIR: return "QEMU_DIR";
+/* GPL */   case POWER_CAPABILITIES: return "POWER_CAPABILITIES";
+/* GPL */   case SETUPAPI_DISK: return "SETUPAPI_DISK";
             case VM_PROCESSES: return "VM_PROCESSES";
             case LINUX_USER_HOST: return "LINUX_USER_HOST";
             case GAMARUE: return "GAMARUE";
@@ -11948,9 +11828,6 @@ public: // START OF PUBLIC FUNCTIONS
             case NUMBER_OF_CORES: return "NUMBER_OF_CORES";
             case ACPI_TEMPERATURE: return "ACPI_TEMPERATURE";
             case PROCESSOR_ID: return "PROCESSOR_ID";
-            case POWER_CAPABILITIES: return "POWER_CAPABILITIES";
-            case SETUPAPI_DISK: return "SETUPAPI_DISK";
-            case VMWARE_HARDENER: return "VMWARE_HARDENER";
 			case SYS_QEMU: return "SYS_QEMU";
 			case LSHW_QEMU: return "LSHW_QEMU";
             case VIRTUAL_PROCESSORS: return "VIRTUAL_PROCESSORS";
@@ -12517,7 +12394,6 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::NUMBER_OF_CORES, { 50, VM::number_of_cores } },
     { VM::ACPI_TEMPERATURE, { 25, VM::acpi_temperature } },
     { VM::PROCESSOR_ID, { 25, VM::processor_id } },
-    { VM::VMWARE_HARDENER, { 60, VM::vmware_hardener } },
     { VM::SYS_QEMU, { 70, VM::sys_qemu_dir } },
     { VM::LSHW_QEMU, { 80, VM::lshw_qemu } },
     { VM::VIRTUAL_PROCESSORS, { 50, VM::virtual_processors } },
