@@ -10,7 +10,7 @@
  *
  * ===============================================================
  *
- *  Benchmark Utility: Measures performance of VM detection primitives
+ *  VMAwareBenchmark Utility: Measures performance of VM detection primitives
  *  with cross-platform nanosecond precision timing and adaptive unit
  *  formatting. Supports Windows, Linux, and macOS.
  *
@@ -20,7 +20,7 @@
  *  - License: GPL 3.0
  */
 
-#include "../src/vmaware.hpp"
+#include "vmaware.hpp"
 #include <iostream>
 #include <string>
 #include <cmath>
@@ -33,7 +33,7 @@
 #include <mach/mach_time.h>
 #endif
 
-class Benchmark {
+class VMAwareBenchmark {
 public:
     static uint64_t get_timestamp() {
 #if defined(_WIN32)
@@ -82,40 +82,73 @@ int main(void) {
     std::string vm_brand, vm_type;
     uint8_t vm_percent;
 
-    // Benchmark VM::detect()
-    start = Benchmark::get_timestamp();
+    /* ================================================ NO MEMOIZATION CATEGORY ================================================ */
+
+    // VMAwareBenchmark VM::detect(VM::NO_MEMO)
+    start = VMAwareBenchmark::get_timestamp();
+    is_detected = VM::detect(VM::NO_MEMO);
+    end = VMAwareBenchmark::get_timestamp();
+    const double detect_time_no_memo = VMAwareBenchmark::get_elapsed(start, end);
+
+    // VMAwareBenchmark VM::brand()
+    start = VMAwareBenchmark::get_timestamp();
+    vm_brand = VM::brand(VM::NO_MEMO);
+    end = VMAwareBenchmark::get_timestamp();
+    const double brand_time_no_memo = VMAwareBenchmark::get_elapsed(start, end);
+
+    // VMAwareBenchmark VM::type()
+    start = VMAwareBenchmark::get_timestamp();
+    vm_type = VM::type(VM::NO_MEMO);
+    end = VMAwareBenchmark::get_timestamp();
+    const double type_time_no_memo = VMAwareBenchmark::get_elapsed(start, end);
+
+    // VMAwareBenchmark VM::percentage()
+    start = VMAwareBenchmark::get_timestamp();
+    vm_percent = VM::percentage(VM::NO_MEMO);
+    end = VMAwareBenchmark::get_timestamp();
+    const double percent_time_no_memo = VMAwareBenchmark::get_elapsed(start, end);
+
+    /* ================================================ DEFAULT CATEGORY ================================================ */
+
+    // VMAwareBenchmark VM::detect()
+    start = VMAwareBenchmark::get_timestamp();
     is_detected = VM::detect();
-    end = Benchmark::get_timestamp();
-    const double detect_time = Benchmark::get_elapsed(start, end);
+    end = VMAwareBenchmark::get_timestamp();
+    const double detect_time = VMAwareBenchmark::get_elapsed(start, end);
 
-    // Benchmark VM::brand()
-    start = Benchmark::get_timestamp();
+    // VMAwareBenchmark VM::brand()
+    start = VMAwareBenchmark::get_timestamp();
     vm_brand = VM::brand();
-    end = Benchmark::get_timestamp();
-    const double brand_time = Benchmark::get_elapsed(start, end);
+    end = VMAwareBenchmark::get_timestamp();
+    const double brand_time = VMAwareBenchmark::get_elapsed(start, end);
 
-    // Benchmark VM::type()
-    start = Benchmark::get_timestamp();
+    // VMAwareBenchmark VM::type()
+    start = VMAwareBenchmark::get_timestamp();
     vm_type = VM::type();
-    end = Benchmark::get_timestamp();
-    const double type_time = Benchmark::get_elapsed(start, end);
+    end = VMAwareBenchmark::get_timestamp();
+    const double type_time = VMAwareBenchmark::get_elapsed(start, end);
 
-    // Benchmark VM::percentage()
-    start = Benchmark::get_timestamp();
+    // VMAwareBenchmark VM::percentage()
+    start = VMAwareBenchmark::get_timestamp();
     vm_percent = VM::percentage();
-    end = Benchmark::get_timestamp();
-    const double percent_time = Benchmark::get_elapsed(start, end);
+    end = VMAwareBenchmark::get_timestamp();
+    const double percent_time = VMAwareBenchmark::get_elapsed(start, end);
 
     // Program output
     std::cout << (is_detected ? "Virtual machine detected!\n" : "Running on baremetal\n")
         << "VM name: " << vm_brand << "\n"
         << "VM type: " << vm_type << "\n"
         << "VM certainty: " << static_cast<int>(vm_percent) << "%\n\n"
-        << "Benchmark Results:\n"
-        << "VM::detect():    " << Benchmark::format_duration(detect_time) << "\n"
-        << "VM::brand():     " << Benchmark::format_duration(brand_time) << "\n"
-        << "VM::type():      " << Benchmark::format_duration(type_time) << "\n"
-        << "VM::percentage(): " << Benchmark::format_duration(percent_time) << "\n";
+        << "Benchmark Results (Default):\n"
+        << "VM::detect():    " << VMAwareBenchmark::format_duration(detect_time) << "\n"
+        << "VM::brand():     " << VMAwareBenchmark::format_duration(brand_time) << "\n"
+        << "VM::type():      " << VMAwareBenchmark::format_duration(type_time) << "\n"
+        << "VM::percentage(): " << VMAwareBenchmark::format_duration(percent_time) << "\n\n"
+        << "Benchmark Results (not cached):\n"
+        << "VM::detect(VM::NO_MEMO):    " << VMAwareBenchmark::format_duration(detect_time_no_memo) << "\n"
+        << "VM::brand(VM::NO_MEMO):     " << VMAwareBenchmark::format_duration(brand_time_no_memo) << "\n"
+        << "VM::type(VM::NO_MEMO):      " << VMAwareBenchmark::format_duration(type_time_no_memo) << "\n"
+        << "VM::percentage(VM::NO_MEMO): " << VMAwareBenchmark::format_duration(percent_time_no_memo) << "\n\n";
 
     return 0;
 }

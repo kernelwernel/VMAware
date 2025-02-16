@@ -25,14 +25,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 461
+ * - enums for publicly accessible techniques  => line 462
  * - struct for internal cpu operations        => line 729
- * - struct for internal memoization           => line 1190
- * - struct for internal utility functions     => line 1316
- * - struct for internal core components       => line 10613
- * - start of VM detection technique list      => line 2856
- * - start of public VM detection functions    => line 11019
- * - start of externally defined variables     => line 11927
+ * - struct for internal memoization           => line 1184
+ * - struct for internal utility functions     => line 1310
+ * - struct for internal core components       => line 9919
+ * - start of VM detection technique list      => line 2491
+ * - start of public VM detection functions    => line 10325
+ * - start of externally defined variables     => line 11231
  *
  *
  * ============================== EXAMPLE ===================================
@@ -362,6 +362,7 @@
 #include <mmdeviceapi.h>
 #include <Functiondiscoverykeys_devpkey.h>
 #include <mmsystem.h>
+#include <queue>
 
 #pragma comment(lib, "winmm.lib")
 #pragma comment(lib, "setupapi.lib")
@@ -485,7 +486,6 @@ public:
         VM_PROCESSES,
         LINUX_USER_HOST,
         GAMARUE,
-        VMID_0X4,
         BOCHS_CPU,
         MSSMBIOS,
         MAC_MEMSIZE,
@@ -524,7 +524,6 @@ public:
         DEVICE_STRING,
         BLUESTACKS_FOLDERS,
         CPUID_SIGNATURE,
-        HYPERV_BITMASK,
         KVM_BITMASK,
         KGT_SIGNATURE,
         QEMU_VIRTUAL_DMI,
@@ -723,6 +722,7 @@ public:
         HYPERV_UNKNOWN_VM = 0,
         HYPERV_REAL_VM,
         HYPERV_ARTIFACT_VM,
+        HYPERV_ENLIGHTENMENT
     };
 
     // various cpu operation stuff
@@ -903,8 +903,8 @@ public:
 #endif
         }
 
-
-        [[nodiscard]] static std::array<std::string, 2> cpu_manufacturer(const u32 p_leaf) {
+        // cpu manufacturer id
+        [[nodiscard]] static std::string cpu_manufacturer(const u32 p_leaf) {
             auto cpuid_thingy = [](const u32 p_leaf, u32* regs, std::size_t start = 0, std::size_t end = 4) -> bool {
                 u32 x[4]{};
                 cpu::cpuid(x[0], x[1], x[2], x[3], p_leaf);
@@ -918,12 +918,13 @@ public:
 
             u32 sig_reg[3] = { 0 };
 
-            if (!cpuid_thingy(p_leaf, sig_reg, 1)) {
-                return std::array<std::string, 2>{{ "", "" }};
+            // Start at index 1 to get EBX, ECX, EDX (x[1], x[2], x[3])
+            if (!cpuid_thingy(p_leaf, sig_reg, 1, 4)) {
+                return "";
             }
 
             if ((sig_reg[0] == 0) && (sig_reg[1] == 0) && (sig_reg[2] == 0)) {
-                return std::array<std::string, 2>{{ "", "" }};
+                return "";
             }
 
             auto strconvert = [](u32 n) -> std::string {
@@ -932,30 +933,17 @@ public:
                 };
 
             std::stringstream ss;
-            std::stringstream ss2;
 
-            /*
-                * Two permutations are generated because the order of CPUID registers(EBX, ECX, EDX)
-                * varies depending on the leaf. For example:
-                *
-                * - Standard vendor strings (leaf 0x0) use EBX → EDX → ECX
-                * - Hypervisor vendor strings (leaf 0x40000000) often use EBX → ECX → EDX
-                *
-                * This function returns both permutations to ensure detection across all cases
-            */
+            if (p_leaf >= 0x40000000) {
+                // Hypervisor vendor string order: EBX, ECX, EDX
+                ss << strconvert(sig_reg[0]) << strconvert(sig_reg[1]) << strconvert(sig_reg[2]);
+            }
+            else {
+                // Standard vendor string (leaf 0x0) order: EBX, EDX, ECX
+                ss << strconvert(sig_reg[0]) << strconvert(sig_reg[2]) << strconvert(sig_reg[1]);
+            }
 
-            ss << strconvert(sig_reg[0]);
-            ss << strconvert(sig_reg[2]);
-            ss << strconvert(sig_reg[1]);
-
-            ss2 << strconvert(sig_reg[0]);
-            ss2 << strconvert(sig_reg[1]);
-            ss2 << strconvert(sig_reg[2]);
-
-            std::string brand_str = ss.str();
-            std::string brand_str2 = ss2.str();
-
-            return { brand_str, brand_str2 };
+            return ss.str();
         }
 
         struct stepping_struct {
@@ -1059,9 +1047,9 @@ public:
         };
 
 #if (CPP >= 17)
-        [[nodiscard]] static bool vmid_template(const u32 p_leaf, [[maybe_unused]] const char* technique_name) {
+        [[nodiscard]] static bool vmid_template(const u32 p_leaf) {
 #else 
-        [[nodiscard]] static bool vmid_template(const u32 p_leaf, const char* technique_name) {
+        [[nodiscard]] static bool vmid_template(const u32 p_leaf) {
 #endif
 #if (CPP >= 17)
             constexpr std::string_view
@@ -1070,7 +1058,6 @@ public:
 #endif
                 bhyve = "bhyve bhyve ",
                 bhyve2 = "BHyVE BHyVE ",
-                kvm = "KVMKVMKVM\0\0\0",
                 kvm_hyperv = "Linux KVM Hv",
                 qemu = "TCGTCGTCGTCG",
                 hyperv = "Microsoft Hv",
@@ -1093,93 +1080,100 @@ public:
                 barevisor = "Barevisor!\0\0",
                 hyperplatform = "PpyH",
                 minivisor = "MiniVisor\0\0\0",
-                intel_tdx = "IntelTDX    ", // source: virt-what
+                intel_tdx = "IntelTDX    ",
                 lkvm = "LKVMLKVMLKVM",
                 neko = "Neko Project",
                 noir = "NoirVisor ZT";
 
-            const std::array<std::string, 2> brand_strings = cpu_manufacturer(p_leaf);
-            debug(technique_name, brand_strings.at(0));
-            debug(technique_name, brand_strings.at(1));
+            const std::string brand_str = cpu_manufacturer(p_leaf);
 
-#if (CPP < 17)
-            // bypass compiler warning about unused parameter, ignore this
-            UNUSED(technique_name);
+#ifdef __VMAWARE_DEBUG__
+            const char* technique_name;
+            switch (p_leaf) {
+            case 0x40000000:
+                technique_name = "VMID_0x4: ";
+                break;
+            case 0x40000100:
+                technique_name = "VMID_0x4 + 0x100: ";
+                break;
+            case 0x40000001:
+                technique_name = "VMID_0x4 + 1: ";
+                break;
+            default:
+                technique_name = "VMID: ";
+                break;
+            }
+            debug(technique_name, brand_str);
 #endif
-
-            for (const std::string& brand_str : brand_strings) {
-                if (brand_str == qemu) { return core::add(brands::QEMU); }
-                if (brand_str == vmware) { return core::add(brands::VMWARE); }
-                if (brand_str == vbox) { return core::add(brands::VBOX); }
-                if (brand_str == bhyve) { return core::add(brands::BHYVE); }
-                if (brand_str == bhyve2) { return core::add(brands::BHYVE); }
-                if (brand_str == kvm) { return core::add(brands::KVM); }
-                if (brand_str == kvm_hyperv) { return core::add(brands::KVM_HYPERV); }
-                if (brand_str == parallels) { return core::add(brands::PARALLELS); }
-                if (brand_str == parallels2) { return core::add(brands::PARALLELS); }
-                if (brand_str == xen) { return core::add(brands::XEN); }
-                if (brand_str == acrn) { return core::add(brands::ACRN); }
-                if (brand_str == qnx) { return core::add(brands::QNX); }
-                if (brand_str == nvmm) { return core::add(brands::NVMM); }
-                if (brand_str == openbsd_vmm) { return core::add(brands::BSD_VMM); }
-                if (brand_str == intel_haxm) { return core::add(brands::INTEL_HAXM); }
-                if (brand_str == unisys) { return core::add(brands::UNISYS); }
-                if (brand_str == lmhs) { return core::add(brands::LMHS); }
-                if (brand_str == jailhouse) { return core::add(brands::JAILHOUSE); }
-                if (brand_str == intel_kgt) { return core::add(brands::INTEL_KGT); }
-                if (brand_str == barevisor) { return core::add(brands::BAREVISOR); }
-                if (brand_str == minivisor) { return core::add(brands::MINIVISOR); }
-                if (brand_str == intel_tdx) { return core::add(brands::INTEL_TDX); }
-                if (brand_str == lkvm) { return core::add(brands::LKVM); }
-                if (brand_str == neko) { return core::add(brands::NEKO_PROJECT); }
-                if (brand_str == noir) { return core::add(brands::NOIRVISOR); }
-
-
-                // both Hyper-V and VirtualPC have the same string value
-                if (brand_str == hyperv) {
-                    if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
-                        return false;
-                    }
-                    return core::add(brands::HYPERV, brands::VPC);
+            // both Hyper-V and VirtualPC have the same string value
+            if (brand_str == hyperv) {
+                if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
+                    return false;
                 }
+                return core::add(brands::HYPERV, brands::VPC);
+            }
 
-                /**
-                 * this is added because there are inconsistent string
-                 * values for KVM's manufacturer ID. For example,
-                 * it gives me "KVMKMVMKV" when I run it under QEMU
-                 * but the Wikipedia article on CPUID says it's
-                 * "KVMKVMKVM\0\0\0", like wtf????
-                 */
-                if (util::find(brand_str, "KVM")) {
-                    return core::add(brands::KVM);
-                }
+            /**
+             * this is added because there are inconsistent string
+             * values for KVM's manufacturer ID. For example,
+             * it gives me "KVMKMVMKV" when I run it under QEMU
+             * but the Wikipedia article on CPUID says it's
+             * "KVMKVMKVM\0\0\0", like wtf????
+             */
+            if (util::find(brand_str, "KVM")) {
+                return core::add(brands::KVM);
+            }
 
-                /**
-                 * i'm honestly not sure about this one,
-                 * they're supposed to have 12 characters but
-                 * Wikipedia tells me it these brands have
-                 * less characters (both 8), so i'm just
-                 * going to scan for the entire string ig
-                 */
+            if (brand_str == vmware) { return core::add(brands::VMWARE); }
+            if (brand_str == vbox) { return core::add(brands::VBOX); }
+            if (brand_str == qemu) { return core::add(brands::QEMU); }
+            if (brand_str == xen) { return core::add(brands::XEN); }
+            if (brand_str == kvm_hyperv) { return core::add(brands::KVM_HYPERV); }
+            if (brand_str == parallels) { return core::add(brands::PARALLELS); }
+            if (brand_str == parallels2) { return core::add(brands::PARALLELS); }
+            if (brand_str == bhyve) { return core::add(brands::BHYVE); }
+            if (brand_str == bhyve2) { return core::add(brands::BHYVE); }
+            if (brand_str == acrn) { return core::add(brands::ACRN); }
+            if (brand_str == qnx) { return core::add(brands::QNX); }
+            if (brand_str == nvmm) { return core::add(brands::NVMM); }
+            if (brand_str == openbsd_vmm) { return core::add(brands::BSD_VMM); }
+            if (brand_str == intel_haxm) { return core::add(brands::INTEL_HAXM); }
+            if (brand_str == unisys) { return core::add(brands::UNISYS); }
+            if (brand_str == lmhs) { return core::add(brands::LMHS); }
+            if (brand_str == jailhouse) { return core::add(brands::JAILHOUSE); }
+            if (brand_str == intel_kgt) { return core::add(brands::INTEL_KGT); }
+            if (brand_str == barevisor) { return core::add(brands::BAREVISOR); }
+            if (brand_str == minivisor) { return core::add(brands::MINIVISOR); }
+            if (brand_str == intel_tdx) { return core::add(brands::INTEL_TDX); }
+            if (brand_str == lkvm) { return core::add(brands::LKVM); }
+            if (brand_str == neko) { return core::add(brands::NEKO_PROJECT); }
+            if (brand_str == noir) { return core::add(brands::NOIRVISOR); }
+
+            /**
+             * i'm honestly not sure about this one,
+             * they're supposed to have 12 characters but
+             * Wikipedia tells me it these brands have
+             * less characters (both 8), so i'm just
+             * going to scan for the entire string ig
+             */
 #if (CPP >= 17)
-                const char* qnx_sample = qnx2.data();
-                const char* applevz_sample = apple_vz.data();
+            const char* qnx_sample = qnx2.data();
+            const char* applevz_sample = apple_vz.data();
 #else
-                const char* qnx_sample = qnx2.c_str();
-                const char* applevz_sample = apple_vz.c_str();
+            const char* qnx_sample = qnx2.c_str();
+            const char* applevz_sample = apple_vz.c_str();
 #endif
 
-                if (util::find(brand_str, qnx_sample)) {
-                    return core::add(brands::QNX);
-                }
+            if (util::find(brand_str, qnx_sample)) {
+                return core::add(brands::QNX);
+            }
 
-                if (util::find(brand_str, applevz_sample)) {
-                    return core::add(brands::APPLE_VZ);
-                }
+            if (util::find(brand_str, applevz_sample)) {
+                return core::add(brands::APPLE_VZ);
+            }
 
-                if (util::find(brand_str, hyperplatform.data())) {
-                    return core::add(brands::HYPERPLATFORM);
-                }
+            if (util::find(brand_str, hyperplatform.data())) {
+                return core::add(brands::HYPERPLATFORM);
             }
 
             return false;
@@ -1930,9 +1924,18 @@ public:
                 state = HYPERV_REAL_VM;
             }
             else if (eax() == 12 || is_root_partition()) {
-                core_debug("HYPER_X: added Hyper-V artifact VM");
-                core::add(brands::HYPERV_ARTIFACT);
-                state = HYPERV_ARTIFACT_VM;
+                const std::string brand_str = cpu::cpu_manufacturer(0x40000001);
+
+                if (util::find(brand_str, "KVM")) {
+                    core_debug("HYPER_X: added Hyper-V Enlightenments");
+                    core::add(brands::QEMU_KVM_HYPERV);
+                    state = HYPERV_ENLIGHTENMENT;
+                }
+                else {
+                    core_debug("HYPER_X: added Hyper-V artifact VM");
+                    core::add(brands::HYPERV_ARTIFACT);
+                    state = HYPERV_ARTIFACT_VM;
+                }
             }
             else {
                 core_debug("HYPER_X: none detected");
@@ -2258,40 +2261,73 @@ public:
          * This function adjusts the token privileges to enable debugging rights,
          * which are required for the lib to access the memory of certain processes.
          */
-        [[nodiscard]] static void EnableDebugPrivilege() {
-            HANDLE hToken;
-            TOKEN_PRIVILEGES tp{};
-            LUID luid;
-
+        static bool SetDebugPrivilege(bool enable) {
+            HANDLE hToken = nullptr;
             if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &hToken)) {
-                return;
+                return false;
             }
 
-            if (!LookupPrivilegeValue(NULL, SE_DEBUG_NAME, &luid)) {
+            LUID debugLuid;
+            if (!LookupPrivilegeValue(nullptr, SE_DEBUG_NAME, &debugLuid)) {
                 CloseHandle(hToken);
-                return;
+                return false;
             }
 
+            DWORD dwSize = 0;
+            GetTokenInformation(hToken, TokenPrivileges, nullptr, 0, &dwSize);
+            if (dwSize == 0) {
+                CloseHandle(hToken);
+                return false;
+            }
+
+            std::vector<BYTE> buffer(dwSize);
+            if (!GetTokenInformation(hToken, TokenPrivileges, buffer.data(), dwSize, &dwSize)) {
+                CloseHandle(hToken);
+                return false;
+            }
+
+            auto* pPrivileges = reinterpret_cast<TOKEN_PRIVILEGES*>(buffer.data());
+            bool found = false;
+            for (DWORD i = 0; i < pPrivileges->PrivilegeCount; i++) {
+                if (pPrivileges->Privileges[i].Luid.LowPart == debugLuid.LowPart &&
+                    pPrivileges->Privileges[i].Luid.HighPart == debugLuid.HighPart)
+                {
+                    bool isEnabled = (pPrivileges->Privileges[i].Attributes & SE_PRIVILEGE_ENABLED) != 0;
+                    if ((enable && isEnabled) || (!enable && !isEnabled)) {
+                        CloseHandle(hToken);
+                        return false;
+                    }
+                    found = true;
+                    break;
+                }
+            }
+
+            if (!found && !enable) {
+                CloseHandle(hToken);
+                return false;
+            }
+
+            TOKEN_PRIVILEGES tp{};
             tp.PrivilegeCount = 1;
-            tp.Privileges[0].Luid = luid;
-            tp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+            tp.Privileges[0].Luid = debugLuid;
+            tp.Privileges[0].Attributes = enable ? static_cast<DWORD>(SE_PRIVILEGE_ENABLED) : 0;
 
-            if (!AdjustTokenPrivileges(hToken, FALSE, &tp, sizeof(TOKEN_PRIVILEGES), NULL, NULL)) {
+            if (!AdjustTokenPrivileges(hToken, FALSE, &tp, sizeof(tp), nullptr, nullptr)) {
                 CloseHandle(hToken);
-                return;
+                return false;
             }
-
             if (GetLastError() == ERROR_NOT_ALL_ASSIGNED) {
                 CloseHandle(hToken);
-                return;
+                return false;
             }
 
             CloseHandle(hToken);
+            return true;
         }
 
 
         /**
-         * @brief Searches for a wide-character substring within a buffer using the Knuth-Morris-Pratt algorithm.
+         * @brief Searches for a wide-character substring within a buffer using the Knuth-Morris-Pratt algorithm. Not used by the moment.
          *
          * This function performs an efficient substring search to find a wide-character string (searchString)
          * inside another wide-character string (buffer) using the Knuth-Morris-Pratt (KMP) algorithm.
@@ -2318,37 +2354,24 @@ public:
 #endif
             if (searchLength > bufferSize) return false;
 
-            // KMP algorithm
             std::vector<size_t> lps(searchLength, 0);
             size_t j = 0;
             for (size_t i = 1; i < searchLength; ++i) {
                 while (j > 0
-#if CPP >= 17
                     && searchString[i] != searchString[j]
-#else
-                    && searchString[i] != searchString[j]
-#endif
                     ) {
                     j = lps[j - 1];
                 }
-#if CPP >= 17
                 if (searchString[i] == searchString[j]) {
-#else
-                if (searchString[i] == searchString[j]) {
-#endif
                     ++j;
                 }
                 lps[i] = j;
-                }
+            }
 
             size_t i = 0; // buffer index
             j = 0;        // searchString index
             while (i < bufferSize) {
-#if CPP >= 17
                 if (buffer[i] == searchString[j]) {
-#else
-                if (buffer[i] == searchString[j]) {
-#endif
                     ++i;
                     ++j;
                     if (j == searchLength) {
@@ -2361,10 +2384,10 @@ public:
                 else {
                     ++i;
                 }
-                }
+            }
 
             return false;
-            }
+        }
 
 
         /**
@@ -2446,394 +2469,6 @@ public:
 
 
         /**
-         * @brief Checks if the number of logical processors obtained by various methods match
-         *
-         * This function retrieves the number of logical processors in the system using several different
-         * methods and compares them to ensure consistency. The methods include:
-         * - GetLogicalProcessorInformationEx API (using RelationProcessorCore and RelationNumaNode)
-         * - Windows Management Instrumentation via Win32_Processor
-         * - GetSystemInfo function
-         * - GetProcessAffinityMask function
-         * - NtQuerySystemInformation functionwith SystemBasicInformation
-         * - GetActiveProcessorCount API (across all processor groups)
-         * - Windows Management Instrumentation via Win32_ComputerSystem
-         * - GetLogicalProcessorInformation API
-         * - The NUMBER_OF_PROCESSORS environment variable
-         * - Registry query from "HARDWARE\DESCRIPTION\System\CentralProcessor" (processor packages)
-         * - GetNativeSystemInfo function for native system information
-         * - GetMaximumProcessorCount API
-         * - NtQuerySystemInformation with SystemProcessorPerformanceInformation (processor performance info)
-         * - NUMA API functions (GetNumaHighestNodeNumber and GetNumaNodeProcessorMaskEx) to enumerate processors by NUMA node
-         * - Enumeration of processor groups via GetActiveProcessorGroupCount and GetActiveProcessorCount for each group
-         * - SystemHypervisorProcessorCountInformation with NtQuerySystemInformation
-         *
-         * @return bool false if there is a mismatch in thread counts from different methods, true otherwise
-         */
-        [[nodiscard]] static bool verify_thread_data() {
-#pragma warning (disable : 4191) // supress useless warnings about unsafe conversions from 'FARPROC' to 'VM::util::does_threadcount_mismatch::<lambda_X>
-            auto GetThreadsUsingGetLogicalProcessorInformationEx = []() -> int {
-                DWORD bufferSize = 0;
-                GetLogicalProcessorInformationEx(RelationProcessorCore, nullptr, &bufferSize);
-
-                std::vector<char> buffer(bufferSize);
-                if (!GetLogicalProcessorInformationEx(RelationProcessorCore, reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(buffer.data()), &bufferSize)) {
-                    return 0;
-                }
-
-                int threadCountProcessorCore = 0;
-                char* ptr = buffer.data();
-                while (ptr < buffer.data() + bufferSize) {
-                    auto info = reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(ptr);
-                    if (info->Relationship == RelationProcessorCore) {
-                        u64 mask = info->Processor.GroupMask[0].Mask;
-
-                        u32 low = static_cast<u32>(mask); // low 32-bits
-                        u32 high = static_cast<u32>(mask >> 32); // high 32-bits
-
-                        threadCountProcessorCore += __popcnt(low);
-                        threadCountProcessorCore += __popcnt(high);
-                    }
-                    ptr += info->Size;
-                }
-
-                bufferSize = 0;
-                GetLogicalProcessorInformationEx(RelationNumaNode, nullptr, &bufferSize);
-                if (!GetLogicalProcessorInformationEx(RelationNumaNode, reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(buffer.data()), &bufferSize)) {
-                    return 0;
-                }
-                int threadCountNuma = 0;
-                ptr = buffer.data();
-                while (ptr < buffer.data() + bufferSize) {
-                    auto info = reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(ptr);
-                    if (info->Relationship == RelationNumaNode) {
-                        GROUP_AFFINITY affinity = info->NumaNode.GroupMask;
-                        u64 mask = affinity.Mask;
-                        u32 low = static_cast<u32>(mask);
-                        u32 high = static_cast<u32>(mask >> 32);
-                        threadCountNuma += __popcnt(low);
-                        threadCountNuma += __popcnt(high);
-                    }
-                    ptr += info->Size;
-                }
-
-                if (threadCountNuma != threadCountProcessorCore) return 1000; // force a mismatch
-
-                return threadCountProcessorCore;
-                };
-
-            auto GetThreadsUsingGetSystemInfo = []() -> int {
-                SYSTEM_INFO sysinfo;
-                GetSystemInfo(&sysinfo);
-                return static_cast<int>(sysinfo.dwNumberOfProcessors);
-                };
-
-            auto GetThreadsUsingNtQuerySystemInformation = []() -> int {
-                const HMODULE hModule = GetModuleHandleA("ntdll.dll");
-                if (!hModule) {
-                    return 0;
-                }
-
-                const char* functionNames[] = { "NtQuerySystemInformation" };
-                void* functions[1] = { nullptr };
-
-                GetFunctionAddresses(hModule, functionNames, functions, 1);
-
-                using NtQuerySystemInformationFunc = NTSTATUS(__stdcall*)(
-                    SYSTEM_INFORMATION_CLASS SystemInformationClass,
-                    PVOID SystemInformation,
-                    ULONG SystemInformationLength,
-                    PULONG ReturnLength
-                    );
-
-                auto NtQuerySystemInformation = reinterpret_cast<NtQuerySystemInformationFunc>(functions[0]);
-
-                if (NtQuerySystemInformation) {
-                    SYSTEM_BASIC_INFORMATION sbi{};
-                    ULONG len = 0;
-                    NTSTATUS status = NtQuerySystemInformation(SystemBasicInformation, &sbi, sizeof(sbi), &len);
-
-                    int sbiProcessors = 0;
-                    if (status == 0) {
-                        sbiProcessors = static_cast<int>(sbi.NumberOfProcessors);
-                    }
-
-                    struct SYSTEM_HYPERVISOR_PROCESSOR_COUNT_INFORMATION {
-                        ULONG NumberOfLogicalProcessors;
-                        ULONG NumberOfCores;
-                    };
-
-                    BYTE buffer[4096] = { 0 };
-                    memset(buffer, 0, sizeof(buffer));
-                    status = NtQuerySystemInformation(static_cast<SYSTEM_INFORMATION_CLASS>(135), buffer, sizeof(buffer), &len);
-
-                    int hpciProcessors = 0;
-                    if (status == 0) {
-                        auto hvProcCount = reinterpret_cast<SYSTEM_HYPERVISOR_PROCESSOR_COUNT_INFORMATION*>(buffer);
-                        hpciProcessors = static_cast<int>(hvProcCount->NumberOfLogicalProcessors);
-                        return (sbiProcessors == hpciProcessors) ? sbiProcessors : 1000;
-                    }
-
-                    return sbiProcessors;
-                }
-
-                return 0;
-                };
-
-            auto GetThreadsUsingGetActiveProcessorCount = []() -> int {
-                const HMODULE hKernel32 = GetModuleHandleA("kernel32.dll");
-                if (hKernel32) {
-                    typedef DWORD(WINAPI* GetActiveProcessorCountFunc)(WORD);
-                    auto pGetActiveProcessorCount = reinterpret_cast<GetActiveProcessorCountFunc>(
-                        GetProcAddress(hKernel32, "GetActiveProcessorCount"));
-                    if (pGetActiveProcessorCount) {
-                        return static_cast<int>(pGetActiveProcessorCount(ALL_PROCESSOR_GROUPS));
-                    }
-                }
-                return 0;
-                };
-
-            auto GetThreadsUsingGetLogicalProcessorInformation = []() -> int {
-                DWORD bufferSize = 0;
-                if (!GetLogicalProcessorInformation(nullptr, &bufferSize) && GetLastError() != ERROR_INSUFFICIENT_BUFFER) {
-                    return 0;
-                }
-
-                std::vector<SYSTEM_LOGICAL_PROCESSOR_INFORMATION> buffer(bufferSize / sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION));
-                if (!GetLogicalProcessorInformation(buffer.data(), &bufferSize)) {
-                    return 0;
-                }
-
-                int threadCount = 0;
-                for (const auto& info : buffer) {
-                    if (info.Relationship == RelationProcessorCore) {
-                        threadCount += static_cast<int>(std::bitset<sizeof(ULONG_PTR) * 8>(info.ProcessorMask).count());
-                    }
-                }
-
-                return threadCount;
-                };
-
-            auto GetThreadsUsingEnvironmentVariable = []() -> int {
-                char* env = nullptr;
-                size_t len = 0;
-
-                if (_dupenv_s(&env, &len, "NUMBER_OF_PROCESSORS") == 0 && env != nullptr) {
-                    int num = std::atoi(env);
-                    free(env);
-                    return num;
-                }
-
-                return 0;
-                };
-
-            // this value represents the number of processor packages (sockets) and may not account for hyper-threading
-            auto GetThreadsUsingRegistry = []() -> int {
-                HKEY hKey;
-                if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, "HARDWARE\\DESCRIPTION\\System\\CentralProcessor", 0, KEY_READ, &hKey) != ERROR_SUCCESS) {
-                    return 0;
-                }
-                int processorCount = 0;
-                char subKeyName[256];
-                DWORD subKeyNameSize;
-                DWORD index = 0;
-                while (true) {
-                    subKeyNameSize = sizeof(subKeyName);
-                    LONG ret = RegEnumKeyExA(hKey, index, subKeyName, &subKeyNameSize, nullptr, nullptr, nullptr, nullptr);
-                    if (ret == ERROR_NO_MORE_ITEMS) {
-                        break;
-                    }
-                    if (ret == ERROR_SUCCESS) {
-                        processorCount++;
-                    }
-                    index++;
-                }
-                RegCloseKey(hKey);
-                return processorCount;
-                };
-
-            auto GetThreadsUsingGetNativeSystemInfo = []() -> int {
-                SYSTEM_INFO sysinfo;
-                GetNativeSystemInfo(&sysinfo);
-                return static_cast<int>(sysinfo.dwNumberOfProcessors);
-                };
-
-            auto GetThreadsUsingGetMaximumProcessorCount = []() -> int {
-                const HMODULE hKernel32 = GetModuleHandleA("kernel32.dll");
-                if (hKernel32) {
-                    typedef DWORD(WINAPI* GetMaximumProcessorCountFunc)(WORD);
-                    auto pGetMaximumProcessorCount = reinterpret_cast<GetMaximumProcessorCountFunc>(
-                        GetProcAddress(hKernel32, "GetMaximumProcessorCount"));
-                    if (pGetMaximumProcessorCount) {
-                        return static_cast<int>(pGetMaximumProcessorCount(ALL_PROCESSOR_GROUPS));
-                    }
-                }
-                return 0;
-                };
-
-            auto GetThreadsUsingNtQueryProcessorPerformanceInformation = []() -> int {
-                typedef NTSTATUS(WINAPI* NtQuerySystemInformationFunc)(
-                    SYSTEM_INFORMATION_CLASS SystemInformationClass,
-                    PVOID SystemInformation,
-                    ULONG SystemInformationLength,
-                    PULONG ReturnLength
-                    );
-                const HMODULE hNtdll = GetModuleHandleA("ntdll.dll");
-                if (!hNtdll) {
-                    return 0;
-                }
-                auto pNtQuerySystemInformation = reinterpret_cast<NtQuerySystemInformationFunc>(
-                    GetProcAddress(hNtdll, "NtQuerySystemInformation"));
-                if (!pNtQuerySystemInformation) {
-                    return 0;
-                }
-                ULONG bufferSize = 0;
-
-                NTSTATUS status = pNtQuerySystemInformation(static_cast<SYSTEM_INFORMATION_CLASS>(8), nullptr, 0, &bufferSize);
-                if (status != ((NTSTATUS)0xC0000004L)) {
-                    return 0;
-                }
-                std::vector<char> buffer(bufferSize);
-                status = pNtQuerySystemInformation(static_cast<SYSTEM_INFORMATION_CLASS>(8), buffer.data(), bufferSize, &bufferSize);
-                if (status != 0) {
-                    return 0;
-                }
-
-                int count = static_cast<int>(bufferSize / sizeof(SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION));
-                return count;
-                };
-
-            auto GetThreadsUsingNumaAPIs = []() -> int {
-                ULONG highestNode = 0;
-                if (!GetNumaHighestNodeNumber(&highestNode)) {
-                    return 0;
-                }
-                int totalCount = 0;
-                for (USHORT node = 0; node <= highestNode; node++) {
-                    GROUP_AFFINITY affinity = {};
-                    if (GetNumaNodeProcessorMaskEx(node, &affinity)) {
-                        u64 mask = affinity.Mask;
-                        u32 low = static_cast<u32>(mask);
-                        u32 high = static_cast<u32>(mask >> 32);
-                        totalCount += __popcnt(low);
-                        totalCount += __popcnt(high);
-                    }
-                }
-                return totalCount;
-                };
-
-            auto GetThreadsUsingProcessorGroupsEnumeration = []() -> int {
-                WORD groupCount = GetActiveProcessorGroupCount();
-                int totalCount = 0;
-                for (WORD group = 0; group < groupCount; ++group) {
-                    totalCount += static_cast<int>(GetActiveProcessorCount(group));
-                }
-                return totalCount;
-                };
-
-            auto GetThreadsUsingAffinityTest = []() -> int {
-                DWORD_PTR originalMask = 0;
-                if (!GetProcessAffinityMask(GetCurrentProcess(), &originalMask, &originalMask)) {
-                    return 0;
-                }
-                if (originalMask == 0) {
-                    return 0;
-                }
-                int count = 0;
-
-                for (int bit = 0; bit < static_cast<int>(sizeof(DWORD_PTR) * 8); ++bit) {
-                    DWORD_PTR testMask = (DWORD_PTR(1) << bit);
-                    if (originalMask & testMask) {
-                        DWORD_PTR previous = SetThreadAffinityMask(GetCurrentThread(), testMask);
-                        if (previous != 0) {
-                            count++;
-                        }
-                    }
-                }
-                SetThreadAffinityMask(GetCurrentThread(), originalMask);
-                return count;
-                };
-#pragma warning (default : 4191)
-
-            const int sysinfoThreads = GetThreadsUsingGetSystemInfo();
-            const int ntQueryThreads = GetThreadsUsingNtQuerySystemInformation();
-            const int osThreads = GetThreadsUsingGetLogicalProcessorInformationEx();
-            const int activeProcCount = GetThreadsUsingGetActiveProcessorCount();
-            const int oldLogicalProcInfoThreads = GetThreadsUsingGetLogicalProcessorInformation();
-            const int envThreads = GetThreadsUsingEnvironmentVariable();
-            const int registryThreads = GetThreadsUsingRegistry();
-            const int nativeSysInfoThreads = GetThreadsUsingGetNativeSystemInfo();
-            const int maxProcCountThreads = GetThreadsUsingGetMaximumProcessorCount();
-            const int ntProcPerfThreads = GetThreadsUsingNtQueryProcessorPerformanceInformation();
-            const int numaApisThreads = GetThreadsUsingNumaAPIs();
-            const int processorGroupsThreads = GetThreadsUsingProcessorGroupsEnumeration();
-            const int affinityTestThreads = GetThreadsUsingAffinityTest();
-            std::vector<int> validThreads;
-            validThreads.reserve(13);
-
-            if (osThreads > 0) validThreads.push_back(osThreads);
-            if (sysinfoThreads > 0) validThreads.push_back(sysinfoThreads);
-            if (ntQueryThreads > 0) validThreads.push_back(ntQueryThreads);
-            if (activeProcCount > 0) validThreads.push_back(activeProcCount);
-            if (oldLogicalProcInfoThreads > 0) validThreads.push_back(oldLogicalProcInfoThreads);
-            if (envThreads > 0) validThreads.push_back(envThreads);
-            if (registryThreads > 0) validThreads.push_back(registryThreads);
-            if (nativeSysInfoThreads > 0) validThreads.push_back(nativeSysInfoThreads);
-            if (maxProcCountThreads > 0) validThreads.push_back(maxProcCountThreads);
-            if (ntProcPerfThreads > 0) validThreads.push_back(ntProcPerfThreads);
-            if (numaApisThreads > 0) validThreads.push_back(numaApisThreads);
-            if (processorGroupsThreads > 0) validThreads.push_back(processorGroupsThreads);
-            if (affinityTestThreads > 0) validThreads.push_back(affinityTestThreads);
-
-            int first = validThreads[0];
-            for (const int threadCount : validThreads) {
-                if (threadCount != first) {
-                    return false;
-                }
-            }
-
-            return true;
-        }
-
-
-        /**
-         * @brief Checks if the name of the CPU obtained by various methods match
-         *
-         * @return bool false if there is a mismatch in thread counts from different methods, true otherwise
-         */
-        [[nodiscard]] static bool verify_cpu_data() {
-            std::vector<std::string> sources;
-            sources.reserve(3);
-
-            // 1. Registry ProcessorNameString
-            HKEY hKey;
-            char reg_name[512]{};
-            DWORD buf_size = sizeof(reg_name);
-            if (RegOpenKeyExA(HKEY_LOCAL_MACHINE,
-                "HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0",
-                0, KEY_READ, &hKey) == ERROR_SUCCESS) {
-                if (RegQueryValueExA(hKey, "ProcessorNameString",
-                    nullptr, nullptr, (LPBYTE)reg_name, &buf_size) == ERROR_SUCCESS) {
-                    sources.push_back(reg_name);
-                }
-                RegCloseKey(hKey);
-            }
-
-            // 3. cpuid
-            const std::string cpuid_model = cpu::get_brand();
-            sources.push_back(cpuid_model);
-
-            if (sources.empty()) return false;
-
-            const std::string& first = sources[0];
-            for (const auto& source : sources) {
-                if (source != first) {
-                    return false;
-                }
-            }
-            return true;
-        }
-
-        /**
          * @brief Checks if hypervisor CPUID specific leaves are present.
          *
          * This function uses the CPUID instruction to determine if the system supports
@@ -2850,7 +2485,7 @@ public:
             return eax != 0;
         }
 #endif
-            };
+        };
 
 
 private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
@@ -2863,7 +2498,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!x86)
         return false;
 #else
-        return cpu::vmid_template(0, "VMID: ");
+        return (
+            cpu::vmid_template(0) ||
+            cpu::vmid_template(cpu::leaf::hypervisor) || // 0x40000000
+            cpu::vmid_template(cpu::leaf::hypervisor + 1) || // 0x40000001 to account for some edge-cases
+            cpu::vmid_template(cpu::leaf::hypervisor + 0x100) // 0x40000100
+            );
 #endif
     }
 
@@ -3935,7 +3575,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
 
-
+  
     /**
      * @brief Check for any VM processes that are active
      * @category Windows
@@ -3969,7 +3609,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return core::add(brands::VMWARE);
         }
 
-        if (util::is_proc_running(("qemu-ga.exe")) || util::is_proc_running(("vdagent.exe")) || util::is_proc_running(("vdservice.exe")) || util::is_proc_running(("qemuwmi.exe"))) {
+        if (util::is_proc_running(("vdagent.exe")) || util::is_proc_running(("vdservice.exe")) || util::is_proc_running(("qemuwmi.exe"))) {
             return core::add(brands::QEMU);
         }
 
@@ -4015,7 +3655,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #else
         HKEY hKey;
-        char buffer[64];
+        char buffer[64] = { 0 };
         DWORD dwSize = sizeof(buffer);
         LONG lRes;
 
@@ -4057,23 +3697,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         return false;
-#endif
-    }
-
-
-    /**
-     * @brief Check if the CPU manufacturer ID matches that of a VM brand with leaf 0x40000000
-     * @category x86
-     * @implements VM::VMID_0X4
-     */
-    [[nodiscard]] static bool vmid_0x4() {
-#if (!x86)
-        return false;
-#else
-        return (
-            cpu::vmid_template(cpu::leaf::hypervisor, "VMID_0x4: ") ||
-            cpu::vmid_template(cpu::leaf::hypervisor + 1, "VMID_0x4 + 1: ") // Some VM brands can have their cpu manufacturer ID as 0x4000'0001
-            );
 #endif
     }
 
@@ -4279,7 +3902,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             for (DWORD i = 0; i < length; ++i) {
                 const char current = buffer[i];
 
-                // Check all patterns in single pass
                 for (size_t p = 0; p < config.actual_pattern_count; ++p) {
                     const auto& pattern = config.patterns[p];
 
@@ -4706,48 +4328,46 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!WINDOWS)
         return false;
 #else
-        // gcc/g++ causes a stack smashing error at runtime for some reason
-        //if (GCC) {
-        //    return false;
-        //}
-
         u8 idtr[10]{};
         u32 idt_entry = 0;
 
 #   if (x86_32)
         __try {
+#           if (CLANG || GCC)
+            __asm__ volatile("sidt %0" : "=m"(idtr));
+#           else
             _asm sidt idtr
+#           endif
         }
         __except (EXCEPTION_EXECUTE_HANDLER) {
-            return false; // umip
+            return false;  // UMIP
         }
 #   elif (x86_64)
-#       pragma pack(1)
+#       pragma pack(push, 1)
         struct IDTR {
             u16 limit;
             u64 base;
         };
-#       pragma pack()
+#       pragma pack(pop)
 
-        IDTR idtrStruct;
+        IDTR idtrStruct = {};
         __try {
+#           if (CLANG || GCC)
+            __asm__ volatile("sidt %0" : "=m"(idtrStruct));
+#           else
             __sidt(&idtrStruct);
+#           endif
         }
         __except (EXCEPTION_EXECUTE_HANDLER) {
-            return false; // umip
+            return false;
         }
-        std::memcpy(idtr, &idtrStruct, sizeof(IDTR));
+        std::memcpy(idtr, &idtrStruct, sizeof(idtr));
 #   else
         return false;
 #   endif
 
         idt_entry = *reinterpret_cast<unsigned long*>(&idtr[2]);
-
-        if ((idt_entry >> 24) == 0xFF) {
-            return core::add(brands::VMWARE);
-        }
-
-        return false;
+        return ((idt_entry >> 24) == 0xFF) ? core::add(brands::VMWARE) : false;
 #endif
     }
 
@@ -5353,17 +4973,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (!model.is_i_series) {
             return false;
         }
-
-#if (WINDOWS)
-        if (!util::verify_thread_data()) {
-            debug("INTEL_THREAD_MISMATCH: thread data reported by the system is not accurate");
-            return true;
-        }
-        if (!util::verify_cpu_data()) {
-            debug("INTEL_THREAD_MISMATCH: CPU data reported by the system is not accurate");
-            return true;
-        }
-#endif
 
         debug("INTEL_THREAD_MISMATCH: CPU model = ", model.string);
 
@@ -6373,17 +5982,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         debug("XEON_THREAD_MISMATCH: CPU model = ", model.string);
 
-#if (WINDOWS)
-        if (!util::verify_thread_data()) {
-            debug("XEON_THREAD_MISMATCH: thread data reported by the system is not accurate");
-            return true;
-        }
-        if (!util::verify_cpu_data()) {
-            debug("XEON_THREAD_MISMATCH: CPU data reported by the system is not accurate");
-            return true;
-        }
-#endif
-
         struct CStrComparator {
             bool operator()(const char* a, const char* b) const {
                 return std::strcmp(a, b) < 0;
@@ -6738,7 +6336,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return count;
             };
 
-        memory_region phys[128], reserved[128], loader_reserved[128];
+        memory_region phys[128]{}, reserved[128]{}, loader_reserved[128]{};
         DWORD phys_count = 0, reserved_count = 0, loader_reserved_count = 0;
 
         for (int i = 0; i < 3; i++) {
@@ -7081,10 +6679,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!x86)
         return false;
 #else
-        if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
-            return false;
-        }
-
         u32 eax, unused = 0;
         cpu::cpuid(eax, unused, unused, unused, 0x40000001);
         UNUSED(unused);
@@ -7097,282 +6691,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         switch (eax) {
         case nanovisor: return core::add(brands::NANOVISOR);
         case simplevisor: return core::add(brands::SIMPLEVISOR);
-        }
-
-        return false;
-#endif
-    }
-
-
-    /**
-     * @brief Check for Hyper-V CPUID bitmask range for reserved values
-     * @link https://learn.microsoft.com/en-us/virtualization/hyper-v-on-windows/tlfs/feature-discovery
-     * @category x86
-     * @implements VM::HYPERV_BITMASK
-     */
-    [[nodiscard]] static bool hyperv_bitmask() {
-#if (!x86)
-        return false;
-#else
-        if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
-            return false;
-        }
-
-        enum registers : u8 {
-            EAX = 1,
-            EBX,
-            ECX,
-            EDX
-        };
-
-        auto fetch_register = [](const registers register_id, const u32 leaf) -> u32 {
-            u32 eax, ebx, ecx, edx = 0;
-            cpu::cpuid(eax, ebx, ecx, edx, leaf);
-
-            switch (register_id) {
-            case EAX: return eax;
-            case EBX: return ebx;
-            case ECX: return ecx;
-            case EDX: return edx;
-            }
-
-            return 0;
-            };
-
-        const u32 max_leaf = fetch_register(EAX, 0x40000000);
-
-        debug("HYPERV_BITMASK: max leaf = ", std::hex, max_leaf);
-
-        if (max_leaf < 0x4000000A) {
-            return false; // returned false because we want the most feature leafs as possible for Hyper-V
-        }
-
-        /* this is just an ascii tool to check if all the arrows (^) are aligned correctly based on bit position, think of it as a ruler. (ignore this btw)
-        ||||||||||||||||||||||9876543210
-        |||||||||||||||||||||10
-        ||||||||||||||||||||11
-        |||||||||||||||||||12
-        ||||||||||||||||||13
-        |||||||||||||||||14
-        ||||||||||||||||15
-        |||||||||||||||16
-        ||||||||||||||17
-        |||||||||||||18
-        ||||||||||||19
-        |||||||||||20
-        ||||||||||21
-        |||||||||22
-        ||||||||23
-        |||||||24
-        ||||||25
-        |||||26
-        ||||27
-        |||28
-        ||29
-        |30
-        31
-        */
-
-        auto leaf_01 = [&]() -> bool {
-            u32 eax, ebx, ecx, edx = 0;
-            cpu::cpuid(eax, ebx, ecx, edx, 0x40000001);
-
-            debug("01 eax = ", std::bitset<32>(eax));
-            debug("01 ebx = ", std::bitset<32>(ebx));
-            debug("         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
-            debug("01 ecx = ", std::bitset<32>(ecx));
-            debug("         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
-            debug("01 edx = ", std::bitset<32>(edx));
-            debug("         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
-
-            return (
-                (eax != 0) &&
-                (ebx == 0) &&
-                (ecx == 0) &&
-                (edx == 0)
-                );
-            };
-
-        auto leaf_03 = [&]() -> bool {
-            const u32 ecx = fetch_register(ECX, 0x40000003);
-            const u32 edx = fetch_register(EDX, 0x40000003);
-
-            debug("03 ecx = ", std::bitset<32>(ecx));
-            debug("         ^^^^^^^^^^^^^^^^^^^^^^^    ^^^^^");
-            debug("03 edx = ", std::bitset<32>(edx));
-            debug("         ^^^^^ ^^ ^     ^                ");
-
-            if (ecx == 0 || edx == 0) {
-                return false;
-            }
-            else {
-                return (
-                    ((ecx & 0b11111) == 0) &&
-                    ((ecx >> 9) == 0) &&
-                    ((edx & (1 << 16)) == 0) &&
-                    ((edx & (1 << 22)) == 0) &&
-                    (((edx >> 24) & 0b11) == 0) &&
-                    ((edx >> 27) == 0)
-                    );
-            }
-            };
-
-        auto leaf_04 = [&]() -> bool {
-            const u32 eax = fetch_register(EAX, 0x40000004);
-            const u32 ecx = fetch_register(ECX, 0x40000004);
-            const u32 edx = fetch_register(EDX, 0x40000004);
-
-            debug("04 eax = ", std::bitset<32>(eax));
-            debug("         ^^^^^^^^^^^^^  ^       ^        ");
-            debug("04 ecx = ", std::bitset<32>(ecx));
-            debug("         ^^^^^^^^^^^^^^^^^^^^^^^^^       ");
-            debug("04 edx = ", std::bitset<32>(edx));
-            debug("         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
-
-            if (
-                eax == 0 ||
-                ecx == 0 ||
-                edx != 0   // edx is supposed to be null
-                ) {
-                return false;
-            }
-            else {
-                return (
-                    ((eax & (1 << 8)) == 0) &&
-                    ((eax & (1 << 16)) == 0) &&
-                    ((eax >> 19) == 0) &&
-                    ((ecx >> 7) == 0) &&
-                    (edx == 0)
-                    );
-            }
-            };
-
-        auto leaf_05 = [&]() -> bool {
-            const u32 edx = fetch_register(EDX, 0x40000005);
-            debug("05 edx = ", std::bitset<32>(edx));
-            debug("         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
-            return (edx == 0);
-            };
-
-        auto leaf_06 = [&]() -> bool {
-            u32 eax, ebx, ecx, edx = 0;
-            cpu::cpuid(eax, ebx, ecx, edx, 0x40000006);
-
-            debug("06 eax = ", std::bitset<32>(eax));
-            debug("         ^^^^^^^         ^               ");
-            debug("06 ebx = ", std::bitset<32>(ebx));
-            debug("         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
-            debug("06 ecx = ", std::bitset<32>(ecx));
-            debug("         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
-            debug("06 edx = ", std::bitset<32>(edx));
-            debug("         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
-
-            if (
-                eax == 0 ||
-                ebx != 0 ||
-                ecx != 0 ||
-                edx != 0   // edx is supposed to be null
-                ) {
-                return false;
-            }
-            else {
-                return (
-                    ((eax & (1 << 15)) == 0) &&
-                    ((eax >> 25) == 0) &&
-                    (ebx == 0) &&
-                    (ecx == 0) &&
-                    (edx == 0)
-                    );
-            }
-            };
-
-        auto leaf_09 = [&]() -> bool {
-            u32 eax, ebx, ecx, edx = 0;
-            cpu::cpuid(eax, ebx, ecx, edx, 0x40000009);
-
-            debug("09 eax = ", std::bitset<32>(eax));
-            debug("         ^^^^^^^^^^^^^^^^^^^ ^^^^^   ^ ^^");
-            debug("09 ebx = ", std::bitset<32>(ebx));
-            debug("         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
-            debug("09 ecx = ", std::bitset<32>(ecx));
-            debug("         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
-            debug("09 edx = ", std::bitset<32>(edx));
-            debug("         ^^^^^^^^^^^^^^ ^ ^^^^^^^^^^ ^^^^");
-
-            if (
-                eax == 0 ||
-                ebx != 0 ||
-                ecx != 0 ||
-                edx == 0
-                ) {
-                return false;
-            }
-            else {
-                return (
-                    ((eax & 0b11) == 0) &&
-                    ((eax & (1 << 3)) == 0) &&
-                    (((eax >> 7) & 0b11111) == 0) &&
-                    ((eax >> 13) == 0) &&
-                    (ebx == 0) &&
-                    (ecx == 0) &&
-                    ((edx & 0b1111) == 0) &&
-                    (((edx >> 5) & 0b1111111111) == 0) &&
-                    ((edx & (1 << 16)) == 0) &&
-                    ((edx >> 18) == 0)
-                    );
-            }
-            };
-
-        auto leaf_0A = [&]() -> bool {
-            u32 eax, ebx, ecx, edx = 0;
-            cpu::cpuid(eax, ebx, ecx, edx, 0x40000009);
-
-            debug("0A eax = ", std::bitset<32>(eax));
-            debug("         ^^^^^^^^^^^    ^                ");
-            debug("0A eax = ", std::bitset<32>(ebx));
-            debug("         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ ");
-            debug("0A ecx = ", std::bitset<32>(ecx));
-            debug("         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
-            debug("0A edx = ", std::bitset<32>(edx));
-            debug("         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
-
-            // ebx is left out on purpose due to how likely it can result the overall result to be a false negative
-            if (
-                eax == 0 ||
-                ecx != 0 ||
-                edx != 0
-                ) {
-                return false;
-            }
-            else {
-                return (
-                    ((eax & (1 << 16)) == 0) &&
-                    ((eax >> 21) == 0) &&
-                    ((ebx >> 30) == 0) &&
-                    (ecx == 0) &&
-                    (edx == 0)
-                    );
-            }
-            };
-
-        debug("01: ", leaf_01());
-        debug("03: ", leaf_03());
-        debug("04: ", leaf_04());
-        debug("05: ", leaf_05());
-        debug("06: ", leaf_06());
-        debug("09: ", leaf_09());
-        debug("0A: ", leaf_0A());
-
-        if (
-            leaf_01() &&
-            leaf_03() &&
-            leaf_04() &&
-            leaf_05() &&
-            leaf_06() &&
-            leaf_09() &&
-            leaf_0A()
-            ) {
-            return core::add(brands::HYPERV);
         }
 
         return false;
@@ -8046,7 +7364,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         IDTR idtr;
         __try {
+#if (CLANG || GCC)
+            __asm__ volatile("sidt %0" : "=m"(idtr));
+#else
             __sidt(&idtr);
+#endif
         }
         __except (EXCEPTION_EXECUTE_HANDLER) {
             return false; // umip
@@ -8151,7 +7473,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 const char* serial = reinterpret_cast<const char*>(buffer + serialOffset);
                 const size_t serialLen = strnlen(serial, header.Size - static_cast<size_t>(serialOffset));
 
-                char upperSerial[256];
+                char upperSerial[256] = { 0 };
                 const size_t copyLen = (serialLen < sizeof(upperSerial))
                     ? serialLen
                     : sizeof(upperSerial) - 1;
@@ -8240,13 +7562,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         };
 
         constexpr std::array<VMGpuInfo, 7> vm_gpu_names = { {
-            { L"VMware SVGA 3D",               brands::VMWARE,   15 },
-            { L"VirtualBox Graphics Adapter",  brands::VBOX,     27 },
+            { L"VMware SVGA 3D",                   brands::VMWARE,   15 },
+            { L"VirtualBox Graphics Adapter",      brands::VBOX,     27 },
+            { L"QXL GPU",                          brands::KVM,      7 },
+            { L"VirGL 3D",                         brands::QEMU,     8 },
+            { L"Microsoft Hyper-V Video",          brands::HYPERV,   13 },
             { L"Parallels Display Adapter (WDDM)", brands::PARALLELS, 30 },
-            { L"QXL GPU",                       brands::KVM,      7 },
-            { L"VirGL 3D",                      brands::QEMU,     8 },
-            { L"Bochs Graphics Adapter",        brands::BOCHS,    21 },
-            { L"Hyper-V Video",                brands::HYPERV,   13 }
+            { L"Bochs Graphics Adapter",           brands::BOCHS,    21 }
         } };
 
         DISPLAY_DEVICEW dd{};
@@ -8341,30 +7663,85 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!WINDOWS)
         return false;
 #else
-#if CPP >= 17
-        using namespace std::literals; // For string_view literals
-        auto scan_service_for_brands = [](const std::wstring& serviceName, const std::vector<std::pair<std::wstring_view, const char*>>& checks) -> std::optional<const char*> {
-#else
         auto scan_service_for_brands = [](const std::wstring& serviceName, const std::vector<std::pair<std::wstring, const char*>>& checks, const char*& result) -> bool {
-#endif
             const DWORD pid = util::FindProcessIdByServiceName(serviceName);
             if (pid == 0) {
                 return false;
             }
 
-            util::EnableDebugPrivilege();
+            bool priv_cleanup = true;
+            if (!util::SetDebugPrivilege(true)) {
+                priv_cleanup = false;
+            }
 
             const HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid);
             if (!hProcess) {
+                if (priv_cleanup) util::SetDebugPrivilege(false);
                 return false;
             }
 
+            size_t minPatternLength = SIZE_MAX;
+            for (const auto& check : checks) {
+                minPatternLength = ((minPatternLength) < (check.first.size())) ? (minPatternLength) : (check.first.size());
+            }
+
+            // Aho-Corasick trie structure
+            struct Node {
+                std::map<wchar_t, Node*> children;
+                Node* failure = nullptr;
+                const char* brand = nullptr;
+            };
+            Node* root = new Node();
+            std::vector<Node*> nodesToDelete;
+
+            // Build the trie
+            for (const auto& check : checks) {
+                const std::wstring& str = check.first;
+                const char* brand = check.second;
+                Node* current = root;
+                for (wchar_t c : str) {
+                    if (current->children.find(c) == current->children.end()) {
+                        Node* newNode = new Node();
+                        current->children[c] = newNode;
+                        nodesToDelete.push_back(newNode);
+                    }
+                    current = current->children[c];
+                }
+                current->brand = brand;
+            }
+
+            // failure links using BFS
+            std::queue<Node*> q;
+            for (auto& child : root->children) {
+                child.second->failure = root;
+                q.push(child.second);
+            }
+
+            while (!q.empty()) {
+                Node* current = q.front();
+                q.pop();
+
+                for (auto& child : current->children) {
+                    wchar_t c = child.first;
+                    Node* node = child.second;
+                    q.push(node);
+
+                    Node* failure = current->failure;
+                    while (failure && failure->children.find(c) == failure->children.end()) {
+                        failure = failure->failure;
+                    }
+                    node->failure = (failure) ? failure->children[c] : root;
+                    if (!node->brand && node->failure->brand) {
+                        node->brand = node->failure->brand;
+                    }
+                }
+            }
+
+            bool found = false;
             MEMORY_BASIC_INFORMATION mbi{};
             uintptr_t address = 0x1000;
-            bool found = false;
-            const char* foundBrand = nullptr;
 
-            while (!found && VirtualQueryEx(hProcess, reinterpret_cast<LPCVOID>(address), &mbi, sizeof(mbi)) == sizeof(mbi)) {
+            while (VirtualQueryEx(hProcess, reinterpret_cast<LPCVOID>(address), &mbi, sizeof(mbi)) == sizeof(mbi)) {
                 const uintptr_t regionBase = reinterpret_cast<uintptr_t>(mbi.BaseAddress);
                 if (regionBase == 0) {
                     address += mbi.RegionSize;
@@ -8373,120 +7750,60 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
                 if ((mbi.State == MEM_COMMIT) &&
                     (mbi.Protect & (PAGE_READWRITE | PAGE_EXECUTE_READWRITE)) &&
-                    !(mbi.Protect & (PAGE_GUARD | PAGE_NOACCESS)))
-                {
-                    const size_t regionSize = static_cast<size_t>(mbi.RegionSize);
-                    std::vector<wchar_t> buffer(regionSize / sizeof(wchar_t));
+                    !(mbi.Protect & (PAGE_GUARD | PAGE_NOACCESS)) &&
+                    (mbi.RegionSize >= minPatternLength * sizeof(wchar_t))) {
+
+                    const size_t bufferSize = static_cast<size_t>(mbi.RegionSize);
+                    std::vector<wchar_t> buffer(bufferSize / sizeof(wchar_t));
                     SIZE_T bytesRead = 0;
 
-                    if (ReadProcessMemory(hProcess, reinterpret_cast<LPCVOID>(regionBase), buffer.data(), buffer.size() * sizeof(wchar_t), &bytesRead) && bytesRead > 0) {
+                    if (ReadProcessMemory(hProcess, reinterpret_cast<LPCVOID>(regionBase), buffer.data(), bufferSize, &bytesRead) && bytesRead > 0) {
                         const size_t charCount = bytesRead / sizeof(wchar_t);
-#if CPP >= 17
-                        std::wstring_view buffer_view(buffer.data(), charCount);
-                        for (const auto& [searchString, brand] : checks) {
-                            if (util::findSubstring(buffer_view, searchString)) {
-#else
-                        for (const auto& check_pair : checks) {
-                            const std::wstring& searchString = check_pair.first;
-                            const char* brand = check_pair.second;
-                            if (util::findSubstring(buffer.data(), charCount, searchString)) {
-#endif
+                        if (charCount < minPatternLength) continue;
+
+                        Node* current = root;
+                        for (size_t i = 0; i < charCount; ++i) {
+                            wchar_t c = buffer[i];
+                            while (current != root && current->children.find(c) == current->children.end()) {
+                                current = current->failure;
+                            }
+                            if (current->children.find(c) != current->children.end()) {
+                                current = current->children[c];
+                            }
+
+                            if (current->brand) {
+                                result = current->brand;
                                 found = true;
-                                foundBrand = brand;
                                 break;
                             }
                         }
-                            }
-                        }
-
-                address = regionBase + mbi.RegionSize;
+                        if (found) break;
                     }
+                }
+                address = regionBase + mbi.RegionSize;
+            }
 
+            for (Node* node : nodesToDelete) delete node;
+            delete root;
             CloseHandle(hProcess);
-
-#if CPP >= 17
-            return found ? std::optional<const char*>(foundBrand) : std::nullopt;
-#else
-            if (found) result = foundBrand;
+            if (priv_cleanup) util::SetDebugPrivilege(false);
             return found;
-#endif
-                };
+            };
 
-        // CDPSvc check for manufacturer
-#if CPP >= 17
-        if (const auto brand = scan_service_for_brands(L"CDPSvc", { { L"VMware, Inc."sv, VM::brands::VMWARE } })) {
-            return core::add(*brand);
-        }
-#else
         const char* cdpsvcBrand;
         if (scan_service_for_brands(L"CDPSvc", { { L"VMware, Inc.", VM::brands::VMWARE } }, cdpsvcBrand)) {
             return core::add(cdpsvcBrand);
         }
-#endif
-
-        /*      // Diagnostic Policy Service checks
-        #if CPP >= 17
-                const std::vector<std::pair<std::wstring_view, const char*>> dps_checks = {
-                    { L"VBoxTray"sv, VM::brands::VBOX },
-                    { L"joeboxserver.exe"sv, VM::brands::JOEBOX },
-                    { L"joeboxcontrol.exe"sv, VM::brands::JOEBOX },
-                    { L"prl_cc.exe"sv, VM::brands::PARALLELS },
-                    { L"prl_tools.exe"sv, VM::brands::PARALLELS },
-                    { L"vboxservice.exe"sv, VM::brands::VBOX },
-                    { L"vboxtray.exe"sv, VM::brands::VBOX },
-                    { L"vmsrvc.exe"sv, VM::brands::VPC },
-                    { L"vmusrvc.exe"sv, VM::brands::VPC },
-                    { L"xenservice.exe"sv, VM::brands::XEN },
-                    { L"xsvc_depriv.exe"sv, VM::brands::XEN },
-                    { L"vm3dservice.exe"sv, VM::brands::VMWARE },
-                    { L"VGAuthService.exe"sv, VM::brands::VMWARE },
-                    { L"vmtoolsd.exe"sv, VM::brands::VMWARE },
-                    { L"qemu-ga.exe"sv, VM::brands::QEMU },
-                    { L"vdagent.exe"sv, VM::brands::QEMU },
-                    { L"vdservice.exe"sv, VM::brands::QEMU }
-                };
-        #else
-                const std::vector<std::pair<std::wstring, const char*>> dps_checks = {
-                    { L"VBoxTray", VM::brands::VBOX },
-                    { L"joeboxserver.exe", VM::brands::JOEBOX },
-                    { L"joeboxcontrol.exe", VM::brands::JOEBOX },
-                    { L"prl_cc.exe", VM::brands::PARALLELS },
-                    { L"prl_tools.exe", VM::brands::PARALLELS },
-                    { L"vboxservice.exe", VM::brands::VBOX },
-                    { L"vboxtray.exe", VM::brands::VBOX },
-                    { L"vmsrvc.exe", VM::brands::VPC },
-                    { L"vmusrvc.exe", VM::brands::VPC },
-                    { L"xenservice.exe", VM::brands::XEN },
-                    { L"xsvc_depriv.exe", VM::brands::XEN },
-                    { L"vm3dservice.exe", VM::brands::VMWARE },
-                    { L"VGAuthService.exe", VM::brands::VMWARE },
-                    { L"vmtoolsd.exe", VM::brands::VMWARE },
-                    { L"qemu-ga.exe", VM::brands::QEMU },
-                    { L"vdagent.exe", VM::brands::QEMU },
-                    { L"vdservice.exe", VM::brands::QEMU }
-                };
-        #endif
-
-        #if CPP >= 17
-                if (const auto brand = scan_service_for_brands(L"DPS", dps_checks)) {
-                    return core::add(*brand);
-                }
-        #else
-                const char* dpsBrand;
-                if (scan_service_for_brands(L"DPS", dps_checks, dpsBrand)) {
-                    return core::add(dpsBrand);
-                }
-        #endif
-        */
         return false;
 #endif
-            }
+    }
 
 
     /**
-     * @brief Check if the IDT and GDT limit addresses mismatch between different CPU cores
+     * @brief Check if the IDT and GDT base virtual addresses mismatch between different CPU cores
      * @note  The Windows kernel has different interrupt handlers registered for each CPU core, thus resulting in different virtual addresses when calling SIDT and SGDT in kernel-mode
-     *        However, in legitimate cases (when Windows is running under its Hyper-V), the IDT and GDT base address will always point to the same virtual location across all CPU cores if called from user-mode
+     *        However, when Windows is running under Hyper-V (under a root partition), the IDT and GDT base address will always point to the same virtual location across all CPU cores if called from user-mode
+     *        This kernel address leak prevention measure is done by Hyper-V on purpose and can be abused to detect VMs
      * @category Windows, x64
      * @author Requiem (https://github.com/NotRequiem)
      * @implements VM::IDT_GDT_MISMATCH
@@ -8524,8 +7841,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     DescriptorTablePointer idtr = {};
                     DescriptorTablePointer gdtr = {};
 
+#if (CLANG || GCC)
+                    __asm__ volatile("sidt %0" : "=m"(idtr));
+                    __asm__ volatile("sgdt %0" : "=m"(gdtr));
+#else
                     __sidt(&idtr);
                     _sgdt(&gdtr);
+#endif
 
                     gdtResults[i] = gdtr.base;
                     idtResults[i] = idtr.base;
@@ -9461,17 +8783,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         for (char& c : model) {
             c = static_cast<char>(std::tolower(c));
         }
-
-#if (WINDOWS)
-        if (!util::verify_thread_data()) {
-            debug("AMD_THREAD_MISMATCH: thread data reported by the system is not accurate");
-            return true;
-        }
-        if (!util::verify_cpu_data()) {
-            debug("AMD_THREAD_MISMATCH: CPU data reported by the system is not accurate");
-            return true;
-        }
-#endif
 
         debug("AMD_THREAD_MISMATCH: CPU model = ", model);
 
@@ -10479,19 +9790,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             "AMD ISBETTER", "GenuineAO486", "MiSTer AO486"
         } };
 
-        const auto brands = cpu::cpu_manufacturer(0);
-        const std::string& brand1 = brands[0];
-        const std::string& brand2 = brands[1];
-
-        const auto matches = [&](const std::string& s) {
-            if (s.size() < 12) return false;
-            for (const char* id : known_ids) {
-                if (memcmp(s.data(), id, 12) == 0) return true;
+        const std::string brand = cpu::cpu_manufacturer(0);
+        for (const char* id : known_ids) {
+            if (memcmp(brand.data(), id, 12) == 0) {
+                return false;
             }
-            return false;
-            };
+        }
 
-        return !matches(brand1) && !matches(brand2);
+        return true; // no known manufacturer matched, likely a VM
     }
 
 
@@ -11554,7 +10860,6 @@ public: // START OF PUBLIC FUNCTIONS
         case VM_PROCESSES: return "VM_PROCESSES";
         case LINUX_USER_HOST: return "LINUX_USER_HOST";
         case GAMARUE: return "GAMARUE";
-        case VMID_0X4: return "VMID_0X4";
         case BOCHS_CPU: return "BOCHS_CPU";
         case MSSMBIOS: return "MSSMBIOS";
         case MAC_MEMSIZE: return "MAC_MEMSIZE";
@@ -11593,7 +10898,6 @@ public: // START OF PUBLIC FUNCTIONS
         case DEVICE_STRING: return "DEVICE_STRING";
         case BLUESTACKS_FOLDERS: return "BLUESTACKS_FOLDERS";
         case CPUID_SIGNATURE: return "CPUID_SIGNATURE";
-        case HYPERV_BITMASK: return "HYPERV_BITMASK";
         case KVM_BITMASK: return "KVM_BITMASK";
         case KGT_SIGNATURE: return "KGT_SIGNATURE";
         case QEMU_VIRTUAL_DMI: return "QEMU_VIRTUAL_DMI";
@@ -11919,7 +11223,7 @@ public: // START OF PUBLIC FUNCTIONS
 #ifdef __VMAWARE_DEBUG__
     static u16 total_points;
 #endif
-            };
+    };
 
 MSVC_ENABLE_WARNING(ASSIGNMENT_OPERATOR NO_INLINE_FUNC SPECTRE)
 
@@ -12116,7 +11420,6 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::VM_PROCESSES, { 15, VM::vm_processes } },
     { VM::LINUX_USER_HOST, { 10, VM::linux_user_host } },
     { VM::GAMARUE, { 10, VM::gamarue } },
-    { VM::VMID_0X4, { 100, VM::vmid_0x4 } },
     { VM::BOCHS_CPU, { 100, VM::bochs_cpu } },
     { VM::MSSMBIOS, { 100, VM::mssmbios } },
     { VM::MAC_MEMSIZE, { 15, VM::hw_memsize } },
@@ -12143,8 +11446,9 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::SMSW, { 30, VM::smsw } },
     { VM::MUTEX, { 85, VM::mutex } },
     { VM::ODD_CPU_THREADS, { 80, VM::odd_cpu_threads } },
-    { VM::INTEL_THREAD_MISMATCH, { 150, VM::intel_thread_mismatch } },
-    { VM::XEON_THREAD_MISMATCH, { 100, VM::xeon_thread_mismatch } },
+    { VM::INTEL_THREAD_MISMATCH, { 95, VM::intel_thread_mismatch } },
+    { VM::XEON_THREAD_MISMATCH, { 95, VM::xeon_thread_mismatch } },
+    { VM::AMD_THREAD_MISMATCH, { 95, VM::amd_thread_mismatch } },
     { VM::NETTITUDE_VM_MEMORY, { 100, VM::nettitude_vm_memory } },
     { VM::CPUID_BITSET, { 25, VM::cpuid_bitset } },
     { VM::CUCKOO_DIR, { 30, VM::cuckoo_dir } },
@@ -12155,7 +11459,6 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::DEVICE_STRING, { 25, VM::device_string } },
     { VM::BLUESTACKS_FOLDERS, { 5, VM::bluestacks } },
     { VM::CPUID_SIGNATURE, { 95, VM::cpuid_signature } },
-    { VM::HYPERV_BITMASK, { 20, VM::hyperv_bitmask } },
     { VM::KVM_BITMASK, { 40, VM::kvm_bitmask } },
     { VM::KGT_SIGNATURE, { 80, VM::intel_kgt_signature } },
     { VM::QEMU_VIRTUAL_DMI, { 40, VM::qemu_virtual_dmi } },
@@ -12189,7 +11492,6 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::HYPERV_QUERY, { 100, VM::hyperv_query } },
     { VM::BAD_POOLS, { 80, VM::bad_pools } },
     { VM::AMD_SEV, { 50, VM::amd_sev } },
-    { VM::AMD_THREAD_MISMATCH, { 100, VM::amd_thread_mismatch } },
     { VM::NATIVE_VHD, { 100, VM::native_vhd } },
     { VM::VIRTUAL_REGISTRY, { 65, VM::virtual_registry } },
     { VM::FIRMWARE, { 90, VM::firmware_scan } },

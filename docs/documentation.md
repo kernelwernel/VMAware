@@ -332,7 +332,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 
 | Flag alias | Description | Cross-platform? (empty = yes) | Certainty | Admin? | GPL-3.0? | 32-bit only? | Notes |
 | ---------- | ----------- | ----------------------------- | --------- | ------ | -------- | ------------ | ----- |
-| `VM::VMID` | Check CPUID output of manufacturer ID for known VMs/hypervisors at leaf 0 |  | 100% |  |  |  |  |
+| `VM::VMID` | Check CPUID output of manufacturer ID for known VMs/hypervisors at leaf 0 and 0x40000000-0x40000100 |  | 100% |  |  |  |  |
 | `VM::CPU_BRAND` | Check if CPU brand model contains any VM-specific string snippets |  | 50% |  |  |  |  |  |
 | `VM::HYPERVISOR_BIT` | Check if hypervisor feature bit in CPUID eax bit 31 is enabled (always false for physical CPUs) |  | 100% |  |  |  |  |
 | `VM::HYPERVISOR_STR` | Check for hypervisor brand string length (would be around 2 characters in a host machine) |  | 75% |  |  |  |  |
@@ -365,7 +365,6 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::VM_PROCESSES` | Check for any VM processes that are active | Windows | 15% |  |  |  |  |
 | `VM::LINUX_USER_HOST` | Check for default VM username and hostname for linux | Linux | 10% |  |  |  |  |
 | `VM::GAMARUE` | Check for Gamarue ransomware technique which compares VM-specific Window product IDs | Windows | 10% |  |  |  |  |
-| `VM::VMID_0X4` | Check if the CPU manufacturer ID matches that of a VM brand with leaf 0x40000000 |  | 100% |  |  |  |  |
 | `VM::BOCHS_CPU` | Check for various Bochs-related emulation oversights through CPU checks |  | 100% |  |  |  |  |
 | `VM::MSSMBIOS` | Check MSSMBIOS registry for VM-specific signatures | Windows | 100% |  |  |  |  |
 | `VM::MAC_MEMSIZE` | Check if memory is too low for MacOS system | MacOS | 15% |  |  |  |  |
@@ -392,8 +391,8 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::SMSW` | Check for SMSW assembly instruction technique | Windows | 30% |  |  | 32-bit |  |
 | `VM::MUTEX` | Check for mutex strings of VM brands | Windows | 85% |  |  |  |  |
 | `VM::ODD_CPU_THREADS` | Check for odd CPU threads, usually a sign of modification through VM setting because 99% of CPUs have even numbers of threads |  | 80% |  |  |  |  |
-| `VM::INTEL_THREAD_MISMATCH` | Check for Intel CPU thread count database if it matches the system's thread count |  | 150% |  |  |  |  |
-| `VM::XEON_THREAD_MISMATCH` | Same as above, but for Xeon Intel CPUs |  | 100% |  |  |  |  |
+| `VM::INTEL_THREAD_MISMATCH` | Check for Intel CPU thread count database if it matches the system's thread count |  | 95% |  |  |  |  |
+| `VM::XEON_THREAD_MISMATCH` | Same as above, but for Xeon Intel CPUs |  | 95% |  |  |  |  |
 | `VM::NETTITUDE_VM_MEMORY` | Check for memory regions to detect VM-specific brands | Windows | 100% | |  |  |  |
 | `VM::CPUID_BITSET` |  Check for CPUID technique by checking whether all the bits equate to more than 4000 |  | 25% |  |  |  |  |
 | `VM::CUCKOO_DIR` | Check for cuckoo directory using crt and WIN API directory functions | Windows | 30% |  |  |  |  |
@@ -404,7 +403,6 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::DEVICE_STRING` | Check if bogus device string would be accepted | Windows | 25% |  |  |  |  |
 | `VM::BLUESTACKS_FOLDERS` |  Check for the presence of BlueStacks-specific folders | Linux | 5% |  |  |  |  |
 | `VM::CPUID_SIGNATURE` | Check for signatures in leaf 0x40000001 in CPUID |  | 95% |  |  |  |  |
-| `VM::HYPERV_BITMASK` | Check for Hyper-V CPUID bitmask range for reserved values |  | 20% |  |  |  |  |
 | `VM::KVM_BITMASK` | Check for KVM CPUID bitmask range for reserved values |  | 40% |  |  |  |  |
 | `VM::KGT_SIGNATURE` | Check for Intel KGT (Trusty branch) hypervisor signature in CPUID |  | 80% |  |  |  |  |
 | `VM::QEMU_VIRTUAL_DMI` | Check for presence of QEMU in the /sys/devices/virtual/dmi/id directory | Linux | 40% |  |  |  |  |
@@ -429,7 +427,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::GPU_NAME` | Check for VM specific device names in GPUs | Windows | 100% |  |  |  |  |
 | `VM::VM_DEVICES` | Check for VM-specific devices | Windows | 45% |  |  |  |  |
 | `VM::VM_MEMORY` | Check for specific VM memory traces in certain processes | Windows | 65% |  |  |  |  |
-| `VM::IDT_GDT_MISMATCH` | Check if the IDT and GDT limit addresses mismatch between different CPU cores | Windows | 50% | Admin |  |  |  |
+| `VM::IDT_GDT_MISMATCH` | Check if the IDT and GDT base virtual addresses mismatch between different CPU cores when called from usermode under a root partition | Windows | 50% |  |  |  |  |
 | `VM::PROCESSOR_NUMBER` | Check for number of processors | Windows | 50% |  |  |  |  |
 | `VM::NUMBER_OF_CORES` | Check for number of cores | Windows | 50% |  |  |  |  |
 | `VM::ACPI_TEMPERATURE` | Check for device's temperature | Windows | 25% |  |  |  |  |
@@ -440,7 +438,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::HYPERV_QUERY` | Check if a call to NtQuerySystemInformation with the 0x9f leaf fills a _SYSTEM_HYPERVISOR_DETAIL_INFORMATION structure | Windows | 100% |  |  |  |  |
 | `VM::BAD_POOLS` | Check for system pools allocated by hypervisors | Windows | 80% |  |  |  |  |
 | `VM::AMD_SEV` | Check for AMD-SEV MSR running on the system | Linux and MacOS | 50% | Admin |  |  |  |
-| `VM::AMD_THREAD_MISMATCH` | Check for AMD CPU thread count database if it matches the system's thread count |  | 100% |  |  |  |  |
+| `VM::AMD_THREAD_MISMATCH` | Check for AMD CPU thread count database if it matches the system's thread count |  | 95% |  |  |  |  |
 | `VM::NATIVE_VHD` | Checks if the OS was booted from a VHD container |  | 100% |  |  |  |  |
 | `VM::NATIVE_VHD` | Check for OS being booted from a VHD container | Windows | 100% |  |  |  |  |
 | `VM::VIRTUAL_REGISTRY` | Check for particular object directory which is present in Sandboxie virtual environment but not in usual host systems | Windows | 65% |  |  |  |  |
