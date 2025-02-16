@@ -493,7 +493,6 @@ public:
         VM_PROCESSES,
         LINUX_USER_HOST,
         GAMARUE,
-        VMID_0X4,
         BOCHS_CPU,
         MSSMBIOS,
         MAC_MEMSIZE,
@@ -731,6 +730,7 @@ public:
         HYPERV_UNKNOWN_VM = 0,
         HYPERV_REAL_VM,
         HYPERV_ARTIFACT_VM,
+        HYPERV_ENLIGHTENMENT
     };
 
     // various cpu operation stuff
@@ -911,8 +911,8 @@ public:
 #endif
         }
 
-
-        [[nodiscard]] static std::array<std::string, 2> cpu_manufacturer(const u32 p_leaf) {
+        // cpu manufacturer id
+        [[nodiscard]] static std::string cpu_manufacturer(const u32 p_leaf) {
             auto cpuid_thingy = [](const u32 p_leaf, u32* regs, std::size_t start = 0, std::size_t end = 4) -> bool {
                 u32 x[4]{};
                 cpu::cpuid(x[0], x[1], x[2], x[3], p_leaf);
@@ -926,12 +926,13 @@ public:
 
             u32 sig_reg[3] = { 0 };
 
-            if (!cpuid_thingy(p_leaf, sig_reg, 1)) {
-                return std::array<std::string, 2>{{ "", "" }};
+            // Start at index 1 to get EBX, ECX, EDX (x[1], x[2], x[3])
+            if (!cpuid_thingy(p_leaf, sig_reg, 1, 4)) {
+                return "";
             }
 
             if ((sig_reg[0] == 0) && (sig_reg[1] == 0) && (sig_reg[2] == 0)) {
-                return std::array<std::string, 2>{{ "", "" }};
+                return "";
             }
 
             auto strconvert = [](u32 n) -> std::string {
@@ -940,30 +941,18 @@ public:
                 };
 
             std::stringstream ss;
-            std::stringstream ss2;
 
-            /*
-                * Two permutations are generated because the order of CPUID registers(EBX, ECX, EDX)
-                * varies depending on the leaf. For example:
-                *
-                * - Standard vendor strings (leaf 0x0) use EBX → EDX → ECX
-                * - Hypervisor vendor strings (leaf 0x40000000) often use EBX → ECX → EDX
-                *
-                * This function returns both permutations to ensure detection across all cases
-            */
+            // Corrected condition to check each leaf value properly
+            if (p_leaf == 0x40000000 || p_leaf == 0x40000001 || p_leaf == 0x40000100) {
+                // Hypervisor vendor string order: EBX, ECX, EDX
+                ss << strconvert(sig_reg[0]) << strconvert(sig_reg[1]) << strconvert(sig_reg[2]);
+            }
+            else {
+                // Standard vendor string (leaf 0x0) order: EBX, EDX, ECX
+                ss << strconvert(sig_reg[0]) << strconvert(sig_reg[2]) << strconvert(sig_reg[1]);
+            }
 
-            ss << strconvert(sig_reg[0]);
-            ss << strconvert(sig_reg[2]);
-            ss << strconvert(sig_reg[1]);
-
-            ss2 << strconvert(sig_reg[0]);
-            ss2 << strconvert(sig_reg[1]);
-            ss2 << strconvert(sig_reg[2]);
-
-            std::string brand_str = ss.str();
-            std::string brand_str2 = ss2.str();
-
-            return { brand_str, brand_str2 };
+            return ss.str();
         }
 
         struct stepping_struct {
@@ -1066,9 +1055,9 @@ public:
         };
 
 #if (CPP >= 17)
-        [[nodiscard]] static bool vmid_template(const u32 p_leaf, [[maybe_unused]] const char* technique_name) {
+        [[nodiscard]] static bool vmid_template(const u32 p_leaf) {
 #else 
-        [[nodiscard]] static bool vmid_template(const u32 p_leaf, const char* technique_name) {
+        [[nodiscard]] static bool vmid_template(const u32 p_leaf) {
 #endif
 #if (CPP >= 17)
             constexpr std::string_view
@@ -1077,7 +1066,6 @@ public:
 #endif
                 bhyve = "bhyve bhyve ",
                 bhyve2 = "BHyVE BHyVE ",
-                kvm = "KVMKVMKVM\0\0\0",
                 kvm_hyperv = "Linux KVM Hv",
                 qemu = "TCGTCGTCGTCG",
                 hyperv = "Microsoft Hv",
@@ -1100,93 +1088,100 @@ public:
                 barevisor = "Barevisor!\0\0",
                 hyperplatform = "PpyH",
                 minivisor = "MiniVisor\0\0\0",
-                intel_tdx = "IntelTDX    ", // source: virt-what
+                intel_tdx = "IntelTDX    ",
                 lkvm = "LKVMLKVMLKVM",
                 neko = "Neko Project",
                 noir = "NoirVisor ZT";
 
-            const std::array<std::string, 2> brand_strings = cpu_manufacturer(p_leaf);
-            debug(technique_name, brand_strings.at(0));
-            debug(technique_name, brand_strings.at(1));
+            const std::string brand_str = cpu_manufacturer(p_leaf);
 
-#if (CPP < 17)
-            // bypass compiler warning about unused parameter, ignore this
-            UNUSED(technique_name);
+#ifdef __VMAWARE_DEBUG__
+            const char* technique_name;
+            switch (p_leaf) {
+            case 0x40000000:
+                technique_name = "VMID_0x4: ";
+                break;
+            case 0x40000100:
+                technique_name = "VMID_0x4 + 0x100: ";
+                break;
+            case 0x40000001:
+                technique_name = "VMID_0x4 + 1: ";
+                break;
+            default:
+                technique_name = "VMID: ";
+                break;
+            }
+            debug(technique_name, brand_str);
 #endif
-
-            for (const std::string &brand_str : brand_strings) {
-                if (brand_str == qemu) { return core::add(brands::QEMU); }
-                if (brand_str == vmware) { return core::add(brands::VMWARE); }
-                if (brand_str == vbox) { return core::add(brands::VBOX); }
-                if (brand_str == bhyve) { return core::add(brands::BHYVE); }
-                if (brand_str == bhyve2) { return core::add(brands::BHYVE); }
-                if (brand_str == kvm) { return core::add(brands::KVM); }
-                if (brand_str == kvm_hyperv) { return core::add(brands::KVM_HYPERV); }
-                if (brand_str == parallels) { return core::add(brands::PARALLELS); }
-                if (brand_str == parallels2) { return core::add(brands::PARALLELS); }
-                if (brand_str == xen) { return core::add(brands::XEN); }
-                if (brand_str == acrn) { return core::add(brands::ACRN); }
-                if (brand_str == qnx) { return core::add(brands::QNX); }
-                if (brand_str == nvmm) { return core::add(brands::NVMM); }
-                if (brand_str == openbsd_vmm) { return core::add(brands::BSD_VMM); }
-                if (brand_str == intel_haxm) { return core::add(brands::INTEL_HAXM); }
-                if (brand_str == unisys) { return core::add(brands::UNISYS); }
-                if (brand_str == lmhs) { return core::add(brands::LMHS); }
-                if (brand_str == jailhouse) { return core::add(brands::JAILHOUSE); }
-                if (brand_str == intel_kgt) { return core::add(brands::INTEL_KGT); }
-                if (brand_str == barevisor) { return core::add(brands::BAREVISOR); }
-                if (brand_str == minivisor) { return core::add(brands::MINIVISOR); }
-                if (brand_str == intel_tdx) { return core::add(brands::INTEL_TDX); }
-                if (brand_str == lkvm) { return core::add(brands::LKVM); }
-                if (brand_str == neko) { return core::add(brands::NEKO_PROJECT); }
-                if (brand_str == noir) { return core::add(brands::NOIRVISOR); }
-
-
-                // both Hyper-V and VirtualPC have the same string value
-                if (brand_str == hyperv) {
-                    if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
-                        return false;
-                    }
-                    return core::add(brands::HYPERV, brands::VPC);
+            // both Hyper-V and VirtualPC have the same string value
+            if (brand_str == hyperv) {
+                if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
+                    return false;
                 }
+                return core::add(brands::HYPERV, brands::VPC);
+            }
 
-                /**
-                 * this is added because there are inconsistent string
-                 * values for KVM's manufacturer ID. For example,
-                 * it gives me "KVMKMVMKV" when I run it under QEMU
-                 * but the Wikipedia article on CPUID says it's
-                 * "KVMKVMKVM\0\0\0", like wtf????
-                 */
-                if (util::find(brand_str, "KVM")) {
-                    return core::add(brands::KVM);
-                }
+            /**
+             * this is added because there are inconsistent string
+             * values for KVM's manufacturer ID. For example,
+             * it gives me "KVMKMVMKV" when I run it under QEMU
+             * but the Wikipedia article on CPUID says it's
+             * "KVMKVMKVM\0\0\0", like wtf????
+             */
+            if (util::find(brand_str, "KVM")) {
+                return core::add(brands::KVM);
+            }
 
-                /**
-                 * i'm honestly not sure about this one,
-                 * they're supposed to have 12 characters but
-                 * Wikipedia tells me it these brands have
-                 * less characters (both 8), so i'm just
-                 * going to scan for the entire string ig
-                 */
+            if (brand_str == vmware) { return core::add(brands::VMWARE); }
+            if (brand_str == vbox) { return core::add(brands::VBOX); }
+            if (brand_str == qemu) { return core::add(brands::QEMU); }
+            if (brand_str == xen) { return core::add(brands::XEN); }
+            if (brand_str == kvm_hyperv) { return core::add(brands::KVM_HYPERV); }
+            if (brand_str == parallels) { return core::add(brands::PARALLELS); }
+            if (brand_str == parallels2) { return core::add(brands::PARALLELS); }
+            if (brand_str == bhyve) { return core::add(brands::BHYVE); }
+            if (brand_str == bhyve2) { return core::add(brands::BHYVE); }
+            if (brand_str == acrn) { return core::add(brands::ACRN); }
+            if (brand_str == qnx) { return core::add(brands::QNX); }
+            if (brand_str == nvmm) { return core::add(brands::NVMM); }
+            if (brand_str == openbsd_vmm) { return core::add(brands::BSD_VMM); }
+            if (brand_str == intel_haxm) { return core::add(brands::INTEL_HAXM); }
+            if (brand_str == unisys) { return core::add(brands::UNISYS); }
+            if (brand_str == lmhs) { return core::add(brands::LMHS); }
+            if (brand_str == jailhouse) { return core::add(brands::JAILHOUSE); }
+            if (brand_str == intel_kgt) { return core::add(brands::INTEL_KGT); }
+            if (brand_str == barevisor) { return core::add(brands::BAREVISOR); }
+            if (brand_str == minivisor) { return core::add(brands::MINIVISOR); }
+            if (brand_str == intel_tdx) { return core::add(brands::INTEL_TDX); }
+            if (brand_str == lkvm) { return core::add(brands::LKVM); }
+            if (brand_str == neko) { return core::add(brands::NEKO_PROJECT); }
+            if (brand_str == noir) { return core::add(brands::NOIRVISOR); }
+
+            /**
+             * i'm honestly not sure about this one,
+             * they're supposed to have 12 characters but
+             * Wikipedia tells me it these brands have
+             * less characters (both 8), so i'm just
+             * going to scan for the entire string ig
+             */
 #if (CPP >= 17)
-                const char* qnx_sample = qnx2.data();
-                const char* applevz_sample = apple_vz.data();
+            const char* qnx_sample = qnx2.data();
+            const char* applevz_sample = apple_vz.data();
 #else
-                const char* qnx_sample = qnx2.c_str();
-                const char* applevz_sample = apple_vz.c_str();
+            const char* qnx_sample = qnx2.c_str();
+            const char* applevz_sample = apple_vz.c_str();
 #endif
 
-                if (util::find(brand_str, qnx_sample)) {
-                    return core::add(brands::QNX);
-                }
+            if (util::find(brand_str, qnx_sample)) {
+                return core::add(brands::QNX);
+            }
 
-                if (util::find(brand_str, applevz_sample)) {
-                    return core::add(brands::APPLE_VZ);
-                }
+            if (util::find(brand_str, applevz_sample)) {
+                return core::add(brands::APPLE_VZ);
+            }
 
-                if (util::find(brand_str, hyperplatform.data())) {
-                    return core::add(brands::HYPERPLATFORM);
-                }
+            if (util::find(brand_str, hyperplatform.data())) {
+                return core::add(brands::HYPERPLATFORM);
             }
 
             return false;
@@ -1934,9 +1929,18 @@ public:
                 state = HYPERV_REAL_VM;
             }
             else if (eax() == 12 || is_root_partition()) {
-                core_debug("HYPER_X: added Hyper-V artifact VM");
-                core::add(brands::HYPERV_ARTIFACT);
-                state = HYPERV_ARTIFACT_VM;
+                const std::string brand_str = cpu::cpu_manufacturer(0x40000001);
+
+                if (util::find(brand_str, "KVM")) {
+                    core_debug("HYPER_X: added Hyper-V Enlightenments");
+                    core::add(brands::QEMU, brands::KVM);
+                    state = HYPERV_ENLIGHTENMENT;
+                }
+                else {
+                    core_debug("HYPER_X: added Hyper-V artifact VM");
+                    core::add(brands::HYPERV_ARTIFACT);
+                    state = HYPERV_ARTIFACT_VM;
+                }   
             }
             else {
                 core_debug("HYPER_X: none detected");
@@ -2499,7 +2503,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!x86)
         return false;
 #else
-        return cpu::vmid_template(0, "VMID: ");
+        return (
+            cpu::vmid_template(0) ||
+            cpu::vmid_template(cpu::leaf::hypervisor) || // 0x40000000
+            cpu::vmid_template(cpu::leaf::hypervisor + 1) || // 0x40000001 to account for some edge-cases
+            cpu::vmid_template(cpu::leaf::hypervisor + 0x100) // 0x40000100
+        );
 #endif
     }
 
@@ -3917,23 +3926,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check if the CPU manufacturer ID matches that of a VM brand with leaf 0x40000000
-     * @category x86
-     * @implements VM::VMID_0X4
-     */
-    [[nodiscard]] static bool vmid_0x4() {
-#if (!x86)
-        return false;
-#else
-        return (
-            cpu::vmid_template(cpu::leaf::hypervisor, "VMID_0x4: ") ||
-            cpu::vmid_template(cpu::leaf::hypervisor + 1, "VMID_0x4 + 1: ") // Some VM brands can have their cpu manufacturer ID as 0x4000'0001
-        );
-#endif
-    }
-
-
-    /**
      * @brief Check for various Bochs-related emulation oversights through CPU checks
      * @category x86
      * @note Discovered by Peter Ferrie, Senior Principal Researcher, Symantec Advanced Threat Research peter_ferrie@symantec.com
@@ -4133,7 +4125,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             for (DWORD i = 0; i < length; ++i) {
                 const char current = buffer[i];
 
-                // Check all patterns in single pass
                 for (size_t p = 0; p < config.actual_pattern_count; ++p) {
                     const auto& pattern = config.patterns[p];
 
@@ -10285,19 +10276,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             "AMD ISBETTER", "GenuineAO486", "MiSTer AO486"
         } };
 
-        const auto brands = cpu::cpu_manufacturer(0);
-        const std::string& brand1 = brands[0];
-        const std::string& brand2 = brands[1];
-
-        const auto matches = [&](const std::string& s) {
-            if (s.size() < 12) return false;
-            for (const char* id : known_ids) {
-                if (memcmp(s.data(), id, 12) == 0) return true;
+        const std::string brand = cpu::cpu_manufacturer(0);
+        for (const char* id : known_ids) {
+            if (memcmp(brand.data(), id, 12) == 0) {
+                return false;
             }
-            return false;
-            };
+        }
 
-        return !matches(brand1) && !matches(brand2);
+        return true; // no known manufacturer matched, likely a VM
     }
     
 
@@ -11356,7 +11342,6 @@ public: // START OF PUBLIC FUNCTIONS
             case VM_PROCESSES: return "VM_PROCESSES";
             case LINUX_USER_HOST: return "LINUX_USER_HOST";
             case GAMARUE: return "GAMARUE";
-            case VMID_0X4: return "VMID_0X4";
             case BOCHS_CPU: return "BOCHS_CPU";
             case MSSMBIOS: return "MSSMBIOS";
             case MAC_MEMSIZE: return "MAC_MEMSIZE";
@@ -11922,7 +11907,6 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::VM_PROCESSES, { 15, VM::vm_processes } }, 
     { VM::LINUX_USER_HOST, { 10, VM::linux_user_host } },
     { VM::GAMARUE, { 10, VM::gamarue } },
-    { VM::VMID_0X4, { 100, VM::vmid_0x4 } },
     { VM::BOCHS_CPU, { 100, VM::bochs_cpu } },
     { VM::MSSMBIOS, { 100, VM::mssmbios } },
     { VM::MAC_MEMSIZE, { 15, VM::hw_memsize } },
