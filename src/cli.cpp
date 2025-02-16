@@ -367,7 +367,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::GENERAL_HOSTNAME:
             case VM::BLUESTACKS_FOLDERS:
             case VM::CPUID_SIGNATURE:
-            case VM::HYPERV_BITMASK:
             case VM::KVM_BITMASK:
             case VM::KGT_SIGNATURE:
             case VM::QEMU_VIRTUAL_DMI:
@@ -447,7 +446,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::SCREEN_RESOLUTION:
             case VM::DEVICE_STRING:
             case VM::CPUID_SIGNATURE:
-            case VM::HYPERV_BITMASK:
             case VM::KVM_BITMASK:
             case VM::KGT_SIGNATURE:
             case VM::DRIVER_NAMES:
@@ -498,7 +496,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::XEON_THREAD_MISMATCH:
             case VM::CPUID_BITSET:
             case VM::CPUID_SIGNATURE:
-            case VM::HYPERV_BITMASK:
             case VM::KVM_BITMASK:
             case VM::KGT_SIGNATURE:
 			case VM::AMD_SEV:
@@ -949,7 +946,6 @@ void general() {
     checker(VM::DEVICE_STRING, "bogus device string");
     checker(VM::BLUESTACKS_FOLDERS, "BlueStacks folders");
     checker(VM::CPUID_SIGNATURE, "CPUID signatures");
-    checker(VM::HYPERV_BITMASK, "Hyper-V CPUID reserved bitmask");
     checker(VM::KVM_BITMASK, "KVM CPUID reserved bitmask");
     checker(VM::KGT_SIGNATURE, "Intel KGT signature");
     checker(VM::QEMU_VIRTUAL_DMI, "QEMU virtual DMI directory");
@@ -1138,7 +1134,7 @@ void general() {
                     if (char_count <= 60) {
                         continue;
                     } else {
-                        if ((char_count - 1) >= (max_line_length + 3)) {
+                        if ((char_count - 1) >= (static_cast<unsigned long long>(max_line_length) + 3)) {
                             it = divided_description.insert(it + 1, "\n");
                             char_count = it->length() + 1;
                         } else {

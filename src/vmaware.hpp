@@ -25,14 +25,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 461
+ * - enums for publicly accessible techniques  => line 462
  * - struct for internal cpu operations        => line 736
- * - struct for internal memoization           => line 1196
- * - struct for internal utility functions     => line 1321
- * - struct for internal core components       => line 10824
- * - start of VM detection technique list      => line 2859
- * - start of public VM detection functions    => line 11225
- * - start of externally defined variables     => line 12131
+ * - struct for internal memoization           => line 1190
+ * - struct for internal utility functions     => line 1315
+ * - struct for internal core components       => line 10135
+ * - start of VM detection technique list      => line 2494
+ * - start of public VM detection functions    => line 10536
+ * - start of externally defined variables     => line 11440
  *
  *
  * ============================== EXAMPLE ===================================
@@ -531,7 +531,6 @@ public:
         DEVICE_STRING,
         BLUESTACKS_FOLDERS,
         CPUID_SIGNATURE,
-        HYPERV_BITMASK,
         KVM_BITMASK,
         KGT_SIGNATURE,
         QEMU_VIRTUAL_DMI,
@@ -942,8 +941,7 @@ public:
 
             std::stringstream ss;
 
-            // Corrected condition to check each leaf value properly
-            if (p_leaf == 0x40000000 || p_leaf == 0x40000001 || p_leaf == 0x40000100) {
+            if (p_leaf >= 0x40000000) {
                 // Hypervisor vendor string order: EBX, ECX, EDX
                 ss << strconvert(sig_reg[0]) << strconvert(sig_reg[1]) << strconvert(sig_reg[2]);
             }
@@ -1933,7 +1931,7 @@ public:
 
                 if (util::find(brand_str, "KVM")) {
                     core_debug("HYPER_X: added Hyper-V Enlightenments");
-                    core::add(brands::QEMU, brands::KVM);
+                    core::add(brands::QEMU_KVM_HYPERV);
                     state = HYPERV_ENLIGHTENMENT;
                 }
                 else {
@@ -2315,7 +2313,7 @@ public:
             TOKEN_PRIVILEGES tp{};
             tp.PrivilegeCount = 1;
             tp.Privileges[0].Luid = debugLuid;
-            tp.Privileges[0].Attributes = enable ? SE_PRIVILEGE_ENABLED : 0;
+            tp.Privileges[0].Attributes = enable ? static_cast<DWORD>(SE_PRIVILEGE_ENABLED) : 0;
 
             if (!AdjustTokenPrivileges(hToken, FALSE, &tp, sizeof(tp), nullptr, nullptr)) {
                 CloseHandle(hToken);
@@ -3879,7 +3877,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #else
         HKEY hKey;
-        char buffer[64];
+        char buffer[64] = { 0 };
         DWORD dwSize = sizeof(buffer);
         LONG lRes;
 
@@ -4549,50 +4547,48 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      */
     [[nodiscard]] static bool sidt() {
 #if (!WINDOWS)
-    return false;
+        return false;
 #else
-        // gcc/g++ causes a stack smashing error at runtime for some reason
-        //if (GCC) {
-        //    return false;
-        //}
-
         u8 idtr[10]{};
         u32 idt_entry = 0;
 
 #   if (x86_32)
         __try {
-            _asm sidt idtr
+#           if (CLANG || GCC)
+                __asm__ volatile("sidt %0" : "=m"(idtr));
+#           else
+                _asm sidt idtr
+#           endif
         }
         __except (EXCEPTION_EXECUTE_HANDLER) {
-            return false; // umip
+            return false;  // UMIP
         }
 #   elif (x86_64)
-#       pragma pack(1)
+#       pragma pack(push, 1)
         struct IDTR {
             u16 limit;
             u64 base;
         };
-#       pragma pack()
+#       pragma pack(pop)
 
-        IDTR idtrStruct;
+        IDTR idtrStruct = {};
         __try {
-            __sidt(&idtrStruct);
+#           if (CLANG || GCC)
+                __asm__ volatile("sidt %0" : "=m"(idtrStruct));
+#           else
+                __sidt(&idtrStruct);
+#           endif
         }
         __except (EXCEPTION_EXECUTE_HANDLER) {
-            return false; // umip
+            return false;
         }
-        std::memcpy(idtr, &idtrStruct, sizeof(IDTR));
+        std::memcpy(idtr, &idtrStruct, sizeof(idtr));
 #   else
         return false;
 #   endif
 
         idt_entry = *reinterpret_cast<unsigned long*>(&idtr[2]);
-
-        if ((idt_entry >> 24) == 0xFF) {
-            return core::add(brands::VMWARE);
-        }
-
-        return false;
+        return ((idt_entry >> 24) == 0xFF) ? core::add(brands::VMWARE) : false;
 #endif
     }
 
@@ -6561,7 +6557,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return count;
             };
 
-        memory_region phys[128], reserved[128], loader_reserved[128];
+        memory_region phys[128]{}, reserved[128]{}, loader_reserved[128]{};
         DWORD phys_count = 0, reserved_count = 0, loader_reserved_count = 0;
 
         for (int i = 0; i < 3; i++) {
@@ -6903,10 +6899,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!x86)
         return false;
 #else
-        if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
-            return false;
-        }
-
         u32 eax, unused = 0;
         cpu::cpuid(eax, unused, unused, unused, 0x40000001);
         UNUSED(unused);
@@ -6919,277 +6911,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         switch (eax) {
             case nanovisor: return core::add(brands::NANOVISOR);
             case simplevisor: return core::add(brands::SIMPLEVISOR);
-        }
-
-        return false;
-#endif
-    }
-
-
-    /**
-     * @brief Check for Hyper-V CPUID bitmask range for reserved values
-     * @link https://learn.microsoft.com/en-us/virtualization/hyper-v-on-windows/tlfs/feature-discovery
-     * @category x86
-     * @implements VM::HYPERV_BITMASK
-     */
-    [[nodiscard]] static bool hyperv_bitmask() {
-#if (!x86)
-        return false;
-#else
-        if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
-            return false;
-        }
-
-        enum registers : u8 {
-            EAX = 1,
-            EBX,
-            ECX,
-            EDX
-        };
-
-        auto fetch_register = [](const registers register_id, const u32 leaf) -> u32 {
-            u32 eax, ebx, ecx, edx = 0;
-            cpu::cpuid(eax, ebx, ecx, edx, leaf);
-
-            switch (register_id) {
-                case EAX: return eax;
-                case EBX: return ebx;
-                case ECX: return ecx;
-                case EDX: return edx;
-            }
-
-            return 0;
-        };
-
-        const u32 max_leaf = fetch_register(EAX, 0x40000000);
-
-        debug("HYPERV_BITMASK: max leaf = ", std::hex, max_leaf);
-
-        if (max_leaf < 0x4000000A) {
-            return false; // returned false because we want the most feature leafs as possible for Hyper-V
-        }
-
-/* this is just an ascii tool to check if all the arrows (^) are aligned correctly based on bit position, think of it as a ruler. (ignore this btw)
-||||||||||||||||||||||9876543210
-|||||||||||||||||||||10 
-||||||||||||||||||||11 
-|||||||||||||||||||12 
-||||||||||||||||||13 
-|||||||||||||||||14 
-||||||||||||||||15 
-|||||||||||||||16 
-||||||||||||||17 
-|||||||||||||18 
-||||||||||||19 
-|||||||||||20 
-||||||||||21 
-|||||||||22 
-||||||||23 
-|||||||24 
-||||||25 
-|||||26 
-||||27 
-|||28 
-||29 
-|30 
-31 
-*/
-
-        auto leaf_01 = [&]() -> bool {
-            u32 eax, ebx, ecx, edx = 0;
-            cpu::cpuid(eax, ebx, ecx, edx, 0x40000001);
-
-            debug("01 eax = ", std::bitset<32>(eax));
-            debug("01 ebx = ", std::bitset<32>(ebx));
-            debug("         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
-            debug("01 ecx = ", std::bitset<32>(ecx));
-            debug("         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
-            debug("01 edx = ", std::bitset<32>(edx));
-            debug("         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
-
-            return (
-                (eax != 0) &&
-                (ebx == 0) &&
-                (ecx == 0) &&
-                (edx == 0)
-            );
-        };
-
-        auto leaf_03 = [&]() -> bool {
-            const u32 ecx = fetch_register(ECX, 0x40000003);
-            const u32 edx = fetch_register(EDX, 0x40000003);
-
-            debug("03 ecx = ", std::bitset<32>(ecx));
-            debug("         ^^^^^^^^^^^^^^^^^^^^^^^    ^^^^^");
-            debug("03 edx = ", std::bitset<32>(edx));
-            debug("         ^^^^^ ^^ ^     ^                ");
-
-            if (ecx == 0 || edx == 0) {
-                return false;
-            } else {
-                return (
-                    ((ecx & 0b11111) == 0) &&
-                    ((ecx >> 9) == 0) &&
-                    ((edx & (1 << 16)) == 0) &&
-                    ((edx & (1 << 22)) == 0) &&
-                    (((edx >> 24) & 0b11) == 0) &&
-                    ((edx >> 27) == 0)
-                );
-            }
-        };
-
-        auto leaf_04 = [&]() -> bool {
-            const u32 eax = fetch_register(EAX, 0x40000004);
-            const u32 ecx = fetch_register(ECX, 0x40000004);
-            const u32 edx = fetch_register(EDX, 0x40000004);
-
-            debug("04 eax = ", std::bitset<32>(eax));
-            debug("         ^^^^^^^^^^^^^  ^       ^        ");
-            debug("04 ecx = ", std::bitset<32>(ecx));
-            debug("         ^^^^^^^^^^^^^^^^^^^^^^^^^       ");
-            debug("04 edx = ", std::bitset<32>(edx));
-            debug("         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
-
-            if (
-                eax == 0 ||
-                ecx == 0 ||
-                edx != 0   // edx is supposed to be null
-            ) {
-                return false;
-            } else {
-                return (
-                    ((eax & (1 << 8)) == 0) &&
-                    ((eax & (1 << 16)) == 0) &&
-                    ((eax >> 19) == 0) &&
-                    ((ecx >> 7) == 0) &&
-                    (edx == 0)
-                );
-            }
-        };
-
-        auto leaf_05 = [&]() -> bool {
-            const u32 edx = fetch_register(EDX, 0x40000005);
-            debug("05 edx = ", std::bitset<32>(edx));
-            debug("         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
-            return (edx == 0);
-        };
-
-        auto leaf_06 = [&]() -> bool {
-            u32 eax, ebx, ecx, edx = 0;
-            cpu::cpuid(eax, ebx, ecx, edx, 0x40000006);
-
-            debug("06 eax = ", std::bitset<32>(eax));
-            debug("         ^^^^^^^         ^               ");
-            debug("06 ebx = ", std::bitset<32>(ebx));
-            debug("         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
-            debug("06 ecx = ", std::bitset<32>(ecx));
-            debug("         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
-            debug("06 edx = ", std::bitset<32>(edx));
-            debug("         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
-
-            if (
-                eax == 0 ||
-                ebx != 0 ||
-                ecx != 0 ||
-                edx != 0   // edx is supposed to be null
-            ) {
-                return false;
-            } else {
-                return (
-                    ((eax & (1 << 15)) == 0) &&
-                    ((eax >> 25) == 0) &&
-                    (ebx == 0) &&
-                    (ecx == 0) &&
-                    (edx == 0)
-                );
-            }
-        };
-
-        auto leaf_09 = [&]() -> bool {
-            u32 eax, ebx, ecx, edx = 0;
-            cpu::cpuid(eax, ebx, ecx, edx, 0x40000009);
-
-            debug("09 eax = ", std::bitset<32>(eax));
-            debug("         ^^^^^^^^^^^^^^^^^^^ ^^^^^   ^ ^^");
-            debug("09 ebx = ", std::bitset<32>(ebx));
-            debug("         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
-            debug("09 ecx = ", std::bitset<32>(ecx));
-            debug("         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
-            debug("09 edx = ", std::bitset<32>(edx));
-            debug("         ^^^^^^^^^^^^^^ ^ ^^^^^^^^^^ ^^^^");
-
-            if (
-                eax == 0 ||
-                ebx != 0 ||
-                ecx != 0 ||
-                edx == 0
-            ) {
-                return false;
-            } else {
-                return (
-                    ((eax & 0b11) == 0) &&
-                    ((eax & (1 << 3)) == 0) &&
-                    (((eax >> 7) & 0b11111) == 0) &&
-                    ((eax >> 13) == 0) &&
-                    (ebx == 0) &&
-                    (ecx == 0) &&
-                    ((edx & 0b1111) == 0) &&
-                    (((edx >> 5) & 0b1111111111) == 0) &&
-                    ((edx & (1 << 16)) == 0) &&
-                    ((edx >> 18) == 0)
-                );
-            }
-        };
-
-        auto leaf_0A = [&]() -> bool {
-            u32 eax, ebx, ecx, edx = 0;
-            cpu::cpuid(eax, ebx, ecx, edx, 0x40000009);
-
-            debug("0A eax = ", std::bitset<32>(eax));
-            debug("         ^^^^^^^^^^^    ^                ");
-            debug("0A eax = ", std::bitset<32>(ebx));
-            debug("         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ ");
-            debug("0A ecx = ", std::bitset<32>(ecx));
-            debug("         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
-            debug("0A edx = ", std::bitset<32>(edx));
-            debug("         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
-
-            // ebx is left out on purpose due to how likely it can result the overall result to be a false negative
-            if (
-                eax == 0 ||
-                ecx != 0 ||
-                edx != 0
-            ) {
-                return false;
-            } else {
-                return (
-                    ((eax & (1 << 16)) == 0) &&
-                    ((eax >> 21) == 0) &&
-                    ((ebx >> 30) == 0) &&
-                    (ecx == 0) &&
-                    (edx == 0)
-                );
-            }
-        };
-
-        debug("01: ", leaf_01());
-        debug("03: ", leaf_03());
-        debug("04: ", leaf_04());
-        debug("05: ", leaf_05());
-        debug("06: ", leaf_06());
-        debug("09: ", leaf_09());
-        debug("0A: ", leaf_0A());
-
-        if (
-            leaf_01() &&
-            leaf_03() &&
-            leaf_04() &&
-            leaf_05() &&
-            leaf_06() &&
-            leaf_09() &&
-            leaf_0A()
-        ) {
-            return core::add(brands::HYPERV);
         }
 
         return false;
@@ -7859,7 +7580,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         IDTR idtr;
         __try {
-            __sidt(&idtr);
+            #if (CLANG || GCC)
+                __asm__ volatile("sidt %0" : "=m"(idtr));
+            #else
+                 __sidt(&idtr);
+            #endif
         }
         __except (EXCEPTION_EXECUTE_HANDLER) {
             return false; // umip
@@ -7964,7 +7689,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 const char* serial = reinterpret_cast<const char*>(buffer + serialOffset);
                 const size_t serialLen = strnlen(serial, header.Size - static_cast<size_t>(serialOffset));
 
-                char upperSerial[256];
+                char upperSerial[256] = { 0 };
                 const size_t copyLen = (serialLen < sizeof(upperSerial))
                     ? serialLen
                     : sizeof(upperSerial) - 1;
@@ -8053,13 +7778,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         };
 
         constexpr std::array<VMGpuInfo, 7> vm_gpu_names = { {
-            { L"VMware SVGA 3D",               brands::VMWARE,   15 },
-            { L"VirtualBox Graphics Adapter",  brands::VBOX,     27 },
+            { L"VMware SVGA 3D",                   brands::VMWARE,   15 },
+            { L"VirtualBox Graphics Adapter",      brands::VBOX,     27 },
+            { L"QXL GPU",                          brands::KVM,      7 },
+            { L"VirGL 3D",                         brands::QEMU,     8 },
+            { L"Microsoft Hyper-V Video",          brands::HYPERV,   13 },
             { L"Parallels Display Adapter (WDDM)", brands::PARALLELS, 30 },
-            { L"QXL GPU",                       brands::KVM,      7 },
-            { L"VirGL 3D",                      brands::QEMU,     8 },
-            { L"Bochs Graphics Adapter",        brands::BOCHS,    21 },
-            { L"Hyper-V Video",                brands::HYPERV,   13 }
+            { L"Bochs Graphics Adapter",           brands::BOCHS,    21 }
         } };
 
         DISPLAY_DEVICEW dd{};
@@ -8322,18 +8047,23 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     DWORD_PTR affinity_mask = 1ULL << i;
                     SetThreadAffinityMask(thread, affinity_mask);
 
-#pragma pack(push, 1)
+                #pragma pack(push, 1)
                     struct DescriptorTablePointer {
                         uint16_t limit;
                         uint64_t base;
                     };
-#pragma pack(pop)
+                #pragma pack(pop)
 
                     DescriptorTablePointer idtr = {};
                     DescriptorTablePointer gdtr = {};
 
+                #if (CLANG || GCC)
+                    __asm__ volatile("sidt %0" : "=m"(idtr));
+                    __asm__ volatile("sgdt %0" : "=m"(gdtr));
+                #else
                     __sidt(&idtr);
                     _sgdt(&gdtr);
+                #endif
 
                     gdtResults[i] = gdtr.base;
                     idtResults[i] = idtr.base;
@@ -11380,7 +11110,6 @@ public: // START OF PUBLIC FUNCTIONS
             case DEVICE_STRING: return "DEVICE_STRING";
             case BLUESTACKS_FOLDERS: return "BLUESTACKS_FOLDERS";
             case CPUID_SIGNATURE: return "CPUID_SIGNATURE";
-            case HYPERV_BITMASK: return "HYPERV_BITMASK";
             case KVM_BITMASK: return "KVM_BITMASK";
             case KGT_SIGNATURE: return "KGT_SIGNATURE";
             case QEMU_VIRTUAL_DMI: return "QEMU_VIRTUAL_DMI";
@@ -11935,6 +11664,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::ODD_CPU_THREADS, { 80, VM::odd_cpu_threads } },
     { VM::INTEL_THREAD_MISMATCH, { 95, VM::intel_thread_mismatch } },
     { VM::XEON_THREAD_MISMATCH, { 95, VM::xeon_thread_mismatch } },
+    { VM::AMD_THREAD_MISMATCH, { 95, VM::amd_thread_mismatch } },
     { VM::NETTITUDE_VM_MEMORY, { 100, VM::nettitude_vm_memory } },
     { VM::CPUID_BITSET, { 25, VM::cpuid_bitset } },
     { VM::CUCKOO_DIR, { 30, VM::cuckoo_dir } },
@@ -11945,7 +11675,6 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::DEVICE_STRING, { 25, VM::device_string } },
     { VM::BLUESTACKS_FOLDERS, { 5, VM::bluestacks } }, 
     { VM::CPUID_SIGNATURE, { 95, VM::cpuid_signature } }, 
-    { VM::HYPERV_BITMASK, { 20, VM::hyperv_bitmask } }, 
     { VM::KVM_BITMASK, { 40, VM::kvm_bitmask } }, 
     { VM::KGT_SIGNATURE, { 80, VM::intel_kgt_signature } }, 
     { VM::QEMU_VIRTUAL_DMI, { 40, VM::qemu_virtual_dmi } },
@@ -11979,7 +11708,6 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::HYPERV_QUERY, { 100, VM::hyperv_query } },
     { VM::BAD_POOLS, { 80, VM::bad_pools } },
 	{ VM::AMD_SEV, { 50, VM::amd_sev } },
-	{ VM::AMD_THREAD_MISMATCH, { 95, VM::amd_thread_mismatch } },
     { VM::NATIVE_VHD, { 100, VM::native_vhd } },
     { VM::VIRTUAL_REGISTRY, { 65, VM::virtual_registry } },
     { VM::FIRMWARE, { 90, VM::firmware_scan } },
