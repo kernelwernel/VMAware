@@ -352,7 +352,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::DISK_SIZE:
             case VM::VBOX_DEFAULT:
             case VM::LINUX_USER_HOST:
-            case VM::VMID_0X4:
             case VM::BOCHS_CPU:
             case VM::QEMU_GA:
             case VM::SIDT:
@@ -420,7 +419,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::QEMU_DIR:
             case VM::VM_PROCESSES:
             case VM::GAMARUE:
-            case VM::VMID_0X4:
             case VM::BOCHS_CPU:
             case VM::MSSMBIOS:
             case VM::HKLM_REGISTRIES:
@@ -490,7 +488,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::TIMER:
             case VM::THREADCOUNT:
             case VM::HWMODEL:
-            case VM::VMID_0X4:
             case VM::BOCHS_CPU:
             case VM::MAC_MEMSIZE:
             case VM::MAC_IOKIT:
@@ -911,7 +908,6 @@ void general() {
     checker(VM::VM_PROCESSES, "VM processes");
     checker(VM::LINUX_USER_HOST, "default Linux user/host");
     checker(VM::GAMARUE, "gamarue ransomware technique");
-    checker(VM::VMID_0X4, "0x4 leaf of VMID");
     checker(VM::BOCHS_CPU, "BOCHS CPU techniques");
     checker(VM::MSSMBIOS, "MSSMBIOS data");
     checker(VM::MAC_MEMSIZE, "MacOS hw.memsize");

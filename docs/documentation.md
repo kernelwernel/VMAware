@@ -332,7 +332,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 
 | Flag alias | Description | Cross-platform? (empty = yes) | Certainty | Admin? | GPL-3.0? | 32-bit only? | Notes |
 | ---------- | ----------- | ----------------------------- | --------- | ------ | -------- | ------------ | ----- |
-| `VM::VMID` | Check CPUID output of manufacturer ID for known VMs/hypervisors at leaf 0 |  | 100% |  |  |  |  |
+| `VM::VMID` | Check CPUID output of manufacturer ID for known VMs/hypervisors at leaf 0 and 0x40000000-0x40000100 |  | 100% |  |  |  |  |
 | `VM::CPU_BRAND` | Check if CPU brand model contains any VM-specific string snippets |  | 50% |  |  |  |  |  |
 | `VM::HYPERVISOR_BIT` | Check if hypervisor feature bit in CPUID eax bit 31 is enabled (always false for physical CPUs) |  | 100% |  |  |  |  |
 | `VM::HYPERVISOR_STR` | Check for hypervisor brand string length (would be around 2 characters in a host machine) |  | 75% |  |  |  |  |
@@ -365,7 +365,6 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::VM_PROCESSES` | Check for any VM processes that are active | Windows | 15% |  |  |  |  |
 | `VM::LINUX_USER_HOST` | Check for default VM username and hostname for linux | Linux | 10% |  |  |  |  |
 | `VM::GAMARUE` | Check for Gamarue ransomware technique which compares VM-specific Window product IDs | Windows | 10% |  |  |  |  |
-| `VM::VMID_0X4` | Check if the CPU manufacturer ID matches that of a VM brand with leaf 0x40000000 |  | 100% |  |  |  |  |
 | `VM::BOCHS_CPU` | Check for various Bochs-related emulation oversights through CPU checks |  | 100% |  |  |  |  |
 | `VM::MSSMBIOS` | Check MSSMBIOS registry for VM-specific signatures | Windows | 100% |  |  |  |  |
 | `VM::MAC_MEMSIZE` | Check if memory is too low for MacOS system | MacOS | 15% |  |  |  |  |
