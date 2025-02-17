@@ -20,7 +20,7 @@
  *  - License: GPL 3.0
  */
 
-#include "vmaware.hpp"
+#include "..\src\vmaware.hpp"
 #include <iostream>
 #include <string>
 #include <cmath>
