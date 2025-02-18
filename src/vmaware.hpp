@@ -363,7 +363,11 @@
 #include <Functiondiscoverykeys_devpkey.h>
 #include <mmsystem.h>
 #include <queue>
+#include <dxgi.h>
+#include <d3d9.h>
 
+#pragma comment(lib, "dxgi.lib")
+#pragma comment(lib, "d3d9.lib")
 #pragma comment(lib, "winmm.lib")
 #pragma comment(lib, "setupapi.lib")
 #pragma comment(lib, "iphlpapi.lib")
@@ -550,7 +554,7 @@ public:
         VM_SIDT,
         HDD_SERIAL,
         PORT_CONNECTORS,
-        GPU_NAME,
+        GPU,
         VM_DEVICES,
         VM_MEMORY,
         IDT_GDT_MISMATCH,
@@ -7755,8 +7759,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for VM specific device names in GPUs
      * @category Windows
+     * @author Requiem (https://github.com/NotRequiem)
      * @note utoshu did this with WMI in a removed technique (VM::GPU_CHIPTYPE)
-     * @implements VM::GPU_NAME
+     * @implements VM::GPU
      */
     [[nodiscard]] static bool vm_gpu() {
 #if (!WINDOWS)
@@ -7801,6 +7806,53 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             ++deviceNum;
         }
+
+        if (!util::is_admin())
+            return false;
+
+        IDirect3D9* pD3D = Direct3DCreate9(D3D_SDK_VERSION);
+        if (!pD3D) return true;
+
+        D3DADAPTER_IDENTIFIER9 adapterId;
+        D3DCAPS9 caps;
+        if (SUCCEEDED(pD3D->GetAdapterIdentifier(D3DADAPTER_DEFAULT, 0, &adapterId))) {
+            if (adapterId.VendorId == 0x15AD) {
+                pD3D->Release();
+                return core::add(brands::VMWARE);
+            }
+            else if (adapterId.VendorId == 0x80EE) {
+                pD3D->Release();
+                return core::add(brands::VBOX);
+            } 
+        }
+        if (FAILED(pD3D->GetDeviceCaps(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, &caps))) {
+            pD3D->Release();
+            return true;
+        }
+        pD3D->Release();
+
+        IDXGIFactory* pFactory = nullptr;
+        if (FAILED(CreateDXGIFactory(__uuidof(IDXGIFactory), reinterpret_cast<void**>(&pFactory)))) return true;
+
+        IDXGIAdapter* pAdapter = nullptr;
+        // do not enumerate all adapters, otherwise it would false flag with adapters with no dedicated gpu memory like Microsoft Basic Render Driver (vid 0x1414)
+        if (pFactory->EnumAdapters(0, &pAdapter) != DXGI_ERROR_NOT_FOUND) {
+            DXGI_ADAPTER_DESC adapterDesc;
+            if (SUCCEEDED(pAdapter->GetDesc(&adapterDesc))) {
+                char description[128] = { 0 };
+                size_t converted = 0;
+                wcstombs_s(&converted, description, adapterDesc.Description, sizeof(description));
+
+                if (adapterDesc.DedicatedVideoMemory < static_cast<unsigned long long>(1024 * 1024) * 1024) {
+                    pAdapter->Release();
+                    pFactory->Release();
+                    return true;
+                }
+            }
+            pAdapter->Release();
+        }
+
+        pFactory->Release();
         return false;
 #endif
     }
@@ -8124,7 +8176,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for number of logical processors
      * @category Windows
-     * @author idea from Al-Khaser project
      * @implements VM::PROCESSOR_NUMBER
      */
     [[nodiscard]] static bool processor_number()
@@ -8209,6 +8260,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check if any processor has an empty Processor ID using SMBIOS data
      * @category Windows
+     * @note https://www.dmtf.org/sites/default/files/standards/documents/DSP0134_3.8.0.pdf (Section 7.5.3, page 54)
      * @implements VM::PROCESSOR_ID
      */
     [[nodiscard]] static bool processor_id() {
@@ -8222,12 +8274,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             BYTE  SMBIOSMinorVersion;
             BYTE  DmiRevision;
             DWORD Length;
-            BYTE  SMBIOSTableData[1]; // Variable length data follows
+            BYTE  SMBIOSTableData[1];
         };
 #pragma pack(pop)
+
         UINT bufferSize = GetSystemFirmwareTable('RSMB', 0, nullptr, 0);
         if (bufferSize == 0)
-            return false; 
+            return false;
 
         std::vector<BYTE> buffer(bufferSize);
         if (GetSystemFirmwareTable('RSMB', 0, buffer.data(), bufferSize) != bufferSize)
@@ -8243,23 +8296,22 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         BYTE* p = tableData;
 
         while (p < tableEnd) {
-            // Each structure starts with a header: [Type (1B), Length (1B), Handle (2B)]
+            // header: [Type (1B), Length (1B), Handle (2B)]
             if (p + 4 > tableEnd)
-                break; // Not enough data for a header.
+                break;
 
             BYTE type = p[0];
             BYTE length = p[1];
 
-            // Basic sanity check on the structure length.
             if (length < 4 || (p + length) > tableEnd)
                 break;
 
-            // For Processor Information (Type 4) structures, check the Processor ID field
+            // Processor Information (Type 4) structures, Processor ID field
             if (type == 4) {
-                // According to the SMBIOS spec, the Processor ID is an 8-byte field
-                // starting at offset 16 (0x10) in the structure (for SMBIOS v2.1+)
-                if (length >= 0x18) {
-                    BYTE* procId = p + 16;
+                // the Processor ID is an 8‑byte field starting at offset 8 in the structure
+                // Therefore, the structure must be at least 16 bytes long
+                if (length >= 16) {
+                    BYTE* procId = p + 8;
                     bool allZero = true;
                     for (int i = 0; i < 8; ++i) {
                         if (procId[i] != 0) {
@@ -8273,8 +8325,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
             }
 
-            // Move to the next SMBIOS structure
-            // Skip the formatted section
+            // Skip the formatted section.
             BYTE* next = p + length;
             // Then skip the unformatted string-set (terminated by double-null)
             while (next < tableEnd - 1) {
@@ -11129,7 +11180,7 @@ public: // START OF PUBLIC FUNCTIONS
             case VM_SIDT: return "VM_SIDT";
             case HDD_SERIAL: return "HDD_SERIAL";
             case PORT_CONNECTORS: return "PORT_CONNECTORS";
-            case GPU_NAME: return "GPU_NAME";
+            case GPU: return "GPU";
             case VM_DEVICES: return "VM_DEVICES";
             case VM_MEMORY: return "VM_MEMORY";
             case IDT_GDT_MISMATCH: return "IDT_GDT_MISMATCH";
@@ -11694,7 +11745,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::VM_SIDT, { 100, VM::vm_sidt } },
     { VM::HDD_SERIAL, { 100, VM::hdd_serial_number } },
     { VM::PORT_CONNECTORS, { 25, VM::port_connectors } },
-    { VM::GPU_NAME, { 100, VM::vm_gpu } },
+    { VM::GPU, { 100, VM::vm_gpu } },
     { VM::VM_DEVICES, { 45, VM::vm_devices } },
     { VM::VM_MEMORY, { 65, VM::vm_memory } },
     { VM::IDT_GDT_MISMATCH, { 50, VM::idt_gdt_mismatch } },
