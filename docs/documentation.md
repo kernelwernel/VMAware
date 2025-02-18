@@ -422,7 +422,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::ANYRUN_DIRECTORY` | Check for any.run directory and handle the status code | Windows | 35% |  |  |  |  | Removed from the lib, only available in the CLI |
 | `VM::DRIVER_NAMES` | Check for VM-specific names for drivers | Windows | 100% |  |  |  |  |
 | `VM::VM_SIDT` | Check for unknown IDT base address | Windows | 100% |  |  |  |  |
-| `VM::HDD_SERIAL` | Check for HDD serial number | Windows | 100% |  |  |  |  |
+| `VM::HDD_SERIAL` | Check for serial numbers of virtual disks | Windows | 100% |  |  |  |  |
 | `VM::PORT_CONNECTORS` | Check for physical connection ports | Windows | 25% |  |  |  | This technique is known to false flag on devices like Surface Pro |
 | `VM::GPU_NAME` | Check for VM specific device names in GPUs | Windows | 100% |  |  |  |  |
 | `VM::VM_DEVICES` | Check for VM-specific devices | Windows | 45% |  |  |  |  |
