@@ -8209,6 +8209,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check if any processor has an empty Processor ID using SMBIOS data
      * @category Windows
+     * @note https://www.dmtf.org/sites/default/files/standards/documents/DSP0134_3.8.0.pdf (Section 7.5.3)
      * @implements VM::PROCESSOR_ID
      */
     [[nodiscard]] static bool processor_id() {
@@ -8222,12 +8223,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             BYTE  SMBIOSMinorVersion;
             BYTE  DmiRevision;
             DWORD Length;
-            BYTE  SMBIOSTableData[1]; // Variable length data follows
+            BYTE  SMBIOSTableData[1];
         };
 #pragma pack(pop)
+
         UINT bufferSize = GetSystemFirmwareTable('RSMB', 0, nullptr, 0);
         if (bufferSize == 0)
-            return false; 
+            return false;
 
         std::vector<BYTE> buffer(bufferSize);
         if (GetSystemFirmwareTable('RSMB', 0, buffer.data(), bufferSize) != bufferSize)
@@ -8243,23 +8245,22 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         BYTE* p = tableData;
 
         while (p < tableEnd) {
-            // Each structure starts with a header: [Type (1B), Length (1B), Handle (2B)]
+            // header: [Type (1B), Length (1B), Handle (2B)]
             if (p + 4 > tableEnd)
-                break; // Not enough data for a header.
+                break;
 
             BYTE type = p[0];
             BYTE length = p[1];
 
-            // Basic sanity check on the structure length.
             if (length < 4 || (p + length) > tableEnd)
                 break;
 
-            // For Processor Information (Type 4) structures, check the Processor ID field
+            // Processor Information (Type 4) structures, Processor ID field
             if (type == 4) {
-                // According to the SMBIOS spec, the Processor ID is an 8-byte field
-                // starting at offset 16 (0x10) in the structure (for SMBIOS v2.1+)
-                if (length >= 0x18) {
-                    BYTE* procId = p + 16;
+                // the Processor ID is an 8‑byte field starting at offset 8 in the structure
+                // Therefore, the structure must be at least 16 bytes long
+                if (length >= 16) {
+                    BYTE* procId = p + 8;
                     bool allZero = true;
                     for (int i = 0; i < 8; ++i) {
                         if (procId[i] != 0) {
@@ -8273,8 +8274,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
             }
 
-            // Move to the next SMBIOS structure
-            // Skip the formatted section
+            // Skip the formatted section.
             BYTE* next = p + length;
             // Then skip the unformatted string-set (terminated by double-null)
             while (next < tableEnd - 1) {
