@@ -3168,6 +3168,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     score++;
                     if (std::string(p_brand) != "") {
                         debug("REGISTRY: ", "detected = ", p_brand);
+                        debug("REGISTRY: ", "detected = ", regkey_s);
                         core::add(p_brand);
                     }
                 }
@@ -3210,9 +3211,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         key(brands::VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Services\\vmmouse");
         key(brands::VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Services\\VMTools");
         key(brands::VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Services\\VMMEMCTL");
-        key(brands::VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Services\\vmware");
-        key(brands::VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Services\\vmci");
-        key(brands::VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Services\\vmx86");
         key(brands::VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Services\\vmmouse");
         key(brands::VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Services\\vmusbmouse");
         key(brands::VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\IDE\\CdRomNECVMWar_VMware_IDE_CD*");
@@ -3255,7 +3253,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Find for VMware and VBox specific files
+     * @brief Find for VM specific files
      * @category Windows
      * @implements VM::VM_FILES
      */
@@ -3271,29 +3269,32 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             wow64RedirectDisabled = true;
         }
 
-        char szWinDir[MAX_PATH] = { 0 };
-        if (GetWindowsDirectoryA(szWinDir, MAX_PATH) == 0) {
+        // Use the system directory instead of the Windows directory.
+        char szSysDir[MAX_PATH] = { 0 };
+        if (GetSystemDirectoryA(szSysDir, MAX_PATH) == 0) {
             if (wow64RedirectDisabled) {
                 Wow64RevertWow64FsRedirection(&oldValue);
             }
             return false;
         }
 
-        constexpr std::array<const char*, 27> vbox_and_vmware = { {
-             "Drivers\\Vmmouse.sys",
-             "Drivers\\Vmusbmouse.sys",
-             "Drivers\\vm3dgl.dll",
-             "Drivers\\vmdum.dll",
-             "Drivers\\VmGuestLibJava.dll",
-             "Drivers\\vm3dver.dll",
-             "Drivers\\vmtray.dll",
-             "Drivers\\VMToolsHook.dll",
-             "Drivers\\vmGuestLib.dll",
-             "Drivers\\vmhgfs.dll",
-             "Drivers\\VBoxMouse.sys",
-             "Drivers\\VBoxGuest.sys",
-             "Drivers\\VBoxSF.sys",
-             "Drivers\\VBoxVideo.sys",
+        constexpr std::array<const char*, 29> vbox_and_vmware = { {
+             "drivers\\Vmmouse.sys",
+             "drivers\\Vmusbmouse.sys",
+             "drivers\\vm3dgl.dll",
+             "drivers\\vmdum.dll",
+             "drivers\\VmGuestLibJava.dll",
+             "drivers\\vm3dver.dll",
+             "drivers\\vmtray.dll",
+             "drivers\\VMToolsHook.dll",
+             "drivers\\vmGuestLib.dll",
+             "drivers\\vmhgfs.dll",
+             "drivers\\VBoxMouse.sys",
+             "drivers\\VBoxGuest.sys",
+             "drivers\\VBoxSF.sys",
+             "drivers\\VBoxVideo.sys",
+             "vm3dum64_loader.dll",
+             "vm3dum64_10.dll",
              "vboxoglpackspu.dll",
              "vboxoglpassthroughspu.dll",
              "vboxservice.exe",
@@ -3310,31 +3311,31 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
          } };
 
         constexpr std::array<const char*, 10> kvmFiles = { {
-            "Drivers\\balloon.sys",
-            "Drivers\\netkvm.sys",
-            "Drivers\\pvpanic.sys",
-            "Drivers\\viofs.sys",
-            "Drivers\\viogpudo.sys",
-            "Drivers\\vioinput.sys",
-            "Drivers\\viorng.sys",
-            "Drivers\\vioscsi.sys",
-            "Drivers\\vioser.sys",
-            "Drivers\\viostor.sys"
+            "drivers\\balloon.sys",
+            "drivers\\netkvm.sys",
+            "drivers\\pvpanic.sys",
+            "drivers\\viofs.sys",
+            "drivers\\viogpudo.sys",
+            "drivers\\vioinput.sys",
+            "drivers\\viorng.sys",
+            "drivers\\vioscsi.sys",
+            "drivers\\vioser.sys",
+            "drivers\\viostor.sys"
         } };
 
         constexpr std::array<const char*, 7> parallelsFiles = { {
-            "Drivers\\prleth.sys",
-            "Drivers\\prlfs.sys",
-            "Drivers\\prlmouse.sys",
-            "Drivers\\prlvideo.sys",
-            "Drivers\\prltime.sys",
-            "Drivers\\prl_pv32.sys",
-            "Drivers\\prl_paravirt_32.sys"
+            "drivers\\prleth.sys",
+            "drivers\\prlfs.sys",
+            "drivers\\prlmouse.sys",
+            "drivers\\prlvideo.sys",
+            "drivers\\prltime.sys",
+            "drivers\\prl_pv32.sys",
+            "drivers\\prl_paravirt_32.sys"
         } };
 
         constexpr std::array<const char*, 2> vpcFiles = { {
-            "Drivers\\vmsrvc.sys",
-            "Drivers\\vpc-s3.sys"
+            "drivers\\vmsrvc.sys",
+            "drivers\\vpc-s3.sys"
         } };
 
         u8 vbox = 0, vmware = 0, kvm = 0, vpc = 0, parallels = 0;
@@ -3344,23 +3345,21 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return (attrs != INVALID_FILE_ATTRIBUTES) && !(attrs & FILE_ATTRIBUTE_DIRECTORY);
             };
 
-        auto checkFiles = [&](const auto& files, u8& count, const char* brand) {
+        auto checkFiles = [&](const auto& files, u8& count) {
             for (const auto& relativePath : files) {
                 char szPath[MAX_PATH] = { 0 };
-                PathCombineA(szPath, szWinDir, relativePath);
+                // system directory + relative path, so for example: C:\Windows\System32\ + drivers\VBoxMouse.sys
+                PathCombineA(szPath, szSysDir, relativePath);
                 if (file_exists(szPath)) {
                     count++;
                 }
             }
-
-            debug((std::string(brand) + " score: ").c_str(), static_cast<u32>(count));
-            (void)brand;
             };
 
-        checkFiles(vbox_and_vmware, vbox, "VBOX/VMWARE");
-        checkFiles(kvmFiles, kvm, "KVM");
-        checkFiles(parallelsFiles, parallels, "PARALLELS");
-        checkFiles(vpcFiles, vpc, "VPC");
+        checkFiles(vbox_and_vmware, vbox);
+        checkFiles(kvmFiles, kvm);
+        checkFiles(parallelsFiles, parallels);
+        checkFiles(vpcFiles, vpc);
 
         if (wow64RedirectDisabled) {
             Wow64RevertWow64FsRedirection(&oldValue);
@@ -3723,6 +3722,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */             {
 /* GPL */                 power_stats = (powerCaps.ThermalControl == FALSE);
 /* GPL */             }
+/* GPL */             power_stats = power_stats || !powerCaps.HiberFilePresent || !powerCaps.FullWake || !powerCaps.WakeAlarmPresent;
+/* GPL */                           
 /* GPL */         }
 /* GPL */ 
 /* GPL */         return power_stats;
@@ -7603,9 +7604,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check for HDD serial number
+     * @brief Check for serial numbers of virtual disks
      * @category Windows
      * @author Requiem (https://github.com/NotRequiem)
+     * @note VMware can't be flagged without also flagging legitimate devices
      * @implements VM::HDD_SERIAL
      */
     [[nodiscard]] static bool hdd_serial_number() {
@@ -7615,9 +7617,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         bool result = false;
         constexpr DWORD MAX_PHYSICAL_DRIVES = 4;
 
-        constexpr char vmware_serial[] = "39D8_B594_A8C5_AEF2_000C_296C_C5CE_FE12";
-        constexpr size_t vmware_serial_len = sizeof(vmware_serial) - 1;
-
         auto is_vbox_serial = [](const char* str, size_t len) -> bool {
             // VirtualBox pattern: VB + 8 hex + - + 8 hex
             if (len != 19) return false;
@@ -7625,7 +7624,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 (str[1] != 'B' && str[1] != 'b')) return false;
 
             auto is_hex = [](char c) {
-                return (c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f');
+                return (c >= '0' && c <= '9') ||
+                    (c >= 'A' && c <= 'F') ||
+                    (c >= 'a' && c <= 'f');
                 };
 
             for (int i : {2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17, 18}) {
@@ -7708,16 +7709,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     CloseHandle(hDevice);
                     return result;
                 }
-
-                if (copyLen == vmware_serial_len &&
-                    _strnicmp(upperSerial, vmware_serial, vmware_serial_len) == 0) {
-                    result = core::add(brands::VMWARE_WORKSTATION);
-                    if (buffer != stackBuf) {
-                        LocalFree(buffer);
-                    }
-                    CloseHandle(hDevice);
-                    return result;
-                }
             }
 
             if (buffer != stackBuf) {
@@ -7778,13 +7769,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         };
 
         constexpr std::array<VMGpuInfo, 7> vm_gpu_names = { {
-            { L"VMware SVGA 3D",                   brands::VMWARE,   15 },
+            { L"VMware SVGA 3D",                   brands::VMWARE,   14 },
             { L"VirtualBox Graphics Adapter",      brands::VBOX,     27 },
             { L"QXL GPU",                          brands::KVM,      7 },
             { L"VirGL 3D",                         brands::QEMU,     8 },
-            { L"Microsoft Hyper-V Video",          brands::HYPERV,   13 },
-            { L"Parallels Display Adapter (WDDM)", brands::PARALLELS, 30 },
-            { L"Bochs Graphics Adapter",           brands::BOCHS,    21 }
+            { L"Microsoft Hyper-V Video",          brands::HYPERV,   23 },
+            { L"Parallels Display Adapter (WDDM)", brands::PARALLELS, 32 },
+            { L"Bochs Graphics Adapter",           brands::BOCHS,    22 }
         } };
 
         DISPLAY_DEVICEW dd{};
@@ -7794,7 +7785,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         while (EnumDisplayDevicesW(nullptr, deviceNum, &dd, 0)) {
             const wchar_t* deviceStr = dd.DeviceString;
             const size_t deviceStrLen = wcslen(deviceStr);
-
 #if CPP >= 17
             for (const auto& [name, brand, len] : vm_gpu_names) {
 #else
@@ -8006,10 +7996,35 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return found;
             };
 
-        const char* cdpsvcBrand;
-        if (scan_service_for_brands(L"CDPSvc", { { L"VMware, Inc.", VM::brands::VMWARE } }, cdpsvcBrand)) {
-            return core::add(cdpsvcBrand);
+        // The idea is to detect old execution of vm files by scanning for the memory of the process that manages the System Resource Usage Monitor database. 
+        // This db is a Windows forensic artifact that stores old executed files, the scan should detect the presence of the VM even if processes were killed or files removed
+        // * In development *
+        /*
+        const std::vector<std::pair<std::wstring, const char*>> dps_checks = {
+            { L"VBoxTray", VM::brands::VBOX },
+            { L"joeboxserver.exe", VM::brands::JOEBOX },
+            { L"joeboxcontrol.exe", VM::brands::JOEBOX },
+            { L"prl_cc.exe", VM::brands::PARALLELS },
+            { L"prl_tools.exe", VM::brands::PARALLELS },
+            { L"vboxservice.exe", VM::brands::VBOX },
+            { L"vboxtray.exe", VM::brands::VBOX },
+            { L"vmsrvc.exe", VM::brands::VPC },
+            { L"vmusrvc.exe", VM::brands::VPC },
+            { L"xenservice.exe", VM::brands::XEN },
+            { L"xsvc_depriv.exe", VM::brands::XEN },
+            { L"vm3dservice.exe", VM::brands::VMWARE },
+            { L"VGAuthService.exe", VM::brands::VMWARE },
+            { L"vmtoolsd.exe", VM::brands::VMWARE },
+            { L"qemu-ga.exe", VM::brands::QEMU },
+            { L"vdagent.exe", VM::brands::QEMU },
+            { L"vdservice.exe", VM::brands::QEMU }
+        };
+
+        const char* dpsBrand;
+        if (scan_service_for_brands(L"DPS", dps_checks, dpsBrand)) {
+            return core::add(dpsBrand);
         }
+        */
         return false;
 #endif
     }
@@ -9710,9 +9725,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::FIRMWARE
      */
     [[nodiscard]] static bool firmware_scan() {
-#if (!WINDOWS) 
+#if (!WINDOWS)
         return false;
-#else       
+#else
 #pragma warning (disable: 4459)
         typedef enum _SYSTEM_INFORMATION_CLASS {
             SystemFirmwareTableInformation = 76
@@ -9744,32 +9759,18 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (!ntqsi)
             return false;
 
+        // List of target strings (all are now treated as valid hits)
         constexpr const char* targets[] = {
             "Parallels Software International", "Parallels(R)", "innotek",
             "Oracle", "VirtualBox", "VS2005R2", "VMware, Inc.",
             "VMware", "S3 Corp.", "Virtual Machine", "Qemu"
         };
 
-        struct TargetInfo {
-            const char* str;
-            size_t len;
-        };
-
-        std::unordered_map<size_t, std::vector<const char*>> lengthBuckets;
-
-        for (const char* target : targets) {
-            size_t len = strlen(target);
-            if (len > 0) {
-                lengthBuckets[len].push_back(target);
-            }
-        }
-
         auto check_firmware_table = [&](DWORD signature, ULONG tableID) -> bool {
-            PSYSTEM_FIRMWARE_TABLE_INFORMATION info = nullptr;
             ULONG reqSize = 0;
+            PSYSTEM_FIRMWARE_TABLE_INFORMATION info = nullptr;
             bool detected = false;
 
-            // First call: query size.
             info = (PSYSTEM_FIRMWARE_TABLE_INFORMATION)malloc(sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION));
             if (!info)
                 return false;
@@ -9778,108 +9779,107 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             info->TableID = tableID;
             info->TableBufferLength = 0;
 
-            NTSTATUS status = ntqsi((ULONG)SystemFirmwareTableInformation,
+            NTSTATUS status = ntqsi(SystemFirmwareTableInformation,
                 info,
                 sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION),
                 &reqSize);
-            if (status == STATUS_BUFFER_TOO_SMALL) {
+            if (status != STATUS_BUFFER_TOO_SMALL) {
                 free(info);
-                info = (PSYSTEM_FIRMWARE_TABLE_INFORMATION)malloc(reqSize);
-                if (!info)
-                    return false;
-                info->ProviderSignature = signature;
-                info->Action = 1;
-                info->TableID = tableID;
-                info->TableBufferLength = reqSize - sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION);
+                return false;
+            }
+            free(info);
 
-                status = ntqsi((ULONG)SystemFirmwareTableInformation,
-                    info,
-                    reqSize,
-                    &reqSize);
-                if (NT_SUCCESS(status)) {
-                    void* buffer = malloc(info->TableBufferLength);
-                    if (buffer) {
-                        memcpy(buffer, info->TableBuffer, info->TableBufferLength);
-                        const unsigned char* buf = reinterpret_cast<const unsigned char*>(buffer);
-                        size_t bufLen = info->TableBufferLength;
+            info = (PSYSTEM_FIRMWARE_TABLE_INFORMATION)malloc(reqSize);
+            if (!info)
+                return false;
+            info->ProviderSignature = signature;
+            info->Action = 1;
+            info->TableID = tableID;
+            info->TableBufferLength = reqSize - sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION);
 
-                        bool foundVMware = false;
-                        for (size_t t = 0; t < sizeof(targets) / sizeof(targets[0]); t++) {
-                            const char* target = targets[t];
-                            size_t targetLen = strlen(target);
-                            if (bufLen < targetLen)
-                                continue;
-                            for (size_t offset = 0; offset <= bufLen - targetLen; offset++) {
-                                if (memcmp(buf + offset, target, targetLen) == 0) {
-                                    if (strcmp(target, "VMware") == 0) {
-                                        foundVMware = true;
-                                    }
-                                    else {
-                                        detected = true;
-                                        goto cleanup_buffer;
-                                    }
-                                }
-                            }
-                        }
-                        // Only if "VMware" was not found, check for a VMware replacement to detect VMwareHardenerLoader. Idea by MegaMax
-                        if (!foundVMware && bufLen >= 6) {
-                            const size_t vmwareLen = 6; 
-                            for (size_t offset = 0; offset <= bufLen - vmwareLen; offset++) {
-                                bool allSevens = true;
-                                for (size_t j = 0; j < vmwareLen; j++) {
-                                    if (buf[offset + j] != '7') {
-                                        allSevens = false;
-                                        break;
-                                    }
-                                }
-                                if (allSevens) {
-                                    free(buffer);
-                                    return core::add(brands::VMWARE, brands::VMWARE_HARD);
-                                }
-                            }
-                        }
-                    cleanup_buffer:
-                        free(buffer);
+            status = ntqsi(SystemFirmwareTableInformation,
+                info,
+                reqSize,
+                &reqSize);
+            if (!NT_SUCCESS(status)) {
+                free(info);
+                return false;
+            }
+
+            const unsigned char* buf = info->TableBuffer;
+            size_t bufLen = info->TableBufferLength;
+            for (const char* target : targets) {
+                size_t targetLen = strlen(target);
+                if (targetLen == 0 || bufLen < targetLen)
+                    continue;
+                for (size_t offset = 0; offset <= bufLen - targetLen; offset++) {
+                    if (memcmp(buf + offset, target, targetLen) == 0) {
+                        detected = true;
+                        break;
                     }
                 }
             }
+            // If no target was found, check for a 777777 pattern to detect VMWareHardenerLoader (idea by MegaMax)
+            if (!detected && bufLen >= 6) {
+                constexpr size_t patternLen = 6;
+                for (size_t offset = 0; offset <= bufLen - patternLen; offset++) {
+                    bool allSevens = true;
+                    for (size_t j = 0; j < patternLen; j++) {
+                        if (buf[offset + j] != '7') {
+                            allSevens = false;
+                            break;
+                        }
+                    }
+                    if (allSevens) {
+                        free(info);
+                        return core::add(brands::VMWARE_HARD);
+                    }
+                }
+            }
+
             free(info);
             return detected;
-            };
+        };
 
-        if (check_firmware_table(RSMB_SIG, 0UL)) return true;
+        // RSMB
+        if (check_firmware_table(RSMB_SIG, 0UL))
+            return true;
+        // FIRM
         for (ULONG addr : { 0xC0000UL, 0xE0000UL }) {
-            if (check_firmware_table(FIRM_SIG, addr)) return true;
+            if (check_firmware_table(FIRM_SIG, addr))
+                return true;
         }
 
+        // ACPI
         PSYSTEM_FIRMWARE_TABLE_INFORMATION acpiEnum = nullptr;
         ULONG retLen = 0;
         NTSTATUS status;
-
-        acpiEnum = static_cast<PSYSTEM_FIRMWARE_TABLE_INFORMATION>(malloc(sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION)));
-        if (!acpiEnum) return false;
+        acpiEnum = static_cast<PSYSTEM_FIRMWARE_TABLE_INFORMATION>(
+            malloc(sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION)));
+        if (!acpiEnum)
+            return false;
 
         acpiEnum->ProviderSignature = ACPI_SIG;
         acpiEnum->Action = 0;
         acpiEnum->TableID = 0;
         acpiEnum->TableBufferLength = 0;
 
-        status = ntqsi(76, acpiEnum, sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION), &retLen);
+        status = ntqsi(SystemFirmwareTableInformation, acpiEnum, sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION), &retLen);
         if (status == STATUS_BUFFER_TOO_SMALL) {
             free(acpiEnum);
             acpiEnum = static_cast<PSYSTEM_FIRMWARE_TABLE_INFORMATION>(malloc(retLen));
-            if (!acpiEnum) return false;
+            if (!acpiEnum)
+                return false;
 
             acpiEnum->ProviderSignature = ACPI_SIG;
             acpiEnum->Action = 0;
             acpiEnum->TableID = 0;
             acpiEnum->TableBufferLength = retLen - sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION);
 
-            status = ntqsi(76, acpiEnum, retLen, &retLen);
-            if (status >= 0) {
+            status = ntqsi(SystemFirmwareTableInformation, acpiEnum, retLen, &retLen);
+            if (NT_SUCCESS(status)) {
                 const DWORD* tables = reinterpret_cast<const DWORD*>(acpiEnum->TableBuffer);
                 ULONG tableCount = acpiEnum->TableBufferLength / sizeof(DWORD);
-
                 for (ULONG t = 0; t < tableCount; ++t) {
                     if (check_firmware_table(ACPI_SIG, tables[t])) {
                         free(acpiEnum);
