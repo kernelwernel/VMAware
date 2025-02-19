@@ -21,6 +21,17 @@
 - [ ] implement techniques from virt-what
 - [ ] https://cloud.google.com/compute/docs/instances/detect-compute-engine
 - [ ] update the updater.py script and fix it
+- [ ] @thereisnospoon this is where we need to start modifing the qemu source further by replacing vendor/device ids.
+https://www.pcilookup.com/
+ 
+QEMU default: 0x1234
+Intel: 0x8086
+AMD: 0x1022
+VMware: 0x15ad
+Red Hat/Qumranet: 0x1af4
+In the QEMU source:
+include/hw/pci/pci.h
+include/hw/pci/pci_ids.h
 
 # Distant plans
 - add the library to conan.io when released
