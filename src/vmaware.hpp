@@ -6129,6 +6129,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             debug("INTEL_THREAD_MISMATCH: Thread tampering detected");
             return true;
         }
+
         if (!util::verify_cpu_data()) {
             debug("INTEL_THREAD_MISMATCH: CPU model tampering detected");
             return true;
@@ -6752,10 +6753,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             { "i7-1260P", 8 },
             { "i7-1260U", 4 },
             { "i7-1265U", 4 },
-            { "i7-12700", 16 },
-            { "i7-12700F", 16 },
-            { "i7-12700KF", 16 },
-            { "i7-12700T", 16 },
+            { "i7-12700", 12 },
+            { "i7-12700F", 12 },
+            { "i7-12700K", 12 },
+            { "i7-12700KF", 12 },
+            { "i7-12700T", 12 },
             { "i7-1270P", 8 },
             { "i7-1270PE", 8 },
             { "i7-1360P", 8 },
