@@ -20,7 +20,6 @@
 - [ ] implement techniques from here https://www.cyberciti.biz/faq/linux-determine-virtualization-technology-command/
 - [ ] implement techniques from virt-what
 - [ ] https://cloud.google.com/compute/docs/instances/detect-compute-engine
-- [ ] add WMI memo line details in sections category of the banner 
 - [ ] update the updater.py script and fix it
 - [ ] @thereisnospoon this is where we need to start modifing the qemu source further by replacing vendor/device ids.
 https://www.pcilookup.com/
