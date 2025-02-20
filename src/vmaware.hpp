@@ -584,7 +584,9 @@ public:
         HIGH_THRESHOLD,
         DYNAMIC,
         NULL_ARG, // does nothing, just a placeholder flag mainly for the CLI
-        MULTIPLE
+        DEFAULT,
+        ALL,
+        MULTIPLE,
     };
 
 private:
@@ -629,9 +631,6 @@ public:
     VM() = delete;
     VM(const VM&) = delete;
     VM(VM&&) = delete;
-
-    static flagset DEFAULT; // default bitset that will be run if no parameters are specified
-    static flagset ALL; // same as default, but with disabled techniques included
 
     /**
      * Official aliases for VM brands. This is added to avoid accidental typos
@@ -715,7 +714,7 @@ public:
         static constexpr const char* NULL_BRAND = "Unknown";
     };
 
-
+private:
     // macro for bypassing unused parameter/variable warnings
     #define UNUSED(x) ((void)(x))
 
@@ -10441,8 +10440,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         // Define a base class for different types
         struct TestHandler {
-            virtual ~TestHandler() = default;
-
             virtual void handle(const flagset& flags) {
                 flagset_manager(flags);
             }
@@ -10454,16 +10451,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         // Define derived classes for specific type implementations
         struct TestBitsetHandler : public TestHandler {
-            using TestHandler::handle; 
-
             void handle(const flagset& flags) override {
                 flagset_manager(flags);
             }
         };
 
         struct TestUint8Handler : public TestHandler {
-            using TestHandler::handle;  
-
             void handle(const enum_flags flag) override {
                 flag_manager(flag);
             }
@@ -10583,7 +10576,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return flag_collector;
         }
     };
-
 
 public: // START OF PUBLIC FUNCTIONS
 
@@ -11087,7 +11079,6 @@ public: // START OF PUBLIC FUNCTIONS
     /**
      * @brief This will convert the technique flag into a string, which will correspond to the technique name
      * @param single technique flag in VM structure
-     * @warning ⚠️ FOR DEVELOPMENT USAGE ONLY, NOT MEANT FOR PUBLIC USE FOR NOW ⚠️
      */
     [[nodiscard]] static std::string flag_to_string(const enum_flags flag) {
         switch (flag) {
@@ -11590,43 +11581,6 @@ VM::flagset VM::core::flag_collector;
 
 
 VM::u8 VM::detected_count_num = 0;
-
-
-// default flags 
-VM::flagset VM::DEFAULT = []() noexcept -> flagset {
-    flagset tmp;
-
-    // set all bits to 1
-    tmp.set();
-
-    // disable all non-default techniques
-    tmp.flip(VMWARE_DMESG);
-
-    // disable all the settings flags
-    tmp.flip(NO_MEMO);
-    tmp.flip(HIGH_THRESHOLD);
-    tmp.flip(DYNAMIC);
-    tmp.flip(MULTIPLE);
-
-    return tmp;
-}();
-
-
-// flag to enable every technique
-VM::flagset VM::ALL = []() noexcept -> flagset {
-    flagset tmp;
-
-    // set all bits to 1
-    tmp.set();
-
-    // disable all the settings technique flags
-    tmp.flip(NO_MEMO);
-    tmp.flip(HIGH_THRESHOLD);
-    tmp.flip(DYNAMIC);
-    tmp.flip(MULTIPLE);
-
-    return tmp;
-}();
 
 
 std::vector<VM::u8> VM::technique_vector = []() -> std::vector<VM::u8> {

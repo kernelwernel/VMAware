@@ -289,6 +289,40 @@ This will fetch the number of techniques that have been detected as a `std::uint
 
 <br>
 
+## `VM::flag_to_string()`
+This will take a technique flag enum as an argument and return the string version of it. For example:
+```cpp
+#include "vmaware.hpp"
+#include <iostream>
+
+int main() {
+    const std::string name = VM::flag_to_string(VM::VMID);
+    std::cout << "VM::" << name << "\n"; 
+    // Output: VM::VMID 
+    // (nothing more, nothing less)
+}
+```
+
+The reason why this exists is because it can be useful for debugging purposes. It should be noted that the "VM::" part is not included in the string output, so that's based on the programmer's choice if it should remain in the string or not. The example given above is obviously useless since the whole code can be manually handwritten, but the function is especially convenient if it's being used with [`VM::technique_vector`](#variables). For example:
+
+```cpp
+#include "vmaware.hpp"
+#include <iostream>
+
+int main() {
+    // this will loop through all the enums in the technique_vector variable,
+    // and then checks each of them and outputs the enum that was detected
+    for (const auto technique_enum : VM::technique_vector) {
+        if (VM::check(technique_enum)) {
+            const std::string name = VM::flag_to_string(technique_enum);
+            std::cout << "VM::" << name << " was detected\n";
+        }
+    }
+}
+```
+
+<br>
+
 # vmaware struct
 If you prefer having an object to store all the relevant information about the program's environment instead of calling static member functions, you can use the `VM::vmaware` struct:
 
