@@ -387,7 +387,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::VM_FILES` | Find for VM-specific specific files | Windows | 25% |  |  |  |  |
 | `VM::HWMODEL` | Check if the sysctl for the hwmodel does not contain the "Mac" string | MacOS | 100% |  |  |  |  |
 | `VM::DISK_SIZE` | Check if disk size is under or equal to 50GB | Linux | 60% |  |  |  |  |
-| `VM::VBOX_DEFAULT` | Check for default RAM and DISK sizes set by VirtualBox | Linux and Windows | 25% | Admin |  |  |  |
+| `VM::VBOX_DEFAULT` | Check for default RAM and DISK sizes set by VirtualBox | Linux and Windows | 25% | Admin |  |  | Admin only needed for Linux |
 | `VM::VBOX_NETWORK` | Check for VirtualBox network provider string | Windows | 100% |  |  |   |  |
 | `VM::COMPUTER_NAME` | Check if the computer name (not username to be clear) is VM-specific | Windows | 10% |  | GPL |  |  |
 | `VM::WINE_CHECK` | Check wine_get_unix_file_name file for Wine | Windows | 100% |  | GPL |  |  |
@@ -458,7 +458,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::VM_SIDT` | Check for unknown IDT base address | Windows | 100% |  |  |  |  |
 | `VM::HDD_SERIAL` | Check for serial numbers of virtual disks | Windows | 100% |  |  |  |  |
 | `VM::PORT_CONNECTORS` | Check for physical connection ports | Windows | 25% |  |  |  | This technique is known to false flag on devices like Surface Pro |
-| `VM::GPU` | Check for GPU capabilities and specific GPU PCI vendor ids | Windows | 100% |  |  |  |  |
+| `VM::GPU` | Check for GPU capabilities and specific GPU signatures related to VMs | Windows | 100% | Admin |  |  | Admin only needed for some heuristics |
 | `VM::VM_DEVICES` | Check for VM-specific devices | Windows | 45% |  |  |  |  |
 | `VM::VM_MEMORY` | Check for specific VM memory traces in certain processes | Windows | 65% |  |  |  |  |
 | `VM::IDT_GDT_MISMATCH` | Check if the IDT and GDT base virtual addresses mismatch between different CPU cores when called from usermode under a root partition | Windows | 50% |  |  |  |  |
