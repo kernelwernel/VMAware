@@ -25,14 +25,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 462
- * - struct for internal cpu operations        => line 729
- * - struct for internal memoization           => line 1184
- * - struct for internal utility functions     => line 1310
- * - struct for internal core components       => line 9917
- * - start of VM detection technique list      => line 2491
- * - start of public VM detection functions    => line 10323
- * - start of externally defined variables     => line 11229
+ * - enums for publicly accessible techniques  => line 466
+ * - struct for internal cpu operations        => line 733
+ * - struct for internal memoization           => line 1188
+ * - struct for internal utility functions     => line 1311
+ * - struct for internal core components       => line 9967
+ * - start of VM detection technique list      => line 2495
+ * - start of public VM detection functions    => line 10373
+ * - start of externally defined variables     => line 11279
  *
  *
  * ============================== EXAMPLE ===================================
@@ -363,7 +363,11 @@
 #include <Functiondiscoverykeys_devpkey.h>
 #include <mmsystem.h>
 #include <queue>
+#include <dxgi.h>
+#include <d3d9.h>
 
+#pragma comment(lib, "dxgi.lib")
+#pragma comment(lib, "d3d9.lib")
 #pragma comment(lib, "winmm.lib")
 #pragma comment(lib, "setupapi.lib")
 #pragma comment(lib, "iphlpapi.lib")
@@ -543,7 +547,7 @@ public:
         VM_SIDT,
         HDD_SERIAL,
         PORT_CONNECTORS,
-        GPU_NAME,
+        GPU,
         VM_DEVICES,
         VM_MEMORY,
         IDT_GDT_MISMATCH,
@@ -2490,7 +2494,7 @@ public:
 
 private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
-     * @brief Check CPUID output of manufacturer ID for known VMs/hypervisors at leaf 0
+     * @brief Check CPUID output of manufacturer ID for known VMs/hypervisors at leaf 0 and 0x40000000-0x40000100
      * @category x86
      * @implements VM::VMID
      */
@@ -5012,10 +5016,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             { "i3-12100", 8 },
             { "i3-12100F", 8 },
             { "i3-12100T", 8 },
-            { "i3-1210U", 4 },
-            { "i3-1215U", 4 },
-            { "i3-1215UE", 4 },
-            { "i3-1215UL", 4 },
+            { "i3-1210U", 8 },
+            { "i3-1215U", 8 },
+            { "i3-1215UE", 8 },
+            { "i3-1215UL", 8 },
             { "i3-12300", 8 },
             { "i3-12300T", 8 },
             { "i3-13100", 8 },
@@ -5210,13 +5214,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             // i5 series
             { "i5-10200H", 8 },
-            { "i5-10210U", 4 },
+            { "i5-10210U", 8 },
             { "i5-10210Y", 8 },
             { "i5-10300H", 8 },
             { "i5-1030G4", 8 },
             { "i5-1030G7", 8 },
             { "i5-1030NG7", 8 },
-            { "i5-10310U", 4 },
+            { "i5-10310U", 8 },
             { "i5-10310Y", 8 },
             { "i5-1035G1", 8 },
             { "i5-1035G4", 8 },
@@ -5261,49 +5265,47 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             { "i5-11600K", 12 },
             { "i5-11600KF", 12 },
             { "i5-11600T", 12 },
-            { "i5-1230U", 4 },
-            { "i5-1235U", 4 },
+            { "i5-1230U", 12 },
+            { "i5-1235U", 12 },
             { "i5-12400", 12 },
             { "i5-12400F", 12 },
             { "i5-12400T", 12 },
-            { "i5-1240P", 8 },
-            { "i5-1240U", 4 },
-            { "i5-1245U", 4 },
+            { "i5-1240P", 16 },
+            { "i5-1240U", 12 },
+            { "i5-1245U", 12 },
             { "i5-12490F", 12 },
             { "i5-12500", 12 },
-            { "i5-12500H", 8 },
-            { "i5-12500HL", 8 },
+            { "i5-12500H", 16 },
+            { "i5-12500HL", 16 },
             { "i5-12500T", 12 },
-            { "i5-1250P", 8 },
-            { "i5-1250PE", 8 },
+            { "i5-1250P", 16 },
+            { "i5-1250PE", 16 },
             { "i5-12600", 12 },
-            { "i5-12600H", 8 },
-            { "i5-12600HE", 8 },
-            { "i5-12600HL", 8 },
-            { "i5-12600HX", 8 },
-            { "i5-12600K", 12 },
-            { "i5-12600KF", 12 },
+            { "i5-12600H", 16 },
+            { "i5-12600HE", 16 },
+            { "i5-12600HL", 16 },
+            { "i5-12600HX", 16 },
+            { "i5-12600K", 16 },
+            { "i5-12600KF", 16 },
             { "i5-12600T", 12 },
-            { "i5-13400", 12 },
-            { "i5-13400F", 12 },
-            { "i5-13400T", 12 },
-            { "i5-1340P", 8 },
-            { "i5-1340PE", 8 },
-            { "i5-13490F", 12 },
-            { "i5-13500", 12 },
-            { "i5-13500H", 8 },
-            { "i5-13500T", 12 },
-            { "i5-13505H", 8 },
-            { "i5-1350P", 8 },
-            { "i5-1350PE", 8 },
-            { "i5-13600", 12 },
-            { "i5-13600H", 8 },
-            { "i5-13600HE", 8 },
-            { "i5-13600K", 12 },
+            { "i5-13400", 16 },
+            { "i5-13400F", 16 },
+            { "i5-13400T", 16 },
+            { "i5-1340P", 16 },
+            { "i5-1340PE", 16 },
+            { "i5-13490F", 16 },
+            { "i5-13500", 20 },
+            { "i5-13500H", 16 },
+            { "i5-13500T", 20 },
+            { "i5-13505H", 16 },
+            { "i5-1350P", 16 },
+            { "i5-1350PE", 16 },
+            { "i5-13600", 20 },
+            { "i5-13600H", 16 },
+            { "i5-13600HE", 16 },
             { "i5-13600K", 20 },
-            { "i5-13600KF", 12 },
             { "i5-13600KF", 20 },
-            { "i5-13600T", 12 },
+            { "i5-13600T", 20 },
             { "i5-2300", 4 },
             { "i5-2310", 4 },
             { "i5-2320", 4 },
@@ -5892,30 +5894,30 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             { "i9-11900T", 16 },
             { "i9-11950H", 16 },
             { "i9-11980HK", 16 },
-            { "i9-12900", 16 },
-            { "i9-12900F", 16 },
-            { "i9-12900K", 16 },
-            { "i9-12900KF", 16 },
-            { "i9-12900KS", 16 },
-            { "i9-12900T", 16 },
-            { "i9-13900", 16 },
-            { "i9-13900E", 16 },
-            { "i9-13900F", 16 },
-            { "i9-13900HX", 16 },
-            { "i9-13900K", 16 },
-            { "i9-13900KF", 16 },
-            { "i9-13900KS", 16 },
-            { "i9-13900T", 16 },
-            { "i9-13900TE", 16 },
-            { "i9-13950HX", 16 },
-            { "i9-13980HX", 16 },
-            { "i9-14900", 16 },
-            { "i9-14900F", 16 },
-            { "i9-14900HX", 16 },
-            { "i9-14900K", 16 },
-            { "i9-14900KF", 16 },
-            { "i9-14900KS", 16 },
-            { "i9-14900T", 16 },
+            { "i9-12900", 24 },
+            { "i9-12900F", 24 },
+            { "i9-12900K", 24 },
+            { "i9-12900KF", 24 },
+            { "i9-12900KS", 24 },
+            { "i9-12900T", 24 },
+            { "i9-13900", 32 },
+            { "i9-13900E", 32 },
+            { "i9-13900F", 32 },
+            { "i9-13900HX", 32 },
+            { "i9-13900K", 32 },
+            { "i9-13900KF", 32 },
+            { "i9-13900KS", 32 },
+            { "i9-13900T", 32 },
+            { "i9-13900TE", 32 },
+            { "i9-13950HX", 32 },
+            { "i9-13980HX", 32 },
+            { "i9-14900", 32 },
+            { "i9-14900F", 32 },
+            { "i9-14900HX", 32 },
+            { "i9-14900K", 32 },
+            { "i9-14900KF", 32 },
+            { "i9-14900KS", 32 },
+            { "i9-14900T", 32 },
             { "i9-7900X", 20 },
             { "i9-7920X", 24 },
             { "i9-7940X", 28 },
@@ -7536,10 +7538,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check for VM specific device names in GPUs
+     * @brief Check for GPU capabilities and specific GPU signatures related to VMs
      * @category Windows
+     * @author Requiem (https://github.com/NotRequiem)
      * @note utoshu did this with WMI in a removed technique (VM::GPU_CHIPTYPE)
-     * @implements VM::GPU_NAME
+     * @implements VM::GPU
      */
     [[nodiscard]] static bool vm_gpu() {
 #if (!WINDOWS)
@@ -7584,6 +7587,53 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             ++deviceNum;
             }
+
+        if (!util::is_admin())
+            return false;
+
+        IDirect3D9* pD3D = Direct3DCreate9(D3D_SDK_VERSION);
+        if (!pD3D) return true;
+
+        D3DADAPTER_IDENTIFIER9 adapterId;
+        D3DCAPS9 caps;
+        if (SUCCEEDED(pD3D->GetAdapterIdentifier(D3DADAPTER_DEFAULT, 0, &adapterId))) {
+            if (adapterId.VendorId == 0x15AD) {
+                pD3D->Release();
+                return core::add(brands::VMWARE);
+            }
+            else if (adapterId.VendorId == 0x80EE) {
+                pD3D->Release();
+                return core::add(brands::VBOX);
+            }
+        }
+        if (FAILED(pD3D->GetDeviceCaps(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, &caps))) {
+            pD3D->Release();
+            return true;
+        }
+        pD3D->Release();
+
+        IDXGIFactory* pFactory = nullptr;
+        if (FAILED(CreateDXGIFactory(__uuidof(IDXGIFactory), reinterpret_cast<void**>(&pFactory)))) return true;
+
+        IDXGIAdapter* pAdapter = nullptr;
+        // do not enumerate all adapters, otherwise it would false flag with adapters with no dedicated gpu memory like Microsoft Basic Render Driver (vid 0x1414)
+        if (pFactory->EnumAdapters(0, &pAdapter) != DXGI_ERROR_NOT_FOUND) {
+            DXGI_ADAPTER_DESC adapterDesc;
+            if (SUCCEEDED(pAdapter->GetDesc(&adapterDesc))) {
+                char description[128] = { 0 };
+                size_t converted = 0;
+                wcstombs_s(&converted, description, adapterDesc.Description, sizeof(description));
+
+                if (adapterDesc.DedicatedVideoMemory < static_cast<unsigned long long>(1024 * 1024) * 1024) {
+                    pAdapter->Release();
+                    pFactory->Release();
+                    return true;
+                }
+            }
+            pAdapter->Release();
+        }
+
+        pFactory->Release();
         return false;
 #endif
         }
@@ -7907,7 +7957,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for number of logical processors
      * @category Windows
-     * @author idea from Al-Khaser project
      * @implements VM::PROCESSOR_NUMBER
      */
     [[nodiscard]] static bool processor_number()
@@ -7992,6 +8041,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check if any processor has an empty Processor ID using SMBIOS data
      * @category Windows
+     * @note https://www.dmtf.org/sites/default/files/standards/documents/DSP0134_3.8.0.pdf (Section 7.5.3, page 54)
      * @implements VM::PROCESSOR_ID
      */
     [[nodiscard]] static bool processor_id() {
@@ -8005,9 +8055,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             BYTE  SMBIOSMinorVersion;
             BYTE  DmiRevision;
             DWORD Length;
-            BYTE  SMBIOSTableData[1]; // Variable length data follows
+            BYTE  SMBIOSTableData[1];
         };
 #pragma pack(pop)
+
         UINT bufferSize = GetSystemFirmwareTable('RSMB', 0, nullptr, 0);
         if (bufferSize == 0)
             return false;
@@ -8026,23 +8077,22 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         BYTE* p = tableData;
 
         while (p < tableEnd) {
-            // Each structure starts with a header: [Type (1B), Length (1B), Handle (2B)]
+            // header: [Type (1B), Length (1B), Handle (2B)]
             if (p + 4 > tableEnd)
-                break; // Not enough data for a header.
+                break;
 
             BYTE type = p[0];
             BYTE length = p[1];
 
-            // Basic sanity check on the structure length.
             if (length < 4 || (p + length) > tableEnd)
                 break;
 
-            // For Processor Information (Type 4) structures, check the Processor ID field
+            // Processor Information (Type 4) structures, Processor ID field
             if (type == 4) {
-                // According to the SMBIOS spec, the Processor ID is an 8-byte field
-                // starting at offset 16 (0x10) in the structure (for SMBIOS v2.1+)
-                if (length >= 0x18) {
-                    BYTE* procId = p + 16;
+                // the Processor ID is an 8‑byte field starting at offset 8 in the structure
+                // Therefore, the structure must be at least 16 bytes long
+                if (length >= 16) {
+                    BYTE* procId = p + 8;
                     bool allZero = true;
                     for (int i = 0; i < 8; ++i) {
                         if (procId[i] != 0) {
@@ -8056,8 +8106,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
             }
 
-            // Move to the next SMBIOS structure
-            // Skip the formatted section
+            // Skip the formatted section.
             BYTE* next = p + length;
             // Then skip the unformatted string-set (terminated by double-null)
             while (next < tableEnd - 1) {
@@ -8203,7 +8252,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         const bool qpc_check = (dummyTime != 0) && ((cpuIdTime / dummyTime) > 1100);
 
-        // TSC sync check across cores. Try reading the invariant TSC on two different cores to attempt to detect VCPU timers being shared
+        // TSC sync check across cores. Try reading the invariant TSC on two different cores to attempt to detect vCPU timers being shared
         unsigned aux;
         SetThreadAffinityMask(GetCurrentThread(), 1);
         u64 tsc_core1 = __rdtscp(&aux);  // Core 1 TSC
@@ -10916,7 +10965,7 @@ public: // START OF PUBLIC FUNCTIONS
         case VM_SIDT: return "VM_SIDT";
         case HDD_SERIAL: return "HDD_SERIAL";
         case PORT_CONNECTORS: return "PORT_CONNECTORS";
-        case GPU_NAME: return "GPU_NAME";
+        case GPU: return "GPU";
         case VM_DEVICES: return "VM_DEVICES";
         case VM_MEMORY: return "VM_MEMORY";
         case IDT_GDT_MISMATCH: return "IDT_GDT_MISMATCH";
@@ -11477,7 +11526,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::VM_SIDT, { 100, VM::vm_sidt } },
     { VM::HDD_SERIAL, { 100, VM::hdd_serial_number } },
     { VM::PORT_CONNECTORS, { 25, VM::port_connectors } },
-    { VM::GPU_NAME, { 100, VM::vm_gpu } },
+    { VM::GPU, { 100, VM::vm_gpu } },
     { VM::VM_DEVICES, { 45, VM::vm_devices } },
     { VM::VM_MEMORY, { 65, VM::vm_memory } },
     { VM::IDT_GDT_MISMATCH, { 50, VM::idt_gdt_mismatch } },

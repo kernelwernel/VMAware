@@ -25,14 +25,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 462
- * - struct for internal cpu operations        => line 736
- * - struct for internal memoization           => line 1190
- * - struct for internal utility functions     => line 1315
- * - struct for internal core components       => line 10135
- * - start of VM detection technique list      => line 2494
- * - start of public VM detection functions    => line 10536
- * - start of externally defined variables     => line 11440
+ * - enums for publicly accessible techniques  => line 466
+ * - struct for internal cpu operations        => line 740
+ * - struct for internal memoization           => line 1194
+ * - struct for internal utility functions     => line 1319
+ * - struct for internal core components       => line 10185
+ * - start of VM detection technique list      => line 2498
+ * - start of public VM detection functions    => line 10586
+ * - start of externally defined variables     => line 11490
  *
  *
  * ============================== EXAMPLE ===================================
@@ -2497,7 +2497,7 @@ public:
 
 private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
-     * @brief Check CPUID output of manufacturer ID for known VMs/hypervisors at leaf 0
+     * @brief Check CPUID output of manufacturer ID for known VMs/hypervisors at leaf 0 and 0x40000000-0x40000100
      * @category x86
      * @implements VM::VMID
      */
@@ -5239,10 +5239,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             { "i3-12100", 8 },
             { "i3-12100F", 8 },
             { "i3-12100T", 8 },
-            { "i3-1210U", 4 },
-            { "i3-1215U", 4 },
-            { "i3-1215UE", 4 },
-            { "i3-1215UL", 4 },
+            { "i3-1210U", 8 },
+            { "i3-1215U", 8 },
+            { "i3-1215UE", 8 },
+            { "i3-1215UL", 8 },
             { "i3-12300", 8 },
             { "i3-12300T", 8 },
             { "i3-13100", 8 },
@@ -5437,13 +5437,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             // i5 series
             { "i5-10200H", 8 },
-            { "i5-10210U", 4 },
+            { "i5-10210U", 8 },
             { "i5-10210Y", 8 },
             { "i5-10300H", 8 },
             { "i5-1030G4", 8 },
             { "i5-1030G7", 8 },
             { "i5-1030NG7", 8 },
-            { "i5-10310U", 4 },
+            { "i5-10310U", 8 },
             { "i5-10310Y", 8 },
             { "i5-1035G1", 8 },
             { "i5-1035G4", 8 },
@@ -5488,49 +5488,47 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             { "i5-11600K", 12 },
             { "i5-11600KF", 12 },
             { "i5-11600T", 12 },
-            { "i5-1230U", 4 },
-            { "i5-1235U", 4 },
+            { "i5-1230U", 12 },
+            { "i5-1235U", 12 },
             { "i5-12400", 12 },
             { "i5-12400F", 12 },
             { "i5-12400T", 12 },
-            { "i5-1240P", 8 },
-            { "i5-1240U", 4 },
-            { "i5-1245U", 4 },
+            { "i5-1240P", 16 },
+            { "i5-1240U", 12 },
+            { "i5-1245U", 12 },
             { "i5-12490F", 12 },
             { "i5-12500", 12 },
-            { "i5-12500H", 8 },
-            { "i5-12500HL", 8 },
+            { "i5-12500H", 16 },
+            { "i5-12500HL", 16 },
             { "i5-12500T", 12 },
-            { "i5-1250P", 8 },
-            { "i5-1250PE", 8 },
+            { "i5-1250P", 16 },
+            { "i5-1250PE", 16 },
             { "i5-12600", 12 },
-            { "i5-12600H", 8 },
-            { "i5-12600HE", 8 },
-            { "i5-12600HL", 8 },
-            { "i5-12600HX", 8 },
-            { "i5-12600K", 12 },
-            { "i5-12600KF", 12 },
+            { "i5-12600H", 16 },
+            { "i5-12600HE", 16 },
+            { "i5-12600HL", 16 },
+            { "i5-12600HX", 16 },
+            { "i5-12600K", 16 },
+            { "i5-12600KF", 16 },
             { "i5-12600T", 12 },
-            { "i5-13400", 12 },
-            { "i5-13400F", 12 },
-            { "i5-13400T", 12 },
-            { "i5-1340P", 8 },
-            { "i5-1340PE", 8 },
-            { "i5-13490F", 12 },
-            { "i5-13500", 12 },
-            { "i5-13500H", 8 },
-            { "i5-13500T", 12 },
-            { "i5-13505H", 8 },
-            { "i5-1350P", 8 },
-            { "i5-1350PE", 8 },
-            { "i5-13600", 12 },
-            { "i5-13600H", 8 },
-            { "i5-13600HE", 8 },
-            { "i5-13600K", 12 },
+            { "i5-13400", 16 },
+            { "i5-13400F", 16 },
+            { "i5-13400T", 16 },
+            { "i5-1340P", 16 },
+            { "i5-1340PE", 16 },
+            { "i5-13490F", 16 },
+            { "i5-13500", 20 },
+            { "i5-13500H", 16 },
+            { "i5-13500T", 20 },
+            { "i5-13505H", 16 },
+            { "i5-1350P", 16 },
+            { "i5-1350PE", 16 },
+            { "i5-13600", 20 },
+            { "i5-13600H", 16 },
+            { "i5-13600HE", 16 },
             { "i5-13600K", 20 },
-            { "i5-13600KF", 12 },
             { "i5-13600KF", 20 },
-            { "i5-13600T", 12 },
+            { "i5-13600T", 20 },
             { "i5-2300", 4 },
             { "i5-2310", 4 },
             { "i5-2320", 4 },
@@ -6119,30 +6117,30 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             { "i9-11900T", 16 },
             { "i9-11950H", 16 },
             { "i9-11980HK", 16 },
-            { "i9-12900", 16 },
-            { "i9-12900F", 16 },
-            { "i9-12900K", 16 },
-            { "i9-12900KF", 16 },
-            { "i9-12900KS", 16 },
-            { "i9-12900T", 16 },
-            { "i9-13900", 16 },
-            { "i9-13900E", 16 },
-            { "i9-13900F", 16 },
-            { "i9-13900HX", 16 },
-            { "i9-13900K", 16 },
-            { "i9-13900KF", 16 },
-            { "i9-13900KS", 16 },
-            { "i9-13900T", 16 },
-            { "i9-13900TE", 16 },
-            { "i9-13950HX", 16 },
-            { "i9-13980HX", 16 },
-            { "i9-14900", 16 },
-            { "i9-14900F", 16 },
-            { "i9-14900HX", 16 },
-            { "i9-14900K", 16 },
-            { "i9-14900KF", 16 },
-            { "i9-14900KS", 16 },
-            { "i9-14900T", 16 },
+            { "i9-12900", 24 },
+            { "i9-12900F", 24 },
+            { "i9-12900K", 24 },
+            { "i9-12900KF", 24 },
+            { "i9-12900KS", 24 },
+            { "i9-12900T", 24 },
+            { "i9-13900", 32 },
+            { "i9-13900E", 32 },
+            { "i9-13900F", 32 },
+            { "i9-13900HX", 32 },
+            { "i9-13900K", 32 },
+            { "i9-13900KF", 32 },
+            { "i9-13900KS", 32 },
+            { "i9-13900T", 32 },
+            { "i9-13900TE", 32 },
+            { "i9-13950HX", 32 },
+            { "i9-13980HX", 32 },
+            { "i9-14900", 32 },
+            { "i9-14900F", 32 },
+            { "i9-14900HX", 32 },
+            { "i9-14900K", 32 },
+            { "i9-14900KF", 32 },
+            { "i9-14900KS", 32 },
+            { "i9-14900T", 32 },
             { "i9-7900X", 20 },
             { "i9-7920X", 24 },
             { "i9-7940X", 28 },
@@ -7758,7 +7756,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check for VM specific device names in GPUs
+     * @brief Check for GPU capabilities and specific GPU signatures related to VMs
      * @category Windows
      * @author Requiem (https://github.com/NotRequiem)
      * @note utoshu did this with WMI in a removed technique (VM::GPU_CHIPTYPE)
@@ -8472,7 +8470,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         const bool qpc_check = (dummyTime != 0) && ((cpuIdTime / dummyTime) > 1100);
 
-        // TSC sync check across cores. Try reading the invariant TSC on two different cores to attempt to detect VCPU timers being shared
+        // TSC sync check across cores. Try reading the invariant TSC on two different cores to attempt to detect vCPU timers being shared
         unsigned aux;
         SetThreadAffinityMask(GetCurrentThread(), 1);
         u64 tsc_core1 = __rdtscp(&aux);  // Core 1 TSC
