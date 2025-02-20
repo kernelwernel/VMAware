@@ -3726,7 +3726,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */             {
 /* GPL */                 power_stats = (powerCaps.ThermalControl == FALSE);
 /* GPL */             }
-/* GPL */             power_stats = power_stats || !powerCaps.HiberFilePresent || !powerCaps.FullWake || !powerCaps.WakeAlarmPresent;
+/* GPL */             power_stats = power_stats || !powerCaps.FullWake || !powerCaps.WakeAlarmPresent;
 /* GPL */                           
 /* GPL */         }
 /* GPL */ 
@@ -5179,7 +5179,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for Intel CPU thread count database if it matches the system's thread count
      * @category All, x86
-     * @link https://en.wikipedia.org/wiki/List_of_Intel_Core_processors
      * @implements VM::INTEL_THREAD_MISMATCH
      */
     [[nodiscard]] static bool intel_thread_mismatch() {
@@ -5792,7 +5791,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             { "i7-10700KF", 16 },
             { "i7-10700T", 16 },
             { "i7-10700TE", 16 },
-            { "i7-10710U", 8 },
+            { "i7-10710U", 12 },
             { "i7-10750H", 12 },
             { "i7-10810U", 12 },
             { "i7-10850H", 12 },
@@ -5818,25 +5817,26 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             { "i7-1185G7E", 8 },
             { "i7-1185GRE", 8 },
             { "i7-1195G7", 8 },
-            { "i7-1250U", 4 },
-            { "i7-1255U", 4 },
-            { "i7-1260P", 8 },
-            { "i7-1260U", 4 },
-            { "i7-1265U", 4 },
-            { "i7-12700", 12 },
-            { "i7-12700F", 12 },
-            { "i7-12700K", 12 },
-            { "i7-12700KF", 12 },
-            { "i7-12700T", 12 },
-            { "i7-1270P", 8 },
-            { "i7-1270PE", 8 },
-            { "i7-1360P", 8 },
-            { "i7-13700", 16 },
-            { "i7-13700F", 16 },
-            { "i7-13700K", 16 },
-            { "i7-13700KF", 16 },
-            { "i7-13700T", 16 },
-            { "i7-13790F", 16 },
+            { "i7-1250U", 12 },
+            { "i7-1255U", 12 },
+            { "i7-1260P", 16 },
+            { "i7-1260U", 12 },
+            { "i7-1265U", 12 },
+            { "i7-12700", 20 },
+            { "i7-12700F", 20 },
+            { "i7-12700K", 20 },
+            { "i7-12700KF", 20 },
+            { "i7-12700T", 20 },
+            { "i7-12700H", 20 },
+            { "i7-1270P", 16 },
+            { "i7-1270PE", 16 },
+            { "i7-1360P", 16 },
+            { "i7-13700", 24 },
+            { "i7-13700F", 24 },
+            { "i7-13700K", 24 },
+            { "i7-13700KF", 24 },
+            { "i7-13700T", 24 },
+            { "i7-13790F", 24 },
             { "i7-2535QM", 8 },
             { "i7-2570QM", 8 },
             { "i7-2600", 8 },
