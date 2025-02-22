@@ -289,6 +289,40 @@ This will fetch the number of techniques that have been detected as a `std::uint
 
 <br>
 
+## `VM::flag_to_string()`
+This will take a technique flag enum as an argument and return the string version of it. For example:
+```cpp
+#include "vmaware.hpp"
+#include <iostream>
+
+int main() {
+    const std::string name = VM::flag_to_string(VM::VMID);
+    std::cout << "VM::" << name << "\n"; 
+    // Output: VM::VMID 
+    // (nothing more, nothing less)
+}
+```
+
+The reason why this exists is because it can be useful for debugging purposes. It should be noted that the "VM::" part is not included in the string output, so that's based on the programmer's choice if it should remain in the string or not. The example given above is obviously useless since the whole code can be manually handwritten, but the function is especially convenient if it's being used with [`VM::technique_vector`](#variables). For example:
+
+```cpp
+#include "vmaware.hpp"
+#include <iostream>
+
+int main() {
+    // this will loop through all the enums in the technique_vector variable,
+    // and then checks each of them and outputs the enum that was detected
+    for (const auto technique_enum : VM::technique_vector) {
+        if (VM::check(technique_enum)) {
+            const std::string name = VM::flag_to_string(technique_enum);
+            std::cout << "VM::" << name << " was detected\n";
+        }
+    }
+}
+```
+
+<br>
+
 # vmaware struct
 If you prefer having an object to store all the relevant information about the program's environment instead of calling static member functions, you can use the `VM::vmaware` struct:
 
@@ -353,7 +387,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::VM_FILES` | Find for VM-specific specific files | Windows | 25% |  |  |  |  |
 | `VM::HWMODEL` | Check if the sysctl for the hwmodel does not contain the "Mac" string | MacOS | 100% |  |  |  |  |
 | `VM::DISK_SIZE` | Check if disk size is under or equal to 50GB | Linux | 60% |  |  |  |  |
-| `VM::VBOX_DEFAULT` | Check for default RAM and DISK sizes set by VirtualBox | Linux and Windows | 25% | Admin |  |  |  |
+| `VM::VBOX_DEFAULT` | Check for default RAM and DISK sizes set by VirtualBox | Linux and Windows | 25% | Admin |  |  | Admin only needed for Linux |
 | `VM::VBOX_NETWORK` | Check for VirtualBox network provider string | Windows | 100% |  |  |   |  |
 | `VM::COMPUTER_NAME` | Check if the computer name (not username to be clear) is VM-specific | Windows | 10% |  | GPL |  |  |
 | `VM::WINE_CHECK` | Check wine_get_unix_file_name file for Wine | Windows | 100% |  | GPL |  |  |
@@ -424,7 +458,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::VM_SIDT` | Check for unknown IDT base address | Windows | 100% |  |  |  |  |
 | `VM::HDD_SERIAL` | Check for serial numbers of virtual disks | Windows | 100% |  |  |  |  |
 | `VM::PORT_CONNECTORS` | Check for physical connection ports | Windows | 25% |  |  |  | This technique is known to false flag on devices like Surface Pro |
-| `VM::GPU` | Check for GPU capabilities and specific GPU PCI vendor ids | Windows | 100% |  |  |  |  |
+| `VM::GPU` | Check for GPU capabilities and specific GPU signatures related to VMs | Windows | 100% | Admin |  |  | Admin only needed for some heuristics |
 | `VM::VM_DEVICES` | Check for VM-specific devices | Windows | 45% |  |  |  |  |
 | `VM::VM_MEMORY` | Check for specific VM memory traces in certain processes | Windows | 65% |  |  |  |  |
 | `VM::IDT_GDT_MISMATCH` | Check if the IDT and GDT base virtual addresses mismatch between different CPU cores when called from usermode under a root partition | Windows | 50% |  |  |  |  |
