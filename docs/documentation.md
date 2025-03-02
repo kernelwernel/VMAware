@@ -97,8 +97,9 @@ int main() {
      * This is just an example to show that you can use a combination of 
      * different flags and non-technique flags with the above examples. 
      */ 
-    bool is_vm9 = VM::detect(VM::DEFAULT, VM::NO_MEMO, VM::HIGH_THRESHOLD, VM::DISABLE(VM::RDTSC, VM::VMID));
+    bool is_vm9 = VM::detect(VM::NO_MEMO, VM::HIGH_THRESHOLD, VM::DISABLE(VM::RDTSC, VM::VMID));
 
+    return 0;
 }
 ```
 
@@ -126,6 +127,8 @@ int main() {
 
     // converted to std::uint32_t for console character encoding reasons
     std::cout << "percentage: " << static_cast<std::uint32_t>(percent) << "%\n"; 
+
+    return 0;
 }
 ```
 
@@ -153,6 +156,8 @@ int main() {
     } else {
         // you get the idea
     }
+
+    return 0;
 }
 ```
 
@@ -174,6 +179,8 @@ int main() {
     // Keep in mind that there's no limit to how many conflicts there can be.
     // And if there's no conflict, it'll revert back to giving the brand string
     // normally as if the VM::MULTIPLE wasn't there
+
+    return 0;
 }
 ```
 
@@ -202,6 +209,8 @@ int main() {
     if (VM::check(VM::HYPERVISOR_BIT)) {
         std::cout << "Hypervisor bit is set, most definitely a VM!\n";
     }
+
+    return 0;
 }
 ```
 
@@ -260,6 +269,7 @@ This will return the VM type (or architecture) as a `std::string` based on the b
 int main() {
     // example output: VirtualBox is a Hypervisor (type 2) VM
     std::cout << VM::brand() " is a " << VM::type() << " VM\n";
+    return 0;
 }
 ```
 
@@ -300,6 +310,8 @@ int main() {
     std::cout << "VM::" << name << "\n"; 
     // Output: VM::VMID 
     // (nothing more, nothing less)
+
+    return 0;
 }
 ```
 
@@ -318,6 +330,28 @@ int main() {
             std::cout << "VM::" << name << " was detected\n";
         }
     }
+
+    return 0;
+}
+```
+
+<br>
+
+## `VM::detected_enums()`
+This is a function that will return a vector of all the technique flags that were detected as running in a VM. The return type is `std::vector<VM::enum_flags>`, and it's designed to give a more programmatic overview of the result. 
+
+```cpp
+#include "vmaware.hpp"
+#include <iostream>
+
+int main() {
+    std::vector<VM::enum_flags> flag_list = VM::detected_enums();
+
+    for (const auto flag : flag_list) {
+        std::cout << "VM::" << VM::flag_to_string(flag) << " was detected" << "\n"; 
+    }
+
+    return 0;
 }
 ```
 
