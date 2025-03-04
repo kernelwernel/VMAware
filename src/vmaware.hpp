@@ -11680,7 +11680,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::CPU_BRAND, { 50, VM::cpu_brand } },
     { VM::HYPERVISOR_BIT, { 100, VM::hypervisor_bit}} , 
     { VM::HYPERVISOR_STR, { 75, VM::hypervisor_str } },
-    { VM::TIMER, { 45, VM::timer } },
+    { VM::TIMER, { 20, VM::timer } },
     { VM::THREADCOUNT, { 35, VM::thread_count } },
     { VM::MAC, { 20, VM::mac_address_check } },
     { VM::TEMPERATURE, { 15, VM::temperature } },
