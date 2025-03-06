@@ -6567,7 +6567,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         for (int i = 0; i < 3; i++) {
             DWORD count = parse_memory_map(NULL, resource_keys[i], L".Translated");
             if (count == 0) {
-                return false;  // Error or no VM detected
+                return false;
             }
             if (i == 0) phys_count = count;
             if (i == 1) reserved_count = count;
@@ -8447,6 +8447,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const bool sleep_variance_detected = average_cycles >= threshold;
         const bool spammer_detected = (measurement / 1000) > 55000;
 
+        debug("Classic check - Average cycles: ", average_cycles, " (threshold: ", threshold, ")");
+        debug("Spammer check - Average cycles: ", (measurement / 1000), " (threshold: 55000)");
+
     #if (WINDOWS)
         // Windows-specific QPC check: Compare trapping vs non-trapping instruction timing
         LARGE_INTEGER startQPC, endQPC;
@@ -8469,6 +8472,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         LONGLONG dummyTime = endQPC.QuadPart - startQPC.QuadPart;
 
         const bool qpc_check = (dummyTime != 0) && ((cpuIdTime / dummyTime) > 1100);
+        debug("QPC check - CPUID: ", cpuIdTime, "ns, Dummy: ", dummyTime, "ns, Ratio: ", (cpuIdTime / dummyTime));
 
         // TSC sync check across cores. Try reading the invariant TSC on two different cores to attempt to detect vCPU timers being shared
         unsigned aux;
@@ -8477,7 +8481,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         SetThreadAffinityMask(GetCurrentThread(), 2);
         u64 tsc_core2 = __rdtscp(&aux);  // Core 2 TSC
         SetThreadAffinityMask(GetCurrentThread(), old_mask);
+
         const bool tsc_sync_check = std::llabs(static_cast<long long>(tsc_core2 - tsc_core1)) > 10000000LL;
+        debug("TSC sync check - Core1: ", tsc_core1, " Core2: ", tsc_core2, " Diff: ", tsc_core2 - tsc_core1);
 
         return sleep_variance_detected || spammer_detected || qpc_check || tsc_sync_check;
     #else
