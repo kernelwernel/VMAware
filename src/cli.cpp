@@ -83,6 +83,7 @@ enum arg_enum : u8 {
     VERBOSE,
     COMPACT,
     MIT,
+    ENUMS,
     NULL_ARG
 };
 
@@ -163,7 +164,7 @@ Extra:
  --verbose          add more information to the output
  --compact          ignore the unsupported techniques from the CLI output
  --mit              ignore the GPL techniques and run only the MIT-supported ones
-
+ --enums            display the technique enum name used by the lib
 )";
     std::exit(0);
 }
@@ -767,13 +768,19 @@ void checker(const VM::enum_flags flag, const char* message) {
         supported_count++;
     }
 
+    std::string enum_name = "";
+
+    if (arg_bitset.test(ENUMS)) {
+        enum_name = grey + " [VM::" + VM::flag_to_string(flag) + "]" + ansi_exit;
+    }
+
 #if (LINUX)
     if (are_perms_required(flag)) {
         if (arg_bitset.test(COMPACT)) {
             return;
         }
 
-        std::cout << no_perms << " Skipped " << message << "\n";
+        std::cout << no_perms << " Skipped " << message << enum_name << "\n";
 
         no_perms_count++;
 
@@ -788,15 +795,16 @@ void checker(const VM::enum_flags flag, const char* message) {
         if (arg_bitset.test(COMPACT)) {
             return;
         }
-        std::cout << disabled << " Skipped " << message << "\n";
+        std::cout << disabled << " Skipped " << message << enum_name << "\n";
         disabled_count++;
         return;
     }
 
+
     if (VM::check(flag)) {
-        std::cout << detected << bold << " Checking " << message << "..." << ansi_exit << "\n";
+        std::cout << detected << bold << " Checking " << message << "..." << enum_name << ansi_exit << "\n";
     } else {
-        std::cout << not_detected << " Checking " << message << "...\n";
+        std::cout << not_detected << " Checking " << message << "..." << enum_name << ansi_exit << "\n";
     }
 }
 
@@ -1196,7 +1204,7 @@ int main(int argc, char* argv[]) {
         std::exit(0);
     }
 
-    static constexpr std::array<std::pair<const char*, arg_enum>, 30> table {{
+    static constexpr std::array<std::pair<const char*, arg_enum>, 31> table {{
         { "-h", HELP },
         { "-v", VERSION },
         { "-a", ALL },
@@ -1226,6 +1234,7 @@ int main(int argc, char* argv[]) {
         { "--verbose", VERBOSE },
         { "--compact", COMPACT },
         { "--mit", MIT },
+        { "--enums", ENUMS },
         { "--no-color", NO_ANSI }
     }};
 

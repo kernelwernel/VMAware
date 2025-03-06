@@ -97,8 +97,9 @@ int main() {
      * This is just an example to show that you can use a combination of 
      * different flags and non-technique flags with the above examples. 
      */ 
-    bool is_vm9 = VM::detect(VM::DEFAULT, VM::NO_MEMO, VM::HIGH_THRESHOLD, VM::DISABLE(VM::RDTSC, VM::VMID));
+    bool is_vm9 = VM::detect(VM::NO_MEMO, VM::HIGH_THRESHOLD, VM::DISABLE(VM::RDTSC, VM::VMID));
 
+    return 0;
 }
 ```
 
@@ -126,6 +127,8 @@ int main() {
 
     // converted to std::uint32_t for console character encoding reasons
     std::cout << "percentage: " << static_cast<std::uint32_t>(percent) << "%\n"; 
+
+    return 0;
 }
 ```
 
@@ -153,6 +156,8 @@ int main() {
     } else {
         // you get the idea
     }
+
+    return 0;
 }
 ```
 
@@ -174,6 +179,8 @@ int main() {
     // Keep in mind that there's no limit to how many conflicts there can be.
     // And if there's no conflict, it'll revert back to giving the brand string
     // normally as if the VM::MULTIPLE wasn't there
+
+    return 0;
 }
 ```
 
@@ -202,6 +209,8 @@ int main() {
     if (VM::check(VM::HYPERVISOR_BIT)) {
         std::cout << "Hypervisor bit is set, most definitely a VM!\n";
     }
+
+    return 0;
 }
 ```
 
@@ -260,6 +269,7 @@ This will return the VM type (or architecture) as a `std::string` based on the b
 int main() {
     // example output: VirtualBox is a Hypervisor (type 2) VM
     std::cout << VM::brand() " is a " << VM::type() << " VM\n";
+    return 0;
 }
 ```
 
@@ -286,6 +296,64 @@ The `[brand]` part might contain a brand or may as well be empty, depending on w
 
 ## `VM::detected_count()`
 This will fetch the number of techniques that have been detected as a `std::uint8_t`. Can't get any more simpler than that ¯\_(ツ)_/¯, how's your day btw?
+
+<br>
+
+## `VM::flag_to_string()`
+This will take a technique flag enum as an argument and return the string version of it. For example:
+```cpp
+#include "vmaware.hpp"
+#include <iostream>
+
+int main() {
+    const std::string name = VM::flag_to_string(VM::VMID);
+    std::cout << "VM::" << name << "\n"; 
+    // Output: VM::VMID 
+    // (nothing more, nothing less)
+
+    return 0;
+}
+```
+
+The reason why this exists is because it can be useful for debugging purposes. It should be noted that the "VM::" part is not included in the string output, so that's based on the programmer's choice if it should remain in the string or not. The example given above is obviously useless since the whole code can be manually handwritten, but the function is especially convenient if it's being used with [`VM::technique_vector`](#variables). For example:
+
+```cpp
+#include "vmaware.hpp"
+#include <iostream>
+
+int main() {
+    // this will loop through all the enums in the technique_vector variable,
+    // and then checks each of them and outputs the enum that was detected
+    for (const auto technique_enum : VM::technique_vector) {
+        if (VM::check(technique_enum)) {
+            const std::string name = VM::flag_to_string(technique_enum);
+            std::cout << "VM::" << name << " was detected\n";
+        }
+    }
+
+    return 0;
+}
+```
+
+<br>
+
+## `VM::detected_enums()`
+This is a function that will return a vector of all the technique flags that were detected as running in a VM. The return type is `std::vector<VM::enum_flags>`, and it's designed to give a more programmatic overview of the result. 
+
+```cpp
+#include "vmaware.hpp"
+#include <iostream>
+
+int main() {
+    std::vector<VM::enum_flags> flag_list = VM::detected_enums();
+
+    for (const auto flag : flag_list) {
+        std::cout << "VM::" << VM::flag_to_string(flag) << " was detected" << "\n"; 
+    }
+
+    return 0;
+}
+```
 
 <br>
 
@@ -336,7 +404,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::CPU_BRAND` | Check if CPU brand model contains any VM-specific string snippets |  | 50% |  |  |  |  |  |
 | `VM::HYPERVISOR_BIT` | Check if hypervisor feature bit in CPUID eax bit 31 is enabled (always false for physical CPUs) |  | 100% |  |  |  |  |
 | `VM::HYPERVISOR_STR` | Check for hypervisor brand string length (would be around 2 characters in a host machine) |  | 75% |  |  |  |  |
-| `VM::TIMER` | Check for timing anomalies in the system |  | 45% |  |  |  |  |  |
+| `VM::TIMER` | Check for timing anomalies in the system |  | 20% |  |  |  |  |  |
 | `VM::THREADCOUNT` | Check if there are only 1 or 2 threads, which is a common pattern in VMs with default settings (nowadays physical CPUs should have at least 4 threads for modern CPUs) |  | 35% |  |  |  |  |
 | `VM::MAC` | Check if mac address starts with certain VM designated values | Linux and Windows | 20% |  |  |  |  |
 | `VM::TEMPERATURE` | Check if thermal directory in linux is present, might not be present in VMs | Linux | 15% |    |  |  |
@@ -571,6 +639,7 @@ This is the table of all the brands the lib supports.
 |    | --verbose | add more information to the output  |
 |    | --compact | ignore the unsupported techniques from the CLI output and thus make it more compact |
 |    | --mit | ignore the GPL techniques and run only the MIT-supported ones |
+|    | --enums | display the technique enum name used by the lib |
 > [!NOTE]
 > If you want a general result with the default settings, do not put any arguments. This is the intended way to use the CLI tool.
 >

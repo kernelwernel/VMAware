@@ -4,7 +4,7 @@
  * ██║   ██║██╔████╔██║███████║██║ █╗ ██║███████║██████╔╝█████╗
  * ╚██╗ ██╔╝██║╚██╔╝██║██╔══██║██║███╗██║██╔══██║██╔══██╗██╔══╝
  *  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
- *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ 2.0 (February 2025)
+ *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ 2.0 (March 2025)
  *
  *  C++ VM detection library
  *
@@ -25,14 +25,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 466
- * - struct for internal cpu operations        => line 740
- * - struct for internal memoization           => line 1194
- * - struct for internal utility functions     => line 1319
- * - struct for internal core components       => line 10185
- * - start of VM detection technique list      => line 2498
- * - start of public VM detection functions    => line 10586
- * - start of externally defined variables     => line 11490
+ * - enums for publicly accessible techniques  => line 465
+ * - struct for internal cpu operations        => line 739
+ * - struct for internal memoization           => line 1193
+ * - struct for internal utility functions     => line 1318
+ * - struct for internal core components       => line 10184
+ * - start of VM detection technique list      => line 2497
+ * - start of public VM detection functions    => line 10584
+ * - start of externally defined variables     => line 11514
  *
  *
  * ============================== EXAMPLE ===================================
@@ -584,7 +584,7 @@ public:
         HIGH_THRESHOLD,
         DYNAMIC,
         NULL_ARG, // does nothing, just a placeholder flag mainly for the CLI
-        MULTIPLE
+        MULTIPLE,
     };
 
 private:
@@ -715,7 +715,7 @@ public:
         static constexpr const char* NULL_BRAND = "Unknown";
     };
 
-
+private:
     // macro for bypassing unused parameter/variable warnings
     #define UNUSED(x) ((void)(x))
 
@@ -10256,7 +10256,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        [[nodiscard]] static bool is_setting_flag_set(const flagset& flags) {
+               [[nodiscard]] static bool is_setting_flag_set(const flagset& flags) {
             for (std::size_t i = settings_begin; i < settings_end; i++) {
                 if (flags.test(i)) {
                     return true;
@@ -10407,7 +10407,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
         /**
-         * basically what this entire template fuckery does is manage the
+         * basically what this entire variadic template fuckery does is manage the
          * variadic arguments being given through the arg_handler function,
          * which could either be a std::bitset<N>, a uint8_t, or a combination
          * of both of them. This will handle both argument types and implement
@@ -10587,7 +10587,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return flag_collector;
         }
     };
-
 
 public: // START OF PUBLIC FUNCTIONS
 
@@ -11091,7 +11090,6 @@ public: // START OF PUBLIC FUNCTIONS
     /**
      * @brief This will convert the technique flag into a string, which will correspond to the technique name
      * @param single technique flag in VM structure
-     * @warning ⚠️ FOR DEVELOPMENT USAGE ONLY, NOT MEANT FOR PUBLIC USE FOR NOW ⚠️
      */
     [[nodiscard]] static std::string flag_to_string(const enum_flags flag) {
         switch (flag) {
@@ -11212,6 +11210,33 @@ public: // START OF PUBLIC FUNCTIONS
             default: return "Unknown flag";
         }
     }
+
+
+    /**
+     * @brief Fetch all the brands that were detected in a vector
+     * @param any flag combination in VM structure or nothing
+     * @return std::vector<VM::enum_flags>
+     */
+    template <typename ...Args>
+    static std::vector<enum_flags> detected_enums(Args ...args) {
+        const flagset flags = core::arg_handler(args...);
+
+        std::vector<enum_flags> tmp{};
+
+        // this will loop through all the enums in the technique_vector variable,
+        // and then checks each of them and outputs the enum that was detected
+        for (const auto technique_enum : technique_vector) {
+            if (
+                (flags.test(technique_enum)) &&
+                (check(static_cast<enum_flags>(technique_enum)))
+            ) {
+                tmp.push_back(static_cast<enum_flags>(technique_enum));
+            }
+        }
+
+        return tmp;
+    }
+
 
 
     /**
@@ -11595,7 +11620,6 @@ VM::flagset VM::core::flag_collector;
 
 VM::u8 VM::detected_count_num = 0;
 
-
 // default flags 
 VM::flagset VM::DEFAULT = []() noexcept -> flagset {
     flagset tmp;
@@ -11632,7 +11656,6 @@ VM::flagset VM::ALL = []() noexcept -> flagset {
     return tmp;
 }();
 
-
 std::vector<VM::u8> VM::technique_vector = []() -> std::vector<VM::u8> {
     std::vector<VM::u8> tmp{};
 
@@ -11663,7 +11686,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::CPU_BRAND, { 50, VM::cpu_brand } },
     { VM::HYPERVISOR_BIT, { 100, VM::hypervisor_bit}} , 
     { VM::HYPERVISOR_STR, { 75, VM::hypervisor_str } },
-    { VM::TIMER, { 45, VM::timer } },
+    { VM::TIMER, { 20, VM::timer } },
     { VM::THREADCOUNT, { 35, VM::thread_count } },
     { VM::MAC, { 20, VM::mac_address_check } },
     { VM::TEMPERATURE, { 15, VM::temperature } },

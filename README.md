@@ -180,10 +180,11 @@ You can view the full docs [here](docs/documentation.md). All the details such a
 <br>
 
 > There's already loads of projects that have the same goal such as 
-<a href="https://github.com/CheckPointSW/InviZzzible">InviZzzible</a>, <a href="https://github.com/a0rtega/pafish">pafish</a> and <a href="https://github.com/LordNoteworthy/al-khaser">Al-Khaser</a>. But the difference between the aforementioned projects is that they don't provide a programmable interface to interact with the detection mechanisms, on top of having little to no support for non-Windows systems. 
-> Pafish and InviZzzible have been abandoned for years, while Al-Khaser does receive updates and has a wide scope of detection that includes anti-debuggers, anti-injection, and so on, but the VM detections are not sophisticated enough to be practically applied to real-world scenarios while not providing enough VM detection techniques. An additional issue is that they are all GPL projects. 
+<a href="https://github.com/CheckPointSW/InviZzzible">InviZzzible</a>, <a href="https://github.com/a0rtega/pafish">pafish</a> and <a href="https://github.com/LordNoteworthy/al-khaser">Al-Khaser</a>. But the difference between the aforementioned projects is that they don't provide a programmable interface to interact with the detection mechanisms, on top of having little to no support for non-Windows systems. Additionally, the VM detections in all those projects are often not sophisticated enough to be practically applied to real-world scenarios while not providing enough VM detection techniques. An additional issue is that they are all GPL projects. 
+>
+> Pafish and InviZzzible have been abandoned for years. Although Al-Khaser **DOES** receive occasional updates and has a wide scope of detection that VMAware doesn't provide (anti-debugging, anti-injection, and so on), it still falls short due to the previously mentioned problems above.
 > 
-> I wanted the core detection techniques to be accessible programmatically in a cross-platform way for everybody to get something useful out of it rather than providing just a CLI tool. It also contains a larger quantity of techniques, so it's basically just a VM detection framework on steroids with maximum flexibility.
+> While those projects have been useful to VMAware, we wanted to make them far better. My goal was to make the detection techniques to be accessible programmatically in a cross-platform and flexible way for everybody to get something useful out of it rather than providing just a CLI tool. It also contains a larger quantity of techniques, so it's basically just a VM detection framework on steroids that focuses on practical and realistic real-world usability.
 
 </details>
 
@@ -192,7 +193,7 @@ You can view the full docs [here](docs/documentation.md). All the details such a
 <summary>How does it compare to paid VM detection libraries?</summary>
 <br>
 
-> There are several paid software solutions available for protecting software licenses from reverse engineering or cracking, such as <a href="https://docs.sentinel.thalesgroup.com/home.htm">Thales' Sentinel RMS</a> and <a href="https://vmpsoft.com/">VMProtect</a>. These tools include VM detection as part of their feature set, though their primary focus is not VM detection unlike this project.
+> There are several paid software solutions available for protecting software licenses from reverse engineering or cracking, such as <a href="https://docs.sentinel.thalesgroup.com/home.htm">Thales' Sentinel RMS</a> and <a href="https://vmpsoft.com/">VMProtect</a>. These tools include VM detection as part of their feature set, though their primary focus is not VM detection unlike this project. VMProtect is very effective especially in their recent updates, and has shown in one instance that they've outperformed the lib, which we're trying to catch up.
 
 </details>
 
@@ -200,7 +201,7 @@ You can view the full docs [here](docs/documentation.md). All the details such a
 <summary>Wouldn't it make it inferior for having it open source?</summary>
 <br>
 
-> The only downside to VMAware is that it's fully open source, which makes the job of bypassers easier compared to having it closed source. However, I'd argue that's a worthy tradeoff by having as many VM detection techniques in an open and interactive way rather than trying to obfuscate it. Having it open source means we can have valuable community feedback to strengthen the library more effectively and accurately through discussions, collaborations, and competition against anti-anti-vm projects and malware analysis tools which try to hide it's a VM. All of this combined further advances the forefront innovations in the field of VM detections much more productively, compared to having it closed source. 
+> The only downside to VMAware is that it's fully open source, which makes the job of bypassers easier compared to having it closed source. However, I'd argue that's a worthy tradeoff by having as many VM detection techniques in an open and interactive way rather than trying to obfuscate it. Having it open source means we can have valuable community feedback to strengthen the library more effectively and accurately through discussions, collaborations, and competition against anti-anti-vm projects and malware analysis tools which try to hide it's a VM. All of this combined has further advanced the forefront innovations in the field of VM detections much more productively, compared to having it closed source.
 >
 > In other words, it's about quality, feedback, and openness over security through obfuscation.
 
@@ -289,6 +290,7 @@ And if you found this project useful, a star would be appreciated :)
 - [Georgii Gennadev (D00Movenok)](https://github.com/D00Movenok)
 - [utoshu](https://github.com/utoshu)
 - [Jyd](https://github.com/jyd519)
+- [git-eternal](https://github.com/git-eternal)
 
 <br>
 
