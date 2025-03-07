@@ -711,7 +711,6 @@ public:
         static constexpr const char* NOIRVISOR = "NoirVisor";
         static constexpr const char* QIHOO = "Qihoo 360 Sandbox";
         static constexpr const char* NSJAIL = "nsjail";
-        static constexpr const char* COMPILER_EXPLORER = "Xen with nsjail (for Compiler Explorer)";
         static constexpr const char* NULL_BRAND = "Unknown";
     };
 
@@ -10317,14 +10316,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     continue;
                 }
 
-                // check if it's spoofable, and whether it's enabled (NOTE: SPOOFABILITY IS DEPRECATED)
-                //if (
-                //    technique_data.is_spoofable && 
-                //    core::is_disabled(flags, SPOOFABLE)
-                //) {
-                //    continue;
-                //}
-
                 // check if the technique is cached already
                 if (memo_enabled && memo::is_cached(technique_macro)) {
                     const memo::data_t data = memo::cache_fetch(technique_macro);
@@ -10339,18 +10330,20 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 // run the technique
                 const bool result = technique_data.run();
 
-                // accumulate the points if technique detected a VM
+                // accumulate the points if the technique detected a VM
                 if (result) {
                     points += technique_data.points;
 
-                    // this is specific to VM::detected_count() which returns 
-                    // the number of techniques that returned a positive
+                    // this is specific to VM::detected_count() which 
+                    // returns the number of techniques that found a VM.
                     detected_count_num++;
                 }
                 
                 // for things like VM::detect() and VM::percentage(),
                 // a score of 150+ is guaranteed to be a VM, so
                 // there's no point in running the rest of the techniques
+                // (unless the threshold is set to be higher, but it's the 
+                // same story here nonetheless, except the threshold is 300)
                 if (shortcut && points >= threshold_points) {
                     return points;
                 }
@@ -10401,16 +10394,17 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
         /**
-         * basically what this entire variadic template fuckery does is manage the
-         * variadic arguments being given through the arg_handler function,
-         * which could either be a std::bitset<N>, a uint8_t, or a combination
-         * of both of them. This will handle both argument types and implement
-         * them depending on what their types are. If it's a std::bitset<N>,
-         * do the |= operation on flag_collector. If it's a uint8_t, simply 
-         * .set() that into the flag_collector. That's the gist of it.
+         * basically what this entire variadic template inheritance fuckery 
+         * does is manage the variadic arguments being given through the 
+         * arg_handler function, which could either be a std::bitset<N>, 
+         * a uint8_t, or a combination of both of them. This will handle 
+         * both argument types and implement them depending on what their 
+         * types are. If it's a std::bitset<N>, do the |= operation on 
+         * flag_collector. If it's a uint8_t, simply .set() that into the 
+         * flag_collector. That's the gist of it.
          *
          * Also I won't even deny, the majority of this section was 90% generated
-         * by chatgpt. Can't be arsed with this C++ templatisation shit.
+         * by chatgpt. Can't be arsed with this C++ variadic templatisation shit.
          * Like is it really my fault that I have a hard time understanging C++'s 
          * god awful metaprogramming designs? And don't even get me started on SNIFAE. 
          * 
@@ -10704,8 +10698,8 @@ public: // START OF PUBLIC FUNCTIONS
             }
         }
 
-        // goofy ass C++11 and C++14 linker error workaround, 
-        // and yes, this does look stupid.
+        // goofy ass C++11 and C++14 linker error workaround.
+        // And yes, this does look stupid.
 #if (CPP <= 14)
         constexpr const char* TMP_QEMU = "QEMU";
         constexpr const char* TMP_KVM = "KVM";
@@ -10727,10 +10721,6 @@ public: // START OF PUBLIC FUNCTIONS
         constexpr const char* TMP_AZURE = "Microsoft Azure Hyper-V";
         constexpr const char* TMP_NANOVISOR = "Xbox NanoVisor (Hyper-V)";
         constexpr const char* TMP_HYPERV_ARTIFACT = "Hyper-V artifact (not an actual VM)";
-
-        constexpr const char* TMP_NSJAIL = "nsjail";
-        constexpr const char* TMP_XEN = "Xen HVM";
-        constexpr const char* TMP_COMPILER_EXPLORER = "Xen with nsjail (for Compiler Explorer)";
 #else
         constexpr const char* TMP_QEMU = brands::QEMU;
         constexpr const char* TMP_KVM = brands::KVM;
@@ -10752,10 +10742,6 @@ public: // START OF PUBLIC FUNCTIONS
         constexpr const char* TMP_AZURE = brands::AZURE_HYPERV;
         constexpr const char* TMP_NANOVISOR = brands::NANOVISOR;
         constexpr const char* TMP_HYPERV_ARTIFACT = brands::HYPERV_ARTIFACT;
-
-        constexpr const char* TMP_NSJAIL = brands::NSJAIL;
-        constexpr const char* TMP_XEN = brands::XEN;
-        constexpr const char* TMP_COMPILER_EXPLORER = brands::COMPILER_EXPLORER;
 #endif
 
         // this is where all the RELEVANT brands are stored.
@@ -10875,17 +10861,15 @@ public: // START OF PUBLIC FUNCTIONS
         merge(TMP_VMWARE_HARD, TMP_GSX,         TMP_VMWARE_HARD);
         merge(TMP_VMWARE_HARD, TMP_WORKSTATION, TMP_VMWARE_HARD);
 
-        merge(TMP_NSJAIL, TMP_XEN, TMP_COMPILER_EXPLORER);
-
-
 
         // the brand element, which stores the NAME (const char*) and the SCORE (u8)
         using brand_element_t = std::pair<const char*, brand_score_t>;
 
+        // convert the std::map into a std::vector, easier to handle this way
         std::vector<brand_element_t> vec(brands.begin(), brands.end());
 
-        // sort the "brands" map so that the brands with the
-        // highest score appears first in descending order
+        // sort the relevant brands vector so that the brands with 
+        // the highest score appears first in descending order
         std::sort(vec.begin(), vec.end(), [](
             const brand_element_t &a,
             const brand_element_t &b
@@ -11383,8 +11367,7 @@ public: // START OF PUBLIC FUNCTIONS
             { brands::AMD_SEV_ES, "VM encryptor" },
             { brands::AMD_SEV_SNP, "VM encryptor" },
             { brands::GCE, "Cloud VM service" },
-            { brands::NSJAIL, "Process isolator" },
-            { brands::COMPILER_EXPLORER, "Type 1 hypervisor with process isolator" },
+            { brands::NSJAIL, "Process isolator" }
         };
 
         auto it = type_table.find(brand_str.c_str());
@@ -11585,7 +11568,6 @@ std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard{
     { VM::brands::QIHOO, 0 },
     { VM::brands::NOIRVISOR, 0 },
     { VM::brands::NSJAIL, 0 },
-    { VM::brands::COMPILER_EXPLORER, 0 },
     { VM::brands::NULL_BRAND, 0 }
 };
 
