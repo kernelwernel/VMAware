@@ -9664,7 +9664,23 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #else
         BOOL isNativeVhdBoot = 0;
 
-        if (IsNativeVhdBoot(&isNativeVhdBoot)) {
+        const HMODULE hModule = GetModuleHandleA("Kernel32.dll");
+        if (!hModule)
+            return false;
+
+        const char* functionNames[] = { "IsNativeVhdBoot" };
+        void* functionPointers[1] = { nullptr };
+
+        util::GetFunctionAddresses(hModule, functionNames, functionPointers, 1);
+
+        typedef BOOL (WINAPI *IsNativeVhdBoot)(PBOOL NativeVhdBoot);
+
+        IsNativeVhdBoot pIsNativeVhdBoot = nullptr;
+        pIsNativeVhdBoot = reinterpret_cast<IsNativeVhdBoot>(functionPointers[0]);
+        if (!pIsNativeVhdBoot)
+            return false;
+
+        if ( pIsNativeVhdBoot(&isNativeVhdBoot)) {
             return isNativeVhdBoot == 1;
         }
 
