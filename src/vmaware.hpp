@@ -10906,7 +10906,7 @@ public: // START OF PUBLIC FUNCTIONS
             const brand_element_t &a,
             const brand_element_t &b
         ) {
-            return a.second < b.second;
+            return a.second > b.second;
         });
 
         std::string ret_str = brands::NULL_BRAND;
