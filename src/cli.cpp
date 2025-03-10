@@ -83,6 +83,7 @@ enum arg_enum : u8 {
     VERBOSE,
     COMPACT,
     MIT,
+    ENUMS,
     NULL_ARG
 };
 
@@ -163,7 +164,7 @@ Extra:
  --verbose          add more information to the output
  --compact          ignore the unsupported techniques from the CLI output
  --mit              ignore the GPL techniques and run only the MIT-supported ones
-
+ --enums            display the technique enum name used by the lib
 )";
     std::exit(0);
 }
@@ -273,7 +274,6 @@ Neko Project II
 NoirVisor
 Qihoo 360 Sandbox
 nsjail
-Xen with nsjail (for Compiler Explorer)
 )";
 
     std::exit(0);
@@ -657,7 +657,6 @@ std::string vm_description(const std::string& vm_brand) {
         { VM::brands::NOIRVISOR, "NoirVisor is a hardware-accelerated hypervisor with support to complex functions and purposes. It is designed to support processors based on x86 architecture with hardware-accelerated virtualization feature. For example, Intel processors supporting Intel VT-x or AMD processors supporting AMD-V meet the requirement. It was made by Zero-Tang." },
         { VM::brands::QIHOO, "360 sandbox is a part of 360 Total Security. Similar to other sandbox software, it provides a virtualized environment where potentially malicious or untrusted programs can run without affecting the actual system. Qihoo 360 Sandbox is commonly used for testing unknown applications, analyzing malware behavior, and protecting users from zero-day threats." },
         { VM::brands::NSJAIL, "nsjail is a process isolation tool for Linux. It utilizes Linux namespace subsystem, resource limits, and the seccomp-bpf syscall filters of the Linux kernel. It can be used for isolating networking services, CTF challenges, and containing invasive syscall-level OS fuzzers." },
-        { VM::brands::COMPILER_EXPLORER, "Compiler Explorer is an interactive web compiler that supports numerous languages. The backend uses nsjail for their executor to isolate processes, while an additional hypervisor layer is used called Xen."},
         { VM::brands::NULL_BRAND, "Indicates no detectable virtualization brand. This result may occur on bare-metal systems, unsupported/obscure hypervisors, or when anti-detection techniques (e.g., VM escaping) are employed by the guest environment." }
     };
 
@@ -767,13 +766,19 @@ void checker(const VM::enum_flags flag, const char* message) {
         supported_count++;
     }
 
+    std::string enum_name = "";
+
+    if (arg_bitset.test(ENUMS)) {
+        enum_name = grey + " [VM::" + VM::flag_to_string(flag) + "]" + ansi_exit;
+    }
+
 #if (LINUX)
     if (are_perms_required(flag)) {
         if (arg_bitset.test(COMPACT)) {
             return;
         }
 
-        std::cout << no_perms << " Skipped " << message << "\n";
+        std::cout << no_perms << " Skipped " << message << enum_name << "\n";
 
         no_perms_count++;
 
@@ -788,15 +793,16 @@ void checker(const VM::enum_flags flag, const char* message) {
         if (arg_bitset.test(COMPACT)) {
             return;
         }
-        std::cout << disabled << " Skipped " << message << "\n";
+        std::cout << disabled << " Skipped " << message << enum_name << "\n";
         disabled_count++;
         return;
     }
 
+
     if (VM::check(flag)) {
-        std::cout << detected << bold << " Checking " << message << "..." << ansi_exit << "\n";
+        std::cout << detected << bold << " Checking " << message << "..." << enum_name << ansi_exit << "\n";
     } else {
-        std::cout << not_detected << " Checking " << message << "...\n";
+        std::cout << not_detected << " Checking " << message << "..." << enum_name << ansi_exit << "\n";
     }
 }
 
@@ -1196,7 +1202,7 @@ int main(int argc, char* argv[]) {
         std::exit(0);
     }
 
-    static constexpr std::array<std::pair<const char*, arg_enum>, 30> table {{
+    static constexpr std::array<std::pair<const char*, arg_enum>, 31> table {{
         { "-h", HELP },
         { "-v", VERSION },
         { "-a", ALL },
@@ -1226,6 +1232,7 @@ int main(int argc, char* argv[]) {
         { "--verbose", VERBOSE },
         { "--compact", COMPACT },
         { "--mit", MIT },
+        { "--enums", ENUMS },
         { "--no-color", NO_ANSI }
     }};
 

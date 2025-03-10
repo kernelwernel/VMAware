@@ -594,7 +594,6 @@ This is the table of all the brands the lib supports.
 | NoirVisor | `VM::brands::NOIRVISOR` | Hypervisor (type 1) |  |
 | Qihoo 360 Sandbox | `VM::brands::QIHOO` | Sandbox |  |
 | nsjail | `VM::brands::NSJAIL` | Process isolator |  |
-| Xen with nsjail (for Compiler Explorer) | `VM::brands::COMPILER_EXPLORER` | Type 1 hypervisor with process isolator |  |
 
 <br>
 
@@ -639,6 +638,7 @@ This is the table of all the brands the lib supports.
 |    | --verbose | add more information to the output  |
 |    | --compact | ignore the unsupported techniques from the CLI output and thus make it more compact |
 |    | --mit | ignore the GPL techniques and run only the MIT-supported ones |
+|    | --enums | display the technique enum name used by the lib |
 > [!NOTE]
 > If you want a general result with the default settings, do not put any arguments. This is the intended way to use the CLI tool.
 >
