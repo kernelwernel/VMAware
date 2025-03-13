@@ -389,6 +389,7 @@ bool is_unsupported(VM::enum_flags flag) {
 			case VM::FILE_ACCESS_HISTORY:
             case VM::UNKNOWN_MANUFACTURER:
 			case VM::NSJAIL_PID:
+			case VM::PCI_VM:
             // ADD LINUX FLAG
             return false;
             default: return true;
@@ -996,6 +997,7 @@ void general() {
     checker(VM::UNKNOWN_MANUFACTURER, "unknown manufacturer ids");
     checker(VM::OSXSAVE, "xgetbv");
 	checker(VM::NSJAIL_PID, "nsjail PID");
+	checker(VM::PCI_VM, "PCIe bridge ports");
     // ADD NEW TECHNIQUE CHECKER HERE
 
     std::printf("\n");
