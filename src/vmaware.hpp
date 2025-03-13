@@ -3053,6 +3053,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         for (const auto& check : dll_checks) {
             if (GetModuleHandleA(check.dll_name) != nullptr) {
+                debug("DLL: Found ", check.dll_name, " (", check.brand, ")");
                 return core::add(check.brand);
             }
         }
@@ -3273,7 +3274,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             wow64RedirectDisabled = true;
         }
 
-        // Use the system directory instead of the Windows directory.
+        // System directory instead of the Windows directory
         char szSysDir[MAX_PATH] = { 0 };
         if (GetSystemDirectoryA(szSysDir, MAX_PATH) == 0) {
             if (wow64RedirectDisabled) {
@@ -3282,23 +3283,26 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        constexpr std::array<const char*, 29> vbox_and_vmware = { {
-             "drivers\\Vmmouse.sys",
-             "drivers\\Vmusbmouse.sys",
-             "drivers\\vm3dgl.dll",
-             "drivers\\vmdum.dll",
-             "drivers\\VmGuestLibJava.dll",
-             "drivers\\vm3dver.dll",
-             "drivers\\vmtray.dll",
-             "drivers\\VMToolsHook.dll",
-             "drivers\\vmGuestLib.dll",
-             "drivers\\vmhgfs.dll",
+        constexpr std::array<const char*, 12> vmwareFiles = { {
+         "drivers\\Vmmouse.sys",
+         "drivers\\Vmusbmouse.sys",
+         "drivers\\vm3dgl.dll",
+         "drivers\\vmdum.dll",
+         "drivers\\VmGuestLibJava.dll",
+         "drivers\\vm3dver.dll",
+         "drivers\\vmtray.dll",
+         "drivers\\VMToolsHook.dll",
+         "drivers\\vmGuestLib.dll",
+         "drivers\\vmhgfs.dll",
+         "vm3dum64_loader.dll",
+         "vm3dum64_10.dll"
+     } };
+
+        constexpr std::array<const char*, 17> vboxFiles = { {
              "drivers\\VBoxMouse.sys",
              "drivers\\VBoxGuest.sys",
              "drivers\\VBoxSF.sys",
              "drivers\\VBoxVideo.sys",
-             "vm3dum64_loader.dll",
-             "vm3dum64_10.dll",
              "vboxoglpackspu.dll",
              "vboxoglpassthroughspu.dll",
              "vboxservice.exe",
@@ -3342,25 +3346,21 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             "drivers\\vpc-s3.sys"
         } };
 
-        u8 vbox = 0, vmware = 0, kvm = 0, vpc = 0, parallels = 0;
-
-        auto file_exists = [](const char* path) -> bool {
-            DWORD attrs = GetFileAttributesA(path);
-            return (attrs != INVALID_FILE_ATTRIBUTES) && !(attrs & FILE_ATTRIBUTE_DIRECTORY);
-            };
+        u8 vmware = 0, vbox = 0, kvm = 0, vpc = 0, parallels = 0;
 
         auto checkFiles = [&](const auto& files, u8& count) {
             for (const auto& relativePath : files) {
                 char szPath[MAX_PATH] = { 0 };
-                // system directory + relative path, so for example: C:\Windows\System32\ + drivers\VBoxMouse.sys
+                // Combination of the system directory with the relative path
                 PathCombineA(szPath, szSysDir, relativePath);
-                if (file_exists(szPath)) {
+                if (util::exists(szPath)) {
                     count++;
                 }
             }
             };
 
-        checkFiles(vbox_and_vmware, vbox);
+        checkFiles(vmwareFiles, vmware);
+        checkFiles(vboxFiles, vbox);
         checkFiles(kvmFiles, kvm);
         checkFiles(parallelsFiles, parallels);
         checkFiles(vpcFiles, vpc);
@@ -3369,27 +3369,29 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             Wow64RevertWow64FsRedirection(&oldValue);
         }
 
-        if (file_exists("C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\StartUp\\agent.pyw")) {
+        if (util::exists("C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\StartUp\\agent.pyw")) {
+            debug("VM Files: Found startup agent (agent.pyw), indicating CUCKOO VM.");
             return core::add(brands::CUCKOO);
         }
-
         if (vbox > vmware && vbox > kvm && vbox > vpc && vbox > parallels) {
+            debug("VM Files: Detected VBox files with count ", vbox);
             return core::add(brands::VBOX);
         }
         if (vmware > vbox && vmware > kvm && vmware > vpc && vmware > parallels) {
+            debug("VM Files: Detected VMware files with count ", vmware);
             return core::add(brands::VMWARE);
         }
         if (kvm > vbox && kvm > vmware && kvm > vpc && kvm > parallels) {
+            debug("VM Files: Detected KVM files with count ", kvm);
             return core::add(brands::KVM);
         }
         if (vpc > vbox && vpc > vmware && vpc > kvm && vpc > parallels) {
+            debug("VM Files: Detected VPC files with count ", vpc);
             return core::add(brands::VPC);
         }
         if (parallels > vbox && parallels > vmware && parallels > kvm && parallels > vpc) {
+            debug("VM Files: Detected Parallels files with count ", parallels);
             return core::add(brands::PARALLELS);
-        }
-        if (vbox > 0 && vmware > 0 && kvm > 0 && vpc > 0 && parallels > 0) {
-            return true;
         }
 
         return false;
@@ -3809,39 +3811,50 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::VM_PROCESSES
      */
     [[nodiscard]] static bool vm_processes() {
-#if (!WINDOWS)
+    #if (!WINDOWS)
         return false;
-#else
-        if (util::is_proc_running(("joeboxserver.exe")) || util::is_proc_running(("joeboxcontrol.exe"))) {
+    #else
+        if (util::is_proc_running("joeboxserver.exe") || util::is_proc_running("joeboxcontrol.exe")) {
+            debug("VM_PROCESSES: Detected JoeBox process.");
             return core::add(brands::JOEBOX);
         }
 
-        if (util::is_proc_running(("prl_cc.exe")) || util::is_proc_running(("prl_tools.exe"))) {
+        if (util::is_proc_running("prl_cc.exe") || util::is_proc_running("prl_tools.exe")) {
+            debug("VM_PROCESSES: Detected Parallels process.");
             return core::add(brands::PARALLELS);
         }
 
-        if (util::is_proc_running(("vboxservice.exe")) || util::is_proc_running(("vboxtray.exe"))) {
+        if (util::is_proc_running("vboxservice.exe") || util::is_proc_running("vboxtray.exe")) {
+            debug("VM_PROCESSES: Detected VBox process.");
             return core::add(brands::VBOX);
         }
 
-        if (util::is_proc_running(("vmsrvc.exe")) || util::is_proc_running(("vmusrvc.exe"))) {
+        if (util::is_proc_running("vmsrvc.exe") || util::is_proc_running("vmusrvc.exe")) {
+            debug("VM_PROCESSES: Detected VPC process.");
             return core::add(brands::VPC);
         }
 
-        if (util::is_proc_running(("xenservice.exe")) || util::is_proc_running(("xsvc_depriv.exe"))) {
+        if (util::is_proc_running("xenservice.exe") || util::is_proc_running("xsvc_depriv.exe")) {
+            debug("VM_PROCESSES: Detected Xen process.");
             return core::add(brands::XEN);
         }
 
-        if (util::is_proc_running(("vm3dservice.exe")) || util::is_proc_running(("VGAuthService.exe")) || util::is_proc_running(("vmtoolsd.exe"))) {
+        if (util::is_proc_running("vm3dservice.exe") ||
+            util::is_proc_running("VGAuthService.exe") ||
+            util::is_proc_running("vmtoolsd.exe")) {
+            debug("VM_PROCESSES: Detected VMware process.");
             return core::add(brands::VMWARE);
         }
 
-        if (util::is_proc_running(("vdagent.exe")) || util::is_proc_running(("vdservice.exe")) || util::is_proc_running(("qemuwmi.exe"))) {
+        if (util::is_proc_running("vdagent.exe") ||
+            util::is_proc_running("vdservice.exe") ||
+            util::is_proc_running("qemuwmi.exe")) {
+            debug("VM_PROCESSES: Detected QEMU process.");
             return core::add(brands::QEMU);
         }
 
         return false;
-#endif
+    #endif
     }
 
 
@@ -4386,6 +4399,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     if (dwType == REG_SZ || dwType == REG_EXPAND_SZ || dwType == REG_MULTI_SZ) {
                         buffer[bufferSize - 1] = '\0';
                         if (strstr(buffer, comp_string) != nullptr) {
+                            debug("HKLM_REGISTRIES: Found ", comp_string, " in ", subKey, " for brand ", p_brand);
                             core::add(p_brand);
                             count++;
                         }
@@ -6596,20 +6610,20 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         if (lowestReservedAddrRangeEnd != lowestLoaderReservedAddrRangeEnd) {
-            return false;  // No VM detected
+            return false;
         }
 
-        /* Now check for Hyper-V or VirtualBox by memory ranges */
+        /* Hyper-V and VirtualBox by memory ranges */
         for (DWORD i = 0; i < phys_count; i++) {
             if (phys[i].address == HYPERV_PHYS_LO && (phys[i].address + phys[i].size) == HYPERV_PHYS_HI) {
-                return true;  // Detected Hyper-V
+                return core::add(VM::brands::HYPERV);
             }
             if (phys[i].address == VBOX_PHYS_LO && (phys[i].address + phys[i].size) == VBOX_PHYS_HI) {
-                return true;  // Detected VirtualBox
+                return core::add(VM::brands::VBOX);
             }
         }
 
-        return false;  // Possibly VM, but unable to identify platform
+        return false;
 #endif
     }
 
@@ -7464,7 +7478,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!WINDOWS)
         return false;
 #else
-
         typedef struct _SYSTEM_MODULE_INFORMATION {
             PVOID  Reserved[2];
             PVOID  ImageBaseAddress;
@@ -7546,6 +7559,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 strstr(driverPath, "VBoxMouse") ||
                 strstr(driverPath, "VBoxSF")
                 ) {
+                debug("DRIVER_NAMES: Detected VBox driver: ", driverPath);
+                ntFreeVirtualMemory(hProcess, &allocatedMemory, &regionSize, MEM_RELEASE);
                 return core::add(brands::VBOX);
             }
 
@@ -7554,6 +7569,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 strstr(driverPath, "vmmouse") ||
                 strstr(driverPath, "vmmemctl")
                 ) {
+                debug("DRIVER_NAMES: Detected VMware driver: ", driverPath);
+                ntFreeVirtualMemory(hProcess, &allocatedMemory, &regionSize, MEM_RELEASE);
                 return core::add(brands::VMWARE);
             }
         }
@@ -7890,15 +7907,18 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         CloseHandle(handle4);
 
         if (result) {
+            debug("VM_DEVICES: Detected VBox related device handles.");
             return core::add(brands::VBOX);
         }
 
         if (handle5 != INVALID_HANDLE_VALUE) {
             CloseHandle(handle5);
+            debug("VM_DEVICES: Detected VMware related device (HGFS).");
             return core::add(brands::VMWARE);
         }
         if (handle6 != INVALID_HANDLE_VALUE) {
             CloseHandle(handle6);
+            debug("VM_DEVICES: Detected Cuckoo related device (pipe).");
             return core::add(brands::CUCKOO);
         }
 
@@ -8471,7 +8491,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         QueryPerformanceCounter(&endQPC);
         LONGLONG dummyTime = endQPC.QuadPart - startQPC.QuadPart;
 
-        const bool qpc_check = (dummyTime != 0) && ((cpuIdTime / dummyTime) > 1100);
+        const bool qpc_check = (dummyTime != 0) && ((cpuIdTime / dummyTime) > 1500);
         debug("QPC check - CPUID: ", cpuIdTime, "ns, Dummy: ", dummyTime, "ns, Ratio: ", (cpuIdTime / dummyTime));
 
         // TSC sync check across cores. Try reading the invariant TSC on two different cores to attempt to detect vCPU timers being shared
@@ -8675,7 +8695,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (pNtQuerySystemInformation) {
             SYSTEM_HYPERVISOR_DETAIL_INFORMATION hvInfo = { {} };
             const NTSTATUS status = pNtQuerySystemInformation(static_cast<SYSTEM_INFORMATION_CLASS>(0x9F), &hvInfo, sizeof(hvInfo), nullptr);
-
             if (status != 0) {
                 return false;
             }
@@ -8976,6 +8995,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             for (size_t j = 0; j < badPoolCount; ++j) {
                 if (currentTag == BadPoolDwords[j]) {
+                    debug("Bad Pools: Detected bad pool tag: 0x", std::hex, currentTag, std::dec);
                     ++bad_pool_number;
                     break;
                 }
@@ -9815,7 +9835,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (!ntqsi)
             return false;
 
-        // List of target strings (all are now treated as valid hits)
         constexpr const char* targets[] = {
             "Parallels Software International", "Parallels(R)", "innotek",
             "Oracle", "VirtualBox", "VS2005R2", "VMware, Inc.",
@@ -10069,6 +10088,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
         }
 
+        debug("UNKNOWN_MANUFACTURER: CPU brand '", brand, "' did not match known vendor IDs.");
         return true; // no known manufacturer matched, likely a VM
     }
     
@@ -11716,7 +11736,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::CPU_BRAND, { 50, VM::cpu_brand } },
     { VM::HYPERVISOR_BIT, { 100, VM::hypervisor_bit}} , 
     { VM::HYPERVISOR_STR, { 75, VM::hypervisor_str } },
-    { VM::TIMER, { 20, VM::timer } },
+    { VM::TIMER, { 45, VM::timer } },
     { VM::THREADCOUNT, { 35, VM::thread_count } },
     { VM::MAC, { 20, VM::mac_address_check } },
     { VM::TEMPERATURE, { 15, VM::temperature } },
