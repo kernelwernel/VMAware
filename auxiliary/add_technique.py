@@ -247,9 +247,14 @@ def write_header(options):
                 technique_details.append("@link " + options.link)
             
             technique_details.append("@category " + category_str)
-            technique_details.append("@note " + options.notes)
+
+            if options.notes != "":
+                technique_details.append("@note " + options.notes)
+
             if options.is_gpl:
                 technique_details.append("@copyright GPL-3.0")
+
+            technique_details.append("@implements VM::" + options.enum_name)
             
             # modify the technique details prefix comments 
             # depending on whether it's GPL or not
@@ -317,7 +322,7 @@ def write_header(options):
                     str(options.score) + 
                     ", VM::" + 
                     options.function_name +
-                    ", false } },\n"
+                    " } },\n"
                 )
             update_count += 1
 

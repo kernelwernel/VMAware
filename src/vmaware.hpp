@@ -577,6 +577,7 @@ public:
         UNKNOWN_MANUFACTURER,
         OSXSAVE,
 		NSJAIL_PID,
+		PCI_VM,
         // ADD NEW TECHNIQUE ENUM NAME HERE
 
         // start of settings technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
@@ -10205,6 +10206,52 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
 	}
 
+
+	/**
+	 * @brief Check for PCIe bridge names for known VM keywords and brands
+	 * @category Linux
+     * @implements VM::PCI_VM
+     */
+    [[nodiscard]] static bool lspci() {
+#if (!LINUX)
+        return false;
+#else
+        if (!(
+            (util::exists("/usr/bin/lspci")) || 
+            (util::exists("/bin/lspci")) ||
+            (util::exists("/usr/sbin/lspci"))
+        )) {
+            debug("PCI_VM: ", "binary doesn't exist");
+            return false;
+        }
+
+        const std::unique_ptr<std::string> result = util::sys_result("lspci 2>&1");
+    
+        if (result == nullptr) {
+            debug("PCI_VM: ", "invalid stdout output from lspci");
+            return false;
+        }
+    
+        const std::string full_command = *result;
+    
+        auto pci_finder = [&](const char* str) -> bool {
+            if (util::find(full_command, str)) { 
+                debug("PCI_VM: found ", str);
+                return true;
+            } else {
+                return false;
+            }
+        };
+    
+        if (pci_finder("QEMU PCIe Root port")) { return core::add(brands::QEMU); }
+        if (pci_finder("QEMU XHCI Host Controller")) { return core::add(brands::QEMU); }
+        if (pci_finder("QXL paravirtual graphic card")) { return core::add(brands::QEMU); }
+        if (pci_finder("Virtio")) { return true; } // could be used by a lot of brands, who knows
+
+        return false;
+#endif
+    }
+
     // ADD NEW TECHNIQUE FUNCTION HERE
 
 
@@ -11226,6 +11273,7 @@ public: // START OF PUBLIC FUNCTIONS
             case UNKNOWN_MANUFACTURER: return "UNKNOWN_MANUFACTURER";
             case OSXSAVE: return "OSXSAVE";
 			case NSJAIL_PID: return "NSJAIL_PID";
+			case PCI_VM: return "PCI_VM";
             // ADD NEW CASE HERE FOR NEW TECHNIQUE
             default: return "Unknown flag";
         }
@@ -11813,6 +11861,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::UNKNOWN_MANUFACTURER, { 50, VM::unknown_manufacturer } },
     { VM::OSXSAVE, { 50, VM::osxsave } },
 	{ VM::NSJAIL_PID, { 75, VM::nsjail_proc_id } },
+	{ VM::PCI_VM, { 100, VM::lspci } },
     // ADD NEW TECHNIQUE STRUCTURE HERE
 };
 
