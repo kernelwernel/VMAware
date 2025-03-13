@@ -11845,7 +11845,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::UNKNOWN_MANUFACTURER, { 50, VM::unknown_manufacturer } },
     { VM::OSXSAVE, { 50, VM::osxsave } },
 	{ VM::NSJAIL_PID, { 75, VM::nsjail_proc_id } },
-	{ VM::PCI_VM, { 70, VM::lspci } },
+	{ VM::PCI_VM, { 100, VM::lspci } },
     // ADD NEW TECHNIQUE STRUCTURE HERE
 };
 

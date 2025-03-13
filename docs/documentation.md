@@ -516,7 +516,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::UNKNOWN_MANUFACTURER` | Check if the CPU manufacturer is not known |  | 50% |  |  |  |  |
 | `VM::OSXSAVE` | Check if running xgetbv in the XCR0 extended feature register triggers an exception | Windows | 50% |  |  |  |  |
 | `VM::NSJAIL_PID` | Check if process status matches with nsjail patterns with PID anomalies | Linux | 75% |  |  |  |  |
-| `VM::PCI_VM` | Check for PCIe bridge names for known VM keywords and brands | Linux | 70% |  |  |  |  |
+| `VM::PCI_VM` | Check for PCIe bridge names for known VM keywords and brands | Linux | 100% |  |  |  |  |
 <!-- ADD TECHNIQUE DETAILS HERE -->
 
 <br>
