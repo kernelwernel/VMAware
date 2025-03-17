@@ -23,6 +23,7 @@
 - [ ] update the updater.py script and fix it
 - [ ] @thereisnospoon this is where we need to start modifing the qemu source further by replacing vendor/device ids.
 https://www.pcilookup.com/
+- [ ] https://wasm.in/threads/testy-v-vmware.35315/#post-444576
  
 QEMU default: 0x1234
 Intel: 0x8086

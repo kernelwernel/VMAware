@@ -42,12 +42,46 @@ int main() {
 
     /**
      * All checks are performed including spoofable techniques
-     * and a few other techniques that are disabled by default,
-     * one of which is VM::CURSOR which waits 5 seconds for any 
-     * human mouse interaction to detect automated virtual environments.
-     * If you're fine with having a 5 second delay, add VM::ALL 
+     * and a few other techniques that are disabled by default
+     * for a variety of reasons. Only 1 or 2 techniques are 
+     * disabled by default, and this flag will include both of 
+     * them. This isn't the default due to potential instability 
+     * concerns, but if that's fine for you then use this flag 
+     * for the sake of completeness.
      */ 
     bool is_vm3 = VM::detect(VM::ALL);
+
+
+    /**
+     * This will set the threshold bar to detect a VM higher than the default threshold.
+     * Use this if you want to be extremely sure if it's a VM, but this can risk the result
+     * to be a false negative. Use VM::percentage() for a more precise result if you want.
+     */ 
+    bool is_vm4 = VM::detect(VM::HIGH_THRESHOLD);
+
+
+    /**
+     * Essentially means only the CPU brand, MAC, and hypervisor bit techniques 
+     * should be performed. Note that the less flags you provide, the more 
+     * likely the result will not be accurate. If you just want to check for 
+     * a single technique, use VM::check() instead. Also, read the flag table
+     * at the end of this doc file for a full list of technique flags.
+     */
+    bool is_vm5 = VM::detect(VM::CPU_BRAND, VM::MAC, VM::HYPERVISOR_BIT);
+
+
+    /**
+     * If you want to disable any technique for whatever reason, use VM::DISABLE(...).
+     * This code snippet essentially means "perform all the default flags, but only 
+     * disable the VM::RDTSC technique". 
+     */ 
+    bool is_vm6 = VM::detect(VM::DISABLE(VM::RDTSC));
+
+
+    /**
+     * Same as above, but you can disable multiple techniques at the same time.
+     */ 
+    bool is_vm7 = VM::detect(VM::DISABLE(VM::VMID, VM::RDTSC, VM::HYPERVISOR_BIT));
 
 
     /**
@@ -58,39 +92,7 @@ int main() {
      * caching will be operated when you're not going to re-use the previously 
      * stored result at the end. 
      */ 
-    bool is_vm4 = VM::detect(VM::NO_MEMO);
-
-
-    /**
-     * This will set the threshold bar to detect a VM higher than the default threshold.
-     * Use this if you want to be extremely sure if it's a VM, but this can risk the result
-     * to be a false negative. Use VM::percentage() for a more precise result if you want.
-     */ 
-    bool is_vm5 = VM::detect(VM::HIGH_THRESHOLD);
-
-
-    /**
-     * Essentially means only the CPU brand, MAC, and hypervisor bit techniques 
-     * should be performed. Note that the less flags you provide, the more 
-     * likely the result will not be accurate. If you just want to check for 
-     * a single technique, use VM::check() instead. Also, read the flag table
-     * at the end of this doc file for a full list of technique flags.
-     */
-    bool is_vm6 = VM::detect(VM::CPU_BRAND, VM::MAC, VM::HYPERVISOR_BIT);
-
-
-    /**
-     * If you want to disable any technique for whatever reason, use VM::DISABLE(...).
-     * This code snippet essentially means "perform all the default flags, but only 
-     * disable the VM::RDTSC technique". 
-     */ 
-    bool is_vm7 = VM::detect(VM::DISABLE(VM::RDTSC));
-
-
-    /**
-     * Same as above, but you can disable multiple techniques at the same time.
-     */ 
-    bool is_vm8 = VM::detect(VM::DISABLE(VM::VMID, VM::RDTSC, VM::HYPERVISOR_BIT));
+    bool is_vm8 = VM::detect(VM::NO_MEMO);
 
 
     /**
@@ -295,7 +297,25 @@ The `[brand]` part might contain a brand or may as well be empty, depending on w
 <br>
 
 ## `VM::detected_count()`
-This will fetch the number of techniques that have been detected as a `std::uint8_t`. Can't get any more simpler than that ¯\_(ツ)_/¯, how's your day btw?
+This will fetch the number of techniques that have been detected as a `std::uint8_t`. Can't get any more simpler than that.
+```cpp
+#include "vmaware.hpp"
+#include <iostream>
+
+int main() {
+    const std::uint8_t count = VM::detected_count();
+
+    // output: 7 techniques were detected
+    std::cout << count << " techniques were detected" << "\n"; 
+
+    // note that if it's baremetal, it should be 0.
+    // if it's a VM, it should have at least 4 to  
+    // maybe around 15 max. The most I've seen was 
+    // around 18 but that only occurs very rarely.
+
+    return 0;
+}
+```
 
 <br>
 
@@ -307,9 +327,9 @@ This will take a technique flag enum as an argument and return the string versio
 
 int main() {
     const std::string name = VM::flag_to_string(VM::VMID);
+
+    // output: VM::VMID 
     std::cout << "VM::" << name << "\n"; 
-    // Output: VM::VMID 
-    // (nothing more, nothing less)
 
     return 0;
 }

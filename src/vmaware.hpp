@@ -568,16 +568,18 @@ public:
         HYPERV_QUERY,
         BAD_POOLS,
         AMD_SEV,
-		AMD_THREAD_MISMATCH,
+        AMD_THREAD_MISMATCH,
         NATIVE_VHD,
         VIRTUAL_REGISTRY,
         FIRMWARE,
-		FILE_ACCESS_HISTORY,
+        FILE_ACCESS_HISTORY,
         AUDIO,
         UNKNOWN_MANUFACTURER,
         OSXSAVE,
-		NSJAIL_PID,
-		PCI_VM,
+        NSJAIL_PID,
+        PCI_VM,
+TEST,
+TEST,
         // ADD NEW TECHNIQUE ENUM NAME HERE
 
         // start of settings technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
@@ -10236,6 +10238,94 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
 
+
+/**
+ * @brief sbgbsgbwugbiebiwbigbwifhwiufhwigbfshdf
+ * @category Linux
+ * @implements VM::TEST
+ */
+	[[nodiscard]] static bool lspci() {
+#if (!LINUX)
+	    return false;
+#else
+	    if (!(
+            (util::exists("/usr/bin/lspci")) || 
+            (util::exists("/bin/lspci")) ||
+            (util::exists("/usr/sbin/lspci"))
+        )) {
+	        debug("PCI_VM: ", "binary doesn't exist");
+	        return false;
+	    }
+
+	    const std::unique_ptr<std::string> result = util::sys_result("lspci 2>&1");
+	
+	    if (result == nullptr) {
+	        debug("PCI_VM: ", "invalid stdout output from lspci");
+	        return false;
+	    }
+	
+	    const std::string full_command = *result;
+	
+        auto pci_finder = [&](const char* str, const char* brand) -> void {
+            if (util::find(full_command, str)) { 
+                debug("PCI_VM: found ", str);
+                return core::add(brand);
+            }
+        };
+	
+	    pci_finder("QEMU PCIe Root port", brands::QEMU);
+	    pci_finder("QEMU XHCI Host Controller", brands::QEMU);
+	    pci_finder("QXL paravirtual graphic card", brands::QEMU);
+	    pci_finder("Virtio", brands::NULL_BRAND); // could be used by a lot of brands, who knows
+
+        return false;
+#endif
+    }
+
+
+    /**
+     * @brief gggggggggggggggggggggggggggggggggggg
+     * @category Linux
+     * @implements VM::TEST
+     */
+    	[[nodiscard]] static bool lspci() {
+    #if (!LINUX)
+    	    return false;
+    #else
+    	    if (!(
+                (util::exists("/usr/bin/lspci")) || 
+                (util::exists("/bin/lspci")) ||
+                (util::exists("/usr/sbin/lspci"))
+            )) {
+    	        debug("PCI_VM: ", "binary doesn't exist");
+    	        return false;
+    	    }
+    
+    	    const std::unique_ptr<std::string> result = util::sys_result("lspci 2>&1");
+    	
+    	    if (result == nullptr) {
+    	        debug("PCI_VM: ", "invalid stdout output from lspci");
+    	        return false;
+    	    }
+    	
+    	    const std::string full_command = *result;
+    	
+            auto pci_finder = [&](const char* str, const char* brand) -> void {
+                if (util::find(full_command, str)) { 
+                    debug("PCI_VM: found ", str);
+                    return core::add(brand);
+                }
+            };
+    	
+    	    pci_finder("QEMU PCIe Root port", brands::QEMU);
+    	    pci_finder("QEMU XHCI Host Controller", brands::QEMU);
+    	    pci_finder("QXL paravirtual graphic card", brands::QEMU);
+    	    pci_finder("Virtio", brands::NULL_BRAND); // could be used by a lot of brands, who knows
+    
+            return false;
+    #endif
+        }
+
     // ADD NEW TECHNIQUE FUNCTION HERE
 
 
@@ -11258,6 +11348,8 @@ public: // START OF PUBLIC FUNCTIONS
             case OSXSAVE: return "OSXSAVE";
 			case NSJAIL_PID: return "NSJAIL_PID";
 			case PCI_VM: return "PCI_VM";
+case TEST: return "TEST";
+            case TEST: return "TEST";
             // ADD NEW CASE HERE FOR NEW TECHNIQUE
             default: return "Unknown flag";
         }
@@ -11846,6 +11938,8 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::OSXSAVE, { 50, VM::osxsave } },
 	{ VM::NSJAIL_PID, { 75, VM::nsjail_proc_id } },
 	{ VM::PCI_VM, { 100, VM::lspci } },
+{ VM::TEST, { 69, VM::lscpi } },
+    { VM::TEST, { 69, VM::lspci } },
     // ADD NEW TECHNIQUE STRUCTURE HERE
 };
 
