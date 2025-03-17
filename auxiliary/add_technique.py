@@ -217,7 +217,7 @@ def write_header(options):
             if options.is_gpl:
                 new_code.append("/* GPL */ " + options.enum_name + ",\n")
             else:
-                new_code.append("" + options.enum_name + ",\n")
+                new_code.append(tab + tab + options.enum_name + ",\n")
             update_count += 1
 
 

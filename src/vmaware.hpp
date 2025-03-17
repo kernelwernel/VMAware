@@ -10239,93 +10239,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
 
 
-/**
- * @brief sbgbsgbwugbiebiwbigbwifhwiufhwigbfshdf
- * @category Linux
- * @implements VM::TEST
- */
-	[[nodiscard]] static bool lspci() {
-#if (!LINUX)
-	    return false;
-#else
-	    if (!(
-            (util::exists("/usr/bin/lspci")) || 
-            (util::exists("/bin/lspci")) ||
-            (util::exists("/usr/sbin/lspci"))
-        )) {
-	        debug("PCI_VM: ", "binary doesn't exist");
-	        return false;
-	    }
-
-	    const std::unique_ptr<std::string> result = util::sys_result("lspci 2>&1");
-	
-	    if (result == nullptr) {
-	        debug("PCI_VM: ", "invalid stdout output from lspci");
-	        return false;
-	    }
-	
-	    const std::string full_command = *result;
-	
-        auto pci_finder = [&](const char* str, const char* brand) -> void {
-            if (util::find(full_command, str)) { 
-                debug("PCI_VM: found ", str);
-                return core::add(brand);
-            }
-        };
-	
-	    pci_finder("QEMU PCIe Root port", brands::QEMU);
-	    pci_finder("QEMU XHCI Host Controller", brands::QEMU);
-	    pci_finder("QXL paravirtual graphic card", brands::QEMU);
-	    pci_finder("Virtio", brands::NULL_BRAND); // could be used by a lot of brands, who knows
-
-        return false;
-#endif
-    }
-
-
-    /**
-     * @brief gggggggggggggggggggggggggggggggggggg
-     * @category Linux
-     * @implements VM::TEST
-     */
-    	[[nodiscard]] static bool lspci() {
-    #if (!LINUX)
-    	    return false;
-    #else
-    	    if (!(
-                (util::exists("/usr/bin/lspci")) || 
-                (util::exists("/bin/lspci")) ||
-                (util::exists("/usr/sbin/lspci"))
-            )) {
-    	        debug("PCI_VM: ", "binary doesn't exist");
-    	        return false;
-    	    }
-    
-    	    const std::unique_ptr<std::string> result = util::sys_result("lspci 2>&1");
-    	
-    	    if (result == nullptr) {
-    	        debug("PCI_VM: ", "invalid stdout output from lspci");
-    	        return false;
-    	    }
-    	
-    	    const std::string full_command = *result;
-    	
-            auto pci_finder = [&](const char* str, const char* brand) -> void {
-                if (util::find(full_command, str)) { 
-                    debug("PCI_VM: found ", str);
-                    return core::add(brand);
-                }
-            };
-    	
-    	    pci_finder("QEMU PCIe Root port", brands::QEMU);
-    	    pci_finder("QEMU XHCI Host Controller", brands::QEMU);
-    	    pci_finder("QXL paravirtual graphic card", brands::QEMU);
-    	    pci_finder("Virtio", brands::NULL_BRAND); // could be used by a lot of brands, who knows
-    
-            return false;
-    #endif
-        }
-
     // ADD NEW TECHNIQUE FUNCTION HERE
 
 
@@ -11332,24 +11245,22 @@ public: // START OF PUBLIC FUNCTIONS
             case NUMBER_OF_CORES: return "NUMBER_OF_CORES";
             case ACPI_TEMPERATURE: return "ACPI_TEMPERATURE";
             case PROCESSOR_ID: return "PROCESSOR_ID";
-			case SYS_QEMU: return "SYS_QEMU";
-			case LSHW_QEMU: return "LSHW_QEMU";
+            case SYS_QEMU: return "SYS_QEMU";
+            case LSHW_QEMU: return "LSHW_QEMU";
             case VIRTUAL_PROCESSORS: return "VIRTUAL_PROCESSORS";
             case HYPERV_QUERY: return "HYPERV_QUERY";
             case BAD_POOLS: return "BAD_POOLS";
-			case AMD_SEV: return "AMD_SEV";
-			case AMD_THREAD_MISMATCH: return "AMD_THREAD_MISMATCH";
+            case AMD_SEV: return "AMD_SEV";
+            case AMD_THREAD_MISMATCH: return "AMD_THREAD_MISMATCH";
             case NATIVE_VHD: return "NATIVE_VHD";
             case VIRTUAL_REGISTRY: return "VIRTUAL_REGISTRY";
             case FIRMWARE: return "FIRMWARE";
-			case FILE_ACCESS_HISTORY: return "FILE_ACCESS_HISTORY";
+            case FILE_ACCESS_HISTORY: return "FILE_ACCESS_HISTORY";
             case AUDIO: return "AUDIO";
             case UNKNOWN_MANUFACTURER: return "UNKNOWN_MANUFACTURER";
             case OSXSAVE: return "OSXSAVE";
-			case NSJAIL_PID: return "NSJAIL_PID";
-			case PCI_VM: return "PCI_VM";
-case TEST: return "TEST";
-            case TEST: return "TEST";
+            case NSJAIL_PID: return "NSJAIL_PID";
+            case PCI_VM: return "PCI_VM";
             // ADD NEW CASE HERE FOR NEW TECHNIQUE
             default: return "Unknown flag";
         }
@@ -11928,18 +11839,16 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::VIRTUAL_PROCESSORS, { 50, VM::virtual_processors } },
     { VM::HYPERV_QUERY, { 100, VM::hyperv_query } },
     { VM::BAD_POOLS, { 80, VM::bad_pools } },
-	{ VM::AMD_SEV, { 50, VM::amd_sev } },
+    { VM::AMD_SEV, { 50, VM::amd_sev } },
     { VM::NATIVE_VHD, { 100, VM::native_vhd } },
     { VM::VIRTUAL_REGISTRY, { 65, VM::virtual_registry } },
     { VM::FIRMWARE, { 90, VM::firmware_scan } },
-	{ VM::FILE_ACCESS_HISTORY, { 15, VM::file_access_history } },
+    { VM::FILE_ACCESS_HISTORY, { 15, VM::file_access_history } },
     { VM::AUDIO, { 25, VM::check_audio } },
     { VM::UNKNOWN_MANUFACTURER, { 50, VM::unknown_manufacturer } },
     { VM::OSXSAVE, { 50, VM::osxsave } },
-	{ VM::NSJAIL_PID, { 75, VM::nsjail_proc_id } },
-	{ VM::PCI_VM, { 100, VM::lspci } },
-{ VM::TEST, { 69, VM::lscpi } },
-    { VM::TEST, { 69, VM::lspci } },
+    { VM::NSJAIL_PID, { 75, VM::nsjail_proc_id } },
+    { VM::PCI_VM, { 100, VM::lspci } },
     // ADD NEW TECHNIQUE STRUCTURE HERE
 };
 

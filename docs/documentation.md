@@ -100,10 +100,11 @@ int main() {
      * different flags and non-technique flags with the above examples. 
      */ 
     bool is_vm9 = VM::detect(VM::NO_MEMO, VM::HIGH_THRESHOLD, VM::DISABLE(VM::RDTSC, VM::VMID));
-
-    return 0;
 }
 ```
+
+> ![IMPORTANT]
+> Do not use `VM::DEFAULT` with `VM::DISABLE()`. Using the latter already assumes `VM::DEFAULT` is enabled, and there have been instances where this can cause unintended side effects. 
 
 <br>
 

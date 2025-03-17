@@ -382,16 +382,14 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::SMBIOS_VM_BIT:
             case VM::PODMAN_FILE:
             case VM::WSL_PROC: 
-			case VM::SYS_QEMU:
-			case VM::LSHW_QEMU:
-			case VM::AMD_SEV:
-			case VM::AMD_THREAD_MISMATCH:
-			case VM::FILE_ACCESS_HISTORY:
+            case VM::SYS_QEMU:
+            case VM::LSHW_QEMU:
+            case VM::AMD_SEV:
+            case VM::AMD_THREAD_MISMATCH:
+            case VM::FILE_ACCESS_HISTORY:
             case VM::UNKNOWN_MANUFACTURER:
-			case VM::NSJAIL_PID:
-			case VM::PCI_VM:
-case VM::TEST:
-            case VM::TEST:
+            case VM::NSJAIL_PID:
+            case VM::PCI_VM:
             // ADD LINUX FLAG
             return false;
             default: return true;
@@ -467,7 +465,7 @@ case VM::TEST:
             case VM::VIRTUAL_PROCESSORS:
             case VM::HYPERV_QUERY:
             case VM::BAD_POOLS:
-			case VM::AMD_THREAD_MISMATCH:
+            case VM::AMD_THREAD_MISMATCH:
             case VM::NATIVE_VHD:
             case VM::VIRTUAL_REGISTRY:
             case VM::FIRMWARE:
@@ -501,8 +499,8 @@ case VM::TEST:
             case VM::CPUID_SIGNATURE:
             case VM::KVM_BITMASK:
             case VM::KGT_SIGNATURE:
-			case VM::AMD_SEV:
-			case VM::AMD_THREAD_MISMATCH:
+            case VM::AMD_SEV:
+            case VM::AMD_THREAD_MISMATCH:
             case VM::UNKNOWN_MANUFACTURER:
             // ADD MACOS FLAG
             return false;
@@ -985,23 +983,21 @@ void general() {
     checker(VM::PROCESSOR_ID, "processor ID");
     checker(VM::POWER_CAPABILITIES, "Power capabilities");
     checker(VM::SETUPAPI_DISK, "SETUPDI diskdrive");
-	checker(VM::SYS_QEMU, "QEMU in /sys");
-	checker(VM::LSHW_QEMU, "QEMU in lshw output");
+    checker(VM::SYS_QEMU, "QEMU in /sys");
+    checker(VM::LSHW_QEMU, "QEMU in lshw output");
     checker(VM::VIRTUAL_PROCESSORS, "virtual processors");
     checker(VM::HYPERV_QUERY, "hypervisor query");
     checker(VM::BAD_POOLS, "bad pools");
-	checker(VM::AMD_SEV, "AMD-SEV MSR");
-	checker(VM::AMD_THREAD_MISMATCH, "AMD thread count mismatch");
+    checker(VM::AMD_SEV, "AMD-SEV MSR");
+    checker(VM::AMD_THREAD_MISMATCH, "AMD thread count mismatch");
     checker(VM::NATIVE_VHD, "VHD containers");
     checker(VM::VIRTUAL_REGISTRY, "registry emulation");
     checker(VM::FIRMWARE, "firmware signatures");
-	checker(VM::FILE_ACCESS_HISTORY, "low file access count");
+    checker(VM::FILE_ACCESS_HISTORY, "low file access count");
     checker(VM::UNKNOWN_MANUFACTURER, "unknown manufacturer ids");
     checker(VM::OSXSAVE, "xgetbv");
-	checker(VM::NSJAIL_PID, "nsjail PID");
-	checker(VM::PCI_VM, "PCIe bridge ports");
-checker(VM::TEST, "sdwrdfd");
-    checker(VM::TEST, "sdgfvffvre");
+    checker(VM::NSJAIL_PID, "nsjail PID");
+    checker(VM::PCI_VM, "PCIe bridge ports");
     // ADD NEW TECHNIQUE CHECKER HERE
 
     std::printf("\n");
