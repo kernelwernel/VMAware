@@ -578,8 +578,6 @@ public:
         OSXSAVE,
         NSJAIL_PID,
         PCI_VM,
-TEST,
-TEST,
         // ADD NEW TECHNIQUE ENUM NAME HERE
 
         // start of settings technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
@@ -587,7 +585,7 @@ TEST,
         HIGH_THRESHOLD,
         DYNAMIC,
         NULL_ARG, // does nothing, just a placeholder flag mainly for the CLI
-        MULTIPLE,
+        MULTIPLE
     };
 
 private:
