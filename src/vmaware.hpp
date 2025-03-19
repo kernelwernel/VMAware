@@ -4,7 +4,7 @@
  * ██║   ██║██╔████╔██║███████║██║ █╗ ██║███████║██████╔╝█████╗
  * ╚██╗ ██╔╝██║╚██╔╝██║██╔══██║██║███╗██║██╔══██║██╔══██╗██╔══╝
  *  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
- *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ 2.0 (March 2025)
+ *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ 2.1 (March 2025)
  *
  *  C++ VM detection library
  *
@@ -25,14 +25,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 465
- * - struct for internal cpu operations        => line 739
- * - struct for internal memoization           => line 1193
- * - struct for internal utility functions     => line 1318
- * - struct for internal core components       => line 10184
- * - start of VM detection technique list      => line 2497
- * - start of public VM detection functions    => line 10584
- * - start of externally defined variables     => line 11514
+ * - enums for publicly accessible techniques  => line 548
+ * - struct for internal cpu operations        => line 742
+ * - struct for internal memoization           => line 1196
+ * - struct for internal utility functions     => line 1321
+ * - struct for internal core components       => line 10263
+ * - start of VM detection technique list      => line 2510
+ * - start of public VM detection functions    => line 10871
+ * - start of externally defined variables     => line 11786
  *
  *
  * ============================== EXAMPLE ===================================
@@ -451,6 +451,89 @@ MSVC_DISABLE_WARNING(ASSIGNMENT_OPERATOR NO_INLINE_FUNC SPECTRE)
 #define core_debug(...)
 #endif
 
+/**
+ * Official aliases for VM brands. This is added to avoid accidental typos
+ * which could really fuck up the result. Also, no errors/warnings are
+ * issued if the string is invalid in case of a typo. For example:
+ * scoreboard[VBOX]++;
+ * is much better and safer against typos than:
+ * scoreboard["VirtualBox"]++;
+ * Hopefully this makes sense.
+ *
+ * TL;DR I have wonky fingers :(
+ */
+namespace brands {
+    static constexpr const char* VBOX = "VirtualBox";
+    static constexpr const char* VMWARE = "VMware";
+    static constexpr const char* VMWARE_EXPRESS = "VMware Express";
+    static constexpr const char* VMWARE_ESX = "VMware ESX";
+    static constexpr const char* VMWARE_GSX = "VMware GSX";
+    static constexpr const char* VMWARE_WORKSTATION = "VMware Workstation";
+    static constexpr const char* VMWARE_FUSION = "VMware Fusion";
+    static constexpr const char* VMWARE_HARD = "VMware (with VmwareHardenedLoader)";
+    static constexpr const char* BHYVE = "bhyve";
+    static constexpr const char* KVM = "KVM";
+    static constexpr const char* QEMU = "QEMU";
+    static constexpr const char* QEMU_KVM = "QEMU+KVM";
+    static constexpr const char* KVM_HYPERV = "KVM Hyper-V Enlightenment";
+    static constexpr const char* QEMU_KVM_HYPERV = "QEMU+KVM Hyper-V Enlightenment";
+    static constexpr const char* HYPERV = "Microsoft Hyper-V";
+    static constexpr const char* HYPERV_VPC = "Microsoft Virtual PC/Hyper-V";
+    static constexpr const char* PARALLELS = "Parallels";
+    static constexpr const char* XEN = "Xen HVM";
+    static constexpr const char* ACRN = "ACRN";
+    static constexpr const char* QNX = "QNX hypervisor";
+    static constexpr const char* HYBRID = "Hybrid Analysis";
+    static constexpr const char* SANDBOXIE = "Sandboxie";
+    static constexpr const char* DOCKER = "Docker";
+    static constexpr const char* WINE = "Wine";
+    static constexpr const char* VPC = "Virtual PC";
+    static constexpr const char* ANUBIS = "Anubis";
+    static constexpr const char* JOEBOX = "JoeBox";
+    static constexpr const char* THREATEXPERT = "ThreatExpert";
+    static constexpr const char* CWSANDBOX = "CWSandbox";
+    static constexpr const char* COMODO = "Comodo";
+    static constexpr const char* BOCHS = "Bochs";
+    static constexpr const char* NVMM = "NetBSD NVMM";
+    static constexpr const char* BSD_VMM = "OpenBSD VMM";
+    static constexpr const char* INTEL_HAXM = "Intel HAXM";
+    static constexpr const char* UNISYS = "Unisys s-Par";
+    static constexpr const char* LMHS = "Lockheed Martin LMHS"; // lol
+    static constexpr const char* CUCKOO = "Cuckoo";
+    static constexpr const char* BLUESTACKS = "BlueStacks";
+    static constexpr const char* JAILHOUSE = "Jailhouse";
+    static constexpr const char* APPLE_VZ = "Apple VZ";
+    static constexpr const char* INTEL_KGT = "Intel KGT (Trusty)";
+    static constexpr const char* AZURE_HYPERV = "Microsoft Azure Hyper-V";
+    static constexpr const char* NANOVISOR = "Xbox NanoVisor (Hyper-V)";
+    static constexpr const char* SIMPLEVISOR = "SimpleVisor";
+    static constexpr const char* HYPERV_ARTIFACT = "Hyper-V artifact (not an actual VM)";
+    static constexpr const char* UML = "User-mode Linux";
+    static constexpr const char* POWERVM = "IBM PowerVM";
+    static constexpr const char* GCE = "Google Compute Engine (KVM)";
+    static constexpr const char* OPENSTACK = "OpenStack (KVM)";
+    static constexpr const char* KUBEVIRT = "KubeVirt (KVM)";
+    static constexpr const char* AWS_NITRO = "AWS Nitro System EC2 (KVM-based)";
+    static constexpr const char* PODMAN = "Podman";
+    static constexpr const char* WSL = "WSL";
+    static constexpr const char* OPENVZ = "OpenVZ";
+    static constexpr const char* BAREVISOR = "Barevisor";
+    static constexpr const char* HYPERPLATFORM = "HyperPlatform";
+    static constexpr const char* MINIVISOR = "MiniVisor";
+    static constexpr const char* INTEL_TDX = "Intel TDX";
+    static constexpr const char* LKVM = "LKVM";
+    static constexpr const char* AMD_SEV = "AMD SEV";
+    static constexpr const char* AMD_SEV_ES = "AMD SEV-ES";
+    static constexpr const char* AMD_SEV_SNP = "AMD SEV-SNP";
+    static constexpr const char* NEKO_PROJECT = "Neko Project II";
+    static constexpr const char* NOIRVISOR = "NoirVisor";
+    static constexpr const char* QIHOO = "Qihoo 360 Sandbox";
+    static constexpr const char* NSJAIL = "nsjail";
+    static constexpr const char* NULL_BRAND = "Unknown";
+}
+
+
+
 struct VM {
 private:
     using u8  = std::uint8_t;
@@ -568,24 +651,28 @@ public:
         HYPERV_QUERY,
         BAD_POOLS,
         AMD_SEV,
-		AMD_THREAD_MISMATCH,
+        AMD_THREAD_MISMATCH,
         NATIVE_VHD,
         VIRTUAL_REGISTRY,
         FIRMWARE,
-		FILE_ACCESS_HISTORY,
+        FILE_ACCESS_HISTORY,
         AUDIO,
         UNKNOWN_MANUFACTURER,
         OSXSAVE,
-		NSJAIL_PID,
-		PCI_VM,
+        NSJAIL_PID,
+        PCI_VM,
         // ADD NEW TECHNIQUE ENUM NAME HERE
+
+        // special flags, different to settings
+        DEFAULT,
+        ALL,
+        NULL_ARG, // does nothing, just a placeholder flag mainly for the CLI
 
         // start of settings technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
         NO_MEMO,
         HIGH_THRESHOLD,
         DYNAMIC,
-        NULL_ARG, // does nothing, just a placeholder flag mainly for the CLI
-        MULTIPLE,
+        MULTIPLE
     };
 
 private:
@@ -630,90 +717,6 @@ public:
     VM() = delete;
     VM(const VM&) = delete;
     VM(VM&&) = delete;
-
-    static flagset DEFAULT; // default bitset that will be run if no parameters are specified
-    static flagset ALL; // same as default, but with disabled techniques included
-
-    /**
-     * Official aliases for VM brands. This is added to avoid accidental typos
-     * which could really fuck up the result. Also, no errors/warnings are
-     * issued if the string is invalid in case of a typo. For example:
-     * scoreboard[VBOX]++;
-     * is much better and safer against typos than:
-     * scoreboard["VirtualBox"]++;
-     * Hopefully this makes sense.
-     *
-     * TL;DR I have wonky fingers :(
-     */
-    struct brands {
-        static constexpr const char* VBOX = "VirtualBox";
-        static constexpr const char* VMWARE = "VMware";
-        static constexpr const char* VMWARE_EXPRESS = "VMware Express";
-        static constexpr const char* VMWARE_ESX = "VMware ESX";
-        static constexpr const char* VMWARE_GSX = "VMware GSX";
-        static constexpr const char* VMWARE_WORKSTATION = "VMware Workstation";
-        static constexpr const char* VMWARE_FUSION = "VMware Fusion";
-        static constexpr const char* VMWARE_HARD = "VMware (with VmwareHardenedLoader)";
-        static constexpr const char* BHYVE = "bhyve";
-        static constexpr const char* KVM = "KVM";
-        static constexpr const char* QEMU = "QEMU";
-        static constexpr const char* QEMU_KVM = "QEMU+KVM";
-        static constexpr const char* KVM_HYPERV = "KVM Hyper-V Enlightenment";
-        static constexpr const char* QEMU_KVM_HYPERV = "QEMU+KVM Hyper-V Enlightenment";
-        static constexpr const char* HYPERV = "Microsoft Hyper-V";
-        static constexpr const char* HYPERV_VPC = "Microsoft Virtual PC/Hyper-V";
-        static constexpr const char* PARALLELS = "Parallels";
-        static constexpr const char* XEN = "Xen HVM";
-        static constexpr const char* ACRN = "ACRN";
-        static constexpr const char* QNX = "QNX hypervisor";
-        static constexpr const char* HYBRID = "Hybrid Analysis";
-        static constexpr const char* SANDBOXIE = "Sandboxie";
-        static constexpr const char* DOCKER = "Docker";
-        static constexpr const char* WINE = "Wine";
-        static constexpr const char* VPC = "Virtual PC";
-        static constexpr const char* ANUBIS = "Anubis";
-        static constexpr const char* JOEBOX = "JoeBox";
-        static constexpr const char* THREATEXPERT = "ThreatExpert";
-        static constexpr const char* CWSANDBOX = "CWSandbox";
-        static constexpr const char* COMODO = "Comodo";
-        static constexpr const char* BOCHS = "Bochs";
-        static constexpr const char* NVMM = "NetBSD NVMM";
-        static constexpr const char* BSD_VMM = "OpenBSD VMM";
-        static constexpr const char* INTEL_HAXM = "Intel HAXM";
-        static constexpr const char* UNISYS = "Unisys s-Par";
-        static constexpr const char* LMHS = "Lockheed Martin LMHS"; // lol
-        static constexpr const char* CUCKOO = "Cuckoo";
-        static constexpr const char* BLUESTACKS = "BlueStacks";
-        static constexpr const char* JAILHOUSE = "Jailhouse";
-        static constexpr const char* APPLE_VZ = "Apple VZ";
-        static constexpr const char* INTEL_KGT = "Intel KGT (Trusty)";
-        static constexpr const char* AZURE_HYPERV = "Microsoft Azure Hyper-V";
-        static constexpr const char* NANOVISOR = "Xbox NanoVisor (Hyper-V)";
-        static constexpr const char* SIMPLEVISOR = "SimpleVisor";
-        static constexpr const char* HYPERV_ARTIFACT = "Hyper-V artifact (not an actual VM)";
-        static constexpr const char* UML = "User-mode Linux";
-        static constexpr const char* POWERVM = "IBM PowerVM";
-        static constexpr const char* GCE = "Google Compute Engine (KVM)";
-        static constexpr const char* OPENSTACK = "OpenStack (KVM)";
-        static constexpr const char* KUBEVIRT = "KubeVirt (KVM)";
-        static constexpr const char* AWS_NITRO = "AWS Nitro System EC2 (KVM-based)";
-        static constexpr const char* PODMAN = "Podman";
-        static constexpr const char* WSL = "WSL";
-        static constexpr const char* OPENVZ = "OpenVZ";
-        static constexpr const char* BAREVISOR = "Barevisor";
-        static constexpr const char* HYPERPLATFORM = "HyperPlatform";
-        static constexpr const char* MINIVISOR = "MiniVisor";
-        static constexpr const char* INTEL_TDX = "Intel TDX";
-        static constexpr const char* LKVM = "LKVM";
-        static constexpr const char* AMD_SEV = "AMD SEV";
-        static constexpr const char* AMD_SEV_ES = "AMD SEV-ES";
-        static constexpr const char* AMD_SEV_SNP = "AMD SEV-SNP";
-        static constexpr const char* NEKO_PROJECT = "Neko Project II";
-        static constexpr const char* NOIRVISOR = "NoirVisor";
-        static constexpr const char* QIHOO = "Qihoo 360 Sandbox";
-        static constexpr const char* NSJAIL = "nsjail";
-        static constexpr const char* NULL_BRAND = "Unknown";
-    };
 
 private:
     // macro for bypassing unused parameter/variable warnings
@@ -1398,6 +1401,16 @@ private:
             wcstombs_s(&convertedChars, c_szText, path, _MAX_PATH);
             return exists(c_szText);
         }
+#endif
+
+#if (LINUX)
+        static bool is_directory(const char* path) {
+            struct stat info;
+            if (stat(path, &info) != 0) {
+                return false;
+            }
+            return (info.st_mode & S_IFDIR); // check if directory
+        };
 #endif
 
         // wrapper for std::make_unique because it's not available for C++11
@@ -6616,10 +6629,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         /* Hyper-V and VirtualBox by memory ranges */
         for (DWORD i = 0; i < phys_count; i++) {
             if (phys[i].address == HYPERV_PHYS_LO && (phys[i].address + phys[i].size) == HYPERV_PHYS_HI) {
-                return core::add(VM::brands::HYPERV);
+                return core::add(brands::HYPERV);
             }
             if (phys[i].address == VBOX_PHYS_LO && (phys[i].address + phys[i].size) == VBOX_PHYS_HI) {
-                return core::add(VM::brands::VBOX);
+                return core::add(brands::VBOX);
             }
         }
 
@@ -8072,23 +8085,23 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // * In development *
         /*
         const std::vector<std::pair<std::wstring, const char*>> dps_checks = {
-            { L"VBoxTray", VM::brands::VBOX },
-            { L"joeboxserver.exe", VM::brands::JOEBOX },
-            { L"joeboxcontrol.exe", VM::brands::JOEBOX },
-            { L"prl_cc.exe", VM::brands::PARALLELS },
-            { L"prl_tools.exe", VM::brands::PARALLELS },
-            { L"vboxservice.exe", VM::brands::VBOX },
-            { L"vboxtray.exe", VM::brands::VBOX },
-            { L"vmsrvc.exe", VM::brands::VPC },
-            { L"vmusrvc.exe", VM::brands::VPC },
-            { L"xenservice.exe", VM::brands::XEN },
-            { L"xsvc_depriv.exe", VM::brands::XEN },
-            { L"vm3dservice.exe", VM::brands::VMWARE },
-            { L"VGAuthService.exe", VM::brands::VMWARE },
-            { L"vmtoolsd.exe", VM::brands::VMWARE },
-            { L"qemu-ga.exe", VM::brands::QEMU },
-            { L"vdagent.exe", VM::brands::QEMU },
-            { L"vdservice.exe", VM::brands::QEMU }
+            { L"VBoxTray", brands::VBOX },
+            { L"joeboxserver.exe", brands::JOEBOX },
+            { L"joeboxcontrol.exe", brands::JOEBOX },
+            { L"prl_cc.exe", brands::PARALLELS },
+            { L"prl_tools.exe", brands::PARALLELS },
+            { L"vboxservice.exe", brands::VBOX },
+            { L"vboxtray.exe", brands::VBOX },
+            { L"vmsrvc.exe", brands::VPC },
+            { L"vmusrvc.exe", brands::VPC },
+            { L"xenservice.exe", brands::XEN },
+            { L"xsvc_depriv.exe", brands::XEN },
+            { L"vm3dservice.exe", brands::VMWARE },
+            { L"VGAuthService.exe", brands::VMWARE },
+            { L"vmtoolsd.exe", brands::VMWARE },
+            { L"qemu-ga.exe", brands::QEMU },
+            { L"vdagent.exe", brands::QEMU },
+            { L"vdservice.exe", brands::QEMU }
         };
 
         const char* dpsBrand;
@@ -8535,19 +8548,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 	        fs::exists(firmware_path)
 	    );
     #else
-        auto is_directory(const std::string& path) -> bool {
-            struct stat info;
-            if (stat(path.c_str(), &info) != 0) {
-                return false;
-            }
-            return (info.st_mode & S_IFDIR); // check if directory
-        };
 
     	return (
-	        is_directory(module_path) && 
-	        is_directory(firmware_path) &&
-	        util::exists(module_path) &&
-	        util::exists(firmware_path)
+	        util::is_directory(module_path.c_str()) && 
+	        util::is_directory(firmware_path.c_str()) &&
+	        util::exists(module_path.c_str()) &&
+	        util::exists(firmware_path.c_str())
 	    );
     #endif
 #endif
@@ -10252,6 +10258,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
 
+
     // ADD NEW TECHNIQUE FUNCTION HERE
 
 
@@ -10275,7 +10282,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         struct technique {
             u8 points = 0;                // this is the certainty score between 0 and 100
             std::function<bool()> run;    // this is the technique function itself
-            // bool is_spoofable = false; [DEPRECATED] this is to indicate that the technique can be very easily spoofed (not guaranteed)
+        
+            technique() : points(0), run(nullptr) {}
+
+            technique(u8 points, std::function<bool()> run) : points(points), run(run) {}
         };
 
         struct custom_technique {
@@ -10351,11 +10361,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // manage the flag to handle edgecases
         static void flag_sanitizer(flagset& flags) {
             if (flags.count() == 0) {
-                flags |= DEFAULT;
+                generate_default(flags);
                 return;
             }
 
-            if (flags == DEFAULT) {
+            if (flags.test(DEFAULT)) {
+                return;
+            }
+            
+            if (flags.test(ALL)) {
                 return;
             }
 
@@ -10376,7 +10390,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 flags.test(NULL_ARG) ||
                 flags.test(MULTIPLE)
             ) {
-                flags |= DEFAULT;
+                generate_default(flags);
             } else {
                 throw std::invalid_argument("Invalid flag option found, aborting");
             }
@@ -10482,10 +10496,55 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
         /**
-         * basically what this entire variadic template inheritance fuckery 
-         * does is manage the variadic arguments being given through the 
-         * arg_handler function, which could either be a std::bitset<N>, 
+         * basically what this entire recursive variadic template inheritance 
+         * fuckery does is manage the variadic arguments being given through 
+         * the arg_handler function, which could either be a std::bitset<N>, 
          * a uint8_t, or a combination of both of them. This will handle 
          * both argument types and implement them depending on what their 
          * types are. If it's a std::bitset<N>, do the |= operation on 
@@ -10502,11 +10561,67 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
          * to a problem, but with a billion ways you can do the same thing but in 
          * the "wrong" way. I genuinely can't wait for Carbon to come out.
          */
-    private:
+    public:
         static flagset flag_collector;
+        static flagset disabled_flag_collector;
 
-        static void flagset_manager(const flagset& flags) {
-            flag_collector |= flags;
+        static void generate_default(flagset& flags) {
+            // set all bits to 1
+            flags.set();
+
+            // disable all non-default techniques
+            flags.flip(VMWARE_DMESG);
+
+            // disable all the settings flags
+            flags.flip(NO_MEMO);
+            flags.flip(HIGH_THRESHOLD);
+            flags.flip(NULL_ARG);
+            flags.flip(DYNAMIC);
+            flags.flip(MULTIPLE);
+            flags.flip(ALL);
+        }
+
+        static void generate_all(flagset& flags) {
+            // set all bits to 1
+            flags.set();
+
+            // disable all the settings flags
+            flags.flip(NO_MEMO);
+            flags.flip(HIGH_THRESHOLD);
+            flags.flip(NULL_ARG);
+            flags.flip(DYNAMIC);
+            flags.flip(MULTIPLE);
+            flags.flip(DEFAULT);
+        }
+
+        static void generate_current_disabled_flags(flagset& flags) {
+            const bool setting_no_memo = flags.test(NO_MEMO);
+            const bool setting_high_threshold = flags.test(HIGH_THRESHOLD);
+            const bool setting_dynamic = flags.test(DYNAMIC);
+            const bool setting_multiple = flags.test(MULTIPLE);
+            const bool setting_all = flags.test(ALL);
+            const bool setting_default = flags.test(DEFAULT);
+
+            if (disabled_flag_collector.count() == 0) {
+                return;
+            } else {
+                flags &= disabled_flag_collector;
+            }
+
+            flags.set(NO_MEMO, setting_no_memo);
+            flags.set(HIGH_THRESHOLD, setting_high_threshold);
+            flags.set(DYNAMIC, setting_dynamic);
+            flags.set(MULTIPLE, setting_multiple);
+            flags.set(ALL, setting_all);
+            flags.set(DEFAULT, setting_default);
+        }
+
+        static void disable_flagset_manager(const flagset& flags) {
+            disabled_flag_collector = flags;
+        }
+
+        static void disable_flag_manager(const enum_flags flag) {
+            disabled_flag_collector.set(flag, false);
         }
 
         static void flag_manager(const enum_flags flag) {
@@ -10517,7 +10632,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 throw std::invalid_argument("Non-flag or invalid flag provided for VM::detect(), aborting");
             }
 
-            flag_collector.set(flag);
+            if (flag == DEFAULT) {
+                generate_default(flag_collector);
+            } else if (flag == ALL) {
+                generate_all(flag_collector);
+            } else {
+                flag_collector.set(flag);
+            }
         }
 
         // Define a base class for different types
@@ -10525,11 +10646,20 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             virtual ~TestHandler() = default;
 
             virtual void handle(const flagset& flags) {
-                flagset_manager(flags);
+                disable_flagset_manager(flags);
             }
 
             virtual void handle(const enum_flags flag) {
                 flag_manager(flag);
+            }
+        };
+
+        // Define a base class for different types
+        struct DisableTestHandler {
+            virtual ~DisableTestHandler() = default;
+
+            virtual void disable_handle(const enum_flags flag) {
+                disable_flag_manager(flag);
             }
         };
 
@@ -10538,7 +10668,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             using TestHandler::handle; 
 
             void handle(const flagset& flags) override {
-                flagset_manager(flags);
+                disable_flagset_manager(flags);
             }
         };
 
@@ -10550,10 +10680,24 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
         };
 
+        struct DisableTestUint8Handler : public DisableTestHandler {
+            using DisableTestHandler::disable_handle;  
+
+            void disable_handle(const enum_flags flag) override {
+                disable_flag_manager(flag);
+            }
+        };
+
         // Define a function to dispatch handling based on type
         template <typename T>
         static void dispatch(const T& value, TestHandler& handler) {
             handler.handle(value);
+        }
+
+        // Define a function to dispatch handling based on type
+        template <typename T>
+        static void disable_dispatch(const T& value, DisableTestHandler& handler) {
+            handler.disable_handle(value);
         }
 
         // Base case for the recursive handling
@@ -10598,12 +10742,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // Recursive case to handle each argument based on its type
         template <typename First, typename... Rest>
         static void handle_disabled_args(First&& first, Rest&&... rest) {
-            TestUint8Handler uint8Handler;
+            DisableTestUint8Handler Disableuint8Handler;
 
             if (isType<flagset>(first)) {
                 throw std::invalid_argument("Arguments must not contain VM::DEFAULT or VM::ALL, only technique flags are accepted (view the documentation for a full list)");
             } else if (isType<enum_flags>(first)) {
-                dispatch(first, uint8Handler);
+                disable_dispatch(first, Disableuint8Handler);
             } else {
                 throw std::invalid_argument("Arguments must be a technique flag, aborting");
             }
@@ -10629,15 +10773,39 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // return value by enabling the bits based on the argument.
         template <typename... Args>
         static flagset arg_handler(Args&&... args) {
-            if VMAWARE_CONSTEXPR (is_empty<Args...>()) {
-                return DEFAULT;
-            }
-
             flag_collector.reset();
+            generate_default(disabled_flag_collector);
+
+            if VMAWARE_CONSTEXPR (is_empty<Args...>()) {
+                generate_default(flag_collector);
+                return flag_collector;
+            }
 
             // set the bits in the flag, can take in 
             // either an enum value or a std::bitset
             handleArgs(std::forward<Args>(args)...);
+            
+            if (flag_collector.count() == 0) {
+                generate_default(flag_collector);
+            }
+
+
+            const bool setting_no_memo = flag_collector.test(NO_MEMO);
+            const bool setting_high_threshold = flag_collector.test(HIGH_THRESHOLD);
+            const bool setting_dynamic = flag_collector.test(DYNAMIC);
+            const bool setting_multiple = flag_collector.test(MULTIPLE);
+            const bool setting_all = flag_collector.test(ALL);
+            const bool setting_default = flag_collector.test(DEFAULT);
+
+            flag_collector &= disabled_flag_collector;
+
+            flag_collector.set(NO_MEMO, setting_no_memo);
+            flag_collector.set(HIGH_THRESHOLD, setting_high_threshold);
+            flag_collector.set(DYNAMIC, setting_dynamic);
+            flag_collector.set(MULTIPLE, setting_multiple);
+            flag_collector.set(ALL, setting_all);
+            flag_collector.set(DEFAULT, setting_default);
+
 
             // handle edgecases
             core::flag_sanitizer(flag_collector);
@@ -10647,8 +10815,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         // same as above but for VM::disable which only accepts technique flags
         template <typename... Args>
-        static flagset disabled_arg_handler(Args&&... args) {
-            flag_collector.reset();
+        static void disabled_arg_handler(Args&&... args) {
+            disabled_flag_collector.reset();
+
+            generate_default(disabled_flag_collector);
 
             if VMAWARE_CONSTEXPR (is_empty<Args...>()) {
                 throw std::invalid_argument("VM::DISABLE() must contain a flag");
@@ -10657,13 +10827,63 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             handle_disabled_args(std::forward<Args>(args)...);
 
             // check if a settings flag is set, which is not valid
-            if (core::is_setting_flag_set(flag_collector)) {
+            if (core::is_setting_flag_set(disabled_flag_collector)) {
                 throw std::invalid_argument("VM::DISABLE() must not contain a settings flag, they are disabled by default anyway");
             }
 
-            return flag_collector;
+            return;
         }
     };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 public: // START OF PUBLIC FUNCTIONS
 
@@ -11142,15 +11362,9 @@ public: // START OF PUBLIC FUNCTIONS
     static flagset DISABLE(Args ...args) {
         // basically core::arg_handler but in reverse,
         // it'll clear the bits of the provided flags
-        flagset flags = core::disabled_arg_handler(args...);
+        core::disabled_arg_handler(args...);
 
-        flags.flip();
-        flags.set(NO_MEMO, 0);
-        flags.set(HIGH_THRESHOLD, 0);
-        flags.set(DYNAMIC, 0);
-        flags.set(MULTIPLE, 0);
-
-        return flags;
+        return core::disabled_flag_collector;
     }
 
 
@@ -11258,22 +11472,22 @@ public: // START OF PUBLIC FUNCTIONS
             case NUMBER_OF_CORES: return "NUMBER_OF_CORES";
             case ACPI_TEMPERATURE: return "ACPI_TEMPERATURE";
             case PROCESSOR_ID: return "PROCESSOR_ID";
-			case SYS_QEMU: return "SYS_QEMU";
-			case LSHW_QEMU: return "LSHW_QEMU";
+            case SYS_QEMU: return "SYS_QEMU";
+            case LSHW_QEMU: return "LSHW_QEMU";
             case VIRTUAL_PROCESSORS: return "VIRTUAL_PROCESSORS";
             case HYPERV_QUERY: return "HYPERV_QUERY";
             case BAD_POOLS: return "BAD_POOLS";
-			case AMD_SEV: return "AMD_SEV";
-			case AMD_THREAD_MISMATCH: return "AMD_THREAD_MISMATCH";
+            case AMD_SEV: return "AMD_SEV";
+            case AMD_THREAD_MISMATCH: return "AMD_THREAD_MISMATCH";
             case NATIVE_VHD: return "NATIVE_VHD";
             case VIRTUAL_REGISTRY: return "VIRTUAL_REGISTRY";
             case FIRMWARE: return "FIRMWARE";
-			case FILE_ACCESS_HISTORY: return "FILE_ACCESS_HISTORY";
+            case FILE_ACCESS_HISTORY: return "FILE_ACCESS_HISTORY";
             case AUDIO: return "AUDIO";
             case UNKNOWN_MANUFACTURER: return "UNKNOWN_MANUFACTURER";
             case OSXSAVE: return "OSXSAVE";
-			case NSJAIL_PID: return "NSJAIL_PID";
-			case PCI_VM: return "PCI_VM";
+            case NSJAIL_PID: return "NSJAIL_PID";
+            case PCI_VM: return "PCI_VM";
             // ADD NEW CASE HERE FOR NEW TECHNIQUE
             default: return "Unknown flag";
         }
@@ -11348,7 +11562,8 @@ public: // START OF PUBLIC FUNCTIONS
 
         auto modify = [](table_t &table, const enum_flags flag, const u8 percent) -> void {
             core::technique &tmp = table.at(flag);
-            table[flag] = { percent, tmp.run };
+            table[flag].points = percent;
+            table[flag].run = tmp.run;
         };
 
         modify(core::technique_table, flag, percent);
@@ -11592,73 +11807,73 @@ MSVC_ENABLE_WARNING(ASSIGNMENT_OPERATOR NO_INLINE_FUNC SPECTRE)
 
 // scoreboard list of brands, if a VM detection technique detects a brand, that will be incremented here as a single point.
 std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard{
-    { VM::brands::VBOX, 0 },
-    { VM::brands::VMWARE, 0 },
-    { VM::brands::VMWARE_EXPRESS, 0 },
-    { VM::brands::VMWARE_ESX, 0 },
-    { VM::brands::VMWARE_GSX, 0 },
-    { VM::brands::VMWARE_WORKSTATION, 0 },
-    { VM::brands::VMWARE_FUSION, 0 },
-    { VM::brands::VMWARE_HARD, 0 },
-    { VM::brands::BHYVE, 0 },
-    { VM::brands::KVM, 0 },
-    { VM::brands::QEMU, 0 },
-    { VM::brands::QEMU_KVM, 0 },
-    { VM::brands::KVM_HYPERV, 0 },
-    { VM::brands::QEMU_KVM_HYPERV, 0 },
-    { VM::brands::HYPERV, 0 },
-    { VM::brands::HYPERV_VPC, 0 },
-    { VM::brands::PARALLELS, 0 },
-    { VM::brands::XEN, 0 },
-    { VM::brands::ACRN, 0 },
-    { VM::brands::QNX, 0 },
-    { VM::brands::HYBRID, 0 },
-    { VM::brands::SANDBOXIE, 0 },
-    { VM::brands::DOCKER, 0 },
-    { VM::brands::WINE, 0 },
-    { VM::brands::VPC, 0 },
-    { VM::brands::ANUBIS, 0 },
-    { VM::brands::JOEBOX, 0 },
-    { VM::brands::THREATEXPERT, 0 },
-    { VM::brands::CWSANDBOX, 0 },
-    { VM::brands::COMODO, 0 },
-    { VM::brands::BOCHS, 0 },
-    { VM::brands::NVMM, 0 },
-    { VM::brands::BSD_VMM, 0 },
-    { VM::brands::INTEL_HAXM, 0 },
-    { VM::brands::UNISYS, 0 },
-    { VM::brands::LMHS, 0 },
-    { VM::brands::CUCKOO, 0 },
-    { VM::brands::BLUESTACKS, 0 },
-    { VM::brands::JAILHOUSE, 0 },
-    { VM::brands::APPLE_VZ, 0 },
-    { VM::brands::INTEL_KGT, 0 },
-    { VM::brands::AZURE_HYPERV, 0 },
-    { VM::brands::NANOVISOR, 0 },
-    { VM::brands::SIMPLEVISOR, 0 },
-    { VM::brands::HYPERV_ARTIFACT, 0 },
-    { VM::brands::UML, 0 },
-    { VM::brands::POWERVM, 0 },
-    { VM::brands::GCE, 0 },
-    { VM::brands::OPENSTACK, 0 },
-    { VM::brands::KUBEVIRT, 0 },
-    { VM::brands::AWS_NITRO, 0 },
-    { VM::brands::PODMAN, 0 },
-    { VM::brands::WSL, 0 },
-    { VM::brands::OPENVZ, 0 },
-    { VM::brands::BAREVISOR, 0 },
-    { VM::brands::HYPERPLATFORM, 0 },
-    { VM::brands::MINIVISOR, 0 },
-    { VM::brands::INTEL_TDX, 0 },
-    { VM::brands::LKVM, 0 },
-    { VM::brands::AMD_SEV, 0 },
-    { VM::brands::AMD_SEV_ES, 0 },
-    { VM::brands::AMD_SEV_SNP, 0 },
-    { VM::brands::NEKO_PROJECT, 0 },
-    { VM::brands::QIHOO, 0 },
-    { VM::brands::NOIRVISOR, 0 },
-    { VM::brands::NSJAIL, 0 },
-    { VM::brands::NULL_BRAND, 0 }
+    { brands::VBOX, 0 },
+    { brands::VMWARE, 0 },
+    { brands::VMWARE_EXPRESS, 0 },
+    { brands::VMWARE_ESX, 0 },
+    { brands::VMWARE_GSX, 0 },
+    { brands::VMWARE_WORKSTATION, 0 },
+    { brands::VMWARE_FUSION, 0 },
+    { brands::VMWARE_HARD, 0 },
+    { brands::BHYVE, 0 },
+    { brands::KVM, 0 },
+    { brands::QEMU, 0 },
+    { brands::QEMU_KVM, 0 },
+    { brands::KVM_HYPERV, 0 },
+    { brands::QEMU_KVM_HYPERV, 0 },
+    { brands::HYPERV, 0 },
+    { brands::HYPERV_VPC, 0 },
+    { brands::PARALLELS, 0 },
+    { brands::XEN, 0 },
+    { brands::ACRN, 0 },
+    { brands::QNX, 0 },
+    { brands::HYBRID, 0 },
+    { brands::SANDBOXIE, 0 },
+    { brands::DOCKER, 0 },
+    { brands::WINE, 0 },
+    { brands::VPC, 0 },
+    { brands::ANUBIS, 0 },
+    { brands::JOEBOX, 0 },
+    { brands::THREATEXPERT, 0 },
+    { brands::CWSANDBOX, 0 },
+    { brands::COMODO, 0 },
+    { brands::BOCHS, 0 },
+    { brands::NVMM, 0 },
+    { brands::BSD_VMM, 0 },
+    { brands::INTEL_HAXM, 0 },
+    { brands::UNISYS, 0 },
+    { brands::LMHS, 0 },
+    { brands::CUCKOO, 0 },
+    { brands::BLUESTACKS, 0 },
+    { brands::JAILHOUSE, 0 },
+    { brands::APPLE_VZ, 0 },
+    { brands::INTEL_KGT, 0 },
+    { brands::AZURE_HYPERV, 0 },
+    { brands::NANOVISOR, 0 },
+    { brands::SIMPLEVISOR, 0 },
+    { brands::HYPERV_ARTIFACT, 0 },
+    { brands::UML, 0 },
+    { brands::POWERVM, 0 },
+    { brands::GCE, 0 },
+    { brands::OPENSTACK, 0 },
+    { brands::KUBEVIRT, 0 },
+    { brands::AWS_NITRO, 0 },
+    { brands::PODMAN, 0 },
+    { brands::WSL, 0 },
+    { brands::OPENVZ, 0 },
+    { brands::BAREVISOR, 0 },
+    { brands::HYPERPLATFORM, 0 },
+    { brands::MINIVISOR, 0 },
+    { brands::INTEL_TDX, 0 },
+    { brands::LKVM, 0 },
+    { brands::AMD_SEV, 0 },
+    { brands::AMD_SEV_ES, 0 },
+    { brands::AMD_SEV_SNP, 0 },
+    { brands::NEKO_PROJECT, 0 },
+    { brands::QIHOO, 0 },
+    { brands::NOIRVISOR, 0 },
+    { brands::NSJAIL, 0 },
+    { brands::NULL_BRAND, 0 }
 };
 
 
@@ -11682,45 +11897,11 @@ VM::u16 VM::total_points = 0;
 // return value for actual end-user functions like VM::detect() to rely 
 // and work on.
 VM::flagset VM::core::flag_collector;
+VM::flagset VM::core::disabled_flag_collector;
 
 
 VM::u8 VM::detected_count_num = 0;
 
-// default flags 
-VM::flagset VM::DEFAULT = []() noexcept -> flagset {
-    flagset tmp;
-
-    // set all bits to 1
-    tmp.set();
-
-    // disable all non-default techniques
-    tmp.flip(VMWARE_DMESG);
-
-    // disable all the settings flags
-    tmp.flip(NO_MEMO);
-    tmp.flip(HIGH_THRESHOLD);
-    tmp.flip(DYNAMIC);
-    tmp.flip(MULTIPLE);
-
-    return tmp;
-}();
-
-
-// flag to enable every technique
-VM::flagset VM::ALL = []() noexcept -> flagset {
-    flagset tmp;
-
-    // set all bits to 1
-    tmp.set();
-
-    // disable all the settings technique flags
-    tmp.flip(NO_MEMO);
-    tmp.flip(HIGH_THRESHOLD);
-    tmp.flip(DYNAMIC);
-    tmp.flip(MULTIPLE);
-
-    return tmp;
-}();
 
 std::vector<VM::u8> VM::technique_vector = []() -> std::vector<VM::u8> {
     std::vector<VM::u8> tmp{};
@@ -11852,16 +12033,16 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::VIRTUAL_PROCESSORS, { 50, VM::virtual_processors } },
     { VM::HYPERV_QUERY, { 100, VM::hyperv_query } },
     { VM::BAD_POOLS, { 80, VM::bad_pools } },
-	{ VM::AMD_SEV, { 50, VM::amd_sev } },
+    { VM::AMD_SEV, { 50, VM::amd_sev } },
     { VM::NATIVE_VHD, { 100, VM::native_vhd } },
     { VM::VIRTUAL_REGISTRY, { 65, VM::virtual_registry } },
     { VM::FIRMWARE, { 90, VM::firmware_scan } },
-	{ VM::FILE_ACCESS_HISTORY, { 15, VM::file_access_history } },
+    { VM::FILE_ACCESS_HISTORY, { 15, VM::file_access_history } },
     { VM::AUDIO, { 25, VM::check_audio } },
     { VM::UNKNOWN_MANUFACTURER, { 50, VM::unknown_manufacturer } },
     { VM::OSXSAVE, { 50, VM::osxsave } },
-	{ VM::NSJAIL_PID, { 75, VM::nsjail_proc_id } },
-	{ VM::PCI_VM, { 100, VM::lspci } },
+    { VM::NSJAIL_PID, { 75, VM::nsjail_proc_id } },
+    { VM::PCI_VM, { 100, VM::lspci } }
     // ADD NEW TECHNIQUE STRUCTURE HERE
 };
 

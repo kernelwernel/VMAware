@@ -42,12 +42,46 @@ int main() {
 
     /**
      * All checks are performed including spoofable techniques
-     * and a few other techniques that are disabled by default,
-     * one of which is VM::CURSOR which waits 5 seconds for any 
-     * human mouse interaction to detect automated virtual environments.
-     * If you're fine with having a 5 second delay, add VM::ALL 
+     * and a few other techniques that are disabled by default
+     * for a variety of reasons. Only 1 or 2 techniques are 
+     * disabled by default, and this flag will include both of 
+     * them. This isn't the default due to potential instability 
+     * concerns, but if that's fine for you then use this flag 
+     * for the sake of completeness.
      */ 
     bool is_vm3 = VM::detect(VM::ALL);
+
+
+    /**
+     * This will set the threshold bar to detect a VM higher than the default threshold.
+     * Use this if you want to be extremely sure if it's a VM, but this can risk the result
+     * to be a false negative. Use VM::percentage() for a more precise result if you want.
+     */ 
+    bool is_vm4 = VM::detect(VM::HIGH_THRESHOLD);
+
+
+    /**
+     * Essentially means only the CPU brand, MAC, and hypervisor bit techniques 
+     * should be performed. Note that the less flags you provide, the more 
+     * likely the result will not be accurate. If you just want to check for 
+     * a single technique, use VM::check() instead. Also, read the flag table
+     * at the end of this doc file for a full list of technique flags.
+     */
+    bool is_vm5 = VM::detect(VM::CPU_BRAND, VM::MAC, VM::HYPERVISOR_BIT);
+
+
+    /**
+     * If you want to disable any technique for whatever reason, use VM::DISABLE(...).
+     * This code snippet essentially means "perform all the default flags, but only 
+     * disable the VM::RDTSC technique". 
+     */ 
+    bool is_vm6 = VM::detect(VM::DISABLE(VM::RDTSC));
+
+
+    /**
+     * Same as above, but you can disable multiple techniques at the same time.
+     */ 
+    bool is_vm7 = VM::detect(VM::DISABLE(VM::VMID, VM::RDTSC, VM::HYPERVISOR_BIT));
 
 
     /**
@@ -58,39 +92,7 @@ int main() {
      * caching will be operated when you're not going to re-use the previously 
      * stored result at the end. 
      */ 
-    bool is_vm4 = VM::detect(VM::NO_MEMO);
-
-
-    /**
-     * This will set the threshold bar to detect a VM higher than the default threshold.
-     * Use this if you want to be extremely sure if it's a VM, but this can risk the result
-     * to be a false negative. Use VM::percentage() for a more precise result if you want.
-     */ 
-    bool is_vm5 = VM::detect(VM::HIGH_THRESHOLD);
-
-
-    /**
-     * Essentially means only the CPU brand, MAC, and hypervisor bit techniques 
-     * should be performed. Note that the less flags you provide, the more 
-     * likely the result will not be accurate. If you just want to check for 
-     * a single technique, use VM::check() instead. Also, read the flag table
-     * at the end of this doc file for a full list of technique flags.
-     */
-    bool is_vm6 = VM::detect(VM::CPU_BRAND, VM::MAC, VM::HYPERVISOR_BIT);
-
-
-    /**
-     * If you want to disable any technique for whatever reason, use VM::DISABLE(...).
-     * This code snippet essentially means "perform all the default flags, but only 
-     * disable the VM::RDTSC technique". 
-     */ 
-    bool is_vm7 = VM::detect(VM::DISABLE(VM::RDTSC));
-
-
-    /**
-     * Same as above, but you can disable multiple techniques at the same time.
-     */ 
-    bool is_vm8 = VM::detect(VM::DISABLE(VM::VMID, VM::RDTSC, VM::HYPERVISOR_BIT));
+    bool is_vm8 = VM::detect(VM::NO_MEMO);
 
 
     /**
@@ -98,8 +100,6 @@ int main() {
      * different flags and non-technique flags with the above examples. 
      */ 
     bool is_vm9 = VM::detect(VM::NO_MEMO, VM::HIGH_THRESHOLD, VM::DISABLE(VM::RDTSC, VM::VMID));
-
-    return 0;
 }
 ```
 
@@ -295,7 +295,25 @@ The `[brand]` part might contain a brand or may as well be empty, depending on w
 <br>
 
 ## `VM::detected_count()`
-This will fetch the number of techniques that have been detected as a `std::uint8_t`. Can't get any more simpler than that ¯\_(ツ)_/¯, how's your day btw?
+This will fetch the number of techniques that have been detected as a `std::uint8_t`. Can't get any more simpler than that.
+```cpp
+#include "vmaware.hpp"
+#include <iostream>
+
+int main() {
+    const std::uint8_t count = VM::detected_count();
+
+    // output: 7 techniques were detected
+    std::cout << count << " techniques were detected" << "\n"; 
+
+    // note that if it's baremetal, it should be 0.
+    // if it's a VM, it should have at least 4 to  
+    // maybe around 15 max. The most I've seen was 
+    // around 18 but that only occurs very rarely.
+
+    return 0;
+}
+```
 
 <br>
 
@@ -307,9 +325,9 @@ This will take a technique flag enum as an argument and return the string versio
 
 int main() {
     const std::string name = VM::flag_to_string(VM::VMID);
+
+    // output: VM::VMID 
     std::cout << "VM::" << name << "\n"; 
-    // Output: VM::VMID 
-    // (nothing more, nothing less)
 
     return 0;
 }
@@ -527,74 +545,74 @@ This is the table of all the brands the lib supports.
 
 | String | Variable alias | VM type | Notes |
 | -------------- | ------ | ------- | ----- |
-| Unknown | `VM::brands::NULL_BRAND` | Unknown | This is the default brand it returns if none were found |
-| VirtualBox | `VM::brands::VBOX` | Hypervisor (type 2) |  |
-| VMware | `VM::brands::VMWARE` | Hypervisor (type 2) |  |
-| VMware Express | `VM::brands::VMWARE_EXPRESS` | Hypervisor (type 2) |  |
-| VMware ESX | `VM::brands::VMWARE_ESX` | Hypervisor (type 1) |  |
-| VMware GSX | `VM::brands::VMWARE_GSX` | Hypervisor (type 2) |  |
-| VMware Workstation | `VM::brands::VMWARE_WORKSTATION` | Hypervisor (type 2) |  |
-| VMware Fusion | `VM::brands::VMWARE_FUSION` | Hypervisor (type 2) |  |
-| VMware (with VmwareHardenedLoader) | `VM::brands::VMWARE_HARD` | Hypervisor (type 2) | See the [repository](https://github.com/hzqst/VmwareHardenedLoader) |
-| bhyve | `VM::brands::BHYVE` | Hypervisor (type 2) |  |
-| KVM | `VM::brands::KVM` | Hypervisor (type 1) |  |
-| QEMU | `VM::brands::QEMU` | Emulator/Hypervisor (type 2) |  |
-| QEMU+KVM | `VM::brands::QEMU_KVM` | Hypervisor (type 1) |  |
-| KVM Hyper-V Enlightenment | `VM::brands::KVM_HYPERV` | Hypervisor (type 1) |  |
-| QEMU+KVM Hyper-V Enlightenment | `VM::brands::QEMU_KVM_HYPERV` | Hypervisor (type 1) |  |
-| Microsoft Hyper-V | `VM::brands::HYPERV` | Hypervisor (type 1) |  |
-| Microsoft Virtual PC/Hyper-V | `VM::brands::HYPERV_VPC` | Hypervisor (either type 1 or 2) |  |
-| Parallels | `VM::brands::PARALLELS` | Hypervisor (type 2) |  |
-| Xen HVM | `VM::brands::XEN` | Hypervisor (type 1) |  |
-| ACRN | `VM::brands::ACRN` | Hypervisor (type 1) |  |
-| QNX hypervisor | `VM::brands::QNX` | Hypervisor (type 1) |  |
-| Hybrid Analysis | `VM::brands::HYBRID` | Sandbox |  |
-| Sandboxie | `VM::brands::SANDBOXIE` | Sandbox |  |
-| Docker | `VM::brands::DOCKER` | Container |  |
-| Wine | `VM::brands::WINE` | Compatibility layer |  |
-| Virtual PC  | `VM::brands::VPC` | Hypervisor (type 2) |  |
-| Anubis | `VM::brands::ANUBIS` | Sandbox |  |
-| JoeBox | `VM::brands::JOEBOX` | Sandbox |  |
-| ThreatExpert | `VM::brands::THREATEXPERT` | Sandbox |  |
-| CWSandbox | `VM::brands::CWSANDBOX` | Sandbox |  |
-| Comodo | `VM::brands::COMODO` | Sandbox |  |
-| Bochs | `VM::brands::BOCHS` | Emulator |  |
-| NetBSD NVMM | `VM::brands::NVMM` | Hypervisor (type 2) |  |
-| OpenBSD VMM | `VM::brands::BSD_VMM` | Hypervisor (type 2) |  |
-| Intel HAXM | `VM::brands::INTEL_HAXM` | Hypervisor (type 1) |  |
-| Unisys s-Par | `VM::brands::UNISYS` | Partitioning Hypervisor |  |
-| Lockheed Martin LMHS  | `VM::brands::LMHS` | Hypervisor (unknown type) | Yes, you read that right. The lib can detect VMs running on US military fighter jets, apparently |
-| Cuckoo | `VM::brands::CUCKOO` | Sandbox |  |
-| BlueStacks | `VM::brands::BLUESTACKS` | Emulator |  |
-| Jailhouse | `VM::brands::JAILHOUSE` | Partitioning Hypervisor |  |
-| Apple VZ | `VM::brands::APPLE_VZ` | Unknown |  |
-| Intel KGT (Trusty) | `VM::brands::INTEL_KGT` | Hypervisor (type 1) |  |
-| Microsoft Azure Hyper-V | `VM::brands::AZURE_HYPERV` | Hypervisor (type 1) |  |
-| Xbox NanoVisor (Hyper-V) | `VM::brands::NANOVISOR` | Hypervisor (type 1) |  |
-| SimpleVisor | `VM::brands::SIMPLEVISOR` | Hypervisor (type 1) |  |
-| Hyper-V artifact (not an actual VM) | `VM::brands::HYPERV_ARTIFACT` | Unknown |  |
-| User-mode Linux | `VM::brands::UML` | Paravirtualised/Hypervisor (type 2) |  |
-| IBM PowerVM | `VM::brands::POWERVM` | Hypervisor (type 1) |  |
-| OpenStack (KVM) | `VM::brands::OPENSTACK` | Hypervisor (type 1) |  |
-| KubeVirt (KVM) | `VM::brands::KUBEVIRT` | Hypervisor (type 1) |  |
-| AWS Nitro System EC2 (KVM-based) | `VM::brands::AWS_NITRO` | Hypervisor (type 1) |  |
-| Podman | `VM::brands::PODMAN` | Container |  |
-| WSL | `VM::brands::WSL` | Hybrid Hyper-V (type 1 and 2) | The type is debatable, it's not exactly clear |
-| OpenVZ | `VM::brands::OPENVZ` | Container |  |
+| Unknown | `brands::NULL_BRAND` | Unknown | This is the default brand it returns if none were found |
+| VirtualBox | `brands::VBOX` | Hypervisor (type 2) |  |
+| VMware | `brands::VMWARE` | Hypervisor (type 2) |  |
+| VMware Express | `brands::VMWARE_EXPRESS` | Hypervisor (type 2) |  |
+| VMware ESX | `brands::VMWARE_ESX` | Hypervisor (type 1) |  |
+| VMware GSX | `brands::VMWARE_GSX` | Hypervisor (type 2) |  |
+| VMware Workstation | `brands::VMWARE_WORKSTATION` | Hypervisor (type 2) |  |
+| VMware Fusion | `brands::VMWARE_FUSION` | Hypervisor (type 2) |  |
+| VMware (with VmwareHardenedLoader) | `brands::VMWARE_HARD` | Hypervisor (type 2) | See the [repository](https://github.com/hzqst/VmwareHardenedLoader) |
+| bhyve | `brands::BHYVE` | Hypervisor (type 2) |  |
+| KVM | `brands::KVM` | Hypervisor (type 1) |  |
+| QEMU | `brands::QEMU` | Emulator/Hypervisor (type 2) |  |
+| QEMU+KVM | `brands::QEMU_KVM` | Hypervisor (type 1) |  |
+| KVM Hyper-V Enlightenment | `brands::KVM_HYPERV` | Hypervisor (type 1) |  |
+| QEMU+KVM Hyper-V Enlightenment | `brands::QEMU_KVM_HYPERV` | Hypervisor (type 1) |  |
+| Microsoft Hyper-V | `brands::HYPERV` | Hypervisor (type 1) |  |
+| Microsoft Virtual PC/Hyper-V | `brands::HYPERV_VPC` | Hypervisor (either type 1 or 2) |  |
+| Parallels | `brands::PARALLELS` | Hypervisor (type 2) |  |
+| Xen HVM | `brands::XEN` | Hypervisor (type 1) |  |
+| ACRN | `brands::ACRN` | Hypervisor (type 1) |  |
+| QNX hypervisor | `brands::QNX` | Hypervisor (type 1) |  |
+| Hybrid Analysis | `brands::HYBRID` | Sandbox |  |
+| Sandboxie | `brands::SANDBOXIE` | Sandbox |  |
+| Docker | `brands::DOCKER` | Container |  |
+| Wine | `brands::WINE` | Compatibility layer |  |
+| Virtual PC  | `brands::VPC` | Hypervisor (type 2) |  |
+| Anubis | `brands::ANUBIS` | Sandbox |  |
+| JoeBox | `brands::JOEBOX` | Sandbox |  |
+| ThreatExpert | `brands::THREATEXPERT` | Sandbox |  |
+| CWSandbox | `brands::CWSANDBOX` | Sandbox |  |
+| Comodo | `brands::COMODO` | Sandbox |  |
+| Bochs | `brands::BOCHS` | Emulator |  |
+| NetBSD NVMM | `brands::NVMM` | Hypervisor (type 2) |  |
+| OpenBSD VMM | `brands::BSD_VMM` | Hypervisor (type 2) |  |
+| Intel HAXM | `brands::INTEL_HAXM` | Hypervisor (type 1) |  |
+| Unisys s-Par | `brands::UNISYS` | Partitioning Hypervisor |  |
+| Lockheed Martin LMHS  | `brands::LMHS` | Hypervisor (unknown type) | Yes, you read that right. The lib can detect VMs running on US military fighter jets, apparently |
+| Cuckoo | `brands::CUCKOO` | Sandbox |  |
+| BlueStacks | `brands::BLUESTACKS` | Emulator |  |
+| Jailhouse | `brands::JAILHOUSE` | Partitioning Hypervisor |  |
+| Apple VZ | `brands::APPLE_VZ` | Unknown |  |
+| Intel KGT (Trusty) | `brands::INTEL_KGT` | Hypervisor (type 1) |  |
+| Microsoft Azure Hyper-V | `brands::AZURE_HYPERV` | Hypervisor (type 1) |  |
+| Xbox NanoVisor (Hyper-V) | `brands::NANOVISOR` | Hypervisor (type 1) |  |
+| SimpleVisor | `brands::SIMPLEVISOR` | Hypervisor (type 1) |  |
+| Hyper-V artifact (not an actual VM) | `brands::HYPERV_ARTIFACT` | Unknown |  |
+| User-mode Linux | `brands::UML` | Paravirtualised/Hypervisor (type 2) |  |
+| IBM PowerVM | `brands::POWERVM` | Hypervisor (type 1) |  |
+| OpenStack (KVM) | `brands::OPENSTACK` | Hypervisor (type 1) |  |
+| KubeVirt (KVM) | `brands::KUBEVIRT` | Hypervisor (type 1) |  |
+| AWS Nitro System EC2 (KVM-based) | `brands::AWS_NITRO` | Hypervisor (type 1) |  |
+| Podman | `brands::PODMAN` | Container |  |
+| WSL | `brands::WSL` | Hybrid Hyper-V (type 1 and 2) | The type is debatable, it's not exactly clear |
+| OpenVZ | `brands::OPENVZ` | Container |  |
 | ANY.RUN | N/A | Sandbox | Removed from the lib, available only in the CLI |
-| Barevisor | `VM::brands::BAREVISOR` | Hypervisor (type 1) |  |
-| HyperPlatform | `VM::brands::HYPERPLATFORM` | Hypervisor (type 1) |  |
-| MiniVisor | `VM::brands::MINIVISOR` | Hypervisor (type 1) |  |
-| Intel TDX | `VM::brands::INTEL_TDX` | Trusted Domain |  |
-| LKVM | `VM::brands::LKVM` | Hypervisor (type 1) |  |
-| AMD SEV | `VM::brands::AMD_SEV` | VM encryptor |  |
-| AMD SEV-ES | `VM::brands::AMD_SEV_ES` | VM encryptor |  |
-| AMD SEV-SNP | `VM::brands::AMD_SEV_SNP` | VM encryptor |  |
-| Neko Project II | `VM::brands::NEKO_PROJECT` | Emulator |  | 
-| Google Compute Engine (KVM) | `VM::brands::GCE` | Cloud VM service |  |
-| NoirVisor | `VM::brands::NOIRVISOR` | Hypervisor (type 1) |  |
-| Qihoo 360 Sandbox | `VM::brands::QIHOO` | Sandbox |  |
-| nsjail | `VM::brands::NSJAIL` | Process isolator |  |
+| Barevisor | `brands::BAREVISOR` | Hypervisor (type 1) |  |
+| HyperPlatform | `brands::HYPERPLATFORM` | Hypervisor (type 1) |  |
+| MiniVisor | `brands::MINIVISOR` | Hypervisor (type 1) |  |
+| Intel TDX | `brands::INTEL_TDX` | Trusted Domain |  |
+| LKVM | `brands::LKVM` | Hypervisor (type 1) |  |
+| AMD SEV | `brands::AMD_SEV` | VM encryptor |  |
+| AMD SEV-ES | `brands::AMD_SEV_ES` | VM encryptor |  |
+| AMD SEV-SNP | `brands::AMD_SEV_SNP` | VM encryptor |  |
+| Neko Project II | `brands::NEKO_PROJECT` | Emulator |  | 
+| Google Compute Engine (KVM) | `brands::GCE` | Cloud VM service |  |
+| NoirVisor | `brands::NOIRVISOR` | Hypervisor (type 1) |  |
+| Qihoo 360 Sandbox | `brands::QIHOO` | Sandbox |  |
+| nsjail | `brands::NSJAIL` | Process isolator |  |
 
 <br>
 

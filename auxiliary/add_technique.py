@@ -54,6 +54,8 @@ class options:
         self.notes = notes
 
 
+# there's like some really weird shit going on with \t, so i'm doing it manually
+tab = "    "
 
 
 def prompt():
@@ -215,7 +217,7 @@ def write_header(options):
             if options.is_gpl:
                 new_code.append("/* GPL */ " + options.enum_name + ",\n")
             else:
-                new_code.append("\t\t" + options.enum_name + ",\n")
+                new_code.append(tab + tab + options.enum_name + ",\n")
             update_count += 1
 
 
@@ -292,7 +294,7 @@ def write_header(options):
                     if all(sub in technique_line for sub in preprocessors):
                         new_code.append(technique_line.lstrip())
                     else:
-                        new_code.append("\t" + technique_line)
+                        new_code.append(tab + technique_line)
 
 
             # extra lines
@@ -315,7 +317,7 @@ def write_header(options):
                 )
             else:
                 new_code.append(
-                    "\t" + 
+                    tab + 
                     "{ VM::" + 
                     options.enum_name + 
                     ", { " + 
@@ -330,7 +332,8 @@ def write_header(options):
         # modify the VM::flag_to_string function with the new technique
         if "// ADD NEW CASE HERE FOR NEW TECHNIQUE" in line:
             new_code.append(
-                "\t\t\tcase " + 
+                tab + tab + tab +
+                "case " + 
                 options.enum_name + 
                 ": return \"" + 
                 options.enum_name + 
@@ -368,7 +371,8 @@ def write_cli(options):
         # modify the checklist with the newly appended technique here
         if "// ADD NEW TECHNIQUE CHECKER HERE" in line:
             new_code.append(
-                "\tchecker(VM::" + 
+                tab +
+                "checker(VM::" + 
                 options.enum_name + 
                 ", \"" + 
                 options.short_description +
@@ -377,15 +381,15 @@ def write_cli(options):
 
         if "// ADD LINUX FLAG" in line:
             if options.is_linux:
-                new_code.append("\t\t\tcase VM::" + options.enum_name + ":\n")
+                new_code.append(tab + tab + tab + "case VM::" + options.enum_name + ":\n")
 
         if "// ADD WINDOWS FLAG" in line:
             if options.is_win:
-                new_code.append("\t\t\tcase VM::" + options.enum_name + ":\n")
+                new_code.append(tab + tab + tab + "case VM::" + options.enum_name + ":\n")
 
         if "// ADD MACOS FLAG" in line:
             if options.is_mac:
-                new_code.append("\t\t\tcase VM::" + options.enum_name + ":\n")
+                new_code.append(tab + tab + tab + "case VM::" + options.enum_name + ":\n")
 
         # add the line in the buffer array
         new_code.append(line)
