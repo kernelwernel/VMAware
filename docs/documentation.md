@@ -545,74 +545,74 @@ This is the table of all the brands the lib supports.
 
 | String | Variable alias | VM type | Notes |
 | -------------- | ------ | ------- | ----- |
-| Unknown | `VM::brands::NULL_BRAND` | Unknown | This is the default brand it returns if none were found |
-| VirtualBox | `VM::brands::VBOX` | Hypervisor (type 2) |  |
-| VMware | `VM::brands::VMWARE` | Hypervisor (type 2) |  |
-| VMware Express | `VM::brands::VMWARE_EXPRESS` | Hypervisor (type 2) |  |
-| VMware ESX | `VM::brands::VMWARE_ESX` | Hypervisor (type 1) |  |
-| VMware GSX | `VM::brands::VMWARE_GSX` | Hypervisor (type 2) |  |
-| VMware Workstation | `VM::brands::VMWARE_WORKSTATION` | Hypervisor (type 2) |  |
-| VMware Fusion | `VM::brands::VMWARE_FUSION` | Hypervisor (type 2) |  |
-| VMware (with VmwareHardenedLoader) | `VM::brands::VMWARE_HARD` | Hypervisor (type 2) | See the [repository](https://github.com/hzqst/VmwareHardenedLoader) |
-| bhyve | `VM::brands::BHYVE` | Hypervisor (type 2) |  |
-| KVM | `VM::brands::KVM` | Hypervisor (type 1) |  |
-| QEMU | `VM::brands::QEMU` | Emulator/Hypervisor (type 2) |  |
-| QEMU+KVM | `VM::brands::QEMU_KVM` | Hypervisor (type 1) |  |
-| KVM Hyper-V Enlightenment | `VM::brands::KVM_HYPERV` | Hypervisor (type 1) |  |
-| QEMU+KVM Hyper-V Enlightenment | `VM::brands::QEMU_KVM_HYPERV` | Hypervisor (type 1) |  |
-| Microsoft Hyper-V | `VM::brands::HYPERV` | Hypervisor (type 1) |  |
-| Microsoft Virtual PC/Hyper-V | `VM::brands::HYPERV_VPC` | Hypervisor (either type 1 or 2) |  |
-| Parallels | `VM::brands::PARALLELS` | Hypervisor (type 2) |  |
-| Xen HVM | `VM::brands::XEN` | Hypervisor (type 1) |  |
-| ACRN | `VM::brands::ACRN` | Hypervisor (type 1) |  |
-| QNX hypervisor | `VM::brands::QNX` | Hypervisor (type 1) |  |
-| Hybrid Analysis | `VM::brands::HYBRID` | Sandbox |  |
-| Sandboxie | `VM::brands::SANDBOXIE` | Sandbox |  |
-| Docker | `VM::brands::DOCKER` | Container |  |
-| Wine | `VM::brands::WINE` | Compatibility layer |  |
-| Virtual PC  | `VM::brands::VPC` | Hypervisor (type 2) |  |
-| Anubis | `VM::brands::ANUBIS` | Sandbox |  |
-| JoeBox | `VM::brands::JOEBOX` | Sandbox |  |
-| ThreatExpert | `VM::brands::THREATEXPERT` | Sandbox |  |
-| CWSandbox | `VM::brands::CWSANDBOX` | Sandbox |  |
-| Comodo | `VM::brands::COMODO` | Sandbox |  |
-| Bochs | `VM::brands::BOCHS` | Emulator |  |
-| NetBSD NVMM | `VM::brands::NVMM` | Hypervisor (type 2) |  |
-| OpenBSD VMM | `VM::brands::BSD_VMM` | Hypervisor (type 2) |  |
-| Intel HAXM | `VM::brands::INTEL_HAXM` | Hypervisor (type 1) |  |
-| Unisys s-Par | `VM::brands::UNISYS` | Partitioning Hypervisor |  |
-| Lockheed Martin LMHS  | `VM::brands::LMHS` | Hypervisor (unknown type) | Yes, you read that right. The lib can detect VMs running on US military fighter jets, apparently |
-| Cuckoo | `VM::brands::CUCKOO` | Sandbox |  |
-| BlueStacks | `VM::brands::BLUESTACKS` | Emulator |  |
-| Jailhouse | `VM::brands::JAILHOUSE` | Partitioning Hypervisor |  |
-| Apple VZ | `VM::brands::APPLE_VZ` | Unknown |  |
-| Intel KGT (Trusty) | `VM::brands::INTEL_KGT` | Hypervisor (type 1) |  |
-| Microsoft Azure Hyper-V | `VM::brands::AZURE_HYPERV` | Hypervisor (type 1) |  |
-| Xbox NanoVisor (Hyper-V) | `VM::brands::NANOVISOR` | Hypervisor (type 1) |  |
-| SimpleVisor | `VM::brands::SIMPLEVISOR` | Hypervisor (type 1) |  |
-| Hyper-V artifact (not an actual VM) | `VM::brands::HYPERV_ARTIFACT` | Unknown |  |
-| User-mode Linux | `VM::brands::UML` | Paravirtualised/Hypervisor (type 2) |  |
-| IBM PowerVM | `VM::brands::POWERVM` | Hypervisor (type 1) |  |
-| OpenStack (KVM) | `VM::brands::OPENSTACK` | Hypervisor (type 1) |  |
-| KubeVirt (KVM) | `VM::brands::KUBEVIRT` | Hypervisor (type 1) |  |
-| AWS Nitro System EC2 (KVM-based) | `VM::brands::AWS_NITRO` | Hypervisor (type 1) |  |
-| Podman | `VM::brands::PODMAN` | Container |  |
-| WSL | `VM::brands::WSL` | Hybrid Hyper-V (type 1 and 2) | The type is debatable, it's not exactly clear |
-| OpenVZ | `VM::brands::OPENVZ` | Container |  |
+| Unknown | `brands::NULL_BRAND` | Unknown | This is the default brand it returns if none were found |
+| VirtualBox | `brands::VBOX` | Hypervisor (type 2) |  |
+| VMware | `brands::VMWARE` | Hypervisor (type 2) |  |
+| VMware Express | `brands::VMWARE_EXPRESS` | Hypervisor (type 2) |  |
+| VMware ESX | `brands::VMWARE_ESX` | Hypervisor (type 1) |  |
+| VMware GSX | `brands::VMWARE_GSX` | Hypervisor (type 2) |  |
+| VMware Workstation | `brands::VMWARE_WORKSTATION` | Hypervisor (type 2) |  |
+| VMware Fusion | `brands::VMWARE_FUSION` | Hypervisor (type 2) |  |
+| VMware (with VmwareHardenedLoader) | `brands::VMWARE_HARD` | Hypervisor (type 2) | See the [repository](https://github.com/hzqst/VmwareHardenedLoader) |
+| bhyve | `brands::BHYVE` | Hypervisor (type 2) |  |
+| KVM | `brands::KVM` | Hypervisor (type 1) |  |
+| QEMU | `brands::QEMU` | Emulator/Hypervisor (type 2) |  |
+| QEMU+KVM | `brands::QEMU_KVM` | Hypervisor (type 1) |  |
+| KVM Hyper-V Enlightenment | `brands::KVM_HYPERV` | Hypervisor (type 1) |  |
+| QEMU+KVM Hyper-V Enlightenment | `brands::QEMU_KVM_HYPERV` | Hypervisor (type 1) |  |
+| Microsoft Hyper-V | `brands::HYPERV` | Hypervisor (type 1) |  |
+| Microsoft Virtual PC/Hyper-V | `brands::HYPERV_VPC` | Hypervisor (either type 1 or 2) |  |
+| Parallels | `brands::PARALLELS` | Hypervisor (type 2) |  |
+| Xen HVM | `brands::XEN` | Hypervisor (type 1) |  |
+| ACRN | `brands::ACRN` | Hypervisor (type 1) |  |
+| QNX hypervisor | `brands::QNX` | Hypervisor (type 1) |  |
+| Hybrid Analysis | `brands::HYBRID` | Sandbox |  |
+| Sandboxie | `brands::SANDBOXIE` | Sandbox |  |
+| Docker | `brands::DOCKER` | Container |  |
+| Wine | `brands::WINE` | Compatibility layer |  |
+| Virtual PC  | `brands::VPC` | Hypervisor (type 2) |  |
+| Anubis | `brands::ANUBIS` | Sandbox |  |
+| JoeBox | `brands::JOEBOX` | Sandbox |  |
+| ThreatExpert | `brands::THREATEXPERT` | Sandbox |  |
+| CWSandbox | `brands::CWSANDBOX` | Sandbox |  |
+| Comodo | `brands::COMODO` | Sandbox |  |
+| Bochs | `brands::BOCHS` | Emulator |  |
+| NetBSD NVMM | `brands::NVMM` | Hypervisor (type 2) |  |
+| OpenBSD VMM | `brands::BSD_VMM` | Hypervisor (type 2) |  |
+| Intel HAXM | `brands::INTEL_HAXM` | Hypervisor (type 1) |  |
+| Unisys s-Par | `brands::UNISYS` | Partitioning Hypervisor |  |
+| Lockheed Martin LMHS  | `brands::LMHS` | Hypervisor (unknown type) | Yes, you read that right. The lib can detect VMs running on US military fighter jets, apparently |
+| Cuckoo | `brands::CUCKOO` | Sandbox |  |
+| BlueStacks | `brands::BLUESTACKS` | Emulator |  |
+| Jailhouse | `brands::JAILHOUSE` | Partitioning Hypervisor |  |
+| Apple VZ | `brands::APPLE_VZ` | Unknown |  |
+| Intel KGT (Trusty) | `brands::INTEL_KGT` | Hypervisor (type 1) |  |
+| Microsoft Azure Hyper-V | `brands::AZURE_HYPERV` | Hypervisor (type 1) |  |
+| Xbox NanoVisor (Hyper-V) | `brands::NANOVISOR` | Hypervisor (type 1) |  |
+| SimpleVisor | `brands::SIMPLEVISOR` | Hypervisor (type 1) |  |
+| Hyper-V artifact (not an actual VM) | `brands::HYPERV_ARTIFACT` | Unknown |  |
+| User-mode Linux | `brands::UML` | Paravirtualised/Hypervisor (type 2) |  |
+| IBM PowerVM | `brands::POWERVM` | Hypervisor (type 1) |  |
+| OpenStack (KVM) | `brands::OPENSTACK` | Hypervisor (type 1) |  |
+| KubeVirt (KVM) | `brands::KUBEVIRT` | Hypervisor (type 1) |  |
+| AWS Nitro System EC2 (KVM-based) | `brands::AWS_NITRO` | Hypervisor (type 1) |  |
+| Podman | `brands::PODMAN` | Container |  |
+| WSL | `brands::WSL` | Hybrid Hyper-V (type 1 and 2) | The type is debatable, it's not exactly clear |
+| OpenVZ | `brands::OPENVZ` | Container |  |
 | ANY.RUN | N/A | Sandbox | Removed from the lib, available only in the CLI |
-| Barevisor | `VM::brands::BAREVISOR` | Hypervisor (type 1) |  |
-| HyperPlatform | `VM::brands::HYPERPLATFORM` | Hypervisor (type 1) |  |
-| MiniVisor | `VM::brands::MINIVISOR` | Hypervisor (type 1) |  |
-| Intel TDX | `VM::brands::INTEL_TDX` | Trusted Domain |  |
-| LKVM | `VM::brands::LKVM` | Hypervisor (type 1) |  |
-| AMD SEV | `VM::brands::AMD_SEV` | VM encryptor |  |
-| AMD SEV-ES | `VM::brands::AMD_SEV_ES` | VM encryptor |  |
-| AMD SEV-SNP | `VM::brands::AMD_SEV_SNP` | VM encryptor |  |
-| Neko Project II | `VM::brands::NEKO_PROJECT` | Emulator |  | 
-| Google Compute Engine (KVM) | `VM::brands::GCE` | Cloud VM service |  |
-| NoirVisor | `VM::brands::NOIRVISOR` | Hypervisor (type 1) |  |
-| Qihoo 360 Sandbox | `VM::brands::QIHOO` | Sandbox |  |
-| nsjail | `VM::brands::NSJAIL` | Process isolator |  |
+| Barevisor | `brands::BAREVISOR` | Hypervisor (type 1) |  |
+| HyperPlatform | `brands::HYPERPLATFORM` | Hypervisor (type 1) |  |
+| MiniVisor | `brands::MINIVISOR` | Hypervisor (type 1) |  |
+| Intel TDX | `brands::INTEL_TDX` | Trusted Domain |  |
+| LKVM | `brands::LKVM` | Hypervisor (type 1) |  |
+| AMD SEV | `brands::AMD_SEV` | VM encryptor |  |
+| AMD SEV-ES | `brands::AMD_SEV_ES` | VM encryptor |  |
+| AMD SEV-SNP | `brands::AMD_SEV_SNP` | VM encryptor |  |
+| Neko Project II | `brands::NEKO_PROJECT` | Emulator |  | 
+| Google Compute Engine (KVM) | `brands::GCE` | Cloud VM service |  |
+| NoirVisor | `brands::NOIRVISOR` | Hypervisor (type 1) |  |
+| Qihoo 360 Sandbox | `brands::QIHOO` | Sandbox |  |
+| nsjail | `brands::NSJAIL` | Process isolator |  |
 
 <br>
 
