@@ -99,7 +99,7 @@ int main() {
      * This is just an example to show that you can use a combination of 
      * different flags and non-technique flags with the above examples. 
      */ 
-    bool is_vm9 = VM::detect(VM::NO_MEMO, VM::HIGH_THRESHOLD, VM::DISABLE(VM::RDTSC, VM::VMID));
+    bool is_vm9 = VM::detect(VM::DEFAULT, VM::NO_MEMO, VM::HIGH_THRESHOLD, VM::DISABLE(VM::RDTSC, VM::VMID));
 }
 ```
 
@@ -512,7 +512,6 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::PORT_CONNECTORS` | Check for physical connection ports | Windows | 25% |  |  |  | This technique is known to false flag on devices like Surface Pro |
 | `VM::GPU` | Check for GPU capabilities and specific GPU signatures related to VMs | Windows | 100% | Admin |  |  | Admin only needed for some heuristics |
 | `VM::VM_DEVICES` | Check for VM-specific devices | Windows | 45% |  |  |  |  |
-| `VM::VM_MEMORY` | Check for specific VM memory traces in certain processes | Windows | 65% |  |  |  |  |
 | `VM::IDT_GDT_MISMATCH` | Check if the IDT and GDT base virtual addresses mismatch between different CPU cores when called from usermode under a root partition | Windows | 50% |  |  |  |  |
 | `VM::PROCESSOR_NUMBER` | Check for number of processors | Windows | 50% |  |  |  |  |
 | `VM::NUMBER_OF_CORES` | Check for number of cores | Windows | 50% |  |  |  |  |
