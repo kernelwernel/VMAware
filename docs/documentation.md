@@ -103,9 +103,6 @@ int main() {
 }
 ```
 
-> ![IMPORTANT]
-> Do not use `VM::DEFAULT` with `VM::DISABLE()`. Using the latter already assumes `VM::DEFAULT` is enabled, and there have been instances where this can cause unintended side effects. 
-
 <br>
 
 ## `VM::percentage()`

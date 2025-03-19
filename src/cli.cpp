@@ -558,7 +558,7 @@ std::bitset<max_bits> settings() {
     }
 
     if (arg_bitset.test(ALL)) {
-        tmp |= VM::ALL;
+        tmp.set(VM::ALL);
     }
 
     if (arg_bitset.test(DYNAMIC)) {

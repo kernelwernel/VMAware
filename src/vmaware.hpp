@@ -580,11 +580,15 @@ public:
         PCI_VM,
         // ADD NEW TECHNIQUE ENUM NAME HERE
 
+        // special flags, different to settings
+        DEFAULT,
+        ALL,
+        NULL_ARG, // does nothing, just a placeholder flag mainly for the CLI
+
         // start of settings technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
         NO_MEMO,
         HIGH_THRESHOLD,
         DYNAMIC,
-        NULL_ARG, // does nothing, just a placeholder flag mainly for the CLI
         MULTIPLE
     };
 
@@ -631,8 +635,6 @@ public:
     VM(const VM&) = delete;
     VM(VM&&) = delete;
 
-    static flagset DEFAULT; // default bitset that will be run if no parameters are specified
-    static flagset ALL; // same as default, but with disabled techniques included
 
     /**
      * Official aliases for VM brands. This is added to avoid accidental typos
@@ -10336,11 +10338,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // manage the flag to handle edgecases
         static void flag_sanitizer(flagset& flags) {
             if (flags.count() == 0) {
-                flags |= DEFAULT;
+                generate_default(flags);
                 return;
             }
 
-            if (flags == DEFAULT) {
+            if (flags.test(DEFAULT)) {
+                return;
+            }
+            
+            if (flags.test(ALL)) {
                 return;
             }
 
@@ -10361,7 +10367,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 flags.test(NULL_ARG) ||
                 flags.test(MULTIPLE)
             ) {
-                flags |= DEFAULT;
+                generate_default(flags);
             } else {
                 throw std::invalid_argument("Invalid flag option found, aborting");
             }
@@ -10467,10 +10473,55 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
         /**
-         * basically what this entire variadic template inheritance fuckery 
-         * does is manage the variadic arguments being given through the 
-         * arg_handler function, which could either be a std::bitset<N>, 
+         * basically what this entire recursive variadic template inheritance 
+         * fuckery does is manage the variadic arguments being given through 
+         * the arg_handler function, which could either be a std::bitset<N>, 
          * a uint8_t, or a combination of both of them. This will handle 
          * both argument types and implement them depending on what their 
          * types are. If it's a std::bitset<N>, do the |= operation on 
@@ -10487,11 +10538,67 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
          * to a problem, but with a billion ways you can do the same thing but in 
          * the "wrong" way. I genuinely can't wait for Carbon to come out.
          */
-    private:
+    public:
         static flagset flag_collector;
+        static flagset disabled_flag_collector;
 
-        static void flagset_manager(const flagset& flags) {
-            flag_collector |= flags;
+        static void generate_default(flagset& flags) {
+            // set all bits to 1
+            flags.set();
+
+            // disable all non-default techniques
+            flags.flip(VMWARE_DMESG);
+
+            // disable all the settings flags
+            flags.flip(NO_MEMO);
+            flags.flip(HIGH_THRESHOLD);
+            flags.flip(NULL_ARG);
+            flags.flip(DYNAMIC);
+            flags.flip(MULTIPLE);
+            flags.flip(ALL);
+        }
+
+        static void generate_all(flagset& flags) {
+            // set all bits to 1
+            flags.set();
+
+            // disable all the settings flags
+            flags.flip(NO_MEMO);
+            flags.flip(HIGH_THRESHOLD);
+            flags.flip(NULL_ARG);
+            flags.flip(DYNAMIC);
+            flags.flip(MULTIPLE);
+            flags.flip(DEFAULT);
+        }
+
+        static void generate_current_disabled_flags(flagset& flags) {
+            const bool setting_no_memo = flags.test(NO_MEMO);
+            const bool setting_high_threshold = flags.test(HIGH_THRESHOLD);
+            const bool setting_dynamic = flags.test(DYNAMIC);
+            const bool setting_multiple = flags.test(MULTIPLE);
+            const bool setting_all = flags.test(ALL);
+            const bool setting_default = flags.test(DEFAULT);
+
+            if (disabled_flag_collector.count() == 0) {
+                return;
+            } else {
+                flags &= disabled_flag_collector;
+            }
+
+            flags.set(NO_MEMO, setting_no_memo);
+            flags.set(HIGH_THRESHOLD, setting_high_threshold);
+            flags.set(DYNAMIC, setting_dynamic);
+            flags.set(MULTIPLE, setting_multiple);
+            flags.set(ALL, setting_all);
+            flags.set(DEFAULT, setting_default);
+        }
+
+        static void disable_flagset_manager(const flagset& flags) {
+            disabled_flag_collector = flags;
+        }
+
+        static void disable_flag_manager(const enum_flags flag) {
+            disabled_flag_collector.set(flag, false);
         }
 
         static void flag_manager(const enum_flags flag) {
@@ -10502,7 +10609,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 throw std::invalid_argument("Non-flag or invalid flag provided for VM::detect(), aborting");
             }
 
-            flag_collector.set(flag);
+            if (flag == DEFAULT) {
+                generate_default(flag_collector);
+            } else if (flag == ALL) {
+                generate_all(flag_collector);
+            } else {
+                flag_collector.set(flag);
+            }
         }
 
         // Define a base class for different types
@@ -10510,11 +10623,20 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             virtual ~TestHandler() = default;
 
             virtual void handle(const flagset& flags) {
-                flagset_manager(flags);
+                disable_flagset_manager(flags);
             }
 
             virtual void handle(const enum_flags flag) {
                 flag_manager(flag);
+            }
+        };
+
+        // Define a base class for different types
+        struct DisableTestHandler {
+            virtual ~DisableTestHandler() = default;
+
+            virtual void disable_handle(const enum_flags flag) {
+                disable_flag_manager(flag);
             }
         };
 
@@ -10523,7 +10645,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             using TestHandler::handle; 
 
             void handle(const flagset& flags) override {
-                flagset_manager(flags);
+                disable_flagset_manager(flags);
             }
         };
 
@@ -10535,10 +10657,24 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
         };
 
+        struct DisableTestUint8Handler : public DisableTestHandler {
+            using DisableTestHandler::disable_handle;  
+
+            void disable_handle(const enum_flags flag) override {
+                disable_flag_manager(flag);
+            }
+        };
+
         // Define a function to dispatch handling based on type
         template <typename T>
         static void dispatch(const T& value, TestHandler& handler) {
             handler.handle(value);
+        }
+
+        // Define a function to dispatch handling based on type
+        template <typename T>
+        static void disable_dispatch(const T& value, DisableTestHandler& handler) {
+            handler.disable_handle(value);
         }
 
         // Base case for the recursive handling
@@ -10583,12 +10719,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // Recursive case to handle each argument based on its type
         template <typename First, typename... Rest>
         static void handle_disabled_args(First&& first, Rest&&... rest) {
-            TestUint8Handler uint8Handler;
+            DisableTestUint8Handler Disableuint8Handler;
 
             if (isType<flagset>(first)) {
                 throw std::invalid_argument("Arguments must not contain VM::DEFAULT or VM::ALL, only technique flags are accepted (view the documentation for a full list)");
             } else if (isType<enum_flags>(first)) {
-                dispatch(first, uint8Handler);
+                disable_dispatch(first, Disableuint8Handler);
             } else {
                 throw std::invalid_argument("Arguments must be a technique flag, aborting");
             }
@@ -10614,15 +10750,39 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // return value by enabling the bits based on the argument.
         template <typename... Args>
         static flagset arg_handler(Args&&... args) {
-            if VMAWARE_CONSTEXPR (is_empty<Args...>()) {
-                return DEFAULT;
-            }
-
             flag_collector.reset();
+            generate_default(disabled_flag_collector);
+
+            if VMAWARE_CONSTEXPR (is_empty<Args...>()) {
+                generate_default(flag_collector);
+                return flag_collector;
+            }
 
             // set the bits in the flag, can take in 
             // either an enum value or a std::bitset
             handleArgs(std::forward<Args>(args)...);
+            
+            if (flag_collector.count() == 0) {
+                generate_default(flag_collector);
+            }
+
+
+            const bool setting_no_memo = flag_collector.test(NO_MEMO);
+            const bool setting_high_threshold = flag_collector.test(HIGH_THRESHOLD);
+            const bool setting_dynamic = flag_collector.test(DYNAMIC);
+            const bool setting_multiple = flag_collector.test(MULTIPLE);
+            const bool setting_all = flag_collector.test(ALL);
+            const bool setting_default = flag_collector.test(DEFAULT);
+
+            flag_collector &= disabled_flag_collector;
+
+            flag_collector.set(NO_MEMO, setting_no_memo);
+            flag_collector.set(HIGH_THRESHOLD, setting_high_threshold);
+            flag_collector.set(DYNAMIC, setting_dynamic);
+            flag_collector.set(MULTIPLE, setting_multiple);
+            flag_collector.set(ALL, setting_all);
+            flag_collector.set(DEFAULT, setting_default);
+
 
             // handle edgecases
             core::flag_sanitizer(flag_collector);
@@ -10632,8 +10792,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         // same as above but for VM::disable which only accepts technique flags
         template <typename... Args>
-        static flagset disabled_arg_handler(Args&&... args) {
-            flag_collector.reset();
+        static void disabled_arg_handler(Args&&... args) {
+            disabled_flag_collector.reset();
+
+            generate_default(disabled_flag_collector);
 
             if VMAWARE_CONSTEXPR (is_empty<Args...>()) {
                 throw std::invalid_argument("VM::DISABLE() must contain a flag");
@@ -10642,13 +10804,63 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             handle_disabled_args(std::forward<Args>(args)...);
 
             // check if a settings flag is set, which is not valid
-            if (core::is_setting_flag_set(flag_collector)) {
+            if (core::is_setting_flag_set(disabled_flag_collector)) {
                 throw std::invalid_argument("VM::DISABLE() must not contain a settings flag, they are disabled by default anyway");
             }
 
-            return flag_collector;
+            return;
         }
     };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 public: // START OF PUBLIC FUNCTIONS
 
@@ -11004,6 +11216,14 @@ public: // START OF PUBLIC FUNCTIONS
         // fetch all the flags in a std::bitset
         flagset flags = core::arg_handler(args...);
 
+        for (size_t i = 0; i < flags.size(); ++i) {
+            // Check if the bit at position i is set (1)
+            if (flags.test(i)) {
+                // Output the index of the set bit
+                std::cout << "Bit at position " << i << " is set to 1" << std::endl;
+            }
+        }
+
         // run all the techniques based on the 
         // flags above, and get a total score 
         const u16 points = core::run_all(flags, SHORTCUT);
@@ -11127,15 +11347,9 @@ public: // START OF PUBLIC FUNCTIONS
     static flagset DISABLE(Args ...args) {
         // basically core::arg_handler but in reverse,
         // it'll clear the bits of the provided flags
-        flagset flags = core::disabled_arg_handler(args...);
+        core::disabled_arg_handler(args...);
 
-        flags.flip();
-        flags.set(NO_MEMO, 0);
-        flags.set(HIGH_THRESHOLD, 0);
-        flags.set(DYNAMIC, 0);
-        flags.set(MULTIPLE, 0);
-
-        return flags;
+        return core::disabled_flag_collector;
     }
 
 
@@ -11667,45 +11881,11 @@ VM::u16 VM::total_points = 0;
 // return value for actual end-user functions like VM::detect() to rely 
 // and work on.
 VM::flagset VM::core::flag_collector;
+VM::flagset VM::core::disabled_flag_collector;
 
 
 VM::u8 VM::detected_count_num = 0;
 
-// default flags 
-VM::flagset VM::DEFAULT = []() noexcept -> flagset {
-    flagset tmp;
-
-    // set all bits to 1
-    tmp.set();
-
-    // disable all non-default techniques
-    tmp.flip(VMWARE_DMESG);
-
-    // disable all the settings flags
-    tmp.flip(NO_MEMO);
-    tmp.flip(HIGH_THRESHOLD);
-    tmp.flip(DYNAMIC);
-    tmp.flip(MULTIPLE);
-
-    return tmp;
-}();
-
-
-// flag to enable every technique
-VM::flagset VM::ALL = []() noexcept -> flagset {
-    flagset tmp;
-
-    // set all bits to 1
-    tmp.set();
-
-    // disable all the settings technique flags
-    tmp.flip(NO_MEMO);
-    tmp.flip(HIGH_THRESHOLD);
-    tmp.flip(DYNAMIC);
-    tmp.flip(MULTIPLE);
-
-    return tmp;
-}();
 
 std::vector<VM::u8> VM::technique_vector = []() -> std::vector<VM::u8> {
     std::vector<VM::u8> tmp{};

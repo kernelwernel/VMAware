@@ -28,12 +28,10 @@ int main(void) {
     //const bool test2 = VM::detect(VM::ALL);
     //const bool test3 = VM::detect(VM::DEFAULT);
     //const bool test4 = VM::detect(VM::DEFAULT, VM::ALL);
-    const bool test4 = VM::detect(VM::DISABLE(VM::TIMER));
-    const bool test5 = VM::detect(VM::DEFAULT, VM::DISABLE(VM::TIMER));
-    const bool test6 = VM::detect(VM::DEFAULT, VM::DISABLE(VM::TIMER, VM::GPU));
-    //const bool test7 = VM::detect(VM::NO_MEMO, VM::EXTREME, VM::MULTIPLE, VM::ENABLE_HYPERV_HOST);
+    //const bool test5 = VM::detect(VM::DISABLE(VM::TIMER));
+    //const bool test6 = VM::detect(VM::DEFAULT, VM::HIGH_THRESHOLD, VM::DISABLE(VM::TIMER));
+    //const bool test7 = VM::detect(VM::DEFAULT, VM::DISABLE(VM::TIMER, VM::GPU));
     //const std::string test8 = VM::brand();
-    //const uint8_t test9 = VM::percentage(VM::SPOOFABLE);
     //std::cout << (int)test9 << "\n";
 
     //VM::vmaware vm;
