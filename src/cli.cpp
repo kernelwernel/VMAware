@@ -454,7 +454,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::HDD_SERIAL:
             case VM::PORT_CONNECTORS:
             case VM::GPU:
-            case VM::VM_MEMORY:
             case VM::IDT_GDT_MISMATCH:
             case VM::PROCESSOR_NUMBER:
             case VM::NUMBER_OF_CORES:
@@ -975,7 +974,6 @@ void general() {
     checker(VM::HDD_SERIAL, "HDD serial number");
     checker(VM::PORT_CONNECTORS, "physical connection ports");
     checker(VM::GPU, "GPU capabilities");
-    checker(VM::VM_MEMORY, "VM memory traces");
     checker(VM::IDT_GDT_MISMATCH, "IDT GDT mismatch");
     checker(VM::PROCESSOR_NUMBER, "processor count");
     checker(VM::NUMBER_OF_CORES, "CPU core count");
