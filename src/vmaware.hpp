@@ -6360,7 +6360,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
 
 
-    /**
+    /**https://github.com/kernelwernel/VMAware/issues/294
      * @brief Check for memory regions to detect VM-specific brands
      * @category Windows
      * @author Graham Sutherland
@@ -11522,11 +11522,12 @@ public: // START OF PUBLIC FUNCTIONS
         const std::string inside_vm = "Running inside";
 
         auto make_conclusion = [&](const std::string &category) -> std::string {
+            // this basically just fixes the grammatical syntax
+            // by either having "a" or "an" before the VM brand
+            // name, like it would look weird if the conclusion 
+            // message was "an VirtualBox" or "a Anubis", so this
+            // section fixes that issue.
             std::string article = "";   
-
-            if (brand_tmp == brands::NULL_BRAND) {
-                brand_tmp = "unknown"; // this is basically just to remove the capital "U", since it would look weird to see "an Unknown"
-            }
 
             if (
                 (brand_tmp == brands::ACRN) ||
@@ -11543,6 +11544,7 @@ public: // START OF PUBLIC FUNCTIONS
                 (brand_tmp == brands::AMD_SEV) ||
                 (brand_tmp == brands::AMD_SEV_ES) ||
                 (brand_tmp == brands::AMD_SEV_SNP) ||
+                (brand_tmp == brands::NSJAIL) ||
                 (brand_tmp == brands::NULL_BRAND)
             ) {
                 article = " an ";
@@ -11550,6 +11552,13 @@ public: // START OF PUBLIC FUNCTIONS
                 article = " a ";
             }
 
+            // this is basically just to remove the capital "U", 
+            // since it doesn't make sense to see "an Unknown"
+            if (brand_tmp == brands::NULL_BRAND) {
+                brand_tmp = "unknown";
+            }
+
+            // Hyper-V artifacts are an exception due to how unique the circumstance is
             if (brand_tmp == brands::HYPERV_ARTIFACT) {
                return (category + article + brand_tmp);
             } else {

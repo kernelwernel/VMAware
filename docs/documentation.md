@@ -580,7 +580,7 @@ This is the table of all the brands the lib supports.
 | OpenBSD VMM | `brands::BSD_VMM` | Hypervisor (type 2) |  |
 | Intel HAXM | `brands::INTEL_HAXM` | Hypervisor (type 1) |  |
 | Unisys s-Par | `brands::UNISYS` | Partitioning Hypervisor |  |
-| Lockheed Martin LMHS  | `brands::LMHS` | Hypervisor (unknown type) | Yes, you read that right. The lib can detect VMs running on US military fighter jets, apparently |
+| Lockheed Martin LMHS  | `brands::LMHS` | Hypervisor (unknown type) | Yes, you read that right. The lib can detect VMs running on US military fighter jets, apparently. |
 | Cuckoo | `brands::CUCKOO` | Sandbox |  |
 | BlueStacks | `brands::BLUESTACKS` | Emulator |  |
 | Jailhouse | `brands::JAILHOUSE` | Partitioning Hypervisor |  |
@@ -589,16 +589,16 @@ This is the table of all the brands the lib supports.
 | Microsoft Azure Hyper-V | `brands::AZURE_HYPERV` | Hypervisor (type 1) |  |
 | Xbox NanoVisor (Hyper-V) | `brands::NANOVISOR` | Hypervisor (type 1) |  |
 | SimpleVisor | `brands::SIMPLEVISOR` | Hypervisor (type 1) |  |
-| Hyper-V artifact (not an actual VM) | `brands::HYPERV_ARTIFACT` | Unknown |  |
+| Hyper-V artifact (not an actual VM) | `brands::HYPERV_ARTIFACT` | Unknown | Windows Hyper-V has a tendency to modify host hardware values with VM values. In other words, this brand signifies that you're running on a host system, but the Hyper-V that's installed (either by default or manually by the user) is misleadingly making the whole system look like it's in a VM when in reality it's not. <br><br> For more information, refer to [this graph](https://github.com/kernelwernel/VMAware/blob/main/assets/hyper-x/v5/Hyper-X_version_5.drawio.png). |
 | User-mode Linux | `brands::UML` | Paravirtualised/Hypervisor (type 2) |  |
 | IBM PowerVM | `brands::POWERVM` | Hypervisor (type 1) |  |
 | OpenStack (KVM) | `brands::OPENSTACK` | Hypervisor (type 1) |  |
 | KubeVirt (KVM) | `brands::KUBEVIRT` | Hypervisor (type 1) |  |
 | AWS Nitro System EC2 (KVM-based) | `brands::AWS_NITRO` | Hypervisor (type 1) |  |
 | Podman | `brands::PODMAN` | Container |  |
-| WSL | `brands::WSL` | Hybrid Hyper-V (type 1 and 2) | The type is debatable, it's not exactly clear |
+| WSL | `brands::WSL` | Hybrid Hyper-V (type 1 and 2) | The type is debatable, it's not exactly clear. |
 | OpenVZ | `brands::OPENVZ` | Container |  |
-| ANY.RUN | N/A | Sandbox | Removed from the lib, available only in the CLI |
+| ANY.RUN | N/A | Sandbox | Removed from the lib, available only in the CLI due to ethical reasons. |
 | Barevisor | `brands::BAREVISOR` | Hypervisor (type 1) |  |
 | HyperPlatform | `brands::HYPERPLATFORM` | Hypervisor (type 1) |  |
 | MiniVisor | `brands::MINIVISOR` | Hypervisor (type 1) |  |
