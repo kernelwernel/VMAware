@@ -183,8 +183,6 @@
 
 #pragma once
 
-#define __VMAWARE_DEBUG__ 1
-
 #if defined(_WIN32) || defined(_WIN64)
 #define WINDOWS 1
 #define LINUX 0
@@ -641,7 +639,8 @@ public:
         VM_SIDT,
         HDD_SERIAL,
         PORT_CONNECTORS,
-        GPU,
+        GPU_VM_STRINGS,
+        GPU_CAPABILITIES,
         VM_DEVICES,
         IDT_GDT_MISMATCH,
         PROCESSOR_NUMBER,
@@ -7789,13 +7788,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check for GPU capabilities and specific GPU signatures related to VMs
+     * @brief Check for specific GPU string signatures related to VMs
      * @category Windows
      * @author Requiem (https://github.com/NotRequiem)
      * @note utoshu did this with WMI in a removed technique (VM::GPU_CHIPTYPE)
-     * @implements VM::GPU
+     * @implements VM::GPU_VM_STRING
      */
-    [[nodiscard]] static bool vm_gpu() {
+    [[nodiscard]] static bool gpu_vm_strings() {
 #if (!WINDOWS)
         return false;
 #else
@@ -7834,9 +7833,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
                 if (deviceStrLen == len && wcscmp(deviceStr, name) == 0) {
+#if __VMAWARE_DEBUG__
                     std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
                     std::string narrow_str = converter.to_bytes(name);
-                    std::cout << "[TEMPORARY FUCKING DEBUG REPLACEMENT SHIT] found" << narrow_str << "\n";
+                    debug("VM::GPU: found \"", narrow_str, "\" string in GPU");
+#endif
                     core::add(brand);
                     return true;
                 }
@@ -7845,8 +7846,23 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             ++deviceNum;
         }
 
-        if (!util::is_admin())
+        return false;
+#endif
+    }
+
+    /**
+     * @brief Check for GPU capabilities related to VMs
+     * @category Windows
+     * @author Requiem (https://github.com/NotRequiem)
+     * @implements VM::GPU_CAPABILITIES
+     */
+    [[nodiscard]] static bool gpu_capabilities() {
+#if (!WINDOWS)
+        return false;
+#else
+        if (!util::is_admin()) {
             return false;
+        }
 
         IDirect3D9* pD3D = Direct3DCreate9(D3D_SDK_VERSION);
         if (!pD3D) return true;
@@ -7863,10 +7879,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return core::add(brands::VBOX);
             } 
         }
+
         if (FAILED(pD3D->GetDeviceCaps(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, &caps))) {
             pD3D->Release();
             return true;
         }
+
         pD3D->Release();
 
         IDXGIFactory* pFactory = nullptr;
@@ -10241,6 +10259,17 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     continue;
                 }
 
+                // both of these depend interchangeably, so both scores
+                // are "merged" by making it 100 instead of 200 combined.
+                // the GPU ones are that exception, and they will be run
+                // in the post-processing stage within run_all();
+                if (
+                    (technique_macro == VM::GPU_CAPABILITIES) ||
+                    (technique_macro == VM::GPU_VM_STRINGS)
+                ) {
+                    continue;
+                }
+
                 // check if the technique is cached already
                 if (memo_enabled && memo::is_cached(technique_macro)) {
                     const memo::data_t data = memo::cache_fetch(technique_macro);
@@ -10263,26 +10292,28 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     // returns the number of techniques that found a VM.
                     detected_count_num++;
                 }
-                
+
+                // store the current technique result to the cache
+                if (memo_enabled) {
+                    memo::cache_store(technique_macro, result, technique_data.points);
+                }
+
                 // for things like VM::detect() and VM::percentage(),
                 // a score of 150+ is guaranteed to be a VM, so
                 // there's no point in running the rest of the techniques
                 // (unless the threshold is set to be higher, but it's the 
                 // same story here nonetheless, except the threshold is 300)
-                if (shortcut && points >= threshold_points) {
+                if (
+                    (shortcut) && 
+                    (points >= threshold_points)
+                ) {
                     return points;
-                }
-
-                // store the current technique result to the cache
-                if (memo_enabled) {
-                    memo::cache_store(technique_macro, result, technique_data.points);
                 }
             }
 
             // for custom VM techniques, won't be used most of the time
             if (!custom_table.empty()) {
                 for (const auto& technique : custom_table) {
-
                     // if cached, return that result
                     if (memo_enabled && memo::is_cached(technique.id)) {
                         const memo::data_t data = memo::cache_fetch(technique.id);
@@ -10313,6 +10344,49 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     }
                 }
             }
+
+
+            // points post-processing stage
+            const std::vector<enum_flags> post_processed_techniques = {
+                GPU_CAPABILITIES,
+                GPU_VM_STRINGS
+            };
+
+            auto merge_scores = [&](
+                const enum_flags a, 
+                const enum_flags b, 
+                const u8 new_score
+            ) {
+                if (
+                    core::is_disabled(flags, a) ||
+                    core::is_disabled(flags, b)
+                ) {
+                    return;
+                }
+
+                const bool result_a = check(a);
+                const bool result_b = check(b);
+
+                if (result_a && result_b) {
+                    points += new_score;
+                    return;
+                } else if ((result_a == false) && (result_b == false)) {
+                    return;
+                } else {
+                    enum_flags tmp_flag;
+
+                    if (result_a == true) {
+                        tmp_flag = a;
+                    } else {
+                        tmp_flag = b;
+                    }
+
+                    const technique tmp = technique_table.at(tmp_flag);
+                    points += tmp.points;
+                }
+            };
+
+            merge_scores(GPU_CAPABILITIES, GPU_VM_STRINGS, 100); // instead of 200, it's 100 now
 
             return points;
         }
@@ -10393,7 +10467,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             // disable all non-default techniques
             flags.flip(VMWARE_DMESG);
-            flags.flip(GPU); // temporary
 
             // disable all the settings flags
             flags.flip(NO_MEMO);
@@ -11287,7 +11360,8 @@ public: // START OF PUBLIC FUNCTIONS
             case VM_SIDT: return "VM_SIDT";
             case HDD_SERIAL: return "HDD_SERIAL";
             case PORT_CONNECTORS: return "PORT_CONNECTORS";
-            case GPU: return "GPU";
+            case GPU_VM_STRINGS: return "GPU_STRINGS";
+            case GPU_CAPABILITIES: return "GPU_CAPABILITIES";
             case VM_DEVICES: return "VM_DEVICES";
             case IDT_GDT_MISMATCH: return "IDT_GDT_MISMATCH";
             case PROCESSOR_NUMBER: return "PROCESSOR_NUMBER";
@@ -11851,7 +11925,8 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::VM_SIDT, { 100, VM::vm_sidt } },
     { VM::HDD_SERIAL, { 100, VM::hdd_serial_number } },
     { VM::PORT_CONNECTORS, { 25, VM::port_connectors } },
-    { VM::GPU, { 100, VM::vm_gpu } },
+    { VM::GPU_VM_STRINGS, { 100, VM::gpu_vm_strings } },
+    { VM::GPU_CAPABILITIES, { 100, VM::gpu_capabilities } },
     { VM::VM_DEVICES, { 45, VM::vm_devices } },
     { VM::IDT_GDT_MISMATCH, { 50, VM::idt_gdt_mismatch } },
     { VM::PROCESSOR_NUMBER, { 50, VM::processor_number } },

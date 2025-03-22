@@ -510,7 +510,8 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::VM_SIDT` | Check for unknown IDT base address | Windows | 100% |  |  |  |  |
 | `VM::HDD_SERIAL` | Check for serial numbers of virtual disks | Windows | 100% |  |  |  |  |
 | `VM::PORT_CONNECTORS` | Check for physical connection ports | Windows | 25% |  |  |  | This technique is known to false flag on devices like Surface Pro |
-| `VM::GPU` | Check for GPU capabilities and specific GPU signatures related to VMs | Windows | 100% | Admin |  |  | Admin only needed for some heuristics |
+| `VM::GPU_CAPABILITIES` | Check for GPU capabilities related to VMs | Windows | 100% | Admin |  |  | Admin only needed for some heuristics |
+| `VM::GPU_VM_STRINGS` | Check for specific GPU string signatures related to VMs | Windows | 100% |  |  |  |  |
 | `VM::VM_DEVICES` | Check for VM-specific devices | Windows | 45% |  |  |  |  |
 | `VM::IDT_GDT_MISMATCH` | Check if the IDT and GDT base virtual addresses mismatch between different CPU cores when called from usermode under a root partition | Windows | 50% |  |  |  |  |
 | `VM::PROCESSOR_NUMBER` | Check for number of processors | Windows | 50% |  |  |  |  |
