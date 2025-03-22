@@ -322,6 +322,8 @@
 #ifdef __VMAWARE_DEBUG__
 #include <iomanip>
 #include <ios>
+#include <locale>
+#include <codecvt>
 #endif
 
 #include <functional>
@@ -7818,6 +7820,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         while (EnumDisplayDevicesW(nullptr, deviceNum, &dd, 0)) {
             const wchar_t* deviceStr = dd.DeviceString;
             const size_t deviceStrLen = wcslen(deviceStr);
+
 #if CPP >= 17
             for (const auto& [name, brand, len] : vm_gpu_names) {
 #else
@@ -7826,6 +7829,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 const char* brand = entry.brand;
                 const size_t len = entry.length;
 #endif
+
+#if __VMAWARE_DEBUG__
+                std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
+                std::string narrow_str = converter.to_bytes(wide_str);
+
+                debug("VM::GPU: found \"", narrow_str, "\" string in GPU");
+#endif
+
                 if (deviceStrLen == len && wcscmp(deviceStr, name) == 0) {
                     core::add(brand);
                     return true;
