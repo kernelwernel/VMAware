@@ -7830,14 +7830,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 const size_t len = entry.length;
 #endif
 
-#if __VMAWARE_DEBUG__
-                std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
-                std::string narrow_str = converter.to_bytes(name);
-
-                debug("VM::GPU: found \"", narrow_str, "\" string in GPU");
-#endif
 
                 if (deviceStrLen == len && wcscmp(deviceStr, name) == 0) {
+#if __VMAWARE_DEBUG__
+                    std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
+                    std::string narrow_str = converter.to_bytes(name);
+                    debug("VM::GPU: found \"", narrow_str, "\" string in GPU");
+#endif
                     core::add(brand);
                     return true;
                 }
@@ -10394,6 +10393,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             // disable all non-default techniques
             flags.flip(VMWARE_DMESG);
+            flags.flip(GPU); // temporary
 
             // disable all the settings flags
             flags.flip(NO_MEMO);
