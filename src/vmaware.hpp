@@ -7832,7 +7832,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 #if __VMAWARE_DEBUG__
                 std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
-                std::string narrow_str = converter.to_bytes(wide_str);
+                std::string narrow_str = converter.to_bytes(name);
 
                 debug("VM::GPU: found \"", narrow_str, "\" string in GPU");
 #endif
