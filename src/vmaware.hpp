@@ -183,6 +183,8 @@
 
 #pragma once
 
+#define __VMAWARE_DEBUG__ 1
+
 #if defined(_WIN32) || defined(_WIN64)
 #define WINDOWS 1
 #define LINUX 0
