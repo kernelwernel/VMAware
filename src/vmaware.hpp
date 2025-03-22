@@ -7834,11 +7834,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
                 if (deviceStrLen == len && wcscmp(deviceStr, name) == 0) {
-#ifdef __VMAWARE_DEBUG__
                     std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
                     std::string narrow_str = converter.to_bytes(name);
-                    debug("VM::GPU: found \"", narrow_str, "\" string in GPU");
-#endif
+                    std::cout << "[TEMPORARY FUCKING DEBUG REPLACEMENT SHIT] found" << narrow_str << "\n";
                     core::add(brand);
                     return true;
                 }
