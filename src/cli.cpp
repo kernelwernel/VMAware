@@ -362,7 +362,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::ODD_CPU_THREADS:
             case VM::INTEL_THREAD_MISMATCH:
             case VM::XEON_THREAD_MISMATCH:
-            case VM::CPUID_BITSET:
             case VM::HYPERV_HOSTNAME:
             case VM::GENERAL_HOSTNAME:
             case VM::BLUESTACKS_FOLDERS:
@@ -439,7 +438,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::INTEL_THREAD_MISMATCH:
             case VM::XEON_THREAD_MISMATCH:
             case VM::NETTITUDE_VM_MEMORY:
-            case VM::CPUID_BITSET:
             case VM::CUCKOO_DIR:
             case VM::CUCKOO_PIPE:
             case VM::HYPERV_HOSTNAME:
@@ -455,7 +453,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::PORT_CONNECTORS:
             case VM::GPU_VM_STRINGS:
             case VM::GPU_CAPABILITIES:
-            case VM::IDT_GDT_MISMATCH:
+            case VM::IDT_GDT_SCAN:
             case VM::PROCESSOR_NUMBER:
             case VM::NUMBER_OF_CORES:
             case VM::ACPI_TEMPERATURE:
@@ -495,7 +493,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::ODD_CPU_THREADS:
             case VM::INTEL_THREAD_MISMATCH:
             case VM::XEON_THREAD_MISMATCH:
-            case VM::CPUID_BITSET:
             case VM::CPUID_SIGNATURE:
             case VM::KVM_BITMASK:
             case VM::KGT_SIGNATURE:
@@ -944,7 +941,6 @@ void general() {
     checker(VM::INTEL_THREAD_MISMATCH, "Intel thread count mismatch");
     checker(VM::XEON_THREAD_MISMATCH, "Intel Xeon thread count mismatch");
     checker(VM::NETTITUDE_VM_MEMORY, "VM memory regions");
-    checker(VM::CPUID_BITSET, "CPUID bitset");
     checker(VM::CUCKOO_DIR, "Cuckoo directory");
     checker(VM::CUCKOO_PIPE, "Cuckoo pipe");
     checker(VM::HYPERV_HOSTNAME, "Hyper-V Azure hostname");
@@ -976,7 +972,7 @@ void general() {
     checker(VM::PORT_CONNECTORS, "physical connection ports");
     checker(VM::GPU_CAPABILITIES, "GPU capabilities");
     checker(VM::GPU_VM_STRINGS, "GPU strings");
-    checker(VM::IDT_GDT_MISMATCH, "IDT GDT mismatch");
+    checker(VM::IDT_GDT_SCAN, "IDT GDT consistency");
     checker(VM::PROCESSOR_NUMBER, "processor count");
     checker(VM::NUMBER_OF_CORES, "CPU core count");
     checker(VM::ACPI_TEMPERATURE, "thermal devices");
