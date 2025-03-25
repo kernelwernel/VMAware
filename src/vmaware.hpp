@@ -11520,7 +11520,6 @@ public: // START OF PUBLIC FUNCTIONS
             { brands::AWS_NITRO, "Hypervisor (type 1)" },
             { brands::LKVM, "Hypervisor (type 1)" },
             { brands::NOIRVISOR, "Hypervisor (type 1)" },
-            { brands::HYPERV_ARTIFACT, "Hypervisor (type 1)" },
 
             // type 2
             { brands::BHYVE, "Hypervisor (type 2)" },
@@ -11568,7 +11567,9 @@ public: // START OF PUBLIC FUNCTIONS
             { brands::AMD_SEV_ES, "VM encryptor" },
             { brands::AMD_SEV_SNP, "VM encryptor" },
             { brands::GCE, "Cloud VM service" },
-            { brands::NSJAIL, "Process isolator" }
+            { brands::NSJAIL, "Process isolator" },
+            { brands::HYPERV_ARTIFACT, "Unknown" },
+            { brands::NULL_BRAND, "Unknown" }
         };
 
         auto it = type_table.find(brand_str.c_str());
