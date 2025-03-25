@@ -99,7 +99,7 @@ int main() {
      * This is just an example to show that you can use a combination of 
      * different flags and non-technique flags with the above examples. 
      */ 
-    bool is_vm9 = VM::detect(VM::NO_MEMO, VM::HIGH_THRESHOLD, VM::DISABLE(VM::RDTSC, VM::VMID));
+    bool is_vm9 = VM::detect(VM::DEFAULT, VM::NO_MEMO, VM::HIGH_THRESHOLD, VM::DISABLE(VM::RDTSC, VM::VMID));
 }
 ```
 
@@ -480,7 +480,6 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::INTEL_THREAD_MISMATCH` | Check for Intel CPU thread count database if it matches the system's thread count |  | 95% |  |  |  |  |
 | `VM::XEON_THREAD_MISMATCH` | Same as above, but for Xeon Intel CPUs |  | 95% |  |  |  |  |
 | `VM::NETTITUDE_VM_MEMORY` | Check for memory regions to detect VM-specific brands | Windows | 100% | |  |  |  |
-| `VM::CPUID_BITSET` |  Check for CPUID technique by checking whether all the bits equate to more than 4000 |  | 25% |  |  |  |  |
 | `VM::CUCKOO_DIR` | Check for cuckoo directory using crt and WIN API directory functions | Windows | 30% |  |  |  |  |
 | `VM::CUCKOO_PIPE` | Check for Cuckoo specific piping mechanism | Windows | 30% |  |  |  |  |
 | `VM::HYPERV_HOSTNAME` | Check for default Azure hostname format regex (Azure uses Hyper-V as their base VM brand) | Windows, Linux | 30% |  |  |  |  |
@@ -510,17 +509,17 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::VM_SIDT` | Check for unknown IDT base address | Windows | 100% |  |  |  |  |
 | `VM::HDD_SERIAL` | Check for serial numbers of virtual disks | Windows | 100% |  |  |  |  |
 | `VM::PORT_CONNECTORS` | Check for physical connection ports | Windows | 25% |  |  |  | This technique is known to false flag on devices like Surface Pro |
-| `VM::GPU` | Check for GPU capabilities and specific GPU signatures related to VMs | Windows | 100% | Admin |  |  | Admin only needed for some heuristics |
+| `VM::GPU_CAPABILITIES` | Check for GPU capabilities related to VMs | Windows | 100% | Admin |  |  | Admin only needed for some heuristics |
+| `VM::GPU_VM_STRINGS` | Check for specific GPU string signatures related to VMs | Windows | 100% |  |  |  |  |
 | `VM::VM_DEVICES` | Check for VM-specific devices | Windows | 45% |  |  |  |  |
-| `VM::VM_MEMORY` | Check for specific VM memory traces in certain processes | Windows | 65% |  |  |  |  |
-| `VM::IDT_GDT_MISMATCH` | Check if the IDT and GDT base virtual addresses mismatch between different CPU cores when called from usermode under a root partition | Windows | 50% |  |  |  |  |
+| `VM::IDT_GDT_SCAN` | Check if the IDT and GDT virtual base addresses are equal across different CPU cores when not running under Hyper-V | Windows | 50% |  |  |  |  |
 | `VM::PROCESSOR_NUMBER` | Check for number of processors | Windows | 50% |  |  |  |  |
 | `VM::NUMBER_OF_CORES` | Check for number of cores | Windows | 50% |  |  |  |  |
 | `VM::ACPI_TEMPERATURE` | Check for device's temperature | Windows | 25% |  |  |  |  |
 | `VM::PROCESSOR_ID` | Check if any processor has an empty Processor ID using SMBIOS data | Windows | 25% |  |  |  |  |
 | `VM::SYS_QEMU` | Check for existence of "qemu_fw_cfg" directories within /sys/module and /sys/firmware | Linux | 70% |  |  |  |  |
 | `VM::LSHW_QEMU` | Check for QEMU string instances with lshw command | Linux | 80% |  |  |  |  |
-| `VM::VIRTUAL_PROCESSORS` | Check if the number of maximum virtual processors matches the maximum number of logical processors | Windows | 50% |  |  |  |  |
+| `VM::VIRTUAL_PROCESSORS` | Check if the number of virtual and logical processors are reported correctly by the system | Windows | 50% |  |  |  |  |
 | `VM::HYPERV_QUERY` | Check if a call to NtQuerySystemInformation with the 0x9f leaf fills a _SYSTEM_HYPERVISOR_DETAIL_INFORMATION structure | Windows | 100% |  |  |  |  |
 | `VM::BAD_POOLS` | Check for system pools allocated by hypervisors | Windows | 80% |  |  |  |  |
 | `VM::AMD_SEV` | Check for AMD-SEV MSR running on the system | Linux and MacOS | 50% | Admin |  |  |  |
@@ -581,7 +580,7 @@ This is the table of all the brands the lib supports.
 | OpenBSD VMM | `brands::BSD_VMM` | Hypervisor (type 2) |  |
 | Intel HAXM | `brands::INTEL_HAXM` | Hypervisor (type 1) |  |
 | Unisys s-Par | `brands::UNISYS` | Partitioning Hypervisor |  |
-| Lockheed Martin LMHS  | `brands::LMHS` | Hypervisor (unknown type) | Yes, you read that right. The lib can detect VMs running on US military fighter jets, apparently |
+| Lockheed Martin LMHS  | `brands::LMHS` | Hypervisor (unknown type) | Yes, you read that right. The lib can detect VMs running on US military fighter jets, apparently. |
 | Cuckoo | `brands::CUCKOO` | Sandbox |  |
 | BlueStacks | `brands::BLUESTACKS` | Emulator |  |
 | Jailhouse | `brands::JAILHOUSE` | Partitioning Hypervisor |  |
@@ -590,16 +589,16 @@ This is the table of all the brands the lib supports.
 | Microsoft Azure Hyper-V | `brands::AZURE_HYPERV` | Hypervisor (type 1) |  |
 | Xbox NanoVisor (Hyper-V) | `brands::NANOVISOR` | Hypervisor (type 1) |  |
 | SimpleVisor | `brands::SIMPLEVISOR` | Hypervisor (type 1) |  |
-| Hyper-V artifact (not an actual VM) | `brands::HYPERV_ARTIFACT` | Unknown |  |
+| Hyper-V artifact (not an actual VM) | `brands::HYPERV_ARTIFACT` | Unknown | Windows Hyper-V has a tendency to modify host hardware values with VM values. In other words, this brand signifies that you're running on a host system, but the Hyper-V that's installed (either by default or manually by the user) is misleadingly making the whole system look like it's in a VM when in reality it's not. <br><br> For more information, refer to [this graph](https://github.com/kernelwernel/VMAware/blob/main/assets/hyper-x/v5/Hyper-X_version_5.drawio.png). |
 | User-mode Linux | `brands::UML` | Paravirtualised/Hypervisor (type 2) |  |
 | IBM PowerVM | `brands::POWERVM` | Hypervisor (type 1) |  |
 | OpenStack (KVM) | `brands::OPENSTACK` | Hypervisor (type 1) |  |
 | KubeVirt (KVM) | `brands::KUBEVIRT` | Hypervisor (type 1) |  |
 | AWS Nitro System EC2 (KVM-based) | `brands::AWS_NITRO` | Hypervisor (type 1) |  |
 | Podman | `brands::PODMAN` | Container |  |
-| WSL | `brands::WSL` | Hybrid Hyper-V (type 1 and 2) | The type is debatable, it's not exactly clear |
+| WSL | `brands::WSL` | Hybrid Hyper-V (type 1 and 2) | The type is debatable, it's not exactly clear. |
 | OpenVZ | `brands::OPENVZ` | Container |  |
-| ANY.RUN | N/A | Sandbox | Removed from the lib, available only in the CLI |
+| ANY.RUN | N/A | Sandbox | Removed from the lib, available only in the CLI due to ethical reasons. |
 | Barevisor | `brands::BAREVISOR` | Hypervisor (type 1) |  |
 | HyperPlatform | `brands::HYPERPLATFORM` | Hypervisor (type 1) |  |
 | MiniVisor | `brands::MINIVISOR` | Hypervisor (type 1) |  |

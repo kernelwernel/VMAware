@@ -48,13 +48,13 @@
  *
  * ============================== SECTIONS ==================================
  * - enums for publicly accessible techniques  => line 570
- * - struct for internal cpu operations        => line 757
- * - struct for internal memoization           => line 1211
- * - struct for internal utility functions     => line 1336
- * - struct for internal core components       => line 10048
- * - start of VM detection technique list      => line 2525
- * - start of public VM detection functions    => line 10656
- * - start of externally defined variables     => line 11564
+ * - struct for internal cpu operations        => line 756
+ * - struct for internal memoization           => line 1210
+ * - struct for internal utility functions     => line 1335
+ * - struct for internal core components       => line 9876
+ * - start of VM detection technique list      => line 2524
+ * - start of public VM detection functions    => line 10484
+ * - start of externally defined variables     => line 11391
  *
  *
  * ============================== EXAMPLE ===================================
@@ -654,7 +654,6 @@ public:
         PORT_CONNECTORS,
         GPU,
         VM_DEVICES,
-        VM_MEMORY,
         IDT_GDT_MISMATCH,
         PROCESSOR_NUMBER,
         NUMBER_OF_CORES,
@@ -7729,177 +7728,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check for specific VM memory traces in certain processes
-     * @category Windows
-     * @author Requiem (https://github.com/NotRequiem)
-     * @implements VM::VM_MEMORY
-     */
-    [[nodiscard]] static bool vm_memory() {
-#if (!WINDOWS)
-        return false;
-#else
-        auto scan_service_for_brands = [](const std::wstring& serviceName, const std::vector<std::pair<std::wstring, const char*>>& checks, const char*& result) -> bool {
-            const DWORD pid = util::FindProcessIdByServiceName(serviceName);
-            if (pid == 0) {
-                return false;
-            }
-
-            bool priv_cleanup = true;
-            if (!util::SetDebugPrivilege(true)) {
-                priv_cleanup = false;
-            }
-
-            const HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid);
-            if (!hProcess) {
-                if (priv_cleanup) util::SetDebugPrivilege(false);
-                return false;
-            }
-
-            size_t minPatternLength = SIZE_MAX;
-            for (const auto& check : checks) {
-                minPatternLength = ((minPatternLength) < (check.first.size())) ? (minPatternLength) : (check.first.size());
-            }
-
-            // Aho-Corasick trie structure
-            struct Node {
-                std::map<wchar_t, Node*> children;
-                Node* failure = nullptr;
-                const char* brand = nullptr;
-            };
-            Node* root = new Node();
-            std::vector<Node*> nodesToDelete;
-
-            // Build the trie
-            for (const auto& check : checks) {
-                const std::wstring& str = check.first;
-                const char* brand = check.second;
-                Node* current = root;
-                for (wchar_t c : str) {
-                    if (current->children.find(c) == current->children.end()) {
-                        Node* newNode = new Node();
-                        current->children[c] = newNode;
-                        nodesToDelete.push_back(newNode);
-                    }
-                    current = current->children[c];
-                }
-                current->brand = brand;
-            }
-
-            // failure links using BFS
-            std::queue<Node*> q;
-            for (auto& child : root->children) {
-                child.second->failure = root;
-                q.push(child.second);
-            }
-
-            while (!q.empty()) {
-                Node* current = q.front();
-                q.pop();
-
-                for (auto& child : current->children) {
-                    wchar_t c = child.first;
-                    Node* node = child.second;
-                    q.push(node);
-
-                    Node* failure = current->failure;
-                    while (failure && failure->children.find(c) == failure->children.end()) {
-                        failure = failure->failure;
-                    }
-                    node->failure = (failure) ? failure->children[c] : root;
-                    if (!node->brand && node->failure->brand) {
-                        node->brand = node->failure->brand;
-                    }
-                }
-            }
-
-            bool found = false;
-            MEMORY_BASIC_INFORMATION mbi{};
-            uintptr_t address = 0x1000;
-
-            while (VirtualQueryEx(hProcess, reinterpret_cast<LPCVOID>(address), &mbi, sizeof(mbi)) == sizeof(mbi)) {
-                const uintptr_t regionBase = reinterpret_cast<uintptr_t>(mbi.BaseAddress);
-                if (regionBase == 0) {
-                    address += mbi.RegionSize;
-                    continue;
-                }
-
-                if ((mbi.State == MEM_COMMIT) &&
-                    (mbi.Protect & (PAGE_READWRITE | PAGE_EXECUTE_READWRITE)) &&
-                    !(mbi.Protect & (PAGE_GUARD | PAGE_NOACCESS)) &&
-                    (mbi.RegionSize >= minPatternLength * sizeof(wchar_t))) {
-
-                    const size_t bufferSize = static_cast<size_t>(mbi.RegionSize);
-                    std::vector<wchar_t> buffer(bufferSize / sizeof(wchar_t));
-                    SIZE_T bytesRead = 0;
-
-                    if (ReadProcessMemory(hProcess, reinterpret_cast<LPCVOID>(regionBase), buffer.data(), bufferSize, &bytesRead) && bytesRead > 0) {
-                        const size_t charCount = bytesRead / sizeof(wchar_t);
-                        if (charCount < minPatternLength) continue;
-
-                        Node* current = root;
-                        for (size_t i = 0; i < charCount; ++i) {
-                            wchar_t c = buffer[i];
-                            while (current != root && current->children.find(c) == current->children.end()) {
-                                current = current->failure;
-                            }
-                            if (current->children.find(c) != current->children.end()) {
-                                current = current->children[c];
-                            }
-
-                            if (current->brand) {
-                                result = current->brand;
-                                found = true;
-                                break;
-                            }
-                        }
-                        if (found) break;
-                    }
-                }
-                address = regionBase + mbi.RegionSize;
-            }
-
-            for (Node* node : nodesToDelete) delete node;
-            delete root;
-            CloseHandle(hProcess);
-            if (priv_cleanup) util::SetDebugPrivilege(false);
-            return found;
-            };
-
-        // The idea is to detect old execution of vm files by scanning for the memory of the process that manages the System Resource Usage Monitor database. 
-        // This db is a Windows forensic artifact that stores old executed files, the scan should detect the presence of the VM even if processes were killed or files removed
-        // * In development *
-        /*
-        const std::vector<std::pair<std::wstring, const char*>> dps_checks = {
-            { L"VBoxTray", brands::VBOX },
-            { L"joeboxserver.exe", brands::JOEBOX },
-            { L"joeboxcontrol.exe", brands::JOEBOX },
-            { L"prl_cc.exe", brands::PARALLELS },
-            { L"prl_tools.exe", brands::PARALLELS },
-            { L"vboxservice.exe", brands::VBOX },
-            { L"vboxtray.exe", brands::VBOX },
-            { L"vmsrvc.exe", brands::VPC },
-            { L"vmusrvc.exe", brands::VPC },
-            { L"xenservice.exe", brands::XEN },
-            { L"xsvc_depriv.exe", brands::XEN },
-            { L"vm3dservice.exe", brands::VMWARE },
-            { L"VGAuthService.exe", brands::VMWARE },
-            { L"vmtoolsd.exe", brands::VMWARE },
-            { L"qemu-ga.exe", brands::QEMU },
-            { L"vdagent.exe", brands::QEMU },
-            { L"vdservice.exe", brands::QEMU }
-        };
-
-        const char* dpsBrand;
-        if (scan_service_for_brands(L"DPS", dps_checks, dpsBrand)) {
-            return core::add(dpsBrand);
-        }
-        */
-        return false;
-#endif
-    }
-
-
-    /**
      * @brief Check if the IDT and GDT base virtual addresses mismatch between different CPU cores
      * @note  The Windows kernel has different interrupt handlers registered for each CPU core, thus resulting in different virtual addresses when calling SIDT and SGDT in kernel-mode
      *        However, when Windows is running under Hyper-V (under a root partition), the IDT and GDT base address will always point to the same virtual location across all CPU cores if called from user-mode
@@ -11228,7 +11056,6 @@ public: // START OF PUBLIC FUNCTIONS
             case PORT_CONNECTORS: return "PORT_CONNECTORS";
             case GPU: return "GPU";
             case VM_DEVICES: return "VM_DEVICES";
-            case VM_MEMORY: return "VM_MEMORY";
             case IDT_GDT_MISMATCH: return "IDT_GDT_MISMATCH";
             case PROCESSOR_NUMBER: return "PROCESSOR_NUMBER";
             case NUMBER_OF_CORES: return "NUMBER_OF_CORES";
@@ -11777,7 +11604,6 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     { VM::PORT_CONNECTORS, { 25, VM::port_connectors } },
     { VM::GPU, { 100, VM::vm_gpu } },
     { VM::VM_DEVICES, { 45, VM::vm_devices } },
-    { VM::VM_MEMORY, { 65, VM::vm_memory } },
     { VM::IDT_GDT_MISMATCH, { 50, VM::idt_gdt_mismatch } },
     { VM::PROCESSOR_NUMBER, { 50, VM::processor_number } },
     { VM::NUMBER_OF_CORES, { 50, VM::number_of_cores } },
