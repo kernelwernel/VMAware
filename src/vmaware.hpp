@@ -8748,6 +8748,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         constexpr DWORD BadPoolDwords[] = {
             0x44334D56, // "VM3D" (in memory: 0x56, 0x4D, 0x33, 0x44)
             0x706D6D76, // "vmmp" (in memory: 0x76, 0x6D, 0x6D, 0x70)
+            0x43475443, // "CTGC" (in memory: 0x43, 0x54, 0x47, 0x43) - can be present on baremetal machines
             0x43434748, // "HGCC" (in memory: 0x48, 0x47, 0x43, 0x43)
             0x4D4E4748, // "HGNM" (in memory: 0x48, 0x47, 0x4E, 0x4D)
             0x4C424D56, // "VMBL" (in memory: 0x56, 0x4D, 0x42, 0x4C)
@@ -9469,7 +9470,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::NATIVE_VHD
      */
     [[nodiscard]] static bool native_vhd() {
-#if !defined(WINDOWS) || (_WIN32_WINNT < _WIN32_WINNT_WIN8)
+#if (!WINDOWS)
+        return false;
+#endif
+#if (_WIN32_WINNT < _WIN32_WINNT_WIN8)
         return false;
 #else
         BOOL isNativeVhdBoot = 0;
