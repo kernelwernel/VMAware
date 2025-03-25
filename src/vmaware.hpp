@@ -611,7 +611,6 @@ public:
         INTEL_THREAD_MISMATCH,
         XEON_THREAD_MISMATCH,
         NETTITUDE_VM_MEMORY,
-        CPUID_BITSET,
         CUCKOO_DIR,
         CUCKOO_PIPE,
         HYPERV_HOSTNAME,
@@ -642,7 +641,7 @@ public:
         GPU_VM_STRINGS,
         GPU_CAPABILITIES,
         VM_DEVICES,
-        IDT_GDT_MISMATCH,
+        IDT_GDT_SCAN,
         PROCESSOR_NUMBER,
         NUMBER_OF_CORES,
         ACPI_TEMPERATURE,
@@ -3743,7 +3742,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */             {
 /* GPL */                 power_stats = (powerCaps.ThermalControl == FALSE);
 /* GPL */             }
-/* GPL */             power_stats = power_stats || !powerCaps.FullWake || !powerCaps.WakeAlarmPresent;
 /* GPL */                           
 /* GPL */         }
 /* GPL */ 
@@ -4443,6 +4441,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         check_key(brands::PARALLELS, "HARDWARE\\Description\\System", "VideoBiosVersion", "PARALLELS");
 
         check_key(brands::QEMU, "HARDWARE\\DEVICEMAP\\Scsi\\Scsi Port 0\\Scsi Bus 0\\Target Id 0\\Logical Unit Id 0", "Identifier", "QEMU");
+        check_key(brands::QEMU, "HARDWARE\\DEVICEMAP\\Scsi\\Scsi Port 1\\Scsi Bus 0\\Target Id 0\\Logical Unit Id 0", "Identifier", "QEMU");
+        check_key(brands::QEMU, "HARDWARE\\DEVICEMAP\\Scsi\\Scsi Port 2\\Scsi Bus 0\\Target Id 0\\Logical Unit Id 0", "Identifier", "QEMU");
         check_key(brands::QEMU, "HARDWARE\\Description\\System", "SystemBiosVersion", "QEMU");
         check_key(brands::QEMU, "HARDWARE\\Description\\System", "VideoBiosVersion", "QEMU");
         check_key(brands::QEMU, "HARDWARE\\Description\\System\\BIOS", "SystemManufacturer", "QEMU");
@@ -6644,74 +6644,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check for CPUID technique by checking whether all the bits equate to more than 4000
-     * @category x86
-     * @author 一半人生
-     * @link https://unprotect.it/snippet/vmcpuid/195/
-     * @implements VM::CPUID_BITSET
-     */
-    [[nodiscard]] static bool cpuid_bitset() {
-#if (!x86)
-        return false;
-#else
-        if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
-            return false;
-        }
-
-        // See: Feature Information Returned in the ECX Register
-        union CpuFeaturesEcx {
-            u32 all;
-            struct {
-                u32 sse3 : 1;       //!< [0] Streaming SIMD Extensions 3 (SSE3)
-                u32 pclmulqdq : 1;  //!< [1] PCLMULQDQ
-                u32 dtes64 : 1;     //!< [2] 64-bit DS Area
-                u32 monitor : 1;    //!< [3] MONITOR/WAIT
-                u32 ds_cpl : 1;     //!< [4] CPL qualified Debug Store
-                u32 vmx : 1;        //!< [5] Virtual Machine Technology
-                u32 smx : 1;        //!< [6] Safer Mode Extensions
-                u32 est : 1;        //!< [7] Enhanced Intel Speedstep Technology
-                u32 tm2 : 1;        //!< [8] Thermal monitor 2
-                u32 ssse3 : 1;      //!< [9] Supplemental Streaming SIMD Extensions 3
-                u32 cid : 1;        //!< [10] L1 context ID
-                u32 sdbg : 1;       //!< [11] IA32_DEBUG_INTERFACE MSR
-                u32 fma : 1;        //!< [12] FMA extensions using YMM state
-                u32 cx16 : 1;       //!< [13] CMPXCHG16B
-                u32 xtpr : 1;       //!< [14] xTPR Update Control
-                u32 pdcm : 1;       //!< [15] Performance/Debug capability MSR
-                u32 reserved : 1;   //!< [16] Reserved
-                u32 pcid : 1;       //!< [17] Process-context identifiers
-                u32 dca : 1;        //!< [18] prefetch from a memory mapped device
-                u32 sse4_1 : 1;     //!< [19] SSE4.1
-                u32 sse4_2 : 1;     //!< [20] SSE4.2
-                u32 x2_apic : 1;    //!< [21] x2APIC feature
-                u32 movbe : 1;      //!< [22] MOVBE instruction
-                u32 popcnt : 1;     //!< [23] POPCNT instruction
-                u32 reserved3 : 1;  //!< [24] one-shot operation using a TSC deadline
-                u32 aes : 1;        //!< [25] AESNI instruction
-                u32 xsave : 1;      //!< [26] XSAVE/XRSTOR feature
-                u32 osxsave : 1;    //!< [27] enable XSETBV/XGETBV instructions
-                u32 avx : 1;        //!< [28] AVX instruction extensions
-                u32 f16c : 1;       //!< [29] 16-bit floating-point conversion
-                u32 rdrand : 1;     //!< [30] RDRAND instruction
-                u32 not_used : 1;   //!< [31] Always 0 (a.k.a. HypervisorPresent)
-            } fields;
-        };
-
-        i32 cpu_info[4] = {};
-        cpu::cpuid(cpu_info, 0x40000001);
-        i32 vid = 0;
-        vid = (i32)cpu_info[0];
-
-        if (vid >= 4000) {
-            return true;
-        }
-
-        return false;
-#endif
-    }
-
-
-    /**
      * @brief Check for cuckoo directory using crt and WIN API directory functions
      * @category Windows
      * @author 一半人生
@@ -6941,10 +6873,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         debug("CPUID_SIGNATURE: eax = ", eax);
 
-        switch (eax) {
-            case nanovisor: return core::add(brands::NANOVISOR);
-            case simplevisor: return core::add(brands::SIMPLEVISOR);
-        }
+        if (eax == nanovisor) 
+            return core::add(brands::NANOVISOR);
+        else if (eax == simplevisor)
+            return core::add(brands::SIMPLEVISOR);
 
         return false;
 #endif
@@ -7608,8 +7540,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #else
         if (!util::is_hyperv_leaf_present()) {
             return false;
-        }
-
+        }       
 #pragma pack(push, 1)
         struct IDTR { uint16_t limit;  uint64_t base; };
 #pragma pack(pop)
@@ -7629,7 +7560,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         constexpr u64 known_hyperv_exclusion = 0xfffff80000001000;
 
-        if ((idt_base & 0xFFFF000000000000) == 0xFFFF000000000000 && idt_base != known_hyperv_exclusion) {
+        if ((idt_base >> 24) == 0xff && idt_base != known_hyperv_exclusion) {
             return true;
         }
 
@@ -7832,14 +7763,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
 
 
-                if (deviceStrLen == len && wcscmp(deviceStr, name) == 0) {
-#if __VMAWARE_DEBUG__
-                    std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
-                    std::string narrow_str = converter.to_bytes(name);
-                    debug("VM::GPU: found \"", narrow_str, "\" string in GPU");
-#endif
-                    core::add(brand);
-                    return true;
+                if (deviceStrLen == len && wcscmp(deviceStr, name) == 0) {                  
+                    return core::add(brand);;
                 }
             }
 
@@ -7971,18 +7896,22 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check if the IDT and GDT base virtual addresses mismatch between different CPU cores
-     * @note  The Windows kernel has different interrupt handlers registered for each CPU core, thus resulting in different virtual addresses when calling SIDT and SGDT in kernel-mode
-     *        However, when Windows is running under Hyper-V (under a root partition), the IDT and GDT base address will always point to the same virtual location across all CPU cores if called from user-mode
-     *        This kernel address leak prevention measure is done by Hyper-V on purpose and can be abused to detect VMs
+     * @brief Check if the IDT and GDT virtual base addresses are equal across different CPU cores when not running under Hyper-V
+     * @note  The Windows kernel has different interrupt handlers registered for each CPU core, resulting in different virtual addresses when calling SIDT and SGDT in kernel-mode.
+     *        However, when Windows is running under Hyper-V (in a root partition), the IDT and GDT base address will always be the same across all CPU cores if called from user-mode.
+     *        This kernel address leak prevention measure is done by Hyper-V on purpose and can be abused to detect VMs.
      * @category Windows, x64
-     * @author Requiem (https://github.com/NotRequiem)
-     * @implements VM::IDT_GDT_MISMATCH
+     * @author Requiem
+     * @implements VM::IDT_GDT_SCAN
      */
-    [[nodiscard]] static bool idt_gdt_mismatch() {
+    [[nodiscard]] static bool idt_gdt_scan() {
 #if (!WINDOWS)
         return false;
 #else
+        // If the system is running under any Hyper-V hypervisor (type 1 or type 2), the IDT and GDT will be equal, as this function is called from user-mode.
+        if (util::hyper_x() != HYPERV_UNKNOWN_VM) {
+            return false;
+        }
         if (!util::is_hyperv_leaf_present()) {
             return false;
         }
@@ -8002,23 +7931,23 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     DWORD_PTR affinity_mask = 1ULL << i;
                     SetThreadAffinityMask(thread, affinity_mask);
 
-                #pragma pack(push, 1)
+#pragma pack(push, 1)
                     struct DescriptorTablePointer {
                         uint16_t limit;
                         uint64_t base;
                     };
-                #pragma pack(pop)
+#pragma pack(pop)
 
                     DescriptorTablePointer idtr = {};
                     DescriptorTablePointer gdtr = {};
 
-                #if (CLANG || GCC)
+#if (CLANG || GCC)
                     __asm__ volatile("sidt %0" : "=m"(idtr));
                     __asm__ volatile("sgdt %0" : "=m"(gdtr));
-                #else
+#else
                     __sidt(&idtr);
                     _sgdt(&gdtr);
-                #endif
+#endif
 
                     gdtResults[i] = gdtr.base;
                     idtResults[i] = idtr.base;
@@ -8035,20 +7964,20 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             thread.join();
         }
 
-        bool mismatch = false;
+        bool equal = true;
 
         for (unsigned int i = 1; i < num_threads; ++i) {
             if (gdtResults[i] != gdtResults[0]) {
-                mismatch = true;
-                break; 
+                equal = false;
+                break;
             }
         }
 
-        if (!mismatch) { 
+        if (equal) {
             for (unsigned int i = 1; i < num_threads; ++i) {
                 if (idtResults[i] != idtResults[0]) {
-                    mismatch = true;
-                    break; 
+                    equal = false;
+                    break;
                 }
             }
         }
@@ -8056,7 +7985,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         delete[] gdtResults;
         delete[] idtResults;
 
-        return mismatch;
+        return equal;
 #endif
     }
 
@@ -8463,7 +8392,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check if the maximum number of virtual processors matches the maximum number of logical processors
+     * @brief Check if the number of virtual and logical processors are reported correctly by the system
      * @category Windows
      * @author Requiem (https://github.com/NotRequiem)
      * @implements VM::VIRTUAL_PROCESSORS
@@ -8471,14 +8400,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     [[nodiscard]] static bool virtual_processors() {
 #if (!WINDOWS)
         return false;
-#else
+#else   
         if (!cpu::is_leaf_supported(0x40000005)) {
             return false;
         }
-        if (!util::is_hyperv_leaf_present()) {
-            return false;
-        }
-
+        
         struct Registers {
             int eax = 0;
             int ebx = 0;
@@ -8497,9 +8423,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         implementationLimits.MaxVirtualProcessors = static_cast<unsigned int>(registers.eax);
         implementationLimits.MaxLogicalProcessors = static_cast<unsigned int>(registers.ebx);
 
-        if (implementationLimits.MaxVirtualProcessors != implementationLimits.MaxLogicalProcessors) {
-            return true;
-        }
         if (implementationLimits.MaxVirtualProcessors == 0 || implementationLimits.MaxLogicalProcessors == 0) {
             return true;
         }
@@ -8825,7 +8748,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         constexpr DWORD BadPoolDwords[] = {
             0x44334D56, // "VM3D" (in memory: 0x56, 0x4D, 0x33, 0x44)
             0x706D6D76, // "vmmp" (in memory: 0x76, 0x6D, 0x6D, 0x70)
-            0x43475443, // "CTGC" (in memory: 0x43, 0x54, 0x47, 0x43)
             0x43434748, // "HGCC" (in memory: 0x48, 0x47, 0x43, 0x43)
             0x4D4E4748, // "HGNM" (in memory: 0x48, 0x47, 0x4E, 0x4D)
             0x4C424D56, // "VMBL" (in memory: 0x56, 0x4D, 0x42, 0x4C)
@@ -9547,7 +9469,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::NATIVE_VHD
      */
     [[nodiscard]] static bool native_vhd() {
-#if (!WINDOWS) 
+#if !defined(WINDOWS) || (_WIN32_WINNT < _WIN32_WINNT_WIN8)
         return false;
 #else
         BOOL isNativeVhdBoot = 0;
@@ -11332,7 +11254,6 @@ public: // START OF PUBLIC FUNCTIONS
             case INTEL_THREAD_MISMATCH: return "INTEL_THREAD_MISMATCH";
             case XEON_THREAD_MISMATCH: return "XEON_THREAD_MISMATCH";
             case NETTITUDE_VM_MEMORY: return "NETTITUDE_VM_MEMORY";
-            case CPUID_BITSET: return "CPUID_BITSET";
             case CUCKOO_DIR: return "CUCKOO_DIR";
             case CUCKOO_PIPE: return "CUCKOO_PIPE";
             case HYPERV_HOSTNAME: return "HYPERV_HOSTNAME";
@@ -11363,7 +11284,7 @@ public: // START OF PUBLIC FUNCTIONS
             case GPU_VM_STRINGS: return "GPU_STRINGS";
             case GPU_CAPABILITIES: return "GPU_CAPABILITIES";
             case VM_DEVICES: return "VM_DEVICES";
-            case IDT_GDT_MISMATCH: return "IDT_GDT_MISMATCH";
+            case IDT_GDT_SCAN: return "IDT_GDT_SCAN";
             case PROCESSOR_NUMBER: return "PROCESSOR_NUMBER";
             case NUMBER_OF_CORES: return "NUMBER_OF_CORES";
             case ACPI_TEMPERATURE: return "ACPI_TEMPERATURE";
@@ -11834,120 +11755,119 @@ std::vector<VM::core::custom_technique> VM::core::custom_table = {
 std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     // FORMAT: { VM::<ID>, { certainty%, function pointer } },
     // START OF TECHNIQUE TABLE
-    { VM::VMID, { 100, VM::vmid } },
-    { VM::CPU_BRAND, { 50, VM::cpu_brand } },
-    { VM::HYPERVISOR_BIT, { 100, VM::hypervisor_bit}} , 
-    { VM::HYPERVISOR_STR, { 75, VM::hypervisor_str } },
-    { VM::TIMER, { 45, VM::timer } },
-    { VM::THREADCOUNT, { 35, VM::thread_count } },
-    { VM::MAC, { 20, VM::mac_address_check } },
-    { VM::TEMPERATURE, { 15, VM::temperature } },
-    { VM::SYSTEMD, { 35, VM::systemd_virt } },
-    { VM::CVENDOR, { 65, VM::chassis_vendor } },
-    { VM::CTYPE, { 20, VM::chassis_type } },
-    { VM::DOCKERENV, { 30, VM::dockerenv } },
-    { VM::DMIDECODE, { 55, VM::dmidecode } },
-    { VM::DMESG, { 55, VM::dmesg } },
-    { VM::HWMON, { 35, VM::hwmon } },
-    { VM::SIDT5, { 45, VM::sidt5 } },
-    { VM::DLL, { 25, VM::dll_check } },
-    { VM::REGISTRY, { 50, VM::registry_key } },
-    { VM::VM_FILES, { 25, VM::vm_files } },
-    { VM::HWMODEL, { 100, VM::hwmodel } },
-    { VM::DISK_SIZE, { 60, VM::disk_size } }, 
-    { VM::VBOX_DEFAULT, { 25, VM::vbox_default_specs } },
-    { VM::VBOX_NETWORK, { 100, VM::vbox_network_share } },
-/* GPL */ { VM::COMPUTER_NAME, { 10, VM::computer_name_match } },
-/* GPL */ { VM::WINE_CHECK, { 100, VM::wine } },
-/* GPL */ { VM::HOSTNAME, { 10, VM::hostname_match } },
-/* GPL */ { VM::KVM_DIRS, { 30, VM::kvm_directories } },
-/* GPL */ { VM::QEMU_DIR, { 30, VM::qemu_dir } },
-/* GPL */ { VM::POWER_CAPABILITIES, { 50, VM::power_capabilities } },
-/* GPL */ { VM::SETUPAPI_DISK, { 100, VM::setupapi_disk } },
-    { VM::VM_PROCESSES, { 15, VM::vm_processes } }, 
-    { VM::LINUX_USER_HOST, { 10, VM::linux_user_host } },
-    { VM::GAMARUE, { 10, VM::gamarue } },
-    { VM::BOCHS_CPU, { 100, VM::bochs_cpu } },
-    { VM::MSSMBIOS, { 100, VM::mssmbios } },
-    { VM::MAC_MEMSIZE, { 15, VM::hw_memsize } },
-    { VM::MAC_IOKIT, { 100, VM::io_kit } },
-    { VM::IOREG_GREP, { 100, VM::ioreg_grep, } }, 
-    { VM::MAC_SIP, { 40, VM::mac_sip } }, 
-    { VM::HKLM_REGISTRIES, { 25, VM::hklm_registries } },
-    { VM::QEMU_GA, { 10, VM::qemu_ga } }, 
-    { VM::VPC_INVALID, { 75, VM::vpc_invalid } }, 
-    { VM::SIDT, { 25, VM::sidt, } },
-    { VM::SGDT, { 30, VM::sgdt } }, 
-    { VM::SLDT, { 15, VM::sldt } }, 
-    { VM::OFFSEC_SIDT, { 60, VM::offsec_sidt } }, 
-    { VM::OFFSEC_SGDT, { 60, VM::offsec_sgdt } }, 
-    { VM::OFFSEC_SLDT, { 20, VM::offsec_sldt } }, 
-    { VM::VPC_SIDT, { 15, VM::vpc_sidt } }, 
-    { VM::VMWARE_IOMEM, { 65, VM::vmware_iomem } }, 
-    { VM::VMWARE_IOPORTS, { 70, VM::vmware_ioports } },
-    { VM::VMWARE_SCSI, { 40, VM::vmware_scsi } }, 
-    { VM::VMWARE_DMESG, { 65, VM::vmware_dmesg } },
-    { VM::VMWARE_STR, { 35, VM::vmware_str } }, 
-    { VM::VMWARE_BACKDOOR, { 100, VM::vmware_backdoor } },
-    { VM::VMWARE_PORT_MEM, { 85, VM::vmware_port_memory } }, 
-    { VM::SMSW, { 30, VM::smsw } }, 
-    { VM::MUTEX, { 85, VM::mutex } }, 
-    { VM::ODD_CPU_THREADS, { 80, VM::odd_cpu_threads } },
-    { VM::INTEL_THREAD_MISMATCH, { 95, VM::intel_thread_mismatch } },
-    { VM::XEON_THREAD_MISMATCH, { 95, VM::xeon_thread_mismatch } },
-    { VM::AMD_THREAD_MISMATCH, { 95, VM::amd_thread_mismatch } },
-    { VM::NETTITUDE_VM_MEMORY, { 100, VM::nettitude_vm_memory } },
-    { VM::CPUID_BITSET, { 25, VM::cpuid_bitset } },
-    { VM::CUCKOO_DIR, { 30, VM::cuckoo_dir } },
-    { VM::CUCKOO_PIPE, { 30, VM::cuckoo_pipe } }, 
-    { VM::HYPERV_HOSTNAME, { 30, VM::hyperv_hostname } },
-    { VM::GENERAL_HOSTNAME, { 10, VM::general_hostname } },
-    { VM::SCREEN_RESOLUTION, { 20, VM::screen_resolution } },
-    { VM::DEVICE_STRING, { 25, VM::device_string } },
-    { VM::BLUESTACKS_FOLDERS, { 5, VM::bluestacks } }, 
-    { VM::CPUID_SIGNATURE, { 95, VM::cpuid_signature } }, 
-    { VM::KVM_BITMASK, { 40, VM::kvm_bitmask } }, 
-    { VM::KGT_SIGNATURE, { 80, VM::intel_kgt_signature } }, 
-    { VM::QEMU_VIRTUAL_DMI, { 40, VM::qemu_virtual_dmi } },
-    { VM::QEMU_USB, { 20, VM::qemu_USB } },
-    { VM::HYPERVISOR_DIR, { 20, VM::hypervisor_dir } }, 
-    { VM::UML_CPU, { 80, VM::uml_cpu } },
-    { VM::KMSG, { 5, VM::kmsg } }, 
-    { VM::VM_PROCS, { 10, VM::vm_procs } }, 
-    { VM::VBOX_MODULE, { 15, VM::vbox_module } }, 
-    { VM::SYSINFO_PROC, { 15, VM::sysinfo_proc } }, 
-    { VM::DEVICE_TREE, { 20, VM::device_tree } }, 
-    { VM::DMI_SCAN, { 50, VM::dmi_scan } }, 
-    { VM::SMBIOS_VM_BIT, { 50, VM::smbios_vm_bit } }, 
-    { VM::PODMAN_FILE, { 5, VM::podman_file } }, 
-    { VM::WSL_PROC, { 30, VM::wsl_proc_subdir } }, 
-    { VM::DRIVER_NAMES, { 100, VM::driver_names } },
-    { VM::VM_SIDT, { 100, VM::vm_sidt } },
-    { VM::HDD_SERIAL, { 100, VM::hdd_serial_number } },
-    { VM::PORT_CONNECTORS, { 25, VM::port_connectors } },
-    { VM::GPU_VM_STRINGS, { 100, VM::gpu_vm_strings } },
-    { VM::GPU_CAPABILITIES, { 100, VM::gpu_capabilities } },
-    { VM::VM_DEVICES, { 45, VM::vm_devices } },
-    { VM::IDT_GDT_MISMATCH, { 50, VM::idt_gdt_mismatch } },
-    { VM::PROCESSOR_NUMBER, { 50, VM::processor_number } },
-    { VM::NUMBER_OF_CORES, { 50, VM::number_of_cores } },
-    { VM::ACPI_TEMPERATURE, { 25, VM::acpi_temperature } },
-    { VM::PROCESSOR_ID, { 25, VM::processor_id } },
-    { VM::SYS_QEMU, { 70, VM::sys_qemu_dir } },
-    { VM::LSHW_QEMU, { 80, VM::lshw_qemu } },
-    { VM::VIRTUAL_PROCESSORS, { 50, VM::virtual_processors } },
-    { VM::HYPERV_QUERY, { 100, VM::hyperv_query } },
-    { VM::BAD_POOLS, { 80, VM::bad_pools } },
-    { VM::AMD_SEV, { 50, VM::amd_sev } },
-    { VM::NATIVE_VHD, { 100, VM::native_vhd } },
-    { VM::VIRTUAL_REGISTRY, { 65, VM::virtual_registry } },
-    { VM::FIRMWARE, { 90, VM::firmware_scan } },
-    { VM::FILE_ACCESS_HISTORY, { 15, VM::file_access_history } },
-    { VM::AUDIO, { 25, VM::check_audio } },
-    { VM::UNKNOWN_MANUFACTURER, { 50, VM::unknown_manufacturer } },
-    { VM::OSXSAVE, { 50, VM::osxsave } },
-    { VM::NSJAIL_PID, { 75, VM::nsjail_proc_id } },
-    { VM::PCI_VM, { 100, VM::lspci } }
+    std::make_pair(VM::VMID, VM::core::technique(100, VM::vmid)),
+    std::make_pair(VM::CPU_BRAND, VM::core::technique(50, VM::cpu_brand)),
+    std::make_pair(VM::HYPERVISOR_BIT, VM::core::technique(100, VM::hypervisor_bit)),
+    std::make_pair(VM::HYPERVISOR_STR, VM::core::technique(75, VM::hypervisor_str)),
+    std::make_pair(VM::TIMER, VM::core::technique(45, VM::timer)),
+    std::make_pair(VM::THREADCOUNT, VM::core::technique(35, VM::thread_count)),
+    std::make_pair(VM::MAC, VM::core::technique(20, VM::mac_address_check)),
+    std::make_pair(VM::TEMPERATURE, VM::core::technique(15, VM::temperature)),
+    std::make_pair(VM::SYSTEMD, VM::core::technique(35, VM::systemd_virt)),
+    std::make_pair(VM::CVENDOR, VM::core::technique(65, VM::chassis_vendor)),
+    std::make_pair(VM::CTYPE, VM::core::technique(20, VM::chassis_type)),
+    std::make_pair(VM::DOCKERENV, VM::core::technique(30, VM::dockerenv)),
+    std::make_pair(VM::DMIDECODE, VM::core::technique(55, VM::dmidecode)),
+    std::make_pair(VM::DMESG, VM::core::technique(55, VM::dmesg)),
+    std::make_pair(VM::HWMON, VM::core::technique(35, VM::hwmon)),
+    std::make_pair(VM::SIDT5, VM::core::technique(45, VM::sidt5)),
+    std::make_pair(VM::DLL, VM::core::technique(25, VM::dll_check)),
+    std::make_pair(VM::REGISTRY, VM::core::technique(50, VM::registry_key)),
+    std::make_pair(VM::VM_FILES, VM::core::technique(25, VM::vm_files)),
+    std::make_pair(VM::HWMODEL, VM::core::technique(100, VM::hwmodel)),
+    std::make_pair(VM::DISK_SIZE, VM::core::technique(60, VM::disk_size)),
+    std::make_pair(VM::VBOX_DEFAULT, VM::core::technique(25, VM::vbox_default_specs)),
+    std::make_pair(VM::VBOX_NETWORK, VM::core::technique(100, VM::vbox_network_share)),
+/* GPL */ std::make_pair(VM::COMPUTER_NAME, VM::core::technique(10, VM::computer_name_match)),
+/* GPL */ std::make_pair(VM::WINE_CHECK, VM::core::technique(100, VM::wine)),
+/* GPL */ std::make_pair(VM::HOSTNAME, VM::core::technique(10, VM::hostname_match)),
+/* GPL */ std::make_pair(VM::KVM_DIRS, VM::core::technique(30, VM::kvm_directories)),
+/* GPL */ std::make_pair(VM::QEMU_DIR, VM::core::technique(30, VM::qemu_dir)),
+/* GPL */ std::make_pair(VM::POWER_CAPABILITIES, VM::core::technique(50, VM::power_capabilities)),
+/* GPL */ std::make_pair(VM::SETUPAPI_DISK, VM::core::technique(100, VM::setupapi_disk)),
+    std::make_pair(VM::VM_PROCESSES, VM::core::technique(15, VM::vm_processes)),
+    std::make_pair(VM::LINUX_USER_HOST, VM::core::technique(10, VM::linux_user_host)),
+    std::make_pair(VM::GAMARUE, VM::core::technique(10, VM::gamarue)),
+    std::make_pair(VM::BOCHS_CPU, VM::core::technique(100, VM::bochs_cpu)),
+    std::make_pair(VM::MSSMBIOS, VM::core::technique(100, VM::mssmbios)),
+    std::make_pair(VM::MAC_MEMSIZE, VM::core::technique(15, VM::hw_memsize)),
+    std::make_pair(VM::MAC_IOKIT, VM::core::technique(100, VM::io_kit)),
+    std::make_pair(VM::IOREG_GREP, VM::core::technique(100, VM::ioreg_grep)),
+    std::make_pair(VM::MAC_SIP, VM::core::technique(40, VM::mac_sip)),
+    std::make_pair(VM::HKLM_REGISTRIES, VM::core::technique(25, VM::hklm_registries)),
+    std::make_pair(VM::QEMU_GA, VM::core::technique(10, VM::qemu_ga)),
+    std::make_pair(VM::VPC_INVALID, VM::core::technique(75, VM::vpc_invalid)),
+    std::make_pair(VM::SIDT, VM::core::technique(25, VM::sidt)),
+    std::make_pair(VM::SGDT, VM::core::technique(30, VM::sgdt)),
+    std::make_pair(VM::SLDT, VM::core::technique(15, VM::sldt)),
+    std::make_pair(VM::OFFSEC_SIDT, VM::core::technique(60, VM::offsec_sidt)),
+    std::make_pair(VM::OFFSEC_SGDT, VM::core::technique(60, VM::offsec_sgdt)),
+    std::make_pair(VM::OFFSEC_SLDT, VM::core::technique(20, VM::offsec_sldt)),
+    std::make_pair(VM::VPC_SIDT, VM::core::technique(15, VM::vpc_sidt)),
+    std::make_pair(VM::VMWARE_IOMEM, VM::core::technique(65, VM::vmware_iomem)),
+    std::make_pair(VM::VMWARE_IOPORTS, VM::core::technique(70, VM::vmware_ioports)),
+    std::make_pair(VM::VMWARE_SCSI, VM::core::technique(40, VM::vmware_scsi)),
+    std::make_pair(VM::VMWARE_DMESG, VM::core::technique(65, VM::vmware_dmesg)),
+    std::make_pair(VM::VMWARE_STR, VM::core::technique(35, VM::vmware_str)),
+    std::make_pair(VM::VMWARE_BACKDOOR, VM::core::technique(100, VM::vmware_backdoor)),
+    std::make_pair(VM::VMWARE_PORT_MEM, VM::core::technique(85, VM::vmware_port_memory)),
+    std::make_pair(VM::SMSW, VM::core::technique(30, VM::smsw)),
+    std::make_pair(VM::MUTEX, VM::core::technique(85, VM::mutex)),
+    std::make_pair(VM::ODD_CPU_THREADS, VM::core::technique(80, VM::odd_cpu_threads)),
+    std::make_pair(VM::INTEL_THREAD_MISMATCH, VM::core::technique(95, VM::intel_thread_mismatch)),
+    std::make_pair(VM::XEON_THREAD_MISMATCH, VM::core::technique(95, VM::xeon_thread_mismatch)),
+    std::make_pair(VM::AMD_THREAD_MISMATCH, VM::core::technique(95, VM::amd_thread_mismatch)),
+    std::make_pair(VM::NETTITUDE_VM_MEMORY, VM::core::technique(100, VM::nettitude_vm_memory)),
+    std::make_pair(VM::CUCKOO_DIR, VM::core::technique(30, VM::cuckoo_dir)),
+    std::make_pair(VM::CUCKOO_PIPE, VM::core::technique(30, VM::cuckoo_pipe)),
+    std::make_pair(VM::HYPERV_HOSTNAME, VM::core::technique(30, VM::hyperv_hostname)),
+    std::make_pair(VM::GENERAL_HOSTNAME, VM::core::technique(10, VM::general_hostname)),
+    std::make_pair(VM::SCREEN_RESOLUTION, VM::core::technique(20, VM::screen_resolution)),
+    std::make_pair(VM::DEVICE_STRING, VM::core::technique(25, VM::device_string)),
+    std::make_pair(VM::BLUESTACKS_FOLDERS, VM::core::technique(5, VM::bluestacks)),
+    std::make_pair(VM::CPUID_SIGNATURE, VM::core::technique(95, VM::cpuid_signature)),
+    std::make_pair(VM::KVM_BITMASK, VM::core::technique(40, VM::kvm_bitmask)),
+    std::make_pair(VM::KGT_SIGNATURE, VM::core::technique(80, VM::intel_kgt_signature)),
+    std::make_pair(VM::QEMU_VIRTUAL_DMI, VM::core::technique(40, VM::qemu_virtual_dmi)),
+    std::make_pair(VM::QEMU_USB, VM::core::technique(20, VM::qemu_USB)),
+    std::make_pair(VM::HYPERVISOR_DIR, VM::core::technique(20, VM::hypervisor_dir)),
+    std::make_pair(VM::UML_CPU, VM::core::technique(80, VM::uml_cpu)),
+    std::make_pair(VM::KMSG, VM::core::technique(5, VM::kmsg)),
+    std::make_pair(VM::VM_PROCS, VM::core::technique(10, VM::vm_procs)),
+    std::make_pair(VM::VBOX_MODULE, VM::core::technique(15, VM::vbox_module)),
+    std::make_pair(VM::SYSINFO_PROC, VM::core::technique(15, VM::sysinfo_proc)),
+    std::make_pair(VM::DEVICE_TREE, VM::core::technique(20, VM::device_tree)),
+    std::make_pair(VM::DMI_SCAN, VM::core::technique(50, VM::dmi_scan)),
+    std::make_pair(VM::SMBIOS_VM_BIT, VM::core::technique(50, VM::smbios_vm_bit)),
+    std::make_pair(VM::PODMAN_FILE, VM::core::technique(5, VM::podman_file)),
+    std::make_pair(VM::WSL_PROC, VM::core::technique(30, VM::wsl_proc_subdir)),
+    std::make_pair(VM::DRIVER_NAMES, VM::core::technique(100, VM::driver_names)),
+    std::make_pair(VM::VM_SIDT, VM::core::technique(100, VM::vm_sidt)),
+    std::make_pair(VM::HDD_SERIAL, VM::core::technique(100, VM::hdd_serial_number)),
+    std::make_pair(VM::PORT_CONNECTORS, VM::core::technique(25, VM::port_connectors)),
+    std::make_pair(VM::GPU_VM_STRINGS, VM::core::technique(100, VM::gpu_vm_strings)),
+    std::make_pair(VM::GPU_CAPABILITIES, VM::core::technique(100, VM::gpu_capabilities)),
+    std::make_pair(VM::VM_DEVICES, VM::core::technique(45, VM::vm_devices)),
+    std::make_pair(VM::IDT_GDT_SCAN, VM::core::technique(50, VM::idt_gdt_scan)),
+    std::make_pair(VM::PROCESSOR_NUMBER, VM::core::technique(50, VM::processor_number)),
+    std::make_pair(VM::NUMBER_OF_CORES, VM::core::technique(50, VM::number_of_cores)),
+    std::make_pair(VM::ACPI_TEMPERATURE, VM::core::technique(25, VM::acpi_temperature)),
+    std::make_pair(VM::PROCESSOR_ID, VM::core::technique(25, VM::processor_id)),
+    std::make_pair(VM::SYS_QEMU, VM::core::technique(70, VM::sys_qemu_dir)),
+    std::make_pair(VM::LSHW_QEMU, VM::core::technique(80, VM::lshw_qemu)),
+    std::make_pair(VM::VIRTUAL_PROCESSORS, VM::core::technique(50, VM::virtual_processors)),
+    std::make_pair(VM::HYPERV_QUERY, VM::core::technique(100, VM::hyperv_query)),
+    std::make_pair(VM::BAD_POOLS, VM::core::technique(80, VM::bad_pools)),
+    std::make_pair(VM::AMD_SEV, VM::core::technique(50, VM::amd_sev)),
+    std::make_pair(VM::NATIVE_VHD, VM::core::technique(100, VM::native_vhd)),
+    std::make_pair(VM::VIRTUAL_REGISTRY, VM::core::technique(65, VM::virtual_registry)),
+    std::make_pair(VM::FIRMWARE, VM::core::technique(90, VM::firmware_scan)),
+    std::make_pair(VM::FILE_ACCESS_HISTORY, VM::core::technique(15, VM::file_access_history)),
+    std::make_pair(VM::AUDIO, VM::core::technique(25, VM::check_audio)),
+    std::make_pair(VM::UNKNOWN_MANUFACTURER, VM::core::technique(50, VM::unknown_manufacturer)),
+    std::make_pair(VM::OSXSAVE, VM::core::technique(50, VM::osxsave)),
+    std::make_pair(VM::NSJAIL_PID, VM::core::technique(75, VM::nsjail_proc_id)),
+    std::make_pair(VM::PCI_VM, VM::core::technique(100, VM::lspci))
     // ADD NEW TECHNIQUE STRUCTURE HERE
 };
 
