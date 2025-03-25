@@ -9472,17 +9472,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     [[nodiscard]] static bool native_vhd() {
 #if (!WINDOWS)
         return false;
-#endif
-#if (_WIN32_WINNT < _WIN32_WINNT_WIN8)
-        return false;
 #else
-        BOOL isNativeVhdBoot = 0;
-
-        if (IsNativeVhdBoot(&isNativeVhdBoot)) {
-            return isNativeVhdBoot == 1;
-        }
-
-        return false;
+    #if (_WIN32_WINNT < _WIN32_WINNT_WIN8)
+            return false;
+    #else
+            BOOL isNativeVhdBoot = 0;
+            if (IsNativeVhdBoot(&isNativeVhdBoot)) {
+                return (isNativeVhdBoot == TRUE);
+            }
+            return false;
+    #endif
 #endif
     }
 
