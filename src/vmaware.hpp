@@ -25,14 +25,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 550
- * - struct for internal cpu operations        => line 743
- * - struct for internal memoization           => line 1197
- * - struct for internal utility functions     => line 1322
- * - struct for internal core components       => line 10044
- * - start of VM detection technique list      => line 2511
- * - start of public VM detection functions    => line 10708
- * - start of externally defined variables     => line 11632
+ * - enums for publicly accessible techniques  => line 551
+ * - struct for internal cpu operations        => line 744
+ * - struct for internal memoization           => line 1198
+ * - struct for internal utility functions     => line 1323
+ * - struct for internal core components       => line 10047
+ * - start of VM detection technique list      => line 2512
+ * - start of public VM detection functions    => line 10711
+ * - start of externally defined variables     => line 11634
  *
  *
  * ============================== EXAMPLE ===================================
@@ -3549,13 +3549,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        // For Windows 10/11 and newer versions
         if (version == 10) {
             debug("VBOX_DEFAULT: Windows 10 detected");
             return ((50 == disk) && (2 == ram));
         }
 
-        // Windows 11 check (version 11+)
         debug("VBOX_DEFAULT: Windows 11 detected");
         return ((80 == disk) && (4 == ram));
     #endif
@@ -3579,7 +3577,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         bool result = false;
 
         if (retv == NO_ERROR) {
-            result = (_stricmp(provider, "VirtualBox Shared Folders") == 0);
+            result = (strcmp(provider, "VirtualBox Shared Folders") == 0);
         }
 
         return result;
@@ -4654,7 +4652,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
 
 
-
     /**
      * @brief Check for sldt instruction method
      * @category Windows, x86
@@ -5068,15 +5065,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #else
         auto supMutexExist = [](const char* lpMutexName) -> bool {
-            DWORD dwError;
-            HANDLE hObject = NULL;
             if (lpMutexName == NULL) {
                 return false;
             }
 
             SetLastError(0);
-            hObject = CreateMutexA(NULL, FALSE, lpMutexName);
-            dwError = GetLastError();
+            const HANDLE hObject = CreateMutexA(NULL, FALSE, lpMutexName);
+            const DWORD dwError = GetLastError();
 
             if (hObject) {
                 CloseHandle(hObject);
@@ -6363,7 +6358,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
 
 
-    /**https://github.com/kernelwernel/VMAware/issues/294
+    /**
      * @brief Check for memory regions to detect VM-specific brands
      * @category Windows
      * @author Graham Sutherland
@@ -7761,8 +7756,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 const char* brand = entry.brand;
                 const size_t len = entry.length;
 #endif
-
-
                 if (deviceStrLen == len && wcscmp(deviceStr, name) == 0) {                  
                     return core::add(brand);;
                 }
@@ -7774,6 +7767,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
+
 
     /**
      * @brief Check for GPU capabilities related to VMs
@@ -7816,7 +7810,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (FAILED(CreateDXGIFactory(__uuidof(IDXGIFactory), reinterpret_cast<void**>(&pFactory)))) return true;
 
         IDXGIAdapter* pAdapter = nullptr;
-        // do not enumerate all adapters, otherwise it would false flag with adapters with no dedicated gpu memory like Microsoft Basic Render Driver (vid 0x1414)
+        // do not enumerate all adapters, otherwise it would false flag with adapters with no dedicated gpus like Microsoft Basic Render Driver (vid 0x1414)
         if (pFactory->EnumAdapters(0, &pAdapter) != DXGI_ERROR_NOT_FOUND) {
             DXGI_ADAPTER_DESC adapterDesc;
             if (SUCCEEDED(pAdapter->GetDesc(&adapterDesc))) {
@@ -8293,15 +8287,25 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         debug("QPC check - CPUID: ", cpuIdTime, "ns, Dummy: ", dummyTime, "ns, Ratio: ", (cpuIdTime / dummyTime));
 
         // TSC sync check across cores. Try reading the invariant TSC on two different cores to attempt to detect vCPU timers being shared
-        unsigned aux;
-        SetThreadAffinityMask(GetCurrentThread(), 1);
-        u64 tsc_core1 = __rdtscp(&aux);  // Core 1 TSC
-        SetThreadAffinityMask(GetCurrentThread(), 2);
-        u64 tsc_core2 = __rdtscp(&aux);  // Core 2 TSC
-        SetThreadAffinityMask(GetCurrentThread(), old_mask);
-
-        const bool tsc_sync_check = std::llabs(static_cast<long long>(tsc_core2 - tsc_core1)) > 10000000LL;
-        debug("TSC sync check - Core1: ", tsc_core1, " Core2: ", tsc_core2, " Diff: ", tsc_core2 - tsc_core1);
+        const bool tsc_sync_check = [&]() noexcept -> bool {
+            u64 tsc_core1 = 0;
+            u64 tsc_core2 = 0;
+            __try { // lambda is necessary to use __try in functions that require object unwinding while still avoiding the creation of any external helper functions
+                unsigned int aux = 0;
+                SetThreadAffinityMask(GetCurrentThread(), 1);
+                tsc_core1 = __rdtscp(&aux); // Core 1 TSC, the use of a serializing variant for the instruction stream is done on purpose
+                SetThreadAffinityMask(GetCurrentThread(), 2);
+                tsc_core2 = __rdtscp(&aux); // Core 2 TSC
+                SetThreadAffinityMask(GetCurrentThread(), old_mask);
+            }
+            __except (GetExceptionCode() == EXCEPTION_ILLEGAL_INSTRUCTION
+                ? EXCEPTION_EXECUTE_HANDLER
+                : EXCEPTION_CONTINUE_SEARCH) {
+                return true; // RDTSCP is widely supported on real hardware
+            }
+            debug("TSC sync check - Core1: ", tsc_core1, " Core2: ", tsc_core2, " Diff: ", tsc_core2 - tsc_core1);
+            return std::llabs(static_cast<long long>(tsc_core2 - tsc_core1)) > 10000000LL;
+            }();
 
         return sleep_variance_detected || spammer_detected || qpc_check || tsc_sync_check;
     #else
@@ -8799,9 +8803,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::AMD_SEV
 	 */
 	[[nodiscard]] static bool amd_sev() {
-#if (!x86 && !LINUX && !APPLE)
-	    return false;
-#else
+#if (x86 && (LINUX || APPLE))
 	    if (!cpu::is_amd()) {
 	        return false;
 	    }
@@ -8819,8 +8821,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 	    
 	    u32 eax, unused = 0;
 	    cpu::cpuid(eax, unused, unused, unused, encrypted_memory_capability);
-	
-        
+	      
 	    if (!(eax & (1 << 1))) {
 	        return false;
 	    }       
@@ -8848,6 +8849,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 	    else if (result & 1) { return core::add(brands::AMD_SEV); }
 	
 	    return false;
+#else
+        return false;
 #endif
 	}
 
@@ -9826,27 +9829,27 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #else
         /*
-        bool comInitialized = SUCCEEDED(CoInitializeEx(nullptr, COINIT_MULTITHREADED));
+            bool comInitialized = SUCCEEDED(CoInitializeEx(nullptr, COINIT_MULTITHREADED));
 
-        IMMDeviceEnumerator* enumerator = nullptr;
-        HRESULT hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr,
-            CLSCTX_ALL, __uuidof(IMMDeviceEnumerator), reinterpret_cast<void**>(&enumerator));
+            IMMDeviceEnumerator* enumerator = nullptr;
+            HRESULT hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr,
+                CLSCTX_ALL, __uuidof(IMMDeviceEnumerator), reinterpret_cast<void**>(&enumerator));
 
-        if (FAILED(hr)) {
+            if (FAILED(hr)) {
+                if (comInitialized) CoUninitialize();
+                return false;
+            }
+
+            IMMDevice* device = nullptr;
+            hr = enumerator->GetDefaultAudioEndpoint(eRender, eConsole, &device);
+
+            bool result = SUCCEEDED(hr);
+
+            if (device) device->Release();
+            enumerator->Release();
             if (comInitialized) CoUninitialize();
-            return false;
-        }
 
-        IMMDevice* device = nullptr;
-        hr = enumerator->GetDefaultAudioEndpoint(eRender, eConsole, &device);
-
-        bool result = SUCCEEDED(hr);
-
-        if (device) device->Release();
-        enumerator->Release();
-        if (comInitialized) CoUninitialize();
-
-        return !result;
+            return !result;
         */
         return (waveOutGetNumDevs() == 0);
 #endif
@@ -10022,7 +10025,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
-
 
     // ADD NEW TECHNIQUE FUNCTION HERE
 
@@ -11428,7 +11430,7 @@ public: // START OF PUBLIC FUNCTIONS
             { brands::VMWARE_ESX, "Hypervisor (type 1)" },
             { brands::ACRN, "Hypervisor (type 1)" },
             { brands::QNX, "Hypervisor (type 1)" },
-            { brands::HYPERV, "Hypervisor (type 1)" },
+            { brands::HYPERV, "Hypervisor (type 2)" }, // to clarify you're running under a Hyper-V guest VM
             { brands::AZURE_HYPERV, "Hypervisor (type 1)" },
             { brands::NANOVISOR, "Hypervisor (type 1)" },
             { brands::KVM, "Hypervisor (type 1)" },
@@ -11444,6 +11446,7 @@ public: // START OF PUBLIC FUNCTIONS
             { brands::AWS_NITRO, "Hypervisor (type 1)" },
             { brands::LKVM, "Hypervisor (type 1)" },
             { brands::NOIRVISOR, "Hypervisor (type 1)" },
+            { brands::WSL, "Hypervisor (Type 1)" }, // Type 1-derived lightweight VM system
 
             // type 2
             { brands::BHYVE, "Hypervisor (type 2)" },
@@ -11457,7 +11460,6 @@ public: // START OF PUBLIC FUNCTIONS
             { brands::VPC, "Hypervisor (type 2)" },
             { brands::NVMM, "Hypervisor (type 2)" },
             { brands::BSD_VMM, "Hypervisor (type 2)" },
-            { brands::HYPERV, "Hypervisor (type 2)" },
             { brands::HYPERV_VPC, "Hypervisor (type 2)" },
 
             // sandbox
@@ -11486,13 +11488,12 @@ public: // START OF PUBLIC FUNCTIONS
             { brands::INTEL_TDX, "Trusted Domain" },
             { brands::APPLE_VZ, "Unknown" },
             { brands::UML, "Paravirtualised/Hypervisor (type 2)" },
-            { brands::WSL, "Hybrid Hyper-V (type 1 and 2)" }, // debatable tbh
             { brands::AMD_SEV, "VM encryptor" },
             { brands::AMD_SEV_ES, "VM encryptor" },
             { brands::AMD_SEV_SNP, "VM encryptor" },
             { brands::GCE, "Cloud VM service" },
             { brands::NSJAIL, "Process isolator" },
-            { brands::HYPERV_ARTIFACT, "Unknown" },
+            { brands::HYPERV_ARTIFACT, "Unknown" }, // This refers to the type 1 hypervisor where Windows normally runs under, we put "Unknown" to clarify you're not running under a VM if this is detected
             { brands::NULL_BRAND, "Unknown" }
         };
 
