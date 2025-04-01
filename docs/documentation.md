@@ -534,6 +534,9 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::OSXSAVE` | Check if running xgetbv in the XCR0 extended feature register triggers an exception | Windows | 50% |  |  |  |  |
 | `VM::NSJAIL_PID` | Check if process status matches with nsjail patterns with PID anomalies | Linux | 75% |  |  |  |  |
 | `VM::PCI_VM` | Check for PCIe bridge names for known VM keywords and brands | Linux | 100% |  |  |  |  |
+| `VM::BOCHS_VM_STRINGS` | Check ACPI tables for BOCHS and BXPC strings | Windows, Linux | 100% | Admin |  |  |  |
+| `VM::VBOX_VM_STRINGS` | Check ACPI tables for VBOX, vbox and VirtualBox strings | Windows, Linux | 100% | Admin |  |  |  |
+| `VM::WAET_VM_STRINGS` | Check ACPI tables for WAET string | Windows | 100% |  |  |  |  |
 <!-- ADD TECHNIQUE DETAILS HERE -->
 
 <br>

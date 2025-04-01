@@ -662,6 +662,9 @@ public:
         OSXSAVE,
         NSJAIL_PID,
         PCI_VM,
+        BOCHS_ACPI_STRINGS,
+        VBOX_ACPI_STRINGS,
+        WAET_ACPI_STRINGS,
         // ADD NEW TECHNIQUE ENUM NAME HERE
 
         // special flags, different to settings
@@ -10042,6 +10045,203 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
 
+    /**
+	 * @brief Check for known VM strings in ACPI tables
+	 * @category Windows, Linux
+     * @author dmfrpro
+     * @note Idea from ayoubfaouzi
+     * @link https://github.com/ayoubfaouzi/al-khaser/commit/135e50f3135d105910a3037f5bef534413910f96
+     */
+    [[nodiscard]] static bool _acpi_strings(const char *string) {
+#if (APPLE)
+        return false;
+#elif (WINDOWS)
+        PDWORD table_names = static_cast<PDWORD>(calloc(0x1000, 1));
+
+        if (table_names == NULL) {
+            debug("ACPI_STRINGS: failed to allocate memory for table_names");
+            return false;
+        }
+
+        DWORD sig = static_cast<DWORD>('ACPI');
+        DWORD table_size = EnumSystemFirmwareTables(sig, table_names, 0x1000);
+
+        if (table_size < 4) {
+            debug("ACPI_STRINGS: no ACPI tables found");
+            return true;
+        }
+
+        for (auto i = 0; i < table_size / 4; ++i) {
+            DWORD table_size = 0;
+            PBYTE firmware_table = static_cast<PBYTE>(calloc(0x1000, 1));
+
+            if (firmware_table == NULL) {
+                debug("ACPI_STRINGS: failed to allocate memory for firmware_table");
+                return false;
+            }
+
+            DWORD actual_table_size = GetSystemFirmwareTable(sig, table_names[i], firmware_table, table_size);
+
+            if (actual_table_size == 0) {
+                debug("ACPI_STRINGS: actual_table_size is 0");
+                free(firmware_table);
+                return false;
+            } else if (actual_table_size > table_size) {
+                PBYTE firmware_table_realloc = static_cast<PBYTE>(realloc(firmware_table, actual_table_size));
+
+                if (firmware_table_realloc == NULL) {
+                    debug("ACPI_STRINGS: failed to allocate memory for firmware_table_realloc");
+                    free(firmware_table);
+                    return false;
+                }
+
+                firmware_table = firmware_table_realloc;
+                table_size = actual_table_size;
+
+                actual_table_size = GetSystemFirmwareTable(sig, table_names[i], firmware_table, table_size);
+
+                if (actual_table_size == 0) {
+                    debug("ACPI_STRINGS: actual_table_size is 0");
+                    free(firmware_table);
+                    return false;
+                }
+
+                table_size = actual_table_size;
+            }
+
+            auto str_len = strlen((char *) string);
+            for (auto j = 0; j < table_size; ++j) {
+                if (memcmp(firmware_table + j, (void *) string, str_len) == 0) {
+                    debug("ACPI_STRINGS: found ", string);
+                    free(firmware_table);
+                    return true;
+                };
+            }
+
+            free(firmware_table);
+        }
+#elif (LINUX)
+    DIR* dir = opendir("/sys/firmware/acpi/tables/");
+    if (!dir) {
+        debug("ACPI_STRINGS: could not open ACPI tables directory");
+        return false;
+    }
+
+    auto str_len = strlen(string);
+    struct dirent* entry;
+
+    while ((entry = readdir(dir)) != NULL) {
+        // Skip "." and ".." entries
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+            continue;
+        }
+
+        // Build full path to the ACPI table
+        char path[PATH_MAX];
+        snprintf(path, sizeof(path), "/sys/firmware/acpi/tables/%s", entry->d_name);
+
+        struct stat statbuf;
+        if (stat(path, &statbuf) != 0) {
+            debug("ACPI_STRINGS: skipped /sys/firmware/acpi/tables/", entry->d_name);
+            continue;
+        }
+        
+        if (S_ISDIR(statbuf.st_mode)) {
+            debug("ACPI_STRINGS: skipped /sys/firmware/acpi/tables/", entry->d_name);
+            continue;
+        }
+
+        // Open the table file
+        FILE* file = fopen(path, "rb");
+        if (!file) {
+            debug("ACPI_STRINGS: could not open ACPI table ", entry->d_name);
+            continue;
+        }
+
+        // Get file size
+        fseek(file, 0, SEEK_END);
+        long file_size = ftell(file);
+        fseek(file, 0, SEEK_SET);
+
+        // Read file content
+        char* buffer = static_cast<char*>(malloc(file_size));
+        if (!buffer) {
+            debug("ACPI_STRINGS: failed to allocate memory for buffer");
+            fclose(file);
+            continue;
+        }
+
+        if (fread(buffer, 1, file_size, file) != static_cast<size_t>(file_size)) {
+            debug("ACPI_STRINGS: failed to read ACPI table ", entry->d_name);
+            free(buffer);
+            fclose(file);
+            continue;
+        }
+
+        // Search for the string in the table
+        for (long j = 0; j < file_size - str_len; ++j) {
+            if (memcmp(buffer + j, string, str_len) == 0) {
+                debug("ACPI_STRINGS: found ", string, " in ", entry->d_name);
+                free(buffer);
+                fclose(file);
+                closedir(dir);
+                return true;
+            }
+        }
+
+        free(buffer);
+        fclose(file);
+    }
+
+    closedir(dir);
+#endif
+        return false;
+    }
+
+    /**
+	 * @brief Check for Bochs strings in ACPI tables
+	 * @category Windows, Linux
+     * @author dmfrpro
+     * @note Idea from ayoubfaouzi
+     * @link https://github.com/ayoubfaouzi/al-khaser/commit/135e50f3135d105910a3037f5bef534413910f96
+     * @implements VM::BOCHS_ACPI_STRINGS
+     */
+    [[nodiscard]] static bool bochs_acpi_strings() {
+        if (_acpi_strings("BOCHS") || _acpi_strings("BXPC")) {
+            return core::add(brands::BOCHS);
+        } else {
+            return false;
+        }
+    }
+
+    /**
+	 * @brief Check for Bochs strings in ACPI tables
+	 * @category Windows, Linux
+     * @author dmfrpro
+     * @note Idea from ayoubfaouzi
+     * @link https://github.com/ayoubfaouzi/al-khaser/commit/135e50f3135d105910a3037f5bef534413910f96
+     * @implements VM::VBOX_ACPI_STRINGS
+     */
+    [[nodiscard]] static bool vbox_acpi_strings() {
+        if (_acpi_strings("VBOX") || _acpi_strings("vbox") || _acpi_strings("VirtualBox")) {
+            return core::add(brands::VBOX);
+        } else {
+            return false;
+        }
+    }
+
+    /**
+	 * @brief Check for Bochs strings in ACPI tables
+	 * @category Windows, Linux
+     * @author dmfrpro
+     * @link https://github.com/ayoubfaouzi/al-khaser/commit/0ff4088b14afdc117aa6f710bcdf362eb238d33b
+     * @link https://download.microsoft.com/download/7/E/7/7E7662CF-CBEA-470B-A97E-CE7CE0D98DC2/WAET.docx
+     * @implements VM::WAET_ACPI_STRINGS
+     */
+    [[nodiscard]] static bool waet_acpi_strings() {
+        return _acpi_strings("WAET");
+    }
+
     // ADD NEW TECHNIQUE FUNCTION HERE
 
 
@@ -11326,6 +11526,9 @@ public: // START OF PUBLIC FUNCTIONS
             case OSXSAVE: return "OSXSAVE";
             case NSJAIL_PID: return "NSJAIL_PID";
             case PCI_VM: return "PCI_VM";
+            case BOCHS_ACPI_STRINGS: return "BOCHS_ACPI_STRINGS";
+            case VBOX_ACPI_STRINGS: return "VBOX_ACPI_STRINGS";
+            case WAET_ACPI_STRINGS: return "WAET_ACPI_STRINGS";
             // ADD NEW CASE HERE FOR NEW TECHNIQUE
             default: return "Unknown flag";
         }
@@ -11888,7 +12091,10 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     std::make_pair(VM::UNKNOWN_MANUFACTURER, VM::core::technique(50, VM::unknown_manufacturer)),
     std::make_pair(VM::OSXSAVE, VM::core::technique(50, VM::osxsave)),
     std::make_pair(VM::NSJAIL_PID, VM::core::technique(75, VM::nsjail_proc_id)),
-    std::make_pair(VM::PCI_VM, VM::core::technique(100, VM::lspci))
+    std::make_pair(VM::PCI_VM, VM::core::technique(100, VM::lspci)),
+    std::make_pair(VM::BOCHS_ACPI_STRINGS, VM::core::technique(100, VM::bochs_acpi_strings)),
+    std::make_pair(VM::VBOX_ACPI_STRINGS, VM::core::technique(100, VM::vbox_acpi_strings)),
+    std::make_pair(VM::WAET_ACPI_STRINGS, VM::core::technique(100, VM::waet_acpi_strings)),
     // ADD NEW TECHNIQUE STRUCTURE HERE
 };
 

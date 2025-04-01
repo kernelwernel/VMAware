@@ -389,6 +389,8 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::UNKNOWN_MANUFACTURER:
             case VM::NSJAIL_PID:
             case VM::PCI_VM:
+            case VM::BOCHS_ACPI_STRINGS:
+            case VM::VBOX_ACPI_STRINGS:
             // ADD LINUX FLAG
             return false;
             default: return true;
@@ -469,6 +471,9 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::FIRMWARE:
             case VM::UNKNOWN_MANUFACTURER:
             case VM::OSXSAVE:
+            case VM::BOCHS_ACPI_STRINGS:
+            case VM::VBOX_ACPI_STRINGS:
+            case VM::WAET_ACPI_STRINGS:
             // ADD WINDOWS FLAG
             return false;
             default: return true;
@@ -994,6 +999,9 @@ void general() {
     checker(VM::OSXSAVE, "xgetbv");
     checker(VM::NSJAIL_PID, "nsjail PID");
     checker(VM::PCI_VM, "PCIe bridge ports");
+    checker(VM::BOCHS_ACPI_STRINGS, "Bochs ACPI strings");
+    checker(VM::VBOX_ACPI_STRINGS, "VirtualBox ACPI strings");
+    checker(VM::WAET_ACPI_STRINGS, "WAET ACPI presence");
     // ADD NEW TECHNIQUE CHECKER HERE
 
     std::printf("\n");
