@@ -4,7 +4,7 @@
  * ██║   ██║██╔████╔██║███████║██║ █╗ ██║███████║██████╔╝█████╗
  * ╚██╗ ██╔╝██║╚██╔╝██║██╔══██║██║███╗██║██╔══██║██╔══██╗██╔══╝
  *  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
- *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ 2.1.1 (March 2025)
+ *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ 2.1.1 (April 2025)
  *
  *  C++ VM detection library
  *
@@ -47,14 +47,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 573 
+ * - enums for publicly accessible techniques  => line 573
  * - struct for internal cpu operations        => line 759
  * - struct for internal memoization           => line 1214
  * - struct for internal utility functions     => line 1340
- * - struct for internal core components       => line 9853
- * - start of VM detection technique list      => line 2531
- * - start of public VM detection functions    => line 10528
- * - start of externally defined variables     => line 11453
+ * - struct for internal core components       => line 9869
+ * - start of VM detection technique list      => line 2547
+ * - start of public VM detection functions    => line 10544
+ * - start of externally defined variables     => line 11469
  *
  *
  * ============================== EXAMPLE ===================================
@@ -1909,6 +1909,7 @@ private:
          * @returns hyperx_state enum indicating the detected state:
          *          - HYPERV_ARTIFACT_VM for host with Hyper-V enabled
          *          - HYPERV_REAL_VM for real Hyper-V VM
+         *          - HYPERV_ENLIGHTENMENT for QEMU with Hyper-V enlightenments
          *          - HYPERV_UNKNOWN_VM for unknown/undetected state
          */
         [[nodiscard]] static hyperx_state hyper_x() {
@@ -1920,16 +1921,25 @@ private:
                 return memo::hyperx::fetch();
             }
 
+            // check if hypervisor feature bit in CPUID eax bit 31 is enabled (always false for physical CPUs)
+            auto is_hyperv_present = []() -> bool {
+                u32 unused, ecx = 0;
+                cpu::cpuid(unused, unused, ecx, unused, 1);
+
+                return (ecx & (1 << 31));
+                };
+
             // https://learn.microsoft.com/en-us/virtualization/hyper-v-on-windows/tlfs/feature-discovery
             auto is_root_partition = []() -> bool {
                 u32 ebx, unused = 0;
                 cpu::cpuid(unused, ebx, unused, unused, 0x40000003);
                 const bool result = (ebx & 1);
 
+#ifdef __VMAWARE_DEBUG__
                 if (result) {
                     core_debug("HYPER_X: root partition returned true");
                 }
-
+#endif
                 return result;
                 };
 
@@ -1942,13 +1952,9 @@ private:
               *
               * On the other hand, in bare-metal systems running Hyper-V, the EAX value is 12.
               * This higher value corresponds to the root partition, which has more privileges and control over virtualization resources compared to child partitions.
-              * The root partition is responsible for managing other child partitions and interacts more closely with the hardware.
-              * The EAX value of 12 indicates that additional CPUID leaves (up to 12) are available to the root partition, which exposes more functionality than in a guest VM.
             */
-
-            // check if eax is either 11 or 12 after running VM::HYPERVISOR_STR technique
             auto eax = []() -> u32 {
-                char out[sizeof(int32_t) * 4 + 1] = { 0 }; // e*x size + number of e*x registers + null terminator
+                char out[sizeof(int32_t) * 4 + 1] = { 0 };
                 cpu::cpuid((int*)out, cpu::leaf::hypervisor);
 
                 const u32 eax = static_cast<u32>(out[0]);
@@ -1958,28 +1964,38 @@ private:
 
             hyperx_state state;
 
-            if (eax() == 11) {
-                core_debug("HYPER_X: added Hyper-V real VM");
-                core::add(brands::HYPERV);
-                state = HYPERV_REAL_VM;
-            }
-            else if (eax() == 12 || is_root_partition()) {
-                const std::string brand_str = cpu::cpu_manufacturer(0x40000001);
-
-                if (util::find(brand_str, "KVM")) {
-                    core_debug("HYPER_X: added Hyper-V Enlightenments");
-                    core::add(brands::QEMU_KVM_HYPERV);
-                    state = HYPERV_ENLIGHTENMENT;
+            if (!is_root_partition()) {
+                if (eax() == 11 && is_hyperv_present()) {
+                    // Windows machine running under Hyper-V type 2
+                    core_debug("HYPER_X: added Hyper-V real VM");
+                    core::add(brands::HYPERV);
+                    state = HYPERV_REAL_VM;
                 }
                 else {
-                    core_debug("HYPER_X: added Hyper-V artifact VM");
-                    core::add(brands::HYPERV_ARTIFACT);
-                    state = HYPERV_ARTIFACT_VM;
+                    core_debug("HYPER_X: none found");
+                    state = HYPERV_UNKNOWN_VM;
                 }
             }
             else {
-                core_debug("HYPER_X: none detected");
-                state = HYPERV_UNKNOWN_VM;
+                if (eax() == 12) {
+                    const std::string brand_str = cpu::cpu_manufacturer(0x40000001);
+
+                    if (util::find(brand_str, "KVM")) {
+                        core_debug("HYPER_X: added Hyper-V Enlightenments");
+                        core::add(brands::QEMU_KVM_HYPERV);
+                        state = HYPERV_ENLIGHTENMENT;
+                    }
+                    else {
+                        // Windows machine running under Hyper-V type 1
+                        core_debug("HYPER_X: added Hyper-V artifact VM");
+                        core::add(brands::HYPERV_ARTIFACT);
+                        state = HYPERV_ARTIFACT_VM;
+                    }
+                }
+                else {
+                    core_debug("HYPER_X: none found");
+                    state = HYPERV_UNKNOWN_VM;
+                }
             }
 
             memo::hyperx::store(state);
@@ -8088,7 +8104,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         QueryPerformanceCounter(&endQPC);
         LONGLONG dummyTime = endQPC.QuadPart - startQPC.QuadPart;
 
-        const bool qpc_check = (dummyTime != 0) && ((cpuIdTime / dummyTime) > 1500);
+        const bool qpc_check = (dummyTime != 0) && ((cpuIdTime / dummyTime) > 3000);
         debug("QPC check - CPUID: ", cpuIdTime, "ns, Dummy: ", dummyTime, "ns, Ratio: ", (cpuIdTime / dummyTime));
 
         // TSC sync check across cores. Try reading the invariant TSC on two different cores to attempt to detect vCPU timers being shared
@@ -8109,7 +8125,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return true; // RDTSCP is widely supported on real hardware
             }
             debug("TSC sync check - Core1: ", tsc_core1, " Core2: ", tsc_core2, " Diff: ", tsc_core2 - tsc_core1);
-            return std::llabs(static_cast<long long>(tsc_core2 - tsc_core1)) > 10000000LL;
+            return std::llabs(static_cast<long long>(tsc_core2 - tsc_core1)) > 1000000000LL;
             }();
 
         return sleep_variance_detected || spammer_detected || qpc_check || tsc_sync_check;
@@ -11687,7 +11703,6 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     std::make_pair(VM::PCI_VM, VM::core::technique(100, VM::lspci))
     // ADD NEW TECHNIQUE STRUCTURE HERE
 };
-
 
 // the reason why the map isn't directly initialized is due to potential 
 // SDK errors on windows combined with older C++ standards
