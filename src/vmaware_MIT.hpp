@@ -47,14 +47,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 573
- * - struct for internal cpu operations        => line 759
- * - struct for internal memoization           => line 1214
- * - struct for internal utility functions     => line 1340
- * - struct for internal core components       => line 9869
- * - start of VM detection technique list      => line 2547
- * - start of public VM detection functions    => line 10544
- * - start of externally defined variables     => line 11469
+ * - enums for publicly accessible techniques  => line 575
+ * - struct for internal cpu operations        => line 761
+ * - struct for internal memoization           => line 1216
+ * - struct for internal utility functions     => line 1342
+ * - struct for internal core components       => line 9861
+ * - start of VM detection technique list      => line 2540
+ * - start of public VM detection functions    => line 10536
+ * - start of externally defined variables     => line 11461
  *
  *
  * ============================== EXAMPLE ===================================
@@ -206,6 +206,7 @@
 #pragma once
 
 #if defined(_WIN32) || defined(_WIN64)
+#define WIN32_LEAN_AND_MEAN
 #define WINDOWS 1
 #define LINUX 0
 #define APPLE 0
@@ -1950,9 +1951,6 @@ private:
               * These child partitions have limited privileges and access to hypervisor resources,
               * which is reflected in the maximum input value for hypervisor CPUID information as 11.
               * Essentially, it indicates that the hypervisor is managing the VM and that the VM is not running directly on hardware but rather in a virtualized environment.
-              *
-              * On the other hand, in bare-metal systems running Hyper-V, the EAX value is 12.
-              * This higher value corresponds to the root partition, which has more privileges and control over virtualization resources compared to child partitions.
             */
             auto eax = []() -> u32 {
                 char out[sizeof(int32_t) * 4 + 1] = { 0 };
@@ -1978,24 +1976,18 @@ private:
                 }
             }
             else {
-                if (eax() == 12) {
-                    const std::string brand_str = cpu::cpu_manufacturer(0x40000001);
+                const std::string brand_str = cpu::cpu_manufacturer(0x40000001);
 
-                    if (util::find(brand_str, "KVM")) {
-                        core_debug("HYPER_X: added Hyper-V Enlightenments");
-                        core::add(brands::QEMU_KVM_HYPERV);
-                        state = HYPERV_ENLIGHTENMENT;
-                    }
-                    else {
-                        // Windows machine running under Hyper-V type 1
-                        core_debug("HYPER_X: added Hyper-V artifact VM");
-                        core::add(brands::HYPERV_ARTIFACT);
-                        state = HYPERV_ARTIFACT_VM;
-                    }
+                if (util::find(brand_str, "KVM")) {
+                    core_debug("HYPER_X: added Hyper-V Enlightenments");
+                    core::add(brands::QEMU_KVM_HYPERV);
+                    state = HYPERV_ENLIGHTENMENT;
                 }
                 else {
-                    core_debug("HYPER_X: none found");
-                    state = HYPERV_UNKNOWN_VM;
+                    // Windows machine running under Hyper-V type 1
+                    core_debug("HYPER_X: added Hyper-V artifact VM");
+                    core::add(brands::HYPERV_ARTIFACT);
+                    state = HYPERV_ARTIFACT_VM;
                 }
             }
 
@@ -2651,7 +2643,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!x86)
         return false;
 #else
-
         if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
             return false;
         }
