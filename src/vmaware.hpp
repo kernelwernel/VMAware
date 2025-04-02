@@ -25,14 +25,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 551
- * - struct for internal cpu operations        => line 744
- * - struct for internal memoization           => line 1198
- * - struct for internal utility functions     => line 1323
- * - struct for internal core components       => line 10057
- * - start of VM detection technique list      => line 2522
- * - start of public VM detection functions    => line 10721
- * - start of externally defined variables     => line 11644
+ * - enums for publicly accessible techniques  => line 553
+ * - struct for internal cpu operations        => line 746
+ * - struct for internal memoization           => line 1200
+ * - struct for internal utility functions     => line 1325
+ * - struct for internal core components       => line 10055
+ * - start of VM detection technique list      => line 2521
+ * - start of public VM detection functions    => line 10719
+ * - start of externally defined variables     => line 11642
  *
  *
  * ============================== EXAMPLE ===================================
@@ -184,6 +184,7 @@
 #pragma once
 
 #if defined(_WIN32) || defined(_WIN64)
+#define WIN32_LEAN_AND_MEAN
 #define WINDOWS 1
 #define LINUX 0
 #define APPLE 0
@@ -1931,9 +1932,6 @@ private:
               * These child partitions have limited privileges and access to hypervisor resources, 
               * which is reflected in the maximum input value for hypervisor CPUID information as 11. 
               * Essentially, it indicates that the hypervisor is managing the VM and that the VM is not running directly on hardware but rather in a virtualized environment.
-              * 
-              * On the other hand, in bare-metal systems running Hyper-V, the EAX value is 12. 
-              * This higher value corresponds to the root partition, which has more privileges and control over virtualization resources compared to child partitions. 
             */
             auto eax = []() -> u32 {
                 char out[sizeof(int32_t) * 4 + 1] = { 0 }; 
@@ -2626,7 +2624,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!x86)
         return false;
 #else
-
         if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
             return false;
         }

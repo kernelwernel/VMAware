@@ -47,14 +47,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 573
- * - struct for internal cpu operations        => line 759
- * - struct for internal memoization           => line 1214
- * - struct for internal utility functions     => line 1340
- * - struct for internal core components       => line 9863
- * - start of VM detection technique list      => line 2541
- * - start of public VM detection functions    => line 10538
- * - start of externally defined variables     => line 11463
+ * - enums for publicly accessible techniques  => line 575
+ * - struct for internal cpu operations        => line 761
+ * - struct for internal memoization           => line 1216
+ * - struct for internal utility functions     => line 1342
+ * - struct for internal core components       => line 9861
+ * - start of VM detection technique list      => line 2540
+ * - start of public VM detection functions    => line 10536
+ * - start of externally defined variables     => line 11461
  *
  *
  * ============================== EXAMPLE ===================================
@@ -206,6 +206,7 @@
 #pragma once
 
 #if defined(_WIN32) || defined(_WIN64)
+#define WIN32_LEAN_AND_MEAN
 #define WINDOWS 1
 #define LINUX 0
 #define APPLE 0
@@ -2642,7 +2643,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!x86)
         return false;
 #else
-
         if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
             return false;
         }
