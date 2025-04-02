@@ -29,10 +29,10 @@
  * - struct for internal cpu operations        => line 744
  * - struct for internal memoization           => line 1198
  * - struct for internal utility functions     => line 1323
- * - struct for internal core components       => line 10063
- * - start of VM detection technique list      => line 2528
- * - start of public VM detection functions    => line 10727
- * - start of externally defined variables     => line 11650
+ * - struct for internal core components       => line 10057
+ * - start of VM detection technique list      => line 2522
+ * - start of public VM detection functions    => line 10721
+ * - start of externally defined variables     => line 11644
  *
  *
  * ============================== EXAMPLE ===================================
@@ -1958,24 +1958,18 @@ private:
                 }
             }
             else {
-                if (eax() == 12) {
-                    const std::string brand_str = cpu::cpu_manufacturer(0x40000001);
+                const std::string brand_str = cpu::cpu_manufacturer(0x40000001);
 
-                    if (util::find(brand_str, "KVM")) {
-                        core_debug("HYPER_X: added Hyper-V Enlightenments");
-                        core::add(brands::QEMU_KVM_HYPERV);
-                        state = HYPERV_ENLIGHTENMENT;
-                    }
-                    else {
-                        // Windows machine running under Hyper-V type 1
-                        core_debug("HYPER_X: added Hyper-V artifact VM");
-                        core::add(brands::HYPERV_ARTIFACT);
-                        state = HYPERV_ARTIFACT_VM;
-                    }   
+                if (util::find(brand_str, "KVM")) {
+                    core_debug("HYPER_X: added Hyper-V Enlightenments");
+                    core::add(brands::QEMU_KVM_HYPERV);
+                    state = HYPERV_ENLIGHTENMENT;
                 }
                 else {
-                    core_debug("HYPER_X: none found");
-                    state = HYPERV_UNKNOWN_VM;
+                    // Windows machine running under Hyper-V type 1
+                    core_debug("HYPER_X: added Hyper-V artifact VM");
+                    core::add(brands::HYPERV_ARTIFACT);
+                    state = HYPERV_ARTIFACT_VM;
                 }
             }
 
