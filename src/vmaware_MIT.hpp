@@ -18,6 +18,7 @@
  *      - Georgii Gennadev (https://github.com/D00Movenok)
  *      - utoshu (https://github.com/utoshu)
  *      - Jyd (https://github.com/jyd519)
+ *      - dmfrpro (https://github.com/dmfrpro)
  *  - Repository: https://github.com/kernelwernel/VMAware
  *  - Docs: https://github.com/kernelwernel/VMAware/docs/documentation.md
  *  - Full credits: https://github.com/kernelwernel/VMAware#credits-and-contributors-%EF%B8%8F
@@ -47,14 +48,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 575
- * - struct for internal cpu operations        => line 761
- * - struct for internal memoization           => line 1216
- * - struct for internal utility functions     => line 1342
- * - struct for internal core components       => line 9861
- * - start of VM detection technique list      => line 2540
- * - start of public VM detection functions    => line 10536
- * - start of externally defined variables     => line 11461
+ * - enums for publicly accessible techniques  => line 576
+ * - struct for internal cpu operations        => line 762
+ * - struct for internal memoization           => line 1217
+ * - struct for internal utility functions     => line 1343
+ * - struct for internal core components       => line 10001
+ * - start of VM detection technique list      => line 2541
+ * - start of public VM detection functions    => line 10676
+ * - start of externally defined variables     => line 11600
  *
  *
  * ============================== EXAMPLE ===================================
@@ -2550,7 +2551,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return (
             cpu::vmid_template(0) ||
             cpu::vmid_template(cpu::leaf::hypervisor) || // 0x40000000
-            cpu::vmid_template(cpu::leaf::hypervisor + 1) || // 0x40000001 to account for some edge-cases
             cpu::vmid_template(cpu::leaf::hypervisor + 0x100) // 0x40000100
             );
 #endif
@@ -9339,8 +9339,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         } OBJECT_NAME_INFORMATION, * POBJECT_NAME_INFORMATION;
 #pragma warning(default : 4459)
 
-        typedef NTSTATUS(NTAPI* PNtOpenKey)(PHANDLE, ACCESS_MASK, POBJECT_ATTRIBUTES);
-        typedef NTSTATUS(NTAPI* PNtQueryObject)(HANDLE, OBJECT_INFORMATION_CLASS, PVOID, ULONG, PULONG);
+        typedef NTSTATUS(__stdcall* PNtOpenKey)(PHANDLE, ACCESS_MASK, POBJECT_ATTRIBUTES);
+        typedef NTSTATUS(__stdcall* PNtQueryObject)(HANDLE, OBJECT_INFORMATION_CLASS, PVOID, ULONG, PULONG);
 
         const HMODULE hModule = GetModuleHandleA("ntdll.dll");
         if (!hModule)
@@ -9400,13 +9400,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Checks for VM signatures in firmware
      * @category Windows
-     * @note Idea of detecting VMwareHardenerLoader was made by MegaMax
+     * @note Idea of detecting VMwareHardenerLoader was made by MegaMax, detection for Bochs, VirtualBox and WAET was made by dmfrpro
+     * @credits MegaMax, dmfrpro
      * @implements VM::FIRMWARE
      */
     [[nodiscard]] static bool firmware_scan() {
-#if (!WINDOWS)
-        return false;
-#else
+#if (WINDOWS)
 #pragma warning (disable: 4459)
         typedef enum _SYSTEM_INFORMATION_CLASS {
             SystemFirmwareTableInformation = 76
@@ -9420,7 +9419,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             UCHAR TableBuffer[1];
         } SYSTEM_FIRMWARE_TABLE_INFORMATION, * PSYSTEM_FIRMWARE_TABLE_INFORMATION;
 #pragma warning (default : 4459)
-        typedef NTSTATUS(NTAPI* PNtQuerySystemInformation)(ULONG, PVOID, ULONG, PULONG);
+        typedef NTSTATUS(__stdcall* PNtQuerySystemInformation)(ULONG, PVOID, ULONG, PULONG);
         constexpr ULONG STATUS_BUFFER_TOO_SMALL = 0xC0000023;
         constexpr DWORD ACPI_SIG = 'ACPI';
         constexpr DWORD RSMB_SIG = 'RSMB';
@@ -9441,32 +9440,30 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         constexpr const char* targets[] = {
             "Parallels Software International", "Parallels(R)", "innotek",
             "Oracle", "VirtualBox", "VS2005R2", "VMware, Inc.",
-            "VMware", "S3 Corp.", "Virtual Machine", "Qemu"
+            "VMware", "S3 Corp.", "Virtual Machine", "Qemu", "vbox",
+            "WAET", "BOCHS", "BXPC"
         };
 
         auto check_firmware_table = [&](DWORD signature, ULONG tableID) -> bool {
             ULONG reqSize = 0;
-            PSYSTEM_FIRMWARE_TABLE_INFORMATION info = nullptr;
-            bool detected = false;
-
-            info = (PSYSTEM_FIRMWARE_TABLE_INFORMATION)malloc(sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION));
+            // First call to determine the required buffer size
+            PSYSTEM_FIRMWARE_TABLE_INFORMATION info =
+                (PSYSTEM_FIRMWARE_TABLE_INFORMATION)malloc(sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION));
             if (!info)
                 return false;
             info->ProviderSignature = signature;
             info->Action = 1;
             info->TableID = tableID;
             info->TableBufferLength = 0;
-
             NTSTATUS status = ntqsi(SystemFirmwareTableInformation,
                 info,
                 sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION),
                 &reqSize);
-            if (status != STATUS_BUFFER_TOO_SMALL) {
-                free(info);
-                return false;
-            }
             free(info);
+            if (status != STATUS_BUFFER_TOO_SMALL)
+                return false;
 
+            // Second call to allocate proper buffer and get the data
             info = (PSYSTEM_FIRMWARE_TABLE_INFORMATION)malloc(reqSize);
             if (!info)
                 return false;
@@ -9474,7 +9471,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             info->Action = 1;
             info->TableID = tableID;
             info->TableBufferLength = reqSize - sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION);
-
             status = ntqsi(SystemFirmwareTableInformation,
                 info,
                 reqSize,
@@ -9485,20 +9481,41 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             const unsigned char* buf = info->TableBuffer;
-            size_t bufLen = info->TableBufferLength;
+            const size_t bufLen = info->TableBufferLength;
             for (const char* target : targets) {
                 size_t targetLen = strlen(target);
                 if (targetLen == 0 || bufLen < targetLen)
                     continue;
                 for (size_t offset = 0; offset <= bufLen - targetLen; offset++) {
                     if (memcmp(buf + offset, target, targetLen) == 0) {
-                        detected = true;
-                        break;
+                        const char* brand = nullptr;
+                        if (strcmp(target, "Parallels Software International") == 0 ||
+                            strcmp(target, "Parallels(R)") == 0)
+                            brand = brands::PARALLELS;
+                        else if (strcmp(target, "innotek") == 0 ||
+                            strcmp(target, "VirtualBox") == 0 ||
+                            strcmp(target, "vbox") == 0 ||
+                            strcmp(target, "Oracle") == 0)
+                            brand = brands::VBOX;
+                        else if (strcmp(target, "VMware, Inc.") == 0 ||
+                            strcmp(target, "VMware") == 0)
+                            brand = brands::VMWARE;
+                        else if (strcmp(target, "Qemu") == 0)
+                            brand = brands::QEMU;
+                        else if (strcmp(target, "BOCHS") == 0)
+                            brand = brands::BOCHS;
+                        else {
+                            free(info);
+                            return true;
+                        }
+                        free(info);
+                        return core::add(brand);
                     }
                 }
             }
-            // If no target was found, check for a 777777 pattern to detect VMWareHardenerLoader (idea by MegaMax)
-            if (!detected && bufLen >= 6) {
+
+            // Check for the "777777" pattern (used by VMwareHardenerLoader)
+            if (bufLen >= 6) {
                 constexpr size_t patternLen = 6;
                 for (size_t offset = 0; offset <= bufLen - patternLen; offset++) {
                     bool allSevens = true;
@@ -9514,57 +9531,74 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     }
                 }
             }
-
             free(info);
-            return detected;
+            return false;
             };
 
-        // RSMB
+        // Check RSMB table
         if (check_firmware_table(RSMB_SIG, 0UL))
             return true;
-        // FIRM
+
+        // Check FIRM table using two address values
         for (ULONG addr : { 0xC0000UL, 0xE0000UL }) {
             if (check_firmware_table(FIRM_SIG, addr))
                 return true;
         }
 
-        // ACPI
-        PSYSTEM_FIRMWARE_TABLE_INFORMATION acpiEnum = nullptr;
-        ULONG retLen = 0;
-        NTSTATUS status;
-        acpiEnum = static_cast<PSYSTEM_FIRMWARE_TABLE_INFORMATION>(
-            malloc(sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION)));
+        // ACPI table check
+        PSYSTEM_FIRMWARE_TABLE_INFORMATION acpiEnum =
+            (PSYSTEM_FIRMWARE_TABLE_INFORMATION)malloc(sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION));
         if (!acpiEnum)
             return false;
-
         acpiEnum->ProviderSignature = ACPI_SIG;
         acpiEnum->Action = 0;
         acpiEnum->TableID = 0;
         acpiEnum->TableBufferLength = 0;
-
-        status = ntqsi(SystemFirmwareTableInformation, acpiEnum, sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION), &retLen);
-        if (status == STATUS_BUFFER_TOO_SMALL) {
+        ULONG retLen = 0;
+        NTSTATUS status = ntqsi(SystemFirmwareTableInformation,
+            acpiEnum,
+            sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION),
+            &retLen);
+        if (status == STATUS_BUFFER_TOO_SMALL)
+        {
             free(acpiEnum);
-            acpiEnum = static_cast<PSYSTEM_FIRMWARE_TABLE_INFORMATION>(malloc(retLen));
+            acpiEnum = (PSYSTEM_FIRMWARE_TABLE_INFORMATION)malloc(retLen);
             if (!acpiEnum)
                 return false;
-
             acpiEnum->ProviderSignature = ACPI_SIG;
             acpiEnum->Action = 0;
             acpiEnum->TableID = 0;
             acpiEnum->TableBufferLength = retLen - sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION);
+            status = ntqsi(SystemFirmwareTableInformation,
+                acpiEnum,
+                retLen,
+                &retLen);
 
-            status = ntqsi(SystemFirmwareTableInformation, acpiEnum, retLen, &retLen);
+            const PDWORD table_names = (PDWORD)calloc(0x1000, 1);
+            if (!table_names) {
+                free(acpiEnum);
+                return false;
+            }
+            const DWORD sig = 'ACPI';
+            const DWORD table_size = EnumSystemFirmwareTables(sig, table_names, 0x1000);
+            if (table_size < 4) { // Check made by dmfrpro
+                debug("FIRMWARE: not enough ACPI tables found");
+                free(table_names);
+                free(acpiEnum);
+                return true;
+            }
             if (NT_SUCCESS(status)) {
                 const DWORD* tables = reinterpret_cast<const DWORD*>(acpiEnum->TableBuffer);
                 ULONG tableCount = acpiEnum->TableBufferLength / sizeof(DWORD);
                 for (ULONG t = 0; t < tableCount; ++t) {
                     if (check_firmware_table(ACPI_SIG, tables[t])) {
+                        free(table_names);
                         free(acpiEnum);
                         return true;
                     }
                 }
             }
+            free(table_names);
         }
         free(acpiEnum);
 
@@ -9596,6 +9630,112 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
         }
 
+        return false;
+#elif (LINUX)
+        // Author: dmfrpro
+        if (!util::is_admin()) {
+            return false;
+        }
+
+        DIR* dir = opendir("/sys/firmware/acpi/tables/");
+        if (!dir) {
+            debug("FIRMWARE: could not open ACPI tables directory");
+            return false;
+        }
+
+        // Same targets as the Windows branch but without "WAET"
+        constexpr const char* targets[] = {
+            "Parallels Software International", "Parallels(R)", "innotek",
+            "Oracle", "VirtualBox", "VS2005R2", "VMware, Inc.",
+            "VMware", "S3 Corp.", "Virtual Machine", "Qemu", "vbox", "BOCHS", "BXPC"
+        };
+
+        struct dirent* entry;
+        while ((entry = readdir(dir)) != nullptr) {
+            // Skip "." and ".."
+            if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
+                continue;
+
+            char path[PATH_MAX];
+            snprintf(path, sizeof(path), "/sys/firmware/acpi/tables/%s", entry->d_name);
+
+            struct stat statbuf;
+            if (stat(path, &statbuf) != 0) {
+                debug("FIRMWARE: skipped ", entry->d_name);
+                continue;
+            }
+            if (S_ISDIR(statbuf.st_mode)) {
+                debug("FIRMWARE: skipped directory ", entry->d_name);
+                continue;
+            }
+
+            FILE* file = fopen(path, "rb");
+            if (!file) {
+                debug("FIRMWARE: could not open ACPI table ", entry->d_name);
+                continue;
+            }
+
+            fseek(file, 0, SEEK_END);
+            long file_size = ftell(file);
+            fseek(file, 0, SEEK_SET);
+
+            char* buffer = static_cast<char*>(malloc(file_size));
+            if (!buffer) {
+                debug("FIRMWARE: failed to allocate memory for buffer");
+                fclose(file);
+                continue;
+            }
+
+            if (fread(buffer, 1, file_size, file) != static_cast<size_t>(file_size)) {
+                debug("FIRMWARE: failed to read ACPI table ", entry->d_name);
+                free(buffer);
+                fclose(file);
+                continue;
+            }
+            fclose(file);
+
+            for (const char* target : targets) {
+                size_t targetLen = strlen(target);
+                if (targetLen == 0 || file_size < static_cast<long>(targetLen))
+                    continue;
+                for (long j = 0; j <= file_size - static_cast<long>(targetLen); ++j) {
+                    if (memcmp(buffer + j, target, targetLen) == 0) {
+                        const char* brand = nullptr;
+                        if (strcmp(target, "Parallels Software International") == 0 ||
+                            strcmp(target, "Parallels(R)") == 0) {
+                            brand = brands::PARALLELS;
+                        }
+                        else if (strcmp(target, "innotek") == 0 ||
+                            strcmp(target, "Oracle") == 0 ||
+                            strcmp(target, "VirtualBox") == 0 ||
+                            strcmp(target, "vbox") == 0) {
+                            brand = brands::VBOX;
+                        }
+                        else if (strcmp(target, "VMware, Inc.") == 0 ||
+                            strcmp(target, "VMware") == 0) {
+                            brand = brands::VMWARE;
+                        }
+                        else if (strcmp(target, "Qemu") == 0) {
+                            brand = brands::QEMU;
+                        }
+                        else if (strcmp(target, "BOCHS") == 0) {
+                            brand = brands::BOCHS;
+                        }
+                        free(buffer);
+                        closedir(dir);
+                        if (brand)
+                            return core::add(brand);
+                        else
+                            return true;
+                    }
+                }
+            }
+            free(buffer);
+        }
+
+        closedir(dir);
+        return false;
+#else
         return false;
 #endif
     }
@@ -11134,7 +11274,7 @@ public: // START OF PUBLIC FUNCTIONS
         case OSXSAVE: return "OSXSAVE";
         case NSJAIL_PID: return "NSJAIL_PID";
         case PCI_VM: return "PCI_VM";
-            // ADD NEW CASE HERE FOR NEW TECHNIQUE
+        // ADD NEW CASE HERE FOR NEW TECHNIQUE
         default: return "Unknown flag";
         }
     }
@@ -11164,7 +11304,6 @@ public: // START OF PUBLIC FUNCTIONS
 
         return tmp;
     }
-
 
 
     /**
@@ -11610,91 +11749,92 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     std::make_pair(VM::DISK_SIZE, VM::core::technique(60, VM::disk_size)),
     std::make_pair(VM::VBOX_DEFAULT, VM::core::technique(25, VM::vbox_default_specs)),
     std::make_pair(VM::VBOX_NETWORK, VM::core::technique(100, VM::vbox_network_share)),
-    std::make_pair(VM::VM_PROCESSES, VM::core::technique(15, VM::vm_processes)),
-    std::make_pair(VM::LINUX_USER_HOST, VM::core::technique(10, VM::linux_user_host)),
-    std::make_pair(VM::GAMARUE, VM::core::technique(10, VM::gamarue)),
-    std::make_pair(VM::BOCHS_CPU, VM::core::technique(100, VM::bochs_cpu)),
-    std::make_pair(VM::MSSMBIOS, VM::core::technique(100, VM::mssmbios)),
-    std::make_pair(VM::MAC_MEMSIZE, VM::core::technique(15, VM::hw_memsize)),
-    std::make_pair(VM::MAC_IOKIT, VM::core::technique(100, VM::io_kit)),
-    std::make_pair(VM::IOREG_GREP, VM::core::technique(100, VM::ioreg_grep)),
-    std::make_pair(VM::MAC_SIP, VM::core::technique(40, VM::mac_sip)),
-    std::make_pair(VM::HKLM_REGISTRIES, VM::core::technique(25, VM::hklm_registries)),
-    std::make_pair(VM::QEMU_GA, VM::core::technique(10, VM::qemu_ga)),
-    std::make_pair(VM::VPC_INVALID, VM::core::technique(75, VM::vpc_invalid)),
-    std::make_pair(VM::SIDT, VM::core::technique(25, VM::sidt)),
-    std::make_pair(VM::SGDT, VM::core::technique(30, VM::sgdt)),
-    std::make_pair(VM::SLDT, VM::core::technique(15, VM::sldt)),
-    std::make_pair(VM::OFFSEC_SIDT, VM::core::technique(60, VM::offsec_sidt)),
-    std::make_pair(VM::OFFSEC_SGDT, VM::core::technique(60, VM::offsec_sgdt)),
-    std::make_pair(VM::OFFSEC_SLDT, VM::core::technique(20, VM::offsec_sldt)),
-    std::make_pair(VM::VPC_SIDT, VM::core::technique(15, VM::vpc_sidt)),
-    std::make_pair(VM::VMWARE_IOMEM, VM::core::technique(65, VM::vmware_iomem)),
-    std::make_pair(VM::VMWARE_IOPORTS, VM::core::technique(70, VM::vmware_ioports)),
-    std::make_pair(VM::VMWARE_SCSI, VM::core::technique(40, VM::vmware_scsi)),
-    std::make_pair(VM::VMWARE_DMESG, VM::core::technique(65, VM::vmware_dmesg)),
-    std::make_pair(VM::VMWARE_STR, VM::core::technique(35, VM::vmware_str)),
-    std::make_pair(VM::VMWARE_BACKDOOR, VM::core::technique(100, VM::vmware_backdoor)),
-    std::make_pair(VM::VMWARE_PORT_MEM, VM::core::technique(85, VM::vmware_port_memory)),
-    std::make_pair(VM::SMSW, VM::core::technique(30, VM::smsw)),
-    std::make_pair(VM::MUTEX, VM::core::technique(85, VM::mutex)),
-    std::make_pair(VM::ODD_CPU_THREADS, VM::core::technique(80, VM::odd_cpu_threads)),
-    std::make_pair(VM::INTEL_THREAD_MISMATCH, VM::core::technique(95, VM::intel_thread_mismatch)),
-    std::make_pair(VM::XEON_THREAD_MISMATCH, VM::core::technique(95, VM::xeon_thread_mismatch)),
-    std::make_pair(VM::AMD_THREAD_MISMATCH, VM::core::technique(95, VM::amd_thread_mismatch)),
-    std::make_pair(VM::NETTITUDE_VM_MEMORY, VM::core::technique(100, VM::nettitude_vm_memory)),
-    std::make_pair(VM::CUCKOO_DIR, VM::core::technique(30, VM::cuckoo_dir)),
-    std::make_pair(VM::CUCKOO_PIPE, VM::core::technique(30, VM::cuckoo_pipe)),
-    std::make_pair(VM::HYPERV_HOSTNAME, VM::core::technique(30, VM::hyperv_hostname)),
-    std::make_pair(VM::GENERAL_HOSTNAME, VM::core::technique(10, VM::general_hostname)),
-    std::make_pair(VM::SCREEN_RESOLUTION, VM::core::technique(20, VM::screen_resolution)),
-    std::make_pair(VM::DEVICE_STRING, VM::core::technique(25, VM::device_string)),
-    std::make_pair(VM::BLUESTACKS_FOLDERS, VM::core::technique(5, VM::bluestacks)),
-    std::make_pair(VM::CPUID_SIGNATURE, VM::core::technique(95, VM::cpuid_signature)),
-    std::make_pair(VM::KVM_BITMASK, VM::core::technique(40, VM::kvm_bitmask)),
-    std::make_pair(VM::KGT_SIGNATURE, VM::core::technique(80, VM::intel_kgt_signature)),
-    std::make_pair(VM::QEMU_VIRTUAL_DMI, VM::core::technique(40, VM::qemu_virtual_dmi)),
-    std::make_pair(VM::QEMU_USB, VM::core::technique(20, VM::qemu_USB)),
-    std::make_pair(VM::HYPERVISOR_DIR, VM::core::technique(20, VM::hypervisor_dir)),
-    std::make_pair(VM::UML_CPU, VM::core::technique(80, VM::uml_cpu)),
-    std::make_pair(VM::KMSG, VM::core::technique(5, VM::kmsg)),
-    std::make_pair(VM::VM_PROCS, VM::core::technique(10, VM::vm_procs)),
-    std::make_pair(VM::VBOX_MODULE, VM::core::technique(15, VM::vbox_module)),
-    std::make_pair(VM::SYSINFO_PROC, VM::core::technique(15, VM::sysinfo_proc)),
-    std::make_pair(VM::DEVICE_TREE, VM::core::technique(20, VM::device_tree)),
-    std::make_pair(VM::DMI_SCAN, VM::core::technique(50, VM::dmi_scan)),
-    std::make_pair(VM::SMBIOS_VM_BIT, VM::core::technique(50, VM::smbios_vm_bit)),
-    std::make_pair(VM::PODMAN_FILE, VM::core::technique(5, VM::podman_file)),
-    std::make_pair(VM::WSL_PROC, VM::core::technique(30, VM::wsl_proc_subdir)),
-    std::make_pair(VM::DRIVER_NAMES, VM::core::technique(100, VM::driver_names)),
-    std::make_pair(VM::VM_SIDT, VM::core::technique(100, VM::vm_sidt)),
-    std::make_pair(VM::HDD_SERIAL, VM::core::technique(100, VM::hdd_serial_number)),
-    std::make_pair(VM::PORT_CONNECTORS, VM::core::technique(25, VM::port_connectors)),
-    std::make_pair(VM::GPU_VM_STRINGS, VM::core::technique(100, VM::gpu_vm_strings)),
-    std::make_pair(VM::GPU_CAPABILITIES, VM::core::technique(100, VM::gpu_capabilities)),
-    std::make_pair(VM::VM_DEVICES, VM::core::technique(45, VM::vm_devices)),
-    std::make_pair(VM::IDT_GDT_SCAN, VM::core::technique(50, VM::idt_gdt_scan)),
-    std::make_pair(VM::PROCESSOR_NUMBER, VM::core::technique(50, VM::processor_number)),
-    std::make_pair(VM::NUMBER_OF_CORES, VM::core::technique(50, VM::number_of_cores)),
-    std::make_pair(VM::ACPI_TEMPERATURE, VM::core::technique(25, VM::acpi_temperature)),
-    std::make_pair(VM::PROCESSOR_ID, VM::core::technique(25, VM::processor_id)),
-    std::make_pair(VM::SYS_QEMU, VM::core::technique(70, VM::sys_qemu_dir)),
-    std::make_pair(VM::LSHW_QEMU, VM::core::technique(80, VM::lshw_qemu)),
-    std::make_pair(VM::VIRTUAL_PROCESSORS, VM::core::technique(50, VM::virtual_processors)),
-    std::make_pair(VM::HYPERV_QUERY, VM::core::technique(100, VM::hyperv_query)),
-    std::make_pair(VM::BAD_POOLS, VM::core::technique(80, VM::bad_pools)),
-    std::make_pair(VM::AMD_SEV, VM::core::technique(50, VM::amd_sev)),
-    std::make_pair(VM::NATIVE_VHD, VM::core::technique(100, VM::native_vhd)),
-    std::make_pair(VM::VIRTUAL_REGISTRY, VM::core::technique(65, VM::virtual_registry)),
-    std::make_pair(VM::FIRMWARE, VM::core::technique(90, VM::firmware_scan)),
-    std::make_pair(VM::FILE_ACCESS_HISTORY, VM::core::technique(15, VM::file_access_history)),
-    std::make_pair(VM::AUDIO, VM::core::technique(25, VM::check_audio)),
-    std::make_pair(VM::UNKNOWN_MANUFACTURER, VM::core::technique(50, VM::unknown_manufacturer)),
-    std::make_pair(VM::OSXSAVE, VM::core::technique(50, VM::osxsave)),
-    std::make_pair(VM::NSJAIL_PID, VM::core::technique(75, VM::nsjail_proc_id)),
-    std::make_pair(VM::PCI_VM, VM::core::technique(100, VM::lspci))
-    // ADD NEW TECHNIQUE STRUCTURE HERE
+        std::make_pair(VM::VM_PROCESSES, VM::core::technique(15, VM::vm_processes)),
+        std::make_pair(VM::LINUX_USER_HOST, VM::core::technique(10, VM::linux_user_host)),
+        std::make_pair(VM::GAMARUE, VM::core::technique(10, VM::gamarue)),
+        std::make_pair(VM::BOCHS_CPU, VM::core::technique(100, VM::bochs_cpu)),
+        std::make_pair(VM::MSSMBIOS, VM::core::technique(100, VM::mssmbios)),
+        std::make_pair(VM::MAC_MEMSIZE, VM::core::technique(15, VM::hw_memsize)),
+        std::make_pair(VM::MAC_IOKIT, VM::core::technique(100, VM::io_kit)),
+        std::make_pair(VM::IOREG_GREP, VM::core::technique(100, VM::ioreg_grep)),
+        std::make_pair(VM::MAC_SIP, VM::core::technique(40, VM::mac_sip)),
+        std::make_pair(VM::HKLM_REGISTRIES, VM::core::technique(25, VM::hklm_registries)),
+        std::make_pair(VM::QEMU_GA, VM::core::technique(10, VM::qemu_ga)),
+        std::make_pair(VM::VPC_INVALID, VM::core::technique(75, VM::vpc_invalid)),
+        std::make_pair(VM::SIDT, VM::core::technique(25, VM::sidt)),
+        std::make_pair(VM::SGDT, VM::core::technique(30, VM::sgdt)),
+        std::make_pair(VM::SLDT, VM::core::technique(15, VM::sldt)),
+        std::make_pair(VM::OFFSEC_SIDT, VM::core::technique(60, VM::offsec_sidt)),
+        std::make_pair(VM::OFFSEC_SGDT, VM::core::technique(60, VM::offsec_sgdt)),
+        std::make_pair(VM::OFFSEC_SLDT, VM::core::technique(20, VM::offsec_sldt)),
+        std::make_pair(VM::VPC_SIDT, VM::core::technique(15, VM::vpc_sidt)),
+        std::make_pair(VM::VMWARE_IOMEM, VM::core::technique(65, VM::vmware_iomem)),
+        std::make_pair(VM::VMWARE_IOPORTS, VM::core::technique(70, VM::vmware_ioports)),
+        std::make_pair(VM::VMWARE_SCSI, VM::core::technique(40, VM::vmware_scsi)),
+        std::make_pair(VM::VMWARE_DMESG, VM::core::technique(65, VM::vmware_dmesg)),
+        std::make_pair(VM::VMWARE_STR, VM::core::technique(35, VM::vmware_str)),
+        std::make_pair(VM::VMWARE_BACKDOOR, VM::core::technique(100, VM::vmware_backdoor)),
+        std::make_pair(VM::VMWARE_PORT_MEM, VM::core::technique(85, VM::vmware_port_memory)),
+        std::make_pair(VM::SMSW, VM::core::technique(30, VM::smsw)),
+        std::make_pair(VM::MUTEX, VM::core::technique(85, VM::mutex)),
+        std::make_pair(VM::ODD_CPU_THREADS, VM::core::technique(80, VM::odd_cpu_threads)),
+        std::make_pair(VM::INTEL_THREAD_MISMATCH, VM::core::technique(95, VM::intel_thread_mismatch)),
+        std::make_pair(VM::XEON_THREAD_MISMATCH, VM::core::technique(95, VM::xeon_thread_mismatch)),
+        std::make_pair(VM::AMD_THREAD_MISMATCH, VM::core::technique(95, VM::amd_thread_mismatch)),
+        std::make_pair(VM::NETTITUDE_VM_MEMORY, VM::core::technique(100, VM::nettitude_vm_memory)),
+        std::make_pair(VM::CUCKOO_DIR, VM::core::technique(30, VM::cuckoo_dir)),
+        std::make_pair(VM::CUCKOO_PIPE, VM::core::technique(30, VM::cuckoo_pipe)),
+        std::make_pair(VM::HYPERV_HOSTNAME, VM::core::technique(30, VM::hyperv_hostname)),
+        std::make_pair(VM::GENERAL_HOSTNAME, VM::core::technique(10, VM::general_hostname)),
+        std::make_pair(VM::SCREEN_RESOLUTION, VM::core::technique(20, VM::screen_resolution)),
+        std::make_pair(VM::DEVICE_STRING, VM::core::technique(25, VM::device_string)),
+        std::make_pair(VM::BLUESTACKS_FOLDERS, VM::core::technique(5, VM::bluestacks)),
+        std::make_pair(VM::CPUID_SIGNATURE, VM::core::technique(95, VM::cpuid_signature)),
+        std::make_pair(VM::KVM_BITMASK, VM::core::technique(40, VM::kvm_bitmask)),
+        std::make_pair(VM::KGT_SIGNATURE, VM::core::technique(80, VM::intel_kgt_signature)),
+        std::make_pair(VM::QEMU_VIRTUAL_DMI, VM::core::technique(40, VM::qemu_virtual_dmi)),
+        std::make_pair(VM::QEMU_USB, VM::core::technique(20, VM::qemu_USB)),
+        std::make_pair(VM::HYPERVISOR_DIR, VM::core::technique(20, VM::hypervisor_dir)),
+        std::make_pair(VM::UML_CPU, VM::core::technique(80, VM::uml_cpu)),
+        std::make_pair(VM::KMSG, VM::core::technique(5, VM::kmsg)),
+        std::make_pair(VM::VM_PROCS, VM::core::technique(10, VM::vm_procs)),
+        std::make_pair(VM::VBOX_MODULE, VM::core::technique(15, VM::vbox_module)),
+        std::make_pair(VM::SYSINFO_PROC, VM::core::technique(15, VM::sysinfo_proc)),
+        std::make_pair(VM::DEVICE_TREE, VM::core::technique(20, VM::device_tree)),
+        std::make_pair(VM::DMI_SCAN, VM::core::technique(50, VM::dmi_scan)),
+        std::make_pair(VM::SMBIOS_VM_BIT, VM::core::technique(50, VM::smbios_vm_bit)),
+        std::make_pair(VM::PODMAN_FILE, VM::core::technique(5, VM::podman_file)),
+        std::make_pair(VM::WSL_PROC, VM::core::technique(30, VM::wsl_proc_subdir)),
+        std::make_pair(VM::DRIVER_NAMES, VM::core::technique(100, VM::driver_names)),
+        std::make_pair(VM::VM_SIDT, VM::core::technique(100, VM::vm_sidt)),
+        std::make_pair(VM::HDD_SERIAL, VM::core::technique(100, VM::hdd_serial_number)),
+        std::make_pair(VM::PORT_CONNECTORS, VM::core::technique(25, VM::port_connectors)),
+        std::make_pair(VM::GPU_VM_STRINGS, VM::core::technique(100, VM::gpu_vm_strings)),
+        std::make_pair(VM::GPU_CAPABILITIES, VM::core::technique(100, VM::gpu_capabilities)),
+        std::make_pair(VM::VM_DEVICES, VM::core::technique(45, VM::vm_devices)),
+        std::make_pair(VM::IDT_GDT_SCAN, VM::core::technique(50, VM::idt_gdt_scan)),
+        std::make_pair(VM::PROCESSOR_NUMBER, VM::core::technique(50, VM::processor_number)),
+        std::make_pair(VM::NUMBER_OF_CORES, VM::core::technique(50, VM::number_of_cores)),
+        std::make_pair(VM::ACPI_TEMPERATURE, VM::core::technique(25, VM::acpi_temperature)),
+        std::make_pair(VM::PROCESSOR_ID, VM::core::technique(25, VM::processor_id)),
+        std::make_pair(VM::SYS_QEMU, VM::core::technique(70, VM::sys_qemu_dir)),
+        std::make_pair(VM::LSHW_QEMU, VM::core::technique(80, VM::lshw_qemu)),
+        std::make_pair(VM::VIRTUAL_PROCESSORS, VM::core::technique(50, VM::virtual_processors)),
+        std::make_pair(VM::HYPERV_QUERY, VM::core::technique(100, VM::hyperv_query)),
+        std::make_pair(VM::BAD_POOLS, VM::core::technique(80, VM::bad_pools)),
+        std::make_pair(VM::AMD_SEV, VM::core::technique(50, VM::amd_sev)),
+        std::make_pair(VM::NATIVE_VHD, VM::core::technique(100, VM::native_vhd)),
+        std::make_pair(VM::VIRTUAL_REGISTRY, VM::core::technique(65, VM::virtual_registry)),
+        std::make_pair(VM::FIRMWARE, VM::core::technique(75, VM::firmware_scan)),
+        std::make_pair(VM::FILE_ACCESS_HISTORY, VM::core::technique(15, VM::file_access_history)),
+        std::make_pair(VM::AUDIO, VM::core::technique(25, VM::check_audio)),
+        std::make_pair(VM::UNKNOWN_MANUFACTURER, VM::core::technique(50, VM::unknown_manufacturer)),
+        std::make_pair(VM::OSXSAVE, VM::core::technique(50, VM::osxsave)),
+        std::make_pair(VM::NSJAIL_PID, VM::core::technique(75, VM::nsjail_proc_id)),
+        std::make_pair(VM::PCI_VM, VM::core::technique(100, VM::lspci))
+        // ADD NEW TECHNIQUE STRUCTURE HERE
 };
+
 
 // the reason why the map isn't directly initialized is due to potential 
 // SDK errors on windows combined with older C++ standards
