@@ -52,10 +52,10 @@
  * - struct for internal cpu operations        => line 762
  * - struct for internal memoization           => line 1217
  * - struct for internal utility functions     => line 1343
- * - struct for internal core components       => line 10001
+ * - struct for internal core components       => line 10007
  * - start of VM detection technique list      => line 2541
- * - start of public VM detection functions    => line 10676
- * - start of externally defined variables     => line 11600
+ * - start of public VM detection functions    => line 10682
+ * - start of externally defined variables     => line 11606
  *
  *
  * ============================== EXAMPLE ===================================
@@ -9632,109 +9632,115 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         return false;
 #elif (LINUX)
-        // Author: dmfrpro
-        if (!util::is_admin()) {
-            return false;
+    // Author: dmfrpro
+    if (!util::is_admin()) {
+        return false;
+    }
+
+    DIR* dir = opendir("/sys/firmware/acpi/tables/");
+    if (!dir) {
+        debug("FIRMWARE: could not open ACPI tables directory");
+        return false;
+    }
+
+    // Same targets as the Windows branch but without "WAET"
+    constexpr const char* targets[] = {
+        "Parallels Software International", "Parallels(R)", "innotek",
+        "Oracle", "VirtualBox", "VS2005R2", "VMware, Inc.",
+        "VMware", "S3 Corp.", "Virtual Machine", "Qemu", "vbox", "BOCHS", "BXPC"
+    };
+
+    struct dirent* entry;
+    while ((entry = readdir(dir)) != nullptr) {
+        // Skip "." and ".."
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
+            continue;
+
+        char path[PATH_MAX];
+        snprintf(path, sizeof(path), "/sys/firmware/acpi/tables/%s", entry->d_name);
+
+        int fd = open(path, O_RDONLY);
+        if (fd == -1) {
+            debug("FIRMWARE: could not open ACPI table ", entry->d_name);
+            continue;
         }
 
-        DIR* dir = opendir("/sys/firmware/acpi/tables/");
-        if (!dir) {
-            debug("FIRMWARE: could not open ACPI tables directory");
-            return false;
+        struct stat statbuf;
+        if (fstat(fd, &statbuf) != 0) {
+            debug("FIRMWARE: skipped ", entry->d_name);
+            close(fd);
+            continue;
+        }
+        if (S_ISDIR(statbuf.st_mode)) {
+            debug("FIRMWARE: skipped directory ", entry->d_name);
+            close(fd);
+            continue;
         }
 
-        // Same targets as the Windows branch but without "WAET"
-        constexpr const char* targets[] = {
-            "Parallels Software International", "Parallels(R)", "innotek",
-            "Oracle", "VirtualBox", "VS2005R2", "VMware, Inc.",
-            "VMware", "S3 Corp.", "Virtual Machine", "Qemu", "vbox", "BOCHS", "BXPC"
-        };
+        long file_size = statbuf.st_size;
+        if (file_size <= 0) {
+            debug("FIRMWARE: file empty or error ", entry->d_name);
+            close(fd);
+            continue;
+        }
 
-        struct dirent* entry;
-        while ((entry = readdir(dir)) != nullptr) {
-            // Skip "." and ".."
-            if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
+        char* buffer = static_cast<char*>(malloc(file_size));
+        if (!buffer) {
+            debug("FIRMWARE: failed to allocate memory for buffer");
+            close(fd);
+            continue;
+        }
+
+        ssize_t bytesRead = read(fd, buffer, file_size);
+        if (bytesRead != file_size) {
+            debug("FIRMWARE: failed to read ACPI table ", entry->d_name);
+            free(buffer);
+            close(fd);
+            continue;
+        }
+        close(fd);
+
+        for (const char* target : targets) {
+            size_t targetLen = strlen(target);
+            if (targetLen == 0 || file_size < static_cast<long>(targetLen))
                 continue;
-
-            char path[PATH_MAX];
-            snprintf(path, sizeof(path), "/sys/firmware/acpi/tables/%s", entry->d_name);
-
-            struct stat statbuf;
-            if (stat(path, &statbuf) != 0) {
-                debug("FIRMWARE: skipped ", entry->d_name);
-                continue;
-            }
-            if (S_ISDIR(statbuf.st_mode)) {
-                debug("FIRMWARE: skipped directory ", entry->d_name);
-                continue;
-            }
-
-            FILE* file = fopen(path, "rb");
-            if (!file) {
-                debug("FIRMWARE: could not open ACPI table ", entry->d_name);
-                continue;
-            }
-
-            fseek(file, 0, SEEK_END);
-            long file_size = ftell(file);
-            fseek(file, 0, SEEK_SET);
-
-            char* buffer = static_cast<char*>(malloc(file_size));
-            if (!buffer) {
-                debug("FIRMWARE: failed to allocate memory for buffer");
-                fclose(file);
-                continue;
-            }
-
-            if (fread(buffer, 1, file_size, file) != static_cast<size_t>(file_size)) {
-                debug("FIRMWARE: failed to read ACPI table ", entry->d_name);
-                free(buffer);
-                fclose(file);
-                continue;
-            }
-            fclose(file);
-
-            for (const char* target : targets) {
-                size_t targetLen = strlen(target);
-                if (targetLen == 0 || file_size < static_cast<long>(targetLen))
-                    continue;
-                for (long j = 0; j <= file_size - static_cast<long>(targetLen); ++j) {
-                    if (memcmp(buffer + j, target, targetLen) == 0) {
-                        const char* brand = nullptr;
-                        if (strcmp(target, "Parallels Software International") == 0 ||
-                            strcmp(target, "Parallels(R)") == 0) {
-                            brand = brands::PARALLELS;
-                        }
-                        else if (strcmp(target, "innotek") == 0 ||
-                            strcmp(target, "Oracle") == 0 ||
-                            strcmp(target, "VirtualBox") == 0 ||
-                            strcmp(target, "vbox") == 0) {
-                            brand = brands::VBOX;
-                        }
-                        else if (strcmp(target, "VMware, Inc.") == 0 ||
-                            strcmp(target, "VMware") == 0) {
-                            brand = brands::VMWARE;
-                        }
-                        else if (strcmp(target, "Qemu") == 0) {
-                            brand = brands::QEMU;
-                        }
-                        else if (strcmp(target, "BOCHS") == 0) {
-                            brand = brands::BOCHS;
-                        }
-                        free(buffer);
-                        closedir(dir);
-                        if (brand)
-                            return core::add(brand);
-                        else
-                            return true;
+            for (long j = 0; j <= file_size - static_cast<long>(targetLen); ++j) {
+                if (memcmp(buffer + j, target, targetLen) == 0) {
+                    const char* brand = nullptr;
+                    if (strcmp(target, "Parallels Software International") == 0 ||
+                        strcmp(target, "Parallels(R)") == 0) {
+                        brand = brands::PARALLELS;
                     }
+                    else if (strcmp(target, "innotek") == 0 ||
+                        strcmp(target, "Oracle") == 0 ||
+                        strcmp(target, "VirtualBox") == 0 ||
+                        strcmp(target, "vbox") == 0) {
+                        brand = brands::VBOX;
+                    }
+                    else if (strcmp(target, "VMware, Inc.") == 0 ||
+                        strcmp(target, "VMware") == 0) {
+                        brand = brands::VMWARE;
+                    }
+                    else if (strcmp(target, "Qemu") == 0) {
+                        brand = brands::QEMU;
+                    }
+                    else if (strcmp(target, "BOCHS") == 0) {
+                        brand = brands::BOCHS;
+                    }
+                    free(buffer);
+                    closedir(dir);
+                    if (brand)
+                        return core::add(brand);
+                    else
+                        return true;
                 }
             }
-            free(buffer);
         }
+        free(buffer);
+    }
 
-        closedir(dir);
-        return false;
+    closedir(dir);
+    return false;
 #else
         return false;
 #endif
