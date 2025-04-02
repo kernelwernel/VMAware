@@ -36,6 +36,7 @@
 
 #if (defined(_MSC_VER) || defined(_WIN32) || defined(_WIN64) || defined(__MINGW32__))
     #define WINDOWS 1
+    #define WIN32_LEAN_AND_MEAN
     #include <windows.h>
 #else
     #define WINDOWS 0
