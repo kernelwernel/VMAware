@@ -18,6 +18,7 @@
  *      - Georgii Gennadev (https://github.com/D00Movenok)
  *      - utoshu (https://github.com/utoshu)
  *      - Jyd (https://github.com/jyd519)
+ *      - dmfrpro (https://github.com/dmfrpro)
  *  - Repository: https://github.com/kernelwernel/VMAware
  *  - Docs: https://github.com/kernelwernel/VMAware/docs/documentation.md
  *  - Full credits: https://github.com/kernelwernel/VMAware#credits-and-contributors-%EF%B8%8F
@@ -25,14 +26,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 553
- * - struct for internal cpu operations        => line 746
- * - struct for internal memoization           => line 1200
- * - struct for internal utility functions     => line 1325
- * - struct for internal core components       => line 10055
- * - start of VM detection technique list      => line 2521
- * - start of public VM detection functions    => line 10719
- * - start of externally defined variables     => line 11642
+ * - enums for publicly accessible techniques  => line 554
+ * - struct for internal cpu operations        => line 747
+ * - struct for internal memoization           => line 1201
+ * - struct for internal utility functions     => line 1326
+ * - struct for internal core components       => line 10195
+ * - start of VM detection technique list      => line 2522
+ * - start of public VM detection functions    => line 10859
+ * - start of externally defined variables     => line 11781
  *
  *
  * ============================== EXAMPLE ===================================
@@ -2531,7 +2532,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return (
             cpu::vmid_template(0) ||
             cpu::vmid_template(cpu::leaf::hypervisor) || // 0x40000000
-            cpu::vmid_template(cpu::leaf::hypervisor + 1) || // 0x40000001 to account for some edge-cases
             cpu::vmid_template(cpu::leaf::hypervisor + 0x100) // 0x40000100
         );
 #endif
@@ -9534,8 +9534,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         } OBJECT_NAME_INFORMATION, * POBJECT_NAME_INFORMATION;
 #pragma warning(default : 4459)
 
-        typedef NTSTATUS(NTAPI* PNtOpenKey)(PHANDLE, ACCESS_MASK, POBJECT_ATTRIBUTES);
-        typedef NTSTATUS(NTAPI* PNtQueryObject)(HANDLE, OBJECT_INFORMATION_CLASS, PVOID, ULONG, PULONG);
+        typedef NTSTATUS(__stdcall* PNtOpenKey)(PHANDLE, ACCESS_MASK, POBJECT_ATTRIBUTES);
+        typedef NTSTATUS(__stdcall* PNtQueryObject)(HANDLE, OBJECT_INFORMATION_CLASS, PVOID, ULONG, PULONG);
 
         const HMODULE hModule = GetModuleHandleA("ntdll.dll");
         if (!hModule)
@@ -9595,13 +9595,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Checks for VM signatures in firmware
      * @category Windows
-     * @note Idea of detecting VMwareHardenerLoader was made by MegaMax
+     * @note Idea of detecting VMwareHardenerLoader was made by MegaMax, detection for Bochs, VirtualBox and WAET was made by dmfrpro
+     * @credits MegaMax, dmfrpro
      * @implements VM::FIRMWARE
      */
     [[nodiscard]] static bool firmware_scan() {
-#if (!WINDOWS)
-        return false;
-#else
+#if (WINDOWS)
 #pragma warning (disable: 4459)
         typedef enum _SYSTEM_INFORMATION_CLASS {
             SystemFirmwareTableInformation = 76
@@ -9615,7 +9614,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             UCHAR TableBuffer[1];
         } SYSTEM_FIRMWARE_TABLE_INFORMATION, * PSYSTEM_FIRMWARE_TABLE_INFORMATION;
 #pragma warning (default : 4459)
-        typedef NTSTATUS(NTAPI* PNtQuerySystemInformation)(ULONG, PVOID, ULONG, PULONG);
+        typedef NTSTATUS(__stdcall* PNtQuerySystemInformation)(ULONG, PVOID, ULONG, PULONG);
         constexpr ULONG STATUS_BUFFER_TOO_SMALL = 0xC0000023;
         constexpr DWORD ACPI_SIG = 'ACPI';
         constexpr DWORD RSMB_SIG = 'RSMB';
@@ -9636,32 +9635,30 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         constexpr const char* targets[] = {
             "Parallels Software International", "Parallels(R)", "innotek",
             "Oracle", "VirtualBox", "VS2005R2", "VMware, Inc.",
-            "VMware", "S3 Corp.", "Virtual Machine", "Qemu"
+            "VMware", "S3 Corp.", "Virtual Machine", "Qemu", "vbox",
+            "WAET", "BOCHS", "BXPC"
         };
 
         auto check_firmware_table = [&](DWORD signature, ULONG tableID) -> bool {
             ULONG reqSize = 0;
-            PSYSTEM_FIRMWARE_TABLE_INFORMATION info = nullptr;
-            bool detected = false;
-
-            info = (PSYSTEM_FIRMWARE_TABLE_INFORMATION)malloc(sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION));
+            // First call to determine the required buffer size
+            PSYSTEM_FIRMWARE_TABLE_INFORMATION info =
+                (PSYSTEM_FIRMWARE_TABLE_INFORMATION)malloc(sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION));
             if (!info)
                 return false;
             info->ProviderSignature = signature;
             info->Action = 1;
             info->TableID = tableID;
             info->TableBufferLength = 0;
-
             NTSTATUS status = ntqsi(SystemFirmwareTableInformation,
                 info,
                 sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION),
                 &reqSize);
-            if (status != STATUS_BUFFER_TOO_SMALL) {
-                free(info);
-                return false;
-            }
             free(info);
+            if (status != STATUS_BUFFER_TOO_SMALL)
+                return false;
 
+            // Second call to allocate proper buffer and get the data
             info = (PSYSTEM_FIRMWARE_TABLE_INFORMATION)malloc(reqSize);
             if (!info)
                 return false;
@@ -9669,7 +9666,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             info->Action = 1;
             info->TableID = tableID;
             info->TableBufferLength = reqSize - sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION);
-
             status = ntqsi(SystemFirmwareTableInformation,
                 info,
                 reqSize,
@@ -9680,20 +9676,41 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             const unsigned char* buf = info->TableBuffer;
-            size_t bufLen = info->TableBufferLength;
+            const size_t bufLen = info->TableBufferLength;
             for (const char* target : targets) {
                 size_t targetLen = strlen(target);
                 if (targetLen == 0 || bufLen < targetLen)
                     continue;
                 for (size_t offset = 0; offset <= bufLen - targetLen; offset++) {
                     if (memcmp(buf + offset, target, targetLen) == 0) {
-                        detected = true;
-                        break;
+                        const char* brand = nullptr;
+                        if (strcmp(target, "Parallels Software International") == 0 ||
+                            strcmp(target, "Parallels(R)") == 0)
+                            brand = brands::PARALLELS;
+                        else if (strcmp(target, "innotek") == 0 ||
+                            strcmp(target, "VirtualBox") == 0 ||
+                            strcmp(target, "vbox") == 0 ||
+                            strcmp(target, "Oracle") == 0)
+                            brand = brands::VBOX;
+                        else if (strcmp(target, "VMware, Inc.") == 0 ||
+                            strcmp(target, "VMware") == 0)
+                            brand = brands::VMWARE;
+                        else if (strcmp(target, "Qemu") == 0)
+                            brand = brands::QEMU;
+                        else if (strcmp(target, "BOCHS") == 0)
+                            brand = brands::BOCHS;
+                        else {
+                            free(info);
+                            return true;
+                        }
+                        free(info);
+                        return core::add(brand);
                     }
                 }
             }
-            // If no target was found, check for a 777777 pattern to detect VMWareHardenerLoader (idea by MegaMax)
-            if (!detected && bufLen >= 6) {
+
+            // Check for the "777777" pattern (used by VMwareHardenerLoader)
+            if (bufLen >= 6) {
                 constexpr size_t patternLen = 6;
                 for (size_t offset = 0; offset <= bufLen - patternLen; offset++) {
                     bool allSevens = true;
@@ -9709,57 +9726,74 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     }
                 }
             }
-
             free(info);
-            return detected;
-        };
+            return false;
+            };
 
-        // RSMB
+        // Check RSMB table
         if (check_firmware_table(RSMB_SIG, 0UL))
             return true;
-        // FIRM
+
+        // Check FIRM table using two address values
         for (ULONG addr : { 0xC0000UL, 0xE0000UL }) {
             if (check_firmware_table(FIRM_SIG, addr))
                 return true;
         }
 
-        // ACPI
-        PSYSTEM_FIRMWARE_TABLE_INFORMATION acpiEnum = nullptr;
-        ULONG retLen = 0;
-        NTSTATUS status;
-        acpiEnum = static_cast<PSYSTEM_FIRMWARE_TABLE_INFORMATION>(
-            malloc(sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION)));
+        // ACPI table check
+        PSYSTEM_FIRMWARE_TABLE_INFORMATION acpiEnum =
+            (PSYSTEM_FIRMWARE_TABLE_INFORMATION)malloc(sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION));
         if (!acpiEnum)
             return false;
-
         acpiEnum->ProviderSignature = ACPI_SIG;
         acpiEnum->Action = 0;
         acpiEnum->TableID = 0;
         acpiEnum->TableBufferLength = 0;
-
-        status = ntqsi(SystemFirmwareTableInformation, acpiEnum, sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION), &retLen);
-        if (status == STATUS_BUFFER_TOO_SMALL) {
+        ULONG retLen = 0;
+        NTSTATUS status = ntqsi(SystemFirmwareTableInformation,
+            acpiEnum,
+            sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION),
+            &retLen);
+        if (status == STATUS_BUFFER_TOO_SMALL)
+        {
             free(acpiEnum);
-            acpiEnum = static_cast<PSYSTEM_FIRMWARE_TABLE_INFORMATION>(malloc(retLen));
+            acpiEnum = (PSYSTEM_FIRMWARE_TABLE_INFORMATION)malloc(retLen);
             if (!acpiEnum)
                 return false;
-
             acpiEnum->ProviderSignature = ACPI_SIG;
             acpiEnum->Action = 0;
             acpiEnum->TableID = 0;
             acpiEnum->TableBufferLength = retLen - sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION);
+            status = ntqsi(SystemFirmwareTableInformation,
+                acpiEnum,
+                retLen,
+                &retLen);
 
-            status = ntqsi(SystemFirmwareTableInformation, acpiEnum, retLen, &retLen);
+            const PDWORD table_names = (PDWORD)calloc(0x1000, 1);
+            if (!table_names) {
+                free(acpiEnum);
+                return false;
+            }
+            const DWORD sig = 'ACPI';
+            const DWORD table_size = EnumSystemFirmwareTables(sig, table_names, 0x1000);
+            if (table_size < 4) { // Check made by dmfrpro
+                debug("FIRMWARE: not enough ACPI tables found");
+                free(table_names);
+                free(acpiEnum);
+                return true;
+            }
             if (NT_SUCCESS(status)) {
                 const DWORD* tables = reinterpret_cast<const DWORD*>(acpiEnum->TableBuffer);
                 ULONG tableCount = acpiEnum->TableBufferLength / sizeof(DWORD);
                 for (ULONG t = 0; t < tableCount; ++t) {
                     if (check_firmware_table(ACPI_SIG, tables[t])) {
+                        free(table_names);
                         free(acpiEnum);
                         return true;
                     }
                 }
             }
+            free(table_names);
         }
         free(acpiEnum);
 
@@ -9792,6 +9826,112 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         return false;
+#elif (LINUX)
+    // Author: dmfrpro
+    if (!util::is_admin()) {
+        return false;
+    }
+
+    DIR* dir = opendir("/sys/firmware/acpi/tables/");
+    if (!dir) {
+        debug("FIRMWARE: could not open ACPI tables directory");
+        return false;
+    }
+
+    // Same targets as the Windows branch but without "WAET"
+    constexpr const char* targets[] = {
+        "Parallels Software International", "Parallels(R)", "innotek",
+        "Oracle", "VirtualBox", "VS2005R2", "VMware, Inc.",
+        "VMware", "S3 Corp.", "Virtual Machine", "Qemu", "vbox", "BOCHS", "BXPC"
+    };
+
+    struct dirent* entry;
+    while ((entry = readdir(dir)) != nullptr) {
+        // Skip "." and ".."
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
+            continue;
+
+        char path[PATH_MAX];
+        snprintf(path, sizeof(path), "/sys/firmware/acpi/tables/%s", entry->d_name);
+
+        struct stat statbuf;
+        if (stat(path, &statbuf) != 0) {
+            debug("FIRMWARE: skipped ", entry->d_name);
+            continue;
+        }
+        if (S_ISDIR(statbuf.st_mode)) {
+            debug("FIRMWARE: skipped directory ", entry->d_name);
+            continue;
+        }
+
+        FILE* file = fopen(path, "rb");
+        if (!file) {
+            debug("FIRMWARE: could not open ACPI table ", entry->d_name);
+            continue;
+        }
+
+        fseek(file, 0, SEEK_END);
+        long file_size = ftell(file);
+        fseek(file, 0, SEEK_SET);
+
+        char* buffer = static_cast<char*>(malloc(file_size));
+        if (!buffer) {
+            debug("FIRMWARE: failed to allocate memory for buffer");
+            fclose(file);
+            continue;
+        }
+
+        if (fread(buffer, 1, file_size, file) != static_cast<size_t>(file_size)) {
+            debug("FIRMWARE: failed to read ACPI table ", entry->d_name);
+            free(buffer);
+            fclose(file);
+            continue;
+        }
+        fclose(file);
+
+        for (const char* target : targets) {
+            size_t targetLen = strlen(target);
+            if (targetLen == 0 || file_size < static_cast<long>(targetLen))
+                continue;
+            for (long j = 0; j <= file_size - static_cast<long>(targetLen); ++j) {
+                if (memcmp(buffer + j, target, targetLen) == 0) {
+                    const char* brand = nullptr;
+                    if (strcmp(target, "Parallels Software International") == 0 ||
+                        strcmp(target, "Parallels(R)") == 0) {
+                        brand = brands::PARALLELS;
+                    }
+                    else if (strcmp(target, "innotek") == 0 ||
+                        strcmp(target, "Oracle") == 0 ||
+                        strcmp(target, "VirtualBox") == 0 ||
+                        strcmp(target, "vbox") == 0) {
+                        brand = brands::VBOX;
+                    }
+                    else if (strcmp(target, "VMware, Inc.") == 0 ||
+                        strcmp(target, "VMware") == 0) {
+                        brand = brands::VMWARE;
+                    }
+                    else if (strcmp(target, "Qemu") == 0) {
+                        brand = brands::QEMU;
+                    }
+                    else if (strcmp(target, "BOCHS") == 0) {
+                        brand = brands::BOCHS;
+                    }
+                    free(buffer);
+                    closedir(dir);
+                    if (brand)
+                        return core::add(brand);
+                    else
+                        return true;
+                }
+            }
+        }
+        free(buffer);
+    }
+
+    closedir(dir);
+    return false;
+#else
+    return false;
 #endif
     }
 
@@ -11350,7 +11490,6 @@ public: // START OF PUBLIC FUNCTIONS
     }
 
 
-
     /**
      * @brief Change the certainty score of a technique
      * @param technique flag, then the new percentage score to overwite
@@ -11874,7 +12013,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     std::make_pair(VM::AMD_SEV, VM::core::technique(50, VM::amd_sev)),
     std::make_pair(VM::NATIVE_VHD, VM::core::technique(100, VM::native_vhd)),
     std::make_pair(VM::VIRTUAL_REGISTRY, VM::core::technique(65, VM::virtual_registry)),
-    std::make_pair(VM::FIRMWARE, VM::core::technique(90, VM::firmware_scan)),
+    std::make_pair(VM::FIRMWARE, VM::core::technique(75, VM::firmware_scan)),
     std::make_pair(VM::FILE_ACCESS_HISTORY, VM::core::technique(15, VM::file_access_history)),
     std::make_pair(VM::AUDIO, VM::core::technique(25, VM::check_audio)),
     std::make_pair(VM::UNKNOWN_MANUFACTURER, VM::core::technique(50, VM::unknown_manufacturer)),
