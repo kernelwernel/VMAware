@@ -30,10 +30,10 @@
  * - struct for internal cpu operations        => line 747
  * - struct for internal memoization           => line 1201
  * - struct for internal utility functions     => line 1326
- * - struct for internal core components       => line 10195
+ * - struct for internal core components       => line 10201
  * - start of VM detection technique list      => line 2522
- * - start of public VM detection functions    => line 10859
- * - start of externally defined variables     => line 11781
+ * - start of public VM detection functions    => line 10865
+ * - start of externally defined variables     => line 11787
  *
  *
  * ============================== EXAMPLE ===================================
@@ -9854,40 +9854,46 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         char path[PATH_MAX];
         snprintf(path, sizeof(path), "/sys/firmware/acpi/tables/%s", entry->d_name);
 
-        struct stat statbuf;
-        if (stat(path, &statbuf) != 0) {
-            debug("FIRMWARE: skipped ", entry->d_name);
-            continue;
-        }
-        if (S_ISDIR(statbuf.st_mode)) {
-            debug("FIRMWARE: skipped directory ", entry->d_name);
-            continue;
-        }
-
-        FILE* file = fopen(path, "rb");
-        if (!file) {
+        int fd = open(path, O_RDONLY);
+        if (fd == -1) {
             debug("FIRMWARE: could not open ACPI table ", entry->d_name);
             continue;
         }
 
-        fseek(file, 0, SEEK_END);
-        long file_size = ftell(file);
-        fseek(file, 0, SEEK_SET);
+        struct stat statbuf;
+        if (fstat(fd, &statbuf) != 0) {
+            debug("FIRMWARE: skipped ", entry->d_name);
+            close(fd);
+            continue;
+        }
+        if (S_ISDIR(statbuf.st_mode)) {
+            debug("FIRMWARE: skipped directory ", entry->d_name);
+            close(fd);
+            continue;
+        }
+
+        long file_size = statbuf.st_size;
+        if (file_size <= 0) {
+            debug("FIRMWARE: file empty or error ", entry->d_name);
+            close(fd);
+            continue;
+        }
 
         char* buffer = static_cast<char*>(malloc(file_size));
         if (!buffer) {
             debug("FIRMWARE: failed to allocate memory for buffer");
-            fclose(file);
+            close(fd);
             continue;
         }
 
-        if (fread(buffer, 1, file_size, file) != static_cast<size_t>(file_size)) {
+        ssize_t bytesRead = read(fd, buffer, file_size);
+        if (bytesRead != file_size) {
             debug("FIRMWARE: failed to read ACPI table ", entry->d_name);
             free(buffer);
-            fclose(file);
+            close(fd);
             continue;
         }
-        fclose(file);
+        close(fd);
 
         for (const char* target : targets) {
             size_t targetLen = strlen(target);
