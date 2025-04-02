@@ -351,6 +351,7 @@
 #include <intrin.h>
 #include <tchar.h>
 #include <iphlpapi.h>
+#include <winioctl.h>
 #include <winternl.h>
 #include <winuser.h>
 #include <psapi.h>
