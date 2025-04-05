@@ -4,7 +4,7 @@
  * ██║   ██║██╔████╔██║███████║██║ █╗ ██║███████║██████╔╝█████╗
  * ╚██╗ ██╔╝██║╚██╔╝██║██╔══██║██║███╗██║██╔══██║██╔══██╗██╔══╝
  *  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
- *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ 2.1.1 (April 2025)
+ *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ 2.1.2 (April 2025)
  *
  *  C++ VM detection library
  *
@@ -26,14 +26,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 576
- * - struct for internal cpu operations        => line 762
- * - struct for internal memoization           => line 1217
- * - struct for internal utility functions     => line 1343
- * - struct for internal core components       => line 10007
- * - start of VM detection technique list      => line 2541
- * - start of public VM detection functions    => line 10682
- * - start of externally defined variables     => line 11606
+ * - enums for publicly accessible techniques  => line 553
+ * - struct for internal cpu operations        => line 746
+ * - struct for internal memoization           => line 1200
+ * - struct for internal utility functions     => line 1324
+ * - struct for internal core components       => line 10199
+ * - start of VM detection technique list      => line 2520
+ * - start of public VM detection functions    => line 10863
+ * - start of externally defined variables     => line 11813
  *
  *
  * ============================== EXAMPLE ===================================
@@ -11156,7 +11156,7 @@ public: // START OF PUBLIC FUNCTIONS
         // found. There may be a conflict between an Unknown and Hyper-V
         // brand, which is exactly what this section is meant to handle.
         // It will remove the Hyper-V artifact brand string from the 
-        // std::map to pave the way for other brands to take precendence.
+        // std::map to pave the way for other brands to take precedence.
         // One of the main reasons to do this is because it would look
         // incredibly awkward if the brand was "Hyper-V artifacts (not an
         // actual VM)", clearly stating that it's NOT a VM while the VM
