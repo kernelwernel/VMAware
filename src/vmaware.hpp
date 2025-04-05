@@ -468,6 +468,7 @@ MSVC_DISABLE_WARNING(ASSIGNMENT_OPERATOR NO_INLINE_FUNC SPECTRE)
  * TL;DR I have wonky fingers :(
  */
 namespace brands {
+    static constexpr const char* NULL_BRAND = "Unknown";
     static constexpr const char* VBOX = "VirtualBox";
     static constexpr const char* VMWARE = "VMware";
     static constexpr const char* VMWARE_EXPRESS = "VMware Express";
@@ -534,7 +535,6 @@ namespace brands {
     static constexpr const char* NOIRVISOR = "NoirVisor";
     static constexpr const char* QIHOO = "Qihoo 360 Sandbox";
     static constexpr const char* NSJAIL = "nsjail";
-    static constexpr const char* NULL_BRAND = "Unknown";
 }
 
 

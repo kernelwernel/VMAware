@@ -1012,13 +1012,13 @@ void general() {
     {
         std::string brand = vm.brand;
 
-        if (is_anyrun && (brand == "Unknown")) {
+        if (is_anyrun && (brand == brands::NULL_BRAND)) {
             brand = "ANY.RUN";
         }
 
         const bool is_red = (
-            (brand == "Unknown") || 
-            (brand == "Hyper-V artifact (not an actual VM)")
+            (brand == brands::NULL_BRAND) || 
+            (brand == brands::HYPERV_ARTIFACT)
         );
 
         std::cout << bold << "VM brand: " << ansi_exit << (is_red ? red : green) << brand << ansi_exit << "\n";
@@ -1031,11 +1031,11 @@ void general() {
             std::string color = "";
             std::string &type = vm.type;
 
-            if (is_anyrun && (type == "Unknown")) {
+            if (is_anyrun && (type == brands::NULL_BRAND)) {
                 type = "Sandbox";
             }
 
-            if (type == "Unknown") {
+            if (type == brands::NULL_BRAND) {
                 color = red;
             } else {
                 color = green;
@@ -1312,7 +1312,7 @@ int main(int argc, char* argv[]) {
         if (arg_bitset.test(BRAND)) {
             std::string brand = VM::brand(VM::NO_MEMO, VM::MULTIPLE, settings());
             
-            if (is_anyrun && (brand == "Unknown")) {
+            if (is_anyrun && (brand == brands::NULL_BRAND)) {
                 brand = "ANY.RUN";
             }
 
@@ -1324,7 +1324,7 @@ int main(int argc, char* argv[]) {
         if (arg_bitset.test(TYPE)) {
             std::string type = VM::type(VM::NO_MEMO, VM::MULTIPLE, settings());
 
-            if (is_anyrun && (type == "Unknown")) {
+            if (is_anyrun && (type == brands::NULL_BRAND)) {
                 type = "Sandbox";
             }
 
@@ -1337,7 +1337,7 @@ int main(int argc, char* argv[]) {
             std::string conclusion = VM::conclusion(VM::NO_MEMO, VM::MULTIPLE, settings());
             
             if (is_anyrun) {
-                const std::string original = "Unknown";
+                const std::string original = brands::NULL_BRAND;
                 const std::string new_brand = "ANY.RUN";
 
                 replace(conclusion, original, new_brand);
