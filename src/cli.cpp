@@ -758,14 +758,9 @@ std::string vm_description(const std::string& vm_brand) {
 
 void edit_previous_line() {
 #if (CLI_WINDOWS)
-    HANDLE hStdOut = GetStdHandle(STD_OUTPUT_HANDLE);
-    CONSOLE_SCREEN_BUFFER_INFO csbi;
-    GetConsoleScreenBufferInfo(hStdOut, &csbi);
-    csbi.dwCursorPosition.X = 0;
-    SetConsoleCursorPosition(hStdOut, csbi.dwCursorPosition);
-    DWORD written;
-    FillConsoleOutputCharacter(hStdOut, ' ', csbi.dwSize.X, csbi.dwCursorPosition, &written);
-    SetConsoleCursorPosition(hStdOut, csbi.dwCursorPosition);
+    std::cout << "\x1b[2K";
+    std::cout << "\x1b[1A" << "\x1b[2K";
+    std::cout << "\r";
 #else
     std::cout << "\r\033[K";
 #endif
