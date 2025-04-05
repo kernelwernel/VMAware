@@ -4,7 +4,7 @@
  * ██║   ██║██╔████╔██║███████║██║ █╗ ██║███████║██████╔╝█████╗
  * ╚██╗ ██╔╝██║╚██╔╝██║██╔══██║██║███╗██║██╔══██║██╔══██╗██╔══╝
  *  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
- *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ 2.1.1 (March 2025)
+ *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ 2.1.1 (April 2025)
  *
  *  C++ VM detection library
  *
@@ -18,6 +18,7 @@
  *      - Georgii Gennadev (https://github.com/D00Movenok)
  *      - utoshu (https://github.com/utoshu)
  *      - Jyd (https://github.com/jyd519)
+ *      - dmfrpro (https://github.com/dmfrpro)
  *  - Repository: https://github.com/kernelwernel/VMAware
  *  - Docs: https://github.com/kernelwernel/VMAware/docs/documentation.md
  *  - Full credits: https://github.com/kernelwernel/VMAware#credits-and-contributors-%EF%B8%8F
@@ -25,14 +26,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 550
- * - struct for internal cpu operations        => line 743
- * - struct for internal memoization           => line 1197
- * - struct for internal utility functions     => line 1322
- * - struct for internal core components       => line 10044
- * - start of VM detection technique list      => line 2511
- * - start of public VM detection functions    => line 10708
- * - start of externally defined variables     => line 11632
+ * - enums for publicly accessible techniques  => line 576
+ * - struct for internal cpu operations        => line 762
+ * - struct for internal memoization           => line 1217
+ * - struct for internal utility functions     => line 1343
+ * - struct for internal core components       => line 10007
+ * - start of VM detection technique list      => line 2541
+ * - start of public VM detection functions    => line 10682
+ * - start of externally defined variables     => line 11606
  *
  *
  * ============================== EXAMPLE ===================================
@@ -184,6 +185,7 @@
 #pragma once
 
 #if defined(_WIN32) || defined(_WIN64)
+#define WIN32_LEAN_AND_MEAN
 #define WINDOWS 1
 #define LINUX 0
 #define APPLE 0
@@ -351,6 +353,7 @@
 #include <intrin.h>
 #include <tchar.h>
 #include <iphlpapi.h>
+#include <winioctl.h>
 #include <winternl.h>
 #include <winuser.h>
 #include <psapi.h>
@@ -1890,6 +1893,7 @@ private:
          * @returns hyperx_state enum indicating the detected state:
          *          - HYPERV_ARTIFACT_VM for host with Hyper-V enabled
          *          - HYPERV_REAL_VM for real Hyper-V VM
+         *          - HYPERV_ENLIGHTENMENT for QEMU with Hyper-V enlightenments
          *          - HYPERV_UNKNOWN_VM for unknown/undetected state
          */
         [[nodiscard]] static hyperx_state hyper_x() {
@@ -1901,16 +1905,25 @@ private:
                 return memo::hyperx::fetch();
             }
 
+            // check if hypervisor feature bit in CPUID eax bit 31 is enabled (always false for physical CPUs)
+            auto is_hyperv_present = []() -> bool {
+                u32 unused, ecx = 0;
+                cpu::cpuid(unused, unused, ecx, unused, 1);
+
+                return (ecx & (1 << 31));
+                };
+
             // https://learn.microsoft.com/en-us/virtualization/hyper-v-on-windows/tlfs/feature-discovery
             auto is_root_partition = []() -> bool {
                 u32 ebx, unused = 0;
                 cpu::cpuid(unused, ebx, unused, unused, 0x40000003);
                 const bool result = (ebx & 1);
 
+#ifdef __VMAWARE_DEBUG__
                 if (result) {
                     core_debug("HYPER_X: root partition returned true");
                 }
-
+#endif
                 return result;
                 };
 
@@ -1920,16 +1933,9 @@ private:
               * These child partitions have limited privileges and access to hypervisor resources, 
               * which is reflected in the maximum input value for hypervisor CPUID information as 11. 
               * Essentially, it indicates that the hypervisor is managing the VM and that the VM is not running directly on hardware but rather in a virtualized environment.
-              * 
-              * On the other hand, in bare-metal systems running Hyper-V, the EAX value is 12. 
-              * This higher value corresponds to the root partition, which has more privileges and control over virtualization resources compared to child partitions. 
-              * The root partition is responsible for managing other child partitions and interacts more closely with the hardware. 
-              * The EAX value of 12 indicates that additional CPUID leaves (up to 12) are available to the root partition, which exposes more functionality than in a guest VM.
             */
-
-            // check if eax is either 11 or 12 after running VM::HYPERVISOR_STR technique
             auto eax = []() -> u32 {
-                char out[sizeof(int32_t) * 4 + 1] = { 0 }; // e*x size + number of e*x registers + null terminator
+                char out[sizeof(int32_t) * 4 + 1] = { 0 }; 
                 cpu::cpuid((int*)out, cpu::leaf::hypervisor);
 
                 const u32 eax = static_cast<u32>(out[0]);
@@ -1939,12 +1945,19 @@ private:
 
             hyperx_state state;
 
-            if (eax() == 11) {
-                core_debug("HYPER_X: added Hyper-V real VM");
-                core::add(brands::HYPERV);
-                state = HYPERV_REAL_VM;
+            if (!is_root_partition()) {
+                if (eax() == 11 && is_hyperv_present()) {
+                    // Windows machine running under Hyper-V type 2
+                    core_debug("HYPER_X: added Hyper-V real VM");
+                    core::add(brands::HYPERV);
+                    state = HYPERV_REAL_VM;
+                }
+                else {
+                    core_debug("HYPER_X: none found");
+                    state = HYPERV_UNKNOWN_VM;
+                }
             }
-            else if (eax() == 12 || is_root_partition()) {
+            else {
                 const std::string brand_str = cpu::cpu_manufacturer(0x40000001);
 
                 if (util::find(brand_str, "KVM")) {
@@ -1953,14 +1966,11 @@ private:
                     state = HYPERV_ENLIGHTENMENT;
                 }
                 else {
+                    // Windows machine running under Hyper-V type 1
                     core_debug("HYPER_X: added Hyper-V artifact VM");
                     core::add(brands::HYPERV_ARTIFACT);
                     state = HYPERV_ARTIFACT_VM;
-                }   
-            }
-            else {
-                core_debug("HYPER_X: none detected");
-                state = HYPERV_UNKNOWN_VM;
+                }
             }
 
             memo::hyperx::store(state);
@@ -2522,7 +2532,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return (
             cpu::vmid_template(0) ||
             cpu::vmid_template(cpu::leaf::hypervisor) || // 0x40000000
-            cpu::vmid_template(cpu::leaf::hypervisor + 1) || // 0x40000001 to account for some edge-cases
             cpu::vmid_template(cpu::leaf::hypervisor + 0x100) // 0x40000100
         );
 #endif
@@ -2615,7 +2624,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!x86)
         return false;
 #else
-
         if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
             return false;
         }
@@ -3549,13 +3557,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        // For Windows 10/11 and newer versions
         if (version == 10) {
             debug("VBOX_DEFAULT: Windows 10 detected");
             return ((50 == disk) && (2 == ram));
         }
 
-        // Windows 11 check (version 11+)
         debug("VBOX_DEFAULT: Windows 11 detected");
         return ((80 == disk) && (4 == ram));
     #endif
@@ -3579,7 +3585,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         bool result = false;
 
         if (retv == NO_ERROR) {
-            result = (_stricmp(provider, "VirtualBox Shared Folders") == 0);
+            result = (strcmp(provider, "VirtualBox Shared Folders") == 0);
         }
 
         return result;
@@ -4654,7 +4660,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
 
 
-
     /**
      * @brief Check for sldt instruction method
      * @category Windows, x86
@@ -5068,15 +5073,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #else
         auto supMutexExist = [](const char* lpMutexName) -> bool {
-            DWORD dwError;
-            HANDLE hObject = NULL;
             if (lpMutexName == NULL) {
                 return false;
             }
 
             SetLastError(0);
-            hObject = CreateMutexA(NULL, FALSE, lpMutexName);
-            dwError = GetLastError();
+            const HANDLE hObject = CreateMutexA(NULL, FALSE, lpMutexName);
+            const DWORD dwError = GetLastError();
 
             if (hObject) {
                 CloseHandle(hObject);
@@ -6363,7 +6366,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
 
 
-    /**https://github.com/kernelwernel/VMAware/issues/294
+    /**
      * @brief Check for memory regions to detect VM-specific brands
      * @category Windows
      * @author Graham Sutherland
@@ -7761,8 +7764,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 const char* brand = entry.brand;
                 const size_t len = entry.length;
 #endif
-
-
                 if (deviceStrLen == len && wcscmp(deviceStr, name) == 0) {                  
                     return core::add(brand);;
                 }
@@ -7774,6 +7775,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
+
 
     /**
      * @brief Check for GPU capabilities related to VMs
@@ -7816,7 +7818,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (FAILED(CreateDXGIFactory(__uuidof(IDXGIFactory), reinterpret_cast<void**>(&pFactory)))) return true;
 
         IDXGIAdapter* pAdapter = nullptr;
-        // do not enumerate all adapters, otherwise it would false flag with adapters with no dedicated gpu memory like Microsoft Basic Render Driver (vid 0x1414)
+        // do not enumerate all adapters, otherwise it would false flag with adapters with no dedicated gpus like Microsoft Basic Render Driver (vid 0x1414)
         if (pFactory->EnumAdapters(0, &pAdapter) != DXGI_ERROR_NOT_FOUND) {
             DXGI_ADAPTER_DESC adapterDesc;
             if (SUCCEEDED(pAdapter->GetDesc(&adapterDesc))) {
@@ -8289,19 +8291,29 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         QueryPerformanceCounter(&endQPC);
         LONGLONG dummyTime = endQPC.QuadPart - startQPC.QuadPart;
 
-        const bool qpc_check = (dummyTime != 0) && ((cpuIdTime / dummyTime) > 1500);
+        const bool qpc_check = (dummyTime != 0) && ((cpuIdTime / dummyTime) > 3000);
         debug("QPC check - CPUID: ", cpuIdTime, "ns, Dummy: ", dummyTime, "ns, Ratio: ", (cpuIdTime / dummyTime));
 
         // TSC sync check across cores. Try reading the invariant TSC on two different cores to attempt to detect vCPU timers being shared
-        unsigned aux;
-        SetThreadAffinityMask(GetCurrentThread(), 1);
-        u64 tsc_core1 = __rdtscp(&aux);  // Core 1 TSC
-        SetThreadAffinityMask(GetCurrentThread(), 2);
-        u64 tsc_core2 = __rdtscp(&aux);  // Core 2 TSC
-        SetThreadAffinityMask(GetCurrentThread(), old_mask);
-
-        const bool tsc_sync_check = std::llabs(static_cast<long long>(tsc_core2 - tsc_core1)) > 10000000LL;
-        debug("TSC sync check - Core1: ", tsc_core1, " Core2: ", tsc_core2, " Diff: ", tsc_core2 - tsc_core1);
+        const bool tsc_sync_check = [&]() noexcept -> bool {
+            u64 tsc_core1 = 0;
+            u64 tsc_core2 = 0;
+            __try { // lambda is necessary to use __try in functions that require object unwinding while still avoiding the creation of any external helper functions
+                unsigned int aux = 0;
+                SetThreadAffinityMask(GetCurrentThread(), 1);
+                tsc_core1 = __rdtscp(&aux); // Core 1 TSC, the use of a serializing variant for the instruction stream is done on purpose
+                SetThreadAffinityMask(GetCurrentThread(), 2);
+                tsc_core2 = __rdtscp(&aux); // Core 2 TSC
+                SetThreadAffinityMask(GetCurrentThread(), old_mask);
+            }
+            __except (GetExceptionCode() == EXCEPTION_ILLEGAL_INSTRUCTION
+                ? EXCEPTION_EXECUTE_HANDLER
+                : EXCEPTION_CONTINUE_SEARCH) {
+                return true; // RDTSCP is widely supported on real hardware
+            }
+            debug("TSC sync check - Core1: ", tsc_core1, " Core2: ", tsc_core2, " Diff: ", tsc_core2 - tsc_core1);
+            return std::llabs(static_cast<long long>(tsc_core2 - tsc_core1)) > 1000000000LL;
+            }();
 
         return sleep_variance_detected || spammer_detected || qpc_check || tsc_sync_check;
     #else
@@ -8799,9 +8811,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::AMD_SEV
 	 */
 	[[nodiscard]] static bool amd_sev() {
-#if (!x86 && !LINUX && !APPLE)
-	    return false;
-#else
+#if (x86 && (LINUX || APPLE))
 	    if (!cpu::is_amd()) {
 	        return false;
 	    }
@@ -8819,8 +8829,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 	    
 	    u32 eax, unused = 0;
 	    cpu::cpuid(eax, unused, unused, unused, encrypted_memory_capability);
-	
-        
+	      
 	    if (!(eax & (1 << 1))) {
 	        return false;
 	    }       
@@ -8848,6 +8857,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 	    else if (result & 1) { return core::add(brands::AMD_SEV); }
 	
 	    return false;
+#else
+        return false;
 #endif
 	}
 
@@ -9523,8 +9534,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         } OBJECT_NAME_INFORMATION, * POBJECT_NAME_INFORMATION;
 #pragma warning(default : 4459)
 
-        typedef NTSTATUS(NTAPI* PNtOpenKey)(PHANDLE, ACCESS_MASK, POBJECT_ATTRIBUTES);
-        typedef NTSTATUS(NTAPI* PNtQueryObject)(HANDLE, OBJECT_INFORMATION_CLASS, PVOID, ULONG, PULONG);
+        typedef NTSTATUS(__stdcall* PNtOpenKey)(PHANDLE, ACCESS_MASK, POBJECT_ATTRIBUTES);
+        typedef NTSTATUS(__stdcall* PNtQueryObject)(HANDLE, OBJECT_INFORMATION_CLASS, PVOID, ULONG, PULONG);
 
         const HMODULE hModule = GetModuleHandleA("ntdll.dll");
         if (!hModule)
@@ -9584,13 +9595,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Checks for VM signatures in firmware
      * @category Windows
-     * @note Idea of detecting VMwareHardenerLoader was made by MegaMax
+     * @note Idea of detecting VMwareHardenerLoader was made by MegaMax, detection for Bochs, VirtualBox and WAET was made by dmfrpro
+     * @credits MegaMax, dmfrpro
      * @implements VM::FIRMWARE
      */
     [[nodiscard]] static bool firmware_scan() {
-#if (!WINDOWS)
-        return false;
-#else
+#if (WINDOWS)
 #pragma warning (disable: 4459)
         typedef enum _SYSTEM_INFORMATION_CLASS {
             SystemFirmwareTableInformation = 76
@@ -9604,7 +9614,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             UCHAR TableBuffer[1];
         } SYSTEM_FIRMWARE_TABLE_INFORMATION, * PSYSTEM_FIRMWARE_TABLE_INFORMATION;
 #pragma warning (default : 4459)
-        typedef NTSTATUS(NTAPI* PNtQuerySystemInformation)(ULONG, PVOID, ULONG, PULONG);
+        typedef NTSTATUS(__stdcall* PNtQuerySystemInformation)(ULONG, PVOID, ULONG, PULONG);
         constexpr ULONG STATUS_BUFFER_TOO_SMALL = 0xC0000023;
         constexpr DWORD ACPI_SIG = 'ACPI';
         constexpr DWORD RSMB_SIG = 'RSMB';
@@ -9625,32 +9635,30 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         constexpr const char* targets[] = {
             "Parallels Software International", "Parallels(R)", "innotek",
             "Oracle", "VirtualBox", "VS2005R2", "VMware, Inc.",
-            "VMware", "S3 Corp.", "Virtual Machine", "Qemu"
+            "VMware", "S3 Corp.", "Virtual Machine", "Qemu", "vbox",
+            "WAET", "BOCHS", "BXPC"
         };
 
         auto check_firmware_table = [&](DWORD signature, ULONG tableID) -> bool {
             ULONG reqSize = 0;
-            PSYSTEM_FIRMWARE_TABLE_INFORMATION info = nullptr;
-            bool detected = false;
-
-            info = (PSYSTEM_FIRMWARE_TABLE_INFORMATION)malloc(sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION));
+            // First call to determine the required buffer size
+            PSYSTEM_FIRMWARE_TABLE_INFORMATION info =
+                (PSYSTEM_FIRMWARE_TABLE_INFORMATION)malloc(sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION));
             if (!info)
                 return false;
             info->ProviderSignature = signature;
             info->Action = 1;
             info->TableID = tableID;
             info->TableBufferLength = 0;
-
             NTSTATUS status = ntqsi(SystemFirmwareTableInformation,
                 info,
                 sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION),
                 &reqSize);
-            if (status != STATUS_BUFFER_TOO_SMALL) {
-                free(info);
-                return false;
-            }
             free(info);
+            if (status != STATUS_BUFFER_TOO_SMALL)
+                return false;
 
+            // Second call to allocate proper buffer and get the data
             info = (PSYSTEM_FIRMWARE_TABLE_INFORMATION)malloc(reqSize);
             if (!info)
                 return false;
@@ -9658,7 +9666,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             info->Action = 1;
             info->TableID = tableID;
             info->TableBufferLength = reqSize - sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION);
-
             status = ntqsi(SystemFirmwareTableInformation,
                 info,
                 reqSize,
@@ -9669,20 +9676,41 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             const unsigned char* buf = info->TableBuffer;
-            size_t bufLen = info->TableBufferLength;
+            const size_t bufLen = info->TableBufferLength;
             for (const char* target : targets) {
                 size_t targetLen = strlen(target);
                 if (targetLen == 0 || bufLen < targetLen)
                     continue;
                 for (size_t offset = 0; offset <= bufLen - targetLen; offset++) {
                     if (memcmp(buf + offset, target, targetLen) == 0) {
-                        detected = true;
-                        break;
+                        const char* brand = nullptr;
+                        if (strcmp(target, "Parallels Software International") == 0 ||
+                            strcmp(target, "Parallels(R)") == 0)
+                            brand = brands::PARALLELS;
+                        else if (strcmp(target, "innotek") == 0 ||
+                            strcmp(target, "VirtualBox") == 0 ||
+                            strcmp(target, "vbox") == 0 ||
+                            strcmp(target, "Oracle") == 0)
+                            brand = brands::VBOX;
+                        else if (strcmp(target, "VMware, Inc.") == 0 ||
+                            strcmp(target, "VMware") == 0)
+                            brand = brands::VMWARE;
+                        else if (strcmp(target, "Qemu") == 0)
+                            brand = brands::QEMU;
+                        else if (strcmp(target, "BOCHS") == 0)
+                            brand = brands::BOCHS;
+                        else {
+                            free(info);
+                            return true;
+                        }
+                        free(info);
+                        return core::add(brand);
                     }
                 }
             }
-            // If no target was found, check for a 777777 pattern to detect VMWareHardenerLoader (idea by MegaMax)
-            if (!detected && bufLen >= 6) {
+
+            // Check for the "777777" pattern (used by VMwareHardenerLoader)
+            if (bufLen >= 6) {
                 constexpr size_t patternLen = 6;
                 for (size_t offset = 0; offset <= bufLen - patternLen; offset++) {
                     bool allSevens = true;
@@ -9698,57 +9726,74 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     }
                 }
             }
-
             free(info);
-            return detected;
-        };
+            return false;
+            };
 
-        // RSMB
+        // Check RSMB table
         if (check_firmware_table(RSMB_SIG, 0UL))
             return true;
-        // FIRM
+
+        // Check FIRM table using two address values
         for (ULONG addr : { 0xC0000UL, 0xE0000UL }) {
             if (check_firmware_table(FIRM_SIG, addr))
                 return true;
         }
 
-        // ACPI
-        PSYSTEM_FIRMWARE_TABLE_INFORMATION acpiEnum = nullptr;
-        ULONG retLen = 0;
-        NTSTATUS status;
-        acpiEnum = static_cast<PSYSTEM_FIRMWARE_TABLE_INFORMATION>(
-            malloc(sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION)));
+        // ACPI table check
+        PSYSTEM_FIRMWARE_TABLE_INFORMATION acpiEnum =
+            (PSYSTEM_FIRMWARE_TABLE_INFORMATION)malloc(sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION));
         if (!acpiEnum)
             return false;
-
         acpiEnum->ProviderSignature = ACPI_SIG;
         acpiEnum->Action = 0;
         acpiEnum->TableID = 0;
         acpiEnum->TableBufferLength = 0;
-
-        status = ntqsi(SystemFirmwareTableInformation, acpiEnum, sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION), &retLen);
-        if (status == STATUS_BUFFER_TOO_SMALL) {
+        ULONG retLen = 0;
+        NTSTATUS status = ntqsi(SystemFirmwareTableInformation,
+            acpiEnum,
+            sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION),
+            &retLen);
+        if (status == STATUS_BUFFER_TOO_SMALL)
+        {
             free(acpiEnum);
-            acpiEnum = static_cast<PSYSTEM_FIRMWARE_TABLE_INFORMATION>(malloc(retLen));
+            acpiEnum = (PSYSTEM_FIRMWARE_TABLE_INFORMATION)malloc(retLen);
             if (!acpiEnum)
                 return false;
-
             acpiEnum->ProviderSignature = ACPI_SIG;
             acpiEnum->Action = 0;
             acpiEnum->TableID = 0;
             acpiEnum->TableBufferLength = retLen - sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION);
+            status = ntqsi(SystemFirmwareTableInformation,
+                acpiEnum,
+                retLen,
+                &retLen);
 
-            status = ntqsi(SystemFirmwareTableInformation, acpiEnum, retLen, &retLen);
+            const PDWORD table_names = (PDWORD)calloc(0x1000, 1);
+            if (!table_names) {
+                free(acpiEnum);
+                return false;
+            }
+            const DWORD sig = 'ACPI';
+            const DWORD table_size = EnumSystemFirmwareTables(sig, table_names, 0x1000);
+            if (table_size < 4) { // Check made by dmfrpro
+                debug("FIRMWARE: not enough ACPI tables found");
+                free(table_names);
+                free(acpiEnum);
+                return true;
+            }
             if (NT_SUCCESS(status)) {
                 const DWORD* tables = reinterpret_cast<const DWORD*>(acpiEnum->TableBuffer);
                 ULONG tableCount = acpiEnum->TableBufferLength / sizeof(DWORD);
                 for (ULONG t = 0; t < tableCount; ++t) {
                     if (check_firmware_table(ACPI_SIG, tables[t])) {
+                        free(table_names);
                         free(acpiEnum);
                         return true;
                     }
                 }
             }
+            free(table_names);
         }
         free(acpiEnum);
 
@@ -9781,6 +9826,118 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         return false;
+#elif (LINUX)
+    // Author: dmfrpro
+    if (!util::is_admin()) {
+        return false;
+    }
+
+    DIR* dir = opendir("/sys/firmware/acpi/tables/");
+    if (!dir) {
+        debug("FIRMWARE: could not open ACPI tables directory");
+        return false;
+    }
+
+    // Same targets as the Windows branch but without "WAET"
+    constexpr const char* targets[] = {
+        "Parallels Software International", "Parallels(R)", "innotek",
+        "Oracle", "VirtualBox", "VS2005R2", "VMware, Inc.",
+        "VMware", "S3 Corp.", "Virtual Machine", "Qemu", "vbox", "BOCHS", "BXPC"
+    };
+
+    struct dirent* entry;
+    while ((entry = readdir(dir)) != nullptr) {
+        // Skip "." and ".."
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
+            continue;
+
+        char path[PATH_MAX];
+        snprintf(path, sizeof(path), "/sys/firmware/acpi/tables/%s", entry->d_name);
+
+        int fd = open(path, O_RDONLY);
+        if (fd == -1) {
+            debug("FIRMWARE: could not open ACPI table ", entry->d_name);
+            continue;
+        }
+
+        struct stat statbuf;
+        if (fstat(fd, &statbuf) != 0) {
+            debug("FIRMWARE: skipped ", entry->d_name);
+            close(fd);
+            continue;
+        }
+        if (S_ISDIR(statbuf.st_mode)) {
+            debug("FIRMWARE: skipped directory ", entry->d_name);
+            close(fd);
+            continue;
+        }
+
+        long file_size = statbuf.st_size;
+        if (file_size <= 0) {
+            debug("FIRMWARE: file empty or error ", entry->d_name);
+            close(fd);
+            continue;
+        }
+
+        char* buffer = static_cast<char*>(malloc(file_size));
+        if (!buffer) {
+            debug("FIRMWARE: failed to allocate memory for buffer");
+            close(fd);
+            continue;
+        }
+
+        ssize_t bytesRead = read(fd, buffer, file_size);
+        if (bytesRead != file_size) {
+            debug("FIRMWARE: failed to read ACPI table ", entry->d_name);
+            free(buffer);
+            close(fd);
+            continue;
+        }
+        close(fd);
+
+        for (const char* target : targets) {
+            size_t targetLen = strlen(target);
+            if (targetLen == 0 || file_size < static_cast<long>(targetLen))
+                continue;
+            for (long j = 0; j <= file_size - static_cast<long>(targetLen); ++j) {
+                if (memcmp(buffer + j, target, targetLen) == 0) {
+                    const char* brand = nullptr;
+                    if (strcmp(target, "Parallels Software International") == 0 ||
+                        strcmp(target, "Parallels(R)") == 0) {
+                        brand = brands::PARALLELS;
+                    }
+                    else if (strcmp(target, "innotek") == 0 ||
+                        strcmp(target, "Oracle") == 0 ||
+                        strcmp(target, "VirtualBox") == 0 ||
+                        strcmp(target, "vbox") == 0) {
+                        brand = brands::VBOX;
+                    }
+                    else if (strcmp(target, "VMware, Inc.") == 0 ||
+                        strcmp(target, "VMware") == 0) {
+                        brand = brands::VMWARE;
+                    }
+                    else if (strcmp(target, "Qemu") == 0) {
+                        brand = brands::QEMU;
+                    }
+                    else if (strcmp(target, "BOCHS") == 0) {
+                        brand = brands::BOCHS;
+                    }
+                    free(buffer);
+                    closedir(dir);
+                    if (brand)
+                        return core::add(brand);
+                    else
+                        return true;
+                }
+            }
+        }
+        free(buffer);
+    }
+
+    closedir(dir);
+    return false;
+#else
+    return false;
 #endif
     }
 
@@ -9826,27 +9983,27 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #else
         /*
-        bool comInitialized = SUCCEEDED(CoInitializeEx(nullptr, COINIT_MULTITHREADED));
+            bool comInitialized = SUCCEEDED(CoInitializeEx(nullptr, COINIT_MULTITHREADED));
 
-        IMMDeviceEnumerator* enumerator = nullptr;
-        HRESULT hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr,
-            CLSCTX_ALL, __uuidof(IMMDeviceEnumerator), reinterpret_cast<void**>(&enumerator));
+            IMMDeviceEnumerator* enumerator = nullptr;
+            HRESULT hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr,
+                CLSCTX_ALL, __uuidof(IMMDeviceEnumerator), reinterpret_cast<void**>(&enumerator));
 
-        if (FAILED(hr)) {
+            if (FAILED(hr)) {
+                if (comInitialized) CoUninitialize();
+                return false;
+            }
+
+            IMMDevice* device = nullptr;
+            hr = enumerator->GetDefaultAudioEndpoint(eRender, eConsole, &device);
+
+            bool result = SUCCEEDED(hr);
+
+            if (device) device->Release();
+            enumerator->Release();
             if (comInitialized) CoUninitialize();
-            return false;
-        }
 
-        IMMDevice* device = nullptr;
-        hr = enumerator->GetDefaultAudioEndpoint(eRender, eConsole, &device);
-
-        bool result = SUCCEEDED(hr);
-
-        if (device) device->Release();
-        enumerator->Release();
-        if (comInitialized) CoUninitialize();
-
-        return !result;
+            return !result;
         */
         return (waveOutGetNumDevs() == 0);
 #endif
@@ -10022,7 +10179,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
-
 
     // ADD NEW TECHNIQUE FUNCTION HERE
 
@@ -11340,7 +11496,6 @@ public: // START OF PUBLIC FUNCTIONS
     }
 
 
-
     /**
      * @brief Change the certainty score of a technique
      * @param technique flag, then the new percentage score to overwite
@@ -11428,7 +11583,7 @@ public: // START OF PUBLIC FUNCTIONS
             { brands::VMWARE_ESX, "Hypervisor (type 1)" },
             { brands::ACRN, "Hypervisor (type 1)" },
             { brands::QNX, "Hypervisor (type 1)" },
-            { brands::HYPERV, "Hypervisor (type 1)" },
+            { brands::HYPERV, "Hypervisor (type 2)" }, // to clarify you're running under a Hyper-V guest VM
             { brands::AZURE_HYPERV, "Hypervisor (type 1)" },
             { brands::NANOVISOR, "Hypervisor (type 1)" },
             { brands::KVM, "Hypervisor (type 1)" },
@@ -11444,6 +11599,7 @@ public: // START OF PUBLIC FUNCTIONS
             { brands::AWS_NITRO, "Hypervisor (type 1)" },
             { brands::LKVM, "Hypervisor (type 1)" },
             { brands::NOIRVISOR, "Hypervisor (type 1)" },
+            { brands::WSL, "Hypervisor (Type 1)" }, // Type 1-derived lightweight VM system
 
             // type 2
             { brands::BHYVE, "Hypervisor (type 2)" },
@@ -11457,7 +11613,6 @@ public: // START OF PUBLIC FUNCTIONS
             { brands::VPC, "Hypervisor (type 2)" },
             { brands::NVMM, "Hypervisor (type 2)" },
             { brands::BSD_VMM, "Hypervisor (type 2)" },
-            { brands::HYPERV, "Hypervisor (type 2)" },
             { brands::HYPERV_VPC, "Hypervisor (type 2)" },
 
             // sandbox
@@ -11486,13 +11641,12 @@ public: // START OF PUBLIC FUNCTIONS
             { brands::INTEL_TDX, "Trusted Domain" },
             { brands::APPLE_VZ, "Unknown" },
             { brands::UML, "Paravirtualised/Hypervisor (type 2)" },
-            { brands::WSL, "Hybrid Hyper-V (type 1 and 2)" }, // debatable tbh
             { brands::AMD_SEV, "VM encryptor" },
             { brands::AMD_SEV_ES, "VM encryptor" },
             { brands::AMD_SEV_SNP, "VM encryptor" },
             { brands::GCE, "Cloud VM service" },
             { brands::NSJAIL, "Process isolator" },
-            { brands::HYPERV_ARTIFACT, "Unknown" },
+            { brands::HYPERV_ARTIFACT, "Unknown" }, // This refers to the type 1 hypervisor where Windows normally runs under, we put "Unknown" to clarify you're not running under a VM if this is detected
             { brands::NULL_BRAND, "Unknown" }
         };
 
@@ -11865,7 +12019,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     std::make_pair(VM::AMD_SEV, VM::core::technique(50, VM::amd_sev)),
     std::make_pair(VM::NATIVE_VHD, VM::core::technique(100, VM::native_vhd)),
     std::make_pair(VM::VIRTUAL_REGISTRY, VM::core::technique(65, VM::virtual_registry)),
-    std::make_pair(VM::FIRMWARE, VM::core::technique(90, VM::firmware_scan)),
+    std::make_pair(VM::FIRMWARE, VM::core::technique(75, VM::firmware_scan)),
     std::make_pair(VM::FILE_ACCESS_HISTORY, VM::core::technique(15, VM::file_access_history)),
     std::make_pair(VM::AUDIO, VM::core::technique(25, VM::check_audio)),
     std::make_pair(VM::UNKNOWN_MANUFACTURER, VM::core::technique(50, VM::unknown_manufacturer)),
