@@ -29,16 +29,17 @@
 
 #if (defined(__GNUC__) || defined(__linux__))
     #include <unistd.h>
-    #define LINUX 1
+    #define CLI_LINUX 1
 #else
-    #define LINUX 0
+    #define CLI_LINUX 0
 #endif
 
+
 #if (defined(_MSC_VER) || defined(_WIN32) || defined(_WIN64) || defined(__MINGW32__))
-    #define WINDOWS 1
+    #define CLI_WINDOWS 1
     #include <windows.h>
 #else
-    #define WINDOWS 0
+    #define CLI_WINDOWS 0
 #endif
 
 #if (_MSC_VER)
@@ -103,7 +104,7 @@ std::string no_perms = ("[" + grey + "  NO PERMS  " + ansi_exit + "]");
 std::string note = ("[    NOTE    ]");               
 std::string disabled = ("[" + red + "  DISABLED  " + ansi_exit + "]");
 
-#if (WINDOWS)
+#if (CLI_WINDOWS)
 class win_ansi_enabler_t
 {
 public:
@@ -280,7 +281,7 @@ nsjail
 }
 
 
-#if (LINUX)
+#if (CLI_LINUX)
 bool is_admin() {
     const uid_t uid  = getuid();
     const uid_t euid = geteuid();
@@ -296,7 +297,7 @@ bool is_admin() {
 
 
 bool are_perms_required(const VM::enum_flags flag) {
-#if (LINUX)
+#if (CLI_LINUX)
     if (is_admin()) {
         return false;
     }
@@ -507,10 +508,10 @@ bool is_unsupported(VM::enum_flags flag) {
 
 
 #if __cplusplus >= 201703L
-    if constexpr (LINUX) {
+    if constexpr (CLI_LINUX) {
         return linux_techniques(flag);
     }
-    else if constexpr (WINDOWS) {
+    else if constexpr (CLI_WINDOWS) {
         return windows_techniques(flag);
     }
     else if constexpr (APPLE) {
@@ -520,11 +521,11 @@ bool is_unsupported(VM::enum_flags flag) {
         return true;
     }
 #else
-    #if LINUX
+    #if (CLI_LINUX)
         return linux_techniques(flag);
-    #elif WINDOWS
+    #elif (CLI_WINDOWS)
         return windows_techniques(flag);
-    #elif APPLE
+    #elif (APPLE)
         return macos_techniques(flag);
     #else
         return true;
@@ -602,7 +603,7 @@ std::string vm_description(const std::string& vm_brand) {
         { brands::QEMU, "The Quick Emulator (QEMU) is a free and open-source emulator that uses dynamic binary translation to emulate a computer's processor. It translates the emulated binary codes to an equivalent binary format which is executed by the machine. It provides a variety of hardware and device models for the VM, while often being combined with KVM. However, no concrete evidence of KVM was found for this system." },
         { brands::QEMU_KVM, "QEMU (a free and open-source emulator that uses dynamic binary translation to emulate a computer's processor) is being used with Kernel-based Virtual Machine (KVM, a free and open source module of the Linux kernel) to emulate hardware at near-native speeds." },
         { brands::KVM_HYPERV, "KVM-HyperV integration allows Linux KVM hosts to expose Hyper-V-compatible paravirtualization interfaces to Windows guests. Enables performance optimizations like enlightened VMCS (Virtual Machine Control Structure) and TSC (Time Stamp Counter) synchronization, reducing overhead for Windows VMs running on Linux hypervisors." },
-        { brands::QEMU_KVM_HYPERV, "A QEMU/KVM virtual machine with Hyper-V enlightenments. These features make Windows and Hyper-V guests think they’re running on top of a Hyper-V compatible hypervisor and use Hyper-V specific features." },
+        { brands::QEMU_KVM_HYPERV, "A QEMU/KVM virtual machine with Hyper-V enlightenments. These features make Windows and Hyper-V guests think they're running on top of a Hyper-V compatible hypervisor and use Hyper-V specific features." },
         { brands::HYPERV, "Hyper-V is Microsoft's proprietary native hypervisor that can create x86 VMs on Windows. Released in 2008, it supercedes previous virtualization solutions such as Microsoft Virtual Server and Windows VirtualPC. Hyper-V uses partitioning to isolate the guest OSs, and has \"enlightenment\" features for bypassing device emulation layers, allowing for faster execution including when Windows is virtualization on Linux." },
         { brands::HYPERV_VPC, "Either Hyper-V or VirtualPC were detected. Hyper-V is Microsoft's proprietary native hypervisor that can create x86 VMs on Windows. Virtual PC is a discontinued x86 emulator software for Microsoft Windows hosts and PowerPC-based Mac hosts." },
         { brands::PARALLELS, "Parallels is a hypervisor providing hardware virtualization for Mac computers. It was released in 2006 and is developed by Parallels, a subsidiary of Corel. It is a hardware emulation virtualization software, using hypervisor technology that works by mapping the host computer's hardware resources directly to the VM's resources. Each VM thus operates with virtually all the resources of a physical computer." },
@@ -633,7 +634,7 @@ std::string vm_description(const std::string& vm_brand) {
         { brands::AZURE_HYPERV, "Azure Hyper-V is Microsoft's cloud-optimized hypervisor variant powering Azure VMs. Implements Azure-specific virtual devices like NVMe Accelerated Networking and vTPMs. Supports nested virtualization for running Hyper-V/containers within Azure VMs, enabling cloud-based CI/CD pipelines and dev/test environments." },
         { brands::NANOVISOR, "NanoVisor is a Hyper-V modification serving as the host OS of Xbox's devices: the Xbox System Software. It contains 2 partitions: the \"Exclusive\" partition is a custom VM for games, while the other partition, called the \"Shared\" partition is a custom VM for running multiple apps including the OS itself. The OS was based on Windows 8 Core at the Xbox One launch in 2013." },
         { brands::SIMPLEVISOR, "SimpleVisor is a minimalist Intel VT-x hypervisor by Alex Ionescu for Windows/Linux research. Demonstrates EPT-based memory isolation and hypercall handling. Used to study VM escapes and hypervisor rootkits, with hooks for intercepting CR3 changes and MSR accesses." },
-        { brands::HYPERV_ARTIFACT, "The CLI detected Hyper-V operating as a Type 1 hypervisor, not as a guest virtual machine. Althought your hardware/firmware signatures match Microsoft's Hyper-V architecture, we determined that you're running on baremetal, with the help of our \"Hyper-X\" mechanism that differentiates between the root partition (host OS) and guest VM environments. This prevents false positives, as Windows sometimes runs under Hyper-V (type 1) hypervisor." },
+        { brands::HYPERV_ARTIFACT, "The CLI detected Hyper-V operating as a Type 1 hypervisor, not as a guest virtual machine. Although your hardware/firmware signatures match Microsoft's Hyper-V architecture, we determined that you're running on baremetal, with the help of our \"Hyper-X\" mechanism that differentiates between the root partition (host OS) and guest VM environments. This prevents false positives, as Windows sometimes runs under Hyper-V (type 1) hypervisor." },
         { brands::UML, "User-Mode Linux (UML) allows running Linux kernels as user-space processes using ptrace-based virtualization. Primarily used for kernel debugging and network namespace testing. Offers lightweight isolation without hardware acceleration, but requires host/guest kernel version matching for stable operation." },
         { brands::POWERVM, "IBM PowerVM is a type 1 hypervisor for POWER9/10 systems, supporting Live Partition Mobility and Shared Processor Pools. Implements VIOS (Virtual I/O Server) for storage/networking virtualization, enabling concurrent AIX, IBM i, and Linux workloads with RAS features like predictive failure analysis." },
         { brands::GCE, "Google Compute Engine (GCE) utilizes KVM-based virtualization with custom Titanium security chips for hardware root of trust. Features live migration during host maintenance and shielded VMs with UEFI secure boot. Underpins Google Cloud's Confidential Computing offering using AMD SEV-SNP memory encryption." },
@@ -675,7 +676,7 @@ std::string vm_description(const std::string& vm_brand) {
  * @copyright MIT
  */
 [[nodiscard]] static bool anyrun_driver() {
-#if (!WINDOWS)
+#if (!CLI_WINDOWS)
     return false;
 #else
     HANDLE hFile;
@@ -709,7 +710,7 @@ std::string vm_description(const std::string& vm_brand) {
  * @copyright MIT
  */
 [[nodiscard]] static bool anyrun_directory() {
-#if (!WINDOWS)
+#if (!CLI_WINDOWS)
     return false;
 #else
     NTSTATUS status;
@@ -770,7 +771,7 @@ void checker(const VM::enum_flags flag, const char* message) {
         enum_name = grey + " [VM::" + VM::flag_to_string(flag) + "]" + ansi_exit;
     }
 
-#if (LINUX)
+#if (CLI_LINUX)
     if (are_perms_required(flag)) {
         if (arg_bitset.test(COMPACT)) {
             return;
@@ -809,7 +810,7 @@ void checker(const VM::enum_flags flag, const char* message) {
 // that are embedded in the CLI because it was removed in the lib as of 2.0
 void checker(const std::function<bool()>& func, const char* message) {
 #if __cplusplus >= 201703L
-    if constexpr (!WINDOWS) {
+    if constexpr (!CLI_WINDOWS) {
         if (arg_bitset.test(VERBOSE)) {
             unsupported_count++;
         }
@@ -821,7 +822,7 @@ void checker(const std::function<bool()>& func, const char* message) {
         supported_count++;
     }
 #else
-#if !WINDOWS
+#if !CLI_WINDOWS
     if (arg_bitset.test(VERBOSE)) {
         unsupported_count++;
     }
@@ -874,7 +875,7 @@ void general() {
         notes_enabled = true;
     }
 
-    #if (LINUX)
+    #if (CLI_LINUX)
         if (notes_enabled && !is_admin()) {
             std::cout << note << " Running under root might give better results\n";
         }
@@ -1183,7 +1184,7 @@ void general() {
 
 
 int main(int argc, char* argv[]) {
-#if (WINDOWS)
+#if (CLI_WINDOWS)
     win_ansi_enabler_t ansi_enabler;
 #endif
 
