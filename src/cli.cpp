@@ -104,6 +104,7 @@ std::string no_support = ("[ " + grey + "NO SUPPORT" + ansi_exit + " ]");
 std::string no_perms = ("[" + grey + "  NO PERMS  " + ansi_exit + "]");
 std::string note = ("[    NOTE    ]");               
 std::string disabled = ("[" + grey + "  DISABLED  " + ansi_exit + "]");
+std::string running = ("[" + grey + " RUNNING... " + ansi_exit + "]");
 
 #if (CLI_WINDOWS)
 class win_ansi_enabler_t
@@ -755,6 +756,23 @@ std::string vm_description(const std::string& vm_brand) {
 } 
 
 
+void edit_previous_line() {
+#if (CLI_WINDOWS)
+    HANDLE hStdOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    CONSOLE_SCREEN_BUFFER_INFO csbi;
+    GetConsoleScreenBufferInfo(hStdOut, &csbi);
+    csbi.dwCursorPosition.X = 0;
+    SetConsoleCursorPosition(hStdOut, csbi.dwCursorPosition);
+    DWORD written;
+    FillConsoleOutputCharacter(hStdOut, ' ', csbi.dwSize.X, csbi.dwCursorPosition, &written);
+    SetConsoleCursorPosition(hStdOut, csbi.dwCursorPosition);
+#else
+    std::cout << "\r\033[K";
+#endif
+}
+
+
+
 void checker(const VM::enum_flags flag, const char* message) {
     if (is_unsupported(flag)) {
         if (arg_bitset.test(COMPACT)) {
@@ -798,11 +816,15 @@ void checker(const VM::enum_flags flag, const char* message) {
         return;
     }
 
+    std::cout << running << " Checking " << message << "..." << enum_name << ansi_exit;
+    std::cout.flush();
 
     if (VM::check(flag)) {
-        std::cout << detected << bold << " Checking " << message << "..." << enum_name << ansi_exit << "\n";
+        edit_previous_line();
+        std::cout << detected << bold << " Checking " << message << "..." << enum_name << ansi_exit << std::endl;
     } else {
-        std::cout << not_detected << " Checking " << message << "..." << enum_name << ansi_exit << "\n";
+        edit_previous_line();
+        std::cout << not_detected << " Checking " << message << "..." << enum_name << ansi_exit << std::endl;
     }
 }
 
@@ -835,6 +857,11 @@ void checker(const std::function<bool()>& func, const char* message) {
 #endif
 #endif
 
+    std::cout << running << " Checking " << message << "..." << ansi_exit;
+    std::cout.flush();
+
+    edit_previous_line();
+
     std::cout <<
         (func() ? detected : not_detected) <<
         " Checking " <<
@@ -858,6 +885,7 @@ void general() {
         no_perms = ("[  NO PERMS  ]");
         note = ("[    NOTE    ]");               
         disabled = ("[  DISABLED  ]");
+        running = ("[ RUNNING... ]");
 
         bold = "";
         underline = "";
