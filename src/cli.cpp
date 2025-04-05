@@ -103,7 +103,7 @@ std::string not_detected = ("[" + red + "NOT DETECTED" + ansi_exit + "]");
 std::string no_support = ("[ " + grey + "NO SUPPORT" + ansi_exit + " ]");
 std::string no_perms = ("[" + grey + "  NO PERMS  " + ansi_exit + "]");
 std::string note = ("[    NOTE    ]");               
-std::string disabled = ("[" + red + "  DISABLED  " + ansi_exit + "]");
+std::string disabled = ("[" + grey + "  DISABLED  " + ansi_exit + "]");
 
 #if (CLI_WINDOWS)
 class win_ansi_enabler_t
