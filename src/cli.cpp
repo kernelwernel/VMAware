@@ -29,17 +29,18 @@
 
 #if (defined(__GNUC__) || defined(__linux__))
     #include <unistd.h>
-    #define LINUX 1
+    #define CLI_LINUX 1
 #else
-    #define LINUX 0
+    #define CLI_LINUX 0
 #endif
 
+
 #if (defined(_MSC_VER) || defined(_WIN32) || defined(_WIN64) || defined(__MINGW32__))
-    #define WINDOWS 1
+    #define CLI_WINDOWS 1
     #define WIN32_LEAN_AND_MEAN
     #include <windows.h>
 #else
-    #define WINDOWS 0
+    #define CLI_WINDOWS 0
 #endif
 
 #if (_MSC_VER)
@@ -102,9 +103,9 @@ std::string not_detected = ("[" + red + "NOT DETECTED" + ansi_exit + "]");
 std::string no_support = ("[ " + grey + "NO SUPPORT" + ansi_exit + " ]");
 std::string no_perms = ("[" + grey + "  NO PERMS  " + ansi_exit + "]");
 std::string note = ("[    NOTE    ]");               
-std::string disabled = ("[" + red + "  DISABLED  " + ansi_exit + "]");
+std::string disabled = ("[" + grey + "  DISABLED  " + ansi_exit + "]");
 
-#if (WINDOWS)
+#if (CLI_WINDOWS)
 class win_ansi_enabler_t
 {
 public:
@@ -281,7 +282,7 @@ nsjail
 }
 
 
-#if (LINUX)
+#if (CLI_LINUX)
 bool is_admin() {
     const uid_t uid  = getuid();
     const uid_t euid = geteuid();
@@ -297,7 +298,7 @@ bool is_admin() {
 
 
 bool are_perms_required(const VM::enum_flags flag) {
-#if (LINUX)
+#if (CLI_LINUX)
     if (is_admin()) {
         return false;
     }
@@ -508,10 +509,10 @@ bool is_unsupported(VM::enum_flags flag) {
 
 
 #if __cplusplus >= 201703L
-    if constexpr (LINUX) {
+    if constexpr (CLI_LINUX) {
         return linux_techniques(flag);
     }
-    else if constexpr (WINDOWS) {
+    else if constexpr (CLI_WINDOWS) {
         return windows_techniques(flag);
     }
     else if constexpr (APPLE) {
@@ -521,11 +522,11 @@ bool is_unsupported(VM::enum_flags flag) {
         return true;
     }
 #else
-    #if LINUX
+    #if (CLI_LINUX)
         return linux_techniques(flag);
-    #elif WINDOWS
+    #elif (CLI_WINDOWS)
         return windows_techniques(flag);
-    #elif APPLE
+    #elif (APPLE)
         return macos_techniques(flag);
     #else
         return true;
@@ -634,7 +635,7 @@ std::string vm_description(const std::string& vm_brand) {
         { brands::AZURE_HYPERV, "Azure Hyper-V is Microsoft's cloud-optimized hypervisor variant powering Azure VMs. Implements Azure-specific virtual devices like NVMe Accelerated Networking and vTPMs. Supports nested virtualization for running Hyper-V/containers within Azure VMs, enabling cloud-based CI/CD pipelines and dev/test environments." },
         { brands::NANOVISOR, "NanoVisor is a Hyper-V modification serving as the host OS of Xbox's devices: the Xbox System Software. It contains 2 partitions: the \"Exclusive\" partition is a custom VM for games, while the other partition, called the \"Shared\" partition is a custom VM for running multiple apps including the OS itself. The OS was based on Windows 8 Core at the Xbox One launch in 2013." },
         { brands::SIMPLEVISOR, "SimpleVisor is a minimalist Intel VT-x hypervisor by Alex Ionescu for Windows/Linux research. Demonstrates EPT-based memory isolation and hypercall handling. Used to study VM escapes and hypervisor rootkits, with hooks for intercepting CR3 changes and MSR accesses." },
-        { brands::HYPERV_ARTIFACT, "The CLI detected Hyper-V operating as a Type 1 hypervisor, not as a guest virtual machine. Althought your hardware/firmware signatures match Microsoft's Hyper-V architecture, we determined that you're running on baremetal, with the help of our \"Hyper-X\" mechanism that differentiates between the root partition (host OS) and guest VM environments. This prevents false positives, as Windows sometimes runs under Hyper-V (type 1) hypervisor." },
+        { brands::HYPERV_ARTIFACT, "The CLI detected Hyper-V operating as a Type 1 hypervisor, not as a guest virtual machine. Although your hardware/firmware signatures match Microsoft's Hyper-V architecture, we determined that you're running on baremetal, with the help of our \"Hyper-X\" mechanism that differentiates between the root partition (host OS) and guest VM environments. This prevents false positives, as Windows sometimes runs under Hyper-V (type 1) hypervisor." },
         { brands::UML, "User-Mode Linux (UML) allows running Linux kernels as user-space processes using ptrace-based virtualization. Primarily used for kernel debugging and network namespace testing. Offers lightweight isolation without hardware acceleration, but requires host/guest kernel version matching for stable operation." },
         { brands::POWERVM, "IBM PowerVM is a type 1 hypervisor for POWER9/10 systems, supporting Live Partition Mobility and Shared Processor Pools. Implements VIOS (Virtual I/O Server) for storage/networking virtualization, enabling concurrent AIX, IBM i, and Linux workloads with RAS features like predictive failure analysis." },
         { brands::GCE, "Google Compute Engine (GCE) utilizes KVM-based virtualization with custom Titanium security chips for hardware root of trust. Features live migration during host maintenance and shielded VMs with UEFI secure boot. Underpins Google Cloud's Confidential Computing offering using AMD SEV-SNP memory encryption." },
@@ -676,7 +677,7 @@ std::string vm_description(const std::string& vm_brand) {
  * @copyright MIT
  */
 [[nodiscard]] static bool anyrun_driver() {
-#if (!WINDOWS)
+#if (!CLI_WINDOWS)
     return false;
 #else
     HANDLE hFile;
@@ -710,7 +711,7 @@ std::string vm_description(const std::string& vm_brand) {
  * @copyright MIT
  */
 [[nodiscard]] static bool anyrun_directory() {
-#if (!WINDOWS)
+#if (!CLI_WINDOWS)
     return false;
 #else
     NTSTATUS status;
@@ -771,7 +772,7 @@ void checker(const VM::enum_flags flag, const char* message) {
         enum_name = grey + " [VM::" + VM::flag_to_string(flag) + "]" + ansi_exit;
     }
 
-#if (LINUX)
+#if (CLI_LINUX)
     if (are_perms_required(flag)) {
         if (arg_bitset.test(COMPACT)) {
             return;
@@ -810,7 +811,7 @@ void checker(const VM::enum_flags flag, const char* message) {
 // that are embedded in the CLI because it was removed in the lib as of 2.0
 void checker(const std::function<bool()>& func, const char* message) {
 #if __cplusplus >= 201703L
-    if constexpr (!WINDOWS) {
+    if constexpr (!CLI_WINDOWS) {
         if (arg_bitset.test(VERBOSE)) {
             unsupported_count++;
         }
@@ -822,7 +823,7 @@ void checker(const std::function<bool()>& func, const char* message) {
         supported_count++;
     }
 #else
-#if !WINDOWS
+#if !CLI_WINDOWS
     if (arg_bitset.test(VERBOSE)) {
         unsupported_count++;
     }
@@ -875,7 +876,7 @@ void general() {
         notes_enabled = true;
     }
 
-    #if (LINUX)
+    #if (CLI_LINUX)
         if (notes_enabled && !is_admin()) {
             std::cout << note << " Running under root might give better results\n";
         }
@@ -1011,13 +1012,13 @@ void general() {
     {
         std::string brand = vm.brand;
 
-        if (is_anyrun && (brand == "Unknown")) {
+        if (is_anyrun && (brand == brands::NULL_BRAND)) {
             brand = "ANY.RUN";
         }
 
         const bool is_red = (
-            (brand == "Unknown") || 
-            (brand == "Hyper-V artifact (not an actual VM)")
+            (brand == brands::NULL_BRAND) || 
+            (brand == brands::HYPERV_ARTIFACT)
         );
 
         std::cout << bold << "VM brand: " << ansi_exit << (is_red ? red : green) << brand << ansi_exit << "\n";
@@ -1030,11 +1031,11 @@ void general() {
             std::string color = "";
             std::string &type = vm.type;
 
-            if (is_anyrun && (type == "Unknown")) {
+            if (is_anyrun && (type == brands::NULL_BRAND)) {
                 type = "Sandbox";
             }
 
-            if (type == "Unknown") {
+            if (type == brands::NULL_BRAND) {
                 color = red;
             } else {
                 color = green;
@@ -1184,7 +1185,7 @@ void general() {
 
 
 int main(int argc, char* argv[]) {
-#if (WINDOWS)
+#if (CLI_WINDOWS)
     win_ansi_enabler_t ansi_enabler;
 #endif
 
@@ -1311,7 +1312,7 @@ int main(int argc, char* argv[]) {
         if (arg_bitset.test(BRAND)) {
             std::string brand = VM::brand(VM::NO_MEMO, VM::MULTIPLE, settings());
             
-            if (is_anyrun && (brand == "Unknown")) {
+            if (is_anyrun && (brand == brands::NULL_BRAND)) {
                 brand = "ANY.RUN";
             }
 
@@ -1323,7 +1324,7 @@ int main(int argc, char* argv[]) {
         if (arg_bitset.test(TYPE)) {
             std::string type = VM::type(VM::NO_MEMO, VM::MULTIPLE, settings());
 
-            if (is_anyrun && (type == "Unknown")) {
+            if (is_anyrun && (type == brands::NULL_BRAND)) {
                 type = "Sandbox";
             }
 
@@ -1336,7 +1337,7 @@ int main(int argc, char* argv[]) {
             std::string conclusion = VM::conclusion(VM::NO_MEMO, VM::MULTIPLE, settings());
             
             if (is_anyrun) {
-                const std::string original = "Unknown";
+                const std::string original = brands::NULL_BRAND;
                 const std::string new_brand = "ANY.RUN";
 
                 replace(conclusion, original, new_brand);

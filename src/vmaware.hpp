@@ -468,6 +468,7 @@ MSVC_DISABLE_WARNING(ASSIGNMENT_OPERATOR NO_INLINE_FUNC SPECTRE)
  * TL;DR I have wonky fingers :(
  */
 namespace brands {
+    static constexpr const char* NULL_BRAND = "Unknown";
     static constexpr const char* VBOX = "VirtualBox";
     static constexpr const char* VMWARE = "VMware";
     static constexpr const char* VMWARE_EXPRESS = "VMware Express";
@@ -534,7 +535,6 @@ namespace brands {
     static constexpr const char* NOIRVISOR = "NoirVisor";
     static constexpr const char* QIHOO = "Qihoo 360 Sandbox";
     static constexpr const char* NSJAIL = "nsjail";
-    static constexpr const char* NULL_BRAND = "Unknown";
 }
 
 
@@ -1200,12 +1200,11 @@ private:
     // memoization
     struct memo {
     private:
-        using result_t = bool;
         using points_t = u8;
 
     public:
         struct data_t {
-            result_t result;
+            bool result;
             points_t points;
         };
 
@@ -1214,7 +1213,7 @@ private:
         static flagset cache_keys;
 
     public:
-        static void cache_store(const u16 technique_macro, const result_t result, const points_t points) {
+        static void cache_store(const u16 technique_macro, const bool result, const points_t points) {
             cache_table[technique_macro] = { result, points };
             cache_keys.set(technique_macro);
         }
@@ -10269,7 +10268,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-               [[nodiscard]] static bool is_setting_flag_set(const flagset& flags) {
+        [[nodiscard]] static bool is_setting_flag_set(const flagset& flags) {
             for (std::size_t i = settings_begin; i < settings_end; i++) {
                 if (flags.test(i)) {
                     return true;
@@ -10963,10 +10962,13 @@ public: // START OF PUBLIC FUNCTIONS
         // brand strings will be outputted if there's a conflict)
         const bool is_multiple = core::is_enabled(flags, MULTIPLE);
 
+        // used for later
+        u16 score = 0;
+
         // are all the techiques already run? if not, run them 
         // to fetch the necessary info to determine the brand
         if (!memo::all_present() || core::is_enabled(flags, NO_MEMO)) {
-            core::run_all(flags);
+            score = core::run_all(flags);
         }
 
         // check if the result is already cached and return that instead
@@ -11148,6 +11150,25 @@ public: // START OF PUBLIC FUNCTIONS
         merge(TMP_VMWARE_HARD, TMP_WORKSTATION, TMP_VMWARE_HARD);
 
 
+        // this is added in case the lib detects a non-Hyper-X technique.
+        // A Hyper-X affiliated technique should make the overall score
+        // as 0, but this isn't the case if non-Hyper-X techniques were
+        // found. There may be a conflict between an Unknown and Hyper-V
+        // brand, which is exactly what this section is meant to handle.
+        // It will remove the Hyper-V artifact brand string from the 
+        // std::map to pave the way for other brands to take precendence.
+        // One of the main reasons to do this is because it would look
+        // incredibly awkward if the brand was "Hyper-V artifacts (not an
+        // actual VM)", clearly stating that it's NOT a VM while the VM
+        // confirmation is true and percentage is 100%, as if that makes
+        // any sense whatsoever. That's what this part fixes.
+        if (brands.count(TMP_HYPERV_ARTIFACT) > 0) {
+            if (score > 0) {
+                brands.erase(TMP_HYPERV_ARTIFACT);
+            }
+        }
+
+
         // the brand element, which stores the NAME (const char*) and the SCORE (u8)
         using brand_element_t = std::pair<const char*, brand_score_t>;
 
@@ -11164,6 +11185,9 @@ public: // START OF PUBLIC FUNCTIONS
         });
 
         std::string ret_str = brands::NULL_BRAND;
+
+
+
 
         // if the multiple setting flag is NOT set, return the
         // brand with the highest score. Else, return a std::string
@@ -11183,6 +11207,8 @@ public: // START OF PUBLIC FUNCTIONS
             ret_str = ss.str();
         }
 
+
+
         // cache the result if memoization is enabled
         if (core::is_disabled(flags, NO_MEMO)) {
             if (is_multiple) {
@@ -11193,6 +11219,7 @@ public: // START OF PUBLIC FUNCTIONS
                 memo::brand::store(ret_str);
             }
         }
+        
 
         // debug stuff to see the brand scoreboard, ignore this
 #ifdef __VMAWARE_DEBUG__
