@@ -30,10 +30,10 @@
  * - struct for internal cpu operations        => line 746
  * - struct for internal memoization           => line 1200
  * - struct for internal utility functions     => line 1324
- * - struct for internal core components       => line 10199
+ * - struct for internal core components       => line 10202
  * - start of VM detection technique list      => line 2520
- * - start of public VM detection functions    => line 10863
- * - start of externally defined variables     => line 11813
+ * - start of public VM detection functions    => line 10866
+ * - start of externally defined variables     => line 11816
  *
  *
  * ============================== EXAMPLE ===================================
@@ -3253,6 +3253,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         key(brands::WINE, "HKLM\\SOFTWARE\\Wine");
 
         // Xen
+        key(brands::KVM, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_5853*");
         key(brands::XEN, "HKLM\\HARDWARE\\ACPI\\DSDT\\xen");
         key(brands::XEN, "HKLM\\HARDWARE\\ACPI\\FADT\\xen");
         key(brands::XEN, "HKLM\\HARDWARE\\ACPI\\RSDT\\xen");
@@ -3263,6 +3264,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         key(brands::XEN, "HKLM\\SYSTEM\\ControlSet001\\Services\\xenvdb");
 
         // KVM
+        key(brands::KVM, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_1AF4*");
         key(brands::KVM, "HKLM\\SYSTEM\\ControlSet001\\Services\\vioscsi");
         key(brands::KVM, "HKLM\\SYSTEM\\ControlSet001\\Services\\viostor");
         key(brands::KVM, "HKLM\\SYSTEM\\ControlSet001\\Services\\VirtIO-FS Service");
