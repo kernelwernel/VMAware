@@ -49,7 +49,7 @@
 
 #include "vmaware.hpp"
 
-constexpr const char* ver = "2.1.2";
+constexpr const char* ver = "2.2.0";
 constexpr const char* date = "April 2025";
 
 std::string bold = "\033[1m";
@@ -755,6 +755,18 @@ std::string vm_description(const std::string& vm_brand) {
 } 
 
 
+void edit_previous_line() {
+#if (CLI_WINDOWS)
+    std::cout << "\x1b[2K";
+    std::cout << "\x1b[1A" << "\x1b[2K";
+    std::cout << "\r";
+#else
+    std::cout << "\r\033[K";
+#endif
+}
+
+
+
 void checker(const VM::enum_flags flag, const char* message) {
     if (is_unsupported(flag)) {
         if (arg_bitset.test(COMPACT)) {
@@ -797,7 +809,6 @@ void checker(const VM::enum_flags flag, const char* message) {
         disabled_count++;
         return;
     }
-
 
     if (VM::check(flag)) {
         std::cout << detected << bold << " Checking " << message << "..." << enum_name << ansi_exit << "\n";
