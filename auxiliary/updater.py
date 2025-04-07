@@ -229,7 +229,7 @@ def update_MIT():
  * 
  *                               MIT License
  *  
- *  Copyright (c) 2024 kernelwernel
+ *  Copyright (c) 2025 kernelwernel
  *  
  *  Permission is hereby granted, free of charge, to any person obtaining a copy
  *  of this software and associated documentation files (the "Software"), to deal
@@ -387,9 +387,9 @@ def update_date(filename):
         else:
             break
 
-    # find "X.X", where X is an integral
+    # find "X.X.X", where X is 0-9
     def find_pattern(base_str):
-        pattern = r'\d+\.\d+'
+        pattern = r'\d+\.\d+.\d+'
 
         # Search for the pattern in the text
         match = re.search(pattern, base_str)
