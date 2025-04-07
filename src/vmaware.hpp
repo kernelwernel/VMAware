@@ -19,6 +19,7 @@
  *      - utoshu (https://github.com/utoshu)
  *      - Jyd (https://github.com/jyd519)
  *      - dmfrpro (https://github.com/dmfrpro)
+ *      - Pierre-Étienne Messier (https://github.com/pemessier)
  *  - Repository: https://github.com/kernelwernel/VMAware
  *  - Docs: https://github.com/kernelwernel/VMAware/docs/documentation.md
  *  - Full credits: https://github.com/kernelwernel/VMAware#credits-and-contributors-%EF%B8%8F
@@ -26,14 +27,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 553
- * - struct for internal cpu operations        => line 746
- * - struct for internal memoization           => line 1200
- * - struct for internal utility functions     => line 1324
- * - struct for internal core components       => line 10202
- * - start of VM detection technique list      => line 2520
- * - start of public VM detection functions    => line 10866
- * - start of externally defined variables     => line 11816
+ * - enums for publicly accessible techniques  => line 556
+ * - struct for internal cpu operations        => line 749
+ * - struct for internal memoization           => line 1220
+ * - struct for internal utility functions     => line 1344
+ * - struct for internal core components       => line 100028
+ * - start of VM detection technique list      => line 2345
+ * - start of public VM detection functions    => line 10692
+ * - start of externally defined variables     => line 11642
  *
  *
  * ============================== EXAMPLE ===================================
@@ -386,7 +387,6 @@
 #pragma comment(lib, "strmiids.lib")
 #pragma comment(lib, "uuid.lib")
 #pragma comment(lib, "ntdll.lib")
-#pragma comment(lib, "setupapi.lib")
 #pragma comment(lib, "powrprof.lib")
 
 #elif (LINUX)
@@ -808,12 +808,29 @@ private:
 
         // check for maximum function leaf
         static bool is_leaf_supported(const u32 p_leaf) {
-            u32 eax, unused = 0;
-            cpu::cpuid(eax, unused, unused, unused, cpu::leaf::func_ext);
+            u32 eax = 0, unused = 0;
 
-            debug("CPUID function: highest leaf = ", eax);
+            if (p_leaf < 0x40000000) {
+                // Standard range: 0x00000000 - 0x3FFFFFFF
+                cpu::cpuid(eax, unused, unused, unused, 0x00000000);
+                debug("CPUID: max standard leaf = ", eax);
+                return (p_leaf <= eax);
+            }
+            else if (p_leaf < 0x80000000) {
+                // Hypervisor range: 0x40000000 - 0x7FFFFFFF
+                cpu::cpuid(eax, unused, unused, unused, cpu::leaf::hypervisor);
+                debug("CPUID: max hypervisor leaf = ", eax);
+                return (p_leaf <= eax);
+            }
+            else if (p_leaf < 0xC0000000) {
+                // Extended range: 0x80000000 - 0xBFFFFFFF
+                cpu::cpuid(eax, unused, unused, unused, cpu::leaf::func_ext);
+                debug("CPUID: max extended leaf = ", eax);
+                return (p_leaf <= eax);
+            }
 
-            return (p_leaf <= eax);
+            debug("CPUID: unsupported leaf range: ", p_leaf);
+            return false;
         }
 
         // check AMD
@@ -1668,8 +1685,6 @@ private:
             if (size == 0)
                 return 81;
             
-            debug("private util::get_disk_size( function: ", "disk size = ", size, "GB");
-
             return size;  // Return disk size in GB
         }
 
@@ -1914,7 +1929,7 @@ private:
                 return (ecx & (1 << 31));
                 };
 
-            // https://learn.microsoft.com/en-us/virtualization/hyper-v-on-windows/tlfs/feature-discovery
+            // 0x40000003 on EBX indicates the flags that a parent partition specified to create a child partition (https://learn.microsoft.com/en-us/virtualization/hyper-v-on-windows/tlfs/datatypes/hv_partition_privilege_mask)
             auto is_root_partition = []() -> bool {
                 u32 ebx, unused = 0;
                 cpu::cpuid(unused, ebx, unused, unused, 0x40000003);
@@ -1929,11 +1944,11 @@ private:
                 };
 
             /**
-              * On Hyper-V virtual machines, the cpuid function reports an EAX value of 11. 
-              * This value is tied to the Hyper-V partition model, where each virtual machine runs as a child partition.
+              * On Hyper-V virtual machines, the cpuid function reports an EAX value of 11
+              * This value is tied to the Hyper-V partition model, where each virtual machine runs as a child partition
               * These child partitions have limited privileges and access to hypervisor resources, 
-              * which is reflected in the maximum input value for hypervisor CPUID information as 11. 
-              * Essentially, it indicates that the hypervisor is managing the VM and that the VM is not running directly on hardware but rather in a virtualized environment.
+              * which is reflected in the maximum input value for hypervisor CPUID information as 11.
+              * Essentially, it indicates that the hypervisor is managing the VM and that the VM is not running directly on hardware but rather in a virtualized environment
             */
             auto eax = []() -> u32 {
                 char out[sizeof(int32_t) * 4 + 1] = { 0 }; 
@@ -2286,181 +2301,6 @@ private:
             return message;
         }
 
-
-        /**
-         * @brief Enables the SE_DEBUG_NAME privilege for the current process.
-         *
-         * This function adjusts the token privileges to enable debugging rights,
-         * which are required for the lib to access the memory of certain processes.
-         */
-        static bool SetDebugPrivilege(bool enable) {
-            HANDLE hToken = nullptr;
-            if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &hToken)) {
-                return false;
-            }
-
-            LUID debugLuid;
-            if (!LookupPrivilegeValue(nullptr, SE_DEBUG_NAME, &debugLuid)) {
-                CloseHandle(hToken);
-                return false;
-            }
-
-            DWORD dwSize = 0;
-            GetTokenInformation(hToken, TokenPrivileges, nullptr, 0, &dwSize);
-            if (dwSize == 0) {
-                CloseHandle(hToken);
-                return false;
-            }
-
-            std::vector<BYTE> buffer(dwSize);
-            if (!GetTokenInformation(hToken, TokenPrivileges, buffer.data(), dwSize, &dwSize)) {
-                CloseHandle(hToken);
-                return false;
-            }
-
-            auto* pPrivileges = reinterpret_cast<TOKEN_PRIVILEGES*>(buffer.data());
-            bool found = false;
-            for (DWORD i = 0; i < pPrivileges->PrivilegeCount; i++) {
-                if (pPrivileges->Privileges[i].Luid.LowPart == debugLuid.LowPart &&
-                    pPrivileges->Privileges[i].Luid.HighPart == debugLuid.HighPart)
-                {
-                    bool isEnabled = (pPrivileges->Privileges[i].Attributes & SE_PRIVILEGE_ENABLED) != 0;
-                    if ((enable && isEnabled) || (!enable && !isEnabled)) {
-                        CloseHandle(hToken);
-                        return false;
-                    }
-                    found = true;
-                    break;
-                }
-            }
-
-            if (!found && !enable) {
-                CloseHandle(hToken);
-                return false;
-            }
-
-            TOKEN_PRIVILEGES tp{};
-            tp.PrivilegeCount = 1;
-            tp.Privileges[0].Luid = debugLuid;
-            tp.Privileges[0].Attributes = enable ? static_cast<DWORD>(SE_PRIVILEGE_ENABLED) : 0;
-
-            if (!AdjustTokenPrivileges(hToken, FALSE, &tp, sizeof(tp), nullptr, nullptr)) {
-                CloseHandle(hToken);
-                return false;
-            }
-            if (GetLastError() == ERROR_NOT_ALL_ASSIGNED) {
-                CloseHandle(hToken);
-                return false;
-            }
-
-            CloseHandle(hToken);
-            return true;
-        }
-
-
-        /**
-         * @brief Searches for a wide-character substring within a buffer using the Knuth-Morris-Pratt algorithm. Not used by the moment.
-         *
-         * This function performs an efficient substring search to find a wide-character string (searchString)
-         * inside another wide-character string (buffer) using the Knuth-Morris-Pratt (KMP) algorithm.
-         * The KMP algorithm preprocesses the searchString to build a "partial match" table (also known as
-         * the "longest prefix suffix" or LPS table), which allows the search to skip over portions of the text
-         * that have already been matched, improving search performance over brute force methods.
-         *
-         * The function uses a sliding window approach to compare characters in the buffer against the search string.
-         * If the searchString is found in the buffer, it returns true. Otherwise, it returns false.
-         *
-         * @param buffer The wide-character buffer (wstring or wchar_t array) in which to search for the substring.
-         * @param bufferSize The size of the buffer (number of characters in buffer).
-         * @param searchString The wide-character substring to search for within the buffer.
-         *
-         * @return bool true if searchString is found in buffer, false otherwise.
-         */
-#if CPP >= 17
-        [[nodiscard]] static bool findSubstring(std::wstring_view buffer, std::wstring_view searchString) {
-            const size_t bufferSize = buffer.size();
-            const size_t searchLength = searchString.length();
-#else
-        [[nodiscard]] static bool findSubstring(const wchar_t* buffer, const size_t bufferSize, const std::wstring & searchString) {
-            const size_t searchLength = searchString.length();
-#endif
-            if (searchLength > bufferSize) return false;
-
-            std::vector<size_t> lps(searchLength, 0);
-            size_t j = 0;
-            for (size_t i = 1; i < searchLength; ++i) {
-                while (j > 0
-                    && searchString[i] != searchString[j]
-                    ) {
-                    j = lps[j - 1];
-                }
-                if (searchString[i] == searchString[j]) {
-                    ++j;
-                }
-                lps[i] = j;
-            }
-
-            size_t i = 0; // buffer index
-            j = 0;        // searchString index
-            while (i < bufferSize) {
-                if (buffer[i] == searchString[j]) {
-                    ++i;
-                    ++j;
-                    if (j == searchLength) {
-                        return true;
-                    }
-                }
-                else if (j > 0) {
-                    j = lps[j - 1];
-                }
-                else {
-                    ++i;
-                }
-            }
-
-            return false;
-        }
-
-
-        /**
-         * @brief Finds the process ID (PID) of a service by its name.
-         *
-         * This function queries the Service Control Manager to retrieve the process ID of a service running on the system. 
-         * This is needed when trying to access processes with the "svchost" name.
-         *
-         * @param serviceName The name of the service to search for.
-         * @return The process ID (PID) if found, otherwise returns 0.
-         */
-        [[nodiscard]] static DWORD FindProcessIdByServiceName(const std::wstring& serviceName) {
-            SC_HANDLE scmHandle = OpenSCManager(nullptr, nullptr, SC_MANAGER_CONNECT);
-            if (!scmHandle) {
-                return 0;
-            }
-
-            SC_HANDLE serviceHandle = OpenServiceW(scmHandle, serviceName.c_str(),
-                SERVICE_QUERY_STATUS);
-            if (!serviceHandle) {
-                CloseServiceHandle(scmHandle);
-                return 0;
-            }
-
-            DWORD pid = 0;
-            SERVICE_STATUS_PROCESS status = { 0 };
-            DWORD bytesNeeded = 0;
-
-            if (QueryServiceStatusEx(serviceHandle, SC_STATUS_PROCESS_INFO,
-                reinterpret_cast<LPBYTE>(&status), sizeof(status), &bytesNeeded)) {
-                if (status.dwCurrentState == SERVICE_RUNNING) {
-                    pid = status.dwProcessId;
-                }
-            }
-
-            CloseServiceHandle(serviceHandle);
-            CloseServiceHandle(scmHandle);
-            return pid;
-        }
-
-
         /**
          * @brief Retrieves the addresses of specified functions from a loaded module using the export directory.
          *
@@ -2497,24 +2337,6 @@ private:
                     }
                 }
             }
-        }
-
-
-        /**
-         * @brief Checks if hypervisor CPUID specific leaves are present.
-         *
-         * This function uses the CPUID instruction to determine if the system supports
-         * the hypervisor-specific CPUID leaf (0x40000000).
-         *
-         * @return true if hypervisor CPUID information is present, otherwise false.
-         */
-        [[nodiscard]] static bool is_hyperv_leaf_present() {
-            char out[sizeof(int32_t) * 4 + 1] = { 0 }; // e*x size + number of e*x registers + null terminator
-            cpu::cpuid((int*)out, cpu::leaf::hypervisor);
-
-            const u32 eax = static_cast<u32>(out[0]);
-
-            return eax != 0;
         }
 #endif
     };
@@ -2788,7 +2610,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         /*
             see https://github.com/kernelwernel/VMAware/issues/105
-
             if (compare(0x0A, 0x00, 0x27)) {
                 return core::add(brands::HYBRID);
             }
@@ -7537,16 +7358,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for unknown IDT base address
      * @category Windows
-     * @author Requiem (https://github.com/NotRequiem)
      * @implements VM::VM_SIDT
      */
     [[nodiscard]] static bool vm_sidt() {
 #if (!WINDOWS || !x86) 
         return false;
-#else
-        if (!util::is_hyperv_leaf_present()) {
-            return false;
-        }       
+#else    
 #pragma pack(push, 1)
         struct IDTR { uint16_t limit;  uint64_t base; };
 #pragma pack(pop)
@@ -7564,9 +7381,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
         u64 idt_base = idtr.base;
 
-        constexpr u64 known_hyperv_exclusion = 0xfffff80000001000;
-
-        if ((idt_base >> 24) == 0xff && idt_base != known_hyperv_exclusion) {
+        if ((idt_base >> 24) == 0xff) {
             return true;
         }
 
@@ -7698,7 +7513,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for physical connection ports
      * @category Windows
      * @note original idea of using physical ports to detect VMs was suggested by @unusual-aspect (https://github.com/unusual-aspect). 
-     *       This technique is known to false flags on devices like Surface Pro.
+     *       This technique is known to false flag on devices like Surface Pro.
      * @implements VM::PORT_CONNECTORS
      */
     [[nodiscard]] static bool port_connectors() {
@@ -7877,18 +7692,18 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         CloseHandle(handle4);
 
         if (result) {
-            debug("VM_DEVICES: Detected VBox related device handles.");
+            debug("VM_DEVICES: Detected VBox related device handles");
             return core::add(brands::VBOX);
         }
 
         if (handle5 != INVALID_HANDLE_VALUE) {
             CloseHandle(handle5);
-            debug("VM_DEVICES: Detected VMware related device (HGFS).");
+            debug("VM_DEVICES: Detected VMware related device (HGFS)");
             return core::add(brands::VMWARE);
         }
         if (handle6 != INVALID_HANDLE_VALUE) {
             CloseHandle(handle6);
-            debug("VM_DEVICES: Detected Cuckoo related device (pipe).");
+            debug("VM_DEVICES: Detected Cuckoo related device (pipe)");
             return core::add(brands::CUCKOO);
         }
 
@@ -7915,9 +7730,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #else
         // If the system is running under any Hyper-V hypervisor (type 1 or type 2), the IDT and GDT will be equal, as this function is called from user-mode.
         if (util::hyper_x() != HYPERV_UNKNOWN_VM) {
-            return false;
-        }
-        if (!util::is_hyperv_leaf_present()) {
             return false;
         }
 
@@ -8082,6 +7894,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check if any processor has an empty Processor ID using SMBIOS data
      * @category Windows
+     * @author Requiem (https://github.com/NotRequiem)
      * @note https://www.dmtf.org/sites/default/files/standards/documents/DSP0134_3.8.0.pdf (Section 7.5.3, page 54)
      * @implements VM::PROCESSOR_ID
      */
@@ -8134,6 +7947,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 // Therefore, the structure must be at least 16 bytes long
                 if (length >= 16) {
                     BYTE* procId = p + 8;
+
+#ifdef __VMAWARE_DEBUG__
+                    std::ostringstream oss;
+                    oss << "PROCESSOR_ID: ";
+                    for (int i = 0; i < 8; ++i) {
+                        oss << std::hex << std::setw(2) << std::setfill('0')
+                            << static_cast<int>(procId[i]) << " ";
+                    }
+                    debug(oss.str());
+#endif
                     bool allZero = true;
                     for (int i = 0; i < 8; ++i) {
                         if (procId[i] != 0) {
@@ -8147,7 +7970,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
             }
 
-            // Skip the formatted section.
+            // Skip the formatted section
             BYTE* next = p + length;
             // Then skip the unformatted string-set (terminated by double-null)
             while (next < tableEnd - 1) {
@@ -8181,8 +8004,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #else
         u64 start, end, total_cycles = 0;
         constexpr i32 iterations = 10; // Reduced due to sleep delays, originally 10000 iterations with no execution delay
-        constexpr u32 threshold = 23000;
-        std::atomic<bool> stop_spammer{ false };
+        constexpr u32 threshold = 22000;
+        std::atomic<bool> stop_spammer { false };
 
         // 1. Classic rdtsc+cpuid+rdtsc check with sleep variance
         for (int i = 0; i < iterations; i++) {
@@ -8438,7 +8261,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         implementationLimits.MaxVirtualProcessors = static_cast<unsigned int>(registers.eax);
         implementationLimits.MaxLogicalProcessors = static_cast<unsigned int>(registers.ebx);
 
-        if (implementationLimits.MaxVirtualProcessors == 0 || implementationLimits.MaxLogicalProcessors == 0) {
+        debug("VIRTUAL_PROCESSORS: MaxVirtualProcessors: ", implementationLimits.MaxVirtualProcessors,
+            ", MaxLogicalProcessors: ", implementationLimits.MaxLogicalProcessors);
+
+        if (implementationLimits.MaxVirtualProcessors == 0xffffffff || implementationLimits.MaxLogicalProcessors == 0) {
             return true;
         }
 
@@ -12056,7 +11882,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     std::make_pair(VM::UNKNOWN_MANUFACTURER, VM::core::technique(50, VM::unknown_manufacturer)),
     std::make_pair(VM::OSXSAVE, VM::core::technique(50, VM::osxsave)),
     std::make_pair(VM::NSJAIL_PID, VM::core::technique(75, VM::nsjail_proc_id)),
-    std::make_pair(VM::PCI_VM, VM::core::technique(100, VM::lspci))
+    std::make_pair(VM::PCI_VM, VM::core::technique(100, VM::lspci)),
     // ADD NEW TECHNIQUE STRUCTURE HERE
 };
 
