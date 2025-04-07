@@ -49,7 +49,7 @@
 
 #include "vmaware.hpp"
 
-constexpr const char* ver = "2.1.2";
+constexpr const char* ver = "2.2.0";
 constexpr const char* date = "April 2025";
 
 std::string bold = "\033[1m";
@@ -755,19 +755,6 @@ std::string vm_description(const std::string& vm_brand) {
 #endif
 } 
 
-
-void edit_previous_line() {
-#if (CLI_WINDOWS)
-    std::cout << "\x1b[2K";
-    std::cout << "\x1b[1A" << "\x1b[2K";
-    std::cout << "\r";
-#else
-    std::cout << "\r\033[K";
-#endif
-}
-
-
-
 void checker(const VM::enum_flags flag, const char* message) {
     if (is_unsupported(flag)) {
         if (arg_bitset.test(COMPACT)) {
@@ -811,14 +798,9 @@ void checker(const VM::enum_flags flag, const char* message) {
         return;
     }
 
-    std::cout << running << " Checking " << message << "..." << enum_name << ansi_exit;
-    std::cout.flush();
-
     if (VM::check(flag)) {
-        edit_previous_line();
         std::cout << detected << bold << " Checking " << message << "..." << enum_name << ansi_exit << std::endl;
     } else {
-        edit_previous_line();
         std::cout << not_detected << " Checking " << message << "..." << enum_name << ansi_exit << std::endl;
     }
 }
@@ -854,8 +836,6 @@ void checker(const std::function<bool()>& func, const char* message) {
 
     std::cout << running << " Checking " << message << "..." << ansi_exit;
     std::cout.flush();
-
-    edit_previous_line();
 
     std::cout <<
         (func() ? detected : not_detected) <<
