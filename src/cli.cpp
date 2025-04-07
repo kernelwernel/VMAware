@@ -104,7 +104,6 @@ std::string no_support = ("[ " + grey + "NO SUPPORT" + ansi_exit + " ]");
 std::string no_perms = ("[" + grey + "  NO PERMS  " + ansi_exit + "]");
 std::string note = ("[    NOTE    ]");               
 std::string disabled = ("[" + grey + "  DISABLED  " + ansi_exit + "]");
-std::string running = ("[" + grey + " RUNNING... " + ansi_exit + "]");
 
 #if (CLI_WINDOWS)
 class win_ansi_enabler_t
@@ -799,9 +798,9 @@ void checker(const VM::enum_flags flag, const char* message) {
     }
 
     if (VM::check(flag)) {
-        std::cout << detected << bold << " Checking " << message << "..." << enum_name << ansi_exit << std::endl;
+        std::cout << detected << bold << " Checking " << message << "..." << enum_name << ansi_exit << "\n";
     } else {
-        std::cout << not_detected << " Checking " << message << "..." << enum_name << ansi_exit << std::endl;
+        std::cout << not_detected << " Checking " << message << "..." << enum_name << ansi_exit << "\n";
     }
 }
 
@@ -834,9 +833,6 @@ void checker(const std::function<bool()>& func, const char* message) {
 #endif
 #endif
 
-    std::cout << running << " Checking " << message << "..." << ansi_exit;
-    std::cout.flush();
-
     std::cout <<
         (func() ? detected : not_detected) <<
         " Checking " <<
@@ -860,7 +856,6 @@ void general() {
         no_perms = ("[  NO PERMS  ]");
         note = ("[    NOTE    ]");               
         disabled = ("[  DISABLED  ]");
-        running = ("[ RUNNING... ]");
 
         bold = "";
         underline = "";

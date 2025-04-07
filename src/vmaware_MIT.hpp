@@ -19,6 +19,7 @@
  *      - utoshu (https://github.com/utoshu)
  *      - Jyd (https://github.com/jyd519)
  *      - dmfrpro (https://github.com/dmfrpro)
+ *      - Pierre-Étienne Messier (https://github.com/pemessier)
  *  - Repository: https://github.com/kernelwernel/VMAware
  *  - Docs: https://github.com/kernelwernel/VMAware/docs/documentation.md
  *  - Full credits: https://github.com/kernelwernel/VMAware#credits-and-contributors-%EF%B8%8F
@@ -48,14 +49,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 575
- * - struct for internal cpu operations        => line 761
- * - struct for internal memoization           => line 1215
- * - struct for internal utility functions     => line 1339
- * - struct for internal core components       => line 9985
- * - start of VM detection technique list      => line 2535
- * - start of public VM detection functions    => line 10649
- * - start of externally defined variables     => line 11592
+ * - enums for publicly accessible techniques  => line 576
+ * - struct for internal cpu operations        => line 762
+ * - struct for internal memoization           => line 1216
+ * - struct for internal utility functions     => line 1340
+ * - struct for internal core components       => line 9986
+ * - start of VM detection technique list      => line 2536
+ * - start of public VM detection functions    => line 10650
+ * - start of externally defined variables     => line 11593
  *
  *
  * ============================== EXAMPLE ===================================
@@ -11824,7 +11825,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     std::make_pair(VM::UNKNOWN_MANUFACTURER, VM::core::technique(50, VM::unknown_manufacturer)),
     std::make_pair(VM::OSXSAVE, VM::core::technique(50, VM::osxsave)),
     std::make_pair(VM::NSJAIL_PID, VM::core::technique(75, VM::nsjail_proc_id)),
-    std::make_pair(VM::PCI_VM, VM::core::technique(100, VM::lspci))
+    std::make_pair(VM::PCI_VM, VM::core::technique(100, VM::lspci)),
     // ADD NEW TECHNIQUE STRUCTURE HERE
 };
 

@@ -29,8 +29,14 @@
 #  - License: GPL 3.0
 
 import questionary
+import sys
 
 
+is_dev_mode = False
+
+if len(sys.argv) != 1:
+    if sys.argv[1] == "--dev":
+        is_dev_mode = True
 
 
 class options:
@@ -60,120 +66,195 @@ tab = "    "
 
 def prompt():
     # 1: enum name
-    enum_answer = questionary.text("What's the name of the enum? (i.e. VBOX_REG or HYPERVISOR_STR)").ask()
-    enum_answer = enum_answer.upper()
+    enum_answer = ""
+    if is_dev_mode:
+        enum_answer = "TEST"
+    else:
+        enum_answer = questionary.text("What's the name of the enum? (i.e. VBOX_REG or HYPERVISOR_STR)").ask()
+        enum_answer = enum_answer.upper()
 
 
     # 2: technique file
-    file_path = questionary.path("What's the path to the technique file?").ask()
-    if not file_path.endswith(".cpp") and not file_path.endswith(".cc"):
-        raise ValueError("file input MUST be a .cpp file")
-    with open(file_path, 'r') as file:
-        is_static = False
-        for line in file:
-            if "#include" in line.lower():
-                raise ValueError("The cpp file will be directly copied to the lib verbatim, do not add #include as this will end up in vmaware.hpp")
-            if "static" in line:
-                is_static = True
-        
-        if not is_static:
-            raise ValueError("The function must be set as static")
+    file_path = ""
+    if is_dev_mode:
+        file_path = "../archive/techniques/test.cpp"
+    else:
+        while True:
+            file_path = questionary.path("What's the path to the technique file?").ask()
+            if not file_path.endswith(".cpp") and not file_path.endswith(".cc"):
+                print("file input MUST be a .cpp file")
+                continue
+
+            with open(file_path, 'r') as file:
+                is_static = False
+                for line in file:
+                    if "#include" in line.lower():
+                        print("The cpp file will be directly copied to the lib verbatim, so do not add #include as this will mess up include orders.")
+                        continue
+
+                    if "static" in line:
+                        is_static = True
+                
+                if not is_static:
+                    print("The function must be set as static")
+                    continue
+
+                break
+
 
     # 3: function name
-    function_name = questionary.text("What's the name of the technqiue function in your .cpp file?").ask()
-    function_name = function_name.lower()
-    if "(" in function_name or ")" in function_name:
-        function_name = function_name.replace("(", "").replace(")", "")
+    function_name = ""
+    if is_dev_mode:
+        function_name = "test"
+    else:
+        function_name = questionary.text("What's the name of the function in your .cpp file? example: new_technique()").ask()
+        function_name = function_name.lower()
+        if "(" in function_name or ")" in function_name:
+            function_name = function_name.replace("(", "").replace(")", "")
 
 
     # 4: is it cross-platform?
-    cross_platform = questionary.confirm("Is it cross-platform?").ask()
-    is_linux = False
-    is_win = False
-    is_mac = False
-    if cross_platform == True:
+    cross_platform = False
+
+    if is_dev_mode:
+        cross_platform = False
         is_linux = True
-        is_win = True
-        is_mac = True
+        is_win = False
+        is_mac = False
     else:
-        choices = questionary.checkbox(
-            "Which OS does this technique support?",
-            choices=[
-                "Linux",
-                "Windows",
-                "MacOS"
-            ]
-        ).ask()
-        if "Linux" in choices:
+        cross_platform = questionary.confirm("Is it cross-platform?").ask()
+        is_linux = False
+        is_win = False
+        is_mac = False
+        if cross_platform == True:
             is_linux = True
-        if "Windows" in choices:
             is_win = True
-        if "MacOS" in choices:
             is_mac = True
+        else:
+            choices = questionary.checkbox(
+                "Which OS does this technique support?",
+                choices=[
+                    "Linux",
+                    "Windows",
+                    "MacOS"
+                ]
+            ).ask()
+            if "Linux" in choices:
+                is_linux = True
+            if "Windows" in choices:
+                is_win = True
+            if "MacOS" in choices:
+                is_mac = True
     
 
     # 5: certainty score
-    certainty = questionary.text("What's the score of your technique?").ask()
-    if certainty == "":
-        raise ValueError("A score is mandatory (0 to 100)")
+    if is_dev_mode:
+        score = 50
+    else:
+        certainty = ""
+        while True:
+            certainty = questionary.text("What's the score of your technique? (0-100)").ask()
+            if certainty == "":
+                print("A score is mandatory, try again")
+                continue
+            
+            if 0 <= int(certainty) <= 100:
+                break
+            else:
+                print("Score must be between 0 and 100, try again")
+                continue
 
+        score = int(certainty)
         
-    score = int(certainty)
 
 
     # 6: description
     description = ""
-    while True:
-        text = questionary.text("What's the description of your technique? (30-100 characters)").ask()
-        if len(text) < 30:
-            print("Too short, try again\n")
-            continue
-        if len(text) > 100:
-            print("Too long, try again\n")
-            continue
-        description = text
-        break
+    if is_dev_mode:
+        description = "testing, this is a boilerplate technique"
+    else:
+        while True:
+            text = questionary.text("What's the description of your technique? (30-100 characters)").ask()
+            if len(text) < 30:
+                print("Too short, try again\n")
+                continue
+            if len(text) > 100:
+                print("Too long, try again\n")
+                continue
+            description = text
+            break
 
     # 7: short description
     short_description = ""
-    while True:
-        text = questionary.text("What is your technique checking for? This will appear in the CLI, so be as minimal as you can (max 30 characters)").ask()
-        if len(text) > 30:
-            print("Too long, try again\n")
-            continue
-        if len(text) > len(description):
-            print("The answer cannot be longer than the actual description from the previous question\n")
-            continue
-        short_description = text
-        break
+    if is_dev_mode:
+        short_description = "testing, ignore"
+    else:
+        while True:
+            text = questionary.text("What is your technique checking for? This will appear in the CLI, so be as minimal as you can (max 25 characters)").ask()
+            if len(text) > 25:
+                print("Too long, try again\n")
+                continue
+            if len(text) > len(description):
+                print("The answer cannot be longer than the actual description from the previous question\n")
+                continue
+            short_description = text
+            break
 
 
     # 8: author
-    author = questionary.text("Who is the author? (optional, can be left empty)").ask()
+    author = ""
+    if is_dev_mode:
+        author = ""
+    else:
+        author = questionary.text("Who is the author? (optional, can be left empty)").ask()
 
 
     # 9: link
-    link = questionary.text("If there's a source for the technique's origin, paste the link here (optional, can be left empty)").ask()
+    link = ""
+    if is_dev_mode:
+        link = ""
+    else:
+        link = questionary.text("If there's a source for the technique's origin, paste the link here (optional, can be left empty)").ask()
 
 
     # 10: permissions
-    is_admin = questionary.confirm("Does it require admin permissions?").ask()
+    is_admin = False
+    if is_dev_mode:
+        is_admin = False
+    else:
+        is_admin = questionary.confirm("Does it require admin permissions?").ask()
 
 
     # 11: GPL
-    is_gpl = questionary.confirm("Is it GPL?").ask()
+    is_gpl = False
+    if is_dev_mode:
+        is_gpl = True
+    else:
+        is_gpl = questionary.confirm("Is it GPL?").ask()
 
 
     # 12: 32-bit
-    only_32_bit = questionary.confirm("Is it 32-bit only? (no support for 64-bit systems)").ask()
+    only_32_bit = False
+    if is_dev_mode:
+        only_32_bit = False
+    else:
+        only_32_bit = questionary.confirm("Is it 32-bit only? (no support for 64-bit systems)").ask()
 
 
     # 13: x86
-    is_x86 = questionary.confirm("Is it x86 only? (no support for ARM for example)").ask()
+    is_x86 = False
+    if is_dev_mode:
+        is_x86 = True
+    else:
+        is_x86 = questionary.confirm("Is it x86 only? (no support for ARM for example)").ask()
 
 
     # 14: notes
-    notes = questionary.text("Are there any extra notes you want to add? (leave this empty if it's unnecessary)").ask()
+    notes = ""
+    if is_dev_mode:
+        notes = ""
+    else:
+        notes = questionary.text("Are there any extra notes you want to add? (leave this empty if it's unnecessary)").ask()
 
 
     return options(
@@ -197,13 +278,15 @@ def prompt():
     )
 
 
-def write_header(options):
-    with open('../src/vmaware.hpp', 'r') as file:
+def write_header(options, header_file):
+    with open(header_file, 'r') as file:
         lines = file.readlines()
 
     new_code = []
     update_count = 0
 
+    if options.is_gpl and header_file == "../src/vmaware_MIT.hpp":
+        return
 
     for line in lines:
         # if the line is empty, skip
@@ -304,28 +387,21 @@ def write_header(options):
 
         # modify the technique table with the new technique appended
         if "// ADD NEW TECHNIQUE STRUCTURE HERE" in line:
+            code_str = (
+                "std::make_pair(VM::" + 
+                options.enum_name + 
+                ", VM::core::technique(" + 
+                str(options.score) + 
+                ", VM::" + 
+                options.function_name +
+                ")),\n"
+            )
+
             if options.is_gpl:
-                new_code.append(
-                    "/* GPL */ " + 
-                    "{ VM::" + 
-                    options.enum_name + 
-                    ", { " + 
-                    str(options.score) + 
-                    ", VM::" + 
-                    options.function_name +
-                    " } },\n"
-                )
+                new_code.append("/* GPL */ " + code_str)
             else:
-                new_code.append(
-                    tab + 
-                    "{ VM::" + 
-                    options.enum_name + 
-                    ", { " + 
-                    str(options.score) + 
-                    ", VM::" + 
-                    options.function_name +
-                    " } },\n"
-                )
+                new_code.append(tab + code_str)
+
             update_count += 1
 
 
@@ -349,7 +425,7 @@ def write_header(options):
 
 
     # commit the new changes from the buffer array
-    with open("../src/vmaware.hpp", "w") as file:
+    with open(header_file, "w") as file:
         for line in new_code:
             file.write(line)
 
@@ -480,6 +556,7 @@ def write_docs(options):
 if __name__ == "__main__":
     options_object = prompt()
 
-    write_header(options_object)
+    write_header(options_object, "../src/vmaware.hpp")
+    write_header(options_object, "../src/vmaware_MIT.hpp")
     write_cli(options_object)
     write_docs(options_object)
