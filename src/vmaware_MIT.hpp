@@ -7831,7 +7831,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         constexpr u64 tscSyncDiffThreshold = 1000000000LL;  // TSC difference threshold
 
         // to minimize context switching/scheduling
-#if defined(WINDOWS)
+#if (WINDOWS)
         HANDLE hThread = GetCurrentThread();
         int oldPriority = GetThreadPriority(hThread);
         SetThreadPriority(hThread, THREAD_PRIORITY_TIME_CRITICAL);
@@ -7845,7 +7845,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
 
         auto restoreThreadPriority = [&]() {
-#if defined(WINDOWS)
+#if (WINDOWS)
             SetThreadPriority(hThread, oldPriority);
 #else
             sched_setscheduler(0, oldPolicy, &oldParam);
@@ -7857,11 +7857,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         int spikeCount = 0;
         for (int i = 0; i < classicIterations; i++) {
             u64 start = __rdtsc();
-#if defined(WINDOWS)
+#if (WINDOWS)
             int cpu_info[4];
             __cpuid(cpu_info, 0); // CPUID serializes pipeline and is frequently intercepted by hypervisors
             UNUSED(cpu_info);
-#elif defined(LINUX) || defined(APPLE)
+#elif (LINUX || APPLE)
             u32 eax = 0, ebx = 0, ecx = 0, edx = 0;
             __cpuid(0, eax, ebx, ecx, edx);
             UNUSED(eax); UNUSED(ebx); UNUSED(ecx); UNUSED(edx);
@@ -7893,14 +7893,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // rdtsc+cpuid+rdtsc on CPU1 while CPU2 spams cpuid. This detection tries to detect invariant TSC to flag hypervisors that share the same timer across multiple vCPUs
         std::atomic<bool> stopSpammer{ false };
         std::thread spammer([&stopSpammer] {
-#if defined(WINDOWS)
+#if (WINDOWS)
             SetThreadAffinityMask(GetCurrentThread(), 2);
-#elif defined(LINUX)
+#elif (LINUX)
             cpu_set_t cpuset;
             CPU_ZERO(&cpuset);
             CPU_SET(1, &cpuset);  // core 1 (0-indexed)
             pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
-#elif defined(APPLE)
+#elif (APPLE)
             thread_affinity_policy_data_t policy = { 1 };
             thread_policy_set(pthread_mach_thread_np(pthread_self()),
                 THREAD_AFFINITY_POLICY,
@@ -7908,10 +7908,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
             // hypervisor trap pressure
             while (!stopSpammer.load()) {
-#if defined(WINDOWS)
+#if (WINDOWS)
                 int cpu_info[4];
                 __cpuid(cpu_info, 0);
-#elif defined(LINUX) || defined(APPLE)
+#elif (LINUX || APPLE)
                 u32 eax = 0, ebx = 0, ecx = 0, edx = 0;
                 __cpuid(0, eax, ebx, ecx, edx);
 #endif
@@ -7919,9 +7919,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             });
 
         // --- 3a. Pin Measurement Thread for Consistent Timing ---
-#if defined(WINDOWS)
+#if (WINDOWS)
         DWORD_PTR oldAffinityMask = SetThreadAffinityMask(GetCurrentThread(), 1);
-#elif defined(LINUX)
+#elif (LINUX)
         cpu_set_t oldCpuSet;
         CPU_ZERO(&oldCpuSet);
         pthread_getaffinity_np(pthread_self(), sizeof(cpu_set_t), &oldCpuSet);
@@ -7930,7 +7930,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         CPU_ZERO(&newCpuSet);
         CPU_SET(0, &newCpuSet);  // core 0 for consistent timing
         pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &newCpuSet);
-#elif defined(APPLE)
+#elif (APPLE)
         // restoration is not supported on Apple
         thread_affinity_policy_data_t policy = { 1 };
         thread_policy_set(pthread_mach_thread_np(pthread_self()),
@@ -7942,10 +7942,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         u64 measurement = 0;
         for (int i = 0; i < spammerIterations; i++) {
             u64 start = __rdtsc();
-#if defined(WINDOWS)
+#if (WINDOWS)
             int cpu_info[4];
             __cpuid(cpu_info, 0);
-#elif defined(LINUX) || defined(APPLE)
+#elif (LINUX || APPLE)
             u32 eax = 0, ebx = 0, ecx = 0, edx = 0;
             __cpuid(0, eax, ebx, ecx, edx);
 #endif
@@ -7955,9 +7955,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         stopSpammer.store(true);
         spammer.join();
 
-#if defined(WINDOWS)
+#if (WINDOWS)
         SetThreadAffinityMask(GetCurrentThread(), oldAffinityMask);
-#elif defined(LINUX)
+#elif (LINUX)
         pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &oldCpuSet);
 #endif
 
@@ -7972,7 +7972,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return true;
         }
 
-#if defined(WINDOWS)
+#if (WINDOWS)
         // --- 4.  QPC Check ---
         // Compare trapping vs non-trapping instruction timing
         LARGE_INTEGER startQPC, endQPC;
