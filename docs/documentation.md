@@ -511,7 +511,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::PORT_CONNECTORS` | Check for physical connection ports | Windows | 25% |  |  |  | This technique is known to false flag on devices like Surface Pro |
 | `VM::GPU_CAPABILITIES` | Check for GPU capabilities related to VMs | Windows | 100% | Admin |  |  | Admin only needed for some heuristics |
 | `VM::GPU_VM_STRINGS` | Check for specific GPU string signatures related to VMs | Windows | 100% |  |  |  |  |
-| `VM::VM_DEVICES` | Check for VM-specific devices | Windows | 45% |  |  |  |  |
+| `VM::VM_DEVICES` | Check for VM-specific devices | Windows | 50% |  |  |  |  |
 | `VM::IDT_GDT_SCAN` | Check if the IDT and GDT virtual base addresses are equal across different CPU cores when not running under Hyper-V | Windows | 50% |  |  |  |  |
 | `VM::PROCESSOR_NUMBER` | Check for number of processors | Windows | 50% |  |  |  |  |
 | `VM::NUMBER_OF_CORES` | Check for number of cores | Windows | 50% |  |  |  |  |

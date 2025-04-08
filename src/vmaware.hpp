@@ -31,10 +31,10 @@
  * - struct for internal cpu operations        => line 749
  * - struct for internal memoization           => line 1220
  * - struct for internal utility functions     => line 1344
- * - struct for internal core components       => line 100028
+ * - struct for internal core components       => line 100128
  * - start of VM detection technique list      => line 2345
- * - start of public VM detection functions    => line 10692
- * - start of externally defined variables     => line 11642
+ * - start of public VM detection functions    => line 10792
+ * - start of externally defined variables     => line 11742
  *
  *
  * ============================== EXAMPLE ===================================
@@ -7598,7 +7598,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for GPU capabilities related to VMs
      * @category Windows
-     * @author Requiem (https://github.com/NotRequiem)
+     * @author Requiem
      * @implements VM::GPU_CAPABILITIES
      */
     [[nodiscard]] static bool gpu_capabilities() {
@@ -7610,7 +7610,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         IDirect3D9* pD3D = Direct3DCreate9(D3D_SDK_VERSION);
-        if (!pD3D) return true;
+        if (!pD3D) {
+            debug("GPU_CAPABILITIES: Direct3DCreate9");
+            return true;
+        }
 
         D3DADAPTER_IDENTIFIER9 adapterId;
         D3DCAPS9 caps;
@@ -7622,10 +7625,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             else if (adapterId.VendorId == 0x80EE) {
                 pD3D->Release();
                 return core::add(brands::VBOX);
-            } 
+            }
         }
 
         if (FAILED(pD3D->GetDeviceCaps(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, &caps))) {
+            debug("GPU_CAPABILITIES: GetDeviceCaps");
             pD3D->Release();
             return true;
         }
@@ -7633,10 +7637,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         pD3D->Release();
 
         IDXGIFactory* pFactory = nullptr;
-        if (FAILED(CreateDXGIFactory(__uuidof(IDXGIFactory), reinterpret_cast<void**>(&pFactory)))) return true;
+        if (FAILED(CreateDXGIFactory(__uuidof(IDXGIFactory), reinterpret_cast<void**>(&pFactory)))) {
+            debug("GPU_CAPABILITIES: DXGIFactory");
+            return true;
+        }
 
         IDXGIAdapter* pAdapter = nullptr;
-        // do not enumerate all adapters, otherwise it would false flag with adapters with no dedicated gpus like Microsoft Basic Render Driver (vid 0x1414)
+        // Do not enumerate all adapters, otherwise it would false flag with adapters with no dedicated GPUs
+        // like Microsoft Basic Render Driver (vid 0x1414)
         if (pFactory->EnumAdapters(0, &pAdapter) != DXGI_ERROR_NOT_FOUND) {
             DXGI_ADAPTER_DESC adapterDesc;
             if (SUCCEEDED(pAdapter->GetDesc(&adapterDesc))) {
@@ -7645,6 +7653,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 wcstombs_s(&converted, description, adapterDesc.Description, sizeof(description));
 
                 if (adapterDesc.DedicatedVideoMemory < static_cast<unsigned long long>(1024 * 1024) * 1024) {
+                    debug("GPU_CAPABILITIES: Video memory");
                     pAdapter->Release();
                     pFactory->Release();
                     return true;
@@ -7995,50 +8004,96 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      */
     [[nodiscard]]
 #if (LINUX)
-    // This is added so that no sanitizers can potentially cause unwanted delays while measuring rdtsc in debug
+    // Disable specific sanitizers for more accurate timing measurements.
     __attribute__((no_sanitize("address", "leak", "thread", "undefined")))
 #endif
         static bool timer() {
 #if (ARM || !x86)
         return false;
 #else
-        u64 start, end, total_cycles = 0;
-        constexpr i32 iterations = 10; // Reduced due to sleep delays, originally 10000 iterations with no execution delay
-        constexpr u32 threshold = 22000;
-        std::atomic<bool> stop_spammer { false };
+        constexpr i32 classicIterations = 10;           // Number of iterations for the classic RDTSC check
+        constexpr u32 classicThreshold = 20000u;          // Cycle threshold per iteration for classic RDTSC check
+        constexpr i32 requiredClassicSpikes = classicIterations / 2; // At least 50% of iterations must spike
 
-        // 1. Classic rdtsc+cpuid+rdtsc check with sleep variance
-        for (int i = 0; i < iterations; i++) {
-            start = __rdtsc();
+        constexpr i32 spammerIterations = 1000;           // Iterations for the multi-CPU/spammer check
+        constexpr u32 spammerAvgThreshold = 55000u;         // Average cycle threshold for the spammer check
+
 #if (WINDOWS)
-            // CPUID serializes pipeline and is frequently intercepted by hypervisors
+        constexpr int qpcRatioThreshold = 3000;           // QPC ratio threshold
+#endif
+
+        constexpr i32 tscIterations = 10;                 // Number of iterations for the TSC synchronization check
+        constexpr u64 tscSyncDiffThreshold = 1000000000LL;  // TSC difference threshold
+
+        // to minimize context switching/scheduling
+#if (WINDOWS)
+        HANDLE hThread = GetCurrentThread();
+        int oldPriority = GetThreadPriority(hThread);
+        SetThreadPriority(hThread, THREAD_PRIORITY_TIME_CRITICAL);
+#else
+        int oldPolicy = sched_getscheduler(0);
+        sched_param oldParam;
+        sched_getparam(0, &oldParam);
+        sched_param newParam{};
+        newParam.sched_priority = sched_get_priority_max(SCHED_FIFO);
+        sched_setscheduler(0, SCHED_FIFO, &newParam);
+#endif
+
+        auto restoreThreadPriority = [&]() {
+#if (WINDOWS)
+            SetThreadPriority(hThread, oldPriority);
+#else
+            sched_setscheduler(0, oldPolicy, &oldParam);
+#endif
+            };
+
+        // --- 1. Classic Timing Check (rdtsc + cpuid + rdtsc) ---
+        u64 totalCycles = 0;
+        int spikeCount = 0;
+        for (int i = 0; i < classicIterations; i++) {
+            u64 start = __rdtsc();
+#if (WINDOWS)
             int cpu_info[4];
-            __cpuid(cpu_info, 0);
+            __cpuid(cpu_info, 0); // CPUID serializes pipeline and is frequently intercepted by hypervisors
             UNUSED(cpu_info);
 #elif (LINUX || APPLE)
             u32 eax = 0, ebx = 0, ecx = 0, edx = 0;
             __cpuid(0, eax, ebx, ecx, edx);
-            UNUSED(eax);
-            UNUSED(ebx);
-            UNUSED(ecx);
-            UNUSED(edx);
+            UNUSED(eax); UNUSED(ebx); UNUSED(ecx); UNUSED(edx);
 #endif
-            end = __rdtsc();
-            total_cycles += (end - start);
-
+            u64 end = __rdtsc();
+            u64 cycles = end - start;
+            totalCycles += cycles;
+            if (cycles >= classicThreshold) {
+                spikeCount++;
+            }
             // Sleep to induce cache flushing
             std::this_thread::sleep_for(std::chrono::microseconds(500));
         }
 
-        // 2. Multi-CPU check: rdtsc+cpuid+rdtsc on CPU1 while CPU2 spams cpuid. This detection tries to detect invariant TSC to flag hypervisors that share the same timer across multiple vCPUs
-        std::thread spammer([&stop_spammer] {
+#ifdef __VMAWARE_DEBUG__
+        const double averageCycles = static_cast<double>(totalCycles) / classicIterations;
+        debug("TIMER: RDTSC check - Average cycles: ", averageCycles,
+            " (Threshold per sample: ", classicThreshold,
+            ") - Spike count: ", spikeCount);
+#endif
+
+        const bool sleepVarianceDetected = (spikeCount >= requiredClassicSpikes);
+        if (sleepVarianceDetected) {
+            restoreThreadPriority();
+            return true;
+        }
+
+        // --- 2. Multi-CPU Spammer Check ---
+        // rdtsc+cpuid+rdtsc on CPU1 while CPU2 spams cpuid. This detection tries to detect invariant TSC to flag hypervisors that share the same timer across multiple vCPUs
+        std::atomic<bool> stopSpammer{ false };
+        std::thread spammer([&stopSpammer] {
 #if (WINDOWS)
-            // Pin spammer to core 2
             SetThreadAffinityMask(GetCurrentThread(), 2);
 #elif (LINUX)
             cpu_set_t cpuset;
             CPU_ZERO(&cpuset);
-            CPU_SET(1, &cpuset);  // Core 1 (0-indexed)
+            CPU_SET(1, &cpuset);  // core 1 (0-indexed)
             pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
 #elif (APPLE)
             thread_affinity_policy_data_t policy = { 1 };
@@ -8046,8 +8101,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 THREAD_AFFINITY_POLICY,
                 (thread_policy_t)&policy, 1);
 #endif
-            // Spam CPUID to create hypervisor trap pressure
-            while (!stop_spammer.load()) {
+            // hypervisor trap pressure
+            while (!stopSpammer.load()) {
 #if (WINDOWS)
                 int cpu_info[4];
                 __cpuid(cpu_info, 0);
@@ -8058,19 +8113,30 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
             });
 
+        // --- 3a. Pin Measurement Thread for Consistent Timing ---
 #if (WINDOWS)
-        // Pin measurement to core 1
-        DWORD_PTR old_mask = SetThreadAffinityMask(GetCurrentThread(), 1);
-#elif (LINUX || APPLE)
-        // Increase priority to minimize scheduling delays
-        sched_param param{};
-        sched_setscheduler(0, SCHED_FIFO, &param);
+        DWORD_PTR oldAffinityMask = SetThreadAffinityMask(GetCurrentThread(), 1);
+#elif (LINUX)
+        cpu_set_t oldCpuSet;
+        CPU_ZERO(&oldCpuSet);
+        pthread_getaffinity_np(pthread_self(), sizeof(cpu_set_t), &oldCpuSet);
+
+        cpu_set_t newCpuSet;
+        CPU_ZERO(&newCpuSet);
+        CPU_SET(0, &newCpuSet);  // core 0 for consistent timing
+        pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &newCpuSet);
+#elif (APPLE)
+        // restoration is not supported on Apple
+        thread_affinity_policy_data_t policy = { 1 };
+        thread_policy_set(pthread_mach_thread_np(pthread_self()),
+            THREAD_AFFINITY_POLICY,
+            (thread_policy_t)&policy, 1);
 #endif
 
-        // Take measurements under spammer load
+        // --- 3b. Measurement Under Spammer Load ---
         u64 measurement = 0;
-        for (int i = 0; i < 1000; i++) {
-            start = __rdtsc();
+        for (int i = 0; i < spammerIterations; i++) {
+            u64 start = __rdtsc();
 #if (WINDOWS)
             int cpu_info[4];
             __cpuid(cpu_info, 0);
@@ -8078,73 +8144,107 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             u32 eax = 0, ebx = 0, ecx = 0, edx = 0;
             __cpuid(0, eax, ebx, ecx, edx);
 #endif
-            end = __rdtsc();
+            u64 end = __rdtsc();
             measurement += (end - start);
         }
-
-        stop_spammer.store(true);
+        stopSpammer.store(true);
         spammer.join();
 
-    #if (WINDOWS)
-        SetThreadAffinityMask(GetCurrentThread(), old_mask);
-    #endif  
+#if (WINDOWS)
+        SetThreadAffinityMask(GetCurrentThread(), oldAffinityMask);
+#elif (LINUX)
+        pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &oldCpuSet);
+#endif
 
-        const double average_cycles = static_cast<double>(total_cycles) / iterations;
-        const bool sleep_variance_detected = average_cycles >= threshold;
-        const bool spammer_detected = (measurement / 1000) > 55000;
+        const bool spammerDetected = (measurement / spammerIterations) > spammerAvgThreshold;
+#ifdef __VMAWARE_DEBUG__
+        debug("TIMER: Spammer check - Average cycles: ", (measurement / spammerIterations),
+            " (Threshold: ", spammerAvgThreshold, ")");
+#endif
 
-        debug("Classic check - Average cycles: ", average_cycles, " (threshold: ", threshold, ")");
-        debug("Spammer check - Average cycles: ", (measurement / 1000), " (threshold: 55000)");
+        if (spammerDetected) {
+            restoreThreadPriority();
+            return true;
+        }
 
-    #if (WINDOWS)
-        // Windows-specific QPC check: Compare trapping vs non-trapping instruction timing
+#if (WINDOWS)
+        // --- 4.  QPC Check ---
+        // Compare trapping vs non-trapping instruction timing
         LARGE_INTEGER startQPC, endQPC;
         QueryPerformanceCounter(&startQPC);
-        int cpu_info[4];
-        for (int i = 0; i < 100000; i++) {
-            __cpuid(cpu_info, 0);
+        {
+            int cpu_info[4];
+            for (int i = 0; i < 100000; i++) {
+                __cpuid(cpu_info, 0);
+            }
         }
         QueryPerformanceCounter(&endQPC);
         LONGLONG cpuIdTime = endQPC.QuadPart - startQPC.QuadPart;
 
-        // Non-trapping dummy loop baseline
+        // Non-trapping baseline loop
         QueryPerformanceCounter(&startQPC);
         volatile int dummy = 0;
         for (int i = 0; i < 100000; i++) {
-            dummy ^= i; // prevent optimization
-            _ReadWriteBarrier(); 
+            dummy ^= i; // to prevent optimization
+            _ReadWriteBarrier();
         }
         QueryPerformanceCounter(&endQPC);
         LONGLONG dummyTime = endQPC.QuadPart - startQPC.QuadPart;
 
-        const bool qpc_check = (dummyTime != 0) && ((cpuIdTime / dummyTime) > 3000);
-        debug("QPC check - CPUID: ", cpuIdTime, "ns, Dummy: ", dummyTime, "ns, Ratio: ", (cpuIdTime / dummyTime));
+        const bool qpcCheck = (dummyTime != 0) && ((cpuIdTime / dummyTime) > qpcRatioThreshold);
+#ifdef __VMAWARE_DEBUG__
+        debug("TIMER: QPC check - CPUID: ", cpuIdTime,
+            " ns, Dummy: ", dummyTime,
+            " ns, Ratio: ", (cpuIdTime / dummyTime));
+#endif
 
-        // TSC sync check across cores. Try reading the invariant TSC on two different cores to attempt to detect vCPU timers being shared
-        const bool tsc_sync_check = [&]() noexcept -> bool {
-            u64 tsc_core1 = 0;
-            u64 tsc_core2 = 0;
-            __try { // lambda is necessary to use __try in functions that require object unwinding while still avoiding the creation of any external helper functions
-                unsigned int aux = 0;
-                SetThreadAffinityMask(GetCurrentThread(), 1);
-                tsc_core1 = __rdtscp(&aux); // Core 1 TSC, the use of a serializing variant for the instruction stream is done on purpose
-                SetThreadAffinityMask(GetCurrentThread(), 2);
-                tsc_core2 = __rdtscp(&aux); // Core 2 TSC
-                SetThreadAffinityMask(GetCurrentThread(), old_mask);
+        if (qpcCheck) {
+            restoreThreadPriority();
+            return true;
+        }
+
+        // --- 5. TSC Synchronization Check Across Cores ---
+        // Try reading the invariant TSC on two different cores to attempt to detect vCPU timers being shared
+        const bool tscSyncDetected = [&]() noexcept -> bool {
+            int tscIssueCount = 0;
+            unsigned long long tscCore1 = 0, tscCore2 = 0;
+            for (int i = 0; i < tscIterations; i++) {
+                __try {
+                    unsigned int aux = 0;
+                    DWORD_PTR oldAffinity = SetThreadAffinityMask(GetCurrentThread(), 1);
+                    tscCore1 = __rdtscp(&aux); // the use of a serializing variant for the instruction stream is done on purpose
+                    SetThreadAffinityMask(GetCurrentThread(), 2);
+                    tscCore2 = __rdtscp(&aux);
+                    SetThreadAffinityMask(GetCurrentThread(), oldAffinity);
+                }
+                __except (GetExceptionCode() == EXCEPTION_ILLEGAL_INSTRUCTION
+                    ? EXCEPTION_EXECUTE_HANDLER
+                    : EXCEPTION_CONTINUE_SEARCH) {
+                    // // RDTSCP is widely supported on real hardware, most likely VM
+                    tscIssueCount++;
+                    continue;
+                }
+                if (std::llabs(static_cast<long long>(tscCore2 - tscCore1)) > tscSyncDiffThreshold) {
+                    tscIssueCount++;
+                }
             }
-            __except (GetExceptionCode() == EXCEPTION_ILLEGAL_INSTRUCTION
-                ? EXCEPTION_EXECUTE_HANDLER
-                : EXCEPTION_CONTINUE_SEARCH) {
-                return true; // RDTSCP is widely supported on real hardware
-            }
-            debug("TSC sync check - Core1: ", tsc_core1, " Core2: ", tsc_core2, " Diff: ", tsc_core2 - tsc_core1);
-            return std::llabs(static_cast<long long>(tsc_core2 - tsc_core1)) > 1000000000LL;
+#ifdef __VMAWARE_DEBUG__
+            debug("TIMER: TSC sync check",
+                " - Core1: ", tscCore1,
+                " Core2: ", tscCore2,
+                " Diff: ", tscCore2 - tscCore1);
+#endif
+            return (tscIssueCount >= tscIterations / 2);
             }();
 
-        return sleep_variance_detected || spammer_detected || qpc_check || tsc_sync_check;
-    #else
-        return sleep_variance_detected || spammer_detected;
-    #endif
+        if (tscSyncDetected) {
+            restoreThreadPriority();
+            return true;
+        }
+#endif // WINDOWS
+
+        restoreThreadPriority();
+        return false;
 #endif
     }
 
@@ -11862,7 +11962,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     std::make_pair(VM::PORT_CONNECTORS, VM::core::technique(25, VM::port_connectors)),
     std::make_pair(VM::GPU_VM_STRINGS, VM::core::technique(100, VM::gpu_vm_strings)),
     std::make_pair(VM::GPU_CAPABILITIES, VM::core::technique(100, VM::gpu_capabilities)),
-    std::make_pair(VM::VM_DEVICES, VM::core::technique(45, VM::vm_devices)),
+    std::make_pair(VM::VM_DEVICES, VM::core::technique(50, VM::vm_devices)),
     std::make_pair(VM::IDT_GDT_SCAN, VM::core::technique(50, VM::idt_gdt_scan)),
     std::make_pair(VM::PROCESSOR_NUMBER, VM::core::technique(50, VM::processor_number)),
     std::make_pair(VM::NUMBER_OF_CORES, VM::core::technique(50, VM::number_of_cores)),
