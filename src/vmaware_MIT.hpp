@@ -53,10 +53,10 @@
  * - struct for internal cpu operations        => line 764
  * - struct for internal memoization           => line 1236
  * - struct for internal utility functions     => line 1361
- * - struct for internal core components       => line 9934
+ * - struct for internal core components       => line 9959
  * - start of VM detection technique list      => line 2364
- * - start of public VM detection functions    => line 10609
- * - start of externally defined variables     => line 11561
+ * - start of public VM detection functions    => line 10634
+ * - start of externally defined variables     => line 11586
  *
  *
  * ============================== EXAMPLE ===================================
@@ -7403,7 +7403,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for GPU capabilities related to VMs
      * @category Windows
-     * @author Requiem
+     * @author Requiem (https://github.com/NotRequiem)
      * @implements VM::GPU_CAPABILITIES
      */
     [[nodiscard]] static bool gpu_capabilities() {
@@ -7416,12 +7416,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         IDirect3D9* pD3D = Direct3DCreate9(D3D_SDK_VERSION);
         if (!pD3D) {
-            debug("GPU_CAPABILITIES: Direct3DCreate9");
+            debug("GPU_CAPABILITIES: Direct3DCreate9 failed");
             return true;
         }
 
         D3DADAPTER_IDENTIFIER9 adapterId;
-        D3DCAPS9 caps;
         if (SUCCEEDED(pD3D->GetAdapterIdentifier(D3DADAPTER_DEFAULT, 0, &adapterId))) {
             if (adapterId.VendorId == 0x15AD) {
                 pD3D->Release();
@@ -7433,8 +7432,36 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
         }
 
-        if (FAILED(pD3D->GetDeviceCaps(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, &caps))) {
-            debug("GPU_CAPABILITIES: GetDeviceCaps");
+        D3DCAPS9 caps;
+        HRESULT hr = pD3D->GetDeviceCaps(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, &caps);
+        const int maxRetries = 3;
+        for (int attempt = 0; FAILED(hr) && (attempt < maxRetries); ++attempt) {
+            SleepEx(500, FALSE);
+            hr = pD3D->GetDeviceCaps(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, &caps);
+        }
+        if (FAILED(hr)) {
+            debug("GPU_CAPABILITIES: GetDeviceCaps failure");
+            pD3D->Release();
+            return false;
+        }
+
+        // Pixel Shader version 2.0
+        if (caps.PixelShaderVersion < D3DPS_VERSION(2, 0)) {
+            debug("GPU_CAPABILITIES: Insufficient Pixel Shader version");
+            pD3D->Release();
+            return true;
+        }
+
+        // hardware transform and lighting capability
+        if (!(caps.DevCaps & D3DDEVCAPS_HWTRANSFORMANDLIGHT)) {
+            debug("GPU_CAPABILITIES: Missing hardware T&L support");
+            pD3D->Release();
+            return true;
+        }
+
+        // simultaneous render targets
+        if (caps.NumSimultaneousRTs < 2) {
+            debug("GPU_CAPABILITIES: Insufficient simultaneous render targets");
             pD3D->Release();
             return true;
         }
@@ -7443,22 +7470,17 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         IDXGIFactory* pFactory = nullptr;
         if (FAILED(CreateDXGIFactory(__uuidof(IDXGIFactory), reinterpret_cast<void**>(&pFactory)))) {
-            debug("GPU_CAPABILITIES: DXGIFactory");
+            debug("GPU_CAPABILITIES: DXGIFactory creation failed");
             return true;
         }
 
         IDXGIAdapter* pAdapter = nullptr;
-        // Do not enumerate all adapters, otherwise it would false flag with adapters with no dedicated GPUs
-        // like Microsoft Basic Render Driver (vid 0x1414)
+        // Enumerate only the primary adapter so as not to mistakenly flag machines without a dedicated GPU, like Microsoft Basic Render Driver (vid 0x1414)
         if (pFactory->EnumAdapters(0, &pAdapter) != DXGI_ERROR_NOT_FOUND) {
             DXGI_ADAPTER_DESC adapterDesc;
             if (SUCCEEDED(pAdapter->GetDesc(&adapterDesc))) {
-                char description[128] = { 0 };
-                size_t converted = 0;
-                wcstombs_s(&converted, description, adapterDesc.Description, sizeof(description));
-
-                if (adapterDesc.DedicatedVideoMemory < static_cast<unsigned long long>(1024 * 1024) * 1024) {
-                    debug("GPU_CAPABILITIES: Video memory");
+                if (adapterDesc.DedicatedVideoMemory < (1024ULL * 1024ULL * 1024ULL)) {
+                    debug("GPU_CAPABILITIES: Video memory below threshold");
                     pAdapter->Release();
                     pFactory->Release();
                     return true;
@@ -7466,8 +7488,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
             pAdapter->Release();
         }
-
         pFactory->Release();
+
         return false;
 #endif
     }
@@ -7535,7 +7557,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      *        However, when Windows is running under Hyper-V (in a root partition), the IDT and GDT base address will always be the same across all CPU cores if called from user-mode.
      *        This kernel address leak prevention measure is done by Hyper-V on purpose and can be abused to detect VMs.
      * @category Windows, x64
-     * @author Requiem
+     * @author Requiem (https://github.com/NotRequiem)
      * @implements VM::IDT_GDT_SCAN
      */
     [[nodiscard]] static bool idt_gdt_scan() {
@@ -7805,6 +7827,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for timing anomalies in the system
      * @category x86
+     * @author Requiem (https://github.com/NotRequiem)
      * @implements VM::TIMER
      */
     [[nodiscard]]
@@ -9708,7 +9731,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
 
 
-    /* @brief Check if audio device is present
+    /* @brief Check if any waveform-audio output devices are present in the system
      * @category Windows
      * @implements VM::AUDIO
      */
@@ -11788,7 +11811,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     std::make_pair(VM::AMD_SEV, VM::core::technique(50, VM::amd_sev)),
     std::make_pair(VM::NATIVE_VHD, VM::core::technique(100, VM::native_vhd)),
     std::make_pair(VM::VIRTUAL_REGISTRY, VM::core::technique(65, VM::virtual_registry)),
-    std::make_pair(VM::FIRMWARE, VM::core::technique(75, VM::firmware_scan)),
+    std::make_pair(VM::FIRMWARE, VM::core::technique(100, VM::firmware_scan)),
     std::make_pair(VM::FILE_ACCESS_HISTORY, VM::core::technique(15, VM::file_access_history)),
     std::make_pair(VM::AUDIO, VM::core::technique(25, VM::check_audio)),
     std::make_pair(VM::UNKNOWN_MANUFACTURER, VM::core::technique(50, VM::unknown_manufacturer)),

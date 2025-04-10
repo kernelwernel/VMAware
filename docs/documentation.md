@@ -510,7 +510,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::HDD_SERIAL` | Check for serial numbers of virtual disks | Windows | 100% |  |  |  |  |
 | `VM::PORT_CONNECTORS` | Check for physical connection ports | Windows | 25% |  |  |  | This technique is known to false flag on devices like Surface Pro |
 | `VM::GPU_CAPABILITIES` | Check for GPU capabilities related to VMs | Windows | 100% | Admin |  |  | Admin only needed for some heuristics |
-| `VM::GPU_VM_STRINGS` | Check for specific GPU string signatures related to VMs | Windows | 100% |  |  |  |  |
+| `VM::GPU_VM_STRINGS` | Check for specific GPU string signatures related to VMs | Windows | 100% |  |  |  | If GPU_CAPABILITIES also flags, the overall score will be 50 instead of 100 |
 | `VM::VM_DEVICES` | Check for VM-specific devices | Windows | 50% |  |  |  |  |
 | `VM::IDT_GDT_SCAN` | Check if the IDT and GDT virtual base addresses are equal across different CPU cores when not running under Hyper-V | Windows | 50% |  |  |  |  |
 | `VM::PROCESSOR_NUMBER` | Check for number of processors | Windows | 50% |  |  |  |  |
@@ -527,9 +527,9 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::NATIVE_VHD` | Checks if the OS was booted from a VHD container |  | 100% |  |  |  |  |
 | `VM::NATIVE_VHD` | Check for OS being booted from a VHD container | Windows | 100% |  |  |  |  |
 | `VM::VIRTUAL_REGISTRY` | Check for particular object directory which is present in Sandboxie virtual environment but not in usual host systems | Windows | 65% |  |  |  | Admin only needed for Linux |
-| `VM::FIRMWARE` | Check for VM signatures and patched strings by hardeners in firmware, while ensuring the BIOS serial is valid | Windows and Linux | 75% |  |  |  |  |
+| `VM::FIRMWARE` | Check for VM signatures and patched strings by hardeners in firmware, while ensuring the BIOS serial is valid | Windows and Linux | 100% |  |  |  |  |
 | `VM::FILE_ACCESS_HISTORY` | Check if the number of accessed files are too low for a human-managed environment | Linux | 15% |  |  |  |  |
-| `VM::AUDIO` | Check if audio device is present | Windows | 25% |  |  |  |  |
+| `VM::AUDIO` | Check if any waveform-audio output devices are present in the system | Windows | 25% |  |  |  |  |
 | `VM::UNKNOWN_MANUFACTURER` | Check if the CPU manufacturer is not known |  | 50% |  |  |  |  |
 | `VM::OSXSAVE` | Check if running xgetbv in the XCR0 extended feature register triggers an exception | Windows | 50% |  |  |  |  |
 | `VM::NSJAIL_PID` | Check if process status matches with nsjail patterns with PID anomalies | Linux | 75% |  |  |  |  |
