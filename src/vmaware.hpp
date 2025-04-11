@@ -27,14 +27,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 556
- * - struct for internal cpu operations        => line 749
- * - struct for internal memoization           => line 1220
- * - struct for internal utility functions     => line 1344
- * - struct for internal core components       => line 10066
- * - start of VM detection technique list      => line 2345
- * - start of public VM detection functions    => line 10730
- * - start of externally defined variables     => line 11679
+ * - enums for publicly accessible techniques  => line 555
+ * - struct for internal cpu operations        => line 747
+ * - struct for internal memoization           => line 1218
+ * - struct for internal utility functions     => line 1342
+ * - struct for internal core components       => line 10064
+ * - start of VM detection technique list      => line 2343
+ * - start of public VM detection functions    => line 10728
+ * - start of externally defined variables     => line 11677
  *
  *
  * ============================== EXAMPLE ===================================
@@ -3087,6 +3087,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         // KVM
         key(brands::KVM, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_1AF4*");
+        key(brands::KVM, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_1B36*");
         key(brands::KVM, "HKLM\\SYSTEM\\ControlSet001\\Services\\vioscsi");
         key(brands::KVM, "HKLM\\SYSTEM\\ControlSet001\\Services\\viostor");
         key(brands::KVM, "HKLM\\SYSTEM\\ControlSet001\\Services\\VirtIO-FS Service");
@@ -9500,7 +9501,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         constexpr const char* targets[] = {
             "Parallels Software International", "Parallels(R)", "innotek",
             "Oracle", "VirtualBox", "VS2005R2", "VMware, Inc.",
-            "VMware", "S3 Corp.", "Virtual Machine", "Qemu", "vbox",
+            "VMware", "VMWARE", "S3 Corp.", "Virtual Machine", "Qemu", "vbox",
             "WAET", "BOCHS", "BXPC"
         };
 
@@ -9555,14 +9556,17 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                         else if (strcmp(target, "innotek") == 0 ||
                             strcmp(target, "VirtualBox") == 0 ||
                             strcmp(target, "vbox") == 0 ||
+                            strcmp(target, "VBOX") == 0 ||
                             strcmp(target, "Oracle") == 0)
                             brand = brands::VBOX;
                         else if (strcmp(target, "VMware, Inc.") == 0 ||
-                            strcmp(target, "VMware") == 0)
+                            strcmp(target, "VMware") == 0 ||
+                            strcmp(target, "VMWARE") == 0)
                             brand = brands::VMWARE;
                         else if (strcmp(target, "Qemu") == 0)
                             brand = brands::QEMU;
-                        else if (strcmp(target, "BOCHS") == 0)
+                        else if (strcmp(target, "BOCHS") == 0 ||
+                            strcmp(target, "BXPC") == 0)
                             brand = brands::BOCHS;
                         else {
                             free(info);
@@ -9692,117 +9696,112 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         return false;
 #elif (LINUX)
-    // Author: dmfrpro
-    if (!util::is_admin()) {
-        return false;
-    }
-
-    DIR* dir = opendir("/sys/firmware/acpi/tables/");
-    if (!dir) {
-        debug("FIRMWARE: could not open ACPI tables directory");
-        return false;
-    }
-
-    // Same targets as the Windows branch but without "WAET"
-    constexpr const char* targets[] = {
-        "Parallels Software International", "Parallels(R)", "innotek",
-        "Oracle", "VirtualBox", "VS2005R2", "VMware, Inc.",
-        "VMware", "S3 Corp.", "Virtual Machine", "Qemu", "vbox", "BOCHS", "BXPC"
-    };
-
-    struct dirent* entry;
-    while ((entry = readdir(dir)) != nullptr) {
-        // Skip "." and ".."
-        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
-            continue;
-
-        char path[PATH_MAX];
-        snprintf(path, sizeof(path), "/sys/firmware/acpi/tables/%s", entry->d_name);
-
-        int fd = open(path, O_RDONLY);
-        if (fd == -1) {
-            debug("FIRMWARE: could not open ACPI table ", entry->d_name);
-            continue;
+        // Author: dmfrpro
+        if (!util::is_admin()) {
+            return false;
         }
 
-        struct stat statbuf;
-        if (fstat(fd, &statbuf) != 0) {
-            debug("FIRMWARE: skipped ", entry->d_name);
-            close(fd);
-            continue;
-        }
-        if (S_ISDIR(statbuf.st_mode)) {
-            debug("FIRMWARE: skipped directory ", entry->d_name);
-            close(fd);
-            continue;
+        DIR* dir = opendir("/sys/firmware/acpi/tables/");
+        if (!dir) {
+            debug("FIRMWARE: could not open ACPI tables directory");
+            return false;
         }
 
-        long file_size = statbuf.st_size;
-        if (file_size <= 0) {
-            debug("FIRMWARE: file empty or error ", entry->d_name);
-            close(fd);
-            continue;
-        }
+        // Same targets as the Windows branch but without "WAET"
+        constexpr const char* targets[] = {
+            "Parallels Software International", "Parallels(R)", "innotek",
+            "Oracle", "VirtualBox", "VS2005R2", "VMware, Inc.",
+            "VMware", "S3 Corp.", "Virtual Machine", "Qemu", "vbox", "BOCHS", "BXPC"
+        };
 
-        char* buffer = static_cast<char*>(malloc(file_size));
-        if (!buffer) {
-            debug("FIRMWARE: failed to allocate memory for buffer");
-            close(fd);
-            continue;
-        }
-
-        ssize_t bytesRead = read(fd, buffer, file_size);
-        if (bytesRead != file_size) {
-            debug("FIRMWARE: failed to read ACPI table ", entry->d_name);
-            free(buffer);
-            close(fd);
-            continue;
-        }
-        close(fd);
-
-        for (const char* target : targets) {
-            size_t targetLen = strlen(target);
-            if (targetLen == 0 || file_size < static_cast<long>(targetLen))
+        struct dirent* entry;
+        while ((entry = readdir(dir)) != nullptr) {
+            // Skip "." and ".."
+            if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
                 continue;
-            for (long j = 0; j <= file_size - static_cast<long>(targetLen); ++j) {
-                if (memcmp(buffer + j, target, targetLen) == 0) {
-                    const char* brand = nullptr;
-                    if (strcmp(target, "Parallels Software International") == 0 ||
-                        strcmp(target, "Parallels(R)") == 0) {
-                        brand = brands::PARALLELS;
+
+            char path[PATH_MAX];
+            snprintf(path, sizeof(path), "/sys/firmware/acpi/tables/%s", entry->d_name);
+
+            int fd = open(path, O_RDONLY);
+            if (fd == -1) {
+                debug("FIRMWARE: could not open ACPI table ", entry->d_name);
+                continue;
+            }
+
+            struct stat statbuf;
+            if (fstat(fd, &statbuf) != 0) {
+                debug("FIRMWARE: skipped ", entry->d_name);
+                close(fd);
+                continue;
+            }
+            if (S_ISDIR(statbuf.st_mode)) {
+                debug("FIRMWARE: skipped directory ", entry->d_name);
+                close(fd);
+                continue;
+            }
+
+            long file_size = statbuf.st_size;
+            if (file_size <= 0) {
+                debug("FIRMWARE: file empty or error ", entry->d_name);
+                close(fd);
+                continue;
+            }
+
+            char* buffer = static_cast<char*>(malloc(file_size));
+            if (!buffer) {
+                debug("FIRMWARE: failed to allocate memory for buffer");
+                close(fd);
+                continue;
+            }
+            close(fd);
+
+            for (const char* target : targets) {
+                size_t targetLen = strlen(target);
+                if (targetLen == 0 || file_size < static_cast<long>(targetLen))
+                    continue;
+                for (long j = 0; j <= file_size - static_cast<long>(targetLen); ++j) {
+                    if (memcmp(buffer + j, target, targetLen) == 0) {
+                        const char* brand = nullptr;
+                        if (strcmp(target, "Parallels Software International") == 0 ||
+                            strcmp(target, "Parallels(R)") == 0) {
+                            brand = brands::PARALLELS;
+                        }
+                        else if (strcmp(target, "innotek") == 0 ||
+                            strcmp(target, "Oracle") == 0 ||
+                            strcmp(target, "VirtualBox") == 0 ||
+                            strcmp(target, "vbox") == 0 ||
+                            strcmp(target, "VBOX") == 0) {
+                            brand = brands::VBOX;
+                        }
+                        else if (strcmp(target, "VMware, Inc.") == 0 ||
+                            strcmp(target, "VMware") == 0 ||
+                            strcmp(target, "VMWARE") == 0) {
+                            brand = brands::VMWARE;
+                        }
+                        else if (strcmp(target, "Qemu") == 0) {
+                            brand = brands::QEMU;
+                        }
+                        else if (strcmp(target, "BOCHS") == 0 ||
+                            strcmp(target, "BXPC") == 0) {
+                            brand = brands::BOCHS;
+                        }
+                        free(buffer);
+                        closedir(dir);
+                        if (brand)
+                            return core::add(brand);
+                        else
+                            return true;
                     }
-                    else if (strcmp(target, "innotek") == 0 ||
-                        strcmp(target, "Oracle") == 0 ||
-                        strcmp(target, "VirtualBox") == 0 ||
-                        strcmp(target, "vbox") == 0) {
-                        brand = brands::VBOX;
-                    }
-                    else if (strcmp(target, "VMware, Inc.") == 0 ||
-                        strcmp(target, "VMware") == 0) {
-                        brand = brands::VMWARE;
-                    }
-                    else if (strcmp(target, "Qemu") == 0) {
-                        brand = brands::QEMU;
-                    }
-                    else if (strcmp(target, "BOCHS") == 0) {
-                        brand = brands::BOCHS;
-                    }
-                    free(buffer);
-                    closedir(dir);
-                    if (brand)
-                        return core::add(brand);
-                    else
-                        return true;
                 }
             }
+            free(buffer);
         }
-        free(buffer);
-    }
 
-    closedir(dir);
-    return false;
+        closedir(dir);
+        return false;
 #else
-    return false;
+        return false;
 #endif
     }
 
