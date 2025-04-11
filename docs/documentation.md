@@ -512,7 +512,6 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::GPU_CAPABILITIES` | Check for GPU capabilities related to VMs | Windows | 100% | Admin |  |  | Admin only needed for some heuristics |
 | `VM::GPU_VM_STRINGS` | Check for specific GPU string signatures related to VMs | Windows | 100% |  |  |  | If GPU_CAPABILITIES also flags, the overall score will be 50 instead of 100 |
 | `VM::VM_DEVICES` | Check for VM-specific devices | Windows | 50% |  |  |  |  |
-| `VM::IDT_GDT_SCAN` | Check if the IDT and GDT virtual base addresses are equal across different CPU cores when not running under Hyper-V | Windows | 50% |  |  |  |  |
 | `VM::PROCESSOR_NUMBER` | Check for number of processors | Windows | 50% |  |  |  |  |
 | `VM::NUMBER_OF_CORES` | Check for number of cores | Windows | 50% |  |  |  |  |
 | `VM::ACPI_TEMPERATURE` | Check for device's temperature | Windows | 25% |  |  |  |  |
