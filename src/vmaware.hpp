@@ -31,10 +31,10 @@
  * - struct for internal cpu operations        => line 749
  * - struct for internal memoization           => line 1220
  * - struct for internal utility functions     => line 1344
- * - struct for internal core components       => line 10153
+ * - struct for internal core components       => line 10066
  * - start of VM detection technique list      => line 2345
- * - start of public VM detection functions    => line 10817
- * - start of externally defined variables     => line 11767
+ * - start of public VM detection functions    => line 10730
+ * - start of externally defined variables     => line 11679
  *
  *
  * ============================== EXAMPLE ===================================
@@ -646,7 +646,6 @@ public:
         GPU_VM_STRINGS,
         GPU_CAPABILITIES,
         VM_DEVICES,
-        IDT_GDT_SCAN,
         PROCESSOR_NUMBER,
         NUMBER_OF_CORES,
         ACPI_TEMPERATURE,
@@ -7706,7 +7705,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const HANDLE handle5 = CreateFileA(("\\\\.\\HGFS"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
         const HANDLE handle6 = CreateFileA(("\\\\.\\pipe\\cuckoo"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 
-        bool result = false;
+        bool vbox = false;
 
         if (
             (handle1 != INVALID_HANDLE_VALUE) ||
@@ -7714,7 +7713,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             (handle3 != INVALID_HANDLE_VALUE) ||
             (handle4 != INVALID_HANDLE_VALUE)
            ) {
-            result = true;
+            vbox = true;
         }
 
         CloseHandle(handle1);
@@ -7722,7 +7721,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         CloseHandle(handle3);
         CloseHandle(handle4);
 
-        if (result) {
+        if (vbox) {
             debug("VM_DEVICES: Detected VBox related device handles");
             return core::add(brands::VBOX);
         }
@@ -7744,98 +7743,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }    
-
-
-    /**
-     * @brief Check if the IDT and GDT virtual base addresses are equal across different CPU cores when not running under Hyper-V
-     * @note  The Windows kernel has different interrupt handlers registered for each CPU core, resulting in different virtual addresses when calling SIDT and SGDT in kernel-mode.
-     *        However, when Windows is running under Hyper-V (in a root partition), the IDT and GDT base address will always be the same across all CPU cores if called from user-mode.
-     *        This kernel address leak prevention measure is done by Hyper-V on purpose and can be abused to detect VMs.
-     * @category Windows, x64
-     * @author Requiem (https://github.com/NotRequiem)
-     * @implements VM::IDT_GDT_SCAN
-     */
-    [[nodiscard]] static bool idt_gdt_scan() {
-#if (!WINDOWS)
-        return false;
-#else
-        // If the system is running under any Hyper-V hypervisor (type 1 or type 2), the IDT and GDT will be equal, as this function is called from user-mode.
-        if (util::hyper_x() != HYPERV_UNKNOWN_VM) {
-            return false;
-        }
-
-        unsigned int num_threads = std::thread::hardware_concurrency();
-
-        uint64_t* gdtResults = new uint64_t[num_threads];
-        uint64_t* idtResults = new uint64_t[num_threads];
-
-        std::vector<std::thread> threads;
-        threads.reserve(num_threads);
-
-        for (unsigned int i = 0; i < num_threads; ++i) {
-            try {
-                threads.emplace_back([i, gdtResults, idtResults]() {
-                    const HANDLE thread = GetCurrentThread();
-                    DWORD_PTR affinity_mask = 1ULL << i;
-                    SetThreadAffinityMask(thread, affinity_mask);
-
-#pragma pack(push, 1)
-                    struct DescriptorTablePointer {
-                        uint16_t limit;
-                        uint64_t base;
-                    };
-#pragma pack(pop)
-
-                    DescriptorTablePointer idtr = {};
-                    DescriptorTablePointer gdtr = {};
-
-#if (CLANG || GCC)
-                    __asm__ volatile("sidt %0" : "=m"(idtr));
-                    __asm__ volatile("sgdt %0" : "=m"(gdtr));
-#else
-                    __sidt(&idtr);
-                    _sgdt(&gdtr);
-#endif
-
-                    gdtResults[i] = gdtr.base;
-                    idtResults[i] = idtr.base;
-                    });
-            }
-            catch (...) {
-                delete[] gdtResults;
-                delete[] idtResults;
-                return false; // umip
-            }
-        }
-
-        for (auto& thread : threads) {
-            thread.join();
-        }
-
-        bool equal = true;
-
-        for (unsigned int i = 1; i < num_threads; ++i) {
-            if (gdtResults[i] != gdtResults[0]) {
-                equal = false;
-                break;
-            }
-        }
-
-        if (equal) {
-            for (unsigned int i = 1; i < num_threads; ++i) {
-                if (idtResults[i] != idtResults[0]) {
-                    equal = false;
-                    break;
-                }
-            }
-        }
-
-        delete[] gdtResults;
-        delete[] idtResults;
-
-        return equal;
-#endif
-    }
 
 
     /**
@@ -7886,12 +7793,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         while (size > 0) {
             if (ptr->Relationship == RelationProcessorCore) {
                 ++physicalCoreCount;
+                if (physicalCoreCount > 1)
+                    return false;
             }
             size -= ptr->Size;
             ptr = reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(reinterpret_cast<BYTE*>(ptr) + ptr->Size);
         }
 
-        return (physicalCoreCount < 2);
+        return true;
 #endif
     }
 
@@ -8030,7 +7939,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     // Disable specific sanitizers for more accurate timing measurements.
     __attribute__((no_sanitize("address", "leak", "thread", "undefined")))
 #endif
-        static bool timer() {
+    static bool timer() {
 #if (ARM || !x86)
         return false;
 #else
@@ -8217,8 +8126,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const bool qpcCheck = (dummyTime != 0) && ((cpuIdTime / dummyTime) > qpcRatioThreshold);
 #ifdef __VMAWARE_DEBUG__
         debug("TIMER: QPC check - CPUID: ", cpuIdTime,
-            " ns, Dummy: ", dummyTime,
-            " ns, Ratio: ", (cpuIdTime / dummyTime));
+            " ns, RWB: ", dummyTime,
+            " ns, Ratio: ", (cpuIdTime / dummyTime),
+            " (Threshold: ", qpcRatioThreshold,
+            ')');
 #endif
 
         if (qpcCheck) {
@@ -8243,7 +8154,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 __except (GetExceptionCode() == EXCEPTION_ILLEGAL_INSTRUCTION
                     ? EXCEPTION_EXECUTE_HANDLER
                     : EXCEPTION_CONTINUE_SEARCH) {
-                    // // RDTSCP is widely supported on real hardware, most likely VM
+                    // RDTSCP is widely supported on real hardware, most likely VM
                     tscIssueCount++;
                     continue;
                 }
@@ -8255,7 +8166,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             debug("TIMER: TSC sync check",
                 " - Core1: ", tscCore1,
                 " Core2: ", tscCore2,
-                " Diff: ", tscCore2 - tscCore1);
+                " Diff: ", tscCore2 - tscCore1,
+                " (Threshold: ", tscSyncDiffThreshold,
+                ')');
 #endif
             return (tscIssueCount >= tscIterations / 2);
             }();
@@ -11423,7 +11336,6 @@ public: // START OF PUBLIC FUNCTIONS
             case GPU_VM_STRINGS: return "GPU_STRINGS";
             case GPU_CAPABILITIES: return "GPU_CAPABILITIES";
             case VM_DEVICES: return "VM_DEVICES";
-            case IDT_GDT_SCAN: return "IDT_GDT_SCAN";
             case PROCESSOR_NUMBER: return "PROCESSOR_NUMBER";
             case NUMBER_OF_CORES: return "NUMBER_OF_CORES";
             case ACPI_TEMPERATURE: return "ACPI_TEMPERATURE";
@@ -11986,7 +11898,6 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     std::make_pair(VM::GPU_VM_STRINGS, VM::core::technique(100, VM::gpu_vm_strings)),
     std::make_pair(VM::GPU_CAPABILITIES, VM::core::technique(100, VM::gpu_capabilities)),
     std::make_pair(VM::VM_DEVICES, VM::core::technique(50, VM::vm_devices)),
-    std::make_pair(VM::IDT_GDT_SCAN, VM::core::technique(50, VM::idt_gdt_scan)),
     std::make_pair(VM::PROCESSOR_NUMBER, VM::core::technique(50, VM::processor_number)),
     std::make_pair(VM::NUMBER_OF_CORES, VM::core::technique(50, VM::number_of_cores)),
     std::make_pair(VM::ACPI_TEMPERATURE, VM::core::technique(25, VM::acpi_temperature)),

@@ -455,7 +455,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::PORT_CONNECTORS:
             case VM::GPU_VM_STRINGS:
             case VM::GPU_CAPABILITIES:
-            case VM::IDT_GDT_SCAN:
             case VM::PROCESSOR_NUMBER:
             case VM::NUMBER_OF_CORES:
             case VM::ACPI_TEMPERATURE:
@@ -972,7 +971,6 @@ void general() {
     checker(VM::PORT_CONNECTORS, "physical connection ports");
     checker(VM::GPU_CAPABILITIES, "GPU capabilities");
     checker(VM::GPU_VM_STRINGS, "GPU strings");
-    checker(VM::IDT_GDT_SCAN, "IDT GDT consistency");
     checker(VM::PROCESSOR_NUMBER, "processor count");
     checker(VM::NUMBER_OF_CORES, "CPU core count");
     checker(VM::ACPI_TEMPERATURE, "thermal devices");
