@@ -53,10 +53,10 @@
  * - struct for internal cpu operations        => line 764
  * - struct for internal memoization           => line 1236
  * - struct for internal utility functions     => line 1361
- * - struct for internal core components       => line 9959
+ * - struct for internal core components       => line 9872
  * - start of VM detection technique list      => line 2364
- * - start of public VM detection functions    => line 10634
- * - start of externally defined variables     => line 11586
+ * - start of public VM detection functions    => line 10547
+ * - start of externally defined variables     => line 11498
  *
  *
  * ============================== EXAMPLE ===================================
