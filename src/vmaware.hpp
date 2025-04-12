@@ -31,10 +31,10 @@
  * - struct for internal cpu operations        => line 742
  * - struct for internal memoization           => line 1213
  * - struct for internal utility functions     => line 1337
- * - struct for internal core components       => line 10014
+ * - struct for internal core components       => line 10026
  * - start of VM detection technique list      => line 2338
- * - start of public VM detection functions    => line 10678
- * - start of externally defined variables     => line 11626
+ * - start of public VM detection functions    => line 10690
+ * - start of externally defined variables     => line 11638
  *
  *
  * ============================== EXAMPLE ===================================
@@ -1563,7 +1563,7 @@ private:
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wignored-attributes"
 #endif
-            std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd, "r"), pclose);
+            std::unique_ptr<FILE, int(*)(FILE*)> pipe(popen(cmd, "r"), pclose);
 
 #if (ARM)
 #pragma GCC diagnostic pop
@@ -7831,12 +7831,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @author Requiem (https://github.com/NotRequiem)
      * @implements VM::TIMER
      */
+#if defined(MSVC)
+#pragma optimize("", off)
+#elif defined(__GNUC__)
+#pragma GCC push_options
+#pragma GCC optimize("O0")
+#endif
     [[nodiscard]]
 #if (LINUX)
-    // Disable specific sanitizers for more accurate timing measurements.
     __attribute__((no_sanitize("address", "leak", "thread", "undefined")))
 #endif
-#pragma optimize("", off)
     static bool timer() {
 #if (ARM || !x86)
         return false;
@@ -7885,7 +7889,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             };
 
         // --- 1. Classic Timing Check (rdtsc + cpuid + rdtsc) ---
+#ifdef __VMAWARE_DEBUG__
         u64 totalCycles = 0;
+#endif
         int spikeCount = 0;
         for (int i = 0; i < classicIterations; i++) {
             u64 start = __rdtsc();
@@ -7900,7 +7906,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
             u64 end = __rdtsc();
             u64 cycles = end - start;
+#ifdef __VMAWARE_DEBUG__
             totalCycles += cycles;
+#endif
             if (cycles >= classicThreshold) {
                 spikeCount++;
             }
@@ -8130,7 +8138,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
+#if defined(MSVC)
 #pragma optimize("", on)
+#elif defined(__GNUC__)
+#pragma GCC pop_options
+#endif
 
 
 	/**
