@@ -49,14 +49,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 577
+ * - enums for publicly accessible techniques  => line 578
  * - struct for internal cpu operations        => line 762
- * - struct for internal memoization           => line 1233
- * - struct for internal utility functions     => line 1357
- * - struct for internal core components       => line 9850
- * - start of VM detection technique list      => line 2358
- * - start of public VM detection functions    => line 10514
- * - start of externally defined variables     => line 11456
+ * - struct for internal memoization           => line 1234
+ * - struct for internal utility functions     => line 1359
+ * - struct for internal core components       => line 9837
+ * - start of VM detection technique list      => line 2362
+ * - start of public VM detection functions    => line 10512
+ * - start of externally defined variables     => line 11462
  *
  *
  * ============================== EXAMPLE ===================================
@@ -664,7 +664,6 @@ public:
         PROCESSOR_NUMBER,
         NUMBER_OF_CORES,
         ACPI_TEMPERATURE,
-        PROCESSOR_ID,
         SYS_QEMU,
         LSHW_QEMU,
         VIRTUAL_PROCESSORS,
@@ -1584,7 +1583,7 @@ private:
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wignored-attributes"
 #endif
-            std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd, "r"), pclose);
+            std::unique_ptr<FILE, int(*)(FILE*)> pipe(popen(cmd, "r"), pclose);
 
 #if (ARM)
 #pragma GCC diagnostic pop
@@ -1951,7 +1950,7 @@ private:
 
 #ifdef __VMAWARE_DEBUG__
                 if (result) {
-                    core_debug("HYPER_X: root partition returned true");
+                    core_debug("HYPER_X: running under root partition");
                 }
 #endif
                 return result;
@@ -7619,143 +7618,58 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check if any processor has an empty Processor ID using SMBIOS data
-     * @category Windows
-     * @author Requiem (https://github.com/NotRequiem)
-     * @note https://www.dmtf.org/sites/default/files/standards/documents/DSP0134_3.8.0.pdf (Section 7.5.3, page 54)
-     * @implements VM::PROCESSOR_ID
-     */
-    [[nodiscard]] static bool processor_id() {
-#if (!WINDOWS)
-        return false;
-#else
-#pragma pack(push, 1)
-        struct RawSMBIOSData {
-            BYTE  Used20CallingMethod;
-            BYTE  SMBIOSMajorVersion;
-            BYTE  SMBIOSMinorVersion;
-            BYTE  DmiRevision;
-            DWORD Length;
-            BYTE  SMBIOSTableData[1];
-        };
-#pragma pack(pop)
-
-        UINT bufferSize = GetSystemFirmwareTable('RSMB', 0, nullptr, 0);
-        if (bufferSize == 0)
-            return false;
-
-        std::vector<BYTE> buffer(bufferSize);
-        if (GetSystemFirmwareTable('RSMB', 0, buffer.data(), bufferSize) != bufferSize)
-            return false;
-
-        if (buffer.size() < sizeof(RawSMBIOSData))
-            return false;
-
-        RawSMBIOSData* raw = reinterpret_cast<RawSMBIOSData*>(buffer.data());
-        BYTE* tableData = raw->SMBIOSTableData;
-        DWORD tableLength = raw->Length;
-        BYTE* tableEnd = tableData + tableLength;
-        BYTE* p = tableData;
-
-        while (p < tableEnd) {
-            // header: [Type (1B), Length (1B), Handle (2B)]
-            if (p + 4 > tableEnd)
-                break;
-
-            BYTE type = p[0];
-            BYTE length = p[1];
-
-            if (length < 4 || (p + length) > tableEnd)
-                break;
-
-            // Processor Information (Type 4) structures, Processor ID field
-            if (type == 4) {
-                // the Processor ID is an 8‑byte field starting at offset 8 in the structure
-                // Therefore, the structure must be at least 16 bytes long
-                if (length >= 16) {
-                    BYTE* procId = p + 8;
-
-#ifdef __VMAWARE_DEBUG__
-                    std::ostringstream oss;
-                    oss << "PROCESSOR_ID: ";
-                    for (int i = 0; i < 8; ++i) {
-                        oss << std::hex << std::setw(2) << std::setfill('0')
-                            << static_cast<int>(procId[i]) << " ";
-                    }
-                    debug(oss.str());
-#endif
-                    bool allZero = true;
-                    for (int i = 0; i < 8; ++i) {
-                        if (procId[i] != 0) {
-                            allZero = false;
-                            break;
-                        }
-                    }
-                    if (allZero) {
-                        return true;
-                    }
-                }
-            }
-
-            // Skip the formatted section
-            BYTE* next = p + length;
-            // Then skip the unformatted string-set (terminated by double-null)
-            while (next < tableEnd - 1) {
-                if (next[0] == 0 && next[1] == 0) {
-                    next += 2;
-                    break;
-                }
-                ++next;
-            }
-            p = next;
-        }
-
-        return false;
-#endif
-    }
-
-
-    /**
      * @brief Check for timing anomalies in the system
      * @category x86
      * @author Requiem (https://github.com/NotRequiem)
      * @implements VM::TIMER
      */
+#if defined(MSVC)
+#pragma optimize("", off)
+#elif defined(__GNUC__)
+#pragma GCC push_options
+#pragma GCC optimize("O0")
+#endif
     [[nodiscard]]
 #if (LINUX)
-    // Disable specific sanitizers for more accurate timing measurements.
     __attribute__((no_sanitize("address", "leak", "thread", "undefined")))
 #endif
     static bool timer() {
 #if (ARM || !x86)
         return false;
 #else
-        constexpr i32 classicIterations = 10;           // Number of iterations for the classic RDTSC check
-        constexpr u32 classicThreshold = 20000u;          // Cycle threshold per iteration for classic RDTSC check
-        constexpr i32 requiredClassicSpikes = classicIterations / 2; // At least 50% of iterations must spike
+        constexpr u8 classicIterations = 10;           // Number of iterations for the classic RDTSC check
+        constexpr u16 classicThreshold = 20000u;          // Cycle threshold per iteration for classic RDTSC check
+        constexpr u8 requiredClassicSpikes = classicIterations / 2; // At least 50% of iterations must spike
 
-        constexpr i32 spammerIterations = 1000;           // Iterations for the multi-CPU/spammer check
-        constexpr u32 spammerAvgThreshold = 55000u;         // Average cycle threshold for the spammer check
+        constexpr u16 spammerIterations = 1000;           // Iterations for the multi-CPU/spammer check
+        constexpr u16 spammerAvgThreshold = 20000u;         // Average cycle threshold for the spammer check
 
 #if (WINDOWS)
-        constexpr int qpcRatioThreshold = 3000;           // QPC ratio threshold
+        constexpr u16 qpcRatioThreshold = 3000;           // QPC ratio threshold
+        constexpr u8 tscIterations = 10;                 // Number of iterations for the TSC synchronization check
+        constexpr u16 tscSyncDiffThreshold = 500;  // TSC difference threshold
 #endif
-
-        constexpr i32 tscIterations = 10;                 // Number of iterations for the TSC synchronization check
-        constexpr u64 tscSyncDiffThreshold = 1000000000LL;  // TSC difference threshold
 
         // to minimize context switching/scheduling
 #if (WINDOWS)
-        HANDLE hThread = GetCurrentThread();
-        int oldPriority = GetThreadPriority(hThread);
+        const HANDLE hThread = GetCurrentThread();
+        const int oldPriority = GetThreadPriority(hThread);
         SetThreadPriority(hThread, THREAD_PRIORITY_TIME_CRITICAL);
 #else
-        int oldPolicy = sched_getscheduler(0);
-        sched_param oldParam;
-        sched_getparam(0, &oldParam);
-        sched_param newParam{};
-        newParam.sched_priority = sched_get_priority_max(SCHED_FIFO);
-        sched_setscheduler(0, SCHED_FIFO, &newParam);
+        bool hasSchedPriority = (geteuid() == 0);
+        int oldPolicy = SCHED_OTHER;
+        sched_param oldParam{};
+
+        if (hasSchedPriority) {
+            oldPolicy = sched_getscheduler(0);
+            sched_getparam(0, &oldParam);
+            sched_param newParam{};
+            newParam.sched_priority = sched_get_priority_max(SCHED_FIFO);
+
+            if (sched_setscheduler(0, SCHED_FIFO, &newParam) == -1) {
+                hasSchedPriority = false;
+            }
+        }
 #endif
 
         auto restoreThreadPriority = [&]() {
@@ -7767,7 +7681,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             };
 
         // --- 1. Classic Timing Check (rdtsc + cpuid + rdtsc) ---
+#ifdef __VMAWARE_DEBUG__
         u64 totalCycles = 0;
+#endif
         int spikeCount = 0;
         for (int i = 0; i < classicIterations; i++) {
             u64 start = __rdtsc();
@@ -7782,12 +7698,26 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
             u64 end = __rdtsc();
             u64 cycles = end - start;
+#ifdef __VMAWARE_DEBUG__
             totalCycles += cycles;
+#endif
             if (cycles >= classicThreshold) {
                 spikeCount++;
             }
-            // Sleep to induce cache flushing
-            std::this_thread::sleep_for(std::chrono::microseconds(500));
+            // to induce cache flushing
+            constexpr size_t bufferSize = static_cast<size_t>(64 * 1024) * 1024;
+            volatile char* flushBuffer = new volatile char[bufferSize];
+
+            // better than thread sleeps
+            for (size_t j = 0; j < bufferSize; j += 64) {
+                flushBuffer[j] = static_cast<char>(j);
+#if (x86 && (GCC || CLANG || MSVC))
+                _mm_clflush(const_cast<const void*>(
+                    reinterpret_cast<const volatile void*>(&flushBuffer[j])));
+#endif
+            }
+
+            delete[] flushBuffer;
         }
 
 #ifdef __VMAWARE_DEBUG__
@@ -7904,9 +7834,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         QueryPerformanceCounter(&startQPC);
         volatile int dummy = 0;
         for (int i = 0; i < 100000; i++) {
-            dummy ^= i; // to prevent optimization
+            dummy ^= i;
+#if (GCC || CLANG)
+            asm volatile("" ::: "memory");  // memory clobber
+#elif (MSVC)
             _ReadWriteBarrier();
+            _mm_mfence();
+#endif
         }
+
         QueryPerformanceCounter(&endQPC);
         LONGLONG dummyTime = endQPC.QuadPart - startQPC.QuadPart;
 
@@ -7928,24 +7864,48 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // Try reading the invariant TSC on two different cores to attempt to detect vCPU timers being shared
         const bool tscSyncDetected = [&]() noexcept -> bool {
             int tscIssueCount = 0;
-            unsigned long long tscCore1 = 0, tscCore2 = 0;
+            u64 tscCore1 = 0, tscCore2 = 0;
             for (int i = 0; i < tscIterations; i++) {
-                __try {
-                    unsigned int aux = 0;
+                unsigned int aux = 0;
+
+                try {
+#if (WINDOWS)
                     DWORD_PTR oldAffinity = SetThreadAffinityMask(GetCurrentThread(), 1);
-                    tscCore1 = __rdtscp(&aux); // the use of a serializing variant for the instruction stream is done on purpose
+                    tscCore1 = __rdtscp(&aux);
                     SetThreadAffinityMask(GetCurrentThread(), 2);
                     tscCore2 = __rdtscp(&aux);
                     SetThreadAffinityMask(GetCurrentThread(), oldAffinity);
+#elif (LINUX)
+                    cpu_set_t origSet;
+                    pthread_getaffinity_np(pthread_self(), sizeof(cpu_set_t), &origSet);
+
+                    // Core 0
+                    cpu_set_t set;
+                    CPU_ZERO(&set);
+                    CPU_SET(0, &set);
+                    pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &set);
+                    tscCore1 = __rdtscp(&aux);
+
+                    // Core 1
+                    CPU_ZERO(&set);
+                    CPU_SET(1, &set);
+                    pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &set);
+                    tscCore2 = __rdtscp(&aux);
+
+                    pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &origSet);
+#endif
                 }
-                __except (GetExceptionCode() == EXCEPTION_ILLEGAL_INSTRUCTION
-                    ? EXCEPTION_EXECUTE_HANDLER
-                    : EXCEPTION_CONTINUE_SEARCH) {
-                    // RDTSCP is widely supported on real hardware, most likely VM
+                catch (...) {
                     tscIssueCount++;
                     continue;
                 }
-                if (std::llabs(static_cast<long long>(tscCore2 - tscCore1)) > tscSyncDiffThreshold) {
+
+                // hypervisors often have nearly identical TSCs across vCPUs
+                const u64 diff = (tscCore2 > tscCore1)
+                    ? (tscCore2 - tscCore1)
+                    : (tscCore1 - tscCore2);
+
+                if (diff < tscSyncDiffThreshold) {
                     tscIssueCount++;
                 }
             }
@@ -7953,8 +7913,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             debug("TIMER: TSC sync check",
                 " - Core1: ", tscCore1,
                 " Core2: ", tscCore2,
-                " Diff: ", tscCore2 - tscCore1,
-                " (Threshold: ", tscSyncDiffThreshold,
+                " Delta: ", tscCore2 - tscCore1,
+                " (Threshold: <", tscSyncDiffThreshold,
                 ')');
 #endif
             return (tscIssueCount >= tscIterations / 2);
@@ -7970,6 +7930,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
+#if defined(MSVC)
+#pragma optimize("", on)
+#elif defined(__GNUC__)
+#pragma GCC pop_options
+#endif
 
 
 	/**
@@ -11029,113 +10994,112 @@ public: // START OF PUBLIC FUNCTIONS
      */
     [[nodiscard]] static std::string flag_to_string(const enum_flags flag) {
         switch (flag) {
-            case VMID: return "VMID";
-            case CPU_BRAND: return "CPU_BRAND";
-            case HYPERVISOR_BIT: return "HYPERVISOR_BIT";
-            case HYPERVISOR_STR: return "HYPERVISOR_STR";
-            case TIMER: return "TIMER";
-            case THREADCOUNT: return "THREADCOUNT";
-            case MAC: return "MAC";
-            case TEMPERATURE: return "TEMPERATURE";
-            case SYSTEMD: return "SYSTEMD";
-            case CVENDOR: return "CVENDOR";
-            case CTYPE: return "CTYPE";
-            case DOCKERENV: return "DOCKERENV";
-            case DMIDECODE: return "DMIDECODE";
-            case DMESG: return "DMESG";
-            case HWMON: return "HWMON";
-            case SIDT5: return "SIDT5";
-            case DLL: return "DLL";
-            case REGISTRY: return "REGISTRY";
-            case VM_FILES: return "VM_FILES";
-            case HWMODEL: return "HWMODEL";
-            case DISK_SIZE: return "DISK_SIZE";
-            case VBOX_DEFAULT: return "VBOX_DEFAULT";
-            case VBOX_NETWORK: return "VBOX_NETWORK";
-            case VM_PROCESSES: return "VM_PROCESSES";
-            case LINUX_USER_HOST: return "LINUX_USER_HOST";
-            case GAMARUE: return "GAMARUE";
-            case BOCHS_CPU: return "BOCHS_CPU";
-            case MSSMBIOS: return "MSSMBIOS";
-            case MAC_MEMSIZE: return "MAC_MEMSIZE";
-            case MAC_IOKIT: return "MAC_IOKIT";
-            case IOREG_GREP: return "IOREG_GREP";
-            case MAC_SIP: return "MAC_SIP";
-            case HKLM_REGISTRIES: return "HKLM_REGISTRIES";
-            case QEMU_GA: return "QEMU_GA";
-            case VPC_INVALID: return "VPC_INVALID";
-            case SIDT: return "SIDT";
-            case SGDT: return "SGDT";
-            case SLDT: return "SLDT";
-            case OFFSEC_SIDT: return "OFFSEC_SIDT";
-            case OFFSEC_SGDT: return "OFFSEC_SGDT";
-            case OFFSEC_SLDT: return "OFFSEC_SLDT";
-            case VPC_SIDT: return "VPC_SIDT";
-            case VMWARE_IOMEM: return "VMWARE_IOMEM";
-            case VMWARE_IOPORTS: return "VMWARE_IOPORTS";
-            case VMWARE_SCSI: return "VMWARE_SCSI";
-            case VMWARE_DMESG: return "VMWARE_DMESG";
-            case VMWARE_STR: return "VMWARE_STR";
-            case VMWARE_BACKDOOR: return "VMWARE_BACKDOOR";
-            case VMWARE_PORT_MEM: return "VMWARE_PORT_MEM";
-            case SMSW: return "SMSW";
-            case MUTEX: return "MUTEX";
-            case ODD_CPU_THREADS: return "ODD_CPU_THREADS";
-            case INTEL_THREAD_MISMATCH: return "INTEL_THREAD_MISMATCH";
-            case XEON_THREAD_MISMATCH: return "XEON_THREAD_MISMATCH";
-            case NETTITUDE_VM_MEMORY: return "NETTITUDE_VM_MEMORY";
-            case CUCKOO_DIR: return "CUCKOO_DIR";
-            case CUCKOO_PIPE: return "CUCKOO_PIPE";
-            case HYPERV_HOSTNAME: return "HYPERV_HOSTNAME";
-            case GENERAL_HOSTNAME: return "GENERAL_HOSTNAME";
-            case SCREEN_RESOLUTION: return "SCREEN_RESOLUTION";
-            case DEVICE_STRING: return "DEVICE_STRING";
-            case BLUESTACKS_FOLDERS: return "BLUESTACKS_FOLDERS";
-            case CPUID_SIGNATURE: return "CPUID_SIGNATURE";
-            case KVM_BITMASK: return "KVM_BITMASK";
-            case KGT_SIGNATURE: return "KGT_SIGNATURE";
-            case QEMU_VIRTUAL_DMI: return "QEMU_VIRTUAL_DMI";
-            case QEMU_USB: return "QEMU_USB";
-            case HYPERVISOR_DIR: return "HYPERVISOR_DIR";
-            case UML_CPU: return "UML_CPU";
-            case KMSG: return "KMSG";
-            case VM_PROCS: return "VM_PROCS";
-            case VBOX_MODULE: return "VBOX_MODULE";
-            case SYSINFO_PROC: return "SYSINFO_PROC";
-            case DEVICE_TREE: return "DEVICE_TREE";
-            case DMI_SCAN: return "DMI_SCAN";
-            case SMBIOS_VM_BIT: return "SMBIOS_VM_BIT";
-            case PODMAN_FILE: return "PODMAN_FILE";
-            case WSL_PROC: return "WSL_PROC";
-            case DRIVER_NAMES: return "DRIVER_NAMES";
-            case VM_SIDT: return "VM_SIDT";
-            case HDD_SERIAL: return "HDD_SERIAL";
-            case PORT_CONNECTORS: return "PORT_CONNECTORS";
-            case GPU_VM_STRINGS: return "GPU_STRINGS";
-            case GPU_CAPABILITIES: return "GPU_CAPABILITIES";
-            case VM_DEVICES: return "VM_DEVICES";
-            case PROCESSOR_NUMBER: return "PROCESSOR_NUMBER";
-            case NUMBER_OF_CORES: return "NUMBER_OF_CORES";
-            case ACPI_TEMPERATURE: return "ACPI_TEMPERATURE";
-            case PROCESSOR_ID: return "PROCESSOR_ID";
-            case SYS_QEMU: return "SYS_QEMU";
-            case LSHW_QEMU: return "LSHW_QEMU";
-            case VIRTUAL_PROCESSORS: return "VIRTUAL_PROCESSORS";
-            case HYPERV_QUERY: return "HYPERV_QUERY";
-            case BAD_POOLS: return "BAD_POOLS";
-            case AMD_SEV: return "AMD_SEV";
-            case AMD_THREAD_MISMATCH: return "AMD_THREAD_MISMATCH";
-            case NATIVE_VHD: return "NATIVE_VHD";
-            case VIRTUAL_REGISTRY: return "VIRTUAL_REGISTRY";
-            case FIRMWARE: return "FIRMWARE";
-            case FILE_ACCESS_HISTORY: return "FILE_ACCESS_HISTORY";
-            case AUDIO: return "AUDIO";
-            case UNKNOWN_MANUFACTURER: return "UNKNOWN_MANUFACTURER";
-            case OSXSAVE: return "OSXSAVE";
-            case NSJAIL_PID: return "NSJAIL_PID";
-            case PCI_VM: return "PCI_VM";
-            // ADD NEW CASE HERE FOR NEW TECHNIQUE
-            default: return "Unknown flag";
+          case VMID: return "VMID";
+          case CPU_BRAND: return "CPU_BRAND";
+          case HYPERVISOR_BIT: return "HYPERVISOR_BIT";
+          case HYPERVISOR_STR: return "HYPERVISOR_STR";
+          case TIMER: return "TIMER";
+          case THREADCOUNT: return "THREADCOUNT";
+          case MAC: return "MAC";
+          case TEMPERATURE: return "TEMPERATURE";
+          case SYSTEMD: return "SYSTEMD";
+          case CVENDOR: return "CVENDOR";
+          case CTYPE: return "CTYPE";
+          case DOCKERENV: return "DOCKERENV";
+          case DMIDECODE: return "DMIDECODE";
+          case DMESG: return "DMESG";
+          case HWMON: return "HWMON";
+          case SIDT5: return "SIDT5";
+          case DLL: return "DLL";
+          case REGISTRY: return "REGISTRY";
+          case VM_FILES: return "VM_FILES";
+          case HWMODEL: return "HWMODEL";
+          case DISK_SIZE: return "DISK_SIZE";
+          case VBOX_DEFAULT: return "VBOX_DEFAULT";
+          case VBOX_NETWORK: return "VBOX_NETWORK";
+          case VM_PROCESSES: return "VM_PROCESSES";
+          case LINUX_USER_HOST: return "LINUX_USER_HOST";
+          case GAMARUE: return "GAMARUE";
+          case BOCHS_CPU: return "BOCHS_CPU";
+          case MSSMBIOS: return "MSSMBIOS";
+          case MAC_MEMSIZE: return "MAC_MEMSIZE";
+          case MAC_IOKIT: return "MAC_IOKIT";
+          case IOREG_GREP: return "IOREG_GREP";
+          case MAC_SIP: return "MAC_SIP";
+          case HKLM_REGISTRIES: return "HKLM_REGISTRIES";
+          case QEMU_GA: return "QEMU_GA";
+          case VPC_INVALID: return "VPC_INVALID";
+          case SIDT: return "SIDT";
+          case SGDT: return "SGDT";
+          case SLDT: return "SLDT";
+          case OFFSEC_SIDT: return "OFFSEC_SIDT";
+          case OFFSEC_SGDT: return "OFFSEC_SGDT";
+          case OFFSEC_SLDT: return "OFFSEC_SLDT";
+          case VPC_SIDT: return "VPC_SIDT";
+          case VMWARE_IOMEM: return "VMWARE_IOMEM";
+          case VMWARE_IOPORTS: return "VMWARE_IOPORTS";
+          case VMWARE_SCSI: return "VMWARE_SCSI";
+          case VMWARE_DMESG: return "VMWARE_DMESG";
+          case VMWARE_STR: return "VMWARE_STR";
+          case VMWARE_BACKDOOR: return "VMWARE_BACKDOOR";
+          case VMWARE_PORT_MEM: return "VMWARE_PORT_MEM";
+          case SMSW: return "SMSW";
+          case MUTEX: return "MUTEX";
+          case ODD_CPU_THREADS: return "ODD_CPU_THREADS";
+          case INTEL_THREAD_MISMATCH: return "INTEL_THREAD_MISMATCH";
+          case XEON_THREAD_MISMATCH: return "XEON_THREAD_MISMATCH";
+          case NETTITUDE_VM_MEMORY: return "NETTITUDE_VM_MEMORY";
+          case CUCKOO_DIR: return "CUCKOO_DIR";
+          case CUCKOO_PIPE: return "CUCKOO_PIPE";
+          case HYPERV_HOSTNAME: return "HYPERV_HOSTNAME";
+          case GENERAL_HOSTNAME: return "GENERAL_HOSTNAME";
+          case SCREEN_RESOLUTION: return "SCREEN_RESOLUTION";
+          case DEVICE_STRING: return "DEVICE_STRING";
+          case BLUESTACKS_FOLDERS: return "BLUESTACKS_FOLDERS";
+          case CPUID_SIGNATURE: return "CPUID_SIGNATURE";
+          case KVM_BITMASK: return "KVM_BITMASK";
+          case KGT_SIGNATURE: return "KGT_SIGNATURE";
+          case QEMU_VIRTUAL_DMI: return "QEMU_VIRTUAL_DMI";
+          case QEMU_USB: return "QEMU_USB";
+          case HYPERVISOR_DIR: return "HYPERVISOR_DIR";
+          case UML_CPU: return "UML_CPU";
+          case KMSG: return "KMSG";
+          case VM_PROCS: return "VM_PROCS";
+          case VBOX_MODULE: return "VBOX_MODULE";
+          case SYSINFO_PROC: return "SYSINFO_PROC";
+          case DEVICE_TREE: return "DEVICE_TREE";
+          case DMI_SCAN: return "DMI_SCAN";
+          case SMBIOS_VM_BIT: return "SMBIOS_VM_BIT";
+          case PODMAN_FILE: return "PODMAN_FILE";
+          case WSL_PROC: return "WSL_PROC";
+          case DRIVER_NAMES: return "DRIVER_NAMES";
+          case VM_SIDT: return "VM_SIDT";
+          case HDD_SERIAL: return "HDD_SERIAL";
+          case PORT_CONNECTORS: return "PORT_CONNECTORS";
+          case GPU_VM_STRINGS: return "GPU_STRINGS";
+          case GPU_CAPABILITIES: return "GPU_CAPABILITIES";
+          case VM_DEVICES: return "VM_DEVICES";
+          case PROCESSOR_NUMBER: return "PROCESSOR_NUMBER";
+          case NUMBER_OF_CORES: return "NUMBER_OF_CORES";
+          case ACPI_TEMPERATURE: return "ACPI_TEMPERATURE";
+          case SYS_QEMU: return "SYS_QEMU";
+          case LSHW_QEMU: return "LSHW_QEMU";
+          case VIRTUAL_PROCESSORS: return "VIRTUAL_PROCESSORS";
+          case HYPERV_QUERY: return "HYPERV_QUERY";
+          case BAD_POOLS: return "BAD_POOLS";
+          case AMD_SEV: return "AMD_SEV";
+          case AMD_THREAD_MISMATCH: return "AMD_THREAD_MISMATCH";
+          case NATIVE_VHD: return "NATIVE_VHD";
+          case VIRTUAL_REGISTRY: return "VIRTUAL_REGISTRY";
+          case FIRMWARE: return "FIRMWARE";
+          case FILE_ACCESS_HISTORY: return "FILE_ACCESS_HISTORY";
+          case AUDIO: return "AUDIO";
+          case UNKNOWN_MANUFACTURER: return "UNKNOWN_MANUFACTURER";
+          case OSXSAVE: return "OSXSAVE";
+          case NSJAIL_PID: return "NSJAIL_PID";
+          case PCI_VM: return "PCI_VM";
+          // ADD NEW CASE HERE FOR NEW TECHNIQUE
+          default: return "Unknown flag";
         }
     }
 
@@ -11672,7 +11636,6 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     std::make_pair(VM::PROCESSOR_NUMBER, VM::core::technique(50, VM::processor_number)),
     std::make_pair(VM::NUMBER_OF_CORES, VM::core::technique(50, VM::number_of_cores)),
     std::make_pair(VM::ACPI_TEMPERATURE, VM::core::technique(25, VM::acpi_temperature)),
-    std::make_pair(VM::PROCESSOR_ID, VM::core::technique(25, VM::processor_id)),
     std::make_pair(VM::SYS_QEMU, VM::core::technique(70, VM::sys_qemu_dir)),
     std::make_pair(VM::LSHW_QEMU, VM::core::technique(80, VM::lshw_qemu)),
     std::make_pair(VM::VIRTUAL_PROCESSORS, VM::core::technique(50, VM::virtual_processors)),

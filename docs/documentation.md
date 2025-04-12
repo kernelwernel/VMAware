@@ -10,6 +10,7 @@
 - [`VM::conclusion()`](#vmconclusion)
 - [`VM::detected_count()`](#vmdetected_count)
 - [`VM::vmaware struct`](#vmaware-struct)
+- [Overall things to avoid](#overall-things-to-avoid)
 - [Flag table](#flag-table)
 - [Brand table](#brand-table)
 - [Setting flags](#setting-flags)
@@ -411,6 +412,12 @@ int main() {
 
 <br>
 
+# Overall things to avoid
+❌ 1. Do NOT rely on the percentage to determine whether you're in a VM. The lib is not designed for this way, and you're potentially increasing false positives. Use VM::detect() instead for that job.
+❌ 2. Do NOT depend your whole program on whether a specific brand was found. VM::brand() will not guarantee it'll give you the result you're looking for even if the environment is in fact that specific VM brand.
+❌ 3. Do NOT use VM::NO_MEMO flag if you're not sure what you're doing, this can potentially hamper the performance significantly.
+
+<br>
 
 # Flag table
 VMAware provides a convenient way to not only check for VMs, but also have the flexibility and freedom for the end-user to choose what techniques are used with complete control over what gets executed or not. This is handled with a flag system.
@@ -515,7 +522,6 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::PROCESSOR_NUMBER` | Check for number of processors | Windows | 50% |  |  |  |  |
 | `VM::NUMBER_OF_CORES` | Check for number of cores | Windows | 50% |  |  |  |  |
 | `VM::ACPI_TEMPERATURE` | Check for device's temperature | Windows | 25% |  |  |  |  |
-| `VM::PROCESSOR_ID` | Check if any processor has an empty Processor ID using SMBIOS data | Windows | 25% |  |  |  |  |
 | `VM::SYS_QEMU` | Check for existence of "qemu_fw_cfg" directories within /sys/module and /sys/firmware | Linux | 70% |  |  |  |  |
 | `VM::LSHW_QEMU` | Check for QEMU string instances with lshw command | Linux | 80% |  |  |  |  |
 | `VM::VIRTUAL_PROCESSORS` | Check if the number of virtual and logical processors are reported correctly by the system | Windows | 50% |  |  |  |  |
@@ -523,7 +529,6 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::BAD_POOLS` | Check for system pools allocated by hypervisors | Windows | 80% |  |  |  |  |
 | `VM::AMD_SEV` | Check for AMD-SEV MSR running on the system | Linux and MacOS | 50% | Admin |  |  |  |
 | `VM::AMD_THREAD_MISMATCH` | Check for AMD CPU thread count database if it matches the system's thread count |  | 95% |  |  |  |  |
-| `VM::NATIVE_VHD` | Checks if the OS was booted from a VHD container |  | 100% |  |  |  |  |
 | `VM::NATIVE_VHD` | Check for OS being booted from a VHD container | Windows | 100% |  |  |  |  |
 | `VM::VIRTUAL_REGISTRY` | Check for particular object directory which is present in Sandboxie virtual environment but not in usual host systems | Windows | 65% |  |  |  | Admin only needed for Linux |
 | `VM::FIRMWARE` | Check for VM signatures and patched strings by hardeners in firmware, while ensuring the BIOS serial is valid | Windows and Linux | 100% |  |  |  |  |
