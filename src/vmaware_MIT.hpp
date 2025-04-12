@@ -50,13 +50,13 @@
  *
  * ============================== SECTIONS ==================================
  * - enums for publicly accessible techniques  => line 578
- * - struct for internal cpu operations        => line 764
- * - struct for internal memoization           => line 1236
- * - struct for internal utility functions     => line 1361
- * - struct for internal core components       => line 9872
- * - start of VM detection technique list      => line 2364
- * - start of public VM detection functions    => line 10547
- * - start of externally defined variables     => line 11498
+ * - struct for internal cpu operations        => line 762
+ * - struct for internal memoization           => line 1234
+ * - struct for internal utility functions     => line 1359
+ * - struct for internal core components       => line 9825
+ * - start of VM detection technique list      => line 2362
+ * - start of public VM detection functions    => line 10500
+ * - start of externally defined variables     => line 11450
  *
  *
  * ============================== EXAMPLE ===================================
@@ -7646,36 +7646,44 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     // Disable specific sanitizers for more accurate timing measurements.
     __attribute__((no_sanitize("address", "leak", "thread", "undefined")))
 #endif
+#pragma optimize("", off)
         static bool timer() {
 #if (ARM || !x86)
         return false;
 #else
-        constexpr i32 classicIterations = 10;           // Number of iterations for the classic RDTSC check
-        constexpr u32 classicThreshold = 20000u;          // Cycle threshold per iteration for classic RDTSC check
-        constexpr i32 requiredClassicSpikes = classicIterations / 2; // At least 50% of iterations must spike
+        constexpr u8 classicIterations = 10;           // Number of iterations for the classic RDTSC check
+        constexpr u16 classicThreshold = 20000u;          // Cycle threshold per iteration for classic RDTSC check
+        constexpr u8 requiredClassicSpikes = classicIterations / 2; // At least 50% of iterations must spike
 
-        constexpr i32 spammerIterations = 1000;           // Iterations for the multi-CPU/spammer check
-        constexpr u32 spammerAvgThreshold = 55000u;         // Average cycle threshold for the spammer check
+        constexpr u16 spammerIterations = 1000;           // Iterations for the multi-CPU/spammer check
+        constexpr u16 spammerAvgThreshold = 20000u;         // Average cycle threshold for the spammer check
 
 #if (WINDOWS)
-        constexpr int qpcRatioThreshold = 3000;           // QPC ratio threshold
+        constexpr u16 qpcRatioThreshold = 3000;           // QPC ratio threshold
+        constexpr u8 tscIterations = 10;                 // Number of iterations for the TSC synchronization check
+        constexpr u16 tscSyncDiffThreshold = 500;  // TSC difference threshold
 #endif
-
-        constexpr i32 tscIterations = 10;                 // Number of iterations for the TSC synchronization check
-        constexpr u64 tscSyncDiffThreshold = 1000000000LL;  // TSC difference threshold
 
         // to minimize context switching/scheduling
 #if (WINDOWS)
-        HANDLE hThread = GetCurrentThread();
-        int oldPriority = GetThreadPriority(hThread);
+        const HANDLE hThread = GetCurrentThread();
+        const int oldPriority = GetThreadPriority(hThread);
         SetThreadPriority(hThread, THREAD_PRIORITY_TIME_CRITICAL);
 #else
-        int oldPolicy = sched_getscheduler(0);
-        sched_param oldParam;
-        sched_getparam(0, &oldParam);
-        sched_param newParam{};
-        newParam.sched_priority = sched_get_priority_max(SCHED_FIFO);
-        sched_setscheduler(0, SCHED_FIFO, &newParam);
+        bool hasSchedPriority = (geteuid() == 0);
+        int oldPolicy = SCHED_OTHER;
+        sched_param oldParam{};
+
+        if (hasSchedPriority) {
+            oldPolicy = sched_getscheduler(0);
+            sched_getparam(0, &oldParam);
+            sched_param newParam{};
+            newParam.sched_priority = sched_get_priority_max(SCHED_FIFO);
+
+            if (sched_setscheduler(0, SCHED_FIFO, &newParam) == -1) {
+                hasSchedPriority = false;
+            }
+        }
 #endif
 
         auto restoreThreadPriority = [&]() {
@@ -7706,8 +7714,20 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             if (cycles >= classicThreshold) {
                 spikeCount++;
             }
-            // Sleep to induce cache flushing
-            std::this_thread::sleep_for(std::chrono::microseconds(500));
+            // to induce cache flushing
+            constexpr size_t bufferSize = static_cast<size_t>(64 * 1024) * 1024;
+            volatile char* flushBuffer = new volatile char[bufferSize];
+
+            // better than thread sleeps
+            for (size_t j = 0; j < bufferSize; j += 64) {
+                flushBuffer[j] = static_cast<char>(j);
+#if (x86 && (GCC || CLANG || MSVC))
+                _mm_clflush(const_cast<const void*>(
+                    reinterpret_cast<const volatile void*>(&flushBuffer[j])));
+#endif
+            }
+
+            delete[] flushBuffer;
         }
 
 #ifdef __VMAWARE_DEBUG__
@@ -7824,9 +7844,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         QueryPerformanceCounter(&startQPC);
         volatile int dummy = 0;
         for (int i = 0; i < 100000; i++) {
-            dummy ^= i; // to prevent optimization
+            dummy ^= i;
+#if (GCC || CLANG)
+            asm volatile("" ::: "memory");  // memory clobber
+#elif (MSVC)
             _ReadWriteBarrier();
+            _mm_mfence();
+#endif
         }
+
         QueryPerformanceCounter(&endQPC);
         LONGLONG dummyTime = endQPC.QuadPart - startQPC.QuadPart;
 
@@ -7848,24 +7874,48 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // Try reading the invariant TSC on two different cores to attempt to detect vCPU timers being shared
         const bool tscSyncDetected = [&]() noexcept -> bool {
             int tscIssueCount = 0;
-            unsigned long long tscCore1 = 0, tscCore2 = 0;
+            u64 tscCore1 = 0, tscCore2 = 0;
             for (int i = 0; i < tscIterations; i++) {
-                __try {
-                    unsigned int aux = 0;
+                unsigned int aux = 0;
+
+                try {
+#if (WINDOWS)
                     DWORD_PTR oldAffinity = SetThreadAffinityMask(GetCurrentThread(), 1);
-                    tscCore1 = __rdtscp(&aux); // the use of a serializing variant for the instruction stream is done on purpose
+                    tscCore1 = __rdtscp(&aux);
                     SetThreadAffinityMask(GetCurrentThread(), 2);
                     tscCore2 = __rdtscp(&aux);
                     SetThreadAffinityMask(GetCurrentThread(), oldAffinity);
+#elif (LINUX)
+                    cpu_set_t origSet;
+                    pthread_getaffinity_np(pthread_self(), sizeof(cpu_set_t), &origSet);
+
+                    // Core 0
+                    cpu_set_t set;
+                    CPU_ZERO(&set);
+                    CPU_SET(0, &set);
+                    pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &set);
+                    tscCore1 = __rdtscp(&aux);
+
+                    // Core 1
+                    CPU_ZERO(&set);
+                    CPU_SET(1, &set);
+                    pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &set);
+                    tscCore2 = __rdtscp(&aux);
+
+                    pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &origSet);
+#endif
                 }
-                __except (GetExceptionCode() == EXCEPTION_ILLEGAL_INSTRUCTION
-                    ? EXCEPTION_EXECUTE_HANDLER
-                    : EXCEPTION_CONTINUE_SEARCH) {
-                    // RDTSCP is widely supported on real hardware, most likely VM
+                catch (...) {
                     tscIssueCount++;
                     continue;
                 }
-                if (std::llabs(static_cast<long long>(tscCore2 - tscCore1)) > tscSyncDiffThreshold) {
+
+                // hypervisors often have nearly identical TSCs across vCPUs
+                const u64 diff = (tscCore2 > tscCore1)
+                    ? (tscCore2 - tscCore1)
+                    : (tscCore1 - tscCore2);
+
+                if (diff < tscSyncDiffThreshold) {
                     tscIssueCount++;
                 }
             }
@@ -7873,8 +7923,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             debug("TIMER: TSC sync check",
                 " - Core1: ", tscCore1,
                 " Core2: ", tscCore2,
-                " Diff: ", tscCore2 - tscCore1,
-                " (Threshold: ", tscSyncDiffThreshold,
+                " Delta: ", tscCore2 - tscCore1,
+                " (Threshold: <", tscSyncDiffThreshold,
                 ')');
 #endif
             return (tscIssueCount >= tscIterations / 2);
@@ -7890,6 +7940,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
+#pragma optimize("", on)
 
 
     /**
