@@ -11117,8 +11117,6 @@ public: // START OF PUBLIC FUNCTIONS
         // brand is "Azure Hyper-V" instead of just "Hyper-V". So what
         // this section does is "merge" the brands together to form
         // a more accurate idea of the brand(s) involved.
-
-
         merge(TMP_AZURE, TMP_HYPERV,     TMP_AZURE);
         merge(TMP_AZURE, TMP_VPC,        TMP_AZURE);
         merge(TMP_AZURE, TMP_HYPERV_VPC, TMP_AZURE);

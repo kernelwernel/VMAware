@@ -821,36 +821,27 @@ void checker(const VM::enum_flags flag, const char* message) {
 // overload for std::function, this is specific for any.run techniques
 // that are embedded in the CLI because it was removed in the lib as of 2.0
 void checker(const std::function<bool()>& func, const char* message) {
-#if __cplusplus >= 201703L
-    if constexpr (!CLI_WINDOWS) {
-        if (arg_bitset.test(VERBOSE)) {
-            unsupported_count++;
-        }
-        else {
-            supported_count++;
-        }
-    }
-    else {
-        supported_count++;
-    }
-#else
-#if !CLI_WINDOWS
+#if (!CLI_WINDOWS)
     if (arg_bitset.test(VERBOSE)) {
         unsupported_count++;
-    }
-    else {
+    } else {
         supported_count++;
     }
 #else
     supported_count++;
 #endif
-#endif
+
+    const bool result = func();
 
     std::cout <<
-        (func() ? detected : not_detected) <<
+        (result ? detected : not_detected) <<
+        (result ? bold : "") <<
         " Checking " <<
         message <<
-        "...\n";
+        "..." << 
+        (result ? ansi_exit : "") << 
+        "\n";
+
 }
 
 
@@ -1174,11 +1165,20 @@ void general() {
     {
         const char* conclusion_color = color(vm.percentage);
 
+        std::string conclusion = vm.conclusion;
+
+        if (is_anyrun && VM::brand() == brands::NULL_BRAND) {
+            const std::string original = "unknown";
+            const std::string new_brand = "ANY.RUN";
+
+            replace(conclusion, original, new_brand);
+        }
+
         std::cout
             << bold
             << "====== CONCLUSION: "
             << ansi_exit
-            << conclusion_color << vm.conclusion << " " << ansi_exit
+            << conclusion_color << conclusion << " " << ansi_exit
             << bold
             << "======"
             << ansi_exit
