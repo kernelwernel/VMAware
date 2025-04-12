@@ -3069,7 +3069,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         key(brands::WINE, "HKLM\\SOFTWARE\\Wine");
 
         // Xen
-        key(brands::KVM, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_5853*");
+        key(brands::XEN, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_5853*");
         key(brands::XEN, "HKLM\\HARDWARE\\ACPI\\DSDT\\xen");
         key(brands::XEN, "HKLM\\HARDWARE\\ACPI\\FADT\\xen");
         key(brands::XEN, "HKLM\\HARDWARE\\ACPI\\RSDT\\xen");
