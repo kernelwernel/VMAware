@@ -35,7 +35,7 @@
 
 class VMAwareBenchmark {
 public:
-    static uint64_t get_timestamp() {
+    static inline uint64_t get_timestamp() {
 #if defined(_WIN32)
         LARGE_INTEGER counter;
         QueryPerformanceCounter(&counter);
@@ -51,7 +51,7 @@ public:
 #endif
     }
 
-    static double get_elapsed(uint64_t start, uint64_t end) {
+    static inline double get_elapsed(uint64_t start, uint64_t end) {
 #if defined(_WIN32)
         static LARGE_INTEGER freq;
         QueryPerformanceFrequency(&freq);

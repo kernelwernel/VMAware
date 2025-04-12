@@ -458,7 +458,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::PROCESSOR_NUMBER:
             case VM::NUMBER_OF_CORES:
             case VM::ACPI_TEMPERATURE:
-            case VM::PROCESSOR_ID:
             case VM::POWER_CAPABILITIES:
             case VM::SETUPAPI_DISK: 
             case VM::VIRTUAL_PROCESSORS:
@@ -974,7 +973,6 @@ void general() {
     checker(VM::PROCESSOR_NUMBER, "processor count");
     checker(VM::NUMBER_OF_CORES, "CPU core count");
     checker(VM::ACPI_TEMPERATURE, "thermal devices");
-    checker(VM::PROCESSOR_ID, "processor ID");
     checker(VM::POWER_CAPABILITIES, "Power capabilities");
     checker(VM::SETUPAPI_DISK, "SETUPDI diskdrive");
     checker(VM::SYS_QEMU, "QEMU in /sys");
