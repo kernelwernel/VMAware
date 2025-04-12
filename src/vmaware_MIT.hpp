@@ -664,7 +664,6 @@ public:
         PROCESSOR_NUMBER,
         NUMBER_OF_CORES,
         ACPI_TEMPERATURE,
-        PROCESSOR_ID,
         SYS_QEMU,
         LSHW_QEMU,
         VIRTUAL_PROCESSORS,
@@ -1955,7 +1954,7 @@ private:
 
 #ifdef __VMAWARE_DEBUG__
                 if (result) {
-                    core_debug("HYPER_X: root partition returned true");
+                    core_debug("HYPER_X: running under root partition");
                 }
 #endif
                 return result;
@@ -7637,103 +7636,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check if any processor has an empty Processor ID using SMBIOS data
-     * @category Windows
-     * @author Requiem (https://github.com/NotRequiem)
-     * @note https://www.dmtf.org/sites/default/files/standards/documents/DSP0134_3.8.0.pdf (Section 7.5.3, page 54)
-     * @implements VM::PROCESSOR_ID
-     */
-    [[nodiscard]] static bool processor_id() {
-#if (!WINDOWS)
-        return false;
-#else
-#pragma pack(push, 1)
-        struct RawSMBIOSData {
-            BYTE  Used20CallingMethod;
-            BYTE  SMBIOSMajorVersion;
-            BYTE  SMBIOSMinorVersion;
-            BYTE  DmiRevision;
-            DWORD Length;
-            BYTE  SMBIOSTableData[1];
-        };
-#pragma pack(pop)
-
-        UINT bufferSize = GetSystemFirmwareTable('RSMB', 0, nullptr, 0);
-        if (bufferSize == 0)
-            return false;
-
-        std::vector<BYTE> buffer(bufferSize);
-        if (GetSystemFirmwareTable('RSMB', 0, buffer.data(), bufferSize) != bufferSize)
-            return false;
-
-        if (buffer.size() < sizeof(RawSMBIOSData))
-            return false;
-
-        RawSMBIOSData* raw = reinterpret_cast<RawSMBIOSData*>(buffer.data());
-        BYTE* tableData = raw->SMBIOSTableData;
-        DWORD tableLength = raw->Length;
-        BYTE* tableEnd = tableData + tableLength;
-        BYTE* p = tableData;
-
-        while (p < tableEnd) {
-            // header: [Type (1B), Length (1B), Handle (2B)]
-            if (p + 4 > tableEnd)
-                break;
-
-            BYTE type = p[0];
-            BYTE length = p[1];
-
-            if (length < 4 || (p + length) > tableEnd)
-                break;
-
-            // Processor Information (Type 4) structures, Processor ID field
-            if (type == 4) {
-                // the Processor ID is an 8‑byte field starting at offset 8 in the structure
-                // Therefore, the structure must be at least 16 bytes long
-                if (length >= 16) {
-                    BYTE* procId = p + 8;
-
-#ifdef __VMAWARE_DEBUG__
-                    std::ostringstream oss;
-                    oss << "PROCESSOR_ID: ";
-                    for (int i = 0; i < 8; ++i) {
-                        oss << std::hex << std::setw(2) << std::setfill('0')
-                            << static_cast<int>(procId[i]) << " ";
-                    }
-                    debug(oss.str());
-#endif
-                    bool allZero = true;
-                    for (int i = 0; i < 8; ++i) {
-                        if (procId[i] != 0) {
-                            allZero = false;
-                            break;
-                        }
-                    }
-                    if (allZero) {
-                        return true;
-                    }
-                }
-            }
-
-            // Skip the formatted section
-            BYTE* next = p + length;
-            // Then skip the unformatted string-set (terminated by double-null)
-            while (next < tableEnd - 1) {
-                if (next[0] == 0 && next[1] == 0) {
-                    next += 2;
-                    break;
-                }
-                ++next;
-            }
-            p = next;
-        }
-
-        return false;
-#endif
-    }
-
-
-    /**
      * @brief Check for timing anomalies in the system
      * @category x86
      * @author Requiem (https://github.com/NotRequiem)
@@ -11155,7 +11057,6 @@ public: // START OF PUBLIC FUNCTIONS
         case PROCESSOR_NUMBER: return "PROCESSOR_NUMBER";
         case NUMBER_OF_CORES: return "NUMBER_OF_CORES";
         case ACPI_TEMPERATURE: return "ACPI_TEMPERATURE";
-        case PROCESSOR_ID: return "PROCESSOR_ID";
         case SYS_QEMU: return "SYS_QEMU";
         case LSHW_QEMU: return "LSHW_QEMU";
         case VIRTUAL_PROCESSORS: return "VIRTUAL_PROCESSORS";
@@ -11713,7 +11614,6 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     std::make_pair(VM::PROCESSOR_NUMBER, VM::core::technique(50, VM::processor_number)),
     std::make_pair(VM::NUMBER_OF_CORES, VM::core::technique(50, VM::number_of_cores)),
     std::make_pair(VM::ACPI_TEMPERATURE, VM::core::technique(25, VM::acpi_temperature)),
-    std::make_pair(VM::PROCESSOR_ID, VM::core::technique(25, VM::processor_id)),
     std::make_pair(VM::SYS_QEMU, VM::core::technique(70, VM::sys_qemu_dir)),
     std::make_pair(VM::LSHW_QEMU, VM::core::technique(80, VM::lshw_qemu)),
     std::make_pair(VM::VIRTUAL_PROCESSORS, VM::core::technique(50, VM::virtual_processors)),
