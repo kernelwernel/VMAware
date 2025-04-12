@@ -455,11 +455,9 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::PORT_CONNECTORS:
             case VM::GPU_VM_STRINGS:
             case VM::GPU_CAPABILITIES:
-            case VM::IDT_GDT_SCAN:
             case VM::PROCESSOR_NUMBER:
             case VM::NUMBER_OF_CORES:
             case VM::ACPI_TEMPERATURE:
-            case VM::PROCESSOR_ID:
             case VM::POWER_CAPABILITIES:
             case VM::SETUPAPI_DISK: 
             case VM::VIRTUAL_PROCESSORS:
@@ -754,19 +752,6 @@ std::string vm_description(const std::string& vm_brand) {
 #endif
 } 
 
-
-void edit_previous_line() {
-#if (CLI_WINDOWS)
-    std::cout << "\x1b[2K";
-    std::cout << "\x1b[1A" << "\x1b[2K";
-    std::cout << "\r";
-#else
-    std::cout << "\r\033[K";
-#endif
-}
-
-
-
 void checker(const VM::enum_flags flag, const char* message) {
     if (is_unsupported(flag)) {
         if (arg_bitset.test(COMPACT)) {
@@ -976,11 +961,9 @@ void general() {
     checker(VM::PORT_CONNECTORS, "physical connection ports");
     checker(VM::GPU_CAPABILITIES, "GPU capabilities");
     checker(VM::GPU_VM_STRINGS, "GPU strings");
-    checker(VM::IDT_GDT_SCAN, "IDT GDT consistency");
     checker(VM::PROCESSOR_NUMBER, "processor count");
     checker(VM::NUMBER_OF_CORES, "CPU core count");
     checker(VM::ACPI_TEMPERATURE, "thermal devices");
-    checker(VM::PROCESSOR_ID, "processor ID");
     checker(VM::POWER_CAPABILITIES, "Power capabilities");
     checker(VM::SETUPAPI_DISK, "SETUPDI diskdrive");
     checker(VM::SYS_QEMU, "QEMU in /sys");

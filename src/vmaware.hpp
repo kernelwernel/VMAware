@@ -27,14 +27,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 554
- * - struct for internal cpu operations        => line 747
- * - struct for internal memoization           => line 1201
- * - struct for internal utility functions     => line 1325
- * - struct for internal core components       => line 10200
- * - start of VM detection technique list      => line 2521
- * - start of public VM detection functions    => line 10864
- * - start of externally defined variables     => line 11814
+ * - enums for publicly accessible techniques  => line 556
+ * - struct for internal cpu operations        => line 749
+ * - struct for internal memoization           => line 1220
+ * - struct for internal utility functions     => line 1344
+ * - struct for internal core components       => line 10066
+ * - start of VM detection technique list      => line 2345
+ * - start of public VM detection functions    => line 10730
+ * - start of externally defined variables     => line 11679
  *
  *
  * ============================== EXAMPLE ===================================
@@ -186,7 +186,9 @@
 #pragma once
 
 #if defined(_WIN32) || defined(_WIN64)
+#ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
+#endif
 #define WINDOWS 1
 #define LINUX 0
 #define APPLE 0
@@ -360,15 +362,10 @@
 #include <psapi.h>
 #include <shlwapi.h>
 #include <shlobj_core.h>
-#include <dshow.h>
-#include <io.h>
 #include <winspool.h>
 #include <powerbase.h>
 #include <setupapi.h>
-#include <mmdeviceapi.h>
-#include <Functiondiscoverykeys_devpkey.h>
 #include <mmsystem.h>
-#include <queue>
 #include <dxgi.h>
 #include <d3d9.h>
 
@@ -385,7 +382,6 @@
 #pragma comment(lib, "strmiids.lib")
 #pragma comment(lib, "uuid.lib")
 #pragma comment(lib, "ntdll.lib")
-#pragma comment(lib, "setupapi.lib")
 #pragma comment(lib, "powrprof.lib")
 
 #elif (LINUX)
@@ -645,11 +641,9 @@ public:
         GPU_VM_STRINGS,
         GPU_CAPABILITIES,
         VM_DEVICES,
-        IDT_GDT_SCAN,
         PROCESSOR_NUMBER,
         NUMBER_OF_CORES,
         ACPI_TEMPERATURE,
-        PROCESSOR_ID,
         SYS_QEMU,
         LSHW_QEMU,
         VIRTUAL_PROCESSORS,
@@ -807,12 +801,29 @@ private:
 
         // check for maximum function leaf
         static bool is_leaf_supported(const u32 p_leaf) {
-            u32 eax, unused = 0;
-            cpu::cpuid(eax, unused, unused, unused, cpu::leaf::func_ext);
+            u32 eax = 0, unused = 0;
 
-            debug("CPUID function: highest leaf = ", eax);
+            if (p_leaf < 0x40000000) {
+                // Standard range: 0x00000000 - 0x3FFFFFFF
+                cpu::cpuid(eax, unused, unused, unused, 0x00000000);
+                debug("CPUID: max standard leaf = ", eax);
+                return (p_leaf <= eax);
+            }
+            else if (p_leaf < 0x80000000) {
+                // Hypervisor range: 0x40000000 - 0x7FFFFFFF
+                cpu::cpuid(eax, unused, unused, unused, cpu::leaf::hypervisor);
+                debug("CPUID: max hypervisor leaf = ", eax);
+                return (p_leaf <= eax);
+            }
+            else if (p_leaf < 0xC0000000) {
+                // Extended range: 0x80000000 - 0xBFFFFFFF
+                cpu::cpuid(eax, unused, unused, unused, cpu::leaf::func_ext);
+                debug("CPUID: max extended leaf = ", eax);
+                return (p_leaf <= eax);
+            }
 
-            return (p_leaf <= eax);
+            debug("CPUID: unsupported leaf range: ", p_leaf);
+            return false;
         }
 
         // check AMD
@@ -1667,8 +1678,6 @@ private:
             if (size == 0)
                 return 81;
             
-            debug("private util::get_disk_size( function: ", "disk size = ", size, "GB");
-
             return size;  // Return disk size in GB
         }
 
@@ -1913,7 +1922,7 @@ private:
                 return (ecx & (1 << 31));
                 };
 
-            // https://learn.microsoft.com/en-us/virtualization/hyper-v-on-windows/tlfs/feature-discovery
+            // 0x40000003 on EBX indicates the flags that a parent partition specified to create a child partition (https://learn.microsoft.com/en-us/virtualization/hyper-v-on-windows/tlfs/datatypes/hv_partition_privilege_mask)
             auto is_root_partition = []() -> bool {
                 u32 ebx, unused = 0;
                 cpu::cpuid(unused, ebx, unused, unused, 0x40000003);
@@ -1921,18 +1930,18 @@ private:
 
 #ifdef __VMAWARE_DEBUG__
                 if (result) {
-                    core_debug("HYPER_X: root partition returned true");
+                    core_debug("HYPER_X: running under root partition");
                 }
 #endif
                 return result;
                 };
 
             /**
-              * On Hyper-V virtual machines, the cpuid function reports an EAX value of 11. 
-              * This value is tied to the Hyper-V partition model, where each virtual machine runs as a child partition.
+              * On Hyper-V virtual machines, the cpuid function reports an EAX value of 11
+              * This value is tied to the Hyper-V partition model, where each virtual machine runs as a child partition
               * These child partitions have limited privileges and access to hypervisor resources, 
-              * which is reflected in the maximum input value for hypervisor CPUID information as 11. 
-              * Essentially, it indicates that the hypervisor is managing the VM and that the VM is not running directly on hardware but rather in a virtualized environment.
+              * which is reflected in the maximum input value for hypervisor CPUID information as 11.
+              * Essentially, it indicates that the hypervisor is managing the VM and that the VM is not running directly on hardware but rather in a virtualized environment
             */
             auto eax = []() -> u32 {
                 char out[sizeof(int32_t) * 4 + 1] = { 0 }; 
@@ -2285,181 +2294,6 @@ private:
             return message;
         }
 
-
-        /**
-         * @brief Enables the SE_DEBUG_NAME privilege for the current process.
-         *
-         * This function adjusts the token privileges to enable debugging rights,
-         * which are required for the lib to access the memory of certain processes.
-         */
-        static bool SetDebugPrivilege(bool enable) {
-            HANDLE hToken = nullptr;
-            if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &hToken)) {
-                return false;
-            }
-
-            LUID debugLuid;
-            if (!LookupPrivilegeValue(nullptr, SE_DEBUG_NAME, &debugLuid)) {
-                CloseHandle(hToken);
-                return false;
-            }
-
-            DWORD dwSize = 0;
-            GetTokenInformation(hToken, TokenPrivileges, nullptr, 0, &dwSize);
-            if (dwSize == 0) {
-                CloseHandle(hToken);
-                return false;
-            }
-
-            std::vector<BYTE> buffer(dwSize);
-            if (!GetTokenInformation(hToken, TokenPrivileges, buffer.data(), dwSize, &dwSize)) {
-                CloseHandle(hToken);
-                return false;
-            }
-
-            auto* pPrivileges = reinterpret_cast<TOKEN_PRIVILEGES*>(buffer.data());
-            bool found = false;
-            for (DWORD i = 0; i < pPrivileges->PrivilegeCount; i++) {
-                if (pPrivileges->Privileges[i].Luid.LowPart == debugLuid.LowPart &&
-                    pPrivileges->Privileges[i].Luid.HighPart == debugLuid.HighPart)
-                {
-                    bool isEnabled = (pPrivileges->Privileges[i].Attributes & SE_PRIVILEGE_ENABLED) != 0;
-                    if ((enable && isEnabled) || (!enable && !isEnabled)) {
-                        CloseHandle(hToken);
-                        return false;
-                    }
-                    found = true;
-                    break;
-                }
-            }
-
-            if (!found && !enable) {
-                CloseHandle(hToken);
-                return false;
-            }
-
-            TOKEN_PRIVILEGES tp{};
-            tp.PrivilegeCount = 1;
-            tp.Privileges[0].Luid = debugLuid;
-            tp.Privileges[0].Attributes = enable ? static_cast<DWORD>(SE_PRIVILEGE_ENABLED) : 0;
-
-            if (!AdjustTokenPrivileges(hToken, FALSE, &tp, sizeof(tp), nullptr, nullptr)) {
-                CloseHandle(hToken);
-                return false;
-            }
-            if (GetLastError() == ERROR_NOT_ALL_ASSIGNED) {
-                CloseHandle(hToken);
-                return false;
-            }
-
-            CloseHandle(hToken);
-            return true;
-        }
-
-
-        /**
-         * @brief Searches for a wide-character substring within a buffer using the Knuth-Morris-Pratt algorithm. Not used by the moment.
-         *
-         * This function performs an efficient substring search to find a wide-character string (searchString)
-         * inside another wide-character string (buffer) using the Knuth-Morris-Pratt (KMP) algorithm.
-         * The KMP algorithm preprocesses the searchString to build a "partial match" table (also known as
-         * the "longest prefix suffix" or LPS table), which allows the search to skip over portions of the text
-         * that have already been matched, improving search performance over brute force methods.
-         *
-         * The function uses a sliding window approach to compare characters in the buffer against the search string.
-         * If the searchString is found in the buffer, it returns true. Otherwise, it returns false.
-         *
-         * @param buffer The wide-character buffer (wstring or wchar_t array) in which to search for the substring.
-         * @param bufferSize The size of the buffer (number of characters in buffer).
-         * @param searchString The wide-character substring to search for within the buffer.
-         *
-         * @return bool true if searchString is found in buffer, false otherwise.
-         */
-#if CPP >= 17
-        [[nodiscard]] static bool findSubstring(std::wstring_view buffer, std::wstring_view searchString) {
-            const size_t bufferSize = buffer.size();
-            const size_t searchLength = searchString.length();
-#else
-        [[nodiscard]] static bool findSubstring(const wchar_t* buffer, const size_t bufferSize, const std::wstring & searchString) {
-            const size_t searchLength = searchString.length();
-#endif
-            if (searchLength > bufferSize) return false;
-
-            std::vector<size_t> lps(searchLength, 0);
-            size_t j = 0;
-            for (size_t i = 1; i < searchLength; ++i) {
-                while (j > 0
-                    && searchString[i] != searchString[j]
-                    ) {
-                    j = lps[j - 1];
-                }
-                if (searchString[i] == searchString[j]) {
-                    ++j;
-                }
-                lps[i] = j;
-            }
-
-            size_t i = 0; // buffer index
-            j = 0;        // searchString index
-            while (i < bufferSize) {
-                if (buffer[i] == searchString[j]) {
-                    ++i;
-                    ++j;
-                    if (j == searchLength) {
-                        return true;
-                    }
-                }
-                else if (j > 0) {
-                    j = lps[j - 1];
-                }
-                else {
-                    ++i;
-                }
-            }
-
-            return false;
-        }
-
-
-        /**
-         * @brief Finds the process ID (PID) of a service by its name.
-         *
-         * This function queries the Service Control Manager to retrieve the process ID of a service running on the system. 
-         * This is needed when trying to access processes with the "svchost" name.
-         *
-         * @param serviceName The name of the service to search for.
-         * @return The process ID (PID) if found, otherwise returns 0.
-         */
-        [[nodiscard]] static DWORD FindProcessIdByServiceName(const std::wstring& serviceName) {
-            SC_HANDLE scmHandle = OpenSCManager(nullptr, nullptr, SC_MANAGER_CONNECT);
-            if (!scmHandle) {
-                return 0;
-            }
-
-            SC_HANDLE serviceHandle = OpenServiceW(scmHandle, serviceName.c_str(),
-                SERVICE_QUERY_STATUS);
-            if (!serviceHandle) {
-                CloseServiceHandle(scmHandle);
-                return 0;
-            }
-
-            DWORD pid = 0;
-            SERVICE_STATUS_PROCESS status = { 0 };
-            DWORD bytesNeeded = 0;
-
-            if (QueryServiceStatusEx(serviceHandle, SC_STATUS_PROCESS_INFO,
-                reinterpret_cast<LPBYTE>(&status), sizeof(status), &bytesNeeded)) {
-                if (status.dwCurrentState == SERVICE_RUNNING) {
-                    pid = status.dwProcessId;
-                }
-            }
-
-            CloseServiceHandle(serviceHandle);
-            CloseServiceHandle(scmHandle);
-            return pid;
-        }
-
-
         /**
          * @brief Retrieves the addresses of specified functions from a loaded module using the export directory.
          *
@@ -2496,24 +2330,6 @@ private:
                     }
                 }
             }
-        }
-
-
-        /**
-         * @brief Checks if hypervisor CPUID specific leaves are present.
-         *
-         * This function uses the CPUID instruction to determine if the system supports
-         * the hypervisor-specific CPUID leaf (0x40000000).
-         *
-         * @return true if hypervisor CPUID information is present, otherwise false.
-         */
-        [[nodiscard]] static bool is_hyperv_leaf_present() {
-            char out[sizeof(int32_t) * 4 + 1] = { 0 }; // e*x size + number of e*x registers + null terminator
-            cpu::cpuid((int*)out, cpu::leaf::hypervisor);
-
-            const u32 eax = static_cast<u32>(out[0]);
-
-            return eax != 0;
         }
 #endif
     };
@@ -2787,7 +2603,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         /*
             see https://github.com/kernelwernel/VMAware/issues/105
-
             if (compare(0x0A, 0x00, 0x27)) {
                 return core::add(brands::HYBRID);
             }
@@ -3254,6 +3069,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         key(brands::WINE, "HKLM\\SOFTWARE\\Wine");
 
         // Xen
+        key(brands::KVM, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_5853*");
         key(brands::XEN, "HKLM\\HARDWARE\\ACPI\\DSDT\\xen");
         key(brands::XEN, "HKLM\\HARDWARE\\ACPI\\FADT\\xen");
         key(brands::XEN, "HKLM\\HARDWARE\\ACPI\\RSDT\\xen");
@@ -3264,6 +3080,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         key(brands::XEN, "HKLM\\SYSTEM\\ControlSet001\\Services\\xenvdb");
 
         // KVM
+        key(brands::KVM, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_1AF4*");
         key(brands::KVM, "HKLM\\SYSTEM\\ControlSet001\\Services\\vioscsi");
         key(brands::KVM, "HKLM\\SYSTEM\\ControlSet001\\Services\\viostor");
         key(brands::KVM, "HKLM\\SYSTEM\\ControlSet001\\Services\\VirtIO-FS Service");
@@ -7534,16 +7351,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for unknown IDT base address
      * @category Windows
-     * @author Requiem (https://github.com/NotRequiem)
      * @implements VM::VM_SIDT
      */
     [[nodiscard]] static bool vm_sidt() {
 #if (!WINDOWS || !x86) 
         return false;
-#else
-        if (!util::is_hyperv_leaf_present()) {
-            return false;
-        }       
+#else    
 #pragma pack(push, 1)
         struct IDTR { uint16_t limit;  uint64_t base; };
 #pragma pack(pop)
@@ -7561,9 +7374,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
         u64 idt_base = idtr.base;
 
-        constexpr u64 known_hyperv_exclusion = 0xfffff80000001000;
-
-        if ((idt_base >> 24) == 0xff && idt_base != known_hyperv_exclusion) {
+        if ((idt_base >> 24) == 0xff) {
             return true;
         }
 
@@ -7695,7 +7506,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for physical connection ports
      * @category Windows
      * @note original idea of using physical ports to detect VMs was suggested by @unusual-aspect (https://github.com/unusual-aspect). 
-     *       This technique is known to false flags on devices like Surface Pro.
+     *       This technique is known to false flag on devices like Surface Pro.
      * @implements VM::PORT_CONNECTORS
      */
     [[nodiscard]] static bool port_connectors() {
@@ -7792,22 +7603,53 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         IDirect3D9* pD3D = Direct3DCreate9(D3D_SDK_VERSION);
-        if (!pD3D) return true;
+        if (!pD3D) {
+            debug("GPU_CAPABILITIES: Direct3DCreate9 failed");
+            return true;
+        }
 
         D3DADAPTER_IDENTIFIER9 adapterId;
-        D3DCAPS9 caps;
         if (SUCCEEDED(pD3D->GetAdapterIdentifier(D3DADAPTER_DEFAULT, 0, &adapterId))) {
-            if (adapterId.VendorId == 0x15AD) {
+            if (adapterId.VendorId == 0x15AD) {   
                 pD3D->Release();
                 return core::add(brands::VMWARE);
             }
-            else if (adapterId.VendorId == 0x80EE) {
+            else if (adapterId.VendorId == 0x80EE) {   
                 pD3D->Release();
                 return core::add(brands::VBOX);
-            } 
+            }
         }
 
-        if (FAILED(pD3D->GetDeviceCaps(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, &caps))) {
+        D3DCAPS9 caps;
+        HRESULT hr = pD3D->GetDeviceCaps(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, &caps);
+        const int maxRetries = 3;
+        for (int attempt = 0; FAILED(hr) && (attempt < maxRetries); ++attempt) {
+            SleepEx(500, FALSE);  
+            hr = pD3D->GetDeviceCaps(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, &caps);
+        }
+        if (FAILED(hr)) {
+            debug("GPU_CAPABILITIES: GetDeviceCaps failure");
+            pD3D->Release();
+            return false;
+        }
+
+        // Pixel Shader version 2.0
+        if (caps.PixelShaderVersion < D3DPS_VERSION(2, 0)) {
+            debug("GPU_CAPABILITIES: Insufficient Pixel Shader version");
+            pD3D->Release();
+            return true;
+        }
+
+        // hardware transform and lighting capability
+        if (!(caps.DevCaps & D3DDEVCAPS_HWTRANSFORMANDLIGHT)) {
+            debug("GPU_CAPABILITIES: Missing hardware T&L support");
+            pD3D->Release();
+            return true;
+        }
+
+        // simultaneous render targets
+        if (caps.NumSimultaneousRTs < 2) {
+            debug("GPU_CAPABILITIES: Insufficient simultaneous render targets");
             pD3D->Release();
             return true;
         }
@@ -7815,18 +7657,18 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         pD3D->Release();
 
         IDXGIFactory* pFactory = nullptr;
-        if (FAILED(CreateDXGIFactory(__uuidof(IDXGIFactory), reinterpret_cast<void**>(&pFactory)))) return true;
+        if (FAILED(CreateDXGIFactory(__uuidof(IDXGIFactory), reinterpret_cast<void**>(&pFactory)))) {
+            debug("GPU_CAPABILITIES: DXGIFactory creation failed");
+            return true;
+        }
 
         IDXGIAdapter* pAdapter = nullptr;
-        // do not enumerate all adapters, otherwise it would false flag with adapters with no dedicated gpus like Microsoft Basic Render Driver (vid 0x1414)
+        // Enumerate only the primary adapter so as not to mistakenly flag machines without a dedicated GPU, like Microsoft Basic Render Driver (vid 0x1414)
         if (pFactory->EnumAdapters(0, &pAdapter) != DXGI_ERROR_NOT_FOUND) {
             DXGI_ADAPTER_DESC adapterDesc;
             if (SUCCEEDED(pAdapter->GetDesc(&adapterDesc))) {
-                char description[128] = { 0 };
-                size_t converted = 0;
-                wcstombs_s(&converted, description, adapterDesc.Description, sizeof(description));
-
-                if (adapterDesc.DedicatedVideoMemory < static_cast<unsigned long long>(1024 * 1024) * 1024) {
+                if (adapterDesc.DedicatedVideoMemory < (1024ULL * 1024ULL * 1024ULL)) {
+                    debug("GPU_CAPABILITIES: Video memory below threshold");
                     pAdapter->Release();
                     pFactory->Release();
                     return true;
@@ -7834,8 +7676,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
             pAdapter->Release();
         }
-
         pFactory->Release();
+
         return false;
 #endif
     }
@@ -7857,7 +7699,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const HANDLE handle5 = CreateFileA(("\\\\.\\HGFS"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
         const HANDLE handle6 = CreateFileA(("\\\\.\\pipe\\cuckoo"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 
-        bool result = false;
+        bool vbox = false;
 
         if (
             (handle1 != INVALID_HANDLE_VALUE) ||
@@ -7865,7 +7707,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             (handle3 != INVALID_HANDLE_VALUE) ||
             (handle4 != INVALID_HANDLE_VALUE)
            ) {
-            result = true;
+            vbox = true;
         }
 
         CloseHandle(handle1);
@@ -7873,19 +7715,19 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         CloseHandle(handle3);
         CloseHandle(handle4);
 
-        if (result) {
-            debug("VM_DEVICES: Detected VBox related device handles.");
+        if (vbox) {
+            debug("VM_DEVICES: Detected VBox related device handles");
             return core::add(brands::VBOX);
         }
 
         if (handle5 != INVALID_HANDLE_VALUE) {
             CloseHandle(handle5);
-            debug("VM_DEVICES: Detected VMware related device (HGFS).");
+            debug("VM_DEVICES: Detected VMware related device (HGFS)");
             return core::add(brands::VMWARE);
         }
         if (handle6 != INVALID_HANDLE_VALUE) {
             CloseHandle(handle6);
-            debug("VM_DEVICES: Detected Cuckoo related device (pipe).");
+            debug("VM_DEVICES: Detected Cuckoo related device (pipe)");
             return core::add(brands::CUCKOO);
         }
 
@@ -7895,101 +7737,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }    
-
-
-    /**
-     * @brief Check if the IDT and GDT virtual base addresses are equal across different CPU cores when not running under Hyper-V
-     * @note  The Windows kernel has different interrupt handlers registered for each CPU core, resulting in different virtual addresses when calling SIDT and SGDT in kernel-mode.
-     *        However, when Windows is running under Hyper-V (in a root partition), the IDT and GDT base address will always be the same across all CPU cores if called from user-mode.
-     *        This kernel address leak prevention measure is done by Hyper-V on purpose and can be abused to detect VMs.
-     * @category Windows, x64
-     * @author Requiem
-     * @implements VM::IDT_GDT_SCAN
-     */
-    [[nodiscard]] static bool idt_gdt_scan() {
-#if (!WINDOWS)
-        return false;
-#else
-        // If the system is running under any Hyper-V hypervisor (type 1 or type 2), the IDT and GDT will be equal, as this function is called from user-mode.
-        if (util::hyper_x() != HYPERV_UNKNOWN_VM) {
-            return false;
-        }
-        if (!util::is_hyperv_leaf_present()) {
-            return false;
-        }
-
-        unsigned int num_threads = std::thread::hardware_concurrency();
-
-        uint64_t* gdtResults = new uint64_t[num_threads];
-        uint64_t* idtResults = new uint64_t[num_threads];
-
-        std::vector<std::thread> threads;
-        threads.reserve(num_threads);
-
-        for (unsigned int i = 0; i < num_threads; ++i) {
-            try {
-                threads.emplace_back([i, gdtResults, idtResults]() {
-                    const HANDLE thread = GetCurrentThread();
-                    DWORD_PTR affinity_mask = 1ULL << i;
-                    SetThreadAffinityMask(thread, affinity_mask);
-
-#pragma pack(push, 1)
-                    struct DescriptorTablePointer {
-                        uint16_t limit;
-                        uint64_t base;
-                    };
-#pragma pack(pop)
-
-                    DescriptorTablePointer idtr = {};
-                    DescriptorTablePointer gdtr = {};
-
-#if (CLANG || GCC)
-                    __asm__ volatile("sidt %0" : "=m"(idtr));
-                    __asm__ volatile("sgdt %0" : "=m"(gdtr));
-#else
-                    __sidt(&idtr);
-                    _sgdt(&gdtr);
-#endif
-
-                    gdtResults[i] = gdtr.base;
-                    idtResults[i] = idtr.base;
-                    });
-            }
-            catch (...) {
-                delete[] gdtResults;
-                delete[] idtResults;
-                return false; // umip
-            }
-        }
-
-        for (auto& thread : threads) {
-            thread.join();
-        }
-
-        bool equal = true;
-
-        for (unsigned int i = 1; i < num_threads; ++i) {
-            if (gdtResults[i] != gdtResults[0]) {
-                equal = false;
-                break;
-            }
-        }
-
-        if (equal) {
-            for (unsigned int i = 1; i < num_threads; ++i) {
-                if (idtResults[i] != idtResults[0]) {
-                    equal = false;
-                    break;
-                }
-            }
-        }
-
-        delete[] gdtResults;
-        delete[] idtResults;
-
-        return equal;
-#endif
-    }
 
 
     /**
@@ -8040,12 +7787,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         while (size > 0) {
             if (ptr->Relationship == RelationProcessorCore) {
                 ++physicalCoreCount;
+                if (physicalCoreCount > 1)
+                    return false;
             }
             size -= ptr->Size;
             ptr = reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(reinterpret_cast<BYTE*>(ptr) + ptr->Size);
         }
 
-        return (physicalCoreCount < 2);
+        return true;
 #endif
     }
 
@@ -8077,142 +7826,103 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check if any processor has an empty Processor ID using SMBIOS data
-     * @category Windows
-     * @note https://www.dmtf.org/sites/default/files/standards/documents/DSP0134_3.8.0.pdf (Section 7.5.3, page 54)
-     * @implements VM::PROCESSOR_ID
-     */
-    [[nodiscard]] static bool processor_id() {
-#if (!WINDOWS)
-        return false;
-#else
-#pragma pack(push, 1)
-        struct RawSMBIOSData {
-            BYTE  Used20CallingMethod;
-            BYTE  SMBIOSMajorVersion;
-            BYTE  SMBIOSMinorVersion;
-            BYTE  DmiRevision;
-            DWORD Length;
-            BYTE  SMBIOSTableData[1];
-        };
-#pragma pack(pop)
-
-        UINT bufferSize = GetSystemFirmwareTable('RSMB', 0, nullptr, 0);
-        if (bufferSize == 0)
-            return false;
-
-        std::vector<BYTE> buffer(bufferSize);
-        if (GetSystemFirmwareTable('RSMB', 0, buffer.data(), bufferSize) != bufferSize)
-            return false;
-
-        if (buffer.size() < sizeof(RawSMBIOSData))
-            return false;
-
-        RawSMBIOSData* raw = reinterpret_cast<RawSMBIOSData*>(buffer.data());
-        BYTE* tableData = raw->SMBIOSTableData;
-        DWORD tableLength = raw->Length;
-        BYTE* tableEnd = tableData + tableLength;
-        BYTE* p = tableData;
-
-        while (p < tableEnd) {
-            // header: [Type (1B), Length (1B), Handle (2B)]
-            if (p + 4 > tableEnd)
-                break;
-
-            BYTE type = p[0];
-            BYTE length = p[1];
-
-            if (length < 4 || (p + length) > tableEnd)
-                break;
-
-            // Processor Information (Type 4) structures, Processor ID field
-            if (type == 4) {
-                // the Processor ID is an 8‑byte field starting at offset 8 in the structure
-                // Therefore, the structure must be at least 16 bytes long
-                if (length >= 16) {
-                    BYTE* procId = p + 8;
-                    bool allZero = true;
-                    for (int i = 0; i < 8; ++i) {
-                        if (procId[i] != 0) {
-                            allZero = false;
-                            break;
-                        }
-                    }
-                    if (allZero) {
-                        return true;
-                    }
-                }
-            }
-
-            // Skip the formatted section.
-            BYTE* next = p + length;
-            // Then skip the unformatted string-set (terminated by double-null)
-            while (next < tableEnd - 1) {
-                if (next[0] == 0 && next[1] == 0) {
-                    next += 2;
-                    break;
-                }
-                ++next;
-            }
-            p = next;
-        }
-
-        return false;
-#endif
-    }
-
-
-    /**
      * @brief Check for timing anomalies in the system
      * @category x86
+     * @author Requiem (https://github.com/NotRequiem)
      * @implements VM::TIMER
      */
     [[nodiscard]]
 #if (LINUX)
-    // This is added so that no sanitizers can potentially cause unwanted delays while measuring rdtsc in debug
+    // Disable specific sanitizers for more accurate timing measurements.
     __attribute__((no_sanitize("address", "leak", "thread", "undefined")))
 #endif
-        static bool timer() {
+    static bool timer() {
 #if (ARM || !x86)
         return false;
 #else
-        u64 start, end, total_cycles = 0;
-        constexpr i32 iterations = 10; // Reduced due to sleep delays, originally 10000 iterations with no execution delay
-        constexpr u32 threshold = 23000;
-        std::atomic<bool> stop_spammer{ false };
+        constexpr i32 classicIterations = 10;           // Number of iterations for the classic RDTSC check
+        constexpr u32 classicThreshold = 20000u;          // Cycle threshold per iteration for classic RDTSC check
+        constexpr i32 requiredClassicSpikes = classicIterations / 2; // At least 50% of iterations must spike
 
-        // 1. Classic rdtsc+cpuid+rdtsc check with sleep variance
-        for (int i = 0; i < iterations; i++) {
-            start = __rdtsc();
+        constexpr i32 spammerIterations = 1000;           // Iterations for the multi-CPU/spammer check
+        constexpr u32 spammerAvgThreshold = 55000u;         // Average cycle threshold for the spammer check
+
 #if (WINDOWS)
-            // CPUID serializes pipeline and is frequently intercepted by hypervisors
+        constexpr int qpcRatioThreshold = 3000;           // QPC ratio threshold
+#endif
+
+        constexpr i32 tscIterations = 10;                 // Number of iterations for the TSC synchronization check
+        constexpr u64 tscSyncDiffThreshold = 1000000000LL;  // TSC difference threshold
+
+        // to minimize context switching/scheduling
+#if (WINDOWS)
+        HANDLE hThread = GetCurrentThread();
+        int oldPriority = GetThreadPriority(hThread);
+        SetThreadPriority(hThread, THREAD_PRIORITY_TIME_CRITICAL);
+#else
+        int oldPolicy = sched_getscheduler(0);
+        sched_param oldParam;
+        sched_getparam(0, &oldParam);
+        sched_param newParam{};
+        newParam.sched_priority = sched_get_priority_max(SCHED_FIFO);
+        sched_setscheduler(0, SCHED_FIFO, &newParam);
+#endif
+
+        auto restoreThreadPriority = [&]() {
+#if (WINDOWS)
+            SetThreadPriority(hThread, oldPriority);
+#else
+            sched_setscheduler(0, oldPolicy, &oldParam);
+#endif
+            };
+
+        // --- 1. Classic Timing Check (rdtsc + cpuid + rdtsc) ---
+        u64 totalCycles = 0;
+        int spikeCount = 0;
+        for (int i = 0; i < classicIterations; i++) {
+            u64 start = __rdtsc();
+#if (WINDOWS)
             int cpu_info[4];
-            __cpuid(cpu_info, 0);
+            __cpuid(cpu_info, 0); // CPUID serializes pipeline and is frequently intercepted by hypervisors
             UNUSED(cpu_info);
 #elif (LINUX || APPLE)
             u32 eax = 0, ebx = 0, ecx = 0, edx = 0;
             __cpuid(0, eax, ebx, ecx, edx);
-            UNUSED(eax);
-            UNUSED(ebx);
-            UNUSED(ecx);
-            UNUSED(edx);
+            UNUSED(eax); UNUSED(ebx); UNUSED(ecx); UNUSED(edx);
 #endif
-            end = __rdtsc();
-            total_cycles += (end - start);
-
+            u64 end = __rdtsc();
+            u64 cycles = end - start;
+            totalCycles += cycles;
+            if (cycles >= classicThreshold) {
+                spikeCount++;
+            }
             // Sleep to induce cache flushing
             std::this_thread::sleep_for(std::chrono::microseconds(500));
         }
 
-        // 2. Multi-CPU check: rdtsc+cpuid+rdtsc on CPU1 while CPU2 spams cpuid. This detection tries to detect invariant TSC to flag hypervisors that share the same timer across multiple vCPUs
-        std::thread spammer([&stop_spammer] {
+#ifdef __VMAWARE_DEBUG__
+        const double averageCycles = static_cast<double>(totalCycles) / classicIterations;
+        debug("TIMER: RDTSC check - Average cycles: ", averageCycles,
+            " (Threshold per sample: ", classicThreshold,
+            ") - Spike count: ", spikeCount);
+#endif
+
+        const bool sleepVarianceDetected = (spikeCount >= requiredClassicSpikes);
+        if (sleepVarianceDetected) {
+            restoreThreadPriority();
+            return true;
+        }
+
+        // --- 2. Multi-CPU Spammer Check ---
+        // rdtsc+cpuid+rdtsc on CPU1 while CPU2 spams cpuid. This detection tries to detect invariant TSC to flag hypervisors that share the same timer across multiple vCPUs
+        std::atomic<bool> stopSpammer{ false };
+        std::thread spammer([&stopSpammer] {
 #if (WINDOWS)
-            // Pin spammer to core 2
             SetThreadAffinityMask(GetCurrentThread(), 2);
 #elif (LINUX)
             cpu_set_t cpuset;
             CPU_ZERO(&cpuset);
-            CPU_SET(1, &cpuset);  // Core 1 (0-indexed)
+            CPU_SET(1, &cpuset);  // core 1 (0-indexed)
             pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
 #elif (APPLE)
             thread_affinity_policy_data_t policy = { 1 };
@@ -8220,8 +7930,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 THREAD_AFFINITY_POLICY,
                 (thread_policy_t)&policy, 1);
 #endif
-            // Spam CPUID to create hypervisor trap pressure
-            while (!stop_spammer.load()) {
+            // hypervisor trap pressure
+            while (!stopSpammer.load()) {
 #if (WINDOWS)
                 int cpu_info[4];
                 __cpuid(cpu_info, 0);
@@ -8232,19 +7942,30 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
             });
 
+        // --- 3a. Pin Measurement Thread for Consistent Timing ---
 #if (WINDOWS)
-        // Pin measurement to core 1
-        DWORD_PTR old_mask = SetThreadAffinityMask(GetCurrentThread(), 1);
-#elif (LINUX || APPLE)
-        // Increase priority to minimize scheduling delays
-        sched_param param{};
-        sched_setscheduler(0, SCHED_FIFO, &param);
+        DWORD_PTR oldAffinityMask = SetThreadAffinityMask(GetCurrentThread(), 1);
+#elif (LINUX)
+        cpu_set_t oldCpuSet;
+        CPU_ZERO(&oldCpuSet);
+        pthread_getaffinity_np(pthread_self(), sizeof(cpu_set_t), &oldCpuSet);
+
+        cpu_set_t newCpuSet;
+        CPU_ZERO(&newCpuSet);
+        CPU_SET(0, &newCpuSet);  // core 0 for consistent timing
+        pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &newCpuSet);
+#elif (APPLE)
+        // restoration is not supported on Apple
+        thread_affinity_policy_data_t policy = { 1 };
+        thread_policy_set(pthread_mach_thread_np(pthread_self()),
+            THREAD_AFFINITY_POLICY,
+            (thread_policy_t)&policy, 1);
 #endif
 
-        // Take measurements under spammer load
+        // --- 3b. Measurement Under Spammer Load ---
         u64 measurement = 0;
-        for (int i = 0; i < 1000; i++) {
-            start = __rdtsc();
+        for (int i = 0; i < spammerIterations; i++) {
+            u64 start = __rdtsc();
 #if (WINDOWS)
             int cpu_info[4];
             __cpuid(cpu_info, 0);
@@ -8252,73 +7973,111 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             u32 eax = 0, ebx = 0, ecx = 0, edx = 0;
             __cpuid(0, eax, ebx, ecx, edx);
 #endif
-            end = __rdtsc();
+            u64 end = __rdtsc();
             measurement += (end - start);
         }
-
-        stop_spammer.store(true);
+        stopSpammer.store(true);
         spammer.join();
 
-    #if (WINDOWS)
-        SetThreadAffinityMask(GetCurrentThread(), old_mask);
-    #endif  
+#if (WINDOWS)
+        SetThreadAffinityMask(GetCurrentThread(), oldAffinityMask);
+#elif (LINUX)
+        pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &oldCpuSet);
+#endif
 
-        const double average_cycles = static_cast<double>(total_cycles) / iterations;
-        const bool sleep_variance_detected = average_cycles >= threshold;
-        const bool spammer_detected = (measurement / 1000) > 55000;
+        const bool spammerDetected = (measurement / spammerIterations) > spammerAvgThreshold;
+#ifdef __VMAWARE_DEBUG__
+        debug("TIMER: Spammer check - Average cycles: ", (measurement / spammerIterations),
+            " (Threshold: ", spammerAvgThreshold, ")");
+#endif
 
-        debug("Classic check - Average cycles: ", average_cycles, " (threshold: ", threshold, ")");
-        debug("Spammer check - Average cycles: ", (measurement / 1000), " (threshold: 55000)");
+        if (spammerDetected) {
+            restoreThreadPriority();
+            return true;
+        }
 
-    #if (WINDOWS)
-        // Windows-specific QPC check: Compare trapping vs non-trapping instruction timing
+#if (WINDOWS)
+        // --- 4.  QPC Check ---
+        // Compare trapping vs non-trapping instruction timing
         LARGE_INTEGER startQPC, endQPC;
         QueryPerformanceCounter(&startQPC);
-        int cpu_info[4];
-        for (int i = 0; i < 100000; i++) {
-            __cpuid(cpu_info, 0);
+        {
+            int cpu_info[4];
+            for (int i = 0; i < 100000; i++) {
+                __cpuid(cpu_info, 0);
+            }
         }
         QueryPerformanceCounter(&endQPC);
         LONGLONG cpuIdTime = endQPC.QuadPart - startQPC.QuadPart;
 
-        // Non-trapping dummy loop baseline
+        // Non-trapping baseline loop
         QueryPerformanceCounter(&startQPC);
         volatile int dummy = 0;
         for (int i = 0; i < 100000; i++) {
-            dummy ^= i; // prevent optimization
-            _ReadWriteBarrier(); 
+            dummy ^= i; // to prevent optimization
+            _ReadWriteBarrier();
         }
         QueryPerformanceCounter(&endQPC);
         LONGLONG dummyTime = endQPC.QuadPart - startQPC.QuadPart;
 
-        const bool qpc_check = (dummyTime != 0) && ((cpuIdTime / dummyTime) > 3000);
-        debug("QPC check - CPUID: ", cpuIdTime, "ns, Dummy: ", dummyTime, "ns, Ratio: ", (cpuIdTime / dummyTime));
+        const bool qpcCheck = (dummyTime != 0) && ((cpuIdTime / dummyTime) > qpcRatioThreshold);
+#ifdef __VMAWARE_DEBUG__
+        debug("TIMER: QPC check - CPUID: ", cpuIdTime,
+            " ns, RWB: ", dummyTime,
+            " ns, Ratio: ", (cpuIdTime / dummyTime),
+            " (Threshold: ", qpcRatioThreshold,
+            ')');
+#endif
 
-        // TSC sync check across cores. Try reading the invariant TSC on two different cores to attempt to detect vCPU timers being shared
-        const bool tsc_sync_check = [&]() noexcept -> bool {
-            u64 tsc_core1 = 0;
-            u64 tsc_core2 = 0;
-            __try { // lambda is necessary to use __try in functions that require object unwinding while still avoiding the creation of any external helper functions
-                unsigned int aux = 0;
-                SetThreadAffinityMask(GetCurrentThread(), 1);
-                tsc_core1 = __rdtscp(&aux); // Core 1 TSC, the use of a serializing variant for the instruction stream is done on purpose
-                SetThreadAffinityMask(GetCurrentThread(), 2);
-                tsc_core2 = __rdtscp(&aux); // Core 2 TSC
-                SetThreadAffinityMask(GetCurrentThread(), old_mask);
+        if (qpcCheck) {
+            restoreThreadPriority();
+            return true;
+        }
+
+        // --- 5. TSC Synchronization Check Across Cores ---
+        // Try reading the invariant TSC on two different cores to attempt to detect vCPU timers being shared
+        const bool tscSyncDetected = [&]() noexcept -> bool {
+            int tscIssueCount = 0;
+            unsigned long long tscCore1 = 0, tscCore2 = 0;
+            for (int i = 0; i < tscIterations; i++) {
+                __try {
+                    unsigned int aux = 0;
+                    DWORD_PTR oldAffinity = SetThreadAffinityMask(GetCurrentThread(), 1);
+                    tscCore1 = __rdtscp(&aux); // the use of a serializing variant for the instruction stream is done on purpose
+                    SetThreadAffinityMask(GetCurrentThread(), 2);
+                    tscCore2 = __rdtscp(&aux);
+                    SetThreadAffinityMask(GetCurrentThread(), oldAffinity);
+                }
+                __except (GetExceptionCode() == EXCEPTION_ILLEGAL_INSTRUCTION
+                    ? EXCEPTION_EXECUTE_HANDLER
+                    : EXCEPTION_CONTINUE_SEARCH) {
+                    // RDTSCP is widely supported on real hardware, most likely VM
+                    tscIssueCount++;
+                    continue;
+                }
+                if (std::llabs(static_cast<long long>(tscCore2 - tscCore1)) > tscSyncDiffThreshold) {
+                    tscIssueCount++;
+                }
             }
-            __except (GetExceptionCode() == EXCEPTION_ILLEGAL_INSTRUCTION
-                ? EXCEPTION_EXECUTE_HANDLER
-                : EXCEPTION_CONTINUE_SEARCH) {
-                return true; // RDTSCP is widely supported on real hardware
-            }
-            debug("TSC sync check - Core1: ", tsc_core1, " Core2: ", tsc_core2, " Diff: ", tsc_core2 - tsc_core1);
-            return std::llabs(static_cast<long long>(tsc_core2 - tsc_core1)) > 1000000000LL;
+#ifdef __VMAWARE_DEBUG__
+            debug("TIMER: TSC sync check",
+                " - Core1: ", tscCore1,
+                " Core2: ", tscCore2,
+                " Diff: ", tscCore2 - tscCore1,
+                " (Threshold: ", tscSyncDiffThreshold,
+                ')');
+#endif
+            return (tscIssueCount >= tscIterations / 2);
             }();
 
-        return sleep_variance_detected || spammer_detected || qpc_check || tsc_sync_check;
-    #else
-        return sleep_variance_detected || spammer_detected;
-    #endif
+        if (tscSyncDetected) {
+            restoreThreadPriority();
+            return true;
+        }
+#endif // WINDOWS
+
+        restoreThreadPriority();
+        return false;
 #endif
     }
 
@@ -8435,7 +8194,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         implementationLimits.MaxVirtualProcessors = static_cast<unsigned int>(registers.eax);
         implementationLimits.MaxLogicalProcessors = static_cast<unsigned int>(registers.ebx);
 
-        if (implementationLimits.MaxVirtualProcessors == 0 || implementationLimits.MaxLogicalProcessors == 0) {
+        debug("VIRTUAL_PROCESSORS: MaxVirtualProcessors: ", implementationLimits.MaxVirtualProcessors,
+            ", MaxLogicalProcessors: ", implementationLimits.MaxLogicalProcessors);
+
+        if (implementationLimits.MaxVirtualProcessors == 0xffffffff || implementationLimits.MaxLogicalProcessors == 0) {
             return true;
         }
 
@@ -9974,7 +9736,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 	}
 
 
-    /* @brief Check if audio device is present
+    /* @brief Check if any waveform-audio output devices are present in the system
      * @category Windows
      * @implements VM::AUDIO
      */
@@ -11469,11 +11231,9 @@ public: // START OF PUBLIC FUNCTIONS
             case GPU_VM_STRINGS: return "GPU_STRINGS";
             case GPU_CAPABILITIES: return "GPU_CAPABILITIES";
             case VM_DEVICES: return "VM_DEVICES";
-            case IDT_GDT_SCAN: return "IDT_GDT_SCAN";
             case PROCESSOR_NUMBER: return "PROCESSOR_NUMBER";
             case NUMBER_OF_CORES: return "NUMBER_OF_CORES";
             case ACPI_TEMPERATURE: return "ACPI_TEMPERATURE";
-            case PROCESSOR_ID: return "PROCESSOR_ID";
             case SYS_QEMU: return "SYS_QEMU";
             case LSHW_QEMU: return "LSHW_QEMU";
             case VIRTUAL_PROCESSORS: return "VIRTUAL_PROCESSORS";
@@ -12031,12 +11791,10 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     std::make_pair(VM::PORT_CONNECTORS, VM::core::technique(25, VM::port_connectors)),
     std::make_pair(VM::GPU_VM_STRINGS, VM::core::technique(100, VM::gpu_vm_strings)),
     std::make_pair(VM::GPU_CAPABILITIES, VM::core::technique(100, VM::gpu_capabilities)),
-    std::make_pair(VM::VM_DEVICES, VM::core::technique(45, VM::vm_devices)),
-    std::make_pair(VM::IDT_GDT_SCAN, VM::core::technique(50, VM::idt_gdt_scan)),
+    std::make_pair(VM::VM_DEVICES, VM::core::technique(50, VM::vm_devices)),
     std::make_pair(VM::PROCESSOR_NUMBER, VM::core::technique(50, VM::processor_number)),
     std::make_pair(VM::NUMBER_OF_CORES, VM::core::technique(50, VM::number_of_cores)),
     std::make_pair(VM::ACPI_TEMPERATURE, VM::core::technique(25, VM::acpi_temperature)),
-    std::make_pair(VM::PROCESSOR_ID, VM::core::technique(25, VM::processor_id)),
     std::make_pair(VM::SYS_QEMU, VM::core::technique(70, VM::sys_qemu_dir)),
     std::make_pair(VM::LSHW_QEMU, VM::core::technique(80, VM::lshw_qemu)),
     std::make_pair(VM::VIRTUAL_PROCESSORS, VM::core::technique(50, VM::virtual_processors)),
@@ -12045,7 +11803,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     std::make_pair(VM::AMD_SEV, VM::core::technique(50, VM::amd_sev)),
     std::make_pair(VM::NATIVE_VHD, VM::core::technique(100, VM::native_vhd)),
     std::make_pair(VM::VIRTUAL_REGISTRY, VM::core::technique(65, VM::virtual_registry)),
-    std::make_pair(VM::FIRMWARE, VM::core::technique(75, VM::firmware_scan)),
+    std::make_pair(VM::FIRMWARE, VM::core::technique(100, VM::firmware_scan)),
     std::make_pair(VM::FILE_ACCESS_HISTORY, VM::core::technique(15, VM::file_access_history)),
     std::make_pair(VM::AUDIO, VM::core::technique(25, VM::check_audio)),
     std::make_pair(VM::UNKNOWN_MANUFACTURER, VM::core::technique(50, VM::unknown_manufacturer)),
