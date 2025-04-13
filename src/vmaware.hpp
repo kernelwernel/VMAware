@@ -31,10 +31,10 @@
  * - struct for internal cpu operations        => line 742
  * - struct for internal memoization           => line 1213
  * - struct for internal utility functions     => line 1337
- * - struct for internal core components       => line 10026
- * - start of VM detection technique list      => line 2338
- * - start of public VM detection functions    => line 10690
- * - start of externally defined variables     => line 11638
+ * - struct for internal core components       => line 10067
+ * - start of VM detection technique list      => line 2363
+ * - start of public VM detection functions    => line 10731
+ * - start of externally defined variables     => line 11677
  *
  *
  * ============================== EXAMPLE ===================================
@@ -1408,7 +1408,7 @@ private:
 #endif
         }
 
-#if defined(WINDOWS) && (defined(UNICODE) || defined(_UNICODE))
+#if (WINDOWS) && (defined(UNICODE) || defined(_UNICODE))
         // handle TCHAR conversion
         [[nodiscard]] static bool exists(const TCHAR* path) {
             char c_szText[_MAX_PATH]{};
@@ -1743,7 +1743,7 @@ private:
 #endif
         }
 
-        // et available memory space
+        // get available memory space
         [[nodiscard]] static u64 get_memory_space() {
 #if (WINDOWS)
             MEMORYSTATUSEX statex = { 0 };
@@ -1872,6 +1872,32 @@ private:
 #endif
         }
 
+        // Returns a list of running process names
+        [[nodiscard]] static std::unordered_set<std::string> get_running_process_names() {
+            std::unordered_set<std::string> processNames;
+#if (WINDOWS)
+            DWORD processes[1024], bytesReturned;
+
+            if (!K32EnumProcesses(processes, sizeof(processes), &bytesReturned)) {
+                return processNames;
+            }
+
+            DWORD numProcesses = bytesReturned / sizeof(DWORD);
+            char processName[MAX_PATH];
+
+            for (DWORD i = 0; i < numProcesses; ++i) {
+                HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, processes[i]);
+                if (hProcess != nullptr) {
+                    if (K32GetModuleBaseNameA(hProcess, nullptr, processName, sizeof(processName))) {
+                        processNames.insert(processName);
+                    }
+                    CloseHandle(hProcess);
+                }
+            }
+#endif
+            return processNames;
+        }
+
         // Retrieves the computer name
         [[nodiscard]] static std::string get_hostname() {
 #if (WINDOWS)
@@ -1892,13 +1918,12 @@ private:
             return std::string();
         }
 
-
         /**
          * @brief Checks whether the system is running in a Hyper-V virtual machine or if the host system has Hyper-V enabled
          * @note Hyper-V's presence on a host system can set certain hypervisor-related CPU flags that may appear similar to those in a virtualized environment, which can make it challenging to differentiate between an actual Hyper-V virtual machine (VM) and a host system with Hyper-V enabled.
          *       This can lead to false conclusions, where the system might mistakenly be identified as running in a Hyper-V VM, when in reality, it's simply the host system with Hyper-V features active.
          *       This check aims to distinguish between these two cases by identifying specific CPU flags and hypervisor-related artifacts that are indicative of a Hyper-V VM rather than a host system with Hyper-V enabled.
-         * @author idea by Requiem (https://github.com/NotRequiem)
+         * @author Requiem (https://github.com/NotRequiem)
          * @returns hyperx_state enum indicating the detected state:
          *          - HYPERV_ARTIFACT_VM for host with Hyper-V enabled
          *          - HYPERV_REAL_VM for real Hyper-V VM
@@ -2482,7 +2507,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
     /**
      * @brief Check if mac address starts with certain VM designated values
-     * @category All systems (I think)
+     * @category Linux and Windows
      * @implements VM::MAC
      */
     [[nodiscard]] static bool mac_address_check() {
@@ -2532,30 +2557,19 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             debug("MAC: ", "not successful");
         }
 #elif (WINDOWS)
-        PIP_ADAPTER_INFO AdapterInfo;
-        DWORD dwBufLen = sizeof(IP_ADAPTER_INFO);
-
-        AdapterInfo = (IP_ADAPTER_INFO*)std::malloc(sizeof(IP_ADAPTER_INFO));
-
-        if (AdapterInfo == NULL) {
+        DWORD dwBufLen = 0;
+        if (GetAdaptersInfo(nullptr, &dwBufLen) != ERROR_BUFFER_OVERFLOW) {
             return false;
         }
 
-        if (GetAdaptersInfo(AdapterInfo, &dwBufLen) == ERROR_BUFFER_OVERFLOW) {
-            std::free(AdapterInfo);
-            AdapterInfo = (IP_ADAPTER_INFO*)std::malloc(dwBufLen);
-            if (AdapterInfo == NULL) {
-                return false;
-            }
+        PIP_ADAPTER_INFO AdapterInfo = (PIP_ADAPTER_INFO)std::malloc(dwBufLen);
+        if (AdapterInfo == nullptr) {
+            return false;
         }
 
         if (GetAdaptersInfo(AdapterInfo, &dwBufLen) == NO_ERROR) {
-            PIP_ADAPTER_INFO pAdapterInfo = AdapterInfo;
-            for (std::size_t i = 0; i < 6; i++) {
-                mac[i] = pAdapterInfo->Address[i];
-            }
+            std::memcpy(mac, AdapterInfo->Address, sizeof(mac));
         }
-
         std::free(AdapterInfo);
 #else
         return false;
@@ -2574,32 +2588,28 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         */
         debug("MAC: ", ss.str());
 #endif
-
         // better expression to fix code duplication
-        auto compare = [=](const u8 mac1, const u8 mac2, const u8 mac3) noexcept -> bool {
+        auto compare = [mac](u8 mac1, u8 mac2, u8 mac3) noexcept -> bool {
             return (mac[0] == mac1 && mac[1] == mac2 && mac[2] == mac3);
-        };
+            };
 
-        if (compare(0x08, 0x00, 0x27)) {
+        // Check for known virtualization MAC address prefixes
+        if (compare(0x08, 0x00, 0x27))
             return core::add(brands::VBOX);
-        }
 
-        if (
-            (compare(0x00, 0x0C, 0x29)) ||
-            (compare(0x00, 0x1C, 0x14)) ||
-            (compare(0x00, 0x50, 0x56)) ||
-            (compare(0x00, 0x05, 0x69))
-        ) {
+        if (compare(0x00, 0x0C, 0x29) ||
+            compare(0x00, 0x1C, 0x14) ||
+            compare(0x00, 0x50, 0x56) ||
+            compare(0x00, 0x05, 0x69))
+        {
             return core::add(brands::VMWARE);
         }
 
-        if (compare(0x00, 0x16, 0xE3)) {
+        if (compare(0x00, 0x16, 0xE3))
             return core::add(brands::XEN);
-        }
 
-        if (compare(0x00, 0x1C, 0x42)) {
+        if (compare(0x00, 0x1C, 0x42))
             return core::add(brands::PARALLELS);
-        }
 
         /*
             see https://github.com/kernelwernel/VMAware/issues/105
@@ -3396,17 +3406,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!WINDOWS)
         return false;
 #else
-        DWORD pnsize = 0x1000;
-        char provider[0x1000];
+        char provider[256];
+        DWORD pnsize = sizeof(provider);
+        const DWORD retv = WNetGetProviderNameA(WNNC_NET_RDR2SAMPLE, provider, &pnsize);
 
-        DWORD retv = WNetGetProviderNameA(WNNC_NET_RDR2SAMPLE, provider, &pnsize);
-        bool result = false;
+        if (retv != NO_ERROR)
+            return false;
 
-        if (retv == NO_ERROR) {
-            result = (strcmp(provider, "VirtualBox Shared Folders") == 0);
-        }
-
-        return result;
+        return (strncmp(provider, "VirtualBox Shared Folders", 26) == 0);
 #endif
     }
 
@@ -3651,41 +3658,43 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     #if (!WINDOWS)
         return false;
     #else
-        if (util::is_proc_running("joeboxserver.exe") || util::is_proc_running("joeboxcontrol.exe")) {
+        const auto runningProcesses = util::get_running_process_names();
+
+        if (runningProcesses.count("joeboxserver.exe") || runningProcesses.count("joeboxcontrol.exe")) {
             debug("VM_PROCESSES: Detected JoeBox process.");
             return core::add(brands::JOEBOX);
         }
 
-        if (util::is_proc_running("prl_cc.exe") || util::is_proc_running("prl_tools.exe")) {
+        if (runningProcesses.count("prl_cc.exe") || runningProcesses.count("prl_tools.exe")) {
             debug("VM_PROCESSES: Detected Parallels process.");
             return core::add(brands::PARALLELS);
         }
 
-        if (util::is_proc_running("vboxservice.exe") || util::is_proc_running("vboxtray.exe")) {
+        if (runningProcesses.count("vboxservice.exe") || runningProcesses.count("vboxtray.exe")) {
             debug("VM_PROCESSES: Detected VBox process.");
             return core::add(brands::VBOX);
         }
 
-        if (util::is_proc_running("vmsrvc.exe") || util::is_proc_running("vmusrvc.exe")) {
+        if (runningProcesses.count("vmsrvc.exe") || runningProcesses.count("vmusrvc.exe")) {
             debug("VM_PROCESSES: Detected VPC process.");
             return core::add(brands::VPC);
         }
 
-        if (util::is_proc_running("xenservice.exe") || util::is_proc_running("xsvc_depriv.exe")) {
+        if (runningProcesses.count("xenservice.exe") || runningProcesses.count("xsvc_depriv.exe")) {
             debug("VM_PROCESSES: Detected Xen process.");
             return core::add(brands::XEN);
         }
 
-        if (util::is_proc_running("vm3dservice.exe") ||
-            util::is_proc_running("VGAuthService.exe") ||
-            util::is_proc_running("vmtoolsd.exe")) {
+        if (runningProcesses.count("vm3dservice.exe") ||
+            runningProcesses.count("VGAuthService.exe") ||
+            runningProcesses.count("vmtoolsd.exe")) {
             debug("VM_PROCESSES: Detected VMware process.");
             return core::add(brands::VMWARE);
         }
 
-        if (util::is_proc_running("vdagent.exe") ||
-            util::is_proc_running("vdservice.exe") ||
-            util::is_proc_running("qemuwmi.exe")) {
+        if (runningProcesses.count("vdagent.exe") ||
+            runningProcesses.count("vdservice.exe") ||
+            runningProcesses.count("qemuwmi.exe")) {
             debug("VM_PROCESSES: Detected QEMU process.");
             return core::add(brands::QEMU);
         }
@@ -7893,6 +7902,33 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #ifdef __VMAWARE_DEBUG__
         u64 totalCycles = 0;
 #endif
+        char* flushBuffer = nullptr; // avoiding volatile on purpose
+        constexpr size_t kAlignment = 64;
+        constexpr size_t kBufferSize = static_cast<size_t>(64 * 1024) * 1024;
+
+#if (WINDOWS)
+    #define COMPILER_BARRIER() _ReadWriteBarrier()
+#else
+    #define COMPILER_BARRIER() __asm__ __volatile__("" ::: "memory")
+#endif
+
+#if (WINDOWS)
+        flushBuffer = (char*)_aligned_malloc(kBufferSize, kAlignment);
+        if (!flushBuffer) {
+            flushBuffer = new (std::nothrow) char[kBufferSize];
+        }
+#elif (LINUX || APPLE)
+        int err = posix_memalign((void**)&flushBuffer, kAlignment, kBufferSize);
+        if (err != 0 || !flushBuffer) {
+            flushBuffer = new (std::nothrow) char[kBufferSize];
+        }
+#else
+        // volatile char* flushBuffer = new volatile char[kBufferSize];
+        flushBuffer = new (std::nothrow) char[kBufferSize];
+#endif
+        // Define a rotation scheme over segments. Here, we split the buffer into a number of segments
+        constexpr size_t segmentsCount = 8; // basically 1/8 of the buffer per iteration
+        constexpr size_t segmentSize = kBufferSize / segmentsCount;
         int spikeCount = 0;
         for (int i = 0; i < classicIterations; i++) {
             u64 start = __rdtsc();
@@ -7913,21 +7949,27 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             if (cycles >= classicThreshold) {
                 spikeCount++;
             }
-            // to induce cache flushing
-            constexpr size_t bufferSize = static_cast<size_t>(64 * 1024) * 1024;
-            volatile char* flushBuffer = new volatile char[bufferSize];
+            // Instead of flushing the entire buffer every iteration (which would decrease performance a lot),
+            // flush only one segment per iteration
+            size_t segmentIndex = i % segmentsCount;
+            size_t offsetStart = segmentIndex * segmentSize;
+            size_t offsetEnd = offsetStart + segmentSize;
 
-            // better than thread sleeps
-            for (size_t j = 0; j < bufferSize; j += 64) {
+            // this detection works better when inducing cache flushing without thread sleeps
+            for (size_t j = offsetStart; j < offsetEnd; j += 64) {
                 flushBuffer[j] = static_cast<char>(j);
-#if (x86 && (GCC || CLANG || MSVC))
-                _mm_clflush(const_cast<const void*>(
-                    reinterpret_cast<const volatile void*>(&flushBuffer[j])));
+#if defined(x86) && (defined(GCC) || defined(CLANG) || defined(MSVC))
+                COMPILER_BARRIER();
+                // _mm_clflushopt not available on some systems
+                _mm_clflush(reinterpret_cast<const void*>(&flushBuffer[j]));
 #endif
             }
-
-            delete[] flushBuffer;
         }
+#if (WINDOWS)
+        _aligned_free((void*)flushBuffer);
+#else
+        free((void*)flushBuffer);
+#endif
 
 #ifdef __VMAWARE_DEBUG__
         const double averageCycles = static_cast<double>(totalCycles) / classicIterations;
