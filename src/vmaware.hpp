@@ -31,10 +31,10 @@
  * - struct for internal cpu operations        => line 742
  * - struct for internal memoization           => line 1213
  * - struct for internal utility functions     => line 1337
- * - struct for internal core components       => line 10065
- * - start of VM detection technique list      => line 2361
- * - start of public VM detection functions    => line 10729
- * - start of externally defined variables     => line 11675
+ * - struct for internal core components       => line 10067
+ * - start of VM detection technique list      => line 2363
+ * - start of public VM detection functions    => line 10731
+ * - start of externally defined variables     => line 11677
  *
  *
  * ============================== EXAMPLE ===================================
@@ -1875,6 +1875,7 @@ private:
         // Returns a list of running process names
         [[nodiscard]] static std::unordered_set<std::string> get_running_process_names() {
             std::unordered_set<std::string> processNames;
+#if (WINDOWS)
             DWORD processes[1024], bytesReturned;
 
             if (!K32EnumProcesses(processes, sizeof(processes), &bytesReturned)) {
@@ -1893,6 +1894,7 @@ private:
                     CloseHandle(hProcess);
                 }
             }
+#endif
             return processNames;
         }
 
