@@ -384,15 +384,10 @@
 #include <psapi.h>
 #include <shlwapi.h>
 #include <shlobj_core.h>
-#include <dshow.h>
-#include <io.h>
 #include <winspool.h>
 #include <powerbase.h>
 #include <setupapi.h>
-#include <mmdeviceapi.h>
-#include <Functiondiscoverykeys_devpkey.h>
 #include <mmsystem.h>
-#include <queue>
 #include <dxgi.h>
 #include <d3d9.h>
 
@@ -3100,7 +3095,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         key(brands::WINE, "HKLM\\SOFTWARE\\Wine");
 
         // Xen
-        key(brands::KVM, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_5853*");
+        key(brands::XEN, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_5853*");
         key(brands::XEN, "HKLM\\HARDWARE\\ACPI\\DSDT\\xen");
         key(brands::XEN, "HKLM\\HARDWARE\\ACPI\\FADT\\xen");
         key(brands::XEN, "HKLM\\HARDWARE\\ACPI\\RSDT\\xen");
@@ -7336,6 +7331,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for specific GPU string signatures related to VMs
      * @category Windows
      * @author Requiem (https://github.com/NotRequiem)
+     * @author dmfrpro (https://github.com/dmfrpro) (VDD detection)
      * @note utoshu did this with WMI in a removed technique (VM::GPU_CHIPTYPE)
      * @implements VM::GPU_VM_STRING
      */
@@ -7349,14 +7345,17 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             size_t length;       
         };
 
-        constexpr std::array<VMGpuInfo, 7> vm_gpu_names = { {
+        constexpr std::array<VMGpuInfo, 10> vm_gpu_names = { {
             { L"VMware SVGA 3D",                   brands::VMWARE,   14 },
             { L"VirtualBox Graphics Adapter",      brands::VBOX,     27 },
             { L"QXL GPU",                          brands::KVM,      7 },
             { L"VirGL 3D",                         brands::QEMU,     8 },
             { L"Microsoft Hyper-V Video",          brands::HYPERV,   23 },
             { L"Parallels Display Adapter (WDDM)", brands::PARALLELS, 32 },
-            { L"Bochs Graphics Adapter",           brands::BOCHS,    22 }
+            { L"Bochs Graphics Adapter",           brands::BOCHS,    22 },
+            { L"Bochs Graphics Adapter",           brands::BOCHS,    22 },
+            { L"Virtual Display Driver",           brands::NULL_BRAND,  22 },
+            { L"IddSampleDriver Device",           brands::NULL_BRAND,  22 }
         } };
 
         DISPLAY_DEVICEW dd{};
@@ -7375,8 +7374,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 const char* brand = entry.brand;
                 const size_t len = entry.length;
 #endif
-                if (deviceStrLen == len && wcscmp(deviceStr, name) == 0) {                  
-                    return core::add(brand);;
+                if (deviceStrLen == len && wcscmp(deviceStr, name) == 0) {   
+                    char* castedName = (char*)calloc(len, sizeof(char));
+                    size_t ret = wcstombs(castedName, name, len);
+                    castedName[ret] = '\0';
+                    return core::add(brand);
                 }
             }
 
@@ -7675,7 +7677,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             newParam.sched_priority = sched_get_priority_max(SCHED_FIFO);
 
             if (sched_setscheduler(0, SCHED_FIFO, &newParam) == -1) {
-                hasSchedPriority = false;
+                hasSchedPriority = false;  
             }
         }
 #endif
@@ -7946,7 +7948,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     ? (tscCore2 - tscCore1)
                     : (tscCore1 - tscCore2);
 
-                if (diff < tscSyncDiffThreshold) {
+                if (diff < tscSyncDiffThreshold) { 
                     tscIssueCount++;
                 }
             }
@@ -10773,8 +10775,6 @@ public: // START OF PUBLIC FUNCTIONS
         // brand is "Azure Hyper-V" instead of just "Hyper-V". So what
         // this section does is "merge" the brands together to form
         // a more accurate idea of the brand(s) involved.
-
-
         merge(TMP_AZURE, TMP_HYPERV,     TMP_AZURE);
         merge(TMP_AZURE, TMP_VPC,        TMP_AZURE);
         merge(TMP_AZURE, TMP_HYPERV_VPC, TMP_AZURE);
@@ -11035,112 +11035,112 @@ public: // START OF PUBLIC FUNCTIONS
      */
     [[nodiscard]] static std::string flag_to_string(const enum_flags flag) {
         switch (flag) {
-          case VMID: return "VMID";
-          case CPU_BRAND: return "CPU_BRAND";
-          case HYPERVISOR_BIT: return "HYPERVISOR_BIT";
-          case HYPERVISOR_STR: return "HYPERVISOR_STR";
-          case TIMER: return "TIMER";
-          case THREADCOUNT: return "THREADCOUNT";
-          case MAC: return "MAC";
-          case TEMPERATURE: return "TEMPERATURE";
-          case SYSTEMD: return "SYSTEMD";
-          case CVENDOR: return "CVENDOR";
-          case CTYPE: return "CTYPE";
-          case DOCKERENV: return "DOCKERENV";
-          case DMIDECODE: return "DMIDECODE";
-          case DMESG: return "DMESG";
-          case HWMON: return "HWMON";
-          case SIDT5: return "SIDT5";
-          case DLL: return "DLL";
-          case REGISTRY: return "REGISTRY";
-          case VM_FILES: return "VM_FILES";
-          case HWMODEL: return "HWMODEL";
-          case DISK_SIZE: return "DISK_SIZE";
-          case VBOX_DEFAULT: return "VBOX_DEFAULT";
-          case VBOX_NETWORK: return "VBOX_NETWORK";
-          case VM_PROCESSES: return "VM_PROCESSES";
-          case LINUX_USER_HOST: return "LINUX_USER_HOST";
-          case GAMARUE: return "GAMARUE";
-          case BOCHS_CPU: return "BOCHS_CPU";
-          case MSSMBIOS: return "MSSMBIOS";
-          case MAC_MEMSIZE: return "MAC_MEMSIZE";
-          case MAC_IOKIT: return "MAC_IOKIT";
-          case IOREG_GREP: return "IOREG_GREP";
-          case MAC_SIP: return "MAC_SIP";
-          case HKLM_REGISTRIES: return "HKLM_REGISTRIES";
-          case QEMU_GA: return "QEMU_GA";
-          case VPC_INVALID: return "VPC_INVALID";
-          case SIDT: return "SIDT";
-          case SGDT: return "SGDT";
-          case SLDT: return "SLDT";
-          case OFFSEC_SIDT: return "OFFSEC_SIDT";
-          case OFFSEC_SGDT: return "OFFSEC_SGDT";
-          case OFFSEC_SLDT: return "OFFSEC_SLDT";
-          case VPC_SIDT: return "VPC_SIDT";
-          case VMWARE_IOMEM: return "VMWARE_IOMEM";
-          case VMWARE_IOPORTS: return "VMWARE_IOPORTS";
-          case VMWARE_SCSI: return "VMWARE_SCSI";
-          case VMWARE_DMESG: return "VMWARE_DMESG";
-          case VMWARE_STR: return "VMWARE_STR";
-          case VMWARE_BACKDOOR: return "VMWARE_BACKDOOR";
-          case VMWARE_PORT_MEM: return "VMWARE_PORT_MEM";
-          case SMSW: return "SMSW";
-          case MUTEX: return "MUTEX";
-          case ODD_CPU_THREADS: return "ODD_CPU_THREADS";
-          case INTEL_THREAD_MISMATCH: return "INTEL_THREAD_MISMATCH";
-          case XEON_THREAD_MISMATCH: return "XEON_THREAD_MISMATCH";
-          case NETTITUDE_VM_MEMORY: return "NETTITUDE_VM_MEMORY";
-          case CUCKOO_DIR: return "CUCKOO_DIR";
-          case CUCKOO_PIPE: return "CUCKOO_PIPE";
-          case HYPERV_HOSTNAME: return "HYPERV_HOSTNAME";
-          case GENERAL_HOSTNAME: return "GENERAL_HOSTNAME";
-          case SCREEN_RESOLUTION: return "SCREEN_RESOLUTION";
-          case DEVICE_STRING: return "DEVICE_STRING";
-          case BLUESTACKS_FOLDERS: return "BLUESTACKS_FOLDERS";
-          case CPUID_SIGNATURE: return "CPUID_SIGNATURE";
-          case KVM_BITMASK: return "KVM_BITMASK";
-          case KGT_SIGNATURE: return "KGT_SIGNATURE";
-          case QEMU_VIRTUAL_DMI: return "QEMU_VIRTUAL_DMI";
-          case QEMU_USB: return "QEMU_USB";
-          case HYPERVISOR_DIR: return "HYPERVISOR_DIR";
-          case UML_CPU: return "UML_CPU";
-          case KMSG: return "KMSG";
-          case VM_PROCS: return "VM_PROCS";
-          case VBOX_MODULE: return "VBOX_MODULE";
-          case SYSINFO_PROC: return "SYSINFO_PROC";
-          case DEVICE_TREE: return "DEVICE_TREE";
-          case DMI_SCAN: return "DMI_SCAN";
-          case SMBIOS_VM_BIT: return "SMBIOS_VM_BIT";
-          case PODMAN_FILE: return "PODMAN_FILE";
-          case WSL_PROC: return "WSL_PROC";
-          case DRIVER_NAMES: return "DRIVER_NAMES";
-          case VM_SIDT: return "VM_SIDT";
-          case HDD_SERIAL: return "HDD_SERIAL";
-          case PORT_CONNECTORS: return "PORT_CONNECTORS";
-          case GPU_VM_STRINGS: return "GPU_STRINGS";
-          case GPU_CAPABILITIES: return "GPU_CAPABILITIES";
-          case VM_DEVICES: return "VM_DEVICES";
-          case PROCESSOR_NUMBER: return "PROCESSOR_NUMBER";
-          case NUMBER_OF_CORES: return "NUMBER_OF_CORES";
-          case ACPI_TEMPERATURE: return "ACPI_TEMPERATURE";
-          case SYS_QEMU: return "SYS_QEMU";
-          case LSHW_QEMU: return "LSHW_QEMU";
-          case VIRTUAL_PROCESSORS: return "VIRTUAL_PROCESSORS";
-          case HYPERV_QUERY: return "HYPERV_QUERY";
-          case BAD_POOLS: return "BAD_POOLS";
-          case AMD_SEV: return "AMD_SEV";
-          case AMD_THREAD_MISMATCH: return "AMD_THREAD_MISMATCH";
-          case NATIVE_VHD: return "NATIVE_VHD";
-          case VIRTUAL_REGISTRY: return "VIRTUAL_REGISTRY";
-          case FIRMWARE: return "FIRMWARE";
-          case FILE_ACCESS_HISTORY: return "FILE_ACCESS_HISTORY";
-          case AUDIO: return "AUDIO";
-          case UNKNOWN_MANUFACTURER: return "UNKNOWN_MANUFACTURER";
-          case OSXSAVE: return "OSXSAVE";
-          case NSJAIL_PID: return "NSJAIL_PID";
-          case PCI_VM: return "PCI_VM";
-          // ADD NEW CASE HERE FOR NEW TECHNIQUE
-          default: return "Unknown flag";
+            case VMID: return "VMID";
+            case CPU_BRAND: return "CPU_BRAND";
+            case HYPERVISOR_BIT: return "HYPERVISOR_BIT";
+            case HYPERVISOR_STR: return "HYPERVISOR_STR";
+            case TIMER: return "TIMER";
+            case THREADCOUNT: return "THREADCOUNT";
+            case MAC: return "MAC";
+            case TEMPERATURE: return "TEMPERATURE";
+            case SYSTEMD: return "SYSTEMD";
+            case CVENDOR: return "CVENDOR";
+            case CTYPE: return "CTYPE";
+            case DOCKERENV: return "DOCKERENV";
+            case DMIDECODE: return "DMIDECODE";
+            case DMESG: return "DMESG";
+            case HWMON: return "HWMON";
+            case SIDT5: return "SIDT5";
+            case DLL: return "DLL";
+            case REGISTRY: return "REGISTRY";
+            case VM_FILES: return "VM_FILES";
+            case HWMODEL: return "HWMODEL";
+            case DISK_SIZE: return "DISK_SIZE";
+            case VBOX_DEFAULT: return "VBOX_DEFAULT";
+            case VBOX_NETWORK: return "VBOX_NETWORK";
+            case VM_PROCESSES: return "VM_PROCESSES";
+            case LINUX_USER_HOST: return "LINUX_USER_HOST";
+            case GAMARUE: return "GAMARUE";
+            case BOCHS_CPU: return "BOCHS_CPU";
+            case MSSMBIOS: return "MSSMBIOS";
+            case MAC_MEMSIZE: return "MAC_MEMSIZE";
+            case MAC_IOKIT: return "MAC_IOKIT";
+            case IOREG_GREP: return "IOREG_GREP";
+            case MAC_SIP: return "MAC_SIP";
+            case HKLM_REGISTRIES: return "HKLM_REGISTRIES";
+            case QEMU_GA: return "QEMU_GA";
+            case VPC_INVALID: return "VPC_INVALID";
+            case SIDT: return "SIDT";
+            case SGDT: return "SGDT";
+            case SLDT: return "SLDT";
+            case OFFSEC_SIDT: return "OFFSEC_SIDT";
+            case OFFSEC_SGDT: return "OFFSEC_SGDT";
+            case OFFSEC_SLDT: return "OFFSEC_SLDT";
+            case VPC_SIDT: return "VPC_SIDT";
+            case VMWARE_IOMEM: return "VMWARE_IOMEM";
+            case VMWARE_IOPORTS: return "VMWARE_IOPORTS";
+            case VMWARE_SCSI: return "VMWARE_SCSI";
+            case VMWARE_DMESG: return "VMWARE_DMESG";
+            case VMWARE_STR: return "VMWARE_STR";
+            case VMWARE_BACKDOOR: return "VMWARE_BACKDOOR";
+            case VMWARE_PORT_MEM: return "VMWARE_PORT_MEM";
+            case SMSW: return "SMSW";
+            case MUTEX: return "MUTEX";
+            case ODD_CPU_THREADS: return "ODD_CPU_THREADS";
+            case INTEL_THREAD_MISMATCH: return "INTEL_THREAD_MISMATCH";
+            case XEON_THREAD_MISMATCH: return "XEON_THREAD_MISMATCH";
+            case NETTITUDE_VM_MEMORY: return "NETTITUDE_VM_MEMORY";
+            case CUCKOO_DIR: return "CUCKOO_DIR";
+            case CUCKOO_PIPE: return "CUCKOO_PIPE";
+            case HYPERV_HOSTNAME: return "HYPERV_HOSTNAME";
+            case GENERAL_HOSTNAME: return "GENERAL_HOSTNAME";
+            case SCREEN_RESOLUTION: return "SCREEN_RESOLUTION";
+            case DEVICE_STRING: return "DEVICE_STRING";
+            case BLUESTACKS_FOLDERS: return "BLUESTACKS_FOLDERS";
+            case CPUID_SIGNATURE: return "CPUID_SIGNATURE";
+            case KVM_BITMASK: return "KVM_BITMASK";
+            case KGT_SIGNATURE: return "KGT_SIGNATURE";
+            case QEMU_VIRTUAL_DMI: return "QEMU_VIRTUAL_DMI";
+            case QEMU_USB: return "QEMU_USB";
+            case HYPERVISOR_DIR: return "HYPERVISOR_DIR";
+            case UML_CPU: return "UML_CPU";
+            case KMSG: return "KMSG";
+            case VM_PROCS: return "VM_PROCS";
+            case VBOX_MODULE: return "VBOX_MODULE";
+            case SYSINFO_PROC: return "SYSINFO_PROC";
+            case DEVICE_TREE: return "DEVICE_TREE";
+            case DMI_SCAN: return "DMI_SCAN";
+            case SMBIOS_VM_BIT: return "SMBIOS_VM_BIT";
+            case PODMAN_FILE: return "PODMAN_FILE";
+            case WSL_PROC: return "WSL_PROC";
+            case DRIVER_NAMES: return "DRIVER_NAMES";
+            case VM_SIDT: return "VM_SIDT";
+            case HDD_SERIAL: return "HDD_SERIAL";
+            case PORT_CONNECTORS: return "PORT_CONNECTORS";
+            case GPU_VM_STRINGS: return "GPU_STRINGS";
+            case GPU_CAPABILITIES: return "GPU_CAPABILITIES";
+            case VM_DEVICES: return "VM_DEVICES";
+            case PROCESSOR_NUMBER: return "PROCESSOR_NUMBER";
+            case NUMBER_OF_CORES: return "NUMBER_OF_CORES";
+            case ACPI_TEMPERATURE: return "ACPI_TEMPERATURE";
+            case SYS_QEMU: return "SYS_QEMU";
+            case LSHW_QEMU: return "LSHW_QEMU";
+            case VIRTUAL_PROCESSORS: return "VIRTUAL_PROCESSORS";
+            case HYPERV_QUERY: return "HYPERV_QUERY";
+            case BAD_POOLS: return "BAD_POOLS";
+            case AMD_SEV: return "AMD_SEV";
+            case AMD_THREAD_MISMATCH: return "AMD_THREAD_MISMATCH";
+            case NATIVE_VHD: return "NATIVE_VHD";
+            case VIRTUAL_REGISTRY: return "VIRTUAL_REGISTRY";
+            case FIRMWARE: return "FIRMWARE";
+            case FILE_ACCESS_HISTORY: return "FILE_ACCESS_HISTORY";
+            case AUDIO: return "AUDIO";
+            case UNKNOWN_MANUFACTURER: return "UNKNOWN_MANUFACTURER";
+            case OSXSAVE: return "OSXSAVE";
+            case NSJAIL_PID: return "NSJAIL_PID";
+            case PCI_VM: return "PCI_VM";
+            // ADD NEW CASE HERE FOR NEW TECHNIQUE
+            default: return "Unknown flag";
         }
     }
 
