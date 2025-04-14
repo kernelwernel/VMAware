@@ -465,7 +465,6 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::IOREG_GREP` | Check for VM-strings in ioreg commands for MacOS | MacOS | 100% |  |  |  |  |
 | `VM::MAC_SIP` | Check if System Integrity Protection is disabled (likely a VM if it is) | MacOS | 40% |  |  |  |  |
 | `VM::HKLM_REGISTRIES` | Check HKLM registries for specific VM strings | Windows | 25% |  |  |  |  |
-| `VM::QEMU_GA` | Check for "qemu-ga" process | Linux | 10% |  |  |  |  |
 | `VM::VPC_INVALID` | Check for official VPC method | Windows | 75% |  |  | 32-bit |  |
 | `VM::SIDT` | Check for sidt instruction method | Windows | 25% |  |  |  |  |
 | `VM::SGDT` | Check for sgdt instruction method | Windows | 30% |  |  | 32-bit |  |
