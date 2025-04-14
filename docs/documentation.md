@@ -465,7 +465,6 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::IOREG_GREP` | Check for VM-strings in ioreg commands for MacOS | MacOS | 100% |  |  |  |  |
 | `VM::MAC_SIP` | Check if System Integrity Protection is disabled (likely a VM if it is) | MacOS | 40% |  |  |  |  |
 | `VM::HKLM_REGISTRIES` | Check HKLM registries for specific VM strings | Windows | 25% |  |  |  |  |
-| `VM::QEMU_GA` | Check for "qemu-ga" process | Linux | 10% |  |  |  |  |
 | `VM::VPC_INVALID` | Check for official VPC method | Windows | 75% |  |  | 32-bit |  |
 | `VM::SIDT` | Check for sidt instruction method | Windows | 25% |  |  |  |  |
 | `VM::SGDT` | Check for sgdt instruction method | Windows | 30% |  |  | 32-bit |  |
@@ -514,7 +513,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::ANYRUN_DIRECTORY` | Check for any.run directory and handle the status code | Windows | 35% |  |  |  |  | Removed from the lib, only available in the CLI |
 | `VM::DRIVER_NAMES` | Check for VM-specific names for drivers | Windows | 100% |  |  |  |  |
 | `VM::VM_SIDT` | Check for unknown IDT base address | Windows | 100% |  |  |  |  |
-| `VM::HDD_SERIAL` | Check for serial numbers of virtual disks | Windows | 100% |  |  |  |  |
+| `VM::DISK_SERIAL` | Check for serial numbers of virtual disks | Windows | 100% |  |  |  |  |
 | `VM::PORT_CONNECTORS` | Check for physical connection ports | Windows | 25% |  |  |  | This technique is known to false flag on devices like Surface Pro |
 | `VM::GPU_CAPABILITIES` | Check for GPU capabilities related to VMs | Windows | 100% | Admin |  |  | Admin only needed for some heuristics |
 | `VM::GPU_VM_STRINGS` | Check for specific GPU string signatures related to VMs | Windows | 100% |  |  |  | If GPU_CAPABILITIES also flags, the overall score will be 50 instead of 100 |
