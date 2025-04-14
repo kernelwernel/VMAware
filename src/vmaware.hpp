@@ -589,7 +589,6 @@ public:
         IOREG_GREP,
         MAC_SIP,
         HKLM_REGISTRIES,
-        QEMU_GA,
         VPC_INVALID,
         SIDT,
         SGDT,
@@ -636,7 +635,7 @@ public:
         WSL_PROC,
         DRIVER_NAMES,
         VM_SIDT,
-        HDD_SERIAL,
+        DISK_SERIAL,
         PORT_CONNECTORS,
         GPU_VM_STRINGS,
         GPU_CAPABILITIES,
@@ -1743,7 +1742,7 @@ private:
 #endif
         }
 
-        // get available memory space
+        // Get available memory space
         [[nodiscard]] static u64 get_memory_space() {
 #if (WINDOWS)
             MEMORYSTATUSEX statex = { 0 };
@@ -3655,9 +3654,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::VM_PROCESSES
      */
     [[nodiscard]] static bool vm_processes() {
-    #if (!WINDOWS)
-        return false;
-    #else
+#if (WINDOWS)
         const auto runningProcesses = util::get_running_process_names();
 
         if (runningProcesses.count("joeboxserver.exe") || runningProcesses.count("joeboxcontrol.exe")) {
@@ -3670,7 +3667,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return core::add(brands::PARALLELS);
         }
 
-        if (runningProcesses.count("vboxservice.exe") || runningProcesses.count("vboxtray.exe")) {
+        if (runningProcesses.count("vboxservice.exe") || runningProcesses.count("vboxtray.exe") || runningProcesses.count("VBoxControl.exe")) {
             debug("VM_PROCESSES: Detected VBox process.");
             return core::add(brands::VBOX);
         }
@@ -3694,13 +3691,23 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         if (runningProcesses.count("vdagent.exe") ||
             runningProcesses.count("vdservice.exe") ||
-            runningProcesses.count("qemuwmi.exe")) {
+            runningProcesses.count("qemuwmi.exe") || 
+            runningProcesses.count("looking-glass-host.exe")) {
             debug("VM_PROCESSES: Detected QEMU process.");
             return core::add(brands::QEMU);
         }
 
+        if (runningProcesses.count("VDDSysTray.exe")) {
+            return true;
+        }
+
+#elif (LINUX)
+        if (util::is_proc_running("qemu_ga")) {
+            debug("VM_PROCESSES: Detected QEMU guest agent process.");
+            return core::add(brands::QEMU);
+        }
+#endif
         return false;
-    #endif
     }
 
 
@@ -4328,26 +4335,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         check_key(brands::XEN, "HARDWARE\\Description\\System\\BIOS", "SystemProductName", "Xen");
 
         return (count > 0);
-#endif
-    }
-
-
-    /**
-     * @brief Check for "qemu-ga" process
-     * @category Linux
-     * @implements VM::QEMU_GA
-     */
-    [[nodiscard]] static bool qemu_ga() {
-#if (!LINUX)
-        return false;
-#else
-        constexpr const char* process = "qemu-ga";
-
-        if (util::is_proc_running(process)) {
-            return core::add(brands::QEMU);
-        }
-
-        return false;
 #endif
     }
 
@@ -7398,9 +7385,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Windows
      * @author Requiem (https://github.com/NotRequiem)
      * @note VMware can't be flagged without also flagging legitimate devices
-     * @implements VM::HDD_SERIAL
+     * @implements VM::DISK_SERIAL
      */
-    [[nodiscard]] static bool hdd_serial_number() {
+    [[nodiscard]] static bool disk_serial_number() {
 #if (!WINDOWS)
         return false;
 #else
@@ -7842,10 +7829,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::TIMER
      */
 #if defined(MSVC)
-#pragma optimize("", off)
-#elif defined(__GNUC__)
-#pragma GCC push_options
-#pragma GCC optimize("O0")
+    #pragma optimize("", off)
+#elif defined(CLANG)
+    #pragma clang optimize off
+#elif defined(GCC)
+    #pragma GCC push_options
+    #pragma GCC optimize("O0")
 #endif
     [[nodiscard]]
 #if (LINUX)
@@ -7855,17 +7844,21 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (ARM || !x86)
         return false;
 #else
-        constexpr u8 classicIterations = 10;           // Number of iterations for the classic RDTSC check
-        constexpr u16 classicThreshold = 20000u;          // Cycle threshold per iteration for classic RDTSC check
-        constexpr u8 requiredClassicSpikes = classicIterations / 2; // At least 50% of iterations must spike
+        if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
+            return false;
+        }
+
+        constexpr u8 rdtscIterations = 10;           // Number of iterations for the classic RDTSC check
+        constexpr u16 rdtscThreshold = 6000;          // Cycle threshold per iteration for classic RDTSC check
+        constexpr u8 requiredClassicSpikes = rdtscIterations / 2; // At least 50% of iterations must spike
 
         constexpr u16 spammerIterations = 1000;           // Iterations for the multi-CPU/spammer check
-        constexpr u16 spammerAvgThreshold = 20000u;         // Average cycle threshold for the spammer check
+        constexpr u16 spammerAvgThreshold = 1500;         // Average cycle threshold for the spammer check
 
 #if (WINDOWS)
-        constexpr u16 qpcRatioThreshold = 3000;           // QPC ratio threshold
+        constexpr u16 qpcRatioThreshold = 70;           // QPC ratio threshold
         constexpr u8 tscIterations = 10;                 // Number of iterations for the TSC synchronization check
-        constexpr u16 tscSyncDiffThreshold = 500;  // TSC difference threshold
+        constexpr u16 tscSyncDiffThreshold = 5000;  // TSC difference threshold
 #endif
 
         // to minimize context switching/scheduling
@@ -7896,7 +7889,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #else
             sched_setscheduler(0, oldPolicy, &oldParam);
 #endif
-            };
+        };
 
         // --- 1. Classic Timing Check (rdtsc + cpuid + rdtsc) ---
 #ifdef __VMAWARE_DEBUG__
@@ -7913,8 +7906,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
 
 #if (WINDOWS)
+        bool notaligned = false;
         flushBuffer = (char*)_aligned_malloc(kBufferSize, kAlignment);
         if (!flushBuffer) {
+            notaligned = true;
             flushBuffer = new (std::nothrow) char[kBufferSize];
         }
 #elif (LINUX || APPLE)
@@ -7930,7 +7925,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         constexpr size_t segmentsCount = 8; // basically 1/8 of the buffer per iteration
         constexpr size_t segmentSize = kBufferSize / segmentsCount;
         int spikeCount = 0;
-        for (int i = 0; i < classicIterations; i++) {
+        for (int i = 0; i < rdtscIterations; i++) {
             u64 start = __rdtsc();
 #if (WINDOWS)
             int cpu_info[4];
@@ -7946,7 +7941,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #ifdef __VMAWARE_DEBUG__
             totalCycles += cycles;
 #endif
-            if (cycles >= classicThreshold) {
+            if (cycles >= rdtscThreshold) {
                 spikeCount++;
             }
             // Instead of flushing the entire buffer every iteration (which would decrease performance a lot),
@@ -7956,25 +7951,30 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             size_t offsetEnd = offsetStart + segmentSize;
 
             // this detection works better when inducing cache flushing without thread sleeps
-            for (size_t j = offsetStart; j < offsetEnd; j += 64) {
-                flushBuffer[j] = static_cast<char>(j);
+            if (flushBuffer) {
+                for (size_t j = offsetStart; j < offsetEnd; j += 64) {
+                    flushBuffer[j] = static_cast<char>(j);
 #if defined(x86) && (defined(GCC) || defined(CLANG) || defined(MSVC))
-                COMPILER_BARRIER();
-                // _mm_clflushopt not available on some systems
-                _mm_clflush(reinterpret_cast<const void*>(&flushBuffer[j]));
+                    COMPILER_BARRIER();
+                    // _mm_clflushopt not available on some systems
+                    _mm_clflush(reinterpret_cast<const void*>(&flushBuffer[j]));
 #endif
+                }
             }
         }
 #if (WINDOWS)
-        _aligned_free((void*)flushBuffer);
+        if (notaligned)
+            delete[] flushBuffer;
+        else
+            _aligned_free((void*)flushBuffer);
 #else
         free((void*)flushBuffer);
 #endif
 
 #ifdef __VMAWARE_DEBUG__
-        const double averageCycles = static_cast<double>(totalCycles) / classicIterations;
+        const double averageCycles = static_cast<double>(totalCycles) / rdtscIterations;
         debug("TIMER: RDTSC check - Average cycles: ", averageCycles,
-            " (Threshold per sample: ", classicThreshold,
+            " (Threshold per sample: ", rdtscThreshold,
             ") - Spike count: ", spikeCount);
 #endif
 
@@ -8182,9 +8182,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
 #if defined(MSVC)
-#pragma optimize("", on)
-#elif defined(__GNUC__)
-#pragma GCC pop_options
+    #pragma optimize("", on)
+#elif defined(CLANG)
+    #pragma clang optimize on
+#elif defined(GCC)
+    #pragma GCC pop_options
 #endif
 
 
@@ -11283,7 +11285,6 @@ public: // START OF PUBLIC FUNCTIONS
             case IOREG_GREP: return "IOREG_GREP";
             case MAC_SIP: return "MAC_SIP";
             case HKLM_REGISTRIES: return "HKLM_REGISTRIES";
-            case QEMU_GA: return "QEMU_GA";
             case VPC_INVALID: return "VPC_INVALID";
             case SIDT: return "SIDT";
             case SGDT: return "SGDT";
@@ -11330,7 +11331,7 @@ public: // START OF PUBLIC FUNCTIONS
             case WSL_PROC: return "WSL_PROC";
             case DRIVER_NAMES: return "DRIVER_NAMES";
             case VM_SIDT: return "VM_SIDT";
-            case HDD_SERIAL: return "HDD_SERIAL";
+            case DISK_SERIAL: return "DISK_SERIAL";
             case PORT_CONNECTORS: return "PORT_CONNECTORS";
             case GPU_VM_STRINGS: return "GPU_STRINGS";
             case GPU_CAPABILITIES: return "GPU_CAPABILITIES";
@@ -11843,7 +11844,6 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     std::make_pair(VM::IOREG_GREP, VM::core::technique(100, VM::ioreg_grep)),
     std::make_pair(VM::MAC_SIP, VM::core::technique(40, VM::mac_sip)),
     std::make_pair(VM::HKLM_REGISTRIES, VM::core::technique(25, VM::hklm_registries)),
-    std::make_pair(VM::QEMU_GA, VM::core::technique(10, VM::qemu_ga)),
     std::make_pair(VM::VPC_INVALID, VM::core::technique(75, VM::vpc_invalid)),
     std::make_pair(VM::SIDT, VM::core::technique(25, VM::sidt)),
     std::make_pair(VM::SGDT, VM::core::technique(30, VM::sgdt)),
@@ -11891,7 +11891,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     std::make_pair(VM::WSL_PROC, VM::core::technique(30, VM::wsl_proc_subdir)),
     std::make_pair(VM::DRIVER_NAMES, VM::core::technique(100, VM::driver_names)),
     std::make_pair(VM::VM_SIDT, VM::core::technique(100, VM::vm_sidt)),
-    std::make_pair(VM::HDD_SERIAL, VM::core::technique(100, VM::hdd_serial_number)),
+    std::make_pair(VM::DISK_SERIAL, VM::core::technique(100, VM::disk_serial_number)),
     std::make_pair(VM::PORT_CONNECTORS, VM::core::technique(25, VM::port_connectors)),
     std::make_pair(VM::GPU_VM_STRINGS, VM::core::technique(100, VM::gpu_vm_strings)),
     std::make_pair(VM::GPU_CAPABILITIES, VM::core::technique(100, VM::gpu_capabilities)),
