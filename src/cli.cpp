@@ -352,10 +352,10 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::HWMON:
             case VM::SIDT5:
             case VM::DISK_SIZE:
-            case VM::VM_PROCESSES:
             case VM::VBOX_DEFAULT:
             case VM::LINUX_USER_HOST:
             case VM::BOCHS_CPU:
+            case VM::QEMU_GA:
             case VM::SIDT:
             case VM::VMWARE_IOMEM:
             case VM::VMWARE_IOPORTS:
@@ -907,6 +907,7 @@ void general() {
     checker(VM::KVM_DIRS, "KVM directories");
     checker(VM::HKLM_REGISTRIES, "registry values");
     checker(VM::AUDIO, "audio device");
+    checker(VM::QEMU_GA, "qemu-ga process");
     checker(VM::QEMU_DIR, "QEMU directories");
     checker(VM::VPC_INVALID, "VPC invalid instructions");
     checker(VM::SIDT, "SIDT");
