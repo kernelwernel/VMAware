@@ -3078,7 +3078,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         key(brands::WINE, "HKLM\\SOFTWARE\\Wine");
 
         // Xen
-        key(brands::KVM, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_5853*");
+        key(brands::XEN, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_5853*");
         key(brands::XEN, "HKLM\\HARDWARE\\ACPI\\DSDT\\xen");
         key(brands::XEN, "HKLM\\HARDWARE\\ACPI\\FADT\\xen");
         key(brands::XEN, "HKLM\\HARDWARE\\ACPI\\RSDT\\xen");
@@ -7533,6 +7533,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for specific GPU string signatures related to VMs
      * @category Windows
      * @author Requiem (https://github.com/NotRequiem)
+     * @author dmfrpro (https://github.com/dmfrpro) (VDD detection)
      * @note utoshu did this with WMI in a removed technique (VM::GPU_CHIPTYPE)
      * @implements VM::GPU_VM_STRING
      */
@@ -7546,14 +7547,17 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             size_t length;       
         };
 
-        constexpr std::array<VMGpuInfo, 7> vm_gpu_names = { {
+        constexpr std::array<VMGpuInfo, 10> vm_gpu_names = { {
             { L"VMware SVGA 3D",                   brands::VMWARE,   14 },
             { L"VirtualBox Graphics Adapter",      brands::VBOX,     27 },
             { L"QXL GPU",                          brands::KVM,      7 },
             { L"VirGL 3D",                         brands::QEMU,     8 },
             { L"Microsoft Hyper-V Video",          brands::HYPERV,   23 },
             { L"Parallels Display Adapter (WDDM)", brands::PARALLELS, 32 },
-            { L"Bochs Graphics Adapter",           brands::BOCHS,    22 }
+            { L"Bochs Graphics Adapter",           brands::BOCHS,    22 },
+            { L"Bochs Graphics Adapter",           brands::BOCHS,    22 },
+            { L"Virtual Display Driver",           brands::NULL_BRAND,  22 },
+            { L"IddSampleDriver Device",           brands::NULL_BRAND,  22 }
         } };
 
         DISPLAY_DEVICEW dd{};
@@ -7572,8 +7576,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 const char* brand = entry.brand;
                 const size_t len = entry.length;
 #endif
-                if (deviceStrLen == len && wcscmp(deviceStr, name) == 0) {                  
-                    return core::add(brand);;
+                if (deviceStrLen == len && wcscmp(deviceStr, name) == 0) {   
+                    char* castedName = (char*)calloc(len, sizeof(char));
+                    size_t ret = wcstombs(castedName, name, len);
+                    castedName[ret] = '\0';
+                    return core::add(brand);
                 }
             }
 

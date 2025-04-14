@@ -384,15 +384,10 @@
 #include <psapi.h>
 #include <shlwapi.h>
 #include <shlobj_core.h>
-#include <dshow.h>
-#include <io.h>
 #include <winspool.h>
 #include <powerbase.h>
 #include <setupapi.h>
-#include <mmdeviceapi.h>
-#include <Functiondiscoverykeys_devpkey.h>
 #include <mmsystem.h>
-#include <queue>
 #include <dxgi.h>
 #include <d3d9.h>
 
@@ -3099,7 +3094,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         key(brands::WINE, "HKLM\\SOFTWARE\\Wine");
 
         // Xen
-        key(brands::KVM, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_5853*");
+        key(brands::XEN, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_5853*");
         key(brands::XEN, "HKLM\\HARDWARE\\ACPI\\DSDT\\xen");
         key(brands::XEN, "HKLM\\HARDWARE\\ACPI\\FADT\\xen");
         key(brands::XEN, "HKLM\\HARDWARE\\ACPI\\RSDT\\xen");
@@ -7323,6 +7318,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for specific GPU string signatures related to VMs
      * @category Windows
      * @author Requiem (https://github.com/NotRequiem)
+     * @author dmfrpro (https://github.com/dmfrpro) (VDD detection)
      * @note utoshu did this with WMI in a removed technique (VM::GPU_CHIPTYPE)
      * @implements VM::GPU_VM_STRING
      */
@@ -7336,14 +7332,17 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             size_t length;       
         };
 
-        constexpr std::array<VMGpuInfo, 7> vm_gpu_names = { {
+        constexpr std::array<VMGpuInfo, 10> vm_gpu_names = { {
             { L"VMware SVGA 3D",                   brands::VMWARE,   14 },
             { L"VirtualBox Graphics Adapter",      brands::VBOX,     27 },
             { L"QXL GPU",                          brands::KVM,      7 },
             { L"VirGL 3D",                         brands::QEMU,     8 },
             { L"Microsoft Hyper-V Video",          brands::HYPERV,   23 },
             { L"Parallels Display Adapter (WDDM)", brands::PARALLELS, 32 },
-            { L"Bochs Graphics Adapter",           brands::BOCHS,    22 }
+            { L"Bochs Graphics Adapter",           brands::BOCHS,    22 },
+            { L"Bochs Graphics Adapter",           brands::BOCHS,    22 },
+            { L"Virtual Display Driver",           brands::NULL_BRAND,  22 },
+            { L"IddSampleDriver Device",           brands::NULL_BRAND,  22 }
         } };
 
         DISPLAY_DEVICEW dd{};
@@ -7362,8 +7361,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 const char* brand = entry.brand;
                 const size_t len = entry.length;
 #endif
-                if (deviceStrLen == len && wcscmp(deviceStr, name) == 0) {                  
-                    return core::add(brand);;
+                if (deviceStrLen == len && wcscmp(deviceStr, name) == 0) {   
+                    char* castedName = (char*)calloc(len, sizeof(char));
+                    size_t ret = wcstombs(castedName, name, len);
+                    castedName[ret] = '\0';
+                    return core::add(brand);
                 }
             }
 
@@ -7668,7 +7670,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             newParam.sched_priority = sched_get_priority_max(SCHED_FIFO);
 
             if (sched_setscheduler(0, SCHED_FIFO, &newParam) == -1) {
-                hasSchedPriority = false;
+                hasSchedPriority = false;  
             }
         }
 #endif
@@ -7946,7 +7948,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     ? (tscCore2 - tscCore1)
                     : (tscCore1 - tscCore2);
 
-                if (diff < tscSyncDiffThreshold) {
+                if (diff < tscSyncDiffThreshold) { 
                     tscIssueCount++;
                 }
             }
@@ -10775,8 +10777,6 @@ public: // START OF PUBLIC FUNCTIONS
         // brand is "Azure Hyper-V" instead of just "Hyper-V". So what
         // this section does is "merge" the brands together to form
         // a more accurate idea of the brand(s) involved.
-
-
         merge(TMP_AZURE, TMP_HYPERV,     TMP_AZURE);
         merge(TMP_AZURE, TMP_VPC,        TMP_AZURE);
         merge(TMP_AZURE, TMP_HYPERV_VPC, TMP_AZURE);
