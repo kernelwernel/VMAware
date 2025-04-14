@@ -53,10 +53,10 @@
  * - struct for internal cpu operations        => line 756
  * - struct for internal memoization           => line 1227
  * - struct for internal utility functions     => line 1351
- * - struct for internal core components       => line 9801
+ * - struct for internal core components       => line 9804
  * - start of VM detection technique list      => line 2337
- * - start of public VM detection functions    => line 10465
- * - start of externally defined variables     => line 11403
+ * - start of public VM detection functions    => line 10468
+ * - start of externally defined variables     => line 11406
  *
  *
  * ============================== EXAMPLE ===================================
@@ -3410,7 +3410,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             const size_t len;
         };
 
-        constexpr std::array<VMProcess, 17> vm_processes_names = { {
+        constexpr std::array<VMProcess, 19> vm_processes_names = { {
             { "joeboxserver.exe",       brands::JOEBOX, 16 },
             { "joeboxcontrol.exe",      brands::JOEBOX, 17 },
 
@@ -3434,6 +3434,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             { "vdagent.exe",            brands::QEMU, 11 },
             { "vdservice.exe",          brands::QEMU, 13 },
             { "qemuwmi.exe",            brands::QEMU, 11 },
+            { "looking-glass-host.exe", brands::QEMU, 22 },
+
+            { "VDDSysTray.exe",         brands::NULL_BRAND, 14 },
         } };
 
         for (auto vm_process : vm_processes_names) {
