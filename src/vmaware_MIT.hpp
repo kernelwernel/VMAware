@@ -49,14 +49,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 578
- * - struct for internal cpu operations        => line 762
- * - struct for internal memoization           => line 1233
- * - struct for internal utility functions     => line 1357
- * - struct for internal core components       => line 9857
- * - start of VM detection technique list      => line 2384
- * - start of public VM detection functions    => line 10521
- * - start of externally defined variables     => line 11462
+ * - enums for publicly accessible techniques  => line 573
+ * - struct for internal cpu operations        => line 756
+ * - struct for internal memoization           => line 1227
+ * - struct for internal utility functions     => line 1351
+ * - struct for internal core components       => line 9804
+ * - start of VM detection technique list      => line 2337
+ * - start of public VM detection functions    => line 10468
+ * - start of externally defined variables     => line 11406
  *
  *
  * ============================== EXAMPLE ===================================
@@ -390,6 +390,7 @@
 #include <mmsystem.h>
 #include <dxgi.h>
 #include <d3d9.h>
+#include <tlhelp32.h>
 
 #pragma comment(lib, "dxgi.lib")
 #pragma comment(lib, "d3d9.lib")
@@ -604,7 +605,6 @@ public:
         IOREG_GREP,
         MAC_SIP,
         HKLM_REGISTRIES,
-        QEMU_GA,
         VPC_INVALID,
         SIDT,
         SGDT,
@@ -1758,7 +1758,7 @@ private:
 #endif
         }
 
-        // Get available memory space
+        // get available memory space
         [[nodiscard]] static u64 get_memory_space() {
 #if (WINDOWS)
             MEMORYSTATUSEX statex = { 0 };
@@ -1784,31 +1784,28 @@ private:
         }
 
         // Checks if a process is running
-        [[nodiscard]] static bool is_proc_running(const char* executable) {
+        [[nodiscard]] static bool is_proc_running(const char* executable, size_t len) {
 #if (WINDOWS)
-            DWORD processes[1024], bytesReturned;
-
-            if (!K32EnumProcesses(processes, sizeof(processes), &bytesReturned))
-                return false;
-
-            DWORD numProcesses = bytesReturned / sizeof(DWORD);
-
-            for (DWORD i = 0; i < numProcesses; ++i) {
-                const HANDLE process = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, processes[i]);
-                if (process != nullptr) {
-                    char processName[MAX_PATH] = { 0 };
-                    if (K32GetModuleBaseNameA(process, nullptr, processName, sizeof(processName))) {
-                        if (_stricmp(processName, executable) == 0) {
-                            CloseHandle(process);
+            HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+            
+            if (hSnapshot != INVALID_HANDLE_VALUE) {
+                PROCESSENTRY32 processEntry;
+                processEntry.dwSize = sizeof(PROCESSENTRY32);
+                
+                if (Process32First(hSnapshot, &processEntry)) {
+                    do {
+                        if (strncmp(processEntry.szExeFile, executable, len) == 0) {
+                            CloseHandle(hSnapshot);
                             return true;
                         }
-                    }
-                    CloseHandle(process);
+                    } while (Process32Next(hSnapshot, &processEntry));
                 }
+                
+                CloseHandle(hSnapshot);
             }
 
-            return false;
 #elif (LINUX)
+            (void *)len;
 #if (CPP >= 17)
             for (const auto& entry : std::filesystem::directory_iterator("/proc")) {
                 if (!(entry.is_directory())) {
@@ -1817,7 +1814,6 @@ private:
 
                 const std::string filename = entry.path().filename().string();
 #else
-            //DIR* dir = opendir("/proc/");
             std::unique_ptr<DIR, decltype(&closedir)> dir(opendir("/proc"), closedir);
             if (!dir) {
                 debug("util::is_proc_running: ", "failed to open /proc directory");
@@ -1849,13 +1845,9 @@ private:
                     continue;
                 }
 
-                //std::cout << "\n\nLINE = " << line << "\n";
                 if (line.find(executable) == std::string::npos) {
-                    //std::cout << "skipped\n";
                     continue;
                 }
-
-                //std::cout << "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nNOT SKIPPED\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n";
 
                 const std::size_t slash_index = line.find_last_of('/');
 
@@ -1874,43 +1866,11 @@ private:
                 if (line != executable) {
                     continue;
                 }
-                //#if (CPP < 17)
-                //                closedir(dir);
-                //                free(dir);
-                //#endif
+
                 return true;
             }
-
-            return false;
-#else
-            return false;
 #endif
-        }
-
-        // Returns a list of running process names
-        [[nodiscard]] static std::unordered_set<std::string> get_running_process_names() {
-            std::unordered_set<std::string> processNames;
-#if (WINDOWS)
-            DWORD processes[1024], bytesReturned;
-
-            if (!K32EnumProcesses(processes, sizeof(processes), &bytesReturned)) {
-                return processNames;
-            }
-
-            DWORD numProcesses = bytesReturned / sizeof(DWORD);
-            char processName[MAX_PATH];
-
-            for (DWORD i = 0; i < numProcesses; ++i) {
-                HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, processes[i]);
-                if (hProcess != nullptr) {
-                    if (K32GetModuleBaseNameA(hProcess, nullptr, processName, sizeof(processName))) {
-                        processNames.insert(processName);
-                    }
-                    CloseHandle(hProcess);
-                }
-            }
-#endif
-            return processNames;
+            return false;
         }
 
         // Retrieves the computer name
@@ -1932,7 +1892,6 @@ private:
 
             return std::string();
         }
-
 
         /**
          * @brief Checks whether the system is running in a Hyper-V virtual machine or if the host system has Hyper-V enabled
@@ -3434,58 +3393,66 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
 
 
+
+
     /**
      * @brief Check for any VM processes that are active
      * @category Windows
      * @implements VM::VM_PROCESSES
      */
     [[nodiscard]] static bool vm_processes() {
-#if (!WINDOWS)
-        return false;
-#else
-        const auto runningProcesses = util::get_running_process_names();
+        bool res = false;
 
-        if (runningProcesses.count("joeboxserver.exe") || runningProcesses.count("joeboxcontrol.exe")) {
-            debug("VM_PROCESSES: Detected JoeBox process.");
-            return core::add(brands::JOEBOX);
+#if (WINDOWS)
+        struct VMProcess {
+            const char* name;  
+            const char* brand;
+            const size_t len;
+        };
+
+        constexpr std::array<VMProcess, 19> vm_processes_names = { {
+            { "joeboxserver.exe",       brands::JOEBOX, 16 },
+            { "joeboxcontrol.exe",      brands::JOEBOX, 17 },
+
+            { "prl_cc.exe",             brands::PARALLELS, 10 },
+            { "prl_tools.exe",          brands::PARALLELS, 13 },
+
+            { "vboxservice.exe",        brands::VBOX, 15 },
+            { "vboxtray.exe",        brands::VBOX, 12 },
+            { "VBoxControl.exe",        brands::VBOX, 15 },
+
+            { "vmsrvc.exe",             brands::VPC, 10 },
+            { "vmusrvc.exe",            brands::VPC, 11 },
+            
+            { "xenservice.exe",         brands::XEN, 14 },
+            { "xsvc_depriv.exe",        brands::XEN, 15 },
+
+            { "vm3dservice.exe",        brands::VMWARE, 15 },
+            { "VGAuthService.exe",      brands::VMWARE, 17 },
+            { "vmtoolsd.exe",           brands::VMWARE, 12 },
+            
+            { "vdagent.exe",            brands::QEMU, 11 },
+            { "vdservice.exe",          brands::QEMU, 13 },
+            { "qemuwmi.exe",            brands::QEMU, 11 },
+            { "looking-glass-host.exe", brands::QEMU, 22 },
+
+            { "VDDSysTray.exe",         brands::NULL_BRAND, 14 },
+        } };
+
+        for (auto vm_process : vm_processes_names) {
+            if (util::is_proc_running(vm_process.name, vm_process.len)) {
+                debug("VM_PROCESSES: Detected process ", vm_process.name);
+                res = true;
+            }
         }
 
-        if (runningProcesses.count("prl_cc.exe") || runningProcesses.count("prl_tools.exe")) {
-            debug("VM_PROCESSES: Detected Parallels process.");
-            return core::add(brands::PARALLELS);
-        }
-
-        if (runningProcesses.count("vboxservice.exe") || runningProcesses.count("vboxtray.exe")) {
-            debug("VM_PROCESSES: Detected VBox process.");
-            return core::add(brands::VBOX);
-        }
-
-        if (runningProcesses.count("vmsrvc.exe") || runningProcesses.count("vmusrvc.exe")) {
-            debug("VM_PROCESSES: Detected VPC process.");
-            return core::add(brands::VPC);
-        }
-
-        if (runningProcesses.count("xenservice.exe") || runningProcesses.count("xsvc_depriv.exe")) {
-            debug("VM_PROCESSES: Detected Xen process.");
-            return core::add(brands::XEN);
-        }
-
-        if (runningProcesses.count("vm3dservice.exe") ||
-            runningProcesses.count("VGAuthService.exe") ||
-            runningProcesses.count("vmtoolsd.exe")) {
-            debug("VM_PROCESSES: Detected VMware process.");
-            return core::add(brands::VMWARE);
-        }
-
-        if (runningProcesses.count("vdagent.exe") ||
-            runningProcesses.count("vdservice.exe") ||
-            runningProcesses.count("qemuwmi.exe")) {
-            debug("VM_PROCESSES: Detected QEMU process.");
+#elif (LINUX)
+        if (util::is_proc_running("qemu_ga", 7)) {
+            debug("VM_PROCESSES: Detected QEMU guest agent process.");
             return core::add(brands::QEMU);
         }
-
-        return false;
 #endif
+        return res;
     }
 
 
@@ -4115,27 +4082,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return (count > 0);
 #endif
     }
-
-
-    /**
-     * @brief Check for "qemu-ga" process
-     * @category Linux
-     * @implements VM::QEMU_GA
-     */
-    [[nodiscard]] static bool qemu_ga() {
-#if (!LINUX)
-        return false;
-#else
-        constexpr const char* process = "qemu-ga";
-
-        if (util::is_proc_running(process)) {
-            return core::add(brands::QEMU);
-        }
-
-        return false;
-#endif
-    }
-
 
     /**
      * @brief Check for official VPC method
@@ -7643,7 +7589,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (LINUX)
     __attribute__((no_sanitize("address", "leak", "thread", "undefined")))
 #endif
-        static bool timer() {
+    static bool timer() {
 #if (ARM || !x86)
         return false;
 #else
@@ -7699,9 +7645,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         constexpr size_t kBufferSize = static_cast<size_t>(64 * 1024) * 1024;
 
 #if (WINDOWS)
-#define COMPILER_BARRIER() _ReadWriteBarrier()
+    #define COMPILER_BARRIER() _ReadWriteBarrier()
 #else
-#define COMPILER_BARRIER() __asm__ __volatile__("" ::: "memory")
+    #define COMPILER_BARRIER() __asm__ __volatile__("" ::: "memory")
 #endif
 
 #if (WINDOWS)
@@ -11068,7 +11014,6 @@ public: // START OF PUBLIC FUNCTIONS
             case IOREG_GREP: return "IOREG_GREP";
             case MAC_SIP: return "MAC_SIP";
             case HKLM_REGISTRIES: return "HKLM_REGISTRIES";
-            case QEMU_GA: return "QEMU_GA";
             case VPC_INVALID: return "VPC_INVALID";
             case SIDT: return "SIDT";
             case SGDT: return "SGDT";
@@ -11621,7 +11566,6 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     std::make_pair(VM::IOREG_GREP, VM::core::technique(100, VM::ioreg_grep)),
     std::make_pair(VM::MAC_SIP, VM::core::technique(40, VM::mac_sip)),
     std::make_pair(VM::HKLM_REGISTRIES, VM::core::technique(25, VM::hklm_registries)),
-    std::make_pair(VM::QEMU_GA, VM::core::technique(10, VM::qemu_ga)),
     std::make_pair(VM::VPC_INVALID, VM::core::technique(75, VM::vpc_invalid)),
     std::make_pair(VM::SIDT, VM::core::technique(25, VM::sidt)),
     std::make_pair(VM::SGDT, VM::core::technique(30, VM::sgdt)),
