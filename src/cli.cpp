@@ -160,7 +160,7 @@ Options:
 
 Extra:
  --disable-notes    no notes will be provided
- --high-threshold   a higher theshold bar for a VM detection will be applied
+ --high-threshold   a higher threshold bar for a VM detection will be applied
  --no-ansi          removes color and ansi escape codes from the output
  --dynamic          allow the conclusion message to be dynamic (8 possibilities instead of only 2)
  --verbose          add more information to the output
@@ -174,11 +174,11 @@ Extra:
 [[noreturn]] void version(void) {
     std::cout << "vmaware " << "v" << ver << " (" << date << ")\n\n" <<
     "Derived project of VMAware library at https://github.com/kernelwernel/VMAware"
-    "License GPLv3+: GNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>.\n" << 
+    "License GPLv3+:\nGNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>.\n" << 
     "This is free software: you are free to change and redistribute it.\n" <<
     "There is NO WARRANTY, to the extent permitted by law.\n" <<
-    "Developed and maintained by kernelwernel, see https://github.com/kernelwernel\n";
-
+    "Developed and maintained by kernelwernel and Requiem,\n" << 
+    "see https://github.com/kernelwernel and https://github.com/NotRequiem\n";
     std::exit(0);
 }
 
@@ -1170,7 +1170,7 @@ int main(int argc, char* argv[]) {
     win_ansi_enabler_t ansi_enabler;
 #endif
 
-    const std::vector<const char*> args(argv + 1, argv + argc); // easier to handle args this way
+    const std::vector<std::string> args(argv + 1, argv + argc); // easier to handle args this way
     const u32 arg_count = static_cast<u32>(argc - 1);
 
     // this was removed from the lib due to ethical 
@@ -1219,19 +1219,18 @@ int main(int argc, char* argv[]) {
 
     std::string potential_null_arg = "";
 
-    for (const auto arg_string : args) {
-        //auto it = std::find_if(table.cbegin(), table.cend(), [&](const auto &p) {
-        //    return (std::strcmp(p.first, arg_string) == 0);
-        //});
+    for (int i = 1; i < argc; ++i) {
+        const char* arg_string = argv[i];
 
-        auto it = std::find_if(table.cbegin(), table.cend(), [&](const std::pair<const char*, int> &p) {
+        auto it = std::find_if(table.cbegin(), table.cend(), [&](const std::pair<const char*, int>& p) {
             return (std::strcmp(p.first, arg_string) == 0);
-        });
+            });
 
         if (it == table.end()) {
             arg_bitset.set(NULL_ARG);
             potential_null_arg = arg_string;
-        } else {
+        }
+        else {
             arg_bitset.set(it->second);
         }
     }
