@@ -683,8 +683,8 @@ private:
     static constexpr u8 enum_begin = 0;
     static constexpr u8 enum_end = enum_size + 1;
     static constexpr u8 technique_begin = enum_begin;
-    static constexpr u8 technique_end = NO_MEMO;
-    static constexpr u8 settings_begin = NO_MEMO;
+    static constexpr u8 technique_end = DEFAULT;
+    static constexpr u8 settings_begin = DEFAULT;
     static constexpr u8 settings_end = enum_end;
 
 
@@ -1254,7 +1254,9 @@ private:
                 return true;
             } else if (cache_table.size() == static_cast<std::size_t>(technique_count) - 3) {
                 return (
-                    !cache_keys.test(VMWARE_DMESG)
+                    !cache_keys.test(VMWARE_DMESG) && 
+                    !cache_keys.test(PORT_CONNECTORS) && 
+                    !cache_keys.test(ACPI_TEMPERATURE)
                 );
             }
 
@@ -10446,6 +10448,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             // disable all non-default techniques
             flags.flip(VMWARE_DMESG);
+            flags.flip(PORT_CONNECTORS);
+            flags.flip(ACPI_TEMPERATURE);
 
             // disable all the settings flags
             flags.flip(NO_MEMO);
@@ -11692,7 +11696,7 @@ public: // START OF PUBLIC FUNCTIONS
 
 
     static u16 technique_count; // get total number of techniques
-    static std::vector<u8> technique_vector;
+    static std::vector<enum_flags> technique_vector;
 #ifdef __VMAWARE_DEBUG__
     static u16 total_points;
 #endif
@@ -11804,12 +11808,12 @@ VM::flagset VM::core::disabled_flag_collector;
 VM::u8 VM::detected_count_num = 0;
 
 
-std::vector<VM::u8> VM::technique_vector = []() -> std::vector<VM::u8> {
-    std::vector<VM::u8> tmp{};
+std::vector<VM::enum_flags> VM::technique_vector = []() -> std::vector<VM::enum_flags> {
+    std::vector<VM::enum_flags> tmp{};
 
     // all the techniques have a macro value starting from 0 to ~90, hence why it's a classic loop
     for (u8 i = VM::technique_begin; i < VM::technique_end; i++) {
-        tmp.push_back(i);
+        tmp.push_back(static_cast<VM::enum_flags>(i));
     }
 
     return tmp;
