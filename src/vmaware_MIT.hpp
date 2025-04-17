@@ -49,14 +49,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 572
- * - struct for internal cpu operations        => line 749
- * - struct for internal memoization           => line 1220
- * - struct for internal utility functions     => line 1344
- * - struct for internal core components       => line 9734
- * - start of VM detection technique list      => line 2371
- * - start of public VM detection functions    => line 10398
- * - start of externally defined variables     => line 11330
+ * - enums for publicly accessible techniques  => line 573
+ * - struct for internal cpu operations        => line 750
+ * - struct for internal memoization           => line 1221
+ * - struct for internal utility functions     => line 1345
+ * - struct for internal core components       => line 9740
+ * - start of VM detection technique list      => line 2372
+ * - start of public VM detection functions    => line 10404
+ * - start of externally defined variables     => line 11336
  *
  *
  * ============================== EXAMPLE ===================================
@@ -7542,7 +7542,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             flushBuffer = new (std::nothrow) char[kBufferSize];
         }
 #elif (LINUX || APPLE)
-        int err = posix_memalign((void**)&flushBuffer, kAlignment, kBufferSize);
+        const int err = posix_memalign((void**)&flushBuffer, kAlignment, kBufferSize);
         if (err != 0 || !flushBuffer) {
             flushBuffer = new (std::nothrow) char[kBufferSize];
         }
@@ -7550,10 +7550,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // volatile char* flushBuffer = new volatile char[kBufferSize];
         flushBuffer = new (std::nothrow) char[kBufferSize];
 #endif
+
         // Define a rotation scheme over segments. Here, we split the buffer into a number of segments
         constexpr size_t segmentsCount = 8; // basically 1/8 of the buffer per iteration
         constexpr size_t segmentSize = kBufferSize / segmentsCount;
         int spikeCount = 0;
+
         for (int i = 0; i < rdtscIterations; i++) {
             u64 start = __rdtsc();
 #if (WINDOWS)
@@ -7591,13 +7593,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
             }
         }
+
 #if (WINDOWS)
-        if (notaligned)
-            delete[] flushBuffer;
-        else
-            _aligned_free((void*)flushBuffer);
+        if (flushBuffer) {
+            if (notaligned)
+                delete[] flushBuffer;
+            else
+                _aligned_free(flushBuffer);
+        }
 #else
-        free((void*)flushBuffer);
+        if (flushBuffer) delete[] flushBuffer;
 #endif
 
 #ifdef __VMAWARE_DEBUG__
