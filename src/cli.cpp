@@ -464,6 +464,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::FIRMWARE:
             case VM::UNKNOWN_MANUFACTURER:
             case VM::OSXSAVE:
+            case VM::TPM:
             // ADD WINDOWS FLAG
             return false;
             default: return true;
@@ -969,6 +970,7 @@ void general() {
     checker(VM::OSXSAVE, "xgetbv");
     checker(VM::NSJAIL_PID, "nsjail PID");
     checker(VM::PCI_VM, "PCIe bridge ports");
+    checker(VM::TPM, "TPM manufacturer");
     // ADD NEW TECHNIQUE CHECKER HERE
 
     std::printf("\n");
