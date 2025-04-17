@@ -1170,7 +1170,7 @@ int main(int argc, char* argv[]) {
     win_ansi_enabler_t ansi_enabler;
 #endif
 
-    const std::vector<const char*> args(argv + 1, argv + argc); // easier to handle args this way
+    const std::vector<std::string> args(argv + 1, argv + argc); // easier to handle args this way
     const u32 arg_count = static_cast<u32>(argc - 1);
 
     // this was removed from the lib due to ethical 
@@ -1219,19 +1219,18 @@ int main(int argc, char* argv[]) {
 
     std::string potential_null_arg = "";
 
-    for (const auto arg_string : args) {
-        //auto it = std::find_if(table.cbegin(), table.cend(), [&](const auto &p) {
-        //    return (std::strcmp(p.first, arg_string) == 0);
-        //});
+    for (int i = 1; i < argc; ++i) {
+        const char* arg_string = argv[i];
 
-        auto it = std::find_if(table.cbegin(), table.cend(), [&](const std::pair<const char*, int> &p) {
+        auto it = std::find_if(table.cbegin(), table.cend(), [&](const std::pair<const char*, int>& p) {
             return (std::strcmp(p.first, arg_string) == 0);
-        });
+            });
 
         if (it == table.end()) {
             arg_bitset.set(NULL_ARG);
             potential_null_arg = arg_string;
-        } else {
+        }
+        else {
             arg_bitset.set(it->second);
         }
     }
