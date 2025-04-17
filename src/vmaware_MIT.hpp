@@ -53,10 +53,10 @@
  * - struct for internal cpu operations        => line 749
  * - struct for internal memoization           => line 1220
  * - struct for internal utility functions     => line 1344
- * - struct for internal core components       => line 9734
+ * - struct for internal core components       => line 9779
  * - start of VM detection technique list      => line 2371
- * - start of public VM detection functions    => line 10398
- * - start of externally defined variables     => line 11330
+ * - start of public VM detection functions    => line 10443
+ * - start of externally defined variables     => line 11375
  *
  *
  * ============================== EXAMPLE ===================================
@@ -652,7 +652,7 @@ public:
         PROCESSOR_NUMBER,
         NUMBER_OF_CORES,
         ACPI_TEMPERATURE,
-        SYS_QEMU,
+        QEMU_FW_CFG,
         LSHW_QEMU,
         VIRTUAL_PROCESSORS,
         HYPERV_QUERY,
@@ -7860,14 +7860,57 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
 	/**
-	 * @brief Check for existence of qemu_fw_cfg directories within sys/module and /sys/firmware
-	 * @category Linux
-     * @implements VM::SYS_QEMU
+	 * @brief Check for QEMU fw_cfg device
+     * @brief Windows method extracts 'FWCF' from APCI devices' LocationPaths
+     * @brief Linux method checks for existence of qemu_fw_cfg dirs within sys/{module, firmware}
+	 * @category Windows, Linux
+     * @implements VM::QEMU_FW_CFG
 	 */
 	[[nodiscard]] static bool sys_qemu_dir() {
-#if (!LINUX)
-	    return false;
-#else
+#if (WINDOWS)
+	    bool res = false;
+        HDEVINFO hDevInfo = SetupDiGetClassDevsW(nullptr, L"ACPI", nullptr, DIGCF_ALLCLASSES);
+        if (hDevInfo == INVALID_HANDLE_VALUE) {
+            debug("SetupDiGetClassDevs failed.");
+            return false;
+        }
+
+        SP_DEVINFO_DATA deviceInfoData = { 0 };
+        deviceInfoData.cbSize = sizeof(SP_DEVINFO_DATA);
+
+        for (DWORD memberIndex = 0; SetupDiEnumDeviceInfo(hDevInfo, memberIndex, &deviceInfoData); ++memberIndex) {
+            DWORD dataType = 0;
+            DWORD requiredSize = 0;
+
+            if (!SetupDiGetDeviceRegistryPropertyW(hDevInfo, &deviceInfoData, SPDRP_LOCATION_PATHS, &dataType, nullptr, 0, &requiredSize)) {
+                DWORD error = GetLastError();
+                if (error != ERROR_INSUFFICIENT_BUFFER) {
+                    continue;
+                }
+            }
+
+            if (requiredSize == 0) {
+                continue;
+            }
+
+            std::vector<BYTE> buffer(requiredSize);
+            if (!SetupDiGetDeviceRegistryPropertyW(hDevInfo, &deviceInfoData, SPDRP_LOCATION_PATHS, &dataType, buffer.data(), buffer.size(), &requiredSize)) {
+                debug("SetupDiGetDeviceRegistryProperty failed.");
+                continue;
+            }
+
+            const wchar_t* wstring = reinterpret_cast<const wchar_t*>(buffer.data());
+            for (size_t i = 0; i < buffer.size(); ++i) {
+                if (wcsncmp(wstring + i, L"FWCF", 4) == 0) {
+                    res = core::add(brands::QEMU);
+                    goto out;
+                }
+            }
+        }
+out:
+        SetupDiDestroyDeviceInfoList(hDevInfo);
+        return res;
+#elif (LINUX)
 	    const std::string module_path = "/sys/module/qemu_fw_cfg/";
 	    const std::string firmware_path = "/sys/firmware/qemu_fw_cfg/";
 	
@@ -7889,6 +7932,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 	        util::exists(firmware_path.c_str())
 	    );
     #endif
+#else
+        return false;
 #endif
 	}
 
@@ -10992,7 +11037,7 @@ public: // START OF PUBLIC FUNCTIONS
             case PROCESSOR_NUMBER: return "PROCESSOR_NUMBER";
             case NUMBER_OF_CORES: return "NUMBER_OF_CORES";
             case ACPI_TEMPERATURE: return "ACPI_TEMPERATURE";
-            case SYS_QEMU: return "SYS_QEMU";
+            case QEMU_FW_CFG: return "QEMU_FW_CFG";
             case LSHW_QEMU: return "LSHW_QEMU";
             case VIRTUAL_PROCESSORS: return "VIRTUAL_PROCESSORS";
             case HYPERV_QUERY: return "HYPERV_QUERY";
@@ -11539,7 +11584,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     std::make_pair(VM::PROCESSOR_NUMBER, VM::core::technique(50, VM::processor_number)),
     std::make_pair(VM::NUMBER_OF_CORES, VM::core::technique(50, VM::number_of_cores)),
     std::make_pair(VM::ACPI_TEMPERATURE, VM::core::technique(25, VM::acpi_temperature)),
-    std::make_pair(VM::SYS_QEMU, VM::core::technique(70, VM::sys_qemu_dir)),
+    std::make_pair(VM::QEMU_FW_CFG, VM::core::technique(70, VM::sys_qemu_dir)),
     std::make_pair(VM::LSHW_QEMU, VM::core::technique(80, VM::lshw_qemu)),
     std::make_pair(VM::VIRTUAL_PROCESSORS, VM::core::technique(50, VM::virtual_processors)),
     std::make_pair(VM::HYPERV_QUERY, VM::core::technique(100, VM::hyperv_query)),

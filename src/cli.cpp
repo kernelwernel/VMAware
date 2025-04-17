@@ -382,7 +382,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::SMBIOS_VM_BIT:
             case VM::PODMAN_FILE:
             case VM::WSL_PROC: 
-            case VM::SYS_QEMU:
+            case VM::QEMU_FW_CFG:
             case VM::LSHW_QEMU:
             case VM::AMD_SEV:
             case VM::AMD_THREAD_MISMATCH:
@@ -452,6 +452,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::PROCESSOR_NUMBER:
             case VM::NUMBER_OF_CORES:
             case VM::ACPI_TEMPERATURE:
+            case VM::QEMU_FW_CFG:
             case VM::POWER_CAPABILITIES:
             case VM::SETUPAPI_DISK: 
             case VM::VIRTUAL_PROCESSORS:
@@ -953,7 +954,7 @@ void general() {
     checker(VM::ACPI_TEMPERATURE, "thermal devices");
     checker(VM::POWER_CAPABILITIES, "Power capabilities");
     checker(VM::SETUPAPI_DISK, "SETUPDI diskdrive");
-    checker(VM::SYS_QEMU, "QEMU in /sys");
+    checker(VM::QEMU_FW_CFG, "QEMU fw_cfg device");
     checker(VM::LSHW_QEMU, "QEMU in lshw output");
     checker(VM::VIRTUAL_PROCESSORS, "virtual processors");
     checker(VM::HYPERV_QUERY, "hypervisor query");
