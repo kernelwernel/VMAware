@@ -440,7 +440,6 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::DMIDECODE` | Check if dmidecode output matches a VM brand | Linux | 55% | Admin |  |  |  |
 | `VM::DMESG` | Check if dmesg output matches a VM brand | Linux | 55% | Admin |  |  |  |
 | `VM::HWMON` | Check if /sys/class/hwmon/ directory is present. If not, likely a VM | Linux | 35% |  |  |  |  |
-| `VM::SIDT5` | Check if the 5th byte after sidt is null | Linux | 45% |  |  |  |  |
 | `VM::DLL` | Check for VM-specific DLLs | Windows | 25% |  |  |  |  |
 | `VM::REGISTRY` |  Check for VM-specific registry values | Windows | 50% |  |  |  |  |
 | `VM::VM_FILES` | Find for VM-specific specific files | Windows | 25% |  |  |  |  |
@@ -466,13 +465,9 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::MAC_SIP` | Check if System Integrity Protection is disabled (likely a VM if it is) | MacOS | 40% |  |  |  |  |
 | `VM::HKLM_REGISTRIES` | Check HKLM registries for specific VM strings | Windows | 25% |  |  |  |  |
 | `VM::VPC_INVALID` | Check for official VPC method | Windows | 75% |  |  | 32-bit |  |
-| `VM::SIDT` | Check for sidt instruction method | Windows | 25% |  |  |  |  |
-| `VM::SGDT` | Check for sgdt instruction method | Windows | 30% |  |  | 32-bit |  |
-| `VM::SLDT` | Check for sldt instruction method | Windows | 15% |  |  | 32-bit |  |
-| `VM::OFFSEC_SIDT` | Check for Offensive Security SIDT method | Windows | 60% |  |  | 32-bit |  |
-| `VM::OFFSEC_SGDT` | Check for Offensive Security SGDT method | Windows | 60% |  |  | 32-bit |  |
-| `VM::OFFSEC_SLDT` | Check for Offensive Security SLDT method | Windows | 20% |  |  | 32-bit |  |
-| `VM::VPC_SIDT` | Check for sidt method with VPC's 0xE8XXXXXX range | Windows | 15% |  |  | 32-bit |  |
+| `VM::SIDT` | Check for uncommon IDT virtual addresses | Linux and Windows | 25% |  |  |  |  |
+| `VM::SGDT` | Check for uncommon GDT virtual addresses | Windows | 30% |  |  |  |  |
+| `VM::SLDT` | Check for uncommon LDT virtual addresses | Windows | 15% |  |  | 32-bit |  |
 | `VM::VMWARE_IOMEM` | Check for VMware string in /proc/iomem | Linux | 65% |  |  |  |  |
 | `VM::VMWARE_IOPORTS` | Check for VMware string in /proc/ioports | Linux | 70% |  |  |  |  |
 | `VM::VMWARE_SCSI` | Check for VMware string in /proc/scsi/scsi | Linux | 40% |  |  |  |  |
@@ -488,8 +483,8 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::NETTITUDE_VM_MEMORY` | Check for memory regions to detect VM-specific brands | Windows | 100% | |  |  |  |
 | `VM::CUCKOO_DIR` | Check for cuckoo directory using crt and WIN API directory functions | Windows | 30% |  |  |  |  |
 | `VM::CUCKOO_PIPE` | Check for Cuckoo specific piping mechanism | Windows | 30% |  |  |  |  |
-| `VM::HYPERV_HOSTNAME` | Check for default Azure hostname format regex (Azure uses Hyper-V as their base VM brand) | Windows, Linux | 30% |  |  |  |  |
-| `VM::GENERAL_HOSTNAME` | Check for commonly set hostnames by certain VM brands | Windows, Linux | 10% |  |  |  |  |
+| `VM::HYPERV_HOSTNAME` | Check for default Azure hostname format regex (Azure uses Hyper-V as their base VM brand) | Linux and Windows | 30% |  |  |  |  |
+| `VM::GENERAL_HOSTNAME` | Check for commonly set hostnames by certain VM brands | Linux and Windows | 10% |  |  |  |  |
 | `VM::SCREEN_RESOLUTION` | Check for pre-set screen resolutions commonly found in VMs | Windows | 20% |  |  |  |  |
 | `VM::DEVICE_STRING` | Check if bogus device string would be accepted | Windows | 25% |  |  |  |  |
 | `VM::BLUESTACKS_FOLDERS` |  Check for the presence of BlueStacks-specific folders | Linux | 5% |  |  |  |  |
@@ -512,7 +507,6 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::ANYRUN_DRIVER` | Check for any.run driver presence | Windows | 65% |  |  |  |  | Removed from the lib, only available in the CLI |
 | `VM::ANYRUN_DIRECTORY` | Check for any.run directory and handle the status code | Windows | 35% |  |  |  |  | Removed from the lib, only available in the CLI |
 | `VM::DRIVER_NAMES` | Check for VM-specific names for drivers | Windows | 100% |  |  |  |  |
-| `VM::VM_SIDT` | Check for unknown IDT base address | Windows | 100% |  |  |  |  |
 | `VM::DISK_SERIAL` | Check for serial numbers of virtual disks | Windows | 100% |  |  |  |  |
 | `VM::PORT_CONNECTORS` | Check for physical connection ports | Windows | 25% |  |  |  | This technique is known to false flag on devices like Surface Pro |
 | `VM::GPU_CAPABILITIES` | Check for GPU capabilities related to VMs | Windows | 100% | Admin |  |  | Admin only needed for some heuristics |
@@ -530,7 +524,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::AMD_THREAD_MISMATCH` | Check for AMD CPU thread count database if it matches the system's thread count |  | 95% |  |  |  |  |
 | `VM::NATIVE_VHD` | Check for OS being booted from a VHD container | Windows | 100% |  |  |  |  |
 | `VM::VIRTUAL_REGISTRY` | Check for particular object directory which is present in Sandboxie virtual environment but not in usual host systems | Windows | 65% |  |  |  | Admin only needed for Linux |
-| `VM::FIRMWARE` | Check for VM signatures and patched strings by hardeners in firmware, while ensuring the BIOS serial is valid | Windows and Linux | 100% |  |  |  |  |
+| `VM::FIRMWARE` | Check for VM signatures and patched strings by hardeners in firmware, while ensuring the BIOS serial is valid | Linux and Windows | 100% |  |  |  |  |
 | `VM::FILE_ACCESS_HISTORY` | Check if the number of accessed files are too low for a human-managed environment | Linux | 15% |  |  |  |  |
 | `VM::AUDIO` | Check if any waveform-audio output devices are present in the system | Windows | 25% |  |  |  |  |
 | `VM::UNKNOWN_MANUFACTURER` | Check if the CPU manufacturer is not known |  | 50% |  |  |  |  |
