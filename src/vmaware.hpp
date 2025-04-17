@@ -27,14 +27,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 551
+ * - enums for publicly accessible techniques  => line 550
  * - struct for internal cpu operations        => line 734
- * - struct for internal memoization           => line 1206
- * - struct for internal utility functions     => line 1330
- * - struct for internal core components       => line 9946
- * - start of VM detection technique list      => line 2357
- * - start of public VM detection functions    => line 10610
- * - start of externally defined variables     => line 11549
+ * - struct for internal memoization           => line 1205
+ * - struct for internal utility functions     => line 1329
+ * - struct for internal core components       => line 9948
+ * - start of VM detection technique list      => line 2356
+ * - start of public VM detection functions    => line 10612
+ * - start of externally defined variables     => line 11551
  *
  *
  * ============================== EXAMPLE ===================================
@@ -9384,8 +9384,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         constexpr const char* targets[] = {
             "Parallels Software International", "Parallels(R)", "innotek",
-            "Oracle", "VirtualBox", "VS2005R2", "VMware, Inc.",
-            "VMware", "VMWARE", "S3 Corp.", "Virtual Machine", "Qemu", "vbox",
+            "Oracle", "VirtualBox", "vbox", "VBOX", "VS2005R2", "VMware, Inc.",
+            "VMware", "VMWARE", "S3 Corp.", "Virtual Machine", "QEMU", "FWCF",
             "WAET", "BOCHS", "BXPC"
         };
 
@@ -9447,7 +9447,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                             strcmp(target, "VMware") == 0 ||
                             strcmp(target, "VMWARE") == 0)
                             brand = brands::VMWARE;
-                        else if (strcmp(target, "Qemu") == 0)
+                        else if (strcmp(target, "QEMU") == 0 ||
+                            strcmp(target, "FWCF") == 0)
                             brand = brands::QEMU;
                         else if (strcmp(target, "BOCHS") == 0 ||
                             strcmp(target, "BXPC") == 0)
@@ -9594,8 +9595,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // Same targets as the Windows branch but without "WAET"
         constexpr const char* targets[] = {
             "Parallels Software International", "Parallels(R)", "innotek",
-            "Oracle", "VirtualBox", "VS2005R2", "VMware, Inc.",
-            "VMware", "S3 Corp.", "Virtual Machine", "Qemu", "vbox", "BOCHS", "BXPC"
+            "Oracle", "VirtualBox", "vbox", "VBOX", "VS2005R2", "VMware, Inc.",
+            "VMware", "VMWARE", "S3 Corp.", "Virtual Machine", "QEMU", "FWCF",
+            "BOCHS", "BXPC"
         };
 
         struct dirent* entry;
@@ -9663,7 +9665,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                             strcmp(target, "VMWARE") == 0) {
                             brand = brands::VMWARE;
                         }
-                        else if (strcmp(target, "Qemu") == 0) {
+                        else if (strcmp(target, "QEMU") == 0 ||
+                            strcmp(target, "FWCF") == 0) {
                             brand = brands::QEMU;
                         }
                         else if (strcmp(target, "BOCHS") == 0 ||
