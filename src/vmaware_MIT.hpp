@@ -389,7 +389,8 @@
 #include <setupapi.h>
 #include <mmsystem.h>
 #include <dxgi.h>
-#include <d3d9.h>
+#include <wrl/client.h>
+#include <tbs.h>
 
 #pragma comment(lib, "winmm.lib")
 #pragma comment(lib, "setupapi.lib")
@@ -404,7 +405,7 @@
 #pragma comment(lib, "ntdll.lib")
 #pragma comment(lib, "powrprof.lib")
 #pragma comment(lib, "dxgi.lib")
-#pragma comment(lib, "d3d9.lib")
+#pragma comment(lib, "tbs.lib")
 
 #elif (LINUX)
 #if (x86)
@@ -668,6 +669,7 @@ public:
         OSXSAVE,
         NSJAIL_PID,
         PCI_VM,
+        TPM,
         // ADD NEW TECHNIQUE ENUM NAME HERE
 
         // special flags, different to settings
@@ -7259,54 +7261,41 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!WINDOWS)
         return false;
 #else
-        IDirect3D9* pD3D = Direct3DCreate9(D3D_SDK_VERSION);
-        if (!pD3D) {
-            debug("GPU_CAPABILITIES: Direct3DCreate9 failed");
-            return true;
-        }
+        const uint64_t minVidMem = 1024ull * 1024ull * 1024ull; // 1GB
 
-        D3DADAPTER_IDENTIFIER9 adapterId;
-        if (SUCCEEDED(pD3D->GetAdapterIdentifier(D3DADAPTER_DEFAULT, 0, &adapterId))) {
-            if (adapterId.VendorId == 0x15AD) {
-                pD3D->Release();
-                return core::add(brands::VMWARE);
-            }
-            else if (adapterId.VendorId == 0x80EE) {
-                pD3D->Release();
-                return core::add(brands::VBOX);
-            }
-        }
-
-        pD3D->Release();
-
-        IDXGIFactory* pFactory = nullptr;
-        if (FAILED(CreateDXGIFactory(__uuidof(IDXGIFactory), reinterpret_cast<void**>(&pFactory)))) {
+        Microsoft::WRL::ComPtr<IDXGIFactory> factory;
+        if (FAILED(CreateDXGIFactory(__uuidof(IDXGIFactory), reinterpret_cast<void**>(factory.GetAddressOf())))) {
             debug("GPU_CAPABILITIES: DXGIFactory creation failed");
             return true;
         }
 
-        // Enumerate only the primary adapter so as not to mistakenly flag machines without a dedicated GPU, like Microsoft Basic Render Driver (vid 0x1414)
-        IDXGIAdapter* pAdapter = nullptr;
-        HRESULT hrEnum = pFactory->EnumAdapters(0, &pAdapter);
-        if (SUCCEEDED(hrEnum)) {
-            DXGI_ADAPTER_DESC adapterDesc;
-            if (SUCCEEDED(pAdapter->GetDesc(&adapterDesc))) {
-                const UINT64 minVidMem = 1024ULL * 1024ULL * 1024ULL;
-                if (adapterDesc.DedicatedVideoMemory < minVidMem) {
-                    debug("GPU_CAPABILITIES: Video memory below threshold");
-                    pAdapter->Release();
-                    pFactory->Release();
-                    return true;
-                }
-            }
-            pAdapter->Release();
+        Microsoft::WRL::ComPtr<IDXGIAdapter> adapter;
+        if (FAILED(factory->EnumAdapters(0, adapter.GetAddressOf()))) {
+            return true;
         }
 
-        pFactory->Release();
+        DXGI_ADAPTER_DESC desc;
+        if (FAILED(adapter->GetDesc(&desc))) {
+            return true;
+        }
+
+        switch (desc.VendorId) {
+        case 0x15AD:
+            return core::add(brands::VMWARE);
+        case 0x80EE:
+            return core::add(brands::VBOX);
+        default:
+            break;
+        }
+
+        if (desc.DedicatedVideoMemory < minVidMem) {
+            debug("GPU_CAPABILITIES: Video memory below threshold");
+            return true;
+        }
+
         return false;
 #endif
     }
-
 
 
     /**
@@ -7873,46 +7862,77 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 	 */
 	[[nodiscard]] static bool sys_qemu_dir() {
 #if (WINDOWS)
-	    bool res = false;
-        HDEVINFO hDevInfo = SetupDiGetClassDevsW(nullptr, L"ACPI", nullptr, DIGCF_ALLCLASSES);
+        bool res = false;
+
+        HDEVINFO hDevInfo = SetupDiGetClassDevsW(
+            /*ClassGuid*/   nullptr,
+            /*Enumerator*/  L"ACPI",
+            /*HWND*/        nullptr,
+            DIGCF_PRESENT | DIGCF_ALLCLASSES
+        );
         if (hDevInfo == INVALID_HANDLE_VALUE) {
-            debug("SetupDiGetClassDevs failed.");
+            debug("SetupDiGetClassDevsW failed: %u", GetLastError());
             return false;
         }
 
-        SP_DEVINFO_DATA deviceInfoData = { 0 };
-        deviceInfoData.cbSize = sizeof(SP_DEVINFO_DATA);
+        SP_DEVINFO_DATA devInfo;
+        ZeroMemory(&devInfo, sizeof(devInfo));
+        devInfo.cbSize = sizeof(devInfo);
 
-        for (DWORD memberIndex = 0; SetupDiEnumDeviceInfo(hDevInfo, memberIndex, &deviceInfoData); ++memberIndex) {
-            DWORD dataType = 0;
-            DWORD requiredSize = 0;
+        std::vector<BYTE> buffer;
+        const DWORD initialSize = 512;
+        buffer.resize(initialSize);
 
-            if (!SetupDiGetDeviceRegistryPropertyW(hDevInfo, &deviceInfoData, SPDRP_LOCATION_PATHS, &dataType, nullptr, 0, &requiredSize)) {
-                DWORD error = GetLastError();
-                if (error != ERROR_INSUFFICIENT_BUFFER) {
+        for (DWORD idx = 0;
+            SetupDiEnumDeviceInfo(hDevInfo, idx, &devInfo);
+            ++idx)
+        {
+            DWORD dataType = 0, requiredSize = 0;
+
+            if (!SetupDiGetDeviceRegistryPropertyW(
+                hDevInfo, &devInfo,
+                SPDRP_LOCATION_PATHS,
+                &dataType,
+                NULL, 0,
+                &requiredSize))
+            {
+                if (GetLastError() != ERROR_INSUFFICIENT_BUFFER) {
                     continue;
                 }
             }
-
             if (requiredSize == 0) {
                 continue;
             }
 
-            std::vector<BYTE> buffer(requiredSize);
-            if (!SetupDiGetDeviceRegistryPropertyW(hDevInfo, &deviceInfoData, SPDRP_LOCATION_PATHS, &dataType, buffer.data(), buffer.size(), &requiredSize)) {
-                debug("SetupDiGetDeviceRegistryProperty failed.");
+            if (requiredSize > buffer.size()) {
+                buffer.resize(requiredSize);
+            }
+
+            if (!SetupDiGetDeviceRegistryPropertyW(
+                hDevInfo, &devInfo,
+                SPDRP_LOCATION_PATHS,
+                &dataType,
+                &buffer[0],
+                requiredSize,
+                &requiredSize))
+            {
+                debug("SetupDiGetDeviceRegistryPropertyW failed: %u", GetLastError());
                 continue;
             }
 
-            const wchar_t* wstring = reinterpret_cast<const wchar_t*>(buffer.data());
-            for (size_t i = 0; i < buffer.size(); ++i) {
-                if (wcsncmp(wstring + i, L"FWCF", 4) == 0) {
+            const wchar_t* paths = reinterpret_cast<const wchar_t*>(&buffer[0]);
+            const size_t wcharCount = requiredSize / sizeof(wchar_t);
+            const wchar_t* end = paths + wcharCount;
+
+            for (const wchar_t* p = paths; p + 3 < end; ++p) {
+                if (p[0] == L'F' && p[1] == L'W' && p[2] == L'C' && p[3] == L'F') {
                     res = core::add(brands::QEMU);
-                    goto out;
+                    goto DONE;
                 }
             }
         }
-out:
+
+    DONE:
         SetupDiDestroyDeviceInfoList(hDevInfo);
         return res;
 #elif (LINUX)
@@ -9764,6 +9784,85 @@ out:
 #endif
     }
 
+
+    /*
+     * @brief Check if the system has a physical TPM by matching the TPM manufacturer against known physical TPM chip vendors
+     * @category Windows
+     * @note CRB model will succeed, while TIS will fail
+     * @author Requiem (https://github.com/NotRequiem)
+     * @implements VM::TPM
+     */
+    [[nodiscard]] static bool tpm() {
+#if (!WINDOWS)
+        return false;
+#else
+        struct TbsContext {
+            TBS_HCONTEXT hContext = 0;
+            explicit TbsContext(const TBS_CONTEXT_PARAMS2& params) {
+                Tbsi_Context_Create(reinterpret_cast<PCTBS_CONTEXT_PARAMS>(&params), &hContext);
+            }
+            ~TbsContext() {
+                if (hContext) {
+                    Tbsip_Context_Close(hContext);
+                }
+            }
+            bool isValid() const { return hContext != 0; }
+        };
+
+        TBS_CONTEXT_PARAMS2 params{};
+        params.version = TBS_CONTEXT_VERSION_TWO;
+        params.includeTpm20 = 1;
+        params.includeTpm12 = 1;
+
+        TbsContext ctx(params);
+        if (!ctx.isValid()) {
+            return false;
+        }
+
+        // Prebuilt TPM2_GetCapability command for TPM_PT_MANUFACTURER
+        static constexpr uint8_t cmd[] = {
+            0x80,0x01,             // Tag: TPM_ST_NO_SESSIONS
+            0x00,0x00,0x00,0x16,    // Command Size: 22
+            0x00,0x00,0x01,0x7A,    // TPM2_GetCapability
+            0x00,0x00,0x00,0x06,    // TPM_CAP_TPM_PROPERTIES
+            0x00,0x00,0x01,0x05,    // TPM_PT_MANUFACTURER
+            0x00,0x00,0x00,0x01     // Property Count: 1
+        };
+
+        uint8_t resp[1024] = {};
+        uint32_t respSize = sizeof(resp);
+        if (Tbsip_Submit_Command(ctx.hContext,
+            TBS_COMMAND_LOCALITY_ZERO,
+            TBS_COMMAND_PRIORITY_NORMAL,
+            cmd,
+            static_cast<uint32_t>(sizeof(cmd)),
+            resp,
+            &respSize) != TBS_SUCCESS || respSize < 27) {
+            return false;
+        }
+
+        const uint32_t manufacturerVal = (resp[23] << 24) | (resp[24] << 16) | (resp[25] << 8) | resp[26];
+        switch (manufacturerVal) {
+        case 0x414D4400u: // "AMD\0"
+        case 0x41544D4Cu: // "ATML"
+        case 0x4252434Du: // "BRCM"
+        case 0x49424D00u: // "IBM\0"
+        case 0x49465800u: // "IFX\0"
+        case 0x494E5443u: // "INTC"
+        case 0x4E534D20u: // "NSM "
+        case 0x4E544300u: // "NTC\0"
+        case 0x51434F4Du: // "QCOM"
+        case 0x534D5343u: // "SMSC"
+        case 0x53544D20u: // "STM "
+        case 0x54584E00u: // "TXN\0"
+        case 0x524F4343u: // "ROCC"
+        case 0x4C454E00u: // "LEN\0"
+            return false;
+        default:
+            return true;
+        }
+#endif
+    }
     // ADD NEW TECHNIQUE FUNCTION HERE
 
 
@@ -11058,6 +11157,7 @@ public: // START OF PUBLIC FUNCTIONS
             case OSXSAVE: return "OSXSAVE";
             case NSJAIL_PID: return "NSJAIL_PID";
             case PCI_VM: return "PCI_VM";
+            case TPM: return "TPM";
             // ADD NEW CASE HERE FOR NEW TECHNIQUE
             default: return "Unknown flag";
         }
@@ -11604,6 +11704,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     std::make_pair(VM::OSXSAVE, VM::core::technique(50, VM::osxsave)),
     std::make_pair(VM::NSJAIL_PID, VM::core::technique(75, VM::nsjail_proc_id)),
     std::make_pair(VM::PCI_VM, VM::core::technique(100, VM::lspci)),
+    std::make_pair(VM::TPM, VM::core::technique(50, VM::tpm)),
     // ADD NEW TECHNIQUE STRUCTURE HERE
 };
 
