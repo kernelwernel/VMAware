@@ -160,7 +160,7 @@ Options:
 
 Extra:
  --disable-notes    no notes will be provided
- --high-threshold   a higher theshold bar for a VM detection will be applied
+ --high-threshold   a higher threshold bar for a VM detection will be applied
  --no-ansi          removes color and ansi escape codes from the output
  --dynamic          allow the conclusion message to be dynamic (8 possibilities instead of only 2)
  --verbose          add more information to the output
@@ -326,7 +326,9 @@ bool is_disabled(const VM::enum_flags flag) {
     }
 
     switch (flag) {
-        case VM::VMWARE_DMESG: return true;
+        case VM::VMWARE_DMESG: 
+        case VM::PORT_CONNECTORS: 
+        case VM::ACPI_TEMPERATURE: return true;
         default: return false;
     }
 }
