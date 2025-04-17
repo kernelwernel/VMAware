@@ -22,7 +22,7 @@
 
 ## `VM::detect()`
 
-This is basically the main function you're looking for, which returns a bool. If the parameter is set to nothing, all the recommended checks will be performed. But you can optionally set what techniques are used.
+This is basically the main function you're looking for, which returns a bool. If no parameter is provided, all the recommended checks will be performed. But you can optionally set what techniques are used.
 
 ```cpp
 #include "vmaware.hpp"
@@ -54,9 +54,9 @@ int main() {
 
 
     /**
-     * This will set the threshold bar to detect a VM higher than the default threshold.
-     * Use this if you want to be extremely sure if it's a VM, but this can risk the result
-     * to be a false negative. Use VM::percentage() for a more precise result if you want.
+     * This will raise the detection threshold above the default level.
+     * Use this if you want to be extremely sure if it's a VM, but this increases the chance
+     * of a false negative. Use VM::percentage() for a more precise result if you want.
      */ 
     bool is_vm4 = VM::detect(VM::HIGH_THRESHOLD);
 
@@ -89,7 +89,7 @@ int main() {
      * If you don't want the value to be memoized for whatever reason, 
      * you can set the VM::NO_MEMO flag and the result will not be cached. 
      * It's recommended to use this flag if you're only using one function
-     * from the public interface a single time in total, so no unneccessary 
+     * from the public interface a single time, so no unnecessary  
      * caching will be operated when you're not going to re-use the previously 
      * stored result at the end. 
      */ 
@@ -269,7 +269,7 @@ This will return the VM type (or architecture) as a `std::string` based on the b
 
 int main() {
     // example output: VirtualBox is a Hypervisor (type 2) VM
-    std::cout << VM::brand() " is a " << VM::type() << " VM\n";
+    std::cout << VM::brand() << " is a " << VM::type() << " VM\n";
     return 0;
 }
 ```
@@ -296,7 +296,7 @@ The `[brand]` part might contain a brand or may as well be empty, depending on w
 <br>
 
 ## `VM::detected_count()`
-This will fetch the number of techniques that have been detected as a `std::uint8_t`. Can't get any more simpler than that.
+This will fetch the number of techniques that have been detected as a `std::uint8_t`. Can't get any simpler than that.
 ```cpp
 #include "vmaware.hpp"
 #include <iostream>
@@ -654,7 +654,7 @@ This is the table of all the brands the lib supports.
 | -n | --number | Prints the number of VM detection techniques it can perform |
 | -t | --type | Returns the VM type (if a VM was found) |
 |    | --disable-notes | No notes will be provided |
-|    | --high-threshold | A higher theshold bar for a VM detection will be applied |
+|    | --high-threshold | A higher threshold bar for a VM detection will be applied |
 |    | --no-ansi | Removes all the ANSI encodings (color and text style). This is added due to some terminals not supporting ANSI escape codes while cluttering the output |
 |    | --dynamic | allow the conclusion message to be dynamic (8 possibilities instead of only 2) |
 |    | --verbose | add more information to the output  |

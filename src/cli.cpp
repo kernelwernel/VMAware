@@ -174,11 +174,11 @@ Extra:
 [[noreturn]] void version(void) {
     std::cout << "vmaware " << "v" << ver << " (" << date << ")\n\n" <<
     "Derived project of VMAware library at https://github.com/kernelwernel/VMAware"
-    "License GPLv3+: GNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>.\n" << 
+    "License GPLv3+:\nGNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>.\n" << 
     "This is free software: you are free to change and redistribute it.\n" <<
     "There is NO WARRANTY, to the extent permitted by law.\n" <<
-    "Developed and maintained by kernelwernel, see https://github.com/kernelwernel\n";
-
+    "Developed and maintained by kernelwernel and Requiem,\n" << 
+    "see https://github.com/kernelwernel and https://github.com/NotRequiem\n";
     std::exit(0);
 }
 
@@ -384,7 +384,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::SMBIOS_VM_BIT:
             case VM::PODMAN_FILE:
             case VM::WSL_PROC: 
-            case VM::SYS_QEMU:
+            case VM::QEMU_FW_CFG:
             case VM::LSHW_QEMU:
             case VM::AMD_SEV:
             case VM::AMD_THREAD_MISMATCH:
@@ -454,6 +454,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::PROCESSOR_NUMBER:
             case VM::NUMBER_OF_CORES:
             case VM::ACPI_TEMPERATURE:
+            case VM::QEMU_FW_CFG:
             case VM::POWER_CAPABILITIES:
             case VM::SETUPAPI_DISK: 
             case VM::VIRTUAL_PROCESSORS:
@@ -955,7 +956,7 @@ void general() {
     checker(VM::ACPI_TEMPERATURE, "thermal devices");
     checker(VM::POWER_CAPABILITIES, "Power capabilities");
     checker(VM::SETUPAPI_DISK, "SETUPDI diskdrive");
-    checker(VM::SYS_QEMU, "QEMU in /sys");
+    checker(VM::QEMU_FW_CFG, "QEMU fw_cfg device");
     checker(VM::LSHW_QEMU, "QEMU in lshw output");
     checker(VM::VIRTUAL_PROCESSORS, "virtual processors");
     checker(VM::HYPERV_QUERY, "hypervisor query");
@@ -1172,7 +1173,7 @@ int main(int argc, char* argv[]) {
     win_ansi_enabler_t ansi_enabler;
 #endif
 
-    const std::vector<const char*> args(argv + 1, argv + argc); // easier to handle args this way
+    const std::vector<std::string> args(argv + 1, argv + argc); // easier to handle args this way
     const u32 arg_count = static_cast<u32>(argc - 1);
 
     // this was removed from the lib due to ethical 
@@ -1221,19 +1222,18 @@ int main(int argc, char* argv[]) {
 
     std::string potential_null_arg = "";
 
-    for (const auto arg_string : args) {
-        //auto it = std::find_if(table.cbegin(), table.cend(), [&](const auto &p) {
-        //    return (std::strcmp(p.first, arg_string) == 0);
-        //});
+    for (int i = 1; i < argc; ++i) {
+        const char* arg_string = argv[i];
 
-        auto it = std::find_if(table.cbegin(), table.cend(), [&](const std::pair<const char*, int> &p) {
+        auto it = std::find_if(table.cbegin(), table.cend(), [&](const std::pair<const char*, int>& p) {
             return (std::strcmp(p.first, arg_string) == 0);
-        });
+            });
 
         if (it == table.end()) {
             arg_bitset.set(NULL_ARG);
             potential_null_arg = arg_string;
-        } else {
+        }
+        else {
             arg_bitset.set(it->second);
         }
     }
