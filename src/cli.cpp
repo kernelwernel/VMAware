@@ -350,12 +350,11 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::DMIDECODE:
             case VM::DMESG:
             case VM::HWMON:
-            case VM::SIDT5:
             case VM::DISK_SIZE:
             case VM::VBOX_DEFAULT:
+            case VM::VM_PROCESSES:
             case VM::LINUX_USER_HOST:
             case VM::BOCHS_CPU:
-            case VM::QEMU_GA:
             case VM::SIDT:
             case VM::VMWARE_IOMEM:
             case VM::VMWARE_IOPORTS:
@@ -427,10 +426,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::SIDT:
             case VM::SGDT:
             case VM::SLDT:
-            case VM::OFFSEC_SIDT:
-            case VM::OFFSEC_SGDT:
-            case VM::OFFSEC_SLDT:
-            case VM::VPC_SIDT:
             case VM::VMWARE_STR:
             case VM::VMWARE_BACKDOOR:
             case VM::VMWARE_PORT_MEM:
@@ -450,8 +445,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::KVM_BITMASK:
             case VM::KGT_SIGNATURE:
             case VM::DRIVER_NAMES:
-            case VM::VM_SIDT:
-            case VM::HDD_SERIAL:
+            case VM::DISK_SERIAL:
             case VM::PORT_CONNECTORS:
             case VM::GPU_VM_STRINGS:
             case VM::GPU_CAPABILITIES:
@@ -874,7 +868,6 @@ void general() {
     checker(VM::HYPERVISOR_BIT, "CPUID hypervisor bit");
     checker(VM::HYPERVISOR_STR, "hypervisor str");
     checker(VM::TIMER, "timing anomalies");
-    checker(VM::SIDT5, "sidt null byte");
     checker(VM::THREADCOUNT, "processor count");
     checker(VM::MAC, "MAC address");
     checker(VM::TEMPERATURE, "temperature");
@@ -907,16 +900,11 @@ void general() {
     checker(VM::KVM_DIRS, "KVM directories");
     checker(VM::HKLM_REGISTRIES, "registry values");
     checker(VM::AUDIO, "audio device");
-    checker(VM::QEMU_GA, "qemu-ga process");
     checker(VM::QEMU_DIR, "QEMU directories");
     checker(VM::VPC_INVALID, "VPC invalid instructions");
     checker(VM::SIDT, "SIDT");
     checker(VM::SGDT, "SGDT");
     checker(VM::SLDT, "SLDT");
-    checker(VM::OFFSEC_SIDT, "Offensive Security SIDT");
-    checker(VM::OFFSEC_SGDT, "Offensive Security SGDT");
-    checker(VM::OFFSEC_SLDT, "Offensive Security SLDT");
-    checker(VM::VPC_SIDT, "VirtualPC SIDT");
     checker(VM::VMWARE_IOMEM, "/proc/iomem file");
     checker(VM::VMWARE_IOPORTS, "/proc/ioports file");
     checker(VM::VMWARE_SCSI, "/proc/scsi/scsi file");
@@ -956,8 +944,7 @@ void general() {
     checker(anyrun_driver, "ANY.RUN driver");
     checker(anyrun_directory, "ANY.RUN directory");
     checker(VM::DRIVER_NAMES, "driver names");
-    checker(VM::VM_SIDT, "VM SIDT");
-    checker(VM::HDD_SERIAL, "HDD serial number");
+    checker(VM::DISK_SERIAL, "disk serial number");
     checker(VM::PORT_CONNECTORS, "physical connection ports");
     checker(VM::GPU_CAPABILITIES, "GPU capabilities");
     checker(VM::GPU_VM_STRINGS, "GPU strings");
