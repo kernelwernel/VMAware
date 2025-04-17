@@ -27,14 +27,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 555
- * - struct for internal cpu operations        => line 739
- * - struct for internal memoization           => line 1210
- * - struct for internal utility functions     => line 1334
- * - struct for internal core components       => line 9950
- * - start of VM detection technique list      => line 2361
- * - start of public VM detection functions    => line 10614
- * - start of externally defined variables     => line 11553
+ * - enums for publicly accessible techniques  => line 551
+ * - struct for internal cpu operations        => line 734
+ * - struct for internal memoization           => line 1206
+ * - struct for internal utility functions     => line 1330
+ * - struct for internal core components       => line 9946
+ * - start of VM detection technique list      => line 2357
+ * - start of public VM detection functions    => line 10610
+ * - start of externally defined variables     => line 11549
  *
  *
  * ============================== EXAMPLE ===================================
@@ -368,8 +368,6 @@
 #include <mmsystem.h>
 #include <dxgi.h>
 #include <d3d9.h>
-#include <d3d11.h>
-#include <d3d12.h>
 
 #pragma comment(lib, "winmm.lib")
 #pragma comment(lib, "setupapi.lib")
@@ -383,10 +381,8 @@
 #pragma comment(lib, "uuid.lib")
 #pragma comment(lib, "ntdll.lib")
 #pragma comment(lib, "powrprof.lib")
-#pragma comment(lib, "d3d9.lib")
-#pragma comment(lib, "d3d11.lib")
-#pragma comment(lib, "d3d12.lib")
 #pragma comment(lib, "dxgi.lib")
+#pragma comment(lib, "d3d9.lib")
 
 #elif (LINUX)
 #if (x86)
@@ -7704,9 +7700,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 #if (WINDOWS)
         constexpr u16 qpcRatioThreshold = 70;           // QPC ratio threshold
+#endif
         constexpr u8 tscIterations = 10;                 // Number of iterations for the TSC synchronization check
         constexpr u16 tscSyncDiffThreshold = 5000;  // TSC difference threshold
-#endif
 
         // to minimize context switching/scheduling
 #if (WINDOWS)
