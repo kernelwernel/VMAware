@@ -653,6 +653,7 @@ public:
         DRIVER_NAMES,
         DISK_SERIAL,
         PORT_CONNECTORS,
+        IVSHMEM,
         GPU_VM_STRINGS,
         GPU_CAPABILITIES,
         VM_DEVICES,
@@ -7184,6 +7185,34 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
 
+    /**
+     * @brief Check for IVSHMEM device absense
+     * @category Windows
+     * @author dmfrpro (https://github.com/dmfrpro)
+     * @implements VM::IVSHMEM
+     */
+    [[nodiscard]] static bool ivshmem() {
+#if (!WINDOWS)
+        return false;
+#else
+        const GUID GUID_IVSHMEM_IFACE =
+        { 0xdf576976, 0x569d, 0x4672, {0x95, 0xa0, 0xf5, 0x7e, 0x4e, 0xa0, 0xb2, 0x10} };
+
+        HDEVINFO hDevInfo = SetupDiGetClassDevsW(&GUID_IVSHMEM_IFACE,
+            nullptr, nullptr, DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
+        if (hDevInfo == INVALID_HANDLE_VALUE) {
+            return true;
+        }
+
+        SP_DEVINFO_DATA devInfoData = { sizeof(SP_DEVINFO_DATA) };
+        // Check first device only
+        const bool hasIvshmemData = SetupDiEnumDeviceInfo(hDevInfo, 0, &devInfoData);
+
+        SetupDiDestroyDeviceInfoList(hDevInfo);
+        return hasIvshmemData ? core::add(brands::HYPERVISOR_PHANTOM) : false;
+#endif
+    }
+
 
     /**
      * @brief Check for specific GPU string signatures related to VMs
@@ -10970,6 +10999,7 @@ public: // START OF PUBLIC FUNCTIONS
             case DRIVER_NAMES: return "DRIVER_NAMES";
             case DISK_SERIAL: return "DISK_SERIAL";
             case PORT_CONNECTORS: return "PORT_CONNECTORS";
+            case IVSHMEM: return "IVSHMEM";
             case GPU_VM_STRINGS: return "GPU_STRINGS";
             case GPU_CAPABILITIES: return "GPU_CAPABILITIES";
             case VM_DEVICES: return "VM_DEVICES";
@@ -11519,6 +11549,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     std::make_pair(VM::DRIVER_NAMES, VM::core::technique(100, VM::driver_names)),
     std::make_pair(VM::DISK_SERIAL, VM::core::technique(100, VM::disk_serial_number)),
     std::make_pair(VM::PORT_CONNECTORS, VM::core::technique(25, VM::port_connectors)),
+    std::make_pair(VM::IVSHMEM, VM::core::technique(100, VM::ivshmem)),
     std::make_pair(VM::GPU_VM_STRINGS, VM::core::technique(100, VM::gpu_vm_strings)),
     std::make_pair(VM::GPU_CAPABILITIES, VM::core::technique(100, VM::gpu_capabilities)),
     std::make_pair(VM::VM_DEVICES, VM::core::technique(50, VM::vm_devices)),

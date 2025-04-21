@@ -450,6 +450,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::DRIVER_NAMES:
             case VM::DISK_SERIAL:
             case VM::PORT_CONNECTORS:
+            case VM::IVSHMEM:
             case VM::GPU_VM_STRINGS:
             case VM::GPU_CAPABILITIES:
             case VM::PROCESSOR_NUMBER:
@@ -951,6 +952,7 @@ void general() {
     checker(VM::DRIVER_NAMES, "driver names");
     checker(VM::DISK_SERIAL, "disk serial number");
     checker(VM::PORT_CONNECTORS, "physical connection ports");
+    checker(VM::IVSHMEM, "IVSHMEM device");
     checker(VM::GPU_CAPABILITIES, "GPU capabilities");
     checker(VM::GPU_VM_STRINGS, "GPU strings");
     checker(VM::PROCESSOR_NUMBER, "processor count");
