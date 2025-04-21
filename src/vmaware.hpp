@@ -405,6 +405,11 @@
 #include <cctype>
 #include <fcntl.h>
 #include <limits.h>
+#include <csignal>      
+#include <csetjmp>      
+#include <pthread.h>     
+#include <sched.h>      
+#include <cerrno>         
 #elif (APPLE)
 #include <sys/types.h>
 #include <sys/sysctl.h>
