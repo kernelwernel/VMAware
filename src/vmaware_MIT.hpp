@@ -7577,10 +7577,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
                 sigaction(SIGILL, &newAct, &oldAct);
 
-                unsigned int aux;
-                unsigned long long tscCore1 = 0;
-                unsigned long long tscCore2 = 0;
-
                 if (sigsetjmp(jumpBuf, 1) == 0) {
                     tscCore1 = __rdtscp(&aux);
                 }
