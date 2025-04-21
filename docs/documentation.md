@@ -617,6 +617,7 @@ This is the table of all the brands the lib supports.
 | NoirVisor | `brands::NOIRVISOR` | Hypervisor (type 1) |  |
 | Qihoo 360 Sandbox | `brands::QIHOO` | Sandbox |  |
 | nsjail | `brands::NSJAIL` | Process isolator |  |
+| Hypervisor-Phantom | `brands::HYPERVISOR_PHANTOM` | Sandbox | See the [repository](https://github.com/Scrut1ny/Hypervisor-Phantom) |
 
 <br>
 

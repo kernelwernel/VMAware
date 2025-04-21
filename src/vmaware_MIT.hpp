@@ -560,6 +560,7 @@ namespace brands {
     static constexpr const char* NOIRVISOR = "NoirVisor";
     static constexpr const char* QIHOO = "Qihoo 360 Sandbox";
     static constexpr const char* NSJAIL = "nsjail";
+    static constexpr const char* HYPERVISOR_PHANTOM = "Hypervisor-Phantom";
 }
 
 
@@ -3514,14 +3515,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         if (runningProcesses.count("vdagent.exe") ||
             runningProcesses.count("vdservice.exe") ||
-            runningProcesses.count("qemuwmi.exe") || 
-            runningProcesses.count("looking-glass-host.exe")) {
+            runningProcesses.count("qemuwmi.exe")) {
             debug("VM_PROCESSES: Detected QEMU process.");
             return core::add(brands::QEMU);
         }
 
-        if (runningProcesses.count("VDDSysTray.exe")) {
-            return true;
+        if (runningProcesses.count("looking-glass-host.exe") ||
+            runningProcesses.count("VDDSysTray.exe")) {
+            return core::add(brands::HYPERVISOR_PHANTOM);
         }
 
 #elif (LINUX)
@@ -11155,6 +11156,7 @@ public: // START OF PUBLIC FUNCTIONS
             { brands::COMODO, "Sandbox" },
             { brands::THREATEXPERT, "Sandbox" },
             { brands::QIHOO, "Sandbox" },
+            { brands::HYPERVISOR_PHANTOM, "Sandbox" },
 
             // misc
             { brands::BOCHS, "Emulator" },
