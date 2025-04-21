@@ -11417,6 +11417,7 @@ std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard{
     { brands::QIHOO, 0 },
     { brands::NOIRVISOR, 0 },
     { brands::NSJAIL, 0 },
+    { brands::HYPERVISOR_PHANTOM, 0 },
     { brands::NULL_BRAND, 0 }
 };
 
