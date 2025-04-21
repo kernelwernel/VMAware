@@ -9286,8 +9286,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         constexpr const char* targets[] = {
             "Parallels Software International", "Parallels(R)", "innotek",
             "Oracle", "VirtualBox", "vbox", "VBOX", "VS2005R2", "VMware, Inc.",
-            "VMware", "VMWARE", "S3 Corp.", "Virtual Machine", "QEMU", "FWCF",
-            "WAET", "BOCHS", "BXPC"
+            "VMware", "VMWARE", "S3 Corp.", "Virtual Machine", "QEMU", "WAET",
+            "BOCHS", "BXPC"
         };
 
         auto check_firmware_table = [&](DWORD signature, ULONG tableID) -> bool {
@@ -9348,8 +9348,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                             strcmp(target, "VMware") == 0 ||
                             strcmp(target, "VMWARE") == 0)
                             brand = brands::VMWARE;
-                        else if (strcmp(target, "QEMU") == 0 ||
-                            strcmp(target, "FWCF") == 0)
+                        else if (strcmp(target, "QEMU") == 0)
                             brand = brands::QEMU;
                         else if (strcmp(target, "BOCHS") == 0 ||
                             strcmp(target, "BXPC") == 0)
@@ -9497,8 +9496,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         constexpr const char* targets[] = {
             "Parallels Software International", "Parallels(R)", "innotek",
             "Oracle", "VirtualBox", "vbox", "VBOX", "VS2005R2", "VMware, Inc.",
-            "VMware", "VMWARE", "S3 Corp.", "Virtual Machine", "QEMU", "FWCF",
-            "BOCHS", "BXPC"
+            "VMware", "VMWARE", "S3 Corp.", "Virtual Machine", "QEMU", "BOCHS",
+            "BXPC"
         };
 
         struct dirent* entry;
@@ -9566,8 +9565,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                             strcmp(target, "VMWARE") == 0) {
                             brand = brands::VMWARE;
                         }
-                        else if (strcmp(target, "QEMU") == 0 ||
-                            strcmp(target, "FWCF") == 0) {
+                        else if (strcmp(target, "QEMU")) {
                             brand = brands::QEMU;
                         }
                         else if (strcmp(target, "BOCHS") == 0 ||
