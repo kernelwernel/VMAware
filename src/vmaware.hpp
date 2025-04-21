@@ -7765,6 +7765,18 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
     #else
                 cpu_set_t set;
+                static sigjmp_buf jumpBuf;
+
+                // Use a non-capturing lambda cast to a function pointer for signal handling
+                struct sigaction oldAct, newAct {};
+                newAct.sa_flags = SA_SIGINFO;
+                using sa_sigaction_fn = void (*)(int, siginfo_t*, void*);
+                newAct.sa_sigaction = static_cast<sa_sigaction_fn>(
+                    [](int, siginfo_t*, void*) {
+                        siglongjmp(jumpBuf, 2);
+                    }
+                    );
+                sigemptyset(&newAct.sa_mask);
 
                 // core 0
                 CPU_ZERO(&set);
@@ -7779,14 +7791,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     return false;
                 }
 
-                struct sigaction oldAct, newAct {};
-                sigsetjmp(jumpBuf, 1);
-                newAct.sa_flags = SA_SIGINFO;
-                newAct.sa_sigaction = [](int, siginfo_t*, void*) {
-                    siglongjmp(jumpBuf, 2);
-                    };
-                sigemptyset(&newAct.sa_mask);
                 sigaction(SIGILL, &newAct, &oldAct);
+
+                unsigned int aux;
+                unsigned long long tscCore1 = 0;
+                unsigned long long tscCore2 = 0;
 
                 if (sigsetjmp(jumpBuf, 1) == 0) {
                     tscCore1 = __rdtscp(&aux);
@@ -7796,6 +7805,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     sigaction(SIGILL, &oldAct, nullptr);
                     return true;
                 }
+
                 sigaction(SIGILL, &oldAct, nullptr);
 
                 // core 1
@@ -7818,6 +7828,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     sigaction(SIGILL, &oldAct, nullptr);
                     return true;
                 }
+
                 sigaction(SIGILL, &oldAct, nullptr);
     #endif
                 // hypervisors often have nearly identical TSCs across vCPUs
