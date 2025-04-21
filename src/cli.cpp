@@ -454,7 +454,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::PROCESSOR_NUMBER:
             case VM::NUMBER_OF_CORES:
             case VM::ACPI_TEMPERATURE:
-            case VM::QEMU_FW_CFG:
             case VM::POWER_CAPABILITIES:
             case VM::SETUPAPI_DISK: 
             case VM::VIRTUAL_PROCESSORS:

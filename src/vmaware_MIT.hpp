@@ -427,6 +427,11 @@
 #include <cctype>
 #include <fcntl.h>
 #include <limits.h>
+#include <csignal>      
+#include <csetjmp>      
+#include <pthread.h>     
+#include <sched.h>      
+#include <cerrno> 
 #elif (APPLE)
 #include <sys/types.h>
 #include <sys/sysctl.h>
@@ -7458,7 +7463,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (LINUX)
     __attribute__((no_sanitize("address", "leak", "thread", "undefined")))
 #endif
-    static bool timer() {
+        static bool timer() {
 #if (ARM || !x86)
         return false;
 #else
@@ -7466,25 +7471,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        constexpr u8 rdtscIterations = 10;           // Number of iterations for the classic RDTSC check
-        constexpr u16 rdtscThreshold = 6000;          // Cycle threshold per iteration for classic RDTSC check
-        constexpr u8 requiredClassicSpikes = rdtscIterations / 2; // At least 50% of iterations must spike
-
-        constexpr u16 spammerIterations = 1000;           // Iterations for the multi-CPU/spammer check
-        constexpr u16 spammerAvgThreshold = 5000;         // Average cycle threshold for the spammer check
-
-#if (WINDOWS)
-        constexpr u16 qpcRatioThreshold = 70;           // QPC ratio threshold
-#endif
-        constexpr u8 tscIterations = 10;                 // Number of iterations for the TSC synchronization check
-        constexpr u16 tscSyncDiffThreshold = 5000;  // TSC difference threshold
-
         // to minimize context switching/scheduling
-#if (WINDOWS)
+    #if (WINDOWS)
         const HANDLE hThread = GetCurrentThread();
         const int oldPriority = GetThreadPriority(hThread);
         SetThreadPriority(hThread, THREAD_PRIORITY_TIME_CRITICAL);
-#else
+    #else
         bool hasSchedPriority = (geteuid() == 0);
         int oldPolicy = SCHED_OTHER;
         sched_param oldParam{};
@@ -7496,351 +7488,266 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             newParam.sched_priority = sched_get_priority_max(SCHED_FIFO);
 
             if (sched_setscheduler(0, SCHED_FIFO, &newParam) == -1) {
-                hasSchedPriority = false;  
+                hasSchedPriority = false;
             }
         }
-#endif
-
+    #endif
         auto restoreThreadPriority = [&]() {
-#if (WINDOWS)
+    #if (WINDOWS)
             SetThreadPriority(hThread, oldPriority);
-#else
+    #else
             sched_setscheduler(0, oldPolicy, &oldParam);
-#endif
-        };
+    #endif
+            };
 
-        // --- 1. Classic Timing Check (rdtsc + cpuid + rdtsc) ---
-#ifdef __VMAWARE_DEBUG__
-        u64 totalCycles = 0;
-#endif
-        char* flushBuffer = nullptr; // avoiding volatile on purpose
-        constexpr size_t kAlignment = 64;
-        constexpr size_t kBufferSize = static_cast<size_t>(64 * 1024) * 1024;
-
-#if (WINDOWS)
-    #define COMPILER_BARRIER() _ReadWriteBarrier()
-#else
-    #define COMPILER_BARRIER() __asm__ __volatile__("" ::: "memory")
-#endif
-
-#if (WINDOWS)
-        bool notaligned = false;
-        flushBuffer = (char*)_aligned_malloc(kBufferSize, kAlignment);
-        if (!flushBuffer) {
-            notaligned = true;
-            flushBuffer = new (std::nothrow) char[kBufferSize];
-        }
-#elif (LINUX || APPLE)
-        const int err = posix_memalign((void**)&flushBuffer, kAlignment, kBufferSize);
-        if (err != 0 || !flushBuffer) {
-            flushBuffer = new (std::nothrow) char[kBufferSize];
-        }
-#else
-        // volatile char* flushBuffer = new volatile char[kBufferSize];
-        flushBuffer = new (std::nothrow) char[kBufferSize];
-#endif
-
-        // Define a rotation scheme over segments. Here, we split the buffer into a number of segments
-        constexpr size_t segmentsCount = 8; // basically 1/8 of the buffer per iteration
-        constexpr size_t segmentSize = kBufferSize / segmentsCount;
-        int spikeCount = 0;
-
-        for (int i = 0; i < rdtscIterations; i++) {
-            u64 start = __rdtsc();
-#if (WINDOWS)
-            int cpu_info[4];
-            __cpuid(cpu_info, 0); // CPUID serializes pipeline and is frequently intercepted by hypervisors
-            UNUSED(cpu_info);
-#elif (LINUX || APPLE)
-            u32 eax = 0, ebx = 0, ecx = 0, edx = 0;
-            __cpuid(0, eax, ebx, ecx, edx);
-            UNUSED(eax); UNUSED(ebx); UNUSED(ecx); UNUSED(edx);
-#endif
-            u64 end = __rdtsc();
-            u64 cycles = end - start;
-#ifdef __VMAWARE_DEBUG__
-            totalCycles += cycles;
-#endif
-            if (cycles >= rdtscThreshold) {
-                spikeCount++;
-            }
-            // Instead of flushing the entire buffer every iteration (which would decrease performance a lot),
-            // flush only one segment per iteration
-            size_t segmentIndex = i % segmentsCount;
-            size_t offsetStart = segmentIndex * segmentSize;
-            size_t offsetEnd = offsetStart + segmentSize;
-
-            // this detection works better when inducing cache flushing without thread sleeps
-            if (flushBuffer) {
-                for (size_t j = offsetStart; j < offsetEnd; j += 64) {
-                    flushBuffer[j] = static_cast<char>(j);
-#if (x86) && (GCC || CLANG || MSVC)
-                    COMPILER_BARRIER();
-                    // _mm_clflushopt not available on some systems
-                    _mm_clflush(reinterpret_cast<const void*>(&flushBuffer[j]));
-#endif
-                }
-            }
-        }
-
-#if (WINDOWS)
-        if (flushBuffer) {
-            if (notaligned)
-                delete[] flushBuffer;
-            else
-                _aligned_free(flushBuffer);
-        }
-#else
-        if (flushBuffer) delete[] flushBuffer;
-#endif
-
-#ifdef __VMAWARE_DEBUG__
-        const double averageCycles = static_cast<double>(totalCycles) / rdtscIterations;
-        debug("TIMER: RDTSC check - Average cycles: ", averageCycles,
-            " (Threshold per sample: ", rdtscThreshold,
-            ") - Spike count: ", spikeCount);
-#endif
-
-        const bool sleepVarianceDetected = (spikeCount >= requiredClassicSpikes);
-        if (sleepVarianceDetected) {
-            restoreThreadPriority();
-            return true;
-        }
-
-        // --- 2. Multi-CPU Spammer Check ---
-        // rdtsc+cpuid+rdtsc on CPU1 while CPU2 spams cpuid. This detection tries to detect invariant TSC to flag hypervisors that share the same timer across multiple vCPUs
-        std::atomic<bool> stopSpammer{ false };
-        bool spammerThreadStarted = false;
-        bool singleCore = false;
-
-        std::thread spammer;
-
-        try {
-            spammer = std::thread([&stopSpammer, &singleCore] {
-                try {
-#if (WINDOWS)
-                    if (!SetThreadAffinityMask(GetCurrentThread(), 2)) {
-                        singleCore = true;
-                        return;
-                    }
-#elif (LINUX)
-                    cpu_set_t cpuset;
-                    CPU_ZERO(&cpuset);
-                    CPU_SET(1, &cpuset); // core 1 (0-indexed)
-                    if (pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset) != 0) {
-                        singleCore = true;
-                        return;
-                    }
-#elif (APPLE)
-                    thread_affinity_policy_data_t policy = { 1 };
-                    if (thread_policy_set(pthread_mach_thread_np(pthread_self()),
-                        THREAD_AFFINITY_POLICY,
-                        (thread_policy_t)&policy, 1) != KERN_SUCCESS) {
-                        singleCore = true;
-                        return;
-                    }
-#endif
-                    // hypervisor trap pressure
-                    while (!stopSpammer.load()) {
-#if (WINDOWS)
-                        int cpu_info[4];
-                        __cpuid(cpu_info, 0); // no need for memory barrier as cpuid is a full memory barrier on itself
-#elif (LINUX || APPLE)
-                        u32 eax = 0, ebx = 0, ecx = 0, edx = 0;
-                        __cpuid(0, eax, ebx, ecx, edx);
-#endif
-                    }
-                }
-                catch (...) {
-                    singleCore = true;
-                }
-                });
-            spammerThreadStarted = true;
-        }
-        catch (...) {
-           
-        }
-
-        // --- 3a. Pin Measurement Thread for Consistent Timing ---
-#if (WINDOWS)
-        DWORD_PTR oldAffinityMask = SetThreadAffinityMask(GetCurrentThread(), 1);
-#elif (LINUX)
-        cpu_set_t oldCpuSet;
-        CPU_ZERO(&oldCpuSet);
-        pthread_getaffinity_np(pthread_self(), sizeof(cpu_set_t), &oldCpuSet);
-
-        cpu_set_t newCpuSet;
-        CPU_ZERO(&newCpuSet);
-        CPU_SET(0, &newCpuSet);  // core 0 for consistent timing
-        pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &newCpuSet);
-#elif (APPLE)
-        thread_affinity_policy_data_t policy = { 1 };
-        thread_policy_set(pthread_mach_thread_np(pthread_self()),
-            THREAD_AFFINITY_POLICY,
-            (thread_policy_t)&policy, 1);
-#endif
-
-        // --- 3b. Measurement Under Spammer Load ---
-        u64 measurement = 0;
-        for (int i = 0; i < spammerIterations; i++) {
-            u64 start = __rdtsc();
-#if (WINDOWS)
-            int cpu_info[4];
-            __cpuid(cpu_info, 0);
-#elif (LINUX || APPLE)
-            u32 eax = 0, ebx = 0, ecx = 0, edx = 0;
-            __cpuid(0, eax, ebx, ecx, edx);
-#endif
-            u64 end = __rdtsc();
-            measurement += (end - start);
-        }
-
-        stopSpammer.store(true);
-        if (spammerThreadStarted) {
-            spammer.join();
-        }
-
-        // Restore affinity
-#if (WINDOWS)
-        SetThreadAffinityMask(GetCurrentThread(), oldAffinityMask);
-#elif (LINUX)
-        pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &oldCpuSet);
-#endif
-
-        const bool spammerDetected = (measurement / spammerIterations) > spammerAvgThreshold;
-#ifdef __VMAWARE_DEBUG__
-        debug("TIMER: Spammer check - Average cycles: ", (measurement / spammerIterations),
-            " (Threshold: ", spammerAvgThreshold, ")");
-#endif
-        if (spammerDetected) {
-            restoreThreadPriority();
-            return true;
-        }
-
-#if (WINDOWS)
-        // --- 4. QPC Check ---
-        // Compare trapping vs non-trapping instruction timing
-        LARGE_INTEGER startQPC, endQPC;
-        QueryPerformanceCounter(&startQPC);
-        {
-            int cpu_info[4];
-            for (int i = 0; i < 100000; i++) {
-                __cpuid(cpu_info, 0);
-            }
-        }
-        QueryPerformanceCounter(&endQPC);
-        LONGLONG cpuIdTime = endQPC.QuadPart - startQPC.QuadPart;
-
-        // Non-trapping baseline loop
-        QueryPerformanceCounter(&startQPC);
-        volatile int dummy = 0;
-        for (int i = 0; i < 100000; i++) {
-            dummy ^= i;
-#if (GCC || CLANG)
-            asm volatile("" ::: "memory");  // memory clobber
-#elif (MSVC)
-            _ReadWriteBarrier();
-            _mm_mfence();
-#endif
-        }
-
-        QueryPerformanceCounter(&endQPC);
-        const LONGLONG dummyTime = endQPC.QuadPart - startQPC.QuadPart;
-
-        const bool qpcCheck = (dummyTime != 0) && ((cpuIdTime / dummyTime) > qpcRatioThreshold);
-#ifdef __VMAWARE_DEBUG__
-        debug("TIMER: QPC check - CPUID: ", cpuIdTime,
-            " ns, RWB: ", dummyTime,
-            " ns, Ratio: ", (cpuIdTime / dummyTime),
-            " (Threshold: ", qpcRatioThreshold,
-            ')');
-#endif
-        restoreThreadPriority();
-
-        if (qpcCheck) {
-            return true;
-        }
-#endif
-        bool tscSyncDetected = false;
-
-#if (WINDOWS)
-        const DWORD_PTR oldTscAffinity = SetThreadAffinityMask(GetCurrentThread(), static_cast<DWORD_PTR>(~0));
-#elif (LINUX)
+    #if (WINDOWS)
+        DWORD_PTR procMask, sysMask;
+        GetProcessAffinityMask(GetCurrentProcess(), &procMask, &sysMask);
+    #elif (LINUX)
         cpu_set_t oldTscSet;
         CPU_ZERO(&oldTscSet);
         pthread_getaffinity_np(pthread_self(), sizeof(cpu_set_t), &oldTscSet);
-#endif
+    #endif
+        // 1. TSC Synchronization Check Across Cores
+        // Try reading the invariant TSC on two different cores to attempt to detect vCPU timers being shared
+        constexpr u8 tscIterations = 10;
+        constexpr u16 tscSyncDiffThreshold = 5000;
 
+        bool tscSyncDetected = false;
+        tscSyncDetected = [&]() noexcept -> bool {
+            int tscIssueCount = 0;
+            u64 tscCore1 = 0, tscCore2 = 0;
 
-        if (!singleCore) {
-            // --- 5. TSC Synchronization Check Across Cores ---
-            // Try reading the invariant TSC on two different cores to attempt to detect vCPU timers being shared
-            tscSyncDetected = [&]() noexcept -> bool {
-                int tscIssueCount = 0;
-                u64 tscCore1 = 0, tscCore2 = 0;
-
-                for (int i = 0; i < tscIterations; i++) {
-                    unsigned int aux = 0;
-
-                    try {
-#if (WINDOWS)
-                        SetThreadAffinityMask(GetCurrentThread(), 1);
-                        tscCore1 = __rdtscp(&aux);
-                        SetThreadAffinityMask(GetCurrentThread(), 2);
-                        tscCore2 = __rdtscp(&aux);
-#elif (LINUX)
-                        // Core 0
-                        cpu_set_t set;
-                        CPU_ZERO(&set);
-                        CPU_SET(0, &set);
-                        pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &set);
-                        tscCore1 = __rdtscp(&aux);
-
-                        // Core 1
-                        CPU_ZERO(&set);
-                        CPU_SET(1, &set);
-                        pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &set);
-                        tscCore2 = __rdtscp(&aux);
-#endif
-                    }
-                    catch (...) {
-                        tscIssueCount++; // __rdtscp should be supported on most systems
-                        continue;
-                    }
-
-                    // hypervisors often have nearly identical TSCs across vCPUs
-                    const u64 diff = (tscCore2 > tscCore1)
-                        ? (tscCore2 - tscCore1)
-                        : (tscCore1 - tscCore2);
-
-                    if (diff < tscSyncDiffThreshold) {
-                        tscIssueCount++;
-                    }
+            for (int i = 0; i < tscIterations; ++i) {
+                unsigned int aux = 0;
+    #if (WINDOWS)
+                DWORD_PTR prevMask = SetThreadAffinityMask(GetCurrentThread(), DWORD{ 1 });
+                if (prevMask == 0) {
+                    // could not bind even to the first core...?
+                    return true;
                 }
 
-#ifdef __VMAWARE_DEBUG__
-                debug("TIMER: TSC sync check",
-                    " - Core1: ", tscCore1,
-                    " Core2: ", tscCore2,
-                    " Delta: ", tscCore2 - tscCore1,
-                    " (Threshold: <", tscSyncDiffThreshold,
-                    ')');
-#endif
+                __try {
+                    tscCore1 = __rdtscp(&aux);
+                }
+                __except (EXCEPTION_EXECUTE_HANDLER) {
+                    // __rdtscp should be supported nowadays
+                    return true;
+                }
 
-                return (tscIssueCount >= tscIterations / 2);
-                }();
-        }
+                DWORD_PTR gotMask = SetThreadAffinityMask(GetCurrentThread(), DWORD{ 2 });
+                if (gotMask == 0) {
+                    // fails because there is no core #1 on a single-core box
+                    return false;
+                }
 
-#if (WINDOWS)
-        SetThreadAffinityMask(GetCurrentThread(), oldTscAffinity);
-#elif (LINUX)
+                __try {
+                    tscCore2 = __rdtscp(&aux);
+                }
+                __except (EXCEPTION_EXECUTE_HANDLER) {
+                    return true;
+                }
+    #else
+                cpu_set_t set;
+                static sigjmp_buf jumpBuf;
+
+                // Use a non-capturing lambda cast to a function pointer for signal handling
+                struct sigaction oldAct, newAct {};
+                newAct.sa_flags = SA_SIGINFO;
+                using sa_sigaction_fn = void (*)(int, siginfo_t*, void*);
+                newAct.sa_sigaction = static_cast<sa_sigaction_fn>(
+                    [](int, siginfo_t*, void*) {
+                        siglongjmp(jumpBuf, 2);
+                    }
+                    );
+                sigemptyset(&newAct.sa_mask);
+
+                // core 0
+                CPU_ZERO(&set);
+                CPU_SET(0, &set);
+                int ret = pthread_setaffinity_np(pthread_self(), sizeof(set), &set);
+                if (ret == EINVAL) {
+                    // no CPU 0? super weird
+                    return true;
+                }
+                else if (ret != 0) {
+                    // assume single-core
+                    return false;
+                }
+
+                sigaction(SIGILL, &newAct, &oldAct);
+
+                if (sigsetjmp(jumpBuf, 1) == 0) {
+                    tscCore1 = __rdtscp(&aux);
+                }
+                else {
+                    // no rdtscp support
+                    sigaction(SIGILL, &oldAct, nullptr);
+                    return true;
+                }
+
+                sigaction(SIGILL, &oldAct, nullptr);
+
+                // core 1
+                CPU_ZERO(&set);
+                CPU_SET(1, &set);
+                ret = pthread_setaffinity_np(pthread_self(), sizeof(set), &set);
+                if (ret == EINVAL) {
+                    // single‑core 
+                    return false;
+                }
+                else if (ret != 0) {
+                    return true;
+                }
+
+                sigaction(SIGILL, &newAct, &oldAct);
+                if (sigsetjmp(jumpBuf, 1) == 0) {
+                    tscCore2 = __rdtscp(&aux);
+                }
+                else {
+                    sigaction(SIGILL, &oldAct, nullptr);
+                    return true;
+                }
+
+                sigaction(SIGILL, &oldAct, nullptr);
+    #endif
+                // hypervisors often have nearly identical TSCs across vCPUs
+                const u64 diff = (tscCore2 > tscCore1)
+                    ? (tscCore2 - tscCore1)
+                    : (tscCore1 - tscCore2);
+
+                if (diff < tscSyncDiffThreshold) {
+                #ifdef __VMAWARE_DEBUG__
+                    debug("TIMER: TSC sync check",
+                        " - Core1: ", tscCore1,
+                        " Core2: ", tscCore2,
+                        " Delta: ", tscCore2 - tscCore1,
+                        " (Threshold: <", tscSyncDiffThreshold,
+                        ')');
+                #endif
+                    ++tscIssueCount;
+                }
+            }
+            return (tscIssueCount >= tscIterations / 2);
+            }();
+
+    #if (WINDOWS)
+        SetThreadAffinityMask(GetCurrentThread(), procMask);
+    #elif (LINUX)
         pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &oldTscSet);
-#endif
-
+    #endif
         if (tscSyncDetected) {
+            restoreThreadPriority();
             return true;
         }
 
+    #if (WINDOWS)
+        // 2. Ratio-based Timing Check on Single Core
+        // measure trapping vs non-trapping instructions
+
+        // warm-up to reduce noise
+        for (int i = 0; i < 10; ++i) {
+            unsigned aux;
+    #if (MSVC)
+            int cpuInfo[4]; __cpuid(cpuInfo, 0);
+            __rdtsc();
+            GetProcessHeap();
+            __rdtscp(&aux);
+        #pragma warning (disable : 6387)
+            CloseHandle((HANDLE)0);
+        #pragma warning (default : 6387)
+             __rdtscp(&aux);
+#elif (GCC) || (CLANG)
+            unsigned low, high;
+            __asm__ __volatile__(
+                "cpuid\n\t"
+                "rdtsc\n\t"
+                : "=a"(low), "=d"(high)
+                : "a"(0)
+                : "ebx", "ecx"
+            );
+            GetProcessHeap();
+            __asm__ __volatile__(
+                "rdtscp\n\t"
+                "cpuid"
+                : "=a"(low), "=d"(high)
+                :: "rbx", "rcx"
+            );
+            CloseHandle((HANDLE)0);
+            __asm__ __volatile__(
+                "rdtscp\n\t"
+                "cpuid"
+                : "=a"(low), "=d"(high)
+                :: "rbx", "rcx"
+            );
+    #endif
+        }
+
+        // actual measurement
+        constexpr u8  SAMPLE_COUNT = 100;
+        constexpr u16 SCALE_FACTOR = 1000;
+        constexpr u32 THRESHOLD_SCALED = 10 * SCALE_FACTOR;  // <10× ratio => VM
+        u64 samples[SAMPLE_COUNT] = { 0 };
+
+        for (int i = 0; i < SAMPLE_COUNT; ++i) {
+            unsigned aux;
+            u64 t0, t1, t2;
+    #if (MSVC)
+            int cpuInfo[4]; __cpuid(cpuInfo, 0);
+            t0 = __rdtsc();
+            GetProcessHeap();
+            t1 = __rdtscp(&aux);
+        #pragma warning (disable : 6387)
+            CloseHandle((HANDLE)0);
+        #pragma warning (default : 6387)
+            t2 = __rdtscp(&aux);
+    #else
+            unsigned low, high;
+            __asm__ __volatile__(
+                "cpuid\n\t"
+                "rdtsc\n\t"
+                : "=a"(low), "=d"(high)
+                : "a"(0)
+                : "ebx", "ecx"
+            );
+            t0 = ((uint64_t)high << 32) | low;
+
+            GetProcessHeap();
+
+            __asm__ __volatile__(
+                "rdtscp\n\t"
+                "cpuid"
+                : "=a"(low), "=d"(high)
+                :: "rbx", "rcx"
+            );
+            t1 = ((uint64_t)high << 32) | low;
+
+            CloseHandle((HANDLE)0);
+
+            __asm__ __volatile__(
+                "rdtscp\n\t"
+                "cpuid"
+                : "=a"(low), "=d"(high)
+                :: "rbx", "rcx"
+            );
+            t2 = ((uint64_t)high << 32) | low;
+    #endif
+            const u64 heapCost = t1 - t0;
+            const u64 closeCost = t2 - t1;
+            samples[i] = (heapCost > 0)
+                ? ((closeCost * SCALE_FACTOR) / heapCost)
+                : UINT64_MAX;
+        }
+
+        std::sort(std::begin(samples), std::end(samples));
+        const u64 median = samples[SAMPLE_COUNT / 2];
+
+        if (median < THRESHOLD_SCALED) {
+            debug("TIMER: Ratio: ", median, " - Threshold: <", THRESHOLD_SCALED);
+            restoreThreadPriority();
+            return true;
+        }
+    #endif
         return false;
 #endif
     }
@@ -7861,81 +7768,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::QEMU_FW_CFG
 	 */
 	[[nodiscard]] static bool sys_qemu_dir() {
-#if (WINDOWS)
-        bool res = false;
-
-        HDEVINFO hDevInfo = SetupDiGetClassDevsW(
-            /*ClassGuid*/   nullptr,
-            /*Enumerator*/  L"ACPI",
-            /*HWND*/        nullptr,
-            DIGCF_PRESENT | DIGCF_ALLCLASSES
-        );
-        if (hDevInfo == INVALID_HANDLE_VALUE) {
-            debug("SetupDiGetClassDevsW failed: %u", GetLastError());
-            return false;
-        }
-
-        SP_DEVINFO_DATA devInfo;
-        ZeroMemory(&devInfo, sizeof(devInfo));
-        devInfo.cbSize = sizeof(devInfo);
-
-        std::vector<BYTE> buffer;
-        const DWORD initialSize = 512;
-        buffer.resize(initialSize);
-
-        for (DWORD idx = 0;
-            SetupDiEnumDeviceInfo(hDevInfo, idx, &devInfo);
-            ++idx)
-        {
-            DWORD dataType = 0, requiredSize = 0;
-
-            if (!SetupDiGetDeviceRegistryPropertyW(
-                hDevInfo, &devInfo,
-                SPDRP_LOCATION_PATHS,
-                &dataType,
-                NULL, 0,
-                &requiredSize))
-            {
-                if (GetLastError() != ERROR_INSUFFICIENT_BUFFER) {
-                    continue;
-                }
-            }
-            if (requiredSize == 0) {
-                continue;
-            }
-
-            if (requiredSize > buffer.size()) {
-                buffer.resize(requiredSize);
-            }
-
-            if (!SetupDiGetDeviceRegistryPropertyW(
-                hDevInfo, &devInfo,
-                SPDRP_LOCATION_PATHS,
-                &dataType,
-                &buffer[0],
-                requiredSize,
-                &requiredSize))
-            {
-                debug("SetupDiGetDeviceRegistryPropertyW failed: %u", GetLastError());
-                continue;
-            }
-
-            const wchar_t* paths = reinterpret_cast<const wchar_t*>(&buffer[0]);
-            const size_t wcharCount = requiredSize / sizeof(wchar_t);
-            const wchar_t* end = paths + wcharCount;
-
-            for (const wchar_t* p = paths; p + 3 < end; ++p) {
-                if (p[0] == L'F' && p[1] == L'W' && p[2] == L'C' && p[3] == L'F') {
-                    res = core::add(brands::QEMU);
-                    goto DONE;
-                }
-            }
-        }
-
-    DONE:
-        SetupDiDestroyDeviceInfoList(hDevInfo);
-        return res;
-#elif (LINUX)
+#if (LINUX)
 	    const std::string module_path = "/sys/module/qemu_fw_cfg/";
 	    const std::string firmware_path = "/sys/firmware/qemu_fw_cfg/";
 	
@@ -9820,7 +9653,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         // Prebuilt TPM2_GetCapability command for TPM_PT_MANUFACTURER
-        static constexpr uint8_t cmd[] = {
+        static constexpr u8 cmd[] = {
             0x80,0x01,             // Tag: TPM_ST_NO_SESSIONS
             0x00,0x00,0x00,0x16,    // Command Size: 22
             0x00,0x00,0x01,0x7A,    // TPM2_GetCapability
@@ -9829,19 +9662,22 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             0x00,0x00,0x00,0x01     // Property Count: 1
         };
 
-        uint8_t resp[1024] = {};
-        uint32_t respSize = sizeof(resp);
+        u8 resp[1024] = {};
+        u32 respSize = sizeof(resp);
         if (Tbsip_Submit_Command(ctx.hContext,
             TBS_COMMAND_LOCALITY_ZERO,
             TBS_COMMAND_PRIORITY_NORMAL,
             cmd,
-            static_cast<uint32_t>(sizeof(cmd)),
+            static_cast<u32>(sizeof(cmd)),
             resp,
             &respSize) != TBS_SUCCESS || respSize < 27) {
             return false;
         }
 
-        const uint32_t manufacturerVal = (resp[23] << 24) | (resp[24] << 16) | (resp[25] << 8) | resp[26];
+        const u32 manufacturerVal = (static_cast<u32>(resp[23]) << 24) |
+            (static_cast<u32>(resp[24]) << 16) |
+            (static_cast<u32>(resp[25]) << 8) |
+            static_cast<u32>(resp[26]);
         switch (manufacturerVal) {
         case 0x414D4400u: // "AMD\0"
         case 0x41544D4Cu: // "ATML"
