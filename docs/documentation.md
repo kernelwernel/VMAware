@@ -516,6 +516,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::DRIVER_NAMES` | Check for VM-specific names for drivers | 🪟 | 100% |  |  |  |  | [link](https://github.com/kernelwernel/VMAware/blob/8cb2491b1c7d2cb7300d1d698b7c64c953b4ae75/src/vmaware.hpp#L7426) |
 | `VM::DISK_SERIAL` | Check for serial numbers of virtual disks | 🪟 | 100% |  |  |  |  | [link](https://github.com/kernelwernel/VMAware/blob/8cb2491b1c7d2cb7300d1d698b7c64c953b4ae75/src/vmaware.hpp#L7581) |
 | `VM::PORT_CONNECTORS` | Check for physical connection ports | 🪟 | 25% |  |  |  | This technique is known to false flag on devices like Surface Pro | [link](https://github.com/kernelwernel/VMAware/blob/8cb2491b1c7d2cb7300d1d698b7c64c953b4ae75/src/vmaware.hpp#L7700) |
+| `VM::IVSHMEM` | Check for IVSHMEM device absense | 🪟 | 100% |  |  |  |  |
 | `VM::GPU_CAPABILITIES` | Check for GPU capabilities related to VMs | 🪟 | 100% | Admin |  |  | Admin only needed for some heuristics | [link](https://github.com/kernelwernel/VMAware/blob/8cb2491b1c7d2cb7300d1d698b7c64c953b4ae75/src/vmaware.hpp#L7785) |
 | `VM::GPU_VM_STRINGS` | Check for specific GPU string signatures related to VMs | 🪟 | 100% |  |  |  | If GPU_CAPABILITIES also flags, the score will have 50 added instead of 100 | [link](https://github.com/kernelwernel/VMAware/blob/8cb2491b1c7d2cb7300d1d698b7c64c953b4ae75/src/vmaware.hpp#L7730) |
 | `VM::VM_DEVICES` | Check for VM-specific devices | 🪟 | 50% |  |  |  |  | [link](https://github.com/kernelwernel/VMAware/blob/8cb2491b1c7d2cb7300d1d698b7c64c953b4ae75/src/vmaware.hpp#L7848) |
@@ -538,6 +539,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::OSXSAVE` | Check if running xgetbv in the XCR0 extended feature register triggers an exception | 🪟 | 50% |  |  |  |  | [link](https://github.com/kernelwernel/VMAware/blob/8cb2491b1c7d2cb7300d1d698b7c64c953b4ae75/src/vmaware.hpp#L10044) |
 | `VM::NSJAIL_PID` | Check if process status matches with nsjail patterns with PID anomalies | 🐧 | 75% |  |  |  |  | [link](https://github.com/kernelwernel/VMAware/blob/8cb2491b1c7d2cb7300d1d698b7c64c953b4ae75/src/vmaware.hpp#L10083) |
 | `VM::PCI_VM` | Check for PCIe bridge names for known VM keywords and brands | 🐧 | 100% |  |  |  |  | [link](https://github.com/kernelwernel/VMAware/blob/8cb2491b1c7d2cb7300d1d698b7c64c953b4ae75/src/vmaware.hpp#L10142) |
+| `VM::TPM` | Check if the system has a physical TPM by matching the TPM manufacturer against known physical TPM chip vendors | 🪟 | 50% |  |  |  |  | [link](https://github.com/kernelwernel/VMAware/blob/fb66db9fdd7894edebe5eeade4b0148a08bd5514/src/vmaware.hpp#L10011)|
 <!-- ADD TECHNIQUE DETAILS HERE -->
 
 <br>
@@ -616,6 +618,7 @@ This is the table of all the brands the lib supports.
 | NoirVisor | `brands::NOIRVISOR` | Hypervisor (type 1) |  |
 | Qihoo 360 Sandbox | `brands::QIHOO` | Sandbox |  |
 | nsjail | `brands::NSJAIL` | Process isolator |  |
+| Hypervisor-Phantom | `brands::HYPERVISOR_PHANTOM` | Sandbox | See the [repository](https://github.com/Scrut1ny/Hypervisor-Phantom) |
 
 <br>
 
