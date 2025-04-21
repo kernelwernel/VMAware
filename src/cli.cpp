@@ -327,6 +327,8 @@ bool is_disabled(const VM::enum_flags flag) {
 
     switch (flag) {
         case VM::VMWARE_DMESG: return true;
+        case VM::ACPI_TEMPERATURE: return true;
+        case VM::PORT_CONNECTORS: return true;
         default: return false;
     }
 }
@@ -452,7 +454,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::PROCESSOR_NUMBER:
             case VM::NUMBER_OF_CORES:
             case VM::ACPI_TEMPERATURE:
-            case VM::QEMU_FW_CFG:
             case VM::POWER_CAPABILITIES:
             case VM::SETUPAPI_DISK: 
             case VM::VIRTUAL_PROCESSORS:
