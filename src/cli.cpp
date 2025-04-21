@@ -326,9 +326,9 @@ bool is_disabled(const VM::enum_flags flag) {
     }
 
     switch (flag) {
-        case VM::VMWARE_DMESG: return true;
+        case VM::VMWARE_DMESG: 
+        case VM::PORT_CONNECTORS: 
         case VM::ACPI_TEMPERATURE: return true;
-        case VM::PORT_CONNECTORS: return true;
         default: return false;
     }
 }
