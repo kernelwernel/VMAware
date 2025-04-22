@@ -27,14 +27,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 550
- * - struct for internal cpu operations        => line 734
- * - struct for internal memoization           => line 1205
- * - struct for internal utility functions     => line 1329
- * - struct for internal core components       => line 9993
- * - start of VM detection technique list      => line 2356
- * - start of public VM detection functions    => line 10657
- * - start of externally defined variables     => line 11596
+ * - enums for publicly accessible techniques  => line 557
+ * - struct for internal cpu operations        => line 743
+ * - struct for internal memoization           => line 1214
+ * - struct for internal utility functions     => line 1341
+ * - struct for internal core components       => line 9964
+ * - start of VM detection technique list      => line 2368
+ * - start of public VM detection functions    => line 10630
+ * - start of externally defined variables     => line 11573
  *
  *
  * ============================== EXAMPLE ===================================
@@ -4902,7 +4902,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     steps.family == arch.at(FAMILY) &&
                     steps.extmodel == arch.at(EXTMODEL) &&
                     steps.model == arch.at(MODEL)
-                    ) {
+                ) {
                     return true;
                 }
             }

@@ -49,14 +49,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 572
- * - struct for internal cpu operations        => line 749
- * - struct for internal memoization           => line 1220
- * - struct for internal utility functions     => line 1344
- * - struct for internal core components       => line 9779
- * - start of VM detection technique list      => line 2371
- * - start of public VM detection functions    => line 10443
- * - start of externally defined variables     => line 11375
+ * - enums for publicly accessible techniques  => line 579
+ * - struct for internal cpu operations        => line 758
+ * - struct for internal memoization           => line 1229
+ * - struct for internal utility functions     => line 1356
+ * - struct for internal core components       => line 9750
+ * - start of VM detection technique list      => line 2383
+ * - start of public VM detection functions    => line 10416
+ * - start of externally defined variables     => line 11352
  *
  *
  * ============================== EXAMPLE ===================================
@@ -431,7 +431,7 @@
 #include <csetjmp>      
 #include <pthread.h>     
 #include <sched.h>      
-#include <cerrno> 
+#include <cerrno>         
 #elif (APPLE)
 #include <sys/types.h>
 #include <sys/sysctl.h>
@@ -705,8 +705,8 @@ private:
     static constexpr u8 enum_begin = 0;
     static constexpr u8 enum_end = enum_size + 1;
     static constexpr u8 technique_begin = enum_begin;
-    static constexpr u8 technique_end = NO_MEMO;
-    static constexpr u8 settings_begin = NO_MEMO;
+    static constexpr u8 technique_end = DEFAULT;
+    static constexpr u8 settings_begin = DEFAULT;
     static constexpr u8 settings_end = enum_end;
 
 
@@ -1276,7 +1276,10 @@ private:
                 return true;
             } else if (cache_table.size() == static_cast<std::size_t>(technique_count) - 3) {
                 return (
-                    !cache_keys.test(VMWARE_DMESG)
+                    !cache_keys.test(VMWARE_DMESG) && 
+                    !cache_keys.test(PORT_CONNECTORS) && 
+                    !cache_keys.test(IVSHMEM) && 
+                    !cache_keys.test(ACPI_TEMPERATURE)
                 );
             }
 
@@ -4685,7 +4688,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     steps.family == arch.at(FAMILY) &&
                     steps.extmodel == arch.at(EXTMODEL) &&
                     steps.model == arch.at(MODEL)
-                    ) {
+                ) {
                     return true;
                 }
             }
@@ -7213,7 +7216,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
 
-
     /**
      * @brief Check for specific GPU string signatures related to VMs
      * @category Windows
@@ -7315,7 +7317,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         switch (desc.VendorId) {
-        case 0x15AD:
+        case 0x15AD: 
             return core::add(brands::VMWARE);
         case 0x80EE:
             return core::add(brands::VBOX);
@@ -7493,7 +7495,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (LINUX)
     __attribute__((no_sanitize("address", "leak", "thread", "undefined")))
 #endif
-        static bool timer() {
+    static bool timer() {
 #if (ARM || !x86)
         return false;
 #else
@@ -7518,7 +7520,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             newParam.sched_priority = sched_get_priority_max(SCHED_FIFO);
 
             if (sched_setscheduler(0, SCHED_FIFO, &newParam) == -1) {
-                hasSchedPriority = false;
+                hasSchedPriority = false;  
             }
         }
     #endif
@@ -7528,7 +7530,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     #else
             sched_setscheduler(0, oldPolicy, &oldParam);
     #endif
-            };
+        };
 
     #if (WINDOWS)
         DWORD_PTR procMask, sysMask;
@@ -7654,7 +7656,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                         " Delta: ", tscCore2 - tscCore1,
                         " (Threshold: <", tscSyncDiffThreshold,
                         ')');
-                #endif
+                #endif  
                     ++tscIssueCount;
                 }
             }
@@ -7662,7 +7664,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }();
 
     #if (WINDOWS)
-        SetThreadAffinityMask(GetCurrentThread(), procMask);
+       SetThreadAffinityMask(GetCurrentThread(), procMask);
     #elif (LINUX)
         pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &oldTscSet);
     #endif
@@ -7680,14 +7682,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             unsigned aux;
     #if (MSVC)
             int cpuInfo[4]; __cpuid(cpuInfo, 0);
-            __rdtsc();
+            __rdtsc(); 
             GetProcessHeap();
             __rdtscp(&aux);
         #pragma warning (disable : 6387)
             CloseHandle((HANDLE)0);
         #pragma warning (default : 6387)
-             __rdtscp(&aux);
-#elif (GCC) || (CLANG)
+            __rdtscp(&aux);
+    #elif (GCC) || (CLANG)
             unsigned low, high;
             __asm__ __volatile__(
                 "cpuid\n\t"
@@ -7714,9 +7716,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         // actual measurement
-        constexpr u8  SAMPLE_COUNT = 100;
-        constexpr u16 SCALE_FACTOR = 1000;
-        constexpr u32 THRESHOLD_SCALED = 10 * SCALE_FACTOR;  // <10× ratio => VM
+        constexpr uint8_t  SAMPLE_COUNT = 100;
+        constexpr uint16_t SCALE_FACTOR = 1000;
+        constexpr uint32_t THRESHOLD_SCALED = 10 * SCALE_FACTOR;  // <10× ratio => VM
         u64 samples[SAMPLE_COUNT] = { 0 };
 
         for (int i = 0; i < SAMPLE_COUNT; ++i) {
@@ -7792,8 +7794,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 	/**
 	 * @brief Check for QEMU fw_cfg device
-     * @brief Windows method extracts 'FWCF' from APCI devices' LocationPaths
-     * @brief Linux method checks for existence of qemu_fw_cfg dirs within sys/{module, firmware}
+     * @note Windows method extracts 'FWCF' from APCI devices' LocationPaths
+     * @note Linux method checks for existence of qemu_fw_cfg dirs within sys/{module, firmware}
 	 * @category Windows, Linux
      * @implements VM::QEMU_FW_CFG
 	 */
@@ -9309,7 +9311,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         constexpr const char* targets[] = {
             "Parallels Software International", "Parallels(R)", "innotek",
             "Oracle", "VirtualBox", "vbox", "VBOX", "VS2005R2", "VMware, Inc.",
-            "VMware", "VMWARE", "S3 Corp.", "Virtual Machine", "QEMU","BOCHS",
+            "VMware", "VMWARE", "S3 Corp.", "Virtual Machine", "QEMU", "BOCHS",
             "BXPC"
         };
 
@@ -9378,7 +9380,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                             strcmp(target, "VMWARE") == 0) {
                             brand = brands::VMWARE;
                         }
-                        else if (strcmp(target, "QEMU") == 0) {
+                        else if (strcmp(target, "QEMU")) {
                             brand = brands::QEMU;
                         }
                         else if (strcmp(target, "BOCHS") == 0 ||
@@ -9707,26 +9709,27 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             (static_cast<u32>(resp[25]) << 8) |
             static_cast<u32>(resp[26]);
         switch (manufacturerVal) {
-        case 0x414D4400u: // "AMD\0"
-        case 0x41544D4Cu: // "ATML"
-        case 0x4252434Du: // "BRCM"
-        case 0x49424D00u: // "IBM\0"
-        case 0x49465800u: // "IFX\0"
-        case 0x494E5443u: // "INTC"
-        case 0x4E534D20u: // "NSM "
-        case 0x4E544300u: // "NTC\0"
-        case 0x51434F4Du: // "QCOM"
-        case 0x534D5343u: // "SMSC"
-        case 0x53544D20u: // "STM "
-        case 0x54584E00u: // "TXN\0"
-        case 0x524F4343u: // "ROCC"
-        case 0x4C454E00u: // "LEN\0"
+            case 0x414D4400u: // "AMD\0"
+            case 0x41544D4Cu: // "ATML"
+            case 0x4252434Du: // "BRCM"
+            case 0x49424D00u: // "IBM\0"
+            case 0x49465800u: // "IFX\0"
+            case 0x494E5443u: // "INTC"
+            case 0x4E534D20u: // "NSM "
+            case 0x4E544300u: // "NTC\0"
+            case 0x51434F4Du: // "QCOM"
+            case 0x534D5343u: // "SMSC"
+            case 0x53544D20u: // "STM "
+            case 0x54584E00u: // "TXN\0"
+            case 0x524F4343u: // "ROCC"
+            case 0x4C454E00u: // "LEN\0"
             return false;
         default:
             return true;
         }
 #endif
     }
+
     // ADD NEW TECHNIQUE FUNCTION HERE
 
 
@@ -10095,6 +10098,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             // disable all non-default techniques
             flags.flip(VMWARE_DMESG);
+            flags.flip(PORT_CONNECTORS);
+            flags.flip(ACPI_TEMPERATURE);
 
             // disable all the settings flags
             flags.flip(NO_MEMO);
@@ -11023,6 +11028,7 @@ public: // START OF PUBLIC FUNCTIONS
             case NSJAIL_PID: return "NSJAIL_PID";
             case PCI_VM: return "PCI_VM";
             case TPM: return "TPM";
+
             // ADD NEW CASE HERE FOR NEW TECHNIQUE
             default: return "Unknown flag";
         }
@@ -11335,7 +11341,7 @@ public: // START OF PUBLIC FUNCTIONS
 
 
     static u16 technique_count; // get total number of techniques
-    static std::vector<u8> technique_vector;
+    static std::vector<enum_flags> technique_vector;
 #ifdef __VMAWARE_DEBUG__
     static u16 total_points;
 #endif
@@ -11448,12 +11454,12 @@ VM::flagset VM::core::disabled_flag_collector;
 VM::u8 VM::detected_count_num = 0;
 
 
-std::vector<VM::u8> VM::technique_vector = []() -> std::vector<VM::u8> {
-    std::vector<VM::u8> tmp{};
+std::vector<VM::enum_flags> VM::technique_vector = []() -> std::vector<VM::enum_flags> {
+    std::vector<VM::enum_flags> tmp{};
 
     // all the techniques have a macro value starting from 0 to ~90, hence why it's a classic loop
     for (u8 i = VM::technique_begin; i < VM::technique_end; i++) {
-        tmp.push_back(i);
+        tmp.push_back(static_cast<VM::enum_flags>(i));
     }
 
     return tmp;
