@@ -499,16 +499,16 @@ def write_docs(options):
             query_list.append(options.description)
             
             if options.cross_platform:
-                query_list.append("")
+                query_list.append("🐧🪟🍏")
             else:
                 category_list = []
                 if options.is_linux:
-                    category_list.append("Linux")
+                    category_list.append("🐧")
                 if options.is_win:
-                    category_list.append("Windows")
+                    category_list.append("🪟")
                 if options.is_mac:
-                    category_list.append("MacOS")
-                category_str = " and ".join(category_list)
+                    category_list.append("🍏")
+                category_str = "".join(category_list)
                 query_list.append(category_str)
             
             query_list.append(str(options.score) + "%")
@@ -533,11 +533,10 @@ def write_docs(options):
             else:
                 query_list.append("")
 
-            query = "| " + " | ".join(query_list) + " |"
+            query = "| " + " | ".join(query_list) + " |  |" # last part is meant to be the link, todo
 
             new_docs.append(query + "\n")
             updated = True
-
         
         # add the line in the buffer array
         new_docs.append(line)

@@ -276,6 +276,7 @@ Neko Project II
 NoirVisor
 Qihoo 360 Sandbox
 nsjail
+Hypervisor-Phantom
 )";
 
     std::exit(0);
@@ -449,6 +450,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::DRIVER_NAMES:
             case VM::DISK_SERIAL:
             case VM::PORT_CONNECTORS:
+            case VM::IVSHMEM:
             case VM::GPU_VM_STRINGS:
             case VM::GPU_CAPABILITIES:
             case VM::PROCESSOR_NUMBER:
@@ -652,6 +654,7 @@ std::string vm_description(const std::string& vm_brand) {
         { brands::NOIRVISOR, "NoirVisor is a hardware-accelerated hypervisor with support to complex functions and purposes. It is designed to support processors based on x86 architecture with hardware-accelerated virtualization feature. For example, Intel processors supporting Intel VT-x or AMD processors supporting AMD-V meet the requirement. It was made by Zero-Tang." },
         { brands::QIHOO, "360 sandbox is a part of 360 Total Security. Similar to other sandbox software, it provides a virtualized environment where potentially malicious or untrusted programs can run without affecting the actual system. Qihoo 360 Sandbox is commonly used for testing unknown applications, analyzing malware behavior, and protecting users from zero-day threats." },
         { brands::NSJAIL, "nsjail is a process isolation tool for Linux. It utilizes Linux namespace subsystem, resource limits, and the seccomp-bpf syscall filters of the Linux kernel. It can be used for isolating networking services, CTF challenges, and containing invasive syscall-level OS fuzzers." },
+        { brands::HYPERVISOR_PHANTOM, "Hypervisor-Phantom is an automated setup solution designed to evade detection from advanced malware, enabling thorough analysis. It employs a highly customized version of QEMU/KVM, EDK2, and the Linux Kernel. This also spoofs many unique hypervisor identifiers, effectively disguising the environment. This setup enhances the accuracy and reliability of malware analysis by minimizing the risk of detection." },
         { brands::NULL_BRAND, "Indicates no detectable virtualization brand. This result may occur on bare-metal systems, unsupported/obscure hypervisors, or when anti-detection techniques (e.g., VM escaping) are employed by the guest environment." }
     };
 
@@ -949,6 +952,7 @@ void general() {
     checker(VM::DRIVER_NAMES, "driver names");
     checker(VM::DISK_SERIAL, "disk serial number");
     checker(VM::PORT_CONNECTORS, "physical connection ports");
+    checker(VM::IVSHMEM, "IVSHMEM device");
     checker(VM::GPU_CAPABILITIES, "GPU capabilities");
     checker(VM::GPU_VM_STRINGS, "GPU strings");
     checker(VM::PROCESSOR_NUMBER, "processor count");
