@@ -7377,7 +7377,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for physical connection ports
      * @category Windows
      * @note original idea of using physical ports to detect VMs was suggested by @unusual-aspect (https://github.com/unusual-aspect). 
-     *       This technique is known to false flag on devices like Surface Pro.
+     *       This technique is known to flag on devices like Surface Pro.
      * @implements VM::PORT_CONNECTORS
      */
     [[nodiscard]] static bool port_connectors() {
@@ -7401,6 +7401,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return !hasPorts;
 #endif
     }
+
 
     /**
      * @brief Check for IVSHMEM device absense
@@ -7429,6 +7430,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return hasIvshmemData ? core::add(brands::HYPERVISOR_PHANTOM) : false;
 #endif
     }
+
 
     /**
      * @brief Check for specific GPU string signatures related to VMs
@@ -9271,7 +9273,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
 
-
     /**
      * @brief Checks for VM signatures in firmware
      * @category Windows
@@ -9411,7 +9412,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
             free(info);
             return false;
-            };
+        };
 
         // Check RSMB table
         if (check_firmware_table(RSMB_SIG, 0UL))
@@ -9428,55 +9429,144 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             (PSYSTEM_FIRMWARE_TABLE_INFORMATION)malloc(sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION));
         if (!acpiEnum)
             return false;
-        acpiEnum->ProviderSignature = ACPI_SIG;
+
+        acpiEnum->ProviderSignature = ACPI_SIG;  // 'ACPI'
         acpiEnum->Action = 0;
         acpiEnum->TableID = 0;
         acpiEnum->TableBufferLength = 0;
+
         ULONG retLen = 0;
-        NTSTATUS status = ntqsi(SystemFirmwareTableInformation,
+        NTSTATUS status = ntqsi(
+            SystemFirmwareTableInformation,
             acpiEnum,
             sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION),
-            &retLen);
+            &retLen
+        );
+
         if (status == STATUS_BUFFER_TOO_SMALL)
         {
             free(acpiEnum);
             acpiEnum = (PSYSTEM_FIRMWARE_TABLE_INFORMATION)malloc(retLen);
             if (!acpiEnum)
                 return false;
+
             acpiEnum->ProviderSignature = ACPI_SIG;
             acpiEnum->Action = 0;
             acpiEnum->TableID = 0;
             acpiEnum->TableBufferLength = retLen - sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION);
-            status = ntqsi(SystemFirmwareTableInformation,
+
+            status = ntqsi(
+                SystemFirmwareTableInformation,
                 acpiEnum,
                 retLen,
-                &retLen);
+                &retLen
+            );
 
-            const PDWORD table_names = (PDWORD)calloc(0x1000, 1);
-            if (!table_names) {
+            if (NT_SUCCESS(status))
+            {
+                const DWORD* tables = (const DWORD*)acpiEnum->TableBuffer;
+                ULONG        tableCount = acpiEnum->TableBufferLength / sizeof(DWORD);
+
+                for (ULONG i = 0; i < tableCount; ++i)
+                {
+                    if (tables[i] == 'FACP')   
+                    {
+                        PSYSTEM_FIRMWARE_TABLE_INFORMATION fadtEnum =
+                            (PSYSTEM_FIRMWARE_TABLE_INFORMATION)malloc(sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION));
+                        if (!fadtEnum)
+                            break;
+
+                        fadtEnum->ProviderSignature = ACPI_SIG;
+                        fadtEnum->Action = 0;
+                        fadtEnum->TableID = tables[i];
+                        fadtEnum->TableBufferLength = 0;
+
+                        ULONG fadtLen = 0;
+                        NTSTATUS st2 = ntqsi(
+                            SystemFirmwareTableInformation,
+                            fadtEnum,
+                            sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION),
+                            &fadtLen
+                        );
+
+                        if (st2 == STATUS_BUFFER_TOO_SMALL)
+                        {
+                            free(fadtEnum);
+                            fadtEnum = (PSYSTEM_FIRMWARE_TABLE_INFORMATION)malloc(fadtLen);
+                            if (fadtEnum)
+                            {
+                                fadtEnum->ProviderSignature = ACPI_SIG;
+                                fadtEnum->Action = 0;
+                                fadtEnum->TableID = tables[i];
+                                fadtEnum->TableBufferLength = fadtLen - sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION);
+
+                                if (NT_SUCCESS(ntqsi(
+                                    SystemFirmwareTableInformation,
+                                    fadtEnum,
+                                    fadtLen,
+                                    &fadtLen
+                                )))
+                                {
+                                    // https://uefi.org/htmlspecs/ACPI_Spec_6_4_html/05_ACPI_Software_Programming_Model/ACPI_Software_Programming_Model.html#preferred-pm-profile-system-types
+                                    BYTE* fadtBuf = (BYTE*)fadtEnum->TableBuffer;
+                                    if (fadtBuf[45] == 0) {
+                                        debug("FIRMWARE: Preferred_PM_Profile == 0 (Unspecified)");
+                                        free(fadtEnum);
+                                        free(acpiEnum);
+                                        return true;
+                                    }
+                                }
+                            }
+                        }
+
+                        if (fadtEnum) free(fadtEnum);
+                        break;  
+                    }
+                }
+            }
+
+            const PDWORD tableNames = (PDWORD)calloc(0x1000, 1);
+            if (!tableNames) {
                 free(acpiEnum);
                 return false;
             }
             const DWORD sig = 'ACPI';
-            const DWORD table_size = EnumSystemFirmwareTables(sig, table_names, 0x1000);
-            if (table_size < 4) { // Check made by dmfrpro
-                debug("FIRMWARE: not enough ACPI tables found");
-                free(table_names);
+            const DWORD bytes = EnumSystemFirmwareTables(sig, tableNames, 0x1000);
+            const ULONG tCount = bytes / sizeof(DWORD);
+
+            const DWORD ssdtSig = 'SSDT';
+            ULONG ssdtCount = 0;
+            for (ULONG i = 0; i < tCount; ++i) {
+                if (tableNames[i] == ssdtSig) ++ssdtCount;
+            }
+            if (ssdtCount == 1) {
+                debug("FIRMWARE: Only one SSDT table found");
+                free(tableNames);
                 free(acpiEnum);
                 return true;
             }
+
+            // RSDT/XSDT, FADT, DSDT and RSDP (this one since it’s required as a pointer althought not being a true table)
+            if (tCount < 4) { // by dmfrpro
+                debug("FIRMWARE: not enough ACPI tables found");
+                free(tableNames);
+                free(acpiEnum);
+                return true;
+            }
+
             if (NT_SUCCESS(status)) {
-                const DWORD* tables = reinterpret_cast<const DWORD*>(acpiEnum->TableBuffer);
-                ULONG tableCount = acpiEnum->TableBufferLength / sizeof(DWORD);
-                for (ULONG t = 0; t < tableCount; ++t) {
-                    if (check_firmware_table(ACPI_SIG, tables[t])) {
-                        free(table_names);
+                const DWORD* tables2 = reinterpret_cast<const DWORD*>(acpiEnum->TableBuffer);
+                ULONG bufTableCnt = acpiEnum->TableBufferLength / sizeof(DWORD);
+                for (ULONG t = 0; t < bufTableCnt; ++t) {
+                    if (check_firmware_table(ACPI_SIG, tables2[t])) {
+                        free(tableNames);
                         free(acpiEnum);
                         return true;
                     }
                 }
             }
-            free(table_names);
+
+            free(tableNames);
         }
         free(acpiEnum);
 
