@@ -7377,7 +7377,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for physical connection ports
      * @category Windows
      * @note original idea of using physical ports to detect VMs was suggested by @unusual-aspect (https://github.com/unusual-aspect). 
-     *       This technique is known to false flag on devices like Surface Pro.
+     *       This technique is known to flag on devices like Surface Pro.
      * @implements VM::PORT_CONNECTORS
      */
     [[nodiscard]] static bool port_connectors() {
@@ -7401,6 +7401,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return !hasPorts;
 #endif
     }
+
 
     /**
      * @brief Check for IVSHMEM device absense
@@ -7429,6 +7430,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return hasIvshmemData ? core::add(brands::HYPERVISOR_PHANTOM) : false;
 #endif
     }
+
 
     /**
      * @brief Check for specific GPU string signatures related to VMs
