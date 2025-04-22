@@ -27,14 +27,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 550
- * - struct for internal cpu operations        => line 734
- * - struct for internal memoization           => line 1205
- * - struct for internal utility functions     => line 1329
- * - struct for internal core components       => line 9948
- * - start of VM detection technique list      => line 2356
- * - start of public VM detection functions    => line 10612
- * - start of externally defined variables     => line 11551
+ * - enums for publicly accessible techniques  => line 557
+ * - struct for internal cpu operations        => line 743
+ * - struct for internal memoization           => line 1214
+ * - struct for internal utility functions     => line 1341
+ * - struct for internal core components       => line 9964
+ * - start of VM detection technique list      => line 2368
+ * - start of public VM detection functions    => line 10630
+ * - start of externally defined variables     => line 11573
  *
  *
  * ============================== EXAMPLE ===================================
@@ -367,7 +367,8 @@
 #include <setupapi.h>
 #include <mmsystem.h>
 #include <dxgi.h>
-#include <d3d9.h>
+#include <wrl/client.h>
+#include <tbs.h>
 
 #pragma comment(lib, "winmm.lib")
 #pragma comment(lib, "setupapi.lib")
@@ -382,7 +383,7 @@
 #pragma comment(lib, "ntdll.lib")
 #pragma comment(lib, "powrprof.lib")
 #pragma comment(lib, "dxgi.lib")
-#pragma comment(lib, "d3d9.lib")
+#pragma comment(lib, "tbs.lib")
 
 #elif (LINUX)
 #if (x86)
@@ -404,6 +405,11 @@
 #include <cctype>
 #include <fcntl.h>
 #include <limits.h>
+#include <csignal>      
+#include <csetjmp>      
+#include <pthread.h>     
+#include <sched.h>      
+#include <cerrno>         
 #elif (APPLE)
 #include <sys/types.h>
 #include <sys/sysctl.h>
@@ -532,6 +538,7 @@ namespace brands {
     static constexpr const char* NOIRVISOR = "NoirVisor";
     static constexpr const char* QIHOO = "Qihoo 360 Sandbox";
     static constexpr const char* NSJAIL = "nsjail";
+    static constexpr const char* HYPERVISOR_PHANTOM = "Hypervisor-Phantom";
 }
 
 
@@ -631,13 +638,14 @@ public:
         DRIVER_NAMES,
         DISK_SERIAL,
         PORT_CONNECTORS,
+        IVSHMEM,
         GPU_VM_STRINGS,
         GPU_CAPABILITIES,
         VM_DEVICES,
         PROCESSOR_NUMBER,
         NUMBER_OF_CORES,
         ACPI_TEMPERATURE,
-        SYS_QEMU,
+        QEMU_FW_CFG,
         LSHW_QEMU,
         VIRTUAL_PROCESSORS,
         HYPERV_QUERY,
@@ -653,6 +661,7 @@ public:
         OSXSAVE,
         NSJAIL_PID,
         PCI_VM,
+        TPM,
         // ADD NEW TECHNIQUE ENUM NAME HERE
 
         // special flags, different to settings
@@ -681,8 +690,8 @@ private:
     static constexpr u8 enum_begin = 0;
     static constexpr u8 enum_end = enum_size + 1;
     static constexpr u8 technique_begin = enum_begin;
-    static constexpr u8 technique_end = NO_MEMO;
-    static constexpr u8 settings_begin = NO_MEMO;
+    static constexpr u8 technique_end = DEFAULT;
+    static constexpr u8 settings_begin = DEFAULT;
     static constexpr u8 settings_end = enum_end;
 
 
@@ -1252,7 +1261,10 @@ private:
                 return true;
             } else if (cache_table.size() == static_cast<std::size_t>(technique_count) - 3) {
                 return (
-                    !cache_keys.test(VMWARE_DMESG)
+                    !cache_keys.test(VMWARE_DMESG) && 
+                    !cache_keys.test(PORT_CONNECTORS) && 
+                    !cache_keys.test(IVSHMEM) && 
+                    !cache_keys.test(ACPI_TEMPERATURE)
                 );
             }
 
@@ -3721,14 +3733,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         if (runningProcesses.count("vdagent.exe") ||
             runningProcesses.count("vdservice.exe") ||
-            runningProcesses.count("qemuwmi.exe") || 
-            runningProcesses.count("looking-glass-host.exe")) {
+            runningProcesses.count("qemuwmi.exe")) {
             debug("VM_PROCESSES: Detected QEMU process.");
             return core::add(brands::QEMU);
         }
 
-        if (runningProcesses.count("VDDSysTray.exe")) {
-            return true;
+        if (runningProcesses.count("looking-glass-host.exe") ||
+            runningProcesses.count("VDDSysTray.exe")) {
+            return core::add(brands::HYPERVISOR_PHANTOM);
         }
 
 #elif (LINUX)
@@ -4890,7 +4902,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     steps.family == arch.at(FAMILY) &&
                     steps.extmodel == arch.at(EXTMODEL) &&
                     steps.model == arch.at(MODEL)
-                    ) {
+                ) {
                     return true;
                 }
             }
@@ -7365,7 +7377,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for physical connection ports
      * @category Windows
      * @note original idea of using physical ports to detect VMs was suggested by @unusual-aspect (https://github.com/unusual-aspect). 
-     *       This technique is known to false flag on devices like Surface Pro.
+     *       This technique is known to flag on devices like Surface Pro.
      * @implements VM::PORT_CONNECTORS
      */
     [[nodiscard]] static bool port_connectors() {
@@ -7387,6 +7399,35 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         SetupDiDestroyDeviceInfoList(hDevInfo);
         return !hasPorts;
+#endif
+    }
+
+
+    /**
+     * @brief Check for IVSHMEM device absense
+     * @category Windows
+     * @author dmfrpro (https://github.com/dmfrpro)
+     * @implements VM::IVSHMEM
+     */
+    [[nodiscard]] static bool ivshmem() {
+#if (!WINDOWS)
+        return false;
+#else
+        const GUID GUID_IVSHMEM_IFACE =
+        { 0xdf576976, 0x569d, 0x4672, {0x95, 0xa0, 0xf5, 0x7e, 0x4e, 0xa0, 0xb2, 0x10} };
+
+        HDEVINFO hDevInfo = SetupDiGetClassDevsW(&GUID_IVSHMEM_IFACE,
+            nullptr, nullptr, DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
+        if (hDevInfo == INVALID_HANDLE_VALUE) {
+            return true;
+        }
+
+        SP_DEVINFO_DATA devInfoData = { sizeof(SP_DEVINFO_DATA) };
+        // Check first device only
+        const bool hasIvshmemData = SetupDiEnumDeviceInfo(hDevInfo, 0, &devInfoData);
+
+        SetupDiDestroyDeviceInfoList(hDevInfo);
+        return hasIvshmemData ? core::add(brands::HYPERVISOR_PHANTOM) : false;
 #endif
     }
 
@@ -7473,54 +7514,41 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!WINDOWS)
         return false;
 #else
-        IDirect3D9* pD3D = Direct3DCreate9(D3D_SDK_VERSION);
-        if (!pD3D) {
-            debug("GPU_CAPABILITIES: Direct3DCreate9 failed");
-            return true;
-        }
+        const uint64_t minVidMem = 1024ull * 1024ull * 1024ull; // 1GB
 
-        D3DADAPTER_IDENTIFIER9 adapterId;
-        if (SUCCEEDED(pD3D->GetAdapterIdentifier(D3DADAPTER_DEFAULT, 0, &adapterId))) {
-            if (adapterId.VendorId == 0x15AD) {
-                pD3D->Release();
-                return core::add(brands::VMWARE);
-            }
-            else if (adapterId.VendorId == 0x80EE) {
-                pD3D->Release();
-                return core::add(brands::VBOX);
-            }
-        }
-
-        pD3D->Release();
-
-        IDXGIFactory* pFactory = nullptr;
-        if (FAILED(CreateDXGIFactory(__uuidof(IDXGIFactory), reinterpret_cast<void**>(&pFactory)))) {
+        Microsoft::WRL::ComPtr<IDXGIFactory> factory;
+        if (FAILED(CreateDXGIFactory(__uuidof(IDXGIFactory), reinterpret_cast<void**>(factory.GetAddressOf())))) {
             debug("GPU_CAPABILITIES: DXGIFactory creation failed");
             return true;
         }
 
-        // Enumerate only the primary adapter so as not to mistakenly flag machines without a dedicated GPU, like Microsoft Basic Render Driver (vid 0x1414)
-        IDXGIAdapter* pAdapter = nullptr;
-        HRESULT hrEnum = pFactory->EnumAdapters(0, &pAdapter);
-        if (SUCCEEDED(hrEnum)) {
-            DXGI_ADAPTER_DESC adapterDesc;
-            if (SUCCEEDED(pAdapter->GetDesc(&adapterDesc))) {
-                const UINT64 minVidMem = 1024ULL * 1024ULL * 1024ULL;
-                if (adapterDesc.DedicatedVideoMemory < minVidMem) {
-                    debug("GPU_CAPABILITIES: Video memory below threshold");
-                    pAdapter->Release();
-                    pFactory->Release();
-                    return true;
-                }
-            }
-            pAdapter->Release();
+        Microsoft::WRL::ComPtr<IDXGIAdapter> adapter;
+        if (FAILED(factory->EnumAdapters(0, adapter.GetAddressOf()))) {
+            return true;
         }
 
-        pFactory->Release();
+        DXGI_ADAPTER_DESC desc;
+        if (FAILED(adapter->GetDesc(&desc))) {
+            return true;
+        }
+
+        switch (desc.VendorId) {
+        case 0x15AD: 
+            return core::add(brands::VMWARE);
+        case 0x80EE:
+            return core::add(brands::VBOX);
+        default:
+            break;
+        }
+
+        if (desc.DedicatedVideoMemory < minVidMem) {
+            debug("GPU_CAPABILITIES: Video memory below threshold");
+            return true;
+        }
+
         return false;
 #endif
     }
-
 
 
     /**
@@ -7691,25 +7719,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        constexpr u8 rdtscIterations = 10;           // Number of iterations for the classic RDTSC check
-        constexpr u16 rdtscThreshold = 6000;          // Cycle threshold per iteration for classic RDTSC check
-        constexpr u8 requiredClassicSpikes = rdtscIterations / 2; // At least 50% of iterations must spike
-
-        constexpr u16 spammerIterations = 1000;           // Iterations for the multi-CPU/spammer check
-        constexpr u16 spammerAvgThreshold = 5000;         // Average cycle threshold for the spammer check
-
-#if (WINDOWS)
-        constexpr u16 qpcRatioThreshold = 70;           // QPC ratio threshold
-#endif
-        constexpr u8 tscIterations = 10;                 // Number of iterations for the TSC synchronization check
-        constexpr u16 tscSyncDiffThreshold = 5000;  // TSC difference threshold
-
         // to minimize context switching/scheduling
-#if (WINDOWS)
+    #if (WINDOWS)
         const HANDLE hThread = GetCurrentThread();
         const int oldPriority = GetThreadPriority(hThread);
         SetThreadPriority(hThread, THREAD_PRIORITY_TIME_CRITICAL);
-#else
+    #else
         bool hasSchedPriority = (geteuid() == 0);
         int oldPolicy = SCHED_OTHER;
         sched_param oldParam{};
@@ -7724,343 +7739,263 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 hasSchedPriority = false;  
             }
         }
-#endif
-
+    #endif
         auto restoreThreadPriority = [&]() {
-#if (WINDOWS)
+    #if (WINDOWS)
             SetThreadPriority(hThread, oldPriority);
-#else
+    #else
             sched_setscheduler(0, oldPolicy, &oldParam);
-#endif
+    #endif
         };
 
-        // --- 1. Classic Timing Check (rdtsc + cpuid + rdtsc) ---
-#ifdef __VMAWARE_DEBUG__
-        u64 totalCycles = 0;
-#endif
-        char* flushBuffer = nullptr; // avoiding volatile on purpose
-        constexpr size_t kAlignment = 64;
-        constexpr size_t kBufferSize = static_cast<size_t>(64 * 1024) * 1024;
-
-#if (WINDOWS)
-    #define COMPILER_BARRIER() _ReadWriteBarrier()
-#else
-    #define COMPILER_BARRIER() __asm__ __volatile__("" ::: "memory")
-#endif
-
-#if (WINDOWS)
-        bool notaligned = false;
-        flushBuffer = (char*)_aligned_malloc(kBufferSize, kAlignment);
-        if (!flushBuffer) {
-            notaligned = true;
-            flushBuffer = new (std::nothrow) char[kBufferSize];
-        }
-#elif (LINUX || APPLE)
-        int err = posix_memalign((void**)&flushBuffer, kAlignment, kBufferSize);
-        if (err != 0 || !flushBuffer) {
-            flushBuffer = new (std::nothrow) char[kBufferSize];
-        }
-#else
-        // volatile char* flushBuffer = new volatile char[kBufferSize];
-        flushBuffer = new (std::nothrow) char[kBufferSize];
-#endif
-        // Define a rotation scheme over segments. Here, we split the buffer into a number of segments
-        constexpr size_t segmentsCount = 8; // basically 1/8 of the buffer per iteration
-        constexpr size_t segmentSize = kBufferSize / segmentsCount;
-        int spikeCount = 0;
-        for (int i = 0; i < rdtscIterations; i++) {
-            u64 start = __rdtsc();
-#if (WINDOWS)
-            int cpu_info[4];
-            __cpuid(cpu_info, 0); // CPUID serializes pipeline and is frequently intercepted by hypervisors
-            UNUSED(cpu_info);
-#elif (LINUX || APPLE)
-            u32 eax = 0, ebx = 0, ecx = 0, edx = 0;
-            __cpuid(0, eax, ebx, ecx, edx);
-            UNUSED(eax); UNUSED(ebx); UNUSED(ecx); UNUSED(edx);
-#endif
-            u64 end = __rdtsc();
-            u64 cycles = end - start;
-#ifdef __VMAWARE_DEBUG__
-            totalCycles += cycles;
-#endif
-            if (cycles >= rdtscThreshold) {
-                spikeCount++;
-            }
-            // Instead of flushing the entire buffer every iteration (which would decrease performance a lot),
-            // flush only one segment per iteration
-            size_t segmentIndex = i % segmentsCount;
-            size_t offsetStart = segmentIndex * segmentSize;
-            size_t offsetEnd = offsetStart + segmentSize;
-
-            // this detection works better when inducing cache flushing without thread sleeps
-            if (flushBuffer) {
-                for (size_t j = offsetStart; j < offsetEnd; j += 64) {
-                    flushBuffer[j] = static_cast<char>(j);
-#if (x86) && (GCC || CLANG || MSVC)
-                    COMPILER_BARRIER();
-                    // _mm_clflushopt not available on some systems
-                    _mm_clflush(reinterpret_cast<const void*>(&flushBuffer[j]));
-#endif
-                }
-            }
-        }
-#if (WINDOWS)
-        if (notaligned)
-            delete[] flushBuffer;
-        else
-            _aligned_free((void*)flushBuffer);
-#else
-        free((void*)flushBuffer);
-#endif
-
-#ifdef __VMAWARE_DEBUG__
-        const double averageCycles = static_cast<double>(totalCycles) / rdtscIterations;
-        debug("TIMER: RDTSC check - Average cycles: ", averageCycles,
-            " (Threshold per sample: ", rdtscThreshold,
-            ") - Spike count: ", spikeCount);
-#endif
-
-        const bool sleepVarianceDetected = (spikeCount >= requiredClassicSpikes);
-        if (sleepVarianceDetected) {
-            restoreThreadPriority();
-            return true;
-        }
-
-        // --- 2. Multi-CPU Spammer Check ---
-        // rdtsc+cpuid+rdtsc on CPU1 while CPU2 spams cpuid. This detection tries to detect invariant TSC to flag hypervisors that share the same timer across multiple vCPUs
-        std::atomic<bool> stopSpammer{ false };
-        bool spammerThreadStarted = false;
-        bool singleCore = false;
-
-        std::thread spammer;
-
-        try {
-            spammer = std::thread([&stopSpammer, &singleCore] {
-                try {
-#if (WINDOWS)
-                    if (!SetThreadAffinityMask(GetCurrentThread(), 2)) {
-                        singleCore = true;
-                        return;
-                    }
-#elif (LINUX)
-                    cpu_set_t cpuset;
-                    CPU_ZERO(&cpuset);
-                    CPU_SET(1, &cpuset); // core 1 (0-indexed)
-                    if (pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset) != 0) {
-                        singleCore = true;
-                        return;
-                    }
-#elif (APPLE)
-                    thread_affinity_policy_data_t policy = { 1 };
-                    if (thread_policy_set(pthread_mach_thread_np(pthread_self()),
-                        THREAD_AFFINITY_POLICY,
-                        (thread_policy_t)&policy, 1) != KERN_SUCCESS) {
-                        singleCore = true;
-                        return;
-                    }
-#endif
-                    // hypervisor trap pressure
-                    while (!stopSpammer.load()) {
-#if (WINDOWS)
-                        int cpu_info[4];
-                        __cpuid(cpu_info, 0); // no need for memory barrier as cpuid is a full memory barrier on itself
-#elif (LINUX || APPLE)
-                        u32 eax = 0, ebx = 0, ecx = 0, edx = 0;
-                        __cpuid(0, eax, ebx, ecx, edx);
-#endif
-                    }
-                }
-                catch (...) {
-                    singleCore = true;
-                }
-                });
-            spammerThreadStarted = true;
-        }
-        catch (...) {
-           
-        }
-
-        // --- 3a. Pin Measurement Thread for Consistent Timing ---
-#if (WINDOWS)
-        DWORD_PTR oldAffinityMask = SetThreadAffinityMask(GetCurrentThread(), 1);
-#elif (LINUX)
-        cpu_set_t oldCpuSet;
-        CPU_ZERO(&oldCpuSet);
-        pthread_getaffinity_np(pthread_self(), sizeof(cpu_set_t), &oldCpuSet);
-
-        cpu_set_t newCpuSet;
-        CPU_ZERO(&newCpuSet);
-        CPU_SET(0, &newCpuSet);  // core 0 for consistent timing
-        pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &newCpuSet);
-#elif (APPLE)
-        thread_affinity_policy_data_t policy = { 1 };
-        thread_policy_set(pthread_mach_thread_np(pthread_self()),
-            THREAD_AFFINITY_POLICY,
-            (thread_policy_t)&policy, 1);
-#endif
-
-        // --- 3b. Measurement Under Spammer Load ---
-        u64 measurement = 0;
-        for (int i = 0; i < spammerIterations; i++) {
-            u64 start = __rdtsc();
-#if (WINDOWS)
-            int cpu_info[4];
-            __cpuid(cpu_info, 0);
-#elif (LINUX || APPLE)
-            u32 eax = 0, ebx = 0, ecx = 0, edx = 0;
-            __cpuid(0, eax, ebx, ecx, edx);
-#endif
-            u64 end = __rdtsc();
-            measurement += (end - start);
-        }
-
-        stopSpammer.store(true);
-        if (spammerThreadStarted) {
-            spammer.join();
-        }
-
-        // Restore affinity
-#if (WINDOWS)
-        SetThreadAffinityMask(GetCurrentThread(), oldAffinityMask);
-#elif (LINUX)
-        pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &oldCpuSet);
-#endif
-
-        const bool spammerDetected = (measurement / spammerIterations) > spammerAvgThreshold;
-#ifdef __VMAWARE_DEBUG__
-        debug("TIMER: Spammer check - Average cycles: ", (measurement / spammerIterations),
-            " (Threshold: ", spammerAvgThreshold, ")");
-#endif
-        if (spammerDetected) {
-            restoreThreadPriority();
-            return true;
-        }
-
-#if (WINDOWS)
-        // --- 4. QPC Check ---
-        // Compare trapping vs non-trapping instruction timing
-        LARGE_INTEGER startQPC, endQPC;
-        QueryPerformanceCounter(&startQPC);
-        {
-            int cpu_info[4];
-            for (int i = 0; i < 100000; i++) {
-                __cpuid(cpu_info, 0);
-            }
-        }
-        QueryPerformanceCounter(&endQPC);
-        LONGLONG cpuIdTime = endQPC.QuadPart - startQPC.QuadPart;
-
-        // Non-trapping baseline loop
-        QueryPerformanceCounter(&startQPC);
-        volatile int dummy = 0;
-        for (int i = 0; i < 100000; i++) {
-            dummy ^= i;
-#if (GCC || CLANG)
-            asm volatile("" ::: "memory");  // memory clobber
-#elif (MSVC)
-            _ReadWriteBarrier();
-            _mm_mfence();
-#endif
-        }
-
-        QueryPerformanceCounter(&endQPC);
-        const LONGLONG dummyTime = endQPC.QuadPart - startQPC.QuadPart;
-
-        const bool qpcCheck = (dummyTime != 0) && ((cpuIdTime / dummyTime) > qpcRatioThreshold);
-#ifdef __VMAWARE_DEBUG__
-        debug("TIMER: QPC check - CPUID: ", cpuIdTime,
-            " ns, RWB: ", dummyTime,
-            " ns, Ratio: ", (cpuIdTime / dummyTime),
-            " (Threshold: ", qpcRatioThreshold,
-            ')');
-#endif
-        restoreThreadPriority();
-
-        if (qpcCheck) {
-            return true;
-        }
-#endif
-        bool tscSyncDetected = false;
-
-#if (WINDOWS)
-        const DWORD_PTR oldTscAffinity = SetThreadAffinityMask(GetCurrentThread(), static_cast<DWORD_PTR>(~0));
-#elif (LINUX)
+    #if (WINDOWS)
+        DWORD_PTR procMask, sysMask;
+        GetProcessAffinityMask(GetCurrentProcess(), &procMask, &sysMask);
+    #elif (LINUX)
         cpu_set_t oldTscSet;
         CPU_ZERO(&oldTscSet);
         pthread_getaffinity_np(pthread_self(), sizeof(cpu_set_t), &oldTscSet);
-#endif
+    #endif
+        // 1. TSC Synchronization Check Across Cores
+        // Try reading the invariant TSC on two different cores to attempt to detect vCPU timers being shared
+        constexpr u8 tscIterations = 10;
+        constexpr u16 tscSyncDiffThreshold = 5000;
 
+        bool tscSyncDetected = false;
+        tscSyncDetected = [&]() noexcept -> bool {
+            int tscIssueCount = 0;
+            u64 tscCore1 = 0, tscCore2 = 0;
 
-        if (!singleCore) {
-            // --- 5. TSC Synchronization Check Across Cores ---
-            // Try reading the invariant TSC on two different cores to attempt to detect vCPU timers being shared
-            tscSyncDetected = [&]() noexcept -> bool {
-                int tscIssueCount = 0;
-                u64 tscCore1 = 0, tscCore2 = 0;
-
-                for (int i = 0; i < tscIterations; i++) {
-                    unsigned int aux = 0;
-
-                    try {
-#if (WINDOWS)
-                        SetThreadAffinityMask(GetCurrentThread(), 1);
-                        tscCore1 = __rdtscp(&aux);
-                        SetThreadAffinityMask(GetCurrentThread(), 2);
-                        tscCore2 = __rdtscp(&aux);
-#elif (LINUX)
-                        // Core 0
-                        cpu_set_t set;
-                        CPU_ZERO(&set);
-                        CPU_SET(0, &set);
-                        pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &set);
-                        tscCore1 = __rdtscp(&aux);
-
-                        // Core 1
-                        CPU_ZERO(&set);
-                        CPU_SET(1, &set);
-                        pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &set);
-                        tscCore2 = __rdtscp(&aux);
-#endif
-                    }
-                    catch (...) {
-                        tscIssueCount++; // __rdtscp should be supported on most systems
-                        continue;
-                    }
-
-                    // hypervisors often have nearly identical TSCs across vCPUs
-                    const u64 diff = (tscCore2 > tscCore1)
-                        ? (tscCore2 - tscCore1)
-                        : (tscCore1 - tscCore2);
-
-                    if (diff < tscSyncDiffThreshold) {
-                        tscIssueCount++;
-                    }
+            for (int i = 0; i < tscIterations; ++i) {
+                unsigned int aux = 0;
+    #if (WINDOWS)
+                DWORD_PTR prevMask = SetThreadAffinityMask(GetCurrentThread(), DWORD{ 1 });
+                if (prevMask == 0) {
+                    // could not bind even to the first core...?
+                    return true;
                 }
 
-#ifdef __VMAWARE_DEBUG__
-                debug("TIMER: TSC sync check",
-                    " - Core1: ", tscCore1,
-                    " Core2: ", tscCore2,
-                    " Delta: ", tscCore2 - tscCore1,
-                    " (Threshold: <", tscSyncDiffThreshold,
-                    ')');
-#endif
+                __try {
+                    tscCore1 = __rdtscp(&aux);
+                }
+                __except (EXCEPTION_EXECUTE_HANDLER) {
+                    // __rdtscp should be supported nowadays
+                    return true;
+                }
 
-                return (tscIssueCount >= tscIterations / 2);
-                }();
-        }
+                DWORD_PTR gotMask = SetThreadAffinityMask(GetCurrentThread(), DWORD{ 2 });
+                if (gotMask == 0) {
+                    // fails because there is no core #1 on a single-core box
+                    return false;
+                }
 
-#if (WINDOWS)
-        SetThreadAffinityMask(GetCurrentThread(), oldTscAffinity);
-#elif (LINUX)
+                __try {
+                    tscCore2 = __rdtscp(&aux);
+                }
+                __except (EXCEPTION_EXECUTE_HANDLER) {
+                    return true;
+                }
+    #else
+                cpu_set_t set;
+                static sigjmp_buf jumpBuf;
+
+                // Use a non-capturing lambda cast to a function pointer for signal handling
+                struct sigaction oldAct, newAct {};
+                newAct.sa_flags = SA_SIGINFO;
+                using sa_sigaction_fn = void (*)(int, siginfo_t*, void*);
+                newAct.sa_sigaction = static_cast<sa_sigaction_fn>(
+                    [](int, siginfo_t*, void*) {
+                        siglongjmp(jumpBuf, 2);
+                    }
+                    );
+                sigemptyset(&newAct.sa_mask);
+
+                // core 0
+                CPU_ZERO(&set);
+                CPU_SET(0, &set);
+                int ret = pthread_setaffinity_np(pthread_self(), sizeof(set), &set);
+                if (ret == EINVAL) {
+                    // no CPU 0? super weird
+                    return true;
+                }
+                else if (ret != 0) {
+                    // assume single-core
+                    return false;
+                }
+
+                sigaction(SIGILL, &newAct, &oldAct);
+
+                if (sigsetjmp(jumpBuf, 1) == 0) {
+                    tscCore1 = __rdtscp(&aux);
+                }
+                else {
+                    // no rdtscp support
+                    sigaction(SIGILL, &oldAct, nullptr);
+                    return true;
+                }
+
+                sigaction(SIGILL, &oldAct, nullptr);
+
+                // core 1
+                CPU_ZERO(&set);
+                CPU_SET(1, &set);
+                ret = pthread_setaffinity_np(pthread_self(), sizeof(set), &set);
+                if (ret == EINVAL) {
+                    // single‑core 
+                    return false;
+                }
+                else if (ret != 0) {
+                    return true;
+                }
+
+                sigaction(SIGILL, &newAct, &oldAct);
+                if (sigsetjmp(jumpBuf, 1) == 0) {
+                    tscCore2 = __rdtscp(&aux);
+                }
+                else {
+                    sigaction(SIGILL, &oldAct, nullptr);
+                    return true;
+                }
+
+                sigaction(SIGILL, &oldAct, nullptr);
+    #endif
+                // hypervisors often have nearly identical TSCs across vCPUs
+                const u64 diff = (tscCore2 > tscCore1)
+                    ? (tscCore2 - tscCore1)
+                    : (tscCore1 - tscCore2);
+
+                if (diff < tscSyncDiffThreshold) {
+                #ifdef __VMAWARE_DEBUG__
+                    debug("TIMER: TSC sync check",
+                        " - Core1: ", tscCore1,
+                        " Core2: ", tscCore2,
+                        " Delta: ", tscCore2 - tscCore1,
+                        " (Threshold: <", tscSyncDiffThreshold,
+                        ')');
+                #endif  
+                    ++tscIssueCount;
+                }
+            }
+            return (tscIssueCount >= tscIterations / 2);
+            }();
+
+    #if (WINDOWS)
+       SetThreadAffinityMask(GetCurrentThread(), procMask);
+    #elif (LINUX)
         pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &oldTscSet);
-#endif
-
+    #endif
         if (tscSyncDetected) {
+            restoreThreadPriority();
             return true;
         }
 
+    #if (WINDOWS)
+        // 2. Ratio-based Timing Check on Single Core
+        // measure trapping vs non-trapping instructions
+
+        // warm-up to reduce noise
+        for (int i = 0; i < 10; ++i) {
+            unsigned aux;
+    #if (MSVC)
+            int cpuInfo[4]; __cpuid(cpuInfo, 0);
+            __rdtsc(); 
+            GetProcessHeap();
+            __rdtscp(&aux);
+        #pragma warning (disable : 6387)
+            CloseHandle((HANDLE)0);
+        #pragma warning (default : 6387)
+            __rdtscp(&aux);
+    #elif (GCC) || (CLANG)
+            unsigned low, high;
+            __asm__ __volatile__(
+                "cpuid\n\t"
+                "rdtsc\n\t"
+                : "=a"(low), "=d"(high)
+                : "a"(0)
+                : "ebx", "ecx"
+            );
+            GetProcessHeap();
+            __asm__ __volatile__(
+                "rdtscp\n\t"
+                "cpuid"
+                : "=a"(low), "=d"(high)
+                :: "rbx", "rcx"
+            );
+            CloseHandle((HANDLE)0);
+            __asm__ __volatile__(
+                "rdtscp\n\t"
+                "cpuid"
+                : "=a"(low), "=d"(high)
+                :: "rbx", "rcx"
+            );
+    #endif
+        }
+
+        // actual measurement
+        constexpr uint8_t  SAMPLE_COUNT = 100;
+        constexpr uint16_t SCALE_FACTOR = 1000;
+        constexpr uint32_t THRESHOLD_SCALED = 10 * SCALE_FACTOR;  // <10× ratio => VM
+        u64 samples[SAMPLE_COUNT] = { 0 };
+
+        for (int i = 0; i < SAMPLE_COUNT; ++i) {
+            unsigned aux;
+            u64 t0, t1, t2;
+    #if (MSVC)
+            int cpuInfo[4]; __cpuid(cpuInfo, 0);
+            t0 = __rdtsc();
+            GetProcessHeap();
+            t1 = __rdtscp(&aux);
+        #pragma warning (disable : 6387)
+            CloseHandle((HANDLE)0);
+        #pragma warning (default : 6387)
+            t2 = __rdtscp(&aux);
+    #else
+            unsigned low, high;
+            __asm__ __volatile__(
+                "cpuid\n\t"
+                "rdtsc\n\t"
+                : "=a"(low), "=d"(high)
+                : "a"(0)
+                : "ebx", "ecx"
+            );
+            t0 = ((uint64_t)high << 32) | low;
+
+            GetProcessHeap();
+
+            __asm__ __volatile__(
+                "rdtscp\n\t"
+                "cpuid"
+                : "=a"(low), "=d"(high)
+                :: "rbx", "rcx"
+            );
+            t1 = ((uint64_t)high << 32) | low;
+
+            CloseHandle((HANDLE)0);
+
+            __asm__ __volatile__(
+                "rdtscp\n\t"
+                "cpuid"
+                : "=a"(low), "=d"(high)
+                :: "rbx", "rcx"
+            );
+            t2 = ((uint64_t)high << 32) | low;
+    #endif
+            const u64 heapCost = t1 - t0;
+            const u64 closeCost = t2 - t1;
+            samples[i] = (heapCost > 0)
+                ? ((closeCost * SCALE_FACTOR) / heapCost)
+                : UINT64_MAX;
+        }
+
+        std::sort(std::begin(samples), std::end(samples));
+        const u64 median = samples[SAMPLE_COUNT / 2];
+
+        if (median < THRESHOLD_SCALED) {
+            debug("TIMER: Ratio: ", median, " - Threshold: <", THRESHOLD_SCALED);
+            restoreThreadPriority();
+            return true;
+        }
+    #endif
         return false;
 #endif
     }
@@ -8074,14 +8009,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
 	/**
-	 * @brief Check for existence of qemu_fw_cfg directories within sys/module and /sys/firmware
-	 * @category Linux
-     * @implements VM::SYS_QEMU
+	 * @brief Check for QEMU fw_cfg device
+     * @note Windows method extracts 'FWCF' from APCI devices' LocationPaths
+     * @note Linux method checks for existence of qemu_fw_cfg dirs within sys/{module, firmware}
+	 * @category Windows, Linux
+     * @implements VM::QEMU_FW_CFG
 	 */
 	[[nodiscard]] static bool sys_qemu_dir() {
-#if (!LINUX)
-	    return false;
-#else
+#if (LINUX)
 	    const std::string module_path = "/sys/module/qemu_fw_cfg/";
 	    const std::string firmware_path = "/sys/firmware/qemu_fw_cfg/";
 	
@@ -8103,6 +8038,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 	        util::exists(firmware_path.c_str())
 	    );
     #endif
+#else
+        return false;
 #endif
 	}
 
@@ -9336,7 +9273,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
 
-
     /**
      * @brief Checks for VM signatures in firmware
      * @category Windows
@@ -9380,8 +9316,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         constexpr const char* targets[] = {
             "Parallels Software International", "Parallels(R)", "innotek",
             "Oracle", "VirtualBox", "vbox", "VBOX", "VS2005R2", "VMware, Inc.",
-            "VMware", "VMWARE", "S3 Corp.", "Virtual Machine", "QEMU", "FWCF",
-            "WAET", "BOCHS", "BXPC"
+            "VMware", "VMWARE", "S3 Corp.", "Virtual Machine", "QEMU", "WAET",
+            "BOCHS", "BXPC"
         };
 
         auto check_firmware_table = [&](DWORD signature, ULONG tableID) -> bool {
@@ -9442,8 +9378,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                             strcmp(target, "VMware") == 0 ||
                             strcmp(target, "VMWARE") == 0)
                             brand = brands::VMWARE;
-                        else if (strcmp(target, "QEMU") == 0 ||
-                            strcmp(target, "FWCF") == 0)
+                        else if (strcmp(target, "QEMU") == 0)
                             brand = brands::QEMU;
                         else if (strcmp(target, "BOCHS") == 0 ||
                             strcmp(target, "BXPC") == 0)
@@ -9477,7 +9412,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
             free(info);
             return false;
-            };
+        };
 
         // Check RSMB table
         if (check_firmware_table(RSMB_SIG, 0UL))
@@ -9494,55 +9429,144 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             (PSYSTEM_FIRMWARE_TABLE_INFORMATION)malloc(sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION));
         if (!acpiEnum)
             return false;
-        acpiEnum->ProviderSignature = ACPI_SIG;
+
+        acpiEnum->ProviderSignature = ACPI_SIG;  // 'ACPI'
         acpiEnum->Action = 0;
         acpiEnum->TableID = 0;
         acpiEnum->TableBufferLength = 0;
+
         ULONG retLen = 0;
-        NTSTATUS status = ntqsi(SystemFirmwareTableInformation,
+        NTSTATUS status = ntqsi(
+            SystemFirmwareTableInformation,
             acpiEnum,
             sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION),
-            &retLen);
+            &retLen
+        );
+
         if (status == STATUS_BUFFER_TOO_SMALL)
         {
             free(acpiEnum);
             acpiEnum = (PSYSTEM_FIRMWARE_TABLE_INFORMATION)malloc(retLen);
             if (!acpiEnum)
                 return false;
+
             acpiEnum->ProviderSignature = ACPI_SIG;
             acpiEnum->Action = 0;
             acpiEnum->TableID = 0;
             acpiEnum->TableBufferLength = retLen - sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION);
-            status = ntqsi(SystemFirmwareTableInformation,
+
+            status = ntqsi(
+                SystemFirmwareTableInformation,
                 acpiEnum,
                 retLen,
-                &retLen);
+                &retLen
+            );
 
-            const PDWORD table_names = (PDWORD)calloc(0x1000, 1);
-            if (!table_names) {
+            if (NT_SUCCESS(status))
+            {
+                const DWORD* tables = (const DWORD*)acpiEnum->TableBuffer;
+                ULONG        tableCount = acpiEnum->TableBufferLength / sizeof(DWORD);
+
+                for (ULONG i = 0; i < tableCount; ++i)
+                {
+                    if (tables[i] == 'FACP')   
+                    {
+                        PSYSTEM_FIRMWARE_TABLE_INFORMATION fadtEnum =
+                            (PSYSTEM_FIRMWARE_TABLE_INFORMATION)malloc(sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION));
+                        if (!fadtEnum)
+                            break;
+
+                        fadtEnum->ProviderSignature = ACPI_SIG;
+                        fadtEnum->Action = 0;
+                        fadtEnum->TableID = tables[i];
+                        fadtEnum->TableBufferLength = 0;
+
+                        ULONG fadtLen = 0;
+                        NTSTATUS st2 = ntqsi(
+                            SystemFirmwareTableInformation,
+                            fadtEnum,
+                            sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION),
+                            &fadtLen
+                        );
+
+                        if (st2 == STATUS_BUFFER_TOO_SMALL)
+                        {
+                            free(fadtEnum);
+                            fadtEnum = (PSYSTEM_FIRMWARE_TABLE_INFORMATION)malloc(fadtLen);
+                            if (fadtEnum)
+                            {
+                                fadtEnum->ProviderSignature = ACPI_SIG;
+                                fadtEnum->Action = 0;
+                                fadtEnum->TableID = tables[i];
+                                fadtEnum->TableBufferLength = fadtLen - sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION);
+
+                                if (NT_SUCCESS(ntqsi(
+                                    SystemFirmwareTableInformation,
+                                    fadtEnum,
+                                    fadtLen,
+                                    &fadtLen
+                                )))
+                                {
+                                    // https://uefi.org/htmlspecs/ACPI_Spec_6_4_html/05_ACPI_Software_Programming_Model/ACPI_Software_Programming_Model.html#preferred-pm-profile-system-types
+                                    BYTE* fadtBuf = (BYTE*)fadtEnum->TableBuffer;
+                                    if (fadtBuf[45] == 0) {
+                                        debug("FIRMWARE: Preferred_PM_Profile == 0 (Unspecified)");
+                                        free(fadtEnum);
+                                        free(acpiEnum);
+                                        return true;
+                                    }
+                                }
+                            }
+                        }
+
+                        if (fadtEnum) free(fadtEnum);
+                        break;  
+                    }
+                }
+            }
+
+            const PDWORD tableNames = (PDWORD)calloc(0x1000, 1);
+            if (!tableNames) {
                 free(acpiEnum);
                 return false;
             }
             const DWORD sig = 'ACPI';
-            const DWORD table_size = EnumSystemFirmwareTables(sig, table_names, 0x1000);
-            if (table_size < 4) { // Check made by dmfrpro
-                debug("FIRMWARE: not enough ACPI tables found");
-                free(table_names);
+            const DWORD bytes = EnumSystemFirmwareTables(sig, tableNames, 0x1000);
+            const ULONG tCount = bytes / sizeof(DWORD);
+
+            const DWORD ssdtSig = 'SSDT';
+            ULONG ssdtCount = 0;
+            for (ULONG i = 0; i < tCount; ++i) {
+                if (tableNames[i] == ssdtSig) ++ssdtCount;
+            }
+            if (ssdtCount == 1) {
+                debug("FIRMWARE: Only one SSDT table found");
+                free(tableNames);
                 free(acpiEnum);
                 return true;
             }
+
+            // RSDT/XSDT, FADT, DSDT and RSDP (this one since it’s required as a pointer althought not being a true table)
+            if (tCount < 4) { // by dmfrpro
+                debug("FIRMWARE: not enough ACPI tables found");
+                free(tableNames);
+                free(acpiEnum);
+                return true;
+            }
+
             if (NT_SUCCESS(status)) {
-                const DWORD* tables = reinterpret_cast<const DWORD*>(acpiEnum->TableBuffer);
-                ULONG tableCount = acpiEnum->TableBufferLength / sizeof(DWORD);
-                for (ULONG t = 0; t < tableCount; ++t) {
-                    if (check_firmware_table(ACPI_SIG, tables[t])) {
-                        free(table_names);
+                const DWORD* tables2 = reinterpret_cast<const DWORD*>(acpiEnum->TableBuffer);
+                ULONG bufTableCnt = acpiEnum->TableBufferLength / sizeof(DWORD);
+                for (ULONG t = 0; t < bufTableCnt; ++t) {
+                    if (check_firmware_table(ACPI_SIG, tables2[t])) {
+                        free(tableNames);
                         free(acpiEnum);
                         return true;
                     }
                 }
             }
-            free(table_names);
+
+            free(tableNames);
         }
         free(acpiEnum);
 
@@ -9591,8 +9615,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         constexpr const char* targets[] = {
             "Parallels Software International", "Parallels(R)", "innotek",
             "Oracle", "VirtualBox", "vbox", "VBOX", "VS2005R2", "VMware, Inc.",
-            "VMware", "VMWARE", "S3 Corp.", "Virtual Machine", "QEMU", "FWCF",
-            "BOCHS", "BXPC"
+            "VMware", "VMWARE", "S3 Corp.", "Virtual Machine", "QEMU", "BOCHS",
+            "BXPC"
         };
 
         struct dirent* entry;
@@ -9660,8 +9684,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                             strcmp(target, "VMWARE") == 0) {
                             brand = brands::VMWARE;
                         }
-                        else if (strcmp(target, "QEMU") == 0 ||
-                            strcmp(target, "FWCF") == 0) {
+                        else if (strcmp(target, "QEMU")) {
                             brand = brands::QEMU;
                         }
                         else if (strcmp(target, "BOCHS") == 0 ||
@@ -9925,6 +9948,89 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (pci_finder("Virtio")) { return true; } // could be used by a lot of brands, who knows
 
         return false;
+#endif
+    }
+
+
+    /*
+     * @brief Check if the system has a physical TPM by matching the TPM manufacturer against known physical TPM chip vendors
+     * @category Windows
+     * @note CRB model will succeed, while TIS will fail
+     * @author Requiem (https://github.com/NotRequiem)
+     * @implements VM::TPM
+     */
+    [[nodiscard]] static bool tpm() {
+#if (!WINDOWS)
+        return false;
+#else
+        struct TbsContext {
+            TBS_HCONTEXT hContext = 0;
+            explicit TbsContext(const TBS_CONTEXT_PARAMS2& params) {
+                Tbsi_Context_Create(reinterpret_cast<PCTBS_CONTEXT_PARAMS>(&params), &hContext);
+            }
+            ~TbsContext() {
+                if (hContext) {
+                    Tbsip_Context_Close(hContext);
+                }
+            }
+            bool isValid() const { return hContext != 0; }
+        };
+
+        TBS_CONTEXT_PARAMS2 params{};
+        params.version = TBS_CONTEXT_VERSION_TWO;
+        params.includeTpm20 = 1;
+        params.includeTpm12 = 1;
+
+        TbsContext ctx(params);
+        if (!ctx.isValid()) {
+            return false;
+        }
+
+        // Prebuilt TPM2_GetCapability command for TPM_PT_MANUFACTURER
+        static constexpr u8 cmd[] = {
+            0x80,0x01,             // Tag: TPM_ST_NO_SESSIONS
+            0x00,0x00,0x00,0x16,    // Command Size: 22
+            0x00,0x00,0x01,0x7A,    // TPM2_GetCapability
+            0x00,0x00,0x00,0x06,    // TPM_CAP_TPM_PROPERTIES
+            0x00,0x00,0x01,0x05,    // TPM_PT_MANUFACTURER
+            0x00,0x00,0x00,0x01     // Property Count: 1
+        };
+
+        u8 resp[1024] = {};
+        u32 respSize = sizeof(resp);
+        if (Tbsip_Submit_Command(ctx.hContext,
+            TBS_COMMAND_LOCALITY_ZERO,
+            TBS_COMMAND_PRIORITY_NORMAL,
+            cmd,
+            static_cast<u32>(sizeof(cmd)),
+            resp,
+            &respSize) != TBS_SUCCESS || respSize < 27) {
+            return false;
+        }
+
+        const u32 manufacturerVal = (static_cast<u32>(resp[23]) << 24) |
+            (static_cast<u32>(resp[24]) << 16) |
+            (static_cast<u32>(resp[25]) << 8) |
+            static_cast<u32>(resp[26]);
+        switch (manufacturerVal) {
+            case 0x414D4400u: // "AMD\0"
+            case 0x41544D4Cu: // "ATML"
+            case 0x4252434Du: // "BRCM"
+            case 0x49424D00u: // "IBM\0"
+            case 0x49465800u: // "IFX\0"
+            case 0x494E5443u: // "INTC"
+            case 0x4E534D20u: // "NSM "
+            case 0x4E544300u: // "NTC\0"
+            case 0x51434F4Du: // "QCOM"
+            case 0x534D5343u: // "SMSC"
+            case 0x53544D20u: // "STM "
+            case 0x54584E00u: // "TXN\0"
+            case 0x524F4343u: // "ROCC"
+            case 0x4C454E00u: // "LEN\0"
+            return false;
+        default:
+            return true;
+        }
 #endif
     }
 
@@ -10296,6 +10402,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             // disable all non-default techniques
             flags.flip(VMWARE_DMESG);
+            flags.flip(PORT_CONNECTORS);
+            flags.flip(ACPI_TEMPERATURE);
 
             // disable all the settings flags
             flags.flip(NO_MEMO);
@@ -11207,13 +11315,14 @@ public: // START OF PUBLIC FUNCTIONS
             case DRIVER_NAMES: return "DRIVER_NAMES";
             case DISK_SERIAL: return "DISK_SERIAL";
             case PORT_CONNECTORS: return "PORT_CONNECTORS";
+            case IVSHMEM: return "IVSHMEM";
             case GPU_VM_STRINGS: return "GPU_STRINGS";
             case GPU_CAPABILITIES: return "GPU_CAPABILITIES";
             case VM_DEVICES: return "VM_DEVICES";
             case PROCESSOR_NUMBER: return "PROCESSOR_NUMBER";
             case NUMBER_OF_CORES: return "NUMBER_OF_CORES";
             case ACPI_TEMPERATURE: return "ACPI_TEMPERATURE";
-            case SYS_QEMU: return "SYS_QEMU";
+            case QEMU_FW_CFG: return "QEMU_FW_CFG";
             case LSHW_QEMU: return "LSHW_QEMU";
             case VIRTUAL_PROCESSORS: return "VIRTUAL_PROCESSORS";
             case HYPERV_QUERY: return "HYPERV_QUERY";
@@ -11229,6 +11338,8 @@ public: // START OF PUBLIC FUNCTIONS
             case OSXSAVE: return "OSXSAVE";
             case NSJAIL_PID: return "NSJAIL_PID";
             case PCI_VM: return "PCI_VM";
+            case TPM: return "TPM";
+
             // ADD NEW CASE HERE FOR NEW TECHNIQUE
             default: return "Unknown flag";
         }
@@ -11390,6 +11501,7 @@ public: // START OF PUBLIC FUNCTIONS
             { brands::COMODO, "Sandbox" },
             { brands::THREATEXPERT, "Sandbox" },
             { brands::QIHOO, "Sandbox" },
+            { brands::HYPERVISOR_PHANTOM, "Sandbox" },
 
             // misc
             { brands::BOCHS, "Emulator" },
@@ -11540,7 +11652,7 @@ public: // START OF PUBLIC FUNCTIONS
 
 
     static u16 technique_count; // get total number of techniques
-    static std::vector<u8> technique_vector;
+    static std::vector<enum_flags> technique_vector;
 #ifdef __VMAWARE_DEBUG__
     static u16 total_points;
 #endif
@@ -11622,6 +11734,7 @@ std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard{
     { brands::QIHOO, 0 },
     { brands::NOIRVISOR, 0 },
     { brands::NSJAIL, 0 },
+    { brands::HYPERVISOR_PHANTOM, 0 },
     { brands::NULL_BRAND, 0 }
 };
 
@@ -11652,12 +11765,12 @@ VM::flagset VM::core::disabled_flag_collector;
 VM::u8 VM::detected_count_num = 0;
 
 
-std::vector<VM::u8> VM::technique_vector = []() -> std::vector<VM::u8> {
-    std::vector<VM::u8> tmp{};
+std::vector<VM::enum_flags> VM::technique_vector = []() -> std::vector<VM::enum_flags> {
+    std::vector<VM::enum_flags> tmp{};
 
     // all the techniques have a macro value starting from 0 to ~90, hence why it's a classic loop
     for (u8 i = VM::technique_begin; i < VM::technique_end; i++) {
-        tmp.push_back(i);
+        tmp.push_back(static_cast<VM::enum_flags>(i));
     }
 
     return tmp;
@@ -11761,13 +11874,14 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     std::make_pair(VM::DRIVER_NAMES, VM::core::technique(100, VM::driver_names)),
     std::make_pair(VM::DISK_SERIAL, VM::core::technique(100, VM::disk_serial_number)),
     std::make_pair(VM::PORT_CONNECTORS, VM::core::technique(25, VM::port_connectors)),
+    std::make_pair(VM::IVSHMEM, VM::core::technique(100, VM::ivshmem)),
     std::make_pair(VM::GPU_VM_STRINGS, VM::core::technique(100, VM::gpu_vm_strings)),
     std::make_pair(VM::GPU_CAPABILITIES, VM::core::technique(100, VM::gpu_capabilities)),
     std::make_pair(VM::VM_DEVICES, VM::core::technique(50, VM::vm_devices)),
     std::make_pair(VM::PROCESSOR_NUMBER, VM::core::technique(50, VM::processor_number)),
     std::make_pair(VM::NUMBER_OF_CORES, VM::core::technique(50, VM::number_of_cores)),
     std::make_pair(VM::ACPI_TEMPERATURE, VM::core::technique(25, VM::acpi_temperature)),
-    std::make_pair(VM::SYS_QEMU, VM::core::technique(70, VM::sys_qemu_dir)),
+    std::make_pair(VM::QEMU_FW_CFG, VM::core::technique(70, VM::sys_qemu_dir)),
     std::make_pair(VM::LSHW_QEMU, VM::core::technique(80, VM::lshw_qemu)),
     std::make_pair(VM::VIRTUAL_PROCESSORS, VM::core::technique(50, VM::virtual_processors)),
     std::make_pair(VM::HYPERV_QUERY, VM::core::technique(100, VM::hyperv_query)),
@@ -11782,6 +11896,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     std::make_pair(VM::OSXSAVE, VM::core::technique(50, VM::osxsave)),
     std::make_pair(VM::NSJAIL_PID, VM::core::technique(75, VM::nsjail_proc_id)),
     std::make_pair(VM::PCI_VM, VM::core::technique(100, VM::lspci)),
+    std::make_pair(VM::TPM, VM::core::technique(50, VM::tpm)),
     // ADD NEW TECHNIQUE STRUCTURE HERE
 };
 

@@ -20,7 +20,7 @@
  *  - License: GPL 3.0
  */
 
-#include "..\src\vmaware.hpp"
+#include "../src/vmaware.hpp"
 #include <iostream>
 #include <string>
 #include <cmath>
@@ -32,6 +32,12 @@
 #elif defined(__APPLE__)
 #include <mach/mach_time.h>
 #endif
+
+const std::string bold = "\033[1m";
+const std::string ansi_exit = "\x1B[0m";
+const std::string red = "\x1B[38;2;239;75;75m"; 
+const std::string green = "\x1B[38;2;94;214;114m";
+const std::string orange = "\x1B[38;2;255;180;5m";
 
 class VMAwareBenchmark {
 public:
@@ -69,9 +75,9 @@ public:
 
     static std::string format_duration(double ns) {
         const double abs_ns = std::abs(ns);
-        if (abs_ns >= 1e6) return std::to_string(ns / 1e6) + " ms";
-        if (abs_ns >= 1e3) return std::to_string(ns / 1e3) + " µs";
-        return std::to_string(ns) + " ns";
+        if (abs_ns >= 1e6) return bold + red + std::to_string(ns / 1e6) + " ms" + ansi_exit;
+        if (abs_ns >= 1e3) return orange + std::to_string(ns / 1e3) + " µs" + ansi_exit;
+        return green + std::to_string(ns) + " ns" + ansi_exit;
     }
 };
 
@@ -149,6 +155,24 @@ int main(void) {
         << "VM::brand(VM::NO_MEMO):     " << VMAwareBenchmark::format_duration(brand_time_no_memo) << "\n"
         << "VM::type(VM::NO_MEMO):      " << VMAwareBenchmark::format_duration(type_time_no_memo) << "\n"
         << "VM::percentage(VM::NO_MEMO): " << VMAwareBenchmark::format_duration(percent_time_no_memo) << "\n\n";
+
+    for (const VM::enum_flags technique_enum : VM::technique_vector) {
+        start = VMAwareBenchmark::get_timestamp();
+
+        const bool result = VM::check(technique_enum, VM::NO_MEMO);
+
+        end = VMAwareBenchmark::get_timestamp();
+        const double technique_time = VMAwareBenchmark::get_elapsed(start, end);
+    
+        std::cout << 
+            "VM::" << 
+            VM::flag_to_string(technique_enum) << 
+            ": " << 
+            VMAwareBenchmark::format_duration(technique_time) << 
+            "\n";
+    }
+
+    std::cout << "\n";
 
     return 0;
 }

@@ -160,7 +160,7 @@ Options:
 
 Extra:
  --disable-notes    no notes will be provided
- --high-threshold   a higher theshold bar for a VM detection will be applied
+ --high-threshold   a higher threshold bar for a VM detection will be applied
  --no-ansi          removes color and ansi escape codes from the output
  --dynamic          allow the conclusion message to be dynamic (8 possibilities instead of only 2)
  --verbose          add more information to the output
@@ -174,11 +174,11 @@ Extra:
 [[noreturn]] void version(void) {
     std::cout << "vmaware " << "v" << ver << " (" << date << ")\n\n" <<
     "Derived project of VMAware library at https://github.com/kernelwernel/VMAware"
-    "License GPLv3+: GNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>.\n" << 
+    "License GPLv3+:\nGNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>.\n" << 
     "This is free software: you are free to change and redistribute it.\n" <<
     "There is NO WARRANTY, to the extent permitted by law.\n" <<
-    "Developed and maintained by kernelwernel, see https://github.com/kernelwernel\n";
-
+    "Developed and maintained by kernelwernel and Requiem,\n" << 
+    "see https://github.com/kernelwernel and https://github.com/NotRequiem\n";
     std::exit(0);
 }
 
@@ -276,6 +276,7 @@ Neko Project II
 NoirVisor
 Qihoo 360 Sandbox
 nsjail
+Hypervisor-Phantom
 )";
 
     std::exit(0);
@@ -326,7 +327,9 @@ bool is_disabled(const VM::enum_flags flag) {
     }
 
     switch (flag) {
-        case VM::VMWARE_DMESG: return true;
+        case VM::VMWARE_DMESG: 
+        case VM::PORT_CONNECTORS: 
+        case VM::ACPI_TEMPERATURE: return true;
         default: return false;
     }
 }
@@ -382,7 +385,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::SMBIOS_VM_BIT:
             case VM::PODMAN_FILE:
             case VM::WSL_PROC: 
-            case VM::SYS_QEMU:
+            case VM::QEMU_FW_CFG:
             case VM::LSHW_QEMU:
             case VM::AMD_SEV:
             case VM::AMD_THREAD_MISMATCH:
@@ -447,6 +450,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::DRIVER_NAMES:
             case VM::DISK_SERIAL:
             case VM::PORT_CONNECTORS:
+            case VM::IVSHMEM:
             case VM::GPU_VM_STRINGS:
             case VM::GPU_CAPABILITIES:
             case VM::PROCESSOR_NUMBER:
@@ -463,6 +467,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::FIRMWARE:
             case VM::UNKNOWN_MANUFACTURER:
             case VM::OSXSAVE:
+            case VM::TPM:
             // ADD WINDOWS FLAG
             return false;
             default: return true;
@@ -649,6 +654,7 @@ std::string vm_description(const std::string& vm_brand) {
         { brands::NOIRVISOR, "NoirVisor is a hardware-accelerated hypervisor with support to complex functions and purposes. It is designed to support processors based on x86 architecture with hardware-accelerated virtualization feature. For example, Intel processors supporting Intel VT-x or AMD processors supporting AMD-V meet the requirement. It was made by Zero-Tang." },
         { brands::QIHOO, "360 sandbox is a part of 360 Total Security. Similar to other sandbox software, it provides a virtualized environment where potentially malicious or untrusted programs can run without affecting the actual system. Qihoo 360 Sandbox is commonly used for testing unknown applications, analyzing malware behavior, and protecting users from zero-day threats." },
         { brands::NSJAIL, "nsjail is a process isolation tool for Linux. It utilizes Linux namespace subsystem, resource limits, and the seccomp-bpf syscall filters of the Linux kernel. It can be used for isolating networking services, CTF challenges, and containing invasive syscall-level OS fuzzers." },
+        { brands::HYPERVISOR_PHANTOM, "Hypervisor-Phantom is an automated setup solution designed to evade detection from advanced malware, enabling thorough analysis. It employs a highly customized version of QEMU/KVM, EDK2, and the Linux Kernel. This also spoofs many unique hypervisor identifiers, effectively disguising the environment. This setup enhances the accuracy and reliability of malware analysis by minimizing the risk of detection." },
         { brands::NULL_BRAND, "Indicates no detectable virtualization brand. This result may occur on bare-metal systems, unsupported/obscure hypervisors, or when anti-detection techniques (e.g., VM escaping) are employed by the guest environment." }
     };
 
@@ -946,6 +952,7 @@ void general() {
     checker(VM::DRIVER_NAMES, "driver names");
     checker(VM::DISK_SERIAL, "disk serial number");
     checker(VM::PORT_CONNECTORS, "physical connection ports");
+    checker(VM::IVSHMEM, "IVSHMEM device");
     checker(VM::GPU_CAPABILITIES, "GPU capabilities");
     checker(VM::GPU_VM_STRINGS, "GPU strings");
     checker(VM::PROCESSOR_NUMBER, "processor count");
@@ -953,7 +960,7 @@ void general() {
     checker(VM::ACPI_TEMPERATURE, "thermal devices");
     checker(VM::POWER_CAPABILITIES, "Power capabilities");
     checker(VM::SETUPAPI_DISK, "SETUPDI diskdrive");
-    checker(VM::SYS_QEMU, "QEMU in /sys");
+    checker(VM::QEMU_FW_CFG, "QEMU fw_cfg device");
     checker(VM::LSHW_QEMU, "QEMU in lshw output");
     checker(VM::VIRTUAL_PROCESSORS, "virtual processors");
     checker(VM::HYPERV_QUERY, "hypervisor query");
@@ -968,6 +975,7 @@ void general() {
     checker(VM::OSXSAVE, "xgetbv");
     checker(VM::NSJAIL_PID, "nsjail PID");
     checker(VM::PCI_VM, "PCIe bridge ports");
+    checker(VM::TPM, "TPM manufacturer");
     // ADD NEW TECHNIQUE CHECKER HERE
 
     std::printf("\n");
@@ -1170,7 +1178,7 @@ int main(int argc, char* argv[]) {
     win_ansi_enabler_t ansi_enabler;
 #endif
 
-    const std::vector<const char*> args(argv + 1, argv + argc); // easier to handle args this way
+    const std::vector<std::string> args(argv + 1, argv + argc); // easier to handle args this way
     const u32 arg_count = static_cast<u32>(argc - 1);
 
     // this was removed from the lib due to ethical 
@@ -1219,19 +1227,18 @@ int main(int argc, char* argv[]) {
 
     std::string potential_null_arg = "";
 
-    for (const auto arg_string : args) {
-        //auto it = std::find_if(table.cbegin(), table.cend(), [&](const auto &p) {
-        //    return (std::strcmp(p.first, arg_string) == 0);
-        //});
+    for (int i = 1; i < argc; ++i) {
+        const char* arg_string = argv[i];
 
-        auto it = std::find_if(table.cbegin(), table.cend(), [&](const std::pair<const char*, int> &p) {
+        auto it = std::find_if(table.cbegin(), table.cend(), [&](const std::pair<const char*, int>& p) {
             return (std::strcmp(p.first, arg_string) == 0);
-        });
+            });
 
         if (it == table.end()) {
             arg_bitset.set(NULL_ARG);
             potential_null_arg = arg_string;
-        } else {
+        }
+        else {
             arg_bitset.set(it->second);
         }
     }
