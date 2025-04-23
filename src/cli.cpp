@@ -168,7 +168,7 @@ Extra:
  --mit              ignore the GPL techniques and run only the MIT-supported ones
  --enums            display the technique enum name used by the lib
 )";
-    std::exit(0);
+
 }
 
 [[noreturn]] void version(void) {
@@ -179,7 +179,6 @@ Extra:
     "There is NO WARRANTY, to the extent permitted by law.\n" <<
     "Developed and maintained by kernelwernel and Requiem,\n" << 
     "see https://github.com/kernelwernel and https://github.com/NotRequiem\n";
-    std::exit(0);
 }
 
 const char* color(const u8 score) {
@@ -279,7 +278,6 @@ nsjail
 Hypervisor-Phantom
 )";
 
-    std::exit(0);
 }
 
 
@@ -1188,7 +1186,7 @@ int main(int argc, char* argv[]) {
 
     if (arg_count == 0) {
         general();
-        std::exit(0);
+        return 0;
     }
 
     static constexpr std::array<std::pair<const char*, arg_enum>, 31> table {{
