@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ██╗   ██╗███╗   ███╗ █████╗ ██╗    ██╗ █████╗ ██████╗ ███████╗
  * ██║   ██║████╗ ████║██╔══██╗██║    ██║██╔══██╗██╔══██╗██╔════╝
  * ██║   ██║██╔████╔██║███████║██║ █╗ ██║███████║██████╔╝█████╗
@@ -38,40 +38,6 @@ const std::string ansi_exit = "\x1B[0m";
 const std::string red = "\x1B[38;2;239;75;75m"; 
 const std::string green = "\x1B[38;2;94;214;114m";
 const std::string orange = "\x1B[38;2;255;180;5m";
-
-
-#if (_WIN32)
-class win_ansi_enabler_t
-{
-public:
-  win_ansi_enabler_t()
-  {
-    m_set = FALSE;
-    m_out = GetStdHandle(STD_OUTPUT_HANDLE);
-    m_old = 0;
-    if(m_out != NULL && m_out != INVALID_HANDLE_VALUE)
-    {
-      if(GetConsoleMode(m_out, &m_old) != FALSE)
-      {
-        m_set = SetConsoleMode(m_out, m_old | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
-      }
-    }
-  }
-  ~win_ansi_enabler_t()
-  {
-    if(m_set != FALSE)
-    {
-      SetConsoleMode(m_out, m_old);
-    }
-  }
-private:
-  win_ansi_enabler_t(win_ansi_enabler_t const&);
-private:
-  BOOL m_set;
-  DWORD m_old;
-  HANDLE m_out;
-};
-#endif
 
 class VMAwareBenchmark {
 public:
@@ -115,7 +81,22 @@ public:
     }
 };
 
+static void enable_ansi_on_windows() {
+#if defined(_WIN32)
+    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    if (hOut == INVALID_HANDLE_VALUE) return;
+
+    DWORD dwMode = 0;
+    if (!GetConsoleMode(hOut, &dwMode)) return;
+
+    dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING | DISABLE_NEWLINE_AUTO_RETURN;
+    SetConsoleMode(hOut, dwMode);
+#endif
+}
+
 int main(void) {
+    enable_ansi_on_windows();
+
     // Measurement variables
     uint64_t start, end;
     bool is_detected;
