@@ -73,7 +73,7 @@ elseif(APPLE)
 elseif(LINUX)
     if(CMAKE_BUILD_TYPE MATCHES "Debug")
         MESSAGE(STATUS "Build set to debug mode")
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -fmax-errors=5 -DDEBUG -O0 -fsanitize=address")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -fmax-errors=5 -DDEBUG -O0 -fsanitize=address,leak") # todo, add ubsan
     elseif(CMAKE_BUILD_TYPE MATCHES "Release")
         MESSAGE(STATUS "Build set to release mode")
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g0 -O2")

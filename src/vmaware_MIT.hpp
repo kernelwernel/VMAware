@@ -4,7 +4,7 @@
  * ██║   ██║██╔████╔██║███████║██║ █╗ ██║███████║██████╔╝█████╗
  * ╚██╗ ██╔╝██║╚██╔╝██║██╔══██║██║███╗██║██╔══██║██╔══██╗██╔══╝
  *  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
- *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ 2.2.0 (April 2025)
+ *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ 2.3.0 (April 2025)
  *
  *  C++ VM detection library
  *
@@ -52,11 +52,11 @@
  * - enums for publicly accessible techniques  => line 579
  * - struct for internal cpu operations        => line 758
  * - struct for internal memoization           => line 1229
- * - struct for internal utility functions     => line 1356
- * - struct for internal core components       => line 9750
- * - start of VM detection technique list      => line 2383
- * - start of public VM detection functions    => line 10416
- * - start of externally defined variables     => line 11352
+ * - struct for internal utility functions     => line 1357
+ * - struct for internal core components       => line 9941
+ * - start of VM detection technique list      => line 2444
+ * - start of public VM detection functions    => line 10609
+ * - start of externally defined variables     => line 11545
  *
  *
  * ============================== EXAMPLE ===================================
@@ -387,7 +387,7 @@
 #include <winspool.h>
 #include <powerbase.h>
 #include <setupapi.h>
-#include <mmsystem.h>
+#include <mmdeviceapi.h>
 #include <dxgi.h>
 #include <wrl/client.h>
 #include <tbs.h>
@@ -781,8 +781,8 @@ private:
             b = 0;
             c = 0;
 #if (WINDOWS)
-            int32_t x[4]{};
-            __cpuidex((int32_t*)x, static_cast<int>(a_leaf), static_cast<int>(c_leaf));
+            i32 x[4]{};
+            __cpuidex((i32*)x, static_cast<int>(a_leaf), static_cast<int>(c_leaf));
             a = static_cast<u32>(x[0]);
             b = static_cast<u32>(x[1]);
             c = static_cast<u32>(x[2]);
@@ -798,7 +798,7 @@ private:
         // same as above but for array type parameters (MSVC specific)
         static void cpuid
         (
-            int32_t x[4],
+            i32 x[4],
             const u32 a_leaf,
             const u32 c_leaf = 0xFF
         ) {
@@ -807,7 +807,7 @@ private:
             x[1] = 0;
             x[2] = 0;
 #if (WINDOWS)
-            __cpuidex((int32_t*)x, static_cast<int>(a_leaf), static_cast<int>(c_leaf));
+            __cpuidex((i32*)x, static_cast<int>(a_leaf), static_cast<int>(c_leaf));
 #elif (LINUX || APPLE)
             __cpuid_count(a_leaf, c_leaf, x[0], x[1], x[2], x[3]);
 #endif
@@ -922,7 +922,7 @@ private:
             }
 
             std::array<u32, 4> buffer{};
-            constexpr std::size_t buffer_size = sizeof(int32_t) * buffer.size();
+            constexpr std::size_t buffer_size = sizeof(i32) * buffer.size();
             std::array<char, 64> charbuffer{};
 
             constexpr std::array<u32, 3> ids = {{
@@ -1278,8 +1278,9 @@ private:
                 return (
                     !cache_keys.test(VMWARE_DMESG) && 
                     !cache_keys.test(PORT_CONNECTORS) && 
-                    !cache_keys.test(IVSHMEM) && 
-                    !cache_keys.test(ACPI_TEMPERATURE)
+                    !cache_keys.test(ACPI_TEMPERATURE) && 
+                    !cache_keys.test(LSHW_QEMU) && 
+                    !cache_keys.test(PCI_VM)
                 );
             }
 
@@ -1775,7 +1776,7 @@ private:
             const i64 page_size = sysconf(_SC_PAGE_SIZE);
             return (pages * page_size);
 #elif (APPLE)
-            int32_t mib[2] = { CTL_HW, HW_MEMSIZE };
+            i32 mib[2] = { CTL_HW, HW_MEMSIZE };
             u32 namelen = sizeof(mib) / sizeof(mib[0]);
             u64 size = 0;
             std::size_t len = sizeof(size);
@@ -1896,23 +1897,83 @@ private:
         [[nodiscard]] static std::unordered_set<std::string> get_running_process_names() {
             std::unordered_set<std::string> processNames;
 #if (WINDOWS)
-            DWORD processes[1024], bytesReturned;
+            typedef NTSTATUS(NTAPI* PFN_NtQuerySystemInformation)(
+                SYSTEM_INFORMATION_CLASS,
+                PVOID,
+                ULONG,
+                PULONG
+            );
 
-            if (!K32EnumProcesses(processes, sizeof(processes), &bytesReturned)) {
+            HMODULE hNtdll = GetModuleHandleW(L"ntdll.dll");
+            if (!hNtdll) return processNames;
+
+            const char* names[] = { "NtQuerySystemInformation" };
+            void* funcs[1] = { nullptr };
+            GetFunctionAddresses(hNtdll, names, funcs, 1);
+            auto pNtQSI = reinterpret_cast<PFN_NtQuerySystemInformation>(funcs[0]);
+            if (!pNtQSI) return processNames;
+
+            ULONG bufSize = 1 << 20;             
+            std::unique_ptr<BYTE[]> buffer;
+            NTSTATUS status;
+            ULONG needed = 0;
+
+            do {
+                buffer.reset(new BYTE[bufSize]);
+                status = pNtQSI(
+                    SystemProcessInformation,
+                    buffer.get(),
+                    bufSize,
+                    &needed
+                );
+                if (status == 0xC0000004) {
+                    bufSize = needed + (1 << 16);  
+                }
+                else {
+                    break;
+                }
+            } while (true);
+
+            if (!NT_SUCCESS(status)) {
                 return processNames;
             }
 
-            DWORD numProcesses = bytesReturned / sizeof(DWORD);
-            char processName[MAX_PATH];
+            for (BYTE* cur = buffer.get(); ; ) {
+                auto pi = reinterpret_cast<SYSTEM_PROCESS_INFORMATION*>(cur);
+                if (pi->ImageName.Length > 0 && pi->ImageName.Buffer) {
+                    // convert UTF-16→UTF-8
+                    const size_t wideCharCount = pi->ImageName.Length / sizeof(WCHAR);
+                    const int utf8ByteCount = WideCharToMultiByte(
+                        CP_UTF8,                
+                        0,                     
+                        pi->ImageName.Buffer, 
+                        static_cast<int>(wideCharCount), 
+                        nullptr,                
+                        0,                     
+                        nullptr, nullptr       
+                    );
 
-            for (DWORD i = 0; i < numProcesses; ++i) {
-                HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, processes[i]);
-                if (hProcess != nullptr) {
-                    if (K32GetModuleBaseNameA(hProcess, nullptr, processName, sizeof(processName))) {
-                        processNames.insert(processName);
+                    if (utf8ByteCount > 0) {
+                        std::string name;
+                        name.resize(static_cast<size_t>(utf8ByteCount));
+
+                        // now actually do the conversion into our buffer
+                        WideCharToMultiByte(
+                            CP_UTF8,
+                            0,
+                            pi->ImageName.Buffer,
+                            static_cast<int>(wideCharCount),
+                            &name[0],
+                            utf8ByteCount,
+                            nullptr, nullptr
+                        );
+
+                        processNames.insert(std::move(name));
                     }
-                    CloseHandle(hProcess);
                 }
+                if (pi->NextEntryOffset == 0)
+                    break;
+                cur += pi->NextEntryOffset;
             }
 #endif
             return processNames;
@@ -1989,7 +2050,7 @@ private:
               * Essentially, it indicates that the hypervisor is managing the VM and that the VM is not running directly on hardware but rather in a virtualized environment
             */
             auto eax = []() -> u32 {
-                char out[sizeof(int32_t) * 4 + 1] = { 0 }; 
+                char out[sizeof(i32) * 4 + 1] = { 0 };
                 cpu::cpuid((int*)out, cpu::leaf::hypervisor);
 
                 const u32 eax = static_cast<u32>(out[0]);
@@ -2050,9 +2111,9 @@ private:
             */
             struct SMBIOSHEADER
             {
-                uint8_t type;
-                uint8_t length;
-                uint16_t handle;
+                u8 type;
+                u8 length;
+                u16 handle;
             };
 
             /*
@@ -2060,25 +2121,25 @@ private:
             see https://docs.microsoft.com/en-us/windows/win32/api/sysinfoapi/nf-sysinfoapi-getsystemfirmwaretable
             */
             struct SMBIOSData {
-                uint8_t  Used20CallingMethod;
-                uint8_t  SMBIOSMajorVersion;
-                uint8_t  SMBIOSMinorVersion;
-                uint8_t  DmiRevision;
-                uint32_t  Length;
-                uint8_t  SMBIOSTableData[1];
+                u8  Used20CallingMethod;
+                u8  SMBIOSMajorVersion;
+                u8  SMBIOSMinorVersion;
+                u8  DmiRevision;
+                u32  Length;
+                u8  SMBIOSTableData[1];
             };
 
             // System Information (Type 1)
             struct SYSTEMINFORMATION {
                 SMBIOSHEADER Header;
-                uint8_t Manufacturer;
-                uint8_t ProductName;
-                uint8_t Version;
-                uint8_t SerialNumber;
-                uint8_t UUID[16];
-                uint8_t WakeUpType;  // Identifies the event that caused the system to power up
-                uint8_t SKUNumber;   // identifies a particular computer configuration for sale
-                uint8_t Family;
+                u8 Manufacturer;
+                u8 ProductName;
+                u8 Version;
+                u8 SerialNumber;
+                u8 UUID[16];
+                u8 WakeUpType;  // Identifies the event that caused the system to power up
+                u8 SKUNumber;   // identifies a particular computer configuration for sale
+                u8 Family;
             };
 #pragma pack(pop) 
 
@@ -2123,11 +2184,11 @@ private:
 
             // locates system information memory block in BIOS table
             SYSTEMINFORMATION* find_system_information(SMBIOSData* bios_data) {
-                uint8_t* data = bios_data->SMBIOSTableData;
+                u8* data = bios_data->SMBIOSTableData;
 
                 while (data < bios_data->SMBIOSTableData + bios_data->Length)
                 {
-                    uint8_t* next;
+                    u8* next;
                     SMBIOSHEADER* header = (SMBIOSHEADER*)data;
 
                     if (header->length < 4)
@@ -2490,7 +2551,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        char out[sizeof(int32_t) * 4 + 1] = { 0 }; // e*x size + number of e*x registers + null terminator
+        char out[sizeof(i32) * 4 + 1] = { 0 }; // e*x size + number of e*x registers + null terminator
         cpu::cpuid((int*)out, cpu::leaf::hypervisor);
 
         debug("HYPERVISOR_STR: \neax: ", static_cast<u32>(out[0]),
@@ -2539,9 +2600,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         struct ifreq ifr;
         struct ifconf ifc;
         char buf[1024];
-        int32_t success = 0;
+        i32 success = 0;
 
-        int32_t sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
+        i32 sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
 
         if (sock == -1) {
             return false;
@@ -2599,13 +2660,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #ifdef __VMAWARE_DEBUG__
         std::stringstream ss;
         ss << std::setw(2) << std::setfill('0') << std::hex
-            << static_cast<int32_t>(mac[0]) << ":"
-            << static_cast<int32_t>(mac[1]) << ":"
-            << static_cast<int32_t>(mac[2]) << ":XX:XX:XX";
+            << static_cast<i32>(mac[0]) << ":"
+            << static_cast<i32>(mac[1]) << ":"
+            << static_cast<i32>(mac[2]) << ":XX:XX:XX";
         /* removed for privacy reasons, only the first 3 bytes are needed
-            << static_cast<int32_t>(mac[3]) << ":"  
-            << static_cast<int32_t>(mac[4]) << ":"
-            << static_cast<int32_t>(mac[5]);
+            << static_cast<i32>(mac[3]) << ":"  
+            << static_cast<i32>(mac[4]) << ":"
+            << static_cast<i32>(mac[5]);
         */
         debug("MAC: ", ss.str());
 #endif
@@ -3528,7 +3589,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             runningProcesses.count("VDDSysTray.exe")) {
             return core::add(brands::HYPERVISOR_PHANTOM);
         }
-
 #elif (LINUX)
         if (util::is_proc_running("qemu_ga")) {
             debug("VM_PROCESSES: Detected QEMU guest agent process.");
@@ -7163,7 +7223,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for physical connection ports
      * @category Windows
      * @note original idea of using physical ports to detect VMs was suggested by @unusual-aspect (https://github.com/unusual-aspect). 
-     *       This technique is known to false flag on devices like Surface Pro.
+     *       This technique is known to flag on devices like Surface Pro.
      * @implements VM::PORT_CONNECTORS
      */
     [[nodiscard]] static bool port_connectors() {
@@ -7187,6 +7247,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return !hasPorts;
 #endif
     }
+
 
     /**
      * @brief Check for IVSHMEM device absense
@@ -7215,6 +7276,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return hasIvshmemData ? core::add(brands::HYPERVISOR_PHANTOM) : false;
 #endif
     }
+
 
     /**
      * @brief Check for specific GPU string signatures related to VMs
@@ -7298,7 +7360,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!WINDOWS)
         return false;
 #else
-        const uint64_t minVidMem = 1024ull * 1024ull * 1024ull; // 1GB
+        const u64 minVidMem = 1024ull * 1024ull * 1024ull; // 1GB
 
         Microsoft::WRL::ComPtr<IDXGIFactory> factory;
         if (FAILED(CreateDXGIFactory(__uuidof(IDXGIFactory), reinterpret_cast<void**>(factory.GetAddressOf())))) {
@@ -7716,9 +7778,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         // actual measurement
-        constexpr uint8_t  SAMPLE_COUNT = 100;
-        constexpr uint16_t SCALE_FACTOR = 1000;
-        constexpr uint32_t THRESHOLD_SCALED = 10 * SCALE_FACTOR;  // <10× ratio => VM
+        constexpr u8  SAMPLE_COUNT = 100;
+        constexpr u16 SCALE_FACTOR = 1000;
+        constexpr u32 THRESHOLD_SCALED = 10 * SCALE_FACTOR;  // <10× ratio => VM
         u64 samples[SAMPLE_COUNT] = { 0 };
 
         for (int i = 0; i < SAMPLE_COUNT; ++i) {
@@ -7742,7 +7804,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 : "a"(0)
                 : "ebx", "ecx"
             );
-            t0 = ((uint64_t)high << 32) | low;
+            t0 = ((u64)high << 32) | low;
 
             GetProcessHeap();
 
@@ -7752,7 +7814,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 : "=a"(low), "=d"(high)
                 :: "rbx", "rcx"
             );
-            t1 = ((uint64_t)high << 32) | low;
+            t1 = ((u64)high << 32) | low;
 
             CloseHandle((HANDLE)0);
 
@@ -7762,7 +7824,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 : "=a"(low), "=d"(high)
                 :: "rbx", "rcx"
             );
-            t2 = ((uint64_t)high << 32) | low;
+            t2 = ((u64)high << 32) | low;
     #endif
             const u64 heapCost = t1 - t0;
             const u64 closeCost = t2 - t1;
@@ -7833,45 +7895,67 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 	 * @category Linux
      * @implements VM::LSHW_QEMU
 	 */
-	[[nodiscard]] static bool lshw_qemu() {
-#if (!LINUX)
-	    return false;
+    [[nodiscard]] static bool lshw_qemu() {
+#if !LINUX
+        return false;
 #else
-	    if (!(
-            (util::exists("/usr/bin/lshw")) || 
-            (util::exists("/bin/lshw")) ||
-            (util::exists("/usr/sbin/lshw"))
-        )) {
-	        debug("LSHW_QEMU: ", "binary doesn't exist");
-	        return false;
-	    }
+        if (!(util::exists("/usr/bin/lshw") ||
+            util::exists("/bin/lshw")    ||
+            util::exists("/usr/sbin/lshw"))) {
+            debug("LSHW_QEMU: ", "binary doesn't exist");
+            return false;
+        }
 
-	    const std::unique_ptr<std::string> result = util::sys_result("lshw 2>&1");
-	
-	    if (result == nullptr) {
-	        debug("LSHW_QEMU: ", "invalid stdout output from lshw");
-	        return false;
-	    }
-	
-	    const std::string full_command = *result;
-	
-	    u8 score = 0;
+        FILE* pipe = popen("lshw 2>&1", "r");
+        if (!pipe) {
+            debug("LSHW_QEMU: ", "popen failed");
+            return false;
+        }
 
-        auto qemu_finder = [&](const char* str) -> void {
-            if (util::find(full_command, str)) { 
-                debug("LSHW_QEMU: found ", str);
-                score++; 
-            }
+        static constexpr const char* patterns[] = {
+            "QEMU PCIe Root port",
+            "QEMU XHCI Host Controller",
+            "QEMU DVD-ROM",
+            "QEMU QEMU USB Tablet"
         };
-	
-	    qemu_finder("QEMU PCIe Root port");
-	    qemu_finder("QEMU XHCI Host Controller");
-	    qemu_finder("QEMU DVD-ROM");
-	    qemu_finder("QEMU QEMU USB Tablet");
-	
-	    return (score >= 3); // if one of the strings above were detected 3 times, flag as VM
+        bool seen[sizeof(patterns)/sizeof(patterns[0])] = {false};
+        int score = 0;
+
+        size_t max_pat = 0;
+        for (auto& p : patterns) max_pat = std::max(max_pat, strlen(p));
+        std::string overlap;
+        overlap.reserve(max_pat - 1);
+
+        const size_t BUF_SIZE = 64 * 1024;
+        std::vector<char> buf(BUF_SIZE);
+        while (true) {
+            size_t n = fread(buf.data(), 1, BUF_SIZE, pipe);
+            if (n == 0) break;
+
+            std::string chunk = overlap;
+            chunk.append(buf.data(), n);
+
+            if (chunk.size() >= max_pat - 1) {
+                overlap = chunk.substr(chunk.size() - (max_pat - 1));
+            } else {
+                overlap = chunk;
+            }
+
+            for (size_t i = 0; i < std::size(patterns); ++i) {
+                if (!seen[i] && chunk.find(patterns[i]) != std::string::npos) {
+                    debug("LSHW_QEMU: found ", patterns[i]);
+                    seen[i] = true;
+                    ++score;
+                    if (score >= 3) break;
+                }
+            }
+            if (score >= 3) break;
+        }
+
+        pclose(pipe);
+        return (score >= 3);
 #endif
-	}
+    }
 
 
     /**
@@ -9057,7 +9141,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
 
-
     /**
      * @brief Checks for VM signatures in firmware
      * @category Windows
@@ -9197,7 +9280,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
             free(info);
             return false;
-            };
+        };
 
         // Check RSMB table
         if (check_firmware_table(RSMB_SIG, 0UL))
@@ -9214,55 +9297,144 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             (PSYSTEM_FIRMWARE_TABLE_INFORMATION)malloc(sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION));
         if (!acpiEnum)
             return false;
-        acpiEnum->ProviderSignature = ACPI_SIG;
+
+        acpiEnum->ProviderSignature = ACPI_SIG;  // 'ACPI'
         acpiEnum->Action = 0;
         acpiEnum->TableID = 0;
         acpiEnum->TableBufferLength = 0;
+
         ULONG retLen = 0;
-        NTSTATUS status = ntqsi(SystemFirmwareTableInformation,
+        NTSTATUS status = ntqsi(
+            SystemFirmwareTableInformation,
             acpiEnum,
             sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION),
-            &retLen);
+            &retLen
+        );
+
         if (status == STATUS_BUFFER_TOO_SMALL)
         {
             free(acpiEnum);
             acpiEnum = (PSYSTEM_FIRMWARE_TABLE_INFORMATION)malloc(retLen);
             if (!acpiEnum)
                 return false;
+
             acpiEnum->ProviderSignature = ACPI_SIG;
             acpiEnum->Action = 0;
             acpiEnum->TableID = 0;
             acpiEnum->TableBufferLength = retLen - sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION);
-            status = ntqsi(SystemFirmwareTableInformation,
+
+            status = ntqsi(
+                SystemFirmwareTableInformation,
                 acpiEnum,
                 retLen,
-                &retLen);
+                &retLen
+            );
 
-            const PDWORD table_names = (PDWORD)calloc(0x1000, 1);
-            if (!table_names) {
+            if (NT_SUCCESS(status))
+            {
+                const DWORD* tables = (const DWORD*)acpiEnum->TableBuffer;
+                ULONG        tableCount = acpiEnum->TableBufferLength / sizeof(DWORD);
+
+                for (ULONG i = 0; i < tableCount; ++i)
+                {
+                    if (tables[i] == 'FACP')   
+                    {
+                        PSYSTEM_FIRMWARE_TABLE_INFORMATION fadtEnum =
+                            (PSYSTEM_FIRMWARE_TABLE_INFORMATION)malloc(sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION));
+                        if (!fadtEnum)
+                            break;
+
+                        fadtEnum->ProviderSignature = ACPI_SIG;
+                        fadtEnum->Action = 0;
+                        fadtEnum->TableID = tables[i];
+                        fadtEnum->TableBufferLength = 0;
+
+                        ULONG fadtLen = 0;
+                        NTSTATUS st2 = ntqsi(
+                            SystemFirmwareTableInformation,
+                            fadtEnum,
+                            sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION),
+                            &fadtLen
+                        );
+
+                        if (st2 == STATUS_BUFFER_TOO_SMALL)
+                        {
+                            free(fadtEnum);
+                            fadtEnum = (PSYSTEM_FIRMWARE_TABLE_INFORMATION)malloc(fadtLen);
+                            if (fadtEnum)
+                            {
+                                fadtEnum->ProviderSignature = ACPI_SIG;
+                                fadtEnum->Action = 0;
+                                fadtEnum->TableID = tables[i];
+                                fadtEnum->TableBufferLength = fadtLen - sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION);
+
+                                if (NT_SUCCESS(ntqsi(
+                                    SystemFirmwareTableInformation,
+                                    fadtEnum,
+                                    fadtLen,
+                                    &fadtLen
+                                )))
+                                {
+                                    // https://uefi.org/htmlspecs/ACPI_Spec_6_4_html/05_ACPI_Software_Programming_Model/ACPI_Software_Programming_Model.html#preferred-pm-profile-system-types
+                                    BYTE* fadtBuf = (BYTE*)fadtEnum->TableBuffer;
+                                    if (fadtBuf[45] == 0) {
+                                        debug("FIRMWARE: Preferred_PM_Profile == 0 (Unspecified)");
+                                        free(fadtEnum);
+                                        free(acpiEnum);
+                                        return true;
+                                    }
+                                }
+                            }
+                        }
+
+                        if (fadtEnum) free(fadtEnum);
+                        break;  
+                    }
+                }
+            }
+
+            const PDWORD tableNames = (PDWORD)calloc(0x1000, 1);
+            if (!tableNames) {
                 free(acpiEnum);
                 return false;
             }
             const DWORD sig = 'ACPI';
-            const DWORD table_size = EnumSystemFirmwareTables(sig, table_names, 0x1000);
-            if (table_size < 4) { // Check made by dmfrpro
-                debug("FIRMWARE: not enough ACPI tables found");
-                free(table_names);
+            const DWORD bytes = EnumSystemFirmwareTables(sig, tableNames, 0x1000);
+            const ULONG tCount = bytes / sizeof(DWORD);
+
+            const DWORD ssdtSig = 'SSDT';
+            ULONG ssdtCount = 0;
+            for (ULONG i = 0; i < tCount; ++i) {
+                if (tableNames[i] == ssdtSig) ++ssdtCount;
+            }
+            if (ssdtCount == 1) {
+                debug("FIRMWARE: Only one SSDT table found");
+                free(tableNames);
                 free(acpiEnum);
                 return true;
             }
+
+            // RSDT/XSDT, FADT, DSDT and RSDP (this one since it’s required as a pointer althought not being a true table)
+            if (tCount < 4) { // by dmfrpro
+                debug("FIRMWARE: not enough ACPI tables found");
+                free(tableNames);
+                free(acpiEnum);
+                return true;
+            }
+
             if (NT_SUCCESS(status)) {
-                const DWORD* tables = reinterpret_cast<const DWORD*>(acpiEnum->TableBuffer);
-                ULONG tableCount = acpiEnum->TableBufferLength / sizeof(DWORD);
-                for (ULONG t = 0; t < tableCount; ++t) {
-                    if (check_firmware_table(ACPI_SIG, tables[t])) {
-                        free(table_names);
+                const DWORD* tables2 = reinterpret_cast<const DWORD*>(acpiEnum->TableBuffer);
+                ULONG bufTableCnt = acpiEnum->TableBufferLength / sizeof(DWORD);
+                for (ULONG t = 0; t < bufTableCnt; ++t) {
+                    if (check_firmware_table(ACPI_SIG, tables2[t])) {
+                        free(tableNames);
                         free(acpiEnum);
                         return true;
                     }
                 }
             }
-            free(table_names);
+
+            free(tableNames);
         }
         free(acpiEnum);
 
@@ -9439,7 +9611,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 	}
 
 
-    /* @brief Check if any waveform-audio output devices are present in the system
+    /**
+     * @brief Check if no waveform-audio output devices are present in the system
      * @category Windows
      * @implements VM::AUDIO
      */
@@ -9447,35 +9620,53 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!WINDOWS)
         return false;
 #else
-        /*
-            bool comInitialized = SUCCEEDED(CoInitializeEx(nullptr, COINIT_MULTITHREADED));
+        HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+        const bool doUninit = SUCCEEDED(hr) && hr != RPC_E_CHANGED_MODE;
+        bool hasDevice = false;
 
-            IMMDeviceEnumerator* enumerator = nullptr;
-            HRESULT hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr,
-                CLSCTX_ALL, __uuidof(IMMDeviceEnumerator), reinterpret_cast<void**>(&enumerator));
-
+        {
+            Microsoft::WRL::ComPtr<IMMDeviceEnumerator> enumerator;
+            hr = CoCreateInstance(
+                __uuidof(MMDeviceEnumerator),
+                nullptr,
+                CLSCTX_INPROC_SERVER,
+                IID_PPV_ARGS(&enumerator)
+            );
             if (FAILED(hr)) {
-                if (comInitialized) CoUninitialize();
-                return false;
+                // enumerator==nullptr so no Release
+                goto CLEANUP;
             }
 
-            IMMDevice* device = nullptr;
-            hr = enumerator->GetDefaultAudioEndpoint(eRender, eConsole, &device);
+            // active render endpoints (speakers/headphones)
+            Microsoft::WRL::ComPtr<IMMDeviceCollection> devices;
+            hr = enumerator->EnumAudioEndpoints(
+                eRender,
+                DEVICE_STATE_ACTIVE,
+                &devices
+            );
+            if (FAILED(hr)) {
+                goto CLEANUP;
+            }
 
-            bool result = SUCCEEDED(hr);
+            UINT count = 0;
+            hr = devices->GetCount(&count);
+            if (SUCCEEDED(hr) && count > 0) {
+                hasDevice = true;
+            }
+        }
 
-            if (device) device->Release();
-            enumerator->Release();
-            if (comInitialized) CoUninitialize();
+    CLEANUP:
+        if (doUninit) {
+            CoUninitialize();
+        }
 
-            return !result;
-        */
-        return (waveOutGetNumDevs() == 0);
+        return !hasDevice;
 #endif
     }
 
 
-    /* @brief Check if the CPU manufacturer is not known
+    /**
+     * @brief Check if the CPU manufacturer is not known
      * @category x86
      * @implements VM::UNKNOWN_MANUFACTURER
      */
@@ -9502,7 +9693,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
     
 
-    /*
+    /**
      * @brief Check if running xgetbv in the XCR0 extended feature register triggers an exception
      * @note On pre‑Win8, CR4.OSXSAVE may only get set if you’ve actually loaded an AVX‑enabled binary
      * @category Windows
@@ -9648,7 +9839,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
 
 
-    /*
+    /**
      * @brief Check if the system has a physical TPM by matching the TPM manufacturer against known physical TPM chip vendors
      * @category Windows
      * @note CRB model will succeed, while TIS will fail
@@ -10100,6 +10291,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             flags.flip(VMWARE_DMESG);
             flags.flip(PORT_CONNECTORS);
             flags.flip(ACPI_TEMPERATURE);
+            flags.flip(LSHW_QEMU);
+            flags.flip(PCI_VM);
 
             // disable all the settings flags
             flags.flip(NO_MEMO);

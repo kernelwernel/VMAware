@@ -49,7 +49,7 @@
 
 #include "vmaware.hpp"
 
-constexpr const char* ver = "2.2.0";
+constexpr const char* ver = "2.3.0";
 constexpr const char* date = "April 2025";
 
 std::string bold = "\033[1m";
@@ -168,7 +168,7 @@ Extra:
  --mit              ignore the GPL techniques and run only the MIT-supported ones
  --enums            display the technique enum name used by the lib
 )";
-
+    std::exit(0);
 }
 
 [[noreturn]] void version(void) {
@@ -179,6 +179,8 @@ Extra:
     "There is NO WARRANTY, to the extent permitted by law.\n" <<
     "Developed and maintained by kernelwernel and Requiem,\n" << 
     "see https://github.com/kernelwernel and https://github.com/NotRequiem\n";
+
+    std::exit(0);
 }
 
 const char* color(const u8 score) {
@@ -277,7 +279,7 @@ Qihoo 360 Sandbox
 nsjail
 Hypervisor-Phantom
 )";
-
+    std::exit(0);
 }
 
 
@@ -327,7 +329,9 @@ bool is_disabled(const VM::enum_flags flag) {
     switch (flag) {
         case VM::VMWARE_DMESG: 
         case VM::PORT_CONNECTORS: 
-        case VM::ACPI_TEMPERATURE: return true;
+        case VM::ACPI_TEMPERATURE: 
+        case VM::LSHW_QEMU:
+        case VM::PCI_VM: return true;
         default: return false;
     }
 }
