@@ -193,8 +193,7 @@ You can view the full docs [here](docs/documentation.md). All the details such a
 <summary>How does it compare to paid VM detection libraries?</summary>
 <br>
 
-> There are several paid software solutions available for protecting software licenses from reverse engineering or cracking, such as <a href="https://docs.sentinel.thalesgroup.com/home.htm">Thales' Sentinel RMS</a> and <a href="https://vmpsoft.com/">VMProtect</a>. These tools include VM detection as part of their feature set, though their primary focus is not necessarily VM detection unlike this project. VMProtect is very effective especially in their recent updates, and has shown in one instance that they've outperformed VMAware, which we're trying to catch up.
-
+> There are several paid software solutions available for protecting software licenses from reverse engineering or cracking, such as <a href="https://docs.sentinel.thalesgroup.com/home.htm">Thales' Sentinel RMS</a> and <a href="https://vmpsoft.com/">VMProtect</a>. These tools include VM detection as part of their feature set, though their primary focus is not necessarily VM detection unlike this project.
 </details>
 
 <details>

@@ -25,7 +25,6 @@
 #include <iostream>
 #include <vector>
 #include <cstdint>
-#include <bit>
 
 #if (defined(__GNUC__) || defined(__linux__))
     #include <unistd.h>
@@ -49,7 +48,7 @@
 
 #include "vmaware.hpp"
 
-constexpr const char* ver = "2.2.0";
+constexpr const char* ver = "2.3.0";
 constexpr const char* date = "April 2025";
 
 std::string bold = "\033[1m";
@@ -168,6 +167,7 @@ Extra:
  --mit              ignore the GPL techniques and run only the MIT-supported ones
  --enums            display the technique enum name used by the lib
 )";
+
     std::exit(0);
 }
 
@@ -179,6 +179,7 @@ Extra:
     "There is NO WARRANTY, to the extent permitted by law.\n" <<
     "Developed and maintained by kernelwernel and Requiem,\n" << 
     "see https://github.com/kernelwernel and https://github.com/NotRequiem\n";
+
     std::exit(0);
 }
 
@@ -329,7 +330,9 @@ bool is_disabled(const VM::enum_flags flag) {
     switch (flag) {
         case VM::VMWARE_DMESG: 
         case VM::PORT_CONNECTORS: 
-        case VM::ACPI_TEMPERATURE: return true;
+        case VM::ACPI_TEMPERATURE: 
+        case VM::LSHW_QEMU:
+        case VM::PCI_VM: return true;
         default: return false;
     }
 }
@@ -718,7 +721,7 @@ std::string vm_description(const std::string& vm_brand) {
     RtlInitUnicodeString(&name, L"\\??\\C:\\Program Files\\KernelLogger");
 
     HANDLE hFile;
-    IO_STATUS_BLOCK iosb = { 0 };
+    IO_STATUS_BLOCK iosb = { { 0 } };
     OBJECT_ATTRIBUTES attrs{};
     InitializeObjectAttributes(&attrs, &name, 0, NULL, NULL);
 
@@ -1188,7 +1191,7 @@ int main(int argc, char* argv[]) {
 
     if (arg_count == 0) {
         general();
-        std::exit(0);
+        return 0;
     }
 
     static constexpr std::array<std::pair<const char*, arg_enum>, 31> table {{
