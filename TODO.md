@@ -4,26 +4,20 @@
 - [ ] upload the lib to apt 
 - [ ] make a man file in markdown for the cli tool
 - [ ] implement techniques from here https://stackoverflow.com/questions/43026032/detect-running-on-virtual-machine
-- [ ] add a .clang_format thingy
 - [ ] make a medium post about it
 - [ ] check if bios date in /sys/class/dmi/id/ could be useful under QEMU
 - [ ] add a .so, .dll, and .dylib shared object files in the release 
-- [ ] fix the issue of VM::QEMU_USB being ultra slow in some edge-cases
 - [ ] /sys/class/dmi/id/product_name check this in qemu
-- [ ] add linux support for the hdd_serial_number technique
 - [ ] fix "dmidecode not found" error
 - [ ] fix /dev/mem not found in vbox default
 - [ ] update sourceforge
 - [ ] rearrange the techniques so that the more likely ones will be executed first
 - [ ] make a hardware scanner module where it'll find for VM strings in all sorts of devices
-- [ ] add more QEMU techniques
 - [ ] implement techniques from here https://www.cyberciti.biz/faq/linux-determine-virtualization-technology-command/
 - [ ] implement techniques from virt-what
 - [ ] https://cloud.google.com/compute/docs/instances/detect-compute-engine
-- [ ] update the updater.py script and fix it
 - [ ] @thereisnospoon this is where we need to start modifing the qemu source further by replacing vendor/device ids.
 https://www.pcilookup.com/
-- [ ] https://wasm.in/threads/testy-v-vmware.35315/#post-444576
  
 QEMU default: 0x1234
 Intel: 0x8086

@@ -31,10 +31,10 @@
  * - struct for internal cpu operations        => line 743
  * - struct for internal memoization           => line 1214
  * - struct for internal utility functions     => line 1342
- * - struct for internal core components       => line 10173
+ * - struct for internal core components       => line 10175
  * - start of VM detection technique list      => line 2429
- * - start of public VM detection functions    => line 10841
- * - start of externally defined variables     => line 11784
+ * - start of public VM detection functions    => line 10843
+ * - start of externally defined variables     => line 11786
  *
  *
  * ============================== EXAMPLE ===================================
@@ -7955,7 +7955,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
             }
             return (tscIssueCount >= tscIterations / 2);
-            }();
+        }();
 
     #if (WINDOWS)
        SetThreadAffinityMask(GetCurrentThread(), procMask);
@@ -8173,7 +8173,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 overlap = chunk;
             }
 
-            for (size_t i = 0; i < patterns.size(); ++i) {
+            #define ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
+
+            for (size_t i = 0; i < ARRAY_SIZE(patterns); ++i) {
                 if (!seen[i] && chunk.find(patterns[i]) != std::string::npos) {
                     debug("LSHW_QEMU: found ", patterns[i]);
                     seen[i] = true;
