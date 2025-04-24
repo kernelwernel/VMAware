@@ -7545,10 +7545,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @author Requiem (https://github.com/NotRequiem)
      * @implements VM::TIMER
      */
-#if (MSVC)
-    #pragma optimize("", off)
-#elif (CLANG)
+#if (CLANG)
     #pragma clang optimize off
+#elif (MSVC)
+    #pragma optimize("", off)
 #elif (GCC)
     #pragma GCC push_options
     #pragma GCC optimize("O0")
@@ -7845,10 +7845,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #endif
     }
-#if (MSVC)
-    #pragma optimize("", on)
-#elif (CLANG)
-    #pragma clang optimize on
+#if (CLANG)
+    #pragma clang optimize off
+#elif (MSVC)
+    #pragma optimize("", off)
 #elif (GCC)
     #pragma GCC pop_options
 #endif
