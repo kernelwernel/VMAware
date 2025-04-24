@@ -9,12 +9,8 @@
 - [ ] /sys/class/dmi/id/product_name check this in qemu
 - [ ] fix "dmidecode not found" error
 - [ ] rearrange the techniques so that the more likely ones will be executed first
-- [ ] make a hardware scanner module where it'll find for VM strings in all sorts of devices
 - [ ] implement techniques from here https://www.cyberciti.biz/faq/linux-determine-virtualization-technology-command/
 - [ ] implement techniques from virt-what
-- [ ] https://cloud.google.com/compute/docs/instances/detect-compute-engine
-- [ ] @thereisnospoon this is where we need to start modifing the qemu source further by replacing vendor/device ids.
-https://www.pcilookup.com/
  
 QEMU default: 0x1234
 Intel: 0x8086
