@@ -2939,8 +2939,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
 
 #elif (WINDOWS)
+        // Clang/GCC on x64 emits a full 10-byte SIDT (16-bit limit + 64-bit base), on 32-bit it still only writes 6 bytes
+#if defined(_M_X64) || defined(__x86_64__)
+        unsigned char m[10] = { 0 };
+#else
         unsigned char m[6] = { 0 };
-        u32	idt = 0;
+#endif
+        u32 idt = 0;
 
         __try {
 #if (CLANG || GCC)
@@ -2966,13 +2971,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         __except (EXCEPTION_EXECUTE_HANDLER) {
             return false; // umip
         }
+
+        // Extract 32-bit base from bytes [2..5]
         idt = *((unsigned long*)&m[2]);
 
         if ((idt >> 24) == 0xE8) {
             return core::add(brands::VPC);
         }
 
-        return (m[5] > 0xD0); // top‐most byte of the 64‑bit base
+        // On x64, m[5] is the top byte of the 64-bit base; on x86 it's high byte of 32-bit base
+        return (m[5] > 0xD0);
 #endif
     }
 
@@ -4444,7 +4452,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::VPC_INVALID
      */
     [[nodiscard]] static bool vpc_invalid() {
-#if (WINDOWS && x86_32)
+#if (WINDOWS && x86_32 && !CLANG)
         bool rc = false;
 
         auto IsInsideVPC_exceptionFilter = [](PEXCEPTION_POINTERS ep) -> DWORD {
@@ -4501,38 +4509,50 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      */
     [[nodiscard]] static bool sgdt() {
 #if (WINDOWS)
+    #if defined(_M_X64) || defined(__x86_64__)
+        unsigned char gdtr[10] = { 0 };
+    #else
         unsigned char gdtr[6] = { 0 };
+    #endif
         unsigned int  gdt = 0;
 
         __try {
-#if (CLANG || GCC)
+    #if (CLANG || GCC)
             __asm__ volatile("sgdt %0" : "=m"(gdtr));
-#elif (MSVC && x86_32)
+    #elif (MSVC && x86_32)
             __asm {
                 sgdt gdtr
             }
-#elif (MSVC)
+    #elif (MSVC)
     #pragma pack(push, 1)
-            struct { unsigned short limit; unsigned long long base; } _gdtr = {};
+            struct {
+                unsigned short limit;
+                unsigned long long base;
+            } _gdtr = {};
     #pragma pack(pop)
+
             _sgdt(&_gdtr);
             std::memcpy(gdtr, &_gdtr, sizeof(gdtr));
-#else
+    #else
             return false;
-#endif
+    #endif
         }
         __except (EXCEPTION_EXECUTE_HANDLER) {
             return false; // umip
         }
 
+        // 32-bit base from bytes [2..5]
         std::memcpy(&gdt, &gdtr[2], sizeof(gdt));
 
-        if (gdtr[5] > 0xD0) { // top‐most byte of the 64‑bit base
+        // On x64, gdtr[5] is the top byte of the 64-bit base; on x86 it's high byte of 32-bit base
+        if (gdtr[5] > 0xD0) {
             debug("SGDT: top-most byte signature detected");
             return true;
         }
+
+        // 0xFF signature in the high byte of the 32-bit base
         return ((gdt >> 24) == 0xFF);
-#else
+    #else
         return false;
 #endif
     }
@@ -4711,7 +4731,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::VMWARE_BACKDOOR
      */
     [[nodiscard]] static bool vmware_backdoor() {
-#if (WINDOWS && x86_32)
+#if (WINDOWS && x86_32 && !CLANG)
         u32 a = 0;
         u32 b = 0;
 
@@ -4720,49 +4740,49 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         bool is_vm = false;
 
         for (u8 i = 0; i < ioports.size(); ++i) {
-            ioport = ioports[i];
-            for (u8 cmd = 0; cmd < 0x2c; ++cmd) {
-                __try {
-                    __asm {
-                        push eax
-                        push ebx
-                        push ecx
-                        push edx
+             ioport = ioports[i];
+             for (u8 cmd = 0; cmd < 0x2c; ++cmd) {
+                   __try {
+                        __asm {
+                            push eax
+                            push ebx
+                            push ecx
+                            push edx
 
-                        mov eax, 'VMXh'
-                        movzx ecx, cmd
-                        mov dx, ioport
-                        in eax, dx      // <- key point is here
+                            mov eax, 'VMXh'
+                            movzx ecx, cmd
+                            mov dx, ioport
+                            in eax, dx      // <- key point is here
 
-                        mov a, ebx
-                        mov b, ecx
+                            mov a, ebx
+                            mov b, ecx
 
-                        pop edx
-                        pop ecx
-                        pop ebx
-                        pop eax
+                            pop edx
+                            pop ecx
+                            pop ebx
+                            pop eax
+                        }
+
+                        is_vm = true;
+                        break;
                     }
-
-                    is_vm = true;
-                    break;
+                    __except (EXCEPTION_EXECUTE_HANDLER) {}
                 }
-                __except (EXCEPTION_EXECUTE_HANDLER) {}
             }
-        }
 
-        if (is_vm) {
-            switch (b) {
+            if (is_vm) {
+                switch (b) {
                 case 1:  return core::add(brands::VMWARE_EXPRESS);
                 case 2:  return core::add(brands::VMWARE_ESX);
                 case 3:  return core::add(brands::VMWARE_GSX);
                 case 4:  return core::add(brands::VMWARE_WORKSTATION);
                 default: return core::add(brands::VMWARE);
+                }
             }
-        }
 
-        return false;
+         return false;
 #else
-        return false;
+         return false;
 #endif
     }
 
