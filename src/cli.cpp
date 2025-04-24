@@ -25,7 +25,6 @@
 #include <iostream>
 #include <vector>
 #include <cstdint>
-#include <bit>
 
 #if (defined(__GNUC__) || defined(__linux__))
     #include <unistd.h>
@@ -168,6 +167,7 @@ Extra:
  --mit              ignore the GPL techniques and run only the MIT-supported ones
  --enums            display the technique enum name used by the lib
 )";
+
     std::exit(0);
 }
 
@@ -279,6 +279,7 @@ Qihoo 360 Sandbox
 nsjail
 Hypervisor-Phantom
 )";
+
     std::exit(0);
 }
 
@@ -720,7 +721,7 @@ std::string vm_description(const std::string& vm_brand) {
     RtlInitUnicodeString(&name, L"\\??\\C:\\Program Files\\KernelLogger");
 
     HANDLE hFile;
-    IO_STATUS_BLOCK iosb = { 0 };
+    IO_STATUS_BLOCK iosb = { { 0 } };
     OBJECT_ATTRIBUTES attrs{};
     InitializeObjectAttributes(&attrs, &name, 0, NULL, NULL);
 
