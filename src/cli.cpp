@@ -48,7 +48,7 @@
 
 #include "vmaware.hpp"
 
-constexpr const char* ver = "2.2.0";
+constexpr const char* ver = "2.3.0";
 constexpr const char* date = "April 2025";
 
 std::string bold = "\033[1m";
@@ -140,33 +140,33 @@ private:
 
 [[noreturn]] void help(void) {
     std::cout << 
-    R"(Usage: 
-     vmaware [option] [extra]
-     (do not run with any options if you want the full summary)
+R"(Usage: 
+ vmaware [option] [extra]
+ (do not run with any options if you want the full summary)
 
-    Options:
-     -h | --help        prints this help menu
-     -v | --version     print CLI version and other details
-     -a | --all         run the result with ALL the techniques enabled (might contain false positives)
-     -d | --detect      returns the result as a boolean (1 = VM, 0 = baremetal)
-     -s | --stdout      returns either 0 or 1 to STDOUT without any text output (0 = VM, 1 = baremetal)
-     -b | --brand       returns the VM brand string
-     -l | --brand-list  returns all the possible VM brand string values
-     -p | --percent     returns the VM percentage between 0 and 100
-     -c | --conclusion  returns the conclusion message string
-     -n | --number      returns the number of VM detection techniques it performs
-     -t | --type        returns the VM type (if a VM was found)
+Options:
+ -h | --help        prints this help menu
+ -v | --version     print CLI version and other details
+ -a | --all         run the result with ALL the techniques enabled (might contain false positives)
+ -d | --detect      returns the result as a boolean (1 = VM, 0 = baremetal)
+ -s | --stdout      returns either 0 or 1 to STDOUT without any text output (0 = VM, 1 = baremetal)
+ -b | --brand       returns the VM brand string
+ -l | --brand-list  returns all the possible VM brand string values
+ -p | --percent     returns the VM percentage between 0 and 100
+ -c | --conclusion  returns the conclusion message string
+ -n | --number      returns the number of VM detection techniques it performs
+ -t | --type        returns the VM type (if a VM was found)
 
-    Extra:
-     --disable-notes    no notes will be provided
-     --high-threshold   a higher threshold bar for a VM detection will be applied
-     --no-ansi          removes color and ansi escape codes from the output
-     --dynamic          allow the conclusion message to be dynamic (8 possibilities instead of only 2)
-     --verbose          add more information to the output
-     --compact          ignore the unsupported techniques from the CLI output
-     --mit              ignore the GPL techniques and run only the MIT-supported ones
-     --enums            display the technique enum name used by the lib
-    )";
+Extra:
+ --disable-notes    no notes will be provided
+ --high-threshold   a higher threshold bar for a VM detection will be applied
+ --no-ansi          removes color and ansi escape codes from the output
+ --dynamic          allow the conclusion message to be dynamic (8 possibilities instead of only 2)
+ --verbose          add more information to the output
+ --compact          ignore the unsupported techniques from the CLI output
+ --mit              ignore the GPL techniques and run only the MIT-supported ones
+ --enums            display the technique enum name used by the lib
+)";
 
     std::exit(0);
 }
@@ -211,74 +211,74 @@ const char* color(const u8 score) {
 
 [[noreturn]] void brand_list() {
     std::cout << 
-    R"(VirtualBox
-    VMware
-    VMware Express
-    VMware ESX
-    VMware GSX
-    VMware Workstation
-    VMware Fusion
-    bhyve
-    QEMU
-    KVM
-    KVM Hyper-V Enlightenment
-    QEMU+KVM Hyper-V Enlightenment
-    QEMU+KVM
-    Virtual PC
-    Microsoft Hyper-V
-    Microsoft Virtual PC/Hyper-V
-    Parallels
-    Xen HVM
-    ACRN
-    QNX hypervisor
-    Hybrid Analysis
-    Sandboxie
-    Docker
-    Wine
-    Anubis
-    JoeBox
-    ThreatExpert
-    CWSandbox
-    Comodo
-    Bochs
-    Lockheed Martin LMHS
-    NVMM
-    OpenBSD VMM
-    Intel HAXM
-    Unisys s-Par
-    Cuckoo
-    BlueStacks
-    Jailhouse
-    Apple VZ
-    Intel KGT (Trusty)
-    Microsoft Azure Hyper-V
-    Xbox NanoVisor (Hyper-V)
-    SimpleVisor
-    Hyper-V artifact (not an actual VM)
-    User-mode Linux
-    IBM PowerVM
-    Google Compute Engine (KVM)
-    OpenStack (KVM)
-    KubeVirt (KVM)
-    AWS Nitro System (KVM-based)
-    Podman
-    WSL
-    OpenVZ
-    ANY.RUN
-    Barevisor
-    HyperPlatform
-    MiniVisor
-    Intel TDX
-    LKVM
-    AMD SEV
-    AMD SEV-ES
-    AMD SEV-SNP
-    Neko Project II
-    NoirVisor
-    Qihoo 360 Sandbox
-    nsjail
-    Hypervisor-Phantom
-    )";
+R"(VirtualBox
+VMware
+VMware Express
+VMware ESX
+VMware GSX
+VMware Workstation
+VMware Fusion
+bhyve
+QEMU
+KVM
+KVM Hyper-V Enlightenment
+QEMU+KVM Hyper-V Enlightenment
+QEMU+KVM
+Virtual PC
+Microsoft Hyper-V
+Microsoft Virtual PC/Hyper-V
+Parallels
+Xen HVM
+ACRN
+QNX hypervisor
+Hybrid Analysis
+Sandboxie
+Docker
+Wine
+Anubis
+JoeBox
+ThreatExpert
+CWSandbox
+Comodo
+Bochs
+Lockheed Martin LMHS
+NVMM
+OpenBSD VMM
+Intel HAXM
+Unisys s-Par
+Cuckoo
+BlueStacks
+Jailhouse
+Apple VZ
+Intel KGT (Trusty)
+Microsoft Azure Hyper-V
+Xbox NanoVisor (Hyper-V)
+SimpleVisor
+Hyper-V artifact (not an actual VM)
+User-mode Linux
+IBM PowerVM
+Google Compute Engine (KVM)
+OpenStack (KVM)
+KubeVirt (KVM)
+AWS Nitro System (KVM-based)
+Podman
+WSL
+OpenVZ
+ANY.RUN
+Barevisor
+HyperPlatform
+MiniVisor
+Intel TDX
+LKVM
+AMD SEV
+AMD SEV-ES
+AMD SEV-SNP
+Neko Project II
+NoirVisor
+Qihoo 360 Sandbox
+nsjail
+Hypervisor-Phantom
+)";
 
     std::exit(0);
 }
@@ -330,7 +330,9 @@ bool is_disabled(const VM::enum_flags flag) {
     switch (flag) {
         case VM::VMWARE_DMESG: 
         case VM::PORT_CONNECTORS: 
-        case VM::ACPI_TEMPERATURE: return true;
+        case VM::ACPI_TEMPERATURE: 
+        case VM::LSHW_QEMU:
+        case VM::PCI_VM: return true;
         default: return false;
     }
 }

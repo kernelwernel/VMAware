@@ -4,7 +4,7 @@
  * ██║   ██║██╔████╔██║███████║██║ █╗ ██║███████║██████╔╝█████╗
  * ╚██╗ ██╔╝██║╚██╔╝██║██╔══██║██║███╗██║██╔══██║██╔══██╗██╔══╝
  *  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
- *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ 2.2.0 (April 2025)
+ *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ 2.3.0 (April 2025)
  *
  *  C++ VM detection library
  *
@@ -30,11 +30,11 @@
  * - enums for publicly accessible techniques  => line 557
  * - struct for internal cpu operations        => line 743
  * - struct for internal memoization           => line 1214
- * - struct for internal utility functions     => line 1341
- * - struct for internal core components       => line 9964
- * - start of VM detection technique list      => line 2368
- * - start of public VM detection functions    => line 10630
- * - start of externally defined variables     => line 11573
+ * - struct for internal utility functions     => line 1342
+ * - struct for internal core components       => line 10155
+ * - start of VM detection technique list      => line 2429
+ * - start of public VM detection functions    => line 10823
+ * - start of externally defined variables     => line 11766
  *
  *
  * ============================== EXAMPLE ===================================
@@ -1263,8 +1263,9 @@ private:
                 return (
                     !cache_keys.test(VMWARE_DMESG) && 
                     !cache_keys.test(PORT_CONNECTORS) && 
-                    !cache_keys.test(IVSHMEM) && 
-                    !cache_keys.test(ACPI_TEMPERATURE)
+                    !cache_keys.test(ACPI_TEMPERATURE) && 
+                    !cache_keys.test(LSHW_QEMU) && 
+                    !cache_keys.test(PCI_VM)
                 );
             }
 
@@ -8126,45 +8127,67 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 	 * @category Linux
      * @implements VM::LSHW_QEMU
 	 */
-	[[nodiscard]] static bool lshw_qemu() {
-#if (!LINUX)
-	    return false;
+    [[nodiscard]] static bool lshw_qemu() {
+#if !LINUX
+        return false;
 #else
-	    if (!(
-            (util::exists("/usr/bin/lshw")) || 
-            (util::exists("/bin/lshw")) ||
-            (util::exists("/usr/sbin/lshw"))
-        )) {
-	        debug("LSHW_QEMU: ", "binary doesn't exist");
-	        return false;
-	    }
+        if (!(util::exists("/usr/bin/lshw") ||
+            util::exists("/bin/lshw")    ||
+            util::exists("/usr/sbin/lshw"))) {
+            debug("LSHW_QEMU: ", "binary doesn't exist");
+            return false;
+        }
 
-	    const std::unique_ptr<std::string> result = util::sys_result("lshw 2>&1");
-	
-	    if (result == nullptr) {
-	        debug("LSHW_QEMU: ", "invalid stdout output from lshw");
-	        return false;
-	    }
-	
-	    const std::string full_command = *result;
-	
-	    u8 score = 0;
+        FILE* pipe = popen("lshw 2>&1", "r");
+        if (!pipe) {
+            debug("LSHW_QEMU: ", "popen failed");
+            return false;
+        }
 
-        auto qemu_finder = [&](const char* str) -> void {
-            if (util::find(full_command, str)) { 
-                debug("LSHW_QEMU: found ", str);
-                score++; 
-            }
+        static constexpr const char* patterns[] = {
+            "QEMU PCIe Root port",
+            "QEMU XHCI Host Controller",
+            "QEMU DVD-ROM",
+            "QEMU QEMU USB Tablet"
         };
-	
-	    qemu_finder("QEMU PCIe Root port");
-	    qemu_finder("QEMU XHCI Host Controller");
-	    qemu_finder("QEMU DVD-ROM");
-	    qemu_finder("QEMU QEMU USB Tablet");
-	
-	    return (score >= 3); // if one of the strings above were detected 3 times, flag as VM
+        bool seen[sizeof(patterns)/sizeof(patterns[0])] = {false};
+        int score = 0;
+
+        size_t max_pat = 0;
+        for (auto& p : patterns) max_pat = std::max(max_pat, strlen(p));
+        std::string overlap;
+        overlap.reserve(max_pat - 1);
+
+        const size_t BUF_SIZE = 64 * 1024;
+        std::vector<char> buf(BUF_SIZE);
+        while (true) {
+            size_t n = fread(buf.data(), 1, BUF_SIZE, pipe);
+            if (n == 0) break;
+
+            std::string chunk = overlap;
+            chunk.append(buf.data(), n);
+
+            if (chunk.size() >= max_pat - 1) {
+                overlap = chunk.substr(chunk.size() - (max_pat - 1));
+            } else {
+                overlap = chunk;
+            }
+
+            for (size_t i = 0; i < std::size(patterns); ++i) {
+                if (!seen[i] && chunk.find(patterns[i]) != std::string::npos) {
+                    debug("LSHW_QEMU: found ", patterns[i]);
+                    seen[i] = true;
+                    ++score;
+                    if (score >= 3) break;
+                }
+            }
+            if (score >= 3) break;
+        }
+
+        pclose(pipe);
+        return (score >= 3);
 #endif
-	}
+    }
 
 
     /**
@@ -10500,6 +10523,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             flags.flip(VMWARE_DMESG);
             flags.flip(PORT_CONNECTORS);
             flags.flip(ACPI_TEMPERATURE);
+            flags.flip(LSHW_QEMU);
+            flags.flip(PCI_VM);
 
             // disable all the settings flags
             flags.flip(NO_MEMO);
