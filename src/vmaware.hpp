@@ -8018,7 +8018,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // actual measurement
         constexpr u8  SAMPLE_COUNT = 100;
         constexpr u16 SCALE_FACTOR = 1000;
-        constexpr u32 THRESHOLD_SCALED = 9.5 * SCALE_FACTOR;  // <9.5× ratio => VM
+        constexpr u32 THRESHOLD_SCALED = 9 * SCALE_FACTOR;  // <9× ratio => VM
         u64 samples[SAMPLE_COUNT] = { 0 };
 
         for (int i = 0; i < SAMPLE_COUNT; ++i) {
