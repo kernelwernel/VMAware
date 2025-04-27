@@ -27,14 +27,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 557
- * - struct for internal cpu operations        => line 743
- * - struct for internal memoization           => line 1214
- * - struct for internal utility functions     => line 1342
- * - struct for internal core components       => line 10175
- * - start of VM detection technique list      => line 2429
- * - start of public VM detection functions    => line 10843
- * - start of externally defined variables     => line 11786
+ * - enums for publicly accessible techniques  => line 559
+ * - struct for internal cpu operations        => line 744
+ * - struct for internal memoization           => line 1215
+ * - struct for internal utility functions     => line 1343
+ * - struct for internal core components       => line 10141
+ * - start of VM detection technique list      => line 2430
+ * - start of public VM detection functions    => line 10809
+ * - start of externally defined variables     => line 11751
  *
  *
  * ============================== EXAMPLE ===================================
@@ -366,7 +366,8 @@
 #include <powerbase.h>
 #include <setupapi.h>
 #include <mmdeviceapi.h>
-#include <dxgi.h>
+#include <dxgi1_2.h>
+#include <dxgi1_4.h>
 #include <wrl/client.h>
 #include <tbs.h>
 
@@ -658,7 +659,6 @@ public:
         FILE_ACCESS_HISTORY,
         AUDIO,
         UNKNOWN_MANUFACTURER,
-        OSXSAVE,
         NSJAIL_PID,
         PCI_VM,
         TPM,
@@ -2462,15 +2462,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             const std::regex reg;
         };
 
-        static const std::array<KeywordCheck, 12> checks = { {
+        static const std::array<KeywordCheck, 10> checks = { {
             {"qemu",      std::regex("qemu",      std::regex::icase | std::regex::optimize)},
             {"kvm",       std::regex("kvm",       std::regex::icase | std::regex::optimize)},
-            {"virtual",   std::regex("virtual",   std::regex::icase | std::regex::optimize)},
             {"vbox",      std::regex("vbox",      std::regex::icase | std::regex::optimize)},
             {"virtualbox",std::regex("virtualbox",std::regex::icase | std::regex::optimize)},
             {"monitor",   std::regex("monitor",   std::regex::icase | std::regex::optimize)},
             {"bhyve",     std::regex("bhyve",     std::regex::icase | std::regex::optimize)},
-            {"hyperv",    std::regex("hyperv",    std::regex::icase | std::regex::optimize)},
             {"hypervisor",std::regex("hypervisor",std::regex::icase | std::regex::optimize)},
             {"hvisor",    std::regex("hvisor",    std::regex::icase | std::regex::optimize)},
             {"parallels", std::regex("parallels", std::regex::icase | std::regex::optimize)},
@@ -2497,7 +2495,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return core::add(brands::QEMU);
         }
 
-        return (match_count >= 1);
+        return (match_count > 0);
 #endif
     }
 
@@ -7592,35 +7590,43 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!WINDOWS)
         return false;
 #else
-        const u64 minVidMem = 1024ull * 1024ull * 1024ull; // 1GB
-
-        Microsoft::WRL::ComPtr<IDXGIFactory> factory;
-        if (FAILED(CreateDXGIFactory(__uuidof(IDXGIFactory), reinterpret_cast<void**>(factory.GetAddressOf())))) {
-            debug("GPU_CAPABILITIES: DXGIFactory creation failed");
-            return true;
+        Microsoft::WRL::ComPtr<IDXGIFactory2> factory;
+        if (FAILED(CreateDXGIFactory2(0, IID_PPV_ARGS(&factory)))) {
+            debug("GPU_CAPABILITIES: failed to create DXGIFactory2");
+            return false;
         }
 
-        Microsoft::WRL::ComPtr<IDXGIAdapter> adapter;
-        if (FAILED(factory->EnumAdapters(0, adapter.GetAddressOf()))) {
-            return true;
+        HMODULE warpMod = LoadLibraryW(L"dxgi.dll");
+        if (warpMod) {
+            Microsoft::WRL::ComPtr<IDXGIAdapter> swAdapter;
+            if (SUCCEEDED(factory->CreateSoftwareAdapter(warpMod, &swAdapter))) {
+                Microsoft::WRL::ComPtr<IDXGIAdapter1> swAdapter1;
+                if (SUCCEEDED(swAdapter.As(&swAdapter1))) {
+                    DXGI_ADAPTER_DESC1 swDesc = {};
+                    if (SUCCEEDED(swAdapter1->GetDesc1(&swDesc)) &&
+                        (swDesc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE))
+                    {
+                        debug("GPU_CAPABILITIES: detected software (WARP) adapter");
+                        return true;
+                    }
+                }
+            }
         }
 
-        DXGI_ADAPTER_DESC desc;
-        if (FAILED(adapter->GetDesc(&desc))) {
-            return true;
+        Microsoft::WRL::ComPtr<IDXGIAdapter1> hwAdapter1;
+        if (FAILED(factory->EnumAdapters1(0, &hwAdapter1))) {
+            debug("GPU_CAPABILITIES: no adapters found");
+            return false;
         }
 
-        switch (desc.VendorId) {
-        case 0x15AD: 
-            return core::add(brands::VMWARE);
-        case 0x80EE:
-            return core::add(brands::VBOX);
-        default:
-            break;
+        DXGI_ADAPTER_DESC1 hwDesc = {};
+        if (FAILED(hwAdapter1->GetDesc1(&hwDesc))) {
+            debug("GPU_CAPABILITIES: failed to get adapter desc");
+            return false;
         }
 
-        if (desc.DedicatedVideoMemory < minVidMem) {
-            debug("GPU_CAPABILITIES: Video memory below threshold");
+        if (hwDesc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) {
+            debug("GPU_CAPABILITIES: primary adapter is software");
             return true;
         }
 
@@ -7942,18 +7948,18 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     ? (tscCore2 - tscCore1)
                     : (tscCore1 - tscCore2);
 
-                if (diff < tscSyncDiffThreshold) {
-                #ifdef __VMAWARE_DEBUG__
-                    debug("TIMER: TSC sync check",
-                        " - Core1: ", tscCore1,
-                        " Core2: ", tscCore2,
-                        " Delta: ", tscCore2 - tscCore1,
-                        " (Threshold: <", tscSyncDiffThreshold,
-                        ')');
-                #endif  
+                if (diff < tscSyncDiffThreshold) {            
                     ++tscIssueCount;
                 }
             }
+#ifdef __VMAWARE_DEBUG__
+            debug("TIMER: TSC sync check",
+                " - Core1: ", tscCore1,
+                " Core2: ", tscCore2,
+                " Delta: ", tscCore2 - tscCore1,
+                " (Threshold: <", tscSyncDiffThreshold,
+                ')');
+#endif  
             return (tscIssueCount >= tscIterations / 2);
         }();
 
@@ -8012,7 +8018,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // actual measurement
         constexpr u8  SAMPLE_COUNT = 100;
         constexpr u16 SCALE_FACTOR = 1000;
-        constexpr u32 THRESHOLD_SCALED = 10 * SCALE_FACTOR;  // <10× ratio => VM
+        constexpr u32 THRESHOLD_SCALED = 9 * SCALE_FACTOR;  // <9× ratio => VM
         u64 samples[SAMPLE_COUNT] = { 0 };
 
         for (int i = 0; i < SAMPLE_COUNT; ++i) {
@@ -8067,9 +8073,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         std::sort(std::begin(samples), std::end(samples));
         const u64 median = samples[SAMPLE_COUNT / 2];
+        debug("TIMER: Ratio: ", median, " - Threshold: <", THRESHOLD_SCALED);
 
         if (median < THRESHOLD_SCALED) {
-            debug("TIMER: Ratio: ", median, " - Threshold: <", THRESHOLD_SCALED);
             restoreThreadPriority();
             return true;
         }
@@ -9925,47 +9931,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         debug("UNKNOWN_MANUFACTURER: CPU brand '", brand, "' did not match known vendor IDs.");
         return true; // no known manufacturer matched, likely a VM
     }
-    
-
-    /**
-     * @brief Check if running xgetbv in the XCR0 extended feature register triggers an exception
-     * @note On pre‑Win8, CR4.OSXSAVE may only get set if you’ve actually loaded an AVX‑enabled binary
-     * @category Windows
-     * @implements VM::OSXSAVE
-     */
-    [[nodiscard]] static bool osxsave() {
-#if (!WINDOWS)
-        return false;
-#else
-        typedef void (*FuncPtr)();
-
-        //   31 C9         => xor ecx, ecx
-        //   0F 01 D0      => xgetbv
-        //   C3            => ret
-        const unsigned char code[] = { 0x31, 0xC9, 0x0F, 0x01, 0xD0, 0xC3 };
-
-        void* mem = VirtualAlloc(NULL, sizeof(code), MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
-        if (!mem) {
-            return false;
-        }
-
-        memcpy(mem, code, sizeof(code));
-
-        FuncPtr func = reinterpret_cast<FuncPtr>(mem);
-
-        __try {
-            func();
-        }
-        __except (EXCEPTION_EXECUTE_HANDLER) {
-            VirtualFree(mem, 0, MEM_RELEASE);
-            return true;
-        }
-
-        VirtualFree(mem, 0, MEM_RELEASE);
-
-        return false;
-#endif
-    }
 
 
 	/**
@@ -11458,7 +11423,6 @@ public: // START OF PUBLIC FUNCTIONS
             case FILE_ACCESS_HISTORY: return "FILE_ACCESS_HISTORY";
             case AUDIO: return "AUDIO";
             case UNKNOWN_MANUFACTURER: return "UNKNOWN_MANUFACTURER";
-            case OSXSAVE: return "OSXSAVE";
             case NSJAIL_PID: return "NSJAIL_PID";
             case PCI_VM: return "PCI_VM";
             case TPM: return "TPM";
@@ -12016,7 +11980,6 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     std::make_pair(VM::FILE_ACCESS_HISTORY, VM::core::technique(15, VM::file_access_history)),
     std::make_pair(VM::AUDIO, VM::core::technique(25, VM::check_audio)),
     std::make_pair(VM::UNKNOWN_MANUFACTURER, VM::core::technique(50, VM::unknown_manufacturer)),
-    std::make_pair(VM::OSXSAVE, VM::core::technique(50, VM::osxsave)),
     std::make_pair(VM::NSJAIL_PID, VM::core::technique(75, VM::nsjail_proc_id)),
     std::make_pair(VM::PCI_VM, VM::core::technique(100, VM::lspci)),
     std::make_pair(VM::TPM, VM::core::technique(50, VM::tpm)),
