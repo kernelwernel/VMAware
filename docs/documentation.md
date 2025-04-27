@@ -42,21 +42,21 @@ int main() {
 
 
     /**
-     * All checks are performed including spoofable techniques
-     * and a few other techniques that are disabled by default
-     * for a variety of reasons. Only 1 or 2 techniques are 
-     * disabled by default, and this flag will include both of 
-     * them. This isn't the default due to potential instability 
-     * concerns, but if that's fine for you then use this flag 
-     * for the sake of completeness.
+     * All checks are performed including techniques that are
+     * disabled by default for a viariety of reasons. There are
+     * around 5 technique that are disabled. If you want all 
+     * techniques for the sake of completeness, then you can use
+     * this flag but remember that there may be potential 
+     * performance bottlenecks and in increase in false positives.
      */ 
     bool is_vm3 = VM::detect(VM::ALL);
 
 
     /**
      * This will raise the detection threshold above the default level.
-     * Use this if you want to be extremely sure if it's a VM, but this increases the chance
-     * of a false negative. Use VM::percentage() for a more precise result if you want.
+     * Use this if you want to be extremely sure if it's a VM, but this 
+     * increases the chance of a false negative. Use VM::percentage() 
+     * for a more precise result if you want.
      */ 
     bool is_vm4 = VM::detect(VM::HIGH_THRESHOLD);
 
@@ -430,13 +430,13 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | 🪟 | Windows |
 | 🍏 | macOS |
 
-| Flag alias | Description | Cross-platform? (empty = yes) | Certainty | Admin? | GPL-3.0? | 32-bit only? | Notes | Code implementation |
+| Flag alias | Description | Supported platforms | Certainty | Admin? | GPL-3.0? | 32-bit only? | Notes | Code implementation |
 | ---------- | ----------- | ----------------------------- | --------- | ------ | -------- | ------------ | ----- | ------------------- |
 | `VM::VMID` | Check CPUID output of manufacturer ID for known VMs/hypervisors at leaf 0 and 0x40000000-0x40000100 | 🐧🪟🍏 | 100% |  |  |  |  | [link](https://github.com/kernelwernel/VMAware/blob/8cb2491b1c7d2cb7300d1d698b7c64c953b4ae75/src/vmaware.hpp#L2525) |
 | `VM::CPU_BRAND` | Check if CPU brand model contains any VM-specific string snippets | 🐧🪟🍏 | 50% |  |  |  |  | [link](https://github.com/kernelwernel/VMAware/blob/8cb2491b1c7d2cb7300d1d698b7c64c953b4ae75/src/vmaware.hpp#L2545) |
 | `VM::HYPERVISOR_BIT` | Check if hypervisor feature bit in CPUID eax bit 31 is enabled (always false for physical CPUs) | 🐧🪟🍏 | 100% |  |  |  |  | [link](https://github.com/kernelwernel/VMAware/blob/8cb2491b1c7d2cb7300d1d698b7c64c953b4ae75/src/vmaware.hpp#L2601) |
 | `VM::HYPERVISOR_STR` | Check for hypervisor brand string length (would be around 2 characters in a host machine) | 🐧🪟🍏 | 75% |  |  |  |  | [link](https://github.com/kernelwernel/VMAware/blob/8cb2491b1c7d2cb7300d1d698b7c64c953b4ae75/src/vmaware.hpp#L2622) |
-| `VM::TIMER` | Check for timing anomalies in the system | 🐧🪟🍏 | 45% |  |  |  |  | [link](https://github.com/kernelwernel/VMAware/blob/8cb2491b1c7d2cb7300d1d698b7c64c953b4ae75/src/vmaware.hpp#L8169 ) |
+| `VM::TIMER` | Check for timing anomalies in the system | 🐧🪟🍏 | 45% |  |  |  | Unsafe to run under binary emulators | [link](https://github.com/kernelwernel/VMAware/blob/8cb2491b1c7d2cb7300d1d698b7c64c953b4ae75/src/vmaware.hpp#L8169 ) |
 | `VM::THREADCOUNT` | Check if there are only 1 or 2 threads, which is a common pattern in VMs with default settings (nowadays physical CPUs should have at least 4 threads for modern CPUs) | 🐧🪟🍏 | 35% |  |  |  |  | [link](https://github.com/kernelwernel/VMAware/blob/8cb2491b1c7d2cb7300d1d698b7c64c953b4ae75/src/vmaware.hpp#L2649) |
 | `VM::MAC` | Check if mac address starts with certain VM designated values | 🐧🪟 | 20% |  |  |  |  | [link](https://github.com/kernelwernel/VMAware/blob/8cb2491b1c7d2cb7300d1d698b7c64c953b4ae75/src/vmaware.hpp#L2671) |
 | `VM::TEMPERATURE` | Check if thermal directory in linux is present, might not be present in VMs | 🐧 | 15% |  |  |  |  | [link](https://github.com/kernelwernel/VMAware/blob/8cb2491b1c7d2cb7300d1d698b7c64c953b4ae75/src/vmaware.hpp#L2804) |
@@ -515,7 +515,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::ANYRUN_DIRECTORY` | Check for any.run directory and handle the status code | 🪟 | 35% |  |  |  | Removed from the lib, only available in the CLI | [link](https://github.com/kernelwernel/VMAware/blob/8cb2491b1c7d2cb7300d1d698b7c64c953b4ae75/src/cli.cpp#L713) |
 | `VM::DRIVER_NAMES` | Check for VM-specific names for drivers | 🪟 | 100% |  |  |  |  | [link](https://github.com/kernelwernel/VMAware/blob/8cb2491b1c7d2cb7300d1d698b7c64c953b4ae75/src/vmaware.hpp#L7426) |
 | `VM::DISK_SERIAL` | Check for serial numbers of virtual disks | 🪟 | 100% |  |  |  |  | [link](https://github.com/kernelwernel/VMAware/blob/8cb2491b1c7d2cb7300d1d698b7c64c953b4ae75/src/vmaware.hpp#L7581) |
-| `VM::PORT_CONNECTORS` | Check for physical connection ports | 🪟 | 25% |  |  |  | This technique is known to false flag on devices like Surface Pro, also disabled by default | [link](https://github.com/kernelwernel/VMAware/blob/8cb2491b1c7d2cb7300d1d698b7c64c953b4ae75/src/vmaware.hpp#L7700) |
+| `VM::PORT_CONNECTORS` | Check for physical connection ports | 🪟 | 25% |  |  |  | This technique is known to false flag on devices like Surface Pro, disabled by default | [link](https://github.com/kernelwernel/VMAware/blob/8cb2491b1c7d2cb7300d1d698b7c64c953b4ae75/src/vmaware.hpp#L7700) |
 | `VM::IVSHMEM` | Check for IVSHMEM device absense | 🪟 | 100% |  |  |  |  |
 | `VM::GPU_CAPABILITIES` | Check for GPU capabilities related to VMs | 🪟 | 100% | Admin |  |  | Admin only needed for some heuristics | [link](https://github.com/kernelwernel/VMAware/blob/8cb2491b1c7d2cb7300d1d698b7c64c953b4ae75/src/vmaware.hpp#L7785) |
 | `VM::GPU_VM_STRINGS` | Check for specific GPU string signatures related to VMs | 🪟 | 100% |  |  |  | If GPU_CAPABILITIES also flags, the score will have 50 added instead of 100 | [link](https://github.com/kernelwernel/VMAware/blob/8cb2491b1c7d2cb7300d1d698b7c64c953b4ae75/src/vmaware.hpp#L7730) |
@@ -536,8 +536,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::FILE_ACCESS_HISTORY` | Check if the number of accessed files are too low for a human-managed environment | 🐧 | 15% |  |  |  |  | [link](https://github.com/kernelwernel/VMAware/blob/8cb2491b1c7d2cb7300d1d698b7c64c953b4ae75/src/vmaware.hpp#L9950) |
 | `VM::AUDIO` | Check if no waveform-audio output devices are present in the system | 🪟 | 25% |  |  |  |  | [link](https://github.com/kernelwernel/VMAware/blob/8cb2491b1c7d2cb7300d1d698b7c64c953b4ae75/src/vmaware.hpp#L9980) |
 | `VM::UNKNOWN_MANUFACTURER` | Check if the CPU manufacturer is not known | 🐧🪟🍏 | 50% |  |  |  |  | [link](https://github.com/kernelwernel/VMAware/blob/8cb2491b1c7d2cb7300d1d698b7c64c953b4ae75/src/vmaware.hpp#L10016) |
-| `VM::OSXSAVE` | Check if running xgetbv in the XCR0 extended feature register triggers an exception | 🪟 | 50% |  |  |  |  | [link](https://github.com/kernelwernel/VMAware/blob/8cb2491b1c7d2cb7300d1d698b7c64c953b4ae75/src/vmaware.hpp#L10044) |
-| `VM::NSJAIL_PID` | Check if process status matches with nsjail patterns with PID anomalies | 🐧 | 75% |  |  |  |  | [link](https://github.com/kernelwernel/VMAware/blob/8cb2491b1c7d2cb7300d1d698b7c64c953b4ae75/src/vmaware.hpp#L10083) |
+| `VM::NSJAIL_PID` | Check if process status matches with nsjail patterns with PID anomalies | 🐧 | 75% |  |  |  | Disabled by default | [link](https://github.com/kernelwernel/VMAware/blob/8cb2491b1c7d2cb7300d1d698b7c64c953b4ae75/src/vmaware.hpp#L10083) |
 | `VM::PCI_VM` | Check for PCIe bridge names for known VM keywords and brands | 🐧 | 100% |  |  |  | Disabled by default | [link](https://github.com/kernelwernel/VMAware/blob/8cb2491b1c7d2cb7300d1d698b7c64c953b4ae75/src/vmaware.hpp#L10142) |
 | `VM::TPM` | Check if the system has a physical TPM by matching the TPM manufacturer against known physical TPM chip vendors | 🪟 | 50% |  |  |  |  | [link](https://github.com/kernelwernel/VMAware/blob/fb66db9fdd7894edebe5eeade4b0148a08bd5514/src/vmaware.hpp#L10011)|
 <!-- ADD TECHNIQUE DETAILS HERE -->
