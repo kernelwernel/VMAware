@@ -49,14 +49,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 580
- * - struct for internal cpu operations        => line 758
- * - struct for internal memoization           => line 1229
- * - struct for internal utility functions     => line 1357
- * - struct for internal core components       => line 9928
- * - start of VM detection technique list      => line 2444
- * - start of public VM detection functions    => line 10596
- * - start of externally defined variables     => line 11531
+ * - enums for publicly accessible techniques  => line 581
+ * - struct for internal cpu operations        => line 759
+ * - struct for internal memoization           => line 1230
+ * - struct for internal utility functions     => line 1358
+ * - struct for internal core components       => line 9929
+ * - start of VM detection technique list      => line 2445
+ * - start of public VM detection functions    => line 10597
+ * - start of externally defined variables     => line 11532
  *
  *
  * ============================== EXAMPLE ===================================
@@ -388,7 +388,8 @@
 #include <powerbase.h>
 #include <setupapi.h>
 #include <mmdeviceapi.h>
-#include <dxgi.h>
+#include <dxgi1_2.h>
+#include <dxgi1_4.h>
 #include <wrl/client.h>
 #include <tbs.h>
 
