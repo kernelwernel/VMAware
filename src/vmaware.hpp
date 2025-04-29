@@ -10261,7 +10261,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 debug(
                     "PCI_VM_DEVICE_ID: found vendor ID = ", 
                     "0x", std::setw(4), std::setfill('0'), std::hex, dev.vendor_id,
-                    "device ID = 0x", std::setw(4), std::setfill('0'), std::hex, dev.device_id
+                    " device ID = 0x", std::setw(4), std::setfill('0'), std::hex, dev.device_id
                 );
     
                 break;
