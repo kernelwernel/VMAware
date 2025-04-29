@@ -27,14 +27,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 558
- * - struct for internal cpu operations        => line 743
- * - struct for internal memoization           => line 1214
- * - struct for internal utility functions     => line 1342
- * - struct for internal core components       => line 10140
- * - start of VM detection technique list      => line 2429
- * - start of public VM detection functions    => line 10808
- * - start of externally defined variables     => line 11750
+ * - enums for publicly accessible techniques  => line 555
+ * - struct for internal cpu operations        => line 741
+ * - struct for internal memoization           => line 1212
+ * - struct for internal utility functions     => line 1340
+ * - struct for internal core components       => line 10292
+ * - start of VM detection technique list      => line 2427
+ * - start of public VM detection functions    => line 10960
+ * - start of externally defined variables     => line 11903
  *
  *
  * ============================== EXAMPLE ===================================
@@ -322,7 +322,6 @@
 #endif
 #if (CPP >= 17)
 #include <filesystem>
-#include <optional>
 #endif
 #ifdef __VMAWARE_DEBUG__
 #include <iomanip>
@@ -339,7 +338,6 @@
 #include <thread>
 #include <cstdint>
 #include <map>
-#include <unordered_map>
 #include <unordered_set>
 #include <array>
 #include <algorithm>
@@ -349,7 +347,6 @@
 #include <sstream>
 #include <bitset>
 #include <type_traits>
-#include <atomic>
 
 #if (WINDOWS)
 #include <windows.h>
@@ -662,6 +659,7 @@ public:
         NSJAIL_PID,
         PCI_VM,
         TPM,
+        PCI_VM_DEVICE_ID,
         // ADD NEW TECHNIQUE ENUM NAME HERE
 
         // special flags, different to settings
@@ -3832,6 +3830,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         const char* username = std::getenv("USER");
         const char* hostname = std::getenv("HOSTNAME");
+
+        if (!username || !hostname) {
+            debug("VM::LINUX_USER_HOST: environment variables not found");
+            return false;
+        }
 
         debug("LINUX_USER_HOST: user = ", username);
         debug("LINUX_USER_HOST: host = ", hostname);
@@ -10120,6 +10123,155 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
 
+
+    /**
+     * @brief Check for PCI vendor and device IDs that are VM-specific
+     * @link https://www.pcilookup.com/?ven=&dev=&action=submit
+     * @category Linux
+     * @implements VM::PCI_VM_DEVICE_ID
+     */
+    [[nodiscard]] static bool pci_vm_device_id() {
+#if (!LINUX)
+        return false;
+#else
+        struct PCI_Device {
+            u16 vendor_id;    // 16-bit
+            u16 device_id;    // 32-bit capable
+        };
+    
+        const std::string pci_path = "/sys/bus/pci/devices";
+        std::vector<PCI_Device> devices;
+
+#if (CPP >= 17)
+        for (const auto& entry : std::filesystem::directory_iterator(pci_path)) {
+            std::string dev_path = entry.path();
+#else 
+        DIR* dir;
+        struct dirent* ent;
+
+        if ((dir = opendir(pci_path.c_str())) == nullptr) {
+            debug("unable to open the PCI data");
+            return false;
+        }
+    
+        while ((ent = readdir(dir)) != nullptr) {
+            std::string dev_name = ent->d_name;
+            
+            if (dev_name == "." || dev_name == "..") {
+                continue;
+            }
+            
+            std::string dev_path = pci_path + "/" + dev_name;
+#endif
+            PCI_Device dev;
+    
+            // Read 32-bit capable IDs (sysfs provides them as 16-bit, but we combine)
+            std::ifstream vendor_file(dev_path + "/vendor");
+            std::ifstream device_file(dev_path + "/device");
+    
+            vendor_file >> std::hex >> dev.vendor_id;
+            device_file >> std::hex >> dev.device_id;
+    
+            devices.push_back(dev);
+        }
+    
+        #ifdef __VMAWARE_DEBUG__
+            debug("PCI Device Table");
+            debug("-------------------------");
+            debug("Vendor ID  | Device ID ");
+            debug("-------------------------");
+    
+            for (const auto& dev : devices) {
+                debug(
+                    "0x", std::setw(4), std::setfill('0'), std::hex, dev.vendor_id, "     | "
+                    "0x", std::setw(4), std::setfill('0'), dev.device_id, " | ", std::dec
+                );
+            }
+        #endif
+    
+        bool found = false;
+    
+        for (const auto& dev : devices) {
+            const u32 id = ((dev.vendor_id << 16) | dev.device_id);
+    
+            switch (id) {
+                // Red Hat + Virtio
+                case 0x1af41000: // Virtio network device
+                case 0x1af41001: // Virtio block device
+                case 0x1af41002: //	Virtio memory balloon
+                case 0x1af41003: // Virtio console
+                case 0x1af41004: // Virtio SCSI
+                case 0x1af41005: // Virtio RNG
+                case 0x1af41009: // Virtio filesystem
+                case 0x1af41041: // Virtio network device
+                case 0x1af41042: // Virtio block device
+                case 0x1af41043: // Virtio console
+                case 0x1af41044: // Virtio RNG
+                case 0x1af41045: // Virtio memory balloon
+                case 0x1af41048: // Virtio SCSI
+                case 0x1af41049: // Virtio filesystem
+                case 0x1af41050: // Virtio GPU
+                case 0x1af41052: // Virtio input
+                case 0x1af41053: // Virtio socket
+                case 0x1af4105a: // Virtio file system
+                case 0x1af41110: // Inter-VM shared memory
+    
+                // VMware
+                case 0x15ad0405: // SVGA II Adapter
+                case 0x15ad0710: // SVGA Adapter
+                case 0x15ad0720: // VMXNET Ethernet Controller
+                case 0x15ad0740: // Virtual Machine Communication Interface
+                case 0x15ad0770: // USB2 EHCI Controller
+                case 0x15ad0774: // USB1.1 UHCI Controller
+                case 0x15ad0778: // USB3 xHCI 0.96 Controller
+                case 0x15ad0779: // USB3 xHCI 1.0 Controller
+                case 0x15ad0790: // PCI bridge
+                case 0x15ad07a0: // PCI Express Root Port
+                case 0x15ad07b0: // VMXNET3 Ethernet Controller
+                case 0x15ad07c0: // PVSCSI SCSI Controller
+                case 0x15ad07e0: // SATA AHCI controller
+                case 0x15ad07f0: // NVMe SSD Controller
+                case 0x15ad0801: // Virtual Machine Interface
+                case 0x15ad0820: // Paravirtual RDMA controller
+                case 0x15ad1977: // HD Audio Controller
+                case 0xfffe0710: // Virtual SVGA
+                case 0x0e0f0001: // Device
+                case 0x0e0f0002: // Virtual USB Hub
+                case 0x0e0f0003: // Virtual Mouse
+                case 0x0e0f0004: // Virtual CCID
+                case 0x0e0f0005: // Virtual Mass Storage
+                case 0x0e0f0006: // Virtual Keyboard
+                case 0x0e0f000a: // Virtual Sensors
+                case 0x0e0f8001: // Root Hub
+                case 0x0e0f8002: // Root Hub
+                case 0x0e0f8003: // Root Hub
+                case 0x0e0ff80a: // Smoker FX2
+    
+                // VirtualBox
+                case 0x80ee0021: // USB Tablet
+                case 0x80ee0022: // multitouch tablet
+    
+                // Connectix (VirtualPC)
+                case 0x29556e61: // OHCI USB 1.1 controller
+                    found = true;
+                    break;
+            }
+    
+            if (found) {
+                debug(
+                    "PCI_VM_DEVICE_ID: found vendor ID = ", 
+                    "0x", std::setw(4), std::setfill('0'), std::hex, dev.vendor_id,
+                    "device ID = 0x", std::setw(4), std::setfill('0'), std::hex, dev.device_id
+                );
+    
+                break;
+            }
+        }
+    
+        return found;
+#endif
+    }
+
     // ADD NEW TECHNIQUE FUNCTION HERE
 
 
@@ -11427,6 +11579,7 @@ public: // START OF PUBLIC FUNCTIONS
             case PCI_VM: return "PCI_VM";
             case TPM: return "TPM";
 
+            case PCI_VM_DEVICE_ID: return "PCI_VM_DEVICE_ID";
             // ADD NEW CASE HERE FOR NEW TECHNIQUE
             default: return "Unknown flag";
         }
@@ -11983,6 +12136,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     std::make_pair(VM::NSJAIL_PID, VM::core::technique(75, VM::nsjail_proc_id)),
     std::make_pair(VM::PCI_VM, VM::core::technique(100, VM::lspci)),
     std::make_pair(VM::TPM, VM::core::technique(50, VM::tpm)),
+    std::make_pair(VM::PCI_VM_DEVICE_ID, VM::core::technique(90, VM::pci_vm_device_id)),
     // ADD NEW TECHNIQUE STRUCTURE HERE
 };
 
