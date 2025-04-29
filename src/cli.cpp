@@ -469,7 +469,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::VIRTUAL_REGISTRY:
             case VM::FIRMWARE:
             case VM::UNKNOWN_MANUFACTURER:
-            case VM::OSXSAVE:
             case VM::TPM:
             // ADD WINDOWS FLAG
             return false;
@@ -975,7 +974,6 @@ void general() {
     checker(VM::FIRMWARE, "firmware signatures");
     checker(VM::FILE_ACCESS_HISTORY, "low file access count");
     checker(VM::UNKNOWN_MANUFACTURER, "unknown manufacturer ids");
-    checker(VM::OSXSAVE, "xgetbv");
     checker(VM::NSJAIL_PID, "nsjail PID");
     checker(VM::PCI_VM, "PCIe bridge ports");
     checker(VM::TPM, "TPM manufacturer");

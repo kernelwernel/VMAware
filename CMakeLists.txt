@@ -29,6 +29,26 @@ if(CMAKE_C_COMPILER_ID STREQUAL "Clang" OR CMAKE_C_COMPILER_ID STREQUAL "GNU")
 endif()
 
 
+# find available compilers
+if (LINUX)
+    find_program(CLANGPP_EXECUTABLE NAMES clang++)
+    find_program(GPP_EXECUTABLE NAMES g++)
+
+    # select compiler with preference for clang++ (just a personal choice of mine, i'm kinda obsessed with llvm honestly)
+    if(CLANGPP_EXECUTABLE)
+        set(CMAKE_CXX_COMPILER "${CLANGPP_EXECUTABLE}")
+        get_filename_component(COMPILER_NAME ${CLANGPP_EXECUTABLE} NAME)
+    elseif(GPP_EXECUTABLE)
+        set(CMAKE_CXX_COMPILER "${GPP_EXECUTABLE}")
+        get_filename_component(COMPILER_NAME ${GPP_EXECUTABLE} NAME)
+    endif()
+endif()
+
+message(STATUS "Compiler: ${COMPILER_NAME}")
+#message(STATUS "Compiler version: ${CMAKE_CXX_COMPILER_VERSION}")
+
+
+
 # fetch and set build type
 set(available_build_types Debug Release)
 if(NOT CMAKE_BUILD_TYPE)
