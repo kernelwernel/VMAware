@@ -7852,7 +7852,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             for (int i = 0; i < tscIterations; ++i) {
                 unsigned int aux = 0;
-    #if (WINDOWS)
+        #if (WINDOWS)
                 DWORD_PTR prevMask = SetThreadAffinityMask(GetCurrentThread(), DWORD{ 1 });
                 if (prevMask == 0) {
                     // could not bind even to the first core...?
@@ -7879,7 +7879,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 __except (EXCEPTION_EXECUTE_HANDLER) {
                     return true;
                 }
-    #else
+        #else
                 cpu_set_t set;
                 static sigjmp_buf jumpBuf;
 
@@ -7942,7 +7942,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
 
                 sigaction(SIGILL, &oldAct, nullptr);
-    #endif
+        #endif
                 // hypervisors often have nearly identical TSCs across vCPUs
                 const u64 diff = (tscCore2 > tscCore1)
                     ? (tscCore2 - tscCore1)
@@ -7980,16 +7980,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // warm-up to reduce noise
         for (int i = 0; i < 10; ++i) {
             unsigned aux;
-    #if (MSVC)
+        #if (MSVC)
             int cpuInfo[4]; __cpuid(cpuInfo, 0);
             __rdtsc(); 
             GetProcessHeap();
             __rdtscp(&aux);
-        #pragma warning (disable : 6387)
+            #pragma warning (disable : 6387)
             CloseHandle((HANDLE)0);
-        #pragma warning (default : 6387)
+            #pragma warning (default : 6387)
             __rdtscp(&aux);
-    #elif (GCC) || (CLANG)
+        #elif (GCC) || (CLANG)
             unsigned low, high;
             __asm__ __volatile__(
                 "cpuid\n\t"
@@ -8012,19 +8012,19 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 : "=a"(low), "=d"(high)
                 :: "rbx", "rcx"
             );
-    #endif
+        #endif
         }
 
         // actual measurement
         constexpr u8  SAMPLE_COUNT = 100;
         constexpr u16 SCALE_FACTOR = 1000;
-        constexpr u32 THRESHOLD_SCALED = 9 * SCALE_FACTOR;  // <9× ratio => VM
+        constexpr u32 THRESHOLD_SCALED = 10 * SCALE_FACTOR;  // <10× ratio => VM
         u64 samples[SAMPLE_COUNT] = { 0 };
 
         for (int i = 0; i < SAMPLE_COUNT; ++i) {
             unsigned aux;
             u64 t0, t1, t2;
-    #if (MSVC)
+        #if (MSVC)
             int cpuInfo[4]; __cpuid(cpuInfo, 0);
             t0 = __rdtsc();
             GetProcessHeap();
@@ -8033,7 +8033,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             CloseHandle((HANDLE)0);
         #pragma warning (default : 6387)
             t2 = __rdtscp(&aux);
-    #else
+        #else
             unsigned low, high;
             __asm__ __volatile__(
                 "cpuid\n\t"
@@ -8063,7 +8063,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 :: "rbx", "rcx"
             );
             t2 = ((u64)high << 32) | low;
-    #endif
+        #endif
             const u64 heapCost = t1 - t0;
             const u64 closeCost = t2 - t1;
             samples[i] = (heapCost > 0)
@@ -8072,13 +8072,47 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         std::sort(std::begin(samples), std::end(samples));
+        restoreThreadPriority();
         const u64 median = samples[SAMPLE_COUNT / 2];
         debug("TIMER: Ratio: ", median, " - Threshold: <", THRESHOLD_SCALED);
 
         if (median < THRESHOLD_SCALED) {
-            restoreThreadPriority();
             return true;
         }
+
+        // simple attempt to detect poorly coded RDTSC patches
+        typedef struct _PROCESSOR_POWER_INFORMATION {
+            ULONG Number;
+            ULONG MaxMhz;
+            ULONG CurrentMhz;
+            ULONG MhzLimit;
+            ULONG MaxIdleState;
+            ULONG CurrentIdleState;
+        } PROCESSOR_POWER_INFORMATION, * PPROCESSOR_POWER_INFORMATION;
+
+        SYSTEM_INFO sysInfo;
+        GetSystemInfo(&sysInfo);
+        DWORD procCount = sysInfo.dwNumberOfProcessors;
+
+        std::vector<PROCESSOR_POWER_INFORMATION> ppi(procCount);
+
+        const NTSTATUS status = CallNtPowerInformation(
+            ProcessorInformation,
+            nullptr,
+            0,
+            ppi.data(),
+            sizeof(PROCESSOR_POWER_INFORMATION) * procCount
+        );
+
+        if (status != 0)
+            return false;       
+
+        for (DWORD i = 0; i < procCount; ++i) {
+            if (ppi[i].CurrentMhz < 1000) {
+                return true;
+            }
+        }
+
     #endif
         return false;
 #endif
@@ -9381,6 +9415,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
 
+
     /**
      * @brief Checks for VM signatures in firmware
      * @category Windows
@@ -9538,7 +9573,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (!acpiEnum)
             return false;
 
-        acpiEnum->ProviderSignature = ACPI_SIG;  // 'ACPI'
+        acpiEnum->ProviderSignature = ACPI_SIG; 
         acpiEnum->Action = 0;
         acpiEnum->TableID = 0;
         acpiEnum->TableBufferLength = 0;
@@ -10113,13 +10148,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             case 0x54584E00u: // "TXN\0"
             case 0x524F4343u: // "ROCC"
             case 0x4C454E00u: // "LEN\0"
-            return false;
-        default:
-            return true;
+                return false;
+            default:
+                return true;
         }
 #endif
     }
-
     // ADD NEW TECHNIQUE FUNCTION HERE
 
 
@@ -11426,7 +11460,6 @@ public: // START OF PUBLIC FUNCTIONS
             case NSJAIL_PID: return "NSJAIL_PID";
             case PCI_VM: return "PCI_VM";
             case TPM: return "TPM";
-
             // ADD NEW CASE HERE FOR NEW TECHNIQUE
             default: return "Unknown flag";
         }
