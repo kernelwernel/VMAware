@@ -923,7 +923,7 @@ void general() {
     checker(VM::VMWARE_PORT_MEM, "VMware port memory");
     checker(VM::SMSW, "SMSW instruction");
     checker(VM::MUTEX, "mutex strings");
-    checker(VM::ODD_CPU_THREADS, "unusual thread count");
+    checker(VM::ODD_CPU_THREADS, "odd thread count number");
     checker(VM::INTEL_THREAD_MISMATCH, "Intel thread count mismatch");
     checker(VM::XEON_THREAD_MISMATCH, "Intel Xeon thread count mismatch");
     checker(VM::NETTITUDE_VM_MEMORY, "VM memory regions");

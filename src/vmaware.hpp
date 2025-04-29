@@ -2749,11 +2749,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         const std::string vendor = util::read_file(vendor_file);
 
-        // TODO: More can definitely be added, I only tried QEMU and VMware so far
-        if (vendor == "QEMU") { return core::add(brands::QEMU); }
-        if (vendor == "Oracle Corporation") { return core::add(brands::VMWARE); }
+        // TODO: More can definitely be added, I only tried QEMU and VBox so far
+        if (util::find(vendor, "QEMU")) { return core::add(brands::QEMU); }
+        if (util::find(vendor, "Oracle Corporation")) { return core::add(brands::VBOX); }
 
-        debug("CVENDOR: ", "unknown vendor = ", vendor);
+        debug("CVENDOR: vendor = ", vendor);
 
         return false;
 #endif
