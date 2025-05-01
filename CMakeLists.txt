@@ -29,13 +29,30 @@ if(CMAKE_C_COMPILER_ID STREQUAL "Clang" OR CMAKE_C_COMPILER_ID STREQUAL "GNU")
 endif()
 
 
+# find available compilers
+if (LINUX)
+    find_program(CLANGPP_EXECUTABLE NAMES clang++)
+    find_program(GPP_EXECUTABLE NAMES g++)
+
+    # select compiler with preference for clang++ (just a personal choice of mine, i'm kinda obsessed with llvm honestly)
+    if(CLANGPP_EXECUTABLE)
+        set(CMAKE_CXX_COMPILER "${CLANGPP_EXECUTABLE}")
+        get_filename_component(COMPILER_NAME ${CLANGPP_EXECUTABLE} NAME)
+    elseif(GPP_EXECUTABLE)
+        set(CMAKE_CXX_COMPILER "${GPP_EXECUTABLE}")
+        get_filename_component(COMPILER_NAME ${GPP_EXECUTABLE} NAME)
+    endif()
+endif()
+
+message(STATUS "Compiler: ${COMPILER_NAME}")
+#message(STATUS "Compiler version: ${CMAKE_CXX_COMPILER_VERSION}")
+
+
+
 # fetch and set build type
 set(available_build_types Debug Release)
 if(NOT CMAKE_BUILD_TYPE)
 set(CMAKE_BUILD_TYPE Release CACHE STRING "Choose the type of build (Debug or Release)" FORCE)
-endif()
-if(NOT CMAKE_BUILD_TYPE IN_LIST available_build_types)
-MESSAGE(FATAL_ERROR "Invalid build type: ${CMAKE_BUILD_TYPE}. Allowed values: ${available_build_types}")
 endif()
 
 
@@ -112,7 +129,7 @@ endif()
 # release stuff
 if (NOT MSVC)
     if(CMAKE_BUILD_TYPE MATCHES "Release")
-        install(TARGETS ${TARGET} DESTINATION /usr/local/bin)
+        install(TARGETS ${TARGET} DESTINATION /usr/bin)
         install(FILES "src/vmaware.hpp" DESTINATION /usr/include)
         install(FILES "src/vmaware_MIT.hpp" DESTINATION /usr/include)
     else()

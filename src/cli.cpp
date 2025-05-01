@@ -396,6 +396,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::UNKNOWN_MANUFACTURER:
             case VM::NSJAIL_PID:
             case VM::PCI_VM:
+            case VM::PCI_VM_DEVICE_ID:
             // ADD LINUX FLAG
             return false;
             default: return true;
@@ -922,7 +923,7 @@ void general() {
     checker(VM::VMWARE_PORT_MEM, "VMware port memory");
     checker(VM::SMSW, "SMSW instruction");
     checker(VM::MUTEX, "mutex strings");
-    checker(VM::ODD_CPU_THREADS, "unusual thread count");
+    checker(VM::ODD_CPU_THREADS, "odd thread count number");
     checker(VM::INTEL_THREAD_MISMATCH, "Intel thread count mismatch");
     checker(VM::XEON_THREAD_MISMATCH, "Intel Xeon thread count mismatch");
     checker(VM::NETTITUDE_VM_MEMORY, "VM memory regions");
@@ -977,6 +978,7 @@ void general() {
     checker(VM::NSJAIL_PID, "nsjail PID");
     checker(VM::PCI_VM, "PCIe bridge ports");
     checker(VM::TPM, "TPM manufacturer");
+    checker(VM::PCI_VM_DEVICE_ID, "PCI vendor/device ID");
     // ADD NEW TECHNIQUE CHECKER HERE
 
     std::printf("\n");

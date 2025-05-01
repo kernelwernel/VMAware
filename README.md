@@ -5,6 +5,7 @@
 <img align="center" src="https://img.shields.io/github/downloads/kernelwernel/VMAware/total">
 <img align="center" src="https://img.shields.io/github/license/a0rtega/pafish">
 <img align="center" src="https://img.shields.io/github/license/kernelwernel/auto-stuff">
+<img align="center" src="https://github.com/kernelwernel/VMAware/actions/workflows/codeql-analysis.yml/badge.svg?style=flat-square" alt="CodeQL Analysis">
 </p>
 
 **VMAware** (VM + Aware) is a cross-platform C++ library for virtual machine detection.
@@ -23,6 +24,7 @@ The library is:
 - Able to detect various VM and semi-VM technologies like hypervisors, emulators, containers, sandboxes, and so on
 - Available with C++11 and above
 - Header-only
+- has 0 external dependencies
 - Memoized, meaning past results are cached and retrieved if ran again for performance benefits 
 - Contains separate MIT and GPL-3.0 compliant library header files
 
@@ -262,7 +264,7 @@ And if you found this project useful, a star would be appreciated :)
 <br>
 
 ## Credits, contributors, and acknowledgements ✒️
-- [Requiem](https://github.com/NotRequiem) (Co-maintainer)
+- [Requiem](https://github.com/NotRequiem) (Co-developer)
 - [Check Point Research](https://research.checkpoint.com/)
 - [Unprotect Project](https://unprotect.it/)
 - [Al-Khaser](https://github.com/LordNoteworthy/al-khaser)
