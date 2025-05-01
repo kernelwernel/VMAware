@@ -4,12 +4,12 @@
  * ██║   ██║██╔████╔██║███████║██║ █╗ ██║███████║██████╔╝█████╗
  * ╚██╗ ██╔╝██║╚██╔╝██║██╔══██║██║███╗██║██╔══██║██╔══██╗██╔══╝
  *  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
- *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ 2.3.0 (April 2025)
+ *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ 2.3.0 (May 2025)
  *
  *  C++ VM detection library
  *
  *  - Made by: kernelwernel (https://github.com/kernelwernel)
- *  - Co-maintained by: Requiem (https://github.com/NotRequiem)
+ *  - Co-developed by: Requiem (https://github.com/NotRequiem)
  *  - Contributed by:
  *      - Alex (https://github.com/greenozon)
  *      - Marek Knápek (https://github.com/MarekKnapek)
@@ -27,14 +27,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 559
- * - struct for internal cpu operations        => line 744
- * - struct for internal memoization           => line 1215
- * - struct for internal utility functions     => line 1343
- * - struct for internal core components       => line 10141
- * - start of VM detection technique list      => line 2430
- * - start of public VM detection functions    => line 10809
- * - start of externally defined variables     => line 11751
+ * - enums for publicly accessible techniques  => line 555
+ * - struct for internal cpu operations        => line 741
+ * - struct for internal memoization           => line 1212
+ * - struct for internal utility functions     => line 1340
+ * - struct for internal core components       => line 10291
+ * - start of VM detection technique list      => line 2427
+ * - start of public VM detection functions    => line 10948
+ * - start of externally defined variables     => line 11892
  *
  *
  * ============================== EXAMPLE ===================================
@@ -322,7 +322,6 @@
 #endif
 #if (CPP >= 17)
 #include <filesystem>
-#include <optional>
 #endif
 #ifdef __VMAWARE_DEBUG__
 #include <iomanip>
@@ -339,7 +338,6 @@
 #include <thread>
 #include <cstdint>
 #include <map>
-#include <unordered_map>
 #include <unordered_set>
 #include <array>
 #include <algorithm>
@@ -349,7 +347,6 @@
 #include <sstream>
 #include <bitset>
 #include <type_traits>
-#include <atomic>
 
 #if (WINDOWS)
 #include <windows.h>
@@ -662,6 +659,7 @@ public:
         NSJAIL_PID,
         PCI_VM,
         TPM,
+        PCI_VM_DEVICE_ID,
         // ADD NEW TECHNIQUE ENUM NAME HERE
 
         // special flags, different to settings
@@ -2747,11 +2745,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         const std::string vendor = util::read_file(vendor_file);
 
-        // TODO: More can definitely be added, I only tried QEMU and VMware so far
-        if (vendor == "QEMU") { return core::add(brands::QEMU); }
-        if (vendor == "Oracle Corporation") { return core::add(brands::VMWARE); }
+        // TODO: More can definitely be added, I only tried QEMU and VBox so far
+        if (util::find(vendor, "QEMU")) { return core::add(brands::QEMU); }
+        if (util::find(vendor, "Oracle Corporation")) { return core::add(brands::VBOX); }
 
-        debug("CVENDOR: ", "unknown vendor = ", vendor);
+        debug("CVENDOR: vendor = ", vendor);
 
         return false;
 #endif
@@ -3832,6 +3830,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         const char* username = std::getenv("USER");
         const char* hostname = std::getenv("HOSTNAME");
+
+        if (!username || !hostname) {
+            debug("VM::LINUX_USER_HOST: environment variables not found");
+            return false;
+        }
 
         debug("LINUX_USER_HOST: user = ", username);
         debug("LINUX_USER_HOST: host = ", hostname);
@@ -6767,10 +6770,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             const std::string sys_vendor_str = util::read_file(sys_vendor);
             const std::string modalias_str = util::read_file(modalias);
 
-            return (
+            if (
                 util::find(sys_vendor_str, "QEMU") &&
                 util::find(modalias_str, "QEMU")
-            );
+            ) {
+                return core::add(brands::QEMU);
+            }
         }
 
         return false;
@@ -8134,29 +8139,21 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::QEMU_FW_CFG
 	 */
 	[[nodiscard]] static bool sys_qemu_dir() {
-#if (LINUX)
+#if (!LINUX)
+        return false;
+#else 
 	    const std::string module_path = "/sys/module/qemu_fw_cfg/";
 	    const std::string firmware_path = "/sys/firmware/qemu_fw_cfg/";
-	
-    #if (CPP >= 17)
-        namespace fs = std::filesystem;
 
-	    return (
-	        fs::is_directory(module_path) && 
-	        fs::is_directory(firmware_path) &&
-	        fs::exists(module_path) &&
-	        fs::exists(firmware_path)
-	    );
-    #else
-
-    	return (
+    	if (
 	        util::is_directory(module_path.c_str()) && 
 	        util::is_directory(firmware_path.c_str()) &&
 	        util::exists(module_path.c_str()) &&
 	        util::exists(firmware_path.c_str())
-	    );
-    #endif
-#else
+	    ) {
+            return core::add(brands::QEMU);
+        }
+
         return false;
 #endif
 	}
@@ -10154,6 +10151,155 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 #endif
     }
+
+
+    /**
+     * @brief Check for PCI vendor and device IDs that are VM-specific
+     * @link https://www.pcilookup.com/?ven=&dev=&action=submit
+     * @category Linux
+     * @implements VM::PCI_VM_DEVICE_ID
+     */
+    [[nodiscard]] static bool pci_vm_device_id() {
+#if (!LINUX)
+        return false;
+#else
+        struct PCI_Device {
+            u16 vendor_id;
+            u16 device_id;
+        };
+    
+        const std::string pci_path = "/sys/bus/pci/devices";
+        std::vector<PCI_Device> devices;
+
+#if (CPP >= 17)
+        for (const auto& entry : std::filesystem::directory_iterator(pci_path)) {
+            std::string dev_path = entry.path();
+#else 
+        DIR* dir;
+        struct dirent* ent;
+
+        if ((dir = opendir(pci_path.c_str())) == nullptr) {
+            debug("unable to open the PCI data");
+            return false;
+        }
+    
+        while ((ent = readdir(dir)) != nullptr) {
+            std::string dev_name = ent->d_name;
+            
+            if (dev_name == "." || dev_name == "..") {
+                continue;
+            }
+            
+            std::string dev_path = pci_path + "/" + dev_name;
+#endif
+            PCI_Device dev;
+    
+            std::ifstream vendor_file(dev_path + "/vendor");
+            std::ifstream device_file(dev_path + "/device");
+    
+            vendor_file >> std::hex >> dev.vendor_id;
+            device_file >> std::hex >> dev.device_id;
+    
+            devices.push_back(dev);
+        }
+    
+        #ifdef __VMAWARE_DEBUG__
+            debug("PCI Device Table");
+            debug("-------------------------");
+            debug("Vendor ID  | Device ID ");
+            debug("-------------------------");
+    
+            for (const auto& dev : devices) {
+                debug(
+                    "0x", std::setw(4), std::setfill('0'), std::hex, dev.vendor_id, "     | "
+                    "0x", std::setw(4), std::setfill('0'), dev.device_id, " | ", std::dec
+                );
+            }
+        #endif
+    
+        bool found = false;
+    
+        for (const auto& dev : devices) {
+            const u32 id = ((dev.vendor_id << 16) | dev.device_id);
+    
+            switch (id) {
+                // Red Hat + Virtio
+                case 0x1af41000: // Virtio network device
+                case 0x1af41001: // Virtio block device
+                case 0x1af41002: //	Virtio memory balloon
+                case 0x1af41003: // Virtio console
+                case 0x1af41004: // Virtio SCSI
+                case 0x1af41005: // Virtio RNG
+                case 0x1af41009: // Virtio filesystem
+                case 0x1af41041: // Virtio network device
+                case 0x1af41042: // Virtio block device
+                case 0x1af41043: // Virtio console
+                case 0x1af41044: // Virtio RNG
+                case 0x1af41045: // Virtio memory balloon
+                case 0x1af41048: // Virtio SCSI
+                case 0x1af41049: // Virtio filesystem
+                case 0x1af41050: // Virtio GPU
+                case 0x1af41052: // Virtio input
+                case 0x1af41053: // Virtio socket
+                case 0x1af4105a: // Virtio file system
+                case 0x1af41110: // Inter-VM shared memory
+    
+                // VMware
+                case 0x15ad0405: // SVGA II Adapter
+                case 0x15ad0710: // SVGA Adapter
+                case 0x15ad0720: // VMXNET Ethernet Controller
+                case 0x15ad0740: // Virtual Machine Communication Interface
+                case 0x15ad0770: // USB2 EHCI Controller
+                case 0x15ad0774: // USB1.1 UHCI Controller
+                case 0x15ad0778: // USB3 xHCI 0.96 Controller
+                case 0x15ad0779: // USB3 xHCI 1.0 Controller
+                case 0x15ad0790: // PCI bridge
+                case 0x15ad07a0: // PCI Express Root Port
+                case 0x15ad07b0: // VMXNET3 Ethernet Controller
+                case 0x15ad07c0: // PVSCSI SCSI Controller
+                case 0x15ad07e0: // SATA AHCI controller
+                case 0x15ad07f0: // NVMe SSD Controller
+                case 0x15ad0801: // Virtual Machine Interface
+                case 0x15ad0820: // Paravirtual RDMA controller
+                case 0x15ad1977: // HD Audio Controller
+                case 0xfffe0710: // Virtual SVGA
+                case 0x0e0f0001: // Device
+                case 0x0e0f0002: // Virtual USB Hub
+                case 0x0e0f0003: // Virtual Mouse
+                case 0x0e0f0004: // Virtual CCID
+                case 0x0e0f0005: // Virtual Mass Storage
+                case 0x0e0f0006: // Virtual Keyboard
+                case 0x0e0f000a: // Virtual Sensors
+                case 0x0e0f8001: // Root Hub
+                case 0x0e0f8002: // Root Hub
+                case 0x0e0f8003: // Root Hub
+                case 0x0e0ff80a: // Smoker FX2
+    
+                // VirtualBox
+                case 0x80ee0021: // USB Tablet
+                case 0x80ee0022: // multitouch tablet
+    
+                // Connectix (VirtualPC)
+                case 0x29556e61: // OHCI USB 1.1 controller
+                    found = true;
+                    break;
+            }
+    
+            if (found) {
+                debug(
+                    "PCI_VM_DEVICE_ID: found vendor ID = ", 
+                    "0x", std::setw(4), std::setfill('0'), std::hex, dev.vendor_id,
+                    " device ID = 0x", std::setw(4), std::setfill('0'), std::hex, dev.device_id
+                );
+    
+                break;
+            }
+        }
+    
+        return found;
+#endif
+    }
+
     // ADD NEW TECHNIQUE FUNCTION HERE
 
 
@@ -10204,11 +10350,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         static std::map<const char*, brand_score_t> brand_scoreboard;
 
         // directly return when adding a brand to the scoreboard for a more succint expression
-#if (WINDOWS)
-        __declspec(noalias)
-#elif (LINUX)
-        [[gnu::const]]
-#endif
         static inline bool add(const char* p_brand, const char* extra_brand = "") noexcept {
             core::brand_scoreboard.at(p_brand)++;
             if (std::strcmp(extra_brand, "") != 0) {
@@ -10218,17 +10359,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         // assert if the flag is enabled, far better expression than typing std::bitset member functions
-#if (LINUX && __has_cpp_attribute(gnu::pure))
-        [[gnu::pure]]
-#endif
         [[nodiscard]] static inline bool is_disabled(const flagset& flags, const u8 flag_bit) noexcept {
             return (!flags.test(flag_bit));
         }
 
         // same as above but for checking enabled flags
-#if (LINUX && __has_cpp_attribute(gnu::pure))
-        [[gnu::pure]]
-#endif
         [[nodiscard]] static inline bool is_enabled(const flagset& flags, const u8 flag_bit) noexcept {
             return (flags.test(flag_bit));
         }
@@ -11199,11 +11334,12 @@ public: // START OF PUBLIC FUNCTIONS
         
 
         // debug stuff to see the brand scoreboard, ignore this
-#ifdef __VMAWARE_DEBUG__
+//#ifdef __VMAWARE_DEBUG__
         for (const auto& p : brands) {
-            core_debug("scoreboard: ", (int)p.second, " : ", p.first);
+            //core_debug("scoreboard: ", (int)p.second, " : ", p.first);
+            std::cout << "scoreboard: " << (int)p.second << " : " << p.first;
         }
-#endif
+//#endif
 
         return ret_str;
     }
@@ -11460,6 +11596,8 @@ public: // START OF PUBLIC FUNCTIONS
             case NSJAIL_PID: return "NSJAIL_PID";
             case PCI_VM: return "PCI_VM";
             case TPM: return "TPM";
+
+            case PCI_VM_DEVICE_ID: return "PCI_VM_DEVICE_ID";
             // ADD NEW CASE HERE FOR NEW TECHNIQUE
             default: return "Unknown flag";
         }
@@ -12016,6 +12154,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     std::make_pair(VM::NSJAIL_PID, VM::core::technique(75, VM::nsjail_proc_id)),
     std::make_pair(VM::PCI_VM, VM::core::technique(100, VM::lspci)),
     std::make_pair(VM::TPM, VM::core::technique(50, VM::tpm)),
+    std::make_pair(VM::PCI_VM_DEVICE_ID, VM::core::technique(90, VM::pci_vm_device_id)),
     // ADD NEW TECHNIQUE STRUCTURE HERE
 };
 
