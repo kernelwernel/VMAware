@@ -8085,7 +8085,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return true;
         }
 
-        // simple attempt to detect poorly coded RDTSC patches
+        // simple check to detect poorly coded RDTSC patches
         typedef struct _PROCESSOR_POWER_INFORMATION {
             ULONG Number;
             ULONG MaxMhz;
@@ -9435,6 +9435,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             UCHAR TableBuffer[1];
         } SYSTEM_FIRMWARE_TABLE_INFORMATION, * PSYSTEM_FIRMWARE_TABLE_INFORMATION;
 #pragma warning (default : 4459)
+
         typedef NTSTATUS(__stdcall* PNtQuerySystemInformation)(ULONG, PVOID, ULONG, PULONG);
         constexpr ULONG STATUS_BUFFER_TOO_SMALL = 0xC0000023;
         constexpr DWORD ACPI_SIG = 'ACPI';
@@ -9460,255 +9461,213 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             "BOCHS", "BXPC"
         };
 
-        auto check_firmware_table = [&](DWORD signature, ULONG tableID) -> bool {
-            ULONG reqSize = 0;
-            // First call to determine the required buffer size
-            PSYSTEM_FIRMWARE_TABLE_INFORMATION info =
-                (PSYSTEM_FIRMWARE_TABLE_INFORMATION)malloc(sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION));
-            if (!info)
-                return false;
-            info->ProviderSignature = signature;
-            info->Action = 1;
-            info->TableID = tableID;
-            info->TableBufferLength = 0;
-            NTSTATUS status = ntqsi(SystemFirmwareTableInformation,
-                info,
-                sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION),
-                &reqSize);
-            free(info);
-            if (status != STATUS_BUFFER_TOO_SMALL)
-                return false;
+        PBYTE qsiBuffer = nullptr;
+        ULONG qsiBufferSize = 0;
 
-            // Second call to allocate proper buffer and get the data
-            info = (PSYSTEM_FIRMWARE_TABLE_INFORMATION)malloc(reqSize);
-            if (!info)
-                return false;
-            info->ProviderSignature = signature;
-            info->Action = 1;
-            info->TableID = tableID;
-            info->TableBufferLength = reqSize - sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION);
-            status = ntqsi(SystemFirmwareTableInformation,
-                info,
-                reqSize,
-                &reqSize);
-            if (!NT_SUCCESS(status)) {
-                free(info);
-                return false;
+        auto ensure_buffer = [&](ULONG needed) -> bool {
+            if (qsiBufferSize < needed) {
+                free(qsiBuffer);
+                qsiBuffer = static_cast<PBYTE>(malloc(needed));
+                if (!qsiBuffer) {
+                    qsiBufferSize = 0;
+                    return false;
+                }
+                qsiBufferSize = needed;
             }
+            return true;
+            };
 
-            const unsigned char* buf = info->TableBuffer;
+        auto query_table = [&](DWORD provider, ULONG tableID, bool rawEnum, PULONG outDataSize) -> PSYSTEM_FIRMWARE_TABLE_INFORMATION {
+            // header-only to get size
+            const ULONG header = sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION);
+            if (!ensure_buffer(header)) return nullptr;
+
+            auto hdr = reinterpret_cast<PSYSTEM_FIRMWARE_TABLE_INFORMATION>(qsiBuffer);
+            hdr->ProviderSignature = provider;
+            hdr->Action = rawEnum ? 0 : 1;
+            hdr->TableID = tableID;
+            hdr->TableBufferLength = 0;
+
+            NTSTATUS st = ntqsi(SystemFirmwareTableInformation, hdr, header, outDataSize);
+            if (st != STATUS_BUFFER_TOO_SMALL)
+                return nullptr;
+
+            ULONG fullSize = *outDataSize;
+            if (!ensure_buffer(fullSize)) return nullptr;
+
+            hdr = reinterpret_cast<PSYSTEM_FIRMWARE_TABLE_INFORMATION>(qsiBuffer);
+            hdr->ProviderSignature = provider;
+            hdr->Action = rawEnum ? 0 : 1;
+            hdr->TableID = tableID;
+            hdr->TableBufferLength = fullSize - header;
+
+            st = ntqsi(SystemFirmwareTableInformation, hdr, fullSize, outDataSize);
+            if (!NT_SUCCESS(st))
+                return nullptr;
+
+            return hdr;
+            };
+
+        auto check_firmware_table = [&](DWORD signature, ULONG tableID) -> bool {
+            ULONG gotSize = 0;
+            auto info = query_table(signature, tableID, false, &gotSize);
+            if (!info) return false;
+
+            const UCHAR* buf = info->TableBuffer;
             const size_t bufLen = info->TableBufferLength;
-            for (const char* target : targets) {
-                size_t targetLen = strlen(target);
-                if (targetLen == 0 || bufLen < targetLen)
-                    continue;
-                for (size_t offset = 0; offset <= bufLen - targetLen; offset++) {
-                    if (memcmp(buf + offset, target, targetLen) == 0) {
+
+            for (auto target : targets) {
+                size_t tlen = strlen(target);
+                if (tlen > bufLen) continue;
+                for (size_t i = 0; i <= bufLen - tlen; ++i) {
+                    if (memcmp(buf + i, target, tlen) == 0) {
                         const char* brand = nullptr;
-                        if (strcmp(target, "Parallels Software International") == 0 ||
-                            strcmp(target, "Parallels(R)") == 0)
+                        if (!strcmp(target, "Parallels Software International") || !strcmp(target, "Parallels(R)"))
                             brand = brands::PARALLELS;
-                        else if (strcmp(target, "innotek") == 0 ||
-                            strcmp(target, "VirtualBox") == 0 ||
-                            strcmp(target, "vbox") == 0 ||
-                            strcmp(target, "VBOX") == 0 ||
-                            strcmp(target, "Oracle") == 0)
+                        else if (!strcmp(target, "innotek") || !strcmp(target, "VirtualBox") || !strcmp(target, "vbox") || !strcmp(target, "VBOX") || !strcmp(target, "Oracle"))
                             brand = brands::VBOX;
-                        else if (strcmp(target, "VMware, Inc.") == 0 ||
-                            strcmp(target, "VMware") == 0 ||
-                            strcmp(target, "VMWARE") == 0)
+                        else if (!strcmp(target, "VMware, Inc.") || !strcmp(target, "VMware") || !strcmp(target, "VMWARE"))
                             brand = brands::VMWARE;
-                        else if (strcmp(target, "QEMU") == 0)
+                        else if (!strcmp(target, "QEMU"))
                             brand = brands::QEMU;
-                        else if (strcmp(target, "BOCHS") == 0 ||
-                            strcmp(target, "BXPC") == 0)
+                        else if (!strcmp(target, "BOCHS") || !strcmp(target, "BXPC"))
                             brand = brands::BOCHS;
-                        else {
-                            free(info);
+                        else
                             return true;
-                        }
-                        free(info);
+
                         return core::add(brand);
                     }
                 }
             }
 
-            // Check for the "777777" pattern (used by VMwareHardenerLoader)
+            // to detect VMAware's Hardener Loader, idea by MegaMax
             if (bufLen >= 6) {
-                constexpr size_t patternLen = 6;
-                for (size_t offset = 0; offset <= bufLen - patternLen; offset++) {
-                    bool allSevens = true;
-                    for (size_t j = 0; j < patternLen; j++) {
-                        if (buf[offset + j] != '7') {
-                            allSevens = false;
-                            break;
-                        }
-                    }
-                    if (allSevens) {
-                        free(info);
+                for (size_t i = 0; i <= bufLen - 6; ++i) {
+                    if (buf[i] == '7' && buf[i + 1] == '7' && buf[i + 2] == '7' && buf[i + 3] == '7' && buf[i + 4] == '7' && buf[i + 5] == '7') {
                         return core::add(brands::VMWARE_HARD);
                     }
                 }
             }
-            free(info);
             return false;
-        };
+            };
 
-        // Check RSMB table
-        if (check_firmware_table(RSMB_SIG, 0UL))
+        // RSMB table
+        if (check_firmware_table(RSMB_SIG, 0UL)) {
+            free(qsiBuffer);
             return true;
-
-        // Check FIRM table using two address values
-        for (ULONG addr : { 0xC0000UL, 0xE0000UL }) {
-            if (check_firmware_table(FIRM_SIG, addr))
-                return true;
         }
 
-        // ACPI table check
-        PSYSTEM_FIRMWARE_TABLE_INFORMATION acpiEnum =
-            (PSYSTEM_FIRMWARE_TABLE_INFORMATION)malloc(sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION));
-        if (!acpiEnum)
+        // FIRM tables
+        for (ULONG addr : { 0xC0000UL, 0xE0000UL }) {
+            if (check_firmware_table(FIRM_SIG, addr)) {
+                free(qsiBuffer);
+                return true;
+            }
+        }
+
+        // ACPI enumeration
+        ULONG totalLen = 0;
+        auto listInfo = query_table(ACPI_SIG, 0UL, true, &totalLen);
+        if (!listInfo) {
+            free(qsiBuffer);
             return false;
+        }
 
-        acpiEnum->ProviderSignature = ACPI_SIG; 
-        acpiEnum->Action = 0;
-        acpiEnum->TableID = 0;
-        acpiEnum->TableBufferLength = 0;
+        const DWORD* tables = reinterpret_cast<const DWORD*>(listInfo->TableBuffer);
+        ULONG tableCount = listInfo->TableBufferLength / sizeof(DWORD);
 
-        ULONG retLen = 0;
-        NTSTATUS status = ntqsi(
-            SystemFirmwareTableInformation,
-            acpiEnum,
-            sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION),
-            &retLen
-        );
+        if (tableCount < 4) { // idea by dmfrpro
+            free(qsiBuffer);
+            return true;
+        }
 
-        if (status == STATUS_BUFFER_TOO_SMALL)
-        {
-            free(acpiEnum);
-            acpiEnum = (PSYSTEM_FIRMWARE_TABLE_INFORMATION)malloc(retLen);
-            if (!acpiEnum)
-                return false;
+        // count SSDT
+        const DWORD ssdtSig = 'TDSS';
+        ULONG ssdtCount = 0;
+        for (ULONG i = 0; i < tableCount; ++i) {
+            if (tables[i] == ssdtSig)
+                ++ssdtCount;
+            if (ssdtCount == 2)
+                break;
+        }
+        if (ssdtCount < 2) {
+            free(qsiBuffer);
+            return true;
+        }
 
-            acpiEnum->ProviderSignature = ACPI_SIG;
-            acpiEnum->Action = 0;
-            acpiEnum->TableID = 0;
-            acpiEnum->TableBufferLength = retLen - sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION);
-
-            status = ntqsi(
-                SystemFirmwareTableInformation,
-                acpiEnum,
-                retLen,
-                &retLen
-            );
-
-            if (NT_SUCCESS(status))
-            {
-                const DWORD* tables = (const DWORD*)acpiEnum->TableBuffer;
-                ULONG        tableCount = acpiEnum->TableBufferLength / sizeof(DWORD);
-
-                for (ULONG i = 0; i < tableCount; ++i)
-                {
-                    if (tables[i] == 'FACP')   
-                    {
-                        PSYSTEM_FIRMWARE_TABLE_INFORMATION fadtEnum =
-                            (PSYSTEM_FIRMWARE_TABLE_INFORMATION)malloc(sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION));
-                        if (!fadtEnum)
-                            break;
-
-                        fadtEnum->ProviderSignature = ACPI_SIG;
-                        fadtEnum->Action = 0;
-                        fadtEnum->TableID = tables[i];
-                        fadtEnum->TableBufferLength = 0;
-
-                        ULONG fadtLen = 0;
-                        NTSTATUS st2 = ntqsi(
-                            SystemFirmwareTableInformation,
-                            fadtEnum,
-                            sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION),
-                            &fadtLen
-                        );
-
-                        if (st2 == STATUS_BUFFER_TOO_SMALL)
-                        {
-                            free(fadtEnum);
-                            fadtEnum = (PSYSTEM_FIRMWARE_TABLE_INFORMATION)malloc(fadtLen);
-                            if (fadtEnum)
-                            {
-                                fadtEnum->ProviderSignature = ACPI_SIG;
-                                fadtEnum->Action = 0;
-                                fadtEnum->TableID = tables[i];
-                                fadtEnum->TableBufferLength = fadtLen - sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION);
-
-                                if (NT_SUCCESS(ntqsi(
-                                    SystemFirmwareTableInformation,
-                                    fadtEnum,
-                                    fadtLen,
-                                    &fadtLen
-                                )))
-                                {
-                                    // https://uefi.org/htmlspecs/ACPI_Spec_6_4_html/05_ACPI_Software_Programming_Model/ACPI_Software_Programming_Model.html#preferred-pm-profile-system-types
-                                    BYTE* fadtBuf = (BYTE*)fadtEnum->TableBuffer;
-                                    if (fadtBuf[45] == 0) {
-                                        debug("FIRMWARE: Preferred_PM_Profile == 0 (Unspecified)");
-                                        free(fadtEnum);
-                                        free(acpiEnum);
-                                        return true;
-                                    }
-                                }
-                            }
-                        }
-
-                        if (fadtEnum) free(fadtEnum);
-                        break;  
-                    }
+        // iterate all ACPI tables
+        constexpr DWORD dsdtSig = 'TDSD';
+        constexpr DWORD facpSig = 'PCAF';
+        for (ULONG i = 0; i < tableCount; ++i) {
+            DWORD sig = tables[i];
+            if (sig == facpSig) {
+                ULONG fSize = 0;
+                auto fadt = query_table(ACPI_SIG, sig, false, &fSize);
+                if (!fadt) continue;
+                BYTE* buf = reinterpret_cast<BYTE*>(fadt->TableBuffer);
+                // https://uefi.org/htmlspecs/ACPI_Spec_6_4_html/05_ACPI_Software_Programming_Model/ACPI_Software_Programming_Model.html#preferred-pm-profile-system-types
+                if (fSize >= 45 + 1 && buf[45] == 0) { // idea by dmfrpro
+                    free(qsiBuffer);
+                    return true;
                 }
             }
+            if (sig == dsdtSig) {
+                ULONG dsdtSize = 0;
+                auto dsdt = query_table(ACPI_SIG, sig, false, &dsdtSize);
+                if (dsdt) {
+                    const char* tb = reinterpret_cast<const char*>(dsdt->TableBuffer);
+                    bool foundCPU = false;
 
-            const PDWORD tableNames = (PDWORD)calloc(0x1000, 1);
-            if (!tableNames) {
-                free(acpiEnum);
-                return false;
-            }
-            const DWORD sig = 'ACPI';
-            const DWORD bytes = EnumSystemFirmwareTables(sig, tableNames, 0x1000);
-            const ULONG tCount = bytes / sizeof(DWORD);
+                    for (ULONG j = 0; j + 8 <= dsdtSize; ++j) {
+                        if (memcmp(tb + j, "ACPI0007", 8) == 0) { // idea by dmfrpro
+                            foundCPU = true;
+                            break;
+                        }
+                    }
 
-            const DWORD ssdtSig = 'SSDT';
-            ULONG ssdtCount = 0;
-            for (ULONG i = 0; i < tCount; ++i) {
-                if (tableNames[i] == ssdtSig) ++ssdtCount;
-            }
-            if (ssdtCount == 1) {
-                debug("FIRMWARE: Only one SSDT table found");
-                free(tableNames);
-                free(acpiEnum);
-                return true;
-            }
+                    if (!foundCPU) {
+                        free(qsiBuffer);
+                        return true;
+                    }
 
-            // RSDT/XSDT, FADT, DSDT and RSDP (this one since it’s required as a pointer althought not being a true table)
-            if (tCount < 4) { // by dmfrpro
-                debug("FIRMWARE: not enough ACPI tables found");
-                free(tableNames);
-                free(acpiEnum);
-                return true;
-            }
+                    constexpr const char* osi_targets[] = {
+                       "Windows 95",            "Windows 98",
+                       "Windows 2000",          "Windows 2000.1",
+                       "Windows ME: Millennium Edition",
+                       "Windows ME: Millennium Edition",  // some firmwares omit space
+                       "Windows XP",            "Windows 2001",
+                       "Windows 2006",          "Windows 2009",
+                       "Windows 2012",          "Windows 2015",
+                       "Windows 2020",          "Windows 2022",
 
-            if (NT_SUCCESS(status)) {
-                const DWORD* tables2 = reinterpret_cast<const DWORD*>(acpiEnum->TableBuffer);
-                ULONG bufTableCnt = acpiEnum->TableBufferLength / sizeof(DWORD);
-                for (ULONG t = 0; t < bufTableCnt; ++t) {
-                    if (check_firmware_table(ACPI_SIG, tables2[t])) {
-                        free(tableNames);
-                        free(acpiEnum);
+                    };
+                    constexpr size_t n_osi = sizeof(osi_targets) / sizeof(osi_targets[0]);
+
+                    bool foundOSI = false;
+                    for (size_t t = 0; t < n_osi && !foundOSI; ++t) {
+                        const char* s = osi_targets[t];
+                        size_t len = strlen(s);
+                        for (ULONG j = 0; j + len <= dsdtSize; ++j) {
+                            if (memcmp(tb + j, s, len) == 0) {
+                                foundOSI = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (!foundOSI) {
+                        free(qsiBuffer);
                         return true;
                     }
                 }
             }
-
-            free(tableNames);
+            if (check_firmware_table(ACPI_SIG, sig)) {
+                free(qsiBuffer);
+                return true;
+            }
         }
-        free(acpiEnum);
+
+        free(qsiBuffer);
 
         std::unique_ptr<util::sys_info> info = util::make_unique<util::sys_info>();
 
