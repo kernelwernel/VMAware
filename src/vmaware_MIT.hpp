@@ -4,12 +4,12 @@
  * ██║   ██║██╔████╔██║███████║██║ █╗ ██║███████║██████╔╝█████╗
  * ╚██╗ ██╔╝██║╚██╔╝██║██╔══██║██║███╗██║██╔══██║██╔══██╗██╔══╝
  *  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
- *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ 2.3.0 (April 2025)
+ *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ 2.3.0 (May 2025)
  *
  *  C++ VM detection library
  *
  *  - Made by: kernelwernel (https://github.com/kernelwernel)
- *  - Co-maintained by: Requiem (https://github.com/NotRequiem)
+ *  - Co-developed by: Requiem (https://github.com/NotRequiem)
  *  - Contributed by:
  *      - Alex (https://github.com/greenozon)
  *      - Marek Knápek (https://github.com/MarekKnapek)
@@ -53,10 +53,10 @@
  * - struct for internal cpu operations        => line 756
  * - struct for internal memoization           => line 1227
  * - struct for internal utility functions     => line 1355
- * - struct for internal core components       => line 10080
+ * - struct for internal core components       => line 10079
  * - start of VM detection technique list      => line 2442
- * - start of public VM detection functions    => line 10748
- * - start of externally defined variables     => line 11684
+ * - start of public VM detection functions    => line 10736
+ * - start of externally defined variables     => line 11673
  *
  *
  * ============================== EXAMPLE ===================================
@@ -9923,8 +9923,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #else
         struct PCI_Device {
-            u16 vendor_id;    // 16-bit
-            u16 device_id;    // 32-bit capable
+            u16 vendor_id;
+            u16 device_id;
         };
     
         const std::string pci_path = "/sys/bus/pci/devices";
@@ -9953,7 +9953,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
             PCI_Device dev;
     
-            // Read 32-bit capable IDs (sysfs provides them as 16-bit, but we combine)
             std::ifstream vendor_file(dev_path + "/vendor");
             std::ifstream device_file(dev_path + "/device");
     
@@ -10049,7 +10048,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 debug(
                     "PCI_VM_DEVICE_ID: found vendor ID = ", 
                     "0x", std::setw(4), std::setfill('0'), std::hex, dev.vendor_id,
-                    "device ID = 0x", std::setw(4), std::setfill('0'), std::hex, dev.device_id
+                    " device ID = 0x", std::setw(4), std::setfill('0'), std::hex, dev.device_id
                 );
     
                 break;
@@ -10110,11 +10109,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         static std::map<const char*, brand_score_t> brand_scoreboard;
 
         // directly return when adding a brand to the scoreboard for a more succint expression
-#if (WINDOWS)
-        __declspec(noalias)
-#elif (LINUX)
-        [[gnu::const]]
-#endif
         static inline bool add(const char* p_brand, const char* extra_brand = "") noexcept {
             core::brand_scoreboard.at(p_brand)++;
             if (std::strcmp(extra_brand, "") != 0) {
@@ -10124,17 +10118,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         // assert if the flag is enabled, far better expression than typing std::bitset member functions
-#if (LINUX && __has_cpp_attribute(gnu::pure))
-        [[gnu::pure]]
-#endif
         [[nodiscard]] static inline bool is_disabled(const flagset& flags, const u8 flag_bit) noexcept {
             return (!flags.test(flag_bit));
         }
 
         // same as above but for checking enabled flags
-#if (LINUX && __has_cpp_attribute(gnu::pure))
-        [[gnu::pure]]
-#endif
         [[nodiscard]] static inline bool is_enabled(const flagset& flags, const u8 flag_bit) noexcept {
             return (flags.test(flag_bit));
         }
@@ -11105,11 +11093,12 @@ public: // START OF PUBLIC FUNCTIONS
         
 
         // debug stuff to see the brand scoreboard, ignore this
-#ifdef __VMAWARE_DEBUG__
+//#ifdef __VMAWARE_DEBUG__
         for (const auto& p : brands) {
-            core_debug("scoreboard: ", (int)p.second, " : ", p.first);
+            //core_debug("scoreboard: ", (int)p.second, " : ", p.first);
+            std::cout << "scoreboard: " << (int)p.second << " : " << p.first;
         }
-#endif
+//#endif
 
         return ret_str;
     }
