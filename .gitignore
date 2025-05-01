@@ -68,3 +68,5 @@ list.txt
 /.vs/slnx.sqlite
 /.vs/VSWorkspaceState.json
 TODO.md
+auxiliary/path*
+packages/

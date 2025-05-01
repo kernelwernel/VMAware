@@ -139,7 +139,7 @@ int main() {
 <br>
 
 ## `VM::brand()`
-This will essentially return the VM brand as a `std::string`. All the brands are listed [here](#brand-table)
+This will essentially return the VM brand as a `std::string`. All the brands and brand alias variables are listed [here](#brand-table)
 
 If none were detected, it will return `Unknown`. It should be noted that this could be a common scenario even if you're running inside a VM due to technical difficulties with accomplishing this. This is especially true for VMware sub-versions (ESX, GSX, Fusion, etc...). It's not recommended to rely on this function for critical operations as if your whole program depends on it.
 
@@ -153,9 +153,14 @@ int main() {
     if (result == "KVM") {
         // do KVM specific stuff
     } else if (result == "VirtualBox") {
-        // do vbox specific stuff
-    } else {
         // you get the idea
+    } else if (result == brands::VMWARE) {
+        // having manual string comparisons like the two
+        // previous ones can lead to typos which will 
+        // make the whole check completely redundant.
+        // So the lib provides hardcoded strings as aliases
+        // to avoid these kinds of situations. They are
+        // located in the aforementioned brand table
     }
 
     return 0;

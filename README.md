@@ -23,6 +23,7 @@ The library is:
 - Able to detect various VM and semi-VM technologies like hypervisors, emulators, containers, sandboxes, and so on
 - Available with C++11 and above
 - Header-only
+- has 0 external dependencies
 - Memoized, meaning past results are cached and retrieved if ran again for performance benefits 
 - Contains separate MIT and GPL-3.0 compliant library header files
 

@@ -6770,10 +6770,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             const std::string sys_vendor_str = util::read_file(sys_vendor);
             const std::string modalias_str = util::read_file(modalias);
 
-            return (
+            if (
                 util::find(sys_vendor_str, "QEMU") &&
                 util::find(modalias_str, "QEMU")
-            );
+            ) {
+                return core::add(brands::QEMU);
+            }
         }
 
         return false;
@@ -8103,29 +8105,21 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::QEMU_FW_CFG
 	 */
 	[[nodiscard]] static bool sys_qemu_dir() {
-#if (LINUX)
+#if (!LINUX)
+        return false;
+#else 
 	    const std::string module_path = "/sys/module/qemu_fw_cfg/";
 	    const std::string firmware_path = "/sys/firmware/qemu_fw_cfg/";
-	
-    #if (CPP >= 17)
-        namespace fs = std::filesystem;
 
-	    return (
-	        fs::is_directory(module_path) && 
-	        fs::is_directory(firmware_path) &&
-	        fs::exists(module_path) &&
-	        fs::exists(firmware_path)
-	    );
-    #else
-
-    	return (
+    	if (
 	        util::is_directory(module_path.c_str()) && 
 	        util::is_directory(firmware_path.c_str()) &&
 	        util::exists(module_path.c_str()) &&
 	        util::exists(firmware_path.c_str())
-	    );
-    #endif
-#else
+	    ) {
+            return core::add(brands::QEMU);
+        }
+
         return false;
 #endif
 	}

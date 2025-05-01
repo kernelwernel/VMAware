@@ -54,9 +54,6 @@ set(available_build_types Debug Release)
 if(NOT CMAKE_BUILD_TYPE)
 set(CMAKE_BUILD_TYPE Release CACHE STRING "Choose the type of build (Debug or Release)" FORCE)
 endif()
-if(NOT CMAKE_BUILD_TYPE IN_LIST available_build_types)
-MESSAGE(FATAL_ERROR "Invalid build type: ${CMAKE_BUILD_TYPE}. Allowed values: ${available_build_types}")
-endif()
 
 
 # Define preprocessor macros based on the build type
@@ -132,7 +129,7 @@ endif()
 # release stuff
 if (NOT MSVC)
     if(CMAKE_BUILD_TYPE MATCHES "Release")
-        install(TARGETS ${TARGET} DESTINATION /usr/local/bin)
+        install(TARGETS ${TARGET} DESTINATION /usr/bin)
         install(FILES "src/vmaware.hpp" DESTINATION /usr/include)
         install(FILES "src/vmaware_MIT.hpp" DESTINATION /usr/include)
     else()
