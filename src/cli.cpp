@@ -441,7 +441,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::ODD_CPU_THREADS:
             case VM::INTEL_THREAD_MISMATCH:
             case VM::XEON_THREAD_MISMATCH:
-            case VM::NETTITUDE_VM_MEMORY:
             case VM::CUCKOO_DIR:
             case VM::CUCKOO_PIPE:
             case VM::HYPERV_HOSTNAME:
@@ -926,7 +925,6 @@ void general() {
     checker(VM::ODD_CPU_THREADS, "odd thread count number");
     checker(VM::INTEL_THREAD_MISMATCH, "Intel thread count mismatch");
     checker(VM::XEON_THREAD_MISMATCH, "Intel Xeon thread count mismatch");
-    checker(VM::NETTITUDE_VM_MEMORY, "VM memory regions");
     checker(VM::CUCKOO_DIR, "Cuckoo directory");
     checker(VM::CUCKOO_PIPE, "Cuckoo pipe");
     checker(VM::HYPERV_HOSTNAME, "Hyper-V Azure hostname");
