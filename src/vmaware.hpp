@@ -11497,7 +11497,7 @@ public: // START OF PUBLIC FUNCTIONS
         constexpr const char* very_unlikely = "Very unlikely a VM";
         constexpr const char* unlikely = "Unlikely a VM";
 
-#if __cplusplus > 201703L
+#if (CPP >= 17)
         constexpr std::string_view potentially = "Potentially";
         constexpr std::string_view might = "Might be";
         constexpr std::string_view likely = "Likely";
@@ -11536,10 +11536,9 @@ public: // START OF PUBLIC FUNCTIONS
                 (brand_tmp == brands::AMD_SEV_SNP) ||
                 (brand_tmp == brands::NSJAIL) ||
                 (brand_tmp == brands::NULL_BRAND)
-                ) {
+            ) {
                 article = " an ";
-            }
-            else {
+            } else {
                 article = " a ";
             }
 
@@ -11556,23 +11555,22 @@ public: // START OF PUBLIC FUNCTIONS
             else {
                 return std::string(category) + article + brand_tmp + " VM";
             }
-            };
+        };
 
         if (core::is_enabled(flags, DYNAMIC)) {
-            if (percent_tmp == 0) { return baremetal; }
+            if      (percent_tmp == 0)  { return baremetal; }
             else if (percent_tmp <= 20) { return very_unlikely; }
             else if (percent_tmp <= 35) { return unlikely; }
-            else if (percent_tmp < 50) { return make_conclusion(potentially); }
+            else if (percent_tmp < 50)  { return make_conclusion(potentially); }
             else if (percent_tmp <= 62) { return make_conclusion(might); }
             else if (percent_tmp <= 75) { return make_conclusion(likely); }
             else if (percent_tmp < 100) { return make_conclusion(very_likely); }
-            else { return make_conclusion(inside_vm); }
+            else                        { return make_conclusion(inside_vm); }
         }
 
         if (percent_tmp == 100) {
             return make_conclusion(inside_vm);
-        }
-        else {
+        } else {
             return baremetal;
         }
     }
