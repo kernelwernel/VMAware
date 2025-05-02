@@ -1871,6 +1871,8 @@ private:
 
         // Returns a list of running process names
         [[nodiscard]] static std::unordered_set<std::string> get_running_process_names() {
+            std::unordered_set<std::string> processNames;
+#if (WINDOWS)
             typedef NTSTATUS(__stdcall* PFN_NtQuerySystemInformation)(
                 SYSTEM_INFORMATION_CLASS,
                 PVOID,
@@ -1917,7 +1919,6 @@ private:
                 return {};
             }
 
-            std::unordered_set<std::string> processNames;
             const BYTE* cur = buffer.data();
             while (true) {
                 auto pi = reinterpret_cast<const SYSTEM_PROCESS_INFORMATION*>(cur);
@@ -1946,7 +1947,7 @@ private:
                 }
                 cur += pi->NextEntryOffset;
             }
-
+#endif
             return processNames;
         }
 
