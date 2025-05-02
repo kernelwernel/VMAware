@@ -10176,8 +10176,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
         #endif
     
-        bool found = false;
-    
         for (const auto& dev : devices) {
             const u32 id = ((dev.vendor_id << 16) | dev.device_id);
     
@@ -10233,41 +10231,77 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 case 0x0e0f8002: // Root Hub
                 case 0x0e0f8003: // Root Hub
                 case 0x0e0ff80a: // Smoker FX2
-    
+
+                // Red Hat + QEMU
+                case 0x1b360001: // Red Hat, Inc. QEMU PCI-PCI bridge
+                case 0x1b360002: // Red Hat, Inc. QEMU PCI 16550A Adapter
+                case 0x1b360003: // Red Hat, Inc. QEMU PCI Dual-port 16550A Adapter
+                case 0x1b360004: // Red Hat, Inc. QEMU PCI Quad-port 16550A Adapter
+                case 0x1b360005: // Red Hat, Inc. QEMU PCI Test Device
+                case 0x1b360008: // Red Hat, Inc. QEMU PCIe Host bridge
+                case 0x1b360009: // Red Hat, Inc. QEMU PCI Expander bridge
+                case 0x1b36000b: // Red Hat, Inc. QEMU PCIe Expander bridge
+                case 0x1b36000c: // Red Hat, Inc. QEMU PCIe Root port
+                case 0x1b36000d: // Red Hat, Inc. QEMU XHCI Host Controller
+                case 0x1b360010: // Red Hat, Inc. QEMU NVM Express Controller
+                case 0x1b360011: // Red Hat, Inc. QEMU PVPanic device
+                case 0x1b360013: // Red Hat, Inc. QEMU UFS Host Controller
+
+                // QEMU
+                case 0x6270001: // Adomax Technology Co., Ltd QEMU Tablet
+                case 0x1d1d1f1f: // CNEX Labs QEMU NVM Express LightNVM Controller
+                case 0x80865845: // Intel Corporation QEMU NVM Express Controller
+                case 0x1d6b0200: // Linux Foundation Qemu Audio Device
+                
+                // vGPUs (mostly NVIDIA)
+                case 0x10de0fe7: // GK107GL [GRID K100 vGPU]
+                case 0x10de0ff7: // GK107GL [GRID K140Q vGPU]
+                case 0x10de118d: // GK104GL [GRID K200 vGPU]
+                case 0x10de11b0: // GK104GL [GRID K240Q\K260Q vGPU]
+                case 0x1ec6020f: // Vastai Technologies SG100 vGPU
+                
                 // VirtualBox
                 case 0x80ee0021: // USB Tablet
                 case 0x80ee0022: // multitouch tablet
-    
-                // Connectix (VirtualPC)
-                case 0x29556e61: // OHCI USB 1.1 controller
-                    found = true;
-                    break;
+                
+                // misc
+                case 0x29556e61: // Connectix (VirtualPC) OHCI USB 1.1 controller
+                case 0x1ab84000: // Parallels, Inc.	Virtual Machine Communication Interface
+                    debug(
+                        "PCI_VM_DEVICE_ID: found vendor ID = ", 
+                        "0x", std::setw(4), std::setfill('0'), std::hex, dev.vendor_id,
+                        " device ID = 0x", std::setw(4), std::setfill('0'), std::hex, dev.device_id
+                    );
+                    
+                    return true;
             }
-    
-            if (found) {
-                debug(
-                    "PCI_VM_DEVICE_ID: found vendor ID = ", 
-                    "0x", std::setw(4), std::setfill('0'), std::hex, dev.vendor_id,
-                    " device ID = 0x", std::setw(4), std::setfill('0'), std::hex, dev.device_id
-                );
-    
-                break;
-            }
+            
+            // TODO: EXTRAS TO ADD (64 instead of 32 bits for device_id field)
+            // 
+            // Advanced Micro Devices, Inc. [AMD]	1022	QEMU Virtual Machine	1af41100
+            // Apple Inc.	106b	QEMU Virtual Machine	1af41100
+            // Cirrus Logic	1013	QEMU Virtual Machine	1af41100
+            // Intel Corporation	8086	QEMU Virtual Machine	1af41100
+            // NEC Corporation	1033	QEMU Virtual Machine	1af41100
+            // Realtek Semiconductor Co., Ltd.	10ec	QEMU Virtual Machine	1af41100
+            // VIA Technologies, Inc.	1106	QEMU Virtual Machine	1af41100
+            // Red Hat, Inc. 1af4 QEMU Virtual Machine	1af41100
+            // Red Hat, Inc. 1b36 QEMU Virtual Machine	1af41100
         }
-    
-        return found;
+        
+        return false;
 #endif
     }
-
+    
     // ADD NEW TECHNIQUE FUNCTION HERE
-
-
-
-
-
-
-
-
+    
+    
+    
+    
+    
+    
+    
+    
 
 
 
