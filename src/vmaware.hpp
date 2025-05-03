@@ -27,14 +27,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 555
- * - struct for internal cpu operations        => line 741
- * - struct for internal memoization           => line 1212
- * - struct for internal utility functions     => line 1340
- * - struct for internal core components       => line 10291
- * - start of VM detection technique list      => line 2427
- * - start of public VM detection functions    => line 10948
- * - start of externally defined variables     => line 11892
+ * - enums for publicly accessible techniques  => line 557
+ * - struct for internal cpu operations        => line 743
+ * - struct for internal memoization           => line 1209
+ * - struct for internal utility functions     => line 1337
+ * - struct for internal core components       => line 10102
+ * - start of VM detection technique list      => line 2450
+ * - start of public VM detection functions    => line 10759
+ * - start of externally defined variables     => line 11710
  *
  *
  * ============================== EXAMPLE ===================================
@@ -366,6 +366,9 @@
 #include <wrl/client.h>
 #include <tbs.h>
 #include <mutex>
+#include <initguid.h>
+#include <devpkey.h>
+#include <devguid.h>
 
 #pragma comment(lib, "winmm.lib")
 #pragma comment(lib, "setupapi.lib")
@@ -658,6 +661,7 @@ public:
         PCI_VM,
         TPM,
         PCI_VM_DEVICE_ID,
+        QEMU_PASSTHROUGH,
         // ADD NEW TECHNIQUE ENUM NAME HERE
 
         // special flags, different to settings
@@ -1969,6 +1973,36 @@ private:
 
             return std::string();
         }
+
+
+        [[nodiscard]] static bool is_running_under_translator() {
+            #if (WINDOWS)
+            u8 ver = get_windows_version();
+            if (ver == 10 || ver == 11) {
+                USHORT procMachine = 0, nativeMachine = 0;
+                if (IsWow64Process2(GetCurrentProcess(), &procMachine, &nativeMachine)) {
+                    if (nativeMachine == IMAGE_FILE_MACHINE_ARM64 &&
+                        (procMachine == IMAGE_FILE_MACHINE_AMD64 ||
+                            procMachine == IMAGE_FILE_MACHINE_I386))
+                    {
+                        return true;
+                    }
+                }
+            }
+#endif
+
+            if (cpu::is_leaf_supported(cpu::leaf::hypervisor)) {
+                std::string vendor = cpu::cpu_manufacturer(cpu::leaf::hypervisor);
+                if (vendor == "VirtualApple" ||   // Apple Rosetta
+                    vendor == "PowerVM Lx86")     // IBM PowerVM Lx86
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
 
         /**
          * @brief Checks whether the system is running in a Hyper-V virtual machine or if the host system has Hyper-V enabled
@@ -3651,11 +3685,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */         HDEVINFO hDevInfo;
 /* GPL */         SP_DEVINFO_DATA DeviceInfoData{};
 /* GPL */         DWORD i;
-/* GPL */ 
-/* GPL */         constexpr GUID GUID_DEVCLASS_DISKDRIVE = {
-/* GPL */             0x4d36e967L, 0xe325, 0x11ce,
-/* GPL */             { 0xbf, 0xc1, 0x08, 0x00, 0x2b, 0xe1, 0x03, 0x18 }
-/* GPL */         };
 /* GPL */ 
 /* GPL */         hDevInfo = SetupDiGetClassDevs((LPGUID)&GUID_DEVCLASS_DISKDRIVE,
 /* GPL */             0,
@@ -7499,6 +7528,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
+        if (util::is_running_under_translator()) {
+            debug("Running inside binary translation layer.");
+            return false;
+        }
+
         // to minimize context switching/scheduling
     #if (WINDOWS)
         const HANDLE hThread = GetCurrentThread();
@@ -7539,7 +7573,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // 1. TSC Synchronization Check Across Cores
         // Try reading the invariant TSC on two different cores to attempt to detect vCPU timers being shared
         constexpr u8 tscIterations = 10;
-        constexpr u16 tscSyncDiffThreshold = 5000;
+        constexpr u16 tscSyncDiffThreshold = 500;
 
         bool tscSyncDetected = false;
         tscSyncDetected = [&]() noexcept -> bool {
@@ -9984,6 +10018,69 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
     
+
+    /**
+     * @brief Check for QEMU's hot-plug signature
+     * @category Windows
+     * @author Requiem (https://github.com/NotRequiem)
+     * @implements VM::QEMU_PASSTHROUGH
+     */
+    [[nodiscard]] static bool qemu_passthrough()
+    {
+#if (!WINDOWS)
+        return false;
+#else
+        // QEMU passthrough location paths
+        static const std::wregex busRegex(L"PCIROOT\\(0\\)#PCI\\(0202\\)");
+        static const std::wregex acpiSlotRegex(L"#ACPI\\(S[0-9]{2}_\\)");
+
+        HDEVINFO hDevInfo = SetupDiGetClassDevsW(
+            &GUID_DEVCLASS_DISPLAY,
+            nullptr,
+            nullptr,
+            DIGCF_PRESENT);
+        if (hDevInfo == INVALID_HANDLE_VALUE)
+            return false;
+
+        SP_DEVINFO_DATA devInfo = {};
+        devInfo.cbSize = sizeof(devInfo);
+        const DEVPROPKEY key = DEVPKEY_Device_LocationPaths;
+
+        for (DWORD idx = 0; SetupDiEnumDeviceInfo(hDevInfo, idx, &devInfo); ++idx)
+        {
+            DEVPROPTYPE propType = 0;
+            DWORD requiredSize = 0;
+
+            SetupDiGetDevicePropertyW(
+                hDevInfo, &devInfo, &key, &propType,
+                nullptr, 0, &requiredSize, 0);
+
+            if (GetLastError() != ERROR_INSUFFICIENT_BUFFER || requiredSize == 0)
+                continue;
+
+            std::vector<BYTE> buffer(requiredSize);
+            if (!SetupDiGetDevicePropertyW(
+                hDevInfo, &devInfo, &key, &propType,
+                buffer.data(), requiredSize, &requiredSize, 0))
+                continue;
+
+            const wchar_t* ptr = reinterpret_cast<const wchar_t*>(buffer.data());
+            while (*ptr) {
+                std::wstring path(ptr);
+                if (std::regex_search(path, busRegex) ||
+                    std::regex_search(path, acpiSlotRegex))
+                {
+                    SetupDiDestroyDeviceInfoList(hDevInfo);
+                    return true;
+                }
+                ptr += path.size() + 1;
+            }
+        }
+
+        SetupDiDestroyDeviceInfoList(hDevInfo);
+        return false;
+#endif
+    }
     // ADD NEW TECHNIQUE FUNCTION HERE
     
     
@@ -11279,8 +11376,8 @@ public: // START OF PUBLIC FUNCTIONS
             case NSJAIL_PID: return "NSJAIL_PID";
             case PCI_VM: return "PCI_VM";
             case TPM: return "TPM";
-
             case PCI_VM_DEVICE_ID: return "PCI_VM_DEVICE_ID";
+            case QEMU_PASSTHROUGH: return "QEMU_PASSTHROUGH";
             // ADD NEW CASE HERE FOR NEW TECHNIQUE
             default: return "Unknown flag";
         }
@@ -11849,6 +11946,8 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     std::make_pair(VM::PCI_VM, VM::core::technique(100, VM::lspci)),
     std::make_pair(VM::TPM, VM::core::technique(50, VM::tpm)),
     std::make_pair(VM::PCI_VM_DEVICE_ID, VM::core::technique(90, VM::pci_vm_device_id)),
+    std::make_pair(VM::QEMU_PASSTHROUGH, VM::core::technique(90, VM::qemu_passthrough)),
+
     // ADD NEW TECHNIQUE STRUCTURE HERE
 };
 
