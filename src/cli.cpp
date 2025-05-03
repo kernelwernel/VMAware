@@ -470,6 +470,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::FIRMWARE:
             case VM::UNKNOWN_MANUFACTURER:
             case VM::TPM:
+            case VM::QEMU_PASSTHROUGH:
             // ADD WINDOWS FLAG
             return false;
             default: return true;
@@ -977,6 +978,8 @@ void general() {
     checker(VM::PCI_VM, "PCIe bridge ports");
     checker(VM::TPM, "TPM manufacturer");
     checker(VM::PCI_VM_DEVICE_ID, "PCI vendor/device ID");
+    checker(VM::QEMU_PASSTHROUGH, "QEMU passthrough");
+
     // ADD NEW TECHNIQUE CHECKER HERE
 
     std::printf("\n");
