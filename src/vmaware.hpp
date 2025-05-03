@@ -906,8 +906,7 @@ private:
             constexpr std::size_t buffer_size = sizeof(i32) * buffer.size();
             std::array<char, 64> charbuffer{};
 
-            std::string brand = "";
-            brand.reserve(48); // 3 leafs 16 each
+            std::string brand(48, '\0'); // 3 leafs 16 each
 
             constexpr std::array<u32, 3> ids = { { cpu::leaf::brand1, cpu::leaf::brand2, cpu::leaf::brand3 } };
             for (const u32& id : ids) {
@@ -11511,12 +11510,16 @@ public: // START OF PUBLIC FUNCTIONS
         const std::string inside_vm = "Running inside";
 #endif
 
-        auto make_conclusion = [&](std::string_view category) -> std::string {
+#if (CPP >= 17)
+        auto make_conclusion = [&](const std::string_view category) -> std::string {
+#else
+        auto make_conclusion = [&](const std::string &category) -> std::string {
+#endif
             // this basically just fixes the grammatical syntax
             // by either having "a" or "an" before the VM brand
-            // name, like it would look weird if the conclusion 
+            // name. Like it would look weird if the conclusion 
             // message was "an VirtualBox" or "a Anubis", so this
-            // section fixes that issue.
+            // lambda fixes that issue.
             std::string article = "";
 
             if (
