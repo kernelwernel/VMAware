@@ -1975,6 +1975,36 @@ private:
             return std::string();
         }
 
+
+        [[nodiscard]] static bool is_running_under_translator() {
+            #if (WINDOWS)
+            u8 ver = get_windows_version();
+            if (ver == 10 || ver == 11) {
+                USHORT procMachine = 0, nativeMachine = 0;
+                if (IsWow64Process2(GetCurrentProcess(), &procMachine, &nativeMachine)) {
+                    if (nativeMachine == IMAGE_FILE_MACHINE_ARM64 &&
+                        (procMachine == IMAGE_FILE_MACHINE_AMD64 ||
+                            procMachine == IMAGE_FILE_MACHINE_I386))
+                    {
+                        return true;
+                    }
+                }
+            }
+#endif
+
+            if (cpu::is_leaf_supported(cpu::leaf::hypervisor)) {
+                std::string vendor = cpu::cpu_manufacturer(cpu::leaf::hypervisor);
+                if (vendor == "VirtualApple" ||   // Apple Rosetta
+                    vendor == "PowerVM Lx86")     // IBM PowerVM Lx86
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+
         /**
          * @brief Checks whether the system is running in a Hyper-V virtual machine or if the host system has Hyper-V enabled
          * @note Hyper-V's presence on a host system can set certain hypervisor-related CPU flags that may appear similar to those in a virtualized environment, which can make it challenging to differentiate between an actual Hyper-V virtual machine (VM) and a host system with Hyper-V enabled.
@@ -2413,34 +2443,6 @@ private:
                     }
                 }
             }
-        }
-
-        [[nodiscard]] static bool is_running_under_emulator() {
-#if (WINDOWS)
-            u8 ver = get_windows_version();
-            if (ver == 10 || ver == 11) {
-                USHORT procMachine = 0, nativeMachine = 0;
-                if (IsWow64Process2(GetCurrentProcess(), &procMachine, &nativeMachine)) {
-                    if (nativeMachine == IMAGE_FILE_MACHINE_ARM64 &&
-                        (procMachine == IMAGE_FILE_MACHINE_AMD64 ||
-                            procMachine == IMAGE_FILE_MACHINE_I386))
-                    {
-                        return true;
-                    }
-                }
-            }
-#endif
-
-            if (cpu::is_leaf_supported(cpu::leaf::hypervisor)) {
-                std::string vendor = cpu::cpu_manufacturer(cpu::leaf::hypervisor);
-                if (vendor == "VirtualApple" ||   // Apple Rosetta
-                    vendor == "PowerVM Lx86")     // IBM PowerVM Lx86
-                {
-                    return true;
-                }
-            }
-
-            return false;
         }
 #endif
     };
@@ -7527,7 +7529,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        if (util::is_running_under_emulator()) {
+        if (util::is_running_under_translator()) {
             debug("Running inside binary translation layer.");
             return false;
         }
