@@ -49,14 +49,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 577
- * - struct for internal cpu operations        => line 756
- * - struct for internal memoization           => line 1227
- * - struct for internal utility functions     => line 1355
- * - struct for internal core components       => line 10079
- * - start of VM detection technique list      => line 2442
- * - start of public VM detection functions    => line 10736
- * - start of externally defined variables     => line 11673
+ * - enums for publicly accessible techniques  => line 579
+ * - struct for internal cpu operations        => line 758
+ * - struct for internal memoization           => line 1224
+ * - struct for internal utility functions     => line 1352
+ * - struct for internal core components       => line 9885
+ * - start of VM detection technique list      => line 2465
+ * - start of public VM detection functions    => line 10542
+ * - start of externally defined variables     => line 11486
  *
  *
  * ============================== EXAMPLE ===================================
@@ -384,11 +384,13 @@
 #include <winspool.h>
 #include <powerbase.h>
 #include <setupapi.h>
-#include <mmdeviceapi.h>
-#include <dxgi1_2.h>
 #include <dxgi1_4.h>
 #include <wrl/client.h>
 #include <tbs.h>
+#include <mutex>
+#include <initguid.h>
+#include <devpkey.h>
+#include <devguid.h>
 
 #pragma comment(lib, "winmm.lib")
 #pragma comment(lib, "setupapi.lib")
@@ -624,7 +626,6 @@ public:
         ODD_CPU_THREADS,
         INTEL_THREAD_MISMATCH,
         XEON_THREAD_MISMATCH,
-        NETTITUDE_VM_MEMORY,
         CUCKOO_DIR,
         CUCKOO_PIPE,
         HYPERV_HOSTNAME,
@@ -675,6 +676,7 @@ public:
         PCI_VM,
         TPM,
         PCI_VM_DEVICE_ID,
+        QEMU_PASSTHROUGH,
         // ADD NEW TECHNIQUE ENUM NAME HERE
 
         // special flags, different to settings
@@ -923,21 +925,16 @@ private:
             constexpr std::size_t buffer_size = sizeof(i32) * buffer.size();
             std::array<char, 64> charbuffer{};
 
-            constexpr std::array<u32, 3> ids = {{
-                cpu::leaf::brand1,
-                cpu::leaf::brand2,
-                cpu::leaf::brand3
-            }};
-
             std::string brand = "";
+            brand.reserve(48); // 3 leafs 16 each
 
+            constexpr std::array<u32, 3> ids = { { cpu::leaf::brand1, cpu::leaf::brand2, cpu::leaf::brand3 } };
             for (const u32& id : ids) {
                 cpu::cpuid(buffer.at(0), buffer.at(1), buffer.at(2), buffer.at(3), id);
 
                 std::memcpy(charbuffer.data(), buffer.data(), buffer_size);
 
-                const char* convert = charbuffer.data();
-                brand += convert;
+                brand.append(charbuffer.data(), 16); 
             }
 
             debug("BRAND: ", "cpu brand = ", brand);
@@ -1895,82 +1892,78 @@ private:
         [[nodiscard]] static std::unordered_set<std::string> get_running_process_names() {
             std::unordered_set<std::string> processNames;
 #if (WINDOWS)
-            typedef NTSTATUS(NTAPI* PFN_NtQuerySystemInformation)(
+            typedef NTSTATUS(__stdcall* PFN_NtQuerySystemInformation)(
                 SYSTEM_INFORMATION_CLASS,
                 PVOID,
                 ULONG,
                 PULONG
-            );
-
-            HMODULE hNtdll = GetModuleHandleW(L"ntdll.dll");
-            if (!hNtdll) return processNames;
-
-            const char* names[] = { "NtQuerySystemInformation" };
-            void* funcs[1] = { nullptr };
-            GetFunctionAddresses(hNtdll, names, funcs, 1);
-            auto pNtQSI = reinterpret_cast<PFN_NtQuerySystemInformation>(funcs[0]);
-            if (!pNtQSI) return processNames;
-
-            ULONG bufSize = 1 << 20;             
-            std::unique_ptr<BYTE[]> buffer;
-            NTSTATUS status;
-            ULONG needed = 0;
-
-            do {
-                buffer.reset(new BYTE[bufSize]);
-                status = pNtQSI(
-                    SystemProcessInformation,
-                    buffer.get(),
-                    bufSize,
-                    &needed
                 );
-                if (status == 0xC0000004) {
-                    bufSize = needed + (1 << 16);  
-                }
-                else {
-                    break;
-                }
-            } while (true);
 
-            if (!NT_SUCCESS(status)) {
-                return processNames;
+            static PFN_NtQuerySystemInformation pNtQSI = nullptr;
+            static std::vector<BYTE> buffer;
+            static std::mutex initMutex;
+
+            if (!pNtQSI) {
+                std::lock_guard<std::mutex> lk(initMutex);
+                if (!pNtQSI) {
+                    const HMODULE hNtdll = GetModuleHandle(_T("ntdll.dll"));
+                    if (hNtdll) {
+#pragma warning (disable : 4191)
+                        pNtQSI = reinterpret_cast<PFN_NtQuerySystemInformation>(GetProcAddress(hNtdll, "NtQuerySystemInformation"));
+#pragma warning (default : 4191)                       
+                    }
+                    if (!pNtQSI) {
+                        return {}; 
+                    }
+                }
             }
 
-            for (BYTE* cur = buffer.get(); ; ) {
-                auto pi = reinterpret_cast<SYSTEM_PROCESS_INFORMATION*>(cur);
-                if (pi->ImageName.Length > 0 && pi->ImageName.Buffer) {
-                    // convert UTF-16→UTF-8
-                    const size_t wideCharCount = pi->ImageName.Length / sizeof(WCHAR);
-                    const int utf8ByteCount = WideCharToMultiByte(
-                        CP_UTF8,                
-                        0,                     
-                        pi->ImageName.Buffer, 
-                        static_cast<int>(wideCharCount), 
-                        nullptr,                
-                        0,                     
-                        nullptr, nullptr       
+            ULONG needed = 0;
+            NTSTATUS status = pNtQSI(SystemProcessInformation, nullptr, 0, &needed);
+            if (status != 0) {
+                return {};
+            }
+
+            if (buffer.size() < needed) {
+                buffer.resize(needed);
+            }
+
+            status = pNtQSI(
+                SystemProcessInformation,
+                buffer.data(),
+                static_cast<ULONG>(buffer.size()),
+                &needed
+            );
+            if (!NT_SUCCESS(status)) {
+                return {};
+            }
+
+            const BYTE* cur = buffer.data();
+            while (true) {
+                auto pi = reinterpret_cast<const SYSTEM_PROCESS_INFORMATION*>(cur);
+                if (pi->ImageName.Buffer && pi->ImageName.Length) {
+                    int wideChars = static_cast<int>(pi->ImageName.Length / sizeof(WCHAR));
+                    int utf8Len = WideCharToMultiByte(
+                        CP_UTF8, 0,
+                        pi->ImageName.Buffer, wideChars,
+                        nullptr, 0,
+                        nullptr, nullptr
                     );
-
-                    if (utf8ByteCount > 0) {
+                    if (utf8Len > 0) {
                         std::string name;
-                        name.resize(static_cast<size_t>(utf8ByteCount));
-
-                        // now actually do the conversion into our buffer
+                        name.resize(static_cast<size_t>(utf8Len));
                         WideCharToMultiByte(
-                            CP_UTF8,
-                            0,
-                            pi->ImageName.Buffer,
-                            static_cast<int>(wideCharCount),
-                            &name[0],
-                            utf8ByteCount,
+                            CP_UTF8, 0,
+                            pi->ImageName.Buffer, wideChars,
+                            &name[0], utf8Len,
                             nullptr, nullptr
                         );
-
                         processNames.insert(std::move(name));
                     }
                 }
-                if (pi->NextEntryOffset == 0)
+                if (pi->NextEntryOffset == 0) {
                     break;
+                }
                 cur += pi->NextEntryOffset;
             }
 #endif
@@ -1996,6 +1989,36 @@ private:
 
             return std::string();
         }
+
+
+        [[nodiscard]] static bool is_running_under_translator() {
+            #if (WINDOWS)
+            u8 ver = get_windows_version();
+            if (ver == 10 || ver == 11) {
+                USHORT procMachine = 0, nativeMachine = 0;
+                if (IsWow64Process2(GetCurrentProcess(), &procMachine, &nativeMachine)) {
+                    if (nativeMachine == IMAGE_FILE_MACHINE_ARM64 &&
+                        (procMachine == IMAGE_FILE_MACHINE_AMD64 ||
+                            procMachine == IMAGE_FILE_MACHINE_I386))
+                    {
+                        return true;
+                    }
+                }
+            }
+#endif
+
+            if (cpu::is_leaf_supported(cpu::leaf::hypervisor)) {
+                std::string vendor = cpu::cpu_manufacturer(cpu::leaf::hypervisor);
+                if (vendor == "VirtualApple" ||   // Apple Rosetta
+                    vendor == "PowerVM Lx86")     // IBM PowerVM Lx86
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
 
         /**
          * @brief Checks whether the system is running in a Hyper-V virtual machine or if the host system has Hyper-V enabled
@@ -2352,12 +2375,12 @@ private:
                 { static_cast<DWORD>(26100), static_cast<u8>(11) }
             };
 
-            const HMODULE ntdll = GetModuleHandleA("ntdll.dll");
+            const HMODULE ntdll = GetModuleHandle(_T("ntdll.dll"));
             if (!ntdll) {
                 return 0;
             }
 
-            typedef NTSTATUS(WINAPI* RtlGetVersionFunc)(PRTL_OSVERSIONINFOW);
+            typedef NTSTATUS(__stdcall* RtlGetVersionFunc)(PRTL_OSVERSIONINFOW);
 #pragma warning (disable : 4191)
             RtlGetVersionFunc pRtlGetVersion = reinterpret_cast<RtlGetVersionFunc>(GetProcAddress(ntdll, "RtlGetVersion"));
 #pragma warning (default : 4191)
@@ -2471,8 +2494,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const std::string& brand = cpu::get_brand();
 
         struct KeywordCheck {
-            const char* const str;
-            const std::regex reg;
+            const char* str;
+            std::regex reg;
         };
 
         static const std::array<KeywordCheck, 10> checks = { {
@@ -2666,7 +2689,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         */
         debug("MAC: ", ss.str());
 #endif
-        // better expression to fix code duplication
         auto compare = [mac](u8 mac1, u8 mac2, u8 mac3) noexcept -> bool {
             return (mac[0] == mac1 && mac[1] == mac2 && mac[2] == mac3);
             };
@@ -3020,7 +3042,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         };
 
         for (const auto& check : dll_checks) {
-            if (GetModuleHandleA(check.dll_name) != nullptr) {
+            if (GetModuleHandle(_T(check.dll_name)) != nullptr) {
                 debug("DLL: Found ", check.dll_name, " (", check.brand, ")");
                 return core::add(check.brand);
             }
@@ -3040,190 +3062,135 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!WINDOWS)
         return false;
 #else
+        struct Entry { const char* brand; const char* regkey; };
+        static constexpr Entry entries[] = {
+            { nullptr, "HKLM\\Software\\Classes\\Folder\\shell\\sandbox" },
+
+            { brands::PARALLELS, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_1AB8*" },
+
+            { brands::SANDBOXIE,  "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Sandboxie" },
+
+            { brands::VBOX, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_80EE*" },
+            { brands::VBOX, "HKLM\\HARDWARE\\ACPI\\DSDT\\VBOX__" },
+            { brands::VBOX, "HKLM\\HARDWARE\\ACPI\\FADT\\VBOX__" },
+            { brands::VBOX, "HKLM\\HARDWARE\\ACPI\\RSDT\\VBOX__" },
+            { brands::VBOX, "HKLM\\SOFTWARE\\Oracle\\VirtualBox Guest Additions" },
+            { brands::VBOX, "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxGuest" },
+            { brands::VBOX, "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxMouse" },
+            { brands::VBOX, "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxService" },
+            { brands::VBOX, "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxSF" },
+            { brands::VBOX, "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxVideo" },
+
+            { brands::VPC, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_5333*" },
+            { brands::VPC, "HKLM\\SYSTEM\\ControlSet001\\Services\\vpcbus" },
+            { brands::VPC, "HKLM\\SYSTEM\\ControlSet001\\Services\\vpc-s3" },
+            { brands::VPC, "HKLM\\SYSTEM\\ControlSet001\\Services\\vpcuhub" },
+            { brands::VPC, "HKLM\\SYSTEM\\ControlSet001\\Services\\msvmmouf" },
+
+            { brands::VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_15AD*" },
+            { brands::VMWARE, "HKCU\\SOFTWARE\\VMware, Inc.\\VMware Tools" },
+            { brands::VMWARE, "HKLM\\SOFTWARE\\VMware, Inc.\\VMware Tools" },
+            { brands::VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Services\\vmdebug" },
+            { brands::VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Services\\vmmouse" },
+            { brands::VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Services\\VMTools" },
+            { brands::VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Services\\VMMEMCTL" },
+            { brands::VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Services\\vmmouse" },
+            { brands::VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Services\\vmusbmouse" },
+            { brands::VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\IDE\\CdRomNECVMWar_VMware_IDE_CD*" },
+            { brands::VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\IDE\\CdRomNECVMWar_VMware_SATA_CD*" },
+            { brands::VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\IDE\\DiskVMware_Virtual_IDE_Hard_Drive*" },
+            { brands::VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\IDE\\DiskVMware_Virtual_SATA_Hard_Drive*" },
+            { brands::VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Enum\\ACPI\\VMW0003" },
+            { brands::VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Services\\vmmouse" },
+            { brands::VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Services\\vmusbmouse" },
+
+            { brands::WINE,    "HKCU\\SOFTWARE\\Wine" },
+            { brands::WINE,    "HKLM\\SOFTWARE\\Wine" },
+
+            { brands::XEN, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_5853*" },
+            { brands::XEN, "HKLM\\HARDWARE\\ACPI\\DSDT\\xen" },
+            { brands::XEN, "HKLM\\HARDWARE\\ACPI\\FADT\\xen" },
+            { brands::XEN, "HKLM\\HARDWARE\\ACPI\\RSDT\\xen" },
+            { brands::XEN, "HKLM\\SYSTEM\\ControlSet001\\Services\\xenevtchn" },
+            { brands::XEN, "HKLM\\SYSTEM\\ControlSet001\\Services\\xennet" },
+            { brands::XEN, "HKLM\\SYSTEM\\ControlSet001\\Services\\xennet6" },
+            { brands::XEN, "HKLM\\SYSTEM\\ControlSet001\\Services\\xensvc" },
+            { brands::XEN, "HKLM\\SYSTEM\\ControlSet001\\Services\\xenvdb" },
+
+            { brands::KVM,  "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_1AF4*" },
+            { brands::KVM,  "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_1B36*" },
+            { brands::KVM,  "HKLM\\SYSTEM\\ControlSet001\\Services\\vioscsi" },
+            { brands::KVM,  "HKLM\\SYSTEM\\ControlSet001\\Services\\viostor" },
+            { brands::KVM,  "HKLM\\SYSTEM\\ControlSet001\\Services\\VirtIO-FS Service" },
+            { brands::KVM,  "HKLM\\SYSTEM\\ControlSet001\\Services\\VirtioSerial" },
+            { brands::KVM,  "HKLM\\SYSTEM\\ControlSet001\\Services\\BALLOON" },
+            { brands::KVM,  "HKLM\\SYSTEM\\ControlSet001\\Services\\BalloonService" },
+            { brands::KVM,  "HKLM\\SYSTEM\\ControlSet001\\Services\\netkvm" },
+        };
+
         u8 score = 0;
+        const bool wow64 = util::is_wow64();
+        const REGSAM sam = wow64 ? (KEY_READ | KEY_WOW64_64KEY) : KEY_READ;
 
-        auto key = [&score](const char* p_brand, const char* regkey_s) -> void {
-            std::string regkey_str(regkey_s);
-            size_t root_end = regkey_str.find('\\');
-            if (root_end == std::string::npos) {
-                return;
+        for (auto const& e : entries) {
+            const char* full = e.regkey;
+            HKEY hRoot = nullptr;
+
+            if (full[0] == 'H' && full[1] == 'K' && full[2] == 'L' && full[3] == 'M' && full[4] == '\\') {
+                hRoot = HKEY_LOCAL_MACHINE; full += 5;
             }
-
-            std::string root_part = regkey_str.substr(0, root_end);
-            std::string subkey_part = regkey_str.substr(root_end + 1);
-
-            HKEY hRoot;
-            if (root_part == "HKLM") {
-                hRoot = HKEY_LOCAL_MACHINE;
+            else if (full[0] == 'H' && full[1] == 'K' && full[2] == 'C' && full[3] == 'U' && full[4] == '\\') {
+                hRoot = HKEY_CURRENT_USER;  full += 5;
             }
-            else if (root_part == "HKCU") {
-                hRoot = HKEY_CURRENT_USER;
-            }
-            else {
-                return;
-            }
+            else continue;
 
-            bool has_wildcard = subkey_part.find('*') != std::string::npos || subkey_part.find('?') != std::string::npos;
+            const char* sub = full;
+            bool wildcard = std::strchr(sub, '*') || std::strchr(sub, '?');
 
-            if (has_wildcard) {
-                size_t last_backslash = subkey_part.find_last_of('\\');
-                std::string parent_str, pattern_str;
-
-                if (last_backslash == std::string::npos) {
-                    parent_str = "";
-                    pattern_str = subkey_part;
-                }
-                else {
-                    parent_str = subkey_part.substr(0, last_backslash);
-                    pattern_str = subkey_part.substr(last_backslash + 1);
-                }
-
-                wchar_t wParent[MAX_PATH];
-                if (MultiByteToWideChar(CP_ACP, 0, parent_str.c_str(), -1, wParent, MAX_PATH) == 0) {
-                    return;
-                }
-
-                wchar_t wPattern[MAX_PATH];
-                if (MultiByteToWideChar(CP_ACP, 0, pattern_str.c_str(), -1, wPattern, MAX_PATH) == 0) {
-                    return;
-                }
+            if (wildcard) {
+                const char* slash = std::strrchr(sub, '\\');
+                const char* parent = slash ? sub : "";
+                const char* pattern = slash ? slash + 1 : sub;
 
                 HKEY hParent;
-                REGSAM samDesired = KEY_READ;
-                if (util::is_wow64()) {
-                    samDesired |= KEY_WOW64_64KEY;
-                }
+                if (RegOpenKeyExA(hRoot, parent, 0, sam, &hParent) != ERROR_SUCCESS)
+                    continue;
 
-                LONG ret = RegOpenKeyExW(hRoot, wParent, 0, samDesired, &hParent);
-                if (ret != ERROR_SUCCESS) {
-                    return;
-                }
-
-                DWORD index = 0;
-                wchar_t subkeyName[MAX_PATH];
-                DWORD subkeyNameSize = MAX_PATH;
+                DWORD idx = 0;
+                char  name[MAX_PATH];
+                DWORD nameLen = MAX_PATH;
                 bool found = false;
 
-                while (RegEnumKeyExW(hParent, index, subkeyName, &subkeyNameSize, nullptr, nullptr, nullptr, nullptr) == ERROR_SUCCESS) {
-                    if (PathMatchSpecW(subkeyName, wPattern)) {
+                while (RegEnumKeyExA(hParent, idx, name, &nameLen,
+                    nullptr, nullptr, nullptr, nullptr) == ERROR_SUCCESS)
+                {
+                    if (PathMatchSpecA(name, pattern)) {
                         found = true;
                         break;
                     }
-                    index++;
-                    subkeyNameSize = MAX_PATH;
+                    idx++;
+                    nameLen = MAX_PATH;
                 }
-
                 RegCloseKey(hParent);
 
-                if (found) {
-                    score++;
-                    if (std::string(p_brand) != "") {
-                        debug("REGISTRY: ", "detected = ", p_brand);
-                        core::add(p_brand);
-                    }
-                }
+                if (!found) continue;
             }
             else {
-                wchar_t wSubkey[MAX_PATH];
-                if (MultiByteToWideChar(CP_ACP, 0, subkey_part.c_str(), -1, wSubkey, MAX_PATH) == 0) {
-                    return;
-                }
-
-                REGSAM samDesired = KEY_READ;
-                if (util::is_wow64()) {
-                    samDesired |= KEY_WOW64_64KEY;
-                }
-
                 HKEY hKey;
-                LONG ret = RegOpenKeyExW(hRoot, wSubkey, 0, samDesired, &hKey);
-                if (ret == ERROR_SUCCESS) {
-                    RegCloseKey(hKey);
-                    score++;
-                    if (std::string(p_brand) != "") {
-                        debug("REGISTRY: ", "detected = ", p_brand);
-                        debug("REGISTRY: ", "detected = ", regkey_s);
-                        core::add(p_brand);
-                    }
-                }
+                if (RegOpenKeyExA(hRoot, sub, 0, sam, &hKey) != ERROR_SUCCESS)
+                    continue;
+                RegCloseKey(hKey);
             }
-            };
 
-        // General
-        key("", "HKLM\\Software\\Classes\\Folder\\shell\\sandbox");
-
-        // Parallels
-        key(brands::PARALLELS, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_1AB8*");
-
-        // Sandboxie
-        key(brands::SANDBOXIE, "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Sandboxie");
-
-        // VirtualBox
-        key(brands::VBOX, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_80EE*");
-        key(brands::VBOX, "HKLM\\HARDWARE\\ACPI\\DSDT\\VBOX__");
-        key(brands::VBOX, "HKLM\\HARDWARE\\ACPI\\FADT\\VBOX__");
-        key(brands::VBOX, "HKLM\\HARDWARE\\ACPI\\RSDT\\VBOX__");
-        key(brands::VBOX, "HKLM\\SOFTWARE\\Oracle\\VirtualBox Guest Additions");
-        key(brands::VBOX, "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxGuest");
-        key(brands::VBOX, "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxMouse");
-        key(brands::VBOX, "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxService");
-        key(brands::VBOX, "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxSF");
-        key(brands::VBOX, "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxVideo");
-
-        // VirtualPC
-        key(brands::VPC, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_5333*");
-        key(brands::VPC, "HKLM\\SYSTEM\\ControlSet001\\Services\\vpcbus");
-        key(brands::VPC, "HKLM\\SYSTEM\\ControlSet001\\Services\\vpc-s3");
-        key(brands::VPC, "HKLM\\SYSTEM\\ControlSet001\\Services\\vpcuhub");
-        key(brands::VPC, "HKLM\\SYSTEM\\ControlSet001\\Services\\msvmmouf");
-
-        // VMware
-        key(brands::VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_15AD*");
-        key(brands::VMWARE, "HKCU\\SOFTWARE\\VMware, Inc.\\VMware Tools");
-        key(brands::VMWARE, "HKLM\\SOFTWARE\\VMware, Inc.\\VMware Tools");
-        key(brands::VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Services\\vmdebug");
-        key(brands::VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Services\\vmmouse");
-        key(brands::VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Services\\VMTools");
-        key(brands::VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Services\\VMMEMCTL");
-        key(brands::VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Services\\vmmouse");
-        key(brands::VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Services\\vmusbmouse");
-        key(brands::VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\IDE\\CdRomNECVMWar_VMware_IDE_CD*");
-        key(brands::VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\IDE\\CdRomNECVMWar_VMware_SATA_CD*");
-        key(brands::VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\IDE\\DiskVMware_Virtual_IDE_Hard_Drive*");
-        key(brands::VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\IDE\\DiskVMware_Virtual_SATA_Hard_Drive*");
-        key(brands::VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Enum\\ACPI\\VMW0003");
-        key(brands::VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Enum\\ACPI\\VMW0003");
-        key(brands::VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Services\\vmmouse");
-        key(brands::VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Services\\vmusbmouse");
-
-        // Wine
-        key(brands::WINE, "HKCU\\SOFTWARE\\Wine");
-        key(brands::WINE, "HKLM\\SOFTWARE\\Wine");
-
-        // Xen
-        key(brands::XEN, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_5853*");
-        key(brands::XEN, "HKLM\\HARDWARE\\ACPI\\DSDT\\xen");
-        key(brands::XEN, "HKLM\\HARDWARE\\ACPI\\FADT\\xen");
-        key(brands::XEN, "HKLM\\HARDWARE\\ACPI\\RSDT\\xen");
-        key(brands::XEN, "HKLM\\SYSTEM\\ControlSet001\\Services\\xenevtchn");
-        key(brands::XEN, "HKLM\\SYSTEM\\ControlSet001\\Services\\xennet");
-        key(brands::XEN, "HKLM\\SYSTEM\\ControlSet001\\Services\\xennet6");
-        key(brands::XEN, "HKLM\\SYSTEM\\ControlSet001\\Services\\xensvc");
-        key(brands::XEN, "HKLM\\SYSTEM\\ControlSet001\\Services\\xenvdb");
-
-        // KVM
-        key(brands::KVM, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_1AF4*");
-        key(brands::KVM, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_1B36*");
-        key(brands::KVM, "HKLM\\SYSTEM\\ControlSet001\\Services\\vioscsi");
-        key(brands::KVM, "HKLM\\SYSTEM\\ControlSet001\\Services\\viostor");
-        key(brands::KVM, "HKLM\\SYSTEM\\ControlSet001\\Services\\VirtIO-FS Service");
-        key(brands::KVM, "HKLM\\SYSTEM\\ControlSet001\\Services\\VirtioSerial");
-        key(brands::KVM, "HKLM\\SYSTEM\\ControlSet001\\Services\\BALLOON");
-        key(brands::KVM, "HKLM\\SYSTEM\\ControlSet001\\Services\\BalloonService");
-        key(brands::KVM, "HKLM\\SYSTEM\\ControlSet001\\Services\\netkvm");
+            score++;
+            if (e.brand && e.brand[0]) {
+                debug("REGISTRY: ", "detected = ", e.brand);
+                core::add(e.brand);
+            }
+        }
 
         debug("REGISTRY: ", "score = ", static_cast<u32>(score));
-
-        return (score >= 1);
+        return score >= 1;
 #endif
     }
 
@@ -3527,14 +3494,27 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!WINDOWS)
         return false;
 #else
-        char provider[256];
-        DWORD pnsize = sizeof(provider);
-        const DWORD retv = WNetGetProviderNameA(WNNC_NET_RDR2SAMPLE, provider, &pnsize);
+        static const bool isVBoxSF = []() -> bool {
+            // Try to open the VBoxSF service key
+            HKEY hKey = nullptr;
+            constexpr LPCSTR kVBoxSFKey =
+                "SYSTEM\\CurrentControlSet\\Services\\VBoxSF";
 
-        if (retv != NO_ERROR)
+            LONG result = RegOpenKeyExA(
+                HKEY_LOCAL_MACHINE,
+                kVBoxSFKey,
+                0,
+                KEY_READ,
+                &hKey
+            );
+            if (result == ERROR_SUCCESS) {
+                RegCloseKey(hKey);
+                return true;
+            }
             return false;
+            }();
 
-        return (strncmp(provider, "VirtualBox Shared Folders", 26) == 0);
+        return isVBoxSF;
 #endif
     }
 
@@ -3649,15 +3629,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         DWORD dwSize = sizeof(buffer);
         LONG lRes;
 
-        lRes = RegOpenKeyExA(HKEY_LOCAL_MACHINE,
-            "Software\\Microsoft\\Windows\\CurrentVersion",
+        lRes = RegOpenKeyEx(HKEY_LOCAL_MACHINE,
+            _T("Software\\Microsoft\\Windows\\CurrentVersion"),
             0,
             KEY_QUERY_VALUE,
             &hKey);
 
         if (lRes != ERROR_SUCCESS) return false;
 
-        lRes = RegQueryValueExA(hKey, "ProductId",
+        lRes = RegQueryValueEx(hKey, _T("ProductId"),
             nullptr, nullptr,
             reinterpret_cast<LPBYTE>(buffer), &dwSize);
 
@@ -3795,7 +3775,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         struct CheckConfig {
             const char* value_name;
-            const std::array<PatternMeta, 7> patterns;  // Size for largest pattern set
+            std::array<PatternMeta, 7> patterns;  // Size for largest pattern set
             const char* debug_prefix;
             size_t actual_pattern_count;
         };
@@ -3835,8 +3815,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         bool detected = false;
 
         for (const auto& config : checks) {
-            LSTATUS ret = RegOpenKeyExA(HKEY_LOCAL_MACHINE,
-                "SYSTEM\\CurrentControlSet\\Services\\mssmbios\\Data",
+            LSTATUS ret = RegOpenKeyEx(HKEY_LOCAL_MACHINE,
+                _T("SYSTEM\\CurrentControlSet\\Services\\mssmbios\\Data"),
                 0, KEY_READ, &hk);
 
             if (ret != ERROR_SUCCESS) {
@@ -3847,7 +3827,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             DWORD type = 0;
             DWORD length = 0;
 
-            ret = RegQueryValueExA(hk, config.value_name, nullptr, &type, nullptr, &length);
+            ret = RegQueryValueEx(hk, _T(config.value_name), nullptr, &type, nullptr, &length);
             if (ret != ERROR_SUCCESS || length == 0) {
                 RegCloseKey(hk);
                 debug(config.debug_prefix, ": Data size query failed");
@@ -3872,7 +3852,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 heap_allocated = true;
             }
 
-            ret = RegQueryValueExA(hk, config.value_name, nullptr, &type,
+            ret = RegQueryValueEx(hk, _T(config.value_name), nullptr, &type,
                 reinterpret_cast<LPBYTE>(buffer), &length);
 
             if (ret != ERROR_SUCCESS) {
@@ -4144,8 +4124,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             char buffer[1024] = {};
             DWORD bufferSize = sizeof(buffer);
 
-            if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, subKey, 0, KEY_READ | KEY_WOW64_64KEY, &hKey) == ERROR_SUCCESS) {
-                if (RegQueryValueExA(hKey, valueName, nullptr, &dwType, reinterpret_cast<LPBYTE>(buffer), &bufferSize) == ERROR_SUCCESS) {
+            if (RegOpenKeyEx(HKEY_LOCAL_MACHINE, _T(subKey), 0, KEY_READ | KEY_WOW64_64KEY, &hKey) == ERROR_SUCCESS) {
+                if (RegQueryValueEx(hKey, _T(valueName), nullptr, &dwType, reinterpret_cast<LPBYTE>(buffer), &bufferSize) == ERROR_SUCCESS) {
                     if (dwType == REG_SZ || dwType == REG_EXPAND_SZ || dwType == REG_MULTI_SZ) {
                         buffer[bufferSize - 1] = '\0';
                         if (strstr(buffer, comp_string) != nullptr) {
@@ -5957,286 +5937,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check for memory regions to detect VM-specific brands
-     * @category Windows
-     * @author Graham Sutherland
-     * @link https://labs.nettitude.com/blog/vm-detection-tricks-part-1-physical-memory-resource-maps/
-     * @implements VM::NETTITUDE_VM_MEMORY
-     */
-    [[nodiscard]] static bool nettitude_vm_memory() {
-#if (!WINDOWS)
-        return false;
-#else
-        typedef LARGE_INTEGER PHYSICAL_ADDRESS, * PPHYSICAL_ADDRESS;
-#pragma pack(push,4)
-        typedef struct _CM_PARTIAL_RESOURCE_DESCRIPTOR {
-            UCHAR Type;
-            UCHAR ShareDisposition;
-            USHORT Flags;
-            union {
-                struct {
-                    PHYSICAL_ADDRESS Start;
-                    ULONG Length;
-                } Generic;
-                struct {
-                    PHYSICAL_ADDRESS Start;
-                    ULONG Length;
-                } Port;
-                struct {
-#if defined(NT_PROCESSOR_GROUPS)
-                    USHORT Level;
-                    USHORT Group;
-#else
-                    ULONG Level;
-#endif
-                    ULONG Vector;
-                    KAFFINITY Affinity;
-                } Interrupt;
-                struct {
-                    union {
-                        struct {
-#if defined(NT_PROCESSOR_GROUPS)
-                            USHORT Group;
-#else
-                            USHORT Reserved;
-#endif
-                            USHORT MessageCount;
-                            ULONG Vector;
-                            KAFFINITY Affinity;
-                        } Raw;
-                        struct {
-#if defined(NT_PROCESSOR_GROUPS)
-                            USHORT Level;
-                            USHORT Group;
-#else
-                            ULONG Level;
-#endif
-                            ULONG Vector;
-                            KAFFINITY Affinity;
-                        } Translated;
-                    } DUMMYUNIONNAME;
-                } MessageInterrupt;
-                struct {
-                    PHYSICAL_ADDRESS Start;
-                    ULONG Length;
-                } Memory;
-                struct {
-                    ULONG Channel;
-                    ULONG Port;
-                    ULONG Reserved1;
-                } Dma;
-                struct {
-                    ULONG Channel;
-                    ULONG RequestLine;
-                    UCHAR TransferWidth;
-                    UCHAR Reserved1;
-                    UCHAR Reserved2;
-                    UCHAR Reserved3;
-                } DmaV3;
-                struct {
-                    ULONG Data[3];
-                } DevicePrivate;
-                struct {
-                    ULONG Start;
-                    ULONG Length;
-                    ULONG Reserved;
-                } BusNumber;
-                struct {
-                    ULONG DataSize;
-                    ULONG Reserved1;
-                    ULONG Reserved2;
-                } DeviceSpecificData;
-                struct {
-                    PHYSICAL_ADDRESS Start;
-                    ULONG Length40;
-                } Memory40;
-                struct {
-                    PHYSICAL_ADDRESS Start;
-                    ULONG Length48;
-                } Memory48;
-                struct {
-                    PHYSICAL_ADDRESS Start;
-                    ULONG Length64;
-                } Memory64;
-                struct {
-                    UCHAR Class;
-                    UCHAR Type;
-                    UCHAR Reserved1;
-                    UCHAR Reserved2;
-                    ULONG IdLowPart;
-                    ULONG IdHighPart;
-                } Connection;
-            } u;
-        } CM_PARTIAL_RESOURCE_DESCRIPTOR, * PCM_PARTIAL_RESOURCE_DESCRIPTOR;
-#pragma pack(pop,4)
-        typedef enum _INTERFACE_TYPE {
-            InterfaceTypeUndefined,
-            Internal,
-            Isa,
-            Eisa,
-            MicroChannel,
-            TurboChannel,
-            PCIBus,
-            VMEBus,
-            NuBus,
-            PCMCIABus,
-            CBus,
-            MPIBus,
-            MPSABus,
-            ProcessorInternal,
-            InternalPowerBus,
-            PNPISABus,
-            PNPBus,
-            Vmcs,
-            ACPIBus,
-            MaximumInterfaceType
-        } INTERFACE_TYPE, * PINTERFACE_TYPE;
-        typedef struct _CM_PARTIAL_RESOURCE_LIST {
-            USHORT Version;
-            USHORT Revision;
-            ULONG Count;
-            CM_PARTIAL_RESOURCE_DESCRIPTOR PartialDescriptors[1];
-        } CM_PARTIAL_RESOURCE_LIST, * PCM_PARTIAL_RESOURCE_LIST;
-        typedef struct _CM_FULL_RESOURCE_DESCRIPTOR {
-            INTERFACE_TYPE InterfaceType;
-            ULONG BusNumber;
-            CM_PARTIAL_RESOURCE_LIST PartialResourceList;
-        } *PCM_FULL_RESOURCE_DESCRIPTOR, CM_FULL_RESOURCE_DESCRIPTOR;
-        typedef struct _CM_RESOURCE_LIST {
-            ULONG Count;
-            CM_FULL_RESOURCE_DESCRIPTOR List[1];
-        } *PCM_RESOURCE_LIST, CM_RESOURCE_LIST;
-        struct map_key {
-            LPCTSTR KeyPath;  
-            LPCTSTR ValueName; 
-        };
-
-#define VBOX_PHYS_LO 0x0000000000001000ULL
-#define VBOX_PHYS_HI 0x000000000009f000ULL
-#define HYPERV_PHYS_LO 0x0000000000001000ULL
-#define HYPERV_PHYS_HI 0x00000000000a0000ULL
-#define RESERVED_ADDR_LOW 0x0000000000001000ULL
-#define LOADER_RESERVED_ADDR_LOW 0x0000000000000000ULL
-
-#define VM_RESOURCE_CHECK_ERROR -1
-#define VM_RESOURCE_CHECK_NO_VM 0
-#define VM_RESOURCE_CHECK_HYPERV 1
-#define VM_RESOURCE_CHECK_VBOX 2
-#define VM_RESOURCE_CHECK_UNKNOWN_PLATFORM 99
-
-        /* registry keys for resource maps */
-#define VM_RESOURCE_CHECK_REGKEY_PHYSICAL 0
-#define VM_RESOURCE_CHECK_REGKEY_RESERVED 1
-#define VM_RESOURCE_CHECK_REGKEY_LOADER_RESERVED 2
-#define ResourceRegistryKeysLength 3
-        const wchar_t* resource_keys[] = {
-            L"Hardware\\ResourceMap\\System Resources\\Physical Memory",
-            L"Hardware\\ResourceMap\\System Resources\\Reserved",
-            L"Hardware\\ResourceMap\\System Resources\\Loader Reserved"
-        };
-
-        typedef struct _memory_region {
-            ULONG64 size;
-            ULONG64 address;
-        } memory_region;
-
-        auto parse_memory_map = [](memory_region* regions, const wchar_t* keyPath, const wchar_t* valueName) -> DWORD {
-            HKEY hKey = NULL;
-            LPBYTE lpData = NULL;
-            DWORD dwLength = 0;
-            LSTATUS result;
-
-            if ((result = RegOpenKeyW(HKEY_LOCAL_MACHINE, keyPath, &hKey)) != ERROR_SUCCESS) {
-                return 0;
-            }
-
-            if ((result = RegQueryValueExW(hKey, valueName, 0, NULL, NULL, &dwLength)) != ERROR_SUCCESS) {
-                RegCloseKey(hKey);
-                return 0;
-            }
-
-            lpData = (LPBYTE)malloc(dwLength);
-            if (!lpData) {
-                RegCloseKey(hKey);
-                return 0;
-            }
-
-            RegQueryValueExW(hKey, valueName, 0, NULL, lpData, &dwLength);
-            RegCloseKey(hKey);
-
-            CM_RESOURCE_LIST* resource_list = (CM_RESOURCE_LIST*)lpData;
-            DWORD count = 0;
-
-            for (DWORD i = 0; i < resource_list->Count; i++) {
-                for (DWORD j = 0; j < resource_list->List[i].PartialResourceList.Count; j++) {
-                    if (resource_list->List[i].PartialResourceList.PartialDescriptors[j].Type == 3) {
-                        if (regions) {
-                            regions[count].address = static_cast<ULONG64>(resource_list->List[i].PartialResourceList.PartialDescriptors[j].u.Memory.Start.QuadPart);
-                            regions[count].size = resource_list->List[i].PartialResourceList.PartialDescriptors[j].u.Memory.Length;
-                        }
-                        count++;
-                    }
-                }
-            }
-
-            free(lpData);
-            return count;
-            };
-
-        memory_region phys[128]{}, reserved[128]{}, loader_reserved[128]{};
-        DWORD phys_count = 0, reserved_count = 0, loader_reserved_count = 0;
-
-        for (int i = 0; i < 3; i++) {
-            DWORD count = parse_memory_map(NULL, resource_keys[i], L".Translated");
-            if (count == 0) {
-                return false;
-            }
-            if (i == 0) phys_count = count;
-            if (i == 1) reserved_count = count;
-            if (i == 2) loader_reserved_count = count;
-        }
-
-        if (phys_count == 0 || reserved_count == 0 || loader_reserved_count == 0) {
-            return false;
-        }
-
-        /* Detect if the reserved and loader reserved address ranges match */
-        ULONG64 lowestReservedAddrRangeEnd = 0;
-        for (DWORD i = 0; i < reserved_count; i++) {
-            if (reserved[i].address == RESERVED_ADDR_LOW) {
-                lowestReservedAddrRangeEnd = reserved[i].address + reserved[i].size;
-                break;
-            }
-        }
-
-        ULONG64 lowestLoaderReservedAddrRangeEnd = 0;
-        for (DWORD i = 0; i < loader_reserved_count; i++) {
-            if (loader_reserved[i].address == LOADER_RESERVED_ADDR_LOW) {
-                lowestLoaderReservedAddrRangeEnd = loader_reserved[i].address + loader_reserved[i].size;
-                break;
-            }
-        }
-
-        if (lowestReservedAddrRangeEnd != lowestLoaderReservedAddrRangeEnd) {
-            return false;
-        }
-
-        /* Hyper-V and VirtualBox by memory ranges */
-        for (DWORD i = 0; i < phys_count; i++) {
-            if (phys[i].address == HYPERV_PHYS_LO && (phys[i].address + phys[i].size) == HYPERV_PHYS_HI) {
-                return core::add(brands::HYPERV);
-            }
-            if (phys[i].address == VBOX_PHYS_LO && (phys[i].address + phys[i].size) == VBOX_PHYS_HI) {
-                return core::add(brands::VBOX);
-            }
-        }
-
-        return false;
-#endif
-    }
-
-
-    /**
      * @brief Check for cuckoo directory using crt and WIN API directory functions
      * @category Windows
      * @author 一半人生
@@ -6558,10 +6258,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             const std::string sys_vendor_str = util::read_file(sys_vendor);
             const std::string modalias_str = util::read_file(modalias);
 
-            return (
+            if (
                 util::find(sys_vendor_str, "QEMU") &&
                 util::find(modalias_str, "QEMU")
-            );
+            ) {
+                return core::add(brands::QEMU);
+            }
         }
 
         return false;
@@ -7061,7 +6763,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #define STATUS_INFO_LENGTH_MISMATCH      ((NTSTATUS)0xC0000004L)
 
         constexpr ULONG SystemModuleInformation = 11;
-        const HMODULE hModule = GetModuleHandleA("ntdll.dll");
+        const HMODULE hModule = GetModuleHandle(_T("ntdll.dll"));
         if (!hModule) return false;
 
         const char* functionNames[] = { "NtQuerySystemInformation", "NtAllocateVirtualMemory", "NtFreeVirtualMemory" };
@@ -7280,21 +6982,36 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!WINDOWS)
         return false;
 #else
-        const GUID GUID_IVSHMEM_IFACE =
-        { 0xdf576976, 0x569d, 0x4672, {0x95, 0xa0, 0xf5, 0x7e, 0x4e, 0xa0, 0xb2, 0x10} };
+        static const GUID GUID_IVSHMEM_IFACE =
+        { 0xdf576976, 0x569d, 0x4672, {0x95,0xa0,0xf5,0x7e,0x4e,0xa0,0xb2,0x10} };
 
-        HDEVINFO hDevInfo = SetupDiGetClassDevsW(&GUID_IVSHMEM_IFACE,
-            nullptr, nullptr, DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
+        HDEVINFO hDevInfo = SetupDiGetClassDevs(
+            &GUID_IVSHMEM_IFACE,
+            nullptr,
+            nullptr,
+            DIGCF_PRESENT | DIGCF_DEVICEINTERFACE
+        );
         if (hDevInfo == INVALID_HANDLE_VALUE) {
-            return true;
+            return false;
         }
 
-        SP_DEVINFO_DATA devInfoData = { sizeof(SP_DEVINFO_DATA) };
-        // Check first device only
-        const bool hasIvshmemData = SetupDiEnumDeviceInfo(hDevInfo, 0, &devInfoData);
+        SP_DEVICE_INTERFACE_DATA ifaceData;
+        ifaceData.cbSize = sizeof(ifaceData);
+        BOOL gotOne = SetupDiEnumDeviceInterfaces(
+            hDevInfo,
+            nullptr,
+            &GUID_IVSHMEM_IFACE,
+            0,
+            &ifaceData
+        );
 
         SetupDiDestroyDeviceInfoList(hDevInfo);
-        return hasIvshmemData ? core::add(brands::HYPERVISOR_PHANTOM) : false;
+
+        if (gotOne == TRUE) {
+            core::add(brands::HYPERVISOR_PHANTOM);
+            return true;
+        }
+        return false;
 #endif
     }
 
@@ -7381,22 +7098,23 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!WINDOWS)
         return false;
 #else
-        Microsoft::WRL::ComPtr<IDXGIFactory2> factory;
-        if (FAILED(CreateDXGIFactory2(0, IID_PPV_ARGS(&factory)))) {
-            debug("GPU_CAPABILITIES: failed to create DXGIFactory2");
-            return false;
+        static Microsoft::WRL::ComPtr<IDXGIFactory2> factory;
+        if (!factory) {
+            if (FAILED(CreateDXGIFactory2(0, IID_PPV_ARGS(&factory)))) {
+                debug("GPU_CAPABILITIES: failed to create DXGIFactory2");
+                return false;
+            }
         }
 
-        HMODULE warpMod = LoadLibraryW(L"dxgi.dll");
+        static HMODULE warpMod = LoadLibrary(_T("dxgi.dll"));
         if (warpMod) {
-            Microsoft::WRL::ComPtr<IDXGIAdapter> swAdapter;
+            static Microsoft::WRL::ComPtr<IDXGIAdapter> swAdapter;
             if (SUCCEEDED(factory->CreateSoftwareAdapter(warpMod, &swAdapter))) {
                 Microsoft::WRL::ComPtr<IDXGIAdapter1> swAdapter1;
                 if (SUCCEEDED(swAdapter.As(&swAdapter1))) {
                     DXGI_ADAPTER_DESC1 swDesc = {};
                     if (SUCCEEDED(swAdapter1->GetDesc1(&swDesc)) &&
-                        (swDesc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE))
-                    {
+                        (swDesc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE)) {
                         debug("GPU_CAPABILITIES: detected software (WARP) adapter");
                         return true;
                     }
@@ -7594,6 +7312,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
+        if (util::is_running_under_translator()) {
+            debug("Running inside binary translation layer.");
+            return false;
+        }
+
         // to minimize context switching/scheduling
     #if (WINDOWS)
         const HANDLE hThread = GetCurrentThread();
@@ -7634,7 +7357,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // 1. TSC Synchronization Check Across Cores
         // Try reading the invariant TSC on two different cores to attempt to detect vCPU timers being shared
         constexpr u8 tscIterations = 10;
-        constexpr u16 tscSyncDiffThreshold = 5000;
+        constexpr u16 tscSyncDiffThreshold = 500;
 
         bool tscSyncDetected = false;
         tscSyncDetected = [&]() noexcept -> bool {
@@ -7643,7 +7366,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             for (int i = 0; i < tscIterations; ++i) {
                 unsigned int aux = 0;
-    #if (WINDOWS)
+        #if (WINDOWS)
                 DWORD_PTR prevMask = SetThreadAffinityMask(GetCurrentThread(), DWORD{ 1 });
                 if (prevMask == 0) {
                     // could not bind even to the first core...?
@@ -7670,7 +7393,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 __except (EXCEPTION_EXECUTE_HANDLER) {
                     return true;
                 }
-    #else
+        #else
                 cpu_set_t set;
                 static sigjmp_buf jumpBuf;
 
@@ -7733,7 +7456,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
 
                 sigaction(SIGILL, &oldAct, nullptr);
-    #endif
+        #endif
                 // hypervisors often have nearly identical TSCs across vCPUs
                 const u64 diff = (tscCore2 > tscCore1)
                     ? (tscCore2 - tscCore1)
@@ -7771,16 +7494,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // warm-up to reduce noise
         for (int i = 0; i < 10; ++i) {
             unsigned aux;
-    #if (MSVC)
+        #if (MSVC)
             int cpuInfo[4]; __cpuid(cpuInfo, 0);
             __rdtsc(); 
             GetProcessHeap();
             __rdtscp(&aux);
-        #pragma warning (disable : 6387)
+            #pragma warning (disable : 6387)
             CloseHandle((HANDLE)0);
-        #pragma warning (default : 6387)
+            #pragma warning (default : 6387)
             __rdtscp(&aux);
-    #elif (GCC) || (CLANG)
+        #elif (GCC) || (CLANG)
             unsigned low, high;
             __asm__ __volatile__(
                 "cpuid\n\t"
@@ -7803,19 +7526,19 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 : "=a"(low), "=d"(high)
                 :: "rbx", "rcx"
             );
-    #endif
+        #endif
         }
 
         // actual measurement
         constexpr u8  SAMPLE_COUNT = 100;
         constexpr u16 SCALE_FACTOR = 1000;
-        constexpr u32 THRESHOLD_SCALED = 9 * SCALE_FACTOR;  // <9× ratio => VM
+        constexpr u32 THRESHOLD_SCALED = 10 * SCALE_FACTOR;  // <10× ratio => VM
         u64 samples[SAMPLE_COUNT] = { 0 };
 
         for (int i = 0; i < SAMPLE_COUNT; ++i) {
             unsigned aux;
             u64 t0, t1, t2;
-    #if (MSVC)
+        #if (MSVC)
             int cpuInfo[4]; __cpuid(cpuInfo, 0);
             t0 = __rdtsc();
             GetProcessHeap();
@@ -7824,7 +7547,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             CloseHandle((HANDLE)0);
         #pragma warning (default : 6387)
             t2 = __rdtscp(&aux);
-    #else
+        #else
             unsigned low, high;
             __asm__ __volatile__(
                 "cpuid\n\t"
@@ -7854,7 +7577,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 :: "rbx", "rcx"
             );
             t2 = ((u64)high << 32) | low;
-    #endif
+        #endif
             const u64 heapCost = t1 - t0;
             const u64 closeCost = t2 - t1;
             samples[i] = (heapCost > 0)
@@ -7863,13 +7586,47 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         std::sort(std::begin(samples), std::end(samples));
+        restoreThreadPriority();
         const u64 median = samples[SAMPLE_COUNT / 2];
         debug("TIMER: Ratio: ", median, " - Threshold: <", THRESHOLD_SCALED);
 
         if (median < THRESHOLD_SCALED) {
-            restoreThreadPriority();
             return true;
         }
+
+        // simple check to detect poorly coded RDTSC patches
+        typedef struct _PROCESSOR_POWER_INFORMATION {
+            ULONG Number;
+            ULONG MaxMhz;
+            ULONG CurrentMhz;
+            ULONG MhzLimit;
+            ULONG MaxIdleState;
+            ULONG CurrentIdleState;
+        } PROCESSOR_POWER_INFORMATION, * PPROCESSOR_POWER_INFORMATION;
+
+        SYSTEM_INFO sysInfo;
+        GetSystemInfo(&sysInfo);
+        DWORD procCount = sysInfo.dwNumberOfProcessors;
+
+        std::vector<PROCESSOR_POWER_INFORMATION> ppi(procCount);
+
+        const NTSTATUS status = CallNtPowerInformation(
+            ProcessorInformation,
+            nullptr,
+            0,
+            ppi.data(),
+            sizeof(PROCESSOR_POWER_INFORMATION) * procCount
+        );
+
+        if (status != 0)
+            return false;       
+
+        for (DWORD i = 0; i < procCount; ++i) {
+            if (ppi[i].CurrentMhz < 1000) {
+                return true;
+            }
+        }
+
     #endif
         return false;
 #endif
@@ -7891,29 +7648,21 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::QEMU_FW_CFG
 	 */
 	[[nodiscard]] static bool sys_qemu_dir() {
-#if (LINUX)
+#if (!LINUX)
+        return false;
+#else 
 	    const std::string module_path = "/sys/module/qemu_fw_cfg/";
 	    const std::string firmware_path = "/sys/firmware/qemu_fw_cfg/";
-	
-    #if (CPP >= 17)
-        namespace fs = std::filesystem;
 
-	    return (
-	        fs::is_directory(module_path) && 
-	        fs::is_directory(firmware_path) &&
-	        fs::exists(module_path) &&
-	        fs::exists(firmware_path)
-	    );
-    #else
-
-    	return (
+    	if (
 	        util::is_directory(module_path.c_str()) && 
 	        util::is_directory(firmware_path.c_str()) &&
 	        util::exists(module_path.c_str()) &&
 	        util::exists(firmware_path.c_str())
-	    );
-    #endif
-#else
+	    ) {
+            return core::add(brands::QEMU);
+        }
+
         return false;
 #endif
 	}
@@ -8067,7 +7816,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             PULONG ReturnLength
             );
 
-        const HMODULE hNtdll = GetModuleHandleA("ntdll.dll");
+        const HMODULE hNtdll = GetModuleHandle(_T("ntdll.dll"));
         if (!hNtdll) {
             return false;
         }
@@ -8328,7 +8077,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         ULONG ret_length = 0;
         NTSTATUS nt_status = ((NTSTATUS)0xC0000001L);
 
-        const HMODULE ntdll = GetModuleHandleA("ntdll.dll");
+        const HMODULE ntdll = GetModuleHandle(_T("ntdll.dll"));
         if (!ntdll) return false;
 
         const char* funcNames[] = { "NtQuerySystemInformation" };
@@ -8368,27 +8117,35 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (!NT_SUCCESS(nt_status))
             return false;
 
-        auto system_pool_tagInfo = reinterpret_cast<PSYSTEM_POOLTAG_INFORMATION>(buffer_pool_info.data());
-        if (!system_pool_tagInfo || system_pool_tagInfo->Count == 0)
+        auto info = reinterpret_cast<PSYSTEM_POOLTAG_INFORMATION>(buffer_pool_info.data());
+        if (!info || info->Count == 0)
             return false;
 
-        size_t bad_pool_number = 0;
-        constexpr size_t badPoolCount = _countof(BadPoolDwords);
+        size_t badCount = 0;
+        const auto tagArray = info->TagInfo;
 
-        for (ULONG i = 0; i < system_pool_tagInfo->Count && bad_pool_number < 2; ++i) {
-            DWORD currentTag;
-            memcpy(&currentTag, system_pool_tagInfo->TagInfo[i].Tag, sizeof(DWORD));
+        for (ULONG i = 0; i < info->Count && badCount < 2; ++i) {
+            DWORD tag = *reinterpret_cast<const DWORD*>(&tagArray[i].Tag);
 
-            for (size_t j = 0; j < badPoolCount; ++j) {
-                if (currentTag == BadPoolDwords[j]) {
-                    debug("Bad Pools: Detected bad pool tag: 0x", std::hex, currentTag, std::dec);
-                    ++bad_pool_number;
-                    break;
-                }
+            switch (tag) {
+            case 0x44334D56: // VM3D
+            case 0x706D6D76: // vmmp
+            case 0x43475443: // CTGC
+            case 0x43434748: // HGCC
+            case 0x4D4E4748: // HGNM
+            case 0x4C424D56: // VMBL
+            case 0x4D444256: // VBDM
+            case 0x41474256: // VBGA
+                debug("Bad Pools: Detected bad pool tag: 0x",
+                    std::hex, tag, std::dec);
+                ++badCount;
+                break;
+            default:
+                break;
             }
         }
 
-        return bad_pool_number >= 2;
+        return badCount >= 2;
 #endif
     }
 
@@ -9118,7 +8875,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         typedef NTSTATUS(__stdcall* PNtOpenKey)(PHANDLE, ACCESS_MASK, POBJECT_ATTRIBUTES);
         typedef NTSTATUS(__stdcall* PNtQueryObject)(HANDLE, OBJECT_INFORMATION_CLASS, PVOID, ULONG, PULONG);
 
-        const HMODULE hModule = GetModuleHandleA("ntdll.dll");
+        const HMODULE hModule = GetModuleHandle(_T("ntdll.dll"));
         if (!hModule)
             return false;
 
@@ -9172,6 +8929,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
 
+
     /**
      * @brief Checks for VM signatures in firmware
      * @category Windows
@@ -9194,13 +8952,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             UCHAR TableBuffer[1];
         } SYSTEM_FIRMWARE_TABLE_INFORMATION, * PSYSTEM_FIRMWARE_TABLE_INFORMATION;
 #pragma warning (default : 4459)
+
         typedef NTSTATUS(__stdcall* PNtQuerySystemInformation)(ULONG, PVOID, ULONG, PULONG);
         constexpr ULONG STATUS_BUFFER_TOO_SMALL = 0xC0000023;
         constexpr DWORD ACPI_SIG = 'ACPI';
         constexpr DWORD RSMB_SIG = 'RSMB';
         constexpr DWORD FIRM_SIG = 'FIRM';
 
-        const HMODULE hNtdll = GetModuleHandleA("ntdll.dll");
+        const HMODULE hNtdll = GetModuleHandle(_T("ntdll.dll"));
         if (!hNtdll) return false;
 
         const char* functionNames[] = { "NtQuerySystemInformation" };
@@ -9219,255 +8978,213 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             "BOCHS", "BXPC"
         };
 
-        auto check_firmware_table = [&](DWORD signature, ULONG tableID) -> bool {
-            ULONG reqSize = 0;
-            // First call to determine the required buffer size
-            PSYSTEM_FIRMWARE_TABLE_INFORMATION info =
-                (PSYSTEM_FIRMWARE_TABLE_INFORMATION)malloc(sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION));
-            if (!info)
-                return false;
-            info->ProviderSignature = signature;
-            info->Action = 1;
-            info->TableID = tableID;
-            info->TableBufferLength = 0;
-            NTSTATUS status = ntqsi(SystemFirmwareTableInformation,
-                info,
-                sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION),
-                &reqSize);
-            free(info);
-            if (status != STATUS_BUFFER_TOO_SMALL)
-                return false;
+        PBYTE qsiBuffer = nullptr;
+        ULONG qsiBufferSize = 0;
 
-            // Second call to allocate proper buffer and get the data
-            info = (PSYSTEM_FIRMWARE_TABLE_INFORMATION)malloc(reqSize);
-            if (!info)
-                return false;
-            info->ProviderSignature = signature;
-            info->Action = 1;
-            info->TableID = tableID;
-            info->TableBufferLength = reqSize - sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION);
-            status = ntqsi(SystemFirmwareTableInformation,
-                info,
-                reqSize,
-                &reqSize);
-            if (!NT_SUCCESS(status)) {
-                free(info);
-                return false;
+        auto ensure_buffer = [&](ULONG needed) -> bool {
+            if (qsiBufferSize < needed) {
+                free(qsiBuffer);
+                qsiBuffer = static_cast<PBYTE>(malloc(needed));
+                if (!qsiBuffer) {
+                    qsiBufferSize = 0;
+                    return false;
+                }
+                qsiBufferSize = needed;
             }
+            return true;
+            };
 
-            const unsigned char* buf = info->TableBuffer;
+        auto query_table = [&](DWORD provider, ULONG tableID, bool rawEnum, PULONG outDataSize) -> PSYSTEM_FIRMWARE_TABLE_INFORMATION {
+            // header-only to get size
+            const ULONG header = sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION);
+            if (!ensure_buffer(header)) return nullptr;
+
+            auto hdr = reinterpret_cast<PSYSTEM_FIRMWARE_TABLE_INFORMATION>(qsiBuffer);
+            hdr->ProviderSignature = provider;
+            hdr->Action = rawEnum ? 0 : 1;
+            hdr->TableID = tableID;
+            hdr->TableBufferLength = 0;
+
+            NTSTATUS st = ntqsi(SystemFirmwareTableInformation, hdr, header, outDataSize);
+            if (st != STATUS_BUFFER_TOO_SMALL)
+                return nullptr;
+
+            ULONG fullSize = *outDataSize;
+            if (!ensure_buffer(fullSize)) return nullptr;
+
+            hdr = reinterpret_cast<PSYSTEM_FIRMWARE_TABLE_INFORMATION>(qsiBuffer);
+            hdr->ProviderSignature = provider;
+            hdr->Action = rawEnum ? 0 : 1;
+            hdr->TableID = tableID;
+            hdr->TableBufferLength = fullSize - header;
+
+            st = ntqsi(SystemFirmwareTableInformation, hdr, fullSize, outDataSize);
+            if (!NT_SUCCESS(st))
+                return nullptr;
+
+            return hdr;
+            };
+
+        auto check_firmware_table = [&](DWORD signature, ULONG tableID) -> bool {
+            ULONG gotSize = 0;
+            auto info = query_table(signature, tableID, false, &gotSize);
+            if (!info) return false;
+
+            const UCHAR* buf = info->TableBuffer;
             const size_t bufLen = info->TableBufferLength;
-            for (const char* target : targets) {
-                size_t targetLen = strlen(target);
-                if (targetLen == 0 || bufLen < targetLen)
-                    continue;
-                for (size_t offset = 0; offset <= bufLen - targetLen; offset++) {
-                    if (memcmp(buf + offset, target, targetLen) == 0) {
+
+            for (auto target : targets) {
+                size_t tlen = strlen(target);
+                if (tlen > bufLen) continue;
+                for (size_t i = 0; i <= bufLen - tlen; ++i) {
+                    if (memcmp(buf + i, target, tlen) == 0) {
                         const char* brand = nullptr;
-                        if (strcmp(target, "Parallels Software International") == 0 ||
-                            strcmp(target, "Parallels(R)") == 0)
+                        if (!strcmp(target, "Parallels Software International") || !strcmp(target, "Parallels(R)"))
                             brand = brands::PARALLELS;
-                        else if (strcmp(target, "innotek") == 0 ||
-                            strcmp(target, "VirtualBox") == 0 ||
-                            strcmp(target, "vbox") == 0 ||
-                            strcmp(target, "VBOX") == 0 ||
-                            strcmp(target, "Oracle") == 0)
+                        else if (!strcmp(target, "innotek") || !strcmp(target, "VirtualBox") || !strcmp(target, "vbox") || !strcmp(target, "VBOX") || !strcmp(target, "Oracle"))
                             brand = brands::VBOX;
-                        else if (strcmp(target, "VMware, Inc.") == 0 ||
-                            strcmp(target, "VMware") == 0 ||
-                            strcmp(target, "VMWARE") == 0)
+                        else if (!strcmp(target, "VMware, Inc.") || !strcmp(target, "VMware") || !strcmp(target, "VMWARE"))
                             brand = brands::VMWARE;
-                        else if (strcmp(target, "QEMU") == 0)
+                        else if (!strcmp(target, "QEMU"))
                             brand = brands::QEMU;
-                        else if (strcmp(target, "BOCHS") == 0 ||
-                            strcmp(target, "BXPC") == 0)
+                        else if (!strcmp(target, "BOCHS") || !strcmp(target, "BXPC"))
                             brand = brands::BOCHS;
-                        else {
-                            free(info);
+                        else
                             return true;
-                        }
-                        free(info);
+
                         return core::add(brand);
                     }
                 }
             }
 
-            // Check for the "777777" pattern (used by VMwareHardenerLoader)
+            // to detect VMAware's Hardener Loader, idea by MegaMax
             if (bufLen >= 6) {
-                constexpr size_t patternLen = 6;
-                for (size_t offset = 0; offset <= bufLen - patternLen; offset++) {
-                    bool allSevens = true;
-                    for (size_t j = 0; j < patternLen; j++) {
-                        if (buf[offset + j] != '7') {
-                            allSevens = false;
-                            break;
-                        }
-                    }
-                    if (allSevens) {
-                        free(info);
+                for (size_t i = 0; i <= bufLen - 6; ++i) {
+                    if (buf[i] == '7' && buf[i + 1] == '7' && buf[i + 2] == '7' && buf[i + 3] == '7' && buf[i + 4] == '7' && buf[i + 5] == '7') {
                         return core::add(brands::VMWARE_HARD);
                     }
                 }
             }
-            free(info);
             return false;
-        };
+            };
 
-        // Check RSMB table
-        if (check_firmware_table(RSMB_SIG, 0UL))
+        // RSMB table
+        if (check_firmware_table(RSMB_SIG, 0UL)) {
+            free(qsiBuffer);
             return true;
-
-        // Check FIRM table using two address values
-        for (ULONG addr : { 0xC0000UL, 0xE0000UL }) {
-            if (check_firmware_table(FIRM_SIG, addr))
-                return true;
         }
 
-        // ACPI table check
-        PSYSTEM_FIRMWARE_TABLE_INFORMATION acpiEnum =
-            (PSYSTEM_FIRMWARE_TABLE_INFORMATION)malloc(sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION));
-        if (!acpiEnum)
+        // FIRM tables
+        for (ULONG addr : { 0xC0000UL, 0xE0000UL }) {
+            if (check_firmware_table(FIRM_SIG, addr)) {
+                free(qsiBuffer);
+                return true;
+            }
+        }
+
+        // ACPI enumeration
+        ULONG totalLen = 0;
+        auto listInfo = query_table(ACPI_SIG, 0UL, true, &totalLen);
+        if (!listInfo) {
+            free(qsiBuffer);
             return false;
+        }
 
-        acpiEnum->ProviderSignature = ACPI_SIG;  // 'ACPI'
-        acpiEnum->Action = 0;
-        acpiEnum->TableID = 0;
-        acpiEnum->TableBufferLength = 0;
+        const DWORD* tables = reinterpret_cast<const DWORD*>(listInfo->TableBuffer);
+        ULONG tableCount = listInfo->TableBufferLength / sizeof(DWORD);
 
-        ULONG retLen = 0;
-        NTSTATUS status = ntqsi(
-            SystemFirmwareTableInformation,
-            acpiEnum,
-            sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION),
-            &retLen
-        );
+        if (tableCount < 4) { // idea by dmfrpro
+            free(qsiBuffer);
+            return true;
+        }
 
-        if (status == STATUS_BUFFER_TOO_SMALL)
-        {
-            free(acpiEnum);
-            acpiEnum = (PSYSTEM_FIRMWARE_TABLE_INFORMATION)malloc(retLen);
-            if (!acpiEnum)
-                return false;
+        // count SSDT
+        const DWORD ssdtSig = 'TDSS';
+        ULONG ssdtCount = 0;
+        for (ULONG i = 0; i < tableCount; ++i) {
+            if (tables[i] == ssdtSig)
+                ++ssdtCount;
+            if (ssdtCount == 2)
+                break;
+        }
+        if (ssdtCount < 2) {
+            free(qsiBuffer);
+            return true;
+        }
 
-            acpiEnum->ProviderSignature = ACPI_SIG;
-            acpiEnum->Action = 0;
-            acpiEnum->TableID = 0;
-            acpiEnum->TableBufferLength = retLen - sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION);
-
-            status = ntqsi(
-                SystemFirmwareTableInformation,
-                acpiEnum,
-                retLen,
-                &retLen
-            );
-
-            if (NT_SUCCESS(status))
-            {
-                const DWORD* tables = (const DWORD*)acpiEnum->TableBuffer;
-                ULONG        tableCount = acpiEnum->TableBufferLength / sizeof(DWORD);
-
-                for (ULONG i = 0; i < tableCount; ++i)
-                {
-                    if (tables[i] == 'FACP')   
-                    {
-                        PSYSTEM_FIRMWARE_TABLE_INFORMATION fadtEnum =
-                            (PSYSTEM_FIRMWARE_TABLE_INFORMATION)malloc(sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION));
-                        if (!fadtEnum)
-                            break;
-
-                        fadtEnum->ProviderSignature = ACPI_SIG;
-                        fadtEnum->Action = 0;
-                        fadtEnum->TableID = tables[i];
-                        fadtEnum->TableBufferLength = 0;
-
-                        ULONG fadtLen = 0;
-                        NTSTATUS st2 = ntqsi(
-                            SystemFirmwareTableInformation,
-                            fadtEnum,
-                            sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION),
-                            &fadtLen
-                        );
-
-                        if (st2 == STATUS_BUFFER_TOO_SMALL)
-                        {
-                            free(fadtEnum);
-                            fadtEnum = (PSYSTEM_FIRMWARE_TABLE_INFORMATION)malloc(fadtLen);
-                            if (fadtEnum)
-                            {
-                                fadtEnum->ProviderSignature = ACPI_SIG;
-                                fadtEnum->Action = 0;
-                                fadtEnum->TableID = tables[i];
-                                fadtEnum->TableBufferLength = fadtLen - sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION);
-
-                                if (NT_SUCCESS(ntqsi(
-                                    SystemFirmwareTableInformation,
-                                    fadtEnum,
-                                    fadtLen,
-                                    &fadtLen
-                                )))
-                                {
-                                    // https://uefi.org/htmlspecs/ACPI_Spec_6_4_html/05_ACPI_Software_Programming_Model/ACPI_Software_Programming_Model.html#preferred-pm-profile-system-types
-                                    BYTE* fadtBuf = (BYTE*)fadtEnum->TableBuffer;
-                                    if (fadtBuf[45] == 0) {
-                                        debug("FIRMWARE: Preferred_PM_Profile == 0 (Unspecified)");
-                                        free(fadtEnum);
-                                        free(acpiEnum);
-                                        return true;
-                                    }
-                                }
-                            }
-                        }
-
-                        if (fadtEnum) free(fadtEnum);
-                        break;  
-                    }
+        // iterate all ACPI tables
+        constexpr DWORD dsdtSig = 'TDSD';
+        constexpr DWORD facpSig = 'PCAF';
+        for (ULONG i = 0; i < tableCount; ++i) {
+            DWORD sig = tables[i];
+            if (sig == facpSig) {
+                ULONG fSize = 0;
+                auto fadt = query_table(ACPI_SIG, sig, false, &fSize);
+                if (!fadt) continue;
+                BYTE* buf = reinterpret_cast<BYTE*>(fadt->TableBuffer);
+                // https://uefi.org/htmlspecs/ACPI_Spec_6_4_html/05_ACPI_Software_Programming_Model/ACPI_Software_Programming_Model.html#preferred-pm-profile-system-types
+                if (fSize >= 45 + 1 && buf[45] == 0) { // idea by dmfrpro
+                    free(qsiBuffer);
+                    return true;
                 }
             }
+            if (sig == dsdtSig) {
+                ULONG dsdtSize = 0;
+                auto dsdt = query_table(ACPI_SIG, sig, false, &dsdtSize);
+                if (dsdt) {
+                    const char* tb = reinterpret_cast<const char*>(dsdt->TableBuffer);
+                    bool foundCPU = false;
 
-            const PDWORD tableNames = (PDWORD)calloc(0x1000, 1);
-            if (!tableNames) {
-                free(acpiEnum);
-                return false;
-            }
-            const DWORD sig = 'ACPI';
-            const DWORD bytes = EnumSystemFirmwareTables(sig, tableNames, 0x1000);
-            const ULONG tCount = bytes / sizeof(DWORD);
+                    for (ULONG j = 0; j + 8 <= dsdtSize; ++j) {
+                        if (memcmp(tb + j, "ACPI0007", 8) == 0) { // idea by dmfrpro
+                            foundCPU = true;
+                            break;
+                        }
+                    }
 
-            const DWORD ssdtSig = 'SSDT';
-            ULONG ssdtCount = 0;
-            for (ULONG i = 0; i < tCount; ++i) {
-                if (tableNames[i] == ssdtSig) ++ssdtCount;
-            }
-            if (ssdtCount == 1) {
-                debug("FIRMWARE: Only one SSDT table found");
-                free(tableNames);
-                free(acpiEnum);
-                return true;
-            }
+                    if (!foundCPU) {
+                        free(qsiBuffer);
+                        return true;
+                    }
 
-            // RSDT/XSDT, FADT, DSDT and RSDP (this one since it’s required as a pointer althought not being a true table)
-            if (tCount < 4) { // by dmfrpro
-                debug("FIRMWARE: not enough ACPI tables found");
-                free(tableNames);
-                free(acpiEnum);
-                return true;
-            }
+                    constexpr const char* osi_targets[] = {
+                       "Windows 95",            "Windows 98",
+                       "Windows 2000",          "Windows 2000.1",
+                       "Windows ME: Millennium Edition",
+                       "Windows ME: Millennium Edition",  // some firmwares omit space
+                       "Windows XP",            "Windows 2001",
+                       "Windows 2006",          "Windows 2009",
+                       "Windows 2012",          "Windows 2015",
+                       "Windows 2020",          "Windows 2022",
 
-            if (NT_SUCCESS(status)) {
-                const DWORD* tables2 = reinterpret_cast<const DWORD*>(acpiEnum->TableBuffer);
-                ULONG bufTableCnt = acpiEnum->TableBufferLength / sizeof(DWORD);
-                for (ULONG t = 0; t < bufTableCnt; ++t) {
-                    if (check_firmware_table(ACPI_SIG, tables2[t])) {
-                        free(tableNames);
-                        free(acpiEnum);
+                    };
+                    constexpr size_t n_osi = sizeof(osi_targets) / sizeof(osi_targets[0]);
+
+                    bool foundOSI = false;
+                    for (size_t t = 0; t < n_osi && !foundOSI; ++t) {
+                        const char* s = osi_targets[t];
+                        size_t len = strlen(s);
+                        for (ULONG j = 0; j + len <= dsdtSize; ++j) {
+                            if (memcmp(tb + j, s, len) == 0) {
+                                foundOSI = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (!foundOSI) {
+                        free(qsiBuffer);
                         return true;
                     }
                 }
             }
-
-            free(tableNames);
+            if (check_firmware_table(ACPI_SIG, sig)) {
+                free(qsiBuffer);
+                return true;
+            }
         }
-        free(acpiEnum);
+
+        free(qsiBuffer);
 
         std::unique_ptr<util::sys_info> info = util::make_unique<util::sys_info>();
 
@@ -9651,49 +9368,41 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!WINDOWS)
         return false;
 #else
-        HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-        const bool doUninit = SUCCEEDED(hr) && hr != RPC_E_CHANGED_MODE;
-        bool hasDevice = false;
+        HKEY hKey = nullptr;
+        LONG err = RegOpenKeyEx(
+            HKEY_LOCAL_MACHINE,
+            R"(SOFTWARE\Microsoft\Windows\CurrentVersion\MMDevices\Audio\Render)",
+            0,
+            KEY_READ | KEY_WOW64_64KEY,
+            &hKey
+        );
 
-        {
-            Microsoft::WRL::ComPtr<IMMDeviceEnumerator> enumerator;
-            hr = CoCreateInstance(
-                __uuidof(MMDeviceEnumerator),
-                nullptr,
-                CLSCTX_INPROC_SERVER,
-                IID_PPV_ARGS(&enumerator)
-            );
-            if (FAILED(hr)) {
-                // enumerator==nullptr so no Release
-                goto CLEANUP;
-            }
-
-            // active render endpoints (speakers/headphones)
-            Microsoft::WRL::ComPtr<IMMDeviceCollection> devices;
-            hr = enumerator->EnumAudioEndpoints(
-                eRender,
-                DEVICE_STATE_ACTIVE,
-                &devices
-            );
-            if (FAILED(hr)) {
-                goto CLEANUP;
-            }
-
-            UINT count = 0;
-            hr = devices->GetCount(&count);
-            if (SUCCEEDED(hr) && count > 0) {
-                hasDevice = true;
-            }
+        if (err != ERROR_SUCCESS) {
+            return true;  
         }
 
-    CLEANUP:
-        if (doUninit) {
-            CoUninitialize();
-        }
+        DWORD subKeyCount = 0;
+        RegQueryInfoKey(
+            hKey,
+            nullptr,   
+            nullptr,    
+            nullptr,    
+            &subKeyCount,  
+            nullptr,    
+            nullptr,   
+            nullptr,    
+            nullptr,    
+            nullptr,   
+            nullptr,    
+            nullptr     
+        );
 
-        return !hasDevice;
+        RegCloseKey(hKey);
+
+        return subKeyCount == 0;
 #endif
     }
+
 
 
     /**
@@ -9904,9 +9613,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             case 0x54584E00u: // "TXN\0"
             case 0x524F4343u: // "ROCC"
             case 0x4C454E00u: // "LEN\0"
-            return false;
-        default:
-            return true;
+                return false;
+            default:
+                return true;
         }
 #endif
     }
@@ -9976,8 +9685,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
         #endif
     
-        bool found = false;
-    
         for (const auto& dev : devices) {
             const u32 id = ((dev.vendor_id << 16) | dev.device_id);
     
@@ -10033,41 +9740,140 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 case 0x0e0f8002: // Root Hub
                 case 0x0e0f8003: // Root Hub
                 case 0x0e0ff80a: // Smoker FX2
-    
+
+                // Red Hat + QEMU
+                case 0x1b360001: // Red Hat, Inc. QEMU PCI-PCI bridge
+                case 0x1b360002: // Red Hat, Inc. QEMU PCI 16550A Adapter
+                case 0x1b360003: // Red Hat, Inc. QEMU PCI Dual-port 16550A Adapter
+                case 0x1b360004: // Red Hat, Inc. QEMU PCI Quad-port 16550A Adapter
+                case 0x1b360005: // Red Hat, Inc. QEMU PCI Test Device
+                case 0x1b360008: // Red Hat, Inc. QEMU PCIe Host bridge
+                case 0x1b360009: // Red Hat, Inc. QEMU PCI Expander bridge
+                case 0x1b36000b: // Red Hat, Inc. QEMU PCIe Expander bridge
+                case 0x1b36000c: // Red Hat, Inc. QEMU PCIe Root port
+                case 0x1b36000d: // Red Hat, Inc. QEMU XHCI Host Controller
+                case 0x1b360010: // Red Hat, Inc. QEMU NVM Express Controller
+                case 0x1b360011: // Red Hat, Inc. QEMU PVPanic device
+                case 0x1b360013: // Red Hat, Inc. QEMU UFS Host Controller
+
+                // QEMU
+                case 0x6270001: // Adomax Technology Co., Ltd QEMU Tablet
+                case 0x1d1d1f1f: // CNEX Labs QEMU NVM Express LightNVM Controller
+                case 0x80865845: // Intel Corporation QEMU NVM Express Controller
+                case 0x1d6b0200: // Linux Foundation Qemu Audio Device
+                
+                // vGPUs (mostly NVIDIA)
+                case 0x10de0fe7: // GK107GL [GRID K100 vGPU]
+                case 0x10de0ff7: // GK107GL [GRID K140Q vGPU]
+                case 0x10de118d: // GK104GL [GRID K200 vGPU]
+                case 0x10de11b0: // GK104GL [GRID K240Q\K260Q vGPU]
+                case 0x1ec6020f: // Vastai Technologies SG100 vGPU
+                
                 // VirtualBox
                 case 0x80ee0021: // USB Tablet
                 case 0x80ee0022: // multitouch tablet
-    
-                // Connectix (VirtualPC)
-                case 0x29556e61: // OHCI USB 1.1 controller
-                    found = true;
-                    break;
+                
+                // misc
+                case 0x29556e61: // Connectix (VirtualPC) OHCI USB 1.1 controller
+                case 0x1ab84000: // Parallels, Inc.	Virtual Machine Communication Interface
+                    debug(
+                        "PCI_VM_DEVICE_ID: found vendor ID = ", 
+                        "0x", std::setw(4), std::setfill('0'), std::hex, dev.vendor_id,
+                        " device ID = 0x", std::setw(4), std::setfill('0'), std::hex, dev.device_id
+                    );
+                    
+                    return true;
             }
-    
-            if (found) {
-                debug(
-                    "PCI_VM_DEVICE_ID: found vendor ID = ", 
-                    "0x", std::setw(4), std::setfill('0'), std::hex, dev.vendor_id,
-                    " device ID = 0x", std::setw(4), std::setfill('0'), std::hex, dev.device_id
-                );
-    
-                break;
-            }
+            
+            // TODO: EXTRAS TO ADD (64 instead of 32 bits for device_id field)
+            // 
+            // Advanced Micro Devices, Inc. [AMD]	1022	QEMU Virtual Machine	1af41100
+            // Apple Inc.	106b	QEMU Virtual Machine	1af41100
+            // Cirrus Logic	1013	QEMU Virtual Machine	1af41100
+            // Intel Corporation	8086	QEMU Virtual Machine	1af41100
+            // NEC Corporation	1033	QEMU Virtual Machine	1af41100
+            // Realtek Semiconductor Co., Ltd.	10ec	QEMU Virtual Machine	1af41100
+            // VIA Technologies, Inc.	1106	QEMU Virtual Machine	1af41100
+            // Red Hat, Inc. 1af4 QEMU Virtual Machine	1af41100
+            // Red Hat, Inc. 1b36 QEMU Virtual Machine	1af41100
         }
-    
-        return found;
+        
+        return false;
 #endif
     }
+    
 
+    /**
+     * @brief Check for QEMU's hot-plug signature
+     * @category Windows
+     * @author Requiem (https://github.com/NotRequiem)
+     * @implements VM::QEMU_PASSTHROUGH
+     */
+    [[nodiscard]] static bool qemu_passthrough()
+    {
+#if (!WINDOWS)
+        return false;
+#else
+        // QEMU passthrough location paths
+        static const std::wregex busRegex(L"PCIROOT\\(0\\)#PCI\\(0202\\)");
+        static const std::wregex acpiSlotRegex(L"#ACPI\\(S[0-9]{2}_\\)");
+
+        HDEVINFO hDevInfo = SetupDiGetClassDevsW(
+            &GUID_DEVCLASS_DISPLAY,
+            nullptr,
+            nullptr,
+            DIGCF_PRESENT);
+        if (hDevInfo == INVALID_HANDLE_VALUE)
+            return false;
+
+        SP_DEVINFO_DATA devInfo = {};
+        devInfo.cbSize = sizeof(devInfo);
+        const DEVPROPKEY key = DEVPKEY_Device_LocationPaths;
+
+        for (DWORD idx = 0; SetupDiEnumDeviceInfo(hDevInfo, idx, &devInfo); ++idx)
+        {
+            DEVPROPTYPE propType = 0;
+            DWORD requiredSize = 0;
+
+            SetupDiGetDevicePropertyW(
+                hDevInfo, &devInfo, &key, &propType,
+                nullptr, 0, &requiredSize, 0);
+
+            if (GetLastError() != ERROR_INSUFFICIENT_BUFFER || requiredSize == 0)
+                continue;
+
+            std::vector<BYTE> buffer(requiredSize);
+            if (!SetupDiGetDevicePropertyW(
+                hDevInfo, &devInfo, &key, &propType,
+                buffer.data(), requiredSize, &requiredSize, 0))
+                continue;
+
+            const wchar_t* ptr = reinterpret_cast<const wchar_t*>(buffer.data());
+            while (*ptr) {
+                std::wstring path(ptr);
+                if (std::regex_search(path, busRegex) ||
+                    std::regex_search(path, acpiSlotRegex))
+                {
+                    SetupDiDestroyDeviceInfoList(hDevInfo);
+                    return true;
+                }
+                ptr += path.size() + 1;
+            }
+        }
+
+        SetupDiDestroyDeviceInfoList(hDevInfo);
+        return false;
+#endif
+    }
     // ADD NEW TECHNIQUE FUNCTION HERE
-
-
-
-
-
-
-
-
+    
+    
+    
+    
+    
+    
+    
+    
 
 
 
@@ -11298,7 +11104,6 @@ public: // START OF PUBLIC FUNCTIONS
             case ODD_CPU_THREADS: return "ODD_CPU_THREADS";
             case INTEL_THREAD_MISMATCH: return "INTEL_THREAD_MISMATCH";
             case XEON_THREAD_MISMATCH: return "XEON_THREAD_MISMATCH";
-            case NETTITUDE_VM_MEMORY: return "NETTITUDE_VM_MEMORY";
             case CUCKOO_DIR: return "CUCKOO_DIR";
             case CUCKOO_PIPE: return "CUCKOO_PIPE";
             case HYPERV_HOSTNAME: return "HYPERV_HOSTNAME";
@@ -11348,8 +11153,8 @@ public: // START OF PUBLIC FUNCTIONS
             case NSJAIL_PID: return "NSJAIL_PID";
             case PCI_VM: return "PCI_VM";
             case TPM: return "TPM";
-
             case PCI_VM_DEVICE_ID: return "PCI_VM_DEVICE_ID";
+            case QEMU_PASSTHROUGH: return "QEMU_PASSTHROUGH";
             // ADD NEW CASE HERE FOR NEW TECHNIQUE
             default: return "Unknown flag";
         }
@@ -11550,10 +11355,10 @@ public: // START OF PUBLIC FUNCTIONS
 
 
     /**
-     * @brief Fetch the conclusion message based on the brand and percentage
-     * @param any flag combination in VM structure or nothing
-     * @return std::string
-     */
+      * @brief Fetch the conclusion message based on the brand and percentage
+      * @param any flag combination in VM structure or nothing
+      * @return std::string
+      */
     template <typename ...Args>
     static std::string conclusion(Args ...args) {
         flagset flags = core::arg_handler(args...);
@@ -11565,20 +11370,27 @@ public: // START OF PUBLIC FUNCTIONS
         constexpr const char* very_unlikely = "Very unlikely a VM";
         constexpr const char* unlikely = "Unlikely a VM";
 
-        // std::string_view would be useful here, but it'll be annoying to have #if (CPP > 17) directives everywhere
+#if (CPP >= 17)
+        constexpr std::string_view potentially = "Potentially";
+        constexpr std::string_view might = "Might be";
+        constexpr std::string_view likely = "Likely";
+        constexpr std::string_view very_likely = "Very likely";
+        constexpr std::string_view inside_vm = "Running inside";
+#else
         const std::string potentially = "Potentially";
         const std::string might = "Might be";
         const std::string likely = "Likely";
         const std::string very_likely = "Very likely";
         const std::string inside_vm = "Running inside";
+#endif
 
-        auto make_conclusion = [&](const std::string &category) -> std::string {
+        auto make_conclusion = [&](std::string_view category) -> std::string {
             // this basically just fixes the grammatical syntax
             // by either having "a" or "an" before the VM brand
             // name, like it would look weird if the conclusion 
             // message was "an VirtualBox" or "a Anubis", so this
             // section fixes that issue.
-            std::string article = "";   
+            std::string article = "";
 
             if (
                 (brand_tmp == brands::ACRN) ||
@@ -11611,21 +11423,22 @@ public: // START OF PUBLIC FUNCTIONS
 
             // Hyper-V artifacts are an exception due to how unique the circumstance is
             if (brand_tmp == brands::HYPERV_ARTIFACT) {
-               return (category + article + brand_tmp);
-            } else {
-                return (category + article + brand_tmp + " VM");
+                return std::string(category) + article + brand_tmp;
+            }
+            else {
+                return std::string(category) + article + brand_tmp + " VM";
             }
         };
 
         if (core::is_enabled(flags, DYNAMIC)) {
-            if      (percent_tmp == 0)   { return baremetal; } 
-            else if (percent_tmp <= 20)  { return very_unlikely; } 
-            else if (percent_tmp <= 35)  { return unlikely; } 
-            else if (percent_tmp < 50)   { return make_conclusion(potentially); } 
-            else if (percent_tmp <= 62)  { return make_conclusion(might); } 
-            else if (percent_tmp <= 75)  { return make_conclusion(likely); } 
-            else if (percent_tmp < 100)  { return make_conclusion(very_likely); } 
-            else                         { return make_conclusion(inside_vm); }
+            if      (percent_tmp == 0)  { return baremetal; }
+            else if (percent_tmp <= 20) { return very_unlikely; }
+            else if (percent_tmp <= 35) { return unlikely; }
+            else if (percent_tmp < 50)  { return make_conclusion(potentially); }
+            else if (percent_tmp <= 62) { return make_conclusion(might); }
+            else if (percent_tmp <= 75) { return make_conclusion(likely); }
+            else if (percent_tmp < 100) { return make_conclusion(very_likely); }
+            else                        { return make_conclusion(inside_vm); }
         }
 
         if (percent_tmp == 100) {
@@ -11850,7 +11663,6 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     std::make_pair(VM::INTEL_THREAD_MISMATCH, VM::core::technique(95, VM::intel_thread_mismatch)),
     std::make_pair(VM::XEON_THREAD_MISMATCH, VM::core::technique(95, VM::xeon_thread_mismatch)),
     std::make_pair(VM::AMD_THREAD_MISMATCH, VM::core::technique(95, VM::amd_thread_mismatch)),
-    std::make_pair(VM::NETTITUDE_VM_MEMORY, VM::core::technique(100, VM::nettitude_vm_memory)),
     std::make_pair(VM::CUCKOO_DIR, VM::core::technique(30, VM::cuckoo_dir)),
     std::make_pair(VM::CUCKOO_PIPE, VM::core::technique(30, VM::cuckoo_pipe)),
     std::make_pair(VM::HYPERV_HOSTNAME, VM::core::technique(30, VM::hyperv_hostname)),
@@ -11900,6 +11712,8 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     std::make_pair(VM::PCI_VM, VM::core::technique(100, VM::lspci)),
     std::make_pair(VM::TPM, VM::core::technique(50, VM::tpm)),
     std::make_pair(VM::PCI_VM_DEVICE_ID, VM::core::technique(90, VM::pci_vm_device_id)),
+    std::make_pair(VM::QEMU_PASSTHROUGH, VM::core::technique(90, VM::qemu_passthrough)),
+
     // ADD NEW TECHNIQUE STRUCTURE HERE
 };
 
