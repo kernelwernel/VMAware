@@ -331,8 +331,7 @@ bool is_disabled(const VM::enum_flags flag) {
         case VM::VMWARE_DMESG: 
         case VM::PORT_CONNECTORS: 
         case VM::ACPI_TEMPERATURE: 
-        case VM::LSHW_QEMU:
-        case VM::PCI_VM: return true;
+        case VM::LSHW_QEMU: return true;
         default: return false;
     }
 }
@@ -395,7 +394,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::FILE_ACCESS_HISTORY:
             case VM::UNKNOWN_MANUFACTURER:
             case VM::NSJAIL_PID:
-            case VM::PCI_VM:
             case VM::PCI_VM_DEVICE_ID:
             // ADD LINUX FLAG
             return false;
@@ -974,7 +972,6 @@ void general() {
     checker(VM::FILE_ACCESS_HISTORY, "low file access count");
     checker(VM::UNKNOWN_MANUFACTURER, "unknown manufacturer ids");
     checker(VM::NSJAIL_PID, "nsjail PID");
-    checker(VM::PCI_VM, "PCIe bridge ports");
     checker(VM::TPM, "TPM manufacturer");
     checker(VM::PCI_VM_DEVICE_ID, "PCI vendor/device ID");
     // ADD NEW TECHNIQUE CHECKER HERE
