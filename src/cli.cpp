@@ -958,7 +958,7 @@ void general() {
     checker(VM::PROCESSOR_NUMBER, "processor count");
     checker(VM::NUMBER_OF_CORES, "CPU core count");
     checker(VM::ACPI_TEMPERATURE, "thermal devices");
-    checker(VM::POWER_CAPABILITIES, "Power capabilities");
+    checker(VM::POWER_CAPABILITIES, "power capabilities");
     checker(VM::SETUPAPI_DISK, "SETUPDI diskdrive");
     checker(VM::QEMU_FW_CFG, "QEMU fw_cfg device");
     checker(VM::LSHW_QEMU, "QEMU in lshw output");

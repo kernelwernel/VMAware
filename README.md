@@ -112,6 +112,8 @@ sudo make install
 cmake -S . -B build/ -G "Visual Studio 16 2019"
 ```
 
+Optionally, you can create a debug build by appending `-DCMAKE_BUILD_TYPE=Debug` to the cmake arguments.
+
 <br>
 
 
