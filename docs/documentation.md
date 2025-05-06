@@ -539,7 +539,6 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::AUDIO` | Check if no waveform-audio output devices are present in the system | 🪟 | 25% |  |  |  |  | [link](https://github.com/kernelwernel/VMAware/blob/8cb2491b1c7d2cb7300d1d698b7c64c953b4ae75/src/vmaware.hpp#L9980) |
 | `VM::UNKNOWN_MANUFACTURER` | Check if the CPU manufacturer is not known | 🐧🪟🍏 | 50% |  |  |  |  | [link](https://github.com/kernelwernel/VMAware/blob/8cb2491b1c7d2cb7300d1d698b7c64c953b4ae75/src/vmaware.hpp#L10016) |
 | `VM::NSJAIL_PID` | Check if process status matches with nsjail patterns with PID anomalies | 🐧 | 75% |  |  |  | Disabled by default | [link](https://github.com/kernelwernel/VMAware/blob/8cb2491b1c7d2cb7300d1d698b7c64c953b4ae75/src/vmaware.hpp#L10083) |
-| `VM::PCI_VM` | Check for PCIe bridge names for known VM keywords and brands | 🐧 | 100% |  |  |  | Disabled by default | [link](https://github.com/kernelwernel/VMAware/blob/8cb2491b1c7d2cb7300d1d698b7c64c953b4ae75/src/vmaware.hpp#L10142) |
 | `VM::TPM` | Check if the system has a physical TPM by matching the TPM manufacturer against known physical TPM chip vendors | 🪟 | 50% |  |  |  |  | [link](https://github.com/kernelwernel/VMAware/blob/fb66db9fdd7894edebe5eeade4b0148a08bd5514/src/vmaware.hpp#L10011)|
 | `VM::PCI_VM_DEVICE_ID` | Check for PCI vendor and device IDs that are VM-specific | 🐧 | 90% |  |  |  |  |  |
 | `VM::QEMU_PASSTHROUGH` | Check for QEMU's hot-plug signature | 🪟 | 100% |  |  |  |  |  |

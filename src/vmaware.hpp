@@ -656,7 +656,6 @@ public:
         AUDIO,
         UNKNOWN_MANUFACTURER,
         NSJAIL_PID,
-        PCI_VM,
         TPM,
         PCI_VM_DEVICE_ID,
         QEMU_PASSTHROUGH,
@@ -908,8 +907,7 @@ private:
             constexpr std::size_t buffer_size = sizeof(i32) * buffer.size();
             std::array<char, 64> charbuffer{};
 
-            std::string brand = "";
-            brand.reserve(48); // 3 leafs 16 each
+            std::string brand(48, '\0'); // 3 leafs 16 each
 
             constexpr std::array<u32, 3> ids = { { cpu::leaf::brand1, cpu::leaf::brand2, cpu::leaf::brand3 } };
             for (const u32& id : ids) {
@@ -9665,52 +9663,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 	}
 
 
-	/**
-	 * @brief Check for PCIe bridge names for known VM keywords and brands
-	 * @category Linux
-     * @implements VM::PCI_VM
-     */
-    [[nodiscard]] static bool lspci() {
-#if (!LINUX)
-        return false;
-#else
-        if (!(
-            (util::exists("/usr/bin/lspci")) || 
-            (util::exists("/bin/lspci")) ||
-            (util::exists("/usr/sbin/lspci"))
-        )) {
-            debug("PCI_VM: ", "binary doesn't exist");
-            return false;
-        }
-
-        const std::unique_ptr<std::string> result = util::sys_result("lspci 2>&1");
-    
-        if (result == nullptr) {
-            debug("PCI_VM: ", "invalid stdout output from lspci");
-            return false;
-        }
-    
-        const std::string full_command = *result;
-    
-        auto pci_finder = [&](const char* str) -> bool {
-            if (util::find(full_command, str)) { 
-                debug("PCI_VM: found ", str);
-                return true;
-            } else {
-                return false;
-            }
-        };
-    
-        if (pci_finder("QEMU PCIe Root port")) { return core::add(brands::QEMU); }
-        if (pci_finder("QEMU XHCI Host Controller")) { return core::add(brands::QEMU); }
-        if (pci_finder("QXL paravirtual graphic card")) { return core::add(brands::QEMU); }
-        if (pci_finder("Virtio")) { return true; } // could be used by a lot of brands, who knows
-
-        return false;
-#endif
-    }
-
-
     /**
      * @brief Check if the system has a physical TPM by matching the TPM manufacturer against known physical TPM chip vendors
      * @category Windows
@@ -9857,6 +9809,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 );
             }
         #endif
+
+        auto found = [](const std::string &b) -> bool {
+            debug(
+                "PCI_VM_DEVICE_ID: found ", b, ", vendor ID = ", 
+                "0x", std::setw(4), std::setfill('0'), std::hex, dev.vendor_id,
+                " device ID = 0x", std::setw(4), std::setfill('0'), std::hex, dev.device_id
+            );
+
+            return true;
+        };
     
         for (const auto& dev : devices) {
             const u32 id = ((dev.vendor_id << 16) | dev.device_id);
@@ -9882,6 +9844,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 case 0x1af41053: // Virtio socket
                 case 0x1af4105a: // Virtio file system
                 case 0x1af41110: // Inter-VM shared memory
+                    return true;
     
                 // VMware
                 case 0x15ad0405: // SVGA II Adapter
@@ -9913,6 +9876,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 case 0x0e0f8002: // Root Hub
                 case 0x0e0f8003: // Root Hub
                 case 0x0e0ff80a: // Smoker FX2
+                    return found(brands::VMWARE);
 
                 // Red Hat + QEMU
                 case 0x1b360001: // Red Hat, Inc. QEMU PCI-PCI bridge
@@ -9928,34 +9892,33 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 case 0x1b360010: // Red Hat, Inc. QEMU NVM Express Controller
                 case 0x1b360011: // Red Hat, Inc. QEMU PVPanic device
                 case 0x1b360013: // Red Hat, Inc. QEMU UFS Host Controller
+                case 0x1b360100: // Red Hat, Inc. QXL paravirtual graphic card
 
                 // QEMU
-                case 0x6270001: // Adomax Technology Co., Ltd QEMU Tablet
+                case 0x06270001: // Adomax Technology Co., Ltd QEMU Tablet
                 case 0x1d1d1f1f: // CNEX Labs QEMU NVM Express LightNVM Controller
                 case 0x80865845: // Intel Corporation QEMU NVM Express Controller
                 case 0x1d6b0200: // Linux Foundation Qemu Audio Device
-                
+                    return found(brands::QEMU);
+
                 // vGPUs (mostly NVIDIA)
                 case 0x10de0fe7: // GK107GL [GRID K100 vGPU]
                 case 0x10de0ff7: // GK107GL [GRID K140Q vGPU]
                 case 0x10de118d: // GK104GL [GRID K200 vGPU]
                 case 0x10de11b0: // GK104GL [GRID K240Q\K260Q vGPU]
                 case 0x1ec6020f: // Vastai Technologies SG100 vGPU
+                    return true;
                 
                 // VirtualBox
                 case 0x80ee0021: // USB Tablet
                 case 0x80ee0022: // multitouch tablet
+                    return found(brands::VBOX);
                 
-                // misc
-                case 0x29556e61: // Connectix (VirtualPC) OHCI USB 1.1 controller
-                case 0x1ab84000: // Parallels, Inc.	Virtual Machine Communication Interface
-                    debug(
-                        "PCI_VM_DEVICE_ID: found vendor ID = ", 
-                        "0x", std::setw(4), std::setfill('0'), std::hex, dev.vendor_id,
-                        " device ID = 0x", std::setw(4), std::setfill('0'), std::hex, dev.device_id
-                    );
-                    
-                    return true;
+                // Connectix (VirtualPC) OHCI USB 1.1 controller
+                case 0x29556e61: return found(brands::VPC);
+            
+                // Parallels, Inc.	Virtual Machine Communication Interface
+                case 0x1ab84000: return found(brands::PARALLELS);
             }
             
             // TODO: EXTRAS TO ADD (64 instead of 32 bits for device_id field)
@@ -10398,7 +10361,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             flags.flip(PORT_CONNECTORS);
             flags.flip(TEMPERATURE);
             flags.flip(LSHW_QEMU);
-            flags.flip(PCI_VM);
 
             // disable all the settings flags
             flags.flip(NO_MEMO);
@@ -11329,7 +11291,6 @@ public: // START OF PUBLIC FUNCTIONS
             case AUDIO: return "AUDIO";
             case UNKNOWN_MANUFACTURER: return "UNKNOWN_MANUFACTURER";
             case NSJAIL_PID: return "NSJAIL_PID";
-            case PCI_VM: return "PCI_VM";
             case TPM: return "TPM";
             case PCI_VM_DEVICE_ID: return "PCI_VM_DEVICE_ID";
             case QEMU_PASSTHROUGH: return "QEMU_PASSTHROUGH";
@@ -11562,12 +11523,16 @@ public: // START OF PUBLIC FUNCTIONS
         const std::string inside_vm = "Running inside";
 #endif
 
-        auto make_conclusion = [&](std::string_view category) -> std::string {
+#if (CPP >= 17)
+        auto make_conclusion = [&](const std::string_view category) -> std::string {
+#else
+        auto make_conclusion = [&](const std::string &category) -> std::string {
+#endif
             // this basically just fixes the grammatical syntax
             // by either having "a" or "an" before the VM brand
-            // name, like it would look weird if the conclusion 
+            // name. Like it would look weird if the conclusion 
             // message was "an VirtualBox" or "a Anubis", so this
-            // section fixes that issue.
+            // lambda fixes that issue.
             std::string article = "";
 
             if (
@@ -11892,7 +11857,6 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     std::make_pair(VM::AUDIO, VM::core::technique(25, VM::check_audio)),
     std::make_pair(VM::UNKNOWN_MANUFACTURER, VM::core::technique(50, VM::unknown_manufacturer)),
     std::make_pair(VM::NSJAIL_PID, VM::core::technique(75, VM::nsjail_proc_id)),
-    std::make_pair(VM::PCI_VM, VM::core::technique(100, VM::lspci)),
     std::make_pair(VM::TPM, VM::core::technique(50, VM::tpm)),
     std::make_pair(VM::PCI_VM_DEVICE_ID, VM::core::technique(90, VM::pci_vm_device_id)),
     std::make_pair(VM::QEMU_PASSTHROUGH, VM::core::technique(90, VM::qemu_passthrough)),
