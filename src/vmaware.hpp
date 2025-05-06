@@ -11039,12 +11039,11 @@ public: // START OF PUBLIC FUNCTIONS
         
 
         // debug stuff to see the brand scoreboard, ignore this
-//#ifdef __VMAWARE_DEBUG__
+#ifdef __VMAWARE_DEBUG__
         for (const auto& p : brands) {
-            //core_debug("scoreboard: ", (int)p.second, " : ", p.first);
-            std::cout << "scoreboard: " << (int)p.second << " : " << p.first;
+            core_debug("scoreboard: ", (int)p.second, " : ", p.first);
         }
-//#endif
+#endif
 
         return ret_str;
     }
