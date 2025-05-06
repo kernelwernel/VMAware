@@ -629,7 +629,6 @@ public:
         VM_PROCS,
         VBOX_MODULE,
         SYSINFO_PROC,
-        DEVICE_TREE,
         DMI_SCAN,
         SMBIOS_VM_BIT,
         PODMAN_FILE,
@@ -643,7 +642,6 @@ public:
         VM_DEVICES,
         PROCESSOR_NUMBER,
         NUMBER_OF_CORES,
-        ACPI_TEMPERATURE,
         QEMU_FW_CFG,
         LSHW_QEMU,
         VIRTUAL_PROCESSORS,
@@ -1256,7 +1254,7 @@ private:
                 return (
                     !cache_keys.test(VMWARE_DMESG) && 
                     !cache_keys.test(PORT_CONNECTORS) && 
-                    !cache_keys.test(ACPI_TEMPERATURE) && 
+                    !cache_keys.test(TEMPERATURE) && 
                     !cache_keys.test(LSHW_QEMU)
                 );
             }
@@ -1768,30 +1766,7 @@ private:
 
         // Checks if a process is running
         [[nodiscard]] static bool is_proc_running(const char* executable) {
-#if (WINDOWS)
-            DWORD processes[1024], bytesReturned;
-
-            if (!K32EnumProcesses(processes, sizeof(processes), &bytesReturned))
-                return false;
-
-            DWORD numProcesses = bytesReturned / sizeof(DWORD);
-
-            for (DWORD i = 0; i < numProcesses; ++i) {
-                const HANDLE process = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, processes[i]);
-                if (process != nullptr) {
-                    char processName[MAX_PATH] = { 0 };
-                    if (K32GetModuleBaseNameA(process, nullptr, processName, sizeof(processName))) {
-                        if (_stricmp(processName, executable) == 0) {
-                            CloseHandle(process);
-                            return true;
-                        }
-                    }
-                    CloseHandle(process);
-                }
-            }
-
-            return false;
-#elif (LINUX)
+#if (LINUX)
 #if (CPP >= 17)
             for (const auto& entry : std::filesystem::directory_iterator("/proc")) {
                 if (!(entry.is_directory())) {
@@ -1866,6 +1841,7 @@ private:
 
             return false;
 #else
+            UNUSED(executable);
             return false;
 #endif
         }
@@ -2701,20 +2677,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         */
 
         return false;
-    }
-
-
-    /**
-     * @brief Check if thermal directory in linux is present, might not be present in VMs
-     * @category Linux
-     * @implements VM::TEMPERATURE
-     */
-    [[nodiscard]] static bool temperature() {
-#if (!LINUX)
-        return false;
-#else
-        return (!util::exists("/sys/class/thermal/thermal_zone0/"));
-#endif
     }
 
 
@@ -6737,25 +6699,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check for specific files in /proc/device-tree directory
-     * @note idea from https://github.com/ShellCode33/VM-Detection/blob/master/vmdetect/linux.go
-     * @category Linux
-     * @implements VM::DEVICE_TREE
-     */
-    [[nodiscard]] static bool device_tree() {
-#if (!LINUX)
-        return false;
-#else
-        if (util::exists("/proc/device-tree/fw-cfg")) {
-            return core::add(brands::QEMU);
-        }
-
-        return (util::exists("/proc/device-tree/hypervisor/compatible"));
-#endif
-    } 
-
-
-    /**
      * @brief Check for string matches of VM brands in the linux DMI
      * @category Linux
      * @implements VM::DMI_SCAN
@@ -7476,13 +7419,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
     /**
      * @brief Check for device's temperature
-     * @category Windows
-     * @implements VM::ACPI_TEMPERATURE
+     * @category Windows, Linux
+     * @implements VM::TEMPERATURE
      */
-    [[nodiscard]] static bool acpi_temperature() {
-#if (!WINDOWS)
-        return false;
-#else
+    [[nodiscard]] static bool temperature() {
+#if (WINDOWS)
         const GUID GUID_DEVCLASS_THERMALZONE = { 0x4AFA3D51, 0x74A7, 0x11d0, {0xBE, 0x5E, 0x00, 0xA0, 0xC9, 0x06, 0x28, 0x57} };
         HDEVINFO hDevInfo = SetupDiGetClassDevs(&GUID_DEVCLASS_THERMALZONE, nullptr, nullptr, DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
         if (hDevInfo == INVALID_HANDLE_VALUE) {
@@ -7496,6 +7437,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         SetupDiDestroyDeviceInfoList(hDevInfo);
 
         return !exists;
+#elif (LINUX)
+        return (!util::exists("/sys/class/thermal/thermal_zone0/"));
+#else
+        return false;
 #endif
     }
 
@@ -7854,32 +7799,44 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
 
 
-	/**
-	 * @brief Check for QEMU fw_cfg device
-     * @note Windows method extracts 'FWCF' from APCI devices' LocationPaths
-     * @note Linux method checks for existence of qemu_fw_cfg dirs within sys/{module, firmware}
-	 * @category Windows, Linux
+    /**
+     * @brief Detect QEMU fw_cfg interface
+     *
+     * On Windows, this would scan ACPI devices for a LocationPath containing "FWCF".
+     * On Linux, this first checks the Device Tree for a fw-cfg node or hypervisor tag,
+     * then verifies the presence of the qemu_fw_cfg module and firmware directories in sysfs.
+     *
+     * @note Windows method: extract "FWCF" from ACPI devices' LocationPaths (TODO)
+     * @note Linux DT method: inspired by https://github.com/ShellCode33/VM-Detection
+     * @note Linux sysfs method: looks for /sys/module/qemu_fw_cfg/ & /sys/firmware/qemu_fw_cfg/
+     *
+     * @category Windows, Linux
      * @implements VM::QEMU_FW_CFG
-	 */
-	[[nodiscard]] static bool sys_qemu_dir() {
+     */
+    [[nodiscard]] static bool qemu_fw_cfg() {
 #if (!LINUX)
+        // Windows detection not implemented yet
         return false;
-#else 
-	    const std::string module_path = "/sys/module/qemu_fw_cfg/";
-	    const std::string firmware_path = "/sys/firmware/qemu_fw_cfg/";
+#else
+        // 1) Device Tree-based detection
+        if (util::exists("/proc/device-tree/fw-cfg")) {
+            return core::add(brands::QEMU);
+        }
+        if (util::exists("/proc/device-tree/hypervisor/compatible")) {
+            return core::add(brands::QEMU);
+        }
 
-    	if (
-	        util::is_directory(module_path.c_str()) && 
-	        util::is_directory(firmware_path.c_str()) &&
-	        util::exists(module_path.c_str()) &&
-	        util::exists(firmware_path.c_str())
-	    ) {
+        // 2) sysfs-based detection
+        const char* module_path = "/sys/module/qemu_fw_cfg/";
+        const char* firmware_path = "/sys/firmware/qemu_fw_cfg/";
+        if (util::is_directory(module_path) && util::exists(module_path) &&
+            util::is_directory(firmware_path) && util::exists(firmware_path)) {
             return core::add(brands::QEMU);
         }
 
         return false;
 #endif
-	}
+    }
 
 
 	/**
@@ -9803,13 +9760,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             u16 vendor_id;
             u16 device_id;
         };
-    
+
         const std::string pci_path = "/sys/bus/pci/devices";
         std::vector<PCI_Device> devices;
 
 #if (CPP >= 17)
         for (const auto& entry : std::filesystem::directory_iterator(pci_path)) {
-            std::string dev_path = entry.path();
+            std::string dev_path = entry.path().string();
 #else 
         DIR* dir;
         struct dirent* ent;
@@ -9818,152 +9775,157 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             debug("unable to open the PCI data");
             return false;
         }
-    
+
         while ((ent = readdir(dir)) != nullptr) {
             std::string dev_name = ent->d_name;
-            
+
             if (dev_name == "." || dev_name == "..") {
                 continue;
             }
-            
+
             std::string dev_path = pci_path + "/" + dev_name;
 #endif
             PCI_Device dev;
-    
+
             std::ifstream vendor_file(dev_path + "/vendor");
             std::ifstream device_file(dev_path + "/device");
-    
+
             vendor_file >> std::hex >> dev.vendor_id;
             device_file >> std::hex >> dev.device_id;
-    
+
             devices.push_back(dev);
         }
-    
-        #ifdef __VMAWARE_DEBUG__
-            debug("PCI Device Table");
-            debug("-------------------------");
-            debug("Vendor ID  | Device ID ");
-            debug("-------------------------");
-    
-            for (const auto& dev : devices) {
-                debug(
-                    "0x", std::setw(4), std::setfill('0'), std::hex, dev.vendor_id, "     | "
-                    "0x", std::setw(4), std::setfill('0'), dev.device_id, " | ", std::dec
-                );
-            }
-        #endif
 
-        auto found = [](const std::string &b) -> bool {
+#ifdef __VMAWARE_DEBUG__
+        debug("PCI Device Table");
+        debug("-------------------------");
+        debug("Vendor ID  | Device ID ");
+        debug("-------------------------");
+
+        for (const auto& d : devices) {
             debug(
-                "PCI_VM_DEVICE_ID: found ", b, ", vendor ID = ", 
-                "0x", std::setw(4), std::setfill('0'), std::hex, dev.vendor_id,
-                " device ID = 0x", std::setw(4), std::setfill('0'), std::hex, dev.device_id
+                "0x", std::setw(4), std::setfill('0'), std::hex, d.vendor_id,
+                "     | ",
+                "0x", std::setw(4), std::setfill('0'), std::hex, d.device_id,
+                std::dec
+            );
+        }
+#endif
+
+        auto found = [](const std::string& b, const PCI_Device& d) -> bool {
+            debug(
+                "PCI_VM_DEVICE_ID: found ", b, ", vendor ID = ",
+                "0x", std::setw(4), std::setfill('0'), std::hex, d.vendor_id,
+                " device ID = 0x", std::setw(4), std::setfill('0'), std::hex, d.device_id
             );
 
             return true;
-        };
-    
+            };
+
         for (const auto& dev : devices) {
-            const u32 id = ((dev.vendor_id << 16) | dev.device_id);
-    
+            const u32 id = ((static_cast<u32>(dev.vendor_id) << 16) | dev.device_id);
+
             switch (id) {
                 // Red Hat + Virtio
-                case 0x1af41000: // Virtio network device
-                case 0x1af41001: // Virtio block device
-                case 0x1af41002: //	Virtio memory balloon
-                case 0x1af41003: // Virtio console
-                case 0x1af41004: // Virtio SCSI
-                case 0x1af41005: // Virtio RNG
-                case 0x1af41009: // Virtio filesystem
-                case 0x1af41041: // Virtio network device
-                case 0x1af41042: // Virtio block device
-                case 0x1af41043: // Virtio console
-                case 0x1af41044: // Virtio RNG
-                case 0x1af41045: // Virtio memory balloon
-                case 0x1af41048: // Virtio SCSI
-                case 0x1af41049: // Virtio filesystem
-                case 0x1af41050: // Virtio GPU
-                case 0x1af41052: // Virtio input
-                case 0x1af41053: // Virtio socket
-                case 0x1af4105a: // Virtio file system
-                case 0x1af41110: // Inter-VM shared memory
-                    return true;
-    
+            case 0x1af41000: // Virtio network device
+            case 0x1af41001: // Virtio block device
+            case 0x1af41002: //	Virtio memory balloon
+            case 0x1af41003: // Virtio console
+            case 0x1af41004: // Virtio SCSI
+            case 0x1af41005: // Virtio RNG
+            case 0x1af41009: // Virtio filesystem
+            case 0x1af41041: // Virtio network device
+            case 0x1af41042: // Virtio block device
+            case 0x1af41043: // Virtio console
+            case 0x1af41044: // Virtio RNG
+            case 0x1af41045: // Virtio memory balloon
+            case 0x1af41048: // Virtio SCSI
+            case 0x1af41049: // Virtio filesystem
+            case 0x1af41050: // Virtio GPU
+            case 0x1af41052: // Virtio input
+            case 0x1af41053: // Virtio socket
+            case 0x1af4105a: // Virtio file system
+            case 0x1af41110: // Inter-VM shared memory
+                return true;
+
                 // VMware
-                case 0x15ad0405: // SVGA II Adapter
-                case 0x15ad0710: // SVGA Adapter
-                case 0x15ad0720: // VMXNET Ethernet Controller
-                case 0x15ad0740: // Virtual Machine Communication Interface
-                case 0x15ad0770: // USB2 EHCI Controller
-                case 0x15ad0774: // USB1.1 UHCI Controller
-                case 0x15ad0778: // USB3 xHCI 0.96 Controller
-                case 0x15ad0779: // USB3 xHCI 1.0 Controller
-                case 0x15ad0790: // PCI bridge
-                case 0x15ad07a0: // PCI Express Root Port
-                case 0x15ad07b0: // VMXNET3 Ethernet Controller
-                case 0x15ad07c0: // PVSCSI SCSI Controller
-                case 0x15ad07e0: // SATA AHCI controller
-                case 0x15ad07f0: // NVMe SSD Controller
-                case 0x15ad0801: // Virtual Machine Interface
-                case 0x15ad0820: // Paravirtual RDMA controller
-                case 0x15ad1977: // HD Audio Controller
-                case 0xfffe0710: // Virtual SVGA
-                case 0x0e0f0001: // Device
-                case 0x0e0f0002: // Virtual USB Hub
-                case 0x0e0f0003: // Virtual Mouse
-                case 0x0e0f0004: // Virtual CCID
-                case 0x0e0f0005: // Virtual Mass Storage
-                case 0x0e0f0006: // Virtual Keyboard
-                case 0x0e0f000a: // Virtual Sensors
-                case 0x0e0f8001: // Root Hub
-                case 0x0e0f8002: // Root Hub
-                case 0x0e0f8003: // Root Hub
-                case 0x0e0ff80a: // Smoker FX2
-                    return found(brands::VMWARE);
+            case 0x15ad0405: // SVGA II Adapter
+            case 0x15ad0710: // SVGA Adapter
+            case 0x15ad0720: // VMXNET Ethernet Controller
+            case 0x15ad0740: // Virtual Machine Communication Interface
+            case 0x15ad0770: // USB2 EHCI Controller
+            case 0x15ad0774: // USB1.1 UHCI Controller
+            case 0x15ad0778: // USB3 xHCI 0.96 Controller
+            case 0x15ad0779: // USB3 xHCI 1.0 Controller
+            case 0x15ad0790: // PCI bridge
+            case 0x15ad07a0: // PCI Express Root Port
+            case 0x15ad07b0: // VMXNET3 Ethernet Controller
+            case 0x15ad07c0: // PVSCSI SCSI Controller
+            case 0x15ad07e0: // SATA AHCI controller
+            case 0x15ad07f0: // NVMe SSD Controller
+            case 0x15ad0801: // Virtual Machine Interface
+            case 0x15ad0820: // Paravirtual RDMA controller
+            case 0x15ad1977: // HD Audio Controller
+            case 0xfffe0710: // Virtual SVGA
+            case 0x0e0f0001: // Device
+            case 0x0e0f0002: // Virtual USB Hub
+            case 0x0e0f0003: // Virtual Mouse
+            case 0x0e0f0004: // Virtual CCID
+            case 0x0e0f0005: // Virtual Mass Storage
+            case 0x0e0f0006: // Virtual Keyboard
+            case 0x0e0f000a: // Virtual Sensors
+            case 0x0e0f8001: // Root Hub
+            case 0x0e0f8002: // Root Hub
+            case 0x0e0f8003: // Root Hub
+            case 0x0e0ff80a: // Smoker FX2
+                return found(brands::VMWARE, dev);
 
                 // Red Hat + QEMU
-                case 0x1b360001: // Red Hat, Inc. QEMU PCI-PCI bridge
-                case 0x1b360002: // Red Hat, Inc. QEMU PCI 16550A Adapter
-                case 0x1b360003: // Red Hat, Inc. QEMU PCI Dual-port 16550A Adapter
-                case 0x1b360004: // Red Hat, Inc. QEMU PCI Quad-port 16550A Adapter
-                case 0x1b360005: // Red Hat, Inc. QEMU PCI Test Device
-                case 0x1b360008: // Red Hat, Inc. QEMU PCIe Host bridge
-                case 0x1b360009: // Red Hat, Inc. QEMU PCI Expander bridge
-                case 0x1b36000b: // Red Hat, Inc. QEMU PCIe Expander bridge
-                case 0x1b36000c: // Red Hat, Inc. QEMU PCIe Root port
-                case 0x1b36000d: // Red Hat, Inc. QEMU XHCI Host Controller
-                case 0x1b360010: // Red Hat, Inc. QEMU NVM Express Controller
-                case 0x1b360011: // Red Hat, Inc. QEMU PVPanic device
-                case 0x1b360013: // Red Hat, Inc. QEMU UFS Host Controller
-                case 0x1b360100: // Red Hat, Inc. QXL paravirtual graphic card
+            case 0x1b360001: // Red Hat, Inc. QEMU PCI-PCI bridge
+            case 0x1b360002: // Red Hat, Inc. QEMU PCI 16550A Adapter
+            case 0x1b360003: // Red Hat, Inc. QEMU PCI Dual-port 16550A Adapter
+            case 0x1b360004: // Red Hat, Inc. QEMU PCI Quad-port 16550A Adapter
+            case 0x1b360005: // Red Hat, Inc. QEMU PCI Test Device
+            case 0x1b360008: // Red Hat, Inc. QEMU PCIe Host bridge
+            case 0x1b360009: // Red Hat, Inc. QEMU PCI Expander bridge
+            case 0x1b36000b: // Red Hat, Inc. QEMU PCIe Expander bridge
+            case 0x1b36000c: // Red Hat, Inc. QEMU PCIe Root port
+            case 0x1b36000d: // Red Hat, Inc. QEMU XHCI Host Controller
+            case 0x1b360010: // Red Hat, Inc. QEMU NVM Express Controller
+            case 0x1b360011: // Red Hat, Inc. QEMU PVPanic device
+            case 0x1b360013: // Red Hat, Inc. QEMU UFS Host Controller
+            case 0x1b360100: // Red Hat, Inc. QXL paravirtual graphic card
+                return found(brands::QEMU, dev);
 
                 // QEMU
-                case 0x06270001: // Adomax Technology Co., Ltd QEMU Tablet
-                case 0x1d1d1f1f: // CNEX Labs QEMU NVM Express LightNVM Controller
-                case 0x80865845: // Intel Corporation QEMU NVM Express Controller
-                case 0x1d6b0200: // Linux Foundation Qemu Audio Device
-                    return found(brands::QEMU);
+            case 0x06270001: // Adomax Technology Co., Ltd QEMU Tablet
+            case 0x1d1d1f1f: // CNEX Labs QEMU NVM Express LightNVM Controller
+            case 0x80865845: // Intel Corporation QEMU NVM Express Controller
+            case 0x1d6b0200: // Linux Foundation Qemu Audio Device
+                return found(brands::QEMU, dev);
 
                 // vGPUs (mostly NVIDIA)
-                case 0x10de0fe7: // GK107GL [GRID K100 vGPU]
-                case 0x10de0ff7: // GK107GL [GRID K140Q vGPU]
-                case 0x10de118d: // GK104GL [GRID K200 vGPU]
-                case 0x10de11b0: // GK104GL [GRID K240Q\K260Q vGPU]
-                case 0x1ec6020f: // Vastai Technologies SG100 vGPU
-                    return true;
-                
+            case 0x10de0fe7: // GK107GL [GRID K100 vGPU]
+            case 0x10de0ff7: // GK107GL [GRID K140Q vGPU]
+            case 0x10de118d: // GK104GL [GRID K200 vGPU]
+            case 0x10de11b0: // GK104GL [GRID K240Q\K260Q vGPU]
+            case 0x1ec6020f: // Vastai Technologies SG100 vGPU
+                return true;
+
                 // VirtualBox
-                case 0x80ee0021: // USB Tablet
-                case 0x80ee0022: // multitouch tablet
-                    return found(brands::VBOX);
-                
+            case 0x80ee0021: // USB Tablet
+            case 0x80ee0022: // multitouch tablet
+                return found(brands::VBOX, dev);
+
                 // Connectix (VirtualPC) OHCI USB 1.1 controller
-                case 0x29556e61: return found(brands::VPC);
-            
+            case 0x29556e61:
+                return found(brands::VPC, dev);
+
                 // Parallels, Inc.	Virtual Machine Communication Interface
-                case 0x1ab84000: return found(brands::PARALLELS);
+            case 0x1ab84000:
+                return found(brands::PARALLELS, dev);
             }
-            
+
             // TODO: EXTRAS TO ADD (64 instead of 32 bits for device_id field)
             // 
             // Advanced Micro Devices, Inc. [AMD]	1022	QEMU Virtual Machine	1af41100
@@ -9976,7 +9938,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             // Red Hat, Inc. 1af4 QEMU Virtual Machine	1af41100
             // Red Hat, Inc. 1b36 QEMU Virtual Machine	1af41100
         }
-        
+
         return false;
 #endif
     }
@@ -10402,7 +10364,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             // disable all non-default techniques
             flags.flip(VMWARE_DMESG);
             flags.flip(PORT_CONNECTORS);
-            flags.flip(ACPI_TEMPERATURE);
+            flags.flip(TEMPERATURE);
             flags.flip(LSHW_QEMU);
 
             // disable all the settings flags
@@ -11077,12 +11039,11 @@ public: // START OF PUBLIC FUNCTIONS
         
 
         // debug stuff to see the brand scoreboard, ignore this
-//#ifdef __VMAWARE_DEBUG__
+#ifdef __VMAWARE_DEBUG__
         for (const auto& p : brands) {
-            //core_debug("scoreboard: ", (int)p.second, " : ", p.first);
-            std::cout << "scoreboard: " << (int)p.second << " : " << p.first;
+            core_debug("scoreboard: ", (int)p.second, " : ", p.first);
         }
-//#endif
+#endif
 
         return ret_str;
     }
@@ -11307,7 +11268,6 @@ public: // START OF PUBLIC FUNCTIONS
             case VM_PROCS: return "VM_PROCS";
             case VBOX_MODULE: return "VBOX_MODULE";
             case SYSINFO_PROC: return "SYSINFO_PROC";
-            case DEVICE_TREE: return "DEVICE_TREE";
             case DMI_SCAN: return "DMI_SCAN";
             case SMBIOS_VM_BIT: return "SMBIOS_VM_BIT";
             case PODMAN_FILE: return "PODMAN_FILE";
@@ -11321,7 +11281,6 @@ public: // START OF PUBLIC FUNCTIONS
             case VM_DEVICES: return "VM_DEVICES";
             case PROCESSOR_NUMBER: return "PROCESSOR_NUMBER";
             case NUMBER_OF_CORES: return "NUMBER_OF_CORES";
-            case ACPI_TEMPERATURE: return "ACPI_TEMPERATURE";
             case QEMU_FW_CFG: return "QEMU_FW_CFG";
             case LSHW_QEMU: return "LSHW_QEMU";
             case VIRTUAL_PROCESSORS: return "VIRTUAL_PROCESSORS";
@@ -11876,7 +11835,6 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     std::make_pair(VM::VM_PROCS, VM::core::technique(10, VM::vm_procs)),
     std::make_pair(VM::VBOX_MODULE, VM::core::technique(15, VM::vbox_module)),
     std::make_pair(VM::SYSINFO_PROC, VM::core::technique(15, VM::sysinfo_proc)),
-    std::make_pair(VM::DEVICE_TREE, VM::core::technique(20, VM::device_tree)),
     std::make_pair(VM::DMI_SCAN, VM::core::technique(50, VM::dmi_scan)),
     std::make_pair(VM::SMBIOS_VM_BIT, VM::core::technique(50, VM::smbios_vm_bit)),
     std::make_pair(VM::PODMAN_FILE, VM::core::technique(5, VM::podman_file)),
@@ -11890,8 +11848,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     std::make_pair(VM::VM_DEVICES, VM::core::technique(50, VM::vm_devices)),
     std::make_pair(VM::PROCESSOR_NUMBER, VM::core::technique(50, VM::processor_number)),
     std::make_pair(VM::NUMBER_OF_CORES, VM::core::technique(50, VM::number_of_cores)),
-    std::make_pair(VM::ACPI_TEMPERATURE, VM::core::technique(25, VM::acpi_temperature)),
-    std::make_pair(VM::QEMU_FW_CFG, VM::core::technique(70, VM::sys_qemu_dir)),
+    std::make_pair(VM::QEMU_FW_CFG, VM::core::technique(70, VM::qemu_fw_cfg)),
     std::make_pair(VM::LSHW_QEMU, VM::core::technique(80, VM::lshw_qemu)),
     std::make_pair(VM::VIRTUAL_PROCESSORS, VM::core::technique(50, VM::virtual_processors)),
     std::make_pair(VM::HYPERV_QUERY, VM::core::technique(100, VM::hyperv_query)),
