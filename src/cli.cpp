@@ -330,7 +330,6 @@ bool is_disabled(const VM::enum_flags flag) {
     switch (flag) {
         case VM::VMWARE_DMESG: 
         case VM::PORT_CONNECTORS: 
-        case VM::ACPI_TEMPERATURE: 
         case VM::LSHW_QEMU:
         case VM::PCI_VM: return true;
         default: return false;
@@ -383,7 +382,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::VM_PROCS:
             case VM::VBOX_MODULE:
             case VM::SYSINFO_PROC:
-            case VM::DEVICE_TREE:
             case VM::DMI_SCAN:
             case VM::SMBIOS_VM_BIT:
             case VM::PODMAN_FILE:
@@ -413,6 +411,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::TIMER:
             case VM::THREADCOUNT:
             case VM::MAC:
+            case VM::TEMPERATURE:
             case VM::DLL:
             case VM::REGISTRY:
             case VM::VM_FILES:
@@ -458,7 +457,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::GPU_CAPABILITIES:
             case VM::PROCESSOR_NUMBER:
             case VM::NUMBER_OF_CORES:
-            case VM::ACPI_TEMPERATURE:
             case VM::POWER_CAPABILITIES:
             case VM::SETUPAPI_DISK: 
             case VM::VIRTUAL_PROCESSORS:
@@ -944,7 +942,6 @@ void general() {
     checker(VM::VM_PROCS, "various VM files in /proc");
     checker(VM::VBOX_MODULE, "VBox kernel module");
     checker(VM::SYSINFO_PROC, "/proc/sysinfo");
-    checker(VM::DEVICE_TREE, "/proc/device-tree");
     checker(VM::DMI_SCAN, "DMI scan");
     checker(VM::SMBIOS_VM_BIT, "SMBIOS VM bit");
     checker(VM::PODMAN_FILE, "podman file");
@@ -959,7 +956,6 @@ void general() {
     checker(VM::GPU_VM_STRINGS, "GPU strings");
     checker(VM::PROCESSOR_NUMBER, "processor count");
     checker(VM::NUMBER_OF_CORES, "CPU core count");
-    checker(VM::ACPI_TEMPERATURE, "thermal devices");
     checker(VM::POWER_CAPABILITIES, "Power capabilities");
     checker(VM::SETUPAPI_DISK, "SETUPDI diskdrive");
     checker(VM::QEMU_FW_CFG, "QEMU fw_cfg device");
