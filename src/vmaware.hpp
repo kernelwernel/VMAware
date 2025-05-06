@@ -9778,21 +9778,20 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         while ((ent = readdir(dir)) != nullptr) {
             std::string dev_name = ent->d_name;
-
-            if (dev_name == "." || dev_name == "..") {
+            if (dev_name == "." || dev_name == "..")
                 continue;
-            }
-
             std::string dev_path = pci_path + "/" + dev_name;
 #endif
             PCI_Device dev;
 
             std::ifstream vendor_file(dev_path + "/vendor");
             std::ifstream device_file(dev_path + "/device");
+            if (!vendor_file || !device_file) {
+                continue;
+            }
 
             vendor_file >> std::hex >> dev.vendor_id;
             device_file >> std::hex >> dev.device_id;
-
             devices.push_back(dev);
         }
 
@@ -9801,24 +9800,24 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         debug("-------------------------");
         debug("Vendor ID  | Device ID ");
         debug("-------------------------");
-
-        for (const auto& dev : devices) {
+        for (const auto& d : devices) {
             debug(
-                "0x", std::setw(4), std::setfill('0'), std::hex, dev.vendor_id, "     | "
-                "0x", std::setw(4), std::setfill('0'), dev.device_id, " | ", std::dec
+                "0x", std::setw(4), std::setfill('0'), std::hex, d.vendor_id,
+                " | 0x", std::setw(4), std::setfill('0'), std::hex, d.device_id,
+                std::dec
             );
         }
 #endif
 
-        auto found = [](const std::string& b) -> bool {
+        auto found = [](const std::string& b, const PCI_Device& d) -> bool {
             debug(
-                "PCI_VM_DEVICE_ID: found ", b, ", vendor ID = ",
-                "0x", std::setw(4), std::setfill('0'), std::hex, dev.vendor_id,
-                " device ID = 0x", std::setw(4), std::setfill('0'), std::hex, dev.device_id
+                "PCI_VM_DEVICE_ID: found ", b,
+                ", vendor ID = 0x", std::setw(4), std::setfill('0'), std::hex, d.vendor_id,
+                " device ID = 0x", std::setw(4), std::setfill('0'), std::hex, d.device_id,
+                std::dec
             );
-
             return true;
-            };
+        };
 
         for (const auto& dev : devices) {
             const u32 id = ((dev.vendor_id << 16) | dev.device_id);
