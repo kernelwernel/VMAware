@@ -9766,7 +9766,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 #if (CPP >= 17)
         for (const auto& entry : std::filesystem::directory_iterator(pci_path)) {
-            std::string dev_path = entry.path();
+            std::string dev_path = entry.path().string();
 #else 
         DIR* dir;
         struct dirent* ent;
@@ -9778,20 +9778,21 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         while ((ent = readdir(dir)) != nullptr) {
             std::string dev_name = ent->d_name;
-            if (dev_name == "." || dev_name == "..")
+
+            if (dev_name == "." || dev_name == "..") {
                 continue;
+            }
+
             std::string dev_path = pci_path + "/" + dev_name;
 #endif
             PCI_Device dev;
 
             std::ifstream vendor_file(dev_path + "/vendor");
             std::ifstream device_file(dev_path + "/device");
-            if (!vendor_file || !device_file) {
-                continue;
-            }
 
             vendor_file >> std::hex >> dev.vendor_id;
             device_file >> std::hex >> dev.device_id;
+
             devices.push_back(dev);
         }
 
@@ -9800,10 +9801,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         debug("-------------------------");
         debug("Vendor ID  | Device ID ");
         debug("-------------------------");
+
         for (const auto& d : devices) {
             debug(
                 "0x", std::setw(4), std::setfill('0'), std::hex, d.vendor_id,
-                " | 0x", std::setw(4), std::setfill('0'), std::hex, d.device_id,
+                "     | ",
+                "0x", std::setw(4), std::setfill('0'), std::hex, d.device_id,
                 std::dec
             );
         }
@@ -9811,16 +9814,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         auto found = [](const std::string& b, const PCI_Device& d) -> bool {
             debug(
-                "PCI_VM_DEVICE_ID: found ", b,
-                ", vendor ID = 0x", std::setw(4), std::setfill('0'), std::hex, d.vendor_id,
-                " device ID = 0x", std::setw(4), std::setfill('0'), std::hex, d.device_id,
-                std::dec
+                "PCI_VM_DEVICE_ID: found ", b, ", vendor ID = ",
+                "0x", std::setw(4), std::setfill('0'), std::hex, d.vendor_id,
+                " device ID = 0x", std::setw(4), std::setfill('0'), std::hex, d.device_id
             );
+
             return true;
-        };
+            };
 
         for (const auto& dev : devices) {
-            const u32 id = ((dev.vendor_id << 16) | dev.device_id);
+            const u32 id = ((static_cast<u32>(dev.vendor_id) << 16) | dev.device_id);
 
             switch (id) {
                 // Red Hat + Virtio
@@ -9875,7 +9878,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             case 0x0e0f8002: // Root Hub
             case 0x0e0f8003: // Root Hub
             case 0x0e0ff80a: // Smoker FX2
-                return found(brands::VMWARE);
+                return found(brands::VMWARE, dev);
 
                 // Red Hat + QEMU
             case 0x1b360001: // Red Hat, Inc. QEMU PCI-PCI bridge
@@ -9892,13 +9895,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             case 0x1b360011: // Red Hat, Inc. QEMU PVPanic device
             case 0x1b360013: // Red Hat, Inc. QEMU UFS Host Controller
             case 0x1b360100: // Red Hat, Inc. QXL paravirtual graphic card
+                return found(brands::QEMU, dev);
 
                 // QEMU
             case 0x06270001: // Adomax Technology Co., Ltd QEMU Tablet
             case 0x1d1d1f1f: // CNEX Labs QEMU NVM Express LightNVM Controller
             case 0x80865845: // Intel Corporation QEMU NVM Express Controller
             case 0x1d6b0200: // Linux Foundation Qemu Audio Device
-                return found(brands::QEMU);
+                return found(brands::QEMU, dev);
 
                 // vGPUs (mostly NVIDIA)
             case 0x10de0fe7: // GK107GL [GRID K100 vGPU]
@@ -9911,13 +9915,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 // VirtualBox
             case 0x80ee0021: // USB Tablet
             case 0x80ee0022: // multitouch tablet
-                return found(brands::VBOX);
+                return found(brands::VBOX, dev);
 
                 // Connectix (VirtualPC) OHCI USB 1.1 controller
-            case 0x29556e61: return found(brands::VPC);
+            case 0x29556e61:
+                return found(brands::VPC, dev);
 
                 // Parallels, Inc.	Virtual Machine Communication Interface
-            case 0x1ab84000: return found(brands::PARALLELS);
+            case 0x1ab84000:
+                return found(brands::PARALLELS, dev);
             }
 
             // TODO: EXTRAS TO ADD (64 instead of 32 bits for device_id field)
