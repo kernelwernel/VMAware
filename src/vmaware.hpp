@@ -8910,31 +8910,30 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      */
     [[nodiscard]] static bool firmware_scan() {
 #if (WINDOWS)
-#pragma warning (disable: 4459)
+#pragma warning(disable: 4459)
         typedef enum _SYSTEM_INFORMATION_CLASS {
             SystemFirmwareTableInformation = 76
         } SYSTEM_INFORMATION_CLASS;
-
-        typedef enum _SYSTEM_FIRMWARE_TABLE_ACTION
-        {
+        typedef enum _SYSTEM_FIRMWARE_TABLE_ACTION {
             SystemFirmwareTableEnumerate,
             SystemFirmwareTableGet,
             SystemFirmwareTableMax
         } SYSTEM_FIRMWARE_TABLE_ACTION;
-
-        typedef struct _SYSTEM_FIRMWARE_TABLE_INFORMATION
-        {
+        typedef struct _SYSTEM_FIRMWARE_TABLE_INFORMATION {
             ULONG ProviderSignature;
             SYSTEM_FIRMWARE_TABLE_ACTION Action;
             ULONG TableID;
             ULONG TableBufferLength;
             _Field_size_bytes_(TableBufferLength) UCHAR TableBuffer[1];
         } SYSTEM_FIRMWARE_TABLE_INFORMATION, * PSYSTEM_FIRMWARE_TABLE_INFORMATION;
-#pragma warning (default : 4459)
+#pragma warning(default: 4459)
 
         typedef NTSTATUS(__stdcall* PNtQuerySystemInformation)(ULONG, PVOID, ULONG, PULONG);
         constexpr ULONG STATUS_BUFFER_TOO_SMALL = 0xC0000023;
         constexpr DWORD ACPI_SIG = 'ACPI';
+        constexpr DWORD ssdtSig = 'TDSS';
+        constexpr DWORD facpSig = 'PCAF';
+        constexpr DWORD dsdtSig = 'DSDT';
 
         const HMODULE hNtdll = GetModuleHandle(_T("ntdll.dll"));
         if (!hNtdll) return false;
@@ -8945,35 +8944,44 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         util::GetFunctionAddresses(hNtdll, functionNames, functionPointers, 1);
 
         const auto ntqsi = reinterpret_cast<PNtQuerySystemInformation>(functionPointers[0]);
-        if (!ntqsi)
-            return false;
+        if (!ntqsi) return false;
 
-        constexpr const char* targets[] = {
-            "Parallels Software International", "Parallels(R)", "innotek",
-            "Oracle", "VirtualBox", "vbox", "VBOX", "VS2005R2", "VMware, Inc.",
-            "VMware", "VMWARE", "S3 Corp.", "Virtual Machine", "QEMU", "WAET",
-            "BOCHS", "BXPC"
+        const char* targets[] = {
+            "Parallels Software International","Parallels(R)","innotek",
+            "Oracle","VirtualBox","vbox","VBOX","VS2005R2",
+            "VMware, Inc.","VMware","VMWARE",
+            "S3 Corp.","Virtual Machine","QEMU","WAET","BOCHS","BXPC"
         };
 
         PBYTE qsiBuffer = nullptr;
         ULONG qsiBufferSize = 0;
 
+        auto clear_buffer = [&]() {
+            if (qsiBuffer) {
+                free(qsiBuffer);
+                qsiBuffer = nullptr;
+                qsiBufferSize = 0;
+            }
+            };
+
         auto ensure_buffer = [&](ULONG needed) -> bool {
             if (qsiBufferSize < needed) {
-                free(qsiBuffer);
-                qsiBuffer = static_cast<PBYTE>(malloc(needed));
-                if (!qsiBuffer) {
-                    qsiBufferSize = 0;
+                PBYTE newBuf = static_cast<PBYTE>(realloc(qsiBuffer, needed));
+                if (!newBuf) {
                     return false;
                 }
+                qsiBuffer = newBuf;
                 qsiBufferSize = needed;
             }
             return true;
             };
 
-        auto query_table = [&](DWORD provider, DWORD tableID, PULONG outDataSize) -> PSYSTEM_FIRMWARE_TABLE_INFORMATION {
-            const ULONG header = sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION);
-            if (!ensure_buffer(header)) return nullptr;
+        auto query_table = [&](DWORD provider, DWORD tableID, PULONG outSize) -> PSYSTEM_FIRMWARE_TABLE_INFORMATION {
+            ULONG header = FIELD_OFFSET(SYSTEM_FIRMWARE_TABLE_INFORMATION, TableBuffer);
+            if (!ensure_buffer(header)) {
+                clear_buffer();
+                return nullptr;
+            }
 
             auto hdr = reinterpret_cast<PSYSTEM_FIRMWARE_TABLE_INFORMATION>(qsiBuffer);
             hdr->ProviderSignature = provider;
@@ -8981,12 +8989,17 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             hdr->TableID = _byteswap_ulong(tableID);
             hdr->TableBufferLength = 0;
 
-            NTSTATUS st = ntqsi(SystemFirmwareTableInformation, hdr, header, outDataSize);
-            if (st != STATUS_BUFFER_TOO_SMALL)
+            NTSTATUS st = ntqsi(SystemFirmwareTableInformation, hdr, header, outSize);
+            if (st != STATUS_BUFFER_TOO_SMALL) {
+                clear_buffer();
                 return nullptr;
+            }
 
-            ULONG fullSize = *outDataSize;
-            if (!ensure_buffer(fullSize)) return nullptr;
+            ULONG fullSize = *outSize;
+            if (!ensure_buffer(fullSize)) {
+                clear_buffer();
+                return nullptr;
+            }
 
             hdr = reinterpret_cast<PSYSTEM_FIRMWARE_TABLE_INFORMATION>(qsiBuffer);
             hdr->ProviderSignature = provider;
@@ -8994,27 +9007,31 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             hdr->TableID = _byteswap_ulong(tableID);
             hdr->TableBufferLength = fullSize - header;
 
-            st = ntqsi(SystemFirmwareTableInformation, hdr, fullSize, outDataSize);
-            if (!NT_SUCCESS(st))
+            st = ntqsi(SystemFirmwareTableInformation, hdr, fullSize, outSize);
+            if (!NT_SUCCESS(st)) {
+                clear_buffer();
                 return nullptr;
+            }
 
             return hdr;
             };
 
-        auto check_firmware_table = [&](DWORD signature, DWORD tableID) -> bool {
+        auto check_firmware_table = [&](DWORD sig, DWORD id) -> bool {
             ULONG gotSize = 0;
-            auto info = query_table(signature, tableID, &gotSize);
+            auto info = query_table(sig, id, &gotSize);
             if (!info) return false;
 
             const UCHAR* buf = info->TableBuffer;
-            const size_t bufLen = info->TableBufferLength;
+            size_t len = info->TableBufferLength;
 
             for (auto target : targets) {
-                size_t tlen = strlen(target);
-                if (tlen > bufLen) continue;
-                for (size_t i = 0; i <= bufLen - tlen; ++i) {
+                const size_t tlen = strlen(target);
+                if (tlen > len) continue;
+
+                for (size_t i = 0; i <= len - tlen; ++i) {
                     if (memcmp(buf + i, target, tlen) == 0) {
                         const char* brand = nullptr;
+
                         if (!strcmp(target, "Parallels Software International") || !strcmp(target, "Parallels(R)"))
                             brand = brands::PARALLELS;
                         else if (!strcmp(target, "innotek") || !strcmp(target, "VirtualBox") || !strcmp(target, "vbox") || !strcmp(target, "VBOX") || !strcmp(target, "Oracle"))
@@ -9025,127 +9042,107 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                             brand = brands::QEMU;
                         else if (!strcmp(target, "BOCHS") || !strcmp(target, "BXPC"))
                             brand = brands::BOCHS;
-                        else
+                        else {
+                            clear_buffer();
                             return true;
+                        }
 
+                        clear_buffer();
                         return core::add(brand);
                     }
                 }
             }
 
-            // to detect VMAware's Hardener Loader
-            if (bufLen >= 6) {
-                for (size_t i = 0; i <= bufLen - 6; ++i) {
-                    if (buf[i] == '7' && buf[i + 1] == '7' && buf[i + 2] == '7' && buf[i + 3] == '7' && buf[i + 4] == '7' && buf[i + 5] == '7') {
+            const char marker[] = "777777";
+            if (len >= sizeof(marker) - 1) {
+                for (size_t i = 0; i <= len - (sizeof(marker) - 1); ++i) {
+                    if (memcmp(buf + i, marker, sizeof(marker) - 1) == 0) {
+                        clear_buffer();
                         return core::add(brands::VMWARE_HARD);
                     }
                 }
             }
+
+            clear_buffer();
             return false;
             };
 
-        // ACPI enumeration
         ULONG totalLen = 0;
-        auto listInfo = query_table(ACPI_SIG, 0UL, &totalLen);
+        auto listInfo = query_table(ACPI_SIG, 0, &totalLen);
         if (!listInfo) {
-            free(qsiBuffer);
+            clear_buffer();
             return false;
         }
 
         const DWORD* tables = reinterpret_cast<const DWORD*>(listInfo->TableBuffer);
-        ULONG tableCount = listInfo->TableBufferLength / sizeof(DWORD);
-
-        if (tableCount < 4) { // idea by dmfrpro
-            free(qsiBuffer);
+        const ULONG tableCount = listInfo->TableBufferLength / sizeof(DWORD);
+        if (tableCount < 4) {
+            clear_buffer();
             return true;
         }
 
-        // count SSDT
-        constexpr DWORD ssdtSig = 'TDSS';
         ULONG ssdtCount = 0;
         for (ULONG i = 0; i < tableCount; ++i) {
-            if (tables[i] == ssdtSig)
-                ++ssdtCount;
-            if (ssdtCount == 2)
-                break;
+            if (tables[i] == ssdtSig) ++ssdtCount;
+            if (ssdtCount == 2) break;
         }
         if (ssdtCount < 2) {
-            free(qsiBuffer);
+            clear_buffer();
             return true;
         }
 
-        constexpr DWORD facpSig = 'PCAF';
         for (ULONG i = 0; i < tableCount; ++i) {
-            ULONG sig = tables[i];
-
-            if (sig == facpSig) {
+            if (tables[i] == facpSig) {
                 ULONG fSize = 0;
-                auto fadt = query_table(ACPI_SIG, sig, &fSize);
-                if (!fadt) continue;
-                BYTE* buf = reinterpret_cast<BYTE*>(fadt->TableBuffer);
-                // https://uefi.org/htmlspecs/ACPI_Spec_6_4_html/05_ACPI_Software_Programming_Model/ACPI_Software_Programming_Model.html#preferred-pm-profile-system-types
-                if (fSize >= 45 + 1 && buf[45] == 0) { // idea by dmfrpro
-                    free(qsiBuffer);
+                auto fadt = query_table(ACPI_SIG, tables[i], &fSize);
+                if (fadt && fSize > 45 && fadt->TableBuffer[45] == 0) {
+                    clear_buffer();
                     return true;
                 }
             }
-            if (check_firmware_table(ACPI_SIG, sig)) {
-                free(qsiBuffer);
+            if (check_firmware_table(ACPI_SIG, tables[i])) {
+                clear_buffer(); 
                 return true;
             }
         }
 
-        constexpr DWORD dsdtSig = 'DSDT';
-        ULONG dsdtSize = 0;
-        auto dsdt = query_table(ACPI_SIG, dsdtSig, &dsdtSize);
-        if (dsdt) {
-            const char* tb = reinterpret_cast<const char*>(dsdt->TableBuffer);
-            bool foundCPU = false;
+        const ULONG dsdtSize = GetSystemFirmwareTable(ACPI_SIG, _byteswap_ulong(dsdtSig), nullptr, 0);
+        if (dsdtSize == 0) {
+            clear_buffer();
+            return false;
+        }
 
-            for (ULONG j = 0; j + 8 <= dsdtSize; ++j) {
-                if (memcmp(tb + j, "ACPI0007", 8) == 0) { // idea by dmfrpro
-                    foundCPU = true;
+        BYTE* dsdtData = static_cast<BYTE*>(malloc(dsdtSize));
+        if (!dsdtData) {
+            clear_buffer();
+            return false;
+        }
+
+        if (GetSystemFirmwareTable(ACPI_SIG, _byteswap_ulong(dsdtSig), dsdtData, dsdtSize) != dsdtSize) {
+            free(dsdtData);
+            clear_buffer();
+            return false;
+        }
+
+        const char* str = reinterpret_cast<const char*>(dsdtData);
+        const char* osi_targets[] = { "Windows 95", "Windows 98", "Windows 2000", "Windows XP", "Windows 2012" };
+        bool foundOSI = false;
+
+        for (auto s : osi_targets) {
+            const size_t slen = strlen(s);
+            for (ULONG j = 0; j + slen <= dsdtSize; ++j) {
+                if (memcmp(str + j, s, slen) == 0) {
+                    foundOSI = true;
                     break;
                 }
             }
-
-            if (!foundCPU) {
-                free(qsiBuffer);
-                return true;
-            }
-
-            constexpr const char* osi_targets[] = {
-               "Windows 95",            "Windows 98",
-               "Windows 2000",          "Windows 2000.1",
-               "Windows ME: Millennium Edition",
-               "Windows ME: Millennium Edition",  // some firmwares omit space
-               "Windows XP",            "Windows 2001",
-               "Windows 2006",          "Windows 2009",
-               "Windows 2012",          "Windows 2015",
-               "Windows 2020",          "Windows 2022",
-            };
-            constexpr size_t n_osi = sizeof(osi_targets) / sizeof(osi_targets[0]);
-
-            bool foundOSI = false;
-            for (size_t t = 0; t < n_osi && !foundOSI; ++t) {
-                const char* s = osi_targets[t];
-                size_t len = strlen(s);
-                for (ULONG j = 0; j + len <= dsdtSize; ++j) {
-                    if (memcmp(tb + j, s, len) == 0) {
-                        foundOSI = true;
-                        break;
-                    }
-                }
-            }
-
-            if (!foundOSI) {
-                free(qsiBuffer);
-                return true;
-            }
+            if (foundOSI) break;
         }
 
-        free(qsiBuffer);
-        return false;
+        free(dsdtData);
+        clear_buffer();
+
+        return !foundOSI;
 #elif (LINUX)
         // Author: dmfrpro
         if (!util::is_admin()) {
