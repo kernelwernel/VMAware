@@ -1764,7 +1764,7 @@ private:
 #endif
         }
 
-        // Checks if a process is running
+        // Check if a process is running
         [[nodiscard]] static bool is_proc_running(const char* executable) {
 #if (LINUX)
 #if (CPP >= 17)
@@ -1979,7 +1979,7 @@ private:
 
 
         /**
-         * @brief Checks whether the system is running in a Hyper-V virtual machine or if the host system has Hyper-V enabled
+         * @brief Check whether the system is running in a Hyper-V virtual machine or if the host system has Hyper-V enabled
          * @note Hyper-V's presence on a host system can set certain hypervisor-related CPU flags that may appear similar to those in a virtualized environment, which can make it challenging to differentiate between an actual Hyper-V virtual machine (VM) and a host system with Hyper-V enabled.
          *       This can lead to false conclusions, where the system might mistakenly be identified as running in a Hyper-V VM, when in reality, it's simply the host system with Hyper-V features active.
          *       This check aims to distinguish between these two cases by identifying specific CPU flags and hypervisor-related artifacts that are indicative of a Hyper-V VM rather than a host system with Hyper-V enabled.
@@ -2076,212 +2076,6 @@ private:
         }
 
 #if (WINDOWS)
-        /**
-         * @link: https://codereview.stackexchange.com/questions/249034/systeminfo-a-c-class-to-retrieve-system-management-data-from-the-bios
-         * @author: arcomber
-         */
-        class sys_info {
-        private:
-#pragma pack(push) 
-#pragma pack(1)
-            /*
-            SMBIOS Structure header (System Management BIOS) spec:
-            https ://www.dmtf.org/sites/default/files/standards/documents/DSP0134_3.3.0.pdf
-            */
-            struct SMBIOSHEADER
-            {
-                u8 type;
-                u8 length;
-                u16 handle;
-            };
-
-            /*
-            Structure needed to get the SMBIOS table using GetSystemFirmwareTable API.
-            see https://docs.microsoft.com/en-us/windows/win32/api/sysinfoapi/nf-sysinfoapi-getsystemfirmwaretable
-            */
-            struct SMBIOSData {
-                u8  Used20CallingMethod;
-                u8  SMBIOSMajorVersion;
-                u8  SMBIOSMinorVersion;
-                u8  DmiRevision;
-                u32  Length;
-                u8  SMBIOSTableData[1];
-            };
-
-            // System Information (Type 1)
-            struct SYSTEMINFORMATION {
-                SMBIOSHEADER Header;
-                u8 Manufacturer;
-                u8 ProductName;
-                u8 Version;
-                u8 SerialNumber;
-                u8 UUID[16];
-                u8 WakeUpType;  // Identifies the event that caused the system to power up
-                u8 SKUNumber;   // identifies a particular computer configuration for sale
-                u8 Family;
-            };
-#pragma pack(pop) 
-
-            // helper to retrieve string at string offset. Optional null string description can be set.
-            const char* get_string_by_index(const char* str, int index, const char* null_string_text = "")
-            {
-                if (0 == index || 0 == *str) {
-                    return null_string_text;
-                }
-
-                while (--index) {
-                    str += strlen(str) + 1;
-                }
-                return str;
-            }
-
-            // retrieve the BIOS data block from the system
-            SMBIOSData* get_bios_data() {
-                SMBIOSData* bios_data = nullptr;
-
-                // GetSystemFirmwareTable with arg RSMB retrieves raw SMBIOS firmware table
-                // return value is either size of BIOS table or zero if function fails
-                DWORD bios_size = GetSystemFirmwareTable('RSMB', 0, NULL, 0);
-
-                if (bios_size > 0) {
-                    if (bios_data != nullptr) {
-                        bios_data = (SMBIOSData*)malloc(bios_size);
-
-                        // Retrieve the SMBIOS table
-                        DWORD bytes_retrieved = GetSystemFirmwareTable('RSMB', 0, bios_data, bios_size);
-
-                        if (bytes_retrieved != bios_size) {
-                            free(bios_data);
-                            bios_data = nullptr;
-                        }
-                    }
-                }
-
-                return bios_data;
-            }
-
-
-            // locates system information memory block in BIOS table
-            SYSTEMINFORMATION* find_system_information(SMBIOSData* bios_data) {
-                u8* data = bios_data->SMBIOSTableData;
-
-                while (data < bios_data->SMBIOSTableData + bios_data->Length)
-                {
-                    u8* next;
-                    SMBIOSHEADER* header = (SMBIOSHEADER*)data;
-
-                    if (header->length < 4)
-                        break;
-
-                    //Search for System Information structure with type 0x01 (see para 7.2)
-                    if (header->type == 0x01 && header->length >= 0x19)
-                    {
-                        return (SYSTEMINFORMATION*)header;
-                    }
-
-                    //skip over formatted area
-                    next = data + header->length;
-
-                    //skip over unformatted area of the structure (marker is 0000h)
-                    while (next < bios_data->SMBIOSTableData + bios_data->Length && (next[0] != 0 || next[1] != 0)) {
-                        next++;
-                    }
-                    next += 2;
-
-                    data = next;
-                }
-                return nullptr;
-            }
-
-        public:
-            // System information data retrieved on construction and string members populated
-            sys_info() {
-                SMBIOSData* bios_data = get_bios_data();
-
-                if (bios_data) {
-                    SYSTEMINFORMATION* sysinfo = find_system_information(bios_data);
-                    if (sysinfo) {
-                        const char* str = (const char*)sysinfo + sysinfo->Header.length;
-
-                        manufacturer_ = get_string_by_index(str, sysinfo->Manufacturer);
-                        productname_ = get_string_by_index(str, sysinfo->ProductName);
-                        serialnumber_ = get_string_by_index(str, sysinfo->SerialNumber);
-                        version_ = get_string_by_index(str, sysinfo->Version);
-
-                        // for v2.1 and later
-                        if (sysinfo->Header.length > 0x08)
-                        {
-                            static const int max_uuid_size{ 50 };
-                            char uuid[max_uuid_size] = {};
-                            _snprintf_s(uuid, max_uuid_size, static_cast<size_t>(max_uuid_size) - 1, "%02X%02X%02X%02X-%02X%02X-%02X%02X-%02X%02X-%02X%02X%02X%02X%02X%02X",
-                                sysinfo->UUID[0], sysinfo->UUID[1], sysinfo->UUID[2], sysinfo->UUID[3],
-                                sysinfo->UUID[4], sysinfo->UUID[5], sysinfo->UUID[6], sysinfo->UUID[7],
-                                sysinfo->UUID[8], sysinfo->UUID[9], sysinfo->UUID[10], sysinfo->UUID[11],
-                                sysinfo->UUID[12], sysinfo->UUID[13], sysinfo->UUID[14], sysinfo->UUID[15]);
-
-                            uuid_ = uuid;
-                        }
-
-                        if (sysinfo->Header.length > 0x19)
-                        {
-                            // supported in v 2.4 spec
-                            sku_ = get_string_by_index(str, sysinfo->SKUNumber);
-                            family_ = get_string_by_index(str, sysinfo->Family);
-                        }
-                    }
-                    free(bios_data);
-                }
-            }
-
-            // get product family
-            const std::string get_family() const {
-                return family_;
-            }
-
-            // get manufacturer - generally motherboard or system assembler name
-            const std::string get_manufacturer() const {
-                return manufacturer_;
-            }
-
-            // get product name
-            const std::string get_productname() const {
-                return productname_;
-            }
-
-            // get BIOS serial number
-            const std::string get_serialnumber() const {
-                return serialnumber_;
-            }
-
-            // get SKU / system configuration
-            const std::string get_sku() const {
-                return sku_;
-            }
-
-            // get a universally unique identifier for system
-            const std::string get_uuid() const {
-                return uuid_;
-            }
-
-            // get version of system information
-            const std::string get_version() const {
-                return version_;
-            }
-
-            sys_info(sys_info const&) = delete;
-            sys_info& operator=(sys_info const&) = delete;
-
-        private:
-            std::string family_;
-            std::string manufacturer_;
-            std::string productname_;
-            std::string serialnumber_;
-            std::string sku_;
-            std::string uuid_;
-            std::string version_;
-        };
-
-
         /**
          * @brief Determines if the current process is running under WOW64.
          *
@@ -3634,7 +3428,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 /* GPL */     }
 /* GPL */ 
 /* GPL */ 
-/* GPL */     // @brief Checks for virtual machine signatures in disk drive device identifiers
+/* GPL */     // @brief Check for virtual machine signatures in disk drive device identifiers
 /* GPL */     // @category Windows
 /* GPL */     // @author Al-Khaser project
 /* GPL */     // @implements VM::SETUPAPI_DISK
@@ -7954,7 +7748,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Checks if a call to NtQuerySystemInformation with the 0x9f leaf fills a _SYSTEM_HYPERVISOR_DETAIL_INFORMATION structure
+     * @brief Check if a call to NtQuerySystemInformation with the 0x9f leaf fills a _SYSTEM_HYPERVISOR_DETAIL_INFORMATION structure
      * @category Windows
      * @implements VM::HYPERV_QUERY
      */
@@ -8016,7 +7810,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Checks for system pools allocated by hypervisors
+     * @brief Check for system pools allocated by hypervisors
      * @category Windows
      * @implements VM::BAD_POOLS
      */
@@ -8985,7 +8779,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Checks if the OS was booted from a VHD container
+     * @brief Check if the OS was booted from a VHD container
      * @category Windows
      * @implements VM::NATIVE_VHD
      */
@@ -8996,18 +8790,25 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     #if (_WIN32_WINNT < _WIN32_WINNT_WIN8)
             return false;
     #else
-            BOOL isNativeVhdBoot = 0;
-            if (IsNativeVhdBoot(&isNativeVhdBoot)) {
-                return (isNativeVhdBoot == TRUE);
+            BOOL isNativeVhdBoot = FALSE;
+
+            // to detect Wine
+            __try {
+                if (IsNativeVhdBoot(&isNativeVhdBoot)) {
+                    return (isNativeVhdBoot == TRUE);
+                }
+                return false;
             }
-            return false;
+            __except (EXCEPTION_EXECUTE_HANDLER) {
+                return true;
+            }
     #endif
 #endif
     }
 
 
     /**
-     * @brief Checks for particular object directory which is present in Sandboxie virtual environment but not in usual host systems
+     * @brief Check for particular object directory which is present in Sandboxie virtual environment but not in usual host systems
      * @category Windows
      * @note https://evasions.checkpoint.com/src/Evasions/techniques/global-os-objects.html
      * @implements VM::VIRTUAL_REGISTRY
@@ -9102,10 +8903,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Checks for VM signatures in firmware
+     * @brief Check for VM signatures in ACPI firmware tables
      * @category Windows
-     * @note Idea of detecting VMwareHardenerLoader was made by MegaMax, detection for Bochs, VirtualBox and WAET was made by dmfrpro
-     * @credits MegaMax, dmfrpro
+     * @credits Requiem, dmfrpro, MegaMax
      * @implements VM::FIRMWARE
      */
     [[nodiscard]] static bool firmware_scan() {
@@ -9127,8 +8927,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         typedef NTSTATUS(__stdcall* PNtQuerySystemInformation)(ULONG, PVOID, ULONG, PULONG);
         constexpr ULONG STATUS_BUFFER_TOO_SMALL = 0xC0000023;
         constexpr DWORD ACPI_SIG = 'ACPI';
-        constexpr DWORD RSMB_SIG = 'RSMB';
-        constexpr DWORD FIRM_SIG = 'FIRM';
 
         const HMODULE hNtdll = GetModuleHandle(_T("ntdll.dll"));
         if (!hNtdll) return false;
@@ -9166,14 +8964,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             };
 
         auto query_table = [&](DWORD provider, ULONG tableID, bool rawEnum, PULONG outDataSize) -> PSYSTEM_FIRMWARE_TABLE_INFORMATION {
-            // header-only to get size
             const ULONG header = sizeof(SYSTEM_FIRMWARE_TABLE_INFORMATION);
             if (!ensure_buffer(header)) return nullptr;
 
             auto hdr = reinterpret_cast<PSYSTEM_FIRMWARE_TABLE_INFORMATION>(qsiBuffer);
             hdr->ProviderSignature = provider;
             hdr->Action = rawEnum ? 0 : 1;
-            hdr->TableID = tableID;
+            hdr->TableID = _byteswap_ulong(tableID);
             hdr->TableBufferLength = 0;
 
             NTSTATUS st = ntqsi(SystemFirmwareTableInformation, hdr, header, outDataSize);
@@ -9186,7 +8983,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             hdr = reinterpret_cast<PSYSTEM_FIRMWARE_TABLE_INFORMATION>(qsiBuffer);
             hdr->ProviderSignature = provider;
             hdr->Action = rawEnum ? 0 : 1;
-            hdr->TableID = tableID;
+            hdr->TableID = _byteswap_ulong(tableID);
             hdr->TableBufferLength = fullSize - header;
 
             st = ntqsi(SystemFirmwareTableInformation, hdr, fullSize, outDataSize);
@@ -9198,7 +8995,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         auto check_firmware_table = [&](DWORD signature, ULONG tableID) -> bool {
             ULONG gotSize = 0;
-            auto info = query_table(signature, tableID, false, &gotSize);
+            auto info = query_table(signature, tableID, true, &gotSize);
             if (!info) return false;
 
             const UCHAR* buf = info->TableBuffer;
@@ -9228,7 +9025,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
             }
 
-            // to detect VMAware's Hardener Loader, idea by MegaMax
+            // to detect VMAware's Hardener Loader
             if (bufLen >= 6) {
                 for (size_t i = 0; i <= bufLen - 6; ++i) {
                     if (buf[i] == '7' && buf[i + 1] == '7' && buf[i + 2] == '7' && buf[i + 3] == '7' && buf[i + 4] == '7' && buf[i + 5] == '7') {
@@ -9238,20 +9035,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
             return false;
             };
-
-        // RSMB table
-        if (check_firmware_table(RSMB_SIG, 0UL)) {
-            free(qsiBuffer);
-            return true;
-        }
-
-        // FIRM tables
-        for (ULONG addr : { 0xC0000UL, 0xE0000UL }) {
-            if (check_firmware_table(FIRM_SIG, addr)) {
-                free(qsiBuffer);
-                return true;
-            }
-        }
 
         // ACPI enumeration
         ULONG totalLen = 0;
@@ -9327,7 +9110,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                        "Windows 2006",          "Windows 2009",
                        "Windows 2012",          "Windows 2015",
                        "Windows 2020",          "Windows 2022",
-
                     };
                     constexpr size_t n_osi = sizeof(osi_targets) / sizeof(osi_targets[0]);
 
@@ -9356,35 +9138,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         free(qsiBuffer);
-
-        std::unique_ptr<util::sys_info> info = util::make_unique<util::sys_info>();
-
-        const std::string str = info->get_serialnumber();
-
-        if (util::find(str, "VMW")) {
-            return core::add(brands::VMWARE_FUSION);
-        }
-
-        const std::size_t nl_pos = str.find('\n');
-
-        if (nl_pos == std::string::npos) {
-            return false;
-        }
-
-        debug("BIOS_SERIAL: ", str);
-
-        const std::string extract = str.substr(nl_pos + 1);
-
-        const bool all_digits = std::all_of(extract.cbegin(), extract.cend(), [](const char c) {
-            return std::isdigit(c);
-            });
-
-        if (all_digits) {
-            if (extract == "0") {
-                return true;
-            }
-        }
-
         return false;
 #elif (LINUX)
         // Author: dmfrpro
