@@ -9955,26 +9955,52 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 // VirtualBox
                 case 0x80ee0021: // USB Tablet
                 case 0x80ee0022: // multitouch tablet
+                case 0x80eebeef: // InnoTek Systemberatung GmbH	VirtualBox Graphics Adapter
+                case 0x80eecafe: // InnoTek Systemberatung GmbH	VirtualBox Guest Service
                     return found(brands::VBOX);
-                
+
+                // Hyper-V
+                case 0x1f3f9002: // 3SNIC Ltd SSSNIC Ethernet VF Hyper-V
+                case 0x1f3f9004: // 3SNIC Ltd SSSNIC Ethernet SDI VF Hyper-V
+                case 0x1f3f9009: // 3SNIC Ltd SSSFC VF Hyper-V
+                case 0x808637d9: // Intel Corporation X722 Hyper-V Virtual Function
+                case 0x14145353: // Microsoft Corporation Hyper-V virtual VGA
+                    if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
+                        continue;
+                    }
+                    return found(brands::HYPERV);
+ 
+                // Parallels
+                case 0x1ab84000: // Virtual Machine Communication Interface
+                case 0x1ab84005: // Accelerated Virtual Video Adapter
+                case 0x1ab84006: // Memory Ballooning Controller
+                    return found(brands::PARALLELS);
+
+                // Xen
+                case 0x5853c000: // XenSource, Inc.	Citrix XenServer PCI Device for Windows Update
+                case 0xfffd0101: // XenSource, Inc.	PCI Event Channel Controller
+                case 0x5853c147: // XenSource, Inc.	Virtualized Graphics Device
+                case 0x5853c110: // XenSource, Inc.	Virtualized HID
+                case 0x5853c200: // XenSource, Inc.	XCP-ng Project PCI Device for Windows Update
+                case 0x58530001: // XenSource, Inc.	Xen Platform Device
+                    return found(brands::XEN);
+
                 // Connectix (VirtualPC) OHCI USB 1.1 controller
                 case 0x29556e61: return found(brands::VPC);
-            
-                // Parallels, Inc.	Virtual Machine Communication Interface
-                case 0x1ab84000: return found(brands::PARALLELS);
             }
             
             // TODO: EXTRAS TO ADD (64 instead of 32 bits for device_id field)
             // 
-            // Advanced Micro Devices, Inc. [AMD]	1022	QEMU Virtual Machine	1af41100
-            // Apple Inc.	106b	QEMU Virtual Machine	1af41100
-            // Cirrus Logic	1013	QEMU Virtual Machine	1af41100
-            // Intel Corporation	8086	QEMU Virtual Machine	1af41100
-            // NEC Corporation	1033	QEMU Virtual Machine	1af41100
-            // Realtek Semiconductor Co., Ltd.	10ec	QEMU Virtual Machine	1af41100
+            // VMware	15ad	Hypervisor ROM Interface	15ad0800
             // VIA Technologies, Inc.	1106	QEMU Virtual Machine	1af41100
-            // Red Hat, Inc. 1af4 QEMU Virtual Machine	1af41100
-            // Red Hat, Inc. 1b36 QEMU Virtual Machine	1af41100
+            // Red Hat, Inc.	1af4	QEMU Virtual Machine	1af41100
+            // Red Hat, Inc.	1b36	QEMU Virtual Machine	1af41100
+            // Realtek Semiconductor Co., Ltd.	10ec	QEMU Virtual Machine	1af41100
+            // NEC Corporation	1033	QEMU Virtual Machine	1af41100
+            // Intel Corporation	8086	QEMU Virtual Machine	1af41100
+            // Cirrus Logic	1013	QEMU Virtual Machine	1af41100
+            // Apple Inc.	106b	QEMU Virtual Machine	1af41100
+            // Advanced Micro Devices, Inc. [AMD]	1022	QEMU Virtual Machine	1af41100
         }
         
         return false;
