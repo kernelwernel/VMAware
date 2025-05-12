@@ -1486,7 +1486,7 @@ private:
             }
 
             u64 number = std::stoull(number_str);
-            if (is_mb) number = static_cast<u64>(std::round(number / 1024.0));
+            if (is_mb) number = static_cast<u64>(std::round(static_cast<double>(number) / 1024.0));
 
             return static_cast<u32>(std::min<u64>(number, std::numeric_limits<u32>::max()));
 #elif (WINDOWS)
@@ -1978,9 +1978,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
                 // For these, we only care that it's virtualized:
                 if (v.size == 7  // "monitor"
-                    || v.size == 6 && v.data[0] == 'h'  // "hvisor"
-                    || v.size == 10 && v.data[0] == 'h') // "hypervisor"
-                {
+                    || ((v.size == 6) && (v.data[0] == 'h'))  // "hvisor"
+                    || ((v.size == 10) && (v.data[0] == 'h')) // "hypervisor" 
+                ) {
                     return true;
                 }
 
@@ -2160,7 +2160,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
         std::free(table);
 
-#ifdef __VMAWARE_DEBUG__
+    #ifdef __VMAWARE_DEBUG__
         {
             std::stringstream ss;
             ss << std::hex << std::setw(2) << std::setfill('0')
@@ -2169,6 +2169,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 << static_cast<int>(mac[2]) << ":XX:XX:XX";
             debug("MAC: ", ss.str());
         }
+    #endif
+#else 
+        return false;
 #endif
 
         if ((mac[0] | mac[1] | mac[2]) == 0) {
@@ -2202,9 +2205,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         return false;
-#else
-        return false;
-#endif
     }
 
 
