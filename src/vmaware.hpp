@@ -2047,7 +2047,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     [[nodiscard]] static bool mac_address_check() {
         // C-style array on purpose
         u8 mac[6] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
-
 #if (LINUX)
         struct ifreq ifr;
         struct ifconf ifc;
@@ -2058,7 +2057,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         if (sock == -1) {
             return false;
-        };
+        }
 
         ifc.ifc_len = sizeof(buf);
         ifc.ifc_buf = buf;
@@ -2087,28 +2086,18 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         if (success) {
             std::memcpy(mac, ifr.ifr_hwaddr.sa_data, 6);
-        } else {
+        }
+        else {
             debug("MAC: ", "not successful");
         }
 #elif (WINDOWS)
-#else
-        return false;
-#endif
         ULONG needed = 0;
         if (GetIfTable(nullptr, &needed, /*order=*/FALSE) != ERROR_INSUFFICIENT_BUFFER) {
             return false;
         }
 
-#if defined(_MSC_VER)
-    #define LIKELY(x)   (x)
-    #define UNLIKELY(x) (x)
-#else
-    #define LIKELY(x)   __builtin_expect(!!(x), 1)
-    #define UNLIKELY(x) __builtin_expect(!!(x), 0)
-#endif
-
         MIB_IFTABLE* table = (MIB_IFTABLE*)std::malloc(needed);
-        if (UNLIKELY(!table)) return false;
+        if (!table) return false;
 
         if (GetIfTable(table, &needed, FALSE) != NO_ERROR) {
             std::free(table);
@@ -2156,7 +2145,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         constexpr uint32_t XEN = 0xE31600;  // 00:16:E3
         constexpr uint32_t PAR = 0x421C00;  // 00:1C:42
 
-        if (LIKELY(prefix == VBOX)) {
+        if (prefix == VBOX) {
             return core::add(brands::VBOX);
         }
         else if (prefix == VMW1 || prefix == VMW2
@@ -2171,6 +2160,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         return false;
+#else
+        return false;
+#endif
     }
 
 
