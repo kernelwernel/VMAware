@@ -18,7 +18,7 @@
  * 
  *  - Made by: @kernelwernel (https://github.com/kernelwernel)
  *  - Repository: https://github.com/kernelwernel/VMAware
- *  - License: GPL 3.0
+ *  - License: MIT
  */ 
 
 #include <string>
@@ -329,7 +329,8 @@ bool is_disabled(const VM::enum_flags flag) {
 
     switch (flag) {
         case VM::VMWARE_DMESG: 
-        case VM::PORT_CONNECTORS: 
+        case VM::PORT_CONNECTORS:
+        case VM::TEMPERATURE:
         case VM::LSHW_QEMU:
         default: return false;
     }
@@ -412,19 +413,14 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::TEMPERATURE:
             case VM::DLL:
             case VM::REGISTRY:
-            case VM::VM_FILES:
+            case VM::FILES:
             case VM::VBOX_DEFAULT:
             case VM::VBOX_NETWORK:
-            case VM::COMPUTER_NAME:
-            case VM::WINE_CHECK:
-            case VM::HOSTNAME:
-            case VM::KVM_DIRS:
+            case VM::WINE:
             case VM::AUDIO:
-            case VM::QEMU_DIR:
             case VM::VM_PROCESSES:
             case VM::GAMARUE:
             case VM::BOCHS_CPU:
-            case VM::MSSMBIOS:
             case VM::HKLM_REGISTRIES:
             case VM::VPC_INVALID:
             case VM::SIDT:
@@ -456,12 +452,10 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::PROCESSOR_NUMBER:
             case VM::NUMBER_OF_CORES:
             case VM::POWER_CAPABILITIES:
-            case VM::SETUPAPI_DISK: 
             case VM::VIRTUAL_PROCESSORS:
             case VM::HYPERV_QUERY:
             case VM::BAD_POOLS:
             case VM::AMD_THREAD_MISMATCH:
-            case VM::NATIVE_VHD:
             case VM::VIRTUAL_REGISTRY:
             case VM::FIRMWARE:
             case VM::UNKNOWN_MANUFACTURER:
@@ -531,20 +525,6 @@ bool is_unsupported(VM::enum_flags flag) {
 }
 
 
-bool is_gpl(const VM::enum_flags flag) {
-    switch (flag) {
-        case VM::COMPUTER_NAME: 
-        case VM::WINE_CHECK: 
-        case VM::HOSTNAME: 
-        case VM::KVM_DIRS: 
-        case VM::QEMU_DIR: 
-        case VM::POWER_CAPABILITIES: 
-        case VM::SETUPAPI_DISK: return true;
-        default: return false;
-    }
-}
-
-
 std::bitset<max_bits> settings() {
     std::bitset<max_bits> tmp;
 
@@ -562,7 +542,6 @@ std::bitset<max_bits> settings() {
 
     return tmp;
 }
-
 
 // just a simple string replacer
 void replace(std::string &text, const std::string &original, const std::string &new_brand) {
@@ -740,7 +719,7 @@ std::string vm_description(const std::string& vm_brand) {
     // by the ANY.RUN minifilter driver.
     // To patch this detection, I would recommend returning STATUS_OBJECT_NAME_NOT_FOUND
     // that is a standard status code for this situation.
-    if (status == 0xC000000F) // STATUS_NOT_SUCH_FILE
+    if (static_cast<ULONG>(status) == 0xC000000F) // STATUS_NOT_SUCH_FILE
         return true;
 
     // Not actually the case, maybe conflict with other software installation.
@@ -785,7 +764,7 @@ void checker(const VM::enum_flags flag, const char* message) {
     }
 #endif
 
-    if (is_disabled(flag) || (arg_bitset.test(MIT) && is_gpl(flag))) {
+    if (is_disabled(flag)) {
         if (arg_bitset.test(COMPACT)) {
             return;
         }
@@ -885,27 +864,22 @@ void general() {
     checker(VM::HWMON, "hwmon presence");
     checker(VM::DLL, "DLLs");
     checker(VM::REGISTRY, "registry keys");
-    checker(VM::WINE_CHECK, "Wine");
-    checker(VM::VM_FILES, "VM files");
+    checker(VM::WINE, "Wine");
+    checker(VM::FILES, "VM files");
     checker(VM::HWMODEL, "hw.model");
     checker(VM::DISK_SIZE, "disk size");
     checker(VM::VBOX_DEFAULT, "VBox default specs");
     checker(VM::VBOX_NETWORK, "VBox network provider match");
-    checker(VM::COMPUTER_NAME, "computer name");
-    checker(VM::HOSTNAME, "hostname");
     checker(VM::VM_PROCESSES, "VM processes");
     checker(VM::LINUX_USER_HOST, "default Linux user/host");
     checker(VM::GAMARUE, "gamarue ransomware technique");
     checker(VM::BOCHS_CPU, "BOCHS CPU techniques");
-    checker(VM::MSSMBIOS, "MSSMBIOS data");
     checker(VM::MAC_MEMSIZE, "MacOS hw.memsize");
     checker(VM::MAC_IOKIT, "MacOS registry IO-kit");
     checker(VM::IOREG_GREP, "IO registry grep");
     checker(VM::MAC_SIP, "MacOS SIP");
-    checker(VM::KVM_DIRS, "KVM directories");
     checker(VM::HKLM_REGISTRIES, "registry values");
     checker(VM::AUDIO, "audio device");
-    checker(VM::QEMU_DIR, "QEMU directories");
     checker(VM::VPC_INVALID, "VPC invalid instructions");
     checker(VM::SIDT, "SIDT");
     checker(VM::SGDT, "SGDT");
@@ -955,7 +929,6 @@ void general() {
     checker(VM::PROCESSOR_NUMBER, "processor count");
     checker(VM::NUMBER_OF_CORES, "CPU core count");
     checker(VM::POWER_CAPABILITIES, "Power capabilities");
-    checker(VM::SETUPAPI_DISK, "SETUPDI diskdrive");
     checker(VM::QEMU_FW_CFG, "QEMU fw_cfg device");
     checker(VM::LSHW_QEMU, "QEMU in lshw output");
     checker(VM::VIRTUAL_PROCESSORS, "virtual processors");
@@ -963,7 +936,6 @@ void general() {
     checker(VM::BAD_POOLS, "bad pools");
     checker(VM::AMD_SEV, "AMD-SEV MSR");
     checker(VM::AMD_THREAD_MISMATCH, "AMD thread count mismatch");
-    checker(VM::NATIVE_VHD, "VHD containers");
     checker(VM::VIRTUAL_REGISTRY, "registry emulation");
     checker(VM::FIRMWARE, "firmware signatures");
     checker(VM::FILE_ACCESS_HISTORY, "low file access count");

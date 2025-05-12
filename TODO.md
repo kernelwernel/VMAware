@@ -8,7 +8,6 @@
 - [ ] add a .so, .dll, and .dylib shared object files in the release 
 - [ ] /sys/class/dmi/id/product_name check this in qemu
 - [ ] fix "dmidecode not found" error
-- [ ] rearrange the techniques so that the more likely ones will be executed first
 - [ ] implement techniques from here https://www.cyberciti.biz/faq/linux-determine-virtualization-technology-command/
 - [ ] implement techniques from virt-what
  

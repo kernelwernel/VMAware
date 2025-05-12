@@ -29,7 +29,7 @@ The library is:
 - Header-only
 - Free of any external dependencies
 - Memoized, meaning past results are cached and retrieved if ran again for performance benefits 
-- Contains separate MIT and GPL-3.0 compliant library header files
+- Fully MIT-licensed, allowing unrestricted use and distribution
 
 
 <br>
@@ -116,34 +116,16 @@ Optionally, you can create a debug build by appending `-DCMAKE_BUILD_TYPE=Debug`
 
 <br>
 
-
-### Vcpkg installation
-```bash
-# Note: the package is MIT. The GPL version doesn't exist.
-vcpkg install vmaware-vm-detection
-```
-
-<br>
-
 ### CMake installation
 ```cmake
 # edit this
 set(DIRECTORY "/path/to/your/directory/")
 
-# if you want the MIT version, toggle this to ON
-option(MIT "MIT version" OFF)
-
-if (MIT)
-    set(EXTENSION "_MIT")
-else()
-    set(EXTENSION "")
-endif()
-
-set(DESTINATION "${DIRECTORY}vmaware${EXTENSION}.hpp")
+set(DESTINATION "${DIRECTORY}vmaware.hpp")
 
 if (NOT EXISTS ${DESTINATION})
     message(STATUS "Downloading VMAware")
-    set(URL "https://github.com/kernelwernel/VMAware/releases/latest/download/vmaware${EXTENSION}.hpp")
+    set(URL "https://github.com/kernelwernel/VMAware/releases/latest/download/vmaware.hpp")
     file(DOWNLOAD ${URL} ${DESTINATION} SHOW_PROGRESS)
 else()
     message(STATUS "VMAware already downloaded, skipping")
@@ -242,16 +224,6 @@ You can view the full docs [here](docs/documentation.md). All the details such a
 </details>
 
 <details>
-<summary>Why GPL-3.0 and MIT?</summary>
-<br>
-
-> I would've made it strictly MIT so proprietary software can make use of the library, but some of the techniques employed are from GPL projects, and I have no choice but to use the same license for legal reasons. 
-> 
-> This gave me an idea to make an MIT version without all of the GPL code so it can also be used without forcing your code to be open source. It should be noted that the MIT version removes 6% of total techniques, and the lesser the number of techniques, the less accurate the overall result might be, but this has rarely any effective difference.
-
-</details>
-
-<details>
 <summary>I have linker errors when compiling</summary>
 <br>
 
@@ -306,4 +278,4 @@ And if you found this project useful, a star would be appreciated :)
 ## Legal 📜
 I am not responsible nor liable for any damage you cause through any malicious usage of this project. 
 
-License: GPL-3.0/MIT
+License: MIT
