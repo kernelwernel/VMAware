@@ -659,7 +659,6 @@ This is the table of all the brands the lib supports.
 |    | --dynamic | allow the conclusion message to be dynamic (8 possibilities instead of only 2) |
 |    | --verbose | add more information to the output  |
 |    | --compact | ignore the unsupported techniques from the CLI output and thus make it more compact |
-|    | --mit | ignore the GPL techniques and run only the MIT-supported ones |
 |    | --enums | display the technique enum name used by the lib |
 > [!NOTE]
 > If you want a general result with the default settings, do not put any arguments. This is the intended way to use the CLI tool.

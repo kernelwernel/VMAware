@@ -2175,17 +2175,17 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        const uint32_t prefix = (uint32_t)mac[0]
-            | ((uint32_t)mac[1] << 8)
-            | ((uint32_t)mac[2] << 16);
+        const u32 prefix = (u32)mac[0]
+            | ((u32)mac[1] << 8)
+            | ((u32)mac[2] << 16);
 
-        constexpr uint32_t VBOX = 0x270008;  // 08:00:27
-        constexpr uint32_t VMW1 = 0x29000C;  // 00:0C:29
-        constexpr uint32_t VMW2 = 0x141C00;  // 00:1C:14
-        constexpr uint32_t VMW3 = 0x565000;  // 00:50:56
-        constexpr uint32_t VMW4 = 0x690500;  // 00:05:69
-        constexpr uint32_t XEN = 0xE31600;  // 00:16:E3
-        constexpr uint32_t PAR = 0x421C00;  // 00:1C:42
+        constexpr u32 VBOX = 0x270008;  // 08:00:27
+        constexpr u32 VMW1 = 0x29000C;  // 00:0C:29
+        constexpr u32 VMW2 = 0x141C00;  // 00:1C:14
+        constexpr u32 VMW3 = 0x565000;  // 00:50:56
+        constexpr u32 VMW4 = 0x690500;  // 00:05:69
+        constexpr u32 XEN = 0xE31600;  // 00:16:E3
+        constexpr u32 PAR = 0x421C00;  // 00:1C:42
 
         if (prefix == VBOX) {
             return core::add(brands::VBOX);
