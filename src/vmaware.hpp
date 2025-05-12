@@ -8980,126 +8980,126 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             switch (id) {
                 // Red Hat + Virtio
-            case 0x1af41000: // Virtio network device
-            case 0x1af41001: // Virtio block device
-            case 0x1af41002: //	Virtio memory balloon
-            case 0x1af41003: // Virtio console
-            case 0x1af41004: // Virtio SCSI
-            case 0x1af41005: // Virtio RNG
-            case 0x1af41009: // Virtio filesystem
-            case 0x1af41041: // Virtio network device
-            case 0x1af41042: // Virtio block device
-            case 0x1af41043: // Virtio console
-            case 0x1af41044: // Virtio RNG
-            case 0x1af41045: // Virtio memory balloon
-            case 0x1af41048: // Virtio SCSI
-            case 0x1af41049: // Virtio filesystem
-            case 0x1af41050: // Virtio GPU
-            case 0x1af41052: // Virtio input
-            case 0x1af41053: // Virtio socket
-            case 0x1af4105a: // Virtio file system
-            case 0x1af41110: // Inter-VM shared memory
-                return true;
+                case 0x1af41000: // Virtio network device
+                case 0x1af41001: // Virtio block device
+                case 0x1af41002: //	Virtio memory balloon
+                case 0x1af41003: // Virtio console
+                case 0x1af41004: // Virtio SCSI
+                case 0x1af41005: // Virtio RNG
+                case 0x1af41009: // Virtio filesystem
+                case 0x1af41041: // Virtio network device
+                case 0x1af41042: // Virtio block device
+                case 0x1af41043: // Virtio console
+                case 0x1af41044: // Virtio RNG
+                case 0x1af41045: // Virtio memory balloon
+                case 0x1af41048: // Virtio SCSI
+                case 0x1af41049: // Virtio filesystem
+                case 0x1af41050: // Virtio GPU
+                case 0x1af41052: // Virtio input
+                case 0x1af41053: // Virtio socket
+                case 0x1af4105a: // Virtio file system
+                case 0x1af41110: // Inter-VM shared memory
+                    return true;
 
-                // VMware
-            case 0x15ad0405: // SVGA II Adapter
-            case 0x15ad0710: // SVGA Adapter
-            case 0x15ad0720: // VMXNET Ethernet Controller
-            case 0x15ad0740: // Virtual Machine Communication Interface
-            case 0x15ad0770: // USB2 EHCI Controller
-            case 0x15ad0774: // USB1.1 UHCI Controller
-            case 0x15ad0778: // USB3 xHCI 0.96 Controller
-            case 0x15ad0779: // USB3 xHCI 1.0 Controller
-            case 0x15ad0790: // PCI bridge
-            case 0x15ad07a0: // PCI Express Root Port
-            case 0x15ad07b0: // VMXNET3 Ethernet Controller
-            case 0x15ad07c0: // PVSCSI SCSI Controller
-            case 0x15ad07e0: // SATA AHCI controller
-            case 0x15ad07f0: // NVMe SSD Controller
-            case 0x15ad0801: // Virtual Machine Interface
-            case 0x15ad0820: // Paravirtual RDMA controller
-            case 0x15ad1977: // HD Audio Controller
-            case 0xfffe0710: // Virtual SVGA
-            case 0x0e0f0001: // Device
-            case 0x0e0f0002: // Virtual USB Hub
-            case 0x0e0f0003: // Virtual Mouse
-            case 0x0e0f0004: // Virtual CCID
-            case 0x0e0f0005: // Virtual Mass Storage
-            case 0x0e0f0006: // Virtual Keyboard
-            case 0x0e0f000a: // Virtual Sensors
-            case 0x0e0f8001: // Root Hub
-            case 0x0e0f8002: // Root Hub
-            case 0x0e0f8003: // Root Hub
-            case 0x0e0ff80a: // Smoker FX2
-                return found(brands::VMWARE, dev);
+                    // VMware
+                case 0x15ad0405: // SVGA II Adapter
+                case 0x15ad0710: // SVGA Adapter
+                case 0x15ad0720: // VMXNET Ethernet Controller
+                case 0x15ad0740: // Virtual Machine Communication Interface
+                case 0x15ad0770: // USB2 EHCI Controller
+                case 0x15ad0774: // USB1.1 UHCI Controller
+                case 0x15ad0778: // USB3 xHCI 0.96 Controller
+                case 0x15ad0779: // USB3 xHCI 1.0 Controller
+                case 0x15ad0790: // PCI bridge
+                case 0x15ad07a0: // PCI Express Root Port
+                case 0x15ad07b0: // VMXNET3 Ethernet Controller
+                case 0x15ad07c0: // PVSCSI SCSI Controller
+                case 0x15ad07e0: // SATA AHCI controller
+                case 0x15ad07f0: // NVMe SSD Controller
+                case 0x15ad0801: // Virtual Machine Interface
+                case 0x15ad0820: // Paravirtual RDMA controller
+                case 0x15ad1977: // HD Audio Controller
+                case 0xfffe0710: // Virtual SVGA
+                case 0x0e0f0001: // Device
+                case 0x0e0f0002: // Virtual USB Hub
+                case 0x0e0f0003: // Virtual Mouse
+                case 0x0e0f0004: // Virtual CCID
+                case 0x0e0f0005: // Virtual Mass Storage
+                case 0x0e0f0006: // Virtual Keyboard
+                case 0x0e0f000a: // Virtual Sensors
+                case 0x0e0f8001: // Root Hub
+                case 0x0e0f8002: // Root Hub
+                case 0x0e0f8003: // Root Hub
+                case 0x0e0ff80a: // Smoker FX2
+                    return found(brands::VMWARE, dev);
 
-                // Red Hat + QEMU
-            case 0x1b360001: // Red Hat, Inc. QEMU PCI-PCI bridge
-            case 0x1b360002: // Red Hat, Inc. QEMU PCI 16550A Adapter
-            case 0x1b360003: // Red Hat, Inc. QEMU PCI Dual-port 16550A Adapter
-            case 0x1b360004: // Red Hat, Inc. QEMU PCI Quad-port 16550A Adapter
-            case 0x1b360005: // Red Hat, Inc. QEMU PCI Test Device
-            case 0x1b360008: // Red Hat, Inc. QEMU PCIe Host bridge
-            case 0x1b360009: // Red Hat, Inc. QEMU PCI Expander bridge
-            case 0x1b36000b: // Red Hat, Inc. QEMU PCIe Expander bridge
-            case 0x1b36000c: // Red Hat, Inc. QEMU PCIe Root port
-            case 0x1b36000d: // Red Hat, Inc. QEMU XHCI Host Controller
-            case 0x1b360010: // Red Hat, Inc. QEMU NVM Express Controller
-            case 0x1b360011: // Red Hat, Inc. QEMU PVPanic device
-            case 0x1b360013: // Red Hat, Inc. QEMU UFS Host Controller
-            case 0x1b360100: // Red Hat, Inc. QXL paravirtual graphic card
-                return found(brands::QEMU, dev);
+                    // Red Hat + QEMU
+                case 0x1b360001: // Red Hat, Inc. QEMU PCI-PCI bridge
+                case 0x1b360002: // Red Hat, Inc. QEMU PCI 16550A Adapter
+                case 0x1b360003: // Red Hat, Inc. QEMU PCI Dual-port 16550A Adapter
+                case 0x1b360004: // Red Hat, Inc. QEMU PCI Quad-port 16550A Adapter
+                case 0x1b360005: // Red Hat, Inc. QEMU PCI Test Device
+                case 0x1b360008: // Red Hat, Inc. QEMU PCIe Host bridge
+                case 0x1b360009: // Red Hat, Inc. QEMU PCI Expander bridge
+                case 0x1b36000b: // Red Hat, Inc. QEMU PCIe Expander bridge
+                case 0x1b36000c: // Red Hat, Inc. QEMU PCIe Root port
+                case 0x1b36000d: // Red Hat, Inc. QEMU XHCI Host Controller
+                case 0x1b360010: // Red Hat, Inc. QEMU NVM Express Controller
+                case 0x1b360011: // Red Hat, Inc. QEMU PVPanic device
+                case 0x1b360013: // Red Hat, Inc. QEMU UFS Host Controller
+                case 0x1b360100: // Red Hat, Inc. QXL paravirtual graphic card
+                    return found(brands::QEMU, dev);
 
-                // QEMU
-            case 0x06270001: // Adomax Technology Co., Ltd QEMU Tablet
-            case 0x1d1d1f1f: // CNEX Labs QEMU NVM Express LightNVM Controller
-            case 0x80865845: // Intel Corporation QEMU NVM Express Controller
-            case 0x1d6b0200: // Linux Foundation Qemu Audio Device
-                return found(brands::QEMU, dev);
+                    // QEMU
+                case 0x06270001: // Adomax Technology Co., Ltd QEMU Tablet
+                case 0x1d1d1f1f: // CNEX Labs QEMU NVM Express LightNVM Controller
+                case 0x80865845: // Intel Corporation QEMU NVM Express Controller
+                case 0x1d6b0200: // Linux Foundation Qemu Audio Device
+                    return found(brands::QEMU, dev);
 
-                // vGPUs (mostly NVIDIA)
-            case 0x10de0fe7: // GK107GL [GRID K100 vGPU]
-            case 0x10de0ff7: // GK107GL [GRID K140Q vGPU]
-            case 0x10de118d: // GK104GL [GRID K200 vGPU]
-            case 0x10de11b0: // GK104GL [GRID K240Q\K260Q vGPU]
-            case 0x1ec6020f: // Vastai Technologies SG100 vGPU
-                return true;
+                    // vGPUs (mostly NVIDIA)
+                case 0x10de0fe7: // GK107GL [GRID K100 vGPU]
+                case 0x10de0ff7: // GK107GL [GRID K140Q vGPU]
+                case 0x10de118d: // GK104GL [GRID K200 vGPU]
+                case 0x10de11b0: // GK104GL [GRID K240Q\K260Q vGPU]
+                case 0x1ec6020f: // Vastai Technologies SG100 vGPU
+                    return true;
 
-                // VirtualBox
-            case 0x80ee0021: // USB Tablet
-            case 0x80ee0022: // multitouch tablet
-            case 0x80eebeef: // InnoTek Systemberatung GmbH	VirtualBox Graphics Adapter
-            case 0x80eecafe: // InnoTek Systemberatung GmbH	VirtualBox Guest Service
-                return found(brands::VBOX, dev);
+                    // VirtualBox
+                case 0x80ee0021: // USB Tablet
+                case 0x80ee0022: // multitouch tablet
+                case 0x80eebeef: // InnoTek Systemberatung GmbH	VirtualBox Graphics Adapter
+                case 0x80eecafe: // InnoTek Systemberatung GmbH	VirtualBox Guest Service
+                    return found(brands::VBOX, dev);
 
-                // Hyper-V
-            case 0x1f3f9002: // 3SNIC Ltd SSSNIC Ethernet VF Hyper-V
-            case 0x1f3f9004: // 3SNIC Ltd SSSNIC Ethernet SDI VF Hyper-V
-            case 0x1f3f9009: // 3SNIC Ltd SSSFC VF Hyper-V
-            case 0x808637d9: // Intel Corporation X722 Hyper-V Virtual Function
-            case 0x14145353: // Microsoft Corporation Hyper-V virtual VGA
-                if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
-                    continue;
-                }
-                return found(brands::HYPERV, dev);
+                    // Hyper-V
+                case 0x1f3f9002: // 3SNIC Ltd SSSNIC Ethernet VF Hyper-V
+                case 0x1f3f9004: // 3SNIC Ltd SSSNIC Ethernet SDI VF Hyper-V
+                case 0x1f3f9009: // 3SNIC Ltd SSSFC VF Hyper-V
+                case 0x808637d9: // Intel Corporation X722 Hyper-V Virtual Function
+                case 0x14145353: // Microsoft Corporation Hyper-V virtual VGA
+                    if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
+                        continue;
+                    }
+                    return found(brands::HYPERV, dev);
 
-                // Parallels
-            case 0x1ab84000: // Virtual Machine Communication Interface
-            case 0x1ab84005: // Accelerated Virtual Video Adapter
-            case 0x1ab84006: // Memory Ballooning Controller
-                return found(brands::PARALLELS, dev);
+                    // Parallels
+                case 0x1ab84000: // Virtual Machine Communication Interface
+                case 0x1ab84005: // Accelerated Virtual Video Adapter
+                case 0x1ab84006: // Memory Ballooning Controller
+                    return found(brands::PARALLELS, dev);
 
-                // Xen
-            case 0x5853c000: // XenSource, Inc.	Citrix XenServer PCI Device for Windows Update
-            case 0xfffd0101: // XenSource, Inc.	PCI Event Channel Controller
-            case 0x5853c147: // XenSource, Inc.	Virtualized Graphics Device
-            case 0x5853c110: // XenSource, Inc.	Virtualized HID
-            case 0x5853c200: // XenSource, Inc.	XCP-ng Project PCI Device for Windows Update
-            case 0x58530001: // XenSource, Inc.	Xen Platform Device
-                return found(brands::XEN, dev);
+                    // Xen
+                case 0x5853c000: // XenSource, Inc.	Citrix XenServer PCI Device for Windows Update
+                case 0xfffd0101: // XenSource, Inc.	PCI Event Channel Controller
+                case 0x5853c147: // XenSource, Inc.	Virtualized Graphics Device
+                case 0x5853c110: // XenSource, Inc.	Virtualized HID
+                case 0x5853c200: // XenSource, Inc.	XCP-ng Project PCI Device for Windows Update
+                case 0x58530001: // XenSource, Inc.	Xen Platform Device
+                    return found(brands::XEN, dev);
 
-                // Connectix (VirtualPC) OHCI USB 1.1 controller
-            case 0x29556e61: return found(brands::VPC, dev);
+                    // Connectix (VirtualPC) OHCI USB 1.1 controller
+                case 0x29556e61: return found(brands::VPC, dev);
             }
 
             // TODO: EXTRAS TO ADD (64 instead of 32 bits for device_id field)
