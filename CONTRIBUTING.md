@@ -13,7 +13,7 @@ You can create an issue, and I will reply within 24 hours. We have too much free
 
 
 ## Extra 
-We have an useful script at `auxiliary/updater.py` will update:
+We have a useful script at `auxiliary/updater.py` will update:
 - the section line numbers in the header banner
 - the date of the update
 

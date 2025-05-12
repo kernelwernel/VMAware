@@ -1,7 +1,7 @@
 | File | Purpose |
 |------|---------|
 | `cli.cpp`  | Entire CLI tool code |
-| `vmaware.hpp` | Official and original library header in GPL-3.0, most likely what you're looking for. |
+| `vmaware.hpp` | Official and original library header, most likely what you're looking for. |
 
 <br>
 

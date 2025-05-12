@@ -837,8 +837,7 @@ private:
                 cpu::leaf::brand3
             }};
 
-            std::string b;
-            b.reserve(48);
+            std::string b(48, '\n');
 
             union Regs {
                 u32   i[4];
@@ -1378,38 +1377,34 @@ private:
 
         [[nodiscard]] static std::unique_ptr<std::string> sys_result(const char* cmd) {
 #if (CPP < 14)
-            std::unique_ptr<std::string> tmp(nullptr);
             UNUSED(cmd);
-            return tmp;
+            return nullptr;
 #else
     #if (LINUX || APPLE)
-        #if (ARM)
-            #pragma GCC diagnostic push
-            #pragma GCC diagnostic ignored "-Wignored-attributes"
-        #endif
-             std::unique_ptr<FILE, int(*)(FILE*)> pipe(popen(cmd, "r"), pclose);
-
-        #if (ARM)
-            #pragma GCC diagnostic pop
-        #endif
-
+                struct FileDeleter { void operator()(FILE* f) const noexcept { if (f) pclose(f); } };
+                std::unique_ptr<FILE, FileDeleter> pipe(popen(cmd, "r"), FileDeleter());
                 if (!pipe) {
                     return nullptr;
                 }
 
-                std::string result{};
-                std::array<char, 128> buffer{};
+                std::string result;
+                char* line = nullptr;
+                size_t len = 0;
+                ssize_t nread;
 
-                while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
-                    result += buffer.data();
+                while ((nread = getline(&line, &len, pipe.get())) != -1) {
+                    result.append(line, static_cast<size_t>(nread));
+                }
+                free(line);
+
+                if (!result.empty() && result.back() == '\n') {
+                    result.pop_back();
                 }
 
-                result.pop_back();
-
-                return util::make_unique<std::string>(result);
+                return util::make_unique<std::string>(std::move(result));
     #else
-            UNUSED(cmd);
-            return std::make_unique<std::string>();
+                UNUSED(cmd);
+                return std::make_unique<std::string>();
     #endif
 #endif
         }
@@ -1617,57 +1612,53 @@ private:
             std::unordered_set<std::string> processNames;
 #if (WINDOWS)
             static constexpr NTSTATUS STATUS_INFO_LENGTH_MISMATCH = static_cast<NTSTATUS>(0xC0000004);
-            using PFN_NtQuerySystemInformation = NTSTATUS(__stdcall*)(
-                SYSTEM_INFORMATION_CLASS,
-                PVOID,
-                ULONG,
-                PULONG
-                );
+            processNames.reserve(256);
 
-            static PFN_NtQuerySystemInformation pNtQSI = nullptr;
-            if (pNtQSI == nullptr) {
-                HMODULE hNtdll = GetModuleHandle(_T("ntdll.dll"));
-                if (hNtdll) {
-                    const char* names[] = { "NtQuerySystemInformation" };
-                    void* functions[1] = { nullptr };
-                    GetFunctionAddresses(hNtdll, names, functions, 1);
-                    pNtQSI = reinterpret_cast<PFN_NtQuerySystemInformation>(functions[0]);
-                }
-                if (!pNtQSI) return {};
+            using QSI_t = NTSTATUS(__stdcall*)(SYSTEM_INFORMATION_CLASS, PVOID, ULONG, PULONG);
+            static QSI_t NtQSI = nullptr;
+            if (!NtQSI) {
+                HMODULE ntdll = ::GetModuleHandle(_T("ntdll.dll"));
+                if (!ntdll) return {};
+                const char* fn = "NtQuerySystemInformation";
+                void* addr = nullptr;
+                GetFunctionAddresses(ntdll, &fn, &addr, 1);
+                NtQSI = reinterpret_cast<QSI_t>(addr);
+                if (!NtQSI) return {};
             }
 
-            static thread_local std::vector<BYTE> buffer;
+            static thread_local std::vector<BYTE> raw;
             ULONG needed = 0;
-            NTSTATUS status = pNtQSI(SystemProcessInformation, nullptr, 0, &needed);
+            NTSTATUS status = NtQSI(SystemProcessInformation, nullptr, 0, &needed);
             if (status != STATUS_INFO_LENGTH_MISMATCH) return {};
 
-            if (buffer.size() < needed)
-                buffer.resize(static_cast<std::vector<VM::u8, std::allocator<VM::u8>>::size_type>(needed) + 1024);
+            if (raw.size() < needed)
+                raw.resize(static_cast<std::vector<VM::u8, std::allocator<VM::u8>>::size_type>(needed) + 1024);
 
-            status = pNtQSI(SystemProcessInformation, buffer.data(), static_cast<ULONG>(buffer.size()), &needed);
+            status = NtQSI(SystemProcessInformation, raw.data(), static_cast<ULONG>(raw.size()), &needed);
             if (!NT_SUCCESS(status)) return {};
 
-            const BYTE* cur = buffer.data();
-            processNames.reserve(256); 
-
+            const BYTE* ptr = raw.data();
             while (true) {
-                const auto* pi = reinterpret_cast<const SYSTEM_PROCESS_INFORMATION*>(cur);
+                auto* info = reinterpret_cast<const SYSTEM_PROCESS_INFORMATION*>(ptr);
+                if (info->ImageName.Buffer && info->ImageName.Length > 0) {
+                    const WCHAR* wstr = info->ImageName.Buffer;
+                    int wlen = static_cast<int>(info->ImageName.Length / sizeof(WCHAR));
 
-                if (pi->ImageName.Buffer && pi->ImageName.Length > 0) {
-                    const WCHAR* wideStr = pi->ImageName.Buffer;
-                    int wideLen = static_cast<int>(pi->ImageName.Length / sizeof(WCHAR));
-
-                    int utf8Len = WideCharToMultiByte(CP_UTF8, 0, wideStr, wideLen, nullptr, 0, nullptr, nullptr);
-                    if (utf8Len > 0) {
-                        std::string utf8;
-                        utf8.resize(static_cast<size_t>(utf8Len));
-                        WideCharToMultiByte(CP_UTF8, 0, wideStr, wideLen, utf8.data(), utf8Len, nullptr, nullptr);
-                        processNames.insert(std::move(utf8));
+                    char utf8buf[1024];
+                    int bytes = WideCharToMultiByte(
+                        CP_UTF8, 0,
+                        wstr, wlen,
+                        utf8buf, sizeof(utf8buf),
+                        nullptr, nullptr
+                    );
+                    if (bytes > 0) {
+                        processNames.emplace(utf8buf, static_cast<size_t>(bytes));
                     }
                 }
 
-                if (pi->NextEntryOffset == 0) break;
-                cur += pi->NextEntryOffset;
+                if (info->NextEntryOffset == 0)
+                    break;
+                ptr += info->NextEntryOffset;
             }
 #endif
             return processNames;
@@ -1832,12 +1823,31 @@ private:
             };
 
             constexpr VersionMapEntry windowsVersions[] = {
-                {6002, 6},  {7601, 7},  {9200, 8},  {9600, 8},
-                {10240, 10}, {10586, 10}, {14393, 10}, {15063, 10},
-                {16299, 10}, {17134, 10}, {17763, 10}, {18362, 10},
-                {18363, 10}, {19041, 10}, {19042, 10}, {19043, 10},
-                {19044, 10}, {19045, 10}, {22000, 11}, {22621, 11},
-                {22631, 11}, {26100, 11}
+                {6002, 6},
+                {7601, 7},
+
+                {9200, 8},
+                {9600, 8},
+
+                {10240, 10},
+                {10586, 10},
+                {14393, 10},
+                {15063, 10},
+                {16299, 10},
+                {17134, 10},
+                {17763, 10},
+                {18362, 10},
+                {18363, 10},
+                {19041, 10},
+                {19042, 10},
+                {19043, 10},
+                {19044, 10},
+                {19045, 10},
+
+                {22000, 11},
+                {22621, 11},
+                {22631, 11},
+                {26100, 11}
             };
 
             const HMODULE ntdll = GetModuleHandle(_T("ntdll.dll"));
@@ -1938,33 +1948,65 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #else
         const std::string& brand = cpu::get_brand();
 
-#if (CPP >= 17)
-        constexpr std::array<std::string_view, 10> checks = { {
-            "qemu", "kvm", "vbox", "virtualbox", "monitor", "bhyve", "hypervisor",
-            "hvisor", "parallels", "vmware"
+        struct CStrView {
+            const char* data;
+            std::size_t size;
+            constexpr CStrView(const char* d, std::size_t s) noexcept
+                : data(d), size(s) {
+            }
+        };
+
+        static constexpr std::array<CStrView, 10> checks{ {
+            { "qemu",       4 },
+            { "kvm",        3 },
+            { "vbox",       4 },
+            { "virtualbox", 10},
+            { "monitor",    7 },
+            { "bhyve",      5 },
+            { "hypervisor", 10},
+            { "hvisor",     6 },
+            { "parallels",  9 },
+            { "vmware",     6 }
         } };
-#else
-        constexpr std::array<const char*, 10> checks = { {
-            "qemu", "kvm", "vbox", "virtualbox", "monitor", "bhyve", "hypervisor",
-            "hvisor", "parallels", "vmware"
-        } };
-#endif
 
-        u8 match_count = 0;
+        for (auto& v : checks) {
+            if (brand.size() < v.size)
+                continue;  // too short to match
 
-        if (brand.find("qemu") != std::string::npos) {
-            debug("BRAND_KEYWORDS: match = qemu");
-            return core::add(brands::QEMU);
-        }
+            if (brand.find(v.data) != std::string::npos) {
+                debug("BRAND_KEYWORDS: match = ", v.data);
 
-        for (u8 i = 0; i < checks.size(); ++i) {
-            if (brand.find(checks[i]) != std::string::npos) {
-                debug("BRAND_KEYWORDS: match = ", std::string(checks[i]));
-                match_count++;
+                // For these, we only care that it's virtualized:
+                if (v.size == 7  // "monitor"
+                    || v.size == 6 && v.data[0] == 'h'  // "hvisor"
+                    || v.size == 10 && v.data[0] == 'h') // "hypervisor"
+                {
+                    return true;
+                }
+
+                // Otherwise map to your enums:
+                switch (v.size) {
+                case 4:  // "qemu" or "vbox"
+                    return core::add(v.data[0] == 'q'
+                        ? brands::QEMU
+                        : brands::VBOX);
+                case 3:  // "kvm"
+                    return core::add(brands::KVM);
+                case 5:  // "bhyve"
+                    return core::add(brands::BHYVE);
+                case 9:  // "parallels"
+                    return core::add(brands::PARALLELS);
+                case 10: // "virtualbox"
+                    return core::add(brands::VBOX);
+                case 6:  // "vmware"
+                    return core::add(brands::VMWARE);
+                default:
+                    return false;
+                }
             }
         }
 
-        return match_count > 0;
+        return false;
 #endif
     }
 
@@ -4139,32 +4181,55 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #else
         const u32 threads = std::thread::hardware_concurrency();
-        const auto steps = cpu::fetch_steppings();
 
-        if (!(cpu::is_intel() || cpu::is_amd())) return false; // CPUs before 2006 had no official multi-core processors
-        if (cpu::is_celeron(steps)) return false; // intel celeron CPUs are relatively modern, but they can contain a single or odd thread count
+        auto steps = cpu::fetch_steppings();
+        if (!(cpu::is_intel() || cpu::is_amd()))
+            return false;
+        if (cpu::is_celeron(steps))
+            return false;
 
-        constexpr auto pack = [](u8 family, u8 extmodel, u8 model) -> u32 {
+        auto make_id = [](u8 family, u8 extmodel, u8 model) -> u32 {
             return (static_cast<u32>(family) << 16) |
                 (static_cast<u32>(extmodel) << 8) |
                 static_cast<u32>(model);
             };
 
-        static const std::unordered_set<u32> old_microarch_set = {
-            pack(0x4, 0x0, 0x1), pack(0x4, 0x0, 0x2), pack(0x4, 0x0, 0x3), pack(0x4, 0x0, 0x4),
-            pack(0x4, 0x0, 0x5), pack(0x4, 0x0, 0x7), pack(0x4, 0x0, 0x8), pack(0x4, 0x0, 0x9),
-            pack(0x5, 0x0, 0x1), pack(0x5, 0x0, 0x2), pack(0x5, 0x0, 0x4), pack(0x5, 0x0, 0x7),
-            pack(0x5, 0x0, 0x8), pack(0x6, 0x0, 0x1), pack(0x6, 0x0, 0x3), pack(0x6, 0x0, 0x5),
-            pack(0x6, 0x0, 0x6), pack(0x6, 0x0, 0x7), pack(0x6, 0x0, 0x8), pack(0x6, 0x0, 0xA),
-            pack(0x6, 0x0, 0xB), pack(0xF, 0x0, 0x6), pack(0xF, 0x0, 0x4), pack(0xF, 0x0, 0x3),
-            pack(0xF, 0x0, 0x2), pack(0xF, 0x0, 0x10), pack(0x6, 0x1, 0x5), pack(0x6, 0x1, 0x6),
-            pack(0x6, 0x0, 0x9), pack(0x6, 0x0, 0xD), pack(0x6, 0x0, 0xE), pack(0x6, 0x0, 0xF)
-        };
+        static constexpr std::array<u32, 35> old_microarch_ids = { {
+                // Family 4 (Intel 486): models 1,2,3,4,5,7,8,9
+                make_id(0x4, 0x0, 0x1), make_id(0x4, 0x0, 0x2),
+                make_id(0x4, 0x0, 0x3), make_id(0x4, 0x0, 0x4),
+                make_id(0x4, 0x0, 0x5), make_id(0x4, 0x0, 0x7),
+                make_id(0x4, 0x0, 0x8), make_id(0x4, 0x0, 0x9),
 
-        const u32 id = pack(steps.family, steps.extmodel, steps.model);
-        if (old_microarch_set.count(id)) return false;
+                // Family 5 (Pentium, P5): models 1,2,4,7,8
+                make_id(0x5, 0x0, 0x1), make_id(0x5, 0x0, 0x2),
+                make_id(0x5, 0x0, 0x4), make_id(0x5, 0x0, 0x7),
+                make_id(0x5, 0x0, 0x8),
 
-        return (threads & 1);
+                // Family 6 (P6/Pentium Pro/Celeron/Pentium II–III): models 1,3,5,6,7,8,9,A,B,D,E,F
+                make_id(0x6, 0x0, 0x1), make_id(0x6, 0x0, 0x3),
+                make_id(0x6, 0x0, 0x5), make_id(0x6, 0x0, 0x6),
+                make_id(0x6, 0x0, 0x7), make_id(0x6, 0x0, 0x8),
+                make_id(0x6, 0x0, 0x9), make_id(0x6, 0x0, 0xA),
+                make_id(0x6, 0x0, 0xB), make_id(0x6, 0x0, 0xD),
+                make_id(0x6, 0x0, 0xE), make_id(0x6, 0x0, 0xF),
+
+                // Family 6 (Yonah/early Core): models 1,2 (extmodel = 1)
+                make_id(0x6, 0x1, 0x5), make_id(0x6, 0x1, 0x6),
+
+                // Family F (Pentium 4): models 2,3,4,6,10
+                make_id(0xF, 0x0, 0x2), make_id(0xF, 0x0, 0x3),
+                make_id(0xF, 0x0, 0x4), make_id(0xF, 0x0, 0x6),
+                make_id(0xF, 0x0, 0x10)
+            } };
+
+        const u32 curId = make_id(steps.family, steps.extmodel, steps.model);
+        for (u32 oldId : old_microarch_ids) {
+            if (curId == oldId)
+                return false;
+        }
+
+        return (threads & 1u) != 0;
 #endif
     }
 
@@ -5384,6 +5449,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const std::string hostname = util::get_hostname();
         const size_t len = hostname.size();
 
+        // most Hyper-V hostnames under Azure have the hostname format of fv-azXXX-XXX where the X is a digit
         if (len < 8)
             return false;
 
@@ -6194,11 +6260,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         bool result = false;
         constexpr u8 MAX_PHYSICAL_DRIVES = 4;
 
-        auto is_vbox_serial = [](const char* str, uint8_t len) -> bool {
-            // VirtualBox pattern: VB + 8 hex + - + 8 hex
-            if (len != 19) return false;
+        auto is_vbox_serial = [](const char* str, u8 len) -> bool {
+            if (len != 19)
+                return false;
             if ((str[0] != 'V' && str[0] != 'v') ||
-                (str[1] != 'B' && str[1] != 'b')) return false;
+                (str[1] != 'B' && str[1] != 'b'))
+                return false;
 
             auto is_hex = [](char c) {
                 return (c >= '0' && c <= '9') ||
@@ -6206,14 +6273,18 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     (c >= 'a' && c <= 'f');
                 };
 
-            for (u8 i : {static_cast<u8>(2), static_cast<u8>(3), static_cast<u8>(4), static_cast<u8>(5),
-                static_cast<u8>(6), static_cast<u8>(7), static_cast<u8>(8), static_cast<u8>(9),
-                static_cast<u8>(11), static_cast<u8>(12), static_cast<u8>(13), static_cast<u8>(14),
-                static_cast<u8>(15), static_cast<u8>(16), static_cast<u8>(17), static_cast<u8>(18)}) {
-                if (!is_hex(str[i])) return false;
+            static constexpr std::array<u8, 16> hex_positions = { {
+                2, 3, 4, 5, 6, 7, 8, 9,  
+                11,12,13,14,15,16,17,18  
+            } };
+
+            for (u8 idx : hex_positions) {
+                if (!is_hex(str[idx]))
+                    return false;
             }
+
             return str[10] == '-';
-            };
+        };
 
         for (u8 drive = 0; drive < MAX_PHYSICAL_DRIVES; drive++) {
             wchar_t path[32];
@@ -9747,9 +9818,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
 #if (CPP >= 17)
-#define VMAWARE_CONSTEXPR constexpr
+    #define VMAWARE_CONSTEXPR constexpr
 #else
-#define VMAWARE_CONSTEXPR
+    #define VMAWARE_CONSTEXPR
 #endif
 
     public:
@@ -9757,17 +9828,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // This will then generate a different std::bitset as the 
         // return value by enabling the bits based on the argument.
         template <typename... Args>
-        static flagset arg_handler(Args&&... args) {
+        static VMAWARE_CONSTEXPR flagset arg_handler(Args&&... args) {
             flag_collector.reset();
             generate_default(disabled_flag_collector);
 
-            if constexpr (is_empty<Args...>()) {
-                // no args, so just return the defaults
+            if VMAWARE_CONSTEXPR(is_empty<Args...>()) {
                 generate_default(flag_collector);
                 return flag_collector;
             }
             else {
-            // set the bits in the flag, can take in either an enum value or a std::bitset
+                // set the bits in the flag, can take in either an enum value or a std::bitset
                 handleArgs(std::forward<Args>(args)...);
 
                 if (flag_collector.count() == 0) {

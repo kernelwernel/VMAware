@@ -1,3 +1,31 @@
+# 
+# ██╗   ██╗███╗   ███╗ █████╗ ██╗    ██╗ █████╗ ██████╗ ███████╗
+# ██║   ██║████╗ ████║██╔══██╗██║    ██║██╔══██╗██╔══██╗██╔════╝
+# ██║   ██║██╔████╔██║███████║██║ █╗ ██║███████║██████╔╝█████╗  
+# ╚██╗ ██╔╝██║╚██╔╝██║██╔══██║██║███╗██║██╔══██║██╔══██╗██╔══╝  
+#  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
+#   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝
+# 
+#  C++ VM detection library
+# 
+# ===============================================================
+# 
+#  This is an internal script to update various stuff of the project automatically:
+# 
+#    1.  Update the line numbers for the sections header based on what
+#        line they are located, so it's a (tiny) bit easier to understand
+#        the structure of the headers for anybody reading it for the first
+#        time, it's more of a guide to point which parts are this and that.
+# 
+#    2. Update the dates in the banner, example: "1.9 (Septmber 2024)"
+# 
+# ===============================================================
+# 
+#  - Made by: @kernelwernel (https://github.com/kernelwernel)
+#  - Repository: https://github.com/kernelwernel/VMAware
+#  - License: MIT
+
+
 import sys
 import re
 import os
