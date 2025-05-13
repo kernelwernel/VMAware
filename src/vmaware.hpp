@@ -6200,17 +6200,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 ntFreeVirtualMemory(hProcess, &allocatedMemory, &regionSize, MEM_RELEASE);
                 return core::add(brands::VMWARE);
             }
-
-            if (
-                strstr(driverPath, "vmstorfl") ||
-                strstr(driverPath, "vmbkmcl") ||
-                strstr(driverPath, "vms3cap") ||
-                strstr(driverPath, "vmgencounter ")
-                ) {
-                debug("DRIVER_NAMES: Detected Hyper-V driver: ", driverPath);
-                ntFreeVirtualMemory(hProcess, &allocatedMemory, &regionSize, MEM_RELEASE);
-                return core::add(brands::QEMU_KVM_HYPERV);
-            }
         }
 
         ntFreeVirtualMemory(hProcess, &allocatedMemory, &regionSize, MEM_RELEASE);
