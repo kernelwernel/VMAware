@@ -371,7 +371,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::GENERAL_HOSTNAME:
             case VM::BLUESTACKS_FOLDERS:
             case VM::CPUID_SIGNATURE:
-            case VM::KVM_BITMASK:
             case VM::KGT_SIGNATURE:
             case VM::QEMU_VIRTUAL_DMI:
             case VM::QEMU_USB:

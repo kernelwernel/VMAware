@@ -836,7 +836,7 @@ private:
                 cpu::leaf::brand3
             }};
 
-            std::string b(48, '\n');
+            std::string b(48, '\0');
 
             union Regs {
                 u32   i[4];
@@ -1983,7 +1983,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     return true;
                 }
 
-                // Otherwise map to your enums:
+                // Otherwise map to our enums:
                 switch (v.size) {
                 case 4:  // "qemu" or "vbox"
                     return core::add(v.data[0] == 'q'
@@ -6236,8 +6236,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 };
 
             static constexpr std::array<u8, 16> hex_positions = { {
-                2, 3, 4, 5, 6, 7, 8, 9,  
-                11,12,13,14,15,16,17,18  
+                2, 3, 4, 5, 6, 7, 8, 9,
+                11,12,13,14,15,16,17,18
             } };
 
             for (u8 idx : hex_positions) {
@@ -6246,6 +6246,18 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             return str[10] == '-';
+        };
+
+        auto is_qemu_serial = [](const char* str, u8 len) -> bool {
+            constexpr const char* prefix = "QM0000";
+            constexpr size_t prefix_len = 6;
+            if (len < prefix_len)
+                return false;
+            for (size_t i = 0; i < prefix_len; ++i) {
+                if (str[i] != prefix[i])
+                    return false;
+            }
+            return true;
         };
 
         for (u8 drive = 0; drive < MAX_PHYSICAL_DRIVES; drive++) {
@@ -6289,9 +6301,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             if (!DeviceIoControl(hDevice, IOCTL_STORAGE_QUERY_PROPERTY,
                 &query, sizeof(query), buffer, header.Size,
                 &bytesReturned, nullptr)) {
-                if (buffer != stackBuf) {
-                    LocalFree(buffer);
-                }
+                if (buffer != stackBuf) LocalFree(buffer);
                 CloseHandle(hDevice);
                 continue;
             }
@@ -6309,13 +6319,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 constexpr size_t BUF_SZ = 256;
                 char upperSerial[BUF_SZ] = { 0 };
 
-                size_t copyLen;
-                if (serialLen < (BUF_SZ - 1)) {
-                    copyLen = serialLen;
-                }
-                else {
-                    copyLen = BUF_SZ - 1;
-                }
+                size_t copyLen = (serialLen < BUF_SZ - 1) ? serialLen : BUF_SZ - 1;
 
                 for (size_t i = 0; i < copyLen; ++i) {
                     char c = serial[i];
@@ -6323,19 +6327,22 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
                 upperSerial[copyLen] = '\0';
 
+                if (is_qemu_serial(upperSerial, static_cast<u8>(copyLen))) {
+                    result = core::add(brands::QEMU);
+                    if (buffer != stackBuf) LocalFree(buffer);
+                    CloseHandle(hDevice);
+                    return result;
+                }
+
                 if (is_vbox_serial(upperSerial, static_cast<u8>(copyLen))) {
                     result = core::add(brands::VBOX);
-                    if (buffer != stackBuf) {
-                        LocalFree(buffer);
-                    }
+                    if (buffer != stackBuf) LocalFree(buffer);
                     CloseHandle(hDevice);
                     return result;
                 }
             }
 
-            if (buffer != stackBuf) {
-                LocalFree(buffer);
-            }
+            if (buffer != stackBuf) LocalFree(buffer);
             CloseHandle(hDevice);
         }
 
