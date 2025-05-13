@@ -592,7 +592,6 @@ public:
         DEVICE_STRING,
         BLUESTACKS_FOLDERS,
         CPUID_SIGNATURE,
-        KVM_BITMASK,
         KGT_SIGNATURE,
         QEMU_VIRTUAL_DMI,
         QEMU_USB,
@@ -837,7 +836,7 @@ private:
                 cpu::leaf::brand3
             }};
 
-            std::string b(48, '\n');
+            std::string b(48, '\0');
 
             union Regs {
                 u32   i[4];
@@ -5619,43 +5618,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check for KVM CPUID bitmask range for reserved values
-     * @category x86
-     * @implements VM::KVM_BITMASK
-     */
-    [[nodiscard]] static bool kvm_bitmask() {
-#if (!x86)
-        return false;
-#else
-        u32 eax, ebx, ecx, edx = 0;
-        cpu::cpuid(eax, ebx, ecx, edx, 0x40000000);
-
-        // KVM brand and max leaf check
-        if (!(
-            (eax == 0x40000001) &&
-            (ebx == 0x4b4d564b) &&
-            (ecx == 0x564b4d56) &&
-            (edx == 0x4d)
-        )) {
-            return false;
-        }
-
-        cpu::cpuid(eax, ebx, ecx, edx, 0x40000001);
-
-        if (
-            (eax & (1 << 8)) &&
-            (((eax >> 13) & 0b1111111111) == 0) &&
-            ((eax >> 24) == 0)
-        ) {
-            return core::add(brands::KVM);
-        }
-
-        return false;
-#endif
-    }
-
-
-    /**
      * @brief Check for Intel KGT (Trusty branch) hypervisor signature in CPUID
      * @link https://github.com/intel/ikgt-core/blob/7dfd4d1614d788ec43b02602cce7a272ef8d5931/vmm/vmexit/vmexit_cpuid.c
      * @category x86
@@ -6238,6 +6200,17 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 ntFreeVirtualMemory(hProcess, &allocatedMemory, &regionSize, MEM_RELEASE);
                 return core::add(brands::VMWARE);
             }
+
+            if (
+                strstr(driverPath, "vmstorfl") ||
+                strstr(driverPath, "vmbkmcl") ||
+                strstr(driverPath, "vms3cap") ||
+                strstr(driverPath, "vmgencounter ")
+                ) {
+                debug("DRIVER_NAMES: Detected Hyper-V driver: ", driverPath);
+                ntFreeVirtualMemory(hProcess, &allocatedMemory, &regionSize, MEM_RELEASE);
+                return core::add(brands::QEMU_KVM_HYPERV);
+            }
         }
 
         ntFreeVirtualMemory(hProcess, &allocatedMemory, &regionSize, MEM_RELEASE);
@@ -6274,8 +6247,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 };
 
             static constexpr std::array<u8, 16> hex_positions = { {
-                2, 3, 4, 5, 6, 7, 8, 9,  
-                11,12,13,14,15,16,17,18  
+                2, 3, 4, 5, 6, 7, 8, 9,
+                11,12,13,14,15,16,17,18
             } };
 
             for (u8 idx : hex_positions) {
@@ -6284,6 +6257,18 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             return str[10] == '-';
+        };
+
+        auto is_qemu_serial = [](const char* str, u8 len) -> bool {
+            constexpr const char* prefix = "QM0000";
+            constexpr size_t prefix_len = 6;
+            if (len < prefix_len)
+                return false;
+            for (size_t i = 0; i < prefix_len; ++i) {
+                if (str[i] != prefix[i])
+                    return false;
+            }
+            return true;
         };
 
         for (u8 drive = 0; drive < MAX_PHYSICAL_DRIVES; drive++) {
@@ -6327,9 +6312,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             if (!DeviceIoControl(hDevice, IOCTL_STORAGE_QUERY_PROPERTY,
                 &query, sizeof(query), buffer, header.Size,
                 &bytesReturned, nullptr)) {
-                if (buffer != stackBuf) {
-                    LocalFree(buffer);
-                }
+                if (buffer != stackBuf) LocalFree(buffer);
                 CloseHandle(hDevice);
                 continue;
             }
@@ -6347,13 +6330,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 constexpr size_t BUF_SZ = 256;
                 char upperSerial[BUF_SZ] = { 0 };
 
-                size_t copyLen;
-                if (serialLen < (BUF_SZ - 1)) {
-                    copyLen = serialLen;
-                }
-                else {
-                    copyLen = BUF_SZ - 1;
-                }
+                size_t copyLen = (serialLen < BUF_SZ - 1) ? serialLen : BUF_SZ - 1;
 
                 for (size_t i = 0; i < copyLen; ++i) {
                     char c = serial[i];
@@ -6361,19 +6338,22 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
                 upperSerial[copyLen] = '\0';
 
+                if (is_qemu_serial(upperSerial, static_cast<u8>(copyLen))) {
+                    result = core::add(brands::QEMU);
+                    if (buffer != stackBuf) LocalFree(buffer);
+                    CloseHandle(hDevice);
+                    return result;
+                }
+
                 if (is_vbox_serial(upperSerial, static_cast<u8>(copyLen))) {
                     result = core::add(brands::VBOX);
-                    if (buffer != stackBuf) {
-                        LocalFree(buffer);
-                    }
+                    if (buffer != stackBuf) LocalFree(buffer);
                     CloseHandle(hDevice);
                     return result;
                 }
             }
 
-            if (buffer != stackBuf) {
-                LocalFree(buffer);
-            }
+            if (buffer != stackBuf) LocalFree(buffer);
             CloseHandle(hDevice);
         }
 
@@ -10518,7 +10498,6 @@ public: // START OF PUBLIC FUNCTIONS
             case DEVICE_STRING: return "DEVICE_STRING";
             case BLUESTACKS_FOLDERS: return "BLUESTACKS_FOLDERS";
             case CPUID_SIGNATURE: return "CPUID_SIGNATURE";
-            case KVM_BITMASK: return "KVM_BITMASK";
             case KGT_SIGNATURE: return "KGT_SIGNATURE";
             case QEMU_VIRTUAL_DMI: return "QEMU_VIRTUAL_DMI";
             case QEMU_USB: return "QEMU_USB";
@@ -11090,7 +11069,6 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     std::make_pair(VM::DEVICE_STRING, VM::core::technique(25, VM::device_string)),
     std::make_pair(VM::BLUESTACKS_FOLDERS, VM::core::technique(5, VM::bluestacks)),
     std::make_pair(VM::CPUID_SIGNATURE, VM::core::technique(95, VM::cpuid_signature)),
-    std::make_pair(VM::KVM_BITMASK, VM::core::technique(40, VM::kvm_bitmask)),
     std::make_pair(VM::KGT_SIGNATURE, VM::core::technique(80, VM::intel_kgt_signature)),
     std::make_pair(VM::QEMU_VIRTUAL_DMI, VM::core::technique(40, VM::qemu_virtual_dmi)),
     std::make_pair(VM::QEMU_USB, VM::core::technique(20, VM::qemu_USB)),

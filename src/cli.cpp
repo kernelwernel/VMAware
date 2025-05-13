@@ -371,7 +371,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::GENERAL_HOSTNAME:
             case VM::BLUESTACKS_FOLDERS:
             case VM::CPUID_SIGNATURE:
-            case VM::KVM_BITMASK:
             case VM::KGT_SIGNATURE:
             case VM::QEMU_VIRTUAL_DMI:
             case VM::QEMU_USB:
@@ -440,7 +439,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::SCREEN_RESOLUTION:
             case VM::DEVICE_STRING:
             case VM::CPUID_SIGNATURE:
-            case VM::KVM_BITMASK:
             case VM::KGT_SIGNATURE:
             case VM::DRIVER_NAMES:
             case VM::DISK_SERIAL:
@@ -485,7 +483,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::INTEL_THREAD_MISMATCH:
             case VM::XEON_THREAD_MISMATCH:
             case VM::CPUID_SIGNATURE:
-            case VM::KVM_BITMASK:
             case VM::KGT_SIGNATURE:
             case VM::AMD_SEV:
             case VM::AMD_THREAD_MISMATCH:
@@ -903,7 +900,6 @@ void general() {
     checker(VM::DEVICE_STRING, "bogus device string");
     checker(VM::BLUESTACKS_FOLDERS, "BlueStacks folders");
     checker(VM::CPUID_SIGNATURE, "CPUID signatures");
-    checker(VM::KVM_BITMASK, "KVM CPUID reserved bitmask");
     checker(VM::KGT_SIGNATURE, "Intel KGT signature");
     checker(VM::QEMU_VIRTUAL_DMI, "QEMU virtual DMI directory");
     checker(VM::QEMU_USB, "QEMU USB");
