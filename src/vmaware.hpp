@@ -9072,7 +9072,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 case 0x1af41110: // Inter-VM shared memory
                     return true;
 
-                    // VMware
+                // VMware
                 case 0x15ad0405: // SVGA II Adapter
                 case 0x15ad0710: // SVGA Adapter
                 case 0x15ad0720: // VMXNET Ethernet Controller
@@ -9104,7 +9104,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 case 0x0e0ff80a: // Smoker FX2
                     return found(brands::VMWARE, dev);
 
-                    // Red Hat + QEMU
+                // Red Hat + QEMU
                 case 0x1b360001: // Red Hat, Inc. QEMU PCI-PCI bridge
                 case 0x1b360002: // Red Hat, Inc. QEMU PCI 16550A Adapter
                 case 0x1b360003: // Red Hat, Inc. QEMU PCI Dual-port 16550A Adapter
@@ -9121,14 +9121,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 case 0x1b360100: // Red Hat, Inc. QXL paravirtual graphic card
                     return found(brands::QEMU, dev);
 
-                    // QEMU
+                // QEMU
                 case 0x06270001: // Adomax Technology Co., Ltd QEMU Tablet
                 case 0x1d1d1f1f: // CNEX Labs QEMU NVM Express LightNVM Controller
                 case 0x80865845: // Intel Corporation QEMU NVM Express Controller
                 case 0x1d6b0200: // Linux Foundation Qemu Audio Device
                     return found(brands::QEMU, dev);
 
-                    // vGPUs (mostly NVIDIA)
+                // vGPUs (mostly NVIDIA)
                 case 0x10de0fe7: // GK107GL [GRID K100 vGPU]
                 case 0x10de0ff7: // GK107GL [GRID K140Q vGPU]
                 case 0x10de118d: // GK104GL [GRID K200 vGPU]
@@ -9136,14 +9136,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 case 0x1ec6020f: // Vastai Technologies SG100 vGPU
                     return true;
 
-                    // VirtualBox
+                // VirtualBox
                 case 0x80ee0021: // USB Tablet
                 case 0x80ee0022: // multitouch tablet
                 case 0x80eebeef: // InnoTek Systemberatung GmbH	VirtualBox Graphics Adapter
                 case 0x80eecafe: // InnoTek Systemberatung GmbH	VirtualBox Guest Service
                     return found(brands::VBOX, dev);
 
-                    // Hyper-V
+                // Hyper-V
                 case 0x1f3f9002: // 3SNIC Ltd SSSNIC Ethernet VF Hyper-V
                 case 0x1f3f9004: // 3SNIC Ltd SSSNIC Ethernet SDI VF Hyper-V
                 case 0x1f3f9009: // 3SNIC Ltd SSSFC VF Hyper-V
@@ -9154,13 +9154,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     }
                     return found(brands::HYPERV, dev);
 
-                    // Parallels
+                // Parallels
                 case 0x1ab84000: // Virtual Machine Communication Interface
                 case 0x1ab84005: // Accelerated Virtual Video Adapter
                 case 0x1ab84006: // Memory Ballooning Controller
                     return found(brands::PARALLELS, dev);
 
-                    // Xen
+                // Xen
                 case 0x5853c000: // XenSource, Inc.	Citrix XenServer PCI Device for Windows Update
                 case 0xfffd0101: // XenSource, Inc.	PCI Event Channel Controller
                 case 0x5853c147: // XenSource, Inc.	Virtualized Graphics Device
@@ -9169,7 +9169,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 case 0x58530001: // XenSource, Inc.	Xen Platform Device
                     return found(brands::XEN, dev);
 
-                    // Connectix (VirtualPC) OHCI USB 1.1 controller
+                // Connectix (VirtualPC) OHCI USB 1.1 controller
                 case 0x29556e61: return found(brands::VPC, dev);
             }
 

@@ -10,18 +10,12 @@
 - [ ] fix "dmidecode not found" error
 - [ ] implement techniques from here https://www.cyberciti.biz/faq/linux-determine-virtualization-technology-command/
 - [ ] implement techniques from virt-what
-- empty /sys/class dirs:
+- implement empty /sys/class dirs:
     - iommu
     - power_supply
- 
-QEMU default: 0x1234
-Intel: 0x8086
-AMD: 0x1022
-VMware: 0x15ad
-Red Hat/Qumranet: 0x1af4
-In the QEMU source:
-include/hw/pci/pci.h
-include/hw/pci/pci_ids.h
+- check for presence of /dev/virtio-ports dir
+
+
 
 # Distant plans
 - add the library to conan.io when released
