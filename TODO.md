@@ -8,18 +8,14 @@
 - [ ] add a .so, .dll, and .dylib shared object files in the release 
 - [ ] /sys/class/dmi/id/product_name check this in qemu
 - [ ] fix "dmidecode not found" error
-- [ ] rearrange the techniques so that the more likely ones will be executed first
 - [ ] implement techniques from here https://www.cyberciti.biz/faq/linux-determine-virtualization-technology-command/
 - [ ] implement techniques from virt-what
- 
-QEMU default: 0x1234
-Intel: 0x8086
-AMD: 0x1022
-VMware: 0x15ad
-Red Hat/Qumranet: 0x1af4
-In the QEMU source:
-include/hw/pci/pci.h
-include/hw/pci/pci_ids.h
+- implement empty /sys/class dirs:
+    - iommu
+    - power_supply
+- check for presence of /dev/virtio-ports dir
+
+
 
 # Distant plans
 - add the library to conan.io when released

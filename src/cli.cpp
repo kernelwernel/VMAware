@@ -18,7 +18,7 @@
  * 
  *  - Made by: @kernelwernel (https://github.com/kernelwernel)
  *  - Repository: https://github.com/kernelwernel/VMAware
- *  - License: GPL 3.0
+ *  - License: MIT
  */ 
 
 #include <string>
@@ -64,6 +64,7 @@ std::string grey = "\x1B[38;2;108;108;108m";
 using u8  = std::uint8_t;
 using u16 = std::uint16_t;
 using u32 = std::uint32_t;
+using i32 = std::int32_t;
 
 enum arg_enum : u8 {
     HELP,
@@ -82,20 +83,20 @@ enum arg_enum : u8 {
     NO_ANSI,
     DYNAMIC,
     VERBOSE,
-    COMPACT,
-    MIT,
     ENUMS,
+    DETECTED_ONLY,
     NULL_ARG
 };
 
 constexpr u8 max_bits = static_cast<u8>(VM::MULTIPLE) + 1;
 constexpr u8 arg_bits = static_cast<u8>(NULL_ARG) + 1;
+
 std::bitset<arg_bits> arg_bitset;
+
 u8 unsupported_count = 0;
 u8 supported_count = 0;
 u8 no_perms_count = 0;
 u8 disabled_count = 0;
-
 
 std::string detected = ("[  " + green + "DETECTED" + ansi_exit + "  ]");
 std::string not_detected = ("[" + red + "NOT DETECTED" + ansi_exit + "]");
@@ -163,8 +164,6 @@ Extra:
  --no-ansi          removes color and ansi escape codes from the output
  --dynamic          allow the conclusion message to be dynamic (8 possibilities instead of only 2)
  --verbose          add more information to the output
- --compact          ignore the unsupported techniques from the CLI output
- --mit              ignore the GPL techniques and run only the MIT-supported ones
  --enums            display the technique enum name used by the lib
 )";
 
@@ -329,10 +328,9 @@ bool is_disabled(const VM::enum_flags flag) {
 
     switch (flag) {
         case VM::VMWARE_DMESG: 
-        case VM::PORT_CONNECTORS: 
-        case VM::ACPI_TEMPERATURE: 
+        case VM::PORT_CONNECTORS:
+        case VM::TEMPERATURE:
         case VM::LSHW_QEMU:
-        case VM::PCI_VM: return true;
         default: return false;
     }
 }
@@ -373,7 +371,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::GENERAL_HOSTNAME:
             case VM::BLUESTACKS_FOLDERS:
             case VM::CPUID_SIGNATURE:
-            case VM::KVM_BITMASK:
             case VM::KGT_SIGNATURE:
             case VM::QEMU_VIRTUAL_DMI:
             case VM::QEMU_USB:
@@ -383,7 +380,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::VM_PROCS:
             case VM::VBOX_MODULE:
             case VM::SYSINFO_PROC:
-            case VM::DEVICE_TREE:
             case VM::DMI_SCAN:
             case VM::SMBIOS_VM_BIT:
             case VM::PODMAN_FILE:
@@ -395,7 +391,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::FILE_ACCESS_HISTORY:
             case VM::UNKNOWN_MANUFACTURER:
             case VM::NSJAIL_PID:
-            case VM::PCI_VM:
             case VM::PCI_VM_DEVICE_ID:
             // ADD LINUX FLAG
             return false;
@@ -413,21 +408,17 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::TIMER:
             case VM::THREADCOUNT:
             case VM::MAC:
+            case VM::TEMPERATURE:
             case VM::DLL:
             case VM::REGISTRY:
-            case VM::VM_FILES:
+            case VM::FILES:
             case VM::VBOX_DEFAULT:
             case VM::VBOX_NETWORK:
-            case VM::COMPUTER_NAME:
-            case VM::WINE_CHECK:
-            case VM::HOSTNAME:
-            case VM::KVM_DIRS:
+            case VM::WINE:
             case VM::AUDIO:
-            case VM::QEMU_DIR:
             case VM::VM_PROCESSES:
             case VM::GAMARUE:
             case VM::BOCHS_CPU:
-            case VM::MSSMBIOS:
             case VM::HKLM_REGISTRIES:
             case VM::VPC_INVALID:
             case VM::SIDT:
@@ -441,7 +432,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::ODD_CPU_THREADS:
             case VM::INTEL_THREAD_MISMATCH:
             case VM::XEON_THREAD_MISMATCH:
-            case VM::NETTITUDE_VM_MEMORY:
             case VM::CUCKOO_DIR:
             case VM::CUCKOO_PIPE:
             case VM::HYPERV_HOSTNAME:
@@ -449,7 +439,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::SCREEN_RESOLUTION:
             case VM::DEVICE_STRING:
             case VM::CPUID_SIGNATURE:
-            case VM::KVM_BITMASK:
             case VM::KGT_SIGNATURE:
             case VM::DRIVER_NAMES:
             case VM::DISK_SERIAL:
@@ -459,18 +448,16 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::GPU_CAPABILITIES:
             case VM::PROCESSOR_NUMBER:
             case VM::NUMBER_OF_CORES:
-            case VM::ACPI_TEMPERATURE:
             case VM::POWER_CAPABILITIES:
-            case VM::SETUPAPI_DISK: 
             case VM::VIRTUAL_PROCESSORS:
             case VM::HYPERV_QUERY:
             case VM::BAD_POOLS:
             case VM::AMD_THREAD_MISMATCH:
-            case VM::NATIVE_VHD:
             case VM::VIRTUAL_REGISTRY:
             case VM::FIRMWARE:
             case VM::UNKNOWN_MANUFACTURER:
             case VM::TPM:
+            case VM::QEMU_PASSTHROUGH:
             // ADD WINDOWS FLAG
             return false;
             default: return true;
@@ -496,7 +483,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::INTEL_THREAD_MISMATCH:
             case VM::XEON_THREAD_MISMATCH:
             case VM::CPUID_SIGNATURE:
-            case VM::KVM_BITMASK:
             case VM::KGT_SIGNATURE:
             case VM::AMD_SEV:
             case VM::AMD_THREAD_MISMATCH:
@@ -535,20 +521,6 @@ bool is_unsupported(VM::enum_flags flag) {
 }
 
 
-bool is_gpl(const VM::enum_flags flag) {
-    switch (flag) {
-        case VM::COMPUTER_NAME: 
-        case VM::WINE_CHECK: 
-        case VM::HOSTNAME: 
-        case VM::KVM_DIRS: 
-        case VM::QEMU_DIR: 
-        case VM::POWER_CAPABILITIES: 
-        case VM::SETUPAPI_DISK: return true;
-        default: return false;
-    }
-}
-
-
 std::bitset<max_bits> settings() {
     std::bitset<max_bits> tmp;
 
@@ -566,7 +538,6 @@ std::bitset<max_bits> settings() {
 
     return tmp;
 }
-
 
 // just a simple string replacer
 void replace(std::string &text, const std::string &original, const std::string &new_brand) {
@@ -744,7 +715,7 @@ std::string vm_description(const std::string& vm_brand) {
     // by the ANY.RUN minifilter driver.
     // To patch this detection, I would recommend returning STATUS_OBJECT_NAME_NOT_FOUND
     // that is a standard status code for this situation.
-    if (status == 0xC000000F) // STATUS_NOT_SUCH_FILE
+    if (static_cast<ULONG>(status) == 0xC000000F) // STATUS_NOT_SUCH_FILE
         return true;
 
     // Not actually the case, maybe conflict with other software installation.
@@ -756,11 +727,13 @@ std::string vm_description(const std::string& vm_brand) {
 } 
 
 void checker(const VM::enum_flags flag, const char* message) {
-    if (is_unsupported(flag)) {
-        if (arg_bitset.test(COMPACT)) {
-            return;
-        }
+    const bool result = VM::check(flag);
 
+    if (arg_bitset.test(DETECTED_ONLY) && !result) {
+        return;
+    }
+
+    if (is_unsupported(flag)) {
         unsupported_count++;
     } else {
         supported_count++;
@@ -774,10 +747,6 @@ void checker(const VM::enum_flags flag, const char* message) {
 
 #if (CLI_LINUX)
     if (are_perms_required(flag)) {
-        if (arg_bitset.test(COMPACT)) {
-            return;
-        }
-
         std::cout << no_perms << " Skipped " << message << enum_name << "\n";
 
         no_perms_count++;
@@ -789,16 +758,13 @@ void checker(const VM::enum_flags flag, const char* message) {
     }
 #endif
 
-    if (is_disabled(flag) || (arg_bitset.test(MIT) && is_gpl(flag))) {
-        if (arg_bitset.test(COMPACT)) {
-            return;
-        }
+    if (is_disabled(flag)) {
         std::cout << disabled << " Skipped " << message << enum_name << "\n";
         disabled_count++;
         return;
     }
 
-    if (VM::check(flag)) {
+    if (result) {
         std::cout << detected << bold << " Checking " << message << "..." << enum_name << ansi_exit << "\n";
     } else {
         std::cout << not_detected << " Checking " << message << "..." << enum_name << ansi_exit << "\n";
@@ -889,27 +855,22 @@ void general() {
     checker(VM::HWMON, "hwmon presence");
     checker(VM::DLL, "DLLs");
     checker(VM::REGISTRY, "registry keys");
-    checker(VM::WINE_CHECK, "Wine");
-    checker(VM::VM_FILES, "VM files");
+    checker(VM::WINE, "Wine");
+    checker(VM::FILES, "VM files");
     checker(VM::HWMODEL, "hw.model");
     checker(VM::DISK_SIZE, "disk size");
     checker(VM::VBOX_DEFAULT, "VBox default specs");
     checker(VM::VBOX_NETWORK, "VBox network provider match");
-    checker(VM::COMPUTER_NAME, "computer name");
-    checker(VM::HOSTNAME, "hostname");
     checker(VM::VM_PROCESSES, "VM processes");
     checker(VM::LINUX_USER_HOST, "default Linux user/host");
     checker(VM::GAMARUE, "gamarue ransomware technique");
     checker(VM::BOCHS_CPU, "BOCHS CPU techniques");
-    checker(VM::MSSMBIOS, "MSSMBIOS data");
     checker(VM::MAC_MEMSIZE, "MacOS hw.memsize");
     checker(VM::MAC_IOKIT, "MacOS registry IO-kit");
     checker(VM::IOREG_GREP, "IO registry grep");
     checker(VM::MAC_SIP, "MacOS SIP");
-    checker(VM::KVM_DIRS, "KVM directories");
     checker(VM::HKLM_REGISTRIES, "registry values");
     checker(VM::AUDIO, "audio device");
-    checker(VM::QEMU_DIR, "QEMU directories");
     checker(VM::VPC_INVALID, "VPC invalid instructions");
     checker(VM::SIDT, "SIDT");
     checker(VM::SGDT, "SGDT");
@@ -926,7 +887,6 @@ void general() {
     checker(VM::ODD_CPU_THREADS, "odd thread count number");
     checker(VM::INTEL_THREAD_MISMATCH, "Intel thread count mismatch");
     checker(VM::XEON_THREAD_MISMATCH, "Intel Xeon thread count mismatch");
-    checker(VM::NETTITUDE_VM_MEMORY, "VM memory regions");
     checker(VM::CUCKOO_DIR, "Cuckoo directory");
     checker(VM::CUCKOO_PIPE, "Cuckoo pipe");
     checker(VM::HYPERV_HOSTNAME, "Hyper-V Azure hostname");
@@ -935,7 +895,6 @@ void general() {
     checker(VM::DEVICE_STRING, "bogus device string");
     checker(VM::BLUESTACKS_FOLDERS, "BlueStacks folders");
     checker(VM::CPUID_SIGNATURE, "CPUID signatures");
-    checker(VM::KVM_BITMASK, "KVM CPUID reserved bitmask");
     checker(VM::KGT_SIGNATURE, "Intel KGT signature");
     checker(VM::QEMU_VIRTUAL_DMI, "QEMU virtual DMI directory");
     checker(VM::QEMU_USB, "QEMU USB");
@@ -945,7 +904,6 @@ void general() {
     checker(VM::VM_PROCS, "various VM files in /proc");
     checker(VM::VBOX_MODULE, "VBox kernel module");
     checker(VM::SYSINFO_PROC, "/proc/sysinfo");
-    checker(VM::DEVICE_TREE, "/proc/device-tree");
     checker(VM::DMI_SCAN, "DMI scan");
     checker(VM::SMBIOS_VM_BIT, "SMBIOS VM bit");
     checker(VM::PODMAN_FILE, "podman file");
@@ -960,9 +918,7 @@ void general() {
     checker(VM::GPU_VM_STRINGS, "GPU strings");
     checker(VM::PROCESSOR_NUMBER, "processor count");
     checker(VM::NUMBER_OF_CORES, "CPU core count");
-    checker(VM::ACPI_TEMPERATURE, "thermal devices");
     checker(VM::POWER_CAPABILITIES, "Power capabilities");
-    checker(VM::SETUPAPI_DISK, "SETUPDI diskdrive");
     checker(VM::QEMU_FW_CFG, "QEMU fw_cfg device");
     checker(VM::LSHW_QEMU, "QEMU in lshw output");
     checker(VM::VIRTUAL_PROCESSORS, "virtual processors");
@@ -970,15 +926,15 @@ void general() {
     checker(VM::BAD_POOLS, "bad pools");
     checker(VM::AMD_SEV, "AMD-SEV MSR");
     checker(VM::AMD_THREAD_MISMATCH, "AMD thread count mismatch");
-    checker(VM::NATIVE_VHD, "VHD containers");
     checker(VM::VIRTUAL_REGISTRY, "registry emulation");
     checker(VM::FIRMWARE, "firmware signatures");
     checker(VM::FILE_ACCESS_HISTORY, "low file access count");
     checker(VM::UNKNOWN_MANUFACTURER, "unknown manufacturer ids");
     checker(VM::NSJAIL_PID, "nsjail PID");
-    checker(VM::PCI_VM, "PCIe bridge ports");
     checker(VM::TPM, "TPM manufacturer");
     checker(VM::PCI_VM_DEVICE_ID, "PCI vendor/device ID");
+    checker(VM::QEMU_PASSTHROUGH, "QEMU passthrough");
+
     // ADD NEW TECHNIQUE CHECKER HERE
 
     std::printf("\n");
@@ -1222,20 +1178,19 @@ int main(int argc, char* argv[]) {
         { "--high-threshold", HIGH_THRESHOLD },
         { "--dynamic", DYNAMIC },
         { "--verbose", VERBOSE },
-        { "--compact", COMPACT },
-        { "--mit", MIT },
         { "--enums", ENUMS },
-        { "--no-ansi", NO_ANSI }
+        { "--no-ansi", NO_ANSI },
+        { "--detected-only", DETECTED_ONLY },
     }};
 
     std::string potential_null_arg = "";
 
-    for (int i = 1; i < argc; ++i) {
+    for (i32 i = 1; i < argc; ++i) {
         const char* arg_string = argv[i];
 
-        auto it = std::find_if(table.cbegin(), table.cend(), [&](const std::pair<const char*, int>& p) {
+        auto it = std::find_if(table.cbegin(), table.cend(), [&](const std::pair<const char*, i32>& p) {
             return (std::strcmp(p.first, arg_string) == 0);
-            });
+        });
 
         if (it == table.end()) {
             arg_bitset.set(NULL_ARG);

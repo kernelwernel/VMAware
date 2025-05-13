@@ -17,7 +17,7 @@
  * ===============================================================
  *
  *  - Repository: https://github.com/kernelwernel/VMAware
- *  - License: GPL 3.0
+ *  - License: MIT
  */
 
 #include "../src/vmaware.hpp"
@@ -174,7 +174,7 @@ int main(void) {
     for (const VM::enum_flags technique_enum : VM::technique_vector) {
         start = VMAwareBenchmark::get_timestamp();
 
-        const bool result = VM::check(technique_enum, VM::NO_MEMO);
+        VM::check(technique_enum, VM::NO_MEMO);
 
         end = VMAwareBenchmark::get_timestamp();
         const double technique_time = VMAwareBenchmark::get_elapsed(start, end);

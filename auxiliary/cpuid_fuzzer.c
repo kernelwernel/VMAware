@@ -17,8 +17,8 @@
  * 
  *  - Made by: @kernelwernel (https://github.com/kernelwernel)
  *  - Repository: https://github.com/kernelwernel/VMAware
- *  - License: GPL 3.0
- */ 
+ *  - License: MIT
+ */
 
 
 #include <stdint.h>

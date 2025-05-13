@@ -13,9 +13,8 @@ You can create an issue, and I will reply within 24 hours. We have too much free
 
 
 ## Extra 
-We have a tool that can update the MIT file and other details of the library with a python script for maintenance purposes. The script at `auxiliary/updater.py` will update:
+We have a useful script at `auxiliary/updater.py` will update:
 - the section line numbers in the header banner
 - the date of the update
-- the MIT file by copying the GPL file and removing every GPL code (so that you don't have to make the same changes on 2 different files separately, just focus on vmaware.hpp and let the script manage the vmaware_MIT.hpp file)
 
 It's highly recommended to use this script before sending the PR so that all the above don't have to be manually updated, which can be time consuming and can potentially creep in some human errors. 

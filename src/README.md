@@ -1,8 +1,7 @@
 | File | Purpose |
 |------|---------|
 | `cli.cpp`  | Entire CLI tool code |
-| `vmaware.hpp` | Official and original library header in GPL-3.0, most likely what you're looking for. |
-| `vmaware_MIT.hpp` | Same as above but in MIT. This removes around 6% of techniques but there shouldn't be any effective difference compared to the GPL version. |
+| `vmaware.hpp` | Official and original library header, most likely what you're looking for. |
 
 <br>
 
