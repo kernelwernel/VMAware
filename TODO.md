@@ -10,6 +10,9 @@
 - [ ] fix "dmidecode not found" error
 - [ ] implement techniques from here https://www.cyberciti.biz/faq/linux-determine-virtualization-technology-command/
 - [ ] implement techniques from virt-what
+- empty /sys/class dirs:
+    - iommu
+    - power_supply
  
 QEMU default: 0x1234
 Intel: 0x8086

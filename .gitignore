@@ -27,7 +27,6 @@
 *.li
 
 # Executables
-*.exe
 *.out
 *.app
 main
