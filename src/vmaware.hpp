@@ -1486,7 +1486,7 @@ private:
             }
 
             u64 number = std::stoull(number_str);
-            if (is_mb) number = static_cast<u64>(std::round(number / 1024.0));
+            if (is_mb) number = static_cast<u64>(std::round(static_cast<double>(number) / 1024.0));
 
             return static_cast<u32>(std::min<u64>(number, std::numeric_limits<u32>::max()));
 #elif (WINDOWS)
@@ -1978,9 +1978,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
                 // For these, we only care that it's virtualized:
                 if (v.size == 7  // "monitor"
-                    || v.size == 6 && v.data[0] == 'h'  // "hvisor"
-                    || v.size == 10 && v.data[0] == 'h') // "hypervisor"
-                {
+                    || ((v.size == 6) && (v.data[0] == 'h'))  // "hvisor"
+                    || ((v.size == 10) && (v.data[0] == 'h')) // "hypervisor" 
+                ) {
                     return true;
                 }
 
@@ -2160,7 +2160,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
         std::free(table);
 
-#ifdef __VMAWARE_DEBUG__
+    #ifdef __VMAWARE_DEBUG__
         {
             std::stringstream ss;
             ss << std::hex << std::setw(2) << std::setfill('0')
@@ -2169,23 +2169,26 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 << static_cast<int>(mac[2]) << ":XX:XX:XX";
             debug("MAC: ", ss.str());
         }
+    #endif
+#else 
+        return false;
 #endif
 
         if ((mac[0] | mac[1] | mac[2]) == 0) {
             return false;
         }
 
-        const uint32_t prefix = (uint32_t)mac[0]
-            | ((uint32_t)mac[1] << 8)
-            | ((uint32_t)mac[2] << 16);
+        const u32 prefix = (u32)mac[0]
+            | ((u32)mac[1] << 8)
+            | ((u32)mac[2] << 16);
 
-        constexpr uint32_t VBOX = 0x270008;  // 08:00:27
-        constexpr uint32_t VMW1 = 0x29000C;  // 00:0C:29
-        constexpr uint32_t VMW2 = 0x141C00;  // 00:1C:14
-        constexpr uint32_t VMW3 = 0x565000;  // 00:50:56
-        constexpr uint32_t VMW4 = 0x690500;  // 00:05:69
-        constexpr uint32_t XEN = 0xE31600;  // 00:16:E3
-        constexpr uint32_t PAR = 0x421C00;  // 00:1C:42
+        constexpr u32 VBOX = 0x270008;  // 08:00:27
+        constexpr u32 VMW1 = 0x29000C;  // 00:0C:29
+        constexpr u32 VMW2 = 0x141C00;  // 00:1C:14
+        constexpr u32 VMW3 = 0x565000;  // 00:50:56
+        constexpr u32 VMW4 = 0x690500;  // 00:05:69
+        constexpr u32 XEN = 0xE31600;  // 00:16:E3
+        constexpr u32 PAR = 0x421C00;  // 00:1C:42
 
         if (prefix == VBOX) {
             return core::add(brands::VBOX);
@@ -2202,9 +2205,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         return false;
-#else
-        return false;
-#endif
     }
 
 

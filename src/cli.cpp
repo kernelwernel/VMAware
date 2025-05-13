@@ -64,6 +64,7 @@ std::string grey = "\x1B[38;2;108;108;108m";
 using u8  = std::uint8_t;
 using u16 = std::uint16_t;
 using u32 = std::uint32_t;
+using i32 = std::int32_t;
 
 enum arg_enum : u8 {
     HELP,
@@ -83,7 +84,6 @@ enum arg_enum : u8 {
     DYNAMIC,
     VERBOSE,
     COMPACT,
-    MIT,
     ENUMS,
     NULL_ARG
 };
@@ -164,7 +164,6 @@ Extra:
  --dynamic          allow the conclusion message to be dynamic (8 possibilities instead of only 2)
  --verbose          add more information to the output
  --compact          ignore the unsupported techniques from the CLI output
- --mit              ignore the GPL techniques and run only the MIT-supported ones
  --enums            display the technique enum name used by the lib
 )";
 
@@ -1189,19 +1188,18 @@ int main(int argc, char* argv[]) {
         { "--dynamic", DYNAMIC },
         { "--verbose", VERBOSE },
         { "--compact", COMPACT },
-        { "--mit", MIT },
         { "--enums", ENUMS },
         { "--no-ansi", NO_ANSI }
     }};
 
     std::string potential_null_arg = "";
 
-    for (int i = 1; i < argc; ++i) {
+    for (i32 i = 1; i < argc; ++i) {
         const char* arg_string = argv[i];
 
-        auto it = std::find_if(table.cbegin(), table.cend(), [&](const std::pair<const char*, int>& p) {
+        auto it = std::find_if(table.cbegin(), table.cend(), [&](const std::pair<const char*, i32>& p) {
             return (std::strcmp(p.first, arg_string) == 0);
-            });
+        });
 
         if (it == table.end()) {
             arg_bitset.set(NULL_ARG);
