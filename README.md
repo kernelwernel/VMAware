@@ -3,7 +3,6 @@
 <br>
 <img align="center" src="https://img.shields.io/github/actions/workflow/status/kernelwernel/VMAware/cmake-multi-platform.yml">
 <img align="center" src="https://img.shields.io/github/downloads/kernelwernel/VMAware/total">
-<img align="center" src="https://img.shields.io/github/license/a0rtega/pafish">
 <img align="center" src="https://img.shields.io/github/license/kernelwernel/auto-stuff">
 <a href="https://github.com/kernelwernel/VMAware/actions/workflows/code_ql_analysis.yml">
   <img align="center" src="https://github.com/kernelwernel/VMAware/actions/workflows/code_ql_analysis.yml/badge.svg" alt="CodeQL Analysis">
