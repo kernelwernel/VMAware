@@ -1984,7 +1984,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     return true;
                 }
 
-                // Otherwise map to your enums:
+                // Otherwise map to our enums:
                 switch (v.size) {
                 case 4:  // "qemu" or "vbox"
                     return core::add(v.data[0] == 'q'
