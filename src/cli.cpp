@@ -83,19 +83,20 @@ enum arg_enum : u8 {
     NO_ANSI,
     DYNAMIC,
     VERBOSE,
-    COMPACT,
     ENUMS,
+    DETECTED_ONLY,
     NULL_ARG
 };
 
 constexpr u8 max_bits = static_cast<u8>(VM::MULTIPLE) + 1;
 constexpr u8 arg_bits = static_cast<u8>(NULL_ARG) + 1;
+
 std::bitset<arg_bits> arg_bitset;
+
 u8 unsupported_count = 0;
 u8 supported_count = 0;
 u8 no_perms_count = 0;
 u8 disabled_count = 0;
-
 
 std::string detected = ("[  " + green + "DETECTED" + ansi_exit + "  ]");
 std::string not_detected = ("[" + red + "NOT DETECTED" + ansi_exit + "]");
@@ -163,7 +164,6 @@ Extra:
  --no-ansi          removes color and ansi escape codes from the output
  --dynamic          allow the conclusion message to be dynamic (8 possibilities instead of only 2)
  --verbose          add more information to the output
- --compact          ignore the unsupported techniques from the CLI output
  --enums            display the technique enum name used by the lib
 )";
 
@@ -440,7 +440,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::SCREEN_RESOLUTION:
             case VM::DEVICE_STRING:
             case VM::CPUID_SIGNATURE:
-            case VM::KVM_BITMASK:
             case VM::KGT_SIGNATURE:
             case VM::DRIVER_NAMES:
             case VM::DISK_SERIAL:
@@ -485,7 +484,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::INTEL_THREAD_MISMATCH:
             case VM::XEON_THREAD_MISMATCH:
             case VM::CPUID_SIGNATURE:
-            case VM::KVM_BITMASK:
             case VM::KGT_SIGNATURE:
             case VM::AMD_SEV:
             case VM::AMD_THREAD_MISMATCH:
@@ -730,11 +728,13 @@ std::string vm_description(const std::string& vm_brand) {
 } 
 
 void checker(const VM::enum_flags flag, const char* message) {
-    if (is_unsupported(flag)) {
-        if (arg_bitset.test(COMPACT)) {
-            return;
-        }
+    const bool result = VM::check(flag);
 
+    if (arg_bitset.test(DETECTED_ONLY) && !result) {
+        return;
+    }
+
+    if (is_unsupported(flag)) {
         unsupported_count++;
     } else {
         supported_count++;
@@ -748,10 +748,6 @@ void checker(const VM::enum_flags flag, const char* message) {
 
 #if (CLI_LINUX)
     if (are_perms_required(flag)) {
-        if (arg_bitset.test(COMPACT)) {
-            return;
-        }
-
         std::cout << no_perms << " Skipped " << message << enum_name << "\n";
 
         no_perms_count++;
@@ -764,15 +760,12 @@ void checker(const VM::enum_flags flag, const char* message) {
 #endif
 
     if (is_disabled(flag)) {
-        if (arg_bitset.test(COMPACT)) {
-            return;
-        }
         std::cout << disabled << " Skipped " << message << enum_name << "\n";
         disabled_count++;
         return;
     }
 
-    if (VM::check(flag)) {
+    if (result) {
         std::cout << detected << bold << " Checking " << message << "..." << enum_name << ansi_exit << "\n";
     } else {
         std::cout << not_detected << " Checking " << message << "..." << enum_name << ansi_exit << "\n";
@@ -903,7 +896,6 @@ void general() {
     checker(VM::DEVICE_STRING, "bogus device string");
     checker(VM::BLUESTACKS_FOLDERS, "BlueStacks folders");
     checker(VM::CPUID_SIGNATURE, "CPUID signatures");
-    checker(VM::KVM_BITMASK, "KVM CPUID reserved bitmask");
     checker(VM::KGT_SIGNATURE, "Intel KGT signature");
     checker(VM::QEMU_VIRTUAL_DMI, "QEMU virtual DMI directory");
     checker(VM::QEMU_USB, "QEMU USB");
@@ -1187,9 +1179,9 @@ int main(int argc, char* argv[]) {
         { "--high-threshold", HIGH_THRESHOLD },
         { "--dynamic", DYNAMIC },
         { "--verbose", VERBOSE },
-        { "--compact", COMPACT },
         { "--enums", ENUMS },
-        { "--no-ansi", NO_ANSI }
+        { "--no-ansi", NO_ANSI },
+        { "--detected-only", DETECTED_ONLY },
     }};
 
     std::string potential_null_arg = "";
