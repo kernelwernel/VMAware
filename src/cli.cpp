@@ -457,6 +457,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::UNKNOWN_MANUFACTURER:
             case VM::TPM:
             case VM::QEMU_PASSTHROUGH:
+            case VM::PCI_VM_DEVICE_ID:
             // ADD WINDOWS FLAG
             return false;
             default: return true;
