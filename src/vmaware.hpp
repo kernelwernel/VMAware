@@ -77,7 +77,11 @@
  * 
  *
  * ========================== CODE DOCUMENTATION =============================
+ *
+ * TL;DR if you have the patience of an ADHD kid, head over here:
+ * https://deepwiki.com/kernelwernel/VMAware
  * 
+ *
  * Welcome! This is just a preliminary text to lay the context of how it works, 
  * how it's structured, and guide anybody who's trying to understand the whole code. 
  * Reading over 12k+ lines of other people's C++ code is obviously not an easy task, 
@@ -357,13 +361,9 @@
 #include <intrin.h>
 #include <cwctype>
 #include <tchar.h>
-#include <iphlpapi.h>
 #include <winioctl.h>
 #include <winternl.h>
-#include <winuser.h>
 #include <shlwapi.h>
-#include <shlobj_core.h>
-#include <winspool.h>
 #include <powerbase.h>
 #include <setupapi.h>
 #include <dxgi1_4.h>
@@ -373,17 +373,8 @@
 #include <devpkey.h>
 #include <devguid.h>
 
-#pragma comment(lib, "winmm.lib")
 #pragma comment(lib, "setupapi.lib")
-#pragma comment(lib, "iphlpapi.lib")
 #pragma comment(lib, "shlwapi.lib")
-#pragma comment(lib, "MPR")
-#pragma comment(lib, "advapi32.lib")
-#pragma comment(lib, "kernel32.lib")
-#pragma comment(lib, "shell32.lib")
-#pragma comment(lib, "strmiids.lib")
-#pragma comment(lib, "uuid.lib")
-#pragma comment(lib, "ntdll.lib")
 #pragma comment(lib, "powrprof.lib")
 #pragma comment(lib, "tbs.lib")
 #if (_WIN32_WINNT >= _WIN32_WINNT_WIN10)
@@ -2082,13 +2073,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
     /**
      * @brief Check if mac address starts with certain VM designated values
-     * @category Linux and Windows
+     * @category Linux
      * @implements VM::MAC
      */
     [[nodiscard]] static bool mac_address_check() {
+#if (!LINUX)
+        return false;
+#else
         // C-style array on purpose
         u8 mac[6] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
-#if (LINUX)
         struct ifreq ifr;
         struct ifconf ifc;
         char buf[1024];
@@ -2131,33 +2124,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         else {
             debug("MAC: ", "not successful");
         }
-#elif (WINDOWS)
-        ULONG needed = 0;
-        if (GetIfTable(nullptr, &needed, /*order=*/FALSE) != ERROR_INSUFFICIENT_BUFFER) {
-            return false;
-        }
-
-        MIB_IFTABLE* table = (MIB_IFTABLE*)std::malloc(needed);
-        if (!table) return false;
-
-        if (GetIfTable(table, &needed, FALSE) != NO_ERROR) {
-            std::free(table);
-            return false;
-        }
-
-        for (DWORD i = 0; i < table->dwNumEntries; ++i) {
-            MIB_IFROW& row = table->table[i];
-            if (row.dwPhysAddrLen == 6
-                && (row.dwOperStatus == IF_OPER_STATUS_OPERATIONAL)
-                && row.dwType != IF_TYPE_SOFTWARE_LOOPBACK)
-            {
-                for (int b = 0; b < 6; ++b) {
-                    mac[b] = row.bPhysAddr[b];
-                }
-                break;
-            }
-        }
-        std::free(table);
 
     #ifdef __VMAWARE_DEBUG__
         {
@@ -2169,9 +2135,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             debug("MAC: ", ss.str());
         }
     #endif
-#else 
-        return false;
-#endif
 
         if ((mac[0] | mac[1] | mac[2]) == 0) {
             return false;
@@ -2204,6 +2167,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         return false;
+#endif
     }
 
 
@@ -2785,15 +2749,24 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         {
             char basePath[MAX_PATH];
             const char* programDir = nullptr;
+            // If under WoW64, read ProgramW6432; otherwise read ProgramFiles
             if (util::is_wow64()) {
-                DWORD len = GetEnvironmentVariableA("ProgramW6432", basePath, MAX_PATH); 
-                if (len == 0 || len >= MAX_PATH) {}
-                else {
+                DWORD len = GetEnvironmentVariableA(
+                    /*lpName*/        "ProgramW6432",
+                    /*lpBuffer*/      basePath,
+                    /*nSize*/         MAX_PATH
+                );
+                if (len > 0 && len < MAX_PATH) {
                     programDir = basePath;
                 }
             }
             else {
-                if (SHGetFolderPathA(nullptr, CSIDL_PROGRAM_FILES, nullptr, 0, basePath) == S_OK) {
+                DWORD len = GetEnvironmentVariableA(
+                    /*lpName*/        "ProgramFiles",
+                    /*lpBuffer*/      basePath,
+                    /*nSize*/         MAX_PATH
+                );
+                if (len > 0 && len < MAX_PATH) {
                     programDir = basePath;
                 }
             }
@@ -2819,17 +2792,45 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 "SPICE Guest Tools",
             };
             int dirCount = sizeof(szDirectories) / sizeof(szDirectories[0]);
+
             for (int i = 0; i < dirCount; ++i) {
+                // correct Program* variable based on WoW64
                 if (util::is_wow64()) {
-                    ExpandEnvironmentStringsA("%ProgramW6432%", szProgramFile, ARRAYSIZE(szProgramFile)); 
+                    DWORD len = GetEnvironmentVariableA(
+                        /*lpName*/   "ProgramW6432",
+                        /*lpBuffer*/ szProgramFile,
+                        /*nSize*/    MAX_PATH
+                    );
+                    if (len == 0 || len >= MAX_PATH) {
+                        szProgramFile[0] = '\0';
+                    }
                 }
                 else {
-                    SHGetSpecialFolderPathA(nullptr, szProgramFile, CSIDL_PROGRAM_FILES, FALSE); 
+                    DWORD len = GetEnvironmentVariableA(
+                        /*lpName*/   "ProgramFiles",
+                        /*lpBuffer*/ szProgramFile,
+                        /*nSize*/    MAX_PATH
+                    );
+                    if (len == 0 || len >= MAX_PATH) {
+                        szProgramFile[0] = '\0';
+                    }
                 }
-                PathCombineA(szPath, szProgramFile, szDirectories[i]); 
-                if (util::exists(szPath)) {
-                    debug("VM_FILES: Detected QEMU directory at ", szPath);
-                    return core::add(brands::QEMU);
+
+                if (szProgramFile[0] != '\0') {
+                    // full path: szProgramFile + "\" + directory name
+                    size_t baseLen = strlen(szProgramFile);
+                    size_t dirLen = strlen(szDirectories[i]);
+                    if (baseLen + 1 + dirLen < MAX_PATH) {
+                        memcpy(szPath, szProgramFile, baseLen);
+                        szPath[baseLen] = '\\';
+                        memcpy(szPath + baseLen + 1, szDirectories[i], dirLen);
+                        szPath[baseLen + 1 + dirLen] = '\0';
+
+                        if (util::exists(szPath)) {
+                            debug("VM_FILES: Detected QEMU directory at ", szPath);
+                            return core::add(brands::QEMU);
+                        }
+                    }
                 }
             }
         }
@@ -9957,11 +9958,22 @@ public: // START OF PUBLIC FUNCTIONS
 
         const bool is_memoized = (memo_arg != NO_MEMO);
 
-    #if (MSVC) 
-            __assume(flag_bit < technique_end);
-    #else
-            __builtin_assume(flag_bit < technique_end);
-    #endif
+#if (MSVC)
+    #define ASSUME(expr) __assume(expr)
+#elif (CLANG)
+    #define ASSUME(expr) __builtin_assume(expr)
+#elif (GCC)
+    // no __builtin_assume, but __builtin_unreachable gives same hint
+    #define ASSUME(expr)               \
+        do {                             \
+          if (!(expr))                   \
+            __builtin_unreachable();     \
+        } while (0)
+#else
+    #define ASSUME(expr) ((void)0)
+#endif
+
+        ASSUME(flag_bit < technique_end);
 
         // if the technique is already cached, return the cached value instead
         if (memo::is_cached(flag_bit) && is_memoized) {
@@ -10293,11 +10305,7 @@ public: // START OF PUBLIC FUNCTIONS
         // flags above, and get a total score 
         const u16 points = core::run_all(flags, SHORTCUT);
 
-    #if (MSVC) 
-            __assume(points < maximum_points);
-    #else 
-            __builtin_assume(points < maximum_points);
-    #endif
+        ASSUME(points < maximum_points);
 
         u16 threshold = 150;
 
@@ -10326,11 +10334,7 @@ public: // START OF PUBLIC FUNCTIONS
         // flags above, and get a total score
         const u16 points = core::run_all(flags, SHORTCUT);
 
-    #if (MSVC) 
-            __assume(points < maximum_points);
-    #else 
-            __builtin_assume(points < maximum_points);
-    #endif
+        ASSUME(points < maximum_points);
 
         u8 percent = 0;
         u16 threshold = 150;
@@ -10384,11 +10388,7 @@ public: // START OF PUBLIC FUNCTIONS
             throw_error("Percentage parameter must be between 0 and 100");
         }
 
-    #if (MSVC)
-            __assume(percent > 0 && percent <= 100);
-    #else
-            __builtin_assume(percent > 0 && percent <= 100);
-    #endif
+        ASSUME(percent > 0 && percent <= 100);
 
         static u16 id = 0;
         id++;
@@ -10585,11 +10585,7 @@ public: // START OF PUBLIC FUNCTIONS
             throw_error("Percentage parameter must be between 0 and 100");
         }
 
-    #if (MSVC)
-            __assume(percent <= 100);
-    #else
-            __builtin_assume(percent <= 100);
-    #endif
+        ASSUME(percent <= 100);
 
         // check if the flag provided is a setting flag, which isn't valid.
         if (static_cast<u8>(flag) >= technique_end) {
