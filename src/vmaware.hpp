@@ -355,7 +355,6 @@
 #if (WINDOWS)
 #include <windows.h>
 #include <intrin.h>
-#include <cwctype>
 #include <tchar.h>
 #include <winioctl.h>
 #include <winternl.h>
@@ -1597,7 +1596,6 @@ private:
         [[nodiscard]] static std::unordered_set<std::string> get_running_process_names() {
             std::unordered_set<std::string> processNames;
 #if (WINDOWS)
-            static constexpr NTSTATUS STATUS_INFO_LENGTH_MISMATCH = static_cast<NTSTATUS>(0xC0000004);
             processNames.reserve(256);
 
             using QSI_t = NTSTATUS(__stdcall*)(SYSTEM_INFORMATION_CLASS, PVOID, ULONG, PULONG);
@@ -1612,38 +1610,48 @@ private:
                 if (!NtQSI) return {};
             }
 
-            static thread_local std::vector<BYTE> raw;
+            static constexpr NTSTATUS STATUS_INFO_LENGTH_MISMATCH = static_cast<NTSTATUS>(0xC0000004);
+            static thread_local std::vector<BYTE> buffer;
             ULONG needed = 0;
             NTSTATUS status = NtQSI(SystemProcessInformation, nullptr, 0, &needed);
-            if (status != STATUS_INFO_LENGTH_MISMATCH) return {};
+            if (status != STATUS_INFO_LENGTH_MISMATCH) {
+                return {};
+            }
 
-            if (raw.size() < needed)
-                raw.resize(static_cast<std::vector<VM::u8, std::allocator<VM::u8>>::size_type>(needed) + 1024);
+            buffer.resize(static_cast<size_t>(needed) + 1024);
+            status = NtQSI(SystemProcessInformation, buffer.data(), static_cast<ULONG>(buffer.size()), &needed);
+            if (!NT_SUCCESS(status)) {
+                return {};
+            }
 
-            status = NtQSI(SystemProcessInformation, raw.data(), static_cast<ULONG>(raw.size()), &needed);
-            if (!NT_SUCCESS(status)) return {};
-
-            const BYTE* ptr = raw.data();
+            const BYTE* ptr = buffer.data();
             while (true) {
                 auto* info = reinterpret_cast<const SYSTEM_PROCESS_INFORMATION*>(ptr);
                 if (info->ImageName.Buffer && info->ImageName.Length > 0) {
                     const WCHAR* wstr = info->ImageName.Buffer;
-                    int wlen = static_cast<int>(info->ImageName.Length / sizeof(WCHAR));
+                    const int wlen = static_cast<int>(info->ImageName.Length / sizeof(WCHAR));
 
-                    char utf8buf[1024];
-                    int bytes = WideCharToMultiByte(
+                    const int utf8len = ::WideCharToMultiByte(
                         CP_UTF8, 0,
                         wstr, wlen,
-                        utf8buf, sizeof(utf8buf),
+                        nullptr, 0,
                         nullptr, nullptr
                     );
-                    if (bytes > 0) {
-                        processNames.emplace(utf8buf, static_cast<size_t>(bytes));
+                    if (utf8len > 0) {
+                        std::string name;
+                        name.resize(static_cast<std::string::size_type>(utf8len));
+                        ::WideCharToMultiByte(
+                            CP_UTF8, 0,
+                            wstr, wlen,
+                            &name[0], utf8len,
+                            nullptr, nullptr
+                        );
+                        processNames.insert(std::move(name));
                     }
                 }
-
-                if (info->NextEntryOffset == 0)
+                if (info->NextEntryOffset == 0) {
                     break;
+                }
                 ptr += info->NextEntryOffset;
             }
 #endif
@@ -1879,24 +1887,37 @@ private:
 
         // retrieves the addresses of specified functions from a loaded module using the export directory
         static void GetFunctionAddresses(const HMODULE hModule, const char* names[], void** functions, size_t count) {
-            const PIMAGE_DOS_HEADER dosHeader = reinterpret_cast<PIMAGE_DOS_HEADER>(hModule);
-            const PIMAGE_NT_HEADERS ntHeaders = reinterpret_cast<PIMAGE_NT_HEADERS>(
-                reinterpret_cast<BYTE*>(hModule) + dosHeader->e_lfanew);
-            const PIMAGE_EXPORT_DIRECTORY exportDirectory = reinterpret_cast<PIMAGE_EXPORT_DIRECTORY>(
-                reinterpret_cast<BYTE*>(hModule) + ntHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress);
+            auto base = reinterpret_cast<BYTE*>(hModule);
+            auto dosHeader = reinterpret_cast<PIMAGE_DOS_HEADER>(base);
+            auto ntHeaders = reinterpret_cast<PIMAGE_NT_HEADERS>(base + dosHeader->e_lfanew);
+            auto& dd = ntHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT];
+            auto exportDir = reinterpret_cast<PIMAGE_EXPORT_DIRECTORY>(base + dd.VirtualAddress);
 
-            const DWORD* nameOffsets = reinterpret_cast<DWORD*>(reinterpret_cast<BYTE*>(hModule) + exportDirectory->AddressOfNames);
-            const DWORD* funcOffsets = reinterpret_cast<DWORD*>(reinterpret_cast<BYTE*>(hModule) + exportDirectory->AddressOfFunctions);
-            const WORD* ordinals = reinterpret_cast<WORD*>(reinterpret_cast<BYTE*>(hModule) + exportDirectory->AddressOfNameOrdinals);
+            auto nameRvas = reinterpret_cast<DWORD*>(base + exportDir->AddressOfNames);
+            auto funcRvas = reinterpret_cast<DWORD*>(base + exportDir->AddressOfFunctions);
+            auto ordinals = reinterpret_cast<WORD*>(base + exportDir->AddressOfNameOrdinals);
+            DWORD nameCount = exportDir->NumberOfNames;
 
-            size_t resolved = 0;
-            for (DWORD i = 0; i < exportDirectory->NumberOfNames && resolved < count; ++i) {
-                const char* exportName = reinterpret_cast<const char*>(reinterpret_cast<BYTE*>(hModule) + nameOffsets[i]);
-                for (size_t j = 0; j < count; ++j) {
-                    if (functions[j] == nullptr && strcmp(exportName, names[j]) == 0) {
-                        functions[j] = reinterpret_cast<void*>(reinterpret_cast<BYTE*>(hModule) + funcOffsets[ordinals[i]]);
-                        ++resolved;
+            auto getName = [&](DWORD idx) -> const char* {
+                return reinterpret_cast<char*>(base + nameRvas[idx]);
+            };
+
+            for (size_t i = 0; i < count; ++i) {
+                functions[i] = nullptr;
+                size_t lo = 0, hi = nameCount;
+                while (lo < hi) {
+                    size_t mid = (lo + hi) / 2;
+                    int cmp = strcmp(getName(mid), names[i]);
+                    if (cmp < 0) {
+                        lo = mid + 1;
                     }
+                    else {
+                        hi = mid;
+                    }
+                }
+                if (lo < nameCount && strcmp(getName(lo), names[i]) == 0) {
+                    DWORD rva = funcRvas[ordinals[lo]];
+                    functions[i] = base + rva;
                 }
             }
         }
@@ -8417,13 +8438,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             "Parallels Software International","Parallels(R)","innotek",
             "Oracle","VirtualBox","vbox","VBOX","VS2005R2",
             "VMware, Inc.","VMware","VMWARE",
-            "S3 Corp.","Virtual Machine","QEMU","WAET","BOCHS","BXPC"
+            "S3 Corp.","Virtual Machine","QEMU","pc-q35","WAET","BOCHS","BXPC"
         };
         static const char* __restrict brands_map[] = {
             brands::PARALLELS, brands::PARALLELS, nullptr,
             brands::VBOX,      brands::VBOX,      brands::VBOX, nullptr, nullptr,
             brands::VMWARE,    brands::VMWARE,    brands::VMWARE,
-            nullptr, nullptr,  brands::QEMU, nullptr, brands::BOCHS, brands::BOCHS
+            nullptr, nullptr,  brands::QEMU, brands::QEMU, nullptr, brands::BOCHS, brands::BOCHS
         };
         static const size_t targ_count = sizeof(targets) / sizeof(*targets);
 
@@ -8590,10 +8611,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         // Same targets as the Windows branch but without "WAET"
         constexpr const char* targets[] = {
-            "Parallels Software International", "Parallels(R)", "innotek",
-            "Oracle", "VirtualBox", "vbox", "VBOX", "VS2005R2", "VMware, Inc.",
-            "VMware", "VMWARE", "S3 Corp.", "Virtual Machine", "QEMU", "BOCHS",
-            "BXPC"
+            "Parallels Software International","Parallels(R)","innotek",
+            "Oracle","VirtualBox","vbox","VBOX","VS2005R2",
+            "VMware, Inc.","VMware","VMWARE",
+            "S3 Corp.","Virtual Machine","QEMU","pc-q35","BOCHS","BXPC"
         };
 
         struct dirent* entry;
@@ -8763,7 +8784,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return subKeyCount == 0;
 #endif
     }
-
 
 
     /**
@@ -8939,13 +8959,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for PCI vendor and device IDs that are VM-specific
      * @link https://www.pcilookup.com/?ven=&dev=&action=submit
-     * @category Linux
+     * @category Linux, Windows
      * @implements VM::PCI_VM_DEVICE_ID
      */
     [[nodiscard]] static bool pci_vm_device_id() {
-#if (!LINUX)
-        return false;
-#else
+#if (LINUX)
         struct PCI_Device {
             u16 vendor_id;
             u16 device_id;
@@ -9154,6 +9172,225 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         return false;
+#elif (WINDOWS)
+        auto parse4 = [](const TCHAR* p, u16& out) {
+            u16 v = 0;
+            for (int i = 0; i < 4; ++i) {
+                v <<= 4;
+                TCHAR c = p[i];
+                if (c >= TEXT('0') && c <= TEXT('9')) v |= c - TEXT('0');
+                else if (c >= TEXT('A') && c <= TEXT('F')) v |= c - TEXT('A') + 10;
+                else if (c >= TEXT('a') && c <= TEXT('f')) v |= c - TEXT('a') + 10;
+                else return false;
+            }
+            out = v;
+            return true;
+            };
+
+        HDEVINFO hDevInfo = SetupDiGetClassDevs(
+            nullptr,
+            TEXT("PCI"),
+            nullptr,
+            DIGCF_PRESENT | DIGCF_ALLCLASSES
+        );
+        if (hDevInfo == INVALID_HANDLE_VALUE)
+        return false;
+
+        SP_DEVINFO_DATA devInfo = {};
+        devInfo.cbSize = sizeof(devInfo);
+        DWORD index = 0;
+
+        while (SetupDiEnumDeviceInfo(hDevInfo, index++, &devInfo)) {
+            DWORD dataType = 0;
+            DWORD needed = 0;
+            if (!SetupDiGetDeviceRegistryProperty(
+                hDevInfo, &devInfo, SPDRP_HARDWAREID,
+                &dataType, nullptr, 0, &needed)
+                && GetLastError() != ERROR_INSUFFICIENT_BUFFER)
+                continue;
+
+            std::vector<BYTE> buf(needed);
+            if (!SetupDiGetDeviceRegistryProperty(
+                hDevInfo, &devInfo, SPDRP_HARDWAREID,
+                &dataType, buf.data(), needed, nullptr)
+                || dataType != REG_MULTI_SZ)
+                continue;
+
+            TCHAR* hwid = reinterpret_cast<TCHAR*>(buf.data());
+            while (*hwid) {
+                TCHAR* ven = _tcsstr(hwid, TEXT("VEN_"));
+                TCHAR* dev = ven ? _tcsstr(ven, TEXT("DEV_")) : nullptr;
+                if (ven && dev) {
+                    u16 vid = 0, did = 0;
+                    if (parse4(ven + 4, vid) && parse4(dev + 4, did)) {
+                        u32 id = (u32(vid) << 16) | did;
+                        switch (id) {
+                            // Red Hat + Virtio
+                        case 0x1AF41000: // Virtio network device
+                        case 0x1AF41001: // Virtio block device
+                        case 0x1AF41002: // Virtio memory balloon
+                        case 0x1AF41003: // Virtio console
+                        case 0x1AF41004: // Virtio SCSI
+                        case 0x1AF41005: // Virtio RNG
+                        case 0x1AF41009: // Virtio filesystem
+                        case 0x1AF41041: // Virtio network device
+                        case 0x1AF41042: // Virtio block device
+                        case 0x1AF41043: // Virtio console
+                        case 0x1AF41044: // Virtio RNG
+                        case 0x1AF41045: // Virtio memory balloon
+                        case 0x1AF41048: // Virtio SCSI
+                        case 0x1AF41049: // Virtio filesystem
+                        case 0x1AF41050: // Virtio GPU
+                        case 0x1AF41052: // Virtio input
+                        case 0x1AF41053: // Virtio socket
+                        case 0x1AF4105A: // Virtio file system
+                        case 0x1AF41110: // Inter-VM shared memory
+                            debug("Detected Virtio device: ", std::hex, id);
+                            SetupDiDestroyDeviceInfoList(hDevInfo);
+                            return true;
+
+                            // VMware
+                        case 0x15AD0405: // SVGA II Adapter
+                        case 0x15AD0710: // SVGA Adapter
+                        case 0x15AD0720: // VMXNET Ethernet Controller
+                        case 0x15AD0740: // Virtual Machine Communication Interface
+                        case 0x15AD0770: // USB2 EHCI Controller
+                        case 0x15AD0774: // USB1.1 UHCI Controller
+                        case 0x15AD0778: // USB3 xHCI 0.96 Controller
+                        case 0x15AD0779: // USB3 xHCI 1.0 Controller
+                        case 0x15AD0790: // PCI bridge
+                        case 0x15AD07A0: // PCI Express Root Port
+                        case 0x15AD07B0: // VMXNET3 Ethernet Controller
+                        case 0x15AD07C0: // PVSCSI SCSI Controller
+                        case 0x15AD07E0: // SATA AHCI controller
+                        case 0x15AD07F0: // NVMe SSD Controller
+                        case 0x15AD0801: // Virtual Machine Interface
+                        case 0x15AD0820: // Paravirtual RDMA controller
+                        case 0x15AD1977: // HD Audio Controller
+                        case 0xFFFE0710: // Virtual SVGA
+                        case 0x0E0F0001: // Device
+                        case 0x0E0F0002: // Virtual USB Hub
+                        case 0x0E0F0003: // Virtual Mouse
+                        case 0x0E0F0004: // Virtual CCID
+                        case 0x0E0F0005: // Virtual Mass Storage
+                        case 0x0E0F0006: // Virtual Keyboard
+                        case 0x0E0F000A: // Virtual Sensors
+                        case 0x0E0F8001: // Root Hub
+                        case 0x0E0F8002: // Root Hub
+                        case 0x0E0F8003: // Root Hub
+                        case 0x0E0FF80A: // Smoker FX2
+                        case 0x15AD0800: // Hypervisor ROM Interface
+                            debug("Detected VMware device: ", std::hex, id);
+                            core::add(brands::VMWARE);
+                            SetupDiDestroyDeviceInfoList(hDevInfo);
+                            return true;
+
+                            // Red Hat + QEMU
+                        case 0x1B360001: // QEMU PCI-PCI bridge
+                        case 0x1B360002: // QEMU PCI 16550A Adapter
+                        case 0x1B360003: // QEMU PCI Dual-port 16550A Adapter
+                        case 0x1B360004: // QEMU PCI Quad-port 16550A Adapter
+                        case 0x1B360005: // QEMU PCI Test Device
+                        case 0x1B360008: // QEMU PCIe Host bridge
+                        case 0x1B360009: // QEMU PCI Expander bridge
+                        case 0x1B36000B: // QEMU PCIe Expander bridge
+                        case 0x1B36000C: // QEMU PCIe Root port
+                        case 0x1B36000D: // QEMU XHCI Host Controller
+                        case 0x1B360010: // QEMU NVM Express Controller
+                        case 0x1B360011: // QEMU PVPanic device
+                        case 0x1B360013: // QEMU UFS Host Controller
+                        case 0x1B360100: // QXL paravirtual graphic card
+                        case 0x1AF41100: // Red Hat QEMU Virtual Machine
+                        case 0x1B361100:// Red Hat QEMU Virtual Machine
+                            debug("Detected QEMU device: ", std::hex, id);
+                            core::add(brands::QEMU);
+                            SetupDiDestroyDeviceInfoList(hDevInfo);
+                            return true;
+
+                            // QEMU Generic
+                        case 0x06270001: // QEMU Tablet
+                        case 0x1D1D1F1F: // LightNVM Controller
+                        case 0x80865845: // QEMU NVM Express Controller
+                        case 0x1D6B0200: // Qemu Audio Device
+                        case 0x11061AF4: // VIA Technologies QEMU Virtual Machine
+                        case 0x10EC1100: // Realtek QEMU Virtual Machine
+                        case 0x10331100: // NEC QEMU Virtual Machine
+                        case 0x80861100: // Intel QEMU Virtual Machine
+                        case 0x10131100: // Cirrus Logic QEMU Virtual Machine
+                        case 0x106B1100: // Apple QEMU Virtual Machine
+                        case 0x10221100: // AMD QEMU Virtual Machine
+                            debug("Detected QEMU generic device: ", std::hex, id);
+                            core::add(brands::QEMU);
+                            SetupDiDestroyDeviceInfoList(hDevInfo);
+                            return true;
+
+                            // NVIDIA vGPUs
+                        case 0x10DE0FE7: // GRID K100 vGPU
+                        case 0x10DE0FF7: // GRID K140Q vGPU
+                        case 0x10DE118D: // GRID K200 vGPU
+                        case 0x10DE11B0: // GRID K240Q/K260Q vGPU
+                        case 0x1EC6020F: // SG100 vGPU
+                            debug("Detected NVIDIA vGPU: ", std::hex, id);
+                            SetupDiDestroyDeviceInfoList(hDevInfo);
+                            return true;
+
+                            // VirtualBox
+                        case 0x80EE0021: // USB Tablet
+                        case 0x80EE0022: // Multitouch tablet
+                        case 0x80EEBEEF: // VirtualBox Graphics Adapter
+                        case 0x80EECAFE: // VirtualBox Guest Service
+                            debug("Detected VirtualBox device: ", std::hex, id);
+                            core::add(brands::VBOX);
+                            SetupDiDestroyDeviceInfoList(hDevInfo);
+                            return true;
+
+                            // Hyper-V
+                        case 0x1F3F9002: // SSSNIC Ethernet VF Hyper-V
+                        case 0x1F3F9004: // SSSNIC Ethernet SDI VF Hyper-V
+                        case 0x1F3F9009: // SSSFC VF Hyper-V
+                        case 0x808637D9: // X722 Hyper-V Virtual Function
+                        case 0x14145353: // Hyper-V virtual VGA
+                            debug("Detected Hyper-V device: ", std::hex, id);
+                            core::add(brands::HYPERV);
+                            SetupDiDestroyDeviceInfoList(hDevInfo);
+                            return true;
+
+                            // Parallels
+                        case 0x1AB84000: // VM Communication Interface
+                        case 0x1AB84005: // Accelerated Virtual Video Adapter
+                        case 0x1AB84006: // Memory Ballooning Controller
+                            debug("Detected Parallels device: ", std::hex, id);
+                            core::add(brands::PARALLELS);
+                            SetupDiDestroyDeviceInfoList(hDevInfo);
+                            return true;
+
+                            // Xen
+                        case 0x5853C000: // Citrix XenServer PCI Device
+                        case 0xFFFD0101: // PCI Event Channel Controller
+                        case 0x5853C147: // Virtualized Graphics Device
+                        case 0x5853C110: // Virtualized HID
+                        case 0x5853C200: // XCP-ng PCI Device
+                        case 0x58530001: // Xen Platform Device
+                            debug("Detected Xen device: ", std::hex, id);
+                            core::add(brands::XEN);
+                            SetupDiDestroyDeviceInfoList(hDevInfo);
+                            return true;
+
+                            // Connectix/VirtualPC
+                        case 0x29556E61: // OHCI USB 1.1 controller
+                            debug("Detected VirtualPC device: ", std::hex, id);
+                            core::add(brands::VPC);
+                            SetupDiDestroyDeviceInfoList(hDevInfo);
+                            return true;
+                        }
+                    }
+                }
+                hwid += _tcslen(hwid) + 1;
+            }
+        }
+
+        SetupDiDestroyDeviceInfoList(hDevInfo);
+        return false;
 #endif
     }
     
@@ -9169,7 +9406,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!WINDOWS)
         return false;
 #else
-        constexpr wchar_t kAcpiSlotPrefix[] = L"#ACPI(S";
+        auto __iswdigit = [](wchar_t c) constexpr noexcept {
+            return (c >= L'0' && c <= L'9');
+            };
 
         HDEVINFO hDevInfo = SetupDiGetClassDevsW(
             &GUID_DEVCLASS_DISPLAY,
@@ -9191,7 +9430,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             SetupDiGetDevicePropertyW(
                 hDevInfo, &devInfo, &key, &propType,
                 nullptr, 0, &requiredSize, 0);
-
             if (GetLastError() != ERROR_INSUFFICIENT_BUFFER || requiredSize == 0)
                 continue;
 
@@ -9211,19 +9449,20 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     continue;
                 }
 
-                auto pos = path.find(kAcpiSlotPrefix);
+                constexpr wchar_t kAcpiSlotPrefix[] = L"#ACPI(S";
+                std::size_t pos = path.find(kAcpiSlotPrefix);
                 while (pos != std::wstring_view::npos)
                 {
-                    if (pos + 10 <= path.size() && 
-                        std::iswdigit(path[pos + 7]) &&
-                        std::iswdigit(path[pos + 8]) &&
-                        path[pos + 9] == '_' &&
-                        path[pos + 10] == ')')
+                    // check for "#ACPI(Sxx_y)" pattern: two digits at +7/+8, '_' then ')'
+                    if (pos + 10 < path.size() &&
+                        __iswdigit(path[pos + 7]) &&
+                        __iswdigit(path[pos + 8]) &&
+                        path[pos + 9] == L'_' &&
+                        path[pos + 10] == L')')
                     {
                         SetupDiDestroyDeviceInfoList(hDevInfo);
                         return true;
                     }
-
                     pos = path.find(kAcpiSlotPrefix, pos + 1);
                 }
 
