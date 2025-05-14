@@ -9957,11 +9957,22 @@ public: // START OF PUBLIC FUNCTIONS
 
         const bool is_memoized = (memo_arg != NO_MEMO);
 
-    #if (MSVC) 
-            __assume(flag_bit < technique_end);
-    #else
-            __builtin_assume(flag_bit < technique_end);
-    #endif
+#if (MSVC)
+    #define ASSUME(expr) __assume(expr)
+#elif (CLANG)
+    #define ASSUME(expr) __builtin_assume(expr)
+#elif (GCC)
+    // no __builtin_assume, but __builtin_unreachable gives same hint
+    #define ASSUME(expr)               \
+        do {                             \
+          if (!(expr))                   \
+            __builtin_unreachable();     \
+        } while (0)
+#else
+    #define ASSUME(expr) ((void)0)
+#endif
+
+        ASSUME(flag_bit < technique_end);
 
         // if the technique is already cached, return the cached value instead
         if (memo::is_cached(flag_bit) && is_memoized) {
@@ -10293,11 +10304,7 @@ public: // START OF PUBLIC FUNCTIONS
         // flags above, and get a total score 
         const u16 points = core::run_all(flags, SHORTCUT);
 
-    #if (MSVC) 
-            __assume(points < maximum_points);
-    #else 
-            __builtin_assume(points < maximum_points);
-    #endif
+        ASSUME(points < maximum_points);
 
         u16 threshold = 150;
 
@@ -10326,11 +10333,7 @@ public: // START OF PUBLIC FUNCTIONS
         // flags above, and get a total score
         const u16 points = core::run_all(flags, SHORTCUT);
 
-    #if (MSVC) 
-            __assume(points < maximum_points);
-    #else 
-            __builtin_assume(points < maximum_points);
-    #endif
+        ASSUME(points < maximum_points);
 
         u8 percent = 0;
         u16 threshold = 150;
@@ -10384,11 +10387,7 @@ public: // START OF PUBLIC FUNCTIONS
             throw_error("Percentage parameter must be between 0 and 100");
         }
 
-    #if (MSVC)
-            __assume(percent > 0 && percent <= 100);
-    #else
-            __builtin_assume(percent > 0 && percent <= 100);
-    #endif
+        ASSUME(percent > 0 && percent <= 100);
 
         static u16 id = 0;
         id++;
@@ -10585,11 +10584,7 @@ public: // START OF PUBLIC FUNCTIONS
             throw_error("Percentage parameter must be between 0 and 100");
         }
 
-    #if (MSVC)
-            __assume(percent <= 100);
-    #else
-            __builtin_assume(percent <= 100);
-    #endif
+        ASSUME(percent <= 100);
 
         // check if the flag provided is a setting flag, which isn't valid.
         if (static_cast<u8>(flag) >= technique_end) {
