@@ -639,23 +639,6 @@ std::string vm_description(const std::string& vm_brand) {
     return "";
 }
 
-using NtCreateFile_t = NTSTATUS(
-    NTAPI*)(
-        PHANDLE,
-        ACCESS_MASK,
-        POBJECT_ATTRIBUTES,
-        PIO_STATUS_BLOCK,
-        PLARGE_INTEGER,
-        ULONG,
-        ULONG,
-        ULONG,
-        ULONG,
-        PVOID,
-        ULONG
-        );
-using NtClose_t = NTSTATUS(NTAPI*)(HANDLE);
-using RtlInitUnicodeString_t = VOID(NTAPI*)(PUNICODE_STRING, PCWSTR);
-
 /**
  * @brief Check for any.run driver presence
  * @category Windows
@@ -696,10 +679,27 @@ using RtlInitUnicodeString_t = VOID(NTAPI*)(PUNICODE_STRING, PCWSTR);
 #else
     NTSTATUS status;
 
-    HMODULE hNtdll = GetModuleHandleW(L"ntdll.dll");
+    HMODULE hNtdll = GetModuleHandle(_T("ntdll.dll"));
     if (!hNtdll) {
         return false;
     }
+
+    using NtCreateFile_t = NTSTATUS(
+        NTAPI*)(
+            PHANDLE,
+            ACCESS_MASK,
+            POBJECT_ATTRIBUTES,
+            PIO_STATUS_BLOCK,
+            PLARGE_INTEGER,
+            ULONG,
+            ULONG,
+            ULONG,
+            ULONG,
+            PVOID,
+            ULONG
+            );
+    using NtClose_t = NTSTATUS(NTAPI*)(HANDLE);
+    using RtlInitUnicodeString_t = VOID(NTAPI*)(PUNICODE_STRING, PCWSTR);
 
 #pragma warning(push)
 #pragma warning(disable:4191)
