@@ -407,7 +407,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::HYPERVISOR_STR:
             case VM::TIMER:
             case VM::THREADCOUNT:
-            case VM::MAC:
             case VM::TEMPERATURE:
             case VM::DLL:
             case VM::REGISTRY:
@@ -640,7 +639,6 @@ std::string vm_description(const std::string& vm_brand) {
     return "";
 }
 
-
 /**
  * @brief Check for any.run driver presence
  * @category Windows
@@ -675,28 +673,57 @@ std::string vm_description(const std::string& vm_brand) {
 }
 
 
-/**
- * @brief Check for any.run directory and handle the status code
- * @category Windows
- * @author kkent030315
- * @link https://github.com/kkent030315/detect-anyrun/blob/main/detect.cc
- * @copyright MIT
- */
 [[nodiscard]] static bool anyrun_directory() {
 #if (!CLI_WINDOWS)
     return false;
 #else
     NTSTATUS status;
 
+    HMODULE hNtdll = GetModuleHandle(_T("ntdll.dll"));
+    if (!hNtdll) {
+        return false;
+    }
+
+    using NtCreateFile_t = NTSTATUS(
+        NTAPI*)(
+            PHANDLE,
+            ACCESS_MASK,
+            POBJECT_ATTRIBUTES,
+            PIO_STATUS_BLOCK,
+            PLARGE_INTEGER,
+            ULONG,
+            ULONG,
+            ULONG,
+            ULONG,
+            PVOID,
+            ULONG
+            );
+    using NtClose_t = NTSTATUS(NTAPI*)(HANDLE);
+    using RtlInitUnicodeString_t = VOID(NTAPI*)(PUNICODE_STRING, PCWSTR);
+
+#pragma warning(push)
+#pragma warning(disable:4191)
+    auto pRtlInitUnicodeString = reinterpret_cast<RtlInitUnicodeString_t>(
+        GetProcAddress(hNtdll, "RtlInitUnicodeString"));
+    auto pNtCreateFile = reinterpret_cast<NtCreateFile_t>(
+        GetProcAddress(hNtdll, "NtCreateFile"));
+    auto pNtClose = reinterpret_cast<NtClose_t>(
+        GetProcAddress(hNtdll, "NtClose"));
+#pragma warning(pop)
+
+    if (!pRtlInitUnicodeString || !pNtCreateFile || !pNtClose) {
+        return false;
+    }
+
     UNICODE_STRING name;
-    RtlInitUnicodeString(&name, L"\\??\\C:\\Program Files\\KernelLogger");
+    pRtlInitUnicodeString(&name, L"\\??\\C:\\Program Files\\KernelLogger");
 
     HANDLE hFile;
     IO_STATUS_BLOCK iosb = { { 0 } };
     OBJECT_ATTRIBUTES attrs{};
     InitializeObjectAttributes(&attrs, &name, 0, NULL, NULL);
 
-    status = NtCreateFile(
+    status = pNtCreateFile(
         /*FileHandle*/&hFile,
         /*DesiredAccess*/GENERIC_READ | SYNCHRONIZE,
         /*ObjectAttributes*/&attrs,
@@ -720,11 +747,11 @@ std::string vm_description(const std::string& vm_brand) {
 
     // Not actually the case, maybe conflict with other software installation.
     if (NT_SUCCESS(status))
-        NtClose(hFile);
+        pNtClose(hFile);
 
     return false;
 #endif
-} 
+}
 
 void checker(const VM::enum_flags flag, const char* message) {
     const bool result = VM::check(flag);
