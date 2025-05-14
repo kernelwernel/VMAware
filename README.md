@@ -137,8 +137,10 @@ The module file and function version is located [here](auxiliary/vmaware_downloa
 
 <br>
 
-## Documentation 📒
+## Documentation and code overview 📒
 You can view the full docs [here](docs/documentation.md). All the details such as functions, techniques, settings, and examples are provided. Trust me, it's not too intimidating ;)
+
+If you want to learn about the architecture and design of the library, head over to https://deepwiki.com/kernelwernel/VMAware
 
 <br>
 
@@ -177,13 +179,14 @@ You can view the full docs [here](docs/documentation.md). All the details such a
 
 </details>
 
-
+<!--
 <details>
 <summary>How does it compare to paid VM detection libraries?</summary>
 <br>
 
 > There are several paid software solutions available for protecting software licenses from reverse engineering or cracking, such as <a href="https://docs.sentinel.thalesgroup.com/home.htm">Thales' Sentinel RMS</a> and <a href="https://vmpsoft.com/">VMProtect</a>. These tools include VM detection as part of their feature set, though their primary focus is not necessarily VM detection unlike this project.
 </details>
+-->
 
 <details>
 <summary>Wouldn't it make it inferior for having the project open source?</summary>

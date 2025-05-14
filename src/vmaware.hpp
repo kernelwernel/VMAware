@@ -77,7 +77,11 @@
  * 
  *
  * ========================== CODE DOCUMENTATION =============================
+ *
+ * TL;DR if you have the patience of an ADHD kid, head over here:
+ * https://deepwiki.com/kernelwernel/VMAware
  * 
+ *
  * Welcome! This is just a preliminary text to lay the context of how it works, 
  * how it's structured, and guide anybody who's trying to understand the whole code. 
  * Reading over 12k+ lines of other people's C++ code is obviously not an easy task, 
