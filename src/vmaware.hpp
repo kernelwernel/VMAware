@@ -9189,7 +9189,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         HDEVINFO hDevInfo = SetupDiGetClassDevs(
             nullptr,
-            TEXT("PCI"),
+            nullptr, // to also get devices like HDAUDIO, althought most devices are PCI
             nullptr,
             DIGCF_PRESENT | DIGCF_ALLCLASSES
         );
@@ -9220,12 +9220,19 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             while (*hwid) {
                 TCHAR* ven = _tcsstr(hwid, TEXT("VEN_"));
                 TCHAR* dev = ven ? _tcsstr(ven, TEXT("DEV_")) : nullptr;
+
+                if (!ven || !dev) {
+                    ven = _tcsstr(hwid, TEXT("VEN_"));
+                    dev = _tcsstr(hwid, TEXT("DEV_"));
+                }
+
                 if (ven && dev) {
                     u16 vid = 0, did = 0;
                     if (parse4(ven + 4, vid) && parse4(dev + 4, did)) {
                         u32 id = (u32(vid) << 16) | did;
                         switch (id) {
                             // Red Hat + Virtio
+                        case 0x1AF40022: // VirtIO Sound
                         case 0x1AF41000: // Virtio network device
                         case 0x1AF41001: // Virtio block device
                         case 0x1AF41002: // Virtio memory balloon
