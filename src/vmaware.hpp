@@ -1904,9 +1904,9 @@ private:
 
             for (size_t i = 0; i < count; ++i) {
                 functions[i] = nullptr;
-                size_t lo = 0, hi = nameCount;
+                DWORD lo = 0, hi = nameCount;
                 while (lo < hi) {
-                    size_t mid = (lo + hi) / 2;
+                    DWORD mid = (lo + hi) / 2;
                     int cmp = strcmp(getName(mid), names[i]);
                     if (cmp < 0) {
                         lo = mid + 1;
