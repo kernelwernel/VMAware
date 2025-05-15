@@ -159,7 +159,7 @@
  *       cache table. 
  * 
  *    4. After every technique has been executed, this generates a 
- *       u16 score. Every technique has a score value between 0 to 
+ *       uint16_t score. Every technique has a score value between 0 to 
  *       100, and if they are detected then this score is accumulated to 
  *       a total score. If the total is above 150, that means it's a VM[1]. 
  * 
