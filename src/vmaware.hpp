@@ -8962,442 +8962,153 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Linux, Windows
      * @implements VM::PCI_VM_DEVICE_ID
      */
-    [[nodiscard]] static bool pci_vm_device_id() {
+     [[nodiscard]] static bool pci_vm_device_id() {
+#if (!WINDOWS && !LINUX)
+         return false;
+#else
+         struct PCI_Device {
+             u16 vendor_id;
+             u16 device_id;
+         };
+         std::vector<PCI_Device> devices;
+
 #if (LINUX)
-        struct PCI_Device {
-            u16 vendor_id;
-            u16 device_id;
+         const std::string pci_path = "/sys/bus/pci/devices";
+    #if (CPP >= 17)
+             for (const auto& entry : std::filesystem::directory_iterator(pci_path)) {
+                 std::string path = entry.path().string();
+                 std::ifstream vf(path + "/vendor"), df(path + "/device");
+                 if (!vf || !df) continue;
+                 u16 vid = 0, did = 0;
+                 vf >> std::hex >> vid;
+                 df >> std::hex >> did;
+                 devices.push_back({ vid, did });
+             }
+    #else
+             DIR* dir = opendir(pci_path.c_str());
+             if (!dir) return false;
+             struct dirent* ent;
+             while ((ent = readdir(dir)) != nullptr) {
+                 std::string name = ent->d_name;
+                 if (name == "." || name == "..") continue;
+                 std::string path = pci_path + "/" + name;
+                 std::ifstream vf(path + "/vendor"), df(path + "/device");
+                 if (!vf || !df) continue;
+                 u16 vid = 0, did = 0;
+                 vf >> std::hex >> vid;
+                 df >> std::hex >> did;
+                 devices.push_back({ vid, did });
+             }
+             closedir(dir);
+    #endif
+#elif (WINDOWS)
+         auto parse4 = [](const TCHAR* p, u16& out) {
+             u16 v = 0;
+             for (int i = 0; i < 4; ++i) {
+                 v <<= 4; TCHAR c = p[i];
+                 if (c >= '0' && c <= '9') v |= c - '0';
+                 else if (c >= 'A' && c <= 'F') v |= c - 'A' + 10;
+                 else if (c >= 'a' && c <= 'f') v |= c - 'a' + 10;
+                 else return false;
+             }
+             out = v; return true;
+             };
+         HDEVINFO hDev = SetupDiGetClassDevs(nullptr, nullptr, nullptr, DIGCF_PRESENT | DIGCF_ALLCLASSES);
+         if (hDev == INVALID_HANDLE_VALUE) return false;
+         SP_DEVINFO_DATA di{}; di.cbSize = sizeof(di);
+         DWORD idx = 0;
+         while (SetupDiEnumDeviceInfo(hDev, idx++, &di)) {
+             DWORD type = 0, needed = 0;
+             SetupDiGetDeviceRegistryProperty(hDev, &di, SPDRP_HARDWAREID, &type, nullptr, 0, &needed);
+             std::vector<BYTE> buf(needed);
+             if (!SetupDiGetDeviceRegistryProperty(hDev, &di, SPDRP_HARDWAREID, &type, buf.data(), needed, nullptr) || type != REG_MULTI_SZ)
+                 continue;
+             TCHAR* hw = reinterpret_cast<TCHAR*>(buf.data());
+             while (*hw) {
+                 TCHAR* ven = _tcsstr(hw, TEXT("VEN_"));
+                 TCHAR* dev = ven ? _tcsstr(ven, TEXT("DEV_")) : nullptr;
+                 if (ven && dev) { u16 vid, did; if (parse4(ven + 4, vid) && parse4(dev + 4, did)) devices.push_back({ vid,did }); }
+                 hw += _tcslen(hw) + 1;
+             }
+         }
+         SetupDiDestroyDeviceInfoList(hDev);
+#endif
+
+         // (vendor<<16 | device)
+         static const std::unordered_map<u32, const char*> vm_map = {
+            // Virtio (Red Hat)
+            {0x1AF41000, brands::NULL_BRAND}, {0x1AF41001, brands::NULL_BRAND},
+            {0x1AF41002, brands::NULL_BRAND}, {0x1AF41003, brands::NULL_BRAND},
+            {0x1AF41004, brands::NULL_BRAND}, {0x1AF41005, brands::NULL_BRAND},
+            {0x1AF41009, brands::NULL_BRAND}, {0x1AF41041, brands::NULL_BRAND},
+            {0x1AF41042, brands::NULL_BRAND}, {0x1AF41043, brands::NULL_BRAND},
+            {0x1AF41044, brands::NULL_BRAND}, {0x1AF41045, brands::NULL_BRAND},
+            {0x1AF41048, brands::NULL_BRAND}, {0x1AF41049, brands::NULL_BRAND},
+            {0x1AF41050, brands::NULL_BRAND}, {0x1AF41052, brands::NULL_BRAND},
+            {0x1AF41053, brands::NULL_BRAND}, {0x1AF4105A, brands::NULL_BRAND},
+            {0x1AF41110, brands::NULL_BRAND},
+            // VMware
+            {0x15AD0405, brands::VMWARE}, {0x15AD0710, brands::VMWARE},
+            {0x15AD0720, brands::VMWARE}, {0x15AD0740, brands::VMWARE},
+            {0x15AD0770, brands::VMWARE}, {0x15AD0774, brands::VMWARE},
+            {0x15AD0778, brands::VMWARE}, {0x15AD0779, brands::VMWARE},
+            {0x15AD0790, brands::VMWARE}, {0x15AD07A0, brands::VMWARE},
+            {0x15AD07B0, brands::VMWARE}, {0x15AD07C0, brands::VMWARE},
+            {0x15AD07E0, brands::VMWARE}, {0x15AD07F0, brands::VMWARE},
+            {0x15AD0800, brands::VMWARE}, {0x15AD0801, brands::VMWARE},
+            {0x15AD0820, brands::VMWARE}, {0x15AD1977, brands::VMWARE},
+            {0xFFFE0710, brands::VMWARE},
+            {0x0E0F0001, brands::VMWARE}, {0x0E0F0002, brands::VMWARE},
+            {0x0E0F0003, brands::VMWARE}, {0x0E0F0004, brands::VMWARE},
+            {0x0E0F0005, brands::VMWARE}, {0x0E0F0006, brands::VMWARE},
+            {0x0E0F000A, brands::VMWARE}, {0x0E0F8001, brands::VMWARE},
+            {0x0E0F8002, brands::VMWARE}, {0x0E0F8003, brands::VMWARE},
+            {0x0E0FF80A, brands::VMWARE},
+            // Red Hat/QEMU
+            {0x1B360001, brands::QEMU}, {0x1B360002, brands::QEMU},
+            {0x1B360003, brands::QEMU}, {0x1B360004, brands::QEMU},
+            {0x1B360005, brands::QEMU}, {0x1B360008, brands::QEMU},
+            {0x1B360009, brands::QEMU}, {0x1B36000B, brands::QEMU},
+            {0x1B36000C, brands::QEMU}, {0x1B36000D, brands::QEMU},
+            {0x1B360010, brands::QEMU}, {0x1B360011, brands::QEMU},
+            {0x1B360013, brands::QEMU}, {0x1B360100, brands::QEMU},
+            // QEMU Generic
+            {0x06270001, brands::QEMU}, {0x1D1D1F1F, brands::QEMU},
+            {0x80865845, brands::QEMU}, {0x1D6B0200, brands::QEMU},
+            {0x11061AF4, brands::QEMU}, {0x10EC1100, brands::QEMU},
+            {0x10331100, brands::QEMU}, {0x80861100, brands::QEMU},
+            {0x10131100, brands::QEMU}, {0x106B1100, brands::QEMU},
+            {0x10221100, brands::QEMU},
+            // NVIDIA vGPUs
+            {0x10DE0FE7, brands::NULL_BRAND}, {0x10DE0FF7, brands::NULL_BRAND},
+            {0x10DE118D, brands::NULL_BRAND}, {0x10DE11B0, brands::NULL_BRAND},
+            {0x1EC6020F, brands::NULL_BRAND},
+            // VirtualBox
+            {0x80EE0021, brands::VBOX}, {0x80EE0022, brands::VBOX},
+            {0x80EEBEEF, brands::VBOX}, {0x80EECAFE, brands::VBOX},
+            // Hyper-V
+            {0x1F3F9002, brands::HYPERV}, {0x1F3F9004, brands::HYPERV},
+            {0x1F3F9009, brands::HYPERV}, {0x808637D9, brands::HYPERV},
+            {0x14145353, brands::HYPERV},
+            // Parallels
+            {0x1AB84000, brands::PARALLELS}, {0x1AB84005, brands::PARALLELS},
+            {0x1AB84006, brands::PARALLELS},
+            // Xen
+            {0x5853C000, brands::XEN}, {0xFFFD0101, brands::XEN},
+            {0x5853C147, brands::XEN}, {0x5853C110, brands::XEN},
+            {0x5853C200, brands::XEN}, {0x58530001, brands::XEN},
+            // VirtualPC
+            {0x29556E61, brands::NULL_BRAND}
         };
 
-        const std::string pci_path = "/sys/bus/pci/devices";
-        std::vector<PCI_Device> devices;
-
-#if (CPP >= 17)
-        for (const auto& entry : std::filesystem::directory_iterator(pci_path)) {
-            std::string dev_path = entry.path().string();
-#else 
-        DIR* dir;
-        struct dirent* ent;
-
-        if ((dir = opendir(pci_path.c_str())) == nullptr) {
-            debug("unable to open the PCI data");
-            return false;
-        }
-
-        while ((ent = readdir(dir)) != nullptr) {
-            std::string dev_name = ent->d_name;
-
-            if (dev_name == "." || dev_name == "..") {
-                continue;
-            }
-
-            std::string dev_path = pci_path + "/" + dev_name;
-#endif
-            PCI_Device dev;
-
-            std::ifstream vendor_file(dev_path + "/vendor");
-            std::ifstream device_file(dev_path + "/device");
-
-            vendor_file >> std::hex >> dev.vendor_id;
-            device_file >> std::hex >> dev.device_id;
-
-            devices.push_back(dev);
-        }
-
-#ifdef __VMAWARE_DEBUG__
-        debug("PCI Device Table");
-        debug("-------------------------");
-        debug("Vendor ID  | Device ID ");
-        debug("-------------------------");
-
-        for (const auto& d : devices) {
-            debug(
-                "0x", std::setw(4), std::setfill('0'), std::hex, d.vendor_id,
-                "     | ",
-                "0x", std::setw(4), std::setfill('0'), std::hex, d.device_id,
-                std::dec
-            );
-        }
-#endif
-
-        auto found = [](const std::string& b, const PCI_Device& d) -> bool {
-            debug(
-                "PCI_VM_DEVICE_ID: found ", b, ", vendor ID = ",
-                "0x", std::setw(4), std::setfill('0'), std::hex, d.vendor_id,
-                " device ID = 0x", std::setw(4), std::setfill('0'), std::hex, d.device_id
-            );
-
-            return true;
-            };
-
-        for (const auto& dev : devices) {
-            const u32 id = ((static_cast<u32>(dev.vendor_id) << 16) | dev.device_id);
-
-            switch (id) {
-                // Red Hat + Virtio
-                case 0x1af41000: // Virtio network device
-                case 0x1af41001: // Virtio block device
-                case 0x1af41002: //	Virtio memory balloon
-                case 0x1af41003: // Virtio console
-                case 0x1af41004: // Virtio SCSI
-                case 0x1af41005: // Virtio RNG
-                case 0x1af41009: // Virtio filesystem
-                case 0x1af41041: // Virtio network device
-                case 0x1af41042: // Virtio block device
-                case 0x1af41043: // Virtio console
-                case 0x1af41044: // Virtio RNG
-                case 0x1af41045: // Virtio memory balloon
-                case 0x1af41048: // Virtio SCSI
-                case 0x1af41049: // Virtio filesystem
-                case 0x1af41050: // Virtio GPU
-                case 0x1af41052: // Virtio input
-                case 0x1af41053: // Virtio socket
-                case 0x1af4105a: // Virtio file system
-                case 0x1af41110: // Inter-VM shared memory
-                    return true;
-
-                // VMware
-                case 0x15ad0405: // SVGA II Adapter
-                case 0x15ad0710: // SVGA Adapter
-                case 0x15ad0720: // VMXNET Ethernet Controller
-                case 0x15ad0740: // Virtual Machine Communication Interface
-                case 0x15ad0770: // USB2 EHCI Controller
-                case 0x15ad0774: // USB1.1 UHCI Controller
-                case 0x15ad0778: // USB3 xHCI 0.96 Controller
-                case 0x15ad0779: // USB3 xHCI 1.0 Controller
-                case 0x15ad0790: // PCI bridge
-                case 0x15ad07a0: // PCI Express Root Port
-                case 0x15ad07b0: // VMXNET3 Ethernet Controller
-                case 0x15ad07c0: // PVSCSI SCSI Controller
-                case 0x15ad07e0: // SATA AHCI controller
-                case 0x15ad07f0: // NVMe SSD Controller
-                case 0x15ad0801: // Virtual Machine Interface
-                case 0x15ad0820: // Paravirtual RDMA controller
-                case 0x15ad1977: // HD Audio Controller
-                case 0xfffe0710: // Virtual SVGA
-                case 0x0e0f0001: // Device
-                case 0x0e0f0002: // Virtual USB Hub
-                case 0x0e0f0003: // Virtual Mouse
-                case 0x0e0f0004: // Virtual CCID
-                case 0x0e0f0005: // Virtual Mass Storage
-                case 0x0e0f0006: // Virtual Keyboard
-                case 0x0e0f000a: // Virtual Sensors
-                case 0x0e0f8001: // Root Hub
-                case 0x0e0f8002: // Root Hub
-                case 0x0e0f8003: // Root Hub
-                case 0x0e0ff80a: // Smoker FX2
-                    return found(brands::VMWARE, dev);
-
-                // Red Hat + QEMU
-                case 0x1b360001: // Red Hat, Inc. QEMU PCI-PCI bridge
-                case 0x1b360002: // Red Hat, Inc. QEMU PCI 16550A Adapter
-                case 0x1b360003: // Red Hat, Inc. QEMU PCI Dual-port 16550A Adapter
-                case 0x1b360004: // Red Hat, Inc. QEMU PCI Quad-port 16550A Adapter
-                case 0x1b360005: // Red Hat, Inc. QEMU PCI Test Device
-                case 0x1b360008: // Red Hat, Inc. QEMU PCIe Host bridge
-                case 0x1b360009: // Red Hat, Inc. QEMU PCI Expander bridge
-                case 0x1b36000b: // Red Hat, Inc. QEMU PCIe Expander bridge
-                case 0x1b36000c: // Red Hat, Inc. QEMU PCIe Root port
-                case 0x1b36000d: // Red Hat, Inc. QEMU XHCI Host Controller
-                case 0x1b360010: // Red Hat, Inc. QEMU NVM Express Controller
-                case 0x1b360011: // Red Hat, Inc. QEMU PVPanic device
-                case 0x1b360013: // Red Hat, Inc. QEMU UFS Host Controller
-                case 0x1b360100: // Red Hat, Inc. QXL paravirtual graphic card
-                    return found(brands::QEMU, dev);
-
-                // QEMU
-                case 0x06270001: // Adomax Technology Co., Ltd QEMU Tablet
-                case 0x1d1d1f1f: // CNEX Labs QEMU NVM Express LightNVM Controller
-                case 0x80865845: // Intel Corporation QEMU NVM Express Controller
-                case 0x1d6b0200: // Linux Foundation Qemu Audio Device
-                    return found(brands::QEMU, dev);
-
-                // vGPUs (mostly NVIDIA)
-                case 0x10de0fe7: // GK107GL [GRID K100 vGPU]
-                case 0x10de0ff7: // GK107GL [GRID K140Q vGPU]
-                case 0x10de118d: // GK104GL [GRID K200 vGPU]
-                case 0x10de11b0: // GK104GL [GRID K240Q\K260Q vGPU]
-                case 0x1ec6020f: // Vastai Technologies SG100 vGPU
-                    return true;
-
-                // VirtualBox
-                case 0x80ee0021: // USB Tablet
-                case 0x80ee0022: // multitouch tablet
-                case 0x80eebeef: // InnoTek Systemberatung GmbH	VirtualBox Graphics Adapter
-                case 0x80eecafe: // InnoTek Systemberatung GmbH	VirtualBox Guest Service
-                    return found(brands::VBOX, dev);
-
-                // Hyper-V
-                case 0x1f3f9002: // 3SNIC Ltd SSSNIC Ethernet VF Hyper-V
-                case 0x1f3f9004: // 3SNIC Ltd SSSNIC Ethernet SDI VF Hyper-V
-                case 0x1f3f9009: // 3SNIC Ltd SSSFC VF Hyper-V
-                case 0x808637d9: // Intel Corporation X722 Hyper-V Virtual Function
-                case 0x14145353: // Microsoft Corporation Hyper-V virtual VGA
-                    if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
-                        continue;
-                    }
-                    return found(brands::HYPERV, dev);
-
-                // Parallels
-                case 0x1ab84000: // Virtual Machine Communication Interface
-                case 0x1ab84005: // Accelerated Virtual Video Adapter
-                case 0x1ab84006: // Memory Ballooning Controller
-                    return found(brands::PARALLELS, dev);
-
-                // Xen
-                case 0x5853c000: // XenSource, Inc.	Citrix XenServer PCI Device for Windows Update
-                case 0xfffd0101: // XenSource, Inc.	PCI Event Channel Controller
-                case 0x5853c147: // XenSource, Inc.	Virtualized Graphics Device
-                case 0x5853c110: // XenSource, Inc.	Virtualized HID
-                case 0x5853c200: // XenSource, Inc.	XCP-ng Project PCI Device for Windows Update
-                case 0x58530001: // XenSource, Inc.	Xen Platform Device
-                    return found(brands::XEN, dev);
-
-                // Connectix (VirtualPC) OHCI USB 1.1 controller
-                case 0x29556e61: return found(brands::VPC, dev);
-            }
-
-            // TODO: EXTRAS TO ADD (64 instead of 32 bits for device_id field)
-            // 
-            // VMware	15ad	Hypervisor ROM Interface	15ad0800
-            // VIA Technologies, Inc.	1106	QEMU Virtual Machine	1af41100
-            // Red Hat, Inc.	1af4	QEMU Virtual Machine	1af41100
-            // Red Hat, Inc.	1b36	QEMU Virtual Machine	1af41100
-            // Realtek Semiconductor Co., Ltd.	10ec	QEMU Virtual Machine	1af41100
-            // NEC Corporation	1033	QEMU Virtual Machine	1af41100
-            // Intel Corporation	8086	QEMU Virtual Machine	1af41100
-            // Cirrus Logic	1013	QEMU Virtual Machine	1af41100
-            // Apple Inc.	106b	QEMU Virtual Machine	1af41100
-            // Advanced Micro Devices, Inc. [AMD]	1022	QEMU Virtual Machine	1af41100
-        }
-
-        return false;
-#elif (WINDOWS)
-        auto parse4 = [](const TCHAR* p, u16& out) {
-            u16 v = 0;
-            for (int i = 0; i < 4; ++i) {
-                v <<= 4;
-                TCHAR c = p[i];
-                if (c >= TEXT('0') && c <= TEXT('9')) v |= c - TEXT('0');
-                else if (c >= TEXT('A') && c <= TEXT('F')) v |= c - TEXT('A') + 10;
-                else if (c >= TEXT('a') && c <= TEXT('f')) v |= c - TEXT('a') + 10;
-                else return false;
-            }
-            out = v;
-            return true;
-            };
-
-        HDEVINFO hDevInfo = SetupDiGetClassDevs(
-            nullptr,
-            nullptr, // to also get devices like HDAUDIO, althought most devices are PCI
-            nullptr,
-            DIGCF_PRESENT | DIGCF_ALLCLASSES
-        );
-        if (hDevInfo == INVALID_HANDLE_VALUE)
-        return false;
-
-        SP_DEVINFO_DATA devInfo = {};
-        devInfo.cbSize = sizeof(devInfo);
-        DWORD index = 0;
-
-        while (SetupDiEnumDeviceInfo(hDevInfo, index++, &devInfo)) {
-            DWORD dataType = 0;
-            DWORD needed = 0;
-            if (!SetupDiGetDeviceRegistryProperty(
-                hDevInfo, &devInfo, SPDRP_HARDWAREID,
-                &dataType, nullptr, 0, &needed)
-                && GetLastError() != ERROR_INSUFFICIENT_BUFFER)
-                continue;
-
-            std::vector<BYTE> buf(needed);
-            if (!SetupDiGetDeviceRegistryProperty(
-                hDevInfo, &devInfo, SPDRP_HARDWAREID,
-                &dataType, buf.data(), needed, nullptr)
-                || dataType != REG_MULTI_SZ)
-                continue;
-
-            TCHAR* hwid = reinterpret_cast<TCHAR*>(buf.data());
-            while (*hwid) {
-                TCHAR* ven = _tcsstr(hwid, TEXT("VEN_"));
-                TCHAR* dev = ven ? _tcsstr(ven, TEXT("DEV_")) : nullptr;
-
-                if (!ven || !dev) {
-                    ven = _tcsstr(hwid, TEXT("VEN_"));
-                    dev = _tcsstr(hwid, TEXT("DEV_"));
-                }
-
-                if (ven && dev) {
-                    u16 vid = 0, did = 0;
-                    if (parse4(ven + 4, vid) && parse4(dev + 4, did)) {
-                        u32 id = (u32(vid) << 16) | did;
-                        switch (id) {
-                            // Red Hat + Virtio
-                        case 0x1AF40022: // VirtIO Sound
-                        case 0x1AF41000: // Virtio network device
-                        case 0x1AF41001: // Virtio block device
-                        case 0x1AF41002: // Virtio memory balloon
-                        case 0x1AF41003: // Virtio console
-                        case 0x1AF41004: // Virtio SCSI
-                        case 0x1AF41005: // Virtio RNG
-                        case 0x1AF41009: // Virtio filesystem
-                        case 0x1AF41041: // Virtio network device
-                        case 0x1AF41042: // Virtio block device
-                        case 0x1AF41043: // Virtio console
-                        case 0x1AF41044: // Virtio RNG
-                        case 0x1AF41045: // Virtio memory balloon
-                        case 0x1AF41048: // Virtio SCSI
-                        case 0x1AF41049: // Virtio filesystem
-                        case 0x1AF41050: // Virtio GPU
-                        case 0x1AF41052: // Virtio input
-                        case 0x1AF41053: // Virtio socket
-                        case 0x1AF4105A: // Virtio file system
-                        case 0x1AF41110: // Inter-VM shared memory
-                            debug("Detected Virtio device: ", std::hex, id);
-                            SetupDiDestroyDeviceInfoList(hDevInfo);
-                            return true;
-
-                            // VMware
-                        case 0x15AD0405: // SVGA II Adapter
-                        case 0x15AD0710: // SVGA Adapter
-                        case 0x15AD0720: // VMXNET Ethernet Controller
-                        case 0x15AD0740: // Virtual Machine Communication Interface
-                        case 0x15AD0770: // USB2 EHCI Controller
-                        case 0x15AD0774: // USB1.1 UHCI Controller
-                        case 0x15AD0778: // USB3 xHCI 0.96 Controller
-                        case 0x15AD0779: // USB3 xHCI 1.0 Controller
-                        case 0x15AD0790: // PCI bridge
-                        case 0x15AD07A0: // PCI Express Root Port
-                        case 0x15AD07B0: // VMXNET3 Ethernet Controller
-                        case 0x15AD07C0: // PVSCSI SCSI Controller
-                        case 0x15AD07E0: // SATA AHCI controller
-                        case 0x15AD07F0: // NVMe SSD Controller
-                        case 0x15AD0801: // Virtual Machine Interface
-                        case 0x15AD0820: // Paravirtual RDMA controller
-                        case 0x15AD1977: // HD Audio Controller
-                        case 0xFFFE0710: // Virtual SVGA
-                        case 0x0E0F0001: // Device
-                        case 0x0E0F0002: // Virtual USB Hub
-                        case 0x0E0F0003: // Virtual Mouse
-                        case 0x0E0F0004: // Virtual CCID
-                        case 0x0E0F0005: // Virtual Mass Storage
-                        case 0x0E0F0006: // Virtual Keyboard
-                        case 0x0E0F000A: // Virtual Sensors
-                        case 0x0E0F8001: // Root Hub
-                        case 0x0E0F8002: // Root Hub
-                        case 0x0E0F8003: // Root Hub
-                        case 0x0E0FF80A: // Smoker FX2
-                        case 0x15AD0800: // Hypervisor ROM Interface
-                            debug("Detected VMware device: ", std::hex, id);
-                            core::add(brands::VMWARE);
-                            SetupDiDestroyDeviceInfoList(hDevInfo);
-                            return true;
-
-                            // Red Hat + QEMU
-                        case 0x1B360001: // QEMU PCI-PCI bridge
-                        case 0x1B360002: // QEMU PCI 16550A Adapter
-                        case 0x1B360003: // QEMU PCI Dual-port 16550A Adapter
-                        case 0x1B360004: // QEMU PCI Quad-port 16550A Adapter
-                        case 0x1B360005: // QEMU PCI Test Device
-                        case 0x1B360008: // QEMU PCIe Host bridge
-                        case 0x1B360009: // QEMU PCI Expander bridge
-                        case 0x1B36000B: // QEMU PCIe Expander bridge
-                        case 0x1B36000C: // QEMU PCIe Root port
-                        case 0x1B36000D: // QEMU XHCI Host Controller
-                        case 0x1B360010: // QEMU NVM Express Controller
-                        case 0x1B360011: // QEMU PVPanic device
-                        case 0x1B360013: // QEMU UFS Host Controller
-                        case 0x1B360100: // QXL paravirtual graphic card
-                        case 0x1AF41100: // Red Hat QEMU Virtual Machine
-                        case 0x1B361100:// Red Hat QEMU Virtual Machine
-                            debug("Detected QEMU device: ", std::hex, id);
-                            core::add(brands::QEMU);
-                            SetupDiDestroyDeviceInfoList(hDevInfo);
-                            return true;
-
-                            // QEMU Generic
-                        case 0x06270001: // QEMU Tablet
-                        case 0x1D1D1F1F: // LightNVM Controller
-                        case 0x80865845: // QEMU NVM Express Controller
-                        case 0x1D6B0200: // Qemu Audio Device
-                        case 0x11061AF4: // VIA Technologies QEMU Virtual Machine
-                        case 0x10EC1100: // Realtek QEMU Virtual Machine
-                        case 0x10331100: // NEC QEMU Virtual Machine
-                        case 0x80861100: // Intel QEMU Virtual Machine
-                        case 0x10131100: // Cirrus Logic QEMU Virtual Machine
-                        case 0x106B1100: // Apple QEMU Virtual Machine
-                        case 0x10221100: // AMD QEMU Virtual Machine
-                            debug("Detected QEMU generic device: ", std::hex, id);
-                            core::add(brands::QEMU);
-                            SetupDiDestroyDeviceInfoList(hDevInfo);
-                            return true;
-
-                            // NVIDIA vGPUs
-                        case 0x10DE0FE7: // GRID K100 vGPU
-                        case 0x10DE0FF7: // GRID K140Q vGPU
-                        case 0x10DE118D: // GRID K200 vGPU
-                        case 0x10DE11B0: // GRID K240Q/K260Q vGPU
-                        case 0x1EC6020F: // SG100 vGPU
-                            debug("Detected NVIDIA vGPU: ", std::hex, id);
-                            SetupDiDestroyDeviceInfoList(hDevInfo);
-                            return true;
-
-                            // VirtualBox
-                        case 0x80EE0021: // USB Tablet
-                        case 0x80EE0022: // Multitouch tablet
-                        case 0x80EEBEEF: // VirtualBox Graphics Adapter
-                        case 0x80EECAFE: // VirtualBox Guest Service
-                            debug("Detected VirtualBox device: ", std::hex, id);
-                            core::add(brands::VBOX);
-                            SetupDiDestroyDeviceInfoList(hDevInfo);
-                            return true;
-
-                            // Hyper-V
-                        case 0x1F3F9002: // SSSNIC Ethernet VF Hyper-V
-                        case 0x1F3F9004: // SSSNIC Ethernet SDI VF Hyper-V
-                        case 0x1F3F9009: // SSSFC VF Hyper-V
-                        case 0x808637D9: // X722 Hyper-V Virtual Function
-                        case 0x14145353: // Hyper-V virtual VGA
-                            debug("Detected Hyper-V device: ", std::hex, id);
-                            core::add(brands::HYPERV);
-                            SetupDiDestroyDeviceInfoList(hDevInfo);
-                            return true;
-
-                            // Parallels
-                        case 0x1AB84000: // VM Communication Interface
-                        case 0x1AB84005: // Accelerated Virtual Video Adapter
-                        case 0x1AB84006: // Memory Ballooning Controller
-                            debug("Detected Parallels device: ", std::hex, id);
-                            core::add(brands::PARALLELS);
-                            SetupDiDestroyDeviceInfoList(hDevInfo);
-                            return true;
-
-                            // Xen
-                        case 0x5853C000: // Citrix XenServer PCI Device
-                        case 0xFFFD0101: // PCI Event Channel Controller
-                        case 0x5853C147: // Virtualized Graphics Device
-                        case 0x5853C110: // Virtualized HID
-                        case 0x5853C200: // XCP-ng PCI Device
-                        case 0x58530001: // Xen Platform Device
-                            debug("Detected Xen device: ", std::hex, id);
-                            core::add(brands::XEN);
-                            SetupDiDestroyDeviceInfoList(hDevInfo);
-                            return true;
-
-                            // Connectix/VirtualPC
-                        case 0x29556E61: // OHCI USB 1.1 controller
-                            debug("Detected VirtualPC device: ", std::hex, id);
-                            core::add(brands::VPC);
-                            SetupDiDestroyDeviceInfoList(hDevInfo);
-                            return true;
-                        }
-                    }
-                }
-                hwid += _tcslen(hwid) + 1;
-            }
-        }
-
-        SetupDiDestroyDeviceInfoList(hDevInfo);
-        return false;
+         for (auto& d : devices) {
+             u32 id = (static_cast<u32>(d.vendor_id) << 16) | d.device_id;
+             auto it = vm_map.find(id);
+             if (it != vm_map.end()) {
+                 return core::add(it->second);
+             }
+         }
+         return false;
 #endif
     }
     
