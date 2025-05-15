@@ -159,7 +159,7 @@
  *       cache table. 
  * 
  *    4. After every technique has been executed, this generates a 
- *       uint16_t score. Every technique has a score value between 0 to 
+ *       u16 score. Every technique has a score value between 0 to 
  *       100, and if they are detected then this score is accumulated to 
  *       a total score. If the total is above 150, that means it's a VM[1]. 
  * 
@@ -1908,9 +1908,9 @@ private:
 
             for (size_t i = 0; i < count; ++i) {
                 functions[i] = nullptr;
-                size_t lo = 0, hi = nameCount;
+                DWORD lo = 0, hi = nameCount;
                 while (lo < hi) {
-                    size_t mid = (lo + hi) / 2;
+                    DWORD mid = (lo + hi) / 2;
                     int cmp = strcmp(getName(mid), names[i]);
                     if (cmp < 0) {
                         lo = mid + 1;
@@ -6462,52 +6462,59 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 #if (CPP >= 17)
         struct VMGpuInfo {
-            std::wstring_view name;
+            std::wstring_view name_substring;
             const char* brand;
         };
 
-        static constexpr std::array<VMGpuInfo, 8> vm_gpu_names = { {
-            { L"VMware SVGA 3D",                   brands::VMWARE    },
-            { L"VirtualBox Graphics Adapter",      brands::VBOX      },
-            { L"QXL GPU",                          brands::KVM       },
-            { L"VirGL 3D",                         brands::QEMU      },
-            { L"Microsoft Hyper-V Video",          brands::HYPERV    },
-            { L"Parallels Display Adapter (WDDM)", brands::PARALLELS },
-            { L"Bochs Graphics Adapter",           brands::BOCHS     },
-            { L"IddSampleDriver Device",           brands::NULL_BRAND}
+        static constexpr std::array<VMGpuInfo, 10> vm_gpu_names = { {
+            { L"VMware SVGA 3D",                        brands::VMWARE     },
+            { L"VirtualBox Graphics Adapter",           brands::VBOX       },
+            { L"QXL GPU",                               brands::KVM        },
+            { L"VirGL 3D",                              brands::QEMU       },
+            { L"Microsoft Hyper-V Video",               brands::HYPERV     },
+            { L"Parallels Display Adapter (WDDM)",      brands::PARALLELS  },
+            { L"Bochs Graphics Adapter",                brands::BOCHS      },
+            { L"IddSampleDriver Device",                brands::NULL_BRAND },
+            { L"Remote Display Adapter",                brands::NULL_BRAND },
+            { L"RDPDD Chained DD",                      brands::NULL_BRAND }
         } };
 #else
         struct VMGpuInfo {
-            const wchar_t* name;
+            const wchar_t* name_substring;
             const char* brand;
         };
 
-        static const VMGpuInfo vm_gpu_names[8] = {
-            { L"VMware SVGA 3D",                   brands::VMWARE    },
-            { L"VirtualBox Graphics Adapter",      brands::VBOX      },
-            { L"QXL GPU",                          brands::KVM       },
-            { L"VirGL 3D",                         brands::QEMU      },
-            { L"Microsoft Hyper-V Video",          brands::HYPERV    },
-            { L"Parallels Display Adapter (WDDM)", brands::PARALLELS },
-            { L"Bochs Graphics Adapter",           brands::BOCHS     },
-            { L"IddSampleDriver Device",           brands::NULL_BRAND}
+        static const VMGpuInfo vm_gpu_names[10] = {
+            { L"VMware SVGA 3D",                        brands::VMWARE     },
+            { L"VirtualBox Graphics Adapter",           brands::VBOX       },
+            { L"QXL GPU",                               brands::KVM        },
+            { L"VirGL 3D",                              brands::QEMU       },
+            { L"Microsoft Hyper-V Video",               brands::HYPERV     },
+            { L"Parallels Display Adapter (WDDM)",      brands::PARALLELS  },
+            { L"Bochs Graphics Adapter",                brands::BOCHS      },
+            { L"IddSampleDriver Device",                brands::NULL_BRAND },
+            { L"Remote Display Adapter",                brands::NULL_BRAND },
+            { L"RDPDD Chained DD",                      brands::NULL_BRAND }
         };
 #endif
 
         DISPLAY_DEVICEW dd{};
         dd.cb = sizeof(dd);
 
-        for (DWORD deviceNum = 0; EnumDisplayDevicesW(nullptr, deviceNum, &dd, 0); ++deviceNum) {
+        for (DWORD deviceNum = 0;
+            EnumDisplayDevicesW(nullptr, deviceNum, &dd, 0);
+            ++deviceNum)
+        {
 #if (CPP >= 17)
             std::wstring_view devStr{ dd.DeviceString };
             for (auto const& info : vm_gpu_names) {
-                if (devStr == info.name) {
+                if (devStr.find(info.name_substring) != std::wstring_view::npos) {
                     return core::add(info.brand);
                 }
             }
 #else
-            for (int i = 0; i < 8; ++i) {
-                if (wcscmp(dd.DeviceString, vm_gpu_names[i].name) == 0) {
+            for (int i = 0; i < 10; ++i) {
+                if (wcsstr(dd.DeviceString, vm_gpu_names[i].name_substring) != nullptr) {
                     return core::add(vm_gpu_names[i].brand);
                 }
             }
@@ -8966,153 +8973,192 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Linux, Windows
      * @implements VM::PCI_VM_DEVICE_ID
      */
-     [[nodiscard]] static bool pci_vm_device_id() {
+    [[nodiscard]] static bool pci_vm_device_id() {
 #if (!WINDOWS && !LINUX)
-         return false;
+        return false;
 #else
-         struct PCI_Device {
-             u16 vendor_id;
-             u16 device_id;
-         };
-         std::vector<PCI_Device> devices;
+        struct PCI_Device { u16 vendor_id; u32 device_id; };
+        std::vector<PCI_Device> devices;
 
 #if (LINUX)
-         const std::string pci_path = "/sys/bus/pci/devices";
-    #if (CPP >= 17)
-             for (const auto& entry : std::filesystem::directory_iterator(pci_path)) {
-                 std::string path = entry.path().string();
-                 std::ifstream vf(path + "/vendor"), df(path + "/device");
-                 if (!vf || !df) continue;
-                 u16 vid = 0, did = 0;
-                 vf >> std::hex >> vid;
-                 df >> std::hex >> did;
-                 devices.push_back({ vid, did });
-             }
-    #else
-             DIR* dir = opendir(pci_path.c_str());
-             if (!dir) return false;
-             struct dirent* ent;
-             while ((ent = readdir(dir)) != nullptr) {
-                 std::string name = ent->d_name;
-                 if (name == "." || name == "..") continue;
-                 std::string path = pci_path + "/" + name;
-                 std::ifstream vf(path + "/vendor"), df(path + "/device");
-                 if (!vf || !df) continue;
-                 u16 vid = 0, did = 0;
-                 vf >> std::hex >> vid;
-                 df >> std::hex >> did;
-                 devices.push_back({ vid, did });
-             }
-             closedir(dir);
-    #endif
-#elif (WINDOWS)
-         auto parse4 = [](const TCHAR* p, u16& out) {
-             u16 v = 0;
-             for (int i = 0; i < 4; ++i) {
-                 v <<= 4; TCHAR c = p[i];
-                 if (c >= '0' && c <= '9') v |= c - '0';
-                 else if (c >= 'A' && c <= 'F') v |= c - 'A' + 10;
-                 else if (c >= 'a' && c <= 'f') v |= c - 'a' + 10;
-                 else return false;
-             }
-             out = v; return true;
-             };
-         HDEVINFO hDev = SetupDiGetClassDevs(nullptr, nullptr, nullptr, DIGCF_PRESENT | DIGCF_ALLCLASSES);
-         if (hDev == INVALID_HANDLE_VALUE) return false;
-         SP_DEVINFO_DATA di{}; di.cbSize = sizeof(di);
-         DWORD idx = 0;
-         while (SetupDiEnumDeviceInfo(hDev, idx++, &di)) {
-             DWORD type = 0, needed = 0;
-             SetupDiGetDeviceRegistryProperty(hDev, &di, SPDRP_HARDWAREID, &type, nullptr, 0, &needed);
-             std::vector<BYTE> buf(needed);
-             if (!SetupDiGetDeviceRegistryProperty(hDev, &di, SPDRP_HARDWAREID, &type, buf.data(), needed, nullptr) || type != REG_MULTI_SZ)
-                 continue;
-             TCHAR* hw = reinterpret_cast<TCHAR*>(buf.data());
-             while (*hw) {
-                 TCHAR* ven = _tcsstr(hw, TEXT("VEN_"));
-                 TCHAR* dev = ven ? _tcsstr(ven, TEXT("DEV_")) : nullptr;
-                 if (ven && dev) { u16 vid, did; if (parse4(ven + 4, vid) && parse4(dev + 4, did)) devices.push_back({ vid,did }); }
-                 hw += _tcslen(hw) + 1;
-             }
-         }
-         SetupDiDestroyDeviceInfoList(hDev);
+        const std::string pci_path = "/sys/bus/pci/devices";
+#if (CPP >= 17)
+        for (const auto& entry : std::filesystem::directory_iterator(pci_path)) {
+            std::ifstream vf(entry.path() / "vendor"), df(entry.path() / "device");
+            if (!vf || !df) continue;
+            u16 vid = 0; u32 did = 0;
+            vf >> std::hex >> vid;
+            df >> std::hex >> did;
+            devices.push_back({ vid, did });
+        }
+#else
+        DIR* dir = opendir(pci_path.c_str());
+        if (!dir) return false;
+        while (struct dirent* ent = readdir(dir)) {
+            std::string name = ent->d_name;
+            if (name == "." || name == "..") continue;
+            std::string base = pci_path + "/" + name;
+            std::ifstream vf(base + "/vendor"), df(base + "/device");
+            if (!vf || !df) continue;
+            u16 vid = 0; u32 did = 0;
+            vf >> std::hex >> vid;
+            df >> std::hex >> did;
+            devices.push_back({ vid, did });
+        }
+        closedir(dir);
 #endif
 
-         // (vendor<<16 | device)
-         static const std::unordered_map<u32, const char*> vm_map = {
-            // Virtio (Red Hat)
-            {0x1AF41000, brands::NULL_BRAND}, {0x1AF41001, brands::NULL_BRAND},
-            {0x1AF41002, brands::NULL_BRAND}, {0x1AF41003, brands::NULL_BRAND},
-            {0x1AF41004, brands::NULL_BRAND}, {0x1AF41005, brands::NULL_BRAND},
-            {0x1AF41009, brands::NULL_BRAND}, {0x1AF41041, brands::NULL_BRAND},
-            {0x1AF41042, brands::NULL_BRAND}, {0x1AF41043, brands::NULL_BRAND},
-            {0x1AF41044, brands::NULL_BRAND}, {0x1AF41045, brands::NULL_BRAND},
-            {0x1AF41048, brands::NULL_BRAND}, {0x1AF41049, brands::NULL_BRAND},
-            {0x1AF41050, brands::NULL_BRAND}, {0x1AF41052, brands::NULL_BRAND},
-            {0x1AF41053, brands::NULL_BRAND}, {0x1AF4105A, brands::NULL_BRAND},
-            {0x1AF41110, brands::NULL_BRAND},
-            // VMware
-            {0x15AD0405, brands::VMWARE}, {0x15AD0710, brands::VMWARE},
-            {0x15AD0720, brands::VMWARE}, {0x15AD0740, brands::VMWARE},
-            {0x15AD0770, brands::VMWARE}, {0x15AD0774, brands::VMWARE},
-            {0x15AD0778, brands::VMWARE}, {0x15AD0779, brands::VMWARE},
-            {0x15AD0790, brands::VMWARE}, {0x15AD07A0, brands::VMWARE},
-            {0x15AD07B0, brands::VMWARE}, {0x15AD07C0, brands::VMWARE},
-            {0x15AD07E0, brands::VMWARE}, {0x15AD07F0, brands::VMWARE},
-            {0x15AD0800, brands::VMWARE}, {0x15AD0801, brands::VMWARE},
-            {0x15AD0820, brands::VMWARE}, {0x15AD1977, brands::VMWARE},
-            {0xFFFE0710, brands::VMWARE},
-            {0x0E0F0001, brands::VMWARE}, {0x0E0F0002, brands::VMWARE},
-            {0x0E0F0003, brands::VMWARE}, {0x0E0F0004, brands::VMWARE},
-            {0x0E0F0005, brands::VMWARE}, {0x0E0F0006, brands::VMWARE},
-            {0x0E0F000A, brands::VMWARE}, {0x0E0F8001, brands::VMWARE},
-            {0x0E0F8002, brands::VMWARE}, {0x0E0F8003, brands::VMWARE},
-            {0x0E0FF80A, brands::VMWARE},
-            // Red Hat/QEMU
-            {0x1B360001, brands::QEMU}, {0x1B360002, brands::QEMU},
-            {0x1B360003, brands::QEMU}, {0x1B360004, brands::QEMU},
-            {0x1B360005, brands::QEMU}, {0x1B360008, brands::QEMU},
-            {0x1B360009, brands::QEMU}, {0x1B36000B, brands::QEMU},
-            {0x1B36000C, brands::QEMU}, {0x1B36000D, brands::QEMU},
-            {0x1B360010, brands::QEMU}, {0x1B360011, brands::QEMU},
-            {0x1B360013, brands::QEMU}, {0x1B360100, brands::QEMU},
-            // QEMU Generic
-            {0x06270001, brands::QEMU}, {0x1D1D1F1F, brands::QEMU},
-            {0x80865845, brands::QEMU}, {0x1D6B0200, brands::QEMU},
-            {0x11061AF4, brands::QEMU}, {0x10EC1100, brands::QEMU},
-            {0x10331100, brands::QEMU}, {0x80861100, brands::QEMU},
-            {0x10131100, brands::QEMU}, {0x106B1100, brands::QEMU},
-            {0x10221100, brands::QEMU},
-            // NVIDIA vGPUs
-            {0x10DE0FE7, brands::NULL_BRAND}, {0x10DE0FF7, brands::NULL_BRAND},
-            {0x10DE118D, brands::NULL_BRAND}, {0x10DE11B0, brands::NULL_BRAND},
-            {0x1EC6020F, brands::NULL_BRAND},
-            // VirtualBox
-            {0x80EE0021, brands::VBOX}, {0x80EE0022, brands::VBOX},
-            {0x80EEBEEF, brands::VBOX}, {0x80EECAFE, brands::VBOX},
-            // Hyper-V
-            {0x1F3F9002, brands::HYPERV}, {0x1F3F9004, brands::HYPERV},
-            {0x1F3F9009, brands::HYPERV}, {0x808637D9, brands::HYPERV},
-            {0x14145353, brands::HYPERV},
-            // Parallels
-            {0x1AB84000, brands::PARALLELS}, {0x1AB84005, brands::PARALLELS},
-            {0x1AB84006, brands::PARALLELS},
-            // Xen
-            {0x5853C000, brands::XEN}, {0xFFFD0101, brands::XEN},
-            {0x5853C147, brands::XEN}, {0x5853C110, brands::XEN},
-            {0x5853C200, brands::XEN}, {0x58530001, brands::XEN},
-            // VirtualPC
-            {0x29556E61, brands::NULL_BRAND}
-        };
+#elif (WINDOWS)
+        auto tcsistr = [](const TCHAR* hay, const TCHAR* need) -> TCHAR* {
+            if (!*need) return const_cast<TCHAR*>(hay);
+            for (; *hay; ++hay) {
+                const TCHAR* h = hay, * n = need;
+                while (*h && *n && (TCHAR)tolower(*h) == (TCHAR)tolower(*n)) { ++h; ++n; }
+                if (!*n) return const_cast<TCHAR*>(hay);
+            }
+            return nullptr;
+            };
 
-         for (auto& d : devices) {
-             u32 id = (static_cast<u32>(d.vendor_id) << 16) | d.device_id;
-             auto it = vm_map.find(id);
-             if (it != vm_map.end()) {
-                 return core::add(it->second);
-             }
-         }
-         return false;
+        auto parse_vendor = [](const TCHAR* p, u16& out) {
+            u16 v = 0;
+            for (int i = 0; i < 4; ++i) {
+                v <<= 4; TCHAR c = p[i];
+                if (c >= '0' && c <= '9')       v |= c - '0';
+                else if (c >= 'A' && c <= 'F')  v |= c - 'A' + 10;
+                else if (c >= 'a' && c <= 'f')  v |= c - 'a' + 10;
+                else return false;
+            }
+            out = v; return true;
+            };
+
+        auto parse_device = [](const TCHAR* p, u32& out) {
+            out = 0;
+            for (int i = 0; i < 8 && p[i]; ++i) {
+                out <<= 4;
+                TCHAR c = p[i];
+                if (c >= '0' && c <= '9')       out |= c - '0';
+                else if (c >= 'A' && c <= 'F')  out |= c - 'A' + 10;
+                else if (c >= 'a' && c <= 'f')  out |= c - 'a' + 10;
+                else return false;
+            }
+            return true;
+            };
+
+        HDEVINFO hDev = SetupDiGetClassDevs(nullptr, nullptr, nullptr, DIGCF_PRESENT | DIGCF_ALLCLASSES);
+        if (hDev == INVALID_HANDLE_VALUE) return false;
+
+        SP_DEVINFO_DATA di{}; di.cbSize = sizeof(di);
+        for (DWORD idx = 0; SetupDiEnumDeviceInfo(hDev, idx, &di); ++idx) {
+            DWORD type = 0, needed = 0;
+            SetupDiGetDeviceRegistryProperty(hDev, &di, SPDRP_HARDWAREID, &type, nullptr, 0, &needed);
+            std::vector<BYTE> buf(needed);
+            for (;;) {
+                if (SetupDiGetDeviceRegistryProperty(hDev, &di, SPDRP_HARDWAREID,
+                    &type, buf.data(), (DWORD)buf.size(), &needed) && type == REG_MULTI_SZ) break;
+                DWORD err = GetLastError();
+                if (err != ERROR_INSUFFICIENT_BUFFER) { buf.clear(); break; }
+                buf.resize(needed);
+            }
+            if (buf.empty() || type != REG_MULTI_SZ) continue;
+
+            TCHAR* hw = reinterpret_cast<TCHAR*>(buf.data());
+            while (*hw) {
+                TCHAR* ven = tcsistr(hw, TEXT("VEN_"));
+                TCHAR* dev = ven ? tcsistr(ven, TEXT("DEV_")) : nullptr;
+                if (ven && dev) {
+                    u16 vid = 0; u32 did = 0;
+                    if (parse_vendor(ven + 4, vid) && parse_device(dev + 4, did))
+                        devices.push_back({ vid, did });
+                }
+                hw += _tcslen(hw) + 1;
+            }
+        }
+        SetupDiDestroyDeviceInfoList(hDev);
+#endif
+
+        for (auto& d : devices) {
+            const u64 id64 = (static_cast<u64>(d.vendor_id) << 32) | d.device_id;
+            const u32 id32 = (static_cast<u32>(d.vendor_id) << 16) | static_cast<u32>(d.device_id);
+
+            switch (id32) {
+                // Red Hat + Virtio
+            case 0x1af41000: case 0x1af41001: case 0x1af41002: case 0x1af41003:
+            case 0x1af41004: case 0x1af41005: case 0x1af41009: case 0x1af41041:
+            case 0x1af41042: case 0x1af41043: case 0x1af41044: case 0x1af41045:
+            case 0x1af41048: case 0x1af41049: case 0x1af41050: case 0x1af41052:
+            case 0x1af41053: case 0x1af4105a: case 0x1af41110:
+                return true;
+
+                // VMware
+            case 0x15ad0405: case 0x15ad0710: case 0x15ad0720: case 0x15ad0740:
+            case 0x15ad0770: case 0x15ad0774: case 0x15ad0778: case 0x15ad0779:
+            case 0x15ad0790: case 0x15ad07a0: case 0x15ad07b0: case 0x15ad07c0:
+            case 0x15ad07e0: case 0x15ad07f0: case 0x15ad0801: case 0x15ad0820:
+            case 0x15ad1977: case 0xfffe0710:
+            case 0x0e0f0001: case 0x0e0f0002: case 0x0e0f0003: case 0x0e0f0004:
+            case 0x0e0f0005: case 0x0e0f0006: case 0x0e0f000a: case 0x0e0f8001:
+            case 0x0e0f8002: case 0x0e0f8003: case 0x0e0ff80a:
+                return core::add(brands::VMWARE);
+
+                // Red Hat + QEMU
+            case 0x1b360001: case 0x1b360002: case 0x1b360003: case 0x1b360004:
+            case 0x1b360005: case 0x1b360008: case 0x1b360009: case 0x1b36000b:
+            case 0x1b36000c: case 0x1b36000d: case 0x1b360010: case 0x1b360011:
+            case 0x1b360013: case 0x1b360100:
+                return core::add(brands::QEMU);
+
+                // QEMU
+            case 0x06270001: case 0x1d1d1f1f: case 0x80865845: case 0x1d6b0200:
+                return core::add(brands::QEMU);
+
+                // vGPUs (NVIDIA + others)
+            case 0x10de0fe7: case 0x10de0ff7: case 0x10de118d: case 0x10de11b0:
+            case 0x1ec6020f:
+                return true;
+
+                // VirtualBox
+            case 0x80ee0021: case 0x80ee0022: case 0x80eebeef: case 0x80eecafe:
+                return core::add(brands::VBOX);
+
+                // Hyper-V
+            case 0x1f3f9002: case 0x1f3f9004: case 0x1f3f9009:
+            case 0x808637d9: case 0x14145353:
+                if (util::hyper_x() == HYPERV_ARTIFACT_VM) continue;
+                return core::add(brands::HYPERV);
+
+                // Parallels
+            case 0x1ab84000: case 0x1ab84005: case 0x1ab84006:
+                return core::add(brands::PARALLELS);
+
+                // Xen
+            case 0x5853c000: case 0xfffd0101: case 0x5853c147:
+            case 0x5853c110: case 0x5853c200: case 0x58530001:
+                return core::add(brands::XEN);
+
+                // Connectix (VirtualPC)
+            case 0x29556e61:
+                return core::add(brands::VPC);
+            }
+
+            // Full 64-bit vendor:device identifiers
+            switch (id64) {
+                case 0x0000000011061100ULL:
+                case 0x000000001af41100ULL:
+                case 0x000000001b361100ULL:
+                case 0x0000000010ec1100ULL:
+                case 0x0000000010331100ULL:
+                case 0x0000000080861100ULL:
+                case 0x0000000010131100ULL:
+                case 0x00000000106b1100ULL:
+                case 0x0000000010221100ULL:
+                    return core::add(brands::QEMU);
+
+                case 0x0000000015ad0800ULL:  // Hypervisor ROM Interface
+                    return core::add(brands::VMWARE);
+            }
+        }
+
+        return false;
 #endif
     }
     
