@@ -4,7 +4,7 @@
  * ██║   ██║██╔████╔██║███████║██║ █╗ ██║███████║██████╔╝█████╗
  * ╚██╗ ██╔╝██║╚██╔╝██║██╔══██║██║███╗██║██╔══██║██╔══██╗██╔══╝
  *  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
- *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ 2.3.0 (May 2025)
+ *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ Experimental post-2.3.0 (May 2025)
  *
  *  C++ VM detection library
  *
@@ -49,14 +49,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 557
- * - struct for internal cpu operations        => line 743
- * - struct for internal memoization           => line 1209
- * - struct for internal utility functions     => line 1337
- * - struct for internal core components       => line 10102
- * - start of VM detection technique list      => line 2450
- * - start of public VM detection functions    => line 10759
- * - start of externally defined variables     => line 11710
+ * - enums for publicly accessible techniques  => line 526
+ * - struct for internal cpu operations        => line 701
+ * - struct for internal memoization           => line 1033
+ * - struct for internal utility functions     => line 1160
+ * - struct for internal core components       => line 9489
+ * - start of VM detection technique list      => line 1931
+ * - start of public VM detection functions    => line 10140
+ * - start of externally defined variables     => line 11085
  *
  *
  * ============================== EXAMPLE ===================================
@@ -4278,15 +4278,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        debug("INTEL_THREAD_MISMATCH: CPU model = ", model.string);
-
-        struct CStrComparator {
-            bool operator()(const char* a, const char* b) const {
-                return std::strcmp(a, b) < 0;
-            }
-        };
-
-        static const std::map<const char*, int, CStrComparator> thread_database = {
+        constexpr std::array<std::pair<const char*, int>, 946> intel_thread_database = { {
             // i3 series
             { "i3-1000G1", 4 },
             { "i3-1000G4", 4 },
@@ -5240,17 +5232,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             { "i9-9980HK", 16 },
             { "i9-9980XE", 36 },
             { "i9-9990XE", 28 }
-        };
+        } };
 
-        const char* key = model.string.c_str();
-        auto it = thread_database.find(key);
-        if (it == thread_database.end()) {
-            return false;
+        for (const auto& pair : intel_thread_database) {
+            if (model.string.find(pair.first) != std::string::npos) {
+                debug("INTEL_THREAD_MISMATCH: Found CPU in database with ", pair.second, " threads");
+                return std::thread::hardware_concurrency() != static_cast<unsigned>(pair.second);
+            }
         }
 
-        debug("INTEL_THREAD_MISMATCH: thread in database = ", static_cast<u32>(it->second));
-
-        return std::thread::hardware_concurrency() != static_cast<unsigned>(it->second);
+        return false;
 #endif
     }
 
@@ -5281,13 +5272,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         debug("XEON_THREAD_MISMATCH: CPU model = ", model.string);
 
-        struct CStrComparator {
-            bool operator()(const char* a, const char* b) const {
-                return std::strcmp(a, b) < 0;
-            }
-        };
-
-        std::map<const char*, int, CStrComparator> thread_database = {
+        constexpr std::array<std::pair<const char*, int>, 99> xeon_intel_thread_database = { {
             // Xeon D
             { "D-1518", 8 },
             { "D-1520", 8 },
@@ -5392,17 +5377,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             { "W-3265M", 48 },
             { "W-3275", 56 },
             { "W-3275M", 56 }
-        };
+        } };
 
-        if (thread_database.find(model.string.c_str()) == thread_database.end()) {
-            return false;
+        for (const auto& pair : xeon_intel_thread_database) {
+            if (model.string.find(pair.first) != std::string::npos) {
+                debug("XEON_INTEL_THREAD_MISMATCH: Found CPU in database with ", pair.second, " threads");
+                return std::thread::hardware_concurrency() != static_cast<unsigned>(pair.second);
+            }
         }
 
-        const int threads = thread_database.at(model.string.c_str());
-
-        debug("XEON_THREAD_MISMATCH: thread in database = ", static_cast<u32>(threads));
-
-        return (std::thread::hardware_concurrency() != static_cast<unsigned int>(threads));
+        return false;
 #endif
     }
 
@@ -9032,7 +9016,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             );
 
             return true;
-            };
+        };
 
         for (const auto& dev : devices) {
             const u32 id = ((static_cast<u32>(dev.vendor_id) << 16) | dev.device_id);
