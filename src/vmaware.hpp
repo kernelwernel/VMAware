@@ -532,7 +532,7 @@ public:
         HYPERVISOR_BIT,
         HYPERVISOR_STR,
         TIMER,
-        THREADCOUNT,
+        THREAD_COUNT,
         MAC,
         TEMPERATURE,
         SYSTEMD,
@@ -590,7 +590,6 @@ public:
         HYPERVISOR_DIR,
         UML_CPU,
         KMSG,
-        VM_PROCS,
         VBOX_MODULE,
         SYSINFO_PROC,
         DMI_SCAN,
@@ -2043,11 +2042,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
     /**
      * @brief Check if there are only 1 or 2 threads, which is a common pattern in VMs with default settings (nowadays physical CPUs should have at least 4 threads for modern CPUs
-     * @category x86 (ARM might have very low thread counts, which is why it should be only for x86)
-     * @implements VM::THREADCOUNT
+     * @category x86 (ARM might have very low thread counts, which is why it should be only for x86). Linux, Apple
+     * @implements VM::THREAD_COUNT
      */
     [[nodiscard]] static bool thread_count() {
-#if (x86)
+#if (x86 && (LINUX || APPLE))
         debug("THREADCOUNT: ", "threads = ", std::thread::hardware_concurrency());
 
         struct cpu::stepping_struct steps = cpu::fetch_steppings();
@@ -3211,11 +3210,18 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 break;
         }
 
-        return false;
 #elif (LINUX)
         if (util::is_proc_running("qemu_ga")) {
             debug("VM_PROCESSES: Detected QEMU guest agent process.");
             return core::add(brands::QEMU);
+        }
+
+        if (util::exists("/proc/xen")) {
+            return core::add(brands::XEN);
+        }
+
+        if (util::exists("/proc/vz")) {
+            return core::add(brands::OPENVZ);
         }
 #endif
         return false;
@@ -6295,13 +6301,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
 #else
         u32 unused, ecx, edx = 0;
-        cpu::cpuid(unused, unused, ecx, edx, 3);
+        cpu::cpuid(unused, unused, ecx, edx, 0x40000003);
+     
+        constexpr u32 ECX_SIG = 0x4D4D5645u; // 'EVMM' → 0x4D4D5645
+        constexpr u32 EDX_SIG = 0x43544E49u;  // 'INTC' → 0x43544E49
 
-        /*
-         * ECX = 0x4D4M5645 = "EVMM" (E=0x45, V=0x56, M=0x4D)
-         * EDX = 0x43544E49 = "INTC" (I=0x49, N=0x4E, T=0x54, C=0x43)
-         */
-        if ((ecx == 0x4D4D5645) && (edx == 0x43544E49)) {
+        if (ecx == ECX_SIG && edx == EDX_SIG) {
             return core::add(brands::INTEL_KGT);
         }
 
@@ -6491,7 +6496,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 usleep(100000); // Sleep for 100 milliseconds
             } else {
                 if (errno == EAGAIN) {
-                    usleep(100000); // Sleep for 100 milliseconds
+                    usleep(100000);
                 } else {
                     debug("KMSG: Error reading /dev/kmsg");
                     break;
@@ -6512,29 +6517,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         return (util::find(content, "Hypervisor detected"));
-#endif
-    } 
-
-
-    /**
-     * @brief Check for a Xen VM process
-     * @note idea from https://github.com/ShellCode33/VM-Detection/blob/master/vmdetect/linux.go
-     * @category Linux
-     * @implements VM::VM_PROCS
-     */
-    [[nodiscard]] static bool vm_procs() {
-#if (!LINUX)
-        return false;
-#else
-        if (util::exists("/proc/xen")) {
-            return core::add(brands::XEN);
-        }
-
-        if (util::exists("/proc/vz")) {
-            return core::add(brands::OPENVZ);
-        }
-
-        return false;
 #endif
     } 
 
@@ -6879,7 +6861,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for serial numbers of virtual disks
      * @category Windows
      * @author Requiem (https://github.com/NotRequiem)
-     * @note VMware can't be flagged without also flagging legitimate devices
+     * @note VMware can't be flagged without also flagging legitimate disks
      * @implements VM::DISK_SERIAL
      */
     [[nodiscard]] static bool disk_serial_number() {
@@ -7032,7 +7014,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const GUID GUID_DEVCLASS_PORTCONNECTOR =
         { 0x4d36e978, 0xe325, 0x11ce, {0xbf, 0xc1, 0x08, 0x00, 0x2b, 0xe1, 0x03, 0x18} };
 
-        HDEVINFO hDevInfo = SetupDiGetClassDevsW(&GUID_DEVCLASS_PORTCONNECTOR,
+        const HDEVINFO hDevInfo = SetupDiGetClassDevs(&GUID_DEVCLASS_PORTCONNECTOR,
             nullptr, nullptr, DIGCF_PRESENT);
         if (hDevInfo == INVALID_HANDLE_VALUE) {
             return true;
@@ -7298,7 +7280,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Windows
      * @implements VM::PROCESSOR_NUMBER
      */
-    [[nodiscard]] static bool processor_number()
+    [[nodiscard]] static bool logical_processors()
     {
 #if (!WINDOWS)
         return false;
@@ -7323,7 +7305,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Windows
      * @implements VM::NUMBER_OF_CORES
      */
-    [[nodiscard]] static bool number_of_cores() {
+    [[nodiscard]] static bool physical_processors() {
 #if (!WINDOWS)
         return false;
 #else
@@ -7498,7 +7480,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 cpu_set_t set;
                 static sigjmp_buf jumpBuf;
 
-                // Use a non-capturing lambda cast to a function pointer for signal handling
                 struct sigaction oldAct, newAct {};
                 newAct.sa_flags = SA_SIGINFO;
                 using sa_sigaction_fn = void (*)(int, siginfo_t*, void*);
@@ -7598,10 +7579,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         #if (MSVC)
             int cpuInfo[4]; __cpuid(cpuInfo, 0);
             __rdtsc(); 
-            GetProcessHeap();
+            GetProcessHeap(); // purely user-mode function
             __rdtscp(&aux);
             #pragma warning (disable : 6387)
-            CloseHandle((HANDLE)0);
+            CloseHandle((HANDLE)0); // NtClose syscall
             #pragma warning (default : 6387)
             __rdtscp(&aux);
         #elif (GCC) || (CLANG)
@@ -7744,20 +7725,17 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Detect QEMU fw_cfg interface
      *
-     * On Windows, this would scan ACPI devices for a LocationPath containing "FWCF".
-     * On Linux, this first checks the Device Tree for a fw-cfg node or hypervisor tag,
+     * This first checks the Device Tree for a fw-cfg node or hypervisor tag,
      * then verifies the presence of the qemu_fw_cfg module and firmware directories in sysfs.
      *
-     * @note Windows method: extract "FWCF" from ACPI devices' LocationPaths (TODO)
      * @note Linux DT method: inspired by https://github.com/ShellCode33/VM-Detection
      * @note Linux sysfs method: looks for /sys/module/qemu_fw_cfg/ & /sys/firmware/qemu_fw_cfg/
      *
-     * @category Windows, Linux
+     * @category Linux
      * @implements VM::QEMU_FW_CFG
      */
     [[nodiscard]] static bool qemu_fw_cfg() {
 #if (!LINUX)
-        // Windows detection not implemented yet
         return false;
 #else
         // 1) Device Tree-based detection
@@ -8494,7 +8472,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             "Parallels Software International","Parallels(R)","innotek",
             "Oracle","VirtualBox","vbox","VBOX","VS2005R2",
             "VMware, Inc.","VMware","VMWARE",
-            "S3 Corp.","Virtual Machine","QEMU","pc-q35","WAET","BOCHS","BXPC"
+            "S3 Corp.","Virtual Machine","QEMU","pc-q35","WAET","BOCHS","BXPC", "FWCF"
         };
         static const char* __restrict brands_map[] = {
             brands::PARALLELS, brands::PARALLELS, nullptr,
@@ -10468,7 +10446,7 @@ public: // START OF PUBLIC FUNCTIONS
             case HYPERVISOR_BIT: return "HYPERVISOR_BIT";
             case HYPERVISOR_STR: return "HYPERVISOR_STR";
             case TIMER: return "TIMER";
-            case THREADCOUNT: return "THREADCOUNT";
+            case THREAD_COUNT: return "THREAD_COUNT";
             case MAC: return "MAC";
             case TEMPERATURE: return "TEMPERATURE";
             case SYSTEMD: return "SYSTEMD";
@@ -10526,7 +10504,6 @@ public: // START OF PUBLIC FUNCTIONS
             case HYPERVISOR_DIR: return "HYPERVISOR_DIR";
             case UML_CPU: return "UML_CPU";
             case KMSG: return "KMSG";
-            case VM_PROCS: return "VM_PROCS";
             case VBOX_MODULE: return "VBOX_MODULE";
             case SYSINFO_PROC: return "SYSINFO_PROC";
             case DMI_SCAN: return "DMI_SCAN";
@@ -11012,7 +10989,7 @@ std::vector<VM::core::custom_technique> VM::core::custom_table = {
 
 #define table_t std::map<VM::enum_flags, VM::core::technique>
 
-// the 0~100 points are debatable, but I think it's fine how it is. Feel free to disagree.
+// the 0~100 points are debatable, but we think it's fine how it is. Feel free to disagree.
 std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     // FORMAT: { VM::<ID>, { certainty%, function pointer } },
     // START OF TECHNIQUE TABLE
@@ -11026,21 +11003,42 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     std::make_pair(VM::AMD_THREAD_MISMATCH, VM::core::technique(95, VM::amd_thread_mismatch)),
     std::make_pair(VM::XEON_THREAD_MISMATCH, VM::core::technique(95, VM::xeon_thread_mismatch)),
     std::make_pair(VM::DISK_SERIAL, VM::core::technique(100, VM::disk_serial_number)),
-    std::make_pair(VM::PORT_CONNECTORS, VM::core::technique(25, VM::port_connectors)),
     std::make_pair(VM::IVSHMEM, VM::core::technique(100, VM::ivshmem)),
     std::make_pair(VM::GPU_VM_STRINGS, VM::core::technique(100, VM::gpu_vm_strings)),
-    std::make_pair(VM::QEMU_FW_CFG, VM::core::technique(70, VM::qemu_fw_cfg)),
-    std::make_pair(VM::LSHW_QEMU, VM::core::technique(80, VM::lshw_qemu)),
-    std::make_pair(VM::BAD_POOLS, VM::core::technique(80, VM::bad_pools)),
+    std::make_pair(VM::SIDT, VM::core::technique(45, VM::sidt)),
+    std::make_pair(VM::SGDT, VM::core::technique(45, VM::sgdt)),
+    std::make_pair(VM::SLDT, VM::core::technique(45, VM::sldt)),
+    std::make_pair(VM::SMSW, VM::core::technique(45, VM::smsw)),
     std::make_pair(VM::DRIVER_NAMES, VM::core::technique(100, VM::driver_names)),
+    std::make_pair(VM::BAD_POOLS, VM::core::technique(80, VM::bad_pools)),
     std::make_pair(VM::HKLM_REGISTRIES, VM::core::technique(25, VM::hklm_registries)),
     std::make_pair(VM::VMID, VM::core::technique(100, VM::vmid)),
     std::make_pair(VM::CPU_BRAND, VM::core::technique(50, VM::cpu_brand)),
     std::make_pair(VM::HYPERVISOR_BIT, VM::core::technique(100, VM::hypervisor_bit)),
     std::make_pair(VM::HYPERVISOR_STR, VM::core::technique(75, VM::hypervisor_str)),
-    std::make_pair(VM::THREADCOUNT, VM::core::technique(35, VM::thread_count)),
-    std::make_pair(VM::MAC, VM::core::technique(20, VM::mac_address_check)),
+    std::make_pair(VM::CPUID_SIGNATURE, VM::core::technique(95, VM::cpuid_signature)),
+    std::make_pair(VM::THREAD_COUNT, VM::core::technique(35, VM::thread_count)),
+    std::make_pair(VM::PROCESSOR_NUMBER, VM::core::technique(50, VM::logical_processors)),
+    std::make_pair(VM::NUMBER_OF_CORES, VM::core::technique(50, VM::physical_processors)),
+    std::make_pair(VM::VM_DEVICES, VM::core::technique(50, VM::vm_devices)),
+    std::make_pair(VM::VIRTUAL_PROCESSORS, VM::core::technique(100, VM::virtual_processors)),
+    std::make_pair(VM::HYPERV_QUERY, VM::core::technique(100, VM::hyperv_query)),
+    std::make_pair(VM::REGISTRY, VM::core::technique(50, VM::registry_key)),
+    std::make_pair(VM::FILES, VM::core::technique(50, VM::vm_files)),
+    std::make_pair(VM::AUDIO, VM::core::technique(25, VM::check_audio)),
+    std::make_pair(VM::DLL, VM::core::technique(25, VM::dll_check)),
+    std::make_pair(VM::DISK_SIZE, VM::core::technique(60, VM::disk_size)),
+    std::make_pair(VM::VBOX_DEFAULT, VM::core::technique(25, VM::vbox_default_specs)),
+    std::make_pair(VM::VBOX_NETWORK, VM::core::technique(100, VM::vbox_network_share)),
+    std::make_pair(VM::WINE, VM::core::technique(100, VM::wine)),
+    std::make_pair(VM::POWER_CAPABILITIES, VM::core::technique(50, VM::power_capabilities)),
+    std::make_pair(VM::VM_PROCESSES, VM::core::technique(15, VM::vm_processes)),
+    std::make_pair(VM::VIRTUAL_REGISTRY, VM::core::technique(90, VM::virtual_registry)),
+    std::make_pair(VM::MUTEX, VM::core::technique(100, VM::mutex)),
+    std::make_pair(VM::PORT_CONNECTORS, VM::core::technique(25, VM::port_connectors)),
     std::make_pair(VM::TEMPERATURE, VM::core::technique(15, VM::temperature)),
+    std::make_pair(VM::QEMU_FW_CFG, VM::core::technique(70, VM::qemu_fw_cfg)),
+    std::make_pair(VM::HWMODEL, VM::core::technique(100, VM::hwmodel)),
     std::make_pair(VM::SYSTEMD, VM::core::technique(35, VM::systemd_virt)),
     std::make_pair(VM::CVENDOR, VM::core::technique(65, VM::chassis_vendor)),
     std::make_pair(VM::CTYPE, VM::core::technique(20, VM::chassis_type)),
@@ -11048,27 +11046,9 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     std::make_pair(VM::DMIDECODE, VM::core::technique(55, VM::dmidecode)),
     std::make_pair(VM::DMESG, VM::core::technique(55, VM::dmesg)),
     std::make_pair(VM::HWMON, VM::core::technique(35, VM::hwmon)),
-    std::make_pair(VM::DLL, VM::core::technique(25, VM::dll_check)),
-    std::make_pair(VM::REGISTRY, VM::core::technique(50, VM::registry_key)),
-    std::make_pair(VM::FILES, VM::core::technique(25, VM::vm_files)),
-    std::make_pair(VM::HWMODEL, VM::core::technique(100, VM::hwmodel)),
-    std::make_pair(VM::DISK_SIZE, VM::core::technique(60, VM::disk_size)),
-    std::make_pair(VM::VBOX_DEFAULT, VM::core::technique(25, VM::vbox_default_specs)),
-    std::make_pair(VM::VBOX_NETWORK, VM::core::technique(100, VM::vbox_network_share)),
-    std::make_pair(VM::WINE, VM::core::technique(100, VM::wine)),
-    std::make_pair(VM::POWER_CAPABILITIES, VM::core::technique(50, VM::power_capabilities)),
-    std::make_pair(VM::VM_PROCESSES, VM::core::technique(15, VM::vm_processes)),
+    std::make_pair(VM::LSHW_QEMU, VM::core::technique(80, VM::lshw_qemu)),
     std::make_pair(VM::LINUX_USER_HOST, VM::core::technique(10, VM::linux_user_host)),
     std::make_pair(VM::GAMARUE, VM::core::technique(10, VM::gamarue)),
-    std::make_pair(VM::BOCHS_CPU, VM::core::technique(100, VM::bochs_cpu)),
-    std::make_pair(VM::MAC_MEMSIZE, VM::core::technique(15, VM::hw_memsize)),
-    std::make_pair(VM::MAC_IOKIT, VM::core::technique(100, VM::io_kit)),
-    std::make_pair(VM::IOREG_GREP, VM::core::technique(100, VM::ioreg_grep)),
-    std::make_pair(VM::MAC_SIP, VM::core::technique(40, VM::mac_sip)),
-    std::make_pair(VM::VPC_INVALID, VM::core::technique(75, VM::vpc_invalid)),
-    std::make_pair(VM::SIDT, VM::core::technique(25, VM::sidt)),
-    std::make_pair(VM::SGDT, VM::core::technique(30, VM::sgdt)),
-    std::make_pair(VM::SLDT, VM::core::technique(15, VM::sldt)),
     std::make_pair(VM::VMWARE_IOMEM, VM::core::technique(65, VM::vmware_iomem)),
     std::make_pair(VM::VMWARE_IOPORTS, VM::core::technique(70, VM::vmware_ioports)),
     std::make_pair(VM::VMWARE_SCSI, VM::core::technique(40, VM::vmware_scsi)),
@@ -11076,8 +11056,6 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     std::make_pair(VM::VMWARE_STR, VM::core::technique(35, VM::vmware_str)),
     std::make_pair(VM::VMWARE_BACKDOOR, VM::core::technique(100, VM::vmware_backdoor)),
     std::make_pair(VM::VMWARE_PORT_MEM, VM::core::technique(85, VM::vmware_port_memory)),
-    std::make_pair(VM::SMSW, VM::core::technique(30, VM::smsw)),
-    std::make_pair(VM::MUTEX, VM::core::technique(85, VM::mutex)),
     std::make_pair(VM::ODD_CPU_THREADS, VM::core::technique(80, VM::odd_cpu_threads)),
     std::make_pair(VM::CUCKOO_DIR, VM::core::technique(30, VM::cuckoo_dir)),
     std::make_pair(VM::CUCKOO_PIPE, VM::core::technique(30, VM::cuckoo_pipe)),
@@ -11085,32 +11063,30 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     std::make_pair(VM::GENERAL_HOSTNAME, VM::core::technique(10, VM::general_hostname)),
     std::make_pair(VM::SCREEN_RESOLUTION, VM::core::technique(20, VM::screen_resolution)),
     std::make_pair(VM::DEVICE_STRING, VM::core::technique(25, VM::device_string)),
-    std::make_pair(VM::BLUESTACKS_FOLDERS, VM::core::technique(5, VM::bluestacks)),
-    std::make_pair(VM::CPUID_SIGNATURE, VM::core::technique(95, VM::cpuid_signature)),
     std::make_pair(VM::KGT_SIGNATURE, VM::core::technique(80, VM::intel_kgt_signature)),
     std::make_pair(VM::QEMU_VIRTUAL_DMI, VM::core::technique(40, VM::qemu_virtual_dmi)),
     std::make_pair(VM::QEMU_USB, VM::core::technique(20, VM::qemu_USB)),
     std::make_pair(VM::HYPERVISOR_DIR, VM::core::technique(20, VM::hypervisor_dir)),
     std::make_pair(VM::UML_CPU, VM::core::technique(80, VM::uml_cpu)),
     std::make_pair(VM::KMSG, VM::core::technique(5, VM::kmsg)),
-    std::make_pair(VM::VM_PROCS, VM::core::technique(10, VM::vm_procs)),
     std::make_pair(VM::VBOX_MODULE, VM::core::technique(15, VM::vbox_module)),
     std::make_pair(VM::SYSINFO_PROC, VM::core::technique(15, VM::sysinfo_proc)),
     std::make_pair(VM::DMI_SCAN, VM::core::technique(50, VM::dmi_scan)),
     std::make_pair(VM::SMBIOS_VM_BIT, VM::core::technique(50, VM::smbios_vm_bit)),
     std::make_pair(VM::PODMAN_FILE, VM::core::technique(5, VM::podman_file)),
     std::make_pair(VM::WSL_PROC, VM::core::technique(30, VM::wsl_proc_subdir)),
-    std::make_pair(VM::VM_DEVICES, VM::core::technique(50, VM::vm_devices)),
-    std::make_pair(VM::PROCESSOR_NUMBER, VM::core::technique(50, VM::processor_number)),
-    std::make_pair(VM::NUMBER_OF_CORES, VM::core::technique(50, VM::number_of_cores)),
-    std::make_pair(VM::VIRTUAL_PROCESSORS, VM::core::technique(50, VM::virtual_processors)),
-    std::make_pair(VM::HYPERV_QUERY, VM::core::technique(100, VM::hyperv_query)),
     std::make_pair(VM::AMD_SEV, VM::core::technique(50, VM::amd_sev)),
-    std::make_pair(VM::VIRTUAL_REGISTRY, VM::core::technique(65, VM::virtual_registry)),
     std::make_pair(VM::FILE_ACCESS_HISTORY, VM::core::technique(15, VM::file_access_history)),
-    std::make_pair(VM::AUDIO, VM::core::technique(25, VM::check_audio)),
-    std::make_pair(VM::UNKNOWN_MANUFACTURER, VM::core::technique(50, VM::unknown_manufacturer)),
+    std::make_pair(VM::UNKNOWN_MANUFACTURER, VM::core::technique(100, VM::unknown_manufacturer)),
+    std::make_pair(VM::MAC, VM::core::technique(20, VM::mac_address_check)),
     std::make_pair(VM::NSJAIL_PID, VM::core::technique(75, VM::nsjail_proc_id)),
+    std::make_pair(VM::MAC_MEMSIZE, VM::core::technique(15, VM::hw_memsize)),
+    std::make_pair(VM::MAC_IOKIT, VM::core::technique(100, VM::io_kit)),
+    std::make_pair(VM::IOREG_GREP, VM::core::technique(100, VM::ioreg_grep)),
+    std::make_pair(VM::MAC_SIP, VM::core::technique(40, VM::mac_sip)),
+    std::make_pair(VM::BOCHS_CPU, VM::core::technique(100, VM::bochs_cpu)),
+    std::make_pair(VM::VPC_INVALID, VM::core::technique(75, VM::vpc_invalid)),
+    std::make_pair(VM::BLUESTACKS_FOLDERS, VM::core::technique(5, VM::bluestacks)),
     // ADD NEW TECHNIQUE STRUCTURE HERE
 };
 
