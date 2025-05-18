@@ -1158,6 +1158,7 @@ private:
             }
         };
 
+#if (WINDOWS)
         struct module {
             static inline std::map<HMODULE, std::map<std::string, void*>> function_cache;
 
@@ -1181,6 +1182,7 @@ private:
                 }
             }
         };
+#endif
     };
 
     // miscellaneous functionalities
@@ -1849,18 +1851,18 @@ private:
         }
 
 
-        // retrieves the addresses of specified functions from a loaded module using the export directory
+        // retrieves the addresses of specified functions from a loaded module using the export directory, manual implementation of GetProcAddress
         static void GetFunctionAddresses(const HMODULE hModule, const char* names[], void** functions, size_t count) {
             BYTE* base = reinterpret_cast<BYTE*>(hModule);
-            PIMAGE_DOS_HEADER dosHeader = reinterpret_cast<PIMAGE_DOS_HEADER>(base);
-            PIMAGE_NT_HEADERS ntHeaders = reinterpret_cast<PIMAGE_NT_HEADERS>(base + dosHeader->e_lfanew);
+            const PIMAGE_DOS_HEADER dosHeader = reinterpret_cast<PIMAGE_DOS_HEADER>(base);
+            const PIMAGE_NT_HEADERS ntHeaders = reinterpret_cast<PIMAGE_NT_HEADERS>(base + dosHeader->e_lfanew);
             const auto& dd = ntHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT];
-            PIMAGE_EXPORT_DIRECTORY exportDir = reinterpret_cast<PIMAGE_EXPORT_DIRECTORY>(base + dd.VirtualAddress);
+            const PIMAGE_EXPORT_DIRECTORY exportDir = reinterpret_cast<PIMAGE_EXPORT_DIRECTORY>(base + dd.VirtualAddress);
 
-            DWORD* nameRvas = reinterpret_cast<DWORD*>(base + exportDir->AddressOfNames);
-            DWORD* funcRvas = reinterpret_cast<DWORD*>(base + exportDir->AddressOfFunctions);
-            WORD* ordinals = reinterpret_cast<WORD*>(base + exportDir->AddressOfNameOrdinals);
-            DWORD nameCount = exportDir->NumberOfNames;
+            const DWORD* nameRvas = reinterpret_cast<DWORD*>(base + exportDir->AddressOfNames);
+            const DWORD* funcRvas = reinterpret_cast<DWORD*>(base + exportDir->AddressOfFunctions);
+            const WORD* ordinals = reinterpret_cast<WORD*>(base + exportDir->AddressOfNameOrdinals);
+            const DWORD nameCount = exportDir->NumberOfNames;
 
             auto getName = [&](DWORD idx) -> const char* {
                 return reinterpret_cast<char*>(base + nameRvas[idx]);
