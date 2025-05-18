@@ -344,7 +344,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::HYPERVISOR_BIT:
             case VM::HYPERVISOR_STR:
             case VM::TIMER:
-            case VM::THREADCOUNT:
+            case VM::THREAD_COUNT:
             case VM::MAC:
             case VM::TEMPERATURE:
             case VM::SYSTEMD:
@@ -377,7 +377,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::HYPERVISOR_DIR:
             case VM::UML_CPU:
             case VM::KMSG:
-            case VM::VM_PROCS:
             case VM::VBOX_MODULE:
             case VM::SYSINFO_PROC:
             case VM::DMI_SCAN:
@@ -406,7 +405,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::HYPERVISOR_BIT:
             case VM::HYPERVISOR_STR:
             case VM::TIMER:
-            case VM::THREADCOUNT:
             case VM::TEMPERATURE:
             case VM::DLL:
             case VM::REGISTRY:
@@ -472,7 +470,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::HYPERVISOR_BIT:
             case VM::HYPERVISOR_STR:
             case VM::TIMER:
-            case VM::THREADCOUNT:
+            case VM::THREAD_COUNT:
             case VM::HWMODEL:
             case VM::BOCHS_CPU:
             case VM::MAC_MEMSIZE:
@@ -871,7 +869,7 @@ void general() {
     checker(VM::HYPERVISOR_BIT, "CPUID hypervisor bit");
     checker(VM::HYPERVISOR_STR, "hypervisor str");
     checker(VM::TIMER, "timing anomalies");
-    checker(VM::THREADCOUNT, "processor count");
+    checker(VM::THREAD_COUNT, "processor count");
     checker(VM::MAC, "MAC address");
     checker(VM::TEMPERATURE, "temperature");
     checker(VM::SYSTEMD, "systemd virtualisation");
@@ -929,7 +927,6 @@ void general() {
     checker(VM::HYPERVISOR_DIR, "hypervisor directory (Linux)");
     checker(VM::UML_CPU, "User-mode Linux CPU");
     checker(VM::KMSG, "/dev/kmsg hypervisor message");
-    checker(VM::VM_PROCS, "various VM files in /proc");
     checker(VM::VBOX_MODULE, "VBox kernel module");
     checker(VM::SYSINFO_PROC, "/proc/sysinfo");
     checker(VM::DMI_SCAN, "DMI scan");
