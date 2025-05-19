@@ -8411,14 +8411,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         typedef NTSTATUS(__stdcall* PNtQuerySystemInformation)(ULONG, PVOID, ULONG, PULONG);
 
 #if defined(_MSC_VER)
-#define LIKELY(x)   (x)
-#define UNLIKELY(x) (x)
-#else
-#define LIKELY(x)   __builtin_expect(!!(x), 1)
-#define UNLIKELY(x) __builtin_expect(!!(x), 0)
-#endif
-
-#if defined(_MSC_VER)
 #define BSWAP32(x) _byteswap_ulong(x)
 #else
 #define BSWAP32(x) __builtin_bswap32(x)
@@ -8448,9 +8440,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             };
 
         auto ensure = [&](ULONG need) noexcept -> bool {
-            if (UNLIKELY(qsiSize < need)) {
+            if (qsiSize < need) {
                 PBYTE tmp = (PBYTE)realloc(qsiBuf, need);
-                if (UNLIKELY(!tmp)) return false;
+                if (!tmp) return false;
                 qsiBuf = tmp;
                 qsiSize = need;
             }
@@ -8468,19 +8460,24 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const auto ntqsi = reinterpret_cast<PNtQuerySystemInformation>(functionPointers[0]);
         if (!ntqsi) return false;
 
-        static const char* __restrict targets[] = {
-            "Parallels Software International","Parallels(R)","innotek",
-            "Oracle","VirtualBox","vbox","VBOX","VS2005R2",
-            "VMware, Inc.","VMware","VMWARE",
-            "S3 Corp.","Virtual Machine","QEMU","pc-q35","WAET","BOCHS","BXPC", "FWCF"
-        };
-        static const char* __restrict brands_map[] = {
-            brands::PARALLELS, brands::PARALLELS, nullptr,
-            brands::VBOX,      brands::VBOX,      brands::VBOX, nullptr, nullptr,
+        constexpr std::array<const char*, 21> targets = { {
+            "Parallels Software", "Parallels(R)",
+            "innotek",            "Oracle",   "VirtualBox", "vbox", "VBOX",
+            "VMware, Inc.",       "VMware",   "VMWARE",
+            "QEMU",               "pc-q35",   "FWCF",       "BOCHS", "BXPC",
+            "ovmf",               "edk ii unknown", "WAET", "S3 Corp.", "Virtual Machine", "VS2005R2"
+        } };
+
+        constexpr std::array<const char*, 21> brands_map = { {
+            brands::PARALLELS, brands::PARALLELS,
+            brands::VBOX,      brands::VBOX,      brands::VBOX,     brands::VBOX,     brands::VBOX,
             brands::VMWARE,    brands::VMWARE,    brands::VMWARE,
-            nullptr, nullptr,  brands::QEMU, brands::QEMU, nullptr, brands::BOCHS, brands::BOCHS
-        };
-        static const size_t targ_count = sizeof(targets) / sizeof(*targets);
+            brands::QEMU,      brands::QEMU,      brands::QEMU,     brands::BOCHS,    brands::BOCHS,
+            nullptr, nullptr, nullptr, nullptr, nullptr, nullptr
+        } };
+
+        static_assert(targets.size() == brands_map.size(),
+            "targets and brands_map must be the same length");
 
         auto query = [&](DWORD provider, DWORD tableID, PULONG outLen) noexcept -> PSYSTEM_FIRMWARE_TABLE_INFORMATION {
             const ULONG hdrSz = FIELD_OFFSET(SYSTEM_FIRMWARE_TABLE_INFORMATION, TableBuffer);
@@ -8509,44 +8506,50 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             if (!NT_SUCCESS(st)) { clear(); return nullptr; }
 
             return hdr;
-            };
+        };
 
-        auto scan_table = [&](DWORD sig, DWORD id)->bool {
+        auto scan_table = [&](DWORD sig, DWORD id) noexcept -> bool {
             ULONG got = 0;
             auto info = query(sig, id, &got);
-            if (UNLIKELY(!info)) return false;
+            if (!info) return false;
 
-            const UCHAR* __restrict buf = info->TableBuffer;
-            size_t len = info->TableBufferLength;
+            const auto* buf = info->TableBuffer;
+            const size_t len = info->TableBufferLength;
 
-            for (size_t ti = 0; ti < targ_count; ++ti) {
+            for (size_t ti = 0; ti < targets.size(); ++ti) {
                 const char* pat = targets[ti];
-                size_t plen = strlen(pat);
-                if (UNLIKELY(plen > len)) continue;
+                const size_t plen = strlen(pat);
+                if (plen > len) continue;
+
                 for (size_t i = 0; i + plen <= len; ++i) {
-                    if (LIKELY(buf[i] == (UCHAR)pat[0] && memcmp(buf + i, pat, plen) == 0)) {
+                    if (buf[i] == static_cast<unsigned char>(pat[0])
+                        && memcmp(buf + i, pat, plen) == 0)
+                    {
                         clear();
                         const char* brand = brands_map[ti];
                         return (brand ? core::add(brand) : true);
                     }
                 }
             }
-            static const char marker[] = "777777";
-            if (len >= sizeof(marker) - 1) {
-                for (size_t i = 0; i + sizeof(marker) - 1 <= len; ++i) {
-                    if (LIKELY(memcmp(buf + i, marker, sizeof(marker) - 1) == 0)) {
+
+            constexpr char marker[] = "777777";
+            constexpr size_t mlen = sizeof(marker) - 1;
+            if (len >= mlen) {
+                for (size_t i = 0; i + mlen <= len; ++i) {
+                    if (memcmp(buf + i, marker, mlen) == 0) {
                         clear();
                         return core::add(brands::VMWARE_HARD);
                     }
                 }
             }
+
             clear();
             return false;
-            };
+        };
 
         ULONG total = 0;
         auto list = query(ACPI_SIG, 0, &total);
-        if (UNLIKELY(!list)) return false;
+        if (!list) return false;
 
         // ACPI table count
         const DWORD* tables = (DWORD*)list->TableBuffer;
@@ -8581,10 +8584,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // DSDT scan & OSI check
         clear();
         const ULONG dsdtSz = GetSystemFirmwareTable(ACPI_SIG, BSWAP32(dsdtSig), nullptr, 0);
-        if (UNLIKELY(dsdtSz == 0)) return false;
+        if (dsdtSz == 0) return false;
 
         BYTE* dsdt = (BYTE*)malloc(dsdtSz);
-        if (UNLIKELY(!dsdt)) return false;
+        if (!dsdt) return false;
 
         if (GetSystemFirmwareTable(ACPI_SIG, BSWAP32(dsdtSig), dsdt, dsdtSz) != dsdtSz) {
             free(dsdt);
@@ -9090,11 +9093,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             switch (id32) {
                 // Red Hat + Virtio
-            case 0x1af41000: case 0x1af41001: case 0x1af41002: case 0x1af41003:
-            case 0x1af41004: case 0x1af41005: case 0x1af41009: case 0x1af41041:
-            case 0x1af41042: case 0x1af41043: case 0x1af41044: case 0x1af41045:
-            case 0x1af41048: case 0x1af41049: case 0x1af41050: case 0x1af41052:
-            case 0x1af41053: case 0x1af4105a: case 0x1af41110:
+            case 0x1af40022: case 0x1af41000: case 0x1af41001: case 0x1af41002:
+            case 0x1af41003: case 0x1af41004: case 0x1af41005: case 0x1af41009:
+            case 0x1af41041: case 0x1af41042: case 0x1af41043: case 0x1af41044:
+            case 0x1af41045: case 0x1af41048: case 0x1af41049: case 0x1af41050:
+            case 0x1af41052: case 0x1af41053: case 0x1af4105a: case 0x1af41100:
+            case 0x1af41110: case 0x1af41b36:
                 return true;
 
                 // VMware
@@ -11013,7 +11017,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     std::make_pair(VM::BAD_POOLS, VM::core::technique(80, VM::bad_pools)),
     std::make_pair(VM::HKLM_REGISTRIES, VM::core::technique(25, VM::hklm_registries)),
     std::make_pair(VM::VMID, VM::core::technique(100, VM::vmid)),
-    std::make_pair(VM::CPU_BRAND, VM::core::technique(50, VM::cpu_brand)),
+    std::make_pair(VM::CPU_BRAND, VM::core::technique(95, VM::cpu_brand)),
     std::make_pair(VM::HYPERVISOR_BIT, VM::core::technique(100, VM::hypervisor_bit)),
     std::make_pair(VM::HYPERVISOR_STR, VM::core::technique(75, VM::hypervisor_str)),
     std::make_pair(VM::CPUID_SIGNATURE, VM::core::technique(95, VM::cpuid_signature)),
