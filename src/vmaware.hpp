@@ -365,7 +365,7 @@
 #include <shlwapi.h>
 #include <powerbase.h>
 #include <setupapi.h>
-#include <dxgi1_4.h>
+#include <d3d9helper.h>
 #include <tbs.h>
 #include <initguid.h>
 #include <devpkey.h>
@@ -374,12 +374,13 @@
 #include <wrl/client.h> // at least windows vista, but used on a function that requires at least windows 10
 #endif
 
+#pragma comment(lib, "dxgi.lib")
 #pragma comment(lib, "setupapi.lib")
 #pragma comment(lib, "shlwapi.lib")
 #pragma comment(lib, "powrprof.lib")
 #pragma comment(lib, "tbs.lib")
 #if (_WIN32_WINNT >= _WIN32_WINNT_WIN10)
-#pragma comment(lib, "dxgi.lib")
+#pragma comment(lib, "d3d9.lib")  
 #endif
 
 #elif (LINUX)
@@ -570,7 +571,6 @@ public:
         VMWARE_DMESG,
         VMWARE_STR,
         VMWARE_BACKDOOR,
-        VMWARE_PORT_MEM,
         SMSW,
         MUTEX,
         ODD_CPU_THREADS,
@@ -2035,7 +2035,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             "\nedx: ", static_cast<u32>(out[3])
         );
 
-        return (std::strlen(out + 4) >= 4);
+        return (strlen(out + 4) >= 4);
 #endif
     }
 
@@ -2352,99 +2352,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check for uncommon IDT virtual addresses
-     * @author Matteo Malvica (Linux)
-     * @link https://www.matteomalvica.com/blog/2018/12/05/detecting-vmware-on-64-bit-systems/ (Linux)
-     * @note Idea to check VPC's range from Tom Liston and Ed Skoudis' paper "On the Cutting Edge: Thwarting Virtual Machine Detection" (Windows)
-     * @note Paper situated at /papers/ThwartingVMDetection_Liston_Skoudis.pdf (Windows)
-     * @category Windows, Linux
-     * @implements VM::SIDT
-     */
-    [[nodiscard]] static bool sidt() {
-#if (LINUX && (GCC || CLANG))
-        u8 values[10] = { 0 };
-
-        fflush(stdout);
-
-#if x86_64
-        // 64-bit Linux: IDT descriptor is 10 bytes (2-byte limit + 8-byte base)
-        __asm__ __volatile__("sidt %0" : "=m"(values));
-
-#ifdef __VMAWARE_DEBUG__
-        debug("SIDT5: values = ");
-        for (u8 i = 0; i < 10; ++i) {
-            debug(std::hex, std::setw(2), std::setfill('0'), static_cast<unsigned>(values[i]));
-            if (i < 9) debug(" ");
-        }
-#endif
-
-        return (values[9] == 0x00);  // 10th byte in x64 mode
-
-#elif x86_32
-        // 32-bit Linux: IDT descriptor is 6 bytes (2-byte limit + 4-byte base)
-        __asm__ __volatile__("sidt %0" : "=m"(values));
-
-#ifdef __VMAWARE_DEBUG__
-        debug("SIDT5: values = ");
-        for (u8 i = 0; i < 6; ++i) {
-            debug(std::hex, std::setw(2), std::setfill('0'), static_cast<unsigned>(values[i]));
-            if (i < 5) debug(" ");
-        }
-#endif
-
-        return (values[5] == 0x00);  // 6th byte in x86 mode
-
-#else
-        return false;
-#endif
-
-#elif (WINDOWS)
-        // Clang/GCC on x64 emits a full 10-byte SIDT (16-bit limit + 64-bit base), on 32-bit it still only writes 6 bytes
-#if defined(_M_X64) || defined(__x86_64__)
-        unsigned char m[10] = { 0 };
-#else
-        unsigned char m[6] = { 0 };
-#endif
-        u32 idt = 0;
-
-        __try {
-#if (CLANG || GCC)
-            __asm__ volatile ("sidt %0" : "=m"(m));
-#elif (MSVC && x86_32)
-            __asm {
-                sidt m
-            }
-#elif (MSVC)
-#pragma pack(push, 1)
-            struct {
-                unsigned short limit;
-                unsigned long long base;
-            } idtr = {};
-#pragma pack(pop)
-
-            __sidt(&idtr);
-            std::memcpy(m, &idtr, sizeof(m));
-#else
-            return false;
-#endif
-        }
-        __except (EXCEPTION_EXECUTE_HANDLER) {
-            return false; // CR4.UMIP
-        }
-
-        // Extract 32-bit base from bytes [2..5]
-        idt = *((unsigned long*)&m[2]);
-
-        if ((idt >> 24) == 0xE8) {
-            return core::add(brands::VPC);
-        }
-
-        // On x64, m[5] is the top byte of the 64-bit base; on x86 it's high byte of 32-bit base
-        return (m[5] > 0xD0);
-#endif
-    }
-
-    /**
      * @brief Check for VM-specific DLLs
      * @category Windows
      * @implements VM::DLL
@@ -2456,7 +2363,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         static constexpr struct {
             const char* dll_name;  
             const char* brand;
-        } dll_checks[] = {
+        } dlls[] = {
             {"sbiedll.dll",   brands::SANDBOXIE},
             {"pstorec.dll",   brands::CWSANDBOX},
             {"vmcheck.dll",   brands::VPC},
@@ -2467,10 +2374,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             {"wpespy.dll",    brands::NULL_BRAND}
         };
 
-        for (const auto& check : dll_checks) {
-            if (GetModuleHandleA(check.dll_name) != nullptr) { 
-                debug("DLL: Found ", check.dll_name, " (", check.brand, ")");
-                return core::add(check.brand);
+        for (const auto& dll : dlls) {
+            if (GetModuleHandleA(dll.dll_name) != nullptr) {
+                debug("DLL: Found ", dll.dll_name, " (", dll.brand, ")");
+                return core::add(dll.brand);
             }
         }
 
@@ -2571,10 +2478,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             else continue;
 
             const char* sub = full;
-            bool wildcard = std::strchr(sub, '*') || std::strchr(sub, '?');
+            bool wildcard = strchr(sub, '*') || strchr(sub, '?');
 
             if (wildcard) {
-                const char* slash = std::strrchr(sub, '\\');
+                const char* slash = strrchr(sub, '\\');
                 const char* parent = slash ? sub : "";
                 const char* pattern = slash ? slash + 1 : sub;
 
@@ -2610,7 +2517,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             score++;
             if (e.brand && e.brand[0]) {
-                debug("REGISTRY: ", "detected = ", e.brand);
+                debug("REGISTRY: ", "detected ", e.regkey, " for brand ", e.brand);
                 core::add(e.brand);
             }
         }
@@ -3798,6 +3705,109 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
+     * @brief Check for uncommon IDT virtual addresses
+     * @author Matteo Malvica (Linux)
+     * @link https://www.matteomalvica.com/blog/2018/12/05/detecting-vmware-on-64-bit-systems/ (Linux)
+     * @note Idea to check VPC's range from Tom Liston and Ed Skoudis' paper "On the Cutting Edge: Thwarting Virtual Machine Detection" (Windows)
+     * @note Paper situated at /papers/ThwartingVMDetection_Liston_Skoudis.pdf (Windows)
+     * @category Windows, Linux
+     * @implements VM::SIDT
+     */
+    [[nodiscard]] static bool sidt() {
+#if (LINUX && (GCC || CLANG))
+        u8 values[10] = { 0 };
+
+        fflush(stdout);
+
+#if (x86_64)
+        // 64-bit Linux: IDT descriptor is 10 bytes (2-byte limit + 8-byte base)
+        __asm__ __volatile__("sidt %0" : "=m"(values));
+
+#ifdef __VMAWARE_DEBUG__
+        debug("SIDT5: values = ");
+        for (u8 i = 0; i < 10; ++i) {
+            debug(std::hex, std::setw(2), std::setfill('0'), static_cast<unsigned>(values[i]));
+            if (i < 9) debug(" ");
+        }
+#endif
+
+        return (values[9] == 0x00);  // 10th byte in x64 mode
+
+#elif (x86_32)
+        // 32-bit Linux: IDT descriptor is 6 bytes (2-byte limit + 4-byte base)
+        __asm__ __volatile__("sidt %0" : "=m"(values));
+
+#ifdef __VMAWARE_DEBUG__
+        debug("SIDT5: values = ");
+        for (u8 i = 0; i < 6; ++i) {
+            debug(std::hex, std::setw(2), std::setfill('0'), static_cast<unsigned>(values[i]));
+            if (i < 5) debug(" ");
+        }
+#endif
+
+        return (values[5] == 0x00);  // 6th byte in x86 mode
+
+#else
+        return false;
+#endif
+#elif (WINDOWS)
+        SYSTEM_INFO si;
+        GetNativeSystemInfo(&si);
+
+        const DWORD_PTR origMask = SetThreadAffinityMask(GetCurrentThread(), 1);
+        SetThreadAffinityMask(GetCurrentThread(), origMask);
+
+        bool found = false;
+        for (DWORD i = 0; i < si.dwNumberOfProcessors; ++i) {
+            const DWORD_PTR mask = (DWORD_PTR)1 << i;
+            if (SetThreadAffinityMask(GetCurrentThread(), mask) == 0)
+                continue;
+
+#if (x86_64)
+            unsigned char m[10] = { 0 };
+#else
+            unsigned char m[6] = { 0 };
+#endif
+            u32 idt_base = 0;
+
+            __try {
+#if (CLANG || GCC)
+                __asm__ volatile ("sidt %0" : "=m"(m));
+#elif (MSVC && x86_32)
+                __asm { sidt m }
+#else  // MSVC x64
+#pragma pack(push,1)
+                struct { u16 limit; u64 base; } idtr = {};
+#pragma pack(pop)
+                __sidt(&idtr);
+                memcpy(m, &idtr, sizeof(m));
+#endif
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER) {} // CR4.UMIP
+
+            idt_base = *reinterpret_cast<u32*>(&m[2]); // extract 32-bit base from bytes [2..5]
+            if (m[5] > 0xD0) { // On x64, m[5] is the top byte of the 64-bit base; on x86 it's high byte of 32-bit base
+                debug("0xD0 signature detected");
+                found = true;
+            }
+
+            if ((idt_base >> 24) == 0xE8) {
+                debug("VPC signature detected");
+                SetThreadAffinityMask(GetCurrentThread(), origMask);
+                return core::add(brands::VPC);
+            }
+
+            if (found)
+                break;
+        }
+
+        SetThreadAffinityMask(GetCurrentThread(), origMask);
+        return found;
+#endif
+    }
+
+
+    /**
      * @brief Check for sgdt instruction method
      * @category Windows
      * @author Danny Quist (chamuco@gmail.com) (top-most byte signature)
@@ -3807,50 +3817,58 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      */
     [[nodiscard]] static bool sgdt() {
 #if (WINDOWS)
-    #if defined(_M_X64) || defined(__x86_64__)
-        unsigned char gdtr[10] = { 0 };
-    #else
-        unsigned char gdtr[6] = { 0 };
-    #endif
-        unsigned int  gdt = 0;
+        SYSTEM_INFO si;
+        GetNativeSystemInfo(&si);
+        const DWORD_PTR origMask = SetThreadAffinityMask(GetCurrentThread(), 1);
+        SetThreadAffinityMask(GetCurrentThread(), origMask);
 
-        __try {
-    #if (CLANG || GCC)
-            __asm__ volatile("sgdt %0" : "=m"(gdtr));
-    #elif (MSVC && x86_32)
-            __asm {
-                sgdt gdtr
+        bool found = false;
+        for (DWORD i = 0; i < si.dwNumberOfProcessors; ++i) {
+            const DWORD_PTR mask = (DWORD_PTR)1 << i;
+            if (SetThreadAffinityMask(GetCurrentThread(), mask) == 0)
+                continue;
+
+#if (x86_64)
+            unsigned char gdtr[10] = { 0 };
+#else
+            unsigned char gdtr[6] = { 0 };
+#endif
+            u32 gdt_base = 0;
+
+            __try {
+#if (CLANG || GCC)
+                __asm__ volatile("sgdt %0" : "=m"(gdtr));
+#elif (MSVC && x86_32)
+                __asm { sgdt gdtr }
+#else
+#pragma pack(push,1)
+                struct { u16 limit; u64 base; } _gdtr = {};
+#pragma pack(pop)
+                _sgdt(&_gdtr);
+                memcpy(gdtr, &_gdtr, sizeof(gdtr));
+#endif
             }
-    #elif (MSVC)
-    #pragma pack(push, 1)
-            struct {
-                unsigned short limit;
-                unsigned long long base;
-            } _gdtr = {};
-    #pragma pack(pop)
+            __except (EXCEPTION_EXECUTE_HANDLER) {} // CR4.UMIP
 
-            _sgdt(&_gdtr);
-            std::memcpy(gdtr, &_gdtr, sizeof(gdtr));
-    #else
-            return false;
-    #endif
-        }
-        __except (EXCEPTION_EXECUTE_HANDLER) {
-            return false; // CR4.UMIP
-        }
+            // On x64, gdtr[5] is the top byte of the 64-bit base; on x86 it's high byte of 32-bit base
+            if (gdtr[5] > 0xD0) {
+                debug("SGDT: top-most byte signature detected");
+                found = true;
+            }
 
-        // 32-bit base from bytes [2..5]
-        std::memcpy(&gdt, &gdtr[2], sizeof(gdt));
+            // 0xFF signature in the high byte of the 32-bit base
+            if ((gdt_base >> 24) == 0xFF) {
+                debug("SGDT: 0xFF signature detected");
+                found = true;
+            }
 
-        // On x64, gdtr[5] is the top byte of the 64-bit base; on x86 it's high byte of 32-bit base
-        if (gdtr[5] > 0xD0) {
-            debug("SGDT: top-most byte signature detected");
-            return true;
+            if (found)
+                break;
         }
 
-        // 0xFF signature in the high byte of the 32-bit base
-        return ((gdt >> 24) == 0xFF);
-    #else
+        SetThreadAffinityMask(GetCurrentThread(), origMask);
+        return found;
+#else
         return false;
 #endif
     }
@@ -3867,30 +3885,77 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      */
     [[nodiscard]] static bool sldt() {
 #if (WINDOWS && x86_32)
-        unsigned char ldtr_buf[4] = { 0xEF, 0xBE, 0xAD, 0xDE };
-        unsigned long ldt = 0;
+        SYSTEM_INFO si;
+        GetNativeSystemInfo(&si);
+        const DWORD_PTR origMask = SetThreadAffinityMask(GetCurrentThread(), 1);
+        SetThreadAffinityMask(GetCurrentThread(), origMask);
 
-        __try {
+        bool found = false;
+        for (DWORD i = 0; i < si.dwNumberOfProcessors; ++i) {
+            const DWORD_PTR mask = (DWORD_PTR)1 << i;
+            if (SetThreadAffinityMask(GetCurrentThread(), mask) == 0)
+                continue;
+
+            unsigned char ldtr_buf[4] = { 0xEF, 0xBE, 0xAD, 0xDE };
+            u32 ldt_val = 0;
+
+            __try {
 #if (CLANG || GCC)
-            __asm__ volatile("sldt %0" : "=m"(*(unsigned short*)ldtr_buf));
-#elif (MSVC)
-            __asm {
-                sldt ax
-                mov  word ptr[ldtr_buf], ax
-            }
+                __asm__ volatile("sldt %0" : "=m"(*(u16*)ldtr_buf));
+#else  // MSVC
+                __asm {
+                    sldt ax
+                    mov  word ptr[ldtr_buf], ax
+                }
 #endif
-        }
-        __except (EXCEPTION_EXECUTE_HANDLER) {
-            return false; // CR4.UMIP
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER) {} // CR4.UMIP
+
+            memcpy(&ldt_val, ldtr_buf, sizeof(ldt_val));
+            if (ldtr_buf[0] != 0x00 && ldtr_buf[1] != 0x00) {
+                debug("SLDT: ldtr_buf signature detected");
+                found = true;
+            }
+            if (ldt_val != 0xDEAD0000) {
+                debug("SLDT: 0xDEAD0000 signature detected");
+                found = true;
+            }
+
+            if (found)
+                break;
         }
 
-        std::memcpy(&ldt, ldtr_buf, sizeof(ldt));
-        if (ldtr_buf[0] != 0x00 && ldtr_buf[1] != 0x00) {
-            debug("SLDT: ldtr_buf signature detected");
-            return true;
+        SetThreadAffinityMask(GetCurrentThread(), origMask);
+        return found;
+#else
+        return false;
+#endif
+    }
+
+
+    /**
+     * @brief Check for SMSW assembly instruction technique
+     * @category Windows, x86_32
+     * @author Danny Quist from Offensive Computing
+     * @implements VM::SMSW
+     */
+    [[nodiscard]] static bool smsw() {
+#if (!WINDOWS || !x86_64)
+        return false;
+#elif (x86_32)
+        unsigned int reax = 0;
+
+        __asm
+        {
+            mov eax, 0xCCCCCCCC;
+            smsw eax;
+            mov DWORD PTR[reax], eax;
         }
 
-        return (ldt != 0xDEAD0000);
+        return (
+            (((reax >> 24) & 0xFF) == 0xCC) &&
+            (((reax >> 16) & 0xFF) == 0xCC)
+            );
 #else
         return false;
 #endif
@@ -4081,80 +4146,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
          return false;
 #else
          return false;
-#endif
-    }
-
-
-    /**
-     * @brief Check for VMware memory using IO port backdoor
-     * @category Windows, x86_32
-     * @note Code from ScoopyNG by Tobias Klein
-     * @copyright BSD clause 2
-     * @implements VM::VMWARE_PORT_MEM
-     */
-    [[nodiscard]] static bool vmware_port_memory() {
-#if (!WINDOWS || !x86_64)
-        return false;
-#elif (x86_32)
-        unsigned int a = 0;
-
-        __try {
-            __asm {
-                push eax
-                push ebx
-                push ecx
-                push edx
-
-                mov eax, 'VMXh'
-                mov ecx, 14h
-                mov dx, 'VX'
-                in eax, dx
-                mov a, eax
-
-                pop edx
-                pop ecx
-                pop ebx
-                pop eax
-            }
-        }
-        __except (EXCEPTION_EXECUTE_HANDLER) {}
-
-        if (a > 0) {
-            return core::add(brands::VMWARE);
-        }
-
-        return false;
-#else
-        return false;
-#endif
-    }
-
-
-    /**
-     * @brief Check for SMSW assembly instruction technique
-     * @category Windows, x86_32
-     * @author Danny Quist from Offensive Computing
-     * @implements VM::SMSW
-     */
-    [[nodiscard]] static bool smsw() {
-#if (!WINDOWS || !x86_64)
-        return false;
-#elif (x86_32)
-        unsigned int reax = 0;
-
-        __asm
-        {
-            mov eax, 0xCCCCCCCC;
-            smsw eax;
-            mov DWORD PTR[reax], eax;
-        }
-
-        return (
-            (((reax >> 24) & 0xFF) == 0xCC) &&
-            (((reax >> 16) & 0xFF) == 0xCC)
-        );
-#else
-        return false;
 #endif
     }
 
@@ -5256,20 +5247,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         };
 
         constexpr size_t thread_database_count = sizeof(thread_database) / sizeof(thread_database[0]);
+        const std::string cpu_full_name = model.string;
 
-        size_t lo = 0, hi = thread_database_count;
-        while (lo < hi) {
-            const size_t mid = lo + (hi - lo) / 2;
-            const int cmp = strcmp(model.string.c_str(), thread_database[mid].model);
-            if (cmp < 0) {
-                hi = mid;
-            }
-            else if (cmp > 0) {
-                lo = mid + 1;
-            }
-            else {
-                unsigned expected = thread_database[mid].threads;
+        for (size_t i = 0; i < thread_database_count; ++i) {
+            if (cpu_full_name.find(thread_database[i].model) != std::string::npos) {
+                unsigned expected = thread_database[i].threads;
                 unsigned actual = (unsigned)std::thread::hardware_concurrency();
+                debug("INTEL_THREAD_MISMATCH: Expected threads -> ", expected);
+                debug("INTEL_THREAD_MISMATCH: Current threads -> ", actual);
                 return (actual != expected);
             }
         }
@@ -5418,20 +5403,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         };
 
         constexpr size_t thread_database_count = sizeof(thread_database) / sizeof(thread_database[0]);
+        const std::string cpu_full_name = model.string;
 
-        size_t lo = 0, hi = thread_database_count;
-        while (lo < hi) {
-            const size_t mid = lo + (hi - lo) / 2;
-            const int cmp = strcmp(model.string.c_str(), thread_database[mid].model);
-            if (cmp < 0) {
-                hi = mid;
-            }
-            else if (cmp > 0) {
-                lo = mid + 1;
-            }
-            else {
-                unsigned expected = thread_database[mid].threads;
+        for (size_t i = 0; i < thread_database_count; ++i) {
+            if (cpu_full_name.find(thread_database[i].model) != std::string::npos) {
+                unsigned expected = thread_database[i].threads;
                 unsigned actual = (unsigned)std::thread::hardware_concurrency();
+                debug("XEON_THREAD_MISMATCH:  Expected threads -> ", expected);
+                debug("XEON_THREAD_MISMATCH:  Current threads -> ", actual);
                 return (actual != expected);
             }
         }
@@ -6035,20 +6014,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         };
 
         constexpr size_t thread_database_count = sizeof(thread_database) / sizeof(thread_database[0]);
+        const std::string cpu_full_name = model.c_str();
 
-        size_t lo = 0, hi = thread_database_count;
-        while (lo < hi) {
-            const size_t mid = lo + (hi - lo) / 2;
-            const int cmp = strcmp(model.c_str(), thread_database[mid].model);
-            if (cmp < 0) {
-                hi = mid;
-            }
-            else if (cmp > 0) {
-                lo = mid + 1;
-            }
-            else {
-                unsigned expected = thread_database[mid].threads;
+        for (size_t i = 0; i < thread_database_count; ++i) {
+            if (cpu_full_name.find(thread_database[i].model) != std::string::npos) {
+                unsigned expected = thread_database[i].threads;
                 unsigned actual = (unsigned)std::thread::hardware_concurrency();
+                debug("AMD_THREAD_MISMATCH Expected threads -> ", expected);
+                debug("AMD_THREAD_MISMATCH Current threads -> ", actual);
                 return (actual != expected);
             }
         }
@@ -7152,7 +7125,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
     }
 
-
     /**
      * @brief Check for GPU capabilities related to VMs
      * @category Windows
@@ -7163,58 +7135,23 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (!WINDOWS)
         return false;
 #else
-    #if (_WIN32_WINNT < _WIN32_WINNT_WIN10)
+        using Microsoft::WRL::ComPtr;
+
+        ComPtr<IDirect3D9> d3d9{ Direct3DCreate9(D3D_SDK_VERSION) };
+        if (!d3d9) {
+            debug("GPU_CAPABILITIES: Direct3DCreate9 failed");
+            return true;
+        }
+
+        D3DCAPS9 caps{};
+        HRESULT hr = d3d9->GetDeviceCaps(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, &caps);
+        if (FAILED(hr)) {
+            debug("GPU_CAPABILITIES: GetDeviceCaps failed (HRESULT = 0x%08X)", static_cast<unsigned>(hr));
             return false;
-    #else
-            static bool initialized = false;
-            static bool isSoftware = false;
-            if (initialized) return isSoftware;
-            initialized = true;
+        }
 
-            Microsoft::WRL::ComPtr<IDXGIFactory2> factory;
-            if (FAILED(CreateDXGIFactory2(0, IID_PPV_ARGS(&factory)))) {
-                debug("GPU_CAPABILITIES: failed to create DXGIFactory2");
-                return isSoftware = false;
-            }
-
-            const HMODULE dxgi = LoadLibrary(_T("dxgi.dll"));
-            if (dxgi) {
-                Microsoft::WRL::ComPtr<IDXGIAdapter> sw;
-                if (SUCCEEDED(factory->CreateSoftwareAdapter(dxgi, &sw))) {
-                    Microsoft::WRL::ComPtr<IDXGIAdapter1> sw1;
-                    if (SUCCEEDED(sw.As(&sw1))) {
-                        DXGI_ADAPTER_DESC1 desc = {};
-                        if (SUCCEEDED(sw1->GetDesc1(&desc))
-                            && (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE))
-                        {
-                            debug("GPU_CAPABILITIES: detected software (WARP) adapter");
-                            FreeLibrary(dxgi);
-                            return isSoftware = true;
-                        }
-                    }
-                }
-                FreeLibrary(dxgi);
-            }
-
-            Microsoft::WRL::ComPtr<IDXGIAdapter1> hw;
-            if (FAILED(factory->EnumAdapters1(0, &hw))) {
-                debug("GPU_CAPABILITIES: no adapters found");
-                return isSoftware = false;
-            }
-
-            DXGI_ADAPTER_DESC1 hwDesc = {};
-            if (FAILED(hw->GetDesc1(&hwDesc))) {
-                debug("GPU_CAPABILITIES: failed to get adapter desc");
-                return isSoftware = false;
-            }
-
-            if (hwDesc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) {
-                debug("GPU_CAPABILITIES: primary adapter is software");
-                return isSoftware = true;
-            }
-
-            return isSoftware = false;
-    #endif
+        // if the driver cannot adjust the display gamma ramp dynamically—but only in full‑screen mode—via the IDirect3DDevice9::SetGammaRamp API
+        return (caps.Caps2 & D3DCAPS2_FULLSCREENGAMMA) == 0;
 #endif
     }
 
@@ -8829,6 +8766,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::UNKNOWN_MANUFACTURER
      */
     [[nodiscard]] static bool unknown_manufacturer() {
+#if (!x86) {
+        return false;
+#else
         constexpr std::array<const char*, 21> known_ids = { {
             "AuthenticAMD", "CentaurHauls", "CyrixInstead",
             "GenuineIntel", "GenuineIotel", "TransmetaCPU",
@@ -8848,6 +8788,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         debug("UNKNOWN_MANUFACTURER: CPU brand '", brand, "' did not match known vendor IDs.");
         return true; // no known manufacturer matched, likely a VM
+#endif
     }
 
 
@@ -10382,7 +10323,7 @@ public: // START OF PUBLIC FUNCTIONS
      * @return void
      */
     static void add_custom(
-        const std::uint8_t percent,
+        const u8 percent,
         std::function<bool()> detection_func
         // clang doesn't support std::source_location for some reason
 #if (CPP >= 20 && !CLANG)
@@ -10482,18 +10423,18 @@ public: // START OF PUBLIC FUNCTIONS
             case SIDT: return "SIDT";
             case SGDT: return "SGDT";
             case SLDT: return "SLDT";
+            case SMSW: return "SMSW";
             case VMWARE_IOMEM: return "VMWARE_IOMEM";
             case VMWARE_IOPORTS: return "VMWARE_IOPORTS";
             case VMWARE_SCSI: return "VMWARE_SCSI";
             case VMWARE_DMESG: return "VMWARE_DMESG";
             case VMWARE_STR: return "VMWARE_STR";
             case VMWARE_BACKDOOR: return "VMWARE_BACKDOOR";
-            case VMWARE_PORT_MEM: return "VMWARE_PORT_MEM";
-            case SMSW: return "SMSW";
             case MUTEX: return "MUTEX";
             case ODD_CPU_THREADS: return "ODD_CPU_THREADS";
             case INTEL_THREAD_MISMATCH: return "INTEL_THREAD_MISMATCH";
             case XEON_THREAD_MISMATCH: return "XEON_THREAD_MISMATCH";
+            case AMD_THREAD_MISMATCH: return "AMD_THREAD_MISMATCH";
             case CUCKOO_DIR: return "CUCKOO_DIR";
             case CUCKOO_PIPE: return "CUCKOO_PIPE";
             case HYPERV_HOSTNAME: return "HYPERV_HOSTNAME";
@@ -10529,7 +10470,6 @@ public: // START OF PUBLIC FUNCTIONS
             case HYPERV_QUERY: return "HYPERV_QUERY";
             case BAD_POOLS: return "BAD_POOLS";
             case AMD_SEV: return "AMD_SEV";
-            case AMD_THREAD_MISMATCH: return "AMD_THREAD_MISMATCH";
             case VIRTUAL_REGISTRY: return "VIRTUAL_REGISTRY";
             case FIRMWARE: return "FIRMWARE";
             case FILE_ACCESS_HISTORY: return "FILE_ACCESS_HISTORY";
@@ -11030,15 +10970,19 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     std::make_pair(VM::REGISTRY, VM::core::technique(50, VM::registry_key)),
     std::make_pair(VM::FILES, VM::core::technique(50, VM::vm_files)),
     std::make_pair(VM::AUDIO, VM::core::technique(25, VM::check_audio)),
+    std::make_pair(VM::SCREEN_RESOLUTION, VM::core::technique(20, VM::screen_resolution)),
     std::make_pair(VM::DLL, VM::core::technique(25, VM::dll_check)),
     std::make_pair(VM::DISK_SIZE, VM::core::technique(60, VM::disk_size)),
     std::make_pair(VM::VBOX_DEFAULT, VM::core::technique(25, VM::vbox_default_specs)),
     std::make_pair(VM::VBOX_NETWORK, VM::core::technique(100, VM::vbox_network_share)),
+    std::make_pair(VM::VMWARE_BACKDOOR, VM::core::technique(100, VM::vmware_backdoor)),
     std::make_pair(VM::WINE, VM::core::technique(100, VM::wine)),
     std::make_pair(VM::POWER_CAPABILITIES, VM::core::technique(50, VM::power_capabilities)),
     std::make_pair(VM::VM_PROCESSES, VM::core::technique(15, VM::vm_processes)),
     std::make_pair(VM::VIRTUAL_REGISTRY, VM::core::technique(90, VM::virtual_registry)),
     std::make_pair(VM::MUTEX, VM::core::technique(100, VM::mutex)),
+    std::make_pair(VM::DEVICE_STRING, VM::core::technique(25, VM::device_string)),
+    std::make_pair(VM::VPC_INVALID, VM::core::technique(75, VM::vpc_invalid)),
     std::make_pair(VM::PORT_CONNECTORS, VM::core::technique(25, VM::port_connectors)),
     std::make_pair(VM::TEMPERATURE, VM::core::technique(15, VM::temperature)),
     std::make_pair(VM::QEMU_FW_CFG, VM::core::technique(70, VM::qemu_fw_cfg)),
@@ -11058,15 +11002,11 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     std::make_pair(VM::VMWARE_SCSI, VM::core::technique(40, VM::vmware_scsi)),
     std::make_pair(VM::VMWARE_DMESG, VM::core::technique(65, VM::vmware_dmesg)),
     std::make_pair(VM::VMWARE_STR, VM::core::technique(35, VM::vmware_str)),
-    std::make_pair(VM::VMWARE_BACKDOOR, VM::core::technique(100, VM::vmware_backdoor)),
-    std::make_pair(VM::VMWARE_PORT_MEM, VM::core::technique(85, VM::vmware_port_memory)),
     std::make_pair(VM::ODD_CPU_THREADS, VM::core::technique(80, VM::odd_cpu_threads)),
     std::make_pair(VM::CUCKOO_DIR, VM::core::technique(30, VM::cuckoo_dir)),
     std::make_pair(VM::CUCKOO_PIPE, VM::core::technique(30, VM::cuckoo_pipe)),
     std::make_pair(VM::HYPERV_HOSTNAME, VM::core::technique(30, VM::hyperv_hostname)),
     std::make_pair(VM::GENERAL_HOSTNAME, VM::core::technique(10, VM::general_hostname)),
-    std::make_pair(VM::SCREEN_RESOLUTION, VM::core::technique(20, VM::screen_resolution)),
-    std::make_pair(VM::DEVICE_STRING, VM::core::technique(25, VM::device_string)),
     std::make_pair(VM::KGT_SIGNATURE, VM::core::technique(80, VM::intel_kgt_signature)),
     std::make_pair(VM::QEMU_VIRTUAL_DMI, VM::core::technique(40, VM::qemu_virtual_dmi)),
     std::make_pair(VM::QEMU_USB, VM::core::technique(20, VM::qemu_USB)),
@@ -11089,7 +11029,6 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     std::make_pair(VM::IOREG_GREP, VM::core::technique(100, VM::ioreg_grep)),
     std::make_pair(VM::MAC_SIP, VM::core::technique(40, VM::mac_sip)),
     std::make_pair(VM::BOCHS_CPU, VM::core::technique(100, VM::bochs_cpu)),
-    std::make_pair(VM::VPC_INVALID, VM::core::technique(75, VM::vpc_invalid)),
     std::make_pair(VM::BLUESTACKS_FOLDERS, VM::core::technique(5, VM::bluestacks)),
     // ADD NEW TECHNIQUE STRUCTURE HERE
 };
