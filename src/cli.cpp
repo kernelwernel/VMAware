@@ -423,7 +423,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::SLDT:
             case VM::VMWARE_STR:
             case VM::VMWARE_BACKDOOR:
-            case VM::VMWARE_PORT_MEM:
             case VM::SMSW:
             case VM::MUTEX:
             case VM::ODD_CPU_THREADS:
@@ -901,18 +900,18 @@ void general() {
     checker(VM::SIDT, "SIDT");
     checker(VM::SGDT, "SGDT");
     checker(VM::SLDT, "SLDT");
+    checker(VM::SMSW, "SMSW");
     checker(VM::VMWARE_IOMEM, "/proc/iomem file");
     checker(VM::VMWARE_IOPORTS, "/proc/ioports file");
     checker(VM::VMWARE_SCSI, "/proc/scsi/scsi file");
     checker(VM::VMWARE_DMESG, "VMware dmesg");
     checker(VM::VMWARE_STR, "STR instruction");
     checker(VM::VMWARE_BACKDOOR, "VMware IO port backdoor");
-    checker(VM::VMWARE_PORT_MEM, "VMware port memory");
-    checker(VM::SMSW, "SMSW instruction");
     checker(VM::MUTEX, "mutex strings");
     checker(VM::ODD_CPU_THREADS, "odd thread count number");
     checker(VM::INTEL_THREAD_MISMATCH, "Intel thread count mismatch");
     checker(VM::XEON_THREAD_MISMATCH, "Intel Xeon thread count mismatch");
+    checker(VM::AMD_THREAD_MISMATCH, "AMD thread count mismatch");
     checker(VM::CUCKOO_DIR, "Cuckoo directory");
     checker(VM::CUCKOO_PIPE, "Cuckoo pipe");
     checker(VM::HYPERV_HOSTNAME, "Hyper-V Azure hostname");
@@ -950,7 +949,6 @@ void general() {
     checker(VM::HYPERV_QUERY, "hypervisor query");
     checker(VM::BAD_POOLS, "bad pools");
     checker(VM::AMD_SEV, "AMD-SEV MSR");
-    checker(VM::AMD_THREAD_MISMATCH, "AMD thread count mismatch");
     checker(VM::VIRTUAL_REGISTRY, "registry emulation");
     checker(VM::FIRMWARE, "firmware signatures");
     checker(VM::FILE_ACCESS_HISTORY, "low file access count");
