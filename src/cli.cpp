@@ -330,7 +330,7 @@ bool is_disabled(const VM::enum_flags flag) {
         case VM::VMWARE_DMESG: 
         case VM::PORT_CONNECTORS:
         case VM::TEMPERATURE:
-        case VM::LSHW_QEMU:
+        case VM::LSHW_QEMU: return true;
         default: return false;
     }
 }
