@@ -8766,7 +8766,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::UNKNOWN_MANUFACTURER
      */
     [[nodiscard]] static bool unknown_manufacturer() {
-#if (!x86) {
+#if (!x86)
         return false;
 #else
         constexpr std::array<const char*, 21> known_ids = { {
