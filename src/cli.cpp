@@ -330,7 +330,7 @@ bool is_disabled(const VM::enum_flags flag) {
         case VM::VMWARE_DMESG: 
         case VM::PORT_CONNECTORS:
         case VM::TEMPERATURE:
-        case VM::LSHW_QEMU:
+        case VM::LSHW_QEMU: return true;
         default: return false;
     }
 }
@@ -344,7 +344,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::HYPERVISOR_BIT:
             case VM::HYPERVISOR_STR:
             case VM::TIMER:
-            case VM::THREADCOUNT:
+            case VM::THREAD_COUNT:
             case VM::MAC:
             case VM::TEMPERATURE:
             case VM::SYSTEMD:
@@ -377,7 +377,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::HYPERVISOR_DIR:
             case VM::UML_CPU:
             case VM::KMSG:
-            case VM::VM_PROCS:
             case VM::VBOX_MODULE:
             case VM::SYSINFO_PROC:
             case VM::DMI_SCAN:
@@ -406,7 +405,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::HYPERVISOR_BIT:
             case VM::HYPERVISOR_STR:
             case VM::TIMER:
-            case VM::THREADCOUNT:
             case VM::TEMPERATURE:
             case VM::DLL:
             case VM::REGISTRY:
@@ -425,7 +423,6 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::SLDT:
             case VM::VMWARE_STR:
             case VM::VMWARE_BACKDOOR:
-            case VM::VMWARE_PORT_MEM:
             case VM::SMSW:
             case VM::MUTEX:
             case VM::ODD_CPU_THREADS:
@@ -472,7 +469,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::HYPERVISOR_BIT:
             case VM::HYPERVISOR_STR:
             case VM::TIMER:
-            case VM::THREADCOUNT:
+            case VM::THREAD_COUNT:
             case VM::HWMODEL:
             case VM::BOCHS_CPU:
             case VM::MAC_MEMSIZE:
@@ -871,7 +868,7 @@ void general() {
     checker(VM::HYPERVISOR_BIT, "CPUID hypervisor bit");
     checker(VM::HYPERVISOR_STR, "hypervisor str");
     checker(VM::TIMER, "timing anomalies");
-    checker(VM::THREADCOUNT, "processor count");
+    checker(VM::THREAD_COUNT, "processor count");
     checker(VM::MAC, "MAC address");
     checker(VM::TEMPERATURE, "temperature");
     checker(VM::SYSTEMD, "systemd virtualisation");
@@ -903,18 +900,18 @@ void general() {
     checker(VM::SIDT, "SIDT");
     checker(VM::SGDT, "SGDT");
     checker(VM::SLDT, "SLDT");
+    checker(VM::SMSW, "SMSW");
     checker(VM::VMWARE_IOMEM, "/proc/iomem file");
     checker(VM::VMWARE_IOPORTS, "/proc/ioports file");
     checker(VM::VMWARE_SCSI, "/proc/scsi/scsi file");
     checker(VM::VMWARE_DMESG, "VMware dmesg");
     checker(VM::VMWARE_STR, "STR instruction");
     checker(VM::VMWARE_BACKDOOR, "VMware IO port backdoor");
-    checker(VM::VMWARE_PORT_MEM, "VMware port memory");
-    checker(VM::SMSW, "SMSW instruction");
     checker(VM::MUTEX, "mutex strings");
     checker(VM::ODD_CPU_THREADS, "odd thread count number");
     checker(VM::INTEL_THREAD_MISMATCH, "Intel thread count mismatch");
     checker(VM::XEON_THREAD_MISMATCH, "Intel Xeon thread count mismatch");
+    checker(VM::AMD_THREAD_MISMATCH, "AMD thread count mismatch");
     checker(VM::CUCKOO_DIR, "Cuckoo directory");
     checker(VM::CUCKOO_PIPE, "Cuckoo pipe");
     checker(VM::HYPERV_HOSTNAME, "Hyper-V Azure hostname");
@@ -929,7 +926,6 @@ void general() {
     checker(VM::HYPERVISOR_DIR, "hypervisor directory (Linux)");
     checker(VM::UML_CPU, "User-mode Linux CPU");
     checker(VM::KMSG, "/dev/kmsg hypervisor message");
-    checker(VM::VM_PROCS, "various VM files in /proc");
     checker(VM::VBOX_MODULE, "VBox kernel module");
     checker(VM::SYSINFO_PROC, "/proc/sysinfo");
     checker(VM::DMI_SCAN, "DMI scan");
@@ -953,7 +949,6 @@ void general() {
     checker(VM::HYPERV_QUERY, "hypervisor query");
     checker(VM::BAD_POOLS, "bad pools");
     checker(VM::AMD_SEV, "AMD-SEV MSR");
-    checker(VM::AMD_THREAD_MISMATCH, "AMD thread count mismatch");
     checker(VM::VIRTUAL_REGISTRY, "registry emulation");
     checker(VM::FIRMWARE, "firmware signatures");
     checker(VM::FILE_ACCESS_HISTORY, "low file access count");
