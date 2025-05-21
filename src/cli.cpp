@@ -356,7 +356,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::HWMON:
             case VM::DISK_SIZE:
             case VM::VBOX_DEFAULT:
-            case VM::VM_PROCESSES:
+            case VM::PROCESSES:
             case VM::LINUX_USER_HOST:
             case VM::BOCHS_CPU:
             case VM::SIDT:
@@ -407,16 +407,16 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::TIMER:
             case VM::TEMPERATURE:
             case VM::DLL:
-            case VM::REGISTRY:
+            case VM::REGISTRY_KEYS:
             case VM::FILES:
             case VM::VBOX_DEFAULT:
             case VM::VBOX_NETWORK:
             case VM::WINE:
             case VM::AUDIO:
-            case VM::VM_PROCESSES:
+            case VM::PROCESSES:
             case VM::GAMARUE:
             case VM::BOCHS_CPU:
-            case VM::HKLM_REGISTRIES:
+            case VM::REGISTRY_VALUES:
             case VM::VPC_INVALID:
             case VM::SIDT:
             case VM::SGDT:
@@ -432,22 +432,22 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::CUCKOO_PIPE:
             case VM::HYPERV_HOSTNAME:
             case VM::GENERAL_HOSTNAME:
-            case VM::SCREEN_RESOLUTION:
+            case VM::DISPLAY:
             case VM::DEVICE_STRING:
             case VM::CPUID_SIGNATURE:
             case VM::KGT_SIGNATURE:
-            case VM::DRIVER_NAMES:
+            case VM::DRIVERS:
             case VM::DISK_SERIAL:
             case VM::PORT_CONNECTORS:
             case VM::IVSHMEM:
             case VM::GPU_VM_STRINGS:
             case VM::GPU_CAPABILITIES:
-            case VM::PROCESSOR_NUMBER:
-            case VM::NUMBER_OF_CORES:
+            case VM::LOGICAL_PROCESSORS:
+            case VM::PHYSICAL_PROCESSORS:
             case VM::POWER_CAPABILITIES:
             case VM::VIRTUAL_PROCESSORS:
             case VM::HYPERV_QUERY:
-            case VM::BAD_POOLS:
+            case VM::POOLS:
             case VM::AMD_THREAD_MISMATCH:
             case VM::VIRTUAL_REGISTRY:
             case VM::FIRMWARE:
@@ -879,14 +879,14 @@ void general() {
     checker(VM::DMESG, "dmesg output");
     checker(VM::HWMON, "hwmon presence");
     checker(VM::DLL, "DLLs");
-    checker(VM::REGISTRY, "registry keys");
+    checker(VM::REGISTRY_KEYS, "registry keys");
     checker(VM::WINE, "Wine");
     checker(VM::FILES, "VM files");
     checker(VM::HWMODEL, "hw.model");
     checker(VM::DISK_SIZE, "disk size");
     checker(VM::VBOX_DEFAULT, "VBox default specs");
     checker(VM::VBOX_NETWORK, "VBox network provider match");
-    checker(VM::VM_PROCESSES, "VM processes");
+    checker(VM::PROCESSES, "processes");
     checker(VM::LINUX_USER_HOST, "default Linux user/host");
     checker(VM::GAMARUE, "gamarue ransomware technique");
     checker(VM::BOCHS_CPU, "BOCHS CPU techniques");
@@ -894,7 +894,7 @@ void general() {
     checker(VM::MAC_IOKIT, "MacOS registry IO-kit");
     checker(VM::IOREG_GREP, "IO registry grep");
     checker(VM::MAC_SIP, "MacOS SIP");
-    checker(VM::HKLM_REGISTRIES, "registry values");
+    checker(VM::REGISTRY_VALUES, "registry values");
     checker(VM::AUDIO, "audio device");
     checker(VM::VPC_INVALID, "VPC invalid instructions");
     checker(VM::SIDT, "SIDT");
@@ -916,7 +916,7 @@ void general() {
     checker(VM::CUCKOO_PIPE, "Cuckoo pipe");
     checker(VM::HYPERV_HOSTNAME, "Hyper-V Azure hostname");
     checker(VM::GENERAL_HOSTNAME, "general VM hostnames");
-    checker(VM::SCREEN_RESOLUTION, "screen resolution");
+    checker(VM::DISPLAY, "display settings");
     checker(VM::DEVICE_STRING, "bogus device string");
     checker(VM::BLUESTACKS_FOLDERS, "BlueStacks folders");
     checker(VM::CPUID_SIGNATURE, "CPUID signatures");
@@ -934,20 +934,20 @@ void general() {
     checker(VM::WSL_PROC, "WSL string in /proc");
     checker(anyrun_driver, "ANY.RUN driver");
     checker(anyrun_directory, "ANY.RUN directory");
-    checker(VM::DRIVER_NAMES, "driver names");
+    checker(VM::DRIVERS, "drivers");
     checker(VM::DISK_SERIAL, "disk serial number");
     checker(VM::PORT_CONNECTORS, "physical connection ports");
     checker(VM::IVSHMEM, "IVSHMEM device");
     checker(VM::GPU_CAPABILITIES, "GPU capabilities");
     checker(VM::GPU_VM_STRINGS, "GPU strings");
-    checker(VM::PROCESSOR_NUMBER, "processor count");
-    checker(VM::NUMBER_OF_CORES, "CPU core count");
+    checker(VM::LOGICAL_PROCESSORS, "logical processor count");
+    checker(VM::PHYSICAL_PROCESSORS, "physical processor count");
     checker(VM::POWER_CAPABILITIES, "Power capabilities");
     checker(VM::QEMU_FW_CFG, "QEMU fw_cfg device");
     checker(VM::LSHW_QEMU, "QEMU in lshw output");
     checker(VM::VIRTUAL_PROCESSORS, "virtual processors");
     checker(VM::HYPERV_QUERY, "hypervisor query");
-    checker(VM::BAD_POOLS, "bad pools");
+    checker(VM::POOLS, "system pools");
     checker(VM::AMD_SEV, "AMD-SEV MSR");
     checker(VM::VIRTUAL_REGISTRY, "registry emulation");
     checker(VM::FIRMWARE, "firmware signatures");
