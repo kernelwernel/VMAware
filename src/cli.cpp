@@ -388,7 +388,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::AMD_SEV:
             case VM::AMD_THREAD_MISMATCH:
             case VM::FILE_ACCESS_HISTORY:
-            case VM::UNKNOWN_MANUFACTURER:
+            case VM::CPU_VENDOR:
             case VM::NSJAIL_PID:
             case VM::PCI_VM_DEVICE_ID:
             // ADD LINUX FLAG
@@ -451,7 +451,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::AMD_THREAD_MISMATCH:
             case VM::VIRTUAL_REGISTRY:
             case VM::FIRMWARE:
-            case VM::UNKNOWN_MANUFACTURER:
+            case VM::CPU_VENDOR:
             case VM::TPM:
             case VM::QEMU_PASSTHROUGH:
             case VM::PCI_VM_DEVICE_ID:
@@ -483,7 +483,7 @@ bool is_unsupported(VM::enum_flags flag) {
             case VM::KGT_SIGNATURE:
             case VM::AMD_SEV:
             case VM::AMD_THREAD_MISMATCH:
-            case VM::UNKNOWN_MANUFACTURER:
+            case VM::CPU_VENDOR:
             // ADD MACOS FLAG
             return false;
             default: return true;
@@ -952,7 +952,7 @@ void general() {
     checker(VM::VIRTUAL_REGISTRY, "registry emulation");
     checker(VM::FIRMWARE, "firmware signatures");
     checker(VM::FILE_ACCESS_HISTORY, "low file access count");
-    checker(VM::UNKNOWN_MANUFACTURER, "unknown manufacturer ids");
+    checker(VM::CPU_VENDOR, "cpu vendor");
     checker(VM::NSJAIL_PID, "nsjail PID");
     checker(VM::TPM, "TPM manufacturer");
     checker(VM::PCI_VM_DEVICE_ID, "PCI vendor/device ID");
