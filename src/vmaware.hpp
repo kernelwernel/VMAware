@@ -8989,117 +8989,108 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
 
 #elif (WINDOWS)
-        HKEY hKey = nullptr;
-        LONG status = RegOpenKeyEx(
-            HKEY_LOCAL_MACHINE,
-            TEXT("SYSTEM\\CurrentControlSet\\Enum\\PCI"),
-            0,
-            KEY_READ,
-            &hKey
-        );
-        if (status != ERROR_SUCCESS) {
-            debug("PCI_VM_DEVICE_ID: Failed to open PCI key, error=", status);
-            return false;
-        }
+        static const wchar_t* kRoots[] = {
+            L"SYSTEM\\CurrentControlSet\\Enum\\PCI",
+            L"SYSTEM\\CurrentControlSet\\Enum\\USB",
+            L"SYSTEM\\CurrentControlSet\\Enum\\HDAUDIO"
+        };
 
-        // First level: device keys (e.g. "VEN_8086&DEV_1E31…")
-        for (DWORD i = 0; ; ++i) {
-            TCHAR deviceKeyName[256];
-            DWORD cbName = _countof(deviceKeyName);
-            status = RegEnumKeyEx(
-                hKey, i,
-                deviceKeyName, &cbName,
-                nullptr, nullptr, nullptr, nullptr
-            );
-            if (status == ERROR_NO_MORE_ITEMS) {
-                break;
-            }
-            if (status != ERROR_SUCCESS) {
-                debug("PCI_VM_DEVICE_ID: RegEnumKeyEx failed at index", i, "error=", status);
-                break;
-            }
-
-            HKEY hDeviceKey = nullptr;
-            status = RegOpenKeyEx(hKey, deviceKeyName, 0, KEY_READ, &hDeviceKey);
-            if (status != ERROR_SUCCESS) {
-                debug("PCI_VM_DEVICE_ID: Cannot open device key, skipping, error=", status);
+        for (auto rootPath : kRoots) {
+            HKEY hKey = nullptr;
+            if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, rootPath, 0, KEY_READ, &hKey) != ERROR_SUCCESS) {
                 continue;
             }
 
-            // Second level: instance-ID subkeys under each device
-            for (DWORD j = 0; ; ++j) {
-                TCHAR instanceID[256];
-                DWORD cbID = _countof(instanceID);
-                LONG subStatus = RegEnumKeyEx(
-                    hDeviceKey, j,
-                    instanceID, &cbID,
-                    nullptr, nullptr, nullptr, nullptr
-                );
-                if (subStatus == ERROR_NO_MORE_ITEMS) {
-                    break;
-                }
-                if (subStatus != ERROR_SUCCESS) {
-                    debug("PCI_VM_DEVICE_ID: RegEnumKeyEx failed on subkey j=", j, "err=", subStatus);
-                    break;
-                }
+            for (DWORD i = 0; ; ++i) {
+                wchar_t deviceKeyName[256]; DWORD cbName = _countof(deviceKeyName);
+                LONG status = RegEnumKeyExW(hKey, i,
+                    deviceKeyName, &cbName,
+                    nullptr, nullptr, nullptr, nullptr);
+                if (status == ERROR_NO_MORE_ITEMS) break;
+                if (status != ERROR_SUCCESS) break;
 
-                HKEY hInstKey = nullptr;
-                if (RegOpenKeyEx(hDeviceKey, instanceID, 0, KEY_READ, &hInstKey) != ERROR_SUCCESS) {
-                    debug("PCI_VM_DEVICE_ID: Cannot open instance ID key, skipping");
+                HKEY hDeviceKey = nullptr;
+                if (RegOpenKeyExW(hKey, deviceKeyName, 0, KEY_READ, &hDeviceKey) != ERROR_SUCCESS)
                     continue;
-                }
 
-                DWORD type = 0, cbData = 0;
-                LONG qStatus = RegQueryValueEx(
-                    hInstKey, TEXT("HardwareID"),
-                    nullptr, &type, nullptr, &cbData
-                );
-                if (qStatus == ERROR_SUCCESS
-                    && type == REG_MULTI_SZ
-                    && cbData > sizeof(TCHAR))
-                {
-                    std::vector<TCHAR> buffer(cbData / sizeof(TCHAR));
-                    if (RegQueryValueEx(
-                        hInstKey, TEXT("HardwareID"),
-                        nullptr, nullptr,
-                        reinterpret_cast<BYTE*>(buffer.data()),
-                        &cbData
-                    ) == ERROR_SUCCESS)
+                for (DWORD j = 0; ; ++j) {
+                    wchar_t instanceID[256]; DWORD cbID = _countof(instanceID);
+                    LONG subStatus = RegEnumKeyExW(
+                        hDeviceKey, j,
+                        instanceID, &cbID,
+                        nullptr, nullptr, nullptr, nullptr
+                    );
+                    if (subStatus == ERROR_NO_MORE_ITEMS) break;
+                    if (subStatus != ERROR_SUCCESS) break;
+
+                    HKEY hInstKey = nullptr;
+                    if (RegOpenKeyExW(hDeviceKey, instanceID, 0, KEY_READ, &hInstKey) != ERROR_SUCCESS)
+                        continue;
+
+                    DWORD type = 0, cbData = 0;
+                    if (RegQueryValueExW(hInstKey, L"HardwareID", nullptr, &type, nullptr, &cbData) == ERROR_SUCCESS
+                        && type == REG_MULTI_SZ && cbData > sizeof(wchar_t))
                     {
-                        for (TCHAR* entry = buffer.data(); *entry; entry += lstrlen(entry) + 1) {
-                            TCHAR* pVen = StrStrI(entry, TEXT("VEN_"));
-                            TCHAR* pDev = StrStrI(entry, TEXT("DEV_"));
-                            if (!pVen || !pDev)
-                                continue;
+                        std::vector<wchar_t> buffer(cbData / sizeof(wchar_t));
+                        if (RegQueryValueExW(
+                            hInstKey, L"HardwareID",
+                            nullptr, nullptr,
+                            reinterpret_cast<BYTE*>(buffer.data()),
+                            &cbData) == ERROR_SUCCESS)
+                        {
+                            for (wchar_t* entry = buffer.data(); *entry; entry += wcslen(entry) + 1) {
+                                std::wstring s(entry);
+                                uint16_t vid = 0;
+                                uint32_t did = 0;
+                                bool parsed = false;
 
-                            u16 vid = 0;
-                            u32 did = 0;
-                            if (_stscanf_s(pVen + 4, TEXT("%4hx"), &vid) != 1 ||
-                                _stscanf_s(pDev + 4, TEXT("%8x"), &did) != 1)
-                            {
-                                debug("PCI_VM_DEVICE_ID: Failed to parse IDs from", entry);
-                                continue;
+                                if (wcscmp(rootPath, L"SYSTEM\\CurrentControlSet\\Enum\\USB") == 0) {
+                                    // USB: VID_xxxx&PID_xxxx
+                                    auto pVID = s.find(L"VID_");
+                                    auto pPID = s.find(L"PID_");
+                                    if (pVID != std::wstring::npos && pPID != std::wstring::npos) {
+                                        swscanf_s(s.c_str() + pVID + 4, L"%4hx", &vid);
+                                        swscanf_s(s.c_str() + pPID + 4, L"%4hx", &did);
+                                        parsed = true;
+                                    }
+                                }
+                                else if (wcscmp(rootPath, L"SYSTEM\\CurrentControlSet\\Enum\\HDAUDIO") == 0) {
+                                    // HDAUDIO: VEN_xxxx&DEV_xxxx
+                                    auto pVEN = s.find(L"VEN_");
+                                    auto pDEV = s.find(L"DEV_");
+                                    if (pVEN != std::wstring::npos && pDEV != std::wstring::npos) {
+                                        swscanf_s(s.c_str() + pVEN + 4, L"%4hx", &vid);
+                                        swscanf_s(s.c_str() + pDEV + 4, L"%4x", &did);
+                                        parsed = true;
+                                    }
+                                }
+                                else {
+                                    // PCI: VEN_xxxx&DEV_xxxx
+                                    auto pVEN = s.find(L"VEN_");
+                                    auto pDEV = s.find(L"DEV_");
+                                    if (pVEN != std::wstring::npos && pDEV != std::wstring::npos) {
+                                        swscanf_s(s.c_str() + pVEN + 4, L"%4hx", &vid);
+                                        swscanf_s(s.c_str() + pDEV + 4, L"%8x", &did);
+                                        parsed = true;
+                                    }
+                                }
+
+                                if (parsed) {
+                                    devices.push_back({ vid, did });
+                                    break;
+                                }
                             }
-
-                            devices.push_back({ vid, did });
-                            break;
                         }
                     }
-                    else {
-                        debug("PCI_VM_DEVICE_ID: Failed to read HardwareID data, error=", qStatus);
-                    }
-                }
-                else {
-                    debug("PCI_VM_DEVICE_ID: No HardwareID (type=", type, ", cbData=", cbData, ")");
+
+                    RegCloseKey(hInstKey);
                 }
 
-                RegCloseKey(hInstKey);
+                RegCloseKey(hDeviceKey);
             }
 
-            RegCloseKey(hDeviceKey);
+            RegCloseKey(hKey);
         }
-
-        RegCloseKey(hKey);
         debug("PCI_VM_DEVICE_ID: Enumeration complete, found devices count = ", devices.size());
 #endif
 
