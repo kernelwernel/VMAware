@@ -579,8 +579,7 @@ public:
         GAMARUE,
         CUCKOO_DIR,
         CUCKOO_PIPE,
-        AMD_SEV,
-
+        
         // Linux and Windows
         SIDT,
         FIRMWARE,
@@ -591,7 +590,7 @@ public:
         HYPERV_HOSTNAME,
         GENERAL_HOSTNAME,
         VBOX_DEFAULT,
-
+        
         // Linux
         SMBIOS_VM_BIT,
         KMSG,
@@ -621,7 +620,8 @@ public:
         MAC,
         NSJAIL_PID,
         BLUESTACKS_FOLDERS,
-
+        AMD_SEV,
+        
         // MacOS
         MAC_MEMSIZE,
         MAC_IOKIT,
@@ -1220,7 +1220,7 @@ private:
             #if (LINUX)
                 return (!(
                     (flag >= VM::SIDT) &&
-                    (flag <= VM::BLUESTACKS_FOLDERS)
+                    (flag <= VM::AMD_SEV)
                 ));
             #elif (WINDOWS)
                 return (!(
@@ -4811,6 +4811,66 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         #endif
     }
+
+
+    /**
+	 * @brief Check for AMD-SEV MSR running on the system
+	 * @category x86, Linux, MacOS
+	 * @note idea from virt-what
+     * @implements VM::AMD_SEV
+	 */
+	[[nodiscard]] static bool amd_sev() {
+        #if (x86 && (LINUX || APPLE))
+            if (!cpu::is_amd()) {
+                return false;
+            }
+            
+            if (!util::is_admin()) {
+                return false;
+            }
+        
+            constexpr u32 encrypted_memory_capability = 0x8000001f;
+            constexpr u32 msr_index = 0xc0010131;	  
+            
+            if (!cpu::is_leaf_supported(encrypted_memory_capability)) {
+                return false;
+            }
+            
+            u32 eax, unused = 0;
+            cpu::cpuid(eax, unused, unused, unused, encrypted_memory_capability);
+                
+            if (!(eax & (1 << 1))) {
+                return false;
+            }       
+        
+            u64 result = 0;
+            
+            const std::string msr_device = "/dev/cpu/0/msr";
+            std::ifstream msr_file(msr_device, std::ios::binary);
+    
+            if (!msr_file.is_open()) {
+                debug("AMD_SEV: unable to open MSR file");
+                return false;
+            }
+    
+            msr_file.seekg(msr_index);
+            msr_file.read(reinterpret_cast<char*>(&result), sizeof(result));
+    
+            if (!msr_file) {
+                debug("AMD_SEV: unable to open MSR file");
+                return false;
+            }
+    
+            if (result & (static_cast<unsigned long long>(1) << 2)) { return core::add(brands::AMD_SEV_SNP); }
+            else if (result & (static_cast<unsigned long long>(1) << 1)) { return core::add(brands::AMD_SEV_ES); }
+            else if (result & 1) { return core::add(brands::AMD_SEV); }
+        
+            return false;
+        #else
+            return false;
+        #endif
+    }
+
 
 
     /**
@@ -10647,10 +10707,9 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         std::make_pair(VM::GAMARUE, VM::core::technique(10, VM::gamarue)),
         std::make_pair(VM::CUCKOO_DIR, VM::core::technique(30, VM::cuckoo_dir)),
         std::make_pair(VM::CUCKOO_PIPE, VM::core::technique(30, VM::cuckoo_pipe)),
-        std::make_pair(VM::AMD_SEV, VM::core::technique(50, VM::amd_sev)),
-    #endif
-    
-    #if (LINUX || WINDOWS)
+        #endif
+        
+        #if (LINUX || WINDOWS)
         std::make_pair(VM::SIDT, VM::core::technique(45, VM::sidt)),
         std::make_pair(VM::FIRMWARE, VM::core::technique(100, VM::firmware_scan)),
         std::make_pair(VM::PCI_VM_DEVICE_ID, VM::core::technique(90, VM::pci_vm_device_id)),
@@ -10660,9 +10719,9 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         std::make_pair(VM::HYPERV_HOSTNAME, VM::core::technique(30, VM::hyperv_hostname)),
         std::make_pair(VM::GENERAL_HOSTNAME, VM::core::technique(10, VM::general_hostname)),
         std::make_pair(VM::VBOX_DEFAULT, VM::core::technique(25, VM::vbox_default_specs)),
-    #endif
-    
-    #if (LINUX)
+        #endif
+        
+        #if (LINUX)
         std::make_pair(VM::SMBIOS_VM_BIT, VM::core::technique(50, VM::smbios_vm_bit)),
         std::make_pair(VM::KMSG, VM::core::technique(5, VM::kmsg)),
         std::make_pair(VM::CVENDOR, VM::core::technique(65, VM::chassis_vendor)),
@@ -10691,15 +10750,16 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         std::make_pair(VM::MAC, VM::core::technique(20, VM::mac_address_check)),
         std::make_pair(VM::NSJAIL_PID, VM::core::technique(75, VM::nsjail_proc_id)),
         std::make_pair(VM::BLUESTACKS_FOLDERS, VM::core::technique(5, VM::bluestacks)),
-    #endif
-    
-    #if (APPLE)
+        std::make_pair(VM::AMD_SEV, VM::core::technique(50, VM::amd_sev)),
+        #endif
+        
+        #if (APPLE)
         std::make_pair(VM::MAC_MEMSIZE, VM::core::technique(15, VM::hw_memsize)),
         std::make_pair(VM::MAC_IOKIT, VM::core::technique(100, VM::io_kit)),
         std::make_pair(VM::MAC_SIP, VM::core::technique(40, VM::mac_sip)),
         std::make_pair(VM::IOREG_GREP, VM::core::technique(100, VM::ioreg_grep)),
         std::make_pair(VM::HWMODEL, VM::core::technique(100, VM::hwmodel)),
-    #endif
+        #endif
     
     std::make_pair(VM::HYPERVISOR_BIT, VM::core::technique(100, VM::hypervisor_bit)),
     std::make_pair(VM::VMID, VM::core::technique(100, VM::vmid)),

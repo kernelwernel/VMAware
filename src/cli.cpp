@@ -347,7 +347,7 @@ bool is_unsupported(VM::enum_flags flag) {
     #if (CLI_LINUX)
         return (
             (flag >= VM::SIDT) &&
-            (flag <= VM::BLUESTACKS_FOLDERS)
+            (flag <= VM::AMD_SEV)
         );
     #elif (CLI_WINDOWS)
         return (
