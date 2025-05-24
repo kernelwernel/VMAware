@@ -7416,9 +7416,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         // Checks for __rdtscp support & multi-core
         {
-            unsigned aux = 0;
-
 #if (WINDOWS)
+    #if (x86_64)
+            unsigned aux = 0;
             const bool haveRdtscp = [&]() noexcept -> bool {
                 __try {
                     __rdtscp(&aux);
@@ -7428,6 +7428,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     return false;
                 }
                 }();
+    #elif (x86_32)
+            unsigned int regs[4] = { 0 };
+            __cpuid(reinterpret_cast<int*>(regs), 0x80000001);
+            const bool haveRdtscp = (regs[3] & (1u << 27)) != 0;
+    #endif
             if (!haveRdtscp) {
                 // __rdtscp should be supported nowadays
                 restoreThreadPriority();
@@ -9050,7 +9055,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                                     auto pPID = s.find(L"PID_");
                                     if (pVID != std::wstring::npos && pPID != std::wstring::npos) {
                                         swscanf_s(s.c_str() + pVID + 4, L"%4hx", &vid);
-                                        swscanf_s(s.c_str() + pPID + 4, L"%4hx", &did);
+                                        swscanf_s(s.c_str() + pPID + 4, L"%x", &did);
                                         parsed = true;
                                     }
                                 }
