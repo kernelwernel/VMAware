@@ -4301,16 +4301,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         // warm-up to reduce noise
         for (int i = 0; i < 10; ++i) {
-            unsigned aux;
+            unsigned aux2;
             #if (MSVC)
                 int cpuInfo[4]; __cpuid(cpuInfo, 0);
                 __rdtsc(); 
                 GetProcessHeap(); // purely user-mode function
-                __rdtscp(&aux);
+                __rdtscp(&aux2);
                 #pragma warning (disable : 6387)
                 CloseHandle((HANDLE)0); // NtClose syscall
                 #pragma warning (default : 6387)
-                __rdtscp(&aux);
+                __rdtscp(&aux2);
             #elif (GCC) || (CLANG)
                 unsigned low, high;
                 __asm__ __volatile__(
@@ -4344,17 +4344,17 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         u64 samples[SAMPLE_COUNT] = { 0 };
 
         for (int i = 0; i < SAMPLE_COUNT; ++i) {
-            unsigned aux;
+            unsigned aux3;
             u64 x0, x1, x2;
             #if (MSVC)
                 int cpuInfo[4]; __cpuid(cpuInfo, 0);
                 x0 = __rdtsc();
                 GetProcessHeap();
-                x1 = __rdtscp(&aux);
+                x1 = __rdtscp(&aux3);
             #pragma warning (disable : 6387)
                 CloseHandle((HANDLE)0);
             #pragma warning (default : 6387)
-                x2 = __rdtscp(&aux);
+                x2 = __rdtscp(&aux3);
             #else
                 unsigned low, high;
                 __asm__ __volatile__(
@@ -7941,7 +7941,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         
         ULONG ulSize = 0;
         NTSTATUS status = ntQuerySystemInformation(SystemModuleInformation, nullptr, 0, &ulSize);
-        if (status != ((NTSTATUS)0xC0000004L))) return false;
+        if (status != ((NTSTATUS)0xC0000004L)) return false;
 
         const HANDLE hProcess = GetCurrentProcess();
         PVOID allocatedMemory = nullptr;
@@ -10830,11 +10830,11 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         std::make_pair(VM::DEVICE_HANDLES, VM::core::technique(100, VM::device_handles)),
         std::make_pair(VM::VIRTUAL_PROCESSORS, VM::core::technique(100, VM::virtual_processors)),
         std::make_pair(VM::HYPERV_QUERY, VM::core::technique(100, VM::hyperv_query)),
-        std::make_pair(VM::REGISTRY, VM::core::technique(50, VM::registry_key)),
-        std::make_pair(VM::FILES, VM::core::technique(50, VM::vm_files)),
-        std::make_pair(VM::AUDIO, VM::core::technique(25, VM::check_audio)),
-        std::make_pair(VM::SCREEN_RESOLUTION, VM::core::technique(20, VM::screen_resolution)),
-        std::make_pair(VM::DLL, VM::core::technique(25, VM::dll_check)),
+        std::make_pair(VM::REGISTRY_KEY, VM::core::technique(50, VM::registry_key)),
+        std::make_pair(VM::FILES, VM::core::technique(50, VM::files)),
+        std::make_pair(VM::AUDIO, VM::core::technique(25, VM::audio)),
+        std::make_pair(VM::DISPLAY, VM::core::technique(20, VM::display)),
+        std::make_pair(VM::DLL, VM::core::technique(25, VM::dll)),
         std::make_pair(VM::VBOX_NETWORK, VM::core::technique(100, VM::vbox_network_share)),
         std::make_pair(VM::VMWARE_BACKDOOR, VM::core::technique(100, VM::vmware_backdoor)),
         std::make_pair(VM::WINE, VM::core::technique(100, VM::wine)),
