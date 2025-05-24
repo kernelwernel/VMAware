@@ -642,7 +642,6 @@ public:
         HYPERVISOR_STR,
         CPUID_SIGNATURE,
         ODD_CPU_THREADS,
-        CPU_VENDOR,
         BOCHS_CPU,
         KGT_SIGNATURE,
         // ADD NEW TECHNIQUE ENUM NAME HERE
@@ -880,7 +879,7 @@ private:
                 }
 
                 return true;
-                };
+            };
 
             u32 sig_reg[3] = { 0 };
 
@@ -896,7 +895,7 @@ private:
             auto strconvert = [](u32 n) -> std::string {
                 const char* bytes = reinterpret_cast<const char*>(&n);
                 return std::string(bytes, 4);
-                };
+            };
 
             std::stringstream ss;
 
@@ -1405,7 +1404,7 @@ private:
         }
 
         // helper that picks the right << or narrowing
-        void write_arg(auto&& arg) {
+        static void write_arg(auto&& arg) {
             using T = std::decay_t<decltype(arg)>;
             if constexpr (std::is_same_v<T, const wchar_t*> ||
                 std::is_same_v<T, wchar_t*>)
@@ -1800,7 +1799,7 @@ private:
                 cpu::cpuid(unused, unused, ecx, unused, 1);
 
                 return (ecx & (1 << 31));
-                };
+            };
 
             // 0x40000003 on EBX indicates the flags that a parent partition specified to create a child partition (https://learn.microsoft.com/en-us/virtualization/hyper-v-on-windows/tlfs/datatypes/hv_partition_privilege_mask)
             auto is_root_partition = []() -> bool {
@@ -1814,7 +1813,7 @@ private:
                 }
 #endif
                 return result;
-                };
+            };
 
             /**
               * On Hyper-V virtual machines, the cpuid function reports an EAX value of 11
@@ -1830,7 +1829,7 @@ private:
                 const u32 eax = static_cast<u32>(out[0]);
 
                 return eax;
-                };
+            };
 
             hyperx_state state;
 
@@ -1968,7 +1967,7 @@ private:
 
             auto getName = [&](DWORD idx) -> const char* {
                 return reinterpret_cast<char*>(base + nameRvas[idx]);
-                };
+            };
 
             for (size_t i = 0; i < count; ++i) {
                 std::string fname = names[i];
@@ -4222,6 +4221,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         unsigned aux = 0;
         {
     #if (WINDOWS)
+            // Test for __rdtscp support
         #if (x86_64)
             const bool haveRdtscp = [&]() noexcept -> bool {
                 __try {
@@ -4447,35 +4447,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #elif (GCC)
     #pragma GCC pop_options
 #endif
-
-
-    /**
-     * @brief Check if the CPU vendor signature contain mixed keywords (often due to poor hardener configurations)
-     * @category x86
-     * @implements VM::CPU_VENDOR
-     */
-    [[nodiscard]] static bool cpu_vendor() {
-        #if (!x86)
-            return false;
-        #else
-            u32 eax = 0, ebx = 0, ecx = 0, edx = 0;
-            cpu::cpuid(eax, ebx, ecx, edx, 0);
-
-            char vendor[13] = { 0 };
-            memcpy(&vendor[0], &ebx, 4);
-            memcpy(&vendor[4], &edx, 4);
-            memcpy(&vendor[8], &ecx, 4);
-            vendor[12] = '\0';
-    
-            const std::string v(vendor);
-            const bool intel = (v.find("GenuineIntel") != std::string::npos);
-            const bool amd = (v.find("AuthenticAMD") != std::string::npos);
-
-            return intel && amd;
-        #endif
-    }
-
-
 
 
 #if (LINUX)
@@ -6194,111 +6165,109 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             #endif
 
         #elif (WINDOWS)
-            static const wchar_t* kRoots[] = {
-                L"SYSTEM\\CurrentControlSet\\Enum\\PCI",
-                L"SYSTEM\\CurrentControlSet\\Enum\\USB",
-                L"SYSTEM\\CurrentControlSet\\Enum\\HDAUDIO"
-            };
-    
-            for (auto rootPath : kRoots) {
-                HKEY hKey = nullptr;
-                if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, rootPath, 0, KEY_READ, &hKey) != ERROR_SUCCESS) {
+        static const wchar_t* kRoots[] = {
+            L"SYSTEM\\CurrentControlSet\\Enum\\PCI",
+            L"SYSTEM\\CurrentControlSet\\Enum\\USB",
+            L"SYSTEM\\CurrentControlSet\\Enum\\HDAUDIO"
+        };
+
+        for (auto rootPath : kRoots) {
+            HKEY hRoot = nullptr;
+            if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, rootPath, 0, KEY_READ, &hRoot) != ERROR_SUCCESS)
+                continue;
+
+            for (DWORD i = 0; ; ++i) {
+                wchar_t deviceName[256];
+                DWORD cbName = _countof(deviceName);
+                LONG status = RegEnumKeyExW(hRoot, i,
+                    deviceName, &cbName,
+                    nullptr, nullptr, nullptr, nullptr);
+                if (status == ERROR_NO_MORE_ITEMS)
+                    break;
+                if (status != ERROR_SUCCESS)
                     continue;
-                }
-    
-                for (DWORD i = 0; ; ++i) {
-                    wchar_t deviceKeyName[256]; DWORD cbName = _countof(deviceKeyName);
-                    LONG status = RegEnumKeyExW(hKey, i,
-                        deviceKeyName, &cbName,
+
+                HKEY hDev = nullptr;
+                if (RegOpenKeyExW(hRoot, deviceName, 0, KEY_READ, &hDev) != ERROR_SUCCESS)
+                    continue;
+
+                for (DWORD j = 0; ; ++j) {
+                    wchar_t instName[256];
+                    DWORD cbInst = _countof(instName);
+                    LONG st2 = RegEnumKeyExW(hDev, j,
+                        instName, &cbInst,
                         nullptr, nullptr, nullptr, nullptr);
-                    if (status == ERROR_NO_MORE_ITEMS) break;
-                    if (status != ERROR_SUCCESS) break;
-    
-                    HKEY hDeviceKey = nullptr;
-                    if (RegOpenKeyExW(hKey, deviceKeyName, 0, KEY_READ, &hDeviceKey) != ERROR_SUCCESS)
+                    if (st2 == ERROR_NO_MORE_ITEMS)
+                        break;
+                    if (st2 != ERROR_SUCCESS)
                         continue;
-    
-                    for (DWORD j = 0; ; ++j) {
-                        wchar_t instanceID[256]; DWORD cbID = _countof(instanceID);
 
-                        LONG subStatus = RegEnumKeyExW(
-                            hDeviceKey, j,
-                            instanceID, &cbID,
-                            nullptr, nullptr, nullptr, nullptr
-                        );
+                    HKEY hInst = nullptr;
+                    if (RegOpenKeyExW(hDev, instName, 0, KEY_READ, &hInst) != ERROR_SUCCESS)
+                        continue;
 
-                        if (subStatus == ERROR_NO_MORE_ITEMS) break;
-                        if (subStatus != ERROR_SUCCESS) break;
-    
-                        HKEY hInstKey = nullptr;
-                        if (RegOpenKeyExW(hDeviceKey, instanceID, 0, KEY_READ, &hInstKey) != ERROR_SUCCESS)
-                            continue;
-    
-                        DWORD type = 0, cbData = 0;
-                        if (RegQueryValueExW(hInstKey, L"HardwareID", nullptr, &type, nullptr, &cbData) == ERROR_SUCCESS
-                            && type == REG_MULTI_SZ && cbData > sizeof(wchar_t))
-                        {
-                            std::vector<wchar_t> buffer(cbData / sizeof(wchar_t));
-                            if (RegQueryValueExW(
-                                hInstKey, L"HardwareID",
-                                nullptr, nullptr,
-                                reinterpret_cast<BYTE*>(buffer.data()),
-                                &cbData) == ERROR_SUCCESS)
-                            {
-                                for (wchar_t* entry = buffer.data(); *entry; entry += wcslen(entry) + 1) {
-                                    std::wstring s(entry);
-                                    uint16_t vid = 0;
-                                    uint32_t did = 0;
-                                    bool parsed = false;
-    
-                                    if (wcscmp(rootPath, L"SYSTEM\\CurrentControlSet\\Enum\\USB") == 0) {
-                                        // USB: VID_xxxx&PID_xxxx
-                                        auto pVID = s.find(L"VID_");
-                                        auto pPID = s.find(L"PID_");
-                                        if (pVID != std::wstring::npos && pPID != std::wstring::npos) {
-                                            swscanf_s(s.c_str() + pVID + 4, L"%4hx", &vid);
-                                            swscanf_s(s.c_str() + pPID + 4, L"%x", &did);
-                                            parsed = true;
-                                        }
-                                    }
-                                    else if (wcscmp(rootPath, L"SYSTEM\\CurrentControlSet\\Enum\\HDAUDIO") == 0) {
-                                        // HDAUDIO: VEN_xxxx&DEV_xxxx
-                                        auto pVEN = s.find(L"VEN_");
-                                        auto pDEV = s.find(L"DEV_");
-                                        if (pVEN != std::wstring::npos && pDEV != std::wstring::npos) {
-                                            swscanf_s(s.c_str() + pVEN + 4, L"%4hx", &vid);
-                                            swscanf_s(s.c_str() + pDEV + 4, L"%4x", &did);
-                                            parsed = true;
-                                        }
-                                    }
-                                    else {
-                                        // PCI: VEN_xxxx&DEV_xxxx
-                                        auto pVEN = s.find(L"VEN_");
-                                        auto pDEV = s.find(L"DEV_");
-                                        if (pVEN != std::wstring::npos && pDEV != std::wstring::npos) {
-                                            swscanf_s(s.c_str() + pVEN + 4, L"%4hx", &vid);
-                                            swscanf_s(s.c_str() + pDEV + 4, L"%8x", &did);
-                                            parsed = true;
-                                        }
-                                    }
-    
-                                    if (parsed) {
-                                        devices.push_back({ vid, did });
-                                        break;
-                                    }
-                                }
+                    // query size of HardwareID
+                    DWORD type = 0, cbData = 0;
+                    if (RegQueryValueExW(hInst, L"HardwareID", nullptr, &type, nullptr, &cbData) != ERROR_SUCCESS
+                        || type != REG_MULTI_SZ
+                        || cbData <= sizeof(wchar_t))
+                    {
+                        RegCloseKey(hInst);
+                        continue;
+                    }
+
+                    // read into buffer
+                    std::vector<wchar_t> buf(cbData / sizeof(wchar_t));
+                    if (RegQueryValueExW(hInst, L"HardwareID", nullptr, nullptr,
+                        reinterpret_cast<BYTE*>(buf.data()), &cbData) != ERROR_SUCCESS)
+                    {
+                        RegCloseKey(hInst);
+                        continue;
+                    }
+
+                    // parse each string until we find a VID/DID pair
+                    for (wchar_t* p = buf.data(); *p; p += wcslen(p) + 1) {
+                        std::wstring s(p);
+                        uint16_t vid = 0;
+                        uint32_t did = 0;
+                        bool ok = false;
+
+                        if (wcscmp(rootPath, L"SYSTEM\\CurrentControlSet\\Enum\\USB") == 0) {
+                            auto v = s.find(L"VID_"), d = s.find(L"PID_");
+                            if (v != std::wstring::npos && d != std::wstring::npos) {
+                                swscanf_s(s.c_str() + v + 4, L"%4hx", &vid);
+                                swscanf_s(s.c_str() + d + 4, L"%x", &did);
+                                ok = true;
                             }
                         }
-    
-                        RegCloseKey(hInstKey);
+                        else {
+                            auto v = s.find(L"VEN_"), d = s.find(L"DEV_");
+                            if (v != std::wstring::npos && d != std::wstring::npos) {
+                                swscanf_s(s.c_str() + v + 4, L"%4hx", &vid);
+                                if (wcscmp(rootPath, L"SYSTEM\\CurrentControlSet\\Enum\\HDAUDIO") == 0)
+                                    swscanf_s(s.c_str() + d + 4, L"%4x", &did);
+                                else
+                                    swscanf_s(s.c_str() + d + 4, L"%8x", &did);
+                                ok = true;
+                            }
+                        }
+
+                        if (ok) {
+                            devices.push_back({ vid, did });
+                            break;  
+                        }
                     }
-    
-                    RegCloseKey(hDeviceKey);
-                }
-    
-                RegCloseKey(hKey);
-            }
-            debug("PCI_VM_DEVICE_ID: Enumeration complete, found devices count = ", devices.size());
+
+                    RegCloseKey(hInst);
+                } 
+
+                RegCloseKey(hDev);
+            }  
+
+            RegCloseKey(hRoot);
+        }  
+
+        debug("PCI_VM_DEVICE_ID: Enumeration complete, found devices count = ", devices.size());
         #endif
 
         for (auto& d : devices) {
@@ -7152,7 +7121,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return true;
             }
             return false;
-            }();
+        }();
 
         return isVBoxSF;
     }  
@@ -7724,12 +7693,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      */
     [[nodiscard]] static bool mutex() {
         auto supMutexExist = [](const char* lpMutexName) -> bool {
-            if (lpMutexName == NULL) {
+            if (lpMutexName == 0) {
                 return false;
             }
 
             SetLastError(0);
-            const HANDLE hObject = CreateMutexA(NULL, FALSE, lpMutexName);
+            const HANDLE hObject = CreateMutexA(0, 0, lpMutexName);
             const DWORD dwError = GetLastError();
 
             if (hObject) {
@@ -7797,7 +7766,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             NULL
         );
     
-        bool is_cuckoo = (hPipe != INVALID_HANDLE_VALUE);
+        const bool is_cuckoo = (hPipe != INVALID_HANDLE_VALUE);
     
         if (is_cuckoo) {
             CloseHandle(hPipe);
@@ -9005,7 +8974,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     [[nodiscard]] static bool qemu_passthrough() {
         auto __iswdigit = [](wchar_t c) constexpr noexcept {
             return (c >= L'0' && c <= L'9');
-            };
+        };
         
         HDEVINFO hDevInfo = SetupDiGetClassDevsW(
             &GUID_DEVCLASS_DISPLAY,
@@ -10347,7 +10316,6 @@ public: // START OF PUBLIC FUNCTIONS
             case FIRMWARE: return "FIRMWARE";
             case FILE_ACCESS_HISTORY: return "FILE_ACCESS_HISTORY";
             case AUDIO: return "AUDIO";
-            case CPU_VENDOR: return "CPU_VENDOR";
             case NSJAIL_PID: return "NSJAIL_PID";
             case TPM: return "TPM";
             case PCI_VM_DEVICE_ID: return "PCI_VM_DEVICE_ID";
@@ -10822,15 +10790,15 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         std::make_pair(VM::SGDT, VM::core::technique(45, VM::sgdt)),
         std::make_pair(VM::SLDT, VM::core::technique(45, VM::sldt)),
         std::make_pair(VM::SMSW, VM::core::technique(45, VM::smsw)),
-        std::make_pair(VM::DRIVERS, VM::core::technique(100, VM::DRIVERS)),
+        std::make_pair(VM::DRIVERS, VM::core::technique(100, VM::drivers)),
         std::make_pair(VM::POOLS, VM::core::technique(80, VM::pools)),
         std::make_pair(VM::REGISTRY_VALUES, VM::core::technique(25, VM::registry_values)),
+        std::make_pair(VM::REGISTRY_KEYS, VM::core::technique(50, VM::registry_keys)),
         std::make_pair(VM::LOGICAL_PROCESSORS, VM::core::technique(50, VM::logical_processors)),
         std::make_pair(VM::PHYSICAL_PROCESSORS, VM::core::technique(50, VM::physical_processors)),
         std::make_pair(VM::DEVICE_HANDLES, VM::core::technique(100, VM::device_handles)),
         std::make_pair(VM::VIRTUAL_PROCESSORS, VM::core::technique(100, VM::virtual_processors)),
         std::make_pair(VM::HYPERV_QUERY, VM::core::technique(100, VM::hyperv_query)),
-        std::make_pair(VM::REGISTRY_KEY, VM::core::technique(50, VM::registry_key)),
         std::make_pair(VM::FILES, VM::core::technique(50, VM::files)),
         std::make_pair(VM::AUDIO, VM::core::technique(25, VM::audio)),
         std::make_pair(VM::DISPLAY, VM::core::technique(20, VM::display)),
@@ -10912,7 +10880,6 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     std::make_pair(VM::HYPERVISOR_STR, VM::core::technique(75, VM::hypervisor_str)),
     std::make_pair(VM::CPUID_SIGNATURE, VM::core::technique(95, VM::cpuid_signature)),
     std::make_pair(VM::ODD_CPU_THREADS, VM::core::technique(80, VM::odd_cpu_threads)),
-    std::make_pair(VM::CPU_VENDOR, VM::core::technique(100, VM::cpu_vendor)),
     std::make_pair(VM::BOCHS_CPU, VM::core::technique(100, VM::bochs_cpu)),
     std::make_pair(VM::KGT_SIGNATURE, VM::core::technique(80, VM::intel_kgt_signature))
     // ADD NEW TECHNIQUE STRUCTURE HERE
