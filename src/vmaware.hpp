@@ -211,6 +211,7 @@
 
 #pragma once
 
+#include <cstdio>
 #if defined(_WIN32) || defined(_WIN64)
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -365,7 +366,7 @@
 #include <shlwapi.h>
 #include <powerbase.h>
 #include <setupapi.h>
-#include <d3d9helper.h>
+#include <d3d9.h>
 #include <tbs.h>
 #include <initguid.h>
 #include <devpkey.h>
@@ -554,18 +555,18 @@ public:
         SGDT,
         SLDT,
         SMSW,
-        DRIVER_NAMES,
-        BAD_POOLS,
-        HKLM_REGISTRIES,
-        PROCESSOR_NUMBER,
-        NUMBER_OF_CORES,
-        VM_DEVICES,
+        DRIVERS,
+        POOLS,
+        REGISTRY_VALUES,
+        LOGICAL_PROCESSORS,
+        PHYSICAL_PROCESSORS,
+        DEVICE_HANDLES,
         VIRTUAL_PROCESSORS,
         HYPERV_QUERY,
-        REGISTRY,
+        REGISTRY_KEYS,
         FILES,
         AUDIO,
-        SCREEN_RESOLUTION,
+        DISPLAY,
         DLL,
         VBOX_NETWORK,
         VMWARE_BACKDOOR,
@@ -585,7 +586,7 @@ public:
         FIRMWARE,
         PCI_VM_DEVICE_ID,
         DISK_SIZE,
-        VM_PROCESSES,
+        PROCESSES,
         TEMPERATURE,
         HYPERV_HOSTNAME,
         GENERAL_HOSTNAME,
@@ -641,7 +642,7 @@ public:
         HYPERVISOR_STR,
         CPUID_SIGNATURE,
         ODD_CPU_THREADS,
-        UNKNOWN_MANUFACTURER,
+        CPU_VENDOR,
         BOCHS_CPU,
         KGT_SIGNATURE,
         // ADD NEW TECHNIQUE ENUM NAME HERE
@@ -1391,8 +1392,38 @@ private:
         }
 #endif
 
+        static std::string narrow_wide(const wchar_t* wstr) {
+            std::wstring ws(wstr);
+            std::string result;
+            result.reserve(ws.size());
+            for (wchar_t wc : ws) {
+                result.push_back((wc >= 0 && wc < 128)
+                    ? static_cast<char>(wc)
+                    : '?');
+            }
+            return result;
+        }
+
+        // helper that picks the right << or narrowing
+        void write_arg(auto&& arg) {
+            using T = std::decay_t<decltype(arg)>;
+            if constexpr (std::is_same_v<T, const wchar_t*> ||
+                std::is_same_v<T, wchar_t*>)
+            {
+                std::cout << narrow_wide(arg);
+            }
+            else if constexpr (std::is_convertible_v<T, std::wstring>)
+            {
+                std::cout << narrow_wide(static_cast<const wchar_t*>(std::wstring(arg).c_str()));
+            }
+            else
+            {
+                std::cout << std::forward<decltype(arg)>(arg);
+            }
+        }
+
         template <typename... Args>
-        static inline void debug_msg(Args... message) noexcept {
+        static inline void debug_msg(Args&&... message) noexcept {
 #if (LINUX || APPLE)
             constexpr const char* black_bg = "\x1B[48;2;0;0;0m";
             constexpr const char* bold = "\033[1m";
@@ -1402,22 +1433,29 @@ private:
             std::cout.setf(std::ios::fixed, std::ios::floatfield);
             std::cout.setf(std::ios::showpoint);
 
-            std::cout << black_bg << bold << "[" << blue << "DEBUG" << ansiexit << bold << black_bg << "]" << ansiexit << " ";
+            std::cout << black_bg 
+                << bold << "[" 
+                << blue << "DEBUG" 
+                << ansiexit << bold << black_bg << "]" 
+                << ansiexit << " ";
 #else       
             std::cout << "[DEBUG] ";
 #endif
 
+            // fold‐expr over the pack
+
 #if (CPP >= 17)
-            ((std::cout << message), ...);
+            (write_arg(std::forward<Args>(message)), ...);
 #else
-            print_to_stream(std::cout, message...);
+            print_to_stream(std::cout, std::forward<Args>(message)...);
 #endif
 
             std::cout << std::dec << "\n";
         }
 
+
         template <typename... Args>
-        static inline void core_debug_msg(Args... message) noexcept {
+        static inline void core_debug_msg(Args&&... message) noexcept {
 #if (LINUX || APPLE)
             constexpr const char* black_bg = "\x1B[48;2;0;0;0m";
             constexpr const char* bold = "\033[1m";
@@ -1427,15 +1465,20 @@ private:
             std::cout.setf(std::ios::fixed, std::ios::floatfield);
             std::cout.setf(std::ios::showpoint);
 
-            std::cout << black_bg << bold << "[" << blue << "CORE DEBUG" << ansiexit << bold << black_bg << "]" << ansiexit << " ";
+            std::cout << black_bg 
+                << bold << "[" 
+                << blue << "CORE DEBUG" 
+                << ansiexit << bold << black_bg << "]" 
+                << ansiexit << " ";
 #else       
             std::cout << "[CORE DEBUG] ";
 #endif
 
+
 #if (CPP >= 17)
-            ((std::cout << message), ...);
+            (write_arg(std::forward<Args>(message)), ...);
 #else
-            print_to_stream(std::cout, message...);
+            print_to_stream(std::cout, std::forward<Args>(message)...);
 #endif
 
             std::cout << std::dec << "\n";
@@ -1449,30 +1492,37 @@ private:
             return nullptr;
 #else
     #if (LINUX || APPLE)
-                struct FileDeleter { void operator()(FILE* f) const noexcept { if (f) pclose(f); } };
-                std::unique_ptr<FILE, FileDeleter> pipe(popen(cmd, "r"), FileDeleter());
-                if (!pipe) {
-                    return nullptr;
-                }
+            struct FileDeleter { 
+                void operator()(FILE* f) const noexcept { 
+                    if (f) { 
+                        pclose(f);
+                    }; 
+                } 
+            };
 
-                std::string result;
-                char* line = nullptr;
-                size_t len = 0;
-                ssize_t nread;
-
-                while ((nread = getline(&line, &len, pipe.get())) != -1) {
-                    result.append(line, static_cast<size_t>(nread));
-                }
-                free(line);
-
-                if (!result.empty() && result.back() == '\n') {
-                    result.pop_back();
-                }
-
-                return util::make_unique<std::string>(std::move(result));
+            std::unique_ptr<FILE, FileDeleter> pipe(popen(cmd, "r"), FileDeleter());
+            if (!pipe) {
+                return nullptr;
+            }
+    
+            std::string result;
+            char* line = nullptr;
+            size_t len = 0;
+            ssize_t nread;
+    
+            while ((nread = getline(&line, &len, pipe.get())) != -1) {
+                result.append(line, static_cast<size_t>(nread));
+            }
+            free(line);
+    
+            if (!result.empty() && result.back() == '\n') {
+                result.pop_back();
+            }
+    
+            return util::make_unique<std::string>(std::move(result));
     #else
-                UNUSED(cmd);
-                return std::make_unique<std::string>();
+            UNUSED(cmd);
+            return std::make_unique<std::string>();
     #endif
 #endif
         }
@@ -1490,8 +1540,8 @@ private:
                 return 0;
             }
 
-            u64 total_bytes = static_cast<u64>(stat.f_blocks) * stat.f_frsize;
-            u64 size_gb = total_bytes / GB;
+            const u64 total_bytes = static_cast<u64>(stat.f_blocks) * stat.f_frsize;
+            const u64 size_gb = total_bytes / GB;
 
             if (size_gb > U16_MAX) {
                 size = static_cast<u16>(U16_MAX);
@@ -1503,7 +1553,7 @@ private:
 #elif (WINDOWS)
             ULARGE_INTEGER totalNumberOfBytes;
             if (GetDiskFreeSpaceExW(L"C:", nullptr, &totalNumberOfBytes, nullptr)) {
-                u64 size_gb = totalNumberOfBytes.QuadPart / GB;
+                const u64 size_gb = totalNumberOfBytes.QuadPart / GB;
 
                 if (size_gb > U16_MAX) {
                     size = static_cast<u16>(U16_MAX);
@@ -1710,7 +1760,8 @@ private:
 #endif
 
             if (cpu::is_leaf_supported(cpu::leaf::hypervisor)) {
-                std::string vendor = cpu::cpu_manufacturer(cpu::leaf::hypervisor);
+                const std::string vendor = cpu::cpu_manufacturer(cpu::leaf::hypervisor);
+                
                 if (vendor == "VirtualApple" ||   // Apple Rosetta
                     vendor == "PowerVM Lx86")     // IBM PowerVM Lx86
                 {
@@ -2007,7 +2058,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     continue;  // too short to match
     
                 if (brand.find(v.data) != std::string::npos) {
-                    debug("BRAND_KEYWORDS: match = ", v.data);
+                    debug("CPU_BRAND: match = ", v.data);
     
                     // For these, we only care that it's virtualized:
                     if (v.size == 7  // "monitor"
@@ -2019,22 +2070,22 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     
                     // Otherwise map to our enums:
                     switch (v.size) {
-                    case 4:  // "qemu" or "vbox"
-                        return core::add(v.data[0] == 'q'
-                            ? brands::QEMU
-                            : brands::VBOX);
-                    case 3:  // "kvm"
-                        return core::add(brands::KVM);
-                    case 5:  // "bhyve"
-                        return core::add(brands::BHYVE);
-                    case 9:  // "parallels"
-                        return core::add(brands::PARALLELS);
-                    case 10: // "virtualbox"
-                        return core::add(brands::VBOX);
-                    case 6:  // "vmware"
-                        return core::add(brands::VMWARE);
-                    default:
-                        return false;
+                        case 4:  // "qemu" or "vbox"
+                            return core::add(v.data[0] == 'q'
+                                ? brands::QEMU
+                                : brands::VBOX);
+                        case 3:  // "kvm"
+                            return core::add(brands::KVM);
+                        case 5:  // "bhyve"
+                            return core::add(brands::BHYVE);
+                        case 9:  // "parallels"
+                            return core::add(brands::PARALLELS);
+                        case 10: // "virtualbox"
+                            return core::add(brands::VBOX);
+                        case 6:  // "vmware"
+                            return core::add(brands::VMWARE);
+                        default:
+                            return false;
                     }
                 }
             }
@@ -3261,8 +3312,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     
             for (size_t i = 0; i < thread_database_count; ++i) {
                 if (cpu_full_name.find(thread_database[i].model) != std::string::npos) {
-                    unsigned expected = thread_database[i].threads;
-                    unsigned actual = (unsigned)std::thread::hardware_concurrency();
+                    const unsigned expected = thread_database[i].threads;
+                    const unsigned actual = (unsigned)std::thread::hardware_concurrency();
                     debug("INTEL_THREAD_MISMATCH: Expected threads -> ", expected);
                     debug("INTEL_THREAD_MISMATCH: Current threads -> ", actual);
                     return (actual != expected);
@@ -3417,8 +3468,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     
             for (size_t i = 0; i < thread_database_count; ++i) {
                 if (cpu_full_name.find(thread_database[i].model) != std::string::npos) {
-                    unsigned expected = thread_database[i].threads;
-                    unsigned actual = (unsigned)std::thread::hardware_concurrency();
+                    const unsigned expected = thread_database[i].threads;
+                    const unsigned actual = (unsigned)std::thread::hardware_concurrency();
                     debug("XEON_THREAD_MISMATCH:  Expected threads -> ", expected);
                     debug("XEON_THREAD_MISMATCH:  Current threads -> ", actual);
                     return (actual != expected);
@@ -4028,8 +4079,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             for (size_t i = 0; i < thread_database_count; ++i) {
                 if (cpu_full_name.find(thread_database[i].model) != std::string::npos) {
-                    unsigned expected = thread_database[i].threads;
-                    unsigned actual = (unsigned)std::thread::hardware_concurrency();
+                    const unsigned expected = thread_database[i].threads;
+                    const unsigned actual = (unsigned)std::thread::hardware_concurrency();
                     debug("AMD_THREAD_MISMATCH Expected threads -> ", expected);
                     debug("AMD_THREAD_MISMATCH Current threads -> ", actual);
                     return (actual != expected);
@@ -4104,7 +4155,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @author Requiem (https://github.com/NotRequiem)
      * @implements VM::TIMER
      */
-    #if (CLANG)
+#if (CLANG)
     #pragma clang optimize off
 #elif (MSVC)
     #pragma optimize("", off)
@@ -4125,7 +4176,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         if (util::is_running_under_translator()) {
-            debug("Running inside binary translation layer.");
+            debug("TIMER: Running inside a binary translation layer.");
             return false;
         }
 
@@ -4166,136 +4217,82 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         CPU_ZERO(&oldTscSet);
         pthread_getaffinity_np(pthread_self(), sizeof(cpu_set_t), &oldTscSet);
     #endif
-        // 1. TSC Synchronization Check Across Cores
-        // Try reading the invariant TSC on two different cores to attempt to detect vCPU timers being shared
-        constexpr u8 tscIterations = 10;
-        constexpr u16 tscSyncDiffThreshold = 500;
 
-        bool tscSyncDetected = false;
-        tscSyncDetected = [&]() noexcept -> bool {
-            int tscIssueCount = 0;
-            u64 tscCore1 = 0, tscCore2 = 0;
-
-            for (int i = 0; i < tscIterations; ++i) {
-                unsigned int aux = 0;
-        #if (WINDOWS)
-                DWORD_PTR prevMask = SetThreadAffinityMask(GetCurrentThread(), DWORD{ 1 });
-                if (prevMask == 0) {
-                    // could not bind even to the first core...?
-                    return true;
-                }
-
-                __try {
-                    tscCore1 = __rdtscp(&aux);
-                }
-                __except (EXCEPTION_EXECUTE_HANDLER) {
-                    // __rdtscp should be supported nowadays
-                    return true;
-                }
-
-                DWORD_PTR gotMask = SetThreadAffinityMask(GetCurrentThread(), DWORD{ 2 });
-                if (gotMask == 0) {
-                    // fails because there is no core #1 on a single-core box
-                    return false;
-                }
-
-                __try {
-                    tscCore2 = __rdtscp(&aux);
-                }
-                __except (EXCEPTION_EXECUTE_HANDLER) {
-                    return true;
-                }
-        #else
-                cpu_set_t set;
-                static sigjmp_buf jumpBuf;
-
-                struct sigaction oldAct, newAct {};
-                newAct.sa_flags = SA_SIGINFO;
-                using sa_sigaction_fn = void (*)(int, siginfo_t*, void*);
-                newAct.sa_sigaction = static_cast<sa_sigaction_fn>(
-                    [](int, siginfo_t*, void*) {
-                        siglongjmp(jumpBuf, 2);
-                    }
-                    );
-                sigemptyset(&newAct.sa_mask);
-
-                // core 0
-                CPU_ZERO(&set);
-                CPU_SET(0, &set);
-                int ret = pthread_setaffinity_np(pthread_self(), sizeof(set), &set);
-                if (ret == EINVAL) {
-                    // no CPU 0? super weird
-                    return true;
-                }
-                else if (ret != 0) {
-                    // assume single-core
-                    return false;
-                }
-
-                sigaction(SIGILL, &newAct, &oldAct);
-
-                if (sigsetjmp(jumpBuf, 1) == 0) {
-                    tscCore1 = __rdtscp(&aux);
-                }
-                else {
-                    // no rdtscp support
-                    sigaction(SIGILL, &oldAct, nullptr);
-                    return true;
-                }
-
-                sigaction(SIGILL, &oldAct, nullptr);
-
-                // core 1
-                CPU_ZERO(&set);
-                CPU_SET(1, &set);
-                ret = pthread_setaffinity_np(pthread_self(), sizeof(set), &set);
-                if (ret == EINVAL) {
-                    // single‑core 
-                    return false;
-                }
-                else if (ret != 0) {
-                    return true;
-                }
-
-                sigaction(SIGILL, &newAct, &oldAct);
-                if (sigsetjmp(jumpBuf, 1) == 0) {
-                    tscCore2 = __rdtscp(&aux);
-                }
-                else {
-                    sigaction(SIGILL, &oldAct, nullptr);
-                    return true;
-                }
-
-                sigaction(SIGILL, &oldAct, nullptr);
-        #endif
-                // hypervisors often have nearly identical TSCs across vCPUs
-                const u64 diff = (tscCore2 > tscCore1)
-                    ? (tscCore2 - tscCore1)
-                    : (tscCore1 - tscCore2);
-
-                if (diff < tscSyncDiffThreshold) {            
-                    ++tscIssueCount;
-                }
-            }
-        #ifdef __VMAWARE_DEBUG__
-            debug("TIMER: TSC sync check",
-                " - Core1: ", tscCore1,
-                " Core2: ", tscCore2,
-                " Delta: ", tscCore2 - tscCore1,
-                " (Threshold: <", tscSyncDiffThreshold,
-                ')');
-        #endif  
-            return (tscIssueCount >= tscIterations / 2);
-        }();
-
+        // Checks for __rdtscp support & multi-core
+        unsigned aux = 0;
+        {
     #if (WINDOWS)
-    SetThreadAffinityMask(GetCurrentThread(), procMask);
-    #elif (LINUX)
-        pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &oldTscSet);
+        #if (x86_64)
+            const bool haveRdtscp = [&]() noexcept -> bool {
+                __try {
+                    __rdtscp(&aux);
+                    return true;
+                }
+                __except (EXCEPTION_EXECUTE_HANDLER) {
+                    return false;
+                }
+            }();
+        #elif (x86_32)
+            UNUSED(aux);
+            unsigned int regs[4] = { 0 };
+            __cpuid(reinterpret_cast<int*>(regs), 0x80000001);
+            const bool haveRdtscp = (regs[3] & (1u << 27)) != 0;
+        #endif
+
+            if (!haveRdtscp) {
+                // __rdtscp should be supported nowadays
+                restoreThreadPriority();
+                debug("TIMER: RDTSCP instruction not supporteed");
+                return true;
+            }
+
+            // Test for a second core
+            DWORD_PTR testMask = DWORD_PTR(1) << 1;
+            DWORD_PTR prev = SetThreadAffinityMask(hThread, testMask);
+            if (prev == 0) {
+                // single-core, cannot test, assume no VM
+                SetThreadAffinityMask(hThread, prev);
+                restoreThreadPriority();
+                return false;
+            }
+            SetThreadAffinityMask(hThread, procMask);
+    #else
+            // Test for __rdtscp support
+            static sigjmp_buf jb;
+            struct sigaction oldAct, newAct {};
+            newAct.sa_flags = SA_SIGINFO;
+            newAct.sa_sigaction = [](int, siginfo_t*, void*) { siglongjmp(jb, 1); };
+            sigemptyset(&newAct.sa_mask);
+            sigaction(SIGILL, &newAct, &oldAct);
+
+            if (sigsetjmp(jb, 1) != 0) {
+                // no __rdtscp support, assume VM
+
+                sigaction(SIGILL, &oldAct, nullptr);
+
+                restoreThreadPriority();
+                return true;
+            }
+            __rdtscp(&aux);
+            sigaction(SIGILL, &oldAct, nullptr);
+
+            // Test for a second core
+            cpu_set_t testSet{};
+            CPU_ZERO(&testSet);
+            CPU_SET(1, &testSet);
+            int ret = pthread_setaffinity_np(pthread_self(), sizeof(testSet), &testSet);
+            if (ret == EINVAL) {
+                // single-core, cannot test, assume no VM
+                restoreThreadPriority();
+                return false;
+            }
+            else if (ret != 0) {
+                // unexpected
+                restoreThreadPriority();
+                return true;
+            }
+            pthread_setaffinity_np(pthread_self(), sizeof(oldTscSet), &oldTscSet);
     #endif
-        if (tscSyncDetected) {
-            restoreThreadPriority();
-            return true;
         }
 
     #if (WINDOWS)
@@ -4305,39 +4302,39 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // warm-up to reduce noise
         for (int i = 0; i < 10; ++i) {
             unsigned aux;
-        #if (MSVC)
-            int cpuInfo[4]; __cpuid(cpuInfo, 0);
-            __rdtsc(); 
-            GetProcessHeap(); // purely user-mode function
-            __rdtscp(&aux);
-            #pragma warning (disable : 6387)
-            CloseHandle((HANDLE)0); // NtClose syscall
-            #pragma warning (default : 6387)
-            __rdtscp(&aux);
-        #elif (GCC) || (CLANG)
-            unsigned low, high;
-            __asm__ __volatile__(
-                "cpuid\n\t"
-                "rdtsc\n\t"
-                : "=a"(low), "=d"(high)
-                : "a"(0)
-                : "ebx", "ecx"
-            );
-            GetProcessHeap();
-            __asm__ __volatile__(
-                "rdtscp\n\t"
-                "cpuid"
-                : "=a"(low), "=d"(high)
-                :: "rbx", "rcx"
-            );
-            CloseHandle((HANDLE)0);
-            __asm__ __volatile__(
-                "rdtscp\n\t"
-                "cpuid"
-                : "=a"(low), "=d"(high)
-                :: "rbx", "rcx"
-            );
-        #endif
+            #if (MSVC)
+                int cpuInfo[4]; __cpuid(cpuInfo, 0);
+                __rdtsc(); 
+                GetProcessHeap(); // purely user-mode function
+                __rdtscp(&aux);
+                #pragma warning (disable : 6387)
+                CloseHandle((HANDLE)0); // NtClose syscall
+                #pragma warning (default : 6387)
+                __rdtscp(&aux);
+            #elif (GCC) || (CLANG)
+                unsigned low, high;
+                __asm__ __volatile__(
+                    "cpuid\n\t"
+                    "rdtsc\n\t"
+                    : "=a"(low), "=d"(high)
+                    : "a"(0)
+                    : "ebx", "ecx"
+                );
+                GetProcessHeap();
+                __asm__ __volatile__(
+                    "rdtscp\n\t"
+                    "cpuid"
+                    : "=a"(low), "=d"(high)
+                    :: "rbx", "rcx"
+                );
+                CloseHandle((HANDLE)0);
+                __asm__ __volatile__(
+                    "rdtscp\n\t"
+                    "cpuid"
+                    : "=a"(low), "=d"(high)
+                    :: "rbx", "rcx"
+                );
+            #endif
         }
 
         // actual measurement
@@ -4348,49 +4345,50 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         for (int i = 0; i < SAMPLE_COUNT; ++i) {
             unsigned aux;
-            u64 t0, t1, t2;
-        #if (MSVC)
-            int cpuInfo[4]; __cpuid(cpuInfo, 0);
-            t0 = __rdtsc();
-            GetProcessHeap();
-            t1 = __rdtscp(&aux);
-        #pragma warning (disable : 6387)
-            CloseHandle((HANDLE)0);
-        #pragma warning (default : 6387)
-            t2 = __rdtscp(&aux);
-        #else
-            unsigned low, high;
-            __asm__ __volatile__(
-                "cpuid\n\t"
-                "rdtsc\n\t"
-                : "=a"(low), "=d"(high)
-                : "a"(0)
-                : "ebx", "ecx"
-            );
-            t0 = ((u64)high << 32) | low;
+            u64 x0, x1, x2;
+            #if (MSVC)
+                int cpuInfo[4]; __cpuid(cpuInfo, 0);
+                x0 = __rdtsc();
+                GetProcessHeap();
+                x1 = __rdtscp(&aux);
+            #pragma warning (disable : 6387)
+                CloseHandle((HANDLE)0);
+            #pragma warning (default : 6387)
+                x2 = __rdtscp(&aux);
+            #else
+                unsigned low, high;
+                __asm__ __volatile__(
+                    "cpuid\n\t"
+                    "rdtsc\n\t"
+                    : "=a"(low), "=d"(high)
+                    : "a"(0)
+                    : "ebx", "ecx"
+                );
+                x0 = ((u64)high << 32) | low;
 
-            GetProcessHeap();
+                GetProcessHeap();
 
-            __asm__ __volatile__(
-                "rdtscp\n\t"
-                "cpuid"
-                : "=a"(low), "=d"(high)
-                :: "rbx", "rcx"
-            );
-            t1 = ((u64)high << 32) | low;
+                __asm__ __volatile__(
+                    "rdtscp\n\t"
+                    "cpuid"
+                    : "=a"(low), "=d"(high)
+                    :: "rbx", "rcx"
+                );
+                x1 = ((u64)high << 32) | low;
 
-            CloseHandle((HANDLE)0);
+                CloseHandle((HANDLE)0);
 
-            __asm__ __volatile__(
-                "rdtscp\n\t"
-                "cpuid"
-                : "=a"(low), "=d"(high)
-                :: "rbx", "rcx"
-            );
-            t2 = ((u64)high << 32) | low;
-        #endif
-            const u64 heapCost = t1 - t0;
-            const u64 closeCost = t2 - t1;
+                __asm__ __volatile__(
+                    "rdtscp\n\t"
+                    "cpuid"
+                    : "=a"(low), "=d"(high)
+                    :: "rbx", "rcx"
+                );
+                x2 = ((u64)high << 32) | low;
+            #endif
+
+            const u64 heapCost = x1 - x0;
+            const u64 closeCost = x2 - x1;
             samples[i] = (heapCost > 0)
                 ? ((closeCost * SCALE_FACTOR) / heapCost)
                 : UINT64_MAX;
@@ -4430,7 +4428,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         );
 
         if (status != 0)
-            return false;       
+            return false;
 
         for (DWORD i = 0; i < procCount; ++i) {
             if (ppi[i].CurrentMhz < 1000) {
@@ -4452,33 +4450,28 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check if the CPU manufacturer is not known
+     * @brief Check if the CPU vendor signature contain mixed keywords (often due to poor hardener configurations)
      * @category x86
-     * @implements VM::UNKNOWN_MANUFACTURER
+     * @implements VM::CPU_VENDOR
      */
-    [[nodiscard]] static bool unknown_manufacturer() {
+    [[nodiscard]] static bool cpu_vendor() {
         #if (!x86)
             return false;
         #else
-            constexpr std::array<const char*, 21> known_ids = { {
-                "AuthenticAMD", "CentaurHauls", "CyrixInstead",
-                "GenuineIntel", "GenuineIotel", "TransmetaCPU",
-                "GenuineTMx86", "Geode by NSC", "NexGenDriven",
-                "RiseRiseRise", "SiS SiS SiS ", "UMC UMC UMC ",
-                "Vortex86 SoC", "  Shanghai  ", "HygonGenuine",
-                "Genuine  RDC", "E2K MACHINE", "VIA VIA VIA ",
-                "AMD ISBETTER", "GenuineAO486", "MiSTer AO486"
-            } };
+            u32 eax = 0, ebx = 0, ecx = 0, edx = 0;
+            cpu::cpuid(eax, ebx, ecx, edx, 0);
 
-            const std::string brand = cpu::cpu_manufacturer(0);
-            for (const char* id : known_ids) {
-                if (memcmp(brand.data(), id, 12) == 0) {
-                    return false;
-                }
-            }
+            char vendor[13] = { 0 };
+            memcpy(&vendor[0], &ebx, 4);
+            memcpy(&vendor[4], &edx, 4);
+            memcpy(&vendor[8], &ecx, 4);
+            vendor[12] = '\0';
+    
+            const std::string v(vendor);
+            const bool intel = (v.find("GenuineIntel") != std::string::npos);
+            const bool amd = (v.find("AuthenticAMD") != std::string::npos);
 
-            debug("UNKNOWN_MANUFACTURER: CPU brand '", brand, "' did not match known vendor IDs.");
-            return true; // no known manufacturer matched, likely a VM
+            return intel && amd;
         #endif
     }
 
@@ -5760,7 +5753,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @credits Requiem, dmfrpro, MegaMax
      * @implements VM::FIRMWARE
      */
-    [[nodiscard]] static bool firmware_scan() {
+    [[nodiscard]] static bool firmware() {
         #if (WINDOWS)
         #pragma warning(disable: 4459)
             typedef enum _SYSTEM_INFORMATION_CLASS {
@@ -5832,20 +5825,22 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             const auto ntqsi = reinterpret_cast<PNtQuerySystemInformation>(functionPointers[0]);
             if (!ntqsi) return false;
 
-            constexpr std::array<const char*, 21> targets = { {
+            constexpr std::array<const char*, 24> targets = { {
                 "Parallels Software", "Parallels(R)",
                 "innotek",            "Oracle",   "VirtualBox", "vbox", "VBOX",
-                "VMware, Inc.",       "VMware",   "VMWARE",
-                "QEMU",               "pc-q35",   "FWCF",       "BOCHS", "BXPC",
-                "ovmf",               "edk ii unknown", "WAET", "S3 Corp.", "Virtual Machine", "VS2005R2"
+                "VMware, Inc.",       "VMware",   "VMWARE",     "VMW0003",
+                "QEMU",               "pc-q35",   "Q35 +",      "FWCF",     "BOCHS", "BXPC", 
+                "ovmf",               "edk ii unknown", "WAET", "S3 Corp.", "Virtual Machine", "VS2005R2",
+                "Xen"
             } };
 
-            constexpr std::array<const char*, 21> brands_map = { {
+            constexpr std::array<const char*, 24> brands_map = { {
                 brands::PARALLELS, brands::PARALLELS,
                 brands::VBOX,      brands::VBOX,      brands::VBOX,     brands::VBOX,     brands::VBOX,
-                brands::VMWARE,    brands::VMWARE,    brands::VMWARE,
-                brands::QEMU,      brands::QEMU,      brands::QEMU,     brands::BOCHS,    brands::BOCHS,
-                nullptr, nullptr, nullptr, nullptr, nullptr, nullptr
+                brands::VMWARE,    brands::VMWARE,    brands::VMWARE,   brands::VMWARE,
+                brands::QEMU,      brands::QEMU,      brands::QEMU,     brands::QEMU,     brands::BOCHS,    brands::BOCHS,
+                nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+                brands::XEN
             } };
 
             static_assert(targets.size() == brands_map.size(),
@@ -5875,7 +5870,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
                 PREFETCH(hdr->TableBuffer);
                 st = ntqsi(SystemFirmwareTableInformation, hdr, fullSz, outLen);
-                if (!NT_SUCCESS(st)) { clear(); return nullptr; }
+
+                if (!(((NTSTATUS)(st)) >= 0)) { 
+                    clear(); 
+                    return nullptr; 
+                }
 
                 return hdr;
             };
@@ -5888,6 +5887,32 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 const auto* buf = info->TableBuffer;
                 const size_t len = info->TableBufferLength;
 
+                constexpr char man_short[] = "Advanced Micro Devices";
+                constexpr char man_full[] = "Advanced Micro Devices, Inc.";
+                const size_t short_len = sizeof(man_short) - 1;
+                const size_t full_len = sizeof(man_full) - 1;
+    
+                bool has_short = false, has_full = false;
+    
+                for (size_t i = 0; i + short_len <= len; ++i) {
+                    if (memcmp(buf + i, man_short, short_len) == 0) {
+                        has_short = true;
+                        break;
+                    }
+                }
+                for (size_t i = 0; i + full_len <= len; ++i) {
+                    if (memcmp(buf + i, man_full, full_len) == 0) {
+                        has_full = true;
+                        break;
+                    }
+                }
+
+                if (has_short && !has_full) {
+                    debug("FIRMWARE: Spoofed AMD manufacturer string detected");
+                    clear();
+                    return true;
+                }
+
                 for (size_t ti = 0; ti < targets.size(); ++ti) {
                     const char* pat = targets[ti];
                     const size_t plen = strlen(pat);
@@ -5899,6 +5924,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                         {
                             clear();
                             const char* brand = brands_map[ti];
+                            debug("FIRMWARE: Detected ", pat);
                             return (brand ? core::add(brand) : true);
                         }
                     }
@@ -5910,6 +5936,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     for (size_t i = 0; i + mlen <= len; ++i) {
                         if (memcmp(buf + i, marker, mlen) == 0) {
                             clear();
+                            debug("FIRMWARE: Detected VMWareHardenerLoader");
                             return core::add(brands::VMWARE_HARD);
                         }
                     }
@@ -5926,14 +5953,24 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             // ACPI table count
             const DWORD* tables = (DWORD*)list->TableBuffer;
             const ULONG cnt = list->TableBufferLength / sizeof(DWORD);
-            if (cnt < 4) { clear(); return true; }
+
+            if (cnt < 4) {
+                debug("FIRMWARE: Not enough ACPI tables for a real system");
+                clear();
+                return true;
+            }
 
             // SSDT count
             int ssdt_ct = 0;
             for (ULONG i = 0; i < cnt; ++i) {
                 if (tables[i] == ssdtSig && ++ssdt_ct == 2) break;
             }
-            if (ssdt_ct < 2) { clear(); return true; }
+
+            if (ssdt_ct < 2) {
+                clear();
+                debug("FIRMWARE: Not enough SSDT tables for a real system");
+                return true;
+            }
 
             for (ULONG i = 0; i < cnt; ++i) {
                 DWORD tbl = tables[i];
@@ -5942,6 +5979,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     ULONG fsz = 0;
                     auto fadt = query(ACPI_SIG, tbl, &fsz);
                     if (fadt && fsz > 45 && fadt->TableBuffer[45] == 0) {
+                        debug("FIRMWARE: Invalid PM type detected");
                         clear();
                         return true;
                     }
@@ -5982,6 +6020,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             free(dsdt);
             if (!found) {
+                debug("FIRMWARE: Invalid _OSI params found");
                 return true;
             }
 
@@ -6155,56 +6194,111 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             #endif
 
         #elif (WINDOWS)
-            HKEY hKey = nullptr;
-
-            if (RegOpenKeyEx(HKEY_LOCAL_MACHINE,
-                TEXT("SYSTEM\\CurrentControlSet\\Enum\\PCI"),
-                0, KEY_READ, &hKey) != ERROR_SUCCESS)
-                return false;
-
-            for (DWORD i = 0; ; ++i) {
-                TCHAR instanceName[256];
-                DWORD cbName = _countof(instanceName);
-                if (RegEnumKeyEx(hKey, i, instanceName, &cbName,
-                    nullptr, nullptr, nullptr, nullptr) != ERROR_SUCCESS)
-                    break;
-
-                HKEY hInstKey = nullptr;
-                if (RegOpenKeyEx(hKey, instanceName, 0, KEY_READ, &hInstKey) != ERROR_SUCCESS)
+            static const wchar_t* kRoots[] = {
+                L"SYSTEM\\CurrentControlSet\\Enum\\PCI",
+                L"SYSTEM\\CurrentControlSet\\Enum\\USB",
+                L"SYSTEM\\CurrentControlSet\\Enum\\HDAUDIO"
+            };
+    
+            for (auto rootPath : kRoots) {
+                HKEY hKey = nullptr;
+                if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, rootPath, 0, KEY_READ, &hKey) != ERROR_SUCCESS) {
                     continue;
-
-                DWORD type = 0, cbData = 0;
-                if (RegQueryValueEx(hInstKey, TEXT("HardwareID"),
-                    nullptr, &type, nullptr, &cbData) == ERROR_SUCCESS
-                    && type == REG_MULTI_SZ && cbData > 0)
-                {
-                    std::vector<TCHAR> buffer(cbData / sizeof(TCHAR));
-                    if (RegQueryValueEx(hInstKey, TEXT("HardwareID"),
-                        nullptr, nullptr,
-                        reinterpret_cast<BYTE*>(buffer.data()),
-                        &cbData) == ERROR_SUCCESS)
-                    {
-                        for (TCHAR* entry = buffer.data(); *entry; entry += lstrlen(entry) + 1)
-                        {
-                            TCHAR* pVen = StrStrI(entry, TEXT("VEN_"));
-                            TCHAR* pDev = StrStrI(entry, TEXT("DEV_"));
-                            if (!pVen || !pDev)
-                                continue;
-
-                            u16 vid = 0; u32 did = 0;
-                            _stscanf_s(pVen + 4, TEXT("%4hx"), &vid);    
-                            _stscanf_s(pDev + 4, TEXT("%8x"), &did);   
-
-                            devices.push_back({ vid, did });
-                            break; 
-                        }
-                    }
                 }
+    
+                for (DWORD i = 0; ; ++i) {
+                    wchar_t deviceKeyName[256]; DWORD cbName = _countof(deviceKeyName);
+                    LONG status = RegEnumKeyExW(hKey, i,
+                        deviceKeyName, &cbName,
+                        nullptr, nullptr, nullptr, nullptr);
+                    if (status == ERROR_NO_MORE_ITEMS) break;
+                    if (status != ERROR_SUCCESS) break;
+    
+                    HKEY hDeviceKey = nullptr;
+                    if (RegOpenKeyExW(hKey, deviceKeyName, 0, KEY_READ, &hDeviceKey) != ERROR_SUCCESS)
+                        continue;
+    
+                    for (DWORD j = 0; ; ++j) {
+                        wchar_t instanceID[256]; DWORD cbID = _countof(instanceID);
 
-                RegCloseKey(hInstKey);
+                        LONG subStatus = RegEnumKeyExW(
+                            hDeviceKey, j,
+                            instanceID, &cbID,
+                            nullptr, nullptr, nullptr, nullptr
+                        );
+
+                        if (subStatus == ERROR_NO_MORE_ITEMS) break;
+                        if (subStatus != ERROR_SUCCESS) break;
+    
+                        HKEY hInstKey = nullptr;
+                        if (RegOpenKeyExW(hDeviceKey, instanceID, 0, KEY_READ, &hInstKey) != ERROR_SUCCESS)
+                            continue;
+    
+                        DWORD type = 0, cbData = 0;
+                        if (RegQueryValueExW(hInstKey, L"HardwareID", nullptr, &type, nullptr, &cbData) == ERROR_SUCCESS
+                            && type == REG_MULTI_SZ && cbData > sizeof(wchar_t))
+                        {
+                            std::vector<wchar_t> buffer(cbData / sizeof(wchar_t));
+                            if (RegQueryValueExW(
+                                hInstKey, L"HardwareID",
+                                nullptr, nullptr,
+                                reinterpret_cast<BYTE*>(buffer.data()),
+                                &cbData) == ERROR_SUCCESS)
+                            {
+                                for (wchar_t* entry = buffer.data(); *entry; entry += wcslen(entry) + 1) {
+                                    std::wstring s(entry);
+                                    uint16_t vid = 0;
+                                    uint32_t did = 0;
+                                    bool parsed = false;
+    
+                                    if (wcscmp(rootPath, L"SYSTEM\\CurrentControlSet\\Enum\\USB") == 0) {
+                                        // USB: VID_xxxx&PID_xxxx
+                                        auto pVID = s.find(L"VID_");
+                                        auto pPID = s.find(L"PID_");
+                                        if (pVID != std::wstring::npos && pPID != std::wstring::npos) {
+                                            swscanf_s(s.c_str() + pVID + 4, L"%4hx", &vid);
+                                            swscanf_s(s.c_str() + pPID + 4, L"%x", &did);
+                                            parsed = true;
+                                        }
+                                    }
+                                    else if (wcscmp(rootPath, L"SYSTEM\\CurrentControlSet\\Enum\\HDAUDIO") == 0) {
+                                        // HDAUDIO: VEN_xxxx&DEV_xxxx
+                                        auto pVEN = s.find(L"VEN_");
+                                        auto pDEV = s.find(L"DEV_");
+                                        if (pVEN != std::wstring::npos && pDEV != std::wstring::npos) {
+                                            swscanf_s(s.c_str() + pVEN + 4, L"%4hx", &vid);
+                                            swscanf_s(s.c_str() + pDEV + 4, L"%4x", &did);
+                                            parsed = true;
+                                        }
+                                    }
+                                    else {
+                                        // PCI: VEN_xxxx&DEV_xxxx
+                                        auto pVEN = s.find(L"VEN_");
+                                        auto pDEV = s.find(L"DEV_");
+                                        if (pVEN != std::wstring::npos && pDEV != std::wstring::npos) {
+                                            swscanf_s(s.c_str() + pVEN + 4, L"%4hx", &vid);
+                                            swscanf_s(s.c_str() + pDEV + 4, L"%8x", &did);
+                                            parsed = true;
+                                        }
+                                    }
+    
+                                    if (parsed) {
+                                        devices.push_back({ vid, did });
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+    
+                        RegCloseKey(hInstKey);
+                    }
+    
+                    RegCloseKey(hDeviceKey);
+                }
+    
+                RegCloseKey(hKey);
             }
-
-            RegCloseKey(hKey);
+            debug("PCI_VM_DEVICE_ID: Enumeration complete, found devices count = ", devices.size());
         #endif
 
         for (auto& d : devices) {
@@ -6219,6 +6313,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 case 0x1af41045: case 0x1af41048: case 0x1af41049: case 0x1af41050:
                 case 0x1af41052: case 0x1af41053: case 0x1af4105a: case 0x1af41100:
                 case 0x1af41110: case 0x1af41b36:
+                    debug("PCI_VM_DEVICE_ID: Detected Red Hat + Virtio device -> ", id32);
                     return true;
 
                 // VMware
@@ -6230,6 +6325,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 case 0x0e0f0001: case 0x0e0f0002: case 0x0e0f0003: case 0x0e0f0004:
                 case 0x0e0f0005: case 0x0e0f0006: case 0x0e0f000a: case 0x0e0f8001:
                 case 0x0e0f8002: case 0x0e0f8003: case 0x0e0ff80a:
+                    debug("PCI_VM_DEVICE_ID: Detected VMWARE device -> ", id32);
                     return core::add(brands::VMWARE);
 
                 // Red Hat + QEMU
@@ -6237,42 +6333,50 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 case 0x1b360005: case 0x1b360008: case 0x1b360009: case 0x1b36000b:
                 case 0x1b36000c: case 0x1b36000d: case 0x1b360010: case 0x1b360011:
                 case 0x1b360013: case 0x1b360100:
+                    debug("PCI_VM_DEVICE_ID: Detected Red Hat + QEMU device -> ", id32);
                     return core::add(brands::QEMU);
 
                 // QEMU
                 case 0x06270001: case 0x1d1d1f1f: case 0x80865845: case 0x1d6b0200:
+                    debug("PCI_VM_DEVICE_ID: Detected QEMU device -> ", id32);
                     return core::add(brands::QEMU);
 
                 // vGPUs (NVIDIA + others)
                 case 0x10de0fe7: case 0x10de0ff7: case 0x10de118d: case 0x10de11b0:
                 case 0x1ec6020f:
+                    debug("PCI_VM_DEVICE_ID: Detected virtual gpu device -> ", id32);
                     return true;
 
                 // VirtualBox
                 case 0x80ee0021: case 0x80ee0022: case 0x80eebeef: case 0x80eecafe:
+                    debug("PCI_VM_DEVICE_ID: Detected VirtualBox device -> ", id32);
                     return core::add(brands::VBOX);
 
                 // Hyper-V
                 case 0x1f3f9002: case 0x1f3f9004: case 0x1f3f9009:
                 case 0x808637d9: case 0x14145353:
                     if (util::hyper_x() == HYPERV_ARTIFACT_VM) continue;
+                    debug("PCI_VM_DEVICE_ID: Detected Hyper-V device -> ", id32);
                     return core::add(brands::HYPERV);
 
                 // Parallels
                 case 0x1ab84000: case 0x1ab84005: case 0x1ab84006:
+                    debug("PCI_VM_DEVICE_ID: Detected Parallels device -> ", id32);
                     return core::add(brands::PARALLELS);
 
                 // Xen
                 case 0x5853c000: case 0xfffd0101: case 0x5853c147:
                 case 0x5853c110: case 0x5853c200: case 0x58530001:
+                    debug("PCI_VM_DEVICE_ID: Detected Xen device -> ", id32);
                     return core::add(brands::XEN);
 
                 // Connectix (VirtualPC)
                 case 0x29556e61:
+                    debug("PCI_VM_DEVICE_ID: Detected VirtualPC device -> ", id32);
                     return core::add(brands::VPC);
             }
 
-                // Full 64-bit vendor:device identifiers
+            // Devices with 32 bit device ids
             switch (id64) {
                 case 0x0000000011061100ULL:
                 case 0x000000001af41100ULL:
@@ -6283,13 +6387,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 case 0x0000000010131100ULL:
                 case 0x00000000106b1100ULL:
                 case 0x0000000010221100ULL:
+                    debug("PCI_VM_DEVICE_ID: Detected QEMU device -> ", id64);
                     return core::add(brands::QEMU);
-
+    
                 case 0x0000000015ad0800ULL:  // Hypervisor ROM Interface
+                    debug("PCI_VM_DEVICE_ID: Detected Hypervisor ROM interface -> ", id64);
                     return core::add(brands::VMWARE);
             }
         }
-
+        
         return false;
     }
 
@@ -6297,15 +6403,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for any VM processes that are active
      * @category Windows, Linux
-     * @implements VM::VM_PROCESSES
+     * @implements VM::PROCESSES
      */
-    [[nodiscard]] static bool vm_processes() {
+    [[nodiscard]] static bool processes() {
         #if (WINDOWS)
             using QSI_t = NTSTATUS(__stdcall*)(SYSTEM_INFORMATION_CLASS, PVOID, ULONG, PULONG);
             static QSI_t NtQSI = nullptr;
 
             if (!NtQSI) {
-                HMODULE ntdll = ::GetModuleHandleW(L"ntdll.dll");
+                const HMODULE ntdll = ::GetModuleHandle(_T("ntdll.dll"));
                 if (!ntdll) return false;
                 const char* fn = "NtQuerySystemInformation";
                 void* addr = nullptr;
@@ -6338,25 +6444,25 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 USHORT        len;
                 const char* brandName;
             } tbl[] = {
-                    { L"joeboxserver.exe",   18, brands::JOEBOX },
-                    { L"joeboxcontrol.exe",  17, brands::JOEBOX },
-                    { L"prl_cc.exe",          10, brands::PARALLELS },
-                    { L"prl_tools.exe",       12, brands::PARALLELS },
-                    { L"vboxservice.exe",     14, brands::VBOX },
-                    { L"vboxtray.exe",        11, brands::VBOX },
-                    { L"VBoxControl.exe",     14, brands::VBOX },
-                    { L"vmsrvc.exe",          10, brands::VPC },
-                    { L"vmusrvc.exe",         10, brands::VPC },
-                    { L"xenservice.exe",      13, brands::XEN },
-                    { L"xsvc_depriv.exe",     14, brands::XEN },
-                    { L"vm3dservice.exe",     14, brands::VMWARE },
-                    { L"VGAuthService.exe",   16, brands::VMWARE },
-                    { L"vmtoolsd.exe",        11, brands::VMWARE },
-                    { L"vdagent.exe",         10, brands::QEMU },
-                    { L"vdservice.exe",       11, brands::QEMU },
-                    { L"qemuwmi.exe",         10, brands::QEMU },
-                    { L"looking-glass-host.exe", 21, brands::HYPERVISOR_PHANTOM },
-                    { L"VDDSysTray.exe",      13, brands::HYPERVISOR_PHANTOM },
+                { L"joeboxserver.exe",   18, brands::JOEBOX },
+                { L"joeboxcontrol.exe",  17, brands::JOEBOX },
+                { L"prl_cc.exe",          10, brands::PARALLELS },
+                { L"prl_tools.exe",       12, brands::PARALLELS },
+                { L"vboxservice.exe",     14, brands::VBOX },
+                { L"vboxtray.exe",        11, brands::VBOX },
+                { L"VBoxControl.exe",     14, brands::VBOX },
+                { L"vmsrvc.exe",          10, brands::VPC },
+                { L"vmusrvc.exe",         10, brands::VPC },
+                { L"xenservice.exe",      13, brands::XEN },
+                { L"xsvc_depriv.exe",     14, brands::XEN },
+                { L"vm3dservice.exe",     14, brands::VMWARE },
+                { L"VGAuthService.exe",   16, brands::VMWARE },
+                { L"vmtoolsd.exe",        11, brands::VMWARE },
+                { L"vdagent.exe",         10, brands::QEMU },
+                { L"vdservice.exe",       11, brands::QEMU },
+                { L"qemuwmi.exe",         10, brands::QEMU },
+                { L"looking-glass-host.exe", 21, brands::HYPERVISOR_PHANTOM },
+                { L"VDDSysTray.exe",      13, brands::HYPERVISOR_PHANTOM },
             };
 
             const PBYTE end = buf + bufSize;
@@ -6371,6 +6477,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                         if (wlen == row.len
                             && memcmp(w, row.name, wlen * sizeof(WCHAR)) == 0)
                         {
+                            debug("PROCESSES: Detected ", row.name);
                             return core::add(row.brandName);
                         }
                     }
@@ -6384,7 +6491,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         #elif (LINUX)
             if (util::is_proc_running("qemu_ga")) {
-                debug("VM_PROCESSES: Detected QEMU guest agent process.");
+                debug("PROCESSES: Detected QEMU guest agent process.");
                 return core::add(brands::QEMU);
             }
 
@@ -6633,9 +6740,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Windows
      * @implements VM::DLL
      */
-    [[nodiscard]] static bool dll_check() {
+    [[nodiscard]] static bool dll() {
         static constexpr struct {
-            const char* dll_name;  
+            const char* dll_name;
             const char* brand;
         } dlls[] = {
             {"sbiedll.dll",   brands::SANDBOXIE},
@@ -6662,66 +6769,64 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for VM-specific registry values
      * @category Windows
-     * @implements VM::REGISTRY
+     * @implements VM::REGISTRY_KEYS
      */
-    [[nodiscard]] static bool registry_key() {
+    [[nodiscard]] static bool registry_keys() {
         struct Entry { const char* brand; const char* regkey; };
         static constexpr Entry entries[] = {
             { nullptr, "HKLM\\Software\\Classes\\Folder\\shell\\sandbox" },
-
-            { brands::PARALLELS, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_1AB8*" },
-
+            
             { brands::SANDBOXIE,  "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Sandboxie" },
-
-            { brands::VBOX, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_80EE*" },
-            { brands::VBOX, "HKLM\\HARDWARE\\ACPI\\DSDT\\VBOX__" },
-            { brands::VBOX, "HKLM\\HARDWARE\\ACPI\\FADT\\VBOX__" },
-            { brands::VBOX, "HKLM\\HARDWARE\\ACPI\\RSDT\\VBOX__" },
-            { brands::VBOX, "HKLM\\SOFTWARE\\Oracle\\VirtualBox Guest Additions" },
-            { brands::VBOX, "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxGuest" },
-            { brands::VBOX, "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxMouse" },
-            { brands::VBOX, "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxService" },
-            { brands::VBOX, "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxSF" },
-            { brands::VBOX, "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxVideo" },
-
+            
+            //{ brands::PARALLELS, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_1AB8*" },
+            //{ brands::VBOX, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_80EE*" },
+            //{ brands::VBOX, "HKLM\\HARDWARE\\ACPI\\DSDT\\VBOX__" },
+            //{ brands::VBOX, "HKLM\\HARDWARE\\ACPI\\FADT\\VBOX__" },
+            //{ brands::VBOX, "HKLM\\HARDWARE\\ACPI\\RSDT\\VBOX__" },
+            //{ brands::VBOX, "HKLM\\SOFTWARE\\Oracle\\VirtualBox Guest Additions" },
+            //{ brands::VBOX, "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxGuest" },
+            //{ brands::VBOX, "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxMouse" },
+            //{ brands::VBOX, "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxService" },
+            //{ brands::VBOX, "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxSF" },
+            //{ brands::VBOX, "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxVideo" },
+            //{ brands::VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_15AD*" },
+            //{ brands::VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Services\\vmmouse" },
+            //{ brands::VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Services\\vmmouse" },
+            //{ brands::VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Services\\vmusbmouse" },
+            //{ brands::VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Enum\\ACPI\\VMW0003" },
+            //{ brands::VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Services\\vmmouse" },
+            //{ brands::VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Services\\vmusbmouse" },
+            //{ brands::XEN, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_5853*" },
+            //{ brands::XEN, "HKLM\\HARDWARE\\ACPI\\DSDT\\xen" },
+            //{ brands::XEN, "HKLM\\HARDWARE\\ACPI\\FADT\\xen" },
+            //{ brands::XEN, "HKLM\\HARDWARE\\ACPI\\RSDT\\xen" },
+            //{ brands::KVM,  "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_1AF4*" },
+            //{ brands::KVM,  "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_1B36*" },
+            
             { brands::VPC, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_5333*" },
             { brands::VPC, "HKLM\\SYSTEM\\ControlSet001\\Services\\vpcbus" },
             { brands::VPC, "HKLM\\SYSTEM\\ControlSet001\\Services\\vpc-s3" },
             { brands::VPC, "HKLM\\SYSTEM\\ControlSet001\\Services\\vpcuhub" },
             { brands::VPC, "HKLM\\SYSTEM\\ControlSet001\\Services\\msvmmouf" },
 
-            { brands::VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_15AD*" },
             { brands::VMWARE, "HKCU\\SOFTWARE\\VMware, Inc.\\VMware Tools" },
             { brands::VMWARE, "HKLM\\SOFTWARE\\VMware, Inc.\\VMware Tools" },
             { brands::VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Services\\vmdebug" },
-            { brands::VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Services\\vmmouse" },
             { brands::VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Services\\VMTools" },
             { brands::VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Services\\VMMEMCTL" },
-            { brands::VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Services\\vmmouse" },
-            { brands::VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Services\\vmusbmouse" },
             { brands::VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\IDE\\CdRomNECVMWar_VMware_IDE_CD*" },
             { brands::VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\IDE\\CdRomNECVMWar_VMware_SATA_CD*" },
             { brands::VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\IDE\\DiskVMware_Virtual_IDE_Hard_Drive*" },
             { brands::VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\IDE\\DiskVMware_Virtual_SATA_Hard_Drive*" },
-            { brands::VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Enum\\ACPI\\VMW0003" },
-            { brands::VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Services\\vmmouse" },
-            { brands::VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Services\\vmusbmouse" },
 
             { brands::WINE,    "HKCU\\SOFTWARE\\Wine" },
             { brands::WINE,    "HKLM\\SOFTWARE\\Wine" },
-
-            { brands::XEN, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_5853*" },
-            { brands::XEN, "HKLM\\HARDWARE\\ACPI\\DSDT\\xen" },
-            { brands::XEN, "HKLM\\HARDWARE\\ACPI\\FADT\\xen" },
-            { brands::XEN, "HKLM\\HARDWARE\\ACPI\\RSDT\\xen" },
             { brands::XEN, "HKLM\\SYSTEM\\ControlSet001\\Services\\xenevtchn" },
             { brands::XEN, "HKLM\\SYSTEM\\ControlSet001\\Services\\xennet" },
             { brands::XEN, "HKLM\\SYSTEM\\ControlSet001\\Services\\xennet6" },
             { brands::XEN, "HKLM\\SYSTEM\\ControlSet001\\Services\\xensvc" },
             { brands::XEN, "HKLM\\SYSTEM\\ControlSet001\\Services\\xenvdb" },
 
-            { brands::KVM,  "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_1AF4*" },
-            { brands::KVM,  "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_1B36*" },
             { brands::KVM,  "HKLM\\SYSTEM\\ControlSet001\\Services\\vioscsi" },
             { brands::KVM,  "HKLM\\SYSTEM\\ControlSet001\\Services\\viostor" },
             { brands::KVM,  "HKLM\\SYSTEM\\ControlSet001\\Services\\VirtIO-FS Service" },
@@ -6756,7 +6861,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 const char* pattern = slash ? slash + 1 : sub;
 
                 HKEY hParent;
-                if (RegOpenKeyExA(hRoot, parent, 0, sam, &hParent) != ERROR_SUCCESS)
+                if (RegOpenKeyExA(hRoot, parent, 0, sam, &hParent) != 0L) // error_success
                     continue;
 
                 DWORD idx = 0;
@@ -6765,7 +6870,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 bool found = false;
 
                 while (RegEnumKeyExA(hParent, idx, name, &nameLen,
-                    nullptr, nullptr, nullptr, nullptr) == ERROR_SUCCESS)
+                    nullptr, nullptr, nullptr, nullptr) == 0L) // error_success
                 {
                     if (PathMatchSpecA(name, pattern)) {
                         found = true;
@@ -6780,19 +6885,18 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
             else {
                 HKEY hKey;
-                if (RegOpenKeyExA(hRoot, sub, 0, sam, &hKey) != ERROR_SUCCESS)
+                if (RegOpenKeyExA(hRoot, sub, 0, sam, &hKey) != 0L) // error_success
                     continue;
                 RegCloseKey(hKey);
             }
 
             score++;
             if (e.brand && e.brand[0]) {
-                debug("REGISTRY: ", "detected ", e.regkey, " for brand ", e.brand);
+                debug("REGISTRY_KEYS: ", "detected ", e.regkey, " for brand ", e.brand);
                 core::add(e.brand);
             }
         }
 
-        debug("REGISTRY: ", "score = ", static_cast<u32>(score));
         return score >= 1;
     }
                 
@@ -6802,7 +6906,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Windows
      * @implements VM::FILES
      */
-    [[nodiscard]] static bool vm_files() {
+    [[nodiscard]] static bool files() {
         PVOID oldValue = nullptr;
         bool wow64RedirectDisabled = false;
 
@@ -6811,7 +6915,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             wow64RedirectDisabled = true;
         }
 
-        // System directory instead of the Windows directory
+        // system directory instead of the Windows directory
         char szSysDir[MAX_PATH] = { 0 };
         if (GetSystemDirectoryA(szSysDir, MAX_PATH) == 0) {
             if (wow64RedirectDisabled) {
@@ -6821,38 +6925,38 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         constexpr std::array<const char*, 12> vmwareFiles = { {
-                "drivers\\Vmmouse.sys",
-                "drivers\\Vmusbmouse.sys",
-                "drivers\\vm3dgl.dll",
-                "drivers\\vmdum.dll",
-                "drivers\\VmGuestLibJava.dll",
-                "drivers\\vm3dver.dll",
-                "drivers\\vmtray.dll",
-                "drivers\\VMToolsHook.dll",
-                "drivers\\vmGuestLib.dll",
-                "drivers\\vmhgfs.dll",
-                "vm3dum64_loader.dll",
-                "vm3dum64_10.dll"
+            "drivers\\Vmmouse.sys",
+            "drivers\\Vmusbmouse.sys",
+            "drivers\\vm3dgl.dll",
+            "drivers\\vmdum.dll",
+            "drivers\\VmGuestLibJava.dll",
+            "drivers\\vm3dver.dll",
+            "drivers\\vmtray.dll",
+            "drivers\\VMToolsHook.dll",
+            "drivers\\vmGuestLib.dll",
+            "drivers\\vmhgfs.dll",
+            "vm3dum64_loader.dll",
+            "vm3dum64_10.dll"
         } };
 
         constexpr std::array<const char*, 17> vboxFiles = { {
-                "drivers\\VBoxMouse.sys",
-                "drivers\\VBoxGuest.sys",
-                "drivers\\VBoxSF.sys",
-                "drivers\\VBoxVideo.sys",
-                "vboxoglpackspu.dll",
-                "vboxoglpassthroughspu.dll",
-                "vboxservice.exe",
-                "vboxoglcrutil.dll",
-                "vboxdisp.dll",
-                "vboxhook.dll",
-                "vboxmrxnp.dll",
-                "vboxogl.dll",
-                "vboxtray.exe",
-                "VBoxControl.exe",
-                "vboxoglerrorspu.dll",
-                "vboxoglfeedbackspu.dll",
-                "vboxoglarrayspu.dll"
+            "drivers\\VBoxMouse.sys",
+            "drivers\\VBoxGuest.sys",
+            "drivers\\VBoxSF.sys",
+            "drivers\\VBoxVideo.sys",
+            "vboxoglpackspu.dll",
+            "vboxoglpassthroughspu.dll",
+            "vboxservice.exe",
+            "vboxoglcrutil.dll",
+            "vboxdisp.dll",
+            "vboxhook.dll",
+            "vboxmrxnp.dll",
+            "vboxogl.dll",
+            "vboxtray.exe",
+            "VBoxControl.exe",
+            "vboxoglerrorspu.dll",
+            "vboxoglfeedbackspu.dll",
+            "vboxoglarrayspu.dll"
         } };
 
         constexpr std::array<const char*, 10> kvmFiles = { {
@@ -6913,7 +7017,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         {
             char basePath[MAX_PATH];
             const char* programDir = nullptr;
-            // If under WoW64, read ProgramW6432; otherwise read ProgramFiles
+            // if under WoW64, read ProgramW6432; otherwise read ProgramFiles
             if (util::is_wow64()) {
                 DWORD len = GetEnvironmentVariableA(
                     /*lpName*/        "ProgramW6432",
@@ -7043,7 +7147,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 &hKey
             );
 
-            if (result == ERROR_SUCCESS) {
+            if (result == 0L) { // error_success
                 RegCloseKey(hKey);
                 return true;
             }
@@ -7055,7 +7159,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
                 
     /**
-     * @brief Check if the function "wine_get_unix_file_name is present and if the OS booted from a VHD container
+     * @brief Check if the function "wine_get_unix_file_name" is present and if the OS booted from a VHD container
      * @category Windows
      * @implements VM::WINE
      */
@@ -7071,6 +7175,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
             }
             __except (EXCEPTION_EXECUTE_HANDLER) {
+                debug("WINE: SEH invoked");
                 return true;
             }
         #endif
@@ -7107,7 +7212,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (!funcs[0])
             return false;
 
-        using NtPI_t = NTSTATUS(NTAPI*)(POWER_INFORMATION_LEVEL,
+        using NtPI_t = NTSTATUS(__stdcall*)(POWER_INFORMATION_LEVEL,
             PVOID, ULONG,
             PVOID, ULONG);
         auto NtPowerInformation = reinterpret_cast<NtPI_t>(funcs[0]);
@@ -7127,7 +7232,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             caps.SystemS4);
         if (no_sleep_states)
         {
-            return (caps.ThermalControl == FALSE);
+            return (caps.ThermalControl == 0);
         }
 
         return false;
@@ -7151,7 +7256,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             KEY_QUERY_VALUE,
             &hKey);
 
-        if (lRes != ERROR_SUCCESS) return false;
+        if (lRes != 0L) return false;
 
         lRes = RegQueryValueEx(hKey, _T("ProductId"),
             nullptr, nullptr,
@@ -7159,7 +7264,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         RegCloseKey(hKey);
 
-        if (lRes != ERROR_SUCCESS) return false;
+        if (lRes != 0L) return false;
 
         struct TargetPattern {
             const char* product_id;
@@ -7178,6 +7283,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         for (const auto& target : targets) {
             if (memcmp(buffer, target.product_id, target_len) == 0) {
+                debug("GAMARUE: Detected ", target.product_id);
                 return core::add(target.brand);
             }
         }
@@ -7189,10 +7295,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check HKLM registries for specific VM strings
      * @category Windows
-     * @implements VM::HKLM_REGISTRIES
+     * @implements VM::REGISTRY_VALUES
      */
-    [[nodiscard]] static bool hklm_registries() {
-        u8 count = 0;
+    [[nodiscard]] static bool registry_values() {
         std::unordered_set<std::string> failedKeys;
 
         struct RegCheck {
@@ -7202,52 +7307,57 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             const char* compString;
         };
         static const std::vector<RegCheck> checks = {
-            { brands::BOCHS,    "HARDWARE\\Description\\System",                                                      "SystemBiosVersion",       "BOCHS" },
-            { brands::BOCHS,    "HARDWARE\\Description\\System",                                                      "VideoBiosVersion",        "BOCHS" },
-
+            
             { brands::ANUBIS,   "SOFTWARE\\Microsoft\\Windows\\CurrentVersion",                                      "ProductID",               "76487-337-8429955-22614" },
             { brands::ANUBIS,   "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion",                                 "ProductID",               "76487-337-8429955-22614" },
-
+            
             { brands::CWSANDBOX,"SOFTWARE\\Microsoft\\Windows\\CurrentVersion",                                      "ProductID",               "76487-644-3177037-23510" },
             { brands::CWSANDBOX,"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion",                                 "ProductID",               "76487-644-3177037-23510" },
-
+            
             { brands::JOEBOX,   "SOFTWARE\\Microsoft\\Windows\\CurrentVersion",                                      "ProductID",               "55274-640-2673064-23950" },
             { brands::JOEBOX,   "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion",                                 "ProductID",               "55274-640-2673064-23950" },
 
-            { brands::PARALLELS,"HARDWARE\\Description\\System",                                                      "SystemBiosVersion",       "PARALLELS" },
-            { brands::PARALLELS,"HARDWARE\\Description\\System",                                                      "VideoBiosVersion",        "PARALLELS" },
-
+            //{ brands::PARALLELS,"HARDWARE\\Description\\System",                                                      "SystemBiosVersion",       "PARALLELS" },
+            //{ brands::PARALLELS,"HARDWARE\\Description\\System",                                                      "VideoBiosVersion",        "PARALLELS" },
+            //{ brands::QEMU,     "HARDWARE\\Description\\System\\BIOS",                                            "SystemManufacturer",     "QEMU" },
+            //{ brands::QEMU,     "HARDWARE\\Description\\System",                                                      "VideoBiosVersion",        "QEMU" },
+            //{ brands::QEMU,     "HARDWARE\\Description\\System",                                                      "SystemBiosVersion",       "QEMU" },
+            //{ brands::BOCHS,    "HARDWARE\\Description\\System",                                                      "SystemBiosVersion",       "BOCHS" },
+            //{ brands::BOCHS,    "HARDWARE\\Description\\System",                                                      "VideoBiosVersion",        "BOCHS" },
+            //{ brands::VBOX,     "HARDWARE\\Description\\System",                                                      "SystemBiosVersion",       "VBOX" },
+            //{ brands::VBOX,     "HARDWARE\\DESCRIPTION\\System",                                                      "SystemBiosDate",          "06/23/99" },
+            //{ brands::VBOX,     "HARDWARE\\Description\\System",                                                      "VideoBiosVersion",        "VIRTUALBOX" },
+            //{ brands::VBOX,     "HARDWARE\\Description\\System\\BIOS",                                            "SystemProductName",      "VIRTUAL" },
+            //{ brands::VBOX,     "SYSTEM\\ControlSet001\\Services\\Disk\\Enum",                                    "DeviceDesc",             "VBOX" },
+            //{ brands::VBOX,     "SYSTEM\\ControlSet001\\Services\\Disk\\Enum",                                    "FriendlyName",           "VBOX" },
+            //{ brands::VBOX,     "SYSTEM\\ControlSet002\\Services\\Disk\\Enum",                                    "DeviceDesc",             "VBOX" },
+            //{ brands::VBOX,     "SYSTEM\\ControlSet002\\Services\\Disk\\Enum",                                    "FriendlyName",           "VBOX" },
+            //{ brands::VBOX,     "SYSTEM\\ControlSet003\\Services\\Disk\\Enum",                                    "DeviceDesc",             "VBOX" },
+            //{ brands::VBOX,     "SYSTEM\\ControlSet003\\Services\\Disk\\Enum",                                    "FriendlyName",           "VBOX" },
+            //{ brands::VBOX,     "SYSTEM\\CurrentControlSet\\Control\\SystemInformation",                              "SystemProductName",      "VIRTUAL" },
+            //{ brands::VBOX,     "SYSTEM\\CurrentControlSet\\Control\\SystemInformation",                              "SystemProductName",      "VIRTUALBOX" },
+            //{ brands::VMWARE,   "HARDWARE\\Description\\System",                                                      "SystemBiosVersion",       "VMWARE" },
+            //{ brands::VMWARE,   "HARDWARE\\Description\\System",                                                      "SystemBiosVersion",       "INTEL - 6040000" },
+            //{ brands::VMWARE,   "HARDWARE\\Description\\System",                                                      "VideoBiosVersion",        "VMWARE" },
+            //{ brands::VMWARE,   "HARDWARE\\Description\\System\\BIOS",                                            "SystemProductName",      "VMware" },
+            //{ brands::VMWARE,   "HARDWARE\\Description\\System\\BIOS",                                            "SystemManufacturer",     "VMware, Inc." },
+            //{ brands::VMWARE,   "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall",                        "DisplayName",            "vmware tools" },
+            //{ brands::VMWARE,   "SYSTEM\\CurrentControlSet\\Control\\SystemInformation",                              "SystemProductName",      "VMWARE" },
+            //{ brands::VMWARE,   "SYSTEM\\CurrentControlSet\\Services\\Disk\\Enum",                                    "0",                       "VMWare" },
+            //{ brands::VMWARE,   "HARDWARE\\ACPI\\DSDT\\PTLTD_\\CUSTOM__\\00000000",                           "00000000",               "VMWARE" },
+            //{ brands::XEN,      "HARDWARE\\Description\\System\\BIOS",                                              "SystemProductName",      "Xen" },
+            
             { brands::QEMU,     "HARDWARE\\DEVICEMAP\\Scsi\\Scsi Port 0\\Scsi Bus 0\\Target Id 0\\Logical Unit Id 0", "Identifier",           "QEMU" },
             { brands::QEMU,     "HARDWARE\\DEVICEMAP\\Scsi\\Scsi Port 1\\Scsi Bus 0\\Target Id 0\\Logical Unit Id 0", "Identifier",           "QEMU" },
             { brands::QEMU,     "HARDWARE\\DEVICEMAP\\Scsi\\Scsi Port 2\\Scsi Bus 0\\Target Id 0\\Logical Unit Id 0", "Identifier",           "QEMU" },
-            { brands::QEMU,     "HARDWARE\\Description\\System",                                                      "SystemBiosVersion",       "QEMU" },
-            { brands::QEMU,     "HARDWARE\\Description\\System",                                                      "VideoBiosVersion",        "QEMU" },
-            { brands::QEMU,     "HARDWARE\\Description\\System\\BIOS",                                            "SystemManufacturer",     "QEMU" },
 
             { brands::VBOX,     "HARDWARE\\DEVICEMAP\\Scsi\\Scsi Port 0\\Scsi Bus 0\\Target Id 0\\Logical Unit Id 0", "Identifier",           "VBOX" },
             { brands::VBOX,     "HARDWARE\\DEVICEMAP\\Scsi\\Scsi Port 1\\Scsi Bus 0\\Target Id 0\\Logical Unit Id 0", "Identifier",           "VBOX" },
             { brands::VBOX,     "HARDWARE\\DEVICEMAP\\Scsi\\Scsi Port 2\\Scsi Bus 0\\Target Id 0\\Logical Unit Id 0", "Identifier",           "VBOX" },
-            { brands::VBOX,     "HARDWARE\\Description\\System",                                                      "SystemBiosVersion",       "VBOX" },
-            { brands::VBOX,     "HARDWARE\\DESCRIPTION\\System",                                                      "SystemBiosDate",          "06/23/99" },
-            { brands::VBOX,     "HARDWARE\\Description\\System",                                                      "VideoBiosVersion",        "VIRTUALBOX" },
-            { brands::VBOX,     "HARDWARE\\Description\\System\\BIOS",                                            "SystemProductName",      "VIRTUAL" },
-            { brands::VBOX,     "SYSTEM\\ControlSet001\\Services\\Disk\\Enum",                                    "DeviceDesc",             "VBOX" },
-            { brands::VBOX,     "SYSTEM\\ControlSet001\\Services\\Disk\\Enum",                                    "FriendlyName",           "VBOX" },
-            { brands::VBOX,     "SYSTEM\\ControlSet002\\Services\\Disk\\Enum",                                    "DeviceDesc",             "VBOX" },
-            { brands::VBOX,     "SYSTEM\\ControlSet002\\Services\\Disk\\Enum",                                    "FriendlyName",           "VBOX" },
-            { brands::VBOX,     "SYSTEM\\ControlSet003\\Services\\Disk\\Enum",                                    "DeviceDesc",             "VBOX" },
-            { brands::VBOX,     "SYSTEM\\ControlSet003\\Services\\Disk\\Enum",                                    "FriendlyName",           "VBOX" },
-            { brands::VBOX,     "SYSTEM\\CurrentControlSet\\Control\\SystemInformation",                              "SystemProductName",      "VIRTUAL" },
-            { brands::VBOX,     "SYSTEM\\CurrentControlSet\\Control\\SystemInformation",                              "SystemProductName",      "VIRTUALBOX" },
 
             { brands::VMWARE,   "HARDWARE\\DEVICEMAP\\Scsi\\Scsi Port 0\\Scsi Bus 0\\Target Id 0\\Logical Unit Id 0", "Identifier",           "VMWARE" },
             { brands::VMWARE,   "HARDWARE\\DEVICEMAP\\Scsi\\Scsi Port 1\\Scsi Bus 0\\Target Id 0\\Logical Unit Id 0", "Identifier",           "VMWARE" },
             { brands::VMWARE,   "HARDWARE\\DEVICEMAP\\Scsi\\Scsi Port 2\\Scsi Bus 0\\Target Id 0\\Logical Unit Id 0", "Identifier",           "VMWARE" },
-            { brands::VMWARE,   "HARDWARE\\Description\\System",                                                      "SystemBiosVersion",       "VMWARE" },
-            { brands::VMWARE,   "HARDWARE\\Description\\System",                                                      "SystemBiosVersion",       "INTEL - 6040000" },
-            { brands::VMWARE,   "HARDWARE\\Description\\System",                                                      "VideoBiosVersion",        "VMWARE" },
-            { brands::VMWARE,   "HARDWARE\\Description\\System\\BIOS",                                            "SystemProductName",      "VMware" },
-            { brands::VMWARE,   "HARDWARE\\Description\\System\\BIOS",                                            "SystemManufacturer",     "VMware, Inc." },
             { brands::VMWARE,   "SYSTEM\\ControlSet001\\Services\\Disk\\Enum",                                    "0",                       "VMware" },
             { brands::VMWARE,   "SYSTEM\\ControlSet001\\Services\\Disk\\Enum",                                    "1",                       "VMware" },
             { brands::VMWARE,   "SYSTEM\\ControlSet001\\Services\\Disk\\Enum",                                    "DeviceDesc",             "VMware" },
@@ -7256,20 +7366,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             { brands::VMWARE,   "SYSTEM\\ControlSet002\\Services\\Disk\\Enum",                                    "FriendlyName",           "VMware" },
             { brands::VMWARE,   "SYSTEM\\ControlSet003\\Services\\Disk\\Enum",                                    "DeviceDesc",             "VMware" },
             { brands::VMWARE,   "SYSTEM\\ControlSet003\\Services\\Disk\\Enum",                                    "FriendlyName",           "VMware" },
-            { brands::VMWARE,   "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall",                        "DisplayName",            "vmware tools" },
             { brands::VMWARE,   "SYSTEM\\ControlSet001\\Control\\Class\\{4D36E968-E325-11CE-BFC1-08002BE10318}\\0000", "CoInstallers32",        "*vmx*" },
             { brands::VMWARE,   "SYSTEM\\ControlSet001\\Control\\Class\\{4D36E968-E325-11CE-BFC1-08002BE10318}\\0000", "DriverDesc",            "VMware*" },
             { brands::VMWARE,   "SYSTEM\\ControlSet001\\Control\\Class\\{4D36E968-E325-11CE-BFC1-08002BE10318}\\0000", "InfSection",            "vmx*" },
             { brands::VMWARE,   "SYSTEM\\ControlSet001\\Control\\Class\\{4D36E968-E325-11CE-BFC1-08002BE10318}\\0000", "ProviderName",          "VMware*" },
             { brands::VMWARE,   "SYSTEM\\ControlSet001\\Control\\Class\\{4D36E968-E325-11CE-BFC1-08002BE10318}\\0000\\Settings", "Device Description",  "VMware*" },
-            { brands::VMWARE,   "SYSTEM\\CurrentControlSet\\Control\\SystemInformation",                              "SystemProductName",      "VMWARE" },
             { brands::VMWARE,   "SYSTEM\\CurrentControlSet\\Control\\Video\\{GUID}\\Video",                        "Service",                "vm3dmp" },
             { brands::VMWARE,   "SYSTEM\\CurrentControlSet\\Control\\Video\\{GUID}\\Video",                        "Service",                "vmx_svga" },
             { brands::VMWARE,   "SYSTEM\\CurrentControlSet\\Control\\Video\\{GUID}\\0000",                       "Device Description",    "VMware SVGA*" },
-            { brands::VMWARE,   "SYSTEM\\CurrentControlSet\\Services\\Disk\\Enum",                                    "0",                       "VMWare" },
-            { brands::VMWARE,   "HARDWARE\\ACPI\\DSDT\\PTLTD_\\CUSTOM__\\00000000",                           "00000000",               "VMWARE" },
 
-            { brands::XEN,      "HARDWARE\\Description\\System\\BIOS",                                              "SystemProductName",      "Xen" },
         };
 
         std::unordered_map<std::string, std::vector<const RegCheck*>> grouped;
@@ -7288,7 +7393,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             if (failedKeys.count(subKey)) continue;
 
             HKEY hKey;
-            if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, subKey.c_str(), 0, KEY_READ | KEY_WOW64_64KEY, &hKey) != ERROR_SUCCESS) {
+            if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, subKey.c_str(), 0, KEY_READ | KEY_WOW64_64KEY, &hKey) != 0L) {
                 failedKeys.insert(subKey);
                 continue;
             }
@@ -7299,13 +7404,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 DWORD bufferSize = sizeof(buffer);
 
                 if (RegQueryValueExA(hKey, chk->valueName, nullptr, &dwType,
-                    reinterpret_cast<LPBYTE>(buffer), &bufferSize) == ERROR_SUCCESS) {
+                    reinterpret_cast<LPBYTE>(buffer), &bufferSize) == 0L) {
                     if (dwType == REG_SZ || dwType == REG_EXPAND_SZ || dwType == REG_MULTI_SZ) {
                         buffer[bufferSize ? bufferSize - 1 : 0] = '\0';
                         if (strstr(buffer, chk->compString) != nullptr) {
-                            debug("HKLM_REGISTRIES: Found ", chk->compString, " in ", subKey.c_str(), " for brand ", chk->brand);
-                            core::add(chk->brand);
-                            ++count;
+                            debug("REGISTRY_VALUES: Found ", chk->compString, " in ", subKey.c_str(), " for brand ", chk->brand);
+                            RegCloseKey(hKey);
+                            return core::add(chk->brand);
                         }
                     }
                 }
@@ -7314,7 +7419,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             RegCloseKey(hKey);
         }
 
-        return (count > 0);
+        return false;
     }
 
 
@@ -7638,14 +7743,17 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             supMutexExist("Sandboxie_SingleInstanceMutex_Control") ||
             supMutexExist("SBIE_BOXED_ServiceInitComplete_Mutex1")
         ) {
+            debug("MUTEX: Detected Sandboxie");
             return core::add(brands::SANDBOXIE);
         }
 
         if (supMutexExist("MicrosoftVirtualPC7UserServiceMakeSureWe'reTheOnlyOneMutex")) {
+            debug("MUTEX: Detected VPC");
             return core::add(brands::VPC);
         }
 
         if (supMutexExist("Frz_State")) { // DeepFreeze
+            debug("MUTEX: Detected DeepFreeze");
             return true;
         }
 
@@ -7701,13 +7809,36 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check for pre-set screen resolutions commonly found in VMs
+     * @brief Check for display configurations related to VMs
      * @category Windows
      * @note Idea from Thomas Roccia (fr0gger)
      * @link https://unprotect.it/technique/checking-screen-resolution/
-     * @implements VM::SCREEN_RESOLUTION
+     * @implements VM::DISPLAY
      */
-    [[nodiscard]] static bool screen_resolution() {
+    [[nodiscard]] static bool display() {
+        const HDC hdc = GetDC(nullptr);
+        const int bpp = GetDeviceCaps(hdc, BITSPIXEL) *
+            GetDeviceCaps(hdc, PLANES);
+        const int logpix = GetDeviceCaps(hdc, LOGPIXELSX);
+        ReleaseDC(nullptr, hdc);
+
+        // physical monitors are almost always 32bpp and 96–144 DPI
+        if (bpp != 32 || logpix < 90 || logpix > 200)
+            return true;
+
+        UINT32 pathCount = 0, modeCount = 0;
+        if (QueryDisplayConfig(QDC_ONLY_ACTIVE_PATHS,
+            &pathCount, nullptr,
+            &modeCount, nullptr,
+            nullptr) != ERROR_SUCCESS)
+            return false;
+
+        if ((pathCount <= 1) || (pathCount != modeCount)) {
+            debug("DISPLAY: Path count: ", pathCount);
+            debug("DISPLAY: Mode count: ", modeCount);
+            return true;
+        }
+        
         RECT desktop;
         const HWND hDesktop = GetDesktopWindow();
         if (!GetWindowRect(hDesktop, &desktop)) {
@@ -7717,7 +7848,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const i16 horiz = static_cast<i16>(desktop.right);
         const i16 verti = static_cast<i16>(desktop.bottom);
 
-        debug("SCREEN_RESOLUTION: horizontal = ", horiz, ", vertical = ", verti);
+        debug("DISPLAY: horizontal = ", horiz, ", vertical = ", verti);
 
         return (horiz == 1024 && verti == 768) ||
             (horiz == 800 && verti == 600) ||
@@ -7748,9 +7879,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for VM-specific names for drivers
      * @category Windows
      * @author Requiem (https://github.com/NotRequiem)
-     * @implements VM::DRIVER_NAMES
+     * @implements VM::DRIVERS
      */
-    [[nodiscard]] static bool driver_names() {
+    [[nodiscard]] static bool drivers() {
         typedef struct _SYSTEM_MODULE_INFORMATION {
             PVOID  Reserved[2];
             PVOID  ImageBaseAddress;
@@ -7782,16 +7913,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             PSIZE_T RegionSize,
             ULONG AllocationType,
             ULONG Protect
-            );
+        );
 
         typedef NTSTATUS(__stdcall* NtFreeVirtualMemoryFn)(
             HANDLE ProcessHandle,
             PVOID* BaseAddress,
             PSIZE_T RegionSize,
             ULONG FreeType
-            );
+        );
 
-        #define STATUS_INFO_LENGTH_MISMATCH      ((NTSTATUS)0xC0000004L)
 
         constexpr ULONG SystemModuleInformation = 11;
         const HMODULE hModule = GetModuleHandle(_T("ntdll.dll"));
@@ -7811,7 +7941,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         
         ULONG ulSize = 0;
         NTSTATUS status = ntQuerySystemInformation(SystemModuleInformation, nullptr, 0, &ulSize);
-        if (status != STATUS_INFO_LENGTH_MISMATCH) return false;
+        if (status != ((NTSTATUS)0xC0000004L))) return false;
 
         const HANDLE hProcess = GetCurrentProcess();
         PVOID allocatedMemory = nullptr;
@@ -7820,7 +7950,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         auto pSystemModuleInfoEx = reinterpret_cast<PSYSTEM_MODULE_INFORMATION_EX>(allocatedMemory);
         status = ntQuerySystemInformation(SystemModuleInformation, pSystemModuleInfoEx, ulSize, &ulSize);
-        if (!NT_SUCCESS(status)) {
+        if (!(((NTSTATUS)(status)) >= 0)) {
             ntFreeVirtualMemory(hProcess, &allocatedMemory, &regionSize, MEM_RELEASE);
             return false;
         }
@@ -7831,8 +7961,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 strstr(driverPath, "VBoxGuest") ||
                 strstr(driverPath, "VBoxMouse") ||
                 strstr(driverPath, "VBoxSF")
-                ) {
-                debug("DRIVER_NAMES: Detected VBox driver: ", driverPath);
+            ) {
+                debug("DRIVERS: Detected VBox driver: ", driverPath);
                 ntFreeVirtualMemory(hProcess, &allocatedMemory, &regionSize, MEM_RELEASE);
                 return core::add(brands::VBOX);
             }
@@ -7841,8 +7971,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 strstr(driverPath, "vmusbmouse") ||
                 strstr(driverPath, "vmmouse") ||
                 strstr(driverPath, "vmmemctl")
-                ) {
-                debug("DRIVER_NAMES: Detected VMware driver: ", driverPath);
+            ) {
+                debug("DRIVERS: Detected VMware driver: ", driverPath);
                 ntFreeVirtualMemory(hProcess, &allocatedMemory, &regionSize, MEM_RELEASE);
                 return core::add(brands::VMWARE);
             }
@@ -7970,6 +8100,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 upperSerial[copyLen] = '\0';
 
                 if (is_qemu_serial(upperSerial, static_cast<u8>(copyLen))) {
+                    debug("DISK_SERIAL: Detected QEMU");
                     result = core::add(brands::QEMU);
                     if (buffer != stackBuf) LocalFree(buffer);
                     CloseHandle(hDevice);
@@ -7977,6 +8108,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
 
                 if (is_vbox_serial(upperSerial, static_cast<u8>(copyLen))) {
+                    debug("DISK_SERIAL: Detected VBOX");
                     result = core::add(brands::VBOX);
                     if (buffer != stackBuf) LocalFree(buffer);
                     CloseHandle(hDevice);
@@ -8139,32 +8271,32 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::GPU_CAPABILITIES
      */
     [[nodiscard]] static bool gpu_capabilities() {
-        using Microsoft::WRL::ComPtr;
+        Microsoft::WRL::ComPtr<IDirect3D9> d3d9{ 
+            Direct3DCreate9(D3D_SDK_VERSION) 
+        };
 
-        ComPtr<IDirect3D9> d3d9{ Direct3DCreate9(D3D_SDK_VERSION) };
         if (!d3d9) {
             debug("GPU_CAPABILITIES: Direct3DCreate9 failed");
             return true;
         }
 
-        D3DCAPS9 caps{};
-        HRESULT hr = d3d9->GetDeviceCaps(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, &caps);
-        if (FAILED(hr)) {
-            debug("GPU_CAPABILITIES: GetDeviceCaps failed (HRESULT = 0x%08X)", static_cast<unsigned>(hr));
+        D3DCAPS9 caps;
+        if (FAILED(d3d9->GetDeviceCaps(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, &caps))) {
+            debug("GPU_CAPABILITIES: GetDeviceCaps failed");
             return false;
         }
 
         // if the driver cannot adjust the display gamma ramp dynamically—but only in full‑screen mode—via the IDirect3DDevice9::SetGammaRamp API
-        return (caps.Caps2 & D3DCAPS2_FULLSCREENGAMMA) == 0;
+        return !(caps.Caps2 & D3DCAPS2_FULLSCREENGAMMA);
     }
 
 
     /**
      * @brief Check for vm-specific devices
      * @category Windows
-     * @implements VM::VM_DEVICES
+     * @implements VM::DEVICE_HANDLES
      */
-    [[nodiscard]] static bool vm_devices() {
+    [[nodiscard]] static bool device_handles() {
         const HANDLE handle1 = CreateFile(_T("\\\\.\\VBoxMiniRdrDN"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
         const HANDLE handle2 = CreateFile(_T("\\\\.\\pipe\\VBoxMiniRdDN"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
         const HANDLE handle3 = CreateFile(_T("\\\\.\\VBoxTrayIPC"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
@@ -8179,7 +8311,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             (handle2 != INVALID_HANDLE_VALUE) ||
             (handle3 != INVALID_HANDLE_VALUE) ||
             (handle4 != INVALID_HANDLE_VALUE)
-            ) {
+        ) {
             vbox = true;
         }
 
@@ -8189,18 +8321,19 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         CloseHandle(handle4);
 
         if (vbox) {
-            debug("VM_DEVICES: Detected VBox related device handles");
+            debug("DEVICE_HANDLES: Detected VBox related device handles");
             return core::add(brands::VBOX);
         }
 
         if (handle5 != INVALID_HANDLE_VALUE) {
             CloseHandle(handle5);
-            debug("VM_DEVICES: Detected VMware related device (HGFS)");
+            debug("DEVICE_HANDLES: Detected VMware related device (HGFS)");
             return core::add(brands::VMWARE);
         }
+
         if (handle6 != INVALID_HANDLE_VALUE) {
             CloseHandle(handle6);
-            debug("VM_DEVICES: Detected Cuckoo related device (pipe)");
+            debug("DEVICE_HANDLES: Detected Cuckoo related device (pipe)");
             return core::add(brands::CUCKOO);
         }
 
@@ -8214,7 +8347,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for number of logical processors
      * @category Windows
-     * @implements VM::PROCESSOR_NUMBER
+     * @implements VM::LOGICAL_PROCESSORS
      */
     [[nodiscard]] static bool logical_processors() {
     #if (x86_32)
@@ -8234,7 +8367,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for number of physical cores
      * @category Windows
-     * @implements VM::NUMBER_OF_CORES
+     * @implements VM::PHYSICAL_PROCESSORS
      */
     [[nodiscard]] static bool physical_processors() {
         DWORD size = 0;
@@ -8363,9 +8496,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for system pools allocated by hypervisors
      * @category Windows
-     * @implements VM::BAD_POOLS
+     * @implements VM::POOLS
      */
-    [[nodiscard]] static bool bad_pools() {
+    [[nodiscard]] static bool pools() {
     #pragma warning (disable : 4459) 
         typedef enum _SYSTEM_INFORMATION_CLASS
         {
@@ -8609,12 +8742,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (NtQuerySystemInformation)
             nt_status = NtQuerySystemInformation(SystemPoolTagInformation, nullptr, 0, &ret_length);
         
-        while (nt_status == STATUS_INFO_LENGTH_MISMATCH) {
+        while (nt_status == ((NTSTATUS)0xC0000004L)) {
             buffer_pool_info.resize(ret_length);
             nt_status = NtQuerySystemInformation(SystemPoolTagInformation, buffer_pool_info.data(), ret_length, &ret_length);
         }
     
-        if (!NT_SUCCESS(nt_status))
+        if (!(((NTSTATUS)(nt_status)) >= 0))
             return false;
     
         auto info = reinterpret_cast<PSYSTEM_POOLTAG_INFORMATION>(buffer_pool_info.data());
@@ -8636,7 +8769,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 case 0x4C424D56: // VMBL
                 case 0x4D444256: // VBDM
                 case 0x41474256: // VBGA
-                    debug("Bad Pools: Detected bad pool tag: 0x",
+                    debug("POOLS: Detected bad pool tag: 0x",
                         std::hex, tag, std::dec);
                     ++badCount;
                     break;
@@ -8716,14 +8849,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     
         HANDLE hKey = nullptr;
         NTSTATUS status = NtOpenKey(&hKey, KEY_READ, &objAttr);
-        if (!NT_SUCCESS(status))
+        if (!(((NTSTATUS)(status)) >= 0))
             return false;
     
         alignas(16) BYTE buffer[1024]{};
         ULONG returnedLength = 0;
         status = NtQueryObject(hKey, ObjectNameInformation, buffer, sizeof(buffer), &returnedLength);
         CloseHandle(hKey);
-        if (!NT_SUCCESS(status))
+        if (!(((NTSTATUS)(status)) >= 0))
             return false;
     
         auto pObjectName = reinterpret_cast<POBJECT_NAME_INFORMATION>(buffer);
@@ -8745,17 +8878,17 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Windows
      * @implements VM::AUDIO
      */
-    [[nodiscard]] static bool check_audio() {
+    [[nodiscard]] static bool audio() {
         HKEY hKey = nullptr;
         const LONG err = RegOpenKeyEx(
             HKEY_LOCAL_MACHINE,
-            TEXT("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\MMDevices\\Audio\\Render"),  // Use TEXT macro
+            TEXT("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\MMDevices\\Audio\\Render"),
             0,
             KEY_READ | KEY_WOW64_64KEY,
             &hKey
         );
-    
-        if (err != ERROR_SUCCESS) {
+
+        if (err != 0L) {
             return true;  
         }
     
@@ -8838,6 +8971,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             (static_cast<u32>(resp[24]) << 16) |
             (static_cast<u32>(resp[25]) << 8) |
             static_cast<u32>(resp[26]);
+
+        debug("TPM: Manufacturer -> 0x", std::hex, manufacturerVal, std::dec);
     
         switch (manufacturerVal) {
             case 0x414D4400u: // "AMD\0"
@@ -9282,7 +9417,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
          * Also I won't even deny, the majority of this section was 90% generated
          * by chatgpt. Can't be arsed with this C++ variadic templatisation shit.
          * Like is it really my fault that I have a hard time understanging C++'s 
-         * god awful metaprogramming designs? And don't even get me started on SNIFAE. 
+         * god awful metaprogramming designs? And don't even get me started on SFINAE. 
          * 
          * You don't need an IQ of 3 digits to realise how dogshit this language
          * is, when you end up in situations where there's a few correct solutions
@@ -10141,7 +10276,7 @@ public: // START OF PUBLIC FUNCTIONS
             case DMESG: return "DMESG";
             case HWMON: return "HWMON";
             case DLL: return "DLL";
-            case REGISTRY: return "REGISTRY";
+            case REGISTRY_KEYS: return "REGISTRY_KEYS";
             case FILES: return "VM_FILES";
             case HWMODEL: return "HWMODEL";
             case DISK_SIZE: return "DISK_SIZE";
@@ -10149,7 +10284,7 @@ public: // START OF PUBLIC FUNCTIONS
             case VBOX_NETWORK: return "VBOX_NETWORK";
             case WINE: return "WINE";
             case POWER_CAPABILITIES: return "POWER_CAPABILITIES";
-            case VM_PROCESSES: return "VM_PROCESSES";
+            case PROCESSES: return "PROCESSES";
             case LINUX_USER_HOST: return "LINUX_USER_HOST";
             case GAMARUE: return "GAMARUE";
             case BOCHS_CPU: return "BOCHS_CPU";
@@ -10157,7 +10292,7 @@ public: // START OF PUBLIC FUNCTIONS
             case MAC_IOKIT: return "MAC_IOKIT";
             case IOREG_GREP: return "IOREG_GREP";
             case MAC_SIP: return "MAC_SIP";
-            case HKLM_REGISTRIES: return "HKLM_REGISTRIES";
+            case REGISTRY_VALUES: return "REGISTRY_VALUES";
             case VPC_INVALID: return "VPC_INVALID";
             case SIDT: return "SIDT";
             case SGDT: return "SGDT";
@@ -10178,7 +10313,7 @@ public: // START OF PUBLIC FUNCTIONS
             case CUCKOO_PIPE: return "CUCKOO_PIPE";
             case HYPERV_HOSTNAME: return "HYPERV_HOSTNAME";
             case GENERAL_HOSTNAME: return "GENERAL_HOSTNAME";
-            case SCREEN_RESOLUTION: return "SCREEN_RESOLUTION";
+            case DISPLAY: return "DISPLAY";
             case DEVICE_STRING: return "DEVICE_STRING";
             case BLUESTACKS_FOLDERS: return "BLUESTACKS_FOLDERS";
             case CPUID_SIGNATURE: return "CPUID_SIGNATURE";
@@ -10194,25 +10329,25 @@ public: // START OF PUBLIC FUNCTIONS
             case SMBIOS_VM_BIT: return "SMBIOS_VM_BIT";
             case PODMAN_FILE: return "PODMAN_FILE";
             case WSL_PROC: return "WSL_PROC";
-            case DRIVER_NAMES: return "DRIVER_NAMES";
+            case DRIVERS: return "DRIVERS";
             case DISK_SERIAL: return "DISK_SERIAL";
             case PORT_CONNECTORS: return "PORT_CONNECTORS";
             case IVSHMEM: return "IVSHMEM";
             case GPU_VM_STRINGS: return "GPU_STRINGS";
             case GPU_CAPABILITIES: return "GPU_CAPABILITIES";
-            case VM_DEVICES: return "VM_DEVICES";
-            case PROCESSOR_NUMBER: return "PROCESSOR_NUMBER";
-            case NUMBER_OF_CORES: return "NUMBER_OF_CORES";
+            case DEVICE_HANDLES: return "DEVICE_HANDLES";
+            case LOGICAL_PROCESSORS: return "LOGICAL_PROCESSORS";
+            case PHYSICAL_PROCESSORS: return "PHYSICAL_PROCESSORS";
             case QEMU_FW_CFG: return "QEMU_FW_CFG";
             case VIRTUAL_PROCESSORS: return "VIRTUAL_PROCESSORS";
             case HYPERV_QUERY: return "HYPERV_QUERY";
-            case BAD_POOLS: return "BAD_POOLS";
+            case POOLS: return "POOLS";
             case AMD_SEV: return "AMD_SEV";
             case VIRTUAL_REGISTRY: return "VIRTUAL_REGISTRY";
             case FIRMWARE: return "FIRMWARE";
             case FILE_ACCESS_HISTORY: return "FILE_ACCESS_HISTORY";
             case AUDIO: return "AUDIO";
-            case UNKNOWN_MANUFACTURER: return "UNKNOWN_MANUFACTURER";
+            case CPU_VENDOR: return "CPU_VENDOR";
             case NSJAIL_PID: return "NSJAIL_PID";
             case TPM: return "TPM";
             case PCI_VM_DEVICE_ID: return "PCI_VM_DEVICE_ID";
@@ -10351,7 +10486,7 @@ public: // START OF PUBLIC FUNCTIONS
             { brands::LKVM, "Hypervisor (type 1)" },
             { brands::NOIRVISOR, "Hypervisor (type 1)" },
             { brands::WSL, "Hypervisor (Type 1)" }, // Type 1-derived lightweight VM system
-
+            
             // type 2
             { brands::BHYVE, "Hypervisor (type 2)" },
             { brands::VBOX, "Hypervisor (type 2)" },
@@ -10365,7 +10500,8 @@ public: // START OF PUBLIC FUNCTIONS
             { brands::NVMM, "Hypervisor (type 2)" },
             { brands::BSD_VMM, "Hypervisor (type 2)" },
             { brands::HYPERV_VPC, "Hypervisor (type 2)" },
-
+            { brands::VMWARE_HARD, "Hypervisor (type 2)" },
+            
             // sandbox
             { brands::CUCKOO, "Sandbox" },
             { brands::SANDBOXIE, "Sandbox" },
@@ -10686,12 +10822,12 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         std::make_pair(VM::SGDT, VM::core::technique(45, VM::sgdt)),
         std::make_pair(VM::SLDT, VM::core::technique(45, VM::sldt)),
         std::make_pair(VM::SMSW, VM::core::technique(45, VM::smsw)),
-        std::make_pair(VM::DRIVER_NAMES, VM::core::technique(100, VM::driver_names)),
-        std::make_pair(VM::BAD_POOLS, VM::core::technique(80, VM::bad_pools)),
-        std::make_pair(VM::HKLM_REGISTRIES, VM::core::technique(25, VM::hklm_registries)),
-        std::make_pair(VM::PROCESSOR_NUMBER, VM::core::technique(50, VM::logical_processors)),
-        std::make_pair(VM::NUMBER_OF_CORES, VM::core::technique(50, VM::physical_processors)),
-        std::make_pair(VM::VM_DEVICES, VM::core::technique(50, VM::vm_devices)),
+        std::make_pair(VM::DRIVERS, VM::core::technique(100, VM::DRIVERS)),
+        std::make_pair(VM::POOLS, VM::core::technique(80, VM::pools)),
+        std::make_pair(VM::REGISTRY_VALUES, VM::core::technique(25, VM::registry_values)),
+        std::make_pair(VM::LOGICAL_PROCESSORS, VM::core::technique(50, VM::logical_processors)),
+        std::make_pair(VM::PHYSICAL_PROCESSORS, VM::core::technique(50, VM::physical_processors)),
+        std::make_pair(VM::DEVICE_HANDLES, VM::core::technique(100, VM::device_handles)),
         std::make_pair(VM::VIRTUAL_PROCESSORS, VM::core::technique(100, VM::virtual_processors)),
         std::make_pair(VM::HYPERV_QUERY, VM::core::technique(100, VM::hyperv_query)),
         std::make_pair(VM::REGISTRY, VM::core::technique(50, VM::registry_key)),
@@ -10711,21 +10847,21 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         std::make_pair(VM::GAMARUE, VM::core::technique(10, VM::gamarue)),
         std::make_pair(VM::CUCKOO_DIR, VM::core::technique(30, VM::cuckoo_dir)),
         std::make_pair(VM::CUCKOO_PIPE, VM::core::technique(30, VM::cuckoo_pipe)),
-        #endif
+    #endif
         
-        #if (LINUX || WINDOWS)
+    #if (LINUX || WINDOWS)
         std::make_pair(VM::SIDT, VM::core::technique(45, VM::sidt)),
-        std::make_pair(VM::FIRMWARE, VM::core::technique(100, VM::firmware_scan)),
+        std::make_pair(VM::FIRMWARE, VM::core::technique(100, VM::firmware)),
         std::make_pair(VM::PCI_VM_DEVICE_ID, VM::core::technique(90, VM::pci_vm_device_id)),
         std::make_pair(VM::DISK_SIZE, VM::core::technique(60, VM::disk_size)),
-        std::make_pair(VM::VM_PROCESSES, VM::core::technique(15, VM::vm_processes)),
+        std::make_pair(VM::PROCESSES, VM::core::technique(15, VM::processes)),
         std::make_pair(VM::TEMPERATURE, VM::core::technique(15, VM::temperature)),
         std::make_pair(VM::HYPERV_HOSTNAME, VM::core::technique(30, VM::hyperv_hostname)),
         std::make_pair(VM::GENERAL_HOSTNAME, VM::core::technique(10, VM::general_hostname)),
         std::make_pair(VM::VBOX_DEFAULT, VM::core::technique(25, VM::vbox_default_specs)),
-        #endif
+    #endif
         
-        #if (LINUX)
+    #if (LINUX)
         std::make_pair(VM::SMBIOS_VM_BIT, VM::core::technique(50, VM::smbios_vm_bit)),
         std::make_pair(VM::KMSG, VM::core::technique(5, VM::kmsg)),
         std::make_pair(VM::CVENDOR, VM::core::technique(65, VM::chassis_vendor)),
@@ -10755,15 +10891,15 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         std::make_pair(VM::NSJAIL_PID, VM::core::technique(75, VM::nsjail_proc_id)),
         std::make_pair(VM::BLUESTACKS_FOLDERS, VM::core::technique(5, VM::bluestacks)),
         std::make_pair(VM::AMD_SEV, VM::core::technique(50, VM::amd_sev)),
-        #endif
+    #endif
         
-        #if (APPLE)
+    #if (APPLE)
         std::make_pair(VM::MAC_MEMSIZE, VM::core::technique(15, VM::hw_memsize)),
         std::make_pair(VM::MAC_IOKIT, VM::core::technique(100, VM::io_kit)),
         std::make_pair(VM::MAC_SIP, VM::core::technique(40, VM::mac_sip)),
         std::make_pair(VM::IOREG_GREP, VM::core::technique(100, VM::ioreg_grep)),
         std::make_pair(VM::HWMODEL, VM::core::technique(100, VM::hwmodel)),
-        #endif
+    #endif
     
     std::make_pair(VM::HYPERVISOR_BIT, VM::core::technique(100, VM::hypervisor_bit)),
     std::make_pair(VM::VMID, VM::core::technique(100, VM::vmid)),
@@ -10776,7 +10912,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     std::make_pair(VM::HYPERVISOR_STR, VM::core::technique(75, VM::hypervisor_str)),
     std::make_pair(VM::CPUID_SIGNATURE, VM::core::technique(95, VM::cpuid_signature)),
     std::make_pair(VM::ODD_CPU_THREADS, VM::core::technique(80, VM::odd_cpu_threads)),
-    std::make_pair(VM::UNKNOWN_MANUFACTURER, VM::core::technique(100, VM::unknown_manufacturer)),
+    std::make_pair(VM::CPU_VENDOR, VM::core::technique(100, VM::cpu_vendor)),
     std::make_pair(VM::BOCHS_CPU, VM::core::technique(100, VM::bochs_cpu)),
     std::make_pair(VM::KGT_SIGNATURE, VM::core::technique(80, VM::intel_kgt_signature))
     // ADD NEW TECHNIQUE STRUCTURE HERE
