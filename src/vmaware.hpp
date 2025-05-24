@@ -7679,19 +7679,23 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::CUCKOO_PIPE
      */
     [[nodiscard]] static bool cuckoo_pipe() {
-        int fd = open("\\\\.\\pipe\\cuckoo", O_RDONLY);
-        bool is_cuckoo = false;
-
-        if (fd >= 0) {
-            is_cuckoo = true;
-        }
-
-        close(fd);
-
+        HANDLE hPipe = CreateFile(
+            TEXT("\\\\.\\pipe\\cuckoo"),
+            GENERIC_READ,
+            0,
+            NULL,
+            OPEN_EXISTING,
+            0,
+            NULL
+        );
+    
+        bool is_cuckoo = (hPipe != INVALID_HANDLE_VALUE);
+    
         if (is_cuckoo) {
+            CloseHandle(hPipe);
             return core::add(brands::CUCKOO);
         }
-
+    
         return false;
     }
 
