@@ -65,7 +65,7 @@ VM certainty: 100%
 ## Structure ⚙️
 
 <p align="center">
-<img src="assets/vmaware_new.drawio.png" align="center" title="VMAware">
+<img src="assets/vmaware.png" align="center" title="VMAware">
 <br>
 </p>
 
