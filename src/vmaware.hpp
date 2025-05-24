@@ -6214,7 +6214,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     break;
                 }
             }
-            };
+        };
 
         auto enumerateInstances = [&](HKEY hDev, const wchar_t* rootPath) {
             for (DWORD j = 0;; ++j) {
@@ -6233,7 +6233,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 enumerateHardwareIDs(hInst, rootPath);
                 RegCloseKey(hInst);
             }
-            };
+        };
 
         auto enumerateDevices = [&](HKEY hRoot, const wchar_t* rootPath) {
             for (DWORD i = 0;; ++i) {
@@ -6252,7 +6252,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 enumerateInstances(hDev, rootPath);
                 RegCloseKey(hDev);
             }
-            };
+        };
 
         for (auto rootPath : kRoots) {
             HKEY hRoot = nullptr;
