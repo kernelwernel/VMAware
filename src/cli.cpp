@@ -798,7 +798,6 @@ void general() {
     checker(VM::VIRTUAL_REGISTRY, "registry emulation");
     checker(VM::FIRMWARE, "firmware signatures");
     checker(VM::FILE_ACCESS_HISTORY, "low file access count");
-    checker(VM::CPU_VENDOR, "CPU vendor validity");
     checker(VM::NSJAIL_PID, "nsjail PID");
     checker(VM::TPM, "TPM manufacturer");
     checker(VM::PCI_VM_DEVICE_ID, "PCI vendor/device ID");
