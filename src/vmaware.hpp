@@ -7415,9 +7415,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
 
         // Checks for __rdtscp support & multi-core
+        unsigned aux = 0;
         {
 #if (WINDOWS)
-            unsigned aux = 0;
     #if (x86_64)
             const bool haveRdtscp = [&]() noexcept -> bool {
                 __try {
