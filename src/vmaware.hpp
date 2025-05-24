@@ -7417,8 +7417,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // Checks for __rdtscp support & multi-core
         {
 #if (WINDOWS)
-    #if (x86_64)
             unsigned aux = 0;
+    #if (x86_64)
             const bool haveRdtscp = [&]() noexcept -> bool {
                 __try {
                     __rdtscp(&aux);
@@ -7429,6 +7429,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
                 }();
     #elif (x86_32)
+            UNUSED(aux);
             unsigned int regs[4] = { 0 };
             __cpuid(reinterpret_cast<int*>(regs), 0x80000001);
             const bool haveRdtscp = (regs[3] & (1u << 27)) != 0;
