@@ -4135,8 +4135,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             u32 unused, ecx, edx = 0;
             cpu::cpuid(unused, unused, ecx, edx, 0x40000003);
                 
-             constexpr u32 ECX_SIG = 0x4D4D5645u; // 'EVMM' → 0x4D4D5645
-             constexpr u32 EDX_SIG = 0x43544E49u;  // 'INTC' → 0x43544E49
+            constexpr u32 ECX_SIG = 0x4D4D5645u; // 'EVMM' → 0x4D4D5645
+            constexpr u32 EDX_SIG = 0x43544E49u;  // 'INTC' → 0x43544E49
 
             if (ecx == ECX_SIG && edx == EDX_SIG) {
                 return core::add(brands::INTEL_KGT);
@@ -6171,17 +6171,75 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             L"SYSTEM\\CurrentControlSet\\Enum\\HDAUDIO"
         };
 
-        for (auto rootPath : kRoots) {
-            HKEY hRoot = nullptr;
-            if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, rootPath, 0, KEY_READ, &hRoot) != ERROR_SUCCESS)
-                continue;
+        auto enumerateHardwareIDs = [&](HKEY hInst, const wchar_t* rootPath) {
+            DWORD type = 0, cbData = 0;
+            if (RegQueryValueExW(hInst, L"HardwareID", nullptr, &type, nullptr, &cbData) != ERROR_SUCCESS
+                || type != REG_MULTI_SZ
+                || cbData <= sizeof(wchar_t))
+                return;
 
-            for (DWORD i = 0; ; ++i) {
+            std::vector<wchar_t> buf(cbData / sizeof(wchar_t));
+            if (RegQueryValueExW(hInst, L"HardwareID", nullptr, nullptr,
+                reinterpret_cast<BYTE*>(buf.data()), &cbData) != ERROR_SUCCESS)
+                return;
+
+            for (wchar_t* p = buf.data(); *p; p += wcslen(p) + 1) {
+                std::wstring s(p);
+                uint16_t vid = 0;
+                uint32_t did = 0;
+                bool ok = false;
+
+                if (wcscmp(rootPath, L"SYSTEM\\CurrentControlSet\\Enum\\USB") == 0) {
+                    auto v = s.find(L"VID_"), d = s.find(L"PID_");
+                    if (v != std::wstring::npos && d != std::wstring::npos) {
+                        swscanf_s(s.c_str() + v + 4, L"%4hx", &vid);
+                        swscanf_s(s.c_str() + d + 4, L"%x", &did);
+                        ok = true;
+                    }
+                }
+                else {
+                    auto v = s.find(L"VEN_"), d = s.find(L"DEV_");
+                    if (v != std::wstring::npos && d != std::wstring::npos) {
+                        swscanf_s(s.c_str() + v + 4, L"%4hx", &vid);
+                        if (wcscmp(rootPath, L"SYSTEM\\CurrentControlSet\\Enum\\HDAUDIO") == 0)
+                            swscanf_s(s.c_str() + d + 4, L"%4x", &did);
+                        else
+                            swscanf_s(s.c_str() + d + 4, L"%8x", &did);
+                        ok = true;
+                    }
+                }
+
+                if (ok) {
+                    devices.push_back({ vid, did });
+                    break;
+                }
+            }
+            };
+
+        auto enumerateInstances = [&](HKEY hDev, const wchar_t* rootPath) {
+            for (DWORD j = 0;; ++j) {
+                wchar_t instName[256];
+                DWORD cbInst = _countof(instName);
+                LONG st2 = RegEnumKeyExW(hDev, j, instName, &cbInst, nullptr, nullptr, nullptr, nullptr);
+                if (st2 == ERROR_NO_MORE_ITEMS)
+                    break;
+                if (st2 != ERROR_SUCCESS)
+                    continue;
+
+                HKEY hInst = nullptr;
+                if (RegOpenKeyExW(hDev, instName, 0, KEY_READ, &hInst) != ERROR_SUCCESS)
+                    continue;
+
+                enumerateHardwareIDs(hInst, rootPath);
+                RegCloseKey(hInst);
+            }
+            };
+
+        auto enumerateDevices = [&](HKEY hRoot, const wchar_t* rootPath) {
+            for (DWORD i = 0;; ++i) {
                 wchar_t deviceName[256];
                 DWORD cbName = _countof(deviceName);
-                LONG status = RegEnumKeyExW(hRoot, i,
-                    deviceName, &cbName,
-                    nullptr, nullptr, nullptr, nullptr);
+                LONG status = RegEnumKeyExW(hRoot, i, deviceName, &cbName, nullptr, nullptr, nullptr, nullptr);
                 if (status == ERROR_NO_MORE_ITEMS)
                     break;
                 if (status != ERROR_SUCCESS)
@@ -6191,81 +6249,19 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 if (RegOpenKeyExW(hRoot, deviceName, 0, KEY_READ, &hDev) != ERROR_SUCCESS)
                     continue;
 
-                for (DWORD j = 0; ; ++j) {
-                    wchar_t instName[256];
-                    DWORD cbInst = _countof(instName);
-                    LONG st2 = RegEnumKeyExW(hDev, j,
-                        instName, &cbInst,
-                        nullptr, nullptr, nullptr, nullptr);
-                    if (st2 == ERROR_NO_MORE_ITEMS)
-                        break;
-                    if (st2 != ERROR_SUCCESS)
-                        continue;
-
-                    HKEY hInst = nullptr;
-                    if (RegOpenKeyExW(hDev, instName, 0, KEY_READ, &hInst) != ERROR_SUCCESS)
-                        continue;
-
-                    // query size of HardwareID
-                    DWORD type = 0, cbData = 0;
-                    if (RegQueryValueExW(hInst, L"HardwareID", nullptr, &type, nullptr, &cbData) != ERROR_SUCCESS
-                        || type != REG_MULTI_SZ
-                        || cbData <= sizeof(wchar_t))
-                    {
-                        RegCloseKey(hInst);
-                        continue;
-                    }
-
-                    // read into buffer
-                    std::vector<wchar_t> buf(cbData / sizeof(wchar_t));
-                    if (RegQueryValueExW(hInst, L"HardwareID", nullptr, nullptr,
-                        reinterpret_cast<BYTE*>(buf.data()), &cbData) != ERROR_SUCCESS)
-                    {
-                        RegCloseKey(hInst);
-                        continue;
-                    }
-
-                    // parse each string until we find a VID/DID pair
-                    for (wchar_t* p = buf.data(); *p; p += wcslen(p) + 1) {
-                        std::wstring s(p);
-                        uint16_t vid = 0;
-                        uint32_t did = 0;
-                        bool ok = false;
-
-                        if (wcscmp(rootPath, L"SYSTEM\\CurrentControlSet\\Enum\\USB") == 0) {
-                            auto v = s.find(L"VID_"), d = s.find(L"PID_");
-                            if (v != std::wstring::npos && d != std::wstring::npos) {
-                                swscanf_s(s.c_str() + v + 4, L"%4hx", &vid);
-                                swscanf_s(s.c_str() + d + 4, L"%x", &did);
-                                ok = true;
-                            }
-                        }
-                        else {
-                            auto v = s.find(L"VEN_"), d = s.find(L"DEV_");
-                            if (v != std::wstring::npos && d != std::wstring::npos) {
-                                swscanf_s(s.c_str() + v + 4, L"%4hx", &vid);
-                                if (wcscmp(rootPath, L"SYSTEM\\CurrentControlSet\\Enum\\HDAUDIO") == 0)
-                                    swscanf_s(s.c_str() + d + 4, L"%4x", &did);
-                                else
-                                    swscanf_s(s.c_str() + d + 4, L"%8x", &did);
-                                ok = true;
-                            }
-                        }
-
-                        if (ok) {
-                            devices.push_back({ vid, did });
-                            break;  
-                        }
-                    }
-
-                    RegCloseKey(hInst);
-                } 
-
+                enumerateInstances(hDev, rootPath);
                 RegCloseKey(hDev);
-            }  
+            }
+            };
 
+        for (auto rootPath : kRoots) {
+            HKEY hRoot = nullptr;
+            if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, rootPath, 0, KEY_READ, &hRoot) != ERROR_SUCCESS)
+                continue;
+
+            enumerateDevices(hRoot, rootPath);
             RegCloseKey(hRoot);
-        }  
+        }
 
         debug("PCI_VM_DEVICE_ID: Enumeration complete, found devices count = ", devices.size());
         #endif
