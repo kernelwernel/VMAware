@@ -599,9 +599,15 @@ std::string vm_description(const std::string& vm_brand) {
 }
 
 void checker(const VM::enum_flags flag, const char* message) {
-    const bool result = VM::check(flag);
+    std::string enum_name = "";
 
-    if (arg_bitset.test(DETECTED_ONLY) && !result) {
+    if (arg_bitset.test(ENUMS)) {
+        enum_name = grey + " [VM::" + VM::flag_to_string(flag) + "]" + ansi_exit;
+    }
+
+    if (is_disabled(flag)) {
+        std::cout << disabled << " Skipped " << message << enum_name << "\n";
+        disabled_count++;
         return;
     }
 
@@ -611,10 +617,10 @@ void checker(const VM::enum_flags flag, const char* message) {
         supported_count++;
     }
 
-    std::string enum_name = "";
+    const bool result = VM::check(flag);
 
-    if (arg_bitset.test(ENUMS)) {
-        enum_name = grey + " [VM::" + VM::flag_to_string(flag) + "]" + ansi_exit;
+    if (arg_bitset.test(DETECTED_ONLY) && !result) {
+        return;
     }
 
 #if (CLI_LINUX)
@@ -629,12 +635,6 @@ void checker(const VM::enum_flags flag, const char* message) {
         return;
     }
 #endif
-
-    if (is_disabled(flag)) {
-        std::cout << disabled << " Skipped " << message << enum_name << "\n";
-        disabled_count++;
-        return;
-    }
 
     if (result) {
         std::cout << detected << bold << " Checking " << message << "..." << enum_name << ansi_exit << "\n";

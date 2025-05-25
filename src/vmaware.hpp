@@ -672,6 +672,8 @@ private:
     // get the total number of techniques that detected a VM
     static u8 detected_count_num; 
 
+    static std::vector<enum_flags> disabled_techniques;
+
 private:
 
 #if (WINDOWS)
@@ -1092,14 +1094,23 @@ private:
         // basically checks whether all the techniques were cached (with exception of techniques disabled by default)
         static bool all_present() {
             if (cache_table.size() == technique_count) {
+                core_debug("all_present(): ", 1);
                 return true;
-            } else if (cache_table.size() == static_cast<std::size_t>(technique_count) - 3) {
-                return (
-                    !cache_keys.test(VMWARE_DMESG) && 
-                    !cache_keys.test(PORT_CONNECTORS) && 
-                    !cache_keys.test(TEMPERATURE)
-                );
+            } else if (cache_table.size() == static_cast<std::size_t>(technique_count) - disabled_techniques.size()) {
+                u8 count = 0;
+
+                for (const auto id : disabled_techniques) {
+                    count += !cache_keys.test(id);
+                }
+
+                const bool result = (count == disabled_techniques.size());
+
+                core_debug("all_present(): ", result);
+
+                return result;
             }
+
+            core_debug("all_present(): ", false);
 
             return false;
         }
@@ -8981,9 +8992,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             flags.set();
 
             // disable all non-default techniques
-            flags.flip(VMWARE_DMESG);
-            flags.flip(PORT_CONNECTORS);
-            flags.flip(TEMPERATURE);
+            for (const auto id : disabled_techniques) {
+                flags.flip(id);
+            }
 
             // disable all the settings flags
             flags.flip(NO_MEMO);
@@ -10328,6 +10339,13 @@ VM::flagset VM::core::disabled_flag_collector;
 
 
 VM::u8 VM::detected_count_num = 0;
+
+
+std::vector<VM::enum_flags> VM::disabled_techniques = {
+    VM::VMWARE_DMESG,
+    VM::PORT_CONNECTORS,
+    VM::TEMPERATURE
+};
 
 
 std::vector<VM::enum_flags> VM::technique_vector = []() -> std::vector<VM::enum_flags> {
