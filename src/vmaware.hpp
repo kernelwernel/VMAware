@@ -356,6 +356,7 @@
 #include <sstream>
 #include <bitset>
 #include <type_traits>
+#include <numeric>
 
 #if (WINDOWS)
 #include <windows.h>
@@ -4152,19 +4153,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @author Requiem (https://github.com/NotRequiem)
      * @implements VM::TIMER
      */
-#if (CLANG)
-    #pragma clang optimize off
-#elif (MSVC)
-    #pragma optimize("", off)
-#elif (GCC)
-    #pragma GCC push_options
-    #pragma GCC optimize("O0")
-#endif
-    [[nodiscard]]
-#if (LINUX)
-    __attribute__((no_sanitize("address", "leak", "thread", "undefined")))
-#endif
-    static bool timer() {
+    [[nodiscard]] static bool timer() {
 #if (ARM || !x86)
         return false;
 #else
@@ -4206,21 +4195,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     #endif
         };
 
-    #if (WINDOWS)
-        DWORD_PTR procMask, sysMask;
-        GetProcessAffinityMask(GetCurrentProcess(), &procMask, &sysMask);
-    #elif (LINUX)
-        cpu_set_t oldTscSet;
-        CPU_ZERO(&oldTscSet);
-        pthread_getaffinity_np(pthread_self(), sizeof(cpu_set_t), &oldTscSet);
-    #endif
-
-        // Checks for __rdtscp support & multi-core
+        // checks for __rdtscp support
         unsigned aux = 0;
         {
-    #if (WINDOWS)
-            // Test for __rdtscp support
-        #if (x86_64)
+    #if (WINDOWS && x86_64)
             const bool haveRdtscp = [&]() noexcept -> bool {
                 __try {
                     __rdtscp(&aux);
@@ -4230,68 +4208,20 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     return false;
                 }
             }();
-        #elif (x86_32)
+    #else
             UNUSED(aux);
-            unsigned int regs[4] = { 0 };
-            __cpuid(reinterpret_cast<int*>(regs), 0x80000001);
+            int regs[4] = { 0 };
+            cpu::cpuid(regs, 0x80000001);
             const bool haveRdtscp = (regs[3] & (1u << 27)) != 0;
-        #endif
-
+    #endif
             if (!haveRdtscp) {
                 // __rdtscp should be supported nowadays
                 restoreThreadPriority();
-                debug("TIMER: RDTSCP instruction not supporteed");
+                debug("TIMER: RDTSCP instruction not supported");
                 return true;
             }
-
-            // Test for a second core
-            DWORD_PTR testMask = DWORD_PTR(1) << 1;
-            DWORD_PTR prev = SetThreadAffinityMask(hThread, testMask);
-            if (prev == 0) {
-                // single-core, cannot test, assume no VM
-                SetThreadAffinityMask(hThread, prev);
-                restoreThreadPriority();
-                return false;
-            }
-            SetThreadAffinityMask(hThread, procMask);
-    #else
-            // Test for __rdtscp support
-            static sigjmp_buf jb;
-            struct sigaction oldAct, newAct {};
-            newAct.sa_flags = SA_SIGINFO;
-            newAct.sa_sigaction = [](int, siginfo_t*, void*) { siglongjmp(jb, 1); };
-            sigemptyset(&newAct.sa_mask);
-            sigaction(SIGILL, &newAct, &oldAct);
-
-            if (sigsetjmp(jb, 1) != 0) {
-                // no __rdtscp support, assume VM
-
-                sigaction(SIGILL, &oldAct, nullptr);
-
-                restoreThreadPriority();
-                return true;
-            }
-            __rdtscp(&aux);
-            sigaction(SIGILL, &oldAct, nullptr);
-
-            // Test for a second core
-            cpu_set_t testSet{};
-            CPU_ZERO(&testSet);
-            CPU_SET(1, &testSet);
-            int ret = pthread_setaffinity_np(pthread_self(), sizeof(testSet), &testSet);
-            if (ret == EINVAL) {
-                // single-core, cannot test, assume no VM
-                restoreThreadPriority();
-                return false;
-            }
-            else if (ret != 0) {
-                // unexpected
-                restoreThreadPriority();
-                return true;
-            }
-            pthread_setaffinity_np(pthread_self(), sizeof(oldTscSet), &oldTscSet);
-    #endif
         }
+
 
     #if (WINDOWS)
         // 2. Ratio-based Timing Check on Single Core
@@ -4434,17 +4364,79 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
         }
 
+        // SLAT check
+        auto serialize_cpu = []() {
+            int cpuInfo[4];
+            __cpuid(cpuInfo, 0);
+            };
+
+        auto measure_one_read = [&](volatile char* addr) -> u64 {
+            // ensure prior instructions complete
+            serialize_cpu();
+            _mm_mfence();
+
+            // flush cache line so the next read goes to memory/TLB/EPT forcing full DRAM access
+            _mm_clflush(const_cast<char*>(addr));
+            _mm_mfence();
+
+            serialize_cpu();
+            u64 t1 = __rdtsc();
+
+#pragma warning(disable : 4189)
+            // the actual memory read we’re timing
+            volatile char v = *addr;
+#pragma warning(default : 4189)
+
+            serialize_cpu();
+            u64 t2 = __rdtsc();
+
+            // full memory barrier to ensure everything completes
+            _mm_mfence();
+            serialize_cpu();
+
+            return t2 - t1;
+        };
+
+        SYSTEM_INFO si;
+        GetSystemInfo(&si);
+        SIZE_T pageSize = si.dwPageSize;
+
+        void* mem = VirtualAlloc(nullptr, pageSize,
+            MEM_RESERVE | MEM_COMMIT,
+            PAGE_READWRITE);
+        if (!mem) {
+            return false;
+        }
+
+        if (!VirtualLock(mem, pageSize)) {
+            VirtualFree(mem, 0, MEM_RELEASE);
+            return false;
+        }
+
+        volatile char* buf = static_cast<volatile char*>(mem);
+
+        *buf = static_cast<char>(0xAB); // touch page to back it with physical RAM
+
+        constexpr int SAMPLE_COUNT_SLAT = 10000;
+        std::vector<u64> samples_slat;
+        samples_slat.reserve(SAMPLE_COUNT_SLAT);
+        for (int i = 0; i < SAMPLE_COUNT_SLAT; ++i) {
+            samples_slat.push_back(measure_one_read(buf));
+        }
+
+        const u64 sum = std::accumulate(samples_slat.begin(), samples_slat.end(), u64(0));
+        const u64 avg = (sum + samples_slat.size() / 2) / samples_slat.size();
+
+        debug("Average read latency: ", avg, " cycles\n");
+
+        VirtualUnlock(mem, pageSize);
+        VirtualFree(mem, 0, MEM_RELEASE);
+
+        if (avg > 2200) return true;
     #endif
         return false;
 #endif
     }
-#if (CLANG)
-    #pragma clang optimize off
-#elif (MSVC)
-    #pragma optimize("", off)
-#elif (GCC)
-    #pragma GCC pop_options
-#endif
 
 
 #if (LINUX)
