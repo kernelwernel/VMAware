@@ -786,21 +786,19 @@ void general() {
     checker(VM::PORT_CONNECTORS, "physical connection ports");
     checker(VM::IVSHMEM, "IVSHMEM device");
     checker(VM::GPU_CAPABILITIES, "GPU capabilities");
-    checker(VM::GPU_VM_STRINGS, "GPU strings");
     checker(VM::LOGICAL_PROCESSORS, "logical processor count");
     checker(VM::PHYSICAL_PROCESSORS, "physical processor count");
     checker(VM::POWER_CAPABILITIES, "Power capabilities");
     checker(VM::QEMU_FW_CFG, "QEMU fw_cfg device");
     checker(VM::VIRTUAL_PROCESSORS, "virtual processors");
     checker(VM::HYPERV_QUERY, "hypervisor query");
-    checker(VM::POOLS, "bad memory pools");
     checker(VM::AMD_SEV, "AMD-SEV MSR");
     checker(VM::VIRTUAL_REGISTRY, "registry emulation");
     checker(VM::FIRMWARE, "firmware signatures");
     checker(VM::FILE_ACCESS_HISTORY, "low file access count");
     checker(VM::NSJAIL_PID, "nsjail PID");
     checker(VM::TPM, "TPM manufacturer");
-    checker(VM::PCI_VM_DEVICE_ID, "PCI vendor/device ID");
+    checker(VM::PCI_DEVICES, "PCI vendor/device ID");
     checker(VM::QEMU_PASSTHROUGH, "QEMU passthrough");
 
     // ADD NEW TECHNIQUE CHECKER HERE
