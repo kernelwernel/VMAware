@@ -14,7 +14,7 @@
     - iommu
     - power_supply
 - check for presence of /dev/virtio-ports dir
-
+- replace all thread mismatch techniques to C style arrays
 
 
 # Distant plans

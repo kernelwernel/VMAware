@@ -115,7 +115,13 @@ def update_sections(filename):
 
 def update_date(filename):
     args = sys.argv
-    first_arg = args[1] if len(args) > 1 else None
+    date_arg = ""
+    pattern = r'\d+\.\d+\.\d+'
+
+    for arg in args[1:]:
+        if re.fullmatch(pattern, arg):
+            date_arg = arg
+            break
 
     with open(filename, 'r') as file:
         header_content = file.readlines()
@@ -128,17 +134,23 @@ def update_date(filename):
         index += 1
 
     def find_pattern(base_str):
-        pattern = r'\d+\.\d+\.\d+'
         match = re.search(pattern, base_str)
         if match:
             return match.group()
         print(f"Version number not found for {red}{bold}{base_str}{ansi_exit}, aborting")
         sys.exit(1)
 
+
     header_version = find_pattern(header_content[index])
-    arg_version = find_pattern(first_arg) if first_arg else header_version
+    arg_version = find_pattern(date_arg) if date_arg else header_version
     new_date = datetime.now().strftime("%B %Y")
-    new_content = banner_line + arg_version + " (" + new_date + ")"
+
+    experimental = ""
+
+    if not "--release" in args:
+        experimental = "Experimental post-"
+
+    new_content = banner_line + experimental + arg_version + " (" + new_date + ")"
 
     header_content[index] = new_content + '\n'
 
