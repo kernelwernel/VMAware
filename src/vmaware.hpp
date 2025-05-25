@@ -370,7 +370,6 @@
 #include <initguid.h>
 #include <devpkey.h>
 #include <devguid.h>
-#include <strsafe.h>
 
 #pragma comment(lib, "setupapi.lib")
 #pragma comment(lib, "shlwapi.lib")
