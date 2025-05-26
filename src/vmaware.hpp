@@ -4166,35 +4166,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        // to minimize context switching/scheduling
-    #if (WINDOWS)
-        const HANDLE hThread = GetCurrentThread();
-        const int oldPriority = GetThreadPriority(hThread);
-        SetThreadPriority(hThread, THREAD_PRIORITY_TIME_CRITICAL);
-    #else
-        bool hasSchedPriority = (geteuid() == 0);
-        int oldPolicy = SCHED_OTHER;
-        sched_param oldParam{};
-
-        if (hasSchedPriority) {
-            oldPolicy = sched_getscheduler(0);
-            sched_getparam(0, &oldParam);
-            sched_param newParam{};
-            newParam.sched_priority = sched_get_priority_max(SCHED_FIFO);
-
-            if (sched_setscheduler(0, SCHED_FIFO, &newParam) == -1) {
-                hasSchedPriority = false;  
-            }
-        }
-    #endif
-        auto restoreThreadPriority = [&]() {
-    #if (WINDOWS)
-            SetThreadPriority(hThread, oldPriority);
-    #else
-            sched_setscheduler(0, oldPolicy, &oldParam);
-    #endif
-        };
-
         // checks for __rdtscp support
         unsigned aux = 0;
         {
@@ -4216,121 +4187,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     #endif
             if (!haveRdtscp) {
                 // __rdtscp should be supported nowadays
-                restoreThreadPriority();
                 debug("TIMER: RDTSCP instruction not supported");
                 return true;
             }
         }
 
 
-    #if (WINDOWS)
-        // 2. Ratio-based Timing Check on Single Core
-        // measure trapping vs non-trapping instructions
-
-        // warm-up to reduce noise
-        for (int i = 0; i < 10; ++i) {
-            unsigned aux2;
-            #if (MSVC)
-                int cpuInfo[4]; __cpuid(cpuInfo, 0);
-                __rdtsc(); 
-                GetProcessHeap(); // purely user-mode function
-                __rdtscp(&aux2);
-                #pragma warning (disable : 6387)
-                CloseHandle((HANDLE)0); // NtClose syscall
-                #pragma warning (default : 6387)
-                __rdtscp(&aux2);
-            #elif (GCC) || (CLANG)
-                unsigned low, high;
-                __asm__ __volatile__(
-                    "cpuid\n\t"
-                    "rdtsc\n\t"
-                    : "=a"(low), "=d"(high)
-                    : "a"(0)
-                    : "ebx", "ecx"
-                );
-                GetProcessHeap();
-                __asm__ __volatile__(
-                    "rdtscp\n\t"
-                    "cpuid"
-                    : "=a"(low), "=d"(high)
-                    :: "rbx", "rcx"
-                );
-                CloseHandle((HANDLE)0);
-                __asm__ __volatile__(
-                    "rdtscp\n\t"
-                    "cpuid"
-                    : "=a"(low), "=d"(high)
-                    :: "rbx", "rcx"
-                );
-            #endif
-        }
-
-        // actual measurement
-        constexpr u8  SAMPLE_COUNT = 100;
-        constexpr u16 SCALE_FACTOR = 1000;
-        constexpr u32 THRESHOLD_SCALED = 6 * SCALE_FACTOR;  // <6× ratio => VM
-        u64 samples[SAMPLE_COUNT] = { 0 };
-
-        for (int i = 0; i < SAMPLE_COUNT; ++i) {
-            unsigned aux3;
-            u64 x0, x1, x2;
-            #if (MSVC)
-                int cpuInfo[4]; __cpuid(cpuInfo, 0);
-                x0 = __rdtsc();
-                GetProcessHeap();
-                x1 = __rdtscp(&aux3);
-            #pragma warning (disable : 6387)
-                CloseHandle((HANDLE)0);
-            #pragma warning (default : 6387)
-                x2 = __rdtscp(&aux3);
-            #else
-                unsigned low, high;
-                __asm__ __volatile__(
-                    "cpuid\n\t"
-                    "rdtsc\n\t"
-                    : "=a"(low), "=d"(high)
-                    : "a"(0)
-                    : "ebx", "ecx"
-                );
-                x0 = ((u64)high << 32) | low;
-
-                GetProcessHeap();
-
-                __asm__ __volatile__(
-                    "rdtscp\n\t"
-                    "cpuid"
-                    : "=a"(low), "=d"(high)
-                    :: "rbx", "rcx"
-                );
-                x1 = ((u64)high << 32) | low;
-
-                CloseHandle((HANDLE)0);
-
-                __asm__ __volatile__(
-                    "rdtscp\n\t"
-                    "cpuid"
-                    : "=a"(low), "=d"(high)
-                    :: "rbx", "rcx"
-                );
-                x2 = ((u64)high << 32) | low;
-            #endif
-
-            const u64 heapCost = x1 - x0;
-            const u64 closeCost = x2 - x1;
-            samples[i] = (heapCost > 0)
-                ? ((closeCost * SCALE_FACTOR) / heapCost)
-                : UINT64_MAX;
-        }
-
-        std::sort(std::begin(samples), std::end(samples));
-        restoreThreadPriority();
-        const u64 median = samples[SAMPLE_COUNT / 2];
-        debug("TIMER: Ratio: ", median, " - Threshold: <", THRESHOLD_SCALED);
-
-        if (median < THRESHOLD_SCALED) {
-            return true;
-        }
-
+    #if (WINDOWS)   
         // simple check to detect poorly coded RDTSC patches
         typedef struct _PROCESSOR_POWER_INFORMATION {
             ULONG Number;
@@ -4368,7 +4231,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         auto serialize_cpu = []() {
             int cpuInfo[4];
             __cpuid(cpuInfo, 0);
-            };
+        };
 
         auto measure_one_read = [&](volatile char* addr) -> u64 {
             // ensure prior instructions complete
@@ -10467,7 +10330,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     std::make_pair(VM::INTEL_THREAD_MISMATCH, VM::core::technique(95, VM::intel_thread_mismatch)),
     std::make_pair(VM::AMD_THREAD_MISMATCH, VM::core::technique(95, VM::amd_thread_mismatch)),
     std::make_pair(VM::XEON_THREAD_MISMATCH, VM::core::technique(95, VM::xeon_thread_mismatch)),
-    std::make_pair(VM::TIMER, VM::core::technique(45, VM::timer)),
+    std::make_pair(VM::TIMER, VM::core::technique(50, VM::timer)),
     std::make_pair(VM::CPU_BRAND, VM::core::technique(95, VM::cpu_brand)),
     std::make_pair(VM::THREAD_COUNT, VM::core::technique(35, VM::thread_count)),
     std::make_pair(VM::HYPERVISOR_STR, VM::core::technique(75, VM::hypervisor_str)),
