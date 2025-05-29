@@ -5585,8 +5585,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 _Field_size_bytes_(TableBufferLength) UCHAR TableBuffer[1];
             } SYSTEM_FIRMWARE_TABLE_INFORMATION, * PSYSTEM_FIRMWARE_TABLE_INFORMATION;
         #pragma warning(default: 4459)
+        #pragma pack(push, 1)
+            struct ACPI_HEADER {
+                char Signature[4];
+                u32  Length;
+                u8   Revision;
+                // rest not needed
+            };
+        #pragma pack(pop)
 
-            typedef NTSTATUS(__stdcall* PNtQuerySystemInformation)(ULONG, PVOID, ULONG, PULONG);
+        typedef NTSTATUS(__stdcall* PNtQuerySystemInformation)(ULONG, PVOID, ULONG, PULONG);
 
         #if defined(_MSC_VER)
         #define BSWAP32(x) _byteswap_ulong(x)
@@ -5693,20 +5701,56 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             };
 
             auto scan_table = [&](DWORD sig, DWORD id) noexcept -> bool {
+                // 1) Query the table
                 ULONG got = 0;
-                auto info = query(sig, id, &got);
+                const auto info = query(sig, id, &got);
                 if (!info) return false;
 
+                const auto* hdr = reinterpret_cast<const ACPI_HEADER*>(info->TableBuffer);
                 const auto* buf = info->TableBuffer;
                 const size_t len = info->TableBufferLength;
 
+                // SSDT specific checks
+                if (memcmp(hdr->Signature, "SSDT", 4) != 0) {
+                    // 2) SSDT revision 0 or 1
+                    if (hdr->Revision <= 1) {
+                        debug("FIRMWARE: SSDT revision indicates VM (rev ", int(hdr->Revision), ")");
+                        clear();
+                        return true;
+                    }
+
+                    // helper to search a byte sequence in the table
+                    auto contains = [&](const char* pat, size_t patlen) {
+                        return std::search(buf, buf + len, pat, pat + patlen) != (buf + len);
+                    };
+
+                    // 3) lives under _SB.PCI0 but not under _SB.PR00
+                    const bool has_pci0 = contains("_SB.PCI0", 7);
+                    const bool has_pr00 = contains("_SB.PR00", 7);
+                    if (has_pci0 && !has_pr00) {
+                        debug("FIRMWARE: SSDT namespace indicates VM (_SB.PCI0 only)");
+                        clear();
+                        return true;
+                    }
+
+                    // 4) PWRB, SLPB and ACAD under _SB
+                    const bool has_pwrb = contains("PWRB", 4);
+                    const bool has_slpb = contains("SLPB", 4);
+                    const bool has_acad = contains("ACAD", 4);
+                    if (has_pwrb && has_slpb && has_acad) {
+                        debug("FIRMWARE: VM‐specific power/adapter objects detected");
+                        clear();
+                        return true;
+                    }
+                }
+
+                // 5) Attempt to detect spoofed AMD manufacturer data
                 constexpr char man_short[] = "Advanced Micro Devices";
                 constexpr char man_full[] = "Advanced Micro Devices, Inc.";
                 const size_t short_len = sizeof(man_short) - 1;
                 const size_t full_len = sizeof(man_full) - 1;
-    
+
                 bool has_short = false, has_full = false;
-    
                 for (size_t i = 0; i + short_len <= len; ++i) {
                     if (memcmp(buf + i, man_short, short_len) == 0) {
                         has_short = true;
@@ -5726,6 +5770,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     return true;
                 }
 
+                // 6) Scan for VM-specific firmware signatures
                 for (size_t ti = 0; ti < targets.size(); ++ti) {
                     const char* pat = targets[ti];
                     const size_t plen = strlen(pat);
@@ -5743,6 +5788,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     }
                 }
 
+                // 7) Detect known firmware patches done by popular hardeners
                 constexpr char marker[] = "777777";
                 constexpr size_t mlen = sizeof(marker) - 1;
                 if (len >= mlen) {
@@ -5760,7 +5806,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             };
 
             ULONG total = 0;
-            auto list = query(ACPI_SIG, 0, &total);
+            const auto list = query(ACPI_SIG, 0, &total);
             if (!list) return false;
 
             // ACPI table count
@@ -5780,8 +5826,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             if (ssdt_ct < 2) {
-                clear();
                 debug("FIRMWARE: Not enough SSDT tables for a real system");
+                clear();
                 return true;
             }
 
@@ -5790,14 +5836,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 // FADT PM type check
                 if (tbl == facpSig) {
                     ULONG fsz = 0;
-                    auto fadt = query(ACPI_SIG, tbl, &fsz);
+                    const auto fadt = query(ACPI_SIG, tbl, &fsz);
                     if (fadt && fsz > 45 && fadt->TableBuffer[45] == 0) {
                         debug("FIRMWARE: Invalid PM type detected");
                         clear();
                         return true;
                     }
                 }
-                // ACPI scan
+                // Scan all acpi tables
                 if (scan_table(ACPI_SIG, tbl)) {
                     clear();
                     return true;
@@ -8175,60 +8221,78 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        static const unsigned char shellcodeBytes[] = {
-            0x9C,                                     // pushfq
-            0x81,0x04,0x24,0x00,0x01,0x01,0x00,       // or dword ptr [rsp],0x10100
-            0x9D,                                     // popfq
-            0x0F,0xA2,                                // 0F A2
-            0x90,0x90,0x90,                           // nop; nop; nop
-            0xC3                                      // ret
+        // push flags, set TF-bit, pop flags, execute a dummy instruction, then return
+        constexpr unsigned char trampoline[] = {
+            0x9C,                         // pushfq
+            0x81, 0x04, 0x24,             // OR DWORD PTR [RSP], 0x10100
+            0x00, 0x01, 0x01, 0x00,
+            0x9D,                         // popfq
+            0x0F, 0xA2,                   // cpuid (or any other trappable instruction)
+            0x90, 0x90, 0x90,             // NOPs to pad to breakpoint offset
+            0xC3                          // ret
         };
-        const SIZE_T bufferSize = sizeof(shellcodeBytes);
-        void* memoryBlock = VirtualAlloc(nullptr, bufferSize,
+        SIZE_T trampSize = sizeof(trampoline);
+
+        // allocate RWX memory for trampoline, simple way to support x86 without recurring to inline assembly
+        void* execMem = VirtualAlloc(nullptr, trampSize,
             MEM_COMMIT | MEM_RESERVE,
             PAGE_EXECUTE_READWRITE);
-        if (!memoryBlock) return false;
-        memcpy(memoryBlock, shellcodeBytes, bufferSize);
-        auto const gE = reinterpret_cast<std::uintptr_t>(memoryBlock);
+        if (!execMem) {
+            return false;
+        }
+        // Copy payload
+        memcpy(execMem, trampoline, trampSize);
 
-        bool hvDetected = false;
-        int stepCounter = 0;
-        CONTEXT contextData{};
-        contextData.ContextFlags = CONTEXT_DEBUG_REGISTERS;
-        HANDLE threadHandle = GetCurrentThread();
-        GetThreadContext(threadHandle, &contextData);
-        contextData.Dr0 = gE + 11; // single step breakpoint address
-        contextData.Dr7 = 1; // enable local breakpoint 0
-        SetThreadContext(threadHandle, &contextData);
+        // Variables to track detection
+        bool hypervisorCaught = false;
+        int hitCount = 0;
 
-        auto exceptionFilter = [&](unsigned int exceptionCode, EXCEPTION_POINTERS* exceptionInfo) -> int {
-            if (exceptionCode != EXCEPTION_SINGLE_STEP) {
-                hvDetected = true;
-                return EXCEPTION_CONTINUE_SEARCH;
+        // prepare debug context for current thread
+        CONTEXT dbgCtx{};
+        dbgCtx.ContextFlags = CONTEXT_DEBUG_REGISTERS;
+        HANDLE thr = GetCurrentThread();
+        GetThreadContext(thr, &dbgCtx);
+
+        // Set Dr0 to trampoline+offset (step triggers here)
+        uintptr_t baseAddr = reinterpret_cast<uintptr_t>(execMem);
+        dbgCtx.Dr0 = baseAddr + 11; // single step breakpoint address
+        dbgCtx.Dr7 = 1; // enable local breakpoint 0
+        SetThreadContext(thr, &dbgCtx);
+
+        auto vetExceptions = [&](unsigned int code, EXCEPTION_POINTERS* info) -> int {
+            // if not single-step, hypervisor likely swatted our trap
+            if (code != ((DWORD)0x80000004L)) {
+                hypervisorCaught = true;
+                return 0;
             }
-            stepCounter++;
-            if (reinterpret_cast<std::uintptr_t>(exceptionInfo->ExceptionRecord->ExceptionAddress) != gE + 11) {
-                hvDetected = true;
-                return EXCEPTION_EXECUTE_HANDLER;
+            // count breakpoint hits
+            hitCount++;
+            // validate exception address matches our breakpoint location
+            if (reinterpret_cast<uintptr_t>(info->ExceptionRecord->ExceptionAddress) != baseAddr + 11) {
+                hypervisorCaught = true;
+                return 1;
             }
-            bool triggeredBySS = (exceptionInfo->ContextRecord->Dr6 & (1ULL << 14)) != 0;
-            bool triggeredByDr0 = (exceptionInfo->ContextRecord->Dr6 & 1) != 0;
-            if (!triggeredBySS || !triggeredByDr0) {
-                hvDetected = true;
+            // check if Trap Flag and DR0 contributed
+            uint64_t status = info->ContextRecord->Dr6;
+            bool fromTrapFlag = (status & (1ULL << 14)) != 0;
+            bool fromDr0 = (status & 1ULL) != 0;
+            if (!fromTrapFlag || !fromDr0) {
+                hypervisorCaught = true;
             }
-            return EXCEPTION_EXECUTE_HANDLER;
+            return 1;
         };
 
         __try {
-            reinterpret_cast<void(*)()>(memoryBlock)();
+            reinterpret_cast<void(*)()>(execMem)();
         }
-        __except (exceptionFilter(GetExceptionCode(), GetExceptionInformation())) {
-            if (stepCounter != 1) {
-                hvDetected = true;
+        __except (vetExceptions(_exception_code(), ((struct _EXCEPTION_POINTERS*)_exception_info()))) {
+            // if we didn't hit exactly once, assume hypervisor interference
+            if (hitCount != 1) {
+                hypervisorCaught = true;
             }
         }
 
-        return hvDetected;
+        return hypervisorCaught;
     }
     #endif
     
