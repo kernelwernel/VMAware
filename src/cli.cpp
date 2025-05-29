@@ -328,8 +328,6 @@ bool is_disabled(const VM::enum_flags flag) {
 
     switch (flag) {
         case VM::VMWARE_DMESG: 
-        case VM::PORT_CONNECTORS:
-        case VM::TEMPERATURE: return true;
         default: return false;
     }
 }
@@ -715,8 +713,8 @@ void general() {
     checker(VM::HYPERVISOR_BIT, "CPUID hypervisor bit");
     checker(VM::HYPERVISOR_STR, "hypervisor str");
     checker(VM::TIMER, "timing anomalies");
-    checker(VM::THREAD_COUNT, "processor count");
-    checker(VM::MAC, "MAC address");
+    checker(VM::THREAD_COUNT, "thread count");
+    checker(VM::MAC, "MAC addresses");
     checker(VM::TEMPERATURE, "temperature");
     checker(VM::SYSTEMD, "systemd virtualisation");
     checker(VM::CVENDOR, "chassis vendor");
@@ -728,12 +726,11 @@ void general() {
     checker(VM::DLL, "DLLs");
     checker(VM::REGISTRY_KEYS, "registry keys");
     checker(VM::WINE, "Wine");
-    checker(VM::FILES, "VM files");
     checker(VM::HWMODEL, "hw.model");
     checker(VM::DISK_SIZE, "disk size");
     checker(VM::VBOX_DEFAULT, "VBox default specs");
     checker(VM::VBOX_NETWORK, "VBox network provider match");
-    checker(VM::PROCESSES, "VM processes");
+    checker(VM::PROCESSES, "processes");
     checker(VM::LINUX_USER_HOST, "default Linux user/host");
     checker(VM::GAMARUE, "gamarue ransomware technique");
     checker(VM::BOCHS_CPU, "BOCHS CPU techniques");
@@ -763,7 +760,7 @@ void general() {
     checker(VM::CUCKOO_PIPE, "Cuckoo pipe");
     checker(VM::HYPERV_HOSTNAME, "Hyper-V Azure hostname");
     checker(VM::GENERAL_HOSTNAME, "general VM hostnames");
-    checker(VM::DISPLAY, "screen resolution");
+    checker(VM::DISPLAY, "display");
     checker(VM::DEVICE_STRING, "bogus device string");
     checker(VM::BLUESTACKS_FOLDERS, "BlueStacks folders");
     checker(VM::CPUID_SIGNATURE, "CPUID signatures");
@@ -783,23 +780,23 @@ void general() {
     checker(anyrun_directory, "ANY.RUN directory");
     checker(VM::DRIVERS, "driver names");
     checker(VM::DISK_SERIAL, "disk serial number");
-    checker(VM::PORT_CONNECTORS, "physical connection ports");
     checker(VM::IVSHMEM, "IVSHMEM device");
     checker(VM::GPU_CAPABILITIES, "GPU capabilities");
     checker(VM::LOGICAL_PROCESSORS, "logical processor count");
     checker(VM::PHYSICAL_PROCESSORS, "physical processor count");
-    checker(VM::POWER_CAPABILITIES, "Power capabilities");
+    checker(VM::POWER_CAPABILITIES, "power capabilities");
     checker(VM::QEMU_FW_CFG, "QEMU fw_cfg device");
     checker(VM::VIRTUAL_PROCESSORS, "virtual processors");
     checker(VM::HYPERV_QUERY, "hypervisor query");
     checker(VM::AMD_SEV, "AMD-SEV MSR");
     checker(VM::VIRTUAL_REGISTRY, "registry emulation");
-    checker(VM::FIRMWARE, "firmware signatures");
+    checker(VM::FIRMWARE, "firmware");
     checker(VM::FILE_ACCESS_HISTORY, "low file access count");
     checker(VM::NSJAIL_PID, "nsjail PID");
     checker(VM::TPM, "TPM manufacturer");
     checker(VM::PCI_DEVICES, "PCI vendor/device ID");
     checker(VM::QEMU_PASSTHROUGH, "QEMU passthrough");
+    checker(VM::TRAP, "trap behavior");
 
     // ADD NEW TECHNIQUE CHECKER HERE
 
