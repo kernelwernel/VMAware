@@ -8261,7 +8261,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         auto vetExceptions = [&](unsigned int code, EXCEPTION_POINTERS* info) -> int {
             // if not single-step, hypervisor likely swatted our trap
-            if (code != (reinterpret_cast<DWORD>(0x80000004L))) {
+            if (code != ((DWORD)0x80000004L)) {
                 hypervisorCaught = true;
                 return 0;
             }
