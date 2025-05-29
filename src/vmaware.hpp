@@ -667,7 +667,6 @@ private:
     static constexpr u8 settings_begin = DEFAULT;
     static constexpr u8 settings_end = enum_end;
 
-
     // this is specifically meant for VM::detected_count() to 
     // get the total number of techniques that detected a VM
     static u8 detected_count_num; 
@@ -1089,30 +1088,6 @@ private:
             }
 
             return vec;
-        }
-
-        // basically checks whether all the techniques were cached (with exception of techniques disabled by default)
-        static bool all_present() {
-            if (cache_table.size() == technique_count) {
-                core_debug("all_present(): ", 1);
-                return true;
-            } else if (cache_table.size() == static_cast<std::size_t>(technique_count) - disabled_techniques.size()) {
-                u8 count = 0;
-
-                for (const auto id : disabled_techniques) {
-                    count += !cache_keys.test(id);
-                }
-
-                const bool result = (count == disabled_techniques.size());
-
-                core_debug("all_present(): ", result);
-
-                return result;
-            }
-
-            core_debug("all_present(): ", false);
-
-            return false;
         }
 
         struct brand {
@@ -9185,6 +9160,12 @@ public: // START OF PUBLIC FUNCTIONS
         , const std::source_location& loc = std::source_location::current()
 #endif
     ) {
+        // return and force caching early if the technique is not supported
+        if (util::is_unsupported(flag_bit)) {
+            memo::cache_store(flag_bit, false, 0);
+            return false;
+        }
+
         // lambda to manage exceptions
         auto throw_error = [&](const char* text) -> void {
             std::stringstream ss;
@@ -9194,12 +9175,6 @@ public: // START OF PUBLIC FUNCTIONS
             ss << ". Consult the documentation's flag handler for VM::check()";
             throw std::invalid_argument(std::string(text) + ss.str());
         };
-
-        // return and force caching early if the technique is not supported
-        if (util::is_unsupported(flag_bit)) {
-            memo::cache_store(flag_bit, false, 0);
-            return false;
-        }
 
         // check if flag is out of range
         if (flag_bit > enum_size) {
@@ -9274,14 +9249,8 @@ public: // START OF PUBLIC FUNCTIONS
         // brand strings will be outputted if there's a conflict)
         const bool is_multiple = core::is_enabled(flags, MULTIPLE);
 
-        // used for later
-        u16 score = 0;
-
-        // are all the techiques already run? if not, run them 
-        // to fetch the necessary info to determine the brand
-        if (!memo::all_present() || core::is_enabled(flags, NO_MEMO)) {
-            score = core::run_all(flags);
-        }
+        // run all the techniques 
+        const u16 score = core::run_all(flags);
 
         // check if the result is already cached and return that instead
         if (core::is_disabled(flags, NO_MEMO)) {
