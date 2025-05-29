@@ -5543,83 +5543,33 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      */
     [[nodiscard]] static bool firmware() {
     #if (WINDOWS)
-        #pragma warning(disable: 4459)
-            typedef enum _SYSTEM_INFORMATION_CLASS {
-                SystemFirmwareTableInformation = 76
-            } SYSTEM_INFORMATION_CLASS;
-            typedef enum _SYSTEM_FIRMWARE_TABLE_ACTION {
-                SystemFirmwareTableEnumerate,
-                SystemFirmwareTableGet,
-                SystemFirmwareTableMax
-            } SYSTEM_FIRMWARE_TABLE_ACTION;
-            typedef struct _SYSTEM_FIRMWARE_TABLE_INFORMATION {
-                ULONG ProviderSignature;
-                SYSTEM_FIRMWARE_TABLE_ACTION Action;
-                ULONG TableID;
-                ULONG TableBufferLength;
-                _Field_size_bytes_(TableBufferLength) UCHAR TableBuffer[1];
-            } SYSTEM_FIRMWARE_TABLE_INFORMATION, * PSYSTEM_FIRMWARE_TABLE_INFORMATION;
-        #pragma warning(default: 4459)
         #pragma pack(push, 1)
-            struct ACPI_HEADER {
-                char Signature[4];
-                u32  Length;
-                u8   Revision;
-                // rest not needed
-            };
+        typedef struct {
+            char Signature[4];            
+            u32 Length;         
+            u8 Revision;            
+            // others not needed
+        } ACPI_HEADER;
         #pragma pack(pop)
 
-        typedef NTSTATUS(__stdcall* PNtQuerySystemInformation)(ULONG, PVOID, ULONG, PULONG);
-
         #if defined(_MSC_VER)
-        #define BSWAP32(x) _byteswap_ulong(x)
+            #define __bswap32(x) _byteswap_ulong(x)
         #else
-        #define BSWAP32(x) __builtin_bswap32(x)
+            #define __bswap32(x) __builtin_bswap32(x)
         #endif
 
         #if defined(_MSC_VER)
-        #define PREFETCH(addr) _mm_prefetch((const char*)(addr), _MM_HINT_T0)
+            #define __prefetch(addr) _mm_prefetch((const char*)(addr), _MM_HINT_T0)
         #else
-        #define PREFETCH(addr) __builtin_prefetch(addr)
+            #define __prefetch(addr) __builtin_prefetch(addr)
         #endif
 
-            constexpr ULONG STATUS_BUFFER_TOO_SMALL = 0xC0000023;
             constexpr DWORD ACPI_SIG = 'ACPI';
             constexpr DWORD ssdtSig = 'TDSS';
             constexpr DWORD facpSig = 'PCAF';
             constexpr DWORD dsdtSig = 'DSDT';
             constexpr DWORD FIRM_SIG = 'FIRM';
             constexpr DWORD RSMB_SIG = 'RSMB';
-
-            PBYTE qsiBuf = nullptr;
-            ULONG qsiSize = 0;
-
-            auto clear = [&]() noexcept {
-                free(qsiBuf);
-                qsiBuf = nullptr;
-                qsiSize = 0;
-            };
-
-            auto ensure = [&](ULONG need) noexcept -> bool {
-                if (qsiSize < need) {
-                    PBYTE tmp = (PBYTE)realloc(qsiBuf, need);
-                    if (!tmp) return false;
-                    qsiBuf = tmp;
-                    qsiSize = need;
-                }
-                return true;
-            };
-
-            const HMODULE hNtdll = GetModuleHandle(_T("ntdll.dll"));
-            if (!hNtdll) return false;
-
-            const char* functionNames[] = { "NtQuerySystemInformation" };
-            void* functionPointers[1] = { nullptr };
-
-            util::GetFunctionAddresses(hNtdll, functionNames, functionPointers, 1);
-
-            const auto ntqsi = reinterpret_cast<PNtQuerySystemInformation>(functionPointers[0]);
-            if (!ntqsi) return false;
 
             constexpr std::array<const char*, 24> targets = { {
                 "Parallels Software", "Parallels(R)",
@@ -5642,240 +5592,205 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             static_assert(targets.size() == brands_map.size(),
                 "targets and brands_map must be the same length");
 
-            auto query = [&](DWORD provider, DWORD tableID, PULONG outLen) noexcept -> PSYSTEM_FIRMWARE_TABLE_INFORMATION {
-                const ULONG hdrSz = FIELD_OFFSET(SYSTEM_FIRMWARE_TABLE_INFORMATION, TableBuffer);
-                if (!ensure(hdrSz)) { clear(); return nullptr; }
+            auto scan_table = [&](const BYTE* buf, size_t len) noexcept -> bool {
+                // helper to search a byte‐sequence
+                auto contains = [&](const char* pat, size_t patlen) {
+                    return std::search(buf, buf + len, pat, pat + patlen) != (buf + len);
+                };
 
-                auto hdr = (PSYSTEM_FIRMWARE_TABLE_INFORMATION)qsiBuf;
-                hdr->ProviderSignature = provider;
-                hdr->Action = SystemFirmwareTableEnumerate;
-                hdr->TableID = BSWAP32(tableID);
-                hdr->TableBufferLength = 0;
+                // 0) sanity check: need at least up to Revision
+                constexpr size_t hdr_min_size = offsetof(ACPI_HEADER, Revision) + sizeof(u8);
+                if (len < hdr_min_size)
+                    return false;
 
-                NTSTATUS st = ntqsi(SystemFirmwareTableInformation, hdr, hdrSz, outLen);
-                if (static_cast<ULONG>(st) != STATUS_BUFFER_TOO_SMALL) { clear(); return nullptr; }
+                auto hdr = reinterpret_cast<const ACPI_HEADER*>(buf);
 
-                const ULONG fullSz = *outLen;
-                if (!ensure(fullSz)) { clear(); return nullptr; }
-
-                hdr = (PSYSTEM_FIRMWARE_TABLE_INFORMATION)qsiBuf;
-                hdr->ProviderSignature = provider;
-                hdr->Action = SystemFirmwareTableEnumerate;
-                hdr->TableID = BSWAP32(tableID);
-                hdr->TableBufferLength = fullSz - hdrSz;
-
-                PREFETCH(hdr->TableBuffer);
-                st = ntqsi(SystemFirmwareTableInformation, hdr, fullSz, outLen);
-
-                if (!(((NTSTATUS)(st)) >= 0)) { 
-                    clear(); 
-                    return nullptr; 
-                }
-
-                return hdr;
-            };
-
-            auto scan_table = [&](DWORD sig, DWORD id) noexcept -> bool {
-                // 1) Query the table
-                ULONG got = 0;
-                const auto info = query(sig, id, &got);
-                if (!info) return false;
-
-                const auto* hdr = reinterpret_cast<const ACPI_HEADER*>(info->TableBuffer);
-                const auto* buf = info->TableBuffer;
-                const size_t len = info->TableBufferLength;
-
-                // SSDT specific checks
-                if (memcmp(hdr->Signature, "SSDT", 4) != 0) {
-                    // 2) SSDT revision 0 or 1
+                // 1) SSDT‐specific: only apply these if it's an SSDT
+                if (memcmp(hdr->Signature, "SSDT", 4) == 0) {
+                    // 1a) old SSDT revision
                     if (hdr->Revision <= 1) {
                         debug("FIRMWARE: SSDT revision indicates VM (rev ", int(hdr->Revision), ")");
-                        clear();
                         return true;
                     }
 
-                    // helper to search a byte sequence in the table
-                    auto contains = [&](const char* pat, size_t patlen) {
-                        return std::search(buf, buf + len, pat, pat + patlen) != (buf + len);
-                    };
-
-                    // 3) lives under _SB.PCI0 but not under _SB.PR00
-                    const bool has_pci0 = contains("_SB.PCI0", 7);
-                    const bool has_pr00 = contains("_SB.PR00", 7);
-                    if (has_pci0 && !has_pr00) {
+                    // 1b) lives under _SB.PCI0 but not under _SB.PR00
+                    if (contains("_SB.PCI0", 7) && !contains("_SB.PR00", 7)) {
                         debug("FIRMWARE: SSDT namespace indicates VM (_SB.PCI0 only)");
-                        clear();
                         return true;
                     }
 
-                    // 4) PWRB, SLPB and ACAD under _SB
-                    const bool has_pwrb = contains("PWRB", 4);
-                    const bool has_slpb = contains("SLPB", 4);
-                    const bool has_acad = contains("ACAD", 4);
-                    if (has_pwrb && has_slpb && has_acad) {
+                    // 1c) power/adapter objects
+                    if (contains("PWRB", 4) && contains("SLPB", 4) && contains("ACAD", 4)) {
                         debug("FIRMWARE: VM‐specific power/adapter objects detected");
-                        clear();
                         return true;
                     }
                 }
 
-                // 5) Attempt to detect spoofed AMD manufacturer data
+                // 2) Spoofed AMD manufacturer
                 constexpr char man_short[] = "Advanced Micro Devices";
                 constexpr char man_full[] = "Advanced Micro Devices, Inc.";
                 const size_t short_len = sizeof(man_short) - 1;
                 const size_t full_len = sizeof(man_full) - 1;
 
-                bool has_short = false, has_full = false;
-                for (size_t i = 0; i + short_len <= len; ++i) {
-                    if (memcmp(buf + i, man_short, short_len) == 0) {
-                        has_short = true;
-                        break;
-                    }
-                }
-                for (size_t i = 0; i + full_len <= len; ++i) {
-                    if (memcmp(buf + i, man_full, full_len) == 0) {
-                        has_full = true;
-                        break;
-                    }
-                }
-
+                bool has_short = contains(man_short, short_len);
+                bool has_full = contains(man_full, full_len);
                 if (has_short && !has_full) {
                     debug("FIRMWARE: Spoofed AMD manufacturer string detected");
-                    clear();
                     return true;
                 }
 
-                // 6) Scan for VM-specific firmware signatures
+                // 3) VM‐specific firmware signatures
                 for (size_t ti = 0; ti < targets.size(); ++ti) {
                     const char* pat = targets[ti];
                     const size_t plen = strlen(pat);
                     if (plen > len) continue;
 
                     for (size_t i = 0; i + plen <= len; ++i) {
-                        if (buf[i] == static_cast<unsigned char>(pat[0])
-                            && memcmp(buf + i, pat, plen) == 0)
+                        if (buf[i] == static_cast<unsigned char>(pat[0]) &&
+                            memcmp(buf + i, pat, plen) == 0)
                         {
-                            clear();
-                            const char* brand = brands_map[ti];
                             debug("FIRMWARE: Detected ", pat);
+                            const char* brand = brands_map[ti];
                             return (brand ? core::add(brand) : true);
                         }
                     }
                 }
 
-                // 7) Detect known firmware patches done by popular hardeners
+                // 4) Known patches used by popular hardeners 
                 constexpr char marker[] = "777777";
                 constexpr size_t mlen = sizeof(marker) - 1;
                 if (len >= mlen) {
                     for (size_t i = 0; i + mlen <= len; ++i) {
                         if (memcmp(buf + i, marker, mlen) == 0) {
-                            clear();
                             debug("FIRMWARE: Detected VMWareHardenerLoader");
                             return core::add(brands::VMWARE_HARD);
                         }
                     }
                 }
 
-                clear();
                 return false;
             };
 
-            ULONG total = 0;
-            const auto list = query(ACPI_SIG, 0, &total);
-            if (!list) return false;
+            // 1) Enumerate ACPI tables
+            const DWORD enumSize = EnumSystemFirmwareTables(ACPI_SIG, nullptr, 0);
+            if (enumSize == 0) return false;
 
-            // ACPI table count
-            const DWORD* tables = (DWORD*)list->TableBuffer;
-            const ULONG cnt = list->TableBufferLength / sizeof(DWORD);
+            std::vector<BYTE> tableIDs(enumSize);
+            if (EnumSystemFirmwareTables(ACPI_SIG, tableIDs.data(), enumSize) != enumSize)
+                return false;
 
-            if (cnt < 4) {
+            const DWORD count = enumSize / sizeof(DWORD);
+            std::vector<DWORD> tables(count);
+            for (DWORD i = 0; i < count; i++)
+                tables[i] = reinterpret_cast<DWORD*>(tableIDs.data())[i];
+
+            // 2) ACPI table count check
+            if (count < 4) {
                 debug("FIRMWARE: Not enough ACPI tables for a real system");
-                clear();
                 return true;
             }
-
-            // SSDT count
             int ssdt_ct = 0;
-            for (ULONG i = 0; i < cnt; ++i) {
-                if (tables[i] == ssdtSig && ++ssdt_ct == 2) break;
-            }
-
+            for (auto tbl : tables) if (tbl == ssdtSig && ++ssdt_ct >= 2) break;
             if (ssdt_ct < 2) {
                 debug("FIRMWARE: Not enough SSDT tables for a real system");
-                clear();
                 return true;
             }
 
-            for (ULONG i = 0; i < cnt; ++i) {
-                DWORD tbl = tables[i];
-                // FADT PM type check
+            // Helper to fetch one table into a malloc'd buffer
+            auto fetch = [&](DWORD provider, DWORD tableID, BYTE*& outBuf, size_t& outLen) -> bool {
+                const UINT sz = GetSystemFirmwareTable(provider, __bswap32(tableID), nullptr, 0);
+                if (sz == 0) return false;
+                outBuf = (BYTE*)malloc(sz);
+                if (!outBuf) return false;
+                if (GetSystemFirmwareTable(provider, __bswap32(tableID), outBuf, sz) != sz) {
+                    free(outBuf);
+                    outBuf = nullptr;
+                    return false;
+                }
+                outLen = sz;
+                __prefetch(outBuf);
+                return true;
+            };
+
+            // 3) Scan FADT + each ACPI table
+            for (auto tbl : tables) {
                 if (tbl == facpSig) {
-                    ULONG fsz = 0;
-                    const auto fadt = query(ACPI_SIG, tbl, &fsz);
-                    if (fadt && fsz > 45 && fadt->TableBuffer[45] == 0) {
-                        debug("FIRMWARE: Invalid PM type detected");
-                        clear();
-                        return true;
+                    BYTE* buf = nullptr;
+                    size_t len = 0;
+                    if (fetch(ACPI_SIG, tbl, buf, len)) {
+                        if (len > 45 && buf[45] == 0) {
+                            debug("FIRMWARE: Invalid PM type detected");
+                            free(buf);
+                            return true;
+                        }
+                        free(buf);
                     }
                 }
-                // Scan all acpi tables
-                if (scan_table(ACPI_SIG, tbl)) {
-                    clear();
-                    return true;
+                {
+                    BYTE* buf = nullptr;
+                    size_t len = 0;
+                    if (fetch(ACPI_SIG, tbl, buf, len)) {
+                        if (scan_table(buf, len)) {
+                            free(buf);
+                            return true;
+                        }
+                        free(buf);
+                    }
                 }
             }
 
-            // DSDT scan & OSI check
-            clear();
-            const ULONG dsdtSz = GetSystemFirmwareTable(ACPI_SIG, BSWAP32(dsdtSig), nullptr, 0);
+            // 4) DSDT + _OSI
+            const DWORD dsdtSz = GetSystemFirmwareTable(ACPI_SIG, __bswap32(dsdtSig), nullptr, 0);
             if (dsdtSz == 0) return false;
-
             BYTE* dsdt = (BYTE*)malloc(dsdtSz);
             if (!dsdt) return false;
-
-            if (GetSystemFirmwareTable(ACPI_SIG, BSWAP32(dsdtSig), dsdt, dsdtSz) != dsdtSz) {
+            if (GetSystemFirmwareTable(ACPI_SIG, __bswap32(dsdtSig), dsdt, dsdtSz) != dsdtSz) {
                 free(dsdt);
                 return false;
             }
-
-            static const char* __restrict osi[] = {
+            static const char* osi[] = {
                 "Windows 95","Windows 98","Windows 2000","Windows XP","Windows 2012"
             };
             bool found = false;
             for (auto s : osi) {
                 size_t L = strlen(s);
-                for (ULONG j = 0; j + L <= dsdtSz; ++j) {
-                    if (dsdt[j] == (BYTE)s[0] && memcmp(dsdt + j, s, L) == 0) {
+                for (size_t j = 0; j + L <= dsdtSz; ++j) {
+                    if (memcmp(dsdt + j, s, L) == 0) {
                         found = true;
                         break;
                     }
                 }
+                if (found) break;
             }
-
             free(dsdt);
             if (!found) {
-                debug("FIRMWARE: Invalid _OSI params found");
+                debug("FIRMWARE: No _OSI params found");
                 return true;
             }
 
-            // SMBIOS (RMSB) & FIRM scan
+            // 5) SMBIOS / FIRM tables
             const DWORD smbios[] = { FIRM_SIG, RSMB_SIG };
             for (DWORD provider : smbios) {
-                ULONG totalOther = 0;
-                auto listOther = query(provider, 0, &totalOther);
-                if (!listOther)
+                const UINT enumSMB = EnumSystemFirmwareTables(provider, nullptr, 0);
+                if (enumSMB == 0) continue;
+
+                std::vector<BYTE> ids(enumSMB);
+                if (EnumSystemFirmwareTables(provider, ids.data(), enumSMB) != enumSMB)
                     continue;
 
-                const DWORD* tablesOther = reinterpret_cast<const DWORD*>(listOther->TableBuffer);
-                const ULONG countOther = listOther->TableBufferLength / sizeof(DWORD);
-                for (ULONG i = 0; i < countOther; ++i) {
-                    if (scan_table(provider, tablesOther[i])) {
-                        clear();
-                        return true;
+                const DWORD cntOther = enumSMB / sizeof(DWORD);
+                for (DWORD i = 0; i < cntOther; ++i) {
+                    const DWORD tblID = reinterpret_cast<DWORD*>(ids.data())[i];
+                    BYTE* buf = nullptr;
+                    size_t len = 0;
+                    if (fetch(provider, tblID, buf, len)) {
+                        if (scan_table(buf, len)) {
+                            free(buf);
+                            return true;
+                        }
+                        free(buf);
                     }
-
                 }
-                clear();
             }
 
             return false;
@@ -7278,7 +7193,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::CUCKOO_PIPE
      */
     [[nodiscard]] static bool cuckoo_pipe() {
-        HANDLE hPipe = CreateFile(
+        const HANDLE hPipe = CreateFile(
             TEXT("\\\\.\\pipe\\cuckoo"),
             GENERIC_READ,
             0,
@@ -7287,10 +7202,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             0,
             NULL
         );
-    
-        const bool is_cuckoo = (hPipe != INVALID_HANDLE_VALUE);
-    
-        if (is_cuckoo) {
+        
+        if (hPipe != INVALID_HANDLE_VALUE) {
             CloseHandle(hPipe);
             return core::add(brands::CUCKOO);
         }
