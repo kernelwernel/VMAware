@@ -1966,7 +1966,7 @@ private:
 
             auto getName = [&](DWORD idx) -> const char* {
                 return reinterpret_cast<char*>(base + nameRvas[idx]);
-                };
+            };
 
             // 4) Main loop
             for (size_t i = 0; i < count; ++i) {
@@ -8078,7 +8078,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         auto __iswdigit = [](wchar_t c) noexcept {
             return (c >= L'0' && c <= L'9');
-            };
+        };
 
         HDEVINFO hDevInfo = SetupDiGetClassDevsW(
             &GUID_DEVCLASS_DISPLAY,
