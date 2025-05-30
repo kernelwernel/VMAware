@@ -656,8 +656,8 @@ private:
     static constexpr u16 maximum_points = 5510; // theoretical total points if all VM detections returned true (which is practically impossible)
     static constexpr u16 high_threshold_score = 300; // new threshold score from 150 to 300 if VM::HIGH_THRESHOLD flag is enabled
     static constexpr bool SHORTCUT = true; // macro for whether VM::core::run_all() should take a shortcut by skipping the rest of the techniques if the threshold score is already met
-
-
+    
+    
     // intended for loop indexes
     static constexpr u8 enum_begin = 0;
     static constexpr u8 enum_end = enum_size + 1;
@@ -665,7 +665,17 @@ private:
     static constexpr u8 technique_end = DEFAULT;
     static constexpr u8 settings_begin = DEFAULT;
     static constexpr u8 settings_end = enum_end;
+    
 
+public:
+    // for platform compatibility ranges
+    static constexpr u8 WINDOWS_START = VM::GPU_CAPABILITIES;
+    static constexpr u8 WINDOWS_END = VM::VBOX_DEFAULT;
+    static constexpr u8 LINUX_START = VM::SIDT;
+    static constexpr u8 LINUX_END = VM::PROCESSES;
+    static constexpr u8 MACOS_START = VM::MAC_MEMSIZE;
+    static constexpr u8 MACOS_END = VM::HWMODEL;
+    
     // this is specifically meant for VM::detected_count() to 
     // get the total number of techniques that detected a VM
     static u8 detected_count_num; 
@@ -1195,18 +1205,18 @@ private:
 
             #if (LINUX)
                 return (!(
-                    (flag >= VM::SIDT) &&
-                    (flag <= VM::AMD_SEV)
+                    (flag >= LINUX_START) &&
+                    (flag <= LINUX_END)
                 ));
             #elif (WINDOWS)
                 return (!(
-                    (flag >= VM::GPU_CAPABILITIES) &&
-                    (flag <= VM::VBOX_DEFAULT)
+                    (flag >= WINDOWS_START) &&
+                    (flag <= WINDOWS_END)
                 ));
             #elif (APPLE) 
                 return (!(
-                    (flag >= VM::MAC_MEMSIZE) &&
-                    (flag <= VM::HWMODEL)
+                    (flag >= MACOS_START) &&
+                    (flag <= MACOS_END)
                 ));
             #else
                 return false;
