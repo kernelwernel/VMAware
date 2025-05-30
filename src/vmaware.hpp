@@ -49,14 +49,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 540
- * - struct for internal cpu operations        => line 718
- * - struct for internal memoization           => line 1050
- * - struct for internal utility functions     => line 1191
- * - struct for internal core components       => line 8259
+ * - enums for publicly accessible techniques  => line 539
+ * - struct for internal cpu operations        => line 708
+ * - struct for internal memoization           => line 1033
+ * - struct for internal utility functions     => line 1174
+ * - struct for internal core components       => line 8175
  * - start of VM detection technique list      => line 2004
- * - start of public VM detection functions    => line 8861
- * - start of externally defined variables     => line 9786
+ * - start of public VM detection functions    => line 8690
+ * - start of externally defined variables     => line 9612
  *
  *
  * ============================== EXAMPLE ===================================
@@ -211,7 +211,6 @@
 
 #pragma once
 
-#include <cstdio>
 #if defined(_WIN32) || defined(_WIN64)
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -339,6 +338,7 @@
 #include <codecvt>
 #endif
 
+#include <cstdio>
 #include <functional>
 #include <cstring>
 #include <string>
@@ -431,7 +431,7 @@
 #elif (CLANG)
 #define VMAWARE_ASSUME(expr) __builtin_assume(expr)
 #elif (GCC)
-// no __builtin_assume, but __builtin_unreachable gives same hint
+// no __builtin_assume on some versions, but __builtin_unreachable gives same hint
 #define VMAWARE_ASSUME(expr)               \
     do {                             \
       if (!(expr))                   \
@@ -522,7 +522,6 @@ namespace brands {
     static constexpr const char* NSJAIL = "nsjail";
     static constexpr const char* HYPERVISOR_PHANTOM = "Hypervisor-Phantom";
 }
-
 
 
 struct VM {
@@ -697,15 +696,6 @@ private:
     // macro for bypassing unused parameter/variable warnings
     #define UNUSED(x) ((void)(x))
 
-// likely and unlikely macros
-#if (LINUX)
-#   define VMAWARE_UNLIKELY(x) __builtin_expect(!!(x), 0)
-#   define VMAWARE_LIKELY(x)   __builtin_expect(!!(x), 1)
-#else
-#   define VMAWARE_UNLIKELY
-#   define VMAWARE_LIKELY
-#endif
-
     // specifically for util::hyper_x() and memo::hyperv
     enum hyperx_state : u8 {
         HYPERV_UNKNOWN_VM = 0,
@@ -775,7 +765,6 @@ private:
 #endif
         };
 
-        // check for maximum function leaf
         static bool is_leaf_supported(const u32 p_leaf) {
             u32 eax = 0, unused = 0;
 
@@ -802,7 +791,6 @@ private:
             return false;
         }
 
-        // check AMD
         [[nodiscard]] static bool is_amd() {
             constexpr u32 amd_ecx = 0x444d4163; // "cAMD"
 
@@ -812,7 +800,6 @@ private:
             return (ecx == amd_ecx);
         }
 
-        // check Intel
         [[nodiscard]] static bool is_intel() {
             constexpr u32 intel_ecx1 = 0x6c65746e; // "ntel"
             constexpr u32 intel_ecx2 = 0x6c65746f; // "otel", this is because some Intel CPUs have a rare manufacturer string of "GenuineIotel"
@@ -823,7 +810,6 @@ private:
             return ((ecx == intel_ecx1) || (ecx == intel_ecx2));
         }
 
-        // get the CPU product
         [[nodiscard]] static std::string get_brand() {
             if (memo::cpu_brand::is_cached()) {
                 return memo::cpu_brand::fetch();
@@ -860,7 +846,6 @@ private:
 #endif
         }
 
-        // cpu manufacturer id
         [[nodiscard]] static std::string cpu_manufacturer(const u32 p_leaf) {
             auto cpuid_thingy = [](const u32 p_leaf, u32* regs, std::size_t start = 0, std::size_t end = 4) -> bool {
                 u32 x[4]{};
@@ -940,7 +925,6 @@ private:
             );
         }
 
-
         struct model_struct {
             bool found;
             bool is_xeon;
@@ -982,7 +966,6 @@ private:
 
             return result;
         }
-
 
         [[nodiscard]] static bool vmid_template(const u32 p_leaf) {
             const std::string brand_str = cpu_manufacturer(p_leaf);
@@ -1423,7 +1406,6 @@ private:
 #endif
 
             // fold‐expr over the pack
-
 #if (CPP >= 17)
             (write_arg(std::forward<Args>(message)), ...);
 #else
@@ -2000,8 +1982,8 @@ private:
 #endif
     };
 
-
 private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
+
     /**
      * @brief Check CPUID output of manufacturer ID for known VMs/hypervisors at leaf 0 and 0x40000000-0x40000100
      * @category x86
@@ -5280,7 +5262,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
 #endif
 
-
     
 #if (LINUX || WINDOWS)
     /**
@@ -6432,32 +6413,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         static constexpr Entry entries[] = {
             { nullptr, "HKLM\\Software\\Classes\\Folder\\shell\\sandbox" },
             
-            { brands::SANDBOXIE,  "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Sandboxie" },
-            
-            //{ brands::PARALLELS, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_1AB8*" },
-            //{ brands::VBOX, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_80EE*" },
-            //{ brands::VBOX, "HKLM\\HARDWARE\\ACPI\\DSDT\\VBOX__" },
-            //{ brands::VBOX, "HKLM\\HARDWARE\\ACPI\\FADT\\VBOX__" },
-            //{ brands::VBOX, "HKLM\\HARDWARE\\ACPI\\RSDT\\VBOX__" },
-            //{ brands::VBOX, "HKLM\\SOFTWARE\\Oracle\\VirtualBox Guest Additions" },
-            //{ brands::VBOX, "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxGuest" },
-            //{ brands::VBOX, "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxMouse" },
-            //{ brands::VBOX, "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxService" },
-            //{ brands::VBOX, "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxSF" },
-            //{ brands::VBOX, "HKLM\\SYSTEM\\ControlSet001\\Services\\VBoxVideo" },
-            //{ brands::VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_15AD*" },
-            //{ brands::VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Services\\vmmouse" },
-            //{ brands::VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Services\\vmmouse" },
-            //{ brands::VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Services\\vmusbmouse" },
-            //{ brands::VMWARE, "HKLM\\SYSTEM\\ControlSet001\\Enum\\ACPI\\VMW0003" },
-            //{ brands::VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Services\\vmmouse" },
-            //{ brands::VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Services\\vmusbmouse" },
-            //{ brands::XEN, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_5853*" },
-            //{ brands::XEN, "HKLM\\HARDWARE\\ACPI\\DSDT\\xen" },
-            //{ brands::XEN, "HKLM\\HARDWARE\\ACPI\\FADT\\xen" },
-            //{ brands::XEN, "HKLM\\HARDWARE\\ACPI\\RSDT\\xen" },
-            //{ brands::KVM,  "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_1AF4*" },
-            //{ brands::KVM,  "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_1B36*" },
+            { brands::SANDBOXIE,  "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Sandboxie" },          
             
             { brands::VPC, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_5333*" },
             { brands::VPC, "HKLM\\SYSTEM\\ControlSet001\\Services\\vpcbus" },
@@ -6745,36 +6701,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             
             { brands::JOEBOX,   "SOFTWARE\\Microsoft\\Windows\\CurrentVersion",                                      "ProductID",               "55274-640-2673064-23950" },
             { brands::JOEBOX,   "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion",                                 "ProductID",               "55274-640-2673064-23950" },
-
-            //{ brands::PARALLELS,"HARDWARE\\Description\\System",                                                      "SystemBiosVersion",       "PARALLELS" },
-            //{ brands::PARALLELS,"HARDWARE\\Description\\System",                                                      "VideoBiosVersion",        "PARALLELS" },
-            //{ brands::QEMU,     "HARDWARE\\Description\\System\\BIOS",                                            "SystemManufacturer",     "QEMU" },
-            //{ brands::QEMU,     "HARDWARE\\Description\\System",                                                      "VideoBiosVersion",        "QEMU" },
-            //{ brands::QEMU,     "HARDWARE\\Description\\System",                                                      "SystemBiosVersion",       "QEMU" },
-            //{ brands::BOCHS,    "HARDWARE\\Description\\System",                                                      "SystemBiosVersion",       "BOCHS" },
-            //{ brands::BOCHS,    "HARDWARE\\Description\\System",                                                      "VideoBiosVersion",        "BOCHS" },
-            //{ brands::VBOX,     "HARDWARE\\Description\\System",                                                      "SystemBiosVersion",       "VBOX" },
-            //{ brands::VBOX,     "HARDWARE\\DESCRIPTION\\System",                                                      "SystemBiosDate",          "06/23/99" },
-            //{ brands::VBOX,     "HARDWARE\\Description\\System",                                                      "VideoBiosVersion",        "VIRTUALBOX" },
-            //{ brands::VBOX,     "HARDWARE\\Description\\System\\BIOS",                                            "SystemProductName",      "VIRTUAL" },
-            //{ brands::VBOX,     "SYSTEM\\ControlSet001\\Services\\Disk\\Enum",                                    "DeviceDesc",             "VBOX" },
-            //{ brands::VBOX,     "SYSTEM\\ControlSet001\\Services\\Disk\\Enum",                                    "FriendlyName",           "VBOX" },
-            //{ brands::VBOX,     "SYSTEM\\ControlSet002\\Services\\Disk\\Enum",                                    "DeviceDesc",             "VBOX" },
-            //{ brands::VBOX,     "SYSTEM\\ControlSet002\\Services\\Disk\\Enum",                                    "FriendlyName",           "VBOX" },
-            //{ brands::VBOX,     "SYSTEM\\ControlSet003\\Services\\Disk\\Enum",                                    "DeviceDesc",             "VBOX" },
-            //{ brands::VBOX,     "SYSTEM\\ControlSet003\\Services\\Disk\\Enum",                                    "FriendlyName",           "VBOX" },
-            //{ brands::VBOX,     "SYSTEM\\CurrentControlSet\\Control\\SystemInformation",                              "SystemProductName",      "VIRTUAL" },
-            //{ brands::VBOX,     "SYSTEM\\CurrentControlSet\\Control\\SystemInformation",                              "SystemProductName",      "VIRTUALBOX" },
-            //{ brands::VMWARE,   "HARDWARE\\Description\\System",                                                      "SystemBiosVersion",       "VMWARE" },
-            //{ brands::VMWARE,   "HARDWARE\\Description\\System",                                                      "SystemBiosVersion",       "INTEL - 6040000" },
-            //{ brands::VMWARE,   "HARDWARE\\Description\\System",                                                      "VideoBiosVersion",        "VMWARE" },
-            //{ brands::VMWARE,   "HARDWARE\\Description\\System\\BIOS",                                            "SystemProductName",      "VMware" },
-            //{ brands::VMWARE,   "HARDWARE\\Description\\System\\BIOS",                                            "SystemManufacturer",     "VMware, Inc." },
-            //{ brands::VMWARE,   "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall",                        "DisplayName",            "vmware tools" },
-            //{ brands::VMWARE,   "SYSTEM\\CurrentControlSet\\Control\\SystemInformation",                              "SystemProductName",      "VMWARE" },
-            //{ brands::VMWARE,   "SYSTEM\\CurrentControlSet\\Services\\Disk\\Enum",                                    "0",                       "VMWare" },
-            //{ brands::VMWARE,   "HARDWARE\\ACPI\\DSDT\\PTLTD_\\CUSTOM__\\00000000",                           "00000000",               "VMWARE" },
-            //{ brands::XEN,      "HARDWARE\\Description\\System\\BIOS",                                              "SystemProductName",      "Xen" },
             
             { brands::QEMU,     "HARDWARE\\DEVICEMAP\\Scsi\\Scsi Port 0\\Scsi Bus 0\\Target Id 0\\Logical Unit Id 0", "Identifier",           "QEMU" },
             { brands::QEMU,     "HARDWARE\\DEVICEMAP\\Scsi\\Scsi Port 1\\Scsi Bus 0\\Target Id 0\\Logical Unit Id 0", "Identifier",           "QEMU" },
@@ -8176,8 +8102,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         // allocate RWX memory for trampoline, simple way to support x86 without recurring to inline assembly
         void* execMem = VirtualAlloc(nullptr, trampSize,
-            MEM_COMMIT | MEM_RESERVE,
-            PAGE_EXECUTE_READWRITE);
+                                     MEM_COMMIT | MEM_RESERVE,
+                                     PAGE_EXECUTE_READWRITE);
         if (!execMem) {
             return false;
         }
@@ -8195,7 +8121,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         GetThreadContext(thr, &dbgCtx);
 
         // Set Dr0 to trampoline+offset (step triggers here)
-        uintptr_t baseAddr = reinterpret_cast<uintptr_t>(execMem);
+        const uintptr_t baseAddr = reinterpret_cast<uintptr_t>(execMem);
         dbgCtx.Dr0 = baseAddr + 11; // single step breakpoint address
         dbgCtx.Dr7 = 1; // enable local breakpoint 0
         SetThreadContext(thr, &dbgCtx);
@@ -8214,9 +8140,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return 1;
             }
             // check if Trap Flag and DR0 contributed
-            uint64_t status = info->ContextRecord->Dr6;
-            bool fromTrapFlag = (status & (1ULL << 14)) != 0;
-            bool fromDr0 = (status & 1ULL) != 0;
+            const u64 status = info->ContextRecord->Dr6;
+            const bool fromTrapFlag = (status & (1ULL << 14)) != 0;
+            const bool fromDr0 = (status & 1ULL) != 0;
             if (!fromTrapFlag || !fromDr0) {
                 hypervisorCaught = true;
             }
@@ -8235,33 +8161,23 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         return hypervisorCaught;
     }
+    // ADD NEW TECHNIQUE FUNCTION HERE
     #endif
     
-    // ADD NEW TECHNIQUE FUNCTION HERE
     
-        
-        
-        
-        
-        
-        
-        
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-        struct core {
-            struct technique {
-                u8 points = 0;                // this is the certainty score between 0 and 100
-                std::function<bool()> run;    // this is the technique function itself
-            
-                technique() : points(0), run(nullptr) {}
+    /* ============================================================================================== *
+     *                                                                                                *                                                                                               *
+     *                                        CORE SECTION                                            *
+     *                                                                                                *
+     * ============================================================================================== */
+
+
+    struct core {
+        struct technique {
+            u8 points = 0;                // this is the certainty score between 0 and 100
+            std::function<bool()> run;    // this is the technique function itself
+
+            technique() : points(0), run(nullptr) {}
 
             technique(u8 points, std::function<bool()> run) : points(points), run(run) {}
         };
@@ -8274,14 +8190,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         // initial technique list, this is where all the techniques are stored
         static std::pair<enum_flags, technique> technique_list[];
-    
+
         // the actual table, which is derived from the list above and will be 
         // used for most functionalities related to technique interactions
         static std::map<enum_flags, technique> technique_table;
 
         // specific to VM::add_custom(), where custom techniques will be stored here
         static std::vector<custom_technique> custom_table;
-        
+
         // VM scoreboard table specifically for VM::brand()
         static std::map<const char*, brand_score_t> brand_scoreboard;
 
@@ -8334,7 +8250,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             if (flags.test(DEFAULT)) {
                 return;
             }
-            
+
             if (flags.test(ALL)) {
                 return;
             }
@@ -8355,9 +8271,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 flags.test(DYNAMIC) ||
                 flags.test(NULL_ARG) ||
                 flags.test(MULTIPLE)
-            ) {
+                ) {
                 generate_default(flags);
-            } else {
+            }
+            else {
                 throw std::invalid_argument("Invalid flag option found, aborting");
             }
         }
@@ -8369,7 +8286,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             const bool memo_enabled = core::is_disabled(flags, NO_MEMO);
 
             u16 threshold_points = 150;
-            
+
             // set it to 300 if high threshold is enabled
             if (core::is_enabled(flags, HIGH_THRESHOLD)) {
                 threshold_points = high_threshold_score;
@@ -8425,9 +8342,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 // (unless the threshold is set to be higher, but it's the 
                 // same story here nonetheless, except the threshold is 300)
                 if (
-                    (shortcut) && 
+                    (shortcut) &&
                     (points >= threshold_points)
-                ) {
+                    ) {
                     return points;
                 }
             }
@@ -8459,7 +8376,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     if (memo_enabled) {
                         memo::cache_store(
                             technique.id,
-                            result, 
+                            result,
                             technique.points
                         );
                     }
@@ -8470,49 +8387,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+        /* ============================================================================================== *
+         *                                                                                                *                                                                                               *
+         *                                     ARGUMENT HANDLER SECTION                                   *
+         *                                                                                                *
+         * ============================================================================================== */
 
 
         /**
@@ -8807,57 +8686,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return;
         }
     };
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    
 public: // START OF PUBLIC FUNCTIONS
 
     /**
@@ -9180,8 +9009,6 @@ public: // START OF PUBLIC FUNCTIONS
         std::string ret_str = brands::NULL_BRAND;
 
 
-
-
         // if the multiple setting flag is NOT set, return the
         // brand with the highest score. Else, return a std::string
         // of the brand message (i.e. "VirtualBox or VMware").
@@ -9199,7 +9026,6 @@ public: // START OF PUBLIC FUNCTIONS
             }
             ret_str = ss.str();
         }
-
 
 
         // cache the result if memoization is enabled
