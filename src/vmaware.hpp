@@ -49,14 +49,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 538
+ * - enums for publicly accessible techniques  => line 540
  * - struct for internal cpu operations        => line 718
  * - struct for internal memoization           => line 1050
- * - struct for internal utility functions     => line 1211
- * - struct for internal core components       => line 8706
- * - start of VM detection technique list      => line 2005
- * - start of public VM detection functions    => line 9308
- * - start of externally defined variables     => line 10239
+ * - struct for internal utility functions     => line 1191
+ * - struct for internal core components       => line 8259
+ * - start of VM detection technique list      => line 2004
+ * - start of public VM detection functions    => line 8861
+ * - start of externally defined variables     => line 9786
  *
  *
  * ============================== EXAMPLE ===================================
@@ -348,6 +348,7 @@
 #include <cstdint>
 #include <map>
 #include <unordered_set>
+#include <unordered_map>
 #include <array>
 #include <algorithm>
 #include <iostream>
@@ -1157,11 +1158,12 @@ private:
 
 #if (WINDOWS)
         struct module {
-            static inline std::map<HMODULE, std::map<std::string, void*>> function_cache;
+            static std::map<HMODULE, std::map<std::string, void*>> function_cache;
 
             static bool is_cached(const HMODULE& mod, const std::string& name) {
                 auto mod_it = function_cache.find(mod);
-                return mod_it != function_cache.end() && mod_it->second.find(name) != mod_it->second.end();
+                return mod_it != function_cache.end()
+                    && mod_it->second.find(name) != mod_it->second.end();
             }
 
             static void* fetch(const HMODULE& mod, const std::string& name) {
@@ -1172,7 +1174,10 @@ private:
                 function_cache[mod][name] = addr;
             }
 
-            static void store_bulk(const HMODULE& mod, const std::map<std::string, void*>& entries) {
+            static void store_bulk(
+                const HMODULE& mod,
+                const std::map<std::string, void*>& entries)
+            {
                 auto& inner = function_cache[mod];
                 for (const auto& kv : entries) {
                     inner[kv.first] = kv.second;
@@ -1930,46 +1935,65 @@ private:
 
         // retrieves the addresses of specified functions from a loaded module using the export directory, manual implementation of GetProcAddress
         static void GetFunctionAddresses(const HMODULE hModule, const char* names[], void** functions, size_t count) {
+            // 1) One-time cache, shared across all calls/modules
+            typedef std::map<std::string, void*> FuncMap;
+            static std::map<HMODULE, FuncMap> function_cache;
+
+            // 2) Helpers to query or insert in that cache
+            auto is_cached = [&](const HMODULE& mod, const std::string& name) {
+                auto mit = function_cache.find(mod);
+                return mit != function_cache.end()
+                    && mit->second.find(name) != mit->second.end();
+            };
+            auto fetch = [&](const HMODULE& mod, const std::string& name) -> void* {
+                return function_cache.at(mod).at(name);
+            };
+            auto store = [&](const HMODULE& mod, const std::string& name, void* addr) {
+                function_cache[mod][name] = addr;
+            };
+
+            // 3) Standard PE export-directory parsing
             BYTE* base = reinterpret_cast<BYTE*>(hModule);
-            const PIMAGE_DOS_HEADER dosHeader = reinterpret_cast<PIMAGE_DOS_HEADER>(base);
-            const PIMAGE_NT_HEADERS ntHeaders = reinterpret_cast<PIMAGE_NT_HEADERS>(base + dosHeader->e_lfanew);
+            const auto* dosHeader = reinterpret_cast<PIMAGE_DOS_HEADER>(base);
+            const auto* ntHeaders = reinterpret_cast<PIMAGE_NT_HEADERS>(base + dosHeader->e_lfanew);
             const auto& dd = ntHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT];
-            const PIMAGE_EXPORT_DIRECTORY exportDir = reinterpret_cast<PIMAGE_EXPORT_DIRECTORY>(base + dd.VirtualAddress);
+            const auto* exportDir = reinterpret_cast<PIMAGE_EXPORT_DIRECTORY>(base + dd.VirtualAddress);
 
             const DWORD* nameRvas = reinterpret_cast<DWORD*>(base + exportDir->AddressOfNames);
             const DWORD* funcRvas = reinterpret_cast<DWORD*>(base + exportDir->AddressOfFunctions);
             const WORD* ordinals = reinterpret_cast<WORD*>(base + exportDir->AddressOfNameOrdinals);
-            const DWORD nameCount = exportDir->NumberOfNames;
+            const DWORD  nameCount = exportDir->NumberOfNames;
 
             auto getName = [&](DWORD idx) -> const char* {
                 return reinterpret_cast<char*>(base + nameRvas[idx]);
-            };
+                };
 
+            // 4) Main loop
             for (size_t i = 0; i < count; ++i) {
                 std::string fname = names[i];
-                if (memo::module::is_cached(hModule, fname)) {
-                    functions[i] = memo::module::fetch(hModule, fname);
+
+                // 4a) If we’ve cached it, use it
+                if (is_cached(hModule, fname)) {
+                    functions[i] = fetch(hModule, fname);
                     continue;
                 }
 
+                // 4b) Binary search in the export name table
                 functions[i] = nullptr;
                 DWORD lo = 0, hi = nameCount;
                 while (lo < hi) {
                     DWORD mid = (lo + hi) / 2;
-                    int cmp = strcmp(getName(mid), names[i]);
-                    if (cmp < 0) {
-                        lo = mid + 1;
-                    }
-                    else {
-                        hi = mid;
-                    }
+                    int   cmp = strcmp(getName(mid), fname.c_str());
+                    if (cmp < 0)      lo = mid + 1;
+                    else /*>=*/      hi = mid;
                 }
 
-                if (lo < nameCount && strcmp(getName(lo), names[i]) == 0) {
+                // 4c) If found, compute address and store in cache
+                if (lo < nameCount && strcmp(getName(lo), fname.c_str()) == 0) {
                     DWORD rva = funcRvas[ordinals[lo]];
                     void* addr = base + rva;
                     functions[i] = addr;
-                    memo::module::store(hModule, fname, addr);
+                    store(hModule, fname, addr);
                 }
             }
         }
@@ -2234,62 +2258,61 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::ODD_CPU_THREADS
      */
     [[nodiscard]] static bool odd_cpu_threads() {
-        #if (!x86)
-            return false;
-        #else
-            const u32 threads = std::thread::hardware_concurrency();
-    
-            auto steps = cpu::fetch_steppings();
-            if (!(cpu::is_intel() || cpu::is_amd()))
-                return false;
-            if (cpu::is_celeron(steps))
-                return false;
-    
-            auto make_id = [](u8 family, u8 extmodel, u8 model) -> u32 {
-                return (
+    #if (!x86)
+        return false;
+    #else
+        const u32 threads = std::thread::hardware_concurrency();
+
+        const auto steps = cpu::fetch_steppings();
+        if (!(cpu::is_intel() || cpu::is_amd()))   return false;
+        if (cpu::is_celeron(steps))                return false;
+
+        struct Helper {
+            static constexpr u32 make_id(u8 family, u8 extmodel, u8 model) noexcept {
+                return
                     (static_cast<u32>(family) << 16) |
                     (static_cast<u32>(extmodel) << 8) |
-                    (static_cast<u32>(model))
-                );
-            };
-
-            static constexpr std::array<u32, 35> old_microarch_ids = { {
-                // Family 4 (Intel 486): models 1,2,3,4,5,7,8,9
-                make_id(0x4, 0x0, 0x1), make_id(0x4, 0x0, 0x2),
-                make_id(0x4, 0x0, 0x3), make_id(0x4, 0x0, 0x4),
-                make_id(0x4, 0x0, 0x5), make_id(0x4, 0x0, 0x7),
-                make_id(0x4, 0x0, 0x8), make_id(0x4, 0x0, 0x9),
-
-                // Family 5 (Pentium, P5): models 1,2,4,7,8
-                make_id(0x5, 0x0, 0x1), make_id(0x5, 0x0, 0x2),
-                make_id(0x5, 0x0, 0x4), make_id(0x5, 0x0, 0x7),
-                make_id(0x5, 0x0, 0x8),
-
-                // Family 6 (P6/Pentium Pro/Celeron/Pentium II–III): models 1,3,5,6,7,8,9,A,B,D,E,F
-                make_id(0x6, 0x0, 0x1), make_id(0x6, 0x0, 0x3),
-                make_id(0x6, 0x0, 0x5), make_id(0x6, 0x0, 0x6),
-                make_id(0x6, 0x0, 0x7), make_id(0x6, 0x0, 0x8),
-                make_id(0x6, 0x0, 0x9), make_id(0x6, 0x0, 0xA),
-                make_id(0x6, 0x0, 0xB), make_id(0x6, 0x0, 0xD),
-                make_id(0x6, 0x0, 0xE), make_id(0x6, 0x0, 0xF),
-
-                // Family 6 (Yonah/early Core): models 1,2 (extmodel = 1)
-                make_id(0x6, 0x1, 0x5), make_id(0x6, 0x1, 0x6),
-
-                // Family F (Pentium 4): models 2,3,4,6,10
-                make_id(0xF, 0x0, 0x2), make_id(0xF, 0x0, 0x3),
-                make_id(0xF, 0x0, 0x4), make_id(0xF, 0x0, 0x6),
-                make_id(0xF, 0x0, 0x10)
-            } };
-    
-            const u32 curId = make_id(steps.family, steps.extmodel, steps.model);
-            for (u32 oldId : old_microarch_ids) {
-                if (curId == oldId)
-                    return false;
+                    static_cast<u32>(model);
             }
-                
-            return (threads & 1u) != 0;
-        #endif
+        };
+
+        static constexpr std::array<u32, 35> old_microarch_ids = { {
+                // Family 4 (Intel 486)
+                Helper::make_id(0x4, 0x0, 0x1), Helper::make_id(0x4, 0x0, 0x2),
+                Helper::make_id(0x4, 0x0, 0x3), Helper::make_id(0x4, 0x0, 0x4),
+                Helper::make_id(0x4, 0x0, 0x5), Helper::make_id(0x4, 0x0, 0x7),
+                Helper::make_id(0x4, 0x0, 0x8), Helper::make_id(0x4, 0x0, 0x9),
+
+                // Family 5 (Pentium, P5)
+                Helper::make_id(0x5, 0x0, 0x1), Helper::make_id(0x5, 0x0, 0x2),
+                Helper::make_id(0x5, 0x0, 0x4), Helper::make_id(0x5, 0x0, 0x7),
+                Helper::make_id(0x5, 0x0, 0x8),
+
+                // Family 6 (P6/Pentium Pro/Celeron/II–III)
+                Helper::make_id(0x6, 0x0, 0x1), Helper::make_id(0x6, 0x0, 0x3),
+                Helper::make_id(0x6, 0x0, 0x5), Helper::make_id(0x6, 0x0, 0x6),
+                Helper::make_id(0x6, 0x0, 0x7), Helper::make_id(0x6, 0x0, 0x8),
+                Helper::make_id(0x6, 0x0, 0x9), Helper::make_id(0x6, 0x0, 0xA),
+                Helper::make_id(0x6, 0x0, 0xB), Helper::make_id(0x6, 0x0, 0xD),
+                Helper::make_id(0x6, 0x0, 0xE), Helper::make_id(0x6, 0x0, 0xF),
+
+                // Family 6 (Yonah/early Core)
+                Helper::make_id(0x6, 0x1, 0x5), Helper::make_id(0x6, 0x1, 0x6),
+
+                // Family F (Pentium 4)
+                Helper::make_id(0xF, 0x0, 0x2), Helper::make_id(0xF, 0x0, 0x3),
+                Helper::make_id(0xF, 0x0, 0x4), Helper::make_id(0xF, 0x0, 0x6),
+                Helper::make_id(0xF, 0x0, 0x10)
+        } };
+
+        const u32 curId = Helper::make_id(steps.family, steps.extmodel, steps.model);
+        for (u32 oldId : old_microarch_ids) {
+            if (curId == oldId)
+                return false;
+        }
+
+        return (threads & 1u) != 0;
+    #endif
     }
     
     
@@ -8030,10 +8053,33 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::QEMU_PASSTHROUGH
      */
     [[nodiscard]] static bool qemu_passthrough() {
-        auto __iswdigit = [](wchar_t c) constexpr noexcept {
-            return (c >= L'0' && c <= L'9');
+        struct wstring_view {
+            const wchar_t* data;
+            size_t         size;
+
+            enum : size_t { npos = static_cast<size_t>(-1) };
+
+            wstring_view(const wchar_t* d, size_t n) : data(d), size(n) {}
+
+            bool starts_with(const wchar_t* prefix) const noexcept {
+                size_t plen = wcslen(prefix);
+                if (size < plen) return false;
+                return wcsncmp(data, prefix, plen) == 0;
+            }
+
+            size_t find(const wchar_t* needle) const noexcept {
+                const wchar_t* p = wcsstr(data, needle);
+                if (!p) return npos;
+                size_t idx = static_cast<size_t>(p - data);
+                size_t nlen = wcslen(needle);
+                return (idx + nlen <= size) ? idx : npos;
+            }
         };
-        
+
+        auto __iswdigit = [](wchar_t c) noexcept {
+            return (c >= L'0' && c <= L'9');
+            };
+
         HDEVINFO hDevInfo = SetupDiGetClassDevsW(
             &GUID_DEVCLASS_DISPLAY,
             nullptr,
@@ -8041,59 +8087,66 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             DIGCF_PRESENT);
         if (hDevInfo == INVALID_HANDLE_VALUE)
             return false;
-        
+
         SP_DEVINFO_DATA devInfo = {};
         devInfo.cbSize = sizeof(devInfo);
         const DEVPROPKEY key = DEVPKEY_Device_LocationPaths;
-        
-        for (DWORD idx = 0; SetupDiEnumDeviceInfo(hDevInfo, idx, &devInfo); ++idx)
-        {
+
+        for (DWORD idx = 0; SetupDiEnumDeviceInfo(hDevInfo, idx, &devInfo); ++idx) {
             DEVPROPTYPE propType = 0;
             DWORD requiredSize = 0;
-        
+
+            // first call to get buffer size
             SetupDiGetDevicePropertyW(
                 hDevInfo, &devInfo, &key, &propType,
                 nullptr, 0, &requiredSize, 0);
             if (GetLastError() != ERROR_INSUFFICIENT_BUFFER || requiredSize == 0)
                 continue;
-            
+
             std::vector<BYTE> buffer(requiredSize);
             if (!SetupDiGetDevicePropertyW(
                 hDevInfo, &devInfo, &key, &propType,
                 buffer.data(), requiredSize, &requiredSize, 0))
                 continue;
-            
+
+            // sequence of null-terminated wide strings
             const wchar_t* ptr = reinterpret_cast<const wchar_t*>(buffer.data());
-            while (*ptr)
-            {
-                std::wstring_view path(ptr);
-            
-                if (path.substr(0, 17) != L"PCIROOT(0)#PCI(") {
-                    ptr += path.size() + 1;
+            while (*ptr) {
+                size_t len = wcslen(ptr);
+                wstring_view path(ptr, len);
+
+                static const wchar_t pciPrefix[] = L"PCIROOT(0)#PCI(";
+                if (!path.starts_with(pciPrefix)) {
+                    ptr += len + 1;
                     continue;
                 }
-            
-                constexpr wchar_t kAcpiSlotPrefix[] = L"#ACPI(S";
-                std::size_t pos = path.find(kAcpiSlotPrefix);
-                while (pos != std::wstring_view::npos)
-                {
-                    // check for "#ACPI(Sxx_y)" pattern: two digits at +7/+8, '_' then ')'
-                    if (pos + 10 < path.size() &&
-                        __iswdigit(path[pos + 7]) &&
-                        __iswdigit(path[pos + 8]) &&
-                        path[pos + 9] == L'_' &&
-                        path[pos + 10] == L')')
+
+                static const wchar_t acpiPrefix[] = L"#ACPI(S";
+                size_t pos = path.find(acpiPrefix);
+                while (pos != wstring_view::npos) {
+                    if (pos + 10 < path.size &&
+                        __iswdigit(path.data[pos + 7]) &&
+                        __iswdigit(path.data[pos + 8]) &&
+                        path.data[pos + 9] == L'_' &&
+                        path.data[pos + 10] == L')')
                     {
                         SetupDiDestroyDeviceInfoList(hDevInfo);
                         return true;
                     }
-                    pos = path.find(kAcpiSlotPrefix, pos + 1);
+                    // search the rest of the view
+                    const wchar_t* nextSearch = path.data + pos + 1;
+                    size_t       nextLen = path.size - (pos + 1);
+                    wstring_view  subView(nextSearch, nextLen);
+                    size_t rel = subView.find(acpiPrefix);
+                    pos = (rel == wstring_view::npos)
+                        ? wstring_view::npos
+                        : (pos + 1 + rel);
                 }
-            
-                ptr += path.size() + 1;
+
+                ptr += len + 1;
             }
         }
-    
+
         SetupDiDestroyDeviceInfoList(hDevInfo);
         return false;
     }
