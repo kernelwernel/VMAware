@@ -4,7 +4,7 @@
  * ██║   ██║██╔████╔██║███████║██║ █╗ ██║███████║██████╔╝█████╗
  * ╚██╗ ██╔╝██║╚██╔╝██║██╔══██║██║███╗██║██╔══██║██╔══██╗██╔══╝
  *  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
- *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ Experimental post-2.3.0 (May 2025)
+ *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ Experimental post-2.3.0 (June 2025)
  *
  *  C++ VM detection library
  *
@@ -1770,11 +1770,11 @@ private:
                 cpu::cpuid(unused, ebx, unused, unused, 0x40000003);
                 const bool result = (ebx & 1);
 
-#ifdef __VMAWARE_DEBUG__
+            #ifdef __VMAWARE_DEBUG__
                 if (result) {
                     core_debug("HYPER_X: running under root partition");
                 }
-#endif
+            #endif
                 return result;
             };
 
@@ -1826,7 +1826,6 @@ private:
             }
 
             memo::hyperx::store(state);
-            core_debug("HYPER_X: cached");
 
             return state;
 #endif
@@ -3281,7 +3280,22 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 { "i9-9960X", 32 },
                 { "i9-9980HK", 16 },
                 { "i9-9980XE", 36 },
-                { "i9-9990XE", 28 }
+                { "i9-9990XE", 28 },
+                { "i9-10920X", 24 },
+                { "i9-10940X", 28 },
+                { "i9-10980XE", 36 },
+                { "i9-10900", 20 },
+                { "i9-10900T", 20 },
+                { "i9-10900K", 20 },
+                { "i9-10900KF", 20 },
+                { "i9-11900K", 16 },
+                { "i9-11900KF", 16 },
+                { "i9-12900K", 24 },
+                { "i9-12900KF", 24 },
+                { "i9-13900K", 32 },
+                { "i9-13900KF", 32 },
+                { "i9-14900K", 32 },
+                { "i9-14900KF", 32 }
             };
     
             constexpr size_t thread_database_count = sizeof(thread_database) / sizeof(thread_database[0]);
@@ -3436,7 +3450,36 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 { "W-3265", 48 },
                 { "W-3265M", 48 },
                 { "W-3275", 56 },
-                { "W-3275M", 56 }
+                { "W-3275M", 56 },
+                { "w3-2423", 12 },    
+                { "w3-2425", 12 },    
+                { "w3-2435", 16 },    
+                { "w5-2445", 20 },   
+                { "w5-2455X", 24 },  
+                { "w5-2465X", 32 },  
+                { "w7-2475X", 40 },
+                { "w7-2495X", 48 },
+                { "w5-3425", 24 },    
+                { "w5-3435X", 32 },  
+                { "w7-3445", 40 },   
+                { "w7-3455", 48 },    
+                { "w7-3465X", 56 },  
+                { "w9-3475X", 72 },   
+                { "w9-3495X", 112 },  
+                { "w3-2525", 16 },   
+                { "w3-2535", 20 }, 
+                { "w5-2545", 24 },   
+                { "w5-2555X", 28 },  
+                { "w5-2565X", 36 },  
+                { "w7-2575X", 44 },   
+                { "w7-2595X", 52 },  
+                { "w5-3525", 32 },   
+                { "w5-3535X", 40 },   
+                { "w7-3545", 48 },    
+                { "w7-3555", 56 },    
+                { "w7-3565X", 64 },   
+                { "w9-3575X", 88 },   
+                { "w9-3595X", 120 }  
             };
     
             constexpr size_t thread_database_count = sizeof(thread_database) / sizeof(thread_database[0]);
@@ -4040,6 +4083,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 { "ryzen threadripper pro 7975wx ", 64 },
                 { "ryzen threadripper pro 7985wx ", 128 },
                 { "ryzen threadripper pro 7995wx ", 192 },
+                { "ryzen threadripper 9945wx", 24 },
+                { "ryzen threadripper 9955wx", 32 },
+                { "ryzen threadripper 9975wx", 64 },
+                { "ryzen threadripper 9985wx", 128 },
+                { "ryzen threadripper pro 9995wx", 192 },
                 { "ryzen z1 extreme ", 16 },
                 { "ryzen z1 ", 12 },
                 { "sempron 2650 ", 2 },
@@ -5953,99 +6001,214 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             L"SYSTEM\\CurrentControlSet\\Enum\\HDAUDIO"
         };
 
-        auto enumerateHardwareIDs = [&](HKEY hInst, const wchar_t* rootPath) {
+        enum RootType { RT_PCI, RT_USB, RT_HDAUDIO };
+
+        //
+        // Lambda #1: Process the MULTI_SZ “HardwareID” on an instance key,
+        // extract every (VID, DID) pair, and push into devices
+        //
+        auto processHardwareID = [&](HKEY hInst, RootType rootType) {
             DWORD type = 0, cbData = 0;
-            if (RegQueryValueExW(hInst, L"HardwareID", nullptr, &type, nullptr, &cbData) != ERROR_SUCCESS
-                || type != REG_MULTI_SZ
-                || cbData <= sizeof(wchar_t))
+            LONG rv = RegGetValueW(
+                hInst,
+                nullptr,
+                L"HardwareID",
+                RRF_RT_REG_MULTI_SZ,
+                &type,
+                nullptr,
+                &cbData
+            );
+            if (rv != ERROR_SUCCESS || type != REG_MULTI_SZ || cbData <= sizeof(wchar_t)) {
                 return;
+            }
 
+            // allocate a buffer large enough to hold the entire MULTI_SZ
             std::vector<wchar_t> buf(cbData / sizeof(wchar_t));
-            if (RegQueryValueExW(hInst, L"HardwareID", nullptr, nullptr,
-                reinterpret_cast<BYTE*>(buf.data()), &cbData) != ERROR_SUCCESS)
+            rv = RegGetValueW(
+                hInst,
+                nullptr,
+                L"HardwareID",
+                RRF_RT_REG_MULTI_SZ,
+                nullptr,
+                buf.data(),
+                &cbData
+            );
+            if (rv != ERROR_SUCCESS) {
                 return;
+            }
 
+            // iterate over each null‐terminated string inside the MULTI_SZ
             for (wchar_t* p = buf.data(); *p; p += wcslen(p) + 1) {
-                std::wstring s(p);
-                uint16_t vid = 0;
-                uint32_t did = 0;
-                bool ok = false;
+                wchar_t* s = p;
+                wchar_t* v = nullptr;
+                wchar_t* d = nullptr;
+                uint16_t  vid = 0;
+                uint32_t  did = 0;
+                bool      ok = false;
 
-                if (wcscmp(rootPath, L"SYSTEM\\CurrentControlSet\\Enum\\USB") == 0) {
-                    auto v = s.find(L"VID_"), d = s.find(L"PID_");
-                    if (v != std::wstring::npos && d != std::wstring::npos) {
-                        swscanf_s(s.c_str() + v + 4, L"%4hx", &vid);
-                        swscanf_s(s.c_str() + d + 4, L"%x", &did);
+                if (rootType == RT_USB) {
+                    // USB: look for “VID_” and then “PID_” after it
+                    v = wcsstr(s, L"VID_");
+                    if (v) {
+                        d = wcsstr(v + 4, L"PID_");
+                    }
+                    if (v && d) {
+                        swscanf_s(v + 4, L"%4hx", &vid);
+                        swscanf_s(d + 4, L"%x", &did);
                         ok = true;
                     }
                 }
                 else {
-                    auto v = s.find(L"VEN_"), d = s.find(L"DEV_");
-                    if (v != std::wstring::npos && d != std::wstring::npos) {
-                        swscanf_s(s.c_str() + v + 4, L"%4hx", &vid);
-                        if (wcscmp(rootPath, L"SYSTEM\\CurrentControlSet\\Enum\\HDAUDIO") == 0)
-                            swscanf_s(s.c_str() + d + 4, L"%4x", &did);
-                        else
-                            swscanf_s(s.c_str() + d + 4, L"%8x", &did);
+                    // PCI or HDAUDIO: look for “VEN_” and then “DEV_” after it
+                    v = wcsstr(s, L"VEN_");
+                    if (v) {
+                        d = wcsstr(v + 4, L"DEV_");
+                    }
+                    if (v && d) {
+                        // parse exactly 4 hex digits for Vendor ID
+                        swscanf_s(v + 4, L"%4hx", &vid);
+
+                        // dev ID may be up to 8 hex digits (PCI) or exactly 4 (HDAUDIO)
+                        wchar_t* devStart = d + 4;
+                        wchar_t* ampAfterDev = wcschr(devStart, L'&');
+
+                        if (rootType == RT_HDAUDIO) {
+                            // HDAUDIO: 4‐digit device ID; stop at '&' if present
+                            if (ampAfterDev) {
+                                *ampAfterDev = L'\0';
+                                swscanf_s(devStart, L"%4x", &did);
+                                *ampAfterDev = L'&';
+                            }
+                            else {
+                                swscanf_s(devStart, L"%4x", &did);
+                            }
+                        }
+                        else {
+                            // PCI: up to 8‐digit device ID; stop at '&' if present
+                            if (ampAfterDev) {
+                                *ampAfterDev = L'\0';
+                                swscanf_s(devStart, L"%8x", &did);
+                                *ampAfterDev = L'&';
+                            }
+                            else {
+                                swscanf_s(devStart, L"%8x", &did);
+                            }
+                        }
+
                         ok = true;
                     }
                 }
 
                 if (ok) {
+                    // push every matching (VID, DID) pair
                     devices.push_back({ vid, did });
-                    break;
                 }
             }
-        };
+            };
 
-        auto enumerateInstances = [&](HKEY hDev, const wchar_t* rootPath) {
+        //
+        // Lambda #2: Enumerate all “Instance” subkeys under a given “Device” key,
+        // and for each instance, open it and call processHardwareID()
+        //
+        auto enumInstances = [&](HKEY hDev, RootType rootType) {
             for (DWORD j = 0;; ++j) {
                 wchar_t instName[256];
-                DWORD cbInst = _countof(instName);
-                LONG st2 = RegEnumKeyExW(hDev, j, instName, &cbInst, nullptr, nullptr, nullptr, nullptr);
-                if (st2 == ERROR_NO_MORE_ITEMS)
+                DWORD   cbInst = _countof(instName);
+                LONG    st2 = RegEnumKeyExW(
+                    hDev,
+                    j,
+                    instName,
+                    &cbInst,
+                    nullptr,
+                    nullptr,
+                    nullptr,
+                    nullptr
+                );
+                if (st2 == ERROR_NO_MORE_ITEMS) {
                     break;
-                if (st2 != ERROR_SUCCESS)
+                }
+                if (st2 != ERROR_SUCCESS) {
                     continue;
+                }
 
                 HKEY hInst = nullptr;
-                if (RegOpenKeyExW(hDev, instName, 0, KEY_READ, &hInst) != ERROR_SUCCESS)
+                if (RegOpenKeyExW(hDev, instName, 0, KEY_READ, &hInst) != ERROR_SUCCESS) {
                     continue;
+                }
 
-                enumerateHardwareIDs(hInst, rootPath);
+                processHardwareID(hInst, rootType);
                 RegCloseKey(hInst);
             }
-        };
+            };
 
-        auto enumerateDevices = [&](HKEY hRoot, const wchar_t* rootPath) {
+        //
+        // Lambda #3: Enumerate all “Device” subkeys under a given root key,
+        // open each device key, and call enumInstances()
+        //
+        auto enumDevices = [&](HKEY hRoot, RootType rootType) {
             for (DWORD i = 0;; ++i) {
                 wchar_t deviceName[256];
-                DWORD cbName = _countof(deviceName);
-                LONG status = RegEnumKeyExW(hRoot, i, deviceName, &cbName, nullptr, nullptr, nullptr, nullptr);
-                if (status == ERROR_NO_MORE_ITEMS)
+                DWORD   cbName = _countof(deviceName);
+                LONG    status = RegEnumKeyExW(
+                    hRoot,
+                    i,
+                    deviceName,
+                    &cbName,
+                    nullptr,
+                    nullptr,
+                    nullptr,
+                    nullptr
+                );
+                if (status == ERROR_NO_MORE_ITEMS) {
                     break;
-                if (status != ERROR_SUCCESS)
+                }
+                if (status != ERROR_SUCCESS) {
                     continue;
+                }
 
                 HKEY hDev = nullptr;
-                if (RegOpenKeyExW(hRoot, deviceName, 0, KEY_READ, &hDev) != ERROR_SUCCESS)
+                if (RegOpenKeyExW(hRoot, deviceName, 0, KEY_READ, &hDev) != ERROR_SUCCESS) {
                     continue;
+                }
 
-                enumerateInstances(hDev, rootPath);
+                enumInstances(hDev, rootType);
                 RegCloseKey(hDev);
             }
-        };
+            };
 
-        for (auto rootPath : kRoots) {
+        //
+        // Top‐level loop: for each rootPath, open the root key once, compute its RootType,
+        // then call enumDevices()
+        //
+        for (int rootIdx = 0; rootIdx < _countof(kRoots); ++rootIdx) {
+            const wchar_t* rootPath = kRoots[rootIdx];
             HKEY hRoot = nullptr;
-            if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, rootPath, 0, KEY_READ, &hRoot) != ERROR_SUCCESS)
+            if (RegOpenKeyExW(
+                HKEY_LOCAL_MACHINE,
+                rootPath,
+                0,
+                KEY_READ,
+                &hRoot
+            ) != ERROR_SUCCESS) {
                 continue;
+            }
 
-            enumerateDevices(hRoot, rootPath);
+            RootType rootType;
+            if (wcscmp(rootPath, L"SYSTEM\\CurrentControlSet\\Enum\\USB") == 0) {
+                rootType = RT_USB;
+            }
+            else if (wcscmp(rootPath, L"SYSTEM\\CurrentControlSet\\Enum\\HDAUDIO") == 0) {
+                rootType = RT_HDAUDIO;
+            }
+            else {
+                rootType = RT_PCI;
+            }
+
+            enumDevices(hRoot, rootType);
             RegCloseKey(hRoot);
         }
 
-        debug("PCI_DEVICES: Found ", devices.size() ," devices");
+        debug("PCI_DEVICES: Found ", devices.size(), " devices\n");
         #endif
 
         for (auto& d : devices) {
