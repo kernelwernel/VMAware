@@ -4,7 +4,7 @@
  * ██║   ██║██╔████╔██║███████║██║ █╗ ██║███████║██████╔╝█████╗
  * ╚██╗ ██╔╝██║╚██╔╝██║██╔══██║██║███╗██║██╔══██║██╔══██╗██╔══╝
  *  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
- *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ Experimental post-2.3.0 (June 2025)
+ *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ Experimental post-2.3.0 (May 2025)
  *
  *  C++ VM detection library
  *
@@ -53,10 +53,10 @@
  * - struct for internal cpu operations        => line 717
  * - struct for internal memoization           => line 1042
  * - struct for internal utility functions     => line 1183
- * - struct for internal core components       => line 8196
- * - start of VM detection technique list      => line 1994
- * - start of public VM detection functions    => line 8711
- * - start of externally defined variables     => line 9639
+ * - struct for internal core components       => line 8359
+ * - start of VM detection technique list      => line 1993
+ * - start of public VM detection functions    => line 8874
+ * - start of externally defined variables     => line 9802
  *
  *
  * ============================== EXAMPLE ===================================
@@ -6126,7 +6126,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     devices.push_back({ vid, did });
                 }
             }
-            };
+        };
 
         //
         // Lambda #2: Enumerate all “Instance” subkeys under a given “Device” key,
@@ -6161,7 +6161,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 processHardwareID(hInst, rootType);
                 RegCloseKey(hInst);
             }
-            };
+        };
 
         //
         // Lambda #3: Enumerate all “Device” subkeys under a given root key,
@@ -6196,7 +6196,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 enumInstances(hDev, rootType);
                 RegCloseKey(hDev);
             }
-            };
+        };
 
         //
         // Top‐level loop: for each rootPath, open the root key once, compute its RootType,
