@@ -233,7 +233,7 @@ def fetch_lib_info(enum_list):
 
 
     # generate the code implementation link 
-    link = "[link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#"
+    link = "[link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L"
     for enum in enum_list:
         technique[enum].code_link = link + str(technique[enum].line) + ")"
 
