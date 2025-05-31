@@ -796,7 +796,7 @@ void general() {
     checker(VM::TPM, "TPM manufacturer");
     checker(VM::PCI_DEVICES, "PCI vendor/device ID");
     checker(VM::QEMU_PASSTHROUGH, "QEMU passthrough");
-    checker(VM::TRAP, "trap behavior");
+    checker(VM::TRAP, "hypervisor interception");
 
     // ADD NEW TECHNIQUE CHECKER HERE
 

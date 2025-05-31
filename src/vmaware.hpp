@@ -4,7 +4,7 @@
  * ██║   ██║██╔████╔██║███████║██║ █╗ ██║███████║██████╔╝█████╗
  * ╚██╗ ██╔╝██║╚██╔╝██║██╔══██║██║███╗██║██╔══██║██╔══██╗██╔══╝
  *  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
- *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ Experimental post-2.3.0 (May 2025)
+ *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ Experimental post-2.3.0 (June 2025)
  *
  *  C++ VM detection library
  *
@@ -53,10 +53,10 @@
  * - struct for internal cpu operations        => line 717
  * - struct for internal memoization           => line 1042
  * - struct for internal utility functions     => line 1183
- * - struct for internal core components       => line 8359
+ * - struct for internal core components       => line 8428
  * - start of VM detection technique list      => line 1993
- * - start of public VM detection functions    => line 8874
- * - start of externally defined variables     => line 9802
+ * - start of public VM detection functions    => line 8943
+ * - start of externally defined variables     => line 9871
  *
  *
  * ============================== EXAMPLE ===================================
@@ -6230,7 +6230,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             RegCloseKey(hRoot);
         }
 
-        debug("PCI_DEVICES: Found ", devices.size(), " devices\n");
+        debug("PCI_DEVICES: Found ", devices.size(), " devices");
         #endif
 
         for (auto& d : devices) {
@@ -8167,7 +8167,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         struct wstring_view {
             const wchar_t* data;
             size_t         size;
-
             enum : size_t { npos = static_cast<size_t>(-1) };
 
             wstring_view(const wchar_t* d, size_t n) : data(d), size(n) {}
@@ -8185,19 +8184,26 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 size_t nlen = wcslen(needle);
                 return (idx + nlen <= size) ? idx : npos;
             }
+
+            std::wstring to_wstring() const {
+                return std::wstring(data, size);
+            }
         };
 
         auto __iswdigit = [](wchar_t c) noexcept {
             return (c >= L'0' && c <= L'9');
         };
 
+        // 1) enumerate all DISPLAY devices present on the system. We only care about their “LocationPaths” property
         HDEVINFO hDevInfo = SetupDiGetClassDevsW(
             &GUID_DEVCLASS_DISPLAY,
             nullptr,
             nullptr,
             DIGCF_PRESENT);
-        if (hDevInfo == INVALID_HANDLE_VALUE)
+        if (hDevInfo == INVALID_HANDLE_VALUE) {
+            std::wcerr << L"[ERROR] SetupDiGetClassDevsW failed\n";
             return false;
+        }
 
         SP_DEVINFO_DATA devInfo = {};
         devInfo.cbSize = sizeof(devInfo);
@@ -8207,54 +8213,117 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             DEVPROPTYPE propType = 0;
             DWORD requiredSize = 0;
 
-            // first call to get buffer size
+            // 2) ask how large a buffer we need
             SetupDiGetDevicePropertyW(
                 hDevInfo, &devInfo, &key, &propType,
                 nullptr, 0, &requiredSize, 0);
-            if (GetLastError() != ERROR_INSUFFICIENT_BUFFER || requiredSize == 0)
+            if (GetLastError() != ERROR_INSUFFICIENT_BUFFER || requiredSize == 0) {
+                // No LocationPaths or error; skip
                 continue;
+            }
 
+            // 3) allocate a buffer and actually fetch the multi-sz
             std::vector<BYTE> buffer(requiredSize);
             if (!SetupDiGetDevicePropertyW(
                 hDevInfo, &devInfo, &key, &propType,
-                buffer.data(), requiredSize, &requiredSize, 0))
+                buffer.data(), requiredSize, &requiredSize, 0)) {
                 continue;
+            }
 
-            // sequence of null-terminated wide strings
+            // 4) split the REG_MULTI_SZ into individual std::wstring
             const wchar_t* ptr = reinterpret_cast<const wchar_t*>(buffer.data());
+            std::vector<std::wstring> paths;
             while (*ptr) {
                 size_t len = wcslen(ptr);
-                wstring_view path(ptr, len);
+                paths.emplace_back(ptr, len);
+                ptr += (len + 1);
+            }
 
-                static const wchar_t pciPrefix[] = L"PCIROOT(0)#PCI(";
-                if (!path.starts_with(pciPrefix)) {
-                    ptr += len + 1;
-                    continue;
+        #ifdef __VMAWARE_DEBUG__
+            for (auto& wstr : paths) {
+                debug(wstr);
+            }
+        #endif
+
+            // 5) look for any string that starts with "PCIROOT(0)#PCI("
+            static const wchar_t pciPrefix[] = L"PCIROOT(0)#PCI(";
+            bool sawPCIROOT = false;
+            for (auto& wstr : paths) {
+                wstring_view vw(wstr.c_str(), wstr.size());
+                if (vw.starts_with(pciPrefix)) {
+                    sawPCIROOT = true;
+                    break;
                 }
+            }
 
-                static const wchar_t acpiPrefix[] = L"#ACPI(S";
-                size_t pos = path.find(acpiPrefix);
+            // 6) look for "#ACPI(S<bus><slot>_)" OR "#ACPI(S<bus><slot>)" where <bus> = [1–9] and <slot> = [0–9]
+            static const wchar_t acpiPrefix[] = L"#ACPI(S";
+            bool foundQemuAcpi = false;
+            std::wstring matchedString;
+
+            for (auto& wstr : paths) {
+                wstring_view vw(wstr.c_str(), wstr.size());
+                size_t pos = vw.find(acpiPrefix);
                 while (pos != wstring_view::npos) {
-                    if (pos + 10 < path.size &&
-                        __iswdigit(path.data[pos + 7]) &&
-                        __iswdigit(path.data[pos + 8]) &&
-                        path.data[pos + 9] == L'_' &&
-                        path.data[pos + 10] == L')')
-                    {
-                        SetupDiDestroyDeviceInfoList(hDevInfo);
-                        return true;
-                    }
-                    // search the rest of the view
-                    const wchar_t* nextSearch = path.data + pos + 1;
-                    size_t       nextLen = path.size - (pos + 1);
-                    wstring_view  subView(nextSearch, nextLen);
-                    size_t rel = subView.find(acpiPrefix);
-                    pos = (rel == wstring_view::npos)
-                        ? wstring_view::npos
-                        : (pos + 1 + rel);
-                }
+                    // after "#ACPI(S" we expect:
+                    //   pos+6 == 'S'
+                    //   pos+7 = first digit (bus), must be '1'..'9'
+                    //   pos+8 = second digit (slot), must be '0'..'9'
+                    //   then either:
+                    //     (a) pos+9 == '_' and pos+10 == ')'   -> "#ACPI(S<bus><slot>_)"
+                    //  OR pos+9 == ')'                          -> "#ACPI(S<bus><slot>)"
+                    if (pos + 8 < vw.size) {
+                        wchar_t d1 = vw.data[pos + 7]; // bus digit
+                        wchar_t d2 = vw.data[pos + 8]; // slot digit
 
-                ptr += len + 1;
+                        if (__iswdigit(d1) && d1 != L'0' &&
+                            __iswdigit(d2))
+                        {
+                            // check for version with underscore
+                            bool hasUnderscoreForm = false;
+                            if (pos + 10 < vw.size &&
+                                vw.data[pos + 9] == L'_' &&
+                                vw.data[pos + 10] == L')')
+                            {
+                                hasUnderscoreForm = true;
+                            }
+                            // check for version without underscore
+                            bool hasNoUnderscoreForm = false;
+                            if (pos + 9 < vw.size &&
+                                vw.data[pos + 9] == L')')
+                            {
+                                hasNoUnderscoreForm = true;
+                            }
+
+                            if (hasUnderscoreForm || hasNoUnderscoreForm) {
+                                foundQemuAcpi = true;
+                                matchedString = wstr;
+                                break;
+                            }
+                        }
+                    }
+
+                    // otherwise, keep searching for the next "#ACPI(S" in this same string
+                    size_t nextOff = pos + 1;
+                    if (nextOff >= vw.size) {
+                        pos = wstring_view::npos;
+                    }
+                    else {
+                        wstring_view sub(vw.data + nextOff,
+                            vw.size - nextOff);
+                        size_t rel = sub.find(acpiPrefix);
+                        pos = (rel == wstring_view::npos)
+                            ? wstring_view::npos
+                            : (nextOff + rel);
+                    }
+                }
+                if (foundQemuAcpi)
+                    break;
+            }
+
+            if (foundQemuAcpi) {
+                SetupDiDestroyDeviceInfoList(hDevInfo);
+                return true;
             }
         }
 
@@ -9937,15 +10006,15 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     // START OF TECHNIQUE TABLE
     #if (WINDOWS)
         std::make_pair(VM::GPU_CAPABILITIES, VM::core::technique(100, VM::gpu_capabilities)),
-        std::make_pair(VM::TRAP, VM::core::technique(50, VM::trap)),
-        std::make_pair(VM::TPM, VM::core::technique(50, VM::tpm)),
+        std::make_pair(VM::TRAP, VM::core::technique(100, VM::trap)),
+        std::make_pair(VM::TPM, VM::core::technique(100, VM::tpm)),
         std::make_pair(VM::QEMU_PASSTHROUGH, VM::core::technique(90, VM::qemu_passthrough)),
-        std::make_pair(VM::POWER_CAPABILITIES, VM::core::technique(50, VM::power_capabilities)),
+        std::make_pair(VM::POWER_CAPABILITIES, VM::core::technique(90, VM::power_capabilities)),
         std::make_pair(VM::DISK_SERIAL, VM::core::technique(100, VM::disk_serial_number)),
         std::make_pair(VM::IVSHMEM, VM::core::technique(100, VM::ivshmem)),
-        std::make_pair(VM::SGDT, VM::core::technique(45, VM::sgdt)),
-        std::make_pair(VM::SLDT, VM::core::technique(45, VM::sldt)),
-        std::make_pair(VM::SMSW, VM::core::technique(45, VM::smsw)),
+        std::make_pair(VM::SGDT, VM::core::technique(50, VM::sgdt)),
+        std::make_pair(VM::SLDT, VM::core::technique(50, VM::sldt)),
+        std::make_pair(VM::SMSW, VM::core::technique(50, VM::smsw)),
         std::make_pair(VM::DRIVERS, VM::core::technique(100, VM::drivers)),
         std::make_pair(VM::REGISTRY_VALUES, VM::core::technique(50, VM::registry_values)),
         std::make_pair(VM::REGISTRY_KEYS, VM::core::technique(50, VM::registry_keys)),
@@ -9955,8 +10024,8 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         std::make_pair(VM::VIRTUAL_PROCESSORS, VM::core::technique(100, VM::virtual_processors)),
         std::make_pair(VM::HYPERV_QUERY, VM::core::technique(100, VM::hyperv_query)),
         std::make_pair(VM::AUDIO, VM::core::technique(25, VM::audio)),
-        std::make_pair(VM::DISPLAY, VM::core::technique(20, VM::display)),
-        std::make_pair(VM::DLL, VM::core::technique(25, VM::dll)),
+        std::make_pair(VM::DISPLAY, VM::core::technique(35, VM::display)),
+        std::make_pair(VM::DLL, VM::core::technique(50, VM::dll)),
         std::make_pair(VM::VBOX_NETWORK, VM::core::technique(100, VM::vbox_network_share)),
         std::make_pair(VM::VMWARE_BACKDOOR, VM::core::technique(100, VM::vmware_backdoor)),
         std::make_pair(VM::WINE, VM::core::technique(100, VM::wine)),
@@ -9972,8 +10041,8 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         
     #if (LINUX || WINDOWS)
         std::make_pair(VM::FIRMWARE, VM::core::technique(100, VM::firmware)),
-        std::make_pair(VM::PCI_DEVICES, VM::core::technique(95, VM::pci_devices)),
-        std::make_pair(VM::SIDT, VM::core::technique(45, VM::sidt)),
+        std::make_pair(VM::PCI_DEVICES, VM::core::technique(50, VM::pci_devices)),
+        std::make_pair(VM::SIDT, VM::core::technique(50, VM::sidt)),
         std::make_pair(VM::DISK_SIZE, VM::core::technique(60, VM::disk_size)),
         std::make_pair(VM::HYPERV_HOSTNAME, VM::core::technique(30, VM::hyperv_hostname)),
         std::make_pair(VM::VBOX_DEFAULT, VM::core::technique(25, VM::vbox_default_specs)),

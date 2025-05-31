@@ -41,7 +41,7 @@ vmaware_docs = os.path.join('..', 'docs', 'documentation.md')
 
 
 def update_sections(filename):
-    with open(filename, 'r') as vmaware_read:
+    with open(filename, 'r', encoding='utf-8', errors='ignore') as vmaware_read:
         header_content = vmaware_read.readlines()
 
     enum = "enum enum_flags"
@@ -112,7 +112,7 @@ def update_sections(filename):
     for i, new_line in enumerate(banner):
         header_content[section_line + i] = new_line + '\n'
 
-    with open(filename, 'w') as file:
+    with open(filename, 'w', encoding='utf-8', errors='ignore') as file:
         file.writelines(header_content)
 
 
@@ -126,7 +126,7 @@ def update_date(filename):
             date_arg = arg
             break
 
-    with open(filename, 'r') as file:
+    with open(filename, 'r', encoding='utf-8', errors='ignore') as file:
         header_content = file.readlines()
 
     banner_line = " *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ "
@@ -143,7 +143,6 @@ def update_date(filename):
         print(f"Version number not found for {red}{bold}{base_str}{ansi_exit}, aborting")
         sys.exit(1)
 
-
     header_version = find_pattern(header_content[index])
     arg_version = find_pattern(date_arg) if date_arg else header_version
     new_date = datetime.now().strftime("%B %Y")
@@ -157,13 +156,11 @@ def update_date(filename):
 
     header_content[index] = new_content + '\n'
 
-    with open(filename, 'w') as file:
+    with open(filename, 'w', encoding='utf-8', errors='ignore') as file:
         file.writelines(header_content)
 
 
-
-
-with open(vmaware_file, 'r') as file:
+with open(vmaware_file, 'r', encoding='utf-8', errors='ignore') as file:
     file_content = file.readlines()
 
 
@@ -207,6 +204,7 @@ class options:
         self.notes = notes
         self.code_link = code_link
 
+
 class array_dict(dict):
     def __getitem__(self, key):
         return self.get(key)
@@ -217,6 +215,7 @@ class array_dict(dict):
 
 
 technique = array_dict()
+
 
 def fetch_lib_info(enum_list):
     for enum in enum_list:
@@ -231,12 +230,10 @@ def fetch_lib_info(enum_list):
                 technique[enum].line = i + 1
                 break
 
-
     # generate the code implementation link 
     link = "[link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L"
     for enum in enum_list:
         technique[enum].code_link = link + str(technique[enum].line) + ")"
-
 
     # fetch scores
     start = "// START OF TECHNIQUE TABLE"
@@ -253,7 +250,6 @@ def fetch_lib_info(enum_list):
                 end_ptr = index
                 break  # Stop after first end marker
 
-
         if start_ptr == -1 or end_ptr == -1:
             print("Error: Start or end marker not found")
         else:
@@ -264,7 +260,6 @@ def fetch_lib_info(enum_list):
                 match = re.search(r'technique\((\d+)', enum_line)
                 if match:
                     technique[enum].score = int(match.group(1))
-
 
     # fetch more stuff
     for enum in enum_list:
@@ -322,7 +317,6 @@ def fetch_lib_info(enum_list):
                 technique[enum].notes = line.split("@note", 1)[-1]
 
 
-
 def update_docs(enum_list):
     technique_array = []
 
@@ -340,7 +334,7 @@ def update_docs(enum_list):
 
         technique_array.append("| " + " | ".join(str(item).strip() for item in order) + " |")
 
-    with open(vmaware_docs, 'r') as file:
+    with open(vmaware_docs, 'r', encoding='utf-8', errors='ignore') as file:
         docs_content = file.readlines()
 
     docs_start = "<!-- START OF TECHNIQUE DOCUMENTATION -->"
@@ -367,7 +361,7 @@ def update_docs(enum_list):
 
     docs_content[start_ptr:end_ptr - 1] = [line + '\n' for line in technique_array]
 
-    with open(vmaware_docs, 'w', newline='\n') as f:
+    with open(vmaware_docs, 'w', encoding='utf-8', errors='ignore', newline='\n') as f:
         f.writelines(docs_content)
 
 
