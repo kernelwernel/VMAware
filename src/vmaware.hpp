@@ -4,7 +4,7 @@
  * ██║   ██║██╔████╔██║███████║██║ █╗ ██║███████║██████╔╝█████╗
  * ╚██╗ ██╔╝██║╚██╔╝██║██╔══██║██║███╗██║██╔══██║██╔══██╗██╔══╝
  *  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
- *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ Experimental post-2.3.0 (May 2025)
+ *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ Experimental post-2.3.0 (June 2025)
  *
  *  C++ VM detection library
  *
@@ -53,10 +53,10 @@
  * - struct for internal cpu operations        => line 717
  * - struct for internal memoization           => line 1042
  * - struct for internal utility functions     => line 1183
- * - struct for internal core components       => line 8359
+ * - struct for internal core components       => line 8428
  * - start of VM detection technique list      => line 1993
- * - start of public VM detection functions    => line 8874
- * - start of externally defined variables     => line 9802
+ * - start of public VM detection functions    => line 8943
+ * - start of externally defined variables     => line 9871
  *
  *
  * ============================== EXAMPLE ===================================
@@ -10006,15 +10006,15 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     // START OF TECHNIQUE TABLE
     #if (WINDOWS)
         std::make_pair(VM::GPU_CAPABILITIES, VM::core::technique(100, VM::gpu_capabilities)),
-        std::make_pair(VM::TRAP, VM::core::technique(50, VM::trap)),
-        std::make_pair(VM::TPM, VM::core::technique(50, VM::tpm)),
+        std::make_pair(VM::TRAP, VM::core::technique(100, VM::trap)),
+        std::make_pair(VM::TPM, VM::core::technique(100, VM::tpm)),
         std::make_pair(VM::QEMU_PASSTHROUGH, VM::core::technique(90, VM::qemu_passthrough)),
-        std::make_pair(VM::POWER_CAPABILITIES, VM::core::technique(50, VM::power_capabilities)),
+        std::make_pair(VM::POWER_CAPABILITIES, VM::core::technique(90, VM::power_capabilities)),
         std::make_pair(VM::DISK_SERIAL, VM::core::technique(100, VM::disk_serial_number)),
         std::make_pair(VM::IVSHMEM, VM::core::technique(100, VM::ivshmem)),
-        std::make_pair(VM::SGDT, VM::core::technique(45, VM::sgdt)),
-        std::make_pair(VM::SLDT, VM::core::technique(45, VM::sldt)),
-        std::make_pair(VM::SMSW, VM::core::technique(45, VM::smsw)),
+        std::make_pair(VM::SGDT, VM::core::technique(50, VM::sgdt)),
+        std::make_pair(VM::SLDT, VM::core::technique(50, VM::sldt)),
+        std::make_pair(VM::SMSW, VM::core::technique(50, VM::smsw)),
         std::make_pair(VM::DRIVERS, VM::core::technique(100, VM::drivers)),
         std::make_pair(VM::REGISTRY_VALUES, VM::core::technique(50, VM::registry_values)),
         std::make_pair(VM::REGISTRY_KEYS, VM::core::technique(50, VM::registry_keys)),
@@ -10024,8 +10024,8 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         std::make_pair(VM::VIRTUAL_PROCESSORS, VM::core::technique(100, VM::virtual_processors)),
         std::make_pair(VM::HYPERV_QUERY, VM::core::technique(100, VM::hyperv_query)),
         std::make_pair(VM::AUDIO, VM::core::technique(25, VM::audio)),
-        std::make_pair(VM::DISPLAY, VM::core::technique(20, VM::display)),
-        std::make_pair(VM::DLL, VM::core::technique(25, VM::dll)),
+        std::make_pair(VM::DISPLAY, VM::core::technique(35, VM::display)),
+        std::make_pair(VM::DLL, VM::core::technique(50, VM::dll)),
         std::make_pair(VM::VBOX_NETWORK, VM::core::technique(100, VM::vbox_network_share)),
         std::make_pair(VM::VMWARE_BACKDOOR, VM::core::technique(100, VM::vmware_backdoor)),
         std::make_pair(VM::WINE, VM::core::technique(100, VM::wine)),
@@ -10041,8 +10041,8 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         
     #if (LINUX || WINDOWS)
         std::make_pair(VM::FIRMWARE, VM::core::technique(100, VM::firmware)),
-        std::make_pair(VM::PCI_DEVICES, VM::core::technique(95, VM::pci_devices)),
-        std::make_pair(VM::SIDT, VM::core::technique(45, VM::sidt)),
+        std::make_pair(VM::PCI_DEVICES, VM::core::technique(50, VM::pci_devices)),
+        std::make_pair(VM::SIDT, VM::core::technique(50, VM::sidt)),
         std::make_pair(VM::DISK_SIZE, VM::core::technique(60, VM::disk_size)),
         std::make_pair(VM::HYPERV_HOSTNAME, VM::core::technique(30, VM::hyperv_hostname)),
         std::make_pair(VM::VBOX_DEFAULT, VM::core::technique(25, VM::vbox_default_specs)),
