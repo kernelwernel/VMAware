@@ -344,18 +344,18 @@ bool is_unsupported(VM::enum_flags flag) {
 
     #if (CLI_LINUX)
         return (
-            (flag >= VM::SIDT) &&
-            (flag <= VM::AMD_SEV)
+            (flag >= VM::LINUX_START) &&
+            (flag <= VM::LINUX_END)
         );
     #elif (CLI_WINDOWS)
         return (
-            (flag >= VM::GPU_CAPABILITIES) &&
-            (flag <= VM::VBOX_DEFAULT)
+            (flag >= VM::WINDOWS_START) &&
+            (flag <= VM::WINDOWS_END)
         );
     #elif (APPLE)
         return (
-            (flag >= VM::MAC_MEMSIZE) &&
-            (flag <= VM::HWMODEL)
+            (flag >= VM::MACOS_START) &&
+            (flag <= VM::MACOS_END)
         );
     #else
         return true;

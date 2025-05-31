@@ -4,7 +4,7 @@
  * ██║   ██║██╔████╔██║███████║██║ █╗ ██║███████║██████╔╝█████╗
  * ╚██╗ ██╔╝██║╚██╔╝██║██╔══██║██║███╗██║██╔══██║██╔══██╗██╔══╝
  *  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
- *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ Experimental post-2.3.0 (June 2025)
+ *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ Experimental post-2.3.0 (May 2025)
  *
  *  C++ VM detection library
  *
@@ -49,14 +49,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 539
- * - struct for internal cpu operations        => line 708
- * - struct for internal memoization           => line 1033
- * - struct for internal utility functions     => line 1174
- * - struct for internal core components       => line 8175
- * - start of VM detection technique list      => line 2004
- * - start of public VM detection functions    => line 8690
- * - start of externally defined variables     => line 9612
+ * - enums for publicly accessible techniques  => line 538
+ * - struct for internal cpu operations        => line 717
+ * - struct for internal memoization           => line 1042
+ * - struct for internal utility functions     => line 1183
+ * - struct for internal core components       => line 8359
+ * - start of VM detection technique list      => line 1993
+ * - start of public VM detection functions    => line 8874
+ * - start of externally defined variables     => line 9802
  *
  *
  * ============================== EXAMPLE ===================================
@@ -656,8 +656,8 @@ private:
     static constexpr u16 maximum_points = 5510; // theoretical total points if all VM detections returned true (which is practically impossible)
     static constexpr u16 high_threshold_score = 300; // new threshold score from 150 to 300 if VM::HIGH_THRESHOLD flag is enabled
     static constexpr bool SHORTCUT = true; // macro for whether VM::core::run_all() should take a shortcut by skipping the rest of the techniques if the threshold score is already met
-
-
+    
+    
     // intended for loop indexes
     static constexpr u8 enum_begin = 0;
     static constexpr u8 enum_end = enum_size + 1;
@@ -665,7 +665,17 @@ private:
     static constexpr u8 technique_end = DEFAULT;
     static constexpr u8 settings_begin = DEFAULT;
     static constexpr u8 settings_end = enum_end;
+    
 
+public:
+    // for platform compatibility ranges
+    static constexpr u8 WINDOWS_START = VM::GPU_CAPABILITIES;
+    static constexpr u8 WINDOWS_END = VM::VBOX_DEFAULT;
+    static constexpr u8 LINUX_START = VM::SIDT;
+    static constexpr u8 LINUX_END = VM::PROCESSES;
+    static constexpr u8 MACOS_START = VM::MAC_MEMSIZE;
+    static constexpr u8 MACOS_END = VM::HWMODEL;
+    
     // this is specifically meant for VM::detected_count() to 
     // get the total number of techniques that detected a VM
     static u8 detected_count_num; 
@@ -1183,18 +1193,18 @@ private:
 
             #if (LINUX)
                 return (!(
-                    (flag >= VM::SIDT) &&
-                    (flag <= VM::AMD_SEV)
+                    (flag >= LINUX_START) &&
+                    (flag <= LINUX_END)
                 ));
             #elif (WINDOWS)
                 return (!(
-                    (flag >= VM::GPU_CAPABILITIES) &&
-                    (flag <= VM::VBOX_DEFAULT)
+                    (flag >= WINDOWS_START) &&
+                    (flag <= WINDOWS_END)
                 ));
             #elif (APPLE) 
                 return (!(
-                    (flag >= VM::MAC_MEMSIZE) &&
-                    (flag <= VM::HWMODEL)
+                    (flag >= MACOS_START) &&
+                    (flag <= MACOS_END)
                 ));
             #else
                 return false;
@@ -2126,7 +2136,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check if there are only 1 or 2 threads, which is a common pattern in VMs with default settings (nowadays physical CPUs should have at least 4 threads for modern CPUs
      * @category x86 (ARM might have very low thread counts, which is why it should be only for x86)
-     * @implements VM::THREADCOUNT
+     * @implements VM::THREAD_COUNT
      */
     [[nodiscard]] static bool thread_count() {
         #if (x86)
@@ -2148,7 +2158,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for various Bochs-related emulation oversights through CPU checks
      * @category x86
-     * @note Discovered by Peter Ferrie, Senior Principal Researcher, Symantec Advanced Threat Research peter_ferrie@symantec.com
+     * @author Discovered by Peter Ferrie, Senior Principal Researcher, Symantec Advanced Threat Research peter_ferrie@symantec.com
      * @implements VM::BOCHS_CPU
      */
     [[nodiscard]] static bool bochs_cpu() {
@@ -4409,6 +4419,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check if dmidecode output matches a VM brand
      * @category Linux
+     * @warning Permissions required
      * @implements VM::DMIDECODE
      */
     [[nodiscard]] static bool dmidecode() {
@@ -4542,6 +4553,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check if dmesg output matches a VM brand
      * @category Linux
+     * @warning Permissions required
      * @implements VM::DMESG
      */
     [[nodiscard]] static bool dmesg() {
@@ -4617,7 +4629,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for VMware string in /proc/iomem
      * @category Linux
-     * @note idea from ScoopyNG by Tobias Klein
+     * @author idea from ScoopyNG by Tobias Klein
      * @implements VM::VMWARE_IOMEM
      */
     [[nodiscard]] static bool vmware_iomem() {
@@ -4655,7 +4667,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
 	 * @brief Check for AMD-SEV MSR running on the system
 	 * @category x86, Linux, MacOS
-	 * @note idea from virt-what
+	 * @author idea from virt-what
+     * @warning Permissions required
      * @implements VM::AMD_SEV
 	 */
 	[[nodiscard]] static bool amd_sev() {
@@ -4742,6 +4755,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for presence of QEMU in the /sys/kernel/debug/usb/devices directory
      * @category Linux
+     * @warning Permissions required
      * @implements VM::QEMU_USB
      */
     [[nodiscard]] static bool qemu_USB() {
@@ -4816,7 +4830,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
     /**
      * @brief Check for the "UML" string in the CPU brand
-     * @note idea from https://github.com/ShellCode33/VM-Detection/blob/master/vmdetect/linux.go
+     * @author idea from https://github.com/ShellCode33/VM-Detection/blob/master/vmdetect/linux.go
      * @category Linux
      * @implements VM::UML_CPU
      */
@@ -4845,8 +4859,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
     /**
      * @brief Check for any indications of hypervisors in the kernel message logs
-     * @note idea from https://github.com/ShellCode33/VM-Detection/blob/master/vmdetect/linux.go
+     * @author idea from https://github.com/ShellCode33/VM-Detection/blob/master/vmdetect/linux.go
      * @category Linux
+     * @warning Permissions required
      * @implements VM::KMSG
      */
     [[nodiscard]] static bool kmsg() {
@@ -4899,7 +4914,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
     /**
      * @brief Check for a VBox kernel module
-     * @note idea from https://github.com/ShellCode33/VM-Detection/blob/master/vmdetect/linux.go
+     * @author idea from https://github.com/ShellCode33/VM-Detection/blob/master/vmdetect/linux.go
      * @category Linux
      * @implements VM::VBOX_MODULE
      */
@@ -4919,10 +4934,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
     }
 
+
     /**
      * @brief Check for VMware string in /proc/scsi/scsi
      * @category Linux
-     * @note idea from ScoopyNG by Tobias Klein
+     * @author idea from ScoopyNG by Tobias Klein
      * @implements VM::VMWARE_SCSI
      */
     [[nodiscard]] static bool vmware_scsi() {
@@ -4939,7 +4955,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for VMware-specific device name in dmesg output
      * @category Windows
-     * @note idea from ScoopyNG by Tobias Klein
+     * @author idea from ScoopyNG by Tobias Klein
+     * @note Disabled by default
+     * @warning Permissions required
      * @implements VM::VMWARE_DMESG
      */
     [[nodiscard]] static bool vmware_dmesg() {
@@ -4972,7 +4990,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
     /**
      * @brief Check for potential VM info in /proc/sysinfo
-     * @note idea from https://github.com/ShellCode33/VM-Detection/blob/master/vmdetect/linux.go
+     * @author idea from https://github.com/ShellCode33/VM-Detection/blob/master/vmdetect/linux.go
      * @category Linux
      * @implements VM::SYSINFO_PROC
      */
@@ -5069,13 +5087,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         return false;
-    } 
+    }
 
 
     /**
      * @brief Check for the VM bit in the SMBIOS data
-     * @note idea from https://github.com/systemd/systemd/blob/main/src/basic/virt.c
+     * @author idea from https://github.com/systemd/systemd/blob/main/src/basic/virt.c
      * @category Linux
+     * @warning Permissions required
      * @implements VM::SMBIOS_VM_BIT
      */
     [[nodiscard]] static bool smbios_vm_bit() {
@@ -5104,7 +5123,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
     /**
      * @brief Check for podman file in /run/
-     * @note idea from https://github.com/systemd/systemd/blob/main/src/basic/virt.c
+     * @author idea from https://github.com/systemd/systemd/blob/main/src/basic/virt.c
      * @category Linux
      * @implements VM::PODMAN_FILE
      */
@@ -5120,7 +5139,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for VMware string in /proc/ioports
      * @category Linux
-     * @note idea from ScoopyNG by Tobias Klein
+     * @author idea from ScoopyNG by Tobias Klein
      * @implements VM::VMWARE_IOPORTS
      */
     [[nodiscard]] static bool vmware_ioports() {
@@ -5136,7 +5155,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
     /**
      * @brief Check for WSL or microsoft indications in /proc/ subdirectories
-     * @note idea from https://github.com/systemd/systemd/blob/main/src/basic/virt.c
+     * @author idea from https://github.com/systemd/systemd/blob/main/src/basic/virt.c
      * @category Linux
      * @implements VM::WSL_PROC
      */
@@ -5164,18 +5183,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Detect QEMU fw_cfg interface
-     *
-     * This first checks the Device Tree for a fw-cfg node or hypervisor tag,
-     * then verifies the presence of the qemu_fw_cfg module and firmware directories in sysfs.
-     *
-     * @note Linux DT method: inspired by https://github.com/ShellCode33/VM-Detection
-     * @note Linux sysfs method: looks for /sys/module/qemu_fw_cfg/ & /sys/firmware/qemu_fw_cfg/
-     *
+     * @brief Detect QEMU fw_cfg interface. This first checks the Device Tree for a fw-cfg node or hypervisor tag, then verifies the presence of the qemu_fw_cfg module and firmware directories in sysfs.
      * @category Linux
      * @implements VM::QEMU_FW_CFG
      */
-    [[nodiscard]] static bool qemu_fw_cfg() {
+     [[nodiscard]] static bool qemu_fw_cfg() {
+        // Linux DT method: inspired by https://github.com/ShellCode33/VM-Detection
+        // Linux sysfs method: looks for /sys/module/qemu_fw_cfg/ & /sys/firmware/qemu_fw_cfg/
+
         // 1) Device Tree-based detection
         if (util::exists("/proc/device-tree/fw-cfg")) {
             return core::add(brands::QEMU);
@@ -5199,7 +5214,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check if the number of accessed files are too low for a human-managed environment
      * @category Linux
-     * @note idea from https://unprotect.it/technique/xbel-recently-opened-files-check/
+     * @author idea from https://unprotect.it/technique/xbel-recently-opened-files-check/
      * @implements VM::FILE_ACCESS_HISTORY
      */
     [[nodiscard]] static bool file_access_history() {
@@ -5307,6 +5322,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (util::exists("/proc/vz")) {
             return core::add(brands::OPENVZ);
         }
+
+        return false;
     }
 #endif
 
@@ -5328,17 +5345,21 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
     /**
      * @brief Check for default RAM and DISK sizes set by VirtualBox
-     * @note        RAM     DISK
-     * WINDOWS 11:  4096MB, 80GB
-     * WINDOWS 10:  2048MB, 50GB
-     * ARCH, OPENSUSE, REDHAD, GENTOO, FEDORA, DEBIAN: 1024MB, 8GB
-     * UBUNTU:      1028MB, 10GB
-     * ORACLE:      1024MB, 12GB
-     * OTHER LINUX: 512MB,  8GB
+     * @note Admin only needed for Linux
      * @category Linux, Windows
+     * @warning Permissions required
      * @implements VM::VBOX_DEFAULT
      */
-    [[nodiscard]] static bool vbox_default_specs() {
+     [[nodiscard]] static bool vbox_default_specs() {
+        /**
+         *              RAM     DISK
+         * WINDOWS 11:  4096MB, 80GB
+         * WINDOWS 10:  2048MB, 50GB
+         * ARCH, OPENSUSE, REDHAD, GENTOO, FEDORA, DEBIAN: 1024MB, 8GB
+         * UBUNTU:      1028MB, 10GB
+         * ORACLE:      1024MB, 12GB
+         * OTHER LINUX: 512MB,  8GB
+         */
         const u16 disk = util::get_disk_size(); 
         const u32 ram = util::get_physical_ram_size(); 
 
@@ -5417,10 +5438,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for uncommon IDT virtual addresses
      * @author Matteo Malvica (Linux)
+     * @author Idea to check VPC's range from Tom Liston and Ed Skoudis' paper "On the Cutting Edge: Thwarting Virtual Machine Detection" (Windows)
+     * @author Paper situated at /papers/ThwartingVMDetection_Liston_Skoudis.pdf (Windows)
      * @link https://www.matteomalvica.com/blog/2018/12/05/detecting-vmware-on-64-bit-systems/ (Linux)
-     * @note Idea to check VPC's range from Tom Liston and Ed Skoudis' paper "On the Cutting Edge: Thwarting Virtual Machine Detection" (Windows)
-     * @note Paper situated at /papers/ThwartingVMDetection_Liston_Skoudis.pdf (Windows)
-     * @category Windows, Linux
+     * @category Windows, Linux, x86
      * @implements VM::SIDT
      */
     [[nodiscard]] static bool sidt() {
@@ -5558,7 +5579,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for commonly set hostnames by certain VM brands
      * @category Windows, Linux
-     * @note Idea from Thomas Roccia (fr0gger)
+     * @author Idea from Thomas Roccia (fr0gger)
      * @link https://unprotect.it/technique/detecting-hostname-username/
      * @implements VM::GENERAL_HOSTNAME
      */
@@ -5590,7 +5611,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for VM signatures on all firmware tables
      * @category Windows, Linux
-     * @credits Requiem, dmfrpro, MegaMax
+     * @authors Requiem, dmfrpro, MegaMax
+     * @warning Permissions required
      * @implements VM::FIRMWARE
      */
     [[nodiscard]] static bool firmware() {
@@ -6104,7 +6126,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     devices.push_back({ vid, did });
                 }
             }
-            };
+        };
 
         //
         // Lambda #2: Enumerate all “Instance” subkeys under a given “Device” key,
@@ -6139,7 +6161,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 processHardwareID(hInst, rootType);
                 RegCloseKey(hInst);
             }
-            };
+        };
 
         //
         // Lambda #3: Enumerate all “Device” subkeys under a given root key,
@@ -6174,7 +6196,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 enumInstances(hDev, rootType);
                 RegCloseKey(hDev);
             }
-            };
+        };
 
         //
         // Top‐level loop: for each rootPath, open the root key once, compute its RootType,
@@ -6996,10 +7018,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
     /**
      * @brief Check for sgdt instruction method
-     * @category Windows
+     * @category Windows, x86
      * @author Danny Quist (chamuco@gmail.com) (top-most byte signature)
      * @author Val Smith (mvalsmith@metasploit.com) (top-most byte signature)
-     * @note code documentation paper in /papers/www.offensivecomputing.net_vm.pdf (top-most byte signature)
+     * @author code documentation paper in /papers/www.offensivecomputing.net_vm.pdf (top-most byte signature)
      * @implements VM::SGDT
      */
     [[nodiscard]] static bool sgdt() {
@@ -7062,8 +7084,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Windows, x86_32
      * @author Danny Quist (chamuco@gmail.com), ldtr_buf signature
      * @author Val Smith (mvalsmith@metasploit.com), ldtr_buf signature
-     * @note code documentation paper in /papers/www.offensivecomputing.net_vm.pdf for ldtr_buf signature
-     * @note code documentation paper in https://www.aldeid.com/wiki/X86-assembly/Instructions/sldt for ldt signature
+     * @author code documentation paper in /papers/www.offensivecomputing.net_vm.pdf for ldtr_buf signature and in https://www.aldeid.com/wiki/X86-assembly/Instructions/sldt for ldt signature
      * @implements VM::SLDT
      */
     [[nodiscard]] static bool sldt() {
@@ -7147,9 +7168,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
     /**
      * @brief Check str assembly instruction method for VMware
-     * @note Alfredo Omella's (S21sec) STR technique
-     * @note paper describing this technique is located at /papers/www.s21sec.com_vmware-eng.pdf (2006)
-     * @category Windows
+     * @author Alfredo Omella's (S21sec) STR technique, paper describing this technique is located in /papers/
+     * @category Windows, x86_32
      * @implements VM::VMWARE_STR
      */
     [[nodiscard]] static bool vmware_str() {
@@ -7171,8 +7191,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for official VMware io port backdoor technique
      * @category Windows, x86_32
-     * @note Code from ScoopyNG by Tobias Klein
-     * @note Technique founded by Ken Kato
+     * @author Code from ScoopyNG by Tobias Klein, technique founded by Ken Kato
      * @copyright BSD clause 2
      * @implements VM::VMWARE_BACKDOOR
      */
@@ -7236,7 +7255,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for mutex strings of VM brands
      * @category Windows
-     * @note from VMDE project
+     * @author from VMDE project
      * @author hfiref0x
      * @implements VM::MUTEX
      */
@@ -7327,7 +7346,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for display configurations related to VMs
      * @category Windows
-     * @note Idea from Thomas Roccia (fr0gger)
+     * @author Idea from Thomas Roccia (fr0gger)
      * @link https://unprotect.it/technique/checking-screen-resolution/
      * @implements VM::DISPLAY
      */
@@ -7503,10 +7522,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for serial numbers of virtual disks
      * @category Windows
      * @author Requiem (https://github.com/NotRequiem)
-     * @note VMware can't be flagged without also flagging legitimate disks
      * @implements VM::DISK_SERIAL
      */
-    [[nodiscard]] static bool disk_serial_number() {
+     [[nodiscard]] static bool disk_serial_number() {
+        // VMware can't be flagged without also flagging legitimate disks
         bool result = false;
         constexpr u8 MAX_PHYSICAL_DRIVES = 4;
 
@@ -7684,6 +7703,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for GPU capabilities related to VMs
      * @category Windows
      * @author Requiem (https://github.com/NotRequiem)
+     * @note Admin only needed for some heuristics
      * @implements VM::GPU_CAPABILITIES
      */
     [[nodiscard]] static bool gpu_capabilities() {
@@ -7924,7 +7944,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for particular object directory which is present in Sandboxie virtual environment but not in usual host systems
      * @category Windows
-     * @note https://evasions.checkpoint.com/src/Evasions/techniques/global-os-objects.html
+     * @link https://evasions.checkpoint.com/src/Evasions/techniques/global-os-objects.html
+     * @note Admin only needed for Linux
      * @implements VM::VIRTUAL_REGISTRY
      */
     [[nodiscard]] static bool virtual_registry() {
@@ -8056,11 +8077,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check if the system has a physical TPM by matching the TPM manufacturer against known physical TPM chip vendors
      * @category Windows
-     * @note CRB model will succeed, while TIS will fail
      * @author Requiem (https://github.com/NotRequiem)
      * @implements VM::TPM
      */
-    [[nodiscard]] static bool tpm() {
+     [[nodiscard]] static bool tpm() {
+        // CRB model will succeed, while TIS will fail
+
         struct TbsContext {
             TBS_HCONTEXT hContext = 0;
             explicit TbsContext(const TBS_CONTEXT_PARAMS2& params) {
@@ -8530,10 +8552,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 const technique technique_data = tmp.second;
 
                 // check if platform is supported
-                if (util::is_unsupported(technique_macro)) {
-                    memo::cache_store(technique_macro, false, 0);
-                    continue;
-                }
+                //if (util::is_unsupported(technique_macro)) {
+                //    memo::cache_store(technique_macro, false, 0);
+                //    continue;
+                //}
 
                 // check if the technique is disabled
                 if (core::is_disabled(flags, technique_macro)) {
@@ -9423,6 +9445,7 @@ public: // START OF PUBLIC FUNCTIONS
      */
     [[nodiscard]] static std::string flag_to_string(const enum_flags flag) {
         switch (flag) {
+            // START OF TECHNIQUE LIST
             case VMID: return "VMID";
             case CPU_BRAND: return "CPU_BRAND";
             case HYPERVISOR_BIT: return "HYPERVISOR_BIT";
@@ -9511,9 +9534,14 @@ public: // START OF PUBLIC FUNCTIONS
             case PCI_DEVICES: return "PCI_DEVICES";
             case QEMU_PASSTHROUGH: return "QEMU_PASSTHROUGH";
             case TRAP: return "TRAP";
-
-            // ADD NEW CASE HERE FOR NEW TECHNIQUE
-            default: return "Unknown flag";
+            // END OF TECHNIQUE LIST
+            case DEFAULT: return "setting flag, error";
+            case ALL: return "setting flag, error";
+            case NULL_ARG: return "setting flag, error";
+            case NO_MEMO: return "setting flag, error";
+            case HIGH_THRESHOLD: return "setting flag, error";
+            case DYNAMIC: return "setting flag, error";
+            case MULTIPLE: return "setting flag, error";
         }
     }
 
@@ -10076,7 +10104,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     std::make_pair(VM::ODD_CPU_THREADS, VM::core::technique(80, VM::odd_cpu_threads)),
     std::make_pair(VM::BOCHS_CPU, VM::core::technique(100, VM::bochs_cpu)),
     std::make_pair(VM::KGT_SIGNATURE, VM::core::technique(80, VM::intel_kgt_signature))
-    // ADD NEW TECHNIQUE STRUCTURE HERE
+    // END OF TECHNIQUE TABLE
 };
 
 

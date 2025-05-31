@@ -386,7 +386,7 @@ def write_header(options, header_file):
 
 
         # modify the technique table with the new technique appended
-        if "// ADD NEW TECHNIQUE STRUCTURE HERE" in line:
+        if "// END OF TECHNIQUE TABLE" in line:
             code_str = (
                 "std::make_pair(VM::" + 
                 options.enum_name + 
