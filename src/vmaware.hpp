@@ -5864,20 +5864,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         #elif (LINUX)
             // Author: dmfrpro
-            if (!util::is_admin()) {
-                return false;
-            }
-
             DIR* dir = opendir("/sys/firmware/acpi/tables/");
             if (!dir) {
                 debug("FIRMWARE: could not open ACPI tables directory");
                 return false;
             }
 
-            // Same targets as the Windows branch but without "WAET"
             constexpr const char* targets[] = {
-                "Parallels Software International","Parallels(R)","innotek",
-                "Oracle","VirtualBox","vbox","VBOX","VS2005R2",
+                "Parallels Software International","Parallels(R)",
+                "innotek","Oracle","VirtualBox","vbox","VBOX","VS2005R2",
                 "VMware, Inc.","VMware","VMWARE",
                 "S3 Corp.","Virtual Machine","QEMU","pc-q35","BOCHS","BXPC"
             };
@@ -5885,11 +5880,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             struct dirent* entry;
             while ((entry = readdir(dir)) != nullptr) {
                 // Skip "." and ".."
-                if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
+                if (strcmp(entry->d_name, ".") == 0 ||
+                    strcmp(entry->d_name, "..") == 0)
                     continue;
 
                 char path[PATH_MAX];
-                snprintf(path, sizeof(path), "/sys/firmware/acpi/tables/%s", entry->d_name);
+                snprintf(path, sizeof(path),
+                    "/sys/firmware/acpi/tables/%s",
+                    entry->d_name);
 
                 int fd = open(path, O_RDONLY);
                 if (fd == -1) {
@@ -5898,17 +5896,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
 
                 struct stat statbuf;
-                if (fstat(fd, &statbuf) != 0) {
+                if (fstat(fd, &statbuf) != 0 || S_ISDIR(statbuf.st_mode)) {
                     debug("FIRMWARE: skipped ", entry->d_name);
                     close(fd);
                     continue;
                 }
-                if (S_ISDIR(statbuf.st_mode)) {
-                    debug("FIRMWARE: skipped directory ", entry->d_name);
-                    close(fd);
-                    continue;
-                }
-
                 long file_size = statbuf.st_size;
                 if (file_size <= 0) {
                     debug("FIRMWARE: file empty or error ", entry->d_name);
@@ -5922,13 +5914,20 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     close(fd);
                     continue;
                 }
+
+                ssize_t n = read(fd, buffer, file_size);
                 close(fd);
+                if (n != file_size) {
+                    debug("FIRMWARE: could not read full table ", entry->d_name);
+                    free(buffer);
+                    continue;
+                }
 
                 for (const char* target : targets) {
                     size_t targetLen = strlen(target);
-                    if (targetLen == 0 || file_size < static_cast<long>(targetLen))
+                    if ((long)targetLen > file_size)
                         continue;
-                    for (long j = 0; j <= file_size - static_cast<long>(targetLen); ++j) {
+                    for (long j = 0; j <= file_size - (long)targetLen; ++j) {
                         if (memcmp(buffer + j, target, targetLen) == 0) {
                             const char* brand = nullptr;
                             if (strcmp(target, "Parallels Software International") == 0 ||
@@ -5947,13 +5946,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                                 strcmp(target, "VMWARE") == 0) {
                                 brand = brands::VMWARE;
                             }
-                            else if (strcmp(target, "QEMU")) {
+                            else if (strcmp(target, "QEMU") == 0) {
                                 brand = brands::QEMU;
                             }
                             else if (strcmp(target, "BOCHS") == 0 ||
                                 strcmp(target, "BXPC") == 0) {
                                 brand = brands::BOCHS;
                             }
+
                             free(buffer);
                             closedir(dir);
                             if (brand)
