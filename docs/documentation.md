@@ -530,7 +530,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::TPM` | Check if the system has a physical TPM by matching the TPM manufacturer against known physical TPM chip vendors | 🪟 | 100% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L8075) |
 | `VM::PCI_DEVICES` | Check for PCI vendor and device IDs that are VM-specific | 🐧🪟 | 95% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L5979) |
 | `VM::QEMU_PASSTHROUGH` | Check for QEMU's hot-plug signature | 🪟 | 90% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L8158) |
-| `VM::TRAP` | Check if after raising two traps at the same RIP, a hypervisor interferes with the instruction pointer delivery | 🪟 | 100% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L8319) |
+| `VM::TRAP` | Check if after raising two traps at the same RIP, a hypervisor interferes with the instruction pointer delivery | 🪟 | 100% |  |  | On AMD CPUs, this technique will always false flag | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L8320) |
 
 <!-- END OF TECHNIQUE DOCUMENTATION -->
 
