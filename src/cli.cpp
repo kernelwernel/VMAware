@@ -48,7 +48,7 @@
 
 #include "vmaware.hpp"
 
-constexpr const char* ver = "2.3.0";
+constexpr const char* ver = "2.4.0";
 constexpr const char* date = "June 2025";
 
 std::string bold = "\033[1m";
