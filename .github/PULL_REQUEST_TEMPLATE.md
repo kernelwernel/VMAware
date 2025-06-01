@@ -5,8 +5,10 @@
 ## What does this PR do?
 - [ ] Add a new technique
 - [ ] Add a new feature
+- [ ] Improve code
 - [ ] Fix bugs
-- [ ] Refactoring 
+- [ ] Refactoring or code organisation
+- [ ] Stylistic changes
 - [ ] Sync between branches
 - [ ] Other
 
