@@ -53,10 +53,10 @@
  * - struct for internal cpu operations        => line 717
  * - struct for internal memoization           => line 1042
  * - struct for internal utility functions     => line 1183
- * - struct for internal core components       => line 8428
+ * - struct for internal core components       => line 8409
  * - start of VM detection technique list      => line 1993
- * - start of public VM detection functions    => line 8943
- * - start of externally defined variables     => line 9871
+ * - start of public VM detection functions    => line 8924
+ * - start of externally defined variables     => line 9853
  *
  *
  * ============================== EXAMPLE ===================================
@@ -8237,18 +8237,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
         #endif
 
-            // 5) look for any string that starts with "PCIROOT(0)#PCI("
-            static const wchar_t pciPrefix[] = L"PCIROOT(0)#PCI(";
-            bool sawPCIROOT = false;
-            for (auto& wstr : paths) {
-                wstring_view vw(wstr.c_str(), wstr.size());
-                if (vw.starts_with(pciPrefix)) {
-                    sawPCIROOT = true;
-                    break;
-                }
-            }
-
-            // 6) look for "#ACPI(S<bus><slot>_)" OR "#ACPI(S<bus><slot>)" where <bus> = [1–9] and <slot> = [0–9]
+            // 5) look for "#ACPI(S<bus><slot>_)" OR "#ACPI(S<bus><slot>)" where <bus> = [1–9] and <slot> = [0–9]
             static const wchar_t acpiPrefix[] = L"#ACPI(S";
             bool foundQemuAcpi = false;
             std::wstring matchedString;
@@ -8325,7 +8314,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check for two traps being raised at the same RIP, a hypervisor interferes with the instruction pointer delivery
+     * @brief Check if after raising two traps at the same RIP, a hypervisor interferes with the instruction pointer delivery
      * @category Windows
      * @implements VM::TRAP
      */
