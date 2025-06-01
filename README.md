@@ -1,5 +1,5 @@
 <p align="center">
-<img src="assets/banner.jpg" align="center" width="500" title="VMAware">
+<img src="assets/vmaware.jpg" align="center" width="500" title="VMAware">
 <br>
 <img align="center" src="https://img.shields.io/github/actions/workflow/status/kernelwernel/VMAware/cmake-multi-platform.yml">
 <img align="center" src="https://img.shields.io/github/downloads/kernelwernel/VMAware/total">
