@@ -53,10 +53,10 @@
  * - struct for internal cpu operations        => line 717
  * - struct for internal memoization           => line 1042
  * - struct for internal utility functions     => line 1183
- * - struct for internal core components       => line 8409
+ * - struct for internal core components       => line 8416
  * - start of VM detection technique list      => line 1993
- * - start of public VM detection functions    => line 8924
- * - start of externally defined variables     => line 9853
+ * - start of public VM detection functions    => line 8931
+ * - start of externally defined variables     => line 9860
  *
  *
  * ============================== EXAMPLE ===================================
@@ -4289,7 +4289,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const u64 sum = std::accumulate(samples_slat.begin(), samples_slat.end(), u64(0));
         const u64 avg = (sum + samples_slat.size() / 2) / samples_slat.size();
 
-        debug("Average read latency: ", avg, " cycles\n");
+        debug("Average read latency: ", avg, " cycles");
 
         VirtualUnlock(mem, pageSize);
         VirtualFree(mem, 0, MEM_RELEASE);
@@ -8316,10 +8316,17 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check if after raising two traps at the same RIP, a hypervisor interferes with the instruction pointer delivery
      * @category Windows
+     * @note On AMD CPUs, this technique will always false flag
      * @implements VM::TRAP
      */
     [[nodiscard]] static bool trap() {
         if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
+            return false;
+        }
+        // Intel explicitly guarantees (in the SDM) that if TF and DR0 both trigger on the same instruction, DR6.BS and DR6.B0 are both set in the resulting #DB
+        // On AMD CPUs they do not set both DR6.BS and DR6.B0 when a single‐step and a DR0 breakpoint coincide on a trappable/serializing instruction
+        // whenever a hardware breakpoint and TF collide, only the breakpoint bit shows up in DR6
+        if (!cpu::is_intel()) {
             return false;
         }
 
@@ -8335,17 +8342,17 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         };
         SIZE_T trampSize = sizeof(trampoline);
 
-        // allocate RWX memory for trampoline, simple way to support x86 without recurring to inline assembly
+        // simple way to support x86 without recurring to inline assembly
         void* execMem = VirtualAlloc(nullptr, trampSize,
                                      MEM_COMMIT | MEM_RESERVE,
                                      PAGE_EXECUTE_READWRITE);
         if (!execMem) {
             return false;
         }
-        // Copy payload
+        // copy payload
         memcpy(execMem, trampoline, trampSize);
 
-        // Variables to track detection
+        // variables to track detection
         bool hypervisorCaught = false;
         int hitCount = 0;
 
@@ -8355,7 +8362,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         HANDLE thr = GetCurrentThread();
         GetThreadContext(thr, &dbgCtx);
 
-        // Set Dr0 to trampoline+offset (step triggers here)
+        // set Dr0 to trampoline+offset (step triggers here)
         const uintptr_t baseAddr = reinterpret_cast<uintptr_t>(execMem);
         dbgCtx.Dr0 = baseAddr + 11; // single step breakpoint address
         dbgCtx.Dr7 = 1; // enable local breakpoint 0
