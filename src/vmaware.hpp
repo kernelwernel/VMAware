@@ -8304,7 +8304,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             if (foundQemuAcpi) {
                 SetupDiDestroyDeviceInfoList(hDevInfo);
-                return true;
+                return core::add(brands::QEMU);
             }
         }
 
