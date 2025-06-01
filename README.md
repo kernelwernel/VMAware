@@ -77,7 +77,7 @@ This project also provides a tiny, but handy CLI tool utilising the full potenti
 
 <img src="assets/demo.jpg" title="cli">
 
-Try it out on [Compiler Explorer](https://godbolt.org/z/4sKa1sqrW)!
+<!-- Try it out on [Compiler Explorer](https://godbolt.org/z/4sKa1sqrW)!-->
 
 <br>
 
@@ -171,11 +171,11 @@ If you want to learn about the architecture and design of the library, head over
 <br>
 
 > There's already loads of projects that have the same goal such as 
-<a href="https://github.com/CheckPointSW/InviZzzible">InviZzzible</a>, <a href="https://github.com/a0rtega/pafish">pafish</a> and <a href="https://github.com/LordNoteworthy/al-khaser">Al-Khaser</a>. But the difference between the aforementioned projects is that they don't provide a programmable interface to interact with the detection mechanisms, on top of having little to no support for non-Windows systems. Additionally, the VM detections in all those projects are often not sophisticated enough to be practically applied to real-world scenarios while not providing enough VM detection techniques. An additional issue is that they are all GPL projects. 
+<a href="https://github.com/CheckPointSW/InviZzzible">InviZzzible</a>, <a href="https://github.com/a0rtega/pafish">pafish</a> and <a href="https://github.com/LordNoteworthy/al-khaser">Al-Khaser</a>. But the difference between the aforementioned projects is that they don't provide a programmable interface to interact with the detection mechanisms, on top of having little to no support for non-Windows systems. Additionally, the VM detections in all those projects are often not sophisticated enough to be practically applied to real-world scenarios while not providing enough VM detection techniques. An additional hurdle is that they are all GPL projects, so using them for proprietary projects (which would be the main audience for such a functionality), is out of the question. 
 >
 > Pafish and InviZzzible have been abandoned for years. Although Al-Khaser does receive occasional updates and has a wide scope of detections that VMAware doesn't provide (anti-debugging, anti-injection, and so on), it still falls short due to the previously mentioned problems above.
 > 
-> While those projects have been useful to VMAware as a baseline, we wanted to make them far better. My goal was to make the detection techniques to be accessible programmatically in a cross-platform and flexible way for everybody to get something useful out of it rather than providing just a CLI tool. It also contains a larger quantity of techniques, so it's basically just a VM detection framework on steroids that focuses on practical and realistic usability for any scenario.
+> While those projects have been useful to VMAware to some extent, we wanted to make them far better. My goal was to make the detection techniques to be accessible programmatically in a cross-platform and flexible way for everybody to get something useful out of it rather than providing just a CLI tool. It also contains a larger quantity of techniques, so it's basically just a VM detection framework on steroids that focuses on practical and realistic usability for any scenario.
 
 </details>
 
@@ -196,7 +196,7 @@ If you want to learn about the architecture and design of the library, head over
 > 
 > All of this combined has further advanced the forefront innovations in the field of VM detections much more productively, compared to having it closed source. This is what made the project the best VM detection framework out there, and bypassing it has shown to be an immense challenge due to the sheer number of sophisticated and never-before-seen techniques we employ that other VM detectors don't use whether open or closed source (to our knowledge).
 >
-> In other words, it's about better quality AND quantity, better feedback, and better openness over security through obfuscation.
+> In other words, it's about better quality AND quantity, better feedback, and better openness over security through obfuscation. It's the same reason why OpenSSH, OpenSSL, the Linux kernel, and other security-based software projects are relatively secure because of how there's more people helping to make it better compared to people trying to probe the source code with malicious intent. VMAware has this philosophy, and if you know anything about security, you should be familiar with the phrase: "Security through obfuscation is NOT security".
 
 </details>
 
