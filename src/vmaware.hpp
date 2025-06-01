@@ -53,10 +53,10 @@
  * - struct for internal cpu operations        => line 717
  * - struct for internal memoization           => line 1042
  * - struct for internal utility functions     => line 1183
- * - struct for internal core components       => line 8428
+ * - struct for internal core components       => line 8409
  * - start of VM detection technique list      => line 1993
- * - start of public VM detection functions    => line 8943
- * - start of externally defined variables     => line 9871
+ * - start of public VM detection functions    => line 8924
+ * - start of externally defined variables     => line 9853
  *
  *
  * ============================== EXAMPLE ===================================
@@ -5687,20 +5687,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                         return true;
                     }
 
-                    // 1b) lives under _SB.PCI0 but not under _SB.PR00
-                    if (contains("_SB.PCI0", 7) && !contains("_SB.PR00", 7)) {
-                        debug("FIRMWARE: SSDT namespace indicates VM (_SB.PCI0 only)");
-                        return true;
-                    }
-
-                    // 1c) power/adapter objects
+                    // 1b) power/adapter objects
                     if (contains("PWRB", 4) && contains("SLPB", 4) && contains("ACAD", 4)) {
                         debug("FIRMWARE: VM‐specific power/adapter objects detected");
                         return true;
                     }
                 }
 
-                // 2) Spoofed AMD manufacturer
+                // 2) spoofed AMD manufacturer
                 constexpr char man_short[] = "Advanced Micro Devices";
                 constexpr char man_full[] = "Advanced Micro Devices, Inc.";
                 const size_t short_len = sizeof(man_short) - 1;
@@ -5730,7 +5724,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     }
                 }
 
-                // 4) Known patches used by popular hardeners 
+                // 4) known patches used by popular hardeners 
                 constexpr char marker[] = "777777";
                 constexpr size_t mlen = sizeof(marker) - 1;
                 if (len >= mlen) {
@@ -5745,7 +5739,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return false;
             };
 
-            // 1) Enumerate ACPI tables
+            // 1) enumerate ACPI tables
             const DWORD enumSize = EnumSystemFirmwareTables(ACPI_SIG, nullptr, 0);
             if (enumSize == 0) return false;
 
@@ -5770,7 +5764,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return true;
             }
 
-            // Helper to fetch one table into a malloc'd buffer
+            // helper to fetch one table into a malloc'd buffer
             auto fetch = [&](DWORD provider, DWORD tableID, BYTE*& outBuf, size_t& outLen) -> bool {
                 const UINT sz = GetSystemFirmwareTable(provider, __bswap32(tableID), nullptr, 0);
                 if (sz == 0) return false;
@@ -5786,7 +5780,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return true;
             };
 
-            // 3) Scan FADT + each ACPI table
+            // 3) scan FADT + each ACPI table
             for (auto tbl : tables) {
                 if (tbl == facpSig) {
                     BYTE* buf = nullptr;
@@ -5842,7 +5836,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return true;
             }
 
-            // 5) SMBIOS / FIRM tables
+            // 5) SMBIOS (RSMB) / FIRM tables
             const DWORD smbios[] = { FIRM_SIG, RSMB_SIG };
             for (DWORD provider : smbios) {
                 const UINT enumSMB = EnumSystemFirmwareTables(provider, nullptr, 0);
@@ -8201,7 +8195,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             nullptr,
             DIGCF_PRESENT);
         if (hDevInfo == INVALID_HANDLE_VALUE) {
-            std::wcerr << L"[ERROR] SetupDiGetClassDevsW failed\n";
             return false;
         }
 
@@ -8218,7 +8211,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 hDevInfo, &devInfo, &key, &propType,
                 nullptr, 0, &requiredSize, 0);
             if (GetLastError() != ERROR_INSUFFICIENT_BUFFER || requiredSize == 0) {
-                // No LocationPaths or error; skip
                 continue;
             }
 
@@ -8241,22 +8233,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         #ifdef __VMAWARE_DEBUG__
             for (auto& wstr : paths) {
-                debug(wstr);
+                debug("QEMU_PASSTHROUGH: ", wstr);
             }
         #endif
 
-            // 5) look for any string that starts with "PCIROOT(0)#PCI("
-            static const wchar_t pciPrefix[] = L"PCIROOT(0)#PCI(";
-            bool sawPCIROOT = false;
-            for (auto& wstr : paths) {
-                wstring_view vw(wstr.c_str(), wstr.size());
-                if (vw.starts_with(pciPrefix)) {
-                    sawPCIROOT = true;
-                    break;
-                }
-            }
-
-            // 6) look for "#ACPI(S<bus><slot>_)" OR "#ACPI(S<bus><slot>)" where <bus> = [1–9] and <slot> = [0–9]
+            // 5) look for "#ACPI(S<bus><slot>_)" OR "#ACPI(S<bus><slot>)" where <bus> = [1–9] and <slot> = [0–9]
             static const wchar_t acpiPrefix[] = L"#ACPI(S";
             bool foundQemuAcpi = false;
             std::wstring matchedString;
@@ -8333,7 +8314,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check for two traps being raised at the same RIP, a hypervisor interferes with the instruction pointer delivery
+     * @brief Check if after raising two traps at the same RIP, a hypervisor interferes with the instruction pointer delivery
      * @category Windows
      * @implements VM::TRAP
      */
@@ -9542,6 +9523,7 @@ public: // START OF PUBLIC FUNCTIONS
             case HIGH_THRESHOLD: return "setting flag, error";
             case DYNAMIC: return "setting flag, error";
             case MULTIPLE: return "setting flag, error";
+            default: return "Unknown flag";
         }
     }
 
@@ -10041,7 +10023,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         
     #if (LINUX || WINDOWS)
         std::make_pair(VM::FIRMWARE, VM::core::technique(100, VM::firmware)),
-        std::make_pair(VM::PCI_DEVICES, VM::core::technique(50, VM::pci_devices)),
+        std::make_pair(VM::PCI_DEVICES, VM::core::technique(95, VM::pci_devices)),
         std::make_pair(VM::SIDT, VM::core::technique(50, VM::sidt)),
         std::make_pair(VM::DISK_SIZE, VM::core::technique(60, VM::disk_size)),
         std::make_pair(VM::HYPERV_HOSTNAME, VM::core::technique(30, VM::hyperv_hostname)),
