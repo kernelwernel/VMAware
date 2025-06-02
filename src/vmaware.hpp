@@ -50,13 +50,13 @@
  *
  * ============================== SECTIONS ==================================
  * - enums for publicly accessible techniques  => line 538
- * - struct for internal cpu operations        => line 717
- * - struct for internal memoization           => line 1042
- * - struct for internal utility functions     => line 1183
- * - struct for internal core components       => line 8416
- * - start of VM detection technique list      => line 1993
- * - start of public VM detection functions    => line 8931
- * - start of externally defined variables     => line 9860
+ * - struct for internal cpu operations        => line 720
+ * - struct for internal memoization           => line 1045
+ * - struct for internal utility functions     => line 1186
+ * - struct for internal core components       => line 8580
+ * - start of VM detection technique list      => line 1996
+ * - start of public VM detection functions    => line 9095
+ * - start of externally defined variables     => line 10027
  *
  *
  * ============================== EXAMPLE ===================================
@@ -570,6 +570,9 @@ public:
         CUCKOO_DIR,
         CUCKOO_PIPE,
         TRAP,
+        GHOSTSTEP,
+        UD,
+        BLOCKSTEP,
         
         // Linux and Windows
         SIDT,
@@ -5718,7 +5721,22 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                             memcmp(buf + i, pat, plen) == 0)
                         {
                             debug("FIRMWARE: Detected ", pat);
+
                             const char* brand = brands_map[ti];
+
+                            // special handling for Xen: must not be PXEN
+                            if (strcmp(pat, "Xen") == 0) {
+                                constexpr char pxen[] = "PXEN";
+                                constexpr size_t pxen_len = sizeof(pxen) - 1;
+                                bool has_pxen = std::search(buf, buf + len, pxen, pxen + pxen_len) != (buf + len);
+                                if (!has_pxen) {
+                                    return (brand ? core::add(brands::XEN) : true);
+                                }
+                                else {
+                                    continue;
+                                }
+                            }
+
                             return (brand ? core::add(brand) : true);
                         }
                     }
@@ -5736,6 +5754,20 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     }
                 }
 
+                // 5) KVM ACPI Device() signature: 5B 82 40 09 53 XX XX
+                if (len >= 7) {
+                    for (size_t i = 0; i + 7 <= len; ++i) {
+                        if (buf[i] == 0x5B &&
+                            buf[i + 1] == 0x82 &&
+                            buf[i + 2] == 0x40 &&
+                            buf[i + 3] == 0x09 &&
+                            buf[i + 4] == 0x53) // 'S'
+                        {
+                            debug("FIRMWARE: KVM ACPI Device pattern matched at offset ", i);
+                            return core::add(brands::KVM);
+                        }
+                    }
+                }
                 return false;
             };
 
@@ -8403,9 +8435,141 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         return hypervisorCaught;
     }
+
+
+    /**
+     * @brief Check if after enabling TF and executing CPUID, the #DB is correctly delivered.
+     * @category Windows
+     * @implements VM::GHOSTSTEP
+     */
+    [[nodiscard]] static bool ghoststep() {
+#if (x86_64 && MSVC && !CLANG)
+        if (!cpu::is_intel()) { // not tested on AMD
+            return false;
+        }
+        bool hvDetected = false;
+        EXCEPTION_POINTERS* ep = 0;
+
+        u8* code = (uint8_t*)VirtualAlloc(0, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+        if (!code) return false;
+
+        u8* p = code;
+
+        uintptr_t addr_nop = 0;
+        uintptr_t addr_after = 0;
+
+        *p++ = 0x31; *p++ = 0xC0;         // xor eax, eax
+        *p++ = 0x0F; *p++ = 0xA2;         // cpuid
+        addr_nop = (uintptr_t)p;
+        *p++ = 0x90; *p++ = 0x90;         // double nop for clarity
+        *p++ = 0xC3;                      // ret
+        addr_after = (uintptr_t)p;
+
+        const DWORD64 oldFlags = __readeflags();
+        __writeeflags(oldFlags | 0x100);
+        __try {
+            ((void(*)())code)();
+        }
+        __except (ep = GetExceptionInformation(), EXCEPTION_EXECUTE_HANDLER) {
+            if (ep &&
+                ep->ExceptionRecord &&
+                ep->ExceptionRecord->ExceptionCode == EXCEPTION_SINGLE_STEP &&
+                ep->ContextRecord) {
+
+                const uintptr_t rip = (uintptr_t)(ep->ContextRecord->Rip);
+                debug("GHOSTSTEP: Nop: 0x", (unsigned)addr_nop, " - After: 0x", (unsigned)addr_after);
+
+                if (rip == addr_nop)
+                    hvDetected = false; // baremetal - landed on first NOP
+                else if (rip > addr_nop)
+                    hvDetected = true;  // trap delayed past NOP - hypervisor
+            }
+        }
+
+        // clear TF
+        __writeeflags(__readeflags() & ~0x100);
+        VirtualFree(code, 0, MEM_RELEASE);
+        return hvDetected;
+#else
+        return false;
+#endif
+    }
+
+
+    /**
+     * @brief Check if after executing an undefined instruction, a hypervisor misinterpret it as a system call
+     * @category Windows
+     * @implements VM::UD
+     */
+    [[nodiscard]] static bool ud() {
+#if (MSVC && !CLANG)
+        volatile int saw_ud = 0;
+
+        __try {
+            __ud2();  
+        }
+        __except (GetExceptionCode() == EXCEPTION_ILLEGAL_INSTRUCTION
+            ? EXCEPTION_EXECUTE_HANDLER
+            : EXCEPTION_CONTINUE_SEARCH)
+        {
+            saw_ud = 1;
+        }
+
+        return (saw_ud == 0) ? true : false; // if #UD did not happen, hypervisor may be present
+#else
+        return false;
+#endif
+    }
+
+
+    /**
+     * @brief Check if a hypervisor does not properly restore the interruptibility state after a VM-exit in compatibility mode
+     * @category Windows
+     * @implements VM::BLOCKSTEP
+     */
+    [[nodiscard]] static bool blockstep() {  
+    #if (x86_32 && MSVC && !CLANG)
+        volatile int saw_single_step = 0;
+
+        __try
+        {
+            __asm
+            {
+                // set TF in EFLAGS
+                pushfd
+                or dword ptr[esp], 0x100
+                popfd
+
+                // 2) execute MOV SS,AX (reload SS with itself) to force the “interruptible state” block
+                mov ax, ss
+                mov ss, ax // this blocks any debug exception for exactly one instruction
+
+                // 3) because TF was set, CPUID would normally cause a #DB on the next instruction.
+                xor eax, eax
+                cpuid
+
+                // 4) one extra instruction: on bare metal, TF’s single-step now fires here
+                nop
+
+                pushfd
+                and dword ptr[esp], 0xFFFFFEFF
+                popfd
+            }
+        }
+        __except (GetExceptionCode() == EXCEPTION_SINGLE_STEP
+            ? EXCEPTION_EXECUTE_HANDLER
+            : EXCEPTION_CONTINUE_SEARCH)
+        {
+            saw_single_step = 1;
+        }
+        return (saw_single_step == 0) ? true : false;
+    #else
+        return false;
+    #endif
+    }
     // ADD NEW TECHNIQUE FUNCTION HERE
     #endif
-    
+
     
     /* ============================================================================================== *
      *                                                                                                *                                                                                               *
@@ -9522,6 +9686,9 @@ public: // START OF PUBLIC FUNCTIONS
             case PCI_DEVICES: return "PCI_DEVICES";
             case QEMU_PASSTHROUGH: return "QEMU_PASSTHROUGH";
             case TRAP: return "TRAP";
+            case GHOSTSTEP: return "GHOSTSTEP";
+            case UD: return "UNDEFINED_INSTRUCTION";
+            case BLOCKSTEP: return "BLOCKSTEP";
             // END OF TECHNIQUE LIST
             case DEFAULT: return "setting flag, error";
             case ALL: return "setting flag, error";
@@ -10015,6 +10182,9 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         std::make_pair(VM::AUDIO, VM::core::technique(25, VM::audio)),
         std::make_pair(VM::DISPLAY, VM::core::technique(35, VM::display)),
         std::make_pair(VM::DLL, VM::core::technique(50, VM::dll)),
+        std::make_pair(VM::GHOSTSTEP, VM::core::technique(50, VM::ghoststep)),
+        std::make_pair(VM::UD, VM::core::technique(100, VM::ud)),
+        std::make_pair(VM::BLOCKSTEP, VM::core::technique(100, VM::blockstep)),
         std::make_pair(VM::VBOX_NETWORK, VM::core::technique(100, VM::vbox_network_share)),
         std::make_pair(VM::VMWARE_BACKDOOR, VM::core::technique(100, VM::vmware_backdoor)),
         std::make_pair(VM::WINE, VM::core::technique(100, VM::wine)),
