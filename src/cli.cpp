@@ -797,6 +797,9 @@ void general() {
     checker(VM::PCI_DEVICES, "PCI vendor/device ID");
     checker(VM::QEMU_PASSTHROUGH, "QEMU passthrough");
     checker(VM::TRAP, "hypervisor interception");
+    checker(VM::GHOSTSTEP, "exception delivery");
+    checker(VM::UD, "undefined exceptions");
+    checker(VM::BLOCKSTEP, "single step with trap flag");
 
     // ADD NEW TECHNIQUE CHECKER HERE
 
