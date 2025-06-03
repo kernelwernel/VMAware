@@ -53,10 +53,10 @@
  * - struct for internal cpu operations        => line 720
  * - struct for internal memoization           => line 1045
  * - struct for internal utility functions     => line 1186
- * - struct for internal core components       => line 8580
+ * - struct for internal core components       => line 8581
  * - start of VM detection technique list      => line 1996
- * - start of public VM detection functions    => line 9095
- * - start of externally defined variables     => line 10027
+ * - start of public VM detection functions    => line 9096
+ * - start of externally defined variables     => line 10028
  *
  *
  * ============================== EXAMPLE ===================================
@@ -5648,6 +5648,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             constexpr DWORD FIRM_SIG = 'FIRM';
             constexpr DWORD RSMB_SIG = 'RSMB';
 
+            // "WAET" string is also present inside the WAET table, so there's no need to check for its table signature
             constexpr std::array<const char*, 24> targets = { {
                 "Parallels Software", "Parallels(R)",
                 "innotek",            "Oracle",   "VirtualBox", "vbox", "VBOX",
