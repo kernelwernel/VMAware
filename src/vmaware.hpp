@@ -4,7 +4,7 @@
  * ██║   ██║██╔████╔██║███████║██║ █╗ ██║███████║██████╔╝█████╗
  * ╚██╗ ██╔╝██║╚██╔╝██║██╔══██║██║███╗██║██╔══██║██╔══██╗██╔══╝
  *  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
- *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ 2.4.1 (June 2025)
+ *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ Experimental post-2.4.1 (June 2025)
  *
  *  C++ VM detection library
  *
@@ -50,13 +50,13 @@
  *
  * ============================== SECTIONS ==================================
  * - enums for publicly accessible techniques  => line 539
- * - struct for internal cpu operations        => line 721
- * - struct for internal memoization           => line 1046
- * - struct for internal utility functions     => line 1187
- * - struct for internal core components       => line 8618
- * - start of VM detection technique list      => line 1997
- * - start of public VM detection functions    => line 9133
- * - start of externally defined variables     => line 10066
+ * - struct for internal cpu operations        => line 723
+ * - struct for internal memoization           => line 1048
+ * - struct for internal utility functions     => line 1189
+ * - struct for internal core components       => line 8596
+ * - start of VM detection technique list      => line 1999
+ * - start of public VM detection functions    => line 9111
+ * - start of externally defined variables     => line 10044
  *
  *
  * ============================== EXAMPLE ===================================
@@ -617,6 +617,9 @@ public:
         TEMPERATURE,
         PROCESSES,
 
+        // Linux and MacOS
+        THREAD_COUNT,
+
         // MacOS
         MAC_MEMSIZE,
         MAC_IOKIT,
@@ -632,7 +635,6 @@ public:
         XEON_THREAD_MISMATCH,
         TIMER,
         CPU_BRAND,
-        THREAD_COUNT,
         HYPERVISOR_STR,
         CPUID_SIGNATURE,
         ODD_CPU_THREADS,
@@ -676,8 +678,8 @@ public:
     static constexpr u8 WINDOWS_START = VM::GPU_CAPABILITIES;
     static constexpr u8 WINDOWS_END = VM::VBOX_DEFAULT;
     static constexpr u8 LINUX_START = VM::SIDT;
-    static constexpr u8 LINUX_END = VM::PROCESSES;
-    static constexpr u8 MACOS_START = VM::MAC_MEMSIZE;
+    static constexpr u8 LINUX_END = VM::THREAD_COUNT;
+    static constexpr u8 MACOS_START = VM::THREAD_COUNT;
     static constexpr u8 MACOS_END = VM::HWMODEL;
     
     // this is specifically meant for VM::detected_count() to 
@@ -2136,28 +2138,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         #endif
     }
     
-        
-    /**
-     * @brief Check if there are only 1 or 2 threads, which is a common pattern in VMs with default settings (nowadays physical CPUs should have at least 4 threads for modern CPUs
-     * @category x86 (ARM might have very low thread counts, which is why it should be only for x86)
-     * @implements VM::THREAD_COUNT
-     */
-    [[nodiscard]] static bool thread_count() {
-        #if (x86)
-            debug("THREADCOUNT: ", "threads = ", std::thread::hardware_concurrency());
-    
-            struct cpu::stepping_struct steps = cpu::fetch_steppings();
-    
-            if (cpu::is_celeron(steps)) {
-                return false;
-            }
-    
-            return (std::thread::hardware_concurrency() <= 2);
-        #else 
-            return false;
-        #endif
-    }
-
 
     /**
      * @brief Check for various Bochs-related emulation oversights through CPU checks
@@ -4202,7 +4182,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        // checks for __rdtscp support
+        // checks for RDTSCP support
         unsigned aux = 0;
         {
     #if (WINDOWS && x86_64)
@@ -5354,7 +5334,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @warning Permissions required
      * @implements VM::VBOX_DEFAULT
      */
-     [[nodiscard]] static bool vbox_default_specs() {
+    [[nodiscard]] static bool vbox_default_specs() {
         /**
          *              RAM     DISK
          * WINDOWS 11:  4096MB, 80GB
@@ -5688,7 +5668,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
                     // 1b) power/adapter objects
                     if (contains("PWRB", 4) && contains("SLPB", 4) && contains("ACAD", 4)) {
-                        debug("FIRMWARE: VM‐specific power/adapter objects detected");
+                        debug("FIRMWARE: VM-specific power/adapter objects detected");
                         return true;
                     }
                 }
@@ -6047,10 +6027,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         enum RootType { RT_PCI, RT_USB, RT_HDAUDIO };
 
-        //
         // Lambda #1: Process the MULTI_SZ “HardwareID” on an instance key,
         // extract every (VID, DID) pair, and push into devices
-        //
         auto processHardwareID = [&](HKEY hInst, RootType rootType) {
             DWORD type = 0, cbData = 0;
             LONG rv = RegGetValueW(
@@ -6144,16 +6122,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
 
                 if (ok) {
-                    // push every matching (VID, DID) pair
                     devices.push_back({ vid, did });
                 }
             }
         };
 
-        //
         // Lambda #2: Enumerate all “Instance” subkeys under a given “Device” key,
         // and for each instance, open it and call processHardwareID()
-        //
         auto enumInstances = [&](HKEY hDev, RootType rootType) {
             for (DWORD j = 0;; ++j) {
                 wchar_t instName[256];
@@ -6185,10 +6160,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
         };
 
-        //
         // Lambda #3: Enumerate all “Device” subkeys under a given root key,
         // open each device key, and call enumInstances()
-        //
         auto enumDevices = [&](HKEY hRoot, RootType rootType) {
             for (DWORD i = 0;; ++i) {
                 wchar_t deviceName[256];
@@ -6220,11 +6193,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
         };
 
-        //
         // Top‐level loop: for each rootPath, open the root key once, compute its RootType,
         // then call enumDevices()
-        //
-        for (int rootIdx = 0; rootIdx < _countof(kRoots); ++rootIdx) {
+        for (size_t rootIdx = 0; rootIdx < _countof(kRoots); ++rootIdx) {
             const wchar_t* rootPath = kRoots[rootIdx];
             HKEY hRoot = nullptr;
             if (RegOpenKeyExW(
@@ -6354,6 +6325,28 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
 #endif
 
+#if (LINUX || APPLE)
+    /**
+     * @brief Check if there are only 1 or 2 threads, which is a common pattern in VMs with default settings (nowadays physical CPUs should have at least 4 threads for modern CPUs
+     * @category x86 (ARM might have very low thread counts, which is why it should be only for x86)
+     * @implements VM::THREAD_COUNT
+     */
+    [[nodiscard]] static bool thread_count() {
+    #if (x86)
+        debug("THREADCOUNT: ", "threads = ", std::thread::hardware_concurrency());
+
+        struct cpu::stepping_struct steps = cpu::fetch_steppings();
+
+        if (cpu::is_celeron(steps)) {
+            return false;
+        }
+
+        return (std::thread::hardware_concurrency() <= 2);
+    #else 
+        return false;
+    #endif
+    }
+#endif
 
 #if (APPLE) 
     /**
@@ -8369,14 +8362,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (!execMem) {
             return false;
         }
-        // copy payload
         memcpy(execMem, trampoline, trampSize);
 
-        // variables to track detection
         bool hypervisorCaught = false;
         int hitCount = 0;
 
-        // prepare debug context for current thread
+        // debug context for current thread
         CONTEXT dbgCtx{};
         dbgCtx.ContextFlags = CONTEXT_DEBUG_REGISTERS;
         HANDLE thr = GetCurrentThread();
@@ -8431,7 +8422,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::UD
      */
     [[nodiscard]] static bool ud() {
-#if (MSVC && !CLANG)
+    #if (MSVC && !CLANG)
         bool saw_ud = false;
 
         __try {
@@ -8445,9 +8436,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         return (!saw_ud) ? true : false; // if #UD did not happen, hypervisor may be present
-#else
+    #else
         return false;
-#endif
+    #endif
     }
 
 
@@ -8469,15 +8460,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 or dword ptr[esp], 0x100
                 popfd
 
-                // 2) execute MOV SS,AX (reload SS with itself) to force the “interruptible state” block
+                // execute MOV SS,AX (reload SS with itself) to force the “interruptible state” block
                 mov ax, ss
                 mov ss, ax // this blocks any debug exception for exactly one instruction
 
-                // 3) because TF was set, CPUID would normally cause a #DB on the next instruction.
+                // because TF was set, CPUID would normally cause a #DB on the next instruction.
                 xor eax, eax
                 cpuid
 
-                // 4) one extra instruction: on bare metal, TF’s single-step now fires here
+                // one extra instruction: on bare metal, TF’s single-step now fires here
                 nop
 
                 pushfd
@@ -8581,21 +8572,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         };
 
         bool found = false;
-
-        if (cpu::is_intel()) {
-            // first try Intel stub
-            found = tryPass(false);
-            if (!found) {
-                found = tryPass(true);
-            }
-        }
-        else {
-            // try AMD stub first
-            found = tryPass(true);
-            if (!found) {
-                found = tryPass(false);
-            }
-        }
+        if (cpu::is_intel()) found = tryPass(false);       
+        else found = tryPass(true);       
 
         VirtualFree(intelStub, 0, MEM_RELEASE);
         VirtualFree(amdStub, 0, MEM_RELEASE);
@@ -10201,10 +10179,10 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     // FORMAT: { VM::<ID>, { certainty%, function pointer } },
     // START OF TECHNIQUE TABLE
     #if (WINDOWS)
-        std::make_pair(VM::GPU_CAPABILITIES, VM::core::technique(100, VM::gpu_capabilities)),
         std::make_pair(VM::TRAP, VM::core::technique(100, VM::trap)),
-        std::make_pair(VM::TPM, VM::core::technique(100, VM::tpm)),
+        std::make_pair(VM::GPU_CAPABILITIES, VM::core::technique(100, VM::gpu_capabilities)),
         std::make_pair(VM::QEMU_PASSTHROUGH, VM::core::technique(90, VM::qemu_passthrough)),
+        std::make_pair(VM::TPM, VM::core::technique(100, VM::tpm)),
         std::make_pair(VM::POWER_CAPABILITIES, VM::core::technique(90, VM::power_capabilities)),
         std::make_pair(VM::DISK_SERIAL, VM::core::technique(100, VM::disk_serial_number)),
         std::make_pair(VM::IVSHMEM, VM::core::technique(100, VM::ivshmem)),
@@ -10280,8 +10258,12 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         std::make_pair(VM::AMD_SEV, VM::core::technique(50, VM::amd_sev)),
         std::make_pair(VM::TEMPERATURE, VM::core::technique(80, VM::temperature)),
         std::make_pair(VM::PROCESSES, VM::core::technique(40, VM::processes)),
+    #endif    
+
+    #if (LINUX || APPLE)
+        std::make_pair(VM::THREAD_COUNT, VM::core::technique(35, VM::thread_count)),
     #endif
-        
+
     #if (APPLE)
         std::make_pair(VM::MAC_MEMSIZE, VM::core::technique(15, VM::hw_memsize)),
         std::make_pair(VM::MAC_IOKIT, VM::core::technique(100, VM::io_kit)),
@@ -10294,12 +10276,11 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     std::make_pair(VM::INTEL_THREAD_MISMATCH, VM::core::technique(95, VM::intel_thread_mismatch)),
     std::make_pair(VM::AMD_THREAD_MISMATCH, VM::core::technique(95, VM::amd_thread_mismatch)),
     std::make_pair(VM::XEON_THREAD_MISMATCH, VM::core::technique(95, VM::xeon_thread_mismatch)),
-    std::make_pair(VM::HYPERVISOR_BIT, VM::core::technique(100, VM::hypervisor_bit)),
     std::make_pair(VM::VMID, VM::core::technique(100, VM::vmid)),
     std::make_pair(VM::CPU_BRAND, VM::core::technique(95, VM::cpu_brand)),
     std::make_pair(VM::CPUID_SIGNATURE, VM::core::technique(95, VM::cpuid_signature)),
-    std::make_pair(VM::THREAD_COUNT, VM::core::technique(35, VM::thread_count)),
     std::make_pair(VM::HYPERVISOR_STR, VM::core::technique(75, VM::hypervisor_str)),
+    std::make_pair(VM::HYPERVISOR_BIT, VM::core::technique(100, VM::hypervisor_bit)),
     std::make_pair(VM::ODD_CPU_THREADS, VM::core::technique(80, VM::odd_cpu_threads)),
     std::make_pair(VM::BOCHS_CPU, VM::core::technique(100, VM::bochs_cpu)),
     std::make_pair(VM::KGT_SIGNATURE, VM::core::technique(80, VM::intel_kgt_signature))
