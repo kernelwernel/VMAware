@@ -48,7 +48,7 @@
 
 #include "vmaware.hpp"
 
-constexpr const char* ver = "2.4.0";
+constexpr const char* ver = "2.4.1";
 constexpr const char* date = "June 2025";
 
 std::string bold = "\033[1m";
@@ -471,6 +471,7 @@ std::string vm_description(const std::string& vm_brand) {
         { brands::QIHOO, "360 sandbox is a part of 360 Total Security. Similar to other sandbox software, it provides a virtualized environment where potentially malicious or untrusted programs can run without affecting the actual system. Qihoo 360 Sandbox is commonly used for testing unknown applications, analyzing malware behavior, and protecting users from zero-day threats." },
         { brands::NSJAIL, "nsjail is a process isolation tool for Linux. It utilizes Linux namespace subsystem, resource limits, and the seccomp-bpf syscall filters of the Linux kernel. It can be used for isolating networking services, CTF challenges, and containing invasive syscall-level OS fuzzers." },
         { brands::HYPERVISOR_PHANTOM, "Hypervisor-Phantom is an automated setup solution designed to evade detection from advanced malware, enabling thorough analysis. It employs a highly customized version of QEMU/KVM, EDK2, and the Linux Kernel. This also spoofs many unique hypervisor identifiers, effectively disguising the environment. This setup enhances the accuracy and reliability of malware analysis by minimizing the risk of detection." },
+        { brands::DBVM, "DBVM is a ultra-lightweight virtual machine host that makes Windows run in a virtual machine so that Cheat Engine can operate at a higher level than the OS using a device driver. Instead of virtualizing devices it generally passes on interrupts unaltered meaning it has a very small impact on performance." },
         { brands::NULL_BRAND, "Indicates no detectable virtualization brand. This result may occur on bare-metal systems, unsupported/obscure hypervisors, or when anti-detection techniques (e.g., VM escaping) are employed by the guest environment." }
     };
 
@@ -797,6 +798,9 @@ void general() {
     checker(VM::PCI_DEVICES, "PCI vendor/device ID");
     checker(VM::QEMU_PASSTHROUGH, "QEMU passthrough");
     checker(VM::TRAP, "hypervisor interception");
+    checker(VM::UD, "undefined exceptions");
+    checker(VM::BLOCKSTEP, "single step with trap flag");
+    checker(VM::DBVM, "Dark Byte's hypervisor");
 
     // ADD NEW TECHNIQUE CHECKER HERE
 
