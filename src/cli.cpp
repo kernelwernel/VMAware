@@ -277,6 +277,7 @@ NoirVisor
 Qihoo 360 Sandbox
 nsjail
 Hypervisor-Phantom
+DBVM
 )";
 
     std::exit(0);
