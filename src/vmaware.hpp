@@ -4166,7 +4166,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for timing anomalies in the system
      * @category x86
-     * @author Requiem (https://github.com/NotRequiem)
      * @implements VM::TIMER
      */
     [[nodiscard]] static bool timer() {
@@ -4190,7 +4189,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     __rdtscp(&aux);
                     return true;
                 }
-                __except (EXCEPTION_EXECUTE_HANDLER) {
+                __except (1) {
                     return false;
                 }
             }();
@@ -4201,13 +4200,36 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             const bool haveRdtscp = (regs[3] & (1u << 27)) != 0;
     #endif
             if (!haveRdtscp) {
-                // __rdtscp should be supported nowadays
-                debug("TIMER: RDTSCP instruction not supported");
+                debug("TIMER: RDTSCP instruction not supported"); // __rdtscp should be supported nowadays
                 return true;
             }
         }
 
-    #if (WINDOWS)   
+        // cpuid check
+        auto cpuid = [&]() -> u64 {
+            _mm_lfence();
+            u64 t1 = __rdtsc();
+
+            u32 a, b, c, d;
+            cpu::cpuid(a, b, c, d, 0);
+            u64 t2 = __rdtsc();
+
+            return t2 - t1;
+        };
+
+        constexpr int N = 5000;
+        u64 samples[N]{};
+        for (int i = 0; i < N; ++i) {
+            samples[i] = cpuid();
+        }
+
+        const u64 sum = std::accumulate(samples, samples + N, u64(0));
+        const u64 avg = (sum + N / 2) / N;
+        debug("TIMER: Average read latency -> ", avg, " cycles");
+
+        // https://www.phoronix.com/news/Linux-Intel-KVM-Cache-CPUID
+        if (avg > 1900) return true;
+#if (WINDOWS)  
         // simple check to detect poorly coded RDTSC patches
         typedef struct _PROCESSOR_POWER_INFORMATION {
             ULONG Number;
@@ -4232,80 +4254,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             sizeof(PROCESSOR_POWER_INFORMATION) * procCount
         );
 
-        if (status != 0)
-            return false;
+        if (status != 0) return false;
 
         for (DWORD i = 0; i < procCount; ++i) {
             if (ppi[i].CurrentMhz < 1000) {
                 return true;
             }
         }
-
-        // SLAT check
-        auto measure_one_read = [&](volatile char* addr) -> u64 {
-            int cpuInfo[4];
-            __cpuid(cpuInfo, 0);
-            _mm_mfence();
-            _mm_clflush(const_cast<char*>(addr));
-            _mm_mfence();
-            __cpuid(cpuInfo, 0);
-
-            u64 t1 = __rdtsc();
-            volatile char v = *addr;
-            __cpuid(cpuInfo, 0);
-            u64 t2 = __rdtsc();
-
-            _mm_mfence();
-            __cpuid(cpuInfo, 0);
-            return t2 - t1;
-        };
-
-        MEMORYSTATUSEX msx{ sizeof(msx) };
-        const bool memOk = GlobalMemoryStatusEx(&msx) != 0;
-
-        const u64 baseThreshold = 1600;  
-        const double usageFactor = 0.5;   // +50% threshold at 100% virtual‐space use
-
-        u64 threshold;
-        if (!memOk) {
-            // if the call fails, hard-code a safe high cutoff
-            threshold = 2000;
-        }
-        else {
-            const double virtUsed = double(msx.ullTotalVirtual - msx.ullAvailVirtual);
-            const double virtTotal = double(msx.ullTotalVirtual);
-            const double usageRatio = (virtTotal > 0.0 ? virtUsed / virtTotal : 0.0);
-            threshold = u64(baseThreshold * (1.0 + usageFactor * usageRatio) + 0.5);
-        }
-
-        SYSTEM_INFO si;
-        GetSystemInfo(&si);
-        SIZE_T pageSize = si.dwPageSize;
-        void* mem = VirtualAlloc(nullptr, pageSize, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-        if (!mem) return false;
-        if (!VirtualLock(mem, pageSize)) {
-            VirtualFree(mem, 0, MEM_RELEASE);
-            return false;
-        }
-        volatile char* buf = static_cast<volatile char*>(mem);
-        *buf = 0xAB;  // fault it into RAM
-
-        constexpr int N = 5000;
-        std::vector<u64> samples;
-        samples.reserve(N);
-        for (int i = 0; i < N; ++i)
-            samples.push_back(measure_one_read(buf));
-        std::nth_element(samples.begin(), samples.begin() + N / 2, samples.end());
-        u64 median = samples[N / 2];
-
-        VirtualUnlock(mem, pageSize);
-        VirtualFree(mem, 0, MEM_RELEASE);
-
-        debug("TIMER: Median read latency -> ", median,
-            " cycles; threshold -> ", threshold, " cycles");
-
-        if (median > threshold) return true;
-    #endif
+#endif
         return false;
 #endif
     }
