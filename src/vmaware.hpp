@@ -4,7 +4,7 @@
  * ██║   ██║██╔████╔██║███████║██║ █╗ ██║███████║██████╔╝█████╗
  * ╚██╗ ██╔╝██║╚██╔╝██║██╔══██║██║███╗██║██╔══██║██╔══██╗██╔══╝
  *  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
- *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ 2.4.1 (June 2025)
+ *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ Experimental post-2.4.1 (June 2025)
  *
  *  C++ VM detection library
  *
@@ -52,11 +52,11 @@
  * - enums for publicly accessible techniques  => line 539
  * - struct for internal cpu operations        => line 723
  * - struct for internal memoization           => line 1048
- * - struct for internal utility functions     => line 1189
- * - struct for internal core components       => line 8589
- * - start of VM detection technique list      => line 1999
- * - start of public VM detection functions    => line 9104
- * - start of externally defined variables     => line 10037
+ * - struct for internal utility functions     => line 1202
+ * - struct for internal core components       => line 8558
+ * - start of VM detection technique list      => line 2012
+ * - start of public VM detection functions    => line 9073
+ * - start of externally defined variables     => line 10006
  *
  *
  * ============================== EXAMPLE ===================================
