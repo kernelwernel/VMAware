@@ -4242,7 +4242,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         // https://www.phoronix.com/news/Linux-Intel-KVM-Cache-CPUID
         if (avg > 1900) return true;
-#if (WINDOWS)  
+    #if (WINDOWS)  
         // simple check to detect poorly coded RDTSC patches
         typedef struct _PROCESSOR_POWER_INFORMATION {
             ULONG Number;
@@ -4274,7 +4274,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return true;
             }
         }
-#endif
+    #endif
         return false;
 #endif
     }
