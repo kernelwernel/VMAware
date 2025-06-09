@@ -1155,6 +1155,19 @@ private:
             }
         };
 
+        struct threadcount {
+            static u32 threadcount_cache;
+
+            static u32 fetch() {
+                if (threadcount_cache != 0) {
+                    return threadcount_cache;
+                }
+
+                threadcount_cache = std::thread::hardware_concurrency();
+
+                return threadcount_cache;
+            }
+        };
 #if (WINDOWS)
         struct module {
             static std::map<HMODULE, std::map<std::string, void*>> function_cache;
@@ -2236,7 +2249,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     #if (!x86)
         return false;
     #else
-        const u32 threads = std::thread::hardware_concurrency();
+        const u32 threads = memo::threadcount::fetch();
 
         const auto steps = cpu::fetch_steppings();
         if (!(cpu::is_intel() || cpu::is_amd()))   return false;
@@ -3298,7 +3311,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             for (size_t i = 0; i < thread_database_count; ++i) {
                 if (cpu_full_name.find(thread_database[i].model) != std::string::npos) {
                     const unsigned expected = thread_database[i].threads;
-                    const unsigned actual = (unsigned)std::thread::hardware_concurrency();
+                    const unsigned actual = memo::threadcount::fetch();
                     debug("INTEL_THREAD_MISMATCH: Expected threads -> ", expected);
                     return (actual != expected);
                 }
@@ -3482,7 +3495,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             for (size_t i = 0; i < thread_database_count; ++i) {
                 if (cpu_full_name.find(thread_database[i].model) != std::string::npos) {
                     const unsigned expected = thread_database[i].threads;
-                    const unsigned actual = (unsigned)std::thread::hardware_concurrency();
+                    const unsigned actual = memo::threadcount::fetch();
                     debug("XEON_THREAD_MISMATCH:  Expected threads -> ", expected);
                     return (actual != expected);
                 }
@@ -4097,7 +4110,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             for (size_t i = 0; i < thread_database_count; ++i) {
                 if (cpu_full_name.find(thread_database[i].model) != std::string::npos) {
                     const unsigned expected = thread_database[i].threads;
-                    const unsigned actual = (unsigned)std::thread::hardware_concurrency();
+                    const unsigned actual = memo::threadcount::fetch();
                     debug("AMD_THREAD_MISMATCH Expected threads -> ", expected);
                     return (actual != expected);
                 }
@@ -6282,7 +6295,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      */
     [[nodiscard]] static bool thread_count() {
     #if (x86)
-        debug("THREADCOUNT: ", "threads = ", std::thread::hardware_concurrency());
+        debug("THREADCOUNT: ", "threads = ", memo::threadcount::fetch());
 
         struct cpu::stepping_struct steps = cpu::fetch_steppings();
 
@@ -6290,7 +6303,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        return (std::thread::hardware_concurrency() <= 2);
+        return (memo::threadcount::fetch() <= 2);
     #else 
         return false;
     #endif
@@ -10076,6 +10089,7 @@ VM::flagset VM::memo::cache_keys = 0;
 std::string VM::memo::brand::brand_cache = "";
 std::string VM::memo::multi_brand::brand_cache = "";
 std::string VM::memo::cpu_brand::brand_cache = "";
+VM::u32 VM::memo::threadcount::threadcount_cache = 0;
 VM::hyperx_state VM::memo::hyperx::state = VM::HYPERV_UNKNOWN_VM;
 bool VM::memo::hyperx::cached = false;
 
