@@ -4,7 +4,7 @@
  * ██║   ██║██╔████╔██║███████║██║ █╗ ██║███████║██████╔╝█████╗
  * ╚██╗ ██╔╝██║╚██╔╝██║██╔══██║██║███╗██║██╔══██║██╔══██╗██╔══╝
  *  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
- *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ 2.4.1 (June 2025)
+ *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ Experimental post-2.4.1 (June 2025)
  *
  *  C++ VM detection library
  *
@@ -52,11 +52,11 @@
  * - enums for publicly accessible techniques  => line 539
  * - struct for internal cpu operations        => line 723
  * - struct for internal memoization           => line 1048
- * - struct for internal utility functions     => line 1189
- * - struct for internal core components       => line 8596
- * - start of VM detection technique list      => line 1999
- * - start of public VM detection functions    => line 9111
- * - start of externally defined variables     => line 10044
+ * - struct for internal utility functions     => line 1202
+ * - struct for internal core components       => line 8558
+ * - start of VM detection technique list      => line 2012
+ * - start of public VM detection functions    => line 9073
+ * - start of externally defined variables     => line 10006
  *
  *
  * ============================== EXAMPLE ===================================
@@ -4179,7 +4179,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for timing anomalies in the system
      * @category x86
-     * @author Requiem (https://github.com/NotRequiem)
      * @implements VM::TIMER
      */
     [[nodiscard]] static bool timer() {
@@ -4189,7 +4188,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
             return false;
         }
-
         if (util::is_running_under_translator()) {
             debug("TIMER: Running inside a binary translation layer.");
             return false;
@@ -4204,7 +4202,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     __rdtscp(&aux);
                     return true;
                 }
-                __except (EXCEPTION_EXECUTE_HANDLER) {
+                __except (1) {
                     return false;
                 }
             }();
@@ -4215,84 +4213,36 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             const bool haveRdtscp = (regs[3] & (1u << 27)) != 0;
     #endif
             if (!haveRdtscp) {
-                // __rdtscp should be supported nowadays
-                debug("TIMER: RDTSCP instruction not supported");
+                debug("TIMER: RDTSCP instruction not supported"); // __rdtscp should be supported nowadays
                 return true;
             }
         }
 
-
-    #if (WINDOWS)   
-        // SLAT check
-        auto serialize_cpu = []() {
-            int cpuInfo[4];
-            __cpuid(cpuInfo, 0);
-        };
-
-        auto measure_one_read = [&](volatile char* addr) -> u64 {
-            // ensure prior instructions complete
-            serialize_cpu();
-            _mm_mfence();
-
-            // flush cache line so the next read goes to memory/TLB/EPT forcing full DRAM access
-            _mm_clflush(const_cast<char*>(addr));
-            _mm_mfence();
-
-            serialize_cpu();
+        // cpuid check
+        auto cpuid = [&]() -> u64 {
+            _mm_lfence();
             u64 t1 = __rdtsc();
 
-#pragma warning(disable : 4189)
-            // the actual memory read we’re timing
-            volatile char v = *addr;
-#pragma warning(default : 4189)
-
-            serialize_cpu();
+            u32 a, b, c, d;
+            cpu::cpuid(a, b, c, d, 0);
             u64 t2 = __rdtsc();
-
-            // full memory barrier to ensure everything completes
-            _mm_mfence();
-            serialize_cpu();
 
             return t2 - t1;
         };
 
-        SYSTEM_INFO si;
-        GetSystemInfo(&si);
-        SIZE_T pageSize = si.dwPageSize;
-
-        void* mem = VirtualAlloc(nullptr, pageSize,
-            MEM_RESERVE | MEM_COMMIT,
-            PAGE_READWRITE);
-        if (!mem) {
-            return false;
+        constexpr int N = 5000;
+        u64 samples[N]{};
+        for (int i = 0; i < N; ++i) {
+            samples[i] = cpuid();
         }
 
-        if (!VirtualLock(mem, pageSize)) {
-            VirtualFree(mem, 0, MEM_RELEASE);
-            return false;
-        }
+        const u64 sum = std::accumulate(samples, samples + N, u64(0));
+        const u64 avg = (sum + N / 2) / N;
+        debug("TIMER: Average read latency -> ", avg, " cycles");
 
-        volatile char* buf = static_cast<volatile char*>(mem);
-
-        *buf = static_cast<char>(0xAB); // touch page to back it with physical RAM
-
-        constexpr int SAMPLE_COUNT_SLAT = 10000;
-        std::vector<u64> samples_slat;
-        samples_slat.reserve(SAMPLE_COUNT_SLAT);
-        for (int i = 0; i < SAMPLE_COUNT_SLAT; ++i) {
-            samples_slat.push_back(measure_one_read(buf));
-        }
-
-        const u64 sum = std::accumulate(samples_slat.begin(), samples_slat.end(), u64(0));
-        const u64 avg = (sum + samples_slat.size() / 2) / samples_slat.size();
-
-        debug("Average read latency: ", avg, " cycles");
-
-        VirtualUnlock(mem, pageSize);
-        VirtualFree(mem, 0, MEM_RELEASE);
-
-        if (avg > 2200) return true;
-
+        // https://www.phoronix.com/news/Linux-Intel-KVM-Cache-CPUID
+        if (avg > 1900) return true;
+    #if (WINDOWS)  
         // simple check to detect poorly coded RDTSC patches
         typedef struct _PROCESSOR_POWER_INFORMATION {
             ULONG Number;
@@ -4317,8 +4267,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             sizeof(PROCESSOR_POWER_INFORMATION) * procCount
         );
 
-        if (status != 0)
-            return false;
+        if (status != 0) return false;
 
         for (DWORD i = 0; i < procCount; ++i) {
             if (ppi[i].CurrentMhz < 1000) {
