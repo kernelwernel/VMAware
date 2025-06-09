@@ -53,10 +53,10 @@
  * - struct for internal cpu operations        => line 723
  * - struct for internal memoization           => line 1048
  * - struct for internal utility functions     => line 1189
- * - struct for internal core components       => line 8596
+ * - struct for internal core components       => line 8589
  * - start of VM detection technique list      => line 1999
- * - start of public VM detection functions    => line 9111
- * - start of externally defined variables     => line 10044
+ * - start of public VM detection functions    => line 9104
+ * - start of externally defined variables     => line 10037
  *
  *
  * ============================== EXAMPLE ===================================
@@ -4176,7 +4176,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
             return false;
         }
-
         if (util::is_running_under_translator()) {
             debug("TIMER: Running inside a binary translation layer.");
             return false;
@@ -4208,78 +4207,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
         }
 
-
     #if (WINDOWS)   
-        // SLAT check
-        auto serialize_cpu = []() {
-            int cpuInfo[4];
-            __cpuid(cpuInfo, 0);
-        };
-
-        auto measure_one_read = [&](volatile char* addr) -> u64 {
-            // ensure prior instructions complete
-            serialize_cpu();
-            _mm_mfence();
-
-            // flush cache line so the next read goes to memory/TLB/EPT forcing full DRAM access
-            _mm_clflush(const_cast<char*>(addr));
-            _mm_mfence();
-
-            serialize_cpu();
-            u64 t1 = __rdtsc();
-
-#pragma warning(disable : 4189)
-            // the actual memory read we’re timing
-            volatile char v = *addr;
-#pragma warning(default : 4189)
-
-            serialize_cpu();
-            u64 t2 = __rdtsc();
-
-            // full memory barrier to ensure everything completes
-            _mm_mfence();
-            serialize_cpu();
-
-            return t2 - t1;
-        };
-
-        SYSTEM_INFO si;
-        GetSystemInfo(&si);
-        SIZE_T pageSize = si.dwPageSize;
-
-        void* mem = VirtualAlloc(nullptr, pageSize,
-            MEM_RESERVE | MEM_COMMIT,
-            PAGE_READWRITE);
-        if (!mem) {
-            return false;
-        }
-
-        if (!VirtualLock(mem, pageSize)) {
-            VirtualFree(mem, 0, MEM_RELEASE);
-            return false;
-        }
-
-        volatile char* buf = static_cast<volatile char*>(mem);
-
-        *buf = static_cast<char>(0xAB); // touch page to back it with physical RAM
-
-        constexpr int SAMPLE_COUNT_SLAT = 10000;
-        std::vector<u64> samples_slat;
-        samples_slat.reserve(SAMPLE_COUNT_SLAT);
-        for (int i = 0; i < SAMPLE_COUNT_SLAT; ++i) {
-            samples_slat.push_back(measure_one_read(buf));
-        }
-
-        const u64 sum = std::accumulate(samples_slat.begin(), samples_slat.end(), u64(0));
-        const u64 avg = (sum + samples_slat.size() / 2) / samples_slat.size();
-
-        debug("Average read latency: ", avg, " cycles");
-
-        VirtualUnlock(mem, pageSize);
-        VirtualFree(mem, 0, MEM_RELEASE);
-
-        if (avg > 2200) return true;
-
         // simple check to detect poorly coded RDTSC patches
         typedef struct _PROCESSOR_POWER_INFORMATION {
             ULONG Number;
@@ -4312,6 +4240,71 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return true;
             }
         }
+
+        // SLAT check
+        auto measure_one_read = [&](volatile char* addr) -> u64 {
+            int cpuInfo[4];
+            __cpuid(cpuInfo, 0);
+            _mm_mfence();
+            _mm_clflush(const_cast<char*>(addr));
+            _mm_mfence();
+            __cpuid(cpuInfo, 0);
+
+            u64 t1 = __rdtsc();
+            volatile char v = *addr;
+            __cpuid(cpuInfo, 0);
+            u64 t2 = __rdtsc();
+
+            _mm_mfence();
+            __cpuid(cpuInfo, 0);
+            return t2 - t1;
+        };
+
+        MEMORYSTATUSEX msx{ sizeof(msx) };
+        const bool memOk = GlobalMemoryStatusEx(&msx) != 0;
+
+        const u64 baseThreshold = 1600;  
+        const double usageFactor = 0.5;   // +50% threshold at 100% virtual‐space use
+
+        u64 threshold;
+        if (!memOk) {
+            // if the call fails, hard-code a safe high cutoff
+            threshold = 2000;
+        }
+        else {
+            const double virtUsed = double(msx.ullTotalVirtual - msx.ullAvailVirtual);
+            const double virtTotal = double(msx.ullTotalVirtual);
+            const double usageRatio = (virtTotal > 0.0 ? virtUsed / virtTotal : 0.0);
+            threshold = u64(baseThreshold * (1.0 + usageFactor * usageRatio) + 0.5);
+        }
+
+        SYSTEM_INFO si;
+        GetSystemInfo(&si);
+        SIZE_T pageSize = si.dwPageSize;
+        void* mem = VirtualAlloc(nullptr, pageSize, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+        if (!mem) return false;
+        if (!VirtualLock(mem, pageSize)) {
+            VirtualFree(mem, 0, MEM_RELEASE);
+            return false;
+        }
+        volatile char* buf = static_cast<volatile char*>(mem);
+        *buf = 0xAB;  // fault it into RAM
+
+        constexpr int N = 5000;
+        std::vector<u64> samples;
+        samples.reserve(N);
+        for (int i = 0; i < N; ++i)
+            samples.push_back(measure_one_read(buf));
+        std::nth_element(samples.begin(), samples.begin() + N / 2, samples.end());
+        u64 median = samples[N / 2];
+
+        VirtualUnlock(mem, pageSize);
+        VirtualFree(mem, 0, MEM_RELEASE);
+
+        debug("TIMER: Median read latency -> ", median,
+            " cycles; threshold -> ", threshold, " cycles");
+
+        if (median > threshold) return true;
     #endif
         return false;
 #endif
