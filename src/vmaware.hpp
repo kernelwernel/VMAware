@@ -8372,8 +8372,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             if (hitCount != 1) {
                 hypervisorCaught = true;
             }
-        }
+	}
 
+	VirtualFree(execMem, 0, MEM_RELEASE);
         return hypervisorCaught;
     }
 
