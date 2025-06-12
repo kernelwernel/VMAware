@@ -50,13 +50,13 @@
  *
  * ============================== SECTIONS ==================================
  * - enums for publicly accessible techniques  => line 539
- * - struct for internal cpu operations        => line 723
- * - struct for internal memoization           => line 1048
- * - struct for internal utility functions     => line 1202
- * - struct for internal core components       => line 8558
- * - start of VM detection technique list      => line 2012
- * - start of public VM detection functions    => line 9073
- * - start of externally defined variables     => line 10006
+ * - struct for internal cpu operations        => line 722
+ * - struct for internal memoization           => line 1047
+ * - struct for internal utility functions     => line 1201
+ * - struct for internal core components       => line 8534
+ * - start of VM detection technique list      => line 2011
+ * - start of public VM detection functions    => line 9049
+ * - start of externally defined variables     => line 9981
  *
  *
  * ============================== EXAMPLE ===================================
@@ -559,7 +559,6 @@ public:
         AUDIO,
         DISPLAY,
         DLL,
-        VBOX_NETWORK,
         VMWARE_BACKDOOR,
         WINE,
         VIRTUAL_REGISTRY,
@@ -2011,7 +2010,6 @@ private:
     };
 
 private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
-
     /**
      * @brief Check CPUID output of manufacturer ID for known VMs/hypervisors at leaf 0 and 0x40000000-0x40000100
      * @category x86
@@ -5273,7 +5271,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
 #endif
 
-    
 #if (LINUX || WINDOWS)
     /**
      * @brief Check if disk size is under or equal to 50GB
@@ -5440,36 +5437,36 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     continue;
 
             #if (x86_64)
-                    unsigned char m[10] = { 0 };
+                unsigned char m[10] = { 0 };
             #else
-                    unsigned char m[6] = { 0 };
+                unsigned char m[6] = { 0 };
             #endif
-                    u32 idt_base = 0;
+                static_assert(sizeof(m) >= 6, "Buffer too small for IDT base extraction");
+                u32 idt_base = 0;
 
-                    __try {
+                __try {
             #if (CLANG || GCC)
-                        __asm__ volatile ("sidt %0" : "=m"(m));
+                    __asm__ volatile ("sidt %0" : "=m"(m));
             #elif (MSVC && x86_32)
-                        __asm { sidt m }
+                    __asm { sidt m }
             #else  // MSVC x64
                 #pragma pack(push,1)
-                        struct { u16 limit; u64 base; } idtr = {};
+                    struct { u16 limit; u64 base; } idtr = {};
                 #pragma pack(pop)
-                        __sidt(&idtr);
-                        memcpy(m, &idtr, sizeof(m));
+                    __sidt(&idtr);
+                    memcpy(m, &idtr, sizeof(m));
             #endif
                 }
                 __except (EXCEPTION_EXECUTE_HANDLER) {} // CR4.UMIP
 
-                idt_base = *reinterpret_cast<u32*>(&m[2]); // extract 32-bit base from bytes [2..5]
+                memcpy(&idt_base, m + 2, sizeof(idt_base)); // extract 32-bit base from bytes [2..5]
                 if ((idt_base >> 24) == 0xE8) {
                     debug("VPC signature detected");
                     SetThreadAffinityMask(GetCurrentThread(), origMask);
                     return core::add(brands::VPC);
                 }
 
-                if (found)
-                    break;
+                if (found) break;
             }
 
             SetThreadAffinityMask(GetCurrentThread(), origMask);
@@ -5618,17 +5615,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 if (len < hdr_min_size)
                     return false;
 
-                auto hdr = reinterpret_cast<const ACPI_HEADER*>(buf);
+                ACPI_HEADER hdr;
+                memcpy(&hdr, buf, sizeof(hdr));
 
-                // 1) SSDT‐specific: only apply these if it's an SSDT
-                if (memcmp(hdr->Signature, "SSDT", 4) == 0) {
-                    // 1a) old SSDT revision
-                    if (hdr->Revision <= 1) {
-                        debug("FIRMWARE: SSDT revision indicates VM (rev ", int(hdr->Revision), ")");
+                // 1) SSDT‐specific checks
+                if (memcmp(hdr.Signature, "SSDT", 4) == 0) {
+                    if (hdr.Revision <= 1) {
+                        debug("FIRMWARE: SSDT revision indicates VM (rev ", int(hdr.Revision), ")");
                         return true;
                     }
-
-                    // 1b) power/adapter objects
                     if (contains("PWRB", 4) && contains("SLPB", 4) && contains("ACAD", 4)) {
                         debug("FIRMWARE: VM-specific power/adapter objects detected");
                         return true;
@@ -5695,12 +5690,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 // 5) KVM ACPI Device() signature: 5B 82 40 09 53 XX XX
                 if (len >= 7) {
                     for (size_t i = 0; i + 7 <= len; ++i) {
-                        if (buf[i] == 0x5B &&
-                            buf[i + 1] == 0x82 &&
-                            buf[i + 2] == 0x40 &&
-                            buf[i + 3] == 0x09 &&
-                            buf[i + 4] == 0x53) // 'S'
-                        {
+                        if (buf[i] == 0x5B && buf[i + 1] == 0x82 && buf[i + 2] == 0x40 && buf[i + 3] == 0x09 && buf[i + 4] == 0x53) {
                             debug("FIRMWARE: KVM ACPI Device pattern matched at offset ", i);
                             return core::add(brands::KVM);
                         }
@@ -5712,6 +5702,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             // 1) enumerate ACPI tables
             const DWORD enumSize = EnumSystemFirmwareTables(ACPI_SIG, nullptr, 0);
             if (enumSize == 0) return false;
+            if (enumSize % sizeof(DWORD) != 0) return false;
 
             std::vector<BYTE> tableIDs(enumSize);
             if (EnumSystemFirmwareTables(ACPI_SIG, tableIDs.data(), enumSize) != enumSize)
@@ -5719,8 +5710,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             const DWORD count = enumSize / sizeof(DWORD);
             std::vector<DWORD> tables(count);
-            for (DWORD i = 0; i < count; i++)
-                tables[i] = reinterpret_cast<DWORD*>(tableIDs.data())[i];
+            for (DWORD i = 0; i < count; ++i) {
+                DWORD entry;
+                memcpy(&entry, tableIDs.data() + i * sizeof(DWORD), sizeof(entry));
+                tables[i] = entry;
+            }
 
             // 2) ACPI table count check
             if (count < 4) {
@@ -5735,14 +5729,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             // helper to fetch one table into a malloc'd buffer
+            constexpr size_t MAX_FW_TABLE = static_cast<size_t>(16 * 1024) * 1024;
             auto fetch = [&](DWORD provider, DWORD tableID, BYTE*& outBuf, size_t& outLen) -> bool {
-                const UINT sz = GetSystemFirmwareTable(provider, __bswap32(tableID), nullptr, 0);
-                if (sz == 0) return false;
+                UINT sz = GetSystemFirmwareTable(provider, __bswap32(tableID), nullptr, 0);
+                if (sz == 0 || sz > MAX_FW_TABLE) return false;
                 outBuf = (BYTE*)malloc(sz);
                 if (!outBuf) return false;
                 if (GetSystemFirmwareTable(provider, __bswap32(tableID), outBuf, sz) != sz) {
                     free(outBuf);
-                    outBuf = nullptr;
                     return false;
                 }
                 outLen = sz;
@@ -5753,8 +5747,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             // 3) scan FADT + each ACPI table
             for (auto tbl : tables) {
                 if (tbl == facpSig) {
-                    BYTE* buf = nullptr;
-                    size_t len = 0;
+                    BYTE* buf = nullptr; size_t len = 0;
                     if (fetch(ACPI_SIG, tbl, buf, len)) {
                         if (len > 45 && buf[45] == 0) {
                             debug("FIRMWARE: Invalid PM type detected");
@@ -5765,8 +5758,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     }
                 }
                 {
-                    BYTE* buf = nullptr;
-                    size_t len = 0;
+                    BYTE* buf = nullptr; size_t len = 0;
                     if (fetch(ACPI_SIG, tbl, buf, len)) {
                         if (scan_table(buf, len)) {
                             free(buf);
@@ -5778,8 +5770,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             // 4) DSDT + _OSI
-            const DWORD dsdtSz = GetSystemFirmwareTable(ACPI_SIG, __bswap32(dsdtSig), nullptr, 0);
-            if (dsdtSz == 0) return false;
+            const UINT dsdtSz = GetSystemFirmwareTable(ACPI_SIG, __bswap32(dsdtSig), nullptr, 0);
+            if (dsdtSz == 0 || dsdtSz > MAX_FW_TABLE) return false;
             BYTE* dsdt = (BYTE*)malloc(dsdtSz);
             if (!dsdt) return false;
             if (GetSystemFirmwareTable(ACPI_SIG, __bswap32(dsdtSig), dsdt, dsdtSz) != dsdtSz) {
@@ -5789,19 +5781,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             static const char* osi[] = {
                 "Windows 95","Windows 98","Windows 2000","Windows XP","Windows 2012"
             };
-            bool found = false;
-            for (auto s : osi) {
-                size_t L = strlen(s);
+            bool foundOSI = false;
+            for (auto& s : osi) {
+                const size_t L = strlen(s);
                 for (size_t j = 0; j + L <= dsdtSz; ++j) {
-                    if (memcmp(dsdt + j, s, L) == 0) {
-                        found = true;
-                        break;
-                    }
+                    if (memcmp(dsdt + j, s, L) == 0) { foundOSI = true; break; }
                 }
-                if (found) break;
+                if (foundOSI) break;
             }
             free(dsdt);
-            if (!found) {
+            if (!foundOSI) {
                 debug("FIRMWARE: No _OSI params found");
                 return true;
             }
@@ -5811,6 +5800,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             for (DWORD provider : smbios) {
                 const UINT enumSMB = EnumSystemFirmwareTables(provider, nullptr, 0);
                 if (enumSMB == 0) continue;
+                if (enumSMB % sizeof(DWORD) != 0) continue;
 
                 std::vector<BYTE> ids(enumSMB);
                 if (EnumSystemFirmwareTables(provider, ids.data(), enumSMB) != enumSMB)
@@ -5818,9 +5808,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
                 const DWORD cntOther = enumSMB / sizeof(DWORD);
                 for (DWORD i = 0; i < cntOther; ++i) {
-                    const DWORD tblID = reinterpret_cast<DWORD*>(ids.data())[i];
-                    BYTE* buf = nullptr;
-                    size_t len = 0;
+                    DWORD tblID;
+                    memcpy(&tblID, ids.data() + i * sizeof(DWORD), sizeof(tblID));
+                    BYTE* buf = nullptr; size_t len = 0;
                     if (fetch(provider, tblID, buf, len)) {
                         if (scan_table(buf, len)) {
                             free(buf);
@@ -5988,6 +5978,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         };
 
         enum RootType { RT_PCI, RT_USB, RT_HDAUDIO };
+        constexpr DWORD MAX_MULTI_SZ = 64 * 1024;
 
         // Lambda #1: Process the MULTI_SZ “HardwareID” on an instance key,
         // extract every (VID, DID) pair, and push into devices
@@ -6003,6 +5994,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 &cbData
             );
             if (rv != ERROR_SUCCESS || type != REG_MULTI_SZ || cbData <= sizeof(wchar_t)) {
+                return;
+            }
+
+            if (cbData > MAX_MULTI_SZ) {
+                debug("PCI_DEVICES: HardwareID size too large: ", cbData);
                 return;
             }
 
@@ -6566,7 +6562,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check for VM-specific registry values
+     * @brief Check for VM-specific registry keys
      * @category Windows
      * @implements VM::REGISTRY_KEYS
      */
@@ -6595,6 +6591,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             { brands::WINE,    "HKCU\\SOFTWARE\\Wine" },
             { brands::WINE,    "HKLM\\SOFTWARE\\Wine" },
+
             { brands::XEN, "HKLM\\SYSTEM\\ControlSet001\\Services\\xenevtchn" },
             { brands::XEN, "HKLM\\SYSTEM\\ControlSet001\\Services\\xennet" },
             { brands::XEN, "HKLM\\SYSTEM\\ControlSet001\\Services\\xennet6" },
@@ -6608,6 +6605,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             { brands::KVM,  "HKLM\\SYSTEM\\ControlSet001\\Services\\BALLOON" },
             { brands::KVM,  "HKLM\\SYSTEM\\ControlSet001\\Services\\BalloonService" },
             { brands::KVM,  "HKLM\\SYSTEM\\ControlSet001\\Services\\netkvm" },
+
+            { brands::VBOX, "SYSTEM\\CurrentControlSet\\Services\\VBoxSF"}
         };
 
         u8 score = 0;
@@ -6674,36 +6673,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return score >= 1;
     }
                 
-
-    /**
-     * @brief Check for VirtualBox network provider string
-     * @category Windows
-     * @implements VM::VBOX_NETWORK
-     */
-    [[nodiscard]] static bool vbox_network_share() {
-        static const bool isVBoxSF = []() -> bool {
-            HKEY hKey = nullptr;
-
-            constexpr LPCTSTR kVBoxSFKey = _T("SYSTEM\\CurrentControlSet\\Services\\VBoxSF");
-
-            const LONG result = RegOpenKeyEx(
-                HKEY_LOCAL_MACHINE,
-                kVBoxSFKey,
-                0,
-                KEY_READ,
-                &hKey
-            );
-
-            if (result == 0L) { // error_success
-                RegCloseKey(hKey);
-                return true;
-            }
-            return false;
-        }();
-
-        return isVBoxSF;
-    }  
-
                 
     /**
      * @brief Check if the function "wine_get_unix_file_name" is present and if the OS booted from a VHD container
@@ -6777,8 +6746,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             caps.SystemS2 ||
             caps.SystemS3 ||
             caps.SystemS4);
-        if (no_sleep_states)
-        {
+        if (no_sleep_states) {
             return (caps.ThermalControl == 0);
         }
 
@@ -7238,9 +7206,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             const HANDLE hObject = CreateMutexA(0, 0, lpMutexName);
             const DWORD dwError = GetLastError();
 
-            if (hObject) {
-                CloseHandle(hObject);
-            }
+            if (hObject) CloseHandle(hObject);            
 
             return (dwError == ERROR_ALREADY_EXISTS);
         };
@@ -7426,7 +7392,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             ULONG FreeType
         );
 
-
         constexpr ULONG SystemModuleInformation = 11;
         const HMODULE hModule = GetModuleHandle(_T("ntdll.dll"));
         if (!hModule) return false;
@@ -7493,7 +7458,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @author Requiem (https://github.com/NotRequiem)
      * @implements VM::DISK_SERIAL
      */
-     [[nodiscard]] static bool disk_serial_number() {
+    [[nodiscard]] static bool disk_serial_number() {
         // VMware can't be flagged without also flagging legitimate disks
         bool result = false;
         constexpr u8 MAX_PHYSICAL_DRIVES = 4;
@@ -7881,7 +7846,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             PVOID SystemInformation,
             ULONG SystemInformationLength,
             PULONG ReturnLength
-            );
+        );
 
         const HMODULE hNtdll = GetModuleHandle(_T("ntdll.dll"));
         if (!hNtdll) {
@@ -8046,12 +8011,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check if the system has a physical TPM by matching the TPM manufacturer against known physical TPM chip vendors
      * @category Windows
+     * @note CRB model will succeed, while TIS will fail
      * @author Requiem (https://github.com/NotRequiem)
      * @implements VM::TPM
      */
-     [[nodiscard]] static bool tpm() {
-        // CRB model will succeed, while TIS will fail
-
+    [[nodiscard]] static bool tpm() {
         struct TbsContext {
             TBS_HCONTEXT hContext = 0;
             explicit TbsContext(const TBS_CONTEXT_PARAMS2& params) {
@@ -8075,7 +8039,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
     
-        // Prebuilt TPM2_GetCapability command for TPM_PT_MANUFACTURER
+        // TPM2_GetCapability command for TPM_PT_MANUFACTURER
         static constexpr u8 cmd[] = {
             0x80,0x01,             // Tag: TPM_ST_NO_SESSIONS
             0x00,0x00,0x00,0x16,    // Command Size: 22
@@ -8295,6 +8259,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::TRAP
      */
     [[nodiscard]] static bool trap() {
+        // If running under Hyper-V artifact VM, no trap
         if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
             return false;
         }
@@ -8319,8 +8284,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         // simple way to support x86 without recurring to inline assembly
         void* execMem = VirtualAlloc(nullptr, trampSize,
-                                     MEM_COMMIT | MEM_RESERVE,
-                                     PAGE_EXECUTE_READWRITE);
+            MEM_COMMIT | MEM_RESERVE,
+            PAGE_EXECUTE_READWRITE);
         if (!execMem) {
             return false;
         }
@@ -8329,50 +8294,61 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         bool hypervisorCaught = false;
         int hitCount = 0;
 
-        // debug context for current thread
-        CONTEXT dbgCtx{};
-        dbgCtx.ContextFlags = CONTEXT_DEBUG_REGISTERS;
-        HANDLE thr = GetCurrentThread();
-        GetThreadContext(thr, &dbgCtx);
+        // save original debug registers
+        CONTEXT origCtx{};
+        origCtx.ContextFlags = CONTEXT_DEBUG_REGISTERS;
+        const HANDLE thr = GetCurrentThread();
+        if (!GetThreadContext(thr, &origCtx)) {
+            VirtualFree(execMem, 0, MEM_RELEASE);
+            return false;
+        }
 
         // set Dr0 to trampoline+offset (step triggers here)
+        CONTEXT dbgCtx = origCtx;
         const uintptr_t baseAddr = reinterpret_cast<uintptr_t>(execMem);
         dbgCtx.Dr0 = baseAddr + 11; // single step breakpoint address
-        dbgCtx.Dr7 = 1; // enable local breakpoint 0
-        SetThreadContext(thr, &dbgCtx);
+        dbgCtx.Dr7 = 1;             // enable local breakpoint 0
+        if (!SetThreadContext(thr, &dbgCtx)) {
+            SetThreadContext(thr, &origCtx);
+            VirtualFree(execMem, 0, MEM_RELEASE);
+            return false;
+        }
 
         auto vetExceptions = [&](unsigned int code, EXCEPTION_POINTERS* info) -> int {
             // if not single-step, hypervisor likely swatted our trap
-            if (code != ((DWORD)0x80000004L)) {
+            if (code != static_cast<DWORD>(0x80000004L)) {
                 hypervisorCaught = true;
-                return 0;
+                return EXCEPTION_CONTINUE_SEARCH;
             }
             // count breakpoint hits
             hitCount++;
             // validate exception address matches our breakpoint location
             if (reinterpret_cast<uintptr_t>(info->ExceptionRecord->ExceptionAddress) != baseAddr + 11) {
                 hypervisorCaught = true;
-                return 1;
+                return EXCEPTION_EXECUTE_HANDLER;
             }
             // check if Trap Flag and DR0 contributed
-            const u64 status = info->ContextRecord->Dr6;
+            const uint64_t status = info->ContextRecord->Dr6;
             const bool fromTrapFlag = (status & (1ULL << 14)) != 0;
             const bool fromDr0 = (status & 1ULL) != 0;
             if (!fromTrapFlag || !fromDr0) {
                 hypervisorCaught = true;
             }
-            return 1;
+            return EXCEPTION_EXECUTE_HANDLER;
         };
 
         __try {
             reinterpret_cast<void(*)()>(execMem)();
         }
-        __except (vetExceptions(_exception_code(), ((struct _EXCEPTION_POINTERS*)_exception_info()))) {
+        __except (vetExceptions(_exception_code(), reinterpret_cast<EXCEPTION_POINTERS*>(_exception_info()))) {
             // if we didn't hit exactly once, assume hypervisor interference
             if (hitCount != 1) {
                 hypervisorCaught = true;
             }
         }
+
+        SetThreadContext(thr, &origCtx);
+        VirtualFree(execMem, 0, MEM_RELEASE);
 
         return hypervisorCaught;
     }
@@ -9596,7 +9572,6 @@ public: // START OF PUBLIC FUNCTIONS
             case HWMODEL: return "HWMODEL";
             case DISK_SIZE: return "DISK_SIZE";
             case VBOX_DEFAULT: return "VBOX_DEFAULT";
-            case VBOX_NETWORK: return "VBOX_NETWORK";
             case WINE: return "WINE";
             case POWER_CAPABILITIES: return "POWER_CAPABILITIES";
             case PROCESSES: return "PROCESSES";
@@ -10166,7 +10141,6 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         std::make_pair(VM::DBVM, VM::core::technique(150, VM::dbvm)),
         std::make_pair(VM::UD, VM::core::technique(100, VM::ud)),
         std::make_pair(VM::BLOCKSTEP, VM::core::technique(100, VM::blockstep)),
-        std::make_pair(VM::VBOX_NETWORK, VM::core::technique(100, VM::vbox_network_share)),
         std::make_pair(VM::VMWARE_BACKDOOR, VM::core::technique(100, VM::vmware_backdoor)),
         std::make_pair(VM::WINE, VM::core::technique(100, VM::wine)),
         std::make_pair(VM::VIRTUAL_REGISTRY, VM::core::technique(90, VM::virtual_registry)),
