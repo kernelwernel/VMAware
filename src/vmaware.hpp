@@ -53,10 +53,10 @@
  * - struct for internal cpu operations        => line 722
  * - struct for internal memoization           => line 1047
  * - struct for internal utility functions     => line 1201
- * - struct for internal core components       => line 8534
+ * - struct for internal core components       => line 8535
  * - start of VM detection technique list      => line 2011
- * - start of public VM detection functions    => line 9049
- * - start of externally defined variables     => line 9981
+ * - start of public VM detection functions    => line 9050
+ * - start of externally defined variables     => line 9982
  *
  *
  * ============================== EXAMPLE ===================================
@@ -4200,7 +4200,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     __rdtscp(&aux);
                     return true;
                 }
-                __except (1) {
+                __except (EXCEPTION_EXECUTE_HANDLER) {
                     return false;
                 }
             }();
@@ -4229,12 +4229,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         };
 
         constexpr int N = 5000;
-        u64 samples[N]{};
+        std::vector<u64> samples;
+        samples.reserve(N);
         for (int i = 0; i < N; ++i) {
-            samples[i] = cpuid();
+            samples.push_back(cpuid());
         }
 
-        const u64 sum = std::accumulate(samples, samples + N, u64(0));
+        const u64 sum = std::accumulate(samples.begin(), samples.end(), u64(0));
         const u64 avg = (sum + N / 2) / N;
         debug("TIMER: Average read latency -> ", avg, " cycles");
 
@@ -6022,8 +6023,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 wchar_t* s = p;
                 wchar_t* v = nullptr;
                 wchar_t* d = nullptr;
-                uint16_t  vid = 0;
-                uint32_t  did = 0;
+                u16  vid = 0;
+                u32  did = 0;
                 bool      ok = false;
 
                 if (rootType == RT_USB) {
@@ -8328,7 +8329,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return EXCEPTION_EXECUTE_HANDLER;
             }
             // check if Trap Flag and DR0 contributed
-            const uint64_t status = info->ContextRecord->Dr6;
+            const u64 status = info->ContextRecord->Dr6;
             const bool fromTrapFlag = (status & (1ULL << 14)) != 0;
             const bool fromDr0 = (status & 1ULL) != 0;
             if (!fromTrapFlag || !fromDr0) {
