@@ -53,10 +53,10 @@
  * - struct for internal cpu operations        => line 722
  * - struct for internal memoization           => line 1047
  * - struct for internal utility functions     => line 1201
- * - struct for internal core components       => line 8535
+ * - struct for internal core components       => line 8548
  * - start of VM detection technique list      => line 2011
- * - start of public VM detection functions    => line 9050
- * - start of externally defined variables     => line 9982
+ * - start of public VM detection functions    => line 9063
+ * - start of externally defined variables     => line 9995
  *
  *
  * ============================== EXAMPLE ===================================
@@ -4191,32 +4191,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        // checks for RDTSCP support
-        unsigned aux = 0;
-        {
-    #if (WINDOWS && x86_64)
-            const bool haveRdtscp = [&]() noexcept -> bool {
-                __try {
-                    __rdtscp(&aux);
-                    return true;
-                }
-                __except (EXCEPTION_EXECUTE_HANDLER) {
-                    return false;
-                }
-            }();
-    #else
-            UNUSED(aux);
-            int regs[4] = { 0 };
-            cpu::cpuid(regs, 0x80000001);
-            const bool haveRdtscp = (regs[3] & (1u << 27)) != 0;
-    #endif
-            if (!haveRdtscp) {
-                debug("TIMER: RDTSCP instruction not supported"); // __rdtscp should be supported nowadays
-                return true;
-            }
-        }
-
-        // cpuid check
+        // Case A - Hypervisor without RDTSC patch
         auto cpuid = [&]() -> u64 {
             _mm_lfence();
             u64 t1 = __rdtsc();
@@ -4239,40 +4214,75 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const u64 avg = (sum + N / 2) / N;
         debug("TIMER: Average read latency -> ", avg, " cycles");
 
-        // https://www.phoronix.com/news/Linux-Intel-KVM-Cache-CPUID
-        if (avg > 1900) return true;
+        if (avg > 1600) return true; // https://www.phoronix.com/news/Linux-Intel-KVM-Cache-CPUID
     #if (WINDOWS)  
-        // simple check to detect poorly coded RDTSC patches
-        typedef struct _PROCESSOR_POWER_INFORMATION {
-            ULONG Number;
-            ULONG MaxMhz;
-            ULONG CurrentMhz;
-            ULONG MhzLimit;
-            ULONG MaxIdleState;
-            ULONG CurrentIdleState;
-        } PROCESSOR_POWER_INFORMATION, * PPROCESSOR_POWER_INFORMATION;
-
-        SYSTEM_INFO sysInfo;
-        GetSystemInfo(&sysInfo);
-        DWORD procCount = sysInfo.dwNumberOfProcessors;
-
-        std::vector<PROCESSOR_POWER_INFORMATION> ppi(procCount);
-
-        const NTSTATUS status = CallNtPowerInformation(
-            ProcessorInformation,
-            nullptr,
-            0,
-            ppi.data(),
-            sizeof(PROCESSOR_POWER_INFORMATION) * procCount
-        );
-
-        if (status != 0) return false;
-
-        for (DWORD i = 0; i < procCount; ++i) {
-            if (ppi[i].CurrentMhz < 1000) {
-                return true;
-            }
+        // Case B - Hypervisor with RDTSC patch + useplatformclock=true
+        LARGE_INTEGER freq;
+        if (!QueryPerformanceFrequency(&freq)) {
+            return false;
         }
+
+        LARGE_INTEGER t1q, t2q;
+        u64 t1 = __rdtsc();
+        QueryPerformanceCounter(&t1q);
+        SleepEx(50, 0);
+        QueryPerformanceCounter(&t2q);
+        u64 t2 = __rdtsc();
+
+        const double elapsedSec = double(t2q.QuadPart - t1q.QuadPart) / double(freq.QuadPart);
+        const double tscHz = double(t2 - t1) / elapsedSec;
+        const double tscMHz = tscHz / 1e6;
+
+        debug("TIMER: Calibrated clock speed based on QPC-TSC ratio -> ", tscMHz, " MHz");
+        if (tscMHz < 1000) return true;
+
+        // Case C - Hypervisor with RDTSC patch + useplatformclock=false
+        const HANDLE hThread = GetCurrentThread();
+        const DWORD_PTR prevMask = SetThreadAffinityMask(hThread, 1);
+        if (!prevMask) {
+            return false;
+        }
+
+        const int TRIALS = 1000;
+        std::vector<double> ratios;
+        ratios.reserve(TRIALS);
+
+        auto rdtsc_lfence = [&]() -> u64 {       
+            _mm_lfence();          
+            u64 t = __rdtsc();  
+            _mm_lfence();           
+            return t;
+        };
+
+        for (int i = 0; i < TRIALS; ++i) {
+            // time a fast user-mode call
+            t1 = rdtsc_lfence();
+            GetProcessHeap();
+            t2 = rdtsc_lfence();
+
+            // time a kernel syscall
+            CloseHandle(INVALID_HANDLE_VALUE);
+            u64 t3 = rdtsc_lfence();
+
+            u64 userCycles = t2 - t1;
+            u64 sysCycles = t3 - t2;
+            if (userCycles == 0) continue;
+
+            double ratio = double(sysCycles) / double(userCycles);
+            ratios.push_back(ratio);
+        }
+
+        SetThreadAffinityMask(hThread, prevMask);
+
+        if (ratios.empty()) {
+            return false;
+        }
+
+        std::sort(ratios.begin(), ratios.end());
+        double median = ratios[ratios.size() / 2];
+
+        debug("TIMER: Median syscall/user-mode ratio -> ", median);
+        return (median >= 8.5);
     #endif
         return false;
 #endif
@@ -5578,7 +5588,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             constexpr DWORD ACPI_SIG = 'ACPI';
             constexpr DWORD ssdtSig = 'TDSS';
-            constexpr DWORD facpSig = 'PCAF';
             constexpr DWORD dsdtSig = 'DSDT';
             constexpr DWORD FIRM_SIG = 'FIRM';
             constexpr DWORD RSMB_SIG = 'RSMB';
@@ -5691,12 +5700,23 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 // 5) KVM ACPI Device() signature: 5B 82 40 09 53 XX XX
                 if (len >= 7) {
                     for (size_t i = 0; i + 7 <= len; ++i) {
-                        if (buf[i] == 0x5B && buf[i + 1] == 0x82 && buf[i + 2] == 0x40 && buf[i + 3] == 0x09 && buf[i + 4] == 0x53) {
-                            debug("FIRMWARE: KVM ACPI Device pattern matched at offset ", i);
+                        //   5B 82 40 09 53 == Device(  S
+                        //    0x28 = ‘(’, 0x53 = ‘S’
+                        //    then two ASCII digits, then ‘)’
+                        if (buf[i] == 0x5B && buf[i + 1] == 0x82 && buf[i + 2] == 0x40 &&
+                            buf[i + 3] == 0x09 && buf[i + 4] == 0x53 &&
+                            buf[i + 5] == 0x28 &&                            // '('
+                            buf[i + 6] == 'S' &&
+                            buf[i + 7] >= '0' && buf[i + 7] <= '9' &&
+                            buf[i + 8] >= '0' && buf[i + 8] <= '9' &&
+                            buf[i + 9] == 0x29)                              // ')'
+                        {
+                            debug("FIRMWARE: KVM ACPI Device(S##) pattern matched at offset ", i);
                             return core::add(brands::KVM);
                         }
                     }
                 }
+
                 return false;
             };
 
@@ -5745,51 +5765,44 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return true;
             };
 
-            // 3) scan FADT + each ACPI table
-            for (auto tbl : tables) {
-                if (tbl == facpSig) {
-                    BYTE* buf = nullptr; size_t len = 0;
-                    if (fetch(ACPI_SIG, tbl, buf, len)) {
-                        if (len > 45 && buf[45] == 0) {
-                            debug("FIRMWARE: Invalid PM type detected");
-                            free(buf);
-                            return true;
-                        }
+            // 3) scan each ACPI table
+            for (auto tbl : tables) {                
+                BYTE* buf = nullptr; size_t len = 0;
+                if (fetch(ACPI_SIG, tbl, buf, len)) {
+                    if (scan_table(buf, len)) {
                         free(buf);
+                        return true;
                     }
-                }
-                {
-                    BYTE* buf = nullptr; size_t len = 0;
-                    if (fetch(ACPI_SIG, tbl, buf, len)) {
-                        if (scan_table(buf, len)) {
-                            free(buf);
-                            return true;
-                        }
-                        free(buf);
-                    }
-                }
+                    free(buf);
+                }              
             }
 
-            // 4) DSDT + _OSI
+            // 4) DSDT + _OSIcheck
             const UINT dsdtSz = GetSystemFirmwareTable(ACPI_SIG, __bswap32(dsdtSig), nullptr, 0);
-            if (dsdtSz == 0 || dsdtSz > MAX_FW_TABLE) return false;
+            if (dsdtSz == 0 || dsdtSz > MAX_FW_TABLE)
+                return false;
+
             BYTE* dsdt = (BYTE*)malloc(dsdtSz);
-            if (!dsdt) return false;
+            if (!dsdt)
+                return false;
+
             if (GetSystemFirmwareTable(ACPI_SIG, __bswap32(dsdtSig), dsdt, dsdtSz) != dsdtSz) {
                 free(dsdt);
                 return false;
             }
+
             static const char* osi[] = {
-                "Windows 95","Windows 98","Windows 2000","Windows XP","Windows 2012"
+                "Windows 2001", "Windows 2006", "Windows 2009", "Windows 2012", "Windows 2013", "Windows 2015"
             };
             bool foundOSI = false;
             for (auto& s : osi) {
-                const size_t L = strlen(s);
-                for (size_t j = 0; j + L <= dsdtSz; ++j) {
-                    if (memcmp(dsdt + j, s, L) == 0) { foundOSI = true; break; }
+                size_t L = strlen(s);
+                if (std::search(dsdt, dsdt + dsdtSz, s, s + L) != dsdt + dsdtSz) {
+                    foundOSI = true;
+                    break;
                 }
-                if (foundOSI) break;
             }
+
             free(dsdt);
             if (!foundOSI) {
                 debug("FIRMWARE: No _OSI params found");
