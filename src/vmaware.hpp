@@ -5777,7 +5777,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }              
             }
 
-            // 4) DSDT + _OSIcheck
+            // 4) DSDT + _OSI check
             const UINT dsdtSz = GetSystemFirmwareTable(ACPI_SIG, __bswap32(dsdtSig), nullptr, 0);
             if (dsdtSz == 0 || dsdtSz > MAX_FW_TABLE)
                 return false;
