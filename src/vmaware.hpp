@@ -8600,6 +8600,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             {
             case 0x704783C5: known_name = "TianoCore EDK2"; break;
             case 0x2A3A4D7: known_name = "Hyper-V"; break;
+            case 0x98903BD: known_name = "Oracle VirtualBox"; break;
             // case 0x6B6E00C0; known_name = "Windows 10"; break; // Present in VMWare
             // case 0x8EEF5132; known_name = "ASROCK"; break;
             // case 0x1B7F6713; known_name = "AORUS"; break;
