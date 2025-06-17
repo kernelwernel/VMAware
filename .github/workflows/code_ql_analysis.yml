@@ -57,7 +57,7 @@ jobs:
         generator: ${{ matrix.generator }}
 
     - name: Setup Cpp
-      uses: aminya/setup-cpp@v3
+      uses: aminya/setup-cpp@v1
       with:
         compiler: ${{ matrix.compiler }}
         vcvarsall: ${{ contains(matrix.os, 'windows' )}}
