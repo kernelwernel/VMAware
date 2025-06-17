@@ -801,6 +801,7 @@ void general() {
     checker(VM::UD, "undefined exceptions");
     checker(VM::BLOCKSTEP, "single step with trap flag");
     checker(VM::DBVM, "Dark Byte's hypervisor");
+    checker(VM::BOOT_LOGO, "boot logo");
 
     // ADD NEW TECHNIQUE CHECKER HERE
 
