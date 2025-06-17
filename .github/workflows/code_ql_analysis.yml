@@ -57,7 +57,7 @@ jobs:
         generator: ${{ matrix.generator }}
 
     - name: Setup Cpp
-      uses: aminya/setup-cpp@v1
+      uses: aminya/setup-cpp@v3
       with:
         compiler: ${{ matrix.compiler }}
         vcvarsall: ${{ contains(matrix.os, 'windows' )}}
@@ -96,4 +96,4 @@ jobs:
         cmake --build ./build --config ${{matrix.build_type}}
 
     - name: Perform CodeQL Analysis
-      uses: github/codeql-action/analyze@v2
+      uses: github/codeql-action/analyze@v3
