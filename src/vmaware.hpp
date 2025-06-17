@@ -53,10 +53,10 @@
  * - struct for internal cpu operations        => line 722
  * - struct for internal memoization           => line 1047
  * - struct for internal utility functions     => line 1201
- * - struct for internal core components       => line 8548
- * - start of VM detection technique list      => line 2011
- * - start of public VM detection functions    => line 9063
- * - start of externally defined variables     => line 9995
+ * - struct for internal core components       => line 8572
+ * - start of VM detection technique list      => line 2015
+ * - start of public VM detection functions    => line 9087
+ * - start of externally defined variables     => line 10019
  *
  *
  * ============================== EXAMPLE ===================================
@@ -1907,9 +1907,13 @@ private:
             }
 
             typedef NTSTATUS(__stdcall* RtlGetVersionFunc)(PRTL_OSVERSIONINFOW);
-#pragma warning (disable : 4191)
-            RtlGetVersionFunc pRtlGetVersion = reinterpret_cast<RtlGetVersionFunc>(GetProcAddress(ntdll, "RtlGetVersion"));
-#pragma warning (default : 4191)
+
+            const char* names[] = { "RtlGetVersion" };
+            void* functions[1] = { nullptr };
+
+            GetFunctionAddresses(ntdll, names, functions, _countof(names));
+
+            auto pRtlGetVersion = reinterpret_cast<RtlGetVersionFunc>(functions[0]);
             if (!pRtlGetVersion) {
                 return 0;
             }
@@ -4177,14 +4181,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for timing anomalies in the system
      * @category x86
+     * @author Requiem (https://github.com/NotRequiem)
      * @implements VM::TIMER
      */
     [[nodiscard]] static bool timer() {
 #if (ARM || !x86)
         return false;
 #else
+        u16 cycleThreshold = 1500;
         if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
-            return false;
+            cycleThreshold = 25000; // if we're running under Hyper-V, attempt to detect nested virtualization only
         }
         if (util::is_running_under_translator()) {
             debug("TIMER: Running inside a binary translation layer.");
@@ -4203,28 +4209,32 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return t2 - t1;
         };
 
-        constexpr int N = 5000;
-        std::vector<u64> samples;
-        samples.reserve(N);
+        constexpr int N = 100;
+        u64 samples[N] = { 0 };
+
         for (int i = 0; i < N; ++i) {
-            samples.push_back(cpuid());
+            samples[i] = cpuid();
         }
 
-        const u64 sum = std::accumulate(samples.begin(), samples.end(), u64(0));
-        const u64 avg = (sum + N / 2) / N;
-        debug("TIMER: Average read latency -> ", avg, " cycles");
+        u64 sum = 0;
+        for (int i = 0; i < N; ++i) {
+            sum += samples[i];
+        }
+        u64 avg = (sum + N / 2) / N;
 
-        if (avg > 1600) return true; // https://www.phoronix.com/news/Linux-Intel-KVM-Cache-CPUID
+        debug("TIMER: Average latency -> ", avg, " cycles");
+
+        if (avg >= cycleThreshold) return true; // Intel's Emerald Rapids have much more cycles when executing CPUID
     #if (WINDOWS)  
         // Case B - Hypervisor with RDTSC patch + useplatformclock=true
         LARGE_INTEGER freq;
-        if (!QueryPerformanceFrequency(&freq)) {
+        if (!QueryPerformanceFrequency(&freq)) // NtPowerInformation is avoided as some hypervisors downscale tsc only if we triggered a context switch from userspace
             return false;
-        }
 
+        // calculates the invariant TSC base rate, not the dynamic (P‑state/Turbo) core frequency, similar to what CallNtPowerInformation would give you
         LARGE_INTEGER t1q, t2q;
         u64 t1 = __rdtsc();
-        QueryPerformanceCounter(&t1q);
+        QueryPerformanceCounter(&t1q); // uses RDTSCP under the hood unless platformclock is set (which then would use HPET or ACPI PM via NtQueryPerformanceCounter)
         SleepEx(50, 0);
         QueryPerformanceCounter(&t2q);
         u64 t2 = __rdtsc();
@@ -4233,56 +4243,67 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const double tscHz = double(t2 - t1) / elapsedSec;
         const double tscMHz = tscHz / 1e6;
 
-        debug("TIMER: Calibrated clock speed based on QPC-TSC ratio -> ", tscMHz, " MHz");
+        debug("TIMER: CPU base speed -> ", tscMHz, " MHz");
         if (tscMHz < 1000) return true;
 
         // Case C - Hypervisor with RDTSC patch + useplatformclock=false
-        const HANDLE hThread = GetCurrentThread();
-        const DWORD_PTR prevMask = SetThreadAffinityMask(hThread, 1);
-        if (!prevMask) {
-            return false;
+        unsigned aux = 0;
+        {
+        #if (WINDOWS && x86_64)
+            const bool haveRdtscp = [&]() noexcept -> bool {
+                __try {
+                    __rdtscp(&aux); // checks for RDTSCP support as we will use it later
+                    return true;
+                }
+                __except (EXCEPTION_EXECUTE_HANDLER) {
+                    return false;
+                }
+            }();
+        #else
+            UNUSED(aux);
+            int regs[4] = { 0 };
+            cpu::cpuid(regs, 0x80000001);
+            const bool haveRdtscp = (regs[3] & (1u << 27)) != 0;
+        #endif
+            if (!haveRdtscp) {
+                debug("TIMER: RDTSCP instruction not supported"); // __rdtscp should be supported nowadays
+                return true;
+            }
         }
 
-        const int TRIALS = 1000;
+        const HANDLE hThread = GetCurrentThread();
+        const DWORD_PTR prevMask = SetThreadAffinityMask(hThread, 1); // to reduce context switching/scheluding
+        if (!prevMask) 
+            return false;
+
+        const int TRIALS = 20; // enough to warm up the syscall path, higher values will hardly evict spikes
         std::vector<double> ratios;
         ratios.reserve(TRIALS);
 
-        auto rdtsc_lfence = [&]() -> u64 {       
-            _mm_lfence();          
-            u64 t = __rdtsc();  
-            _mm_lfence();           
-            return t;
-        };
-
         for (int i = 0; i < TRIALS; ++i) {
-            // time a fast user-mode call
-            t1 = rdtsc_lfence();
-            GetProcessHeap();
-            t2 = rdtsc_lfence();
+            t1 = __rdtscp(&aux); // serializing to avoid speculative execution, which would increase the ratio
+            GetProcessHeap(); // user-mode call
+            t2 = __rdtscp(&aux);
 
-            // time a kernel syscall
-            CloseHandle(INVALID_HANDLE_VALUE);
-            u64 t3 = rdtsc_lfence();
+            CloseHandle(INVALID_HANDLE_VALUE); // kernel syscall
+            const u64 t3 = __rdtscp(&aux); // on modern Intel and AMD CPUs the TSC is "invariant" (doesn’t change with P‑states or C‑states)
 
-            u64 userCycles = t2 - t1;
-            u64 sysCycles = t3 - t2;
-            if (userCycles == 0) continue;
+            // important to not debug cycles by printing but with breakpoints and stack analysis, otherwise the CPU would cache and make the ratio much lower
+            const u64 userCycles = t2 - t1;
+            const u64 sysCycles = t3 - t2;
 
-            double ratio = double(sysCycles) / double(userCycles);
+            const double ratio = double(sysCycles) / double(userCycles);
             ratios.push_back(ratio);
         }
 
         SetThreadAffinityMask(hThread, prevMask);
 
-        if (ratios.empty()) {
-            return false;
-        }
-
         std::sort(ratios.begin(), ratios.end());
-        double median = ratios[ratios.size() / 2];
+        const double tscMedian = ratios[ratios.size() / 2]; // to minimize jittering due to kernel noise
 
-        debug("TIMER: Median syscall/user-mode ratio -> ", median);
-        return (median >= 8.5);
+        debug("TIMER: Median syscall/user-mode ratio -> ", tscMedian);
+
+        if (tscMedian <= 8.5) return true;
     #endif
         return false;
 #endif
@@ -5844,11 +5865,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return false;
             }
 
+            // Same as Windows but without WAET (Windows ACPI Emulated Devices Table)
             constexpr const char* targets[] = {
-                "Parallels Software International","Parallels(R)",
-                "innotek","Oracle","VirtualBox","vbox","VBOX","VS2005R2",
-                "VMware, Inc.","VMware","VMWARE",
-                "S3 Corp.","Virtual Machine","QEMU","pc-q35","BOCHS","BXPC"
+                "Parallels Software", "Parallels(R)",
+                "innotek",            "Oracle",   "VirtualBox", "vbox", "VBOX",
+                "VMware, Inc.",       "VMware",   "VMWARE",     "VMW0003",
+                "QEMU",               "pc-q35",   "Q35 +",      "FWCF",     "BOCHS", "BXPC",
+                "ovmf",               "edk ii unknown", "S3 Corp.", "Virtual Machine", "VS2005R2",
+                "Xen"
             };
 
             struct dirent* entry;
