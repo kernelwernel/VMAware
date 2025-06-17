@@ -8531,6 +8531,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::BOOT_LOGO
      */
     [[nodiscard]] static bool boot_logo() {
+#if (WINDOWS)
         typedef NTSTATUS(__stdcall* NtQuerySystemInformation_t)(SYSTEM_INFORMATION_CLASS,PVOID,ULONG,PULONG);
 
         const HMODULE ntdll = GetModuleHandle(_T("ntdll.dll"));
@@ -8613,7 +8614,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return true;
             }
         }
-
+#endif
         return false;
     }
 
@@ -10250,7 +10251,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         std::make_pair(VM::CUCKOO_PIPE, VM::core::technique(30, VM::cuckoo_pipe)),
         std::make_pair(VM::BOOT_LOGO, VM::core::technique(100, VM::boot_logo)),
     #endif
-        
+
     #if (LINUX || WINDOWS)
         std::make_pair(VM::FIRMWARE, VM::core::technique(100, VM::firmware)),
         std::make_pair(VM::PCI_DEVICES, VM::core::technique(95, VM::pci_devices)),
