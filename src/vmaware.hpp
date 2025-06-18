@@ -429,17 +429,31 @@
 #if (MSVC)
 #define VMAWARE_ASSUME(expr) __assume(expr)
 #elif (CLANG)
+// Clang
+#if __has_builtin(__builtin_assume)
 #define VMAWARE_ASSUME(expr) __builtin_assume(expr)
+#else
+// no __builtin_assume but __builtin_unreachable gives same hint
+    #define VMAWARE_ASSUME(expr)        \
+           do { if (!(expr))                \
+                 __builtin_unreachable();   \
+           } while (0)
+    #endif
 #elif (GCC)
-// no __builtin_assume on some versions, but __builtin_unreachable gives same hint
-#define VMAWARE_ASSUME(expr)               \
-    do {                             \
-      if (!(expr))                   \
-        __builtin_unreachable();     \
-    } while (0)
+// GCC (but only after Clang check, since Clang also defines __GNUC__)
+#if (__GNUC__ >= 13)
+// GCC 13+ has __builtin_assume
+#define VMAWARE_ASSUME(expr) __builtin_assume(expr)
+#else
+    #define VMAWARE_ASSUME(expr)        \
+           do { if (!(expr))                \
+                 __builtin_unreachable();   \
+           } while (0)
+    #endif
 #else
 #define VMAWARE_ASSUME(expr) ((void)0)
 #endif
+
 
 /**
  * Official aliases for VM brands. This is added to avoid accidental typos
@@ -1369,20 +1383,7 @@ private:
             return (base_str.find(keyword) != std::string::npos);
         };
 
-#ifdef __VMAWARE_DEBUG__
-#if (CPP < 17)
-        static inline void print_to_stream(std::ostream&) noexcept {}
-
-        template <typename T, typename... Args>
-        static void print_to_stream(std::ostream& os, T&& first, Args&&... args) noexcept {
-            os << std::forward<T>(first);
-            using expander = int[];
-            (void)expander {
-                0, (void(os << std::forward<Args>(args)), 0)...
-            };
-        }
-#endif
-
+        // 1) UTF‑16 -> ASCII helper
         static std::string narrow_wide(const wchar_t* wstr) {
             std::wstring ws(wstr);
             std::string result;
@@ -1395,24 +1396,47 @@ private:
             return result;
         }
 
-        // helper that picks the right << or narrowing
-        static void write_arg(auto&& arg) {
-            using T = std::decay_t<decltype(arg)>;
-            if constexpr (std::is_same_v<T, const wchar_t*> ||
-                std::is_same_v<T, wchar_t*>)
-            {
-                std::cout << narrow_wide(arg);
-            }
-            else if constexpr (std::is_convertible_v<T, std::wstring>)
-            {
-                std::cout << narrow_wide(static_cast<const wchar_t*>(std::wstring(arg).c_str()));
-            }
-            else
-            {
-                std::cout << std::forward<decltype(arg)>(arg);
-            }
+        // choose correct << or narrow for each type
+        // wchar_t*
+        static void write_arg_impl(std::ostream& os, const wchar_t* arg) {
+            os << narrow_wide(arg);
+        }
+        static void write_arg_impl(std::ostream& os, wchar_t* arg) {
+            os << narrow_wide(arg);
         }
 
+        // std::wstring
+        static void write_arg_impl(std::ostream& os, const std::wstring& ws) {
+            os << narrow_wide(ws.c_str());
+        }
+
+        // everything else
+        template <typename T>
+        static typename std::enable_if<!std::is_convertible<T, std::wstring>::value
+            && !std::is_same<typename std::decay<T>::type, wchar_t*>::value,
+            void>::type
+            write_arg_impl(std::ostream& os, T&& arg) {
+            os << std::forward<T>(arg);
+        }
+
+        // variadic pack printer for C++11
+        static inline void print_to_stream(std::ostream& /*unused*/) noexcept {}
+
+        // forward the first, then expand the rest in an initializer list
+        template <typename T, typename... Args>
+        static void print_to_stream(std::ostream& os,
+            T&& first,
+            Args&&... args) noexcept
+        {
+            write_arg_impl(os, std::forward<T>(first));
+            // trick to expand the pack
+            using expander = int[];
+            (void)expander {
+                0, ((void)write_arg_impl(os, std::forward<Args>(args)), 0)...
+            };
+        }
+
+        // debug_msg / core_debug_msg
         template <typename... Args>
         static inline void debug_msg(Args&&... message) noexcept {
 #if (LINUX || APPLE)
@@ -1424,56 +1448,42 @@ private:
             std::cout.setf(std::ios::fixed, std::ios::floatfield);
             std::cout.setf(std::ios::showpoint);
 
-            std::cout << black_bg 
-                << bold << "[" 
-                << blue << "DEBUG" 
-                << ansiexit << bold << black_bg << "]" 
+            std::cout << black_bg
+                << bold << "["
+                << blue << "DEBUG"
+                << ansiexit << bold << black_bg << "]"
                 << ansiexit << " ";
-#else       
+#else
             std::cout << "[DEBUG] ";
 #endif
 
-            // fold‐expr over the pack
-#if (CPP >= 17)
-            (write_arg(std::forward<Args>(message)), ...);
-#else
             print_to_stream(std::cout, std::forward<Args>(message)...);
-#endif
-
             std::cout << std::dec << "\n";
         }
-
 
         template <typename... Args>
         static inline void core_debug_msg(Args&&... message) noexcept {
 #if (LINUX || APPLE)
             constexpr const char* black_bg = "\x1B[48;2;0;0;0m";
             constexpr const char* bold = "\033[1m";
-            constexpr const char* blue = "\x1B[38;2;255;180;5m";
+            constexpr const char* orange = "\x1B[38;2;255;180;5m";
             constexpr const char* ansiexit = "\x1B[0m";
 
             std::cout.setf(std::ios::fixed, std::ios::floatfield);
             std::cout.setf(std::ios::showpoint);
 
-            std::cout << black_bg 
-                << bold << "[" 
-                << blue << "CORE DEBUG" 
-                << ansiexit << bold << black_bg << "]" 
+            std::cout << black_bg
+                << bold << "["
+                << orange << "CORE DEBUG"
+                << ansiexit << bold << black_bg << "]"
                 << ansiexit << " ";
-#else       
+#else
             std::cout << "[CORE DEBUG] ";
 #endif
 
-
-#if (CPP >= 17)
-            (write_arg(std::forward<Args>(message)), ...);
-#else
             print_to_stream(std::cout, std::forward<Args>(message)...);
-#endif
-
             std::cout << std::dec << "\n";
         }
-#endif
 
 
         [[nodiscard]] static std::unique_ptr<std::string> sys_result(const char* cmd) {

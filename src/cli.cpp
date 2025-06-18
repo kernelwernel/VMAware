@@ -801,7 +801,6 @@ void general() {
     checker(VM::UD, "undefined exceptions");
     checker(VM::BLOCKSTEP, "single step with trap flag");
     checker(VM::DBVM, "Dark Byte's hypervisor");
-
     // ADD NEW TECHNIQUE CHECKER HERE
 
     std::printf("\n");
