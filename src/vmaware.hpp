@@ -53,10 +53,10 @@
  * - struct for internal cpu operations        => line 737
  * - struct for internal memoization           => line 1062
  * - struct for internal utility functions     => line 1216
- * - struct for internal core components       => line 8657
+ * - struct for internal core components       => line 8659
  * - start of VM detection technique list      => line 2026
- * - start of public VM detection functions    => line 9172
- * - start of externally defined variables     => line 10105
+ * - start of public VM detection functions    => line 9174
+ * - start of externally defined variables     => line 10107
  *
  *
  * ============================== EXAMPLE ===================================
@@ -4281,6 +4281,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return true;
             }
         }
+
+        if (cycleThreshold == 25000) return false; // if we're running under Hyper-V, do not run more checks 
 
         const HANDLE hThread = GetCurrentThread();
         const DWORD_PTR prevMask = SetThreadAffinityMask(hThread, 1); // to reduce context switching/scheluding
