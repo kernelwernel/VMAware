@@ -587,6 +587,7 @@ public:
         UD,
         BLOCKSTEP,
         DBVM,
+        BOOT_LOGO,
         
         // Linux and Windows
         SIDT,
@@ -8569,6 +8570,102 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
     #endif
     }
+
+    /**
+     * @brief Check boot logo for known images
+     * @category Windows
+     * @author Teselka (https://github.com/Teselka)
+     * @implements VM::BOOT_LOGO
+     */
+    [[nodiscard]] static bool boot_logo() {
+#if (WINDOWS)
+        typedef NTSTATUS(__stdcall* NtQuerySystemInformation_t)(SYSTEM_INFORMATION_CLASS,PVOID,ULONG,PULONG);
+
+        const HMODULE ntdll = GetModuleHandle(_T("ntdll.dll"));
+        if (!ntdll)
+            return false;
+
+        const char* function_names[] = { "NtQuerySystemInformation" };
+        void* functions[1] = { nullptr };
+
+        util::GetFunctionAddresses(ntdll, function_names, functions, 1);
+
+        NtQuerySystemInformation_t pNtQuerySystemInformation = reinterpret_cast<NtQuerySystemInformation_t>(functions[0]);
+        if (pNtQuerySystemInformation) {
+
+            const SYSTEM_INFORMATION_CLASS SystemBootLogoInformation = (SYSTEM_INFORMATION_CLASS)140;
+
+            ULONG size;
+            NTSTATUS status =  pNtQuerySystemInformation(SystemBootLogoInformation, 0, 0, &size); // SystemBootLogoInformation
+            if (status != 0xC0000023 && status != 0x80000005 && status != 0xC0000004)
+            {
+#ifdef __VMAWARE_DEBUG__
+                debug("BOOT_LOGO: first status = ", status);
+#endif
+                return false;
+            }
+
+            void* buf = malloc(size);
+            if (!buf) 
+                return false;
+
+            status = pNtQuerySystemInformation(SystemBootLogoInformation, buf, size, &size);
+            if (status)
+            {
+#ifdef __VMAWARE_DEBUG__
+                debug("BOOT_LOGO: second status = ", status);
+#endif
+                return false;
+            }
+
+            typedef struct {
+                ULONG Flags;
+                ULONG BitmapOffset;
+            } SYSTEM_BOOT_LOGO_INFORMATION;
+
+            SYSTEM_BOOT_LOGO_INFORMATION& info = *(SYSTEM_BOOT_LOGO_INFORMATION*)buf;
+
+            char* bmp = (char*)buf + info.BitmapOffset;
+            size_t bmp_size = size - info.BitmapOffset;
+
+            unsigned int hash = 0;
+            for (ULONG i = 0; i < bmp_size; bmp++, i++)
+            {
+                hash *= 0x811C9DC5;
+                hash ^= (*bmp);
+            }
+
+#ifdef __VMAWARE_DEBUG__
+            debug("BOOT_LOGO: size = ", size, ", flags = ", info.Flags, ", bitmap offset = ", info.BitmapOffset, ", hash = ", hash);
+#endif
+
+            free(buf);
+
+            bool result = true;
+            const char* known_name;
+            switch (hash)
+            {
+            case 0x704783C5: known_name = "TianoCore EDK2"; break;
+            case 0x2A3A4D7: known_name = "Hyper-V"; break;
+            case 0x98903BD: known_name = "Oracle VirtualBox"; break;
+            // case 0x6B6E00C0; known_name = "Windows 10"; break; // Present in VMWare
+            // case 0x8EEF5132; known_name = "ASROCK"; break;
+            // case 0x1B7F6713; known_name = "AORUS"; break;
+            default: result = false; break;
+            }
+
+            if (result)
+            {
+#ifdef __VMAWARE_DEBUG__
+                debug("BOOT_LOGO: detected ", known_name);
+#endif
+                return true;
+            }
+        }
+#endif
+        return false;
+    }
+
     // ADD NEW TECHNIQUE FUNCTION HERE
     #endif
 
@@ -9649,6 +9746,7 @@ public: // START OF PUBLIC FUNCTIONS
             case AMD_THREAD_MISMATCH: return "AMD_THREAD_MISMATCH";
             case CUCKOO_DIR: return "CUCKOO_DIR";
             case CUCKOO_PIPE: return "CUCKOO_PIPE";
+            case BOOT_LOGO: return "BOOT_LOGO";
             case HYPERV_HOSTNAME: return "HYPERV_HOSTNAME";
             case GENERAL_HOSTNAME: return "GENERAL_HOSTNAME";
             case DISPLAY: return "DISPLAY";
@@ -10199,8 +10297,9 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         std::make_pair(VM::GAMARUE, VM::core::technique(10, VM::gamarue)),
         std::make_pair(VM::CUCKOO_DIR, VM::core::technique(30, VM::cuckoo_dir)),
         std::make_pair(VM::CUCKOO_PIPE, VM::core::technique(30, VM::cuckoo_pipe)),
+        std::make_pair(VM::BOOT_LOGO, VM::core::technique(100, VM::boot_logo)),
     #endif
-        
+
     #if (LINUX || WINDOWS)
         std::make_pair(VM::FIRMWARE, VM::core::technique(100, VM::firmware)),
         std::make_pair(VM::PCI_DEVICES, VM::core::technique(95, VM::pci_devices)),
