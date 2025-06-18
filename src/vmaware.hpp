@@ -49,14 +49,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 539
- * - struct for internal cpu operations        => line 722
- * - struct for internal memoization           => line 1047
- * - struct for internal utility functions     => line 1201
- * - struct for internal core components       => line 8572
- * - start of VM detection technique list      => line 2015
- * - start of public VM detection functions    => line 9087
- * - start of externally defined variables     => line 10019
+ * - enums for publicly accessible techniques  => line 553
+ * - struct for internal cpu operations        => line 737
+ * - struct for internal memoization           => line 1062
+ * - struct for internal utility functions     => line 1216
+ * - struct for internal core components       => line 8657
+ * - start of VM detection technique list      => line 2026
+ * - start of public VM detection functions    => line 9172
+ * - start of externally defined variables     => line 10105
  *
  *
  * ============================== EXAMPLE ===================================
@@ -555,7 +555,7 @@ public:
         // Windows
         GPU_CAPABILITIES = 0,
         TPM,
-        QEMU_PASSTHROUGH,
+        QEMU_SIGNATURE,
         POWER_CAPABILITIES,
         DISK_SERIAL,
         IVSHMEM,
@@ -8140,12 +8140,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     
     
     /**
-     * @brief Check for QEMU's hot-plug signature
+     * @brief Check for QEMU's DSDT signature
      * @category Windows
      * @author Requiem (https://github.com/NotRequiem)
-     * @implements VM::QEMU_PASSTHROUGH
+     * @implements VM::QEMU_SIGNATURE
      */
-    [[nodiscard]] static bool qemu_passthrough() {
+    [[nodiscard]] static bool qemu_signature() {
         struct wstring_view {
             const wchar_t* data;
             size_t         size;
@@ -8221,7 +8221,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         #ifdef __VMAWARE_DEBUG__
             for (auto& wstr : paths) {
-                debug("QEMU_PASSTHROUGH: ", wstr);
+                debug("QEMU_SIGNATURE: ", wstr);
             }
         #endif
 
@@ -8304,7 +8304,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check if after raising two traps at the same RIP, a hypervisor interferes with the instruction pointer delivery
      * @category Windows
-     * @note On AMD CPUs, this technique will always false flag
      * @implements VM::TRAP
      */
     [[nodiscard]] static bool trap() {
@@ -8571,6 +8570,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     #endif
     }
 
+
     /**
      * @brief Check boot logo for known images
      * @category Windows
@@ -8578,12 +8578,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::BOOT_LOGO
      */
     [[nodiscard]] static bool boot_logo() {
-#if (WINDOWS)
         typedef NTSTATUS(__stdcall* NtQuerySystemInformation_t)(SYSTEM_INFORMATION_CLASS,PVOID,ULONG,PULONG);
 
         const HMODULE ntdll = GetModuleHandle(_T("ntdll.dll"));
-        if (!ntdll)
-            return false;
+        if (!ntdll) return false;
 
         const char* function_names[] = { "NtQuerySystemInformation" };
         void* functions[1] = { nullptr };
@@ -8592,16 +8590,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         NtQuerySystemInformation_t pNtQuerySystemInformation = reinterpret_cast<NtQuerySystemInformation_t>(functions[0]);
         if (pNtQuerySystemInformation) {
-
             const SYSTEM_INFORMATION_CLASS SystemBootLogoInformation = (SYSTEM_INFORMATION_CLASS)140;
 
             ULONG size;
-            NTSTATUS status =  pNtQuerySystemInformation(SystemBootLogoInformation, 0, 0, &size); // SystemBootLogoInformation
+            NTSTATUS status =  pNtQuerySystemInformation(SystemBootLogoInformation, 0, 0, &size);
             if (status != 0xC0000023 && status != 0x80000005 && status != 0xC0000004)
             {
-#ifdef __VMAWARE_DEBUG__
                 debug("BOOT_LOGO: first status = ", status);
-#endif
                 return false;
             }
 
@@ -8612,9 +8607,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             status = pNtQuerySystemInformation(SystemBootLogoInformation, buf, size, &size);
             if (status)
             {
-#ifdef __VMAWARE_DEBUG__
                 debug("BOOT_LOGO: second status = ", status);
-#endif
                 return false;
             }
 
@@ -8625,8 +8618,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             SYSTEM_BOOT_LOGO_INFORMATION& info = *(SYSTEM_BOOT_LOGO_INFORMATION*)buf;
 
-            char* bmp = (char*)buf + info.BitmapOffset;
-            size_t bmp_size = size - info.BitmapOffset;
+            const char* bmp = (char*)buf + info.BitmapOffset;
+            const size_t bmp_size = static_cast<size_t>(size) - info.BitmapOffset;
 
             unsigned int hash = 0;
             for (ULONG i = 0; i < bmp_size; bmp++, i++)
@@ -8635,39 +8628,24 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 hash ^= (*bmp);
             }
 
-#ifdef __VMAWARE_DEBUG__
-            debug("BOOT_LOGO: size = ", size, ", flags = ", info.Flags, ", bitmap offset = ", info.BitmapOffset, ", hash = ", hash);
-#endif
-
+            debug("BOOT_LOGO: size = ", size, ", flags = ", info.Flags, ", bitmap offset = ", info.BitmapOffset, ", hash = 0x", std::hex, hash);
             free(buf);
 
-            bool result = true;
-            const char* known_name;
-            switch (hash)
-            {
-            case 0x704783C5: known_name = "TianoCore EDK2"; break;
-            case 0x2A3A4D7: known_name = "Hyper-V"; break;
-            case 0x98903BD: known_name = "Oracle VirtualBox"; break;
-            // case 0x6B6E00C0; known_name = "Windows 10"; break; // Present in VMWare
-            // case 0x8EEF5132; known_name = "ASROCK"; break;
-            // case 0x1B7F6713; known_name = "AORUS"; break;
-            default: result = false; break;
-            }
-
-            if (result)
-            {
-#ifdef __VMAWARE_DEBUG__
-                debug("BOOT_LOGO: detected ", known_name);
-#endif
-                return true;
+            switch (hash) {
+                case 0x704783C5: return core::add(brands::QEMU); // TianoCore EDK2                   
+                case 0x02A3A4D7: return core::add(brands::HYPERV);
+                case 0x098903BD: return core::add(brands::VBOX);
+                // case 0x6B6E00C0: known_name = "Windows 10"; break; // Present in VMWare
+                // case 0x8EEF5132: known_name = "ASROCK"; break;
+                // case 0x1B7F6713: known_name = "AORUS"; break;
+                default: return false;
             }
         }
-#endif
+
         return false;
     }
-
     // ADD NEW TECHNIQUE FUNCTION HERE
-    #endif
+#endif
 
     
     /* ============================================================================================== *
@@ -9746,7 +9724,6 @@ public: // START OF PUBLIC FUNCTIONS
             case AMD_THREAD_MISMATCH: return "AMD_THREAD_MISMATCH";
             case CUCKOO_DIR: return "CUCKOO_DIR";
             case CUCKOO_PIPE: return "CUCKOO_PIPE";
-            case BOOT_LOGO: return "BOOT_LOGO";
             case HYPERV_HOSTNAME: return "HYPERV_HOSTNAME";
             case GENERAL_HOSTNAME: return "GENERAL_HOSTNAME";
             case DISPLAY: return "DISPLAY";
@@ -9783,11 +9760,12 @@ public: // START OF PUBLIC FUNCTIONS
             case NSJAIL_PID: return "NSJAIL_PID";
             case TPM: return "TPM";
             case PCI_DEVICES: return "PCI_DEVICES";
-            case QEMU_PASSTHROUGH: return "QEMU_PASSTHROUGH";
+            case QEMU_SIGNATURE: return "QEMU_SIGNATURE";
             case TRAP: return "TRAP";
             case UD: return "UNDEFINED_INSTRUCTION";
             case BLOCKSTEP: return "BLOCKSTEP";
             case DBVM: return "DBVM";
+            case BOOT_LOGO: return "BOOT_LOGO";
             // END OF TECHNIQUE LIST
             case DEFAULT: return "setting flag, error";
             case ALL: return "setting flag, error";
@@ -10265,11 +10243,12 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     #if (WINDOWS)
         std::make_pair(VM::TRAP, VM::core::technique(100, VM::trap)),
         std::make_pair(VM::GPU_CAPABILITIES, VM::core::technique(100, VM::gpu_capabilities)),
-        std::make_pair(VM::QEMU_PASSTHROUGH, VM::core::technique(90, VM::qemu_passthrough)),
-        std::make_pair(VM::TPM, VM::core::technique(100, VM::tpm)),
+        std::make_pair(VM::QEMU_SIGNATURE, VM::core::technique(100, VM::qemu_signature)),
+        std::make_pair(VM::BOOT_LOGO, VM::core::technique(100, VM::boot_logo)),
         std::make_pair(VM::POWER_CAPABILITIES, VM::core::technique(90, VM::power_capabilities)),
-        std::make_pair(VM::DISK_SERIAL, VM::core::technique(100, VM::disk_serial_number)),
         std::make_pair(VM::IVSHMEM, VM::core::technique(100, VM::ivshmem)),
+        std::make_pair(VM::TPM, VM::core::technique(100, VM::tpm)),
+        std::make_pair(VM::DISK_SERIAL, VM::core::technique(100, VM::disk_serial_number)),
         std::make_pair(VM::SGDT, VM::core::technique(50, VM::sgdt)),
         std::make_pair(VM::SLDT, VM::core::technique(50, VM::sldt)),
         std::make_pair(VM::SMSW, VM::core::technique(50, VM::smsw)),
@@ -10283,12 +10262,12 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         std::make_pair(VM::HYPERV_QUERY, VM::core::technique(100, VM::hyperv_query)),
         std::make_pair(VM::AUDIO, VM::core::technique(25, VM::audio)),
         std::make_pair(VM::DISPLAY, VM::core::technique(35, VM::display)),
+        std::make_pair(VM::WINE, VM::core::technique(100, VM::wine)),
         std::make_pair(VM::DLL, VM::core::technique(50, VM::dll)),
         std::make_pair(VM::DBVM, VM::core::technique(150, VM::dbvm)),
         std::make_pair(VM::UD, VM::core::technique(100, VM::ud)),
         std::make_pair(VM::BLOCKSTEP, VM::core::technique(100, VM::blockstep)),
         std::make_pair(VM::VMWARE_BACKDOOR, VM::core::technique(100, VM::vmware_backdoor)),
-        std::make_pair(VM::WINE, VM::core::technique(100, VM::wine)),
         std::make_pair(VM::VIRTUAL_REGISTRY, VM::core::technique(90, VM::virtual_registry)),
         std::make_pair(VM::MUTEX, VM::core::technique(100, VM::mutex)),
         std::make_pair(VM::DEVICE_STRING, VM::core::technique(25, VM::device_string)),
@@ -10297,7 +10276,6 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         std::make_pair(VM::GAMARUE, VM::core::technique(10, VM::gamarue)),
         std::make_pair(VM::CUCKOO_DIR, VM::core::technique(30, VM::cuckoo_dir)),
         std::make_pair(VM::CUCKOO_PIPE, VM::core::technique(30, VM::cuckoo_pipe)),
-        std::make_pair(VM::BOOT_LOGO, VM::core::technique(100, VM::boot_logo)),
     #endif
 
     #if (LINUX || WINDOWS)
