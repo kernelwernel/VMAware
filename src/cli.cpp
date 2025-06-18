@@ -796,11 +796,12 @@ void general() {
     checker(VM::NSJAIL_PID, "nsjail PID");
     checker(VM::TPM, "TPM manufacturer");
     checker(VM::PCI_DEVICES, "PCI vendor/device ID");
-    checker(VM::QEMU_PASSTHROUGH, "QEMU passthrough");
+    checker(VM::QEMU_SIGNATURE, "QEMU signature");
     checker(VM::TRAP, "hypervisor interception");
     checker(VM::UD, "undefined exceptions");
     checker(VM::BLOCKSTEP, "single step with trap flag");
     checker(VM::DBVM, "Dark Byte's hypervisor");
+    checker(VM::BOOT_LOGO, "boot logo");
 
     // ADD NEW TECHNIQUE CHECKER HERE
 
