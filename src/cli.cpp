@@ -731,7 +731,6 @@ void general() {
     checker(VM::HWMODEL, "hw.model");
     checker(VM::DISK_SIZE, "disk size");
     checker(VM::VBOX_DEFAULT, "VBox default specs");
-    checker(VM::VBOX_NETWORK, "VBox network provider match");
     checker(VM::PROCESSES, "processes");
     checker(VM::LINUX_USER_HOST, "default Linux user/host");
     checker(VM::GAMARUE, "gamarue ransomware technique");
@@ -797,11 +796,12 @@ void general() {
     checker(VM::NSJAIL_PID, "nsjail PID");
     checker(VM::TPM, "TPM manufacturer");
     checker(VM::PCI_DEVICES, "PCI vendor/device ID");
-    checker(VM::QEMU_PASSTHROUGH, "QEMU passthrough");
+    checker(VM::QEMU_SIGNATURE, "QEMU signature");
     checker(VM::TRAP, "hypervisor interception");
     checker(VM::UD, "undefined exceptions");
     checker(VM::BLOCKSTEP, "single step with trap flag");
     checker(VM::DBVM, "Dark Byte's hypervisor");
+    checker(VM::BOOT_LOGO, "boot logo");
 
     // ADD NEW TECHNIQUE CHECKER HERE
 
