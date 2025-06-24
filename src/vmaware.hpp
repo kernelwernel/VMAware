@@ -50,14 +50,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 552
- * - struct for internal cpu operations        => line 736
- * - struct for internal memoization           => line 1061
- * - struct for internal utility functions     => line 1215
- * - struct for internal core components       => line 8590
- * - start of VM detection technique list      => line 2025
- * - start of public VM detection functions    => line 9105
- * - start of externally defined variables     => line 10037
+ * - enums for publicly accessible techniques  => line 553
+ * - struct for internal cpu operations        => line 737
+ * - struct for internal memoization           => line 1062
+ * - struct for internal utility functions     => line 1216
+ * - struct for internal core components       => line 8595
+ * - start of VM detection technique list      => line 2026
+ * - start of public VM detection functions    => line 9110
+ * - start of externally defined variables     => line 10042
  *
  *
  * ============================== EXAMPLE ===================================
@@ -8509,11 +8509,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
     /**
      * @brief Check boot logo for known VM images
-     * @category Windows
+     * @category Windows, x86_64
      * @author Teselka (https://github.com/Teselka)
      * @implements VM::BOOT_LOGO
      */
     [[nodiscard]] static bool boot_logo() {
+    #if (x86_64)
         const HMODULE ntdll = GetModuleHandle(_T("ntdll.dll"));
         if (!ntdll)
             return false;
@@ -8577,6 +8578,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             case 0x810CF91E: return core::add(brands::VBOX);
             default:         return false;
         }
+    #else
+        return false;
+    #endif
     }
     // ADD NEW TECHNIQUE FUNCTION HERE
 #endif
