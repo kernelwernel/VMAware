@@ -50,14 +50,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 552
- * - struct for internal cpu operations        => line 736
- * - struct for internal memoization           => line 1061
- * - struct for internal utility functions     => line 1215
- * - struct for internal core components       => line 8551
- * - start of VM detection technique list      => line 2025
- * - start of public VM detection functions    => line 9066
- * - start of externally defined variables     => line 9998
+ * - enums for publicly accessible techniques  => line 553
+ * - struct for internal cpu operations        => line 737
+ * - struct for internal memoization           => line 1062
+ * - struct for internal utility functions     => line 1216
+ * - struct for internal core components       => line 8595
+ * - start of VM detection technique list      => line 2026
+ * - start of public VM detection functions    => line 9110
+ * - start of externally defined variables     => line 10042
  *
  *
  * ============================== EXAMPLE ===================================
@@ -8095,46 +8095,74 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     
     
     /**
-     * @brief Check for QEMU's DSDT signature
+     * @brief Check for QEMU's ACPI device signature
      * @category Windows
      * @author Requiem (https://github.com/NotRequiem)
      * @implements VM::QEMU_SIGNATURE
      */
     [[nodiscard]] static bool qemu_signature() {
-        // 1) enumerate all DISPLAY devices present on the system
-        HDEVINFO hDevInfo = SetupDiGetClassDevsW(
-            &GUID_DEVCLASS_DISPLAY,
-            nullptr,
-            nullptr,
-            DIGCF_PRESENT);
-        if (hDevInfo == INVALID_HANDLE_VALUE) {
-            return false;
-        }
+        struct wstring_view {
+            const wchar_t* data;
+            size_t         size;
+            enum : size_t { npos = static_cast<size_t>(-1) };
+
+            wstring_view(const wchar_t* d, size_t n) : data(d), size(n) {}
+
+            bool starts_with(const wchar_t* prefix) const noexcept {
+                const size_t plen = wcslen(prefix);
+                if (size < plen) return false;
+                return wcsncmp(data, prefix, plen) == 0;
+            }
+
+            size_t find(const wchar_t* needle) const noexcept {
+                const wchar_t* p = wcsstr(data, needle);
+                if (!p) return npos;
+                const size_t idx = static_cast<size_t>(p - data);
+                const size_t nlen = wcslen(needle);
+                return (idx + nlen <= size) ? idx : npos;
+            }
+
+            wstring_view substr(size_t pos, size_t count) const {
+                if (pos >= size)
+                    return wstring_view(nullptr, 0);
+
+                const size_t avail = size - pos;
+                const size_t len = (count < avail ? count : avail);
+                return wstring_view(data + pos, len);
+            }
+        };
+
+        // hex-digit test
+        auto is_hex = [](wchar_t c) noexcept {
+            return (c >= L'0' && c <= L'9')
+                || (c >= L'A' && c <= L'F');
+        };
+
+        // enumerate all DISPLAY devices
+        const HDEVINFO hDevInfo = SetupDiGetClassDevsW(
+            &GUID_DEVCLASS_DISPLAY, nullptr, nullptr, DIGCF_PRESENT);
+        if (hDevInfo == INVALID_HANDLE_VALUE) return false;
 
         SP_DEVINFO_DATA devInfo = {};
         devInfo.cbSize = sizeof(devInfo);
         const DEVPROPKEY key = DEVPKEY_Device_LocationPaths;
 
         for (DWORD idx = 0; SetupDiEnumDeviceInfo(hDevInfo, idx, &devInfo); ++idx) {
-            // 2) ask how large a buffer we need
             DEVPROPTYPE propType = 0;
             DWORD requiredSize = 0;
-            SetupDiGetDevicePropertyW(
-                hDevInfo, &devInfo, &key, &propType,
+            // query size
+            SetupDiGetDevicePropertyW(hDevInfo, &devInfo, &key, &propType,
                 nullptr, 0, &requiredSize, 0);
-            if (GetLastError() != ERROR_INSUFFICIENT_BUFFER || requiredSize == 0) {
+            if (GetLastError() != ERROR_INSUFFICIENT_BUFFER || requiredSize == 0)
                 continue;
-            }
 
-            // 3) allocate a buffer and fetch the multi-sz
+            // fetch multi-sz
             std::vector<BYTE> buffer(requiredSize);
-            if (!SetupDiGetDevicePropertyW(
-                hDevInfo, &devInfo, &key, &propType,
-                buffer.data(), requiredSize, &requiredSize, 0)) {
-                continue;
-            }
+            if (!SetupDiGetDevicePropertyW(hDevInfo, &devInfo, &key, &propType,
+                buffer.data(), requiredSize,
+                &requiredSize, 0)) continue;
 
-            // 4) split the REG_MULTI_SZ into individual strings
+            // split paths
             const wchar_t* ptr = reinterpret_cast<const wchar_t*>(buffer.data());
             std::vector<std::wstring> paths;
             while (*ptr) {
@@ -8143,53 +8171,66 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 ptr += (len + 1);
             }
 
-            // 5) search for #ACPI(S<bus>_<slot>) or #ACPI(S<bus><slot>) patterns
+        #ifdef __VMAWARE_DEBUG__
+            for (auto& wstr : paths) {
+                debug("QEMU_SIGNATURE: ", wstr);
+            }
+        #endif
+
             static const wchar_t acpiPrefix[] = L"#ACPI(S";
+            bool foundQemu = false;
 
             for (auto& wstr : paths) {
-                const wchar_t* data = wstr.c_str();
-                size_t       size = wstr.size();
-                size_t pos = 0;
-                while (pos < size) {
-                    // find prefix
-                    const wchar_t* found = wcsstr(data + pos, acpiPrefix);
-                    if (!found) break;
-                    pos = static_cast<size_t>(found - data);
-                    size_t i = pos + wcslen(acpiPrefix); // index after "#ACPI(S"
+                wstring_view vw(wstr.c_str(), wstr.size());
 
-                    // parse bus number
-                    size_t startBus = i;
-                    while (i < size && iswdigit(data[i])) i++;
-                    if (i == startBus) { pos++; continue; }
-                    const int bus = _wtoi(std::wstring(data + startBus, i - startBus).c_str());
-
-                    // require underscore before slot if multi-digit bus
-                    if (i < size && data[i] == L'_') {
-                        i++; // skip '_'
+                // 1) Sxx[_] slots (#ACPI(S<bus><slot>[_]))
+                size_t pos = vw.find(acpiPrefix);
+                while (pos != wstring_view::npos) {
+                    if (pos + 8 < vw.size) {
+                        const wchar_t b = vw.data[pos + 7];
+                        const wchar_t s = vw.data[pos + 8];
+                        if (is_hex(b) && is_hex(s)) {
+                            // optional underscore before ')'
+                            size_t end_pos = pos + 9;
+                            if ((end_pos < vw.size && vw.data[end_pos] == L'_')
+                                || (vw.data[end_pos] == L')')) {
+                                foundQemu = true;
+                                break;
+                            }
+                        }
                     }
-
-                    // parse slot number
-                    size_t startSlot = i;
-                    while (i < size && iswdigit(data[i])) i++;
-                    if (i == startSlot) { pos++; continue; }
-                    const int slot = _wtoi(std::wstring(data + startSlot, i - startSlot).c_str());
-
-                    // expect closing ')'
-                    if (i >= size || data[i] != L')') { pos++; continue; }
-
-                    // too many buses or slots
-                    constexpr int MAX_BUS = 255;
-                    constexpr int MAX_SLOT = 31;
-                    if (bus > MAX_BUS || slot > MAX_SLOT) {
-                        debug("QEMU_SIGNATURE: detected unrealistic ACPI topology: bus=", bus,
-                            " slot=", slot);
-                        SetupDiDestroyDeviceInfoList(hDevInfo);
-                        return core::add(brands::QEMU);
-                    }
-
-                    debug("QEMU_SIGNATURE: found ACPI path: ", std::wstring(data + pos, i - pos + 1));
+                    // search further
+                    const size_t next = pos + 1;
+                    const auto sub = vw.substr(next, vw.size - next);
+                    const size_t rel = sub.find(acpiPrefix);
+                    pos = (rel == wstring_view::npos ? wstring_view::npos : next + rel);
+                }
+                if (foundQemu) {
                     SetupDiDestroyDeviceInfoList(hDevInfo);
                     return core::add(brands::QEMU);
+                }
+
+                // 2) detect any other ACPI(Sxx) segments (hex digits only)
+                const wchar_t paren[] = L"ACPI(";
+                size_t scan = 0;
+                while (true) {
+                    const size_t p = vw.find(paren);
+                    if (p == wstring_view::npos) break;
+                    const size_t start = p + wcslen(paren);
+                    const size_t end = vw.find(L")");
+                    if (end != wstring_view::npos && end > start + 1) {
+                        // ensure S + two hex digits
+                        const wchar_t c0 = vw.data[start];
+                        const wchar_t c1 = vw.data[start + 1];
+                        const wchar_t c2 = vw.data[start + 2];
+                        if (c0 == L'S' && is_hex(c1) && is_hex(c2)) {
+                            SetupDiDestroyDeviceInfoList(hDevInfo);
+                            return core::add(brands::QEMU);
+                        }
+                    }
+                    // continue after this pos
+                    scan = p + 1;
+                    vw = vw.substr(scan, vw.size - scan);
                 }
             }
         }
@@ -8218,7 +8259,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             0x81, 0x04, 0x24,             // OR DWORD PTR [RSP], 0x10100
             0x00, 0x01, 0x01, 0x00,
             0x9D,                         // popfq
-            0x0F, 0xA2,                   // cpuid (or any other trappable instruction)
+            0x0F, 0xA2,                   // cpuid (or any other trappable instruction, but this one is ok since it has to be trapped in every x86 hv)
             0x90, 0x90, 0x90,             // NOPs to pad to breakpoint offset
             0xC3                          // ret
         };
@@ -8467,77 +8508,79 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check boot logo for known images
-     * @category Windows
+     * @brief Check boot logo for known VM images
+     * @category Windows, x86_64
      * @author Teselka (https://github.com/Teselka)
      * @implements VM::BOOT_LOGO
      */
     [[nodiscard]] static bool boot_logo() {
-        typedef NTSTATUS(__stdcall* NtQuerySystemInformation_t)(SYSTEM_INFORMATION_CLASS,PVOID,ULONG,PULONG);
-
+    #if (x86_64)
         const HMODULE ntdll = GetModuleHandle(_T("ntdll.dll"));
-        if (!ntdll) return false;
+        if (!ntdll)
+            return false;
 
         const char* function_names[] = { "NtQuerySystemInformation" };
         void* functions[1] = { nullptr };
-
         util::GetFunctionAddresses(ntdll, function_names, functions, 1);
 
-        NtQuerySystemInformation_t pNtQuerySystemInformation = reinterpret_cast<NtQuerySystemInformation_t>(functions[0]);
-        if (pNtQuerySystemInformation) {
-            const SYSTEM_INFORMATION_CLASS SystemBootLogoInformation = (SYSTEM_INFORMATION_CLASS)140;
+        using NtQuerySysInfo_t = NTSTATUS(__stdcall*)(
+            SYSTEM_INFORMATION_CLASS, PVOID, ULONG, PULONG
+        );
+        NtQuerySysInfo_t pNtQuery = reinterpret_cast<NtQuerySysInfo_t>(functions[0]);
+        if (!pNtQuery)
+            return false;
 
-            ULONG size;
-            NTSTATUS status =  pNtQuerySystemInformation(SystemBootLogoInformation, 0, 0, &size);
-            if (status != 0xC0000023 && status != 0x80000005 && status != 0xC0000004)
-            {
-                debug("BOOT_LOGO: first status = ", status);
-                return false;
-            }
+        // determine required buffer size
+        const SYSTEM_INFORMATION_CLASS SysBootInfo = static_cast<SYSTEM_INFORMATION_CLASS>(140);
+        ULONG needed = 0;
+        NTSTATUS st = pNtQuery(SysBootInfo, nullptr, 0, &needed);
+        if (st != 0xC0000023 && st != 0x80000005 && st != 0xC0000004) return false;
 
-            void* buf = malloc(size);
-            if (!buf) 
-                return false;
+        static std::vector<u8> buffer;
+        if (buffer.size() < needed)
+            buffer.resize(needed);
 
-            status = pNtQuerySystemInformation(SystemBootLogoInformation, buf, size, &size);
-            if (status)
-            {
-                debug("BOOT_LOGO: second status = ", status);
-                return false;
-            }
+        // fetch the boot-logo data
+        st = pNtQuery(SysBootInfo, buffer.data(), needed, &needed);
+        if (!NT_SUCCESS(st))
+            return false;
 
-            typedef struct {
-                ULONG Flags;
-                ULONG BitmapOffset;
-            } SYSTEM_BOOT_LOGO_INFORMATION;
+        // parse header to locate the bitmap
+        struct BootLogoInfo { ULONG Flags, BitmapOffset; };
+        const auto* info = reinterpret_cast<BootLogoInfo*>(buffer.data());
+        const u8* bmp = buffer.data() + info->BitmapOffset;
+        const size_t size = static_cast<size_t>(needed) - info->BitmapOffset;
 
-            SYSTEM_BOOT_LOGO_INFORMATION& info = *(SYSTEM_BOOT_LOGO_INFORMATION*)buf;
-
-            const char* bmp = (char*)buf + info.BitmapOffset;
-            const size_t bmp_size = static_cast<size_t>(size) - info.BitmapOffset;
-
-            unsigned int hash = 0;
-            for (ULONG i = 0; i < bmp_size; bmp++, i++)
-            {
-                hash *= 0x811C9DC5;
-                hash ^= (*bmp);
-            }
-
-            debug("BOOT_LOGO: size = ", size, ", flags = ", info.Flags, ", bitmap offset = ", info.BitmapOffset, ", hash = 0x", std::hex, hash);
-            free(buf);
-
-            switch (hash) {
-                case 0x704783C5: return core::add(brands::QEMU); // TianoCore EDK2                   
-                case 0x02A3A4D7: return core::add(brands::HYPERV);
-                case 0x098903BD: return core::add(brands::VBOX);
-                // case 0x6B6E00C0: known_name = "Windows 10"; break; // Present in VMWare
-                // case 0x8EEF5132: known_name = "ASROCK"; break;
-                // case 0x1B7F6713: known_name = "AORUS"; break;
-                default: return false;
-            }
+        // hardware‐accelerated CRC in 8-byte chunks
+        u64 crcReg = 0xFFFFFFFFull;
+        const size_t qwords = size >> 3;
+        const auto* ptr = reinterpret_cast<const u64*>(bmp);
+        for (size_t i = 0; i < qwords; ++i) {
+            crcReg = _mm_crc32_u64(crcReg, ptr[i]);
         }
 
+        u32 crc = static_cast<u32>(crcReg);
+        // tail
+        const auto* tail = reinterpret_cast<const u8*>(ptr + qwords);
+        for (size_t i = 0, r = size & 7; i < r; ++i) {
+            crc = _mm_crc32_u8(crc, tail[i]);
+        }
+        crc ^= 0xFFFFFFFFu;
+
+        debug("BOOT_LOGO: size=", needed,
+            ", flags=", info->Flags,
+            ", offset=", info->BitmapOffset,
+            ", crc=0x", std::hex, crc);
+
+        switch (crc) {
+            case 0xE96292C7: return core::add(brands::QEMU); // TianoCore EDK2
+            case 0x10AA078:  return core::add(brands::HYPERV);
+            case 0x810CF91E: return core::add(brands::VBOX);
+            default:         return false;
+        }
+    #else
         return false;
+    #endif
     }
     // ADD NEW TECHNIQUE FUNCTION HERE
 #endif
