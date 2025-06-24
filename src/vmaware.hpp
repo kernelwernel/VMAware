@@ -20,6 +20,7 @@
  *      - Jyd (https://github.com/jyd519)
  *      - dmfrpro (https://github.com/dmfrpro)
  *      - Pierre-Étienne Messier (https://github.com/pemessier)
+ *      - Teselka (https://github.com/Teselka)
  *  - Repository: https://github.com/kernelwernel/VMAware
  *  - Docs: https://github.com/kernelwernel/VMAware/docs/documentation.md
  *  - Full credits: https://github.com/kernelwernel/VMAware#credits-and-contributors-%EF%B8%8F
