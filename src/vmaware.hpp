@@ -5824,31 +5824,40 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
         }
 
-            // 4) SMBIOS (RSMB) / FIRM tables
-            const DWORD smbios[] = { FIRM_SIG, RSMB_SIG };
-            for (DWORD provider : smbios) {
-                const UINT enumSMB = EnumSystemFirmwareTables(provider, nullptr, 0);
-                if (enumSMB == 0) continue;
-                if (enumSMB % sizeof(DWORD) != 0) continue;
+        // 4) SMBIOS (RSMB) / FIRM tables
+        constexpr DWORD smbProviders[] = { 'FIRM', 'RSMB' };
 
-                std::vector<BYTE> ids(enumSMB);
-                if (EnumSystemFirmwareTables(provider, ids.data(), enumSMB) != enumSMB)
-                    continue;
+        for (DWORD prov : smbProviders) {
+            UINT e = EnumSystemFirmwareTables(prov, nullptr, 0);
 
-                const DWORD cntOther = enumSMB / sizeof(DWORD);
-                for (DWORD i = 0; i < cntOther; ++i) {
-                    DWORD tblID;
-                    memcpy(&tblID, ids.data() + i * sizeof(DWORD), sizeof(tblID));
-                    BYTE* buf = nullptr; size_t len = 0;
-                    if (fetch(provider, tblID, buf, len)) {
-                        if (scan_table(buf, len)) {
-                            free(buf);
-                            return true;
-                        }
-                        free(buf);
-                    }
+            if (!e) continue;
+
+            std::vector<BYTE> bufIDs(e);
+
+            if (EnumSystemFirmwareTables(prov, bufIDs.data(), e) != e) continue;
+
+            DWORD cnt = e / sizeof(DWORD);
+            auto otherIDs = reinterpret_cast<DWORD*>(bufIDs.data());
+            char provStr[5] = { 0 }; memcpy(provStr, &prov, 4);
+
+            for (DWORD i = 0; i < cnt; ++i) {
+                DWORD tblID = otherIDs[i];
+                UINT sz = GetSystemFirmwareTable(prov, tblID, nullptr, 0);Add commentMore actions
+                if (!sz) continue;
+                BYTE* buf = (BYTE*)malloc(sz);
+                if (!buf) continue;
+                if (GetSystemFirmwareTable(prov, tblID, buf, sz) != sz) {
+                    free(buf); continue;
                 }
+
+                if (scan_table(buf, sz)) {
+                    free(buf);
+                    return true;
+                }
+
+                free(buf);
             }
+        }
 
         return false;
     #elif (LINUX)
