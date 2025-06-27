@@ -2022,6 +2022,60 @@ private:
                 }
             }
         }
+
+        static u32 get_tpm_manufacturer() {
+            struct TbsContext {
+                TBS_HCONTEXT hContext = 0;
+                explicit TbsContext(const TBS_CONTEXT_PARAMS2& params) {
+                    Tbsi_Context_Create(reinterpret_cast<PCTBS_CONTEXT_PARAMS>(&params), &hContext);
+                }
+                ~TbsContext() {
+                    if (hContext) {
+                        Tbsip_Context_Close(hContext);
+                    }
+                }
+                bool isValid() const { return hContext != 0; }
+            };
+        
+            TBS_CONTEXT_PARAMS2 params{};
+            params.version = TBS_CONTEXT_VERSION_TWO;
+            params.includeTpm20 = 1;
+            params.includeTpm12 = 1;
+        
+            TbsContext ctx(params);
+            if (!ctx.isValid()) {
+                return 0;
+            }
+        
+            // TPM2_GetCapability command for TPM_PT_MANUFACTURER
+            static constexpr u8 cmd[] = {
+                0x80,0x01,             // Tag: TPM_ST_NO_SESSIONS
+                0x00,0x00,0x00,0x16,    // Command Size: 22
+                0x00,0x00,0x01,0x7A,    // TPM2_GetCapability
+                0x00,0x00,0x00,0x06,    // TPM_CAP_TPM_PROPERTIES
+                0x00,0x00,0x01,0x05,    // TPM_PT_MANUFACTURER
+                0x00,0x00,0x00,0x01     // Property Count: 1
+            };
+        
+            u8 resp[64] = {};
+            u32 respSize = sizeof(resp);
+            if (Tbsip_Submit_Command(ctx.hContext,
+                TBS_COMMAND_LOCALITY_ZERO,
+                TBS_COMMAND_PRIORITY_NORMAL,
+                cmd,
+                static_cast<u32>(sizeof(cmd)),
+                resp,
+                &respSize) != TBS_SUCCESS || respSize < 27) {
+                return 0;
+            }
+        
+            return (
+                (static_cast<u32>(resp[23]) << 24) |
+                (static_cast<u32>(resp[24]) << 16) |
+                (static_cast<u32>(resp[25]) << 8) |
+                static_cast<u32>(resp[26])
+            );
+        }  
 #endif
     };
 
@@ -5812,39 +5866,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }              
             }
 
-            // 4) DSDT + _OSI check
-            const UINT dsdtSz = GetSystemFirmwareTable(ACPI_SIG, __bswap32(dsdtSig), nullptr, 0);
-            if (dsdtSz == 0 || dsdtSz > MAX_FW_TABLE)
-                return false;
-
-            BYTE* dsdt = (BYTE*)malloc(dsdtSz);
-            if (!dsdt)
-                return false;
-
-            if (GetSystemFirmwareTable(ACPI_SIG, __bswap32(dsdtSig), dsdt, dsdtSz) != dsdtSz) {
-                free(dsdt);
-                return false;
-            }
-
-            static const char* osi[] = {
-                "Windows 2001", "Windows 2006", "Windows 2009", "Windows 2012", "Windows 2013", "Windows 2015"
-            };
-            bool foundOSI = false;
-            for (auto& s : osi) {
-                size_t L = strlen(s);
-                if (std::search(dsdt, dsdt + dsdtSz, s, s + L) != dsdt + dsdtSz) {
-                    foundOSI = true;
-                    break;
-                }
-            }
-
-            free(dsdt);
-            if (!foundOSI) {
-                debug("FIRMWARE: No _OSI params found");
-                return true;
-            }
-
-            // 5) SMBIOS (RSMB) / FIRM tables
+            // 4) SMBIOS (RSMB) / FIRM tables
             const DWORD smbios[] = { FIRM_SIG, RSMB_SIG };
             for (DWORD provider : smbios) {
                 const UINT enumSMB = EnumSystemFirmwareTables(provider, nullptr, 0);
@@ -8068,55 +8090,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::TPM
      */
     [[nodiscard]] static bool tpm() {
-        struct TbsContext {
-            TBS_HCONTEXT hContext = 0;
-            explicit TbsContext(const TBS_CONTEXT_PARAMS2& params) {
-                Tbsi_Context_Create(reinterpret_cast<PCTBS_CONTEXT_PARAMS>(&params), &hContext);
-            }
-            ~TbsContext() {
-                if (hContext) {
-                    Tbsip_Context_Close(hContext);
-                }
-            }
-            bool isValid() const { return hContext != 0; }
-        };
-    
-        TBS_CONTEXT_PARAMS2 params{};
-        params.version = TBS_CONTEXT_VERSION_TWO;
-        params.includeTpm20 = 1;
-        params.includeTpm12 = 1;
-    
-        TbsContext ctx(params);
-        if (!ctx.isValid()) {
+        const u32 tpm = util::get_tpm_manufacturer();
+
+        if (tpm == 0) {
             return false;
         }
-    
-        // TPM2_GetCapability command for TPM_PT_MANUFACTURER
-        static constexpr u8 cmd[] = {
-            0x80,0x01,             // Tag: TPM_ST_NO_SESSIONS
-            0x00,0x00,0x00,0x16,    // Command Size: 22
-            0x00,0x00,0x01,0x7A,    // TPM2_GetCapability
-            0x00,0x00,0x00,0x06,    // TPM_CAP_TPM_PROPERTIES
-            0x00,0x00,0x01,0x05,    // TPM_PT_MANUFACTURER
-            0x00,0x00,0x00,0x01     // Property Count: 1
-        };
-    
-        u8 resp[64] = {};
-        u32 respSize = sizeof(resp);
-        if (Tbsip_Submit_Command(ctx.hContext,
-            TBS_COMMAND_LOCALITY_ZERO,
-            TBS_COMMAND_PRIORITY_NORMAL,
-            cmd,
-            static_cast<u32>(sizeof(cmd)),
-            resp,
-            &respSize) != TBS_SUCCESS || respSize < 27) {
-            return false;
-        }
-    
-        const u32 manufacturerVal = (static_cast<u32>(resp[23]) << 24) |
-            (static_cast<u32>(resp[24]) << 16) |
-            (static_cast<u32>(resp[25]) << 8) |
-            static_cast<u32>(resp[26]);
 
         debug("TPM: Manufacturer -> 0x", std::hex, manufacturerVal);
     
@@ -8135,6 +8113,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             case 0x54584E00u: // "TXN\0"
             case 0x524F4343u: // "ROCC"
             case 0x4C454E00u: // "LEN\0"
+            case 0x4d534654u: // "MSFT" (ARM specific)
                 return false;
             default:
                 return true;
