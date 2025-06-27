@@ -54,10 +54,10 @@
  * - struct for internal cpu operations        => line 737
  * - struct for internal memoization           => line 1062
  * - struct for internal utility functions     => line 1216
- * - struct for internal core components       => line 8595
+ * - struct for internal core components       => line 8603
  * - start of VM detection technique list      => line 2026
- * - start of public VM detection functions    => line 9110
- * - start of externally defined variables     => line 10042
+ * - start of public VM detection functions    => line 9118
+ * - start of externally defined variables     => line 10050
  *
  *
  * ============================== EXAMPLE ===================================
@@ -5610,6 +5610,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         constexpr DWORD ACPI_SIG = 'ACPI';
         constexpr DWORD dsdtSig = 'TDSD';
+        constexpr DWORD HPET_SIG = 'TEPH';
 
         // "WAET" is also present as a string inside the WAET table, so there's no need to check for its table signature
         constexpr std::array<const char*, 24> targets = { {
@@ -5720,10 +5721,19 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         const DWORD count = enumSize / sizeof(DWORD);
         std::vector<DWORD> tables(count);
+        bool found_hpet = false;
         for (DWORD i = 0; i < count; ++i) {
             DWORD entry;
             memcpy(&entry, tableIDs.data() + i * sizeof(DWORD), sizeof(entry));
             tables[i] = entry;
+            if (tables[i] == HPET_SIG) {
+                found_hpet = true;
+            }
+        }
+
+        if (!found_hpet) {
+            debug("FIRMWARE: HPET table not found");
+            return true; // baremetal systems should have HPET table
         }
 
         // 2) ACPI table count check
@@ -8512,7 +8522,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::BOOT_LOGO
      */
     [[nodiscard]] static bool boot_logo() {
-    #if (x86_64)
+    #if (x86_64 && !CLANG)
         const HMODULE ntdll = GetModuleHandle(_T("ntdll.dll"));
         if (!ntdll)
             return false;
