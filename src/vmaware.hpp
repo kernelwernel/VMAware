@@ -5842,7 +5842,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             for (DWORD i = 0; i < cnt; ++i) {
                 DWORD tblID = otherIDs[i];
-                UINT sz = GetSystemFirmwareTable(prov, tblID, nullptr, 0);Add commentMore actions
+                UINT sz = GetSystemFirmwareTable(prov, tblID, nullptr, 0);
                 if (!sz) continue;
                 BYTE* buf = (BYTE*)malloc(sz);
                 if (!buf) continue;
