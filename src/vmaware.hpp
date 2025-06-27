@@ -54,10 +54,10 @@
  * - struct for internal cpu operations        => line 737
  * - struct for internal memoization           => line 1062
  * - struct for internal utility functions     => line 1216
- * - struct for internal core components       => line 8659
+ * - struct for internal core components       => line 8603
  * - start of VM detection technique list      => line 2026
- * - start of public VM detection functions    => line 9174
- * - start of externally defined variables     => line 10107
+ * - start of public VM detection functions    => line 9118
+ * - start of externally defined variables     => line 10050
  *
  *
  * ============================== EXAMPLE ===================================
@@ -535,7 +535,6 @@ namespace brands {
     static constexpr const char* NOIRVISOR = "NoirVisor";
     static constexpr const char* QIHOO = "Qihoo 360 Sandbox";
     static constexpr const char* NSJAIL = "nsjail";
-    static constexpr const char* HYPERVISOR_PHANTOM = "Hypervisor-Phantom";
     static constexpr const char* DBVM = "DBVM";
 }
 
@@ -4310,7 +4309,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const double tscMHz = tscHz / 1e6;
 
         debug("TIMER: CPU base speed -> ", tscMHz, " MHz");
-        if (tscMHz < 1000) return true;
+        if (tscMHz < 1100) return true;
 
         // Case C - Hypervisor with RDTSC patch + useplatformclock=false
         unsigned aux = 0;
@@ -4318,7 +4317,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         #if (WINDOWS && x86_64)
             const bool haveRdtscp = [&]() noexcept -> bool {
                 __try {
-                    __rdtscp(&aux); // checks for RDTSCP support as we will use it later
+                    __rdtscp(&aux); // check for RDTSCP support as we will use it later
                     return true;
                 }
                 __except (EXCEPTION_EXECUTE_HANDLER) {
@@ -5627,6 +5626,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return (hostname == str2);
         };
 
+        if (cmp("Cuckoo")) {
+            return core::add(brands::CUCKOO);
+        }
+
         if (
             cmp("Sandbox") ||
             cmp("Maltest") ||
@@ -5635,10 +5638,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             cmp("ClonePC")
         ) {
             return true;
-        }
-
-        if (cmp("Cuckoo")) {
-            return core::add(brands::CUCKOO);
         }
 
         return false;
@@ -5655,216 +5654,175 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     [[nodiscard]] static bool firmware() {
     #if (WINDOWS)
         #pragma pack(push, 1)
-        typedef struct {
-            char Signature[4];            
-            u32 Length;         
-            u8 Revision;            
-            // others not needed
-        } ACPI_HEADER;
+                typedef struct {
+                    char Signature[4];
+                    u32 Length;
+                    u8 Revision;
+                    // others not needed
+                } ACPI_HEADER;
         #pragma pack(pop)
 
-        #if defined(_MSC_VER)
-            #define __bswap32(x) _byteswap_ulong(x)
-        #else
-            #define __bswap32(x) __builtin_bswap32(x)
-        #endif
+        constexpr DWORD ACPI_SIG = 'ACPI';
+        constexpr DWORD dsdtSig = 'TDSD';
+        constexpr DWORD HPET_SIG = 'TEPH';
 
-        #if defined(_MSC_VER)
-            #define __prefetch(addr) _mm_prefetch((const char*)(addr), _MM_HINT_T0)
-        #else
-            #define __prefetch(addr) __builtin_prefetch(addr)
-        #endif
+        // "WAET" is also present as a string inside the WAET table, so there's no need to check for its table signature
+        constexpr std::array<const char*, 24> targets = { {
+            "Parallels Software", "Parallels(R)",
+            "innotek",            "Oracle",   "VirtualBox", "vbox", "VBOX",
+            "VMware, Inc.",       "VMware",   "VMWARE",     "VMW0003",
+            "QEMU",               "pc-q35",   "Q35 +",      "FWCF",     "BOCHS", "BXPC",
+            "ovmf",               "edk ii unknown", "WAET", "S3 Corp.", "Virtual Machine", "VS2005R2",
+            "Xen"
+        } };
 
-            constexpr DWORD ACPI_SIG = 'ACPI';
-            constexpr DWORD ssdtSig = 'TDSS';
-            constexpr DWORD dsdtSig = 'DSDT';
-            constexpr DWORD FIRM_SIG = 'FIRM';
-            constexpr DWORD RSMB_SIG = 'RSMB';
+        constexpr std::array<const char*, 24> brands_map = { {
+            brands::PARALLELS, brands::PARALLELS,
+            brands::VBOX,      brands::VBOX,      brands::VBOX,     brands::VBOX,     brands::VBOX,
+            brands::VMWARE,    brands::VMWARE,    brands::VMWARE,   brands::VMWARE,
+            brands::QEMU,      brands::QEMU,      brands::QEMU,     brands::QEMU,     brands::BOCHS,    brands::BOCHS,
+            nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+            brands::XEN // this last one is just a marker, not really used
+        } };
 
-            // "WAET" string is also present inside the WAET table, so there's no need to check for its table signature
-            constexpr std::array<const char*, 24> targets = { {
-                "Parallels Software", "Parallels(R)",
-                "innotek",            "Oracle",   "VirtualBox", "vbox", "VBOX",
-                "VMware, Inc.",       "VMware",   "VMWARE",     "VMW0003",
-                "QEMU",               "pc-q35",   "Q35 +",      "FWCF",     "BOCHS", "BXPC", 
-                "ovmf",               "edk ii unknown", "WAET", "S3 Corp.", "Virtual Machine", "VS2005R2",
-                "Xen"
-            } };
+        static_assert(targets.size() == brands_map.size(), "targets and brands_map must be the same length");
 
-            constexpr std::array<const char*, 24> brands_map = { {
-                brands::PARALLELS, brands::PARALLELS,
-                brands::VBOX,      brands::VBOX,      brands::VBOX,     brands::VBOX,     brands::VBOX,
-                brands::VMWARE,    brands::VMWARE,    brands::VMWARE,   brands::VMWARE,
-                brands::QEMU,      brands::QEMU,      brands::QEMU,     brands::QEMU,     brands::BOCHS,    brands::BOCHS,
-                nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-                brands::XEN
-            } };
+        auto scan_table = [&](const BYTE* buf, size_t len) noexcept -> bool {
+            // helper to search a byte‐sequence
+            auto contains = [&](const char* pat, size_t patlen) {
+                return std::search(buf, buf + len, pat, pat + patlen) != (buf + len);
+            };
 
-            static_assert(targets.size() == brands_map.size(),
-                "targets and brands_map must be the same length");
+            // 1) sanity check: need at least up to Revision
+            constexpr size_t hdr_min_size = offsetof(ACPI_HEADER, Revision) + sizeof(u8);
+            if (len < hdr_min_size)
+                return false;
 
-            auto scan_table = [&](const BYTE* buf, size_t len) noexcept -> bool {
-                // helper to search a byte‐sequence
-                auto contains = [&](const char* pat, size_t patlen) {
-                    return std::search(buf, buf + len, pat, pat + patlen) != (buf + len);
-                };
+            ACPI_HEADER hdr;
+            memcpy(&hdr, buf, sizeof(hdr));
 
-                // 0) sanity check: need at least up to Revision
-                constexpr size_t hdr_min_size = offsetof(ACPI_HEADER, Revision) + sizeof(u8);
-                if (len < hdr_min_size)
-                    return false;
-
-                ACPI_HEADER hdr;
-                memcpy(&hdr, buf, sizeof(hdr));
-
-                // 1) SSDT‐specific checks
-                if (memcmp(hdr.Signature, "SSDT", 4) == 0) {
-                    if (hdr.Revision <= 1) {
-                        debug("FIRMWARE: SSDT revision indicates VM (rev ", int(hdr.Revision), ")");
-                        return true;
-                    }
-                    if (contains("PWRB", 4) && contains("SLPB", 4) && contains("ACAD", 4)) {
-                        debug("FIRMWARE: VM-specific power/adapter objects detected");
-                        return true;
-                    }
-                }
-
-                // 2) spoofed AMD manufacturer
-                constexpr char man_short[] = "Advanced Micro Devices";
-                constexpr char man_full[] = "Advanced Micro Devices, Inc.";
-                const size_t short_len = sizeof(man_short) - 1;
-                const size_t full_len = sizeof(man_full) - 1;
-
-                bool has_short = contains(man_short, short_len);
-                bool has_full = contains(man_full, full_len);
-                if (has_short && !has_full) {
-                    debug("FIRMWARE: Spoofed AMD manufacturer string detected");
+            // 2) SSDT‐specific checks
+            if (memcmp(hdr.Signature, "SSDT", 4) == 0) {
+                if (hdr.Revision <= 1) {
+                    debug("FIRMWARE: SSDT revision indicates VM (rev ", int(hdr.Revision), ")");
                     return true;
                 }
+            }
 
-                // 3) VM‐specific firmware signatures
-                for (size_t ti = 0; ti < targets.size(); ++ti) {
-                    const char* pat = targets[ti];
-                    const size_t plen = strlen(pat);
-                    if (plen > len) continue;
+            // 3) spoofed AMD manufacturer
+            constexpr char man_short[] = "Advanced Micro Devices";
+            constexpr char man_full[] = "Advanced Micro Devices, Inc.";
+            const size_t short_len = sizeof(man_short) - 1;
+            const size_t full_len = sizeof(man_full) - 1;
 
-                    for (size_t i = 0; i + plen <= len; ++i) {
-                        if (buf[i] == static_cast<unsigned char>(pat[0]) &&
-                            memcmp(buf + i, pat, plen) == 0)
-                        {
-                            debug("FIRMWARE: Detected ", pat);
+            bool has_short = contains(man_short, short_len);
+            bool has_full = contains(man_full, full_len);
+            if (has_short && !has_full) {
+                debug("FIRMWARE: Spoofed AMD manufacturer string detected");
+                return true;
+            }
 
-                            const char* brand = brands_map[ti];
+            // 4) VM-specific firmware signatures
+            for (size_t ti = 0; ti < targets.size(); ++ti) {
+                const char* pat = targets[ti];
+                const size_t plen = strlen(pat);
+                if (plen > len) continue;
 
-                            // special handling for Xen: must not be PXEN
-                            if (strcmp(pat, "Xen") == 0) {
-                                constexpr char pxen[] = "PXEN";
-                                constexpr size_t pxen_len = sizeof(pxen) - 1;
-                                bool has_pxen = std::search(buf, buf + len, pxen, pxen + pxen_len) != (buf + len);
-                                if (!has_pxen) {
-                                    return (brand ? core::add(brands::XEN) : true);
-                                }
-                                else {
-                                    continue;
-                                }
-                            }
-
-                            return (brand ? core::add(brand) : true);
+                for (size_t i = 0; i + plen <= len; ++i) {
+                    if (buf[i] == static_cast<unsigned char>(pat[0]) &&
+                        memcmp(buf + i, pat, plen) == 0)
+                    {
+                        // special handling for Xen: must not be PXEN
+                        if (strcmp(pat, "Xen") == 0) {
+                            constexpr char pxen[] = "PXEN";
+                            constexpr size_t pxen_len = sizeof(pxen) - 1;
+                            const bool has_pxen = contains(pxen, pxen_len);
+                            if (!has_pxen)
+                                return core::add(brands::XEN);
+                            else
+                                continue;
                         }
+
+                        debug("FIRMWARE: Detected ", pat);
+                        const char* brand = brands_map[ti];
+                        return (brand ? core::add(brand) : true);
                     }
                 }
+            }
 
-                // 4) known patches used by popular hardeners 
-                constexpr char marker[] = "777777";
-                constexpr size_t mlen = sizeof(marker) - 1;
-                if (len >= mlen) {
-                    for (size_t i = 0; i + mlen <= len; ++i) {
-                        if (memcmp(buf + i, marker, mlen) == 0) {
-                            debug("FIRMWARE: Detected VMWareHardenerLoader");
-                            return core::add(brands::VMWARE_HARD);
-                        }
+            // 5) known patches used by popular hardeners 
+            constexpr char marker[] = "777777";
+            constexpr size_t mlen = sizeof(marker) - 1;
+            if (len >= mlen) {
+                for (size_t i = 0; i + mlen <= len; ++i) {
+                    if (memcmp(buf + i, marker, mlen) == 0) {
+                        return core::add(brands::VMWARE_HARD);
                     }
                 }
+            }
 
-                // 5) KVM ACPI Device() signature: 5B 82 40 09 53 XX XX
-                if (len >= 7) {
-                    for (size_t i = 0; i + 7 <= len; ++i) {
-                        //   5B 82 40 09 53 == Device(  S
-                        //    0x28 = ‘(’, 0x53 = ‘S’
-                        //    then two ASCII digits, then ‘)’
-                        if (buf[i] == 0x5B && buf[i + 1] == 0x82 && buf[i + 2] == 0x40 &&
-                            buf[i + 3] == 0x09 && buf[i + 4] == 0x53 &&
-                            buf[i + 5] == 0x28 &&                            // '('
-                            buf[i + 6] == 'S' &&
-                            buf[i + 7] >= '0' && buf[i + 7] <= '9' &&
-                            buf[i + 8] >= '0' && buf[i + 8] <= '9' &&
-                            buf[i + 9] == 0x29)                              // ')'
-                        {
-                            debug("FIRMWARE: KVM ACPI Device(S##) pattern matched at offset ", i);
-                            return core::add(brands::KVM);
-                        }
-                    }
-                }
+            return false;
+        };
 
+        // 1) enumerate ACPI tables
+        const DWORD enumSize = EnumSystemFirmwareTables(ACPI_SIG, nullptr, 0);
+        if (enumSize == 0) return false;
+        if (enumSize % sizeof(DWORD) != 0) return false;
+
+        std::vector<BYTE> tableIDs(enumSize);
+        if (EnumSystemFirmwareTables(ACPI_SIG, tableIDs.data(), enumSize) != enumSize)
+            return false;
+
+        const DWORD count = enumSize / sizeof(DWORD);
+        std::vector<DWORD> tables(count);
+        bool found_hpet = false;
+        for (DWORD i = 0; i < count; ++i) {
+            DWORD entry;
+            memcpy(&entry, tableIDs.data() + i * sizeof(DWORD), sizeof(entry));
+            tables[i] = entry;
+            if (tables[i] == HPET_SIG) {
+                found_hpet = true;
+            }
+        }
+
+        if (!found_hpet) {
+            debug("FIRMWARE: HPET table not found");
+            return true; // baremetal systems should have HPET table
+        }
+
+        // 2) ACPI table count check
+        if (count < 4) {
+            debug("FIRMWARE: Not enough ACPI tables for a real system");
+            return true;
+        }
+
+        // helper to fetch one table into a malloc'd buffer
+        constexpr size_t MAX_FW_TABLE = static_cast<size_t>(16 * 1024) * 1024;
+        auto fetch = [&](DWORD provider, DWORD tableID, BYTE*& outBuf, size_t& outLen) -> bool {
+            UINT sz = GetSystemFirmwareTable(provider, tableID, nullptr, 0);
+            if (sz == 0 || sz > MAX_FW_TABLE) return false;
+            outBuf = (BYTE*)malloc(sz);
+            if (!outBuf) return false;
+            if (GetSystemFirmwareTable(provider, tableID, outBuf, sz) != sz) {
+                free(outBuf);
                 return false;
-            };
-
-            // 1) enumerate ACPI tables
-            const DWORD enumSize = EnumSystemFirmwareTables(ACPI_SIG, nullptr, 0);
-            if (enumSize == 0) return false;
-            if (enumSize % sizeof(DWORD) != 0) return false;
-
-            std::vector<BYTE> tableIDs(enumSize);
-            if (EnumSystemFirmwareTables(ACPI_SIG, tableIDs.data(), enumSize) != enumSize)
-                return false;
-
-            const DWORD count = enumSize / sizeof(DWORD);
-            std::vector<DWORD> tables(count);
-            for (DWORD i = 0; i < count; ++i) {
-                DWORD entry;
-                memcpy(&entry, tableIDs.data() + i * sizeof(DWORD), sizeof(entry));
-                tables[i] = entry;
             }
+            outLen = sz;
+            return true;
+        };
 
-            // 2) ACPI table count check
-            if (count < 4) {
-                debug("FIRMWARE: Not enough ACPI tables for a real system");
-                return true;
-            }
-            int ssdt_ct = 0;
-            for (auto tbl : tables) if (tbl == ssdtSig && ++ssdt_ct >= 2) break;
-            if (ssdt_ct < 2) {
-                debug("FIRMWARE: Not enough SSDT tables for a real system");
-                return true;
-            }
+        // 3) scan each ACPI table
+        for (auto tbl : tables) {
+            BYTE* buf = nullptr; size_t len = 0;
+            if (fetch(ACPI_SIG, tbl, buf, len)) {
 
-            // helper to fetch one table into a malloc'd buffer
-            constexpr size_t MAX_FW_TABLE = static_cast<size_t>(16 * 1024) * 1024;
-            auto fetch = [&](DWORD provider, DWORD tableID, BYTE*& outBuf, size_t& outLen) -> bool {
-                UINT sz = GetSystemFirmwareTable(provider, __bswap32(tableID), nullptr, 0);
-                if (sz == 0 || sz > MAX_FW_TABLE) return false;
-                outBuf = (BYTE*)malloc(sz);
-                if (!outBuf) return false;
-                if (GetSystemFirmwareTable(provider, __bswap32(tableID), outBuf, sz) != sz) {
-                    free(outBuf);
-                    return false;
-                }
-                outLen = sz;
-                __prefetch(outBuf);
-                return true;
-            };
-
-            // 3) scan each ACPI table
-            for (auto tbl : tables) {                
-                BYTE* buf = nullptr; size_t len = 0;
-                if (fetch(ACPI_SIG, tbl, buf, len)) {
-                    if (scan_table(buf, len)) {
-                        free(buf);
-                        return true;
-                    }
+                if (scan_table(buf, len)) {
                     free(buf);
-                }              
+                    return true;
+                }
+                free(buf);
             }
+        }
 
             // 4) SMBIOS (RSMB) / FIRM tables
             const DWORD smbios[] = { FIRM_SIG, RSMB_SIG };
@@ -5892,117 +5850,117 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
             }
 
+        return false;
+    #elif (LINUX)
+        // Author: dmfrpro
+        DIR* dir = opendir("/sys/firmware/acpi/tables/");
+        if (!dir) {
+            debug("FIRMWARE: could not open ACPI tables directory");
             return false;
-        #elif (LINUX)
-            // Author: dmfrpro
-            DIR* dir = opendir("/sys/firmware/acpi/tables/");
-            if (!dir) {
-                debug("FIRMWARE: could not open ACPI tables directory");
-                return false;
+        }
+
+        // Same as Windows but without WAET (Windows ACPI Emulated Devices Table)
+        constexpr const char* targets[] = {
+            "Parallels Software", "Parallels(R)",
+            "innotek",            "Oracle",   "VirtualBox", "vbox", "VBOX",
+            "VMware, Inc.",       "VMware",   "VMWARE",     "VMW0003",
+            "QEMU",               "pc-q35",   "Q35 +",      "FWCF",     "BOCHS", "BXPC",
+            "ovmf",               "edk ii unknown", "S3 Corp.", "Virtual Machine", "VS2005R2",
+            "Xen"
+        };
+
+        struct dirent* entry;
+        while ((entry = readdir(dir)) != nullptr) {
+            // Skip "." and ".."
+            if (strcmp(entry->d_name, ".") == 0 ||
+                strcmp(entry->d_name, "..") == 0)
+                continue;
+
+            char path[PATH_MAX];
+            snprintf(path, sizeof(path),
+                "/sys/firmware/acpi/tables/%s",
+                entry->d_name);
+
+            int fd = open(path, O_RDONLY);
+            if (fd == -1) {
+                debug("FIRMWARE: could not open ACPI table ", entry->d_name);
+                continue;
             }
 
-            // Same as Windows but without WAET (Windows ACPI Emulated Devices Table)
-            constexpr const char* targets[] = {
-                "Parallels Software", "Parallels(R)",
-                "innotek",            "Oracle",   "VirtualBox", "vbox", "VBOX",
-                "VMware, Inc.",       "VMware",   "VMWARE",     "VMW0003",
-                "QEMU",               "pc-q35",   "Q35 +",      "FWCF",     "BOCHS", "BXPC",
-                "ovmf",               "edk ii unknown", "S3 Corp.", "Virtual Machine", "VS2005R2",
-                "Xen"
-            };
-
-            struct dirent* entry;
-            while ((entry = readdir(dir)) != nullptr) {
-                // Skip "." and ".."
-                if (strcmp(entry->d_name, ".") == 0 ||
-                    strcmp(entry->d_name, "..") == 0)
-                    continue;
-
-                char path[PATH_MAX];
-                snprintf(path, sizeof(path),
-                    "/sys/firmware/acpi/tables/%s",
-                    entry->d_name);
-
-                int fd = open(path, O_RDONLY);
-                if (fd == -1) {
-                    debug("FIRMWARE: could not open ACPI table ", entry->d_name);
-                    continue;
-                }
-
-                struct stat statbuf;
-                if (fstat(fd, &statbuf) != 0 || S_ISDIR(statbuf.st_mode)) {
-                    debug("FIRMWARE: skipped ", entry->d_name);
-                    close(fd);
-                    continue;
-                }
-                long file_size = statbuf.st_size;
-                if (file_size <= 0) {
-                    debug("FIRMWARE: file empty or error ", entry->d_name);
-                    close(fd);
-                    continue;
-                }
-
-                char* buffer = static_cast<char*>(malloc(file_size));
-                if (!buffer) {
-                    debug("FIRMWARE: failed to allocate memory for buffer");
-                    close(fd);
-                    continue;
-                }
-
-                ssize_t n = read(fd, buffer, file_size);
+            struct stat statbuf;
+            if (fstat(fd, &statbuf) != 0 || S_ISDIR(statbuf.st_mode)) {
+                debug("FIRMWARE: skipped ", entry->d_name);
                 close(fd);
-                if (n != file_size) {
-                    debug("FIRMWARE: could not read full table ", entry->d_name);
-                    free(buffer);
+                continue;
+            }
+            long file_size = statbuf.st_size;
+            if (file_size <= 0) {
+                debug("FIRMWARE: file empty or error ", entry->d_name);
+                close(fd);
+                continue;
+            }
+
+            char* buffer = static_cast<char*>(malloc(file_size));
+            if (!buffer) {
+                debug("FIRMWARE: failed to allocate memory for buffer");
+                close(fd);
+                continue;
+            }
+
+            ssize_t n = read(fd, buffer, file_size);
+            close(fd);
+            if (n != file_size) {
+                debug("FIRMWARE: could not read full table ", entry->d_name);
+                free(buffer);
+                continue;
+            }
+
+            for (const char* target : targets) {
+                size_t targetLen = strlen(target);
+                if ((long)targetLen > file_size)
                     continue;
-                }
-
-                for (const char* target : targets) {
-                    size_t targetLen = strlen(target);
-                    if ((long)targetLen > file_size)
-                        continue;
-                    for (long j = 0; j <= file_size - (long)targetLen; ++j) {
-                        if (memcmp(buffer + j, target, targetLen) == 0) {
-                            const char* brand = nullptr;
-                            if (strcmp(target, "Parallels Software International") == 0 ||
-                                strcmp(target, "Parallels(R)") == 0) {
-                                brand = brands::PARALLELS;
-                            }
-                            else if (strcmp(target, "innotek") == 0 ||
-                                strcmp(target, "Oracle") == 0 ||
-                                strcmp(target, "VirtualBox") == 0 ||
-                                strcmp(target, "vbox") == 0 ||
-                                strcmp(target, "VBOX") == 0) {
-                                brand = brands::VBOX;
-                            }
-                            else if (strcmp(target, "VMware, Inc.") == 0 ||
-                                strcmp(target, "VMware") == 0 ||
-                                strcmp(target, "VMWARE") == 0) {
-                                brand = brands::VMWARE;
-                            }
-                            else if (strcmp(target, "QEMU") == 0) {
-                                brand = brands::QEMU;
-                            }
-                            else if (strcmp(target, "BOCHS") == 0 ||
-                                strcmp(target, "BXPC") == 0) {
-                                brand = brands::BOCHS;
-                            }
-
-                            free(buffer);
-                            closedir(dir);
-                            if (brand)
-                                return core::add(brand);
-                            else
-                                return true;
+                for (long j = 0; j <= file_size - (long)targetLen; ++j) {
+                    if (memcmp(buffer + j, target, targetLen) == 0) {
+                        const char* brand = nullptr;
+                        if (strcmp(target, "Parallels Software International") == 0 ||
+                            strcmp(target, "Parallels(R)") == 0) {
+                            brand = brands::PARALLELS;
                         }
+                        else if (strcmp(target, "innotek") == 0 ||
+                            strcmp(target, "Oracle") == 0 ||
+                            strcmp(target, "VirtualBox") == 0 ||
+                            strcmp(target, "vbox") == 0 ||
+                            strcmp(target, "VBOX") == 0) {
+                            brand = brands::VBOX;
+                        }
+                        else if (strcmp(target, "VMware, Inc.") == 0 ||
+                            strcmp(target, "VMware") == 0 ||
+                            strcmp(target, "VMWARE") == 0) {
+                            brand = brands::VMWARE;
+                        }
+                        else if (strcmp(target, "QEMU") == 0) {
+                            brand = brands::QEMU;
+                        }
+                        else if (strcmp(target, "BOCHS") == 0 ||
+                            strcmp(target, "BXPC") == 0) {
+                            brand = brands::BOCHS;
+                        }
+
+                        free(buffer);
+                        closedir(dir);
+                        if (brand)
+                            return core::add(brand);
+                        else
+                            return true;
                     }
                 }
-                free(buffer);
             }
+            free(buffer);
+        }
 
-            closedir(dir);
-            return false;
-        #endif
+        closedir(dir);
+        return false;
+    #endif
     }
 
 
@@ -6045,217 +6003,215 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             #endif
 
         #elif (WINDOWS)
-        static const wchar_t* kRoots[] = {
-            L"SYSTEM\\CurrentControlSet\\Enum\\PCI",
-            L"SYSTEM\\CurrentControlSet\\Enum\\USB",
-            L"SYSTEM\\CurrentControlSet\\Enum\\HDAUDIO"
-        };
+            static const wchar_t* kRoots[] = {
+                L"SYSTEM\\CurrentControlSet\\Enum\\PCI",
+                L"SYSTEM\\CurrentControlSet\\Enum\\USB",
+                L"SYSTEM\\CurrentControlSet\\Enum\\HDAUDIO"
+            };
 
-        enum RootType { RT_PCI, RT_USB, RT_HDAUDIO };
-        constexpr DWORD MAX_MULTI_SZ = 64 * 1024;
+            enum RootType { RT_PCI, RT_USB, RT_HDAUDIO };
+            constexpr DWORD MAX_MULTI_SZ = 64 * 1024;
 
-        // Lambda #1: Process the MULTI_SZ “HardwareID” on an instance key,
-        // extract every (VID, DID) pair, and push into devices
-        auto processHardwareID = [&](HKEY hInst, RootType rootType) {
-            DWORD type = 0, cbData = 0;
-            LONG rv = RegGetValueW(
-                hInst,
-                nullptr,
-                L"HardwareID",
-                RRF_RT_REG_MULTI_SZ,
-                &type,
-                nullptr,
-                &cbData
-            );
-            if (rv != ERROR_SUCCESS || type != REG_MULTI_SZ || cbData <= sizeof(wchar_t)) {
-                return;
-            }
+            // Lambda #1: Process the MULTI_SZ “HardwareID” on an instance key,
+            // extract every (VID, DID) pair, and push into devices
+            auto processHardwareID = [&](HKEY hInst, RootType rootType) {
+                DWORD type = 0, cbData = 0;
+                LONG rv = RegGetValueW(
+                    hInst,
+                    nullptr,
+                    L"HardwareID",
+                    RRF_RT_REG_MULTI_SZ,
+                    &type,
+                    nullptr,
+                    &cbData
+                );
+                if (rv != ERROR_SUCCESS || type != REG_MULTI_SZ || cbData <= sizeof(wchar_t)) {
+                    return;
+                }
 
-            if (cbData > MAX_MULTI_SZ) {
-                debug("PCI_DEVICES: HardwareID size too large: ", cbData);
-                return;
-            }
+                if (cbData > MAX_MULTI_SZ) {
+                    debug("PCI_DEVICES: HardwareID size too large: ", cbData);
+                    return;
+                }
 
-            // allocate a buffer large enough to hold the entire MULTI_SZ
-            std::vector<wchar_t> buf(cbData / sizeof(wchar_t));
-            rv = RegGetValueW(
-                hInst,
-                nullptr,
-                L"HardwareID",
-                RRF_RT_REG_MULTI_SZ,
-                nullptr,
-                buf.data(),
-                &cbData
-            );
-            if (rv != ERROR_SUCCESS) {
-                return;
-            }
+                // allocate a buffer large enough to hold the entire MULTI_SZ
+                std::vector<wchar_t> buf(cbData / sizeof(wchar_t));
+                rv = RegGetValueW(
+                    hInst,
+                    nullptr,
+                    L"HardwareID",
+                    RRF_RT_REG_MULTI_SZ,
+                    nullptr,
+                    buf.data(),
+                    &cbData
+                );
+                if (rv != ERROR_SUCCESS) {
+                    return;
+                }
 
-            // iterate over each null‐terminated string inside the MULTI_SZ
-            for (wchar_t* p = buf.data(); *p; p += wcslen(p) + 1) {
-                wchar_t* s = p;
-                wchar_t* v = nullptr;
-                wchar_t* d = nullptr;
-                u16  vid = 0;
-                u32  did = 0;
-                bool      ok = false;
+                // iterate over each null‐terminated string inside the MULTI_SZ
+                for (wchar_t* p = buf.data(); *p; p += wcslen(p) + 1) {
+                    wchar_t* s = p;
+                    wchar_t* v = nullptr;
+                    wchar_t* d = nullptr;
+                    u16  vid = 0;
+                    u32  did = 0;
+                    bool      ok = false;
 
-                if (rootType == RT_USB) {
-                    // USB: look for “VID_” and then “PID_” after it
-                    v = wcsstr(s, L"VID_");
-                    if (v) {
-                        d = wcsstr(v + 4, L"PID_");
+                    if (rootType == RT_USB) {
+                        // USB: look for “VID_” and then “PID_” after it
+                        v = wcsstr(s, L"VID_");
+                        if (v) {
+                            d = wcsstr(v + 4, L"PID_");
+                        }
+                        if (v && d) {
+                            swscanf_s(v + 4, L"%4hx", &vid);
+                            swscanf_s(d + 4, L"%x", &did);
+                            ok = true;
+                        }
                     }
-                    if (v && d) {
-                        swscanf_s(v + 4, L"%4hx", &vid);
-                        swscanf_s(d + 4, L"%x", &did);
-                        ok = true;
+                    else {
+                        // PCI or HDAUDIO: look for “VEN_” and then “DEV_” after it
+                        v = wcsstr(s, L"VEN_");
+                        if (v) {
+                            d = wcsstr(v + 4, L"DEV_");
+                        }
+                        if (v && d) {
+                            // parse exactly 4 hex digits for Vendor ID
+                            swscanf_s(v + 4, L"%4hx", &vid);
+
+                            // dev ID may be up to 8 hex digits (PCI) or exactly 4 (HDAUDIO)
+                            wchar_t* devStart = d + 4;
+                            wchar_t* ampAfterDev = wcschr(devStart, L'&');
+
+                            if (rootType == RT_HDAUDIO) {
+                                // HDAUDIO: 4‐digit device ID; stop at '&' if present
+                                if (ampAfterDev) {
+                                    *ampAfterDev = L'\0';
+                                    swscanf_s(devStart, L"%4x", &did);
+                                    *ampAfterDev = L'&';
+                                }
+                                else {
+                                    swscanf_s(devStart, L"%4x", &did);
+                                }
+                            }
+                            else {
+                                // PCI: up to 8‐digit device ID; stop at '&' if present
+                                if (ampAfterDev) {
+                                    *ampAfterDev = L'\0';
+                                    swscanf_s(devStart, L"%8x", &did);
+                                    *ampAfterDev = L'&';
+                                }
+                                else {
+                                    swscanf_s(devStart, L"%8x", &did);
+                                }
+                            }
+
+                            ok = true;
+                        }
                     }
+
+                    if (ok) {
+                        devices.push_back({ vid, did });
+                    }
+                }
+            };
+
+            // Lambda #2: Enumerate all “Instance” subkeys under a given “Device” key,
+            // and for each instance, open it and call processHardwareID()
+            auto enumInstances = [&](HKEY hDev, RootType rootType) {
+                for (DWORD j = 0;; ++j) {
+                    wchar_t instName[256];
+                    DWORD   cbInst = _countof(instName);
+                    LONG    st2 = RegEnumKeyExW(
+                        hDev,
+                        j,
+                        instName,
+                        &cbInst,
+                        nullptr,
+                        nullptr,
+                        nullptr,
+                        nullptr
+                    );
+                    if (st2 == ERROR_NO_MORE_ITEMS) {
+                        break;
+                    }
+                    if (st2 != ERROR_SUCCESS) {
+                        continue;
+                    }
+
+                    HKEY hInst = nullptr;
+                    if (RegOpenKeyExW(hDev, instName, 0, KEY_READ, &hInst) != ERROR_SUCCESS) {
+                        continue;
+                    }
+
+                    processHardwareID(hInst, rootType);
+                    RegCloseKey(hInst);
+                }
+            };
+
+            // Lambda #3: Enumerate all “Device” subkeys under a given root key,
+            // open each device key, and call enumInstances()
+            auto enumDevices = [&](HKEY hRoot, RootType rootType) {
+                for (DWORD i = 0;; ++i) {
+                    wchar_t deviceName[256];
+                    DWORD   cbName = _countof(deviceName);
+                    LONG    status = RegEnumKeyExW(
+                        hRoot,
+                        i,
+                        deviceName,
+                        &cbName,
+                        nullptr,
+                        nullptr,
+                        nullptr,
+                        nullptr
+                    );
+                    if (status == ERROR_NO_MORE_ITEMS) {
+                        break;
+                    }
+                    if (status != ERROR_SUCCESS) {
+                        continue;
+                    }
+
+                    HKEY hDev = nullptr;
+                    if (RegOpenKeyExW(hRoot, deviceName, 0, KEY_READ, &hDev) != ERROR_SUCCESS) {
+                        continue;
+                    }
+
+                    enumInstances(hDev, rootType);
+                    RegCloseKey(hDev);
+                }
+            };
+
+            // Top‐level loop: for each rootPath, open the root key once, compute its RootType,
+            // then call enumDevices()
+            for (size_t rootIdx = 0; rootIdx < _countof(kRoots); ++rootIdx) {
+                const wchar_t* rootPath = kRoots[rootIdx];
+                HKEY hRoot = nullptr;
+                if (RegOpenKeyExW(
+                    HKEY_LOCAL_MACHINE,
+                    rootPath,
+                    0,
+                    KEY_READ,
+                    &hRoot
+                ) != ERROR_SUCCESS) {
+                    continue;
+                }
+
+                RootType rootType;
+                if (wcscmp(rootPath, L"SYSTEM\\CurrentControlSet\\Enum\\USB") == 0) {
+                    rootType = RT_USB;
+                }
+                else if (wcscmp(rootPath, L"SYSTEM\\CurrentControlSet\\Enum\\HDAUDIO") == 0) {
+                    rootType = RT_HDAUDIO;
                 }
                 else {
-                    // PCI or HDAUDIO: look for “VEN_” and then “DEV_” after it
-                    v = wcsstr(s, L"VEN_");
-                    if (v) {
-                        d = wcsstr(v + 4, L"DEV_");
-                    }
-                    if (v && d) {
-                        // parse exactly 4 hex digits for Vendor ID
-                        swscanf_s(v + 4, L"%4hx", &vid);
-
-                        // dev ID may be up to 8 hex digits (PCI) or exactly 4 (HDAUDIO)
-                        wchar_t* devStart = d + 4;
-                        wchar_t* ampAfterDev = wcschr(devStart, L'&');
-
-                        if (rootType == RT_HDAUDIO) {
-                            // HDAUDIO: 4‐digit device ID; stop at '&' if present
-                            if (ampAfterDev) {
-                                *ampAfterDev = L'\0';
-                                swscanf_s(devStart, L"%4x", &did);
-                                *ampAfterDev = L'&';
-                            }
-                            else {
-                                swscanf_s(devStart, L"%4x", &did);
-                            }
-                        }
-                        else {
-                            // PCI: up to 8‐digit device ID; stop at '&' if present
-                            if (ampAfterDev) {
-                                *ampAfterDev = L'\0';
-                                swscanf_s(devStart, L"%8x", &did);
-                                *ampAfterDev = L'&';
-                            }
-                            else {
-                                swscanf_s(devStart, L"%8x", &did);
-                            }
-                        }
-
-                        ok = true;
-                    }
+                    rootType = RT_PCI;
                 }
 
-                if (ok) {
-                    devices.push_back({ vid, did });
-                }
+                enumDevices(hRoot, rootType);
+                RegCloseKey(hRoot);
             }
-        };
-
-        // Lambda #2: Enumerate all “Instance” subkeys under a given “Device” key,
-        // and for each instance, open it and call processHardwareID()
-        auto enumInstances = [&](HKEY hDev, RootType rootType) {
-            for (DWORD j = 0;; ++j) {
-                wchar_t instName[256];
-                DWORD   cbInst = _countof(instName);
-                LONG    st2 = RegEnumKeyExW(
-                    hDev,
-                    j,
-                    instName,
-                    &cbInst,
-                    nullptr,
-                    nullptr,
-                    nullptr,
-                    nullptr
-                );
-                if (st2 == ERROR_NO_MORE_ITEMS) {
-                    break;
-                }
-                if (st2 != ERROR_SUCCESS) {
-                    continue;
-                }
-
-                HKEY hInst = nullptr;
-                if (RegOpenKeyExW(hDev, instName, 0, KEY_READ, &hInst) != ERROR_SUCCESS) {
-                    continue;
-                }
-
-                processHardwareID(hInst, rootType);
-                RegCloseKey(hInst);
-            }
-        };
-
-        // Lambda #3: Enumerate all “Device” subkeys under a given root key,
-        // open each device key, and call enumInstances()
-        auto enumDevices = [&](HKEY hRoot, RootType rootType) {
-            for (DWORD i = 0;; ++i) {
-                wchar_t deviceName[256];
-                DWORD   cbName = _countof(deviceName);
-                LONG    status = RegEnumKeyExW(
-                    hRoot,
-                    i,
-                    deviceName,
-                    &cbName,
-                    nullptr,
-                    nullptr,
-                    nullptr,
-                    nullptr
-                );
-                if (status == ERROR_NO_MORE_ITEMS) {
-                    break;
-                }
-                if (status != ERROR_SUCCESS) {
-                    continue;
-                }
-
-                HKEY hDev = nullptr;
-                if (RegOpenKeyExW(hRoot, deviceName, 0, KEY_READ, &hDev) != ERROR_SUCCESS) {
-                    continue;
-                }
-
-                enumInstances(hDev, rootType);
-                RegCloseKey(hDev);
-            }
-        };
-
-        // Top‐level loop: for each rootPath, open the root key once, compute its RootType,
-        // then call enumDevices()
-        for (size_t rootIdx = 0; rootIdx < _countof(kRoots); ++rootIdx) {
-            const wchar_t* rootPath = kRoots[rootIdx];
-            HKEY hRoot = nullptr;
-            if (RegOpenKeyExW(
-                HKEY_LOCAL_MACHINE,
-                rootPath,
-                0,
-                KEY_READ,
-                &hRoot
-            ) != ERROR_SUCCESS) {
-                continue;
-            }
-
-            RootType rootType;
-            if (wcscmp(rootPath, L"SYSTEM\\CurrentControlSet\\Enum\\USB") == 0) {
-                rootType = RT_USB;
-            }
-            else if (wcscmp(rootPath, L"SYSTEM\\CurrentControlSet\\Enum\\HDAUDIO") == 0) {
-                rootType = RT_HDAUDIO;
-            }
-            else {
-                rootType = RT_PCI;
-            }
-
-            enumDevices(hRoot, rootType);
-            RegCloseKey(hRoot);
-        }
-
-        debug("PCI_DEVICES: Found ", devices.size(), " devices");
         #endif
 
         for (auto& d : devices) {
@@ -7699,10 +7655,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         SetupDiDestroyDeviceInfoList(hDevInfo);
 
-        if (gotOne) {
-            core::add(brands::HYPERVISOR_PHANTOM);
-            return true;
-        }
+        if (gotOne) return true;
+        
         return false;
     }
 
@@ -8122,7 +8076,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     
     
     /**
-     * @brief Check for QEMU's DSDT signature
+     * @brief Check for QEMU's ACPI device signature
      * @category Windows
      * @author Requiem (https://github.com/NotRequiem)
      * @implements VM::QEMU_SIGNATURE
@@ -8136,7 +8090,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             wstring_view(const wchar_t* d, size_t n) : data(d), size(n) {}
 
             bool starts_with(const wchar_t* prefix) const noexcept {
-                size_t plen = wcslen(prefix);
+                const size_t plen = wcslen(prefix);
                 if (size < plen) return false;
                 return wcsncmp(data, prefix, plen) == 0;
             }
@@ -8144,29 +8098,31 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             size_t find(const wchar_t* needle) const noexcept {
                 const wchar_t* p = wcsstr(data, needle);
                 if (!p) return npos;
-                size_t idx = static_cast<size_t>(p - data);
-                size_t nlen = wcslen(needle);
+                const size_t idx = static_cast<size_t>(p - data);
+                const size_t nlen = wcslen(needle);
                 return (idx + nlen <= size) ? idx : npos;
             }
 
-            std::wstring to_wstring() const {
-                return std::wstring(data, size);
+            wstring_view substr(size_t pos, size_t count) const {
+                if (pos >= size)
+                    return wstring_view(nullptr, 0);
+
+                const size_t avail = size - pos;
+                const size_t len = (count < avail ? count : avail);
+                return wstring_view(data + pos, len);
             }
         };
 
-        auto __iswdigit = [](wchar_t c) noexcept {
-            return (c >= L'0' && c <= L'9');
+        // hex-digit test
+        auto is_hex = [](wchar_t c) noexcept {
+            return (c >= L'0' && c <= L'9')
+                || (c >= L'A' && c <= L'F');
         };
 
-        // 1) enumerate all DISPLAY devices present on the system. We only care about their “LocationPaths” property
-        HDEVINFO hDevInfo = SetupDiGetClassDevsW(
-            &GUID_DEVCLASS_DISPLAY,
-            nullptr,
-            nullptr,
-            DIGCF_PRESENT);
-        if (hDevInfo == INVALID_HANDLE_VALUE) {
-            return false;
-        }
+        // enumerate all DISPLAY devices
+        const HDEVINFO hDevInfo = SetupDiGetClassDevsW(
+            &GUID_DEVCLASS_DISPLAY, nullptr, nullptr, DIGCF_PRESENT);
+        if (hDevInfo == INVALID_HANDLE_VALUE) return false;
 
         SP_DEVINFO_DATA devInfo = {};
         devInfo.cbSize = sizeof(devInfo);
@@ -8175,24 +8131,19 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         for (DWORD idx = 0; SetupDiEnumDeviceInfo(hDevInfo, idx, &devInfo); ++idx) {
             DEVPROPTYPE propType = 0;
             DWORD requiredSize = 0;
-
-            // 2) ask how large a buffer we need
-            SetupDiGetDevicePropertyW(
-                hDevInfo, &devInfo, &key, &propType,
+            // query size
+            SetupDiGetDevicePropertyW(hDevInfo, &devInfo, &key, &propType,
                 nullptr, 0, &requiredSize, 0);
-            if (GetLastError() != ERROR_INSUFFICIENT_BUFFER || requiredSize == 0) {
+            if (GetLastError() != ERROR_INSUFFICIENT_BUFFER || requiredSize == 0)
                 continue;
-            }
 
-            // 3) allocate a buffer and actually fetch the multi-sz
+            // fetch multi-sz
             std::vector<BYTE> buffer(requiredSize);
-            if (!SetupDiGetDevicePropertyW(
-                hDevInfo, &devInfo, &key, &propType,
-                buffer.data(), requiredSize, &requiredSize, 0)) {
-                continue;
-            }
+            if (!SetupDiGetDevicePropertyW(hDevInfo, &devInfo, &key, &propType,
+                buffer.data(), requiredSize,
+                &requiredSize, 0)) continue;
 
-            // 4) split the REG_MULTI_SZ into individual std::wstring
+            // split paths
             const wchar_t* ptr = reinterpret_cast<const wchar_t*>(buffer.data());
             std::vector<std::wstring> paths;
             while (*ptr) {
@@ -8207,74 +8158,61 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
         #endif
 
-            // 5) look for "#ACPI(S<bus><slot>_)" OR "#ACPI(S<bus><slot>)" where <bus> = [1–9] and <slot> = [0–9]
             static const wchar_t acpiPrefix[] = L"#ACPI(S";
-            bool foundQemuAcpi = false;
-            std::wstring matchedString;
+            bool foundQemu = false;
 
             for (auto& wstr : paths) {
                 wstring_view vw(wstr.c_str(), wstr.size());
+
+                // 1) Sxx[_] slots (#ACPI(S<bus><slot>[_]))
                 size_t pos = vw.find(acpiPrefix);
                 while (pos != wstring_view::npos) {
-                    // after "#ACPI(S" we expect:
-                    //   pos+6 == 'S'
-                    //   pos+7 = first digit (bus), must be '1'..'9'
-                    //   pos+8 = second digit (slot), must be '0'..'9'
-                    //   then either:
-                    //     (a) pos+9 == '_' and pos+10 == ')'   -> "#ACPI(S<bus><slot>_)"
-                    //  OR pos+9 == ')'                          -> "#ACPI(S<bus><slot>)"
                     if (pos + 8 < vw.size) {
-                        wchar_t d1 = vw.data[pos + 7]; // bus digit
-                        wchar_t d2 = vw.data[pos + 8]; // slot digit
-
-                        if (__iswdigit(d1) && d1 != L'0' &&
-                            __iswdigit(d2))
-                        {
-                            // check for version with underscore
-                            bool hasUnderscoreForm = false;
-                            if (pos + 10 < vw.size &&
-                                vw.data[pos + 9] == L'_' &&
-                                vw.data[pos + 10] == L')')
-                            {
-                                hasUnderscoreForm = true;
-                            }
-                            // check for version without underscore
-                            bool hasNoUnderscoreForm = false;
-                            if (pos + 9 < vw.size &&
-                                vw.data[pos + 9] == L')')
-                            {
-                                hasNoUnderscoreForm = true;
-                            }
-
-                            if (hasUnderscoreForm || hasNoUnderscoreForm) {
-                                foundQemuAcpi = true;
-                                matchedString = wstr;
+                        const wchar_t b = vw.data[pos + 7];
+                        const wchar_t s = vw.data[pos + 8];
+                        if (is_hex(b) && is_hex(s)) {
+                            // optional underscore before ')'
+                            size_t end_pos = pos + 9;
+                            if ((end_pos < vw.size && vw.data[end_pos] == L'_')
+                                || (vw.data[end_pos] == L')')) {
+                                foundQemu = true;
                                 break;
                             }
                         }
                     }
-
-                    // otherwise, keep searching for the next "#ACPI(S" in this same string
-                    size_t nextOff = pos + 1;
-                    if (nextOff >= vw.size) {
-                        pos = wstring_view::npos;
-                    }
-                    else {
-                        wstring_view sub(vw.data + nextOff,
-                            vw.size - nextOff);
-                        size_t rel = sub.find(acpiPrefix);
-                        pos = (rel == wstring_view::npos)
-                            ? wstring_view::npos
-                            : (nextOff + rel);
-                    }
+                    // search further
+                    const size_t next = pos + 1;
+                    const auto sub = vw.substr(next, vw.size - next);
+                    const size_t rel = sub.find(acpiPrefix);
+                    pos = (rel == wstring_view::npos ? wstring_view::npos : next + rel);
                 }
-                if (foundQemuAcpi)
-                    break;
-            }
+                if (foundQemu) {
+                    SetupDiDestroyDeviceInfoList(hDevInfo);
+                    return core::add(brands::QEMU);
+                }
 
-            if (foundQemuAcpi) {
-                SetupDiDestroyDeviceInfoList(hDevInfo);
-                return core::add(brands::QEMU);
+                // 2) detect any other ACPI(Sxx) segments (hex digits only)
+                const wchar_t paren[] = L"ACPI(";
+                size_t scan = 0;
+                while (true) {
+                    const size_t p = vw.find(paren);
+                    if (p == wstring_view::npos) break;
+                    const size_t start = p + wcslen(paren);
+                    const size_t end = vw.find(L")");
+                    if (end != wstring_view::npos && end > start + 1) {
+                        // ensure S + two hex digits
+                        const wchar_t c0 = vw.data[start];
+                        const wchar_t c1 = vw.data[start + 1];
+                        const wchar_t c2 = vw.data[start + 2];
+                        if (c0 == L'S' && is_hex(c1) && is_hex(c2)) {
+                            SetupDiDestroyDeviceInfoList(hDevInfo);
+                            return core::add(brands::QEMU);
+                        }
+                    }
+                    // continue after this pos
+                    scan = p + 1;
+                    vw = vw.substr(scan, vw.size - scan);
+                }
             }
         }
 
@@ -8289,10 +8227,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::TRAP
      */
     [[nodiscard]] static bool trap() {
-        // If running under Hyper-V artifact VM, no trap
-        if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
-            return false;
-        }
         // Intel explicitly guarantees (in the SDM) that if TF and DR0 both trigger on the same instruction, DR6.BS and DR6.B0 are both set in the resulting #DB
         // On AMD CPUs they do not set both DR6.BS and DR6.B0 when a single‐step and a DR0 breakpoint coincide on a trappable/serializing instruction
         // whenever a hardware breakpoint and TF collide, only the breakpoint bit shows up in DR6
@@ -8306,7 +8240,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             0x81, 0x04, 0x24,             // OR DWORD PTR [RSP], 0x10100
             0x00, 0x01, 0x01, 0x00,
             0x9D,                         // popfq
-            0x0F, 0xA2,                   // cpuid (or any other trappable instruction)
+            0x0F, 0xA2,                   // cpuid (or any other trappable instruction, but this one is ok since it has to be trapped in every x86 hv)
             0x90, 0x90, 0x90,             // NOPs to pad to breakpoint offset
             0xC3                          // ret
         };
@@ -8362,7 +8296,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             const bool fromTrapFlag = (status & (1ULL << 14)) != 0;
             const bool fromDr0 = (status & 1ULL) != 0;
             if (!fromTrapFlag || !fromDr0) {
-                hypervisorCaught = true;
+                if (util::hyper_x() != HYPERV_ARTIFACT_VM)
+                    hypervisorCaught = true; // detects type 1 Hyper-V too, which we consider legitimate
             }
             return EXCEPTION_EXECUTE_HANDLER;
         };
@@ -8554,77 +8489,79 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check boot logo for known images
-     * @category Windows
+     * @brief Check boot logo for known VM images
+     * @category Windows, x86_64
      * @author Teselka (https://github.com/Teselka)
      * @implements VM::BOOT_LOGO
      */
     [[nodiscard]] static bool boot_logo() {
-        typedef NTSTATUS(__stdcall* NtQuerySystemInformation_t)(SYSTEM_INFORMATION_CLASS,PVOID,ULONG,PULONG);
-
+    #if (x86_64 && !CLANG)
         const HMODULE ntdll = GetModuleHandle(_T("ntdll.dll"));
-        if (!ntdll) return false;
+        if (!ntdll)
+            return false;
 
         const char* function_names[] = { "NtQuerySystemInformation" };
         void* functions[1] = { nullptr };
-
         util::GetFunctionAddresses(ntdll, function_names, functions, 1);
 
-        NtQuerySystemInformation_t pNtQuerySystemInformation = reinterpret_cast<NtQuerySystemInformation_t>(functions[0]);
-        if (pNtQuerySystemInformation) {
-            const SYSTEM_INFORMATION_CLASS SystemBootLogoInformation = (SYSTEM_INFORMATION_CLASS)140;
+        using NtQuerySysInfo_t = NTSTATUS(__stdcall*)(
+            SYSTEM_INFORMATION_CLASS, PVOID, ULONG, PULONG
+        );
+        NtQuerySysInfo_t pNtQuery = reinterpret_cast<NtQuerySysInfo_t>(functions[0]);
+        if (!pNtQuery)
+            return false;
 
-            ULONG size;
-            NTSTATUS status =  pNtQuerySystemInformation(SystemBootLogoInformation, 0, 0, &size);
-            if (status != 0xC0000023 && status != 0x80000005 && status != 0xC0000004)
-            {
-                debug("BOOT_LOGO: first status = ", status);
-                return false;
-            }
+        // determine required buffer size
+        const SYSTEM_INFORMATION_CLASS SysBootInfo = static_cast<SYSTEM_INFORMATION_CLASS>(140);
+        ULONG needed = 0;
+        NTSTATUS st = pNtQuery(SysBootInfo, nullptr, 0, &needed);
+        if (st != 0xC0000023 && st != 0x80000005 && st != 0xC0000004) return false;
 
-            void* buf = malloc(size);
-            if (!buf) 
-                return false;
+        static std::vector<u8> buffer;
+        if (buffer.size() < needed)
+            buffer.resize(needed);
 
-            status = pNtQuerySystemInformation(SystemBootLogoInformation, buf, size, &size);
-            if (status)
-            {
-                debug("BOOT_LOGO: second status = ", status);
-                return false;
-            }
+        // fetch the boot-logo data
+        st = pNtQuery(SysBootInfo, buffer.data(), needed, &needed);
+        if (!NT_SUCCESS(st))
+            return false;
 
-            typedef struct {
-                ULONG Flags;
-                ULONG BitmapOffset;
-            } SYSTEM_BOOT_LOGO_INFORMATION;
+        // parse header to locate the bitmap
+        struct BootLogoInfo { ULONG Flags, BitmapOffset; };
+        const auto* info = reinterpret_cast<BootLogoInfo*>(buffer.data());
+        const u8* bmp = buffer.data() + info->BitmapOffset;
+        const size_t size = static_cast<size_t>(needed) - info->BitmapOffset;
 
-            SYSTEM_BOOT_LOGO_INFORMATION& info = *(SYSTEM_BOOT_LOGO_INFORMATION*)buf;
-
-            const char* bmp = (char*)buf + info.BitmapOffset;
-            const size_t bmp_size = static_cast<size_t>(size) - info.BitmapOffset;
-
-            unsigned int hash = 0;
-            for (ULONG i = 0; i < bmp_size; bmp++, i++)
-            {
-                hash *= 0x811C9DC5;
-                hash ^= (*bmp);
-            }
-
-            debug("BOOT_LOGO: size = ", size, ", flags = ", info.Flags, ", bitmap offset = ", info.BitmapOffset, ", hash = 0x", std::hex, hash);
-            free(buf);
-
-            switch (hash) {
-                case 0x704783C5: return core::add(brands::QEMU); // TianoCore EDK2                   
-                case 0x02A3A4D7: return core::add(brands::HYPERV);
-                case 0x098903BD: return core::add(brands::VBOX);
-                // case 0x6B6E00C0: known_name = "Windows 10"; break; // Present in VMWare
-                // case 0x8EEF5132: known_name = "ASROCK"; break;
-                // case 0x1B7F6713: known_name = "AORUS"; break;
-                default: return false;
-            }
+        // hardware‐accelerated CRC in 8-byte chunks
+        u64 crcReg = 0xFFFFFFFFull;
+        const size_t qwords = size >> 3;
+        const auto* ptr = reinterpret_cast<const u64*>(bmp);
+        for (size_t i = 0; i < qwords; ++i) {
+            crcReg = _mm_crc32_u64(crcReg, ptr[i]);
         }
 
+        u32 crc = static_cast<u32>(crcReg);
+        // tail
+        const auto* tail = reinterpret_cast<const u8*>(ptr + qwords);
+        for (size_t i = 0, r = size & 7; i < r; ++i) {
+            crc = _mm_crc32_u8(crc, tail[i]);
+        }
+        crc ^= 0xFFFFFFFFu;
+
+        debug("BOOT_LOGO: size=", needed,
+            ", flags=", info->Flags,
+            ", offset=", info->BitmapOffset,
+            ", crc=0x", std::hex, crc);
+
+        switch (crc) {
+            case 0xE96292C7: return core::add(brands::QEMU); // TianoCore EDK2
+            case 0x10AA078:  return core::add(brands::HYPERV);
+            case 0x810CF91E: return core::add(brands::VBOX);
+            default:         return false;
+        }
+    #else
         return false;
+    #endif
     }
     // ADD NEW TECHNIQUE FUNCTION HERE
 #endif
@@ -9916,7 +9853,6 @@ public: // START OF PUBLIC FUNCTIONS
             { brands::COMODO, "Sandbox" },
             { brands::THREATEXPERT, "Sandbox" },
             { brands::QIHOO, "Sandbox" },
-            { brands::HYPERVISOR_PHANTOM, "Sandbox" },
 
             // misc
             { brands::BOCHS, "Emulator" },
@@ -10158,7 +10094,6 @@ std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard{
     { brands::QIHOO, 0 },
     { brands::NOIRVISOR, 0 },
     { brands::NSJAIL, 0 },
-    { brands::HYPERVISOR_PHANTOM, 0 },
     { brands::DBVM, 0 },
     { brands::NULL_BRAND, 0 }
 };
@@ -10227,7 +10162,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         std::make_pair(VM::GPU_CAPABILITIES, VM::core::technique(100, VM::gpu_capabilities)),
         std::make_pair(VM::QEMU_SIGNATURE, VM::core::technique(100, VM::qemu_signature)),
         std::make_pair(VM::BOOT_LOGO, VM::core::technique(100, VM::boot_logo)),
-        std::make_pair(VM::POWER_CAPABILITIES, VM::core::technique(90, VM::power_capabilities)),
+        std::make_pair(VM::POWER_CAPABILITIES, VM::core::technique(100, VM::power_capabilities)),
         std::make_pair(VM::IVSHMEM, VM::core::technique(100, VM::ivshmem)),
         std::make_pair(VM::TPM, VM::core::technique(100, VM::tpm)),
         std::make_pair(VM::DISK_SERIAL, VM::core::technique(100, VM::disk_serial_number)),
