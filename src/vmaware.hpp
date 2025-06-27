@@ -54,10 +54,10 @@
  * - struct for internal cpu operations        => line 737
  * - struct for internal memoization           => line 1062
  * - struct for internal utility functions     => line 1216
- * - struct for internal core components       => line 8595
+ * - struct for internal core components       => line 8603
  * - start of VM detection technique list      => line 2026
- * - start of public VM detection functions    => line 9110
- * - start of externally defined variables     => line 10042
+ * - start of public VM detection functions    => line 9118
+ * - start of externally defined variables     => line 10050
  *
  *
  * ============================== EXAMPLE ===================================
@@ -5609,10 +5609,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         #pragma pack(pop)
 
         constexpr DWORD ACPI_SIG = 'ACPI';
-        constexpr DWORD ssdtSig = 'TDSS';
         constexpr DWORD dsdtSig = 'TDSD';
-        constexpr DWORD FIRM_SIG = 'FIRM';
-        constexpr DWORD RSMB_SIG = 'RSMB';
+        constexpr DWORD HPET_SIG = 'TEPH';
 
         // "WAET" is also present as a string inside the WAET table, so there's no need to check for its table signature
         constexpr std::array<const char*, 24> targets = { {
@@ -5670,7 +5668,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return true;
             }
 
-            // 4) VM‐specific firmware signatures
+            // 4) VM-specific firmware signatures
             for (size_t ti = 0; ti < targets.size(); ++ti) {
                 const char* pat = targets[ti];
                 const size_t plen = strlen(pat);
@@ -5723,21 +5721,24 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         const DWORD count = enumSize / sizeof(DWORD);
         std::vector<DWORD> tables(count);
+        bool found_hpet = false;
         for (DWORD i = 0; i < count; ++i) {
             DWORD entry;
             memcpy(&entry, tableIDs.data() + i * sizeof(DWORD), sizeof(entry));
             tables[i] = entry;
+            if (tables[i] == HPET_SIG) {
+                found_hpet = true;
+            }
+        }
+
+        if (!found_hpet) {
+            debug("FIRMWARE: HPET table not found");
+            return true; // baremetal systems should have HPET table
         }
 
         // 2) ACPI table count check
         if (count < 4) {
             debug("FIRMWARE: Not enough ACPI tables for a real system");
-            return true;
-        }
-        int ssdt_ct = 0;
-        for (auto tbl : tables) if (tbl == ssdtSig && ++ssdt_ct >= 2) break;
-        if (ssdt_ct < 2) {
-            debug("FIRMWARE: Not enough SSDT tables for a real system");
             return true;
         }
 
@@ -5760,6 +5761,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         for (auto tbl : tables) {
             BYTE* buf = nullptr; size_t len = 0;
             if (fetch(ACPI_SIG, tbl, buf, len)) {
+
                 if (scan_table(buf, len)) {
                     free(buf);
                     return true;
@@ -5768,7 +5770,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
         }
 
-        // 4) DSDT + _OSI check
+        // 4) DSDT check
         const UINT dsdtSz = GetSystemFirmwareTable(ACPI_SIG, dsdtSig, nullptr, 0);
         if (dsdtSz == 0 || dsdtSz > MAX_FW_TABLE)
             return false;
@@ -5801,28 +5803,33 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         // 5) SMBIOS (RSMB) / FIRM tables
-        const DWORD smbios[] = { FIRM_SIG, RSMB_SIG };
-        for (DWORD provider : smbios) {
-            const UINT enumSMB = EnumSystemFirmwareTables(provider, nullptr, 0);
-            if (enumSMB == 0) continue;
-            if (enumSMB % sizeof(DWORD) != 0) continue;
+        constexpr DWORD smbProviders[] = { 'FIRM', 'RSMB' };
+        for (DWORD prov : smbProviders) {
+            UINT e = EnumSystemFirmwareTables(prov, nullptr, 0);
+            if (!e) continue;
+            std::vector<BYTE> bufIDs(e);
+            if (EnumSystemFirmwareTables(prov, bufIDs.data(), e) != e) continue;
+            DWORD cnt = e / sizeof(DWORD);
+            auto otherIDs = reinterpret_cast<DWORD*>(bufIDs.data());
 
-            std::vector<BYTE> ids(enumSMB);
-            if (EnumSystemFirmwareTables(provider, ids.data(), enumSMB) != enumSMB)
-                continue;
+            char provStr[5] = { 0 }; memcpy(provStr, &prov, 4);
 
-            const DWORD cntOther = enumSMB / sizeof(DWORD);
-            for (DWORD i = 0; i < cntOther; ++i) {
-                DWORD tblID;
-                memcpy(&tblID, ids.data() + i * sizeof(DWORD), sizeof(tblID));
-                BYTE* buf = nullptr; size_t len = 0;
-                if (fetch(provider, tblID, buf, len)) {
-                    if (scan_table(buf, len)) {
-                        free(buf);
-                        return true;
-                    }
-                    free(buf);
+            for (DWORD i = 0; i < cnt; ++i) {
+                DWORD tblID = otherIDs[i];
+
+                UINT sz = GetSystemFirmwareTable(prov, tblID, nullptr, 0);
+                if (!sz) continue;
+                BYTE* buf = (BYTE*)malloc(sz);
+                if (!buf) continue;
+                if (GetSystemFirmwareTable(prov, tblID, buf, sz) != sz) {
+                    free(buf); continue;
                 }
+
+                if (scan_table(buf, sz)) {
+                    free(buf);
+                    return true;
+                }
+                free(buf);
             }
         }
 
@@ -8087,6 +8094,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             case 0x54584E00u: // "TXN\0"
             case 0x524F4343u: // "ROCC"
             case 0x4C454E00u: // "LEN\0"
+            case 0x4D534654u: // "MSFT" -> Microsoft Surface Pro Devices
                 return false;
             default:
                 return true;
@@ -8514,7 +8522,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::BOOT_LOGO
      */
     [[nodiscard]] static bool boot_logo() {
-    #if (x86_64)
+    #if (x86_64 && !CLANG)
         const HMODULE ntdll = GetModuleHandle(_T("ntdll.dll"));
         if (!ntdll)
             return false;
