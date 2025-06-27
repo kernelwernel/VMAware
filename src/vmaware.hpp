@@ -5663,7 +5663,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         #pragma pack(pop)
 
         constexpr DWORD ACPI_SIG = 'ACPI';
-        constexpr DWORD dsdtSig = 'TDSD';
         constexpr DWORD HPET_SIG = 'TEPH';
 
         // "WAET" is also present as a string inside the WAET table, so there's no need to check for its table signature
@@ -8059,9 +8058,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        debug("TPM: Manufacturer -> 0x", std::hex, manufacturerVal);
+        debug("TPM: Manufacturer -> 0x", std::hex, tpm);
     
-        switch (manufacturerVal) {
+        switch (tpm) {
             case 0x414D4400u: // "AMD\0"
             case 0x41544D4Cu: // "ATML"
             case 0x4252434Du: // "BRCM"
