@@ -8149,7 +8149,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // enumerate all DISPLAY devices
         const HDEVINFO hDevInfo = SetupDiGetClassDevsW(
             &GUID_DEVCLASS_DISPLAY, nullptr, nullptr, DIGCF_PRESENT);
-        if (hDevInfo == INVALID_HANDLE_VALUE) return false;
+        if (hDevInfo == INVALID_HANDLE_VALUE) return true;
 
         SP_DEVINFO_DATA devInfo = {};
         devInfo.cbSize = sizeof(devInfo);
