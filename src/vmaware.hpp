@@ -50,14 +50,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 559
- * - struct for internal cpu operations        => line 743
- * - struct for internal memoization           => line 1068
- * - struct for internal utility functions     => line 1222
- * - struct for internal core components       => line 8696
- * - start of VM detection technique list      => line 2086
- * - start of public VM detection functions    => line 9211
- * - start of externally defined variables     => line 10143
+ * - enums for publicly accessible techniques  => line 561
+ * - struct for internal cpu operations        => line 746
+ * - struct for internal memoization           => line 1071
+ * - struct for internal utility functions     => line 1225
+ * - struct for internal core components       => line 8747
+ * - start of VM detection technique list      => line 2089
+ * - start of public VM detection functions    => line 9262
+ * - start of externally defined variables     => line 10196
  *
  *
  * ============================== EXAMPLE ===================================
@@ -413,6 +413,7 @@
 #elif (APPLE)
 #include <sys/types.h>
 #include <sys/sysctl.h>
+#include <sys/user.h>
 #include <unistd.h>
 #include <time.h>
 #include <errno.h>
@@ -542,6 +543,7 @@ namespace brands {
     static constexpr const char* QIHOO = "Qihoo 360 Sandbox";
     static constexpr const char* NSJAIL = "nsjail";
     static constexpr const char* DBVM = "DBVM";
+    static constexpr const char* UTM = "UTM";
 }
 
 
@@ -646,6 +648,7 @@ public:
         MAC_SIP,
         IOREG_GREP,
         HWMODEL,
+        MAC_UTM,
 
         // cross-platform
         HYPERVISOR_BIT,
@@ -700,7 +703,7 @@ public:
     static constexpr u8 LINUX_START = VM::SIDT;
     static constexpr u8 LINUX_END = VM::THREAD_COUNT;
     static constexpr u8 MACOS_START = VM::THREAD_COUNT;
-    static constexpr u8 MACOS_END = VM::HWMODEL;
+    static constexpr u8 MACOS_END = VM::MAC_UTM;
     
     // this is specifically meant for VM::detected_count() to 
     // get the total number of techniques that detected a VM
@@ -6649,6 +6652,54 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         return (util::find(tmp, "disabled") || (!util::find(tmp, "enabled")));
     }
+
+
+    /**
+     * @brief Check if Hypervisor.framework or UTM-MacOS-VM is present
+     * @category MacOS
+     * @author AdnanAhad (https://github.com/AdnanAhad)
+     * @implements VM::MAC_UTM
+     */
+    [[nodiscard]] static bool mac_utm() {
+        int hv_present = 0;
+        std::size_t size = sizeof(hv_present);
+        if (sysctlbyname("kern.hv_vmm_present",
+            &hv_present,
+            &size,
+            nullptr,
+            0) != 0) {
+            return false;
+        }
+
+        if (hv_present != 0) return true;
+
+        // MIB for: sysctl(KERN_PROC, KERN_PROC_ALL, ...)
+        int mib[3] = { CTL_KERN, KERN_PROC, KERN_PROC_ALL };
+        size_t bufsize = 0;
+
+        if (sysctl(mib, 3, nullptr, &bufsize, nullptr, 0) != 0) {
+            perror("sysctl size");
+            return false;
+        }
+
+        std::vector<char> buffer(bufsize);
+        if (sysctl(mib, 3, buffer.data(), &bufsize, nullptr, 0) != 0) {
+            perror("sysctl list");
+            return false;
+        }
+
+        size_t count = bufsize / sizeof(kinfo_proc);
+        auto procs = reinterpret_cast<kinfo_proc*>(buffer.data());
+        for (size_t i = 0; i < count; ++i) {
+            std::string name(procs[i].kp_proc.p_comm);
+            // UTM's QEMU helper is named like "qemu-system-x86_64" or "qemu-system-aarch64"
+            if (name.rfind("qemu-system", 0) == 0) {
+                return core::add(brands::UTM);
+            }
+        }
+
+        return false;
+    }
 #endif
 
 
@@ -8674,9 +8725,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             ", crc=0x", std::hex, crc);
 
         switch (crc) {
-            case 0xE96292C7: return core::add(brands::QEMU); // TianoCore EDK2
+            case 0x110350C5: return core::add(brands::QEMU); // TianoCore EDK2
             case 0x87c39681:  return core::add(brands::HYPERV);
-            case 0x810CF91E: return core::add(brands::VBOX);
+            case 0x49ED9F1C: return core::add(brands::VBOX);
             default:         return false;
         }
     #else
@@ -9805,6 +9856,7 @@ public: // START OF PUBLIC FUNCTIONS
             case BLOCKSTEP: return "BLOCKSTEP";
             case DBVM: return "DBVM";
             case BOOT_LOGO: return "BOOT_LOGO";
+            case MAC_UTM: return "MAC_UTM";
             // END OF TECHNIQUE LIST
             case DEFAULT: return "setting flag, error";
             case ALL: return "setting flag, error";
@@ -9962,7 +10014,8 @@ public: // START OF PUBLIC FUNCTIONS
             { brands::BSD_VMM, "Hypervisor (type 2)" },
             { brands::HYPERV_VPC, "Hypervisor (type 2)" },
             { brands::VMWARE_HARD, "Hypervisor (type 2)" },
-            
+            { brands::UTM, "Hypervisor (type 2)" },
+
             // sandbox
             { brands::CUCKOO, "Sandbox" },
             { brands::SANDBOXIE, "Sandbox" },
@@ -10215,6 +10268,7 @@ std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard{
     { brands::NOIRVISOR, 0 },
     { brands::NSJAIL, 0 },
     { brands::DBVM, 0 },
+    { brands::UTM, 0 },
     { brands::NULL_BRAND, 0 }
 };
 
@@ -10369,6 +10423,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         std::make_pair(VM::MAC_SIP, VM::core::technique(40, VM::mac_sip)),
         std::make_pair(VM::IOREG_GREP, VM::core::technique(100, VM::ioreg_grep)),
         std::make_pair(VM::HWMODEL, VM::core::technique(100, VM::hwmodel)),
+        std::make_pair(VM::MAC_UTM, VM::core::technique(150, VM::mac_utm))
     #endif
     
     std::make_pair(VM::TIMER, VM::core::technique(50, VM::timer)),
