@@ -109,32 +109,35 @@ std::string disabled = ("[" + grey + "  DISABLED  " + ansi_exit + "]");
 class win_ansi_enabler_t
 {
 public:
-  win_ansi_enabler_t()
-  {
-    m_set = FALSE;
-    m_out = GetStdHandle(STD_OUTPUT_HANDLE);
-    m_old = 0;
-    if(m_out != NULL && m_out != INVALID_HANDLE_VALUE)
+    win_ansi_enabler_t()
+        : m_set(FALSE),
+        m_old(0),
+        m_out(GetStdHandle(STD_OUTPUT_HANDLE))
     {
-      if(GetConsoleMode(m_out, &m_old) != FALSE)
-      {
-        m_set = SetConsoleMode(m_out, m_old | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
-      }
+        if (m_out != NULL && m_out != INVALID_HANDLE_VALUE)
+        {
+            if (GetConsoleMode(m_out, &m_old) != FALSE)
+            {
+                m_set = SetConsoleMode(m_out, m_old | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+            }
+        }
     }
-  }
-  ~win_ansi_enabler_t()
-  {
-    if(m_set != FALSE)
+
+    ~win_ansi_enabler_t()
     {
-      SetConsoleMode(m_out, m_old);
+        if (m_set != FALSE)
+        {
+            SetConsoleMode(m_out, m_old);
+        }
     }
-  }
+
 private:
-  win_ansi_enabler_t(win_ansi_enabler_t const&);
+    win_ansi_enabler_t(win_ansi_enabler_t const&) = delete;
+
 private:
-  BOOL m_set;
-  DWORD m_old;
-  HANDLE m_out;
+    BOOL m_set;
+    DWORD m_old;
+    HANDLE m_out;
 };
 #endif
 
@@ -328,7 +331,7 @@ bool is_disabled(const VM::enum_flags flag) {
     }
 
     switch (flag) {
-        case VM::VMWARE_DMESG: 
+        case VM::VMWARE_DMESG: return true;
         default: return false;
     }
 }
@@ -835,7 +838,7 @@ void general() {
     // type manager
     {
         if (is_vm_brand_multiple(vm.brand) == false) {
-            std::string color = "";
+            std::string current_color = "";
             std::string &type = vm.type;
 
             if (is_anyrun && (type == brands::NULL_BRAND)) {
@@ -843,12 +846,12 @@ void general() {
             }
 
             if (type == brands::NULL_BRAND) {
-                color = red;
+                current_color = red;
             } else {
-                color = green;
+                current_color = green;
             }
 
-            std::cout << bold << "VM type: " << ansi_exit <<  color << type << ansi_exit << "\n";
+            std::cout << bold << "VM type: " << ansi_exit << current_color << type << ansi_exit << "\n";
         }
     }
 
