@@ -38,6 +38,8 @@
     #define CLI_WINDOWS 1
     #define WIN32_LEAN_AND_MEAN
     #include <windows.h>
+    #include <psapi.h>
+    #include <tlhelp32.h>
 #else
     #define CLI_WINDOWS 0
 #endif
@@ -48,8 +50,8 @@
 
 #include "vmaware.hpp"
 
-constexpr const char* ver = "2.4.1";
-constexpr const char* date = "June 2025";
+constexpr const char* ver = "Experimental 2.4.2";
+constexpr const char* date = "July 2025";
 
 std::string bold = "\033[1m";
 std::string underline = "\033[4m";
@@ -139,10 +141,47 @@ private:
     DWORD m_old;
     HANDLE m_out;
 };
+
+static DWORD GetParentProcessId(DWORD pid) {
+    HANDLE hSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (hSnap == INVALID_HANDLE_VALUE) return 0;
+
+    PROCESSENTRY32 pe{};
+    pe.dwSize = sizeof(PROCESSENTRY32);
+
+    DWORD ppid = 0;
+    if (Process32First(hSnap, &pe)) {
+        do {
+            if (pe.th32ProcessID == pid) {
+                ppid = pe.th32ParentProcessID;
+                break;
+            }
+        } while (Process32Next(hSnap, &pe));
+    }
+
+    CloseHandle(hSnap);
+    return ppid;
+}
+
+static std::string GetProcessNameFromPid(DWORD pid) {
+    HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid);
+    if (!hProcess) return "";
+
+    char processName[MAX_PATH] = "<unknown>";
+    HMODULE hMod;
+    DWORD cbNeeded;
+
+    if (EnumProcessModules(hProcess, &hMod, sizeof(hMod), &cbNeeded)) {
+        GetModuleBaseNameA(hProcess, hMod, processName, sizeof(processName) / sizeof(char));
+    }
+
+    CloseHandle(hProcess);
+    return std::string(processName);
+}
 #endif
 
 
-[[noreturn]] void help(void) {
+[[noreturn]] static void help(void) {
     std::cout << 
 R"(Usage: 
  vmaware [option] [extra]
@@ -168,12 +207,13 @@ Extra:
  --dynamic          allow the conclusion message to be dynamic (8 possibilities instead of only 2)
  --verbose          add more information to the output
  --enums            display the technique enum name used by the lib
+ --detected-only    only display the techniques that were detected 
 )";
 
     std::exit(0);
 }
 
-[[noreturn]] void version(void) {
+[[noreturn]] static void version(void) {
     std::cout << "vmaware " << "v" << ver << " (" << date << ")\n\n" <<
     "Derived project of VMAware library at https://github.com/kernelwernel/VMAware"
     "License GPLv3+:\nGNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>.\n" << 
@@ -185,7 +225,7 @@ Extra:
     std::exit(0);
 }
 
-const char* color(const u8 score) {
+static const char* color(const u8 score) {
     if (arg_bitset.test(NO_ANSI)) {
         return "";
     }
@@ -210,8 +250,7 @@ const char* color(const u8 score) {
     return "";
 }
 
-
-[[noreturn]] void brand_list() {
+[[noreturn]] static void brand_list() {
     std::cout << 
 R"(VirtualBox
 VMware
@@ -286,9 +325,8 @@ UTM
     std::exit(0);
 }
 
-
 #if (CLI_LINUX)
-bool is_admin() {
+static bool is_admin() {
     const uid_t uid  = getuid();
     const uid_t euid = geteuid();
 
@@ -301,8 +339,7 @@ bool is_admin() {
 }
 #endif
 
-
-bool are_perms_required(const VM::enum_flags flag) {
+static bool are_perms_required(const VM::enum_flags flag) {
 #if (CLI_LINUX)
     if (is_admin()) {
         return false;
@@ -324,8 +361,7 @@ bool are_perms_required(const VM::enum_flags flag) {
 #endif
 }
 
-
-bool is_disabled(const VM::enum_flags flag) {
+static bool is_disabled(const VM::enum_flags flag) {
     if (arg_bitset.test(ALL)) {
         return false;
     }
@@ -336,8 +372,7 @@ bool is_disabled(const VM::enum_flags flag) {
     }
 }
 
-
-bool is_unsupported(VM::enum_flags flag) {
+static bool is_unsupported(VM::enum_flags flag) {
     // is cross-platform?
     if (
         (flag >= VM::HYPERVISOR_BIT) &&
@@ -366,8 +401,7 @@ bool is_unsupported(VM::enum_flags flag) {
     #endif
 }
 
-
-std::bitset<max_bits> settings() {
+static std::bitset<max_bits> settings() {
     std::bitset<max_bits> tmp;
 
     if (arg_bitset.test(HIGH_THRESHOLD)) {
@@ -386,7 +420,7 @@ std::bitset<max_bits> settings() {
 }
 
 // just a simple string replacer
-void replace(std::string &text, const std::string &original, const std::string &new_brand) {
+static void replace(std::string &text, const std::string &original, const std::string &new_brand) {
     size_t start_pos = 0;
     while ((start_pos = text.find(original, start_pos)) != std::string::npos) {
         text.replace(start_pos, original.length(), new_brand);
@@ -394,13 +428,12 @@ void replace(std::string &text, const std::string &original, const std::string &
     }
 }
 
-bool is_vm_brand_multiple(const std::string& vm_brand) {
+static bool is_vm_brand_multiple(const std::string& vm_brand) {
     return (vm_brand.find(" or ") != std::string::npos);
 }
 
 
-
-std::string vm_description(const std::string& vm_brand) {
+static std::string vm_description(const std::string& vm_brand) {
 
     // if there's multiple brands, return null
     if (is_vm_brand_multiple(vm_brand)) {
@@ -475,7 +508,7 @@ std::string vm_description(const std::string& vm_brand) {
         { brands::QIHOO, "360 sandbox is a part of 360 Total Security. Similar to other sandbox software, it provides a virtualized environment where potentially malicious or untrusted programs can run without affecting the actual system. Qihoo 360 Sandbox is commonly used for testing unknown applications, analyzing malware behavior, and protecting users from zero-day threats." },
         { brands::NSJAIL, "nsjail is a process isolation tool for Linux. It utilizes Linux namespace subsystem, resource limits, and the seccomp-bpf syscall filters of the Linux kernel. It can be used for isolating networking services, CTF challenges, and containing invasive syscall-level OS fuzzers." },
         { brands::DBVM, "DBVM is a ultra-lightweight virtual machine host that makes Windows run in a virtual machine so that Cheat Engine can operate at a higher level than the OS using a device driver. Instead of virtualizing devices it generally passes on interrupts unaltered meaning it has a very small impact on performance." },
-        { brands::UTM, "UTM for macOS is a free, open‑source virtualization and emulation app that brings full‑featured virtual machines to both Intel and Apple Silicon Macs. It employs Apple's Hypervisor virtualization framework to run ARM64 operating systems on Apple Silicon at near native speeds. On other architectures, it employs software emulation through QEMU." },
+        { brands::UTM, "UTM for macOS is a free, open-source virtualization and emulation app that brings full-featured virtual machines to both Intel and Apple Silicon Macs. It employs Apple's Hypervisor virtualization framework to run ARM64 operating systems on Apple Silicon at near native speeds. On other architectures, it employs software emulation through QEMU." },
         { brands::NULL_BRAND, "Indicates no detectable virtualization brand. This result may occur on bare-metal systems, unsupported/obscure hypervisors, or when anti-detection techniques (e.g., VM escaping) are employed by the guest environment." }
     };
 
@@ -486,6 +519,7 @@ std::string vm_description(const std::string& vm_brand) {
 
     return "";
 }
+
 
 /**
  * @brief Check for any.run driver presence
@@ -601,7 +635,7 @@ std::string vm_description(const std::string& vm_brand) {
 #endif
 }
 
-void checker(const VM::enum_flags flag, const char* message) {
+static void checker(const VM::enum_flags flag, const char* message) {
     std::string enum_name = "";
 
     if (arg_bitset.test(ENUMS)) {
@@ -609,7 +643,8 @@ void checker(const VM::enum_flags flag, const char* message) {
     }
 
     if (is_disabled(flag)) {
-        std::cout << disabled << " Skipped " << message << enum_name << "\n";
+        if (!arg_bitset.test(DETECTED_ONLY))
+            std::cout << disabled << " Skipped " << message << enum_name << "\n";
         disabled_count++;
         return;
     }
@@ -649,7 +684,7 @@ void checker(const VM::enum_flags flag, const char* message) {
 
 // overload for std::function, this is specific for any.run techniques
 // that are embedded in the CLI because it was removed in the lib as of 2.0
-void checker(const std::function<bool()>& func, const char* message) {
+static void checker(const std::function<bool()>& func, const char* message) {
 #if (!CLI_WINDOWS)
     if (arg_bitset.test(VERBOSE)) {
         unsupported_count++;
@@ -661,6 +696,10 @@ void checker(const std::function<bool()>& func, const char* message) {
 #endif
 
     const bool result = func();
+
+    if (arg_bitset.test(DETECTED_ONLY) && !result) {
+        return;
+    }
 
     std::cout <<
         (result ? detected : not_detected) <<
@@ -679,7 +718,7 @@ const bool is_anyrun_driver = anyrun_driver();
 const bool is_anyrun = (is_anyrun_directory || is_anyrun_driver);
 
 
-void general() {
+static void general() {
     bool notes_enabled = false;
 
     if (arg_bitset.test(NO_ANSI)) {
@@ -1000,6 +1039,16 @@ void general() {
             std::cout << note << " If you found a false positive, please make sure to create an issue at https://github.com/kernelwernel/VMAware/issues\n\n";
         }
     }
+
+    #if (CLI_WINDOWS)
+    const DWORD VMAwarePID = GetCurrentProcessId();
+    const DWORD parentPid = GetParentProcessId(VMAwarePID);
+    std::string parentName = GetProcessNameFromPid(parentPid);
+
+    if (_stricmp(parentName.c_str(), "explorer.exe") == 0) {
+        system("pause");
+    }
+    #endif
 }
 
 
