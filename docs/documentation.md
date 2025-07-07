@@ -1,20 +1,18 @@
 # Documentation
 
 ## Contents
-- [Documentation](#documentation)
-  - [Contents](#contents)
-  - [`VM::detect()`](#vmdetect)
-  - [`VM::percentage()`](#vmpercentage)
-  - [`VM::brand()`](#vmbrand)
-  - [`VM::check()`](#vmcheck)
-  - [`VM::add_custom()`](#vmadd_custom)
-  - [`VM::type()`](#vmtype)
-  - [`VM::conclusion()`](#vmconclusion)
-  - [`VM::detected_count()`](#vmdetected_count)
-  - [`VM::flag_to_string()`](#vmflag_to_string)
-  - [`VM::detected_enums()`](#vmdetected_enums)
+- [`VM::detect()`](#vmdetect)
+- [`VM::percentage()`](#vmpercentage)
+- [`VM::brand()`](#vmbrand)
+- [`VM::check()`](#vmcheck)
+- [`VM::add_custom()`](#vmadd_custom)
+- [`VM::type()`](#vmtype)
+- [`VM::conclusion()`](#vmconclusion)
+- [`VM::detected_count()`](#vmdetected_count)
+- [`VM::flag_to_string()`](#vmflag_to_string)
+- [`VM::detected_enums()`](#vmdetected_enums)
 - [vmaware struct](#vmaware-struct)
-- [Overall things to avoid](#overall-things-to-avoid)
+- [Notes and overall things to avoid](#notes-and-overall-things-to-avoid)
 - [Flag table](#flag-table)
 - [Brand table](#brand-table)
 - [Setting flags](#setting-flags)
@@ -421,12 +419,52 @@ int main() {
 
 <br>
 
-# Overall things to avoid
+# Notes and overall things to avoid
 ❌ 1. Do NOT rely on the percentage to determine whether you're in a VM. The lib is not designed for this way, and you're potentially increasing false positives. Use VM::detect() instead for that job.
 
 ❌ 2. Do NOT depend your whole program on whether a specific brand was found. VM::brand() will not guarantee it'll give you the result you're looking for even if the environment is in fact that specific VM brand.
 
 ❌ 3. Do NOT use VM::NO_MEMO flag if you're not sure what you're doing, this can potentially hamper the performance significantly.
+
+It should also be mentioned that it's recommended for the end-user to create a wrapper around the header file. C++ compilation is notoriously slow compared to C or other systems programming languages, and recompiling the header over and over again is a time waste, especially considering there's around 10k lines of code in it. This is incredibly unreliable and cumbersome for large-scale projects utilising the lib. If you have a build configuration that supports header dependency handling or [incremental compilation](https://en.wikipedia.org/wiki/Incremental_compiler) (which is present in most build systems such as CMake), you can fix the issue by doing something like this:
+```cpp
+// wrapper.hpp
+#include <string>
+
+namespace wrapper {
+    bool is_this_a_vm();
+    std::string vm_brand_name();
+}
+```
+
+```cpp
+// wrapper.cpp
+#include "vmaware.hpp"
+#include "example.hpp"
+
+bool wrapper::is_this_a_vm() {
+    return VM::detect();
+}
+
+std::string wrapper::vm_brand_name() {
+    return VM::brand();
+}
+```
+
+```cpp
+// main.cpp
+#include "wrapper.hpp"
+
+int main() {
+    if (wrapper::is_this_a_vm()) {
+        std::cout << wrapper::vm_brand_name() << "\n";
+    }
+
+    return 0;
+}
+```
+
+This wrapper structure would avoid any recompilations as opposed to recompiling the "vmaware.hpp" file for every build in your project. 
 
 <br>
 
