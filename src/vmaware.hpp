@@ -50,14 +50,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 561
- * - struct for internal cpu operations        => line 746
- * - struct for internal memoization           => line 1071
- * - struct for internal utility functions     => line 1225
- * - struct for internal core components       => line 8747
- * - start of VM detection technique list      => line 2089
- * - start of public VM detection functions    => line 9262
- * - start of externally defined variables     => line 10196
+ * - enums for publicly accessible techniques  => line 563
+ * - struct for internal cpu operations        => line 748
+ * - struct for internal memoization           => line 1073
+ * - struct for internal utility functions     => line 1227
+ * - struct for internal core components       => line 8735
+ * - start of VM detection technique list      => line 2079
+ * - start of public VM detection functions    => line 9250
+ * - start of externally defined variables     => line 10184
  *
  *
  * ============================== EXAMPLE ===================================
@@ -212,10 +212,12 @@
 
 #pragma once
 
-#if defined(_DEBUG)    /* MSVC Debug */       \
- || defined(DEBUG)     /* user or build-system */ \
- || !defined(NDEBUG)   /* assert-enabled (standard) */
-#define __VMAWARE_DEBUG__
+#ifndef __VMAWARE_DEBUG__
+    #if defined(_DEBUG)    /* MSVC Debug */       \
+     || defined(DEBUG)     /* user or build-system */ \
+     || !defined(NDEBUG)   /* assert-enabled (standard) */
+    #define __VMAWARE_DEBUG__
+    #endif
 #endif
 
 #if defined(_WIN32) || defined(_WIN64)
@@ -768,19 +770,18 @@ private:
             // may be unmodified for older 32-bit processors, clearing just in case
             b = 0;
             c = 0;
-#if (WINDOWS)
+    #if (WINDOWS)
             i32 x[4]{};
             __cpuidex((i32*)x, static_cast<int>(a_leaf), static_cast<int>(c_leaf));
             a = static_cast<u32>(x[0]);
             b = static_cast<u32>(x[1]);
             c = static_cast<u32>(x[2]);
             d = static_cast<u32>(x[3]);
-#elif (LINUX || APPLE)
+    #elif (LINUX)
             __cpuid_count(a_leaf, c_leaf, a, b, c, d);
+    #endif
 #endif
-#else
             return;
-#endif
         };
 
         // same as above but for array type parameters (MSVC specific)
@@ -805,6 +806,9 @@ private:
         };
 
         static bool is_leaf_supported(const u32 p_leaf) {
+#if (APPLE) 
+            return false;
+#endif
             u32 eax = 0, unused = 0;
 
             if (p_leaf < 0x40000000) {
@@ -854,7 +858,7 @@ private:
                 return memo::cpu_brand::fetch();
             }
 
-#if (!x86)
+#if (!x86 || APPLE)
             return "Unknown";
 #else
             if (!cpu::is_leaf_supported(cpu::leaf::brand3)) {
@@ -1115,7 +1119,7 @@ private:
         struct brand {
             static std::string brand_cache;
 
-            static std::string fetch() {
+            static const std::string& fetch() {
                 return brand_cache;
             }
 
@@ -1131,7 +1135,7 @@ private:
         struct multi_brand {
             static std::string brand_cache;
 
-            static std::string fetch() {
+            static const std::string& fetch() {
                 return brand_cache;
             }
 
@@ -1147,7 +1151,7 @@ private:
         struct cpu_brand {
             static std::string brand_cache;
 
-            static std::string fetch() {
+            static const std::string& fetch() {
                 return brand_cache;
             }
 
@@ -1385,6 +1389,8 @@ private:
             }
 
             return is_admin;
+#else
+            return true;
 #endif
         }
 
@@ -1539,9 +1545,13 @@ private:
 
 
         [[nodiscard]] static u16 get_disk_size() {
+#if (APPLE)
+            return 0;
+#endif
+
             u16 size = 0;
-            constexpr u64 GB = 1024ull * 1024 * 1024;
             constexpr u64 U16_MAX = 65535;
+            constexpr u64 GB = 1024ull * 1024 * 1024;
 
 #if (LINUX)
             struct statvfs stat;
@@ -1559,7 +1569,6 @@ private:
             else {
                 size = static_cast<u16>(size_gb);
             }
-
 #elif (WINDOWS)
             ULARGE_INTEGER totalNumberOfBytes;
             if (GetDiskFreeSpaceExW(L"C:", nullptr, &totalNumberOfBytes, nullptr)) {
@@ -1658,13 +1667,12 @@ private:
 #if (LINUX)
 #if (CPP >= 17)
             for (const auto& entry : std::filesystem::directory_iterator("/proc")) {
-                if (!(entry.is_directory())) {
+                if (!entry.is_directory()) {
                     continue;
                 }
 
                 const std::string filename = entry.path().filename().string();
 #else
-            //DIR* dir = opendir("/proc/");
             std::unique_ptr<DIR, decltype(&closedir)> dir(opendir("/proc"), closedir);
             if (!dir) {
                 debug("util::is_proc_running: ", "failed to open /proc directory");
@@ -1678,13 +1686,13 @@ private:
                     continue;
                 }
 #endif
-                if (!(std::all_of(filename.begin(), filename.end(), ::isdigit))) {
+                if (!std::all_of(filename.begin(), filename.end(), ::isdigit)) {
                     continue;
                 }
 
                 const std::string cmdline_file = "/proc/" + filename + "/cmdline";
                 std::ifstream cmdline(cmdline_file);
-                if (!(cmdline.is_open())) {
+                if (!cmdline.is_open()) {
                     continue;
                 }
 
@@ -1696,35 +1704,21 @@ private:
                     continue;
                 }
 
-                //std::cout << "\n\nLINE = " << line << "\n";
-                if (line.find(executable) == std::string::npos) {
-                    //std::cout << "skipped\n";
-                    continue;
-                }
-
-                //std::cout << "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nNOT SKIPPED\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n";
-
                 const std::size_t slash_index = line.find_last_of('/');
-
                 if (slash_index == std::string::npos) {
                     continue;
                 }
-
-                line = line.substr(slash_index + 1);
+                line.erase(0, slash_index + 1);
 
                 const std::size_t space_index = line.find_first_of(' ');
-
                 if (space_index != std::string::npos) {
-                    line = line.substr(0, space_index);
+                    line.resize(space_index);
                 }
 
                 if (line != executable) {
                     continue;
                 }
-                //#if (CPP < 17)
-                //                closedir(dir);
-                //                free(dir);
-                //#endif
+
                 return true;
             }
 
@@ -1733,7 +1727,7 @@ private:
             UNUSED(executable);
             return false;
 #endif
-        }
+            }
 
 
         [[nodiscard]] static std::string get_hostname() {
@@ -1815,7 +1809,8 @@ private:
                 u32 unused, ecx = 0;
                 cpu::cpuid(unused, unused, ecx, unused, 1);
 
-                return (ecx & (1 << 31));
+                const u32 mask = (1u << 31);
+                return (ecx & mask);
             };
 
             // 0x40000003 on EBX indicates the flags that a parent partition specified to create a child partition (https://learn.microsoft.com/en-us/virtualization/hyper-v-on-windows/tlfs/datatypes/hv_partition_privilege_mask)
@@ -1841,7 +1836,7 @@ private:
             */
             auto eax = []() -> u32 {
                 char out[sizeof(i32) * 4 + 1] = { 0 };
-                cpu::cpuid((int*)out, cpu::leaf::hypervisor);
+                cpu::cpuid(reinterpret_cast<int*>(out), cpu::leaf::hypervisor);
 
                 const u32 eax = static_cast<u32>(out[0]);
 
@@ -2201,8 +2196,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     
             u32 unused, ecx = 0;
             cpu::cpuid(unused, unused, ecx, unused, 1);
-    
-            return (ecx & (1 << 31));
+            const u32 mask = (1u << 31);
+            return (ecx & mask);
         #endif
     }
 
@@ -2221,7 +2216,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
     
             char out[sizeof(i32) * 4 + 1] = { 0 }; // e*x size + number of e*x registers + null terminator
-            cpu::cpuid((int*)out, cpu::leaf::hypervisor);
+            cpu::cpuid(reinterpret_cast<int*>(out), cpu::leaf::hypervisor);
     
             debug("HYPERVISOR_STR: \neax: ", static_cast<u32>(out[0]),
                 "\nebx: ", static_cast<u32>(out[1]),
@@ -4532,7 +4527,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         const std::unique_ptr<std::string> result = util::sys_result("dmidecode -t system | grep 'Manufacturer|Product' | grep -c \"QEMU|VirtualBox|KVM\"");
 
-        if (*result == "" || result == nullptr) {
+        if (!result || result->empty()) {
             debug("DMIDECODE: ", "invalid output");
             return false;
         } else if (*result == "QEMU") {
@@ -4668,7 +4663,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             const std::unique_ptr<std::string> result = util::sys_result("dmesg | grep -i hypervisor | grep -c \"KVM|QEMU\"");
 
-            if (*result == "" || result == nullptr) {
+            if (!result || result->empty()) {
                 return false;
             } else if (*result == "KVM") {
                 return core::add(brands::KVM);
@@ -5067,17 +5062,17 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         auto dmesg_output = util::sys_result("dmesg");
-        const std::string dmesg = *dmesg_output;
+        const std::string dmesg_o = *dmesg_output;
 
-        if (dmesg.empty()) {
+        if (dmesg_o.empty()) {
             return false;
         }
 
-        if (util::find(dmesg, "BusLogic BT-958")) {
+        if (util::find(dmesg_o, "BusLogic BT-958")) {
             return core::add(brands::VMWARE);
         }
 
-        if (util::find(dmesg, "pcnet32")) {
+        if (util::find(dmesg_o, "pcnet32")) {
             return core::add(brands::VMWARE);
         }
 
@@ -5269,7 +5264,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             if (
                 (util::find(osrelease_content, "WSL") || util::find(osrelease_content, "Microsoft")) &&
-                (util::find(version, "WSL") || util::find(version, "Microsoft"))
+                (util::find(version_content, "WSL") || util::find(version_content, "Microsoft"))
             ) {
                 return core::add(brands::WSL);
             }
@@ -5343,48 +5338,45 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      */
     [[nodiscard]] static bool nsjail_proc_id() {
         std::ifstream status_file("/proc/self/status");
+        if (!status_file.is_open()) {
+            return false;
+        }
+
         std::string line;
         bool pid_match = false;
         bool ppid_match = false;
 
+        auto parse_number = [&](const std::string& prefix) -> int {
+            if (line.compare(0, prefix.size(), prefix) != 0) {
+                return -1;
+            }
+            int num = 0;
+            for (size_t i = prefix.size(); i < line.size(); ++i) {
+                unsigned char ch = static_cast<unsigned char>(line[i]);
+                if (std::isdigit(ch)) {
+                    num = num * 10 + (ch - '0');
+                }
+                else if (num > 0) {
+                    break;
+                }
+            }
+            return num;
+        };
+
         while (std::getline(status_file, line)) {
-            if (line.find("Pid:") == 0) {
-                std::string num_str = "";
-                for (char ch : line) {
-                    if (isdigit(ch)) {
-                        num_str += ch;
-                    }
-                }
-
-                if (num_str.empty()) {
-                    return false;
-                }
-
-                if (std::stoi(num_str) == 1) {
-                    pid_match = true;
-                }
+            int pid = parse_number("Pid:");
+            if (pid == 1) {
+                pid_match = true;
             }
 
-            if (line.find("PPid:") == 0) {
-                std::string num_str = "";
-                for (char ch : line) {
-                    if (isdigit(ch)) {
-                        num_str += ch;
-                    }
-                }
-
-                if (num_str.empty()) {
-                    return false;
-                }
-
-                if (std::stoi(num_str) == 0) {
-                    ppid_match = true;
-                }
+            int ppid = parse_number("PPid:");
+            if (ppid == 0) {
+                ppid_match = true;
             }
-        }
 
-        if (pid_match && ppid_match) {
-            return core::add(brands::NSJAIL);
+            if (pid_match && ppid_match) {
+                return core::add(brands::NSJAIL);
+            }
         }
 
         return false;
@@ -5623,6 +5615,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             SetThreadAffinityMask(GetCurrentThread(), origMask);
             return found;
+        #else
+            return false;
         #endif
     }
 
@@ -5854,7 +5848,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     debug("FIRMWARE: FACP indicates VM (rev ", int(hdr.Revision), "), ", "(length ", hdr.Length, ")");
                     return true;
                 }
-                PFADT fadt = (PFADT)buf;
+                const FADT* fadt = reinterpret_cast<const FADT*>(buf);
                 if (fadt->P_Lvl2_Lat == 0x0FFF || fadt->P_Lvl3_Lat == 0x0FFF) { // A value > 100 indicates the system does not support a C2/C3 state
                     debug("FIRMWARE: C2 and C3 latencies indicate VM");
                     return true;
@@ -5894,7 +5888,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         auto fetch = [&](DWORD provider, DWORD tableID, BYTE*& outBuf, size_t& outLen) -> bool {
             UINT sz = GetSystemFirmwareTable(provider, tableID, nullptr, 0);
             if (sz == 0) return false;
-            outBuf = (BYTE*)malloc(sz);
+            outBuf = reinterpret_cast<BYTE*>(malloc(sz));
             if (!outBuf) return false;
             if (GetSystemFirmwareTable(provider, tableID, outBuf, sz) != sz) {
                 free(outBuf);
@@ -5937,7 +5931,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 DWORD tblID = otherIDs[i];
                 UINT sz = GetSystemFirmwareTable(prov, tblID, nullptr, 0);
                 if (!sz) continue;
-                BYTE* buf = (BYTE*)malloc(sz);
+                BYTE* buf = reinterpret_cast<BYTE*>(malloc(sz));
                 if (!buf) continue;
                 if (GetSystemFirmwareTable(prov, tblID, buf, sz) != sz) {
                     free(buf); continue;
@@ -6422,7 +6416,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::THREAD_COUNT
      */
     [[nodiscard]] static bool thread_count() {
-    #if (x86)
+    #if (x86 && !APPLE)
         debug("THREADCOUNT: ", "threads = ", memo::threadcount::fetch());
 
         struct cpu::stepping_struct steps = cpu::fetch_steppings();
@@ -6730,10 +6724,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             {"wpespy.dll",    brands::NULL_BRAND}
         };
 
-        for (const auto& dll : dlls) {
-            if (GetModuleHandleA(dll.dll_name) != nullptr) {
-                debug("DLL: Found ", dll.dll_name, " (", dll.brand, ")");
-                return core::add(dll.brand);
+        for (const auto& x : dlls) {
+            if (GetModuleHandleA(x.dll_name) != nullptr) {
+                debug("DLL: Found ", x.dll_name, " (", x.brand, ")");
+                return core::add(x.brand);
             }
         }
 
@@ -8140,7 +8134,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         UNICODE_STRING expectedName{};
         expectedName.Buffer = const_cast<PWSTR>(L"\\REGISTRY\\USER");
         expectedName.Length = static_cast<USHORT>(wcslen(expectedName.Buffer) * sizeof(WCHAR));
-        expectedName.MaximumLength = expectedName.Length + sizeof(WCHAR);
     
         const bool mismatch = (pObjectName->Name.Length != expectedName.Length) ||
             (memcmp(pObjectName->Name.Buffer, expectedName.Buffer, expectedName.Length) != 0);
@@ -8515,7 +8508,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             saw_ud = true;
         }
 
-        return (!saw_ud) ? true : false; // if #UD did not happen, hypervisor may be present
+        return !saw_ud; // if #UD did not happen, hypervisor may be present
     #else
         return false;
     #endif
