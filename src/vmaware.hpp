@@ -770,19 +770,18 @@ private:
             // may be unmodified for older 32-bit processors, clearing just in case
             b = 0;
             c = 0;
-#if (WINDOWS)
+    #if (WINDOWS)
             i32 x[4]{};
             __cpuidex((i32*)x, static_cast<int>(a_leaf), static_cast<int>(c_leaf));
             a = static_cast<u32>(x[0]);
             b = static_cast<u32>(x[1]);
             c = static_cast<u32>(x[2]);
             d = static_cast<u32>(x[3]);
-#elif (LINUX || APPLE)
+    #elif (LINUX)
             __cpuid_count(a_leaf, c_leaf, a, b, c, d);
+    #endif
 #endif
-#else
             return;
-#endif
         };
 
         // same as above but for array type parameters (MSVC specific)
@@ -807,6 +806,9 @@ private:
         };
 
         static bool is_leaf_supported(const u32 p_leaf) {
+#if (APPLE) 
+            return false;
+#endif
             u32 eax = 0, unused = 0;
 
             if (p_leaf < 0x40000000) {
@@ -856,7 +858,7 @@ private:
                 return memo::cpu_brand::fetch();
             }
 
-#if (!x86)
+#if (!x86 || APPLE)
             return "Unknown";
 #else
             if (!cpu::is_leaf_supported(cpu::leaf::brand3)) {
@@ -1543,9 +1545,13 @@ private:
 
 
         [[nodiscard]] static u16 get_disk_size() {
+#if (APPLE)
+            return 0;
+#endif
+
             u16 size = 0;
-            constexpr u64 GB = 1024ull * 1024 * 1024;
             constexpr u64 U16_MAX = 65535;
+            constexpr u64 GB = 1024ull * 1024 * 1024;
 
 #if (LINUX)
             struct statvfs stat;
@@ -1563,7 +1569,6 @@ private:
             else {
                 size = static_cast<u16>(size_gb);
             }
-
 #elif (WINDOWS)
             ULARGE_INTEGER totalNumberOfBytes;
             if (GetDiskFreeSpaceExW(L"C:", nullptr, &totalNumberOfBytes, nullptr)) {
@@ -6411,7 +6416,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::THREAD_COUNT
      */
     [[nodiscard]] static bool thread_count() {
-    #if (x86)
+    #if (x86 && !APPLE)
         debug("THREADCOUNT: ", "threads = ", memo::threadcount::fetch());
 
         struct cpu::stepping_struct steps = cpu::fetch_steppings();
