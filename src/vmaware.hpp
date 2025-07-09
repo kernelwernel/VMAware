@@ -1768,6 +1768,12 @@ private:
                 }
             }
 
+#if (WINDOWS)
+            if (util::get_tpm_manufacturer() == 0x4d534654u) { // "MSFT"
+                return true;
+            }
+#endif
+
             return false;
         }
 
