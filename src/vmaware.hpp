@@ -6677,13 +6677,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         size_t bufsize = 0;
 
         if (sysctl(mib, 3, nullptr, &bufsize, nullptr, 0) != 0) {
-            perror("sysctl size");
             return false;
         }
 
         std::vector<char> buffer(bufsize);
         if (sysctl(mib, 3, buffer.data(), &bufsize, nullptr, 0) != 0) {
-            perror("sysctl list");
             return false;
         }
 
@@ -8571,6 +8569,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     #if (!x86_64)
         return false;
     #else
+        if (util::hyper_x() != HYPERV_UNKNOWN_VM) return false; // DBVM can't run with Hyper-V
+
         const u64 PW1 = 0x0000000076543210ULL;
         const u64 PW3 = 0x0000000090909090ULL;
         const u32 PW2 = 0xFEDCBA98U;
