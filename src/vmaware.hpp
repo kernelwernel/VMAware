@@ -766,7 +766,7 @@ private:
             const u32 a_leaf,
             const u32 c_leaf = 0xFF  // dummy value if not set manually
         ) {
-#if (x86)
+#if (x86 && !APPLE)
             // may be unmodified for older 32-bit processors, clearing just in case
             b = 0;
             c = 0;
@@ -791,18 +791,17 @@ private:
             const u32 a_leaf,
             const u32 c_leaf = 0xFF
         ) {
-#if (x86)
+#if (x86 && !APPLE)
             // may be unmodified for older 32-bit processors, clearing just in case
             x[1] = 0;
             x[2] = 0;
-#if (WINDOWS)
+    #if (WINDOWS)
             __cpuidex((i32*)x, static_cast<int>(a_leaf), static_cast<int>(c_leaf));
-#elif (LINUX || APPLE)
+    #elif (LINUX)
             __cpuid_count(a_leaf, c_leaf, x[0], x[1], x[2], x[3]);
+    #endif
 #endif
-#else
             return;
-#endif
         };
 
         static bool is_leaf_supported(const u32 p_leaf) {
