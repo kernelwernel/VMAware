@@ -440,7 +440,7 @@ namespace wrapper {
 ```cpp
 // wrapper.cpp
 #include "vmaware.hpp"
-#include "example.hpp"
+#include "wrapper.hpp"
 
 bool wrapper::is_this_a_vm() {
     return VM::detect();
@@ -462,7 +462,7 @@ void something() {
 }
 ```
 
-This wrapper structure would prevent any avoidable recompilations as opposed to potentially recompiling the vmaware.hpp file for every build that modifies the source which includes the lib, especially if there's a deep hierarchy of file dependencies within your project.
+This wrapper structure would prevent any avoidable recompilations as opposed to potentially recompiling the vmaware.hpp file for every build that modifies the source that #includes the lib, especially if there's a deep hierarchy of file dependencies within your project.
 
 <br>
 
