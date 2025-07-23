@@ -52,12 +52,12 @@
  * ============================== SECTIONS ==================================
  * - enums for publicly accessible techniques  => line 563
  * - struct for internal cpu operations        => line 748
- * - struct for internal memoization           => line 1073
- * - struct for internal utility functions     => line 1227
- * - struct for internal core components       => line 8735
- * - start of VM detection technique list      => line 2079
- * - start of public VM detection functions    => line 9250
- * - start of externally defined variables     => line 10184
+ * - struct for internal memoization           => line 1074
+ * - struct for internal utility functions     => line 1228
+ * - struct for internal core components       => line 8750
+ * - start of VM detection technique list      => line 2089
+ * - start of public VM detection functions    => line 9265
+ * - start of externally defined variables     => line 10199
  *
  *
  * ============================== EXAMPLE ===================================
@@ -766,7 +766,7 @@ private:
             const u32 a_leaf,
             const u32 c_leaf = 0xFF  // dummy value if not set manually
         ) {
-#if (x86)
+#if (x86 && !APPLE)
             // may be unmodified for older 32-bit processors, clearing just in case
             b = 0;
             c = 0;
@@ -791,18 +791,17 @@ private:
             const u32 a_leaf,
             const u32 c_leaf = 0xFF
         ) {
-#if (x86)
+#if (x86 && !APPLE)
             // may be unmodified for older 32-bit processors, clearing just in case
             x[1] = 0;
             x[2] = 0;
-#if (WINDOWS)
+    #if (WINDOWS)
             __cpuidex((i32*)x, static_cast<int>(a_leaf), static_cast<int>(c_leaf));
-#elif (LINUX || APPLE)
+    #elif (LINUX)
             __cpuid_count(a_leaf, c_leaf, x[0], x[1], x[2], x[3]);
+    #endif
 #endif
-#else
             return;
-#endif
         };
 
         static bool is_leaf_supported(const u32 p_leaf) {
@@ -6663,11 +6662,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         size_t bufsize = 0;
 
         if (sysctl(mib, 3, nullptr, &bufsize, nullptr, 0) != 0) {
+            perror("sysctl size");
             return false;
         }
 
         std::vector<char> buffer(bufsize);
         if (sysctl(mib, 3, buffer.data(), &bufsize, nullptr, 0) != 0) {
+            perror("sysctl list");
             return false;
         }
 
@@ -8659,17 +8660,20 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     #if (!x86_64)
         return false;
     #else
-        if (util::hyper_x() != HYPERV_UNKNOWN_VM) return false; // DBVM can't run with Hyper-V
+        constexpr u64 PW1 = 0x0000000076543210ULL;
+        constexpr u64 PW3 = 0x0000000090909090ULL;
+        constexpr u32 PW2 = 0xFEDCBA98U;
 
-        const u64 PW1 = 0x0000000076543210ULL;
-        const u64 PW3 = 0x0000000090909090ULL;
-        const u32 PW2 = 0xFEDCBA98U;
-
-        struct VMCallInfo { u32 structsize; u32 level2pass; u32 command; };
+        struct VMCallInfo { 
+            u32 structsize; 
+            u32 level2pass; 
+            u32 command; 
+        };
+    
         VMCallInfo vmcallInfo = {};
         u64 vmcallResult = 0;
 
-        unsigned char intelTemplate[44] = {
+        constexpr u8 intelTemplate[44] = {
             0x48,0xBA,0,0,0,0,0,0,0,0,                     // mov rdx, imm64   ; PW1
             0x48,0xB9,0,0,0,0,0,0,0,0,                     // mov rcx, imm64   ; PW3
             0x48,0xB8,0,0,0,0,0,0,0,0,                     // mov rax, imm64   ; &vmcallInfo
@@ -8677,7 +8681,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             0x48,0xA3,0,0,0,0,0,0,0,0,                     // mov [imm64], rax ; &vmcallResult
             0xC3                                           // ret
         };
-        unsigned char amdTemplate[44] = {
+
+        constexpr u8 amdTemplate[44] = {
             0x48,0xBA,0,0,0,0,0,0,0,0,                     // mov rdx, imm64   ; PW1
             0x48,0xB9,0,0,0,0,0,0,0,0,                     // mov rcx, imm64   ; PW3
             0x48,0xB8,0,0,0,0,0,0,0,0,                     // mov rax, imm64   ; &vmcallInfo
@@ -8688,6 +8693,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         void* intelStub = VirtualAlloc(nullptr, 44, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
         void* amdStub = VirtualAlloc(nullptr, 44, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+
         if (!intelStub || !amdStub) {
             if (intelStub) VirtualFree(intelStub, 0, MEM_RELEASE);
             if (amdStub)   VirtualFree(amdStub, 0, MEM_RELEASE);
@@ -8709,14 +8715,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         *reinterpret_cast<u64*>(reinterpret_cast<u8*>(amdStub) + 35) = reinterpret_cast<u64>(static_cast<void*>(&vmcallResult));
 
         // lambda that executes the stub (Intel or AMD) and checks for the CE signature
-        auto tryPass = [&](bool useAmd) -> bool {
+        auto tryPass = [&]() -> bool {
             vmcallInfo.structsize = static_cast<u32>(sizeof(VMCallInfo));
             vmcallInfo.level2pass = PW2;
             vmcallInfo.command = 0;
             vmcallResult = 0;
 
             __try {
-                if (useAmd) {
+                if (cpu::is_amd()) {
                     reinterpret_cast<void(*)()>(amdStub)();
                 }
                 else {
@@ -8733,9 +8739,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return (((vmcallResult >> 24) & 0xFF) == 0xCE);
         };
 
-        bool found = false;
-        if (cpu::is_intel()) found = tryPass(false);       
-        else found = tryPass(true);       
+        const bool found = tryPass();
 
         VirtualFree(intelStub, 0, MEM_RELEASE);
         VirtualFree(amdStub, 0, MEM_RELEASE);
@@ -8814,7 +8818,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         switch (crc) {
             case 0x110350C5: return core::add(brands::QEMU); // TianoCore EDK2
-            case 0x87c39681:  return core::add(brands::HYPERV);
+            case 0x87c39681: return core::add(brands::HYPERV);
             case 0x49ED9F1C: return core::add(brands::VBOX);
             default:         return false;
         }
