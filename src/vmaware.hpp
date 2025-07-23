@@ -1195,35 +1195,6 @@ private:
                 return threadcount_cache;
             }
         };
-#if (WINDOWS)
-        struct module {
-            static std::map<HMODULE, std::map<std::string, void*>> function_cache;
-
-            static bool is_cached(const HMODULE& mod, const std::string& name) {
-                auto mod_it = function_cache.find(mod);
-                return mod_it != function_cache.end()
-                    && mod_it->second.find(name) != mod_it->second.end();
-            }
-
-            static void* fetch(const HMODULE& mod, const std::string& name) {
-                return function_cache.at(mod).at(name);
-            }
-
-            static void store(const HMODULE& mod, const std::string& name, void* addr) {
-                function_cache[mod][name] = addr;
-            }
-
-            static void store_bulk(
-                const HMODULE& mod,
-                const std::map<std::string, void*>& entries)
-            {
-                auto& inner = function_cache[mod];
-                for (const auto& kv : entries) {
-                    inner[kv.first] = kv.second;
-                }
-            }
-        };
-#endif
     };
 
     // miscellaneous functionalities
@@ -4302,13 +4273,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #if (ARM || !x86)
         return false;
 #else
-        u16 cycleThreshold = 1500;
-        if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
-            cycleThreshold = 25000; // if we're running under Hyper-V, attempt to detect nested virtualization only
-        }
         if (util::is_running_under_translator()) {
             debug("TIMER: Running inside a binary translation layer.");
             return false;
+        }
+        u16 cycleThreshold = 1500;
+        if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
+            cycleThreshold = 25000; // if we're running under Hyper-V, attempt to detect nested virtualization only
         }
 
         // Case A - Hypervisor without RDTSC patch
@@ -5571,50 +5542,64 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             SYSTEM_INFO si;
             GetNativeSystemInfo(&si);
 
-            const DWORD_PTR origMask = SetThreadAffinityMask(GetCurrentThread(), 1);
-            SetThreadAffinityMask(GetCurrentThread(), origMask);
+            DWORD_PTR originalMask = 0;
 
-            bool found = false;
             for (DWORD i = 0; i < si.dwNumberOfProcessors; ++i) {
                 const DWORD_PTR mask = (DWORD_PTR)1 << i;
-                if (SetThreadAffinityMask(GetCurrentThread(), mask) == 0)
+
+                const DWORD_PTR previousMask = SetThreadAffinityMask(GetCurrentThread(), mask);
+                if (previousMask == 0) {
                     continue;
+                }
+
+                if (originalMask == 0) {
+                    originalMask = previousMask;
+                }
 
             #if (x86_64)
-                unsigned char m[10] = { 0 };
+                unsigned char idtr_buffer[10] = { 0 };
             #else
-                unsigned char m[6] = { 0 };
+                unsigned char idtr_buffer[6] = { 0 };
             #endif
-                static_assert(sizeof(m) >= 6, "Buffer too small for IDT base extraction");
-                u32 idt_base = 0;
 
                 __try {
-            #if (CLANG || GCC)
-                    __asm__ volatile ("sidt %0" : "=m"(m));
-            #elif (MSVC && x86_32)
-                    __asm { sidt m }
-            #else  // MSVC x64
-                #pragma pack(push,1)
-                    struct { u16 limit; u64 base; } idtr = {};
+                #if (CLANG || GCC)
+                    __asm__ volatile("sidt %0" : "=m"(idtr_buffer));
+                #elif (MSVC) && (x86_32)
+                    __asm { sidt idtr_buffer }
+                #elif (MSVC) && (x86_64)
+                #pragma pack(push, 1)
+                    struct { USHORT Limit; ULONG_PTR Base; } idtr;
                 #pragma pack(pop)
                     __sidt(&idtr);
-                    memcpy(m, &idtr, sizeof(m));
-            #endif
+                    memcpy(idtr_buffer, &idtr, sizeof(idtr));
+                #endif
                 }
                 __except (EXCEPTION_EXECUTE_HANDLER) {} // CR4.UMIP
 
-                memcpy(&idt_base, m + 2, sizeof(idt_base)); // extract 32-bit base from bytes [2..5]
-                if ((idt_base >> 24) == 0xE8) {
-                    debug("VPC signature detected");
-                    SetThreadAffinityMask(GetCurrentThread(), origMask);
-                    return core::add(brands::VPC);
-                }
+                ULONG_PTR idt_base = 0;
+            #if (x86_64)
+                idt_base = *reinterpret_cast<ULONG_PTR*>(&idtr_buffer[2]);
+            #else
+                idt_base = *reinterpret_cast<ULONG*>(&idtr_buffer[2]);
+            #endif
 
-                if (found) break;
+                // Check for the 0xE8 signature (VPC/Hyper-V) in the high byte
+                if ((idt_base >> 24) == 0xE8) {
+                    debug("SIDT: VPC/Hyper-V signature detected on core %u", i);
+
+                    if (originalMask != 0) {
+                        SetThreadAffinityMask(GetCurrentThread(), originalMask);
+                    }
+                    return core::add(brands::VPC); 
+                }
             }
 
-            SetThreadAffinityMask(GetCurrentThread(), origMask);
-            return found;
+            if (originalMask != 0) {
+                SetThreadAffinityMask(GetCurrentThread(), originalMask);
+            }
+
+            return false; 
         #else
             return false;
         #endif
@@ -6742,9 +6727,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         struct Entry { const char* brand; const char* regkey; };
         static constexpr Entry entries[] = {
             { nullptr, "HKLM\\Software\\Classes\\Folder\\shell\\sandbox" },
-            
-            { brands::SANDBOXIE,  "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Sandboxie" },          
-            
+
+            { brands::SANDBOXIE,  "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Sandboxie" },
+
             { brands::VPC, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_5333*" },
             { brands::VPC, "HKLM\\SYSTEM\\ControlSet001\\Services\\vpcbus" },
             { brands::VPC, "HKLM\\SYSTEM\\ControlSet001\\Services\\vpc-s3" },
@@ -6778,71 +6763,116 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             { brands::KVM,  "HKLM\\SYSTEM\\ControlSet001\\Services\\BalloonService" },
             { brands::KVM,  "HKLM\\SYSTEM\\ControlSet001\\Services\\netkvm" },
 
-            { brands::VBOX, "SYSTEM\\CurrentControlSet\\Services\\VBoxSF"}
+            { brands::VBOX, "HKLM\\SYSTEM\\CurrentControlSet\\Services\\VBoxSF"} 
         };
 
-        u8 score = 0;
+        struct DirectCheck {
+            HKEY hRoot;
+            const char* subKey;
+            const char* brand;
+        };
+        struct WildcardCheck {
+            const char* pattern;
+            const char* brand;
+        };
+        using WildcardGroup = std::vector<WildcardCheck>;
+
+        static std::vector<DirectCheck> s_directChecks;
+        static std::unordered_map<HKEY, std::unordered_map<std::string, WildcardGroup>> s_wildcardChecks;
+
+        static const bool s_initialized = [] {
+            for (const auto& entry : entries) {
+                const char* full = entry.regkey;
+                HKEY hRoot = nullptr;
+
+                if (strncmp(full, "HKLM\\", 5) == 0) {
+                    hRoot = HKEY_LOCAL_MACHINE;
+                    full += 5;
+                }
+                else if (strncmp(full, "HKCU\\", 5) == 0) {
+                    hRoot = HKEY_CURRENT_USER;
+                    full += 5;
+                }
+                else {
+                    continue;
+                }
+
+                const char* subKey = full;
+                const bool isWildcard = strchr(subKey, '*') || strchr(subKey, '?');
+
+                if (isWildcard) {
+                    const char* slash = strrchr(subKey, '\\');
+                    if (slash) {
+                        std::string parentPath(subKey, static_cast<size_t>(slash - subKey));
+                        s_wildcardChecks[hRoot][parentPath].push_back({ slash + 1, entry.brand });
+                    }
+                    else {
+                        // wildcard is in the root of HKLM/HKCU, parent path is empty
+                        s_wildcardChecks[hRoot][""].push_back({ subKey, entry.brand });
+                    }
+                }
+                else {
+                    s_directChecks.push_back({ hRoot, subKey, entry.brand });
+                }
+            }
+            return true;
+        }();
+
+        int score = 0;
         const bool wow64 = util::is_wow64();
         const REGSAM sam = wow64 ? (KEY_READ | KEY_WOW64_64KEY) : KEY_READ;
 
-        for (auto const& e : entries) {
-            const char* full = e.regkey;
-            HKEY hRoot = nullptr;
-
-            if (full[0] == 'H' && full[1] == 'K' && full[2] == 'L' && full[3] == 'M' && full[4] == '\\') {
-                hRoot = HKEY_LOCAL_MACHINE; full += 5;
-            }
-            else if (full[0] == 'H' && full[1] == 'K' && full[2] == 'C' && full[3] == 'U' && full[4] == '\\') {
-                hRoot = HKEY_CURRENT_USER;  full += 5;
-            }
-            else continue;
-
-            const char* sub = full;
-            bool wildcard = strchr(sub, '*') || strchr(sub, '?');
-
-            if (wildcard) {
-                const char* slash = strrchr(sub, '\\');
-                const char* parent = slash ? sub : "";
-                const char* pattern = slash ? slash + 1 : sub;
-
-                HKEY hParent;
-                if (RegOpenKeyExA(hRoot, parent, 0, sam, &hParent) != 0L) // error_success
-                    continue;
-
-                DWORD idx = 0;
-                char  name[MAX_PATH];
-                DWORD nameLen = MAX_PATH;
-                bool found = false;
-
-                while (RegEnumKeyExA(hParent, idx, name, &nameLen,
-                    nullptr, nullptr, nullptr, nullptr) == 0L) // error_success
-                {
-                    if (PathMatchSpecA(name, pattern)) {
-                        found = true;
-                        break;
-                    }
-                    idx++;
-                    nameLen = MAX_PATH;
-                }
-                RegCloseKey(hParent);
-
-                if (!found) continue;
-            }
-            else {
-                HKEY hKey;
-                if (RegOpenKeyExA(hRoot, sub, 0, sam, &hKey) != 0L) // error_success
-                    continue;
+        for (const auto& check : s_directChecks) {
+            HKEY hKey;
+            if (RegOpenKeyExA(check.hRoot, check.subKey, 0, sam, &hKey) == ERROR_SUCCESS) {
                 RegCloseKey(hKey);
-            }
-
-            score++;
-            if (e.brand && e.brand[0]) {
-                debug("REGISTRY_KEYS: ", "detected ", e.regkey, " for brand ", e.brand);
-                core::add(e.brand);
+                score++;
+                if (check.brand && check.brand[0]) {
+                    debug("REGISTRY_KEYS: detected ", check.subKey, " for brand ", check.brand);
+                    core::add(check.brand);
+                }
             }
         }
 
-        return score >= 1;
+        for (const auto& rootPair : s_wildcardChecks) {
+            HKEY hRoot = rootPair.first;
+            for (const auto& parentPair : rootPair.second) {
+                const std::string& parentPath = parentPair.first;
+                auto remainingChecks = parentPair.second; // mutable copy
+
+                HKEY hParent;
+                if (RegOpenKeyExA(hRoot, parentPath.c_str(), 0, sam, &hParent) != ERROR_SUCCESS) {
+                    continue;
+                }
+
+                DWORD index = 0;
+                char keyName[MAX_PATH];
+                DWORD keyNameLen = MAX_PATH;
+
+                while (!remainingChecks.empty() && RegEnumKeyExA(hParent, index, keyName, &keyNameLen,
+                    nullptr, nullptr, nullptr, nullptr) == ERROR_SUCCESS) {
+
+                    for (auto it = remainingChecks.begin(); it != remainingChecks.end(); ) {
+                        if (PathMatchSpecA(keyName, it->pattern)) {
+                            score++;
+                            if (it->brand && it->brand[0]) {
+                                debug("REGISTRY_KEYS: detected pattern ", it->pattern, " in ", parentPath.c_str(), " for brand ", it->brand);
+                                core::add(it->brand);
+                            }
+                            it = remainingChecks.erase(it);
+                        }
+                        else {
+                            ++it;
+                        }
+                    }
+                    index++;
+                    keyNameLen = MAX_PATH; // this is a reset for next iteration
+                }
+                RegCloseKey(hParent);
+            }
+        }
+
+        return score > 0;
     }
                 
                 
@@ -6985,7 +7015,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::REGISTRY_VALUES
      */
     [[nodiscard]] static bool registry_values() {
-        std::unordered_set<std::string> failedKeys;
+        // This set tracks keys that failed to open, avoiding repeated syscalls, the pointers are safe as they point to string literals in 'checks'
+        static std::unordered_set<const char*> failedKeys;
 
         struct RegCheck {
             const char* brand;
@@ -6993,17 +7024,18 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             const char* valueName;
             const char* compString;
         };
+
         static const std::vector<RegCheck> checks = {
-            
+
             { brands::ANUBIS,   "SOFTWARE\\Microsoft\\Windows\\CurrentVersion",                                      "ProductID",               "76487-337-8429955-22614" },
             { brands::ANUBIS,   "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion",                                 "ProductID",               "76487-337-8429955-22614" },
-            
+
             { brands::CWSANDBOX,"SOFTWARE\\Microsoft\\Windows\\CurrentVersion",                                      "ProductID",               "76487-644-3177037-23510" },
             { brands::CWSANDBOX,"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion",                                 "ProductID",               "76487-644-3177037-23510" },
-            
+
             { brands::JOEBOX,   "SOFTWARE\\Microsoft\\Windows\\CurrentVersion",                                      "ProductID",               "55274-640-2673064-23950" },
             { brands::JOEBOX,   "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion",                                 "ProductID",               "55274-640-2673064-23950" },
-            
+
             { brands::QEMU,     "HARDWARE\\DEVICEMAP\\Scsi\\Scsi Port 0\\Scsi Bus 0\\Target Id 0\\Logical Unit Id 0", "Identifier",           "QEMU" },
             { brands::QEMU,     "HARDWARE\\DEVICEMAP\\Scsi\\Scsi Port 1\\Scsi Bus 0\\Target Id 0\\Logical Unit Id 0", "Identifier",           "QEMU" },
             { brands::QEMU,     "HARDWARE\\DEVICEMAP\\Scsi\\Scsi Port 2\\Scsi Bus 0\\Target Id 0\\Logical Unit Id 0", "Identifier",           "QEMU" },
@@ -7034,38 +7066,79 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         };
 
-        std::unordered_map<std::string, std::vector<const RegCheck*>> grouped;
-        grouped.reserve(checks.size());
-        for (const auto& chk : checks) {
-            grouped[chk.subKey].push_back(&chk);
-        }
+        // Performs a simple wildcard comparison
+        static const auto wildcard_match = [](const char* text, const char* pattern) -> bool {
+            const size_t pattern_len = strlen(pattern);
+            if (pattern_len == 0) {
+                return strlen(text) == 0;
+            }
 
-        #if (CPP >= 17)
-        for (auto& [subKey, entries] : grouped) {
-        #else
-        for (auto it = grouped.begin(); it != grouped.end(); ++it) {
-            const std::string& subKey = it->first;
-            std::vector<const RegCheck*>& entries = it->second;
-        #endif
-            if (failedKeys.count(subKey)) continue;
+            const bool starts_with_wild = (pattern[0] == '*');
+            const bool ends_with_wild = (pattern[pattern_len - 1] == '*');
+
+            // *text* (contains)
+            if (starts_with_wild && ends_with_wild) {
+                if (pattern_len < 2) return true; // pattern is just "*"
+                char middle[256];
+                strncpy_s(middle, sizeof(middle), pattern + 1, pattern_len - 2);
+                return strstr(text, middle) != nullptr;
+            }
+            // text* (starts with)
+            else if (ends_with_wild) {
+                return strncmp(text, pattern, pattern_len - 1) == 0;
+            }
+            // *text (ends with)
+            else if (starts_with_wild) {
+                const size_t text_len = strlen(text);
+                const char* sub_pattern = pattern + 1;
+                const size_t sub_pattern_len = pattern_len - 1;
+                if (text_len < sub_pattern_len) return false;
+                return strcmp(text + text_len - sub_pattern_len, sub_pattern) == 0;
+            }
+            // text (exact match)
+            else {
+                return strcmp(text, pattern) == 0;
+            }
+        };
+
+        static const auto grouped = [] {
+            std::unordered_map<const char*, std::vector<const RegCheck*>> map;
+            for (const auto& chk : checks) {
+                map[chk.subKey].push_back(&chk);
+            }
+            return map;
+        }();
+
+    #if (CPP >= 17)
+        for (const auto& [subKey, entries] : grouped) {
+    #else
+        for (const auto& pair : grouped) {
+            const char* subKey = pair.first;
+            const std::vector<const RegCheck*>& entries = pair.second;
+    #endif
+            if (failedKeys.count(subKey)) {
+                continue;
+            }
 
             HKEY hKey;
-            if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, subKey.c_str(), 0, KEY_READ | KEY_WOW64_64KEY, &hKey) != 0L) {
+            if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, subKey, 0, KEY_READ | KEY_WOW64_64KEY, &hKey) != ERROR_SUCCESS) {
                 failedKeys.insert(subKey);
                 continue;
             }
 
-            for (auto* chk : entries) {
-                DWORD dwType;
-                char buffer[1024] = {};
+            for (const auto* chk : entries) {
+                char buffer[1024];
                 DWORD bufferSize = sizeof(buffer);
+                DWORD dwType;
 
                 if (RegQueryValueExA(hKey, chk->valueName, nullptr, &dwType,
-                    reinterpret_cast<LPBYTE>(buffer), &bufferSize) == 0L) {
-                    if (dwType == REG_SZ || dwType == REG_EXPAND_SZ || dwType == REG_MULTI_SZ) {
-                        buffer[bufferSize ? bufferSize - 1 : 0] = '\0';
-                        if (strstr(buffer, chk->compString) != nullptr) {
-                            debug("REGISTRY_VALUES: Found ", chk->compString, " in ", subKey.c_str(), " for brand ", chk->brand);
+                    reinterpret_cast<LPBYTE>(buffer), &bufferSize) == ERROR_SUCCESS) {
+
+                    if ((dwType == REG_SZ || dwType == REG_EXPAND_SZ || dwType == REG_MULTI_SZ) && bufferSize > 0) {
+                        buffer[sizeof(buffer) - 1] = '\0';
+
+                        if (wildcard_match(buffer, chk->compString)) {
+                            debug("REGISTRY_VALUES: Found ", chk->compString, " in ", subKey, " for brand ", chk->brand);
                             RegCloseKey(hKey);
                             return core::add(chk->brand);
                         }
@@ -7142,21 +7215,27 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     [[nodiscard]] static bool sgdt() {
         SYSTEM_INFO si;
         GetNativeSystemInfo(&si);
-        const DWORD_PTR origMask = SetThreadAffinityMask(GetCurrentThread(), 1);
-        SetThreadAffinityMask(GetCurrentThread(), origMask);
 
+        DWORD_PTR originalMask = 0;
         bool found = false;
+
         for (DWORD i = 0; i < si.dwNumberOfProcessors; ++i) {
             const DWORD_PTR mask = (DWORD_PTR)1 << i;
-            if (SetThreadAffinityMask(GetCurrentThread(), mask) == 0)
+
+            const DWORD_PTR previousMask = SetThreadAffinityMask(GetCurrentThread(), mask);
+            if (previousMask == 0) {
                 continue;
+            }
+
+            if (originalMask == 0) {
+                originalMask = previousMask;
+            }
 
         #if (x86_64)
             unsigned char gdtr[10] = { 0 };
         #else
             unsigned char gdtr[6] = { 0 };
         #endif
-            u32 gdt_base = 0;
 
             __try {
         #if (CLANG || GCC)
@@ -7173,9 +7252,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
             __except (EXCEPTION_EXECUTE_HANDLER) {} // CR4.UMIP
 
-            // 0xFF signature in the high byte of the 32-bit base
+            ULONG_PTR gdt_base = 0;
+        #if (x86_64)
+            gdt_base = *reinterpret_cast<ULONG_PTR*>(&gdtr[2]);
+        #else
+            gdt_base = *reinterpret_cast<ULONG*>(&gdtr[2]);
+        #endif
+
+            // 0xFF signature in the high byte of the base address
             if ((gdt_base >> 24) == 0xFF) {
-                debug("SGDT: 0xFF signature detected");
+                debug("SGDT: 0xFF signature detected on core %u", i);
                 found = true;
             }
 
@@ -7183,7 +7269,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 break;
         }
 
-        SetThreadAffinityMask(GetCurrentThread(), origMask);
+        if (originalMask != 0) {
+            SetThreadAffinityMask(GetCurrentThread(), originalMask);
+        }
+        
         return found;
     }
 
@@ -10426,13 +10515,13 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     #endif
     
     std::make_pair(VM::TIMER, VM::core::technique(50, VM::timer)),
-    std::make_pair(VM::INTEL_THREAD_MISMATCH, VM::core::technique(95, VM::intel_thread_mismatch)),
-    std::make_pair(VM::AMD_THREAD_MISMATCH, VM::core::technique(95, VM::amd_thread_mismatch)),
-    std::make_pair(VM::XEON_THREAD_MISMATCH, VM::core::technique(95, VM::xeon_thread_mismatch)),
+    std::make_pair(VM::INTEL_THREAD_MISMATCH, VM::core::technique(50, VM::intel_thread_mismatch)),
+    std::make_pair(VM::AMD_THREAD_MISMATCH, VM::core::technique(50, VM::amd_thread_mismatch)),
+    std::make_pair(VM::XEON_THREAD_MISMATCH, VM::core::technique(50, VM::xeon_thread_mismatch)),
     std::make_pair(VM::VMID, VM::core::technique(100, VM::vmid)),
     std::make_pair(VM::CPU_BRAND, VM::core::technique(95, VM::cpu_brand)),
     std::make_pair(VM::CPUID_SIGNATURE, VM::core::technique(95, VM::cpuid_signature)),
-    std::make_pair(VM::HYPERVISOR_STR, VM::core::technique(75, VM::hypervisor_str)),
+    std::make_pair(VM::HYPERVISOR_STR, VM::core::technique(100, VM::hypervisor_str)),
     std::make_pair(VM::HYPERVISOR_BIT, VM::core::technique(100, VM::hypervisor_bit)),
     std::make_pair(VM::ODD_CPU_THREADS, VM::core::technique(80, VM::odd_cpu_threads)),
     std::make_pair(VM::BOCHS_CPU, VM::core::technique(100, VM::bochs_cpu)),
