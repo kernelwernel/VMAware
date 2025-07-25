@@ -279,6 +279,7 @@ And if you found this project useful, a star would be appreciated :)
 - [git-eternal](https://github.com/git-eternal)
 - [dmfrpro](https://github.com/dmfrpro)
 - [Teselka](https://github.com/Teselka)
+- [Kyun-J](https://github.com/Kyun-J)
 
 <br>
 
