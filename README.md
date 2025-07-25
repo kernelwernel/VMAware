@@ -237,7 +237,9 @@ If you want to learn about the architecture and design of the library, head over
 <br>
 
 ## Issues, discussions, pull requests, and inquiries 📬
-If you have any suggestions, ideas, or any sort of contribution, feel free to ask! I'll be more than happy to discuss either in the [issue](https://github.com/kernelwernel/VMAware/issues) or [discussion](https://github.com/kernelwernel/VMAware/discussions) sections, I usually reply fairly quickly. If you want to personally ask something in private, my discord is `kr.nl`
+If you have any suggestions, ideas, or any sort of contribution, feel free to ask! I'll be more than happy to discuss either in the [issue](https://github.com/kernelwernel/VMAware/issues) or [discussion](https://github.com/kernelwernel/VMAware/discussions) sections. We usually reply fairly quickly. If you want to personally ask something in private, our discords are `kr.nl` and `shenzken`
+
+For email inquiries: `jeanruyv@gmail.com`
 
 And if you found this project useful, a star would be appreciated :)
 
