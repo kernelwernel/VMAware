@@ -21,6 +21,7 @@
  *      - dmfrpro (https://github.com/dmfrpro)
  *      - Pierre-Étienne Messier (https://github.com/pemessier)
  *      - Teselka (https://github.com/Teselka)
+ *      - Kyun-J (https://github.com/Kyun-J)
  *  - Repository: https://github.com/kernelwernel/VMAware
  *  - Docs: https://github.com/kernelwernel/VMAware/docs/documentation.md
  *  - Full credits: https://github.com/kernelwernel/VMAware#credits-and-contributors-%EF%B8%8F
@@ -50,14 +51,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 563
- * - struct for internal cpu operations        => line 748
- * - struct for internal memoization           => line 1074
- * - struct for internal utility functions     => line 1199
- * - struct for internal core components       => line 8842
- * - start of VM detection technique list      => line 2057
- * - start of public VM detection functions    => line 9356
- * - start of externally defined variables     => line 10290
+ * - enums for publicly accessible techniques  => line 568
+ * - struct for internal cpu operations        => line 753
+ * - struct for internal memoization           => line 1079
+ * - struct for internal utility functions     => line 1204
+ * - struct for internal core components       => line 8844
+ * - start of VM detection technique list      => line 2065
+ * - start of public VM detection functions    => line 9359
+ * - start of externally defined variables     => line 10293
  *
  *
  * ============================== EXAMPLE ===================================
@@ -413,6 +414,11 @@
 #include <sched.h>      
 #include <cerrno>   
 #elif (APPLE)
+#if (x86)
+#include <cpuid.h>
+#include <x86intrin.h>
+#include <immintrin.h>
+#endif
 #include <sys/types.h>
 #include <sys/sysctl.h>
 #include <sys/user.h>
@@ -10517,7 +10523,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         std::make_pair(VM::MAC_SIP, VM::core::technique(40, VM::mac_sip)),
         std::make_pair(VM::IOREG_GREP, VM::core::technique(100, VM::ioreg_grep)),
         std::make_pair(VM::HWMODEL, VM::core::technique(100, VM::hwmodel)),
-        std::make_pair(VM::MAC_UTM, VM::core::technique(150, VM::mac_utm))
+        std::make_pair(VM::MAC_UTM, VM::core::technique(150, VM::mac_utm)),
     #endif
     
     std::make_pair(VM::TIMER, VM::core::technique(50, VM::timer)),
