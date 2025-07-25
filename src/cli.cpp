@@ -116,7 +116,7 @@ public:
         m_old(0),
         m_out(GetStdHandle(STD_OUTPUT_HANDLE))
     {
-        if (m_out != NULL && m_out != INVALID_HANDLE_VALUE)
+        if (m_out != nullptr && m_out != INVALID_HANDLE_VALUE)
         {
             if (GetConsoleMode(m_out, &m_old) != FALSE)
             {
@@ -538,10 +538,10 @@ static std::string vm_description(const std::string& vm_brand) {
         /*lpFileName*/TEXT("\\\\?\\\\A3E64E55_fl"),
         /*dwDesiredAccess*/GENERIC_READ,
         /*dwShareMode*/0,
-        /*lpSecurityAttributes*/NULL,
+        /*lpSecurityAttributes*/nullptr,
         /*dwCreationDisposition*/OPEN_EXISTING,
         /*dwFlagsAndAttributes*/0,
-        /*hTemplateFile*/NULL
+        /*hTemplateFile*/nullptr
     );
 
     if (hFile == INVALID_HANDLE_VALUE) {
@@ -603,19 +603,19 @@ static std::string vm_description(const std::string& vm_brand) {
     HANDLE hFile;
     IO_STATUS_BLOCK iosb = { { 0 } };
     OBJECT_ATTRIBUTES attrs{};
-    InitializeObjectAttributes(&attrs, &name, 0, NULL, NULL);
+    InitializeObjectAttributes(&attrs, &name, 0, nullptr, nullptr);
 
     status = pNtCreateFile(
         /*FileHandle*/&hFile,
         /*DesiredAccess*/GENERIC_READ | SYNCHRONIZE,
         /*ObjectAttributes*/&attrs,
         /*IoStatusBlock*/&iosb,
-        /*AllocationSize*/NULL,
+        /*AllocationSize*/nullptr,
         /*FileAttributes*/FILE_ATTRIBUTE_DIRECTORY,
         /*ShareAccess*/FILE_SHARE_READ,
         /*CreateDisposition*/FILE_OPEN,
         /*CreateOptions*/FILE_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT,
-        /*EaBuffer*/NULL,
+        /*EaBuffer*/nullptr,
         /*EaLength*/0
     );
 
