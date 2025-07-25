@@ -13,7 +13,6 @@ If you have any questions or inquiries, our contact details are in the README.
 
 Lastly, consider adding your name and github in the vmaware.hpp file and the README's credit sections. Your work is valuable to us, and we want to credit you for the improvements you've made. 
 
-
 # Q&A
 ### I want to add a new technique, how would I do that?
 There's a few steps that should be taken:
