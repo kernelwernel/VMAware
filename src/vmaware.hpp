@@ -51,14 +51,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 568
- * - struct for internal cpu operations        => line 753
- * - struct for internal memoization           => line 1079
- * - struct for internal utility functions     => line 1204
- * - struct for internal core components       => line 8844
- * - start of VM detection technique list      => line 2065
- * - start of public VM detection functions    => line 9359
- * - start of externally defined variables     => line 10293
+ * - enums for publicly accessible techniques  => line 569
+ * - struct for internal cpu operations        => line 754
+ * - struct for internal memoization           => line 1080
+ * - struct for internal utility functions     => line 1205
+ * - struct for internal core components       => line 8848
+ * - start of VM detection technique list      => line 2063
+ * - start of public VM detection functions    => line 9362
+ * - start of externally defined variables     => line 10296
  *
  *
  * ============================== EXAMPLE ===================================
@@ -1375,7 +1375,6 @@ private:
             return (base_str.find(keyword) != std::string::npos);
         };
 
-        // 1) UTF‑16 -> ASCII helper
         static std::string narrow_wide(const wchar_t* wstr) {
             std::wstring ws(wstr);
             std::string result;
@@ -1389,7 +1388,6 @@ private:
         }
 
         // choose correct << or narrow for each type
-        // wchar_t*
         static void write_arg_impl(std::ostream& os, const wchar_t* arg) {
             os << narrow_wide(arg);
         }
@@ -1397,12 +1395,11 @@ private:
             os << narrow_wide(arg);
         }
 
-        // std::wstring
         static void write_arg_impl(std::ostream& os, const std::wstring& ws) {
             os << narrow_wide(ws.c_str());
         }
 
-        // everything else
+        // everything else that is not std::string or wchar_t
         template <typename T>
         static typename std::enable_if<!std::is_convertible<T, std::wstring>::value
             && !std::is_same<typename std::decay<T>::type, wchar_t*>::value,
@@ -4314,17 +4311,17 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         debug("TIMER: Average latency -> ", avg, " cycles");
 
-        if (avg >= cycleThreshold) return true; // Intel's Emerald Rapids have much more cycles when executing CPUID
+        if (avg >= cycleThreshold) return true; // Intel's Emerald Rapids have much more cycles when executing CPUID than the rest of intel cpus
     #if (WINDOWS)  
         // Case B - Hypervisor with RDTSC patch + useplatformclock=true
         LARGE_INTEGER freq;
         if (!QueryPerformanceFrequency(&freq)) // NtPowerInformation is avoided as some hypervisors downscale tsc only if we triggered a context switch from userspace
             return false;
 
-        // calculates the invariant TSC base rate, not the dynamic (P‑state/Turbo) core frequency, similar to what CallNtPowerInformation would give you
+        // calculates the invariant TSC base rate, not the dynamic core frequency, similar to what CallNtPowerInformation would give you
         LARGE_INTEGER t1q, t2q;
         u64 t1 = __rdtsc();
-        QueryPerformanceCounter(&t1q); // uses RDTSCP under the hood unless platformclock is set (which then would use HPET or ACPI PM via NtQueryPerformanceCounter)
+        QueryPerformanceCounter(&t1q); // uses RDTSCP under the hood unless platformclock (a bcdedit setting) is set, which then would use HPET or ACPI PM via NtQueryPerformanceCounter
         SleepEx(50, 0);
         QueryPerformanceCounter(&t2q);
         u64 t2 = __rdtsc();
@@ -4378,7 +4375,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             t2 = __rdtscp(&aux);
 
             CloseHandle(INVALID_HANDLE_VALUE); // kernel syscall
-            const u64 t3 = __rdtscp(&aux); // on modern Intel and AMD CPUs the TSC is "invariant" (doesn’t change with P‑states or C‑states)
+            const u64 t3 = __rdtscp(&aux); // on modern Intel and AMD CPUs the TSC is "invariant" (doesn’t change with P-states or C-states)
 
             // important to not debug cycles by printing but with breakpoints and stack analysis, otherwise the CPU would cache and make the ratio much lower
             const u64 userCycles = t2 - t1;
@@ -5711,32 +5708,32 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             CHAR    AslCompilerId[4];
             UINT32  AslCompilerRevision;
 
-            UINT32  FirmwareCtrl;         // 36
-            UINT32  Dsdt;                 // 40
-            UINT8   Reserved1;            // 44
-            UINT8   PreferredPmProfile;   // 45
-            UINT16  SciInterrupt;         // 46
-            UINT32  SmiCommandPort;       // 48
-            UINT8   AcpiEnable;           // 52
-            UINT8   AcpiDisable;          // 53
-            UINT8   S4BiosReq;            // 54
-            UINT8   Reserved2;            // 55
-            UINT32  PstateControl;        // 56
-            UINT32  Pm1aEventBlock;       // 60
-            UINT32  Pm1bEventBlock;       // 64
-            UINT32  Pm1aControlBlock;     // 68
-            UINT32  Pm1bControlBlock;     // 72
-            UINT32  Pm2ControlBlock;      // 76
-            UINT32  PmTimerBlock;         // 80
-            UINT32  Gpe0Block;            // 84
-            UINT32  Gpe1Block;            // 88
-            UINT8   Pm1EventLength;       // 92
-            UINT8   Pm1ControlLength;     // 93
-            UINT8   Pm2ControlLength;     // 94
-            UINT8   PmTimerLength;        // 95
+            UINT32  FirmwareCtrl;      
+            UINT32  Dsdt;                
+            UINT8   Reserved1;            
+            UINT8   PreferredPmProfile;  
+            UINT16  SciInterrupt;       
+            UINT32  SmiCommandPort;      
+            UINT8   AcpiEnable;          
+            UINT8   AcpiDisable;          
+            UINT8   S4BiosReq;           
+            UINT8   Reserved2;          
+            UINT32  PstateControl;       
+            UINT32  Pm1aEventBlock;      
+            UINT32  Pm1bEventBlock;      
+            UINT32  Pm1aControlBlock;   
+            UINT32  Pm1bControlBlock;     
+            UINT32  Pm2ControlBlock;     
+            UINT32  PmTimerBlock;        
+            UINT32  Gpe0Block;           
+            UINT32  Gpe1Block;            
+            UINT8   Pm1EventLength;      
+            UINT8   Pm1ControlLength;    
+            UINT8   Pm2ControlLength;    
+            UINT8   PmTimerLength;       
 
-            UINT16  P_Lvl2_Lat;           // worst‑case C2 entry+exit latency (μs)
-            UINT16  P_Lvl3_Lat;           // worst‑case C3 entry+exit latency (μs)
+            UINT16  P_Lvl2_Lat;           
+            UINT16  P_Lvl3_Lat;       
         } FADT, * PFADT;
         #pragma pack(pop)
         constexpr DWORD ACPI_SIG = 'ACPI';
@@ -5764,7 +5761,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         static_assert(targets.size() == brands_map.size(), "targets and brands_map must be the same length");
 
         auto scan_table = [&](const BYTE* buf, const size_t len) noexcept -> bool {
-            // helper to search a byte‐sequence
             auto contains = [&](const char* pat, size_t patlen) {
                 return std::search(buf, buf + len, pat, pat + patlen) != (buf + len);
             };
@@ -6098,7 +6094,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             enum RootType { RT_PCI, RT_USB, RT_HDAUDIO };
             constexpr DWORD MAX_MULTI_SZ = 64 * 1024;
 
-            // Lambda #1: Process the MULTI_SZ “HardwareID” on an instance key,
+            // Lambda #1: Process the hardware ID on an instance key,
             // extract every (VID, DID) pair, and push into devices
             auto processHardwareID = [&](HKEY hInst, RootType rootType) {
                 DWORD type = 0, cbData = 0;
@@ -6135,7 +6131,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     return;
                 }
 
-                // iterate over each null‐terminated string inside the MULTI_SZ
+                // iterate over each null-terminated string inside the MULTI_SZ
                 for (wchar_t* p = buf.data(); *p; p += wcslen(p) + 1) {
                     wchar_t* s = p;
                     wchar_t* v = nullptr;
@@ -6145,7 +6141,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     bool      ok = false;
 
                     if (rootType == RT_USB) {
-                        // USB: look for “VID_” and then “PID_” after it
+                        // USB: VID_ and then PID_ after it
                         v = wcsstr(s, L"VID_");
                         if (v) {
                             d = wcsstr(v + 4, L"PID_");
@@ -6157,7 +6153,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                         }
                     }
                     else {
-                        // PCI or HDAUDIO: look for “VEN_” and then “DEV_” after it
+                        // PCI or HDAUDIO: VEN_ and then DEV_ after it
                         v = wcsstr(s, L"VEN_");
                         if (v) {
                             d = wcsstr(v + 4, L"DEV_");
@@ -6171,7 +6167,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                             wchar_t* ampAfterDev = wcschr(devStart, L'&');
 
                             if (rootType == RT_HDAUDIO) {
-                                // HDAUDIO: 4‐digit device ID; stop at '&' if present
+                                // HDAUDIO: 4-digit device ID; stop at '&' if present
                                 if (ampAfterDev) {
                                     *ampAfterDev = L'\0';
                                     swscanf_s(devStart, L"%4x", &did);
@@ -6182,7 +6178,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                                 }
                             }
                             else {
-                                // PCI: up to 8‐digit device ID; stop at '&' if present
+                                // PCI: up to 8-digit device ID; stop at '&' if present
                                 if (ampAfterDev) {
                                     *ampAfterDev = L'\0';
                                     swscanf_s(devStart, L"%8x", &did);
@@ -6203,7 +6199,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
             };
 
-            // Lambda #2: Enumerate all “Instance” subkeys under a given “Device” key,
+            // Lambda #2: all instance subkeys under a given device key,
             // and for each instance, open it and call processHardwareID()
             auto enumInstances = [&](HKEY hDev, RootType rootType) {
                 for (DWORD j = 0;; ++j) {
@@ -6236,7 +6232,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
             };
 
-            // Lambda #3: Enumerate all “Device” subkeys under a given root key,
+            // Lambda #3: all device subkeys under a given root key,
             // open each device key, and call enumInstances()
             auto enumDevices = [&](HKEY hRoot, RootType rootType) {
                 for (DWORD i = 0;; ++i) {
@@ -6269,8 +6265,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
             };
 
-            // Top‐level loop: for each rootPath, open the root key once, compute its RootType,
-            // then call enumDevices()
+            // for each rootPath we open the root key once, compute its RootType, then call enumDevices()
             for (size_t rootIdx = 0; rootIdx < _countof(kRoots); ++rootIdx) {
                 const wchar_t* rootPath = kRoots[rootIdx];
                 HKEY hRoot = nullptr;
@@ -7531,10 +7526,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             TEXT("\\\\.\\pipe\\cuckoo"),
             GENERIC_READ,
             0,
-            NULL,
+            nullptr,
             OPEN_EXISTING,
             0,
-            NULL
+            nullptr
         );
         
         if (hPipe != INVALID_HANDLE_VALUE) {
@@ -7929,7 +7924,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return false;
             }
 
-            // if the driver cannot adjust the display gamma ramp dynamically—but only in full‑screen mode—via the IDirect3DDevice9::SetGammaRamp API
+            // if the driver cannot adjust the display gamma ramp dynamically—but only in full-screen mode—via the IDirect3DDevice9::SetGammaRamp API
             return !(caps.Caps2 & D3DCAPS2_FULLSCREENGAMMA);
         */
 
@@ -7951,12 +7946,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::DEVICE_HANDLES
      */
     [[nodiscard]] static bool device_handles() {
-        const HANDLE handle1 = CreateFile(_T("\\\\.\\VBoxMiniRdrDN"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-        const HANDLE handle2 = CreateFile(_T("\\\\.\\pipe\\VBoxMiniRdDN"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-        const HANDLE handle3 = CreateFile(_T("\\\\.\\VBoxTrayIPC"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-        const HANDLE handle4 = CreateFile(_T("\\\\.\\pipe\\VBoxTrayIPC"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-        const HANDLE handle5 = CreateFile(_T("\\\\.\\HGFS"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-        const HANDLE handle6 = CreateFile(_T("\\\\.\\pipe\\cuckoo"), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+        const HANDLE handle1 = CreateFile(_T("\\\\.\\VBoxMiniRdrDN"), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        const HANDLE handle2 = CreateFile(_T("\\\\.\\pipe\\VBoxMiniRdDN"), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        const HANDLE handle3 = CreateFile(_T("\\\\.\\VBoxTrayIPC"), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        const HANDLE handle4 = CreateFile(_T("\\\\.\\pipe\\VBoxTrayIPC"), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        const HANDLE handle5 = CreateFile(_T("\\\\.\\HGFS"), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        const HANDLE handle6 = CreateFile(_T("\\\\.\\pipe\\cuckoo"), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
 
         bool vbox = false;
 
@@ -8308,7 +8303,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             case 0x54584E00u: // "TXN\0"
             case 0x524F4343u: // "ROCC"
             case 0x4C454E00u: // "LEN\0"
-            case 0x4d534654u: // "MSFT" (ARM specific)
+            case 0x4d534654u: // "MSFT" (ARM specific, used in Surface Pro devices)
                 return false;
             default:
                 return true;
@@ -8491,9 +8486,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::TRAP
      */
     [[nodiscard]] static bool trap() {
-        // Intel explicitly guarantees (in the SDM) that if TF and DR0 both trigger on the same instruction, DR6.BS and DR6.B0 are both set in the resulting #DB
-        // On AMD CPUs they do not set both DR6.BS and DR6.B0 when a single‐step and a DR0 breakpoint coincide on a trappable/serializing instruction
-        // whenever a hardware breakpoint and TF collide, only the breakpoint bit shows up in DR6
+        // when a single-step (TF) and hardware breakpoint (DR0) collide, Intel CPUs set both DR6.BS and DR6.B0 to report both events, which help make this detection trick
+        // AMD CPUs prioritize the breakpoint, setting only its corresponding bit in DR6 and clearing the single-step bit, which is why this technique is not compatible with AMD
+
         if (!cpu::is_intel()) {
             return false;
         }
@@ -8627,7 +8622,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 or dword ptr[esp], 0x100
                 popfd
 
-                // execute MOV SS,AX (reload SS with itself) to force the “interruptible state” block
+                // execute MOV SS,AX (reload SS with itself) to force the interruptible state block
                 mov ax, ss
                 mov ss, ax // this blocks any debug exception for exactly one instruction
 
@@ -8764,7 +8759,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::BOOT_LOGO
      */
     [[nodiscard]] static bool boot_logo() {
-    #if (x86_64 && !CLANG)
+#if (x86_64 && !CLANG)
         const HMODULE ntdll = GetModuleHandle(_T("ntdll.dll"));
         if (!ntdll)
             return false;
@@ -8775,7 +8770,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         using NtQuerySysInfo_t = NTSTATUS(__stdcall*)(
             SYSTEM_INFORMATION_CLASS, PVOID, ULONG, PULONG
-        );
+            );
         NtQuerySysInfo_t pNtQuery = reinterpret_cast<NtQuerySysInfo_t>(functions[0]);
         if (!pNtQuery)
             return false;
@@ -8801,11 +8796,19 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const u8* bmp = buffer.data() + info->BitmapOffset;
         const size_t size = static_cast<size_t>(needed) - info->BitmapOffset;
 
-        // hardware‐accelerated CRC in 8-byte chunks
+        // 8 byte chunks
         u64 crcReg = 0xFFFFFFFFull;
         const size_t qwords = size >> 3;
         const auto* ptr = reinterpret_cast<const u64*>(bmp);
-        for (size_t i = 0; i < qwords; ++i) {
+        // unrolling the loop can lead to better instruction scheduling
+        size_t i = 0;
+        for (; i + 3 < qwords; i += 4) {
+            crcReg = _mm_crc32_u64(crcReg, ptr[i]);
+            crcReg = _mm_crc32_u64(crcReg, ptr[i + 1]);
+            crcReg = _mm_crc32_u64(crcReg, ptr[i + 2]);
+            crcReg = _mm_crc32_u64(crcReg, ptr[i + 3]);
+        }
+        for (; i < qwords; ++i) {
             crcReg = _mm_crc32_u64(crcReg, ptr[i]);
         }
 
@@ -8823,10 +8826,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             ", crc=0x", std::hex, crc);
 
         switch (crc) {
-            case 0x110350C5: return core::add(brands::QEMU); // TianoCore EDK2
-            case 0x87c39681: return core::add(brands::HYPERV);
-            case 0x49ED9F1C: return core::add(brands::VBOX);
-            default:         return false;
+        case 0x110350C5: return core::add(brands::QEMU); // TianoCore EDK2
+        case 0x87c39681: return core::add(brands::HYPERV);
+        case 0x49ED9F1C: return core::add(brands::VBOX);
+        default:         return false;
         }
     #else
         return false;
@@ -9167,7 +9170,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
         }
 
-        // Define a base class for different types
+        // Base class for different types
         struct TestHandler {
             virtual ~TestHandler() = default;
 
@@ -9180,7 +9183,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
         };
 
-        // Define a base class for different types
         struct DisableTestHandler {
             virtual ~DisableTestHandler() = default;
 
@@ -9189,7 +9191,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
         };
 
-        // Define derived classes for specific type implementations
+        // Derived classes for specific type implementations
         struct TestBitsetHandler : public TestHandler {
             using TestHandler::handle; 
 
