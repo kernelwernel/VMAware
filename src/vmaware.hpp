@@ -413,6 +413,11 @@
 #include <sched.h>      
 #include <cerrno>   
 #elif (APPLE)
+#if (x86)
+#include <cpuid.h>
+#include <x86intrin.h>
+#include <immintrin.h>
+#endif
 #include <sys/types.h>
 #include <sys/sysctl.h>
 #include <sys/user.h>
@@ -10515,7 +10520,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         std::make_pair(VM::MAC_SIP, VM::core::technique(40, VM::mac_sip)),
         std::make_pair(VM::IOREG_GREP, VM::core::technique(100, VM::ioreg_grep)),
         std::make_pair(VM::HWMODEL, VM::core::technique(100, VM::hwmodel)),
-        std::make_pair(VM::MAC_UTM, VM::core::technique(150, VM::mac_utm))
+        std::make_pair(VM::MAC_UTM, VM::core::technique(150, VM::mac_utm)),
     #endif
     
     std::make_pair(VM::TIMER, VM::core::technique(50, VM::timer)),
