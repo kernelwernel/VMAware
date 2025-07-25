@@ -18,3 +18,5 @@ We have a useful script at `auxiliary/updater.py` will update:
 - the date of the update
 
 It's highly recommended to use this script before sending the PR so that all the above don't have to be manually updated, which can be time consuming and can potentially creep in some human errors. 
+
+Lastly, consider adding your name and github in the vmaware.hpp file and the README's credit sections. Your work is valuable to us, and we want to credit you for the improvements you've made to the lib. 
