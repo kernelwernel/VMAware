@@ -7,11 +7,11 @@ We have a useful script at `auxiliary/updater.py` that will update:
 
 It's highly recommended to use this script before sending the PR so that all the above don't have to be manually updated, which can be time consuming and can potentially creep in some human errors. 
 
-Also, make sure to 
+Also, make sure to create your PR merge target to the `dev` branch and not the `main` branch. This is because all our prototype code are developed in `dev`. We usually merge that branch to `main` at least once a week, and it keeps our codebase organised and separated between a prototype that we cautiously don't think it's ready to be used by the public yet (especially if it's a new technique being introduced), and an upstream version that we've deemed to be practically ready.
 
 If you have any questions or inquiries, our contact details are in the README.
 
-Lastly, consider adding your name and github in the vmaware.hpp file and the README's credit sections. Your work is valuable to us, and we want to credit you for the improvements you've made to the lib. 
+Lastly, consider adding your name and github in the vmaware.hpp file and the README's credit sections. Your work is valuable to us, and we want to credit you for the improvements you've made. 
 
 
 # Q&A
