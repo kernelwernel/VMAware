@@ -1942,65 +1942,66 @@ private:
 
         // retrieves the addresses of specified functions from a loaded module using the export directory, manual implementation of GetProcAddress
         static void GetFunctionAddresses(const HMODULE hModule, const char* names[], void** functions, size_t count) {
-            // 1) One-time cache, shared across all calls/modules
-            typedef std::map<std::string, void*> FuncMap;
-            static std::map<HMODULE, FuncMap> function_cache;
+            // 1) A static cache persists between calls
+            using FuncMap = std::unordered_map<std::string, void*>;
+            static std::unordered_map<HMODULE, FuncMap> function_cache;
 
-            // 2) Helpers to query or insert in that cache
-            auto is_cached = [&](const HMODULE& mod, const std::string& name) {
-                auto mit = function_cache.find(mod);
-                return mit != function_cache.end()
-                    && mit->second.find(name) != mit->second.end();
-            };
-            auto fetch = [&](const HMODULE& mod, const std::string& name) -> void* {
-                return function_cache.at(mod).at(name);
-            };
-            auto store = [&](const HMODULE& mod, const std::string& name, void* addr) {
-                function_cache[mod][name] = addr;
-            };
+            // this ensures a clean state if we return early
+            for (size_t i = 0; i < count; ++i) {
+                functions[i] = nullptr;
+            }
 
-            // 3) Standard PE export-directory parsing
+            // 2) Parse PE header ONCE per call for this batch of functions
             BYTE* base = reinterpret_cast<BYTE*>(hModule);
             const auto* dosHeader = reinterpret_cast<PIMAGE_DOS_HEADER>(base);
             const auto* ntHeaders = reinterpret_cast<PIMAGE_NT_HEADERS>(base + dosHeader->e_lfanew);
-            const auto& dd = ntHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT];
-            const auto* exportDir = reinterpret_cast<PIMAGE_EXPORT_DIRECTORY>(base + dd.VirtualAddress);
 
+            if (ntHeaders->OptionalHeader.NumberOfRvaAndSizes <= IMAGE_DIRECTORY_ENTRY_EXPORT) {
+                return; // no export directory
+            }
+            const auto& dd = ntHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT];
+            if (dd.VirtualAddress == 0) {
+                return; // no exports
+            }
+
+            const auto* exportDir = reinterpret_cast<PIMAGE_EXPORT_DIRECTORY>(base + dd.VirtualAddress);
             const DWORD* nameRvas = reinterpret_cast<DWORD*>(base + exportDir->AddressOfNames);
             const DWORD* funcRvas = reinterpret_cast<DWORD*>(base + exportDir->AddressOfFunctions);
             const WORD* ordinals = reinterpret_cast<WORD*>(base + exportDir->AddressOfNameOrdinals);
-            const DWORD  nameCount = exportDir->NumberOfNames;
+            const DWORD nameCount = exportDir->NumberOfNames;
 
-            auto getName = [&](DWORD idx) -> const char* {
-                return reinterpret_cast<char*>(base + nameRvas[idx]);
-            };
+            FuncMap& module_cache = function_cache[hModule];
 
-            // 4) Main loop
+            // 3) Loop to find all functions
             for (size_t i = 0; i < count; ++i) {
-                std::string fname = names[i];
+                const char* current_name = names[i];
+                const std::string s_name(current_name); // key for the cache map
 
-                // 4a) If we’ve cached it, use it
-                if (is_cached(hModule, fname)) {
-                    functions[i] = fetch(hModule, fname);
+                // 3a) Check cache first
+                auto cache_it = module_cache.find(s_name);
+                if (cache_it != module_cache.end()) {
+                    functions[i] = cache_it->second;
                     continue;
                 }
 
-                // 4b) Binary search in the export name table
-                functions[i] = nullptr;
+                // 3b) Binary search
                 DWORD lo = 0, hi = nameCount;
                 while (lo < hi) {
-                    DWORD mid = (lo + hi) / 2;
-                    int   cmp = strcmp(getName(mid), fname.c_str());
-                    if (cmp < 0)      lo = mid + 1;
-                    else /*>=*/      hi = mid;
+                    DWORD mid = lo + (hi - lo) / 2;
+                    int cmp = strcmp(current_name, reinterpret_cast<const char*>(base + nameRvas[mid]));
+                    if (cmp > 0) {
+                        lo = mid + 1;
+                    }
+                    else {
+                        hi = mid;
+                    }
                 }
 
-                // 4c) If found, compute address and store in cache
-                if (lo < nameCount && strcmp(getName(lo), fname.c_str()) == 0) {
-                    DWORD rva = funcRvas[ordinals[lo]];
-                    void* addr = base + rva;
+                // 3c) If a match is found, compute the address and store it in our cache
+                if (lo < nameCount && strcmp(current_name, reinterpret_cast<const char*>(base + nameRvas[lo])) == 0) {
+                    void* addr = base + funcRvas[ordinals[lo]];
                     functions[i] = addr;
-                    store(hModule, fname, addr);
+                    module_cache[s_name] = addr; 
                 }
             }
         }
@@ -6768,61 +6769,42 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             { brands::VBOX, "HKLM\\SYSTEM\\CurrentControlSet\\Services\\VBoxSF"} 
         };
 
-        struct DirectCheck {
-            HKEY hRoot;
-            const char* subKey;
-            const char* brand;
-        };
-        struct WildcardCheck {
-            const char* pattern;
-            const char* brand;
-        };
+        struct DirectCheck { HKEY hRoot; const char* subKey; const char* brand; };
+        struct WildcardCheck { const char* pattern; const char* brand; };
         using WildcardGroup = std::vector<WildcardCheck>;
 
         static std::vector<DirectCheck> s_directChecks;
         static std::unordered_map<HKEY, std::unordered_map<std::string, WildcardGroup>> s_wildcardChecks;
 
+        // This initialization runs only once, the first time the function is called.
         static const bool s_initialized = [] {
             for (const auto& entry : entries) {
                 const char* full = entry.regkey;
                 HKEY hRoot = nullptr;
 
-                if (strncmp(full, "HKLM\\", 5) == 0) {
-                    hRoot = HKEY_LOCAL_MACHINE;
-                    full += 5;
-                }
-                else if (strncmp(full, "HKCU\\", 5) == 0) {
-                    hRoot = HKEY_CURRENT_USER;
-                    full += 5;
-                }
-                else {
-                    continue;
-                }
+                if (strncmp(full, "HKLM\\", 5) == 0) { hRoot = HKEY_LOCAL_MACHINE; full += 5; }
+                else if (strncmp(full, "HKCU\\", 5) == 0) { hRoot = HKEY_CURRENT_USER; full += 5; }
+                else { continue; }
 
-                const char* subKey = full;
-                const bool isWildcard = strchr(subKey, '*') || strchr(subKey, '?');
-
-                if (isWildcard) {
-                    const char* slash = strrchr(subKey, '\\');
+                if (strchr(full, '*') || strchr(full, '?')) {
+                    const char* slash = strrchr(full, '\\');
                     if (slash) {
-                        std::string parentPath(subKey, static_cast<size_t>(slash - subKey));
+                        std::string parentPath(full, static_cast<size_t>(slash - full));
                         s_wildcardChecks[hRoot][parentPath].push_back({ slash + 1, entry.brand });
                     }
                     else {
-                        // wildcard is in the root of HKLM/HKCU, parent path is empty
-                        s_wildcardChecks[hRoot][""].push_back({ subKey, entry.brand });
+                        s_wildcardChecks[hRoot][""].push_back({ full, entry.brand });
                     }
                 }
                 else {
-                    s_directChecks.push_back({ hRoot, subKey, entry.brand });
+                    s_directChecks.push_back({ hRoot, full, entry.brand });
                 }
             }
             return true;
-        }();
+            }();
 
         int score = 0;
-        const bool wow64 = util::is_wow64();
-        const REGSAM sam = wow64 ? (KEY_READ | KEY_WOW64_64KEY) : KEY_READ;
+        static const REGSAM sam = (util::is_wow64() ? (KEY_READ | KEY_WOW64_64KEY) : KEY_READ);
 
         for (const auto& check : s_directChecks) {
             HKEY hKey;
@@ -6840,35 +6822,36 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             HKEY hRoot = rootPair.first;
             for (const auto& parentPair : rootPair.second) {
                 const std::string& parentPath = parentPair.first;
-                auto remainingChecks = parentPair.second; // mutable copy
+                const auto& checks = parentPair.second;
 
                 HKEY hParent;
                 if (RegOpenKeyExA(hRoot, parentPath.c_str(), 0, sam, &hParent) != ERROR_SUCCESS) {
                     continue;
                 }
 
-                DWORD index = 0;
-                char keyName[MAX_PATH];
-                DWORD keyNameLen = MAX_PATH;
+                size_t remaining_to_find = checks.size();
+                std::vector<bool> matched(checks.size(), false);
 
-                while (!remainingChecks.empty() && RegEnumKeyExA(hParent, index, keyName, &keyNameLen,
+                DWORD index = 0;
+                char keyName[256]; // MAX_PATH is 260, but key names are limited to 255 chars
+                DWORD keyNameLen = sizeof(keyName);
+
+                while (remaining_to_find > 0 && RegEnumKeyExA(hParent, index, keyName, &keyNameLen,
                     nullptr, nullptr, nullptr, nullptr) == ERROR_SUCCESS) {
 
-                    for (auto it = remainingChecks.begin(); it != remainingChecks.end(); ) {
-                        if (PathMatchSpecA(keyName, it->pattern)) {
+                    for (size_t i = 0; i < checks.size(); ++i) {
+                        if (!matched[i] && PathMatchSpecA(keyName, checks[i].pattern)) {
                             score++;
-                            if (it->brand && it->brand[0]) {
-                                debug("REGISTRY_KEYS: detected pattern ", it->pattern, " in ", parentPath.c_str(), " for brand ", it->brand);
-                                core::add(it->brand);
+                            if (checks[i].brand && checks[i].brand[0]) {
+                                debug("REGISTRY_KEYS: detected pattern ", checks[i].pattern, " in ", parentPath.c_str(), " for brand ", checks[i].brand);
+                                core::add(checks[i].brand);
                             }
-                            it = remainingChecks.erase(it);
-                        }
-                        else {
-                            ++it;
+                            matched[i] = true;
+                            remaining_to_find--;
                         }
                     }
                     index++;
-                    keyNameLen = MAX_PATH; // this is a reset for next iteration
+                    keyNameLen = sizeof(keyName);
                 }
                 RegCloseKey(hParent);
             }
@@ -7544,7 +7527,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for display configurations related to VMs
      * @category Windows
-     * @author Idea from Thomas Roccia (fr0gger)
+     * @author Idea of screen resolution from Thomas Roccia (fr0gger)
      * @link https://unprotect.it/technique/checking-screen-resolution/
      * @implements VM::DISPLAY
      */
@@ -7722,141 +7705,106 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::DISK_SERIAL
      */
     [[nodiscard]] static bool disk_serial_number() {
-        // VMware can't be flagged without also flagging legitimate disks
         bool result = false;
         constexpr u8 MAX_PHYSICAL_DRIVES = 4;
         u8 successfulOpens = 0;
 
-        auto is_vbox_serial = [](const char* str, u8 len) -> bool {
-            if (len != 19)
-                return false;
-            if ((str[0] != 'V' && str[0] != 'v') ||
-                (str[1] != 'B' && str[1] != 'b'))
-                return false;
+        auto is_qemu_serial = [](const char* str) -> bool {
+            return _strnicmp(str, "QM0000", 6) == 0;
+        };
 
-            auto is_hex = [](char c) {
-                return (c >= '0' && c <= '9') ||
-                    (c >= 'A' && c <= 'F') ||
-                    (c >= 'a' && c <= 'f');
-            };
+        auto is_vbox_serial = [](const char* str, size_t len) -> bool {
+            if (len != 19) {
+                return false;
+            }
+
+            auto toupper_char = [](char c) -> char {
+                return (c >= 'a' && c <= 'z') ? (c - 'a' + 'A') : c;
+                };
+
+            if (toupper_char(str[0]) != 'V' || toupper_char(str[1]) != 'B' || str[10] != '-') {
+                return false;
+            }
+
+            auto is_hex = [&](char c) {
+                char upper_c = toupper_char(c);
+                return (upper_c >= '0' && upper_c <= '9') || (upper_c >= 'A' && upper_c <= 'F');
+                };
 
             static constexpr std::array<u8, 16> hex_positions = { {
-                2, 3, 4, 5, 6, 7, 8, 9,
-                11,12,13,14,15,16,17,18
+                2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17, 18
             } };
 
             for (u8 idx : hex_positions) {
-                if (!is_hex(str[idx]))
+                if (!is_hex(str[idx])) {
                     return false;
-            }
-
-            return str[10] == '-';
-        };
-
-        auto is_qemu_serial = [](const char* str, u8 len) -> bool {
-            constexpr const char* prefix = "QM0000";
-            constexpr size_t prefix_len = 6;
-            if (len < prefix_len)
-                return false;
-            for (size_t i = 0; i < prefix_len; ++i) {
-                if (str[i] != prefix[i])
-                    return false;
+                }
             }
             return true;
         };
 
-        for (u8 drive = 0; drive < MAX_PHYSICAL_DRIVES; drive++) {
+        for (u8 drive = 0; drive < MAX_PHYSICAL_DRIVES; ++drive) {
             wchar_t path[32];
             swprintf_s(path, L"\\\\.\\PhysicalDrive%u", drive);
 
-            const HANDLE hDevice = CreateFileW(path, 0,
-                FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
-                OPEN_EXISTING, 0, nullptr);
+            auto handle_deleter = [](HANDLE h) { if (h != INVALID_HANDLE_VALUE) CloseHandle(h); };
+            std::unique_ptr<void, decltype(handle_deleter)> hDevice(
+                CreateFileW(path, 0, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr),
+                handle_deleter
+            );
 
-            if (hDevice == INVALID_HANDLE_VALUE) continue;
+            if (hDevice.get() == INVALID_HANDLE_VALUE) {
+                continue;
+            }
             successfulOpens++;
 
+            BYTE stackBuf[512] = { 0 };
+            auto descriptor = reinterpret_cast<STORAGE_DEVICE_DESCRIPTOR*>(stackBuf);
+            DWORD bytesReturned = 0;
             STORAGE_PROPERTY_QUERY query{};
             query.PropertyId = StorageDeviceProperty;
             query.QueryType = PropertyStandardQuery;
 
-            STORAGE_DESCRIPTOR_HEADER header{};
-            DWORD bytesReturned = 0;
+            auto buffer_deleter = [](BYTE* b) { if (b) LocalFree(b); };
+            std::unique_ptr<BYTE, decltype(buffer_deleter)> allocatedBuffer;
 
-            if (!DeviceIoControl(hDevice, IOCTL_STORAGE_QUERY_PROPERTY,
-                &query, sizeof(query), &header, sizeof(header),
-                &bytesReturned, nullptr) || header.Size == 0) {
-                CloseHandle(hDevice);
-                continue;
-            }
-
-            BYTE stackBuf[512] = { 0 };
-            BYTE* buffer = nullptr;
-
-            if (header.Size <= sizeof(stackBuf)) {
-                buffer = stackBuf;
-            }
-            else {
-                buffer = static_cast<BYTE*>(LocalAlloc(LMEM_FIXED, header.Size));
-                if (buffer == nullptr) {
-                    CloseHandle(hDevice);
+            if (!DeviceIoControl(hDevice.get(), IOCTL_STORAGE_QUERY_PROPERTY,
+                &query, sizeof(query), stackBuf, sizeof(stackBuf),
+                &bytesReturned, nullptr)) {
+                // If it failed because the buffer was too small, allocate the required size and retry
+                if (GetLastError() == ERROR_INSUFFICIENT_BUFFER && descriptor->Size > 0) {
+                    allocatedBuffer.reset(static_cast<BYTE*>(LocalAlloc(LMEM_FIXED, descriptor->Size)));
+                    if (allocatedBuffer) {
+                        descriptor = reinterpret_cast<STORAGE_DEVICE_DESCRIPTOR*>(allocatedBuffer.get());
+                        if (!DeviceIoControl(hDevice.get(), IOCTL_STORAGE_QUERY_PROPERTY,
+                            &query, sizeof(query), descriptor, descriptor->Size,
+                            &bytesReturned, nullptr)) {
+                            continue; 
+                        }
+                    }
+                }
+                else {
                     continue;
                 }
             }
 
-            if (!DeviceIoControl(hDevice, IOCTL_STORAGE_QUERY_PROPERTY,
-                &query, sizeof(query), buffer, header.Size,
-                &bytesReturned, nullptr)) {
-                if (buffer != stackBuf) LocalFree(buffer);
-                CloseHandle(hDevice);
-                continue;
-            }
-
-            auto descriptor = reinterpret_cast<STORAGE_DEVICE_DESCRIPTOR*>(buffer);
             const u32 serialOffset = descriptor->SerialNumberOffset;
-
-            if (serialOffset > 0 && serialOffset < header.Size) {
-                const char* serial =
-                    reinterpret_cast<const char*>(buffer + serialOffset);
-
-                const size_t maxAvail = header.Size - static_cast<size_t>(serialOffset);
+            if (serialOffset > 0 && serialOffset < descriptor->Size) {
+                const char* serial = reinterpret_cast<const char*>(descriptor) + serialOffset;
+                const size_t maxAvail = descriptor->Size - static_cast<size_t>(serialOffset);
                 const size_t serialLen = strnlen(serial, maxAvail);
 
-                constexpr size_t BUF_SZ = 256;
-                char upperSerial[BUF_SZ] = { 0 };
+                debug("DISK_SERIAL: ", serial);
 
-                size_t copyLen = (serialLen < BUF_SZ - 1) ? serialLen : BUF_SZ - 1;
-
-                for (size_t i = 0; i < copyLen; ++i) {
-                    char c = serial[i];
-                    upperSerial[i] = (c >= 'a' && c <= 'z') ? char(c - 32) : c;
-                }
-                upperSerial[copyLen] = '\0';
-
-                debug("DISK_SERIAL: ", upperSerial);
-
-                if (is_qemu_serial(upperSerial, static_cast<u8>(copyLen))) {
-                    result = core::add(brands::QEMU);
-                    if (buffer != stackBuf) LocalFree(buffer);
-                    CloseHandle(hDevice);
-                    return result;
-                }
-
-                if (is_vbox_serial(upperSerial, static_cast<u8>(copyLen))) {
-                    result = core::add(brands::VBOX);
-                    if (buffer != stackBuf) LocalFree(buffer);
-                    CloseHandle(hDevice);
-                    return result;
+                if (is_qemu_serial(serial) || is_vbox_serial(serial, serialLen)) {
+                    return true;
                 }
             }
-
-            if (buffer != stackBuf) LocalFree(buffer);
-            CloseHandle(hDevice);
-        }
+        } 
 
         if (successfulOpens == 0) {
             debug("DISK_SERIAL: No physical drives detected");
-            return true; // baremetal machines should have available physical drives to be opened
+            return true;
         }
 
         return result;
@@ -7864,40 +7812,50 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check for IVSHMEM device absense
+     * @brief Check for IVSHMEM device presence
      * @category Windows
      * @author dmfrpro (https://github.com/dmfrpro)
      * @implements VM::IVSHMEM
      */
     [[nodiscard]] static bool ivshmem() {
         constexpr GUID GUID_IVSHMEM_IFACE =
-        { 0xdf576976, 0x569d, 0x4672, {0x95, 0xa0, 0xf5, 0x7e, 0x4e, 0xa0, 0xb2, 0x10} };
+        { 0xdf576976, 0x569d, 0x4672, { 0x95, 0xa0, 0xf5, 0x7e, 0x4e, 0xa0, 0xb2, 0x10 } };
 
-        const HDEVINFO hDevInfo = SetupDiGetClassDevs(
-            &GUID_IVSHMEM_IFACE,
-            nullptr,
-            nullptr,
-            DIGCF_PRESENT | DIGCF_DEVICEINTERFACE
+        wchar_t interface_class_path[256];
+        swprintf_s(
+            interface_class_path,
+            L"SYSTEM\\CurrentControlSet\\Control\\DeviceClasses\\{%08lX-%04hX-%04hX-%02hhX%02hhX-%02hhX%02hhX%02hhX%02hhX%02hhX%02hhX}",
+            GUID_IVSHMEM_IFACE.Data1, GUID_IVSHMEM_IFACE.Data2, GUID_IVSHMEM_IFACE.Data3,
+            GUID_IVSHMEM_IFACE.Data4[0], GUID_IVSHMEM_IFACE.Data4[1], GUID_IVSHMEM_IFACE.Data4[2],
+            GUID_IVSHMEM_IFACE.Data4[3], GUID_IVSHMEM_IFACE.Data4[4], GUID_IVSHMEM_IFACE.Data4[5],
+            GUID_IVSHMEM_IFACE.Data4[6], GUID_IVSHMEM_IFACE.Data4[7]
         );
-        if (hDevInfo == INVALID_HANDLE_VALUE) {
+
+        HKEY hKey = nullptr;
+        if (RegOpenKeyExW(
+            HKEY_LOCAL_MACHINE,
+            interface_class_path,
+            0,
+            KEY_READ,
+            &hKey
+        ) != ERROR_SUCCESS) {
             return false;
         }
 
-        SP_DEVICE_INTERFACE_DATA ifaceData = { 0 };
-        ifaceData.cbSize = sizeof(ifaceData);
-        const bool gotOne = SetupDiEnumDeviceInterfaces(
-            hDevInfo,
-            nullptr,
-            &GUID_IVSHMEM_IFACE,
-            0,
-            &ifaceData
-        );
+        DWORD number_of_subkeys = 0;
+        if (RegQueryInfoKeyW(
+            hKey,
+            nullptr, nullptr, nullptr,
+            &number_of_subkeys,
+            nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr
+        ) != ERROR_SUCCESS) {
+            RegCloseKey(hKey);
+            return false;
+        }
 
-        SetupDiDestroyDeviceInfoList(hDevInfo);
+        RegCloseKey(hKey);
 
-        if (gotOne) return true;
-        
-        return false;
+        return number_of_subkeys > 0;
     }
 
 
@@ -8018,28 +7976,56 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::PHYSICAL_PROCESSORS
      */
     [[nodiscard]] static bool physical_processors() {
-        DWORD size = 0;
-        GetLogicalProcessorInformationEx(RelationProcessorCore, nullptr, &size);
+        // 2KB is ample for most systems.
+        BYTE stackBuffer[2048]{};
+        DWORD bufferSize = sizeof(stackBuffer);
+        auto* info = reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(stackBuffer);
 
-        std::vector<BYTE> buffer(size);
-        if (!GetLogicalProcessorInformationEx(RelationProcessorCore, reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(buffer.data()), &size)) {
-            return false;
-        }
+        // this pointer will only be used if the stack buffer is too small
+        BYTE* heapBuffer = nullptr;
 
-        int physicalCoreCount = 0;
-        auto* ptr = reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(buffer.data());
+        if (!GetLogicalProcessorInformationEx(RelationProcessorCore, info, &bufferSize)) {
+            if (GetLastError() == ERROR_INSUFFICIENT_BUFFER) {
+                heapBuffer = new(std::nothrow) BYTE[bufferSize];
+                if (heapBuffer == nullptr) {
+                    return false; 
+                }
 
-        while (size > 0) {
-            if (ptr->Relationship == RelationProcessorCore) {
-                ++physicalCoreCount;
-                if (physicalCoreCount > 1)
+                info = reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(heapBuffer);
+                if (!GetLogicalProcessorInformationEx(RelationProcessorCore, info, &bufferSize)) {
+                    delete[] heapBuffer;
                     return false;
+                }
             }
-            size -= ptr->Size;
-            ptr = reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(reinterpret_cast<BYTE*>(ptr) + ptr->Size);
+            else {
+                return false;
+            }
         }
 
-        return true;
+        bool result = true;
+        int physicalCoreCount = 0;
+        DWORD offset = 0;
+        BYTE* currentPtr = reinterpret_cast<BYTE*>(info);
+
+        while (offset < bufferSize) {
+            // every entry will have RelationProcessorCore because we requested it
+            physicalCoreCount++;
+            if (physicalCoreCount > 1) {
+                // we found a second core. We can stop counting and set our result
+                result = false;
+                break;
+            }
+
+            auto* currentInfo = reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(currentPtr);
+            offset += currentInfo->Size;
+            currentPtr += currentInfo->Size;
+        }
+
+        if (heapBuffer != nullptr) {
+            delete[] heapBuffer;
+        }
+
+        return result;
     }
 
 
@@ -8050,32 +8036,22 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::VIRTUAL_PROCESSORS
      */
     [[nodiscard]] static bool virtual_processors() {
-        if (!cpu::is_leaf_supported(0x40000005)) {
+        int regs[4];
+        __cpuid(regs, 0x40000000);
+
+        const unsigned int max_leaf = static_cast<unsigned int>(regs[0]);
+        if (max_leaf < 0x40000005) {
             return false;
         }
 
-        struct Registers {
-            int eax = 0;
-            int ebx = 0;
-            int ecx = 0;
-            int edx = 0;
-        };
-        struct ImplementationLimits {
-            unsigned int MaxVirtualProcessors = 0;
-            unsigned int MaxLogicalProcessors = 0;
-        };
+        __cpuid(regs, 0x40000005);
+        const unsigned int max_virtual_processors = static_cast<unsigned int>(regs[0]);
+        const unsigned int max_logical_processors = static_cast<unsigned int>(regs[1]);
 
-        Registers registers;
-        __cpuid(&registers.eax, 0x40000005);
+        debug("VIRTUAL_PROCESSORS: MaxVirtualProcessors -> ", max_virtual_processors,
+            ", MaxLogicalProcessors -> ", max_logical_processors);
 
-        ImplementationLimits implementationLimits;
-        implementationLimits.MaxVirtualProcessors = static_cast<unsigned int>(registers.eax);
-        implementationLimits.MaxLogicalProcessors = static_cast<unsigned int>(registers.ebx);
-
-        debug("VIRTUAL_PROCESSORS: MaxVirtualProcessors -> ", implementationLimits.MaxVirtualProcessors,
-            ", MaxLogicalProcessors -> ", implementationLimits.MaxLogicalProcessors);
-
-        if (implementationLimits.MaxVirtualProcessors == 0xffffffff || implementationLimits.MaxLogicalProcessors == 0) {
+        if (max_virtual_processors == 0xFFFFFFFF || max_logical_processors == 0) {
             return true;
         }
 
@@ -8808,15 +8784,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             crcReg = _mm_crc32_u64(crcReg, ptr[i + 2]);
             crcReg = _mm_crc32_u64(crcReg, ptr[i + 3]);
         }
+
         for (; i < qwords; ++i) {
             crcReg = _mm_crc32_u64(crcReg, ptr[i]);
         }
 
         u32 crc = static_cast<u32>(crcReg);
-        // tail
         const auto* tail = reinterpret_cast<const u8*>(ptr + qwords);
-        for (size_t i = 0, r = size & 7; i < r; ++i) {
-            crc = _mm_crc32_u8(crc, tail[i]);
+
+        for (size_t j = 0, r = size & 7; j < r; ++j) {
+            crc = _mm_crc32_u8(crc, tail[j]);
         }
         crc ^= 0xFFFFFFFFu;
 
