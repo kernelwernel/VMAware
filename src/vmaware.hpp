@@ -9122,7 +9122,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             flags.flip(MULTIPLE);
             flags.flip(DEFAULT);
         }
-        
+
         static void generate_current_disabled_flags(flagset& flags) {
             const bool setting_no_memo = flags.test(NO_MEMO);
             const bool setting_high_threshold = flags.test(HIGH_THRESHOLD);
@@ -9339,7 +9339,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             handle_disabled_args(std::forward<Args>(args)...);
-            
+
             // check if a settings flag is set, which is not valid
             if (core::is_setting_flag_set(disabled_flag_collector)) {
                 throw std::invalid_argument("VM::DISABLE() must not contain a settings flag, they are disabled by default anyway");
