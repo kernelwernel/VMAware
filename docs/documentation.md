@@ -303,7 +303,8 @@ The `[brand]` part might contain a brand or may as well be empty, depending on w
 <br>
 
 ## `VM::detected_count()`
-This will fetch the number of techniques that have been detected as a `std::uint8_t`. Can't get any simpler than that.
+This will fetch the number of techniques that have been detected as a `std::uint8_t`.
+
 ```cpp
 #include "vmaware.hpp"
 #include <iostream>

@@ -421,34 +421,6 @@
     #define core_debug(...)
 #endif
 
-#if (MSVC)
-    #define VMAWARE_ASSUME(expr) __assume(expr)
-#elif (CLANG)
-// Clang
-#if __has_builtin(__builtin_assume)
-#define VMAWARE_ASSUME(expr) __builtin_assume(expr)
-#else
-// no __builtin_assume but __builtin_unreachable gives same hint
-    #define VMAWARE_ASSUME(expr)        \
-           do { if (!(expr))                \
-                 __builtin_unreachable();   \
-           } while (0)
-    #endif
-#elif (GCC)
-// GCC (but only after Clang check, since Clang also defines __GNUC__)
-#if (__GNUC__ >= 13)
-// GCC 13+ has __builtin_assume
-#define VMAWARE_ASSUME(expr) __builtin_assume(expr)
-#else
-    #define VMAWARE_ASSUME(expr)        \
-           do { if (!(expr))                \
-                 __builtin_unreachable();   \
-           } while (0)
-    #endif
-#else
-#define VMAWARE_ASSUME(expr) ((void)0)
-#endif
-
 
 /**
  * Official aliases for VM brands. This is added to avoid accidental typos
@@ -9384,7 +9356,9 @@ public: // START OF PUBLIC FUNCTIONS
 
         const bool is_memoized = (memo_arg != NO_MEMO);
 
-        VMAWARE_ASSUME(flag_bit < technique_end);
+    #if (CPP >= 23) 
+        [[assume(flag_bit < technique_end)]];
+    #endif
 
         // if the technique is already cached, return the cached value instead
         if (memo::is_cached(flag_bit) && is_memoized) {
@@ -9707,7 +9681,9 @@ public: // START OF PUBLIC FUNCTIONS
         // flags above, and get a total score 
         const u16 points = core::run_all(flags, SHORTCUT);
 
-        VMAWARE_ASSUME(points < maximum_points);
+#if (CPP >= 23)
+        [[assume(points < maximum_points)]];
+#endif
 
         u16 threshold = 150;
 
@@ -9736,7 +9712,9 @@ public: // START OF PUBLIC FUNCTIONS
         // flags above, and get a total score
         const u16 points = core::run_all(flags, SHORTCUT);
 
-        VMAWARE_ASSUME(points < maximum_points);
+#if (CPP >= 23)
+        [[assume(points < maximum_points)]];
+#endif
 
         u8 percent = 0;
         u16 threshold = 150;
@@ -9790,7 +9768,9 @@ public: // START OF PUBLIC FUNCTIONS
             throw_error("Percentage parameter must be between 0 and 100");
         }
 
-        VMAWARE_ASSUME(percent > 0 && percent <= 100);
+#if (CPP >= 23)
+        [[assume(percent > 0 && percent <= 100)]];
+#endif
 
         static u16 id = 0;
         id++;
@@ -9992,7 +9972,9 @@ public: // START OF PUBLIC FUNCTIONS
             throw_error("Percentage parameter must be between 0 and 100");
         }
 
-        VMAWARE_ASSUME(percent <= 100);
+#if (CPP >= 23)
+        [[assume(percent <= 100)]];
+#endif  
 
         // check if the flag provided is a setting flag, which isn't valid.
         if (static_cast<u8>(flag) >= technique_end) {
