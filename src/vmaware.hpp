@@ -57,8 +57,8 @@
  * - struct for internal utility functions     => line 1205
  * - struct for internal core components       => line 8848
  * - start of VM detection technique list      => line 2063
- * - start of public VM detection functions    => line 9362
- * - start of externally defined variables     => line 10296
+ * - start of public VM detection functions    => line 9351
+ * - start of externally defined variables     => line 10285
  *
  *
  * ============================== EXAMPLE ===================================
@@ -9122,7 +9122,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             flags.flip(MULTIPLE);
             flags.flip(DEFAULT);
         }
-
+        
         static void generate_current_disabled_flags(flagset& flags) {
             const bool setting_no_memo = flags.test(NO_MEMO);
             const bool setting_high_threshold = flags.test(HIGH_THRESHOLD);
@@ -9143,6 +9143,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             flags.set(MULTIPLE, setting_multiple);
             flags.set(ALL, setting_all);
             flags.set(DEFAULT, setting_default);
+        }
+        
+        static void reset_disable_flagset() {
+            generate_default(disabled_flag_collector);
+            disabled_flag_collector.flip(DEFAULT);
         }
 
         static void disable_flagset_manager(const flagset& flags) {
@@ -9302,7 +9307,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         template <typename... Args>
         static VMAWARE_CONSTEXPR flagset arg_handler(Args&&... args) {
             flag_collector.reset();
-            generate_default(disabled_flag_collector);
+            reset_disable_flagset();
 
             if VMAWARE_CONSTEXPR(is_empty<Args...>()) {
                 generate_default(flag_collector);
@@ -9316,21 +9321,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     generate_default(flag_collector);
                 }
 
-                bool no_memo = flag_collector.test(NO_MEMO);
-                bool high_threshold = flag_collector.test(HIGH_THRESHOLD);
-                bool dynamic_flag = flag_collector.test(DYNAMIC);
-                bool multiple = flag_collector.test(MULTIPLE);
-                bool all_flag = flag_collector.test(ALL);
-                bool default_flag = flag_collector.test(DEFAULT);
-
-                flag_collector &= disabled_flag_collector;
-
-                flag_collector.set(NO_MEMO, no_memo);
-                flag_collector.set(HIGH_THRESHOLD, high_threshold);
-                flag_collector.set(DYNAMIC, dynamic_flag);
-                flag_collector.set(MULTIPLE, multiple);
-                flag_collector.set(ALL, all_flag);
-                flag_collector.set(DEFAULT, default_flag);
+                generate_current_disabled_flags(flag_collector);
 
                 // handle edgecases
                 core::flag_sanitizer(flag_collector);
@@ -9341,16 +9332,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // same as above but for VM::disable which only accepts technique flags
         template <typename... Args>
         static void disabled_arg_handler(Args&&... args) {
-            disabled_flag_collector.reset();
-
-            generate_default(disabled_flag_collector);
+            reset_disable_flagset();
 
             if VMAWARE_CONSTEXPR (is_empty<Args...>()) {
                 throw std::invalid_argument("VM::DISABLE() must contain a flag");
             }
 
             handle_disabled_args(std::forward<Args>(args)...);
-
+            
             // check if a settings flag is set, which is not valid
             if (core::is_setting_flag_set(disabled_flag_collector)) {
                 throw std::invalid_argument("VM::DISABLE() must not contain a settings flag, they are disabled by default anyway");
