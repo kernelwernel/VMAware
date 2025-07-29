@@ -222,68 +222,48 @@
 #endif
 
 #if defined(_WIN32) || defined(_WIN64)
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#define WINDOWS 1
-#define LINUX 0
-#define APPLE 0
+    #ifndef WIN32_LEAN_AND_MEAN
+        #define WIN32_LEAN_AND_MEAN
+    #endif
+    #define WINDOWS 1
+    #define LINUX 0
+    #define APPLE 0
 #elif (defined(__linux__))
-#define WINDOWS 0
-#define LINUX 1
-#define APPLE 0
+    #define WINDOWS 0
+    #define LINUX 1
+    #define APPLE 0
 #elif (defined(__APPLE__) || defined(__APPLE_CPP__) || defined(__MACH__) || defined(__DARWIN))
-#define WINDOWS 0
-#define LINUX 0
-#define APPLE 1
+    #define WINDOWS 0
+    #define LINUX 0
+    #define APPLE 1
 #else
-#define WINDOWS 0
-#define LINUX 0
-#define APPLE 0
+    #define WINDOWS 0
+    #define LINUX 0
+    #define APPLE 0
 #endif
 
 #ifdef _MSC_VER
-#define MSVC 1
+    #define MSVC 1
 #endif
 
 #if defined(_MSVC_LANG)
-#  define VMA_CPLUSPLUS _MSVC_LANG
+    #define VMA_CPLUSPLUS _MSVC_LANG
 #else
-#  define VMA_CPLUSPLUS __cplusplus
+    #define VMA_CPLUSPLUS __cplusplus
 #endif
 
 #if VMA_CPLUSPLUS >= 202300L
-#  define CPP 23
-#  ifdef __VMAWARE_DEBUG__
-#    pragma message("using C++23 or newer")
-#  endif
-
+    #define CPP 23
 #elif VMA_CPLUSPLUS >= 202002L
-#  define CPP 20
-#  ifdef __VMAWARE_DEBUG__
-#    pragma message("using C++20")
-#  endif
-
+    #define CPP 20
 #elif VMA_CPLUSPLUS >= 201703L
-#  define CPP 17
-#  ifdef __VMAWARE_DEBUG__
-#    pragma message("using C++17")
-#  endif
-
+    #define CPP 17
 #elif VMA_CPLUSPLUS >= 201402L
-#  define CPP 14
-#  ifdef __VMAWARE_DEBUG__
-#    pragma message("using C++14")
-#  endif
-
+    #define CPP 14
 #elif VMA_CPLUSPLUS >= 201103L
-#  define CPP 11
-#  ifdef __VMAWARE_DEBUG__
-#    pragma message("using C++11")
-#  endif
-
+    #define CPP 11
 #else
-#  error "Unsupported C++ standard (pre-C++11 or unknown)."
+    #error "Unsupported C++ standard (pre-C++11 or unknown)."
 #endif
 
 #if (CPP < 11 && !WINDOWS)
@@ -292,38 +272,38 @@
 
 
 #if defined(__x86_64__) || defined(_M_X64)
-#define x86_64 1
+    #define x86_64 1
 #else
-#define x86_64 0
+    #define x86_64 0
 #endif
 
 #if defined(__i386__) || defined(_M_IX86)
-#define x86_32 1
+    #define x86_32 1
 #else
-#define x86_32 0
+    #define x86_32 0
 #endif
 
 #if x86_32 || x86_64
-#define x86 1
+    #define x86 1
 #else
-#define x86 0
+    #define x86 0
 #endif
 
 #if (defined(__arm__) || defined(__ARM_LINUX_COMPILER__) || defined(__aarch64__) || defined(_M_ARM64))
-#define ARM 1
+    #define ARM 1
 #else
-#define ARM 0
+    #define ARM 0
 #endif
 
 #if defined(__clang__)
-#define GCC 0
-#define CLANG 1
+    #define GCC 0
+    #define CLANG 1
 #elif defined(__GNUC__)
-#define GCC 1
-#define CLANG 0
+    #define GCC 1
+    #define CLANG 0
 #else
-#define GCC 0
-#define CLANG 0
+    #define GCC 0
+    #define CLANG 0
 #endif
 
 #if !(defined(WINDOWS) || defined(LINUX) || defined(APPLE))
@@ -331,21 +311,21 @@
 #endif
 
 #if (CPP >= 23)
-#include <limits>
+    #include <limits>
 #endif
 #if (CPP >= 20)
-#include <bit>
-#include <ranges>
-#include <source_location>
+    #include <bit>
+    #include <ranges>
+    #include <source_location>
 #endif
 #if (CPP >= 17)
-#include <filesystem>
+    #include <filesystem>
 #endif
 #ifdef __VMAWARE_DEBUG__
-#include <iomanip>
-#include <ios>
-#include <locale>
-#include <codecvt>
+    #include <iomanip>
+    #include <ios>
+    #include <locale>
+    #include <codecvt>
 #endif
 
 #include <cstdio>
@@ -370,80 +350,79 @@
 #include <numeric>
 
 #if (WINDOWS)
-#include <windows.h>
-#include <intrin.h>
-#include <tchar.h>
-#include <winioctl.h>
-#include <winternl.h>
-#include <shlwapi.h>
-#include <powerbase.h>
-#include <setupapi.h>
-#include <tbs.h>
-#include <initguid.h>
-#include <devpkey.h>
-#include <devguid.h>
+    #include <windows.h>
+    #include <intrin.h>
+    #include <tchar.h>
+    #include <winioctl.h>
+    #include <winternl.h>
+    #include <shlwapi.h>
+    #include <powerbase.h>
+    #include <setupapi.h>
+    #include <tbs.h>
+    #include <initguid.h>
+    #include <devpkey.h>
+    #include <devguid.h>
 
-#pragma comment(lib, "setupapi.lib")
-#pragma comment(lib, "shlwapi.lib")
-#pragma comment(lib, "powrprof.lib")
-#pragma comment(lib, "tbs.lib")
-
+    #pragma comment(lib, "setupapi.lib")
+    #pragma comment(lib, "shlwapi.lib")
+    #pragma comment(lib, "powrprof.lib")
+    #pragma comment(lib, "tbs.lib")
 #elif (LINUX)
-#if (x86)
-#include <cpuid.h>
-#include <x86intrin.h>
-#include <immintrin.h>
-#endif
-#include <sys/stat.h>
-#include <sys/statvfs.h>
-#include <sys/ioctl.h>
-#include <sys/syscall.h>
-#include <sys/sysinfo.h>
-#include <net/if.h> 
-#include <netinet/in.h>
-#include <unistd.h>
-#include <string.h>
-#include <dirent.h>
-#include <memory>
-#include <cctype>
-#include <fcntl.h>
-#include <limits.h>
-#include <csignal>      
-#include <csetjmp>      
-#include <pthread.h>     
-#include <sched.h>      
-#include <cerrno>   
+    #if (x86)
+        #include <cpuid.h>
+        #include <x86intrin.h>
+        #include <immintrin.h>
+    #endif
+    #include <sys/stat.h>
+    #include <sys/statvfs.h>
+    #include <sys/ioctl.h>
+    #include <sys/syscall.h>
+    #include <sys/sysinfo.h>
+    #include <net/if.h> 
+    #include <netinet/in.h>
+    #include <unistd.h>
+    #include <string.h>
+    #include <dirent.h>
+    #include <memory>
+    #include <cctype>
+    #include <fcntl.h>
+    #include <limits.h>
+    #include <csignal>      
+    #include <csetjmp>      
+    #include <pthread.h>     
+    #include <sched.h>      
+    #include <cerrno>   
 #elif (APPLE)
-#if (x86)
-#include <cpuid.h>
-#include <x86intrin.h>
-#include <immintrin.h>
-#endif
-#include <sys/types.h>
-#include <sys/sysctl.h>
-#include <sys/user.h>
-#include <unistd.h>
-#include <time.h>
-#include <errno.h>
-#include <chrono>
+    #if (x86)
+        #include <cpuid.h>
+        #include <x86intrin.h>
+        #include <immintrin.h>
+    #endif
+    #include <sys/types.h>
+    #include <sys/sysctl.h>
+    #include <sys/user.h>
+    #include <unistd.h>
+    #include <time.h>
+    #include <errno.h>
+    #include <chrono>
 #endif
 
 #ifdef _UNICODE
-#define tregex std::wregex
+    #define tregex std::wregex
 #else
-#define tregex std::regex
+    #define tregex std::regex
 #endif
 
 #ifdef __VMAWARE_DEBUG__
-#define debug(...) VM::util::debug_msg(__VA_ARGS__)
-#define core_debug(...) VM::util::core_debug_msg(__VA_ARGS__)
+    #define debug(...) VM::util::debug_msg(__VA_ARGS__)
+    #define core_debug(...) VM::util::core_debug_msg(__VA_ARGS__)
 #else
-#define debug(...)
-#define core_debug(...)
+    #define debug(...)
+    #define core_debug(...)
 #endif
 
 #if (MSVC)
-#define VMAWARE_ASSUME(expr) __assume(expr)
+    #define VMAWARE_ASSUME(expr) __assume(expr)
 #elif (CLANG)
 // Clang
 #if __has_builtin(__builtin_assume)
