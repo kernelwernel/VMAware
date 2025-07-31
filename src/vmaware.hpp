@@ -51,14 +51,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 569
- * - struct for internal cpu operations        => line 754
- * - struct for internal memoization           => line 1080
- * - struct for internal utility functions     => line 1205
- * - struct for internal core components       => line 8848
- * - start of VM detection technique list      => line 2063
- * - start of public VM detection functions    => line 9362
- * - start of externally defined variables     => line 10296
+ * - enums for publicly accessible techniques  => line 581
+ * - struct for internal cpu operations        => line 766
+ * - struct for internal memoization           => line 1092
+ * - struct for internal utility functions     => line 1217
+ * - struct for internal core components       => line 8879
+ * - start of VM detection technique list      => line 2076
+ * - start of public VM detection functions    => line 9393
+ * - start of externally defined variables     => line 10326
  *
  *
  * ============================== EXAMPLE ===================================
@@ -309,7 +309,19 @@
 #define x86 0
 #endif
 
-#if (defined(__arm__) || defined(__ARM_LINUX_COMPILER__) || defined(__aarch64__) || defined(_M_ARM64))
+#if defined(__aarch64__) || defined(_M_ARM64) || defined(__ARM_LINUX_COMPILER__)
+#define ARM64 1
+#else
+#define ARM64 0
+#endif
+
+#if (defined(__arm__) || defined(_M_ARM)) && !ARM64
+#define ARM32 1
+#else
+#define ARM32 0
+#endif
+
+#if ARM32 || ARM64
 #define ARM 1
 #else
 #define ARM 0
@@ -7198,11 +7210,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::SGDT
      */
     [[nodiscard]] static bool sgdt() {
+        bool found = false;
+    #if (x86)
         SYSTEM_INFO si;
         GetNativeSystemInfo(&si);
 
         DWORD_PTR originalMask = 0;
-        bool found = false;
 
         for (DWORD i = 0; i < si.dwNumberOfProcessors; ++i) {
             const DWORD_PTR mask = (DWORD_PTR)1 << i;
@@ -7257,7 +7270,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (originalMask != 0) {
             SetThreadAffinityMask(GetCurrentThread(), originalMask);
         }
-        
+    #endif
         return found;
     }
 
@@ -7766,7 +7779,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             query.QueryType = PropertyStandardQuery;
 
             auto buffer_deleter = [](BYTE* b) { if (b) LocalFree(b); };
-            std::unique_ptr<BYTE, decltype(buffer_deleter)> allocatedBuffer;
+            std::unique_ptr<BYTE, decltype(buffer_deleter)> allocatedBuffer(nullptr, buffer_deleter);
 
             if (!DeviceIoControl(hDevice.get(), IOCTL_STORAGE_QUERY_PROPERTY,
                 &query, sizeof(query), stackBuf, sizeof(stackBuf),
@@ -7957,16 +7970,23 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::LOGICAL_PROCESSORS
      */
     [[nodiscard]] static bool logical_processors() {
-    #if (x86_32)
-        const PULONG ulNumberProcessors = reinterpret_cast<PULONG>(__readfsdword(0x30) + 0x64);
+    #if (x86)
+        #if (x86_32)
+            const PULONG ulNumberProcessors = reinterpret_cast<PULONG>(__readfsdword(0x30) + 0x64);
+        #else
+            const PULONG ulNumberProcessors = reinterpret_cast<PULONG>(__readgsqword(0x60) + 0xB8);
+        #endif
+            if (*ulNumberProcessors < 4) {
+                return true;
+            }
     #else
-        const PULONG ulNumberProcessors = reinterpret_cast<PULONG>(__readgsqword(0x60) + 0xB8);
-    #endif
-
-        if (*ulNumberProcessors < 4)
+        SYSTEM_INFO si;
+        GetSystemInfo(&si);
+        if (si.dwNumberOfProcessors < 4) {
             return true;
-        else
-            return false;
+        }
+    #endif
+        return false;
     }
 
 
@@ -8031,11 +8051,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
     /**
      * @brief Check if the number of virtual and logical processors are reported correctly by the system
-     * @category Windows
+     * @category Windows, x86
      * @author Requiem (https://github.com/NotRequiem)
      * @implements VM::VIRTUAL_PROCESSORS
      */
     [[nodiscard]] static bool virtual_processors() {
+    #if (x86)
         int regs[4];
         __cpuid(regs, 0x40000000);
 
@@ -8054,7 +8075,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (max_virtual_processors == 0xFFFFFFFF || max_logical_processors == 0) {
             return true;
         }
-
+    #endif
         return false;
     }
 
@@ -8458,10 +8479,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
     /**
      * @brief Check if after raising two traps at the same RIP, a hypervisor interferes with the instruction pointer delivery
-     * @category Windows
+     * @category Windows, x86
      * @implements VM::TRAP
      */
     [[nodiscard]] static bool trap() {
+        bool hypervisorCaught = false;
+    #if (x86)
         // when a single-step (TF) and hardware breakpoint (DR0) collide, Intel CPUs set both DR6.BS and DR6.B0 to report both events, which help make this detection trick
         // AMD CPUs prioritize the breakpoint, setting only its corresponding bit in DR6 and clearing the single-step bit, which is why this technique is not compatible with AMD
 
@@ -8490,7 +8513,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
         memcpy(execMem, trampoline, trampSize);
 
-        bool hypervisorCaught = false;
         int hitCount = 0;
 
         // save original debug registers
@@ -8549,7 +8571,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         SetThreadContext(thr, &origCtx);
         VirtualFree(execMem, 0, MEM_RELEASE);
-
+    #endif
         return hypervisorCaught;
     }
 
@@ -8560,23 +8582,55 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::UD
      */
     [[nodiscard]] static bool ud() {
-    #if (MSVC && !CLANG)
         bool saw_ud = false;
+    #if (MSVC)
+        #if (x86)
+            // ud2; ret
+            constexpr unsigned char ud_opcodes[] = { 0x0F, 0x0B, 0xC3 };
+        #elif (ARM32)
+            // udf #0; bx lr
+            // (Little-endian for 0xE7F000F0 and 0xE12FFF1E)
+            constexpr unsigned char ud_opcodes[] = { 0xF0, 0x00, 0xF0, 0xE7, 0x1E, 0xFF, 0x2F, 0xE1 };
+        #elif (ARM64)
+            // hlt #0; ret
+            // (Little-endian for 0xD4400000 and 0xD65F03C0)
+            constexpr unsigned char ud_opcodes[] = { 0x00, 0x00, 0x40, 0xD4, 0xC0, 0x03, 0x5F, 0xD6 };
+        #else
+            // architecture not supported by this check
+            return false;
+        #endif
 
-        __try {
-            __ud2();  
-        }
-        __except (GetExceptionCode() == EXCEPTION_ILLEGAL_INSTRUCTION
-            ? EXCEPTION_EXECUTE_HANDLER
-            : EXCEPTION_CONTINUE_SEARCH)
-        {
-            saw_ud = true;
-        }
+            void* stub = nullptr;
 
-        return !saw_ud; // if #UD did not happen, hypervisor may be present
-    #else
-        return false;
+            __try {
+                stub = VirtualAlloc(nullptr, sizeof(ud_opcodes), MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+                if (!stub) {
+                    __leave;
+                }
+
+                memcpy(stub, ud_opcodes, sizeof(ud_opcodes));
+
+                // the instruction cache must be flushed after writing code to memory on ARM
+            #if (ARM)
+                FlushInstructionCache(GetCurrentProcess(), stub, sizeof(ud_opcodes));
+            #endif
+                __try {
+                    reinterpret_cast<void(*)()>(stub)();
+                }
+                __except (GetExceptionCode() == EXCEPTION_ILLEGAL_INSTRUCTION
+                    ? EXCEPTION_EXECUTE_HANDLER
+                    : EXCEPTION_CONTINUE_SEARCH)
+                {
+                    saw_ud = true;
+                }
+            }
+            __finally {
+                if (stub) {
+                    VirtualFree(stub, 0, MEM_RELEASE);
+                }
+            }
     #endif
+        return !saw_ud;
     }
 
 
@@ -9348,8 +9402,7 @@ public: // START OF PUBLIC FUNCTIONS
     static bool check(
         const enum_flags flag_bit, 
         const enum_flags memo_arg = NULL_ARG
-        // clang doesn't support std::source_location for some reason
-#if (CPP >= 20 && !CLANG)
+#if (CPP >= 20) && (!CLANG || __clang_major__ >= 16)
         , const std::source_location& loc = std::source_location::current()
 #endif
     ) {

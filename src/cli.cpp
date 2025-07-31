@@ -339,27 +339,24 @@ static bool is_admin() {
 }
 #endif
 
-static bool are_perms_required(const VM::enum_flags flag) {
 #if (CLI_LINUX)
+static bool are_perms_required(const VM::enum_flags flag) {
     if (is_admin()) {
         return false;
     }
 
     switch (flag) {
-        case VM::VBOX_DEFAULT: 
-        case VM::VMWARE_DMESG: 
-        case VM::DMIDECODE: 
-        case VM::DMESG: 
-        case VM::QEMU_USB: 
-        case VM::KMSG: 
-        case VM::SMBIOS_VM_BIT: return true;
-        default: return false;
+    case VM::VBOX_DEFAULT:
+    case VM::VMWARE_DMESG:
+    case VM::DMIDECODE:
+    case VM::DMESG:
+    case VM::QEMU_USB:
+    case VM::KMSG:
+    case VM::SMBIOS_VM_BIT: return true;
+    default: return false;
     }
-#else 
-    (void)flag;
-    return false;
-#endif
 }
+#endif
 
 static bool is_disabled(const VM::enum_flags flag) {
     if (arg_bitset.test(ALL)) {
