@@ -49,7 +49,7 @@ int main() {
      * around 5 technique that are disabled. If you want all 
      * techniques for the sake of completeness, then you can use
      * this flag but remember that there may be potential 
-     * performance bottlenecks and in increase in false positives.
+     * performance bottlenecks and an increase in false positives.
      */ 
     bool is_vm3 = VM::detect(VM::ALL);
 
@@ -65,7 +65,7 @@ int main() {
 
     /**
      * Essentially means only the CPU brand, MAC, and hypervisor bit techniques 
-     * should be performed. Note that the less flags you provide, the more 
+     * should be performed. Note that the less technique flags you provide, the more 
      * likely the result will not be accurate. If you just want to check for 
      * a single technique, use VM::check() instead. Also, read the flag table
      * at the end of this doc file for a full list of technique flags.
@@ -160,9 +160,9 @@ int main() {
         // having manual string comparisons like the two
         // previous ones can lead to typos which will 
         // make the whole check completely redundant.
-        // So the lib provides hardcoded strings as aliases
-        // to avoid these kinds of situations. They are
-        // located in the aforementioned brand table
+        // So the lib provides hardcoded string variables 
+        // as aliases to avoid these kinds of situations. 
+        // They are located in the aforementioned brand table
     }
 
     return 0;
@@ -303,7 +303,8 @@ The `[brand]` part might contain a brand or may as well be empty, depending on w
 <br>
 
 ## `VM::detected_count()`
-This will fetch the number of techniques that have been detected as a `std::uint8_t`. Can't get any simpler than that.
+This will fetch the number of techniques that have been detected as a `std::uint8_t`.
+
 ```cpp
 #include "vmaware.hpp"
 #include <iostream>

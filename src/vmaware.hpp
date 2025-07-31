@@ -222,68 +222,48 @@
 #endif
 
 #if defined(_WIN32) || defined(_WIN64)
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#define WINDOWS 1
-#define LINUX 0
-#define APPLE 0
+    #ifndef WIN32_LEAN_AND_MEAN
+        #define WIN32_LEAN_AND_MEAN
+    #endif
+    #define WINDOWS 1
+    #define LINUX 0
+    #define APPLE 0
 #elif (defined(__linux__))
-#define WINDOWS 0
-#define LINUX 1
-#define APPLE 0
+    #define WINDOWS 0
+    #define LINUX 1
+    #define APPLE 0
 #elif (defined(__APPLE__) || defined(__APPLE_CPP__) || defined(__MACH__) || defined(__DARWIN))
-#define WINDOWS 0
-#define LINUX 0
-#define APPLE 1
+    #define WINDOWS 0
+    #define LINUX 0
+    #define APPLE 1
 #else
-#define WINDOWS 0
-#define LINUX 0
-#define APPLE 0
+    #define WINDOWS 0
+    #define LINUX 0
+    #define APPLE 0
 #endif
 
 #ifdef _MSC_VER
-#define MSVC 1
+    #define MSVC 1
 #endif
 
 #if defined(_MSVC_LANG)
-#  define VMA_CPLUSPLUS _MSVC_LANG
+    #define VMA_CPLUSPLUS _MSVC_LANG
 #else
-#  define VMA_CPLUSPLUS __cplusplus
+    #define VMA_CPLUSPLUS __cplusplus
 #endif
 
 #if VMA_CPLUSPLUS >= 202300L
-#  define CPP 23
-#  ifdef __VMAWARE_DEBUG__
-#    pragma message("using C++23 or newer")
-#  endif
-
+    #define CPP 23
 #elif VMA_CPLUSPLUS >= 202002L
-#  define CPP 20
-#  ifdef __VMAWARE_DEBUG__
-#    pragma message("using C++20")
-#  endif
-
+    #define CPP 20
 #elif VMA_CPLUSPLUS >= 201703L
-#  define CPP 17
-#  ifdef __VMAWARE_DEBUG__
-#    pragma message("using C++17")
-#  endif
-
+    #define CPP 17
 #elif VMA_CPLUSPLUS >= 201402L
-#  define CPP 14
-#  ifdef __VMAWARE_DEBUG__
-#    pragma message("using C++14")
-#  endif
-
+    #define CPP 14
 #elif VMA_CPLUSPLUS >= 201103L
-#  define CPP 11
-#  ifdef __VMAWARE_DEBUG__
-#    pragma message("using C++11")
-#  endif
-
+    #define CPP 11
 #else
-#  error "Unsupported C++ standard (pre-C++11 or unknown)."
+    #error "Unsupported C++ standard (pre-C++11 or unknown)."
 #endif
 
 #if (CPP < 11 && !WINDOWS)
@@ -292,21 +272,21 @@
 
 
 #if defined(__x86_64__) || defined(_M_X64)
-#define x86_64 1
+    #define x86_64 1
 #else
-#define x86_64 0
+    #define x86_64 0
 #endif
 
 #if defined(__i386__) || defined(_M_IX86)
-#define x86_32 1
+    #define x86_32 1
 #else
-#define x86_32 0
+    #define x86_32 0
 #endif
 
 #if x86_32 || x86_64
-#define x86 1
+    #define x86 1
 #else
-#define x86 0
+    #define x86 0
 #endif
 
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__ARM_LINUX_COMPILER__)
@@ -324,18 +304,18 @@
 #if ARM32 || ARM64
 #define ARM 1
 #else
-#define ARM 0
+    #define ARM 0
 #endif
 
 #if defined(__clang__)
-#define GCC 0
-#define CLANG 1
+    #define GCC 0
+    #define CLANG 1
 #elif defined(__GNUC__)
-#define GCC 1
-#define CLANG 0
+    #define GCC 1
+    #define CLANG 0
 #else
-#define GCC 0
-#define CLANG 0
+    #define GCC 0
+    #define CLANG 0
 #endif
 
 #if !(defined(WINDOWS) || defined(LINUX) || defined(APPLE))
@@ -343,21 +323,21 @@
 #endif
 
 #if (CPP >= 23)
-#include <limits>
+    #include <limits>
 #endif
 #if (CPP >= 20)
-#include <bit>
-#include <ranges>
-#include <source_location>
+    #include <bit>
+    #include <ranges>
+    #include <source_location>
 #endif
 #if (CPP >= 17)
-#include <filesystem>
+    #include <filesystem>
 #endif
 #ifdef __VMAWARE_DEBUG__
-#include <iomanip>
-#include <ios>
-#include <locale>
-#include <codecvt>
+    #include <iomanip>
+    #include <ios>
+    #include <locale>
+    #include <codecvt>
 #endif
 
 #include <cstdio>
@@ -382,104 +362,75 @@
 #include <numeric>
 
 #if (WINDOWS)
-#include <windows.h>
-#include <intrin.h>
-#include <tchar.h>
-#include <winioctl.h>
-#include <winternl.h>
-#include <shlwapi.h>
-#include <powerbase.h>
-#include <setupapi.h>
-#include <tbs.h>
-#include <initguid.h>
-#include <devpkey.h>
-#include <devguid.h>
+    #include <windows.h>
+    #include <intrin.h>
+    #include <tchar.h>
+    #include <winioctl.h>
+    #include <winternl.h>
+    #include <shlwapi.h>
+    #include <powerbase.h>
+    #include <setupapi.h>
+    #include <tbs.h>
+    #include <initguid.h>
+    #include <devpkey.h>
+    #include <devguid.h>
 
-#pragma comment(lib, "setupapi.lib")
-#pragma comment(lib, "shlwapi.lib")
-#pragma comment(lib, "powrprof.lib")
-#pragma comment(lib, "tbs.lib")
-
+    #pragma comment(lib, "setupapi.lib")
+    #pragma comment(lib, "shlwapi.lib")
+    #pragma comment(lib, "powrprof.lib")
+    #pragma comment(lib, "tbs.lib")
 #elif (LINUX)
-#if (x86)
-#include <cpuid.h>
-#include <x86intrin.h>
-#include <immintrin.h>
-#endif
-#include <sys/stat.h>
-#include <sys/statvfs.h>
-#include <sys/ioctl.h>
-#include <sys/syscall.h>
-#include <sys/sysinfo.h>
-#include <net/if.h> 
-#include <netinet/in.h>
-#include <unistd.h>
-#include <string.h>
-#include <dirent.h>
-#include <memory>
-#include <cctype>
-#include <fcntl.h>
-#include <limits.h>
-#include <csignal>      
-#include <csetjmp>      
-#include <pthread.h>     
-#include <sched.h>      
-#include <cerrno>   
+    #if (x86)
+        #include <cpuid.h>
+        #include <x86intrin.h>
+        #include <immintrin.h>
+    #endif
+    #include <sys/stat.h>
+    #include <sys/statvfs.h>
+    #include <sys/ioctl.h>
+    #include <sys/syscall.h>
+    #include <sys/sysinfo.h>
+    #include <net/if.h> 
+    #include <netinet/in.h>
+    #include <unistd.h>
+    #include <string.h>
+    #include <dirent.h>
+    #include <memory>
+    #include <cctype>
+    #include <fcntl.h>
+    #include <limits.h>
+    #include <csignal>      
+    #include <csetjmp>      
+    #include <pthread.h>     
+    #include <sched.h>      
+    #include <cerrno>   
 #elif (APPLE)
-#if (x86)
-#include <cpuid.h>
-#include <x86intrin.h>
-#include <immintrin.h>
-#endif
-#include <sys/types.h>
-#include <sys/sysctl.h>
-#include <sys/user.h>
-#include <unistd.h>
-#include <time.h>
-#include <errno.h>
-#include <chrono>
+    #if (x86)
+        #include <cpuid.h>
+        #include <x86intrin.h>
+        #include <immintrin.h>
+    #endif
+    #include <sys/types.h>
+    #include <sys/sysctl.h>
+    #include <sys/user.h>
+    #include <unistd.h>
+    #include <time.h>
+    #include <errno.h>
+    #include <chrono>
 #endif
 
 #ifdef _UNICODE
-#define tregex std::wregex
+    #define tregex std::wregex
 #else
-#define tregex std::regex
+    #define tregex std::regex
 #endif
 
 #ifdef __VMAWARE_DEBUG__
-#define debug(...) VM::util::debug_msg(__VA_ARGS__)
-#define core_debug(...) VM::util::core_debug_msg(__VA_ARGS__)
+    #define debug(...) VM::util::debug_msg(__VA_ARGS__)
+    #define core_debug(...) VM::util::core_debug_msg(__VA_ARGS__)
 #else
-#define debug(...)
-#define core_debug(...)
-#endif
-
-#if (MSVC)
-#define VMAWARE_ASSUME(expr) __assume(expr)
-#elif (CLANG)
-// Clang
-#if __has_builtin(__builtin_assume)
-#define VMAWARE_ASSUME(expr) __builtin_assume(expr)
-#else
-// no __builtin_assume but __builtin_unreachable gives same hint
-    #define VMAWARE_ASSUME(expr)        \
-           do { if (!(expr))                \
-                 __builtin_unreachable();   \
-           } while (0)
-    #endif
-#elif (GCC)
-// GCC (but only after Clang check, since Clang also defines __GNUC__)
-#if (__GNUC__ >= 13)
-// GCC 13+ has __builtin_assume
-#define VMAWARE_ASSUME(expr) __builtin_assume(expr)
-#else
-    #define VMAWARE_ASSUME(expr)        \
-           do { if (!(expr))                \
-                 __builtin_unreachable();   \
-           } while (0)
-    #endif
-#else
-#define VMAWARE_ASSUME(expr) ((void)0)
+    #define debug(...)
+    #define core_debug(...)
 #endif
 
 
@@ -9175,6 +9126,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             flags.set(ALL, setting_all);
             flags.set(DEFAULT, setting_default);
         }
+        
+        static void reset_disable_flagset() {
+            generate_default(disabled_flag_collector);
+            disabled_flag_collector.flip(DEFAULT);
+        }
 
         static void disable_flagset_manager(const flagset& flags) {
             disabled_flag_collector = flags;
@@ -9333,7 +9289,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         template <typename... Args>
         static VMAWARE_CONSTEXPR flagset arg_handler(Args&&... args) {
             flag_collector.reset();
-            generate_default(disabled_flag_collector);
+            reset_disable_flagset();
 
             if VMAWARE_CONSTEXPR(is_empty<Args...>()) {
                 generate_default(flag_collector);
@@ -9347,21 +9303,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     generate_default(flag_collector);
                 }
 
-                bool no_memo = flag_collector.test(NO_MEMO);
-                bool high_threshold = flag_collector.test(HIGH_THRESHOLD);
-                bool dynamic_flag = flag_collector.test(DYNAMIC);
-                bool multiple = flag_collector.test(MULTIPLE);
-                bool all_flag = flag_collector.test(ALL);
-                bool default_flag = flag_collector.test(DEFAULT);
-
-                flag_collector &= disabled_flag_collector;
-
-                flag_collector.set(NO_MEMO, no_memo);
-                flag_collector.set(HIGH_THRESHOLD, high_threshold);
-                flag_collector.set(DYNAMIC, dynamic_flag);
-                flag_collector.set(MULTIPLE, multiple);
-                flag_collector.set(ALL, all_flag);
-                flag_collector.set(DEFAULT, default_flag);
+                generate_current_disabled_flags(flag_collector);
 
                 // handle edgecases
                 core::flag_sanitizer(flag_collector);
@@ -9372,9 +9314,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // same as above but for VM::disable which only accepts technique flags
         template <typename... Args>
         static void disabled_arg_handler(Args&&... args) {
-            disabled_flag_collector.reset();
-
-            generate_default(disabled_flag_collector);
+            reset_disable_flagset();
 
             if VMAWARE_CONSTEXPR (is_empty<Args...>()) {
                 throw std::invalid_argument("VM::DISABLE() must contain a flag");
@@ -9446,7 +9386,9 @@ public: // START OF PUBLIC FUNCTIONS
 
         const bool is_memoized = (memo_arg != NO_MEMO);
 
-        VMAWARE_ASSUME(flag_bit < technique_end);
+    #if (CPP >= 23) 
+        [[assume(flag_bit < technique_end)]];
+    #endif
 
         // if the technique is already cached, return the cached value instead
         if (memo::is_cached(flag_bit) && is_memoized) {
@@ -9769,7 +9711,9 @@ public: // START OF PUBLIC FUNCTIONS
         // flags above, and get a total score 
         const u16 points = core::run_all(flags, SHORTCUT);
 
-        VMAWARE_ASSUME(points < maximum_points);
+#if (CPP >= 23)
+        [[assume(points < maximum_points)]];
+#endif
 
         u16 threshold = 150;
 
@@ -9798,7 +9742,9 @@ public: // START OF PUBLIC FUNCTIONS
         // flags above, and get a total score
         const u16 points = core::run_all(flags, SHORTCUT);
 
-        VMAWARE_ASSUME(points < maximum_points);
+#if (CPP >= 23)
+        [[assume(points < maximum_points)]];
+#endif
 
         u8 percent = 0;
         u16 threshold = 150;
@@ -9852,7 +9798,9 @@ public: // START OF PUBLIC FUNCTIONS
             throw_error("Percentage parameter must be between 0 and 100");
         }
 
-        VMAWARE_ASSUME(percent > 0 && percent <= 100);
+#if (CPP >= 23)
+        [[assume(percent > 0 && percent <= 100)]];
+#endif
 
         static u16 id = 0;
         id++;
@@ -10054,7 +10002,9 @@ public: // START OF PUBLIC FUNCTIONS
             throw_error("Percentage parameter must be between 0 and 100");
         }
 
-        VMAWARE_ASSUME(percent <= 100);
+#if (CPP >= 23)
+        [[assume(percent <= 100)]];
+#endif  
 
         // check if the flag provided is a setting flag, which isn't valid.
         if (static_cast<u8>(flag) >= technique_end) {
