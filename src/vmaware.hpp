@@ -55,10 +55,10 @@
  * - struct for internal cpu operations        => line 717
  * - struct for internal memoization           => line 1043
  * - struct for internal utility functions     => line 1168
- * - struct for internal core components       => line 8830
+ * - struct for internal core components       => line 8826
  * - start of VM detection technique list      => line 2027
- * - start of public VM detection functions    => line 9333
- * - start of externally defined variables     => line 10276
+ * - start of public VM detection functions    => line 9329
+ * - start of externally defined variables     => line 10272
  *
  *
  * ============================== EXAMPLE ===================================
@@ -80,24 +80,24 @@
  *
  * ========================== CODE DOCUMENTATION =============================
  *
- * TL;DR if you have the patience of an ADHD kid, head over here:
+ * TL;DR: if you have the patience of an ADHD kid, head over here:
  * https://deepwiki.com/kernelwernel/VMAware
  * 
  *
  * Welcome! This is just a preliminary text to lay the context of how it works, 
- * how it's structured, and guide anybody who's trying to understand the whole code. 
+ * how it's structured, and to guide anybody who's trying to understand the whole code. 
  * Reading over 12k+ lines of other people's C++ code is obviously not an easy task, 
- * and that's perfectly understandable. I'd struggle as well if I was in your position
+ * and that's perfectly understandable. I'd struggle as well if I were in your position
  * while not even knowing where to start. So here's a more human-friendly explanation:
  * 
  * 
  * Firstly, the lib is completely static, meaning that there's no need for struct 
- * constructors to be initiated (unless you're using the VM::vmaware struct).
- * The main focus of the lib are the tables:
+ * constructors to be initialized (unless you're using the VM::vmaware struct).
+ * The main focus of the lib is the tables:
  *  - the TECHNIQUE table stores all the VM detection technique information in a std::map 
  * 
  *  - the BRAND table stores every VM brand as a std::map as well, but as a scoreboard. 
- *    This means that if a VM detection has detected a VM brand, that brand will have an
+ *    This means that if a VM detection technique has detected a VM brand, that brand will have an
  *    incremented score. After every technique is run, the brand with the highest score
  *    is chosen as the officially detected brand. 
  * 
@@ -113,7 +113,7 @@
  *        the standard structure for how VM techniques are organised, functionalities 
  *        to run all the techniques in the technique table, functionalities to run
  *        custom-made techniques by the user, and an argument handler based on the 
- *        arguments inputted by the user.
+ *        arguments input by the user.
  *
  *    - cpu module:
  *        As the name suggests, this contains functionalities for the CPU. There are
@@ -128,7 +128,7 @@
  *        internally. Some techniques are costlier than others in terms of 
  *        performance, so this is a crucial module that allows us to save a lot of
  *        time. Additionally, it contains other memoization caches for various other
- *        things for convenience purposes. 
+ *        things for convenience. 
  * 
  *    - util module:
  *        This contains many utility functionalities to be used by the techniques.
@@ -154,15 +154,15 @@
  *       of them are already selected anyway). The function that does 
  *       this mechanism is core::run_all()
  * 
- *    3. While the core::run_all() function is being ran, it checks if 
+ *    3. While the core::run_all() function is being run, it checks if 
  *       each technique has already been memoized or not. If it has, 
- *       retrieve the result from the cache and move to the next technique. 
- *       If it hasn't, run the technique and cache the result to the 
+ *       retrieves the result from the cache and moves to the next technique. 
+ *       If it hasn't, runs the technique and caches the result in the 
  *       cache table. 
  * 
  *    4. After every technique has been executed, this generates a 
  *       uint16_t score. Every technique has a score value between 0 to 
- *       100, and if they are detected then this score is accumulated to 
+ *       100, and if a VM is detected then this score is accumulated to 
  *       a total score. If the total is above 150, that means it's a VM[1]. 
  * 
  * 
@@ -175,12 +175,12 @@
  *       important is because a lot of techniques increment a point for its 
  *       respected brand that was detected. For example, if the VM::QEMU_USB
  *       technique has detected a VM, it'll add a score to the QEMU brand in
- *       the scoreboard. If no technique has been run, then there's no way to
+ *       the scoreboard. If no technique have been run, then there's no way to
  *       populate the scoreboard with any points. After every VM detection 
  *       technique has been invoked/retrieved, the brand scoreboard is now
  *       ready to be analysed.
  * 
- *    3. Create a filter for the scoreboard, where every brand that has a score
+ *    3. Create a filter for the scoreboard, where every brand that have a score
  *       of 0 are erased for abstraction purposes. Now the scoreboard is only
  *       populated with relevant brands where they all have at least a single
  *       point. These are the contenders for which brand will be outputted.
@@ -197,7 +197,7 @@
  *       the brands with the highest points are now selected as the official 
  *       output of the VM::brand() function.
  * 
- *    6. The result is then cached to the memo module, so if another function
+ *    6. The result is then cached in the memo module, so if another function
  *       invokes VM:brand() again, "the result is retrieved from the cache 
  *       without needing to run all of the previous steps again.
  *      
@@ -6739,32 +6739,28 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         static std::vector<DirectCheck> s_directChecks;
         static std::unordered_map<HKEY, std::unordered_map<std::string, WildcardGroup>> s_wildcardChecks;
 
-        // This initialization runs only once, the first time the function is called.
-        static const bool s_initialized = [] {
-            for (const auto& entry : entries) {
-                const char* full = entry.regkey;
-                HKEY hRoot = nullptr;
+        for (const auto& entry : entries) {
+            const char* full = entry.regkey;
+            HKEY hRoot = nullptr;
 
-                if (strncmp(full, "HKLM\\", 5) == 0) { hRoot = HKEY_LOCAL_MACHINE; full += 5; }
-                else if (strncmp(full, "HKCU\\", 5) == 0) { hRoot = HKEY_CURRENT_USER; full += 5; }
-                else { continue; }
+            if (strncmp(full, "HKLM\\", 5) == 0) { hRoot = HKEY_LOCAL_MACHINE; full += 5; }
+            else if (strncmp(full, "HKCU\\", 5) == 0) { hRoot = HKEY_CURRENT_USER; full += 5; }
+            else { continue; }
 
-                if (strchr(full, '*') || strchr(full, '?')) {
-                    const char* slash = strrchr(full, '\\');
-                    if (slash) {
-                        std::string parentPath(full, static_cast<size_t>(slash - full));
-                        s_wildcardChecks[hRoot][parentPath].push_back({ slash + 1, entry.brand });
-                    }
-                    else {
-                        s_wildcardChecks[hRoot][""].push_back({ full, entry.brand });
-                    }
+            if (strchr(full, '*') || strchr(full, '?')) {
+                const char* slash = strrchr(full, '\\');
+                if (slash) {
+                    std::string parentPath(full, static_cast<size_t>(slash - full));
+                    s_wildcardChecks[hRoot][parentPath].push_back({ slash + 1, entry.brand });
                 }
                 else {
-                    s_directChecks.push_back({ hRoot, full, entry.brand });
+                    s_wildcardChecks[hRoot][""].push_back({ full, entry.brand });
                 }
             }
-            return true;
-            }();
+            else {
+                s_directChecks.push_back({ hRoot, full, entry.brand });
+            }
+        }
 
         int score = 0;
         static const REGSAM sam = (util::is_wow64() ? (KEY_READ | KEY_WOW64_64KEY) : KEY_READ);
