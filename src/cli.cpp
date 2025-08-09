@@ -137,7 +137,7 @@ private:
     win_ansi_enabler_t(win_ansi_enabler_t const&) = delete;
 
 private:
-    BOOL m_set;
+    bool m_set;
     DWORD m_old;
     HANDLE m_out;
 };
@@ -841,7 +841,7 @@ static void general() {
     checker(VM::BLOCKSTEP, "single step with trap flag");
     checker(VM::DBVM, "Dark Byte's hypervisor");
     checker(VM::BOOT_LOGO, "boot logo");
-    checker(VM::MAC_UTM, "UTM VM");
+    checker(VM::MAC_SYS, "UTM VM");
     // ADD NEW TECHNIQUE CHECKER HERE
 
     std::printf("\n");
