@@ -841,7 +841,7 @@ static void general() {
     checker(VM::BLOCKSTEP, "single step with trap flag");
     checker(VM::DBVM, "Dark Byte's hypervisor");
     checker(VM::BOOT_LOGO, "boot logo");
-    checker(VM::MAC_SYS, "UTM VM");
+    checker(VM::MAC_SYS, "system profiler");
     // ADD NEW TECHNIQUE CHECKER HERE
 
     std::printf("\n");
