@@ -55,10 +55,10 @@
  * - struct for internal cpu operations        => line 717
  * - struct for internal memoization           => line 1043
  * - struct for internal utility functions     => line 1168
- * - struct for internal core components       => line 8816
+ * - struct for internal core components       => line 8828
  * - start of VM detection technique list      => line 2027
- * - start of public VM detection functions    => line 9319
- * - start of externally defined variables     => line 10262
+ * - start of public VM detection functions    => line 9331
+ * - start of externally defined variables     => line 10274
  *
  *
  * ============================== EXAMPLE ===================================
@@ -6603,12 +6603,24 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check if System Integrity Protection is disabled (likely a VM if it is)
+     * @brief Check for the status of System Integrity Protection and hv_mm_present
      * @category MacOS
      * @link https://evasions.checkpoint.com/techniques/macos.html
      * @implements VM::MAC_SIP
      */
     [[nodiscard]] static bool mac_sip() {
+        int hv_present = 0;
+        std::size_t size = sizeof(hv_present);
+        if (sysctlbyname("kern.hv_vmm_present",
+            &hv_present,
+            &size,
+            nullptr,
+            0) != 0) {
+            return false;
+        }
+
+        if (hv_present != 0) return true;
+
         std::unique_ptr<std::string> result = util::sys_result("csrutil status");
         const std::string tmp = *result;
 
@@ -10489,7 +10501,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         std::make_pair(VM::MAC_SIP, VM::core::technique(40, VM::mac_sip)),
         std::make_pair(VM::IOREG_GREP, VM::core::technique(100, VM::ioreg_grep)),
         std::make_pair(VM::HWMODEL, VM::core::technique(100, VM::hwmodel)),
-        std::make_pair(VM::MAC_SYS, VM::core::technique(150, VM::mac_sysprofiler)),
+        std::make_pair(VM::MAC_SYS, VM::core::technique(150, VM::mac_sys)),
     #endif
     
     std::make_pair(VM::TIMER, VM::core::technique(50, VM::timer)),
