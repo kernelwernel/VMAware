@@ -4,7 +4,7 @@
  * ██║   ██║██╔████╔██║███████║██║ █╗ ██║███████║██████╔╝█████╗
  * ╚██╗ ██╔╝██║╚██╔╝██║██╔══██║██║███╗██║██╔══██║██╔══██╗██╔══╝
  *  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
- *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ Experimental post-2.4.1 (July 2025)
+ *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ Experimental post-2.4.1 (August 2025)
  *
  *  C++ VM detection library
  *
@@ -55,10 +55,10 @@
  * - struct for internal cpu operations        => line 717
  * - struct for internal memoization           => line 1043
  * - struct for internal utility functions     => line 1168
- * - struct for internal core components       => line 8826
+ * - struct for internal core components       => line 8828
  * - start of VM detection technique list      => line 2027
- * - start of public VM detection functions    => line 9329
- * - start of externally defined variables     => line 10272
+ * - start of public VM detection functions    => line 9331
+ * - start of externally defined variables     => line 10274
  *
  *
  * ============================== EXAMPLE ===================================
@@ -619,7 +619,7 @@ public:
         MAC_SIP,
         IOREG_GREP,
         HWMODEL,
-        MAC_UTM,
+        MAC_SYS,
 
         // cross-platform
         HYPERVISOR_BIT,
@@ -674,7 +674,7 @@ public:
     static constexpr u8 LINUX_START = VM::SIDT;
     static constexpr u8 LINUX_END = VM::THREAD_COUNT;
     static constexpr u8 MACOS_START = VM::THREAD_COUNT;
-    static constexpr u8 MACOS_END = VM::MAC_UTM;
+    static constexpr u8 MACOS_END = VM::MAC_SYS;
     
     // this is specifically meant for VM::detected_count() to 
     // get the total number of techniques that detected a VM
@@ -1301,7 +1301,7 @@ private:
                 (euid == 0)
             );
 #elif (WINDOWS)
-            BOOL is_admin = 0;
+            bool is_admin = 0;
             HANDLE hToken = nullptr;
 
             if (OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &hToken)) {
@@ -1819,7 +1819,7 @@ private:
 #if (WINDOWS)
         [[nodiscard]] static bool is_wow64() {
             BOOL isWow64 = 0;
-            BOOL pbool = IsWow64Process(GetCurrentProcess(), &isWow64);
+            bool pbool = IsWow64Process(GetCurrentProcess(), &isWow64);
             return (pbool && isWow64);
         }
 
@@ -6459,10 +6459,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         std::unique_ptr<std::string> platform_ptr = util::sys_result("ioreg -rd1 -c IOPlatformExpertDevice");
         std::unique_ptr<std::string> board_ptr = util::sys_result("ioreg -rd1 -c board-id");
         std::unique_ptr<std::string> manufacturer_ptr = util::sys_result("ioreg -rd1 -c manufacturer");
+        std::unique_ptr<std::string> keyboard_ptr = util::sys_result("ioreg -lw0 -p IODeviceTree");
 
         const std::string platform = *platform_ptr;
         const std::string board = *board_ptr;
         const std::string manufacturer = *manufacturer_ptr;
+        const std::string keyboard = *keyboard_ptr;
 
         auto check_platform = [&]() -> bool {
             debug("IO_KIT: ", "platform = ", platform);
@@ -6520,13 +6522,26 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         };
 
+        auto check_keyboard = [&]() -> bool {
+            debug("IO_KIT: ", "keyboard = ", keyboard);
+
+            if (keyboard.empty()) {
+                return false;
+            }
+
+            if (util::find(keyboard, "Virtual Machine")) {
+                return true;
+            }
+
+            return false;
+        };
+
         return (
             check_platform() ||
             check_board() ||
-            check_manufacturer()
-        );
-
-        return false;
+            check_manufacturer() ||
+            check_keyboard()
+       );
     }
 
 
@@ -6588,28 +6603,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check if System Integrity Protection is disabled (likely a VM if it is)
+     * @brief Check for the status of System Integrity Protection and hv_mm_present
      * @category MacOS
      * @link https://evasions.checkpoint.com/techniques/macos.html
      * @implements VM::MAC_SIP
      */
     [[nodiscard]] static bool mac_sip() {
-        std::unique_ptr<std::string> result = util::sys_result("csrutil status");
-        const std::string tmp = *result;
-
-        debug("MAC_SIP: ", "result = ", tmp);
-
-        return (util::find(tmp, "disabled") || (!util::find(tmp, "enabled")));
-    }
-
-
-    /**
-     * @brief Check if Hypervisor.framework or UTM-MacOS-VM is present
-     * @category MacOS
-     * @author AdnanAhad (https://github.com/AdnanAhad)
-     * @implements VM::MAC_UTM
-     */
-    [[nodiscard]] static bool mac_utm() {
         int hv_present = 0;
         std::size_t size = sizeof(hv_present);
         if (sysctlbyname("kern.hv_vmm_present",
@@ -6622,28 +6621,31 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         if (hv_present != 0) return true;
 
-        // MIB for: sysctl(KERN_PROC, KERN_PROC_ALL, ...)
-        int mib[3] = { CTL_KERN, KERN_PROC, KERN_PROC_ALL };
-        size_t bufsize = 0;
+        std::unique_ptr<std::string> result = util::sys_result("csrutil status");
+        const std::string tmp = *result;
 
-        if (sysctl(mib, 3, nullptr, &bufsize, nullptr, 0) != 0) {
-            perror("sysctl size");
-            return false;
-        }
+        debug("MAC_SIP: ", "result = ", tmp);
 
-        std::vector<char> buffer(bufsize);
-        if (sysctl(mib, 3, buffer.data(), &bufsize, nullptr, 0) != 0) {
-            perror("sysctl list");
-            return false;
-        }
+        return (util::find(tmp, "disabled") || (!util::find(tmp, "enabled")));
+    }
 
-        size_t count = bufsize / sizeof(kinfo_proc);
-        auto procs = reinterpret_cast<kinfo_proc*>(buffer.data());
-        for (size_t i = 0; i < count; ++i) {
-            std::string name(procs[i].kp_proc.p_comm);
-            // UTM's QEMU helper is named like "qemu-system-x86_64" or "qemu-system-aarch64"
-            if (name.rfind("qemu-system", 0) == 0) {
-                return core::add(brands::UTM);
+
+    /**
+     * @brief Check for VM-strings in system profiler commands for MacOS
+     * @category MacOS
+     * @implements VM::MAC_SYS
+     */
+    [[nodiscard]] static bool mac_sys() {
+        const char* keyword = "virtual machine";
+
+        if (std::unique_ptr<std::string> profiler_res_ptr = util::sys_result("system_profiler SPHardwareDataType")) {
+            std::string& output = *profiler_res_ptr;
+
+            std::transform(output.begin(), output.end(), output.begin(),
+                [](unsigned char c) { return std::tolower(c); });
+
+            if (util::find(output, keyword)) {
+                return true;
             }
         }
 
@@ -9930,7 +9932,7 @@ public: // START OF PUBLIC FUNCTIONS
             case BLOCKSTEP: return "BLOCKSTEP";
             case DBVM: return "DBVM";
             case BOOT_LOGO: return "BOOT_LOGO";
-            case MAC_UTM: return "MAC_UTM";
+            case MAC_SYS: return "MAC_SYS";
             // END OF TECHNIQUE LIST
             case DEFAULT: return "setting flag, error";
             case ALL: return "setting flag, error";
@@ -10496,10 +10498,10 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     #if (APPLE)
         std::make_pair(VM::MAC_MEMSIZE, VM::core::technique(15, VM::hw_memsize)),
         std::make_pair(VM::MAC_IOKIT, VM::core::technique(100, VM::io_kit)),
-        std::make_pair(VM::MAC_SIP, VM::core::technique(40, VM::mac_sip)),
+        std::make_pair(VM::MAC_SIP, VM::core::technique(100, VM::mac_sip)),
         std::make_pair(VM::IOREG_GREP, VM::core::technique(100, VM::ioreg_grep)),
         std::make_pair(VM::HWMODEL, VM::core::technique(100, VM::hwmodel)),
-        std::make_pair(VM::MAC_UTM, VM::core::technique(150, VM::mac_utm)),
+        std::make_pair(VM::MAC_SYS, VM::core::technique(100, VM::mac_sys)),
     #endif
     
     std::make_pair(VM::TIMER, VM::core::technique(50, VM::timer)),
