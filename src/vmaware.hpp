@@ -10498,10 +10498,10 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     #if (APPLE)
         std::make_pair(VM::MAC_MEMSIZE, VM::core::technique(15, VM::hw_memsize)),
         std::make_pair(VM::MAC_IOKIT, VM::core::technique(100, VM::io_kit)),
-        std::make_pair(VM::MAC_SIP, VM::core::technique(40, VM::mac_sip)),
+        std::make_pair(VM::MAC_SIP, VM::core::technique(100, VM::mac_sip)),
         std::make_pair(VM::IOREG_GREP, VM::core::technique(100, VM::ioreg_grep)),
         std::make_pair(VM::HWMODEL, VM::core::technique(100, VM::hwmodel)),
-        std::make_pair(VM::MAC_SYS, VM::core::technique(150, VM::mac_sys)),
+        std::make_pair(VM::MAC_SYS, VM::core::technique(100, VM::mac_sys)),
     #endif
     
     std::make_pair(VM::TIMER, VM::core::technique(50, VM::timer)),
