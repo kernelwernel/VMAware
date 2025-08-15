@@ -34,7 +34,7 @@ The library is:
 <br>
 
 > [!NOTE]
-> We are looking for Chinese translators. If you'd like to contribute with translating this README, feel free to give us a PR! Credit will be provided. (15/08/2025)
+> We are looking for Chinese translators. If you'd like to contribute with translating this README, feel free to give us a PR! Credit will be provided.
 
 
 <br>
