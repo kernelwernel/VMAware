@@ -38,8 +38,6 @@
     #define CLI_WINDOWS 1
     #define WIN32_LEAN_AND_MEAN
     #include <windows.h>
-    #include <psapi.h>
-    #include <tlhelp32.h>
 #else
     #define CLI_WINDOWS 0
 #endif
@@ -137,47 +135,10 @@ private:
     win_ansi_enabler_t(win_ansi_enabler_t const&) = delete;
 
 private:
-    BOOL m_set;
+    bool m_set;
     DWORD m_old;
     HANDLE m_out;
 };
-
-static DWORD GetParentProcessId(DWORD pid) {
-    HANDLE hSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-    if (hSnap == INVALID_HANDLE_VALUE) return 0;
-
-    PROCESSENTRY32 pe{};
-    pe.dwSize = sizeof(PROCESSENTRY32);
-
-    DWORD ppid = 0;
-    if (Process32First(hSnap, &pe)) {
-        do {
-            if (pe.th32ProcessID == pid) {
-                ppid = pe.th32ParentProcessID;
-                break;
-            }
-        } while (Process32Next(hSnap, &pe));
-    }
-
-    CloseHandle(hSnap);
-    return ppid;
-}
-
-static std::string GetProcessNameFromPid(DWORD pid) {
-    HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid);
-    if (!hProcess) return "";
-
-    char processName[MAX_PATH] = "<unknown>";
-    HMODULE hMod;
-    DWORD cbNeeded;
-
-    if (EnumProcessModules(hProcess, &hMod, sizeof(hMod), &cbNeeded)) {
-        GetModuleBaseNameA(hProcess, hMod, processName, sizeof(processName) / sizeof(char));
-    }
-
-    CloseHandle(hProcess);
-    return std::string(processName);
-}
 #endif
 
 
@@ -339,27 +300,24 @@ static bool is_admin() {
 }
 #endif
 
-static bool are_perms_required(const VM::enum_flags flag) {
 #if (CLI_LINUX)
+static bool are_perms_required(const VM::enum_flags flag) {
     if (is_admin()) {
         return false;
     }
 
     switch (flag) {
-        case VM::VBOX_DEFAULT: 
-        case VM::VMWARE_DMESG: 
-        case VM::DMIDECODE: 
-        case VM::DMESG: 
-        case VM::QEMU_USB: 
-        case VM::KMSG: 
-        case VM::SMBIOS_VM_BIT: return true;
-        default: return false;
+    case VM::VBOX_DEFAULT:
+    case VM::VMWARE_DMESG:
+    case VM::DMIDECODE:
+    case VM::DMESG:
+    case VM::QEMU_USB:
+    case VM::KMSG:
+    case VM::SMBIOS_VM_BIT: return true;
+    default: return false;
     }
-#else 
-    (void)flag;
-    return false;
-#endif
 }
+#endif
 
 static bool is_disabled(const VM::enum_flags flag) {
     if (arg_bitset.test(ALL)) {
@@ -844,7 +802,7 @@ static void general() {
     checker(VM::BLOCKSTEP, "single step with trap flag");
     checker(VM::DBVM, "Dark Byte's hypervisor");
     checker(VM::BOOT_LOGO, "boot logo");
-    checker(VM::MAC_UTM, "UTM VM");
+    checker(VM::MAC_SYS, "system profiler");
     // ADD NEW TECHNIQUE CHECKER HERE
 
     std::printf("\n");
@@ -1040,15 +998,7 @@ static void general() {
         }
     }
 
-    #if (CLI_WINDOWS)
-    const DWORD VMAwarePID = GetCurrentProcessId();
-    const DWORD parentPid = GetParentProcessId(VMAwarePID);
-    std::string parentName = GetProcessNameFromPid(parentPid);
-
-    if (_stricmp(parentName.c_str(), "explorer.exe") == 0) {
-        system("pause");
-    }
-    #endif
+    system("pause"); 
 }
 
 
