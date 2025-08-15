@@ -38,8 +38,6 @@
     #define CLI_WINDOWS 1
     #define WIN32_LEAN_AND_MEAN
     #include <windows.h>
-    #include <psapi.h>
-    #include <tlhelp32.h>
 #else
     #define CLI_WINDOWS 0
 #endif
@@ -141,43 +139,6 @@ private:
     DWORD m_old;
     HANDLE m_out;
 };
-
-static DWORD GetParentProcessId(DWORD pid) {
-    HANDLE hSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-    if (hSnap == INVALID_HANDLE_VALUE) return 0;
-
-    PROCESSENTRY32 pe{};
-    pe.dwSize = sizeof(PROCESSENTRY32);
-
-    DWORD ppid = 0;
-    if (Process32First(hSnap, &pe)) {
-        do {
-            if (pe.th32ProcessID == pid) {
-                ppid = pe.th32ParentProcessID;
-                break;
-            }
-        } while (Process32Next(hSnap, &pe));
-    }
-
-    CloseHandle(hSnap);
-    return ppid;
-}
-
-static std::string GetProcessNameFromPid(DWORD pid) {
-    HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid);
-    if (!hProcess) return "";
-
-    char processName[MAX_PATH] = "<unknown>";
-    HMODULE hMod;
-    DWORD cbNeeded;
-
-    if (EnumProcessModules(hProcess, &hMod, sizeof(hMod), &cbNeeded)) {
-        GetModuleBaseNameA(hProcess, hMod, processName, sizeof(processName) / sizeof(char));
-    }
-
-    CloseHandle(hProcess);
-    return std::string(processName);
-}
 #endif
 
 
@@ -1037,15 +998,7 @@ static void general() {
         }
     }
 
-    #if (CLI_WINDOWS)
-    const DWORD VMAwarePID = GetCurrentProcessId();
-    const DWORD parentPid = GetParentProcessId(VMAwarePID);
-    std::string parentName = GetProcessNameFromPid(parentPid);
-
-    if (_stricmp(parentName.c_str(), "explorer.exe") == 0) {
-        system("pause");
-    }
-    #endif
+    system("pause"); 
 }
 
 
