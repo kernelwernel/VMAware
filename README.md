@@ -31,6 +31,11 @@ The library is:
 - Memoized, meaning past results are cached and retrieved if ran again for performance benefits 
 - Fully MIT-licensed, allowing unrestricted use and distribution
 
+<br>
+
+> [!NOTE]
+> We are looking for Chinese translators. If you'd like to contribute with translating this README, feel free to give us a PR! Credit will be provided. (15/08/2025)
+
 
 <br>
 
