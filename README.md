@@ -1,5 +1,5 @@
 <p align="center">
-<img src="assets/banner.jpg" align="center" width="500" title="VMAware">
+<img src="assets/banner_wojak.png" align="center" width="500" title="VMAware">
 <br>
 <img align="center" src="https://img.shields.io/github/actions/workflow/status/kernelwernel/VMAware/cmake-multi-platform.yml">
 <img align="center" src="https://img.shields.io/github/downloads/kernelwernel/VMAware/total">
@@ -8,7 +8,7 @@
 <a href="https://github.com/kernelwernel/VMAware/actions/workflows/code_ql_analysis.yml">
   <img align="center" src="https://github.com/kernelwernel/VMAware/actions/workflows/code_ql_analysis.yml/badge.svg" alt="CodeQL Analysis">
 </a>
-
+<p align="center">(i'm only keeping this logo for a week lol)</p>
 </p>
 
 **VMAware** (VM + Aware) is a cross-platform C++ library for virtual machine detection.
