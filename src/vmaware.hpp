@@ -55,10 +55,10 @@
  * - struct for internal cpu operations        => line 717
  * - struct for internal memoization           => line 1043
  * - struct for internal utility functions     => line 1168
- * - struct for internal core components       => line 8891
+ * - struct for internal core components       => line 8895
  * - start of VM detection technique list      => line 2027
- * - start of public VM detection functions    => line 9394
- * - start of externally defined variables     => line 10337
+ * - start of public VM detection functions    => line 9398
+ * - start of externally defined variables     => line 10341
  *
  *
  * ============================== EXAMPLE ===================================
@@ -5626,7 +5626,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     [[nodiscard]] static bool hyperv_hostname() {
         const std::string hostname = util::get_hostname();
 
-        if ((hostname == "runnervmr86sf") || (hostname == "pkrvmubgrv54qmi"))
+    #if (WINDOWS)
+        if (hostname == "runnervmr86sf")
+    #elif (LINUX)   
+        if (hostname == "pkrvmubgrv54qmi")
+    #endif
             return core::add(brands::AZURE_HYPERV);
 
         return false;
