@@ -642,7 +642,6 @@ public:
         NULL_ARG, // does nothing, just a placeholder flag mainly for the CLI
 
         // start of settings technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
-        NO_MEMO,
         HIGH_THRESHOLD,
         DYNAMIC,
         MULTIPLE
@@ -650,9 +649,9 @@ public:
 
 private:
     static constexpr u8 enum_size = MULTIPLE; // get enum size through value of last element
-    static constexpr u8 settings_count = MULTIPLE - NO_MEMO + 1; // get number of settings technique flags like VM::NO_MEMO for example
+    static constexpr u8 settings_count = MULTIPLE - HIGH_THRESHOLD + 1; // get number of settings technique flags
     static constexpr u8 INVALID = 255; // explicit invalid technique macro
-    static constexpr u16 base_technique_count = NO_MEMO; // original technique count, constant on purpose (can also be used as a base count value if custom techniques are added)
+    static constexpr u16 base_technique_count = HIGH_THRESHOLD; // original technique count, constant on purpose (can also be used as a base count value if custom techniques are added)
     static constexpr u16 maximum_points = 5510; // theoretical total points if all VM detections returned true (which is practically impossible)
     static constexpr u16 high_threshold_score = 300; // new threshold score from 150 to 300 if VM::HIGH_THRESHOLD flag is enabled
     static constexpr bool SHORTCUT = true; // macro for whether VM::core::run_all() should take a shortcut by skipping the rest of the techniques if the threshold score is already met
@@ -695,7 +694,7 @@ private:
 
 public:
     // this will allow the enum to be used in the public interface as "VM::TECHNIQUE"
-    enum enum_flags tmp_ignore_this = NO_MEMO;
+    enum enum_flags tmp_ignore_this = HIGH_THRESHOLD;
 
     // constructor stuff ignore this
     VM() = delete;
@@ -8987,12 +8986,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             // at this stage, only setting flags are asserted to be set
             if (
-                flags.test(NO_MEMO) ||
                 flags.test(HIGH_THRESHOLD) ||
                 flags.test(DYNAMIC) ||
                 flags.test(NULL_ARG) ||
                 flags.test(MULTIPLE)
-                ) {
+            ) {
                 generate_default(flags);
             }
             else {
@@ -9003,8 +9001,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // run every VM detection mechanism in the technique table
         static u16 run_all(const flagset& flags, const bool shortcut = false) {
             u16 points = 0;
-
-            const bool memo_enabled = core::is_disabled(flags, NO_MEMO);
 
             u16 threshold_points = 150;
 
@@ -9030,7 +9026,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
 
                 // check if the technique is cached already
-                if (memo_enabled && memo::is_cached(technique_macro)) {
+                if (memo::is_cached(technique_macro)) {
                     const memo::data_t data = memo::cache_fetch(technique_macro);
 
                     if (data.result) {
@@ -9053,9 +9049,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
 
                 // store the current technique result to the cache
-                if (memo_enabled) {
-                    memo::cache_store(technique_macro, result, technique_data.points);
-                }
+                memo::cache_store(technique_macro, result, technique_data.points);
 
                 // for things like VM::detect() and VM::percentage(),
                 // a score of 150+ is guaranteed to be a VM, so
@@ -9074,7 +9068,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             if (!custom_table.empty()) {
                 for (const auto& technique : custom_table) {
                     // if cached, return that result
-                    if (memo_enabled && memo::is_cached(technique.id)) {
+                    if (memo::is_cached(technique.id)) {
                         const memo::data_t data = memo::cache_fetch(technique.id);
 
                         if (data.result) {
@@ -9094,13 +9088,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     }
 
                     // cache the result
-                    if (memo_enabled) {
-                        memo::cache_store(
-                            technique.id,
-                            result,
-                            technique.points
-                        );
-                    }
+                    memo::cache_store(
+                        technique.id,
+                        result,
+                        technique.points
+                    );
                 }
             }
 
@@ -9149,7 +9141,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             // disable all the settings flags
-            flags.flip(NO_MEMO);
             flags.flip(HIGH_THRESHOLD);
             flags.flip(NULL_ARG);
             flags.flip(DYNAMIC);
@@ -9162,7 +9153,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             flags.set();
 
             // disable all the settings flags
-            flags.flip(NO_MEMO);
             flags.flip(HIGH_THRESHOLD);
             flags.flip(NULL_ARG);
             flags.flip(DYNAMIC);
@@ -9171,7 +9161,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         static void generate_current_disabled_flags(flagset& flags) {
-            const bool setting_no_memo = flags.test(NO_MEMO);
             const bool setting_high_threshold = flags.test(HIGH_THRESHOLD);
             const bool setting_dynamic = flags.test(DYNAMIC);
             const bool setting_multiple = flags.test(MULTIPLE);
@@ -9184,7 +9173,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 flags &= disabled_flag_collector;
             }
 
-            flags.set(NO_MEMO, setting_no_memo);
             flags.set(HIGH_THRESHOLD, setting_high_threshold);
             flags.set(DYNAMIC, setting_dynamic);
             flags.set(MULTIPLE, setting_multiple);
@@ -9405,8 +9393,7 @@ public: // START OF PUBLIC FUNCTIONS
      * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmcheck
      */
     static bool check(
-        const enum_flags flag_bit, 
-        const enum_flags memo_arg = NULL_ARG
+        const enum_flags flag_bit
 #if (CPP >= 20) && (!CLANG || __clang_major__ >= 16)
         , const std::source_location& loc = std::source_location::current()
 #endif
@@ -9434,7 +9421,6 @@ public: // START OF PUBLIC FUNCTIONS
 
         // check if the bit is a settings flag, which shouldn't be allowed
         if (
-            (flag_bit == NO_MEMO) ||
             (flag_bit == HIGH_THRESHOLD) ||
             (flag_bit == DYNAMIC) ||
             (flag_bit == MULTIPLE)
@@ -9442,27 +9428,18 @@ public: // START OF PUBLIC FUNCTIONS
             throw_error("Flag argument must be a technique flag and not a settings flag");
         }
 
-        if (
-            (memo_arg != NO_MEMO) && 
-            (memo_arg != NULL_ARG)
-        ) {
-            throw_error("Flag argument for memoization must be either VM::NO_MEMO or left empty");
-        }
-
-        const bool is_memoized = (memo_arg != NO_MEMO);
-
     #if (CPP >= 23) 
         [[assume(flag_bit < technique_end)]];
     #endif
 
         // if the technique is already cached, return the cached value instead
-        if (memo::is_cached(flag_bit) && is_memoized) {
+        if (memo::is_cached(flag_bit)) {
             const memo::data_t data = memo::cache_fetch(flag_bit);
             return data.result;
         }
 
         // check if the flag even exists
-        auto it = core::technique_table.find(flag_bit);
+        const auto it = core::technique_table.find(flag_bit);
         if (it == core::technique_table.end()) {
             throw_error("Flag is not known");
         }
@@ -9480,9 +9457,7 @@ public: // START OF PUBLIC FUNCTIONS
 #endif
 
         // store the technique result in the cache table
-        if (is_memoized) {
-            memo::cache_store(flag_bit, result, pair.points);
-        }
+        memo::cache_store(flag_bit, result, pair.points);
 
         return result;
     }
@@ -9506,17 +9481,15 @@ public: // START OF PUBLIC FUNCTIONS
         const u16 score = core::run_all(flags);
 
         // check if the result is already cached and return that instead
-        if (core::is_disabled(flags, NO_MEMO)) {
-            if (is_multiple) {
-                if (memo::multi_brand::is_cached()) {
-                    core_debug("VM::brand(): returned multi brand from cache");
-                    return memo::multi_brand::fetch();
-                }
-            } else {
-                if (memo::brand::is_cached()) {
-                    core_debug("VM::brand(): returned brand from cache");
-                    return memo::brand::fetch();
-                }
+        if (is_multiple) {
+            if (memo::multi_brand::is_cached()) {
+                core_debug("VM::brand(): returned multi brand from cache");
+                return memo::multi_brand::fetch();
+            }
+        } else {
+            if (memo::brand::is_cached()) {
+                core_debug("VM::brand(): returned brand from cache");
+                return memo::brand::fetch();
             }
         }
 
@@ -9738,17 +9711,15 @@ public: // START OF PUBLIC FUNCTIONS
         }
 
 
-        // cache the result if memoization is enabled
-        if (core::is_disabled(flags, NO_MEMO)) {
-            if (is_multiple) {
-                core_debug("VM::brand(): cached multiple brand string");
-                memo::multi_brand::store(ret_str);
-            } else {
-                core_debug("VM::brand(): cached brand string");
-                memo::brand::store(ret_str);
-            }
+        // cache the result 
+        if (is_multiple) {
+            core_debug("VM::brand(): cached multiple brand string");
+            memo::multi_brand::store(ret_str);
+        } else {
+            core_debug("VM::brand(): cached brand string");
+            memo::brand::store(ret_str);
         }
-        
+    
 
         // debug stuff to see the brand scoreboard, ignore this
 #ifdef __VMAWARE_DEBUG__
@@ -10004,7 +9975,6 @@ public: // START OF PUBLIC FUNCTIONS
             case DEFAULT: return "setting flag, error";
             case ALL: return "setting flag, error";
             case NULL_ARG: return "setting flag, error";
-            case NO_MEMO: return "setting flag, error";
             case HIGH_THRESHOLD: return "setting flag, error";
             case DYNAMIC: return "setting flag, error";
             case MULTIPLE: return "setting flag, error";

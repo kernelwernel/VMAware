@@ -25,6 +25,7 @@
 #include <iostream>
 #include <vector>
 #include <cstdint>
+#include <chrono>
 
 #if (defined(__GNUC__) || defined(__linux__))
     #include <unistd.h>
@@ -678,7 +679,7 @@ const bool is_anyrun = (is_anyrun_directory || is_anyrun_driver);
 
 static void general() {
     bool notes_enabled = false;
-
+    
     if (arg_bitset.test(NO_ANSI)) {
         detected = ("[  DETECTED  ]");
         not_detected = ("[NOT DETECTED]");
@@ -686,7 +687,7 @@ static void general() {
         no_perms = ("[  NO PERMS  ]");
         note = ("[    NOTE    ]");               
         disabled = ("[  DISABLED  ]");
-
+        
         bold = "";
         underline = "";
         ansi_exit = "";
@@ -709,6 +710,8 @@ static void general() {
             std::cout << note << " Running under root might give better results\n";
         }
     #endif
+
+    const auto t1 = std::chrono::high_resolution_clock::now();
 
     checker(VM::VMID, "VMID");
     checker(VM::CPU_BRAND, "CPU brand");
@@ -804,6 +807,8 @@ static void general() {
     checker(VM::BOOT_LOGO, "boot logo");
     checker(VM::MAC_SYS, "system profiler");
     // ADD NEW TECHNIQUE CHECKER HERE
+
+    const auto t2 = std::chrono::high_resolution_clock::now();
 
     std::printf("\n");
 
@@ -908,6 +913,9 @@ static void general() {
             std::cout << bold << "Supported detections: " << ansi_exit << static_cast<u32>(supported_count) << "\n";
             std::cout << bold << "No permission detections: " << ansi_exit << static_cast<u32>(no_perms_count) << "\n";
             std::cout << bold << "Disabled detections: " << ansi_exit << static_cast<u32>(disabled_count) << "\n";
+
+            const std::chrono::duration<double, std::milli> elapsed = t2 - t1;
+            std::cout << bold << "Execution speed: " << ansi_exit << elapsed.count() << "ms\n";
         }
 
         std::printf("\n");
@@ -998,7 +1006,9 @@ static void general() {
         }
     }
 
-    system("pause"); 
+    #if (CLI_WINDOWS)
+        system("pause"); 
+    #endif
 }
 
 
@@ -1112,21 +1122,21 @@ int main(int argc, char* argv[]) {
         }
 
         if (arg_bitset.test(STDOUT)) {
-            return (!VM::detect(VM::NO_MEMO, settings()));
+            return (!VM::detect(settings()));
         }
 
         if (arg_bitset.test(PERCENT)) {
-            std::cout << static_cast<u32>(VM::percentage(VM::NO_MEMO, settings())) << "\n";
+            std::cout << static_cast<u32>(VM::percentage(settings())) << "\n";
             return 0;
         }
 
         if (arg_bitset.test(DETECT)) {
-            std::cout << VM::detect(VM::NO_MEMO, settings()) << "\n";
+            std::cout << VM::detect(settings()) << "\n";
             return 0;
         }
 
         if (arg_bitset.test(BRAND)) {
-            std::string brand = VM::brand(VM::NO_MEMO, VM::MULTIPLE, settings());
+            std::string brand = VM::brand(VM::MULTIPLE, settings());
             
             if (is_anyrun && (brand == brands::NULL_BRAND)) {
                 brand = "ANY.RUN";
@@ -1138,7 +1148,7 @@ int main(int argc, char* argv[]) {
         }
 
         if (arg_bitset.test(TYPE)) {
-            std::string type = VM::type(VM::NO_MEMO, VM::MULTIPLE, settings());
+            std::string type = VM::type(VM::MULTIPLE, settings());
 
             if (is_anyrun && (type == brands::NULL_BRAND)) {
                 type = "Sandbox";
@@ -1150,8 +1160,8 @@ int main(int argc, char* argv[]) {
         }
 
         if (arg_bitset.test(CONCLUSION)) {
-            std::string conclusion = VM::conclusion(VM::NO_MEMO, VM::MULTIPLE, settings());
-            
+            std::string conclusion = VM::conclusion(VM::MULTIPLE, settings());
+
             if (is_anyrun) {
                 const std::string original = brands::NULL_BRAND;
                 const std::string new_brand = "ANY.RUN";

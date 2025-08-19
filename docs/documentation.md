@@ -88,21 +88,10 @@ int main() {
 
 
     /**
-     * If you don't want the value to be memoized for whatever reason, 
-     * you can set the VM::NO_MEMO flag and the result will not be cached. 
-     * It's recommended to use this flag if you're only using one function
-     * from the public interface a single time, so no unnecessary  
-     * caching will be operated when you're not going to re-use the previously 
-     * stored result at the end. 
-     */ 
-    bool is_vm8 = VM::detect(VM::NO_MEMO);
-
-
-    /**
      * This is just an example to show that you can use a combination of 
      * different flags and non-technique flags with the above examples. 
      */ 
-    bool is_vm9 = VM::detect(VM::DEFAULT, VM::NO_MEMO, VM::HIGH_THRESHOLD, VM::DISABLE(VM::RDTSC, VM::VMID));
+    bool is_vm8 = VM::detect(VM::DEFAULT, VM::HIGH_THRESHOLD, VM::DISABLE(VM::RDTSC, VM::VMID));
 }
 ```
 
@@ -425,45 +414,44 @@ int main() {
 
 ❌ 2. Do NOT depend your whole program on whether a specific brand was found. VM::brand() will not guarantee it'll give you the result you're looking for even if the environment is in fact that specific VM brand.
 
-❌ 3. Do NOT use VM::NO_MEMO flag if you're not sure what you're doing, this can potentially hamper the performance significantly.
-
-It should also be mentioned that it's recommended for the end-user to create a wrapper around the header file. C++ compilation is notoriously slow compared to C or other systems programming languages, and recompiling the header over and over again is a time waste, especially considering there's around 10k lines of code in it. This is incredibly unreliable and cumbersome for large-scale projects utilising the lib. If you have a build configuration that supports header dependency handling or [incremental compilation](https://en.wikipedia.org/wiki/Incremental_compiler) (which is present in most build systems such as CMake), you can fix the issue by doing something like this:
-```cpp
-// wrapper.hpp
-#include <string>
-
-namespace wrapper {
-    bool is_this_a_vm();
-    std::string vm_brand_name();
-}
-```
-
-```cpp
-// wrapper.cpp
-#include "vmaware.hpp"
-#include "wrapper.hpp"
-
-bool wrapper::is_this_a_vm() {
-    return VM::detect();
-}
-
-std::string wrapper::vm_brand_name() {
-    return VM::brand();
-}
-```
-
-```cpp
-// something.cpp
-#include "wrapper.hpp"
-
-void something() {
-    if (wrapper::is_this_a_vm()) {
-        std::cout << wrapper::vm_brand_name() << "\n";
-    }
-}
-```
-
-This wrapper structure would prevent any avoidable recompilations as opposed to potentially recompiling the vmaware.hpp file for every build that modifies the source that #includes the lib, especially if there's a deep hierarchy of file dependencies within your project.
+> [!TIP]
+> It should also be mentioned that it's recommended for the end-user to create a wrapper around the header file. C++ compilation is notoriously slow compared to C or other systems programming languages, and recompiling the header over and over again is a time waste, especially considering there's around 10k lines of code in it. This is incredibly unreliable and cumbersome for large-scale projects utilising the lib. If you have a build configuration that supports header dependency handling or [incremental compilation](https://en.wikipedia.org/wiki/Incremental_compiler) (which is present in most build systems such as CMake), you can fix the issue by doing something like this:
+> ```cpp
+> // wrapper.hpp
+> #include <string>
+> 
+> namespace wrapper {
+>     bool is_this_a_vm();
+>     std::string vm_brand_name();
+> }
+> ```
+> 
+> ```cpp
+> // wrapper.cpp
+> #include "vmaware.hpp"
+> #include "wrapper.hpp"
+> 
+> bool wrapper::is_this_a_vm() {
+>     return VM::detect();
+> }
+> 
+> std::string wrapper::vm_brand_name() {
+>     return VM::brand();
+> }
+> ```
+> 
+> ```cpp
+> // something.cpp
+> #include "wrapper.hpp"
+> 
+> void something() {
+>     if (wrapper::is_this_a_vm()) {
+>         std::cout << wrapper::vm_brand_name() << "\n";
+>     }
+> }
+> ```
+> 
+> This wrapper structure would prevent any avoidable recompilations as opposed to potentially recompiling the vmaware.hpp file for every build that modifies the source that #includes the lib, especially if there's a deep hierarchy of file dependencies within your project.
 
 <br>
 
@@ -659,7 +647,6 @@ This is the table of all the brands the lib supports.
 | Flag | Description | Specific to |
 |------|-------------|-------------|
 | `VM::ALL` | This will enable all the technique flags, including checks that are disabled by default. |  |
-| `VM::NO_MEMO` | This will disable memoization, meaning the result will not be fetched through a previous computation of the techniques. For example, if you run all the techniques with VM::detect(), this will save all the technique results in a small cache and if you decide to use VM::percentage() afterwards, the result for that function will retrieve the precomputed results from that cache. Use this if you're only using a single total number of functions from the `VM` struct so that no unnecessary caching will be performed. |  |
 | `VM::DEFAULT` | This represents a range of flags which are enabled if no default argument is provided. |
 | `VM::MULTIPLE` | This will basically return a `std::string` message of what brands could be involved. For example, it could return "`VMware or VirtualBox`" instead of having a single brand string output. | VM::brand() |   
 | `VM::HIGH_THRESHOLD` | This will set the threshold bar to confidently detect a VM by 3x higher. | VM::detect() and VM::percentage() |
