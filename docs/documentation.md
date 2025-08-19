@@ -635,7 +635,7 @@ This is the table of all the brands the lib supports.
 | KubeVirt (KVM) | `brands::KUBEVIRT` | Hypervisor (type 1) |  |
 | AWS Nitro System EC2 (KVM-based) | `brands::AWS_NITRO` | Hypervisor (type 1) |  |
 | Podman | `brands::PODMAN` | Container |  |
-| WSL | `brands::WSL` | Hybrid Hyper-V (type 1 and 2) | The type is debatable, it's not exactly clear. |
+| WSL | `brands::WSL` | Hybrid Hyper-V (type 1 and 2) | This is a type 1 at the fundamental level, but WSL has components that are reminiscent of type 2 VM designs to an extent. |
 | OpenVZ | `brands::OPENVZ` | Container |  |
 | ANY.RUN | N/A | Sandbox | Removed from the lib, available only in the CLI due to ethical reasons. |
 | Barevisor | `brands::BAREVISOR` | Hypervisor (type 1) |  |
