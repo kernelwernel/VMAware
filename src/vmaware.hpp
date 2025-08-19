@@ -55,10 +55,10 @@
  * - struct for internal cpu operations        => line 717
  * - struct for internal memoization           => line 1043
  * - struct for internal utility functions     => line 1168
- * - struct for internal core components       => line 8914
+ * - struct for internal core components       => line 8891
  * - start of VM detection technique list      => line 2027
- * - start of public VM detection functions    => line 9417
- * - start of externally defined variables     => line 10360
+ * - start of public VM detection functions    => line 9394
+ * - start of externally defined variables     => line 10337
  *
  *
  * ============================== EXAMPLE ===================================
@@ -5625,35 +5625,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      */
     [[nodiscard]] static bool hyperv_hostname() {
         const std::string hostname = util::get_hostname();
-        std::cout << "AZURE HOSTNAME: " << hostname << "\n";
-        const size_t len = hostname.size();
 
-        // most Hyper-V hostnames under Azure have the hostname format of fv-azXXX-XXX where the X is a digit
-        if (len < 8)
-            return false;
+        if ((hostname == "runnervmr86sf") || (hostname == "pkrvmubgrv54qmi"))
+            return core::add(brands::AZURE_HYPERV);
 
-        if (!(hostname.rfind("fv-az", 0) == 0))
-            return false;
-
-        const size_t hyphen_pos = hostname.find('-', 5);
-        if (hyphen_pos == std::string::npos ||
-            hyphen_pos <= 5 ||
-            hyphen_pos >= len - 1)
-        {
-            return false;
-        }
-
-        for (size_t i = 5; i < hyphen_pos; ++i) {
-            if (!isdigit(static_cast<unsigned char>(hostname[i])))
-                return false;
-        }
-
-        for (size_t i = hyphen_pos + 1; i < len; ++i) {
-            if (!isdigit(static_cast<unsigned char>(hostname[i])))
-                return false;
-        }
-
-        return core::add(brands::AZURE_HYPERV);
+        return false;
     }
 
 
