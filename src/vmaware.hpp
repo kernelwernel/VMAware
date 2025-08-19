@@ -5625,7 +5625,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      */
     [[nodiscard]] static bool hyperv_hostname() {
         const std::string hostname = util::get_hostname();
-        debug(hostname);
+        std::cout << "AZURE HOSTNAME: " << hostname << std::endl;
         const size_t len = hostname.size();
 
         // most Hyper-V hostnames under Azure have the hostname format of fv-azXXX-XXX where the X is a digit
