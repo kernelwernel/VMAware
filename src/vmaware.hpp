@@ -55,10 +55,10 @@
  * - struct for internal cpu operations        => line 717
  * - struct for internal memoization           => line 1043
  * - struct for internal utility functions     => line 1168
- * - struct for internal core components       => line 8828
+ * - struct for internal core components       => line 8895
  * - start of VM detection technique list      => line 2027
- * - start of public VM detection functions    => line 9331
- * - start of externally defined variables     => line 10274
+ * - start of public VM detection functions    => line 9398
+ * - start of externally defined variables     => line 10341
  *
  *
  * ============================== EXAMPLE ===================================
@@ -4230,15 +4230,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check for timing anomalies in the system
-     * @category x86
-     * @author Requiem (https://github.com/NotRequiem)
-     * @implements VM::TIMER
-     */
+      * @brief Check for timing anomalies in the system
+      * @category x86
+      * @author Requiem (https://github.com/NotRequiem)
+      * @implements VM::TIMER
+      */
     [[nodiscard]] static bool timer() {
-#if (ARM || !x86)
+    #if (ARM || !x86)
         return false;
-#else
+    #else
         if (util::is_running_under_translator()) {
             debug("TIMER: Running inside a binary translation layer.");
             return false;
@@ -4276,7 +4276,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         debug("TIMER: Average latency -> ", avg, " cycles");
 
         if (avg >= cycleThreshold) return true; // Intel's Emerald Rapids have much more cycles when executing CPUID than the rest of intel cpus
-    #if (WINDOWS)  
+    #if (WINDOWS)
         // Case B - Hypervisor with RDTSC patch + useplatformclock=true
         LARGE_INTEGER freq;
         if (!QueryPerformanceFrequency(&freq)) // NtPowerInformation is avoided as some hypervisors downscale tsc only if we triggered a context switch from userspace
@@ -4297,10 +4297,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         debug("TIMER: CPU base speed -> ", tscMHz, " MHz");
         if (tscMHz < 1105) return true;
 
-        // Case C - Hypervisor with RDTSC patch + useplatformclock=false
+        // Check for RDTSC support, we will use it on case D
         unsigned aux = 0;
         {
-        #if (WINDOWS && x86_64)
+    #if (WINDOWS && x86_64)
             const bool haveRdtscp = [&]() noexcept -> bool {
                 __try {
                     __rdtscp(&aux); // check for RDTSCP support as we will use it later
@@ -4310,25 +4310,72 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     return false;
                 }
             }();
-        #else
+    #else
             UNUSED(aux);
             int regs[4] = { 0 };
             cpu::cpuid(regs, 0x80000001);
             const bool haveRdtscp = (regs[3] & (1u << 27)) != 0;
-        #endif
+    #endif
             if (!haveRdtscp) {
                 debug("TIMER: RDTSCP instruction not supported"); // __rdtscp should be supported nowadays
                 return true;
             }
         }
 
-        if (cycleThreshold == 25000) return false; // if we're running under Hyper-V, do not run more checks 
-
         const HANDLE hThread = GetCurrentThread();
         const DWORD_PTR prevMask = SetThreadAffinityMask(hThread, 1); // to reduce context switching/scheluding
-        if (!prevMask) 
+        if (!prevMask)
             return false;
 
+        // Case C - fast hypervisor with no rdtsc patch
+        alignas(64) char buffer[128]{};
+        volatile long long* misaligned_ptr = reinterpret_cast<volatile long long*>(&buffer[60]);
+        *misaligned_ptr = 0;
+
+        _mm_mfence();
+        u64 t1_split = __rdtscp(&aux);
+
+    #if (MSVC)
+        #if (x86_64) 
+                _InterlockedIncrement64(misaligned_ptr);
+        #elif (x86_32) // _M_IX86
+                long long old_val;
+                do {
+                    old_val = *misaligned_ptr;
+                } while (_InterlockedCompareExchange64(misaligned_ptr, old_val + 1, old_val) != old_val);
+        #endif
+    #else
+        #if (x86_64) 
+                __asm__ __volatile__(
+                    "lock; incq %0"
+                    : "=m"(*misaligned_ptr)
+                    : "m"(*misaligned_ptr)
+                    : "memory"
+                );
+        #elif (x86_32) // i386
+                __sync_add_and_fetch(misaligned_ptr, 1); // likely a cmpxchg8b loop
+        #endif
+    #endif
+
+        // newer Intel CPUs introduced a feature to detect split locks and raise an exception
+        u64 t2_split = __rdtscp(&aux);
+        const u64 split_cycles = t2_split - t1_split;
+        debug("TIMER: Split-lock test -> ", split_cycles, " cycles");
+
+        constexpr u64 split_lock_threshold = 500000; // the hypervisor will intercept the split lock and pause the virtual CPU for approximately 10,000 microseconds
+
+        // A modern CPU operating at, for example, 4.0 GHz executes 4,000,000,000 cycles per second. A 10 millisecond delay would therefore be:
+        // (4000000000 cycles / sec) * (0.010 sec) = 40000000 cycles, so 500000 is acceptable
+        if (split_cycles > split_lock_threshold) {
+            SetThreadAffinityMask(hThread, prevMask);
+            return true;
+        }
+
+        SetThreadAffinityMask(hThread, prevMask);
+
+        if (cycleThreshold == 25000) return false; // if we're running under Hyper-V, do not run case D
+
+        // Case D - Hypervisor with RDTSC patch + useplatformclock = false
         const int TRIALS = 20; // enough to warm up the syscall path, higher values will hardly evict spikes
         std::vector<double> ratios;
         ratios.reserve(TRIALS);
@@ -4347,9 +4394,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             const double ratio = double(sysCycles) / double(userCycles);
             ratios.push_back(ratio);
-        }
-
-        SetThreadAffinityMask(hThread, prevMask);
+        }      
 
         std::sort(ratios.begin(), ratios.end());
         const double tscMedian = ratios[ratios.size() / 2]; // to minimize jittering due to kernel noise
@@ -4357,9 +4402,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         debug("TIMER: Median syscall/user-mode ratio -> ", tscMedian);
 
         if (tscMedian <= 8.5) return true;
+        // TLB flushes or side channel cache attacks are not even tried due to how ineffective they are against hardened hypervisors
     #endif
         return false;
-#endif
+    #endif
     }
 
 
@@ -5579,34 +5625,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      */
     [[nodiscard]] static bool hyperv_hostname() {
         const std::string hostname = util::get_hostname();
-        const size_t len = hostname.size();
 
-        // most Hyper-V hostnames under Azure have the hostname format of fv-azXXX-XXX where the X is a digit
-        if (len < 8)
-            return false;
+    #if (WINDOWS)
+        if (hostname == "runnervmr86sf")
+    #elif (LINUX)   
+        if (hostname == "pkrvmubgrv54qmi")
+    #endif
+            return core::add(brands::AZURE_HYPERV);
 
-        if (!(hostname.rfind("fv-az", 0) == 0))
-            return false;
-
-        const size_t hyphen_pos = hostname.find('-', 5);
-        if (hyphen_pos == std::string::npos ||
-            hyphen_pos <= 5 ||
-            hyphen_pos >= len - 1)
-        {
-            return false;
-        }
-
-        for (size_t i = 5; i < hyphen_pos; ++i) {
-            if (!isdigit(static_cast<unsigned char>(hostname[i])))
-                return false;
-        }
-
-        for (size_t i = hyphen_pos + 1; i < len; ++i) {
-            if (!isdigit(static_cast<unsigned char>(hostname[i])))
-                return false;
-        }
-
-        return core::add(brands::AZURE_HYPERV);
+        return false;
     }
 
 
@@ -5740,7 +5767,23 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
             }
 
-            // 2) spoofed AMD manufacturer
+            // 2) DSDT checks
+            if (memcmp(hdr.Signature, "DSDT", 4) == 0) {
+                constexpr char tz_pat[] = "_TZ_";
+                constexpr char pts_pat[] = "_PTS";
+                constexpr size_t tz_len = sizeof(tz_pat) - 1;
+                constexpr size_t pts_len = sizeof(pts_pat) - 1;
+
+                const bool has_tz = (len >= tz_len) && contains(tz_pat, tz_len);
+                const bool has_pts = (len >= pts_len) && contains(pts_pat, pts_len);
+
+                if (!has_tz || !has_pts) {
+                    debug("FIRMWARE: ACPI missing thermal zones and/or PrepareToSleep information");
+                    return true;
+                }
+            }
+
+            // 3) spoofed AMD manufacturer
             constexpr char man_short[] = "Advanced Micro Devices";
             constexpr char man_full[] = "Advanced Micro Devices, Inc.";
             const size_t short_len = sizeof(man_short) - 1;
@@ -5753,7 +5796,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return true;
             }
 
-            // 3) VM-specific firmware signatures
+            // 4) VM-specific firmware signatures
             for (size_t ti = 0; ti < targets.size(); ++ti) {
                 const char* pat = targets[ti];
                 const size_t plen = strlen(pat);
@@ -5781,7 +5824,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
             }
 
-            // 4) known patches used by popular hardeners 
+            // 5) known patches used by popular hardeners 
             constexpr char marker[] = "777777";
             constexpr size_t mlen = sizeof(marker) - 1;
             if (len >= mlen) {
@@ -5792,7 +5835,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
             }
 
-            // 5) FADT specific checks
+            // 6) FADT specific checks
             if (memcmp(hdr.Signature, "FACP", 4) == 0) {
                 if (hdr.Revision < 4 || hdr.Length < 245) { // Most VMs use an older-style FADT of length 244  bytes (revision  3), cutting off before the Sleep Control/Status registers and Hypervisor ID
                     debug("FIRMWARE: FACP indicates VM (rev ", int(hdr.Revision), "), ", "(length ", hdr.Length, ")");
@@ -5808,7 +5851,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         };
 
-        // 1) enumerate ACPI tables
+        // 7) enumerate ACPI tables
         const DWORD enumSize = EnumSystemFirmwareTables(ACPI_SIG, nullptr, 0);
         if (enumSize == 0) return false;
         if (enumSize % sizeof(DWORD) != 0) return false;
@@ -5834,6 +5877,30 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return true; // baremetal systems should have this table
         }
 
+        // DSDT special fetch
+        {
+            constexpr DWORD DSDT_SIG = 'DSDT';
+            constexpr DWORD DSDT_SWAPPED =
+                ((DSDT_SIG >> 24) & 0x000000FFu)
+                | ((DSDT_SIG >> 8) & 0x0000FF00u)
+                | ((DSDT_SIG << 8) & 0x00FF0000u)
+                | ((DSDT_SIG << 24) & 0xFF000000u);
+
+            UINT sz = GetSystemFirmwareTable(ACPI_SIG, DSDT_SWAPPED, nullptr, 0);
+            if (sz > 0) {
+                std::vector<BYTE> dsdtBuf;
+                dsdtBuf.resize(sz);
+                if (GetSystemFirmwareTable(ACPI_SIG, DSDT_SWAPPED, dsdtBuf.data(), sz) == sz) {
+                    if (scan_table(dsdtBuf.data(), dsdtBuf.size())) {
+                        return true;
+                    }
+                }
+                else {
+                    debug("FIRMWARE: GetSystemFirmwareTable(Dsdt) failed or returned unexpected size");
+                }
+            }
+        }
+
         // helper to fetch one table into a malloc'd buffer
         auto fetch = [&](DWORD provider, DWORD tableID, BYTE*& outBuf, size_t& outLen) -> bool {
             UINT sz = GetSystemFirmwareTable(provider, tableID, nullptr, 0);
@@ -5848,7 +5915,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return true;
         };
 
-        // 2) scan each ACPI table
+        // Scan each ACPI table
         for (auto tbl : tables) {
             BYTE* buf = nullptr; size_t len = 0;
             if (fetch(ACPI_SIG, tbl, buf, len)) {
@@ -5861,7 +5928,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
         }
 
-        // 3) SMBIOS (RSMB) / FIRM tables
+        // SMBIOS (RSMB) / FIRM tables
         constexpr DWORD smbProviders[] = { 'FIRM', 'RSMB' };
 
         for (DWORD prov : smbProviders) {
@@ -7073,7 +7140,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             for (const auto* chk : entries) {
-                char buffer[1024];
+                char buffer[1024]{};
                 DWORD bufferSize = sizeof(buffer);
                 DWORD dwType;
 
