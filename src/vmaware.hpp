@@ -55,10 +55,10 @@
  * - struct for internal cpu operations        => line 717
  * - struct for internal memoization           => line 1043
  * - struct for internal utility functions     => line 1168
- * - struct for internal core components       => line 8902
+ * - struct for internal core components       => line 8914
  * - start of VM detection technique list      => line 2027
- * - start of public VM detection functions    => line 9405
- * - start of externally defined variables     => line 10348
+ * - start of public VM detection functions    => line 9417
+ * - start of externally defined variables     => line 10360
  *
  *
  * ============================== EXAMPLE ===================================
@@ -4297,7 +4297,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         debug("TIMER: CPU base speed -> ", tscMHz, " MHz");
         if (tscMHz < 1105) return true;
 
-        // Case C - Hypervisor with RDTSC patch + useplatformclock=false
+        // Check for RDTSC support, we will use it on case D
         unsigned aux = 0;
         {
     #if (WINDOWS && x86_64)
@@ -4322,13 +4322,60 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
         }
 
-        if (cycleThreshold == 25000) return false; // if we're running under Hyper-V, do not run more checks 
-
         const HANDLE hThread = GetCurrentThread();
         const DWORD_PTR prevMask = SetThreadAffinityMask(hThread, 1); // to reduce context switching/scheluding
         if (!prevMask)
             return false;
 
+        // Case C - fast hypervisor with no rdtsc patch
+        alignas(64) char buffer[128]{};
+        volatile long long* misaligned_ptr = reinterpret_cast<volatile long long*>(&buffer[60]);
+        *misaligned_ptr = 0;
+
+        _mm_mfence();
+        u64 t1_split = __rdtscp(&aux);
+
+    #if (MSVC)
+        #if (x86_64) 
+                _InterlockedIncrement64(misaligned_ptr);
+        #elif (x86_32) // _M_IX86
+                long long old_val;
+                do {
+                    old_val = *misaligned_ptr;
+                } while (_InterlockedCompareExchange64(misaligned_ptr, old_val + 1, old_val) != old_val);
+        #endif
+    #else
+        #if (x86_64) 
+                __asm__ __volatile__(
+                    "lock; incq %0"
+                    : "=m"(*misaligned_ptr)
+                    : "m"(*misaligned_ptr)
+                    : "memory"
+                );
+        #elif (x86_32) // i386
+                __sync_add_and_fetch(misaligned_ptr, 1); // likely a cmpxchg8b loop
+        #endif
+    #endif
+
+        // newer Intel CPUs introduced a feature to detect split locks and raise an exception
+        u64 t2_split = __rdtscp(&aux);
+        const u64 split_cycles = t2_split - t1_split;
+        debug("TIMER: Split-lock test -> ", split_cycles, " cycles");
+
+        constexpr u64 split_lock_threshold = 500000; // the hypervisor will intercept the split lock and pause the virtual CPU for approximately 10,000 microseconds
+
+        // A modern CPU operating at, for example, 4.0 GHz executes 4,000,000,000 cycles per second. A 10 millisecond delay would therefore be:
+        // (4000000000 cycles / sec) * (0.010 sec) = 40000000 cycles, so 500000 is acceptable
+        if (split_cycles > split_lock_threshold) {
+            SetThreadAffinityMask(hThread, prevMask);
+            return true;
+        }
+
+        SetThreadAffinityMask(hThread, prevMask);
+
+        if (cycleThreshold == 25000) return false; // if we're running under Hyper-V, do not run case D
+
+        // Case D - Hypervisor with RDTSC patch + useplatformclock = false
         const int TRIALS = 20; // enough to warm up the syscall path, higher values will hardly evict spikes
         std::vector<double> ratios;
         ratios.reserve(TRIALS);
@@ -4347,42 +4394,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             const double ratio = double(sysCycles) / double(userCycles);
             ratios.push_back(ratio);
-        }
-
-        // Case D - fast hypervisor with no rdtsc patch
-        alignas(64) char buffer[128]{};
-        volatile long long* misaligned_ptr = reinterpret_cast<volatile long long*>(&buffer[60]);
-        *misaligned_ptr = 0;
-
-        _mm_mfence();
-        u64 t1_split = __rdtscp(&aux);
-
-    #if (MSVC)
-        _InterlockedIncrement64(misaligned_ptr); // purposefully execute an atomic instruction on a memory address that is misaligned to span two cache lines
-    #else
-        __asm__ __volatile__(
-            "lock; incq %0"
-            : "=m"(*misaligned_ptr)
-            : "m"(*misaligned_ptr)
-            : "memory"
-        );
-    #endif
-
-        // newer Intel CPUs introduced a feature to detect split locks and raise an exception
-        u64 t2_split = __rdtscp(&aux);
-        const u64 split_cycles = t2_split - t1_split;
-        debug("TIMER: Split-lock test -> ", split_cycles, " cycles");
-
-        constexpr u64 split_lock_threshold = 500000; // the hypervisor will intercept the split lock and pause the virtual CPU for approximately 10,000 microseconds
-
-        // A modern CPU operating at, for example, 4.0 GHz executes 4,000,000,000 cycles per second. A 10 millisecond delay would therefore be:
-        // (4000000000 cycles / sec) * (0.010 sec) = 40000000 cycles, so 500000 is acceptable
-        if (split_cycles > split_lock_threshold) {
-            SetThreadAffinityMask(hThread, prevMask);
-            return true;
-        }
-
-        SetThreadAffinityMask(hThread, prevMask);
+        }      
 
         std::sort(ratios.begin(), ratios.end());
         const double tscMedian = ratios[ratios.size() / 2]; // to minimize jittering due to kernel noise
@@ -7147,7 +7159,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             for (const auto* chk : entries) {
-                char buffer[1024];
+                char buffer[1024]{};
                 DWORD bufferSize = sizeof(buffer);
                 DWORD dwType;
 
