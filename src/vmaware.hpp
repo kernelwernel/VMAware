@@ -4230,15 +4230,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-  * @brief Check for timing anomalies in the system
-  * @category x86
-  * @author Requiem (https://github.com/NotRequiem)
-  * @implements VM::TIMER
-  */
+      * @brief Check for timing anomalies in the system
+      * @category x86
+      * @author Requiem (https://github.com/NotRequiem)
+      * @implements VM::TIMER
+      */
     [[nodiscard]] static bool timer() {
-#if (ARM || !x86)
+    #if (ARM || !x86)
         return false;
-#else
+    #else
         if (util::is_running_under_translator()) {
             debug("TIMER: Running inside a binary translation layer.");
             return false;
@@ -4258,7 +4258,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             u64 t2 = __rdtsc();
 
             return t2 - t1;
-            };
+        };
 
         constexpr int N = 100;
         u64 samples[N] = { 0 };
@@ -4276,7 +4276,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         debug("TIMER: Average latency -> ", avg, " cycles");
 
         if (avg >= cycleThreshold) return true; // Intel's Emerald Rapids have much more cycles when executing CPUID than the rest of intel cpus
-#if (WINDOWS)
+    #if (WINDOWS)
         // Case B - Hypervisor with RDTSC patch + useplatformclock=true
         LARGE_INTEGER freq;
         if (!QueryPerformanceFrequency(&freq)) // NtPowerInformation is avoided as some hypervisors downscale tsc only if we triggered a context switch from userspace
@@ -4300,7 +4300,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // Case C - Hypervisor with RDTSC patch + useplatformclock=false
         unsigned aux = 0;
         {
-#if (WINDOWS && x86_64)
+    #if (WINDOWS && x86_64)
             const bool haveRdtscp = [&]() noexcept -> bool {
                 __try {
                     __rdtscp(&aux); // check for RDTSCP support as we will use it later
@@ -4309,13 +4309,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 __except (EXCEPTION_EXECUTE_HANDLER) {
                     return false;
                 }
-                }();
-#else
+            }();
+    #else
             UNUSED(aux);
             int regs[4] = { 0 };
             cpu::cpuid(regs, 0x80000001);
             const bool haveRdtscp = (regs[3] & (1u << 27)) != 0;
-#endif
+    #endif
             if (!haveRdtscp) {
                 debug("TIMER: RDTSCP instruction not supported"); // __rdtscp should be supported nowadays
                 return true;
@@ -4357,16 +4357,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         _mm_mfence();
         u64 t1_split = __rdtscp(&aux);
 
-#if (MSVC)
+    #if (MSVC)
         _InterlockedIncrement64(misaligned_ptr); // purposefully execute an atomic instruction on a memory address that is misaligned to span two cache lines
-#else
+    #else
         __asm__ __volatile__(
             "lock; incq %0"
             : "=m"(*misaligned_ptr)
             : "m"(*misaligned_ptr)
             : "memory"
         );
-#endif
+    #endif
 
         // newer Intel CPUs introduced a feature to detect split locks and raise an exception
         u64 t2_split = __rdtscp(&aux);
@@ -4391,9 +4391,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         if (tscMedian <= 8.5) return true;
         // TLB flushes or side channel cache attacks are not even tried due to how ineffective they are against hardened hypervisors
-#endif
+    #endif
         return false;
-#endif
+    #endif
     }
 
 
