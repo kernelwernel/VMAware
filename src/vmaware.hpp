@@ -55,10 +55,10 @@
  * - struct for internal cpu operations        => line 717
  * - struct for internal memoization           => line 1043
  * - struct for internal utility functions     => line 1168
- * - struct for internal core components       => line 8828
+ * - struct for internal core components       => line 8844
  * - start of VM detection technique list      => line 2027
- * - start of public VM detection functions    => line 9331
- * - start of externally defined variables     => line 10274
+ * - start of public VM detection functions    => line 9347
+ * - start of externally defined variables     => line 10290
  *
  *
  * ============================== EXAMPLE ===================================
@@ -5736,6 +5736,22 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             if (memcmp(hdr.Signature, "SSDT", 4) == 0 || memcmp(hdr.Signature, "DSDT", 4) == 0) {
                 if (hdr.Revision < 2) {
                     debug("FIRMWARE: SSDT/DSDT revision indicates VM (rev ", int(hdr.Revision), ")");
+                    return true;
+                }
+            }
+
+            // 2) DSDT checks
+            if (memcmp(hdr.Signature, "DSDT", 4) == 0) {
+                constexpr char tz_pat[] = "__TZ__";
+                constexpr char pts_pat[] = "_PTS";
+                constexpr size_t tz_len = sizeof(tz_pat) - 1;
+                constexpr size_t pts_len = sizeof(pts_pat) - 1;
+
+                const bool has_tz = (len >= tz_len) && contains(tz_pat, tz_len);
+                const bool has_pts = (len >= pts_len) && contains(pts_pat, pts_len);
+
+                if (!has_tz || !has_pts) {
+                    debug("FIRMWARE: ACPI missing thermal zones and/or PrepareToSleep information");
                     return true;
                 }
             }
