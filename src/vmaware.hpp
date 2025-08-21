@@ -856,7 +856,7 @@ private:
 #endif
         }
 
-        [[nodiscard]] static std::string cpu_manufacturer(const u32 p_leaf) {
+        static std::string cpu_manufacturer(const u32 p_leaf) {
             auto cpuid_thingy = [](const u32 p_leaf, u32* regs, std::size_t start = 0, std::size_t end = 4) -> bool {
                 u32 x[4]{};
                 cpu::cpuid(x[0], x[1], x[2], x[3], p_leaf);
@@ -904,7 +904,7 @@ private:
             u8 extmodel;
         };
 
-        [[nodiscard]] static stepping_struct fetch_steppings() {
+        static stepping_struct fetch_steppings() {
             struct stepping_struct steps {};
 
             u32 unused, eax = 0;
@@ -919,7 +919,7 @@ private:
         }
 
         // check if the CPU is an intel celeron
-        [[nodiscard]] static bool is_celeron(const stepping_struct steps) {
+        static bool is_celeron(const stepping_struct steps) {
             if (!cpu::is_intel()) {
                 return false;
             }
@@ -933,6 +933,17 @@ private:
                 steps.family == celeron_family &&
                 steps.extmodel == celeron_extmodel
             );
+        }
+
+        static bool is_amd_A_series() {
+            if (!cpu::is_amd()) {
+                return false;
+            }
+
+            const model_struct model = get_model();
+
+            std::regex amd_a_series("AMD A[0-9]+", std::regex_constants::icase);
+            return std::regex_search(model.string, amd_a_series);
         }
 
         struct model_struct {
@@ -1066,6 +1077,10 @@ private:
 
         static data_t cache_fetch(const u16 technique_macro) {
             return cache_table.at(technique_macro);
+        }
+
+        static void uncache(const u16 technique_macro) {
+            cache_table.erase(technique_macro);
         }
 
         static std::vector<u16> cache_fetch_all() {
@@ -2268,48 +2283,50 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (!(cpu::is_intel() || cpu::is_amd()))   return false;
         if (cpu::is_celeron(steps))                return false;
 
-        struct Helper {
+        struct helper {
             static constexpr u32 make_id(u8 family, u8 extmodel, u8 model) noexcept {
-                return
+                return (
                     (static_cast<u32>(family) << 16) |
                     (static_cast<u32>(extmodel) << 8) |
-                    static_cast<u32>(model);
+                    (static_cast<u32>(model))
+                );
             }
         };
 
         static constexpr std::array<u32, 35> old_microarch_ids = { {
-                // Family 4 (Intel 486)
-                Helper::make_id(0x4, 0x0, 0x1), Helper::make_id(0x4, 0x0, 0x2),
-                Helper::make_id(0x4, 0x0, 0x3), Helper::make_id(0x4, 0x0, 0x4),
-                Helper::make_id(0x4, 0x0, 0x5), Helper::make_id(0x4, 0x0, 0x7),
-                Helper::make_id(0x4, 0x0, 0x8), Helper::make_id(0x4, 0x0, 0x9),
+            // Family 4 (Intel 486)
+            helper::make_id(0x4, 0x0, 0x1), helper::make_id(0x4, 0x0, 0x2),
+            helper::make_id(0x4, 0x0, 0x3), helper::make_id(0x4, 0x0, 0x4),
+            helper::make_id(0x4, 0x0, 0x5), helper::make_id(0x4, 0x0, 0x7),
+            helper::make_id(0x4, 0x0, 0x8), helper::make_id(0x4, 0x0, 0x9),
 
-                // Family 5 (Pentium, P5)
-                Helper::make_id(0x5, 0x0, 0x1), Helper::make_id(0x5, 0x0, 0x2),
-                Helper::make_id(0x5, 0x0, 0x4), Helper::make_id(0x5, 0x0, 0x7),
-                Helper::make_id(0x5, 0x0, 0x8),
+            // Family 5 (Pentium, P5)
+            helper::make_id(0x5, 0x0, 0x1), helper::make_id(0x5, 0x0, 0x2),
+            helper::make_id(0x5, 0x0, 0x4), helper::make_id(0x5, 0x0, 0x7),
+            helper::make_id(0x5, 0x0, 0x8),
 
-                // Family 6 (P6/Pentium Pro/Celeron/II–III)
-                Helper::make_id(0x6, 0x0, 0x1), Helper::make_id(0x6, 0x0, 0x3),
-                Helper::make_id(0x6, 0x0, 0x5), Helper::make_id(0x6, 0x0, 0x6),
-                Helper::make_id(0x6, 0x0, 0x7), Helper::make_id(0x6, 0x0, 0x8),
-                Helper::make_id(0x6, 0x0, 0x9), Helper::make_id(0x6, 0x0, 0xA),
-                Helper::make_id(0x6, 0x0, 0xB), Helper::make_id(0x6, 0x0, 0xD),
-                Helper::make_id(0x6, 0x0, 0xE), Helper::make_id(0x6, 0x0, 0xF),
+            // Family 6 (P6/Pentium Pro/Celeron/II–III)
+            helper::make_id(0x6, 0x0, 0x1), helper::make_id(0x6, 0x0, 0x3),
+            helper::make_id(0x6, 0x0, 0x5), helper::make_id(0x6, 0x0, 0x6),
+            helper::make_id(0x6, 0x0, 0x7), helper::make_id(0x6, 0x0, 0x8),
+            helper::make_id(0x6, 0x0, 0x9), helper::make_id(0x6, 0x0, 0xA),
+            helper::make_id(0x6, 0x0, 0xB), helper::make_id(0x6, 0x0, 0xD),
+            helper::make_id(0x6, 0x0, 0xE), helper::make_id(0x6, 0x0, 0xF),
 
-                // Family 6 (Yonah/early Core)
-                Helper::make_id(0x6, 0x1, 0x5), Helper::make_id(0x6, 0x1, 0x6),
+            // Family 6 (Yonah/early Core)
+            helper::make_id(0x6, 0x1, 0x5), helper::make_id(0x6, 0x1, 0x6),
 
-                // Family F (Pentium 4)
-                Helper::make_id(0xF, 0x0, 0x2), Helper::make_id(0xF, 0x0, 0x3),
-                Helper::make_id(0xF, 0x0, 0x4), Helper::make_id(0xF, 0x0, 0x6),
-                Helper::make_id(0xF, 0x0, 0x10)
+            // Family F (Pentium 4)
+            helper::make_id(0xF, 0x0, 0x2), helper::make_id(0xF, 0x0, 0x3),
+            helper::make_id(0xF, 0x0, 0x4), helper::make_id(0xF, 0x0, 0x6),
+            helper::make_id(0xF, 0x0, 0x10)
         } };
 
-        const u32 curId = Helper::make_id(steps.family, steps.extmodel, steps.model);
-        for (u32 oldId : old_microarch_ids) {
-            if (curId == oldId)
+        const u32 current_ID = helper::make_id(steps.family, steps.extmodel, steps.model);
+        for (u32 old_ID : old_microarch_ids) {
+            if (current_ID == old_ID) {
                 return false;
+            }
         }
 
         return (threads & 1u) != 0;
@@ -7986,6 +8003,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      */
     [[nodiscard]] static bool logical_processors() {
     #if (x86)
+        if (cpu::is_celeron() || cpu::is_amd_A_series()) {
+            return false;
+        }
+
         #if (x86_32)
             const PULONG ulNumberProcessors = reinterpret_cast<PULONG>(__readfsdword(0x30) + 0x64);
         #else
@@ -10275,6 +10296,82 @@ public: // START OF PUBLIC FUNCTIONS
             return baremetal;
         }
     }
+
+
+    /**
+     * @brief Returns whether it suspects the environment has anti-VM hardening
+     * @return bool
+     */
+    static bool is_hardened() {
+        auto detected_brand = [](const enum_flags flag) -> std::string {
+            memo::uncache(flag);
+
+            const auto old_scoreboard = core::brand_scoreboard;
+
+            check(flag);
+
+            for (auto it = old_scoreboard.begin(); it != old_scoreboard.end(); it++) {
+                const brand_score_t old_score = it->second;
+                const brand_score_t new_score = core::brand_scoreboard.at(it->first);
+    
+                if (old_score < new_score) {
+                    return it->first;
+                }
+            }
+
+            return brands::NULL_BRAND;
+        };
+
+        // rule 1: if VM::FIRMWARE is detected, so should VM::HYPERVISOR_BIT or VM::HYPERVISOR_STR
+        if (!(
+            check(VM::FIRMWARE) && 
+            (check(VM::HYPERVISOR_BIT) || check(VM::HYPERVISOR_STR))
+        )) {
+            return true;
+        }
+
+        const std::string firmware_brand = detected_brand(VM::FIRMWARE);
+
+#if (LINUX)
+        // rule 2: if VM::FIRMWARE is detected, then so should VM::CVENDOR (QEMU or VBOX)
+        if (firmware_brand == brands::QEMU || firmware_brand == brands::VBOX) {
+            const std::string cvendor_brand = detected_brand(VM::CVENDOR);
+
+            if (firmware_brand != cvendor_brand) {
+                return true;
+            }
+        }
+#endif
+
+#if (WINDOWS)
+        // rule 3: if VM::FIRMWARE is detected, then so should VM::REGISTRY_KEYS (VBOX or VMware)
+        if (firmware_brand == brands::VBOX || firmware_brand == brands::VMWARE) {
+            const std::string reg_brand = detected_brand(VM::REGISTRY_KEYS);
+            if (firmware_brand != reg_brand) {
+                return true;
+            }
+        }
+        
+        // rule 4: if VM::FIRMWARE is detected, then so should VM::ACPI_SIGNATURE (QEMU)
+        const std::string acpi_brand = detected_brand(VM::ACPI_SIGNATURE);
+        if (firmware_brand == brands::QEMU) {
+            if (acpi_brand != brands::QEMU) {
+                return true;
+            }
+        }
+
+        // rule 5: if VM::ACPI_SIGNATURE is detected, so should VM::HYPERVISOR_BIT or VM::HYPERVISOR_STR (QEMU, similar to rule 1)
+        if (!(
+            (acpi_brand == brands::QEMU) && 
+            (check(VM::HYPERVISOR_BIT) || check(VM::HYPERVISOR_STR))
+        )) {
+            return true;
+        }
+#endif
+
+        return false;
+    }
+
 
     #pragma pack(push, 1)
     struct vmaware {
