@@ -3254,7 +3254,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 { "i9-10885H", 16 },
                 { "i9-10900", 20 },
                 { "i9-10900E", 20 },
-                { "i9-10900F ", 20 },
+                { "i9-10900F", 20 },
                 { "i9-10900K", 20 },
                 { "i9-10900KF", 20 },
                 { "i9-10900T", 20 },
