@@ -56,10 +56,10 @@
  * - struct for internal cpu operations        => line 717
  * - struct for internal memoization           => line 1054
  * - struct for internal utility functions     => line 1183
- * - struct for internal core components       => line 8937
+ * - struct for internal core components       => line 8961
  * - start of VM detection technique list      => line 2042
- * - start of public VM detection functions    => line 9429
- * - start of externally defined variables     => line 10430
+ * - start of public VM detection functions    => line 9453
+ * - start of externally defined variables     => line 10454
  *
  *
  * ============================== EXAMPLE ===================================
@@ -8421,6 +8421,17 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         devInfo.cbSize = sizeof(devInfo);
         const DEVPROPKEY key = DEVPKEY_Device_LocationPaths;
 
+        // baremetal tokens
+        static constexpr const wchar_t* excluded_tokens[] = {
+            L"GFX", L"PEGP", L"PEG"
+        };
+        auto has_excluded_token = [&](const std::wstring& s) noexcept {
+            for (auto tok : excluded_tokens) {
+                if (s.find(tok) != std::wstring::npos) return true;
+            }
+            return false;
+        };
+
         for (DWORD idx = 0; SetupDiEnumDeviceInfo(hDevInfo, idx, &devInfo); ++idx) {
             DEVPROPTYPE propType = 0;
             DWORD requiredSize = 0;
@@ -8453,17 +8464,22 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 ptr += (len + 1);
             }
 
-        #ifdef __VMAWARE_DEBUG__
+#ifdef __VMAWARE_DEBUG__
             for (auto& wstr : paths) {
                 debug("ACPI_SIGNATURE: ", wstr);
             }
-        #endif
+#endif
 
             static constexpr const wchar_t* vm_signatures[] = {
                 L"#ACPI(VMOD)", L"#ACPI(VMBS)", L"#VMBUS(", L"#VPCI("
             };
 
             for (auto& wstr : paths) {
+                // Skip this path entirely if it contains an excluded token
+                if (has_excluded_token(wstr)) {
+                    continue;
+                }
+
                 for (auto sig : vm_signatures) {
                     if (wstr.find(sig) != std::wstring::npos) {
                         SetupDiDestroyDeviceInfoList(hDevInfo);
@@ -8476,6 +8492,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             bool foundQemu = false;
 
             for (auto& wstr : paths) {
+                // Skip this path entirely if it contains an excluded token
+                if (has_excluded_token(wstr)) {
+                    debug("ACPI_SIGNATURE: Excluded signature -> ", wstr);
+                    continue;
+                }
+
                 wstring_view vw(wstr.c_str(), wstr.size());
 
                 // 1) Sxx[_] slots (#ACPI(S<bus><slot>[_]))
@@ -8508,16 +8530,18 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 // 2) detect any other ACPI(Sxx) segments (hex digits only)
                 const wchar_t paren[] = L"ACPI(";
                 size_t scan = 0;
+                // we'll operate on a local wstring_view copy
+                wstring_view local_vw = vw;
                 while (true) {
-                    const size_t p = vw.find(paren);
+                    const size_t p = local_vw.find(paren);
                     if (p == wstring_view::npos) break;
                     const size_t start = p + wcslen(paren);
-                    const size_t end = vw.find(L")");
+                    const size_t end = local_vw.find(L")");
                     if (end != wstring_view::npos && end > start + 1) {
                         // ensure S + two hex digits
-                        const wchar_t c0 = vw.data[start];
-                        const wchar_t c1 = vw.data[start + 1];
-                        const wchar_t c2 = vw.data[start + 2];
+                        const wchar_t c0 = local_vw.data[start];
+                        const wchar_t c1 = local_vw.data[start + 1];
+                        const wchar_t c2 = local_vw.data[start + 2];
                         if (c0 == L'S' && is_hex(c1) && is_hex(c2)) {
                             SetupDiDestroyDeviceInfoList(hDevInfo);
                             return core::add(brands::QEMU);
@@ -8525,7 +8549,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     }
                     // continue after this pos
                     scan = p + 1;
-                    vw = vw.substr(scan, vw.size - scan);
+                    local_vw = local_vw.substr(scan, local_vw.size - scan);
                 }
             }
         }
@@ -10568,7 +10592,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     #if (WINDOWS)
         std::make_pair(VM::TRAP, VM::core::technique(100, VM::trap)),
         std::make_pair(VM::ACPI_SIGNATURE, VM::core::technique(100, VM::acpi_signature)),
-        std::make_pair(VM::GPU_CAPABILITIES, VM::core::technique(100, VM::gpu_capabilities)),
+        std::make_pair(VM::GPU_CAPABILITIES, VM::core::technique(50, VM::gpu_capabilities)),
         std::make_pair(VM::BOOT_LOGO, VM::core::technique(100, VM::boot_logo)),
         std::make_pair(VM::TPM, VM::core::technique(100, VM::tpm)),
         std::make_pair(VM::POWER_CAPABILITIES, VM::core::technique(100, VM::power_capabilities)),
