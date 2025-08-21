@@ -3276,6 +3276,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 { "i9-11980HK", 16 },
                 { "i9-12900", 24 },
                 { "i9-12900F", 24 },
+                { "i9-12900H", 20 },
                 { "i9-12900K", 24 },
                 { "i9-12900KF", 24 },
                 { "i9-12900KS", 24 },
