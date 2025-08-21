@@ -22,6 +22,7 @@
  *      - Pierre-Étienne Messier (https://github.com/pemessier)
  *      - Teselka (https://github.com/Teselka)
  *      - Kyun-J (https://github.com/Kyun-J)
+ *      - luukjp (https://github.com/luukjp)
  *  - Repository: https://github.com/kernelwernel/VMAware
  *  - Docs: https://github.com/kernelwernel/VMAware/docs/documentation.md
  *  - Full credits: https://github.com/kernelwernel/VMAware#credits-and-contributors-%EF%B8%8F
