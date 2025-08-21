@@ -56,9 +56,9 @@
  * - struct for internal cpu operations        => line 717
  * - struct for internal memoization           => line 1054
  * - struct for internal utility functions     => line 1183
- * - struct for internal core components       => line 8961
+ * - struct for internal core components       => line 8957
  * - start of VM detection technique list      => line 2042
- * - start of public VM detection functions    => line 9453
+ * - start of public VM detection functions    => line 9449
  * - start of externally defined variables     => line 10437
  *
  *
@@ -8466,24 +8466,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 #endif
 
-            static constexpr const wchar_t* vm_signatures[] = {
-                L"#ACPI(VMOD)", L"#ACPI(VMBS)", L"#VMBUS(", L"#VPCI("
-            };
-
-            for (auto& wstr : paths) {
-                // Skip this path entirely if it contains an excluded token
-                if (has_excluded_token(wstr)) {
-                    continue;
-                }
-
-                for (auto sig : vm_signatures) {
-                    if (wstr.find(sig) != std::wstring::npos) {
-                        SetupDiDestroyDeviceInfoList(hDevInfo);
-                        return core::add(brands::HYPERV);
-                    }
-                }
-            }
-
             static const wchar_t acpiPrefix[] = L"#ACPI(S";
             bool foundQemu = false;
 
@@ -8546,6 +8528,24 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     // continue after this pos
                     scan = p + 1;
                     local_vw = local_vw.substr(scan, local_vw.size - scan);
+                }
+            }
+
+            // Important to run Hyper-V checks later because of is_hardened() logic
+            static constexpr const wchar_t* vm_signatures[] = {
+                L"#ACPI(VMOD)", L"#ACPI(VMBS)", L"#VMBUS(", L"#VPCI("
+            };
+
+            for (auto& wstr : paths) {
+                if (has_excluded_token(wstr)) {
+                    continue;
+                }
+
+                for (auto sig : vm_signatures) {
+                    if (wstr.find(sig) != std::wstring::npos) {
+                        SetupDiDestroyDeviceInfoList(hDevInfo);
+                        return core::add(brands::HYPERV);
+                    }
                 }
             }
         }
