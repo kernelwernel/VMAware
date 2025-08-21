@@ -22,6 +22,7 @@
  *      - Pierre-Étienne Messier (https://github.com/pemessier)
  *      - Teselka (https://github.com/Teselka)
  *      - Kyun-J (https://github.com/Kyun-J)
+ *      - luukjp (https://github.com/luukjp)
  *  - Repository: https://github.com/kernelwernel/VMAware
  *  - Docs: https://github.com/kernelwernel/VMAware/docs/documentation.md
  *  - Full credits: https://github.com/kernelwernel/VMAware#credits-and-contributors-%EF%B8%8F
@@ -51,14 +52,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 532
+ * - enums for publicly accessible techniques  => line 533
  * - struct for internal cpu operations        => line 717
- * - struct for internal memoization           => line 1043
- * - struct for internal utility functions     => line 1168
- * - struct for internal core components       => line 8895
- * - start of VM detection technique list      => line 2027
- * - start of public VM detection functions    => line 9398
- * - start of externally defined variables     => line 10341
+ * - struct for internal memoization           => line 1054
+ * - struct for internal utility functions     => line 1183
+ * - struct for internal core components       => line 8937
+ * - start of VM detection technique list      => line 2042
+ * - start of public VM detection functions    => line 9429
+ * - start of externally defined variables     => line 10430
  *
  *
  * ============================== EXAMPLE ===================================
@@ -3254,7 +3255,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 { "i9-10885H", 16 },
                 { "i9-10900", 20 },
                 { "i9-10900E", 20 },
-                { "i9-10900F ", 20 },
+                { "i9-10900F", 20 },
                 { "i9-10900K", 20 },
                 { "i9-10900KF", 20 },
                 { "i9-10900T", 20 },
@@ -3276,6 +3277,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 { "i9-11980HK", 16 },
                 { "i9-12900", 24 },
                 { "i9-12900F", 24 },
+                { "i9-12900H", 20 },
                 { "i9-12900K", 24 },
                 { "i9-12900KF", 24 },
                 { "i9-12900KS", 24 },
@@ -3353,7 +3355,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
             }
 
-            if (best) {
+            // Make sure 'best' matches as a whole token, not just as a substring.
+            size_t pos = best ? cpu_full_name.find(best->model) : 0;
+            bool left_isalnum = (pos == 0) || !std::isalnum((unsigned char)cpu_full_name[pos - 1]);
+            size_t end = pos + best_len;
+            bool right_isalnum = (end == cpu_full_name.size()) || !std::isalnum((unsigned char)cpu_full_name[end]);
+
+            if (best && left_isalnum && right_isalnum) {
                 unsigned expected = best->threads;
                 unsigned actual = memo::threadcount::fetch();
                 debug("INTEL_THREAD_MISMATCH: Expected threads -> ", expected);
@@ -3550,7 +3558,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
             }
 
-            if (best) {
+            // Make sure 'best' matches as a whole token, not just as a substring.
+            size_t pos = best ? cpu_full_name.find(best->model) : 0;
+            bool left_isalnum = (pos == 0) || !std::isalnum((unsigned char)cpu_full_name[pos - 1]);
+            size_t end = pos + best_len;
+            bool right_isalnum = (end == cpu_full_name.size()) || !std::isalnum((unsigned char)cpu_full_name[end]);
+
+            if (best && left_isalnum && right_isalnum) {
                 unsigned expected = best->threads;
                 unsigned actual = memo::threadcount::fetch();
                 debug("XEON_THREAD_MISMATCH: Expected threads -> ", expected);
@@ -4178,7 +4192,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
             }
 
-            if (best) {
+            // Make sure 'best' matches as a whole token, not just as a substring.
+            size_t pos = best ? cpu_full_name.find(best->model) : 0;
+            bool left_isalnum = (pos == 0) || !std::isalnum((unsigned char)cpu_full_name[pos - 1]);
+            size_t end = pos + best_len;
+            bool right_isalnum = (end == cpu_full_name.size()) || !std::isalnum((unsigned char)cpu_full_name[end]);
+
+            if (best && left_isalnum && right_isalnum) {
                 unsigned expected = best->threads;
                 unsigned actual = memo::threadcount::fetch();
                 debug("XEON_THREAD_MISMATCH: Expected threads -> ", expected);
