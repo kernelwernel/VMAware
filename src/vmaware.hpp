@@ -8003,7 +8003,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      */
     [[nodiscard]] static bool logical_processors() {
     #if (x86)
-        if (cpu::is_celeron() || cpu::is_amd_A_series()) {
+        struct cpu::stepping_struct steps = cpu::fetch_steppings();
+
+        if (cpu::is_celeron(steps) || cpu::is_amd_A_series()) {
             return false;
         }
 
