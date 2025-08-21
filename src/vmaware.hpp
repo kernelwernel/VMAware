@@ -59,7 +59,7 @@
  * - struct for internal core components       => line 8961
  * - start of VM detection technique list      => line 2042
  * - start of public VM detection functions    => line 9453
- * - start of externally defined variables     => line 10454
+ * - start of externally defined variables     => line 10437
  *
  *
  * ============================== EXAMPLE ===================================
@@ -5792,47 +5792,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return std::search(buf, buf + len, pat, pat + patlen) != (buf + len);
             };
 
-            ACPI_HEADER hdr;
-            memcpy(&hdr, buf, sizeof(hdr));
-
-            // 1) revision check
-            if (memcmp(hdr.Signature, "SSDT", 4) == 0 || memcmp(hdr.Signature, "DSDT", 4) == 0) {
-                if (hdr.Revision < 2) {
-                    debug("FIRMWARE: SSDT/DSDT revision indicates VM (rev ", int(hdr.Revision), ")");
-                    return true;
-                }
-            }
-
-            // 2) DSDT checks
-            if (memcmp(hdr.Signature, "DSDT", 4) == 0) {
-                constexpr char tz_pat[] = "_TZ_";
-                constexpr char pts_pat[] = "_PTS";
-                constexpr size_t tz_len = sizeof(tz_pat) - 1;
-                constexpr size_t pts_len = sizeof(pts_pat) - 1;
-
-                const bool has_tz = (len >= tz_len) && contains(tz_pat, tz_len);
-                const bool has_pts = (len >= pts_len) && contains(pts_pat, pts_len);
-
-                if (!has_tz || !has_pts) {
-                    debug("FIRMWARE: ACPI missing thermal zones and/or PrepareToSleep information");
-                    return true;
-                }
-            }
-
-            // 3) spoofed AMD manufacturer
-            constexpr char man_short[] = "Advanced Micro Devices";
-            constexpr char man_full[] = "Advanced Micro Devices, Inc.";
-            const size_t short_len = sizeof(man_short) - 1;
-            const size_t full_len = sizeof(man_full) - 1;
-
-            const bool has_short = contains(man_short, short_len);
-            const bool has_full = contains(man_full, full_len);
-            if (has_short && !has_full) {
-                debug("FIRMWARE: Spoofed AMD manufacturer string detected");
-                return true;
-            }
-
-            // 4) VM-specific firmware signatures
+            // 1) VM-specific firmware signatures. It is extremely important that vm-specific checks run first to not give a false positive when hardened checks run
             for (size_t ti = 0; ti < targets.size(); ++ti) {
                 const char* pat = targets[ti];
                 const size_t plen = strlen(pat);
@@ -5860,7 +5820,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
             }
 
-            // 5) known patches used by popular hardeners 
+            // 2) known patches used by popular hardeners 
             constexpr char marker[] = "777777";
             constexpr size_t mlen = sizeof(marker) - 1;
             if (len >= mlen) {
@@ -5869,6 +5829,46 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                         return core::add(brands::VMWARE_HARD);
                     }
                 }
+            }
+
+            ACPI_HEADER hdr;
+            memcpy(&hdr, buf, sizeof(hdr));
+
+            // 3) revision check
+            if (memcmp(hdr.Signature, "SSDT", 4) == 0 || memcmp(hdr.Signature, "DSDT", 4) == 0) {
+                if (hdr.Revision < 2) {
+                    debug("FIRMWARE: SSDT/DSDT revision indicates VM (rev ", int(hdr.Revision), ")");
+                    return true;
+                }
+            }
+
+            // 4) thermal zone and power info checks
+            if (memcmp(hdr.Signature, "DSDT", 4) == 0) {
+                constexpr char tz_pat[] = "_TZ_";
+                constexpr char pts_pat[] = "_PTS";
+                constexpr size_t tz_len = sizeof(tz_pat) - 1;
+                constexpr size_t pts_len = sizeof(pts_pat) - 1;
+
+                const bool has_tz = (len >= tz_len) && contains(tz_pat, tz_len);
+                const bool has_pts = (len >= pts_len) && contains(pts_pat, pts_len);
+
+                if (!has_tz || !has_pts) {
+                    debug("FIRMWARE: ACPI missing thermal zones and/or PrepareToSleep information");
+                    return true;
+                }
+            }
+
+            // 5) spoofed AMD manufacturer
+            constexpr char man_short[] = "Advanced Micro Devices";
+            constexpr char man_full[] = "Advanced Micro Devices, Inc.";
+            const size_t short_len = sizeof(man_short) - 1;
+            const size_t full_len = sizeof(man_full) - 1;
+
+            const bool has_short = contains(man_short, short_len);
+            const bool has_full = contains(man_full, full_len);
+            if (has_short && !has_full) {
+                debug("FIRMWARE: Spoofed AMD manufacturer string detected");
+                return true;
             }
 
             // 6) FADT specific checks
@@ -5887,7 +5887,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         };
 
-        // 7) enumerate ACPI tables
+        // Enumerate ACPI tables
         const DWORD enumSize = EnumSystemFirmwareTables(ACPI_SIG, nullptr, 0);
         if (enumSize == 0) return false;
         if (enumSize % sizeof(DWORD) != 0) return false;
@@ -5908,11 +5908,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
         }
 
-        if (!found_hpet) {
-            debug("FIRMWARE: HPET table not found");
-            return true; // baremetal systems should have this table
-        }
-
         // DSDT special fetch
         {
             constexpr DWORD DSDT_SIG = 'DSDT';
@@ -5930,9 +5925,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     if (scan_table(dsdtBuf.data(), dsdtBuf.size())) {
                         return true;
                     }
-                }
-                else {
-                    debug("FIRMWARE: GetSystemFirmwareTable(Dsdt) failed or returned unexpected size");
                 }
             }
         }
@@ -5955,7 +5947,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         for (auto tbl : tables) {
             BYTE* buf = nullptr; size_t len = 0;
             if (fetch(ACPI_SIG, tbl, buf, len)) {
-
                 if (scan_table(buf, len)) {
                     free(buf);
                     return true;
@@ -5964,12 +5955,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
         }
 
-        // SMBIOS (RSMB) / FIRM tables
+        // Scan SMBIOS (RSMB) / FIRM tables
         constexpr DWORD smbProviders[] = { 'FIRM', 'RSMB' };
 
         for (DWORD prov : smbProviders) {
             UINT e = EnumSystemFirmwareTables(prov, nullptr, 0);
-
             if (!e) continue;
 
             std::vector<BYTE> bufIDs(e);
@@ -5997,6 +5987,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
                 free(buf);
             }
+        }
+
+        // Checks for non existent tables must run at the end because of is_hardened() logic
+        if (!found_hpet) {
+            debug("FIRMWARE: HPET table not found");
+            return true;
         }
 
         return false;
@@ -10352,7 +10348,7 @@ public: // START OF PUBLIC FUNCTIONS
         auto detected_brand = [](const enum_flags flag) -> std::string {
             memo::uncache(flag);
 
-            const auto old_scoreboard = core::brand_scoreboard;
+            const auto& old_scoreboard = core::brand_scoreboard;
 
             check(flag);
 
@@ -10369,17 +10365,14 @@ public: // START OF PUBLIC FUNCTIONS
         };
 
         // rule 1: if VM::FIRMWARE is detected, so should VM::HYPERVISOR_BIT or VM::HYPERVISOR_STR
-        if (!(
-            check(VM::FIRMWARE) && 
-            (check(VM::HYPERVISOR_BIT) || check(VM::HYPERVISOR_STR))
-        )) {
+        const std::string firmware_brand = detected_brand(VM::FIRMWARE);
+        if (firmware_brand != brands::NULL_BRAND
+            && !(check(VM::HYPERVISOR_BIT) || check(VM::HYPERVISOR_STR))) {
             return true;
         }
 
-        const std::string firmware_brand = detected_brand(VM::FIRMWARE);
-
 #if (LINUX)
-        // rule 2: if VM::FIRMWARE is detected, then so should VM::CVENDOR (QEMU or VBOX)
+        // rule 2: if VM::FIRMWARE is detected, so should VM::CVENDOR (QEMU or VBOX)
         if (firmware_brand == brands::QEMU || firmware_brand == brands::VBOX) {
             const std::string cvendor_brand = detected_brand(VM::CVENDOR);
 
@@ -10389,28 +10382,18 @@ public: // START OF PUBLIC FUNCTIONS
         }
 #endif
 
-#if (WINDOWS)
-        // rule 3: if VM::FIRMWARE is detected, then so should VM::REGISTRY_KEYS (VBOX or VMware)
-        if (firmware_brand == brands::VBOX || firmware_brand == brands::VMWARE) {
-            const std::string reg_brand = detected_brand(VM::REGISTRY_KEYS);
-            if (firmware_brand != reg_brand) {
-                return true;
-            }
-        }
-        
-        // rule 4: if VM::FIRMWARE is detected, then so should VM::ACPI_SIGNATURE (QEMU)
+#if (WINDOWS)        
+        // rule 3: if VM::ACPI_SIGNATURE (QEMU) is detected, so should VM::FIRMWARE (QEMU)
         const std::string acpi_brand = detected_brand(VM::ACPI_SIGNATURE);
-        if (firmware_brand == brands::QEMU) {
-            if (acpi_brand != brands::QEMU) {
+        if (acpi_brand == brands::QEMU) {
+            if (firmware_brand != brands::QEMU) {
                 return true;
             }
-        }
+        }      
 
-        // rule 5: if VM::ACPI_SIGNATURE is detected, so should VM::HYPERVISOR_BIT or VM::HYPERVISOR_STR (QEMU, similar to rule 1)
-        if (!(
-            (acpi_brand == brands::QEMU) && 
-            (check(VM::HYPERVISOR_BIT) || check(VM::HYPERVISOR_STR))
-        )) {
+        // rule 4: if VM::TRAP is detected, should VM::HYPERVISOR_BIT or VM::HYPERVISOR_STR
+        if (check(VM::TRAP)
+            && !(check(VM::HYPERVISOR_BIT) || check(VM::HYPERVISOR_STR))) {
             return true;
         }
 #endif
@@ -10592,7 +10575,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     #if (WINDOWS)
         std::make_pair(VM::TRAP, VM::core::technique(100, VM::trap)),
         std::make_pair(VM::ACPI_SIGNATURE, VM::core::technique(100, VM::acpi_signature)),
-        std::make_pair(VM::GPU_CAPABILITIES, VM::core::technique(50, VM::gpu_capabilities)),
+        std::make_pair(VM::GPU_CAPABILITIES, VM::core::technique(45, VM::gpu_capabilities)),
         std::make_pair(VM::BOOT_LOGO, VM::core::technique(100, VM::boot_logo)),
         std::make_pair(VM::TPM, VM::core::technique(100, VM::tpm)),
         std::make_pair(VM::POWER_CAPABILITIES, VM::core::technique(100, VM::power_capabilities)),
