@@ -22,6 +22,7 @@
  *      - Pierre-Étienne Messier (https://github.com/pemessier)
  *      - Teselka (https://github.com/Teselka)
  *      - Kyun-J (https://github.com/Kyun-J)
+ *      - luukjp (https://github.com/luukjp)
  *  - Repository: https://github.com/kernelwernel/VMAware
  *  - Docs: https://github.com/kernelwernel/VMAware/docs/documentation.md
  *  - Full credits: https://github.com/kernelwernel/VMAware#credits-and-contributors-%EF%B8%8F
@@ -51,14 +52,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 532
+ * - enums for publicly accessible techniques  => line 533
  * - struct for internal cpu operations        => line 717
- * - struct for internal memoization           => line 1043
- * - struct for internal utility functions     => line 1168
- * - struct for internal core components       => line 8895
- * - start of VM detection technique list      => line 2027
- * - start of public VM detection functions    => line 9398
- * - start of externally defined variables     => line 10341
+ * - struct for internal memoization           => line 1054
+ * - struct for internal utility functions     => line 1183
+ * - struct for internal core components       => line 8937
+ * - start of VM detection technique list      => line 2042
+ * - start of public VM detection functions    => line 9429
+ * - start of externally defined variables     => line 10430
  *
  *
  * ============================== EXAMPLE ===================================
@@ -642,7 +643,6 @@ public:
         NULL_ARG, // does nothing, just a placeholder flag mainly for the CLI
 
         // start of settings technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
-        NO_MEMO,
         HIGH_THRESHOLD,
         DYNAMIC,
         MULTIPLE
@@ -650,9 +650,9 @@ public:
 
 private:
     static constexpr u8 enum_size = MULTIPLE; // get enum size through value of last element
-    static constexpr u8 settings_count = MULTIPLE - NO_MEMO + 1; // get number of settings technique flags like VM::NO_MEMO for example
+    static constexpr u8 settings_count = MULTIPLE - HIGH_THRESHOLD + 1; // get number of settings technique flags
     static constexpr u8 INVALID = 255; // explicit invalid technique macro
-    static constexpr u16 base_technique_count = NO_MEMO; // original technique count, constant on purpose (can also be used as a base count value if custom techniques are added)
+    static constexpr u16 base_technique_count = HIGH_THRESHOLD; // original technique count, constant on purpose (can also be used as a base count value if custom techniques are added)
     static constexpr u16 maximum_points = 5510; // theoretical total points if all VM detections returned true (which is practically impossible)
     static constexpr u16 high_threshold_score = 300; // new threshold score from 150 to 300 if VM::HIGH_THRESHOLD flag is enabled
     static constexpr bool SHORTCUT = true; // macro for whether VM::core::run_all() should take a shortcut by skipping the rest of the techniques if the threshold score is already met
@@ -695,7 +695,7 @@ private:
 
 public:
     // this will allow the enum to be used in the public interface as "VM::TECHNIQUE"
-    enum enum_flags tmp_ignore_this = NO_MEMO;
+    enum enum_flags tmp_ignore_this = HIGH_THRESHOLD;
 
     // constructor stuff ignore this
     VM() = delete;
@@ -857,7 +857,7 @@ private:
 #endif
         }
 
-        [[nodiscard]] static std::string cpu_manufacturer(const u32 p_leaf) {
+        static std::string cpu_manufacturer(const u32 p_leaf) {
             auto cpuid_thingy = [](const u32 p_leaf, u32* regs, std::size_t start = 0, std::size_t end = 4) -> bool {
                 u32 x[4]{};
                 cpu::cpuid(x[0], x[1], x[2], x[3], p_leaf);
@@ -905,7 +905,7 @@ private:
             u8 extmodel;
         };
 
-        [[nodiscard]] static stepping_struct fetch_steppings() {
+        static stepping_struct fetch_steppings() {
             struct stepping_struct steps {};
 
             u32 unused, eax = 0;
@@ -920,7 +920,7 @@ private:
         }
 
         // check if the CPU is an intel celeron
-        [[nodiscard]] static bool is_celeron(const stepping_struct steps) {
+        static bool is_celeron(const stepping_struct steps) {
             if (!cpu::is_intel()) {
                 return false;
             }
@@ -934,6 +934,17 @@ private:
                 steps.family == celeron_family &&
                 steps.extmodel == celeron_extmodel
             );
+        }
+
+        static bool is_amd_A_series() {
+            if (!cpu::is_amd()) {
+                return false;
+            }
+
+            const model_struct model = get_model();
+
+            std::regex amd_a_series("AMD A[0-9]+-[0-9]+", std::regex_constants::icase);
+            return std::regex_search(model.string, amd_a_series);
         }
 
         struct model_struct {
@@ -1067,6 +1078,10 @@ private:
 
         static data_t cache_fetch(const u16 technique_macro) {
             return cache_table.at(technique_macro);
+        }
+
+        static void uncache(const u16 technique_macro) {
+            cache_table.erase(technique_macro);
         }
 
         static std::vector<u16> cache_fetch_all() {
@@ -2269,48 +2284,50 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (!(cpu::is_intel() || cpu::is_amd()))   return false;
         if (cpu::is_celeron(steps))                return false;
 
-        struct Helper {
+        struct helper {
             static constexpr u32 make_id(u8 family, u8 extmodel, u8 model) noexcept {
-                return
+                return (
                     (static_cast<u32>(family) << 16) |
                     (static_cast<u32>(extmodel) << 8) |
-                    static_cast<u32>(model);
+                    (static_cast<u32>(model))
+                );
             }
         };
 
         static constexpr std::array<u32, 35> old_microarch_ids = { {
-                // Family 4 (Intel 486)
-                Helper::make_id(0x4, 0x0, 0x1), Helper::make_id(0x4, 0x0, 0x2),
-                Helper::make_id(0x4, 0x0, 0x3), Helper::make_id(0x4, 0x0, 0x4),
-                Helper::make_id(0x4, 0x0, 0x5), Helper::make_id(0x4, 0x0, 0x7),
-                Helper::make_id(0x4, 0x0, 0x8), Helper::make_id(0x4, 0x0, 0x9),
+            // Family 4 (Intel 486)
+            helper::make_id(0x4, 0x0, 0x1), helper::make_id(0x4, 0x0, 0x2),
+            helper::make_id(0x4, 0x0, 0x3), helper::make_id(0x4, 0x0, 0x4),
+            helper::make_id(0x4, 0x0, 0x5), helper::make_id(0x4, 0x0, 0x7),
+            helper::make_id(0x4, 0x0, 0x8), helper::make_id(0x4, 0x0, 0x9),
 
-                // Family 5 (Pentium, P5)
-                Helper::make_id(0x5, 0x0, 0x1), Helper::make_id(0x5, 0x0, 0x2),
-                Helper::make_id(0x5, 0x0, 0x4), Helper::make_id(0x5, 0x0, 0x7),
-                Helper::make_id(0x5, 0x0, 0x8),
+            // Family 5 (Pentium, P5)
+            helper::make_id(0x5, 0x0, 0x1), helper::make_id(0x5, 0x0, 0x2),
+            helper::make_id(0x5, 0x0, 0x4), helper::make_id(0x5, 0x0, 0x7),
+            helper::make_id(0x5, 0x0, 0x8),
 
-                // Family 6 (P6/Pentium Pro/Celeron/II–III)
-                Helper::make_id(0x6, 0x0, 0x1), Helper::make_id(0x6, 0x0, 0x3),
-                Helper::make_id(0x6, 0x0, 0x5), Helper::make_id(0x6, 0x0, 0x6),
-                Helper::make_id(0x6, 0x0, 0x7), Helper::make_id(0x6, 0x0, 0x8),
-                Helper::make_id(0x6, 0x0, 0x9), Helper::make_id(0x6, 0x0, 0xA),
-                Helper::make_id(0x6, 0x0, 0xB), Helper::make_id(0x6, 0x0, 0xD),
-                Helper::make_id(0x6, 0x0, 0xE), Helper::make_id(0x6, 0x0, 0xF),
+            // Family 6 (P6/Pentium Pro/Celeron/II–III)
+            helper::make_id(0x6, 0x0, 0x1), helper::make_id(0x6, 0x0, 0x3),
+            helper::make_id(0x6, 0x0, 0x5), helper::make_id(0x6, 0x0, 0x6),
+            helper::make_id(0x6, 0x0, 0x7), helper::make_id(0x6, 0x0, 0x8),
+            helper::make_id(0x6, 0x0, 0x9), helper::make_id(0x6, 0x0, 0xA),
+            helper::make_id(0x6, 0x0, 0xB), helper::make_id(0x6, 0x0, 0xD),
+            helper::make_id(0x6, 0x0, 0xE), helper::make_id(0x6, 0x0, 0xF),
 
-                // Family 6 (Yonah/early Core)
-                Helper::make_id(0x6, 0x1, 0x5), Helper::make_id(0x6, 0x1, 0x6),
+            // Family 6 (Yonah/early Core)
+            helper::make_id(0x6, 0x1, 0x5), helper::make_id(0x6, 0x1, 0x6),
 
-                // Family F (Pentium 4)
-                Helper::make_id(0xF, 0x0, 0x2), Helper::make_id(0xF, 0x0, 0x3),
-                Helper::make_id(0xF, 0x0, 0x4), Helper::make_id(0xF, 0x0, 0x6),
-                Helper::make_id(0xF, 0x0, 0x10)
+            // Family F (Pentium 4)
+            helper::make_id(0xF, 0x0, 0x2), helper::make_id(0xF, 0x0, 0x3),
+            helper::make_id(0xF, 0x0, 0x4), helper::make_id(0xF, 0x0, 0x6),
+            helper::make_id(0xF, 0x0, 0x10)
         } };
 
-        const u32 curId = Helper::make_id(steps.family, steps.extmodel, steps.model);
-        for (u32 oldId : old_microarch_ids) {
-            if (curId == oldId)
+        const u32 current_ID = helper::make_id(steps.family, steps.extmodel, steps.model);
+        for (u32 old_ID : old_microarch_ids) {
+            if (current_ID == old_ID) {
                 return false;
+            }
         }
 
         return (threads & 1u) != 0;
@@ -3238,7 +3255,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 { "i9-10885H", 16 },
                 { "i9-10900", 20 },
                 { "i9-10900E", 20 },
-                { "i9-10900F ", 20 },
+                { "i9-10900F", 20 },
                 { "i9-10900K", 20 },
                 { "i9-10900KF", 20 },
                 { "i9-10900T", 20 },
@@ -3260,6 +3277,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 { "i9-11980HK", 16 },
                 { "i9-12900", 24 },
                 { "i9-12900F", 24 },
+                { "i9-12900H", 20 },
                 { "i9-12900K", 24 },
                 { "i9-12900KF", 24 },
                 { "i9-12900KS", 24 },
@@ -3337,7 +3355,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
             }
 
-            if (best) {
+            // Make sure 'best' matches as a whole token, not just as a substring.
+            size_t pos = best ? cpu_full_name.find(best->model) : 0;
+            bool left_isalnum = (pos == 0) || !std::isalnum((unsigned char)cpu_full_name[pos - 1]);
+            size_t end = pos + best_len;
+            bool right_isalnum = (end == cpu_full_name.size()) || !std::isalnum((unsigned char)cpu_full_name[end]);
+
+            if (best && left_isalnum && right_isalnum) {
                 unsigned expected = best->threads;
                 unsigned actual = memo::threadcount::fetch();
                 debug("INTEL_THREAD_MISMATCH: Expected threads -> ", expected);
@@ -3534,7 +3558,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
             }
 
-            if (best) {
+            // Make sure 'best' matches as a whole token, not just as a substring.
+            size_t pos = best ? cpu_full_name.find(best->model) : 0;
+            bool left_isalnum = (pos == 0) || !std::isalnum((unsigned char)cpu_full_name[pos - 1]);
+            size_t end = pos + best_len;
+            bool right_isalnum = (end == cpu_full_name.size()) || !std::isalnum((unsigned char)cpu_full_name[end]);
+
+            if (best && left_isalnum && right_isalnum) {
                 unsigned expected = best->threads;
                 unsigned actual = memo::threadcount::fetch();
                 debug("XEON_THREAD_MISMATCH: Expected threads -> ", expected);
@@ -4162,7 +4192,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
             }
 
-            if (best) {
+            // Make sure 'best' matches as a whole token, not just as a substring.
+            size_t pos = best ? cpu_full_name.find(best->model) : 0;
+            bool left_isalnum = (pos == 0) || !std::isalnum((unsigned char)cpu_full_name[pos - 1]);
+            size_t end = pos + best_len;
+            bool right_isalnum = (end == cpu_full_name.size()) || !std::isalnum((unsigned char)cpu_full_name[end]);
+
+            if (best && left_isalnum && right_isalnum) {
                 unsigned expected = best->threads;
                 unsigned actual = memo::threadcount::fetch();
                 debug("XEON_THREAD_MISMATCH: Expected threads -> ", expected);
@@ -7987,6 +8023,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      */
     [[nodiscard]] static bool logical_processors() {
     #if (x86)
+        struct cpu::stepping_struct steps = cpu::fetch_steppings();
+
+        if (cpu::is_celeron(steps) || cpu::is_amd_A_series()) {
+            return false;
+        }
+
         #if (x86_32)
             const PULONG ulNumberProcessors = reinterpret_cast<PULONG>(__readfsdword(0x30) + 0x64);
         #else
@@ -9011,12 +9053,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             // at this stage, only setting flags are asserted to be set
             if (
-                flags.test(NO_MEMO) ||
                 flags.test(HIGH_THRESHOLD) ||
                 flags.test(DYNAMIC) ||
                 flags.test(NULL_ARG) ||
                 flags.test(MULTIPLE)
-                ) {
+            ) {
                 generate_default(flags);
             }
             else {
@@ -9027,8 +9068,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // run every VM detection mechanism in the technique table
         static u16 run_all(const flagset& flags, const bool shortcut = false) {
             u16 points = 0;
-
-            const bool memo_enabled = core::is_disabled(flags, NO_MEMO);
 
             u16 threshold_points = 150;
 
@@ -9054,7 +9093,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
 
                 // check if the technique is cached already
-                if (memo_enabled && memo::is_cached(technique_macro)) {
+                if (memo::is_cached(technique_macro)) {
                     const memo::data_t data = memo::cache_fetch(technique_macro);
 
                     if (data.result) {
@@ -9077,9 +9116,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
 
                 // store the current technique result to the cache
-                if (memo_enabled) {
-                    memo::cache_store(technique_macro, result, technique_data.points);
-                }
+                memo::cache_store(technique_macro, result, technique_data.points);
 
                 // for things like VM::detect() and VM::percentage(),
                 // a score of 150+ is guaranteed to be a VM, so
@@ -9098,7 +9135,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             if (!custom_table.empty()) {
                 for (const auto& technique : custom_table) {
                     // if cached, return that result
-                    if (memo_enabled && memo::is_cached(technique.id)) {
+                    if (memo::is_cached(technique.id)) {
                         const memo::data_t data = memo::cache_fetch(technique.id);
 
                         if (data.result) {
@@ -9118,13 +9155,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     }
 
                     // cache the result
-                    if (memo_enabled) {
-                        memo::cache_store(
-                            technique.id,
-                            result,
-                            technique.points
-                        );
-                    }
+                    memo::cache_store(
+                        technique.id,
+                        result,
+                        technique.points
+                    );
                 }
             }
 
@@ -9173,7 +9208,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             // disable all the settings flags
-            flags.flip(NO_MEMO);
             flags.flip(HIGH_THRESHOLD);
             flags.flip(NULL_ARG);
             flags.flip(DYNAMIC);
@@ -9186,7 +9220,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             flags.set();
 
             // disable all the settings flags
-            flags.flip(NO_MEMO);
             flags.flip(HIGH_THRESHOLD);
             flags.flip(NULL_ARG);
             flags.flip(DYNAMIC);
@@ -9195,7 +9228,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         static void generate_current_disabled_flags(flagset& flags) {
-            const bool setting_no_memo = flags.test(NO_MEMO);
             const bool setting_high_threshold = flags.test(HIGH_THRESHOLD);
             const bool setting_dynamic = flags.test(DYNAMIC);
             const bool setting_multiple = flags.test(MULTIPLE);
@@ -9208,7 +9240,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 flags &= disabled_flag_collector;
             }
 
-            flags.set(NO_MEMO, setting_no_memo);
             flags.set(HIGH_THRESHOLD, setting_high_threshold);
             flags.set(DYNAMIC, setting_dynamic);
             flags.set(MULTIPLE, setting_multiple);
@@ -9429,8 +9460,7 @@ public: // START OF PUBLIC FUNCTIONS
      * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmcheck
      */
     static bool check(
-        const enum_flags flag_bit, 
-        const enum_flags memo_arg = NULL_ARG
+        const enum_flags flag_bit
 #if (CPP >= 20) && (!CLANG || __clang_major__ >= 16)
         , const std::source_location& loc = std::source_location::current()
 #endif
@@ -9458,7 +9488,6 @@ public: // START OF PUBLIC FUNCTIONS
 
         // check if the bit is a settings flag, which shouldn't be allowed
         if (
-            (flag_bit == NO_MEMO) ||
             (flag_bit == HIGH_THRESHOLD) ||
             (flag_bit == DYNAMIC) ||
             (flag_bit == MULTIPLE)
@@ -9466,27 +9495,18 @@ public: // START OF PUBLIC FUNCTIONS
             throw_error("Flag argument must be a technique flag and not a settings flag");
         }
 
-        if (
-            (memo_arg != NO_MEMO) && 
-            (memo_arg != NULL_ARG)
-        ) {
-            throw_error("Flag argument for memoization must be either VM::NO_MEMO or left empty");
-        }
-
-        const bool is_memoized = (memo_arg != NO_MEMO);
-
     #if (CPP >= 23) 
         [[assume(flag_bit < technique_end)]];
     #endif
 
         // if the technique is already cached, return the cached value instead
-        if (memo::is_cached(flag_bit) && is_memoized) {
+        if (memo::is_cached(flag_bit)) {
             const memo::data_t data = memo::cache_fetch(flag_bit);
             return data.result;
         }
 
         // check if the flag even exists
-        auto it = core::technique_table.find(flag_bit);
+        const auto it = core::technique_table.find(flag_bit);
         if (it == core::technique_table.end()) {
             throw_error("Flag is not known");
         }
@@ -9504,9 +9524,7 @@ public: // START OF PUBLIC FUNCTIONS
 #endif
 
         // store the technique result in the cache table
-        if (is_memoized) {
-            memo::cache_store(flag_bit, result, pair.points);
-        }
+        memo::cache_store(flag_bit, result, pair.points);
 
         return result;
     }
@@ -9530,17 +9548,15 @@ public: // START OF PUBLIC FUNCTIONS
         const u16 score = core::run_all(flags);
 
         // check if the result is already cached and return that instead
-        if (core::is_disabled(flags, NO_MEMO)) {
-            if (is_multiple) {
-                if (memo::multi_brand::is_cached()) {
-                    core_debug("VM::brand(): returned multi brand from cache");
-                    return memo::multi_brand::fetch();
-                }
-            } else {
-                if (memo::brand::is_cached()) {
-                    core_debug("VM::brand(): returned brand from cache");
-                    return memo::brand::fetch();
-                }
+        if (is_multiple) {
+            if (memo::multi_brand::is_cached()) {
+                core_debug("VM::brand(): returned multi brand from cache");
+                return memo::multi_brand::fetch();
+            }
+        } else {
+            if (memo::brand::is_cached()) {
+                core_debug("VM::brand(): returned brand from cache");
+                return memo::brand::fetch();
             }
         }
 
@@ -9762,17 +9778,15 @@ public: // START OF PUBLIC FUNCTIONS
         }
 
 
-        // cache the result if memoization is enabled
-        if (core::is_disabled(flags, NO_MEMO)) {
-            if (is_multiple) {
-                core_debug("VM::brand(): cached multiple brand string");
-                memo::multi_brand::store(ret_str);
-            } else {
-                core_debug("VM::brand(): cached brand string");
-                memo::brand::store(ret_str);
-            }
+        // cache the result 
+        if (is_multiple) {
+            core_debug("VM::brand(): cached multiple brand string");
+            memo::multi_brand::store(ret_str);
+        } else {
+            core_debug("VM::brand(): cached brand string");
+            memo::brand::store(ret_str);
         }
-        
+    
 
         // debug stuff to see the brand scoreboard, ignore this
 #ifdef __VMAWARE_DEBUG__
@@ -10028,7 +10042,6 @@ public: // START OF PUBLIC FUNCTIONS
             case DEFAULT: return "setting flag, error";
             case ALL: return "setting flag, error";
             case NULL_ARG: return "setting flag, error";
-            case NO_MEMO: return "setting flag, error";
             case HIGH_THRESHOLD: return "setting flag, error";
             case DYNAMIC: return "setting flag, error";
             case MULTIPLE: return "setting flag, error";
@@ -10330,6 +10343,82 @@ public: // START OF PUBLIC FUNCTIONS
         }
     }
 
+
+    /**
+     * @brief Returns whether it suspects the environment has anti-VM hardening
+     * @return bool
+     */
+    static bool is_hardened() {
+        auto detected_brand = [](const enum_flags flag) -> std::string {
+            memo::uncache(flag);
+
+            const auto old_scoreboard = core::brand_scoreboard;
+
+            check(flag);
+
+            for (auto it = old_scoreboard.begin(); it != old_scoreboard.end(); it++) {
+                const brand_score_t old_score = it->second;
+                const brand_score_t new_score = core::brand_scoreboard.at(it->first);
+    
+                if (old_score < new_score) {
+                    return it->first;
+                }
+            }
+
+            return brands::NULL_BRAND;
+        };
+
+        // rule 1: if VM::FIRMWARE is detected, so should VM::HYPERVISOR_BIT or VM::HYPERVISOR_STR
+        if (!(
+            check(VM::FIRMWARE) && 
+            (check(VM::HYPERVISOR_BIT) || check(VM::HYPERVISOR_STR))
+        )) {
+            return true;
+        }
+
+        const std::string firmware_brand = detected_brand(VM::FIRMWARE);
+
+#if (LINUX)
+        // rule 2: if VM::FIRMWARE is detected, then so should VM::CVENDOR (QEMU or VBOX)
+        if (firmware_brand == brands::QEMU || firmware_brand == brands::VBOX) {
+            const std::string cvendor_brand = detected_brand(VM::CVENDOR);
+
+            if (firmware_brand != cvendor_brand) {
+                return true;
+            }
+        }
+#endif
+
+#if (WINDOWS)
+        // rule 3: if VM::FIRMWARE is detected, then so should VM::REGISTRY_KEYS (VBOX or VMware)
+        if (firmware_brand == brands::VBOX || firmware_brand == brands::VMWARE) {
+            const std::string reg_brand = detected_brand(VM::REGISTRY_KEYS);
+            if (firmware_brand != reg_brand) {
+                return true;
+            }
+        }
+        
+        // rule 4: if VM::FIRMWARE is detected, then so should VM::ACPI_SIGNATURE (QEMU)
+        const std::string acpi_brand = detected_brand(VM::ACPI_SIGNATURE);
+        if (firmware_brand == brands::QEMU) {
+            if (acpi_brand != brands::QEMU) {
+                return true;
+            }
+        }
+
+        // rule 5: if VM::ACPI_SIGNATURE is detected, so should VM::HYPERVISOR_BIT or VM::HYPERVISOR_STR (QEMU, similar to rule 1)
+        if (!(
+            (acpi_brand == brands::QEMU) && 
+            (check(VM::HYPERVISOR_BIT) || check(VM::HYPERVISOR_STR))
+        )) {
+            return true;
+        }
+#endif
+
+        return false;
+    }
+
+
     #pragma pack(push, 1)
     struct vmaware {
         std::string brand;
@@ -10515,7 +10604,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         std::make_pair(VM::DRIVERS, VM::core::technique(100, VM::drivers)),
         std::make_pair(VM::REGISTRY_VALUES, VM::core::technique(50, VM::registry_values)),
         std::make_pair(VM::REGISTRY_KEYS, VM::core::technique(50, VM::registry_keys)),
-        std::make_pair(VM::LOGICAL_PROCESSORS, VM::core::technique(50, VM::logical_processors)),
+        std::make_pair(VM::LOGICAL_PROCESSORS, VM::core::technique(30, VM::logical_processors)),
         std::make_pair(VM::PHYSICAL_PROCESSORS, VM::core::technique(50, VM::physical_processors)),
         std::make_pair(VM::DEVICE_HANDLES, VM::core::technique(100, VM::device_handles)),
         std::make_pair(VM::VIRTUAL_PROCESSORS, VM::core::technique(100, VM::virtual_processors)),
