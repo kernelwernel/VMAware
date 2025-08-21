@@ -3354,7 +3354,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
             }
 
-            if (best) {
+            // Make sure 'best' matches as a whole token, not just as a substring.
+            size_t pos = best ? cpu_full_name.find(best->model) : 0;
+            bool left_isalnum = (pos == 0) || !std::isalnum((unsigned char)cpu_full_name[pos - 1]);
+            size_t end = pos + best_len;
+            bool right_isalnum = (end == cpu_full_name.size()) || !std::isalnum((unsigned char)cpu_full_name[end]);
+
+            if (best && left_isalnum && right_isalnum) {
                 unsigned expected = best->threads;
                 unsigned actual = memo::threadcount::fetch();
                 debug("INTEL_THREAD_MISMATCH: Expected threads -> ", expected);
@@ -3551,7 +3557,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
             }
 
-            if (best) {
+            // Make sure 'best' matches as a whole token, not just as a substring.
+            size_t pos = best ? cpu_full_name.find(best->model) : 0;
+            bool left_isalnum = (pos == 0) || !std::isalnum((unsigned char)cpu_full_name[pos - 1]);
+            size_t end = pos + best_len;
+            bool right_isalnum = (end == cpu_full_name.size()) || !std::isalnum((unsigned char)cpu_full_name[end]);
+
+            if (best && left_isalnum && right_isalnum) {
                 unsigned expected = best->threads;
                 unsigned actual = memo::threadcount::fetch();
                 debug("XEON_THREAD_MISMATCH: Expected threads -> ", expected);
@@ -4179,7 +4191,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
             }
 
-            if (best) {
+            // Make sure 'best' matches as a whole token, not just as a substring.
+            size_t pos = best ? cpu_full_name.find(best->model) : 0;
+            bool left_isalnum = (pos == 0) || !std::isalnum((unsigned char)cpu_full_name[pos - 1]);
+            size_t end = pos + best_len;
+            bool right_isalnum = (end == cpu_full_name.size()) || !std::isalnum((unsigned char)cpu_full_name[end]);
+
+            if (best && left_isalnum && right_isalnum) {
                 unsigned expected = best->threads;
                 unsigned actual = memo::threadcount::fetch();
                 debug("XEON_THREAD_MISMATCH: Expected threads -> ", expected);
