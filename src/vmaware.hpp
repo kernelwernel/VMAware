@@ -942,7 +942,7 @@ private:
 
             const model_struct model = get_model();
 
-            std::regex amd_a_series("AMD A[0-9]+", std::regex_constants::icase);
+            std::regex amd_a_series("AMD A[0-9]+-[0-9]+", std::regex_constants::icase);
             return std::regex_search(model.string, amd_a_series);
         }
 
@@ -10558,7 +10558,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         std::make_pair(VM::DRIVERS, VM::core::technique(100, VM::drivers)),
         std::make_pair(VM::REGISTRY_VALUES, VM::core::technique(50, VM::registry_values)),
         std::make_pair(VM::REGISTRY_KEYS, VM::core::technique(50, VM::registry_keys)),
-        std::make_pair(VM::LOGICAL_PROCESSORS, VM::core::technique(50, VM::logical_processors)),
+        std::make_pair(VM::LOGICAL_PROCESSORS, VM::core::technique(30, VM::logical_processors)),
         std::make_pair(VM::PHYSICAL_PROCESSORS, VM::core::technique(50, VM::physical_processors)),
         std::make_pair(VM::DEVICE_HANDLES, VM::core::technique(100, VM::device_handles)),
         std::make_pair(VM::VIRTUAL_PROCESSORS, VM::core::technique(100, VM::virtual_processors)),
