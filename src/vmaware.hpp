@@ -56,10 +56,10 @@
  * - struct for internal cpu operations        => line 717
  * - struct for internal memoization           => line 1054
  * - struct for internal utility functions     => line 1183
- * - struct for internal core components       => line 8937
+ * - struct for internal core components       => line 8961
  * - start of VM detection technique list      => line 2042
- * - start of public VM detection functions    => line 9429
- * - start of externally defined variables     => line 10430
+ * - start of public VM detection functions    => line 9453
+ * - start of externally defined variables     => line 10454
  *
  *
  * ============================== EXAMPLE ===================================
@@ -8408,7 +8408,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         auto is_hex = [](wchar_t c) noexcept {
             return (c >= L'0' && c <= L'9')
                 || (c >= L'A' && c <= L'F');
-            };
+        };
 
         // enumerate all DISPLAY devices
         const HDEVINFO hDevInfo = SetupDiGetClassDevsW(
@@ -10592,7 +10592,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     #if (WINDOWS)
         std::make_pair(VM::TRAP, VM::core::technique(100, VM::trap)),
         std::make_pair(VM::ACPI_SIGNATURE, VM::core::technique(100, VM::acpi_signature)),
-        std::make_pair(VM::GPU_CAPABILITIES, VM::core::technique(100, VM::gpu_capabilities)),
+        std::make_pair(VM::GPU_CAPABILITIES, VM::core::technique(50, VM::gpu_capabilities)),
         std::make_pair(VM::BOOT_LOGO, VM::core::technique(100, VM::boot_logo)),
         std::make_pair(VM::TPM, VM::core::technique(100, VM::tpm)),
         std::make_pair(VM::POWER_CAPABILITIES, VM::core::technique(100, VM::power_capabilities)),
