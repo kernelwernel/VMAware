@@ -5681,7 +5681,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::GENERAL_HOSTNAME
      */
     [[nodiscard]] static bool general_hostname() {
-        return core::add(brands::QEMU); // TEMPORARY
         std::string hostname = util::get_hostname();
 
         auto cmp = [&](const char* str2) -> bool {
@@ -10349,7 +10348,6 @@ public: // START OF PUBLIC FUNCTIONS
      * @return bool
      */
     static bool is_hardened() {
-        return true; // TEMPORARY
         auto detected_brand = [](const enum_flags flag) -> std::string {
             memo::uncache(flag);
 
@@ -10622,7 +10620,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         std::make_pair(VM::DISK_SIZE, VM::core::technique(60, VM::disk_size)),
         std::make_pair(VM::HYPERV_HOSTNAME, VM::core::technique(30, VM::hyperv_hostname)),
         std::make_pair(VM::VBOX_DEFAULT, VM::core::technique(25, VM::vbox_default_specs)),
-        std::make_pair(VM::GENERAL_HOSTNAME, VM::core::technique(150, VM::general_hostname)),
+        std::make_pair(VM::GENERAL_HOSTNAME, VM::core::technique(10, VM::general_hostname)),
     #endif
         
     #if (LINUX)
