@@ -905,6 +905,18 @@ static void general() {
             "\n";
     }
 
+    
+    // hardened environment detection manager 
+    {
+        std::cout << bold << "VM hardening: " << ansi_exit;
+
+        if (VM::is_hardened()) {
+            std::cout << green << "found" << ansi_exit << "\n";
+        } else {
+            std::cout << red << "not found" << ansi_exit << "\n";
+        }
+    }
+
 
     // misc manager
     {
@@ -925,8 +937,11 @@ static void general() {
     // description manager
     {
         if (vm.brand != brands::NULL_BRAND) {
-
-            const std::string description = vm_description(vm.brand);
+            std::string description = vm_description(vm.brand);
+            
+            if (VM::is_hardened()) {
+                description += " Additionally, VMAware has determined that the environment has anti-VM \ntampering involved to obscure its nature."; 
+            }
 
             if (!description.empty()) {
                 std::cout << bold << underline << "VM description:" << ansi_exit << "\n";
@@ -989,7 +1004,7 @@ static void general() {
 
         std::cout
             << bold
-            << "====== CONCLUSION: "
+            << "\n====== CONCLUSION: "
             << ansi_exit
             << conclusion_color << conclusion << " " << ansi_exit
             << bold

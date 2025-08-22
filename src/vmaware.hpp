@@ -3254,7 +3254,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 { "i9-10885H", 16 },
                 { "i9-10900", 20 },
                 { "i9-10900E", 20 },
-                { "i9-10900F ", 20 },
+                { "i9-10900F", 20 },
                 { "i9-10900K", 20 },
                 { "i9-10900KF", 20 },
                 { "i9-10900T", 20 },
@@ -5661,6 +5661,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::GENERAL_HOSTNAME
      */
     [[nodiscard]] static bool general_hostname() {
+        return core::add(brands::QEMU); // TEMPORARY
         std::string hostname = util::get_hostname();
 
         auto cmp = [&](const char* str2) -> bool {
@@ -10213,17 +10214,17 @@ public: // START OF PUBLIC FUNCTIONS
         std::string brand_tmp = brand(flags);
         const u8 percent_tmp = percentage(flags);
 
-        constexpr const char* baremetal = "Running on baremetal";
-        constexpr const char* very_unlikely = "Very unlikely a VM";
-        constexpr const char* unlikely = "Unlikely a VM";
-
 #if (CPP >= 17)
+        constexpr std::string_view very_unlikely = "Very unlikely a";
+        constexpr std::string_view unlikely = "Unlikely a";
         constexpr std::string_view potentially = "Potentially";
         constexpr std::string_view might = "Might be";
         constexpr std::string_view likely = "Likely";
         constexpr std::string_view very_likely = "Very likely";
         constexpr std::string_view inside_vm = "Running inside";
 #else
+        const std::string very_unlikely = "Very unlikely";
+        const std::string unlikely = "Unlikely";
         const std::string potentially = "Potentially";
         const std::string might = "Might be";
         const std::string likely = "Likely";
@@ -10236,34 +10237,38 @@ public: // START OF PUBLIC FUNCTIONS
 #else
         auto make_conclusion = [&](const std::string &category) -> std::string {
 #endif
-            // this basically just fixes the grammatical syntax
-            // by either having "a" or "an" before the VM brand
-            // name. Like it would look weird if the conclusion 
-            // message was "an VirtualBox" or "a Anubis", so this
-            // lambda fixes that issue.
-            std::string article = "";
+            std::string addition = "";
 
-            if (
-                (brand_tmp == brands::ACRN) ||
-                (brand_tmp == brands::ANUBIS) ||
-                (brand_tmp == brands::BSD_VMM) ||
-                (brand_tmp == brands::INTEL_HAXM) ||
-                (brand_tmp == brands::APPLE_VZ) ||
-                (brand_tmp == brands::INTEL_KGT) ||
-                (brand_tmp == brands::POWERVM) ||
-                (brand_tmp == brands::OPENSTACK) ||
-                (brand_tmp == brands::AWS_NITRO) ||
-                (brand_tmp == brands::OPENVZ) ||
-                (brand_tmp == brands::INTEL_TDX) ||
-                (brand_tmp == brands::AMD_SEV) ||
-                (brand_tmp == brands::AMD_SEV_ES) ||
-                (brand_tmp == brands::AMD_SEV_SNP) ||
-                (brand_tmp == brands::NSJAIL) ||
-                (brand_tmp == brands::NULL_BRAND)
-            ) {
-                article = " an ";
+            if (is_hardened()) {
+                addition = " a hardened ";
             } else {
-                article = " a ";
+                // this basically just fixes the grammatical syntax
+                // by either having "a" or "an" before the VM brand
+                // name. Like it would look weird if the conclusion 
+                // message was "an VirtualBox" or "a Anubis", so this
+                // lambda fixes that issue.
+                if (
+                    (brand_tmp == brands::ACRN) ||
+                    (brand_tmp == brands::ANUBIS) ||
+                    (brand_tmp == brands::BSD_VMM) ||
+                    (brand_tmp == brands::INTEL_HAXM) ||
+                    (brand_tmp == brands::APPLE_VZ) ||
+                    (brand_tmp == brands::INTEL_KGT) ||
+                    (brand_tmp == brands::POWERVM) ||
+                    (brand_tmp == brands::OPENSTACK) ||
+                    (brand_tmp == brands::AWS_NITRO) ||
+                    (brand_tmp == brands::OPENVZ) ||
+                    (brand_tmp == brands::INTEL_TDX) ||
+                    (brand_tmp == brands::AMD_SEV) ||
+                    (brand_tmp == brands::AMD_SEV_ES) ||
+                    (brand_tmp == brands::AMD_SEV_SNP) ||
+                    (brand_tmp == brands::NSJAIL) ||
+                    (brand_tmp == brands::NULL_BRAND)
+                ) {
+                    addition = " an ";
+                } else {
+                    addition = " a ";
+                }
             }
 
             // this is basically just to remove the capital "U", 
@@ -10274,17 +10279,16 @@ public: // START OF PUBLIC FUNCTIONS
 
             // Hyper-V artifacts are an exception due to how unique the circumstance is
             if (brand_tmp == brands::HYPERV_ARTIFACT) {
-                return std::string(category) + article + brand_tmp;
-            }
-            else {
-                return std::string(category) + article + brand_tmp + " VM";
+                return std::string(category) + addition + brand_tmp;
+            } else {
+                return std::string(category) + addition + brand_tmp + " VM";
             }
         };
 
         if (core::is_enabled(flags, DYNAMIC)) {
-            if      (percent_tmp == 0)  { return baremetal; }
-            else if (percent_tmp <= 20) { return very_unlikely; }
-            else if (percent_tmp <= 35) { return unlikely; }
+            if      (percent_tmp == 0)  { return "Running on baremetal"; }
+            else if (percent_tmp <= 20) { return make_conclusion(very_unlikely); }
+            else if (percent_tmp <= 35) { return make_conclusion(unlikely); }
             else if (percent_tmp < 50)  { return make_conclusion(potentially); }
             else if (percent_tmp <= 62) { return make_conclusion(might); }
             else if (percent_tmp <= 75) { return make_conclusion(likely); }
@@ -10295,7 +10299,7 @@ public: // START OF PUBLIC FUNCTIONS
         if (percent_tmp == 100) {
             return make_conclusion(inside_vm);
         } else {
-            return baremetal;
+            return "Running on baremetal";
         }
     }
 
@@ -10305,6 +10309,7 @@ public: // START OF PUBLIC FUNCTIONS
      * @return bool
      */
     static bool is_hardened() {
+        return true; // TEMPORARY
         auto detected_brand = [](const enum_flags flag) -> std::string {
             memo::uncache(flag);
 
@@ -10590,7 +10595,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         std::make_pair(VM::DISK_SIZE, VM::core::technique(60, VM::disk_size)),
         std::make_pair(VM::HYPERV_HOSTNAME, VM::core::technique(30, VM::hyperv_hostname)),
         std::make_pair(VM::VBOX_DEFAULT, VM::core::technique(25, VM::vbox_default_specs)),
-        std::make_pair(VM::GENERAL_HOSTNAME, VM::core::technique(10, VM::general_hostname)),
+        std::make_pair(VM::GENERAL_HOSTNAME, VM::core::technique(150, VM::general_hostname)),
     #endif
         
     #if (LINUX)
