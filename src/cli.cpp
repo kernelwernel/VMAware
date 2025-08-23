@@ -906,6 +906,18 @@ static void general() {
     }
 
 
+    // hardened environment detection manager 
+    {
+        std::cout << bold << "VM hardening: " << ansi_exit;
+
+        if (VM::is_hardened()) {
+            std::cout << green << "found" << ansi_exit << "\n";
+        } else {
+            std::cout << red << "not found" << ansi_exit << "\n";
+        }
+    }
+
+
     // misc manager
     {
         if (arg_bitset.test(VERBOSE)) {
@@ -925,7 +937,6 @@ static void general() {
     // description manager
     {
         if (vm.brand != brands::NULL_BRAND) {
-
             const std::string description = vm_description(vm.brand);
 
             if (!description.empty()) {
@@ -989,7 +1000,7 @@ static void general() {
 
         std::cout
             << bold
-            << "====== CONCLUSION: "
+            << "\n====== CONCLUSION: "
             << ansi_exit
             << conclusion_color << conclusion << " " << ansi_exit
             << bold
