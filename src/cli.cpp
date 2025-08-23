@@ -905,7 +905,7 @@ static void general() {
             "\n";
     }
 
-    
+
     // hardened environment detection manager 
     {
         std::cout << bold << "VM hardening: " << ansi_exit;
@@ -937,11 +937,7 @@ static void general() {
     // description manager
     {
         if (vm.brand != brands::NULL_BRAND) {
-            std::string description = vm_description(vm.brand);
-            
-            if (VM::is_hardened()) {
-                description += " Additionally, VMAware has determined that the environment has anti-VM \ntampering involved to obscure its nature."; 
-            }
+            const std::string description = vm_description(vm.brand);
 
             if (!description.empty()) {
                 std::cout << bold << underline << "VM description:" << ansi_exit << "\n";

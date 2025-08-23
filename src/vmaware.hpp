@@ -1082,6 +1082,7 @@ private:
 
         static void uncache(const u16 technique_macro) {
             cache_table.erase(technique_macro);
+            cache_keys.set(technique_macro, false);
         }
 
         static std::vector<u16> cache_fetch_all() {
@@ -9494,7 +9495,7 @@ public: // START OF PUBLIC FUNCTIONS
     #if (CPP >= 23) 
         [[assume(flag_bit < technique_end)]];
     #endif
-
+        
         // if the technique is already cached, return the cached value instead
         if (memo::is_cached(flag_bit)) {
             const memo::data_t data = memo::cache_fetch(flag_bit);
@@ -10350,11 +10351,11 @@ public: // START OF PUBLIC FUNCTIONS
     static bool is_hardened() {
         auto detected_brand = [](const enum_flags flag) -> std::string {
             memo::uncache(flag);
-
+            
             const auto& old_scoreboard = core::brand_scoreboard;
-
+            
             check(flag);
-
+            
             for (auto it = old_scoreboard.begin(); it != old_scoreboard.end(); it++) {
                 const brand_score_t old_score = it->second;
                 const brand_score_t new_score = core::brand_scoreboard.at(it->first);
