@@ -55,11 +55,11 @@
  * - enums for publicly accessible techniques  => line 533
  * - struct for internal cpu operations        => line 717
  * - struct for internal memoization           => line 1054
- * - struct for internal utility functions     => line 1183
- * - struct for internal core components       => line 8957
- * - start of VM detection technique list      => line 2042
- * - start of public VM detection functions    => line 9449
- * - start of externally defined variables     => line 10437
+ * - struct for internal utility functions     => line 1184
+ * - struct for internal core components       => line 9081
+ * - start of VM detection technique list      => line 2043
+ * - start of public VM detection functions    => line 9573
+ * - start of externally defined variables     => line 10564
  *
  *
  * ============================== EXAMPLE ===================================
@@ -10712,8 +10712,8 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         std::make_pair(VM::SLDT, VM::core::technique(50, VM::sldt)),
         std::make_pair(VM::SMSW, VM::core::technique(50, VM::smsw)),
         std::make_pair(VM::DRIVERS, VM::core::technique(100, VM::drivers)),
-        std::make_pair(VM::REGISTRY_VALUES, VM::core::technique(50, VM::registry_values)),
-        std::make_pair(VM::REGISTRY_KEYS, VM::core::technique(50, VM::registry_keys)),
+        std::make_pair(VM::REGISTRY_VALUES, VM::core::technique(30, VM::registry_values)),
+        std::make_pair(VM::REGISTRY_KEYS, VM::core::technique(30, VM::registry_keys)),
         std::make_pair(VM::LOGICAL_PROCESSORS, VM::core::technique(30, VM::logical_processors)),
         std::make_pair(VM::PHYSICAL_PROCESSORS, VM::core::technique(50, VM::physical_processors)),
         std::make_pair(VM::DEVICE_HANDLES, VM::core::technique(100, VM::device_handles)),
