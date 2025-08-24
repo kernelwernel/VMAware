@@ -38,6 +38,7 @@
 #if (defined(_MSC_VER) || defined(_WIN32) || defined(_WIN64) || defined(__MINGW32__))
     #define CLI_WINDOWS 1
     #define WIN32_LEAN_AND_MEAN
+    #define NOMINMAX
     #include <windows.h>
 #else
     #define CLI_WINDOWS 0
@@ -1017,9 +1018,8 @@ static void general() {
         }
     }
 
-    #if (CLI_WINDOWS)
-        system("pause"); 
-    #endif
+    std::cout << "Press Enter to exit...";
+    std::cin.get();
 }
 
 
