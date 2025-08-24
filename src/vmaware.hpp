@@ -55,11 +55,11 @@
  * - enums for publicly accessible techniques  => line 533
  * - struct for internal cpu operations        => line 717
  * - struct for internal memoization           => line 1054
- * - struct for internal utility functions     => line 1183
- * - struct for internal core components       => line 8957
- * - start of VM detection technique list      => line 2042
- * - start of public VM detection functions    => line 9449
- * - start of externally defined variables     => line 10437
+ * - struct for internal utility functions     => line 1184
+ * - struct for internal core components       => line 9081
+ * - start of VM detection technique list      => line 2043
+ * - start of public VM detection functions    => line 9573
+ * - start of externally defined variables     => line 10564
  *
  *
  * ============================== EXAMPLE ===================================
@@ -3343,32 +3343,43 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     
             const ThreadEntry* best = nullptr;
             size_t best_len = 0;
+            size_t best_pos = std::string::npos;
+
+            if (cpu_full_name.empty()) return false;
 
             for (size_t i = 0; i < thread_database_count; ++i) {
                 const char* key = thread_database[i].model;
-                size_t      len = std::strlen(key);
+                const size_t len = std::strlen(key);
 
-                if (len > best_len &&
-                    cpu_full_name.find(key) != std::string::npos)
-                {
+                const size_t p = cpu_full_name.find(key);
+                if (p != std::string::npos && len > best_len) {
                     best = &thread_database[i];
                     best_len = len;
+                    best_pos = p;
                 }
             }
 
-            // Make sure 'best' matches as a whole token, not just as a substring.
-            size_t pos = best ? cpu_full_name.find(best->model) : 0;
-            bool left_isalnum = (pos == 0) || !std::isalnum((unsigned char)cpu_full_name[pos - 1]);
-            size_t end = pos + best_len;
-            bool right_isalnum = (end == cpu_full_name.size()) || !std::isalnum((unsigned char)cpu_full_name[end]);
+            // Make sure best matches as a whole token, not just as a substring
+            if (best && best_pos != std::string::npos) {
+                size_t pos = best_pos;
+                size_t end = pos + best_len;
 
-            if (best && left_isalnum && right_isalnum) {
-                unsigned expected = best->threads;
-                unsigned actual = memo::threadcount::fetch();
-                debug("INTEL_THREAD_MISMATCH: Expected threads -> ", expected);
-                return actual != expected;
+                auto isAsciiAlphaNum = [](char c)->bool {
+                    const unsigned char uc = static_cast<unsigned char>(c);
+                    return (uc >= '0' && uc <= '9') || (uc >= 'A' && uc <= 'Z') || (uc >= 'a' && uc <= 'z');
+                };
+
+                const bool left_ok = (pos == 0) || !isAsciiAlphaNum(cpu_full_name[pos - 1]);
+                const bool right_ok = (end == cpu_full_name.size()) || !isAsciiAlphaNum(cpu_full_name[end]);
+
+                if (left_ok && right_ok) {
+                    const unsigned expected = best->threads;
+                    const unsigned actual = memo::threadcount::fetch();
+                    debug("INTEL_THREAD_MISMATCH: Expected threads -> ", expected);
+                    return actual != expected;
+                }
             }
-    
+
             return false;
         #endif
     }
@@ -3546,32 +3557,43 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             const ThreadEntry* best = nullptr;
             size_t best_len = 0;
+            size_t best_pos = std::string::npos;
+
+            if (cpu_full_name.empty()) return false;
 
             for (size_t i = 0; i < thread_database_count; ++i) {
                 const char* key = thread_database[i].model;
-                size_t      len = std::strlen(key);
+                const size_t len = std::strlen(key);
 
-                if (len > best_len &&
-                    cpu_full_name.find(key) != std::string::npos)
-                {
+                const size_t p = cpu_full_name.find(key);
+                if (p != std::string::npos && len > best_len) {
                     best = &thread_database[i];
                     best_len = len;
+                    best_pos = p;
                 }
             }
 
-            // Make sure 'best' matches as a whole token, not just as a substring.
-            size_t pos = best ? cpu_full_name.find(best->model) : 0;
-            bool left_isalnum = (pos == 0) || !std::isalnum((unsigned char)cpu_full_name[pos - 1]);
-            size_t end = pos + best_len;
-            bool right_isalnum = (end == cpu_full_name.size()) || !std::isalnum((unsigned char)cpu_full_name[end]);
+            // Make sure best matches as a whole token, not just as a substring
+            if (best && best_pos != std::string::npos) {
+                size_t pos = best_pos;
+                size_t end = pos + best_len;
 
-            if (best && left_isalnum && right_isalnum) {
-                unsigned expected = best->threads;
-                unsigned actual = memo::threadcount::fetch();
-                debug("XEON_THREAD_MISMATCH: Expected threads -> ", expected);
-                return actual != expected;
+                auto isAsciiAlphaNum = [](char c)->bool {
+                    const unsigned char uc = static_cast<unsigned char>(c);
+                    return (uc >= '0' && uc <= '9') || (uc >= 'A' && uc <= 'Z') || (uc >= 'a' && uc <= 'z');
+                };
+
+                const bool left_ok = (pos == 0) || !isAsciiAlphaNum(cpu_full_name[pos - 1]);
+                const bool right_ok = (end == cpu_full_name.size()) || !isAsciiAlphaNum(cpu_full_name[end]);
+
+                if (left_ok && right_ok) {
+                    const unsigned expected = best->threads;
+                    const unsigned actual = memo::threadcount::fetch();
+                    debug("XEON_THREAD_MISMATCH: Expected threads -> ", expected);
+                    return actual != expected;
+                }
             }
-    
+
             return false;
         #endif
     }
@@ -4180,30 +4202,41 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             const ThreadEntry* best = nullptr;
             size_t best_len = 0;
+            size_t best_pos = std::string::npos;
+
+            if (cpu_full_name.empty()) return false;
 
             for (size_t i = 0; i < thread_database_count; ++i) {
                 const char* key = thread_database[i].model;
-                size_t      len = std::strlen(key);
+                const size_t len = std::strlen(key);
 
-                if (len > best_len &&
-                    cpu_full_name.find(key) != std::string::npos)
-                {
+                const size_t p = cpu_full_name.find(key);
+                if (p != std::string::npos && len > best_len) {
                     best = &thread_database[i];
                     best_len = len;
+                    best_pos = p;
                 }
             }
 
-            // Make sure 'best' matches as a whole token, not just as a substring.
-            size_t pos = best ? cpu_full_name.find(best->model) : 0;
-            bool left_isalnum = (pos == 0) || !std::isalnum((unsigned char)cpu_full_name[pos - 1]);
-            size_t end = pos + best_len;
-            bool right_isalnum = (end == cpu_full_name.size()) || !std::isalnum((unsigned char)cpu_full_name[end]);
+            // Make sure best matches as a whole token, not just as a substring
+            if (best && best_pos != std::string::npos) {
+                size_t pos = best_pos;
+                size_t end = pos + best_len;
 
-            if (best && left_isalnum && right_isalnum) {
-                unsigned expected = best->threads;
-                unsigned actual = memo::threadcount::fetch();
-                debug("XEON_THREAD_MISMATCH: Expected threads -> ", expected);
-                return actual != expected;
+                auto isAsciiAlphaNum = [](char c)->bool {
+                    const unsigned char uc = static_cast<unsigned char>(c);
+                    return (uc >= '0' && uc <= '9') || (uc >= 'A' && uc <= 'Z') || (uc >= 'a' && uc <= 'z');
+                };
+
+                const bool left_ok = (pos == 0) || !isAsciiAlphaNum(cpu_full_name[pos - 1]);
+                const bool right_ok = (end == cpu_full_name.size()) || !isAsciiAlphaNum(cpu_full_name[end]);
+
+                if (left_ok && right_ok) {
+                    const unsigned expected = best->threads;
+                    const unsigned actual = memo::threadcount::fetch();
+                    debug("AMD_THREAD_MISMATCH: Expected threads -> ", expected);
+                    return actual != expected;
+                }
             }
 
             return false;
@@ -4372,6 +4405,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         _mm_mfence();
         u64 t1_split = __rdtscp(&aux);
 
+        // misaligned atomic ops on purpose
     #if (MSVC)
         #if (x86_64) 
                 _InterlockedIncrement64(misaligned_ptr);
@@ -4399,9 +4433,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const u64 split_cycles = t2_split - t1_split;
         debug("TIMER: Split-lock test -> ", split_cycles, " cycles");
 
-        constexpr u64 split_lock_threshold = 500000; // the hypervisor will intercept the split lock and pause the virtual CPU for approximately 10,000 microseconds
+        constexpr u64 split_lock_threshold = 500000; // the hypervisor will intercept the split lock and pause the virtual CPU for approximately 10000 microseconds
 
-        // A modern CPU operating at, for example, 4.0 GHz executes 4,000,000,000 cycles per second. A 10 millisecond delay would therefore be:
+        // A modern CPU operating at, for example, 4GHz executes 4,000,000,000 cycles per second. A 10 millisecond delay would therefore be:
         // (4000000000 cycles / sec) * (0.010 sec) = 40000000 cycles, so 500000 is acceptable
         if (split_cycles > split_lock_threshold) {
             SetThreadAffinityMask(hThread, prevMask);
@@ -4428,14 +4462,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             // important to not debug cycles by printing but with breakpoints and stack analysis, otherwise the CPU would cache and make the ratio much lower
             const u64 userCycles = t2 - t1;
             const u64 sysCycles = t3 - t2;
-
             const double ratio = double(sysCycles) / double(userCycles);
+
             ratios.push_back(ratio);
         }      
 
         std::sort(ratios.begin(), ratios.end());
         const double tscMedian = ratios[ratios.size() / 2]; // to minimize jittering due to kernel noise
-
         debug("TIMER: Median syscall/user-mode ratio -> ", tscMedian);
 
         if (tscMedian <= 8.5) return true;
@@ -5714,17 +5747,17 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::FIRMWARE
      */
     [[nodiscard]] static bool firmware() {
-    #if (WINDOWS)
-        #pragma pack(push, 1)
+#if (WINDOWS)
+#pragma pack(push, 1)
         typedef struct {
             char Signature[4];
             u32 Length;
             u8 Revision;
             // others not needed
         } ACPI_HEADER;
-        #pragma pack(pop)
+#pragma pack(pop)
 
-        #pragma pack(push,1)
+#pragma pack(push,1)
         typedef struct _FADT {
             UINT32  Signature;
             UINT32  Length;
@@ -5736,34 +5769,34 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             CHAR    AslCompilerId[4];
             UINT32  AslCompilerRevision;
 
-            UINT32  FirmwareCtrl;      
-            UINT32  Dsdt;                
-            UINT8   Reserved1;            
-            UINT8   PreferredPmProfile;  
-            UINT16  SciInterrupt;       
-            UINT32  SmiCommandPort;      
-            UINT8   AcpiEnable;          
-            UINT8   AcpiDisable;          
-            UINT8   S4BiosReq;           
-            UINT8   Reserved2;          
-            UINT32  PstateControl;       
-            UINT32  Pm1aEventBlock;      
-            UINT32  Pm1bEventBlock;      
-            UINT32  Pm1aControlBlock;   
-            UINT32  Pm1bControlBlock;     
-            UINT32  Pm2ControlBlock;     
-            UINT32  PmTimerBlock;        
-            UINT32  Gpe0Block;           
-            UINT32  Gpe1Block;            
-            UINT8   Pm1EventLength;      
-            UINT8   Pm1ControlLength;    
-            UINT8   Pm2ControlLength;    
-            UINT8   PmTimerLength;       
+            UINT32  FirmwareCtrl;
+            UINT32  Dsdt;
+            UINT8   Reserved1;
+            UINT8   PreferredPmProfile;
+            UINT16  SciInterrupt;
+            UINT32  SmiCommandPort;
+            UINT8   AcpiEnable;
+            UINT8   AcpiDisable;
+            UINT8   S4BiosReq;
+            UINT8   Reserved2;
+            UINT32  PstateControl;
+            UINT32  Pm1aEventBlock;
+            UINT32  Pm1bEventBlock;
+            UINT32  Pm1aControlBlock;
+            UINT32  Pm1bControlBlock;
+            UINT32  Pm2ControlBlock;
+            UINT32  PmTimerBlock;
+            UINT32  Gpe0Block;
+            UINT32  Gpe1Block;
+            UINT8   Pm1EventLength;
+            UINT8   Pm1ControlLength;
+            UINT8   Pm2ControlLength;
+            UINT8   PmTimerLength;
 
-            UINT16  P_Lvl2_Lat;           
-            UINT16  P_Lvl3_Lat;       
+            UINT16  P_Lvl2_Lat;
+            UINT16  P_Lvl3_Lat;
         } FADT, * PFADT;
-        #pragma pack(pop)
+#pragma pack(pop)
         constexpr DWORD ACPI_SIG = 'ACPI';
         constexpr DWORD HPET_SIG = 'TEPH';
 
@@ -5789,35 +5822,50 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         static_assert(targets.size() == brands_map.size(), "targets and brands_map must be the same length");
 
         auto scan_table = [&](const BYTE* buf, const size_t len) noexcept -> bool {
-            auto contains = [&](const char* pat, size_t patlen) {
-                return std::search(buf, buf + len, pat, pat + patlen) != (buf + len);
+            // faster than std::search because of a manual byte-by-byte loop, could be optimized further with Boyer-Moore-Horspool implementations for large firmware tables like DSDT
+            auto find_pattern = [&](const char* pat, size_t patlen) noexcept -> bool {
+                if (patlen == 0 || patlen > len) return false;
+                const unsigned char first = static_cast<unsigned char>(pat[0]);
+                const unsigned char* base = reinterpret_cast<const unsigned char*>(buf);
+                const unsigned char* search_ptr = base;
+                size_t remaining = len;
+
+                while (remaining >= patlen) {
+                    const void* m = memchr(search_ptr, first, remaining);
+                    if (!m) return false;
+                    const unsigned char* mptr = static_cast<const unsigned char*>(m);
+                    size_t idx = static_cast<size_t>(mptr - base);
+                    // ensure pattern fits
+                    if (idx + patlen > len) return false;
+                    if (memcmp(mptr, pat, patlen) == 0) return true;
+                    // advance one past this found first-byte and continue
+                    search_ptr = mptr + 1;
+                    remaining = len - static_cast<size_t>(search_ptr - base);
+                }
+                return false;
             };
 
-            // 1) VM-specific firmware signatures. It is extremely important that vm-specific checks run first to not give a false positive when hardened checks run
+            // 1) VM-specific firmware signatures. It is extremely important that vm-specific checks run first because of the hardened detection logic
             for (size_t ti = 0; ti < targets.size(); ++ti) {
                 const char* pat = targets[ti];
                 const size_t plen = strlen(pat);
                 if (plen > len) continue;
 
-                for (size_t i = 0; i + plen <= len; ++i) {
-                    if (buf[i] == static_cast<unsigned char>(pat[0]) &&
-                        memcmp(buf + i, pat, plen) == 0)
-                    {
-                        // special handling for Xen: must not have PXEN
-                        if (strcmp(pat, "Xen") == 0) {
-                            constexpr char pxen[] = "PXEN";
-                            constexpr size_t pxen_len = sizeof(pxen) - 1;
-                            const bool has_pxen = contains(pxen, pxen_len);
-                            if (!has_pxen)
-                                return core::add(brands::XEN);
-                            else
-                                continue;
-                        }
-
-                        debug("FIRMWARE: Detected ", pat);
-                        const char* brand = brands_map[ti];
-                        return (brand ? core::add(brand) : true);
+                if (find_pattern(pat, plen)) {
+                    // special handling for Xen: must not have PXEN to prevent false flagging some baremetal systems
+                    if (strcmp(pat, "Xen") == 0) {
+                        constexpr char pxen[] = "PXEN";
+                        constexpr size_t pxen_len = sizeof(pxen) - 1;
+                        const bool has_pxen = find_pattern(pxen, pxen_len);
+                        if (!has_pxen)
+                            return core::add(brands::XEN);
+                        else
+                            continue;
                     }
+
+                    debug("FIRMWARE: Detected ", pat);
+                    const char* brand = brands_map[ti];
+                    return (brand ? core::add(brand) : true);
                 }
             }
 
@@ -5825,11 +5873,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             constexpr char marker[] = "777777";
             constexpr size_t mlen = sizeof(marker) - 1;
             if (len >= mlen) {
-                for (size_t i = 0; i + mlen <= len; ++i) {
-                    if (memcmp(buf + i, marker, mlen) == 0) {
-                        return core::add(brands::VMWARE_HARD);
-                    }
+                if (find_pattern(marker, mlen)) {
+                    return core::add(brands::VMWARE_HARD);
                 }
+            }
+
+            if (!buf || len < sizeof(ACPI_HEADER)) {
+                return false;
             }
 
             ACPI_HEADER hdr;
@@ -5850,8 +5900,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 constexpr size_t tz_len = sizeof(tz_pat) - 1;
                 constexpr size_t pts_len = sizeof(pts_pat) - 1;
 
-                const bool has_tz = (len >= tz_len) && contains(tz_pat, tz_len);
-                const bool has_pts = (len >= pts_len) && contains(pts_pat, pts_len);
+                const bool has_tz = (len >= tz_len) && find_pattern(tz_pat, tz_len);
+                const bool has_pts = (len >= pts_len) && find_pattern(pts_pat, pts_len);
 
                 if (!has_tz || !has_pts) {
                     debug("FIRMWARE: ACPI missing thermal zones and/or PrepareToSleep information");
@@ -5865,8 +5915,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             const size_t short_len = sizeof(man_short) - 1;
             const size_t full_len = sizeof(man_full) - 1;
 
-            const bool has_short = contains(man_short, short_len);
-            const bool has_full = contains(man_full, full_len);
+            const bool has_short = find_pattern(man_short, short_len);
+            const bool has_full = find_pattern(man_full, full_len);
             if (has_short && !has_full) {
                 debug("FIRMWARE: Spoofed AMD manufacturer string detected");
                 return true;
@@ -5874,12 +5924,24 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             // 6) FADT specific checks
             if (memcmp(hdr.Signature, "FACP", 4) == 0) {
-                if (hdr.Revision < 4 || hdr.Length < 245) { // Most VMs use an older-style FADT of length 244  bytes (revision  3), cutting off before the Sleep Control/Status registers and Hypervisor ID
-                    debug("FIRMWARE: FACP indicates VM (rev ", int(hdr.Revision), "), ", "(length ", hdr.Length, ")");
+                if (hdr.Length > len) {
+                    debug("FIRMWARE: declared header length larger than fetched length (declared ", hdr.Length, ", fetched ", len, ")");
                     return true;
                 }
-                const FADT* fadt = reinterpret_cast<const FADT*>(buf);
-                if (fadt->P_Lvl2_Lat == 0x0FFF || fadt->P_Lvl3_Lat == 0x0FFF) { // A value > 100 indicates the system does not support a C2/C3 state
+                if (len < sizeof(FADT)) {
+                    debug("FIRMWARE: FACP buffer too small (len ", len, ")");
+                    return true;
+                }
+
+                FADT fadt;
+                memcpy(&fadt, buf, sizeof(FADT));
+
+                if (hdr.Revision < 4 || hdr.Length < 245) { // Most VMs use an older-style FADT of length 244 bytes (revision 3), cutting off before the Sleep Control/Status registers and Hypervisor ID 
+                    debug("FIRMWARE: FACP indicates VM (rev ", int(hdr.Revision), "), ", "(length ", hdr.Length, ")"); 
+                    return true;
+                }
+
+                if (fadt.P_Lvl2_Lat == 0x0FFF || fadt.P_Lvl3_Lat == 0x0FFF) { // A value > 100 indicates the system does not support a C2/C3 state
                     debug("FIRMWARE: C2 and C3 latencies indicate VM");
                     return true;
                 }
@@ -5967,12 +6029,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             if (EnumSystemFirmwareTables(prov, bufIDs.data(), e) != e) continue;
 
+            // even if alignment is supported on x86 its good to check if size is a multiple of DWORD
+            if (e % sizeof(DWORD) != 0) continue;
+
             DWORD cnt = e / sizeof(DWORD);
-            auto otherIDs = reinterpret_cast<DWORD*>(bufIDs.data());
+            // auto otherIDs = reinterpret_cast<DWORD*>(bufIDs.data());
             char provStr[5] = { 0 }; memcpy(provStr, &prov, 4);
 
             for (DWORD i = 0; i < cnt; ++i) {
-                DWORD tblID = otherIDs[i];
+                DWORD tblID;
+                memcpy(&tblID, bufIDs.data() + i * sizeof(DWORD), sizeof(DWORD));
                 UINT sz = GetSystemFirmwareTable(prov, tblID, nullptr, 0);
                 if (!sz) continue;
                 BYTE* buf = reinterpret_cast<BYTE*>(malloc(sz));
@@ -6149,214 +6215,228 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             #endif
 
         #elif (WINDOWS)
-            static const wchar_t* kRoots[] = {
-                L"SYSTEM\\CurrentControlSet\\Enum\\PCI",
-                L"SYSTEM\\CurrentControlSet\\Enum\\USB",
-                L"SYSTEM\\CurrentControlSet\\Enum\\HDAUDIO"
-            };
+        static const wchar_t* kRoots[] = {
+            L"SYSTEM\\CurrentControlSet\\Enum\\PCI",
+            L"SYSTEM\\CurrentControlSet\\Enum\\USB",
+            L"SYSTEM\\CurrentControlSet\\Enum\\HDAUDIO"
+        };
 
-            enum RootType { RT_PCI, RT_USB, RT_HDAUDIO };
-            constexpr DWORD MAX_MULTI_SZ = 64 * 1024;
+        enum RootType { RT_PCI, RT_USB, RT_HDAUDIO };
+        constexpr DWORD MAX_MULTI_SZ = 64 * 1024;
 
-            // Lambda #1: Process the hardware ID on an instance key,
-            // extract every (VID, DID) pair, and push into devices
-            auto processHardwareID = [&](HKEY hInst, RootType rootType) {
-                DWORD type = 0, cbData = 0;
-                LONG rv = RegGetValueW(
-                    hInst,
-                    nullptr,
-                    L"HardwareID",
-                    RRF_RT_REG_MULTI_SZ,
-                    &type,
-                    nullptr,
-                    &cbData
-                );
-                if (rv != ERROR_SUCCESS || type != REG_MULTI_SZ || cbData <= sizeof(wchar_t)) {
-                    return;
-                }
+        // Lambda #1: Process the hardware ID on an instance key,
+        // extract every (VID, DID) pair, and push into devices
+        auto processHardwareID = [&](HKEY hInst, RootType rootType) {
+            DWORD type = 0, cbData = 0;
+            LONG rv = RegGetValueW(
+                hInst,
+                nullptr,
+                L"HardwareID",
+                RRF_RT_REG_MULTI_SZ,
+                &type,
+                nullptr,
+                &cbData
+            );
+            if (rv != ERROR_SUCCESS || type != REG_MULTI_SZ || cbData <= sizeof(wchar_t)) {
+                return;
+            }
 
-                if (cbData > MAX_MULTI_SZ) {
-                    debug("PCI_DEVICES: HardwareID size too large: ", cbData);
-                    return;
-                }
+            if (cbData > MAX_MULTI_SZ) {
+                debug("PCI_DEVICES: HardwareID size too large: ", cbData);
+                return;
+            }
 
-                // allocate a buffer large enough to hold the entire MULTI_SZ
-                std::vector<wchar_t> buf(cbData / sizeof(wchar_t));
-                rv = RegGetValueW(
-                    hInst,
-                    nullptr,
-                    L"HardwareID",
-                    RRF_RT_REG_MULTI_SZ,
-                    nullptr,
-                    buf.data(),
-                    &cbData
-                );
-                if (rv != ERROR_SUCCESS) {
-                    return;
-                }
+            // allocate a buffer large enough to hold the entire MULTI_SZ
+            std::vector<wchar_t> buf((cbData / sizeof(wchar_t)) + 1);
+            // ensure there is a terminating wchar_t in case the registry data is malformed (extremely rare tbh)
+            buf.back() = L'\0';
+            rv = RegGetValueW(
+                hInst,
+                nullptr,
+                L"HardwareID",
+                RRF_RT_REG_MULTI_SZ,
+                nullptr,
+                buf.data(),
+                &cbData
+            );
+            if (rv != ERROR_SUCCESS) {
+                return;
+            }
+            // guarantee a terminating NUL at the end of the retrieved data
+            size_t wcharCount = cbData / sizeof(wchar_t);
+            if (wcharCount < buf.size()) {
+                buf[wcharCount] = L'\0';
+            }
+            else {
+                buf.back() = L'\0';
+            }
 
-                // iterate over each null-terminated string inside the MULTI_SZ
-                for (wchar_t* p = buf.data(); *p; p += wcslen(p) + 1) {
-                    wchar_t* s = p;
-                    wchar_t* v = nullptr;
-                    wchar_t* d = nullptr;
-                    u16  vid = 0;
-                    u32  did = 0;
-                    bool      ok = false;
+            // iterate over each null-terminated string inside the MULTI_SZ
+            for (wchar_t* p = buf.data(); *p; p += wcslen(p) + 1) {
+                wchar_t* s = p;
+                wchar_t* v = nullptr;
+                wchar_t* d = nullptr;
+                u16  vid = 0;
+                u32  did = 0;
+                bool      ok = false;
 
-                    if (rootType == RT_USB) {
-                        // USB: VID_ and then PID_ after it
-                        v = wcsstr(s, L"VID_");
-                        if (v) {
-                            d = wcsstr(v + 4, L"PID_");
-                        }
-                        if (v && d) {
-                            swscanf_s(v + 4, L"%4hx", &vid);
-                            swscanf_s(d + 4, L"%x", &did);
+                if (rootType == RT_USB) {
+                    // USB: VID_ and then PID_ after it
+                    v = wcsstr(s, L"VID_");
+                    if (v) {
+                        d = wcsstr(v + 4, L"PID_");
+                    }
+                    if (v && d) {
+                        int rv1 = swscanf_s(v + 4, L"%4hx", &vid);
+                        int rv2 = swscanf_s(d + 4, L"%x", &did);
+                        if (rv1 == 1 && rv2 == 1) {
                             ok = true;
                         }
                     }
-                    else {
-                        // PCI or HDAUDIO: VEN_ and then DEV_ after it
-                        v = wcsstr(s, L"VEN_");
-                        if (v) {
-                            d = wcsstr(v + 4, L"DEV_");
+                }
+                else {
+                    // PCI or HDAUDIO: VEN_ and then DEV_ after it
+                    v = wcsstr(s, L"VEN_");
+                    if (v) {
+                        d = wcsstr(v + 4, L"DEV_");
+                    }
+                    if (v && d) {
+                        int r1 = swscanf_s(v + 4, L"%4hx", &vid);
+                        if (r1 != 1) {
+                            // failed to parse vendor id
+                            continue;
                         }
-                        if (v && d) {
-                            // parse exactly 4 hex digits for Vendor ID
-                            swscanf_s(v + 4, L"%4hx", &vid);
 
-                            // dev ID may be up to 8 hex digits (PCI) or exactly 4 (HDAUDIO)
-                            wchar_t* devStart = d + 4;
-                            wchar_t* ampAfterDev = wcschr(devStart, L'&');
+                        // dev ID may be up to 8 hex digits (PCI) or exactly 4 (HDAUDIO)
+                        wchar_t* devStart = d + 4;
+                        wchar_t* ampAfterDev = wcschr(devStart, L'&');
 
+                        // create a temporary string for the device field to avoid mutating the buffer
+                        size_t devLen = ampAfterDev ? (ampAfterDev - devStart) : wcslen(devStart);
+                        std::wstring devStr(devStart, devLen);
+
+                        try {
+                            unsigned long parsed = std::stoul(devStr, nullptr, 16);
                             if (rootType == RT_HDAUDIO) {
-                                // HDAUDIO: 4-digit device ID; stop at '&' if present
-                                if (ampAfterDev) {
-                                    *ampAfterDev = L'\0';
-                                    swscanf_s(devStart, L"%4x", &did);
-                                    *ampAfterDev = L'&';
+                                if (parsed > 0xFFFF) {
+                                    continue;
                                 }
-                                else {
-                                    swscanf_s(devStart, L"%4x", &did);
-                                }
+                                did = static_cast<u32>(parsed);
                             }
                             else {
-                                // PCI: up to 8-digit device ID; stop at '&' if present
-                                if (ampAfterDev) {
-                                    *ampAfterDev = L'\0';
-                                    swscanf_s(devStart, L"%8x", &did);
-                                    *ampAfterDev = L'&';
+                                if (parsed > 0xFFFFFFFF) {
+                                    continue;
                                 }
-                                else {
-                                    swscanf_s(devStart, L"%8x", &did);
-                                }
+                                did = static_cast<u32>(parsed);
                             }
-
                             ok = true;
                         }
-                    }
-
-                    if (ok) {
-                        devices.push_back({ vid, did });
+                        catch (...) {
+                            continue;
+                        }
                     }
                 }
-            };
 
-            // Lambda #2: all instance subkeys under a given device key,
-            // and for each instance, open it and call processHardwareID()
-            auto enumInstances = [&](HKEY hDev, RootType rootType) {
-                for (DWORD j = 0;; ++j) {
-                    wchar_t instName[256];
-                    DWORD   cbInst = _countof(instName);
-                    LONG    st2 = RegEnumKeyExW(
-                        hDev,
-                        j,
-                        instName,
-                        &cbInst,
-                        nullptr,
-                        nullptr,
-                        nullptr,
-                        nullptr
-                    );
-                    if (st2 == ERROR_NO_MORE_ITEMS) {
-                        break;
-                    }
-                    if (st2 != ERROR_SUCCESS) {
-                        continue;
-                    }
-
-                    HKEY hInst = nullptr;
-                    if (RegOpenKeyExW(hDev, instName, 0, KEY_READ, &hInst) != ERROR_SUCCESS) {
-                        continue;
-                    }
-
-                    processHardwareID(hInst, rootType);
-                    RegCloseKey(hInst);
+                if (ok) {
+                    devices.push_back({ vid, did });
                 }
-            };
+            }
+        };
 
-            // Lambda #3: all device subkeys under a given root key,
-            // open each device key, and call enumInstances()
-            auto enumDevices = [&](HKEY hRoot, RootType rootType) {
-                for (DWORD i = 0;; ++i) {
-                    wchar_t deviceName[256];
-                    DWORD   cbName = _countof(deviceName);
-                    LONG    status = RegEnumKeyExW(
-                        hRoot,
-                        i,
-                        deviceName,
-                        &cbName,
-                        nullptr,
-                        nullptr,
-                        nullptr,
-                        nullptr
-                    );
-                    if (status == ERROR_NO_MORE_ITEMS) {
-                        break;
-                    }
-                    if (status != ERROR_SUCCESS) {
-                        continue;
-                    }
-
-                    HKEY hDev = nullptr;
-                    if (RegOpenKeyExW(hRoot, deviceName, 0, KEY_READ, &hDev) != ERROR_SUCCESS) {
-                        continue;
-                    }
-
-                    enumInstances(hDev, rootType);
-                    RegCloseKey(hDev);
+        // Lambda #2: all instance subkeys under a given device key,
+        // and for each instance, open it and call processHardwareID()
+        auto enumInstances = [&](HKEY hDev, RootType rootType) {
+            for (DWORD j = 0;; ++j) {
+                wchar_t instName[256];
+                DWORD   cbInst = _countof(instName);
+                LONG    st2 = RegEnumKeyExW(
+                    hDev,
+                    j,
+                    instName,
+                    &cbInst,
+                    nullptr,
+                    nullptr,
+                    nullptr,
+                    nullptr
+                );
+                if (st2 == ERROR_NO_MORE_ITEMS) {
+                    break;
                 }
-            };
-
-            // for each rootPath we open the root key once, compute its RootType, then call enumDevices()
-            for (size_t rootIdx = 0; rootIdx < _countof(kRoots); ++rootIdx) {
-                const wchar_t* rootPath = kRoots[rootIdx];
-                HKEY hRoot = nullptr;
-                if (RegOpenKeyExW(
-                    HKEY_LOCAL_MACHINE,
-                    rootPath,
-                    0,
-                    KEY_READ,
-                    &hRoot
-                ) != ERROR_SUCCESS) {
+                if (st2 != ERROR_SUCCESS) {
                     continue;
                 }
 
-                RootType rootType;
-                if (wcscmp(rootPath, L"SYSTEM\\CurrentControlSet\\Enum\\USB") == 0) {
-                    rootType = RT_USB;
-                }
-                else if (wcscmp(rootPath, L"SYSTEM\\CurrentControlSet\\Enum\\HDAUDIO") == 0) {
-                    rootType = RT_HDAUDIO;
-                }
-                else {
-                    rootType = RT_PCI;
+                HKEY hInst = nullptr;
+                if (RegOpenKeyExW(hDev, instName, 0, KEY_READ, &hInst) != ERROR_SUCCESS) {
+                    continue;
                 }
 
-                enumDevices(hRoot, rootType);
-                RegCloseKey(hRoot);
+                processHardwareID(hInst, rootType);
+                RegCloseKey(hInst);
             }
+        };
+
+        // Lambda #3: all device subkeys under a given root key,
+        // open each device key, and call enumInstances()
+        auto enumDevices = [&](HKEY hRoot, RootType rootType) {
+            for (DWORD i = 0;; ++i) {
+                wchar_t deviceName[256];
+                DWORD   cbName = _countof(deviceName);
+                LONG    status = RegEnumKeyExW(
+                    hRoot,
+                    i,
+                    deviceName,
+                    &cbName,
+                    nullptr,
+                    nullptr,
+                    nullptr,
+                    nullptr
+                );
+                if (status == ERROR_NO_MORE_ITEMS) {
+                    break;
+                }
+                if (status != ERROR_SUCCESS) {
+                    continue;
+                }
+
+                HKEY hDev = nullptr;
+                if (RegOpenKeyExW(hRoot, deviceName, 0, KEY_READ, &hDev) != ERROR_SUCCESS) {
+                    continue;
+                }
+
+                enumInstances(hDev, rootType);
+                RegCloseKey(hDev);
+            }
+        };
+
+        // for each rootPath we open the root key once, compute its RootType, then call enumDevices()
+        for (size_t rootIdx = 0; rootIdx < _countof(kRoots); ++rootIdx) {
+            const wchar_t* rootPath = kRoots[rootIdx];
+            HKEY hRoot = nullptr;
+            if (RegOpenKeyExW(
+                HKEY_LOCAL_MACHINE,
+                rootPath,
+                0,
+                KEY_READ,
+                &hRoot
+            ) != ERROR_SUCCESS) {
+                continue;
+            }
+
+            RootType rootType;
+            if (wcscmp(rootPath, L"SYSTEM\\CurrentControlSet\\Enum\\USB") == 0) {
+                rootType = RT_USB;
+            }
+            else if (wcscmp(rootPath, L"SYSTEM\\CurrentControlSet\\Enum\\HDAUDIO") == 0) {
+                rootType = RT_HDAUDIO;
+            }
+            else {
+                rootType = RT_PCI;
+            }
+
+            enumDevices(hRoot, rootType);
+            RegCloseKey(hRoot);
+        }
         #endif
 
         for (auto& d : devices) {
@@ -7781,8 +7861,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             auto toupper_char = [](char c) -> char {
-                return (c >= 'a' && c <= 'z') ? (c - 'a' + 'A') : c;
-                };
+                return (c >= 'a' && c <= 'z') ? static_cast<char>(c - 'a' + 'A') : c;
+            };
 
             if (toupper_char(str[0]) != 'V' || toupper_char(str[1]) != 'B' || str[10] != '-') {
                 return false;
@@ -7791,7 +7871,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             auto is_hex = [&](char c) {
                 char upper_c = toupper_char(c);
                 return (upper_c >= '0' && upper_c <= '9') || (upper_c >= 'A' && upper_c <= 'F');
-                };
+            };
 
             static constexpr std::array<u8, 16> hex_positions = { {
                 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17, 18
@@ -7805,47 +7885,77 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return true;
         };
 
+        auto __strnlen = [](const char* s, size_t max) -> size_t {
+            const void* p = memchr(s, 0, max);
+            if (!p) return max;
+            return static_cast<size_t>(static_cast<const char*>(p) - s);
+        };
+
         for (u8 drive = 0; drive < MAX_PHYSICAL_DRIVES; ++drive) {
             wchar_t path[32];
             swprintf_s(path, L"\\\\.\\PhysicalDrive%u", drive);
 
-            auto handle_deleter = [](HANDLE h) { if (h != INVALID_HANDLE_VALUE) CloseHandle(h); };
-            std::unique_ptr<void, decltype(handle_deleter)> hDevice(
-                CreateFileW(path, 0, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr),
-                handle_deleter
+            HANDLE hDevice = CreateFileW(
+                path,
+                0,
+                FILE_SHARE_READ | FILE_SHARE_WRITE,
+                nullptr,
+                OPEN_EXISTING,
+                0,
+                nullptr
             );
 
-            if (hDevice.get() == INVALID_HANDLE_VALUE) {
+            if (hDevice == INVALID_HANDLE_VALUE) {
                 continue;
             }
-            successfulOpens++;
+            ++successfulOpens;
 
             BYTE stackBuf[512] = { 0 };
-            auto descriptor = reinterpret_cast<STORAGE_DEVICE_DESCRIPTOR*>(stackBuf);
+            STORAGE_DEVICE_DESCRIPTOR* descriptor = reinterpret_cast<STORAGE_DEVICE_DESCRIPTOR*>(stackBuf);
             DWORD bytesReturned = 0;
             STORAGE_PROPERTY_QUERY query{};
             query.PropertyId = StorageDeviceProperty;
             query.QueryType = PropertyStandardQuery;
 
-            auto buffer_deleter = [](BYTE* b) { if (b) LocalFree(b); };
-            std::unique_ptr<BYTE, decltype(buffer_deleter)> allocatedBuffer(nullptr, buffer_deleter);
+            BYTE* allocatedBuffer = nullptr;
+            SIZE_T allocatedSize = 0;
 
-            if (!DeviceIoControl(hDevice.get(), IOCTL_STORAGE_QUERY_PROPERTY,
-                &query, sizeof(query), stackBuf, sizeof(stackBuf),
-                &bytesReturned, nullptr)) {
-                // If it failed because the buffer was too small, allocate the required size and retry
-                if (GetLastError() == ERROR_INSUFFICIENT_BUFFER && descriptor->Size > 0) {
-                    allocatedBuffer.reset(static_cast<BYTE*>(LocalAlloc(LMEM_FIXED, descriptor->Size)));
-                    if (allocatedBuffer) {
-                        descriptor = reinterpret_cast<STORAGE_DEVICE_DESCRIPTOR*>(allocatedBuffer.get());
-                        if (!DeviceIoControl(hDevice.get(), IOCTL_STORAGE_QUERY_PROPERTY,
-                            &query, sizeof(query), descriptor, descriptor->Size,
-                            &bytesReturned, nullptr)) {
-                            continue; 
-                        }
+            bool ok = DeviceIoControl(
+                hDevice,
+                IOCTL_STORAGE_QUERY_PROPERTY,
+                &query, sizeof(query),
+                stackBuf, sizeof(stackBuf),
+                &bytesReturned,
+                nullptr
+            );
+
+            if (!ok) {
+                DWORD err = GetLastError();
+                // If stack buffer was too small, allocate reported size and retry
+                if (err == ERROR_INSUFFICIENT_BUFFER && descriptor->Size > 0) {
+                    allocatedSize = static_cast<SIZE_T>(descriptor->Size);
+                    allocatedBuffer = static_cast<BYTE*>(LocalAlloc(LMEM_FIXED, allocatedSize));
+                    if (!allocatedBuffer) {
+                        CloseHandle(hDevice);
+                        continue; // allocation failed, next drive
+                    }
+                    descriptor = reinterpret_cast<STORAGE_DEVICE_DESCRIPTOR*>(allocatedBuffer);
+                    if (!DeviceIoControl(
+                        hDevice,
+                        IOCTL_STORAGE_QUERY_PROPERTY,
+                        &query, sizeof(query),
+                        descriptor, static_cast<DWORD>(allocatedSize),
+                        &bytesReturned,
+                        nullptr))
+                    {
+                        LocalFree(allocatedBuffer);
+                        CloseHandle(hDevice);
+                        continue;
                     }
                 }
                 else {
+                    // other weird failure
+                    CloseHandle(hDevice);
                     continue;
                 }
             }
@@ -7853,19 +7963,30 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             const u32 serialOffset = descriptor->SerialNumberOffset;
             if (serialOffset > 0 && serialOffset < descriptor->Size) {
                 const char* serial = reinterpret_cast<const char*>(descriptor) + serialOffset;
-                const size_t maxAvail = descriptor->Size - static_cast<size_t>(serialOffset);
-                const size_t serialLen = strnlen(serial, maxAvail);
+                const size_t maxAvail = static_cast<size_t>(descriptor->Size) - static_cast<size_t>(serialOffset);
+                const size_t serialLen = __strnlen(serial, maxAvail);
 
                 debug("DISK_SERIAL: ", serial);
 
                 if (is_qemu_serial(serial) || is_vbox_serial(serial, serialLen)) {
+                    if (allocatedBuffer) {
+                        LocalFree(allocatedBuffer);
+                        allocatedBuffer = nullptr;
+                    }
+                    CloseHandle(hDevice);
                     return true;
                 }
             }
+
+            if (allocatedBuffer) {
+                LocalFree(allocatedBuffer);
+                allocatedBuffer = nullptr;
+            }
+            CloseHandle(hDevice);
         } 
 
         if (successfulOpens == 0) {
-            debug("DISK_SERIAL: No physical drives detected");
+            debug("DISK_SERIAL: No physical drives detected", "");
             return true;
         }
 
@@ -8420,7 +8541,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         // baremetal tokens
         static constexpr const wchar_t* excluded_tokens[] = {
-            L"GFX", L"PEGP", L"PEG"
+            L"GFX",
+            L"IGD", L"IGFX", L"IGPU",
+            L"VGA", L"VIDEO", L"DISPLAY", L"GPU",
+            L"PCIROOT", L"PNP0A03", L"PNP0A08",
+            L"PCH", L"PXS", L"PEG", L"PEGP"
         };
         auto has_excluded_token = [&](const std::wstring& s) noexcept {
             for (auto tok : excluded_tokens) {
@@ -8471,7 +8596,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             bool foundQemu = false;
 
             for (auto& wstr : paths) {
-                // Skip this path entirely if it contains an excluded token
                 if (has_excluded_token(wstr)) {
                     debug("ACPI_SIGNATURE: Excluded signature -> ", wstr);
                     continue;
@@ -8509,7 +8633,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 // 2) detect any other ACPI(Sxx) segments (hex digits only)
                 const wchar_t paren[] = L"ACPI(";
                 size_t scan = 0;
-                // we'll operate on a local wstring_view copy
                 wstring_view local_vw = vw;
                 while (true) {
                     const size_t p = local_vw.find(paren);
@@ -10589,8 +10712,8 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         std::make_pair(VM::SLDT, VM::core::technique(50, VM::sldt)),
         std::make_pair(VM::SMSW, VM::core::technique(50, VM::smsw)),
         std::make_pair(VM::DRIVERS, VM::core::technique(100, VM::drivers)),
-        std::make_pair(VM::REGISTRY_VALUES, VM::core::technique(50, VM::registry_values)),
-        std::make_pair(VM::REGISTRY_KEYS, VM::core::technique(50, VM::registry_keys)),
+        std::make_pair(VM::REGISTRY_VALUES, VM::core::technique(30, VM::registry_values)),
+        std::make_pair(VM::REGISTRY_KEYS, VM::core::technique(30, VM::registry_keys)),
         std::make_pair(VM::LOGICAL_PROCESSORS, VM::core::technique(30, VM::logical_processors)),
         std::make_pair(VM::PHYSICAL_PROCESSORS, VM::core::technique(50, VM::physical_processors)),
         std::make_pair(VM::DEVICE_HANDLES, VM::core::technique(100, VM::device_handles)),
