@@ -56,10 +56,10 @@
  * - struct for internal cpu operations        => line 717
  * - struct for internal memoization           => line 1054
  * - struct for internal utility functions     => line 1184
- * - struct for internal core components       => line 9081
- * - start of VM detection technique list      => line 2043
- * - start of public VM detection functions    => line 9573
- * - start of externally defined variables     => line 10564
+ * - struct for internal core components       => line 9090
+ * - start of VM detection technique list      => line 2052
+ * - start of public VM detection functions    => line 9582
+ * - start of externally defined variables     => line 10573
  *
  *
  * ============================== EXAMPLE ===================================
@@ -1407,26 +1407,35 @@ private:
         // debug_msg / core_debug_msg
         template <typename... Args>
         static inline void debug_msg(Args&&... message) noexcept {
+            static std::unordered_set<std::string> printed_messages;
+
+            std::stringstream ss;
+            print_to_stream(ss, std::forward<Args>(message)...);
+            std::string msg_content = ss.str();
+
+            if (printed_messages.find(msg_content) == printed_messages.end()) {
 #if (LINUX || APPLE)
-            constexpr const char* black_bg = "\x1B[48;2;0;0;0m";
-            constexpr const char* bold = "\033[1m";
-            constexpr const char* blue = "\x1B[38;2;00;59;193m";
-            constexpr const char* ansiexit = "\x1B[0m";
+                constexpr const char* black_bg = "\x1B[48;2;0;0;0m";
+                constexpr const char* bold = "\033[1m";
+                constexpr const char* blue = "\x1B[38;2;00;59;193m";
+                constexpr const char* ansiexit = "\x1B[0m";
 
-            std::cout.setf(std::ios::fixed, std::ios::floatfield);
-            std::cout.setf(std::ios::showpoint);
+                std::cout.setf(std::ios::fixed, std::ios::floatfield);
+                std::cout.setf(std::ios::showpoint);
 
-            std::cout << black_bg
-                << bold << "["
-                << blue << "DEBUG"
-                << ansiexit << bold << black_bg << "]"
-                << ansiexit << " ";
+                std::cout << black_bg
+                    << bold << "["
+                    << blue << "DEBUG"
+                    << ansiexit << bold << black_bg << "]"
+                    << ansiexit << " ";
 #else
-            std::cout << "[DEBUG] ";
+                std::cout << "[DEBUG] ";
 #endif
+                std::cout << msg_content;
+                std::cout << std::dec << "\n";
 
-            print_to_stream(std::cout, std::forward<Args>(message)...);
-            std::cout << std::dec << "\n";
+                printed_messages.insert(std::move(msg_content));
+            }
         }
 
         template <typename... Args>
