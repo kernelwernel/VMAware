@@ -52,14 +52,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 533
- * - struct for internal cpu operations        => line 717
- * - struct for internal memoization           => line 1054
- * - struct for internal utility functions     => line 1184
- * - struct for internal core components       => line 9090
- * - start of VM detection technique list      => line 2052
- * - start of public VM detection functions    => line 9582
- * - start of externally defined variables     => line 10573
+ * - enums for publicly accessible techniques  => line 534
+ * - struct for internal cpu operations        => line 718
+ * - struct for internal memoization           => line 1055
+ * - struct for internal utility functions     => line 1185
+ * - struct for internal core components       => line 9371
+ * - start of VM detection technique list      => line 2053
+ * - start of public VM detection functions    => line 9863
+ * - start of externally defined variables     => line 10854
  *
  *
  * ============================== EXAMPLE ===================================
@@ -361,6 +361,7 @@
 #include <bitset>
 #include <type_traits>
 #include <numeric>
+#include <set>
 
 #if (WINDOWS)
     #include <windows.h>
@@ -5930,6 +5931,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 debug("FIRMWARE: Spoofed AMD manufacturer string detected");
                 return true;
             }
+            else if (has_full && !cpu::is_amd()) {
+                debug("FIRMWARE: Spoofed AMD manufacturer");
+                return true;
+            }
 
             // 6) FADT specific checks
             if (memcmp(hdr.Signature, "FACP", 4) == 0) {
@@ -8698,7 +8703,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     #if (x86)
         // when a single-step (TF) and hardware breakpoint (DR0) collide, Intel CPUs set both DR6.BS and DR6.B0 to report both events, which help make this detection trick
         // AMD CPUs prioritize the breakpoint, setting only its corresponding bit in DR6 and clearing the single-step bit, which is why this technique is not compatible with AMD
-
         if (!cpu::is_intel()) {
             return false;
         }
@@ -9000,7 +9004,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::BOOT_LOGO
      */
     [[nodiscard]] static bool boot_logo() {
-#if (x86_64 && !CLANG)
+    #if (x86_64 && !CLANG)
         const HMODULE ntdll = GetModuleHandle(_T("ntdll.dll"));
         if (!ntdll)
             return false;
@@ -9076,6 +9080,284 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     #else
         return false;
     #endif
+    }
+
+
+    /**
+     * @brief Check for passthroughed SSDT tables
+     * @category Windows
+     * @author Requiem (https://github.com/NotRequiem)
+     * @implements VM::SSDT_PASSTHROUGH
+     */
+    [[nodiscard]] static bool ssdt_passthrough() {
+        // not documented, under development
+        using BYTE = unsigned char;
+        using DWORDu = unsigned int;
+
+        struct ExternalRef {
+            std::string name;
+            size_t offset;
+            BYTE ext_type;
+        };
+
+        const auto read_pkg_length = [](const BYTE* buf, size_t len, size_t& idx, u32& out_len) -> bool {
+            if (idx >= len) return false;
+            BYTE lead = buf[idx++];
+            const u32 byteCount = (lead >> 6) & 0x3;
+            u32 value = lead & 0x3F;
+            if (byteCount == 0) {
+                out_len = value;
+                return true;
+            }
+            value = lead & 0x0F;
+            u32 shift = 4;
+            for (u32 i = 0; i < byteCount; ++i) {
+                if (idx >= len) return false;
+                value |= (u32(buf[idx++]) << shift);
+                shift += 8;
+            }
+            out_len = value;
+            return true;
+        };
+
+        const auto read_nameseg = [](const BYTE* buf, size_t len, size_t idx, std::string& seg) -> bool {
+            if (idx + 4 > len) return false;
+            seg.clear();
+            for (int i = 0; i < 4; ++i) {
+                char c = char(buf[idx + i]);
+                if (c == '\0') c = '_';
+                seg.push_back(c);
+            }
+            while (!seg.empty() && seg.back() == '_') seg.pop_back();
+            if (seg.empty()) seg = "_";
+            return true;
+        };
+
+        const auto parse_namestring = [&](const BYTE* buf, size_t len, size_t& idx) -> std::string {
+            if (idx >= len) return "";
+            size_t i = idx;
+            std::string out;
+            if (i < len && buf[i] == 0x5C) { out.push_back('\\'); ++i; }
+            else {
+                while (i < len && buf[i] == 0x5E) { out.push_back('^'); ++i; }
+            }
+            if (i >= len) { idx = i; return out; }
+            std::vector<std::string> segs;
+            BYTE b = buf[i];
+            if (b == 0x00) { ++i; idx = i; return out; }
+            else if (b == 0x2E) {
+                ++i; if (i + 8 > len) { idx = i; return ""; }
+                std::string s1, s2;
+                read_nameseg(buf, len, i, s1); read_nameseg(buf, len, i + 4, s2);
+                segs.push_back(s1); segs.push_back(s2);
+                i += 8;
+            }
+            else if (b == 0x2F) {
+                ++i; if (i >= len) { idx = i; return ""; }
+                const u8 segCount = buf[i++];
+                if (i + size_t(segCount) * 4 > len) { idx = i; return ""; }
+                for (u8 s = 0; s < segCount; ++s) {
+                    std::string seg;
+                    read_nameseg(buf, len, i + s * 4, seg);
+                    segs.push_back(seg);
+                }
+                i += size_t(segCount) * 4;
+            }
+            else {
+                if (i + 4 > len) { idx = i; return ""; }
+                std::string seg;
+                read_nameseg(buf, len, i, seg);
+                segs.push_back(seg);
+                i += 4;
+            }
+            std::string segments_part;
+            for (size_t si = 0; si < segs.size(); ++si) {
+                if (si > 0) segments_part.push_back('.');
+                segments_part += segs[si];
+            }
+            if (out == "\\" && !segments_part.empty()) { out += segments_part; }
+            else if (!out.empty() && !segments_part.empty() && out.back() != '^') { out.push_back('.'); out += segments_part; }
+            else { out += segments_part; }
+            idx = i;
+            return out;
+        };
+
+        const auto normalize_name = [](const std::string& raw) -> std::string {
+            std::string out;
+            for (char c : raw) {
+                unsigned char uc = static_cast<unsigned char>(c);
+                if (uc >= 'a' && uc <= 'z') {
+                    out.push_back(char(uc - 'a' + 'A'));
+                }
+                else {
+                    out.push_back(char(uc));
+                }
+            }
+            return out;
+        };
+
+        const auto combine_paths = [](const std::string& current_scope, const std::string& raw_name_str) -> std::string {
+            if (raw_name_str.empty()) return current_scope;
+            if (raw_name_str[0] == '\\') return raw_name_str;
+            std::string scope = current_scope;
+            size_t name_idx = 0;
+            while (name_idx < raw_name_str.length() && raw_name_str[name_idx] == '^') {
+                if (scope.length() > 1) {
+                    size_t last_dot = scope.find_last_of('.');
+                    if (last_dot != std::string::npos) { scope.resize(last_dot); }
+                    else { scope = "\\"; }
+                }
+                name_idx++;
+            }
+            const std::string name_part = raw_name_str.substr(name_idx);
+            if (name_part.empty()) return scope;
+            if (scope == "\\") return scope + name_part;
+            return scope + "." + name_part;
+        };
+
+        std::function<void(const BYTE*, size_t, size_t, const std::string&, std::set<std::string>*, std::vector<ExternalRef>*)> parse_aml_scope;
+        parse_aml_scope =
+            [&](const BYTE* buf, size_t start_offset, size_t end_offset, const std::string& current_scope, std::set<std::string>* out_names, std::vector<ExternalRef>* out_externals) {
+            size_t i = start_offset;
+            while (i < end_offset) {
+                size_t op_start = i;
+                BYTE op = buf[i];
+                bool is_scope_op = false;
+                if (op == 0x10 || op == 0x14) { is_scope_op = true; }
+                else if (op == 0x5B && i + 1 < end_offset) {
+                    const BYTE ext_op = buf[i + 1];
+                    if (ext_op >= 0x80 && ext_op <= 0x8F) { is_scope_op = true; }
+                }
+                if (is_scope_op) {
+                    size_t j = op_start + (op == 0x5B ? 2 : 1);
+                    const size_t pkg_len_start_for_calc = j;
+                    u32 pkgLen = 0;
+                    if (!read_pkg_length(buf, end_offset, j, pkgLen)) { i = j; continue; }
+                    size_t scope_end = pkg_len_start_for_calc + pkgLen;
+                    if (scope_end > end_offset) scope_end = end_offset;
+                    const std::string raw_name = parse_namestring(buf, scope_end, j);
+                    const std::string new_scope_full_name = combine_paths(current_scope, raw_name);
+                    if (out_names && !new_scope_full_name.empty()) {
+                        out_names->insert(normalize_name(new_scope_full_name));
+                    }
+                    size_t body_start = j;
+                    if (op == 0x14) { if (body_start < scope_end) body_start++; }
+                    if (body_start < scope_end) {
+                        parse_aml_scope(buf, body_start, scope_end, new_scope_full_name, out_names, out_externals);
+                    }
+                    i = scope_end;
+                }
+                else if (op == 0x08) {
+                    i++; const std::string raw_name = parse_namestring(buf, end_offset, i);
+                    if (out_names && !raw_name.empty()) {
+                        out_names->insert(normalize_name(combine_paths(current_scope, raw_name)));
+                    }
+                }
+                else if (op == 0x15) {
+                    i++; std::string raw_name = parse_namestring(buf, end_offset, i);
+                    if (out_externals && !raw_name.empty()) {
+                        if (i < end_offset) {
+                            const BYTE objType = buf[i];
+                            if (objType <= 0x1F) {
+                                out_externals->push_back({ normalize_name(combine_paths(current_scope, raw_name)), op_start, objType });
+                            }
+                        }
+                    }
+                    if (i < end_offset) i++;
+                }
+                else { i = op_start + (op == 0x5B ? 2 : 1); }
+            }
+        };
+
+        const auto collect_namesegs_from_raw = [&](const BYTE* buf, size_t buf_len, std::set<std::string>& out_names) {
+            const size_t header_len = 36;
+            for (size_t i = header_len; i + 4 <= buf_len; ++i) {
+                bool ok = true; std::string s;
+                for (size_t k = 0; k < 4; ++k) {
+                    unsigned char c = buf[i + k];
+                    if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_') { s.push_back(char(c)); }
+                    else { ok = false; break; }
+                }
+                if (ok) { std::string n = normalize_name(s); if (!n.empty()) out_names.insert(n); }
+            }
+        };
+
+        const auto extract_defined_names_from_table = [&](const BYTE* buf, size_t buf_len, std::set<std::string>& out_names) {
+            const size_t header_len = 36;
+            if (buf_len > header_len) { parse_aml_scope(buf, header_len, buf_len, "\\", &out_names, nullptr); }
+            collect_namesegs_from_raw(buf, buf_len, out_names);
+        };
+
+        const auto extract_externals_from_table = [&](const BYTE* buf, size_t buf_len, std::vector<ExternalRef>& out_externals) {
+            const size_t header_len = 36;
+            if (buf_len > header_len) { parse_aml_scope(buf, header_len, buf_len, "\\", nullptr, &out_externals); }
+        };
+
+        const auto sig4_from_bytes = [](const BYTE* b) -> std::string {
+            char s[5] = { 0 }; s[0] = (char)b[0]; s[1] = (char)b[1]; s[2] = (char)b[2]; s[3] = (char)b[3];
+            return std::string(s);
+        };
+
+        std::set<std::string> dsdt_names;
+
+        // ACPI names that are globally available
+        const std::vector<std::string> predefined = { "\\_GPE", "\\_PR_", "\\_SB_", "\\_SI_", "\\_TZ_", "\\OSYS", "\\_OSI", "\\_OS_", "\\_REV" };
+        for (const auto& name : predefined) {
+            dsdt_names.insert(normalize_name(name));
+        }
+
+        constexpr DWORDu ACPI_SIG = 'ACPI';
+        {
+            constexpr DWORD DSDT_SIG = 'DSDT';
+            constexpr DWORDu DSDT_SWAPPED = ((DSDT_SIG >> 24) & 0x000000FFu) | ((DSDT_SIG >> 8) & 0x0000FF00u) | ((DSDT_SIG << 8) & 0x00FF0000u) | ((DSDT_SIG << 24) & 0xFF000000u);
+            const UINT sz = GetSystemFirmwareTable(ACPI_SIG, DSDT_SWAPPED, nullptr, 0);
+            if (sz > 0) {
+                std::vector<BYTE> dsdtBuf(sz);
+                if (GetSystemFirmwareTable(ACPI_SIG, DSDT_SWAPPED, dsdtBuf.data(), sz) == sz) {
+                    extract_defined_names_from_table(dsdtBuf.data(), dsdtBuf.size(), dsdt_names);
+                }
+            }
+            else {
+                return false;
+            }
+        }
+
+        const UINT enumSize = EnumSystemFirmwareTables(ACPI_SIG, nullptr, 0);
+        if (enumSize == 0) {
+            return true;
+        }
+        std::vector<BYTE> enumBuf(enumSize);
+        if (EnumSystemFirmwareTables(ACPI_SIG, enumBuf.data(), enumSize) != enumSize) {
+            return false;
+        }
+
+        const size_t count = enumSize / 4;
+        for (size_t i = 0; i < count; ++i) {
+            const BYTE* entry = enumBuf.data() + i * 4;
+            const std::string tsig = sig4_from_bytes(entry);
+
+            if (tsig == "SSDT") {
+                const DWORDu tableId = *(DWORDu*)(entry);
+                const UINT sz = GetSystemFirmwareTable(ACPI_SIG, tableId, nullptr, 0);
+                if (sz == 0) continue;
+                std::vector<BYTE> tbuf(sz);
+                if (GetSystemFirmwareTable(ACPI_SIG, tableId, tbuf.data(), sz) != sz) continue;
+
+                std::vector<ExternalRef> externals;
+                extract_externals_from_table(tbuf.data(), tbuf.size(), externals);
+
+                for (const auto& er : externals) {
+                    if (er.name.empty()) continue;
+                    if (dsdt_names.find(er.name) == dsdt_names.end()) {
+                        debug("MISSING: External '", er.name,"' at offset 0x", std::hex, er.offset, std::dec
+                            , " (type=0x", std::hex, int(er.ext_type), std::dec, ") in an SSDT.");
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
     }
     // ADD NEW TECHNIQUE FUNCTION HERE
 #endif
