@@ -56,10 +56,10 @@
  * - struct for internal cpu operations        => line 718
  * - struct for internal memoization           => line 1055
  * - struct for internal utility functions     => line 1185
- * - struct for internal core components       => line 9371
+ * - struct for internal core components       => line 9377
  * - start of VM detection technique list      => line 2053
- * - start of public VM detection functions    => line 9863
- * - start of externally defined variables     => line 10854
+ * - start of public VM detection functions    => line 9869
+ * - start of externally defined variables     => line 10860
  *
  *
  * ============================== EXAMPLE ===================================
@@ -4331,11 +4331,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // Case A - Hypervisor without RDTSC patch
         auto cpuid = [&]() -> u64 {
             _mm_lfence();
-            u64 t1 = __rdtsc();
+            const u64 t1 = __rdtsc();
 
             u32 a, b, c, d;
             cpu::cpuid(a, b, c, d, 0);
-            u64 t2 = __rdtsc();
+            const u64 t2 = __rdtsc();
 
             return t2 - t1;
         };
@@ -4439,7 +4439,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     #endif
 
         // newer Intel CPUs introduced a feature to detect split locks and raise an exception
-        u64 t2_split = __rdtscp(&aux);
+        const u64 t2_split = __rdtscp(&aux);
         const u64 split_cycles = t2_split - t1_split;
         debug("TIMER: Split-lock test -> ", split_cycles, " cycles");
 
@@ -4467,7 +4467,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             t2 = __rdtscp(&aux);
 
             CloseHandle(INVALID_HANDLE_VALUE); // kernel syscall
-            const u64 t3 = __rdtscp(&aux); // on modern Intel and AMD CPUs the TSC is "invariant" (doesn’t change with P-states or C-states)
+            const u64 t3 = __rdtscp(&aux); // on modern Intel and AMD CPUs the TSC is "invariant" (doesn't change with P-states or C-states)
 
             // important to not debug cycles by printing but with breakpoints and stack analysis, otherwise the CPU would cache and make the ratio much lower
             const u64 userCycles = t2 - t1;
@@ -4482,7 +4482,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         debug("TIMER: Median syscall/user-mode ratio -> ", tscMedian);
 
         if (tscMedian <= 8.5) return true;
-        // TLB flushes or side channel cache attacks are not even tried due to how ineffective they are against hardened hypervisors
+        // TLB flushes or side channel cache attacks are not even tried due to how ineffective they are against stealthy  hypervisors
     #endif
         return false;
     #endif
@@ -5855,7 +5855,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return false;
             };
 
-            // 1) VM-specific firmware signatures. It is extremely important that vm-specific checks run first because of the hardened detection logic
+            // 1) VM-specific firmware signatures. It is important that vm-specific checks run first because of the hardened detection logic
             for (size_t ti = 0; ti < targets.size(); ++ti) {
                 const char* pat = targets[ti];
                 const size_t plen = strlen(pat);
@@ -6020,7 +6020,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return true;
         };
 
-        // Scan each ACPI table
+        // Scan every ACPI table, dont make explicit whitelisting/blacklisting because of possible bypasses
         for (auto tbl : tables) {
             BYTE* buf = nullptr; size_t len = 0;
             if (fetch(ACPI_SIG, tbl, buf, len)) {
@@ -8875,7 +8875,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 xor eax, eax
                 cpuid
 
-                // one extra instruction: on bare metal, TF’s single-step now fires here
+                // one extra instruction: on bare metal, TF's single-step now fires here
                 nop
 
                 pushfd
@@ -9003,8 +9003,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @author Teselka (https://github.com/Teselka)
      * @implements VM::BOOT_LOGO
      */
-    [[nodiscard]] static bool boot_logo() {
-    #if (x86_64 && !CLANG)
+    [[nodiscard]]
+    static bool boot_logo()
+    #if (CLANG || GCC)
+        __attribute__((__target__("crc32")))
+    #endif
+    {
+    #if (x86_64)
         const HMODULE ntdll = GetModuleHandle(_T("ntdll.dll"));
         if (!ntdll)
             return false;
@@ -9254,7 +9259,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     }
                 }
                 else if (op == 0x15) {
-                    i++; std::string raw_name = parse_namestring(buf, end_offset, i);
+                    i++; const std::string raw_name = parse_namestring(buf, end_offset, i);
                     if (out_externals && !raw_name.empty()) {
                         if (i < end_offset) {
                             const BYTE objType = buf[i];
