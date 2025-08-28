@@ -1714,7 +1714,7 @@ private:
 
 
         [[nodiscard]] static bool is_running_under_translator() {
-#if (_WIN32_WINNT >= _WIN32_WINNT_WIN10)
+#if (WINDOWS && _WIN32_WINNT >= _WIN32_WINNT_WIN10)
             USHORT procMachine = 0, nativeMachine = 0;
             auto pIsWow64Process2 = &IsWow64Process2;
             if (pIsWow64Process2(GetCurrentProcess(), &procMachine, &nativeMachine)) {
