@@ -52,14 +52,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 534
+ * - enums for publicly accessible techniques  => line 533
  * - struct for internal cpu operations        => line 719
  * - struct for internal memoization           => line 1056
  * - struct for internal utility functions     => line 1186
- * - struct for internal core components       => line 9580
- * - start of VM detection technique list      => line 2054
- * - start of public VM detection functions    => line 10072
- * - start of externally defined variables     => line 11064
+ * - struct for internal core components       => line 9800
+ * - start of VM detection technique list      => line 2076
+ * - start of public VM detection functions    => line 10292
+ * - start of externally defined variables     => line 11285
  *
  *
  * ============================== EXAMPLE ===================================
@@ -361,7 +361,6 @@
 #include <bitset>
 #include <type_traits>
 #include <numeric>
-#include <set>
 
 #if (WINDOWS)
     #include <windows.h>
@@ -569,6 +568,7 @@ public:
         BLOCKSTEP,
         DBVM,
         SSDT_PASSTHROUGH,
+        OBJECTS,
         BOOT_LOGO,
         
         // Linux and Windows
@@ -1714,16 +1714,38 @@ private:
 
 
         [[nodiscard]] static bool is_running_under_translator() {
-#if (WINDOWS && _WIN32_WINNT >= _WIN32_WINNT_WIN10)
+#if (_WIN32_WINNT >= _WIN32_WINNT_WIN10)
             USHORT procMachine = 0, nativeMachine = 0;
-            if (IsWow64Process2(GetCurrentProcess(), &procMachine, &nativeMachine)) {
+            auto pIsWow64Process2 = &IsWow64Process2;
+            if (pIsWow64Process2(GetCurrentProcess(), &procMachine, &nativeMachine)) {
                 if (nativeMachine == IMAGE_FILE_MACHINE_ARM64 &&
-                    (procMachine == IMAGE_FILE_MACHINE_AMD64 ||
-                        procMachine == IMAGE_FILE_MACHINE_I386))
-                {
+                    (procMachine == IMAGE_FILE_MACHINE_AMD64 || procMachine == IMAGE_FILE_MACHINE_I386)) {
+                    debug("Translator detected x64/x86 process on ARM64");
                     return true;
                 }
-            }           
+            }
+
+            // only if we got MACHINE_UNKNOWN on process but native is ARM64
+            if (nativeMachine == IMAGE_FILE_MACHINE_ARM64) {
+                const HMODULE hKernel = GetModuleHandle(_T("kernel32.dll"));
+                if (!hKernel) return false;
+                using PGetProcessInformation = BOOL(WINAPI*)(HANDLE, PROCESS_INFORMATION_CLASS, PVOID, DWORD);
+                const auto pGetProcInfo = reinterpret_cast<PGetProcessInformation>(reinterpret_cast<void*>(GetProcAddress(hKernel, "GetProcessInformation"))); // not using util::GetFunctionAddress because it won't be cached
+                if (pGetProcInfo) {
+                    struct PROCESS_MACHINE_INFORMATION {
+                        USHORT ProcessMachine;
+                        USHORT Res0;
+                        DWORD  MachineAttributes;
+                    } pmInfo = {};
+                    // ProcessMachineTypeInfo == 9 per MS Q&A
+                    if (pGetProcInfo(GetCurrentProcess(), (PROCESS_INFORMATION_CLASS)9, &pmInfo, sizeof(pmInfo))) {
+                        if (pmInfo.ProcessMachine == IMAGE_FILE_MACHINE_AMD64 || pmInfo.ProcessMachine == IMAGE_FILE_MACHINE_I386) {
+                            debug("Translator detected x64/x86 process on ARM64 by fallback");
+                            return true;
+                        }
+                    }
+                }
+            }
 #endif
 
             if (cpu::is_leaf_supported(cpu::leaf::hypervisor)) {
@@ -1738,7 +1760,7 @@ private:
 
 #if (WINDOWS)
             if (util::get_tpm_manufacturer() == 0x4d534654u) { // "MSFT"
-                return true;
+                return true; // also found in Hyper-V VMs
             }
 #endif
 
@@ -4298,8 +4320,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             u32 unused, ecx, edx = 0;
             cpu::cpuid(unused, unused, ecx, edx, 0x40000003);
                 
-            constexpr u32 ECX_SIG = 0x4D4D5645u; // 'EVMM' → 0x4D4D5645
-            constexpr u32 EDX_SIG = 0x43544E49u;  // 'INTC' → 0x43544E49
+            constexpr u32 ECX_SIG = 0x4D4D5645u; // 'EVMM' -> 0x4D4D5645
+            constexpr u32 EDX_SIG = 0x43544E49u;  // 'INTC' -> 0x43544E49
 
             if (ecx == ECX_SIG && edx == EDX_SIG) {
                 return core::add(brands::INTEL_KGT);
@@ -4324,7 +4346,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             debug("TIMER: Running inside a binary translation layer.");
             return false;
         }
-        u16 cycleThreshold = 1500;
+        u16 cycleThreshold = 1450;
         if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
             cycleThreshold = 25000; // if we're running under Hyper-V, attempt to detect nested virtualization only
         }
@@ -6457,7 +6479,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         for (auto& d : devices) {
             const u64 id64 = (static_cast<u64>(d.vendor_id) << 32) | d.device_id;
             const u32 id32 = (static_cast<u32>(d.vendor_id) << 16) | static_cast<u32>(d.device_id);
-
             switch (id32) {
                 // Red Hat + Virtio
                 case 0x1af40022: case 0x1af41000: case 0x1af41001: case 0x1af41002:
@@ -6466,7 +6487,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 case 0x1af41045: case 0x1af41048: case 0x1af41049: case 0x1af41050:
                 case 0x1af41052: case 0x1af41053: case 0x1af4105a: case 0x1af41100:
                 case 0x1af41110: case 0x1af41b36:
-                    debug("PCI_DEVICES: Detected Red Hat + Virtio device -> ", id32);
+                    debug("PCI_DEVICES: Detected Red Hat + Virtio device -> ", std::hex, id32);
                     return true;
 
                 // VMware
@@ -6478,7 +6499,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 case 0x0e0f0001: case 0x0e0f0002: case 0x0e0f0003: case 0x0e0f0004:
                 case 0x0e0f0005: case 0x0e0f0006: case 0x0e0f000a: case 0x0e0f8001:
                 case 0x0e0f8002: case 0x0e0f8003: case 0x0e0ff80a:
-                    debug("PCI_DEVICES: Detected VMWARE device -> ", id32);
+                    debug("PCI_DEVICES: Detected VMWARE device -> ", std::hex, id32);
                     return core::add(brands::VMWARE);
 
                 // Red Hat + QEMU
@@ -6486,46 +6507,39 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 case 0x1b360005: case 0x1b360008: case 0x1b360009: case 0x1b36000b:
                 case 0x1b36000c: case 0x1b36000d: case 0x1b360010: case 0x1b360011:
                 case 0x1b360013: case 0x1b360100:
-                    debug("PCI_DEVICES: Detected Red Hat + QEMU device -> ", id32);
+                    debug("PCI_DEVICES: Detected Red Hat + QEMU device -> ", std::hex, id32);
                     return core::add(brands::QEMU);
 
                 // QEMU
                 case 0x06270001: case 0x1d1d1f1f: case 0x80865845: case 0x1d6b0200:
-                    debug("PCI_DEVICES: Detected QEMU device -> ", id32);
+                    debug("PCI_DEVICES: Detected QEMU device -> ", std::hex, id32);
                     return core::add(brands::QEMU);
 
                 // vGPUs (NVIDIA + others)
                 case 0x10de0fe7: case 0x10de0ff7: case 0x10de118d: case 0x10de11b0:
                 case 0x1ec6020f:
-                    debug("PCI_DEVICES: Detected virtual gpu device -> ", id32);
+                    debug("PCI_DEVICES: Detected virtual gpu device -> ", std::hex, id32);
                     return true;
 
                 // VirtualBox
                 case 0x80ee0021: case 0x80ee0022: case 0x80eebeef: case 0x80eecafe:
-                    debug("PCI_DEVICES: Detected VirtualBox device -> ", id32);
+                    debug("PCI_DEVICES: Detected VirtualBox device -> ", std::hex, id32);
                     return core::add(brands::VBOX);
-
-                // Hyper-V
-                case 0x1f3f9002: case 0x1f3f9004: case 0x1f3f9009:
-                case 0x808637d9: case 0x14145353:
-                    if (util::hyper_x() == HYPERV_ARTIFACT_VM) continue;
-                    debug("PCI_DEVICES: Detected Hyper-V device -> ", id32);
-                    return core::add(brands::HYPERV);
 
                 // Parallels
                 case 0x1ab84000: case 0x1ab84005: case 0x1ab84006:
-                    debug("PCI_DEVICES: Detected Parallels device -> ", id32);
+                    debug("PCI_DEVICES: Detected Parallels device -> ", std::hex, id32);
                     return core::add(brands::PARALLELS);
 
                 // Xen
                 case 0x5853c000: case 0xfffd0101: case 0x5853c147:
                 case 0x5853c110: case 0x5853c200: case 0x58530001:
-                    debug("PCI_DEVICES: Detected Xen device -> ", id32);
+                    debug("PCI_DEVICES: Detected Xen device -> ", std::hex, id32);
                     return core::add(brands::XEN);
 
                 // Connectix (VirtualPC)
                 case 0x29556e61:
-                    debug("PCI_DEVICES: Detected VirtualPC device -> ", id32);
+                    debug("PCI_DEVICES: Detected VirtualPC device -> ", std::hex, id32);
                     return core::add(brands::VPC);
             }
 
@@ -6540,11 +6554,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 case 0x0000000010131100ULL:
                 case 0x00000000106b1100ULL:
                 case 0x0000000010221100ULL:
-                    debug("PCI_DEVICES: Detected QEMU device -> ", id64);
+                    debug("PCI_DEVICES: Detected QEMU device -> ", std::hex, id64);
                     return core::add(brands::QEMU);
     
                 case 0x0000000015ad0800ULL:  // Hypervisor ROM Interface
-                    debug("PCI_DEVICES: Detected Hypervisor ROM interface -> ", id64);
+                    debug("PCI_DEVICES: Detected Hypervisor ROM interface -> ", std::hex, id64);
                     return core::add(brands::VMWARE);
             }
         }
@@ -6891,7 +6905,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         static constexpr Entry entries[] = {
             { nullptr, "HKLM\\Software\\Classes\\Folder\\shell\\sandbox" },
 
-            { brands::SANDBOXIE,  "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Sandboxie" },
+            { brands::SANDBOXIE, "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Sandboxie" },
 
             { brands::VPC, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\PCI\\VEN_5333*" },
             { brands::VPC, "HKLM\\SYSTEM\\ControlSet001\\Services\\vpcbus" },
@@ -6909,8 +6923,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             { brands::VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\IDE\\DiskVMware_Virtual_IDE_Hard_Drive*" },
             { brands::VMWARE, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\IDE\\DiskVMware_Virtual_SATA_Hard_Drive*" },
 
-            { brands::WINE,    "HKCU\\SOFTWARE\\Wine" },
-            { brands::WINE,    "HKLM\\SOFTWARE\\Wine" },
+            { brands::WINE, "HKCU\\SOFTWARE\\Wine" },
+            { brands::WINE, "HKLM\\SOFTWARE\\Wine" },
 
             { brands::XEN, "HKLM\\SYSTEM\\ControlSet001\\Services\\xenevtchn" },
             { brands::XEN, "HKLM\\SYSTEM\\ControlSet001\\Services\\xennet" },
@@ -6918,15 +6932,22 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             { brands::XEN, "HKLM\\SYSTEM\\ControlSet001\\Services\\xensvc" },
             { brands::XEN, "HKLM\\SYSTEM\\ControlSet001\\Services\\xenvdb" },
 
-            { brands::KVM,  "HKLM\\SYSTEM\\ControlSet001\\Services\\vioscsi" },
-            { brands::KVM,  "HKLM\\SYSTEM\\ControlSet001\\Services\\viostor" },
-            { brands::KVM,  "HKLM\\SYSTEM\\ControlSet001\\Services\\VirtIO-FS Service" },
-            { brands::KVM,  "HKLM\\SYSTEM\\ControlSet001\\Services\\VirtioSerial" },
-            { brands::KVM,  "HKLM\\SYSTEM\\ControlSet001\\Services\\BALLOON" },
-            { brands::KVM,  "HKLM\\SYSTEM\\ControlSet001\\Services\\BalloonService" },
-            { brands::KVM,  "HKLM\\SYSTEM\\ControlSet001\\Services\\netkvm" },
+            { brands::KVM, "HKLM\\SYSTEM\\ControlSet001\\Services\\vioscsi" },
+            { brands::KVM, "HKLM\\SYSTEM\\ControlSet001\\Services\\viostor" },
+            { brands::KVM, "HKLM\\SYSTEM\\ControlSet001\\Services\\VirtIO-FS Service" },
+            { brands::KVM, "HKLM\\SYSTEM\\ControlSet001\\Services\\VirtioSerial" },
+            { brands::KVM, "HKLM\\SYSTEM\\ControlSet001\\Services\\BALLOON" },
+            { brands::KVM, "HKLM\\SYSTEM\\ControlSet001\\Services\\BalloonService" },
+            { brands::KVM, "HKLM\\SYSTEM\\ControlSet001\\Services\\netkvm" },
 
-            { brands::VBOX, "HKLM\\SYSTEM\\CurrentControlSet\\Services\\VBoxSF"} 
+            { brands::VBOX, "HKLM\\SYSTEM\\CurrentControlSet\\Services\\VBoxSF"},
+
+            { brands::HYPERV, "HKLM\\HARDWARE\\ACPI\\DSDT\\MSFTVM" },
+            { brands::HYPERV, "HKLM\\HARDWARE\\ACPI\\FADT\\VRTUAL" },
+            { brands::HYPERV, "HKLM\\HARDWARE\\ACPI\\RSDT\\VRTUAL" },
+            { brands::HYPERV, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\VMBUS" },
+            { brands::HYPERV, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\SCSI\\Disk&Ven_Msft&Prod_Virtual_Disk" },
+            { brands::HYPERV, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\SCSI\\CdRom&Ven_Msft&Prod_Virtual_DVD-ROM" }
         };
 
         struct DirectCheck { HKEY hRoot; const char* subKey; const char* brand; };
@@ -6969,7 +6990,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 score++;
                 if (check.brand && check.brand[0]) {
                     debug("REGISTRY_KEYS: detected ", check.subKey, " for brand ", check.brand);
-                    core::add(check.brand);
+                    return core::add(check.brand);
                 }
             }
         }
@@ -6999,8 +7020,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                         if (!matched[i] && PathMatchSpecA(keyName, checks[i].pattern)) {
                             score++;
                             if (checks[i].brand && checks[i].brand[0]) {
+                                RegCloseKey(hParent);
                                 debug("REGISTRY_KEYS: detected pattern ", checks[i].pattern, " in ", parentPath.c_str(), " for brand ", checks[i].brand);
-                                core::add(checks[i].brand);
+                                return core::add(checks[i].brand);
                             }
                             matched[i] = true;
                             remaining_to_find--;
@@ -7689,6 +7711,22 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::DISPLAY
      */
     [[nodiscard]] static bool display() {
+        RECT desktop;
+        const HWND hDesktop = GetDesktopWindow();
+        if (!GetWindowRect(hDesktop, &desktop)) {
+            return false;
+        }
+
+        const i16 horiz = static_cast<i16>(desktop.right);
+        const i16 verti = static_cast<i16>(desktop.bottom);
+
+        debug("DISPLAY: horizontal = ", horiz, ", vertical = ", verti);
+
+        if ((horiz == 1024 && verti == 768) ||
+            (horiz == 800 && verti == 600) ||
+            (horiz == 640 && verti == 480))
+            return true;
+
         const HDC hdc = GetDC(nullptr);
         const int bpp = GetDeviceCaps(hdc, BITSPIXEL) *
             GetDeviceCaps(hdc, PLANES);
@@ -7711,21 +7749,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             debug("DISPLAY: Mode count: ", modeCount);
             return true;
         }
-        
-        RECT desktop;
-        const HWND hDesktop = GetDesktopWindow();
-        if (!GetWindowRect(hDesktop, &desktop)) {
-            return false;
-        }
 
-        const i16 horiz = static_cast<i16>(desktop.right);
-        const i16 verti = static_cast<i16>(desktop.bottom);
-
-        debug("DISPLAY: horizontal = ", horiz, ", vertical = ", verti);
-
-        return (horiz == 1024 && verti == 768) ||
-            (horiz == 800 && verti == 600) ||
-            (horiz == 640 && verti == 480);
+        return false;
     }
 
 
@@ -8001,7 +8026,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         } 
 
         if (successfulOpens == 0) {
-            debug("DISK_SERIAL: No physical drives detected", "");
+            debug("DISK_SERIAL: No physical drives detected");
             return true;
         }
 
@@ -8491,7 +8516,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             case 0x54584E00u: // "TXN\0"
             case 0x524F4343u: // "ROCC"
             case 0x4C454E00u: // "LEN\0"
-            case 0x4d534654u: // "MSFT" (ARM specific, used in Surface Pro devices)
+            case 0x4d534654u: // "MSFT" (ARM specific, used in Surface Pro devices and Hyper-V VMs)
                 return false;
             default:
                 return true;
@@ -9105,16 +9130,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             BYTE ext_type;
         };
 
+        // General helpers
         const auto sig4_from_bytes = [](const BYTE* b) -> std::string {
             char s[5] = { 0 }; s[0] = (char)b[0]; s[1] = (char)b[1]; s[2] = (char)b[2]; s[3] = (char)b[3];
             return std::string(s);
         };
 
         const auto normalize_name = [](const std::string& raw) -> std::string {
-            std::string out;
-            out.reserve(raw.size());
-            for (char c : raw) {
-                unsigned char uc = static_cast<unsigned char>(c);
+            std::string out; out.reserve(raw.size());
+            for (const char c : raw) {
+                const unsigned char uc = static_cast<unsigned char>(c);
                 if (uc >= 'a' && uc <= 'z') out.push_back(char(uc - 'a' + 'A'));
                 else out.push_back(char(uc));
             }
@@ -9122,23 +9147,21 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         };
 
         const auto is_printable_ascii = [](const std::string& s)->bool {
-            for (char ch : s) {
-                unsigned char uc = static_cast<unsigned char>(ch);
+            for (const char c : s) {
+                const unsigned char uc = static_cast<unsigned char>(c);
                 if (uc < 0x20 || uc > 0x7E) return false;
             }
             return true;
         };
 
+        // AML helpers 
         const auto read_pkg_length = [](const BYTE* buf, size_t len, size_t& idx, u32& out_len) -> bool {
             if (idx >= len) return false;
             BYTE lead = buf[idx++];
             unsigned int tmp = static_cast<unsigned int>(lead);
             const u32 byteCount = static_cast<u32>((tmp >> 6u) & 0x3u);
             u32 value = static_cast<u32>(tmp & 0x3Fu);
-            if (byteCount == 0u) {
-                out_len = value;
-                return true;
-            }
+            if (byteCount == 0u) { out_len = value; return true; }
             value = static_cast<u32>(tmp & 0x0Fu);
             u32 shift = 4u;
             for (u32 i = 0; i < byteCount; ++i) {
@@ -9168,10 +9191,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             size_t i = idx;
             std::string out;
             if (i < len && buf[i] == 0x5C) { out.push_back('\\'); ++i; }
-            else {
-                while (i < len && buf[i] == 0x5E) { out.push_back('^'); ++i; }
-            }
+            else { while (i < len && buf[i] == 0x5E) { out.push_back('^'); ++i; } }
             if (i >= len) { idx = i; return out; }
+
             std::vector<std::string> segs;
             BYTE b = buf[i];
             if (b == 0x00) { ++i; idx = i; return out; }
@@ -9200,29 +9222,56 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 segs.push_back(seg);
                 i += 4;
             }
+
             std::string segments_part;
             for (size_t si = 0; si < segs.size(); ++si) {
                 if (si > 0) segments_part.push_back('.');
                 segments_part += segs[si];
             }
-            if (out == "\\" && !segments_part.empty()) { out += segments_part; }
+
+            if (out == "\\" && !segments_part.empty()) out += segments_part;
             else if (!out.empty() && !segments_part.empty() && out.back() != '^') { out.push_back('.'); out += segments_part; }
-            else { out += segments_part; }
+            else out += segments_part;
+
             idx = i;
             return out;
         };
 
-        std::function<void(const BYTE*, size_t, size_t, const std::string&, std::set<std::string>*, std::vector<ExternalRef>*)>
-            parse_aml_scope;
+        using NameVec = std::vector<uint64_t>;
 
+        // fast normalized FNV-1a64 hash (uppercases a-z during hashing), tries to improve std::unordered_set performance
+        auto fnv1a64_norm = [](const char* data, size_t len) -> uint64_t {
+            const uint64_t FNV_OFFSET = 14695981039346656037ULL;
+            const uint64_t FNV_PRIME = 1099511628211ULL;
+            uint64_t h = FNV_OFFSET;
+            for (size_t i = 0; i < len; ++i) {
+                unsigned char c = static_cast<unsigned char>(data[i]);
+                if (c >= 'a' && c <= 'z') {
+                    c = static_cast<unsigned char>(c - ('a' - 'A'));
+                }
+                h ^= static_cast<uint64_t>(c);
+                h *= FNV_PRIME;
+            }
+            return h;
+        };
+
+        // lambda wrapper for std::string
+        auto fnv1a64_norm_from_string = [&](const std::string& s) {
+            return fnv1a64_norm(s.data(), s.size());
+        };
+
+        // lambda wrapper for C-style strings (char*)
+        auto fnv1a64_norm_from_chars = fnv1a64_norm;
+
+        std::function<void(const BYTE*, size_t, size_t, const std::string&, NameVec*, std::vector<ExternalRef>*)> parse_aml_scope;
         parse_aml_scope =
-            [&](const BYTE* buf, size_t start_offset, size_t end_offset, const std::string& current_scope, std::set<std::string>* out_names, std::vector<ExternalRef>* out_externals) {
+            [&](const BYTE* buf, size_t start_offset, size_t end_offset, const std::string& current_scope, NameVec* out_names, std::vector<ExternalRef>* out_externals) {
             size_t i = start_offset;
             while (i < end_offset) {
                 size_t op_start = i;
                 BYTE op = buf[i];
                 bool is_scope_op = false;
-                if (op == 0x10 || op == 0x14) { is_scope_op = true; }   // Scope/Method (some opcodes)
+                if (op == 0x10 || op == 0x14) { is_scope_op = true; }
                 else if (op == 0x5B && i + 1 < end_offset) {
                     const BYTE ext_op = buf[i + 1];
                     if (ext_op >= 0x80 && ext_op <= 0x8F) { is_scope_op = true; }
@@ -9236,7 +9285,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     size_t scope_end = pkg_len_start_for_calc + pkgLen;
                     if (scope_end > end_offset) scope_end = end_offset;
 
-                    const std::string raw_name = parse_namestring(buf, scope_end, j);
+                    std::string raw_name;
+                    // parse namestring into raw_name (reuse existing function)
+                    raw_name = parse_namestring(buf, scope_end, j);
+
                     const std::string new_scope_full_name = ([&](const std::string& scope, const std::string& nm)->std::string {
                         if (nm.empty()) return scope;
                         if (nm[0] == '\\') return nm;
@@ -9257,24 +9309,29 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                         })(current_scope, raw_name);
 
                     if (out_names && !new_scope_full_name.empty()) {
-                        out_names->insert(normalize_name(new_scope_full_name));
+                        uint64_t h = fnv1a64_norm_from_string(new_scope_full_name);
+                        out_names->push_back(h);
+                        if (!new_scope_full_name.empty() && new_scope_full_name[0] == '\\' && new_scope_full_name.size() > 1) {
+                            out_names->push_back(fnv1a64_norm(new_scope_full_name.data() + 1, new_scope_full_name.size() - 1));
+                        }
                     }
 
                     // If body contains ASCII NameSegs, add them (only when out_names non-null)
                     if (op == 0x5B && j < scope_end && out_names) {
                         for (size_t p = j; p + 4 <= scope_end; ++p) {
-                            bool ok = true;
-                            for (size_t k = 0; k < 4; ++k) {
-                                unsigned char c = buf[p + k];
-                                if (!((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_')) { ok = false; break; }
-                            }
+                            unsigned char c0 = buf[p + 0], c1 = buf[p + 1], c2 = buf[p + 2], c3 = buf[p + 3];
+                            bool ok =
+                                ((c0 >= 'A' && c0 <= 'Z') || (c0 >= 'a' && c0 <= 'z') || (c0 >= '0' && c0 <= '9') || c0 == '_') &&
+                                ((c1 >= 'A' && c1 <= 'Z') || (c1 >= 'a' && c1 <= 'z') || (c1 >= '0' && c1 <= '9') || c1 == '_') &&
+                                ((c2 >= 'A' && c2 <= 'Z') || (c2 >= 'a' && c2 <= 'z') || (c2 >= '0' && c2 <= '9') || c2 == '_') &&
+                                ((c3 >= 'A' && c3 <= 'Z') || (c3 >= 'a' && c3 <= 'z') || (c3 >= '0' && c3 <= '9') || c3 == '_');
                             if (ok) {
-                                std::string s(reinterpret_cast<const char*>(buf + p), 4);
-                                std::string n = normalize_name(s);
-                                if (!n.empty()) {
-                                    out_names->insert(n);
-                                    out_names->insert(std::string("\\") + n);
-                                }
+                                char tmp4[4] = { (char)c0, (char)c1, (char)c2, (char)c3 };
+                                uint64_t h = fnv1a64_norm(tmp4, 4);
+                                out_names->push_back(h);
+                                // leading-backslash variant:
+                                char fullb[5] = { '\\', tmp4[0], tmp4[1], tmp4[2], tmp4[3] };
+                                out_names->push_back(fnv1a64_norm(fullb, 5));
                             }
                         }
                     }
@@ -9288,7 +9345,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
                 else if (op == 0x08) { // NameOp
                     i++;
-                    const std::string raw_name = parse_namestring(buf, end_offset, i);
+                    std::string raw_name = parse_namestring(buf, end_offset, i);
                     if (out_names && !raw_name.empty()) {
                         std::string resolved;
                         if (raw_name.empty()) resolved = current_scope;
@@ -9296,12 +9353,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                             if (raw_name[0] == '\\') resolved = raw_name;
                             else resolved = current_scope == "\\" ? ("\\" + raw_name) : (current_scope + "." + raw_name);
                         }
-                        out_names->insert(normalize_name(resolved));
+                        uint64_t h = fnv1a64_norm_from_string(resolved);
+                        out_names->push_back(h);
+                        if (!resolved.empty() && resolved[0] == '\\' && resolved.size() > 1) {
+                            out_names->push_back(fnv1a64_norm(resolved.data() + 1, resolved.size() - 1));
+                        }
                     }
                 }
                 else if (op == 0x15) { // External
                     i++;
-                    const std::string raw_name = parse_namestring(buf, end_offset, i);
+                    std::string raw_name = parse_namestring(buf, end_offset, i);
                     if (out_externals && !raw_name.empty()) {
                         if (i < end_offset) {
                             const BYTE objType = buf[i];
@@ -9315,80 +9376,92 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     }
                     if (i < end_offset) i++;
                 }
-                else {
-                    // single-byte or extended opcode that we don't need to expand here
-                    i = op_start + (op == 0x5B ? 2 : 1);
-                }
+                else { i = op_start + (op == 0x5B ? 2 : 1); }
             }
         };
 
-        // packages and dotted path detection
-        const auto collect_namesegs_from_raw = [&](const BYTE* buf, size_t buf_len, std::set<std::string>& out_names) {
+        const auto collect_namesegs_from_raw = [&](const BYTE* buf, size_t buf_len, NameVec& out_names) {
             const size_t header_len = 36;
+            if (buf_len <= header_len) return;
             for (size_t i = header_len; i + 4 <= buf_len; ++i) {
-                bool ok = true; std::string s;
-                for (size_t k = 0; k < 4; ++k) {
-                    unsigned char c = buf[i + k];
-                    if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_') s.push_back(char(c));
-                    else { ok = false; break; }
-                }
-                if (ok) {
-                    std::string n = normalize_name(s);
-                    out_names.insert(n);
-                    out_names.insert(std::string("\\") + n);
+                unsigned char c0 = buf[i], c1 = buf[i + 1], c2 = buf[i + 2], c3 = buf[i + 3];
+                if (((c0 >= 'A' && c0 <= 'Z') || (c0 >= 'a' && c0 <= 'z') || (c0 >= '0' && c0 <= '9') || c0 == '_') &&
+                    ((c1 >= 'A' && c1 <= 'Z') || (c1 >= 'a' && c1 <= 'z') || (c1 >= '0' && c1 <= '9') || c1 == '_') &&
+                    ((c2 >= 'A' && c2 <= 'Z') || (c2 >= 'a' && c2 <= 'z') || (c2 >= '0' && c2 <= '9') || c2 == '_') &&
+                    ((c3 >= 'A' && c3 <= 'Z') || (c3 >= 'a' && c3 <= 'z') || (c3 >= '0' && c3 <= '9') || c3 == '_')) {
+                    char tmp[4] = { (char)c0, (char)c1, (char)c2, (char)c3 };
+                    uint64_t h = fnv1a64_norm(tmp, 4);
+                    out_names.push_back(h);
+                    char fullb[5] = { '\\', tmp[0], tmp[1], tmp[2], tmp[3] };
+                    out_names.push_back(fnv1a64_norm(fullb, 5));
                 }
             }
         };
 
-        const auto scan_for_backslash_and_dotted_paths = [&](const BYTE* buf, size_t buf_len, std::set<std::string>& out_names) {
-            auto is_allowed_in_path = [](char c)->bool {
-                return ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '.' || c == '\\' || c == '^');
-                };
-            for (size_t i = 0; i < buf_len; ++i) {
+        const auto scan_for_backslash_and_dotted_paths = [&](const BYTE* buf, size_t buf_len, NameVec& out_names) {
+            size_t i = 0;
+            while (i < buf_len) {
                 if (buf[i] == '\\') {
                     size_t j = i + 1;
-                    std::string s("\\");
-                    while (j < buf_len && is_allowed_in_path((char)buf[j])) {
-                        s.push_back((char)buf[j]);
-                        j++;
-                        if (s.size() > 256) break;
+                    while (j < buf_len) {
+                        unsigned char uc = buf[j];
+                        if (!((uc >= 'A' && uc <= 'Z') || (uc >= 'a' && uc <= 'z') || (uc >= '0' && uc <= '9') || uc == '_' || uc == '.' || uc == '^')) break;
+                        ++j;
+                        if (j - i > 512) break;
                     }
-                    if (s.size() >= 2) {
-                        bool hasDot = (s.find('.') != std::string::npos);
-                        bool valid = true;
-                        for (char c : s) if (!is_allowed_in_path(c)) { valid = false; break; }
-                        if (valid && (hasDot || s.size() >= 5)) {
-                            out_names.insert(normalize_name(s));
+                    size_t len = j - (i + 1);
+                    if (len >= 1 && (j - i) <= 512) {
+                        bool hasDot = false;
+                        for (size_t k = i + 1; k < j; ++k) if (buf[k] == '.') { hasDot = true; break; }
+                        if (hasDot || len >= 4) {
+                            // compute hash on the fly to avoid allocations
+                            uint64_t h_full = fnv1a64_norm(reinterpret_cast<const char*>(buf + i), j - i);
+                            out_names.push_back(h_full);
+                            if ((j - i) >= 2) {
+                                uint64_t h_sans = fnv1a64_norm(reinterpret_cast<const char*>(buf + i + 1), j - i - 1);
+                                out_names.push_back(h_sans);
+                            }
                         }
                     }
-                    i = j;
+                    i = (j > i) ? j : i + 1;
                 }
                 else {
-                    if (((buf[i] >= 'A' && buf[i] <= 'Z') || (buf[i] >= 'a' && buf[i] <= 'z') || buf[i] == '_')) {
+                    unsigned char uc = buf[i];
+                    if ((uc >= 'A' && uc <= 'Z') || (uc >= 'a' && uc <= 'z') || uc == '_') {
                         size_t j = i;
-                        std::string s;
-                        int dotCount = 0;
+                        bool dotSeen = false;
                         while (j < buf_len) {
-                            char c = (char)buf[j];
-                            if (is_allowed_in_path(c) && c != '\\') {
-                                s.push_back(c);
-                                if (c == '.') dotCount++;
-                                j++;
-                                if (s.size() > 256) break;
+                            unsigned char uc2 = buf[j];
+                            if ((uc2 >= 'A' && uc2 <= 'Z') || (uc2 >= 'a' && uc2 <= 'z') || (uc2 >= '0' && uc2 <= '9') || uc2 == '_' || uc2 == '.') {
+                                if (uc2 == '.') dotSeen = true;
+                                ++j;
+                                if (j - i > 512) break;
                             }
                             else break;
                         }
-                        if (s.size() >= 5 && dotCount >= 1) {
-                            out_names.insert(normalize_name("\\" + s));
-                            out_names.insert(normalize_name(s));
+                        size_t len = j - i;
+                        if (len >= 5 && dotSeen) {
+                            uint64_t h_plain = fnv1a64_norm(reinterpret_cast<const char*>(buf + i), len);
+                            // with leading backslash:
+                            // create a small stack buffer with leading backslash + uppercased bytes
+                            char withb_local[513]{};
+                            withb_local[0] = '\\';
+                            for (size_t k = 0; k < len; ++k) {
+                                unsigned char cc = buf[i + k];
+                                if (cc >= 'a' && cc <= 'z') withb_local[1 + k] = char(cc - ('a' - 'A'));
+                                else withb_local[1 + k] = char(cc);
+                            }
+                            out_names.push_back(fnv1a64_norm(withb_local, len + 1));
+                            out_names.push_back(h_plain);
                         }
                         i = j;
                     }
+                    else ++i;
                 }
             }
         };
 
-        const auto extract_defined_names_from_table = [&](const BYTE* buf, size_t buf_len, std::set<std::string>& out_names) {
+        const auto extract_defined_names_from_table = [&](const BYTE* buf, size_t buf_len, NameVec& out_names) {
             const size_t header_len = 36;
             if (buf_len > header_len) parse_aml_scope(buf, header_len, buf_len, "\\", &out_names, nullptr);
             collect_namesegs_from_raw(buf, buf_len, out_names);
@@ -9400,9 +9473,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             if (buf_len > header_len) parse_aml_scope(buf, header_len, buf_len, "\\", nullptr, &out_externals);
         };
 
-        std::set<std::string> global_names;
+        NameVec global_hashes_vec;
+        global_hashes_vec.reserve(65536);
+
         const std::vector<std::string> predefined = { "\\_GPE", "\\_PR_", "\\_SB_", "\\_SI_", "\\_TZ_", "\\OSYS", "\\_OSI", "\\_OS_", "\\_REV" };
-        for (const auto& p : predefined) global_names.insert(normalize_name(p));
+        for (const auto& p : predefined) global_hashes_vec.push_back(fnv1a64_norm_from_string(p));
 
         constexpr DWORDu ACPI_SIG = 'ACPI';
         const auto get_fw_table_by_sig = [&](DWORDu sig32, std::vector<BYTE>& outBuf) -> bool {
@@ -9412,8 +9487,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             UINT got = GetSystemFirmwareTable(ACPI_SIG, sig32, outBuf.data(), sz);
             if (got != sz) { outBuf.clear(); return false; }
             return true;
-            };
+        };
 
+        // fetch DSDT
         {
             constexpr DWORD DSDT_SIG = 'DSDT';
             constexpr DWORDu DSDT_SWAPPED =
@@ -9429,13 +9505,19 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             for (auto id : trials) {
                 std::vector<BYTE> dsdt;
                 if (get_fw_table_by_sig(id, dsdt)) {
-                    extract_defined_names_from_table(dsdt.data(), dsdt.size(), global_names);
+                    // collect into vector (so fast push_back, no set insert overhead)
+                    NameVec tmp;
+                    tmp.reserve(4096);
+                    extract_defined_names_from_table(dsdt.data(), dsdt.size(), tmp);
+                    if (!tmp.empty()) {
+                        global_hashes_vec.insert(global_hashes_vec.end(), tmp.begin(), tmp.end());
+                    }
                     break;
                 }
             }
         }
 
-        // to fetch multiple SSDTs we need to read from registry rather than using NtQuerySystemInformation with SystemFirmwareTableInformation
+        // read SSDTs from registry because GetSystemFirmwareTable only returns the first SSDT found
         auto read_ssdt_from_registry_instances = [&]() -> std::vector<std::vector<BYTE>> {
             std::vector<std::vector<BYTE>> found;
             const std::string basePath = "HARDWARE\\ACPI\\";
@@ -9497,32 +9579,50 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         std::vector<std::vector<BYTE>> ssdtFromRegistry = read_ssdt_from_registry_instances();
 
-        // sometimes, ssdt external references are found in other SSDTs and not in the DSDT
+        // add names from all SSDTs into global vector BEFORE checking externals, why? because ssdts can have references in other ssdts and not only in the DSDT
         for (size_t si = 0; si < ssdtFromRegistry.size(); ++si) {
             const auto& buf = ssdtFromRegistry[si];
             if (buf.size() >= 4 && sig4_from_bytes(buf.data()) == "SSDT") {
-                extract_defined_names_from_table(buf.data(), buf.size(), global_names);
+                NameVec tmp;
+                tmp.reserve(4096);
+                extract_defined_names_from_table(buf.data(), buf.size(), tmp);
+                if (!tmp.empty()) {
+                    global_hashes_vec.insert(global_hashes_vec.end(), tmp.begin(), tmp.end());
+                }
             }
         }
 
-        // tries exact, sans-leading-backslash, and last-segment
+        // consolidate global_hashes_vec: sort + unique to make lookups cheap (binary search)
+        std::sort(global_hashes_vec.begin(), global_hashes_vec.end());
+        global_hashes_vec.erase(std::unique(global_hashes_vec.begin(), global_hashes_vec.end()), global_hashes_vec.end());
+
+        // we store canonical (no-leading-backslash) names primarily
         auto global_has_name = [&](const std::string& raw)->bool {
             if (raw.empty()) return false;
-            std::string n = normalize_name(raw);
-            if (global_names.find(n) != global_names.end()) return true;
-            std::string sans = n;
+            // compute normalized hashes for the variants and test presence via binary_search
+            uint64_t h1 = fnv1a64_norm_from_string(raw);
+            if (std::binary_search(global_hashes_vec.begin(), global_hashes_vec.end(), h1)) return true;
+            std::string sans = raw;
             if (!sans.empty() && sans[0] == '\\') sans = sans.substr(1);
-            if (global_names.find(sans) != global_names.end()) return true;
+            if (!sans.empty()) {
+                uint64_t h2 = fnv1a64_norm_from_string(sans);
+                if (std::binary_search(global_hashes_vec.begin(), global_hashes_vec.end(), h2)) return true;
+            }
+            // try last segment only (common for fields/packages)
             size_t p = sans.find_last_of('.');
             std::string last = (p == std::string::npos) ? sans : sans.substr(p + 1);
             if (!last.empty()) {
-                if (global_names.find(last) != global_names.end()) return true;
-                if (global_names.find(std::string("\\") + last) != global_names.end()) return true;
+                uint64_t h3 = fnv1a64_norm_from_string(last);
+                if (std::binary_search(global_hashes_vec.begin(), global_hashes_vec.end(), h3)) return true;
+                // also check leading-backslash-last
+                std::string withb = std::string("\\") + last;
+                uint64_t h4 = fnv1a64_norm_from_string(withb);
+                if (std::binary_search(global_hashes_vec.begin(), global_hashes_vec.end(), h4)) return true;
             }
             return false;
         };
 
-        bool any_missing = false;
+        // now check externals in each registry SSDT
         for (size_t si = 0; si < ssdtFromRegistry.size(); ++si) {
             const auto& buf = ssdtFromRegistry[si];
             if (buf.size() < 4) continue;
@@ -9535,37 +9635,157 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 uint32_t h = 2166136261u;
                 for (size_t k = 0; k < l; ++k) { h ^= (uint32_t)d[k]; h *= 16777619u; }
                 return h;
-            };
+                };
 
             std::vector<ExternalRef> externals;
             extract_externals_from_table(data, sz, externals);
 
             for (const auto& er : externals) {
                 std::string en = er.name;
-
                 // filter obviously busted names (non-printable)
-                if (!is_printable_ascii(en)) {
-                    continue;
+                if (!is_printable_ascii(en)) continue;
+
+                // normalize in-place to avoid an extra function call and allocation
+                std::string norm = en;
+                for (char& ch : norm) {
+                    unsigned char uc = static_cast<unsigned char>(ch);
+                    if (uc >= 'a' && uc <= 'z') ch = char(uc - ('a' - 'A'));
                 }
 
-                std::string norm = normalize_name(en);
                 bool okchars = true;
-                for (char c : norm) {
+                for (char signed_c : norm) {
+                    const unsigned char c = static_cast<unsigned char>(signed_c);
                     if (!((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '.' || c == '\\' || c == '^')) { okchars = false; break; }
                 }
-                if (!okchars) {
-                    continue;
-                }
+                if (!okchars) continue;
 
                 if (!global_has_name(norm)) {
-                    debug("DEBUG: MISSING: External '", norm, "' at offset 0x", std::hex, er.offset, std::dec
-                        , " (type=0x" , std::hex , int(er.ext_type) , std::dec , ") in an SSDT.");
-                    any_missing = true;
+                    debug("DEBUG: MISSING: External '", norm, "' at offset 0x", std::hex, er.offset, std::dec,
+                        " (type=0x", std::hex, int(er.ext_type), std::dec, ") in an SSDT.");
+                    return true;
                 }
             }
         }
 
-        return any_missing;
+        return false;
+    }
+
+
+    /**
+     * @brief Check for VM objects
+     * @category Windows
+     * @author Requiem (https://github.com/NotRequiem)
+     * @implements VM::OBJECTS
+     */
+    [[nodiscard]] static bool objects() {
+        typedef struct _OBJECT_DIRECTORY_INFORMATION {
+            UNICODE_STRING Name;
+            UNICODE_STRING TypeName;
+        } OBJECT_DIRECTORY_INFORMATION, * POBJECT_DIRECTORY_INFORMATION;
+
+        typedef NTSTATUS(NTAPI* pfnNtOpenDirectoryObject)(
+            OUT PHANDLE DirectoryHandle,
+            IN ACCESS_MASK DesiredAccess,
+            IN POBJECT_ATTRIBUTES ObjectAttributes
+        );
+
+        typedef NTSTATUS(NTAPI* pfnNtQueryDirectoryObject)(
+            IN HANDLE DirectoryHandle,
+            OUT PVOID Buffer,
+            IN ULONG Length,
+            IN BOOLEAN ReturnSingleEntry,
+            IN BOOLEAN RestartScan,
+            IN OUT PULONG Context,
+            OUT PULONG ReturnLength OPTIONAL
+        );
+
+        #define DIRECTORY_QUERY         (0x0001)
+        #define STATUS_NO_MORE_ENTRIES  ((NTSTATUS)0x8000001A)
+
+        HANDLE hDir = NULL;
+        OBJECT_ATTRIBUTES objAttr{};
+        UNICODE_STRING dirName{};
+        NTSTATUS status;
+
+        const HMODULE hNtdll = GetModuleHandle(_T("ntdll.dll"));
+        if (hNtdll == NULL) {
+            return false;
+        }
+
+        pfnNtOpenDirectoryObject pNtOpenDirectoryObject = nullptr;
+        pfnNtQueryDirectoryObject pNtQueryDirectoryObject = nullptr;
+
+        const char* func_names[] = { "NtOpenDirectoryObject", "NtQueryDirectoryObject" };
+        void* func_addrs[] = { &pNtOpenDirectoryObject, &pNtQueryDirectoryObject };
+
+        util::GetFunctionAddresses(hNtdll, func_names, (void**)func_addrs, 2);
+
+        pNtOpenDirectoryObject = reinterpret_cast<pfnNtOpenDirectoryObject>(func_addrs[0]);
+        pNtQueryDirectoryObject = reinterpret_cast<pfnNtQueryDirectoryObject>(func_addrs[1]);
+
+        if (pNtOpenDirectoryObject == nullptr || pNtQueryDirectoryObject == nullptr) {
+            return false;
+        }
+
+        const wchar_t* deviceDirPath = L"\\Device";
+        dirName.Buffer = (PWSTR)deviceDirPath;
+        dirName.Length = (USHORT)(wcslen(deviceDirPath) * sizeof(wchar_t));
+        dirName.MaximumLength = dirName.Length + sizeof(wchar_t);
+
+        InitializeObjectAttributes(&objAttr, &dirName, OBJ_CASE_INSENSITIVE, NULL, NULL);
+
+        status = pNtOpenDirectoryObject(&hDir, DIRECTORY_QUERY, &objAttr);
+
+        if (!NT_SUCCESS(status)) {
+            return false;
+        }
+
+        std::vector<BYTE> buffer(1024 * 8);
+        ULONG context = 0;
+        ULONG returnedLength;
+
+        while (true) {
+            status = pNtQueryDirectoryObject(
+                hDir,
+                buffer.data(),
+                (ULONG)buffer.size(),
+                FALSE,
+                FALSE,
+                &context,
+                &returnedLength
+            );
+
+            if (status == STATUS_NO_MORE_ENTRIES) {
+                break;
+            }
+
+            if (!NT_SUCCESS(status)) {
+                CloseHandle(hDir);
+                return false;
+            }
+
+            POBJECT_DIRECTORY_INFORMATION pOdi = (POBJECT_DIRECTORY_INFORMATION)buffer.data();
+
+            while (pOdi->Name.Length > 0) {
+                std::wstring objectName(pOdi->Name.Buffer, pOdi->Name.Length / sizeof(wchar_t));
+
+                if (wcscmp(objectName.c_str(), L"VmGenerationCounter") == 0) {
+                    CloseHandle(hDir);
+                    debug("OBJECTS: Detected VmGenerationCounter");
+                    return core::add(brands::HYPERV);
+                }
+                if (wcscmp(objectName.c_str(), L"VmGid") == 0) {
+                    CloseHandle(hDir);
+                    debug("OBJECTS: Detected VmGid");
+                    return core::add(brands::HYPERV);
+                }
+
+                pOdi = (POBJECT_DIRECTORY_INFORMATION)((BYTE*)pOdi + sizeof(OBJECT_DIRECTORY_INFORMATION));
+            }
+        }
+
+        CloseHandle(hDir);
+        return false;
     }
     // ADD NEW TECHNIQUE FUNCTION HERE
 #endif
@@ -10658,6 +10878,7 @@ public: // START OF PUBLIC FUNCTIONS
             case BOOT_LOGO: return "BOOT_LOGO";
             case MAC_SYS: return "MAC_SYS";
             case SSDT_PASSTHROUGH: return "SSDT_PASSTHROUGH";
+            case OBJECTS: return "OBJECTS";
             // END OF TECHNIQUE LIST
             case DEFAULT: return "setting flag, error";
             case ALL: return "setting flag, error";
@@ -11218,6 +11439,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         std::make_pair(VM::PHYSICAL_PROCESSORS, VM::core::technique(50, VM::physical_processors)),
         std::make_pair(VM::DEVICE_HANDLES, VM::core::technique(100, VM::device_handles)),
         std::make_pair(VM::VIRTUAL_PROCESSORS, VM::core::technique(100, VM::virtual_processors)),
+        std::make_pair(VM::OBJECTS, VM::core::technique(100, VM::objects)),
         std::make_pair(VM::HYPERV_QUERY, VM::core::technique(100, VM::hyperv_query)),
         std::make_pair(VM::AUDIO, VM::core::technique(25, VM::audio)),
         std::make_pair(VM::DISPLAY, VM::core::technique(35, VM::display)),
