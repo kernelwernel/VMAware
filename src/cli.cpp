@@ -807,6 +807,8 @@ static void general() {
     checker(VM::DBVM, "Dark Byte's hypervisor");
     checker(VM::BOOT_LOGO, "boot logo");
     checker(VM::MAC_SYS, "system profiler");
+    checker(VM::SSDT_PASSTHROUGH, "SSDT passthrough");
+
     // ADD NEW TECHNIQUE CHECKER HERE
 
     const auto t2 = std::chrono::high_resolution_clock::now();
