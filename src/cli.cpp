@@ -744,7 +744,7 @@ static void general() {
     checker(VM::IOREG_GREP, "IO registry grep");
     checker(VM::MAC_SIP, "MacOS SIP");
     checker(VM::REGISTRY_VALUES, "registry values");
-    checker(VM::AUDIO, "audio device");
+    checker(VM::AUDIO, "audio devices");
     checker(VM::VPC_INVALID, "VPC invalid instructions");
     checker(VM::SIDT, "SIDT");
     checker(VM::SGDT, "SGDT");
@@ -808,6 +808,7 @@ static void general() {
     checker(VM::BOOT_LOGO, "boot logo");
     checker(VM::MAC_SYS, "system profiler");
     checker(VM::SSDT_PASSTHROUGH, "SSDT passthrough");
+    checker(VM::OBJECTS, "objects");
 
     // ADD NEW TECHNIQUE CHECKER HERE
 
