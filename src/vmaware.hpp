@@ -56,10 +56,10 @@
  * - struct for internal cpu operations        => line 719
  * - struct for internal memoization           => line 1056
  * - struct for internal utility functions     => line 1186
- * - struct for internal core components       => line 9800
+ * - struct for internal core components       => line 10029
  * - start of VM detection technique list      => line 2076
- * - start of public VM detection functions    => line 10292
- * - start of externally defined variables     => line 11285
+ * - start of public VM detection functions    => line 10521
+ * - start of externally defined variables     => line 11514
  *
  *
  * ============================== EXAMPLE ===================================
@@ -7107,15 +7107,35 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (status != 0)
             return false;
 
-        const bool no_sleep_states = !(caps.SystemS1 ||
-            caps.SystemS2 ||
-            caps.SystemS3 ||
-            caps.SystemS4);
-        if (no_sleep_states) {
-            return (caps.ThermalControl == 0);
+        const bool s0_supported = caps.AoAc;
+        const bool s1_supported = caps.SystemS1;
+        const bool s2_supported = caps.SystemS2;
+        const bool s3_supported = caps.SystemS3;
+        const bool s4_supported = caps.SystemS4;
+        const bool hiberFilePresent = caps.HiberFilePresent;
+
+        const bool is_physical_pattern = (s0_supported || s3_supported) &&
+            (s4_supported || hiberFilePresent);
+
+        if (is_physical_pattern) {
+            return false;
         }
 
-        return false;
+        const bool is_vm_pattern = !(s0_supported || s3_supported || s4_supported || hiberFilePresent) &&
+            (s1_supported || s2_supported);
+
+        if (is_vm_pattern) {
+            debug("POWER_CAPABILITIES: Detected !(S0||S3||S4||HiberFilePresent) + S1|S2 pattern");
+            return true;
+        }
+
+        const bool no_sleep_states = !s0_supported && !s1_supported && !s2_supported && !s3_supported;
+        if (no_sleep_states) {
+            debug("POWER_CAPABILITIES: Detected !(S0||S1||S2||S3) pattern");
+            return true;
+        }
+
+        return (caps.ThermalControl == 0);
     }
 
 
@@ -9130,7 +9150,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             BYTE ext_type;
         };
 
-        // General helpers
+        // general helpers
         const auto sig4_from_bytes = [](const BYTE* b) -> std::string {
             char s[5] = { 0 }; s[0] = (char)b[0]; s[1] = (char)b[1]; s[2] = (char)b[2]; s[3] = (char)b[3];
             return std::string(s);
@@ -9306,7 +9326,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                         if (name_part.empty()) return s;
                         if (s == "\\") return s + name_part;
                         return s + "." + name_part;
-                        })(current_scope, raw_name);
+                    })(current_scope, raw_name);
 
                     if (out_names && !new_scope_full_name.empty()) {
                         uint64_t h = fnv1a64_norm_from_string(new_scope_full_name);
@@ -9442,7 +9462,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                         size_t len = j - i;
                         if (len >= 5 && dotSeen) {
                             uint64_t h_plain = fnv1a64_norm(reinterpret_cast<const char*>(buf + i), len);
-                            // with leading backslash:
+                            // with leading backslash
                             // create a small stack buffer with leading backslash + uppercased bytes
                             char withb_local[513]{};
                             withb_local[0] = '\\';
@@ -9473,11 +9493,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             if (buf_len > header_len) parse_aml_scope(buf, header_len, buf_len, "\\", nullptr, &out_externals);
         };
 
-        NameVec global_hashes_vec;
-        global_hashes_vec.reserve(65536);
+        // keep DSDT names separately and keep per-SSDT name lists
+        NameVec dsdt_hashes_vec;
+        dsdt_hashes_vec.reserve(8192);
 
         const std::vector<std::string> predefined = { "\\_GPE", "\\_PR_", "\\_SB_", "\\_SI_", "\\_TZ_", "\\OSYS", "\\_OSI", "\\_OS_", "\\_REV" };
-        for (const auto& p : predefined) global_hashes_vec.push_back(fnv1a64_norm_from_string(p));
+        for (const auto& p : predefined) dsdt_hashes_vec.push_back(fnv1a64_norm_from_string(p));
 
         constexpr DWORDu ACPI_SIG = 'ACPI';
         const auto get_fw_table_by_sig = [&](DWORDu sig32, std::vector<BYTE>& outBuf) -> bool {
@@ -9490,6 +9511,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         };
 
         // fetch DSDT
+        std::vector<BYTE> dsdtBuf; // keep the buffer to be able to scan occurrences and extract externals
         {
             constexpr DWORD DSDT_SIG = 'DSDT';
             constexpr DWORDu DSDT_SWAPPED =
@@ -9505,12 +9527,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             for (auto id : trials) {
                 std::vector<BYTE> dsdt;
                 if (get_fw_table_by_sig(id, dsdt)) {
+                    // store buffer for later occurrence scanning & externals extraction
+                    dsdtBuf = std::move(dsdt);
                     // collect into vector (so fast push_back, no set insert overhead)
                     NameVec tmp;
                     tmp.reserve(4096);
-                    extract_defined_names_from_table(dsdt.data(), dsdt.size(), tmp);
+                    extract_defined_names_from_table(dsdtBuf.data(), dsdtBuf.size(), tmp);
                     if (!tmp.empty()) {
-                        global_hashes_vec.insert(global_hashes_vec.end(), tmp.begin(), tmp.end());
+                        dsdt_hashes_vec.insert(dsdt_hashes_vec.end(), tmp.begin(), tmp.end());
                     }
                     break;
                 }
@@ -9579,91 +9603,296 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         std::vector<std::vector<BYTE>> ssdtFromRegistry = read_ssdt_from_registry_instances();
 
-        // add names from all SSDTs into global vector BEFORE checking externals, why? because ssdts can have references in other ssdts and not only in the DSDT
+        // extract per-SSDT defined names and externals (important to NOT add SSDT names to the DSDT/global vector)
+        std::vector<NameVec> ssdt_defined_names_list;
+        ssdt_defined_names_list.reserve(ssdtFromRegistry.size());
+        std::vector<std::vector<ExternalRef>> ssdt_externals_list;
+        ssdt_externals_list.reserve(ssdtFromRegistry.size());
+
         for (size_t si = 0; si < ssdtFromRegistry.size(); ++si) {
             const auto& buf = ssdtFromRegistry[si];
             if (buf.size() >= 4 && sig4_from_bytes(buf.data()) == "SSDT") {
                 NameVec tmp;
                 tmp.reserve(4096);
                 extract_defined_names_from_table(buf.data(), buf.size(), tmp);
+                // sort + unique per-SSDT
                 if (!tmp.empty()) {
-                    global_hashes_vec.insert(global_hashes_vec.end(), tmp.begin(), tmp.end());
+                    std::sort(tmp.begin(), tmp.end());
+                    tmp.erase(std::unique(tmp.begin(), tmp.end()), tmp.end());
+                }
+                ssdt_defined_names_list.push_back(std::move(tmp));
+
+                std::vector<ExternalRef> exts;
+                extract_externals_from_table(buf.data(), buf.size(), exts);
+                ssdt_externals_list.push_back(std::move(exts));
+            }
+            else {
+                // keep empty placeholders to preserve indexing
+                ssdt_defined_names_list.emplace_back();
+                ssdt_externals_list.emplace_back();
+            }
+        }
+
+        // sort + unique DSDT hashes
+        if (!dsdt_hashes_vec.empty()) {
+            std::sort(dsdt_hashes_vec.begin(), dsdt_hashes_vec.end());
+            dsdt_hashes_vec.erase(std::unique(dsdt_hashes_vec.begin(), dsdt_hashes_vec.end()), dsdt_hashes_vec.end());
+        }
+
+        // Build a map of occurrences (hash and then vector<offsets>) for the DSDT buffer, so we can check whether an external found at offset X appears elsewhere
+        std::unordered_map<uint64_t, std::vector<size_t>> dsdt_occurrences;
+        if (!dsdtBuf.empty()) {
+            const BYTE* buf = dsdtBuf.data();
+            size_t buf_len = dsdtBuf.size();
+            const size_t header_len = 36;
+            // collect 4-char names and their offsets
+            if (buf_len > header_len) {
+                for (size_t i = header_len; i + 4 <= buf_len; ++i) {
+                    unsigned char c0 = buf[i], c1 = buf[i + 1], c2 = buf[i + 2], c3 = buf[i + 3];
+                    if (((c0 >= 'A' && c0 <= 'Z') || (c0 >= 'a' && c0 <= 'z') || (c0 >= '0' && c0 <= '9') || c0 == '_') &&
+                        ((c1 >= 'A' && c1 <= 'Z') || (c1 >= 'a' && c1 <= 'z') || (c1 >= '0' && c1 <= '9') || c1 == '_') &&
+                        ((c2 >= 'A' && c2 <= 'Z') || (c2 >= 'a' && c2 <= 'z') || (c2 >= '0' && c2 <= '9') || c2 == '_') &&
+                        ((c3 >= 'A' && c3 <= 'Z') || (c3 >= 'a' && c3 <= 'z') || (c3 >= '0' && c3 <= '9') || c3 == '_')) {
+                        char tmp[4] = { (char)c0, (char)c1, (char)c2, (char)c3 };
+                        uint64_t h = fnv1a64_norm(tmp, 4);
+                        dsdt_occurrences[h].push_back(i);
+                        // leading-backslash variant: record offset i-1 if possible else i
+                        char fullb[5] = { '\\', tmp[0], tmp[1], tmp[2], tmp[3] };
+                        uint64_t hb = fnv1a64_norm(fullb, 5);
+                        dsdt_occurrences[hb].push_back((i > 0) ? (i - 1) : i);
+                    }
+                }
+            }
+
+            // scan for backslash and dotted paths and record offsets
+            size_t i = 0;
+            while (i < buf_len) {
+                if (buf[i] == '\\') {
+                    size_t j = i + 1;
+                    while (j < buf_len) {
+                        unsigned char uc = buf[j];
+                        if (!((uc >= 'A' && uc <= 'Z') || (uc >= 'a' && uc <= 'z') || (uc >= '0' && uc <= '9') || uc == '_' || uc == '.' || uc == '^')) break;
+                        ++j;
+                        if (j - i > 512) break;
+                    }
+                    size_t len = j - (i + 1);
+                    if (len >= 1 && (j - i) <= 512) {
+                        bool hasDot = false;
+                        for (size_t k = i + 1; k < j; ++k) if (buf[k] == '.') { hasDot = true; break; }
+                        if (hasDot || len >= 4) {
+                            uint64_t h_full = fnv1a64_norm(reinterpret_cast<const char*>(buf + i), j - i);
+                            dsdt_occurrences[h_full].push_back(i);
+                            if ((j - i) >= 2) {
+                                uint64_t h_sans = fnv1a64_norm(reinterpret_cast<const char*>(buf + i + 1), j - i - 1);
+                                dsdt_occurrences[h_sans].push_back(i + 1);
+                            }
+                        }
+                    }
+                    i = (j > i) ? j : i + 1;
+                }
+                else {
+                    unsigned char uc = buf[i];
+                    if ((uc >= 'A' && uc <= 'Z') || (uc >= 'a' && uc <= 'z') || uc == '_') {
+                        size_t j = i;
+                        bool dotSeen = false;
+                        while (j < buf_len) {
+                            unsigned char uc2 = buf[j];
+                            if ((uc2 >= 'A' && uc2 <= 'Z') || (uc2 >= 'a' && uc2 <= 'z') || (uc2 >= '0' && uc2 <= '9') || uc2 == '_' || uc2 == '.') {
+                                if (uc2 == '.') dotSeen = true;
+                                ++j;
+                                if (j - i > 512) break;
+                            }
+                            else break;
+                        }
+                        size_t len = j - i;
+                        if (len >= 5 && dotSeen) {
+                            uint64_t h_plain = fnv1a64_norm(reinterpret_cast<const char*>(buf + i), len);
+                            dsdt_occurrences[h_plain].push_back(i);
+                            // with leading backslash: compute hash and set offset i-1 if possible
+                            char withb_local[513]{};
+                            withb_local[0] = '\\';
+                            for (size_t k = 0; k < len; ++k) {
+                                unsigned char cc = buf[i + k];
+                                if (cc >= 'a' && cc <= 'z') withb_local[1 + k] = char(cc - ('a' - 'A'));
+                                else withb_local[1 + k] = char(cc);
+                            }
+                            uint64_t hb = fnv1a64_norm(withb_local, len + 1);
+                            dsdt_occurrences[hb].push_back((i > 0) ? (i - 1) : i);
+                        }
+                        i = j;
+                    }
+                    else ++i;
+                }
+            }
+
+            // record offsets for names declared with NameOp (0x08) so we can match externals that resolve to those names
+            if (buf_len > header_len) {
+                for (size_t pos = header_len; pos + 1 < buf_len; ++pos) {
+                    if (buf[pos] == 0x08) { // NameOp
+                        size_t idx = pos + 1;
+                        std::string rawnm = parse_namestring(buf, buf_len, idx);
+                        if (rawnm.empty()) continue;
+                        // normalize and produce variants, push pos offset
+                        std::string norm = normalize_name(rawnm);
+                        uint64_t hfull = fnv1a64_norm_from_string(norm);
+                        dsdt_occurrences[hfull].push_back(pos);
+                        // sans leading backslash
+                        std::string sans = norm;
+                        if (!sans.empty() && sans[0] == '\\') {
+                            sans = sans.substr(1);
+                            if (!sans.empty()) {
+                                uint64_t hsans = fnv1a64_norm_from_string(sans);
+                                dsdt_occurrences[hsans].push_back(pos);
+                            }
+                        }
+                        // also store trailing suffixes (last 2 and last 3 segments) to catch caret-relative uses like "RP05.PON"
+                        std::string temp = sans.empty() ? norm : sans;
+                        // collect suffixes by splitting on dots from the end
+                        size_t cur = temp.size();
+                        int segCount = 0;
+                        while (cur != std::string::npos && cur > 0 && segCount < 3) {
+                            size_t p = temp.find_last_of('.', cur == temp.size() ? std::string::npos : cur - 1);
+                            size_t start = (p == std::string::npos) ? 0 : p + 1;
+                            std::string suffix = temp.substr(start);
+                            if (!suffix.empty()) {
+                                uint64_t hsuf = fnv1a64_norm_from_string(suffix);
+                                dsdt_occurrences[hsuf].push_back(pos);
+                                std::string withb = std::string("\\") + suffix;
+                                uint64_t hw = fnv1a64_norm_from_string(withb);
+                                dsdt_occurrences[hw].push_back((pos > 0) ? (pos - 1) : pos);
+                            }
+                            if (p == std::string::npos) break;
+                            cur = p;
+                            ++segCount;
+                        }
+                    }
                 }
             }
         }
 
-        // consolidate global_hashes_vec: sort + unique to make lookups cheap (binary search)
-        std::sort(global_hashes_vec.begin(), global_hashes_vec.end());
-        global_hashes_vec.erase(std::unique(global_hashes_vec.begin(), global_hashes_vec.end()), global_hashes_vec.end());
+        // extract externals from the DSDT buffer (we only check externals that appear in the DSDT)
+        std::vector<ExternalRef> dsdt_externals;
+        if (!dsdtBuf.empty()) {
+            extract_externals_from_table(dsdtBuf.data(), dsdtBuf.size(), dsdt_externals);
+        }
 
-        // we store canonical (no-leading-backslash) names primarily
-        auto global_has_name = [&](const std::string& raw)->bool {
+        // this checks whether a normalized name exists at any offset other than exclude_offset in DSDT OR in any SSDT, the inverse logic (check SSDT references in DSDT and rest of SSDTs) is wrong
+        auto name_found_elsewhere = [&](const std::string& raw, size_t exclude_offset)->bool {
             if (raw.empty()) return false;
-            // compute normalized hashes for the variants and test presence via binary_search
+            // compute normalized hashes for the variants
             uint64_t h1 = fnv1a64_norm_from_string(raw);
-            if (std::binary_search(global_hashes_vec.begin(), global_hashes_vec.end(), h1)) return true;
+            // check DSDT occurrences: any offset != exclude_offset to not flag ourselves basically
+            auto it = dsdt_occurrences.find(h1);
+            if (it != dsdt_occurrences.end()) {
+                for (size_t off : it->second) { if (off != exclude_offset) return true; }
+            }
+
             std::string sans = raw;
             if (!sans.empty() && sans[0] == '\\') sans = sans.substr(1);
             if (!sans.empty()) {
                 uint64_t h2 = fnv1a64_norm_from_string(sans);
-                if (std::binary_search(global_hashes_vec.begin(), global_hashes_vec.end(), h2)) return true;
+                auto it2 = dsdt_occurrences.find(h2);
+                if (it2 != dsdt_occurrences.end()) {
+                    for (size_t off : it2->second) { if (off != exclude_offset) return true; }
+                }
             }
-            // try last segment only (common for fields/packages)
-            size_t p = sans.find_last_of('.');
-            std::string last = (p == std::string::npos) ? sans : sans.substr(p + 1);
-            if (!last.empty()) {
-                uint64_t h3 = fnv1a64_norm_from_string(last);
-                if (std::binary_search(global_hashes_vec.begin(), global_hashes_vec.end(), h3)) return true;
-                // also check leading-backslash-last
-                std::string withb = std::string("\\") + last;
-                uint64_t h4 = fnv1a64_norm_from_string(withb);
-                if (std::binary_search(global_hashes_vec.begin(), global_hashes_vec.end(), h4)) return true;
+
+            // try trailing suffixes (1..3 segments) - important for caret/relative uses like "RP05.PON" etc
+            {
+                std::string temp = sans.empty() ? raw : sans;
+                if (!temp.empty()) {
+                    // normalize to uppercase for hashing
+                    std::string up = normalize_name(temp);
+                    // we'll iterate from the end and test suffixes: last segment, last 2 segments, last 3 segments
+                    size_t cur_end = up.size();
+                    int tried = 0;
+                    while (cur_end > 0 && tried < 3) {
+                        size_t p = up.find_last_of('.', cur_end == up.size() ? std::string::npos : cur_end - 1);
+                        size_t start = (p == std::string::npos) ? 0 : p + 1;
+                        std::string suffix = up.substr(start, cur_end - start);
+                        if (!suffix.empty()) {
+                            uint64_t hsuf = fnv1a64_norm_from_string(suffix);
+                            auto its = dsdt_occurrences.find(hsuf);
+                            if (its != dsdt_occurrences.end()) {
+                                for (size_t off : its->second) { if (off != exclude_offset) return true; }
+                            }
+                            // leading-backslash variant
+                            std::string withb = std::string("\\") + suffix;
+                            uint64_t hwb = fnv1a64_norm_from_string(withb);
+                            auto itwb = dsdt_occurrences.find(hwb);
+                            if (itwb != dsdt_occurrences.end()) {
+                                for (size_t off : itwb->second) { if (off != exclude_offset) return true; }
+                            }
+                        }
+                        if (p == std::string::npos) break;
+                        cur_end = p;
+                        ++tried;
+                    }
+                }
+            }
+
+            // check other SSDTs (any SSDT) but also try suffixes when checking SSDT defined names
+            std::vector<std::string> check_variants;
+            check_variants.push_back(raw);
+            if (!raw.empty() && raw[0] == '\\') check_variants.push_back(raw.substr(1));
+            // push suffixes up to 3 segments for SSDT name checks
+            {
+                std::string t = (!raw.empty() && raw[0] == '\\') ? raw.substr(1) : raw;
+                std::string up = normalize_name(t);
+                size_t cur_end = up.size();
+                int tried = 0;
+                while (cur_end > 0 && tried < 3) {
+                    size_t p = up.find_last_of('.', cur_end == up.size() ? std::string::npos : cur_end - 1);
+                    size_t start = (p == std::string::npos) ? 0 : p + 1;
+                    std::string suffix = up.substr(start, cur_end - start);
+                    if (!suffix.empty()) check_variants.push_back(suffix);
+                    if (p == std::string::npos) break;
+                    cur_end = p;
+                    ++tried;
+                }
+            }
+
+            for (size_t j = 0; j < ssdt_defined_names_list.size(); ++j) {
+                const NameVec& nv = ssdt_defined_names_list[j];
+                if (nv.empty()) continue;
+                for (const std::string& var : check_variants) {
+                    uint64_t hv = fnv1a64_norm_from_string(var);
+                    if (std::binary_search(nv.begin(), nv.end(), hv)) return true;
+                }
+                // also test leading-backslash variants of suffixes
+                for (const std::string& var : check_variants) {
+                    std::string withb = var;
+                    if (!withb.empty() && withb[0] != '\\') withb = std::string("\\") + withb;
+                    uint64_t hvb = fnv1a64_norm_from_string(withb);
+                    if (std::binary_search(nv.begin(), nv.end(), hvb)) return true;
+                }
             }
             return false;
         };
 
-        // now check externals in each registry SSDT
-        for (size_t si = 0; si < ssdtFromRegistry.size(); ++si) {
-            const auto& buf = ssdtFromRegistry[si];
-            if (buf.size() < 4) continue;
-            const BYTE* data = buf.data();
-            size_t sz = buf.size();
-            std::string tsig = sig4_from_bytes(data);
-            if (tsig != "SSDT") continue;
+        // now check externals collected from the DSDT (ensure they are present at other offsets in DSDT or in SSDTs)
+        for (const auto& er : dsdt_externals) {
+            std::string en = er.name;
+            // filter obviously busted names (non-printable)
+            if (!is_printable_ascii(en)) continue;
 
-            auto fnv1a32 = [&](const BYTE* d, size_t l)->uint32_t {
-                uint32_t h = 2166136261u;
-                for (size_t k = 0; k < l; ++k) { h ^= (uint32_t)d[k]; h *= 16777619u; }
-                return h;
-                };
+            // normalize in-place to avoid an extra function call and allocation
+            std::string norm = en;
+            for (char& ch : norm) {
+                unsigned char uc = static_cast<unsigned char>(ch);
+                if (uc >= 'a' && uc <= 'z') ch = char(uc - ('a' - 'A'));
+            }
 
-            std::vector<ExternalRef> externals;
-            extract_externals_from_table(data, sz, externals);
+            bool okchars = true;
+            for (char signed_c : norm) {
+                const unsigned char c = static_cast<unsigned char>(signed_c);
+                if (!((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '.' || c == '\\' || c == '^')) { okchars = false; break; }
+            }
+            if (!okchars) continue;
 
-            for (const auto& er : externals) {
-                std::string en = er.name;
-                // filter obviously busted names (non-printable)
-                if (!is_printable_ascii(en)) continue;
-
-                // normalize in-place to avoid an extra function call and allocation
-                std::string norm = en;
-                for (char& ch : norm) {
-                    unsigned char uc = static_cast<unsigned char>(ch);
-                    if (uc >= 'a' && uc <= 'z') ch = char(uc - ('a' - 'A'));
-                }
-
-                bool okchars = true;
-                for (char signed_c : norm) {
-                    const unsigned char c = static_cast<unsigned char>(signed_c);
-                    if (!((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '.' || c == '\\' || c == '^')) { okchars = false; break; }
-                }
-                if (!okchars) continue;
-
-                if (!global_has_name(norm)) {
-                    debug("DEBUG: MISSING: External '", norm, "' at offset 0x", std::hex, er.offset, std::dec,
-                        " (type=0x", std::hex, int(er.ext_type), std::dec, ") in an SSDT.");
-                    return true;
-                }
+            if (!name_found_elsewhere(norm, er.offset)) {
+                debug("Missing external '", norm, "' at offset 0x", std::hex, er.offset, std::dec,
+                    " (type=0x", std::hex, int(er.ext_type), std::dec, ") in the DSDT.");
             }
         }
 
