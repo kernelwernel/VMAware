@@ -56,10 +56,10 @@
  * - struct for internal cpu operations        => line 719
  * - struct for internal memoization           => line 1056
  * - struct for internal utility functions     => line 1186
- * - struct for internal core components       => line 10029
- * - start of VM detection technique list      => line 2076
- * - start of public VM detection functions    => line 10521
- * - start of externally defined variables     => line 11514
+ * - struct for internal core components       => line 10059
+ * - start of VM detection technique list      => line 2089
+ * - start of public VM detection functions    => line 10551
+ * - start of externally defined variables     => line 11544
  *
  *
  * ============================== EXAMPLE ===================================
@@ -1511,7 +1511,6 @@ private:
 #if (APPLE)
             return 0;
 #endif
-
             u16 size = 0;
             constexpr u64 U16_MAX = 65535;
             constexpr u64 GB = 1024ull * 1024 * 1024;
@@ -1519,7 +1518,7 @@ private:
 #if (LINUX)
             struct statvfs stat;
             if (statvfs("/", &stat) != 0) {
-                debug("util::get_disk_size: ", "failed to fetch disk size");
+                debug("util::get_disk_size: failed to fetch size in GiB");
                 return 0;
             }
 
@@ -1533,9 +1532,10 @@ private:
                 size = static_cast<u16>(size_gb);
             }
 #elif (WINDOWS)
-            ULARGE_INTEGER totalNumberOfBytes;
+            ULARGE_INTEGER totalNumberOfBytes{};
             if (GetDiskFreeSpaceExW(L"C:", nullptr, &totalNumberOfBytes, nullptr)) {
-                const u64 size_gb = totalNumberOfBytes.QuadPart / GB;
+                const u64 bytes = static_cast<u64>(totalNumberOfBytes.QuadPart);
+                const u64 size_gb = (bytes + (GB / 2ULL)) / GB;
 
                 if (size_gb > U16_MAX) {
                     size = static_cast<u16>(U16_MAX);
@@ -1545,12 +1545,12 @@ private:
                 }
             }
             else {
-                debug("util::get_disk_size: ", "failed to fetch size in GB");
+                debug("util::get_disk_size: failed to fetch size in GiB");
+                return 81;
             }
 #endif
 
-            constexpr u16 fallback_size = 81;
-            return (size == 0) ? fallback_size : size;
+            return size;
         }
 
 
@@ -1590,11 +1590,24 @@ private:
 
             return static_cast<u32>(std::min<u64>(number, std::numeric_limits<u32>::max()));
 #elif (WINDOWS)
-            ULONGLONG total_memory_kb = 0;
-            if (GetPhysicallyInstalledSystemMemory(&total_memory_kb) == ERROR_INVALID_DATA)
-                return 0;
+            ULONGLONG total_kb = 0;
+            constexpr unsigned long long gib = 1024ULL * 1024ULL * 1024ULL;
 
-            return static_cast<u32>(total_memory_kb / (static_cast<unsigned long long>(1024) * 1024));  // Return in GB
+            if (GetPhysicallyInstalledSystemMemory(&total_kb)) {
+                const unsigned long long bytes = total_kb * 1024ULL;
+                // GiB = 1024^3; to round to nearest GiB: (bytes + GiB/2) / GiB
+                return static_cast<u32>((bytes + (gib / 2ULL)) / gib);
+            }
+
+            // the "physically installed" API can fail if some hypervisors like VirtualBox don't populate the necessary firmware/SMBIOS fields
+            MEMORYSTATUSEX ms{};
+            ms.dwLength = sizeof(ms);
+            if (GlobalMemoryStatusEx(&ms)) {
+                const unsigned long long bytes = ms.ullTotalPhys;
+                return static_cast<u32>((bytes + (gib / 2ULL)) / gib);
+            }
+
+            return 0;
 #else
             return 0;
 #endif
@@ -5519,21 +5532,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
     /**
      * @brief Check for default RAM and DISK sizes set by VirtualBox
-     * @note Admin only needed for Linux
      * @category Linux, Windows
      * @warning Permissions required
      * @implements VM::VBOX_DEFAULT
      */
     [[nodiscard]] static bool vbox_default_specs() {
-        /**
-         *              RAM     DISK
-         * WINDOWS 11:  4096MB, 80GB
-         * WINDOWS 10:  2048MB, 50GB
-         * ARCH, OPENSUSE, REDHAD, GENTOO, FEDORA, DEBIAN: 1024MB, 8GB
-         * UBUNTU:      1028MB, 10GB
-         * ORACLE:      1024MB, 12GB
-         * OTHER LINUX: 512MB,  8GB
-         */
         const u16 disk = util::get_disk_size(); 
         const u32 ram = util::get_physical_ram_size(); 
 
@@ -5570,40 +5573,77 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return false;
             }
 
-            if (
-                "arch" == distro ||
-                "opensuse" == distro ||
-                "redhat" == distro ||
-                "gentoo" == distro ||
-                "fedora" == distro ||
-                "debian" == distro
-            ) {
-                return ((8 == disk) && (1 == ram));
-            }
+            static const std::unordered_map<std::string, std::pair<int, int>> defaults = {
+                {"arch",      {8, 1}},
+                {"archlinux", {8, 1}},
+                {"opensuse",  {8, 1}},
+                {"opensuse_64",{8,1}},
+                {"redhat",    {8, 1}},
+                {"redhat_64", {8, 1}},
+                {"gentoo",    {8, 1}},
+                {"gentoo_64", {8, 1}},
 
-            if ("ubuntu" == distro) {
-                return ((10 == disk) && (1 == ram));
-            }
+                {"fedora",    {15, 2}},
+                {"fedora_64", {15, 2}},
+                {"ubuntu",    {25, 2}},
+                {"ubuntu_64", {25, 2}},
+                {"ol",        {20, 2}},    // ol = oracle linux (alias)
+                {"oracle",    {20, 2}},
+                {"debian",    {20, 2}},
+                {"debian_64", {20, 2}},
 
-            if ("ol" == distro) { // ol = oracle
-                return ((12 == disk) && (1 == ram));
+                {"centos",    {20, 2}},
+                {"centos_64", {20, 2}},
+                {"suse",      {8, 1}},
+                {"suse_64",   {8, 1}},
+                {"opensuse",  {8, 1}},
+                {"oraclelinux",{20,2}},
+                {"linux",     {8, 1}},   // "Other Linux" generic
+                {"linux_64",  {8, 1}},
+                {"mandriva",  {8, 1}},
+                {"turbolinux",{8, 1}},
+                {"xandros",   {8, 1}},
+                {"other",     {8, 1}}
+            };
+
+            std::string key = to_lower(distro);
+
+            auto it = defaults.find(key);
+            if (it != defaults.end()) {
+                return (it->second.first == disk) && (it->second.second == ram);
             }
 
             return false;
         #elif (WINDOWS)
             const u8 version = util::get_windows_version();
 
-            if (version < 10) {
+            if (version < 7) {
                 return false;
+            }
+
+            // even if you create a drive with, say, 80GiB, only 79.1GiB will be allocated, so we do <default_config_size> - 1
+            if (version == 7) {
+                debug("VBOX_DEFAULT: Windows 7 detected");
+                return ((31 == disk) && ((1 == ram) || (2 == ram)));
+            }
+
+            if (version == 8) {
+                debug("VBOX_DEFAULT: Windows 8 detected");
+                return ((39 == disk) && ((1 == ram) || (2 == ram)));
+            }
+
+            if (version == 8) {
+                debug("VBOX_DEFAULT: Windows 8 detected");
+                return ((39 == disk) && ((1 == ram) || (2 == ram)));
             }
 
             if (version == 10) {
                 debug("VBOX_DEFAULT: Windows 10 detected");
-                return ((50 == disk) && (2 == ram));
+                return ((49 == disk) && ( (1 == ram) || (2 == ram) ));
             }
 
             debug("VBOX_DEFAULT: Windows 11 detected");
-            return ((80 == disk) && (4 == ram));
+            return ((79 == disk) && (4 == ram));
         #endif
     }
 
@@ -6940,7 +6980,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             { brands::KVM, "HKLM\\SYSTEM\\ControlSet001\\Services\\BalloonService" },
             { brands::KVM, "HKLM\\SYSTEM\\ControlSet001\\Services\\netkvm" },
 
-            { brands::VBOX, "HKLM\\SYSTEM\\CurrentControlSet\\Services\\VBoxSF"},
+            { brands::VBOX, "HKLM\\SYSTEM\\CurrentControlSet\\Services\\VBoxSF" }, // only installed after vbox guest additions
 
             { brands::HYPERV, "HKLM\\HARDWARE\\ACPI\\DSDT\\MSFTVM" },
             { brands::HYPERV, "HKLM\\HARDWARE\\ACPI\\FADT\\VRTUAL" },
@@ -7209,7 +7249,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         };
 
         static const std::vector<RegCheck> checks = {
-
             { brands::ANUBIS,   "SOFTWARE\\Microsoft\\Windows\\CurrentVersion",                                      "ProductID",               "76487-337-8429955-22614" },
             { brands::ANUBIS,   "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion",                                 "ProductID",               "76487-337-8429955-22614" },
 
@@ -7218,14 +7257,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             { brands::JOEBOX,   "SOFTWARE\\Microsoft\\Windows\\CurrentVersion",                                      "ProductID",               "55274-640-2673064-23950" },
             { brands::JOEBOX,   "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion",                                 "ProductID",               "55274-640-2673064-23950" },
-
-            { brands::QEMU,     "HARDWARE\\DEVICEMAP\\Scsi\\Scsi Port 0\\Scsi Bus 0\\Target Id 0\\Logical Unit Id 0", "Identifier",           "QEMU" },
-            { brands::QEMU,     "HARDWARE\\DEVICEMAP\\Scsi\\Scsi Port 1\\Scsi Bus 0\\Target Id 0\\Logical Unit Id 0", "Identifier",           "QEMU" },
-            { brands::QEMU,     "HARDWARE\\DEVICEMAP\\Scsi\\Scsi Port 2\\Scsi Bus 0\\Target Id 0\\Logical Unit Id 0", "Identifier",           "QEMU" },
-
-            { brands::VBOX,     "HARDWARE\\DEVICEMAP\\Scsi\\Scsi Port 0\\Scsi Bus 0\\Target Id 0\\Logical Unit Id 0", "Identifier",           "VBOX" },
-            { brands::VBOX,     "HARDWARE\\DEVICEMAP\\Scsi\\Scsi Port 1\\Scsi Bus 0\\Target Id 0\\Logical Unit Id 0", "Identifier",           "VBOX" },
-            { brands::VBOX,     "HARDWARE\\DEVICEMAP\\Scsi\\Scsi Port 2\\Scsi Bus 0\\Target Id 0\\Logical Unit Id 0", "Identifier",           "VBOX" },
 
             { brands::VMWARE,   "HARDWARE\\DEVICEMAP\\Scsi\\Scsi Port 0\\Scsi Bus 0\\Target Id 0\\Logical Unit Id 0", "Identifier",           "VMWARE" },
             { brands::VMWARE,   "HARDWARE\\DEVICEMAP\\Scsi\\Scsi Port 1\\Scsi Bus 0\\Target Id 0\\Logical Unit Id 0", "Identifier",           "VMWARE" },
@@ -7246,7 +7277,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             { brands::VMWARE,   "SYSTEM\\CurrentControlSet\\Control\\Video\\{GUID}\\Video",                        "Service",                "vm3dmp" },
             { brands::VMWARE,   "SYSTEM\\CurrentControlSet\\Control\\Video\\{GUID}\\Video",                        "Service",                "vmx_svga" },
             { brands::VMWARE,   "SYSTEM\\CurrentControlSet\\Control\\Video\\{GUID}\\0000",                       "Device Description",    "VMware SVGA*" },
-
         };
 
         // Performs a simple wildcard comparison
@@ -7875,7 +7905,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         for (ULONG i = 0; i < pSystemModuleInfoEx->NumberOfModules; ++i) {
             const char* driverPath = reinterpret_cast<const char*>(pSystemModuleInfoEx->Module[i].ImageName);
             if (
-                strstr(driverPath, "VBoxGuest") ||
+                strstr(driverPath, "VBoxGuest") || // only installed after vbox guest additions
                 strstr(driverPath, "VBoxMouse") ||
                 strstr(driverPath, "VBoxSF")
             ) {
@@ -8125,7 +8155,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return false;
             }
 
-            // if the driver cannot adjust the display gamma ramp dynamically—but only in full-screen mode—via the IDirect3DDevice9::SetGammaRamp API
+            // if the driver cannot adjust the display gamma ramp dynamically but only in full-screen mode—via the IDirect3DDevice9::SetGammaRamp API
             return !(caps.Caps2 & D3DCAPS2_FULLSCREENGAMMA);
         */
 
@@ -8525,7 +8555,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             case 0x414D4400u: // "AMD\0"
             case 0x41544D4Cu: // "ATML"
             case 0x4252434Du: // "BRCM"
-            case 0x49424D00u: // "IBM\0"
+            case 0x49424D00u: // "IBM\0" (used by VirtualBox)
             case 0x49465800u: // "IFX\0"
             case 0x494E5443u: // "INTC"
             case 0x4E534D20u: // "NSM "
@@ -9125,7 +9155,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         switch (crc) {
         case 0x110350C5: return core::add(brands::QEMU); // TianoCore EDK2
         case 0x87c39681: return core::add(brands::HYPERV);
-        case 0x49ED9F1C: return core::add(brands::VBOX);
+        case 0xf6829262: return core::add(brands::VBOX);
         default:         return false;
         }
     #else
@@ -9257,19 +9287,19 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return out;
         };
 
-        using NameVec = std::vector<uint64_t>;
+        using NameVec = std::vector<u64>;
 
         // fast normalized FNV-1a64 hash (uppercases a-z during hashing), tries to improve std::unordered_set performance
-        auto fnv1a64_norm = [](const char* data, size_t len) -> uint64_t {
-            const uint64_t FNV_OFFSET = 14695981039346656037ULL;
-            const uint64_t FNV_PRIME = 1099511628211ULL;
-            uint64_t h = FNV_OFFSET;
+        auto fnv1a64_norm = [](const char* data, size_t len) -> u64 {
+            const u64 FNV_OFFSET = 14695981039346656037ULL;
+            const u64 FNV_PRIME = 1099511628211ULL;
+            u64 h = FNV_OFFSET;
             for (size_t i = 0; i < len; ++i) {
                 unsigned char c = static_cast<unsigned char>(data[i]);
                 if (c >= 'a' && c <= 'z') {
                     c = static_cast<unsigned char>(c - ('a' - 'A'));
                 }
-                h ^= static_cast<uint64_t>(c);
+                h ^= static_cast<u64>(c);
                 h *= FNV_PRIME;
             }
             return h;
@@ -9329,7 +9359,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     })(current_scope, raw_name);
 
                     if (out_names && !new_scope_full_name.empty()) {
-                        uint64_t h = fnv1a64_norm_from_string(new_scope_full_name);
+                        const u64 h = fnv1a64_norm_from_string(new_scope_full_name);
                         out_names->push_back(h);
                         if (!new_scope_full_name.empty() && new_scope_full_name[0] == '\\' && new_scope_full_name.size() > 1) {
                             out_names->push_back(fnv1a64_norm(new_scope_full_name.data() + 1, new_scope_full_name.size() - 1));
@@ -9347,7 +9377,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                                 ((c3 >= 'A' && c3 <= 'Z') || (c3 >= 'a' && c3 <= 'z') || (c3 >= '0' && c3 <= '9') || c3 == '_');
                             if (ok) {
                                 char tmp4[4] = { (char)c0, (char)c1, (char)c2, (char)c3 };
-                                uint64_t h = fnv1a64_norm(tmp4, 4);
+                                const u64 h = fnv1a64_norm(tmp4, 4);
                                 out_names->push_back(h);
                                 // leading-backslash variant:
                                 char fullb[5] = { '\\', tmp4[0], tmp4[1], tmp4[2], tmp4[3] };
@@ -9373,7 +9403,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                             if (raw_name[0] == '\\') resolved = raw_name;
                             else resolved = current_scope == "\\" ? ("\\" + raw_name) : (current_scope + "." + raw_name);
                         }
-                        uint64_t h = fnv1a64_norm_from_string(resolved);
+                        const u64 h = fnv1a64_norm_from_string(resolved);
                         out_names->push_back(h);
                         if (!resolved.empty() && resolved[0] == '\\' && resolved.size() > 1) {
                             out_names->push_back(fnv1a64_norm(resolved.data() + 1, resolved.size() - 1));
@@ -9410,7 +9440,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     ((c2 >= 'A' && c2 <= 'Z') || (c2 >= 'a' && c2 <= 'z') || (c2 >= '0' && c2 <= '9') || c2 == '_') &&
                     ((c3 >= 'A' && c3 <= 'Z') || (c3 >= 'a' && c3 <= 'z') || (c3 >= '0' && c3 <= '9') || c3 == '_')) {
                     char tmp[4] = { (char)c0, (char)c1, (char)c2, (char)c3 };
-                    uint64_t h = fnv1a64_norm(tmp, 4);
+                    const u64 h = fnv1a64_norm(tmp, 4);
                     out_names.push_back(h);
                     char fullb[5] = { '\\', tmp[0], tmp[1], tmp[2], tmp[3] };
                     out_names.push_back(fnv1a64_norm(fullb, 5));
@@ -9435,10 +9465,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                         for (size_t k = i + 1; k < j; ++k) if (buf[k] == '.') { hasDot = true; break; }
                         if (hasDot || len >= 4) {
                             // compute hash on the fly to avoid allocations
-                            uint64_t h_full = fnv1a64_norm(reinterpret_cast<const char*>(buf + i), j - i);
+                            const u64 h_full = fnv1a64_norm(reinterpret_cast<const char*>(buf + i), j - i);
                             out_names.push_back(h_full);
                             if ((j - i) >= 2) {
-                                uint64_t h_sans = fnv1a64_norm(reinterpret_cast<const char*>(buf + i + 1), j - i - 1);
+                                const u64 h_sans = fnv1a64_norm(reinterpret_cast<const char*>(buf + i + 1), j - i - 1);
                                 out_names.push_back(h_sans);
                             }
                         }
@@ -9461,7 +9491,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                         }
                         size_t len = j - i;
                         if (len >= 5 && dotSeen) {
-                            uint64_t h_plain = fnv1a64_norm(reinterpret_cast<const char*>(buf + i), len);
+                            const u64 h_plain = fnv1a64_norm(reinterpret_cast<const char*>(buf + i), len);
                             // with leading backslash
                             // create a small stack buffer with leading backslash + uppercased bytes
                             char withb_local[513]{};
@@ -9640,7 +9670,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         // Build a map of occurrences (hash and then vector<offsets>) for the DSDT buffer, so we can check whether an external found at offset X appears elsewhere
-        std::unordered_map<uint64_t, std::vector<size_t>> dsdt_occurrences;
+        std::unordered_map<u64, std::vector<size_t>> dsdt_occurrences;
         if (!dsdtBuf.empty()) {
             const BYTE* buf = dsdtBuf.data();
             size_t buf_len = dsdtBuf.size();
@@ -9654,11 +9684,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                         ((c2 >= 'A' && c2 <= 'Z') || (c2 >= 'a' && c2 <= 'z') || (c2 >= '0' && c2 <= '9') || c2 == '_') &&
                         ((c3 >= 'A' && c3 <= 'Z') || (c3 >= 'a' && c3 <= 'z') || (c3 >= '0' && c3 <= '9') || c3 == '_')) {
                         char tmp[4] = { (char)c0, (char)c1, (char)c2, (char)c3 };
-                        uint64_t h = fnv1a64_norm(tmp, 4);
+                        const u64 h = fnv1a64_norm(tmp, 4);
                         dsdt_occurrences[h].push_back(i);
                         // leading-backslash variant: record offset i-1 if possible else i
                         char fullb[5] = { '\\', tmp[0], tmp[1], tmp[2], tmp[3] };
-                        uint64_t hb = fnv1a64_norm(fullb, 5);
+                        const u64 hb = fnv1a64_norm(fullb, 5);
                         dsdt_occurrences[hb].push_back((i > 0) ? (i - 1) : i);
                     }
                 }
@@ -9680,10 +9710,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                         bool hasDot = false;
                         for (size_t k = i + 1; k < j; ++k) if (buf[k] == '.') { hasDot = true; break; }
                         if (hasDot || len >= 4) {
-                            uint64_t h_full = fnv1a64_norm(reinterpret_cast<const char*>(buf + i), j - i);
+                            const u64 h_full = fnv1a64_norm(reinterpret_cast<const char*>(buf + i), j - i);
                             dsdt_occurrences[h_full].push_back(i);
                             if ((j - i) >= 2) {
-                                uint64_t h_sans = fnv1a64_norm(reinterpret_cast<const char*>(buf + i + 1), j - i - 1);
+                                const u64 h_sans = fnv1a64_norm(reinterpret_cast<const char*>(buf + i + 1), j - i - 1);
                                 dsdt_occurrences[h_sans].push_back(i + 1);
                             }
                         }
@@ -9706,7 +9736,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                         }
                         size_t len = j - i;
                         if (len >= 5 && dotSeen) {
-                            uint64_t h_plain = fnv1a64_norm(reinterpret_cast<const char*>(buf + i), len);
+                            const u64 h_plain = fnv1a64_norm(reinterpret_cast<const char*>(buf + i), len);
                             dsdt_occurrences[h_plain].push_back(i);
                             // with leading backslash: compute hash and set offset i-1 if possible
                             char withb_local[513]{};
@@ -9716,7 +9746,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                                 if (cc >= 'a' && cc <= 'z') withb_local[1 + k] = char(cc - ('a' - 'A'));
                                 else withb_local[1 + k] = char(cc);
                             }
-                            uint64_t hb = fnv1a64_norm(withb_local, len + 1);
+                            const u64 hb = fnv1a64_norm(withb_local, len + 1);
                             dsdt_occurrences[hb].push_back((i > 0) ? (i - 1) : i);
                         }
                         i = j;
@@ -9734,14 +9764,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                         if (rawnm.empty()) continue;
                         // normalize and produce variants, push pos offset
                         std::string norm = normalize_name(rawnm);
-                        uint64_t hfull = fnv1a64_norm_from_string(norm);
+                        const u64 hfull = fnv1a64_norm_from_string(norm);
                         dsdt_occurrences[hfull].push_back(pos);
                         // sans leading backslash
                         std::string sans = norm;
                         if (!sans.empty() && sans[0] == '\\') {
                             sans = sans.substr(1);
                             if (!sans.empty()) {
-                                uint64_t hsans = fnv1a64_norm_from_string(sans);
+                                const u64 hsans = fnv1a64_norm_from_string(sans);
                                 dsdt_occurrences[hsans].push_back(pos);
                             }
                         }
@@ -9755,10 +9785,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                             size_t start = (p == std::string::npos) ? 0 : p + 1;
                             std::string suffix = temp.substr(start);
                             if (!suffix.empty()) {
-                                uint64_t hsuf = fnv1a64_norm_from_string(suffix);
+                                const u64 hsuf = fnv1a64_norm_from_string(suffix);
                                 dsdt_occurrences[hsuf].push_back(pos);
                                 std::string withb = std::string("\\") + suffix;
-                                uint64_t hw = fnv1a64_norm_from_string(withb);
+                                const u64 hw = fnv1a64_norm_from_string(withb);
                                 dsdt_occurrences[hw].push_back((pos > 0) ? (pos - 1) : pos);
                             }
                             if (p == std::string::npos) break;
@@ -9780,7 +9810,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         auto name_found_elsewhere = [&](const std::string& raw, size_t exclude_offset)->bool {
             if (raw.empty()) return false;
             // compute normalized hashes for the variants
-            uint64_t h1 = fnv1a64_norm_from_string(raw);
+            const u64 h1 = fnv1a64_norm_from_string(raw);
             // check DSDT occurrences: any offset != exclude_offset to not flag ourselves basically
             auto it = dsdt_occurrences.find(h1);
             if (it != dsdt_occurrences.end()) {
@@ -9790,7 +9820,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             std::string sans = raw;
             if (!sans.empty() && sans[0] == '\\') sans = sans.substr(1);
             if (!sans.empty()) {
-                uint64_t h2 = fnv1a64_norm_from_string(sans);
+                const u64 h2 = fnv1a64_norm_from_string(sans);
                 auto it2 = dsdt_occurrences.find(h2);
                 if (it2 != dsdt_occurrences.end()) {
                     for (size_t off : it2->second) { if (off != exclude_offset) return true; }
@@ -9811,14 +9841,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                         size_t start = (p == std::string::npos) ? 0 : p + 1;
                         std::string suffix = up.substr(start, cur_end - start);
                         if (!suffix.empty()) {
-                            uint64_t hsuf = fnv1a64_norm_from_string(suffix);
+                            const u64 hsuf = fnv1a64_norm_from_string(suffix);
                             auto its = dsdt_occurrences.find(hsuf);
                             if (its != dsdt_occurrences.end()) {
                                 for (size_t off : its->second) { if (off != exclude_offset) return true; }
                             }
                             // leading-backslash variant
                             std::string withb = std::string("\\") + suffix;
-                            uint64_t hwb = fnv1a64_norm_from_string(withb);
+                            const u64 hwb = fnv1a64_norm_from_string(withb);
                             auto itwb = dsdt_occurrences.find(hwb);
                             if (itwb != dsdt_occurrences.end()) {
                                 for (size_t off : itwb->second) { if (off != exclude_offset) return true; }
@@ -9856,14 +9886,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 const NameVec& nv = ssdt_defined_names_list[j];
                 if (nv.empty()) continue;
                 for (const std::string& var : check_variants) {
-                    uint64_t hv = fnv1a64_norm_from_string(var);
+                    const u64 hv = fnv1a64_norm_from_string(var);
                     if (std::binary_search(nv.begin(), nv.end(), hv)) return true;
                 }
                 // also test leading-backslash variants of suffixes
                 for (const std::string& var : check_variants) {
                     std::string withb = var;
                     if (!withb.empty() && withb[0] != '\\') withb = std::string("\\") + withb;
-                    uint64_t hvb = fnv1a64_norm_from_string(withb);
+                    const u64 hvb = fnv1a64_norm_from_string(withb);
                     if (std::binary_search(nv.begin(), nv.end(), hvb)) return true;
                 }
             }
