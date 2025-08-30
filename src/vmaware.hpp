@@ -5606,7 +5606,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 {"other",     {8, 1}}
             };
 
-            std::string key = to_lower(distro);
+            std::string key = distro;
+            for (char& c : key) {     
+                c = std::tolower(static_cast<unsigned char>(c));
+            }
 
             auto it = defaults.find(key);
             if (it != defaults.end()) {
