@@ -25,6 +25,7 @@
 #include <iostream>
 #include <vector>
 #include <cstdint>
+#include <chrono>
 
 #if (defined(__GNUC__) || defined(__linux__))
     #include <unistd.h>
@@ -37,6 +38,7 @@
 #if (defined(_MSC_VER) || defined(_WIN32) || defined(_WIN64) || defined(__MINGW32__))
     #define CLI_WINDOWS 1
     #define WIN32_LEAN_AND_MEAN
+    #define NOMINMAX
     #include <windows.h>
 #else
     #define CLI_WINDOWS 0
@@ -443,7 +445,7 @@ static std::string vm_description(const std::string& vm_brand) {
         { brands::AZURE_HYPERV, "Azure Hyper-V is Microsoft's cloud-optimized hypervisor variant powering Azure VMs. Implements Azure-specific virtual devices like NVMe Accelerated Networking and vTPMs. Supports nested virtualization for running Hyper-V/containers within Azure VMs, enabling cloud-based CI/CD pipelines and dev/test environments." },
         { brands::NANOVISOR, "NanoVisor is a Hyper-V modification serving as the host OS of Xbox's devices: the Xbox System Software. It contains 2 partitions: the \"Exclusive\" partition is a custom VM for games, while the other partition, called the \"Shared\" partition is a custom VM for running multiple apps including the OS itself. The OS was based on Windows 8 Core at the Xbox One launch in 2013." },
         { brands::SIMPLEVISOR, "SimpleVisor is a minimalist Intel VT-x hypervisor by Alex Ionescu for Windows/Linux research. Demonstrates EPT-based memory isolation and hypercall handling. Used to study VM escapes and hypervisor rootkits, with hooks for intercepting CR3 changes and MSR accesses." },
-        { brands::HYPERV_ARTIFACT, "The CLI detected Hyper-V operating as a Type 1 hypervisor, not as a guest virtual machine. Although your hardware/firmware signatures match Microsoft's Hyper-V architecture, we determined that you're running on baremetal, with the help of our \"Hyper-X\" mechanism that differentiates between the root partition (host OS) and guest VM environments. This prevents false positives, as Windows sometimes runs under Hyper-V (type 1) hypervisor." },
+        { brands::HYPERV_ARTIFACT, "VMAware detected Hyper-V operating as a Type 1 hypervisor, not as a guest virtual machine. Although your hardware/firmware signatures match Microsoft's Hyper-V architecture, we determined that you're running on baremetal, with the help of our \"Hyper-X\" mechanism that differentiates between the root partition (host OS) and guest VM environments. This prevents false positives, as Windows sometimes runs under Hyper-V (type 1) hypervisor." },
         { brands::UML, "User-Mode Linux (UML) allows running Linux kernels as user-space processes using ptrace-based virtualization. Primarily used for kernel debugging and network namespace testing. Offers lightweight isolation without hardware acceleration, but requires host/guest kernel version matching for stable operation." },
         { brands::POWERVM, "IBM PowerVM is a type 1 hypervisor for POWER9/10 systems, supporting Live Partition Mobility and Shared Processor Pools. Implements VIOS (Virtual I/O Server) for storage/networking virtualization, enabling concurrent AIX, IBM i, and Linux workloads with RAS features like predictive failure analysis." },
         { brands::GCE, "Google Compute Engine (GCE) utilizes KVM-based virtualization with custom Titanium security chips for hardware root of trust. Features live migration during host maintenance and shielded VMs with UEFI secure boot. Underpins Google Cloud's Confidential Computing offering using AMD SEV-SNP memory encryption." },
@@ -678,7 +680,7 @@ const bool is_anyrun = (is_anyrun_directory || is_anyrun_driver);
 
 static void general() {
     bool notes_enabled = false;
-
+    
     if (arg_bitset.test(NO_ANSI)) {
         detected = ("[  DETECTED  ]");
         not_detected = ("[NOT DETECTED]");
@@ -686,7 +688,7 @@ static void general() {
         no_perms = ("[  NO PERMS  ]");
         note = ("[    NOTE    ]");               
         disabled = ("[  DISABLED  ]");
-
+        
         bold = "";
         underline = "";
         ansi_exit = "";
@@ -710,6 +712,8 @@ static void general() {
         }
     #endif
 
+    const auto t1 = std::chrono::high_resolution_clock::now();
+
     checker(VM::VMID, "VMID");
     checker(VM::CPU_BRAND, "CPU brand");
     checker(VM::HYPERVISOR_BIT, "CPUID hypervisor bit");
@@ -729,7 +733,6 @@ static void general() {
     checker(VM::REGISTRY_KEYS, "registry keys");
     checker(VM::WINE, "Wine");
     checker(VM::HWMODEL, "hw.model");
-    checker(VM::DISK_SIZE, "disk size");
     checker(VM::VBOX_DEFAULT, "VBox default specs");
     checker(VM::PROCESSES, "processes");
     checker(VM::LINUX_USER_HOST, "default Linux user/host");
@@ -740,7 +743,7 @@ static void general() {
     checker(VM::IOREG_GREP, "IO registry grep");
     checker(VM::MAC_SIP, "MacOS SIP");
     checker(VM::REGISTRY_VALUES, "registry values");
-    checker(VM::AUDIO, "audio device");
+    checker(VM::AUDIO, "audio devices");
     checker(VM::VPC_INVALID, "VPC invalid instructions");
     checker(VM::SIDT, "SIDT");
     checker(VM::SGDT, "SGDT");
@@ -803,7 +806,11 @@ static void general() {
     checker(VM::DBVM, "Dark Byte's hypervisor");
     checker(VM::BOOT_LOGO, "boot logo");
     checker(VM::MAC_SYS, "system profiler");
+    checker(VM::OBJECTS, "objects");
+
     // ADD NEW TECHNIQUE CHECKER HERE
+
+    const auto t2 = std::chrono::high_resolution_clock::now();
 
     std::printf("\n");
 
@@ -901,6 +908,18 @@ static void general() {
     }
 
 
+    // hardened environment detection manager 
+    {
+        std::cout << bold << "VM hardening: " << ansi_exit;
+
+        if (VM::is_hardened()) {
+            std::cout << green << "found" << ansi_exit << "\n";
+        } else {
+            std::cout << red << "not found" << ansi_exit << "\n";
+        }
+    }
+
+
     // misc manager
     {
         if (arg_bitset.test(VERBOSE)) {
@@ -908,6 +927,9 @@ static void general() {
             std::cout << bold << "Supported detections: " << ansi_exit << static_cast<u32>(supported_count) << "\n";
             std::cout << bold << "No permission detections: " << ansi_exit << static_cast<u32>(no_perms_count) << "\n";
             std::cout << bold << "Disabled detections: " << ansi_exit << static_cast<u32>(disabled_count) << "\n";
+
+            const std::chrono::duration<double, std::milli> elapsed = t2 - t1;
+            std::cout << bold << "Execution speed: " << ansi_exit << elapsed.count() << "ms\n";
         }
 
         std::printf("\n");
@@ -917,7 +939,6 @@ static void general() {
     // description manager
     {
         if (vm.brand != brands::NULL_BRAND) {
-
             const std::string description = vm_description(vm.brand);
 
             if (!description.empty()) {
@@ -981,7 +1002,7 @@ static void general() {
 
         std::cout
             << bold
-            << "====== CONCLUSION: "
+            << "\n====== CONCLUSION: "
             << ansi_exit
             << conclusion_color << conclusion << " " << ansi_exit
             << bold
@@ -998,7 +1019,8 @@ static void general() {
         }
     }
 
-    system("pause"); 
+    std::cout << "Press Enter to exit...";
+    std::cin.get();
 }
 
 
@@ -1112,21 +1134,21 @@ int main(int argc, char* argv[]) {
         }
 
         if (arg_bitset.test(STDOUT)) {
-            return (!VM::detect(VM::NO_MEMO, settings()));
+            return (!VM::detect(settings()));
         }
 
         if (arg_bitset.test(PERCENT)) {
-            std::cout << static_cast<u32>(VM::percentage(VM::NO_MEMO, settings())) << "\n";
+            std::cout << static_cast<u32>(VM::percentage(settings())) << "\n";
             return 0;
         }
 
         if (arg_bitset.test(DETECT)) {
-            std::cout << VM::detect(VM::NO_MEMO, settings()) << "\n";
+            std::cout << VM::detect(settings()) << "\n";
             return 0;
         }
 
         if (arg_bitset.test(BRAND)) {
-            std::string brand = VM::brand(VM::NO_MEMO, VM::MULTIPLE, settings());
+            std::string brand = VM::brand(VM::MULTIPLE, settings());
             
             if (is_anyrun && (brand == brands::NULL_BRAND)) {
                 brand = "ANY.RUN";
@@ -1138,7 +1160,7 @@ int main(int argc, char* argv[]) {
         }
 
         if (arg_bitset.test(TYPE)) {
-            std::string type = VM::type(VM::NO_MEMO, VM::MULTIPLE, settings());
+            std::string type = VM::type(VM::MULTIPLE, settings());
 
             if (is_anyrun && (type == brands::NULL_BRAND)) {
                 type = "Sandbox";
@@ -1150,8 +1172,8 @@ int main(int argc, char* argv[]) {
         }
 
         if (arg_bitset.test(CONCLUSION)) {
-            std::string conclusion = VM::conclusion(VM::NO_MEMO, VM::MULTIPLE, settings());
-            
+            std::string conclusion = VM::conclusion(VM::MULTIPLE, settings());
+
             if (is_anyrun) {
                 const std::string original = brands::NULL_BRAND;
                 const std::string new_brand = "ANY.RUN";
