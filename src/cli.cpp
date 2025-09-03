@@ -737,7 +737,6 @@ static void general() {
     checker(VM::REGISTRY_KEYS, "registry keys");
     checker(VM::WINE, "Wine");
     checker(VM::HWMODEL, "hw.model");
-    checker(VM::DISK_SIZE, "disk size");
     checker(VM::VBOX_DEFAULT, "VBox default specs");
     checker(VM::PROCESSES, "processes");
     checker(VM::LINUX_USER_HOST, "default Linux user/host");
@@ -748,7 +747,7 @@ static void general() {
     checker(VM::IOREG_GREP, "IO registry grep");
     checker(VM::MAC_SIP, "MacOS SIP");
     checker(VM::REGISTRY_VALUES, "registry values");
-    checker(VM::AUDIO, "audio device");
+    checker(VM::AUDIO, "audio devices");
     checker(VM::VPC_INVALID, "VPC invalid instructions");
     checker(VM::SIDT, "SIDT");
     checker(VM::SGDT, "SGDT");
@@ -811,7 +810,8 @@ static void general() {
     checker(VM::DBVM, "Dark Byte's hypervisor");
     checker(VM::BOOT_LOGO, "boot logo");
     checker(VM::MAC_SYS, "system profiler");
-    checker(VM::SSDT_PASSTHROUGH, "SSDT passthrough");
+    checker(VM::OBJECTS, "objects");
+
     // ADD NEW TECHNIQUE CHECKER HERE
 
     const auto t2 = std::chrono::high_resolution_clock::now();
