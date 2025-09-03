@@ -56,10 +56,10 @@
  * - struct for internal cpu operations        => line 717
  * - struct for internal memoization           => line 1054
  * - struct for internal utility functions     => line 1184
- * - struct for internal core components       => line 9290
+ * - struct for internal core components       => line 9282
  * - start of VM detection technique list      => line 2092
- * - start of public VM detection functions    => line 9782
- * - start of externally defined variables     => line 10773
+ * - start of public VM detection functions    => line 9774
+ * - start of externally defined variables     => line 10765
  *
  *
  * ============================== EXAMPLE ===================================
@@ -5894,8 +5894,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         static_assert(targets.size() == brands_map.size(), "targets and brands_map must be the same length");
 
-        bool is_vivobook = false;
-
         auto scan_table = [&](const BYTE* buf, const size_t len) noexcept -> bool {
             // faster than std::search because of a manual byte-by-byte loop, could be optimized further with Boyer-Moore-Horspool implementations for large firmware tables like DSDT
             auto find_pattern = [&](const char* pat, size_t patlen) noexcept -> bool {
@@ -6018,12 +6016,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
             }
 
-            constexpr char vivobook_str[] = "ASUS Vivobook";
-            constexpr size_t vivobook_len = sizeof(vivobook_str) - 1;
-            if (find_pattern(vivobook_str, vivobook_len)) {
-                is_vivobook = true;
-            }
-
             return false;
         };
 
@@ -6136,7 +6128,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         // Checks for non existent tables must run at the end because of is_hardened() logic
-        if (!found_hpet && !is_vivobook) {
+        if (!found_hpet && !util::is_running_under_translator()) {
             debug("FIRMWARE: HPET table not found");
             return true;
         }
