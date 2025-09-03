@@ -568,6 +568,7 @@ public:
         UD,
         BLOCKSTEP,
         DBVM,
+        SSDT_PASSTHROUGH,
         BOOT_LOGO,
         
         // Linux and Windows
@@ -10449,6 +10450,7 @@ public: // START OF PUBLIC FUNCTIONS
             case DBVM: return "DBVM";
             case BOOT_LOGO: return "BOOT_LOGO";
             case MAC_SYS: return "MAC_SYS";
+            case SSDT_PASSTHROUGH: return "SSDT_PASSTHROUGH";
             // END OF TECHNIQUE LIST
             case DEFAULT: return "setting flag, error";
             case ALL: return "setting flag, error";
@@ -11026,6 +11028,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         std::make_pair(VM::GAMARUE, VM::core::technique(10, VM::gamarue)),
         std::make_pair(VM::CUCKOO_DIR, VM::core::technique(30, VM::cuckoo_dir)),
         std::make_pair(VM::CUCKOO_PIPE, VM::core::technique(30, VM::cuckoo_pipe)),
+        std::make_pair
     #endif
 
     #if (LINUX || WINDOWS)

@@ -80,6 +80,7 @@ enum arg_enum : u8 {
     CONCLUSION,
     NUMBER,
     TYPE,
+    OUTPUT,
     NOTES,
     HIGH_THRESHOLD,
     NO_ANSI,
@@ -87,6 +88,7 @@ enum arg_enum : u8 {
     VERBOSE,
     ENUMS,
     DETECTED_ONLY,
+    JSON,
     NULL_ARG
 };
 
@@ -162,6 +164,7 @@ Options:
  -c | --conclusion  returns the conclusion message string
  -n | --number      returns the number of VM detection techniques it performs
  -t | --type        returns the VM type (if a VM was found)
+ -o | --output      set the output path for files, specifically with the --json command
 
 Extra:
  --disable-notes    no notes will be provided
@@ -171,6 +174,7 @@ Extra:
  --verbose          add more information to the output
  --enums            display the technique enum name used by the lib
  --detected-only    only display the techniques that were detected 
+ --json             output a json-formatted file of the results
 )";
 
     std::exit(0);
@@ -179,7 +183,7 @@ Extra:
 [[noreturn]] static void version(void) {
     std::cout << "vmaware " << "v" << ver << " (" << date << ")\n\n" <<
     "Derived project of VMAware library at https://github.com/kernelwernel/VMAware"
-    "License GPLv3+:\nGNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>.\n" << 
+    "License MIT:<https://opensource.org/license/mit>.\n" << 
     "This is free software: you are free to change and redistribute it.\n" <<
     "There is NO WARRANTY, to the extent permitted by law.\n" <<
     "Developed and maintained by kernelwernel and Requiem,\n" << 
@@ -807,6 +811,7 @@ static void general() {
     checker(VM::DBVM, "Dark Byte's hypervisor");
     checker(VM::BOOT_LOGO, "boot logo");
     checker(VM::MAC_SYS, "system profiler");
+    checker(VM::SSDT_PASSTHROUGH, "SSDT passthrough");
     // ADD NEW TECHNIQUE CHECKER HERE
 
     const auto t2 = std::chrono::high_resolution_clock::now();
@@ -1018,8 +1023,68 @@ static void general() {
         }
     }
 
+#if (WINDOWS)
     std::cout << "Press Enter to exit...";
     std::cin.get();
+#endif
+}
+
+
+void generate_json(const std::string &output) {
+    std::vector<std::string> json = {};
+
+    json.push_back("{");
+    json.push_back("\n\t\"is_detected\": ");
+    json.push_back(VM::detect() ? "true," : "false,");
+    json.push_back("\n\t\"brand\": \"");
+    json.push_back(VM::brand());
+    json.push_back("\",");
+    json.push_back("\n\t\"conclusion\": \"");
+    json.push_back(VM::conclusion());
+    json.push_back("\",");
+    json.push_back("\n\t\"percentage\": ");
+    json.push_back(std::to_string(VM::percentage()));
+    json.push_back(",");
+    json.push_back("\n\t\"detected_technique_count\": ");
+    json.push_back(std::to_string(VM::technique_count));
+    json.push_back(",");
+    json.push_back("\n\t\"vm_type\": \"");
+    json.push_back(VM::type());
+    json.push_back("\",");
+    json.push_back("\n\t\"is_hardened\": ");
+    json.push_back(VM::is_hardened() ? "true," : "false,");
+    json.push_back("\n\t\"detected_techniques\": [");
+
+    std::vector<VM::enum_flags> detected = VM::detected_enums();
+
+    if (detected.size() == 0) {
+        json.push_back("]\n}");
+    } else {
+        for (u8 i = 0; i < detected.size(); i++) {
+            json.push_back("\n\t\t\"");
+            json.push_back(VM::flag_to_string(detected.at(i)));
+
+            if (i == detected.size() - 1) {
+                json.push_back("\"");
+            } else {
+                json.push_back("\",");
+            }
+        }
+
+        json.push_back("\n\t]\n}");
+    }
+        
+    std::ofstream file(output);
+    if (!file) {
+        std::cerr << "Failed to open/create file\n";
+        return;
+    }
+
+    for (const auto& line : json) {
+        file << line;
+    }
+
+    file.close();
 }
 
 
@@ -1041,7 +1106,7 @@ int main(int argc, char* argv[]) {
         return 0;
     }
 
-    static constexpr std::array<std::pair<const char*, arg_enum>, 31> table {{
+    static constexpr std::array<std::pair<const char*, arg_enum>, 32> table {{
         { "-h", HELP },
         { "-v", VERSION },
         { "-a", ALL },
@@ -1053,6 +1118,7 @@ int main(int argc, char* argv[]) {
         { "-l", BRAND_LIST },
         { "-n", NUMBER },
         { "-t", TYPE },
+        { "-o", OUTPUT },
         { "help", HELP },
         { "--help", HELP },
         { "--version", VERSION },
@@ -1072,9 +1138,11 @@ int main(int argc, char* argv[]) {
         { "--enums", ENUMS },
         { "--no-ansi", NO_ANSI },
         { "--detected-only", DETECTED_ONLY },
+        { "--json", JSON }
     }};
 
     std::string potential_null_arg = "";
+    std::string potential_output_arg = "results.json";
 
     for (i32 i = 1; i < argc; ++i) {
         const char* arg_string = argv[i];
@@ -1084,10 +1152,17 @@ int main(int argc, char* argv[]) {
         });
 
         if (it == table.end()) {
-            arg_bitset.set(NULL_ARG);
-            potential_null_arg = arg_string;
-        }
-        else {
+            if (arg_bitset.test(OUTPUT)) {
+                std::ofstream file(arg_string);
+                if (file.good()) {
+                    potential_output_arg = arg_string;
+                }
+                arg_bitset.set(OUTPUT, false);
+            } else {
+                arg_bitset.set(NULL_ARG);
+                potential_null_arg = arg_string;
+            }
+        } else {
             arg_bitset.set(it->second);
         }
     }
@@ -1113,6 +1188,11 @@ int main(int argc, char* argv[]) {
 
     if (arg_bitset.test(NUMBER)) {
         std::cout << static_cast<u32>(VM::technique_count) << "\n";
+        return 0;
+    }
+
+    if (arg_bitset.test(JSON)) {
+        generate_json(potential_output_arg);
         return 0;
     }
 
