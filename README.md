@@ -222,6 +222,15 @@ If you want to learn about the architecture and design of the library, head over
 
 </details>
 
+
+<details>
+<summary>How is it developed?</summary>
+<br>
+
+> We first try to come up with ideas and make prototype techniques in the dev branch. We merge the dev branch to main around once a week because we want to make sure the techniques work as intended in a real-world system before it's utilised. The new techniques would be left on the main branch for people to test, and then we add them to the release for everybody to try it out.
+
+</details>
+
 <details>
 <summary>What about using this for malware?</summary>
 <br>

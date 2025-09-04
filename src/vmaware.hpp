@@ -54,12 +54,12 @@
  * ============================== SECTIONS ==================================
  * - enums for publicly accessible techniques  => line 533
  * - struct for internal cpu operations        => line 717
- * - struct for internal memoization           => line 1054
- * - struct for internal utility functions     => line 1184
- * - struct for internal core components       => line 9290
- * - start of VM detection technique list      => line 2092
- * - start of public VM detection functions    => line 9782
- * - start of externally defined variables     => line 10773
+ * - struct for internal memoization           => line 1064
+ * - struct for internal utility functions     => line 1194
+ * - struct for internal core components       => line 9377
+ * - start of VM detection technique list      => line 2044
+ * - start of public VM detection functions    => line 9869
+ * - start of externally defined variables     => line 10860
  *
  *
  * ============================== EXAMPLE ===================================
@@ -839,7 +839,8 @@ private:
                 cpu::leaf::brand3
             }};
 
-            std::string b(48, '\0');
+            std::string b;
+            b.reserve(48); // expected brand length
 
             union Regs {
                 u32   i[4];
@@ -850,6 +851,15 @@ private:
                 cpu::cpuid(regs.i[0], regs.i[1], regs.i[2], regs.i[3], leaf_id);
                 b.append(regs.c, 16);
             }
+
+            // do NOT touch trailing spaces for the AMD_THREAD_MISMATCH technique
+            const size_t nul = b.find('\0');
+            if (nul != std::string::npos) b.resize(nul);
+
+            // left-trim only to handle stupid whitespaces before the brand string in ARM CPUs (Virtual CPUs)
+            size_t start = 0;
+            while (start < b.size() && std::isspace(static_cast<unsigned char>(b[start]))) ++start;
+            if (start) b.erase(0, start);
 
             memo::cpu_brand::store(b);
             debug("CPU: ", b);
@@ -1774,10 +1784,6 @@ private:
             if (brand.find("Virtual CPU") != std::string::npos) {
                 return true;
             }
-
-            if (util::get_tpm_manufacturer() == 0x4d534654u) { // "MSFT"
-                return true; // also found in Hyper-V VMs
-            }
 #endif
 
             return false;
@@ -2032,61 +2038,7 @@ private:
                     module_cache[s_name] = addr; 
                 }
             }
-        }
-
-        static u32 get_tpm_manufacturer() {
-            struct TbsContext {
-                TBS_HCONTEXT hContext = 0;
-                explicit TbsContext(const TBS_CONTEXT_PARAMS2& params) {
-                    Tbsi_Context_Create(reinterpret_cast<PCTBS_CONTEXT_PARAMS>(&params), &hContext);
-                }
-                ~TbsContext() {
-                    if (hContext) {
-                        Tbsip_Context_Close(hContext);
-                    }
-                }
-                bool isValid() const { return hContext != 0; }
-            };
-        
-            TBS_CONTEXT_PARAMS2 params{};
-            params.version = TBS_CONTEXT_VERSION_TWO;
-            params.includeTpm20 = 1;
-            params.includeTpm12 = 1;
-        
-            TbsContext ctx(params);
-            if (!ctx.isValid()) {
-                return 0;
-            }
-        
-            // TPM2_GetCapability command for TPM_PT_MANUFACTURER
-            static constexpr u8 cmd[] = {
-                0x80,0x01,             // Tag: TPM_ST_NO_SESSIONS
-                0x00,0x00,0x00,0x16,    // Command Size: 22
-                0x00,0x00,0x01,0x7A,    // TPM2_GetCapability
-                0x00,0x00,0x00,0x06,    // TPM_CAP_TPM_PROPERTIES
-                0x00,0x00,0x01,0x05,    // TPM_PT_MANUFACTURER
-                0x00,0x00,0x00,0x01     // Property Count: 1
-            };
-        
-            u8 resp[64] = {};
-            u32 respSize = sizeof(resp);
-            if (Tbsip_Submit_Command(ctx.hContext,
-                TBS_COMMAND_LOCALITY_ZERO,
-                TBS_COMMAND_PRIORITY_NORMAL,
-                cmd,
-                static_cast<u32>(sizeof(cmd)),
-                resp,
-                &respSize) != TBS_SUCCESS || respSize < 27) {
-                return 0;
-            }
-        
-            return (
-                (static_cast<u32>(resp[23]) << 24) |
-                (static_cast<u32>(resp[24]) << 16) |
-                (static_cast<u32>(resp[25]) << 8) |
-                static_cast<u32>(resp[26])
-            );
-        }  
+        } 
 #endif
     };
 
@@ -4414,7 +4366,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const double tscMHz = tscHz / 1e6;
 
         debug("TIMER: CPU base speed -> ", tscMHz, " MHz");
-        struct cpu::stepping_struct steps = cpu::fetch_steppings();
+        const struct cpu::stepping_struct steps = cpu::fetch_steppings();
 
         if (cpu::is_celeron(steps) || cpu::is_amd_A_series()) {
             if (tscMHz < 400) return true;
@@ -4446,57 +4398,132 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
         }
 
-        const HANDLE hThread = GetCurrentThread();
-        const DWORD_PTR prevMask = SetThreadAffinityMask(hThread, 1); // to reduce context switching/scheluding
+        // Case C - low vmexit overhead with no rdtsc patch, https://lwn.net/Articles/790464/
+        const HANDLE th = GetCurrentThread();
+        const DWORD_PTR prevMask = SetThreadAffinityMask(th, 1); // to reduce context switching/scheluding
         if (!prevMask)
             return false;
 
-        // Case C - fast hypervisor with no rdtsc patch
-        alignas(64) char buffer[128]{};
-        volatile long long* misaligned_ptr = reinterpret_cast<volatile long long*>(&buffer[60]);
-        *misaligned_ptr = 0;
+        // allocate buffer aligned to 64 so we can pick an address crossing a 64B boundary
+        const size_t BUFSZ = 128;
+        const size_t ALIGN = 64;
+        void* raw = _aligned_malloc(BUFSZ, ALIGN);
+        if (!raw) {
+            SetThreadAffinityMask(th, prevMask);
+            return false;
+        }
+        memset(raw, 0, BUFSZ);
+        unsigned char* buf = (unsigned char*)raw;
+        volatile long long* misaligned_ptr = reinterpret_cast<volatile long long*>(buf + 60); // spans 60..67
 
-        _mm_mfence();
-        u64 t1_split = __rdtscp(&aux);
+        void* exec_mem = nullptr;
 
-        // misaligned atomic ops on purpose
-    #if (MSVC)
-        #if (x86_64) 
-                _InterlockedIncrement64(misaligned_ptr);
-        #elif (x86_32) // _M_IX86
-                long long old_val;
-                do {
-                    old_val = *misaligned_ptr;
-                } while (_InterlockedCompareExchange64(misaligned_ptr, old_val + 1, old_val) != old_val);
+        auto cleanup = [&]() noexcept {
+        #if (x86_64 && MSVC && !CLANG)
+            if (exec_mem) VirtualFree(exec_mem, 0, MEM_RELEASE);
         #endif
+            if (raw) _aligned_free(raw);
+            SetThreadAffinityMask(th, prevMask);
+        };
+
+    #if (x86_64)
+        #if (MSVC && !CLANG) 
+                typedef void (*inc_fn_t)(volatile long long*);
+                unsigned char stub_bytes[] = { 0xF0, 0x48, 0xFF, 0x01, 0xC3 }; // lock; inc qword ptr [rcx]; ret
+                exec_mem = VirtualAlloc(nullptr, 4096, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+                if (!exec_mem) {
+                    cleanup();
+                    return false;
+                }
+                memcpy(exec_mem, stub_bytes, sizeof(stub_bytes));
+                FlushInstructionCache(GetCurrentProcess(), exec_mem, sizeof(stub_bytes));
+                inc_fn_t inc_misaligned = (inc_fn_t)exec_mem;
+
+                auto do_misaligned_inc = [&](volatile long long* p) {
+                    // RCX will receive the pointer per Windows x64 ABI
+                    inc_misaligned(p);
+                };
+        #else
+                auto do_misaligned_inc = [&](volatile long long* p) {
+                    __asm__ __volatile__("lock; incq %0" : "+m"(*p) : : "memory");
+                };
+        #endif
+
     #else
-        #if (x86_64) 
-                __asm__ __volatile__(
-                    "lock; incq %0"
-                    : "=m"(*misaligned_ptr)
-                    : "m"(*misaligned_ptr)
-                    : "memory"
-                );
-        #elif (x86_32) // i386
-                __sync_add_and_fetch(misaligned_ptr, 1); // likely a cmpxchg8b loop
-        #endif
+        auto do_misaligned_inc = [&](volatile long long* p) {
+            // Looping CAS, doc warns about alignment, but this is the only practical path on Windows x86 that i can think of
+            LONG64 oldv;
+            LONG64 prev;
+            do {
+                // read non-atomically to form desired value; this is ok as CAS will fail if value changed
+                oldv = *p;
+                prev = InterlockedCompareExchange64((volatile LONG64*)p, oldv + 1, oldv);
+            } while (prev != oldv);
+        };
     #endif
 
-        // newer Intel CPUs introduced a feature to detect split locks and raise an exception
-        const u64 t2_split = __rdtscp(&aux);
-        const u64 split_cycles = t2_split - t1_split;
-        debug("TIMER: Split-lock test -> ", split_cycles, " cycles");
+        // warmup to let caches settle and avoid first-call overhead of stub
+        for (int i = 0; i < 200; ++i) do_misaligned_inc(misaligned_ptr);
 
-        constexpr u64 split_lock_threshold = 500000; // the hypervisor will intercept the split lock and pause the virtual CPU for approximately 10000 microseconds
+        if (!QueryPerformanceFrequency(&freq)) {
+            cleanup();
+            return false;
+        }
+        const double ns_per_tick = 1e9 / static_cast<double>(freq.QuadPart);
 
-        // A modern CPU operating at, for example, 4GHz executes 4,000,000,000 cycles per second. A 10 millisecond delay would therefore be:
-        // (4000000000 cycles / sec) * (0.010 sec) = 40000000 cycles, so 500000 is acceptable
-        if (split_cycles > split_lock_threshold) {
-            SetThreadAffinityMask(hThread, prevMask);
-            return true;
+        const int ITER = 20000;
+        std::vector<u64> data;
+        data.reserve(ITER);
+
+        for (int i = 0; i < ITER; ++i) {
+            QueryPerformanceCounter(&t1q);
+
+            do_misaligned_inc(misaligned_ptr);
+
+            QueryPerformanceCounter(&t2q);
+            const LONGLONG delta_q = t2q.QuadPart - t1q.QuadPart;
+            u64 dt_ns = static_cast<u64>(static_cast<double>(delta_q) * ns_per_tick);
+            data.push_back(dt_ns);
         }
 
-        SetThreadAffinityMask(hThread, prevMask);
+        const size_t n = data.size();
+
+        double sum_lock = 0.0;
+        u64 maxv = 0;
+        for (u64 v : data) {
+            sum_lock += static_cast<double>(v);
+            if (v > maxv) maxv = v;
+        }
+        const double avg_lock = (n ? (sum_lock / static_cast<double>(n)) : 0.0);
+
+        u64 median = 0;
+        u64 p99 = 0;
+        if (n) {
+            const std::vector<u64>::difference_type mid_idx =
+                static_cast<std::vector<u64>::difference_type>(n / 2);
+            std::nth_element(data.begin(), data.begin() + mid_idx, data.end());
+            median = data[static_cast<size_t>(mid_idx)];
+
+            const size_t p99_idx_size = std::min((n * 99) / 100, n - 1);
+            const std::vector<u64>::difference_type p99_idx =
+                static_cast<std::vector<u64>::difference_type>(p99_idx_size);
+            std::nth_element(data.begin(), data.begin() + p99_idx, data.end());
+            p99 = data[p99_idx_size];
+        }
+
+        const u64 suspicious_ns = 8ULL * 1000000ULL; // 8 ms
+        int suspicious_count = 0;
+        for (auto v : data) if (v >= suspicious_ns) suspicious_count++;
+
+        debug("TIMER: samples=", data.size(), " median=" , median , " ns"
+            , " p99=" , p99 , " ns"
+            , " max=" , maxv , " ns"
+            , " avg=" , (u64)avg_lock, " ns");
+
+        cleanup();
+
+        if (suspicious_count >= 5)
+            return true;       
 
         if (cycleThreshold == 25000) return false; // if we're running under Hyper-V, do not run case D
 
@@ -4521,8 +4548,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             // important to not debug cycles by printing but with breakpoints and stack analysis, otherwise the CPU would cache and make the ratio much lower
             const u64 userCycles = t2 - t1;
             const u64 sysCycles = t3 - t2;
-            const double ratio = double(sysCycles) / double(userCycles);
-
+            if (userCycles == 0)
+                continue;
+            
+            const double ratio = static_cast<double>(sysCycles) / static_cast<double>(userCycles);
             ratios.push_back(ratio);
         }      
 
@@ -5894,8 +5923,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         static_assert(targets.size() == brands_map.size(), "targets and brands_map must be the same length");
 
-        bool is_vivobook = false;
-
         auto scan_table = [&](const BYTE* buf, const size_t len) noexcept -> bool {
             // faster than std::search because of a manual byte-by-byte loop, could be optimized further with Boyer-Moore-Horspool implementations for large firmware tables like DSDT
             auto find_pattern = [&](const char* pat, size_t patlen) noexcept -> bool {
@@ -6018,12 +6045,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
             }
 
-            constexpr char vivobook_str[] = "ASUS Vivobook";
-            constexpr size_t vivobook_len = sizeof(vivobook_str) - 1;
-            if (find_pattern(vivobook_str, vivobook_len)) {
-                is_vivobook = true;
-            }
-
             return false;
         };
 
@@ -6136,7 +6157,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         // Checks for non existent tables must run at the end because of is_hardened() logic
-        if (!found_hpet && !is_vivobook) {
+        if (!found_hpet && !util::is_running_under_translator()) {
             debug("FIRMWARE: HPET table not found");
             return true;
         }
@@ -8542,7 +8563,82 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::TPM
      */
     [[nodiscard]] static bool tpm() {
-        const u32 tpm = util::get_tpm_manufacturer();
+        if (util::is_running_under_translator()) {
+            return false;
+        }
+        struct TbsContext {
+            TBS_HCONTEXT hContext = 0;
+
+            explicit TbsContext(const TBS_CONTEXT_PARAMS2& params) {
+                TBS_RESULT res = Tbsi_Context_Create(
+                    reinterpret_cast<PCTBS_CONTEXT_PARAMS>(&params),
+                    &hContext);
+                if (res != TBS_SUCCESS) {
+                    hContext = 0;
+                }
+            }
+
+            ~TbsContext() {
+                if (hContext) {
+                    Tbsip_Context_Close(hContext);
+                }
+            }
+
+            // non-copyable
+            TbsContext(const TbsContext&) = delete;
+            TbsContext& operator=(const TbsContext&) = delete;
+
+            // movable
+            TbsContext(TbsContext&& o) noexcept : hContext(o.hContext) { o.hContext = 0; }
+            TbsContext& operator=(TbsContext&& o) noexcept {
+                if (this != &o) {
+                    if (hContext) Tbsip_Context_Close(hContext);
+                    hContext = o.hContext;
+                    o.hContext = 0;
+                }
+                return *this;
+            }
+
+            bool isValid() const { return hContext != 0; }
+        };
+
+        TBS_CONTEXT_PARAMS2 params{};
+        params.version = TBS_CONTEXT_VERSION_TWO;
+        params.includeTpm20 = 1; 
+        params.includeTpm12 = 1; 
+
+        TbsContext ctx(params);
+        if (!ctx.isValid()) {
+            return false;
+        }
+
+        // TPM2_GetCapability command for TPM_PT_MANUFACTURER
+        static constexpr u8 cmd[] = {
+            0x80,0x01,             // Tag: TPM_ST_NO_SESSIONS
+            0x00,0x00,0x00,0x16,    // Command Size: 22
+            0x00,0x00,0x01,0x7A,    // TPM2_GetCapability
+            0x00,0x00,0x00,0x06,    // TPM_CAP_TPM_PROPERTIES
+            0x00,0x00,0x01,0x05,    // TPM_PT_MANUFACTURER
+            0x00,0x00,0x00,0x01     // Property Count: 1
+        };
+
+        u8 resp[64] = {};
+        u32 respSize = static_cast<u32>(sizeof(resp));
+        TBS_RESULT submitRes = Tbsip_Submit_Command(
+            ctx.hContext,
+            TBS_COMMAND_LOCALITY_ZERO,
+            TBS_COMMAND_PRIORITY_NORMAL,
+            cmd,
+            static_cast<u32>(sizeof(cmd)),
+            resp,
+            &respSize);
+
+        if (submitRes != TBS_SUCCESS || respSize < 27) {
+            return false;
+        }
+
+        const u32 tpm = (static_cast<u32>(resp[23]) << 24) | (static_cast<u32>(resp[24]) << 16) |
+                        (static_cast<u32>(resp[25]) << 8)  |  static_cast<u32>(resp[26]);
 
         if (tpm == 0) {
             return false;
@@ -8565,7 +8661,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             case 0x54584E00u: // "TXN\0"
             case 0x524F4343u: // "ROCC"
             case 0x4C454E00u: // "LEN\0"
-            case 0x4d534654u: // "MSFT" (ARM specific, used in Surface Pro devices and Hyper-V VMs)
+            // case 0x4d534654u: // "MSFT" (used in ARM devices and Hyper-V VMs)
                 return false;
             default:
                 return true;
@@ -8978,19 +9074,19 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::DBVM
      */
     [[nodiscard]] static bool dbvm() {
-    #if (!x86_64)
+#if (!x86_64)
         return false;
-    #else
+#else
         constexpr u64 PW1 = 0x0000000076543210ULL;
         constexpr u64 PW3 = 0x0000000090909090ULL;
         constexpr u32 PW2 = 0xFEDCBA98U;
 
-        struct VMCallInfo { 
-            u32 structsize; 
-            u32 level2pass; 
-            u32 command; 
+        struct VMCallInfo {
+            u32 structsize;
+            u32 level2pass;
+            u32 command;
         };
-    
+
         VMCallInfo vmcallInfo = {};
         u64 vmcallResult = 0;
 
@@ -9012,28 +9108,25 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             0xC3                                           // ret
         };
 
-        void* intelStub = VirtualAlloc(nullptr, 44, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
-        void* amdStub = VirtualAlloc(nullptr, 44, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
-
-        if (!intelStub || !amdStub) {
-            if (intelStub) VirtualFree(intelStub, 0, MEM_RELEASE);
-            if (amdStub)   VirtualFree(amdStub, 0, MEM_RELEASE);
+        constexpr SIZE_T stubSize = 44;
+        const bool isAmd = cpu::is_amd();
+        void* stub = VirtualAlloc(nullptr, stubSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+        if (!stub) {
             return false;
         }
 
-        memcpy(intelStub, intelTemplate, 44);
-        memcpy(amdStub, amdTemplate, 44);
+        if (isAmd) {
+            memcpy(stub, amdTemplate, stubSize);
+        }
+        else {
+            memcpy(stub, intelTemplate, stubSize);
+        }
 
         // patch in the immediate values (PW1, PW3, &vmcallInfo, &vmcallResult) at the correct offsets:
-        *reinterpret_cast<u64*>(reinterpret_cast<u8*>(intelStub) + 2) = PW1;
-        *reinterpret_cast<u64*>(reinterpret_cast<u8*>(intelStub) + 12) = PW3;
-        *reinterpret_cast<u64*>(reinterpret_cast<u8*>(intelStub) + 22) = reinterpret_cast<u64>(static_cast<void*>(&vmcallInfo));
-        *reinterpret_cast<u64*>(reinterpret_cast<u8*>(intelStub) + 35) = reinterpret_cast<u64>(static_cast<void*>(&vmcallResult));
-
-        *reinterpret_cast<u64*>(reinterpret_cast<u8*>(amdStub) + 2) = PW1;
-        *reinterpret_cast<u64*>(reinterpret_cast<u8*>(amdStub) + 12) = PW3;
-        *reinterpret_cast<u64*>(reinterpret_cast<u8*>(amdStub) + 22) = reinterpret_cast<u64>(static_cast<void*>(&vmcallInfo));
-        *reinterpret_cast<u64*>(reinterpret_cast<u8*>(amdStub) + 35) = reinterpret_cast<u64>(static_cast<void*>(&vmcallResult));
+        *reinterpret_cast<u64*>(reinterpret_cast<u8*>(stub) + 2) = PW1;
+        *reinterpret_cast<u64*>(reinterpret_cast<u8*>(stub) + 12) = PW3;
+        *reinterpret_cast<u64*>(reinterpret_cast<u8*>(stub) + 22) = reinterpret_cast<u64>(static_cast<void*>(&vmcallInfo));
+        *reinterpret_cast<u64*>(reinterpret_cast<u8*>(stub) + 35) = reinterpret_cast<u64>(static_cast<void*>(&vmcallResult));
 
         // lambda that executes the stub (Intel or AMD) and checks for the CE signature
         auto tryPass = [&]() -> bool {
@@ -9043,12 +9136,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             vmcallResult = 0;
 
             __try {
-                if (cpu::is_amd()) {
-                    reinterpret_cast<void(*)()>(amdStub)();
-                }
-                else {
-                    reinterpret_cast<void(*)()>(intelStub)();
-                }
+                reinterpret_cast<void(*)()>(stub)();
             }
             __except (EXCEPTION_EXECUTE_HANDLER) { // EXCEPTION_ILLEGAL_INSTRUCTION normally, EXCEPTION_ACCESS_VIOLATION_READ on edge-cases
                 vmcallResult = 0;
@@ -9060,13 +9148,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         const bool found = tryPass();
 
-        VirtualFree(intelStub, 0, MEM_RELEASE);
-        VirtualFree(amdStub, 0, MEM_RELEASE);
+        VirtualFree(stub, 0, MEM_RELEASE);
 
         if (found) return core::add(brands::DBVM);
 
         return false;
-    #endif
+#endif
     }
 
 
@@ -11003,7 +11090,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         std::make_pair(VM::MAC_SYS, VM::core::technique(100, VM::mac_sys)),
     #endif
     
-    std::make_pair(VM::TIMER, VM::core::technique(50, VM::timer)),
+    std::make_pair(VM::TIMER, VM::core::technique(55, VM::timer)),
     std::make_pair(VM::INTEL_THREAD_MISMATCH, VM::core::technique(50, VM::intel_thread_mismatch)),
     std::make_pair(VM::AMD_THREAD_MISMATCH, VM::core::technique(50, VM::amd_thread_mismatch)),
     std::make_pair(VM::XEON_THREAD_MISMATCH, VM::core::technique(50, VM::xeon_thread_mismatch)),
