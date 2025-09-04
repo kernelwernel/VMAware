@@ -1060,7 +1060,7 @@ void generate_json(const std::string &output) {
     if (detected.size() == 0) {
         json.push_back("]\n}");
     } else {
-        for (u8 i = 0; i < detected.size(); i++) {
+        for (size_t i = 0; i < detected.size(); i++) {
             json.push_back("\n\t\t\"");
             json.push_back(VM::flag_to_string(detected.at(i)));
 
