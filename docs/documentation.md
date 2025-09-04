@@ -676,6 +676,7 @@ This is the table of all the brands the lib supports.
 | -p | --percent | Prints the VM likeliness percentage between 0 and 100 |
 | -n | --number | Prints the number of VM detection techniques it can perform |
 | -t | --type | Returns the VM type (if a VM was found) |
+| -o | --output | Set the output path for files, specifically with the --json command |
 |    | --disable-notes | No notes will be provided |
 |    | --high-threshold | A higher threshold bar for a VM detection will be applied |
 |    | --no-ansi | Removes all the ANSI encodings (color and text style). This is added due to some terminals not supporting ANSI escape codes while cluttering the output |
@@ -683,6 +684,8 @@ This is the table of all the brands the lib supports.
 |    | --verbose | add more information to the output  |
 |    | --enums | display the technique enum name used by the lib |
 |    | --detected-only | Only display the techniques that were detected |
+|    | --json | Output a json-formatted file of the results |
+
 > [!NOTE]
 > If you want a general result with the default settings, do not put any arguments. This is the intended way to use the CLI tool.
 >
