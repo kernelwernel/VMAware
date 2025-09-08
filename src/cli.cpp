@@ -760,7 +760,6 @@ static void general() {
     checker(VM::VMWARE_STR, "STR instruction");
     checker(VM::VMWARE_BACKDOOR, "VMware IO port backdoor");
     checker(VM::MUTEX, "mutex strings");
-    checker(VM::ODD_CPU_THREADS, "odd thread count number");
     checker(VM::INTEL_THREAD_MISMATCH, "Intel thread count mismatch");
     checker(VM::XEON_THREAD_MISMATCH, "Intel Xeon thread count mismatch");
     checker(VM::AMD_THREAD_MISMATCH, "AMD thread count mismatch");
@@ -790,8 +789,6 @@ static void general() {
     checker(VM::DISK_SERIAL, "disk serial number");
     checker(VM::IVSHMEM, "IVSHMEM device");
     checker(VM::GPU_CAPABILITIES, "GPU capabilities");
-    checker(VM::LOGICAL_PROCESSORS, "logical processor count");
-    checker(VM::PHYSICAL_PROCESSORS, "physical processor count");
     checker(VM::POWER_CAPABILITIES, "power capabilities");
     checker(VM::QEMU_FW_CFG, "QEMU fw_cfg device");
     checker(VM::VIRTUAL_PROCESSORS, "virtual processors");
@@ -809,8 +806,10 @@ static void general() {
     checker(VM::BLOCKSTEP, "single step with trap flag");
     checker(VM::DBVM, "Dark Byte's hypervisor");
     checker(VM::BOOT_LOGO, "boot logo");
+    checker(VM::BOOT, "bootloader");
     checker(VM::MAC_SYS, "system profiler");
     checker(VM::OBJECTS, "objects");
+    checker(VM::NVRAM, "NVRAM");
 
     // ADD NEW TECHNIQUE CHECKER HERE
 
@@ -1030,7 +1029,7 @@ static void general() {
 }
 
 
-void generate_json(const std::string &output) {
+static void generate_json(const std::string &output) {
     std::vector<std::string> json = {};
 
     json.push_back("{");
@@ -1055,16 +1054,16 @@ void generate_json(const std::string &output) {
     json.push_back(VM::is_hardened() ? "true," : "false,");
     json.push_back("\n\t\"detected_techniques\": [");
 
-    std::vector<VM::enum_flags> detected = VM::detected_enums();
+    std::vector<VM::enum_flags> detected_status = VM::detected_enums();
 
-    if (detected.size() == 0) {
+    if (detected_status.size() == 0) {
         json.push_back("]\n}");
     } else {
-        for (u8 i = 0; i < detected.size(); i++) {
+        for (u8 i = 0; i < detected_status.size(); i++) {
             json.push_back("\n\t\t\"");
-            json.push_back(VM::flag_to_string(detected.at(i)));
+            json.push_back(VM::flag_to_string(detected_status.at(i)));
 
-            if (i == detected.size() - 1) {
+            if (i == detected_status.size() - 1) {
                 json.push_back("\"");
             } else {
                 json.push_back("\",");
