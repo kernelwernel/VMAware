@@ -5608,12 +5608,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             std::string key = distro;
             for (char& c : key) {     
-                c = std::tolower(static_cast<unsigned char>(c));
+                c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
             }
 
             auto it = defaults.find(key);
             if (it != defaults.end()) {
-                return (it->second.first == disk) && (it->second.second == ram);
+                return (it->second.first == disk) && (static_cast<u32>(it->second.second) == ram);
             }
 
             return false;
