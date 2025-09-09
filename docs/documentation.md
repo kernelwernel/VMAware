@@ -558,7 +558,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::MAC_SYS` | Check for VM-strings in system profiler commands for MacOS | 🍏 | 100% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L6851) |
 | `VM::OBJECTS` | Check for known VM objects | 🪟 | 100% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L9129) |
 | `VM::NVRAM` | Check for known NVRAM signatures that are present on virtual firmware | 🪟 | 100% | Admin |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L9247) |
-| `VM::BOOT` | Check boot logo for known VM images | 🪟 | 100% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L9035) |
+| `VM::BOOT` | Check boot logo for known VM images | 🪟 | 100% | Admin |  |  | [link](https://github.com/kernelwernel/VMAware/blob/main/src/vmaware.hpp#L9437) |
 
 <!-- END OF TECHNIQUE DOCUMENTATION -->
 
