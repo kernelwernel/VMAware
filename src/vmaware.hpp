@@ -54,12 +54,12 @@
  * ============================== SECTIONS ==================================
  * - enums for publicly accessible techniques  => line 533
  * - struct for internal cpu operations        => line 716
- * - struct for internal memoization           => line 1063
- * - struct for internal utility functions     => line 1193
- * - struct for internal core components       => line 9659
- * - start of VM detection technique list      => line 2105
- * - start of public VM detection functions    => line 10151
- * - start of externally defined variables     => line 11141
+ * - struct for internal memoization           => line 1182
+ * - struct for internal utility functions     => line 1312
+ * - struct for internal core components       => line 9788
+ * - start of VM detection technique list      => line 2224
+ * - start of public VM detection functions    => line 10280
+ * - start of externally defined variables     => line 11270
  *
  *
  * ============================== EXAMPLE ===================================
@@ -865,6 +865,125 @@ private:
             return b;
 #endif
         }
+
+#if (WINDOWS)
+        static u32 get_cpu_base_speed() {
+            constexpr DWORD prov = 'RSMB';
+
+            const UINT e = EnumSystemFirmwareTables(prov, nullptr, 0);
+            if (e == 0) {
+                return 0;
+            }
+
+            std::vector<BYTE> bufIDs(e);
+            UINT gotIDs = EnumSystemFirmwareTables(prov, bufIDs.data(), e);
+            if (gotIDs != e) {
+                return 0;
+            }
+
+            if (e % sizeof(DWORD) != 0) {
+                return 0;
+            }
+
+            const DWORD cnt = e / sizeof(DWORD);
+
+            for (DWORD i = 0; i < cnt; ++i) {
+                DWORD tblID = 0;
+                memcpy(&tblID, bufIDs.data() + i * sizeof(DWORD), sizeof(DWORD));
+
+                UINT sz = GetSystemFirmwareTable(prov, tblID, nullptr, 0);
+                if (sz == 0) {
+                    continue;
+                }
+
+                std::vector<BYTE> buf(sz);
+                UINT got = GetSystemFirmwareTable(prov, tblID, buf.data(), sz);
+                if (got != sz) {
+                    continue;
+                }
+
+                const BYTE* data = buf.data();
+                const size_t dataLen = buf.size();
+                const BYTE* table = data;
+                size_t tableLen = dataLen;
+
+                if (dataLen >= 8u && memcmp(data, "RSMB", 4) == 0) {
+                    DWORD smbiosLen = 0;
+                    memcpy(&smbiosLen, data + 4, sizeof(DWORD));
+                    if (smbiosLen != 0 && static_cast<size_t>(smbiosLen) <= dataLen - 8u) {
+                        table = data + 8;
+                        tableLen = static_cast<size_t>(smbiosLen);
+                    }
+                    else {
+                        table = data + 8;
+                        tableLen = dataLen - 8u;
+                    }
+                }
+
+                if (tableLen < 4u) {
+                    continue;
+                }
+
+                auto looks_valid_struct_at = [&](size_t s)->bool {
+                    if (s + 2u > tableLen) return false;
+                    u8 t = table[s];
+                    u8 len = table[s + 1];
+                    if (len < 4u) return false;
+                    if (s + static_cast<size_t>(len) > tableLen) return false;
+                    if (t > 127u) return false;
+                    return true;
+                };
+
+                size_t start = 0;
+                if (!looks_valid_struct_at(0)) {
+                    const size_t limit = std::min<size_t>(256u, tableLen >= 4u ? tableLen - 4u : 0u);
+                    for (size_t s = 1; s <= limit; ++s) {
+                        if (looks_valid_struct_at(s)) {
+                            start = s;
+                            break;
+                        }
+                    }
+                }
+
+                size_t idx = start;
+                while (idx + 4u <= tableLen) {
+                    const u8 type = table[idx];
+                    const u8 length = table[idx + 1];
+
+                    if (type == 127u) break;
+                    if (length < 4u) break;
+                    if (idx + static_cast<size_t>(length) > tableLen) break;
+
+                    if (type == 4u) {
+                        const size_t CURRENT_SPEED_OFFSET = 0x16;
+
+                        if (static_cast<size_t>(length) >= (CURRENT_SPEED_OFFSET + sizeof(u16))) {
+                            u16 cur = 0;
+                            memcpy(&cur, table + idx + CURRENT_SPEED_OFFSET, sizeof(cur));
+                            if (cur != 0) {
+                                return static_cast<u32>(cur);
+                            }
+                        }
+                    }
+
+                    size_t next = idx + static_cast<size_t>(length);
+                    while (next + 1u < tableLen) {
+                        if (table[next] == 0 && table[next + 1] == 0) {
+                            next += 2;
+                            break;
+                        }
+                        ++next;
+                    }
+                    if (next <= idx) {
+                        break;
+                    }
+                    idx = next;
+                }
+            }
+
+            return 0;
+        }
+#endif
 
         static std::string cpu_manufacturer(const u32 p_leaf) {
             auto cpuid_thingy = [](const u32 p_leaf, u32* regs, std::size_t start = 0, std::size_t end = 4) -> bool {
@@ -1864,27 +1983,27 @@ private:
             if (!is_root_partition()) {
                 if (eax() == 11 && is_hyperv_present()) {
                     // Windows machine running under Hyper-V type 2
-                    core_debug("HYPER_X: added Hyper-V real VM");
+                    core_debug("HYPER_X: Detected Hyper-V guest VM");
                     core::add(brands::HYPERV);
                     state = HYPERV_REAL_VM;
                 }
                 else {
-                    core_debug("HYPER_X: none found");
+                    core_debug("HYPER_X: Hyper-V is not active");
                     state = HYPERV_UNKNOWN_VM;
                 }
             }
             else {
                 // normally eax 12
-                const std::string brand_str = cpu::cpu_manufacturer(0x40000001);
+                const std::string brand_str = cpu::cpu_manufacturer(0x40000100);
 
                 if (util::find(brand_str, "KVM")) {
-                    core_debug("HYPER_X: added Hyper-V Enlightenments");
+                    core_debug("HYPER_X: Detected Hyper-V enlightenments");
                     core::add(brands::QEMU_KVM_HYPERV);
                     state = HYPERV_ENLIGHTENMENT;
                 }
                 else {
                     // Windows machine running under Hyper-V type 1
-                    core_debug("HYPER_X: added Hyper-V artifact VM");
+                    core_debug("HYPER_X: Detected Hyper-V host VM");
                     core::add(brands::HYPERV_ARTIFACT);
                     state = HYPERV_ARTIFACT_VM;
                 }
@@ -4356,17 +4475,29 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         QueryPerformanceCounter(&t2q);
         u64 t2 = __rdtsc();
 
-        const double elapsedSec = double(t2q.QuadPart - t1q.QuadPart) / double(freq.QuadPart);
+        const double elapsedSec = double(t2q.QuadPart - t1q.QuadPart) / double(freq.QuadPart); // the performance counter frequency is always 10MHz when running under Hyper-V
         const double tscHz = double(t2 - t1) / elapsedSec;
         const double tscMHz = tscHz / 1e6;
 
-        debug("TIMER: CPU base speed -> ", tscMHz, " MHz");
-        const struct cpu::stepping_struct steps = cpu::fetch_steppings();
+        debug("TIMER: Current CPU base speed -> ", tscMHz, " MHz");
 
-        if (cpu::is_celeron(steps) || cpu::is_amd_A_series()) {
-            if (tscMHz < 400) return true;
+        if (tscMHz < 1000) return true;
+
+        const struct cpu::stepping_struct steps = cpu::fetch_steppings();
+        u32 baseMHz = cpu::get_cpu_base_speed();
+
+        if (baseMHz == 0) {
+            debug("TIMER: Processor base speed not found, SMBIOS possibly corrupted?");
+            baseMHz = 1200;
         }
-        if (tscMHz < 1105) return true;
+
+        if (baseMHz < 1000) return true; // sorry old CPUs, won't be deterministic to conclude a VM tho
+        
+        debug("TIMER: Processor base speed -> ", static_cast<double>(baseMHz), " MHz");
+
+        if (tscMHz < static_cast<double>(baseMHz) - 200.0) {
+            return true;
+        }
 
         // Check for RDTSC support, we will use it on case D
         unsigned aux = 0;
@@ -4424,7 +4555,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     #if (x86_64)
         #if (MSVC && !CLANG) 
             typedef void (*inc_fn_t)(volatile long long*);
-            unsigned char stub_bytes[] = { 0xF0, 0x48, 0xFF, 0x01, 0xC3 }; // lock; inc qword ptr [rcx]; ret
+            const unsigned char stub_bytes[] = { 0xF0, 0x48, 0xFF, 0x01, 0xC3 }; // lock; inc qword ptr [rcx]; ret
             exec_mem = VirtualAlloc(nullptr, 4096, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
             if (!exec_mem) {
                 cleanup();
@@ -4432,7 +4563,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
             memcpy(exec_mem, stub_bytes, sizeof(stub_bytes));
             FlushInstructionCache(GetCurrentProcess(), exec_mem, sizeof(stub_bytes));
-            inc_fn_t inc_misaligned = (inc_fn_t)exec_mem;
+            const inc_fn_t inc_misaligned = (inc_fn_t)exec_mem;
 
             auto do_misaligned_inc = [&](volatile long long* p) {
                 // RCX will receive the pointer per Windows x64 ABI
@@ -6496,15 +6627,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     debug("PCI_DEVICES: Detected Red Hat + Virtio device -> ", std::hex, id32);
                     return true;
 
-                // VMware
-                case 0x15ad0405: case 0x15ad0710: case 0x15ad0720: case 0x15ad0740:
-                case 0x15ad0770: case 0x15ad0774: case 0x15ad0778: case 0x15ad0779:
-                case 0x15ad0790: case 0x15ad07a0: case 0x15ad07b0: case 0x15ad07c0:
-                case 0x15ad07e0: case 0x15ad07f0: case 0x15ad0801: case 0x15ad0820:
-                case 0x15ad1977: case 0xfffe0710:
-                case 0x0e0f0001: case 0x0e0f0002: case 0x0e0f0003: case 0x0e0f0004:
-                case 0x0e0f0005: case 0x0e0f0006: case 0x0e0f000a: case 0x0e0f8001:
-                case 0x0e0f8002: case 0x0e0f8003: case 0x0e0ff80a:
+                // VMware, 0x15ad0405 (Virtual Machine Communication Interface) false flags
+                case 0x15ad0710: case 0x15ad0720: case 0x15ad0740: case 0x15ad0770:
+                case 0x15ad0774: case 0x15ad0778: case 0x15ad0779: case 0x15ad0790:
+                case 0x15ad07a0: case 0x15ad07b0: case 0x15ad07c0: case 0x15ad07e0:
+                case 0x15ad07f0: case 0x15ad0801: case 0x15ad0820: case 0x15ad1977:
+                case 0xfffe0710: case 0x0e0f0001: case 0x0e0f0002: case 0x0e0f0003:
+                case 0x0e0f0004: case 0x0e0f0005: case 0x0e0f0006: case 0x0e0f000a:
+                case 0x0e0f8001: case 0x0e0f8002: case 0x0e0f8003: case 0x0e0ff80a:
                     debug("PCI_DEVICES: Detected VMWARE device -> ", std::hex, id32);
                     return core::add(brands::VMWARE);
 
@@ -6948,7 +7078,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             { brands::HYPERV, "HKLM\\HARDWARE\\ACPI\\DSDT\\MSFTVM" },
             { brands::HYPERV, "HKLM\\HARDWARE\\ACPI\\FADT\\VRTUAL" },
             { brands::HYPERV, "HKLM\\HARDWARE\\ACPI\\RSDT\\VRTUAL" },
-            { brands::HYPERV, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\VMBUS" },
             { brands::HYPERV, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\SCSI\\Disk&Ven_Msft&Prod_Virtual_Disk" },
             { brands::HYPERV, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\SCSI\\CdRom&Ven_Msft&Prod_Virtual_DVD-ROM" }
         };
