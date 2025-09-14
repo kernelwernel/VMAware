@@ -824,11 +824,11 @@ static void general() {
     checker(VM::BLOCKSTEP, "single step with trap flag");
     checker(VM::DBVM, "Dark Byte's hypervisor");
     checker(VM::BOOT_LOGO, "boot logo");
-    checker(VM::BOOT, "bootloader");
+    checker(VM::BOOT_MANAGER, "boot manager");
     checker(VM::MAC_SYS, "system profiler");
     checker(VM::OBJECTS, "objects");
     checker(VM::NVRAM, "NVRAM");
-    checker(VM::SMBIOS_PASSTHROUGH, "SMBIOS");
+    checker(VM::SMBIOS_PASSTHROUGH, "SMBIOS passthrough");
 
     // ADD NEW TECHNIQUE CHECKER HERE
 
