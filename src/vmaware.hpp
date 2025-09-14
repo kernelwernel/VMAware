@@ -56,10 +56,10 @@
  * - struct for internal cpu operations        => line 717
  * - struct for internal memoization           => line 1183
  * - struct for internal utility functions     => line 1313
- * - struct for internal core components       => line 10012
- * - start of VM detection technique list      => line 2289
- * - start of public VM detection functions    => line 10504
- * - start of externally defined variables     => line 11490
+ * - struct for internal core components       => line 10044
+ * - start of VM detection technique list      => line 2270
+ * - start of public VM detection functions    => line 10536
+ * - start of externally defined variables     => line 11522
  *
  *
  * ============================== EXAMPLE ===================================
@@ -291,19 +291,19 @@
 #endif
 
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__ARM_LINUX_COMPILER__)
-#define ARM64 1
+    #define ARM64 1
 #else
-#define ARM64 0
+    #define ARM64 0
 #endif
 
 #if (defined(__arm__) || defined(_M_ARM)) && !ARM64
-#define ARM32 1
+    #define ARM32 1
 #else
-#define ARM32 0
+    #define ARM32 0
 #endif
 
 #if ARM32 || ARM64
-#define ARM 1
+    #define ARM 1
 #else
     #define ARM 0
 #endif
@@ -567,7 +567,7 @@ public:
         DBVM,
         OBJECTS,
         NVRAM,
-        BOOT,
+        BOOT_MANAGER,
         SMBIOS_PASSTHROUGH,
         BOOT_LOGO,
         
@@ -735,21 +735,21 @@ private:
             const u32 a_leaf,
             const u32 c_leaf = 0xFF  // dummy value if not set manually
         ) {
-#if (x86 && !APPLE)
+        #if (x86 && !APPLE)
             // may be unmodified for older 32-bit processors, clearing just in case
             b = 0;
             c = 0;
-    #if (WINDOWS)
-            i32 x[4]{};
-            __cpuidex((i32*)x, static_cast<int>(a_leaf), static_cast<int>(c_leaf));
-            a = static_cast<u32>(x[0]);
-            b = static_cast<u32>(x[1]);
-            c = static_cast<u32>(x[2]);
-            d = static_cast<u32>(x[3]);
-    #elif (LINUX)
-            __cpuid_count(a_leaf, c_leaf, a, b, c, d);
-    #endif
-#endif
+            #if (WINDOWS)
+                i32 x[4]{};
+                __cpuidex((i32*)x, static_cast<int>(a_leaf), static_cast<int>(c_leaf));
+                a = static_cast<u32>(x[0]);
+                b = static_cast<u32>(x[1]);
+                c = static_cast<u32>(x[2]);
+                d = static_cast<u32>(x[3]);
+            #elif (LINUX)
+                __cpuid_count(a_leaf, c_leaf, a, b, c, d);
+            #endif
+        #endif
             return;
         };
 
@@ -760,23 +760,23 @@ private:
             const u32 a_leaf,
             const u32 c_leaf = 0xFF
         ) {
-#if (x86 && !APPLE)
+        #if (x86 && !APPLE)
             // may be unmodified for older 32-bit processors, clearing just in case
             x[1] = 0;
             x[2] = 0;
-    #if (WINDOWS)
-            __cpuidex((i32*)x, static_cast<int>(a_leaf), static_cast<int>(c_leaf));
-    #elif (LINUX)
-            __cpuid_count(a_leaf, c_leaf, x[0], x[1], x[2], x[3]);
-    #endif
-#endif
+            #if (WINDOWS)
+                __cpuidex((i32*)x, static_cast<int>(a_leaf), static_cast<int>(c_leaf));
+            #elif (LINUX)
+                __cpuid_count(a_leaf, c_leaf, x[0], x[1], x[2], x[3]);
+            #endif
+        #endif
             return;
         };
 
         static bool is_leaf_supported(const u32 p_leaf) {
-#if (APPLE) 
+        #if (APPLE) 
             return false;
-#endif
+        #endif
             u32 eax = 0, unused = 0;
 
             if (p_leaf < 0x40000000) {
@@ -826,9 +826,9 @@ private:
                 return memo::cpu_brand::fetch();
             }
 
-#if (!x86 || APPLE)
+        #if (!x86 || APPLE)
             return "Unknown";
-#else
+        #else
             if (!cpu::is_leaf_supported(cpu::leaf::brand3)) {
                 return "Unknown";
             }
@@ -864,7 +864,7 @@ private:
             memo::cpu_brand::store(b);
             debug("CPU: ", b);
             return b;
-#endif
+        #endif
         }
 
 #if (WINDOWS)
@@ -1403,12 +1403,12 @@ private:
 
 
         [[nodiscard]] static bool exists(const char* path) { 
-#if (CPP >= 17)
+        #if (CPP >= 17)
             return std::filesystem::exists(path);
-#elif (CPP >= 11)
+        #elif (CPP >= 11)
             struct stat buffer;
             return (stat(path, &buffer) == 0);
-#endif
+        #endif
         }
 
 #if (LINUX)
@@ -1424,16 +1424,16 @@ private:
         // wrapper for std::make_unique because it's not available for C++11
         template<typename T, typename... Args>
         [[nodiscard]] static std::unique_ptr<T> make_unique(Args&&... args) {
-#if (CPP < 14)
+        #if (CPP < 14)
             return std::unique_ptr<T>(new T(std::forward<Args>(args)...));
-#else
+        #else
             return std::make_unique<T>(std::forward<Args>(args)...);
-#endif
+        #endif
         }
 
 
         [[nodiscard]] static bool is_admin() noexcept {
-#if (LINUX || APPLE)
+        #if (LINUX || APPLE)
             const uid_t uid = getuid();
             const uid_t euid = geteuid();
 
@@ -1441,7 +1441,7 @@ private:
                 (uid != euid) ||
                 (euid == 0)
             );
-#elif (WINDOWS)
+        #elif (WINDOWS)
             bool is_admin = false;
             HANDLE hToken = nullptr;
             if (OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &hToken)) {
@@ -1454,9 +1454,9 @@ private:
                 CloseHandle(hToken);
             }
             return is_admin;
-#else
+        #else
             return true;
-#endif
+        #endif
         }
 
 
@@ -1524,7 +1524,7 @@ private:
             std::string msg_content = ss.str();
 
             if (printed_messages.find(msg_content) == printed_messages.end()) {
-#if (LINUX || APPLE)
+        #if (LINUX || APPLE)
                 constexpr const char* black_bg = "\x1B[48;2;0;0;0m";
                 constexpr const char* bold = "\033[1m";
                 constexpr const char* blue = "\x1B[38;2;00;59;193m";
@@ -1538,9 +1538,9 @@ private:
                     << blue << "DEBUG"
                     << ansiexit << bold << black_bg << "]"
                     << ansiexit << " ";
-#else
+        #else
                 std::cout << "[DEBUG] ";
-#endif
+        #endif
                 std::cout << msg_content;
                 std::cout << std::dec << "\n";
 
@@ -1550,7 +1550,7 @@ private:
 
         template <typename... Args>
         static inline void core_debug_msg(Args&&... message) noexcept {
-#if (LINUX || APPLE)
+        #if (LINUX || APPLE)
             constexpr const char* black_bg = "\x1B[48;2;0;0;0m";
             constexpr const char* bold = "\033[1m";
             constexpr const char* orange = "\x1B[38;2;255;180;5m";
@@ -1564,9 +1564,9 @@ private:
                 << orange << "CORE DEBUG"
                 << ansiexit << bold << black_bg << "]"
                 << ansiexit << " ";
-#else
+        #else
             std::cout << "[CORE DEBUG] ";
-#endif
+        #endif
 
             print_to_stream(std::cout, std::forward<Args>(message)...);
             std::cout << std::dec << "\n";
@@ -1574,56 +1574,56 @@ private:
 
 
         [[nodiscard]] static std::unique_ptr<std::string> sys_result(const char* cmd) {
-#if (CPP < 14)
+        #if (CPP < 14)
             UNUSED(cmd);
             return util::make_unique<std::string>();
-#else
-    #if (LINUX || APPLE)
-            struct FileDeleter {
-                void operator()(FILE* f) const noexcept {
-                    if (f) {
-                        pclose(f);
-                    };
+        #else
+            #if (LINUX || APPLE)
+                struct FileDeleter {
+                    void operator()(FILE* f) const noexcept {
+                        if (f) {
+                            pclose(f);
+                        };
+                    }
+                };
+
+                std::unique_ptr<FILE, FileDeleter> pipe(popen(cmd, "r"), FileDeleter());
+                if (!pipe) {
+                    return util::make_unique<std::string>();
                 }
-            };
 
-            std::unique_ptr<FILE, FileDeleter> pipe(popen(cmd, "r"), FileDeleter());
-            if (!pipe) {
-                return util::make_unique<std::string>();
-            }
+                std::string result;
+                char* line = nullptr;
+                size_t len = 0;
+                ssize_t nread;
 
-            std::string result;
-            char* line = nullptr;
-            size_t len = 0;
-            ssize_t nread;
+                while ((nread = getline(&line, &len, pipe.get())) != -1) {
+                    result.append(line, static_cast<size_t>(nread));
+                }
+                free(line);
 
-            while ((nread = getline(&line, &len, pipe.get())) != -1) {
-                result.append(line, static_cast<size_t>(nread));
-            }
-            free(line);
+                if (!result.empty() && result.back() == '\n') {
+                    result.pop_back();
+                }
 
-            if (!result.empty() && result.back() == '\n') {
-                result.pop_back();
-            }
-
-            return util::make_unique<std::string>(std::move(result));
-    #else
-            UNUSED(cmd);
-            return std::make_unique<std::string>();
-    #endif
-#endif
+                return util::make_unique<std::string>(std::move(result));
+            #else
+                UNUSED(cmd);
+                return std::make_unique<std::string>();
+            #endif
+        #endif
         }
 
 
         [[nodiscard]] static u16 get_disk_size() {
-#if (APPLE)
+        #if (APPLE)
             return 0;
-#endif
+        #endif
             u16 size = 0;
             constexpr u64 U16_MAX = 65535;
             constexpr u64 GB = 1024ull * 1024 * 1024;
 
-#if (LINUX)
+        #if (LINUX)
             struct statvfs stat;
             if (statvfs("/", &stat) != 0) {
                 debug("util::get_disk_size: failed to fetch size in GiB");
@@ -1639,9 +1639,22 @@ private:
             else {
                 size = static_cast<u16>(size_gb);
             }
-#elif (WINDOWS)
+        #elif (WINDOWS)
+            WCHAR windowsDir[MAX_PATH] = { 0 };
+            if (GetWindowsDirectoryW(windowsDir, MAX_PATH) == 0) {
+                debug("util::get_disk_size: GetWindowsDirectoryW failed");
+                return 81;
+            }
+
+            WCHAR volumeRoot[MAX_PATH] = { 0 };
+            if (!GetVolumePathNameW(windowsDir, volumeRoot, MAX_PATH)) {
+                debug("util::get_disk_size: GetVolumePathNameW failed");
+                return 81;
+            }
+
+            // Query free/total space on the volume that hosts Windows rather than hardcoding it to C:
             ULARGE_INTEGER totalNumberOfBytes{};
-            if (GetDiskFreeSpaceExW(L"C:", nullptr, &totalNumberOfBytes, nullptr)) {
+            if (GetDiskFreeSpaceExW(volumeRoot, nullptr, &totalNumberOfBytes, nullptr)) {
                 const u64 bytes = static_cast<u64>(totalNumberOfBytes.QuadPart);
                 const u64 size_gb = (bytes + (GB / 2ULL)) / GB;
 
@@ -1656,14 +1669,14 @@ private:
                 debug("util::get_disk_size: failed to fetch size in GiB");
                 return 81;
             }
-#endif
+        #endif
 
             return size;
         }
 
 
         [[nodiscard]] static u32 get_physical_ram_size() {
-#if (LINUX)
+        #if (LINUX)
             if (!util::is_admin()) {
                 debug("get_physical_ram_size: ", "not root, returned 0");
                 return 0;
@@ -1697,17 +1710,10 @@ private:
             if (is_mb) number = static_cast<u64>(std::round(static_cast<double>(number) / 1024.0));
 
             return static_cast<u32>(std::min<u64>(number, std::numeric_limits<u32>::max()));
-#elif (WINDOWS)
-            ULONGLONG total_kb = 0;
+        #elif (WINDOWS)
             constexpr unsigned long long gib = 1024ULL * 1024ULL * 1024ULL;
 
-            if (GetPhysicallyInstalledSystemMemory(&total_kb)) {
-                const unsigned long long bytes = total_kb * 1024ULL;
-                // GiB = 1024^3; to round to nearest GiB: (bytes + GiB/2) / GiB
-                return static_cast<u32>((bytes + (gib / 2ULL)) / gib);
-            }
-
-            // the "physically installed" API can fail if some hypervisors like VirtualBox don't populate the SMBIOS fields
+            // the "physically installed" API can fail if some hypervisors like VirtualBox/QEMU don't populate the necessary SMBIOS fields, so we use GlobalMemoryStatusEx
             MEMORYSTATUSEX ms{};
             ms.dwLength = sizeof(ms);
 			if (GlobalMemoryStatusEx(&ms)) { // calls NtQuerySystemInformation rather than using SMBIOS
@@ -1716,60 +1722,35 @@ private:
             }
 
             return 0;
-#else
+        #else
             return 0;
-#endif
-        }
-
-
-        [[nodiscard]] static u64 get_memory_space() {
-#if (WINDOWS)
-            MEMORYSTATUSEX statex = { 0 };
-            statex.dwLength = sizeof(statex);
-            GlobalMemoryStatusEx(&statex); // calls NtQuerySystemInformation
-            return statex.ullTotalPhys;
-#elif (LINUX)
-            const i64 pages = sysconf(_SC_PHYS_PAGES);
-            const i64 page_size = sysconf(_SC_PAGE_SIZE);
-            return (pages * page_size);
-#elif (APPLE)
-            i32 mib[2] = { CTL_HW, HW_MEMSIZE };
-            u32 namelen = sizeof(mib) / sizeof(mib[0]);
-            u64 size = 0;
-            std::size_t len = sizeof(size);
-
-            if (sysctl(mib, namelen, &size, &len, NULL, 0) < 0) {
-                return 0;
-            }
-
-            return size; // in bytes
-#endif
+        #endif
         }
 
 
         [[nodiscard]] static bool is_proc_running(const char* executable) {
-#if (LINUX)
-#if (CPP >= 17)
-            for (const auto& entry : std::filesystem::directory_iterator("/proc")) {
-                if (!entry.is_directory()) {
-                    continue;
+        #if (LINUX)
+            #if (CPP >= 17)
+                for (const auto& entry : std::filesystem::directory_iterator("/proc")) {
+                    if (!entry.is_directory()) {
+                        continue;
+                    }
+
+                    const std::string filename = entry.path().filename().string();
+            #else
+                std::unique_ptr<DIR, decltype(&closedir)> dir(opendir("/proc"), closedir);
+                if (!dir) {
+                    debug("util::is_proc_running: ", "failed to open /proc directory");
+                    return false;
                 }
 
-                const std::string filename = entry.path().filename().string();
-#else
-            std::unique_ptr<DIR, decltype(&closedir)> dir(opendir("/proc"), closedir);
-            if (!dir) {
-                debug("util::is_proc_running: ", "failed to open /proc directory");
-                return false;
-            }
-
-            struct dirent* entry;
-            while ((entry = readdir(dir.get())) != nullptr) {
-                std::string filename(entry->d_name);
-                if (filename == "." || filename == "..") {
-                    continue;
-                }
-#endif
+                struct dirent* entry;
+                while ((entry = readdir(dir.get())) != nullptr) {
+                    std::string filename(entry->d_name);
+                    if (filename == "." || filename == "..") {
+                        continue;
+                    }
+            #endif
                 if (!std::all_of(filename.begin(), filename.end(), [](unsigned char c) { return std::isdigit(c); })) {
                     continue;
                 }
@@ -1813,35 +1794,35 @@ private:
             }
 
             return false;
-#else
+        #else
             UNUSED(executable);
             return false;
-#endif
-         }
+        #endif
+        }
 
 
         [[nodiscard]] static std::string get_hostname() {
-#if (WINDOWS)
+        #if (WINDOWS)
             char ComputerName[MAX_COMPUTERNAME_LENGTH + 1];
             DWORD cbComputerName = sizeof(ComputerName);
 
             if (GetComputerNameA(ComputerName, &cbComputerName)) {
                 return std::string(ComputerName);
             }
-#elif (LINUX)
+        #elif (LINUX)
             char hostname[HOST_NAME_MAX];
 
             if (gethostname(hostname, sizeof(hostname)) == 0) {
                 return std::string(hostname);
             }
-#endif
+        #endif
 
             return std::string();
         }
 
 
         [[nodiscard]] static bool is_running_under_translator() {
-#if (WINDOWS && _WIN32_WINNT >= _WIN32_WINNT_WIN10)
+        #if (WINDOWS && _WIN32_WINNT >= _WIN32_WINNT_WIN10)
             USHORT procMachine = 0, nativeMachine = 0;
             auto pIsWow64Process2 = &IsWow64Process2;
             if (pIsWow64Process2(GetCurrentProcess(), &procMachine, &nativeMachine)) {
@@ -1883,7 +1864,7 @@ private:
                     }
                 }
             }
-#endif
+        #endif
 
             if (cpu::is_leaf_supported(cpu::leaf::hypervisor)) {
                 const std::string vendor = cpu::cpu_manufacturer(cpu::leaf::hypervisor);
@@ -1895,12 +1876,12 @@ private:
                 }
             }
 
-#if (WINDOWS)
+        #if (WINDOWS)
             const std::string& brand = cpu::get_brand();
             if (brand.find("Virtual CPU") != std::string::npos) {
                 return true;
             }
-#endif
+        #endif
 
             return false;
         }
@@ -1919,9 +1900,9 @@ private:
          *          - HYPERV_UNKNOWN_VM for unknown/undetected state
          */
         [[nodiscard]] static hyperx_state hyper_x() {
-#if (!WINDOWS)
+        #if (!WINDOWS)
             return HYPERV_UNKNOWN_VM;
-#else
+        #else
             if (memo::hyperx::is_cached()) {
                 core_debug("HYPER_X: returned from cache");
                 return memo::hyperx::fetch();
@@ -2000,7 +1981,7 @@ private:
             memo::hyperx::store(state);
 
             return state;
-#endif
+        #endif
         }
 
 #if (WINDOWS)
@@ -2294,15 +2275,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::VMID
      */
      [[nodiscard]] static bool vmid() {
-        #if (!x86)
-            return false;
-        #else
-            return (
-                cpu::vmid_template(0) ||
-                cpu::vmid_template(cpu::leaf::hypervisor) || // 0x40000000
-                cpu::vmid_template(cpu::leaf::hypervisor + 0x100) // 0x40000100
-            );
-        #endif
+    #if (!x86)
+         return false;
+    #else
+         return (
+             cpu::vmid_template(0) ||
+             cpu::vmid_template(cpu::leaf::hypervisor) || // 0x40000000
+             cpu::vmid_template(cpu::leaf::hypervisor + 0x100) // 0x40000100
+             );
+    #endif
     }
 
 
@@ -2312,71 +2293,71 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::CPU_BRAND
      */
     [[nodiscard]] static bool cpu_brand() {
-        #if (!x86)
-            return false;
-        #else
-            const std::string& brand = cpu::get_brand();
-    
-            struct CStrView {
-                const char* data;
-                std::size_t size;
-                constexpr CStrView(const char* d, std::size_t s) noexcept
-                    : data(d), size(s) {
-                }
-            };
-    
-            static constexpr std::array<CStrView, 10> checks{ {
-                { "qemu",       4 },
-                { "kvm",        3 },
-                { "vbox",       4 },
-                { "virtualbox", 10},
-                { "monitor",    7 },
-                { "bhyve",      5 },
-                { "hypervisor", 10},
-                { "hvisor",     6 },
-                { "parallels",  9 },
-                { "vmware",     6 }
-            } };
-    
-            for (auto& v : checks) {
-                if (brand.size() < v.size)
-                    continue;  // too short to match
-    
-                if (brand.find(v.data) != std::string::npos) {
-                    debug("CPU_BRAND: match = ", v.data);
-    
-                    // For these, we only care that it's virtualized:
-                    if (v.size == 7  // "monitor"
-                        || ((v.size == 6) && (v.data[0] == 'h'))  // "hvisor"
-                        || ((v.size == 10) && (v.data[0] == 'h')) // "hypervisor" 
+    #if (!x86)
+        return false;
+    #else
+        const std::string& brand = cpu::get_brand();
+
+        struct CStrView {
+            const char* data;
+            std::size_t size;
+            constexpr CStrView(const char* d, std::size_t s) noexcept
+                : data(d), size(s) {
+            }
+        };
+
+        static constexpr std::array<CStrView, 10> checks{ {
+            { "qemu",       4 },
+            { "kvm",        3 },
+            { "vbox",       4 },
+            { "virtualbox", 10},
+            { "monitor",    7 },
+            { "bhyve",      5 },
+            { "hypervisor", 10},
+            { "hvisor",     6 },
+            { "parallels",  9 },
+            { "vmware",     6 }
+        } };
+
+        for (auto& v : checks) {
+            if (brand.size() < v.size)
+                continue;  // too short to match
+
+            if (brand.find(v.data) != std::string::npos) {
+                debug("CPU_BRAND: match = ", v.data);
+
+                // For these, we only care that it's virtualized:
+                if (v.size == 7  // "monitor"
+                    || ((v.size == 6) && (v.data[0] == 'h'))  // "hvisor"
+                    || ((v.size == 10) && (v.data[0] == 'h')) // "hypervisor" 
                     ) {
-                        return true;
-                    }
-    
-                    // Otherwise map to our enums:
-                    switch (v.size) {
-                        case 4:  // "qemu" or "vbox"
-                            return core::add(v.data[0] == 'q'
-                                ? brands::QEMU
-                                : brands::VBOX);
-                        case 3:  // "kvm"
-                            return core::add(brands::KVM);
-                        case 5:  // "bhyve"
-                            return core::add(brands::BHYVE);
-                        case 9:  // "parallels"
-                            return core::add(brands::PARALLELS);
-                        case 10: // "virtualbox"
-                            return core::add(brands::VBOX);
-                        case 6:  // "vmware"
-                            return core::add(brands::VMWARE);
-                        default:
-                            return false;
-                    }
+                    return true;
+                }
+
+                // Otherwise map to our enums:
+                switch (v.size) {
+                case 4:  // "qemu" or "vbox"
+                    return core::add(v.data[0] == 'q'
+                        ? brands::QEMU
+                        : brands::VBOX);
+                case 3:  // "kvm"
+                    return core::add(brands::KVM);
+                case 5:  // "bhyve"
+                    return core::add(brands::BHYVE);
+                case 9:  // "parallels"
+                    return core::add(brands::PARALLELS);
+                case 10: // "virtualbox"
+                    return core::add(brands::VBOX);
+                case 6:  // "vmware"
+                    return core::add(brands::VMWARE);
+                default:
+                    return false;
                 }
             }
-    
-            return false;
-        #endif
+        }
+
+        return false;
+    #endif
     }
 
 
@@ -2386,18 +2367,18 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::HYPERVISOR_BIT
      */
     [[nodiscard]] static bool hypervisor_bit() {
-        #if (!x86)
+    #if (!x86)
+        return false;
+    #else
+        if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
             return false;
-        #else
-            if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
-                return false;
-            }
-    
-            u32 unused, ecx = 0;
-            cpu::cpuid(unused, unused, ecx, unused, 1);
-            const u32 mask = (1u << 31);
-            return (ecx & mask);
-        #endif
+        }
+
+        u32 unused, ecx = 0;
+        cpu::cpuid(unused, unused, ecx, unused, 1);
+        const u32 mask = (1u << 31);
+        return (ecx & mask);
+    #endif
     }
 
 
@@ -2407,24 +2388,24 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::HYPERVISOR_STR
      */
     [[nodiscard]] static bool hypervisor_str() {
-        #if (!x86)
+    #if (!x86)
+        return false;
+    #else
+        if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
             return false;
-        #else
-            if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
-                return false;
-            }
-    
-            char out[sizeof(i32) * 4 + 1] = { 0 }; // e*x size + number of e*x registers + null terminator
-            cpu::cpuid(reinterpret_cast<int*>(out), cpu::leaf::hypervisor);
-    
-            debug("HYPERVISOR_STR: \neax: ", static_cast<u32>(out[0]),
-                "\nebx: ", static_cast<u32>(out[1]),
-                "\necx: ", static_cast<u32>(out[2]),
-                "\nedx: ", static_cast<u32>(out[3])
-            );
-    
-            return (std::strlen(out + 4) >= 4);
-        #endif
+        }
+
+        char out[sizeof(i32) * 4 + 1] = { 0 }; // e*x size + number of e*x registers + null terminator
+        cpu::cpuid(reinterpret_cast<int*>(out), cpu::leaf::hypervisor);
+
+        debug("HYPERVISOR_STR: \neax: ", static_cast<u32>(out[0]),
+            "\nebx: ", static_cast<u32>(out[1]),
+            "\necx: ", static_cast<u32>(out[2]),
+            "\nedx: ", static_cast<u32>(out[3])
+        );
+
+        return (std::strlen(out + 4) >= 4);
+    #endif  
     }
     
 
@@ -2435,84 +2416,85 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::BOCHS_CPU
      */
     [[nodiscard]] static bool bochs_cpu() {
-        #if (!x86)
+    #if (!x86)
+        return false;
+    #else
+        const bool intel = cpu::is_intel();
+        const bool amd = cpu::is_amd();
+
+        // if neither amd or intel, return false
+        if (!(intel || amd)) {
+            debug("BOCHS_CPU: neither AMD or Intel detected, returned false");
             return false;
-        #else
-            const bool intel = cpu::is_intel();
-            const bool amd = cpu::is_amd();
-    
-            // if neither amd or intel, return false
-            if (!(intel || amd)) {
-                debug("BOCHS_CPU: neither AMD or Intel detected, returned false");
+        }
+
+        const std::string brand = cpu::get_brand();
+
+        if (intel) {
+            // technique 1: not a valid brand 
+            if (brand == "              Intel(R) Pentium(R) 4 CPU        ") {
+                debug("BOCHS_CPU: technique 1 found");
+                return core::add(brands::BOCHS);
+            }
+        }
+        else if (amd) {
+            // technique 2: "processor" should have a capital P
+            if (brand == "AMD Athlon(tm) processor") {
+                debug("BOCHS_CPU: technique 2 found");
+                return core::add(brands::BOCHS);
+            }
+
+            // technique 3: Check for absence of AMD easter egg for K7 and K8 CPUs
+            constexpr u32 AMD_EASTER_EGG = 0x8fffffff; // this is the CPUID leaf of the AMD easter egg
+
+            if (!cpu::is_leaf_supported(AMD_EASTER_EGG)) {
                 return false;
             }
-    
-            const std::string brand = cpu::get_brand();
-    
-            if (intel) {
-                // technique 1: not a valid brand 
-                if (brand == "              Intel(R) Pentium(R) 4 CPU        ") {
-                    debug("BOCHS_CPU: technique 1 found");
-                    return core::add(brands::BOCHS);
-                }
-            } else if (amd) {
-                // technique 2: "processor" should have a capital P
-                if (brand == "AMD Athlon(tm) processor") {
-                    debug("BOCHS_CPU: technique 2 found");
-                    return core::add(brands::BOCHS);
-                }
-    
-                // technique 3: Check for absence of AMD easter egg for K7 and K8 CPUs
-                constexpr u32 AMD_EASTER_EGG = 0x8fffffff; // this is the CPUID leaf of the AMD easter egg
-    
-                if (!cpu::is_leaf_supported(AMD_EASTER_EGG)) {
-                    return false;
-                }
-    
-                u32 unused, eax = 0;
-                cpu::cpuid(eax, unused, unused, unused, 1);
-    
-                auto is_k7 = [](const u32 eax) -> bool {
-                    const u32 family = (eax >> 8) & 0xF;
-                    const u32 model = (eax >> 4) & 0xF;
-                    const u32 extended_family = (eax >> 20) & 0xFF;
-    
-                    if (family == 6 && extended_family == 0) {
-                        if (model == 1 || model == 2 || model == 3 || model == 4) {
-                            return true;
-                        }
+
+            u32 unused, eax = 0;
+            cpu::cpuid(eax, unused, unused, unused, 1);
+
+            auto is_k7 = [](const u32 eax) -> bool {
+                const u32 family = (eax >> 8) & 0xF;
+                const u32 model = (eax >> 4) & 0xF;
+                const u32 extended_family = (eax >> 20) & 0xFF;
+
+                if (family == 6 && extended_family == 0) {
+                    if (model == 1 || model == 2 || model == 3 || model == 4) {
+                        return true;
                     }
-    
-                    return false;
+                }
+
+                return false;
                 };
-    
-                auto is_k8 = [](const u32 eax) -> bool {
-                    const u32 family = (eax >> 8) & 0xF;
-                    const u32 extended_family = (eax >> 20) & 0xFF;
-    
-                    if (family == 0xF) {
-                        if (extended_family == 0x00 || extended_family == 0x01) {
-                            return true;
-                        }
+
+            auto is_k8 = [](const u32 eax) -> bool {
+                const u32 family = (eax >> 8) & 0xF;
+                const u32 extended_family = (eax >> 20) & 0xFF;
+
+                if (family == 0xF) {
+                    if (extended_family == 0x00 || extended_family == 0x01) {
+                        return true;
                     }
-    
-                    return false;
+                }
+
+                return false;
                 };
-    
-                if (!(is_k7(eax) || is_k8(eax))) {
-                    return false;
-                }
-    
-                u32 ecx_bochs = 0;
-                cpu::cpuid(unused, unused, ecx_bochs, unused, AMD_EASTER_EGG);
-    
-                if (ecx_bochs == 0) {
-                    return true;
-                }
+
+            if (!(is_k7(eax) || is_k8(eax))) {
+                return false;
             }
-    
-            return false;
-        #endif
+
+            u32 ecx_bochs = 0;
+            cpu::cpuid(unused, unused, ecx_bochs, unused, AMD_EASTER_EGG);
+
+            if (ecx_bochs == 0) {
+                return true;
+            }
+        }
+
+        return false;
+    #endif
     }
        
     
@@ -2522,1046 +2504,1046 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::INTEL_THREAD_MISMATCH
      */
     [[nodiscard]] static bool intel_thread_mismatch() {
-        #if (!x86)
+    #if (!x86)
+        return false;
+    #else
+        if (!cpu::is_intel()) {
             return false;
-        #else
-            if (!cpu::is_intel()) {
-                return false;
+        }
+
+        const cpu::model_struct model = cpu::get_model();
+
+        if (!model.found) {
+            return false;
+        }
+
+        if (!model.is_i_series) {
+            return false;
+        }
+
+        debug("INTEL_THREAD_MISMATCH: CPU model = ", model.string);
+
+        struct ThreadEntry {
+            const char* model;
+            unsigned    threads;
+        };
+
+        static const ThreadEntry thread_database[] = {
+            // i3 series
+            { "i3-1000G1", 4 },
+            { "i3-1000G4", 4 },
+            { "i3-1000NG4", 4 },
+            { "i3-1005G1", 4 },
+            { "i3-10100", 8 },
+            { "i3-10100E", 8 },
+            { "i3-10100F", 8 },
+            { "i3-10100T", 8 },
+            { "i3-10100TE", 8 },
+            { "i3-10100Y", 4 },
+            { "i3-10105", 8 },
+            { "i3-10105F", 8 },
+            { "i3-10105T", 8 },
+            { "i3-10110U", 4 },
+            { "i3-10110Y", 4 },
+            { "i3-10300", 8 },
+            { "i3-10300T", 8 },
+            { "i3-10305", 8 },
+            { "i3-10305T", 8 },
+            { "i3-10320", 8 },
+            { "i3-10325", 8 },
+            { "i3-11100B", 8 },
+            { "i3-11100HE", 8 },
+            { "i3-1110G4", 4 },
+            { "i3-1115G4E", 4 },
+            { "i3-1115GRE", 4 },
+            { "i3-1120G4", 8 },
+            { "i3-12100", 8 },
+            { "i3-12100F", 8 },
+            { "i3-12100T", 8 },
+            { "i3-1210U", 8 },
+            { "i3-1215U", 8 },
+            { "i3-1215UE", 8 },
+            { "i3-1215UL", 8 },
+            { "i3-12300", 8 },
+            { "i3-12300T", 8 },
+            { "i3-13100", 8 },
+            { "i3-13100F", 8 },
+            { "i3-13100T", 8 },
+            { "i3-1315U", 4 },
+            { "i3-1315UE", 4 },
+            { "i3-14100", 8 },
+            { "i3-14100F", 8 },
+            { "i3-14100T", 8 },
+            { "i3-2100", 4 },
+            { "i3-2100T", 4 },
+            { "i3-2102", 4 },
+            { "i3-2105", 4 },
+            { "i3-2120", 4 },
+            { "i3-2120T", 4 },
+            { "i3-2125", 4 },
+            { "i3-2130", 4 },
+            { "i3-2308M", 4 },
+            { "i3-2310E", 4 },
+            { "i3-2310M", 4 },
+            { "i3-2312M", 4 },
+            { "i3-2328M", 4 },
+            { "i3-2330E", 4 },
+            { "i3-2330M", 4 },
+            { "i3-2332M", 4 },
+            { "i3-2340UE", 4 },
+            { "i3-2348M", 4 },
+            { "i3-2350LM", 4 },
+            { "i3-2350M", 4 },
+            { "i3-2355M", 4 },
+            { "i3-2357M", 4 },
+            { "i3-2365M", 4 },
+            { "i3-2367M", 4 },
+            { "i3-2370LM", 4 },
+            { "i3-2370M", 4 },
+            { "i3-2375M", 4 },
+            { "i3-2377M", 4 },
+            { "i3-2390M", 4 },
+            { "i3-2393M", 4 },
+            { "i3-2394M", 4 },
+            { "i3-2395M", 4 },
+            { "i3-2397M", 4 },
+            { "i3-3110M", 4 },
+            { "i3-3115C", 4 },
+            { "i3-3120M", 4 },
+            { "i3-3120ME", 4 },
+            { "i3-3130M", 4 },
+            { "i3-3210", 4 },
+            { "i3-3217U", 4 },
+            { "i3-3217UE", 4 },
+            { "i3-3220", 4 },
+            { "i3-3220T", 4 },
+            { "i3-3225", 4 },
+            { "i3-3227U", 4 },
+            { "i3-3229Y", 4 },
+            { "i3-3240", 4 },
+            { "i3-3240T", 4 },
+            { "i3-3245", 4 },
+            { "i3-3250", 4 },
+            { "i3-3250T", 4 },
+            { "i3-330E", 4 },
+            { "i3-330M", 4 },
+            { "i3-330UM", 4 },
+            { "i3-350M", 4 },
+            { "i3-370M", 4 },
+            { "i3-380M", 4 },
+            { "i3-380UM", 4 },
+            { "i3-390M", 4 },
+            { "i3-4000M", 4 },
+            { "i3-4005U", 4 },
+            { "i3-4010M", 4 },
+            { "i3-4010U", 4 },
+            { "i3-4010Y", 4 },
+            { "i3-4012Y", 4 },
+            { "i3-4020Y", 4 },
+            { "i3-4025U", 4 },
+            { "i3-4030U", 4 },
+            { "i3-4030Y", 4 },
+            { "i3-4100E", 4 },
+            { "i3-4100M", 4 },
+            { "i3-4100U", 4 },
+            { "i3-4102E", 4 },
+            { "i3-4110E", 4 },
+            { "i3-4110M", 4 },
+            { "i3-4112E", 4 },
+            { "i3-4120U", 4 },
+            { "i3-4130", 4 },
+            { "i3-4130T", 4 },
+            { "i3-4150", 4 },
+            { "i3-4150T", 4 },
+            { "i3-4158U", 4 },
+            { "i3-4160", 4 },
+            { "i3-4160T", 4 },
+            { "i3-4170", 4 },
+            { "i3-4170T", 4 },
+            { "i3-4330", 4 },
+            { "i3-4330T", 4 },
+            { "i3-4330TE", 4 },
+            { "i3-4340", 4 },
+            { "i3-4340TE", 4 },
+            { "i3-4350", 4 },
+            { "i3-4350T", 4 },
+            { "i3-4360", 4 },
+            { "i3-4360T", 4 },
+            { "i3-4370", 4 },
+            { "i3-4370T", 4 },
+            { "i3-5005U", 4 },
+            { "i3-5010U", 4 },
+            { "i3-5015U", 4 },
+            { "i3-5020U", 4 },
+            { "i3-5157U", 4 },
+            { "i3-530", 4 },
+            { "i3-540", 4 },
+            { "i3-550", 4 },
+            { "i3-560", 4 },
+            { "i3-6006U", 4 },
+            { "i3-6098P", 4 },
+            { "i3-6100", 4 },
+            { "i3-6100E", 4 },
+            { "i3-6100H", 4 },
+            { "i3-6100T", 4 },
+            { "i3-6100TE", 4 },
+            { "i3-6100U", 4 },
+            { "i3-6102E", 4 },
+            { "i3-6120T", 4 },
+            { "i3-6157U", 4 },
+            { "i3-6167U", 4 },
+            { "i3-6300", 4 },
+            { "i3-6300T", 4 },
+            { "i3-6320", 4 },
+            { "i3-6320T", 4 },
+            { "i3-7007U", 4 },
+            { "i3-7020U", 4 },
+            { "i3-7100", 4 },
+            { "i3-7100E", 4 },
+            { "i3-7100H", 4 },
+            { "i3-7100T", 4 },
+            { "i3-7100U", 4 },
+            { "i3-7101E", 4 },
+            { "i3-7101TE", 4 },
+            { "i3-7102E", 4 },
+            { "i3-7110U", 4 },
+            { "i3-7120", 4 },
+            { "i3-7120T", 4 },
+            { "i3-7130U", 4 },
+            { "i3-7167U", 4 },
+            { "i3-7300", 4 },
+            { "i3-7300T", 4 },
+            { "i3-7310T", 4 },
+            { "i3-7310U", 4 },
+            { "i3-7320", 4 },
+            { "i3-7320T", 4 },
+            { "i3-7340", 4 },
+            { "i3-7350K", 4 },
+            { "i3-8000", 4 },
+            { "i3-8000T", 4 },
+            { "i3-8020", 4 },
+            { "i3-8020T", 4 },
+            { "i3-8100", 4 },
+            { "i3-8100B", 4 },
+            { "i3-8100F", 4 },
+            { "i3-8100H", 4 },
+            { "i3-8100T", 4 },
+            { "i3-8109U", 4 },
+            { "i3-8120", 4 },
+            { "i3-8120T", 4 },
+            { "i3-8121U", 4 },
+            { "i3-8130U", 4 },
+            { "i3-8130U", 4 },
+            { "i3-8140U", 4 },
+            { "i3-8145U", 4 },
+            { "i3-8145UE", 4 },
+            { "i3-8300", 4 },
+            { "i3-8300T", 4 },
+            { "i3-8320", 4 },
+            { "i3-8320T", 4 },
+            { "i3-8350K", 4 },
+            { "i3-9100", 4 },
+            { "i3-9100E", 4 },
+            { "i3-9100F", 4 },
+            { "i3-9100HL", 4 },
+            { "i3-9100T", 4 },
+            { "i3-9100TE", 4 },
+            { "i3-9300", 4 },
+            { "i3-9300T", 4 },
+            { "i3-9320", 4 },
+            { "i3-9350K", 4 },
+            { "i3-9350KF", 4 },
+            { "i3-N300", 8 },
+            { "i3-N305", 8 },
+
+            // i5 series
+            { "i5-10200H", 8 },
+            { "i5-10210U", 8 },
+            { "i5-10210Y", 8 },
+            { "i5-10300H", 8 },
+            { "i5-1030G4", 8 },
+            { "i5-1030G7", 8 },
+            { "i5-1030NG7", 8 },
+            { "i5-10310U", 8 },
+            { "i5-10310Y", 8 },
+            { "i5-1035G1", 8 },
+            { "i5-1035G4", 8 },
+            { "i5-1035G7", 8 },
+            { "i5-1038NG7", 8 },
+            { "i5-10400", 12 },
+            { "i5-10400F", 12 },
+            { "i5-10400H", 8 },
+            { "i5-10400T", 12 },
+            { "i5-10500", 12 },
+            { "i5-10500E", 12 },
+            { "i5-10500H", 12 },
+            { "i5-10500T", 12 },
+            { "i5-10500TE", 12 },
+            { "i5-10505", 12 },
+            { "i5-10600", 12 },
+            { "i5-10600K", 12 },
+            { "i5-10600KF", 12 },
+            { "i5-10600T", 12 },
+            { "i5-1115G4", 4 },
+            { "i5-1125G4", 8 },
+            { "i5-11260H", 12 },
+            { "i5-11300H", 8 },
+            { "i5-1130G7", 8 },
+            { "i5-11320H", 8 },
+            { "i5-1135G7", 8 },
+            { "i5-11400", 12 },
+            { "i5-11400F", 12 },
+            { "i5-11400H", 12 },
+            { "i5-11400T", 12 },
+            { "i5-1140G7", 8 },
+            { "i5-1145G7", 8 },
+            { "i5-1145G7E", 8 },
+            { "i5-1145GRE", 8 },
+            { "i5-11500", 12 },
+            { "i5-11500B", 12 },
+            { "i5-11500H", 12 },
+            { "i5-11500HE", 12 },
+            { "i5-11500T", 12 },
+            { "i5-1155G7", 8 },
+            { "i5-11600", 12 },
+            { "i5-11600K", 12 },
+            { "i5-11600KF", 12 },
+            { "i5-11600T", 12 },
+            { "i5-1230U", 12 },
+            { "i5-1235U", 12 },
+            { "i5-12400", 12 },
+            { "i5-12400F", 12 },
+            { "i5-12400T", 12 },
+            { "i5-1240P", 16 },
+            { "i5-1240U", 12 },
+            { "i5-1245U", 12 },
+            { "i5-12490F", 12 },
+            { "i5-12500", 12 },
+            { "i5-12500H", 16 },
+            { "i5-12500HL", 16 },
+            { "i5-12500T", 12 },
+            { "i5-1250P", 16 },
+            { "i5-1250PE", 16 },
+            { "i5-12600", 12 },
+            { "i5-12600H", 16 },
+            { "i5-12600HE", 16 },
+            { "i5-12600HL", 16 },
+            { "i5-12600HX", 16 },
+            { "i5-12600K", 16 },
+            { "i5-12600KF", 16 },
+            { "i5-12600T", 12 },
+            { "i5-13400", 16 },
+            { "i5-13400F", 16 },
+            { "i5-13400T", 16 },
+            { "i5-1340P", 16 },
+            { "i5-1340PE", 16 },
+            { "i5-13490F", 16 },
+            { "i5-13500", 20 },
+            { "i5-13500H", 16 },
+            { "i5-13500T", 20 },
+            { "i5-13505H", 16 },
+            { "i5-1350P", 16 },
+            { "i5-1350PE", 16 },
+            { "i5-13600", 20 },
+            { "i5-13600H", 16 },
+            { "i5-13600HE", 16 },
+            { "i5-13600K", 20 },
+            { "i5-13600KF", 20 },
+            { "i5-13600T", 20 },
+            { "i5-2300", 4 },
+            { "i5-2310", 4 },
+            { "i5-2320", 4 },
+            { "i5-2380P", 4 },
+            { "i5-2390T", 4 },
+            { "i5-2400", 4 },
+            { "i5-2400S", 4 },
+            { "i5-2405S", 4 },
+            { "i5-2410M", 4 },
+            { "i5-2415M", 4 },
+            { "i5-2430M", 4 },
+            { "i5-2435M", 4 },
+            { "i5-2450M", 4 },
+            { "i5-2450P", 4 },
+            { "i5-2467M", 4 },
+            { "i5-2475M", 4 },
+            { "i5-2477M", 4 },
+            { "i5-2487M", 4 },
+            { "i5-2490M", 4 },
+            { "i5-2497M", 4 },
+            { "i5-2500", 4 },
+            { "i5-2500K", 4 },
+            { "i5-2500S", 4 },
+            { "i5-2500T", 4 },
+            { "i5-2510E", 4 },
+            { "i5-2515E", 4 },
+            { "i5-2520M", 4 },
+            { "i5-2537M", 4 },
+            { "i5-2540LM", 4 },
+            { "i5-2540M", 4 },
+            { "i5-2547M", 4 },
+            { "i5-2550K", 4 },
+            { "i5-2557M", 4 },
+            { "i5-2560LM", 4 },
+            { "i5-2560M", 4 },
+            { "i5-2580M", 4 },
+            { "i5-3210M", 4 },
+            { "i5-3230M", 4 },
+            { "i5-3317U", 4 },
+            { "i5-3320M", 4 },
+            { "i5-3330", 4 },
+            { "i5-3330S", 4 },
+            { "i5-3335S", 4 },
+            { "i5-3337U", 4 },
+            { "i5-3339Y", 4 },
+            { "i5-3340", 4 },
+            { "i5-3340M", 4 },
+            { "i5-3340S", 4 },
+            { "i5-3350P", 4 },
+            { "i5-3360M", 4 },
+            { "i5-3380M", 4 },
+            { "i5-3427U", 4 },
+            { "i5-3437U", 4 },
+            { "i5-3439Y", 4 },
+            { "i5-3450", 4 },
+            { "i5-3450S", 4 },
+            { "i5-3470", 4 },
+            { "i5-3470S", 4 },
+            { "i5-3470T", 4 },
+            { "i5-3475S", 4 },
+            { "i5-3550", 4 },
+            { "i5-3550S", 4 },
+            { "i5-3570", 4 },
+            { "i5-3570K", 4 },
+            { "i5-3570S", 4 },
+            { "i5-3570T", 4 },
+            { "i5-3610ME", 4 },
+            { "i5-4200H", 4 },
+            { "i5-4200M", 4 },
+            { "i5-4200U", 4 },
+            { "i5-4200Y", 4 },
+            { "i5-4202Y", 4 },
+            { "i5-4210H", 4 },
+            { "i5-4210M", 4 },
+            { "i5-4210U", 4 },
+            { "i5-4210Y", 4 },
+            { "i5-4220Y", 4 },
+            { "i5-4250U", 4 },
+            { "i5-4258U", 4 },
+            { "i5-4260U", 4 },
+            { "i5-4278U", 4 },
+            { "i5-4288U", 4 },
+            { "i5-4300M", 4 },
+            { "i5-4300U", 4 },
+            { "i5-4300Y", 4 },
+            { "i5-4302Y", 4 },
+            { "i5-4308U", 4 },
+            { "i5-430M", 4 },
+            { "i5-430UM", 4 },
+            { "i5-4310M", 4 },
+            { "i5-4310U", 4 },
+            { "i5-4330M", 4 },
+            { "i5-4340M", 4 },
+            { "i5-4350U", 4 },
+            { "i5-4360U", 4 },
+            { "i5-4400E", 4 },
+            { "i5-4402E", 4 },
+            { "i5-4402EC", 4 },
+            { "i5-4410E", 4 },
+            { "i5-4422E", 4 },
+            { "i5-4430", 4 },
+            { "i5-4430S", 4 },
+            { "i5-4440", 4 },
+            { "i5-4440S", 4 },
+            { "i5-4460", 4 },
+            { "i5-4460S", 4 },
+            { "i5-4460T", 4 },
+            { "i5-4470", 4 },
+            { "i5-450M", 4 },
+            { "i5-4570", 4 },
+            { "i5-4570R", 4 },
+            { "i5-4570S", 4 },
+            { "i5-4570T", 4 },
+            { "i5-4570TE", 4 },
+            { "i5-4590", 4 },
+            { "i5-4590S", 4 },
+            { "i5-4590T", 4 },
+            { "i5-460M", 4 },
+            { "i5-4670", 4 },
+            { "i5-4670K", 4 },
+            { "i5-4670R", 4 },
+            { "i5-4670S", 4 },
+            { "i5-4670T", 4 },
+            { "i5-4690", 4 },
+            { "i5-4690K", 4 },
+            { "i5-4690S", 4 },
+            { "i5-4690T", 4 },
+            { "i5-470UM", 4 },
+            { "i5-480M", 4 },
+            { "i5-5200U", 4 },
+            { "i5-520E", 4 },
+            { "i5-520M", 4 },
+            { "i5-520UM", 4 },
+            { "i5-5250U", 4 },
+            { "i5-5257U", 4 },
+            { "i5-5287U", 4 },
+            { "i5-5300U", 4 },
+            { "i5-5350H", 4 },
+            { "i5-5350U", 4 },
+            { "i5-540M", 4 },
+            { "i5-540UM", 4 },
+            { "i5-5575R", 4 },
+            { "i5-560M", 4 },
+            { "i5-560UM", 4 },
+            { "i5-5675C", 4 },
+            { "i5-5675R", 4 },
+            { "i5-580M", 4 },
+            { "i5-6198DU", 4 },
+            { "i5-6200U", 4 },
+            { "i5-6260U", 4 },
+            { "i5-6267U", 4 },
+            { "i5-6287U", 4 },
+            { "i5-6300HQ", 4 },
+            { "i5-6300U", 4 },
+            { "i5-6350HQ", 4 },
+            { "i5-6360U", 4 },
+            { "i5-6400", 4 },
+            { "i5-6400T", 4 },
+            { "i5-6402P", 4 },
+            { "i5-6440EQ", 4 },
+            { "i5-6440HQ", 4 },
+            { "i5-6442EQ", 4 },
+            { "i5-650", 4 },
+            { "i5-6500", 4 },
+            { "i5-6500T", 4 },
+            { "i5-6500TE", 4 },
+            { "i5-655K", 4 },
+            { "i5-6585R", 4 },
+            { "i5-660", 4 },
+            { "i5-6600", 4 },
+            { "i5-6600K", 4 },
+            { "i5-6600T", 4 },
+            { "i5-661", 4 },
+            { "i5-6685R", 4 },
+            { "i5-670", 4 },
+            { "i5-680", 4 },
+            { "i5-7200U", 4 },
+            { "i5-7210U", 4 },
+            { "i5-7260U", 4 },
+            { "i5-7267U", 4 },
+            { "i5-7287U", 4 },
+            { "i5-7300HQ", 4 },
+            { "i5-7300U", 4 },
+            { "i5-7360U", 4 },
+            { "i5-7400", 4 },
+            { "i5-7400T", 4 },
+            { "i5-7440EQ", 4 },
+            { "i5-7440HQ", 4 },
+            { "i5-7442EQ", 4 },
+            { "i5-750", 4 },
+            { "i5-7500", 4 },
+            { "i5-7500T", 4 },
+            { "i5-750S", 4 },
+            { "i5-760", 4 },
+            { "i5-7600", 4 },
+            { "i5-7600K", 4 },
+            { "i5-7600T", 4 },
+            { "i5-7640X", 4 },
+            { "i5-7Y54", 4 },
+            { "i5-7Y57", 4 },
+            { "i5-8200Y", 4 },
+            { "i5-8210Y", 4 },
+            { "i5-8250U", 8 },
+            { "i5-8257U", 8 },
+            { "i5-8259U", 8 },
+            { "i5-8260U", 8 },
+            { "i5-8265U", 8 },
+            { "i5-8269U", 8 },
+            { "i5-8279U", 8 },
+            { "i5-8300H", 8 },
+            { "i5-8305G", 8 },
+            { "i5-8310Y", 4 },
+            { "i5-8350U", 8 },
+            { "i5-8365U", 8 },
+            { "i5-8365UE", 8 },
+            { "i5-8400", 6 },
+            { "i5-8400B", 6 },
+            { "i5-8400H", 8 },
+            { "i5-8400T", 6 },
+            { "i5-8420", 6 },
+            { "i5-8420T", 6 },
+            { "i5-8500", 6 },
+            { "i5-8500B", 6 },
+            { "i5-8500T", 6 },
+            { "i5-8550", 6 },
+            { "i5-8600", 6 },
+            { "i5-8600K", 6 },
+            { "i5-8600T", 6 },
+            { "i5-8650", 6 },
+            { "i5-9300H", 8 },
+            { "i5-9300HF", 8 },
+            { "i5-9400", 6 },
+            { "i5-9400F", 6 },
+            { "i5-9400H", 8 },
+            { "i5-9400T", 6 },
+            { "i5-9500", 6 },
+            { "i5-9500E", 6 },
+            { "i5-9500F", 6 },
+            { "i5-9500T", 6 },
+            { "i5-9500TE", 6 },
+            { "i5-9600", 6 },
+            { "i5-9600K", 6 },
+            { "i5-9600KF", 6 },
+            { "i5-9600T", 6 },
+
+            // i7 series
+            { "i7-10510U", 8 },
+            { "i7-10510Y", 8 },
+            { "i7-1060G7", 8 },
+            { "i7-10610U", 8 },
+            { "i7-1065G7", 8 },
+            { "i7-1068G7", 8 },
+            { "i7-1068NG7", 8 },
+            { "i7-10700", 16 },
+            { "i7-10700E", 16 },
+            { "i7-10700F", 16 },
+            { "i7-10700K", 16 },
+            { "i7-10700KF", 16 },
+            { "i7-10700T", 16 },
+            { "i7-10700TE", 16 },
+            { "i7-10710U", 12 },
+            { "i7-10750H", 12 },
+            { "i7-10810U", 12 },
+            { "i7-10850H", 12 },
+            { "i7-10870H", 16 },
+            { "i7-10875H", 16 },
+            { "i7-11370H", 8 },
+            { "i7-11375H", 8 },
+            { "i7-11390H", 8 },
+            { "i7-11600H", 12 },
+            { "i7-1160G7", 8 },
+            { "i7-1165G7", 8 },
+            { "i7-11700", 16 },
+            { "i7-11700B", 16 },
+            { "i7-11700F", 16 },
+            { "i7-11700K", 16 },
+            { "i7-11700KF", 16 },
+            { "i7-11700T", 16 },
+            { "i7-11800H", 16 },
+            { "i7-1180G7", 8 },
+            { "i7-11850H", 16 },
+            { "i7-11850HE", 16 },
+            { "i7-1185G7", 8 },
+            { "i7-1185G7E", 8 },
+            { "i7-1185GRE", 8 },
+            { "i7-1195G7", 8 },
+            { "i7-1250U", 12 },
+            { "i7-1255U", 12 },
+            { "i7-1260P", 16 },
+            { "i7-1260U", 12 },
+            { "i7-1265U", 12 },
+            { "i7-12700", 20 },
+            { "i7-12700F", 20 },
+            { "i7-12700K", 20 },
+            { "i7-12700KF", 20 },
+            { "i7-12700T", 20 },
+            { "i7-12700H", 20 },
+            { "i7-1270P", 16 },
+            { "i7-1270PE", 16 },
+            { "i7-1360P", 16 },
+            { "i7-13700", 24 },
+            { "i7-13700F", 24 },
+            { "i7-13700K", 24 },
+            { "i7-13700KF", 24 },
+            { "i7-13700T", 24 },
+            { "i7-13790F", 24 },
+            { "i7-2535QM", 8 },
+            { "i7-2570QM", 8 },
+            { "i7-2600", 8 },
+            { "i7-2600K", 8 },
+            { "i7-2600S", 8 },
+            { "i7-2610UE", 4 },
+            { "i7-2617M", 4 },
+            { "i7-2620M", 4 },
+            { "i7-2627M", 4 },
+            { "i7-2629M", 4 },
+            { "i7-2630QM", 8 },
+            { "i7-2635QM", 8 },
+            { "i7-2637M", 4 },
+            { "i7-2640M", 4 },
+            { "i7-2649M", 4 },
+            { "i7-2655LE", 4 },
+            { "i7-2655QM", 8 },
+            { "i7-2657M", 4 },
+            { "i7-2660M", 4 },
+            { "i7-2667M", 4 },
+            { "i7-2669M", 4 },
+            { "i7-2670QM", 8 },
+            { "i7-2675QM", 8 },
+            { "i7-2677M", 4 },
+            { "i7-2685QM", 8 },
+            { "i7-2689M", 4 },
+            { "i7-2700K", 8 },
+            { "i7-2710QE", 8 },
+            { "i7-2715QE", 8 },
+            { "i7-2720QM", 8 },
+            { "i7-2740QM", 8 },
+            { "i7-2760QM", 8 },
+            { "i7-2820QM", 8 },
+            { "i7-2840QM", 8 },
+            { "i7-2860QM", 8 },
+            { "i7-2920XM", 8 },
+            { "i7-2960XM", 8 },
+            { "i7-3517U", 4 },
+            { "i7-3517UE", 4 },
+            { "i7-3520M", 4 },
+            { "i7-3537U", 4 },
+            { "i7-3540M", 4 },
+            { "i7-3555LE", 4 },
+            { "i7-3610QE", 8 },
+            { "i7-3610QM", 8 },
+            { "i7-3612QE", 8 },
+            { "i7-3612QM", 8 },
+            { "i7-3615QE", 8 },
+            { "i7-3615QM", 8 },
+            { "i7-3630QM", 8 },
+            { "i7-3632QM", 8 },
+            { "i7-3635QM", 8 },
+            { "i7-3667U", 4 },
+            { "i7-3687U", 4 },
+            { "i7-3689Y", 4 },
+            { "i7-3720QM", 8 },
+            { "i7-3740QM", 8 },
+            { "i7-3770", 8 },
+            { "i7-3770K", 8 },
+            { "i7-3770S", 8 },
+            { "i7-3770T", 8 },
+            { "i7-3820", 8 },
+            { "i7-3820QM", 8 },
+            { "i7-3840QM", 8 },
+            { "i7-3920XM", 8 },
+            { "i7-3930K", 12 },
+            { "i7-3940XM", 8 },
+            { "i7-3960X", 12 },
+            { "i7-3970X", 12 },
+            { "i7-4500U", 4 },
+            { "i7-4510U", 4 },
+            { "i7-4550U", 4 },
+            { "i7-4558U", 4 },
+            { "i7-4578U", 4 },
+            { "i7-4600M", 4 },
+            { "i7-4600U", 4 },
+            { "i7-4610M", 8 },
+            { "i7-4610Y", 4 },
+            { "i7-4650U", 4 },
+            { "i7-4700EC", 8 },
+            { "i7-4700EQ", 8 },
+            { "i7-4700HQ", 8 },
+            { "i7-4700MQ", 8 },
+            { "i7-4701EQ", 8 },
+            { "i7-4702EC", 8 },
+            { "i7-4702HQ", 8 },
+            { "i7-4702MQ", 8 },
+            { "i7-4710HQ", 8 },
+            { "i7-4710MQ", 8 },
+            { "i7-4712HQ", 8 },
+            { "i7-4712MQ", 8 },
+            { "i7-4720HQ", 8 },
+            { "i7-4722HQ", 8 },
+            { "i7-4750HQ", 8 },
+            { "i7-4760HQ", 8 },
+            { "i7-4765T", 8 },
+            { "i7-4770", 8 },
+            { "i7-4770HQ", 8 },
+            { "i7-4770K", 8 },
+            { "i7-4770R", 8 },
+            { "i7-4770S", 8 },
+            { "i7-4770T", 8 },
+            { "i7-4770TE", 8 },
+            { "i7-4771", 8 },
+            { "i7-4785T", 8 },
+            { "i7-4790", 8 },
+            { "i7-4790K", 8 },
+            { "i7-4790S", 8 },
+            { "i7-4790T", 8 },
+            { "i7-4800MQ", 8 },
+            { "i7-4810MQ", 8 },
+            { "i7-4820K", 8 },
+            { "i7-4850EQ", 8 },
+            { "i7-4850HQ", 8 },
+            { "i7-4860EQ", 8 },
+            { "i7-4860HQ", 8 },
+            { "i7-4870HQ", 8 },
+            { "i7-4900MQ", 8 },
+            { "i7-4910MQ", 8 },
+            { "i7-4930K", 12 },
+            { "i7-4930MX", 8 },
+            { "i7-4940MX", 8 },
+            { "i7-4950HQ", 8 },
+            { "i7-4960HQ", 8 },
+            { "i7-4960X", 12 },
+            { "i7-4980HQ", 8 },
+            { "i7-5500U", 4 },
+            { "i7-5550U", 4 },
+            { "i7-5557U", 4 },
+            { "i7-5600U", 4 },
+            { "i7-5650U", 4 },
+            { "i7-5700EQ", 8 },
+            { "i7-5700HQ", 8 },
+            { "i7-5750HQ", 8 },
+            { "i7-5775C", 8 },
+            { "i7-5775R", 8 },
+            { "i7-5820K", 12 },
+            { "i7-5850EQ", 8 },
+            { "i7-5850HQ", 8 },
+            { "i7-5930K", 12 },
+            { "i7-5950HQ", 8 },
+            { "i7-5960X", 16 },
+            { "i7-610E", 4 },
+            { "i7-620LE", 4 },
+            { "i7-620LM", 4 },
+            { "i7-620M", 4 },
+            { "i7-620UE", 4 },
+            { "i7-620UM", 4 },
+            { "i7-640LM", 4 },
+            { "i7-640M", 4 },
+            { "i7-640UM", 4 },
+            { "i7-6498DU", 4 },
+            { "i7-6500U", 4 },
+            { "i7-6560U", 4 },
+            { "i7-6567U", 4 },
+            { "i7-6600U", 4 },
+            { "i7-660LM", 4 },
+            { "i7-660UE", 4 },
+            { "i7-660UM", 4 },
+            { "i7-6650U", 4 },
+            { "i7-6660U", 4 },
+            { "i7-6700", 8 },
+            { "i7-6700HQ", 8 },
+            { "i7-6700K", 8 },
+            { "i7-6700T", 8 },
+            { "i7-6700TE", 8 },
+            { "i7-6770HQ", 8 },
+            { "i7-6785R", 8 },
+            { "i7-6800K", 12 },
+            { "i7-680UM", 4 },
+            { "i7-6820EQ", 8 },
+            { "i7-6820HK", 8 },
+            { "i7-6820HQ", 8 },
+            { "i7-6822EQ", 8 },
+            { "i7-6850K", 12 },
+            { "i7-6870HQ", 8 },
+            { "i7-6900K", 16 },
+            { "i7-6920HQ", 8 },
+            { "i7-6950X", 20 },
+            { "i7-6970HQ", 8 },
+            { "i7-720QM", 8 },
+            { "i7-740QM", 8 },
+            { "i7-7500U", 4 },
+            { "i7-7510U", 4 },
+            { "i7-7560U", 4 },
+            { "i7-7567U", 4 },
+            { "i7-7600U", 4 },
+            { "i7-7660U", 4 },
+            { "i7-7700", 8 },
+            { "i7-7700HQ", 8 },
+            { "i7-7700K", 8 },
+            { "i7-7700T", 8 },
+            { "i7-7740X", 8 },
+            { "i7-7800X", 12 },
+            { "i7-7820EQ", 8 },
+            { "i7-7820HK", 8 },
+            { "i7-7820HQ", 8 },
+            { "i7-7820X", 16 },
+            { "i7-7920HQ", 8 },
+            { "i7-7Y75", 4 },
+            { "i7-8086K", 12 },
+            { "i7-820QM", 8 },
+            { "i7-840QM", 8 },
+            { "i7-8500Y", 4 },
+            { "i7-8550U", 8 },
+            { "i7-8557U", 8 },
+            { "i7-8559U", 8 },
+            { "i7-8565U", 8 },
+            { "i7-8569U", 8 },
+            { "i7-860", 8 },
+            { "i7-860S", 8 },
+            { "i7-8650U", 8 },
+            { "i7-8665U", 8 },
+            { "i7-8665UE", 8 },
+            { "i7-8670", 12 },
+            { "i7-8670T", 12 },
+            { "i7-870", 8 },
+            { "i7-8700", 12 },
+            { "i7-8700B", 12 },
+            { "i7-8700K", 12 },
+            { "i7-8700T", 12 },
+            { "i7-8705G", 8 },
+            { "i7-8706G", 8 },
+            { "i7-8709G", 8 },
+            { "i7-870S", 8 },
+            { "i7-8750H", 12 },
+            { "i7-875K", 8 },
+            { "i7-880", 8 },
+            { "i7-8809G", 8 },
+            { "i7-8850H", 12 },
+            { "i7-920", 8 },
+            { "i7-920XM", 8 },
+            { "i7-930", 8 },
+            { "i7-940", 8 },
+            { "i7-940XM", 8 },
+            { "i7-950", 8 },
+            { "i7-960", 8 },
+            { "i7-965", 8 },
+            { "i7-970", 12 },
+            { "i7-9700", 8 },
+            { "i7-9700E", 8 },
+            { "i7-9700F", 8 },
+            { "i7-9700K", 8 },
+            { "i7-9700KF", 8 },
+            { "i7-9700T", 8 },
+            { "i7-9700TE", 8 },
+            { "i7-975", 8 },
+            { "i7-9750H", 12 },
+            { "i7-9750HF", 12 },
+            { "i7-980", 12 },
+            { "i7-9800X", 16 },
+            { "i7-980X", 12 },
+            { "i7-9850H", 12 },
+            { "i7-9850HE", 12 },
+            { "i7-9850HL", 12 },
+            { "i7-990X", 12 },
+
+            // i9 series
+            { "i9-10850K", 20 },
+            { "i9-10885H", 16 },
+            { "i9-10900", 20 },
+            { "i9-10900E", 20 },
+            { "i9-10900F", 20 },
+            { "i9-10900K", 20 },
+            { "i9-10900KF", 20 },
+            { "i9-10900T", 20 },
+            { "i9-10900TE", 20 },
+            { "i9-10900X", 20 },
+            { "i9-10910", 20 },
+            { "i9-10920X", 24 },
+            { "i9-10940X", 28 },
+            { "i9-10980HK", 16 },
+            { "i9-10980XE", 36 },
+            { "i9-11900", 16 },
+            { "i9-11900F", 16 },
+            { "i9-11900H", 16 },
+            { "i9-11900K", 16 },
+            { "i9-11900KB", 16 },
+            { "i9-11900KF", 16 },
+            { "i9-11900T", 16 },
+            { "i9-11950H", 16 },
+            { "i9-11980HK", 16 },
+            { "i9-12900", 24 },
+            { "i9-12900F", 24 },
+            { "i9-12900H", 20 },
+            { "i9-12900K", 24 },
+            { "i9-12900KF", 24 },
+            { "i9-12900KS", 24 },
+            { "i9-12900T", 24 },
+            { "i9-13900", 32 },
+            { "i9-13900E", 32 },
+            { "i9-13900F", 32 },
+            { "i9-13900HX", 32 },
+            { "i9-13900K", 32 },
+            { "i9-13900KF", 32 },
+            { "i9-13900KS", 32 },
+            { "i9-13900T", 32 },
+            { "i9-13900TE", 32 },
+            { "i9-13950HX", 32 },
+            { "i9-13980HX", 32 },
+            { "i9-14900", 32 },
+            { "i9-14900F", 32 },
+            { "i9-14900HX", 32 },
+            { "i9-14900K", 32 },
+            { "i9-14900KF", 32 },
+            { "i9-14900KS", 32 },
+            { "i9-14900T", 32 },
+            { "i9-7900X", 20 },
+            { "i9-7920X", 24 },
+            { "i9-7940X", 28 },
+            { "i9-7960X", 32 },
+            { "i9-7980XE", 36 },
+            { "i9-8950HK", 12 },
+            { "i9-9820X", 20 },
+            { "i9-9880H", 16 },
+            { "i9-9900", 16 },
+            { "i9-9900K", 16 },
+            { "i9-9900KF", 16 },
+            { "i9-9900KS", 16 },
+            { "i9-9900T", 16 },
+            { "i9-9900X", 20 },
+            { "i9-9920X", 24 },
+            { "i9-9940X", 28 },
+            { "i9-9960X", 32 },
+            { "i9-9980HK", 16 },
+            { "i9-9980XE", 36 },
+            { "i9-9990XE", 28 },
+            { "i9-10920X", 24 },
+            { "i9-10940X", 28 },
+            { "i9-10980XE", 36 },
+            { "i9-10900", 20 },
+            { "i9-10900T", 20 },
+            { "i9-10900K", 20 },
+            { "i9-10900KF", 20 },
+            { "i9-11900K", 16 },
+            { "i9-11900KF", 16 },
+            { "i9-12900K", 24 },
+            { "i9-12900KF", 24 },
+            { "i9-13900K", 32 },
+            { "i9-13900KF", 32 },
+            { "i9-14900K", 32 },
+            { "i9-14900KF", 32 }
+        };
+
+        constexpr size_t thread_database_count = sizeof(thread_database) / sizeof(thread_database[0]);
+        const std::string cpu_full_name = model.string;
+
+        const ThreadEntry* best = nullptr;
+        size_t best_len = 0;
+        size_t best_pos = std::string::npos;
+
+        if (cpu_full_name.empty()) return false;
+
+        for (size_t i = 0; i < thread_database_count; ++i) {
+            const char* key = thread_database[i].model;
+            const size_t len = std::strlen(key);
+
+            const size_t p = cpu_full_name.find(key);
+            if (p != std::string::npos && len > best_len) {
+                best = &thread_database[i];
+                best_len = len;
+                best_pos = p;
             }
-    
-            const cpu::model_struct model = cpu::get_model();
-    
-            if (!model.found) {
-                return false;
-            }
-    
-            if (!model.is_i_series) {
-                return false;
-            }
-    
-            debug("INTEL_THREAD_MISMATCH: CPU model = ", model.string);
-    
-            struct ThreadEntry {
-                const char* model;
-                unsigned    threads;
-            };
-    
-            static const ThreadEntry thread_database[] = {
-                // i3 series
-                { "i3-1000G1", 4 },
-                { "i3-1000G4", 4 },
-                { "i3-1000NG4", 4 },
-                { "i3-1005G1", 4 },
-                { "i3-10100", 8 },
-                { "i3-10100E", 8 },
-                { "i3-10100F", 8 },
-                { "i3-10100T", 8 },
-                { "i3-10100TE", 8 },
-                { "i3-10100Y", 4 },
-                { "i3-10105", 8 },
-                { "i3-10105F", 8 },
-                { "i3-10105T", 8 },
-                { "i3-10110U", 4 },
-                { "i3-10110Y", 4 },
-                { "i3-10300", 8 },
-                { "i3-10300T", 8 },
-                { "i3-10305", 8 },
-                { "i3-10305T", 8 },
-                { "i3-10320", 8 },
-                { "i3-10325", 8 },
-                { "i3-11100B", 8 },
-                { "i3-11100HE", 8 },
-                { "i3-1110G4", 4 },
-                { "i3-1115G4E", 4 },
-                { "i3-1115GRE", 4 },
-                { "i3-1120G4", 8 },
-                { "i3-12100", 8 },
-                { "i3-12100F", 8 },
-                { "i3-12100T", 8 },
-                { "i3-1210U", 8 },
-                { "i3-1215U", 8 },
-                { "i3-1215UE", 8 },
-                { "i3-1215UL", 8 },
-                { "i3-12300", 8 },
-                { "i3-12300T", 8 },
-                { "i3-13100", 8 },
-                { "i3-13100F", 8 },
-                { "i3-13100T", 8 },
-                { "i3-1315U", 4 },
-                { "i3-1315UE", 4 },
-                { "i3-14100", 8 },
-                { "i3-14100F", 8 },
-                { "i3-14100T", 8 },
-                { "i3-2100", 4 },
-                { "i3-2100T", 4 },
-                { "i3-2102", 4 },
-                { "i3-2105", 4 },
-                { "i3-2120", 4 },
-                { "i3-2120T", 4 },
-                { "i3-2125", 4 },
-                { "i3-2130", 4 },
-                { "i3-2308M", 4 },
-                { "i3-2310E", 4 },
-                { "i3-2310M", 4 },
-                { "i3-2312M", 4 },
-                { "i3-2328M", 4 },
-                { "i3-2330E", 4 },
-                { "i3-2330M", 4 },
-                { "i3-2332M", 4 },
-                { "i3-2340UE", 4 },
-                { "i3-2348M", 4 },
-                { "i3-2350LM", 4 },
-                { "i3-2350M", 4 },
-                { "i3-2355M", 4 },
-                { "i3-2357M", 4 },
-                { "i3-2365M", 4 },
-                { "i3-2367M", 4 },
-                { "i3-2370LM", 4 },
-                { "i3-2370M", 4 },
-                { "i3-2375M", 4 },
-                { "i3-2377M", 4 },
-                { "i3-2390M", 4 },
-                { "i3-2393M", 4 },
-                { "i3-2394M", 4 },
-                { "i3-2395M", 4 },
-                { "i3-2397M", 4 },
-                { "i3-3110M", 4 },
-                { "i3-3115C", 4 },
-                { "i3-3120M", 4 },
-                { "i3-3120ME", 4 },
-                { "i3-3130M", 4 },
-                { "i3-3210", 4 },
-                { "i3-3217U", 4 },
-                { "i3-3217UE", 4 },
-                { "i3-3220", 4 },
-                { "i3-3220T", 4 },
-                { "i3-3225", 4 },
-                { "i3-3227U", 4 },
-                { "i3-3229Y", 4 },
-                { "i3-3240", 4 },
-                { "i3-3240T", 4 },
-                { "i3-3245", 4 },
-                { "i3-3250", 4 },
-                { "i3-3250T", 4 },
-                { "i3-330E", 4 },
-                { "i3-330M", 4 },
-                { "i3-330UM", 4 },
-                { "i3-350M", 4 },
-                { "i3-370M", 4 },
-                { "i3-380M", 4 },
-                { "i3-380UM", 4 },
-                { "i3-390M", 4 },
-                { "i3-4000M", 4 },
-                { "i3-4005U", 4 },
-                { "i3-4010M", 4 },
-                { "i3-4010U", 4 },
-                { "i3-4010Y", 4 },
-                { "i3-4012Y", 4 },
-                { "i3-4020Y", 4 },
-                { "i3-4025U", 4 },
-                { "i3-4030U", 4 },
-                { "i3-4030Y", 4 },
-                { "i3-4100E", 4 },
-                { "i3-4100M", 4 },
-                { "i3-4100U", 4 },
-                { "i3-4102E", 4 },
-                { "i3-4110E", 4 },
-                { "i3-4110M", 4 },
-                { "i3-4112E", 4 },
-                { "i3-4120U", 4 },
-                { "i3-4130", 4 },
-                { "i3-4130T", 4 },
-                { "i3-4150", 4 },
-                { "i3-4150T", 4 },
-                { "i3-4158U", 4 },
-                { "i3-4160", 4 },
-                { "i3-4160T", 4 },
-                { "i3-4170", 4 },
-                { "i3-4170T", 4 },
-                { "i3-4330", 4 },
-                { "i3-4330T", 4 },
-                { "i3-4330TE", 4 },
-                { "i3-4340", 4 },
-                { "i3-4340TE", 4 },
-                { "i3-4350", 4 },
-                { "i3-4350T", 4 },
-                { "i3-4360", 4 },
-                { "i3-4360T", 4 },
-                { "i3-4370", 4 },
-                { "i3-4370T", 4 },
-                { "i3-5005U", 4 },
-                { "i3-5010U", 4 },
-                { "i3-5015U", 4 },
-                { "i3-5020U", 4 },
-                { "i3-5157U", 4 },
-                { "i3-530", 4 },
-                { "i3-540", 4 },
-                { "i3-550", 4 },
-                { "i3-560", 4 },
-                { "i3-6006U", 4 },
-                { "i3-6098P", 4 },
-                { "i3-6100", 4 },
-                { "i3-6100E", 4 },
-                { "i3-6100H", 4 },
-                { "i3-6100T", 4 },
-                { "i3-6100TE", 4 },
-                { "i3-6100U", 4 },
-                { "i3-6102E", 4 },
-                { "i3-6120T", 4 },
-                { "i3-6157U", 4 },
-                { "i3-6167U", 4 },
-                { "i3-6300", 4 },
-                { "i3-6300T", 4 },
-                { "i3-6320", 4 },
-                { "i3-6320T", 4 },
-                { "i3-7007U", 4 },
-                { "i3-7020U", 4 },
-                { "i3-7100", 4 },
-                { "i3-7100E", 4 },
-                { "i3-7100H", 4 },
-                { "i3-7100T", 4 },
-                { "i3-7100U", 4 },
-                { "i3-7101E", 4 },
-                { "i3-7101TE", 4 },
-                { "i3-7102E", 4 },
-                { "i3-7110U", 4 },
-                { "i3-7120", 4 },
-                { "i3-7120T", 4 },
-                { "i3-7130U", 4 },
-                { "i3-7167U", 4 },
-                { "i3-7300", 4 },
-                { "i3-7300T", 4 },
-                { "i3-7310T", 4 },
-                { "i3-7310U", 4 },
-                { "i3-7320", 4 },
-                { "i3-7320T", 4 },
-                { "i3-7340", 4 },
-                { "i3-7350K", 4 },
-                { "i3-8000", 4 },
-                { "i3-8000T", 4 },
-                { "i3-8020", 4 },
-                { "i3-8020T", 4 },
-                { "i3-8100", 4 },
-                { "i3-8100B", 4 },
-                { "i3-8100F", 4 },
-                { "i3-8100H", 4 },
-                { "i3-8100T", 4 },
-                { "i3-8109U", 4 },
-                { "i3-8120", 4 },
-                { "i3-8120T", 4 },
-                { "i3-8121U", 4 },
-                { "i3-8130U", 4 },
-                { "i3-8130U", 4 },
-                { "i3-8140U", 4 },
-                { "i3-8145U", 4 },
-                { "i3-8145UE", 4 },
-                { "i3-8300", 4 },
-                { "i3-8300T", 4 },
-                { "i3-8320", 4 },
-                { "i3-8320T", 4 },
-                { "i3-8350K", 4 },
-                { "i3-9100", 4 },
-                { "i3-9100E", 4 },
-                { "i3-9100F", 4 },
-                { "i3-9100HL", 4 },
-                { "i3-9100T", 4 },
-                { "i3-9100TE", 4 },
-                { "i3-9300", 4 },
-                { "i3-9300T", 4 },
-                { "i3-9320", 4 },
-                { "i3-9350K", 4 },
-                { "i3-9350KF", 4 },
-                { "i3-N300", 8 },
-                { "i3-N305", 8 },
-    
-                // i5 series
-                { "i5-10200H", 8 },
-                { "i5-10210U", 8 },
-                { "i5-10210Y", 8 },
-                { "i5-10300H", 8 },
-                { "i5-1030G4", 8 },
-                { "i5-1030G7", 8 },
-                { "i5-1030NG7", 8 },
-                { "i5-10310U", 8 },
-                { "i5-10310Y", 8 },
-                { "i5-1035G1", 8 },
-                { "i5-1035G4", 8 },
-                { "i5-1035G7", 8 },
-                { "i5-1038NG7", 8 },
-                { "i5-10400", 12 },
-                { "i5-10400F", 12 },
-                { "i5-10400H", 8 },
-                { "i5-10400T", 12 },
-                { "i5-10500", 12 },
-                { "i5-10500E", 12 },
-                { "i5-10500H", 12 },
-                { "i5-10500T", 12 },
-                { "i5-10500TE", 12 },
-                { "i5-10505", 12 },
-                { "i5-10600", 12 },
-                { "i5-10600K", 12 },
-                { "i5-10600KF", 12 },
-                { "i5-10600T", 12 },
-                { "i5-1115G4", 4 },
-                { "i5-1125G4", 8 },
-                { "i5-11260H", 12 },
-                { "i5-11300H", 8 },
-                { "i5-1130G7", 8 },
-                { "i5-11320H", 8 },
-                { "i5-1135G7", 8 },
-                { "i5-11400", 12 },
-                { "i5-11400F", 12 },
-                { "i5-11400H", 12 },
-                { "i5-11400T", 12 },
-                { "i5-1140G7", 8 },
-                { "i5-1145G7", 8 },
-                { "i5-1145G7E", 8 },
-                { "i5-1145GRE", 8 },
-                { "i5-11500", 12 },
-                { "i5-11500B", 12 },
-                { "i5-11500H", 12 },
-                { "i5-11500HE", 12 },
-                { "i5-11500T", 12 },
-                { "i5-1155G7", 8 },
-                { "i5-11600", 12 },
-                { "i5-11600K", 12 },
-                { "i5-11600KF", 12 },
-                { "i5-11600T", 12 },
-                { "i5-1230U", 12 },
-                { "i5-1235U", 12 },
-                { "i5-12400", 12 },
-                { "i5-12400F", 12 },
-                { "i5-12400T", 12 },
-                { "i5-1240P", 16 },
-                { "i5-1240U", 12 },
-                { "i5-1245U", 12 },
-                { "i5-12490F", 12 },
-                { "i5-12500", 12 },
-                { "i5-12500H", 16 },
-                { "i5-12500HL", 16 },
-                { "i5-12500T", 12 },
-                { "i5-1250P", 16 },
-                { "i5-1250PE", 16 },
-                { "i5-12600", 12 },
-                { "i5-12600H", 16 },
-                { "i5-12600HE", 16 },
-                { "i5-12600HL", 16 },
-                { "i5-12600HX", 16 },
-                { "i5-12600K", 16 },
-                { "i5-12600KF", 16 },
-                { "i5-12600T", 12 },
-                { "i5-13400", 16 },
-                { "i5-13400F", 16 },
-                { "i5-13400T", 16 },
-                { "i5-1340P", 16 },
-                { "i5-1340PE", 16 },
-                { "i5-13490F", 16 },
-                { "i5-13500", 20 },
-                { "i5-13500H", 16 },
-                { "i5-13500T", 20 },
-                { "i5-13505H", 16 },
-                { "i5-1350P", 16 },
-                { "i5-1350PE", 16 },
-                { "i5-13600", 20 },
-                { "i5-13600H", 16 },
-                { "i5-13600HE", 16 },
-                { "i5-13600K", 20 },
-                { "i5-13600KF", 20 },
-                { "i5-13600T", 20 },
-                { "i5-2300", 4 },
-                { "i5-2310", 4 },
-                { "i5-2320", 4 },
-                { "i5-2380P", 4 },
-                { "i5-2390T", 4 },
-                { "i5-2400", 4 },
-                { "i5-2400S", 4 },
-                { "i5-2405S", 4 },
-                { "i5-2410M", 4 },
-                { "i5-2415M", 4 },
-                { "i5-2430M", 4 },
-                { "i5-2435M", 4 },
-                { "i5-2450M", 4 },
-                { "i5-2450P", 4 },
-                { "i5-2467M", 4 },
-                { "i5-2475M", 4 },
-                { "i5-2477M", 4 },
-                { "i5-2487M", 4 },
-                { "i5-2490M", 4 },
-                { "i5-2497M", 4 },
-                { "i5-2500", 4 },
-                { "i5-2500K", 4 },
-                { "i5-2500S", 4 },
-                { "i5-2500T", 4 },
-                { "i5-2510E", 4 },
-                { "i5-2515E", 4 },
-                { "i5-2520M", 4 },
-                { "i5-2537M", 4 },
-                { "i5-2540LM", 4 },
-                { "i5-2540M", 4 },
-                { "i5-2547M", 4 },
-                { "i5-2550K", 4 },
-                { "i5-2557M", 4 },
-                { "i5-2560LM", 4 },
-                { "i5-2560M", 4 },
-                { "i5-2580M", 4 },
-                { "i5-3210M", 4 },
-                { "i5-3230M", 4 },
-                { "i5-3317U", 4 },
-                { "i5-3320M", 4 },
-                { "i5-3330", 4 },
-                { "i5-3330S", 4 },
-                { "i5-3335S", 4 },
-                { "i5-3337U", 4 },
-                { "i5-3339Y", 4 },
-                { "i5-3340", 4 },
-                { "i5-3340M", 4 },
-                { "i5-3340S", 4 },
-                { "i5-3350P", 4 },
-                { "i5-3360M", 4 },
-                { "i5-3380M", 4 },
-                { "i5-3427U", 4 },
-                { "i5-3437U", 4 },
-                { "i5-3439Y", 4 },
-                { "i5-3450", 4 },
-                { "i5-3450S", 4 },
-                { "i5-3470", 4 },
-                { "i5-3470S", 4 },
-                { "i5-3470T", 4 },
-                { "i5-3475S", 4 },
-                { "i5-3550", 4 },
-                { "i5-3550S", 4 },
-                { "i5-3570", 4 },
-                { "i5-3570K", 4 },
-                { "i5-3570S", 4 },
-                { "i5-3570T", 4 },
-                { "i5-3610ME", 4 },
-                { "i5-4200H", 4 },
-                { "i5-4200M", 4 },
-                { "i5-4200U", 4 },
-                { "i5-4200Y", 4 },
-                { "i5-4202Y", 4 },
-                { "i5-4210H", 4 },
-                { "i5-4210M", 4 },
-                { "i5-4210U", 4 },
-                { "i5-4210Y", 4 },
-                { "i5-4220Y", 4 },
-                { "i5-4250U", 4 },
-                { "i5-4258U", 4 },
-                { "i5-4260U", 4 },
-                { "i5-4278U", 4 },
-                { "i5-4288U", 4 },
-                { "i5-4300M", 4 },
-                { "i5-4300U", 4 },
-                { "i5-4300Y", 4 },
-                { "i5-4302Y", 4 },
-                { "i5-4308U", 4 },
-                { "i5-430M", 4 },
-                { "i5-430UM", 4 },
-                { "i5-4310M", 4 },
-                { "i5-4310U", 4 },
-                { "i5-4330M", 4 },
-                { "i5-4340M", 4 },
-                { "i5-4350U", 4 },
-                { "i5-4360U", 4 },
-                { "i5-4400E", 4 },
-                { "i5-4402E", 4 },
-                { "i5-4402EC", 4 },
-                { "i5-4410E", 4 },
-                { "i5-4422E", 4 },
-                { "i5-4430", 4 },
-                { "i5-4430S", 4 },
-                { "i5-4440", 4 },
-                { "i5-4440S", 4 },
-                { "i5-4460", 4 },
-                { "i5-4460S", 4 },
-                { "i5-4460T", 4 },
-                { "i5-4470", 4 },
-                { "i5-450M", 4 },
-                { "i5-4570", 4 },
-                { "i5-4570R", 4 },
-                { "i5-4570S", 4 },
-                { "i5-4570T", 4 },
-                { "i5-4570TE", 4 },
-                { "i5-4590", 4 },
-                { "i5-4590S", 4 },
-                { "i5-4590T", 4 },
-                { "i5-460M", 4 },
-                { "i5-4670", 4 },
-                { "i5-4670K", 4 },
-                { "i5-4670R", 4 },
-                { "i5-4670S", 4 },
-                { "i5-4670T", 4 },
-                { "i5-4690", 4 },
-                { "i5-4690K", 4 },
-                { "i5-4690S", 4 },
-                { "i5-4690T", 4 },
-                { "i5-470UM", 4 },
-                { "i5-480M", 4 },
-                { "i5-5200U", 4 },
-                { "i5-520E", 4 },
-                { "i5-520M", 4 },
-                { "i5-520UM", 4 },
-                { "i5-5250U", 4 },
-                { "i5-5257U", 4 },
-                { "i5-5287U", 4 },
-                { "i5-5300U", 4 },
-                { "i5-5350H", 4 },
-                { "i5-5350U", 4 },
-                { "i5-540M", 4 },
-                { "i5-540UM", 4 },
-                { "i5-5575R", 4 },
-                { "i5-560M", 4 },
-                { "i5-560UM", 4 },
-                { "i5-5675C", 4 },
-                { "i5-5675R", 4 },
-                { "i5-580M", 4 },
-                { "i5-6198DU", 4 },
-                { "i5-6200U", 4 },
-                { "i5-6260U", 4 },
-                { "i5-6267U", 4 },
-                { "i5-6287U", 4 },
-                { "i5-6300HQ", 4 },
-                { "i5-6300U", 4 },
-                { "i5-6350HQ", 4 },
-                { "i5-6360U", 4 },
-                { "i5-6400", 4 },
-                { "i5-6400T", 4 },
-                { "i5-6402P", 4 },
-                { "i5-6440EQ", 4 },
-                { "i5-6440HQ", 4 },
-                { "i5-6442EQ", 4 },
-                { "i5-650", 4 },
-                { "i5-6500", 4 },
-                { "i5-6500T", 4 },
-                { "i5-6500TE", 4 },
-                { "i5-655K", 4 },
-                { "i5-6585R", 4 },
-                { "i5-660", 4 },
-                { "i5-6600", 4 },
-                { "i5-6600K", 4 },
-                { "i5-6600T", 4 },
-                { "i5-661", 4 },
-                { "i5-6685R", 4 },
-                { "i5-670", 4 },
-                { "i5-680", 4 },
-                { "i5-7200U", 4 },
-                { "i5-7210U", 4 },
-                { "i5-7260U", 4 },
-                { "i5-7267U", 4 },
-                { "i5-7287U", 4 },
-                { "i5-7300HQ", 4 },
-                { "i5-7300U", 4 },
-                { "i5-7360U", 4 },
-                { "i5-7400", 4 },
-                { "i5-7400T", 4 },
-                { "i5-7440EQ", 4 },
-                { "i5-7440HQ", 4 },
-                { "i5-7442EQ", 4 },
-                { "i5-750", 4 },
-                { "i5-7500", 4 },
-                { "i5-7500T", 4 },
-                { "i5-750S", 4 },
-                { "i5-760", 4 },
-                { "i5-7600", 4 },
-                { "i5-7600K", 4 },
-                { "i5-7600T", 4 },
-                { "i5-7640X", 4 },
-                { "i5-7Y54", 4 },
-                { "i5-7Y57", 4 },
-                { "i5-8200Y", 4 },
-                { "i5-8210Y", 4 },
-                { "i5-8250U", 8 },
-                { "i5-8257U", 8 },
-                { "i5-8259U", 8 },
-                { "i5-8260U", 8 },
-                { "i5-8265U", 8 },
-                { "i5-8269U", 8 },
-                { "i5-8279U", 8 },
-                { "i5-8300H", 8 },
-                { "i5-8305G", 8 },
-                { "i5-8310Y", 4 },
-                { "i5-8350U", 8 },
-                { "i5-8365U", 8 },
-                { "i5-8365UE", 8 },
-                { "i5-8400", 6 },
-                { "i5-8400B", 6 },
-                { "i5-8400H", 8 },
-                { "i5-8400T", 6 },
-                { "i5-8420", 6 },
-                { "i5-8420T", 6 },
-                { "i5-8500", 6 },
-                { "i5-8500B", 6 },
-                { "i5-8500T", 6 },
-                { "i5-8550", 6 },
-                { "i5-8600", 6 },
-                { "i5-8600K", 6 },
-                { "i5-8600T", 6 },
-                { "i5-8650", 6 },
-                { "i5-9300H", 8 },
-                { "i5-9300HF", 8 },
-                { "i5-9400", 6 },
-                { "i5-9400F", 6 },
-                { "i5-9400H", 8 },
-                { "i5-9400T", 6 },
-                { "i5-9500", 6 },
-                { "i5-9500E", 6 },
-                { "i5-9500F", 6 },
-                { "i5-9500T", 6 },
-                { "i5-9500TE", 6 },
-                { "i5-9600", 6 },
-                { "i5-9600K", 6 },
-                { "i5-9600KF", 6 },
-                { "i5-9600T", 6 },
-    
-                // i7 series
-                { "i7-10510U", 8 },
-                { "i7-10510Y", 8 },
-                { "i7-1060G7", 8 },
-                { "i7-10610U", 8 },
-                { "i7-1065G7", 8 },
-                { "i7-1068G7", 8 },
-                { "i7-1068NG7", 8 },
-                { "i7-10700", 16 },
-                { "i7-10700E", 16 },
-                { "i7-10700F", 16 },
-                { "i7-10700K", 16 },
-                { "i7-10700KF", 16 },
-                { "i7-10700T", 16 },
-                { "i7-10700TE", 16 },
-                { "i7-10710U", 12 },
-                { "i7-10750H", 12 },
-                { "i7-10810U", 12 },
-                { "i7-10850H", 12 },
-                { "i7-10870H", 16 },
-                { "i7-10875H", 16 },
-                { "i7-11370H", 8 },
-                { "i7-11375H", 8 },
-                { "i7-11390H", 8 },
-                { "i7-11600H", 12 },
-                { "i7-1160G7", 8 },
-                { "i7-1165G7", 8 },
-                { "i7-11700", 16 },
-                { "i7-11700B", 16 },
-                { "i7-11700F", 16 },
-                { "i7-11700K", 16 },
-                { "i7-11700KF", 16 },
-                { "i7-11700T", 16 },
-                { "i7-11800H", 16 },
-                { "i7-1180G7", 8 },
-                { "i7-11850H", 16 },
-                { "i7-11850HE", 16 },
-                { "i7-1185G7", 8 },
-                { "i7-1185G7E", 8 },
-                { "i7-1185GRE", 8 },
-                { "i7-1195G7", 8 },
-                { "i7-1250U", 12 },
-                { "i7-1255U", 12 },
-                { "i7-1260P", 16 },
-                { "i7-1260U", 12 },
-                { "i7-1265U", 12 },
-                { "i7-12700", 20 },
-                { "i7-12700F", 20 },
-                { "i7-12700K", 20 },
-                { "i7-12700KF", 20 },
-                { "i7-12700T", 20 },
-                { "i7-12700H", 20 },
-                { "i7-1270P", 16 },
-                { "i7-1270PE", 16 },
-                { "i7-1360P", 16 },
-                { "i7-13700", 24 },
-                { "i7-13700F", 24 },
-                { "i7-13700K", 24 },
-                { "i7-13700KF", 24 },
-                { "i7-13700T", 24 },
-                { "i7-13790F", 24 },
-                { "i7-2535QM", 8 },
-                { "i7-2570QM", 8 },
-                { "i7-2600", 8 },
-                { "i7-2600K", 8 },
-                { "i7-2600S", 8 },
-                { "i7-2610UE", 4 },
-                { "i7-2617M", 4 },
-                { "i7-2620M", 4 },
-                { "i7-2627M", 4 },
-                { "i7-2629M", 4 },
-                { "i7-2630QM", 8 },
-                { "i7-2635QM", 8 },
-                { "i7-2637M", 4 },
-                { "i7-2640M", 4 },
-                { "i7-2649M", 4 },
-                { "i7-2655LE", 4 },
-                { "i7-2655QM", 8 },
-                { "i7-2657M", 4 },
-                { "i7-2660M", 4 },
-                { "i7-2667M", 4 },
-                { "i7-2669M", 4 },
-                { "i7-2670QM", 8 },
-                { "i7-2675QM", 8 },
-                { "i7-2677M", 4 },
-                { "i7-2685QM", 8 },
-                { "i7-2689M", 4 },
-                { "i7-2700K", 8 },
-                { "i7-2710QE", 8 },
-                { "i7-2715QE", 8 },
-                { "i7-2720QM", 8 },
-                { "i7-2740QM", 8 },
-                { "i7-2760QM", 8 },
-                { "i7-2820QM", 8 },
-                { "i7-2840QM", 8 },
-                { "i7-2860QM", 8 },
-                { "i7-2920XM", 8 },
-                { "i7-2960XM", 8 },
-                { "i7-3517U", 4 },
-                { "i7-3517UE", 4 },
-                { "i7-3520M", 4 },
-                { "i7-3537U", 4 },
-                { "i7-3540M", 4 },
-                { "i7-3555LE", 4 },
-                { "i7-3610QE", 8 },
-                { "i7-3610QM", 8 },
-                { "i7-3612QE", 8 },
-                { "i7-3612QM", 8 },
-                { "i7-3615QE", 8 },
-                { "i7-3615QM", 8 },
-                { "i7-3630QM", 8 },
-                { "i7-3632QM", 8 },
-                { "i7-3635QM", 8 },
-                { "i7-3667U", 4 },
-                { "i7-3687U", 4 },
-                { "i7-3689Y", 4 },
-                { "i7-3720QM", 8 },
-                { "i7-3740QM", 8 },
-                { "i7-3770", 8 },
-                { "i7-3770K", 8 },
-                { "i7-3770S", 8 },
-                { "i7-3770T", 8 },
-                { "i7-3820", 8 },
-                { "i7-3820QM", 8 },
-                { "i7-3840QM", 8 },
-                { "i7-3920XM", 8 },
-                { "i7-3930K", 12 },
-                { "i7-3940XM", 8 },
-                { "i7-3960X", 12 },
-                { "i7-3970X", 12 },
-                { "i7-4500U", 4 },
-                { "i7-4510U", 4 },
-                { "i7-4550U", 4 },
-                { "i7-4558U", 4 },
-                { "i7-4578U", 4 },
-                { "i7-4600M", 4 },
-                { "i7-4600U", 4 },
-                { "i7-4610M", 8 },
-                { "i7-4610Y", 4 },
-                { "i7-4650U", 4 },
-                { "i7-4700EC", 8 },
-                { "i7-4700EQ", 8 },
-                { "i7-4700HQ", 8 },
-                { "i7-4700MQ", 8 },
-                { "i7-4701EQ", 8 },
-                { "i7-4702EC", 8 },
-                { "i7-4702HQ", 8 },
-                { "i7-4702MQ", 8 },
-                { "i7-4710HQ", 8 },
-                { "i7-4710MQ", 8 },
-                { "i7-4712HQ", 8 },
-                { "i7-4712MQ", 8 },
-                { "i7-4720HQ", 8 },
-                { "i7-4722HQ", 8 },
-                { "i7-4750HQ", 8 },
-                { "i7-4760HQ", 8 },
-                { "i7-4765T", 8 },
-                { "i7-4770", 8 },
-                { "i7-4770HQ", 8 },
-                { "i7-4770K", 8 },
-                { "i7-4770R", 8 },
-                { "i7-4770S", 8 },
-                { "i7-4770T", 8 },
-                { "i7-4770TE", 8 },
-                { "i7-4771", 8 },
-                { "i7-4785T", 8 },
-                { "i7-4790", 8 },
-                { "i7-4790K", 8 },
-                { "i7-4790S", 8 },
-                { "i7-4790T", 8 },
-                { "i7-4800MQ", 8 },
-                { "i7-4810MQ", 8 },
-                { "i7-4820K", 8 },
-                { "i7-4850EQ", 8 },
-                { "i7-4850HQ", 8 },
-                { "i7-4860EQ", 8 },
-                { "i7-4860HQ", 8 },
-                { "i7-4870HQ", 8 },
-                { "i7-4900MQ", 8 },
-                { "i7-4910MQ", 8 },
-                { "i7-4930K", 12 },
-                { "i7-4930MX", 8 },
-                { "i7-4940MX", 8 },
-                { "i7-4950HQ", 8 },
-                { "i7-4960HQ", 8 },
-                { "i7-4960X", 12 },
-                { "i7-4980HQ", 8 },
-                { "i7-5500U", 4 },
-                { "i7-5550U", 4 },
-                { "i7-5557U", 4 },
-                { "i7-5600U", 4 },
-                { "i7-5650U", 4 },
-                { "i7-5700EQ", 8 },
-                { "i7-5700HQ", 8 },
-                { "i7-5750HQ", 8 },
-                { "i7-5775C", 8 },
-                { "i7-5775R", 8 },
-                { "i7-5820K", 12 },
-                { "i7-5850EQ", 8 },
-                { "i7-5850HQ", 8 },
-                { "i7-5930K", 12 },
-                { "i7-5950HQ", 8 },
-                { "i7-5960X", 16 },
-                { "i7-610E", 4 },
-                { "i7-620LE", 4 },
-                { "i7-620LM", 4 },
-                { "i7-620M", 4 },
-                { "i7-620UE", 4 },
-                { "i7-620UM", 4 },
-                { "i7-640LM", 4 },
-                { "i7-640M", 4 },
-                { "i7-640UM", 4 },
-                { "i7-6498DU", 4 },
-                { "i7-6500U", 4 },
-                { "i7-6560U", 4 },
-                { "i7-6567U", 4 },
-                { "i7-6600U", 4 },
-                { "i7-660LM", 4 },
-                { "i7-660UE", 4 },
-                { "i7-660UM", 4 },
-                { "i7-6650U", 4 },
-                { "i7-6660U", 4 },
-                { "i7-6700", 8 },
-                { "i7-6700HQ", 8 },
-                { "i7-6700K", 8 },
-                { "i7-6700T", 8 },
-                { "i7-6700TE", 8 },
-                { "i7-6770HQ", 8 },
-                { "i7-6785R", 8 },
-                { "i7-6800K", 12 },
-                { "i7-680UM", 4 },
-                { "i7-6820EQ", 8 },
-                { "i7-6820HK", 8 },
-                { "i7-6820HQ", 8 },
-                { "i7-6822EQ", 8 },
-                { "i7-6850K", 12 },
-                { "i7-6870HQ", 8 },
-                { "i7-6900K", 16 },
-                { "i7-6920HQ", 8 },
-                { "i7-6950X", 20 },
-                { "i7-6970HQ", 8 },
-                { "i7-720QM", 8 },
-                { "i7-740QM", 8 },
-                { "i7-7500U", 4 },
-                { "i7-7510U", 4 },
-                { "i7-7560U", 4 },
-                { "i7-7567U", 4 },
-                { "i7-7600U", 4 },
-                { "i7-7660U", 4 },
-                { "i7-7700", 8 },
-                { "i7-7700HQ", 8 },
-                { "i7-7700K", 8 },
-                { "i7-7700T", 8 },
-                { "i7-7740X", 8 },
-                { "i7-7800X", 12 },
-                { "i7-7820EQ", 8 },
-                { "i7-7820HK", 8 },
-                { "i7-7820HQ", 8 },
-                { "i7-7820X", 16 },
-                { "i7-7920HQ", 8 },
-                { "i7-7Y75", 4 },
-                { "i7-8086K", 12 },
-                { "i7-820QM", 8 },
-                { "i7-840QM", 8 },
-                { "i7-8500Y", 4 },
-                { "i7-8550U", 8 },
-                { "i7-8557U", 8 },
-                { "i7-8559U", 8 },
-                { "i7-8565U", 8 },
-                { "i7-8569U", 8 },
-                { "i7-860", 8 },
-                { "i7-860S", 8 },
-                { "i7-8650U", 8 },
-                { "i7-8665U", 8 },
-                { "i7-8665UE", 8 },
-                { "i7-8670", 12 },
-                { "i7-8670T", 12 },
-                { "i7-870", 8 },
-                { "i7-8700", 12 },
-                { "i7-8700B", 12 },
-                { "i7-8700K", 12 },
-                { "i7-8700T", 12 },
-                { "i7-8705G", 8 },
-                { "i7-8706G", 8 },
-                { "i7-8709G", 8 },
-                { "i7-870S", 8 },
-                { "i7-8750H", 12 },
-                { "i7-875K", 8 },
-                { "i7-880", 8 },
-                { "i7-8809G", 8 },
-                { "i7-8850H", 12 },
-                { "i7-920", 8 },
-                { "i7-920XM", 8 },
-                { "i7-930", 8 },
-                { "i7-940", 8 },
-                { "i7-940XM", 8 },
-                { "i7-950", 8 },
-                { "i7-960", 8 },
-                { "i7-965", 8 },
-                { "i7-970", 12 },
-                { "i7-9700", 8 },
-                { "i7-9700E", 8 },
-                { "i7-9700F", 8 },
-                { "i7-9700K", 8 },
-                { "i7-9700KF", 8 },
-                { "i7-9700T", 8 },
-                { "i7-9700TE", 8 },
-                { "i7-975", 8 },
-                { "i7-9750H", 12 },
-                { "i7-9750HF", 12 },
-                { "i7-980", 12 },
-                { "i7-9800X", 16 },
-                { "i7-980X", 12 },
-                { "i7-9850H", 12 },
-                { "i7-9850HE", 12 },
-                { "i7-9850HL", 12 },
-                { "i7-990X", 12 },
-    
-                // i9 series
-                { "i9-10850K", 20 },
-                { "i9-10885H", 16 },
-                { "i9-10900", 20 },
-                { "i9-10900E", 20 },
-                { "i9-10900F", 20 },
-                { "i9-10900K", 20 },
-                { "i9-10900KF", 20 },
-                { "i9-10900T", 20 },
-                { "i9-10900TE", 20 },
-                { "i9-10900X", 20 },
-                { "i9-10910", 20 },
-                { "i9-10920X", 24 },
-                { "i9-10940X", 28 },
-                { "i9-10980HK", 16 },
-                { "i9-10980XE", 36 },
-                { "i9-11900", 16 },
-                { "i9-11900F", 16 },
-                { "i9-11900H", 16 },
-                { "i9-11900K", 16 },
-                { "i9-11900KB", 16 },
-                { "i9-11900KF", 16 },
-                { "i9-11900T", 16 },
-                { "i9-11950H", 16 },
-                { "i9-11980HK", 16 },
-                { "i9-12900", 24 },
-                { "i9-12900F", 24 },
-                { "i9-12900H", 20 },
-                { "i9-12900K", 24 },
-                { "i9-12900KF", 24 },
-                { "i9-12900KS", 24 },
-                { "i9-12900T", 24 },
-                { "i9-13900", 32 },
-                { "i9-13900E", 32 },
-                { "i9-13900F", 32 },
-                { "i9-13900HX", 32 },
-                { "i9-13900K", 32 },
-                { "i9-13900KF", 32 },
-                { "i9-13900KS", 32 },
-                { "i9-13900T", 32 },
-                { "i9-13900TE", 32 },
-                { "i9-13950HX", 32 },
-                { "i9-13980HX", 32 },
-                { "i9-14900", 32 },
-                { "i9-14900F", 32 },
-                { "i9-14900HX", 32 },
-                { "i9-14900K", 32 },
-                { "i9-14900KF", 32 },
-                { "i9-14900KS", 32 },
-                { "i9-14900T", 32 },
-                { "i9-7900X", 20 },
-                { "i9-7920X", 24 },
-                { "i9-7940X", 28 },
-                { "i9-7960X", 32 },
-                { "i9-7980XE", 36 },
-                { "i9-8950HK", 12 },
-                { "i9-9820X", 20 },
-                { "i9-9880H", 16 },
-                { "i9-9900", 16 },
-                { "i9-9900K", 16 },
-                { "i9-9900KF", 16 },
-                { "i9-9900KS", 16 },
-                { "i9-9900T", 16 },
-                { "i9-9900X", 20 },
-                { "i9-9920X", 24 },
-                { "i9-9940X", 28 },
-                { "i9-9960X", 32 },
-                { "i9-9980HK", 16 },
-                { "i9-9980XE", 36 },
-                { "i9-9990XE", 28 },
-                { "i9-10920X", 24 },
-                { "i9-10940X", 28 },
-                { "i9-10980XE", 36 },
-                { "i9-10900", 20 },
-                { "i9-10900T", 20 },
-                { "i9-10900K", 20 },
-                { "i9-10900KF", 20 },
-                { "i9-11900K", 16 },
-                { "i9-11900KF", 16 },
-                { "i9-12900K", 24 },
-                { "i9-12900KF", 24 },
-                { "i9-13900K", 32 },
-                { "i9-13900KF", 32 },
-                { "i9-14900K", 32 },
-                { "i9-14900KF", 32 }
-            };
-    
-            constexpr size_t thread_database_count = sizeof(thread_database) / sizeof(thread_database[0]);
-            const std::string cpu_full_name = model.string;
-    
-            const ThreadEntry* best = nullptr;
-            size_t best_len = 0;
-            size_t best_pos = std::string::npos;
+        }
 
-            if (cpu_full_name.empty()) return false;
+        // Make sure best matches as a whole token, not just as a substring
+        if (best && best_pos != std::string::npos) {
+            size_t pos = best_pos;
+            size_t end = pos + best_len;
 
-            for (size_t i = 0; i < thread_database_count; ++i) {
-                const char* key = thread_database[i].model;
-                const size_t len = std::strlen(key);
-
-                const size_t p = cpu_full_name.find(key);
-                if (p != std::string::npos && len > best_len) {
-                    best = &thread_database[i];
-                    best_len = len;
-                    best_pos = p;
-                }
-            }
-
-            // Make sure best matches as a whole token, not just as a substring
-            if (best && best_pos != std::string::npos) {
-                size_t pos = best_pos;
-                size_t end = pos + best_len;
-
-                auto isAsciiAlphaNum = [](char c)->bool {
-                    const unsigned char uc = static_cast<unsigned char>(c);
-                    return (uc >= '0' && uc <= '9') || (uc >= 'A' && uc <= 'Z') || (uc >= 'a' && uc <= 'z');
+            auto isAsciiAlphaNum = [](char c)->bool {
+                const unsigned char uc = static_cast<unsigned char>(c);
+                return (uc >= '0' && uc <= '9') || (uc >= 'A' && uc <= 'Z') || (uc >= 'a' && uc <= 'z');
                 };
 
-                const bool left_ok = (pos == 0) || !isAsciiAlphaNum(cpu_full_name[pos - 1]);
-                const bool right_ok = (end == cpu_full_name.size()) || !isAsciiAlphaNum(cpu_full_name[end]);
+            const bool left_ok = (pos == 0) || !isAsciiAlphaNum(cpu_full_name[pos - 1]);
+            const bool right_ok = (end == cpu_full_name.size()) || !isAsciiAlphaNum(cpu_full_name[end]);
 
-                if (left_ok && right_ok) {
-                    const unsigned expected = best->threads;
-                    const unsigned actual = memo::threadcount::fetch();
-                    debug("INTEL_THREAD_MISMATCH: Expected threads -> ", expected);
-                    return actual != expected;
-                }
+            if (left_ok && right_ok) {
+                const unsigned expected = best->threads;
+                const unsigned actual = memo::threadcount::fetch();
+                debug("INTEL_THREAD_MISMATCH: Expected threads -> ", expected);
+                return actual != expected;
             }
+        }
 
-            return false;
-        #endif
+        return false;
+    #endif
     }
                 
                 
@@ -3572,210 +3554,210 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::XEON_THREAD_MISMATCH
      */
     [[nodiscard]] static bool xeon_thread_mismatch() {
-        #if (!x86)
+    #if (!x86)
+        return false;
+    #else
+        if (!cpu::is_intel()) {
             return false;
-        #else
-            if (!cpu::is_intel()) {
-                return false;
+        }
+
+        const cpu::model_struct model = cpu::get_model();
+
+        if (!model.found) {
+            return false;
+        }
+
+        if (!model.is_xeon) {
+            return false;
+        }
+
+        debug("XEON_THREAD_MISMATCH: CPU model = ", model.string);
+
+        struct ThreadEntry {
+            const char* model;
+            unsigned    threads;
+        };
+
+        static const ThreadEntry thread_database[] = {
+            // Xeon D
+            { "D-1518", 8 },
+            { "D-1520", 8 },
+            { "D-1521", 8 },
+            { "D-1527", 8 },
+            { "D-1528", 12 },
+            { "D-1529", 8 },
+            { "D-1531", 12 },
+            { "D-1537", 16 },
+            { "D-1539", 16 },
+            { "D-1540", 16 },
+            { "D-1541", 16 },
+            { "D-1548", 16 },
+            { "D-1557", 24 },
+            { "D-1559", 24 },
+            { "D-1567", 24 },
+            { "D-1571", 32 },
+            { "D-1577", 32 },
+            { "D-1581", 32 },
+            { "D-1587", 32 },
+            { "D-1513N", 8 },
+            { "D-1523N", 8 },
+            { "D-1533N", 12 },
+            { "D-1543N", 16 },
+            { "D-1553N", 16 },
+            { "D-1602", 4 },
+            { "D-1612", 8 },
+            { "D-1622", 8 },
+            { "D-1627", 8 },
+            { "D-1632", 16 },
+            { "D-1637", 12 },
+            { "D-1623N", 8 },
+            { "D-1633N", 12 },
+            { "D-1649N", 16 },
+            { "D-1653N", 16 },
+            { "D-2141I", 16 },
+            { "D-2161I", 24 },
+            { "D-2191", 36 },
+            { "D-2123IT", 8 },
+            { "D-2142IT", 16 },
+            { "D-2143IT", 16 },
+            { "D-2163IT", 24 },
+            { "D-2173IT", 28 },
+            { "D-2183IT", 32 },
+            { "D-2145NT", 16 },
+            { "D-2146NT", 16 },
+            { "D-2166NT", 24 },
+            { "D-2177NT", 28 },
+            { "D-2187NT", 32 },
+
+            // Xeon E
+            { "E-2104G", 4 },
+            { "E-2124", 4 },
+            { "E-2124G", 4 },
+            { "E-2126G", 6 },
+            { "E-2134", 8 },
+            { "E-2136", 12 },
+            { "E-2144G", 8 },
+            { "E-2146G", 12 },
+            { "E-2174G", 8 },
+            { "E-2176G", 12 },
+            { "E-2186G", 12 },
+            { "E-2176M", 12 },
+            { "E-2186M", 12 },
+            { "E-2224", 4 },
+            { "E-2224G", 4 },
+            { "E-2226G", 6 },
+            { "E-2234", 8 },
+            { "E-2236", 12 },
+            { "E-2244G", 8 },
+            { "E-2246G", 12 },
+            { "E-2274G", 8 },
+            { "E-2276G", 12 },
+            { "E-2278G", 16 },
+            { "E-2286G", 12 },
+            { "E-2288G", 16 },
+            { "E-2276M", 12 },
+            { "E-2286M", 16 },
+
+            // Xeon W
+            { "W-2102", 4 },
+            { "W-2104", 4 },
+            { "W-2123", 8 },
+            { "W-2125", 8 },
+            { "W-2133", 12 },
+            { "W-2135", 12 },
+            { "W-2140B", 16 },
+            { "W-2145", 16 },
+            { "W-2150B", 20 },
+            { "W-2155", 20 },
+            { "W-2170B", 28 },
+            { "W-2175", 28 },
+            { "W-2191B", 36 },
+            { "W-2195", 36 },
+            { "W-3175X", 56 },
+            { "W-3223", 16 },
+            { "W-3225", 16 },
+            { "W-3235", 24 },
+            { "W-3245", 32 },
+            { "W-3245M", 32 },
+            { "W-3265", 48 },
+            { "W-3265M", 48 },
+            { "W-3275", 56 },
+            { "W-3275M", 56 },
+            { "w3-2423", 12 },
+            { "w3-2425", 12 },
+            { "w3-2435", 16 },
+            { "w5-2445", 20 },
+            { "w5-2455X", 24 },
+            { "w5-2465X", 32 },
+            { "w7-2475X", 40 },
+            { "w7-2495X", 48 },
+            { "w5-3425", 24 },
+            { "w5-3435X", 32 },
+            { "w7-3445", 40 },
+            { "w7-3455", 48 },
+            { "w7-3465X", 56 },
+            { "w9-3475X", 72 },
+            { "w9-3495X", 112 },
+            { "w3-2525", 16 },
+            { "w3-2535", 20 },
+            { "w5-2545", 24 },
+            { "w5-2555X", 28 },
+            { "w5-2565X", 36 },
+            { "w7-2575X", 44 },
+            { "w7-2595X", 52 },
+            { "w5-3525", 32 },
+            { "w5-3535X", 40 },
+            { "w7-3545", 48 },
+            { "w7-3555", 56 },
+            { "w7-3565X", 64 },
+            { "w9-3575X", 88 },
+            { "w9-3595X", 120 }
+        };
+
+        constexpr size_t thread_database_count = sizeof(thread_database) / sizeof(thread_database[0]);
+        const std::string cpu_full_name = model.string;
+
+        const ThreadEntry* best = nullptr;
+        size_t best_len = 0;
+        size_t best_pos = std::string::npos;
+
+        if (cpu_full_name.empty()) return false;
+
+        for (size_t i = 0; i < thread_database_count; ++i) {
+            const char* key = thread_database[i].model;
+            const size_t len = std::strlen(key);
+
+            const size_t p = cpu_full_name.find(key);
+            if (p != std::string::npos && len > best_len) {
+                best = &thread_database[i];
+                best_len = len;
+                best_pos = p;
             }
-    
-            const cpu::model_struct model = cpu::get_model();
-    
-            if (!model.found) {
-                return false;
-            }
-    
-            if (!model.is_xeon) {
-                return false;
-            }
-    
-            debug("XEON_THREAD_MISMATCH: CPU model = ", model.string);
-    
-            struct ThreadEntry {
-                const char* model;
-                unsigned    threads;
-            };
-    
-            static const ThreadEntry thread_database[] = {
-                // Xeon D
-                { "D-1518", 8 },
-                { "D-1520", 8 },
-                { "D-1521", 8 },
-                { "D-1527", 8 },
-                { "D-1528", 12 },
-                { "D-1529", 8 },
-                { "D-1531", 12 },
-                { "D-1537", 16 },
-                { "D-1539", 16 },
-                { "D-1540", 16 },
-                { "D-1541", 16 },
-                { "D-1548", 16 },
-                { "D-1557", 24 },
-                { "D-1559", 24 },
-                { "D-1567", 24 },
-                { "D-1571", 32 },
-                { "D-1577", 32 },
-                { "D-1581", 32 },
-                { "D-1587", 32 },
-                { "D-1513N", 8 },
-                { "D-1523N", 8 },
-                { "D-1533N", 12 },
-                { "D-1543N", 16 },
-                { "D-1553N", 16 },
-                { "D-1602", 4 },
-                { "D-1612", 8 },
-                { "D-1622", 8 },
-                { "D-1627", 8 },
-                { "D-1632", 16 },
-                { "D-1637", 12 },
-                { "D-1623N", 8 },
-                { "D-1633N", 12 },
-                { "D-1649N", 16 },
-                { "D-1653N", 16 },
-                { "D-2141I", 16 },
-                { "D-2161I", 24 },
-                { "D-2191", 36 },
-                { "D-2123IT", 8 },
-                { "D-2142IT", 16 },
-                { "D-2143IT", 16 },
-                { "D-2163IT", 24 },
-                { "D-2173IT", 28 },
-                { "D-2183IT", 32 },
-                { "D-2145NT", 16 },
-                { "D-2146NT", 16 },
-                { "D-2166NT", 24 },
-                { "D-2177NT", 28 },
-                { "D-2187NT", 32 },
-    
-                // Xeon E
-                { "E-2104G", 4 },
-                { "E-2124", 4 },
-                { "E-2124G", 4 },
-                { "E-2126G", 6 },
-                { "E-2134", 8 },
-                { "E-2136", 12 },
-                { "E-2144G", 8 },
-                { "E-2146G", 12 },
-                { "E-2174G", 8 },
-                { "E-2176G", 12 },
-                { "E-2186G", 12 },
-                { "E-2176M", 12 },
-                { "E-2186M", 12 },
-                { "E-2224", 4 },
-                { "E-2224G", 4 },
-                { "E-2226G", 6 },
-                { "E-2234", 8 },
-                { "E-2236", 12 },
-                { "E-2244G", 8 },
-                { "E-2246G", 12 },
-                { "E-2274G", 8 },
-                { "E-2276G", 12 },
-                { "E-2278G", 16 },
-                { "E-2286G", 12 },
-                { "E-2288G", 16 },
-                { "E-2276M", 12 },
-                { "E-2286M", 16 },
-    
-                // Xeon W
-                { "W-2102", 4 },
-                { "W-2104", 4 },
-                { "W-2123", 8 },
-                { "W-2125", 8 },
-                { "W-2133", 12 },
-                { "W-2135", 12 },
-                { "W-2140B", 16 },
-                { "W-2145", 16 },
-                { "W-2150B", 20 },
-                { "W-2155", 20 },
-                { "W-2170B", 28 },
-                { "W-2175", 28 },
-                { "W-2191B", 36 },
-                { "W-2195", 36 },
-                { "W-3175X", 56 },
-                { "W-3223", 16 },
-                { "W-3225", 16 },
-                { "W-3235", 24 },
-                { "W-3245", 32 },
-                { "W-3245M", 32 },
-                { "W-3265", 48 },
-                { "W-3265M", 48 },
-                { "W-3275", 56 },
-                { "W-3275M", 56 },
-                { "w3-2423", 12 },    
-                { "w3-2425", 12 },    
-                { "w3-2435", 16 },    
-                { "w5-2445", 20 },   
-                { "w5-2455X", 24 },  
-                { "w5-2465X", 32 },  
-                { "w7-2475X", 40 },
-                { "w7-2495X", 48 },
-                { "w5-3425", 24 },    
-                { "w5-3435X", 32 },  
-                { "w7-3445", 40 },   
-                { "w7-3455", 48 },    
-                { "w7-3465X", 56 },  
-                { "w9-3475X", 72 },   
-                { "w9-3495X", 112 },  
-                { "w3-2525", 16 },   
-                { "w3-2535", 20 }, 
-                { "w5-2545", 24 },   
-                { "w5-2555X", 28 },  
-                { "w5-2565X", 36 },  
-                { "w7-2575X", 44 },   
-                { "w7-2595X", 52 },  
-                { "w5-3525", 32 },   
-                { "w5-3535X", 40 },   
-                { "w7-3545", 48 },    
-                { "w7-3555", 56 },    
-                { "w7-3565X", 64 },   
-                { "w9-3575X", 88 },   
-                { "w9-3595X", 120 }  
-            };
-    
-            constexpr size_t thread_database_count = sizeof(thread_database) / sizeof(thread_database[0]);
-            const std::string cpu_full_name = model.string;
+        }
 
-            const ThreadEntry* best = nullptr;
-            size_t best_len = 0;
-            size_t best_pos = std::string::npos;
+        // Make sure best matches as a whole token, not just as a substring
+        if (best && best_pos != std::string::npos) {
+            size_t pos = best_pos;
+            size_t end = pos + best_len;
 
-            if (cpu_full_name.empty()) return false;
-
-            for (size_t i = 0; i < thread_database_count; ++i) {
-                const char* key = thread_database[i].model;
-                const size_t len = std::strlen(key);
-
-                const size_t p = cpu_full_name.find(key);
-                if (p != std::string::npos && len > best_len) {
-                    best = &thread_database[i];
-                    best_len = len;
-                    best_pos = p;
-                }
-            }
-
-            // Make sure best matches as a whole token, not just as a substring
-            if (best && best_pos != std::string::npos) {
-                size_t pos = best_pos;
-                size_t end = pos + best_len;
-
-                auto isAsciiAlphaNum = [](char c)->bool {
-                    const unsigned char uc = static_cast<unsigned char>(c);
-                    return (uc >= '0' && uc <= '9') || (uc >= 'A' && uc <= 'Z') || (uc >= 'a' && uc <= 'z');
+            auto isAsciiAlphaNum = [](char c)->bool {
+                const unsigned char uc = static_cast<unsigned char>(c);
+                return (uc >= '0' && uc <= '9') || (uc >= 'A' && uc <= 'Z') || (uc >= 'a' && uc <= 'z');
                 };
 
-                const bool left_ok = (pos == 0) || !isAsciiAlphaNum(cpu_full_name[pos - 1]);
-                const bool right_ok = (end == cpu_full_name.size()) || !isAsciiAlphaNum(cpu_full_name[end]);
+            const bool left_ok = (pos == 0) || !isAsciiAlphaNum(cpu_full_name[pos - 1]);
+            const bool right_ok = (end == cpu_full_name.size()) || !isAsciiAlphaNum(cpu_full_name[end]);
 
-                if (left_ok && right_ok) {
-                    const unsigned expected = best->threads;
-                    const unsigned actual = memo::threadcount::fetch();
-                    debug("XEON_THREAD_MISMATCH: Expected threads -> ", expected);
-                    return actual != expected;
-                }
+            if (left_ok && right_ok) {
+                const unsigned expected = best->threads;
+                const unsigned actual = memo::threadcount::fetch();
+                debug("XEON_THREAD_MISMATCH: Expected threads -> ", expected);
+                return actual != expected;
             }
+        }
 
-            return false;
-        #endif
+        return false;
+    #endif
     }
                 
                 
@@ -3786,641 +3768,641 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::AMD_THREAD_MISMATCH
      */
     [[nodiscard]] static bool amd_thread_mismatch() {
-        #if (!x86)
+    #if (!x86)
+        return false;
+    #else
+        if (!cpu::is_amd()) {
             return false;
-        #else
-            if (!cpu::is_amd()) {
-                return false;
+        }
+
+        std::string model = cpu::get_brand();
+
+        for (char& c : model) {
+            c = static_cast<char>(std::tolower(c));
+        }
+
+        debug("AMD_THREAD_MISMATCH: CPU model = ", model);
+
+        // all of these have spaces at the end on purpose, because some of these could 
+        // accidentally match different brands. Like for example: "a10-6700" could be 
+        // detected when scanning the string in "a10-6700t", which are both different 
+        // and obviously incorrect. So to fix this, spaces are added at the end.
+        struct ThreadEntry {
+            const char* model;
+            unsigned    threads;
+        };
+
+        static const ThreadEntry thread_database[] = {
+            { "3015ce ", 4 },
+            { "3015e ", 4 },
+            { "3020e ", 2 },
+            { "860k ", 4 },
+            { "870k ", 4 },
+            { "a10 pro-7350b ", 4 },
+            { "a10 pro-7800b ", 4 },
+            { "a10 pro-7850b ", 4 },
+            { "a10-6700 ", 4 },
+            { "a10-6700t ", 4 },
+            { "a10-6790b ", 4 },
+            { "a10-6790k ", 4 },
+            { "a10-6800b ", 4 },
+            { "a10-6800k ", 4 },
+            { "a10-7300 ", 4 },
+            { "a10-7400p ", 4 },
+            { "a10-7700k ", 4 },
+            { "a10-7800 ", 4 },
+            { "a10-7850k ", 4 },
+            { "a10-7860k ", 4 },
+            { "a10-7870k ", 4 },
+            { "a10-8700b ", 4 },
+            { "a10-8700p ", 4 },
+            { "a10-8750b ", 4 },
+            { "a10-8850b ", 4 },
+            { "a12-8800b ", 4 },
+            { "a4 micro-6400t ", 4 },
+            { "a4 pro-3340b ", 4 },
+            { "a4 pro-3350b ", 4 },
+            { "a4 pro-7300b ", 2 },
+            { "a4 pro-7350b ", 2 },
+            { "a4-5000 ", 4 },
+            { "a4-5100 ", 4 },
+            { "a4-6210 ", 4 },
+            { "a4-6300 ", 2 },
+            { "a4-6320 ", 2 },
+            { "a4-7210 ", 4 },
+            { "a4-7300 ", 2 },
+            { "a4-8350b ", 2 },
+            { "a4-9120c ", 2 },
+            { "a6 pro-7050b ", 2 },
+            { "a6 pro-7400b ", 2 },
+            { "a6-5200 ", 4 },
+            { "a6-5200m ", 4 },
+            { "a6-5350m ", 2 },
+            { "a6-6310 ", 4 },
+            { "a6-6400b ", 2 },
+            { "a6-6400k ", 2 },
+            { "a6-6420b ", 2 },
+            { "a6-6420k ", 2 },
+            { "a6-7000 ", 2 },
+            { "a6-7310 ", 4 },
+            { "a6-7400k ", 2 },
+            { "a6-8500b ", 4 },
+            { "a6-8500p ", 2 },
+            { "a6-8550b ", 2 },
+            { "a6-9220c ", 2 },
+            { "a8 pro-7150b ", 4 },
+            { "a8 pro-7600b ", 4 },
+            { "a8-6410 ", 4 },
+            { "a8-6500 ", 4 },
+            { "a8-6500b ", 4 },
+            { "a8-6500t ", 4 },
+            { "a8-6600k ", 4 },
+            { "a8-7100 ", 4 },
+            { "a8-7200p ", 4 },
+            { "a8-7410 ", 4 },
+            { "a8-7600 ", 4 },
+            { "a8-7650k ", 4 },
+            { "a8-7670k ", 4 },
+            { "a8-8600b ", 4 },
+            { "a8-8600p ", 4 },
+            { "a8-8650b ", 4 },
+            { "ai 5 340 ", 12 },
+            { "ai 5 pro 340 ", 12 },
+            { "ai 7 350 ", 16 },
+            { "ai 7 pro 350 ", 16 },
+            { "ai 7 pro 360 ", 16 },
+            { "ai 9 365 ", 20 },
+            { "ai 9 hx 370 ", 24 },
+            { "ai 9 hx 375 ", 24 },
+            { "ai 9 hx pro 370 ", 24 },
+            { "ai 9 hx pro 375 ", 24 },
+            { "ai max 385 ", 16 },
+            { "ai max 390 ", 24 },
+            { "ai max pro 380 ", 12 },
+            { "ai max pro 385 ", 16 },
+            { "ai max pro 390 ", 24 },
+            { "ai max+ 395 ", 32 },
+            { "ai max+ pro 395 ", 32 },
+            { "athlon  silver 3050c ", 2 }, // there's an extra space in the AMD specifications for some reason, which I assume it's a typo. I added the fixed and typo'd version just in case.
+            { "athlon silver 3050c ", 2 },
+            { "athlon 200ge ", 4 },
+            { "athlon 220ge ", 4 },
+            { "athlon 240ge ", 4 },
+            { "athlon 255e ", 2 },
+            { "athlon 3000g ", 4 },
+            { "athlon 300ge ", 4 },
+            { "athlon 300u ", 4 },
+            { "athlon 320ge ", 4 },
+            { "athlon 425e ", 3 },
+            { "athlon 460 ", 3 },
+            { "athlon 5150 ", 4 },
+            { "athlon 5350 ", 4 },
+            { "athlon 5370 ", 4 },
+            { "athlon 620e ", 4 },
+            { "athlon 631 ", 4 },
+            { "athlon 638 ", 4 },
+            { "athlon 641 ", 4 },
+            { "athlon 740 ", 4 },
+            { "athlon 750k ", 4 },
+            { "athlon 760k ", 4 },
+            { "athlon 860k ", 4 },
+            { "athlon gold 3150c ", 4 },
+            { "athlon gold 3150g ", 4 },
+            { "athlon gold 3150ge ", 4 },
+            { "athlon gold 3150u ", 4 },
+            { "athlon gold 7220c ", 4 },
+            { "athlon gold 7220u ", 4 },
+            { "athlon gold pro 3150g ", 4 },
+            { "athlon gold pro 3150ge ", 4 },
+            { "athlon pro 200ge ", 4 },
+            { "athlon pro 200u ", 4 },
+            { "athlon pro 300ge ", 4 },
+            { "athlon pro 300u ", 4 },
+            { "athlon pro 3045b ", 2 },
+            { "athlon pro 3145b ", 4 },
+            { "athlon silver 3050e ", 4 },
+            { "athlon silver 3050ge ", 4 },
+            { "athlon silver 3050u ", 2 },
+            { "athlon silver 7120c ", 2 },
+            { "athlon silver 7120u ", 2 },
+            { "athlon silver pro 3125ge ", 4 },
+            { "athlon x4 940 ", 4 },
+            { "athlon x4 950 ", 4 },
+            { "athlon x4 970 ", 4 },
+            { "b57 ", 2 },
+            { "b59 ", 2 },
+            { "b60 ", 2 },
+            { "b75 ", 3 },
+            { "b77 ", 3 },
+            { "b97 ", 4 },
+            { "b99 ", 4 },
+            { "e1 micro-6200t ", 2 },
+            { "e1-2100 ", 2 },
+            { "e1-2200 ", 2 },
+            { "e1-2500 ", 2 },
+            { "e1-6010 ", 2 },
+            { "e1-7010 ", 2 },
+            { "e2-3000 ", 2 },
+            { "e2-3800 ", 4 },
+            { "e2-6110 ", 4 },
+            { "e2-7110 ", 4 },
+            { "fx 6100 ", 6 },
+            { "fx-4100 ", 4 },
+            { "fx-4130 ", 4 },
+            { "fx-4170 ", 4 },
+            { "fx-4300 ", 4 },
+            { "fx-4320 ", 4 },
+            { "fx-4350 ", 4 },
+            { "fx-6200 ", 6 },
+            { "fx-6300 ", 6 },
+            { "fx-6350 ", 6 },
+            { "fx-7500 ", 4 },
+            { "fx-7600p ", 4 },
+            { "fx-8120 ", 8 },
+            { "fx-8150 ", 8 },
+            { "fx-8300 ", 8 },
+            { "fx-8310 ", 8 },
+            { "fx-8320 ", 8 },
+            { "fx-8320e ", 8 },
+            { "fx-8350 ", 8 },
+            { "fx-8370 ", 8 },
+            { "fx-8370e ", 8 },
+            { "fx-8800p ", 4 },
+            { "fx-9370 ", 8 },
+            { "fx-9590 ", 8 },
+            { "micro-6700t ", 4 },
+            { "n640 ", 2 },
+            { "n660 ", 2 },
+            { "n870 ", 3 },
+            { "n960 ", 4 },
+            { "n970 ", 4 },
+            { "p650 ", 2 },
+            { "p860 ", 3 },
+            { "phenom ii 1075t ", 6 },
+            { "phenom ii 555 ", 2 },
+            { "phenom ii 565 ", 2 },
+            { "phenom ii 570 ", 2 },
+            { "phenom ii 840 ", 4 },
+            { "phenom ii 850 ", 4 },
+            { "phenom ii 960t ", 4 },
+            { "phenom ii 965 ", 4 },
+            { "phenom ii 975 ", 4 },
+            { "phenom ii 980 ", 4 },
+            { "ryzen 3 1200 ", 4 },
+            { "ryzen 3 1300x ", 4 },
+            { "ryzen 3 210 ", 8 },
+            { "ryzen 3 2200g ", 4 },
+            { "ryzen 3 2200ge ", 4 },
+            { "ryzen 3 2200u ", 4 },
+            { "ryzen 3 2300u ", 4 },
+            { "ryzen 3 2300x ", 4 },
+            { "ryzen 3 3100 ", 8 },
+            { "ryzen 3 3200g ", 4 },
+            { "ryzen 3 3200ge ", 4 },
+            { "ryzen 3 3200u ", 4 },
+            { "ryzen 3 3250c ", 4 },
+            { "ryzen 3 3250u ", 4 },
+            { "ryzen 3 3300u ", 4 },
+            { "ryzen 3 3300x ", 8 },
+            { "ryzen 3 3350u ", 4 },
+            { "ryzen 3 4100 ", 8 },
+            { "ryzen 3 4300g ", 8 },
+            { "ryzen 3 4300ge ", 8 },
+            { "ryzen 3 4300u ", 4 },
+            { "ryzen 3 5125c ", 4 },
+            { "ryzen 3 5300g ", 8 },
+            { "ryzen 3 5300ge ", 8 },
+            { "ryzen 3 5300u ", 8 },
+            { "ryzen 3 5305g ", 8 },
+            { "ryzen 3 5305ge ", 8 },
+            { "ryzen 3 5400u ", 8 },
+            { "ryzen 3 5425c ", 8 },
+            { "ryzen 3 5425u ", 8 },
+            { "ryzen 3 7320c ", 8 },
+            { "ryzen 3 7320u ", 8 },
+            { "ryzen 3 7330u ", 8 },
+            { "ryzen 3 7335u ", 8 },
+            { "ryzen 3 7440u ", 8 },
+            { "ryzen 3 8300g ", 8 },
+            { "ryzen 3 8300ge ", 8 },
+            { "ryzen 3 8440u ", 8 },
+            { "ryzen 3 pro 1200 ", 4 },
+            { "ryzen 3 pro 1300 ", 4 },
+            { "ryzen 3 pro 210 ", 8 },
+            { "ryzen 3 pro 2200g ", 4 },
+            { "ryzen 3 pro 2200ge ", 4 },
+            { "ryzen 3 pro 2300u ", 4 },
+            { "ryzen 3 pro 3200g ", 4 },
+            { "ryzen 3 pro 3200ge ", 4 },
+            { "ryzen 3 pro 3300u ", 4 },
+            { "ryzen 3 pro 4350g ", 8 },
+            { "ryzen 3 pro 4350ge ", 8 },
+            { "ryzen 3 pro 4355g ", 8 },
+            { "ryzen 3 pro 4355ge ", 8 },
+            { "ryzen 3 pro 4450u ", 8 },
+            { "ryzen 3 pro 5350g ", 8 },
+            { "ryzen 3 pro 5350ge ", 8 },
+            { "ryzen 3 pro 5355g ", 8 },
+            { "ryzen 3 pro 5355ge ", 8 },
+            { "ryzen 3 pro 5450u ", 8 },
+            { "ryzen 3 pro 5475u ", 8 },
+            { "ryzen 3 pro 7330u ", 8 },
+            { "ryzen 3 pro 7335u ", 8 },
+            { "ryzen 3 pro 8300g ", 8 },
+            { "ryzen 3 pro 8300ge ", 8 },
+            { "ryzen 5 1400 ", 8 },
+            { "ryzen 5 1500x ", 8 },
+            { "ryzen 5 1600 ", 12 },
+            { "ryzen 5 1600 (af )", 12 },
+            { "ryzen 5 1600x ", 12 },
+            { "ryzen 5 220 ", 12 },
+            { "ryzen 5 230 ", 12 },
+            { "ryzen 5 240 ", 12 },
+            { "ryzen 5 2400g ", 8 },
+            { "ryzen 5 2400ge ", 8 },
+            { "ryzen 5 2500u ", 8 },
+            { "ryzen 5 2500x ", 8 },
+            { "ryzen 5 2600 ", 12 },
+            { "ryzen 5 2600e ", 12 },
+            { "ryzen 5 2600h ", 8 },
+            { "ryzen 5 2600x ", 12 },
+            { "ryzen 5 3400g ", 8 },
+            { "ryzen 5 3400ge ", 8 },
+            { "ryzen 5 3450u ", 8 },
+            { "ryzen 5 3500 ", 6 },
+            { "ryzen 5 3500c ", 8 },
+            { "ryzen 5 3500u ", 8 },
+            { "ryzen 5 3550h ", 8 },
+            { "ryzen 5 3580u ", 8 },
+            { "ryzen 5 3600 ", 12 },
+            { "ryzen 5 3600x ", 12 },
+            { "ryzen 5 3600xt ", 12 },
+            { "ryzen 5 4500 ", 12 },
+            { "ryzen 5 4500u ", 6 },
+            { "ryzen 5 4600g ", 12 },
+            { "ryzen 5 4600ge ", 12 },
+            { "ryzen 5 4600h ", 12 },
+            { "ryzen 5 4600u ", 12 },
+            { "ryzen 5 4680u ", 12 },
+            { "ryzen 5 5500 ", 12 },
+            { "ryzen 5 5500gt ", 12 },
+            { "ryzen 5 5500h ", 8 },
+            { "ryzen 5 5500u ", 12 },
+            { "ryzen 5 5560u ", 12 },
+            { "ryzen 5 5600 ", 12 },
+            { "ryzen 5 5600g ", 12 },
+            { "ryzen 5 5600ge ", 12 },
+            { "ryzen 5 5600gt ", 12 },
+            { "ryzen 5 5600h ", 12 },
+            { "ryzen 5 5600hs ", 12 },
+            { "ryzen 5 5600t ", 12 },
+            { "ryzen 5 5600u ", 12 },
+            { "ryzen 5 5600x ", 12 },
+            { "ryzen 5 5600x3d ", 12 },
+            { "ryzen 5 5600xt ", 12 },
+            { "ryzen 5 5605g ", 12 },
+            { "ryzen 5 5605ge ", 12 },
+            { "ryzen 5 5625c ", 12 },
+            { "ryzen 5 5625u ", 12 },
+            { "ryzen 5 6600h ", 12 },
+            { "ryzen 5 6600hs ", 12 },
+            { "ryzen 5 6600u ", 12 },
+            { "ryzen 5 7235hs ", 8 },
+            { "ryzen 5 7400f ", 12 },
+            { "ryzen 5 7430u ", 12 },
+            { "ryzen 5 7500f ", 12 },
+            { "ryzen 5 7520c ", 8 },
+            { "ryzen 5 7520u ", 8 },
+            { "ryzen 5 7530u ", 12 },
+            { "ryzen 5 7535hs ", 12 },
+            { "ryzen 5 7535u ", 12 },
+            { "ryzen 5 7540u ", 12 },
+            { "ryzen 5 7545u ", 12 },
+            { "ryzen 5 7600 ", 12 },
+            { "ryzen 5 7600x ", 12 },
+            { "ryzen 5 7600x3d ", 12 },
+            { "ryzen 5 7640hs ", 12 },
+            { "ryzen 5 7640u ", 12 },
+            { "ryzen 5 7645hx ", 12 },
+            { "ryzen 5 8400f ", 12 },
+            { "ryzen 5 8500g ", 12 },
+            { "ryzen 5 8500ge ", 12 },
+            { "ryzen 5 8540u ", 12 },
+            { "ryzen 5 8600g ", 12 },
+            { "ryzen 5 8640hs ", 12 },
+            { "ryzen 5 8640u ", 12 },
+            { "ryzen 5 8645hs ", 12 },
+            { "ryzen 5 9600 ", 12 },
+            { "ryzen 5 9600x ", 12 },
+            { "ryzen 5 pro 1500 ", 8 },
+            { "ryzen 5 pro 1600 ", 12 },
+            { "ryzen 5 pro 220 ", 12 },
+            { "ryzen 5 pro 230 ", 12 },
+            { "ryzen 5 pro 2400g ", 8 },
+            { "ryzen 5 pro 2400ge ", 8 },
+            { "ryzen 5 pro 2500u ", 8 },
+            { "ryzen 5 pro 2600 ", 12 },
+            { "ryzen 5 pro 3350g ", 8 },
+            { "ryzen 5 pro 3350ge ", 4 },
+            { "ryzen 5 pro 3400g ", 8 },
+            { "ryzen 5 pro 3400ge ", 8 },
+            { "ryzen 5 pro 3500u ", 8 },
+            { "ryzen 5 pro 3600 ", 12 },
+            { "ryzen 5 pro 4650g ", 12 },
+            { "ryzen 5 pro 4650ge ", 12 },
+            { "ryzen 5 pro 4650u ", 12 },
+            { "ryzen 5 pro 4655g ", 12 },
+            { "ryzen 5 pro 4655ge ", 12 },
+            { "ryzen 5 pro 5645 ", 12 },
+            { "ryzen 5 pro 5650g ", 12 },
+            { "ryzen 5 pro 5650ge ", 12 },
+            { "ryzen 5 pro 5650u ", 12 },
+            { "ryzen 5 pro 5655g ", 12 },
+            { "ryzen 5 pro 5655ge ", 12 },
+            { "ryzen 5 pro 5675u ", 12 },
+            { "ryzen 5 pro 6650h ", 12 },
+            { "ryzen 5 pro 6650hs ", 12 },
+            { "ryzen 5 pro 6650u ", 12 },
+            { "ryzen 5 pro 7530u ", 12 },
+            { "ryzen 5 pro 7535u ", 12 },
+            { "ryzen 5 pro 7540u ", 12 },
+            { "ryzen 5 pro 7545u ", 12 },
+            { "ryzen 5 pro 7640hs ", 12 },
+            { "ryzen 5 pro 7640u ", 12 },
+            { "ryzen 5 pro 7645 ", 12 },
+            { "ryzen 5 pro 8500g ", 12 },
+            { "ryzen 5 pro 8500ge ", 12 },
+            { "ryzen 5 pro 8540u ", 12 },
+            { "ryzen 5 pro 8600g ", 12 },
+            { "ryzen 5 pro 8600ge ", 12 },
+            { "ryzen 5 pro 8640hs ", 12 },
+            { "ryzen 5 pro 8640u ", 12 },
+            { "ryzen 5 pro 8645hs ", 12 },
+            { "ryzen 7 1700 ", 16 },
+            { "ryzen 7 1700x ", 16 },
+            { "ryzen 7 1800x ", 16 },
+            { "ryzen 7 250 ", 16 },
+            { "ryzen 7 260 ", 16 },
+            { "ryzen 7 2700 ", 16 },
+            { "ryzen 7 2700e ", 16 },
+            { "ryzen 7 2700u ", 8 },
+            { "ryzen 7 2700x ", 16 },
+            { "ryzen 7 2800h ", 8 },
+            { "ryzen 7 3700c ", 8 },
+            { "ryzen 7 3700u ", 8 },
+            { "ryzen 7 3700x ", 16 },
+            { "ryzen 7 3750h ", 8 },
+            { "ryzen 7 3780u ", 8 },
+            { "ryzen 7 3800x ", 16 },
+            { "ryzen 7 3800xt ", 16 },
+            { "ryzen 7 4700g ", 16 },
+            { "ryzen 7 4700ge ", 16 },
+            { "ryzen 7 4700u ", 8 },
+            { "ryzen 7 4800h ", 16 },
+            { "ryzen 7 4800hs ", 16 },
+            { "ryzen 7 4800u ", 16 },
+            { "ryzen 7 4980u ", 16 },
+            { "ryzen 7 5700 ", 16 },
+            { "ryzen 7 5700g ", 16 },
+            { "ryzen 7 5700ge ", 16 },
+            { "ryzen 7 5700u ", 16 },
+            { "ryzen 7 5700x ", 16 },
+            { "ryzen 7 5700x3d ", 16 },
+            { "ryzen 7 5705g ", 16 },
+            { "ryzen 7 5705ge ", 16 },
+            { "ryzen 7 5800 ", 16 },
+            { "ryzen 7 5800h ", 16 },
+            { "ryzen 7 5800hs ", 16 },
+            { "ryzen 7 5800u ", 16 },
+            { "ryzen 7 5800x ", 16 },
+            { "ryzen 7 5800x3d ", 16 },
+            { "ryzen 7 5800xt ", 16 },
+            { "ryzen 7 5825c ", 16 },
+            { "ryzen 7 5825u ", 16 },
+            { "ryzen 7 6800h ", 16 },
+            { "ryzen 7 6800hs ", 16 },
+            { "ryzen 7 6800u ", 16 },
+            { "ryzen 7 7435hs ", 16 },
+            { "ryzen 7 7700 ", 16 },
+            { "ryzen 7 7700x ", 16 },
+            { "ryzen 7 7730u ", 16 },
+            { "ryzen 7 7735hs ", 16 },
+            { "ryzen 7 7735u ", 16 },
+            { "ryzen 7 7736u ", 16 },
+            { "ryzen 7 7745hx ", 16 },
+            { "ryzen 7 7800x3d ", 16 },
+            { "ryzen 7 7840hs ", 16 },
+            { "ryzen 7 7840hx ", 24 },
+            { "ryzen 7 7840u ", 16 },
+            { "ryzen 7 8700f ", 16 },
+            { "ryzen 7 8700g ", 16 },
+            { "ryzen 7 8840hs ", 16 },
+            { "ryzen 7 8840u ", 16 },
+            { "ryzen 7 8845hs ", 16 },
+            { "ryzen 7 9700x ", 16 },
+            { "ryzen 7 9800x3d ", 16 },
+            { "ryzen 7 pro 1700 ", 16 },
+            { "ryzen 7 pro 1700x ", 16 },
+            { "ryzen 7 pro 250 ", 16 },
+            { "ryzen 7 pro 2700 ", 16 },
+            { "ryzen 7 pro 2700u ", 8 },
+            { "ryzen 7 pro 2700x ", 16 },
+            { "ryzen 7 pro 3700 ", 16 },
+            { "ryzen 7 pro 3700u ", 8 },
+            { "ryzen 7 pro 4750g ", 16 },
+            { "ryzen 7 pro 4750ge ", 16 },
+            { "ryzen 7 pro 4750u ", 16 },
+            { "ryzen 7 pro 5750g ", 16 },
+            { "ryzen 7 pro 5750ge ", 16 },
+            { "ryzen 7 pro 5755g ", 16 },
+            { "ryzen 7 pro 5755ge ", 16 },
+            { "ryzen 7 pro 5845 ", 16 },
+            { "ryzen 7 pro 5850u ", 16 },
+            { "ryzen 7 pro 5875u ", 16 },
+            { "ryzen 7 pro 6850h ", 16 },
+            { "ryzen 7 pro 6850hs ", 16 },
+            { "ryzen 7 pro 6850u ", 16 },
+            { "ryzen 7 pro 6860z ", 16 },
+            { "ryzen 7 pro 7730u ", 16 },
+            { "ryzen 7 pro 7735u ", 16 },
+            { "ryzen 7 pro 7745 ", 16 },
+            { "ryzen 7 pro 7840hs ", 16 },
+            { "ryzen 7 pro 7840u ", 16 },
+            { "ryzen 7 pro 8700g ", 16 },
+            { "ryzen 7 pro 8700ge ", 16 },
+            { "ryzen 7 pro 8840hs ", 16 },
+            { "ryzen 7 pro 8840u ", 16 },
+            { "ryzen 7 pro 8845hs ", 16 },
+            { "ryzen 9 270 ", 16 },
+            { "ryzen 9 3900 processor ", 24 },
+            { "ryzen 9 3900x ", 24 },
+            { "ryzen 9 3900xt ", 24 },
+            { "ryzen 9 3950x ", 32 },
+            { "ryzen 9 4900h ", 16 },
+            { "ryzen 9 4900hs ", 16 },
+            { "ryzen 9 5900 ", 24 },
+            { "ryzen 9 5900hs ", 16 },
+            { "ryzen 9 5900hx ", 16 },
+            { "ryzen 9 5900x ", 24 },
+            { "ryzen 9 5900xt ", 32 },
+            { "ryzen 9 5950x ", 32 },
+            { "ryzen 9 5980hs ", 16 },
+            { "ryzen 9 5980hx ", 16 },
+            { "ryzen 9 6900hs ", 16 },
+            { "ryzen 9 6900hx ", 16 },
+            { "ryzen 9 6980hs ", 16 },
+            { "ryzen 9 6980hx ", 16 },
+            { "ryzen 9 7845hx ", 24 },
+            { "ryzen 9 7900 ", 24 },
+            { "ryzen 9 7900x ", 24 },
+            { "ryzen 9 7900x3d ", 24 },
+            { "ryzen 9 7940hs ", 16 },
+            { "ryzen 9 7940hx ", 32 },
+            { "ryzen 9 7945hx ", 32 },
+            { "ryzen 9 7945hx3d ", 32 },
+            { "ryzen 9 7950x ", 32 },
+            { "ryzen 9 7950x3d ", 32 },
+            { "ryzen 9 8945hs ", 16 },
+            { "ryzen 9 9850hx ", 24 },
+            { "ryzen 9 9900x ", 24 },
+            { "ryzen 9 9900x3d ", 24 },
+            { "ryzen 9 9950x ", 32 },
+            { "ryzen 9 9950x3d ", 32 },
+            { "ryzen 9 9955hx ", 32 },
+            { "ryzen 9 9955hx3d ", 32 },
+            { "ryzen 9 pro 3900 ", 24 },
+            { "ryzen 9 pro 5945 ", 24 },
+            { "ryzen 9 pro 6950h ", 16 },
+            { "ryzen 9 pro 6950hs ", 16 },
+            { "ryzen 9 pro 7940hs ", 16 },
+            { "ryzen 9 pro 7945 ", 24 },
+            { "ryzen 9 pro 8945hs ", 16 }, 
+            { "ryzen threadripper 1900x ", 16 },
+            { "ryzen threadripper 1920x ", 24 },
+            { "ryzen threadripper 1950x ", 32 },
+            { "ryzen threadripper 2920x ", 24 },
+            { "ryzen threadripper 2950x ", 32 },
+            { "ryzen threadripper 2970wx ", 48 },
+            { "ryzen threadripper 2990wx ", 64 },
+            { "ryzen threadripper 3960x ", 48 },
+            { "ryzen threadripper 3970x ", 64 },
+            { "ryzen threadripper 3990x ", 128 },
+            { "ryzen threadripper 7960x ", 48 },
+            { "ryzen threadripper 7970x ", 64 },
+            { "ryzen threadripper 7980x ", 128 },
+            { "ryzen threadripper pro 3945wx ", 24 },
+            { "ryzen threadripper pro 3955wx ", 32 },
+            { "ryzen threadripper pro 3975wx ", 64 },
+            { "ryzen threadripper pro 3995wx ", 128 },
+            { "ryzen threadripper pro 5945wx ", 24 },
+            { "ryzen threadripper pro 5955wx ", 32 },
+            { "ryzen threadripper pro 5965wx ", 48 },
+            { "ryzen threadripper pro 5975wx ", 64 },
+            { "ryzen threadripper pro 5995wx ", 128 },
+            { "ryzen threadripper pro 7945wx ", 24 },
+            { "ryzen threadripper pro 7955wx ", 32 },
+            { "ryzen threadripper pro 7965wx ", 48 },
+            { "ryzen threadripper pro 7975wx ", 64 },
+            { "ryzen threadripper pro 7985wx ", 128 },
+            { "ryzen threadripper pro 7995wx ", 192 },
+            { "ryzen threadripper 9945wx", 24 },
+            { "ryzen threadripper 9955wx", 32 },
+            { "ryzen threadripper 9975wx", 64 },
+            { "ryzen threadripper 9985wx", 128 },
+            { "ryzen threadripper pro 9995wx", 192 },
+            { "ryzen z1 extreme ", 16 },
+            { "ryzen z1 ", 12 },
+            { "sempron 2650 ", 2 },
+            { "sempron 3850 ", 4 },
+            { "x940 ", 4 },
+            { "z2 extreme ", 16 },
+            { "z2 go ", 8 }
+        };
+
+        constexpr size_t thread_database_count = sizeof(thread_database) / sizeof(thread_database[0]);
+        const std::string cpu_full_name = model;
+
+        const ThreadEntry* best = nullptr;
+        size_t best_len = 0;
+        size_t best_pos = std::string::npos;
+
+        if (cpu_full_name.empty()) return false;
+
+        for (size_t i = 0; i < thread_database_count; ++i) {
+            const char* key = thread_database[i].model;
+            const size_t len = std::strlen(key);
+
+            const size_t p = cpu_full_name.find(key);
+            if (p != std::string::npos && len > best_len) {
+                best = &thread_database[i];
+                best_len = len;
+                best_pos = p;
             }
+        }
 
-            std::string model = cpu::get_brand();
+        // Make sure best matches as a whole token, not just as a substring
+        if (best && best_pos != std::string::npos) {
+            size_t pos = best_pos;
+            size_t end = pos + best_len;
 
-            for (char& c : model) {
-                c = static_cast<char>(std::tolower(c));
-            }
-
-            debug("AMD_THREAD_MISMATCH: CPU model = ", model);
-
-            // all of these have spaces at the end on purpose, because some of these could 
-            // accidentally match different brands. Like for example: "a10-6700" could be 
-            // detected when scanning the string in "a10-6700t", which are both different 
-            // and obviously incorrect. So to fix this, spaces are added at the end.
-            struct ThreadEntry {
-                const char* model;
-                unsigned    threads;
-            };
-
-            static const ThreadEntry thread_database[] = {
-                { "3015ce ", 4 },
-                { "3015e ", 4 },
-                { "3020e ", 2 },
-                { "860k ", 4 },
-                { "870k ", 4 },
-                { "a10 pro-7350b ", 4 },
-                { "a10 pro-7800b ", 4 },
-                { "a10 pro-7850b ", 4 },
-                { "a10-6700 ", 4 },
-                { "a10-6700t ", 4 },
-                { "a10-6790b ", 4 },
-                { "a10-6790k ", 4 },
-                { "a10-6800b ", 4 },
-                { "a10-6800k ", 4 },
-                { "a10-7300 ", 4 },
-                { "a10-7400p ", 4 },
-                { "a10-7700k ", 4 },
-                { "a10-7800 ", 4 },
-                { "a10-7850k ", 4 },
-                { "a10-7860k ", 4 },
-                { "a10-7870k ", 4 },
-                { "a10-8700b ", 4 },
-                { "a10-8700p ", 4 },
-                { "a10-8750b ", 4 },
-                { "a10-8850b ", 4 },
-                { "a12-8800b ", 4 },
-                { "a4 micro-6400t ", 4 },
-                { "a4 pro-3340b ", 4 },
-                { "a4 pro-3350b ", 4 },
-                { "a4 pro-7300b ", 2 },
-                { "a4 pro-7350b ", 2 },
-                { "a4-5000 ", 4 },
-                { "a4-5100 ", 4 },
-                { "a4-6210 ", 4 },
-                { "a4-6300 ", 2 },
-                { "a4-6320 ", 2 },
-                { "a4-7210 ", 4 },
-                { "a4-7300 ", 2 },
-                { "a4-8350b ", 2 },
-                { "a4-9120c ", 2 },
-                { "a6 pro-7050b ", 2 },
-                { "a6 pro-7400b ", 2 },
-                { "a6-5200 ", 4 },
-                { "a6-5200m ", 4 },
-                { "a6-5350m ", 2 },
-                { "a6-6310 ", 4 },
-                { "a6-6400b ", 2 },
-                { "a6-6400k ", 2 },
-                { "a6-6420b ", 2 },
-                { "a6-6420k ", 2 },
-                { "a6-7000 ", 2 },
-                { "a6-7310 ", 4 },
-                { "a6-7400k ", 2 },
-                { "a6-8500b ", 4 },
-                { "a6-8500p ", 2 },
-                { "a6-8550b ", 2 },
-                { "a6-9220c ", 2 },
-                { "a8 pro-7150b ", 4 },
-                { "a8 pro-7600b ", 4 },
-                { "a8-6410 ", 4 },
-                { "a8-6500 ", 4 },
-                { "a8-6500b ", 4 },
-                { "a8-6500t ", 4 },
-                { "a8-6600k ", 4 },
-                { "a8-7100 ", 4 },
-                { "a8-7200p ", 4 },
-                { "a8-7410 ", 4 },
-                { "a8-7600 ", 4 },
-                { "a8-7650k ", 4 },
-                { "a8-7670k ", 4 },
-                { "a8-8600b ", 4 },
-                { "a8-8600p ", 4 },
-                { "a8-8650b ", 4 },
-                { "ai 5 340 ", 12 },
-                { "ai 5 pro 340 ", 12 },
-                { "ai 7 350 ", 16 },
-                { "ai 7 pro 350 ", 16 },
-                { "ai 7 pro 360 ", 16 },
-                { "ai 9 365 ", 20 },
-                { "ai 9 hx 370 ", 24 },
-                { "ai 9 hx 375 ", 24 },
-                { "ai 9 hx pro 370 ", 24 },
-                { "ai 9 hx pro 375 ", 24 },
-                { "ai max 385 ", 16 },
-                { "ai max 390 ", 24 },
-                { "ai max pro 380 ", 12 },
-                { "ai max pro 385 ", 16 },
-                { "ai max pro 390 ", 24 },
-                { "ai max+ 395 ", 32 },
-                { "ai max+ pro 395 ", 32 },
-                { "athlon  silver 3050c ", 2 }, // there's an extra space in the AMD specifications for some reason, which I assume it's a typo. I added the fixed and typo'd version just in case.
-                { "athlon silver 3050c ", 2 },
-                { "athlon 200ge ", 4 },
-                { "athlon 220ge ", 4 },
-                { "athlon 240ge ", 4 },
-                { "athlon 255e ", 2 },
-                { "athlon 3000g ", 4 },
-                { "athlon 300ge ", 4 },
-                { "athlon 300u ", 4 },
-                { "athlon 320ge ", 4 },
-                { "athlon 425e ", 3 },
-                { "athlon 460 ", 3 },
-                { "athlon 5150 ", 4 },
-                { "athlon 5350 ", 4 },
-                { "athlon 5370 ", 4 },
-                { "athlon 620e ", 4 },
-                { "athlon 631 ", 4 },
-                { "athlon 638 ", 4 },
-                { "athlon 641 ", 4 },
-                { "athlon 740 ", 4 },
-                { "athlon 750k ", 4 },
-                { "athlon 760k ", 4 },
-                { "athlon 860k ", 4 },
-                { "athlon gold 3150c ", 4 },
-                { "athlon gold 3150g ", 4 },
-                { "athlon gold 3150ge ", 4 },
-                { "athlon gold 3150u ", 4 },
-                { "athlon gold 7220c ", 4 },
-                { "athlon gold 7220u ", 4 },
-                { "athlon gold pro 3150g ", 4 },
-                { "athlon gold pro 3150ge ", 4 },
-                { "athlon pro 200ge ", 4 },
-                { "athlon pro 200u ", 4 },
-                { "athlon pro 300ge ", 4 },
-                { "athlon pro 300u ", 4 },
-                { "athlon pro 3045b ", 2 },
-                { "athlon pro 3145b ", 4 },
-                { "athlon silver 3050e ", 4 },
-                { "athlon silver 3050ge ", 4 },
-                { "athlon silver 3050u ", 2 },
-                { "athlon silver 7120c ", 2 },
-                { "athlon silver 7120u ", 2 },
-                { "athlon silver pro 3125ge ", 4 },
-                { "athlon x4 940 ", 4 },
-                { "athlon x4 950 ", 4 },
-                { "athlon x4 970 ", 4 },
-                { "b57 ", 2 },
-                { "b59 ", 2 },
-                { "b60 ", 2 },
-                { "b75 ", 3 },
-                { "b77 ", 3 },
-                { "b97 ", 4 },
-                { "b99 ", 4 },
-                { "e1 micro-6200t ", 2 },
-                { "e1-2100 ", 2 },
-                { "e1-2200 ", 2 },
-                { "e1-2500 ", 2 },
-                { "e1-6010 ", 2 },
-                { "e1-7010 ", 2 },
-                { "e2-3000 ", 2 },
-                { "e2-3800 ", 4 },
-                { "e2-6110 ", 4 },
-                { "e2-7110 ", 4 },
-                { "fx 6100 ", 6 },
-                { "fx-4100 ", 4 },
-                { "fx-4130 ", 4 },
-                { "fx-4170 ", 4 },
-                { "fx-4300 ", 4 },
-                { "fx-4320 ", 4 },
-                { "fx-4350 ", 4 },
-                { "fx-6200 ", 6 },
-                { "fx-6300 ", 6 },
-                { "fx-6350 ", 6 },
-                { "fx-7500 ", 4 },
-                { "fx-7600p ", 4 },
-                { "fx-8120 ", 8 },
-                { "fx-8150 ", 8 },
-                { "fx-8300 ", 8 },
-                { "fx-8310 ", 8 },
-                { "fx-8320 ", 8 },
-                { "fx-8320e ", 8 },
-                { "fx-8350 ", 8 },
-                { "fx-8370 ", 8 },
-                { "fx-8370e ", 8 },
-                { "fx-8800p ", 4 },
-                { "fx-9370 ", 8 },
-                { "fx-9590 ", 8 },
-                { "micro-6700t ", 4 },
-                { "n640 ", 2 },
-                { "n660 ", 2 },
-                { "n870 ", 3 },
-                { "n960 ", 4 },
-                { "n970 ", 4 },
-                { "p650 ", 2 },
-                { "p860 ", 3 },
-                { "phenom ii 1075t ", 6 },
-                { "phenom ii 555 ", 2 },
-                { "phenom ii 565 ", 2 },
-                { "phenom ii 570 ", 2 },
-                { "phenom ii 840 ", 4 },
-                { "phenom ii 850 ", 4 },
-                { "phenom ii 960t ", 4 },
-                { "phenom ii 965 ", 4 },
-                { "phenom ii 975 ", 4 },
-                { "phenom ii 980 ", 4 },
-                { "ryzen 3 1200 ", 4 },
-                { "ryzen 3 1300x ", 4 },
-                { "ryzen 3 210 ", 8 },
-                { "ryzen 3 2200g ", 4 },
-                { "ryzen 3 2200ge ", 4 },
-                { "ryzen 3 2200u ", 4 },
-                { "ryzen 3 2300u ", 4 },
-                { "ryzen 3 2300x ", 4 },
-                { "ryzen 3 3100 ", 8 },
-                { "ryzen 3 3200g ", 4 },
-                { "ryzen 3 3200ge ", 4 },
-                { "ryzen 3 3200u ", 4 },
-                { "ryzen 3 3250c ", 4 },
-                { "ryzen 3 3250u ", 4 },
-                { "ryzen 3 3300u ", 4 },
-                { "ryzen 3 3300x ", 8 },
-                { "ryzen 3 3350u ", 4 },
-                { "ryzen 3 4100 ", 8 },
-                { "ryzen 3 4300g ", 8 },
-                { "ryzen 3 4300ge ", 8 },
-                { "ryzen 3 4300u ", 4 },
-                { "ryzen 3 5125c ", 4 },
-                { "ryzen 3 5300g ", 8 },
-                { "ryzen 3 5300ge ", 8 },
-                { "ryzen 3 5300u ", 8 },
-                { "ryzen 3 5305g ", 8 },
-                { "ryzen 3 5305ge ", 8 },
-                { "ryzen 3 5400u ", 8 },
-                { "ryzen 3 5425c ", 8 },
-                { "ryzen 3 5425u ", 8 },
-                { "ryzen 3 7320c ", 8 },
-                { "ryzen 3 7320u ", 8 },
-                { "ryzen 3 7330u ", 8 },
-                { "ryzen 3 7335u ", 8 },
-                { "ryzen 3 7440u ", 8 },
-                { "ryzen 3 8300g ", 8 },
-                { "ryzen 3 8300ge ", 8 },
-                { "ryzen 3 8440u ", 8 },
-                { "ryzen 3 pro 1200 ", 4 },
-                { "ryzen 3 pro 1300 ", 4 },
-                { "ryzen 3 pro 210 ", 8 },
-                { "ryzen 3 pro 2200g ", 4 },
-                { "ryzen 3 pro 2200ge ", 4 },
-                { "ryzen 3 pro 2300u ", 4 },
-                { "ryzen 3 pro 3200g ", 4 },
-                { "ryzen 3 pro 3200ge ", 4 },
-                { "ryzen 3 pro 3300u ", 4 },
-                { "ryzen 3 pro 4350g ", 8 },
-                { "ryzen 3 pro 4350ge ", 8 },
-                { "ryzen 3 pro 4355g ", 8 },
-                { "ryzen 3 pro 4355ge ", 8 },
-                { "ryzen 3 pro 4450u ", 8 },
-                { "ryzen 3 pro 5350g ", 8 },
-                { "ryzen 3 pro 5350ge ", 8 },
-                { "ryzen 3 pro 5355g ", 8 },
-                { "ryzen 3 pro 5355ge ", 8 },
-                { "ryzen 3 pro 5450u ", 8 },
-                { "ryzen 3 pro 5475u ", 8 },
-                { "ryzen 3 pro 7330u ", 8 },
-                { "ryzen 3 pro 7335u ", 8 },
-                { "ryzen 3 pro 8300g ", 8 },
-                { "ryzen 3 pro 8300ge ", 8 },
-                { "ryzen 5 1400 ", 8 },
-                { "ryzen 5 1500x ", 8 },
-                { "ryzen 5 1600 ", 12 },
-                { "ryzen 5 1600 (af )", 12 },
-                { "ryzen 5 1600x ", 12 },
-                { "ryzen 5 220 ", 12 },
-                { "ryzen 5 230 ", 12 },
-                { "ryzen 5 240 ", 12 },
-                { "ryzen 5 2400g ", 8 },
-                { "ryzen 5 2400ge ", 8 },
-                { "ryzen 5 2500u ", 8 },
-                { "ryzen 5 2500x ", 8 },
-                { "ryzen 5 2600 ", 12 },
-                { "ryzen 5 2600e ", 12 },
-                { "ryzen 5 2600h ", 8 },
-                { "ryzen 5 2600x ", 12 },
-                { "ryzen 5 3400g ", 8 },
-                { "ryzen 5 3400ge ", 8 },
-                { "ryzen 5 3450u ", 8 },
-                { "ryzen 5 3500 ", 6 },
-                { "ryzen 5 3500c ", 8 },
-                { "ryzen 5 3500u ", 8 },
-                { "ryzen 5 3550h ", 8 },
-                { "ryzen 5 3580u ", 8 },
-                { "ryzen 5 3600 ", 12 },
-                { "ryzen 5 3600x ", 12 },
-                { "ryzen 5 3600xt ", 12 },
-                { "ryzen 5 4500 ", 12 },
-                { "ryzen 5 4500u ", 6 },
-                { "ryzen 5 4600g ", 12 },
-                { "ryzen 5 4600ge ", 12 },
-                { "ryzen 5 4600h ", 12 },
-                { "ryzen 5 4600u ", 12 },
-                { "ryzen 5 4680u ", 12 },
-                { "ryzen 5 5500 ", 12 },
-                { "ryzen 5 5500gt ", 12 },
-                { "ryzen 5 5500h ", 8 },
-                { "ryzen 5 5500u ", 12 },
-                { "ryzen 5 5560u ", 12 },
-                { "ryzen 5 5600 ", 12 },
-                { "ryzen 5 5600g ", 12 },
-                { "ryzen 5 5600ge ", 12 },
-                { "ryzen 5 5600gt ", 12 },
-                { "ryzen 5 5600h ", 12 },
-                { "ryzen 5 5600hs ", 12 },
-                { "ryzen 5 5600t ", 12 },
-                { "ryzen 5 5600u ", 12 },
-                { "ryzen 5 5600x ", 12 },
-                { "ryzen 5 5600x3d ", 12 },
-                { "ryzen 5 5600xt ", 12 },
-                { "ryzen 5 5605g ", 12 },
-                { "ryzen 5 5605ge ", 12 },
-                { "ryzen 5 5625c ", 12 },
-                { "ryzen 5 5625u ", 12 },
-                { "ryzen 5 6600h ", 12 },
-                { "ryzen 5 6600hs ", 12 },
-                { "ryzen 5 6600u ", 12 },
-                { "ryzen 5 7235hs ", 8 },
-                { "ryzen 5 7400f ", 12 },
-                { "ryzen 5 7430u ", 12 },
-                { "ryzen 5 7500f ", 12 },
-                { "ryzen 5 7520c ", 8 },
-                { "ryzen 5 7520u ", 8 },
-                { "ryzen 5 7530u ", 12 },
-                { "ryzen 5 7535hs ", 12 },
-                { "ryzen 5 7535u ", 12 },
-                { "ryzen 5 7540u ", 12 },
-                { "ryzen 5 7545u ", 12 },
-                { "ryzen 5 7600 ", 12 },
-                { "ryzen 5 7600x ", 12 },
-                { "ryzen 5 7600x3d ", 12 },
-                { "ryzen 5 7640hs ", 12 },
-                { "ryzen 5 7640u ", 12 },
-                { "ryzen 5 7645hx ", 12 },
-                { "ryzen 5 8400f ", 12 },
-                { "ryzen 5 8500g ", 12 },
-                { "ryzen 5 8500ge ", 12 },
-                { "ryzen 5 8540u ", 12 },
-                { "ryzen 5 8600g ", 12 },
-                { "ryzen 5 8640hs ", 12 },
-                { "ryzen 5 8640u ", 12 },
-                { "ryzen 5 8645hs ", 12 },
-                { "ryzen 5 9600 ", 12 },
-                { "ryzen 5 9600x ", 12 },
-                { "ryzen 5 pro 1500 ", 8 },
-                { "ryzen 5 pro 1600 ", 12 },
-                { "ryzen 5 pro 220 ", 12 },
-                { "ryzen 5 pro 230 ", 12 },
-                { "ryzen 5 pro 2400g ", 8 },
-                { "ryzen 5 pro 2400ge ", 8 },
-                { "ryzen 5 pro 2500u ", 8 },
-                { "ryzen 5 pro 2600 ", 12 },
-                { "ryzen 5 pro 3350g ", 8 },
-                { "ryzen 5 pro 3350ge ", 4 },
-                { "ryzen 5 pro 3400g ", 8 },
-                { "ryzen 5 pro 3400ge ", 8 },
-                { "ryzen 5 pro 3500u ", 8 },
-                { "ryzen 5 pro 3600 ", 12 },
-                { "ryzen 5 pro 4650g ", 12 },
-                { "ryzen 5 pro 4650ge ", 12 },
-                { "ryzen 5 pro 4650u ", 12 },
-                { "ryzen 5 pro 4655g ", 12 },
-                { "ryzen 5 pro 4655ge ", 12 },
-                { "ryzen 5 pro 5645 ", 12 },
-                { "ryzen 5 pro 5650g ", 12 },
-                { "ryzen 5 pro 5650ge ", 12 },
-                { "ryzen 5 pro 5650u ", 12 },
-                { "ryzen 5 pro 5655g ", 12 },
-                { "ryzen 5 pro 5655ge ", 12 },
-                { "ryzen 5 pro 5675u ", 12 },
-                { "ryzen 5 pro 6650h ", 12 },
-                { "ryzen 5 pro 6650hs ", 12 },
-                { "ryzen 5 pro 6650u ", 12 },
-                { "ryzen 5 pro 7530u ", 12 },
-                { "ryzen 5 pro 7535u ", 12 },
-                { "ryzen 5 pro 7540u ", 12 },
-                { "ryzen 5 pro 7545u ", 12 },
-                { "ryzen 5 pro 7640hs ", 12 },
-                { "ryzen 5 pro 7640u ", 12 },
-                { "ryzen 5 pro 7645 ", 12 },
-                { "ryzen 5 pro 8500g ", 12 },
-                { "ryzen 5 pro 8500ge ", 12 },
-                { "ryzen 5 pro 8540u ", 12 },
-                { "ryzen 5 pro 8600g ", 12 },
-                { "ryzen 5 pro 8600ge ", 12 },
-                { "ryzen 5 pro 8640hs ", 12 },
-                { "ryzen 5 pro 8640u ", 12 },
-                { "ryzen 5 pro 8645hs ", 12 },
-                { "ryzen 7 1700 ", 16 },
-                { "ryzen 7 1700x ", 16 },
-                { "ryzen 7 1800x ", 16 },
-                { "ryzen 7 250 ", 16 },
-                { "ryzen 7 260 ", 16 },
-                { "ryzen 7 2700 ", 16 },
-                { "ryzen 7 2700e ", 16 },
-                { "ryzen 7 2700u ", 8 },
-                { "ryzen 7 2700x ", 16 },
-                { "ryzen 7 2800h ", 8 },
-                { "ryzen 7 3700c ", 8 },
-                { "ryzen 7 3700u ", 8 },
-                { "ryzen 7 3700x ", 16 },
-                { "ryzen 7 3750h ", 8 },
-                { "ryzen 7 3780u ", 8 },
-                { "ryzen 7 3800x ", 16 },
-                { "ryzen 7 3800xt ", 16 },
-                { "ryzen 7 4700g ", 16 },
-                { "ryzen 7 4700ge ", 16 },
-                { "ryzen 7 4700u ", 8 },
-                { "ryzen 7 4800h ", 16 },
-                { "ryzen 7 4800hs ", 16 },
-                { "ryzen 7 4800u ", 16 },
-                { "ryzen 7 4980u ", 16 },
-                { "ryzen 7 5700 ", 16 },
-                { "ryzen 7 5700g ", 16 },
-                { "ryzen 7 5700ge ", 16 },
-                { "ryzen 7 5700u ", 16 },
-                { "ryzen 7 5700x ", 16 },
-                { "ryzen 7 5700x3d ", 16 },
-                { "ryzen 7 5705g ", 16 },
-                { "ryzen 7 5705ge ", 16 },
-                { "ryzen 7 5800 ", 16 },
-                { "ryzen 7 5800h ", 16 },
-                { "ryzen 7 5800hs ", 16 },
-                { "ryzen 7 5800u ", 16 },
-                { "ryzen 7 5800x ", 16 },
-                { "ryzen 7 5800x3d ", 16 },
-                { "ryzen 7 5800xt ", 16 },
-                { "ryzen 7 5825c ", 16 },
-                { "ryzen 7 5825u ", 16 },
-                { "ryzen 7 6800h ", 16 },
-                { "ryzen 7 6800hs ", 16 },
-                { "ryzen 7 6800u ", 16 },
-                { "ryzen 7 7435hs ", 16 },
-                { "ryzen 7 7700 ", 16 },
-                { "ryzen 7 7700x ", 16 },
-                { "ryzen 7 7730u ", 16 },
-                { "ryzen 7 7735hs ", 16 },
-                { "ryzen 7 7735u ", 16 },
-                { "ryzen 7 7736u ", 16 },
-                { "ryzen 7 7745hx ", 16 },
-                { "ryzen 7 7800x3d ", 16 },
-                { "ryzen 7 7840hs ", 16 },
-                { "ryzen 7 7840hx ", 24 },
-                { "ryzen 7 7840u ", 16 },
-                { "ryzen 7 8700f ", 16 },
-                { "ryzen 7 8700g ", 16 },
-                { "ryzen 7 8840hs ", 16 },
-                { "ryzen 7 8840u ", 16 },
-                { "ryzen 7 8845hs ", 16 },
-                { "ryzen 7 9700x ", 16 },
-                { "ryzen 7 9800x3d ", 16 },
-                { "ryzen 7 pro 1700 ", 16 },
-                { "ryzen 7 pro 1700x ", 16 },
-                { "ryzen 7 pro 250 ", 16 },
-                { "ryzen 7 pro 2700 ", 16 },
-                { "ryzen 7 pro 2700u ", 8 },
-                { "ryzen 7 pro 2700x ", 16 },
-                { "ryzen 7 pro 3700 ", 16 },
-                { "ryzen 7 pro 3700u ", 8 },
-                { "ryzen 7 pro 4750g ", 16 },
-                { "ryzen 7 pro 4750ge ", 16 },
-                { "ryzen 7 pro 4750u ", 16 },
-                { "ryzen 7 pro 5750g ", 16 },
-                { "ryzen 7 pro 5750ge ", 16 },
-                { "ryzen 7 pro 5755g ", 16 },
-                { "ryzen 7 pro 5755ge ", 16 },
-                { "ryzen 7 pro 5845 ", 16 },
-                { "ryzen 7 pro 5850u ", 16 },
-                { "ryzen 7 pro 5875u ", 16 },
-                { "ryzen 7 pro 6850h ", 16 },
-                { "ryzen 7 pro 6850hs ", 16 },
-                { "ryzen 7 pro 6850u ", 16 },
-                { "ryzen 7 pro 6860z ", 16 },
-                { "ryzen 7 pro 7730u ", 16 },
-                { "ryzen 7 pro 7735u ", 16 },
-                { "ryzen 7 pro 7745 ", 16 },
-                { "ryzen 7 pro 7840hs ", 16 },
-                { "ryzen 7 pro 7840u ", 16 },
-                { "ryzen 7 pro 8700g ", 16 },
-                { "ryzen 7 pro 8700ge ", 16 },
-                { "ryzen 7 pro 8840hs ", 16 },
-                { "ryzen 7 pro 8840u ", 16 },
-                { "ryzen 7 pro 8845hs ", 16 },
-                { "ryzen 9 270 ", 16 },
-                { "ryzen 9 3900 processor ", 24 },
-                { "ryzen 9 3900x ", 24 },
-                { "ryzen 9 3900xt ", 24 },
-                { "ryzen 9 3950x ", 32 },
-                { "ryzen 9 4900h ", 16 },
-                { "ryzen 9 4900hs ", 16 },
-                { "ryzen 9 5900 ", 24 },
-                { "ryzen 9 5900hs ", 16 },
-                { "ryzen 9 5900hx ", 16 },
-                { "ryzen 9 5900x ", 24 },
-                { "ryzen 9 5900xt ", 32 },
-                { "ryzen 9 5950x ", 32 },
-                { "ryzen 9 5980hs ", 16 },
-                { "ryzen 9 5980hx ", 16 },
-                { "ryzen 9 6900hs ", 16 },
-                { "ryzen 9 6900hx ", 16 },
-                { "ryzen 9 6980hs ", 16 },
-                { "ryzen 9 6980hx ", 16 },
-                { "ryzen 9 7845hx ", 24 },
-                { "ryzen 9 7900 ", 24 },
-                { "ryzen 9 7900x ", 24 },
-                { "ryzen 9 7900x3d ", 24 },
-                { "ryzen 9 7940hs ", 16 },
-                { "ryzen 9 7940hx ", 32 },
-                { "ryzen 9 7945hx ", 32 },
-                { "ryzen 9 7945hx3d ", 32 },
-                { "ryzen 9 7950x ", 32 },
-                { "ryzen 9 7950x3d ", 32 },
-                { "ryzen 9 8945hs ", 16 },
-                { "ryzen 9 9850hx ", 24 },
-                { "ryzen 9 9900x ", 24 },
-                { "ryzen 9 9900x3d ", 24 },
-                { "ryzen 9 9950x ", 32 },
-                { "ryzen 9 9950x3d ", 32 },
-                { "ryzen 9 9955hx ", 32 },
-                { "ryzen 9 9955hx3d ", 32 },
-                { "ryzen 9 pro 3900 ", 24 },
-                { "ryzen 9 pro 5945 ", 24 },
-                { "ryzen 9 pro 6950h ", 16 },
-                { "ryzen 9 pro 6950hs ", 16 },
-                { "ryzen 9 pro 7940hs ", 16 },
-                { "ryzen 9 pro 7945 ", 24 },
-                { "ryzen 9 pro 8945hs ", 16 },
-                { "ryzen threadripper 1900x ", 16 },
-                { "ryzen threadripper 1920x ", 24 },
-                { "ryzen threadripper 1950x ", 32 },
-                { "ryzen threadripper 2920x ", 24 },
-                { "ryzen threadripper 2950x ", 32 },
-                { "ryzen threadripper 2970wx ", 48 },
-                { "ryzen threadripper 2990wx ", 64 },
-                { "ryzen threadripper 3960x ", 48 },
-                { "ryzen threadripper 3970x ", 64 },
-                { "ryzen threadripper 3990x ", 128 },
-                { "ryzen threadripper 7960x ", 48 },
-                { "ryzen threadripper 7970x ", 64 },
-                { "ryzen threadripper 7980x ", 128 },
-                { "ryzen threadripper pro 3945wx ", 24 },
-                { "ryzen threadripper pro 3955wx ", 32 },
-                { "ryzen threadripper pro 3975wx ", 64 },
-                { "ryzen threadripper pro 3995wx ", 128 },
-                { "ryzen threadripper pro 5945wx ", 24 },
-                { "ryzen threadripper pro 5955wx ", 32 },
-                { "ryzen threadripper pro 5965wx ", 48 },
-                { "ryzen threadripper pro 5975wx ", 64 },
-                { "ryzen threadripper pro 5995wx ", 128 },
-                { "ryzen threadripper pro 7945wx ", 24 },
-                { "ryzen threadripper pro 7955wx ", 32 },
-                { "ryzen threadripper pro 7965wx ", 48 },
-                { "ryzen threadripper pro 7975wx ", 64 },
-                { "ryzen threadripper pro 7985wx ", 128 },
-                { "ryzen threadripper pro 7995wx ", 192 },
-                { "ryzen threadripper 9945wx", 24 },
-                { "ryzen threadripper 9955wx", 32 },
-                { "ryzen threadripper 9975wx", 64 },
-                { "ryzen threadripper 9985wx", 128 },
-                { "ryzen threadripper pro 9995wx", 192 },
-                { "ryzen z1 extreme ", 16 },
-                { "ryzen z1 ", 12 },
-                { "sempron 2650 ", 2 },
-                { "sempron 3850 ", 4 },
-                { "x940 ", 4 },
-                { "z2 extreme ", 16 },
-                { "z2 go ", 8 }
-            };
-
-            constexpr size_t thread_database_count = sizeof(thread_database) / sizeof(thread_database[0]);
-            const std::string cpu_full_name = model;
-
-            const ThreadEntry* best = nullptr;
-            size_t best_len = 0;
-            size_t best_pos = std::string::npos;
-
-            if (cpu_full_name.empty()) return false;
-
-            for (size_t i = 0; i < thread_database_count; ++i) {
-                const char* key = thread_database[i].model;
-                const size_t len = std::strlen(key);
-
-                const size_t p = cpu_full_name.find(key);
-                if (p != std::string::npos && len > best_len) {
-                    best = &thread_database[i];
-                    best_len = len;
-                    best_pos = p;
-                }
-            }
-
-            // Make sure best matches as a whole token, not just as a substring
-            if (best && best_pos != std::string::npos) {
-                size_t pos = best_pos;
-                size_t end = pos + best_len;
-
-                auto isAsciiAlphaNum = [](char c)->bool {
-                    const unsigned char uc = static_cast<unsigned char>(c);
-                    return (uc >= '0' && uc <= '9') || (uc >= 'A' && uc <= 'Z') || (uc >= 'a' && uc <= 'z');
+            auto isAsciiAlphaNum = [](char c)->bool {
+                const unsigned char uc = static_cast<unsigned char>(c);
+                return (uc >= '0' && uc <= '9') || (uc >= 'A' && uc <= 'Z') || (uc >= 'a' && uc <= 'z');
                 };
 
-                const bool left_ok = (pos == 0) || !isAsciiAlphaNum(cpu_full_name[pos - 1]);
-                const bool right_ok = (end == cpu_full_name.size()) || !isAsciiAlphaNum(cpu_full_name[end]);
+            const bool left_ok = (pos == 0) || !isAsciiAlphaNum(cpu_full_name[pos - 1]);
+            const bool right_ok = (end == cpu_full_name.size()) || !isAsciiAlphaNum(cpu_full_name[end]);
 
-                if (left_ok && right_ok) {
-                    const unsigned expected = best->threads;
-                    const unsigned actual = memo::threadcount::fetch();
-                    debug("AMD_THREAD_MISMATCH: Expected threads -> ", expected);
-                    return actual != expected;
-                }
+            if (left_ok && right_ok) {
+                const unsigned expected = best->threads;
+                const unsigned actual = memo::threadcount::fetch();
+                debug("AMD_THREAD_MISMATCH: Expected threads -> ", expected);
+                return actual != expected;
             }
+        }
 
-            return false;
-        #endif
+        return false;
+    #endif
     }
 
 
@@ -4432,25 +4414,25 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::CPUID_SIGNATURE
      */
     [[nodiscard]] static bool cpuid_signature() {
-        #if (!x86)
-            return false;
-        #else
-            u32 eax, unused = 0;
-            cpu::cpuid(eax, unused, unused, unused, 0x40000001);
-            UNUSED(unused);
+    #if (!x86)
+        return false;
+    #else
+        u32 eax, unused = 0;
+        cpu::cpuid(eax, unused, unused, unused, 0x40000001);
+        UNUSED(unused);
 
-            constexpr u32 nanovisor = 0x766E6258; // "Xbnv" 
-            constexpr u32 simplevisor = 0x00766853; // " vhS"
+        constexpr u32 nanovisor = 0x766E6258; // "Xbnv" 
+        constexpr u32 simplevisor = 0x00766853; // " vhS"
 
-            debug("CPUID_SIGNATURE: eax = ", eax);
+        debug("CPUID_SIGNATURE: eax = ", eax);
 
-            if (eax == nanovisor) 
-                return core::add(brands::NANOVISOR);
-            else if (eax == simplevisor)
-                return core::add(brands::SIMPLEVISOR);
+        if (eax == nanovisor)
+            return core::add(brands::NANOVISOR);
+        else if (eax == simplevisor)
+            return core::add(brands::SIMPLEVISOR);
 
-            return false;
-        #endif
+        return false;
+    #endif
     }
                 
                 
@@ -4461,21 +4443,21 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::KGT_SIGNATURE
      */
     [[nodiscard]] static bool intel_kgt_signature() {
-        #if (!x86)
-            return false;
-        #else
-            u32 unused, ecx, edx = 0;
-            cpu::cpuid(unused, unused, ecx, edx, 0x40000003);
-                
-            constexpr u32 ECX_SIG = 0x4D4D5645u; // 'EVMM' -> 0x4D4D5645
-            constexpr u32 EDX_SIG = 0x43544E49u;  // 'INTC' -> 0x43544E49
+    #if (!x86)
+        return false;
+    #else
+        u32 unused, ecx, edx = 0;
+        cpu::cpuid(unused, unused, ecx, edx, 0x40000003);
 
-            if (ecx == ECX_SIG && edx == EDX_SIG) {
-                return core::add(brands::INTEL_KGT);
-            }
+        constexpr u32 ECX_SIG = 0x4D4D5645u; // 'EVMM' -> 0x4D4D5645
+        constexpr u32 EDX_SIG = 0x43544E49u;  // 'INTC' -> 0x43544E49
 
-            return false;
-        #endif
+        if (ecx == ECX_SIG && edx == EDX_SIG) {
+            return core::add(brands::INTEL_KGT);
+        }
+
+        return false;
+    #endif
     }
 
 
@@ -4525,205 +4507,205 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         debug("TIMER: Average latency -> ", avg, " cycles");
 
-        if (avg >= cycleThreshold) return true; // Intel's Emerald Rapids have much more cycles when executing CPUID than the rest of intel cpus
-    #if (WINDOWS)
-        // Case B - Hypervisor with RDTSC patch + useplatformclock=true
-        LARGE_INTEGER freq;
-        if (!QueryPerformanceFrequency(&freq)) // NtPowerInformation is avoided as some hypervisors downscale tsc only if we triggered a context switch from userspace
-            return false;
+        if (avg >= cycleThreshold) return true; // some CPUs like Intel's Emerald Rapids have much more cycles when executing CPUID than average, we should accept a high threshold
+        #if (WINDOWS)
+            // Case B - Hypervisor with RDTSC patch + useplatformclock=true
+            LARGE_INTEGER freq;
+            if (!QueryPerformanceFrequency(&freq)) // NtPowerInformation is avoided as some hypervisors downscale tsc only if we triggered a context switch from userspace
+                return false;
 
-        // calculates the invariant TSC base rate, not the dynamic core frequency, similar to what CallNtPowerInformation would give you
-        LARGE_INTEGER t1q, t2q;
-        u64 t1 = __rdtsc();
-        QueryPerformanceCounter(&t1q); // uses RDTSCP under the hood unless platformclock (a bcdedit setting) is set, which then would use HPET or ACPI PM via NtQueryPerformanceCounter
-        SleepEx(50, 0);
-        QueryPerformanceCounter(&t2q);
-        u64 t2 = __rdtsc();
+            // calculates the invariant TSC base rate, not the dynamic core frequency, similar to what CallNtPowerInformation would give you
+            LARGE_INTEGER t1q, t2q;
+            u64 t1 = __rdtsc();
+            QueryPerformanceCounter(&t1q); // uses RDTSCP under the hood unless platformclock (a bcdedit setting) is set, which then would use HPET or ACPI PM via NtQueryPerformanceCounter
+            SleepEx(50, 0);
+            QueryPerformanceCounter(&t2q);
+            u64 t2 = __rdtsc();
 
-        const double elapsedSec = double(t2q.QuadPart - t1q.QuadPart) / double(freq.QuadPart); // the performance counter frequency is always 10MHz when running under Hyper-V
-        const double tscHz = double(t2 - t1) / elapsedSec;
-        const double tscMHz = tscHz / 1e6;
+            const double elapsedSec = double(t2q.QuadPart - t1q.QuadPart) / double(freq.QuadPart); // the performance counter frequency is always 10MHz when running under Hyper-V
+            const double tscHz = double(t2 - t1) / elapsedSec;
+            const double tscMHz = tscHz / 1e6;
 
-        debug("TIMER: Current CPU base speed -> ", tscMHz, " MHz");
+            debug("TIMER: Current CPU base speed -> ", tscMHz, " MHz");
 
-        if (tscMHz < 1000) return true;
+            if (tscMHz < 1000) return true;
 
-        const struct cpu::stepping_struct steps = cpu::fetch_steppings();
-        u32 baseMHz = cpu::get_cpu_base_speed();
+            const struct cpu::stepping_struct steps = cpu::fetch_steppings();
+            u32 baseMHz = cpu::get_cpu_base_speed();
 
-        if (baseMHz == 0) {
-            debug("TIMER: Processor base speed not found, SMBIOS possibly corrupted?");
-            baseMHz = 1200;
-        }
+            if (baseMHz == 0) {
+                debug("TIMER: Processor base speed not found, SMBIOS possibly corrupted?");
+                baseMHz = 1200;
+            }
 
-        if (baseMHz < 1000) return true; // sorry old CPUs, won't be deterministic to conclude a VM tho
+            if (baseMHz < 1000) return true; // sorry old CPUs, won't be deterministic to conclude a VM tho
         
-        debug("TIMER: Processor base speed -> ", static_cast<double>(baseMHz), " MHz");
+            debug("TIMER: Processor base speed -> ", static_cast<double>(baseMHz), " MHz");
 
-        if (tscMHz < static_cast<double>(baseMHz) - 200.0) {
-            return true;
-        }
-
-        // Check for RDTSC support, we will use it on case D
-        unsigned aux = 0;
-        {
-    #if (WINDOWS && x86_64)
-            const bool haveRdtscp = [&]() noexcept -> bool {
-                __try {
-                    __rdtscp(&aux); // check for RDTSCP support as we will use it later
-                    return true;
-                }
-                __except (EXCEPTION_EXECUTE_HANDLER) {
-                    return false;
-                }
-            }();
-    #else
-            UNUSED(aux);
-            int regs[4] = { 0 };
-            cpu::cpuid(regs, 0x80000001);
-            const bool haveRdtscp = (regs[3] & (1u << 27)) != 0;
-    #endif
-            if (!haveRdtscp) {
-                debug("TIMER: RDTSCP instruction not supported"); // __rdtscp should be supported nowadays
+            if (tscMHz < static_cast<double>(baseMHz) - 200.0) {
                 return true;
             }
-        }
 
-        // Case C - low vmexit overhead with no rdtsc patch, https://lwn.net/Articles/790464/
-        const HANDLE th = GetCurrentThread();
-        const DWORD_PTR prevMask = SetThreadAffinityMask(th, 1); // to reduce context switching/scheduling
-        if (!prevMask)
-            return false;
-        const bool timer_need_restore_affinity = (prevMask != 0);
+            // Check for RDTSC support, we will use it on case D
+            unsigned aux = 0;
+            {
+            #if (x86_64)
+                const bool haveRdtscp = [&]() noexcept -> bool {
+                    __try {
+                        __rdtscp(&aux); // check for RDTSCP support as we will use it later
+                        return true;
+                    }
+                    __except (EXCEPTION_EXECUTE_HANDLER) {
+                        return false;
+                    }
+                }();
+            #else
+                UNUSED(aux);
+                int regs[4] = { 0 };
+                cpu::cpuid(regs, 0x80000001);
+                const bool haveRdtscp = (regs[3] & (1u << 27)) != 0;
+            #endif
+                if (!haveRdtscp) {
+                    debug("TIMER: RDTSCP instruction not supported"); // __rdtscp should be supported nowadays
+                    return true;
+                }
+            }
 
-        // allocate buffer aligned to 64 so we can pick an address crossing a 64B boundary
-        const size_t BUFSZ = 128;
-        const size_t ALIGN = 64;
-        void* raw = _aligned_malloc(BUFSZ, ALIGN);
-        if (!raw) {
-            SetThreadAffinityMask(th, prevMask);
-            return false;
-        }
-        memset(raw, 0, BUFSZ);
-        unsigned char* buf = (unsigned char*)raw;
-        volatile long long* misaligned_ptr = reinterpret_cast<volatile long long*>(buf + 60); // spans 60..67
+            // Case C - low vmexit overhead with no rdtsc patch, https://lwn.net/Articles/790464/
+            const HANDLE th = GetCurrentThread();
+            const DWORD_PTR prevMask = SetThreadAffinityMask(th, 1); // to reduce context switching/scheduling
+            if (!prevMask)
+                return false;
+            const bool timer_need_restore_affinity = (prevMask != 0);
 
-        void* exec_mem = nullptr;
+            // allocate buffer aligned to 64 so we can pick an address crossing a 64B boundary
+            const size_t BUFSZ = 128;
+            const size_t ALIGN = 64;
+            void* raw = _aligned_malloc(BUFSZ, ALIGN);
+            if (!raw) {
+                SetThreadAffinityMask(th, prevMask);
+                return false;
+            }
+            memset(raw, 0, BUFSZ);
+            unsigned char* buf = (unsigned char*)raw;
+            volatile long long* misaligned_ptr = reinterpret_cast<volatile long long*>(buf + 60); // spans 60..67
 
-        auto cleanup = [&]() noexcept {
-        #if (x86_64 && MSVC && !CLANG)
-            if (exec_mem) VirtualFree(exec_mem, 0, MEM_RELEASE);
-        #endif
-            if (raw) _aligned_free(raw);
-            SetThreadAffinityMask(th, prevMask);
-        };
+            void* exec_mem = nullptr;
 
-    #if (x86_64)
-        #if (MSVC && !CLANG) 
-            typedef void (*inc_fn_t)(volatile long long*);
-            const unsigned char stub_bytes[] = { 0xF0, 0x48, 0xFF, 0x01, 0xC3 }; // lock; inc qword ptr [rcx]; ret
-            exec_mem = VirtualAlloc(nullptr, 4096, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
-            if (!exec_mem) {
+            auto cleanup = [&]() noexcept {
+            #if (x86_64 && MSVC && !CLANG)
+                if (exec_mem) VirtualFree(exec_mem, 0, MEM_RELEASE);
+            #endif
+                if (raw) _aligned_free(raw);
+                SetThreadAffinityMask(th, prevMask);
+            };
+
+            #if (x86_64)
+                #if (MSVC && !CLANG) 
+                    typedef void (*inc_fn_t)(volatile long long*);
+                    const unsigned char stub_bytes[] = { 0xF0, 0x48, 0xFF, 0x01, 0xC3 }; // lock; inc qword ptr [rcx]; ret
+                    exec_mem = VirtualAlloc(nullptr, 4096, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+                    if (!exec_mem) {
+                        cleanup();
+                        return false;
+                    }
+                    memcpy(exec_mem, stub_bytes, sizeof(stub_bytes));
+                    FlushInstructionCache(GetCurrentProcess(), exec_mem, sizeof(stub_bytes));
+                    const inc_fn_t inc_misaligned = (inc_fn_t)exec_mem;
+
+                    auto do_misaligned_inc = [&](volatile long long* p) {
+                        // RCX will receive the pointer per Windows x64 ABI
+                        inc_misaligned(p);
+                    };
+                #else
+                    UNUSED(exec_mem);
+                    auto do_misaligned_inc = [&](volatile long long* p) {
+                        __asm__ __volatile__("lock; incq %0" : "+m"(*p) : : "memory");
+                    };
+                #endif
+            #else
+                auto do_misaligned_inc = [&](volatile long long* p) {
+                    // Looping CAS, doc warns about alignment, but this is the only practical path on Windows x86 that i can think of
+                    LONG64 oldv;
+                    LONG64 prev;
+                    do {
+                        // read non-atomically to form desired value; this is ok as CAS will fail if value changed
+                        oldv = *p;
+                        prev = InterlockedCompareExchange64((volatile LONG64*)p, oldv + 1, oldv);
+                    } while (prev != oldv);
+                };
+            #endif
+
+            // warmup to let caches settle and avoid first-call overhead of stub
+            for (int i = 0; i < 200; ++i) do_misaligned_inc(misaligned_ptr);
+
+            if (!QueryPerformanceFrequency(&freq)) {
                 cleanup();
                 return false;
             }
-            memcpy(exec_mem, stub_bytes, sizeof(stub_bytes));
-            FlushInstructionCache(GetCurrentProcess(), exec_mem, sizeof(stub_bytes));
-            const inc_fn_t inc_misaligned = (inc_fn_t)exec_mem;
+            const double ns_per_tick = 1e9 / static_cast<double>(freq.QuadPart);
 
-            auto do_misaligned_inc = [&](volatile long long* p) {
-                // RCX will receive the pointer per Windows x64 ABI
-                inc_misaligned(p);
-            };
-        #else
-            UNUSED(exec_mem);
-            auto do_misaligned_inc = [&](volatile long long* p) {
-                __asm__ __volatile__("lock; incq %0" : "+m"(*p) : : "memory");
-            };
-        #endif
-    #else
-        auto do_misaligned_inc = [&](volatile long long* p) {
-            // Looping CAS, doc warns about alignment, but this is the only practical path on Windows x86 that i can think of
-            LONG64 oldv;
-            LONG64 prev;
-            do {
-                // read non-atomically to form desired value; this is ok as CAS will fail if value changed
-                oldv = *p;
-                prev = InterlockedCompareExchange64((volatile LONG64*)p, oldv + 1, oldv);
-            } while (prev != oldv);
-        };
-    #endif
+            const int ITER = 20000;
+            std::vector<u64> data;
+            data.reserve(ITER);
 
-        // warmup to let caches settle and avoid first-call overhead of stub
-        for (int i = 0; i < 200; ++i) do_misaligned_inc(misaligned_ptr);
+            for (int i = 0; i < ITER; ++i) {
+                QueryPerformanceCounter(&t1q);
 
-        if (!QueryPerformanceFrequency(&freq)) {
+                do_misaligned_inc(misaligned_ptr);
+
+                QueryPerformanceCounter(&t2q);
+                const LONGLONG delta_q = t2q.QuadPart - t1q.QuadPart;
+                u64 dt_ns = static_cast<u64>(static_cast<double>(delta_q) * ns_per_tick);
+                data.push_back(dt_ns);
+            }
+
+            const u64 suspicious_ns = 8ULL * 1000000ULL; // 8 ms
+            int suspicious_count = 0;
+            for (auto v : data) if (v >= suspicious_ns) suspicious_count++;
             cleanup();
-            return false;
-        }
-        const double ns_per_tick = 1e9 / static_cast<double>(freq.QuadPart);
 
-        const int ITER = 20000;
-        std::vector<u64> data;
-        data.reserve(ITER);
+            if (suspicious_count >= 5)
+                return true;
 
-        for (int i = 0; i < ITER; ++i) {
-            QueryPerformanceCounter(&t1q);
+            if (timer_need_restore_affinity) SetThreadAffinityMask(th, prevMask);
+            if (cycleThreshold == 25000) return false; // if we're running under Hyper-V, do not run case D
 
-            do_misaligned_inc(misaligned_ptr);
+            // Case D - Hypervisor with RDTSC patch + useplatformclock = false
+            const int TRIALS = 20; // enough to warm up the syscall path, higher values will hardly evict spikes
+            std::vector<double> ratios;
+            ratios.reserve(TRIALS);
 
-            QueryPerformanceCounter(&t2q);
-            const LONGLONG delta_q = t2q.QuadPart - t1q.QuadPart;
-            u64 dt_ns = static_cast<u64>(static_cast<double>(delta_q) * ns_per_tick);
-            data.push_back(dt_ns);
-        }
+            for (int i = 0; i < TRIALS; ++i) {
+                t1 = __rdtscp(&aux); // serializing to avoid speculative execution, which would increase the ratio
+                GetProcessHeap(); // user-mode call
+                t2 = __rdtscp(&aux);
 
-        const u64 suspicious_ns = 8ULL * 1000000ULL; // 8 ms
-        int suspicious_count = 0;
-        for (auto v : data) if (v >= suspicious_ns) suspicious_count++;
-        cleanup();
+                // some hypervisors like DBVM will add a low base value + some random tsc value if the difference between tsc reads is less than 4000 cycles or so
+                // this could be handled by doing something like for (int i = 0; i < AGG; ++i) CloseHandle(INVALID_HANDLE_VALUE); or sleeping the thread to induce cache flushing too
+                // so the measured syscall time >> hypervisor patch window, but its not an elegant solution at all
+                CloseHandle(INVALID_HANDLE_VALUE); // kernel syscall
+                const u64 t3 = __rdtscp(&aux); // on modern Intel and AMD CPUs the TSC is "invariant" (doesn't change with P-states or C-states)
 
-        if (suspicious_count >= 5)
-            return true;
-
-        if (timer_need_restore_affinity) SetThreadAffinityMask(th, prevMask);
-        if (cycleThreshold == 25000) return false; // if we're running under Hyper-V, do not run case D
-
-        // Case D - Hypervisor with RDTSC patch + useplatformclock = false
-        const int TRIALS = 20; // enough to warm up the syscall path, higher values will hardly evict spikes
-        std::vector<double> ratios;
-        ratios.reserve(TRIALS);
-
-        for (int i = 0; i < TRIALS; ++i) {
-            t1 = __rdtscp(&aux); // serializing to avoid speculative execution, which would increase the ratio
-            GetProcessHeap(); // user-mode call
-            t2 = __rdtscp(&aux);
-
-            // some hypervisors like DBVM will add a low base value + some random tsc value if the difference between tsc reads is less than 4000 cycles or so
-            // this could be handled by doing something like for (int i = 0; i < AGG; ++i) CloseHandle(INVALID_HANDLE_VALUE); or sleeping the thread to induce cache flushing too
-            // so the measured syscall time >> hypervisor patch window, but its not an elegant solution at all
-            CloseHandle(INVALID_HANDLE_VALUE); // kernel syscall
-            const u64 t3 = __rdtscp(&aux); // on modern Intel and AMD CPUs the TSC is "invariant" (doesn't change with P-states or C-states)
-
-            // older chips often lack an invariant TSC and can be queried in CPUID 0x80000007 EDX[8], the medians should be larger but if they are larger they won't produce false flags
+                // older chips often lack an invariant TSC and can be queried in CPUID 0x80000007 EDX[8], the medians should be larger but if they are larger they won't produce false flags
             
-            // important to not debug cycles by printing but with breakpoints and stack analysis, otherwise the CPU would cache and make the ratio much lower
-            const u64 userCycles = t2 - t1;
-            const u64 sysCycles = t3 - t2;
-            if (userCycles == 0)
-                continue;
+                // important to not debug cycles by printing but with breakpoints and stack analysis, otherwise the CPU would cache and make the ratio much lower
+                const u64 userCycles = t2 - t1;
+                const u64 sysCycles = t3 - t2;
+                if (userCycles == 0)
+                    continue;
             
-            const double ratio = static_cast<double>(sysCycles) / static_cast<double>(userCycles);
-            ratios.push_back(ratio);
-        }      
+                const double ratio = static_cast<double>(sysCycles) / static_cast<double>(userCycles);
+                ratios.push_back(ratio);
+            }      
 
-        std::sort(ratios.begin(), ratios.end());
-        const double tscMedian = ratios[ratios.size() / 2]; // to minimize jittering due to kernel noise
-        debug("TIMER: Median syscall/user-mode ratio -> ", tscMedian);
+            std::sort(ratios.begin(), ratios.end());
+            const double tscMedian = ratios[ratios.size() / 2]; // to minimize jittering due to kernel noise
+            debug("TIMER: Median syscall/user-mode ratio -> ", tscMedian);
 
-        if (tscMedian < 6.5) return true; // < on purpose
-        // TLB flushes or side channel cache attacks are not even tried due to how ineffective they are against stealthy hypervisors
-    #endif
+            if (tscMedian < 6.5) return true; // < on purpose
+            // TLB flushes or side channel cache attacks are not even tried due to how ineffective they are against stealthy hypervisors
+        #endif
         return false;
     #endif
     }
@@ -4909,7 +4891,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             debug("MAC: ", "not successful");
         }
 
-#ifdef __VMAWARE_DEBUG__
+    #ifdef __VMAWARE_DEBUG__
         {
             std::stringstream ss;
             ss << std::hex << std::setw(2) << std::setfill('0')
@@ -4918,7 +4900,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 << static_cast<int>(mac[2]) << ":XX:XX:XX";
             debug("MAC: ", ss.str());
         }
-#endif
+    #endif
 
         if ((mac[0] | mac[1] | mac[2]) == 0) {
             return false;
@@ -4961,34 +4943,38 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::DMESG
      */
     [[nodiscard]] static bool dmesg() {
-        #if (CPP <= 11)
+    #if (CPP <= 11)
+        return false;
+    #else
+        if (!util::is_admin()) {
             return false;
-        #else
-            if (!util::is_admin()) {
-                return false;
-            }
+        }
 
-            if (!util::exists("/bin/dmesg") && !util::exists("/usr/bin/dmesg")) {
-                debug("DMESG: ", "binary doesn't exist");
-                return false;
-            }
-
-            const std::unique_ptr<std::string> result = util::sys_result("dmesg | grep -i hypervisor | grep -c \"KVM|QEMU\"");
-
-            if (!result || result->empty()) {
-                return false;
-            } else if (*result == "KVM") {
-                return core::add(brands::KVM);
-            } else if (*result == "QEMU") {
-                return core::add(brands::QEMU);
-            } else if (std::atoi(result->c_str())) {
-                return true;
-            } else {
-                debug("DMESG: ", "output = ", *result);
-            }
-
+        if (!util::exists("/bin/dmesg") && !util::exists("/usr/bin/dmesg")) {
+            debug("DMESG: ", "binary doesn't exist");
             return false;
-        #endif
+        }
+
+        const std::unique_ptr<std::string> result = util::sys_result("dmesg | grep -i hypervisor | grep -c \"KVM|QEMU\"");
+
+        if (!result || result->empty()) {
+            return false;
+        }
+        else if (*result == "KVM") {
+            return core::add(brands::KVM);
+        }
+        else if (*result == "QEMU") {
+            return core::add(brands::QEMU);
+        }
+        else if (std::atoi(result->c_str())) {
+            return true;
+        }
+        else {
+            debug("DMESG: ", "output = ", *result);
+        }
+
+        return false;
+    #endif
     }
 
 
@@ -5053,18 +5039,18 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::BLUESTACKS_FOLDERS
      */
     [[nodiscard]] static bool bluestacks() {
-        #if (!ARM)
-            return false;
-        #else
-            if (
-                util::exists("/mnt/windows/BstSharedFolder") ||
-                util::exists("/sdcard/windows/BstSharedFolder")
+    #if (!ARM)
+        return false;
+    #else
+        if (
+            util::exists("/mnt/windows/BstSharedFolder") ||
+            util::exists("/sdcard/windows/BstSharedFolder")
             ) {
-                return core::add(brands::BLUESTACKS);
-            }
+            return core::add(brands::BLUESTACKS);
+        }
 
-            return false;
-        #endif
+        return false;
+    #endif
     }
 
 
@@ -5076,55 +5062,55 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::AMD_SEV
 	 */
 	[[nodiscard]] static bool amd_sev() {
-        #if (x86 && (LINUX || APPLE))
-            if (!cpu::is_amd()) {
-                return false;
-            }
-            
-            if (!util::is_admin()) {
-                return false;
-            }
-        
-            constexpr u32 encrypted_memory_capability = 0x8000001f;
-            constexpr u32 msr_index = 0xc0010131;	  
-            
-            if (!cpu::is_leaf_supported(encrypted_memory_capability)) {
-                return false;
-            }
-            
-            u32 eax, unused = 0;
-            cpu::cpuid(eax, unused, unused, unused, encrypted_memory_capability);
-                
-            if (!(eax & (1 << 1))) {
-                return false;
-            }       
-        
-            u64 result = 0;
-            
-            const std::string msr_device = "/dev/cpu/0/msr";
-            std::ifstream msr_file(msr_device, std::ios::binary);
-    
-            if (!msr_file.is_open()) {
-                debug("AMD_SEV: unable to open MSR file");
-                return false;
-            }
-    
-            msr_file.seekg(msr_index);
-            msr_file.read(reinterpret_cast<char*>(&result), sizeof(result));
-    
-            if (!msr_file) {
-                debug("AMD_SEV: unable to open MSR file");
-                return false;
-            }
-    
-            if (result & (static_cast<unsigned long long>(1) << 2)) { return core::add(brands::AMD_SEV_SNP); }
-            else if (result & (static_cast<unsigned long long>(1) << 1)) { return core::add(brands::AMD_SEV_ES); }
-            else if (result & 1) { return core::add(brands::AMD_SEV); }
-        
+    #if (x86 && (LINUX || APPLE))
+        if (!cpu::is_amd()) {
             return false;
-        #else
+        }
+
+        if (!util::is_admin()) {
             return false;
-        #endif
+        }
+
+        constexpr u32 encrypted_memory_capability = 0x8000001f;
+        constexpr u32 msr_index = 0xc0010131;
+
+        if (!cpu::is_leaf_supported(encrypted_memory_capability)) {
+            return false;
+        }
+
+        u32 eax, unused = 0;
+        cpu::cpuid(eax, unused, unused, unused, encrypted_memory_capability);
+
+        if (!(eax & (1 << 1))) {
+            return false;
+        }
+
+        u64 result = 0;
+
+        const std::string msr_device = "/dev/cpu/0/msr";
+        std::ifstream msr_file(msr_device, std::ios::binary);
+
+        if (!msr_file.is_open()) {
+            debug("AMD_SEV: unable to open MSR file");
+            return false;
+        }
+
+        msr_file.seekg(msr_index);
+        msr_file.read(reinterpret_cast<char*>(&result), sizeof(result));
+
+        if (!msr_file) {
+            debug("AMD_SEV: unable to open MSR file");
+            return false;
+        }
+
+        if (result & (static_cast<unsigned long long>(1) << 2)) { return core::add(brands::AMD_SEV_SNP); }
+        else if (result & (static_cast<unsigned long long>(1) << 1)) { return core::add(brands::AMD_SEV_ES); }
+        else if (result & 1) { return core::add(brands::AMD_SEV); }
+
+        return false;
+    #else
+        return false;
+    #endif
     }
 
 
@@ -5860,107 +5846,107 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::SIDT
      */
     [[nodiscard]] static bool sidt() {
-        #if (LINUX && (GCC || CLANG))
-            u8 values[10] = { 0 };
+    #if (LINUX && (GCC || CLANG))
+        u8 values[10] = { 0 };
 
-            fflush(stdout);
+        fflush(stdout);
 
-            #if (x86_64)
+        #if (x86_64)
                 // 64-bit Linux: IDT descriptor is 10 bytes (2-byte limit + 8-byte base)
                 __asm__ __volatile__("sidt %0" : "=m"(values));
 
-            #ifdef __VMAWARE_DEBUG__
+        #ifdef __VMAWARE_DEBUG__
                 debug("SIDT5: values = ");
                 for (u8 i = 0; i < 10; ++i) {
                     debug(std::hex, std::setw(2), std::setfill('0'), static_cast<unsigned>(values[i]));
                     if (i < 9) debug(" ");
                 }
-            #endif
+        #endif
 
-            return (values[9] == 0x00);  // 10th byte in x64 mode
+                return (values[9] == 0x00);  // 10th byte in x64 mode
 
-            #elif (x86_32)
+        #elif (x86_32)
                 // 32-bit Linux: IDT descriptor is 6 bytes (2-byte limit + 4-byte base)
                 __asm__ __volatile__("sidt %0" : "=m"(values));
 
-                #ifdef __VMAWARE_DEBUG__
-                    debug("SIDT5: values = ");
-                    for (u8 i = 0; i < 6; ++i) {
-                        debug(std::hex, std::setw(2), std::setfill('0'), static_cast<unsigned>(values[i]));
-                        if (i < 5) debug(" ");
-                    }
-                #endif
+        #ifdef __VMAWARE_DEBUG__
+                debug("SIDT5: values = ");
+                for (u8 i = 0; i < 6; ++i) {
+                    debug(std::hex, std::setw(2), std::setfill('0'), static_cast<unsigned>(values[i]));
+                    if (i < 5) debug(" ");
+                }
+        #endif
 
                 return (values[5] == 0x00);  // 6th byte in x86 mode
 
-            #else
-                return false;
-            #endif
-        #elif (WINDOWS)
-            SYSTEM_INFO si;
-            GetNativeSystemInfo(&si);
-
-            DWORD_PTR originalMask = 0;
-
-            for (DWORD i = 0; i < si.dwNumberOfProcessors; ++i) {
-                const DWORD_PTR mask = (DWORD_PTR)1 << i;
-                const DWORD_PTR previousMask = SetThreadAffinityMask(GetCurrentThread(), mask);
-
-                if (previousMask == 0) {
-                    continue;
-                }
-
-                if (originalMask == 0) {
-                    originalMask = previousMask;
-                }
-
-            #if (x86_64)
-                unsigned char idtr_buffer[10] = { 0 };
-            #else
-                unsigned char idtr_buffer[6] = { 0 };
-            #endif
-
-                __try {
-                #if (CLANG || GCC)
-                    __asm__ volatile("sidt %0" : "=m"(idtr_buffer));
-                #elif (MSVC) && (x86_32)
-                    __asm { sidt idtr_buffer }
-                #elif (MSVC) && (x86_64)
-                #pragma pack(push, 1)
-                    struct { USHORT Limit; ULONG_PTR Base; } idtr;
-                #pragma pack(pop)
-                    __sidt(&idtr);
-                    memcpy(idtr_buffer, &idtr, sizeof(idtr));
-                #endif
-                }
-                __except (EXCEPTION_EXECUTE_HANDLER) {} // CR4.UMIP
-
-                ULONG_PTR idt_base = 0;
-            #if (x86_64)
-                idt_base = *reinterpret_cast<ULONG_PTR*>(&idtr_buffer[2]);
-            #else
-                idt_base = *reinterpret_cast<ULONG*>(&idtr_buffer[2]);
-            #endif
-
-                // Check for the 0xE8 signature (VPC/Hyper-V) in the high byte
-                if ((idt_base >> 24) == 0xE8) {
-                    debug("SIDT: VPC/Hyper-V signature detected on core %u", i);
-
-                    if (originalMask != 0) {
-                        SetThreadAffinityMask(GetCurrentThread(), originalMask);
-                    }
-                    return core::add(brands::VPC); 
-                }
-            }
-
-            if (originalMask != 0) {
-                SetThreadAffinityMask(GetCurrentThread(), originalMask);
-            }
-
-            return false; 
         #else
-            return false;
+                return false;
         #endif
+    #elif (WINDOWS)
+        SYSTEM_INFO si;
+        GetNativeSystemInfo(&si);
+
+        DWORD_PTR originalMask = 0;
+
+        for (DWORD i = 0; i < si.dwNumberOfProcessors; ++i) {
+            const DWORD_PTR mask = (DWORD_PTR)1 << i;
+            const DWORD_PTR previousMask = SetThreadAffinityMask(GetCurrentThread(), mask);
+
+            if (previousMask == 0) {
+                continue;
+            }
+
+            if (originalMask == 0) {
+                originalMask = previousMask;
+            }
+
+        #if (x86_64)
+            unsigned char idtr_buffer[10] = { 0 };
+        #else
+            unsigned char idtr_buffer[6] = { 0 };
+        #endif
+
+            __try {
+        #if (CLANG || GCC)
+                __asm__ volatile("sidt %0" : "=m"(idtr_buffer));
+        #elif (MSVC) && (x86_32)
+                __asm { sidt idtr_buffer }
+        #elif (MSVC) && (x86_64)
+            #pragma pack(push, 1)
+                struct { USHORT Limit; ULONG_PTR Base; } idtr;
+            #pragma pack(pop)
+                __sidt(&idtr);
+                memcpy(idtr_buffer, &idtr, sizeof(idtr));
+        #endif
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER) {} // CR4.UMIP
+
+            ULONG_PTR idt_base = 0;
+        #if (x86_64)
+            idt_base = *reinterpret_cast<ULONG_PTR*>(&idtr_buffer[2]);
+        #else
+            idt_base = *reinterpret_cast<ULONG*>(&idtr_buffer[2]);
+        #endif
+
+            // Check for the 0xE8 signature (VPC/Hyper-V) in the high byte
+            if ((idt_base >> 24) == 0xE8) {
+                debug("SIDT: VPC/Hyper-V signature detected on core %u", i);
+
+                if (originalMask != 0) {
+                    SetThreadAffinityMask(GetCurrentThread(), originalMask);
+                }
+                return core::add(brands::VPC);
+            }
+        }
+
+        if (originalMask != 0) {
+            SetThreadAffinityMask(GetCurrentThread(), originalMask);
+        }
+
+        return false;
+    #else
+        return false;
+    #endif
     }
 
 
@@ -7578,50 +7564,50 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::VPC_INVALID
      */
     [[nodiscard]] static bool vpc_invalid() {
-        #if (x86_32 && !CLANG)
-            bool rc = false;
+    #if (x86_32 && !CLANG)
+        bool rc = false;
 
-            auto IsInsideVPC_exceptionFilter = [](PEXCEPTION_POINTERS ep) -> DWORD {
-                PCONTEXT ctx = ep->ContextRecord;
+        auto IsInsideVPC_exceptionFilter = [](PEXCEPTION_POINTERS ep) -> DWORD {
+            PCONTEXT ctx = ep->ContextRecord;
 
-                ctx->Ebx = static_cast<DWORD>(-1); // Not running VPC
-                ctx->Eip += 4; // skip past the "call VPC" opcodes
-                return static_cast<DWORD>(EXCEPTION_CONTINUE_EXECUTION);
-                // we can safely resume execution since we skipped faulty instruction
+            ctx->Ebx = static_cast<DWORD>(-1); // Not running VPC
+            ctx->Eip += 4; // skip past the "call VPC" opcodes
+            return static_cast<DWORD>(EXCEPTION_CONTINUE_EXECUTION);
+            // we can safely resume execution since we skipped faulty instruction
             };
 
-            __try {
-                __asm {
-                    push eax
-                    push ebx
-                    push ecx
-                    push edx
+        __try {
+            __asm {
+                push eax
+                push ebx
+                push ecx
+                push edx
 
-                    mov ebx, 0h
-                    mov eax, 01h
+                mov ebx, 0h
+                mov eax, 01h
 
-                    __emit 0Fh
-                    __emit 3Fh
-                    __emit 07h
-                    __emit 0Bh
+                __emit 0Fh
+                __emit 3Fh
+                __emit 07h
+                __emit 0Bh
 
-                    test ebx, ebx
-                    setz[rc]
+                test ebx, ebx
+                setz[rc]
 
-                    pop edx
-                    pop ecx
-                    pop ebx
-                    pop eax
-                }
+                pop edx
+                pop ecx
+                pop ebx
+                pop eax
             }
-            __except (IsInsideVPC_exceptionFilter(GetExceptionInformation())) {
-                rc = false;
-            }
+        }
+        __except (IsInsideVPC_exceptionFilter(GetExceptionInformation())) {
+            rc = false;
+        }
 
-            return rc;
-        #else
-            return false;
-        #endif
+        return rc;
+    #else
+        return false;
+    #endif
     }
 
 
@@ -7706,52 +7692,52 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::SLDT
      */
     [[nodiscard]] static bool sldt() {
-        #if (x86_32)
-            SYSTEM_INFO si;
-            GetNativeSystemInfo(&si);
-            const DWORD_PTR origMask = SetThreadAffinityMask(GetCurrentThread(), 1);
-            SetThreadAffinityMask(GetCurrentThread(), origMask);
+    #if (x86_32)
+        SYSTEM_INFO si;
+        GetNativeSystemInfo(&si);
+        const DWORD_PTR origMask = SetThreadAffinityMask(GetCurrentThread(), 1);
+        SetThreadAffinityMask(GetCurrentThread(), origMask);
 
-            bool found = false;
-            for (DWORD i = 0; i < si.dwNumberOfProcessors; ++i) {
-                const DWORD_PTR mask = (DWORD_PTR)1 << i;
-                if (SetThreadAffinityMask(GetCurrentThread(), mask) == 0)
-                    continue;
+        bool found = false;
+        for (DWORD i = 0; i < si.dwNumberOfProcessors; ++i) {
+            const DWORD_PTR mask = (DWORD_PTR)1 << i;
+            if (SetThreadAffinityMask(GetCurrentThread(), mask) == 0)
+                continue;
 
-                unsigned char ldtr_buf[4] = { 0xEF, 0xBE, 0xAD, 0xDE };
-                u32 ldt_val = 0;
+            unsigned char ldtr_buf[4] = { 0xEF, 0xBE, 0xAD, 0xDE };
+            u32 ldt_val = 0;
 
-                __try {
-            #if (CLANG || GCC)
-                    __asm__ volatile("sldt %0" : "=m"(*(u16*)ldtr_buf));
-            #else  // MSVC
-                    __asm {
-                        sldt ax
-                        mov  word ptr[ldtr_buf], ax
-                    }
-            #endif
+            __try {
+        #if (CLANG || GCC)
+                __asm__ volatile("sldt %0" : "=m"(*(u16*)ldtr_buf));
+        #else  // MSVC
+                __asm {
+                    sldt ax
+                    mov  word ptr[ldtr_buf], ax
                 }
-                __except (EXCEPTION_EXECUTE_HANDLER) {} // CR4.UMIP
+        #endif
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER) {} // CR4.UMIP
 
-                memcpy(&ldt_val, ldtr_buf, sizeof(ldt_val));
-                if (ldtr_buf[0] != 0x00 && ldtr_buf[1] != 0x00) {
-                    debug("SLDT: ldtr_buf signature detected");
-                    found = true;
-                }
-                if (ldt_val != 0xDEAD0000) {
-                    debug("SLDT: 0xDEAD0000 signature detected");
-                    found = true;
-                }
-
-                if (found)
-                    break;
+            memcpy(&ldt_val, ldtr_buf, sizeof(ldt_val));
+            if (ldtr_buf[0] != 0x00 && ldtr_buf[1] != 0x00) {
+                debug("SLDT: ldtr_buf signature detected");
+                found = true;
+            }
+            if (ldt_val != 0xDEAD0000) {
+                debug("SLDT: 0xDEAD0000 signature detected");
+                found = true;
             }
 
-            SetThreadAffinityMask(GetCurrentThread(), origMask);
-            return found;
-        #else
-            return false;
-        #endif
+            if (found)
+                break;
+        }
+
+        SetThreadAffinityMask(GetCurrentThread(), origMask);
+        return found;
+    #else
+        return false;
+    #endif
     }
 
 
@@ -7762,25 +7748,25 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::SMSW
      */
     [[nodiscard]] static bool smsw() {
-        #if (!x86_64)
-            return false;
-        #elif (x86_32)
-            unsigned int reax = 0;
+    #if (!x86_64)
+        return false;
+    #elif (x86_32)
+        unsigned int reax = 0;
 
-            __asm
-            {
-                mov eax, 0xCCCCCCCC;
-                smsw eax;
-                mov DWORD PTR[reax], eax;
-            }
+        __asm
+        {
+            mov eax, 0xCCCCCCCC;
+            smsw eax;
+            mov DWORD PTR[reax], eax;
+        }
 
-            return (
-                (((reax >> 24) & 0xFF) == 0xCC) &&
-                (((reax >> 16) & 0xFF) == 0xCC)
+        return (
+            (((reax >> 24) & 0xFF) == 0xCC) &&
+            (((reax >> 16) & 0xFF) == 0xCC)
             );
-        #else
-            return false;
-        #endif
+    #else
+        return false;
+    #endif
     }
 
 
@@ -7791,16 +7777,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::VMWARE_STR
      */
     [[nodiscard]] static bool vmware_str() {
-        #if (x86_32)
-            unsigned short tr = 0;
-            __asm {
-                str ax
-                mov tr, ax
-            }
-            if ((tr & 0xFF) == 0x00 && ((tr >> 8) & 0xFF) == 0x40) {
-                return core::add(brands::VMWARE);
-            }
-        #endif
+    #if (x86_32)
+        unsigned short tr = 0;
+        __asm {
+            str ax
+            mov tr, ax
+        }
+        if ((tr & 0xFF) == 0x00 && ((tr >> 8) & 0xFF) == 0x40) {
+            return core::add(brands::VMWARE);
+        }
+    #endif
 
         return false;
     }
@@ -7814,59 +7800,59 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::VMWARE_BACKDOOR
      */
     [[nodiscard]] static bool vmware_backdoor() {
-        #if (x86_32 && !CLANG)
-            u32 a = 0;
-            u32 b = 0;
+    #if (x86_32 && !CLANG)
+        u32 a = 0;
+        u32 b = 0;
 
-            constexpr std::array<i16, 2> ioports = { { 'VX' , 'VY' } };
-            i16 ioport;
-            bool is_vm = false;
+        constexpr std::array<i16, 2> ioports = { { 'VX' , 'VY' } };
+        i16 ioport;
+        bool is_vm = false;
 
-            for (u8 i = 0; i < ioports.size(); ++i) {
-                ioport = ioports[i];
-                for (u8 cmd = 0; cmd < 0x2c; ++cmd) {
-                    __try {
-                        __asm {
-                            push eax
-                            push ebx
-                            push ecx
-                            push edx
+        for (u8 i = 0; i < ioports.size(); ++i) {
+            ioport = ioports[i];
+            for (u8 cmd = 0; cmd < 0x2c; ++cmd) {
+                __try {
+                    __asm {
+                        push eax
+                        push ebx
+                        push ecx
+                        push edx
 
-                            mov eax, 'VMXh'
-                            movzx ecx, cmd
-                            mov dx, ioport
-                            in eax, dx      // <- key point is here
+                        mov eax, 'VMXh'
+                        movzx ecx, cmd
+                        mov dx, ioport
+                        in eax, dx      // <- key point is here
 
-                            mov a, ebx
-                            mov b, ecx
+                        mov a, ebx
+                        mov b, ecx
 
-                            pop edx
-                            pop ecx
-                            pop ebx
-                            pop eax
-                        }
-
-                        is_vm = true;
-                        break;
+                        pop edx
+                        pop ecx
+                        pop ebx
+                        pop eax
                     }
-                    __except (EXCEPTION_EXECUTE_HANDLER) {}
-                }
-            }
 
-            if (is_vm) {
-                switch (b) {
-                    case 1:  return core::add(brands::VMWARE_EXPRESS);
-                    case 2:  return core::add(brands::VMWARE_ESX);
-                    case 3:  return core::add(brands::VMWARE_GSX);
-                    case 4:  return core::add(brands::VMWARE_WORKSTATION);
-                    default: return core::add(brands::VMWARE);
+                    is_vm = true;
+                    break;
                 }
+                __except (EXCEPTION_EXECUTE_HANDLER) {}
             }
+        }
 
-            return false;
-        #else
-            return false;
-        #endif
+        if (is_vm) {
+            switch (b) {
+            case 1:  return core::add(brands::VMWARE_EXPRESS);
+            case 2:  return core::add(brands::VMWARE_ESX);
+            case 3:  return core::add(brands::VMWARE_GSX);
+            case 4:  return core::add(brands::VMWARE_WORKSTATION);
+            default: return core::add(brands::VMWARE);
+            }
+        }
+
+        return false;
+    #else
+        return false;
+    #endif
     }
 
 
@@ -8883,11 +8869,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 ptr += (len + 1);
             }
 
-#ifdef __VMAWARE_DEBUG__
+        #ifdef __VMAWARE_DEBUG__
             for (auto& wstr : paths) {
                 debug("ACPI_SIGNATURE: ", wstr);
             }
-#endif
+        #endif
 
             static const wchar_t acpiPrefix[] = L"#ACPI(S";
             bool foundQemu = false;
@@ -9186,9 +9172,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::DBVM
      */
     [[nodiscard]] static bool dbvm() {
-#if (!x86_64)
+    #if (!x86_64)
         return false;
-#else
+    #else
         constexpr u64 PW1 = 0x0000000076543210ULL;
         constexpr u64 PW3 = 0x0000000090909090ULL;
         constexpr u32 PW2 = 0xFEDCBA98U;
@@ -9265,7 +9251,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (found) return core::add(brands::DBVM);
 
         return false;
-#endif
+    #endif
     }
 
 
@@ -9547,7 +9533,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 debug("OBJECTS: Detected VmGid");
                 return core::add(brands::HYPERV);
             }
-
         }
 
         CloseHandle(hDir);
@@ -9754,10 +9739,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check for non-baremetal boot loaders
+     * @brief Check for boot managers typically found in VMs
      * @category Windows
      * @warning Permissions required
-     * @implements VM::BOOT
+     * @implements VM::BOOT_MANAGER
      */
     [[nodiscard]] static bool nvram_boot() {
         typedef struct _VARIABLE_NAME {
@@ -9829,6 +9814,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         constexpr size_t MAX_NAME_BYTES = 4096;
 
+        bool foundAnyBootEntry = false;
+        bool legitBootManager = false;
+
         while (true) {
             const uintptr_t basePtr = reinterpret_cast<uintptr_t>(res.buffer.data());
             const uintptr_t curPtr = reinterpret_cast<uintptr_t>(varName);
@@ -9891,6 +9879,26 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
             }
 
+            bool isBootIndex = false;
+            if (nameStr.size() == 8 && nameStr.compare(0, 4, L"Boot") == 0) {
+                bool hex = true;
+                for (int i = 4; i < 8; ++i) {
+                    if (!iswxdigit(nameStr[i])) { hex = false; break; }
+                }
+                if (hex) isBootIndex = true;
+            }
+
+            if (!isBootIndex) {
+                if (varName->NextEntryOffset == 0) break;
+                const SIZE_T ne = static_cast<SIZE_T>(varName->NextEntryOffset);
+                const size_t nextOffset = offset + ne;
+                if (nextOffset >= bufSize || nextOffset < offset) break;
+                varName = reinterpret_cast<PVARIABLE_NAME>(reinterpret_cast<PBYTE>(res.buffer.data()) + nextOffset);
+                continue;
+            }
+
+            foundAnyBootEntry = true;
+
             std::vector<BYTE> valueBuf;
             DWORD readLen = 0;
             DWORD required = 0;
@@ -9920,63 +9928,87 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
             }
 
-            if (nameStr == L"Boot0000") {
-                size_t idx = 0;
-                auto can_read = [&](size_t need) -> bool {
-                    return idx + need <= valueBuf.size();
-                };
-                auto read_u32 = [&](u32& out) -> bool {
-                    if (!can_read(sizeof(u32))) return false;
-                    u32 tmp;
-                    memcpy(&tmp, valueBuf.data() + idx, sizeof(tmp));
-                    out = tmp;
-                    idx += sizeof(u32);
-                    return true;
-                };
-                auto read_u16 = [&](u16& out) -> bool {
-                    if (!can_read(sizeof(u16))) return false;
-                    u16 tmp;
-                    memcpy(&tmp, valueBuf.data() + idx, sizeof(tmp));
-                    out = tmp;
-                    idx += sizeof(u16);
-                    return true;
-                };
+            if (valueBuf.empty()) {
+                if (varName->NextEntryOffset == 0) break;
+                const SIZE_T ne = static_cast<SIZE_T>(varName->NextEntryOffset);
+                const size_t nextOffset = offset + ne;
+                if (nextOffset >= bufSize || nextOffset < offset) break;
+                varName = reinterpret_cast<PVARIABLE_NAME>(reinterpret_cast<PBYTE>(res.buffer.data()) + nextOffset);
+                continue;
+            }
 
-                u32 attributes = 0;
-                u16 filePathListLength = 0;
-                if (!read_u32(attributes) || !read_u16(filePathListLength)) {
-                    return false;
-                }
+            // attributes (u32) and filePathListLength (u16), then description (UTF-16 null-terminated)
+            size_t idx = 0;
+            auto can_read = [&](size_t need) -> bool {
+                return idx + need <= valueBuf.size();
+            };
+            auto read_u32 = [&](u32& out) -> bool {
+                if (!can_read(sizeof(u32))) return false;
+                u32 tmp;
+                memcpy(&tmp, valueBuf.data() + idx, sizeof(tmp));
+                out = tmp;
+                idx += sizeof(u32);
+                return true;
+            };
+            auto read_u16 = [&](u16& out) -> bool {
+                if (!can_read(sizeof(u16))) return false;
+                u16 tmp;
+                memcpy(&tmp, valueBuf.data() + idx, sizeof(tmp));
+                out = tmp;
+                idx += sizeof(u16);
+                return true;
+            };
 
-                bool foundTerminator = false;
-                for (; idx + 1 < valueBuf.size(); ++idx) {
-                    if (valueBuf[idx] == 0 && valueBuf[idx + 1] == 0) {
-                        idx += 2;
-                        foundTerminator = true;
-                        break;
-                    }
-                }
-                if (!foundTerminator) {
-                    return false;
-                }
+            u32 attributes = 0;
+            u16 filePathListLength = 0;
+            if (!read_u32(attributes) || !read_u16(filePathListLength)) {
+                if (varName->NextEntryOffset == 0) break;
+                const SIZE_T ne = static_cast<SIZE_T>(varName->NextEntryOffset);
+                const size_t nextOffset = offset + ne;
+                if (nextOffset >= bufSize || nextOffset < offset) break;
+                varName = reinterpret_cast<PVARIABLE_NAME>(reinterpret_cast<PBYTE>(res.buffer.data()) + nextOffset);
+                continue;
+            }
 
-                const size_t rem = (idx <= valueBuf.size()) ? (valueBuf.size() - idx) : 0;
-                if (filePathListLength > rem) {
-                    return false;
+            bool foundTerminator = false;
+            for (; idx + 1 < valueBuf.size(); ++idx) {
+                if (valueBuf[idx] == 0 && valueBuf[idx + 1] == 0) {
+                    idx += 2;
+                    foundTerminator = true;
+                    break;
                 }
-                /*
-                    const size_t filePathListStart = idx;
-                    const size_t loadOptionsStart = filePathListStart + static_cast<size_t>(filePathListLength);
-                    // should be 137 on official bootloader
-                    const size_t loadOptionsLength = (loadOptionsStart <= valueBuf.size()) ? (valueBuf.size() - loadOptionsStart) : 0;
-                */
-                if (filePathListLength != 116) {
-                    return true;
+            }
+            if (!foundTerminator) {
+                if (varName->NextEntryOffset == 0) break;
+                const SIZE_T ne = static_cast<SIZE_T>(varName->NextEntryOffset);
+                const size_t nextOffset = offset + ne;
+                if (nextOffset >= bufSize || nextOffset < offset) break;
+                varName = reinterpret_cast<PVARIABLE_NAME>(reinterpret_cast<PBYTE>(res.buffer.data()) + nextOffset);
+                continue;
+            }
+
+            const size_t rem = (idx <= valueBuf.size()) ? (valueBuf.size() - idx) : 0;
+            if (filePathListLength > rem) {
+                if (varName->NextEntryOffset == 0) break;
+                const SIZE_T ne = static_cast<SIZE_T>(varName->NextEntryOffset);
+                const size_t nextOffset = offset + ne;
+                if (nextOffset >= bufSize || nextOffset < offset) break;
+                varName = reinterpret_cast<PVARIABLE_NAME>(reinterpret_cast<PBYTE>(res.buffer.data()) + nextOffset);
+                continue;
+            }
+
+            {
+                const size_t filePathListStart = idx;
+                const size_t loadOptionsStart = filePathListStart + static_cast<size_t>(filePathListLength);
+                const size_t loadOptionsLength = (loadOptionsStart <= valueBuf.size()) ? (valueBuf.size() - loadOptionsStart) : 0;
+                // official Windows Boot Manager typically: filePathListLength == 116 and loadOptionsLength == 137
+                if (filePathListLength == 116 || loadOptionsLength == 137) {
+                    legitBootManager = true;
+                    break;
                 }
             }
 
             if (varName->NextEntryOffset == 0) break;
-
             const SIZE_T ne = static_cast<SIZE_T>(varName->NextEntryOffset);
             const size_t nextOffset = offset + ne;
             if (nextOffset >= bufSize || nextOffset < offset) break;
@@ -9984,7 +10016,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             varName = reinterpret_cast<PVARIABLE_NAME>(reinterpret_cast<PBYTE>(res.buffer.data()) + nextOffset);
         }
 
-        return false;
+        return !legitBootManager;
     }
 
 
@@ -10447,11 +10479,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return (sizeof...(Args) == 0);
         }
 
-#if (CPP >= 17)
-    #define VMAWARE_CONSTEXPR constexpr
-#else
-    #define VMAWARE_CONSTEXPR
-#endif
+    #if (CPP >= 17)
+        #define VMAWARE_CONSTEXPR constexpr
+    #else
+        #define VMAWARE_CONSTEXPR
+    #endif
 
     public:
         // fetch the flags, could be an enum value OR a std::bitset.
@@ -10512,9 +10544,9 @@ public: // START OF PUBLIC FUNCTIONS
      */
     static bool check(
         const enum_flags flag_bit
-#if (CPP >= 20) && (!CLANG || __clang_major__ >= 16)
+    #if (CPP >= 20) && (!CLANG || __clang_major__ >= 16)
         , [[maybe_unused]] const std::source_location& loc = std::source_location::current()
-#endif
+    #endif
     ) {
         // return and force caching early if the technique is not supported
         if (util::is_unsupported(flag_bit)) {
@@ -10525,9 +10557,9 @@ public: // START OF PUBLIC FUNCTIONS
         // lambda to manage exceptions
         auto throw_error = [&](const char* text) -> void {
             std::stringstream ss;
-#if (CPP >= 20 && !CLANG)
+    #if (CPP >= 20 && !CLANG)
             ss << ", error in " << loc.function_name() << " at " << loc.file_name() << ":" << loc.line() << ")";
-#endif
+    #endif
             ss << ". Consult the documentation's flag handler for VM::check()";
             throw std::invalid_argument(std::string(text) + ss.str());
         };
@@ -10546,9 +10578,9 @@ public: // START OF PUBLIC FUNCTIONS
             throw_error("Flag argument must be a technique flag and not a settings flag");
         }
 
-#if (CPP >= 23)
+    #if (CPP >= 23)
         [[assume(flag_bit < technique_end)]];
-#endif
+    #endif
 
         // if the technique is already cached, return the cached value instead
         if (memo::is_cached(flag_bit)) {
@@ -10570,9 +10602,9 @@ public: // START OF PUBLIC FUNCTIONS
             detected_count_num++;
         }
 
-#ifdef __VMAWARE_DEBUG__
+    #ifdef __VMAWARE_DEBUG__
         total_points += pair.points;
-#endif
+    #endif
 
         // store the technique result in the cache table
         memo::cache_store(flag_bit, result, pair.points);
@@ -10613,7 +10645,7 @@ public: // START OF PUBLIC FUNCTIONS
 
         // goofy ass C++11 and C++14 linker error workaround.
         // And yes, this does look stupid.
-#if (CPP <= 14)
+    #if (CPP <= 14)
         constexpr const char* TMP_QEMU = "QEMU";
         constexpr const char* TMP_KVM = "KVM";
         constexpr const char* TMP_QEMU_KVM = "QEMU+KVM";
@@ -10634,7 +10666,7 @@ public: // START OF PUBLIC FUNCTIONS
         constexpr const char* TMP_AZURE = "Microsoft Azure Hyper-V";
         constexpr const char* TMP_NANOVISOR = "Xbox NanoVisor (Hyper-V)";
         constexpr const char* TMP_HYPERV_ARTIFACT = "Hyper-V artifact (not an actual VM)";
-#else
+    #else
         constexpr const char* TMP_QEMU = brands::QEMU;
         constexpr const char* TMP_KVM = brands::KVM;
         constexpr const char* TMP_QEMU_KVM = brands::QEMU_KVM;
@@ -10655,7 +10687,7 @@ public: // START OF PUBLIC FUNCTIONS
         constexpr const char* TMP_AZURE = brands::AZURE_HYPERV;
         constexpr const char* TMP_NANOVISOR = brands::NANOVISOR;
         constexpr const char* TMP_HYPERV_ARTIFACT = brands::HYPERV_ARTIFACT;
-#endif
+    #endif
 
         // this is where all the RELEVANT brands are stored.
         // The ones with no points will be filtered out.
@@ -10840,11 +10872,11 @@ public: // START OF PUBLIC FUNCTIONS
     
 
         // debug stuff to see the brand scoreboard, ignore this
-#ifdef __VMAWARE_DEBUG__
+    #ifdef __VMAWARE_DEBUG__
         for (const auto& p : brands) {
             core_debug("scoreboard: ", (int)p.second, " : ", p.first);
         }
-#endif
+    #endif
 
         return ret_str;
     }
@@ -10865,9 +10897,9 @@ public: // START OF PUBLIC FUNCTIONS
         // flags above, and get a total score 
         const u16 points = core::run_all(flags, SHORTCUT);
 
-#if (CPP >= 23)
+    #if (CPP >= 23)
         [[assume(points < maximum_points)]];
-#endif
+    #endif
 
         u16 threshold = 150;
 
@@ -10896,9 +10928,9 @@ public: // START OF PUBLIC FUNCTIONS
         // flags above, and get a total score
         const u16 points = core::run_all(flags, SHORTCUT);
 
-#if (CPP >= 23)
+    #if (CPP >= 23)
         [[assume(points < maximum_points)]];
-#endif
+    #endif
 
         u8 percent = 0;
         u16 threshold = 150;
@@ -10933,16 +10965,16 @@ public: // START OF PUBLIC FUNCTIONS
     static void add_custom(
         const u8 percent,
         std::function<bool()> detection_func
-#if (CPP >= 20 && !CLANG)
+    #if (CPP >= 20 && !CLANG)
         , const std::source_location& loc = std::source_location::current()
-#endif
+    #endif
     ) {
         // lambda to throw the error
         auto throw_error = [&](const char* text) -> void {
             std::stringstream ss;
-#if (CPP >= 20 && !CLANG)
+    #if (CPP >= 20 && !CLANG)
             ss << ", error in " << loc.function_name() << " at " << loc.file_name() << ":" << loc.line() << ")";
-#endif
+    #endif
             ss << ". Consult the documentation's parameters for VM::add_custom()";
             throw std::invalid_argument(std::string(text) + ss.str());
         };
@@ -10951,9 +10983,9 @@ public: // START OF PUBLIC FUNCTIONS
             throw_error("Percentage parameter must be between 0 and 100");
         }
 
-#if (CPP >= 23)
+    #if (CPP >= 23)
         [[assume(percent > 0 && percent <= 100)]];
-#endif
+    #endif
 
         static u16 id = 0;
         id++;
@@ -11086,7 +11118,7 @@ public: // START OF PUBLIC FUNCTIONS
             case MAC_SYS: return "MAC_SYS";
             case OBJECTS: return "OBJECTS";
             case NVRAM: return "NVRAM";
-            case BOOT: return "BOOT";
+            case BOOT_MANAGER: return "BOOT_MANAGER";
             case SMBIOS_PASSTHROUGH: return "SMBIOS_PASSTHROUGH";
             // END OF TECHNIQUE LIST
             case DEFAULT: return "setting flag, error";
@@ -11135,16 +11167,16 @@ public: // START OF PUBLIC FUNCTIONS
     static void modify_score(
         const enum_flags flag,
         const u8 percent
-#if (CPP >= 20) && (!CLANG || __clang_major__ >= 16)
+    #if (CPP >= 20) && (!CLANG || __clang_major__ >= 16)
         , const std::source_location& loc = std::source_location::current()
-#endif
+    #endif
     ) {
         // lambda to throw the error
         auto throw_error = [&](const char* text) -> void {
             std::stringstream ss;
-#if (CPP >= 20 && !CLANG)
+    #if (CPP >= 20 && !CLANG)
             ss << ", error in " << loc.function_name() << " at " << loc.file_name() << ":" << loc.line() << ")";
-#endif
+    #endif
             ss << ". Consult the documentation's parameters for VM::modify_score()";
             throw std::invalid_argument(std::string(text) + ss.str());
         };
@@ -11153,9 +11185,9 @@ public: // START OF PUBLIC FUNCTIONS
             throw_error("Percentage parameter must be between 0 and 100");
         }
 
-#if (CPP >= 23)
+    #if (CPP >= 23)
         [[assume(percent <= 100)]];
-#endif  
+    #endif  
 
         // check if the flag provided is a setting flag, which isn't valid.
         if (static_cast<u8>(flag) >= technique_end) {
@@ -11306,7 +11338,7 @@ public: // START OF PUBLIC FUNCTIONS
         std::string brand_tmp = brand(flags);
         const u8 percent_tmp = percentage(flags);
 
-#if (CPP >= 17)
+    #if (CPP >= 17)
         constexpr std::string_view very_unlikely = "Very unlikely a";
         constexpr std::string_view unlikely = "Unlikely a";
         constexpr std::string_view potentially = "Potentially";
@@ -11314,7 +11346,7 @@ public: // START OF PUBLIC FUNCTIONS
         constexpr std::string_view likely = "Likely";
         constexpr std::string_view very_likely = "Very likely";
         constexpr std::string_view inside_vm = "Running inside";
-#else
+    #else
         const std::string very_unlikely = "Very unlikely";
         const std::string unlikely = "Unlikely";
         const std::string potentially = "Potentially";
@@ -11322,13 +11354,13 @@ public: // START OF PUBLIC FUNCTIONS
         const std::string likely = "Likely";
         const std::string very_likely = "Very likely";
         const std::string inside_vm = "Running inside";
-#endif
+    #endif
 
-#if (CPP >= 17)
+    #if (CPP >= 17)
         auto make_conclusion = [&](const std::string_view category) -> std::string {
-#else
+    #else
         auto make_conclusion = [&](const std::string &category) -> std::string {
-#endif
+    #endif
             std::string addition = "";
 
             // this basically just fixes the grammatical syntax
@@ -11424,7 +11456,7 @@ public: // START OF PUBLIC FUNCTIONS
             return true;
         }
 
-#if (LINUX)
+    #if (LINUX)
         // rule 2: if VM::FIRMWARE is detected, so should VM::CVENDOR (QEMU or VBOX)
         if (firmware_brand == brands::QEMU || firmware_brand == brands::VBOX) {
             const std::string cvendor_brand = detected_brand(VM::CVENDOR);
@@ -11433,9 +11465,9 @@ public: // START OF PUBLIC FUNCTIONS
                 return true;
             }
         }
-#endif
+    #endif
 
-#if (WINDOWS)        
+    #if (WINDOWS)        
         // rule 3: if VM::ACPI_SIGNATURE (QEMU) is detected, so should VM::FIRMWARE (QEMU)
         const std::string acpi_brand = detected_brand(VM::ACPI_SIGNATURE);
         if (acpi_brand == brands::QEMU) {
@@ -11449,7 +11481,7 @@ public: // START OF PUBLIC FUNCTIONS
             && !(check(VM::HYPERVISOR_BIT) || check(VM::HYPERVISOR_STR))) {
             return true;
         }
-#endif
+    #endif
 
         return false;
     }
@@ -11629,7 +11661,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         std::make_pair(VM::TRAP, VM::core::technique(100, VM::trap)),
         std::make_pair(VM::ACPI_SIGNATURE, VM::core::technique(100, VM::acpi_signature)),
         std::make_pair(VM::NVRAM, VM::core::technique(100, VM::nvram_vars)),
-        std::make_pair(VM::BOOT, VM::core::technique(100, VM::nvram_boot)),
+        std::make_pair(VM::BOOT_MANAGER, VM::core::technique(50, VM::nvram_boot)),
         std::make_pair(VM::SMBIOS_PASSTHROUGH, VM::core::technique(50, VM::smbios_passthrough)),
         std::make_pair(VM::GPU_CAPABILITIES, VM::core::technique(45, VM::gpu_capabilities)),
         std::make_pair(VM::BOOT_LOGO, VM::core::technique(100, VM::boot_logo)),
