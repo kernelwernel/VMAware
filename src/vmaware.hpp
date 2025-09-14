@@ -4,7 +4,7 @@
  * ██║   ██║██╔████╔██║███████║██║ █╗ ██║███████║██████╔╝█████╗
  * ╚██╗ ██╔╝██║╚██╔╝██║██╔══██║██║███╗██║██╔══██║██╔══██╗██╔══╝
  *  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
- *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ Experimental post-2.4.1 (September 2025)
+ *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ Experimental post-2.5.0 (September 2025)
  *
  *  C++ VM detection library
  *
@@ -53,13 +53,13 @@
  *
  * ============================== SECTIONS ==================================
  * - enums for publicly accessible techniques  => line 533
- * - struct for internal cpu operations        => line 716
- * - struct for internal memoization           => line 1182
- * - struct for internal utility functions     => line 1312
- * - struct for internal core components       => line 9788
- * - start of VM detection technique list      => line 2224
- * - start of public VM detection functions    => line 10280
- * - start of externally defined variables     => line 11270
+ * - struct for internal cpu operations        => line 717
+ * - struct for internal memoization           => line 1183
+ * - struct for internal utility functions     => line 1313
+ * - struct for internal core components       => line 10012
+ * - start of VM detection technique list      => line 2289
+ * - start of public VM detection functions    => line 10504
+ * - start of externally defined variables     => line 11490
  *
  *
  * ============================== EXAMPLE ===================================
@@ -568,6 +568,7 @@ public:
         OBJECTS,
         NVRAM,
         BOOT,
+        SMBIOS_PASSTHROUGH,
         BOOT_LOGO,
         
         // Linux and Windows
@@ -1401,16 +1402,12 @@ private:
         }
 
 
-        [[nodiscard]] static bool exists(const char* path) {
-#if (WINDOWS)
-            return (GetFileAttributesA(path) != INVALID_FILE_ATTRIBUTES) || (GetLastError() != ERROR_FILE_NOT_FOUND);
-#else 
+        [[nodiscard]] static bool exists(const char* path) { 
 #if (CPP >= 17)
             return std::filesystem::exists(path);
 #elif (CPP >= 11)
             struct stat buffer;
             return (stat(path, &buffer) == 0);
-#endif
 #endif
         }
 
@@ -1445,32 +1442,17 @@ private:
                 (euid == 0)
             );
 #elif (WINDOWS)
-            bool is_admin = 0;
+            bool is_admin = false;
             HANDLE hToken = nullptr;
-
             if (OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &hToken)) {
-                DWORD dwSize = 0;
-                GetTokenInformation(hToken, TokenIntegrityLevel, nullptr, 0, &dwSize);
-
-                if (GetLastError() == ERROR_INSUFFICIENT_BUFFER) {
-                    auto pTIL = static_cast<PTOKEN_MANDATORY_LABEL>(malloc(dwSize));
-                    if (pTIL != nullptr) {
-                        if (GetTokenInformation(hToken, TokenIntegrityLevel, pTIL, dwSize, &dwSize)) {
-                            const DWORD subAuthCount = static_cast<DWORD>(
-                                *GetSidSubAuthorityCount(pTIL->Label.Sid));
-                            const DWORD dwIntegrityLevel = *GetSidSubAuthority(
-                                pTIL->Label.Sid, subAuthCount - 1);
-
-                            if (dwIntegrityLevel >= SECURITY_MANDATORY_HIGH_RID) {
-                                is_admin = 1;
-                            }
-                        }
-                        free(pTIL);
-                    }
+                TOKEN_ELEVATION elevation{};
+                DWORD dwSize;
+                if (GetTokenInformation(hToken, TokenElevation, &elevation, sizeof(elevation), &dwSize)) {
+                    if (elevation.TokenIsElevated)
+                        is_admin = true;
                 }
                 CloseHandle(hToken);
             }
-
             return is_admin;
 #else
             return true;
@@ -1594,36 +1576,36 @@ private:
         [[nodiscard]] static std::unique_ptr<std::string> sys_result(const char* cmd) {
 #if (CPP < 14)
             UNUSED(cmd);
-            return nullptr;
+            return util::make_unique<std::string>();
 #else
     #if (LINUX || APPLE)
-            struct FileDeleter { 
-                void operator()(FILE* f) const noexcept { 
-                    if (f) { 
+            struct FileDeleter {
+                void operator()(FILE* f) const noexcept {
+                    if (f) {
                         pclose(f);
-                    }; 
-                } 
+                    };
+                }
             };
 
             std::unique_ptr<FILE, FileDeleter> pipe(popen(cmd, "r"), FileDeleter());
             if (!pipe) {
-                return nullptr;
+                return util::make_unique<std::string>();
             }
-    
+
             std::string result;
             char* line = nullptr;
             size_t len = 0;
             ssize_t nread;
-    
+
             while ((nread = getline(&line, &len, pipe.get())) != -1) {
                 result.append(line, static_cast<size_t>(nread));
             }
             free(line);
-    
+
             if (!result.empty() && result.back() == '\n') {
                 result.pop_back();
             }
-    
+
             return util::make_unique<std::string>(std::move(result));
     #else
             UNUSED(cmd);
@@ -1725,10 +1707,10 @@ private:
                 return static_cast<u32>((bytes + (gib / 2ULL)) / gib);
             }
 
-            // the "physically installed" API can fail if some hypervisors like VirtualBox don't populate the necessary firmware/SMBIOS fields
+            // the "physically installed" API can fail if some hypervisors like VirtualBox don't populate the SMBIOS fields
             MEMORYSTATUSEX ms{};
             ms.dwLength = sizeof(ms);
-            if (GlobalMemoryStatusEx(&ms)) {
+			if (GlobalMemoryStatusEx(&ms)) { // calls NtQuerySystemInformation rather than using SMBIOS
                 const unsigned long long bytes = ms.ullTotalPhys;
                 return static_cast<u32>((bytes + (gib / 2ULL)) / gib);
             }
@@ -1788,36 +1770,42 @@ private:
                     continue;
                 }
 #endif
-                if (!std::all_of(filename.begin(), filename.end(), ::isdigit)) {
+                if (!std::all_of(filename.begin(), filename.end(), [](unsigned char c) { return std::isdigit(c); })) {
                     continue;
                 }
 
                 const std::string cmdline_file = "/proc/" + filename + "/cmdline";
-                std::ifstream cmdline(cmdline_file);
-                if (!cmdline.is_open()) {
+
+                // read raw bytes (binary) to preserve embedded NULs
+                std::ifstream ifs(cmdline_file, std::ios::in | std::ios::binary);
+                if (!ifs.is_open()) {
                     continue;
                 }
 
-                std::string line;
-                std::getline(cmdline, line);
-                cmdline.close();
+                // read entire file into vector<char>
+                std::vector<char> buf((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
+                ifs.close();
 
-                if (line.empty()) {
+                if (buf.empty()) {
                     continue;
                 }
 
-                const std::size_t slash_index = line.find_last_of('/');
-                if (slash_index == std::string::npos) {
+                // cmdline is argv0\0argv1\0..., so argv0 is bytes up to first NUL
+                auto it_nul = std::find(buf.begin(), buf.end(), '\0');
+                if (it_nul == buf.begin()) {
                     continue;
                 }
-                line.erase(0, slash_index + 1);
 
-                const std::size_t space_index = line.find_first_of(' ');
-                if (space_index != std::string::npos) {
-                    line.resize(space_index);
+                std::string argv0(buf.begin(), it_nul);
+                if (argv0.empty()) {
+                    continue;
                 }
 
-                if (line != executable) {
+                // extract basename of argv0
+                const std::size_t slash_index = argv0.find_last_of('/');
+                std::string basename = (slash_index == std::string::npos) ? argv0 : argv0.substr(slash_index + 1);
+
+                if (basename != executable) {
                     continue;
                 }
 
@@ -1829,7 +1817,7 @@ private:
             UNUSED(executable);
             return false;
 #endif
-            }
+         }
 
 
         [[nodiscard]] static std::string get_hostname() {
@@ -1868,7 +1856,7 @@ private:
             if (nativeMachine == IMAGE_FILE_MACHINE_ARM64) {
                 const HMODULE hKernel = GetModuleHandle(_T("kernel32.dll"));
                 if (!hKernel) return false;
-                using PGetProcessInformation = BOOL(WINAPI*)(HANDLE, PROCESS_INFORMATION_CLASS, PVOID, DWORD);
+                using PGetProcessInformation = BOOL(__stdcall*)(HANDLE, PROCESS_INFORMATION_CLASS, PVOID, DWORD);
                 const HMODULE ntdll = GetModuleHandle(_T("ntdll.dll"));
                 if (ntdll == NULL) {
                     return false;
@@ -2094,53 +2082,123 @@ private:
 
         // retrieves the addresses of specified functions from a loaded module using the export directory, manual implementation of GetProcAddress
         static void GetFunctionAddress(const HMODULE hModule, const char* names[], void** functions, size_t count) {
-            // 1) A static cache persists between calls
             using FuncMap = std::unordered_map<std::string, void*>;
             static std::unordered_map<HMODULE, FuncMap> function_cache;
 
-            // this ensures a clean state if we return early
-            for (size_t i = 0; i < count; ++i) {
-                functions[i] = nullptr;
+            for (size_t i = 0; i < count; ++i) functions[i] = nullptr;
+            if (!hModule) return;
+
+            BYTE* base = reinterpret_cast<BYTE*>(hModule);
+
+            size_t module_size = 0;
+            {
+                MEMORY_BASIC_INFORMATION mbi = {};
+                if (VirtualQuery(base, &mbi, sizeof(mbi))) {
+                    module_size = static_cast<size_t>(mbi.RegionSize);
+                }
+                else {
+                    return;
+                }
             }
 
-            // 2) Parse PE header ONCE per call for this batch of functions
-            BYTE* base = reinterpret_cast<BYTE*>(hModule);
-            const auto* dosHeader = reinterpret_cast<PIMAGE_DOS_HEADER>(base);
-            const auto* ntHeaders = reinterpret_cast<PIMAGE_NT_HEADERS>(base + dosHeader->e_lfanew);
+            auto valid_range = [&](size_t offset, size_t sz) -> bool {
+                if (sz == 0) return false;
+                if (module_size == 0) return false;
+                if (offset >= module_size) return false;
+                if (sz > module_size) return false;
+                if (offset > module_size - sz) return false;
+                return true;
+            };
 
+            auto safe_cstr_from_rva = [&](DWORD rva) -> const char* {
+                if (!valid_range(static_cast<size_t>(rva), 1)) return nullptr;
+                const char* p = reinterpret_cast<const char*>(base + rva);
+                size_t remaining = module_size - static_cast<size_t>(rva);
+                for (size_t i = 0; i < remaining; ++i) {
+                    if (p[i] == '\0') return p;
+                }
+                return nullptr;
+            };
+
+            // Validate DOS header 
+            if (!valid_range(0, sizeof(IMAGE_DOS_HEADER))) return;
+            const auto* dosHeader = reinterpret_cast<const IMAGE_DOS_HEADER*>(base);
+            if (dosHeader->e_magic != IMAGE_DOS_SIGNATURE) return;
+
+            // e_lfanew -> NT headers
+            if (dosHeader->e_lfanew < 0) return;
+            const size_t e_lfanew = static_cast<size_t>(dosHeader->e_lfanew);
+            if (!valid_range(e_lfanew, sizeof(IMAGE_NT_HEADERS))) return;
+            const auto* ntHeaders = reinterpret_cast<const IMAGE_NT_HEADERS*>(base + e_lfanew);
+            if (ntHeaders->Signature != IMAGE_NT_SIGNATURE) return;
+
+            size_t sizeOfImage = static_cast<size_t>(ntHeaders->OptionalHeader.SizeOfImage);
+            if (sizeOfImage != 0 && sizeOfImage > module_size) {
+                module_size = sizeOfImage;
+            }
+
+            // Check export data directory exists
             if (ntHeaders->OptionalHeader.NumberOfRvaAndSizes <= IMAGE_DIRECTORY_ENTRY_EXPORT) {
                 return; // no export directory
             }
+
             const auto& dd = ntHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT];
-            if (dd.VirtualAddress == 0) {
+            if (dd.VirtualAddress == 0 || dd.Size == 0) {
                 return; // no exports
             }
 
-            const auto* exportDir = reinterpret_cast<PIMAGE_EXPORT_DIRECTORY>(base + dd.VirtualAddress);
-            const DWORD* nameRvas = reinterpret_cast<DWORD*>(base + exportDir->AddressOfNames);
-            const DWORD* funcRvas = reinterpret_cast<DWORD*>(base + exportDir->AddressOfFunctions);
-            const WORD* ordinals = reinterpret_cast<WORD*>(base + exportDir->AddressOfNameOrdinals);
+            // Validate export directory fits
+            if (!valid_range(static_cast<size_t>(dd.VirtualAddress), sizeof(IMAGE_EXPORT_DIRECTORY))) {
+                return;
+            }
+
+            const auto* exportDir = reinterpret_cast<const IMAGE_EXPORT_DIRECTORY*>(base + dd.VirtualAddress);
+
             const DWORD nameCount = exportDir->NumberOfNames;
+            const DWORD funcCount = exportDir->NumberOfFunctions;
+
+            constexpr DWORD MAX_NAMES = 1u << 20; // 1M names is absurd but protective
+            if (nameCount == 0 || nameCount > MAX_NAMES) return;
+            if (funcCount == 0 || funcCount > MAX_NAMES) return;
+
+            const DWORD addr_names = exportDir->AddressOfNames;
+            const DWORD addr_funcs = exportDir->AddressOfFunctions;
+            const DWORD addr_ord = exportDir->AddressOfNameOrdinals;
+
+            if (!valid_range(static_cast<size_t>(addr_names), static_cast<size_t>(nameCount) * sizeof(DWORD))) return;
+            if (!valid_range(static_cast<size_t>(addr_funcs), static_cast<size_t>(funcCount) * sizeof(DWORD))) return;
+            if (!valid_range(static_cast<size_t>(addr_ord), static_cast<size_t>(nameCount) * sizeof(WORD))) return;
+
+            const DWORD* nameRvas = reinterpret_cast<const DWORD*>(base + addr_names);
+            const DWORD* funcRvas = reinterpret_cast<const DWORD*>(base + addr_funcs);
+            const WORD* ordinals = reinterpret_cast<const WORD*>(base + addr_ord);
 
             FuncMap& module_cache = function_cache[hModule];
 
-            // 3) Loop to find all functions
             for (size_t i = 0; i < count; ++i) {
                 const char* current_name = names[i];
-                const std::string s_name(current_name); // key for the cache map
+                if (!current_name) continue;
+                const std::string s_name(current_name);
 
-                // 3a) Check cache first
+                // check cache first
                 auto cache_it = module_cache.find(s_name);
                 if (cache_it != module_cache.end()) {
                     functions[i] = cache_it->second;
                     continue;
                 }
 
-                // 3b) Binary search
+                // binary search over names (names array is typically sorted)
                 DWORD lo = 0, hi = nameCount;
                 while (lo < hi) {
                     DWORD mid = lo + (hi - lo) / 2;
-                    int cmp = strcmp(current_name, reinterpret_cast<const char*>(base + nameRvas[mid]));
+                    DWORD midNameRva = nameRvas[mid];
+                    const char* midName = safe_cstr_from_rva(midNameRva);
+                    if (!midName) { // corrupted string table
+                        lo = hi;
+                        break;
+                    }
+
+                    int cmp = strcmp(current_name, midName);
                     if (cmp > 0) {
                         lo = mid + 1;
                     }
@@ -2149,14 +2207,21 @@ private:
                     }
                 }
 
-                // 3c) If a match is found, compute the address and store it in our cache
-                if (lo < nameCount && strcmp(current_name, reinterpret_cast<const char*>(base + nameRvas[lo])) == 0) {
-                    void* addr = base + funcRvas[ordinals[lo]];
-                    functions[i] = addr;
-                    module_cache[s_name] = addr; 
+                if (lo < nameCount) {
+                    const char* candidateName = safe_cstr_from_rva(nameRvas[lo]);
+                    if (candidateName && strcmp(current_name, candidateName) == 0) {
+                        WORD nameOrdinal = ordinals[lo];
+                        if (static_cast<DWORD>(nameOrdinal) >= funcCount) continue;
+                        DWORD funcRva = funcRvas[nameOrdinal];
+                        if (!valid_range(static_cast<size_t>(funcRva), 1)) continue;
+                        void* addr = reinterpret_cast<void*>(base + funcRva);
+                        functions[i] = addr;
+                        module_cache[s_name] = addr;
+                        continue;
+                    }
                 }
             }
-        } 
+        }
 
         using NtEnumerateSystemEnvironmentValuesEx_t = NTSTATUS(__stdcall*)(ULONG InformationClass, PVOID Buffer, PULONG BufferLength);
 
@@ -4529,6 +4594,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const DWORD_PTR prevMask = SetThreadAffinityMask(th, 1); // to reduce context switching/scheduling
         if (!prevMask)
             return false;
+        const bool timer_need_restore_affinity = (prevMask != 0);
 
         // allocate buffer aligned to 64 so we can pick an address crossing a 64B boundary
         const size_t BUFSZ = 128;
@@ -4620,6 +4686,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (suspicious_count >= 5)
             return true;
 
+        if (timer_need_restore_affinity) SetThreadAffinityMask(th, prevMask);
         if (cycleThreshold == 25000) return false; // if we're running under Hyper-V, do not run case D
 
         // Case D - Hypervisor with RDTSC patch + useplatformclock = false
@@ -4788,23 +4855,30 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::MAC
      */
     [[nodiscard]] static bool mac_address_check() {
-        // C-style array on purpose
-        u8 mac[6] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+        struct FDGuard {
+            int fd;
+            explicit FDGuard(int fd = -1) : fd(fd) {}
+            ~FDGuard() { if (fd != -1) ::close(fd); }
+            int get() const { return fd; }
+            int release() { int tmp = fd; fd = -1; return tmp; }
+        };
+
+        u8 mac[6] = { 0 };
         struct ifreq ifr;
         struct ifconf ifc;
         char buf[1024];
-        i32 success = 0;
+        int success = 0;
 
-        i32 sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
-
+        int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
         if (sock == -1) {
             return false;
         }
+        FDGuard sockGuard(sock); // will close on function exit
 
         ifc.ifc_len = sizeof(buf);
         ifc.ifc_buf = buf;
 
-        if (ioctl(sock, SIOCGIFCONF, &ifc) == -1) {
+        if (ioctl(sockGuard.get(), SIOCGIFCONF, &ifc) == -1) {
             return false;
         }
 
@@ -4812,14 +4886,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const struct ifreq* end = it + (ifc.ifc_len / sizeof(struct ifreq));
 
         for (; it != end; ++it) {
-            std::strcpy(ifr.ifr_name, it->ifr_name);
+            std::size_t name_len = std::min<std::size_t>(sizeof(ifr.ifr_name) - 1, strlen(it->ifr_name));
+            std::memcpy(ifr.ifr_name, it->ifr_name, name_len);
+            ifr.ifr_name[name_len] = '\0';
 
-            if (ioctl(sock, SIOCGIFFLAGS, &ifr) != 0) {
+            if (ioctl(sockGuard.get(), SIOCGIFFLAGS, &ifr) != 0) {
                 return false;
             }
 
             if (!(ifr.ifr_flags & IFF_LOOPBACK)) {
-                if (ioctl(sock, SIOCGIFHWADDR, &ifr) == 0) {
+                if (ioctl(sockGuard.get(), SIOCGIFHWADDR, &ifr) == 0) {
                     success = 1;
                     break;
                 }
@@ -4833,16 +4909,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             debug("MAC: ", "not successful");
         }
 
-        #ifdef __VMAWARE_DEBUG__
-            {
-                std::stringstream ss;
-                ss << std::hex << std::setw(2) << std::setfill('0')
-                    << static_cast<int>(mac[0]) << ":"
-                    << static_cast<int>(mac[1]) << ":"
-                    << static_cast<int>(mac[2]) << ":XX:XX:XX";
-                debug("MAC: ", ss.str());
-            }
-        #endif
+#ifdef __VMAWARE_DEBUG__
+        {
+            std::stringstream ss;
+            ss << std::hex << std::setw(2) << std::setfill('0')
+                << static_cast<int>(mac[0]) << ":"
+                << static_cast<int>(mac[1]) << ":"
+                << static_cast<int>(mac[2]) << ":XX:XX:XX";
+            debug("MAC: ", ss.str());
+        }
+#endif
 
         if ((mac[0] | mac[1] | mac[2]) == 0) {
             return false;
@@ -4857,8 +4933,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         constexpr u32 VMW2 = 0x141C00;  // 00:1C:14
         constexpr u32 VMW3 = 0x565000;  // 00:50:56
         constexpr u32 VMW4 = 0x690500;  // 00:05:69
-        constexpr u32 XEN = 0xE31600;  // 00:16:E3
-        constexpr u32 PAR = 0x421C00;  // 00:1C:42
+        constexpr u32 XEN = 0xE31600;   // 00:16:E3
+        constexpr u32 PAR = 0x421C00;   // 00:1C:42
 
         if (prefix == VBOX) {
             return core::add(brands::VBOX);
@@ -5828,8 +5904,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             for (DWORD i = 0; i < si.dwNumberOfProcessors; ++i) {
                 const DWORD_PTR mask = (DWORD_PTR)1 << i;
-
                 const DWORD_PTR previousMask = SetThreadAffinityMask(GetCurrentThread(), mask);
+
                 if (previousMask == 0) {
                     continue;
                 }
@@ -5947,17 +6023,17 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::FIRMWARE
      */
     [[nodiscard]] static bool firmware() {
-#if (WINDOWS)
-#pragma pack(push, 1)
+    #if (WINDOWS)
+        #pragma pack(push, 1)
         typedef struct {
             char Signature[4];
             u32 Length;
             u8 Revision;
             // others not needed
         } ACPI_HEADER;
-#pragma pack(pop)
+        #pragma pack(pop)
 
-#pragma pack(push,1)
+        #pragma pack(push,1)
         typedef struct _FADT {
             UINT32  Signature;
             UINT32  Length;
@@ -5996,7 +6072,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             UINT16  P_Lvl2_Lat;
             UINT16  P_Lvl3_Lat;
         } FADT, * PFADT;
-#pragma pack(pop)
+        #pragma pack(pop)
         // "WAET" is also present as a string inside the WAET table, so there's no need to check for its table signature
         constexpr std::array<const char*, 24> targets = { {
             "Parallels Software", "Parallels(R)",
@@ -6031,7 +6107,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     const void* m = memchr(search_ptr, first, remaining);
                     if (!m) return false;
                     const unsigned char* mptr = static_cast<const unsigned char*>(m);
-                    size_t idx = static_cast<size_t>(mptr - base);
+                    const size_t idx = static_cast<size_t>(mptr - base);
                     // ensure pattern fits
                     if (idx + patlen > len) return false;
                     if (memcmp(mptr, pat, patlen) == 0) return true;
@@ -6239,13 +6315,18 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
     #elif (LINUX)
         // Author: dmfrpro
-        DIR* dir = opendir("/sys/firmware/acpi/tables/");
-        if (!dir) {
+        DIR* raw_dir = opendir("/sys/firmware/acpi/tables/");
+        if (!raw_dir) {
             debug("FIRMWARE: could not open ACPI tables directory");
             return false;
         }
 
-        // Same as Windows but without WAET (Windows ACPI Emulated Devices Table)
+        struct DirCloser {
+            DIR* d;
+            explicit DirCloser(DIR* dir) : d(dir) {}
+            ~DirCloser() { if (d) closedir(d); }
+        } dir(raw_dir);
+
         constexpr const char* targets[] = {
             "Parallels Software", "Parallels(R)",
             "innotek",            "Oracle",   "VirtualBox", "vbox", "VBOX",
@@ -6256,7 +6337,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         };
 
         struct dirent* entry;
-        while ((entry = readdir(dir)) != nullptr) {
+        constexpr long MAX_TABLE_SIZE = 8 * 1024 * 1024;
+
+        while ((entry = readdir(raw_dir)) != nullptr) {
             // Skip "." and ".."
             if (strcmp(entry->d_name, ".") == 0 ||
                 strcmp(entry->d_name, "..") == 0)
@@ -6273,40 +6356,56 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 continue;
             }
 
+            struct FDCloser {
+                int fd;
+                explicit FDCloser(int f) : fd(f) {}
+                ~FDCloser() { if (fd != -1) close(fd); }
+            } fdguard(fd);
+
             struct stat statbuf;
             if (fstat(fd, &statbuf) != 0 || S_ISDIR(statbuf.st_mode)) {
                 debug("FIRMWARE: skipped ", entry->d_name);
-                close(fd);
                 continue;
             }
             long file_size = statbuf.st_size;
             if (file_size <= 0) {
                 debug("FIRMWARE: file empty or error ", entry->d_name);
-                close(fd);
                 continue;
             }
 
-            char* buffer = static_cast<char*>(malloc(file_size));
-            if (!buffer) {
+            if (file_size > MAX_TABLE_SIZE) {
+                debug("FIRMWARE: table too large, skipping ", entry->d_name);
+                continue;
+            }
+
+            const size_t file_size_u = static_cast<size_t>(file_size);
+
+            std::vector<unsigned char> buffer;
+            try {
+                buffer.resize(file_size_u);
+            }
+            catch (...) {
                 debug("FIRMWARE: failed to allocate memory for buffer");
-                close(fd);
                 continue;
             }
 
-            ssize_t n = read(fd, buffer, file_size);
-            close(fd);
-            if (n != file_size) {
+            size_t total = 0;
+            while (total < file_size_u) {
+                ssize_t n = read(fdguard.fd, buffer.data() + total, file_size_u - total);
+                if (n <= 0) break; // error or EOF
+                total += static_cast<size_t>(n);
+            }
+            if (total != file_size_u) {
                 debug("FIRMWARE: could not read full table ", entry->d_name);
-                free(buffer);
                 continue;
             }
 
             for (const char* target : targets) {
                 size_t targetLen = strlen(target);
-                if ((long)targetLen > file_size)
+                if (targetLen > file_size_u)
                     continue;
-                for (long j = 0; j <= file_size - (long)targetLen; ++j) {
-                    if (memcmp(buffer + j, target, targetLen) == 0) {
+                for (size_t j = 0; j <= file_size_u - targetLen; ++j) {
+                    if (memcmp(buffer.data() + j, target, targetLen) == 0) {
                         const char* brand = nullptr;
                         if (strcmp(target, "Parallels Software International") == 0 ||
                             strcmp(target, "Parallels(R)") == 0) {
@@ -6332,8 +6431,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                             brand = brands::BOCHS;
                         }
 
-                        free(buffer);
-                        closedir(dir);
                         if (brand)
                             return core::add(brand);
                         else
@@ -6341,10 +6438,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     }
                 }
             }
-            free(buffer);
         }
 
-        closedir(dir);
         return false;
     #endif
     }
@@ -7228,7 +7323,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         using NtPI_t = NTSTATUS(__stdcall*)(POWER_INFORMATION_LEVEL,
             PVOID, ULONG,
             PVOID, ULONG);
-        auto NtPowerInformation = reinterpret_cast<NtPI_t>(funcs[0]);
+        const auto NtPowerInformation = reinterpret_cast<NtPI_t>(funcs[0]);
 
         SYSTEM_POWER_CAPABILITIES caps = { 0 };
         NTSTATUS status = NtPowerInformation(
@@ -7546,8 +7641,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         for (DWORD i = 0; i < si.dwNumberOfProcessors; ++i) {
             const DWORD_PTR mask = (DWORD_PTR)1 << i;
-
             const DWORD_PTR previousMask = SetThreadAffinityMask(GetCurrentThread(), mask);
+
             if (previousMask == 0) {
                 continue;
             }
@@ -7783,7 +7878,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::MUTEX
      */
     [[nodiscard]] static bool mutex() {
-        auto supMutexExist = [](const char* lpMutexName) -> bool {
+        auto is_mutex_present = [](const char* lpMutexName) -> bool {
             if (lpMutexName == 0) {
                 return false;
             }
@@ -7798,23 +7893,24 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         };
 
         if (
-            supMutexExist("Sandboxie_SingleInstanceMutex_Control") ||
-            supMutexExist("SBIE_BOXED_ServiceInitComplete_Mutex1")
+            is_mutex_present("Sandboxie_SingleInstanceMutex_Control") ||
+            is_mutex_present("SBIE_BOXED_ServiceInitComplete_Mutex1")
         ) {
             debug("MUTEX: Detected Sandboxie");
             return core::add(brands::SANDBOXIE);
         }
 
-        if (supMutexExist("MicrosoftVirtualPC7UserServiceMakeSureWe'reTheOnlyOneMutex")) {
+        if (is_mutex_present("MicrosoftVirtualPC7UserServiceMakeSureWe'reTheOnlyOneMutex")) {
             debug("MUTEX: Detected VPC");
             return core::add(brands::VPC);
         }
 
-        if (supMutexExist("Frz_State")) { // DeepFreeze
+        /*
+        if (is_mutex_present("Frz_State")) { // DeepFreeze
             debug("MUTEX: Detected DeepFreeze");
             return true;
         }
-
+        */
         return false;
     }
 
@@ -8050,6 +8146,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     [[nodiscard]] static bool disk_serial_number() {
         bool result = false;
         constexpr u8 MAX_PHYSICAL_DRIVES = 4;
+        constexpr SIZE_T MAX_DESCRIPTOR_SIZE = 64 * 1024; 
         u8 successfulOpens = 0;
 
         auto is_qemu_serial = [](const char* str) -> bool {
@@ -8063,7 +8160,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             auto toupper_char = [](char c) -> char {
                 return (c >= 'a' && c <= 'z') ? static_cast<char>(c - 'a' + 'A') : c;
-            };
+                };
 
             if (toupper_char(str[0]) != 'V' || toupper_char(str[1]) != 'B' || str[10] != '-') {
                 return false;
@@ -8072,7 +8169,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             auto is_hex = [&](char c) {
                 char upper_c = toupper_char(c);
                 return (upper_c >= '0' && upper_c <= '9') || (upper_c >= 'A' && upper_c <= 'F');
-            };
+                };
 
             static constexpr std::array<u8, 16> hex_positions = { {
                 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17, 18
@@ -8096,7 +8193,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             wchar_t path[32];
             swprintf_s(path, L"\\\\.\\PhysicalDrive%u", drive);
 
-            HANDLE hDevice = CreateFileW(
+            const HANDLE hDevice = CreateFileW(
                 path,
                 0,
                 FILE_SHARE_READ | FILE_SHARE_WRITE,
@@ -8131,14 +8228,18 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             );
 
             if (!ok) {
-                DWORD err = GetLastError();
-                // If stack buffer was too small, allocate reported size and retry
+                const DWORD err = GetLastError();
                 if (err == ERROR_INSUFFICIENT_BUFFER && descriptor->Size > 0) {
-                    allocatedSize = static_cast<SIZE_T>(descriptor->Size);
+                    DWORD reportedSize = descriptor->Size;
+                    if (reportedSize < sizeof(STORAGE_DEVICE_DESCRIPTOR) || static_cast<SIZE_T>(reportedSize) > MAX_DESCRIPTOR_SIZE) {
+                        CloseHandle(hDevice);
+                        continue;
+                    }
+                    allocatedSize = static_cast<SIZE_T>(reportedSize);
                     allocatedBuffer = static_cast<BYTE*>(LocalAlloc(LMEM_FIXED, allocatedSize));
                     if (!allocatedBuffer) {
                         CloseHandle(hDevice);
-                        continue; // allocation failed, next drive
+                        continue;
                     }
                     descriptor = reinterpret_cast<STORAGE_DEVICE_DESCRIPTOR*>(allocatedBuffer);
                     if (!DeviceIoControl(
@@ -8155,7 +8256,18 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     }
                 }
                 else {
-                    // other weird failure
+                    CloseHandle(hDevice);
+                    continue;
+                }
+            }
+
+            {
+                const DWORD reportedSize = descriptor->Size;
+                if (reportedSize < sizeof(STORAGE_DEVICE_DESCRIPTOR) || static_cast<SIZE_T>(reportedSize) > MAX_DESCRIPTOR_SIZE) {
+                    if (allocatedBuffer) {
+                        LocalFree(allocatedBuffer);
+                        allocatedBuffer = nullptr;
+                    }
                     CloseHandle(hDevice);
                     continue;
                 }
@@ -8184,7 +8296,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 allocatedBuffer = nullptr;
             }
             CloseHandle(hDevice);
-        } 
+        }
 
         if (successfulOpens == 0) {
             debug("DISK_SERIAL: No physical drives detected");
@@ -8786,7 +8898,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     continue;
                 }
 
-                wstring_view vw(wstr.c_str(), wstr.size());
+                const wstring_view vw(wstr.c_str(), wstr.size());
 
                 // 1) Sxx[_] slots (#ACPI(S<bus><slot>[_]))
                 size_t pos = vw.find(acpiPrefix);
@@ -9263,13 +9375,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             UNICODE_STRING TypeName;
         } OBJECT_DIRECTORY_INFORMATION, * POBJECT_DIRECTORY_INFORMATION;
 
-        typedef NTSTATUS(NTAPI* pfnNtOpenDirectoryObject)(
+        typedef NTSTATUS(__stdcall* pfnNtOpenDirectoryObject)(
             OUT PHANDLE DirectoryHandle,
             IN ACCESS_MASK DesiredAccess,
             IN POBJECT_ATTRIBUTES ObjectAttributes
         );
 
-        typedef NTSTATUS(NTAPI* pfnNtQueryDirectoryObject)(
+        typedef NTSTATUS(__stdcall* pfnNtQueryDirectoryObject)(
             IN HANDLE DirectoryHandle,
             OUT PVOID Buffer,
             IN ULONG Length,
@@ -9279,8 +9391,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             OUT PULONG ReturnLength OPTIONAL
         );
 
-        #define DIRECTORY_QUERY         (0x0001)
-        #define STATUS_NO_MORE_ENTRIES  ((NTSTATUS)0x8000001A)
+        constexpr auto DIRECTORY_QUERY = (0x0001);
+        constexpr NTSTATUS STATUS_NO_MORE_ENTRIES = 0x8000001A;
 
         HANDLE hDir = NULL;
         OBJECT_ATTRIBUTES objAttr{};
@@ -9320,16 +9432,17 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        std::vector<BYTE> buffer(1024 * 8);
+        std::vector<BYTE> buffer(4096);
+        constexpr size_t MAX_DIR_BUFFER = 64 * 1024; 
         ULONG context = 0;
-        ULONG returnedLength;
+        ULONG returnedLength = 0;
 
         while (true) {
             status = pNtQueryDirectoryObject(
                 hDir,
                 buffer.data(),
-                (ULONG)buffer.size(),
-                FALSE,
+                static_cast<ULONG>(buffer.size()),
+                TRUE,   // ReturnSingleEntry
                 FALSE,
                 &context,
                 &returnedLength
@@ -9340,28 +9453,101 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             if (!NT_SUCCESS(status)) {
+                if (returnedLength > buffer.size()) {
+                    size_t newSize = static_cast<size_t>(returnedLength);
+                    if (newSize > MAX_DIR_BUFFER) newSize = MAX_DIR_BUFFER;
+                    if (newSize <= buffer.size()) {
+                        CloseHandle(hDir);
+                        return false;
+                    }
+                    try {
+                        buffer.resize(newSize);
+                    }
+                    catch (...) {
+                        CloseHandle(hDir);
+                        return false;
+                    }
+                    continue;
+                }
                 CloseHandle(hDir);
                 return false;
             }
 
-            POBJECT_DIRECTORY_INFORMATION pOdi = (POBJECT_DIRECTORY_INFORMATION)buffer.data();
-
-            while (pOdi->Name.Length > 0) {
-                std::wstring objectName(pOdi->Name.Buffer, pOdi->Name.Length / sizeof(wchar_t));
-
-                if (wcscmp(objectName.c_str(), L"VmGenerationCounter") == 0) {
-                    CloseHandle(hDir);
-                    debug("OBJECTS: Detected VmGenerationCounter");
-                    return core::add(brands::HYPERV);
-                }
-                if (wcscmp(objectName.c_str(), L"VmGid") == 0) {
-                    CloseHandle(hDir);
-                    debug("OBJECTS: Detected VmGid");
-                    return core::add(brands::HYPERV);
-                }
-
-                pOdi = (POBJECT_DIRECTORY_INFORMATION)((BYTE*)pOdi + sizeof(OBJECT_DIRECTORY_INFORMATION));
+            const size_t usedLen = (returnedLength == 0) ? buffer.size() : static_cast<size_t>(returnedLength);
+            if (usedLen < sizeof(OBJECT_DIRECTORY_INFORMATION) || usedLen > buffer.size()) {
+                CloseHandle(hDir);
+                return false;
             }
+
+            const POBJECT_DIRECTORY_INFORMATION pOdi = reinterpret_cast<POBJECT_DIRECTORY_INFORMATION>(buffer.data());
+
+            const uintptr_t bufBase = reinterpret_cast<uintptr_t>(buffer.data());
+            const uintptr_t bufEnd = bufBase + usedLen;
+
+            std::wstring objectName;
+            bool gotName = false;
+
+            const size_t nameBytes = static_cast<size_t>(pOdi->Name.Length);
+            const uintptr_t namePtr = reinterpret_cast<uintptr_t>(pOdi->Name.Buffer);
+
+            if (nameBytes > 0 && (nameBytes % sizeof(wchar_t) == 0)) {
+                const uintptr_t minValidPtr = bufBase + sizeof(OBJECT_DIRECTORY_INFORMATION);
+                if (namePtr >= minValidPtr && (namePtr + nameBytes) <= bufEnd && (namePtr % sizeof(wchar_t) == 0)) {
+                    const wchar_t* wname = reinterpret_cast<const wchar_t*>(namePtr);
+                    const size_t wlen = nameBytes / sizeof(wchar_t);
+                    bool foundTerm = false;
+                    for (size_t i = 0; i < wlen; ++i) {
+                        if (wname[i] == L'\0') { objectName.assign(wname, i); foundTerm = true; break; }
+                    }
+                    if (!foundTerm) {
+                        objectName.assign(wname, wlen);
+                    }
+                    gotName = true;
+                }
+            }
+
+            if (!gotName) {
+                const uintptr_t altStart = bufBase + sizeof(OBJECT_DIRECTORY_INFORMATION);
+                if (altStart >= bufEnd) {
+                    CloseHandle(hDir);
+                    return false;
+                }
+                const size_t maxBytes = bufEnd - altStart;
+                if (maxBytes < sizeof(wchar_t)) {
+                    CloseHandle(hDir);
+                    return false;
+                }
+                const wchar_t* altPtr = reinterpret_cast<const wchar_t*>(buffer.data() + (altStart - bufBase));
+                const size_t maxChars = maxBytes / sizeof(wchar_t);
+
+                size_t realChars = 0;
+                for (; realChars < maxChars; ++realChars) {
+                    if (altPtr[realChars] == L'\0') break;
+                }
+                if (realChars == maxChars) {
+                    CloseHandle(hDir);
+                    return false;
+                }
+                objectName.assign(altPtr, realChars);
+                gotName = true;
+            }
+
+            if (!gotName) {
+                CloseHandle(hDir);
+                return false;
+            }
+
+            if (objectName == L"VmGenerationCounter") {
+                CloseHandle(hDir);
+                debug("OBJECTS: Detected VmGenerationCounter");
+                return core::add(brands::HYPERV);
+            }
+            if (objectName == L"VmGid") {
+                CloseHandle(hDir);
+                debug("OBJECTS: Detected VmGid");
+                return core::add(brands::HYPERV);
+            }
+
         }
 
         CloseHandle(hDir);
@@ -9442,31 +9628,40 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         PVARIABLE_NAME varName = reinterpret_cast<PVARIABLE_NAME>(res.buffer.data());
         const size_t bufSize = res.buffer.size();
 
+        constexpr size_t MAX_NAME_BYTES = 4096;
+
         while (true) {
-            const size_t offset = static_cast<size_t>(reinterpret_cast<uintptr_t>(varName) - reinterpret_cast<uintptr_t>(res.buffer.data()));
+            const uintptr_t basePtr = reinterpret_cast<uintptr_t>(res.buffer.data());
+            const uintptr_t curPtr = reinterpret_cast<uintptr_t>(varName);
+
+            if (curPtr < basePtr) break;
+            const size_t offset = static_cast<size_t>(curPtr - basePtr);
             if (offset >= bufSize) break;
+
+            const size_t nameOffset = offsetof(VARIABLE_NAME, Name);
+            if (bufSize - offset < nameOffset) break;
 
             std::wstring nameStr;
             {
-                const size_t nameOffset = offsetof(VARIABLE_NAME, Name);
-                if (offset + nameOffset >= bufSize) {
-                    break;
-                }
-
                 size_t nameMaxBytes = 0;
                 if (varName->NextEntryOffset != 0) {
-                    if (varName->NextEntryOffset <= nameOffset) {
+                    const SIZE_T ne = static_cast<SIZE_T>(varName->NextEntryOffset);
+                    if (ne <= nameOffset) {
                         return false;
                     }
-                    nameMaxBytes = varName->NextEntryOffset - nameOffset;
+                    if (ne > bufSize - offset) {
+                        break;
+                    }
+                    nameMaxBytes = ne - nameOffset;
                 }
                 else {
-                    // This check is slightly redundant due to the one above but is harmless
                     if (offset + nameOffset >= bufSize) {
                         return false;
                     }
                     nameMaxBytes = bufSize - (offset + nameOffset);
                 }
+
+                if (nameMaxBytes > MAX_NAME_BYTES) nameMaxBytes = MAX_NAME_BYTES;
 
                 if (nameMaxBytes >= sizeof(WCHAR)) {
                     const WCHAR* namePtr = reinterpret_cast<const WCHAR*>(reinterpret_cast<const BYTE*>(varName) + nameOffset);
@@ -9520,7 +9715,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     valueBuf.resize(readLen);
                 }
             }
-            else { 
+            else {
                 const DWORD fallbackSize = 8192;
                 valueBuf.resize(fallbackSize);
                 readLen = GetFirmwareEnvironmentVariableW(nameStr.c_str(), guidStr.c_str(), valueBuf.data(), fallbackSize);
@@ -9534,10 +9729,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             if (varName->NextEntryOffset == 0) break;
 
-            const size_t nextOffset = offset + varName->NextEntryOffset;
-            if (nextOffset <= offset || nextOffset >= bufSize) break;
+            const SIZE_T ne = static_cast<SIZE_T>(varName->NextEntryOffset);
+            const size_t nextOffset = offset + ne;
+            if (nextOffset <= offset || nextOffset > bufSize) break;
 
-            varName = reinterpret_cast<PVARIABLE_NAME>(reinterpret_cast<PBYTE>(varName) + varName->NextEntryOffset);
+            varName = reinterpret_cast<PVARIABLE_NAME>(reinterpret_cast<PBYTE>(res.buffer.data()) + nextOffset);
         }
 
         if (!found_dbDefault) {
@@ -9631,19 +9827,31 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         PVARIABLE_NAME varName = reinterpret_cast<PVARIABLE_NAME>(res.buffer.data());
         const size_t bufSize = res.buffer.size();
 
+        constexpr size_t MAX_NAME_BYTES = 4096;
+
         while (true) {
-            const size_t offset = static_cast<size_t>(reinterpret_cast<uintptr_t>(varName) - reinterpret_cast<uintptr_t>(res.buffer.data()));
+            const uintptr_t basePtr = reinterpret_cast<uintptr_t>(res.buffer.data());
+            const uintptr_t curPtr = reinterpret_cast<uintptr_t>(varName);
+
+            if (curPtr < basePtr) break;
+            const size_t offset = static_cast<size_t>(curPtr - basePtr);
             if (offset >= bufSize) break;
+
+            const size_t nameOffset = offsetof(VARIABLE_NAME, Name);
+            if (bufSize - offset < nameOffset) break;
 
             std::wstring nameStr;
             {
-                const size_t nameOffset = offsetof(VARIABLE_NAME, Name);
                 size_t nameMaxBytes = 0;
                 if (varName->NextEntryOffset != 0) {
-                    if (varName->NextEntryOffset <= nameOffset) {
+                    const SIZE_T ne = static_cast<SIZE_T>(varName->NextEntryOffset);
+                    if (ne <= nameOffset) {
                         return false;
                     }
-                    nameMaxBytes = varName->NextEntryOffset - nameOffset;
+                    if (ne > bufSize - offset) {
+                        break;
+                    }
+                    nameMaxBytes = ne - nameOffset;
                 }
                 else {
                     if (offset + nameOffset >= bufSize) {
@@ -9651,6 +9859,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     }
                     nameMaxBytes = bufSize - (offset + nameOffset);
                 }
+
+                if (nameMaxBytes > MAX_NAME_BYTES) nameMaxBytes = MAX_NAME_BYTES;
 
                 if (nameMaxBytes >= sizeof(WCHAR)) {
                     const WCHAR* namePtr = reinterpret_cast<const WCHAR*>(reinterpret_cast<const BYTE*>(varName) + nameOffset);
@@ -9767,14 +9977,28 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             if (varName->NextEntryOffset == 0) break;
 
-            const size_t nextOffset = offset + varName->NextEntryOffset;
+            const SIZE_T ne = static_cast<SIZE_T>(varName->NextEntryOffset);
+            const size_t nextOffset = offset + ne;
             if (nextOffset >= bufSize || nextOffset < offset) break;
 
-            varName = reinterpret_cast<PVARIABLE_NAME>(reinterpret_cast<PBYTE>(varName) + varName->NextEntryOffset);
+            varName = reinterpret_cast<PVARIABLE_NAME>(reinterpret_cast<PBYTE>(res.buffer.data()) + nextOffset);
         }
 
         return false;
     }
+
+
+    /**
+	 * @brief Check if SMBIOS is malformed/corrupted in a way that is typical for VMs
+     * @category Windows
+     * @author Requiem (https://github.com/NotRequiem)
+     * @implements VM::SMBIOS_PASSTHROUGH
+     */
+    [[nodiscard]] static bool smbios_passthrough() {
+        ULONGLONG total_memory_in_kilobytes;
+        return !GetPhysicallyInstalledSystemMemory(&total_memory_in_kilobytes);
+    }
+
     // ADD NEW TECHNIQUE FUNCTION HERE
 #endif
 
@@ -10709,7 +10933,6 @@ public: // START OF PUBLIC FUNCTIONS
     static void add_custom(
         const u8 percent,
         std::function<bool()> detection_func
-        // clang doesn't support std::source_location for some reason
 #if (CPP >= 20 && !CLANG)
         , const std::source_location& loc = std::source_location::current()
 #endif
@@ -10864,6 +11087,7 @@ public: // START OF PUBLIC FUNCTIONS
             case OBJECTS: return "OBJECTS";
             case NVRAM: return "NVRAM";
             case BOOT: return "BOOT";
+            case SMBIOS_PASSTHROUGH: return "SMBIOS_PASSTHROUGH";
             // END OF TECHNIQUE LIST
             case DEFAULT: return "setting flag, error";
             case ALL: return "setting flag, error";
@@ -10911,8 +11135,7 @@ public: // START OF PUBLIC FUNCTIONS
     static void modify_score(
         const enum_flags flag,
         const u8 percent
-        // clang doesn't support std::source_location for some reason
-#if (CPP >= 20 && !CLANG)
+#if (CPP >= 20) && (!CLANG || __clang_major__ >= 16)
         , const std::source_location& loc = std::source_location::current()
 #endif
     ) {
@@ -10939,7 +11162,7 @@ public: // START OF PUBLIC FUNCTIONS
             throw_error("The flag is not a technique flag");
         }
 
-        using table_t =  std::map<enum_flags, core::technique>;
+        using table_t = std::map<enum_flags, core::technique>;
 
         auto modify = [](table_t &table, const enum_flags flag, const u8 percent) -> void {
             core::technique &tmp = table.at(flag);
@@ -11108,38 +11331,35 @@ public: // START OF PUBLIC FUNCTIONS
 #endif
             std::string addition = "";
 
-            if (is_hardened()) {
-                addition = " a hardened ";
-            } else {
-                // this basically just fixes the grammatical syntax
-                // by either having "a" or "an" before the VM brand
-                // name. Like it would look weird if the conclusion 
-                // message was "an VirtualBox" or "a Anubis", so this
-                // lambda fixes that issue.
-                if (
-                    (brand_tmp == brands::ACRN) ||
-                    (brand_tmp == brands::ANUBIS) ||
-                    (brand_tmp == brands::BSD_VMM) ||
-                    (brand_tmp == brands::INTEL_HAXM) ||
-                    (brand_tmp == brands::APPLE_VZ) ||
-                    (brand_tmp == brands::INTEL_KGT) ||
-                    (brand_tmp == brands::POWERVM) ||
-                    (brand_tmp == brands::OPENSTACK) ||
-                    (brand_tmp == brands::AWS_NITRO) ||
-                    (brand_tmp == brands::OPENVZ) ||
-                    (brand_tmp == brands::INTEL_TDX) ||
-                    (brand_tmp == brands::AMD_SEV) ||
-                    (brand_tmp == brands::AMD_SEV_ES) ||
-                    (brand_tmp == brands::AMD_SEV_SNP) ||
-                    (brand_tmp == brands::NSJAIL) ||
-                    (brand_tmp == brands::NULL_BRAND)
+            // this basically just fixes the grammatical syntax
+            // by either having "a" or "an" before the VM brand
+            // name. It would look weird if the conclusion 
+            // message was "an VirtualBox" or "a Anubis", so this
+            // lambda fixes that issue.    
+            if (
+                (brand_tmp == brands::ACRN) ||
+                (brand_tmp == brands::ANUBIS) ||
+                (brand_tmp == brands::BSD_VMM) ||
+                (brand_tmp == brands::INTEL_HAXM) ||
+                (brand_tmp == brands::APPLE_VZ) ||
+                (brand_tmp == brands::INTEL_KGT) ||
+                (brand_tmp == brands::POWERVM) ||
+                (brand_tmp == brands::OPENSTACK) ||
+                (brand_tmp == brands::AWS_NITRO) ||
+                (brand_tmp == brands::OPENVZ) ||
+                (brand_tmp == brands::INTEL_TDX) ||
+                (brand_tmp == brands::AMD_SEV) ||
+                (brand_tmp == brands::AMD_SEV_ES) ||
+                (brand_tmp == brands::AMD_SEV_SNP) ||
+                (brand_tmp == brands::NSJAIL) ||
+                (brand_tmp == brands::NULL_BRAND)
                 ) {
-                    addition = " an ";
-                } else {
-                    addition = " a ";
-                }
+                addition = " an ";
             }
-
+            else {
+                addition = " a ";
+            }         
+            
             // this is basically just to remove the capital "U", 
             // since it doesn't make sense to see "an Unknown"
             if (brand_tmp == brands::NULL_BRAND) {
@@ -11410,6 +11630,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         std::make_pair(VM::ACPI_SIGNATURE, VM::core::technique(100, VM::acpi_signature)),
         std::make_pair(VM::NVRAM, VM::core::technique(100, VM::nvram_vars)),
         std::make_pair(VM::BOOT, VM::core::technique(100, VM::nvram_boot)),
+        std::make_pair(VM::SMBIOS_PASSTHROUGH, VM::core::technique(50, VM::smbios_passthrough)),
         std::make_pair(VM::GPU_CAPABILITIES, VM::core::technique(45, VM::gpu_capabilities)),
         std::make_pair(VM::BOOT_LOGO, VM::core::technique(100, VM::boot_logo)),
         std::make_pair(VM::TPM, VM::core::technique(100, VM::tpm)),
