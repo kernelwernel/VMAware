@@ -50,8 +50,8 @@
 
 #include "vmaware.hpp"
 
-constexpr const char* ver = "Experimental 2.4.2";
-constexpr const char* date = "July 2025";
+constexpr const char* ver = "2.5.0";
+constexpr const char* date = "September 2025";
 
 std::string bold = "\033[1m";
 std::string underline = "\033[4m";
@@ -292,8 +292,9 @@ UTM
     std::exit(0);
 }
 
-#if (CLI_LINUX)
+
 static bool is_admin() {
+#if (CLI_LINUX)
     const uid_t uid  = getuid();
     const uid_t euid = geteuid();
 
@@ -303,8 +304,21 @@ static bool is_admin() {
     );
 
     return is_root;
-}
+#elif (WINDOWS)
+    bool is_admin = false;
+    HANDLE hToken = nullptr;
+    if (OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &hToken)) {
+        TOKEN_ELEVATION elevation{};
+        DWORD dwSize;
+        if (GetTokenInformation(hToken, TokenElevation, &elevation, sizeof(elevation), &dwSize)) {
+            if (elevation.TokenIsElevated)
+                is_admin = true;
+        }
+        CloseHandle(hToken);
+    }
+    return is_admin;
 #endif
+}
 
 #if (CLI_LINUX)
 static bool are_perms_required(const VM::enum_flags flag) {
@@ -714,6 +728,10 @@ static void general() {
         if (notes_enabled && !is_admin()) {
             std::cout << note << " Running under root might give better results\n";
         }
+    #elif (CLI_WINDOWS)
+        if (!is_admin()) {
+            std::cout << note << " Not running as admin. Some important detections will be disabled.\n";
+        }
     #endif
 
     const auto t1 = std::chrono::high_resolution_clock::now();
@@ -810,6 +828,7 @@ static void general() {
     checker(VM::MAC_SYS, "system profiler");
     checker(VM::OBJECTS, "objects");
     checker(VM::NVRAM, "NVRAM");
+    checker(VM::SMBIOS_PASSTHROUGH, "SMBIOS");
 
     // ADD NEW TECHNIQUE CHECKER HERE
 
