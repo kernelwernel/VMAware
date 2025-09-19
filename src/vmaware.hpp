@@ -56,10 +56,10 @@
  * - struct for internal cpu operations        => line 717
  * - struct for internal memoization           => line 1183
  * - struct for internal utility functions     => line 1313
- * - struct for internal core components       => line 10044
+ * - struct for internal core components       => line 10043
  * - start of VM detection technique list      => line 2270
- * - start of public VM detection functions    => line 10537
- * - start of externally defined variables     => line 11525
+ * - start of public VM detection functions    => line 10536
+ * - start of externally defined variables     => line 11524
  *
  *
  * ============================== EXAMPLE ===================================
@@ -6844,7 +6844,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check if memory is too low for MacOS system
      * @category MacOS
-     * @link https://evasions.checkpoint.com/techniques/macos.html
+     * @link https://evasions.checkpoint.com/src/MacOS/macos.html
      * @implements VM::MAC_MEMSIZE
      */
     [[nodiscard]] static bool hw_memsize() {
@@ -6877,7 +6877,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check MacOS' IO kit registry for VM-specific strings
      * @category MacOS
-     * @link https://evasions.checkpoint.com/techniques/macos.html
+     * @link https://evasions.checkpoint.com/src/MacOS/macos.html
      * @implements VM::MAC_IOKIT
      */
     [[nodiscard]] static bool io_kit() {
@@ -6974,7 +6974,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for VM-strings in ioreg commands for MacOS
      * @category MacOS
-     * @link https://evasions.checkpoint.com/techniques/macos.html
+     * @link https://evasions.checkpoint.com/src/MacOS/macos.html
      * @implements VM::IOREG_GREP
      */
     [[nodiscard]] static bool ioreg_grep() {
@@ -7031,7 +7031,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for the status of System Integrity Protection and hv_mm_present
      * @category MacOS
-     * @link https://evasions.checkpoint.com/techniques/macos.html
+     * @link https://evasions.checkpoint.com/src/MacOS/macos.html
      * @implements VM::MAC_SIP
      */
     [[nodiscard]] static bool mac_sip() {
@@ -7261,12 +7261,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         #if (_WIN32_WINNT < _WIN32_WINNT_WIN8)
             return false;
         #else
-            BOOL isNativeVhdBoot = 0;
 
             __try {
-                if (IsNativeVhdBoot(&isNativeVhdBoot)) {
-                    return (isNativeVhdBoot == 1);
-                }
+                BOOL isNativeVhdBoot = 0;
+                IsNativeVhdBoot(&isNativeVhdBoot);
+                UNUSED(isNativeVhdBoot);
             }
             __except (EXCEPTION_EXECUTE_HANDLER) {
                 debug("WINE: SEH invoked");
