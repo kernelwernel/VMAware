@@ -165,6 +165,8 @@ If you want to learn about the architecture and design of the library, head over
 > It's designed for security researchers, VM engineers, anticheat developers, and pretty much anybody who needs a practical and rock-solid VM detection mechanism in their project. For example, the library is suitable if you're making a VM and you're testing the effectiveness of concealing itself. If you're a proprietary software developer, the library is useful to thwart against reverse engineers. If you're a malware analyst and you want to check the concealment capability of your VM, this would be the perfect tool to benchmark how well-concealed your VM is against malware. 
 > 
 > Additionally, software could adjust the behaviour of their program based on the detected environment. It could be useful for debugging and testing purposes, while system administrators could manage configurations differently. Finally, some applications might want to legally restrict usage in VMs as a license clause to prevent unauthorized distribution or testing.
+>
+> There are also projects that utilise our tool such as [Hypervisor-Phantom](https://codeberg.org/Scrut1ny/Hypervisor-Phantom), which is an advanced malware analysis project that we helped strengthen their hypervisor environment and undetectability. 
 > 
 </details>
 
