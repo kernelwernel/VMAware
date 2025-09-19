@@ -56,10 +56,10 @@
  * - struct for internal cpu operations        => line 717
  * - struct for internal memoization           => line 1183
  * - struct for internal utility functions     => line 1313
- * - struct for internal core components       => line 10044
+ * - struct for internal core components       => line 10043
  * - start of VM detection technique list      => line 2270
  * - start of public VM detection functions    => line 10536
- * - start of externally defined variables     => line 11522
+ * - start of externally defined variables     => line 11524
  *
  *
  * ============================== EXAMPLE ===================================
@@ -1972,7 +1972,7 @@ private:
                 }
                 else {
                     // Windows machine running under Hyper-V type 1
-                    core_debug("HYPER_X: Detected Hyper-V host VM");
+                    core_debug("HYPER_X: Detected Hyper-V host machine");
                     core::add(brands::HYPERV_ARTIFACT);
                     state = HYPERV_ARTIFACT_VM;
                 }
@@ -3232,7 +3232,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             { "i7-4578U", 4 },
             { "i7-4600M", 4 },
             { "i7-4600U", 4 },
-            { "i7-4610M", 8 },
+            { "i7-4610M", 4 },
             { "i7-4610Y", 4 },
             { "i7-4650U", 4 },
             { "i7-4700EC", 8 },
@@ -6844,7 +6844,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check if memory is too low for MacOS system
      * @category MacOS
-     * @link https://evasions.checkpoint.com/techniques/macos.html
+     * @link https://evasions.checkpoint.com/src/MacOS/macos.html
      * @implements VM::MAC_MEMSIZE
      */
     [[nodiscard]] static bool hw_memsize() {
@@ -6877,7 +6877,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check MacOS' IO kit registry for VM-specific strings
      * @category MacOS
-     * @link https://evasions.checkpoint.com/techniques/macos.html
+     * @link https://evasions.checkpoint.com/src/MacOS/macos.html
      * @implements VM::MAC_IOKIT
      */
     [[nodiscard]] static bool io_kit() {
@@ -6974,7 +6974,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for VM-strings in ioreg commands for MacOS
      * @category MacOS
-     * @link https://evasions.checkpoint.com/techniques/macos.html
+     * @link https://evasions.checkpoint.com/src/MacOS/macos.html
      * @implements VM::IOREG_GREP
      */
     [[nodiscard]] static bool ioreg_grep() {
@@ -7031,7 +7031,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for the status of System Integrity Protection and hv_mm_present
      * @category MacOS
-     * @link https://evasions.checkpoint.com/techniques/macos.html
+     * @link https://evasions.checkpoint.com/src/MacOS/macos.html
      * @implements VM::MAC_SIP
      */
     [[nodiscard]] static bool mac_sip() {
@@ -7261,12 +7261,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         #if (_WIN32_WINNT < _WIN32_WINNT_WIN8)
             return false;
         #else
-            BOOL isNativeVhdBoot = 0;
 
             __try {
-                if (IsNativeVhdBoot(&isNativeVhdBoot)) {
-                    return (isNativeVhdBoot == 1);
-                }
+                BOOL isNativeVhdBoot = 0;
+                IsNativeVhdBoot(&isNativeVhdBoot);
+                UNUSED(isNativeVhdBoot);
             }
             __except (EXCEPTION_EXECUTE_HANDLER) {
                 debug("WINE: SEH invoked");
@@ -10082,12 +10081,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         // assert if the flag is enabled, far better expression than typing std::bitset member functions
         [[nodiscard]] static inline bool is_disabled(const flagset& flags, const u8 flag_bit) noexcept {
-            return (!flags.test(flag_bit));
+            if (flag_bit >= flags.size()) return true;
+            return !flags.test(flag_bit);
         }
 
         // same as above but for checking enabled flags
         [[nodiscard]] static inline bool is_enabled(const flagset& flags, const u8 flag_bit) noexcept {
-            return (flags.test(flag_bit));
+            if (flag_bit >= flags.size()) return false;
+            return flags.test(flag_bit);
         }
 
         [[nodiscard]] static bool is_technique_set(const flagset& flags) {
@@ -10162,7 +10163,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             // loop through the technique table, where all the techniques are stored
             for (const auto& tmp : technique_table) {
                 const enum_flags technique_macro = tmp.first;
-                const technique technique_data = tmp.second;
+                const technique& technique_data = tmp.second;
 
                 // check if platform is supported
                 //if (util::is_unsupported(technique_macro)) {
@@ -10189,8 +10190,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 // run the technique
                 const bool result = technique_data.run();
 
-                // accumulate the points if the technique detected a VM
-                if (result) {
+                if (technique_data.run && result) {
                     points += technique_data.points;
 
                     // this is specific to VM::detected_count() which 
@@ -10596,12 +10596,14 @@ public: // START OF PUBLIC FUNCTIONS
 
         // initialise and run the technique
         const core::technique& pair = it->second;
-        const bool result = pair.run();
+        bool result = false;
+        if (pair.run) {
+            result = pair.run();
 
-        if (result) {
-            detected_count_num++;
+            if (result) {
+                detected_count_num++;
+            }
         }
-
     #ifdef __VMAWARE_DEBUG__
         total_points += pair.points;
     #endif
@@ -10949,7 +10951,7 @@ public: // START OF PUBLIC FUNCTIONS
         } else if (points >= 100) {
             percent = 99;
         } else {
-            percent = static_cast<u8>(points);
+            percent = static_cast<u8>(std::min<u16>(points, 99));
         }
 
         return percent;
