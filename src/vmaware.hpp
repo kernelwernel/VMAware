@@ -56,10 +56,10 @@
  * - struct for internal cpu operations        => line 717
  * - struct for internal memoization           => line 1183
  * - struct for internal utility functions     => line 1313
- * - struct for internal core components       => line 10044
+ * - struct for internal core components       => line 10047
  * - start of VM detection technique list      => line 2270
- * - start of public VM detection functions    => line 10536
- * - start of externally defined variables     => line 11522
+ * - start of public VM detection functions    => line 10539
+ * - start of externally defined variables     => line 11525
  *
  *
  * ============================== EXAMPLE ===================================
@@ -5687,6 +5687,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::TEMPERATURE
      */
     [[nodiscard]] static bool temperature() {
+        for (int i = 0; i < 64; ++i) {
+            if (util::exists("/sys/class/thermal/cooling_device" + std::to_string(i))) return false;
+        }
         return (!util::exists("/sys/class/thermal/thermal_zone0/"));
     }
 
