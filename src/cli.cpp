@@ -50,8 +50,8 @@
 
 #include "vmaware.hpp"
 
-constexpr const char* ver = "Experimental 2.4.2";
-constexpr const char* date = "July 2025";
+constexpr const char* ver = "2.5.0";
+constexpr const char* date = "September 2025";
 
 std::string bold = "\033[1m";
 std::string underline = "\033[4m";
@@ -292,8 +292,9 @@ UTM
     std::exit(0);
 }
 
-#if (CLI_LINUX)
+
 static bool is_admin() {
+#if (CLI_LINUX)
     const uid_t uid  = getuid();
     const uid_t euid = geteuid();
 
@@ -303,8 +304,21 @@ static bool is_admin() {
     );
 
     return is_root;
-}
+#elif (WINDOWS)
+    bool is_admin = false;
+    HANDLE hToken = nullptr;
+    if (OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &hToken)) {
+        TOKEN_ELEVATION elevation{};
+        DWORD dwSize;
+        if (GetTokenInformation(hToken, TokenElevation, &elevation, sizeof(elevation), &dwSize)) {
+            if (elevation.TokenIsElevated)
+                is_admin = true;
+        }
+        CloseHandle(hToken);
+    }
+    return is_admin;
 #endif
+}
 
 #if (CLI_LINUX)
 static bool are_perms_required(const VM::enum_flags flag) {
@@ -714,6 +728,10 @@ static void general() {
         if (notes_enabled && !is_admin()) {
             std::cout << note << " Running under root might give better results\n";
         }
+    #elif (CLI_WINDOWS)
+        if (!is_admin()) {
+            std::cout << note << " Not running as admin. Some important detections will be disabled.\n";
+        }
     #endif
 
     const auto t1 = std::chrono::high_resolution_clock::now();
@@ -760,7 +778,6 @@ static void general() {
     checker(VM::VMWARE_STR, "STR instruction");
     checker(VM::VMWARE_BACKDOOR, "VMware IO port backdoor");
     checker(VM::MUTEX, "mutex strings");
-    checker(VM::ODD_CPU_THREADS, "odd thread count number");
     checker(VM::INTEL_THREAD_MISMATCH, "Intel thread count mismatch");
     checker(VM::XEON_THREAD_MISMATCH, "Intel Xeon thread count mismatch");
     checker(VM::AMD_THREAD_MISMATCH, "AMD thread count mismatch");
@@ -790,8 +807,6 @@ static void general() {
     checker(VM::DISK_SERIAL, "disk serial number");
     checker(VM::IVSHMEM, "IVSHMEM device");
     checker(VM::GPU_CAPABILITIES, "GPU capabilities");
-    checker(VM::LOGICAL_PROCESSORS, "logical processor count");
-    checker(VM::PHYSICAL_PROCESSORS, "physical processor count");
     checker(VM::POWER_CAPABILITIES, "power capabilities");
     checker(VM::QEMU_FW_CFG, "QEMU fw_cfg device");
     checker(VM::VIRTUAL_PROCESSORS, "virtual processors");
@@ -809,8 +824,11 @@ static void general() {
     checker(VM::BLOCKSTEP, "single step with trap flag");
     checker(VM::DBVM, "Dark Byte's hypervisor");
     checker(VM::BOOT_LOGO, "boot logo");
+    checker(VM::BOOT_MANAGER, "boot manager");
     checker(VM::MAC_SYS, "system profiler");
     checker(VM::OBJECTS, "objects");
+    checker(VM::NVRAM, "NVRAM");
+    checker(VM::SMBIOS_PASSTHROUGH, "SMBIOS passthrough");
 
     // ADD NEW TECHNIQUE CHECKER HERE
 
@@ -1030,7 +1048,7 @@ static void general() {
 }
 
 
-void generate_json(const std::string &output) {
+static void generate_json(const std::string &output) {
     std::vector<std::string> json = {};
 
     json.push_back("{");
@@ -1055,16 +1073,16 @@ void generate_json(const std::string &output) {
     json.push_back(VM::is_hardened() ? "true," : "false,");
     json.push_back("\n\t\"detected_techniques\": [");
 
-    std::vector<VM::enum_flags> detected = VM::detected_enums();
+    std::vector<VM::enum_flags> detected_status = VM::detected_enums();
 
-    if (detected.size() == 0) {
+    if (detected_status.size() == 0) {
         json.push_back("]\n}");
     } else {
-        for (size_t i = 0; i < detected.size(); i++) {
+        for (size_t i = 0; i < detected_status.size(); i++) {
             json.push_back("\n\t\t\"");
-            json.push_back(VM::flag_to_string(detected.at(i)));
+            json.push_back(VM::flag_to_string(detected_status.at(i)));
 
-            if (i == detected.size() - 1) {
+            if (i == detected_status.size() - 1) {
                 json.push_back("\"");
             } else {
                 json.push_back("\",");
