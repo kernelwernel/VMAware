@@ -937,7 +937,7 @@ static void general() {
         if (VM::is_hardened()) {
             std::cout << green << "found" << ansi_exit << "\n";
         } else {
-            std::cout << red << "not found" << ansi_exit << "\n";
+            std::cout << grey << "not found" << ansi_exit << "\n";
         }
     }
 

@@ -54,6 +54,7 @@ int main() {
     std::cout << "VM name: " << VM::brand() << "\n";
     std::cout << "VM type: " << VM::type() << "\n";
     std::cout << "VM certainty: " << (int)VM::percentage() << "%" << "\n";
+    std::cout << "VM hardening: " << (VM::is_hardened() ? "likely" : "not found") << "\n";
 }
 ```
 
@@ -63,6 +64,7 @@ Virtual machine detected!
 VM name: VirtualBox
 VM type: Hypervisor (type 2)
 VM certainty: 100%
+VM hardening: not found
 ```
 
 <br>
@@ -77,9 +79,11 @@ VM certainty: 100%
 <br>
 
 ## CLI tool 🔧
-This project also provides a tiny, but handy CLI tool utilising the full potential of what the library can do. It'll give you all sorts of details about the environment it's running under.
+This project also provides a handy CLI tool utilising the full potential of what the library can do. It also has cross-platform support.
 
-<img src="assets/demo.jpg" title="cli">
+Below is an example of a basic qemu system with no hardening modifications.
+
+<img src="assets/demo.png" title="cli">
 
 <!-- Try it out on [Compiler Explorer](https://godbolt.org/z/4sKa1sqrW)!-->
 
@@ -166,8 +170,8 @@ If you want to learn about the architecture and design of the library, head over
 > 
 > Additionally, software could adjust the behaviour of their program based on the detected environment. It could be useful for debugging and testing purposes, while system administrators could manage configurations differently. Finally, some applications might want to legally restrict usage in VMs as a license clause to prevent unauthorized distribution or testing.
 >
-> There are also projects that utilise our tool such as [Hypervisor-Phantom](https://codeberg.org/Scrut1ny/Hypervisor-Phantom), which is an advanced malware analysis project that we helped strengthen their hypervisor environment and undetectability. 
-> 
+> There are also projects that utilise our tool such as [Hypervisor-Phantom](https://codeberg.org/Scrut1ny/Hypervisor-Phantom), which is an advanced malware analysis project that we helped strengthen their hypervisor environment and undetectability.
+
 </details>
 
 <details>
