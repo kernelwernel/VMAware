@@ -9,8 +9,8 @@
 - [`VM::type()`](#vmtype)
 - [`VM::conclusion()`](#vmconclusion)
 - [`VM::detected_count()`](#vmdetected_count)
-- [`VM::flag_to_string()`](#vmflag_to_string)
-- [`VM::detected_enums()`](#vmdetected_enums)
+- [`(advanced) VM::flag_to_string()`](#vmflag_to_string)
+- [`(advanced) VM::detected_enums()`](#vmdetected_enums)
 - [vmaware struct](#vmaware-struct)
 - [Notes and overall things to avoid](#notes-and-overall-things-to-avoid)
 - [Flag table](#flag-table)
@@ -308,6 +308,38 @@ int main() {
     // if it's a VM, it should have at least 4 to  
     // maybe around 15 max. The most I've seen was 
     // around 18 but that only occurs very rarely.
+
+    return 0;
+}
+```
+
+<br>
+
+## `VM::is_hardened()`
+
+This will detect whether the environment has any hardening indications as a `bool`. 
+
+Internally, this function works by analysing which combination of techniques are expected to be detected together. If a certain combination rule is mismatched, it indicates some kind of tampering of the system which assumes some sort of VM hardening.
+
+> This function should **NOT** be depended for critical code. This is still a beta feature that hasn't been widely stress-tested.
+
+
+> [!CAUTION]
+> We are looking for Chinese translators. If you'd like to contribute with translating this README, feel free to give us a PR! Credit will be provided.
+
+
+```cpp
+#include "vmaware.hpp"
+#include <iostream>
+
+int main() {
+    if (VM::detect()) {
+        if (VM::is_hardened()) {
+            std::cout << "Potential hardening detected" << "\n";
+        } else {
+            std::cout << "Unsure if hardened" << "\n";
+        }
+    }
 
     return 0;
 }
