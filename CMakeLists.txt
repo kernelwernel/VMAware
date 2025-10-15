@@ -21,6 +21,7 @@ if(MSVC)
         /wd4626  # deleted assignment operator
         /wd5045  # Spectre mitigation notice
         /wd4668  # undefined macro replaced with '0'
+        /Zc:enumTypes  # use enum underlying type canonicalization
     )
 endif()
 
