@@ -4,7 +4,7 @@
  * ██║   ██║██╔████╔██║███████║██║ █╗ ██║███████║██████╔╝█████╗
  * ╚██╗ ██╔╝██║╚██╔╝██║██╔══██║██║███╗██║██╔══██║██╔══██╗██╔══╝
  *  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
- *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ Experimental post-2.5.0 (September 2025)
+ *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ Experimental post-2.5.0 (October 2025)
  *
  *  C++ VM detection library
  *
@@ -54,12 +54,12 @@
  * ============================== SECTIONS ==================================
  * - enums for publicly accessible techniques  => line 533
  * - struct for internal cpu operations        => line 717
- * - struct for internal memoization           => line 1183
- * - struct for internal utility functions     => line 1313
- * - struct for internal core components       => line 10044
- * - start of VM detection technique list      => line 2270
- * - start of public VM detection functions    => line 10537
- * - start of externally defined variables     => line 11525
+ * - struct for internal memoization           => line 1197
+ * - struct for internal utility functions     => line 1327
+ * - struct for internal core components       => line 9974
+ * - start of VM detection technique list      => line 2284
+ * - start of public VM detection functions    => line 10467
+ * - start of externally defined variables     => line 11449
  *
  *
  * ============================== EXAMPLE ===================================
@@ -877,37 +877,36 @@ private:
             }
 
             std::vector<BYTE> bufIDs(e);
-            UINT gotIDs = EnumSystemFirmwareTables(prov, bufIDs.data(), e);
+            const UINT gotIDs = EnumSystemFirmwareTables(prov, bufIDs.data(), e);
             if (gotIDs != e) {
-                return 0;
             }
 
-            if (e % sizeof(DWORD) != 0) {
-                return 0;
+            if (gotIDs % sizeof(DWORD) != 0) {
             }
 
-            const DWORD cnt = e / sizeof(DWORD);
+            const DWORD cnt = gotIDs / sizeof(DWORD);
 
             for (DWORD i = 0; i < cnt; ++i) {
                 DWORD tblID = 0;
                 memcpy(&tblID, bufIDs.data() + i * sizeof(DWORD), sizeof(DWORD));
 
-                UINT sz = GetSystemFirmwareTable(prov, tblID, nullptr, 0);
+                const UINT sz = GetSystemFirmwareTable(prov, tblID, nullptr, 0);
                 if (sz == 0) {
                     continue;
                 }
 
                 std::vector<BYTE> buf(sz);
-                UINT got = GetSystemFirmwareTable(prov, tblID, buf.data(), sz);
+                const UINT got = GetSystemFirmwareTable(prov, tblID, buf.data(), sz);
                 if (got != sz) {
                     continue;
                 }
 
                 const BYTE* data = buf.data();
-                const size_t dataLen = buf.size();
+                size_t dataLen = buf.size();
                 const BYTE* table = data;
                 size_t tableLen = dataLen;
 
+                // If blob starts with "RSMB" then the actual SMBIOS table follows
                 if (dataLen >= 8u && memcmp(data, "RSMB", 4) == 0) {
                     DWORD smbiosLen = 0;
                     memcpy(&smbiosLen, data + 4, sizeof(DWORD));
@@ -947,40 +946,55 @@ private:
                 }
 
                 size_t idx = start;
-                while (idx + 4u <= tableLen) {
+                const size_t MIN_STRUCT_SIZE = 4u;
+                while (idx + MIN_STRUCT_SIZE <= tableLen) {
+                    if (!looks_valid_struct_at(idx)) {
+                        ++idx;
+                        continue;
+                    }
+
                     const u8 type = table[idx];
                     const u8 length = table[idx + 1];
 
-                    if (type == 127u) break;
-                    if (length < 4u) break;
-                    if (idx + static_cast<size_t>(length) > tableLen) break;
+                    if (type == 127u) {
+                        break;
+                    }
+
+                    if (idx + static_cast<size_t>(length) > tableLen || length < MIN_STRUCT_SIZE) {
+                        ++idx;
+                        continue;
+                    }
 
                     if (type == 4u) {
                         const size_t CURRENT_SPEED_OFFSET = 0x16;
-
                         if (static_cast<size_t>(length) >= (CURRENT_SPEED_OFFSET + sizeof(u16))) {
                             u16 cur = 0;
                             memcpy(&cur, table + idx + CURRENT_SPEED_OFFSET, sizeof(cur));
-                            if (cur != 0) {
-                                return static_cast<u32>(cur);
-                            }
+                            if (cur != 0) return static_cast<u32>(cur);
                         }
                     }
 
                     size_t next = idx + static_cast<size_t>(length);
+                    bool foundTerminator = false;
                     while (next + 1u < tableLen) {
                         if (table[next] == 0 && table[next + 1] == 0) {
                             next += 2;
+                            foundTerminator = true;
                             break;
                         }
                         ++next;
                     }
-                    if (next <= idx) {
-                        break;
+
+                    if (!foundTerminator) {
+                        ++idx;
                     }
-                    idx = next;
-                }
-            }
+                    else {
+                        // move to next structure
+                        idx = next;
+                    }
+                } // while
+
+            } // for each table
 
             return 0;
         }
@@ -7157,11 +7171,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             { brands::VBOX, "HKLM\\SYSTEM\\CurrentControlSet\\Services\\VBoxSF" }, // only installed after vbox guest additions
 
+            /*
             { brands::HYPERV, "HKLM\\HARDWARE\\ACPI\\DSDT\\MSFTVM" },
             { brands::HYPERV, "HKLM\\HARDWARE\\ACPI\\FADT\\VRTUAL" },
             { brands::HYPERV, "HKLM\\HARDWARE\\ACPI\\RSDT\\VRTUAL" },
             { brands::HYPERV, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\SCSI\\Disk&Ven_Msft&Prod_Virtual_Disk" },
             { brands::HYPERV, "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\SCSI\\CdRom&Ven_Msft&Prod_Virtual_DVD-ROM" }
+            */
         };
 
         struct DirectCheck { HKEY hRoot; const char* subKey; const char* brand; };
@@ -8880,7 +8896,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             for (auto& wstr : paths) {
                 if (has_excluded_token(wstr)) {
-                    debug("ACPI_SIGNATURE: Excluded signature -> ", wstr);
+                    debug("ACPI_SIGNATURE: Valid signature -> ", wstr);
                     continue;
                 }
 
@@ -9651,14 +9667,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 if (nameMaxBytes >= sizeof(WCHAR)) {
                     const WCHAR* namePtr = reinterpret_cast<const WCHAR*>(reinterpret_cast<const BYTE*>(varName) + nameOffset);
                     const size_t maxChars = nameMaxBytes / sizeof(WCHAR);
-
                     size_t realChars = 0;
-                    for (; realChars < maxChars; ++realChars) {
-                        if (namePtr[realChars] == L'\0') break;
-                    }
-                    if (realChars == maxChars) {
-                        return false;
-                    }
+                    while (realChars < maxChars && namePtr[realChars] != L'\0') ++realChars;
+                    if (realChars == maxChars) return false;
                     nameStr.assign(namePtr, realChars);
                 }
                 else {
@@ -9678,7 +9689,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             if (!nameStr.empty() && nameStr.rfind(L"VMM", 0) == 0) {
-                debug("NVRAM: Detected hypervisor signature in NVRAM");
+                debug("NVRAM: Detected hypervisor signature");
                 return true;
             }
 
@@ -9745,216 +9756,160 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::BOOT_MANAGER
      */
     [[nodiscard]] static bool nvram_boot() {
-        typedef struct _VARIABLE_NAME {
+        struct VARIABLE_NAME {
             ULONG NextEntryOffset;
-            GUID VendorGuid;
+            GUID  VendorGuid;
             WCHAR Name[1];
-        } VARIABLE_NAME, * PVARIABLE_NAME;
+        };
 
-        using NtEnumerateSystemEnvironmentValuesEx_t = NTSTATUS(__stdcall*)(
-            ULONG InformationClass,
-            PVOID Buffer,
-            PULONG BufferLength);
+        if (!util::is_admin()) return false;
+        if (util::get_windows_version() < 10) return false;
 
-        if (!util::is_admin()) {
-            return false;
-        }
-        const u8 version = util::get_windows_version();
-        if (version < 10) {
-            return false;
-        }
-
-        HANDLE hToken = NULL;
-        if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &hToken)) {
-            return false;
-        }
-
-        auto token_closer = [&](HANDLE token) {
-            if (token) {
-                TOKEN_PRIVILEGES tp{};
-                tp.PrivilegeCount = 1;
-                LookupPrivilegeValue(NULL, SE_SYSTEM_ENVIRONMENT_NAME, &tp.Privileges[0].Luid);
-                tp.Privileges[0].Attributes = 0;
-                AdjustTokenPrivileges(token, FALSE, &tp, sizeof(TOKEN_PRIVILEGES), nullptr, nullptr);
-                CloseHandle(token);
-            }
+        HANDLE hToken = nullptr;
+        if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &hToken)) return false;
+        auto token_closer = [](HANDLE t) {
+            if (!t) return;
+            TOKEN_PRIVILEGES tp{};
+            tp.PrivilegeCount = 1;
+            LookupPrivilegeValue(nullptr, SE_SYSTEM_ENVIRONMENT_NAME, &tp.Privileges[0].Luid);
+            tp.Privileges[0].Attributes = 0;
+            AdjustTokenPrivileges(t, FALSE, &tp, sizeof(tp), nullptr, nullptr);
+            CloseHandle(t);
         };
         std::unique_ptr<void, decltype(token_closer)> token_guard(hToken, token_closer);
 
         LUID luid{};
-        if (!LookupPrivilegeValue(NULL, SE_SYSTEM_ENVIRONMENT_NAME, &luid)) {
-            return false;
-        }
-
+        if (!LookupPrivilegeValue(nullptr, SE_SYSTEM_ENVIRONMENT_NAME, &luid)) return false;
         TOKEN_PRIVILEGES tp{};
         tp.PrivilegeCount = 1;
         tp.Privileges[0].Luid = luid;
         tp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
-
-        if (!AdjustTokenPrivileges(hToken, FALSE, &tp, sizeof(TOKEN_PRIVILEGES), nullptr, nullptr) || GetLastError() != ERROR_SUCCESS) {
-            return false;
-        }
+        AdjustTokenPrivileges(hToken, FALSE, &tp, sizeof(tp), nullptr, nullptr);
+        if (GetLastError() != ERROR_SUCCESS) return false;
 
         util::EnumerateFirmwareResult res = util::enumerate_firmware_variables();
-
-        if (!res.hasFunction) {
-            return true;
-        }
-
-        if (res.bufferLength == 0) {
-            return false; // NOT UEFI
-        }
-
-        if (!res.success) {
-            return false;
-        }
-
-        PVARIABLE_NAME varName = reinterpret_cast<PVARIABLE_NAME>(res.buffer.data());
-        const size_t bufSize = res.buffer.size();
+        if (!res.hasFunction) return false; // false here, already returning true in nvram_vars()
+        if (res.bufferLength == 0) return false; // not UEFI
+        if (!res.success) return false;
 
         constexpr size_t MAX_NAME_BYTES = 4096;
+        const BYTE* base = res.buffer.data();
+        const size_t bufSize = res.buffer.size();
 
         bool foundAnyBootEntry = false;
         bool legitBootManager = false;
 
-        while (true) {
-            const uintptr_t basePtr = reinterpret_cast<uintptr_t>(res.buffer.data());
-            const uintptr_t curPtr = reinterpret_cast<uintptr_t>(varName);
+        auto advance_to_next = [&](const VARIABLE_NAME* cur) -> const VARIABLE_NAME* {
+            if (!cur) return nullptr;
+            if (cur->NextEntryOffset == 0) return nullptr;
+            const SIZE_T ne = static_cast<SIZE_T>(cur->NextEntryOffset);
+            const uintptr_t nextPtr = reinterpret_cast<uintptr_t>(cur) + ne;
+            const uintptr_t basePtr = reinterpret_cast<uintptr_t>(base);
+            if (nextPtr < basePtr) return nullptr;
+            const size_t nextOffset = static_cast<size_t>(nextPtr - basePtr);
+            if (nextOffset >= bufSize) return nullptr;
+            return reinterpret_cast<const VARIABLE_NAME*>(base + nextOffset);
+        };
 
-            if (curPtr < basePtr) break;
-            const size_t offset = static_cast<size_t>(curPtr - basePtr);
-            if (offset >= bufSize) break;
+        const VARIABLE_NAME* var = reinterpret_cast<const VARIABLE_NAME*>(base);
+        while (var) {
+            // ensure we can read NextEntryOffset + GUID + Name[0]
+            const size_t curOffset = static_cast<size_t>(
+                reinterpret_cast<uintptr_t>(reinterpret_cast<const void*>(var)) -
+                reinterpret_cast<uintptr_t>(base)
+            );
+            if (curOffset >= bufSize) break;
+            const size_t nameFieldOffset = offsetof(VARIABLE_NAME, Name);
+            if (bufSize - curOffset < nameFieldOffset) break;
 
-            const size_t nameOffset = offsetof(VARIABLE_NAME, Name);
-            if (bufSize - offset < nameOffset) break;
+            // name buffer size
+            size_t nameMaxBytes = 0;
+            if (var->NextEntryOffset != 0) {
+                const SIZE_T ne = static_cast<SIZE_T>(var->NextEntryOffset);
+                if (ne <= nameFieldOffset) break;
+                if (ne > bufSize - curOffset) break;
+                nameMaxBytes = ne - nameFieldOffset;
+            }
+            else {
+                if (curOffset + nameFieldOffset >= bufSize) break;
+                nameMaxBytes = bufSize - (curOffset + nameFieldOffset);
+            }
+            if (nameMaxBytes > MAX_NAME_BYTES) nameMaxBytes = MAX_NAME_BYTES;
 
+            // read name as WCHARs (ensure null-terminated inside available bytes)
             std::wstring nameStr;
-            {
-                size_t nameMaxBytes = 0;
-                if (varName->NextEntryOffset != 0) {
-                    const SIZE_T ne = static_cast<SIZE_T>(varName->NextEntryOffset);
-                    if (ne <= nameOffset) {
-                        return false;
-                    }
-                    if (ne > bufSize - offset) {
-                        break;
-                    }
-                    nameMaxBytes = ne - nameOffset;
+            if (nameMaxBytes >= sizeof(WCHAR)) {
+                const WCHAR* namePtr = reinterpret_cast<const WCHAR*>(reinterpret_cast<const BYTE*>(var) + nameFieldOffset);
+                const size_t maxChars = nameMaxBytes / sizeof(WCHAR);
+                size_t realChars = 0;
+                while (realChars < maxChars && namePtr[realChars] != L'\0') ++realChars;
+                if (realChars == maxChars) {
+                    return false;
                 }
-                else {
-                    if (offset + nameOffset >= bufSize) {
-                        return false;
-                    }
-                    nameMaxBytes = bufSize - (offset + nameOffset);
-                }
-
-                if (nameMaxBytes > MAX_NAME_BYTES) nameMaxBytes = MAX_NAME_BYTES;
-
-                if (nameMaxBytes >= sizeof(WCHAR)) {
-                    const WCHAR* namePtr = reinterpret_cast<const WCHAR*>(reinterpret_cast<const BYTE*>(varName) + nameOffset);
-                    const size_t maxChars = nameMaxBytes / sizeof(WCHAR);
-
-                    size_t realChars = 0;
-                    for (; realChars < maxChars; ++realChars) {
-                        if (namePtr[realChars] == L'\0') break;
-                    }
-                    if (realChars == maxChars) {
-                        return false;
-                    }
-                    nameStr.assign(namePtr, realChars);
-                }
-                else {
-                    nameStr.clear();
-                }
+                nameStr.assign(namePtr, realChars);
             }
 
-            std::wstring guidStr;
-            {
-                wchar_t guidBuf[40] = { 0 };
-                if (0 != ::StringFromGUID2(varName->VendorGuid, guidBuf, _countof(guidBuf))) {
-                    guidStr = guidBuf;
-                }
-                else {
-                    return true;
-                }
+            wchar_t guidBuf[40]{};
+            if (0 == ::StringFromGUID2(var->VendorGuid, guidBuf, _countof(guidBuf))) {
+                return true;
             }
+            std::wstring guidStr = guidBuf;
 
             bool isBootIndex = false;
             if (nameStr.size() == 8 && nameStr.compare(0, 4, L"Boot") == 0) {
                 bool hex = true;
-                for (int i = 4; i < 8; ++i) {
-                    if (!iswxdigit(nameStr[i])) { hex = false; break; }
+                for (std::wstring::size_type i = 4; i < 8 && i < nameStr.size(); ++i) {
+                    wchar_t ch = nameStr[i];
+                    if (!((ch >= L'0' && ch <= L'9') ||
+                        (ch >= L'A' && ch <= L'F') ||
+                        (ch >= L'a' && ch <= L'f'))) {
+                        hex = false;
+                        break;
+                    }
                 }
                 if (hex) isBootIndex = true;
             }
 
             if (!isBootIndex) {
-                if (varName->NextEntryOffset == 0) break;
-                const SIZE_T ne = static_cast<SIZE_T>(varName->NextEntryOffset);
-                const size_t nextOffset = offset + ne;
-                if (nextOffset >= bufSize || nextOffset < offset) break;
-                varName = reinterpret_cast<PVARIABLE_NAME>(reinterpret_cast<PBYTE>(res.buffer.data()) + nextOffset);
+                var = advance_to_next(var);
                 continue;
             }
 
             foundAnyBootEntry = true;
 
             std::vector<BYTE> valueBuf;
-            DWORD readLen = 0;
-            DWORD required = 0;
-
-            required = GetFirmwareEnvironmentVariableW(nameStr.c_str(), guidStr.c_str(), nullptr, 0);
+            DWORD required = GetFirmwareEnvironmentVariableW(nameStr.c_str(), guidStr.c_str(), nullptr, 0);
             if (required > 0) {
                 valueBuf.resize(required);
-                readLen = GetFirmwareEnvironmentVariableW(nameStr.c_str(), guidStr.c_str(), valueBuf.data(), required);
-                if (readLen == 0) {
-                    valueBuf.clear();
-                    readLen = 0;
-                }
-                else {
-                    valueBuf.resize(readLen);
-                }
+                DWORD readLen = GetFirmwareEnvironmentVariableW(nameStr.c_str(), guidStr.c_str(), valueBuf.data(), required);
+                if (readLen == 0) { valueBuf.clear(); }
+                else valueBuf.resize(readLen);
             }
             else {
-                const DWORD fallbackSize = 8192;
-                valueBuf.resize(fallbackSize);
-                readLen = GetFirmwareEnvironmentVariableW(nameStr.c_str(), guidStr.c_str(), valueBuf.data(), fallbackSize);
-                if (readLen > 0) {
-                    valueBuf.resize(readLen);
-                }
-                else {
-                    valueBuf.clear();
-                    readLen = 0;
-                }
+                constexpr DWORD FALLBACK = 8192;
+                valueBuf.resize(FALLBACK);
+                DWORD readLen = GetFirmwareEnvironmentVariableW(nameStr.c_str(), guidStr.c_str(), valueBuf.data(), FALLBACK);
+                if (readLen > 0) valueBuf.resize(readLen);
+                else valueBuf.clear();
             }
 
             if (valueBuf.empty()) {
-                if (varName->NextEntryOffset == 0) break;
-                const SIZE_T ne = static_cast<SIZE_T>(varName->NextEntryOffset);
-                const size_t nextOffset = offset + ne;
-                if (nextOffset >= bufSize || nextOffset < offset) break;
-                varName = reinterpret_cast<PVARIABLE_NAME>(reinterpret_cast<PBYTE>(res.buffer.data()) + nextOffset);
+                var = advance_to_next(var);
                 continue;
             }
 
-            // attributes (u32) and filePathListLength (u16), then description (UTF-16 null-terminated)
+            // attributes (u32), filePathListLength (u16), then description (UTF-16 null-terminated), then filePathList and load options
             size_t idx = 0;
-            auto can_read = [&](size_t need) -> bool {
-                return idx + need <= valueBuf.size();
-            };
-            auto read_u32 = [&](u32& out) -> bool {
+            auto can_read = [&](size_t need) { return idx + need <= valueBuf.size(); };
+            auto read_u32 = [&](u32& out)->bool {
                 if (!can_read(sizeof(u32))) return false;
-                u32 tmp;
-                memcpy(&tmp, valueBuf.data() + idx, sizeof(tmp));
-                out = tmp;
+                memcpy(&out, valueBuf.data() + idx, sizeof(u32));
                 idx += sizeof(u32);
                 return true;
             };
-            auto read_u16 = [&](u16& out) -> bool {
+            auto read_u16 = [&](u16& out)->bool {
                 if (!can_read(sizeof(u16))) return false;
-                u16 tmp;
-                memcpy(&tmp, valueBuf.data() + idx, sizeof(tmp));
-                out = tmp;
+                memcpy(&out, valueBuf.data() + idx, sizeof(u16));
                 idx += sizeof(u16);
                 return true;
             };
@@ -9962,58 +9917,33 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             u32 attributes = 0;
             u16 filePathListLength = 0;
             if (!read_u32(attributes) || !read_u16(filePathListLength)) {
-                if (varName->NextEntryOffset == 0) break;
-                const SIZE_T ne = static_cast<SIZE_T>(varName->NextEntryOffset);
-                const size_t nextOffset = offset + ne;
-                if (nextOffset >= bufSize || nextOffset < offset) break;
-                varName = reinterpret_cast<PVARIABLE_NAME>(reinterpret_cast<PBYTE>(res.buffer.data()) + nextOffset);
+                var = advance_to_next(var);
                 continue;
             }
 
+            // Find UTF-16 description terminator (two zero bytes)
             bool foundTerminator = false;
-            for (; idx + 1 < valueBuf.size(); ++idx) {
-                if (valueBuf[idx] == 0 && valueBuf[idx + 1] == 0) {
-                    idx += 2;
-                    foundTerminator = true;
-                    break;
-                }
+            while (idx + 1 < valueBuf.size()) {
+                if (valueBuf[idx] == 0 && valueBuf[idx + 1] == 0) { idx += 2; foundTerminator = true; break; }
+                idx += 2; // we have to step by WCHAR
             }
             if (!foundTerminator) {
-                if (varName->NextEntryOffset == 0) break;
-                const SIZE_T ne = static_cast<SIZE_T>(varName->NextEntryOffset);
-                const size_t nextOffset = offset + ne;
-                if (nextOffset >= bufSize || nextOffset < offset) break;
-                varName = reinterpret_cast<PVARIABLE_NAME>(reinterpret_cast<PBYTE>(res.buffer.data()) + nextOffset);
+                var = advance_to_next(var);
                 continue;
             }
 
             const size_t rem = (idx <= valueBuf.size()) ? (valueBuf.size() - idx) : 0;
             if (filePathListLength > rem) {
-                if (varName->NextEntryOffset == 0) break;
-                const SIZE_T ne = static_cast<SIZE_T>(varName->NextEntryOffset);
-                const size_t nextOffset = offset + ne;
-                if (nextOffset >= bufSize || nextOffset < offset) break;
-                varName = reinterpret_cast<PVARIABLE_NAME>(reinterpret_cast<PBYTE>(res.buffer.data()) + nextOffset);
+                var = advance_to_next(var);
                 continue;
             }
 
-            {
-                const size_t filePathListStart = idx;
-                const size_t loadOptionsStart = filePathListStart + static_cast<size_t>(filePathListLength);
-                const size_t loadOptionsLength = (loadOptionsStart <= valueBuf.size()) ? (valueBuf.size() - loadOptionsStart) : 0;
-                // official Windows Boot Manager typically: filePathListLength == 116 and loadOptionsLength == 137
-                if (filePathListLength == 116 || loadOptionsLength == 137) {
-                    legitBootManager = true;
-                    break;
-                }
+            if (filePathListLength == 116) {
+                legitBootManager = true;
+                break;
             }
 
-            if (varName->NextEntryOffset == 0) break;
-            const SIZE_T ne = static_cast<SIZE_T>(varName->NextEntryOffset);
-            const size_t nextOffset = offset + ne;
-            if (nextOffset >= bufSize || nextOffset < offset) break;
-
-            varName = reinterpret_cast<PVARIABLE_NAME>(reinterpret_cast<PBYTE>(res.buffer.data()) + nextOffset);
+            var = advance_to_next(var);
         }
 
         return !legitBootManager;
@@ -11410,14 +11340,14 @@ public: // START OF PUBLIC FUNCTIONS
         };
 
         if (core::is_enabled(flags, DYNAMIC)) {
-            if      (percent_tmp == 0)  { return "Running on baremetal"; }
+            if      (percent_tmp == 0)  { return "Running on baremetal";         }
             else if (percent_tmp <= 20) { return make_conclusion(very_unlikely); }
-            else if (percent_tmp <= 35) { return make_conclusion(unlikely); }
-            else if (percent_tmp < 50)  { return make_conclusion(potentially); }
-            else if (percent_tmp <= 62) { return make_conclusion(might); }
-            else if (percent_tmp <= 75) { return make_conclusion(likely); }
-            else if (percent_tmp < 100) { return make_conclusion(very_likely); }
-            else                        { return make_conclusion(inside_vm); }
+            else if (percent_tmp <= 35) { return make_conclusion(unlikely);      }
+            else if (percent_tmp < 50)  { return make_conclusion(potentially);   }
+            else if (percent_tmp <= 62) { return make_conclusion(might);         }
+            else if (percent_tmp <= 75) { return make_conclusion(likely);        }
+            else if (percent_tmp < 100) { return make_conclusion(very_likely);   }
+            else                        { return make_conclusion(inside_vm);     }
         }
 
         if (percent_tmp == 100) {
@@ -11435,27 +11365,25 @@ public: // START OF PUBLIC FUNCTIONS
     static bool is_hardened() {
         auto detected_brand = [](const enum_flags flag) -> std::string {
             memo::uncache(flag);
-            
-            const auto& old_scoreboard = core::brand_scoreboard;
-            
-            check(flag);
-            
-            for (auto it = old_scoreboard.begin(); it != old_scoreboard.end(); it++) {
-                const brand_score_t old_score = it->second;
-                const brand_score_t new_score = core::brand_scoreboard.at(it->first);
-    
-                if (old_score < new_score) {
-                    return it->first;
-                }
-            }
 
+            const decltype(core::brand_scoreboard) old_scoreboard_snapshot = core::brand_scoreboard;
+
+            check(flag);
+
+            for (const auto& entry : old_scoreboard_snapshot) {
+                const auto& brand = entry.first;
+                const brand_score_t old_score = entry.second;
+                const brand_score_t new_score = core::brand_scoreboard.at(brand);
+                if (old_score < new_score) return brand;
+            }
             return brands::NULL_BRAND;
         };
 
+        const bool hv_present = (check(VM::HYPERVISOR_BIT) || check(VM::HYPERVISOR_STR));
+
         // rule 1: if VM::FIRMWARE is detected, so should VM::HYPERVISOR_BIT or VM::HYPERVISOR_STR
         const std::string firmware_brand = detected_brand(VM::FIRMWARE);
-        if (firmware_brand != brands::NULL_BRAND
-            && !(check(VM::HYPERVISOR_BIT) || check(VM::HYPERVISOR_STR))) {
+        if (firmware_brand != brands::NULL_BRAND && !hv_present) {
             return true;
         }
 
@@ -11463,7 +11391,6 @@ public: // START OF PUBLIC FUNCTIONS
         // rule 2: if VM::FIRMWARE is detected, so should VM::CVENDOR (QEMU or VBOX)
         if (firmware_brand == brands::QEMU || firmware_brand == brands::VBOX) {
             const std::string cvendor_brand = detected_brand(VM::CVENDOR);
-
             if (firmware_brand != cvendor_brand) {
                 return true;
             }
@@ -11473,15 +11400,12 @@ public: // START OF PUBLIC FUNCTIONS
     #if (WINDOWS)        
         // rule 3: if VM::ACPI_SIGNATURE (QEMU) is detected, so should VM::FIRMWARE (QEMU)
         const std::string acpi_brand = detected_brand(VM::ACPI_SIGNATURE);
-        if (acpi_brand == brands::QEMU) {
-            if (firmware_brand != brands::QEMU) {
-                return true;
-            }
-        }      
+        if (acpi_brand == brands::QEMU && firmware_brand != brands::QEMU) {
+            return true;
+        }
 
-        // rule 4: if VM::TRAP is detected, should VM::HYPERVISOR_BIT or VM::HYPERVISOR_STR
-        if (check(VM::TRAP)
-            && !(check(VM::HYPERVISOR_BIT) || check(VM::HYPERVISOR_STR))) {
+        // rule 4: if VM::TRAP or VM::NVRAM is detected, so should VM::HYPERVISOR_BIT or VM::HYPERVISOR_STR
+        if ((check(VM::TRAP) || check(VM::NVRAM)) && !hv_present) {
             return true;
         }
     #endif
