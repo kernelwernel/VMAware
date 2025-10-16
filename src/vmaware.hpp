@@ -53,13 +53,13 @@
  *
  * ============================== SECTIONS ==================================
  * - enums for publicly accessible techniques  => line 533
- * - struct for internal cpu operations        => line 717
- * - struct for internal memoization           => line 1197
- * - struct for internal utility functions     => line 1327
- * - struct for internal core components       => line 9974
+ * - struct for internal cpu operations        => line 718
+ * - struct for internal memoization           => line 1198
+ * - struct for internal utility functions     => line 1328
+ * - struct for internal core components       => line 10114
  * - start of VM detection technique list      => line 2284
- * - start of public VM detection functions    => line 10467
- * - start of externally defined variables     => line 11449
+ * - start of public VM detection functions    => line 10607
+ * - start of externally defined variables     => line 11590
  *
  *
  * ============================== EXAMPLE ===================================
@@ -8820,11 +8820,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 || (c >= L'A' && c <= L'F');
         };
 
-        // enumerate all DISPLAY devices
+        // enumerate all devices
         const HDEVINFO hDevInfo = SetupDiGetClassDevsW(
-            &GUID_DEVCLASS_DISPLAY, nullptr, nullptr, DIGCF_PRESENT);
+            nullptr, nullptr, nullptr, DIGCF_ALLCLASSES | DIGCF_PRESENT);
         if (hDevInfo == INVALID_HANDLE_VALUE) {
-            debug("ACPI_SIGNATURE: No display device detected");
+            debug("ACPI_SIGNATURE: Could not enumerate devices");
             return true;
         }
         SP_DEVINFO_DATA devInfo = {};
@@ -8853,14 +8853,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             SetupDiGetDevicePropertyW(hDevInfo, &devInfo, &key, &propType,
                 nullptr, 0, &requiredSize, 0);
             if (GetLastError() != ERROR_INSUFFICIENT_BUFFER || requiredSize == 0) {
-                if (GetLastError() == ERROR_NOT_FOUND) {
-                    debug("ACPI_SIGNATURE: No dedicated display/GPU detected");
-                    SetupDiDestroyDeviceInfoList(hDevInfo);
-                    return false;
-                }
-                else {
-                    continue;
-                }
+                continue;
             }
 
             // fetch multi-sz
@@ -8878,18 +8871,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 ptr += (len + 1);
             }
 
-        #ifdef __VMAWARE_DEBUG__
-            for (auto& wstr : paths) {
-                debug("ACPI_SIGNATURE: ", wstr);
-            }
-        #endif
-
             static const wchar_t acpiPrefix[] = L"#ACPI(S";
             bool foundQemu = false;
 
             for (auto& wstr : paths) {
                 if (has_excluded_token(wstr)) {
-                    debug("ACPI_SIGNATURE: Valid signature -> ", wstr);
                     continue;
                 }
 
@@ -8918,6 +8904,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     pos = (rel == wstring_view::npos ? wstring_view::npos : next + rel);
                 }
                 if (foundQemu) {
+                    debug("ACPI_SIGNATURE: Detected QEMU signature in path -> ", wstr);
                     SetupDiDestroyDeviceInfoList(hDevInfo);
                     return core::add(brands::QEMU);
                 }
@@ -8937,6 +8924,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                         const wchar_t c1 = local_vw.data[start + 1];
                         const wchar_t c2 = local_vw.data[start + 2];
                         if (c0 == L'S' && is_hex(c1) && is_hex(c2)) {
+                            debug("ACPI_SIGNATURE: Detected QEMU signature in path -> ", wstr);
                             SetupDiDestroyDeviceInfoList(hDevInfo);
                             return core::add(brands::QEMU);
                         }
@@ -8959,6 +8947,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
                 for (auto sig : vm_signatures) {
                     if (wstr.find(sig) != std::wstring::npos) {
+                        debug("ACPI_SIGNATURE: Detected Hyper-V signature '", sig, "' in path -> ", wstr);
                         SetupDiDestroyDeviceInfoList(hDevInfo);
                         return core::add(brands::HYPERV);
                     }
