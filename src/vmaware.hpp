@@ -561,6 +561,7 @@ public:
         GAMARUE,
         CUCKOO_DIR,
         CUCKOO_PIPE,
+        BOOT_LOGO,
         TRAP,
         UD,
         BLOCKSTEP,
@@ -568,8 +569,8 @@ public:
         OBJECTS,
         NVRAM,
         BOOT_MANAGER,
-        SMBIOS_PASSTHROUGH,
-        BOOT_LOGO,
+        SMBIOS_INTEGRITY,
+        EDID,
         
         // Linux and Windows
         SIDT,
@@ -7963,7 +7964,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check for display configurations related to VMs
+     * @brief Check for display configurations commonly found in VMs
      * @category Windows
      * @author Idea of screen resolution from Thomas Roccia (fr0gger)
      * @link https://unprotect.it/technique/checking-screen-resolution/
@@ -9998,13 +9999,130 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 	 * @brief Check if SMBIOS is malformed/corrupted in a way that is typical for VMs
      * @category Windows
      * @author Requiem (https://github.com/NotRequiem)
-     * @implements VM::SMBIOS_PASSTHROUGH
+     * @implements VM::SMBIOS_INTEGRITY
      */
-    [[nodiscard]] static bool smbios_passthrough() {
+    [[nodiscard]] static bool smbios_integrity() {
         ULONGLONG total_memory_in_kilobytes;
         return !GetPhysicallyInstalledSystemMemory(&total_memory_in_kilobytes);
     }
 
+
+    /**
+     * @brief Check for non-standard EDID configurations
+     * @category Windows
+     * @implements VM::EDID
+     */
+    [[nodiscard]] static bool edid() {
+        auto decodeManufacturer = [](const BYTE* edid) -> std::string {
+            uint16_t word = (uint16_t(edid[8]) << 8) | edid[9];
+            char m[4] = { 0, 0, 0, 0 };
+            int c1 = (word >> 10) & 0x1F;
+            int c2 = (word >> 5) & 0x1F;
+            int c3 = (word >> 0) & 0x1F;
+            if (c1 >= 1 && c1 <= 26) m[0] = char('A' + c1 - 1); else m[0] = '?';
+            if (c2 >= 1 && c2 <= 26) m[1] = char('A' + c2 - 1); else m[1] = '?';
+            if (c3 >= 1 && c3 <= 26) m[2] = char('A' + c3 - 1); else m[2] = '?';
+            return std::string(m);
+        };
+
+        auto getPreferredResolution = [](const BYTE* edid, int& x, int& y) {
+            x = 0; y = 0;
+            if (edid) {
+                x = int(edid[0x38]) | ((int(edid[0x3A]) & 0xF0) << 4);
+                y = int(edid[0x3B]) | ((int(edid[0x3D]) & 0xF0) << 4);
+            }
+        };
+
+        auto isThreeUpperAlpha = [](const std::string& s) -> bool {
+            if (s.size() != 3) return false;
+            for (char c : s) if (c < 'A' || c > 'Z') return false;
+            return true;
+        };
+
+        auto descHasUpperPrefixMonitor = [](const std::string& desc) -> bool {
+            if (desc.empty()) return false;
+            const std::vector<std::string> tails = { " Monitor", " Display" };
+            for (const auto& t : tails) {
+                size_t pos = desc.find(t);
+                if (pos == std::string::npos || pos == 0) continue;
+                size_t start = pos;
+                while (start > 0 && std::isupper(static_cast<unsigned char>(desc[start - 1]))) --start;
+                size_t len = pos - start;
+                if (len >= 4 && len <= 8) {
+                    bool ok = true;
+                    for (size_t i = start; i < pos; ++i) {
+                        if (!std::isupper(static_cast<unsigned char>(desc[i]))) { ok = false; break; }
+                    }
+                    if (ok) return true;
+                }
+            }
+            return false;
+        };
+
+        auto getDeviceProperty = [](HDEVINFO devInfo, SP_DEVINFO_DATA& devData, DWORD propId) -> std::string {
+            CHAR buf[512]{};
+            DWORD needed = 0;
+            if (SetupDiGetDeviceRegistryPropertyA(devInfo, &devData, propId, NULL, (PBYTE)buf, sizeof(buf), &needed)) {
+                return std::string(buf);
+            }
+            if (GetLastError() == ERROR_INSUFFICIENT_BUFFER && needed < 65536) {
+                std::vector<BYTE> big(needed);
+                if (SetupDiGetDeviceRegistryPropertyA(devInfo, &devData, propId, NULL, big.data(), (DWORD)big.size(), &needed)) {
+                    return std::string(reinterpret_cast<char*>(big.data()));
+                }
+            }
+            return std::string();
+        };
+
+        HDEVINFO devInfo = SetupDiGetClassDevs(&GUID_DEVCLASS_MONITOR, NULL, NULL, DIGCF_PRESENT);
+        if (devInfo == INVALID_HANDLE_VALUE) {
+            return false;
+        }
+
+        SP_DEVINFO_DATA devData{};
+        devData.cbSize = sizeof(devData);
+        for (DWORD index = 0; SetupDiEnumDeviceInfo(devInfo, index, &devData); ++index) {
+            HKEY hDevKey = SetupDiOpenDevRegKey(devInfo, &devData, DICS_FLAG_GLOBAL, 0, DIREG_DEV, KEY_READ);
+            if (hDevKey == INVALID_HANDLE_VALUE) continue;
+
+            BYTE buffer[2048];
+            DWORD bufSize = sizeof(buffer);
+            LONG rc = RegQueryValueExA(hDevKey, "EDID", NULL, NULL, buffer, &bufSize);
+            RegCloseKey(hDevKey);
+
+            if (rc != ERROR_SUCCESS || bufSize < 128) continue;
+
+            const BYTE* edid = buffer;
+
+            bool headerOk = (edid[0] == 0x00 && edid[1] == 0xFF && edid[2] == 0xFF &&
+                edid[3] == 0xFF && edid[4] == 0xFF && edid[5] == 0xFF &&
+                edid[6] == 0xFF && edid[7] == 0x00);
+            if (!headerOk) continue;
+
+            std::string manufacturer = decodeManufacturer(edid);
+            BYTE yearOffset = edid[0x11]; // 1990 + yearOffset
+
+            int prefX = 0, prefY = 0;
+            getPreferredResolution(edid, prefX, prefY);
+
+            std::string friendly = getDeviceProperty(devInfo, devData, SPDRP_FRIENDLYNAME);
+            std::string devdesc = getDeviceProperty(devInfo, devData, SPDRP_DEVICEDESC);
+            std::string descriptor = !friendly.empty() ? friendly : devdesc;
+
+            bool year_in_script_range = (yearOffset >= 25 && yearOffset <= 35);
+            bool vendor_nonstandard = !isThreeUpperAlpha(manufacturer);
+            bool resolution_is_1024x768 = (prefX == 1024 && prefY == 768);
+            bool desc_has_prefix_monitor = descHasUpperPrefixMonitor(descriptor);
+
+            if (year_in_script_range && (vendor_nonstandard || resolution_is_1024x768 || desc_has_prefix_monitor)) {
+                SetupDiDestroyDeviceInfoList(devInfo);
+                return true;
+            }
+        }
+
+        SetupDiDestroyDeviceInfoList(devInfo);
+        return false;
+    }
     // ADD NEW TECHNIQUE FUNCTION HERE
 #endif
 
@@ -11096,7 +11214,8 @@ public: // START OF PUBLIC FUNCTIONS
             case OBJECTS: return "OBJECTS";
             case NVRAM: return "NVRAM";
             case BOOT_MANAGER: return "BOOT_MANAGER";
-            case SMBIOS_PASSTHROUGH: return "SMBIOS_PASSTHROUGH";
+            case SMBIOS_INTEGRITY: return "SMBIOS_INTEGRITY";
+            case EDID: return "EDID";
             // END OF TECHNIQUE LIST
             case DEFAULT: return "setting flag, error";
             case ALL: return "setting flag, error";
@@ -11633,13 +11752,14 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         std::make_pair(VM::ACPI_SIGNATURE, VM::core::technique(100, VM::acpi_signature)),
         std::make_pair(VM::NVRAM, VM::core::technique(100, VM::nvram_vars)),
         std::make_pair(VM::BOOT_MANAGER, VM::core::technique(50, VM::nvram_boot)),
-        std::make_pair(VM::SMBIOS_PASSTHROUGH, VM::core::technique(50, VM::smbios_passthrough)),
-        std::make_pair(VM::GPU_CAPABILITIES, VM::core::technique(45, VM::gpu_capabilities)),
-        std::make_pair(VM::BOOT_LOGO, VM::core::technique(100, VM::boot_logo)),
-        std::make_pair(VM::TPM, VM::core::technique(100, VM::tpm)),
         std::make_pair(VM::POWER_CAPABILITIES, VM::core::technique(90, VM::power_capabilities)),
-        std::make_pair(VM::IVSHMEM, VM::core::technique(100, VM::ivshmem)),
+        std::make_pair(VM::EDID, VM::core::technique(100, VM::edid)),
+        std::make_pair(VM::BOOT_LOGO, VM::core::technique(100, VM::boot_logo)),
+        std::make_pair(VM::GPU_CAPABILITIES, VM::core::technique(45, VM::gpu_capabilities)),
+        std::make_pair(VM::TPM, VM::core::technique(100, VM::tpm)),
+        std::make_pair(VM::SMBIOS_INTEGRITY, VM::core::technique(60, VM::smbios_integrity)),
         std::make_pair(VM::DISK_SERIAL, VM::core::technique(100, VM::disk_serial_number)),
+        std::make_pair(VM::IVSHMEM, VM::core::technique(100, VM::ivshmem)),
         std::make_pair(VM::SGDT, VM::core::technique(50, VM::sgdt)),
         std::make_pair(VM::SLDT, VM::core::technique(50, VM::sldt)),
         std::make_pair(VM::SMSW, VM::core::technique(50, VM::smsw)),

@@ -828,7 +828,8 @@ static void general() {
     checker(VM::MAC_SYS, "system profiler");
     checker(VM::OBJECTS, "objects");
     checker(VM::NVRAM, "NVRAM");
-    checker(VM::SMBIOS_PASSTHROUGH, "SMBIOS passthrough");
+    checker(VM::SMBIOS_INTEGRITY, "SMBIOS integrity");
+    checker(VM::EDID, "EDID");
 
     // ADD NEW TECHNIQUE CHECKER HERE
 
