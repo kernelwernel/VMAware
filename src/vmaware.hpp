@@ -53,13 +53,13 @@
  *
  * ============================== SECTIONS ==================================
  * - enums for publicly accessible techniques  => line 533
- * - struct for internal cpu operations        => line 717
- * - struct for internal memoization           => line 1197
- * - struct for internal utility functions     => line 1327
- * - struct for internal core components       => line 9974
+ * - struct for internal cpu operations        => line 718
+ * - struct for internal memoization           => line 1198
+ * - struct for internal utility functions     => line 1328
+ * - struct for internal core components       => line 10114
  * - start of VM detection technique list      => line 2284
- * - start of public VM detection functions    => line 10467
- * - start of externally defined variables     => line 11449
+ * - start of public VM detection functions    => line 10607
+ * - start of externally defined variables     => line 11590
  *
  *
  * ============================== EXAMPLE ===================================
@@ -561,6 +561,7 @@ public:
         GAMARUE,
         CUCKOO_DIR,
         CUCKOO_PIPE,
+        BOOT_LOGO,
         TRAP,
         UD,
         BLOCKSTEP,
@@ -568,8 +569,8 @@ public:
         OBJECTS,
         NVRAM,
         BOOT_MANAGER,
-        SMBIOS_PASSTHROUGH,
-        BOOT_LOGO,
+        SMBIOS_INTEGRITY,
+        EDID,
         
         // Linux and Windows
         SIDT,
@@ -1906,7 +1907,6 @@ private:
          * @note Hyper-V's presence on a host system can set certain hypervisor-related CPU flags that may appear similar to those in a virtualized environment, which can make it challenging to differentiate between an actual Hyper-V virtual machine (VM) and a host system with Hyper-V enabled.
          *       This can lead to false conclusions, where the system might mistakenly be identified as running in a Hyper-V VM, when in reality, it's simply the host system with Hyper-V features active.
          *       This check aims to distinguish between these two cases by identifying specific CPU flags and hypervisor-related artifacts that are indicative of a Hyper-V VM rather than a host system with Hyper-V enabled.
-         * @author Requiem (https://github.com/NotRequiem)
          * @returns hyperx_state enum indicating the detected state:
          *          - HYPERV_ARTIFACT_VM for host with Hyper-V enabled
          *          - HYPERV_REAL_VM for real Hyper-V VM
@@ -4478,7 +4478,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
       * @brief Check for timing anomalies in the system
       * @category x86
-      * @author Requiem (https://github.com/NotRequiem)
       * @implements VM::TIMER
       */
     [[nodiscard]] static bool timer() {
@@ -7963,7 +7962,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check for display configurations related to VMs
+     * @brief Check for display configurations commonly found in VMs
      * @category Windows
      * @author Idea of screen resolution from Thomas Roccia (fr0gger)
      * @link https://unprotect.it/technique/checking-screen-resolution/
@@ -8035,7 +8034,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for VM-specific names for drivers
      * @category Windows
-     * @author Requiem (https://github.com/NotRequiem)
      * @implements VM::DRIVERS
      */
     [[nodiscard]] static bool drivers() {
@@ -8142,7 +8140,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for serial numbers of virtual disks
      * @category Windows
-     * @author Requiem (https://github.com/NotRequiem)
      * @implements VM::DISK_SERIAL
      */
     [[nodiscard]] static bool disk_serial_number() {
@@ -8360,7 +8357,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for GPU capabilities related to VMs
      * @category Windows
-     * @author Requiem (https://github.com/NotRequiem)
      * @implements VM::GPU_CAPABILITIES
      */
     [[nodiscard]] static bool gpu_capabilities() {
@@ -8452,7 +8448,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check if the number of virtual and logical processors are reported correctly by the system
      * @category Windows, x86
-     * @author Requiem (https://github.com/NotRequiem)
      * @implements VM::VIRTUAL_PROCESSORS
      */
     [[nodiscard]] static bool virtual_processors() {
@@ -8673,7 +8668,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check if the system has a physical TPM by matching the TPM manufacturer against known physical TPM chip vendors
      * @category Windows
      * @note CRB model will succeed, while TIS will fail
-     * @author Requiem (https://github.com/NotRequiem)
      * @implements VM::TPM
      */
     [[nodiscard]] static bool tpm() {
@@ -8786,7 +8780,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for VM-specific ACPI device signatures
      * @category Windows
-     * @author Requiem (https://github.com/NotRequiem)
      * @implements VM::ACPI_SIGNATURE
      */
     [[nodiscard]] static bool acpi_signature() {
@@ -8827,11 +8820,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 || (c >= L'A' && c <= L'F');
         };
 
-        // enumerate all DISPLAY devices
+        // enumerate all devices
         const HDEVINFO hDevInfo = SetupDiGetClassDevsW(
-            &GUID_DEVCLASS_DISPLAY, nullptr, nullptr, DIGCF_PRESENT);
+            nullptr, nullptr, nullptr, DIGCF_ALLCLASSES | DIGCF_PRESENT);
         if (hDevInfo == INVALID_HANDLE_VALUE) {
-            debug("ACPI_SIGNATURE: No display device detected");
+            debug("ACPI_SIGNATURE: Could not enumerate devices");
             return true;
         }
         SP_DEVINFO_DATA devInfo = {};
@@ -8860,14 +8853,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             SetupDiGetDevicePropertyW(hDevInfo, &devInfo, &key, &propType,
                 nullptr, 0, &requiredSize, 0);
             if (GetLastError() != ERROR_INSUFFICIENT_BUFFER || requiredSize == 0) {
-                if (GetLastError() == ERROR_NOT_FOUND) {
-                    debug("ACPI_SIGNATURE: No dedicated display/GPU detected");
-                    SetupDiDestroyDeviceInfoList(hDevInfo);
-                    return false;
-                }
-                else {
-                    continue;
-                }
+                continue;
             }
 
             // fetch multi-sz
@@ -8885,18 +8871,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 ptr += (len + 1);
             }
 
-        #ifdef __VMAWARE_DEBUG__
-            for (auto& wstr : paths) {
-                debug("ACPI_SIGNATURE: ", wstr);
-            }
-        #endif
-
             static const wchar_t acpiPrefix[] = L"#ACPI(S";
             bool foundQemu = false;
 
             for (auto& wstr : paths) {
                 if (has_excluded_token(wstr)) {
-                    debug("ACPI_SIGNATURE: Valid signature -> ", wstr);
                     continue;
                 }
 
@@ -8925,6 +8904,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     pos = (rel == wstring_view::npos ? wstring_view::npos : next + rel);
                 }
                 if (foundQemu) {
+                    debug("ACPI_SIGNATURE: Detected QEMU signature in path -> ", wstr);
                     SetupDiDestroyDeviceInfoList(hDevInfo);
                     return core::add(brands::QEMU);
                 }
@@ -8944,6 +8924,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                         const wchar_t c1 = local_vw.data[start + 1];
                         const wchar_t c2 = local_vw.data[start + 2];
                         if (c0 == L'S' && is_hex(c1) && is_hex(c2)) {
+                            debug("ACPI_SIGNATURE: Detected QEMU signature in path -> ", wstr);
                             SetupDiDestroyDeviceInfoList(hDevInfo);
                             return core::add(brands::QEMU);
                         }
@@ -8966,6 +8947,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
                 for (auto sig : vm_signatures) {
                     if (wstr.find(sig) != std::wstring::npos) {
+                        debug("ACPI_SIGNATURE: Detected Hyper-V signature '", sig, "' in path -> ", wstr);
                         SetupDiDestroyDeviceInfoList(hDevInfo);
                         return core::add(brands::HYPERV);
                     }
@@ -9184,7 +9166,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check if Dark Byte's VM is present
      * @category Windows
-     * @author Requiem (https://github.com/NotRequiem)
      * @implements VM::DBVM
      */
     [[nodiscard]] static bool dbvm() {
@@ -9368,7 +9349,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for known VM objects
      * @category Windows
-     * @author Requiem (https://github.com/NotRequiem)
      * @implements VM::OBJECTS
      */
     [[nodiscard]] static bool objects() {
@@ -9574,10 +9554,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             PVOID Buffer,
             PULONG BufferLength);
 
-        bool flagged = false;
         bool found_dbDefault = false;
         bool found_KEKDefault = false;
         bool found_PKDefault = false;
+        bool found_MORCL = false;
 
         if (!util::is_admin()) {
             return false;
@@ -9625,6 +9605,28 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             debug("NVRAM: System is not UEFI");
             return false; // NOT UEFI
         }
+
+        auto contains_redhat_ascii_ci = [](const std::vector<BYTE>& buf) -> bool {
+            if (buf.empty()) return false;
+            std::string s(reinterpret_cast<const char*>(buf.data()), buf.size());
+            for (auto& c : s) c = static_cast<char>(::tolower(static_cast<unsigned char>(c)));
+            return s.find("red hat secure boot") != std::string::npos;
+        };
+        auto contains_redhat_utf16le_ci = [](const std::vector<BYTE>& buf) -> bool {
+            if (buf.size() < 2) return false;
+            if (buf.size() % 2 != 0) return false; 
+            const WCHAR* wptr = reinterpret_cast<const WCHAR*>(buf.data());
+            size_t wlen = buf.size() / sizeof(WCHAR);
+            try {
+                std::wstring ws(wptr, wlen);
+                for (auto& wc : ws) wc = static_cast<wchar_t>(::towlower(wc));
+                std::wstring needle = L"red hat secure boot";
+                return ws.find(needle) != std::wstring::npos;
+            }
+            catch (...) {
+                return false;
+            }
+        };
 
         PVARIABLE_NAME varName = reinterpret_cast<PVARIABLE_NAME>(res.buffer.data());
         const size_t bufSize = res.buffer.size();
@@ -9723,6 +9725,23 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
             }
 
+            if (nameStr == L"MemoryOverwriteRequestControlLock") {
+                found_MORCL = true;
+            }
+
+            if (nameStr == L"PKDefault") {
+                bool pk_has_redhat = false;
+                if (!valueBuf.empty()) {
+                    if (contains_redhat_utf16le_ci(valueBuf) || contains_redhat_ascii_ci(valueBuf)) {
+                        pk_has_redhat = true;
+                    }
+                }
+                if (pk_has_redhat) {
+                    debug("NVRAM: QEMU detected");
+                    return core::add(brands::QEMU);
+                }
+            }
+
             if (varName->NextEntryOffset == 0) break;
 
             const SIZE_T ne = static_cast<SIZE_T>(varName->NextEntryOffset);
@@ -9732,20 +9751,25 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             varName = reinterpret_cast<PVARIABLE_NAME>(reinterpret_cast<PBYTE>(res.buffer.data()) + nextOffset);
         }
 
-        if (!found_dbDefault) {
-            flagged = true;
-            debug("NVRAM: Missing dbDefault");
-        }
-        if (!found_KEKDefault) {
-            flagged = true;
-            debug("NVRAM: Missing KEKDefault");
-        }
-        if (!found_PKDefault) {
-            flagged = true;
-            debug("NVRAM: Missing PKDefault");
+        if (!found_MORCL) {
+            debug("NVRAM: Missing MemoryOverwriteRequestControlLock");
+            return true;
         }
 
-        return flagged;
+        if (!found_dbDefault) {
+            debug("NVRAM: Missing dbDefault");
+            return true;
+        }
+        if (!found_KEKDefault) {
+            debug("NVRAM: Missing KEKDefault");
+            return true;
+        }
+        if (!found_PKDefault) {
+            debug("NVRAM: Missing PKDefault");
+            return true;
+        }
+
+        return false;
     }
 
 
@@ -9953,14 +9977,130 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
 	 * @brief Check if SMBIOS is malformed/corrupted in a way that is typical for VMs
      * @category Windows
-     * @author Requiem (https://github.com/NotRequiem)
-     * @implements VM::SMBIOS_PASSTHROUGH
+     * @implements VM::SMBIOS_INTEGRITY
      */
-    [[nodiscard]] static bool smbios_passthrough() {
+    [[nodiscard]] static bool smbios_integrity() {
         ULONGLONG total_memory_in_kilobytes;
         return !GetPhysicallyInstalledSystemMemory(&total_memory_in_kilobytes);
     }
 
+
+    /**
+     * @brief Check for non-standard EDID configurations
+     * @category Windows
+     * @implements VM::EDID
+     */
+    [[nodiscard]] static bool edid() {
+        auto decodeManufacturer = [](const BYTE* edid) -> std::string {
+            uint16_t word = (uint16_t(edid[8]) << 8) | edid[9];
+            char m[4] = { 0, 0, 0, 0 };
+            int c1 = (word >> 10) & 0x1F;
+            int c2 = (word >> 5) & 0x1F;
+            int c3 = (word >> 0) & 0x1F;
+            if (c1 >= 1 && c1 <= 26) m[0] = char('A' + c1 - 1); else m[0] = '?';
+            if (c2 >= 1 && c2 <= 26) m[1] = char('A' + c2 - 1); else m[1] = '?';
+            if (c3 >= 1 && c3 <= 26) m[2] = char('A' + c3 - 1); else m[2] = '?';
+            return std::string(m);
+        };
+
+        auto getPreferredResolution = [](const BYTE* edid, int& x, int& y) {
+            x = 0; y = 0;
+            if (edid) {
+                x = int(edid[0x38]) | ((int(edid[0x3A]) & 0xF0) << 4);
+                y = int(edid[0x3B]) | ((int(edid[0x3D]) & 0xF0) << 4);
+            }
+        };
+
+        auto isThreeUpperAlpha = [](const std::string& s) -> bool {
+            if (s.size() != 3) return false;
+            for (char c : s) if (c < 'A' || c > 'Z') return false;
+            return true;
+        };
+
+        auto descHasUpperPrefixMonitor = [](const std::string& desc) -> bool {
+            if (desc.empty()) return false;
+            const std::vector<std::string> tails = { " Monitor", " Display" };
+            for (const auto& t : tails) {
+                size_t pos = desc.find(t);
+                if (pos == std::string::npos || pos == 0) continue;
+                size_t start = pos;
+                while (start > 0 && std::isupper(static_cast<unsigned char>(desc[start - 1]))) --start;
+                size_t len = pos - start;
+                if (len >= 4 && len <= 8) {
+                    bool ok = true;
+                    for (size_t i = start; i < pos; ++i) {
+                        if (!std::isupper(static_cast<unsigned char>(desc[i]))) { ok = false; break; }
+                    }
+                    if (ok) return true;
+                }
+            }
+            return false;
+        };
+
+        auto getDeviceProperty = [](HDEVINFO devInfo, SP_DEVINFO_DATA& devData, DWORD propId) -> std::string {
+            CHAR buf[512]{};
+            DWORD needed = 0;
+            if (SetupDiGetDeviceRegistryPropertyA(devInfo, &devData, propId, NULL, (PBYTE)buf, sizeof(buf), &needed)) {
+                return std::string(buf);
+            }
+            if (GetLastError() == ERROR_INSUFFICIENT_BUFFER && needed < 65536) {
+                std::vector<BYTE> big(needed);
+                if (SetupDiGetDeviceRegistryPropertyA(devInfo, &devData, propId, NULL, big.data(), (DWORD)big.size(), &needed)) {
+                    return std::string(reinterpret_cast<char*>(big.data()));
+                }
+            }
+            return std::string();
+        };
+
+        HDEVINFO devInfo = SetupDiGetClassDevs(&GUID_DEVCLASS_MONITOR, NULL, NULL, DIGCF_PRESENT);
+        if (devInfo == INVALID_HANDLE_VALUE) {
+            return false;
+        }
+
+        SP_DEVINFO_DATA devData{};
+        devData.cbSize = sizeof(devData);
+        for (DWORD index = 0; SetupDiEnumDeviceInfo(devInfo, index, &devData); ++index) {
+            HKEY hDevKey = SetupDiOpenDevRegKey(devInfo, &devData, DICS_FLAG_GLOBAL, 0, DIREG_DEV, KEY_READ);
+            if (hDevKey == INVALID_HANDLE_VALUE) continue;
+
+            BYTE buffer[2048];
+            DWORD bufSize = sizeof(buffer);
+            LONG rc = RegQueryValueExA(hDevKey, "EDID", NULL, NULL, buffer, &bufSize);
+            RegCloseKey(hDevKey);
+
+            if (rc != ERROR_SUCCESS || bufSize < 128) continue;
+
+            const BYTE* edid = buffer;
+
+            bool headerOk = (edid[0] == 0x00 && edid[1] == 0xFF && edid[2] == 0xFF &&
+                edid[3] == 0xFF && edid[4] == 0xFF && edid[5] == 0xFF &&
+                edid[6] == 0xFF && edid[7] == 0x00);
+            if (!headerOk) continue;
+
+            std::string manufacturer = decodeManufacturer(edid);
+            BYTE yearOffset = edid[0x11]; // 1990 + yearOffset
+
+            int prefX = 0, prefY = 0;
+            getPreferredResolution(edid, prefX, prefY);
+
+            std::string friendly = getDeviceProperty(devInfo, devData, SPDRP_FRIENDLYNAME);
+            std::string devdesc = getDeviceProperty(devInfo, devData, SPDRP_DEVICEDESC);
+            std::string descriptor = !friendly.empty() ? friendly : devdesc;
+
+            bool year_in_script_range = (yearOffset >= 25 && yearOffset <= 35);
+            bool vendor_nonstandard = !isThreeUpperAlpha(manufacturer);
+            bool resolution_is_1024x768 = (prefX == 1024 && prefY == 768);
+            bool desc_has_prefix_monitor = descHasUpperPrefixMonitor(descriptor);
+
+            if (year_in_script_range && (vendor_nonstandard || resolution_is_1024x768 || desc_has_prefix_monitor)) {
+                SetupDiDestroyDeviceInfoList(devInfo);
+                return true;
+            }
+        }
+
+        SetupDiDestroyDeviceInfoList(devInfo);
+        return false;
+    }
     // ADD NEW TECHNIQUE FUNCTION HERE
 #endif
 
@@ -11052,7 +11192,8 @@ public: // START OF PUBLIC FUNCTIONS
             case OBJECTS: return "OBJECTS";
             case NVRAM: return "NVRAM";
             case BOOT_MANAGER: return "BOOT_MANAGER";
-            case SMBIOS_PASSTHROUGH: return "SMBIOS_PASSTHROUGH";
+            case SMBIOS_INTEGRITY: return "SMBIOS_INTEGRITY";
+            case EDID: return "EDID";
             // END OF TECHNIQUE LIST
             case DEFAULT: return "setting flag, error";
             case ALL: return "setting flag, error";
@@ -11589,13 +11730,14 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         std::make_pair(VM::ACPI_SIGNATURE, VM::core::technique(100, VM::acpi_signature)),
         std::make_pair(VM::NVRAM, VM::core::technique(100, VM::nvram_vars)),
         std::make_pair(VM::BOOT_MANAGER, VM::core::technique(50, VM::nvram_boot)),
-        std::make_pair(VM::SMBIOS_PASSTHROUGH, VM::core::technique(50, VM::smbios_passthrough)),
-        std::make_pair(VM::GPU_CAPABILITIES, VM::core::technique(45, VM::gpu_capabilities)),
-        std::make_pair(VM::BOOT_LOGO, VM::core::technique(100, VM::boot_logo)),
-        std::make_pair(VM::TPM, VM::core::technique(100, VM::tpm)),
         std::make_pair(VM::POWER_CAPABILITIES, VM::core::technique(90, VM::power_capabilities)),
-        std::make_pair(VM::IVSHMEM, VM::core::technique(100, VM::ivshmem)),
+        std::make_pair(VM::EDID, VM::core::technique(100, VM::edid)),
+        std::make_pair(VM::BOOT_LOGO, VM::core::technique(100, VM::boot_logo)),
+        std::make_pair(VM::GPU_CAPABILITIES, VM::core::technique(45, VM::gpu_capabilities)),
+        std::make_pair(VM::TPM, VM::core::technique(100, VM::tpm)),
+        std::make_pair(VM::SMBIOS_INTEGRITY, VM::core::technique(60, VM::smbios_integrity)),
         std::make_pair(VM::DISK_SERIAL, VM::core::technique(100, VM::disk_serial_number)),
+        std::make_pair(VM::IVSHMEM, VM::core::technique(100, VM::ivshmem)),
         std::make_pair(VM::SGDT, VM::core::technique(50, VM::sgdt)),
         std::make_pair(VM::SLDT, VM::core::technique(50, VM::sldt)),
         std::make_pair(VM::SMSW, VM::core::technique(50, VM::smsw)),
