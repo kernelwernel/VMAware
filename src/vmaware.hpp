@@ -9574,10 +9574,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             PVOID Buffer,
             PULONG BufferLength);
 
-        bool flagged = false;
         bool found_dbDefault = false;
         bool found_KEKDefault = false;
         bool found_PKDefault = false;
+        bool found_MORCL = false;
 
         if (!util::is_admin()) {
             return false;
@@ -9625,6 +9625,28 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             debug("NVRAM: System is not UEFI");
             return false; // NOT UEFI
         }
+
+        auto contains_redhat_ascii_ci = [](const std::vector<BYTE>& buf) -> bool {
+            if (buf.empty()) return false;
+            std::string s(reinterpret_cast<const char*>(buf.data()), buf.size());
+            for (auto& c : s) c = static_cast<char>(::tolower(static_cast<unsigned char>(c)));
+            return s.find("red hat secure boot") != std::string::npos;
+        };
+        auto contains_redhat_utf16le_ci = [](const std::vector<BYTE>& buf) -> bool {
+            if (buf.size() < 2) return false;
+            if (buf.size() % 2 != 0) return false; 
+            const WCHAR* wptr = reinterpret_cast<const WCHAR*>(buf.data());
+            size_t wlen = buf.size() / sizeof(WCHAR);
+            try {
+                std::wstring ws(wptr, wlen);
+                for (auto& wc : ws) wc = static_cast<wchar_t>(::towlower(wc));
+                std::wstring needle = L"red hat secure boot";
+                return ws.find(needle) != std::wstring::npos;
+            }
+            catch (...) {
+                return false;
+            }
+        };
 
         PVARIABLE_NAME varName = reinterpret_cast<PVARIABLE_NAME>(res.buffer.data());
         const size_t bufSize = res.buffer.size();
@@ -9723,6 +9745,23 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
             }
 
+            if (nameStr == L"MemoryOverwriteRequestControlLock") {
+                found_MORCL = true;
+            }
+
+            if (nameStr == L"PKDefault") {
+                bool pk_has_redhat = false;
+                if (!valueBuf.empty()) {
+                    if (contains_redhat_utf16le_ci(valueBuf) || contains_redhat_ascii_ci(valueBuf)) {
+                        pk_has_redhat = true;
+                    }
+                }
+                if (pk_has_redhat) {
+                    debug("NVRAM: QEMU detected");
+                    return core::add(brands::QEMU);
+                }
+            }
+
             if (varName->NextEntryOffset == 0) break;
 
             const SIZE_T ne = static_cast<SIZE_T>(varName->NextEntryOffset);
@@ -9732,20 +9771,25 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             varName = reinterpret_cast<PVARIABLE_NAME>(reinterpret_cast<PBYTE>(res.buffer.data()) + nextOffset);
         }
 
-        if (!found_dbDefault) {
-            flagged = true;
-            debug("NVRAM: Missing dbDefault");
-        }
-        if (!found_KEKDefault) {
-            flagged = true;
-            debug("NVRAM: Missing KEKDefault");
-        }
-        if (!found_PKDefault) {
-            flagged = true;
-            debug("NVRAM: Missing PKDefault");
+        if (!found_MORCL) {
+            debug("NVRAM: Missing MemoryOverwriteRequestControlLock");
+            return true;
         }
 
-        return flagged;
+        if (!found_dbDefault) {
+            debug("NVRAM: Missing dbDefault");
+            return true;
+        }
+        if (!found_KEKDefault) {
+            debug("NVRAM: Missing KEKDefault");
+            return true;
+        }
+        if (!found_PKDefault) {
+            debug("NVRAM: Missing PKDefault");
+            return true;
+        }
+
+        return false;
     }
 
 
