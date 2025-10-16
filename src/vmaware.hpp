@@ -1907,7 +1907,6 @@ private:
          * @note Hyper-V's presence on a host system can set certain hypervisor-related CPU flags that may appear similar to those in a virtualized environment, which can make it challenging to differentiate between an actual Hyper-V virtual machine (VM) and a host system with Hyper-V enabled.
          *       This can lead to false conclusions, where the system might mistakenly be identified as running in a Hyper-V VM, when in reality, it's simply the host system with Hyper-V features active.
          *       This check aims to distinguish between these two cases by identifying specific CPU flags and hypervisor-related artifacts that are indicative of a Hyper-V VM rather than a host system with Hyper-V enabled.
-         * @author Requiem (https://github.com/NotRequiem)
          * @returns hyperx_state enum indicating the detected state:
          *          - HYPERV_ARTIFACT_VM for host with Hyper-V enabled
          *          - HYPERV_REAL_VM for real Hyper-V VM
@@ -4479,7 +4478,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
       * @brief Check for timing anomalies in the system
       * @category x86
-      * @author Requiem (https://github.com/NotRequiem)
       * @implements VM::TIMER
       */
     [[nodiscard]] static bool timer() {
@@ -8036,7 +8034,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for VM-specific names for drivers
      * @category Windows
-     * @author Requiem (https://github.com/NotRequiem)
      * @implements VM::DRIVERS
      */
     [[nodiscard]] static bool drivers() {
@@ -8143,7 +8140,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for serial numbers of virtual disks
      * @category Windows
-     * @author Requiem (https://github.com/NotRequiem)
      * @implements VM::DISK_SERIAL
      */
     [[nodiscard]] static bool disk_serial_number() {
@@ -8361,7 +8357,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for GPU capabilities related to VMs
      * @category Windows
-     * @author Requiem (https://github.com/NotRequiem)
      * @implements VM::GPU_CAPABILITIES
      */
     [[nodiscard]] static bool gpu_capabilities() {
@@ -8453,7 +8448,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check if the number of virtual and logical processors are reported correctly by the system
      * @category Windows, x86
-     * @author Requiem (https://github.com/NotRequiem)
      * @implements VM::VIRTUAL_PROCESSORS
      */
     [[nodiscard]] static bool virtual_processors() {
@@ -8674,7 +8668,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check if the system has a physical TPM by matching the TPM manufacturer against known physical TPM chip vendors
      * @category Windows
      * @note CRB model will succeed, while TIS will fail
-     * @author Requiem (https://github.com/NotRequiem)
      * @implements VM::TPM
      */
     [[nodiscard]] static bool tpm() {
@@ -8787,7 +8780,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for VM-specific ACPI device signatures
      * @category Windows
-     * @author Requiem (https://github.com/NotRequiem)
      * @implements VM::ACPI_SIGNATURE
      */
     [[nodiscard]] static bool acpi_signature() {
@@ -9185,7 +9177,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check if Dark Byte's VM is present
      * @category Windows
-     * @author Requiem (https://github.com/NotRequiem)
      * @implements VM::DBVM
      */
     [[nodiscard]] static bool dbvm() {
@@ -9369,7 +9360,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for known VM objects
      * @category Windows
-     * @author Requiem (https://github.com/NotRequiem)
      * @implements VM::OBJECTS
      */
     [[nodiscard]] static bool objects() {
@@ -9998,7 +9988,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
 	 * @brief Check if SMBIOS is malformed/corrupted in a way that is typical for VMs
      * @category Windows
-     * @author Requiem (https://github.com/NotRequiem)
      * @implements VM::SMBIOS_INTEGRITY
      */
     [[nodiscard]] static bool smbios_integrity() {
