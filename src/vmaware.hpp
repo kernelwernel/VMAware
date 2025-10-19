@@ -4394,7 +4394,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         static unsigned aux = 0;
         // Check for RDTSC support
         {
-        #if (x86_64)
+        #if (x86_64 && WINDOWS)
             const bool haveRdtscp = [&]() noexcept -> bool {
                 __try {
                     __rdtscp(&aux); // check for RDTSCP support as we will use it later
