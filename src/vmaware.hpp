@@ -9805,7 +9805,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      */
     [[nodiscard]] static bool edid() {
         auto decodeManufacturer = [](const BYTE* edid) -> std::string {
-            const u16 word = static_cast<u16>((edid[8] << 8) | edid[9]);
+            const uint16_t word = static_cast<uint16_t>((edid[8] << 8) | edid[9]);
 
             char m[4] = { 0, 0, 0, 0 };
             const int c1 = (word >> 10) & 0x1F;
@@ -9814,17 +9814,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             if (c1 >= 1 && c1 <= 26) m[0] = static_cast<char>('A' + c1 - 1); else m[0] = '?';
             if (c2 >= 1 && c2 <= 26) m[1] = static_cast<char>('A' + c2 - 1); else m[1] = '?';
-            if (c3 >= 1 && c2 <= 26) m[2] = static_cast<char>('A' + c3 - 1); else m[2] = '?';
+            if (c3 >= 1 && c3 <= 26) m[2] = static_cast<char>('A' + c3 - 1); else m[2] = '?';
 
             return std::string(m);
-        };
-
-        auto getPreferredResolution = [](const BYTE* edid, int& x, int& y) {
-            x = 0; y = 0;
-            if (edid) {
-                x = int(edid[0x38]) | ((int(edid[0x3A]) & 0xF0) << 4);
-                y = int(edid[0x3B]) | ((int(edid[0x3D]) & 0xF0) << 4);
-            }
         };
 
         auto isThreeUpperAlpha = [](const std::string& s) -> bool {
@@ -9896,19 +9888,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             const std::string manufacturer = decodeManufacturer(edid);
             const BYTE yearOffset = edid[0x11]; // 1990 + yearOffset
 
-            int prefX = 0, prefY = 0;
-            getPreferredResolution(edid, prefX, prefY);
-
             const std::string friendly = getDeviceProperty(devInfo, devData, SPDRP_FRIENDLYNAME);
             const std::string devdesc = getDeviceProperty(devInfo, devData, SPDRP_DEVICEDESC);
             const std::string descriptor = !friendly.empty() ? friendly : devdesc;
 
-            const bool year_in_script_range = (yearOffset >= 25 && yearOffset <= 35);
+            const bool year_in_range = (yearOffset >= 25 && yearOffset <= 35); // 2015..2025
             const bool vendor_nonstandard = !isThreeUpperAlpha(manufacturer);
-            const bool resolution_is_1024x768 = (prefX == 1024 && prefY == 768);
             const bool desc_has_prefix_monitor = descHasUpperPrefixMonitor(descriptor);
 
-            if (year_in_script_range && (vendor_nonstandard || resolution_is_1024x768 || desc_has_prefix_monitor)) {
+            if (year_in_range && (vendor_nonstandard || desc_has_prefix_monitor)) {
                 SetupDiDestroyDeviceInfoList(devInfo);
                 return true;
             }
