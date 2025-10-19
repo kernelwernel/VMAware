@@ -4391,7 +4391,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         // Case A - Hypervisor without RDTSC patch
-        unsigned aux = 0;
+        static unsigned aux = 0;
         // Check for RDTSC support
         {
         #if (x86_64)
@@ -4403,7 +4403,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 __except (EXCEPTION_EXECUTE_HANDLER) {
                     return false;
                 }
-                }();
+            }();
         #else
             UNUSED(aux);
             int regs[4] = { 0 };
@@ -9964,8 +9964,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         else {
             SecureZeroMemory(amd_target_mem, targetSize);
 
-            // the immediate in amd_bytes with the 64-bit address little-endian
-            uint64_t addr = reinterpret_cast<uint64_t>(amd_target_mem);
+            const std::uintptr_t paddr = reinterpret_cast<std::uintptr_t>(amd_target_mem); // to avoid sign-extension
+            const u64 addr = static_cast<u64>(paddr);
             for (int i = 0; i < 8; ++i) {
                 amd_bytes[2 + i] = static_cast<unsigned char>((addr >> (i * 8)) & 0xFF);
             }
