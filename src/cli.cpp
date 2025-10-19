@@ -264,7 +264,7 @@ Intel KGT (Trusty)
 Microsoft Azure Hyper-V
 Xbox NanoVisor (Hyper-V)
 SimpleVisor
-Hyper-V artifact (not an actual VM)
+Hyper-V artifact (host with Hyper-V enabled)
 User-mode Linux
 IBM PowerVM
 Google Compute Engine (KVM)

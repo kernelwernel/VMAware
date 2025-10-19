@@ -56,10 +56,10 @@
  * - struct for internal cpu operations        => line 720
  * - struct for internal memoization           => line 1095
  * - struct for internal utility functions     => line 1225
- * - struct for internal core components       => line 10032
+ * - struct for internal core components       => line 10102
  * - start of VM detection technique list      => line 2181
- * - start of public VM detection functions    => line 10525
- * - start of externally defined variables     => line 11509
+ * - start of public VM detection functions    => line 10595
+ * - start of externally defined variables     => line 11579
  *
  *
  * ============================== EXAMPLE ===================================
@@ -10726,7 +10726,7 @@ public: // START OF PUBLIC FUNCTIONS
         constexpr const char* TMP_HYPERV_VPC = "Microsoft Virtual PC/Hyper-V";
         constexpr const char* TMP_AZURE = "Microsoft Azure Hyper-V";
         constexpr const char* TMP_NANOVISOR = "Xbox NanoVisor (Hyper-V)";
-        constexpr const char* TMP_HYPERV_ARTIFACT = "Hyper-V artifact (not an actual VM)";
+        constexpr const char* TMP_HYPERV_ARTIFACT = "Hyper-V artifact (host running Hyper-V)";
     #else
         constexpr const char* TMP_QEMU = brands::QEMU;
         constexpr const char* TMP_KVM = brands::KVM;
@@ -11462,7 +11462,7 @@ public: // START OF PUBLIC FUNCTIONS
             }
 
             // Hyper-V artifacts are an exception due to how unique the circumstance is
-            if (brand_tmp == brands::HYPERV_ARTIFACT) {
+            if (brand_tmp == brands::HYPERV_ARTIFACT && percent_tmp != 100) {
                 return std::string(category) + addition + brand_tmp;
             } else {
                 return std::string(category) + addition + brand_tmp + " VM";

@@ -592,7 +592,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::BOOT_MANAGER` | Check for boot managers typically found in VMs | 🪟 | 50% | Admin |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L9593) |
 | `VM::SMBIOS_INTEGRITY` | Check if SMBIOS is malformed/corrupted in a way that is typical for VMs | 🪟 | 60% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L9793) |
 | `VM::EDID` | Check for non-standard EDID configurations | 🪟 | 100% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L9804) |
-| `VM::CPU_VENDOR` | Check if the CPU is genuine | 🪟 | 100% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L9925) |
+| `VM::CPU_HEURISTIC` | Check if the CPU is capable of running certain instructions successfully | 🪟 | 100% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L9913) |
 
 <!-- END OF TECHNIQUE DOCUMENTATION -->
 
