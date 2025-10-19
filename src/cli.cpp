@@ -768,6 +768,7 @@ static void general() {
     checker(VM::MAC_SIP, "MacOS SIP");
     checker(VM::REGISTRY_VALUES, "registry values");
     checker(VM::AUDIO, "audio devices");
+    checker(VM::DEVICE_HANDLES, "device handles");
     checker(VM::VPC_INVALID, "VPC invalid instructions");
     checker(VM::SIDT, "SIDT");
     checker(VM::SGDT, "SGDT");
@@ -832,6 +833,7 @@ static void general() {
     checker(VM::NVRAM, "NVRAM");
     checker(VM::SMBIOS_INTEGRITY, "SMBIOS integrity");
     checker(VM::EDID, "EDID");
+    checker(VM::CPU_VENDOR, "CPU passthrough");
 
     // ADD NEW TECHNIQUE CHECKER HERE
 

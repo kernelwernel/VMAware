@@ -52,14 +52,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 533
- * - struct for internal cpu operations        => line 718
- * - struct for internal memoization           => line 1198
- * - struct for internal utility functions     => line 1328
- * - struct for internal core components       => line 10114
- * - start of VM detection technique list      => line 2284
- * - start of public VM detection functions    => line 10607
- * - start of externally defined variables     => line 11590
+ * - enums for publicly accessible techniques  => line 534
+ * - struct for internal cpu operations        => line 720
+ * - struct for internal memoization           => line 1095
+ * - struct for internal utility functions     => line 1225
+ * - struct for internal core components       => line 10032
+ * - start of VM detection technique list      => line 2181
+ * - start of public VM detection functions    => line 10525
+ * - start of externally defined variables     => line 11509
  *
  *
  * ============================== EXAMPLE ===================================
@@ -380,6 +380,7 @@
     #pragma comment(lib, "shlwapi.lib")
     #pragma comment(lib, "powrprof.lib")
     #pragma comment(lib, "tbs.lib")
+    #pragma comment(lib, "Mincore.lib")
 #elif (LINUX)
     #if (x86)
         #include <cpuid.h>
@@ -571,7 +572,8 @@ public:
         BOOT_MANAGER,
         SMBIOS_INTEGRITY,
         EDID,
-        
+        CPU_VENDOR,
+
         // Linux and Windows
         SIDT,
         FIRMWARE,
@@ -870,132 +872,27 @@ private:
 
 #if (WINDOWS)
         static u32 get_cpu_base_speed() {
-            constexpr DWORD prov = 'RSMB';
+            u32 a = 0, b = 0, c = 0, d = 0;
 
-            const UINT e = EnumSystemFirmwareTables(prov, nullptr, 0);
-            if (e == 0) {
-                return 0;
+            if (cpu::is_leaf_supported(0x16u)) {
+                cpu::cpuid(a, b, c, d, 0x16u);
+                const u32 proc_base_mhz = a & 0xFFFFu;
+                if (proc_base_mhz != 0) {
+                    return proc_base_mhz;
+                }
             }
 
-            std::vector<BYTE> bufIDs(e);
-            const UINT gotIDs = EnumSystemFirmwareTables(prov, bufIDs.data(), e);
-            if (gotIDs != e) {
+            if (cpu::is_leaf_supported(0x15u)) {
+                cpu::cpuid(a, b, c, d, 0x15u);
+                const u32 denom = a;  
+                const u32 numer = b;   
+                const u32 core_crystal_hz = c; 
+                if (denom != 0 && numer != 0 && core_crystal_hz != 0) {
+                    const u64 tsc_hz = (u64)core_crystal_hz * (u64)numer / (u64)denom;
+                    const u32 mhz = static_cast<u32>((tsc_hz + 500000ULL) / 1000000ULL);
+                    if (mhz != 0) return mhz;
+                }
             }
-
-            if (gotIDs % sizeof(DWORD) != 0) {
-            }
-
-            const DWORD cnt = gotIDs / sizeof(DWORD);
-
-            for (DWORD i = 0; i < cnt; ++i) {
-                DWORD tblID = 0;
-                memcpy(&tblID, bufIDs.data() + i * sizeof(DWORD), sizeof(DWORD));
-
-                const UINT sz = GetSystemFirmwareTable(prov, tblID, nullptr, 0);
-                if (sz == 0) {
-                    continue;
-                }
-
-                std::vector<BYTE> buf(sz);
-                const UINT got = GetSystemFirmwareTable(prov, tblID, buf.data(), sz);
-                if (got != sz) {
-                    continue;
-                }
-
-                const BYTE* data = buf.data();
-                size_t dataLen = buf.size();
-                const BYTE* table = data;
-                size_t tableLen = dataLen;
-
-                // If blob starts with "RSMB" then the actual SMBIOS table follows
-                if (dataLen >= 8u && memcmp(data, "RSMB", 4) == 0) {
-                    DWORD smbiosLen = 0;
-                    memcpy(&smbiosLen, data + 4, sizeof(DWORD));
-                    if (smbiosLen != 0 && static_cast<size_t>(smbiosLen) <= dataLen - 8u) {
-                        table = data + 8;
-                        tableLen = static_cast<size_t>(smbiosLen);
-                    }
-                    else {
-                        table = data + 8;
-                        tableLen = dataLen - 8u;
-                    }
-                }
-
-                if (tableLen < 4u) {
-                    continue;
-                }
-
-                auto looks_valid_struct_at = [&](size_t s)->bool {
-                    if (s + 2u > tableLen) return false;
-                    u8 t = table[s];
-                    u8 len = table[s + 1];
-                    if (len < 4u) return false;
-                    if (s + static_cast<size_t>(len) > tableLen) return false;
-                    if (t > 127u) return false;
-                    return true;
-                };
-
-                size_t start = 0;
-                if (!looks_valid_struct_at(0)) {
-                    const size_t limit = std::min<size_t>(256u, tableLen >= 4u ? tableLen - 4u : 0u);
-                    for (size_t s = 1; s <= limit; ++s) {
-                        if (looks_valid_struct_at(s)) {
-                            start = s;
-                            break;
-                        }
-                    }
-                }
-
-                size_t idx = start;
-                const size_t MIN_STRUCT_SIZE = 4u;
-                while (idx + MIN_STRUCT_SIZE <= tableLen) {
-                    if (!looks_valid_struct_at(idx)) {
-                        ++idx;
-                        continue;
-                    }
-
-                    const u8 type = table[idx];
-                    const u8 length = table[idx + 1];
-
-                    if (type == 127u) {
-                        break;
-                    }
-
-                    if (idx + static_cast<size_t>(length) > tableLen || length < MIN_STRUCT_SIZE) {
-                        ++idx;
-                        continue;
-                    }
-
-                    if (type == 4u) {
-                        const size_t CURRENT_SPEED_OFFSET = 0x16;
-                        if (static_cast<size_t>(length) >= (CURRENT_SPEED_OFFSET + sizeof(u16))) {
-                            u16 cur = 0;
-                            memcpy(&cur, table + idx + CURRENT_SPEED_OFFSET, sizeof(cur));
-                            if (cur != 0) return static_cast<u32>(cur);
-                        }
-                    }
-
-                    size_t next = idx + static_cast<size_t>(length);
-                    bool foundTerminator = false;
-                    while (next + 1u < tableLen) {
-                        if (table[next] == 0 && table[next + 1] == 0) {
-                            next += 2;
-                            foundTerminator = true;
-                            break;
-                        }
-                        ++next;
-                    }
-
-                    if (!foundTerminator) {
-                        ++idx;
-                    }
-                    else {
-                        // move to next structure
-                        idx = next;
-                    }
-                } // while
-
-            } // for each table
 
             return 0;
         }
@@ -4476,10 +4373,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-      * @brief Check for timing anomalies in the system
-      * @category x86
-      * @implements VM::TIMER
-      */
+     * @brief Check for timing anomalies in the system
+     * @category x86
+     * @implements VM::TIMER
+     */
     [[nodiscard]] static bool timer() {
     #if (ARM || !x86)
         return false;
@@ -4494,13 +4391,36 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         // Case A - Hypervisor without RDTSC patch
+        static unsigned aux = 0;
+        // Check for RDTSC support
+        {
+        #if (x86_64 && WINDOWS)
+            const bool haveRdtscp = [&]() noexcept -> bool {
+                __try {
+                    __rdtscp(&aux); // check for RDTSCP support as we will use it later
+                    return true;
+                }
+                __except (EXCEPTION_EXECUTE_HANDLER) {
+                    return false;
+                }
+            }();
+        #else
+            UNUSED(aux);
+            int regs[4] = { 0 };
+            cpu::cpuid(regs, 0x80000001);
+            const bool haveRdtscp = (regs[3] & (1u << 27)) != 0;
+        #endif
+            if (!haveRdtscp) {
+                debug("TIMER: RDTSCP instruction not supported"); // __rdtscp should be supported nowadays
+                return true;
+            }
+        }
         auto cpuid = [&]() -> u64 {
-            _mm_lfence();
             const u64 t1 = __rdtsc();
 
             u32 a, b, c, d;
             cpu::cpuid(a, b, c, d, 0);
-            const u64 t2 = __rdtsc();
+            const u64 t2 = __rdtscp(&aux);
 
             return t2 - t1;
         };
@@ -4524,7 +4444,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         #if (WINDOWS)
             // Case B - Hypervisor with RDTSC patch + useplatformclock=true
             LARGE_INTEGER freq;
-            if (!QueryPerformanceFrequency(&freq)) // NtPowerInformation is avoided as some hypervisors downscale tsc only if we triggered a context switch from userspace
+            if (!QueryPerformanceFrequency(&freq)) // NtPowerInformation and NtQueryPerformanceCounter are avoided as some hypervisors downscale tsc only if we triggered a context switch from userspace
                 return false;
 
             // calculates the invariant TSC base rate, not the dynamic core frequency, similar to what CallNtPowerInformation would give you
@@ -4541,150 +4461,42 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             debug("TIMER: Current CPU base speed -> ", tscMHz, " MHz");
 
-            if (tscMHz < 1000) return true;
+            if (tscMHz < 1000.00) return true;
 
             const struct cpu::stepping_struct steps = cpu::fetch_steppings();
-            u32 baseMHz = cpu::get_cpu_base_speed();
+            const u32 baseMHz = cpu::get_cpu_base_speed(); // wont probably work reliably on AMD, but its more reliable than fetching from SMBIOS
 
             if (baseMHz == 0) {
-                debug("TIMER: Processor base speed not found, SMBIOS possibly corrupted?");
-                baseMHz = 1200;
+                debug("TIMER: Processor base speed not available for this processor");
             }
-
-            if (baseMHz < 1000) return true; // sorry old CPUs, won't be deterministic to conclude a VM tho
+            else if (baseMHz < 1000.00) {
+                return true;
+            }
         
             debug("TIMER: Processor base speed -> ", static_cast<double>(baseMHz), " MHz");
 
-            if (tscMHz < static_cast<double>(baseMHz) - 200.0) {
-                return true;
-            }
+            // Case C - Hypervisor with RDTSC patch + useplatformclock = false
+            ULONGLONG time1 = 0;
+            const ULONGLONG tsc1 = __rdtsc();
+            QueryInterruptTime(&time1); // as opposed to QueryInterruptTimePrecise (RtlGetInterruptTimePrecise), this api call never switches context nor calls __rdtsc with __mm_lfence
 
-            // Check for RDTSC support, we will use it on case D
-            unsigned aux = 0;
-            {
-            #if (x86_64)
-                const bool haveRdtscp = [&]() noexcept -> bool {
-                    __try {
-                        __rdtscp(&aux); // check for RDTSCP support as we will use it later
-                        return true;
-                    }
-                    __except (EXCEPTION_EXECUTE_HANDLER) {
-                        return false;
-                    }
-                }();
-            #else
-                UNUSED(aux);
-                int regs[4] = { 0 };
-                cpu::cpuid(regs, 0x80000001);
-                const bool haveRdtscp = (regs[3] & (1u << 27)) != 0;
-            #endif
-                if (!haveRdtscp) {
-                    debug("TIMER: RDTSCP instruction not supported"); // __rdtscp should be supported nowadays
-                    return true;
-                }
-            }
+            SleepEx(20, FALSE); // to ensure its >= than the default Windows timer tick (64Hz without timeBeginPeriod(1), so 15.625ms)
 
-            // Case C - low vmexit overhead with no rdtsc patch, https://lwn.net/Articles/790464/
-            const HANDLE th = GetCurrentThread();
-            const DWORD_PTR prevMask = SetThreadAffinityMask(th, 1); // to reduce context switching/scheduling
-            if (!prevMask)
-                return false;
-            const bool timer_need_restore_affinity = (prevMask != 0);
+            ULONGLONG time2 = 0;
+            const ULONGLONG tsc2 = __rdtsc();
+            QueryInterruptTime(&time2);
 
-            // allocate buffer aligned to 64 so we can pick an address crossing a 64B boundary
-            const size_t BUFSZ = 128;
-            const size_t ALIGN = 64;
-            void* raw = _aligned_malloc(BUFSZ, ALIGN);
-            if (!raw) {
-                SetThreadAffinityMask(th, prevMask);
-                return false;
-            }
-            memset(raw, 0, BUFSZ);
-            unsigned char* buf = (unsigned char*)raw;
-            volatile long long* misaligned_ptr = reinterpret_cast<volatile long long*>(buf + 60); // spans 60..67
+            const ULONGLONG delta_time = time2 - time1;   // 100 ns
+            const ULONGLONG delta_tsc = tsc2 - tsc1;     // cycles
 
-            void* exec_mem = nullptr;
+            debug("TIMER: Interrupt -> ", delta_time, ", RDTSC -> ", delta_tsc);
+            if (delta_time == 0) return false;
+            
+            const double interrupt_ratio = static_cast<double>(delta_tsc) / static_cast<double>(delta_time);
+            if (interrupt_ratio < 200.0) return true;
 
-            auto cleanup = [&]() noexcept {
-            #if (x86_64 && MSVC && !CLANG)
-                if (exec_mem) VirtualFree(exec_mem, 0, MEM_RELEASE);
-            #endif
-                if (raw) _aligned_free(raw);
-                SetThreadAffinityMask(th, prevMask);
-            };
+            if (cycleThreshold == 25000) return false; // if we're running under Hyper-V, do not continue
 
-            #if (x86_64)
-                #if (MSVC && !CLANG) 
-                    typedef void (*inc_fn_t)(volatile long long*);
-                    const unsigned char stub_bytes[] = { 0xF0, 0x48, 0xFF, 0x01, 0xC3 }; // lock; inc qword ptr [rcx]; ret
-                    exec_mem = VirtualAlloc(nullptr, 4096, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
-                    if (!exec_mem) {
-                        cleanup();
-                        return false;
-                    }
-                    memcpy(exec_mem, stub_bytes, sizeof(stub_bytes));
-                    FlushInstructionCache(GetCurrentProcess(), exec_mem, sizeof(stub_bytes));
-                    const inc_fn_t inc_misaligned = (inc_fn_t)exec_mem;
-
-                    auto do_misaligned_inc = [&](volatile long long* p) {
-                        // RCX will receive the pointer per Windows x64 ABI
-                        inc_misaligned(p);
-                    };
-                #else
-                    UNUSED(exec_mem);
-                    auto do_misaligned_inc = [&](volatile long long* p) {
-                        __asm__ __volatile__("lock; incq %0" : "+m"(*p) : : "memory");
-                    };
-                #endif
-            #else
-                auto do_misaligned_inc = [&](volatile long long* p) {
-                    // Looping CAS, doc warns about alignment, but this is the only practical path on Windows x86 that i can think of
-                    LONG64 oldv;
-                    LONG64 prev;
-                    do {
-                        // read non-atomically to form desired value; this is ok as CAS will fail if value changed
-                        oldv = *p;
-                        prev = InterlockedCompareExchange64((volatile LONG64*)p, oldv + 1, oldv);
-                    } while (prev != oldv);
-                };
-            #endif
-
-            // warmup to let caches settle and avoid first-call overhead of stub
-            for (int i = 0; i < 200; ++i) do_misaligned_inc(misaligned_ptr);
-
-            if (!QueryPerformanceFrequency(&freq)) {
-                cleanup();
-                return false;
-            }
-            const double ns_per_tick = 1e9 / static_cast<double>(freq.QuadPart);
-
-            const int ITER = 20000;
-            std::vector<u64> data;
-            data.reserve(ITER);
-
-            for (int i = 0; i < ITER; ++i) {
-                QueryPerformanceCounter(&t1q);
-
-                do_misaligned_inc(misaligned_ptr);
-
-                QueryPerformanceCounter(&t2q);
-                const LONGLONG delta_q = t2q.QuadPart - t1q.QuadPart;
-                u64 dt_ns = static_cast<u64>(static_cast<double>(delta_q) * ns_per_tick);
-                data.push_back(dt_ns);
-            }
-
-            const u64 suspicious_ns = 8ULL * 1000000ULL; // 8 ms
-            int suspicious_count = 0;
-            for (auto v : data) if (v >= suspicious_ns) suspicious_count++;
-            cleanup();
-
-            if (suspicious_count >= 5)
-                return true;
-
-            if (timer_need_restore_affinity) SetThreadAffinityMask(th, prevMask);
-            if (cycleThreshold == 25000) return false; // if we're running under Hyper-V, do not run case D
-
-            // Case D - Hypervisor with RDTSC patch + useplatformclock = false
             const int TRIALS = 20; // enough to warm up the syscall path, higher values will hardly evict spikes
             std::vector<double> ratios;
             ratios.reserve(TRIALS);
@@ -4695,8 +4507,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 t2 = __rdtscp(&aux);
 
                 // some hypervisors like DBVM will add a low base value + some random tsc value if the difference between tsc reads is less than 4000 cycles or so
-                // this could be handled by doing something like for (int i = 0; i < AGG; ++i) CloseHandle(INVALID_HANDLE_VALUE); or sleeping the thread to induce cache flushing too
-                // so the measured syscall time >> hypervisor patch window, but its not an elegant solution at all
+                // this could be handled by doing something like for (int i = 0; i < AGG; ++i) CloseHandle(INVALID_HANDLE_VALUE); or sleeping the thread to induce cache flushing
+                // so the measured syscall time > hypervisor patch window, but its not an elegant solution at all
                 CloseHandle(INVALID_HANDLE_VALUE); // kernel syscall
                 const u64 t3 = __rdtscp(&aux); // on modern Intel and AMD CPUs the TSC is "invariant" (doesn't change with P-states or C-states)
 
@@ -4712,6 +4524,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 ratios.push_back(ratio);
             }      
 
+            if (ratios.empty()) return false;            
             std::sort(ratios.begin(), ratios.end());
             const double tscMedian = ratios[ratios.size() / 2]; // to minimize jittering due to kernel noise
             debug("TIMER: Median syscall/user-mode ratio -> ", tscMedian);
@@ -9992,14 +9805,17 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      */
     [[nodiscard]] static bool edid() {
         auto decodeManufacturer = [](const BYTE* edid) -> std::string {
-            uint16_t word = (uint16_t(edid[8]) << 8) | edid[9];
+            const u16 word = static_cast<u16>((edid[8] << 8) | edid[9]);
+
             char m[4] = { 0, 0, 0, 0 };
-            int c1 = (word >> 10) & 0x1F;
-            int c2 = (word >> 5) & 0x1F;
-            int c3 = (word >> 0) & 0x1F;
-            if (c1 >= 1 && c1 <= 26) m[0] = char('A' + c1 - 1); else m[0] = '?';
-            if (c2 >= 1 && c2 <= 26) m[1] = char('A' + c2 - 1); else m[1] = '?';
-            if (c3 >= 1 && c3 <= 26) m[2] = char('A' + c3 - 1); else m[2] = '?';
+            const int c1 = (word >> 10) & 0x1F;
+            const int c2 = (word >> 5) & 0x1F;
+            const int c3 = (word >> 0) & 0x1F;
+
+            if (c1 >= 1 && c1 <= 26) m[0] = static_cast<char>('A' + c1 - 1); else m[0] = '?';
+            if (c2 >= 1 && c2 <= 26) m[1] = static_cast<char>('A' + c2 - 1); else m[1] = '?';
+            if (c3 >= 1 && c2 <= 26) m[2] = static_cast<char>('A' + c3 - 1); else m[2] = '?';
+
             return std::string(m);
         };
 
@@ -10021,11 +9837,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             if (desc.empty()) return false;
             const std::vector<std::string> tails = { " Monitor", " Display" };
             for (const auto& t : tails) {
-                size_t pos = desc.find(t);
+                const size_t pos = desc.find(t);
                 if (pos == std::string::npos || pos == 0) continue;
                 size_t start = pos;
                 while (start > 0 && std::isupper(static_cast<unsigned char>(desc[start - 1]))) --start;
-                size_t len = pos - start;
+                const size_t len = pos - start;
                 if (len >= 4 && len <= 8) {
                     bool ok = true;
                     for (size_t i = start; i < pos; ++i) {
@@ -10052,7 +9868,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return std::string();
         };
 
-        HDEVINFO devInfo = SetupDiGetClassDevs(&GUID_DEVCLASS_MONITOR, NULL, NULL, DIGCF_PRESENT);
+        const HDEVINFO devInfo = SetupDiGetClassDevs(&GUID_DEVCLASS_MONITOR, NULL, NULL, DIGCF_PRESENT);
         if (devInfo == INVALID_HANDLE_VALUE) {
             return false;
         }
@@ -10060,37 +9876,37 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         SP_DEVINFO_DATA devData{};
         devData.cbSize = sizeof(devData);
         for (DWORD index = 0; SetupDiEnumDeviceInfo(devInfo, index, &devData); ++index) {
-            HKEY hDevKey = SetupDiOpenDevRegKey(devInfo, &devData, DICS_FLAG_GLOBAL, 0, DIREG_DEV, KEY_READ);
+            const HKEY hDevKey = SetupDiOpenDevRegKey(devInfo, &devData, DICS_FLAG_GLOBAL, 0, DIREG_DEV, KEY_READ);
             if (hDevKey == INVALID_HANDLE_VALUE) continue;
 
             BYTE buffer[2048];
             DWORD bufSize = sizeof(buffer);
-            LONG rc = RegQueryValueExA(hDevKey, "EDID", NULL, NULL, buffer, &bufSize);
+            const LONG rc = RegQueryValueExA(hDevKey, "EDID", NULL, NULL, buffer, &bufSize);
             RegCloseKey(hDevKey);
 
             if (rc != ERROR_SUCCESS || bufSize < 128) continue;
 
             const BYTE* edid = buffer;
 
-            bool headerOk = (edid[0] == 0x00 && edid[1] == 0xFF && edid[2] == 0xFF &&
+            const bool headerOk = (edid[0] == 0x00 && edid[1] == 0xFF && edid[2] == 0xFF &&
                 edid[3] == 0xFF && edid[4] == 0xFF && edid[5] == 0xFF &&
                 edid[6] == 0xFF && edid[7] == 0x00);
             if (!headerOk) continue;
 
-            std::string manufacturer = decodeManufacturer(edid);
-            BYTE yearOffset = edid[0x11]; // 1990 + yearOffset
+            const std::string manufacturer = decodeManufacturer(edid);
+            const BYTE yearOffset = edid[0x11]; // 1990 + yearOffset
 
             int prefX = 0, prefY = 0;
             getPreferredResolution(edid, prefX, prefY);
 
-            std::string friendly = getDeviceProperty(devInfo, devData, SPDRP_FRIENDLYNAME);
-            std::string devdesc = getDeviceProperty(devInfo, devData, SPDRP_DEVICEDESC);
-            std::string descriptor = !friendly.empty() ? friendly : devdesc;
+            const std::string friendly = getDeviceProperty(devInfo, devData, SPDRP_FRIENDLYNAME);
+            const std::string devdesc = getDeviceProperty(devInfo, devData, SPDRP_DEVICEDESC);
+            const std::string descriptor = !friendly.empty() ? friendly : devdesc;
 
-            bool year_in_script_range = (yearOffset >= 25 && yearOffset <= 35);
-            bool vendor_nonstandard = !isThreeUpperAlpha(manufacturer);
-            bool resolution_is_1024x768 = (prefX == 1024 && prefY == 768);
-            bool desc_has_prefix_monitor = descHasUpperPrefixMonitor(descriptor);
+            const bool year_in_script_range = (yearOffset >= 25 && yearOffset <= 35);
+            const bool vendor_nonstandard = !isThreeUpperAlpha(manufacturer);
+            const bool resolution_is_1024x768 = (prefX == 1024 && prefY == 768);
+            const bool desc_has_prefix_monitor = descHasUpperPrefixMonitor(descriptor);
 
             if (year_in_script_range && (vendor_nonstandard || resolution_is_1024x768 || desc_has_prefix_monitor)) {
                 SetupDiDestroyDeviceInfoList(devInfo);
@@ -10100,6 +9916,108 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         SetupDiDestroyDeviceInfoList(devInfo);
         return false;
+    }
+
+
+    /**
+     * @brief Check if the CPU is genuine
+     * @category Windows
+     * @implements VM::CPU_VENDOR
+     */
+    [[nodiscard]] static bool cpu_vendor() {
+        // AMD stub template (mov rax, imm64 + clzero + ret)
+        // 8-byte immediate at runtime at offsets [2..9]
+        unsigned char amd_bytes[] = {
+            0x48, 0xB8,                 // mov rax, imm64
+            0x00, 0x00, 0x00, 0x00,     // imm64 low bytes (placeholder)
+            0x00, 0x00, 0x00, 0x00,     // imm64 high bytes (placeholder)
+            0x0F, 0x01, 0xFC,           // clzero
+            0xC3                        // ret
+        };
+        constexpr SIZE_T amd_stub_size = sizeof(amd_bytes); // 14
+
+        const unsigned char* bytes = nullptr;
+        SIZE_T codeSize = 0;
+
+        LPVOID amd_target_mem = NULL;
+        LPVOID exec_mem = NULL;
+
+        const bool claimed_amd = cpu::is_amd();
+        const bool claimed_intel = cpu::is_intel();
+
+        if (!claimed_amd && !claimed_intel) {
+            return false;
+        }
+
+        bool spoofed = false;
+        bool proceed = true;
+        bool exception = false;
+
+        if (claimed_intel || !claimed_amd) exception = true; // should generate an exception rather than be treated as a NOP
+
+        // one cache line = 64 bytes
+        const SIZE_T targetSize = 64;
+        amd_target_mem = VirtualAlloc(NULL, targetSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        if (amd_target_mem == NULL) {
+            proceed = false;
+        }
+        else {
+            SecureZeroMemory(amd_target_mem, targetSize);
+
+            const std::uintptr_t paddr = reinterpret_cast<std::uintptr_t>(amd_target_mem); // to avoid sign-extension
+            const u64 addr = static_cast<u64>(paddr);
+            for (int i = 0; i < 8; ++i) {
+                amd_bytes[2 + i] = static_cast<unsigned char>((addr >> (i * 8)) & 0xFF);
+            }
+
+            bytes = amd_bytes;
+            codeSize = amd_stub_size;
+        }
+
+        if (proceed) {
+            exec_mem = VirtualAlloc(NULL, codeSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+            if (exec_mem == NULL) {
+                proceed = false;
+            }
+            else {
+                memcpy(exec_mem, bytes, codeSize);
+                if (!FlushInstructionCache(GetCurrentProcess(), exec_mem, codeSize)) {
+                    proceed = false;
+                }
+                else {
+                    typedef void (*CodeFunc)();
+                    using RunnerFn = int(*)(CodeFunc);
+                    RunnerFn runner = +[](CodeFunc func) -> int {
+                        __try {
+                            func();
+                            return 0;
+                        }
+                        __except (GetExceptionCode() == EXCEPTION_ILLEGAL_INSTRUCTION ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH) {
+                            return 1;
+                        }
+                    };
+
+                    const int runner_rc = runner(reinterpret_cast<CodeFunc>(exec_mem));
+                    if (runner_rc == 0 && exception) {
+                        spoofed = true; // cpu reported Intel or other vendor in cpuid but was in reality AMD
+                    }
+                    else if (runner_rc == 1 && !exception) {
+                        spoofed = true; // cpu reported AMD in cpuid but was another CPU
+                    }
+                }
+            }
+        }
+
+        if (exec_mem) {
+            VirtualFree(exec_mem, 0, MEM_RELEASE);
+            exec_mem = NULL;
+        }
+        if (amd_target_mem) {
+            VirtualFree(amd_target_mem, 0, MEM_RELEASE);
+            amd_target_mem = NULL;
+        }
+
+        return spoofed;
     }
     // ADD NEW TECHNIQUE FUNCTION HERE
 #endif
@@ -11194,6 +11112,7 @@ public: // START OF PUBLIC FUNCTIONS
             case BOOT_MANAGER: return "BOOT_MANAGER";
             case SMBIOS_INTEGRITY: return "SMBIOS_INTEGRITY";
             case EDID: return "EDID";
+            case CPU_VENDOR: return "CPU_VENDOR";
             // END OF TECHNIQUE LIST
             case DEFAULT: return "setting flag, error";
             case ALL: return "setting flag, error";
@@ -11731,6 +11650,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         std::make_pair(VM::NVRAM, VM::core::technique(100, VM::nvram_vars)),
         std::make_pair(VM::BOOT_MANAGER, VM::core::technique(50, VM::nvram_boot)),
         std::make_pair(VM::POWER_CAPABILITIES, VM::core::technique(90, VM::power_capabilities)),
+        std::make_pair(VM::CPU_VENDOR, VM::core::technique(100, VM::cpu_vendor)),
         std::make_pair(VM::EDID, VM::core::technique(100, VM::edid)),
         std::make_pair(VM::BOOT_LOGO, VM::core::technique(100, VM::boot_logo)),
         std::make_pair(VM::GPU_CAPABILITIES, VM::core::technique(45, VM::gpu_capabilities)),
