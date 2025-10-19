@@ -52,14 +52,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 533
- * - struct for internal cpu operations        => line 718
- * - struct for internal memoization           => line 1198
- * - struct for internal utility functions     => line 1328
- * - struct for internal core components       => line 10114
- * - start of VM detection technique list      => line 2284
- * - start of public VM detection functions    => line 10607
- * - start of externally defined variables     => line 11590
+ * - enums for publicly accessible techniques  => line 534
+ * - struct for internal cpu operations        => line 720
+ * - struct for internal memoization           => line 1095
+ * - struct for internal utility functions     => line 1225
+ * - struct for internal core components       => line 10032
+ * - start of VM detection technique list      => line 2181
+ * - start of public VM detection functions    => line 10525
+ * - start of externally defined variables     => line 11509
  *
  *
  * ============================== EXAMPLE ===================================
@@ -572,7 +572,8 @@ public:
         BOOT_MANAGER,
         SMBIOS_INTEGRITY,
         EDID,
-        
+        CPU_VENDOR,
+
         // Linux and Windows
         SIDT,
         FIRMWARE,
@@ -9916,6 +9917,108 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         SetupDiDestroyDeviceInfoList(devInfo);
         return false;
     }
+
+
+    /**
+     * @brief Check if the CPU is genuine
+     * @category Windows
+     * @implements VM::CPU_VENDOR
+     */
+    [[nodiscard]] static bool cpu_vendor() {
+        // AMD stub template (mov rax, imm64 + clzero + ret)
+        // 8-byte immediate at runtime at offsets [2..9]
+        unsigned char amd_bytes[] = {
+            0x48, 0xB8,                 // mov rax, imm64
+            0x00, 0x00, 0x00, 0x00,     // imm64 low bytes (placeholder)
+            0x00, 0x00, 0x00, 0x00,     // imm64 high bytes (placeholder)
+            0x0F, 0x01, 0xFC,           // clzero
+            0xC3                        // ret
+        };
+        constexpr SIZE_T amd_stub_size = sizeof(amd_bytes); // 14
+
+        const unsigned char* bytes = nullptr;
+        SIZE_T codeSize = 0;
+
+        LPVOID amd_target_mem = NULL;
+        LPVOID exec_mem = NULL;
+
+        const bool claimed_amd = cpu::is_amd();
+        const bool claimed_intel = cpu::is_intel();
+
+        if (!claimed_amd && !claimed_intel) {
+            return false;
+        }
+
+        bool spoofed = false;
+        bool proceed = true;
+        bool exception = false;
+
+        if (claimed_intel || !claimed_amd) exception = true; // should generate an exception rather than be treated as a NOP
+
+        // one cache line = 64 bytes
+        const SIZE_T targetSize = 64;
+        amd_target_mem = VirtualAlloc(NULL, targetSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        if (amd_target_mem == NULL) {
+            proceed = false;
+        }
+        else {
+            SecureZeroMemory(amd_target_mem, targetSize);
+
+            // the immediate in amd_bytes with the 64-bit address little-endian
+            uint64_t addr = reinterpret_cast<uint64_t>(amd_target_mem);
+            for (int i = 0; i < 8; ++i) {
+                amd_bytes[2 + i] = static_cast<unsigned char>((addr >> (i * 8)) & 0xFF);
+            }
+
+            bytes = amd_bytes;
+            codeSize = amd_stub_size;
+        }
+
+        if (proceed) {
+            exec_mem = VirtualAlloc(NULL, codeSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+            if (exec_mem == NULL) {
+                proceed = false;
+            }
+            else {
+                memcpy(exec_mem, bytes, codeSize);
+                if (!FlushInstructionCache(GetCurrentProcess(), exec_mem, codeSize)) {
+                    proceed = false;
+                }
+                else {
+                    typedef void (*CodeFunc)();
+                    using RunnerFn = int(*)(CodeFunc);
+                    RunnerFn runner = +[](CodeFunc func) -> int {
+                        __try {
+                            func();
+                            return 0;
+                        }
+                        __except (GetExceptionCode() == EXCEPTION_ILLEGAL_INSTRUCTION ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH) {
+                            return 1;
+                        }
+                    };
+
+                    const int runner_rc = runner(reinterpret_cast<CodeFunc>(exec_mem));
+                    if (runner_rc == 0 && exception) {
+                        spoofed = true; // cpu reported Intel or other vendor in cpuid but was in reality AMD
+                    }
+                    else if (runner_rc == 1 && !exception) {
+                        spoofed = true; // cpu reported AMD in cpuid but was another CPU
+                    }
+                }
+            }
+        }
+
+        if (exec_mem) {
+            VirtualFree(exec_mem, 0, MEM_RELEASE);
+            exec_mem = NULL;
+        }
+        if (amd_target_mem) {
+            VirtualFree(amd_target_mem, 0, MEM_RELEASE);
+            amd_target_mem = NULL;
+        }
+
+        return spoofed;
+    }
     // ADD NEW TECHNIQUE FUNCTION HERE
 #endif
 
@@ -11009,6 +11112,7 @@ public: // START OF PUBLIC FUNCTIONS
             case BOOT_MANAGER: return "BOOT_MANAGER";
             case SMBIOS_INTEGRITY: return "SMBIOS_INTEGRITY";
             case EDID: return "EDID";
+            case CPU_VENDOR: return "CPU_VENDOR";
             // END OF TECHNIQUE LIST
             case DEFAULT: return "setting flag, error";
             case ALL: return "setting flag, error";
@@ -11546,6 +11650,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         std::make_pair(VM::NVRAM, VM::core::technique(100, VM::nvram_vars)),
         std::make_pair(VM::BOOT_MANAGER, VM::core::technique(50, VM::nvram_boot)),
         std::make_pair(VM::POWER_CAPABILITIES, VM::core::technique(90, VM::power_capabilities)),
+        std::make_pair(VM::CPU_VENDOR, VM::core::technique(100, VM::cpu_vendor)),
         std::make_pair(VM::EDID, VM::core::technique(100, VM::edid)),
         std::make_pair(VM::BOOT_LOGO, VM::core::technique(100, VM::boot_logo)),
         std::make_pair(VM::GPU_CAPABILITIES, VM::core::technique(45, VM::gpu_capabilities)),

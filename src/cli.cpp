@@ -833,6 +833,7 @@ static void general() {
     checker(VM::NVRAM, "NVRAM");
     checker(VM::SMBIOS_INTEGRITY, "SMBIOS integrity");
     checker(VM::EDID, "EDID");
+    checker(VM::CPU_VENDOR, "CPU passthrough");
 
     // ADD NEW TECHNIQUE CHECKER HERE
 
