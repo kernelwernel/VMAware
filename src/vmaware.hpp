@@ -52,14 +52,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 533
- * - struct for internal cpu operations        => line 717
- * - struct for internal memoization           => line 1197
- * - struct for internal utility functions     => line 1327
- * - struct for internal core components       => line 9974
- * - start of VM detection technique list      => line 2284
- * - start of public VM detection functions    => line 10467
- * - start of externally defined variables     => line 11449
+ * - enums for publicly accessible techniques  => line 534
+ * - struct for internal cpu operations        => line 720
+ * - struct for internal memoization           => line 1095
+ * - struct for internal utility functions     => line 1225
+ * - struct for internal core components       => line 10032
+ * - start of VM detection technique list      => line 2181
+ * - start of public VM detection functions    => line 10525
+ * - start of externally defined variables     => line 11509
  *
  *
  * ============================== EXAMPLE ===================================
@@ -380,6 +380,7 @@
     #pragma comment(lib, "shlwapi.lib")
     #pragma comment(lib, "powrprof.lib")
     #pragma comment(lib, "tbs.lib")
+    #pragma comment(lib, "Mincore.lib")
 #elif (LINUX)
     #if (x86)
         #include <cpuid.h>
@@ -561,6 +562,7 @@ public:
         GAMARUE,
         CUCKOO_DIR,
         CUCKOO_PIPE,
+        BOOT_LOGO,
         TRAP,
         UD,
         BLOCKSTEP,
@@ -568,9 +570,10 @@ public:
         OBJECTS,
         NVRAM,
         BOOT_MANAGER,
-        SMBIOS_PASSTHROUGH,
-        BOOT_LOGO,
-        
+        SMBIOS_INTEGRITY,
+        EDID,
+        CPU_VENDOR,
+
         // Linux and Windows
         SIDT,
         FIRMWARE,
@@ -869,132 +872,27 @@ private:
 
 #if (WINDOWS)
         static u32 get_cpu_base_speed() {
-            constexpr DWORD prov = 'RSMB';
+            u32 a = 0, b = 0, c = 0, d = 0;
 
-            const UINT e = EnumSystemFirmwareTables(prov, nullptr, 0);
-            if (e == 0) {
-                return 0;
+            if (cpu::is_leaf_supported(0x16u)) {
+                cpu::cpuid(a, b, c, d, 0x16u);
+                const u32 proc_base_mhz = a & 0xFFFFu;
+                if (proc_base_mhz != 0) {
+                    return proc_base_mhz;
+                }
             }
 
-            std::vector<BYTE> bufIDs(e);
-            const UINT gotIDs = EnumSystemFirmwareTables(prov, bufIDs.data(), e);
-            if (gotIDs != e) {
+            if (cpu::is_leaf_supported(0x15u)) {
+                cpu::cpuid(a, b, c, d, 0x15u);
+                const u32 denom = a;  
+                const u32 numer = b;   
+                const u32 core_crystal_hz = c; 
+                if (denom != 0 && numer != 0 && core_crystal_hz != 0) {
+                    const u64 tsc_hz = (u64)core_crystal_hz * (u64)numer / (u64)denom;
+                    const u32 mhz = static_cast<u32>((tsc_hz + 500000ULL) / 1000000ULL);
+                    if (mhz != 0) return mhz;
+                }
             }
-
-            if (gotIDs % sizeof(DWORD) != 0) {
-            }
-
-            const DWORD cnt = gotIDs / sizeof(DWORD);
-
-            for (DWORD i = 0; i < cnt; ++i) {
-                DWORD tblID = 0;
-                memcpy(&tblID, bufIDs.data() + i * sizeof(DWORD), sizeof(DWORD));
-
-                const UINT sz = GetSystemFirmwareTable(prov, tblID, nullptr, 0);
-                if (sz == 0) {
-                    continue;
-                }
-
-                std::vector<BYTE> buf(sz);
-                const UINT got = GetSystemFirmwareTable(prov, tblID, buf.data(), sz);
-                if (got != sz) {
-                    continue;
-                }
-
-                const BYTE* data = buf.data();
-                size_t dataLen = buf.size();
-                const BYTE* table = data;
-                size_t tableLen = dataLen;
-
-                // If blob starts with "RSMB" then the actual SMBIOS table follows
-                if (dataLen >= 8u && memcmp(data, "RSMB", 4) == 0) {
-                    DWORD smbiosLen = 0;
-                    memcpy(&smbiosLen, data + 4, sizeof(DWORD));
-                    if (smbiosLen != 0 && static_cast<size_t>(smbiosLen) <= dataLen - 8u) {
-                        table = data + 8;
-                        tableLen = static_cast<size_t>(smbiosLen);
-                    }
-                    else {
-                        table = data + 8;
-                        tableLen = dataLen - 8u;
-                    }
-                }
-
-                if (tableLen < 4u) {
-                    continue;
-                }
-
-                auto looks_valid_struct_at = [&](size_t s)->bool {
-                    if (s + 2u > tableLen) return false;
-                    u8 t = table[s];
-                    u8 len = table[s + 1];
-                    if (len < 4u) return false;
-                    if (s + static_cast<size_t>(len) > tableLen) return false;
-                    if (t > 127u) return false;
-                    return true;
-                };
-
-                size_t start = 0;
-                if (!looks_valid_struct_at(0)) {
-                    const size_t limit = std::min<size_t>(256u, tableLen >= 4u ? tableLen - 4u : 0u);
-                    for (size_t s = 1; s <= limit; ++s) {
-                        if (looks_valid_struct_at(s)) {
-                            start = s;
-                            break;
-                        }
-                    }
-                }
-
-                size_t idx = start;
-                const size_t MIN_STRUCT_SIZE = 4u;
-                while (idx + MIN_STRUCT_SIZE <= tableLen) {
-                    if (!looks_valid_struct_at(idx)) {
-                        ++idx;
-                        continue;
-                    }
-
-                    const u8 type = table[idx];
-                    const u8 length = table[idx + 1];
-
-                    if (type == 127u) {
-                        break;
-                    }
-
-                    if (idx + static_cast<size_t>(length) > tableLen || length < MIN_STRUCT_SIZE) {
-                        ++idx;
-                        continue;
-                    }
-
-                    if (type == 4u) {
-                        const size_t CURRENT_SPEED_OFFSET = 0x16;
-                        if (static_cast<size_t>(length) >= (CURRENT_SPEED_OFFSET + sizeof(u16))) {
-                            u16 cur = 0;
-                            memcpy(&cur, table + idx + CURRENT_SPEED_OFFSET, sizeof(cur));
-                            if (cur != 0) return static_cast<u32>(cur);
-                        }
-                    }
-
-                    size_t next = idx + static_cast<size_t>(length);
-                    bool foundTerminator = false;
-                    while (next + 1u < tableLen) {
-                        if (table[next] == 0 && table[next + 1] == 0) {
-                            next += 2;
-                            foundTerminator = true;
-                            break;
-                        }
-                        ++next;
-                    }
-
-                    if (!foundTerminator) {
-                        ++idx;
-                    }
-                    else {
-                        // move to next structure
-                        idx = next;
-                    }
-                } // while
-
-            } // for each table
 
             return 0;
         }
@@ -1906,7 +1804,6 @@ private:
          * @note Hyper-V's presence on a host system can set certain hypervisor-related CPU flags that may appear similar to those in a virtualized environment, which can make it challenging to differentiate between an actual Hyper-V virtual machine (VM) and a host system with Hyper-V enabled.
          *       This can lead to false conclusions, where the system might mistakenly be identified as running in a Hyper-V VM, when in reality, it's simply the host system with Hyper-V features active.
          *       This check aims to distinguish between these two cases by identifying specific CPU flags and hypervisor-related artifacts that are indicative of a Hyper-V VM rather than a host system with Hyper-V enabled.
-         * @author Requiem (https://github.com/NotRequiem)
          * @returns hyperx_state enum indicating the detected state:
          *          - HYPERV_ARTIFACT_VM for host with Hyper-V enabled
          *          - HYPERV_REAL_VM for real Hyper-V VM
@@ -4476,11 +4373,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-      * @brief Check for timing anomalies in the system
-      * @category x86
-      * @author Requiem (https://github.com/NotRequiem)
-      * @implements VM::TIMER
-      */
+     * @brief Check for timing anomalies in the system
+     * @category x86
+     * @implements VM::TIMER
+     */
     [[nodiscard]] static bool timer() {
     #if (ARM || !x86)
         return false;
@@ -4495,13 +4391,36 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         // Case A - Hypervisor without RDTSC patch
+        static unsigned aux = 0;
+        // Check for RDTSC support
+        {
+        #if (x86_64 && WINDOWS)
+            const bool haveRdtscp = [&]() noexcept -> bool {
+                __try {
+                    __rdtscp(&aux); // check for RDTSCP support as we will use it later
+                    return true;
+                }
+                __except (EXCEPTION_EXECUTE_HANDLER) {
+                    return false;
+                }
+            }();
+        #else
+            UNUSED(aux);
+            int regs[4] = { 0 };
+            cpu::cpuid(regs, 0x80000001);
+            const bool haveRdtscp = (regs[3] & (1u << 27)) != 0;
+        #endif
+            if (!haveRdtscp) {
+                debug("TIMER: RDTSCP instruction not supported"); // __rdtscp should be supported nowadays
+                return true;
+            }
+        }
         auto cpuid = [&]() -> u64 {
-            _mm_lfence();
             const u64 t1 = __rdtsc();
 
             u32 a, b, c, d;
             cpu::cpuid(a, b, c, d, 0);
-            const u64 t2 = __rdtsc();
+            const u64 t2 = __rdtscp(&aux);
 
             return t2 - t1;
         };
@@ -4525,7 +4444,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         #if (WINDOWS)
             // Case B - Hypervisor with RDTSC patch + useplatformclock=true
             LARGE_INTEGER freq;
-            if (!QueryPerformanceFrequency(&freq)) // NtPowerInformation is avoided as some hypervisors downscale tsc only if we triggered a context switch from userspace
+            if (!QueryPerformanceFrequency(&freq)) // NtPowerInformation and NtQueryPerformanceCounter are avoided as some hypervisors downscale tsc only if we triggered a context switch from userspace
                 return false;
 
             // calculates the invariant TSC base rate, not the dynamic core frequency, similar to what CallNtPowerInformation would give you
@@ -4542,150 +4461,42 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             debug("TIMER: Current CPU base speed -> ", tscMHz, " MHz");
 
-            if (tscMHz < 1000) return true;
+            if (tscMHz < 1000.00) return true;
 
             const struct cpu::stepping_struct steps = cpu::fetch_steppings();
-            u32 baseMHz = cpu::get_cpu_base_speed();
+            const u32 baseMHz = cpu::get_cpu_base_speed(); // wont probably work reliably on AMD, but its more reliable than fetching from SMBIOS
 
             if (baseMHz == 0) {
-                debug("TIMER: Processor base speed not found, SMBIOS possibly corrupted?");
-                baseMHz = 1200;
+                debug("TIMER: Processor base speed not available for this processor");
             }
-
-            if (baseMHz < 1000) return true; // sorry old CPUs, won't be deterministic to conclude a VM tho
+            else if (baseMHz < 1000.00) {
+                return true;
+            }
         
             debug("TIMER: Processor base speed -> ", static_cast<double>(baseMHz), " MHz");
 
-            if (tscMHz < static_cast<double>(baseMHz) - 200.0) {
-                return true;
-            }
+            // Case C - Hypervisor with RDTSC patch + useplatformclock = false
+            ULONGLONG time1 = 0;
+            const ULONGLONG tsc1 = __rdtsc();
+            QueryInterruptTime(&time1); // as opposed to QueryInterruptTimePrecise (RtlGetInterruptTimePrecise), this api call never switches context nor calls __rdtsc with __mm_lfence
 
-            // Check for RDTSC support, we will use it on case D
-            unsigned aux = 0;
-            {
-            #if (x86_64)
-                const bool haveRdtscp = [&]() noexcept -> bool {
-                    __try {
-                        __rdtscp(&aux); // check for RDTSCP support as we will use it later
-                        return true;
-                    }
-                    __except (EXCEPTION_EXECUTE_HANDLER) {
-                        return false;
-                    }
-                }();
-            #else
-                UNUSED(aux);
-                int regs[4] = { 0 };
-                cpu::cpuid(regs, 0x80000001);
-                const bool haveRdtscp = (regs[3] & (1u << 27)) != 0;
-            #endif
-                if (!haveRdtscp) {
-                    debug("TIMER: RDTSCP instruction not supported"); // __rdtscp should be supported nowadays
-                    return true;
-                }
-            }
+            SleepEx(20, FALSE); // to ensure its >= than the default Windows timer tick (64Hz without timeBeginPeriod(1), so 15.625ms)
 
-            // Case C - low vmexit overhead with no rdtsc patch, https://lwn.net/Articles/790464/
-            const HANDLE th = GetCurrentThread();
-            const DWORD_PTR prevMask = SetThreadAffinityMask(th, 1); // to reduce context switching/scheduling
-            if (!prevMask)
-                return false;
-            const bool timer_need_restore_affinity = (prevMask != 0);
+            ULONGLONG time2 = 0;
+            const ULONGLONG tsc2 = __rdtsc();
+            QueryInterruptTime(&time2);
 
-            // allocate buffer aligned to 64 so we can pick an address crossing a 64B boundary
-            const size_t BUFSZ = 128;
-            const size_t ALIGN = 64;
-            void* raw = _aligned_malloc(BUFSZ, ALIGN);
-            if (!raw) {
-                SetThreadAffinityMask(th, prevMask);
-                return false;
-            }
-            memset(raw, 0, BUFSZ);
-            unsigned char* buf = (unsigned char*)raw;
-            volatile long long* misaligned_ptr = reinterpret_cast<volatile long long*>(buf + 60); // spans 60..67
+            const ULONGLONG delta_time = time2 - time1;   // 100 ns
+            const ULONGLONG delta_tsc = tsc2 - tsc1;     // cycles
 
-            void* exec_mem = nullptr;
+            debug("TIMER: Interrupt -> ", delta_time, ", RDTSC -> ", delta_tsc);
+            if (delta_time == 0) return false;
+            
+            const double interrupt_ratio = static_cast<double>(delta_tsc) / static_cast<double>(delta_time);
+            if (interrupt_ratio < 200.0) return true;
 
-            auto cleanup = [&]() noexcept {
-            #if (x86_64 && MSVC && !CLANG)
-                if (exec_mem) VirtualFree(exec_mem, 0, MEM_RELEASE);
-            #endif
-                if (raw) _aligned_free(raw);
-                SetThreadAffinityMask(th, prevMask);
-            };
+            if (cycleThreshold == 25000) return false; // if we're running under Hyper-V, do not continue
 
-            #if (x86_64)
-                #if (MSVC && !CLANG) 
-                    typedef void (*inc_fn_t)(volatile long long*);
-                    const unsigned char stub_bytes[] = { 0xF0, 0x48, 0xFF, 0x01, 0xC3 }; // lock; inc qword ptr [rcx]; ret
-                    exec_mem = VirtualAlloc(nullptr, 4096, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
-                    if (!exec_mem) {
-                        cleanup();
-                        return false;
-                    }
-                    memcpy(exec_mem, stub_bytes, sizeof(stub_bytes));
-                    FlushInstructionCache(GetCurrentProcess(), exec_mem, sizeof(stub_bytes));
-                    const inc_fn_t inc_misaligned = (inc_fn_t)exec_mem;
-
-                    auto do_misaligned_inc = [&](volatile long long* p) {
-                        // RCX will receive the pointer per Windows x64 ABI
-                        inc_misaligned(p);
-                    };
-                #else
-                    UNUSED(exec_mem);
-                    auto do_misaligned_inc = [&](volatile long long* p) {
-                        __asm__ __volatile__("lock; incq %0" : "+m"(*p) : : "memory");
-                    };
-                #endif
-            #else
-                auto do_misaligned_inc = [&](volatile long long* p) {
-                    // Looping CAS, doc warns about alignment, but this is the only practical path on Windows x86 that i can think of
-                    LONG64 oldv;
-                    LONG64 prev;
-                    do {
-                        // read non-atomically to form desired value; this is ok as CAS will fail if value changed
-                        oldv = *p;
-                        prev = InterlockedCompareExchange64((volatile LONG64*)p, oldv + 1, oldv);
-                    } while (prev != oldv);
-                };
-            #endif
-
-            // warmup to let caches settle and avoid first-call overhead of stub
-            for (int i = 0; i < 200; ++i) do_misaligned_inc(misaligned_ptr);
-
-            if (!QueryPerformanceFrequency(&freq)) {
-                cleanup();
-                return false;
-            }
-            const double ns_per_tick = 1e9 / static_cast<double>(freq.QuadPart);
-
-            const int ITER = 20000;
-            std::vector<u64> data;
-            data.reserve(ITER);
-
-            for (int i = 0; i < ITER; ++i) {
-                QueryPerformanceCounter(&t1q);
-
-                do_misaligned_inc(misaligned_ptr);
-
-                QueryPerformanceCounter(&t2q);
-                const LONGLONG delta_q = t2q.QuadPart - t1q.QuadPart;
-                u64 dt_ns = static_cast<u64>(static_cast<double>(delta_q) * ns_per_tick);
-                data.push_back(dt_ns);
-            }
-
-            const u64 suspicious_ns = 8ULL * 1000000ULL; // 8 ms
-            int suspicious_count = 0;
-            for (auto v : data) if (v >= suspicious_ns) suspicious_count++;
-            cleanup();
-
-            if (suspicious_count >= 5)
-                return true;
-
-            if (timer_need_restore_affinity) SetThreadAffinityMask(th, prevMask);
-            if (cycleThreshold == 25000) return false; // if we're running under Hyper-V, do not run case D
-
-            // Case D - Hypervisor with RDTSC patch + useplatformclock = false
             const int TRIALS = 20; // enough to warm up the syscall path, higher values will hardly evict spikes
             std::vector<double> ratios;
             ratios.reserve(TRIALS);
@@ -4696,8 +4507,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 t2 = __rdtscp(&aux);
 
                 // some hypervisors like DBVM will add a low base value + some random tsc value if the difference between tsc reads is less than 4000 cycles or so
-                // this could be handled by doing something like for (int i = 0; i < AGG; ++i) CloseHandle(INVALID_HANDLE_VALUE); or sleeping the thread to induce cache flushing too
-                // so the measured syscall time >> hypervisor patch window, but its not an elegant solution at all
+                // this could be handled by doing something like for (int i = 0; i < AGG; ++i) CloseHandle(INVALID_HANDLE_VALUE); or sleeping the thread to induce cache flushing
+                // so the measured syscall time > hypervisor patch window, but its not an elegant solution at all
                 CloseHandle(INVALID_HANDLE_VALUE); // kernel syscall
                 const u64 t3 = __rdtscp(&aux); // on modern Intel and AMD CPUs the TSC is "invariant" (doesn't change with P-states or C-states)
 
@@ -4713,6 +4524,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 ratios.push_back(ratio);
             }      
 
+            if (ratios.empty()) return false;            
             std::sort(ratios.begin(), ratios.end());
             const double tscMedian = ratios[ratios.size() / 2]; // to minimize jittering due to kernel noise
             debug("TIMER: Median syscall/user-mode ratio -> ", tscMedian);
@@ -7963,7 +7775,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check for display configurations related to VMs
+     * @brief Check for display configurations commonly found in VMs
      * @category Windows
      * @author Idea of screen resolution from Thomas Roccia (fr0gger)
      * @link https://unprotect.it/technique/checking-screen-resolution/
@@ -8035,7 +7847,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for VM-specific names for drivers
      * @category Windows
-     * @author Requiem (https://github.com/NotRequiem)
      * @implements VM::DRIVERS
      */
     [[nodiscard]] static bool drivers() {
@@ -8142,7 +7953,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for serial numbers of virtual disks
      * @category Windows
-     * @author Requiem (https://github.com/NotRequiem)
      * @implements VM::DISK_SERIAL
      */
     [[nodiscard]] static bool disk_serial_number() {
@@ -8360,7 +8170,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for GPU capabilities related to VMs
      * @category Windows
-     * @author Requiem (https://github.com/NotRequiem)
      * @implements VM::GPU_CAPABILITIES
      */
     [[nodiscard]] static bool gpu_capabilities() {
@@ -8452,7 +8261,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check if the number of virtual and logical processors are reported correctly by the system
      * @category Windows, x86
-     * @author Requiem (https://github.com/NotRequiem)
      * @implements VM::VIRTUAL_PROCESSORS
      */
     [[nodiscard]] static bool virtual_processors() {
@@ -8673,7 +8481,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check if the system has a physical TPM by matching the TPM manufacturer against known physical TPM chip vendors
      * @category Windows
      * @note CRB model will succeed, while TIS will fail
-     * @author Requiem (https://github.com/NotRequiem)
      * @implements VM::TPM
      */
     [[nodiscard]] static bool tpm() {
@@ -8786,7 +8593,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for VM-specific ACPI device signatures
      * @category Windows
-     * @author Requiem (https://github.com/NotRequiem)
      * @implements VM::ACPI_SIGNATURE
      */
     [[nodiscard]] static bool acpi_signature() {
@@ -8827,11 +8633,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 || (c >= L'A' && c <= L'F');
         };
 
-        // enumerate all DISPLAY devices
+        // enumerate all devices
         const HDEVINFO hDevInfo = SetupDiGetClassDevsW(
-            &GUID_DEVCLASS_DISPLAY, nullptr, nullptr, DIGCF_PRESENT);
+            nullptr, nullptr, nullptr, DIGCF_ALLCLASSES | DIGCF_PRESENT);
         if (hDevInfo == INVALID_HANDLE_VALUE) {
-            debug("ACPI_SIGNATURE: No display device detected");
+            debug("ACPI_SIGNATURE: Could not enumerate devices");
             return true;
         }
         SP_DEVINFO_DATA devInfo = {};
@@ -8860,14 +8666,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             SetupDiGetDevicePropertyW(hDevInfo, &devInfo, &key, &propType,
                 nullptr, 0, &requiredSize, 0);
             if (GetLastError() != ERROR_INSUFFICIENT_BUFFER || requiredSize == 0) {
-                if (GetLastError() == ERROR_NOT_FOUND) {
-                    debug("ACPI_SIGNATURE: No dedicated display/GPU detected");
-                    SetupDiDestroyDeviceInfoList(hDevInfo);
-                    return false;
-                }
-                else {
-                    continue;
-                }
+                continue;
             }
 
             // fetch multi-sz
@@ -8885,18 +8684,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 ptr += (len + 1);
             }
 
-        #ifdef __VMAWARE_DEBUG__
-            for (auto& wstr : paths) {
-                debug("ACPI_SIGNATURE: ", wstr);
-            }
-        #endif
-
             static const wchar_t acpiPrefix[] = L"#ACPI(S";
             bool foundQemu = false;
 
             for (auto& wstr : paths) {
                 if (has_excluded_token(wstr)) {
-                    debug("ACPI_SIGNATURE: Valid signature -> ", wstr);
                     continue;
                 }
 
@@ -8925,6 +8717,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     pos = (rel == wstring_view::npos ? wstring_view::npos : next + rel);
                 }
                 if (foundQemu) {
+                    debug("ACPI_SIGNATURE: Detected QEMU signature in path -> ", wstr);
                     SetupDiDestroyDeviceInfoList(hDevInfo);
                     return core::add(brands::QEMU);
                 }
@@ -8944,6 +8737,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                         const wchar_t c1 = local_vw.data[start + 1];
                         const wchar_t c2 = local_vw.data[start + 2];
                         if (c0 == L'S' && is_hex(c1) && is_hex(c2)) {
+                            debug("ACPI_SIGNATURE: Detected QEMU signature in path -> ", wstr);
                             SetupDiDestroyDeviceInfoList(hDevInfo);
                             return core::add(brands::QEMU);
                         }
@@ -8966,6 +8760,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
                 for (auto sig : vm_signatures) {
                     if (wstr.find(sig) != std::wstring::npos) {
+                        debug("ACPI_SIGNATURE: Detected Hyper-V signature '", sig, "' in path -> ", wstr);
                         SetupDiDestroyDeviceInfoList(hDevInfo);
                         return core::add(brands::HYPERV);
                     }
@@ -9184,7 +8979,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check if Dark Byte's VM is present
      * @category Windows
-     * @author Requiem (https://github.com/NotRequiem)
      * @implements VM::DBVM
      */
     [[nodiscard]] static bool dbvm() {
@@ -9368,7 +9162,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for known VM objects
      * @category Windows
-     * @author Requiem (https://github.com/NotRequiem)
      * @implements VM::OBJECTS
      */
     [[nodiscard]] static bool objects() {
@@ -9574,10 +9367,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             PVOID Buffer,
             PULONG BufferLength);
 
-        bool flagged = false;
         bool found_dbDefault = false;
         bool found_KEKDefault = false;
         bool found_PKDefault = false;
+        bool found_MORCL = false;
 
         if (!util::is_admin()) {
             return false;
@@ -9625,6 +9418,28 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             debug("NVRAM: System is not UEFI");
             return false; // NOT UEFI
         }
+
+        auto contains_redhat_ascii_ci = [](const std::vector<BYTE>& buf) -> bool {
+            if (buf.empty()) return false;
+            std::string s(reinterpret_cast<const char*>(buf.data()), buf.size());
+            for (auto& c : s) c = static_cast<char>(::tolower(static_cast<unsigned char>(c)));
+            return s.find("red hat secure boot") != std::string::npos;
+        };
+        auto contains_redhat_utf16le_ci = [](const std::vector<BYTE>& buf) -> bool {
+            if (buf.size() < 2) return false;
+            if (buf.size() % 2 != 0) return false; 
+            const WCHAR* wptr = reinterpret_cast<const WCHAR*>(buf.data());
+            size_t wlen = buf.size() / sizeof(WCHAR);
+            try {
+                std::wstring ws(wptr, wlen);
+                for (auto& wc : ws) wc = static_cast<wchar_t>(::towlower(wc));
+                std::wstring needle = L"red hat secure boot";
+                return ws.find(needle) != std::wstring::npos;
+            }
+            catch (...) {
+                return false;
+            }
+        };
 
         PVARIABLE_NAME varName = reinterpret_cast<PVARIABLE_NAME>(res.buffer.data());
         const size_t bufSize = res.buffer.size();
@@ -9723,6 +9538,23 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
             }
 
+            if (nameStr == L"MemoryOverwriteRequestControlLock") {
+                found_MORCL = true;
+            }
+
+            if (nameStr == L"PKDefault") {
+                bool pk_has_redhat = false;
+                if (!valueBuf.empty()) {
+                    if (contains_redhat_utf16le_ci(valueBuf) || contains_redhat_ascii_ci(valueBuf)) {
+                        pk_has_redhat = true;
+                    }
+                }
+                if (pk_has_redhat) {
+                    debug("NVRAM: QEMU detected");
+                    return core::add(brands::QEMU);
+                }
+            }
+
             if (varName->NextEntryOffset == 0) break;
 
             const SIZE_T ne = static_cast<SIZE_T>(varName->NextEntryOffset);
@@ -9732,20 +9564,25 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             varName = reinterpret_cast<PVARIABLE_NAME>(reinterpret_cast<PBYTE>(res.buffer.data()) + nextOffset);
         }
 
-        if (!found_dbDefault) {
-            flagged = true;
-            debug("NVRAM: Missing dbDefault");
-        }
-        if (!found_KEKDefault) {
-            flagged = true;
-            debug("NVRAM: Missing KEKDefault");
-        }
-        if (!found_PKDefault) {
-            flagged = true;
-            debug("NVRAM: Missing PKDefault");
+        if (!found_MORCL) {
+            debug("NVRAM: Missing MemoryOverwriteRequestControlLock");
+            return true;
         }
 
-        return flagged;
+        if (!found_dbDefault) {
+            debug("NVRAM: Missing dbDefault");
+            return true;
+        }
+        if (!found_KEKDefault) {
+            debug("NVRAM: Missing KEKDefault");
+            return true;
+        }
+        if (!found_PKDefault) {
+            debug("NVRAM: Missing PKDefault");
+            return true;
+        }
+
+        return false;
     }
 
 
@@ -9953,14 +9790,235 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
 	 * @brief Check if SMBIOS is malformed/corrupted in a way that is typical for VMs
      * @category Windows
-     * @author Requiem (https://github.com/NotRequiem)
-     * @implements VM::SMBIOS_PASSTHROUGH
+     * @implements VM::SMBIOS_INTEGRITY
      */
-    [[nodiscard]] static bool smbios_passthrough() {
+    [[nodiscard]] static bool smbios_integrity() {
         ULONGLONG total_memory_in_kilobytes;
         return !GetPhysicallyInstalledSystemMemory(&total_memory_in_kilobytes);
     }
 
+
+    /**
+     * @brief Check for non-standard EDID configurations
+     * @category Windows
+     * @implements VM::EDID
+     */
+    [[nodiscard]] static bool edid() {
+        auto decodeManufacturer = [](const BYTE* edid) -> std::string {
+            const u16 word = static_cast<u16>((edid[8] << 8) | edid[9]);
+
+            char m[4] = { 0, 0, 0, 0 };
+            const int c1 = (word >> 10) & 0x1F;
+            const int c2 = (word >> 5) & 0x1F;
+            const int c3 = (word >> 0) & 0x1F;
+
+            if (c1 >= 1 && c1 <= 26) m[0] = static_cast<char>('A' + c1 - 1); else m[0] = '?';
+            if (c2 >= 1 && c2 <= 26) m[1] = static_cast<char>('A' + c2 - 1); else m[1] = '?';
+            if (c3 >= 1 && c2 <= 26) m[2] = static_cast<char>('A' + c3 - 1); else m[2] = '?';
+
+            return std::string(m);
+        };
+
+        auto getPreferredResolution = [](const BYTE* edid, int& x, int& y) {
+            x = 0; y = 0;
+            if (edid) {
+                x = int(edid[0x38]) | ((int(edid[0x3A]) & 0xF0) << 4);
+                y = int(edid[0x3B]) | ((int(edid[0x3D]) & 0xF0) << 4);
+            }
+        };
+
+        auto isThreeUpperAlpha = [](const std::string& s) -> bool {
+            if (s.size() != 3) return false;
+            for (char c : s) if (c < 'A' || c > 'Z') return false;
+            return true;
+        };
+
+        auto descHasUpperPrefixMonitor = [](const std::string& desc) -> bool {
+            if (desc.empty()) return false;
+            const std::vector<std::string> tails = { " Monitor", " Display" };
+            for (const auto& t : tails) {
+                const size_t pos = desc.find(t);
+                if (pos == std::string::npos || pos == 0) continue;
+                size_t start = pos;
+                while (start > 0 && std::isupper(static_cast<unsigned char>(desc[start - 1]))) --start;
+                const size_t len = pos - start;
+                if (len >= 4 && len <= 8) {
+                    bool ok = true;
+                    for (size_t i = start; i < pos; ++i) {
+                        if (!std::isupper(static_cast<unsigned char>(desc[i]))) { ok = false; break; }
+                    }
+                    if (ok) return true;
+                }
+            }
+            return false;
+        };
+
+        auto getDeviceProperty = [](HDEVINFO devInfo, SP_DEVINFO_DATA& devData, DWORD propId) -> std::string {
+            CHAR buf[512]{};
+            DWORD needed = 0;
+            if (SetupDiGetDeviceRegistryPropertyA(devInfo, &devData, propId, NULL, (PBYTE)buf, sizeof(buf), &needed)) {
+                return std::string(buf);
+            }
+            if (GetLastError() == ERROR_INSUFFICIENT_BUFFER && needed < 65536) {
+                std::vector<BYTE> big(needed);
+                if (SetupDiGetDeviceRegistryPropertyA(devInfo, &devData, propId, NULL, big.data(), (DWORD)big.size(), &needed)) {
+                    return std::string(reinterpret_cast<char*>(big.data()));
+                }
+            }
+            return std::string();
+        };
+
+        const HDEVINFO devInfo = SetupDiGetClassDevs(&GUID_DEVCLASS_MONITOR, NULL, NULL, DIGCF_PRESENT);
+        if (devInfo == INVALID_HANDLE_VALUE) {
+            return false;
+        }
+
+        SP_DEVINFO_DATA devData{};
+        devData.cbSize = sizeof(devData);
+        for (DWORD index = 0; SetupDiEnumDeviceInfo(devInfo, index, &devData); ++index) {
+            const HKEY hDevKey = SetupDiOpenDevRegKey(devInfo, &devData, DICS_FLAG_GLOBAL, 0, DIREG_DEV, KEY_READ);
+            if (hDevKey == INVALID_HANDLE_VALUE) continue;
+
+            BYTE buffer[2048];
+            DWORD bufSize = sizeof(buffer);
+            const LONG rc = RegQueryValueExA(hDevKey, "EDID", NULL, NULL, buffer, &bufSize);
+            RegCloseKey(hDevKey);
+
+            if (rc != ERROR_SUCCESS || bufSize < 128) continue;
+
+            const BYTE* edid = buffer;
+
+            const bool headerOk = (edid[0] == 0x00 && edid[1] == 0xFF && edid[2] == 0xFF &&
+                edid[3] == 0xFF && edid[4] == 0xFF && edid[5] == 0xFF &&
+                edid[6] == 0xFF && edid[7] == 0x00);
+            if (!headerOk) continue;
+
+            const std::string manufacturer = decodeManufacturer(edid);
+            const BYTE yearOffset = edid[0x11]; // 1990 + yearOffset
+
+            int prefX = 0, prefY = 0;
+            getPreferredResolution(edid, prefX, prefY);
+
+            const std::string friendly = getDeviceProperty(devInfo, devData, SPDRP_FRIENDLYNAME);
+            const std::string devdesc = getDeviceProperty(devInfo, devData, SPDRP_DEVICEDESC);
+            const std::string descriptor = !friendly.empty() ? friendly : devdesc;
+
+            const bool year_in_script_range = (yearOffset >= 25 && yearOffset <= 35);
+            const bool vendor_nonstandard = !isThreeUpperAlpha(manufacturer);
+            const bool resolution_is_1024x768 = (prefX == 1024 && prefY == 768);
+            const bool desc_has_prefix_monitor = descHasUpperPrefixMonitor(descriptor);
+
+            if (year_in_script_range && (vendor_nonstandard || resolution_is_1024x768 || desc_has_prefix_monitor)) {
+                SetupDiDestroyDeviceInfoList(devInfo);
+                return true;
+            }
+        }
+
+        SetupDiDestroyDeviceInfoList(devInfo);
+        return false;
+    }
+
+
+    /**
+     * @brief Check if the CPU is genuine
+     * @category Windows
+     * @implements VM::CPU_VENDOR
+     */
+    [[nodiscard]] static bool cpu_vendor() {
+        // AMD stub template (mov rax, imm64 + clzero + ret)
+        // 8-byte immediate at runtime at offsets [2..9]
+        unsigned char amd_bytes[] = {
+            0x48, 0xB8,                 // mov rax, imm64
+            0x00, 0x00, 0x00, 0x00,     // imm64 low bytes (placeholder)
+            0x00, 0x00, 0x00, 0x00,     // imm64 high bytes (placeholder)
+            0x0F, 0x01, 0xFC,           // clzero
+            0xC3                        // ret
+        };
+        constexpr SIZE_T amd_stub_size = sizeof(amd_bytes); // 14
+
+        const unsigned char* bytes = nullptr;
+        SIZE_T codeSize = 0;
+
+        LPVOID amd_target_mem = NULL;
+        LPVOID exec_mem = NULL;
+
+        const bool claimed_amd = cpu::is_amd();
+        const bool claimed_intel = cpu::is_intel();
+
+        if (!claimed_amd && !claimed_intel) {
+            return false;
+        }
+
+        bool spoofed = false;
+        bool proceed = true;
+        bool exception = false;
+
+        if (claimed_intel || !claimed_amd) exception = true; // should generate an exception rather than be treated as a NOP
+
+        // one cache line = 64 bytes
+        const SIZE_T targetSize = 64;
+        amd_target_mem = VirtualAlloc(NULL, targetSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        if (amd_target_mem == NULL) {
+            proceed = false;
+        }
+        else {
+            SecureZeroMemory(amd_target_mem, targetSize);
+
+            const std::uintptr_t paddr = reinterpret_cast<std::uintptr_t>(amd_target_mem); // to avoid sign-extension
+            const u64 addr = static_cast<u64>(paddr);
+            for (int i = 0; i < 8; ++i) {
+                amd_bytes[2 + i] = static_cast<unsigned char>((addr >> (i * 8)) & 0xFF);
+            }
+
+            bytes = amd_bytes;
+            codeSize = amd_stub_size;
+        }
+
+        if (proceed) {
+            exec_mem = VirtualAlloc(NULL, codeSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+            if (exec_mem == NULL) {
+                proceed = false;
+            }
+            else {
+                memcpy(exec_mem, bytes, codeSize);
+                if (!FlushInstructionCache(GetCurrentProcess(), exec_mem, codeSize)) {
+                    proceed = false;
+                }
+                else {
+                    typedef void (*CodeFunc)();
+                    using RunnerFn = int(*)(CodeFunc);
+                    RunnerFn runner = +[](CodeFunc func) -> int {
+                        __try {
+                            func();
+                            return 0;
+                        }
+                        __except (GetExceptionCode() == EXCEPTION_ILLEGAL_INSTRUCTION ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH) {
+                            return 1;
+                        }
+                    };
+
+                    const int runner_rc = runner(reinterpret_cast<CodeFunc>(exec_mem));
+                    if (runner_rc == 0 && exception) {
+                        spoofed = true; // cpu reported Intel or other vendor in cpuid but was in reality AMD
+                    }
+                    else if (runner_rc == 1 && !exception) {
+                        spoofed = true; // cpu reported AMD in cpuid but was another CPU
+                    }
+                }
+            }
+        }
+
+        if (exec_mem) {
+            VirtualFree(exec_mem, 0, MEM_RELEASE);
+            exec_mem = NULL;
+        }
+        if (amd_target_mem) {
+            VirtualFree(amd_target_mem, 0, MEM_RELEASE);
+            amd_target_mem = NULL;
+        }
+
+        return spoofed;
+    }
     // ADD NEW TECHNIQUE FUNCTION HERE
 #endif
 
@@ -11052,7 +11110,9 @@ public: // START OF PUBLIC FUNCTIONS
             case OBJECTS: return "OBJECTS";
             case NVRAM: return "NVRAM";
             case BOOT_MANAGER: return "BOOT_MANAGER";
-            case SMBIOS_PASSTHROUGH: return "SMBIOS_PASSTHROUGH";
+            case SMBIOS_INTEGRITY: return "SMBIOS_INTEGRITY";
+            case EDID: return "EDID";
+            case CPU_VENDOR: return "CPU_VENDOR";
             // END OF TECHNIQUE LIST
             case DEFAULT: return "setting flag, error";
             case ALL: return "setting flag, error";
@@ -11589,13 +11649,15 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         std::make_pair(VM::ACPI_SIGNATURE, VM::core::technique(100, VM::acpi_signature)),
         std::make_pair(VM::NVRAM, VM::core::technique(100, VM::nvram_vars)),
         std::make_pair(VM::BOOT_MANAGER, VM::core::technique(50, VM::nvram_boot)),
-        std::make_pair(VM::SMBIOS_PASSTHROUGH, VM::core::technique(50, VM::smbios_passthrough)),
-        std::make_pair(VM::GPU_CAPABILITIES, VM::core::technique(45, VM::gpu_capabilities)),
-        std::make_pair(VM::BOOT_LOGO, VM::core::technique(100, VM::boot_logo)),
-        std::make_pair(VM::TPM, VM::core::technique(100, VM::tpm)),
         std::make_pair(VM::POWER_CAPABILITIES, VM::core::technique(90, VM::power_capabilities)),
-        std::make_pair(VM::IVSHMEM, VM::core::technique(100, VM::ivshmem)),
+        std::make_pair(VM::CPU_VENDOR, VM::core::technique(100, VM::cpu_vendor)),
+        std::make_pair(VM::EDID, VM::core::technique(100, VM::edid)),
+        std::make_pair(VM::BOOT_LOGO, VM::core::technique(100, VM::boot_logo)),
+        std::make_pair(VM::GPU_CAPABILITIES, VM::core::technique(45, VM::gpu_capabilities)),
+        std::make_pair(VM::TPM, VM::core::technique(100, VM::tpm)),
+        std::make_pair(VM::SMBIOS_INTEGRITY, VM::core::technique(60, VM::smbios_integrity)),
         std::make_pair(VM::DISK_SERIAL, VM::core::technique(100, VM::disk_serial_number)),
+        std::make_pair(VM::IVSHMEM, VM::core::technique(100, VM::ivshmem)),
         std::make_pair(VM::SGDT, VM::core::technique(50, VM::sgdt)),
         std::make_pair(VM::SLDT, VM::core::technique(50, VM::sldt)),
         std::make_pair(VM::SMSW, VM::core::technique(50, VM::smsw)),

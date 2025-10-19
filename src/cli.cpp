@@ -17,6 +17,7 @@
  * ===============================================================
  * 
  *  - Made by: @kernelwernel (https://github.com/kernelwernel)
+ *  - Co-developed by: Requiem (https://github.com/NotRequiem)
  *  - Repository: https://github.com/kernelwernel/VMAware
  *  - License: MIT
  */ 
@@ -182,13 +183,14 @@ Extra:
 
 [[noreturn]] static void version(void) {
     std::cout << "vmaware " << "v" << ver << " (" << date << ")\n\n" <<
-    "Derived project of VMAware library at https://github.com/kernelwernel/VMAware"
+    "Derived project of VMAware library at https://github.com/kernelwernel/VMAware\n"
     "License MIT:<https://opensource.org/license/mit>.\n" << 
     "This is free software: you are free to change and redistribute it.\n" <<
     "There is NO WARRANTY, to the extent permitted by law.\n" <<
-    "Developed and maintained by kernelwernel and Requiem,\n" << 
-    "see https://github.com/kernelwernel and https://github.com/NotRequiem\n";
 
+    "Developed and maintained by kernelwernel and Requiem,\n" << 
+    "see https://github.com/kernelwernel and https://github.com/NotRequiem\n" <<
+    "For any inquiries, contact us on Discord at shenzken or kr.nl, or email us at jeanruyv@gmail.com\n";
     std::exit(0);
 }
 
@@ -766,6 +768,7 @@ static void general() {
     checker(VM::MAC_SIP, "MacOS SIP");
     checker(VM::REGISTRY_VALUES, "registry values");
     checker(VM::AUDIO, "audio devices");
+    checker(VM::DEVICE_HANDLES, "device handles");
     checker(VM::VPC_INVALID, "VPC invalid instructions");
     checker(VM::SIDT, "SIDT");
     checker(VM::SGDT, "SGDT");
@@ -828,7 +831,9 @@ static void general() {
     checker(VM::MAC_SYS, "system profiler");
     checker(VM::OBJECTS, "objects");
     checker(VM::NVRAM, "NVRAM");
-    checker(VM::SMBIOS_PASSTHROUGH, "SMBIOS passthrough");
+    checker(VM::SMBIOS_INTEGRITY, "SMBIOS integrity");
+    checker(VM::EDID, "EDID");
+    checker(VM::CPU_VENDOR, "CPU passthrough");
 
     // ADD NEW TECHNIQUE CHECKER HERE
 
