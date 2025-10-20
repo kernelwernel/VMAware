@@ -56,10 +56,10 @@
  * - struct for internal cpu operations        => line 720
  * - struct for internal memoization           => line 1095
  * - struct for internal utility functions     => line 1225
- * - struct for internal core components       => line 10032
+ * - struct for internal core components       => line 10102
  * - start of VM detection technique list      => line 2181
- * - start of public VM detection functions    => line 10525
- * - start of externally defined variables     => line 11509
+ * - start of public VM detection functions    => line 10595
+ * - start of externally defined variables     => line 11579
  *
  *
  * ============================== EXAMPLE ===================================
@@ -572,7 +572,7 @@ public:
         BOOT_MANAGER,
         SMBIOS_INTEGRITY,
         EDID,
-        CPU_VENDOR,
+        CPU_HEURISTIC,
 
         // Linux and Windows
         SIDT,
@@ -9805,7 +9805,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      */
     [[nodiscard]] static bool edid() {
         auto decodeManufacturer = [](const BYTE* edid) -> std::string {
-            const u16 word = static_cast<u16>((edid[8] << 8) | edid[9]);
+            const uint16_t word = static_cast<uint16_t>((edid[8] << 8) | edid[9]);
 
             char m[4] = { 0, 0, 0, 0 };
             const int c1 = (word >> 10) & 0x1F;
@@ -9814,17 +9814,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             if (c1 >= 1 && c1 <= 26) m[0] = static_cast<char>('A' + c1 - 1); else m[0] = '?';
             if (c2 >= 1 && c2 <= 26) m[1] = static_cast<char>('A' + c2 - 1); else m[1] = '?';
-            if (c3 >= 1 && c2 <= 26) m[2] = static_cast<char>('A' + c3 - 1); else m[2] = '?';
+            if (c3 >= 1 && c3 <= 26) m[2] = static_cast<char>('A' + c3 - 1); else m[2] = '?';
 
             return std::string(m);
-        };
-
-        auto getPreferredResolution = [](const BYTE* edid, int& x, int& y) {
-            x = 0; y = 0;
-            if (edid) {
-                x = int(edid[0x38]) | ((int(edid[0x3A]) & 0xF0) << 4);
-                y = int(edid[0x3B]) | ((int(edid[0x3D]) & 0xF0) << 4);
-            }
         };
 
         auto isThreeUpperAlpha = [](const std::string& s) -> bool {
@@ -9896,19 +9888,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             const std::string manufacturer = decodeManufacturer(edid);
             const BYTE yearOffset = edid[0x11]; // 1990 + yearOffset
 
-            int prefX = 0, prefY = 0;
-            getPreferredResolution(edid, prefX, prefY);
-
             const std::string friendly = getDeviceProperty(devInfo, devData, SPDRP_FRIENDLYNAME);
             const std::string devdesc = getDeviceProperty(devInfo, devData, SPDRP_DEVICEDESC);
             const std::string descriptor = !friendly.empty() ? friendly : devdesc;
 
-            const bool year_in_script_range = (yearOffset >= 25 && yearOffset <= 35);
+            const bool year_in_range = (yearOffset >= 25 && yearOffset <= 35); // 2015..2025
             const bool vendor_nonstandard = !isThreeUpperAlpha(manufacturer);
-            const bool resolution_is_1024x768 = (prefX == 1024 && prefY == 768);
             const bool desc_has_prefix_monitor = descHasUpperPrefixMonitor(descriptor);
 
-            if (year_in_script_range && (vendor_nonstandard || resolution_is_1024x768 || desc_has_prefix_monitor)) {
+            if (year_in_range && (vendor_nonstandard || desc_has_prefix_monitor)) {
                 SetupDiDestroyDeviceInfoList(devInfo);
                 return true;
             }
@@ -9920,11 +9908,91 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check if the CPU is genuine
+     * @brief Check if the CPU is capable of running certain instructions successfully
      * @category Windows
-     * @implements VM::CPU_VENDOR
+     * @implements VM::CPU_HEURISTIC
      */
-    [[nodiscard]] static bool cpu_vendor() {
+    [[nodiscard]] static bool cpu_heuristic() {
+        // 1) Check for commonly disabled instructions on patches      
+
+        // 1.1 - Test RDPID EAX); C3 (RET)
+        const unsigned char code[] = { 0xF3, 0x0F, 0xC7, 0xF8, 0xC3 };
+
+        void* mem = VirtualAlloc(NULL, sizeof(code), MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+        if (!mem) {
+            return false;
+        }
+
+        memcpy(mem, code, sizeof(code));
+        if (!FlushInstructionCache(GetCurrentProcess(), mem, sizeof(code))) {
+            VirtualFree(mem, 0, MEM_RELEASE);
+            return false;
+        }
+
+        typedef u64(__fastcall* rdpid_fn_t)();
+        rdpid_fn_t fn = reinterpret_cast<rdpid_fn_t>(mem);
+
+        bool ok = true;
+        __try {
+            u64 val = fn();
+        }
+        __except (GetExceptionCode() == EXCEPTION_ILLEGAL_INSTRUCTION
+            ? EXCEPTION_EXECUTE_HANDLER
+            : EXCEPTION_CONTINUE_SEARCH) {
+            ok = false;
+        }
+
+        VirtualFree(mem, 0, MEM_RELEASE);
+
+        if (!ok) {
+            debug("CPU_HEURISTIC: Failed to handle RDPID correctly");
+            return true;
+        }
+        // 1.2 - Test AES instructions
+        alignas(16) unsigned char plaintext[16] = {
+        0x00,0x11,0x22,0x33, 0x44,0x55,0x66,0x77,
+        0x88,0x99,0xAA,0xBB, 0xCC,0xDD,0xEE,0xFF
+        };
+        alignas(16) unsigned char key[16] = {
+            0x0F,0x0E,0x0D,0x0C, 0x0B,0x0A,0x09,0x08,
+            0x07,0x06,0x05,0x04, 0x03,0x02,0x01,0x00
+        };
+        alignas(16) unsigned char out[16] = { 0 };
+        __try {
+            __m128i block = _mm_loadu_si128(reinterpret_cast<const __m128i*>(plaintext));
+            __m128i key_vec = _mm_loadu_si128(reinterpret_cast<const __m128i*>(key));
+
+            __m128i tmp = _mm_xor_si128(block, key_vec);
+            tmp = _mm_aesenc_si128(tmp, key_vec);
+
+            _mm_storeu_si128(reinterpret_cast<__m128i*>(out), tmp);
+        }
+        __except (GetExceptionCode() == EXCEPTION_ILLEGAL_INSTRUCTION
+            ? EXCEPTION_EXECUTE_HANDLER
+            : EXCEPTION_CONTINUE_SEARCH) {
+            ok = false;
+        }
+
+        if (!ok) {
+            debug("CPU_HEURISTIC: Failed to handle AES encryption correctly");
+            return true;
+        }
+
+        // 2. Test if the CPU model is spoofed
+        /*
+            For this task, we want a vendor-only instruction that:
+            1. Is compatible enough, meaning both old and new CPUs of this vendor have it
+            2. Is enabled by default, without needing BIOS/OS changes
+            3. Never switches to kernel-mode, so that is harder to intercept
+            4. Is not deprecated
+
+            On Intel, most options are unreliable:
+            SGX are deprecated and disabled by default, MPX is deprecated and treated as NOP even in AMD CPUs, AVX-512 is not found in all processors (and amd integrated part of this set), etc
+            On AMD, 3dNow! could be an option, but since its being deprecated, CLZERO fits this criteria better
+
+            So for example, if the CPU reports being Intel, and succesfully runs CLZERO, then it's not an Intel CPU.
+        */
+
         // AMD stub template (mov rax, imm64 + clzero + ret)
         // 8-byte immediate at runtime at offsets [2..9]
         unsigned char amd_bytes[] = {
@@ -9999,10 +10067,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
                     const int runner_rc = runner(reinterpret_cast<CodeFunc>(exec_mem));
                     if (runner_rc == 0 && exception) {
-                        spoofed = true; // cpu reported Intel or other vendor in cpuid but was in reality AMD
+                        debug("CPU_HEURISTIC: CPU reports being Intel, but VMAware detected a hypervisor running an AMD CPU in the host"); // or another CPU
+                        spoofed = true; 
                     }
                     else if (runner_rc == 1 && !exception) {
-                        spoofed = true; // cpu reported AMD in cpuid but was another CPU
+                        debug("CPU_HEURISTIC: CPU reports being AMD, but VMAware detected a hypervisor running an Intel CPU in the host"); // or another CPU
+                        spoofed = true;
                     }
                 }
             }
@@ -10656,7 +10726,7 @@ public: // START OF PUBLIC FUNCTIONS
         constexpr const char* TMP_HYPERV_VPC = "Microsoft Virtual PC/Hyper-V";
         constexpr const char* TMP_AZURE = "Microsoft Azure Hyper-V";
         constexpr const char* TMP_NANOVISOR = "Xbox NanoVisor (Hyper-V)";
-        constexpr const char* TMP_HYPERV_ARTIFACT = "Hyper-V artifact (not an actual VM)";
+        constexpr const char* TMP_HYPERV_ARTIFACT = "Hyper-V artifact (host running Hyper-V)";
     #else
         constexpr const char* TMP_QEMU = brands::QEMU;
         constexpr const char* TMP_KVM = brands::KVM;
@@ -11112,7 +11182,7 @@ public: // START OF PUBLIC FUNCTIONS
             case BOOT_MANAGER: return "BOOT_MANAGER";
             case SMBIOS_INTEGRITY: return "SMBIOS_INTEGRITY";
             case EDID: return "EDID";
-            case CPU_VENDOR: return "CPU_VENDOR";
+            case CPU_HEURISTIC: return "CPU_HEURISTIC";
             // END OF TECHNIQUE LIST
             case DEFAULT: return "setting flag, error";
             case ALL: return "setting flag, error";
@@ -11392,7 +11462,7 @@ public: // START OF PUBLIC FUNCTIONS
             }
 
             // Hyper-V artifacts are an exception due to how unique the circumstance is
-            if (brand_tmp == brands::HYPERV_ARTIFACT) {
+            if (brand_tmp == brands::HYPERV_ARTIFACT && percent_tmp != 100) {
                 return std::string(category) + addition + brand_tmp;
             } else {
                 return std::string(category) + addition + brand_tmp + " VM";
@@ -11650,7 +11720,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         std::make_pair(VM::NVRAM, VM::core::technique(100, VM::nvram_vars)),
         std::make_pair(VM::BOOT_MANAGER, VM::core::technique(50, VM::nvram_boot)),
         std::make_pair(VM::POWER_CAPABILITIES, VM::core::technique(90, VM::power_capabilities)),
-        std::make_pair(VM::CPU_VENDOR, VM::core::technique(100, VM::cpu_vendor)),
+        std::make_pair(VM::CPU_HEURISTIC, VM::core::technique(100, VM::cpu_heuristic)),
         std::make_pair(VM::EDID, VM::core::technique(100, VM::edid)),
         std::make_pair(VM::BOOT_LOGO, VM::core::technique(100, VM::boot_logo)),
         std::make_pair(VM::GPU_CAPABILITIES, VM::core::technique(45, VM::gpu_capabilities)),

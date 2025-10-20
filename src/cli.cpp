@@ -264,7 +264,7 @@ Intel KGT (Trusty)
 Microsoft Azure Hyper-V
 Xbox NanoVisor (Hyper-V)
 SimpleVisor
-Hyper-V artifact (not an actual VM)
+Hyper-V artifact (host with Hyper-V enabled)
 User-mode Linux
 IBM PowerVM
 Google Compute Engine (KVM)
@@ -833,7 +833,7 @@ static void general() {
     checker(VM::NVRAM, "NVRAM");
     checker(VM::SMBIOS_INTEGRITY, "SMBIOS integrity");
     checker(VM::EDID, "EDID");
-    checker(VM::CPU_VENDOR, "CPU passthrough");
+    checker(VM::CPU_HEURISTIC, "CPU heuristics");
 
     // ADD NEW TECHNIQUE CHECKER HERE
 
