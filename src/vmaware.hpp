@@ -8780,7 +8780,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      */
     [[nodiscard]] static bool trap() {
         bool hypervisorCaught = false;
-    #if (x86)
+#if (x86)
         // when a single-step (TF) and hardware breakpoint (DR0) collide, Intel CPUs set both DR6.BS and DR6.B0 to report both events, which help make this detection trick
         // AMD CPUs prioritize the breakpoint, setting only its corresponding bit in DR6 and clearing the single-step bit, which is why this technique is not compatible with AMD
         if (!cpu::is_intel()) {
@@ -8802,11 +8802,18 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // simple way to support x86 without recurring to inline assembly
         void* execMem = VirtualAlloc(nullptr, trampSize,
             MEM_COMMIT | MEM_RESERVE,
-            PAGE_EXECUTE_READWRITE);
+            PAGE_READWRITE);
         if (!execMem) {
             return false;
         }
         memcpy(execMem, trampoline, trampSize);
+
+        DWORD oldProtect = 0;
+        if (!VirtualProtect(execMem, trampSize, PAGE_EXECUTE_READ, &oldProtect)) {
+            VirtualFree(execMem, 0, MEM_RELEASE);
+            return false;
+        }
+        FlushInstructionCache(GetCurrentProcess(), execMem, trampSize);
 
         int hitCount = 0;
 
@@ -8866,7 +8873,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         SetThreadContext(thr, &origCtx);
         VirtualFree(execMem, 0, MEM_RELEASE);
-    #endif
+#endif
         return hypervisorCaught;
     }
 
@@ -8893,38 +8900,46 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         #else
             // architecture not supported by this check
             return false;
+    #endif
+
+        void* stub = nullptr;
+
+        __try {
+            stub = VirtualAlloc(nullptr, sizeof(ud_opcodes), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+            if (!stub) {
+                __leave;
+            }
+
+            memcpy(stub, ud_opcodes, sizeof(ud_opcodes));
+
+            DWORD oldProtect = 0;
+            if (!VirtualProtect(stub, sizeof(ud_opcodes), PAGE_EXECUTE_READ, &oldProtect)) {
+                __leave;
+            }
+
+            // the instruction cache must be flushed after writing code to memory on ARM
+        #if (ARM)
+            FlushInstructionCache(GetCurrentProcess(), stub, sizeof(ud_opcodes));
+        #else
+            FlushInstructionCache(GetCurrentProcess(), stub, sizeof(ud_opcodes));
         #endif
 
-            void* stub = nullptr;
-
             __try {
-                stub = VirtualAlloc(nullptr, sizeof(ud_opcodes), MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
-                if (!stub) {
-                    __leave;
-                }
-
-                memcpy(stub, ud_opcodes, sizeof(ud_opcodes));
-
-                // the instruction cache must be flushed after writing code to memory on ARM
-            #if (ARM)
-                FlushInstructionCache(GetCurrentProcess(), stub, sizeof(ud_opcodes));
-            #endif
-                __try {
-                    reinterpret_cast<void(*)()>(stub)();
-                }
-                __except (GetExceptionCode() == EXCEPTION_ILLEGAL_INSTRUCTION
-                    ? EXCEPTION_EXECUTE_HANDLER
-                    : EXCEPTION_CONTINUE_SEARCH)
-                {
-                    saw_ud = true;
-                }
+                reinterpret_cast<void(*)()>(stub)();
             }
-            __finally {
-                if (stub) {
-                    VirtualFree(stub, 0, MEM_RELEASE);
-                }
+            __except (GetExceptionCode() == EXCEPTION_ILLEGAL_INSTRUCTION
+                ? EXCEPTION_EXECUTE_HANDLER
+                : EXCEPTION_CONTINUE_SEARCH)
+            {
+                saw_ud = true;
             }
-    #endif
+        }
+        __finally {
+            if (stub) {
+                VirtualFree(stub, 0, MEM_RELEASE);
+            }
+        }
+#endif
         return !saw_ud;
     }
 
@@ -9018,7 +9033,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         constexpr SIZE_T stubSize = 44;
         const bool isAmd = cpu::is_amd();
-        void* stub = VirtualAlloc(nullptr, stubSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+        void* stub = VirtualAlloc(nullptr, stubSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
         if (!stub) {
             return false;
         }
@@ -9029,6 +9044,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         else {
             memcpy(stub, intelTemplate, stubSize);
         }
+
+        DWORD oldProtect = 0;
+        if (!VirtualProtect(stub, stubSize, PAGE_EXECUTE_READ, &oldProtect)) {
+            VirtualFree(stub, 0, MEM_RELEASE);
+            return false;
+        }
+        FlushInstructionCache(GetCurrentProcess(), stub, stubSize);
 
         // patch in the immediate values (PW1, PW3, &vmcallInfo, &vmcallResult) at the correct offsets:
         *reinterpret_cast<u64*>(reinterpret_cast<u8*>(stub) + 2) = PW1;
@@ -9918,12 +9940,18 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // 1.1 - Test RDPID EAX); C3 (RET)
         const unsigned char code[] = { 0xF3, 0x0F, 0xC7, 0xF8, 0xC3 };
 
-        void* mem = VirtualAlloc(NULL, sizeof(code), MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+        void* mem = VirtualAlloc(NULL, sizeof(code), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
         if (!mem) {
             return false;
         }
 
         memcpy(mem, code, sizeof(code));
+
+        DWORD oldProtect = 0;
+        if (!VirtualProtect(mem, sizeof(code), PAGE_EXECUTE_READ, &oldProtect)) {
+            VirtualFree(mem, 0, MEM_RELEASE);
+            return false;
+        }
         if (!FlushInstructionCache(GetCurrentProcess(), mem, sizeof(code))) {
             VirtualFree(mem, 0, MEM_RELEASE);
             return false;
@@ -10043,13 +10071,18 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         if (proceed) {
-            exec_mem = VirtualAlloc(NULL, codeSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+            exec_mem = VirtualAlloc(NULL, codeSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
             if (exec_mem == NULL) {
                 proceed = false;
             }
             else {
                 memcpy(exec_mem, bytes, codeSize);
-                if (!FlushInstructionCache(GetCurrentProcess(), exec_mem, codeSize)) {
+
+                DWORD oldProtectExec = 0;
+                if (!VirtualProtect(exec_mem, codeSize, PAGE_EXECUTE_READ, &oldProtectExec)) {
+                    proceed = false;
+                }
+                else if (!FlushInstructionCache(GetCurrentProcess(), exec_mem, codeSize)) {
                     proceed = false;
                 }
                 else {
@@ -10068,7 +10101,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     const int runner_rc = runner(reinterpret_cast<CodeFunc>(exec_mem));
                     if (runner_rc == 0 && exception) {
                         debug("CPU_HEURISTIC: CPU reports being Intel, but VMAware detected a hypervisor running an AMD CPU in the host"); // or another CPU
-                        spoofed = true; 
+                        spoofed = true;
                     }
                     else if (runner_rc == 1 && !exception) {
                         debug("CPU_HEURISTIC: CPU reports being AMD, but VMAware detected a hypervisor running an Intel CPU in the host"); // or another CPU
