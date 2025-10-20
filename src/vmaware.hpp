@@ -535,7 +535,6 @@ public:
     enum enum_flags : u8 {
         // Windows
         GPU_CAPABILITIES = 0,
-        TPM,
         ACPI_SIGNATURE,
         POWER_CAPABILITIES,
         DISK_SERIAL,
@@ -4472,9 +4471,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             else if (baseMHz < 1000.00) {
                 return true;
             }
+            else {
+                debug("TIMER: Processor base speed -> ", static_cast<double>(baseMHz), " MHz");
+            }
         
-            debug("TIMER: Processor base speed -> ", static_cast<double>(baseMHz), " MHz");
-
             // Case C - Hypervisor with RDTSC patch + useplatformclock = false
             ULONGLONG time1 = 0;
             const ULONGLONG tsc1 = __rdtsc();
@@ -8478,119 +8478,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     
     
     /**
-     * @brief Check if the system has a physical TPM by matching the TPM manufacturer against known physical TPM chip vendors
-     * @category Windows
-     * @note CRB model will succeed, while TIS will fail
-     * @implements VM::TPM
-     */
-    [[nodiscard]] static bool tpm() {
-        if (util::is_running_under_translator()) {
-            return false;
-        }
-        struct TbsContext {
-            TBS_HCONTEXT hContext = 0;
-
-            explicit TbsContext(const TBS_CONTEXT_PARAMS2& params) {
-                TBS_RESULT res = Tbsi_Context_Create(
-                    reinterpret_cast<PCTBS_CONTEXT_PARAMS>(&params),
-                    &hContext);
-                if (res != TBS_SUCCESS) {
-                    hContext = 0;
-                }
-            }
-
-            ~TbsContext() {
-                if (hContext) {
-                    Tbsip_Context_Close(hContext);
-                }
-            }
-
-            // non-copyable
-            TbsContext(const TbsContext&) = delete;
-            TbsContext& operator=(const TbsContext&) = delete;
-
-            // movable
-            TbsContext(TbsContext&& o) noexcept : hContext(o.hContext) { o.hContext = 0; }
-            TbsContext& operator=(TbsContext&& o) noexcept {
-                if (this != &o) {
-                    if (hContext) Tbsip_Context_Close(hContext);
-                    hContext = o.hContext;
-                    o.hContext = 0;
-                }
-                return *this;
-            }
-
-            bool isValid() const { return hContext != 0; }
-        };
-
-        TBS_CONTEXT_PARAMS2 params{};
-        params.version = TBS_CONTEXT_VERSION_TWO;
-        params.includeTpm20 = 1; 
-        params.includeTpm12 = 1; 
-
-        TbsContext ctx(params);
-        if (!ctx.isValid()) {
-            return false;
-        }
-
-        // TPM2_GetCapability command for TPM_PT_MANUFACTURER
-        static constexpr u8 cmd[] = {
-            0x80,0x01,             // Tag: TPM_ST_NO_SESSIONS
-            0x00,0x00,0x00,0x16,    // Command Size: 22
-            0x00,0x00,0x01,0x7A,    // TPM2_GetCapability
-            0x00,0x00,0x00,0x06,    // TPM_CAP_TPM_PROPERTIES
-            0x00,0x00,0x01,0x05,    // TPM_PT_MANUFACTURER
-            0x00,0x00,0x00,0x01     // Property Count: 1
-        };
-
-        u8 resp[64] = {};
-        u32 respSize = static_cast<u32>(sizeof(resp));
-        TBS_RESULT submitRes = Tbsip_Submit_Command(
-            ctx.hContext,
-            TBS_COMMAND_LOCALITY_ZERO,
-            TBS_COMMAND_PRIORITY_NORMAL,
-            cmd,
-            static_cast<u32>(sizeof(cmd)),
-            resp,
-            &respSize);
-
-        if (submitRes != TBS_SUCCESS || respSize < 27) {
-            return false;
-        }
-
-        const u32 tpm = (static_cast<u32>(resp[23]) << 24) | (static_cast<u32>(resp[24]) << 16) |
-                        (static_cast<u32>(resp[25]) << 8)  |  static_cast<u32>(resp[26]);
-
-        if (tpm == 0) {
-            return false;
-        }
-
-        debug("TPM: Manufacturer -> 0x", std::hex, tpm);
-    
-        switch (tpm) {
-            case 0x414D4400u: // "AMD\0"
-            case 0x41544D4Cu: // "ATML"
-            case 0x4252434Du: // "BRCM"
-            case 0x49424D00u: // "IBM\0" (used by VirtualBox)
-            case 0x49465800u: // "IFX\0"
-            case 0x494E5443u: // "INTC"
-            case 0x4E534D20u: // "NSM "
-            case 0x4E544300u: // "NTC\0"
-            case 0x51434F4Du: // "QCOM"
-            case 0x534D5343u: // "SMSC"
-            case 0x53544D20u: // "STM "
-            case 0x54584E00u: // "TXN\0"
-            case 0x524F4343u: // "ROCC"
-            case 0x4C454E00u: // "LEN\0"
-            // case 0x4d534654u: // "MSFT" (used in ARM devices and Hyper-V VMs)
-                return false;
-            default:
-                return true;
-        }
-    }
-    
-    
-    /**
      * @brief Check for VM-specific ACPI device signatures
      * @category Windows
      * @implements VM::ACPI_SIGNATURE
@@ -11201,7 +11088,6 @@ public: // START OF PUBLIC FUNCTIONS
             case FILE_ACCESS_HISTORY: return "FILE_ACCESS_HISTORY";
             case AUDIO: return "AUDIO";
             case NSJAIL_PID: return "NSJAIL_PID";
-            case TPM: return "TPM";
             case PCI_DEVICES: return "PCI_DEVICES";
             case ACPI_SIGNATURE: return "ACPI_SIGNATURE";
             case TRAP: return "TRAP";
@@ -11757,7 +11643,6 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         std::make_pair(VM::EDID, VM::core::technique(100, VM::edid)),
         std::make_pair(VM::BOOT_LOGO, VM::core::technique(100, VM::boot_logo)),
         std::make_pair(VM::GPU_CAPABILITIES, VM::core::technique(45, VM::gpu_capabilities)),
-        std::make_pair(VM::TPM, VM::core::technique(100, VM::tpm)),
         std::make_pair(VM::SMBIOS_INTEGRITY, VM::core::technique(60, VM::smbios_integrity)),
         std::make_pair(VM::DISK_SERIAL, VM::core::technique(100, VM::disk_serial_number)),
         std::make_pair(VM::IVSHMEM, VM::core::technique(100, VM::ivshmem)),
