@@ -8886,11 +8886,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         constexpr SIZE_T stubSize = 44;
         const bool isAmd = cpu::is_amd();
+
+        // allocate RW memory so we can write template + immediates
         void* stub = VirtualAlloc(nullptr, stubSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
         if (!stub) {
             return false;
         }
 
+        // copy the template while writable
         if (isAmd) {
             memcpy(stub, amdTemplate, stubSize);
         }
@@ -8898,18 +8901,19 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             memcpy(stub, intelTemplate, stubSize);
         }
 
+        // patch in the immediate values 
+        *reinterpret_cast<u64*>(reinterpret_cast<u8*>(stub) + 2) = PW1;
+        *reinterpret_cast<u64*>(reinterpret_cast<u8*>(stub) + 12) = PW3;
+        *reinterpret_cast<u64*>(reinterpret_cast<u8*>(stub) + 22) = reinterpret_cast<u64>(static_cast<void*>(&vmcallInfo));
+        *reinterpret_cast<u64*>(reinterpret_cast<u8*>(stub) + 35) = reinterpret_cast<u64>(static_cast<void*>(&vmcallResult));
+
         DWORD oldProtect = 0;
         if (!VirtualProtect(stub, stubSize, PAGE_EXECUTE_READ, &oldProtect)) {
             VirtualFree(stub, 0, MEM_RELEASE);
             return false;
         }
-        FlushInstructionCache(GetCurrentProcess(), stub, stubSize);
 
-        // patch in the immediate values (PW1, PW3, &vmcallInfo, &vmcallResult) at the correct offsets:
-        *reinterpret_cast<u64*>(reinterpret_cast<u8*>(stub) + 2) = PW1;
-        *reinterpret_cast<u64*>(reinterpret_cast<u8*>(stub) + 12) = PW3;
-        *reinterpret_cast<u64*>(reinterpret_cast<u8*>(stub) + 22) = reinterpret_cast<u64>(static_cast<void*>(&vmcallInfo));
-        *reinterpret_cast<u64*>(reinterpret_cast<u8*>(stub) + 35) = reinterpret_cast<u64>(static_cast<void*>(&vmcallResult));
+        FlushInstructionCache(GetCurrentProcess(), stub, stubSize);
 
         // lambda that executes the stub (Intel or AMD) and checks for the CE signature
         auto tryPass = [&]() -> bool {
