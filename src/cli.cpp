@@ -819,7 +819,6 @@ static void general() {
     checker(VM::FIRMWARE, "firmware");
     checker(VM::FILE_ACCESS_HISTORY, "low file access count");
     checker(VM::NSJAIL_PID, "nsjail PID");
-    checker(VM::TPM, "TPM manufacturer");
     checker(VM::PCI_DEVICES, "PCI vendor/device ID");
     checker(VM::ACPI_SIGNATURE, "ACPI device signatures");
     checker(VM::TRAP, "hypervisor interception");
@@ -834,7 +833,7 @@ static void general() {
     checker(VM::SMBIOS_INTEGRITY, "SMBIOS integrity");
     checker(VM::EDID, "EDID");
     checker(VM::CPU_HEURISTIC, "CPU heuristics");
-
+    checker(VM::CLOCK, "system timers");
     // ADD NEW TECHNIQUE CHECKER HERE
 
     const auto t2 = std::chrono::high_resolution_clock::now();

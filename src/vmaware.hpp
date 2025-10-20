@@ -56,10 +56,10 @@
  * - struct for internal cpu operations        => line 720
  * - struct for internal memoization           => line 1095
  * - struct for internal utility functions     => line 1225
- * - struct for internal core components       => line 10102
+ * - struct for internal core components       => line 10081
  * - start of VM detection technique list      => line 2181
- * - start of public VM detection functions    => line 10595
- * - start of externally defined variables     => line 11579
+ * - start of public VM detection functions    => line 10574
+ * - start of externally defined variables     => line 11558
  *
  *
  * ============================== EXAMPLE ===================================
@@ -535,7 +535,6 @@ public:
     enum enum_flags : u8 {
         // Windows
         GPU_CAPABILITIES = 0,
-        TPM,
         ACPI_SIGNATURE,
         POWER_CAPABILITIES,
         DISK_SERIAL,
@@ -573,6 +572,7 @@ public:
         SMBIOS_INTEGRITY,
         EDID,
         CPU_HEURISTIC,
+        CLOCK,
 
         // Linux and Windows
         SIDT,
@@ -4392,12 +4392,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         // Case A - Hypervisor without RDTSC patch
         static unsigned aux = 0;
-        // Check for RDTSC support
+        // Check for RDTSCP support
         {
         #if (x86_64 && WINDOWS)
             const bool haveRdtscp = [&]() noexcept -> bool {
                 __try {
-                    __rdtscp(&aux); // check for RDTSCP support as we will use it later
+                    __rdtscp(&aux);
                     return true;
                 }
                 __except (EXCEPTION_EXECUTE_HANDLER) {
@@ -4449,11 +4449,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             // calculates the invariant TSC base rate, not the dynamic core frequency, similar to what CallNtPowerInformation would give you
             LARGE_INTEGER t1q, t2q;
-            u64 t1 = __rdtsc();
+            const u64 t1 = __rdtsc();
             QueryPerformanceCounter(&t1q); // uses RDTSCP under the hood unless platformclock (a bcdedit setting) is set, which then would use HPET or ACPI PM via NtQueryPerformanceCounter
             SleepEx(50, 0);
             QueryPerformanceCounter(&t2q);
-            u64 t2 = __rdtsc();
+            const u64 t2 = __rdtsc();
 
             const double elapsedSec = double(t2q.QuadPart - t1q.QuadPart) / double(freq.QuadPart); // the performance counter frequency is always 10MHz when running under Hyper-V
             const double tscHz = double(t2 - t1) / elapsedSec;
@@ -4461,7 +4461,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             debug("TIMER: Current CPU base speed -> ", tscMHz, " MHz");
 
-            if (tscMHz < 1000.00) return true;
+            if (tscMHz < 1000.0) return true;
 
             const struct cpu::stepping_struct steps = cpu::fetch_steppings();
             const u32 baseMHz = cpu::get_cpu_base_speed(); // wont probably work reliably on AMD, but its more reliable than fetching from SMBIOS
@@ -4469,12 +4469,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             if (baseMHz == 0) {
                 debug("TIMER: Processor base speed not available for this processor");
             }
-            else if (baseMHz < 1000.00) {
+            else if (baseMHz < 1000.0) {
                 return true;
             }
+            else {
+                debug("TIMER: Processor base speed -> ", static_cast<double>(baseMHz), " MHz");
+                if (tscMHz <= static_cast<double>(baseMHz) - 100.0) {
+                    return true;
+                }
+            }
         
-            debug("TIMER: Processor base speed -> ", static_cast<double>(baseMHz), " MHz");
-
             // Case C - Hypervisor with RDTSC patch + useplatformclock = false
             ULONGLONG time1 = 0;
             const ULONGLONG tsc1 = __rdtsc();
@@ -4488,54 +4492,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             const ULONGLONG delta_time = time2 - time1;   // 100 ns
             const ULONGLONG delta_tsc = tsc2 - tsc1;     // cycles
-
-            debug("TIMER: Interrupt -> ", delta_time, ", RDTSC -> ", delta_tsc);
-            if (delta_time == 0) return false;
-            
+            if (delta_time == 0) return false;           
             const double interrupt_ratio = static_cast<double>(delta_tsc) / static_cast<double>(delta_time);
+
+            debug("TIMER: Interrupt -> ", delta_time, ", RDTSC -> ", delta_tsc, ", Ratio -> ", interrupt_ratio);
             if (interrupt_ratio < 200.0) return true;
-
-            if (cycleThreshold == 25000) return false; // if we're running under Hyper-V, do not continue
-
-            const int TRIALS = 20; // enough to warm up the syscall path, higher values will hardly evict spikes
-            std::vector<double> ratios;
-            ratios.reserve(TRIALS);
-
-            for (int i = 0; i < TRIALS; ++i) {
-                t1 = __rdtscp(&aux); // serializing to avoid speculative execution, which would increase the ratio
-                GetProcessHeap(); // user-mode call
-                t2 = __rdtscp(&aux);
-
-                // some hypervisors like DBVM will add a low base value + some random tsc value if the difference between tsc reads is less than 4000 cycles or so
-                // this could be handled by doing something like for (int i = 0; i < AGG; ++i) CloseHandle(INVALID_HANDLE_VALUE); or sleeping the thread to induce cache flushing
-                // so the measured syscall time > hypervisor patch window, but its not an elegant solution at all
-                CloseHandle(INVALID_HANDLE_VALUE); // kernel syscall
-                const u64 t3 = __rdtscp(&aux); // on modern Intel and AMD CPUs the TSC is "invariant" (doesn't change with P-states or C-states)
-
-                // older chips often lack an invariant TSC and can be queried in CPUID 0x80000007 EDX[8], the medians should be larger but if they are larger they won't produce false flags
-            
-                // important to not debug cycles by printing but with breakpoints and stack analysis, otherwise the CPU would cache and make the ratio much lower
-                const u64 userCycles = t2 - t1;
-                const u64 sysCycles = t3 - t2;
-                if (userCycles == 0)
-                    continue;
-            
-                const double ratio = static_cast<double>(sysCycles) / static_cast<double>(userCycles);
-                ratios.push_back(ratio);
-            }      
-
-            if (ratios.empty()) return false;            
-            std::sort(ratios.begin(), ratios.end());
-            const double tscMedian = ratios[ratios.size() / 2]; // to minimize jittering due to kernel noise
-            debug("TIMER: Median syscall/user-mode ratio -> ", tscMedian);
-
-            if (tscMedian < 6.5) return true; // < on purpose
             // TLB flushes or side channel cache attacks are not even tried due to how ineffective they are against stealthy hypervisors
         #endif
         return false;
     #endif
     }
-
 
 #if (LINUX)
     /**
@@ -8478,119 +8444,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     
     
     /**
-     * @brief Check if the system has a physical TPM by matching the TPM manufacturer against known physical TPM chip vendors
-     * @category Windows
-     * @note CRB model will succeed, while TIS will fail
-     * @implements VM::TPM
-     */
-    [[nodiscard]] static bool tpm() {
-        if (util::is_running_under_translator()) {
-            return false;
-        }
-        struct TbsContext {
-            TBS_HCONTEXT hContext = 0;
-
-            explicit TbsContext(const TBS_CONTEXT_PARAMS2& params) {
-                TBS_RESULT res = Tbsi_Context_Create(
-                    reinterpret_cast<PCTBS_CONTEXT_PARAMS>(&params),
-                    &hContext);
-                if (res != TBS_SUCCESS) {
-                    hContext = 0;
-                }
-            }
-
-            ~TbsContext() {
-                if (hContext) {
-                    Tbsip_Context_Close(hContext);
-                }
-            }
-
-            // non-copyable
-            TbsContext(const TbsContext&) = delete;
-            TbsContext& operator=(const TbsContext&) = delete;
-
-            // movable
-            TbsContext(TbsContext&& o) noexcept : hContext(o.hContext) { o.hContext = 0; }
-            TbsContext& operator=(TbsContext&& o) noexcept {
-                if (this != &o) {
-                    if (hContext) Tbsip_Context_Close(hContext);
-                    hContext = o.hContext;
-                    o.hContext = 0;
-                }
-                return *this;
-            }
-
-            bool isValid() const { return hContext != 0; }
-        };
-
-        TBS_CONTEXT_PARAMS2 params{};
-        params.version = TBS_CONTEXT_VERSION_TWO;
-        params.includeTpm20 = 1; 
-        params.includeTpm12 = 1; 
-
-        TbsContext ctx(params);
-        if (!ctx.isValid()) {
-            return false;
-        }
-
-        // TPM2_GetCapability command for TPM_PT_MANUFACTURER
-        static constexpr u8 cmd[] = {
-            0x80,0x01,             // Tag: TPM_ST_NO_SESSIONS
-            0x00,0x00,0x00,0x16,    // Command Size: 22
-            0x00,0x00,0x01,0x7A,    // TPM2_GetCapability
-            0x00,0x00,0x00,0x06,    // TPM_CAP_TPM_PROPERTIES
-            0x00,0x00,0x01,0x05,    // TPM_PT_MANUFACTURER
-            0x00,0x00,0x00,0x01     // Property Count: 1
-        };
-
-        u8 resp[64] = {};
-        u32 respSize = static_cast<u32>(sizeof(resp));
-        TBS_RESULT submitRes = Tbsip_Submit_Command(
-            ctx.hContext,
-            TBS_COMMAND_LOCALITY_ZERO,
-            TBS_COMMAND_PRIORITY_NORMAL,
-            cmd,
-            static_cast<u32>(sizeof(cmd)),
-            resp,
-            &respSize);
-
-        if (submitRes != TBS_SUCCESS || respSize < 27) {
-            return false;
-        }
-
-        const u32 tpm = (static_cast<u32>(resp[23]) << 24) | (static_cast<u32>(resp[24]) << 16) |
-                        (static_cast<u32>(resp[25]) << 8)  |  static_cast<u32>(resp[26]);
-
-        if (tpm == 0) {
-            return false;
-        }
-
-        debug("TPM: Manufacturer -> 0x", std::hex, tpm);
-    
-        switch (tpm) {
-            case 0x414D4400u: // "AMD\0"
-            case 0x41544D4Cu: // "ATML"
-            case 0x4252434Du: // "BRCM"
-            case 0x49424D00u: // "IBM\0" (used by VirtualBox)
-            case 0x49465800u: // "IFX\0"
-            case 0x494E5443u: // "INTC"
-            case 0x4E534D20u: // "NSM "
-            case 0x4E544300u: // "NTC\0"
-            case 0x51434F4Du: // "QCOM"
-            case 0x534D5343u: // "SMSC"
-            case 0x53544D20u: // "STM "
-            case 0x54584E00u: // "TXN\0"
-            case 0x524F4343u: // "ROCC"
-            case 0x4C454E00u: // "LEN\0"
-            // case 0x4d534654u: // "MSFT" (used in ARM devices and Hyper-V VMs)
-                return false;
-            default:
-                return true;
-        }
-    }
-    
-    
-    /**
      * @brief Check for VM-specific ACPI device signatures
      * @category Windows
      * @implements VM::ACPI_SIGNATURE
@@ -8780,7 +8633,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      */
     [[nodiscard]] static bool trap() {
         bool hypervisorCaught = false;
-    #if (x86)
+#if (x86)
         // when a single-step (TF) and hardware breakpoint (DR0) collide, Intel CPUs set both DR6.BS and DR6.B0 to report both events, which help make this detection trick
         // AMD CPUs prioritize the breakpoint, setting only its corresponding bit in DR6 and clearing the single-step bit, which is why this technique is not compatible with AMD
         if (!cpu::is_intel()) {
@@ -8802,11 +8655,18 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // simple way to support x86 without recurring to inline assembly
         void* execMem = VirtualAlloc(nullptr, trampSize,
             MEM_COMMIT | MEM_RESERVE,
-            PAGE_EXECUTE_READWRITE);
+            PAGE_READWRITE);
         if (!execMem) {
             return false;
         }
         memcpy(execMem, trampoline, trampSize);
+
+        DWORD oldProtect = 0;
+        if (!VirtualProtect(execMem, trampSize, PAGE_EXECUTE_READ, &oldProtect)) {
+            VirtualFree(execMem, 0, MEM_RELEASE);
+            return false;
+        }
+        FlushInstructionCache(GetCurrentProcess(), execMem, trampSize);
 
         int hitCount = 0;
 
@@ -8866,7 +8726,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         SetThreadContext(thr, &origCtx);
         VirtualFree(execMem, 0, MEM_RELEASE);
-    #endif
+#endif
         return hypervisorCaught;
     }
 
@@ -8893,38 +8753,46 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         #else
             // architecture not supported by this check
             return false;
+    #endif
+
+        void* stub = nullptr;
+
+        __try {
+            stub = VirtualAlloc(nullptr, sizeof(ud_opcodes), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+            if (!stub) {
+                __leave;
+            }
+
+            memcpy(stub, ud_opcodes, sizeof(ud_opcodes));
+
+            DWORD oldProtect = 0;
+            if (!VirtualProtect(stub, sizeof(ud_opcodes), PAGE_EXECUTE_READ, &oldProtect)) {
+                __leave;
+            }
+
+            // the instruction cache must be flushed after writing code to memory on ARM
+        #if (ARM)
+            FlushInstructionCache(GetCurrentProcess(), stub, sizeof(ud_opcodes));
+        #else
+            FlushInstructionCache(GetCurrentProcess(), stub, sizeof(ud_opcodes));
         #endif
 
-            void* stub = nullptr;
-
             __try {
-                stub = VirtualAlloc(nullptr, sizeof(ud_opcodes), MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
-                if (!stub) {
-                    __leave;
-                }
-
-                memcpy(stub, ud_opcodes, sizeof(ud_opcodes));
-
-                // the instruction cache must be flushed after writing code to memory on ARM
-            #if (ARM)
-                FlushInstructionCache(GetCurrentProcess(), stub, sizeof(ud_opcodes));
-            #endif
-                __try {
-                    reinterpret_cast<void(*)()>(stub)();
-                }
-                __except (GetExceptionCode() == EXCEPTION_ILLEGAL_INSTRUCTION
-                    ? EXCEPTION_EXECUTE_HANDLER
-                    : EXCEPTION_CONTINUE_SEARCH)
-                {
-                    saw_ud = true;
-                }
+                reinterpret_cast<void(*)()>(stub)();
             }
-            __finally {
-                if (stub) {
-                    VirtualFree(stub, 0, MEM_RELEASE);
-                }
+            __except (GetExceptionCode() == EXCEPTION_ILLEGAL_INSTRUCTION
+                ? EXCEPTION_EXECUTE_HANDLER
+                : EXCEPTION_CONTINUE_SEARCH)
+            {
+                saw_ud = true;
             }
-    #endif
+        }
+        __finally {
+            if (stub) {
+                VirtualFree(stub, 0, MEM_RELEASE);
+            }
+        }
+#endif
         return !saw_ud;
     }
 
@@ -9018,11 +8886,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         constexpr SIZE_T stubSize = 44;
         const bool isAmd = cpu::is_amd();
-        void* stub = VirtualAlloc(nullptr, stubSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+
+        // allocate RW memory so we can write template + immediates
+        void* stub = VirtualAlloc(nullptr, stubSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
         if (!stub) {
             return false;
         }
 
+        // copy the template while writable
         if (isAmd) {
             memcpy(stub, amdTemplate, stubSize);
         }
@@ -9030,11 +8901,19 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             memcpy(stub, intelTemplate, stubSize);
         }
 
-        // patch in the immediate values (PW1, PW3, &vmcallInfo, &vmcallResult) at the correct offsets:
+        // patch in the immediate values 
         *reinterpret_cast<u64*>(reinterpret_cast<u8*>(stub) + 2) = PW1;
         *reinterpret_cast<u64*>(reinterpret_cast<u8*>(stub) + 12) = PW3;
         *reinterpret_cast<u64*>(reinterpret_cast<u8*>(stub) + 22) = reinterpret_cast<u64>(static_cast<void*>(&vmcallInfo));
         *reinterpret_cast<u64*>(reinterpret_cast<u8*>(stub) + 35) = reinterpret_cast<u64>(static_cast<void*>(&vmcallResult));
+
+        DWORD oldProtect = 0;
+        if (!VirtualProtect(stub, stubSize, PAGE_EXECUTE_READ, &oldProtect)) {
+            VirtualFree(stub, 0, MEM_RELEASE);
+            return false;
+        }
+
+        FlushInstructionCache(GetCurrentProcess(), stub, stubSize);
 
         // lambda that executes the stub (Intel or AMD) and checks for the CE signature
         auto tryPass = [&]() -> bool {
@@ -9918,12 +9797,18 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // 1.1 - Test RDPID EAX); C3 (RET)
         const unsigned char code[] = { 0xF3, 0x0F, 0xC7, 0xF8, 0xC3 };
 
-        void* mem = VirtualAlloc(NULL, sizeof(code), MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+        void* mem = VirtualAlloc(NULL, sizeof(code), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
         if (!mem) {
             return false;
         }
 
         memcpy(mem, code, sizeof(code));
+
+        DWORD oldProtect = 0;
+        if (!VirtualProtect(mem, sizeof(code), PAGE_EXECUTE_READ, &oldProtect)) {
+            VirtualFree(mem, 0, MEM_RELEASE);
+            return false;
+        }
         if (!FlushInstructionCache(GetCurrentProcess(), mem, sizeof(code))) {
             VirtualFree(mem, 0, MEM_RELEASE);
             return false;
@@ -9934,7 +9819,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         bool ok = true;
         __try {
-            u64 val = fn();
+            (void)fn();
         }
         __except (GetExceptionCode() == EXCEPTION_ILLEGAL_INSTRUCTION
             ? EXCEPTION_EXECUTE_HANDLER
@@ -10043,13 +9928,18 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         if (proceed) {
-            exec_mem = VirtualAlloc(NULL, codeSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+            exec_mem = VirtualAlloc(NULL, codeSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
             if (exec_mem == NULL) {
                 proceed = false;
             }
             else {
                 memcpy(exec_mem, bytes, codeSize);
-                if (!FlushInstructionCache(GetCurrentProcess(), exec_mem, codeSize)) {
+
+                DWORD oldProtectExec = 0;
+                if (!VirtualProtect(exec_mem, codeSize, PAGE_EXECUTE_READ, &oldProtectExec)) {
+                    proceed = false;
+                }
+                else if (!FlushInstructionCache(GetCurrentProcess(), exec_mem, codeSize)) {
                     proceed = false;
                 }
                 else {
@@ -10068,7 +9958,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     const int runner_rc = runner(reinterpret_cast<CodeFunc>(exec_mem));
                     if (runner_rc == 0 && exception) {
                         debug("CPU_HEURISTIC: CPU reports being Intel, but VMAware detected a hypervisor running an AMD CPU in the host"); // or another CPU
-                        spoofed = true; 
+                        spoofed = true;
                     }
                     else if (runner_rc == 1 && !exception) {
                         debug("CPU_HEURISTIC: CPU reports being AMD, but VMAware detected a hypervisor running an Intel CPU in the host"); // or another CPU
@@ -10088,6 +9978,99 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         return spoofed;
+    }
+
+
+    /**
+     * @brief Check the presence of system timers
+     * @category Windows
+     * @implements VM::CLOCK
+     */
+    [[nodiscard]] static bool clock() {
+        // The RTC (ACPI/CMOS RTC) timer can't be always detected via SetupAPI, it needs AML decode of the DSDT firmware table.
+        // The HPET (PNP0103) timer presence is already checked on VM::FIRMWARE
+        constexpr wchar_t pattern[] = L"PNP0100";
+        constexpr size_t patLen = (sizeof(pattern) / sizeof(wchar_t)) - 1; 
+
+        auto tolower_ascii = [](wchar_t c) -> wchar_t {
+            return (c >= L'A' && c <= L'Z') ? static_cast<wchar_t>(c + 32) : c;
+        };
+
+        auto wcsstr_ci_ascii = [&](const wchar_t* hay) -> const wchar_t* {
+            if (!hay) return nullptr;
+            for (; *hay; ++hay) {
+                wchar_t h0 = tolower_ascii(*hay);
+                wchar_t p0 = tolower_ascii(pattern[0]);
+                if (h0 != p0) continue;
+
+                const wchar_t* h = hay;
+                size_t i = 0;
+                for (; i < patLen; ++i, ++h) {
+                    if (*h == L'\0') { i = SIZE_MAX; break; } 
+                    if (tolower_ascii(*h) != tolower_ascii(pattern[i])) break;
+                }
+                if (i == patLen) return hay; // match
+                if (i == SIZE_MAX) return nullptr;
+            }
+            return nullptr;
+        };
+
+        HDEVINFO devs = SetupDiGetClassDevsW(nullptr, nullptr, nullptr, DIGCF_PRESENT);
+        if (devs == INVALID_HANDLE_VALUE) return false;
+
+        SP_DEVINFO_DATA devInfo{};
+        devInfo.cbSize = sizeof(SP_DEVINFO_DATA);
+
+        DWORD bufBytes = 4096;
+        BYTE* buffer = static_cast<BYTE*>(malloc(bufBytes));
+        if (!buffer) {
+            SetupDiDestroyDeviceInfoList(devs);
+            return false;
+        }
+
+        bool found = false;
+        for (DWORD idx = 0; SetupDiEnumDeviceInfo(devs, idx, &devInfo); ++idx) {
+            DWORD propertyType = 0;
+            if (!SetupDiGetDeviceRegistryPropertyW(devs, &devInfo, SPDRP_HARDWAREID,
+                &propertyType, buffer, bufBytes, nullptr))
+            {
+                DWORD err = GetLastError();
+                if (err == ERROR_INSUFFICIENT_BUFFER) {
+                    DWORD required = 0;
+                    SetupDiGetDeviceRegistryPropertyW(devs, &devInfo, SPDRP_HARDWAREID,
+                        &propertyType, nullptr, 0, &required);
+                    if (required > bufBytes) {
+                        BYTE* newBuf = static_cast<BYTE*>(realloc(buffer, required));
+                        if (!newBuf) { found = false; break; } 
+                        buffer = newBuf;
+                        bufBytes = required;
+                    }
+                    if (!SetupDiGetDeviceRegistryPropertyW(devs, &devInfo, SPDRP_HARDWAREID,
+                        &propertyType, buffer, bufBytes, nullptr)) {
+                        continue;
+                    }
+                }
+                else {
+                    continue;
+                }
+            }
+
+            if (propertyType != REG_MULTI_SZ) continue;
+
+            wchar_t* cur = reinterpret_cast<wchar_t*>(buffer);
+            while (*cur) {
+                if (wcsstr_ci_ascii(cur)) {
+                    found = true;
+                    break;
+                }
+                cur += wcslen(cur) + 1;
+            }
+            if (found) break;
+        }
+
+        free(buffer);
+        SetupDiDestroyDeviceInfoList(devs);
+        return !found;
     }
     // ADD NEW TECHNIQUE FUNCTION HERE
 #endif
@@ -11168,7 +11151,6 @@ public: // START OF PUBLIC FUNCTIONS
             case FILE_ACCESS_HISTORY: return "FILE_ACCESS_HISTORY";
             case AUDIO: return "AUDIO";
             case NSJAIL_PID: return "NSJAIL_PID";
-            case TPM: return "TPM";
             case PCI_DEVICES: return "PCI_DEVICES";
             case ACPI_SIGNATURE: return "ACPI_SIGNATURE";
             case TRAP: return "TRAP";
@@ -11183,6 +11165,7 @@ public: // START OF PUBLIC FUNCTIONS
             case SMBIOS_INTEGRITY: return "SMBIOS_INTEGRITY";
             case EDID: return "EDID";
             case CPU_HEURISTIC: return "CPU_HEURISTIC";
+            case CLOCK: return "CLOCK";
             // END OF TECHNIQUE LIST
             case DEFAULT: return "setting flag, error";
             case ALL: return "setting flag, error";
@@ -11718,13 +11701,13 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         std::make_pair(VM::TRAP, VM::core::technique(100, VM::trap)),
         std::make_pair(VM::ACPI_SIGNATURE, VM::core::technique(100, VM::acpi_signature)),
         std::make_pair(VM::NVRAM, VM::core::technique(100, VM::nvram_vars)),
+        std::make_pair(VM::CLOCK, VM::core::technique(100, VM::clock)),
         std::make_pair(VM::BOOT_MANAGER, VM::core::technique(50, VM::nvram_boot)),
         std::make_pair(VM::POWER_CAPABILITIES, VM::core::technique(90, VM::power_capabilities)),
         std::make_pair(VM::CPU_HEURISTIC, VM::core::technique(100, VM::cpu_heuristic)),
         std::make_pair(VM::EDID, VM::core::technique(100, VM::edid)),
         std::make_pair(VM::BOOT_LOGO, VM::core::technique(100, VM::boot_logo)),
         std::make_pair(VM::GPU_CAPABILITIES, VM::core::technique(45, VM::gpu_capabilities)),
-        std::make_pair(VM::TPM, VM::core::technique(100, VM::tpm)),
         std::make_pair(VM::SMBIOS_INTEGRITY, VM::core::technique(60, VM::smbios_integrity)),
         std::make_pair(VM::DISK_SERIAL, VM::core::technique(100, VM::disk_serial_number)),
         std::make_pair(VM::IVSHMEM, VM::core::technique(100, VM::ivshmem)),
