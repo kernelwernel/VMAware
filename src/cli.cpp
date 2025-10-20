@@ -833,7 +833,7 @@ static void general() {
     checker(VM::SMBIOS_INTEGRITY, "SMBIOS integrity");
     checker(VM::EDID, "EDID");
     checker(VM::CPU_HEURISTIC, "CPU heuristics");
-
+    checker(VM::CLOCK, "system timers");
     // ADD NEW TECHNIQUE CHECKER HERE
 
     const auto t2 = std::chrono::high_resolution_clock::now();
