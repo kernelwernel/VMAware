@@ -52,14 +52,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 534
- * - struct for internal cpu operations        => line 720
- * - struct for internal memoization           => line 1095
- * - struct for internal utility functions     => line 1225
- * - struct for internal core components       => line 10081
- * - start of VM detection technique list      => line 2181
- * - start of public VM detection functions    => line 10574
- * - start of externally defined variables     => line 11558
+ * - enums for publicly accessible techniques  => line 533
+ * - struct for internal cpu operations        => line 718
+ * - struct for internal memoization           => line 1198
+ * - struct for internal utility functions     => line 1328
+ * - struct for internal core components       => line 10114
+ * - start of VM detection technique list      => line 2284
+ * - start of public VM detection functions    => line 10607
+ * - start of externally defined variables     => line 11590
  *
  *
  * ============================== EXAMPLE ===================================
@@ -94,7 +94,7 @@
  * 
  * Firstly, the lib is completely static, meaning that there's no need for struct 
  * constructors to be initialized (unless you're using the VM::vmaware struct).
- * The main focus of the lib is the tables:
+ * The main focus of the lib are the tables:
  *  - the TECHNIQUE table stores all the VM detection technique information in a std::map 
  * 
  *  - the BRAND table stores every VM brand as a std::map as well, but as a scoreboard. 
@@ -114,7 +114,7 @@
  *        the standard structure for how VM techniques are organised, functionalities 
  *        to run all the techniques in the technique table, functionalities to run
  *        custom-made techniques by the user, and an argument handler based on the 
- *        arguments input by the user.
+ *        argument input by the user.
  *
  *    - cpu module:
  *        As the name suggests, this contains functionalities for the CPU. There are
@@ -151,20 +151,20 @@
  *    2. After the bitset has been generated, this information is then 
  *       passed to the core module of the lib. It analyses the bitset, 
  *       and runs every VM detection technique that has been selected, 
- *       while ignoring the ones that weren't selected (by default most 
- *       of them are already selected anyway). The function that does 
- *       this mechanism is core::run_all()
+ *       while ignoring the ones that weren't (by default most of them 
+ *       are already selected anyway). The function that does this 
+ *       mechanism is core::run_all()
  * 
  *    3. While the core::run_all() function is being run, it checks if 
  *       each technique has already been memoized or not. If it has, 
- *       retrieves the result from the cache and moves to the next technique. 
- *       If it hasn't, runs the technique and caches the result in the 
+ *       retrieve the result from the cache and move to the next technique. 
+ *       If it hasn't, run the technique and cache the result in the 
  *       cache table. 
  * 
  *    4. After every technique has been executed, this generates a 
  *       uint16_t score. Every technique has a score value between 0 to 
  *       100, and if a VM is detected then this score is accumulated to 
- *       a total score. If the total is above 150, that means it's a VM[1]. 
+ *       a total. If the total is above 150, that means it's a VM[1]. 
  * 
  * 
  * There are other functions such as VM::brand(), which returns a std::string of the most 
@@ -176,15 +176,17 @@
  *       important is because a lot of techniques increment a point for its 
  *       respected brand that was detected. For example, if the VM::QEMU_USB
  *       technique has detected a VM, it'll add a score to the QEMU brand in
- *       the scoreboard. If no technique have been run, then there's no way to
+ *       the scoreboard. If no technique were run, then there's no way to
  *       populate the scoreboard with any points. After every VM detection 
  *       technique has been invoked/retrieved, the brand scoreboard is now
  *       ready to be analysed.
  * 
- *    3. Create a filter for the scoreboard, where every brand that have a score
+ *    3. Create a filter for the scoreboard, where every brand that has a score
  *       of 0 are erased for abstraction purposes. Now the scoreboard is only
  *       populated with relevant brands where they all have at least a single
  *       point. These are the contenders for which brand will be outputted.
+ *       Think of it as fetching candidates with potential while discarding
+ *       those that don't.
  * 
  *    4. Merge certain brand combinations together. For example, Azure's cloud 
  *       is based on Hyper-V, but Hyper-V may have a higher score due to the 
@@ -199,7 +201,7 @@
  *       output of the VM::brand() function.
  * 
  *    6. The result is then cached in the memo module, so if another function
- *       invokes VM:brand() again, "the result is retrieved from the cache 
+ *       invokes VM::brand() again, the result is retrieved from the cache 
  *       without needing to run all of the previous steps again.
  *      
  * (NOTE: it's a bit more complicated than this, but that's the gist of how this function works)
@@ -211,6 +213,7 @@
  *  [1]: If the user has provided a setting argument called VM::HIGH_THRESHOLD, 
  *       the threshold becomes 300 instead of 150.
  */
+
 
 #pragma once
 
