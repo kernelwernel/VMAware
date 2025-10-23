@@ -52,14 +52,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 534
- * - struct for internal cpu operations        => line 718
- * - struct for internal memoization           => line 1093
- * - struct for internal utility functions     => line 1223
- * - struct for internal core components       => line 9880
- * - start of VM detection technique list      => line 2179
- * - start of public VM detection functions    => line 10373
- * - start of externally defined variables     => line 11355
+ * - enums for publicly accessible techniques  => line 537
+ * - struct for internal cpu operations        => line 721
+ * - struct for internal memoization           => line 1096
+ * - struct for internal utility functions     => line 1226
+ * - struct for internal core components       => line 9882
+ * - start of VM detection technique list      => line 2182
+ * - start of public VM detection functions    => line 10375
+ * - start of externally defined variables     => line 11357
  *
  *
  * ============================== EXAMPLE ===================================
@@ -4518,7 +4518,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             volatile unsigned long long dummy = 0;
             for (ULONG64 x = 0; x < count_first; ++x) {
-                dummy = rd_ptr();
+                dummy = rd_ptr(); // this loop will be intercepted by a RDTSC trap, downscaling our TSC
             }
 
             ULONG64 afterqit = 0;
@@ -4532,7 +4532,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             const ULONG64 beforetsc2 = __rdtsc();
 
             for (ULONG64 x = 0; x < count_second; ++x) {
-                dummy = xor_ptr();
+                dummy = xor_ptr(); // this loop won't be intercepted, it never switches to kernel-mode
             }
 
             ULONG64 afterqit2 = 0;
@@ -4541,16 +4541,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             const ULONG64 secondRatio = (aftertsc2 - beforetsc2) / (afterqit2 - beforeqit2);
 
-            ULONG64 difference = 0;
-            if   (firstRatio >= secondRatio) difference = firstRatio - secondRatio;
-            else difference = secondRatio - firstRatio;
+            ULONG64 diff = firstRatio - secondRatio;
+            ULONG64 difference = (diff ^ ((LONG64)diff >> 63)) - ((LONG64)diff >> 63);
 
             if (prevMask != 0) {
                 SetThreadAffinityMask(th, prevMask);
             }
 
             if (difference > 25) {
-                return true;
+                return true; // both ratios will always differ since the hypervisor can't account for the XOR loop
             }
             // TLB flushes or side channel cache attacks are not even tried due to how ineffective they are against stealthy hypervisors
         #endif
