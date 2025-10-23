@@ -754,7 +754,6 @@ static void general() {
     checker(VM::DMESG, "dmesg output");
     checker(VM::HWMON, "hwmon presence");
     checker(VM::DLL, "DLLs");
-    checker(VM::REGISTRY_KEYS, "registry keys");
     checker(VM::WINE, "Wine");
     checker(VM::HWMODEL, "hw.model");
     checker(VM::VBOX_DEFAULT, "VBox default specs");
@@ -766,7 +765,6 @@ static void general() {
     checker(VM::MAC_IOKIT, "MacOS registry IO-kit");
     checker(VM::IOREG_GREP, "IO registry grep");
     checker(VM::MAC_SIP, "MacOS SIP");
-    checker(VM::REGISTRY_VALUES, "registry values");
     checker(VM::AUDIO, "audio devices");
     checker(VM::DEVICE_HANDLES, "device handles");
     checker(VM::VPC_INVALID, "VPC invalid instructions");
