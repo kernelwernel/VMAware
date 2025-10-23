@@ -4391,6 +4391,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             cycleThreshold = 25000; // if we're running under Hyper-V, attempt to detect nested virtualization only
         }
 
+    #if (WINDOWS)
+        const HANDLE th = GetCurrentThread();
+        const DWORD_PTR wantedMask = (DWORD_PTR)1;
+        const DWORD_PTR prevMask = SetThreadAffinityMask(th, wantedMask);
+    #endif 
+
         // Case A - Hypervisor without RDTSC patch
         thread_local unsigned int aux = 0;
         // Check for RDTSCP support
@@ -4451,13 +4457,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             if (!QueryPerformanceFrequency(&freq)) // NtPowerInformation and NtQueryPerformanceCounter are avoided as some hypervisors downscale tsc only if we triggered a context switch from userspace
                 return false;
 
-            // calculates the invariant TSC base rate, not the dynamic core frequency, similar to what CallNtPowerInformation would give you
+            // calculates the invariant TSC base rate (on modern CPUs), not the dynamic core frequency, similar to what CallNtPowerInformation would give you
             LARGE_INTEGER t1q, t2q;
             const u64 t1 = __rdtsc();
             QueryPerformanceCounter(&t1q); // uses RDTSCP under the hood unless platformclock (a bcdedit setting) is set, which then would use HPET or ACPI PM via NtQueryPerformanceCounter
             SleepEx(50, 0);
             QueryPerformanceCounter(&t2q);
-            const u64 t2 = __rdtsc();
+            const u64 t2 = __rdtscp(&aux);
 
             const double elapsedSec = double(t2q.QuadPart - t1q.QuadPart) / double(freq.QuadPart); // the performance counter frequency is always 10MHz when running under Hyper-V
             const double tscHz = double(t2 - t1) / elapsedSec;
@@ -4478,16 +4484,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
             else {
                 debug("TIMER: Processor base speed -> ", static_cast<double>(baseMHz), " MHz");
+                // this -650 delta accounts for older CPUs, it's better to use this rather than calling CPUID to know if the CPU supports invariant TSC, as it can be spoofed
                 if (tscMHz <= static_cast<double>(baseMHz) - 650.0) {
                     return true;
                 }
             }
         
             // Case C - Hypervisor with RDTSC patch + useplatformclock = false
-            const HANDLE th = GetCurrentThread();
-            const DWORD_PTR wantedMask = (DWORD_PTR)1;
-            const DWORD_PTR prevMask = SetThreadAffinityMask(th, wantedMask);
-
             const ULONG64 count_first = 20000000ULL;
             const ULONG64 count_second = 200000000ULL;
             static thread_local volatile unsigned long long g_sink = 0; // so that it doesnt need to be captured by the lambda
@@ -4509,7 +4512,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             using fn_t = unsigned long long (*)();
 
             // make the pointer volatile so the compiler treats the call as opaque/indirect
-            volatile fn_t rd_ptr = +rd_lambda;    // +lambda forces conversion to function ptr, so it won't be inlined, we need this for the trick
+            volatile fn_t rd_ptr = +rd_lambda;    // +lambda forces conversion to function ptr, so it won't be inlined, we need this to prevent some optimizatons by the compiler
             volatile fn_t xor_ptr = +xor_lambda;
 
             ULONG64 beforeqit = 0;
@@ -4541,15 +4544,17 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             const ULONG64 secondRatio = (aftertsc2 - beforetsc2) / (afterqit2 - beforeqit2);
 
-            ULONG64 diff = firstRatio - secondRatio;
-            ULONG64 difference = (diff ^ ((LONG64)diff >> 63)) - ((LONG64)diff >> 63);
+            const ULONG64 diff = firstRatio - secondRatio;
+            const ULONG64 difference = (diff ^ ((LONG64)diff >> 63)) - ((LONG64)diff >> 63);
+
+            debug("TIMER: RDTSC -> ", firstRatio, ", QIT -> ", secondRatio, ", Ratio: ", difference);
 
             if (prevMask != 0) {
                 SetThreadAffinityMask(th, prevMask);
             }
 
-            if (difference > 25) {
-                return true; // both ratios will always differ since the hypervisor can't account for the XOR loop
+            if (difference > 20) {
+                return true; // both ratios will always differ under a RDTSC trap since the hypervisor can't account for the XOR loop
             }
             // TLB flushes or side channel cache attacks are not even tried due to how ineffective they are against stealthy hypervisors
         #endif
