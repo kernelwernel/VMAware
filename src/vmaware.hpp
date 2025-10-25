@@ -371,18 +371,14 @@
     #include <tchar.h>
     #include <winioctl.h>
     #include <winternl.h>
-    #include <shlwapi.h>
     #include <powerbase.h>
     #include <setupapi.h>
-    #include <tbs.h>
     #include <initguid.h>
     #include <devpkey.h>
     #include <devguid.h>
 
     #pragma comment(lib, "setupapi.lib")
-    #pragma comment(lib, "shlwapi.lib")
     #pragma comment(lib, "powrprof.lib")
-    #pragma comment(lib, "tbs.lib")
     #pragma comment(lib, "Mincore.lib")
 #elif (LINUX)
     #if (x86)
@@ -6469,7 +6465,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // and for each instance, open it and call processHardwareID()
         auto enumInstances = [&](HKEY hDev, RootType rootType) {
             for (DWORD j = 0;; ++j) {
-                wchar_t instName[256];
+                wchar_t instName[256]{};
                 DWORD   cbInst = _countof(instName);
                 LONG    st2 = RegEnumKeyExW(
                     hDev,
@@ -6502,7 +6498,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // open each device key, and call enumInstances()
         auto enumDevices = [&](HKEY hRoot, RootType rootType) {
             for (DWORD i = 0;; ++i) {
-                wchar_t deviceName[256];
+                wchar_t deviceName[256]{};
                 DWORD   cbName = _countof(deviceName);
                 LONG    status = RegEnumKeyExW(
                     hRoot,
@@ -8337,7 +8333,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             for (auto& wstr : paths) {
                 if (has_excluded_token(wstr)) {
-                    debug("ACPI_SIGNATURE: Excluded signature -> ", wstr);
+                    debug("ACPI_SIGNATURE: Valid signature -> ", wstr);
                     continue;
                 }
 
@@ -9170,13 +9166,29 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             std::wstring guidStr;
             {
-                wchar_t guidBuf[40] = { 0 };
-                if (0 != ::StringFromGUID2(varName->VendorGuid, guidBuf, _countof(guidBuf))) {
-                    guidStr = guidBuf;
-                }
-                else {
-                    return true;
-                }
+                auto guid_to_wstring = [](const GUID& g) -> std::wstring {
+                    wchar_t buf[40] = {};
+                    int written = _snwprintf_s(
+                        buf, _countof(buf), _TRUNCATE,
+                        L"{%08lX-%04hX-%04hX-%02X%02X-%02X%02X%02X%02X%02X%02X}",
+                        static_cast<unsigned long>(g.Data1),
+                        static_cast<unsigned short>(g.Data2),
+                        static_cast<unsigned short>(g.Data3),
+                        static_cast<unsigned int>(g.Data4[0]),
+                        static_cast<unsigned int>(g.Data4[1]),
+                        static_cast<unsigned int>(g.Data4[2]),
+                        static_cast<unsigned int>(g.Data4[3]),
+                        static_cast<unsigned int>(g.Data4[4]),
+                        static_cast<unsigned int>(g.Data4[5]),
+                        static_cast<unsigned int>(g.Data4[6]),
+                        static_cast<unsigned int>(g.Data4[7])
+                    );
+                    if (written <= 0) return std::wstring();
+                    return std::wstring(buf);
+                };
+
+                guidStr = guid_to_wstring(varName->VendorGuid);
+                if (guidStr.empty()) return true;
             }
 
             if (!nameStr.empty() && nameStr.rfind(L"VMM", 0) == 0) {
@@ -9367,11 +9379,29 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 nameStr.assign(namePtr, realChars);
             }
 
-            wchar_t guidBuf[40]{};
-            if (0 == ::StringFromGUID2(var->VendorGuid, guidBuf, _countof(guidBuf))) {
-                return true;
-            }
-            std::wstring guidStr = guidBuf;
+            auto guid_to_wstring = [](const GUID& g) -> std::wstring {
+                wchar_t buf[40] = {};
+                int written = _snwprintf_s(
+                    buf, _countof(buf), _TRUNCATE,
+                    L"{%08lX-%04hX-%04hX-%02X%02X-%02X%02X%02X%02X%02X%02X}",
+                    static_cast<unsigned long>(g.Data1),
+                    static_cast<unsigned short>(g.Data2),
+                    static_cast<unsigned short>(g.Data3),
+                    static_cast<unsigned int>(g.Data4[0]),
+                    static_cast<unsigned int>(g.Data4[1]),
+                    static_cast<unsigned int>(g.Data4[2]),
+                    static_cast<unsigned int>(g.Data4[3]),
+                    static_cast<unsigned int>(g.Data4[4]),
+                    static_cast<unsigned int>(g.Data4[5]),
+                    static_cast<unsigned int>(g.Data4[6]),
+                    static_cast<unsigned int>(g.Data4[7])
+                );
+                if (written <= 0) return std::wstring();
+                return std::wstring(buf);
+            };
+
+            std::wstring guidStr = guid_to_wstring(var->VendorGuid);
+            if (guidStr.empty()) return true;
 
             bool isBootIndex = false;
             if (nameStr.size() == 8 && nameStr.compare(0, 4, L"Boot") == 0) {
