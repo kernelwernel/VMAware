@@ -543,11 +543,11 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::XEON_THREAD_MISMATCH` | Same as above, but for Xeon Intel CPUs | 🐧🪟🍏 | 50% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L3471) |
 | `VM::AMD_THREAD_MISMATCH` | Check for AMD CPU thread count database if it matches the system's thread count | 🐧🪟🍏 | 50% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L3685) |
 | `VM::CUCKOO_DIR` | Check for cuckoo directory using crt and WIN API directory functions | 🪟 | 30% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L7564) |
-| `VM::CUCKOO_PIPE` | Check for Cuckoo specific piping mechanism | 🪟 | 30% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L7622) |
+| `VM::CUCKOO_PIPE` | Check for Cuckoo specific piping mechanism | 🪟 | 30% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L7620) |
 | `VM::HYPERV_HOSTNAME` | Check for default Azure hostname format (Azure uses Hyper-V as their base VM brand) | 🐧🪟 | 30% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L5813) |
 | `VM::GENERAL_HOSTNAME` | Check for commonly set hostnames by certain VM brands | 🐧🪟 | 10% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L5834) |
-| `VM::DISPLAY` | Check for display configurations commonly found in VMs | 🪟 | 35% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L7678) |
-| `VM::DEVICE_STRING` | Check if bogus device string would be accepted | 🪟 | 25% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L7713) |
+| `VM::DISPLAY` | Check for display configurations commonly found in VMs | 🪟 | 35% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L7676) |
+| `VM::DEVICE_STRING` | Check if bogus device string would be accepted | 🪟 | 25% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L7711) |
 | `VM::BLUESTACKS_FOLDERS` | Check for the presence of BlueStacks-specific folders | 🐧 | 5% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L4895) |
 | `VM::CPUID_SIGNATURE` | Check for signatures in leaf 0x40000001 in CPUID | 🐧🪟🍏 | 95% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L4331) |
 | `VM::KGT_SIGNATURE` | Check for Intel KGT (Trusty branch) hypervisor signature in CPUID | 🐧🪟🍏 | 80% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L4360) |
@@ -562,35 +562,35 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::SMBIOS_VM_BIT` | Check for the VM bit in the SMBIOS data | 🐧 | 50% | Admin |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L5344) |
 | `VM::PODMAN_FILE` | Check for podman file in /run/ | 🐧 | 5% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L5374) |
 | `VM::WSL_PROC` | Check for WSL or microsoft indications in /proc/ subdirectories | 🐧 | 30% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L5406) |
-| `VM::DRIVERS` | Check for VM-specific names for drivers | 🪟 | 100% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L7730) |
-| `VM::DISK_SERIAL` | Check for serial numbers of virtual disks | 🪟 | 100% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L7828) |
-| `VM::IVSHMEM` | Check for IVSHMEM device presence | 🪟 | 100% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L8047) |
-| `VM::GPU_CAPABILITIES` | Check for GPU capabilities related to VMs | 🪟 | 45% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L8146) |
-| `VM::DEVICE_HANDLES` | Check for vm-specific devices | 🪟 | 100% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L8184) |
+| `VM::DRIVERS` | Check for VM-specific names for drivers | 🪟 | 100% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L7728) |
+| `VM::DISK_SERIAL` | Check for serial numbers of virtual disks | 🪟 | 100% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L7826) |
+| `VM::IVSHMEM` | Check for IVSHMEM device presence | 🪟 | 100% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L8044) |
+| `VM::GPU_CAPABILITIES` | Check for GPU capabilities related to VMs | 🪟 | 45% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L8143) |
+| `VM::DEVICE_HANDLES` | Check for vm-specific devices | 🪟 | 100% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L8181) |
 | `VM::QEMU_FW_CFG` | Detect QEMU fw_cfg interface. This first checks the Device Tree for a fw-cfg node or hypervisor tag, then verifies the presence of the qemu_fw_cfg module and firmware directories in sysfs. | 🐧 | 70% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L5434) |
-| `VM::VIRTUAL_PROCESSORS` | Check if the number of virtual and logical processors are reported correctly by the system | 🪟 | 100% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L8280) |
-| `VM::HYPERV_QUERY` | Check if a call to NtQuerySystemInformation with the 0x9f leaf fills a _SYSTEM_HYPERVISOR_DETAIL_INFORMATION structure | 🪟 | 100% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L8310) |
+| `VM::VIRTUAL_PROCESSORS` | Check if the number of virtual and logical processors are reported correctly by the system | 🪟 | 100% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L8277) |
+| `VM::HYPERV_QUERY` | Check if a call to NtQuerySystemInformation with the 0x9f leaf fills a _SYSTEM_HYPERVISOR_DETAIL_INFORMATION structure | 🪟 | 100% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L8307) |
 | `VM::AMD_SEV` | Check for AMD-SEV MSR running on the system | 🐧🍏 | 50% | Admin |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L4918) |
-| `VM::VIRTUAL_REGISTRY` | Check for particular object directory which is present in Sandboxie virtual environment but not in usual host systems | 🪟 | 90% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L8368) |
+| `VM::VIRTUAL_REGISTRY` | Check for particular object directory which is present in Sandboxie virtual environment but not in usual host systems | 🪟 | 90% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L8365) |
 | `VM::FIRMWARE` | Check for VM signatures on all firmware tables | 🐧🪟 | 100% | Admin |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L5866) |
 | `VM::FILE_ACCESS_HISTORY` | Check if the number of accessed files are too low for a human-managed environment | 🐧 | 15% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L5464) |
-| `VM::AUDIO` | Check if no waveform-audio output devices are present in the system | 🪟 | 25% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L8454) |
+| `VM::AUDIO` | Check if no waveform-audio output devices are present in the system | 🪟 | 25% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L8450) |
 | `VM::NSJAIL_PID` | Check if process status matches with nsjail patterns with PID anomalies | 🐧 | 75% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L5491) |
 | `VM::PCI_DEVICES` | Check for PCI vendor and device IDs that are VM-specific | 🐧🪟 | 95% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L6307) |
-| `VM::ACPI_SIGNATURE` | Check for VM-specific ACPI device signatures | 🪟 | 100% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L8552) |
-| `VM::TRAP` | Check if after raising two traps at the same RIP, a hypervisor interferes with the instruction pointer delivery | 🪟 | 100% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L8746) |
-| `VM::UD` | Check if after executing an undefined instruction, a hypervisor misinterpret it as a system call | 🪟 | 100% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L8899) |
-| `VM::BLOCKSTEP` | Check if a hypervisor does not properly restore the interruptibility state after a VM-exit in compatibility mode | 🪟 | 100% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L8964) |
-| `VM::DBVM` | Check if Dark Byte's VM is present | 🪟 | 150% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L9011) |
-| `VM::BOOT_LOGO` | Check boot logo for known VM images | 🪟 | 100% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L9128) |
+| `VM::ACPI_SIGNATURE` | Check for VM-specific ACPI device signatures | 🪟 | 100% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L8548) |
+| `VM::TRAP` | Check if after raising two traps at the same RIP, a hypervisor interferes with the instruction pointer delivery | 🪟 | 100% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L8742) |
+| `VM::UD` | Check if after executing an undefined instruction, a hypervisor misinterpret it as a system call | 🪟 | 100% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L8895) |
+| `VM::BLOCKSTEP` | Check if a hypervisor does not properly restore the interruptibility state after a VM-exit in compatibility mode | 🪟 | 100% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L8960) |
+| `VM::DBVM` | Check if Dark Byte's VM is present | 🪟 | 150% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L9007) |
+| `VM::BOOT_LOGO` | Check boot logo for known VM images | 🪟 | 100% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L9124) |
 | `VM::MAC_SYS` | Check for VM-strings in system profiler commands for MacOS | 🍏 | 100% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L6931) |
-| `VM::OBJECTS` | Check for any signs of VMs in Windows kernel object entities | 🪟 | 100% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L9221) |
-| `VM::NVRAM` | Check for known NVRAM signatures that are present on virtual firmware | 🪟 | 100% | Admin |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L9407) |
-| `VM::BOOT_MANAGER` | Check for boot managers typically found in VMs | 🪟 | 50% | Admin |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L9670) |
-| `VM::SMBIOS_INTEGRITY` | Check if SMBIOS is malformed/corrupted in a way that is typical for VMs | 🪟 | 60% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L9888) |
-| `VM::EDID` | Check for non-standard EDID configurations | 🪟 | 100% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L9899) |
-| `VM::CPU_HEURISTIC` | Check if the CPU is capable of running certain instructions successfully | 🪟 | 100% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L10008) |
-| `VM::CLOCK` | Check the presence of system timers | 🪟 | 100% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L10241) |
+| `VM::OBJECTS` | Check for any signs of VMs in Windows kernel object entities | 🪟 | 100% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L9217) |
+| `VM::NVRAM` | Check for known NVRAM signatures that are present on virtual firmware | 🪟 | 100% | Admin |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L9386) |
+| `VM::BOOT_MANAGER` | Check for boot managers typically found in VMs | 🪟 | 50% | Admin |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L9649) |
+| `VM::SMBIOS_INTEGRITY` | Check if SMBIOS is malformed/corrupted in a way that is typical for VMs | 🪟 | 60% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L9867) |
+| `VM::EDID` | Check for non-standard EDID configurations | 🪟 | 100% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L9878) |
+| `VM::CPU_HEURISTIC` | Check if the CPU is capable of running certain instructions successfully | 🪟 | 100% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L9987) |
+| `VM::CLOCK` | Check the presence of system timers | 🪟 | 100% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L10222) |
 
 <!-- END OF TECHNIQUE DOCUMENTATION -->
 

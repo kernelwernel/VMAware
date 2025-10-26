@@ -541,7 +541,7 @@ static std::string vm_description(const std::string& vm_brand) {
 #else
     NTSTATUS status;
 
-    HMODULE ntdll = GetModuleHandle(_T("ntdll.dll"));
+    HMODULE ntdll = GetModuleHandleA("ntdll.dll");
     if (!ntdll) {
         return false;
     }
