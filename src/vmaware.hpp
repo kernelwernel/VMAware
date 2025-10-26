@@ -52,14 +52,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 537
- * - struct for internal cpu operations        => line 721
- * - struct for internal memoization           => line 1096
- * - struct for internal utility functions     => line 1226
- * - struct for internal core components       => line 9882
- * - start of VM detection technique list      => line 2182
- * - start of public VM detection functions    => line 10375
- * - start of externally defined variables     => line 11357
+ * - enums for publicly accessible techniques  => line 533
+ * - struct for internal cpu operations        => line 717
+ * - struct for internal memoization           => line 1092
+ * - struct for internal utility functions     => line 1222
+ * - struct for internal core components       => line 10339
+ * - start of VM detection technique list      => line 2187
+ * - start of public VM detection functions    => line 10832
+ * - start of externally defined variables     => line 11814
  *
  *
  * ============================== EXAMPLE ===================================
@@ -1250,7 +1250,6 @@ private:
             #endif
         }
 
-
 #if (LINUX)
         // fetch file data
         [[nodiscard]] static std::string read_file(const char* raw_path) {
@@ -1591,14 +1590,14 @@ private:
                 return 0;
             }
 
-            auto result = util::sys_result("dmidecode --type 19 | grep 'Size' | grep '[[:digit:]]*'");
+            const auto result = util::sys_result("dmidecode --type 19 | grep 'Size' | grep '[[:digit:]]*'");
             if (!result) {
                 debug("get_physical_ram_size: ", "invalid system result, returned 0");
                 return 0;
             }
 
-            bool is_mb = std::regex_search(*result, std::regex("MB"));
-            bool is_gb = std::regex_search(*result, std::regex("GB"));
+            const bool is_mb = std::regex_search(*result, std::regex("MB"));
+            const bool is_gb = std::regex_search(*result, std::regex("GB"));
             if (!(is_mb || is_gb)) {
                 debug("get_physical_ram_size: ", "unit not found, returned 0");
                 return 0;
@@ -1681,7 +1680,7 @@ private:
                 }
 
                 // cmdline is argv0\0argv1\0..., so argv0 is bytes up to first NUL
-                auto it_nul = std::find(buf.begin(), buf.end(), '\0');
+                const auto it_nul = std::find(buf.begin(), buf.end(), '\0');
                 if (it_nul == buf.begin()) {
                     continue;
                 }
@@ -1733,7 +1732,7 @@ private:
         [[nodiscard]] static bool is_running_under_translator() {
         #if (WINDOWS && _WIN32_WINNT >= _WIN32_WINNT_WIN10)
             USHORT procMachine = 0, nativeMachine = 0;
-            auto pIsWow64Process2 = &IsWow64Process2;
+            const auto pIsWow64Process2 = &IsWow64Process2;
             if (pIsWow64Process2(GetCurrentProcess(), &procMachine, &nativeMachine)) {
                 if (nativeMachine == IMAGE_FILE_MACHINE_ARM64 &&
                     (procMachine == IMAGE_FILE_MACHINE_AMD64 || procMachine == IMAGE_FILE_MACHINE_I386)) {
@@ -1744,10 +1743,8 @@ private:
 
             // only if we got MACHINE_UNKNOWN on process but native is ARM64
             if (nativeMachine == IMAGE_FILE_MACHINE_ARM64) {
-                const HMODULE hKernel = GetModuleHandle(_T("kernel32.dll"));
-                if (!hKernel) return false;
                 using PGetProcessInformation = BOOL(__stdcall*)(HANDLE, PROCESS_INFORMATION_CLASS, PVOID, DWORD);
-                const HMODULE ntdll = GetModuleHandle(_T("ntdll.dll"));
+                const HMODULE ntdll = util::get_ntdll();
                 if (ntdll == NULL) {
                     return false;
                 }
@@ -1755,7 +1752,7 @@ private:
                 const char* functionNames[] = { "GetProcessInformation" };
                 void* functions[1] = { nullptr };
 
-                util::GetFunctionAddress(ntdll, functionNames, functions, 1);
+                util::get_function_address(ntdll, functionNames, functions, 1);
 
                 PGetProcessInformation pGetProcInfo = reinterpret_cast<PGetProcessInformation>(functions[0]);
                 if (pGetProcInfo) {
@@ -1934,19 +1931,18 @@ private:
                 {26100, 11}
             };
 
-            const HMODULE ntdll = GetModuleHandle(_T("ntdll.dll"));
+            const HMODULE ntdll = util::get_ntdll();
             if (!ntdll) {
                 return 0;
             }
 
-            typedef NTSTATUS(__stdcall* RtlGetVersionFunc)(PRTL_OSVERSIONINFOW);
-
+            using RtlGetVersionFunc = NTSTATUS(__stdcall*)(PRTL_OSVERSIONINFOW);
             const char* names[] = { "RtlGetVersion" };
             void* functions[1] = { nullptr };
 
-            GetFunctionAddress(ntdll, names, functions, _countof(names));
+            get_function_address(ntdll, names, functions, _countof(names));
 
-            auto pRtlGetVersion = reinterpret_cast<RtlGetVersionFunc>(functions[0]);
+            const auto pRtlGetVersion = reinterpret_cast<RtlGetVersionFunc>(functions[0]);
             if (!pRtlGetVersion) {
                 return 0;
             }
@@ -1970,7 +1966,7 @@ private:
 
 
         // retrieves the addresses of specified functions from a loaded module using the export directory, manual implementation of GetProcAddress
-        static void GetFunctionAddress(const HMODULE hModule, const char* names[], void** functions, size_t count) {
+        static void get_function_address(const HMODULE hModule, const char* names[], void** functions, size_t count) {
             using FuncMap = std::unordered_map<std::string, void*>;
             static std::unordered_map<HMODULE, FuncMap> function_cache;
 
@@ -2070,7 +2066,7 @@ private:
                 const std::string s_name(current_name);
 
                 // check cache first
-                auto cache_it = module_cache.find(s_name);
+                const auto cache_it = module_cache.find(s_name);
                 if (cache_it != module_cache.end()) {
                     functions[i] = cache_it->second;
                     continue;
@@ -2079,15 +2075,15 @@ private:
                 // binary search over names (names array is typically sorted)
                 DWORD lo = 0, hi = nameCount;
                 while (lo < hi) {
-                    DWORD mid = lo + (hi - lo) / 2;
-                    DWORD midNameRva = nameRvas[mid];
+                    const DWORD mid = lo + (hi - lo) / 2;
+                    const DWORD midNameRva = nameRvas[mid];
                     const char* midName = safe_cstr_from_rva(midNameRva);
-                    if (!midName) { // corrupted string table
+                    if (!midName) { // corrupted string table or something
                         lo = hi;
                         break;
                     }
 
-                    int cmp = strcmp(current_name, midName);
+                    const int cmp = strcmp(current_name, midName);
                     if (cmp > 0) {
                         lo = mid + 1;
                     }
@@ -2099,9 +2095,9 @@ private:
                 if (lo < nameCount) {
                     const char* candidateName = safe_cstr_from_rva(nameRvas[lo]);
                     if (candidateName && strcmp(current_name, candidateName) == 0) {
-                        WORD nameOrdinal = ordinals[lo];
+                        const WORD nameOrdinal = ordinals[lo];
                         if (static_cast<DWORD>(nameOrdinal) >= funcCount) continue;
-                        DWORD funcRva = funcRvas[nameOrdinal];
+                        const DWORD funcRva = funcRvas[nameOrdinal];
                         if (!valid_range(static_cast<size_t>(funcRva), 1)) continue;
                         void* addr = reinterpret_cast<void*>(base + funcRva);
                         functions[i] = addr;
@@ -2110,6 +2106,19 @@ private:
                     }
                 }
             }
+        }
+
+
+        [[nodiscard]] static HMODULE get_ntdll() {
+            static HMODULE cachedNtdll = nullptr;
+            if (cachedNtdll != nullptr) {
+                return cachedNtdll;
+            }
+
+            const HMODULE h = GetModuleHandleA("ntdll.dll");
+            if (h) cachedNtdll = h;
+
+            return h;
         }
 
         using NtEnumerateSystemEnvironmentValuesEx_t = NTSTATUS(__stdcall*)(ULONG InformationClass, PVOID Buffer, PULONG BufferLength);
@@ -2128,14 +2137,14 @@ private:
 
             EnumerateFirmwareResult res;
 
-            const HMODULE ntdll = GetModuleHandle(_T("ntdll.dll"));
+            const HMODULE ntdll = util::get_ntdll();
             if (ntdll == NULL) {
                 return res;
             }
 
             const char* functionNames[] = { "NtEnumerateSystemEnvironmentValuesEx" };
             void* functions[1] = { nullptr };
-            GetFunctionAddress(ntdll, functionNames, functions, 1);
+            get_function_address(ntdll, functionNames, functions, 1);
 
             NtEnumerateSystemEnvironmentValuesEx_t NtEnumerateSystemEnvironmentValuesEx = reinterpret_cast<NtEnumerateSystemEnvironmentValuesEx_t>(functions[0]);
             if (NtEnumerateSystemEnvironmentValuesEx == NULL) {
@@ -2374,7 +2383,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
 
                 return false;
-                };
+            };
 
             auto is_k8 = [](const u32 eax) -> bool {
                 const u32 family = (eax >> 8) & 0xF;
@@ -2387,7 +2396,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
 
                 return false;
-                };
+            };
 
             if (!(is_k7(eax) || is_k8(eax))) {
                 return false;
@@ -3437,7 +3446,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             auto isAsciiAlphaNum = [](char c)->bool {
                 const unsigned char uc = static_cast<unsigned char>(c);
                 return (uc >= '0' && uc <= '9') || (uc >= 'A' && uc <= 'Z') || (uc >= 'a' && uc <= 'z');
-                };
+            };
 
             const bool left_ok = (pos == 0) || !isAsciiAlphaNum(cpu_full_name[pos - 1]);
             const bool right_ok = (end == cpu_full_name.size()) || !isAsciiAlphaNum(cpu_full_name[end]);
@@ -3651,7 +3660,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             auto isAsciiAlphaNum = [](char c)->bool {
                 const unsigned char uc = static_cast<unsigned char>(c);
                 return (uc >= '0' && uc <= '9') || (uc >= 'A' && uc <= 'Z') || (uc >= 'a' && uc <= 'z');
-                };
+            };
 
             const bool left_ok = (pos == 0) || !isAsciiAlphaNum(cpu_full_name[pos - 1]);
             const bool right_ok = (end == cpu_full_name.size()) || !isAsciiAlphaNum(cpu_full_name[end]);
@@ -4296,7 +4305,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             auto isAsciiAlphaNum = [](char c)->bool {
                 const unsigned char uc = static_cast<unsigned char>(c);
                 return (uc >= '0' && uc <= '9') || (uc >= 'A' && uc <= 'Z') || (uc >= 'a' && uc <= 'z');
-                };
+            };
 
             const bool left_ok = (pos == 0) || !isAsciiAlphaNum(cpu_full_name[pos - 1]);
             const bool right_ok = (end == cpu_full_name.size()) || !isAsciiAlphaNum(cpu_full_name[end]);
@@ -5645,7 +5654,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
             }
 
-            auto it = defaults.find(key);
+            const auto it = defaults.find(key);
             if (it != defaults.end()) {
                 return (it->second.first == disk) && (static_cast<u32>(it->second.second) == ram);
             }
@@ -5858,16 +5867,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      */
     [[nodiscard]] static bool firmware() {
     #if (WINDOWS)
-        #pragma pack(push, 1)
         typedef struct {
             char Signature[4];
             u32 Length;
             u8 Revision;
             // others not needed
         } ACPI_HEADER;
-        #pragma pack(pop)
 
-        #pragma pack(push,1)
         typedef struct _FADT {
             UINT32  Signature;
             UINT32  Length;
@@ -5906,7 +5912,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             UINT16  P_Lvl2_Lat;
             UINT16  P_Lvl3_Lat;
         } FADT, * PFADT;
-        #pragma pack(pop)
+
         // "WAET" is also present as a string inside the WAET table, so there's no need to check for its table signature
         constexpr std::array<const char*, 24> targets = { {
             "Parallels Software", "Parallels(R)",
@@ -6498,7 +6504,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // open each device key, and call enumInstances()
         auto enumDevices = [&](HKEY hRoot, RootType rootType) {
             for (DWORD i = 0;; ++i) {
-                wchar_t deviceName[256]{};
+                wchar_t deviceName[256];
                 DWORD   cbName = _countof(deviceName);
                 LONG    status = RegEnumKeyExW(
                     hRoot,
@@ -6678,7 +6684,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::HWMODEL
      */
     [[nodiscard]] static bool hwmodel() {
-        auto result = util::sys_result("sysctl -n hw.model");
+        const auto result = util::sys_result("sysctl -n hw.model");
 
         std::smatch match;
 
@@ -6965,7 +6971,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         };
 
         for (const auto& x : dlls) {
-            if (GetModuleHandleA(x.dll_name) != nullptr) {
+            if (GetModuleHandleA(x.dll_name) != nullptr) { // not using util::get_module_handle() for performance benefits
                 debug("DLL: Found ", x.dll_name, " (", x.brand, ")");
                 return core::add(x.brand);
             }
@@ -6987,6 +6993,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             __try {
                 BOOL isNativeVhdBoot = 0;
+                // we dont call NtQuerySystemInformation with SystemPrefetchPathInformation | SystemHandleInformation
+                // the point is to check if this kernel32.dll function throws an exception
                 IsNativeVhdBoot(&isNativeVhdBoot);
                 UNUSED(isNativeVhdBoot);
             }
@@ -6996,15 +7004,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
         #endif
 
-        const HMODULE k32 = GetModuleHandle(_T("kernel32.dll"));
+        const HMODULE k32 = GetModuleHandleA("kernel32.dll");
         if (!k32) {
             return false;
         }
 
         const char* names[] = { "wine_get_unix_file_name" };
         void* functions[1] = { nullptr };
-
-        util::GetFunctionAddress(k32, names, functions, _countof(names));
+        util::get_function_address(k32, names, functions, _countof(names));
 
         if (functions[0] != nullptr) {
             return core::add(brands::WINE);
@@ -7020,13 +7027,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::POWER_CAPABILITIES
      */
     [[nodiscard]] static bool power_capabilities() {
-        const HMODULE ntdll = GetModuleHandle(_T("ntdll.dll"));
-        const char* names[] = { "NtPowerInformation" };
-        void* funcs[1] = { nullptr };
-        util::GetFunctionAddress(ntdll, names, funcs, _countof(funcs));
+        const HMODULE ntdll = util::get_ntdll();
 
-        if (!funcs[0])
-            return false;
+        const char* names[] = { "NtPowerInformation" };
+        void* funcs[ARRAYSIZE(names)] = {};
+        util::get_function_address(ntdll, names, funcs, ARRAYSIZE(names));
+
+        if (!funcs[0]) return false;
 
         using NtPI_t = NTSTATUS(__stdcall*)(POWER_INFORMATION_LEVEL,
             PVOID, ULONG,
@@ -7034,13 +7041,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const auto NtPowerInformation = reinterpret_cast<NtPI_t>(funcs[0]);
 
         SYSTEM_POWER_CAPABILITIES caps = { 0 };
-        NTSTATUS status = NtPowerInformation(
+        const NTSTATUS status = NtPowerInformation(
             SystemPowerCapabilities,
             nullptr, 0,
             &caps, sizeof(caps)
         );
-        if (status != 0)
-            return false;
+        if (status != 0) return false;
 
         const bool s0_supported = caps.AoAc;
         const bool s1_supported = caps.SystemS1;
@@ -7064,25 +7070,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return true;
         }
 
-        DWORD aoac_override = 0;
-        DWORD aoac_size = sizeof(aoac_override);
-        const LONG reg_status = RegGetValueW(
-            HKEY_LOCAL_MACHINE,
-            L"SYSTEM\\CurrentControlSet\\Control\\Power",
-            L"PlatformAoAcOverride",
-            RRF_RT_REG_DWORD,
-            nullptr,
-            &aoac_override,
-            &aoac_size
-        );
-
-        const bool aoac_override_present = (reg_status == ERROR_SUCCESS);
-        if (aoac_override_present) {
-            debug("POWER_CAPABILITIES: PlatformAoAcOverride present (HKLM\\SYSTEM\\CurrentControlSet\\Control\\Power\\PlatformAoAcOverride). Value=%u",
-                static_cast<unsigned>(aoac_override));
-            return false;
-        }
-
+        // could check for HKLM\\SYSTEM\\CurrentControlSet\\Control\\Power\\PlatformAoAcOverride
         const bool no_sleep_states = !s0_supported && !s1_supported && !s2_supported && !s3_supported;
         if (no_sleep_states) {
             debug("POWER_CAPABILITIES: Detected !(S0||S1||S2||S3) pattern"); // can sometimes false flag baremetal devices
@@ -7099,26 +7087,71 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::GAMARUE
      */
     [[nodiscard]] static bool gamarue() {
-        HKEY hKey;
-        char buffer[64] = { 0 };
-        DWORD dwSize = sizeof(buffer);
-        LONG lRes;
+        const HMODULE ntdll = util::get_ntdll();
+        if (!ntdll) return false;
 
-        lRes = RegOpenKeyEx(HKEY_LOCAL_MACHINE,
-            _T("Software\\Microsoft\\Windows\\CurrentVersion"),
-            0,
-            KEY_QUERY_VALUE,
-            &hKey);
+        const char* names[] = { "NtOpenKey", "NtQueryValueKey", "RtlInitUnicodeString", "NtClose" };
+        void* funcs[ARRAYSIZE(names)] = {};
+        util::get_function_address(ntdll, names, funcs, ARRAYSIZE(names));
 
-        if (lRes != 0L) return false;
+        const auto pNtOpenKey = reinterpret_cast<NTSTATUS(__stdcall*)(PHANDLE, ACCESS_MASK, POBJECT_ATTRIBUTES)>(funcs[0]);
+        const auto pNtQueryValueKey = reinterpret_cast<NTSTATUS(__stdcall*)(HANDLE, PUNICODE_STRING, ULONG, PVOID, ULONG, PULONG)>(funcs[1]);
+        const auto pRtlInitUnicodeString = reinterpret_cast<void (__stdcall*)(PUNICODE_STRING, PCWSTR)>(funcs[2]);
+        const auto pNtClose = reinterpret_cast<NTSTATUS(__stdcall*)(HANDLE)>(funcs[3]);
 
-        lRes = RegQueryValueEx(hKey, _T("ProductId"),
-            nullptr, nullptr,
-            reinterpret_cast<LPBYTE>(buffer), &dwSize);
+        if (!pNtOpenKey || !pNtQueryValueKey || !pRtlInitUnicodeString || !pNtClose) return false;
 
-        RegCloseKey(hKey);
+        UNICODE_STRING uKeyName;
+        pRtlInitUnicodeString(&uKeyName, L"\\Registry\\Machine\\Software\\Microsoft\\Windows\\CurrentVersion");
 
-        if (lRes != 0L) return false;
+        OBJECT_ATTRIBUTES objAttr;
+        ZeroMemory(&objAttr, sizeof(objAttr));
+        objAttr.Length = sizeof(objAttr);
+        objAttr.ObjectName = &uKeyName;
+        objAttr.Attributes = OBJ_CASE_INSENSITIVE;
+
+        HANDLE hKey = nullptr;
+        constexpr ACCESS_MASK KEY_QUERY_ONLY = 0x0001; // KEY_QUERY_VALUE
+        NTSTATUS st = pNtOpenKey(&hKey, KEY_QUERY_ONLY, &objAttr);
+        if (!NT_SUCCESS(st) || !hKey) {
+            return false;
+        }
+
+        UNICODE_STRING uValueName;
+        pRtlInitUnicodeString(&uValueName, L"ProductId");
+
+        // Buffer for KEY_VALUE_PARTIAL_INFORMATION
+        BYTE buffer[128]{};
+        ULONG resultLength = 0;
+        constexpr ULONG KeyValuePartialInformation = 2;
+
+        st = pNtQueryValueKey(hKey, &uValueName, KeyValuePartialInformation, buffer, sizeof(buffer), &resultLength);
+
+        pNtClose(hKey);
+
+        if (!NT_SUCCESS(st)) {
+            return false;
+        }
+
+        struct KEY_VALUE_PARTIAL_INFORMATION_LOCAL {
+            ULONG TitleIndex;
+            ULONG Type;
+            ULONG DataLength;
+            BYTE Data[1];
+        };
+
+        if (resultLength < offsetof(KEY_VALUE_PARTIAL_INFORMATION_LOCAL, Data) + 1) {
+            return false;
+        }
+
+        const auto* kv = reinterpret_cast<KEY_VALUE_PARTIAL_INFORMATION_LOCAL*>(buffer);
+        const ULONG dataLen = kv->DataLength;
+        if (dataLen == 0 || dataLen >= sizeof(buffer)) return false;
+
+        char productId[64] = { 0 };
+        const size_t copyLen = (dataLen < (sizeof(productId) - 1)) ? dataLen : (sizeof(productId) - 1);
+        memcpy(productId, kv->Data, copyLen);
+        productId[copyLen] = '\0';
 
         struct TargetPattern {
             const char* product_id;
@@ -7126,17 +7159,17 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         };
 
         constexpr TargetPattern targets[] = {
-            {"55274-640-2673064-23950", "JOEBOX"},
-            {"76487-644-3177037-23510", "CWSANDBOX"},
-            {"76487-337-8429955-22614", "ANUBIS"}
+            {"55274-640-2673064-23950", brands::JOEBOX},
+            {"76487-644-3177037-23510", brands::CWSANDBOX},
+            {"76487-337-8429955-22614", brands::ANUBIS}
         };
 
         constexpr size_t target_len = 21;
 
-        if (strlen(buffer) != target_len) return false;
+        if (strlen(productId) != target_len) return false;
 
         for (const auto& target : targets) {
-            if (memcmp(buffer, target.product_id, target_len) == 0) {
+            if (memcmp(productId, target.product_id, target_len) == 0) {
                 debug("GAMARUE: Detected ", target.product_id);
                 return core::add(target.brand);
             }
@@ -7162,7 +7195,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             ctx->Eip += 4; // skip past the "call VPC" opcodes
             return static_cast<DWORD>(EXCEPTION_CONTINUE_EXECUTION);
             // we can safely resume execution since we skipped faulty instruction
-            };
+        };
 
         __try {
             __asm {
@@ -7452,39 +7485,73 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::MUTEX
      */
     [[nodiscard]] static bool mutex() {
-        auto is_mutex_present = [](const char* lpMutexName) -> bool {
-            if (lpMutexName == 0) {
-                return false;
+        const HMODULE ntdll = util::get_ntdll();
+        if (!ntdll) return false;
+
+        using RtlInitUnicodeString_t = void(__stdcall*)(PUNICODE_STRING DestinationString, PCWSTR SourceString);
+        using NtClose_t = NTSTATUS(__stdcall*)(HANDLE Handle);
+        using NtOpenMutant_t = NTSTATUS(__stdcall*)(PHANDLE MutantHandle, ACCESS_MASK DesiredAccess, POBJECT_ATTRIBUTES ObjectAttributes);
+
+        const char* names[] = { "NtOpenMutant", "RtlInitUnicodeString", "NtClose" };
+        void* funcs[ARRAYSIZE(names)] = {};
+        util::get_function_address(ntdll, names, funcs, ARRAYSIZE(names));
+
+        const auto pNtOpenMutant = reinterpret_cast<NtOpenMutant_t>(funcs[0]);
+        const auto pRtlInitUnicodeString = reinterpret_cast<RtlInitUnicodeString_t>(funcs[1]);
+        const auto pNtClose = reinterpret_cast<NtClose_t>(funcs[2]);
+
+        if (!pNtOpenMutant || !pRtlInitUnicodeString || !pNtClose) {
+            return false;
+        }
+
+        auto try_mutex_name = [&](const wchar_t* baseName) -> bool {
+            std::wstring full = L"\\BaseNamedObjects\\";
+            full += baseName;
+
+            UNICODE_STRING uName;
+            pRtlInitUnicodeString(&uName, full.c_str());
+
+            OBJECT_ATTRIBUTES objAttr;
+            ZeroMemory(&objAttr, sizeof(objAttr));
+            objAttr.Length = sizeof(objAttr);
+            objAttr.ObjectName = &uName;
+            objAttr.Attributes = OBJ_CASE_INSENSITIVE;
+
+            HANDLE hMutant = nullptr;
+            NTSTATUS st = pNtOpenMutant(&hMutant, MUTANT_QUERY_STATE, &objAttr);
+            if (NT_SUCCESS(st)) {
+                if (hMutant) pNtClose(hMutant);
+                return true;
             }
 
-            SetLastError(0);
-            const HANDLE hObject = CreateMutexA(0, 0, lpMutexName);
-            const DWORD dwError = GetLastError();
+            // some contexts expose it without the prefix
+            pRtlInitUnicodeString(&uName, baseName);
+            ZeroMemory(&objAttr, sizeof(objAttr));
+            objAttr.Length = sizeof(objAttr);
+            objAttr.ObjectName = &uName;
+            objAttr.Attributes = OBJ_CASE_INSENSITIVE;
 
-            if (hObject) CloseHandle(hObject);            
+            hMutant = nullptr;
+            st = pNtOpenMutant(&hMutant, MUTANT_QUERY_STATE, &objAttr);
+            if (NT_SUCCESS(st)) {
+                if (hMutant) pNtClose(hMutant);
+                return true;
+            }
 
-            return (dwError == ERROR_ALREADY_EXISTS);
+            return false;
         };
 
-        if (
-            is_mutex_present("Sandboxie_SingleInstanceMutex_Control") ||
-            is_mutex_present("SBIE_BOXED_ServiceInitComplete_Mutex1")
-        ) {
+        if (try_mutex_name(L"Sandboxie_SingleInstanceMutex_Control") ||
+            try_mutex_name(L"SBIE_BOXED_ServiceInitComplete_Mutex1")) {
             debug("MUTEX: Detected Sandboxie");
             return core::add(brands::SANDBOXIE);
         }
 
-        if (is_mutex_present("MicrosoftVirtualPC7UserServiceMakeSureWe'reTheOnlyOneMutex")) {
+        if (try_mutex_name(L"MicrosoftVirtualPC7UserServiceMakeSureWe'reTheOnlyOneMutex")) {
             debug("MUTEX: Detected VPC");
             return core::add(brands::VPC);
         }
 
-        /*
-        if (is_mutex_present("Frz_State")) { // DeepFreeze
-            debug("MUTEX: Detected DeepFreeze");
-            return true;
-        }
-        */
         return false;
     }
 
@@ -7497,9 +7564,49 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::CUCKOO_DIR
      */
     [[nodiscard]] static bool cuckoo_dir() {
+        using NtOpenFile_t = NTSTATUS(__stdcall*)(PHANDLE FileHandle, ACCESS_MASK DesiredAccess,
+            POBJECT_ATTRIBUTES ObjectAttributes, PIO_STATUS_BLOCK IoStatusBlock,
+            ULONG ShareAccess, ULONG OpenOptions);
+        using RtlInitUnicodeString_t = void(__stdcall*)(PUNICODE_STRING DestinationString, PCWSTR SourceString);
+        using NtClose_t = NTSTATUS(__stdcall*)(HANDLE Handle);
+
         const DWORD attrs = GetFileAttributes(_T("C:\\Cuckoo"));
 
-        if (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY)) {
+        const HMODULE ntdll = util::get_ntdll();
+        if (!ntdll) return false;
+
+        const char* names[] = { "NtOpenFile", "RtlInitUnicodeString", "NtClose" };
+        void* funcs[ARRAYSIZE(names)] = {};
+        util::get_function_address(ntdll, names, funcs, ARRAYSIZE(names));
+
+        const auto pNtOpenFile = reinterpret_cast<NtOpenFile_t>(funcs[0]);
+        const auto pRtlInitUnicodeString = reinterpret_cast<RtlInitUnicodeString_t>(funcs[1]);
+        const auto pNtClose = reinterpret_cast<NtClose_t>(funcs[2]);
+
+        if (!pNtOpenFile || !pRtlInitUnicodeString || !pNtClose) {
+            return false;
+        }
+
+        const wchar_t* nativePath = L"\\??\\C:\\Cuckoo";
+        UNICODE_STRING uPath;
+        pRtlInitUnicodeString(&uPath, nativePath);
+
+        OBJECT_ATTRIBUTES objAttr;
+        ZeroMemory(&objAttr, sizeof(objAttr));
+        objAttr.Length = sizeof(objAttr);
+        objAttr.ObjectName = &uPath;
+        objAttr.Attributes = OBJ_CASE_INSENSITIVE;
+
+        IO_STATUS_BLOCK iosb;
+        HANDLE hFile = nullptr;
+
+        constexpr ACCESS_MASK desiredAccess = FILE_READ_ATTRIBUTES; 
+        constexpr ULONG shareAccess = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
+        constexpr ULONG openOptions = FILE_OPEN | FILE_SYNCHRONOUS_IO_NONALERT | FILE_DIRECTORY_FILE;
+
+        const NTSTATUS st = pNtOpenFile(&hFile, desiredAccess, &objAttr, &iosb, shareAccess, openOptions);
+        if (NT_SUCCESS(st)) {
+            if (hFile) pNtClose(hFile);
             return core::add(brands::CUCKOO);
         }
 
@@ -7515,21 +7622,50 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::CUCKOO_PIPE
      */
     [[nodiscard]] static bool cuckoo_pipe() {
-        const HANDLE hPipe = CreateFile(
-            TEXT("\\\\.\\pipe\\cuckoo"),
-            GENERIC_READ,
-            0,
-            nullptr,
-            OPEN_EXISTING,
-            0,
-            nullptr
-        );
-        
-        if (hPipe != INVALID_HANDLE_VALUE) {
-            CloseHandle(hPipe);
+        using NtOpenFile_t = NTSTATUS(__stdcall*)(PHANDLE FileHandle, ACCESS_MASK DesiredAccess,
+            POBJECT_ATTRIBUTES ObjectAttributes, PIO_STATUS_BLOCK IoStatusBlock,
+            ULONG ShareAccess, ULONG OpenOptions);
+        using RtlInitUnicodeString_t = void(__stdcall*)(PUNICODE_STRING DestinationString, PCWSTR SourceString);
+        using NtClose_t = NTSTATUS(__stdcall*)(HANDLE Handle);
+
+        const HMODULE ntdll = util::get_ntdll();
+        if (!ntdll) return false;
+
+        const char* names[] = { "NtOpenFile", "RtlInitUnicodeString", "NtClose" };
+        void* funcs[ARRAYSIZE(names)] = {};
+        util::get_function_address(ntdll, names, funcs, ARRAYSIZE(names));
+
+        const auto pNtOpenFile = reinterpret_cast<NtOpenFile_t>(funcs[0]);
+        const auto pRtlInitUnicodeString = reinterpret_cast<RtlInitUnicodeString_t>(funcs[1]);
+        const auto pNtClose = reinterpret_cast<NtClose_t>(funcs[2]);
+
+        if (!pNtOpenFile || !pRtlInitUnicodeString || !pNtClose) {
+            return false;
+        }
+
+        const wchar_t* pipePath = L"\\??\\pipe\\cuckoo";
+        UNICODE_STRING uPipe;
+        pRtlInitUnicodeString(&uPipe, pipePath);
+
+        OBJECT_ATTRIBUTES objAttr;
+        ZeroMemory(&objAttr, sizeof(objAttr));
+        objAttr.Length = sizeof(objAttr);
+        objAttr.ObjectName = &uPipe;
+        objAttr.Attributes = OBJ_CASE_INSENSITIVE;
+
+        IO_STATUS_BLOCK iosb;
+        HANDLE hPipe = nullptr;
+
+        constexpr ACCESS_MASK desiredAccess = FILE_READ_DATA | FILE_READ_ATTRIBUTES;
+        constexpr ULONG shareAccess = 0;
+        constexpr ULONG openOptions = FILE_OPEN | FILE_SYNCHRONOUS_IO_NONALERT;
+
+        const NTSTATUS st = pNtOpenFile(&hPipe, desiredAccess, &objAttr, &iosb, shareAccess, openOptions);
+        if (NT_SUCCESS(st)) {
+            if (hPipe) pNtClose(hPipe);
             return core::add(brands::CUCKOO);
         }
-    
+
         return false;
     }
 
@@ -7594,7 +7730,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::DRIVERS
      */
     [[nodiscard]] static bool drivers() {
-        typedef struct _SYSTEM_MODULE_INFORMATION {
+        struct _SYSTEM_MODULE_INFORMATION {
             PVOID  Reserved[2];
             PVOID  ImageBaseAddress;
             ULONG  ImageSize;
@@ -7604,48 +7740,40 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             USHORT LoadCount;
             USHORT PathLength;
             CHAR   ImageName[256];
-        } SYSTEM_MODULE_INFORMATION, * PSYSTEM_MODULE_INFORMATION;
+        };
 
-        typedef struct _SYSTEM_MODULE_INFORMATION_EX {
+        struct _SYSTEM_MODULE_INFORMATION_EX {
             ULONG  NumberOfModules;
-            SYSTEM_MODULE_INFORMATION Module[1];
-        } SYSTEM_MODULE_INFORMATION_EX, * PSYSTEM_MODULE_INFORMATION_EX;
+            _SYSTEM_MODULE_INFORMATION Module[1];
+        };
 
-        typedef NTSTATUS(__stdcall* NtQuerySystemInformationFn)(
-            ULONG SystemInformationClass,
-            PVOID SystemInformation,
-            ULONG SystemInformationLength,
-            PULONG ReturnLength
-        );
+        using SYSTEM_MODULE_INFORMATION = _SYSTEM_MODULE_INFORMATION;
+        using PSYSTEM_MODULE_INFORMATION = _SYSTEM_MODULE_INFORMATION*;
+        using SYSTEM_MODULE_INFORMATION_EX = _SYSTEM_MODULE_INFORMATION_EX;
+        using PSYSTEM_MODULE_INFORMATION_EX = _SYSTEM_MODULE_INFORMATION_EX*;
 
-        typedef NTSTATUS(__stdcall* NtAllocateVirtualMemoryFn)(
+        using NtQuerySystemInformationFn = NTSTATUS(__stdcall*)(ULONG SystemInformationClass, PVOID SystemInformation, ULONG SystemInformationLength, PULONG ReturnLength);
+        using NtAllocateVirtualMemoryFn = NTSTATUS(__stdcall*)(
             HANDLE ProcessHandle,
             PVOID* BaseAddress,
             ULONG_PTR ZeroBits,
             PSIZE_T RegionSize,
             ULONG AllocationType,
             ULONG Protect
-        );
-
-        typedef NTSTATUS(__stdcall* NtFreeVirtualMemoryFn)(
-            HANDLE ProcessHandle,
-            PVOID* BaseAddress,
-            PSIZE_T RegionSize,
-            ULONG FreeType
-        );
+         );
+        using NtFreeVirtualMemoryFn = NTSTATUS(__stdcall*)(HANDLE ProcessHandle, PVOID* BaseAddress, PSIZE_T RegionSize, ULONG FreeType);
 
         constexpr ULONG SystemModuleInformation = 11;
-        const HMODULE hModule = GetModuleHandle(_T("ntdll.dll"));
-        if (!hModule) return false;
+        const HMODULE ntdll = util::get_ntdll();
+        if (!ntdll) return false;
 
         const char* functionNames[] = { "NtQuerySystemInformation", "NtAllocateVirtualMemory", "NtFreeVirtualMemory" };
-        void* functionPointers[3] = { nullptr, nullptr, nullptr };
+        void* funcs[ARRAYSIZE(functionNames)] = {};
+        util::get_function_address(ntdll, functionNames, funcs, ARRAYSIZE(functionNames));
 
-        util::GetFunctionAddress(hModule, functionNames, functionPointers, 3);
-
-        const auto ntQuerySystemInformation = reinterpret_cast<NtQuerySystemInformationFn>(functionPointers[0]);
-        const auto ntAllocateVirtualMemory = reinterpret_cast<NtAllocateVirtualMemoryFn>(functionPointers[1]);
-        const auto ntFreeVirtualMemory = reinterpret_cast<NtFreeVirtualMemoryFn>(functionPointers[2]);
+        const auto ntQuerySystemInformation = reinterpret_cast<NtQuerySystemInformationFn>(funcs[0]);
+        const auto ntAllocateVirtualMemory = reinterpret_cast<NtAllocateVirtualMemoryFn>(funcs[1]);
+        const auto ntFreeVirtualMemory = reinterpret_cast<NtFreeVirtualMemoryFn>(funcs[2]);
 
         if (ntQuerySystemInformation == nullptr || ntAllocateVirtualMemory == nullptr || ntFreeVirtualMemory == nullptr)
             return false;
@@ -7659,7 +7787,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         SIZE_T regionSize = ulSize;
         ntAllocateVirtualMemory(hProcess, &allocatedMemory, 0, &regionSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
 
-        auto pSystemModuleInfoEx = reinterpret_cast<PSYSTEM_MODULE_INFORMATION_EX>(allocatedMemory);
+        const auto pSystemModuleInfoEx = reinterpret_cast<PSYSTEM_MODULE_INFORMATION_EX>(allocatedMemory);
         status = ntQuerySystemInformation(SystemModuleInformation, pSystemModuleInfoEx, ulSize, &ulSize);
         if (!(((NTSTATUS)(status)) >= 0)) {
             ntFreeVirtualMemory(hProcess, &allocatedMemory, &regionSize, MEM_RELEASE);
@@ -7700,9 +7828,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::DISK_SERIAL
      */
     [[nodiscard]] static bool disk_serial_number() {
+        using NtOpenFile_t = NTSTATUS(__stdcall*)(PHANDLE, ACCESS_MASK, POBJECT_ATTRIBUTES, PIO_STATUS_BLOCK, ULONG, ULONG);
+        using NtDeviceIoControlFile_t = NTSTATUS(__stdcall*)(HANDLE, HANDLE, PVOID, PVOID, PIO_STATUS_BLOCK, ULONG, PVOID, ULONG, PVOID, ULONG);
+        using NtAllocateVirtualMemory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, ULONG_PTR, PSIZE_T, ULONG, ULONG);
+        using NtFreeVirtualMemory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG);
+        using NtClose_t = NTSTATUS(__stdcall*)(HANDLE);
+        using RtlInitUnicodeString_t = void(__stdcall*)(PUNICODE_STRING, PCWSTR);
+
         bool result = false;
         constexpr u8 MAX_PHYSICAL_DRIVES = 4;
-        constexpr SIZE_T MAX_DESCRIPTOR_SIZE = 64 * 1024; 
+        constexpr SIZE_T MAX_DESCRIPTOR_SIZE = 64 * 1024;
         u8 successfulOpens = 0;
 
         auto is_qemu_serial = [](const char* str) -> bool {
@@ -7716,7 +7851,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             auto toupper_char = [](char c) -> char {
                 return (c >= 'a' && c <= 'z') ? static_cast<char>(c - 'a' + 'A') : c;
-                };
+            };
 
             if (toupper_char(str[0]) != 'V' || toupper_char(str[1]) != 'B' || str[10] != '-') {
                 return false;
@@ -7725,7 +7860,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             auto is_hex = [&](char c) {
                 char upper_c = toupper_char(c);
                 return (upper_c >= '0' && upper_c <= '9') || (upper_c >= 'A' && upper_c <= 'F');
-                };
+            };
 
             static constexpr std::array<u8, 16> hex_positions = { {
                 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17, 18
@@ -7745,74 +7880,110 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return static_cast<size_t>(static_cast<const char*>(p) - s);
         };
 
+        const HMODULE ntdll = util::get_ntdll();
+        if (!ntdll) return result;
+
+        const char* names[] = {
+            "RtlInitUnicodeString",
+            "NtOpenFile",
+            "NtDeviceIoControlFile",
+            "NtAllocateVirtualMemory",
+            "NtFreeVirtualMemory",
+            "NtFlushInstructionCache",
+            "NtClose"
+        };
+        void* funcs[ARRAYSIZE(names)] = {};
+        util::get_function_address(ntdll, names, funcs, ARRAYSIZE(names));
+
+        const auto pRtlInitUnicodeString = reinterpret_cast<RtlInitUnicodeString_t>(funcs[0]);
+        const auto pNtOpenFile = reinterpret_cast<NtOpenFile_t>(funcs[1]);
+        const auto pNtDeviceIoControlFile = reinterpret_cast<NtDeviceIoControlFile_t>(funcs[2]);
+        const auto pNtAllocateVirtualMemory = reinterpret_cast<NtAllocateVirtualMemory_t>(funcs[3]);
+        const auto pNtFreeVirtualMemory = reinterpret_cast<NtFreeVirtualMemory_t>(funcs[4]);
+        const auto pNtClose = reinterpret_cast<NtClose_t>(funcs[6]);
+
+        if (!pRtlInitUnicodeString || !pNtOpenFile || !pNtDeviceIoControlFile ||
+            !pNtAllocateVirtualMemory || !pNtFreeVirtualMemory || !pNtClose) {
+            return result;
+        }
+
         for (u8 drive = 0; drive < MAX_PHYSICAL_DRIVES; ++drive) {
             wchar_t path[32];
-            swprintf_s(path, L"\\\\.\\PhysicalDrive%u", drive);
+            swprintf_s(path, L"\\??\\PhysicalDrive%u", drive);
 
-            const HANDLE hDevice = CreateFileW(
-                path,
-                0,
-                FILE_SHARE_READ | FILE_SHARE_WRITE,
-                nullptr,
-                OPEN_EXISTING,
-                0,
-                nullptr
-            );
+            UNICODE_STRING uPath;
+            pRtlInitUnicodeString(&uPath, path);
 
-            if (hDevice == INVALID_HANDLE_VALUE) {
+            OBJECT_ATTRIBUTES objAttr;
+            RtlZeroMemory(&objAttr, sizeof(objAttr));
+            objAttr.Length = sizeof(objAttr);
+            objAttr.ObjectName = &uPath;
+            objAttr.Attributes = OBJ_CASE_INSENSITIVE;
+            objAttr.RootDirectory = NULL; // explicit
+
+            IO_STATUS_BLOCK iosb;
+            HANDLE hDevice = nullptr;
+
+            constexpr ACCESS_MASK desiredAccess = SYNCHRONIZE | FILE_READ_ATTRIBUTES;
+            constexpr ULONG shareAccess = FILE_SHARE_READ | FILE_SHARE_WRITE;
+            constexpr ULONG openOptions = FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT;
+
+            NTSTATUS st = pNtOpenFile(&hDevice, desiredAccess, &objAttr, &iosb, shareAccess, openOptions);
+            if (!NT_SUCCESS(st) || hDevice == nullptr) {
                 continue;
             }
             ++successfulOpens;
 
+            // stack buffer attempt
             BYTE stackBuf[512] = { 0 };
-            STORAGE_DEVICE_DESCRIPTOR* descriptor = reinterpret_cast<STORAGE_DEVICE_DESCRIPTOR*>(stackBuf);
-            DWORD bytesReturned = 0;
+            const STORAGE_DEVICE_DESCRIPTOR* descriptor = reinterpret_cast<STORAGE_DEVICE_DESCRIPTOR*>(stackBuf);
+            ULONG bytesReturned = 0;
+
             STORAGE_PROPERTY_QUERY query{};
             query.PropertyId = StorageDeviceProperty;
             query.QueryType = PropertyStandardQuery;
 
+            const ULONG ioctl = IOCTL_STORAGE_QUERY_PROPERTY;
+
+            st = pNtDeviceIoControlFile(hDevice, nullptr, nullptr, nullptr, &iosb,
+                ioctl,
+                &query, sizeof(query),
+                stackBuf, sizeof(stackBuf));
+
             BYTE* allocatedBuffer = nullptr;
             SIZE_T allocatedSize = 0;
 
-            bool ok = DeviceIoControl(
-                hDevice,
-                IOCTL_STORAGE_QUERY_PROPERTY,
-                &query, sizeof(query),
-                stackBuf, sizeof(stackBuf),
-                &bytesReturned,
-                nullptr
-            );
+            if (!NT_SUCCESS(st)) {
+                DWORD reportedSize = 0;
+                if (descriptor && descriptor->Size > 0) {
+                    reportedSize = descriptor->Size;
+                }
 
-            if (!ok) {
-                const DWORD err = GetLastError();
-                if (err == ERROR_INSUFFICIENT_BUFFER && descriptor->Size > 0) {
-                    DWORD reportedSize = descriptor->Size;
-                    if (reportedSize < sizeof(STORAGE_DEVICE_DESCRIPTOR) || static_cast<SIZE_T>(reportedSize) > MAX_DESCRIPTOR_SIZE) {
-                        CloseHandle(hDevice);
+                if (reportedSize > 0 && reportedSize < static_cast<DWORD>(MAX_DESCRIPTOR_SIZE) && reportedSize >= sizeof(STORAGE_DEVICE_DESCRIPTOR)) {
+                    allocatedSize = static_cast<SIZE_T>(reportedSize);
+                    PVOID allocBase = nullptr;
+                    SIZE_T regionSize = allocatedSize;
+                    st = pNtAllocateVirtualMemory((HANDLE)-1, &allocBase, 0, &regionSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+                    if (!NT_SUCCESS(st) || allocBase == nullptr) {
+                        pNtClose(hDevice);
                         continue;
                     }
-                    allocatedSize = static_cast<SIZE_T>(reportedSize);
-                    allocatedBuffer = static_cast<BYTE*>(LocalAlloc(LMEM_FIXED, allocatedSize));
-                    if (!allocatedBuffer) {
-                        CloseHandle(hDevice);
+                    allocatedBuffer = reinterpret_cast<BYTE*>(allocBase);
+                    st = pNtDeviceIoControlFile(hDevice, nullptr, nullptr, nullptr, &iosb,
+                        ioctl,
+                        &query, sizeof(query),
+                        allocatedBuffer, static_cast<ULONG>(allocatedSize));
+                    if (!NT_SUCCESS(st)) {
+                        PVOID freeBase = reinterpret_cast<PVOID>(allocatedBuffer);
+                        SIZE_T freeSize = allocatedSize;
+                        pNtFreeVirtualMemory((HANDLE)-1, &freeBase, &freeSize, MEM_RELEASE);
+                        pNtClose(hDevice);
                         continue;
                     }
                     descriptor = reinterpret_cast<STORAGE_DEVICE_DESCRIPTOR*>(allocatedBuffer);
-                    if (!DeviceIoControl(
-                        hDevice,
-                        IOCTL_STORAGE_QUERY_PROPERTY,
-                        &query, sizeof(query),
-                        descriptor, static_cast<DWORD>(allocatedSize),
-                        &bytesReturned,
-                        nullptr))
-                    {
-                        LocalFree(allocatedBuffer);
-                        CloseHandle(hDevice);
-                        continue;
-                    }
                 }
                 else {
-                    CloseHandle(hDevice);
+                    pNtClose(hDevice);
                     continue;
                 }
             }
@@ -7821,10 +7992,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 const DWORD reportedSize = descriptor->Size;
                 if (reportedSize < sizeof(STORAGE_DEVICE_DESCRIPTOR) || static_cast<SIZE_T>(reportedSize) > MAX_DESCRIPTOR_SIZE) {
                     if (allocatedBuffer) {
-                        LocalFree(allocatedBuffer);
+                        PVOID freeBase = reinterpret_cast<PVOID>(allocatedBuffer);
+                        SIZE_T freeSize = allocatedSize;
+                        pNtFreeVirtualMemory((HANDLE)-1, &freeBase, &freeSize, MEM_RELEASE);
                         allocatedBuffer = nullptr;
                     }
-                    CloseHandle(hDevice);
+                    pNtClose(hDevice);
                     continue;
                 }
             }
@@ -7839,19 +8012,23 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
                 if (is_qemu_serial(serial) || is_vbox_serial(serial, serialLen)) {
                     if (allocatedBuffer) {
-                        LocalFree(allocatedBuffer);
+                        PVOID freeBase = reinterpret_cast<PVOID>(allocatedBuffer);
+                        SIZE_T freeSize = allocatedSize;
+                        pNtFreeVirtualMemory((HANDLE)-1, &freeBase, &freeSize, MEM_RELEASE);
                         allocatedBuffer = nullptr;
                     }
-                    CloseHandle(hDevice);
+                    pNtClose(hDevice);
                     return true;
                 }
             }
 
             if (allocatedBuffer) {
-                LocalFree(allocatedBuffer);
+                PVOID freeBase = reinterpret_cast<PVOID>(allocatedBuffer);
+                SIZE_T freeSize = allocatedSize;
+                pNtFreeVirtualMemory((HANDLE)-1, &freeBase, &freeSize, MEM_RELEASE);
                 allocatedBuffer = nullptr;
             }
-            CloseHandle(hDevice);
+            pNtClose(hDevice);
         }
 
         if (successfulOpens == 0) {
@@ -7870,42 +8047,94 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::IVSHMEM
      */
     [[nodiscard]] static bool ivshmem() {
+        typedef struct _KEY_FULL_INFORMATION {
+            LARGE_INTEGER LastWriteTime;
+            ULONG         TitleIndex;
+            ULONG         ClassOffset;
+            ULONG         ClassLength;
+            ULONG         SubKeys;
+            ULONG         MaxNameLen;
+            ULONG         MaxClassLen;
+            ULONG         Values;
+            ULONG         MaxValueNameLen;
+            ULONG         MaxValueDataLen;
+            WCHAR         Class[1];
+        } KEY_FULL_INFORMATION, * PKEY_FULL_INFORMATION;
+
+        typedef enum _KEY_INFORMATION_CLASS {
+            KeyBasicInformation,
+            KeyNodeInformation,
+            KeyFullInformation,
+            KeyNameInformation,
+            KeyCachedInformation,
+            KeyFlagsInformation,
+            KeyVirtualizationInformation,
+            KeyHandleTagsInformation,
+            KeyTrustInformation,
+            KeyLayerInformation,
+            MaxKeyInfoClass
+        } KEY_INFORMATION_CLASS;
+
+        const HMODULE ntdll = util::get_ntdll();
+        if (!ntdll) return false;
+
+        const char* names[] = { "RtlInitUnicodeString", "NtOpenKey", "NtQueryKey", "NtClose" };
+        void* funcs[ARRAYSIZE(names)] = {};
+        util::get_function_address(ntdll, names, funcs, ARRAYSIZE(names));
+
+        const auto pRtlInitUnicodeString = reinterpret_cast<void(__stdcall*)(PUNICODE_STRING, PCWSTR)>(funcs[0]);
+        const auto pNtOpenKey = reinterpret_cast<NTSTATUS(__stdcall*)(PHANDLE, ACCESS_MASK, POBJECT_ATTRIBUTES)>(funcs[1]);
+        const auto pNtQueryKey = reinterpret_cast<NTSTATUS(__stdcall*)(HANDLE, KEY_INFORMATION_CLASS, PVOID, ULONG, PULONG)>(funcs[2]);
+        const auto pNtClose = reinterpret_cast<NTSTATUS(__stdcall*)(HANDLE)>(funcs[3]);
+
+        if (!pRtlInitUnicodeString || !pNtOpenKey || !pNtQueryKey || !pNtClose) {
+            return false;
+        }
+
         constexpr GUID GUID_IVSHMEM_IFACE =
         { 0xdf576976, 0x569d, 0x4672, { 0x95, 0xa0, 0xf5, 0x7e, 0x4e, 0xa0, 0xb2, 0x10 } };
 
         wchar_t interface_class_path[256];
         swprintf_s(
             interface_class_path,
-            L"SYSTEM\\CurrentControlSet\\Control\\DeviceClasses\\{%08lX-%04hX-%04hX-%02hhX%02hhX-%02hhX%02hhX%02hhX%02hhX%02hhX%02hhX}",
+            ARRAYSIZE(interface_class_path),
+            L"\\Registry\\Machine\\SYSTEM\\CurrentControlSet\\Control\\DeviceClasses\\{%08lX-%04hX-%04hX-%02hhX%02hhX-%02hhX%02hhX%02hhX%02hhX%02hhX%02hhX}",
             GUID_IVSHMEM_IFACE.Data1, GUID_IVSHMEM_IFACE.Data2, GUID_IVSHMEM_IFACE.Data3,
             GUID_IVSHMEM_IFACE.Data4[0], GUID_IVSHMEM_IFACE.Data4[1], GUID_IVSHMEM_IFACE.Data4[2],
             GUID_IVSHMEM_IFACE.Data4[3], GUID_IVSHMEM_IFACE.Data4[4], GUID_IVSHMEM_IFACE.Data4[5],
             GUID_IVSHMEM_IFACE.Data4[6], GUID_IVSHMEM_IFACE.Data4[7]
         );
 
-        HKEY hKey = nullptr;
-        if (RegOpenKeyExW(
-            HKEY_LOCAL_MACHINE,
-            interface_class_path,
-            0,
-            KEY_READ,
-            &hKey
-        ) != ERROR_SUCCESS) {
+        UNICODE_STRING uPath;
+        pRtlInitUnicodeString(&uPath, interface_class_path);
+
+        OBJECT_ATTRIBUTES objAttr;
+        RtlZeroMemory(&objAttr, sizeof(objAttr));
+        objAttr.Length = sizeof(objAttr);
+        objAttr.ObjectName = &uPath;
+        objAttr.Attributes = OBJ_CASE_INSENSITIVE;
+
+        HANDLE hKey = nullptr;
+        NTSTATUS st = pNtOpenKey(&hKey, KEY_READ, &objAttr);
+        if (!NT_SUCCESS(st) || hKey == nullptr) {
             return false;
         }
+
+        BYTE infoBuf[512] = {};
+        ULONG returnedLen = 0;
+        st = pNtQueryKey(hKey, KeyFullInformation, infoBuf, sizeof(infoBuf), &returnedLen);
 
         DWORD number_of_subkeys = 0;
-        if (RegQueryInfoKeyW(
-            hKey,
-            nullptr, nullptr, nullptr,
-            &number_of_subkeys,
-            nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr
-        ) != ERROR_SUCCESS) {
-            RegCloseKey(hKey);
+        if (NT_SUCCESS(st) && returnedLen >= sizeof(KEY_FULL_INFORMATION)) {
+            auto* kfi = reinterpret_cast<KEY_FULL_INFORMATION*>(infoBuf);
+            number_of_subkeys = static_cast<DWORD>(kfi->SubKeys);
+        }
+        else {
+            pNtClose(hKey);
             return false;
         }
 
-        RegCloseKey(hKey);
+        pNtClose(hKey);
 
         return number_of_subkeys > 0;
     }
@@ -7955,51 +8184,94 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::DEVICE_HANDLES
      */
     [[nodiscard]] static bool device_handles() {
-        const HANDLE handle1 = CreateFile(_T("\\\\.\\VBoxMiniRdrDN"), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-        const HANDLE handle2 = CreateFile(_T("\\\\.\\pipe\\VBoxMiniRdDN"), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-        const HANDLE handle3 = CreateFile(_T("\\\\.\\VBoxTrayIPC"), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-        const HANDLE handle4 = CreateFile(_T("\\\\.\\pipe\\VBoxTrayIPC"), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-        const HANDLE handle5 = CreateFile(_T("\\\\.\\HGFS"), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-        const HANDLE handle6 = CreateFile(_T("\\\\.\\pipe\\cuckoo"), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        const HMODULE ntdll = util::get_ntdll();
+        if (!ntdll) return false;
+
+        const char* names[] = { "RtlInitUnicodeString", "NtOpenFile", "NtClose" };
+        void* funcs[ARRAYSIZE(names)] = {};
+        util::get_function_address(ntdll, names, funcs, ARRAYSIZE(names));
+
+        const auto pRtlInitUnicodeString = reinterpret_cast<void(__stdcall*)(PUNICODE_STRING, PCWSTR)>(funcs[0]);
+        const auto pNtOpenFile = reinterpret_cast<NTSTATUS(__stdcall*)(PHANDLE, ACCESS_MASK, POBJECT_ATTRIBUTES, PIO_STATUS_BLOCK, ULONG, ULONG)>(funcs[1]);
+        const auto pNtClose = reinterpret_cast<NTSTATUS(__stdcall*)(HANDLE)>(funcs[2]);
+
+        if (!pRtlInitUnicodeString || !pNtOpenFile || !pNtClose) {
+            return false;
+        }
+
+        auto try_open_native = [&](const wchar_t* nativePath) -> HANDLE {
+            UNICODE_STRING uPath;
+            pRtlInitUnicodeString(&uPath, nativePath);
+
+            OBJECT_ATTRIBUTES objAttr;
+            RtlZeroMemory(&objAttr, sizeof(objAttr));
+            objAttr.Length = sizeof(objAttr);
+            objAttr.ObjectName = &uPath;
+            objAttr.Attributes = OBJ_CASE_INSENSITIVE;
+
+            IO_STATUS_BLOCK iosb;
+            HANDLE hFile = nullptr;
+
+            // minimal read access to emulate CreateFile(...GENERIC_READ...)
+            constexpr ACCESS_MASK desiredAccess = FILE_READ_DATA | FILE_READ_ATTRIBUTES;
+            constexpr ULONG shareAccess = FILE_SHARE_READ;
+            constexpr ULONG openOptions = FILE_OPEN | FILE_SYNCHRONOUS_IO_NONALERT;
+
+            const NTSTATUS st = pNtOpenFile(&hFile, desiredAccess, &objAttr, &iosb, shareAccess, openOptions);
+            if (NT_SUCCESS(st) && hFile) {
+                return hFile;
+            }
+            return INVALID_HANDLE_VALUE;
+        };
+
+        // \\.\Name -> \??\Name, \\.\pipe\name -> \??\pipe\name
+        const wchar_t* paths[] = {
+            L"\\??\\VBoxMiniRdrDN",    // \\.\VBoxMiniRdrDN
+            L"\\??\\pipe\\VBoxMiniRdDN",// \\.\pipe\VBoxMiniRdDN
+            L"\\??\\VBoxTrayIPC",      // \\.\VBoxTrayIPC
+            L"\\??\\pipe\\VBoxTrayIPC",// \\.\pipe\VBoxTrayIPC
+            L"\\??\\HGFS",             // \\.\HGFS (VMware)
+            L"\\??\\pipe\\cuckoo"      // \\.\pipe\cuckoo (Cuckoo)
+        };
+
+        HANDLE handles[ARRAYSIZE(paths)]{};
+        for (size_t i = 0; i < ARRAYSIZE(paths); ++i) {
+            handles[i] = try_open_native(paths[i]);
+        }
 
         bool vbox = false;
-
-        if (
-            (handle1 != INVALID_HANDLE_VALUE) ||
-            (handle2 != INVALID_HANDLE_VALUE) ||
-            (handle3 != INVALID_HANDLE_VALUE) ||
-            (handle4 != INVALID_HANDLE_VALUE)
-        ) {
+        if (handles[0] != INVALID_HANDLE_VALUE ||
+            handles[1] != INVALID_HANDLE_VALUE ||
+            handles[2] != INVALID_HANDLE_VALUE ||
+            handles[3] != INVALID_HANDLE_VALUE) {
             vbox = true;
         }
 
-        CloseHandle(handle1);
-        CloseHandle(handle2);
-        CloseHandle(handle3);
-        CloseHandle(handle4);
+        for (size_t i = 0; i < 4; ++i) {
+            if (handles[i] != INVALID_HANDLE_VALUE) {
+                pNtClose(handles[i]);
+            }
+        }
 
         if (vbox) {
             debug("DEVICE_HANDLES: Detected VBox related device handles");
             return core::add(brands::VBOX);
         }
 
-        if (handle5 != INVALID_HANDLE_VALUE) {
-            CloseHandle(handle5);
+        if (handles[4] != INVALID_HANDLE_VALUE) {
+            pNtClose(handles[4]);
             debug("DEVICE_HANDLES: Detected VMware related device (HGFS)");
             return core::add(brands::VMWARE);
         }
 
-        if (handle6 != INVALID_HANDLE_VALUE) {
-            CloseHandle(handle6);
+        if (handles[5] != INVALID_HANDLE_VALUE) {
+            pNtClose(handles[5]);
             debug("DEVICE_HANDLES: Detected Cuckoo related device (pipe)");
             return core::add(brands::CUCKOO);
         }
 
-        CloseHandle(handle5);
-        CloseHandle(handle6);
-
         return false;
-    }    
+    }
 
 
     /**
@@ -8042,11 +8314,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        typedef struct _HV_DETAILS {
+        struct HV_DETAILS {
             ULONG Data[4];
-        } HV_DETAILS, * PHV_DETAILS;
-
-        typedef struct _SYSTEM_HYPERVISOR_DETAIL_INFORMATION {
+        };
+        struct SYSTEM_HYPERVISOR_DETAIL_INFORMATION {
             HV_DETAILS HvVendorAndMaxFunction;
             HV_DETAILS HypervisorInterface;
             HV_DETAILS HypervisorVersion;
@@ -8054,26 +8325,26 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             HV_DETAILS HwFeatures;
             HV_DETAILS EnlightenmentInfo;
             HV_DETAILS ImplementationLimits;
-        } SYSTEM_HYPERVISOR_DETAIL_INFORMATION, * PSYSTEM_HYPERVISOR_DETAIL_INFORMATION;
+        };
 
-        typedef NTSTATUS(__stdcall* FN_NtQuerySystemInformation)(
+        using PHV_DETAILS = HV_DETAILS*;
+        using PSYSTEM_HYPERVISOR_DETAIL_INFORMATION = SYSTEM_HYPERVISOR_DETAIL_INFORMATION*;
+
+        using FN_NtQuerySystemInformation = NTSTATUS(__stdcall*)(
             SYSTEM_INFORMATION_CLASS SystemInformationClass,
             PVOID SystemInformation,
             ULONG SystemInformationLength,
             PULONG ReturnLength
         );
 
-        const HMODULE hNtdll = GetModuleHandle(_T("ntdll.dll"));
-        if (!hNtdll) {
-            return false;
-        }
+        const HMODULE ntdll = util::get_ntdll();
+        if (!ntdll) return false;        
 
         const char* functionNames[] = { "NtQuerySystemInformation" };
-        void* functions[1] = { nullptr };
+        void* funcs[ARRAYSIZE(functionNames)] = {};
+        util::get_function_address(ntdll, functionNames, funcs, ARRAYSIZE(functionNames));
 
-        util::GetFunctionAddress(hNtdll, functionNames, functions, 1);
-
-        FN_NtQuerySystemInformation pNtQuerySystemInformation = reinterpret_cast<FN_NtQuerySystemInformation>(functions[0]);
+        const FN_NtQuerySystemInformation pNtQuerySystemInformation = reinterpret_cast<FN_NtQuerySystemInformation>(funcs[0]);
         if (pNtQuerySystemInformation) {
             SYSTEM_HYPERVISOR_DETAIL_INFORMATION hvInfo = { {} };
             const NTSTATUS status = pNtQuerySystemInformation(static_cast<SYSTEM_INFORMATION_CLASS>(0x9F), &hvInfo, sizeof(hvInfo), nullptr);
@@ -8097,44 +8368,41 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::VIRTUAL_REGISTRY
      */
     [[nodiscard]] static bool virtual_registry() {
-    #pragma warning(disable : 4459)
-        typedef struct _UNICODE_STRING {
+        struct UNICODE_STRING {
             USHORT Length;
             USHORT MaximumLength;
             PWSTR  Buffer;
-        } UNICODE_STRING, * PUNICODE_STRING;
-    
-        typedef struct _OBJECT_ATTRIBUTES {
+        };
+        struct OBJECT_ATTRIBUTES {
             ULONG Length;
             HANDLE RootDirectory;
-            PUNICODE_STRING ObjectName;
+            UNICODE_STRING* ObjectName;
             ULONG Attributes;
             PVOID SecurityDescriptor;
             PVOID SecurityQualityOfService;
-        } OBJECT_ATTRIBUTES, * POBJECT_ATTRIBUTES;
-    
-        typedef enum _OBJECT_INFORMATION_CLASS {
+        };
+        enum OBJECT_INFORMATION_CLASS {
             ObjectBasicInformation = 0,
             ObjectNameInformation = 1,
             ObjectTypeInformation = 2
-        } OBJECT_INFORMATION_CLASS;
-    
-        typedef struct _OBJECT_NAME_INFORMATION {
+        };
+        struct OBJECT_NAME_INFORMATION {
             UNICODE_STRING Name;
-        } OBJECT_NAME_INFORMATION, * POBJECT_NAME_INFORMATION;
-    #pragma warning(default : 4459)
+        };
+
+        using PUNICODE_STRING = UNICODE_STRING*;
+        using POBJECT_ATTRIBUTES = OBJECT_ATTRIBUTES*;
+        using POBJECT_NAME_INFORMATION = OBJECT_NAME_INFORMATION*;
+        using PNtOpenKey = NTSTATUS(__stdcall*)(PHANDLE, ACCESS_MASK, POBJECT_ATTRIBUTES );
+        using PNtQueryObject = NTSTATUS(__stdcall*)(HANDLE, OBJECT_INFORMATION_CLASS, PVOID, ULONG, PULONG);
     
-        typedef NTSTATUS(__stdcall* PNtOpenKey)(PHANDLE, ACCESS_MASK, POBJECT_ATTRIBUTES);
-        typedef NTSTATUS(__stdcall* PNtQueryObject)(HANDLE, OBJECT_INFORMATION_CLASS, PVOID, ULONG, PULONG);
-    
-        const HMODULE hModule = GetModuleHandle(_T("ntdll.dll"));
-        if (!hModule)
-            return false;
+        const HMODULE ntdll = util::get_ntdll();
+        if (!ntdll) return false;
     
         const char* functionNames[] = { "NtOpenKey", "NtQueryObject" };
         void* functionPointers[2] = { nullptr, nullptr };
     
-        util::GetFunctionAddress(hModule, functionNames, functionPointers, 2);
+        util::get_function_address(ntdll, functionNames, functionPointers, 2);
     
         const auto NtOpenKey = reinterpret_cast<PNtOpenKey>(functionPointers[0]);
         const auto NtQueryObject = reinterpret_cast<PNtQueryObject>(functionPointers[1]);
@@ -8167,7 +8435,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (!(((NTSTATUS)(status)) >= 0))
             return false;
     
-        auto pObjectName = reinterpret_cast<POBJECT_NAME_INFORMATION>(buffer);
+        const auto pObjectName = reinterpret_cast<POBJECT_NAME_INFORMATION>(buffer);
     
         UNICODE_STRING expectedName{};
         expectedName.Buffer = const_cast<PWSTR>(L"\\REGISTRY\\USER");
@@ -8186,38 +8454,95 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::AUDIO
      */
     [[nodiscard]] static bool audio() {
-        HKEY hKey = nullptr;
-        const LONG err = RegOpenKeyEx(
-            HKEY_LOCAL_MACHINE,
-            TEXT("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\MMDevices\\Audio\\Render"),
-            0,
-            KEY_READ | KEY_WOW64_64KEY,
-            &hKey
-        );
+        struct KEY_FULL_INFORMATION {
+            LARGE_INTEGER LastWriteTime;
+            ULONG         TitleIndex;
+            ULONG         ClassOffset;
+            ULONG         ClassLength;
+            ULONG         SubKeys;
+            ULONG         MaxNameLen;
+            ULONG         MaxClassLen;
+            ULONG         Values;             
+            ULONG         MaxValueNameLen;
+            ULONG         MaxValueDataLen;
+            WCHAR         Class[1];
+        };
+        using PKEY_FULL_INFORMATION = KEY_FULL_INFORMATION*;
 
-        if (err != 0L) {
-            return true;  
+        enum KEY_INFORMATION_CLASS {
+            KeyBasicInformation,
+            KeyNodeInformation,
+            KeyFullInformation,
+            KeyNameInformation,
+            KeyCachedInformation,
+            KeyFlagsInformation,
+            KeyVirtualizationInformation,
+            KeyHandleTagsInformation,
+            KeyTrustInformation,
+            KeyLayerInformation,
+            MaxKeyInfoClass
+        };
+
+        const HMODULE ntdll = util::get_ntdll();
+        if (!ntdll) return false;
+
+        const char* names[] = { "RtlInitUnicodeString", "NtOpenKey", "NtQueryKey", "NtClose" };
+        void* funcs[ARRAYSIZE(names)] = {};
+        util::get_function_address(ntdll, names, funcs, ARRAYSIZE(names));
+
+        const auto pRtlInitUnicodeString = reinterpret_cast<void(__stdcall*)(PUNICODE_STRING, PCWSTR)>(funcs[0]);
+        const auto pNtOpenKey = reinterpret_cast<NTSTATUS(__stdcall*)(PHANDLE, ACCESS_MASK, POBJECT_ATTRIBUTES)>(funcs[1]);
+        const auto pNtQueryKey = reinterpret_cast<NTSTATUS(__stdcall*)(HANDLE, KEY_INFORMATION_CLASS, PVOID, ULONG, PULONG)>(funcs[2]);
+        const auto pNtClose = reinterpret_cast<NTSTATUS(__stdcall*)(HANDLE)>(funcs[3]);
+
+        if (!pRtlInitUnicodeString || !pNtOpenKey || !pNtQueryKey || !pNtClose) {
+            return false;
         }
-    
-        DWORD subKeyCount = 0;
-        RegQueryInfoKey(
-            hKey,
-            nullptr,   
-            nullptr,    
-            nullptr,    
-            &subKeyCount,  
-            nullptr,    
-            nullptr,   
-            nullptr,    
-            nullptr,    
-            nullptr,   
-            nullptr,    
-            nullptr     
-        );
-    
-        RegCloseKey(hKey);
-    
-        return subKeyCount == 0;
+
+        const wchar_t* nativePath = L"\\Registry\\Machine\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\MMDevices\\Audio\\Render";
+
+        UNICODE_STRING uPath;
+        pRtlInitUnicodeString(&uPath, nativePath);
+
+        OBJECT_ATTRIBUTES objAttr;
+        RtlZeroMemory(&objAttr, sizeof(objAttr));
+        objAttr.Length = sizeof(objAttr);
+        objAttr.ObjectName = &uPath;
+        objAttr.Attributes = OBJ_CASE_INSENSITIVE;
+
+        HANDLE hKey = nullptr;
+        const ACCESS_MASK desiredAccess = KEY_READ;
+
+        NTSTATUS st = pNtOpenKey(&hKey, desiredAccess, &objAttr);
+        if (!NT_SUCCESS(st) || hKey == nullptr) {
+            return false;
+        }
+
+        constexpr KEY_INFORMATION_CLASS InfoClass = KeyFullInformation;
+        std::vector<BYTE> infoBuf(512);
+        ULONG returnedLen = 0;
+
+        st = pNtQueryKey(hKey, InfoClass, infoBuf.data(), static_cast<ULONG>(infoBuf.size()), &returnedLen);
+
+        if (!NT_SUCCESS(st) && returnedLen > infoBuf.size()) {
+            infoBuf.resize(returnedLen);
+            st = pNtQueryKey(hKey, InfoClass, infoBuf.data(), static_cast<ULONG>(infoBuf.size()), &returnedLen);
+        }
+
+        bool hasValues = false;
+        if (NT_SUCCESS(st) && returnedLen >= sizeof(KEY_FULL_INFORMATION)) {
+            auto* kfi = reinterpret_cast<PKEY_FULL_INFORMATION>(infoBuf.data());
+            const DWORD valueCount = static_cast<DWORD>(kfi->Values); // values, not subkeys
+            hasValues = (valueCount > 0);
+        }
+        else {
+            pNtClose(hKey);
+            return false;
+        }
+
+        pNtClose(hKey);
+
+        return hasValues;
     }
     
     
@@ -8422,7 +8747,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      */
     [[nodiscard]] static bool trap() {
         bool hypervisorCaught = false;
-#if (x86)
+    #if (x86)
         // when a single-step (TF) and hardware breakpoint (DR0) collide, Intel CPUs set both DR6.BS and DR6.B0 to report both events, which help make this detection trick
         // AMD CPUs prioritize the breakpoint, setting only its corresponding bit in DR6 and clearing the single-step bit, which is why this technique is not compatible with AMD
         if (!cpu::is_intel()) {
@@ -8441,30 +8766,73 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         };
         SIZE_T trampSize = sizeof(trampoline);
 
-        // simple way to support x86 without recurring to inline assembly
-        void* execMem = VirtualAlloc(nullptr, trampSize,
-            MEM_COMMIT | MEM_RESERVE,
-            PAGE_READWRITE);
-        if (!execMem) {
+        const HMODULE ntdll = util::get_ntdll();
+        if (!ntdll) return false;
+
+        const char* names[] = {
+            "NtAllocateVirtualMemory",
+            "NtProtectVirtualMemory",
+            "NtFreeVirtualMemory",
+            "NtFlushInstructionCache",
+            "NtClose",
+            "NtGetContextThread",
+            "NtSetContextThread"
+        };
+        void* funcs[ARRAYSIZE(names)] = {};
+        util::get_function_address(ntdll, names, funcs, ARRAYSIZE(names));
+
+        using NtAllocateVirtualMemory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, ULONG_PTR, PSIZE_T, ULONG, ULONG);
+        using NtProtectVirtualMemory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG, PULONG);
+        using NtFreeVirtualMemory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG);
+        using NtFlushInstructionCache_t = NTSTATUS(__stdcall*)(HANDLE, PVOID, SIZE_T);
+        using NtClose_t = NTSTATUS(__stdcall*)(HANDLE);
+        using NtGetContextThread_t = NTSTATUS(__stdcall*)(HANDLE, PCONTEXT);
+        using NtSetContextThread_t = NTSTATUS(__stdcall*)(HANDLE, PCONTEXT);
+
+        const auto pNtAllocateVirtualMemory = reinterpret_cast<NtAllocateVirtualMemory_t>(funcs[0]);
+        const auto pNtProtectVirtualMemory = reinterpret_cast<NtProtectVirtualMemory_t>(funcs[1]);
+        const auto pNtFreeVirtualMemory = reinterpret_cast<NtFreeVirtualMemory_t>(funcs[2]);
+        const auto pNtFlushInstructionCache = reinterpret_cast<NtFlushInstructionCache_t>(funcs[3]);
+        const auto pNtClose = reinterpret_cast<NtClose_t>(funcs[4]);
+        const auto pNtGetContextThread = reinterpret_cast<NtGetContextThread_t>(funcs[5]);
+        const auto pNtSetContextThread = reinterpret_cast<NtSetContextThread_t>(funcs[6]);
+
+        if (!pNtAllocateVirtualMemory || !pNtProtectVirtualMemory || !pNtFlushInstructionCache ||
+            !pNtFreeVirtualMemory || !pNtGetContextThread || !pNtSetContextThread || !pNtClose) {
+            return false;
+        }
+
+        PVOID execMem = nullptr;
+        SIZE_T regionSize = trampSize;
+        NTSTATUS st = pNtAllocateVirtualMemory((HANDLE)-1, &execMem, 0, &regionSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        if (!NT_SUCCESS(st) || !execMem) {
             return false;
         }
         memcpy(execMem, trampoline, trampSize);
 
-        DWORD oldProtect = 0;
-        if (!VirtualProtect(execMem, trampSize, PAGE_EXECUTE_READ, &oldProtect)) {
-            VirtualFree(execMem, 0, MEM_RELEASE);
-            return false;
+        {
+            PVOID tmpBase = execMem;
+            SIZE_T tmpSz = trampSize;
+            ULONG oldProt = 0;
+            st = pNtProtectVirtualMemory((HANDLE)-1, &tmpBase, &tmpSz, PAGE_EXECUTE_READ, &oldProt);
+            if (!NT_SUCCESS(st)) {
+                PVOID freeBase = execMem; SIZE_T freeSize = trampSize;
+                pNtFreeVirtualMemory((HANDLE)-1, &freeBase, &freeSize, MEM_RELEASE);
+                return false;
+            }
         }
-        FlushInstructionCache(GetCurrentProcess(), execMem, trampSize);
+
+        pNtFlushInstructionCache((HANDLE)-1, execMem, trampSize);
 
         int hitCount = 0;
 
-        // save original debug registers
         CONTEXT origCtx{};
         origCtx.ContextFlags = CONTEXT_DEBUG_REGISTERS;
-        const HANDLE thr = GetCurrentThread();
-        if (!GetThreadContext(thr, &origCtx)) {
-            VirtualFree(execMem, 0, MEM_RELEASE);
+        const HANDLE thrHandle = GetCurrentThread(); 
+
+        if (!NT_SUCCESS(pNtGetContextThread(thrHandle, &origCtx))) {
+            PVOID freeBase = execMem; SIZE_T freeSize = trampSize;
+            pNtFreeVirtualMemory((HANDLE)-1, &freeBase, &freeSize, MEM_RELEASE);
             return false;
         }
 
@@ -8473,9 +8841,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const uintptr_t baseAddr = reinterpret_cast<uintptr_t>(execMem);
         dbgCtx.Dr0 = baseAddr + 11; // single step breakpoint address
         dbgCtx.Dr7 = 1;             // enable local breakpoint 0
-        if (!SetThreadContext(thr, &dbgCtx)) {
-            SetThreadContext(thr, &origCtx);
-            VirtualFree(execMem, 0, MEM_RELEASE);
+
+        if (!NT_SUCCESS(pNtSetContextThread(thrHandle, &dbgCtx))) {
+            pNtSetContextThread(thrHandle, &origCtx);
+            PVOID freeBase = execMem; SIZE_T freeSize = trampSize;
+            pNtFreeVirtualMemory((HANDLE)-1, &freeBase, &freeSize, MEM_RELEASE);
             return false;
         }
 
@@ -8513,9 +8883,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
         }
 
-        SetThreadContext(thr, &origCtx);
-        VirtualFree(execMem, 0, MEM_RELEASE);
-#endif
+        pNtSetContextThread(thrHandle, &origCtx);
+
+        PVOID freeBase = execMem; SIZE_T freeSize = trampSize;
+        pNtFreeVirtualMemory((HANDLE)-1, &freeBase, &freeSize, MEM_RELEASE);
+
+    #endif
         return hypervisorCaught;
     }
 
@@ -8527,61 +8900,60 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      */
     [[nodiscard]] static bool ud() {
         bool saw_ud = false;
-    #if (MSVC)
+
         #if (x86)
-            // ud2; ret
-            constexpr unsigned char ud_opcodes[] = { 0x0F, 0x0B, 0xC3 };
+                constexpr unsigned char ud_opcodes[] = { 0x0F, 0x0B, 0xC3 }; // ud2; ret
         #elif (ARM32)
-            // udf #0; bx lr
-            // (Little-endian for 0xE7F000F0 and 0xE12FFF1E)
-            constexpr unsigned char ud_opcodes[] = { 0xF0, 0x00, 0xF0, 0xE7, 0x1E, 0xFF, 0x2F, 0xE1 };
+                constexpr unsigned char ud_opcodes[] = { 0xF0, 0x00, 0xF0, 0xE7, 0x1E, 0xFF, 0x2F, 0xE1 };
         #elif (ARM64)
-            // hlt #0; ret
-            // (Little-endian for 0xD4400000 and 0xD65F03C0)
-            constexpr unsigned char ud_opcodes[] = { 0x00, 0x00, 0x40, 0xD4, 0xC0, 0x03, 0x5F, 0xD6 };
+                constexpr unsigned char ud_opcodes[] = { 0x00, 0x00, 0x40, 0xD4, 0xC0, 0x03, 0x5F, 0xD6 };
         #else
-            // architecture not supported by this check
-            return false;
-    #endif
-
-        void* stub = nullptr;
-
-        __try {
-            stub = VirtualAlloc(nullptr, sizeof(ud_opcodes), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-            if (!stub) {
-                __leave;
-            }
-
-            memcpy(stub, ud_opcodes, sizeof(ud_opcodes));
-
-            DWORD oldProtect = 0;
-            if (!VirtualProtect(stub, sizeof(ud_opcodes), PAGE_EXECUTE_READ, &oldProtect)) {
-                __leave;
-            }
-
-            // the instruction cache must be flushed after writing code to memory on ARM
-        #if (ARM)
-            FlushInstructionCache(GetCurrentProcess(), stub, sizeof(ud_opcodes));
-        #else
-            FlushInstructionCache(GetCurrentProcess(), stub, sizeof(ud_opcodes));
+                return saw_ud;
         #endif
 
-            __try {
-                reinterpret_cast<void(*)()>(stub)();
-            }
-            __except (GetExceptionCode() == EXCEPTION_ILLEGAL_INSTRUCTION
-                ? EXCEPTION_EXECUTE_HANDLER
-                : EXCEPTION_CONTINUE_SEARCH)
-            {
-                saw_ud = true;
-            }
+        const HMODULE ntdll = util::get_ntdll();
+        if (!ntdll) return false;
+
+        const char* names[] = { "NtAllocateVirtualMemory", "NtProtectVirtualMemory", "NtFlushInstructionCache", "NtFreeVirtualMemory" };
+        void* funcs[ARRAYSIZE(names)] = {};
+        util::get_function_address(ntdll, names, funcs, ARRAYSIZE(names));
+
+        const auto pNtAllocateVirtualMemory = reinterpret_cast<NTSTATUS(__stdcall*)(HANDLE, PVOID*, ULONG_PTR, PSIZE_T, ULONG, ULONG)>(funcs[0]);
+        const auto pNtProtectVirtualMemory = reinterpret_cast<NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG, PULONG)>(funcs[1]);
+        const auto pNtFlushInstructionCache = reinterpret_cast<NTSTATUS(__stdcall*)(HANDLE, PVOID, SIZE_T)>(funcs[2]);
+        const auto pNtFreeVirtualMemory = reinterpret_cast<NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG)>(funcs[3]);
+
+        if (!pNtAllocateVirtualMemory || !pNtProtectVirtualMemory || !pNtFlushInstructionCache || !pNtFreeVirtualMemory) {
+            return false;
         }
-        __finally {
-            if (stub) {
-                VirtualFree(stub, 0, MEM_RELEASE);
-            }
+
+        PVOID base = nullptr;
+        SIZE_T regionSize = sizeof(ud_opcodes);
+        NTSTATUS st = pNtAllocateVirtualMemory((HANDLE)-1, &base, 0, &regionSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        if (!NT_SUCCESS(st) || !base) {
+            return false;
         }
-#endif
+
+        memcpy(base, ud_opcodes, sizeof(ud_opcodes));
+
+        ULONG oldProtect = 0;
+        st = pNtProtectVirtualMemory((HANDLE)-1, &base, &regionSize, PAGE_EXECUTE_READ, &oldProtect);
+        if (!NT_SUCCESS(st)) {
+            pNtFreeVirtualMemory((HANDLE)-1, &base, &regionSize, MEM_RELEASE);
+            return false;
+        }
+
+        pNtFlushInstructionCache((HANDLE)-1, base, regionSize);
+
+        __try {
+            reinterpret_cast<void(*)()>(base)();
+        }
+        __except (GetExceptionCode() == EXCEPTION_ILLEGAL_INSTRUCTION ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH) {
+            saw_ud = true;
+        }
+
+        pNtFreeVirtualMemory((HANDLE)-1, &base, &regionSize, MEM_RELEASE);
+
         return !saw_ud;
     }
 
@@ -8655,7 +9027,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         VMCallInfo vmcallInfo = {};
         u64 vmcallResult = 0;
 
-        constexpr u8 intelTemplate[44] = {
+        constexpr unsigned char intelTemplate[44] = {
             0x48,0xBA,0,0,0,0,0,0,0,0,                     // mov rdx, imm64   ; PW1
             0x48,0xB9,0,0,0,0,0,0,0,0,                     // mov rcx, imm64   ; PW3
             0x48,0xB8,0,0,0,0,0,0,0,0,                     // mov rax, imm64   ; &vmcallInfo
@@ -8664,7 +9036,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             0xC3                                           // ret
         };
 
-        constexpr u8 amdTemplate[44] = {
+        constexpr unsigned char amdTemplate[44] = {
             0x48,0xBA,0,0,0,0,0,0,0,0,                     // mov rdx, imm64   ; PW1
             0x48,0xB9,0,0,0,0,0,0,0,0,                     // mov rcx, imm64   ; PW3
             0x48,0xB8,0,0,0,0,0,0,0,0,                     // mov rax, imm64   ; &vmcallInfo
@@ -8673,16 +9045,30 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             0xC3                                           // ret
         };
 
-        constexpr SIZE_T stubSize = 44;
+        const SIZE_T stubSize = sizeof(intelTemplate);
         const bool isAmd = cpu::is_amd();
 
-        // allocate RW memory so we can write template + immediates
-        void* stub = VirtualAlloc(nullptr, stubSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-        if (!stub) {
+        const HMODULE ntdll = util::get_ntdll();
+        if (!ntdll) return false;
+
+        const char* names[] = { "NtAllocateVirtualMemory", "NtProtectVirtualMemory", "NtFlushInstructionCache", "NtFreeVirtualMemory" };
+        void* funcs[ARRAYSIZE(names)] = {};
+        util::get_function_address(ntdll, names, funcs, ARRAYSIZE(names));
+
+        const auto pNtAllocateVirtualMemory = reinterpret_cast<NTSTATUS(__stdcall*)(HANDLE, PVOID*, ULONG_PTR, PSIZE_T, ULONG, ULONG)>(funcs[0]);
+        const auto pNtProtectVirtualMemory = reinterpret_cast<NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG, PULONG)>(funcs[1]);
+        const auto pNtFlushInstructionCache = reinterpret_cast<NTSTATUS(__stdcall*)(HANDLE, PVOID, SIZE_T)>(funcs[2]);
+        const auto pNtFreeVirtualMemory = reinterpret_cast<NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG)>(funcs[3]);
+
+        if (!pNtAllocateVirtualMemory || !pNtProtectVirtualMemory || !pNtFlushInstructionCache || !pNtFreeVirtualMemory) {
             return false;
         }
 
-        // copy the template while writable
+        PVOID stub = nullptr;
+        SIZE_T regionSize = stubSize;
+        NTSTATUS st = pNtAllocateVirtualMemory((HANDLE)-1, &stub, 0, &regionSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        if (!NT_SUCCESS(st) || !stub) return false;
+
         if (isAmd) {
             memcpy(stub, amdTemplate, stubSize);
         }
@@ -8690,21 +9076,24 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             memcpy(stub, intelTemplate, stubSize);
         }
 
-        // patch in the immediate values 
+        // rdx imm64
+        // rcx imm64
+        // rax imm64
+        // mov [imm64], rax immediate
         *reinterpret_cast<u64*>(reinterpret_cast<u8*>(stub) + 2) = PW1;
         *reinterpret_cast<u64*>(reinterpret_cast<u8*>(stub) + 12) = PW3;
         *reinterpret_cast<u64*>(reinterpret_cast<u8*>(stub) + 22) = reinterpret_cast<u64>(static_cast<void*>(&vmcallInfo));
         *reinterpret_cast<u64*>(reinterpret_cast<u8*>(stub) + 35) = reinterpret_cast<u64>(static_cast<void*>(&vmcallResult));
 
-        DWORD oldProtect = 0;
-        if (!VirtualProtect(stub, stubSize, PAGE_EXECUTE_READ, &oldProtect)) {
-            VirtualFree(stub, 0, MEM_RELEASE);
+        ULONG oldProtect = 0;
+        st = pNtProtectVirtualMemory((HANDLE)-1, &stub, &regionSize, PAGE_EXECUTE_READ, &oldProtect);
+        if (!NT_SUCCESS(st)) {
+            pNtFreeVirtualMemory((HANDLE)-1, &stub, &regionSize, MEM_RELEASE);
             return false;
         }
 
-        FlushInstructionCache(GetCurrentProcess(), stub, stubSize);
+        pNtFlushInstructionCache((HANDLE)-1, stub, regionSize);
 
-        // lambda that executes the stub (Intel or AMD) and checks for the CE signature
         auto tryPass = [&]() -> bool {
             vmcallInfo.structsize = static_cast<u32>(sizeof(VMCallInfo));
             vmcallInfo.level2pass = PW2;
@@ -8718,13 +9107,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 vmcallResult = 0;
             }
 
-            // the VM returns status in bits 24–31; Cheat Engine uses 0xCE here
-            return (((vmcallResult >> 24) & 0xFF) == 0xCE);
+            return (((vmcallResult >> 24) & 0xFF) == 0xCE); // the VM returns status in bits 24–31; Cheat Engine uses 0xCE here
         };
 
         const bool found = tryPass();
 
-        VirtualFree(stub, 0, MEM_RELEASE);
+        pNtFreeVirtualMemory((HANDLE)-1, &stub, &regionSize, MEM_RELEASE);
 
         if (found) return core::add(brands::DBVM);
 
@@ -8746,13 +9134,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     #endif
     {
     #if (x86_64)
-        const HMODULE ntdll = GetModuleHandle(_T("ntdll.dll"));
+        const HMODULE ntdll = util::get_ntdll();
         if (!ntdll)
             return false;
 
         const char* function_names[] = { "NtQuerySystemInformation" };
         void* functions[1] = { nullptr };
-        util::GetFunctionAddress(ntdll, function_names, functions, 1);
+        util::get_function_address(ntdll, function_names, functions, 1);
 
         using NtQuerySysInfo_t = NTSTATUS(__stdcall*)(
             SYSTEM_INFORMATION_CLASS, PVOID, ULONG, PULONG
@@ -8833,18 +9221,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::OBJECTS
      */
     [[nodiscard]] static bool objects() {
-        typedef struct _OBJECT_DIRECTORY_INFORMATION {
+        struct OBJECT_DIRECTORY_INFORMATION {
             UNICODE_STRING Name;
             UNICODE_STRING TypeName;
-        } OBJECT_DIRECTORY_INFORMATION, * POBJECT_DIRECTORY_INFORMATION;
+        };
 
-        typedef NTSTATUS(__stdcall* pfnNtOpenDirectoryObject)(
-            OUT PHANDLE DirectoryHandle,
-            IN ACCESS_MASK DesiredAccess,
-            IN POBJECT_ATTRIBUTES ObjectAttributes
-        );
-
-        typedef NTSTATUS(__stdcall* pfnNtQueryDirectoryObject)(
+        using POBJECT_DIRECTORY_INFORMATION = OBJECT_DIRECTORY_INFORMATION*;
+        using pfnNtOpenDirectoryObject = NTSTATUS(__stdcall*)(OUT PHANDLE DirectoryHandle, IN ACCESS_MASK DesiredAccess, IN POBJECT_ATTRIBUTES ObjectAttributes);
+        using pfnNtQueryDirectoryObject = NTSTATUS(__stdcall*)(
             IN HANDLE DirectoryHandle,
             OUT PVOID Buffer,
             IN ULONG Length,
@@ -8853,7 +9237,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             IN OUT PULONG Context,
             OUT PULONG ReturnLength OPTIONAL
         );
-
         constexpr auto DIRECTORY_QUERY = (0x0001);
         constexpr NTSTATUS STATUS_NO_MORE_ENTRIES = 0x8000001A;
 
@@ -8862,8 +9245,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         UNICODE_STRING dirName{};
         NTSTATUS status;
 
-        const HMODULE hNtdll = GetModuleHandle(_T("ntdll.dll"));
-        if (hNtdll == NULL) {
+        const HMODULE ntdll = util::get_ntdll();
+        if (ntdll == NULL) {
             return false;
         }
 
@@ -8873,7 +9256,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const char* func_names[] = { "NtOpenDirectoryObject", "NtQueryDirectoryObject" };
         void* func_addrs[] = { &pNtOpenDirectoryObject, &pNtQueryDirectoryObject };
 
-        util::GetFunctionAddress(hNtdll, func_names, (void**)func_addrs, 2);
+        util::get_function_address(ntdll, func_names, (void**)func_addrs, 2);
 
         pNtOpenDirectoryObject = reinterpret_cast<pfnNtOpenDirectoryObject>(func_addrs[0]);
         pNtQueryDirectoryObject = reinterpret_cast<pfnNtQueryDirectoryObject>(func_addrs[1]);
@@ -9024,11 +9407,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::NVRAM
      */
     [[nodiscard]] static bool nvram_vars() {
-        typedef struct _VARIABLE_NAME {
+        struct VARIABLE_NAME {
             ULONG NextEntryOffset;
             GUID VendorGuid;
             WCHAR Name[1];
-        } VARIABLE_NAME, * PVARIABLE_NAME;
+        };
+        using PVARIABLE_NAME = VARIABLE_NAME*;
 
         using NtEnumerateSystemEnvironmentValuesEx_t = NTSTATUS(__stdcall*)(
             ULONG InformationClass,
@@ -9516,7 +9900,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      */
     [[nodiscard]] static bool edid() {
         auto decodeManufacturer = [](const BYTE* edid) -> std::string {
-            const uint16_t word = static_cast<uint16_t>((edid[8] << 8) | edid[9]);
+            const u16 word = static_cast<u16>((edid[8] << 8) | edid[9]);
 
             char m[4] = { 0, 0, 0, 0 };
             const int c1 = (word >> 10) & 0x1F;
@@ -9624,29 +10008,52 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::CPU_HEURISTIC
      */
     [[nodiscard]] static bool cpu_heuristic() {
-        // 1) Check for commonly disabled instructions on patches      
+        using NtAllocateVirtualMemory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, ULONG_PTR, PSIZE_T, ULONG, ULONG);
+        using NtProtectVirtualMemory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG, PULONG);
+        using NtFreeVirtualMemory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG);
+        using NtFlushInstructionCache_t = NTSTATUS(__stdcall*)(HANDLE, PVOID, SIZE_T);
 
+        // 1) Check for commonly disabled instructions on patches      
         // 1.1 - Test RDPID EAX); C3 (RET)
         const unsigned char code[] = { 0xF3, 0x0F, 0xC7, 0xF8, 0xC3 };
 
-        void* mem = VirtualAlloc(NULL, sizeof(code), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-        if (!mem) {
+        const HMODULE ntdll = util::get_ntdll();
+        if (!ntdll) return false;
+
+        const char* names[] = { "NtAllocateVirtualMemory", "NtProtectVirtualMemory", "NtFlushInstructionCache", "NtFreeVirtualMemory"
+        };
+        void* funcs[ARRAYSIZE(names)] = {};
+        util::get_function_address(ntdll, names, funcs, ARRAYSIZE(names));
+
+        const auto pNtAllocateVirtualMemory = reinterpret_cast<NtAllocateVirtualMemory_t>(funcs[0]);
+        const auto pNtProtectVirtualMemory = reinterpret_cast<NtProtectVirtualMemory_t>(funcs[1]);
+        const auto pNtFlushInstructionCache = reinterpret_cast<NtFlushInstructionCache_t>(funcs[2]);
+        const auto pNtFreeVirtualMemory = reinterpret_cast<NtFreeVirtualMemory_t>(funcs[3]);
+
+        if (!pNtAllocateVirtualMemory || !pNtProtectVirtualMemory || !pNtFlushInstructionCache || !pNtFreeVirtualMemory) {
+            return false;
+        }
+
+        PVOID mem = nullptr;
+        SIZE_T regionSize = sizeof(code);
+        NTSTATUS st = pNtAllocateVirtualMemory((HANDLE)-1, &mem, 0, &regionSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        if (!NT_SUCCESS(st) || !mem) {
             return false;
         }
 
         memcpy(mem, code, sizeof(code));
 
-        DWORD oldProtect = 0;
-        if (!VirtualProtect(mem, sizeof(code), PAGE_EXECUTE_READ, &oldProtect)) {
-            VirtualFree(mem, 0, MEM_RELEASE);
-            return false;
-        }
-        if (!FlushInstructionCache(GetCurrentProcess(), mem, sizeof(code))) {
-            VirtualFree(mem, 0, MEM_RELEASE);
+        ULONG oldProtect = 0;
+        st = pNtProtectVirtualMemory((HANDLE)-1, &mem, &regionSize, PAGE_EXECUTE_READ, &oldProtect);
+        if (!NT_SUCCESS(st)) {
+            PVOID freeBase = mem; SIZE_T freeSize = regionSize;
+            pNtFreeVirtualMemory((HANDLE)-1, &freeBase, &freeSize, MEM_RELEASE);
             return false;
         }
 
-        typedef u64(__fastcall* rdpid_fn_t)();
+        pNtFlushInstructionCache((HANDLE)-1, mem, regionSize);
+
+        using rdpid_fn_t = u64(__fastcall*)();
         rdpid_fn_t fn = reinterpret_cast<rdpid_fn_t>(mem);
 
         bool ok = true;
@@ -9659,7 +10066,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             ok = false;
         }
 
-        VirtualFree(mem, 0, MEM_RELEASE);
+        PVOID freeBase = mem; SIZE_T freeSize = regionSize;
+        pNtFreeVirtualMemory((HANDLE)-1, &freeBase, &freeSize, MEM_RELEASE);
 
         if (!ok) {
             debug("CPU_HEURISTIC: Failed to handle RDPID correctly");
@@ -9675,6 +10083,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             0x07,0x06,0x05,0x04, 0x03,0x02,0x01,0x00
         };
         alignas(16) unsigned char out[16] = { 0 };
+
         __try {
             __m128i block = _mm_loadu_si128(reinterpret_cast<const __m128i*>(plaintext));
             __m128i key_vec = _mm_loadu_si128(reinterpret_cast<const __m128i*>(key));
@@ -9742,40 +10151,51 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         // one cache line = 64 bytes
         const SIZE_T targetSize = 64;
-        amd_target_mem = VirtualAlloc(NULL, targetSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-        if (amd_target_mem == NULL) {
-            proceed = false;
-        }
-        else {
-            SecureZeroMemory(amd_target_mem, targetSize);
 
-            const std::uintptr_t paddr = reinterpret_cast<std::uintptr_t>(amd_target_mem); // to avoid sign-extension
-            const u64 addr = static_cast<u64>(paddr);
-            for (int i = 0; i < 8; ++i) {
-                amd_bytes[2 + i] = static_cast<unsigned char>((addr >> (i * 8)) & 0xFF);
-            }
-
-            bytes = amd_bytes;
-            codeSize = amd_stub_size;
-        }
-
-        if (proceed) {
-            exec_mem = VirtualAlloc(NULL, codeSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-            if (exec_mem == NULL) {
+        {
+            PVOID base = nullptr;
+            SIZE_T sz = targetSize;
+            NTSTATUS st2 = pNtAllocateVirtualMemory((HANDLE)-1, &base, 0, &sz, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+            if (!NT_SUCCESS(st2) || base == nullptr) {
                 proceed = false;
             }
             else {
+                amd_target_mem = base;
+                SecureZeroMemory(amd_target_mem, targetSize);
+
+                const std::uintptr_t paddr = reinterpret_cast<std::uintptr_t>(amd_target_mem);
+                const u64 addr = static_cast<u64>(paddr);
+                for (int i = 0; i < 8; ++i) {
+                    amd_bytes[2 + i] = static_cast<unsigned char>((addr >> (i * 8)) & 0xFF);
+                }
+                bytes = amd_bytes;
+                codeSize = amd_stub_size;
+            }
+        }
+
+        if (proceed) {
+            PVOID base = nullptr;
+            SIZE_T sz = codeSize;
+            NTSTATUS st2 = pNtAllocateVirtualMemory((HANDLE)-1, &base, 0, &sz, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+            if (!NT_SUCCESS(st2) || base == nullptr) {
+                proceed = false;
+            }
+            else {
+                exec_mem = base;
                 memcpy(exec_mem, bytes, codeSize);
 
-                DWORD oldProtectExec = 0;
-                if (!VirtualProtect(exec_mem, codeSize, PAGE_EXECUTE_READ, &oldProtectExec)) {
-                    proceed = false;
-                }
-                else if (!FlushInstructionCache(GetCurrentProcess(), exec_mem, codeSize)) {
+                // change to RX
+                ULONG oldProt = 0;
+                PVOID tmpBase = exec_mem;
+                SIZE_T tmpSz = codeSize;
+                st2 = pNtProtectVirtualMemory((HANDLE)-1, &tmpBase, &tmpSz, PAGE_EXECUTE_READ, &oldProt);
+                if (!NT_SUCCESS(st2)) {
                     proceed = false;
                 }
                 else {
-                    typedef void (*CodeFunc)();
+                    pNtFlushInstructionCache((HANDLE)-1, exec_mem, codeSize);
+
+                    using CodeFunc = void(*)();
                     using RunnerFn = int(*)(CodeFunc);
                     RunnerFn runner = +[](CodeFunc func) -> int {
                         __try {
@@ -9801,11 +10221,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         if (exec_mem) {
-            VirtualFree(exec_mem, 0, MEM_RELEASE);
+            PVOID freeBase = exec_mem; SIZE_T freeSize = codeSize;
+            pNtFreeVirtualMemory((HANDLE)-1, &freeBase, &freeSize, MEM_RELEASE);
             exec_mem = NULL;
         }
         if (amd_target_mem) {
-            VirtualFree(amd_target_mem, 0, MEM_RELEASE);
+            PVOID freeBase = amd_target_mem; SIZE_T freeSize = targetSize;
+            pNtFreeVirtualMemory((HANDLE)-1, &freeBase, &freeSize, MEM_RELEASE);
             amd_target_mem = NULL;
         }
 
@@ -11190,7 +11612,7 @@ public: // START OF PUBLIC FUNCTIONS
             { brands::NULL_BRAND, "Unknown" }
         };
 
-        auto it = type_table.find(brand_str.c_str());
+        const auto it = type_table.find(brand_str.c_str());
 
         if (it != type_table.end()) {
             return it->second;

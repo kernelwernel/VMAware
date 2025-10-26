@@ -541,13 +541,13 @@ static std::string vm_description(const std::string& vm_brand) {
 #else
     NTSTATUS status;
 
-    HMODULE hNtdll = GetModuleHandle(_T("ntdll.dll"));
-    if (!hNtdll) {
+    HMODULE ntdll = GetModuleHandle(_T("ntdll.dll"));
+    if (!ntdll) {
         return false;
     }
 
     using NtCreateFile_t = NTSTATUS(
-        NTAPI*)(
+        __stdcall*)(
             PHANDLE,
             ACCESS_MASK,
             POBJECT_ATTRIBUTES,
@@ -560,17 +560,17 @@ static std::string vm_description(const std::string& vm_brand) {
             PVOID,
             ULONG
             );
-    using NtClose_t = NTSTATUS(NTAPI*)(HANDLE);
-    using RtlInitUnicodeString_t = VOID(NTAPI*)(PUNICODE_STRING, PCWSTR);
+    using NtClose_t = NTSTATUS(__stdcall*)(HANDLE);
+    using RtlInitUnicodeString_t = VOID(__stdcall*)(PUNICODE_STRING, PCWSTR);
 
 #pragma warning(push)
 #pragma warning(disable:4191)
     auto pRtlInitUnicodeString = reinterpret_cast<RtlInitUnicodeString_t>(
-        GetProcAddress(hNtdll, "RtlInitUnicodeString"));
+        GetProcAddress(ntdll, "RtlInitUnicodeString"));
     auto pNtCreateFile = reinterpret_cast<NtCreateFile_t>(
-        GetProcAddress(hNtdll, "NtCreateFile"));
+        GetProcAddress(ntdll, "NtCreateFile"));
     auto pNtClose = reinterpret_cast<NtClose_t>(
-        GetProcAddress(hNtdll, "NtClose"));
+        GetProcAddress(ntdll, "NtClose"));
 #pragma warning(pop)
 
     if (!pRtlInitUnicodeString || !pNtCreateFile || !pNtClose) {
