@@ -7102,7 +7102,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (!pNtOpenKey || !pNtQueryValueKey || !pRtlInitUnicodeString || !pNtClose) return false;
 
         UNICODE_STRING uKeyName;
-        pRtlInitUnicodeString(&uKeyName, L"\\Registry\\Machine\\Software\\Microsoft\\Windows\\CurrentVersion");
+        pRtlInitUnicodeString(&uKeyName, L"\\Registry\\Machine\\Software\\Microsoft\\Windows NT\\CurrentVersion");
 
         OBJECT_ATTRIBUTES objAttr;
         ZeroMemory(&objAttr, sizeof(objAttr));
@@ -8897,16 +8897,22 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     [[nodiscard]] static bool ud() {
         bool saw_ud = false;
 
-        #if (x86)
-                constexpr unsigned char ud_opcodes[] = { 0x0F, 0x0B, 0xC3 }; // ud2; ret
-        #elif (ARM32)
-                constexpr unsigned char ud_opcodes[] = { 0xF0, 0x00, 0xF0, 0xE7, 0x1E, 0xFF, 0x2F, 0xE1 };
-        #elif (ARM64)
-                constexpr unsigned char ud_opcodes[] = { 0x00, 0x00, 0x40, 0xD4, 0xC0, 0x03, 0x5F, 0xD6 };
-        #else
-                return saw_ud;
-        #endif
-
+    #if (x86)
+        // ud2; ret
+        constexpr unsigned char ud_opcodes[] = { 0x0F, 0x0B, 0xC3 };
+    #elif (ARM32)
+        // udf #0; bx lr
+        // (Little-endian for 0xE7F000F0 and 0xE12FFF1E)
+        constexpr unsigned char ud_opcodes[] = { 0xF0, 0x00, 0xF0, 0xE7, 0x1E, 0xFF, 0x2F, 0xE1 };
+    #elif (ARM64)
+        // hlt #0; ret
+        // (Little-endian for 0xD4400000 and 0xD65F03C0)
+        constexpr unsigned char ud_opcodes[] = { 0x00, 0x00, 0x40, 0xD4, 0xC0, 0x03, 0x5F, 0xD6 };
+    #else
+        // architecture not supported by this check
+        return saw_ud;
+    #endif
+        
         const HMODULE ntdll = util::get_ntdll();
         if (!ntdll) return false;
 
@@ -8923,9 +8929,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
+        const HANDLE hProcess = GetCurrentProcess();
         PVOID base = nullptr;
         SIZE_T regionSize = sizeof(ud_opcodes);
-        NTSTATUS st = pNtAllocateVirtualMemory((HANDLE)-1, &base, 0, &regionSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        NTSTATUS st = pNtAllocateVirtualMemory(hProcess, &base, 0, &regionSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
         if (!NT_SUCCESS(st) || !base) {
             return false;
         }
@@ -8933,13 +8940,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         memcpy(base, ud_opcodes, sizeof(ud_opcodes));
 
         ULONG oldProtect = 0;
-        st = pNtProtectVirtualMemory((HANDLE)-1, &base, &regionSize, PAGE_EXECUTE_READ, &oldProtect);
+        st = pNtProtectVirtualMemory(hProcess, &base, &regionSize, PAGE_EXECUTE_READ, &oldProtect);
         if (!NT_SUCCESS(st)) {
-            pNtFreeVirtualMemory((HANDLE)-1, &base, &regionSize, MEM_RELEASE);
+            pNtFreeVirtualMemory(hProcess, &base, &regionSize, MEM_RELEASE);
             return false;
         }
 
-        pNtFlushInstructionCache((HANDLE)-1, base, regionSize);
+        pNtFlushInstructionCache(hProcess, base, regionSize);
 
         __try {
             reinterpret_cast<void(*)()>(base)();
@@ -9023,7 +9030,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         VMCallInfo vmcallInfo = {};
         u64 vmcallResult = 0;
 
-        constexpr unsigned char intelTemplate[44] = {
+        constexpr u8 intelTemplate[44] = {
             0x48,0xBA,0,0,0,0,0,0,0,0,                     // mov rdx, imm64   ; PW1
             0x48,0xB9,0,0,0,0,0,0,0,0,                     // mov rcx, imm64   ; PW3
             0x48,0xB8,0,0,0,0,0,0,0,0,                     // mov rax, imm64   ; &vmcallInfo
@@ -9032,7 +9039,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             0xC3                                           // ret
         };
 
-        constexpr unsigned char amdTemplate[44] = {
+        constexpr u8 amdTemplate[44] = {
             0x48,0xBA,0,0,0,0,0,0,0,0,                     // mov rdx, imm64   ; PW1
             0x48,0xB9,0,0,0,0,0,0,0,0,                     // mov rcx, imm64   ; PW3
             0x48,0xB8,0,0,0,0,0,0,0,0,                     // mov rax, imm64   ; &vmcallInfo
