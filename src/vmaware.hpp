@@ -54,12 +54,12 @@
  * ============================== SECTIONS ==================================
  * - enums for publicly accessible techniques  => line 532
  * - struct for internal cpu operations        => line 716
- * - struct for internal memoization           => line 1091
- * - struct for internal utility functions     => line 1221
- * - struct for internal core components       => line 10320
- * - start of VM detection technique list      => line 2187
- * - start of public VM detection functions    => line 10813
- * - start of externally defined variables     => line 11795
+ * - struct for internal memoization           => line 1092
+ * - struct for internal utility functions     => line 1222
+ * - struct for internal core components       => line 10274
+ * - start of VM detection technique list      => line 2188
+ * - start of public VM detection functions    => line 10767
+ * - start of externally defined variables     => line 11749
  *
  *
  * ============================== EXAMPLE ===================================
@@ -890,6 +890,7 @@ private:
                 }
             }
 
+            // since SMBIOS is unreliable, an extra fallback could be checking kernel-power-processor eventid 55
             return 0;
         }
 #endif
@@ -1806,7 +1807,7 @@ private:
          */
         [[nodiscard]] static hyperx_state hyper_x() {
         #if (!WINDOWS)
-            return HYPERV_UNKNOWN_VM;
+            return HYPERV_UNKNOWN;
         #else
             if (memo::hyperx::is_cached()) {
                 core_debug("HYPER_X: returned from cache");
@@ -4480,6 +4481,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             QueryPerformanceCounter(&t2q);
             const u64 t2 = __rdtscp(&aux);
 
+            // this thread is pinned to the first CPU core due to the previous SetThreadAffinityMask call, meaning this calculation and cpu::get_cpu_base_speed() will report the same speed 
             const double elapsedSec = double(t2q.QuadPart - t1q.QuadPart) / double(freq.QuadPart); // the performance counter frequency is always 10MHz when running under Hyper-V
             const double tscHz = double(t2 - t1) / elapsedSec;
             const double tscMHz = tscHz / 1e6;
