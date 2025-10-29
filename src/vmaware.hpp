@@ -9989,65 +9989,24 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
- * @brief Check if the CPU is capable of running certain instructions successfully
- * @category Windows
- * @implements VM::CPU_HEURISTIC
- */
+     * @brief Check if the CPU is capable of running certain instructions successfully
+     * @category Windows
+     * @implements VM::CPU_HEURISTIC
+     */
     [[nodiscard]] static bool cpu_heuristic() {
-        using NtAllocateVirtualMemory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, ULONG_PTR, PSIZE_T, ULONG, ULONG);
-        using NtProtectVirtualMemory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG, PULONG);
-        using NtFreeVirtualMemory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG);
-        using NtFlushInstructionCache_t = NTSTATUS(__stdcall*)(HANDLE, PVOID, SIZE_T);
-
         // 1) Check for commonly disabled instructions on patches      
-        const HMODULE ntdll = util::get_ntdll();
-        if (!ntdll) return false;
-
-        const char* names[] = { "NtAllocateVirtualMemory", "NtProtectVirtualMemory", "NtFlushInstructionCache", "NtFreeVirtualMemory"
-        };
-        void* funcs[ARRAYSIZE(names)] = {};
-        util::get_function_address(ntdll, names, funcs, ARRAYSIZE(names));
-
-        const auto pNtAllocateVirtualMemory = reinterpret_cast<NtAllocateVirtualMemory_t>(funcs[0]);
-        const auto pNtProtectVirtualMemory = reinterpret_cast<NtProtectVirtualMemory_t>(funcs[1]);
-        const auto pNtFlushInstructionCache = reinterpret_cast<NtFlushInstructionCache_t>(funcs[2]);
-        const auto pNtFreeVirtualMemory = reinterpret_cast<NtFreeVirtualMemory_t>(funcs[3]);
-
-        if (!pNtAllocateVirtualMemory || !pNtProtectVirtualMemory || !pNtFlushInstructionCache || !pNtFreeVirtualMemory) {
-            return false;
-        }
-
-        PVOID freeBase = nullptr;
-        SIZE_T freeSize = 0;
-
         bool ok = true;
-        alignas(16) unsigned char plaintext[16] = {
-        0x00,0x11,0x22,0x33, 0x44,0x55,0x66,0x77,
-        0x88,0x99,0xAA,0xBB, 0xCC,0xDD,0xEE,0xFF
-        };
-        alignas(16) unsigned char key[16] = {
-            0x0F,0x0E,0x0D,0x0C, 0x0B,0x0A,0x09,0x08,
-            0x07,0x06,0x05,0x04, 0x03,0x02,0x01,0x00
-        };
-        alignas(16) unsigned char out[16] = { 0 };
 
-        __try {
-            __m128i block = _mm_loadu_si128(reinterpret_cast<const __m128i*>(plaintext));
-            __m128i key_vec = _mm_loadu_si128(reinterpret_cast<const __m128i*>(key));
+        u32 a = 0, b = 0, c = 0, d = 0;
+        cpu::cpuid(a, b, c, d, 1u);
 
-            __m128i tmp = _mm_xor_si128(block, key_vec);
-            tmp = _mm_aesenc_si128(tmp, key_vec);
-
-            _mm_storeu_si128(reinterpret_cast<__m128i*>(out), tmp);
-        }
-        __except (GetExceptionCode() == EXCEPTION_ILLEGAL_INSTRUCTION
-            ? EXCEPTION_EXECUTE_HANDLER
-            : EXCEPTION_CONTINUE_SEARCH) {
+        constexpr u32 AES_NI_BIT = 1u << 25;
+        if ((c & AES_NI_BIT) == 0) {
             ok = false;
         }
 
         if (!ok) {
-            debug("CPU_HEURISTIC: Failed to handle AES encryption correctly");
+            debug("CPU_HEURISTIC: CPU does not report AES");
             return true;
         }
 
@@ -10082,6 +10041,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         LPVOID amd_target_mem = nullptr;
         LPVOID exec_mem = nullptr;
+        PVOID freeBase = nullptr;
+        SIZE_T freeSize = 0;
 
         const bool claimed_amd = cpu::is_amd();
         const bool claimed_intel = cpu::is_intel();
@@ -10098,6 +10059,27 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         // one cache line = 64 bytes
         const SIZE_T targetSize = 64;
+
+        const HMODULE ntdll = util::get_ntdll();
+        if (!ntdll) return false;
+
+        const char* names[] = { "NtAllocateVirtualMemory", "NtProtectVirtualMemory", "NtFlushInstructionCache", "NtFreeVirtualMemory"
+        };
+        void* funcs[ARRAYSIZE(names)] = {};
+        util::get_function_address(ntdll, names, funcs, ARRAYSIZE(names));
+
+        using NtAllocateVirtualMemory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, ULONG_PTR, PSIZE_T, ULONG, ULONG);
+        using NtProtectVirtualMemory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG, PULONG);
+        using NtFreeVirtualMemory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG);
+        using NtFlushInstructionCache_t = NTSTATUS(__stdcall*)(HANDLE, PVOID, SIZE_T);
+        const auto pNtAllocateVirtualMemory = reinterpret_cast<NtAllocateVirtualMemory_t>(funcs[0]);
+        const auto pNtProtectVirtualMemory = reinterpret_cast<NtProtectVirtualMemory_t>(funcs[1]);
+        const auto pNtFlushInstructionCache = reinterpret_cast<NtFlushInstructionCache_t>(funcs[2]);
+        const auto pNtFreeVirtualMemory = reinterpret_cast<NtFreeVirtualMemory_t>(funcs[3]);
+
+        if (!pNtAllocateVirtualMemory || !pNtProtectVirtualMemory || !pNtFlushInstructionCache || !pNtFreeVirtualMemory) {
+            return false;
+        }
 
         {
             PVOID base = nullptr;
