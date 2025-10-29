@@ -707,7 +707,7 @@ private:
 
     // specifically for util::hyper_x() and memo::hyperv
     enum hyperx_state : u8 {
-        HYPERV_UNKNOWN_VM = 0,
+        HYPERV_UNKNOWN = 0,
         HYPERV_REAL_VM,
         HYPERV_ARTIFACT_VM,
         HYPERV_ENLIGHTENMENT
@@ -1802,7 +1802,7 @@ private:
          *          - HYPERV_ARTIFACT_VM for host with Hyper-V enabled
          *          - HYPERV_REAL_VM for real Hyper-V VM
          *          - HYPERV_ENLIGHTENMENT for QEMU with Hyper-V enlightenments
-         *          - HYPERV_UNKNOWN_VM for unknown/undetected state
+         *          - HYPERV_UNKNOWN for unknown/undetected state
          */
         [[nodiscard]] static hyperx_state hyper_x() {
         #if (!WINDOWS)
@@ -1863,7 +1863,7 @@ private:
                 }
                 else {
                     core_debug("HYPER_X: Hyper-V is not active");
-                    state = HYPERV_UNKNOWN_VM;
+                    state = HYPERV_UNKNOWN;
                 }
             }
             else {
@@ -2287,14 +2287,24 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     #if (!x86)
         return false;
     #else
-        if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
-            return false;
+        u32 eax = 0, ebx = 0, ecx = 0, edx = 0;
+        cpu::cpuid(eax, ebx, ecx, edx, 1); 
+        constexpr u32 HYPERVISOR_MASK = (1u << 31);
+
+        if (ecx & HYPERVISOR_MASK) {
+            if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
+                return false;
+            }
+            return true;
         }
 
-        u32 unused, ecx = 0;
-        cpu::cpuid(unused, unused, ecx, unused, 1);
-        const u32 mask = (1u << 31);
-        return (ecx & mask);
+        const auto hx = util::hyper_x();
+        if (hx != HYPERV_UNKNOWN) {
+            debug("HYPERVISOR_BIT: Running under nested virtualization");
+            return true; // hypervisor bit is not set but Hyper-V was detected through root partition checks
+        }
+
+        return false;
     #endif
     }
 
@@ -5696,7 +5706,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
     /**
      * @brief Check for uncommon IDT virtual addresses
-     * @author Matteo Malvica (Linux)
+     * @author Matteo Malvica
      * @author Idea to check VPC's range from Tom Liston and Ed Skoudis' paper "On the Cutting Edge: Thwarting Virtual Machine Detection" (Windows)
      * @link https://www.matteomalvica.com/blog/2018/12/05/detecting-vmware-on-64-bit-systems/ (Linux)
      * @category Windows, Linux, x86
@@ -5711,31 +5721,25 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         #if (x86_64)
                 // 64-bit Linux: IDT descriptor is 10 bytes (2-byte limit + 8-byte base)
                 __asm__ __volatile__("sidt %0" : "=m"(values));
-
         #ifdef __VMAWARE_DEBUG__
-                debug("SIDT5: values = ");
+                debug("SIDT: values = ");
                 for (u8 i = 0; i < 10; ++i) {
                     debug(std::hex, std::setw(2), std::setfill('0'), static_cast<unsigned>(values[i]));
                     if (i < 9) debug(" ");
                 }
         #endif
-
                 return (values[9] == 0x00);  // 10th byte in x64 mode
-
         #elif (x86_32)
                 // 32-bit Linux: IDT descriptor is 6 bytes (2-byte limit + 4-byte base)
                 __asm__ __volatile__("sidt %0" : "=m"(values));
-
         #ifdef __VMAWARE_DEBUG__
-                debug("SIDT5: values = ");
+                debug("SIDT: values = ");
                 for (u8 i = 0; i < 6; ++i) {
                     debug(std::hex, std::setw(2), std::setfill('0'), static_cast<unsigned>(values[i]));
                     if (i < 5) debug(" ");
                 }
         #endif
-
                 return (values[5] == 0x00);  // 6th byte in x86 mode
-
         #else
                 return false;
         #endif
@@ -11827,7 +11831,7 @@ std::string VM::memo::brand::brand_cache = "";
 std::string VM::memo::multi_brand::brand_cache = "";
 std::string VM::memo::cpu_brand::brand_cache = "";
 VM::u32 VM::memo::threadcount::threadcount_cache = 0;
-VM::hyperx_state VM::memo::hyperx::state = VM::HYPERV_UNKNOWN_VM;
+VM::hyperx_state VM::memo::hyperx::state = VM::HYPERV_UNKNOWN;
 bool VM::memo::hyperx::cached = false;
 
 #ifdef __VMAWARE_DEBUG__
