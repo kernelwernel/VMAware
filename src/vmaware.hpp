@@ -54,12 +54,12 @@
  * ============================== SECTIONS ==================================
  * - enums for publicly accessible techniques  => line 532
  * - struct for internal cpu operations        => line 716
- * - struct for internal memoization           => line 1091
- * - struct for internal utility functions     => line 1221
- * - struct for internal core components       => line 10320
- * - start of VM detection technique list      => line 2187
- * - start of public VM detection functions    => line 10813
- * - start of externally defined variables     => line 11795
+ * - struct for internal memoization           => line 1092
+ * - struct for internal utility functions     => line 1222
+ * - struct for internal core components       => line 10274
+ * - start of VM detection technique list      => line 2188
+ * - start of public VM detection functions    => line 10767
+ * - start of externally defined variables     => line 11749
  *
  *
  * ============================== EXAMPLE ===================================
@@ -707,7 +707,7 @@ private:
 
     // specifically for util::hyper_x() and memo::hyperv
     enum hyperx_state : u8 {
-        HYPERV_UNKNOWN_VM = 0,
+        HYPERV_UNKNOWN = 0,
         HYPERV_REAL_VM,
         HYPERV_ARTIFACT_VM,
         HYPERV_ENLIGHTENMENT
@@ -857,7 +857,7 @@ private:
 
             // left-trim only to handle stupid whitespaces before the brand string in ARM CPUs (Virtual CPUs)
             size_t start = 0;
-            while (start < b.size() && std::isspace(static_cast<unsigned char>(b[start]))) ++start;
+            while (start < b.size() && std::isspace(static_cast<u8>(b[start]))) ++start;
             if (start) b.erase(0, start);
 
             memo::cpu_brand::store(b);
@@ -890,6 +890,7 @@ private:
                 }
             }
 
+            // since SMBIOS is unreliable, an extra fallback could be checking kernel-power-processor eventid 55
             return 0;
         }
 #endif
@@ -1618,13 +1619,13 @@ private:
 
             return static_cast<u32>(std::min<u64>(number, std::numeric_limits<u32>::max()));
         #elif (WINDOWS)
-            constexpr unsigned long long gib = 1024ULL * 1024ULL * 1024ULL;
+            constexpr u64 gib = 1024ULL * 1024ULL * 1024ULL;
 
             // the "physically installed" API can fail if some hypervisors like VirtualBox/QEMU don't populate the necessary SMBIOS fields, so we use GlobalMemoryStatusEx
             MEMORYSTATUSEX ms{};
             ms.dwLength = sizeof(ms);
 			if (GlobalMemoryStatusEx(&ms)) { // calls NtQuerySystemInformation rather than using SMBIOS
-                const unsigned long long bytes = ms.ullTotalPhys;
+                const u64 bytes = ms.ullTotalPhys;
                 return static_cast<u32>((bytes + (gib / 2ULL)) / gib);
             }
 
@@ -1658,7 +1659,7 @@ private:
                         continue;
                     }
             #endif
-                if (!std::all_of(filename.begin(), filename.end(), [](unsigned char c) { return std::isdigit(c); })) {
+                if (!std::all_of(filename.begin(), filename.end(), [](u8 c) { return std::isdigit(c); })) {
                     continue;
                 }
 
@@ -1802,11 +1803,11 @@ private:
          *          - HYPERV_ARTIFACT_VM for host with Hyper-V enabled
          *          - HYPERV_REAL_VM for real Hyper-V VM
          *          - HYPERV_ENLIGHTENMENT for QEMU with Hyper-V enlightenments
-         *          - HYPERV_UNKNOWN_VM for unknown/undetected state
+         *          - HYPERV_UNKNOWN for unknown/undetected state
          */
         [[nodiscard]] static hyperx_state hyper_x() {
         #if (!WINDOWS)
-            return HYPERV_UNKNOWN_VM;
+            return HYPERV_UNKNOWN;
         #else
             if (memo::hyperx::is_cached()) {
                 core_debug("HYPER_X: returned from cache");
@@ -1863,7 +1864,7 @@ private:
                 }
                 else {
                     core_debug("HYPER_X: Hyper-V is not active");
-                    state = HYPERV_UNKNOWN_VM;
+                    state = HYPERV_UNKNOWN;
                 }
             }
             else {
@@ -2287,14 +2288,24 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     #if (!x86)
         return false;
     #else
-        if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
-            return false;
+        u32 eax = 0, ebx = 0, ecx = 0, edx = 0;
+        cpu::cpuid(eax, ebx, ecx, edx, 1); 
+        constexpr u32 HYPERVISOR_MASK = (1u << 31);
+
+        if (ecx & HYPERVISOR_MASK) {
+            if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
+                return false;
+            }
+            return true;
         }
 
-        u32 unused, ecx = 0;
-        cpu::cpuid(unused, unused, ecx, unused, 1);
-        const u32 mask = (1u << 31);
-        return (ecx & mask);
+        const auto hx = util::hyper_x();
+        if (hx != HYPERV_UNKNOWN) {
+            debug("HYPERVISOR_BIT: Running under nested virtualization");
+            return true; // hypervisor bit is not set but Hyper-V was detected through root partition checks
+        }
+
+        return false;
     #endif
     }
 
@@ -2442,7 +2453,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         struct ThreadEntry {
             const char* model;
-            unsigned    threads;
+            u32    threads;
         };
 
         static const ThreadEntry thread_database[] = {
@@ -3444,7 +3455,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             size_t end = pos + best_len;
 
             auto isAsciiAlphaNum = [](char c)->bool {
-                const unsigned char uc = static_cast<unsigned char>(c);
+                const u8 uc = static_cast<u8>(c);
                 return (uc >= '0' && uc <= '9') || (uc >= 'A' && uc <= 'Z') || (uc >= 'a' && uc <= 'z');
             };
 
@@ -3452,8 +3463,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             const bool right_ok = (end == cpu_full_name.size()) || !isAsciiAlphaNum(cpu_full_name[end]);
 
             if (left_ok && right_ok) {
-                const unsigned expected = best->threads;
-                const unsigned actual = memo::threadcount::fetch();
+                const u32 expected = best->threads;
+                const u32 actual = memo::threadcount::fetch();
                 debug("INTEL_THREAD_MISMATCH: Expected threads -> ", expected);
                 return actual != expected;
             }
@@ -3492,7 +3503,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         struct ThreadEntry {
             const char* model;
-            unsigned    threads;
+            u32    threads;
         };
 
         static const ThreadEntry thread_database[] = {
@@ -3658,7 +3669,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             size_t end = pos + best_len;
 
             auto isAsciiAlphaNum = [](char c)->bool {
-                const unsigned char uc = static_cast<unsigned char>(c);
+                const u8 uc = static_cast<u8>(c);
                 return (uc >= '0' && uc <= '9') || (uc >= 'A' && uc <= 'Z') || (uc >= 'a' && uc <= 'z');
             };
 
@@ -3666,8 +3677,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             const bool right_ok = (end == cpu_full_name.size()) || !isAsciiAlphaNum(cpu_full_name[end]);
 
             if (left_ok && right_ok) {
-                const unsigned expected = best->threads;
-                const unsigned actual = memo::threadcount::fetch();
+                const u32 expected = best->threads;
+                const u32 actual = memo::threadcount::fetch();
                 debug("XEON_THREAD_MISMATCH: Expected threads -> ", expected);
                 return actual != expected;
             }
@@ -3706,7 +3717,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // and obviously incorrect. So to fix this, spaces are added at the end.
         struct ThreadEntry {
             const char* model;
-            unsigned    threads;
+            u32    threads;
         };
 
         static const ThreadEntry thread_database[] = {
@@ -4303,7 +4314,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             size_t end = pos + best_len;
 
             auto isAsciiAlphaNum = [](char c)->bool {
-                const unsigned char uc = static_cast<unsigned char>(c);
+                const u8 uc = static_cast<u8>(c);
                 return (uc >= '0' && uc <= '9') || (uc >= 'A' && uc <= 'Z') || (uc >= 'a' && uc <= 'z');
             };
 
@@ -4311,8 +4322,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             const bool right_ok = (end == cpu_full_name.size()) || !isAsciiAlphaNum(cpu_full_name[end]);
 
             if (left_ok && right_ok) {
-                const unsigned expected = best->threads;
-                const unsigned actual = memo::threadcount::fetch();
+                const u32 expected = best->threads;
+                const u32 actual = memo::threadcount::fetch();
                 debug("AMD_THREAD_MISMATCH: Expected threads -> ", expected);
                 return actual != expected;
             }
@@ -4403,7 +4414,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     #endif 
 
         // Case A - Hypervisor without RDTSC patch
-        thread_local unsigned int aux = 0;
+        thread_local u32 aux = 0;
         // Check for RDTSCP support
         {
         #if (x86_64 && WINDOWS)
@@ -4470,6 +4481,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             QueryPerformanceCounter(&t2q);
             const u64 t2 = __rdtscp(&aux);
 
+            // this thread is pinned to the first CPU core due to the previous SetThreadAffinityMask call, meaning this calculation and cpu::get_cpu_base_speed() will report the same speed 
             const double elapsedSec = double(t2q.QuadPart - t1q.QuadPart) / double(freq.QuadPart); // the performance counter frequency is always 10MHz when running under Hyper-V
             const double tscHz = double(t2 - t1) / elapsedSec;
             const double tscMHz = tscHz / 1e6;
@@ -4498,23 +4510,23 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             // Case C - Hypervisor with RDTSC patch + useplatformclock = false
             const ULONG64 count_first = 20000000ULL;
             const ULONG64 count_second = 200000000ULL;
-            static thread_local volatile unsigned long long g_sink = 0; // so that it doesnt need to be captured by the lambda
+            static thread_local volatile u64 g_sink = 0; // so that it doesnt need to be captured by the lambda
 
-            auto rd_lambda = []() -> unsigned long long {
-                unsigned long long v = __rdtsc();
+            auto rd_lambda = []() -> u64 {
+                u64 v = __rdtsc();
                 g_sink ^= v;
                 return v;
             };
 
-            auto xor_lambda = []() -> unsigned long long {
-                volatile unsigned long long a = 0xDEADBEEFDEADBEEFull;
-                volatile unsigned long long b = 0x1234567890ABCDEFull;
-                unsigned long long v = a ^ b;
+            auto xor_lambda = []() -> u64 {
+                volatile u64 a = 0xDEADBEEFDEADBEEFull;
+                volatile u64 b = 0x1234567890ABCDEFull;
+                u64 v = a ^ b;
                 g_sink ^= v;
                 return v;
             };
 
-            using fn_t = unsigned long long (*)();
+            using fn_t = u64 (*)();
 
             // make the pointer volatile so the compiler treats the call as opaque/indirect
             volatile fn_t rd_ptr = +rd_lambda;    // +lambda forces conversion to function ptr, so it won't be inlined, we need this to prevent some optimizatons by the compiler
@@ -4524,7 +4536,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             QueryInterruptTime(&beforeqit);
             const ULONG64 beforetsc = __rdtsc();
 
-            volatile unsigned long long dummy = 0;
+            volatile u64 dummy = 0;
             for (ULONG64 x = 0; x < count_first; ++x) {
                 dummy = rd_ptr(); // this loop will be intercepted by a RDTSC trap, downscaling our TSC
             }
@@ -4959,8 +4971,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        if (result & (static_cast<unsigned long long>(1) << 2)) { return core::add(brands::AMD_SEV_SNP); }
-        else if (result & (static_cast<unsigned long long>(1) << 1)) { return core::add(brands::AMD_SEV_ES); }
+        if (result & (static_cast<u64>(1) << 2)) { return core::add(brands::AMD_SEV_SNP); }
+        else if (result & (static_cast<u64>(1) << 1)) { return core::add(brands::AMD_SEV_ES); }
         else if (result & 1) { return core::add(brands::AMD_SEV); }
 
         return false;
@@ -5506,7 +5518,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
             int num = 0;
             for (size_t i = prefix.size(); i < line.size(); ++i) {
-                unsigned char ch = static_cast<unsigned char>(line[i]);
+                u8 ch = static_cast<u8>(line[i]);
                 if (std::isdigit(ch)) {
                     num = num * 10 + (ch - '0');
                 }
@@ -5651,7 +5663,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             std::string key = distro;
             for (char& c : key) {     
-                c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                c = static_cast<char>(std::tolower(static_cast<u8>(c)));
             }
 
             const auto it = defaults.find(key);
@@ -5696,7 +5708,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
     /**
      * @brief Check for uncommon IDT virtual addresses
-     * @author Matteo Malvica (Linux)
+     * @author Matteo Malvica
      * @author Idea to check VPC's range from Tom Liston and Ed Skoudis' paper "On the Cutting Edge: Thwarting Virtual Machine Detection" (Windows)
      * @link https://www.matteomalvica.com/blog/2018/12/05/detecting-vmware-on-64-bit-systems/ (Linux)
      * @category Windows, Linux, x86
@@ -5711,31 +5723,25 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         #if (x86_64)
                 // 64-bit Linux: IDT descriptor is 10 bytes (2-byte limit + 8-byte base)
                 __asm__ __volatile__("sidt %0" : "=m"(values));
-
         #ifdef __VMAWARE_DEBUG__
-                debug("SIDT5: values = ");
+                debug("SIDT: values = ");
                 for (u8 i = 0; i < 10; ++i) {
-                    debug(std::hex, std::setw(2), std::setfill('0'), static_cast<unsigned>(values[i]));
+                    debug(std::hex, std::setw(2), std::setfill('0'), static_cast<u32>(values[i]));
                     if (i < 9) debug(" ");
                 }
         #endif
-
                 return (values[9] == 0x00);  // 10th byte in x64 mode
-
         #elif (x86_32)
                 // 32-bit Linux: IDT descriptor is 6 bytes (2-byte limit + 4-byte base)
                 __asm__ __volatile__("sidt %0" : "=m"(values));
-
         #ifdef __VMAWARE_DEBUG__
-                debug("SIDT5: values = ");
+                debug("SIDT: values = ");
                 for (u8 i = 0; i < 6; ++i) {
-                    debug(std::hex, std::setw(2), std::setfill('0'), static_cast<unsigned>(values[i]));
+                    debug(std::hex, std::setw(2), std::setfill('0'), static_cast<u32>(values[i]));
                     if (i < 5) debug(" ");
                 }
         #endif
-
                 return (values[5] == 0x00);  // 6th byte in x86 mode
-
         #else
                 return false;
         #endif
@@ -5758,9 +5764,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
         #if (x86_64)
-            unsigned char idtr_buffer[10] = { 0 };
+            u8 idtr_buffer[10] = { 0 };
         #else
-            unsigned char idtr_buffer[6] = { 0 };
+            u8 idtr_buffer[6] = { 0 };
         #endif
 
             __try {
@@ -5938,15 +5944,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             // faster than std::search because of a manual byte-by-byte loop, could be optimized further with Boyer-Moore-Horspool implementations for large firmware tables like DSDT
             auto find_pattern = [&](const char* pat, size_t patlen) noexcept -> bool {
                 if (patlen == 0 || patlen > len) return false;
-                const unsigned char first = static_cast<unsigned char>(pat[0]);
-                const unsigned char* base = reinterpret_cast<const unsigned char*>(buf);
-                const unsigned char* search_ptr = base;
+                const u8 first = static_cast<u8>(pat[0]);
+                const u8* base = reinterpret_cast<const u8*>(buf);
+                const u8* search_ptr = base;
                 size_t remaining = len;
 
                 while (remaining >= patlen) {
                     const void* m = memchr(search_ptr, first, remaining);
                     if (!m) return false;
-                    const unsigned char* mptr = static_cast<const unsigned char*>(m);
+                    const u8* mptr = static_cast<const u8*>(m);
                     const size_t idx = static_cast<size_t>(mptr - base);
                     // ensure pattern fits
                     if (idx + patlen > len) return false;
@@ -6235,7 +6241,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             const size_t file_size_u = static_cast<size_t>(file_size);
 
-            std::vector<unsigned char> buffer;
+            std::vector<u8> buffer;
             try {
                 buffer.resize(file_size_u);
             }
@@ -6937,7 +6943,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             std::string& output = *profiler_res_ptr;
 
             std::transform(output.begin(), output.end(), output.begin(),
-                [](unsigned char c) { return std::tolower(c); });
+                [](u8 c) { return std::tolower(c); });
 
             if (util::find(output, keyword)) {
                 return true;
@@ -7102,7 +7108,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (!pNtOpenKey || !pNtQueryValueKey || !pRtlInitUnicodeString || !pNtClose) return false;
 
         UNICODE_STRING uKeyName;
-        pRtlInitUnicodeString(&uKeyName, L"\\Registry\\Machine\\Software\\Microsoft\\Windows\\CurrentVersion");
+        pRtlInitUnicodeString(&uKeyName, L"\\Registry\\Machine\\Software\\Microsoft\\Windows NT\\CurrentVersion");
 
         OBJECT_ATTRIBUTES objAttr;
         ZeroMemory(&objAttr, sizeof(objAttr));
@@ -7259,9 +7265,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
         #if (x86_64)
-            unsigned char gdtr[10] = { 0 };
+            u8 gdtr[10] = { 0 };
         #else
-            unsigned char gdtr[6] = { 0 };
+            u8 gdtr[6] = { 0 };
         #endif
 
             __try {
@@ -7325,7 +7331,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             if (SetThreadAffinityMask(GetCurrentThread(), mask) == 0)
                 continue;
 
-            unsigned char ldtr_buf[4] = { 0xEF, 0xBE, 0xAD, 0xDE };
+            u8 ldtr_buf[4] = { 0xEF, 0xBE, 0xAD, 0xDE };
             u32 ldt_val = 0;
 
             __try {
@@ -7372,7 +7378,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     #if (!x86_64)
         return false;
     #elif (x86_32)
-        unsigned int reax = 0;
+        u32 reax = 0;
 
         __asm
         {
@@ -7399,7 +7405,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      */
     [[nodiscard]] static bool vmware_str() {
     #if (x86_32)
-        unsigned short tr = 0;
+        u16 tr = 0;
         __asm {
             str ax
             mov tr, ax
@@ -8281,14 +8287,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         int regs[4];
         __cpuid(regs, 0x40000000);
 
-        const unsigned int max_leaf = static_cast<unsigned int>(regs[0]);
+        const u32 max_leaf = static_cast<u32>(regs[0]);
         if (max_leaf < 0x40000005) {
             return false;
         }
 
         __cpuid(regs, 0x40000005);
-        const unsigned int max_virtual_processors = static_cast<unsigned int>(regs[0]);
-        const unsigned int max_logical_processors = static_cast<unsigned int>(regs[1]);
+        const u32 max_virtual_processors = static_cast<u32>(regs[0]);
+        const u32 max_logical_processors = static_cast<u32>(regs[1]);
 
         debug("VIRTUAL_PROCESSORS: MaxVirtualProcessors -> ", max_virtual_processors,
             ", MaxLogicalProcessors -> ", max_logical_processors);
@@ -8751,7 +8757,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         // push flags, set TF-bit, pop flags, execute a dummy instruction, then return
-        constexpr unsigned char trampoline[] = {
+        constexpr u8 trampoline[] = {
             0x9C,                         // pushfq
             0x81, 0x04, 0x24,             // OR DWORD PTR [RSP], 0x10100
             0x00, 0x01, 0x01, 0x00,
@@ -8845,7 +8851,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        auto vetExceptions = [&](unsigned int code, EXCEPTION_POINTERS* info) -> int {
+        auto vetExceptions = [&](u32 code, EXCEPTION_POINTERS* info) -> int {
             // if not single-step, hypervisor likely swatted our trap
             if (code != static_cast<DWORD>(0x80000004L)) {
                 hypervisorCaught = true;
@@ -8897,16 +8903,22 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     [[nodiscard]] static bool ud() {
         bool saw_ud = false;
 
-        #if (x86)
-                constexpr unsigned char ud_opcodes[] = { 0x0F, 0x0B, 0xC3 }; // ud2; ret
-        #elif (ARM32)
-                constexpr unsigned char ud_opcodes[] = { 0xF0, 0x00, 0xF0, 0xE7, 0x1E, 0xFF, 0x2F, 0xE1 };
-        #elif (ARM64)
-                constexpr unsigned char ud_opcodes[] = { 0x00, 0x00, 0x40, 0xD4, 0xC0, 0x03, 0x5F, 0xD6 };
-        #else
-                return saw_ud;
-        #endif
-
+    #if (x86)
+        // ud2; ret
+        constexpr u8 ud_opcodes[] = { 0x0F, 0x0B, 0xC3 };
+    #elif (ARM32)
+        // udf #0; bx lr
+        // (Little-endian for 0xE7F000F0 and 0xE12FFF1E)
+        constexpr u8 ud_opcodes[] = { 0xF0, 0x00, 0xF0, 0xE7, 0x1E, 0xFF, 0x2F, 0xE1 };
+    #elif (ARM64)
+        // hlt #0; ret
+        // (Little-endian for 0xD4400000 and 0xD65F03C0)
+        constexpr u8 ud_opcodes[] = { 0x00, 0x00, 0x40, 0xD4, 0xC0, 0x03, 0x5F, 0xD6 };
+    #else
+        // architecture not supported by this check
+        return saw_ud;
+    #endif
+        
         const HMODULE ntdll = util::get_ntdll();
         if (!ntdll) return false;
 
@@ -8923,9 +8935,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
+        const HANDLE hProcess = GetCurrentProcess();
         PVOID base = nullptr;
         SIZE_T regionSize = sizeof(ud_opcodes);
-        NTSTATUS st = pNtAllocateVirtualMemory((HANDLE)-1, &base, 0, &regionSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        NTSTATUS st = pNtAllocateVirtualMemory(hProcess, &base, 0, &regionSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
         if (!NT_SUCCESS(st) || !base) {
             return false;
         }
@@ -8933,13 +8946,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         memcpy(base, ud_opcodes, sizeof(ud_opcodes));
 
         ULONG oldProtect = 0;
-        st = pNtProtectVirtualMemory((HANDLE)-1, &base, &regionSize, PAGE_EXECUTE_READ, &oldProtect);
+        st = pNtProtectVirtualMemory(hProcess, &base, &regionSize, PAGE_EXECUTE_READ, &oldProtect);
         if (!NT_SUCCESS(st)) {
-            pNtFreeVirtualMemory((HANDLE)-1, &base, &regionSize, MEM_RELEASE);
+            pNtFreeVirtualMemory(hProcess, &base, &regionSize, MEM_RELEASE);
             return false;
         }
 
-        pNtFlushInstructionCache((HANDLE)-1, base, regionSize);
+        pNtFlushInstructionCache(hProcess, base, regionSize);
 
         __try {
             reinterpret_cast<void(*)()>(base)();
@@ -9023,7 +9036,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         VMCallInfo vmcallInfo = {};
         u64 vmcallResult = 0;
 
-        constexpr unsigned char intelTemplate[44] = {
+        constexpr u8 intelTemplate[44] = {
             0x48,0xBA,0,0,0,0,0,0,0,0,                     // mov rdx, imm64   ; PW1
             0x48,0xB9,0,0,0,0,0,0,0,0,                     // mov rcx, imm64   ; PW3
             0x48,0xB8,0,0,0,0,0,0,0,0,                     // mov rax, imm64   ; &vmcallInfo
@@ -9032,7 +9045,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             0xC3                                           // ret
         };
 
-        constexpr unsigned char amdTemplate[44] = {
+        constexpr u8 amdTemplate[44] = {
             0x48,0xBA,0,0,0,0,0,0,0,0,                     // mov rdx, imm64   ; PW1
             0x48,0xB9,0,0,0,0,0,0,0,0,                     // mov rcx, imm64   ; PW3
             0x48,0xB8,0,0,0,0,0,0,0,0,                     // mov rax, imm64   ; &vmcallInfo
@@ -9457,7 +9470,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         auto contains_redhat_ascii_ci = [](const std::vector<BYTE>& buf) -> bool {
             if (buf.empty()) return false;
             std::string s(reinterpret_cast<const char*>(buf.data()), buf.size());
-            for (auto& c : s) c = static_cast<char>(::tolower(static_cast<unsigned char>(c)));
+            for (auto& c : s) c = static_cast<char>(::tolower(static_cast<u8>(c)));
             return s.find("red hat secure boot") != std::string::npos;
         };
         auto contains_redhat_utf16le_ci = [](const std::vector<BYTE>& buf) -> bool {
@@ -9535,16 +9548,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                         buf, _countof(buf), _TRUNCATE,
                         L"{%08lX-%04hX-%04hX-%02X%02X-%02X%02X%02X%02X%02X%02X}",
                         static_cast<unsigned long>(g.Data1),
-                        static_cast<unsigned short>(g.Data2),
-                        static_cast<unsigned short>(g.Data3),
-                        static_cast<unsigned int>(g.Data4[0]),
-                        static_cast<unsigned int>(g.Data4[1]),
-                        static_cast<unsigned int>(g.Data4[2]),
-                        static_cast<unsigned int>(g.Data4[3]),
-                        static_cast<unsigned int>(g.Data4[4]),
-                        static_cast<unsigned int>(g.Data4[5]),
-                        static_cast<unsigned int>(g.Data4[6]),
-                        static_cast<unsigned int>(g.Data4[7])
+                        static_cast<u16>(g.Data2),
+                        static_cast<u16>(g.Data3),
+                        static_cast<u32>(g.Data4[0]),
+                        static_cast<u32>(g.Data4[1]),
+                        static_cast<u32>(g.Data4[2]),
+                        static_cast<u32>(g.Data4[3]),
+                        static_cast<u32>(g.Data4[4]),
+                        static_cast<u32>(g.Data4[5]),
+                        static_cast<u32>(g.Data4[6]),
+                        static_cast<u32>(g.Data4[7])
                     );
                     if (written <= 0) return std::wstring();
                     return std::wstring(buf);
@@ -9748,16 +9761,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     buf, _countof(buf), _TRUNCATE,
                     L"{%08lX-%04hX-%04hX-%02X%02X-%02X%02X%02X%02X%02X%02X}",
                     static_cast<unsigned long>(g.Data1),
-                    static_cast<unsigned short>(g.Data2),
-                    static_cast<unsigned short>(g.Data3),
-                    static_cast<unsigned int>(g.Data4[0]),
-                    static_cast<unsigned int>(g.Data4[1]),
-                    static_cast<unsigned int>(g.Data4[2]),
-                    static_cast<unsigned int>(g.Data4[3]),
-                    static_cast<unsigned int>(g.Data4[4]),
-                    static_cast<unsigned int>(g.Data4[5]),
-                    static_cast<unsigned int>(g.Data4[6]),
-                    static_cast<unsigned int>(g.Data4[7])
+                    static_cast<u16>(g.Data2),
+                    static_cast<u16>(g.Data3),
+                    static_cast<u32>(g.Data4[0]),
+                    static_cast<u32>(g.Data4[1]),
+                    static_cast<u32>(g.Data4[2]),
+                    static_cast<u32>(g.Data4[3]),
+                    static_cast<u32>(g.Data4[4]),
+                    static_cast<u32>(g.Data4[5]),
+                    static_cast<u32>(g.Data4[6]),
+                    static_cast<u32>(g.Data4[7])
                 );
                 if (written <= 0) return std::wstring();
                 return std::wstring(buf);
@@ -9906,12 +9919,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 const size_t pos = desc.find(t);
                 if (pos == std::string::npos || pos == 0) continue;
                 size_t start = pos;
-                while (start > 0 && std::isupper(static_cast<unsigned char>(desc[start - 1]))) --start;
+                while (start > 0 && std::isupper(static_cast<u8>(desc[start - 1]))) --start;
                 const size_t len = pos - start;
                 if (len >= 4 && len <= 8) {
                     bool ok = true;
                     for (size_t i = start; i < pos; ++i) {
-                        if (!std::isupper(static_cast<unsigned char>(desc[i]))) { ok = false; break; }
+                        if (!std::isupper(static_cast<u8>(desc[i]))) { ok = false; break; }
                     }
                     if (ok) return true;
                 }
@@ -9987,101 +10000,19 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::CPU_HEURISTIC
      */
     [[nodiscard]] static bool cpu_heuristic() {
-        using NtAllocateVirtualMemory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, ULONG_PTR, PSIZE_T, ULONG, ULONG);
-        using NtProtectVirtualMemory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG, PULONG);
-        using NtFreeVirtualMemory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG);
-        using NtFlushInstructionCache_t = NTSTATUS(__stdcall*)(HANDLE, PVOID, SIZE_T);
-
         // 1) Check for commonly disabled instructions on patches      
-        // 1.1 - Test RDPID EAX); C3 (RET)
-        const unsigned char code[] = { 0xF3, 0x0F, 0xC7, 0xF8, 0xC3 };
-
-        const HMODULE ntdll = util::get_ntdll();
-        if (!ntdll) return false;
-
-        const char* names[] = { "NtAllocateVirtualMemory", "NtProtectVirtualMemory", "NtFlushInstructionCache", "NtFreeVirtualMemory"
-        };
-        void* funcs[ARRAYSIZE(names)] = {};
-        util::get_function_address(ntdll, names, funcs, ARRAYSIZE(names));
-
-        const auto pNtAllocateVirtualMemory = reinterpret_cast<NtAllocateVirtualMemory_t>(funcs[0]);
-        const auto pNtProtectVirtualMemory = reinterpret_cast<NtProtectVirtualMemory_t>(funcs[1]);
-        const auto pNtFlushInstructionCache = reinterpret_cast<NtFlushInstructionCache_t>(funcs[2]);
-        const auto pNtFreeVirtualMemory = reinterpret_cast<NtFreeVirtualMemory_t>(funcs[3]);
-
-        if (!pNtAllocateVirtualMemory || !pNtProtectVirtualMemory || !pNtFlushInstructionCache || !pNtFreeVirtualMemory) {
-            return false;
-        }
-
-        PVOID mem = nullptr;
-        SIZE_T regionSize = sizeof(code);
-        PVOID freeBase = nullptr;
-        SIZE_T freeSize = 0;
-        NTSTATUS st = pNtAllocateVirtualMemory((HANDLE)-1, &mem, 0, &regionSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-        if (!NT_SUCCESS(st) || !mem) {
-            return false;
-        }
-
-        memcpy(mem, code, sizeof(code));
-
-        ULONG oldProtect = 0;
-        st = pNtProtectVirtualMemory((HANDLE)-1, &mem, &regionSize, PAGE_EXECUTE_READ, &oldProtect);
-        if (!NT_SUCCESS(st)) {
-            freeBase = mem; freeSize = regionSize;
-            pNtFreeVirtualMemory((HANDLE)-1, &freeBase, &freeSize, MEM_RELEASE);
-            return false;
-        }
-
-        pNtFlushInstructionCache((HANDLE)-1, mem, regionSize);
-
-        using rdpid_fn_t = u64(__fastcall*)();
-        rdpid_fn_t fn = reinterpret_cast<rdpid_fn_t>(mem);
-
         bool ok = true;
-        __try {
-            (void)fn();
-        }
-        __except (GetExceptionCode() == EXCEPTION_ILLEGAL_INSTRUCTION
-            ? EXCEPTION_EXECUTE_HANDLER
-            : EXCEPTION_CONTINUE_SEARCH) {
-            ok = false;
-        }
 
-        freeBase = mem; freeSize = regionSize;
-        pNtFreeVirtualMemory((HANDLE)-1, &freeBase, &freeSize, MEM_RELEASE);
+        u32 a = 0, b = 0, c = 0, d = 0;
+        cpu::cpuid(a, b, c, d, 1u);
 
-        if (!ok) {
-            debug("CPU_HEURISTIC: Failed to handle RDPID correctly");
-            return true;
-        }
-        // 1.2 - Test AES instructions
-        alignas(16) unsigned char plaintext[16] = {
-        0x00,0x11,0x22,0x33, 0x44,0x55,0x66,0x77,
-        0x88,0x99,0xAA,0xBB, 0xCC,0xDD,0xEE,0xFF
-        };
-        alignas(16) unsigned char key[16] = {
-            0x0F,0x0E,0x0D,0x0C, 0x0B,0x0A,0x09,0x08,
-            0x07,0x06,0x05,0x04, 0x03,0x02,0x01,0x00
-        };
-        alignas(16) unsigned char out[16] = { 0 };
-
-        __try {
-            __m128i block = _mm_loadu_si128(reinterpret_cast<const __m128i*>(plaintext));
-            __m128i key_vec = _mm_loadu_si128(reinterpret_cast<const __m128i*>(key));
-
-            __m128i tmp = _mm_xor_si128(block, key_vec);
-            tmp = _mm_aesenc_si128(tmp, key_vec);
-
-            _mm_storeu_si128(reinterpret_cast<__m128i*>(out), tmp);
-        }
-        __except (GetExceptionCode() == EXCEPTION_ILLEGAL_INSTRUCTION
-            ? EXCEPTION_EXECUTE_HANDLER
-            : EXCEPTION_CONTINUE_SEARCH) {
+        constexpr u32 AES_NI_BIT = 1u << 25;
+        if ((c & AES_NI_BIT) == 0) {
             ok = false;
         }
 
         if (!ok) {
-            debug("CPU_HEURISTIC: Failed to handle AES encryption correctly");
+            debug("CPU_HEURISTIC: CPU does not report AES");
             return true;
         }
 
@@ -10102,7 +10033,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         // AMD stub template (mov rax, imm64 + clzero + ret)
         // 8-byte immediate at runtime at offsets [2..9]
-        unsigned char amd_bytes[] = {
+        u8 amd_bytes[] = {
             0x48, 0xB8,                 // mov rax, imm64
             0x00, 0x00, 0x00, 0x00,     // imm64 low bytes (placeholder)
             0x00, 0x00, 0x00, 0x00,     // imm64 high bytes (placeholder)
@@ -10111,11 +10042,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         };
         constexpr SIZE_T amd_stub_size = sizeof(amd_bytes); // 14
 
-        const unsigned char* bytes = nullptr;
+        const u8* bytes = nullptr;
         SIZE_T codeSize = 0;
 
         LPVOID amd_target_mem = nullptr;
         LPVOID exec_mem = nullptr;
+        PVOID freeBase = nullptr;
+        SIZE_T freeSize = 0;
 
         const bool claimed_amd = cpu::is_amd();
         const bool claimed_intel = cpu::is_intel();
@@ -10133,6 +10066,27 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // one cache line = 64 bytes
         const SIZE_T targetSize = 64;
 
+        const HMODULE ntdll = util::get_ntdll();
+        if (!ntdll) return false;
+
+        const char* names[] = { "NtAllocateVirtualMemory", "NtProtectVirtualMemory", "NtFlushInstructionCache", "NtFreeVirtualMemory"
+        };
+        void* funcs[ARRAYSIZE(names)] = {};
+        util::get_function_address(ntdll, names, funcs, ARRAYSIZE(names));
+
+        using NtAllocateVirtualMemory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, ULONG_PTR, PSIZE_T, ULONG, ULONG);
+        using NtProtectVirtualMemory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG, PULONG);
+        using NtFreeVirtualMemory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG);
+        using NtFlushInstructionCache_t = NTSTATUS(__stdcall*)(HANDLE, PVOID, SIZE_T);
+        const auto pNtAllocateVirtualMemory = reinterpret_cast<NtAllocateVirtualMemory_t>(funcs[0]);
+        const auto pNtProtectVirtualMemory = reinterpret_cast<NtProtectVirtualMemory_t>(funcs[1]);
+        const auto pNtFlushInstructionCache = reinterpret_cast<NtFlushInstructionCache_t>(funcs[2]);
+        const auto pNtFreeVirtualMemory = reinterpret_cast<NtFreeVirtualMemory_t>(funcs[3]);
+
+        if (!pNtAllocateVirtualMemory || !pNtProtectVirtualMemory || !pNtFlushInstructionCache || !pNtFreeVirtualMemory) {
+            return false;
+        }
+
         {
             PVOID base = nullptr;
             SIZE_T sz = targetSize;
@@ -10147,7 +10101,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 const std::uintptr_t paddr = reinterpret_cast<std::uintptr_t>(amd_target_mem);
                 const u64 addr = static_cast<u64>(paddr);
                 for (int i = 0; i < 8; ++i) {
-                    amd_bytes[2 + i] = static_cast<unsigned char>((addr >> (i * 8)) & 0xFF);
+                    amd_bytes[2 + i] = static_cast<u8>((addr >> (i * 8)) & 0xFF);
                 }
                 bytes = amd_bytes;
                 codeSize = amd_stub_size;
@@ -11879,7 +11833,7 @@ std::string VM::memo::brand::brand_cache = "";
 std::string VM::memo::multi_brand::brand_cache = "";
 std::string VM::memo::cpu_brand::brand_cache = "";
 VM::u32 VM::memo::threadcount::threadcount_cache = 0;
-VM::hyperx_state VM::memo::hyperx::state = VM::HYPERV_UNKNOWN_VM;
+VM::hyperx_state VM::memo::hyperx::state = VM::HYPERV_UNKNOWN;
 bool VM::memo::hyperx::cached = false;
 
 #ifdef __VMAWARE_DEBUG__
