@@ -9989,10 +9989,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check if the CPU is capable of running certain instructions successfully
-     * @category Windows
-     * @implements VM::CPU_HEURISTIC
-     */
+ * @brief Check if the CPU is capable of running certain instructions successfully
+ * @category Windows
+ * @implements VM::CPU_HEURISTIC
+ */
     [[nodiscard]] static bool cpu_heuristic() {
         using NtAllocateVirtualMemory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, ULONG_PTR, PSIZE_T, ULONG, ULONG);
         using NtProtectVirtualMemory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG, PULONG);
@@ -10000,9 +10000,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         using NtFlushInstructionCache_t = NTSTATUS(__stdcall*)(HANDLE, PVOID, SIZE_T);
 
         // 1) Check for commonly disabled instructions on patches      
-        // 1.1 - Test RDPID EAX); C3 (RET)
-        const unsigned char code[] = { 0xF3, 0x0F, 0xC7, 0xF8, 0xC3 };
-
         const HMODULE ntdll = util::get_ntdll();
         if (!ntdll) return false;
 
@@ -10020,48 +10017,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        PVOID mem = nullptr;
-        SIZE_T regionSize = sizeof(code);
         PVOID freeBase = nullptr;
         SIZE_T freeSize = 0;
-        NTSTATUS st = pNtAllocateVirtualMemory((HANDLE)-1, &mem, 0, &regionSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-        if (!NT_SUCCESS(st) || !mem) {
-            return false;
-        }
-
-        memcpy(mem, code, sizeof(code));
-
-        ULONG oldProtect = 0;
-        st = pNtProtectVirtualMemory((HANDLE)-1, &mem, &regionSize, PAGE_EXECUTE_READ, &oldProtect);
-        if (!NT_SUCCESS(st)) {
-            freeBase = mem; freeSize = regionSize;
-            pNtFreeVirtualMemory((HANDLE)-1, &freeBase, &freeSize, MEM_RELEASE);
-            return false;
-        }
-
-        pNtFlushInstructionCache((HANDLE)-1, mem, regionSize);
-
-        using rdpid_fn_t = u64(__fastcall*)();
-        rdpid_fn_t fn = reinterpret_cast<rdpid_fn_t>(mem);
 
         bool ok = true;
-        __try {
-            (void)fn();
-        }
-        __except (GetExceptionCode() == EXCEPTION_ILLEGAL_INSTRUCTION
-            ? EXCEPTION_EXECUTE_HANDLER
-            : EXCEPTION_CONTINUE_SEARCH) {
-            ok = false;
-        }
-
-        freeBase = mem; freeSize = regionSize;
-        pNtFreeVirtualMemory((HANDLE)-1, &freeBase, &freeSize, MEM_RELEASE);
-
-        if (!ok) {
-            debug("CPU_HEURISTIC: Failed to handle RDPID correctly");
-            return true;
-        }
-        // 1.2 - Test AES instructions
         alignas(16) unsigned char plaintext[16] = {
         0x00,0x11,0x22,0x33, 0x44,0x55,0x66,0x77,
         0x88,0x99,0xAA,0xBB, 0xCC,0xDD,0xEE,0xFF
@@ -10193,7 +10152,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                         __except (GetExceptionCode() == EXCEPTION_ILLEGAL_INSTRUCTION ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH) {
                             return 1;
                         }
-                    };
+                        };
 
                     const int runner_rc = runner(reinterpret_cast<CodeFunc>(exec_mem));
                     if (runner_rc == 0 && exception) {
