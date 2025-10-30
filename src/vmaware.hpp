@@ -52,14 +52,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 532
+ * - enums for publicly accessible techniques  => line 534
  * - struct for internal cpu operations        => line 716
- * - struct for internal memoization           => line 1092
- * - struct for internal utility functions     => line 1222
- * - struct for internal core components       => line 10274
- * - start of VM detection technique list      => line 2188
- * - start of public VM detection functions    => line 10767
- * - start of externally defined variables     => line 11749
+ * - struct for internal memoization           => line 1148
+ * - struct for internal utility functions     => line 1278
+ * - struct for internal core components       => line 9929
+ * - start of VM detection technique list      => line 2238
+ * - start of public VM detection functions    => line 10422
+ * - start of externally defined variables     => line 11402
  *
  *
  * ============================== EXAMPLE ===================================
@@ -577,7 +577,6 @@ public:
         PCI_DEVICES,
         HYPERV_HOSTNAME,
         GENERAL_HOSTNAME,
-        VBOX_DEFAULT,
         
         // Linux
         SMBIOS_VM_BIT,
@@ -670,7 +669,7 @@ private:
 public:
     // for platform compatibility ranges
     static constexpr u8 WINDOWS_START = VM::GPU_CAPABILITIES;
-    static constexpr u8 WINDOWS_END = VM::VBOX_DEFAULT;
+    static constexpr u8 WINDOWS_END = VM::GENERAL_HOSTNAME;
     static constexpr u8 LINUX_START = VM::SIDT;
     static constexpr u8 LINUX_END = VM::THREAD_COUNT;
     static constexpr u8 MACOS_START = VM::THREAD_COUNT;
@@ -1884,14 +1883,8 @@ private:
             auto is_root_partition = []() -> bool {
                 u32 ebx, unused = 0;
                 cpu::cpuid(unused, ebx, unused, unused, 0x40000003);
-                const bool result = (ebx & 1);
 
-            #ifdef __VMAWARE_DEBUG__
-                if (result) {
-                    core_debug("HYPER_X: running under virtual root partition");
-                }
-            #endif
-                return result;
+                return (ebx & 1);
             };
 
             /**
@@ -4627,7 +4620,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 SetThreadAffinityMask(th, prevMask);
             }
 
-            if (difference > 20) {
+            if (difference > 10) {
                 return true; // both ratios will always differ under a RDTSC trap since the hypervisor can't account for the XOR loop
             }
             // TLB flushes or side channel cache attacks are not even tried due to how ineffective they are against stealthy hypervisors
@@ -5641,128 +5634,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
 
 #if (LINUX || WINDOWS)
-    /**
-     * @brief Check for default RAM and DISK sizes set by VirtualBox
-     * @category Linux, Windows
-     * @warning Permissions required
-     * @implements VM::VBOX_DEFAULT
-     */
-    [[nodiscard]] static bool vbox_default_specs() {
-        const u16 disk = util::get_disk_size(); 
-        const u32 ram = util::get_physical_ram_size(); 
-
-        debug("VBOX_DEFAULT: ram = ", ram);
-        debug("VBOX_DEFAULT: size = ", disk);
-
-        if (ram > 4) {
-            return false;
-        }
-
-        #if (LINUX)
-            auto get_distro = []() -> std::string {
-                std::ifstream osReleaseFile("/etc/os-release");
-                std::string line;
-
-                while (std::getline(osReleaseFile, line)) {
-                    if (line.find("ID=") != std::string::npos) {
-                        const std::size_t start = line.find('"');
-                        const std::size_t end = line.rfind('"');
-                        if (start != std::string::npos && end != std::string::npos && start < end) {
-                            return line.substr(start + 1, end - start - 1);
-                        }
-                    }
-                }
-
-                return "unknown";
-            };
-
-            const std::string distro = get_distro();
-
-            debug("VBOX_DEFAULT: linux, detected distro: ", distro);
-
-            // yoda notation ftw
-            if ("unknown" == distro) {
-                return false;
-            }
-
-            static const std::unordered_map<std::string, std::pair<int, int>> defaults = {
-                {"arch",      {8, 1}},
-                {"archlinux", {8, 1}},
-                {"opensuse",  {8, 1}},
-                {"opensuse_64",{8,1}},
-                {"redhat",    {8, 1}},
-                {"redhat_64", {8, 1}},
-                {"gentoo",    {8, 1}},
-                {"gentoo_64", {8, 1}},
-
-                {"fedora",    {15, 2}},
-                {"fedora_64", {15, 2}},
-                {"ubuntu",    {25, 2}},
-                {"ubuntu_64", {25, 2}},
-                {"ol",        {20, 2}},    // ol = oracle linux (alias)
-                {"oracle",    {20, 2}},
-                {"debian",    {20, 2}},
-                {"debian_64", {20, 2}},
-
-                {"centos",    {20, 2}},
-                {"centos_64", {20, 2}},
-                {"suse",      {8, 1}},
-                {"suse_64",   {8, 1}},
-                {"opensuse",  {8, 1}},
-                {"oraclelinux",{20,2}},
-                {"linux",     {8, 1}},   // "Other Linux" generic
-                {"linux_64",  {8, 1}},
-                {"mandriva",  {8, 1}},
-                {"turbolinux",{8, 1}},
-                {"xandros",   {8, 1}},
-                {"other",     {8, 1}}
-            };
-
-            std::string key = distro;
-            for (char& c : key) {     
-                c = static_cast<char>(std::tolower(static_cast<u8>(c)));
-            }
-
-            const auto it = defaults.find(key);
-            if (it != defaults.end()) {
-                return (it->second.first == disk) && (static_cast<u32>(it->second.second) == ram);
-            }
-
-            return false;
-        #elif (WINDOWS)
-            const u8 version = util::get_windows_version();
-
-            if (version < 7) {
-                return false;
-            }
-
-            // even if you create a drive with, say, 80GiB, only 79.1GiB will be allocated, so we do <default_config_size> - 1
-            if (version == 7) {
-                debug("VBOX_DEFAULT: Windows 7 detected");
-                return ((31 == disk) && ((1 == ram) || (2 == ram)));
-            }
-
-            if (version == 8) {
-                debug("VBOX_DEFAULT: Windows 8 detected");
-                return ((39 == disk) && ((1 == ram) || (2 == ram)));
-            }
-
-            if (version == 8) {
-                debug("VBOX_DEFAULT: Windows 8 detected");
-                return ((39 == disk) && ((1 == ram) || (2 == ram)));
-            }
-
-            if (version == 10) {
-                debug("VBOX_DEFAULT: Windows 10 detected");
-                return ((49 == disk) && ( (1 == ram) || (2 == ram) ));
-            }
-
-            debug("VBOX_DEFAULT: Windows 11 detected");
-            return ((79 == disk) && (4 == ram));
-        #endif
-    }
-
-
     /**
      * @brief Check for uncommon IDT virtual addresses
      * @author Matteo Malvica
@@ -9498,12 +9369,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         bool success = false;
         std::vector<BYTE> resBuffer;
         ULONG bufferLength = 0;
-        HMODULE ntdll = util::get_ntdll();
+        const HMODULE ntdll = util::get_ntdll();
         if (ntdll) {
             const char* names[] = { "NtEnumerateSystemEnvironmentValuesEx" };
             void* functions[1] = { nullptr };
             util::get_function_address(ntdll, names, functions, 1);
-            auto NtEnum = reinterpret_cast<NtEnumerateSystemEnvironmentValuesEx_t>(functions[0]);
+            const auto NtEnum = reinterpret_cast<NtEnumerateSystemEnvironmentValuesEx_t>(functions[0]);
             if (NtEnum) {
                 hasFunction = true;
                 NTSTATUS status = NtEnum(1, nullptr, &bufferLength);
@@ -9539,7 +9410,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         auto contains_redhat_utf16le_ci = [](const std::vector<BYTE>& buf)->bool {
             if (buf.size() < 2 || (buf.size() % 2) != 0) return false;
             const WCHAR* wptr = reinterpret_cast<const WCHAR*>(buf.data());
-            size_t wlen = buf.size() / sizeof(WCHAR);
+            const size_t wlen = buf.size() / sizeof(WCHAR);
             try {
                 std::wstring ws(wptr, wlen);
                 for (auto& wc : ws) wc = static_cast<wchar_t>(::towlower(wc));
@@ -9599,7 +9470,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 if (written <= 0) return std::wstring();
                 return std::wstring(buf);
             };
-            std::wstring guidStr = guid_to_wstring(varName->VendorGuid);
+            const std::wstring guidStr = guid_to_wstring(varName->VendorGuid);
             if (guidStr.empty()) { cleanup(); return true; }
 
             if (!nameStr.empty() && nameStr.rfind(L"VMM", 0) == 0) {
@@ -9614,16 +9485,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             else if (nameStr == L"dbxDefault") found_dbxDefault = true;
 
             std::vector<BYTE> valueBuf;
-            DWORD required = GetFirmwareEnvironmentVariableW(nameStr.c_str(), guidStr.c_str(), nullptr, 0);
+            const DWORD required = GetFirmwareEnvironmentVariableW(nameStr.c_str(), guidStr.c_str(), nullptr, 0);
             if (required > 0) {
                 valueBuf.resize(required);
-                DWORD readLen = GetFirmwareEnvironmentVariableW(nameStr.c_str(), guidStr.c_str(), valueBuf.data(), required);
+                const DWORD readLen = GetFirmwareEnvironmentVariableW(nameStr.c_str(), guidStr.c_str(), valueBuf.data(), required);
                 if (readLen == 0) valueBuf.clear(); else valueBuf.resize(readLen);
             }
             else {
                 const DWORD fallbackSize = 8192;
                 valueBuf.resize(fallbackSize);
-                DWORD readLen = GetFirmwareEnvironmentVariableW(nameStr.c_str(), guidStr.c_str(), valueBuf.data(), fallbackSize);
+                const DWORD readLen = GetFirmwareEnvironmentVariableW(nameStr.c_str(), guidStr.c_str(), valueBuf.data(), fallbackSize);
                 if (readLen > 0) valueBuf.resize(readLen); else valueBuf.clear();
             }
 
@@ -9635,9 +9506,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     pk_has_redhat = true;
                 if (pk_has_redhat) {
                     debug("NVRAM: QEMU detected");
-                    bool added = core::add(brands::QEMU);
                     cleanup();
-                    return added;
+                    return core::add(brands::QEMU);
                 }
             }
 
@@ -11063,7 +10933,6 @@ public: // START OF PUBLIC FUNCTIONS
             case HWMON: return "HWMON";
             case DLL: return "DLL";
             case HWMODEL: return "HWMODEL";
-            case VBOX_DEFAULT: return "VBOX_DEFAULT";
             case WINE: return "WINE";
             case POWER_CAPABILITIES: return "POWER_CAPABILITIES";
             case PROCESSES: return "PROCESSES";
@@ -11712,7 +11581,6 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         std::make_pair(VM::PCI_DEVICES, VM::core::technique(95, VM::pci_devices)),
         std::make_pair(VM::SIDT, VM::core::technique(50, VM::sidt)),
         std::make_pair(VM::HYPERV_HOSTNAME, VM::core::technique(30, VM::hyperv_hostname)),
-        std::make_pair(VM::VBOX_DEFAULT, VM::core::technique(25, VM::vbox_default_specs)),
         std::make_pair(VM::GENERAL_HOSTNAME, VM::core::technique(10, VM::general_hostname)),
     #endif
         
