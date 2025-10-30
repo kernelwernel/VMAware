@@ -53,13 +53,13 @@
  *
  * ============================== SECTIONS ==================================
  * - enums for publicly accessible techniques  => line 532
- * - struct for internal cpu operations        => line 716
- * - struct for internal memoization           => line 1092
- * - struct for internal utility functions     => line 1222
- * - struct for internal core components       => line 10274
- * - start of VM detection technique list      => line 2188
- * - start of public VM detection functions    => line 10767
- * - start of externally defined variables     => line 11749
+ * - struct for internal cpu operations        => line 714
+ * - struct for internal memoization           => line 1146
+ * - struct for internal utility functions     => line 1276
+ * - struct for internal core components       => line 9652
+ * - start of VM detection technique list      => line 1961
+ * - start of public VM detection functions    => line 10145
+ * - start of externally defined variables     => line 11125
  *
  *
  * ============================== EXAMPLE ===================================
@@ -375,10 +375,12 @@
     #include <initguid.h>
     #include <devpkey.h>
     #include <devguid.h>
+    #include <winevt.h>
 
     #pragma comment(lib, "setupapi.lib")
     #pragma comment(lib, "powrprof.lib")
     #pragma comment(lib, "Mincore.lib")
+    #pragma comment(lib,"wevtapi.lib")
 #elif (LINUX)
     #if (x86)
         #include <cpuid.h>
@@ -427,10 +429,8 @@
 
 #ifdef __VMAWARE_DEBUG__
     #define debug(...) VM::util::debug_msg(__VA_ARGS__)
-    #define core_debug(...) VM::util::core_debug_msg(__VA_ARGS__)
 #else
     #define debug(...)
-    #define core_debug(...)
 #endif
 
 
@@ -564,7 +564,6 @@ public:
         DBVM,
         OBJECTS,
         NVRAM,
-        BOOT_MANAGER,
         SMBIOS_INTEGRITY,
         EDID,
         CPU_HEURISTIC,
@@ -576,7 +575,6 @@ public:
         PCI_DEVICES,
         HYPERV_HOSTNAME,
         GENERAL_HOSTNAME,
-        VBOX_DEFAULT,
         
         // Linux
         SMBIOS_VM_BIT,
@@ -669,7 +667,7 @@ private:
 public:
     // for platform compatibility ranges
     static constexpr u8 WINDOWS_START = VM::GPU_CAPABILITIES;
-    static constexpr u8 WINDOWS_END = VM::VBOX_DEFAULT;
+    static constexpr u8 WINDOWS_END = VM::GENERAL_HOSTNAME;
     static constexpr u8 LINUX_START = VM::SIDT;
     static constexpr u8 LINUX_END = VM::THREAD_COUNT;
     static constexpr u8 MACOS_START = VM::THREAD_COUNT;
@@ -890,7 +888,63 @@ private:
                 }
             }
 
-            // since SMBIOS is unreliable, an extra fallback could be checking kernel-power-processor eventid 55
+            const EVT_HANDLE hQuery = EvtQuery(nullptr, L"System",LR"(*[System[Provider[@Name='Microsoft-Windows-Kernel-Processor-Power'] and EventID=55]])", EvtQueryReverseDirection);
+            if (!hQuery) return 0;
+            LPCWSTR props[] = { L"Event/EventData/Data[@Name='Number']", L"Event/EventData/Data[@Name='NominalFrequency']" };
+            const EVT_HANDLE hCtx = EvtCreateRenderContext(2, props, EvtRenderContextValues);
+            if (!hCtx) { EvtClose(hQuery); return 0; }
+
+            auto to_u64 = [](EVT_VARIANT& v)->uint64_t {
+                switch (v.Type) {
+                case EvtVarTypeUInt32:  return v.UInt32Val;
+                case EvtVarTypeUInt64:  return v.UInt64Val;
+                case EvtVarTypeInt32:   return (uint64_t)v.Int32Val;
+                case EvtVarTypeInt64:   return (uint64_t)v.Int64Val;
+                case EvtVarTypeUInt16:  return v.UInt16Val;
+                case EvtVarTypeSByte:   return (uint8_t)v.SByteVal;
+                case EvtVarTypeByte:    return v.ByteVal;
+                case EvtVarTypeBoolean: return v.BooleanVal ? 1ull : 0ull;
+                case EvtVarTypeDouble:  return (uint64_t)v.DoubleVal;
+                case EvtVarTypeAnsiString:
+                    if (v.AnsiStringVal) try { return std::stoull(std::string(v.AnsiStringVal)); }
+                    catch (...) { return 0; }
+                    return 0;
+                case EvtVarTypeString:
+                    if (v.StringVal) try { return std::stoull(std::wstring(v.StringVal)); }
+                    catch (...) { return 0; }
+                    return 0;
+                default:
+                    return 0;
+                }
+            };
+
+            const DWORD BATCH = 16;
+            std::vector<EVT_HANDLE> events(BATCH);
+            while (true) {
+                DWORD returned = 0;
+                if (!EvtNext(hQuery, BATCH, events.data(), INFINITE, 0, &returned)) {
+                    if (GetLastError() == ERROR_NO_MORE_ITEMS) break;
+                    break;
+                }
+                for (DWORD i = 0; i < returned; ++i) {
+                    EVT_HANDLE hEv = events[i];
+                    DWORD needed = 0, propCount = 0;
+                    EvtRender(hCtx, hEv, EvtRenderEventValues, 0, nullptr, &needed, &propCount);
+                    if (GetLastError() != ERROR_INSUFFICIENT_BUFFER || needed == 0) { EvtClose(hEv); continue; }
+                    std::vector<BYTE> buf(needed);
+                    if (!EvtRender(hCtx, hEv, EvtRenderEventValues, needed, buf.data(), &needed, &propCount)) { EvtClose(hEv); continue; }
+                    EvtClose(hEv);
+                    if (propCount < 2) continue;
+                    EVT_VARIANT* v = reinterpret_cast<EVT_VARIANT*>(buf.data());
+                    uint64_t num = to_u64(v[0]);
+                    if (num != 0) continue; // only processor Number == 0 because thats what we we will on VM::TIMER and other functions
+                    uint64_t nominal = to_u64(v[1]);
+                    if (nominal != 0) { EvtClose(hCtx); EvtClose(hQuery); return static_cast<uint32_t>(nominal); }
+                }
+            }
+            EvtClose(hCtx);
+            EvtClose(hQuery);
+
             return 0;
         }
 #endif
@@ -1422,7 +1476,6 @@ private:
             };
         }
 
-        // debug_msg / core_debug_msg
         template <typename... Args>
         static inline void debug_msg(Args&&... message) noexcept {
             static std::unordered_set<std::string> printed_messages;
@@ -1454,30 +1507,6 @@ private:
 
                 printed_messages.insert(std::move(msg_content));
             }
-        }
-
-        template <typename... Args>
-        static inline void core_debug_msg(Args&&... message) noexcept {
-        #if (LINUX || APPLE)
-            constexpr const char* black_bg = "\x1B[48;2;0;0;0m";
-            constexpr const char* bold = "\033[1m";
-            constexpr const char* orange = "\x1B[38;2;255;180;5m";
-            constexpr const char* ansiexit = "\x1B[0m";
-
-            std::cout.setf(std::ios::fixed, std::ios::floatfield);
-            std::cout.setf(std::ios::showpoint);
-
-            std::cout << black_bg
-                << bold << "["
-                << orange << "CORE DEBUG"
-                << ansiexit << bold << black_bg << "]"
-                << ansiexit << " ";
-        #else
-            std::cout << "[CORE DEBUG] ";
-        #endif
-
-            print_to_stream(std::cout, std::forward<Args>(message)...);
-            std::cout << std::dec << "\n";
         }
 
 
@@ -1519,119 +1548,6 @@ private:
                 UNUSED(cmd);
                 return std::make_unique<std::string>();
             #endif
-        #endif
-        }
-
-
-        [[nodiscard]] static u16 get_disk_size() {
-        #if (APPLE)
-            return 0;
-        #endif
-            u16 size = 0;
-            constexpr u64 U16_MAX = 65535;
-            constexpr u64 GB = 1024ull * 1024 * 1024;
-
-        #if (LINUX)
-            struct statvfs stat;
-            if (statvfs("/", &stat) != 0) {
-                debug("util::get_disk_size: failed to fetch size in GiB");
-                return 0;
-            }
-
-            const u64 total_bytes = static_cast<u64>(stat.f_blocks) * stat.f_frsize;
-            const u64 size_gb = total_bytes / GB;
-
-            if (size_gb > U16_MAX) {
-                size = static_cast<u16>(U16_MAX);
-            }
-            else {
-                size = static_cast<u16>(size_gb);
-            }
-        #elif (WINDOWS)
-            WCHAR windowsDir[MAX_PATH] = { 0 };
-            if (GetWindowsDirectoryW(windowsDir, MAX_PATH) == 0) {
-                debug("util::get_disk_size: GetWindowsDirectoryW failed");
-                return 81;
-            }
-
-            WCHAR volumeRoot[MAX_PATH] = { 0 };
-            if (!GetVolumePathNameW(windowsDir, volumeRoot, MAX_PATH)) {
-                debug("util::get_disk_size: GetVolumePathNameW failed");
-                return 81;
-            }
-
-            // Query free/total space on the volume that hosts Windows rather than hardcoding it to C:
-            ULARGE_INTEGER totalNumberOfBytes{};
-            if (GetDiskFreeSpaceExW(volumeRoot, nullptr, &totalNumberOfBytes, nullptr)) {
-                const u64 bytes = static_cast<u64>(totalNumberOfBytes.QuadPart);
-                const u64 size_gb = (bytes + (GB / 2ULL)) / GB;
-
-                if (size_gb > U16_MAX) {
-                    size = static_cast<u16>(U16_MAX);
-                }
-                else {
-                    size = static_cast<u16>(size_gb);
-                }
-            }
-            else {
-                debug("util::get_disk_size: failed to fetch size in GiB");
-                return 81;
-            }
-        #endif
-
-            return size;
-        }
-
-
-        [[nodiscard]] static u32 get_physical_ram_size() {
-        #if (LINUX)
-            if (!util::is_admin()) {
-                debug("get_physical_ram_size: ", "not root, returned 0");
-                return 0;
-            }
-
-            const auto result = util::sys_result("dmidecode --type 19 | grep 'Size' | grep '[[:digit:]]*'");
-            if (!result) {
-                debug("get_physical_ram_size: ", "invalid system result, returned 0");
-                return 0;
-            }
-
-            const bool is_mb = std::regex_search(*result, std::regex("MB"));
-            const bool is_gb = std::regex_search(*result, std::regex("GB"));
-            if (!(is_mb || is_gb)) {
-                debug("get_physical_ram_size: ", "unit not found, returned 0");
-                return 0;
-            }
-
-            std::string number_str;
-            for (char c : *result) {
-                if (std::isdigit(c)) number_str += c;
-                else if (!number_str.empty()) break;
-            }
-
-            if (number_str.empty()) {
-                debug("get_physical_ram_size: ", "no digits found, returned 0");
-                return 0;
-            }
-
-            u64 number = std::stoull(number_str);
-            if (is_mb) number = static_cast<u64>(std::round(static_cast<double>(number) / 1024.0));
-
-            return static_cast<u32>(std::min<u64>(number, std::numeric_limits<u32>::max()));
-        #elif (WINDOWS)
-            constexpr u64 gib = 1024ULL * 1024ULL * 1024ULL;
-
-            // the "physically installed" API can fail if some hypervisors like VirtualBox/QEMU don't populate the necessary SMBIOS fields, so we use GlobalMemoryStatusEx
-            MEMORYSTATUSEX ms{};
-            ms.dwLength = sizeof(ms);
-			if (GlobalMemoryStatusEx(&ms)) { // calls NtQuerySystemInformation rather than using SMBIOS
-                const u64 bytes = ms.ullTotalPhys;
-                return static_cast<u32>((bytes + (gib / 2ULL)) / gib);
-            }
-
-            return 0;
-        #else
-            return 0;
         #endif
         }
 
@@ -1810,7 +1726,7 @@ private:
             return HYPERV_UNKNOWN;
         #else
             if (memo::hyperx::is_cached()) {
-                core_debug("HYPER_X: returned from cache");
+                debug("HYPER_X: returned from cache");
                 return memo::hyperx::fetch();
             }
 
@@ -1827,14 +1743,8 @@ private:
             auto is_root_partition = []() -> bool {
                 u32 ebx, unused = 0;
                 cpu::cpuid(unused, ebx, unused, unused, 0x40000003);
-                const bool result = (ebx & 1);
 
-            #ifdef __VMAWARE_DEBUG__
-                if (result) {
-                    core_debug("HYPER_X: running under virtual root partition");
-                }
-            #endif
-                return result;
+                return (ebx & 1);
             };
 
             /**
@@ -1858,12 +1768,12 @@ private:
             if (!is_root_partition()) {
                 if (eax() == 11 && is_hyperv_present()) {
                     // Windows machine running under Hyper-V type 2
-                    core_debug("HYPER_X: Detected Hyper-V guest VM");
+                    debug("HYPER_X: Detected Hyper-V guest VM");
                     core::add(brands::HYPERV);
                     state = HYPERV_REAL_VM;
                 }
                 else {
-                    core_debug("HYPER_X: Hyper-V is not active");
+                    debug("HYPER_X: Hyper-V is not active");
                     state = HYPERV_UNKNOWN;
                 }
             }
@@ -1872,13 +1782,13 @@ private:
                 const std::string brand_str = cpu::cpu_manufacturer(0x40000100);
 
                 if (util::find(brand_str, "KVM")) {
-                    core_debug("HYPER_X: Detected Hyper-V enlightenments");
+                    debug("HYPER_X: Detected Hyper-V enlightenments");
                     core::add(brands::QEMU_KVM_HYPERV);
                     state = HYPERV_ENLIGHTENMENT;
                 }
                 else {
                     // Windows machine running under Hyper-V type 1
-                    core_debug("HYPER_X: Detected Hyper-V host machine");
+                    debug("HYPER_X: Detected Hyper-V host machine");
                     core::add(brands::HYPERV_ARTIFACT);
                     state = HYPERV_ARTIFACT_VM;
                 }
@@ -1891,81 +1801,6 @@ private:
         }
 
 #if (WINDOWS)
-        [[nodiscard]] static bool is_wow64() {
-            BOOL isWow64 = 0;
-            bool pbool = IsWow64Process(GetCurrentProcess(), &isWow64);
-            return (pbool && isWow64);
-        }
-
-
-        [[nodiscard]] static u8 get_windows_version() {
-            struct VersionMapEntry {
-                DWORD build;
-                u8 major;
-            };
-
-            constexpr VersionMapEntry windowsVersions[] = {
-                {6002, 6},
-                {7601, 7},
-
-                {9200, 8},
-                {9600, 8},
-
-                {10240, 10},
-                {10586, 10},
-                {14393, 10},
-                {15063, 10},
-                {16299, 10},
-                {17134, 10},
-                {17763, 10},
-                {18362, 10},
-                {18363, 10},
-                {19041, 10},
-                {19042, 10},
-                {19043, 10},
-                {19044, 10},
-                {19045, 10},
-
-                {22000, 11},
-                {22621, 11},
-                {22631, 11},
-                {26100, 11}
-            };
-
-            const HMODULE ntdll = util::get_ntdll();
-            if (!ntdll) {
-                return 0;
-            }
-
-            using RtlGetVersionFunc = NTSTATUS(__stdcall*)(PRTL_OSVERSIONINFOW);
-            const char* names[] = { "RtlGetVersion" };
-            void* functions[1] = { nullptr };
-
-            get_function_address(ntdll, names, functions, _countof(names));
-
-            const auto pRtlGetVersion = reinterpret_cast<RtlGetVersionFunc>(functions[0]);
-            if (!pRtlGetVersion) {
-                return 0;
-            }
-
-            RTL_OSVERSIONINFOW osvi{};
-            osvi.dwOSVersionInfoSize = sizeof(osvi);
-            if (pRtlGetVersion(&osvi) != 0) {
-                return 0;
-            }
-
-            const DWORD build = osvi.dwBuildNumber;
-
-            for (auto it = std::rbegin(windowsVersions); it != std::rend(windowsVersions); ++it) {
-                if (build >= it->build) {
-                    return it->major;
-                }
-            }
-
-            return 0;
-        }
-
-
         // retrieves the addresses of specified functions from a loaded module using the export directory, manual implementation of GetProcAddress
         static void get_function_address(const HMODULE hModule, const char* names[], void** functions, size_t count) {
             using FuncMap = std::unordered_map<std::string, void*>;
@@ -1999,7 +1834,7 @@ private:
             auto safe_cstr_from_rva = [&](DWORD rva) -> const char* {
                 if (!valid_range(static_cast<size_t>(rva), 1)) return nullptr;
                 const char* p = reinterpret_cast<const char*>(base + rva);
-                size_t remaining = module_size - static_cast<size_t>(rva);
+                const size_t remaining = module_size - static_cast<size_t>(rva);
                 for (size_t i = 0; i < remaining; ++i) {
                     if (p[i] == '\0') return p;
                 }
@@ -2018,7 +1853,7 @@ private:
             const auto* ntHeaders = reinterpret_cast<const IMAGE_NT_HEADERS*>(base + e_lfanew);
             if (ntHeaders->Signature != IMAGE_NT_SIGNATURE) return;
 
-            size_t sizeOfImage = static_cast<size_t>(ntHeaders->OptionalHeader.SizeOfImage);
+            const size_t sizeOfImage = static_cast<size_t>(ntHeaders->OptionalHeader.SizeOfImage);
             if (sizeOfImage != 0 && sizeOfImage > module_size) {
                 module_size = sizeOfImage;
             }
@@ -2120,68 +1955,6 @@ private:
             if (h) cachedNtdll = h;
 
             return h;
-        }
-
-        using NtEnumerateSystemEnvironmentValuesEx_t = NTSTATUS(__stdcall*)(ULONG InformationClass, PVOID Buffer, PULONG BufferLength);
-
-        struct EnumerateFirmwareResult {
-            bool hasFunction = false;      // ntdll or function missing
-            bool success = false;          // second call returned STATUS_SUCCESS (0) and buffer filled
-            ULONG bufferLength = 0;        // length returned by first call
-            NTSTATUS finalStatus = 0;      // status returned by second call (or first call if second not made)
-            std::vector<BYTE> buffer;      // filled buffer (only valid if success==true)
-        };
-
-        static EnumerateFirmwareResult enumerate_firmware_variables()
-        {
-            using NtEnumerateSystemEnvironmentValuesEx_t = NTSTATUS(__stdcall*)(ULONG InformationClass, PVOID Buffer, PULONG BufferLength);
-
-            EnumerateFirmwareResult res;
-
-            const HMODULE ntdll = util::get_ntdll();
-            if (ntdll == nullptr) {
-                return res;
-            }
-
-            const char* names[] = { "NtEnumerateSystemEnvironmentValuesEx" };
-            void* functions[1] = { nullptr };
-            get_function_address(ntdll, names, functions, 1);
-
-            NtEnumerateSystemEnvironmentValuesEx_t NtEnumerateSystemEnvironmentValuesEx = reinterpret_cast<NtEnumerateSystemEnvironmentValuesEx_t>(functions[0]);
-            if (NtEnumerateSystemEnvironmentValuesEx == nullptr) {
-                return res;
-            }
-
-            res.hasFunction = true;
-
-            ULONG bufferLength = 0;
-            NTSTATUS status = NtEnumerateSystemEnvironmentValuesEx(1, nullptr, &bufferLength);
-            res.bufferLength = bufferLength;
-
-            if (bufferLength == 0) {
-                res.finalStatus = status;
-                return res;
-            }
-
-            try {
-                res.buffer.resize(bufferLength);
-            }
-            catch (...) {
-                return res;
-            }
-
-            status = NtEnumerateSystemEnvironmentValuesEx(1, res.buffer.data(), &bufferLength);
-            res.finalStatus = status;
-
-            if (status == 0) {
-                res.success = true;
-                res.buffer.resize(bufferLength);
-            }
-            else {
-                res.buffer.clear();
-            }
-
-            return res;
         }
 #endif
     };
@@ -4402,9 +4175,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             debug("TIMER: Running inside a binary translation layer.");
             return false;
         }
-        u16 cycleThreshold = 1700;
+        u16 cycleThreshold = 1500;
         if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
-            cycleThreshold = 25000; // if we're running under Hyper-V, attempt to detect nested virtualization only
+            cycleThreshold = 15000; // if we're running under Hyper-V, attempt to detect nested virtualization only
         }
 
     #if (WINDOWS)
@@ -4570,7 +4343,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 SetThreadAffinityMask(th, prevMask);
             }
 
-            if (difference > 20) {
+            if (difference > 10) {
                 return true; // both ratios will always differ under a RDTSC trap since the hypervisor can't account for the XOR loop
             }
             // TLB flushes or side channel cache attacks are not even tried due to how ineffective they are against stealthy hypervisors
@@ -5584,128 +5357,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 #endif
 
 #if (LINUX || WINDOWS)
-    /**
-     * @brief Check for default RAM and DISK sizes set by VirtualBox
-     * @category Linux, Windows
-     * @warning Permissions required
-     * @implements VM::VBOX_DEFAULT
-     */
-    [[nodiscard]] static bool vbox_default_specs() {
-        const u16 disk = util::get_disk_size(); 
-        const u32 ram = util::get_physical_ram_size(); 
-
-        debug("VBOX_DEFAULT: ram = ", ram);
-        debug("VBOX_DEFAULT: size = ", disk);
-
-        if (ram > 4) {
-            return false;
-        }
-
-        #if (LINUX)
-            auto get_distro = []() -> std::string {
-                std::ifstream osReleaseFile("/etc/os-release");
-                std::string line;
-
-                while (std::getline(osReleaseFile, line)) {
-                    if (line.find("ID=") != std::string::npos) {
-                        const std::size_t start = line.find('"');
-                        const std::size_t end = line.rfind('"');
-                        if (start != std::string::npos && end != std::string::npos && start < end) {
-                            return line.substr(start + 1, end - start - 1);
-                        }
-                    }
-                }
-
-                return "unknown";
-            };
-
-            const std::string distro = get_distro();
-
-            debug("VBOX_DEFAULT: linux, detected distro: ", distro);
-
-            // yoda notation ftw
-            if ("unknown" == distro) {
-                return false;
-            }
-
-            static const std::unordered_map<std::string, std::pair<int, int>> defaults = {
-                {"arch",      {8, 1}},
-                {"archlinux", {8, 1}},
-                {"opensuse",  {8, 1}},
-                {"opensuse_64",{8,1}},
-                {"redhat",    {8, 1}},
-                {"redhat_64", {8, 1}},
-                {"gentoo",    {8, 1}},
-                {"gentoo_64", {8, 1}},
-
-                {"fedora",    {15, 2}},
-                {"fedora_64", {15, 2}},
-                {"ubuntu",    {25, 2}},
-                {"ubuntu_64", {25, 2}},
-                {"ol",        {20, 2}},    // ol = oracle linux (alias)
-                {"oracle",    {20, 2}},
-                {"debian",    {20, 2}},
-                {"debian_64", {20, 2}},
-
-                {"centos",    {20, 2}},
-                {"centos_64", {20, 2}},
-                {"suse",      {8, 1}},
-                {"suse_64",   {8, 1}},
-                {"opensuse",  {8, 1}},
-                {"oraclelinux",{20,2}},
-                {"linux",     {8, 1}},   // "Other Linux" generic
-                {"linux_64",  {8, 1}},
-                {"mandriva",  {8, 1}},
-                {"turbolinux",{8, 1}},
-                {"xandros",   {8, 1}},
-                {"other",     {8, 1}}
-            };
-
-            std::string key = distro;
-            for (char& c : key) {     
-                c = static_cast<char>(std::tolower(static_cast<u8>(c)));
-            }
-
-            const auto it = defaults.find(key);
-            if (it != defaults.end()) {
-                return (it->second.first == disk) && (static_cast<u32>(it->second.second) == ram);
-            }
-
-            return false;
-        #elif (WINDOWS)
-            const u8 version = util::get_windows_version();
-
-            if (version < 7) {
-                return false;
-            }
-
-            // even if you create a drive with, say, 80GiB, only 79.1GiB will be allocated, so we do <default_config_size> - 1
-            if (version == 7) {
-                debug("VBOX_DEFAULT: Windows 7 detected");
-                return ((31 == disk) && ((1 == ram) || (2 == ram)));
-            }
-
-            if (version == 8) {
-                debug("VBOX_DEFAULT: Windows 8 detected");
-                return ((39 == disk) && ((1 == ram) || (2 == ram)));
-            }
-
-            if (version == 8) {
-                debug("VBOX_DEFAULT: Windows 8 detected");
-                return ((39 == disk) && ((1 == ram) || (2 == ram)));
-            }
-
-            if (version == 10) {
-                debug("VBOX_DEFAULT: Windows 10 detected");
-                return ((49 == disk) && ( (1 == ram) || (2 == ram) ));
-            }
-
-            debug("VBOX_DEFAULT: Windows 11 detected");
-            return ((79 == disk) && (4 == ram));
-        #endif
-    }
-
-
     /**
      * @brief Check for uncommon IDT virtual addresses
      * @author Matteo Malvica
@@ -7035,7 +6686,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     [[nodiscard]] static bool power_capabilities() {
         const HMODULE ntdll = util::get_ntdll();
 
-        const char* names[] = { "NtPowerInformation" };
+        const char* names[] = { "NtPowerInformation" }; // Win8
         void* funcs[ARRAYSIZE(names)] = {};
         util::get_function_address(ntdll, names, funcs, ARRAYSIZE(names));
 
@@ -7693,7 +7344,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return true;
 
         UINT32 pathCount = 0, modeCount = 0;
-        if (QueryDisplayConfig(QDC_ONLY_ACTIVE_PATHS,
+        if (QueryDisplayConfig(QDC_ONLY_ACTIVE_PATHS, // win7 and later
             &pathCount, nullptr,
             &modeCount, nullptr,
             nullptr) != ERROR_SUCCESS)
@@ -9399,105 +9050,105 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::NVRAM
      */
     [[nodiscard]] static bool nvram_vars() {
-        struct VARIABLE_NAME {
-            ULONG NextEntryOffset;
-            GUID VendorGuid;
-            WCHAR Name[1];
-        };
+        struct VARIABLE_NAME { ULONG NextEntryOffset; GUID VendorGuid; WCHAR Name[1]; };
         using PVARIABLE_NAME = VARIABLE_NAME*;
+        using NtEnumerateSystemEnvironmentValuesEx_t = NTSTATUS(__stdcall*)(ULONG, PVOID, PULONG);
 
-        using NtEnumerateSystemEnvironmentValuesEx_t = NTSTATUS(__stdcall*)(
-            ULONG InformationClass,
-            PVOID Buffer,
-            PULONG BufferLength);
-
-        // secure boot
-        bool found_dbDefault = false;
-        bool found_dbxDefault = false;
-        bool found_KEKDefault = false;
-        bool found_PKDefault = false;
-
-        // extra vars
+        bool found_dbDefault = false, found_dbxDefault = false, found_KEKDefault = false, found_PKDefault = false;
         bool found_MORCL = false;
 
-        if (!util::is_admin()) {
-            return false;
-        }
+        if (!util::is_admin()) return false;
 
         HANDLE hToken = nullptr;
-        if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &hToken)) {
-            return false;
-        }
-
-        auto token_closer = [&](HANDLE token) {
-            if (token) {
-                TOKEN_PRIVILEGES tp{};
-                tp.PrivilegeCount = 1;
-                LookupPrivilegeValue(nullptr, SE_SYSTEM_ENVIRONMENT_NAME, &tp.Privileges[0].Luid);
-                tp.Privileges[0].Attributes = 0;
-                AdjustTokenPrivileges(token, FALSE, &tp, sizeof(TOKEN_PRIVILEGES), nullptr, nullptr);
-                CloseHandle(token);
-            }
-        };
-        std::unique_ptr<void, decltype(token_closer)> token_guard(hToken, token_closer);
+        if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &hToken)) return false;
 
         LUID luid{};
-        if (!LookupPrivilegeValue(nullptr, SE_SYSTEM_ENVIRONMENT_NAME, &luid)) {
+        bool priv_enabled = false;
+        auto cleanup = [&]() {
+            if (priv_enabled && hToken) {
+                TOKEN_PRIVILEGES tpDisable{};
+                tpDisable.PrivilegeCount = 1;
+                tpDisable.Privileges[0].Luid = luid;
+                tpDisable.Privileges[0].Attributes = 0;
+                AdjustTokenPrivileges(hToken, FALSE, &tpDisable, sizeof(TOKEN_PRIVILEGES), nullptr, nullptr);
+            }
+            if (hToken) {
+                CloseHandle(hToken);
+                hToken = nullptr;
+            }
+        };
+
+        if (!LookupPrivilegeValue(nullptr, SE_SYSTEM_ENVIRONMENT_NAME, &luid)) { cleanup(); return false; }
+
+        TOKEN_PRIVILEGES tpEnable{};
+        tpEnable.PrivilegeCount = 1;
+        tpEnable.Privileges[0].Luid = luid;
+        tpEnable.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+        AdjustTokenPrivileges(hToken, FALSE, &tpEnable, sizeof(TOKEN_PRIVILEGES), nullptr, nullptr);
+        if (GetLastError() != ERROR_SUCCESS) { cleanup(); return false; }
+        priv_enabled = true;
+
+        bool hasFunction = false;
+        bool success = false;
+        std::vector<BYTE> resBuffer;
+        ULONG bufferLength = 0;
+        const HMODULE ntdll = util::get_ntdll();
+        if (ntdll) {
+            const char* names[] = { "NtEnumerateSystemEnvironmentValuesEx" };
+            void* functions[1] = { nullptr };
+            util::get_function_address(ntdll, names, functions, 1);
+            const auto NtEnum = reinterpret_cast<NtEnumerateSystemEnvironmentValuesEx_t>(functions[0]);
+            if (NtEnum) {
+                hasFunction = true;
+                NTSTATUS status = NtEnum(1, nullptr, &bufferLength);
+                if (bufferLength != 0) {
+                    try { resBuffer.resize(bufferLength); }
+                    catch (...) { resBuffer.clear(); bufferLength = 0; }
+                    if (!resBuffer.empty()) {
+                        status = NtEnum(1, resBuffer.data(), &bufferLength);
+                        if (status == 0) { success = true; resBuffer.resize(bufferLength); }
+                        else resBuffer.clear();
+                    }
+                }
+            }
+        }
+
+        if (!hasFunction) {
+            debug("NVRAM: NtEnumerateSystemEnvironmentValuesEx could not be resolved");
+            cleanup();
             return false;
         }
-
-        TOKEN_PRIVILEGES tp{};
-        tp.PrivilegeCount = 1;
-        tp.Privileges[0].Luid = luid;
-        tp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
-
-        if (!AdjustTokenPrivileges(hToken, FALSE, &tp, sizeof(TOKEN_PRIVILEGES), nullptr, nullptr) || GetLastError() != ERROR_SUCCESS) {
-            return false;
-        }
-
-        util::EnumerateFirmwareResult res = util::enumerate_firmware_variables();
-
-        if (!res.hasFunction) {
-            debug("NVRAM: Handle to ntdll.dll could not be obtained, possibly tampered");
-            return true; // returning true on purpose
-        }
-
-        if (!res.success) {
+        if (!success) {
             debug("NVRAM: System is not UEFI");
-            return false; // NOT UEFI
+            cleanup();
+            return false;
         }
 
-        auto contains_redhat_ascii_ci = [](const std::vector<BYTE>& buf) -> bool {
+        auto contains_redhat_ascii_ci = [](const std::vector<BYTE>& buf)->bool {
             if (buf.empty()) return false;
             std::string s(reinterpret_cast<const char*>(buf.data()), buf.size());
-            for (auto& c : s) c = static_cast<char>(::tolower(static_cast<u8>(c)));
+            for (auto& c : s) c = static_cast<char>(::tolower(static_cast<unsigned char>(c)));
             return s.find("red hat secure boot") != std::string::npos;
         };
-        auto contains_redhat_utf16le_ci = [](const std::vector<BYTE>& buf) -> bool {
-            if (buf.size() < 2) return false;
-            if (buf.size() % 2 != 0) return false; 
+        auto contains_redhat_utf16le_ci = [](const std::vector<BYTE>& buf)->bool {
+            if (buf.size() < 2 || (buf.size() % 2) != 0) return false;
             const WCHAR* wptr = reinterpret_cast<const WCHAR*>(buf.data());
-            size_t wlen = buf.size() / sizeof(WCHAR);
+            const size_t wlen = buf.size() / sizeof(WCHAR);
             try {
                 std::wstring ws(wptr, wlen);
                 for (auto& wc : ws) wc = static_cast<wchar_t>(::towlower(wc));
-                std::wstring needle = L"red hat secure boot";
-                return ws.find(needle) != std::wstring::npos;
+                return ws.find(L"red hat secure boot") != std::wstring::npos;
             }
-            catch (...) {
-                return false;
-            }
+            catch (...) { return false; }
         };
 
-        PVARIABLE_NAME varName = reinterpret_cast<PVARIABLE_NAME>(res.buffer.data());
-        const size_t bufSize = res.buffer.size();
-
+        PVARIABLE_NAME varName = reinterpret_cast<PVARIABLE_NAME>(resBuffer.data());
+        const size_t bufSize = resBuffer.size();
         constexpr size_t MAX_NAME_BYTES = 4096;
 
         while (true) {
-            const uintptr_t basePtr = reinterpret_cast<uintptr_t>(res.buffer.data());
+            const uintptr_t basePtr = reinterpret_cast<uintptr_t>(resBuffer.data());
             const uintptr_t curPtr = reinterpret_cast<uintptr_t>(varName);
-
             if (curPtr < basePtr) break;
             const size_t offset = static_cast<size_t>(curPtr - basePtr);
             if (offset >= bufSize) break;
@@ -9505,70 +9156,49 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             const size_t nameOffset = offsetof(VARIABLE_NAME, Name);
             if (bufSize - offset < nameOffset) break;
 
+            // read name
             std::wstring nameStr;
-            {
-                size_t nameMaxBytes = 0;
-                if (varName->NextEntryOffset != 0) {
-                    const SIZE_T ne = static_cast<SIZE_T>(varName->NextEntryOffset);
-                    if (ne <= nameOffset) {
-                        return false;
-                    }
-                    if (ne > bufSize - offset) {
-                        break;
-                    }
-                    nameMaxBytes = ne - nameOffset;
-                }
-                else {
-                    if (offset + nameOffset >= bufSize) {
-                        return false;
-                    }
-                    nameMaxBytes = bufSize - (offset + nameOffset);
-                }
-
-                if (nameMaxBytes > MAX_NAME_BYTES) nameMaxBytes = MAX_NAME_BYTES;
-
-                if (nameMaxBytes >= sizeof(WCHAR)) {
-                    const WCHAR* namePtr = reinterpret_cast<const WCHAR*>(reinterpret_cast<const BYTE*>(varName) + nameOffset);
-                    const size_t maxChars = nameMaxBytes / sizeof(WCHAR);
-                    size_t realChars = 0;
-                    while (realChars < maxChars && namePtr[realChars] != L'\0') ++realChars;
-                    if (realChars == maxChars) return false;
-                    nameStr.assign(namePtr, realChars);
-                }
-                else {
-                    nameStr.clear();
-                }
+            size_t nameMaxBytes = 0;
+            if (varName->NextEntryOffset != 0) {
+                const SIZE_T ne = static_cast<SIZE_T>(varName->NextEntryOffset);
+                if (ne <= nameOffset) { cleanup(); return false; }
+                if (ne > bufSize - offset) break;
+                nameMaxBytes = ne - nameOffset;
+            }
+            else {
+                if (offset + nameOffset >= bufSize) { cleanup(); return false; }
+                nameMaxBytes = bufSize - (offset + nameOffset);
+            }
+            if (nameMaxBytes > MAX_NAME_BYTES) nameMaxBytes = MAX_NAME_BYTES;
+            if (nameMaxBytes >= sizeof(WCHAR)) {
+                const WCHAR* namePtr = reinterpret_cast<const WCHAR*>(reinterpret_cast<const BYTE*>(varName) + nameOffset);
+                const size_t maxChars = nameMaxBytes / sizeof(WCHAR);
+                size_t realChars = 0;
+                while (realChars < maxChars && namePtr[realChars] != L'\0') ++realChars;
+                if (realChars == maxChars) { cleanup(); return false; }
+                nameStr.assign(namePtr, realChars);
             }
 
-            std::wstring guidStr;
-            {
-                auto guid_to_wstring = [](const GUID& g) -> std::wstring {
-                    wchar_t buf[40] = {};
-                    int written = _snwprintf_s(
-                        buf, _countof(buf), _TRUNCATE,
-                        L"{%08lX-%04hX-%04hX-%02X%02X-%02X%02X%02X%02X%02X%02X}",
-                        static_cast<unsigned long>(g.Data1),
-                        static_cast<u16>(g.Data2),
-                        static_cast<u16>(g.Data3),
-                        static_cast<u32>(g.Data4[0]),
-                        static_cast<u32>(g.Data4[1]),
-                        static_cast<u32>(g.Data4[2]),
-                        static_cast<u32>(g.Data4[3]),
-                        static_cast<u32>(g.Data4[4]),
-                        static_cast<u32>(g.Data4[5]),
-                        static_cast<u32>(g.Data4[6]),
-                        static_cast<u32>(g.Data4[7])
-                    );
-                    if (written <= 0) return std::wstring();
-                    return std::wstring(buf);
-                };
-
-                guidStr = guid_to_wstring(varName->VendorGuid);
-                if (guidStr.empty()) return true;
-            }
+            auto guid_to_wstring = [](const GUID& g)->std::wstring {
+                wchar_t buf[40] = {};
+                int written = _snwprintf_s(buf, _countof(buf), _TRUNCATE,
+                    L"{%08lX-%04hX-%04hX-%02X%02X-%02X%02X%02X%02X%02X%02X}",
+                    static_cast<unsigned long>(g.Data1),
+                    static_cast<u16>(g.Data2),
+                    static_cast<u16>(g.Data3),
+                    static_cast<u32>(g.Data4[0]), static_cast<u32>(g.Data4[1]),
+                    static_cast<u32>(g.Data4[2]), static_cast<u32>(g.Data4[3]),
+                    static_cast<u32>(g.Data4[4]), static_cast<u32>(g.Data4[5]),
+                    static_cast<u32>(g.Data4[6]), static_cast<u32>(g.Data4[7]));
+                if (written <= 0) return std::wstring();
+                return std::wstring(buf);
+            };
+            const std::wstring guidStr = guid_to_wstring(varName->VendorGuid);
+            if (guidStr.empty()) { cleanup(); return true; }
 
             if (!nameStr.empty() && nameStr.rfind(L"VMM", 0) == 0) {
                 debug("NVRAM: Detected hypervisor signature");
+                cleanup();
                 return true;
             }
 
@@ -9578,299 +9208,47 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             else if (nameStr == L"dbxDefault") found_dbxDefault = true;
 
             std::vector<BYTE> valueBuf;
-            DWORD readLen = 0;
-            DWORD required = 0;
-            required = GetFirmwareEnvironmentVariableW(nameStr.c_str(), guidStr.c_str(), nullptr, 0);
+            const DWORD required = GetFirmwareEnvironmentVariableW(nameStr.c_str(), guidStr.c_str(), nullptr, 0);
             if (required > 0) {
                 valueBuf.resize(required);
-                readLen = GetFirmwareEnvironmentVariableW(nameStr.c_str(), guidStr.c_str(), valueBuf.data(), required);
-                if (readLen == 0) {
-                    valueBuf.clear();
-                }
-                else {
-                    valueBuf.resize(readLen);
-                }
+                const DWORD readLen = GetFirmwareEnvironmentVariableW(nameStr.c_str(), guidStr.c_str(), valueBuf.data(), required);
+                if (readLen == 0) valueBuf.clear(); else valueBuf.resize(readLen);
             }
             else {
                 const DWORD fallbackSize = 8192;
                 valueBuf.resize(fallbackSize);
-                readLen = GetFirmwareEnvironmentVariableW(nameStr.c_str(), guidStr.c_str(), valueBuf.data(), fallbackSize);
-                if (readLen > 0) {
-                    valueBuf.resize(readLen);
-                }
-                else {
-                    valueBuf.clear();
-                }
+                const DWORD readLen = GetFirmwareEnvironmentVariableW(nameStr.c_str(), guidStr.c_str(), valueBuf.data(), fallbackSize);
+                if (readLen > 0) valueBuf.resize(readLen); else valueBuf.clear();
             }
 
-            if (nameStr == L"MemoryOverwriteRequestControlLock") {
-                found_MORCL = true;
-            }
+            if (nameStr == L"MemoryOverwriteRequestControlLock") found_MORCL = true;
 
             if (nameStr == L"PKDefault") {
                 bool pk_has_redhat = false;
-                if (!valueBuf.empty()) {
-                    if (contains_redhat_utf16le_ci(valueBuf) || contains_redhat_ascii_ci(valueBuf)) {
-                        pk_has_redhat = true;
-                    }
-                }
+                if (!valueBuf.empty() && (contains_redhat_utf16le_ci(valueBuf) || contains_redhat_ascii_ci(valueBuf)))
+                    pk_has_redhat = true;
                 if (pk_has_redhat) {
                     debug("NVRAM: QEMU detected");
+                    cleanup();
                     return core::add(brands::QEMU);
                 }
             }
 
             if (varName->NextEntryOffset == 0) break;
-
             const SIZE_T ne = static_cast<SIZE_T>(varName->NextEntryOffset);
             const size_t nextOffset = offset + ne;
             if (nextOffset <= offset || nextOffset > bufSize) break;
-
-            varName = reinterpret_cast<PVARIABLE_NAME>(reinterpret_cast<PBYTE>(res.buffer.data()) + nextOffset);
+            varName = reinterpret_cast<PVARIABLE_NAME>(reinterpret_cast<PBYTE>(resBuffer.data()) + nextOffset);
         }
 
-        if (!found_MORCL) {
-            debug("NVRAM: Missing MemoryOverwriteRequestControlLock");
-            return true;
-        }
+        if (!found_MORCL) { debug("NVRAM: Missing MemoryOverwriteRequestControlLock"); cleanup(); return true; }
+        if (!found_dbDefault) { debug("NVRAM: Missing dbDefault"); cleanup(); return true; }
+        if (!found_dbxDefault) { debug("NVRAM: Missing dbxDefault"); cleanup(); return true; }
+        if (!found_KEKDefault) { debug("NVRAM: Missing KEKDefault"); cleanup(); return true; }
+        if (!found_PKDefault) { debug("NVRAM: Missing PKDefault"); cleanup(); return true; }
 
-        if (!found_dbDefault) {
-            debug("NVRAM: Missing dbDefault");
-            return true;
-        }
-        if (!found_dbxDefault) {
-            debug("NVRAM: Missing dbxDefault");
-            return true;
-        }
-        if (!found_KEKDefault) {
-            debug("NVRAM: Missing KEKDefault");
-            return true;
-        }
-        if (!found_PKDefault) {
-            debug("NVRAM: Missing PKDefault");
-            return true;
-        }
-
+        cleanup();
         return false;
-    }
-
-
-    /**
-     * @brief Check for boot managers typically found in VMs
-     * @category Windows
-     * @warning Permissions required
-     * @implements VM::BOOT_MANAGER
-     */
-    [[nodiscard]] static bool nvram_boot() {
-        struct VARIABLE_NAME {
-            ULONG NextEntryOffset;
-            GUID  VendorGuid;
-            WCHAR Name[1];
-        };
-
-        if (!util::is_admin()) return false;
-        if (util::get_windows_version() < 10) return false;
-
-        HANDLE hToken = nullptr;
-        if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &hToken)) return false;
-        auto token_closer = [](HANDLE t) {
-            if (!t) return;
-            TOKEN_PRIVILEGES tp{};
-            tp.PrivilegeCount = 1;
-            LookupPrivilegeValue(nullptr, SE_SYSTEM_ENVIRONMENT_NAME, &tp.Privileges[0].Luid);
-            tp.Privileges[0].Attributes = 0;
-            AdjustTokenPrivileges(t, FALSE, &tp, sizeof(tp), nullptr, nullptr);
-            CloseHandle(t);
-        };
-        std::unique_ptr<void, decltype(token_closer)> token_guard(hToken, token_closer);
-
-        LUID luid{};
-        if (!LookupPrivilegeValue(nullptr, SE_SYSTEM_ENVIRONMENT_NAME, &luid)) return false;
-        TOKEN_PRIVILEGES tp{};
-        tp.PrivilegeCount = 1;
-        tp.Privileges[0].Luid = luid;
-        tp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
-        AdjustTokenPrivileges(hToken, FALSE, &tp, sizeof(tp), nullptr, nullptr);
-        if (GetLastError() != ERROR_SUCCESS) return false;
-
-        util::EnumerateFirmwareResult res = util::enumerate_firmware_variables();
-        if (!res.hasFunction) return false; // false here, already returning true in nvram_vars()
-        if (res.bufferLength == 0) return false; // not UEFI
-        if (!res.success) return false;
-
-        constexpr size_t MAX_NAME_BYTES = 4096;
-        const BYTE* base = res.buffer.data();
-        const size_t bufSize = res.buffer.size();
-
-        bool foundAnyBootEntry = false;
-        bool legitBootManager = false;
-
-        auto advance_to_next = [&](const VARIABLE_NAME* cur) -> const VARIABLE_NAME* {
-            if (!cur) return nullptr;
-            if (cur->NextEntryOffset == 0) return nullptr;
-            const SIZE_T ne = static_cast<SIZE_T>(cur->NextEntryOffset);
-            const uintptr_t nextPtr = reinterpret_cast<uintptr_t>(cur) + ne;
-            const uintptr_t basePtr = reinterpret_cast<uintptr_t>(base);
-            if (nextPtr < basePtr) return nullptr;
-            const size_t nextOffset = static_cast<size_t>(nextPtr - basePtr);
-            if (nextOffset >= bufSize) return nullptr;
-            return reinterpret_cast<const VARIABLE_NAME*>(base + nextOffset);
-        };
-
-        const VARIABLE_NAME* var = reinterpret_cast<const VARIABLE_NAME*>(base);
-        while (var) {
-            // ensure we can read NextEntryOffset + GUID + Name[0]
-            const size_t curOffset = static_cast<size_t>(
-                reinterpret_cast<uintptr_t>(reinterpret_cast<const void*>(var)) -
-                reinterpret_cast<uintptr_t>(base)
-            );
-            if (curOffset >= bufSize) break;
-            const size_t nameFieldOffset = offsetof(VARIABLE_NAME, Name);
-            if (bufSize - curOffset < nameFieldOffset) break;
-
-            // name buffer size
-            size_t nameMaxBytes = 0;
-            if (var->NextEntryOffset != 0) {
-                const SIZE_T ne = static_cast<SIZE_T>(var->NextEntryOffset);
-                if (ne <= nameFieldOffset) break;
-                if (ne > bufSize - curOffset) break;
-                nameMaxBytes = ne - nameFieldOffset;
-            }
-            else {
-                if (curOffset + nameFieldOffset >= bufSize) break;
-                nameMaxBytes = bufSize - (curOffset + nameFieldOffset);
-            }
-            if (nameMaxBytes > MAX_NAME_BYTES) nameMaxBytes = MAX_NAME_BYTES;
-
-            // read name as WCHARs (ensure null-terminated inside available bytes)
-            std::wstring nameStr;
-            if (nameMaxBytes >= sizeof(WCHAR)) {
-                const WCHAR* namePtr = reinterpret_cast<const WCHAR*>(reinterpret_cast<const BYTE*>(var) + nameFieldOffset);
-                const size_t maxChars = nameMaxBytes / sizeof(WCHAR);
-                size_t realChars = 0;
-                while (realChars < maxChars && namePtr[realChars] != L'\0') ++realChars;
-                if (realChars == maxChars) {
-                    return false;
-                }
-                nameStr.assign(namePtr, realChars);
-            }
-
-            auto guid_to_wstring = [](const GUID& g) -> std::wstring {
-                wchar_t buf[40] = {};
-                int written = _snwprintf_s(
-                    buf, _countof(buf), _TRUNCATE,
-                    L"{%08lX-%04hX-%04hX-%02X%02X-%02X%02X%02X%02X%02X%02X}",
-                    static_cast<unsigned long>(g.Data1),
-                    static_cast<u16>(g.Data2),
-                    static_cast<u16>(g.Data3),
-                    static_cast<u32>(g.Data4[0]),
-                    static_cast<u32>(g.Data4[1]),
-                    static_cast<u32>(g.Data4[2]),
-                    static_cast<u32>(g.Data4[3]),
-                    static_cast<u32>(g.Data4[4]),
-                    static_cast<u32>(g.Data4[5]),
-                    static_cast<u32>(g.Data4[6]),
-                    static_cast<u32>(g.Data4[7])
-                );
-                if (written <= 0) return std::wstring();
-                return std::wstring(buf);
-            };
-
-            std::wstring guidStr = guid_to_wstring(var->VendorGuid);
-            if (guidStr.empty()) return true;
-
-            bool isBootIndex = false;
-            if (nameStr.size() == 8 && nameStr.compare(0, 4, L"Boot") == 0) {
-                bool hex = true;
-                for (std::wstring::size_type i = 4; i < 8 && i < nameStr.size(); ++i) {
-                    wchar_t ch = nameStr[i];
-                    if (!((ch >= L'0' && ch <= L'9') ||
-                        (ch >= L'A' && ch <= L'F') ||
-                        (ch >= L'a' && ch <= L'f'))) {
-                        hex = false;
-                        break;
-                    }
-                }
-                if (hex) isBootIndex = true;
-            }
-
-            if (!isBootIndex) {
-                var = advance_to_next(var);
-                continue;
-            }
-
-            foundAnyBootEntry = true;
-
-            std::vector<BYTE> valueBuf;
-            DWORD required = GetFirmwareEnvironmentVariableW(nameStr.c_str(), guidStr.c_str(), nullptr, 0);
-            if (required > 0) {
-                valueBuf.resize(required);
-                DWORD readLen = GetFirmwareEnvironmentVariableW(nameStr.c_str(), guidStr.c_str(), valueBuf.data(), required);
-                if (readLen == 0) { valueBuf.clear(); }
-                else valueBuf.resize(readLen);
-            }
-            else {
-                constexpr DWORD FALLBACK = 8192;
-                valueBuf.resize(FALLBACK);
-                DWORD readLen = GetFirmwareEnvironmentVariableW(nameStr.c_str(), guidStr.c_str(), valueBuf.data(), FALLBACK);
-                if (readLen > 0) valueBuf.resize(readLen);
-                else valueBuf.clear();
-            }
-
-            if (valueBuf.empty()) {
-                var = advance_to_next(var);
-                continue;
-            }
-
-            // attributes (u32), filePathListLength (u16), then description (UTF-16 null-terminated), then filePathList and load options
-            size_t idx = 0;
-            auto can_read = [&](size_t need) { return idx + need <= valueBuf.size(); };
-            auto read_u32 = [&](u32& out)->bool {
-                if (!can_read(sizeof(u32))) return false;
-                memcpy(&out, valueBuf.data() + idx, sizeof(u32));
-                idx += sizeof(u32);
-                return true;
-            };
-            auto read_u16 = [&](u16& out)->bool {
-                if (!can_read(sizeof(u16))) return false;
-                memcpy(&out, valueBuf.data() + idx, sizeof(u16));
-                idx += sizeof(u16);
-                return true;
-            };
-
-            u32 attributes = 0;
-            u16 filePathListLength = 0;
-            if (!read_u32(attributes) || !read_u16(filePathListLength)) {
-                var = advance_to_next(var);
-                continue;
-            }
-
-            // Find UTF-16 description terminator (two zero bytes)
-            bool foundTerminator = false;
-            while (idx + 1 < valueBuf.size()) {
-                if (valueBuf[idx] == 0 && valueBuf[idx + 1] == 0) { idx += 2; foundTerminator = true; break; }
-                idx += 2; // we have to step by WCHAR
-            }
-            if (!foundTerminator) {
-                var = advance_to_next(var);
-                continue;
-            }
-
-            const size_t rem = (idx <= valueBuf.size()) ? (valueBuf.size() - idx) : 0;
-            if (filePathListLength > rem) {
-                var = advance_to_next(var);
-                continue;
-            }
-
-            if (filePathListLength == 116) {
-                legitBootManager = true;
-                break;
-            }
-
-            var = advance_to_next(var);
-        }
-
-        return !legitBootManager;
     }
 
 
@@ -10866,12 +10244,12 @@ public: // START OF PUBLIC FUNCTIONS
         // check if the result is already cached and return that instead
         if (is_multiple) {
             if (memo::multi_brand::is_cached()) {
-                core_debug("VM::brand(): returned multi brand from cache");
+                debug("VM::brand(): returned multi brand from cache");
                 return memo::multi_brand::fetch();
             }
         } else {
             if (memo::brand::is_cached()) {
-                core_debug("VM::brand(): returned brand from cache");
+                debug("VM::brand(): returned brand from cache");
                 return memo::brand::fetch();
             }
         }
@@ -11096,10 +10474,10 @@ public: // START OF PUBLIC FUNCTIONS
 
         // cache the result 
         if (is_multiple) {
-            core_debug("VM::brand(): cached multiple brand string");
+            debug("VM::brand(): cached multiple brand string");
             memo::multi_brand::store(ret_str);
         } else {
-            core_debug("VM::brand(): cached brand string");
+            debug("VM::brand(): cached brand string");
             memo::brand::store(ret_str);
         }
     
@@ -11107,7 +10485,7 @@ public: // START OF PUBLIC FUNCTIONS
         // debug stuff to see the brand scoreboard, ignore this
     #ifdef __VMAWARE_DEBUG__
         for (const auto& p : brands) {
-            core_debug("scoreboard: ", (int)p.second, " : ", p.first);
+            debug("scoreboard: ", (int)p.second, " : ", p.first);
         }
     #endif
 
@@ -11278,7 +10656,6 @@ public: // START OF PUBLIC FUNCTIONS
             case HWMON: return "HWMON";
             case DLL: return "DLL";
             case HWMODEL: return "HWMODEL";
-            case VBOX_DEFAULT: return "VBOX_DEFAULT";
             case WINE: return "WINE";
             case POWER_CAPABILITIES: return "POWER_CAPABILITIES";
             case PROCESSES: return "PROCESSES";
@@ -11348,7 +10725,6 @@ public: // START OF PUBLIC FUNCTIONS
             case MAC_SYS: return "MAC_SYS";
             case OBJECTS: return "OBJECTS";
             case NVRAM: return "NVRAM";
-            case BOOT_MANAGER: return "BOOT_MANAGER";
             case SMBIOS_INTEGRITY: return "SMBIOS_INTEGRITY";
             case EDID: return "EDID";
             case CPU_HEURISTIC: return "CPU_HEURISTIC";
@@ -11889,7 +11265,6 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         std::make_pair(VM::ACPI_SIGNATURE, VM::core::technique(100, VM::acpi_signature)),
         std::make_pair(VM::NVRAM, VM::core::technique(100, VM::nvram_vars)),
         std::make_pair(VM::CLOCK, VM::core::technique(100, VM::clock)),
-        std::make_pair(VM::BOOT_MANAGER, VM::core::technique(50, VM::nvram_boot)),
         std::make_pair(VM::POWER_CAPABILITIES, VM::core::technique(45, VM::power_capabilities)),
         std::make_pair(VM::CPU_HEURISTIC, VM::core::technique(100, VM::cpu_heuristic)),
         std::make_pair(VM::EDID, VM::core::technique(100, VM::edid)),
@@ -11929,7 +11304,6 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         std::make_pair(VM::PCI_DEVICES, VM::core::technique(95, VM::pci_devices)),
         std::make_pair(VM::SIDT, VM::core::technique(50, VM::sidt)),
         std::make_pair(VM::HYPERV_HOSTNAME, VM::core::technique(30, VM::hyperv_hostname)),
-        std::make_pair(VM::VBOX_DEFAULT, VM::core::technique(25, VM::vbox_default_specs)),
         std::make_pair(VM::GENERAL_HOSTNAME, VM::core::technique(10, VM::general_hostname)),
     #endif
         
