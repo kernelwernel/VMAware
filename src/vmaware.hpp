@@ -52,14 +52,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 534
- * - struct for internal cpu operations        => line 716
- * - struct for internal memoization           => line 1148
- * - struct for internal utility functions     => line 1278
- * - struct for internal core components       => line 9929
- * - start of VM detection technique list      => line 2238
- * - start of public VM detection functions    => line 10422
- * - start of externally defined variables     => line 11402
+ * - enums for publicly accessible techniques  => line 532
+ * - struct for internal cpu operations        => line 714
+ * - struct for internal memoization           => line 1146
+ * - struct for internal utility functions     => line 1276
+ * - struct for internal core components       => line 9652
+ * - start of VM detection technique list      => line 1961
+ * - start of public VM detection functions    => line 10145
+ * - start of externally defined variables     => line 11125
  *
  *
  * ============================== EXAMPLE ===================================
@@ -429,10 +429,8 @@
 
 #ifdef __VMAWARE_DEBUG__
     #define debug(...) VM::util::debug_msg(__VA_ARGS__)
-    #define core_debug(...) VM::util::core_debug_msg(__VA_ARGS__)
 #else
     #define debug(...)
-    #define core_debug(...)
 #endif
 
 
@@ -1478,7 +1476,6 @@ private:
             };
         }
 
-        // debug_msg / core_debug_msg
         template <typename... Args>
         static inline void debug_msg(Args&&... message) noexcept {
             static std::unordered_set<std::string> printed_messages;
@@ -1510,30 +1507,6 @@ private:
 
                 printed_messages.insert(std::move(msg_content));
             }
-        }
-
-        template <typename... Args>
-        static inline void core_debug_msg(Args&&... message) noexcept {
-        #if (LINUX || APPLE)
-            constexpr const char* black_bg = "\x1B[48;2;0;0;0m";
-            constexpr const char* bold = "\033[1m";
-            constexpr const char* orange = "\x1B[38;2;255;180;5m";
-            constexpr const char* ansiexit = "\x1B[0m";
-
-            std::cout.setf(std::ios::fixed, std::ios::floatfield);
-            std::cout.setf(std::ios::showpoint);
-
-            std::cout << black_bg
-                << bold << "["
-                << orange << "CORE DEBUG"
-                << ansiexit << bold << black_bg << "]"
-                << ansiexit << " ";
-        #else
-            std::cout << "[CORE DEBUG] ";
-        #endif
-
-            print_to_stream(std::cout, std::forward<Args>(message)...);
-            std::cout << std::dec << "\n";
         }
 
 
@@ -1575,119 +1548,6 @@ private:
                 UNUSED(cmd);
                 return std::make_unique<std::string>();
             #endif
-        #endif
-        }
-
-
-        [[nodiscard]] static u16 get_disk_size() {
-        #if (APPLE)
-            return 0;
-        #endif
-            u16 size = 0;
-            constexpr u64 U16_MAX = 65535;
-            constexpr u64 GB = 1024ull * 1024 * 1024;
-
-        #if (LINUX)
-            struct statvfs stat;
-            if (statvfs("/", &stat) != 0) {
-                debug("util::get_disk_size: failed to fetch size in GiB");
-                return 0;
-            }
-
-            const u64 total_bytes = static_cast<u64>(stat.f_blocks) * stat.f_frsize;
-            const u64 size_gb = total_bytes / GB;
-
-            if (size_gb > U16_MAX) {
-                size = static_cast<u16>(U16_MAX);
-            }
-            else {
-                size = static_cast<u16>(size_gb);
-            }
-        #elif (WINDOWS)
-            WCHAR windowsDir[MAX_PATH] = { 0 };
-            if (GetWindowsDirectoryW(windowsDir, MAX_PATH) == 0) {
-                debug("util::get_disk_size: GetWindowsDirectoryW failed");
-                return 81;
-            }
-
-            WCHAR volumeRoot[MAX_PATH] = { 0 };
-            if (!GetVolumePathNameW(windowsDir, volumeRoot, MAX_PATH)) {
-                debug("util::get_disk_size: GetVolumePathNameW failed");
-                return 81;
-            }
-
-            // Query free/total space on the volume that hosts Windows rather than hardcoding it to C:
-            ULARGE_INTEGER totalNumberOfBytes{};
-            if (GetDiskFreeSpaceExW(volumeRoot, nullptr, &totalNumberOfBytes, nullptr)) {
-                const u64 bytes = static_cast<u64>(totalNumberOfBytes.QuadPart);
-                const u64 size_gb = (bytes + (GB / 2ULL)) / GB;
-
-                if (size_gb > U16_MAX) {
-                    size = static_cast<u16>(U16_MAX);
-                }
-                else {
-                    size = static_cast<u16>(size_gb);
-                }
-            }
-            else {
-                debug("util::get_disk_size: failed to fetch size in GiB");
-                return 81;
-            }
-        #endif
-
-            return size;
-        }
-
-
-        [[nodiscard]] static u32 get_physical_ram_size() {
-        #if (LINUX)
-            if (!util::is_admin()) {
-                debug("get_physical_ram_size: ", "not root, returned 0");
-                return 0;
-            }
-
-            const auto result = util::sys_result("dmidecode --type 19 | grep 'Size' | grep '[[:digit:]]*'");
-            if (!result) {
-                debug("get_physical_ram_size: ", "invalid system result, returned 0");
-                return 0;
-            }
-
-            const bool is_mb = std::regex_search(*result, std::regex("MB"));
-            const bool is_gb = std::regex_search(*result, std::regex("GB"));
-            if (!(is_mb || is_gb)) {
-                debug("get_physical_ram_size: ", "unit not found, returned 0");
-                return 0;
-            }
-
-            std::string number_str;
-            for (char c : *result) {
-                if (std::isdigit(c)) number_str += c;
-                else if (!number_str.empty()) break;
-            }
-
-            if (number_str.empty()) {
-                debug("get_physical_ram_size: ", "no digits found, returned 0");
-                return 0;
-            }
-
-            u64 number = std::stoull(number_str);
-            if (is_mb) number = static_cast<u64>(std::round(static_cast<double>(number) / 1024.0));
-
-            return static_cast<u32>(std::min<u64>(number, std::numeric_limits<u32>::max()));
-        #elif (WINDOWS)
-            constexpr u64 gib = 1024ULL * 1024ULL * 1024ULL;
-
-            // the "physically installed" API can fail if some hypervisors like VirtualBox/QEMU don't populate the necessary SMBIOS fields, so we use GlobalMemoryStatusEx
-            MEMORYSTATUSEX ms{};
-            ms.dwLength = sizeof(ms);
-			if (GlobalMemoryStatusEx(&ms)) { // calls NtQuerySystemInformation rather than using SMBIOS
-                const u64 bytes = ms.ullTotalPhys;
-                return static_cast<u32>((bytes + (gib / 2ULL)) / gib);
-            }
-
-            return 0;
-        #else
-            return 0;
         #endif
         }
 
@@ -1866,7 +1726,7 @@ private:
             return HYPERV_UNKNOWN;
         #else
             if (memo::hyperx::is_cached()) {
-                core_debug("HYPER_X: returned from cache");
+                debug("HYPER_X: returned from cache");
                 return memo::hyperx::fetch();
             }
 
@@ -1908,12 +1768,12 @@ private:
             if (!is_root_partition()) {
                 if (eax() == 11 && is_hyperv_present()) {
                     // Windows machine running under Hyper-V type 2
-                    core_debug("HYPER_X: Detected Hyper-V guest VM");
+                    debug("HYPER_X: Detected Hyper-V guest VM");
                     core::add(brands::HYPERV);
                     state = HYPERV_REAL_VM;
                 }
                 else {
-                    core_debug("HYPER_X: Hyper-V is not active");
+                    debug("HYPER_X: Hyper-V is not active");
                     state = HYPERV_UNKNOWN;
                 }
             }
@@ -1922,13 +1782,13 @@ private:
                 const std::string brand_str = cpu::cpu_manufacturer(0x40000100);
 
                 if (util::find(brand_str, "KVM")) {
-                    core_debug("HYPER_X: Detected Hyper-V enlightenments");
+                    debug("HYPER_X: Detected Hyper-V enlightenments");
                     core::add(brands::QEMU_KVM_HYPERV);
                     state = HYPERV_ENLIGHTENMENT;
                 }
                 else {
                     // Windows machine running under Hyper-V type 1
-                    core_debug("HYPER_X: Detected Hyper-V host machine");
+                    debug("HYPER_X: Detected Hyper-V host machine");
                     core::add(brands::HYPERV_ARTIFACT);
                     state = HYPERV_ARTIFACT_VM;
                 }
@@ -1941,81 +1801,6 @@ private:
         }
 
 #if (WINDOWS)
-        [[nodiscard]] static bool is_wow64() {
-            BOOL isWow64 = 0;
-            bool pbool = IsWow64Process(GetCurrentProcess(), &isWow64);
-            return (pbool && isWow64);
-        }
-
-
-        [[nodiscard]] static u8 get_windows_version() {
-            struct VersionMapEntry {
-                DWORD build;
-                u8 major;
-            };
-
-            constexpr VersionMapEntry windowsVersions[] = {
-                {6002, 6},
-                {7601, 7},
-
-                {9200, 8},
-                {9600, 8},
-
-                {10240, 10},
-                {10586, 10},
-                {14393, 10},
-                {15063, 10},
-                {16299, 10},
-                {17134, 10},
-                {17763, 10},
-                {18362, 10},
-                {18363, 10},
-                {19041, 10},
-                {19042, 10},
-                {19043, 10},
-                {19044, 10},
-                {19045, 10},
-
-                {22000, 11},
-                {22621, 11},
-                {22631, 11},
-                {26100, 11}
-            };
-
-            const HMODULE ntdll = util::get_ntdll();
-            if (!ntdll) {
-                return 0;
-            }
-
-            using RtlGetVersionFunc = NTSTATUS(__stdcall*)(PRTL_OSVERSIONINFOW);
-            const char* names[] = { "RtlGetVersion" };
-            void* functions[1] = { nullptr };
-
-            get_function_address(ntdll, names, functions, _countof(names));
-
-            const auto pRtlGetVersion = reinterpret_cast<RtlGetVersionFunc>(functions[0]);
-            if (!pRtlGetVersion) {
-                return 0;
-            }
-
-            RTL_OSVERSIONINFOW osvi{};
-            osvi.dwOSVersionInfoSize = sizeof(osvi);
-            if (pRtlGetVersion(&osvi) != 0) {
-                return 0;
-            }
-
-            const DWORD build = osvi.dwBuildNumber;
-
-            for (auto it = std::rbegin(windowsVersions); it != std::rend(windowsVersions); ++it) {
-                if (build >= it->build) {
-                    return it->major;
-                }
-            }
-
-            return 0;
-        }
-
-
         // retrieves the addresses of specified functions from a loaded module using the export directory, manual implementation of GetProcAddress
         static void get_function_address(const HMODULE hModule, const char* names[], void** functions, size_t count) {
             using FuncMap = std::unordered_map<std::string, void*>;
@@ -2049,7 +1834,7 @@ private:
             auto safe_cstr_from_rva = [&](DWORD rva) -> const char* {
                 if (!valid_range(static_cast<size_t>(rva), 1)) return nullptr;
                 const char* p = reinterpret_cast<const char*>(base + rva);
-                size_t remaining = module_size - static_cast<size_t>(rva);
+                const size_t remaining = module_size - static_cast<size_t>(rva);
                 for (size_t i = 0; i < remaining; ++i) {
                     if (p[i] == '\0') return p;
                 }
@@ -2068,7 +1853,7 @@ private:
             const auto* ntHeaders = reinterpret_cast<const IMAGE_NT_HEADERS*>(base + e_lfanew);
             if (ntHeaders->Signature != IMAGE_NT_SIGNATURE) return;
 
-            size_t sizeOfImage = static_cast<size_t>(ntHeaders->OptionalHeader.SizeOfImage);
+            const size_t sizeOfImage = static_cast<size_t>(ntHeaders->OptionalHeader.SizeOfImage);
             if (sizeOfImage != 0 && sizeOfImage > module_size) {
                 module_size = sizeOfImage;
             }
@@ -2170,68 +1955,6 @@ private:
             if (h) cachedNtdll = h;
 
             return h;
-        }
-
-        using NtEnumerateSystemEnvironmentValuesEx_t = NTSTATUS(__stdcall*)(ULONG InformationClass, PVOID Buffer, PULONG BufferLength);
-
-        struct EnumerateFirmwareResult {
-            bool hasFunction = false;      // ntdll or function missing
-            bool success = false;          // second call returned STATUS_SUCCESS (0) and buffer filled
-            ULONG bufferLength = 0;        // length returned by first call
-            NTSTATUS finalStatus = 0;      // status returned by second call (or first call if second not made)
-            std::vector<BYTE> buffer;      // filled buffer (only valid if success==true)
-        };
-
-        static EnumerateFirmwareResult enumerate_firmware_variables()
-        {
-            using NtEnumerateSystemEnvironmentValuesEx_t = NTSTATUS(__stdcall*)(ULONG InformationClass, PVOID Buffer, PULONG BufferLength);
-
-            EnumerateFirmwareResult res;
-
-            const HMODULE ntdll = util::get_ntdll();
-            if (ntdll == nullptr) {
-                return res;
-            }
-
-            const char* names[] = { "NtEnumerateSystemEnvironmentValuesEx" };
-            void* functions[1] = { nullptr };
-            get_function_address(ntdll, names, functions, 1);
-
-            NtEnumerateSystemEnvironmentValuesEx_t NtEnumerateSystemEnvironmentValuesEx = reinterpret_cast<NtEnumerateSystemEnvironmentValuesEx_t>(functions[0]);
-            if (NtEnumerateSystemEnvironmentValuesEx == nullptr) {
-                return res;
-            }
-
-            res.hasFunction = true;
-
-            ULONG bufferLength = 0;
-            NTSTATUS status = NtEnumerateSystemEnvironmentValuesEx(1, nullptr, &bufferLength);
-            res.bufferLength = bufferLength;
-
-            if (bufferLength == 0) {
-                res.finalStatus = status;
-                return res;
-            }
-
-            try {
-                res.buffer.resize(bufferLength);
-            }
-            catch (...) {
-                return res;
-            }
-
-            status = NtEnumerateSystemEnvironmentValuesEx(1, res.buffer.data(), &bufferLength);
-            res.finalStatus = status;
-
-            if (status == 0) {
-                res.success = true;
-                res.buffer.resize(bufferLength);
-            }
-            else {
-                res.buffer.clear();
-            }
-
-            return res;
         }
 #endif
     };
@@ -6963,7 +6686,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     [[nodiscard]] static bool power_capabilities() {
         const HMODULE ntdll = util::get_ntdll();
 
-        const char* names[] = { "NtPowerInformation" };
+        const char* names[] = { "NtPowerInformation" }; // Win8
         void* funcs[ARRAYSIZE(names)] = {};
         util::get_function_address(ntdll, names, funcs, ARRAYSIZE(names));
 
@@ -7621,7 +7344,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return true;
 
         UINT32 pathCount = 0, modeCount = 0;
-        if (QueryDisplayConfig(QDC_ONLY_ACTIVE_PATHS,
+        if (QueryDisplayConfig(QDC_ONLY_ACTIVE_PATHS, // win7 and later
             &pathCount, nullptr,
             &modeCount, nullptr,
             nullptr) != ERROR_SUCCESS)
@@ -9391,9 +9114,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         if (!hasFunction) {
-            debug("NVRAM: Handle to ntdll.dll could not be obtained, possibly tampered");
+            debug("NVRAM: NtEnumerateSystemEnvironmentValuesEx could not be resolved");
             cleanup();
-            return true;
+            return false;
         }
         if (!success) {
             debug("NVRAM: System is not UEFI");
@@ -10521,12 +10244,12 @@ public: // START OF PUBLIC FUNCTIONS
         // check if the result is already cached and return that instead
         if (is_multiple) {
             if (memo::multi_brand::is_cached()) {
-                core_debug("VM::brand(): returned multi brand from cache");
+                debug("VM::brand(): returned multi brand from cache");
                 return memo::multi_brand::fetch();
             }
         } else {
             if (memo::brand::is_cached()) {
-                core_debug("VM::brand(): returned brand from cache");
+                debug("VM::brand(): returned brand from cache");
                 return memo::brand::fetch();
             }
         }
@@ -10751,10 +10474,10 @@ public: // START OF PUBLIC FUNCTIONS
 
         // cache the result 
         if (is_multiple) {
-            core_debug("VM::brand(): cached multiple brand string");
+            debug("VM::brand(): cached multiple brand string");
             memo::multi_brand::store(ret_str);
         } else {
-            core_debug("VM::brand(): cached brand string");
+            debug("VM::brand(): cached brand string");
             memo::brand::store(ret_str);
         }
     
@@ -10762,7 +10485,7 @@ public: // START OF PUBLIC FUNCTIONS
         // debug stuff to see the brand scoreboard, ignore this
     #ifdef __VMAWARE_DEBUG__
         for (const auto& p : brands) {
-            core_debug("scoreboard: ", (int)p.second, " : ", p.first);
+            debug("scoreboard: ", (int)p.second, " : ", p.first);
         }
     #endif
 
