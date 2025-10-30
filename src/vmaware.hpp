@@ -9456,105 +9456,105 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::NVRAM
      */
     [[nodiscard]] static bool nvram_vars() {
-        struct VARIABLE_NAME {
-            ULONG NextEntryOffset;
-            GUID VendorGuid;
-            WCHAR Name[1];
-        };
+        struct VARIABLE_NAME { ULONG NextEntryOffset; GUID VendorGuid; WCHAR Name[1]; };
         using PVARIABLE_NAME = VARIABLE_NAME*;
+        using NtEnumerateSystemEnvironmentValuesEx_t = NTSTATUS(__stdcall*)(ULONG, PVOID, PULONG);
 
-        using NtEnumerateSystemEnvironmentValuesEx_t = NTSTATUS(__stdcall*)(
-            ULONG InformationClass,
-            PVOID Buffer,
-            PULONG BufferLength);
-
-        // secure boot
-        bool found_dbDefault = false;
-        bool found_dbxDefault = false;
-        bool found_KEKDefault = false;
-        bool found_PKDefault = false;
-
-        // extra vars
+        bool found_dbDefault = false, found_dbxDefault = false, found_KEKDefault = false, found_PKDefault = false;
         bool found_MORCL = false;
 
-        if (!util::is_admin()) {
-            return false;
-        }
+        if (!util::is_admin()) return false;
 
         HANDLE hToken = nullptr;
-        if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &hToken)) {
-            return false;
-        }
-
-        auto token_closer = [&](HANDLE token) {
-            if (token) {
-                TOKEN_PRIVILEGES tp{};
-                tp.PrivilegeCount = 1;
-                LookupPrivilegeValue(nullptr, SE_SYSTEM_ENVIRONMENT_NAME, &tp.Privileges[0].Luid);
-                tp.Privileges[0].Attributes = 0;
-                AdjustTokenPrivileges(token, FALSE, &tp, sizeof(TOKEN_PRIVILEGES), nullptr, nullptr);
-                CloseHandle(token);
-            }
-        };
-        std::unique_ptr<void, decltype(token_closer)> token_guard(hToken, token_closer);
+        if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &hToken)) return false;
 
         LUID luid{};
-        if (!LookupPrivilegeValue(nullptr, SE_SYSTEM_ENVIRONMENT_NAME, &luid)) {
-            return false;
+        bool priv_enabled = false;
+        auto cleanup = [&]() {
+            if (priv_enabled && hToken) {
+                TOKEN_PRIVILEGES tpDisable{};
+                tpDisable.PrivilegeCount = 1;
+                tpDisable.Privileges[0].Luid = luid;
+                tpDisable.Privileges[0].Attributes = 0;
+                AdjustTokenPrivileges(hToken, FALSE, &tpDisable, sizeof(TOKEN_PRIVILEGES), nullptr, nullptr);
+            }
+            if (hToken) {
+                CloseHandle(hToken);
+                hToken = nullptr;
+            }
+        };
+
+        if (!LookupPrivilegeValue(nullptr, SE_SYSTEM_ENVIRONMENT_NAME, &luid)) { cleanup(); return false; }
+
+        TOKEN_PRIVILEGES tpEnable{};
+        tpEnable.PrivilegeCount = 1;
+        tpEnable.Privileges[0].Luid = luid;
+        tpEnable.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+        AdjustTokenPrivileges(hToken, FALSE, &tpEnable, sizeof(TOKEN_PRIVILEGES), nullptr, nullptr);
+        if (GetLastError() != ERROR_SUCCESS) { cleanup(); return false; }
+        priv_enabled = true;
+
+        bool hasFunction = false;
+        bool success = false;
+        std::vector<BYTE> resBuffer;
+        ULONG bufferLength = 0;
+        HMODULE ntdll = util::get_ntdll();
+        if (ntdll) {
+            const char* names[] = { "NtEnumerateSystemEnvironmentValuesEx" };
+            void* functions[1] = { nullptr };
+            util::get_function_address(ntdll, names, functions, 1);
+            auto NtEnum = reinterpret_cast<NtEnumerateSystemEnvironmentValuesEx_t>(functions[0]);
+            if (NtEnum) {
+                hasFunction = true;
+                NTSTATUS status = NtEnum(1, nullptr, &bufferLength);
+                if (bufferLength != 0) {
+                    try { resBuffer.resize(bufferLength); }
+                    catch (...) { resBuffer.clear(); bufferLength = 0; }
+                    if (!resBuffer.empty()) {
+                        status = NtEnum(1, resBuffer.data(), &bufferLength);
+                        if (status == 0) { success = true; resBuffer.resize(bufferLength); }
+                        else resBuffer.clear();
+                    }
+                }
+            }
         }
 
-        TOKEN_PRIVILEGES tp{};
-        tp.PrivilegeCount = 1;
-        tp.Privileges[0].Luid = luid;
-        tp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
-
-        if (!AdjustTokenPrivileges(hToken, FALSE, &tp, sizeof(TOKEN_PRIVILEGES), nullptr, nullptr) || GetLastError() != ERROR_SUCCESS) {
-            return false;
-        }
-
-        util::EnumerateFirmwareResult res = util::enumerate_firmware_variables();
-
-        if (!res.hasFunction) {
+        if (!hasFunction) {
             debug("NVRAM: Handle to ntdll.dll could not be obtained, possibly tampered");
-            return true; // returning true on purpose
+            cleanup();
+            return true;
         }
-
-        if (!res.success) {
+        if (!success) {
             debug("NVRAM: System is not UEFI");
-            return false; // NOT UEFI
+            cleanup();
+            return false;
         }
 
-        auto contains_redhat_ascii_ci = [](const std::vector<BYTE>& buf) -> bool {
+        auto contains_redhat_ascii_ci = [](const std::vector<BYTE>& buf)->bool {
             if (buf.empty()) return false;
             std::string s(reinterpret_cast<const char*>(buf.data()), buf.size());
-            for (auto& c : s) c = static_cast<char>(::tolower(static_cast<u8>(c)));
+            for (auto& c : s) c = static_cast<char>(::tolower(static_cast<unsigned char>(c)));
             return s.find("red hat secure boot") != std::string::npos;
         };
-        auto contains_redhat_utf16le_ci = [](const std::vector<BYTE>& buf) -> bool {
-            if (buf.size() < 2) return false;
-            if (buf.size() % 2 != 0) return false; 
+        auto contains_redhat_utf16le_ci = [](const std::vector<BYTE>& buf)->bool {
+            if (buf.size() < 2 || (buf.size() % 2) != 0) return false;
             const WCHAR* wptr = reinterpret_cast<const WCHAR*>(buf.data());
             size_t wlen = buf.size() / sizeof(WCHAR);
             try {
                 std::wstring ws(wptr, wlen);
                 for (auto& wc : ws) wc = static_cast<wchar_t>(::towlower(wc));
-                std::wstring needle = L"red hat secure boot";
-                return ws.find(needle) != std::wstring::npos;
+                return ws.find(L"red hat secure boot") != std::wstring::npos;
             }
-            catch (...) {
-                return false;
-            }
+            catch (...) { return false; }
         };
 
-        PVARIABLE_NAME varName = reinterpret_cast<PVARIABLE_NAME>(res.buffer.data());
-        const size_t bufSize = res.buffer.size();
-
+        PVARIABLE_NAME varName = reinterpret_cast<PVARIABLE_NAME>(resBuffer.data());
+        const size_t bufSize = resBuffer.size();
         constexpr size_t MAX_NAME_BYTES = 4096;
 
         while (true) {
-            const uintptr_t basePtr = reinterpret_cast<uintptr_t>(res.buffer.data());
+            const uintptr_t basePtr = reinterpret_cast<uintptr_t>(resBuffer.data());
             const uintptr_t curPtr = reinterpret_cast<uintptr_t>(varName);
-
             if (curPtr < basePtr) break;
             const size_t offset = static_cast<size_t>(curPtr - basePtr);
             if (offset >= bufSize) break;
@@ -9562,70 +9562,49 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             const size_t nameOffset = offsetof(VARIABLE_NAME, Name);
             if (bufSize - offset < nameOffset) break;
 
+            // read name
             std::wstring nameStr;
-            {
-                size_t nameMaxBytes = 0;
-                if (varName->NextEntryOffset != 0) {
-                    const SIZE_T ne = static_cast<SIZE_T>(varName->NextEntryOffset);
-                    if (ne <= nameOffset) {
-                        return false;
-                    }
-                    if (ne > bufSize - offset) {
-                        break;
-                    }
-                    nameMaxBytes = ne - nameOffset;
-                }
-                else {
-                    if (offset + nameOffset >= bufSize) {
-                        return false;
-                    }
-                    nameMaxBytes = bufSize - (offset + nameOffset);
-                }
-
-                if (nameMaxBytes > MAX_NAME_BYTES) nameMaxBytes = MAX_NAME_BYTES;
-
-                if (nameMaxBytes >= sizeof(WCHAR)) {
-                    const WCHAR* namePtr = reinterpret_cast<const WCHAR*>(reinterpret_cast<const BYTE*>(varName) + nameOffset);
-                    const size_t maxChars = nameMaxBytes / sizeof(WCHAR);
-                    size_t realChars = 0;
-                    while (realChars < maxChars && namePtr[realChars] != L'\0') ++realChars;
-                    if (realChars == maxChars) return false;
-                    nameStr.assign(namePtr, realChars);
-                }
-                else {
-                    nameStr.clear();
-                }
+            size_t nameMaxBytes = 0;
+            if (varName->NextEntryOffset != 0) {
+                const SIZE_T ne = static_cast<SIZE_T>(varName->NextEntryOffset);
+                if (ne <= nameOffset) { cleanup(); return false; }
+                if (ne > bufSize - offset) break;
+                nameMaxBytes = ne - nameOffset;
+            }
+            else {
+                if (offset + nameOffset >= bufSize) { cleanup(); return false; }
+                nameMaxBytes = bufSize - (offset + nameOffset);
+            }
+            if (nameMaxBytes > MAX_NAME_BYTES) nameMaxBytes = MAX_NAME_BYTES;
+            if (nameMaxBytes >= sizeof(WCHAR)) {
+                const WCHAR* namePtr = reinterpret_cast<const WCHAR*>(reinterpret_cast<const BYTE*>(varName) + nameOffset);
+                const size_t maxChars = nameMaxBytes / sizeof(WCHAR);
+                size_t realChars = 0;
+                while (realChars < maxChars && namePtr[realChars] != L'\0') ++realChars;
+                if (realChars == maxChars) { cleanup(); return false; }
+                nameStr.assign(namePtr, realChars);
             }
 
-            std::wstring guidStr;
-            {
-                auto guid_to_wstring = [](const GUID& g) -> std::wstring {
-                    wchar_t buf[40] = {};
-                    int written = _snwprintf_s(
-                        buf, _countof(buf), _TRUNCATE,
-                        L"{%08lX-%04hX-%04hX-%02X%02X-%02X%02X%02X%02X%02X%02X}",
-                        static_cast<unsigned long>(g.Data1),
-                        static_cast<u16>(g.Data2),
-                        static_cast<u16>(g.Data3),
-                        static_cast<u32>(g.Data4[0]),
-                        static_cast<u32>(g.Data4[1]),
-                        static_cast<u32>(g.Data4[2]),
-                        static_cast<u32>(g.Data4[3]),
-                        static_cast<u32>(g.Data4[4]),
-                        static_cast<u32>(g.Data4[5]),
-                        static_cast<u32>(g.Data4[6]),
-                        static_cast<u32>(g.Data4[7])
-                    );
-                    if (written <= 0) return std::wstring();
-                    return std::wstring(buf);
-                };
-
-                guidStr = guid_to_wstring(varName->VendorGuid);
-                if (guidStr.empty()) return true;
-            }
+            auto guid_to_wstring = [](const GUID& g)->std::wstring {
+                wchar_t buf[40] = {};
+                int written = _snwprintf_s(buf, _countof(buf), _TRUNCATE,
+                    L"{%08lX-%04hX-%04hX-%02X%02X-%02X%02X%02X%02X%02X%02X}",
+                    static_cast<unsigned long>(g.Data1),
+                    static_cast<u16>(g.Data2),
+                    static_cast<u16>(g.Data3),
+                    static_cast<u32>(g.Data4[0]), static_cast<u32>(g.Data4[1]),
+                    static_cast<u32>(g.Data4[2]), static_cast<u32>(g.Data4[3]),
+                    static_cast<u32>(g.Data4[4]), static_cast<u32>(g.Data4[5]),
+                    static_cast<u32>(g.Data4[6]), static_cast<u32>(g.Data4[7]));
+                if (written <= 0) return std::wstring();
+                return std::wstring(buf);
+            };
+            std::wstring guidStr = guid_to_wstring(varName->VendorGuid);
+            if (guidStr.empty()) { cleanup(); return true; }
 
             if (!nameStr.empty() && nameStr.rfind(L"VMM", 0) == 0) {
                 debug("NVRAM: Detected hypervisor signature");
+                cleanup();
                 return true;
             }
 
@@ -9635,79 +9614,47 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             else if (nameStr == L"dbxDefault") found_dbxDefault = true;
 
             std::vector<BYTE> valueBuf;
-            DWORD readLen = 0;
-            DWORD required = 0;
-            required = GetFirmwareEnvironmentVariableW(nameStr.c_str(), guidStr.c_str(), nullptr, 0);
+            DWORD required = GetFirmwareEnvironmentVariableW(nameStr.c_str(), guidStr.c_str(), nullptr, 0);
             if (required > 0) {
                 valueBuf.resize(required);
-                readLen = GetFirmwareEnvironmentVariableW(nameStr.c_str(), guidStr.c_str(), valueBuf.data(), required);
-                if (readLen == 0) {
-                    valueBuf.clear();
-                }
-                else {
-                    valueBuf.resize(readLen);
-                }
+                DWORD readLen = GetFirmwareEnvironmentVariableW(nameStr.c_str(), guidStr.c_str(), valueBuf.data(), required);
+                if (readLen == 0) valueBuf.clear(); else valueBuf.resize(readLen);
             }
             else {
                 const DWORD fallbackSize = 8192;
                 valueBuf.resize(fallbackSize);
-                readLen = GetFirmwareEnvironmentVariableW(nameStr.c_str(), guidStr.c_str(), valueBuf.data(), fallbackSize);
-                if (readLen > 0) {
-                    valueBuf.resize(readLen);
-                }
-                else {
-                    valueBuf.clear();
-                }
+                DWORD readLen = GetFirmwareEnvironmentVariableW(nameStr.c_str(), guidStr.c_str(), valueBuf.data(), fallbackSize);
+                if (readLen > 0) valueBuf.resize(readLen); else valueBuf.clear();
             }
 
-            if (nameStr == L"MemoryOverwriteRequestControlLock") {
-                found_MORCL = true;
-            }
+            if (nameStr == L"MemoryOverwriteRequestControlLock") found_MORCL = true;
 
             if (nameStr == L"PKDefault") {
                 bool pk_has_redhat = false;
-                if (!valueBuf.empty()) {
-                    if (contains_redhat_utf16le_ci(valueBuf) || contains_redhat_ascii_ci(valueBuf)) {
-                        pk_has_redhat = true;
-                    }
-                }
+                if (!valueBuf.empty() && (contains_redhat_utf16le_ci(valueBuf) || contains_redhat_ascii_ci(valueBuf)))
+                    pk_has_redhat = true;
                 if (pk_has_redhat) {
                     debug("NVRAM: QEMU detected");
-                    return core::add(brands::QEMU);
+                    bool added = core::add(brands::QEMU);
+                    cleanup();
+                    return added;
                 }
             }
 
             if (varName->NextEntryOffset == 0) break;
-
             const SIZE_T ne = static_cast<SIZE_T>(varName->NextEntryOffset);
             const size_t nextOffset = offset + ne;
             if (nextOffset <= offset || nextOffset > bufSize) break;
-
-            varName = reinterpret_cast<PVARIABLE_NAME>(reinterpret_cast<PBYTE>(res.buffer.data()) + nextOffset);
+            varName = reinterpret_cast<PVARIABLE_NAME>(reinterpret_cast<PBYTE>(resBuffer.data()) + nextOffset);
         }
 
-        if (!found_MORCL) {
-            debug("NVRAM: Missing MemoryOverwriteRequestControlLock");
-            return true;
-        }
+        if (!found_MORCL) { debug("NVRAM: Missing MemoryOverwriteRequestControlLock"); cleanup(); return true; }
+        if (!found_dbDefault) { debug("NVRAM: Missing dbDefault"); cleanup(); return true; }
+        if (!found_dbxDefault) { debug("NVRAM: Missing dbxDefault"); cleanup(); return true; }
+        if (!found_KEKDefault) { debug("NVRAM: Missing KEKDefault"); cleanup(); return true; }
+        if (!found_PKDefault) { debug("NVRAM: Missing PKDefault"); cleanup(); return true; }
 
-        if (!found_dbDefault) {
-            debug("NVRAM: Missing dbDefault");
-            return true;
-        }
-        if (!found_dbxDefault) {
-            debug("NVRAM: Missing dbxDefault");
-            return true;
-        }
-        if (!found_KEKDefault) {
-            debug("NVRAM: Missing KEKDefault");
-            return true;
-        }
-        if (!found_PKDefault) {
-            debug("NVRAM: Missing PKDefault");
-            return true;
-        }
-
+        cleanup();
         return false;
     }
 
