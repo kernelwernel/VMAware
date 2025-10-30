@@ -329,7 +329,6 @@ static bool are_perms_required(const VM::enum_flags flag) {
     }
 
     switch (flag) {
-    case VM::VBOX_DEFAULT:
     case VM::VMWARE_DMESG:
     case VM::DMIDECODE:
     case VM::DMESG:
@@ -756,7 +755,6 @@ static void general() {
     checker(VM::DLL, "DLLs");
     checker(VM::WINE, "Wine");
     checker(VM::HWMODEL, "hw.model");
-    checker(VM::VBOX_DEFAULT, "VBox default specs");
     checker(VM::PROCESSES, "processes");
     checker(VM::LINUX_USER_HOST, "default Linux user/host");
     checker(VM::GAMARUE, "gamarue ransomware technique");
@@ -824,7 +822,6 @@ static void general() {
     checker(VM::BLOCKSTEP, "single step with trap flag");
     checker(VM::DBVM, "Dark Byte's hypervisor");
     checker(VM::BOOT_LOGO, "boot logo");
-    checker(VM::BOOT_MANAGER, "boot manager");
     checker(VM::MAC_SYS, "system profiler");
     checker(VM::OBJECTS, "objects");
     checker(VM::NVRAM, "NVRAM");
