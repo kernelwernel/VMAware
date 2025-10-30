@@ -824,7 +824,6 @@ static void general() {
     checker(VM::BLOCKSTEP, "single step with trap flag");
     checker(VM::DBVM, "Dark Byte's hypervisor");
     checker(VM::BOOT_LOGO, "boot logo");
-    checker(VM::BOOT_MANAGER, "boot manager");
     checker(VM::MAC_SYS, "system profiler");
     checker(VM::OBJECTS, "objects");
     checker(VM::NVRAM, "NVRAM");

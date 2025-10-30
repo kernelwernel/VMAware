@@ -564,7 +564,6 @@ public:
         DBVM,
         OBJECTS,
         NVRAM,
-        BOOT_MANAGER,
         SMBIOS_INTEGRITY,
         EDID,
         CPU_HEURISTIC,
@@ -9656,225 +9655,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check for boot managers typically found in VMs
-     * @category Windows
-     * @warning Permissions required
-     * @implements VM::BOOT_MANAGER
-     */
-    [[nodiscard]] static bool nvram_boot() {
-        struct VARIABLE_NAME {
-            ULONG NextEntryOffset;
-            GUID  VendorGuid;
-            WCHAR Name[1];
-        };
-
-        if (!util::is_admin()) return false;
-        if (util::get_windows_version() < 10) return false;
-
-        HANDLE hToken = nullptr;
-        if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &hToken)) return false;
-        auto token_closer = [](HANDLE t) {
-            if (!t) return;
-            TOKEN_PRIVILEGES tp{};
-            tp.PrivilegeCount = 1;
-            LookupPrivilegeValue(nullptr, SE_SYSTEM_ENVIRONMENT_NAME, &tp.Privileges[0].Luid);
-            tp.Privileges[0].Attributes = 0;
-            AdjustTokenPrivileges(t, FALSE, &tp, sizeof(tp), nullptr, nullptr);
-            CloseHandle(t);
-        };
-        std::unique_ptr<void, decltype(token_closer)> token_guard(hToken, token_closer);
-
-        LUID luid{};
-        if (!LookupPrivilegeValue(nullptr, SE_SYSTEM_ENVIRONMENT_NAME, &luid)) return false;
-        TOKEN_PRIVILEGES tp{};
-        tp.PrivilegeCount = 1;
-        tp.Privileges[0].Luid = luid;
-        tp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
-        AdjustTokenPrivileges(hToken, FALSE, &tp, sizeof(tp), nullptr, nullptr);
-        if (GetLastError() != ERROR_SUCCESS) return false;
-
-        util::EnumerateFirmwareResult res = util::enumerate_firmware_variables();
-        if (!res.hasFunction) return false; // false here, already returning true in nvram_vars()
-        if (res.bufferLength == 0) return false; // not UEFI
-        if (!res.success) return false;
-
-        constexpr size_t MAX_NAME_BYTES = 4096;
-        const BYTE* base = res.buffer.data();
-        const size_t bufSize = res.buffer.size();
-
-        bool foundAnyBootEntry = false;
-        bool legitBootManager = false;
-
-        auto advance_to_next = [&](const VARIABLE_NAME* cur) -> const VARIABLE_NAME* {
-            if (!cur) return nullptr;
-            if (cur->NextEntryOffset == 0) return nullptr;
-            const SIZE_T ne = static_cast<SIZE_T>(cur->NextEntryOffset);
-            const uintptr_t nextPtr = reinterpret_cast<uintptr_t>(cur) + ne;
-            const uintptr_t basePtr = reinterpret_cast<uintptr_t>(base);
-            if (nextPtr < basePtr) return nullptr;
-            const size_t nextOffset = static_cast<size_t>(nextPtr - basePtr);
-            if (nextOffset >= bufSize) return nullptr;
-            return reinterpret_cast<const VARIABLE_NAME*>(base + nextOffset);
-        };
-
-        const VARIABLE_NAME* var = reinterpret_cast<const VARIABLE_NAME*>(base);
-        while (var) {
-            // ensure we can read NextEntryOffset + GUID + Name[0]
-            const size_t curOffset = static_cast<size_t>(
-                reinterpret_cast<uintptr_t>(reinterpret_cast<const void*>(var)) -
-                reinterpret_cast<uintptr_t>(base)
-            );
-            if (curOffset >= bufSize) break;
-            const size_t nameFieldOffset = offsetof(VARIABLE_NAME, Name);
-            if (bufSize - curOffset < nameFieldOffset) break;
-
-            // name buffer size
-            size_t nameMaxBytes = 0;
-            if (var->NextEntryOffset != 0) {
-                const SIZE_T ne = static_cast<SIZE_T>(var->NextEntryOffset);
-                if (ne <= nameFieldOffset) break;
-                if (ne > bufSize - curOffset) break;
-                nameMaxBytes = ne - nameFieldOffset;
-            }
-            else {
-                if (curOffset + nameFieldOffset >= bufSize) break;
-                nameMaxBytes = bufSize - (curOffset + nameFieldOffset);
-            }
-            if (nameMaxBytes > MAX_NAME_BYTES) nameMaxBytes = MAX_NAME_BYTES;
-
-            // read name as WCHARs (ensure null-terminated inside available bytes)
-            std::wstring nameStr;
-            if (nameMaxBytes >= sizeof(WCHAR)) {
-                const WCHAR* namePtr = reinterpret_cast<const WCHAR*>(reinterpret_cast<const BYTE*>(var) + nameFieldOffset);
-                const size_t maxChars = nameMaxBytes / sizeof(WCHAR);
-                size_t realChars = 0;
-                while (realChars < maxChars && namePtr[realChars] != L'\0') ++realChars;
-                if (realChars == maxChars) {
-                    return false;
-                }
-                nameStr.assign(namePtr, realChars);
-            }
-
-            auto guid_to_wstring = [](const GUID& g) -> std::wstring {
-                wchar_t buf[40] = {};
-                int written = _snwprintf_s(
-                    buf, _countof(buf), _TRUNCATE,
-                    L"{%08lX-%04hX-%04hX-%02X%02X-%02X%02X%02X%02X%02X%02X}",
-                    static_cast<unsigned long>(g.Data1),
-                    static_cast<u16>(g.Data2),
-                    static_cast<u16>(g.Data3),
-                    static_cast<u32>(g.Data4[0]),
-                    static_cast<u32>(g.Data4[1]),
-                    static_cast<u32>(g.Data4[2]),
-                    static_cast<u32>(g.Data4[3]),
-                    static_cast<u32>(g.Data4[4]),
-                    static_cast<u32>(g.Data4[5]),
-                    static_cast<u32>(g.Data4[6]),
-                    static_cast<u32>(g.Data4[7])
-                );
-                if (written <= 0) return std::wstring();
-                return std::wstring(buf);
-            };
-
-            std::wstring guidStr = guid_to_wstring(var->VendorGuid);
-            if (guidStr.empty()) return true;
-
-            bool isBootIndex = false;
-            if (nameStr.size() == 8 && nameStr.compare(0, 4, L"Boot") == 0) {
-                bool hex = true;
-                for (std::wstring::size_type i = 4; i < 8 && i < nameStr.size(); ++i) {
-                    wchar_t ch = nameStr[i];
-                    if (!((ch >= L'0' && ch <= L'9') ||
-                        (ch >= L'A' && ch <= L'F') ||
-                        (ch >= L'a' && ch <= L'f'))) {
-                        hex = false;
-                        break;
-                    }
-                }
-                if (hex) isBootIndex = true;
-            }
-
-            if (!isBootIndex) {
-                var = advance_to_next(var);
-                continue;
-            }
-
-            foundAnyBootEntry = true;
-
-            std::vector<BYTE> valueBuf;
-            DWORD required = GetFirmwareEnvironmentVariableW(nameStr.c_str(), guidStr.c_str(), nullptr, 0);
-            if (required > 0) {
-                valueBuf.resize(required);
-                DWORD readLen = GetFirmwareEnvironmentVariableW(nameStr.c_str(), guidStr.c_str(), valueBuf.data(), required);
-                if (readLen == 0) { valueBuf.clear(); }
-                else valueBuf.resize(readLen);
-            }
-            else {
-                constexpr DWORD FALLBACK = 8192;
-                valueBuf.resize(FALLBACK);
-                DWORD readLen = GetFirmwareEnvironmentVariableW(nameStr.c_str(), guidStr.c_str(), valueBuf.data(), FALLBACK);
-                if (readLen > 0) valueBuf.resize(readLen);
-                else valueBuf.clear();
-            }
-
-            if (valueBuf.empty()) {
-                var = advance_to_next(var);
-                continue;
-            }
-
-            // attributes (u32), filePathListLength (u16), then description (UTF-16 null-terminated), then filePathList and load options
-            size_t idx = 0;
-            auto can_read = [&](size_t need) { return idx + need <= valueBuf.size(); };
-            auto read_u32 = [&](u32& out)->bool {
-                if (!can_read(sizeof(u32))) return false;
-                memcpy(&out, valueBuf.data() + idx, sizeof(u32));
-                idx += sizeof(u32);
-                return true;
-            };
-            auto read_u16 = [&](u16& out)->bool {
-                if (!can_read(sizeof(u16))) return false;
-                memcpy(&out, valueBuf.data() + idx, sizeof(u16));
-                idx += sizeof(u16);
-                return true;
-            };
-
-            u32 attributes = 0;
-            u16 filePathListLength = 0;
-            if (!read_u32(attributes) || !read_u16(filePathListLength)) {
-                var = advance_to_next(var);
-                continue;
-            }
-
-            // Find UTF-16 description terminator (two zero bytes)
-            bool foundTerminator = false;
-            while (idx + 1 < valueBuf.size()) {
-                if (valueBuf[idx] == 0 && valueBuf[idx + 1] == 0) { idx += 2; foundTerminator = true; break; }
-                idx += 2; // we have to step by WCHAR
-            }
-            if (!foundTerminator) {
-                var = advance_to_next(var);
-                continue;
-            }
-
-            const size_t rem = (idx <= valueBuf.size()) ? (valueBuf.size() - idx) : 0;
-            if (filePathListLength > rem) {
-                var = advance_to_next(var);
-                continue;
-            }
-
-            if (filePathListLength == 116) {
-                legitBootManager = true;
-                break;
-            }
-
-            var = advance_to_next(var);
-        }
-
-        return !legitBootManager;
-    }
-
-
-    /**
 	 * @brief Check if SMBIOS is malformed/corrupted in a way that is typical for VMs
      * @category Windows
      * @implements VM::SMBIOS_INTEGRITY
@@ -11348,7 +11128,6 @@ public: // START OF PUBLIC FUNCTIONS
             case MAC_SYS: return "MAC_SYS";
             case OBJECTS: return "OBJECTS";
             case NVRAM: return "NVRAM";
-            case BOOT_MANAGER: return "BOOT_MANAGER";
             case SMBIOS_INTEGRITY: return "SMBIOS_INTEGRITY";
             case EDID: return "EDID";
             case CPU_HEURISTIC: return "CPU_HEURISTIC";
@@ -11889,7 +11668,6 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         std::make_pair(VM::ACPI_SIGNATURE, VM::core::technique(100, VM::acpi_signature)),
         std::make_pair(VM::NVRAM, VM::core::technique(100, VM::nvram_vars)),
         std::make_pair(VM::CLOCK, VM::core::technique(100, VM::clock)),
-        std::make_pair(VM::BOOT_MANAGER, VM::core::technique(50, VM::nvram_boot)),
         std::make_pair(VM::POWER_CAPABILITIES, VM::core::technique(45, VM::power_capabilities)),
         std::make_pair(VM::CPU_HEURISTIC, VM::core::technique(100, VM::cpu_heuristic)),
         std::make_pair(VM::EDID, VM::core::technique(100, VM::edid)),
