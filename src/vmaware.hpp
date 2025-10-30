@@ -4402,9 +4402,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             debug("TIMER: Running inside a binary translation layer.");
             return false;
         }
-        u16 cycleThreshold = 1700;
+        u16 cycleThreshold = 1500;
         if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
-            cycleThreshold = 25000; // if we're running under Hyper-V, attempt to detect nested virtualization only
+            cycleThreshold = 15000; // if we're running under Hyper-V, attempt to detect nested virtualization only
         }
 
     #if (WINDOWS)
