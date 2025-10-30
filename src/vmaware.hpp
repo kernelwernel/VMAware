@@ -375,10 +375,12 @@
     #include <initguid.h>
     #include <devpkey.h>
     #include <devguid.h>
+    #include <winevt.h>
 
     #pragma comment(lib, "setupapi.lib")
     #pragma comment(lib, "powrprof.lib")
     #pragma comment(lib, "Mincore.lib")
+    #pragma comment(lib,"wevtapi.lib")
 #elif (LINUX)
     #if (x86)
         #include <cpuid.h>
@@ -889,7 +891,63 @@ private:
                 }
             }
 
-            // since SMBIOS is unreliable, an extra fallback could be checking kernel-power-processor eventid 55
+            const EVT_HANDLE hQuery = EvtQuery(nullptr, L"System",LR"(*[System[Provider[@Name='Microsoft-Windows-Kernel-Processor-Power'] and EventID=55]])", EvtQueryReverseDirection);
+            if (!hQuery) return 0;
+            LPCWSTR props[] = { L"Event/EventData/Data[@Name='Number']", L"Event/EventData/Data[@Name='NominalFrequency']" };
+            const EVT_HANDLE hCtx = EvtCreateRenderContext(2, props, EvtRenderContextValues);
+            if (!hCtx) { EvtClose(hQuery); return 0; }
+
+            auto to_u64 = [](EVT_VARIANT& v)->uint64_t {
+                switch (v.Type) {
+                case EvtVarTypeUInt32:  return v.UInt32Val;
+                case EvtVarTypeUInt64:  return v.UInt64Val;
+                case EvtVarTypeInt32:   return (uint64_t)v.Int32Val;
+                case EvtVarTypeInt64:   return (uint64_t)v.Int64Val;
+                case EvtVarTypeUInt16:  return v.UInt16Val;
+                case EvtVarTypeSByte:   return (uint8_t)v.SByteVal;
+                case EvtVarTypeByte:    return v.ByteVal;
+                case EvtVarTypeBoolean: return v.BooleanVal ? 1ull : 0ull;
+                case EvtVarTypeDouble:  return (uint64_t)v.DoubleVal;
+                case EvtVarTypeAnsiString:
+                    if (v.AnsiStringVal) try { return std::stoull(std::string(v.AnsiStringVal)); }
+                    catch (...) { return 0; }
+                    return 0;
+                case EvtVarTypeString:
+                    if (v.StringVal) try { return std::stoull(std::wstring(v.StringVal)); }
+                    catch (...) { return 0; }
+                    return 0;
+                default:
+                    return 0;
+                }
+            };
+
+            const DWORD BATCH = 16;
+            std::vector<EVT_HANDLE> events(BATCH);
+            while (true) {
+                DWORD returned = 0;
+                if (!EvtNext(hQuery, BATCH, events.data(), INFINITE, 0, &returned)) {
+                    if (GetLastError() == ERROR_NO_MORE_ITEMS) break;
+                    break;
+                }
+                for (DWORD i = 0; i < returned; ++i) {
+                    EVT_HANDLE hEv = events[i];
+                    DWORD needed = 0, propCount = 0;
+                    EvtRender(hCtx, hEv, EvtRenderEventValues, 0, nullptr, &needed, &propCount);
+                    if (GetLastError() != ERROR_INSUFFICIENT_BUFFER || needed == 0) { EvtClose(hEv); continue; }
+                    std::vector<BYTE> buf(needed);
+                    if (!EvtRender(hCtx, hEv, EvtRenderEventValues, needed, buf.data(), &needed, &propCount)) { EvtClose(hEv); continue; }
+                    EvtClose(hEv);
+                    if (propCount < 2) continue;
+                    EVT_VARIANT* v = reinterpret_cast<EVT_VARIANT*>(buf.data());
+                    uint64_t num = to_u64(v[0]);
+                    if (num != 0) continue; // only processor Number == 0 because thats what we we will on VM::TIMER and other functions
+                    uint64_t nominal = to_u64(v[1]);
+                    if (nominal != 0) { EvtClose(hCtx); EvtClose(hQuery); return static_cast<uint32_t>(nominal); }
+                }
+            }
+            EvtClose(hCtx);
+            EvtClose(hQuery);
+
             return 0;
         }
 #endif
