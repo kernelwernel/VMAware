@@ -309,7 +309,7 @@ static bool is_admin() {
 #elif (WINDOWS)
     bool is_admin = false;
     HANDLE hToken = nullptr;
-    if (OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &hToken)) {
+    if (OpenProcessToken(reinterpret_cast<HANDLE>(-1LL), TOKEN_QUERY, &hToken)) {
         TOKEN_ELEVATION elevation{};
         DWORD dwSize;
         if (GetTokenInformation(hToken, TokenElevation, &elevation, sizeof(elevation), &dwSize)) {
@@ -731,7 +731,7 @@ static void general() {
         }
     #elif (CLI_WINDOWS)
         if (!is_admin()) {
-            std::cout << note << " Not running as admin. Some important detections will be disabled.\n";
+            std::cout << note << " Not running as admin - NVRAM detections will be disabled.\n";
         }
     #endif
 
