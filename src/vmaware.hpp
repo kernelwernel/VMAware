@@ -4,7 +4,7 @@
  * ██║   ██║██╔████╔██║███████║██║ █╗ ██║███████║██████╔╝█████╗
  * ╚██╗ ██╔╝██║╚██╔╝██║██╔══██║██║███╗██║██╔══██║██╔══██╗██╔══╝
  *  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
- *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ Experimental post-2.5.0 (October 2025)
+ *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ Experimental post-2.5.0 (November 2025)
  *
  *  C++ VM detection library
  *
@@ -56,10 +56,10 @@
  * - struct for internal cpu operations        => line 714
  * - struct for internal memoization           => line 1146
  * - struct for internal utility functions     => line 1276
- * - struct for internal core components       => line 9652
- * - start of VM detection technique list      => line 1961
- * - start of public VM detection functions    => line 10145
- * - start of externally defined variables     => line 11125
+ * - struct for internal core components       => line 9685
+ * - start of VM detection technique list      => line 1962
+ * - start of public VM detection functions    => line 10178
+ * - start of externally defined variables     => line 11158
  *
  *
  * ============================== EXAMPLE ===================================
@@ -1406,7 +1406,8 @@ private:
         #elif (WINDOWS)
             bool is_admin = false;
             HANDLE hToken = nullptr;
-            if (OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &hToken)) {
+            const HANDLE hCurrentProcess = reinterpret_cast<HANDLE>(-1LL);
+            if (OpenProcessToken(hCurrentProcess, TOKEN_QUERY, &hToken)) {
                 TOKEN_ELEVATION elevation{};
                 DWORD dwSize;
                 if (GetTokenInformation(hToken, TokenElevation, &elevation, sizeof(elevation), &dwSize)) {
@@ -1647,11 +1648,11 @@ private:
 
         [[nodiscard]] static bool is_running_under_translator() {
         #if (WINDOWS && _WIN32_WINNT >= _WIN32_WINNT_WIN10)
-            const HANDLE hProcess = GetCurrentProcess();
+            const HANDLE hCurrentProcess = reinterpret_cast<HANDLE>(-1LL);
             USHORT procMachine = 0, nativeMachine = 0;
             const auto pIsWow64Process2 = &IsWow64Process2;
 
-            if (pIsWow64Process2(hProcess, &procMachine, &nativeMachine)) {
+            if (pIsWow64Process2(hCurrentProcess, &procMachine, &nativeMachine)) {
                 if (nativeMachine == IMAGE_FILE_MACHINE_ARM64 &&
                     (procMachine == IMAGE_FILE_MACHINE_AMD64 || procMachine == IMAGE_FILE_MACHINE_I386)) {
                     debug("Translator detected x64/x86 process on ARM64");
@@ -1679,7 +1680,7 @@ private:
                         DWORD  MachineAttributes;
                     } pmInfo = {};
                     // ProcessMachineTypeInfo == 9 per MS Q&A
-                    if (pGetProcInfo(hProcess, (PROCESS_INFORMATION_CLASS)9, &pmInfo, sizeof(pmInfo))) {
+                    if (pGetProcInfo(hCurrentProcess, (PROCESS_INFORMATION_CLASS)9, &pmInfo, sizeof(pmInfo))) {
                         if (pmInfo.ProcessMachine == IMAGE_FILE_MACHINE_AMD64 || pmInfo.ProcessMachine == IMAGE_FILE_MACHINE_I386) {
                             debug("Translator detected x64/x86 process on ARM64 by fallback");
                             return true;
@@ -4267,13 +4268,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             const u32 baseMHz = cpu::get_cpu_base_speed(); // wont probably work reliably on AMD, but its more reliable than fetching from SMBIOS
 
             if (baseMHz == 0) {
-                debug("TIMER: Processor base speed not available for this processor");
+                debug("TIMER: Processor's true base speed not available");
             }
             else if (baseMHz < 800.0) {
+                debug("TIMER: Processor's true base speed is too low");
                 return true;
             }
             else {
-                debug("TIMER: Processor base speed -> ", static_cast<double>(baseMHz), " MHz");
+                debug("TIMER: Processor's true base speed -> ", static_cast<double>(baseMHz), " MHz");
                 // this -650 delta accounts for older CPUs, it's better to use this rather than calling CPUID to know if the CPU supports invariant TSC, as it can be spoofed
                 if (tscMHz <= static_cast<double>(baseMHz) - 650.0) {
                     return true;
@@ -7437,15 +7439,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         NTSTATUS status = ntQuerySystemInformation(SystemModuleInformation, nullptr, 0, &ulSize);
         if (status != ((NTSTATUS)0xC0000004L)) return false;
 
-        const HANDLE hProcess = GetCurrentProcess();
+        const HANDLE hCurrentProcess = reinterpret_cast<HANDLE>(-1LL);
         PVOID allocatedMemory = nullptr;
         SIZE_T regionSize = ulSize;
-        ntAllocateVirtualMemory(hProcess, &allocatedMemory, 0, &regionSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        ntAllocateVirtualMemory(hCurrentProcess, &allocatedMemory, 0, &regionSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
 
         const auto pSystemModuleInfoEx = reinterpret_cast<PSYSTEM_MODULE_INFORMATION_EX>(allocatedMemory);
         status = ntQuerySystemInformation(SystemModuleInformation, pSystemModuleInfoEx, ulSize, &ulSize);
         if (!(((NTSTATUS)(status)) >= 0)) {
-            ntFreeVirtualMemory(hProcess, &allocatedMemory, &regionSize, MEM_RELEASE);
+            ntFreeVirtualMemory(hCurrentProcess, &allocatedMemory, &regionSize, MEM_RELEASE);
             return false;
         }
 
@@ -7457,7 +7459,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 strstr(driverPath, "VBoxSF")
             ) {
                 debug("DRIVERS: Detected VBox driver: ", driverPath);
-                ntFreeVirtualMemory(hProcess, &allocatedMemory, &regionSize, MEM_RELEASE);
+                ntFreeVirtualMemory(hCurrentProcess, &allocatedMemory, &regionSize, MEM_RELEASE);
                 return core::add(brands::VBOX);
             }
 
@@ -7467,12 +7469,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 strstr(driverPath, "vmmemctl")
             ) {
                 debug("DRIVERS: Detected VMware driver: ", driverPath);
-                ntFreeVirtualMemory(hProcess, &allocatedMemory, &regionSize, MEM_RELEASE);
+                ntFreeVirtualMemory(hCurrentProcess, &allocatedMemory, &regionSize, MEM_RELEASE);
                 return core::add(brands::VMWARE);
             }
         }
 
-        ntFreeVirtualMemory(hProcess, &allocatedMemory, &regionSize, MEM_RELEASE);
+        ntFreeVirtualMemory(hCurrentProcess, &allocatedMemory, &regionSize, MEM_RELEASE);
         return false;
     }
 
@@ -7606,6 +7608,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             BYTE* allocatedBuffer = nullptr;
             SIZE_T allocatedSize = 0;
+            const HANDLE hCurrentProcess = reinterpret_cast<HANDLE>(-1LL);
 
             if (!NT_SUCCESS(st)) {
                 DWORD reportedSize = 0;
@@ -7617,7 +7620,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     allocatedSize = static_cast<SIZE_T>(reportedSize);
                     PVOID allocBase = nullptr;
                     SIZE_T regionSize = allocatedSize;
-                    st = pNtAllocateVirtualMemory((HANDLE)-1, &allocBase, 0, &regionSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+                    st = pNtAllocateVirtualMemory(hCurrentProcess, &allocBase, 0, &regionSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
                     if (!NT_SUCCESS(st) || allocBase == nullptr) {
                         pNtClose(hDevice);
                         continue;
@@ -7630,7 +7633,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     if (!NT_SUCCESS(st)) {
                         PVOID freeBase = reinterpret_cast<PVOID>(allocatedBuffer);
                         SIZE_T freeSize = allocatedSize;
-                        pNtFreeVirtualMemory((HANDLE)-1, &freeBase, &freeSize, MEM_RELEASE);
+                        pNtFreeVirtualMemory(hCurrentProcess, &freeBase, &freeSize, MEM_RELEASE);
                         pNtClose(hDevice);
                         continue;
                     }
@@ -7648,7 +7651,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     if (allocatedBuffer) {
                         PVOID freeBase = reinterpret_cast<PVOID>(allocatedBuffer);
                         SIZE_T freeSize = allocatedSize;
-                        pNtFreeVirtualMemory((HANDLE)-1, &freeBase, &freeSize, MEM_RELEASE);
+                        pNtFreeVirtualMemory(hCurrentProcess, &freeBase, &freeSize, MEM_RELEASE);
                         allocatedBuffer = nullptr;
                     }
                     pNtClose(hDevice);
@@ -7668,7 +7671,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     if (allocatedBuffer) {
                         PVOID freeBase = reinterpret_cast<PVOID>(allocatedBuffer);
                         SIZE_T freeSize = allocatedSize;
-                        pNtFreeVirtualMemory((HANDLE)-1, &freeBase, &freeSize, MEM_RELEASE);
+                        pNtFreeVirtualMemory(hCurrentProcess, &freeBase, &freeSize, MEM_RELEASE);
                         allocatedBuffer = nullptr;
                     }
                     pNtClose(hDevice);
@@ -7679,7 +7682,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             if (allocatedBuffer) {
                 PVOID freeBase = reinterpret_cast<PVOID>(allocatedBuffer);
                 SIZE_T freeSize = allocatedSize;
-                pNtFreeVirtualMemory((HANDLE)-1, &freeBase, &freeSize, MEM_RELEASE);
+                pNtFreeVirtualMemory(hCurrentProcess, &freeBase, &freeSize, MEM_RELEASE);
                 allocatedBuffer = nullptr;
             }
             pNtClose(hDevice);
@@ -7828,7 +7831,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const int colorMgmtCaps = GetDeviceCaps(hdc, COLORMGMTCAPS);
         ReleaseDC(nullptr, hdc);
 
-        return colorMgmtCaps == 0 || !(colorMgmtCaps & CM_GAMMA_RAMP);
+        return !(colorMgmtCaps & CM_GAMMA_RAMP) || colorMgmtCaps == 0;
     }
 
 
@@ -8457,7 +8460,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         PVOID execMem = nullptr;
         SIZE_T regionSize = trampSize;
-        NTSTATUS st = pNtAllocateVirtualMemory((HANDLE)-1, &execMem, 0, &regionSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        const HANDLE hCurrentProcess = reinterpret_cast<HANDLE>(-1LL);
+        NTSTATUS st = pNtAllocateVirtualMemory(hCurrentProcess, &execMem, 0, &regionSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
         if (!NT_SUCCESS(st) || !execMem) {
             return false;
         }
@@ -8467,15 +8471,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             PVOID tmpBase = execMem;
             SIZE_T tmpSz = trampSize;
             ULONG oldProt = 0;
-            st = pNtProtectVirtualMemory((HANDLE)-1, &tmpBase, &tmpSz, PAGE_EXECUTE_READ, &oldProt);
+            st = pNtProtectVirtualMemory(hCurrentProcess, &tmpBase, &tmpSz, PAGE_EXECUTE_READ, &oldProt);
             if (!NT_SUCCESS(st)) {
                 PVOID freeBase = execMem; SIZE_T freeSize = trampSize;
-                pNtFreeVirtualMemory((HANDLE)-1, &freeBase, &freeSize, MEM_RELEASE);
+                pNtFreeVirtualMemory(hCurrentProcess, &freeBase, &freeSize, MEM_RELEASE);
                 return false;
             }
         }
 
-        pNtFlushInstructionCache((HANDLE)-1, execMem, trampSize);
+        pNtFlushInstructionCache(hCurrentProcess, execMem, trampSize);
 
         int hitCount = 0;
 
@@ -8485,7 +8489,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         if (!NT_SUCCESS(pNtGetContextThread(thrHandle, &origCtx))) {
             PVOID freeBase = execMem; SIZE_T freeSize = trampSize;
-            pNtFreeVirtualMemory((HANDLE)-1, &freeBase, &freeSize, MEM_RELEASE);
+            pNtFreeVirtualMemory(hCurrentProcess, &freeBase, &freeSize, MEM_RELEASE);
             return false;
         }
 
@@ -8498,7 +8502,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (!NT_SUCCESS(pNtSetContextThread(thrHandle, &dbgCtx))) {
             pNtSetContextThread(thrHandle, &origCtx);
             PVOID freeBase = execMem; SIZE_T freeSize = trampSize;
-            pNtFreeVirtualMemory((HANDLE)-1, &freeBase, &freeSize, MEM_RELEASE);
+            pNtFreeVirtualMemory(hCurrentProcess, &freeBase, &freeSize, MEM_RELEASE);
             return false;
         }
 
@@ -8539,7 +8543,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         pNtSetContextThread(thrHandle, &origCtx);
 
         PVOID freeBase = execMem; SIZE_T freeSize = trampSize;
-        pNtFreeVirtualMemory((HANDLE)-1, &freeBase, &freeSize, MEM_RELEASE);
+        pNtFreeVirtualMemory(hCurrentProcess, &freeBase, &freeSize, MEM_RELEASE);
 
     #endif
         return hypervisorCaught;
@@ -8586,10 +8590,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        const HANDLE hProcess = GetCurrentProcess();
+        const HANDLE hCurrentProcess = reinterpret_cast<HANDLE>(-1LL);
         PVOID base = nullptr;
         SIZE_T regionSize = sizeof(ud_opcodes);
-        NTSTATUS st = pNtAllocateVirtualMemory(hProcess, &base, 0, &regionSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        NTSTATUS st = pNtAllocateVirtualMemory(hCurrentProcess, &base, 0, &regionSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
         if (!NT_SUCCESS(st) || !base) {
             return false;
         }
@@ -8597,13 +8601,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         memcpy(base, ud_opcodes, sizeof(ud_opcodes));
 
         ULONG oldProtect = 0;
-        st = pNtProtectVirtualMemory(hProcess, &base, &regionSize, PAGE_EXECUTE_READ, &oldProtect);
+        st = pNtProtectVirtualMemory(hCurrentProcess, &base, &regionSize, PAGE_EXECUTE_READ, &oldProtect);
         if (!NT_SUCCESS(st)) {
-            pNtFreeVirtualMemory(hProcess, &base, &regionSize, MEM_RELEASE);
+            pNtFreeVirtualMemory(hCurrentProcess, &base, &regionSize, MEM_RELEASE);
             return false;
         }
 
-        pNtFlushInstructionCache(hProcess, base, regionSize);
+        pNtFlushInstructionCache(hCurrentProcess, base, regionSize);
 
         __try {
             reinterpret_cast<void(*)()>(base)();
@@ -8612,7 +8616,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             saw_ud = true;
         }
 
-        pNtFreeVirtualMemory((HANDLE)-1, &base, &regionSize, MEM_RELEASE);
+        pNtFreeVirtualMemory(hCurrentProcess, &base, &regionSize, MEM_RELEASE);
 
         return !saw_ud;
     }
@@ -8708,6 +8712,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const SIZE_T stubSize = sizeof(intelTemplate);
         const bool isAmd = cpu::is_amd();
 
+        const HANDLE hCurrentProcess = reinterpret_cast<HANDLE>(-1LL);
         const HMODULE ntdll = util::get_ntdll();
         if (!ntdll) return false;
 
@@ -8726,7 +8731,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         PVOID stub = nullptr;
         SIZE_T regionSize = stubSize;
-        NTSTATUS st = pNtAllocateVirtualMemory((HANDLE)-1, &stub, 0, &regionSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        NTSTATUS st = pNtAllocateVirtualMemory(hCurrentProcess, &stub, 0, &regionSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
         if (!NT_SUCCESS(st) || !stub) return false;
 
         if (isAmd) {
@@ -8746,13 +8751,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         *reinterpret_cast<u64*>(reinterpret_cast<u8*>(stub) + 35) = reinterpret_cast<u64>(static_cast<void*>(&vmcallResult));
 
         ULONG oldProtect = 0;
-        st = pNtProtectVirtualMemory((HANDLE)-1, &stub, &regionSize, PAGE_EXECUTE_READ, &oldProtect);
+        st = pNtProtectVirtualMemory(hCurrentProcess, &stub, &regionSize, PAGE_EXECUTE_READ, &oldProtect);
         if (!NT_SUCCESS(st)) {
-            pNtFreeVirtualMemory((HANDLE)-1, &stub, &regionSize, MEM_RELEASE);
+            pNtFreeVirtualMemory(hCurrentProcess, &stub, &regionSize, MEM_RELEASE);
             return false;
         }
 
-        pNtFlushInstructionCache((HANDLE)-1, stub, regionSize);
+        pNtFlushInstructionCache(hCurrentProcess, stub, regionSize);
 
         auto tryPass = [&]() -> bool {
             vmcallInfo.structsize = static_cast<u32>(sizeof(VMCallInfo));
@@ -8772,7 +8777,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         const bool found = tryPass();
 
-        pNtFreeVirtualMemory((HANDLE)-1, &stub, &regionSize, MEM_RELEASE);
+        pNtFreeVirtualMemory(hCurrentProcess, &stub, &regionSize, MEM_RELEASE);
 
         if (found) return core::add(brands::DBVM);
 
@@ -9060,7 +9065,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (!util::is_admin()) return false;
 
         HANDLE hToken = nullptr;
-        if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &hToken)) return false;
+        const HANDLE hCurrentProcess = reinterpret_cast<HANDLE>(-1LL);
+        if (!OpenProcessToken(hCurrentProcess, TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &hToken)) return false;
 
         LUID luid{};
         bool priv_enabled = false;
@@ -9378,6 +9384,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::CPU_HEURISTIC
      */
     [[nodiscard]] static bool cpu_heuristic() {
+        if (util::is_running_under_translator()) return false;
+
         // 1) Check for commonly disabled instructions on patches      
         bool ok = true;
 
@@ -9406,7 +9414,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             SGX are deprecated and disabled by default, MPX is deprecated and treated as NOP even in AMD CPUs, AVX-512 is not found in all processors (and amd integrated part of this set), etc
             On AMD, 3dNow! could be an option, but since its being deprecated, CLZERO fits this criteria better
 
-            So for example, if the CPU reports being Intel, and succesfully runs CLZERO, then it's not an Intel CPU.
+            So for example, if the CPU reports being Intel, and succesfully runs CLZERO without a NOP, then it's not an Intel CPU.
         */
 
         // AMD stub template (mov rax, imm64 + clzero + ret)
@@ -9439,7 +9447,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         bool proceed = true;
         bool exception = false;
 
-        if (claimed_intel || !claimed_amd) exception = true; // should generate an exception rather than be treated as a NOP
+        if (claimed_intel || !claimed_amd) exception = true; // should generate an exception rather than be treated as a NOP, but we will check its side effects anyways
 
         // one cache line = 64 bytes
         const SIZE_T targetSize = 64;
@@ -9447,8 +9455,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const HMODULE ntdll = util::get_ntdll();
         if (!ntdll) return false;
 
-        const char* names[] = { "NtAllocateVirtualMemory", "NtProtectVirtualMemory", "NtFlushInstructionCache", "NtFreeVirtualMemory"
-        };
+        const char* names[] = { "NtAllocateVirtualMemory", "NtProtectVirtualMemory", "NtFlushInstructionCache", "NtFreeVirtualMemory" };
         void* funcs[ARRAYSIZE(names)] = {};
         util::get_function_address(ntdll, names, funcs, ARRAYSIZE(names));
 
@@ -9465,18 +9472,21 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
+        const HANDLE hCurrentProcess = reinterpret_cast<HANDLE>(-1LL);
+
         {
             PVOID base = nullptr;
             SIZE_T sz = targetSize;
-            NTSTATUS st2 = pNtAllocateVirtualMemory((HANDLE)-1, &base, 0, &sz, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+            NTSTATUS st2 = pNtAllocateVirtualMemory(hCurrentProcess, &base, 0, &sz, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
             if (!NT_SUCCESS(st2) || base == nullptr) {
                 proceed = false;
             }
             else {
                 amd_target_mem = base;
-                SecureZeroMemory(amd_target_mem, targetSize);
+                // fill target with a recognizable non-zero pattern so we can detect CLZERO's effect (in case some obscure Intel CPU treat our instruction as a NOP)
+                memset(amd_target_mem, 0xA5, targetSize);
 
-                const std::uintptr_t paddr = reinterpret_cast<std::uintptr_t>(amd_target_mem);
+                const std::uintptr_t paddr = reinterpret_cast<std::uintptr_t>(amd_target_mem); // to avoid sign-extension, 32-bit compatible
                 const u64 addr = static_cast<u64>(paddr);
                 for (int i = 0; i < 8; ++i) {
                     amd_bytes[2 + i] = static_cast<u8>((addr >> (i * 8)) & 0xFF);
@@ -9489,7 +9499,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (proceed) {
             PVOID base = nullptr;
             SIZE_T sz = codeSize;
-            NTSTATUS st2 = pNtAllocateVirtualMemory((HANDLE)-1, &base, 0, &sz, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+            NTSTATUS st2 = pNtAllocateVirtualMemory(hCurrentProcess, &base, 0, &sz, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
             if (!NT_SUCCESS(st2) || base == nullptr) {
                 proceed = false;
             }
@@ -9501,12 +9511,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 ULONG oldProt = 0;
                 PVOID tmpBase = exec_mem;
                 SIZE_T tmpSz = codeSize;
-                st2 = pNtProtectVirtualMemory((HANDLE)-1, &tmpBase, &tmpSz, PAGE_EXECUTE_READ, &oldProt);
+                st2 = pNtProtectVirtualMemory(hCurrentProcess, &tmpBase, &tmpSz, PAGE_EXECUTE_READ, &oldProt);
                 if (!NT_SUCCESS(st2)) {
                     proceed = false;
                 }
                 else {
-                    pNtFlushInstructionCache((HANDLE)-1, exec_mem, codeSize);
+                    pNtFlushInstructionCache(hCurrentProcess, exec_mem, codeSize);
 
                     using CodeFunc = void(*)();
                     using RunnerFn = int(*)(CodeFunc);
@@ -9521,13 +9531,36 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     };
 
                     const int runner_rc = runner(reinterpret_cast<CodeFunc>(exec_mem));
+
+                    // check if the target buffer was written to zero by CLZERO
+                    bool memory_all_zero = false;
+                    if (amd_target_mem) {
+                        volatile u8* p = reinterpret_cast<volatile u8*>(amd_target_mem);
+                        memory_all_zero = true;
+                        for (SIZE_T i = 0; i < targetSize; ++i) {
+                            if (p[i] != 0) { memory_all_zero = false; break; }
+                        }
+                    }
+
                     if (runner_rc == 0 && exception) {
-                        debug("CPU_HEURISTIC: CPU reports being Intel, but VMAware detected a hypervisor running an AMD CPU in the host"); // or another CPU
-                        spoofed = true;
+                        // only treat as spoofed if the CLZERO execution actually zeroed the target memory
+                        if (memory_all_zero) {
+                            debug("CPU_HEURISTIC: CPU reports being Intel, but VMAware detected a hypervisor running an AMD CPU in the host"); // or another CPU vendor
+                            spoofed = true;
+                        }
+                        else {
+                            debug("CPU_HEURISTIC: CLZERO returned without exception but target memory was NOT zeroed (NOP/emulated)");
+                        }
                     }
                     else if (runner_rc == 1 && !exception) {
-                        debug("CPU_HEURISTIC: CPU reports being AMD, but VMAware detected a hypervisor running an Intel CPU in the host"); // or another CPU
+                        debug("CPU_HEURISTIC: CPU reports being AMD, but VMAware detected a hypervisor running an Intel CPU in the host"); // or another CPU vendor
                         spoofed = true;
+                    }
+                    else if (runner_rc == 0 && !exception) {
+                        if (!memory_all_zero) {
+                            debug("CPU_HEURISTIC: CPU reports being AMD, CLZERO executed but did NOT zero the target memory");
+                            spoofed = true;
+                        }
                     }
                 }
             }
@@ -9535,12 +9568,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         if (exec_mem) {
             freeBase = exec_mem; freeSize = codeSize;
-            pNtFreeVirtualMemory((HANDLE)-1, &freeBase, &freeSize, MEM_RELEASE);
+            pNtFreeVirtualMemory(hCurrentProcess, &freeBase, &freeSize, MEM_RELEASE);
             exec_mem = nullptr;
         }
         if (amd_target_mem) {
             freeBase = amd_target_mem; freeSize = targetSize;
-            pNtFreeVirtualMemory((HANDLE)-1, &freeBase, &freeSize, MEM_RELEASE);
+            pNtFreeVirtualMemory(hCurrentProcess, &freeBase, &freeSize, MEM_RELEASE);
             amd_target_mem = nullptr;
         }
 
