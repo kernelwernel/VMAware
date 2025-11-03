@@ -1406,7 +1406,7 @@ private:
         #elif (WINDOWS)
             bool is_admin = false;
             HANDLE hToken = nullptr;
-            if (OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &hToken)) {
+            if (OpenProcessToken(reinterpret_cast<HANDLE>(-1LL), TOKEN_QUERY, &hToken)) {
                 TOKEN_ELEVATION elevation{};
                 DWORD dwSize;
                 if (GetTokenInformation(hToken, TokenElevation, &elevation, sizeof(elevation), &dwSize)) {
@@ -1647,7 +1647,7 @@ private:
 
         [[nodiscard]] static bool is_running_under_translator() {
         #if (WINDOWS && _WIN32_WINNT >= _WIN32_WINNT_WIN10)
-            const HANDLE hProcess = GetCurrentProcess();
+            const HANDLE hProcess = reinterpret_cast<HANDLE>(-1LL);
             USHORT procMachine = 0, nativeMachine = 0;
             const auto pIsWow64Process2 = &IsWow64Process2;
 
@@ -7437,7 +7437,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         NTSTATUS status = ntQuerySystemInformation(SystemModuleInformation, nullptr, 0, &ulSize);
         if (status != ((NTSTATUS)0xC0000004L)) return false;
 
-        const HANDLE hProcess = GetCurrentProcess();
+        const HANDLE hProcess = reinterpret_cast<HANDLE>(-1LL);
         PVOID allocatedMemory = nullptr;
         SIZE_T regionSize = ulSize;
         ntAllocateVirtualMemory(hProcess, &allocatedMemory, 0, &regionSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
@@ -7606,6 +7606,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             BYTE* allocatedBuffer = nullptr;
             SIZE_T allocatedSize = 0;
+            const HANDLE hProcess = reinterpret_cast<HANDLE>(-1LL);
 
             if (!NT_SUCCESS(st)) {
                 DWORD reportedSize = 0;
@@ -7617,7 +7618,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     allocatedSize = static_cast<SIZE_T>(reportedSize);
                     PVOID allocBase = nullptr;
                     SIZE_T regionSize = allocatedSize;
-                    st = pNtAllocateVirtualMemory((HANDLE)-1, &allocBase, 0, &regionSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+                    st = pNtAllocateVirtualMemory(hProcess, &allocBase, 0, &regionSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
                     if (!NT_SUCCESS(st) || allocBase == nullptr) {
                         pNtClose(hDevice);
                         continue;
@@ -7630,7 +7631,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     if (!NT_SUCCESS(st)) {
                         PVOID freeBase = reinterpret_cast<PVOID>(allocatedBuffer);
                         SIZE_T freeSize = allocatedSize;
-                        pNtFreeVirtualMemory((HANDLE)-1, &freeBase, &freeSize, MEM_RELEASE);
+                        pNtFreeVirtualMemory(hProcess, &freeBase, &freeSize, MEM_RELEASE);
                         pNtClose(hDevice);
                         continue;
                     }
@@ -7648,7 +7649,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     if (allocatedBuffer) {
                         PVOID freeBase = reinterpret_cast<PVOID>(allocatedBuffer);
                         SIZE_T freeSize = allocatedSize;
-                        pNtFreeVirtualMemory((HANDLE)-1, &freeBase, &freeSize, MEM_RELEASE);
+                        pNtFreeVirtualMemory(hProcess, &freeBase, &freeSize, MEM_RELEASE);
                         allocatedBuffer = nullptr;
                     }
                     pNtClose(hDevice);
@@ -7668,7 +7669,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     if (allocatedBuffer) {
                         PVOID freeBase = reinterpret_cast<PVOID>(allocatedBuffer);
                         SIZE_T freeSize = allocatedSize;
-                        pNtFreeVirtualMemory((HANDLE)-1, &freeBase, &freeSize, MEM_RELEASE);
+                        pNtFreeVirtualMemory(hProcess, &freeBase, &freeSize, MEM_RELEASE);
                         allocatedBuffer = nullptr;
                     }
                     pNtClose(hDevice);
@@ -7679,7 +7680,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             if (allocatedBuffer) {
                 PVOID freeBase = reinterpret_cast<PVOID>(allocatedBuffer);
                 SIZE_T freeSize = allocatedSize;
-                pNtFreeVirtualMemory((HANDLE)-1, &freeBase, &freeSize, MEM_RELEASE);
+                pNtFreeVirtualMemory(hProcess, &freeBase, &freeSize, MEM_RELEASE);
                 allocatedBuffer = nullptr;
             }
             pNtClose(hDevice);
@@ -7828,7 +7829,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const int colorMgmtCaps = GetDeviceCaps(hdc, COLORMGMTCAPS);
         ReleaseDC(nullptr, hdc);
 
-        return colorMgmtCaps == 0 || !(colorMgmtCaps & CM_GAMMA_RAMP);
+        return !(colorMgmtCaps & CM_GAMMA_RAMP) || colorMgmtCaps == 0;
     }
 
 
@@ -8457,7 +8458,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         PVOID execMem = nullptr;
         SIZE_T regionSize = trampSize;
-        NTSTATUS st = pNtAllocateVirtualMemory((HANDLE)-1, &execMem, 0, &regionSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        const HANDLE hProcess = reinterpret_cast<HANDLE>(-1LL);
+        NTSTATUS st = pNtAllocateVirtualMemory(hProcess, &execMem, 0, &regionSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
         if (!NT_SUCCESS(st) || !execMem) {
             return false;
         }
@@ -8467,15 +8469,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             PVOID tmpBase = execMem;
             SIZE_T tmpSz = trampSize;
             ULONG oldProt = 0;
-            st = pNtProtectVirtualMemory((HANDLE)-1, &tmpBase, &tmpSz, PAGE_EXECUTE_READ, &oldProt);
+            st = pNtProtectVirtualMemory(hProcess, &tmpBase, &tmpSz, PAGE_EXECUTE_READ, &oldProt);
             if (!NT_SUCCESS(st)) {
                 PVOID freeBase = execMem; SIZE_T freeSize = trampSize;
-                pNtFreeVirtualMemory((HANDLE)-1, &freeBase, &freeSize, MEM_RELEASE);
+                pNtFreeVirtualMemory(hProcess, &freeBase, &freeSize, MEM_RELEASE);
                 return false;
             }
         }
 
-        pNtFlushInstructionCache((HANDLE)-1, execMem, trampSize);
+        pNtFlushInstructionCache(hProcess, execMem, trampSize);
 
         int hitCount = 0;
 
@@ -8485,7 +8487,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         if (!NT_SUCCESS(pNtGetContextThread(thrHandle, &origCtx))) {
             PVOID freeBase = execMem; SIZE_T freeSize = trampSize;
-            pNtFreeVirtualMemory((HANDLE)-1, &freeBase, &freeSize, MEM_RELEASE);
+            pNtFreeVirtualMemory(hProcess, &freeBase, &freeSize, MEM_RELEASE);
             return false;
         }
 
@@ -8498,7 +8500,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (!NT_SUCCESS(pNtSetContextThread(thrHandle, &dbgCtx))) {
             pNtSetContextThread(thrHandle, &origCtx);
             PVOID freeBase = execMem; SIZE_T freeSize = trampSize;
-            pNtFreeVirtualMemory((HANDLE)-1, &freeBase, &freeSize, MEM_RELEASE);
+            pNtFreeVirtualMemory(hProcess, &freeBase, &freeSize, MEM_RELEASE);
             return false;
         }
 
@@ -8539,7 +8541,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         pNtSetContextThread(thrHandle, &origCtx);
 
         PVOID freeBase = execMem; SIZE_T freeSize = trampSize;
-        pNtFreeVirtualMemory((HANDLE)-1, &freeBase, &freeSize, MEM_RELEASE);
+        pNtFreeVirtualMemory(hProcess, &freeBase, &freeSize, MEM_RELEASE);
 
     #endif
         return hypervisorCaught;
@@ -8586,7 +8588,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        const HANDLE hProcess = GetCurrentProcess();
+        const HANDLE hProcess = reinterpret_cast<HANDLE>(-1LL);
         PVOID base = nullptr;
         SIZE_T regionSize = sizeof(ud_opcodes);
         NTSTATUS st = pNtAllocateVirtualMemory(hProcess, &base, 0, &regionSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
@@ -8612,7 +8614,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             saw_ud = true;
         }
 
-        pNtFreeVirtualMemory((HANDLE)-1, &base, &regionSize, MEM_RELEASE);
+        pNtFreeVirtualMemory(hProcess, &base, &regionSize, MEM_RELEASE);
 
         return !saw_ud;
     }
@@ -8708,6 +8710,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const SIZE_T stubSize = sizeof(intelTemplate);
         const bool isAmd = cpu::is_amd();
 
+        const HANDLE hProcess = reinterpret_cast<HANDLE>(-1LL);
         const HMODULE ntdll = util::get_ntdll();
         if (!ntdll) return false;
 
@@ -8726,7 +8729,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         PVOID stub = nullptr;
         SIZE_T regionSize = stubSize;
-        NTSTATUS st = pNtAllocateVirtualMemory((HANDLE)-1, &stub, 0, &regionSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        NTSTATUS st = pNtAllocateVirtualMemory(hProcess, &stub, 0, &regionSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
         if (!NT_SUCCESS(st) || !stub) return false;
 
         if (isAmd) {
@@ -8746,13 +8749,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         *reinterpret_cast<u64*>(reinterpret_cast<u8*>(stub) + 35) = reinterpret_cast<u64>(static_cast<void*>(&vmcallResult));
 
         ULONG oldProtect = 0;
-        st = pNtProtectVirtualMemory((HANDLE)-1, &stub, &regionSize, PAGE_EXECUTE_READ, &oldProtect);
+        st = pNtProtectVirtualMemory(hProcess, &stub, &regionSize, PAGE_EXECUTE_READ, &oldProtect);
         if (!NT_SUCCESS(st)) {
-            pNtFreeVirtualMemory((HANDLE)-1, &stub, &regionSize, MEM_RELEASE);
+            pNtFreeVirtualMemory(hProcess, &stub, &regionSize, MEM_RELEASE);
             return false;
         }
 
-        pNtFlushInstructionCache((HANDLE)-1, stub, regionSize);
+        pNtFlushInstructionCache(hProcess, stub, regionSize);
 
         auto tryPass = [&]() -> bool {
             vmcallInfo.structsize = static_cast<u32>(sizeof(VMCallInfo));
@@ -8772,7 +8775,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         const bool found = tryPass();
 
-        pNtFreeVirtualMemory((HANDLE)-1, &stub, &regionSize, MEM_RELEASE);
+        pNtFreeVirtualMemory(hProcess, &stub, &regionSize, MEM_RELEASE);
 
         if (found) return core::add(brands::DBVM);
 
@@ -9060,7 +9063,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (!util::is_admin()) return false;
 
         HANDLE hToken = nullptr;
-        if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &hToken)) return false;
+        if (!OpenProcessToken(reinterpret_cast<HANDLE>(-1LL), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &hToken)) return false;
 
         LUID luid{};
         bool priv_enabled = false;
@@ -9465,10 +9468,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
+        const HANDLE hProcess = reinterpret_cast<HANDLE>(-1LL);
+
         {
             PVOID base = nullptr;
             SIZE_T sz = targetSize;
-            NTSTATUS st2 = pNtAllocateVirtualMemory((HANDLE)-1, &base, 0, &sz, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+            NTSTATUS st2 = pNtAllocateVirtualMemory(hProcess, &base, 0, &sz, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
             if (!NT_SUCCESS(st2) || base == nullptr) {
                 proceed = false;
             }
@@ -9489,7 +9494,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (proceed) {
             PVOID base = nullptr;
             SIZE_T sz = codeSize;
-            NTSTATUS st2 = pNtAllocateVirtualMemory((HANDLE)-1, &base, 0, &sz, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+            NTSTATUS st2 = pNtAllocateVirtualMemory(hProcess, &base, 0, &sz, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
             if (!NT_SUCCESS(st2) || base == nullptr) {
                 proceed = false;
             }
@@ -9501,12 +9506,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 ULONG oldProt = 0;
                 PVOID tmpBase = exec_mem;
                 SIZE_T tmpSz = codeSize;
-                st2 = pNtProtectVirtualMemory((HANDLE)-1, &tmpBase, &tmpSz, PAGE_EXECUTE_READ, &oldProt);
+                st2 = pNtProtectVirtualMemory(hProcess, &tmpBase, &tmpSz, PAGE_EXECUTE_READ, &oldProt);
                 if (!NT_SUCCESS(st2)) {
                     proceed = false;
                 }
                 else {
-                    pNtFlushInstructionCache((HANDLE)-1, exec_mem, codeSize);
+                    pNtFlushInstructionCache(hProcess, exec_mem, codeSize);
 
                     using CodeFunc = void(*)();
                     using RunnerFn = int(*)(CodeFunc);
@@ -9535,12 +9540,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         if (exec_mem) {
             freeBase = exec_mem; freeSize = codeSize;
-            pNtFreeVirtualMemory((HANDLE)-1, &freeBase, &freeSize, MEM_RELEASE);
+            pNtFreeVirtualMemory(hProcess, &freeBase, &freeSize, MEM_RELEASE);
             exec_mem = nullptr;
         }
         if (amd_target_mem) {
             freeBase = amd_target_mem; freeSize = targetSize;
-            pNtFreeVirtualMemory((HANDLE)-1, &freeBase, &freeSize, MEM_RELEASE);
+            pNtFreeVirtualMemory(hProcess, &freeBase, &freeSize, MEM_RELEASE);
             amd_target_mem = nullptr;
         }
 
