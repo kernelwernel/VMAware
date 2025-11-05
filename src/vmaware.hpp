@@ -4169,11 +4169,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::TIMER
      */
     [[nodiscard]] static bool timer() {
-    #if (ARM || !x86)
-        return false;
-    #else
+    #if (x86)
         if (util::is_running_under_translator()) {
-            debug("TIMER: Running inside a binary translation layer.");
+            debug("TIMER: Running inside a binary translation layer");
             return false;
         }
         u16 cycleThreshold = 1500;
@@ -4182,9 +4180,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
     #if (WINDOWS)
-        const HANDLE th = GetCurrentThread();
+        const HANDLE hCurrentThread = reinterpret_cast<HANDLE>(-2LL);
         const DWORD_PTR wantedMask = (DWORD_PTR)1;
-        const DWORD_PTR prevMask = SetThreadAffinityMask(th, wantedMask);
+        const DWORD_PTR prevMask = SetThreadAffinityMask(hCurrentThread, wantedMask);
     #endif 
 
         // Case A - Hypervisor without RDTSC patch
@@ -4294,7 +4292,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             };
 
             auto xor_lambda = []() -> u64 {
-                volatile u64 a = 0xDEADBEEFDEADBEEFull;
+                volatile u64 a = 0xDEADBEEFDEADBEEFull; // can be replaced by NOPs
                 volatile u64 b = 0x1234567890ABCDEFull;
                 u64 v = a ^ b;
                 g_sink ^= v;
@@ -4308,7 +4306,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             volatile fn_t xor_ptr = +xor_lambda;
 
             ULONG64 beforeqit = 0;
-            QueryInterruptTime(&beforeqit);
+            QueryInterruptTime(&beforeqit); // the kernel routine that backs up this api runs at CLOCK_LEVEL(13), only preempted by IPI, POWER_LEVEL and NMIs
             const ULONG64 beforetsc = __rdtsc();
 
             volatile u64 dummy = 0;
@@ -4342,16 +4340,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             debug("TIMER: RDTSC -> ", firstRatio, ", QIT -> ", secondRatio, ", Ratio: ", difference);
 
             if (prevMask != 0) {
-                SetThreadAffinityMask(th, prevMask);
+                SetThreadAffinityMask(hCurrentThread, prevMask);
             }
 
             if (difference > 10) {
-                return true; // both ratios will always differ under a RDTSC trap since the hypervisor can't account for the XOR loop
+                return true; // both ratios will always differ if a RDTSC trap is present, since the hypervisor can't account for the XOR/NOP loop
             }
             // TLB flushes or side channel cache attacks are not even tried due to how ineffective they are against stealthy hypervisors
         #endif
-        return false;
     #endif
+        return false;
     }
 
 #if (LINUX)
@@ -5368,7 +5366,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::SIDT
      */
     [[nodiscard]] static bool sidt() {
-    #if (LINUX && (GCC || CLANG))
+    #if (LINUX && (GCC || CLANG) && x86)
         u8 values[10] = { 0 };
 
         fflush(stdout);
@@ -5398,15 +5396,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         #else
                 return false;
         #endif
-    #elif (WINDOWS)
+    #elif (WINDOWS && x86)
         SYSTEM_INFO si;
         GetNativeSystemInfo(&si);
-
         DWORD_PTR originalMask = 0;
+        const HANDLE hCurrentThread = reinterpret_cast<HANDLE>(-2LL);
 
         for (DWORD i = 0; i < si.dwNumberOfProcessors; ++i) {
             const DWORD_PTR mask = (DWORD_PTR)1 << i;
-            const DWORD_PTR previousMask = SetThreadAffinityMask(GetCurrentThread(), mask);
+            const DWORD_PTR previousMask = SetThreadAffinityMask(hCurrentThread, mask);
 
             if (previousMask == 0) {
                 continue;
@@ -5449,14 +5447,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 debug("SIDT: VPC/Hyper-V signature detected on core %u", i);
 
                 if (originalMask != 0) {
-                    SetThreadAffinityMask(GetCurrentThread(), originalMask);
+                    SetThreadAffinityMask(hCurrentThread, originalMask);
                 }
                 return core::add(brands::VPC);
             }
         }
 
         if (originalMask != 0) {
-            SetThreadAffinityMask(GetCurrentThread(), originalMask);
+            SetThreadAffinityMask(hCurrentThread, originalMask);
         }
 
         return false;
@@ -5493,7 +5491,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::GENERAL_HOSTNAME
      */
     [[nodiscard]] static bool general_hostname() {
-        std::string hostname = util::get_hostname();
+        const std::string hostname = util::get_hostname();
+
+        debug("GENERAL_HOSTNAME: ", hostname);
 
         auto cmp = [&](const char* str2) -> bool {
             return (hostname == str2);
@@ -6314,7 +6314,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 #if (LINUX || APPLE)
     /**
-     * @brief Check if there are only 1 or 2 threads, which is a common pattern in VMs with default settings (nowadays physical CPUs should have at least 4 threads for modern CPUs
+     * @brief Check if there are only 1 or 2 threads, which is a common pattern in VMs with default settings, nowadays physical CPUs should have at least 4 threads for modern CPUs
      * @category x86 (ARM might have very low thread counts, which is why it should be only for x86)
      * @implements VM::THREAD_COUNT
      */
@@ -6649,7 +6649,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         #if (_WIN32_WINNT < _WIN32_WINNT_WIN8)
             return false;
         #else
-
             __try {
                 BOOL isNativeVhdBoot = 0;
                 // we dont call NtQuerySystemInformation with SystemPrefetchPathInformation | SystemHandleInformation
@@ -6844,8 +6843,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::VPC_INVALID
      */
     [[nodiscard]] static bool vpc_invalid() {
-    #if (x86_32 && !CLANG)
         bool rc = false;
+    #if (x86_32 && !CLANG)
 
         auto IsInsideVPC_exceptionFilter = [](PEXCEPTION_POINTERS ep) -> DWORD {
             PCONTEXT ctx = ep->ContextRecord;
@@ -6883,11 +6882,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         __except (IsInsideVPC_exceptionFilter(GetExceptionInformation())) {
             rc = false;
         }
-
-        return rc;
-    #else
-        return false;
     #endif
+        return rc;
     }
 
 
@@ -6902,12 +6898,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     #if (x86)
         SYSTEM_INFO si;
         GetNativeSystemInfo(&si);
-
         DWORD_PTR originalMask = 0;
+        const HANDLE hCurrentThread = reinterpret_cast<HANDLE>(-2LL);
 
         for (DWORD i = 0; i < si.dwNumberOfProcessors; ++i) {
             const DWORD_PTR mask = (DWORD_PTR)1 << i;
-            const DWORD_PTR previousMask = SetThreadAffinityMask(GetCurrentThread(), mask);
+            const DWORD_PTR previousMask = SetThreadAffinityMask(hCurrentThread, mask);
 
             if (previousMask == 0) {
                 continue;
@@ -6956,7 +6952,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         if (originalMask != 0) {
-            SetThreadAffinityMask(GetCurrentThread(), originalMask);
+            SetThreadAffinityMask(hCurrentThread, originalMask);
         }
     #endif
         return found;
@@ -6972,16 +6968,17 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::SLDT
      */
     [[nodiscard]] static bool sldt() {
+        bool found = false;
     #if (x86_32)
         SYSTEM_INFO si;
         GetNativeSystemInfo(&si);
-        const DWORD_PTR origMask = SetThreadAffinityMask(GetCurrentThread(), 1);
-        SetThreadAffinityMask(GetCurrentThread(), origMask);
+        const HANDLE hCurrentThread = reinterpret_cast<HANDLE>(-2LL);
+        const DWORD_PTR origMask = SetThreadAffinityMask(hCurrentThread, 1);
+        SetThreadAffinityMask(hCurrentThread, origMask);
 
-        bool found = false;
         for (DWORD i = 0; i < si.dwNumberOfProcessors; ++i) {
             const DWORD_PTR mask = (DWORD_PTR)1 << i;
-            if (SetThreadAffinityMask(GetCurrentThread(), mask) == 0)
+            if (SetThreadAffinityMask(hCurrentThread, mask) == 0)
                 continue;
 
             u8 ldtr_buf[4] = { 0xEF, 0xBE, 0xAD, 0xDE };
@@ -7013,11 +7010,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 break;
         }
 
-        SetThreadAffinityMask(GetCurrentThread(), origMask);
-        return found;
-    #else
-        return false;
+        SetThreadAffinityMask(hCurrentThread, origMask);
     #endif
+        return found;
     }
 
 
@@ -7028,9 +7023,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::SMSW
      */
     [[nodiscard]] static bool smsw() {
-    #if (!x86_64)
-        return false;
-    #elif (x86_32)
+    #if (x86_32)
         u32 reax = 0;
 
         __asm
@@ -7066,9 +7059,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if ((tr & 0xFF) == 0x00 && ((tr >> 8) & 0xFF) == 0x40) {
             return core::add(brands::VMWARE);
         }
-    #endif
 
         return false;
+    #else
+        return false;
+    #endif
     }
 
 
@@ -7080,13 +7075,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::VMWARE_BACKDOOR
      */
     [[nodiscard]] static bool vmware_backdoor() {
+        bool is_vm = false;
     #if (x86_32 && !CLANG)
         u32 a = 0;
         u32 b = 0;
 
         constexpr std::array<i16, 2> ioports = { { 'VX' , 'VY' } };
         i16 ioport;
-        bool is_vm = false;
 
         for (u8 i = 0; i < ioports.size(); ++i) {
             ioport = ioports[i];
@@ -7121,18 +7116,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         if (is_vm) {
             switch (b) {
-            case 1:  return core::add(brands::VMWARE_EXPRESS);
-            case 2:  return core::add(brands::VMWARE_ESX);
-            case 3:  return core::add(brands::VMWARE_GSX);
-            case 4:  return core::add(brands::VMWARE_WORKSTATION);
-            default: return core::add(brands::VMWARE);
+                case 1:  return core::add(brands::VMWARE_EXPRESS);
+                case 2:  return core::add(brands::VMWARE_ESX);
+                case 3:  return core::add(brands::VMWARE_GSX);
+                case 4:  return core::add(brands::VMWARE_WORKSTATION);
+                default: return core::add(brands::VMWARE);
             }
         }
-
-        return false;
-    #else
-        return false;
     #endif
+        return is_vm;
     }
 
 
@@ -8485,9 +8477,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         CONTEXT origCtx{};
         origCtx.ContextFlags = CONTEXT_DEBUG_REGISTERS;
-        const HANDLE thrHandle = GetCurrentThread(); 
+        const HANDLE hCurrentThread = reinterpret_cast<HANDLE>(-2LL);
 
-        if (!NT_SUCCESS(pNtGetContextThread(thrHandle, &origCtx))) {
+        if (!NT_SUCCESS(pNtGetContextThread(hCurrentThread, &origCtx))) {
             PVOID freeBase = execMem; SIZE_T freeSize = trampSize;
             pNtFreeVirtualMemory(hCurrentProcess, &freeBase, &freeSize, MEM_RELEASE);
             return false;
@@ -8499,8 +8491,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         dbgCtx.Dr0 = baseAddr + 11; // single step breakpoint address
         dbgCtx.Dr7 = 1;             // enable local breakpoint 0
 
-        if (!NT_SUCCESS(pNtSetContextThread(thrHandle, &dbgCtx))) {
-            pNtSetContextThread(thrHandle, &origCtx);
+        if (!NT_SUCCESS(pNtSetContextThread(hCurrentThread, &dbgCtx))) {
+            pNtSetContextThread(hCurrentThread, &origCtx);
             PVOID freeBase = execMem; SIZE_T freeSize = trampSize;
             pNtFreeVirtualMemory(hCurrentProcess, &freeBase, &freeSize, MEM_RELEASE);
             return false;
@@ -8540,11 +8532,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
         }
 
-        pNtSetContextThread(thrHandle, &origCtx);
+        pNtSetContextThread(hCurrentThread, &origCtx);
 
         PVOID freeBase = execMem; SIZE_T freeSize = trampSize;
         pNtFreeVirtualMemory(hCurrentProcess, &freeBase, &freeSize, MEM_RELEASE);
-
     #endif
         return hypervisorCaught;
     }
@@ -8556,8 +8547,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::UD
      */
     [[nodiscard]] static bool ud() {
-        bool saw_ud = false;
-
     #if (x86)
         // ud2; ret
         constexpr u8 ud_opcodes[] = { 0x0F, 0x0B, 0xC3 };
@@ -8571,9 +8560,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         constexpr u8 ud_opcodes[] = { 0x00, 0x00, 0x40, 0xD4, 0xC0, 0x03, 0x5F, 0xD6 };
     #else
         // architecture not supported by this check
-        return saw_ud;
+        return false;
     #endif
         
+        bool saw_ud = false;
         const HMODULE ntdll = util::get_ntdll();
         if (!ntdll) return false;
 
@@ -9379,39 +9369,103 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check if the CPU is capable of running certain instructions successfully
+     * @brief Check whether the CPU is genuine and its reported instruction capabilities are not masked
      * @category Windows
      * @implements VM::CPU_HEURISTIC
      */
     [[nodiscard]] static bool cpu_heuristic() {
-        if (util::is_running_under_translator()) return false;
+        bool spoofed = false;
+    #if (x86)
+        if (util::is_running_under_translator()) {
+            debug("CPU_HEURISTIC: Running inside a binary translation layer");
+            return false;
+        }
 
-        // 1) Check for commonly disabled instructions on patches      
-        bool ok = true;
-
+        // 1) Check for commonly disabled instructions on patches and VMs    
         u32 a = 0, b = 0, c = 0, d = 0;
         cpu::cpuid(a, b, c, d, 1u);
 
         constexpr u32 AES_NI_BIT = 1u << 25;
-        if ((c & AES_NI_BIT) == 0) {
-            ok = false;
-        }
+        const bool aes_support = (c & AES_NI_BIT) != 0;
 
-        if (!ok) {
-            debug("CPU_HEURISTIC: CPU does not report AES");
+        alignas(16) unsigned char plaintext[16] = {
+            0x00,0x11,0x22,0x33, 0x44,0x55,0x66,0x77,
+            0x88,0x99,0xAA,0xBB, 0xCC,0xDD,0xEE,0xFF
+        };
+        alignas(16) unsigned char key[16] = {
+            0x0F,0x0E,0x0D,0x0C, 0x0B,0x0A,0x09,0x08,
+            0x07,0x06,0x05,0x04, 0x03,0x02,0x01,0x00
+        };
+        alignas(16) unsigned char out[16] = { 0 };
+        __try {
+            __m128i block = _mm_loadu_si128(reinterpret_cast<const __m128i*>(plaintext));
+            __m128i key_vec = _mm_loadu_si128(reinterpret_cast<const __m128i*>(key));
+
+            __m128i tmp = _mm_xor_si128(block, key_vec);
+            tmp = _mm_aesenc_si128(tmp, key_vec);
+
+            _mm_storeu_si128(reinterpret_cast<__m128i*>(out), tmp);
+            if (!aes_support) {
+                debug("CPU_HEURISTIC: Hypervisor detected hiding AES capabilities");
+                return true;
+            }
+        }
+        __except (GetExceptionCode() == EXCEPTION_ILLEGAL_INSTRUCTION
+            ? EXCEPTION_EXECUTE_HANDLER
+            : EXCEPTION_CONTINUE_SEARCH) {
+            if (aes_support) {
+                debug("CPU_HEURISTIC: Hypervisor reports AES, but it is not handled correctly");
+                return true;
+            }
+        }     
+
+        const bool avx_support = ((c >> 28) & 1u) != 0;
+        const bool xsave_support = ((c >> 26) & 1u) != 0;
+
+        if (avx_support && !xsave_support) {
+            debug("CPU_HEURISTIC: YMM state not correct for a baremetal machine");
             return true;
         }
 
-        // 2. Test if the CPU model is spoofed
+        const bool rdrand_support = ((c >> 30) & 1u) != 0;
+        __try {
+            unsigned int v = 0;
+        #if (MSVC && !CLANG)
+            if (_rdrand32_step(&v) && !rdrand_support) {
+                debug("CPU_HEURISTIC: Hypervisor detected hiding RDRAND capabilities");
+                return true;
+            }
+        #else 
+            unsigned char ok = 0;
+            asm volatile("rdrand %0\n\tsetc %1" : "=r"(v), "=qm"(ok) : : "cc");
+            if (ok && !rdrand_support) {
+                debug("CPU_HEURISTIC: Hypervisor detected hiding RDRAND capabilities");
+                return true;
+            }
+        #endif      
+        }
+        __except (GetExceptionCode() == EXCEPTION_ILLEGAL_INSTRUCTION
+            ? EXCEPTION_EXECUTE_HANDLER
+            : EXCEPTION_CONTINUE_SEARCH) {
+            if (rdrand_support) {
+                debug("CPU_HEURISTIC: Hypervisor reports RDRAND, but it is not handled correctly");
+                return true;
+            }
+        }        
+
+        // 2. Test if the CPU vendor is spoofed (for example, a CPU reports being AMD in CPUID, but it is Intel)
         /*
-            For this task, we want a vendor-only instruction that:
-            1. Is compatible enough, meaning both old and new CPUs of this vendor have it
-            2. Is enabled by default, without needing BIOS/OS changes
-            3. Never switches to kernel-mode, so that is harder to intercept
-            4. Is not deprecated
+            For this task, we want a instruction that:
+            1. It is vendor-only, meaning that other CPU vendors never implemented the same instruction on their microcode
+                -> Note: Even if an instruction is vendor-only, it may be treated as a NOP by other CPU vendors, we don't want this
+            2. Is compatible enough, meaning both old and new CPUs of this vendor have it
+            3. Is enabled by default, without needing BIOS/OS changes
+            4. Never switches to kernel-mode, so that is harder to intercept
+            5. Is not deprecated today
+            6. Its side-effects can be measured from CPL3 (user-mode)
 
             On Intel, most options are unreliable:
-            SGX are deprecated and disabled by default, MPX is deprecated and treated as NOP even in AMD CPUs, AVX-512 is not found in all processors (and amd integrated part of this set), etc
+            SGX are deprecated and disabled by default, MPX is deprecated and treated as NOP even in AMD CPUs, AVX-512 is not found in all processors (and AMD integrated part of this set), etc
             On AMD, 3dNow! could be an option, but since its being deprecated, CLZERO fits this criteria better
 
             So for example, if the CPU reports being Intel, and succesfully runs CLZERO without a NOP, then it's not an Intel CPU.
@@ -9440,10 +9494,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const bool claimed_intel = cpu::is_intel();
 
         if (!claimed_amd && !claimed_intel) {
-            return false;
+            debug("CPU_HEURISTIC: x86 CPU vendor was not recognized as either Intel or AMD");
+            return false; // Zhaoxin? VIA/Centaur?
         }
 
-        bool spoofed = false;
         bool proceed = true;
         bool exception = false;
 
@@ -9576,7 +9630,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             pNtFreeVirtualMemory(hCurrentProcess, &freeBase, &freeSize, MEM_RELEASE);
             amd_target_mem = nullptr;
         }
-
+    #endif
         return spoofed;
     }
 
@@ -10962,8 +11016,6 @@ public: // START OF PUBLIC FUNCTIONS
             return it->second;
         }
 
-        debug("VM::type(): No known brand found, something went terribly wrong here...");
-
         return "Unknown";
     }
 
@@ -11299,7 +11351,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         std::make_pair(VM::NVRAM, VM::core::technique(100, VM::nvram_vars)),
         std::make_pair(VM::CLOCK, VM::core::technique(100, VM::clock)),
         std::make_pair(VM::POWER_CAPABILITIES, VM::core::technique(45, VM::power_capabilities)),
-        std::make_pair(VM::CPU_HEURISTIC, VM::core::technique(100, VM::cpu_heuristic)),
+        std::make_pair(VM::CPU_HEURISTIC, VM::core::technique(90, VM::cpu_heuristic)),
         std::make_pair(VM::EDID, VM::core::technique(100, VM::edid)),
         std::make_pair(VM::BOOT_LOGO, VM::core::technique(100, VM::boot_logo)),
         std::make_pair(VM::GPU_CAPABILITIES, VM::core::technique(45, VM::gpu_capabilities)),
