@@ -256,21 +256,23 @@
     #define VMA_CPLUSPLUS __cplusplus
 #endif
 
-#if VMA_CPLUSPLUS >= 202300L
-    #define CPP 23
+#if VMA_CPLUSPLUS >= 202302L
+    #define VMA_CPP 23
 #elif VMA_CPLUSPLUS >= 202002L
-    #define CPP 20
+    #define VMA_CPP 20
 #elif VMA_CPLUSPLUS >= 201703L
-    #define CPP 17
+    #define VMA_CPP 17
 #elif VMA_CPLUSPLUS >= 201402L
-    #define CPP 14
+    #define VMA_CPP 14
 #elif VMA_CPLUSPLUS >= 201103L
-    #define CPP 11
+    #define VMA_CPP 11
+#elif VMA_CPLUSPLUS >= 199711L
+    #define VMA_CPP 98 /* C++98 or C++03 */
 #else
-    #error "Unsupported C++ standard (pre-C++11 or unknown)."
+    #error "Unsupported C++ standard (pre-C++98 or unknown)."
 #endif
 
-#if (CPP < 11 && !WINDOWS)
+#if (VMA_CPP < 11 && !WINDOWS)
     #error "VMAware only supports C++11 or above, set your compiler flag to '-std=c++20' for gcc/clang, or '/std:c++20' for MSVC"
 #endif
 
@@ -326,15 +328,15 @@
     #warning "Unknown OS detected, tests will be severely limited"
 #endif
 
-#if (CPP >= 23)
+#if (VMA_CPP >= 23)
     #include <limits>
 #endif
-#if (CPP >= 20)
+#if (VMA_CPP >= 20)
     #include <bit>
     #include <ranges>
     #include <source_location>
 #endif
-#if (CPP >= 17)
+#if (VMA_CPP >= 17)
     #include <filesystem>
 #endif
 #ifdef __VMAWARE_DEBUG__
@@ -1363,17 +1365,16 @@ private:
             return buffer;
         }
 
-
-        [[nodiscard]] static bool exists(const char* path) { 
-        #if (CPP >= 17)
+#if (LINUX)
+        [[nodiscard]] static bool exists(const char* path) {
+        #if (VMA_CPP >= 17)
             return std::filesystem::exists(path);
-        #elif (CPP >= 11)
+        #elif (VMA_CPP >= 11)
             struct stat buffer;
             return (stat(path, &buffer) == 0);
         #endif
         }
 
-#if (LINUX)
         static bool is_directory(const char* path) {
             struct stat info;
             if (stat(path, &info) != 0) {
@@ -1386,7 +1387,7 @@ private:
         // wrapper for std::make_unique because it's not available for C++11
         template<typename T, typename... Args>
         [[nodiscard]] static std::unique_ptr<T> make_unique(Args&&... args) {
-        #if (CPP < 14)
+        #if (VMA_CPP < 14)
             return std::unique_ptr<T>(new T(std::forward<Args>(args)...));
         #else
             return std::make_unique<T>(std::forward<Args>(args)...);
@@ -1512,7 +1513,7 @@ private:
 
 
         [[nodiscard]] static std::unique_ptr<std::string> sys_result(const char* cmd) {
-        #if (CPP < 14)
+        #if (VMA_CPP < 14)
             UNUSED(cmd);
             return util::make_unique<std::string>();
         #else
@@ -1555,7 +1556,7 @@ private:
 
         [[nodiscard]] static bool is_proc_running(const char* executable) {
         #if (LINUX)
-            #if (CPP >= 17)
+            #if (VMA_CPP >= 17)
                 for (const auto& entry : std::filesystem::directory_iterator("/proc")) {
                     if (!entry.is_directory()) {
                         continue;
@@ -4262,7 +4263,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             if (tscMHz < 800.0) return true;
 
-            const struct cpu::stepping_struct steps = cpu::fetch_steppings();
             const u32 baseMHz = cpu::get_cpu_base_speed(); // wont probably work reliably on AMD, but its more reliable than fetching from SMBIOS
 
             if (baseMHz == 0) {
@@ -4328,6 +4328,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 dummy = xor_ptr(); // this loop won't be intercepted, it never switches to kernel-mode
             }
 
+            UNUSED(dummy);
             ULONG64 afterqit2 = 0;
             QueryInterruptTime(&afterqit2);
             const ULONG64 aftertsc2 = __rdtsc();
@@ -4584,7 +4585,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::DMESG
      */
     [[nodiscard]] static bool dmesg() {
-    #if (CPP <= 11)
+    #if (VMA_CPP <= 11)
         return false;
     #else
         if (!util::is_admin()) {
@@ -5971,7 +5972,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         #if (LINUX)
             const std::string pci_path = "/sys/bus/pci/devices";
-            #if (CPP >= 17)
+            #if (VMA_CPP >= 17)
                 for (const auto& entry : std::filesystem::directory_iterator(pci_path)) {
                     std::ifstream vf(entry.path() / "vendor"), df(entry.path() / "device");
                     if (!vf || !df) continue;
@@ -8782,8 +8783,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @author Teselka (https://github.com/Teselka)
      * @implements VM::BOOT_LOGO
      */
-    [[nodiscard]]
-    static bool boot_logo()
+    [[nodiscard]] static bool boot_logo()
     #if (CLANG || GCC)
         __attribute__((__target__("crc32")))
     #endif
@@ -9096,12 +9096,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             const auto NtEnum = reinterpret_cast<NtEnumerateSystemEnvironmentValuesEx_t>(functions[0]);
             if (NtEnum) {
                 hasFunction = true;
-                NTSTATUS status = NtEnum(1, nullptr, &bufferLength);
+                NtEnum(1, nullptr, &bufferLength);
                 if (bufferLength != 0) {
                     try { resBuffer.resize(bufferLength); }
                     catch (...) { resBuffer.clear(); bufferLength = 0; }
                     if (!resBuffer.empty()) {
-                        status = NtEnum(1, resBuffer.data(), &bufferLength);
+                        const NTSTATUS status = NtEnum(1, resBuffer.data(), &bufferLength);
                         if (status == 0) { success = true; resBuffer.resize(bufferLength); }
                         else resBuffer.clear();
                     }
@@ -9373,7 +9373,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Windows
      * @implements VM::CPU_HEURISTIC
      */
-    [[nodiscard]] static bool cpu_heuristic() {
+    [[nodiscard]] static bool cpu_heuristic() 
+    #if (CLANG || GCC)
+        __attribute__((__target__("aes")))
+    #endif
+    {
         bool spoofed = false;
     #if (x86)
         if (util::is_running_under_translator()) {
@@ -9554,10 +9558,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             PVOID base = nullptr;
             SIZE_T sz = codeSize;
             NTSTATUS st2 = pNtAllocateVirtualMemory(hCurrentProcess, &base, 0, &sz, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-            if (!NT_SUCCESS(st2) || base == nullptr) {
-                proceed = false;
-            }
-            else {
+            if (NT_SUCCESS(st2) && base != nullptr) {
                 exec_mem = base;
                 memcpy(exec_mem, bytes, codeSize);
 
@@ -9566,10 +9567,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 PVOID tmpBase = exec_mem;
                 SIZE_T tmpSz = codeSize;
                 st2 = pNtProtectVirtualMemory(hCurrentProcess, &tmpBase, &tmpSz, PAGE_EXECUTE_READ, &oldProt);
-                if (!NT_SUCCESS(st2)) {
-                    proceed = false;
-                }
-                else {
+                if (NT_SUCCESS(st2)) {
                     pNtFlushInstructionCache(hCurrentProcess, exec_mem, codeSize);
 
                     using CodeFunc = void(*)();
@@ -10175,7 +10173,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return (sizeof...(Args) == 0);
         }
 
-    #if (CPP >= 17)
+    #if (VMA_CPP >= 17)
         #define VMAWARE_CONSTEXPR constexpr
     #else
         #define VMAWARE_CONSTEXPR
@@ -10240,7 +10238,7 @@ public: // START OF PUBLIC FUNCTIONS
      */
     static bool check(
         const enum_flags flag_bit
-    #if (CPP >= 20) && (!CLANG || __clang_major__ >= 16)
+    #if (VMA_CPP >= 20) && (!CLANG || __clang_major__ >= 16)
         , [[maybe_unused]] const std::source_location& loc = std::source_location::current()
     #endif
     ) {
@@ -10253,7 +10251,7 @@ public: // START OF PUBLIC FUNCTIONS
         // lambda to manage exceptions
         auto throw_error = [&](const char* text) -> void {
             std::stringstream ss;
-    #if (CPP >= 20 && !CLANG)
+    #if (VMA_CPP >= 20 && !CLANG)
             ss << ", error in " << loc.function_name() << " at " << loc.file_name() << ":" << loc.line() << ")";
     #endif
             ss << ". Consult the documentation's flag handler for VM::check()";
@@ -10274,7 +10272,7 @@ public: // START OF PUBLIC FUNCTIONS
             throw_error("Flag argument must be a technique flag and not a settings flag");
         }
 
-    #if (CPP >= 23)
+    #if (VMA_CPP >= 23)
         [[assume(flag_bit < technique_end)]];
     #endif
 
@@ -10343,7 +10341,7 @@ public: // START OF PUBLIC FUNCTIONS
 
         // goofy ass C++11 and C++14 linker error workaround.
         // And yes, this does look stupid.
-    #if (CPP <= 14)
+    #if (VMA_CPP <= 14)
         constexpr const char* TMP_QEMU = "QEMU";
         constexpr const char* TMP_KVM = "KVM";
         constexpr const char* TMP_QEMU_KVM = "QEMU+KVM";
@@ -10595,7 +10593,7 @@ public: // START OF PUBLIC FUNCTIONS
         // flags above, and get a total score 
         const u16 points = core::run_all(flags, SHORTCUT);
 
-    #if (CPP >= 23)
+    #if (VMA_CPP >= 23)
         [[assume(points < maximum_points)]];
     #endif
 
@@ -10626,7 +10624,7 @@ public: // START OF PUBLIC FUNCTIONS
         // flags above, and get a total score
         const u16 points = core::run_all(flags, SHORTCUT);
 
-    #if (CPP >= 23)
+    #if (VMA_CPP >= 23)
         [[assume(points < maximum_points)]];
     #endif
 
@@ -10663,14 +10661,14 @@ public: // START OF PUBLIC FUNCTIONS
     static void add_custom(
         const u8 percent,
         std::function<bool()> detection_func
-    #if (CPP >= 20 && !CLANG)
+    #if (VMA_CPP >= 20 && !CLANG)
         , const std::source_location& loc = std::source_location::current()
     #endif
     ) {
         // lambda to throw the error
         auto throw_error = [&](const char* text) -> void {
             std::stringstream ss;
-    #if (CPP >= 20 && !CLANG)
+    #if (VMA_CPP >= 20 && !CLANG)
             ss << ", error in " << loc.function_name() << " at " << loc.file_name() << ":" << loc.line() << ")";
     #endif
             ss << ". Consult the documentation's parameters for VM::add_custom()";
@@ -10681,7 +10679,7 @@ public: // START OF PUBLIC FUNCTIONS
             throw_error("Percentage parameter must be between 0 and 100");
         }
 
-    #if (CPP >= 23)
+    #if (VMA_CPP >= 23)
         [[assume(percent > 0 && percent <= 100)]];
     #endif
 
@@ -10863,14 +10861,14 @@ public: // START OF PUBLIC FUNCTIONS
     static void modify_score(
         const enum_flags flag,
         const u8 percent
-    #if (CPP >= 20) && (!CLANG || __clang_major__ >= 16)
+    #if (VMA_CPP >= 20) && (!CLANG || __clang_major__ >= 16)
         , const std::source_location& loc = std::source_location::current()
     #endif
     ) {
         // lambda to throw the error
         auto throw_error = [&](const char* text) -> void {
             std::stringstream ss;
-    #if (CPP >= 20 && !CLANG)
+    #if (VMA_CPP >= 20 && !CLANG)
             ss << ", error in " << loc.function_name() << " at " << loc.file_name() << ":" << loc.line() << ")";
     #endif
             ss << ". Consult the documentation's parameters for VM::modify_score()";
@@ -10881,7 +10879,7 @@ public: // START OF PUBLIC FUNCTIONS
             throw_error("Percentage parameter must be between 0 and 100");
         }
 
-    #if (CPP >= 23)
+    #if (VMA_CPP >= 23)
         [[assume(percent <= 100)]];
     #endif  
 
@@ -11016,6 +11014,8 @@ public: // START OF PUBLIC FUNCTIONS
             return it->second;
         }
 
+        debug("VM::type(): No known brand found, something went terribly wrong here...");
+
         return "Unknown";
     }
 
@@ -11032,7 +11032,7 @@ public: // START OF PUBLIC FUNCTIONS
         std::string brand_tmp = brand(flags);
         const u8 percent_tmp = percentage(flags);
 
-    #if (CPP >= 17)
+    #if (VMA_CPP >= 17)
         constexpr std::string_view very_unlikely = "Very unlikely a";
         constexpr std::string_view unlikely = "Unlikely a";
         constexpr std::string_view potentially = "Potentially";
@@ -11050,7 +11050,7 @@ public: // START OF PUBLIC FUNCTIONS
         const std::string inside_vm = "Running inside";
     #endif
 
-    #if (CPP >= 17)
+    #if (VMA_CPP >= 17)
         auto make_conclusion = [&](const std::string_view category) -> std::string {
     #else
         auto make_conclusion = [&](const std::string &category) -> std::string {
