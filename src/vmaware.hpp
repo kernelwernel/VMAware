@@ -11016,6 +11016,8 @@ public: // START OF PUBLIC FUNCTIONS
             return it->second;
         }
 
+        debug("VM::type(): No known brand found, something went terribly wrong here...");
+
         return "Unknown";
     }
 
