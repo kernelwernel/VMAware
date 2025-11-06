@@ -28,6 +28,7 @@ The library is:
 - Header-only
 - Free of any external dependencies
 - Memoized, meaning past results are cached and retrieved if ran again for performance benefits 
+- Compilable with a wide variety of compilers, such as GCC, Clang or MSVC
 - Fully MIT-licensed, allowing unrestricted use and distribution
 
 <br>
@@ -81,7 +82,7 @@ VM hardening: not found
 ## CLI tool 🔧
 This project also provides a handy CLI tool utilising the full potential of what the library can do. It also has cross-platform support.
 
-Below is an example of a basic qemu system with no hardening modifications.
+Below is an example of a basic QEMU system with no hardening modifications on Linux.
 
 <img src="assets/demo.png" title="cli">
 
@@ -158,7 +159,7 @@ If you want to learn about the architecture and design of the library, head over
 <summary>How does it work?</summary>
 <br>
 
-> It utilises a comprehensive list of low-level and high-level anti-VM techniques that gets accounted in a scoring system. The scores (0-100) for each technique are arbitrarily given, and every technique that has detected a VM will have their score added to a single accumulative point, where a threshold point number will decide whether it's actually running in a VM.
+> It utilises a comprehensive list of low-level and high-level anti-VM techniques that gets accounted in a scoring system. The scores (0-100) for each technique are given based on an objective criteria focused on detecting the most stealthy VMs by minimizing false positives as much as possible, and every technique that has detected a VM will have their score added to a single accumulative point, where a threshold point number will decide whether it's actually running in a VM.
 
 </details>
 
@@ -166,7 +167,7 @@ If you want to learn about the architecture and design of the library, head over
 <summary>Who is this library for and what are the use cases?</summary>
 <br>
 
-> It's designed for security researchers, VM engineers, anticheat developers, and pretty much anybody who needs a practical and rock-solid VM detection mechanism in their project. For example, the library is suitable if you're making a VM and you're testing the effectiveness of concealing itself. If you're a proprietary software developer, the library is useful to thwart against reverse engineers. If you're a malware analyst and you want to check the concealment capability of your VM, this would be the perfect tool to benchmark how well-concealed your VM is against malware. 
+> It's designed for security researchers, VM engineers, anticheat developers, and pretty much anybody who needs a practical and rock-solid VM detection mechanism in their project. The library is useful for malware analysts testing the concealment of their VMs and for proprietary software developers aiming to protect their applications from reverse engineering. It's an effective tool to benchmark how well a VM can hide itself from detection.
 > 
 > Additionally, software could adjust the behaviour of their program based on the detected environment. It could be useful for debugging and testing purposes, while system administrators could manage configurations differently. Finally, some applications might want to legally restrict usage in VMs as a license clause to prevent unauthorized distribution or testing.
 >
@@ -183,7 +184,7 @@ If you want to learn about the architecture and design of the library, head over
 >
 > Pafish and InviZzzible have been abandoned for years. Although Al-Khaser does receive occasional updates and has a wide scope of detections that VMAware doesn't provide (anti-debugging, anti-injection, and so on), it still falls short due to the previously mentioned problems above.
 > 
-> While those projects have been useful to VMAware to some extent, we wanted to make them far better. My goal was to make the detection techniques to be accessible programmatically in a cross-platform and flexible way for everybody to get something useful out of it rather than providing just a CLI tool. It also contains a larger quantity of techniques, so it's basically just a VM detection framework on steroids that focuses on practical and realistic usability for any scenario.
+> While those projects have been useful to VMAware to some extent, we wanted to make them far better. Our goal was to make the detection techniques to be accessible programmatically in a cross-platform and flexible way for everybody to get something useful out of it rather than providing just a CLI tool. It also contains a larger quantity of techniques, so it's basically just a VM detection framework on steroids that focuses on practical and realistic usability for any scenario.
 
 </details>
 
@@ -200,7 +201,7 @@ If you want to learn about the architecture and design of the library, head over
 <summary>Wouldn't it make it inferior for having the project open source?</summary>
 <br>
 
-> The only downside to VMAware is that it's fully open source, which makes the job of bypassers easier compared to having it closed source. However, I'd argue that's a worthy tradeoff by having as many VM detection techniques in an open and interactive manner rather than trying to obfuscate. Having it open source means we can have valuable community feedback to strengthen the library more effectively and accurately through discussions, collaborations, and competition against anti-anti-vm projects and malware analysis tools which try to hide it's a VM. 
+> The only downside to VMAware is that it's fully open source, which makes the job of bypassers easier compared to having it closed source. However, We'd argue that's a worthy tradeoff by having as many VM detection techniques in an open and interactive manner rather than trying to obfuscate. Having it open source means we can have valuable community feedback to strengthen the library more effectively and accurately through discussions, collaborations, and competition against anti-anti-vm projects and malware analysis tools which try to hide it's a VM. 
 > 
 > All of this combined has further advanced the forefront innovations in the field of VM detections much more productively, compared to having it closed source. This is what made the project the best VM detection framework out there, and bypassing it has shown to be an immense challenge due to the sheer number of sophisticated and never-before-seen techniques we employ that other VM detectors don't use whether open or closed source (to our knowledge).
 >
@@ -213,16 +214,7 @@ If you want to learn about the architecture and design of the library, head over
 <summary>How effective are VM hardeners against the lib?</summary>
 <br>
 
-> Publicly known hardeners are not effective and most of them on Windows have been beaten, but this doesn't mean that the lib is immune to them. We challenged the most famous ones we know, and that's why we created a bypass against them as our main focus. Custom hardeners that we may not be aware of might have a theoretical advantage, but they are substantially more difficult to produce.
-
-</details>
-
-
-<details>
-<summary>Is it possible to spoof the result?</summary>
-<br>
-
-> Yes. There are some techniques that are trivially spoofable, and there's nothing the library can do about it whether it's a deliberate false positive or even a false negative. This is a problem that every VM detection project is facing whether closed or open source, which is why the library is trying to test every technique possible to get the best result based on the environment it's running under. Remember, EVERYTHING is technically spoofable.
+> Publicly known hardeners are not effective and most of them on Windows have been beaten, but this doesn't mean that the lib is immune to them. Custom hardeners that we may not be aware of might have a theoretical advantage, but they are substantially more difficult to produce.
 
 </details>
 
@@ -231,7 +223,15 @@ If you want to learn about the architecture and design of the library, head over
 <summary>How is it developed?</summary>
 <br>
 
-> We first try to come up with ideas and make prototype techniques in the dev branch. We merge the dev branch to main around once a week because we want to make sure the techniques work as intended in a real-world system before it's utilised. The new techniques would be left on the main branch for people to test, and then we add them to the release for everybody to try it out.
+> Based on online research (ranging from science papers to things like private game hacking forums and discord servers), we try to identify the methods currently used to hide VMs and investigate generic detections capable of detecting them, while constantly tracking their activity to ensure we stay one step ahead.
+>
+> Once we have developed production-level code, we upload it to the dev branch to start testing it in real environments, where products using our library on hundreds or even thousands of devices run our detection algorithms and silently alert us if a VM has been detected, to be later manually verified for false positives.
+> 
+> If we believe that false positives have been corrected based on experimental tests and online evidence in public documentation and databases, we merge the changes to the main branch, assigning the new detections a score, taking into account their effectiveness, reliability, and their operation in conjunction with the rest of the techniques.
+>
+> Other situations (such as false flags, compilation errors, possible vulnerabilities, etc.) are immediately merged into the main branch.
+>
+> Once the library has undergone sufficient modifications compared to previous versions, we place the library in the releases section, explaining these changes in detail.
 
 </details>
 
@@ -239,7 +239,9 @@ If you want to learn about the architecture and design of the library, head over
 <summary>What about using this for malware?</summary>
 <br>
 
-> This project is not soliciting the development of malware for obvious reasons. Even if you intend to use it for concealment purposes, it'll most likely be flagged by antiviruses anyway and nothing is obfuscated to begin with.
+> This project is not soliciting the development of malware for obvious reasons. Even if you intend to use it for concealment purposes, it'll most likely be flagged by antiviruses anyways and nothing is obfuscated to begin with. 
+>
+> We do not intentionally develop the library to try to stop or avoid EDR flags, such as using direct/indirect syscalling, inline hooking detection, and any other kind of malware evasion technique not related to hypervisor detection.
 
 </details>
 
@@ -254,7 +256,7 @@ If you want to learn about the architecture and design of the library, head over
 <br>
 
 ## Issues, discussions, pull requests, and inquiries 📬
-If you have any suggestions, ideas, or any sort of contribution, feel free to ask! I'll be more than happy to discuss either in the [issue](https://github.com/kernelwernel/VMAware/issues) or [discussion](https://github.com/kernelwernel/VMAware/discussions) sections. We usually reply fairly quickly. If you want to personally ask something in private, our discords are `kr.nl` and `shenzken`
+If you have any suggestions, ideas, or any sort of contribution, feel free to ask! We'll be more than happy to discuss either in the [issue](https://github.com/kernelwernel/VMAware/issues) or [discussion](https://github.com/kernelwernel/VMAware/discussions) sections. We usually reply fairly quickly. If you want to personally ask something in private, our discords are `kr.nl` and `shenzken`
 
 For email inquiries: `jeanruyv@gmail.com`
 
