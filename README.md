@@ -28,7 +28,6 @@ The library is:
 - Header-only
 - Free of any external dependencies
 - Memoized, meaning past results are cached and retrieved if ran again for performance benefits 
-- Compilable with a wide variety of compilers, such as GCC, Clang or MSVC
 - Fully MIT-licensed, allowing unrestricted use and distribution
 
 <br>
