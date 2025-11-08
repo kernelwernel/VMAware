@@ -545,7 +545,7 @@ public:
         DRIVERS,
         DEVICE_HANDLES,
         VIRTUAL_PROCESSORS,
-        HYPERV_QUERY,
+        HYPERVISOR_QUERY,
         AUDIO,
         DISPLAY,
         DLL,
@@ -4175,7 +4175,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             debug("TIMER: Running inside a binary translation layer");
             return false;
         }
-        u16 cycleThreshold = 1500;
+        u16 cycleThreshold = 1200;
         if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
             cycleThreshold = 15000; // if we're running under Hyper-V, attempt to detect nested virtualization only
         }
@@ -4215,18 +4215,18 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             const u64 t1 = __rdtsc();
 
             u32 a, b, c, d;
-            cpu::cpuid(a, b, c, d, 0);
+            cpu::cpuid(a, b, c, d, 0); // sometimes not intercepted in compat mode under some hvs
 
             const u64 t2 = __rdtscp(&aux);
 
             return t2 - t1;
         };
 
-        constexpr int N = 100;
+        constexpr u8 N = 100;
 
         auto sample_avg = [&]() -> u64 {
             u64 sum = 0;
-            for (int i = 0; i < N; ++i) {
+            for (u8 i = 0; i < N; ++i) {
                 sum += cpuid();
             }
             return (sum + N / 2) / N;
@@ -7956,10 +7956,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
     /**
      * @brief Check if a call to NtQuerySystemInformation with the 0x9f leaf fills a _SYSTEM_HYPERVISOR_DETAIL_INFORMATION structure
-     * @category Windows
-     * @implements VM::HYPERV_QUERY
+     * @category Windows, x86_64
+     * @implements VM::HYPERVISOR_QUERY
      */
-    [[nodiscard]] static bool hyperv_query() {
+    [[nodiscard]] static bool hypervisor_query() {
+    #if (x86_32)
+        return false;
+    #else
         if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
             return false;
         }
@@ -8006,7 +8009,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return true;
             }
         }
-
+    #endif
         return false;
     }
 
@@ -8474,7 +8477,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         pNtFlushInstructionCache(hCurrentProcess, execMem, trampSize);
 
-        int hitCount = 0;
+        u8 hitCount = 0;
 
         CONTEXT origCtx{};
         origCtx.ContextFlags = CONTEXT_DEBUG_REGISTERS;
@@ -8499,7 +8502,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        auto vetExceptions = [&](u32 code, EXCEPTION_POINTERS* info) -> int {
+        auto vetExceptions = [&](u32 code, EXCEPTION_POINTERS* info) -> u8 {
             // if not single-step, hypervisor likely swatted our trap
             if (code != static_cast<DWORD>(0x80000004L)) {
                 hypervisorCaught = true;
@@ -9269,9 +9272,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             const u16 word = static_cast<u16>((edid[8] << 8) | edid[9]);
 
             char m[4] = { 0, 0, 0, 0 };
-            const int c1 = (word >> 10) & 0x1F;
-            const int c2 = (word >> 5) & 0x1F;
-            const int c3 = (word >> 0) & 0x1F;
+            const u8 c1 = static_cast<u8>((word >> 10) & 0x1F);
+            const u8 c2 = static_cast<u8>((word >> 5) & 0x1F);
+            const u8 c3 = static_cast<u8>((word >> 0) & 0x1F);
 
             if (c1 >= 1 && c1 <= 26) m[0] = static_cast<char>('A' + c1 - 1); else m[0] = '?';
             if (c2 >= 1 && c2 <= 26) m[1] = static_cast<char>('A' + c2 - 1); else m[1] = '?';
@@ -9546,7 +9549,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
                 const std::uintptr_t paddr = reinterpret_cast<std::uintptr_t>(amd_target_mem); // to avoid sign-extension, 32-bit compatible
                 const u64 addr = static_cast<u64>(paddr);
-                for (int i = 0; i < 8; ++i) {
+                for (u8 i = 0; i < 8; ++i) {
                     amd_bytes[2 + i] = static_cast<u8>((addr >> (i * 8)) & 0xFF);
                 }
                 bytes = amd_bytes;
@@ -9571,8 +9574,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     pNtFlushInstructionCache(hCurrentProcess, exec_mem, codeSize);
 
                     using CodeFunc = void(*)();
-                    using RunnerFn = int(*)(CodeFunc);
-                    RunnerFn runner = +[](CodeFunc func) -> int {
+                    using RunnerFn = u8(*)(CodeFunc);
+                    RunnerFn runner = +[](CodeFunc func) -> u8 {
                         __try {
                             func();
                             return 0;
@@ -9582,7 +9585,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                         }
                     };
 
-                    const int runner_rc = runner(reinterpret_cast<CodeFunc>(exec_mem));
+                    const u8 runner_rc = runner(reinterpret_cast<CodeFunc>(exec_mem));
 
                     // check if the target buffer was written to zero by CLZERO
                     bool memory_all_zero = false;
@@ -10793,7 +10796,7 @@ public: // START OF PUBLIC FUNCTIONS
             case DEVICE_HANDLES: return "DEVICE_HANDLES";
             case QEMU_FW_CFG: return "QEMU_FW_CFG";
             case VIRTUAL_PROCESSORS: return "VIRTUAL_PROCESSORS";
-            case HYPERV_QUERY: return "HYPERV_QUERY";
+            case HYPERVISOR_QUERY: return "HYPERVISOR_QUERY";
             case AMD_SEV: return "AMD_SEV";
             case VIRTUAL_REGISTRY: return "VIRTUAL_REGISTRY";
             case FIRMWARE: return "FIRMWARE";
@@ -11365,7 +11368,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         std::make_pair(VM::DEVICE_HANDLES, VM::core::technique(100, VM::device_handles)),
         std::make_pair(VM::VIRTUAL_PROCESSORS, VM::core::technique(100, VM::virtual_processors)),
         std::make_pair(VM::OBJECTS, VM::core::technique(100, VM::objects)),
-        std::make_pair(VM::HYPERV_QUERY, VM::core::technique(100, VM::hyperv_query)),
+        std::make_pair(VM::HYPERVISOR_QUERY, VM::core::technique(100, VM::hypervisor_query)),
         std::make_pair(VM::AUDIO, VM::core::technique(25, VM::audio)),
         std::make_pair(VM::DISPLAY, VM::core::technique(35, VM::display)),
         std::make_pair(VM::WINE, VM::core::technique(100, VM::wine)),
