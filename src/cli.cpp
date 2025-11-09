@@ -809,7 +809,7 @@ static void general() {
     checker(VM::POWER_CAPABILITIES, "power capabilities");
     checker(VM::QEMU_FW_CFG, "QEMU fw_cfg device");
     checker(VM::VIRTUAL_PROCESSORS, "virtual processors");
-    checker(VM::HYPERV_QUERY, "hypervisor query");
+    checker(VM::HYPERVISOR_QUERY, "hypervisor query");
     checker(VM::AMD_SEV, "AMD-SEV MSR");
     checker(VM::VIRTUAL_REGISTRY, "registry emulation");
     checker(VM::FIRMWARE, "firmware");
@@ -829,6 +829,7 @@ static void general() {
     checker(VM::EDID, "EDID");
     checker(VM::CPU_HEURISTIC, "CPU heuristics");
     checker(VM::CLOCK, "system timers");
+    checker(VM::LBR, "LBR");
     // ADD NEW TECHNIQUE CHECKER HERE
 
     const auto t2 = std::chrono::high_resolution_clock::now();
