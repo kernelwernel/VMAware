@@ -56,10 +56,10 @@
  * - struct for internal cpu operations        => line 717
  * - struct for internal memoization           => line 1149
  * - struct for internal utility functions     => line 1279
- * - struct for internal core components       => line 9920
- * - start of VM detection technique list      => line 1964
- * - start of public VM detection functions    => line 10413
- * - start of externally defined variables     => line 11394
+ * - struct for internal core components       => line 10040
+ * - start of VM detection technique list      => line 2083
+ * - start of public VM detection functions    => line 10533
+ * - start of externally defined variables     => line 11514
  *
  *
  * ============================== EXAMPLE ===================================
@@ -1954,9 +1954,128 @@ private:
                 return cachedNtdll;
             }
 
-            const HMODULE h = GetModuleHandleA("ntdll.dll");
-            if (h) cachedNtdll = h;
+        #ifndef _WINTERNL_
+            typedef struct _UNICODE_STRING {
+                USHORT Length;
+                USHORT MaximumLength;
+                PWSTR  Buffer;
+            } UNICODE_STRING, * PUNICODE_STRING;
 
+            typedef struct _PEB_LDR_DATA {
+                BYTE Reserved1[8];
+                PVOID Reserved2[3];
+                LIST_ENTRY InMemoryOrderModuleList;
+            } PEB_LDR_DATA, * PPEB_LDR_DATA;
+
+            typedef struct _LDR_DATA_TABLE_ENTRY {
+                PVOID Reserved1[2];
+                LIST_ENTRY InMemoryOrderLinks;
+                PVOID Reserved2[2];
+                PVOID DllBase;
+                PVOID Reserved3[2];
+                UNICODE_STRING FullDllName;
+                BYTE Reserved4[8];
+                PVOID Reserved5[3];
+            #pragma warning(push)
+            #pragma warning(disable: 4201)
+                union {
+                    ULONG CheckSum;
+                    PVOID Reserved6;
+                } DUMMYUNIONNAME;
+            #pragma warning(pop)
+                ULONG TimeDateStamp;
+            } LDR_DATA_TABLE_ENTRY, * PLDR_DATA_TABLE_ENTRY;
+
+            typedef struct _PEB {
+                BYTE Reserved1[2];
+                BYTE BeingDebugged;
+                BYTE Reserved2[1];
+                PVOID Reserved3[2];
+                PPEB_LDR_DATA Ldr;
+            } PEB, * PPEB;
+        #endif
+
+            PPEB peb = nullptr;
+
+        #if (x86_64)
+            #if (MSVC)
+                peb = reinterpret_cast<PPEB>(__readgsqword(0x60));
+            #else
+                asm("movq %%gs:0x60, %0" : "=r"(peb));
+            #endif
+        #elif (x86_32)
+            #if (MSVC)
+                peb = reinterpret_cast<PPEB>(__readfsdword(0x30));
+            #else
+                asm("movl %%fs:0x30, %0" : "=r"(peb));
+            #endif
+        #else
+            const HMODULE h = GetModuleHandleW(L"ntdll.dll");
+            if (h) cachedNtdll = h;
+            return h;
+        #endif
+
+            if (!peb) {
+                const HMODULE h = GetModuleHandleW(L"ntdll.dll");
+                if (h) cachedNtdll = h;
+                return h;
+            }
+
+            PPEB_LDR_DATA ldr = peb->Ldr;
+            if (!ldr) {
+                const HMODULE h = GetModuleHandleW(L"ntdll.dll");
+                if (h) cachedNtdll = h;
+                return h;
+            }
+
+            #ifndef CONTAINING_RECORD
+                #define CONTAINING_RECORD(address, type, field) ((type *)((char*)(address) - (size_t)(&((type *)0)->field)))
+            #endif
+
+            constexpr const WCHAR targetName[] = L"ntdll.dll";
+            constexpr size_t targetLen = (std::size(targetName) - 1);
+
+            LIST_ENTRY* head = &ldr->InMemoryOrderModuleList;
+            for (LIST_ENTRY* cur = head->Flink; cur != head; cur = cur->Flink) {
+                auto* ent = CONTAINING_RECORD(cur, LDR_DATA_TABLE_ENTRY, InMemoryOrderLinks);
+                /* auto* ent = reinterpret_cast<PLDR_DATA_TABLE_ENTRY>(
+                reinterpret_cast<std::byte*>(cur) -
+                    ((::size_t) & reinterpret_cast<char const volatile&>((((LDR_DATA_TABLE_ENTRY*)0)->InMemoryOrderLinks)))
+                    );*/
+                if (!ent) continue;
+
+                auto* fullname = &ent->FullDllName;
+                if (!fullname->Buffer || fullname->Length == 0) continue;
+
+                const auto totalChars = static_cast<USHORT>(fullname->Length / sizeof(WCHAR));
+
+                size_t start = totalChars;
+                while (start > 0) {
+                    const WCHAR c = fullname->Buffer[start - 1];
+                    if (c == L'\\' || c == L'/') break;
+                    --start;
+                }
+
+                const size_t fileLen = totalChars - start;
+                if (fileLen != targetLen) continue;
+
+                bool match = true;
+                for (size_t i = 0; i < fileLen; ++i) {
+                    WCHAR a = fullname->Buffer[start + i];
+                    WCHAR b = targetName[i];
+                    if (a >= L'A' && a <= L'Z') a = static_cast<WCHAR>(a + 32);
+                    if (b >= L'A' && b <= L'Z') b = static_cast<WCHAR>(b + 32);
+                    if (a != b) { match = false; break; }
+                }
+
+                if (match) {
+                    cachedNtdll = reinterpret_cast<HMODULE>(ent->DllBase);
+                    return cachedNtdll;
+                }
+            }
+
+            const HMODULE h = GetModuleHandleW(L"ntdll.dll");
+            if (h) cachedNtdll = h;
             return h;
         }
 #endif
@@ -9728,6 +9847,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         SetupDiDestroyDeviceInfoList(devs);
         return !found;
     }
+
 
     /**
      * @brief Check if Last Branch Record MSRs are correctly virtualized
