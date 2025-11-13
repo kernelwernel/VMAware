@@ -56,10 +56,10 @@
  * - struct for internal cpu operations        => line 717
  * - struct for internal memoization           => line 1149
  * - struct for internal utility functions     => line 1279
- * - struct for internal core components       => line 10040
- * - start of VM detection technique list      => line 2083
- * - start of public VM detection functions    => line 10533
- * - start of externally defined variables     => line 11514
+ * - struct for internal core components       => line 10112
+ * - start of VM detection technique list      => line 2076
+ * - start of public VM detection functions    => line 10605
+ * - start of externally defined variables     => line 11586
  *
  *
  * ============================== EXAMPLE ===================================
@@ -5652,15 +5652,25 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      */
     [[nodiscard]] static bool hyperv_hostname() {
         const std::string hostname = util::get_hostname();
+        constexpr std::string_view prefix{ "runnervm" };
+        constexpr std::size_t extra_chars = 5;
+        const std::size_t expected_len = prefix.size() + extra_chars;
 
-    #if (WINDOWS)
-        if (hostname == "runnervmr86sf")
-    #elif (LINUX)   
-        if (hostname == "pkrvmubgrv54qmi")
-    #endif
-            return core::add(brands::AZURE_HYPERV);
+        if (hostname.size() != expected_len) {
+            return false;
+        }
+        if (hostname.compare(0, prefix.size(), std::string(prefix)) != 0) {
+            return false;
+        }
 
-        return false;
+        for (std::size_t i = prefix.size(); i < hostname.size(); ++i) {
+            unsigned char c = static_cast<unsigned char>(hostname[i]);
+            if (!std::isalnum(c)) {
+                return false;
+            }
+        }
+
+        return core::add(brands::AZURE_HYPERV);
     }
 
 
