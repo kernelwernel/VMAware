@@ -56,10 +56,10 @@
  * - struct for internal cpu operations        => line 717
  * - struct for internal memoization           => line 1149
  * - struct for internal utility functions     => line 1279
- * - struct for internal core components       => line 10112
+ * - struct for internal core components       => line 10115
  * - start of VM detection technique list      => line 2076
- * - start of public VM detection functions    => line 10605
- * - start of externally defined variables     => line 11586
+ * - start of public VM detection functions    => line 10608
+ * - start of externally defined variables     => line 11589
  *
  *
  * ============================== EXAMPLE ===================================
@@ -5650,20 +5650,23 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Windows, Linux
      * @implements VM::HYPERV_HOSTNAME
      */
-    [[nodiscard]] static bool hyperv_hostname() {
+    static bool hyperv_hostname() {
         const std::string hostname = util::get_hostname();
-        constexpr std::string_view prefix{ "runnervm" };
-        constexpr std::size_t extra_chars = 5;
-        const std::size_t expected_len = prefix.size() + extra_chars;
+
+        const char* prefix = "runnervm";
+        const std::size_t prefix_len = std::strlen(prefix);
+        const std::size_t extra_chars = 5;
+        const std::size_t expected_len = prefix_len + extra_chars;
 
         if (hostname.size() != expected_len) {
             return false;
         }
-        if (hostname.compare(0, prefix.size(), std::string(prefix)) != 0) {
+
+        if (hostname.compare(0, prefix_len, prefix) != 0) {
             return false;
         }
 
-        for (std::size_t i = prefix.size(); i < hostname.size(); ++i) {
+        for (std::size_t i = prefix_len; i < hostname.size(); ++i) {
             unsigned char c = static_cast<unsigned char>(hostname[i]);
             if (!std::isalnum(c)) {
                 return false;
@@ -8416,7 +8419,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         devInfo.cbSize = sizeof(devInfo);
         const DEVPROPKEY key = DEVPKEY_Device_LocationPaths;
 
-        // baremetal tokens (case-sensitive to preserve original behavior)
+        // baremetal tokens (case-sensitive to preserve handling against edge-cases)
         static constexpr const wchar_t* excluded_tokens[] = {
             L"GFX",
             L"IGD", L"IGFX", L"IGPU",
