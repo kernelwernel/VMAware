@@ -1430,6 +1430,7 @@ private:
         };
 
         static std::string narrow_wide(const wchar_t* wstr) {
+            if (!wstr) return std::string{};
             std::wstring ws(wstr);
             std::string result;
             result.reserve(ws.size());
@@ -1998,24 +1999,20 @@ private:
             PPEB peb = nullptr;
 
         #if (x86_64)
-            #if (MSVC)
+            #if (MSVC && !CLANG)
                 peb = reinterpret_cast<PPEB>(__readgsqword(0x60));
             #else
                 asm("movq %%gs:0x60, %0" : "=r"(peb));
             #endif
         #elif (x86_32)
-            #if (MSVC)
+            #if (MSVC&& !CLANG)
                 peb = reinterpret_cast<PPEB>(__readfsdword(0x30));
             #else
                 asm("movl %%fs:0x30, %0" : "=r"(peb));
             #endif
-        #else
-            const HMODULE h = GetModuleHandleW(L"ntdll.dll");
-            if (h) cachedNtdll = h;
-            return h;
         #endif
 
-            if (!peb) {
+            if (!peb) { // not x86 or tampered with
                 const HMODULE h = GetModuleHandleW(L"ntdll.dll");
                 if (h) cachedNtdll = h;
                 return h;
@@ -2038,10 +2035,6 @@ private:
             LIST_ENTRY* head = &ldr->InMemoryOrderModuleList;
             for (LIST_ENTRY* cur = head->Flink; cur != head; cur = cur->Flink) {
                 auto* ent = CONTAINING_RECORD(cur, LDR_DATA_TABLE_ENTRY, InMemoryOrderLinks);
-                /* auto* ent = reinterpret_cast<PLDR_DATA_TABLE_ENTRY>(
-                reinterpret_cast<std::byte*>(cur) -
-                    ((::size_t) & reinterpret_cast<char const volatile&>((((LDR_DATA_TABLE_ENTRY*)0)->InMemoryOrderLinks)))
-                    );*/
                 if (!ent) continue;
 
                 auto* fullname = &ent->FullDllName;
@@ -4301,9 +4294,75 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
     #if (WINDOWS)
+        const HMODULE ntdll = util::get_ntdll();
+        if (!ntdll) {
+            return false;
+        }
+
+        const char* names[] = { "NtQueryInformationThread", "NtSetInformationThread" };
+        void* funcs[ARRAYSIZE(names)] = {};
+        util::get_function_address(ntdll, names, funcs, ARRAYSIZE(names));
+
+        using NtQueryInformationThread_t = NTSTATUS(__stdcall*)(HANDLE, int, PVOID, ULONG, PULONG);
+        using NtSetInformationThread_t = NTSTATUS(__stdcall*)(HANDLE, int, PVOID, ULONG);
+
+        const auto pNtQueryInformationThread = reinterpret_cast<NtQueryInformationThread_t>(funcs[0]);
+        const auto pNtSetInformationThread = reinterpret_cast<NtSetInformationThread_t>(funcs[1]);
+        if (!pNtQueryInformationThread || !pNtSetInformationThread) {
+            return false;
+        }
+
+        constexpr int ThreadBasicInformation = 0;
+        constexpr int ThreadAffinityMask = 4;
+
+        struct CLIENT_ID {
+            ULONG_PTR UniqueProcess;
+            ULONG_PTR UniqueThread;
+        };
+        struct THREAD_BASIC_INFORMATION {
+            NTSTATUS ExitStatus;
+            PVOID    TebBaseAddress;
+            CLIENT_ID ClientId;
+            ULONG_PTR AffinityMask;
+            LONG     Priority;
+            LONG     BasePriority;
+        } tbi;
         const HANDLE hCurrentThread = reinterpret_cast<HANDLE>(-2LL);
-        const DWORD_PTR wantedMask = (DWORD_PTR)1;
-        const DWORD_PTR prevMask = SetThreadAffinityMask(hCurrentThread, wantedMask);
+
+        // current affinity
+        memset(&tbi, 0, sizeof(tbi));
+        NTSTATUS status = pNtQueryInformationThread(
+            hCurrentThread,
+            ThreadBasicInformation,
+            &tbi,
+            sizeof(tbi),
+            nullptr
+        );
+
+        if (status < 0) {
+            return false;
+        }
+
+        const ULONG_PTR originalAffinity = tbi.AffinityMask;
+
+        // new affinity
+        const DWORD_PTR wantedMask = static_cast<DWORD_PTR>(1);
+        status = pNtSetInformationThread(
+            hCurrentThread,
+            ThreadAffinityMask,
+            reinterpret_cast<PVOID>(const_cast<DWORD_PTR*>(&wantedMask)),
+            static_cast<ULONG>(sizeof(wantedMask))
+        );
+
+        DWORD_PTR prevMask = 0;
+        if (status >= 0) {
+            prevMask = originalAffinity; // emulate SetThreadAffinityMask return
+        }
+        else {
+            prevMask = 0;
+        }
+
+        // setting a higher priority for the current thread actually makes the timings drift more when comparing rdtsc against NOP/XOR loops
     #endif 
 
         // Case A - Hypervisor without RDTSC patch
@@ -4335,7 +4394,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             const u64 t1 = __rdtsc();
 
             u32 a, b, c, d;
-            cpu::cpuid(a, b, c, d, 0); // sometimes not intercepted in compat mode under some hvs
+            cpu::cpuid(a, b, c, d, 0); // sometimes not intercepted in some hvs under compat mode
 
             const u64 t2 = __rdtscp(&aux);
 
@@ -4461,8 +4520,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             debug("TIMER: RDTSC -> ", firstRatio, ", QIT -> ", secondRatio, ", Ratio: ", difference);
 
             if (prevMask != 0) {
-                SetThreadAffinityMask(hCurrentThread, prevMask);
-            }
+                pNtSetInformationThread(
+                    hCurrentThread,
+                    ThreadAffinityMask,
+                    reinterpret_cast<PVOID>(const_cast<ULONG_PTR*>(&originalAffinity)),
+                    static_cast<ULONG>(sizeof(originalAffinity))
+                );
+            }             
 
             if (difference > 10) {
                 return true; // both ratios will always differ if a RDTSC trap is present, since the hypervisor can't account for the XOR/NOP loop
@@ -5542,26 +5606,22 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         #endif
 
             __try {
-        #if (CLANG || GCC)
+            #if (CLANG || GCC)
                 __asm__ volatile("sidt %0" : "=m"(idtr_buffer));
-        #elif (MSVC) && (x86_32)
+            #elif (MSVC) && (x86_32)
                 __asm { sidt idtr_buffer }
-        #elif (MSVC) && (x86_64)
-            #pragma pack(push, 1)
+            #elif (MSVC) && (x86_64)
+                #pragma pack(push, 1)
                 struct { USHORT Limit; ULONG_PTR Base; } idtr;
-            #pragma pack(pop)
+                #pragma pack(pop)
                 __sidt(&idtr);
                 memcpy(idtr_buffer, &idtr, sizeof(idtr));
-        #endif
+            #endif
             }
             __except (EXCEPTION_EXECUTE_HANDLER) {} // CR4.UMIP
 
             ULONG_PTR idt_base = 0;
-        #if (x86_64)
-            idt_base = *reinterpret_cast<ULONG_PTR*>(&idtr_buffer[2]);
-        #else
-            idt_base = *reinterpret_cast<ULONG*>(&idtr_buffer[2]);
-        #endif
+            memcpy(&idt_base, &idtr_buffer[2], sizeof(idt_base));
 
             // Check for the 0xE8 signature (VPC/Hyper-V) in the high byte
             if ((idt_base >> 24) == 0xE8) {
@@ -5865,7 +5925,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 | ((DSDT_SIG << 8) & 0x00FF0000u)
                 | ((DSDT_SIG << 24) & 0xFF000000u);
 
-            UINT sz = GetSystemFirmwareTable(ACPI_SIG, DSDT_SWAPPED, nullptr, 0);
+            const UINT sz = GetSystemFirmwareTable(ACPI_SIG, DSDT_SWAPPED, nullptr, 0);
             if (sz > 0) {
                 std::vector<BYTE> dsdtBuf;
                 dsdtBuf.resize(sz);
@@ -5879,7 +5939,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         // helper to fetch one table into a malloc'd buffer
         auto fetch = [&](DWORD provider, DWORD tableID, BYTE*& outBuf, size_t& outLen) -> bool {
-            UINT sz = GetSystemFirmwareTable(provider, tableID, nullptr, 0);
+            const UINT sz = GetSystemFirmwareTable(provider, tableID, nullptr, 0);
             if (sz == 0) return false;
             outBuf = reinterpret_cast<BYTE*>(malloc(sz));
             if (!outBuf) return false;
@@ -5907,7 +5967,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         constexpr DWORD smbProviders[] = { 'FIRM', 'RSMB' };
 
         for (DWORD prov : smbProviders) {
-            UINT e = EnumSystemFirmwareTables(prov, nullptr, 0);
+            const UINT e = EnumSystemFirmwareTables(prov, nullptr, 0);
             if (!e) continue;
 
             std::vector<BYTE> bufIDs(e);
@@ -5917,7 +5977,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             // even if alignment is supported on x86 its good to check if size is a multiple of DWORD
             if (e % sizeof(DWORD) != 0) continue;
 
-            DWORD cnt = e / sizeof(DWORD);
+            const DWORD cnt = e / sizeof(DWORD);
             // auto otherIDs = reinterpret_cast<DWORD*>(bufIDs.data());
             char provStr[5] = { 0 }; memcpy(provStr, &prov, 4);
 
@@ -6117,9 +6177,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
                 closedir(dir);
             #endif
-
         #elif (WINDOWS)
-        static const wchar_t* kRoots[] = {
+        static constexpr const wchar_t* kRoots[] = {
             L"SYSTEM\\CurrentControlSet\\Enum\\PCI",
             L"SYSTEM\\CurrentControlSet\\Enum\\USB",
             L"SYSTEM\\CurrentControlSet\\Enum\\HDAUDIO"
@@ -6127,6 +6186,28 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         enum RootType { RT_PCI, RT_USB, RT_HDAUDIO };
         constexpr DWORD MAX_MULTI_SZ = 64 * 1024;
+
+        auto hexVal = [](wchar_t c) -> int {
+            if (c >= L'0' && c <= L'9') return c - L'0';
+            c = towupper(c);
+            if (c >= L'A' && c <= L'F') return 10 + (c - L'A');
+            return -1;
+        };
+
+        // parse up to maxDigits from ptr; stop also if stopLen supplied (SIZE_MAX = no limit)
+        auto parseHexInplace = [&](const wchar_t* ptr, size_t maxDigits, size_t stopLen, unsigned long& out, size_t& consumed) -> bool {
+            out = 0;
+            consumed = 0;
+            while (consumed < maxDigits && (stopLen == SIZE_MAX || consumed < stopLen)) {
+                int v = hexVal(ptr[consumed]);
+                if (v < 0) break;
+                out = (out << 4) | static_cast<unsigned long>(v);
+                ++consumed;
+            }
+            return consumed > 0;
+        };
+
+        std::unordered_set<unsigned long long> seen;
 
         // Lambda #1: Process the hardware ID on an instance key,
         // extract every (VID, DID) pair, and push into devices
@@ -6152,7 +6233,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             // allocate a buffer large enough to hold the entire MULTI_SZ
             std::vector<wchar_t> buf((cbData / sizeof(wchar_t)) + 1);
-            // ensure there is a terminating wchar_t in case the registry data is malformed (extremely rare tbh)
             buf.back() = L'\0';
             rv = RegGetValueW(
                 hInst,
@@ -6166,83 +6246,87 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             if (rv != ERROR_SUCCESS) {
                 return;
             }
-            // guarantee a terminating NUL at the end of the retrieved data
-            size_t wcharCount = cbData / sizeof(wchar_t);
-            if (wcharCount < buf.size()) {
-                buf[wcharCount] = L'\0';
-            }
-            else {
-                buf.back() = L'\0';
-            }
 
-            // iterate over each null-terminated string inside the MULTI_SZ
+            // guarantee terminating NUL
+            size_t wcharCount = cbData / sizeof(wchar_t);
+            if (wcharCount < buf.size()) buf[wcharCount] = L'\0';
+            else buf.back() = L'\0';
+
             for (wchar_t* p = buf.data(); *p; p += wcslen(p) + 1) {
                 wchar_t* s = p;
                 wchar_t* v = nullptr;
                 wchar_t* d = nullptr;
-                u16  vid = 0;
-                u32  did = 0;
-                bool      ok = false;
+                u16 vid = 0;
+                u32 did = 0;
+                bool ok = false;
 
                 if (rootType == RT_USB) {
-                    // USB: VID_ and then PID_ after it
+                    // USB: VID_ and then PID_
                     v = wcsstr(s, L"VID_");
-                    if (v) {
-                        d = wcsstr(v + 4, L"PID_");
-                    }
+                    if (v) d = wcsstr(v + 4, L"PID_");
                     if (v && d) {
-                        int rv1 = swscanf_s(v + 4, L"%4hx", &vid);
-                        int rv2 = swscanf_s(d + 4, L"%x", &did);
-                        if (rv1 == 1 && rv2 == 1) {
+                        unsigned long parsedV = 0, parsedD = 0;
+                        size_t cV = 0, cD = 0;
+                        // VID_ usually 4 hex digits, PID_ usually 4
+                        if (parseHexInplace(v + 4, 4, SIZE_MAX, parsedV, cV) &&
+                            parseHexInplace(d + 4, 8, SIZE_MAX, parsedD, cD)) {
+                            vid = static_cast<u16>(parsedV & 0xFFFFu);
+                            did = static_cast<u32>(parsedD);
                             ok = true;
                         }
                     }
                 }
                 else {
-                    // PCI or HDAUDIO: VEN_ and then DEV_ after it
+                    // PCI or HDAUDIO = VEN_ and then DEV_ after it
                     v = wcsstr(s, L"VEN_");
-                    if (v) {
-                        d = wcsstr(v + 4, L"DEV_");
-                    }
+                    if (v) d = wcsstr(v + 4, L"DEV_");
                     if (v && d) {
-                        int r1 = swscanf_s(v + 4, L"%4hx", &vid);
-                        if (r1 != 1) {
-                            // failed to parse vendor id
-                            continue;
+                        unsigned long parsedV = 0;
+                        size_t cV = 0;
+                        if (!parseHexInplace(v + 4, 4, SIZE_MAX, parsedV, cV)) {
+                            continue; 
                         }
+                        vid = static_cast<u16>(parsedV & 0xFFFFu);
 
-                        // dev ID may be up to 8 hex digits (PCI) or exactly 4 (HDAUDIO)
                         wchar_t* devStart = d + 4;
                         wchar_t* ampAfterDev = wcschr(devStart, L'&');
+                        size_t devLen = ampAfterDev ? static_cast<size_t>(ampAfterDev - devStart) : wcslen(devStart);
 
-                        // create a temporary string for the device field to avoid mutating the buffer
-                        size_t devLen = ampAfterDev ? (ampAfterDev - devStart) : wcslen(devStart);
-                        std::wstring devStr(devStart, devLen);
-
-                        try {
-                            unsigned long parsed = std::stoul(devStr, nullptr, 16);
-                            if (rootType == RT_HDAUDIO) {
-                                if (parsed > 0xFFFF) {
-                                    continue;
-                                }
-                                did = static_cast<u32>(parsed);
-                            }
-                            else {
-                                if (parsed > 0xFFFFFFFF) {
-                                    continue;
-                                }
-                                did = static_cast<u32>(parsed);
-                            }
-                            ok = true;
+                        // For HDAUDIO expect 4 digits and for PCI allow up to 8
+                        size_t maxDigits = (rootType == RT_HDAUDIO) ? 4 : 8;
+                        if (devLen == 0 || devLen > maxDigits) {
+                            // If the token is longer than maxDigits, we cap parsing to maxDigits but
+                            // require that the parsed digit count equals devLen
+                            if (devLen > maxDigits) continue;
                         }
-                        catch (...) {
+
+                        unsigned long parsedD = 0;
+                        size_t cD = 0;
+                        // parse exactly devLen digits (fail if any char is non-hex)
+                        if (!parseHexInplace(devStart, maxDigits, devLen, parsedD, cD)) {
                             continue;
                         }
+                        // require we consumed all characters in device token (like std::stoul on the substring)
+                        if (cD != devLen) continue;
+
+                        // overflow checks
+                        if (rootType == RT_HDAUDIO) {
+                            if (parsedD > 0xFFFF) continue;
+                            did = static_cast<u32>(parsedD & 0xFFFFu);
+                        }
+                        else {
+                            // PCI device id may be up to 32-bit
+                            did = static_cast<u32>(parsedD);
+                        }
+                        ok = true;
                     }
                 }
 
                 if (ok) {
-                    devices.push_back({ vid, did });
+                    unsigned long long key = (static_cast<unsigned long long>(vid) << 32) | static_cast<unsigned long long>(did);
+                    if (seen.insert(key).second) {
+                        devices.push_back({ vid, did });
+                    }
                 }
             }
         };
@@ -6263,17 +6347,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     nullptr,
                     nullptr
                 );
-                if (st2 == ERROR_NO_MORE_ITEMS) {
-                    break;
-                }
-                if (st2 != ERROR_SUCCESS) {
-                    continue;
-                }
+                if (st2 == ERROR_NO_MORE_ITEMS) break;
+                if (st2 != ERROR_SUCCESS) continue;
 
                 HKEY hInst = nullptr;
-                if (RegOpenKeyExW(hDev, instName, 0, KEY_READ, &hInst) != ERROR_SUCCESS) {
-                    continue;
-                }
+                if (RegOpenKeyExW(hDev, instName, 0, KEY_READ, &hInst) != ERROR_SUCCESS) continue;
 
                 processHardwareID(hInst, rootType);
                 RegCloseKey(hInst);
@@ -6296,17 +6374,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     nullptr,
                     nullptr
                 );
-                if (status == ERROR_NO_MORE_ITEMS) {
-                    break;
-                }
-                if (status != ERROR_SUCCESS) {
-                    continue;
-                }
+                if (status == ERROR_NO_MORE_ITEMS) break;
+                if (status != ERROR_SUCCESS) continue;
 
                 HKEY hDev = nullptr;
-                if (RegOpenKeyExW(hRoot, deviceName, 0, KEY_READ, &hDev) != ERROR_SUCCESS) {
-                    continue;
-                }
+                if (RegOpenKeyExW(hRoot, deviceName, 0, KEY_READ, &hDev) != ERROR_SUCCESS) continue;
 
                 enumInstances(hDev, rootType);
                 RegCloseKey(hDev);
@@ -7041,35 +7113,29 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         #endif
 
             __try {
-        #if (CLANG || GCC)
+            #if (CLANG || GCC)
                 __asm__ volatile("sgdt %0" : "=m"(gdtr));
-        #elif (MSVC && x86_32)
+            #elif (MSVC && x86_32)
                 __asm { sgdt gdtr }
-        #else
-            #pragma pack(push,1)
+            #else
+                #pragma pack(push,1)
                 struct { u16 limit; u64 base; } _gdtr = {};
-            #pragma pack(pop)
+                #pragma pack(pop)
                 _sgdt(&_gdtr);
-                memcpy(gdtr, &_gdtr, sizeof(gdtr));
+                memcpy(gdtr, &_gdtr, sizeof(_gdtr));
             #endif
             }
             __except (EXCEPTION_EXECUTE_HANDLER) {} // CR4.UMIP
 
             ULONG_PTR gdt_base = 0;
-        #if (x86_64)
-            gdt_base = *reinterpret_cast<ULONG_PTR*>(&gdtr[2]);
-        #else
-            gdt_base = *reinterpret_cast<ULONG*>(&gdtr[2]);
-        #endif
+            memcpy(&gdt_base, &gdtr[2], sizeof(gdt_base));
 
-            // 0xFF signature in the high byte of the base address
             if ((gdt_base >> 24) == 0xFF) {
                 debug("SGDT: 0xFF signature detected on core %u", i);
                 found = true;
             }
 
-            if (found)
-                break;
+            if (found) break;
         }
 
         if (originalMask != 0) {
@@ -8324,55 +8390,23 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::ACPI_SIGNATURE
      */
     [[nodiscard]] static bool acpi_signature() {
-        struct wstring_view {
-            const wchar_t* data;
-            size_t         size;
-            enum : size_t { npos = static_cast<size_t>(-1) };
-
-            wstring_view(const wchar_t* d, size_t n) : data(d), size(n) {}
-
-            bool starts_with(const wchar_t* prefix) const noexcept {
-                const size_t plen = wcslen(prefix);
-                if (size < plen) return false;
-                return wcsncmp(data, prefix, plen) == 0;
-            }
-
-            size_t find(const wchar_t* needle) const noexcept {
-                const wchar_t* p = wcsstr(data, needle);
-                if (!p) return npos;
-                const size_t idx = static_cast<size_t>(p - data);
-                const size_t nlen = wcslen(needle);
-                return (idx + nlen <= size) ? idx : npos;
-            }
-
-            wstring_view substr(size_t pos, size_t count) const {
-                if (pos >= size)
-                    return wstring_view(nullptr, 0);
-
-                const size_t avail = size - pos;
-                const size_t len = (count < avail ? count : avail);
-                return wstring_view(data + pos, len);
-            }
-        };
-
-        // hex-digit test
-        auto is_hex = [](wchar_t c) noexcept {
-            return (c >= L'0' && c <= L'9')
-                || (c >= L'A' && c <= L'F');
+        auto is_hex = [](wchar_t c) noexcept -> bool {
+            return (c >= L'0' && c <= L'9') || (c >= L'A' && c <= L'F');
         };
 
         // enumerate all DISPLAY devices
-        const HDEVINFO hDevInfo = SetupDiGetClassDevsW(
-            &GUID_DEVCLASS_DISPLAY, nullptr, nullptr, DIGCF_PRESENT);
+        const HDEVINFO hDevInfo = SetupDiGetClassDevsW(&GUID_DEVCLASS_DISPLAY, nullptr, nullptr, DIGCF_PRESENT);
         if (hDevInfo == INVALID_HANDLE_VALUE) {
-            debug("ACPI_SIGNATURE: No display device detected");
+            debug(L"ACPI_SIGNATURE: No display device detected");
             return true;
         }
-        SP_DEVINFO_DATA devInfo = {};
+
+        SP_DEVINFO_DATA devInfo;
+        ZeroMemory(&devInfo, sizeof(devInfo));
         devInfo.cbSize = sizeof(devInfo);
         const DEVPROPKEY key = DEVPKEY_Device_LocationPaths;
 
-        // baremetal tokens
+        // baremetal tokens (case-sensitive to preserve original behavior)
         static constexpr const wchar_t* excluded_tokens[] = {
             L"GFX",
             L"IGD", L"IGFX", L"IGPU",
@@ -8380,9 +8414,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             L"PCIROOT", L"PNP0A03", L"PNP0A08",
             L"PCH", L"PXS", L"PEG", L"PEGP"
         };
-        auto has_excluded_token = [&](const std::wstring& s) noexcept {
-            for (auto tok : excluded_tokens) {
-                if (s.find(tok) != std::wstring::npos) return true;
+
+        auto has_excluded_token = [&](const wchar_t* s) noexcept -> bool {
+            if (!s || !*s) return false;
+            for (const wchar_t* tok : excluded_tokens) {
+                if (wcsstr(s, tok) != nullptr) return true;
             }
             return false;
         };
@@ -8390,12 +8426,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         for (DWORD idx = 0; SetupDiEnumDeviceInfo(hDevInfo, idx, &devInfo); ++idx) {
             DEVPROPTYPE propType = 0;
             DWORD requiredSize = 0;
-            // query size
-            SetupDiGetDevicePropertyW(hDevInfo, &devInfo, &key, &propType,
-                nullptr, 0, &requiredSize, 0);
+
+            // query required size (bytes)
+            SetupDiGetDevicePropertyW(hDevInfo, &devInfo, &key, &propType, nullptr, 0, &requiredSize, 0);
             if (GetLastError() != ERROR_INSUFFICIENT_BUFFER || requiredSize == 0) {
                 if (GetLastError() == ERROR_NOT_FOUND) {
-                    debug("ACPI_SIGNATURE: No dedicated display/GPU detected");
+                    debug(L"ACPI_SIGNATURE: No dedicated display/GPU detected");
                     SetupDiDestroyDeviceInfoList(hDevInfo);
                     return false;
                 }
@@ -8404,87 +8440,70 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
             }
 
-            // fetch multi-sz
+            // fetch buffer (multi-sz)
             std::vector<BYTE> buffer(requiredSize);
             if (!SetupDiGetDevicePropertyW(hDevInfo, &devInfo, &key, &propType,
-                buffer.data(), requiredSize,
-                &requiredSize, 0)) continue;
+                buffer.data(), requiredSize, &requiredSize, 0))
+            {
+                continue;
+            }
 
-            // split paths
             const wchar_t* ptr = reinterpret_cast<const wchar_t*>(buffer.data());
-            std::vector<std::wstring> paths;
-            while (*ptr) {
-                size_t len = wcslen(ptr);
-                paths.emplace_back(ptr, len);
-                ptr += (len + 1);
-            }
+            // number of wchar_t slots in buffer
+            const size_t total_wchars = requiredSize / sizeof(wchar_t);
+            const wchar_t* buf_end = ptr + (total_wchars ? total_wchars : 0);
 
-        #ifdef __VMAWARE_DEBUG__
-            for (auto& wstr : paths) {
-                debug("ACPI_SIGNATURE: ", wstr);
+#ifdef __VMAWARE_DEBUG__
+            for (const wchar_t* p = ptr; p < buf_end && *p; p += (wcslen(p) + 1)) {
+                debug(L"ACPI_SIGNATURE: ", p);
             }
-        #endif
+#endif
 
             static const wchar_t acpiPrefix[] = L"#ACPI(S";
-            bool foundQemu = false;
+            static const wchar_t acpiParen[] = L"ACPI(";
 
-            for (auto& wstr : paths) {
-                if (has_excluded_token(wstr)) {
-                    debug("ACPI_SIGNATURE: Valid signature -> ", wstr);
+            // First pass: QEMU-style "#ACPI(Sxx...)" and generic "ACPI(Sxx)"
+            for (const wchar_t* p = ptr; p < buf_end && *p; p += (wcslen(p) + 1)) {
+                if (has_excluded_token(p)) {
+                    debug(L"ACPI_SIGNATURE: Valid signature -> ", p);
                     continue;
                 }
 
-                wstring_view vw(wstr.c_str(), wstr.size());
+                // search for "#ACPI(S"
+                const wchar_t* search = p;
+                while (true) {
+                    const wchar_t* found = wcsstr(search, acpiPrefix);
+                    if (!found) break;
 
-                // 1) Sxx[_] slots (#ACPI(S<bus><slot>[_]))
-                size_t pos = vw.find(acpiPrefix);
-                while (pos != wstring_view::npos) {
-                    if (pos + 8 < vw.size) {
-                        const wchar_t b = vw.data[pos + 7];
-                        const wchar_t s = vw.data[pos + 8];
+                    // after "#ACPI(S" we expect two hex chars
+                    const wchar_t* hexpos = found + wcslen(acpiPrefix); // first hex char
+                    if (hexpos && hexpos[0] && hexpos[1]) {
+                        wchar_t b = hexpos[0];
+                        wchar_t s = hexpos[1];
                         if (is_hex(b) && is_hex(s)) {
-                            // optional underscore before ')'
-                            size_t end_pos = pos + 9;
-                            if ((end_pos < vw.size && vw.data[end_pos] == L'_')
-                                || (vw.data[end_pos] == L')')) {
-                                foundQemu = true;
-                                break;
+                            const wchar_t after = hexpos[2]; // may be '_' or ')'
+                            if (after == L'_' || after == L')') {
+                                SetupDiDestroyDeviceInfoList(hDevInfo);
+                                return core::add(brands::QEMU);
                             }
                         }
                     }
-                    // search further
-                    const size_t next = pos + 1;
-                    const auto sub = vw.substr(next, vw.size - next);
-                    const size_t rel = sub.find(acpiPrefix);
-                    pos = (rel == wstring_view::npos ? wstring_view::npos : next + rel);
-                }
-                if (foundQemu) {
-                    SetupDiDestroyDeviceInfoList(hDevInfo);
-                    return core::add(brands::QEMU);
+                    search = found + 1;
                 }
 
-                // 2) detect any other ACPI(Sxx) segments (hex digits only)
-                const wchar_t paren[] = L"ACPI(";
-                size_t scan = 0;
-                wstring_view local_vw = vw;
+                // search for "ACPI(" then check for "S" + two hex digits
+                search = p;
                 while (true) {
-                    const size_t p = local_vw.find(paren);
-                    if (p == wstring_view::npos) break;
-                    const size_t start = p + wcslen(paren);
-                    const size_t end = local_vw.find(L")");
-                    if (end != wstring_view::npos && end > start + 1) {
-                        // ensure S + two hex digits
-                        const wchar_t c0 = local_vw.data[start];
-                        const wchar_t c1 = local_vw.data[start + 1];
-                        const wchar_t c2 = local_vw.data[start + 2];
-                        if (c0 == L'S' && is_hex(c1) && is_hex(c2)) {
+                    const wchar_t* found = wcsstr(search, acpiParen);
+                    if (!found) break;
+                    const wchar_t* start = found + wcslen(acpiParen); // char after '('
+                    if (start && start[0] && start[1] && start[2]) {
+                        if (start[0] == L'S' && is_hex(start[1]) && is_hex(start[2])) {
                             SetupDiDestroyDeviceInfoList(hDevInfo);
                             return core::add(brands::QEMU);
                         }
                     }
-                    // continue after this pos
-                    scan = p + 1;
-                    local_vw = local_vw.substr(scan, local_vw.size - scan);
+                    search = found + 1;
                 }
             }
 
@@ -8493,13 +8512,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 L"#ACPI(VMOD)", L"#ACPI(VMBS)", L"#VMBUS(", L"#VPCI("
             };
 
-            for (auto& wstr : paths) {
-                if (has_excluded_token(wstr)) {
-                    continue;
-                }
+            for (const wchar_t* p = ptr; p < buf_end && *p; p += (wcslen(p) + 1)) {
+                if (has_excluded_token(p)) continue;
 
-                for (auto sig : vm_signatures) {
-                    if (wstr.find(sig) != std::wstring::npos) {
+                for (const wchar_t* sig : vm_signatures) {
+                    if (wcsstr(p, sig) != nullptr) {
                         SetupDiDestroyDeviceInfoList(hDevInfo);
                         return core::add(brands::HYPERV);
                     }
@@ -9388,102 +9405,130 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::EDID
      */
     [[nodiscard]] static bool edid() {
-        auto decodeManufacturer = [](const BYTE* edid) -> std::string {
-            const u16 word = static_cast<u16>((edid[8] << 8) | edid[9]);
-
-            char m[4] = { 0, 0, 0, 0 };
-            const u8 c1 = static_cast<u8>((word >> 10) & 0x1F);
-            const u8 c2 = static_cast<u8>((word >> 5) & 0x1F);
-            const u8 c3 = static_cast<u8>((word >> 0) & 0x1F);
-
-            if (c1 >= 1 && c1 <= 26) m[0] = static_cast<char>('A' + c1 - 1); else m[0] = '?';
-            if (c2 >= 1 && c2 <= 26) m[1] = static_cast<char>('A' + c2 - 1); else m[1] = '?';
-            if (c3 >= 1 && c3 <= 26) m[2] = static_cast<char>('A' + c3 - 1); else m[2] = '?';
-
-            return std::string(m);
+        auto decodeManufacturerFast = [](const BYTE* edid) __declspec(noinline) -> std::array<char, 4> {
+            // edid[8..9] big-endian word
+            const uint16_t word = static_cast<uint16_t>((edid[8] << 8) | edid[9]);
+            const uint8_t c1 = static_cast<uint8_t>((word >> 10) & 0x1F);
+            const uint8_t c2 = static_cast<uint8_t>((word >> 5) & 0x1F);
+            const uint8_t c3 = static_cast<uint8_t>((word >> 0) & 0x1F);
+            std::array<char, 4> out{ {'?','?','?','\0'} };
+            if (c1 >= 1 && c1 <= 26) out[0] = static_cast<char>('A' + c1 - 1);
+            if (c2 >= 1 && c2 <= 26) out[1] = static_cast<char>('A' + c2 - 1);
+            if (c3 >= 1 && c3 <= 26) out[2] = static_cast<char>('A' + c3 - 1);
+            return out;
         };
 
-        auto isThreeUpperAlpha = [](const std::string& s) -> bool {
-            if (s.size() != 3) return false;
-            for (char c : s) if (c < 'A' || c > 'Z') return false;
-            return true;
+        auto isThreeUpperAlphaFast = [](const std::array<char, 4>& m) -> bool {
+            return (m[0] >= 'A' && m[0] <= 'Z') &&
+                (m[1] >= 'A' && m[1] <= 'Z') &&
+                (m[2] >= 'A' && m[2] <= 'Z');
         };
 
-        auto descHasUpperPrefixMonitor = [](const std::string& desc) -> bool {
-            if (desc.empty()) return false;
-            const std::vector<std::string> tails = { " Monitor", " Display" };
-            for (const auto& t : tails) {
-                const size_t pos = desc.find(t);
-                if (pos == std::string::npos || pos == 0) continue;
-                size_t start = pos;
-                while (start > 0 && std::isupper(static_cast<u8>(desc[start - 1]))) --start;
-                const size_t len = pos - start;
-                if (len >= 4 && len <= 8) {
-                    bool ok = true;
-                    for (size_t i = start; i < pos; ++i) {
-                        if (!std::isupper(static_cast<u8>(desc[i]))) { ok = false; break; }
+        auto descHasUpperPrefixMonitorFast = [](const char* desc) -> bool {
+            if (!desc || desc[0] == '\0') return false;
+            // Two tails to search: " Monitor" and " Display" (leading space)
+            const char* tails[] = { " Monitor", " Display" };
+            for (const char* tail : tails) {
+                const char* p = strstr(desc, tail);
+                while (p) {
+                    // ensure not at position 0
+                    if (p != desc) {
+                        // walk backwards counting uppercase letters
+                        const char* start = p;
+                        size_t len = 0;
+                        while (start > desc) {
+                            --start;
+                            unsigned char uc = static_cast<unsigned char>(*start);
+                            if (uc >= 'A' && uc <= 'Z') {
+                                ++len;
+                                if (len > 8) break;
+                            }
+                            else break;
+                        }
+                        if (len >= 4 && len <= 8) {
+                            // verify all are uppercase (we already did while walking)
+                            return true;
+                        }
                     }
-                    if (ok) return true;
+                    p = strstr(p + 1, tail);
                 }
             }
             return false;
         };
 
-        auto getDeviceProperty = [](HDEVINFO devInfo, SP_DEVINFO_DATA& devData, DWORD propId) -> std::string {
-            CHAR buf[512]{};
+        auto getDevicePropertyA = [](HDEVINFO devInfo, SP_DEVINFO_DATA& devData, DWORD propId, std::string& out) -> bool {
+            char small[512] = {};
             DWORD needed = 0;
-            if (SetupDiGetDeviceRegistryPropertyA(devInfo, &devData, propId, nullptr, (PBYTE)buf, sizeof(buf), &needed)) {
-                return std::string(buf);
+            if (SetupDiGetDeviceRegistryPropertyA(devInfo, &devData, propId, nullptr, reinterpret_cast<PBYTE>(small), sizeof(small), &needed)) {
+                out.assign(small);
+                return true;
             }
-            if (GetLastError() == ERROR_INSUFFICIENT_BUFFER && needed < 65536) {
-                std::vector<BYTE> big(needed);
-                if (SetupDiGetDeviceRegistryPropertyA(devInfo, &devData, propId, nullptr, big.data(), (DWORD)big.size(), &needed)) {
-                    return std::string(reinterpret_cast<char*>(big.data()));
+            const DWORD err = GetLastError();
+            if (err == ERROR_INSUFFICIENT_BUFFER && needed > 0 && needed < 65536) {
+                std::vector<char> big(needed + 1);
+                if (SetupDiGetDeviceRegistryPropertyA(devInfo, &devData, propId, nullptr, reinterpret_cast<PBYTE>(big.data()), static_cast<DWORD>(big.size()), &needed)) {
+                    big[big.size() - 1] = '\0';
+                    out.assign(big.data());
+                    return true;
                 }
             }
-            return std::string();
+            out.clear();
+            return false;
         };
 
         const HDEVINFO devInfo = SetupDiGetClassDevs(&GUID_DEVCLASS_MONITOR, nullptr, nullptr, DIGCF_PRESENT);
-        if (devInfo == INVALID_HANDLE_VALUE) {
-            return false;
-        }
+        if (devInfo == INVALID_HANDLE_VALUE) return false;
 
         SP_DEVINFO_DATA devData{};
         devData.cbSize = sizeof(devData);
+
         for (DWORD index = 0; SetupDiEnumDeviceInfo(devInfo, index, &devData); ++index) {
+            // open registry key for device
             const HKEY hDevKey = SetupDiOpenDevRegKey(devInfo, &devData, DICS_FLAG_GLOBAL, 0, DIREG_DEV, KEY_READ);
             if (hDevKey == INVALID_HANDLE_VALUE) continue;
 
             BYTE buffer[2048];
-            DWORD bufSize = sizeof(buffer);
+            DWORD bufSize = static_cast<DWORD>(sizeof(buffer));
             const LONG rc = RegQueryValueExA(hDevKey, "EDID", nullptr, nullptr, buffer, &bufSize);
             RegCloseKey(hDevKey);
-
             if (rc != ERROR_SUCCESS || bufSize < 128) continue;
 
             const BYTE* edid = buffer;
+            // standard header
+            if (!(edid[0] == 0x00 && edid[1] == 0xFF && edid[2] == 0xFF && edid[3] == 0xFF &&
+                edid[4] == 0xFF && edid[5] == 0xFF && edid[6] == 0xFF && edid[7] == 0x00)) {
+                continue;
+            }
 
-            const bool headerOk = (edid[0] == 0x00 && edid[1] == 0xFF && edid[2] == 0xFF &&
-                edid[3] == 0xFF && edid[4] == 0xFF && edid[5] == 0xFF &&
-                edid[6] == 0xFF && edid[7] == 0x00);
-            if (!headerOk) continue;
-
-            const std::string manufacturer = decodeManufacturer(edid);
-            const BYTE yearOffset = edid[0x11]; // 1990 + yearOffset
-
-            const std::string friendly = getDeviceProperty(devInfo, devData, SPDRP_FRIENDLYNAME);
-            const std::string devdesc = getDeviceProperty(devInfo, devData, SPDRP_DEVICEDESC);
-            const std::string descriptor = !friendly.empty() ? friendly : devdesc;
-
+            const uint8_t yearOffset = edid[0x11]; // 1990 + yearOffset
+            // those don't need device properties
+            const auto manufacturer = decodeManufacturerFast(edid);
+            const bool vendor_nonstandard = !isThreeUpperAlphaFast(manufacturer);
             const bool year_in_range = (yearOffset >= 25 && yearOffset <= 35); // 2015..2025
-            const bool vendor_nonstandard = !isThreeUpperAlpha(manufacturer);
-            const bool desc_has_prefix_monitor = descHasUpperPrefixMonitor(descriptor);
 
-            if (year_in_range && (vendor_nonstandard || desc_has_prefix_monitor)) {
+            if (!year_in_range) continue;
+
+            if (vendor_nonstandard) {
                 SetupDiDestroyDeviceInfoList(devInfo);
                 return true;
             }
+
+            std::string friendly, devdesc;
+            // query Friendly name first cuz more likely to be present
+            getDevicePropertyA(devInfo, devData, SPDRP_FRIENDLYNAME, friendly);
+            if (friendly.empty()) getDevicePropertyA(devInfo, devData, SPDRP_DEVICEDESC, devdesc);
+
+            const char* descriptor = nullptr;
+            if (!friendly.empty()) descriptor = friendly.c_str();
+            else if (!devdesc.empty()) descriptor = devdesc.c_str();
+
+            if (descriptor && descHasUpperPrefixMonitorFast(descriptor)) {
+                SetupDiDestroyDeviceInfoList(devInfo);
+                return true;
+            }
+
+            devData = {};
+            devData.cbSize = sizeof(devData);
         }
 
         SetupDiDestroyDeviceInfoList(devInfo);
@@ -9870,7 +9915,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             "NtSetContextThread",
             "NtResumeThread",
             "NtWaitForSingleObject",
-            "NtClose"
+            "NtClose",
+            "NtProtectVirtualMemory"
         };
         void* funcs[ARRAYSIZE(names)] = {};
         util::get_function_address(ntdll, names, funcs, ARRAYSIZE(names));
@@ -9886,6 +9932,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         using NtResumeThread_t = NTSTATUS(__stdcall*)(HANDLE, PULONG);
         using NtWaitForSingleObject_t = NTSTATUS(__stdcall*)(HANDLE, BOOLEAN, PLARGE_INTEGER);
         using NtClose_t = NTSTATUS(__stdcall*)(HANDLE);
+        using NtProtectVirtualMemory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG, PULONG);
 
         const auto pNtAllocateVirtualMemory = reinterpret_cast<NtAllocateVirtualMemory_t>(funcs[0]);
         const auto pNtFreeVirtualMemory = reinterpret_cast<NtFreeVirtualMemory_t>(funcs[1]);
@@ -9898,11 +9945,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const auto pNtResumeThread = reinterpret_cast<NtResumeThread_t>(funcs[8]);
         const auto pNtWaitForSingleObject = reinterpret_cast<NtWaitForSingleObject_t>(funcs[9]);
         const auto pNtClose = reinterpret_cast<NtClose_t>(funcs[10]);
+        const auto pNtProtectVirtualMemory = reinterpret_cast<NtProtectVirtualMemory_t>(funcs[11]);
 
         if (!pNtAllocateVirtualMemory || !pNtFreeVirtualMemory || !pNtFlushInstructionCache ||
             !pRtlAddVectoredExceptionHandler || !pRtlRemoveVectoredExceptionHandler ||
             !pNtCreateThreadEx || !pNtGetContextThread || !pNtSetContextThread ||
-            !pNtResumeThread || !pNtWaitForSingleObject || !pNtClose) {
+            !pNtResumeThread || !pNtWaitForSingleObject || !pNtClose || !pNtProtectVirtualMemory) {
             return false;
         }
 
@@ -9919,14 +9967,28 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         PVOID execBase = nullptr;
         SIZE_T allocSize = codeSize;
-        st = pNtAllocateVirtualMemory(hCurrentProcess, &execBase, 0, &allocSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+        st = pNtAllocateVirtualMemory(hCurrentProcess, &execBase, 0, &allocSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
         if (st != 0 || !execBase) {
             SIZE_T tmp = controlSize;
             pNtFreeVirtualMemory(hCurrentProcess, &controlBase, &tmp, MEM_RELEASE);
             return false;
         }
+
         unsigned char* dst = reinterpret_cast<unsigned char*>(execBase);
         for (SIZE_T i = 0; i < codeSize; ++i) dst[i] = codeBytes[i];
+
+        ULONG oldProtect = 0;
+        SIZE_T protectSize = allocSize; 
+        PVOID protectBase = execBase;
+        st = pNtProtectVirtualMemory(hCurrentProcess, &protectBase, &protectSize, PAGE_EXECUTE_READ, &oldProtect);
+        if (st != 0) {
+            SIZE_T tmpExec = allocSize;
+            pNtFreeVirtualMemory(hCurrentProcess, &execBase, &tmpExec, MEM_RELEASE);
+            SIZE_T tmpControl = controlSize;
+            pNtFreeVirtualMemory(hCurrentProcess, &controlBase, &tmpControl, MEM_RELEASE);
+            return false;
+        }
+
         pNtFlushInstructionCache(hCurrentProcess, execBase, codeSize);
 
         // local static pointer to control slot so lambda can access a stable address
