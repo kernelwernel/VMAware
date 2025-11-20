@@ -1,16 +1,22 @@
 <p align="center">
-<img src="assets/banner.jpg" align="center" width="500" title="VMAware">
-<br>
-<img align="center" src="https://img.shields.io/github/actions/workflow/status/kernelwernel/VMAware/cmake-multi-platform.yml">
-<img align="center" src="https://img.shields.io/github/downloads/kernelwernel/VMAware/total">
-<img align="center" src="https://img.shields.io/badge/License-MIT-yellow.svg">
-<a href="https://deepwiki.com/kernelwernel/VMAware"><img align="center" src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
-<a href="https://github.com/kernelwernel/VMAware/actions/workflows/code_ql_analysis.yml">
-  <img align="center" src="https://github.com/kernelwernel/VMAware/actions/workflows/code_ql_analysis.yml/badge.svg" alt="CodeQL Analysis">
-</a>
+   <img src="assets/banner.jpg" align="center" width="500" title="VMAware">
+   <br>
+   <img align="center" src="https://img.shields.io/github/actions/workflow/status/kernelwernel/VMAware/cmake-multi-platform.yml">
+   <img align="center" src="https://img.shields.io/github/downloads/kernelwernel/VMAware/total">
+   <img align="center" src="https://img.shields.io/badge/License-MIT-yellow.svg">
+   <a href="https://deepwiki.com/kernelwernel/VMAware"><img align="center" src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
+   <a href="https://github.com/kernelwernel/VMAware/actions/workflows/code_ql_analysis.yml">
+     <img align="center" src="https://github.com/kernelwernel/VMAware/actions/workflows/code_ql_analysis.yml/badge.svg" alt="CodeQL Analysis">
+   </a>
+
+   <div align="center">
+      <b>VMAware</b> (VM + Aware) 是一个跨平台的C++虚拟机检测库。
+      <br>
+      <a href="README_CN.md">English </a>  |  <a href="README_FR.md">Français 🇫🇷</a>
+   </div>
 </p>
 
-**VMAware** (VM + Aware) 是一个跨平台的C++虚拟机检测库。
+
 
 - - -
 
@@ -274,6 +280,7 @@ endif()
 - [Teselka](https://github.com/Teselka)
 - [Kyun-J](https://github.com/Kyun-J)
 - [luukjp](https://github.com/luukjp)
+- [Randark](https://github.com/Randark-JMT)
 
 ## 法律声明 📜
 
