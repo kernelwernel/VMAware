@@ -1,16 +1,20 @@
 <p align="center">
-<img src="assets/banner.jpg" align="center" width="500" title="VMAware">
-<br>
-<img align="center" src="https://img.shields.io/github/actions/workflow/status/kernelwernel/VMAware/cmake-multi-platform.yml">
-<img align="center" src="https://img.shields.io/github/downloads/kernelwernel/VMAware/total">
-<img align="center" src="https://img.shields.io/github/license/kernelwernel/VMAware">
-<a href="https://deepwiki.com/kernelwernel/VMAware"><img align="center" src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
-<a href="https://github.com/kernelwernel/VMAware/actions/workflows/code_ql_analysis.yml">
-  <img align="center" src="https://github.com/kernelwernel/VMAware/actions/workflows/code_ql_analysis.yml/badge.svg" alt="CodeQL Analysis">
-</a>
-</p>
+   <img src="assets/banner.jpg" align="center" width="500" title="VMAware">
+   <br>
+   <img align="center" src="https://img.shields.io/github/actions/workflow/status/kernelwernel/VMAware/cmake-multi-platform.yml">
+   <img align="center" src="https://img.shields.io/github/downloads/kernelwernel/VMAware/total">
+   <img align="center" src="https://img.shields.io/badge/License-MIT-yellow.svg">
+   <a href="https://deepwiki.com/kernelwernel/VMAware"><img align="center" src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
+   <a href="https://github.com/kernelwernel/VMAware/actions/workflows/code_ql_analysis.yml">
+     <img align="center" src="https://github.com/kernelwernel/VMAware/actions/workflows/code_ql_analysis.yml/badge.svg" alt="CodeQL Analysis">
+   </a>
 
-**VMAware** (VM + Aware) is a cross-platform C++ library for virtual machine detection.
+   <div align="center">
+      <b>VMAware</b> (VM + Aware) is a cross-platform C++ library for virtual machine detection.
+      <br>
+      <a href="README_CN.md">中文 🇨🇳</a> | <a href="README_FR.md">Français 🇫🇷</a>
+   </div>
+</p>
 
 - - -
 
@@ -33,10 +37,7 @@ The library is:
 <br>
 
 > [!NOTE]
-> We are looking for Chinese translators. If you'd like to contribute with translating this README, feel free to give us a PR! Credit will be provided.
-
-
-<br>
+> We are looking for translators willing to translate this README into your native language if it isn't included. If you'd like to contribute, feel free to give us a PR! 
 
 
 ## Example 🧪
@@ -299,6 +300,7 @@ And if you found this project useful, a star would be appreciated :)
 - [Teselka](https://github.com/Teselka)
 - [Kyun-J](https://github.com/Kyun-J)
 - [luukjp](https://github.com/luukjp)
+- [Randark](https://github.com/Randark-JMT)
 
 <br>
 
