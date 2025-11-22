@@ -54,12 +54,12 @@
  * ============================== SECTIONS ==================================
  * - enums for publicly accessible techniques  => line 534
  * - struct for internal cpu operations        => line 717
- * - struct for internal memoization           => line 1149
- * - struct for internal utility functions     => line 1279
- * - struct for internal core components       => line 10136
- * - start of VM detection technique list      => line 2076
- * - start of public VM detection functions    => line 10629
- * - start of externally defined variables     => line 11610
+ * - struct for internal memoization           => line 1150
+ * - struct for internal utility functions     => line 1280
+ * - struct for internal core components       => line 10141
+ * - start of VM detection technique list      => line 2077
+ * - start of public VM detection functions    => line 10634
+ * - start of externally defined variables     => line 11615
  *
  *
  * ============================== EXAMPLE ===================================
@@ -891,6 +891,7 @@ private:
                 }
             }
 
+            // exposed by PPM/PEP framework and ACPI (likely _PSS, _CST and _PCT)
             const EVT_HANDLE hQuery = EvtQuery(nullptr, L"System",LR"(*[System[Provider[@Name='Microsoft-Windows-Kernel-Processor-Power'] and EventID=55]])", EvtQueryReverseDirection);
             if (!hQuery) return 0;
             LPCWSTR props[] = { L"Event/EventData/Data[@Name='Number']", L"Event/EventData/Data[@Name='NominalFrequency']" };
@@ -940,7 +941,7 @@ private:
                     if (propCount < 2) continue;
                     EVT_VARIANT* v = reinterpret_cast<EVT_VARIANT*>(buf.data());
                     uint64_t num = to_u64(v[0]);
-                    if (num != 0) continue; // only processor Number == 0 because thats what we we will on VM::TIMER and other functions
+                    if (num != 0) continue; // only processor Number == 0 because thats where we will pin our thread on VM::TIMER and other functions
                     uint64_t nominal = to_u64(v[1]);
                     if (nominal != 0) { EvtClose(hCtx); EvtClose(hQuery); return static_cast<uint32_t>(nominal); }
                 }
@@ -3298,22 +3299,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             { "i9-9960X", 32 },
             { "i9-9980HK", 16 },
             { "i9-9980XE", 36 },
-            { "i9-9990XE", 28 },
-            { "i9-10920X", 24 },
-            { "i9-10940X", 28 },
-            { "i9-10980XE", 36 },
-            { "i9-10900", 20 },
-            { "i9-10900T", 20 },
-            { "i9-10900K", 20 },
-            { "i9-10900KF", 20 },
-            { "i9-11900K", 16 },
-            { "i9-11900KF", 16 },
-            { "i9-12900K", 24 },
-            { "i9-12900KF", 24 },
-            { "i9-13900K", 32 },
-            { "i9-13900KF", 32 },
-            { "i9-14900K", 32 },
-            { "i9-14900KF", 32 }
+            { "i9-9990XE", 28 }
         };
 
         constexpr size_t thread_database_count = sizeof(thread_database) / sizeof(thread_database[0]);
@@ -4411,14 +4397,17 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return (sum + N / 2) / N;
         };
 
-        const u64 avg = sample_avg();
+        u64 avg = sample_avg();
         debug("TIMER: Average latency -> ", avg, " cycles");
-
-        if (avg >= cycleThreshold) {
-            const u64 avg2 = sample_avg();
-            debug("TIMER: 2nd pass average -> ", avg2, " cycles");
-            if (avg2 >= cycleThreshold) return true; // some CPUs like Intel's Emerald Rapids have much more cycles when executing CPUID than average, we should accept a high threshold
+        if (avg <= 20) {
+            return true;
         }
+        else if (avg >= cycleThreshold) {
+            avg = sample_avg();
+            debug("TIMER: 2nd pass average -> ", avg, " cycles");
+            if (avg >= cycleThreshold) return true; // some CPUs like Intel's Emerald Rapids have much more cycles when executing CPUID than average, we should accept a high threshold
+        }
+
         #if (WINDOWS)
             // Case B - Hypervisor with RDTSC patch + useplatformclock=true
             LARGE_INTEGER freq;
@@ -4440,15 +4429,18 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             debug("TIMER: Current CPU base speed -> ", tscMHz, " MHz");
 
-            if (tscMHz < 800.0) return true;
+            if (tscMHz < 800.0 || tscMHz >= 7000) { // i9-14900KS has 6.2 GHz; 9 9950X3D has 5.7 GHz
+                debug("TIMER: TSC is spoofed");
+                return true;
+            }
 
-            const u32 baseMHz = cpu::get_cpu_base_speed(); // wont probably work reliably on AMD, but its more reliable than fetching from SMBIOS
+            const u32 baseMHz = cpu::get_cpu_base_speed(); // wont work reliably on AMD, but its more reliable than fetching from SMBIOS
 
             if (baseMHz == 0) {
-                debug("TIMER: Processor's true base speed not available");
+                debug("TIMER: Processor's true base speed not available for this CPU");
             }
             else if (baseMHz < 800.0) {
-                debug("TIMER: Processor's true base speed is too low");
+                debug("TIMER: CPUID seems to be intercepted by an hypervisor");
                 return true;
             }
             else {
@@ -4484,6 +4476,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             volatile fn_t rd_ptr = +rd_lambda;    // +lambda forces conversion to function ptr, so it won't be inlined, we need this to prevent some optimizatons by the compiler
             volatile fn_t xor_ptr = +xor_lambda;
 
+            // first measurement
             ULONG64 beforeqit = 0;
             QueryInterruptTime(&beforeqit); // the kernel routine that backs up this api runs at CLOCK_LEVEL(13), only preempted by IPI, POWER_LEVEL and NMIs
             const ULONG64 beforetsc = __rdtsc();
@@ -4497,8 +4490,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             QueryInterruptTime(&afterqit);
             const ULONG64 aftertsc = __rdtsc();
 
-            const ULONG64 firstRatio = (aftertsc - beforetsc) / (afterqit - beforeqit);
+            const ULONG64 dtsc1 = aftertsc - beforetsc;
+            const ULONG64 dtq1 = afterqit - beforeqit;
+            const ULONG64 firstRatio = (dtq1 != 0) ? (dtsc1 / dtq1) : 0ULL;
 
+            // second measurement
             ULONG64 beforeqit2 = 0;
             QueryInterruptTime(&beforeqit2);
             const ULONG64 beforetsc2 = __rdtsc();
@@ -4506,16 +4502,24 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             for (ULONG64 x = 0; x < count_second; ++x) {
                 dummy = xor_ptr(); // this loop won't be intercepted, it never switches to kernel-mode
             }
-
             UNUSED(dummy);
+
             ULONG64 afterqit2 = 0;
             QueryInterruptTime(&afterqit2);
             const ULONG64 aftertsc2 = __rdtsc();
 
-            const ULONG64 secondRatio = (aftertsc2 - beforetsc2) / (afterqit2 - beforeqit2);
+            const ULONG64 dtsc2 = aftertsc2 - beforetsc2;
+            const ULONG64 dtq2 = afterqit2 - beforeqit2;
+            const ULONG64 secondRatio = (dtq2 != 0) ? (dtsc2 / dtq2) : 0ULL;
 
-            const ULONG64 diff = firstRatio - secondRatio;
-            const ULONG64 difference = (diff ^ ((LONG64)diff >> 63)) - ((LONG64)diff >> 63);
+            /* Branchless absolute difference is like:
+               mask = -(uint64_t)(firstRatio < secondRatio) -> 0 or 0xFFFFFFFFFFFFFFFF
+               diff  = firstRatio - secondRatio
+               abs   = (diff ^ mask) - mask
+            */
+            const ULONG64 diffMask = (ULONG64)0 - (ULONG64)(firstRatio < secondRatio);  // all-ones if first<second, else 0
+            const ULONG64 diff = firstRatio - secondRatio;                              // unsigned subtraction
+            const ULONG64 difference = (diff ^ diffMask) - diffMask;                    // absolute difference, unsigned
 
             debug("TIMER: RDTSC -> ", firstRatio, ", QIT -> ", secondRatio, ", Ratio: ", difference);
 
@@ -4528,7 +4532,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 );
             }             
 
-            if (difference > 25) {
+            if (difference >= 30) {
+                debug("TIMER: An hypervisor has been detected intercepting RDTSC");
                 return true; // both ratios will always differ if a RDTSC trap is present, since the hypervisor can't account for the XOR/NOP loop
             }
             // TLB flushes or side channel cache attacks are not even tried due to how ineffective they are against stealthy hypervisors
@@ -11840,7 +11845,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         std::make_pair(VM::MAC_SYS, VM::core::technique(100, VM::mac_sys)),
     #endif
     
-    std::make_pair(VM::TIMER, VM::core::technique(55, VM::timer)),
+    std::make_pair(VM::TIMER, VM::core::technique(100, VM::timer)),
     std::make_pair(VM::INTEL_THREAD_MISMATCH, VM::core::technique(50, VM::intel_thread_mismatch)),
     std::make_pair(VM::AMD_THREAD_MISMATCH, VM::core::technique(50, VM::amd_thread_mismatch)),
     std::make_pair(VM::XEON_THREAD_MISMATCH, VM::core::technique(50, VM::xeon_thread_mismatch)),
