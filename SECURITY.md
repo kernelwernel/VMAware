@@ -16,29 +16,19 @@ If you discover a vulnerability in an unsupported version, please upgrade to the
 
 **Do not** open a public issue for security vulnerabilities.
 
-1. **Contact**: Submit your report via email to the maintainers at:
+**Contact**: Submit your report via email to the maintainers at:
 
-   ```
-   jeanruyv@gmail.com
-   ```
-2. **PGP Encryption**: Optionally, you can encrypt your message with our PGP key:
+```
+jeanruyv@gmail.com
+```
 
-   ```
-   -----BEGIN PGP PUBLIC KEY BLOCK-----
-   Version: Keybase OpenPGP v1.0.0
+**Information to Include**:
 
-   xsFNBGg... (truncated)
-   -----END PGP PUBLIC KEY BLOCK-----
-   ```
-
-   * You can find the full key at [KEYS.md](https://github.com/kernelwernel/VMAware/blob/main/KEYS.md).
-3. **Information to Include**:
-
-   * A clear description of the vulnerability.
-   * Steps to reproduce (proof-of-concept if available).
-   * Impact assessment (what threats this poses).
-   * Affected versions (as per Section 1).
-   * Suggested remediation or patches if possible.
+* A clear description of the vulnerability.
+* Steps to reproduce (proof-of-concept if available).
+* Impact assessment (what threats this poses).
+* Affected versions (as per Section 1).
+* Suggested remediation or patches if possible.
 
 ---
 
