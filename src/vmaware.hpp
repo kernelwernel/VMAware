@@ -56,10 +56,10 @@
  * - struct for internal cpu operations        => line 717
  * - struct for internal memoization           => line 1149
  * - struct for internal utility functions     => line 1279
- * - struct for internal core components       => line 10115
+ * - struct for internal core components       => line 10136
  * - start of VM detection technique list      => line 2076
- * - start of public VM detection functions    => line 10608
- * - start of externally defined variables     => line 11589
+ * - start of public VM detection functions    => line 10629
+ * - start of externally defined variables     => line 11610
  *
  *
  * ============================== EXAMPLE ===================================
@@ -4528,7 +4528,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 );
             }             
 
-            if (difference > 10) {
+            if (difference > 25) {
                 return true; // both ratios will always differ if a RDTSC trap is present, since the hypervisor can't account for the XOR/NOP loop
             }
             // TLB flushes or side channel cache attacks are not even tried due to how ineffective they are against stealthy hypervisors
@@ -5866,24 +5866,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             ACPI_HEADER hdr;
             memcpy(&hdr, buf, sizeof(hdr));
 
-            // 3) spoofed AMD manufacturer
-            constexpr char man_short[] = "Advanced Micro Devices";
-            constexpr char man_full[] = "Advanced Micro Devices, Inc.";
-            const size_t short_len = sizeof(man_short) - 1;
-            const size_t full_len = sizeof(man_full) - 1;
-
-            const bool has_short = find_pattern(man_short, short_len);
-            const bool has_full = find_pattern(man_full, full_len);
-            if (has_short && !has_full) {
-                debug("FIRMWARE: Spoofed AMD manufacturer string detected");
-                return true;
-            }
-            else if (has_full && !cpu::is_amd()) {
-                debug("FIRMWARE: Spoofed AMD manufacturer");
-                return true;
-            }
-
-            // 4) FADT specific checks
+            // 3) FADT specific checks
             if (memcmp(hdr.Signature, "FACP", 4) == 0) {
                 if (hdr.Length > len) {
                     debug("FIRMWARE: declared header length larger than fetched length (declared ", hdr.Length, ", fetched ", len, ")");
@@ -9204,6 +9187,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         bool found_dbDefault = false, found_dbxDefault = false, found_KEKDefault = false, found_PKDefault = false;
         bool found_MORCL = false;
+        bool pk_checked = false;
 
         if (!util::is_admin()) return false;
 
@@ -9225,7 +9209,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 CloseHandle(hToken);
                 hToken = nullptr;
             }
-        };
+            };
 
         if (!LookupPrivilegeValue(nullptr, SE_SYSTEM_ENVIRONMENT_NAME, &luid)) { cleanup(); return false; }
 
@@ -9273,22 +9257,37 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        auto contains_redhat_ascii_ci = [](const std::vector<BYTE>& buf)->bool {
-            if (buf.empty()) return false;
-            std::string s(reinterpret_cast<const char*>(buf.data()), buf.size());
-            for (auto& c : s) c = static_cast<char>(::tolower(static_cast<unsigned char>(c)));
-            return s.find("red hat secure boot") != std::string::npos;
-        };
-        auto contains_redhat_utf16le_ci = [](const std::vector<BYTE>& buf)->bool {
-            if (buf.size() < 2 || (buf.size() % 2) != 0) return false;
-            const WCHAR* wptr = reinterpret_cast<const WCHAR*>(buf.data());
-            const size_t wlen = buf.size() / sizeof(WCHAR);
-            try {
-                std::wstring ws(wptr, wlen);
-                for (auto& wc : ws) wc = static_cast<wchar_t>(::towlower(wc));
-                return ws.find(L"red hat secure boot") != std::wstring::npos;
+        auto contains_redhat_ascii_ci = [](const BYTE* data, size_t len)->bool {
+            static const char pattern[] = "red hat secure boot";
+            const size_t plen = sizeof(pattern) - 1;
+            if (len < plen) return false;
+            for (size_t i = 0; i <= len - plen; ++i) {
+                bool ok = true;
+                for (size_t j = 0; j < plen; ++j) {
+                    char c = static_cast<char>(data[i + j]);
+                    unsigned char uc = static_cast<unsigned char>(c);
+                    char lc = static_cast<char>(::tolower(uc));
+                    if (lc != pattern[j]) { ok = false; break; }
+                }
+                if (ok) return true;
             }
-            catch (...) { return false; }
+            return false;
+        };
+
+        auto contains_redhat_utf16le_ci = [](const WCHAR* wdata, size_t wlen)->bool {
+            static const wchar_t pattern[] = L"red hat secure boot";
+            const size_t plen = (sizeof(pattern) / sizeof(pattern[0])) - 1;
+            if (wlen < plen) return false;
+            for (size_t i = 0; i <= wlen - plen; ++i) {
+                bool ok = true;
+                for (size_t j = 0; j < plen; ++j) {
+                    wchar_t wc = wdata[i + j];
+                    wchar_t lw = static_cast<wchar_t>(::towlower(wc));
+                    if (lw != pattern[j]) { ok = false; break; }
+                }
+                if (ok) return true;
+            }
+            return false;
         };
 
         PVARIABLE_NAME varName = reinterpret_cast<PVARIABLE_NAME>(resBuffer.data());
@@ -9305,8 +9304,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             const size_t nameOffset = offsetof(VARIABLE_NAME, Name);
             if (bufSize - offset < nameOffset) break;
 
-            // read name
-            std::wstring nameStr;
             size_t nameMaxBytes = 0;
             if (varName->NextEntryOffset != 0) {
                 const SIZE_T ne = static_cast<SIZE_T>(varName->NextEntryOffset);
@@ -9319,16 +9316,18 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 nameMaxBytes = bufSize - (offset + nameOffset);
             }
             if (nameMaxBytes > MAX_NAME_BYTES) nameMaxBytes = MAX_NAME_BYTES;
+
+            std::wstring_view nameView;
             if (nameMaxBytes >= sizeof(WCHAR)) {
                 const WCHAR* namePtr = reinterpret_cast<const WCHAR*>(reinterpret_cast<const BYTE*>(varName) + nameOffset);
                 const size_t maxChars = nameMaxBytes / sizeof(WCHAR);
                 size_t realChars = 0;
                 while (realChars < maxChars && namePtr[realChars] != L'\0') ++realChars;
                 if (realChars == maxChars) { cleanup(); return false; }
-                nameStr.assign(namePtr, realChars);
+                nameView = std::wstring_view(namePtr, realChars);
             }
 
-            auto guid_to_wstring = [](const GUID& g)->std::wstring {
+            auto format_guid = [](const GUID& g)->std::wstring {
                 wchar_t buf[40] = {};
                 int written = _snwprintf_s(buf, _countof(buf), _TRUNCATE,
                     L"{%08lX-%04hX-%04hX-%02X%02X-%02X%02X%02X%02X%02X%02X}",
@@ -9342,45 +9341,67 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 if (written <= 0) return std::wstring();
                 return std::wstring(buf);
             };
-            const std::wstring guidStr = guid_to_wstring(varName->VendorGuid);
-            if (guidStr.empty()) { cleanup(); return true; }
 
-            if (!nameStr.empty() && nameStr.rfind(L"VMM", 0) == 0) {
+            if (!nameView.empty() && nameView.rfind(L"VMM", 0) == 0) {
                 debug("NVRAM: Detected hypervisor signature");
                 cleanup();
                 return true;
             }
 
-            if (nameStr == L"dbDefault") found_dbDefault = true;
-            else if (nameStr == L"KEKDefault") found_KEKDefault = true;
-            else if (nameStr == L"PKDefault") found_PKDefault = true;
-            else if (nameStr == L"dbxDefault") found_dbxDefault = true;
+            if (nameView == L"dbDefault") found_dbDefault = true;
+            else if (nameView == L"KEKDefault") found_KEKDefault = true;
+            else if (nameView == L"PKDefault") found_PKDefault = true;
+            else if (nameView == L"dbxDefault") found_dbxDefault = true;
+            else if (nameView == L"MemoryOverwriteRequestControlLock") found_MORCL = true;
 
-            std::vector<BYTE> valueBuf;
-            const DWORD required = GetFirmwareEnvironmentVariableW(nameStr.c_str(), guidStr.c_str(), nullptr, 0);
-            if (required > 0) {
-                valueBuf.resize(required);
-                const DWORD readLen = GetFirmwareEnvironmentVariableW(nameStr.c_str(), guidStr.c_str(), valueBuf.data(), required);
-                if (readLen == 0) valueBuf.clear(); else valueBuf.resize(readLen);
-            }
-            else {
-                const DWORD fallbackSize = 8192;
-                valueBuf.resize(fallbackSize);
-                const DWORD readLen = GetFirmwareEnvironmentVariableW(nameStr.c_str(), guidStr.c_str(), valueBuf.data(), fallbackSize);
-                if (readLen > 0) valueBuf.resize(readLen); else valueBuf.clear();
-            }
+            if (!pk_checked && nameView == L"PKDefault") {
+                const std::wstring guidStr = format_guid(varName->VendorGuid);
+                if (guidStr.empty()) { cleanup(); return true; }
 
-            if (nameStr == L"MemoryOverwriteRequestControlLock") found_MORCL = true;
+                DWORD bufSizeAttempt = 8192;
+                std::vector<BYTE> valueBuf;
+                for (int attempt = 0; attempt < 4; ++attempt) { // up to 128KB aprox
+                    valueBuf.resize(bufSizeAttempt);
+                    DWORD readLen = GetFirmwareEnvironmentVariableW(
+                        std::wstring(nameView).c_str(), 
+                        guidStr.c_str(),
+                        valueBuf.data(),
+                        bufSizeAttempt);
+                    if (readLen > 0) {
+                        valueBuf.resize(readLen);
+                        break;
+                    }
+                    DWORD err = GetLastError();
+                    if (err == ERROR_INSUFFICIENT_BUFFER) {
+                        bufSizeAttempt *= 2;
+                        continue;
+                    }
+                    valueBuf.clear();
+                    break;
+                }
 
-            if (nameStr == L"PKDefault") {
                 bool pk_has_redhat = false;
-                if (!valueBuf.empty() && (contains_redhat_utf16le_ci(valueBuf) || contains_redhat_ascii_ci(valueBuf)))
-                    pk_has_redhat = true;
+                if (!valueBuf.empty()) {
+                    if (valueBuf.size() >= 2 && (valueBuf.size() % 2) == 0) {
+                        const WCHAR* wptr = reinterpret_cast<const WCHAR*>(valueBuf.data());
+                        size_t wlen = valueBuf.size() / sizeof(WCHAR);
+                        if (contains_redhat_utf16le_ci(wptr, wlen)) pk_has_redhat = true;
+                    }
+                    if (!pk_has_redhat) {
+                        if (contains_redhat_ascii_ci(valueBuf.data(), valueBuf.size())) pk_has_redhat = true;
+                    }
+                }
+
+                pk_checked = true;
                 if (pk_has_redhat) {
                     debug("NVRAM: QEMU detected");
                     cleanup();
                     return core::add(brands::QEMU);
                 }
+            }
+
+            if (found_MORCL && found_dbDefault && found_dbxDefault && found_KEKDefault && found_PKDefault && pk_checked) {
+                break;
             }
 
             if (varName->NextEntryOffset == 0) break;

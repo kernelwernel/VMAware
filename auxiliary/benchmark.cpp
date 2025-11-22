@@ -20,7 +20,7 @@
  *  - License: MIT
  */
 
-#include "../src/vmaware.hpp"
+#include "vmaware.hpp"
 #include <iostream>
 #include <string>
 #include <cmath>
@@ -35,7 +35,7 @@
 
 const std::string bold = "\033[1m";
 const std::string ansi_exit = "\x1B[0m";
-const std::string red = "\x1B[38;2;239;75;75m"; 
+const std::string red = "\x1B[38;2;239;75;75m";
 const std::string green = "\x1B[38;2;94;214;114m";
 const std::string orange = "\x1B[38;2;255;180;5m";
 
@@ -103,34 +103,6 @@ int main(void) {
     std::string vm_brand, vm_type;
     uint8_t vm_percent;
 
-    /* ================================================ NO MEMOIZATION CATEGORY ================================================ */
-
-    // VMAwareBenchmark VM::detect(VM::NO_MEMO)
-    start = VMAwareBenchmark::get_timestamp();
-    is_detected = VM::detect(VM::NO_MEMO);
-    end = VMAwareBenchmark::get_timestamp();
-    const double detect_time_no_memo = VMAwareBenchmark::get_elapsed(start, end);
-
-    // VMAwareBenchmark VM::brand()
-    start = VMAwareBenchmark::get_timestamp();
-    vm_brand = VM::brand(VM::NO_MEMO);
-    end = VMAwareBenchmark::get_timestamp();
-    const double brand_time_no_memo = VMAwareBenchmark::get_elapsed(start, end);
-
-    // VMAwareBenchmark VM::type()
-    start = VMAwareBenchmark::get_timestamp();
-    vm_type = VM::type(VM::NO_MEMO);
-    end = VMAwareBenchmark::get_timestamp();
-    const double type_time_no_memo = VMAwareBenchmark::get_elapsed(start, end);
-
-    // VMAwareBenchmark VM::percentage()
-    start = VMAwareBenchmark::get_timestamp();
-    vm_percent = VM::percentage(VM::NO_MEMO);
-    end = VMAwareBenchmark::get_timestamp();
-    const double percent_time_no_memo = VMAwareBenchmark::get_elapsed(start, end);
-
-    /* ================================================ DEFAULT CATEGORY ================================================ */
-
     // VMAwareBenchmark VM::detect()
     start = VMAwareBenchmark::get_timestamp();
     is_detected = VM::detect();
@@ -165,25 +137,21 @@ int main(void) {
         << "VM::brand():     " << VMAwareBenchmark::format_duration(brand_time) << "\n"
         << "VM::type():      " << VMAwareBenchmark::format_duration(type_time) << "\n"
         << "VM::percentage(): " << VMAwareBenchmark::format_duration(percent_time) << "\n\n"
-        << "Benchmark Results (not cached):\n"
-        << "VM::detect(VM::NO_MEMO):    " << VMAwareBenchmark::format_duration(detect_time_no_memo) << "\n"
-        << "VM::brand(VM::NO_MEMO):     " << VMAwareBenchmark::format_duration(brand_time_no_memo) << "\n"
-        << "VM::type(VM::NO_MEMO):      " << VMAwareBenchmark::format_duration(type_time_no_memo) << "\n"
-        << "VM::percentage(VM::NO_MEMO): " << VMAwareBenchmark::format_duration(percent_time_no_memo) << "\n\n";
+        << "Benchmark Results (not cached):\n";
 
     for (const VM::enum_flags technique_enum : VM::technique_vector) {
         start = VMAwareBenchmark::get_timestamp();
 
-        VM::check(technique_enum, VM::NO_MEMO);
+        VM::check(technique_enum);
 
         end = VMAwareBenchmark::get_timestamp();
         const double technique_time = VMAwareBenchmark::get_elapsed(start, end);
-    
-        std::cout << 
-            "VM::" << 
-            VM::flag_to_string(technique_enum) << 
-            ": " << 
-            VMAwareBenchmark::format_duration(technique_time) << 
+
+        std::cout <<
+            "VM::" <<
+            VM::flag_to_string(technique_enum) <<
+            ": " <<
+            VMAwareBenchmark::format_duration(technique_time) <<
             "\n";
     }
 
