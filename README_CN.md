@@ -158,7 +158,7 @@ endif()
 >
 > 此外，软件可根据检测到的环境调整程序行为。这在调试和测试过程中颇具实用价值，同时系统管理员也能灵活管理配置方案。最后，某些应用程序可能需要通过许可证条款在法律层面限制虚拟机使用，以防止未经授权的分发或测试行为。
 >
-> 还有一些项目采用了我们的工具，例如 [Hypervisor-Phantom](https://codeberg.org/Scrut1ny/Hypervisor-Phantom)，这是一个高级恶意软件分析项目，我们协助其强化了虚拟机监控程序环境并提升了隐蔽性。
+> 还有一些项目采用了我们的工具，例如 [Hypervisor-Phantom](https://github.com/Scrut1ny/Hypervisor-Phantom)，这是一个高级恶意软件分析项目，我们协助其强化了虚拟机监控程序环境并提升了隐蔽性。
 
 </details>
 
