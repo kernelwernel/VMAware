@@ -12,6 +12,7 @@
    <div align="center">
       <b>VMAware</b> (VM + Aware) is a cross-platform C++ library for virtual machine detection.
       <br>
+      <br>
       <a href="README_CN.md">中文 🇨🇳</a> | <a href="README_FR.md">Français 🇫🇷</a>
    </div>
 </p>
