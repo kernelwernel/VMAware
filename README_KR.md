@@ -12,7 +12,7 @@
    <div align="center">
       <b>VMAware</b> (VM + Aware)는 가상 머신 탐지를 위한 크로스 플랫폼 C++ 라이브러리 입니다.
       <br>
-      <a href="README_CN.md">中文 🇨🇳</a> | <a href="README_FR.md">Français 🇫🇷</a> | <a href="README_KR.md">한국어 🇰🇷</a>
+      <a href="README_CN.md">中文 🇨🇳</a> | <a href="README_FR.md">Français 🇫🇷</a>
    </div>
 </p>
 
@@ -252,7 +252,7 @@ endif()
 <br>
 
 ## 이슈, 토론, PR 및 문의 📬
-어떤 형태로든 제안, 아이디어 공유, 그리고 기여를 환영합니다! [이슈](https://github.com/kernelwernel/VMAware/issues) 또는 [토론](https://github.com/kernelwernel/VMAware/discussions) 에서 자유롭게 소통하실 수 있으며, 최대한 빠르게 답변 드리고자 노력하고 있습니다. 개인적인 소통은 Discord를 통해 `kr.nl` 혹은 `shenzken` 에 직접 연락해 주세요.
+어떤 형태로든 제안, 아이디어 공유, 그리고 기여를 환영합니다! [이슈](https://github.com/kernelwernel/VMAware/issues) 또는 [토론](https://github.com/kernelwernel/VMAware/discussions) 에서 자유롭게 소통하실 수 있으며, 최대한 빠르게 답변 드리고자 노력하고 있습니다. 개인적인 소통은 Discord를 통해 `kr.nl` 혹은 `shenzken` 에게 직접 연락해 주세요.
 
 
 이메일 연락처: `jeanruyv@gmail.com`
