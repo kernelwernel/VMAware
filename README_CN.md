@@ -12,7 +12,7 @@
    <div align="center">
       <b>VMAware</b> (VM + Aware) 是一个跨平台的C++虚拟机检测库。
       <br>
-      <a href="README.md">English 🇬🇧</a> | <a href="README_FR.md">Français 🇫🇷</a>
+      <a href="README.md">English 🇬🇧</a> | <a href="README_FR.md">Français 🇫🇷</a> | <a href="README_KR.md">한국어 🇰🇷</a>
    </div>
 </p>
 
