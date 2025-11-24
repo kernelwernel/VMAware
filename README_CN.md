@@ -35,6 +35,8 @@
 - 具备记忆功能：若相同计算再次执行，会从缓存中直接获取过往结果，而非重新计算，从而获得性能提升
 - 本项目完全采用MIT许可证授权，允许不受限制地使用、修改和分发
 
+<br>
+
 ## 例子 🧪
 
 ```cpp
@@ -65,9 +67,13 @@ VM certainty: 100%
 VM hardening: not found
 ```
 
+<br>
+
 ## 架构 ⚙️
 
 ![VMAware library Structure](assets/vmaware.png)
+
+<br>
 
 ## 命令行工具 🔧
 
@@ -78,6 +84,8 @@ VM hardening: not found
 ![cli](assets/demo.png)
 
 <!-- Try it out on [Compiler Explorer](https://godbolt.org/z/4sKa1sqrW)!-->
+
+<br>
 
 ## 安装 📥
 
@@ -136,11 +144,15 @@ endif()
 
 模块文件及函数版本位于 [auxiliary/vmaware_download.cmake](auxiliary/vmaware_download.cmake)
 
+<br>
+
 ## 文档与代码概述 📒
 
 您可在 [docs/documentation.md](docs/documentation.md) 查看完整文档 。其中详尽列出了所有细节，包括功能、技术、设置及示例。相信我，内容并不复杂
 
 若想了解本库的架构与设计，请访问 [DeepWiki - VMAware](https://deepwiki.com/kernelwernel/VMAware)
+
+<br>
 
 ## Q&A ❓
 
@@ -233,6 +245,8 @@ endif()
 
 </details>
 
+<br>
+
 ## 问题、讨论、拉取请求和咨询 📬
 
 欢迎提出建议、分享想法或参与任何形式的贡献！我们非常乐意在 [Issues](https://github.com/kernelwernel/VMAware/issues) 或 [Discussions](https://github.com/kernelwernel/VMAware/discussions) 板块与您交流。我们通常都会尽快回复。若需私下联系，可通过 Discord 账号 `kr.nl` 或 `shenzken` 联系我们。
@@ -240,6 +254,8 @@ endif()
 邮件咨询请至：`jeanruyv@gmail.com`
 
 如果本项目对您有所帮助，欢迎为我们点亮一颗 Star
+
+<br>
 
 ## 鸣谢、贡献者及致谢 ✒️
 
@@ -279,6 +295,8 @@ endif()
 - [Kyun-J](https://github.com/Kyun-J)
 - [luukjp](https://github.com/luukjp)
 - [Randark](https://github.com/Randark-JMT)
+
+<br>
 
 ## 法律声明 📜
 
