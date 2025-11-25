@@ -12,6 +12,7 @@
    <div align="center">
       <b>VMAware</b> (VM + Aware) est une bibliothèque C++ multiplateforme pour la détection des machines virtuelles.
       <br>
+      <br>
       <a href="README_CN.md">中文 🇨🇳</a> | <a href="README_FR.md">Français 🇫🇷</a> | <a href="README_KR.md">한국어 🇰🇷</a>
    </div>
 </p>
@@ -290,6 +291,7 @@ Et si ce projet vous a été utile, un star serait très apprécié :)
 - [Kyun-J](https://github.com/Kyun-J)
 - [luukjp](https://github.com/luukjp)
 - [Randark](https://github.com/Randark-JMT)
+- [Scrut1ny](https://github.com/Scrut1ny)
 
 <br>
 

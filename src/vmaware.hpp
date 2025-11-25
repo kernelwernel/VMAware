@@ -4387,11 +4387,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return t2 - t1;
         };
 
-        constexpr u8 N = 100;
+        constexpr u16 N = 1000;
 
         auto sample_avg = [&]() -> u64 {
             u64 sum = 0;
-            for (u8 i = 0; i < N; ++i) {
+            for (u16 i = 0; i < N; ++i) {
                 sum += cpuid();
             }
             return (sum + N / 2) / N;
@@ -4405,7 +4405,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         else if (avg >= cycleThreshold) {
             avg = sample_avg();
             debug("TIMER: 2nd pass average -> ", avg, " cycles");
-            if (avg >= cycleThreshold) return true; // some CPUs like Intel's Emerald Rapids have much more cycles when executing CPUID than average, we should accept a high threshold
+            if (avg >= cycleThreshold) {
+                avg = sample_avg();
+                debug("TIMER: 3rd pass average -> ", avg, " cycles");
+                if (avg >= cycleThreshold) return true; // some CPUs like Intel's Emerald Rapids have much more cycles when executing CPUID than average, we should accept a high threshold
+            }
         }
 
         #if (WINDOWS)
@@ -4532,7 +4536,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 );
             }             
 
-            if (difference >= 30) {
+            if (difference >= 100) {
                 debug("TIMER: An hypervisor has been detected intercepting RDTSC");
                 return true; // both ratios will always differ if a RDTSC trap is present, since the hypervisor can't account for the XOR/NOP loop
             }
@@ -9835,6 +9839,232 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             pNtFreeVirtualMemory(hCurrentProcess, &freeBase, &freeSize, MEM_RELEASE);
             amd_target_mem = nullptr;
         }
+
+        if (spoofed) return spoofed;
+
+        // ok so if the CPU is intel, the motherboard should be intel aswell (and same with AMD)
+        // this doesnt happen in most public hardened configs out there so lets abuse it
+        constexpr unsigned int VID_INTEL = 0x8086;
+        constexpr unsigned int VID_AMD_ATI = 0x1002;
+        constexpr unsigned int VID_AMD_MICRO = 0x1022;
+
+        enum class MBVendor { Unknown = 0, Intel = 1, AMD = 2 };
+
+        auto detect_motherboard = []() -> MBVendor {
+            static constexpr const char* TOKENS[] = {
+                "host bridge", "northbridge", "southbridge", "pci bridge", "chipset", "pch", "fch",
+                "platform controller", "lpc", "sata controller", "ahci", "ide controller", "usb controller",
+                "xhci", "usb3", "usb 3.0", "usb 3", "pcie root", "pci express", " sata", nullptr
+            };
+
+            static bool meta_ready = false;
+            static const char* token_ptrs[32];
+            static int token_lens[32];
+            static int token_count = 0;
+            static unsigned char first_unique[128];
+            static int first_unique_count = 0;
+
+            auto build_meta = [&]() {
+                if (meta_ready) return;
+                int i = 0;
+                for (; TOKENS[i]; ++i) {}
+                token_count = i;
+                assert(token_count < 32);
+                bool seen[128] = {};
+                for (int t = 0; t < token_count; ++t) {
+                    token_ptrs[t] = TOKENS[t];
+                    token_lens[t] = static_cast<int>(std::strlen(TOKENS[t]));
+                    unsigned char fc = static_cast<unsigned char>(token_ptrs[t][0]);
+                    if (fc < 128 && !seen[fc]) {
+                        first_unique[first_unique_count++] = fc;
+                        seen[fc] = true;
+                    }
+                }
+                meta_ready = true;
+            };
+
+            auto ascii_lower = [](unsigned char c) -> unsigned char {
+                if (c >= 'A' && c <= 'Z') return static_cast<unsigned char>(c + ('a' - 'A'));
+                return c;
+            };
+
+            const size_t STACK_CAP = 4096;
+            auto wide_to_ascii = [&](const wchar_t* wptr, char* stackBuf, size_t stackCap, std::vector<char>* heapBuf, size_t& outLen) -> const char* {
+                outLen = 0;
+                if (!wptr || *wptr == L'\0') return nullptr;
+                const wchar_t* p = wptr;
+                char* out = stackBuf;
+                size_t cap = stackCap;
+                while (*p) {
+                    wchar_t wc = *p++;
+                    unsigned char c;
+                    if (wc <= 127) {
+                        c = ascii_lower(static_cast<unsigned char>(wc));
+                    }
+                    else {
+                        c = 0;
+                    }
+                    if (outLen >= cap) {
+                        if (!heapBuf) return nullptr;
+                        heapBuf->assign(stackBuf, stackBuf + cap);
+                        out = heapBuf->data();
+                        cap = heapBuf->capacity();
+                    }
+                    out[outLen++] = static_cast<char>(c);
+                }
+                return out;
+            };
+
+            using u32 = unsigned int;
+            auto __memchr = [&](const char* data, size_t len) -> u32 {
+                if (!data || len == 0) return 0;
+                build_meta();
+                u32 mask = 0;
+                for (int fi = 0; fi < first_unique_count; ++fi) {
+                    unsigned char fc = first_unique[fi];
+                    const void* cur = data;
+                    size_t remaining = len;
+                    while (remaining > 0) {
+                        const void* found = memchr(cur, fc, remaining);
+                        if (!found) break;
+                        const char* pos = static_cast<const char*>(found);
+                        long long idx = pos - data;
+                        for (int t = 0; t < token_count; ++t) {
+                            if (static_cast<unsigned char>(token_ptrs[t][0]) != fc) continue;
+                            int tlen = token_lens[t];
+                            if (idx + static_cast<size_t>(tlen) <= len) {
+                                if (memcmp(data + idx, token_ptrs[t], static_cast<size_t>(tlen)) == 0) {
+                                    mask |= (1u << t);
+                                }
+                            }
+                        }
+                        remaining = len - (idx + 1);
+                        cur = data + idx + 1;
+                    }
+                }
+                return mask;
+            };
+
+            auto find_vendor_hex = [&](const wchar_t* wptr) -> u32 {
+                if (!wptr) return 0;
+                const wchar_t* p = wptr;
+                while (*p) {
+                    const wchar_t c = *p;
+                    if ((c | 0x20) == L'v') {
+                        if ((p[1] | 0x20) == L'e' && (p[2] | 0x20) == L'n' && p[3] == L'_') {
+                            const wchar_t* q = p + 4;
+                            u32 val = 0;
+                            int got = 0;
+                            while (got < 4 && *q) {
+                                wchar_t wc = *q;
+                                u32 nib = 0;
+                                if (wc >= L'0' && wc <= L'9') nib = static_cast<u32>(wc - L'0');
+                                else if ((wc | 0x20) >= L'a' && (wc | 0x20) <= L'f') nib = static_cast<u32>((wc | 0x20) - L'a' + 10);
+                                else break;
+                                val = static_cast<u32>((val << 4) | nib);
+                                ++got; ++q;
+                            }
+                            if (got == 4) return val;
+                        }
+                    }
+                    ++p;
+                }
+                return 0;
+            };
+
+            // setupapi stuff
+            int intel_hits = 0;
+            int amd_hits = 0;
+            char stack_buf[4096]{};
+            std::vector<char> heap_buf;
+            std::vector<BYTE> prop_buf; 
+
+            auto scan_devices = [&](const GUID* classGuid, DWORD flags) {
+                HDEVINFO hDevInfo = SetupDiGetClassDevsW(classGuid, nullptr, nullptr, flags);
+                if (hDevInfo == INVALID_HANDLE_VALUE) return;
+
+                SP_DEVINFO_DATA devInfoData{};
+                devInfoData.cbSize = sizeof(SP_DEVINFO_DATA);
+                DWORD reqSize = 0;
+
+                for (DWORD i = 0; SetupDiEnumDeviceInfo(hDevInfo, i, &devInfoData); ++i) {
+
+                    if (!SetupDiGetDeviceRegistryPropertyW(hDevInfo, &devInfoData, SPDRP_DEVICEDESC, nullptr, nullptr, 0, &reqSize)) {
+                        if (GetLastError() != ERROR_INSUFFICIENT_BUFFER) continue;
+                    }
+
+                    if (prop_buf.size() < reqSize) prop_buf.resize(reqSize);
+
+                    if (SetupDiGetDeviceRegistryPropertyW(hDevInfo, &devInfoData, SPDRP_DEVICEDESC, nullptr, prop_buf.data(), reqSize, nullptr)) {
+
+                        const wchar_t* wDesc = reinterpret_cast<const wchar_t*>(prop_buf.data());
+                        size_t asciiLen = 0;
+                        const char* asciiDesc = wide_to_ascii(wDesc, stack_buf, STACK_CAP, &heap_buf, asciiLen);
+
+                        // check if the description contains any interesting stuff
+                        if (__memchr(asciiDesc, asciiLen)) {
+                            // if interesting get hwid to get vendor
+                            if (!SetupDiGetDeviceRegistryPropertyW(hDevInfo, &devInfoData, SPDRP_HARDWAREID, nullptr, nullptr, 0, &reqSize)) {
+                                if (GetLastError() != ERROR_INSUFFICIENT_BUFFER) continue;
+                            }
+
+                            if (prop_buf.size() < reqSize) prop_buf.resize(reqSize);
+
+                            if (SetupDiGetDeviceRegistryPropertyW(hDevInfo, &devInfoData, SPDRP_HARDWAREID, nullptr, prop_buf.data(), reqSize, nullptr)) {
+                                const wchar_t* wHwId = reinterpret_cast<const wchar_t*>(prop_buf.data());
+                                const u32 vid = find_vendor_hex(wHwId);
+
+                                if (vid == VID_INTEL) intel_hits++;
+                                else if (vid == VID_AMD_ATI || vid == VID_AMD_MICRO) amd_hits++;
+                            }
+                        }
+                    }
+                }
+                SetupDiDestroyDeviceInfoList(hDevInfo);
+            };
+
+            // GUID_DEVCLASS_SYSTEM covers Host Bridges, LPC, PCI bridges Chipset/CPU etc
+            // GUID_DEVCLASS_USB covers USB controller stuff
+            // GUID_DEVCLASS_HDC covers SATA/IDE
+            const GUID* interesting_classes[] = {
+                &GUID_DEVCLASS_SYSTEM,
+                &GUID_DEVCLASS_USB,
+                &GUID_DEVCLASS_HDC
+            };
+
+            for (const GUID* guid : interesting_classes) {
+                scan_devices(guid, DIGCF_PRESENT);
+            }
+
+            // if no stuff then mybe query all devices in the system?
+            if (intel_hits == 0 && amd_hits == 0) {
+                scan_devices(nullptr, DIGCF_ALLCLASSES | DIGCF_PRESENT);
+            }
+
+            if (intel_hits > amd_hits) return MBVendor::Intel;
+            if (amd_hits > intel_hits) return MBVendor::AMD;
+            return MBVendor::Unknown;
+        };
+
+        const MBVendor vendor = detect_motherboard();
+
+        switch (vendor) {
+        case MBVendor::Intel:
+            if (claimed_amd && !claimed_intel) {
+                debug("CPU_HEURISTIC: CPU reports AMD but chipset looks Intel");
+                spoofed = true;
+            }
+            break;
+        case MBVendor::AMD:
+            if (claimed_intel && !claimed_amd) {
+                debug("CPU_HEURISTIC: CPU reports Intel but chipset looks AMD");
+                spoofed = true;
+            }
+            break;
+        default:
+            debug("CPU_HEURISTIC: Could not determine chipset vendor");
+            break;
+        }
     #endif
         return spoofed;
     }
@@ -9937,6 +10167,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check if Last Branch Record MSRs are correctly virtualized
      * @category Windows
      * @implements VM::LBR
+     * @note Currently investigating possible false flags with this
      */
     [[nodiscard]] static bool lbr() {
     #if (x86)
@@ -10123,6 +10354,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         pNtFreeVirtualMemory(hCurrentProcess, &controlBase, &tmpSize, MEM_RELEASE);
         g_control_slot = nullptr;
 
+        // a breakpoint set anywhere in this function before slot_val is read will cause the kernel to not deliver any LBR info, thereby returning true
         return (slot_val == nullptr);
     #else
         return false;
@@ -11757,7 +11989,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         std::make_pair(VM::CLOCK, VM::core::technique(100, VM::clock)),
         std::make_pair(VM::POWER_CAPABILITIES, VM::core::technique(45, VM::power_capabilities)),
         std::make_pair(VM::CPU_HEURISTIC, VM::core::technique(90, VM::cpu_heuristic)),
-        std::make_pair(VM::LBR, VM::core::technique(100, VM::lbr)),
+        std::make_pair(VM::LBR, VM::core::technique(95, VM::lbr)),
         std::make_pair(VM::EDID, VM::core::technique(100, VM::edid)),
         std::make_pair(VM::BOOT_LOGO, VM::core::technique(100, VM::boot_logo)),
         std::make_pair(VM::GPU_CAPABILITIES, VM::core::technique(45, VM::gpu_capabilities)),
