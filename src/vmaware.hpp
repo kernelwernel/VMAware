@@ -577,8 +577,7 @@ public:
         SIDT,
         FIRMWARE,
         PCI_DEVICES,
-        HYPERV_HOSTNAME,
-        GENERAL_HOSTNAME,
+        AZURE,
         
         // Linux
         SMBIOS_VM_BIT,
@@ -671,7 +670,7 @@ private:
 public:
     // for platform compatibility ranges
     static constexpr u8 WINDOWS_START = VM::GPU_CAPABILITIES;
-    static constexpr u8 WINDOWS_END = VM::GENERAL_HOSTNAME;
+    static constexpr u8 WINDOWS_END = VM::AZURE;
     static constexpr u8 LINUX_START = VM::SIDT;
     static constexpr u8 LINUX_END = VM::THREAD_COUNT;
     static constexpr u8 MACOS_START = VM::THREAD_COUNT;
@@ -2327,11 +2326,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
        
     
     /**
-     * @brief Check for Intel CPU thread count database if it matches the system's thread count
+     * @brief Check for Intel I-series CPU thread count database if it matches the system's thread count
      * @category x86
      * @implements VM::INTEL_THREAD_MISMATCH
      */
-    [[nodiscard]] static bool intel_thread_mismatch() {
+    [[nodiscard]] static bool intel_thread_mismatch()
+    #if (CLANG || GCC)
+        __attribute__((__target__("crc32")))
+    #endif
+    {
     #if (!x86)
         return false;
     #else
@@ -3446,12 +3449,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 
                 
     /**
-     * @brief Same as above, but for Xeon Intel CPUs
+     * @brief Check for Intel Xeon CPU thread count database if it matches the system's thread count
      * @category x86
      * @link https://en.wikipedia.org/wiki/List_of_Intel_Core_processors
      * @implements VM::XEON_THREAD_MISMATCH
      */
-    [[nodiscard]] static bool xeon_thread_mismatch() {
+    [[nodiscard]] static bool xeon_thread_mismatch()
+    #if (CLANG || GCC)
+            __attribute__((__target__("crc32")))
+    #endif
+    {
     #if (!x86)
         return false;
     #else
@@ -3754,7 +3761,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category x86
      * @implements VM::AMD_THREAD_MISMATCH
      */
-    [[nodiscard]] static bool amd_thread_mismatch() {
+    [[nodiscard]] static bool amd_thread_mismatch()
+    #if (CLANG || GCC)
+            __attribute__((__target__("crc32")))
+    #endif
+    {
     #if (!x86)
         return false;
     #else
@@ -5881,40 +5892,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         return core::add(brands::AZURE_HYPERV);
-    }
-
-
-    /**
-     * @brief Check for commonly set hostnames by certain VM brands
-     * @category Windows, Linux
-     * @author Idea from Thomas Roccia (fr0gger)
-     * @link https://unprotect.it/technique/detecting-hostname-username/
-     * @implements VM::GENERAL_HOSTNAME
-     */
-    [[nodiscard]] static bool general_hostname() {
-        const std::string hostname = util::get_hostname();
-
-        debug("GENERAL_HOSTNAME: ", hostname);
-
-        auto cmp = [&](const char* str2) -> bool {
-            return (hostname == str2);
-        };
-
-        if (cmp("Cuckoo")) {
-            return core::add(brands::CUCKOO);
-        }
-
-        if (
-            cmp("Sandbox") ||
-            cmp("Maltest") ||
-            cmp("Malware") ||
-            cmp("malsand") ||
-            cmp("ClonePC")
-        ) {
-            return true;
-        }
-
-        return false;
     }
 
 
@@ -11609,8 +11586,7 @@ public: // START OF PUBLIC FUNCTIONS
             case AMD_THREAD_MISMATCH: return "AMD_THREAD_MISMATCH";
             case CUCKOO_DIR: return "CUCKOO_DIR";
             case CUCKOO_PIPE: return "CUCKOO_PIPE";
-            case HYPERV_HOSTNAME: return "HYPERV_HOSTNAME";
-            case GENERAL_HOSTNAME: return "GENERAL_HOSTNAME";
+            case AZURE: return "AZURE";
             case DISPLAY: return "DISPLAY";
             case DEVICE_STRING: return "DEVICE_STRING";
             case BLUESTACKS_FOLDERS: return "BLUESTACKS_FOLDERS";
@@ -12231,8 +12207,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         std::make_pair(VM::FIRMWARE, VM::core::technique(100, VM::firmware)),
         std::make_pair(VM::PCI_DEVICES, VM::core::technique(95, VM::pci_devices)),
         std::make_pair(VM::SIDT, VM::core::technique(50, VM::sidt)),
-        std::make_pair(VM::HYPERV_HOSTNAME, VM::core::technique(30, VM::hyperv_hostname)),
-        std::make_pair(VM::GENERAL_HOSTNAME, VM::core::technique(10, VM::general_hostname)),
+        std::make_pair(VM::AZURE, VM::core::technique(30, VM::hyperv_hostname)),
     #endif
         
     #if (LINUX)
