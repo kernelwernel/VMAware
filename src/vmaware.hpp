@@ -1054,9 +1054,18 @@ private:
         [[nodiscard]] static model_struct get_model() {
             const std::string brand = get_brand();
 
-            model_struct result{ false, false, false, false, {} };
+            model_struct result { false, false, false, false, {} };
 
             if (cpu::is_intel()) {
+                // Ultra
+                if (brand.find("Ultra") != std::string::npos &&
+                    brand.find_first_of("0123456789") != std::string::npos) {
+                    result.found = true;
+                    result.string = brand;
+                    return result;
+                }
+
+                // i-series
                 if (brand.find("i") != std::string::npos && brand.find("-") != std::string::npos &&
                     brand.find_first_of("0123456789") != std::string::npos) {
                     result.found = true;
@@ -1065,6 +1074,7 @@ private:
                     return result;
                 }
 
+                // Xeon
                 if (brand.find_first_of("DEW") != std::string::npos && brand.find("-") != std::string::npos &&
                     brand.find_first_of("0123456789") != std::string::npos) {
                     result.found = true;
@@ -2333,19 +2343,44 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (!model.found) {
             return false;
         }
-
+    
         if (!model.is_i_series) {
             return false;
         }
 
         debug("INTEL_THREAD_MISMATCH: CPU model = ", model.string);
 
-        struct ThreadEntry {
-            const char* model;
-            u32    threads;
+        // we want to precompute hashes at compile time for C++11 and later, so we need to match the hardware _mm_crc32_u8
+        // it is based on CRC32-C (Castagnoli) polynomial
+        struct ConstexprHash {
+            // it does 8 rounds of CRC32-C bit reflection recursively
+            static constexpr u32 crc32_bits(u32 crc, int bits) {
+                return (bits == 0) ? crc :
+                    crc32_bits((crc >> 1) ^ ((crc & 1) ? 0x82F63B78u : 0), bits - 1);
+            }
+
+            // over string
+            static constexpr u32 crc32_str(const char* s, u32 crc) {
+                return (*s == '\0') ? crc :
+                    crc32_str(s + 1, crc32_bits(crc ^ static_cast<u8>(*s), 8));
+            }
+
+            static constexpr u32 get(const char* s) {
+                return crc32_str(s, 0);
+            }
         };
 
-        static const ThreadEntry thread_database[] = {
+        // this forces the compiler to calculate the hash when initializing the array while staying C++11 compatible
+        struct Entry {
+            u32 hash;
+            u32 threads;
+            constexpr Entry(const char* m, u32 t) : hash(ConstexprHash::get(m)), threads(t) {}
+        };
+
+        // umap is not an option because it cannot be constexpr
+        // constexpr is respected here even in c++ 11 and static solves stack overflow
+        // c arrays have less construction overhead than std::array
+        static constexpr Entry thread_database[] = {
             // i3 series
             { "i3-1000G1", 4 },
             { "i3-1000G4", 4 },
@@ -3302,46 +3337,106 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             { "i9-9990XE", 28 }
         };
 
-        constexpr size_t thread_database_count = sizeof(thread_database) / sizeof(thread_database[0]);
-        const std::string cpu_full_name = model.string;
+        // to save a few cycles
+        static constexpr size_t MAX_INTEL_MODEL_LEN = 16;
 
-        const ThreadEntry* best = nullptr;
-        size_t best_len = 0;
-        size_t best_pos = std::string::npos;
-
-        if (cpu_full_name.empty()) return false;
-
-        for (size_t i = 0; i < thread_database_count; ++i) {
-            const char* key = thread_database[i].model;
-            const size_t len = std::strlen(key);
-
-            const size_t p = cpu_full_name.find(key);
-            if (p != std::string::npos && len > best_len) {
-                best = &thread_database[i];
-                best_len = len;
-                best_pos = p;
+        struct hasher {
+            static u32 crc32_sw(u32 crc, char data) {
+                crc ^= static_cast<u8>(data);
+                for (int i = 0; i < 8; ++i)
+                    crc = (crc >> 1) ^ ((crc & 1) ? 0x82F63B78u : 0);
+                return crc;
             }
+
+            static u32 crc32_hw(u32 crc, char data) {
+                return _mm_crc32_u8(crc, static_cast<u8>(data));
+            }
+
+            using hashfc = u32(*)(u32, char);
+
+            static hashfc get() {
+                // yes, vmaware runs on dinosaur cpus without sse4.2 pretty often
+                i32 regs[4];
+                cpu::cpuid(regs, 1);
+                const bool has_sse42 = (regs[2] & (1 << 20)) != 0;
+
+                return has_sse42 ? crc32_hw : crc32_sw;
+            }
+        };
+
+        const char* str = model.string.c_str();
+        u32 expected_threads = 0;
+        bool found = false;
+        size_t best_len = 0;
+
+        const auto hash_func = hasher::get();
+
+        for (size_t i = 0; str[i] != '\0'; ) {
+            const char c = str[i];
+            if (!((c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'))) {
+                i++;
+                continue;
+            }
+
+            u32 current_hash = 0;
+            size_t current_len = 0;
+            size_t j = i;
+
+            while (true) {
+                const char k = str[j];
+                const bool is_valid = (k >= '0' && k <= '9') ||
+                    (k >= 'A' && k <= 'Z') ||
+                    (k >= 'a' && k <= 'z') ||
+                    (k == '-'); // models have hyphen
+                if (!is_valid) break;
+
+                if (current_len >= MAX_INTEL_MODEL_LEN) {
+                    while (str[j] != '\0' && str[j] != ' ') j++; // fast forward to space/null
+                    break;
+                }
+
+                /*
+                   models are usually 8 or more bytes long, i.e. i9-10900K
+                   so imagine we want to use u64, you hash the first 8 bytes i9-10900
+                   but then you are left with K. You have to handle the tail
+                   fetching 8 bytes would include the characters after the token, corrupting the hash
+                   so a byte-by-byte loop is the most optimal choice here
+                */
+
+                // since this technique is cross-platform, we cannot use a standard C++ try-catch block to catch a missing CPU instruction
+                // we could use preprocessor directives and add an exception handler (VEH/SEH or SIGHANDLER) but nah
+                current_hash = hash_func(current_hash, k);
+                current_len++;
+                j++;
+
+                // only verify match if the token has ended (next char is not alphanumeric)
+                const char next = str[j];
+                const bool next_is_alnum = (next >= '0' && next <= '9') ||
+                    (next >= 'A' && next <= 'Z') ||
+                    (next >= 'a' && next <= 'z');
+
+                if (!next_is_alnum) {
+                    // since it's a contiguous block of integers in .rodata/.rdata, this is extremely fast
+                    for (const auto& entry : thread_database) {
+                        if (entry.hash == current_hash) {
+                            if (current_len > best_len) {
+                                best_len = current_len;
+                                expected_threads = entry.threads;
+                                found = true;
+                            }
+                            // since hashing implies uniqueness in this dataset, you might say we could break here,
+                            // but we continue to ensure we find the longest substring match if overlaps exist,
+                            // so like it finds both "i9-11900" and "i9-11900K" i.e.
+                        }
+                    }
+                }
+            }
+            i = j;
         }
 
-        // Make sure best matches as a whole token, not just as a substring
-        if (best && best_pos != std::string::npos) {
-            size_t pos = best_pos;
-            size_t end = pos + best_len;
-
-            auto isAsciiAlphaNum = [](char c)->bool {
-                const u8 uc = static_cast<u8>(c);
-                return (uc >= '0' && uc <= '9') || (uc >= 'A' && uc <= 'Z') || (uc >= 'a' && uc <= 'z');
-            };
-
-            const bool left_ok = (pos == 0) || !isAsciiAlphaNum(cpu_full_name[pos - 1]);
-            const bool right_ok = (end == cpu_full_name.size()) || !isAsciiAlphaNum(cpu_full_name[end]);
-
-            if (left_ok && right_ok) {
-                const u32 expected = best->threads;
-                const u32 actual = memo::threadcount::fetch();
-                debug("INTEL_THREAD_MISMATCH: Expected threads -> ", expected);
-                return actual != expected;
-            }
+        if (found) {
+            const u32 actual = memo::threadcount::fetch();
+            return actual != expected_threads;
         }
 
         return false;
@@ -3375,12 +3470,37 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         debug("XEON_THREAD_MISMATCH: CPU model = ", model.string);
 
-        struct ThreadEntry {
-            const char* model;
-            u32    threads;
+        // we want to precompute hashes at compile time for C++11 and later, so we need to match the hardware _mm_crc32_u8
+        // it is based on CRC32-C (Castagnoli) polynomial
+        struct ConstexprHash {
+            // it does 8 rounds of CRC32-C bit reflection recursively
+            static constexpr u32 crc32_bits(u32 crc, int bits) {
+                return (bits == 0) ? crc :
+                    crc32_bits((crc >> 1) ^ ((crc & 1) ? 0x82F63B78u : 0), bits - 1);
+            }
+
+            // over string
+            static constexpr u32 crc32_str(const char* s, u32 crc) {
+                return (*s == '\0') ? crc :
+                    crc32_str(s + 1, crc32_bits(crc ^ static_cast<u8>(*s), 8));
+            }
+
+            static constexpr u32 get(const char* s) {
+                return crc32_str(s, 0);
+            }
         };
 
-        static const ThreadEntry thread_database[] = {
+        // this forces the compiler to calculate the hash when initializing the array while staying C++11 compatible
+        struct Entry {
+            u32 hash;
+            u32 threads;
+            constexpr Entry(const char* m, u32 t) : hash(ConstexprHash::get(m)), threads(t) {}
+        };
+
+        // umap is not an option because it cannot be constexpr
+        // constexpr is respected here even in c++ 11 and static solves stack overflow
+        // c arrays have less construction overhead than std::array
+        static constexpr Entry thread_database[] = {
             // Xeon D
             { "D-1518", 8 },
             { "D-1520", 8 },
@@ -3516,46 +3636,110 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             { "w9-3595X", 120 }
         };
 
-        constexpr size_t thread_database_count = sizeof(thread_database) / sizeof(thread_database[0]);
-        const std::string cpu_full_name = model.string;
+        // to save a few cycles
+        static constexpr size_t MAX_XEON_MODEL_LEN = 16;
 
-        const ThreadEntry* best = nullptr;
-        size_t best_len = 0;
-        size_t best_pos = std::string::npos;
+        struct hasher {
+            static u32 crc32_sw(u32 crc, char data) {
+                crc ^= static_cast<u8>(data);
+                for (int i = 0; i < 8; ++i)
+                    crc = (crc >> 1) ^ ((crc & 1) ? 0x82F63B78u : 0);
+                return crc;
+            }
 
+            static u32 crc32_hw(u32 crc, char data) {
+                return _mm_crc32_u8(crc, static_cast<u8>(data));
+            }
+
+            using hashfc = u32(*)(u32, char);
+
+            static hashfc get() {
+                // yes, vmaware runs on dinosaur cpus without sse4.2 pretty often
+                i32 regs[4];
+                cpu::cpuid(regs, 1);
+                const bool has_sse42 = (regs[2] & (1 << 20)) != 0;
+
+                return has_sse42 ? crc32_hw : crc32_sw;
+            }
+        };
+
+        const std::string& cpu_full_name = model.string;
         if (cpu_full_name.empty()) return false;
 
-        for (size_t i = 0; i < thread_database_count; ++i) {
-            const char* key = thread_database[i].model;
-            const size_t len = std::strlen(key);
+        const char* str = cpu_full_name.c_str();
+        u32 expected_threads = 0;
+        bool found = false;
+        size_t best_len = 0;
 
-            const size_t p = cpu_full_name.find(key);
-            if (p != std::string::npos && len > best_len) {
-                best = &thread_database[i];
-                best_len = len;
-                best_pos = p;
+        const auto hash_func = hasher::get();
+
+        for (size_t i = 0; str[i] != '\0'; ) {
+            const char c = str[i];
+            if (!((c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'))) {
+                i++;
+                continue;
             }
+
+            u32 current_hash = 0;
+            size_t current_len = 0;
+            size_t j = i;
+
+            while (true) {
+                const char k = str[j];
+                const bool is_valid = (k >= '0' && k <= '9') ||
+                    (k >= 'A' && k <= 'Z') ||
+                    (k >= 'a' && k <= 'z') ||
+                    (k == '-');
+                if (!is_valid) break;
+
+                if (current_len >= MAX_XEON_MODEL_LEN) {
+                    while (str[j] != '\0' && str[j] != ' ') j++; // fast forward to space/null
+                    break;
+                }
+
+                /*
+                   models are usually 8 or more bytes long, i.e. i9-10900K
+                   so imagine we want to use u64, you hash the first 8 bytes i9-10900
+                   but then you are left with K. You have to handle the tail
+                   fetching 8 bytes would include the characters after the token, corrupting the hash
+                   so a byte-by-byte loop is the most optimal choice here
+                */
+
+                // since this technique is cross-platform, we cannot use a standard C++ try-catch block to catch a missing CPU instruction
+                // we could use preprocessor directives and add an exception handler (VEH/SEH or SIGHANDLER) but nah
+                current_hash = hash_func(current_hash, k);
+                current_len++;
+                j++;
+
+                // only verify match if the token has ended (next char is not alphanumeric)
+                const char next = str[j];
+                const bool next_is_alnum = (next >= '0' && next <= '9') ||
+                    (next >= 'A' && next <= 'Z') ||
+                    (next >= 'a' && next <= 'z');
+
+                if (!next_is_alnum) {
+                    // since it's a contiguous block of integers in .rodata/.rdata, this is extremely fast
+                    for (const auto& entry : thread_database) {
+                        if (entry.hash == current_hash) {
+                            if (current_len > best_len) {
+                                best_len = current_len;
+                                expected_threads = entry.threads;
+                                found = true;
+                            }
+                            // since hashing implies uniqueness in this dataset, you might say we could break here,
+                            // but we continue to ensure we find the longest substring match if overlaps exist,
+                            // so like it finds both "i9-11900" and "i9-11900K" i.e.
+                        }
+                    }
+                }
+            }
+            i = j;
         }
 
-        // Make sure best matches as a whole token, not just as a substring
-        if (best && best_pos != std::string::npos) {
-            size_t pos = best_pos;
-            size_t end = pos + best_len;
-
-            auto isAsciiAlphaNum = [](char c)->bool {
-                const u8 uc = static_cast<u8>(c);
-                return (uc >= '0' && uc <= '9') || (uc >= 'A' && uc <= 'Z') || (uc >= 'a' && uc <= 'z');
-            };
-
-            const bool left_ok = (pos == 0) || !isAsciiAlphaNum(cpu_full_name[pos - 1]);
-            const bool right_ok = (end == cpu_full_name.size()) || !isAsciiAlphaNum(cpu_full_name[end]);
-
-            if (left_ok && right_ok) {
-                const u32 expected = best->threads;
-                const u32 actual = memo::threadcount::fetch();
-                debug("XEON_THREAD_MISMATCH: Expected threads -> ", expected);
-                return actual != expected;
-            }
+        if (found) {
+            const u32 actual = memo::threadcount::fetch();
+            debug("XEON_THREAD_MISMATCH: Expected threads -> ", expected_threads);
+            return actual != expected_threads;
         }
 
         return false;
@@ -3577,630 +3761,643 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        std::string model = cpu::get_brand();
+        std::string model_str = cpu::get_brand();
 
-        for (char& c : model) {
-            c = static_cast<char>(std::tolower(c));
-        }
+        static constexpr size_t MAX_AMD_TOKEN_LEN = 24; // "threadripper" is long
 
-        debug("AMD_THREAD_MISMATCH: CPU model = ", model);
-
-        // all of these have spaces at the end on purpose, because some of these could 
-        // accidentally match different brands. Like for example: "a10-6700" could be 
-        // detected when scanning the string in "a10-6700t", which are both different 
-        // and obviously incorrect. So to fix this, spaces are added at the end.
-        struct ThreadEntry {
-            const char* model;
-            u32    threads;
+        struct ConstexprHash {
+            static constexpr u32 crc32_bits(u32 crc, int bits) {
+                return (bits == 0) ? crc :
+                    crc32_bits((crc >> 1) ^ ((crc & 1) ? 0x82F63B78u : 0), bits - 1);
+            }
+            static constexpr u32 crc32_str(const char* s, u32 crc) {
+                return (*s == '\0') ? crc :
+                    crc32_str(s + 1, crc32_bits(crc ^ static_cast<u8>(*s), 8));
+            }
+            static constexpr u32 get(const char* s) {
+                return crc32_str(s, 0);
+            }
         };
 
-        static const ThreadEntry thread_database[] = {
-            { "3015ce ", 4 },
-            { "3015e ", 4 },
-            { "3020e ", 2 },
-            { "860k ", 4 },
-            { "870k ", 4 },
-            { "a10 pro-7350b ", 4 },
-            { "a10 pro-7800b ", 4 },
-            { "a10 pro-7850b ", 4 },
-            { "a10-6700 ", 4 },
-            { "a10-6700t ", 4 },
-            { "a10-6790b ", 4 },
-            { "a10-6790k ", 4 },
-            { "a10-6800b ", 4 },
-            { "a10-6800k ", 4 },
-            { "a10-7300 ", 4 },
-            { "a10-7400p ", 4 },
-            { "a10-7700k ", 4 },
-            { "a10-7800 ", 4 },
-            { "a10-7850k ", 4 },
-            { "a10-7860k ", 4 },
-            { "a10-7870k ", 4 },
-            { "a10-8700b ", 4 },
-            { "a10-8700p ", 4 },
-            { "a10-8750b ", 4 },
-            { "a10-8850b ", 4 },
-            { "a12-8800b ", 4 },
-            { "a4 micro-6400t ", 4 },
-            { "a4 pro-3340b ", 4 },
-            { "a4 pro-3350b ", 4 },
-            { "a4 pro-7300b ", 2 },
-            { "a4 pro-7350b ", 2 },
-            { "a4-5000 ", 4 },
-            { "a4-5100 ", 4 },
-            { "a4-6210 ", 4 },
-            { "a4-6300 ", 2 },
-            { "a4-6320 ", 2 },
-            { "a4-7210 ", 4 },
-            { "a4-7300 ", 2 },
-            { "a4-8350b ", 2 },
-            { "a4-9120c ", 2 },
-            { "a6 pro-7050b ", 2 },
-            { "a6 pro-7400b ", 2 },
-            { "a6-5200 ", 4 },
-            { "a6-5200m ", 4 },
-            { "a6-5350m ", 2 },
-            { "a6-6310 ", 4 },
-            { "a6-6400b ", 2 },
-            { "a6-6400k ", 2 },
-            { "a6-6420b ", 2 },
-            { "a6-6420k ", 2 },
-            { "a6-7000 ", 2 },
-            { "a6-7310 ", 4 },
-            { "a6-7400k ", 2 },
-            { "a6-8500b ", 4 },
-            { "a6-8500p ", 2 },
-            { "a6-8550b ", 2 },
-            { "a6-9220c ", 2 },
-            { "a8 pro-7150b ", 4 },
-            { "a8 pro-7600b ", 4 },
-            { "a8-6410 ", 4 },
-            { "a8-6500 ", 4 },
-            { "a8-6500b ", 4 },
-            { "a8-6500t ", 4 },
-            { "a8-6600k ", 4 },
-            { "a8-7100 ", 4 },
-            { "a8-7200p ", 4 },
-            { "a8-7410 ", 4 },
-            { "a8-7600 ", 4 },
-            { "a8-7650k ", 4 },
-            { "a8-7670k ", 4 },
-            { "a8-8600b ", 4 },
-            { "a8-8600p ", 4 },
-            { "a8-8650b ", 4 },
-            { "ai 5 340 ", 12 },
-            { "ai 5 pro 340 ", 12 },
-            { "ai 7 350 ", 16 },
-            { "ai 7 pro 350 ", 16 },
-            { "ai 7 pro 360 ", 16 },
-            { "ai 9 365 ", 20 },
-            { "ai 9 hx 370 ", 24 },
-            { "ai 9 hx 375 ", 24 },
-            { "ai 9 hx pro 370 ", 24 },
-            { "ai 9 hx pro 375 ", 24 },
-            { "ai max 385 ", 16 },
-            { "ai max 390 ", 24 },
-            { "ai max pro 380 ", 12 },
-            { "ai max pro 385 ", 16 },
-            { "ai max pro 390 ", 24 },
-            { "ai max+ 395 ", 32 },
-            { "ai max+ pro 395 ", 32 },
-            { "athlon  silver 3050c ", 2 }, // there's an extra space in the AMD specifications for some reason, which I assume it's a typo. I added the fixed and typo'd version just in case.
-            { "athlon silver 3050c ", 2 },
-            { "athlon 200ge ", 4 },
-            { "athlon 220ge ", 4 },
-            { "athlon 240ge ", 4 },
-            { "athlon 255e ", 2 },
-            { "athlon 3000g ", 4 },
-            { "athlon 300ge ", 4 },
-            { "athlon 300u ", 4 },
-            { "athlon 320ge ", 4 },
-            { "athlon 425e ", 3 },
-            { "athlon 460 ", 3 },
-            { "athlon 5150 ", 4 },
-            { "athlon 5350 ", 4 },
-            { "athlon 5370 ", 4 },
-            { "athlon 620e ", 4 },
-            { "athlon 631 ", 4 },
-            { "athlon 638 ", 4 },
-            { "athlon 641 ", 4 },
-            { "athlon 740 ", 4 },
-            { "athlon 750k ", 4 },
-            { "athlon 760k ", 4 },
-            { "athlon 860k ", 4 },
-            { "athlon gold 3150c ", 4 },
-            { "athlon gold 3150g ", 4 },
-            { "athlon gold 3150ge ", 4 },
-            { "athlon gold 3150u ", 4 },
-            { "athlon gold 7220c ", 4 },
-            { "athlon gold 7220u ", 4 },
-            { "athlon gold pro 3150g ", 4 },
-            { "athlon gold pro 3150ge ", 4 },
-            { "athlon pro 200ge ", 4 },
-            { "athlon pro 200u ", 4 },
-            { "athlon pro 300ge ", 4 },
-            { "athlon pro 300u ", 4 },
-            { "athlon pro 3045b ", 2 },
-            { "athlon pro 3145b ", 4 },
-            { "athlon silver 3050e ", 4 },
-            { "athlon silver 3050ge ", 4 },
-            { "athlon silver 3050u ", 2 },
-            { "athlon silver 7120c ", 2 },
-            { "athlon silver 7120u ", 2 },
-            { "athlon silver pro 3125ge ", 4 },
-            { "athlon x4 940 ", 4 },
-            { "athlon x4 950 ", 4 },
-            { "athlon x4 970 ", 4 },
-            { "b57 ", 2 },
-            { "b59 ", 2 },
-            { "b60 ", 2 },
-            { "b75 ", 3 },
-            { "b77 ", 3 },
-            { "b97 ", 4 },
-            { "b99 ", 4 },
-            { "e1 micro-6200t ", 2 },
-            { "e1-2100 ", 2 },
-            { "e1-2200 ", 2 },
-            { "e1-2500 ", 2 },
-            { "e1-6010 ", 2 },
-            { "e1-7010 ", 2 },
-            { "e2-3000 ", 2 },
-            { "e2-3800 ", 4 },
-            { "e2-6110 ", 4 },
-            { "e2-7110 ", 4 },
-            { "fx 6100 ", 6 },
-            { "fx-4100 ", 4 },
-            { "fx-4130 ", 4 },
-            { "fx-4170 ", 4 },
-            { "fx-4300 ", 4 },
-            { "fx-4320 ", 4 },
-            { "fx-4350 ", 4 },
-            { "fx-6200 ", 6 },
-            { "fx-6300 ", 6 },
-            { "fx-6350 ", 6 },
-            { "fx-7500 ", 4 },
-            { "fx-7600p ", 4 },
-            { "fx-8120 ", 8 },
-            { "fx-8150 ", 8 },
-            { "fx-8300 ", 8 },
-            { "fx-8310 ", 8 },
-            { "fx-8320 ", 8 },
-            { "fx-8320e ", 8 },
-            { "fx-8350 ", 8 },
-            { "fx-8370 ", 8 },
-            { "fx-8370e ", 8 },
-            { "fx-8800p ", 4 },
-            { "fx-9370 ", 8 },
-            { "fx-9590 ", 8 },
-            { "micro-6700t ", 4 },
-            { "n640 ", 2 },
-            { "n660 ", 2 },
-            { "n870 ", 3 },
-            { "n960 ", 4 },
-            { "n970 ", 4 },
-            { "p650 ", 2 },
-            { "p860 ", 3 },
-            { "phenom ii 1075t ", 6 },
-            { "phenom ii 555 ", 2 },
-            { "phenom ii 565 ", 2 },
-            { "phenom ii 570 ", 2 },
-            { "phenom ii 840 ", 4 },
-            { "phenom ii 850 ", 4 },
-            { "phenom ii 960t ", 4 },
-            { "phenom ii 965 ", 4 },
-            { "phenom ii 975 ", 4 },
-            { "phenom ii 980 ", 4 },
-            { "ryzen 3 1200 ", 4 },
-            { "ryzen 3 1300x ", 4 },
-            { "ryzen 3 210 ", 8 },
-            { "ryzen 3 2200g ", 4 },
-            { "ryzen 3 2200ge ", 4 },
-            { "ryzen 3 2200u ", 4 },
-            { "ryzen 3 2300u ", 4 },
-            { "ryzen 3 2300x ", 4 },
-            { "ryzen 3 3100 ", 8 },
-            { "ryzen 3 3200g ", 4 },
-            { "ryzen 3 3200ge ", 4 },
-            { "ryzen 3 3200u ", 4 },
-            { "ryzen 3 3250c ", 4 },
-            { "ryzen 3 3250u ", 4 },
-            { "ryzen 3 3300u ", 4 },
-            { "ryzen 3 3300x ", 8 },
-            { "ryzen 3 3350u ", 4 },
-            { "ryzen 3 4100 ", 8 },
-            { "ryzen 3 4300g ", 8 },
-            { "ryzen 3 4300ge ", 8 },
-            { "ryzen 3 4300u ", 4 },
-            { "ryzen 3 5125c ", 4 },
-            { "ryzen 3 5300g ", 8 },
-            { "ryzen 3 5300ge ", 8 },
-            { "ryzen 3 5300u ", 8 },
-            { "ryzen 3 5305g ", 8 },
-            { "ryzen 3 5305ge ", 8 },
-            { "ryzen 3 5400u ", 8 },
-            { "ryzen 3 5425c ", 8 },
-            { "ryzen 3 5425u ", 8 },
-            { "ryzen 3 7320c ", 8 },
-            { "ryzen 3 7320u ", 8 },
-            { "ryzen 3 7330u ", 8 },
-            { "ryzen 3 7335u ", 8 },
-            { "ryzen 3 7440u ", 8 },
-            { "ryzen 3 8300g ", 8 },
-            { "ryzen 3 8300ge ", 8 },
-            { "ryzen 3 8440u ", 8 },
-            { "ryzen 3 pro 1200 ", 4 },
-            { "ryzen 3 pro 1300 ", 4 },
-            { "ryzen 3 pro 210 ", 8 },
-            { "ryzen 3 pro 2200g ", 4 },
-            { "ryzen 3 pro 2200ge ", 4 },
-            { "ryzen 3 pro 2300u ", 4 },
-            { "ryzen 3 pro 3200g ", 4 },
-            { "ryzen 3 pro 3200ge ", 4 },
-            { "ryzen 3 pro 3300u ", 4 },
-            { "ryzen 3 pro 4350g ", 8 },
-            { "ryzen 3 pro 4350ge ", 8 },
-            { "ryzen 3 pro 4355g ", 8 },
-            { "ryzen 3 pro 4355ge ", 8 },
-            { "ryzen 3 pro 4450u ", 8 },
-            { "ryzen 3 pro 5350g ", 8 },
-            { "ryzen 3 pro 5350ge ", 8 },
-            { "ryzen 3 pro 5355g ", 8 },
-            { "ryzen 3 pro 5355ge ", 8 },
-            { "ryzen 3 pro 5450u ", 8 },
-            { "ryzen 3 pro 5475u ", 8 },
-            { "ryzen 3 pro 7330u ", 8 },
-            { "ryzen 3 pro 7335u ", 8 },
-            { "ryzen 3 pro 8300g ", 8 },
-            { "ryzen 3 pro 8300ge ", 8 },
-            { "ryzen 5 1400 ", 8 },
-            { "ryzen 5 1500x ", 8 },
-            { "ryzen 5 1600 ", 12 },
-            { "ryzen 5 1600 (af )", 12 },
-            { "ryzen 5 1600x ", 12 },
-            { "ryzen 5 220 ", 12 },
-            { "ryzen 5 230 ", 12 },
-            { "ryzen 5 240 ", 12 },
-            { "ryzen 5 2400g ", 8 },
-            { "ryzen 5 2400ge ", 8 },
-            { "ryzen 5 2500u ", 8 },
-            { "ryzen 5 2500x ", 8 },
-            { "ryzen 5 2600 ", 12 },
-            { "ryzen 5 2600e ", 12 },
-            { "ryzen 5 2600h ", 8 },
-            { "ryzen 5 2600x ", 12 },
-            { "ryzen 5 3400g ", 8 },
-            { "ryzen 5 3400ge ", 8 },
-            { "ryzen 5 3450u ", 8 },
-            { "ryzen 5 3500 ", 6 },
-            { "ryzen 5 3500c ", 8 },
-            { "ryzen 5 3500u ", 8 },
-            { "ryzen 5 3550h ", 8 },
-            { "ryzen 5 3580u ", 8 },
-            { "ryzen 5 3600 ", 12 },
-            { "ryzen 5 3600x ", 12 },
-            { "ryzen 5 3600xt ", 12 },
-            { "ryzen 5 4500 ", 12 },
-            { "ryzen 5 4500u ", 6 },
-            { "ryzen 5 4600g ", 12 },
-            { "ryzen 5 4600ge ", 12 },
-            { "ryzen 5 4600h ", 12 },
-            { "ryzen 5 4600u ", 12 },
-            { "ryzen 5 4680u ", 12 },
-            { "ryzen 5 5500 ", 12 },
-            { "ryzen 5 5500gt ", 12 },
-            { "ryzen 5 5500h ", 8 },
-            { "ryzen 5 5500u ", 12 },
-            { "ryzen 5 5560u ", 12 },
-            { "ryzen 5 5600 ", 12 },
-            { "ryzen 5 5600g ", 12 },
-            { "ryzen 5 5600ge ", 12 },
-            { "ryzen 5 5600gt ", 12 },
-            { "ryzen 5 5600h ", 12 },
-            { "ryzen 5 5600hs ", 12 },
-            { "ryzen 5 5600t ", 12 },
-            { "ryzen 5 5600u ", 12 },
-            { "ryzen 5 5600x ", 12 },
-            { "ryzen 5 5600x3d ", 12 },
-            { "ryzen 5 5600xt ", 12 },
-            { "ryzen 5 5605g ", 12 },
-            { "ryzen 5 5605ge ", 12 },
-            { "ryzen 5 5625c ", 12 },
-            { "ryzen 5 5625u ", 12 },
-            { "ryzen 5 6600h ", 12 },
-            { "ryzen 5 6600hs ", 12 },
-            { "ryzen 5 6600u ", 12 },
-            { "ryzen 5 7235hs ", 8 },
-            { "ryzen 5 7400f ", 12 },
-            { "ryzen 5 7430u ", 12 },
-            { "ryzen 5 7500f ", 12 },
-            { "ryzen 5 7520c ", 8 },
-            { "ryzen 5 7520u ", 8 },
-            { "ryzen 5 7530u ", 12 },
-            { "ryzen 5 7535hs ", 12 },
-            { "ryzen 5 7535u ", 12 },
-            { "ryzen 5 7540u ", 12 },
-            { "ryzen 5 7545u ", 12 },
-            { "ryzen 5 7600 ", 12 },
-            { "ryzen 5 7600x ", 12 },
-            { "ryzen 5 7600x3d ", 12 },
-            { "ryzen 5 7640hs ", 12 },
-            { "ryzen 5 7640u ", 12 },
-            { "ryzen 5 7645hx ", 12 },
-            { "ryzen 5 8400f ", 12 },
-            { "ryzen 5 8500g ", 12 },
-            { "ryzen 5 8500ge ", 12 },
-            { "ryzen 5 8540u ", 12 },
-            { "ryzen 5 8600g ", 12 },
-            { "ryzen 5 8640hs ", 12 },
-            { "ryzen 5 8640u ", 12 },
-            { "ryzen 5 8645hs ", 12 },
-            { "ryzen 5 9600 ", 12 },
-            { "ryzen 5 9600x ", 12 },
-            { "ryzen 5 pro 1500 ", 8 },
-            { "ryzen 5 pro 1600 ", 12 },
-            { "ryzen 5 pro 220 ", 12 },
-            { "ryzen 5 pro 230 ", 12 },
-            { "ryzen 5 pro 2400g ", 8 },
-            { "ryzen 5 pro 2400ge ", 8 },
-            { "ryzen 5 pro 2500u ", 8 },
-            { "ryzen 5 pro 2600 ", 12 },
-            { "ryzen 5 pro 3350g ", 8 },
-            { "ryzen 5 pro 3350ge ", 4 },
-            { "ryzen 5 pro 3400g ", 8 },
-            { "ryzen 5 pro 3400ge ", 8 },
-            { "ryzen 5 pro 3500u ", 8 },
-            { "ryzen 5 pro 3600 ", 12 },
-            { "ryzen 5 pro 4650g ", 12 },
-            { "ryzen 5 pro 4650ge ", 12 },
-            { "ryzen 5 pro 4650u ", 12 },
-            { "ryzen 5 pro 4655g ", 12 },
-            { "ryzen 5 pro 4655ge ", 12 },
-            { "ryzen 5 pro 5645 ", 12 },
-            { "ryzen 5 pro 5650g ", 12 },
-            { "ryzen 5 pro 5650ge ", 12 },
-            { "ryzen 5 pro 5650u ", 12 },
-            { "ryzen 5 pro 5655g ", 12 },
-            { "ryzen 5 pro 5655ge ", 12 },
-            { "ryzen 5 pro 5675u ", 12 },
-            { "ryzen 5 pro 6650h ", 12 },
-            { "ryzen 5 pro 6650hs ", 12 },
-            { "ryzen 5 pro 6650u ", 12 },
-            { "ryzen 5 pro 7530u ", 12 },
-            { "ryzen 5 pro 7535u ", 12 },
-            { "ryzen 5 pro 7540u ", 12 },
-            { "ryzen 5 pro 7545u ", 12 },
-            { "ryzen 5 pro 7640hs ", 12 },
-            { "ryzen 5 pro 7640u ", 12 },
-            { "ryzen 5 pro 7645 ", 12 },
-            { "ryzen 5 pro 8500g ", 12 },
-            { "ryzen 5 pro 8500ge ", 12 },
-            { "ryzen 5 pro 8540u ", 12 },
-            { "ryzen 5 pro 8600g ", 12 },
-            { "ryzen 5 pro 8600ge ", 12 },
-            { "ryzen 5 pro 8640hs ", 12 },
-            { "ryzen 5 pro 8640u ", 12 },
-            { "ryzen 5 pro 8645hs ", 12 },
-            { "ryzen 7 1700 ", 16 },
-            { "ryzen 7 1700x ", 16 },
-            { "ryzen 7 1800x ", 16 },
-            { "ryzen 7 250 ", 16 },
-            { "ryzen 7 260 ", 16 },
-            { "ryzen 7 2700 ", 16 },
-            { "ryzen 7 2700e ", 16 },
-            { "ryzen 7 2700u ", 8 },
-            { "ryzen 7 2700x ", 16 },
-            { "ryzen 7 2800h ", 8 },
-            { "ryzen 7 3700c ", 8 },
-            { "ryzen 7 3700u ", 8 },
-            { "ryzen 7 3700x ", 16 },
-            { "ryzen 7 3750h ", 8 },
-            { "ryzen 7 3780u ", 8 },
-            { "ryzen 7 3800x ", 16 },
-            { "ryzen 7 3800xt ", 16 },
-            { "ryzen 7 4700g ", 16 },
-            { "ryzen 7 4700ge ", 16 },
-            { "ryzen 7 4700u ", 8 },
-            { "ryzen 7 4800h ", 16 },
-            { "ryzen 7 4800hs ", 16 },
-            { "ryzen 7 4800u ", 16 },
-            { "ryzen 7 4980u ", 16 },
-            { "ryzen 7 5700 ", 16 },
-            { "ryzen 7 5700g ", 16 },
-            { "ryzen 7 5700ge ", 16 },
-            { "ryzen 7 5700u ", 16 },
-            { "ryzen 7 5700x ", 16 },
-            { "ryzen 7 5700x3d ", 16 },
-            { "ryzen 7 5705g ", 16 },
-            { "ryzen 7 5705ge ", 16 },
-            { "ryzen 7 5800 ", 16 },
-            { "ryzen 7 5800h ", 16 },
-            { "ryzen 7 5800hs ", 16 },
-            { "ryzen 7 5800u ", 16 },
-            { "ryzen 7 5800x ", 16 },
-            { "ryzen 7 5800x3d ", 16 },
-            { "ryzen 7 5800xt ", 16 },
-            { "ryzen 7 5825c ", 16 },
-            { "ryzen 7 5825u ", 16 },
-            { "ryzen 7 6800h ", 16 },
-            { "ryzen 7 6800hs ", 16 },
-            { "ryzen 7 6800u ", 16 },
-            { "ryzen 7 7435hs ", 16 },
-            { "ryzen 7 7700 ", 16 },
-            { "ryzen 7 7700x ", 16 },
-            { "ryzen 7 7730u ", 16 },
-            { "ryzen 7 7735hs ", 16 },
-            { "ryzen 7 7735u ", 16 },
-            { "ryzen 7 7736u ", 16 },
-            { "ryzen 7 7745hx ", 16 },
-            { "ryzen 7 7800x3d ", 16 },
-            { "ryzen 7 7840hs ", 16 },
-            { "ryzen 7 7840hx ", 24 },
-            { "ryzen 7 7840u ", 16 },
-            { "ryzen 7 8700f ", 16 },
-            { "ryzen 7 8700g ", 16 },
-            { "ryzen 7 8840hs ", 16 },
-            { "ryzen 7 8840u ", 16 },
-            { "ryzen 7 8845hs ", 16 },
-            { "ryzen 7 9700x ", 16 },
-            { "ryzen 7 9800x3d ", 16 },
-            { "ryzen 7 pro 1700 ", 16 },
-            { "ryzen 7 pro 1700x ", 16 },
-            { "ryzen 7 pro 250 ", 16 },
-            { "ryzen 7 pro 2700 ", 16 },
-            { "ryzen 7 pro 2700u ", 8 },
-            { "ryzen 7 pro 2700x ", 16 },
-            { "ryzen 7 pro 3700 ", 16 },
-            { "ryzen 7 pro 3700u ", 8 },
-            { "ryzen 7 pro 4750g ", 16 },
-            { "ryzen 7 pro 4750ge ", 16 },
-            { "ryzen 7 pro 4750u ", 16 },
-            { "ryzen 7 pro 5750g ", 16 },
-            { "ryzen 7 pro 5750ge ", 16 },
-            { "ryzen 7 pro 5755g ", 16 },
-            { "ryzen 7 pro 5755ge ", 16 },
-            { "ryzen 7 pro 5845 ", 16 },
-            { "ryzen 7 pro 5850u ", 16 },
-            { "ryzen 7 pro 5875u ", 16 },
-            { "ryzen 7 pro 6850h ", 16 },
-            { "ryzen 7 pro 6850hs ", 16 },
-            { "ryzen 7 pro 6850u ", 16 },
-            { "ryzen 7 pro 6860z ", 16 },
-            { "ryzen 7 pro 7730u ", 16 },
-            { "ryzen 7 pro 7735u ", 16 },
-            { "ryzen 7 pro 7745 ", 16 },
-            { "ryzen 7 pro 7840hs ", 16 },
-            { "ryzen 7 pro 7840u ", 16 },
-            { "ryzen 7 pro 8700g ", 16 },
-            { "ryzen 7 pro 8700ge ", 16 },
-            { "ryzen 7 pro 8840hs ", 16 },
-            { "ryzen 7 pro 8840u ", 16 },
-            { "ryzen 7 pro 8845hs ", 16 },
-            { "ryzen 9 270 ", 16 },
-            { "ryzen 9 3900 processor ", 24 },
-            { "ryzen 9 3900x ", 24 },
-            { "ryzen 9 3900xt ", 24 },
-            { "ryzen 9 3950x ", 32 },
-            { "ryzen 9 4900h ", 16 },
-            { "ryzen 9 4900hs ", 16 },
-            { "ryzen 9 5900 ", 24 },
-            { "ryzen 9 5900hs ", 16 },
-            { "ryzen 9 5900hx ", 16 },
-            { "ryzen 9 5900x ", 24 },
-            { "ryzen 9 5900xt ", 32 },
-            { "ryzen 9 5950x ", 32 },
-            { "ryzen 9 5980hs ", 16 },
-            { "ryzen 9 5980hx ", 16 },
-            { "ryzen 9 6900hs ", 16 },
-            { "ryzen 9 6900hx ", 16 },
-            { "ryzen 9 6980hs ", 16 },
-            { "ryzen 9 6980hx ", 16 },
-            { "ryzen 9 7845hx ", 24 },
-            { "ryzen 9 7900 ", 24 },
-            { "ryzen 9 7900x ", 24 },
-            { "ryzen 9 7900x3d ", 24 },
-            { "ryzen 9 7940hs ", 16 },
-            { "ryzen 9 7940hx ", 32 },
-            { "ryzen 9 7945hx ", 32 },
-            { "ryzen 9 7945hx3d ", 32 },
-            { "ryzen 9 7950x ", 32 },
-            { "ryzen 9 7950x3d ", 32 },
-            { "ryzen 9 8945hs ", 16 },
-            { "ryzen 9 9850hx ", 24 },
-            { "ryzen 9 9900x ", 24 },
-            { "ryzen 9 9900x3d ", 24 },
-            { "ryzen 9 9950x ", 32 },
-            { "ryzen 9 9950x3d ", 32 },
-            { "ryzen 9 9955hx ", 32 },
-            { "ryzen 9 9955hx3d ", 32 },
-            { "ryzen 9 pro 3900 ", 24 },
-            { "ryzen 9 pro 5945 ", 24 },
-            { "ryzen 9 pro 6950h ", 16 },
-            { "ryzen 9 pro 6950hs ", 16 },
-            { "ryzen 9 pro 7940hs ", 16 },
-            { "ryzen 9 pro 7945 ", 24 },
-            { "ryzen 9 pro 8945hs ", 16 }, 
-            { "ryzen threadripper 1900x ", 16 },
-            { "ryzen threadripper 1920x ", 24 },
-            { "ryzen threadripper 1950x ", 32 },
-            { "ryzen threadripper 2920x ", 24 },
-            { "ryzen threadripper 2950x ", 32 },
-            { "ryzen threadripper 2970wx ", 48 },
-            { "ryzen threadripper 2990wx ", 64 },
-            { "ryzen threadripper 3960x ", 48 },
-            { "ryzen threadripper 3970x ", 64 },
-            { "ryzen threadripper 3990x ", 128 },
-            { "ryzen threadripper 7960x ", 48 },
-            { "ryzen threadripper 7970x ", 64 },
-            { "ryzen threadripper 7980x ", 128 },
-            { "ryzen threadripper pro 3945wx ", 24 },
-            { "ryzen threadripper pro 3955wx ", 32 },
-            { "ryzen threadripper pro 3975wx ", 64 },
-            { "ryzen threadripper pro 3995wx ", 128 },
-            { "ryzen threadripper pro 5945wx ", 24 },
-            { "ryzen threadripper pro 5955wx ", 32 },
-            { "ryzen threadripper pro 5965wx ", 48 },
-            { "ryzen threadripper pro 5975wx ", 64 },
-            { "ryzen threadripper pro 5995wx ", 128 },
-            { "ryzen threadripper pro 7945wx ", 24 },
-            { "ryzen threadripper pro 7955wx ", 32 },
-            { "ryzen threadripper pro 7965wx ", 48 },
-            { "ryzen threadripper pro 7975wx ", 64 },
-            { "ryzen threadripper pro 7985wx ", 128 },
-            { "ryzen threadripper pro 7995wx ", 192 },
-            { "ryzen threadripper 9945wx", 24 },
-            { "ryzen threadripper 9955wx", 32 },
-            { "ryzen threadripper 9975wx", 64 },
-            { "ryzen threadripper 9985wx", 128 },
-            { "ryzen threadripper pro 9995wx", 192 },
-            { "ryzen z1 extreme ", 16 },
-            { "ryzen z1 ", 12 },
-            { "sempron 2650 ", 2 },
-            { "sempron 3850 ", 4 },
-            { "x940 ", 4 },
-            { "z2 extreme ", 16 },
-            { "z2 go ", 8 }
+        struct Entry {
+            u32 hash;
+            u32 threads;
+            constexpr Entry(const char* m, u32 t) : hash(ConstexprHash::get(m)), threads(t) {}
         };
 
-        constexpr size_t thread_database_count = sizeof(thread_database) / sizeof(thread_database[0]);
-        const std::string cpu_full_name = model;
+        // Database is reduced to identifying suffixes (last token of the original strings)
+        // for example handles "ryzen 5 3600" by matching "3600", which is unique in context
+        static constexpr Entry db_entries[] = {
+            // 3015/3020
+            { "3015ce", 4 },
+            { "3015e", 4 },
+            { "3020e", 2 },
 
-        const ThreadEntry* best = nullptr;
+            // Athlon/Ax suffixes
+            { "860k", 4 },
+            { "870k", 4 },
+            { "pro-7350b", 4 },
+            { "pro-7800b", 4 },
+            { "pro-7850b", 4 },
+            { "a10-6700", 4 },
+            { "a10-6700t", 4 },
+            { "a10-6790b", 4 },
+            { "a10-6790k", 4 },
+            { "a10-6800b", 4 },
+            { "a10-6800k", 4 },
+            { "a10-7300", 4 },
+            { "a10-7400p", 4 },
+            { "a10-7700k", 4 },
+            { "a10-7800", 4 },
+            { "a10-7850k", 4 },
+            { "a10-7860k", 4 },
+            { "a10-7870k", 4 },
+            { "a10-8700b", 4 },
+            { "a10-8700p", 4 },
+            { "a10-8750b", 4 },
+            { "a10-8850b", 4 },
+            { "a12-8800b", 4 },
+            { "micro-6400t", 4 },
+            { "pro-3340b", 4 },
+            { "pro-3350b", 4 },
+            { "pro-7300b", 2 },
+            { "a4-5000", 4 },
+            { "a4-5100", 4 },
+            { "a4-6210", 4 },
+            { "a4-6300", 2 },
+            { "a4-6320", 2 },
+            { "a4-7210", 4 },
+            { "a4-7300", 2 },
+            { "a4-8350b", 2 },
+            { "a4-9120c", 2 },
+            { "pro-7050b", 2 },
+            { "pro-7400b", 2 },
+            { "a6-5200", 4 },
+            { "a6-5200m", 4 },
+            { "a6-5350m", 2 },
+            { "a6-6310", 4 },
+            { "a6-6400b", 2 },
+            { "a6-6400k", 2 },
+            { "a6-6420b", 2 },
+            { "a6-6420k", 2 },
+            { "a6-7000", 2 },
+            { "a6-7310", 4 },
+            { "a6-7400k", 2 },
+            { "a6-8500b", 4 },
+            { "a6-8500p", 2 },
+            { "a6-8550b", 2 },
+            { "a6-9220c", 2 },
+            { "pro-7150b", 4 },
+            { "pro-7600b", 4 },
+            { "a8-6410", 4 },
+            { "a8-6500", 4 },
+            { "a8-6500b", 4 },
+            { "a8-6500t", 4 },
+            { "a8-6600k", 4 },
+            { "a8-7100", 4 },
+            { "a8-7200p", 4 },
+            { "a8-7410", 4 },
+            { "a8-7600", 4 },
+            { "a8-7650k", 4 },
+            { "a8-7670k", 4 },
+            { "a8-8600b", 4 },
+            { "a8-8600p", 4 },
+            { "a8-8650b", 4 },
+
+            // AI Series (Suffixes)
+            { "340", 12 },
+            { "350", 16 },
+            { "360", 16 },
+            { "365", 20 },
+            { "370", 24 },
+            { "375", 24 },
+            { "380", 12 },
+            { "385", 16 },
+            { "390", 24 },
+            { "395", 32 },
+
+            // Athlon
+            { "3050c", 2 },
+            { "200ge", 4 },
+            { "220ge", 4 },
+            { "240ge", 4 },
+            { "255e", 2 },
+            { "3000g", 4 },
+            { "300ge", 4 },
+            { "300u", 4 },
+            { "320ge", 4 },
+            { "425e", 3 },
+            { "460", 3 },
+            { "5150", 4 },
+            { "5350", 4 },
+            { "5370", 4 },
+            { "620e", 4 },
+            { "631", 4 },
+            { "638", 4 },
+            { "641", 4 },
+            { "740", 4 },
+            { "750k", 4 },
+            { "760k", 4 },
+            { "3150c", 4 },
+            { "3150g", 4 },
+            { "3150ge", 4 },
+            { "3150u", 4 },
+            { "7220c", 4 },
+            { "7220u", 4 },
+            { "3045b", 2 },
+            { "3145b", 4 },
+            { "3050e", 4 },
+            { "3050ge", 4 },
+            { "3050u", 2 },
+            { "7120c", 2 },
+            { "7120u", 2 },
+            { "3125ge", 4 },
+            { "940", 4 },
+            { "950", 4 },
+            { "970", 4 },
+
+            // Business Class
+            { "b57", 2 },
+            { "b59", 2 },
+            { "b60", 2 },
+            { "b75", 3 },
+            { "b77", 3 },
+            { "b97", 4 },
+            { "b99", 4 },
+
+            // E-Series
+            { "micro-6200t", 2 },
+            { "e1-2100", 2 },
+            { "e1-2200", 2 },
+            { "e1-2500", 2 },
+            { "e1-6010", 2 },
+            { "e1-7010", 2 },
+            { "e2-3000", 2 },
+            { "e2-3800", 4 },
+            { "e2-6110", 4 },
+            { "e2-7110", 4 },
+
+            // FX
+            { "fx-4100", 4 },
+            { "fx-4130", 4 },
+            { "fx-4170", 4 },
+            { "fx-4300", 4 },
+            { "fx-4320", 4 },
+            { "fx-4350", 4 },
+            { "fx-6200", 6 },
+            { "fx-6300", 6 },
+            { "fx-6350", 6 },
+            { "fx-7500", 4 },
+            { "fx-7600p", 4 },
+            { "fx-8120", 8 },
+            { "fx-8150", 8 },
+            { "fx-8300", 8 },
+            { "fx-8310", 8 },
+            { "fx-8320", 8 },
+            { "fx-8320e", 8 },
+            { "fx-8350", 8 },
+            { "fx-8370", 8 },
+            { "fx-8370e", 8 },
+            { "fx-8800p", 4 },
+            { "fx-9370", 8 },
+            { "fx-9590", 8 },
+
+            // Misc
+            { "micro-6700t", 4 },
+            { "n640", 2 },
+            { "n660", 2 },
+            { "n870", 3 },
+            { "n960", 4 },
+            { "n970", 4 },
+            { "p650", 2 },
+            { "p860", 3 },
+
+            // Phenom II
+            { "1075t", 6 },
+            { "555", 2 },
+            { "565", 2 },
+            { "570", 2 },
+            { "840", 4 },
+            { "850", 4 },
+            { "960t", 4 },
+            { "965", 4 },
+            { "975", 4 },
+            { "980", 4 },
+
+            // Ryzen Suffixes (3/5/7/9/Threadripper consolidated)
+            { "1200", 4 },
+            { "1300x", 4 },
+            { "210", 8 },
+            { "2200g", 4 },
+            { "2200ge", 4 },
+            { "2200u", 4 },
+            { "2300u", 4 },
+            { "2300x", 4 },
+            { "3100", 8 },
+            { "3200g", 4 },
+            { "3200ge", 4 },
+            { "3200u", 4 },
+            { "3250c", 4 },
+            { "3250u", 4 },
+            { "3300u", 4 },
+            { "3300x", 8 },
+            { "3350u", 4 },
+            { "4100", 8 },
+            { "4300g", 8 },
+            { "4300ge", 8 },
+            { "4300u", 4 },
+            { "5125c", 4 },
+            { "5300g", 8 },
+            { "5300ge", 8 },
+            { "5300u", 8 },
+            { "5305g", 8 },
+            { "5305ge", 8 },
+            { "5400u", 8 },
+            { "5425c", 8 },
+            { "5425u", 8 },
+            { "7320c", 8 },
+            { "7320u", 8 },
+            { "7330u", 8 },
+            { "7335u", 8 },
+            { "7440u", 8 },
+            { "8300g", 8 },
+            { "8300ge", 8 },
+            { "8440u", 8 },
+            { "1300", 4 },
+            { "4350g", 8 },
+            { "4350ge", 8 },
+            { "4355g", 8 },
+            { "4355ge", 8 },
+            { "4450u", 8 },
+            { "5350g", 8 },
+            { "5350ge", 8 },
+            { "5355g", 8 },
+            { "5355ge", 8 },
+            { "5450u", 8 },
+            { "5475u", 8 },
+            { "1400", 8 },
+            { "1500x", 8 },
+            { "1600", 12 },
+            { "1600x", 12 },
+            { "220", 12 },
+            { "230", 12 },
+            { "240", 12 },
+            { "2400g", 8 },
+            { "2400ge", 8 },
+            { "2500u", 8 },
+            { "2500x", 8 },
+            { "2600", 12 },
+            { "2600e", 12 },
+            { "2600h", 8 },
+            { "2600x", 12 },
+            { "3400g", 8 },
+            { "3400ge", 8 },
+            { "3450u", 8 },
+            { "3500", 6 },
+            { "3500c", 8 },
+            { "3500u", 8 },
+            { "3550h", 8 },
+            { "3580u", 8 },
+            { "3600", 12 },
+            { "3600x", 12 },
+            { "3600xt", 12 },
+            { "4500", 12 },
+            { "4500u", 6 },
+            { "4600g", 12 },
+            { "4600ge", 12 },
+            { "4600h", 12 },
+            { "4600u", 12 },
+            { "4680u", 12 },
+            { "5500", 12 },
+            { "5500gt", 12 },
+            { "5500h", 8 },
+            { "5500u", 12 },
+            { "5560u", 12 },
+            { "5600", 12 },
+            { "5600g", 12 },
+            { "5600ge", 12 },
+            { "5600gt", 12 },
+            { "5600h", 12 },
+            { "5600hs", 12 },
+            { "5600t", 12 },
+            { "5600u", 12 },
+            { "5600x", 12 },
+            { "5600x3d", 12 },
+            { "5600xt", 12 },
+            { "5605g", 12 },
+            { "5605ge", 12 },
+            { "5625c", 12 },
+            { "5625u", 12 },
+            { "6600h", 12 },
+            { "6600hs", 12 },
+            { "6600u", 12 },
+            { "7235hs", 8 },
+            { "7400f", 12 },
+            { "7430u", 12 },
+            { "7500f", 12 },
+            { "7520c", 8 },
+            { "7520u", 8 },
+            { "7530u", 12 },
+            { "7535hs", 12 },
+            { "7535u", 12 },
+            { "7540u", 12 },
+            { "7545u", 12 },
+            { "7600", 12 },
+            { "7600x", 12 },
+            { "7600x3d", 12 },
+            { "7640hs", 12 },
+            { "7640u", 12 },
+            { "7645hx", 12 },
+            { "8400f", 12 },
+            { "8500g", 12 },
+            { "8500ge", 12 },
+            { "8540u", 12 },
+            { "8600g", 12 },
+            { "8640hs", 12 },
+            { "8640u", 12 },
+            { "8645hs", 12 },
+            { "9600", 12 },
+            { "9600x", 12 },
+            { "1500", 8 },
+            { "3350g", 8 },
+            { "3350ge", 4 },
+            { "4650g", 12 },
+            { "4650ge", 12 },
+            { "4650u", 12 },
+            { "4655g", 12 },
+            { "4655ge", 12 },
+            { "5645", 12 },
+            { "5650g", 12 },
+            { "5650ge", 12 },
+            { "5650u", 12 },
+            { "5655g", 12 },
+            { "5655ge", 12 },
+            { "5675u", 12 },
+            { "6650h", 12 },
+            { "6650hs", 12 },
+            { "6650u", 12 },
+            { "1700", 16 },
+            { "1700x", 16 },
+            { "1800x", 16 },
+            { "250", 16 },
+            { "260", 16 },
+            { "2700", 16 },
+            { "2700e", 16 },
+            { "2700u", 8 },
+            { "2700x", 16 },
+            { "2800h", 8 },
+            { "3700c", 8 },
+            { "3700u", 8 },
+            { "3700x", 16 },
+            { "3750h", 8 },
+            { "3780u", 8 },
+            { "3800x", 16 },
+            { "3800xt", 16 },
+            { "4700g", 16 },
+            { "4700ge", 16 },
+            { "4700u", 8 },
+            { "4800h", 16 },
+            { "4800hs", 16 },
+            { "4800u", 16 },
+            { "4980u", 16 },
+            { "5700", 16 },
+            { "5700g", 16 },
+            { "5700ge", 16 },
+            { "5700u", 16 },
+            { "5700x", 16 },
+            { "5700x3d", 16 },
+            { "5705g", 16 },
+            { "5705ge", 16 },
+            { "5800", 16 },
+            { "5800h", 16 },
+            { "5800hs", 16 },
+            { "5800u", 16 },
+            { "5800x", 16 },
+            { "5800x3d", 16 },
+            { "5800xt", 16 },
+            { "5825c", 16 },
+            { "5825u", 16 },
+            { "6800h", 16 },
+            { "6800hs", 16 },
+            { "6800u", 16 },
+            { "7435hs", 16 },
+            { "7700", 16 },
+            { "7700x", 16 },
+            { "7730u", 16 },
+            { "7735hs", 16 },
+            { "7735u", 16 },
+            { "7736u", 16 },
+            { "7745hx", 16 },
+            { "7800x3d", 16 },
+            { "7840hs", 16 },
+            { "7840hx", 24 },
+            { "7840u", 16 },
+            { "8700f", 16 },
+            { "8700g", 16 },
+            { "8840hs", 16 },
+            { "8840u", 16 },
+            { "8845hs", 16 },
+            { "9700x", 16 },
+            { "9800x3d", 16 },
+            { "4750g", 16 },
+            { "4750ge", 16 },
+            { "4750u", 16 },
+            { "5750g", 16 },
+            { "5750ge", 16 },
+            { "5755g", 16 },
+            { "5755ge", 16 },
+            { "5845", 16 },
+            { "5850u", 16 },
+            { "5875u", 16 },
+            { "6850h", 16 },
+            { "6850hs", 16 },
+            { "6850u", 16 },
+            { "6860z", 16 },
+            { "7745", 16 },
+            { "270", 16 },
+            { "3900", 24 },
+            { "3900x", 24 },
+            { "3900xt", 24 },
+            { "3950x", 32 },
+            { "4900h", 16 },
+            { "4900hs", 16 },
+            { "5900", 24 },
+            { "5900hs", 16 },
+            { "5900hx", 16 },
+            { "5900x", 24 },
+            { "5900xt", 32 },
+            { "5950x", 32 },
+            { "5980hs", 16 },
+            { "5980hx", 16 },
+            { "6900hs", 16 },
+            { "6900hx", 16 },
+            { "6980hs", 16 },
+            { "6980hx", 16 },
+            { "7845hx", 24 },
+            { "7900", 24 },
+            { "7900x", 24 },
+            { "7900x3d", 24 },
+            { "7940hs", 16 },
+            { "7940hx", 32 },
+            { "7945hx", 32 },
+            { "7945hx3d", 32 },
+            { "7950x", 32 },
+            { "7950x3d", 32 },
+            { "8945hs", 16 },
+            { "9850hx", 24 },
+            { "9900x", 24 },
+            { "9900x3d", 24 },
+            { "9950x", 32 },
+            { "9950x3d", 32 },
+            { "9955hx", 32 },
+            { "9955hx3d", 32 },
+            { "5945", 24 },
+            { "6950h", 16 },
+            { "6950hs", 16 },
+            { "7945", 24 },
+            { "1900x", 16 },
+            { "1920x", 24 },
+            { "1950x", 32 },
+            { "2920x", 24 },
+            { "2950x", 32 },
+            { "2970wx", 48 },
+            { "2990wx", 64 },
+            { "3960x", 48 },
+            { "3970x", 64 },
+            { "3990x", 128 },
+            { "7960x", 48 },
+            { "7970x", 64 },
+            { "7980x", 128 },
+            { "3945wx", 24 },
+            { "3955wx", 32 },
+            { "3975wx", 64 },
+            { "3995wx", 128 },
+            { "5945wx", 24 },
+            { "5955wx", 32 },
+            { "5965wx", 48 },
+            { "5975wx", 64 },
+            { "5995wx", 128 },
+            { "7945wx", 24 },
+            { "7955wx", 32 },
+            { "7965wx", 48 },
+            { "7975wx", 64 },
+            { "7985wx", 128 },
+            { "7995wx", 192 },
+            { "9945wx", 24 },
+            { "9955wx", 32 },
+            { "9975wx", 64 },
+            { "9985wx", 128 },
+            { "9995wx", 192 },
+
+            // Sempron
+            { "2650", 2 },
+            { "3850", 4 },
+
+            // Z-Series
+            { "z1", 12 },
+            { "z2", 16 }
+        };
+
+        struct hasher {
+            static u32 crc32_sw(u32 crc, char data) {
+                crc ^= static_cast<u8>(data);
+                for (int i = 0; i < 8; ++i)
+                    crc = (crc >> 1) ^ ((crc & 1) ? 0x82F63B78u : 0);
+                return crc;
+            }
+
+            static u32 crc32_hw(u32 crc, char data) {
+                return _mm_crc32_u8(crc, static_cast<u8>(data));
+            }
+
+            using hashfc = u32(*)(u32, char);
+
+            static hashfc get() {
+                i32 regs[4];
+                cpu::cpuid(regs, 1);
+                const bool has_sse42 = (regs[2] & (1 << 20)) != 0;
+                return has_sse42 ? crc32_hw : crc32_sw;
+            }
+        };
+
+        debug("AMD_THREAD_MISMATCH: CPU model = ", model_str);
+
+        const char* str = model_str.c_str();
+        u32 expected_threads = 0;
+        bool found = false;
         size_t best_len = 0;
-        size_t best_pos = std::string::npos;
 
-        if (cpu_full_name.empty()) return false;
+        const auto hash_func = hasher::get();
 
-        for (size_t i = 0; i < thread_database_count; ++i) {
-            const char* key = thread_database[i].model;
-            const size_t len = std::strlen(key);
+        // manual collision fix for Z1 Extreme (16) vs Z1 (12)
+        // this is a special runtime check because "z1" is a substring of "z1 extreme" tokens
+        // and both might be hashed. VMAware should prioritize 'extreme' if found
+        u32 z_series_threads = 0;
 
-            const size_t p = cpu_full_name.find(key);
-            if (p != std::string::npos && len > best_len) {
-                best = &thread_database[i];
-                best_len = len;
-                best_pos = p;
+        for (size_t i = 0; str[i] != '\0'; ) {
+            char c = str[i];
+            if (!((c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'))) {
+                i++;
+                continue;
             }
+
+            u32 current_hash = 0;
+            size_t current_len = 0;
+            size_t j = i;
+
+            while (true) {
+                char k = str[j];
+                const bool is_valid = (k >= '0' && k <= '9') ||
+                    (k >= 'A' && k <= 'Z') ||
+                    (k >= 'a' && k <= 'z') ||
+                    (k == '-');
+                if (!is_valid) break;
+
+                if (current_len >= MAX_AMD_TOKEN_LEN) {
+                    while (str[j] != '\0' && str[j] != ' ') j++;
+                    break;
+                }
+
+                // convert to lowercase on-the-fly to match compile-time keys
+                if (k >= 'A' && k <= 'Z') k += 32;
+
+                current_hash = hash_func(current_hash, k);
+                current_len++;
+                j++;
+
+                // boundary check
+                const char next = str[j];
+                const bool next_is_alnum = (next >= '0' && next <= '9') ||
+                    (next >= 'A' && next <= 'Z') ||
+                    (next >= 'a' && next <= 'z');
+
+                if (!next_is_alnum) {
+                    // Check specific Z1 Extreme token
+                    // Hash for "extreme" (CRC32-C) is 0x3D09D5B4
+                    if (current_hash == 0x3D09D5B4) { z_series_threads = 16; }
+
+                    for (const auto& entry : db_entries) {
+                        if (entry.hash == current_hash) {
+                            if (current_len > best_len) {
+                                best_len = current_len;
+                                expected_threads = entry.threads;
+                                found = true;
+                            }
+                        }
+                    }
+                }
+            }
+            i = j;
         }
 
-        // Make sure best matches as a whole token, not just as a substring
-        if (best && best_pos != std::string::npos) {
-            size_t pos = best_pos;
-            size_t end = pos + best_len;
+        // Z1 Extreme fix
+        if (z_series_threads != 0 && expected_threads == 12) {
+            expected_threads = z_series_threads;
+        }
 
-            auto isAsciiAlphaNum = [](char c)->bool {
-                const u8 uc = static_cast<u8>(c);
-                return (uc >= '0' && uc <= '9') || (uc >= 'A' && uc <= 'Z') || (uc >= 'a' && uc <= 'z');
-            };
-
-            const bool left_ok = (pos == 0) || !isAsciiAlphaNum(cpu_full_name[pos - 1]);
-            const bool right_ok = (end == cpu_full_name.size()) || !isAsciiAlphaNum(cpu_full_name[end]);
-
-            if (left_ok && right_ok) {
-                const u32 expected = best->threads;
-                const u32 actual = memo::threadcount::fetch();
-                debug("AMD_THREAD_MISMATCH: Expected threads -> ", expected);
-                return actual != expected;
-            }
+        if (found) {
+            const u32 actual = memo::threadcount::fetch();
+            return actual != expected_threads;
         }
 
         return false;
