@@ -12,6 +12,7 @@
    <div align="center">
       <b>VMAware</b> (VM + Aware) 是一个跨平台的C++虚拟机检测库。
       <br>
+      <br>
       <a href="README.md">English 🇬🇧</a> | <a href="README_FR.md">Français 🇫🇷</a> | <a href="README_KR.md">한국어 🇰🇷</a>
    </div>
 </p>
@@ -295,6 +296,7 @@ endif()
 - [Kyun-J](https://github.com/Kyun-J)
 - [luukjp](https://github.com/luukjp)
 - [Randark](https://github.com/Randark-JMT)
+- [Scrut1ny](https://github.com/Scrut1ny)
 
 <br>
 
