@@ -2330,11 +2330,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category x86
      * @implements VM::INTEL_THREAD_MISMATCH
      */
-    [[nodiscard]] static bool intel_thread_mismatch()
-    #if (CLANG || GCC)
-        __attribute__((__target__("crc32")))
-    #endif
-    {
+    [[nodiscard]] static bool intel_thread_mismatch() {
     #if (!x86)
         return false;
     #else
@@ -3352,6 +3348,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return crc;
             }
 
+            #if (CLANG || GCC)
+                __attribute__((__target__("crc32")))
+            #endif
             static u32 crc32_hw(u32 crc, char data) {
                 return _mm_crc32_u8(crc, static_cast<u8>(data));
             }
@@ -3454,11 +3453,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @link https://en.wikipedia.org/wiki/List_of_Intel_Core_processors
      * @implements VM::XEON_THREAD_MISMATCH
      */
-    [[nodiscard]] static bool xeon_thread_mismatch()
-    #if (CLANG || GCC)
-            __attribute__((__target__("crc32")))
-    #endif
-    {
+    [[nodiscard]] static bool xeon_thread_mismatch() {
     #if (!x86)
         return false;
     #else
@@ -3655,6 +3650,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return crc;
             }
 
+            #if (CLANG || GCC)
+                __attribute__((__target__("crc32")))
+            #endif
             static u32 crc32_hw(u32 crc, char data) {
                 return _mm_crc32_u8(crc, static_cast<u8>(data));
             }
@@ -3761,11 +3759,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category x86
      * @implements VM::AMD_THREAD_MISMATCH
      */
-    [[nodiscard]] static bool amd_thread_mismatch()
-    #if (CLANG || GCC)
-            __attribute__((__target__("crc32")))
-    #endif
-    {
+    [[nodiscard]] static bool amd_thread_mismatch() {
     #if (!x86)
         return false;
     #else
@@ -4318,6 +4312,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return crc;
             }
 
+            #if (CLANG || GCC)
+                __attribute__((__target__("crc32")))
+            #endif
             static u32 crc32_hw(u32 crc, char data) {
                 return _mm_crc32_u8(crc, static_cast<u8>(data));
             }
