@@ -12,7 +12,7 @@
    <div align="center">
       <b>VMAware</b> (VM + Aware) is a cross-platform C++ library for virtual machine detection.
       <br>
-      <a href="README_CN.md">中文 🇨🇳</a> | <a href="README_FR.md">Français 🇫🇷</a>
+      <a href="README_CN.md">中文 🇨🇳</a> | <a href="README_FR.md">Français 🇫🇷</a> | <a href="README_KR.md">한국어 🇰🇷</a>
    </div>
 </p>
 
@@ -171,7 +171,7 @@ If you want to learn about the architecture and design of the library, head over
 > 
 > Additionally, software could adjust the behaviour of their program based on the detected environment. It could be useful for debugging and testing purposes, while system administrators could manage configurations differently. Finally, some applications might want to legally restrict usage in VMs as a license clause to prevent unauthorized distribution or testing.
 >
-> There are also projects that utilise our tool such as [Hypervisor-Phantom](https://codeberg.org/Scrut1ny/Hypervisor-Phantom), which is an advanced malware analysis project that we helped strengthen their hypervisor environment and undetectability.
+> There are also projects that utilise our tool such as [Hypervisor-Phantom](https://github.com/Scrut1ny/Hypervisor-Phantom), which is an advanced malware analysis project that we helped strengthen their hypervisor environment and undetectability.
 
 </details>
 

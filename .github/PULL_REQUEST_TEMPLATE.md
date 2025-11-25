@@ -5,6 +5,7 @@
 ## What does this PR do?
 - [ ] Add a new technique
 - [ ] Add a new feature
+- [ ] Add a new README translation
 - [ ] Improve code
 - [ ] Fix bugs
 - [ ] Refactoring or code organisation
