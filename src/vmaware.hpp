@@ -338,6 +338,7 @@
 #endif
 #if (VMA_CPP >= 17)
     #include <filesystem>
+    #include <system_error>
 #endif
 #ifdef __VMAWARE_DEBUG__
     #include <iomanip>
@@ -6353,9 +6354,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         std::vector<PCI_Device> devices;
 
         #if (LINUX)
-            const std::string pci_path = "/sys/bus/pci/devices";
-            #if (VMA_CPP >= 17)
-                for (const auto& entry : std::filesystem::directory_iterator(pci_path)) {
+         const std::string pci_path = "/sys/bus/pci/devices";
+         #if (VMA_CPP >= 17)
+            // std::filesystem throws exceptions when directories don't exist (SIGSEGV)
+            std::error_code ec;
+            auto dir_iter = std::filesystem::directory_iterator(pci_path, ec);
+
+            if (!ec) {
+                for (const auto& entry : dir_iter) {
                     std::ifstream vf(entry.path() / "vendor"), df(entry.path() / "device");
                     if (!vf || !df) continue;
                     u16 vid = 0; u32 did = 0;
@@ -6363,9 +6369,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     df >> std::hex >> did;
                     devices.push_back({ vid, did });
                 }
-            #else
-                DIR* dir = opendir(pci_path.c_str());
-                if (!dir) return false;
+            }
+         #else
+            DIR* dir = opendir(pci_path.c_str());
+            if (dir) {
                 while (struct dirent* ent = readdir(dir)) {
                     std::string name = ent->d_name;
                     if (name == "." || name == "..") continue;
@@ -6378,7 +6385,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     devices.push_back({ vid, did });
                 }
                 closedir(dir);
-            #endif
+            }
+        #endif
         #elif (WINDOWS)
         static constexpr const wchar_t* kRoots[] = {
             L"SYSTEM\\CurrentControlSet\\Enum\\PCI",
