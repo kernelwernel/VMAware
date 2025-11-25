@@ -22,4 +22,4 @@
 - add a python version of the library (or any other lang for that matter)
 - add a GUI version of the lib
 - add a rust version of the lib
-- submit the project to oss-fuzz 
+- submit the project to oss-fuzz

@@ -291,6 +291,7 @@ Et si ce projet vous a été utile, un star serait très apprécié :)
 - [Kyun-J](https://github.com/Kyun-J)
 - [luukjp](https://github.com/luukjp)
 - [Randark](https://github.com/Randark-JMT)
+- [Scrut1ny](https://github.com/Scrut1ny)
 
 <br>
 
