@@ -53,13 +53,13 @@
  *
  * ============================== SECTIONS ==================================
  * - enums for publicly accessible techniques  => line 535
- * - struct for internal cpu operations        => line 717
- * - struct for internal memoization           => line 1160
- * - struct for internal utility functions     => line 1290
- * - struct for internal core components       => line 10552
- * - start of VM detection technique list      => line 2087
- * - start of public VM detection functions    => line 11045
- * - start of externally defined variables     => line 12025
+ * - struct for internal cpu operations        => line 716
+ * - struct for internal memoization           => line 1159
+ * - struct for internal utility functions     => line 1289
+ * - struct for internal core components       => line 10195
+ * - start of VM detection technique list      => line 2272
+ * - start of public VM detection functions    => line 10688
+ * - start of externally defined variables     => line 11667
  *
  *
  * ============================== EXAMPLE ===================================
@@ -214,8 +214,8 @@
  *       the threshold becomes 300 instead of 150.
  */
 
-
-#pragma once
+#ifndef VMAWARE_HEADER
+#define VMAWARE_HEADER
 
 #ifndef __VMAWARE_DEBUG__
     #if defined(_DEBUG)    /* MSVC Debug */       \
@@ -494,7 +494,7 @@ namespace brands {
     static constexpr const char* AZURE_HYPERV = "Microsoft Azure Hyper-V";
     static constexpr const char* NANOVISOR = "Xbox NanoVisor (Hyper-V)";
     static constexpr const char* SIMPLEVISOR = "SimpleVisor";
-    static constexpr const char* HYPERV_ARTIFACT = "Hyper-V artifact (not an actual VM)";
+    static constexpr const char* HYPERV_ARTIFACT = "Hyper-V artifact (host running Hyper-V)";
     static constexpr const char* UML = "User-mode Linux";
     static constexpr const char* POWERVM = "IBM PowerVM";
     static constexpr const char* GCE = "Google Compute Engine (KVM)";
@@ -571,7 +571,6 @@ public:
         EDID,
         CPU_HEURISTIC,
         CLOCK,
-        LBR,
 
         // Linux and Windows
         SIDT,
@@ -1353,6 +1352,23 @@ private:
             file.close();
             return data;
         }
+
+        [[nodiscard]] static bool exists(const char* path) {
+        #if (VMA_CPP >= 17)
+            return std::filesystem::exists(path);
+        #elif (VMA_CPP >= 11)
+            struct stat buffer;
+            return (stat(path, &buffer) == 0);
+        #endif
+        }
+
+        static bool is_directory(const char* path) {
+            struct stat info;
+            if (stat(path, &info) != 0) {
+                return false;
+            }
+            return (info.st_mode & S_IFDIR); // check if directory
+        };
 #endif
 
         // fetch the file but in binary form
@@ -1377,24 +1393,6 @@ private:
             return buffer;
         }
 
-#if (LINUX)
-        [[nodiscard]] static bool exists(const char* path) {
-        #if (VMA_CPP >= 17)
-            return std::filesystem::exists(path);
-        #elif (VMA_CPP >= 11)
-            struct stat buffer;
-            return (stat(path, &buffer) == 0);
-        #endif
-        }
-
-        static bool is_directory(const char* path) {
-            struct stat info;
-            if (stat(path, &info) != 0) {
-                return false;
-            }
-            return (info.st_mode & S_IFDIR); // check if directory
-        };
-#endif
 
         // wrapper for std::make_unique because it's not available for C++11
         template<typename T, typename... Args>
@@ -1640,26 +1638,6 @@ private:
         }
 
 
-        [[nodiscard]] static std::string get_hostname() {
-        #if (WINDOWS)
-            char ComputerName[MAX_COMPUTERNAME_LENGTH + 1];
-            DWORD cbComputerName = sizeof(ComputerName);
-
-            if (GetComputerNameA(ComputerName, &cbComputerName)) {
-                return std::string(ComputerName);
-            }
-        #elif (LINUX)
-            char hostname[HOST_NAME_MAX];
-
-            if (gethostname(hostname, sizeof(hostname)) == 0) {
-                return std::string(hostname);
-            }
-        #endif
-
-            return std::string();
-        }
-
-
         [[nodiscard]] static bool is_running_under_translator() {
         #if (WINDOWS && _WIN32_WINNT >= _WIN32_WINNT_WIN10)
             const HANDLE hCurrentProcess = reinterpret_cast<HANDLE>(-1LL);
@@ -1778,7 +1756,7 @@ private:
                 return eax;
             };
 
-            hyperx_state state;
+            hyperx_state state = HYPERV_UNKNOWN;
 
             if (!is_root_partition()) {
                 if (eax() == 11 && is_hyperv_present()) {
@@ -1793,19 +1771,22 @@ private:
                 }
             }
             else {
-                // normally eax 12
                 const std::string brand_str = cpu::cpu_manufacturer(0x40000100);
-
+                
                 if (util::find(brand_str, "KVM")) {
                     debug("HYPER_X: Detected Hyper-V enlightenments");
                     core::add(brands::QEMU_KVM_HYPERV);
                     state = HYPERV_ENLIGHTENMENT;
                 }
-                else {
+                // vendors can sometimes advertise 0x4000xxxx leaves for compatibility/enlightenment purposes without running a hypervisor
+                else if (eax() == 12) {
                     // Windows machine running under Hyper-V type 1
                     debug("HYPER_X: Detected Hyper-V host machine");
                     core::add(brands::HYPERV_ARTIFACT);
                     state = HYPERV_ARTIFACT_VM;
+                } else {
+                    debug("HYPER_X: Hyper-V is not active");
+                    state = HYPERV_UNKNOWN;
                 }
             }
 
@@ -1813,6 +1794,210 @@ private:
 
             return state;
         #endif
+        }
+        
+        // to search in our databases, we want to precompute hashes at compile time for C++11 and later
+        // so we need to match the hardware _mm_crc32_u8, it is based on CRC32-C (Castagnoli) polynomial
+        struct ConstexprHash {
+            // it does 8 rounds of CRC32-C bit reflection recursively
+            static constexpr u32 crc32_bits(u32 crc, int bits) {
+                return (bits == 0) ? crc :
+                    crc32_bits((crc >> 1) ^ ((crc & 1) ? 0x82F63B78u : 0), bits - 1);
+            }
+
+            // over string
+            static constexpr u32 crc32_str(const char* s, u32 crc) {
+                return (*s == '\0') ? crc :
+                    crc32_str(s + 1, crc32_bits(crc ^ static_cast<u8>(*s), 8));
+            }
+
+            static constexpr u32 get(const char* s) {
+                return crc32_str(s, 0);
+            }
+        };
+
+        // this forces the compiler to calculate the hash when initializing the array while staying C++11 compatible
+        struct thread_entry {
+            u32 hash;
+            u32 threads;
+            constexpr thread_entry(const char* m, u32 t) : hash(ConstexprHash::get(m)), threads(t) {}
+        };
+
+        enum class CpuType {
+            INTEL_I,
+            INTEL_XEON,
+            AMD
+        };
+
+        // 4 arguments to stay compliant with x64 __fastcall (just in case)
+        [[nodiscard]] static bool verify_thread_count(const thread_entry* db, size_t db_size, size_t max_model_len, CpuType type) {
+            // to save a few cycles
+            struct hasher {
+                static u32 crc32_sw(u32 crc, char data) {
+                    crc ^= static_cast<u8>(data);
+                    for (int i = 0; i < 8; ++i)
+                        crc = (crc >> 1) ^ ((crc & 1) ? 0x82F63B78u : 0);
+                    return crc;
+                }
+
+                // For strings shorter than 16-32 bytes, the overhead of setting up the _mm_crc32_u64 (or 32) loop, then checking length, handling the tail bytes, and finally handling alignment, 
+                // will always make it slower or equal to a simple unrolled u8 loop, and not every cpu model fits in u32/u64
+                #if (CLANG || GCC)
+                    __attribute__((__target__("crc32")))
+                #endif
+                static u32 crc32_hw(u32 crc, char data) {
+
+                    return _mm_crc32_u8(crc, static_cast<u8>(data));
+                }
+
+                using hashfc = u32(*)(u32, char);
+
+                static hashfc get() {
+                    // yes, vmaware runs on dinosaur cpus without sse4.2 pretty often
+                    i32 regs[4];
+                    cpu::cpuid(regs, 1);
+                    const bool has_sse42 = (regs[2] & (1 << 20)) != 0;
+
+                    return has_sse42 ? crc32_hw : crc32_sw;
+                }
+            };
+
+            std::string model_string;
+            const char* debug_tag = "";
+
+            if (type == CpuType::AMD) {
+                if (!cpu::is_amd()) {
+                    return false;
+                }
+                model_string = cpu::get_brand();
+                debug_tag = "AMD_THREAD_MISMATCH";
+            }
+            else {
+                if (!cpu::is_intel()) {
+                    return false;
+                }
+
+                const cpu::model_struct model = cpu::get_model();
+
+                if (!model.found) {
+                    return false;
+                }
+
+                if (type == CpuType::INTEL_I) {
+                    if (!model.is_i_series) {
+                        return false;
+                    }
+                    debug_tag = "INTEL_THREAD_MISMATCH";
+                }
+                else {
+                    if (!model.is_xeon) {
+                        return false;
+                    }
+                    debug_tag = "XEON_THREAD_MISMATCH";
+                }
+                model_string = model.string;
+            }
+
+            if (model_string.empty()) return false;
+
+            debug(debug_tag, ": CPU model = ", model_string);
+
+            const char* str = model_string.c_str();
+            u32 expected_threads = 0;
+            bool found = false;
+            size_t best_len = 0;
+
+            // manual collision fix for Z1 Extreme (16) vs Z1 (12)
+            // this is a special runtime check because "z1" is a substring of "z1 extreme" tokens
+            // and both might be hashed. VMAware should prioritize 'extreme' if found
+            u32 z_series_threads = 0;
+
+            const auto hash_func = hasher::get();
+
+            for (size_t i = 0; str[i] != '\0'; ) {
+                char c = str[i];
+                if (!((c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'))) {
+                    i++;
+                    continue;
+                }
+
+                u32 current_hash = 0;
+                size_t current_len = 0;
+                size_t j = i;
+
+                while (true) {
+                    char k = str[j];
+                    const bool is_valid = (k >= '0' && k <= '9') ||
+                        (k >= 'A' && k <= 'Z') ||
+                        (k >= 'a' && k <= 'z') ||
+                        (k == '-'); // models have hyphen
+                    if (!is_valid) break;
+
+                    if (current_len >= max_model_len) {
+                        while (str[j] != '\0' && str[j] != ' ') j++; // fast forward to space/null
+                        break;
+                    }
+
+                    /*
+                       models are usually 8 or more bytes long, i.e. i9-10900K
+                       so imagine we want to use u64, you hash the first 8 bytes i9-10900
+                       but then you are left with K. You have to handle the tail
+                       fetching 8 bytes would include the characters after the token, corrupting the hash
+                       so a byte-by-byte loop is the most optimal choice here
+                    */
+
+                    // convert to lowercase on-the-fly to match compile-time keys
+                    if (type == CpuType::AMD && (k >= 'A' && k <= 'Z')) k += 32;
+
+                    // since this technique is cross-platform, we cannot use a standard C++ try-catch block to catch a missing CPU instruction
+                    // we could use preprocessor directives and add an exception handler (VEH/SEH or SIGHANDLER) but nah
+                    current_hash = hash_func(current_hash, k);
+                    current_len++;
+                    j++;
+
+                    // only verify match if the token has ended (next char is not alphanumeric)
+                    const char next = str[j];
+                    const bool next_is_alnum = (next >= '0' && next <= '9') ||
+                        (next >= 'A' && next <= 'Z') ||
+                        (next >= 'a' && next <= 'z');
+
+                    if (!next_is_alnum) {
+                        // Check specific Z1 Extreme token
+                        // Hash for "extreme" (CRC32-C) is 0x3D09D5B4
+                        if (type == CpuType::AMD && current_hash == 0x3D09D5B4) { z_series_threads = 16; }
+
+                        // since it's a contiguous block of integers in .rodata/.rdata, this is extremely fast
+                        for (size_t idx = 0; idx < db_size; ++idx) {
+                            if (db[idx].hash == current_hash) {
+                                if (current_len > best_len) {
+                                    best_len = current_len;
+                                    expected_threads = db[idx].threads;
+                                    found = true;
+                                }
+                                // since hashing implies uniqueness in this dataset, you might say we could break here,
+                                // but we continue to ensure we find the longest substring match if overlaps exist,
+                                // so like it finds both "i9-11900" and "i9-11900K" i.e.
+                            }
+                        }
+                    }
+                }
+                i = j;
+            }
+
+            // Z1 Extreme fix
+            if (type == CpuType::AMD && z_series_threads != 0 && expected_threads == 12) {
+                expected_threads = z_series_threads;
+            }
+
+            if (found) {
+                const u32 actual = memo::threadcount::fetch();
+                if (actual != expected_threads) {
+                    debug(debug_tag, ": Expected threads -> ", expected_threads);
+                    return true;
+                }
+            }
+
+            return false;
         }
 
 #if (WINDOWS)
@@ -2081,7 +2266,7 @@ private:
             const HMODULE h = GetModuleHandleW(L"ntdll.dll");
             if (h) cachedNtdll = h;
             return h;
-        }
+        } 
 #endif
     };
 
@@ -2093,13 +2278,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      */
      [[nodiscard]] static bool vmid() {
     #if (!x86)
-         return false;
+        return false;
     #else
-         return (
-             cpu::vmid_template(0) ||
-             cpu::vmid_template(cpu::leaf::hypervisor) || // 0x40000000
-             cpu::vmid_template(cpu::leaf::hypervisor + 0x100) // 0x40000100
-             );
+        return (
+            cpu::vmid_template(0) ||
+            cpu::vmid_template(cpu::leaf::hypervisor) || // 0x40000000
+            cpu::vmid_template(cpu::leaf::hypervisor + 0x100) // 0x40000100
+        );
     #endif
     }
 
@@ -2334,53 +2519,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     #if (!x86)
         return false;
     #else
-        if (!cpu::is_intel()) {
-            return false;
-        }
-
-        const cpu::model_struct model = cpu::get_model();
-
-        if (!model.found) {
-            return false;
-        }
-    
-        if (!model.is_i_series) {
-            return false;
-        }
-
-        debug("INTEL_THREAD_MISMATCH: CPU model = ", model.string);
-
-        // we want to precompute hashes at compile time for C++11 and later, so we need to match the hardware _mm_crc32_u8
-        // it is based on CRC32-C (Castagnoli) polynomial
-        struct ConstexprHash {
-            // it does 8 rounds of CRC32-C bit reflection recursively
-            static constexpr u32 crc32_bits(u32 crc, int bits) {
-                return (bits == 0) ? crc :
-                    crc32_bits((crc >> 1) ^ ((crc & 1) ? 0x82F63B78u : 0), bits - 1);
-            }
-
-            // over string
-            static constexpr u32 crc32_str(const char* s, u32 crc) {
-                return (*s == '\0') ? crc :
-                    crc32_str(s + 1, crc32_bits(crc ^ static_cast<u8>(*s), 8));
-            }
-
-            static constexpr u32 get(const char* s) {
-                return crc32_str(s, 0);
-            }
-        };
-
-        // this forces the compiler to calculate the hash when initializing the array while staying C++11 compatible
-        struct Entry {
-            u32 hash;
-            u32 threads;
-            constexpr Entry(const char* m, u32 t) : hash(ConstexprHash::get(m)), threads(t) {}
-        };
-
         // umap is not an option because it cannot be constexpr
         // constexpr is respected here even in c++ 11 and static solves stack overflow
         // c arrays have less construction overhead than std::array
-        static constexpr Entry thread_database[] = {
+        static constexpr util::thread_entry thread_database[] = {
             // i3 series
             { "i3-1000G1", 4 },
             { "i3-1000G4", 4 },
@@ -3337,112 +3479,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             { "i9-9990XE", 28 }
         };
 
-        // to save a few cycles
         static constexpr size_t MAX_INTEL_MODEL_LEN = 16;
 
-        struct hasher {
-            static u32 crc32_sw(u32 crc, char data) {
-                crc ^= static_cast<u8>(data);
-                for (int i = 0; i < 8; ++i)
-                    crc = (crc >> 1) ^ ((crc & 1) ? 0x82F63B78u : 0);
-                return crc;
-            }
-
-            #if (CLANG || GCC)
-                __attribute__((__target__("crc32")))
-            #endif
-            static u32 crc32_hw(u32 crc, char data) {
-                return _mm_crc32_u8(crc, static_cast<u8>(data));
-            }
-
-            using hashfc = u32(*)(u32, char);
-
-            static hashfc get() {
-                // yes, vmaware runs on dinosaur cpus without sse4.2 pretty often
-                i32 regs[4];
-                cpu::cpuid(regs, 1);
-                const bool has_sse42 = (regs[2] & (1 << 20)) != 0;
-
-                return has_sse42 ? crc32_hw : crc32_sw;
-            }
-        };
-
-        const char* str = model.string.c_str();
-        u32 expected_threads = 0;
-        bool found = false;
-        size_t best_len = 0;
-
-        const auto hash_func = hasher::get();
-
-        for (size_t i = 0; str[i] != '\0'; ) {
-            const char c = str[i];
-            if (!((c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'))) {
-                i++;
-                continue;
-            }
-
-            u32 current_hash = 0;
-            size_t current_len = 0;
-            size_t j = i;
-
-            while (true) {
-                const char k = str[j];
-                const bool is_valid = (k >= '0' && k <= '9') ||
-                    (k >= 'A' && k <= 'Z') ||
-                    (k >= 'a' && k <= 'z') ||
-                    (k == '-'); // models have hyphen
-                if (!is_valid) break;
-
-                if (current_len >= MAX_INTEL_MODEL_LEN) {
-                    while (str[j] != '\0' && str[j] != ' ') j++; // fast forward to space/null
-                    break;
-                }
-
-                /*
-                   models are usually 8 or more bytes long, i.e. i9-10900K
-                   so imagine we want to use u64, you hash the first 8 bytes i9-10900
-                   but then you are left with K. You have to handle the tail
-                   fetching 8 bytes would include the characters after the token, corrupting the hash
-                   so a byte-by-byte loop is the most optimal choice here
-                */
-
-                // since this technique is cross-platform, we cannot use a standard C++ try-catch block to catch a missing CPU instruction
-                // we could use preprocessor directives and add an exception handler (VEH/SEH or SIGHANDLER) but nah
-                current_hash = hash_func(current_hash, k);
-                current_len++;
-                j++;
-
-                // only verify match if the token has ended (next char is not alphanumeric)
-                const char next = str[j];
-                const bool next_is_alnum = (next >= '0' && next <= '9') ||
-                    (next >= 'A' && next <= 'Z') ||
-                    (next >= 'a' && next <= 'z');
-
-                if (!next_is_alnum) {
-                    // since it's a contiguous block of integers in .rodata/.rdata, this is extremely fast
-                    for (const auto& entry : thread_database) {
-                        if (entry.hash == current_hash) {
-                            if (current_len > best_len) {
-                                best_len = current_len;
-                                expected_threads = entry.threads;
-                                found = true;
-                            }
-                            // since hashing implies uniqueness in this dataset, you might say we could break here,
-                            // but we continue to ensure we find the longest substring match if overlaps exist,
-                            // so like it finds both "i9-11900" and "i9-11900K" i.e.
-                        }
-                    }
-                }
-            }
-            i = j;
-        }
-
-        if (found) {
-            const u32 actual = memo::threadcount::fetch();
-            return actual != expected_threads;
-        }
-
-        return false;
+        return util::verify_thread_count(thread_database, sizeof(thread_database) / sizeof(util::thread_entry), MAX_INTEL_MODEL_LEN, util::CpuType::INTEL_I);
     #endif
     }
                 
@@ -3457,53 +3496,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     #if (!x86)
         return false;
     #else
-        if (!cpu::is_intel()) {
-            return false;
-        }
-
-        const cpu::model_struct model = cpu::get_model();
-
-        if (!model.found) {
-            return false;
-        }
-
-        if (!model.is_xeon) {
-            return false;
-        }
-
-        debug("XEON_THREAD_MISMATCH: CPU model = ", model.string);
-
-        // we want to precompute hashes at compile time for C++11 and later, so we need to match the hardware _mm_crc32_u8
-        // it is based on CRC32-C (Castagnoli) polynomial
-        struct ConstexprHash {
-            // it does 8 rounds of CRC32-C bit reflection recursively
-            static constexpr u32 crc32_bits(u32 crc, int bits) {
-                return (bits == 0) ? crc :
-                    crc32_bits((crc >> 1) ^ ((crc & 1) ? 0x82F63B78u : 0), bits - 1);
-            }
-
-            // over string
-            static constexpr u32 crc32_str(const char* s, u32 crc) {
-                return (*s == '\0') ? crc :
-                    crc32_str(s + 1, crc32_bits(crc ^ static_cast<u8>(*s), 8));
-            }
-
-            static constexpr u32 get(const char* s) {
-                return crc32_str(s, 0);
-            }
-        };
-
-        // this forces the compiler to calculate the hash when initializing the array while staying C++11 compatible
-        struct Entry {
-            u32 hash;
-            u32 threads;
-            constexpr Entry(const char* m, u32 t) : hash(ConstexprHash::get(m)), threads(t) {}
-        };
-
         // umap is not an option because it cannot be constexpr
         // constexpr is respected here even in c++ 11 and static solves stack overflow
         // c arrays have less construction overhead than std::array
-        static constexpr Entry thread_database[] = {
+        static constexpr util::thread_entry thread_database[] = {
             // Xeon D
             { "D-1518", 8 },
             { "D-1520", 8 },
@@ -3639,116 +3635,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             { "w9-3595X", 120 }
         };
 
-        // to save a few cycles
         static constexpr size_t MAX_XEON_MODEL_LEN = 16;
 
-        struct hasher {
-            static u32 crc32_sw(u32 crc, char data) {
-                crc ^= static_cast<u8>(data);
-                for (int i = 0; i < 8; ++i)
-                    crc = (crc >> 1) ^ ((crc & 1) ? 0x82F63B78u : 0);
-                return crc;
-            }
-
-            #if (CLANG || GCC)
-                __attribute__((__target__("crc32")))
-            #endif
-            static u32 crc32_hw(u32 crc, char data) {
-                return _mm_crc32_u8(crc, static_cast<u8>(data));
-            }
-
-            using hashfc = u32(*)(u32, char);
-
-            static hashfc get() {
-                // yes, vmaware runs on dinosaur cpus without sse4.2 pretty often
-                i32 regs[4];
-                cpu::cpuid(regs, 1);
-                const bool has_sse42 = (regs[2] & (1 << 20)) != 0;
-
-                return has_sse42 ? crc32_hw : crc32_sw;
-            }
-        };
-
-        const std::string& cpu_full_name = model.string;
-        if (cpu_full_name.empty()) return false;
-
-        const char* str = cpu_full_name.c_str();
-        u32 expected_threads = 0;
-        bool found = false;
-        size_t best_len = 0;
-
-        const auto hash_func = hasher::get();
-
-        for (size_t i = 0; str[i] != '\0'; ) {
-            const char c = str[i];
-            if (!((c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'))) {
-                i++;
-                continue;
-            }
-
-            u32 current_hash = 0;
-            size_t current_len = 0;
-            size_t j = i;
-
-            while (true) {
-                const char k = str[j];
-                const bool is_valid = (k >= '0' && k <= '9') ||
-                    (k >= 'A' && k <= 'Z') ||
-                    (k >= 'a' && k <= 'z') ||
-                    (k == '-');
-                if (!is_valid) break;
-
-                if (current_len >= MAX_XEON_MODEL_LEN) {
-                    while (str[j] != '\0' && str[j] != ' ') j++; // fast forward to space/null
-                    break;
-                }
-
-                /*
-                   models are usually 8 or more bytes long, i.e. i9-10900K
-                   so imagine we want to use u64, you hash the first 8 bytes i9-10900
-                   but then you are left with K. You have to handle the tail
-                   fetching 8 bytes would include the characters after the token, corrupting the hash
-                   so a byte-by-byte loop is the most optimal choice here
-                */
-
-                // since this technique is cross-platform, we cannot use a standard C++ try-catch block to catch a missing CPU instruction
-                // we could use preprocessor directives and add an exception handler (VEH/SEH or SIGHANDLER) but nah
-                current_hash = hash_func(current_hash, k);
-                current_len++;
-                j++;
-
-                // only verify match if the token has ended (next char is not alphanumeric)
-                const char next = str[j];
-                const bool next_is_alnum = (next >= '0' && next <= '9') ||
-                    (next >= 'A' && next <= 'Z') ||
-                    (next >= 'a' && next <= 'z');
-
-                if (!next_is_alnum) {
-                    // since it's a contiguous block of integers in .rodata/.rdata, this is extremely fast
-                    for (const auto& entry : thread_database) {
-                        if (entry.hash == current_hash) {
-                            if (current_len > best_len) {
-                                best_len = current_len;
-                                expected_threads = entry.threads;
-                                found = true;
-                            }
-                            // since hashing implies uniqueness in this dataset, you might say we could break here,
-                            // but we continue to ensure we find the longest substring match if overlaps exist,
-                            // so like it finds both "i9-11900" and "i9-11900K" i.e.
-                        }
-                    }
-                }
-            }
-            i = j;
-        }
-
-        if (found) {
-            const u32 actual = memo::threadcount::fetch();
-            debug("XEON_THREAD_MISMATCH: Expected threads -> ", expected_threads);
-            return actual != expected_threads;
-        }
-
-        return false;
+        return util::verify_thread_count(thread_database, sizeof(thread_database) / sizeof(util::thread_entry), MAX_XEON_MODEL_LEN, util::CpuType::INTEL_XEON);
     #endif
     }
                 
@@ -3762,38 +3651,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     [[nodiscard]] static bool amd_thread_mismatch() {
     #if (!x86)
         return false;
-    #else
-        if (!cpu::is_amd()) {
-            return false;
-        }
-
-        std::string model_str = cpu::get_brand();
-
-        static constexpr size_t MAX_AMD_TOKEN_LEN = 24; // "threadripper" is long
-
-        struct ConstexprHash {
-            static constexpr u32 crc32_bits(u32 crc, int bits) {
-                return (bits == 0) ? crc :
-                    crc32_bits((crc >> 1) ^ ((crc & 1) ? 0x82F63B78u : 0), bits - 1);
-            }
-            static constexpr u32 crc32_str(const char* s, u32 crc) {
-                return (*s == '\0') ? crc :
-                    crc32_str(s + 1, crc32_bits(crc ^ static_cast<u8>(*s), 8));
-            }
-            static constexpr u32 get(const char* s) {
-                return crc32_str(s, 0);
-            }
-        };
-
-        struct Entry {
-            u32 hash;
-            u32 threads;
-            constexpr Entry(const char* m, u32 t) : hash(ConstexprHash::get(m)), threads(t) {}
-        };
-
+    #else      
         // Database is reduced to identifying suffixes (last token of the original strings)
         // for example handles "ryzen 5 3600" by matching "3600", which is unique in context
-        static constexpr Entry db_entries[] = {
+        static constexpr util::thread_entry thread_database[] = {
             // 3015/3020
             { "3015ce", 4 },
             { "3015e", 4 },
@@ -4304,112 +4165,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             { "z2", 16 }
         };
 
-        struct hasher {
-            static u32 crc32_sw(u32 crc, char data) {
-                crc ^= static_cast<u8>(data);
-                for (int i = 0; i < 8; ++i)
-                    crc = (crc >> 1) ^ ((crc & 1) ? 0x82F63B78u : 0);
-                return crc;
-            }
+        static constexpr size_t MAX_AMD_MODEL_LEN = 24; // "threadripper" is long
 
-            #if (CLANG || GCC)
-                __attribute__((__target__("crc32")))
-            #endif
-            static u32 crc32_hw(u32 crc, char data) {
-                return _mm_crc32_u8(crc, static_cast<u8>(data));
-            }
-
-            using hashfc = u32(*)(u32, char);
-
-            static hashfc get() {
-                i32 regs[4];
-                cpu::cpuid(regs, 1);
-                const bool has_sse42 = (regs[2] & (1 << 20)) != 0;
-                return has_sse42 ? crc32_hw : crc32_sw;
-            }
-        };
-
-        debug("AMD_THREAD_MISMATCH: CPU model = ", model_str);
-
-        const char* str = model_str.c_str();
-        u32 expected_threads = 0;
-        bool found = false;
-        size_t best_len = 0;
-
-        const auto hash_func = hasher::get();
-
-        // manual collision fix for Z1 Extreme (16) vs Z1 (12)
-        // this is a special runtime check because "z1" is a substring of "z1 extreme" tokens
-        // and both might be hashed. VMAware should prioritize 'extreme' if found
-        u32 z_series_threads = 0;
-
-        for (size_t i = 0; str[i] != '\0'; ) {
-            char c = str[i];
-            if (!((c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'))) {
-                i++;
-                continue;
-            }
-
-            u32 current_hash = 0;
-            size_t current_len = 0;
-            size_t j = i;
-
-            while (true) {
-                char k = str[j];
-                const bool is_valid = (k >= '0' && k <= '9') ||
-                    (k >= 'A' && k <= 'Z') ||
-                    (k >= 'a' && k <= 'z') ||
-                    (k == '-');
-                if (!is_valid) break;
-
-                if (current_len >= MAX_AMD_TOKEN_LEN) {
-                    while (str[j] != '\0' && str[j] != ' ') j++;
-                    break;
-                }
-
-                // convert to lowercase on-the-fly to match compile-time keys
-                if (k >= 'A' && k <= 'Z') k += 32;
-
-                current_hash = hash_func(current_hash, k);
-                current_len++;
-                j++;
-
-                // boundary check
-                const char next = str[j];
-                const bool next_is_alnum = (next >= '0' && next <= '9') ||
-                    (next >= 'A' && next <= 'Z') ||
-                    (next >= 'a' && next <= 'z');
-
-                if (!next_is_alnum) {
-                    // Check specific Z1 Extreme token
-                    // Hash for "extreme" (CRC32-C) is 0x3D09D5B4
-                    if (current_hash == 0x3D09D5B4) { z_series_threads = 16; }
-
-                    for (const auto& entry : db_entries) {
-                        if (entry.hash == current_hash) {
-                            if (current_len > best_len) {
-                                best_len = current_len;
-                                expected_threads = entry.threads;
-                                found = true;
-                            }
-                        }
-                    }
-                }
-            }
-            i = j;
-        }
-
-        // Z1 Extreme fix
-        if (z_series_threads != 0 && expected_threads == 12) {
-            expected_threads = z_series_threads;
-        }
-
-        if (found) {
-            const u32 actual = memo::threadcount::fetch();
-            return actual != expected_threads;
-        }
-
-        return false;
+        return util::verify_thread_count(thread_database, sizeof(thread_database) / sizeof(util::thread_entry), MAX_AMD_MODEL_LEN, util::CpuType::INTEL_XEON);
     #endif
     }
 
@@ -4482,7 +4240,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
         u16 cycleThreshold = 1200;
         if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
-            cycleThreshold = 15000; // if we're running under Hyper-V, attempt to detect nested virtualization only
+            cycleThreshold = 8000; // if we're running under Hyper-V, attempt to detect nested virtualization only
         }
 
     #if (WINDOWS)
@@ -5865,8 +5623,29 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @category Windows, Linux
      * @implements VM::HYPERV_HOSTNAME
      */
-    static bool hyperv_hostname() {
-        const std::string hostname = util::get_hostname();
+    [[nodiscard]] static bool hyperv_hostname() {
+        std::string hostname;
+
+    #if (WINDOWS)
+        char buf[MAX_COMPUTERNAME_LENGTH + 1];
+        DWORD len = sizeof(buf);
+
+        if (GetComputerNameA(buf, &len)) {
+            hostname.assign(buf, len);
+        }
+        else {
+            return false;
+        }
+    #elif (LINUX)
+        char buf[HOST_NAME_MAX];
+
+        if (gethostname(buf, sizeof(buf)) == 0) {
+            hostname = buf;
+        }
+        else {
+            return false;
+        }
+    #endif
 
         const char* prefix = "runnervm";
         const std::size_t prefix_len = std::strlen(prefix);
@@ -5882,8 +5661,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         for (std::size_t i = prefix_len; i < hostname.size(); ++i) {
-            unsigned char c = static_cast<unsigned char>(hostname[i]);
-            if (!std::isalnum(c)) {
+            if (!std::isalnum(static_cast<unsigned char>(hostname[i]))) {
                 return false;
             }
         }
@@ -9627,76 +9405,101 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::EDID
      */
     [[nodiscard]] static bool edid() {
-        auto decodeManufacturerFast = [](const BYTE* edid) __declspec(noinline) -> std::array<char, 4> {
-            // edid[8..9] big-endian word
-            const uint16_t word = static_cast<uint16_t>((edid[8] << 8) | edid[9]);
-            const uint8_t c1 = static_cast<uint8_t>((word >> 10) & 0x1F);
-            const uint8_t c2 = static_cast<uint8_t>((word >> 5) & 0x1F);
-            const uint8_t c3 = static_cast<uint8_t>((word >> 0) & 0x1F);
-            std::array<char, 4> out{ {'?','?','?','\0'} };
-            if (c1 >= 1 && c1 <= 26) out[0] = static_cast<char>('A' + c1 - 1);
-            if (c2 >= 1 && c2 <= 26) out[1] = static_cast<char>('A' + c2 - 1);
-            if (c3 >= 1 && c3 <= 26) out[2] = static_cast<char>('A' + c3 - 1);
-            return out;
+        auto decodeManufacturer = [](const BYTE* edid, char out[4]) {
+            const u16 word = static_cast<u16>((edid[8] << 8) | edid[9]);
+            const u8 c1 = static_cast<u8>((word >> 10) & 0x1F);
+            const u8 c2 = static_cast<u8>((word >> 5) & 0x1F);
+            const u8 c3 = static_cast<u8>((word >> 0) & 0x1F);
+            out[0] = (c1 >= 1 && c1 <= 26) ? static_cast<char>('A' + c1 - 1) : '?';
+            out[1] = (c2 >= 1 && c2 <= 26) ? static_cast<char>('A' + c2 - 1) : '?';
+            out[2] = (c3 >= 1 && c3 <= 26) ? static_cast<char>('A' + c3 - 1) : '?';
+            out[3] = '\0';
         };
 
-        auto isThreeUpperAlphaFast = [](const std::array<char, 4>& m) -> bool {
+        auto isThreeUpperAlpha = [](const char m[4]) -> bool {
             return (m[0] >= 'A' && m[0] <= 'Z') &&
                 (m[1] >= 'A' && m[1] <= 'Z') &&
                 (m[2] >= 'A' && m[2] <= 'Z');
         };
 
-        auto descHasUpperPrefixMonitorFast = [](const char* desc) -> bool {
-            if (!desc || desc[0] == '\0') return false;
-            // Two tails to search: " Monitor" and " Display" (leading space)
-            const char* tails[] = { " Monitor", " Display" };
-            for (const char* tail : tails) {
-                const char* p = strstr(desc, tail);
-                while (p) {
-                    // ensure not at position 0
-                    if (p != desc) {
-                        // walk backwards counting uppercase letters
-                        const char* start = p;
-                        size_t len = 0;
-                        while (start > desc) {
-                            --start;
-                            unsigned char uc = static_cast<unsigned char>(*start);
-                            if (uc >= 'A' && uc <= 'Z') {
-                                ++len;
-                                if (len > 8) break;
-                            }
-                            else break;
+        auto edidChecksumValid = [](const BYTE* edid, size_t len) -> bool {
+            if (len < 128) return false;
+            u8 sum = 0;
+            for (size_t i = 0; i < 128; ++i) sum = static_cast<u8>(sum + edid[i]);
+            return sum == 0;
+        };
+
+        auto extractMonitorName = [](const BYTE* edid, size_t len, char out[32]) -> bool {
+            if (len < 128) { out[0] = '\0'; return false; }
+            const size_t base = 54;
+            for (int i = 0; i < 4; ++i) {
+                size_t off = base + i * 18;
+                if (off + 18 > 128) break;
+                const BYTE* block = edid + off;
+                // descriptor: bytes 0 to 1 == 0x00, byte3 = tag
+                if (block[0] == 0x00 && block[1] == 0x00) {
+                    if (block[3] == 0xFC) { // monitor name
+                        int outi = 0;
+                        for (int j = 5; j < 18 && outi < 31; ++j) {
+                            char c = static_cast<char>(block[j]);
+                            if (c == 0x0A || c == 0x0D || c == 0x00) break;
+                            out[outi++] = c;
                         }
-                        if (len >= 4 && len <= 8) {
-                            // verify all are uppercase (we already did while walking)
-                            return true;
-                        }
+                        out[outi] = '\0';
+                        // trim trailing spaces
+                        while (outi > 0 && (out[outi - 1] == ' ' || out[outi - 1] == '\t')) { out[--outi] = '\0'; }
+                        return outi > 0;
                     }
-                    p = strstr(p + 1, tail);
+                    // monitor serial descriptor 0xFF could be used as name fallback
+                    if (block[3] == 0xFF) {
+                        int outi = 0;
+                        for (int j = 5; j < 18 && outi < 31; ++j) {
+                            char c = static_cast<char>(block[j]);
+                            if (c == 0x0A || c == 0x0D || c == '\0') break;
+                            out[outi++] = c;
+                        }
+                        out[outi] = '\0';
+                        while (outi > 0 && (out[outi - 1] == ' ' || out[outi - 1] == '\t')) { out[--outi] = '\0'; }
+                        return outi > 0;
+                    }
                 }
             }
+            out[0] = '\0';
             return false;
         };
 
-        auto getDevicePropertyA = [](HDEVINFO devInfo, SP_DEVINFO_DATA& devData, DWORD propId, std::string& out) -> bool {
-            char small[512] = {};
-            DWORD needed = 0;
-            if (SetupDiGetDeviceRegistryPropertyA(devInfo, &devData, propId, nullptr, reinterpret_cast<PBYTE>(small), sizeof(small), &needed)) {
-                out.assign(small);
-                return true;
-            }
-            const DWORD err = GetLastError();
-            if (err == ERROR_INSUFFICIENT_BUFFER && needed > 0 && needed < 65536) {
-                std::vector<char> big(needed + 1);
-                if (SetupDiGetDeviceRegistryPropertyA(devInfo, &devData, propId, nullptr, reinterpret_cast<PBYTE>(big.data()), static_cast<DWORD>(big.size()), &needed)) {
-                    big[big.size() - 1] = '\0';
-                    out.assign(big.data());
+        auto read_le16 = [](const BYTE* p) -> u16 {
+            return static_cast<u16>(p[0] | (p[1] << 8));
+        };
+        auto read_le32 = [](const BYTE* p) -> u32 {
+            return static_cast<u32>(p[0] | (p[1] << 8) | (p[2] << 16) | (p[3] << 24));
+        };
+
+        auto getDevicePropertyA = [](HDEVINFO devInfo, SP_DEVINFO_DATA& devData, DWORD propId,
+            char* outBuf, DWORD outBufSize) -> bool {
+                DWORD needed = 0;
+                if (SetupDiGetDeviceRegistryPropertyA(devInfo, &devData, propId, nullptr,
+                    reinterpret_cast<PBYTE>(outBuf), outBufSize, &needed)) {
+                    outBuf[outBufSize - 1] = '\0';
                     return true;
                 }
-            }
-            out.clear();
-            return false;
-        };
+                const DWORD err = GetLastError();
+                if (err == ERROR_INSUFFICIENT_BUFFER && needed > 0 && needed < 65536) {
+                    HLOCAL h = LocalAlloc(LMEM_FIXED, static_cast<SIZE_T>(needed) + 1);
+                    if (!h) return false;
+                    if (SetupDiGetDeviceRegistryPropertyA(devInfo, &devData, propId, nullptr,
+                        reinterpret_cast<PBYTE>(h), needed, &needed)) {
+                        DWORD toCopy = (needed < outBufSize - 1) ? needed : outBufSize - 1;
+                        memcpy(outBuf, h, toCopy);
+                        outBuf[toCopy] = '\0';
+                        LocalFree(h);
+                        return true;
+                    }
+                    LocalFree(h);
+                }
+                outBuf[0] = '\0';
+                return false;
+            };
 
         const HDEVINFO devInfo = SetupDiGetClassDevs(&GUID_DEVCLASS_MONITOR, nullptr, nullptr, DIGCF_PRESENT);
         if (devInfo == INVALID_HANDLE_VALUE) return false;
@@ -9704,47 +9507,86 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         SP_DEVINFO_DATA devData{};
         devData.cbSize = sizeof(devData);
 
+        const int threshold = 3;
+
         for (DWORD index = 0; SetupDiEnumDeviceInfo(devInfo, index, &devData); ++index) {
-            // open registry key for device
             const HKEY hDevKey = SetupDiOpenDevRegKey(devInfo, &devData, DICS_FLAG_GLOBAL, 0, DIREG_DEV, KEY_READ);
-            if (hDevKey == INVALID_HANDLE_VALUE) continue;
-
-            BYTE buffer[2048];
-            DWORD bufSize = static_cast<DWORD>(sizeof(buffer));
-            const LONG rc = RegQueryValueExA(hDevKey, "EDID", nullptr, nullptr, buffer, &bufSize);
-            RegCloseKey(hDevKey);
-            if (rc != ERROR_SUCCESS || bufSize < 128) continue;
-
-            const BYTE* edid = buffer;
-            // standard header
-            if (!(edid[0] == 0x00 && edid[1] == 0xFF && edid[2] == 0xFF && edid[3] == 0xFF &&
-                edid[4] == 0xFF && edid[5] == 0xFF && edid[6] == 0xFF && edid[7] == 0x00)) {
+            if (hDevKey == INVALID_HANDLE_VALUE) {
+                devData = {};
+                devData.cbSize = sizeof(devData);
                 continue;
             }
 
-            const uint8_t yearOffset = edid[0x11]; // 1990 + yearOffset
-            // those don't need device properties
-            const auto manufacturer = decodeManufacturerFast(edid);
-            const bool vendor_nonstandard = !isThreeUpperAlphaFast(manufacturer);
-            const bool year_in_range = (yearOffset >= 25 && yearOffset <= 35); // 2015..2025
+            BYTE edid_stack[256];
+            DWORD bufSize = static_cast<DWORD>(sizeof(edid_stack));
+            LONG rc = RegQueryValueExA(hDevKey, "EDID", nullptr, nullptr, edid_stack, &bufSize);
+            RegCloseKey(hDevKey);
 
-            if (!year_in_range) continue;
-
-            if (vendor_nonstandard) {
-                SetupDiDestroyDeviceInfoList(devInfo);
-                return true;
+            BYTE* edid = nullptr;
+            bool used_heap = false;
+            BYTE* heap_buf = nullptr;
+            if (rc == ERROR_SUCCESS && bufSize >= 128) {
+                edid = edid_stack;
+            }
+            else if (rc == ERROR_MORE_DATA) {
+                if (bufSize > 0 && bufSize < 65536) {
+                    heap_buf = static_cast<BYTE*>(LocalAlloc(LMEM_FIXED, bufSize));
+                    if (heap_buf) {
+                        DWORD bufSize2 = bufSize;
+                        const HKEY hDevKey2 = SetupDiOpenDevRegKey(devInfo, &devData, DICS_FLAG_GLOBAL, 0, DIREG_DEV, KEY_READ);
+                        if (hDevKey2 != INVALID_HANDLE_VALUE) {
+                            if (RegQueryValueExA(hDevKey2, "EDID", nullptr, nullptr, heap_buf, &bufSize2) == ERROR_SUCCESS && bufSize2 >= 128) {
+                                edid = heap_buf;
+                                used_heap = true;
+                                bufSize = bufSize2;
+                            }
+                            RegCloseKey(hDevKey2);
+                        }
+                        if (!edid) { LocalFree(heap_buf); heap_buf = nullptr; }
+                    }
+                }
             }
 
-            std::string friendly, devdesc;
-            // query Friendly name first cuz more likely to be present
-            getDevicePropertyA(devInfo, devData, SPDRP_FRIENDLYNAME, friendly);
-            if (friendly.empty()) getDevicePropertyA(devInfo, devData, SPDRP_DEVICEDESC, devdesc);
+            if (!edid) {
+                devData = {};
+                devData.cbSize = sizeof(devData);
+                continue;
+            }
 
-            const char* descriptor = nullptr;
-            if (!friendly.empty()) descriptor = friendly.c_str();
-            else if (!devdesc.empty()) descriptor = devdesc.c_str();
+            // header check
+            if (!(edid[0] == 0x00 && edid[1] == 0xFF && edid[2] == 0xFF && edid[3] == 0xFF
+                && edid[4] == 0xFF && edid[5] == 0xFF && edid[6] == 0xFF && edid[7] == 0x00)) {
+                if (used_heap) LocalFree(heap_buf);
+                devData = {};
+                devData.cbSize = sizeof(devData);
+                continue;
+            }
 
-            if (descriptor && descHasUpperPrefixMonitorFast(descriptor)) {
+            int score = 0;
+
+            if (!edidChecksumValid(edid, bufSize)) score += 1;
+
+            char manu[4];
+            decodeManufacturer(edid, manu);
+            if (!isThreeUpperAlpha(manu)) score += 1;
+
+            u16 product = static_cast<u16>(edid[10] | (edid[11] << 8)); // because its little-endian
+            u32 serial = static_cast<u32>(edid[12] | (edid[13] << 8) | (edid[14] << 16) | (edid[15] << 24));
+            if (product == 0) score += 1;
+            if (serial == 0) score += 1;
+
+            char monname[32];
+            bool hasName = extractMonitorName(edid, bufSize, monname);
+            if (!hasName) score += 1; // no way you dont have a EDID monitor name
+
+            char propBuf[512];
+            bool haveFriendly = getDevicePropertyA(devInfo, devData, SPDRP_FRIENDLYNAME, propBuf, sizeof(propBuf)); // friendly_name is often empty, like in Digital-Flachbildschirm monitors
+            bool haveDevDesc = getDevicePropertyA(devInfo, devData, SPDRP_DEVICEDESC, propBuf, sizeof(propBuf));
+            if (!haveFriendly && !haveDevDesc) score += 1;
+
+            if (used_heap) LocalFree(heap_buf);
+
+            if (score >= threshold) {
                 SetupDiDestroyDeviceInfoList(devInfo);
                 return true;
             }
@@ -10339,205 +10181,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         free(buffer);
         SetupDiDestroyDeviceInfoList(devs);
         return !found;
-    }
-
-
-    /**
-     * @brief Check if Last Branch Record MSRs are correctly virtualized
-     * @category Windows
-     * @implements VM::LBR
-     * @note Currently investigating possible false flags with this
-     */
-    [[nodiscard]] static bool lbr() {
-    #if (x86)
-        const HMODULE ntdll = util::get_ntdll();
-        if (!ntdll) return false;
-
-        const char* names[] = {
-            "NtAllocateVirtualMemory",
-            "NtFreeVirtualMemory",
-            "NtFlushInstructionCache",
-            "RtlAddVectoredExceptionHandler",
-            "RtlRemoveVectoredExceptionHandler",
-            "NtCreateThreadEx",
-            "NtGetContextThread",
-            "NtSetContextThread",
-            "NtResumeThread",
-            "NtWaitForSingleObject",
-            "NtClose",
-            "NtProtectVirtualMemory"
-        };
-        void* funcs[ARRAYSIZE(names)] = {};
-        util::get_function_address(ntdll, names, funcs, ARRAYSIZE(names));
-
-        using NtAllocateVirtualMemory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, ULONG_PTR, PSIZE_T, ULONG, ULONG);
-        using NtFreeVirtualMemory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG);
-        using NtFlushInstructionCache_t = NTSTATUS(__stdcall*)(HANDLE, PVOID, SIZE_T);
-        using RtlAddVectoredExceptionHandler_t = PVOID(__stdcall*)(ULONG, PVECTORED_EXCEPTION_HANDLER);
-        using RtlRemoveVectoredExceptionHandler_t = ULONG(__stdcall*)(PVOID);
-        using NtCreateThreadEx_t = NTSTATUS(__stdcall*)(PHANDLE, ACCESS_MASK, PVOID, HANDLE, PVOID, PVOID, BOOLEAN, ULONG_PTR, SIZE_T, SIZE_T, PVOID);
-        using NtGetContextThread_t = NTSTATUS(__stdcall*)(HANDLE, PCONTEXT);
-        using NtSetContextThread_t = NTSTATUS(__stdcall*)(HANDLE, PCONTEXT);
-        using NtResumeThread_t = NTSTATUS(__stdcall*)(HANDLE, PULONG);
-        using NtWaitForSingleObject_t = NTSTATUS(__stdcall*)(HANDLE, BOOLEAN, PLARGE_INTEGER);
-        using NtClose_t = NTSTATUS(__stdcall*)(HANDLE);
-        using NtProtectVirtualMemory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG, PULONG);
-
-        const auto pNtAllocateVirtualMemory = reinterpret_cast<NtAllocateVirtualMemory_t>(funcs[0]);
-        const auto pNtFreeVirtualMemory = reinterpret_cast<NtFreeVirtualMemory_t>(funcs[1]);
-        const auto pNtFlushInstructionCache = reinterpret_cast<NtFlushInstructionCache_t>(funcs[2]);
-        const auto pRtlAddVectoredExceptionHandler = reinterpret_cast<RtlAddVectoredExceptionHandler_t>(funcs[3]);
-        const auto pRtlRemoveVectoredExceptionHandler = reinterpret_cast<RtlRemoveVectoredExceptionHandler_t>(funcs[4]);
-        const auto pNtCreateThreadEx = reinterpret_cast<NtCreateThreadEx_t>(funcs[5]);
-        const auto pNtGetContextThread = reinterpret_cast<NtGetContextThread_t>(funcs[6]);
-        const auto pNtSetContextThread = reinterpret_cast<NtSetContextThread_t>(funcs[7]);
-        const auto pNtResumeThread = reinterpret_cast<NtResumeThread_t>(funcs[8]);
-        const auto pNtWaitForSingleObject = reinterpret_cast<NtWaitForSingleObject_t>(funcs[9]);
-        const auto pNtClose = reinterpret_cast<NtClose_t>(funcs[10]);
-        const auto pNtProtectVirtualMemory = reinterpret_cast<NtProtectVirtualMemory_t>(funcs[11]);
-
-        if (!pNtAllocateVirtualMemory || !pNtFreeVirtualMemory || !pNtFlushInstructionCache ||
-            !pRtlAddVectoredExceptionHandler || !pRtlRemoveVectoredExceptionHandler ||
-            !pNtCreateThreadEx || !pNtGetContextThread || !pNtSetContextThread ||
-            !pNtResumeThread || !pNtWaitForSingleObject || !pNtClose || !pNtProtectVirtualMemory) {
-            return false;
-        }
-
-        // ICEBP because the kernel interrupt handler that inserts the LastBranchFromIp into EXCEPTION_RECORD->ExceptionInformation[0] is the INT 01 handler
-        constexpr unsigned char codeBytes[] = { 0xE8,0x00,0x00,0x00,0x00, 0xF1, 0xC3 }; // CALL next ; ICEBP ; RET
-        const SIZE_T codeSize = sizeof(codeBytes);
-        const HANDLE hCurrentProcess = reinterpret_cast<HANDLE>(-1LL);
-
-        PVOID controlBase = nullptr;
-        SIZE_T controlSize = sizeof(PVOID);
-        NTSTATUS st = pNtAllocateVirtualMemory(hCurrentProcess, &controlBase, 0, &controlSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-        if (st != 0 || !controlBase) return false;
-        *reinterpret_cast<PVOID*>(controlBase) = nullptr;
-
-        PVOID execBase = nullptr;
-        SIZE_T allocSize = codeSize;
-        st = pNtAllocateVirtualMemory(hCurrentProcess, &execBase, 0, &allocSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-        if (st != 0 || !execBase) {
-            SIZE_T tmp = controlSize;
-            pNtFreeVirtualMemory(hCurrentProcess, &controlBase, &tmp, MEM_RELEASE);
-            return false;
-        }
-
-        unsigned char* dst = reinterpret_cast<unsigned char*>(execBase);
-        for (SIZE_T i = 0; i < codeSize; ++i) dst[i] = codeBytes[i];
-
-        ULONG oldProtect = 0;
-        SIZE_T protectSize = allocSize; 
-        PVOID protectBase = execBase;
-        st = pNtProtectVirtualMemory(hCurrentProcess, &protectBase, &protectSize, PAGE_EXECUTE_READ, &oldProtect);
-        if (st != 0) {
-            SIZE_T tmpExec = allocSize;
-            pNtFreeVirtualMemory(hCurrentProcess, &execBase, &tmpExec, MEM_RELEASE);
-            SIZE_T tmpControl = controlSize;
-            pNtFreeVirtualMemory(hCurrentProcess, &controlBase, &tmpControl, MEM_RELEASE);
-            return false;
-        }
-
-        pNtFlushInstructionCache(hCurrentProcess, execBase, codeSize);
-
-        // local static pointer to control slot so lambda can access a stable address
-        static PVOID g_control_slot = nullptr;
-        g_control_slot = controlBase;
-
-        auto veh_lambda = [](PEXCEPTION_POINTERS ep) -> LONG {
-            if (!ep || !ep->ExceptionRecord) return EXCEPTION_CONTINUE_SEARCH;
-            if (ep->ExceptionRecord->ExceptionCode != EXCEPTION_SINGLE_STEP) return EXCEPTION_CONTINUE_SEARCH;
-
-            ULONG_PTR info0 = 0;
-            if (ep->ExceptionRecord->NumberParameters > 0) info0 = ep->ExceptionRecord->ExceptionInformation[0];
-            if (info0 && g_control_slot) {
-                PVOID expected = nullptr;
-                _InterlockedCompareExchangePointer(reinterpret_cast<PVOID*>(g_control_slot), reinterpret_cast<PVOID*>(info0), expected);
-            }
-            return EXCEPTION_CONTINUE_EXECUTION;
-        };
-
-        // Register VEH
-        const PVECTORED_EXCEPTION_HANDLER veh_fn = static_cast<PVECTORED_EXCEPTION_HANDLER>(veh_lambda);
-        const PVOID vehHandle = pRtlAddVectoredExceptionHandler(1, veh_fn);
-        if (!vehHandle) {
-            SIZE_T tmp = allocSize;
-            pNtFreeVirtualMemory(hCurrentProcess, &execBase, &tmp, MEM_RELEASE);
-            tmp = controlSize;
-            pNtFreeVirtualMemory(hCurrentProcess, &controlBase, &tmp, MEM_RELEASE);
-            return false;
-        }
-
-        // create suspended thread
-        HANDLE hThread = nullptr;
-        NTSTATUS ntres = pNtCreateThreadEx(&hThread, THREAD_ALL_ACCESS, nullptr, hCurrentProcess, execBase, nullptr, TRUE, 0, 0, 0, nullptr);
-        if (ntres != 0 || !hThread) {
-            pRtlRemoveVectoredExceptionHandler(vehHandle);
-            SIZE_T tmp = allocSize;
-            pNtFreeVirtualMemory(hCurrentProcess, &execBase, &tmp, MEM_RELEASE);
-            tmp = controlSize;
-            pNtFreeVirtualMemory(hCurrentProcess, &controlBase, &tmp, MEM_RELEASE);
-            return false;
-        }
-
-        // set debug bits + TF on suspended thread
-        CONTEXT ctx;
-        ZeroMemory(&ctx, sizeof(ctx));
-        ctx.ContextFlags = CONTEXT_CONTROL | CONTEXT_DEBUG_REGISTERS;
-        ntres = pNtGetContextThread(hThread, &ctx);
-        if (ntres != 0) {
-            pNtClose(hThread);
-            pRtlRemoveVectoredExceptionHandler(vehHandle);
-            SIZE_T tmp = allocSize;
-            pNtFreeVirtualMemory(hCurrentProcess, &execBase, &tmp, MEM_RELEASE);
-            tmp = controlSize;
-            pNtFreeVirtualMemory(hCurrentProcess, &controlBase, &tmp, MEM_RELEASE);
-            return false;
-        }
-        ctx.Dr7 |= (1ull << 8) | (1ull << 9); // LBR only would be enough
-        ctx.EFlags |= 0x100;
-        ntres = pNtSetContextThread(hThread, &ctx);
-        if (ntres != 0) {
-            pNtClose(hThread);
-            pRtlRemoveVectoredExceptionHandler(vehHandle);
-            SIZE_T tmp = allocSize;
-            pNtFreeVirtualMemory(hCurrentProcess, &execBase, &tmp, MEM_RELEASE);
-            tmp = controlSize;
-            pNtFreeVirtualMemory(hCurrentProcess, &controlBase, &tmp, MEM_RELEASE);
-            return false;
-        }
-
-        // resume and wait
-        ULONG suspendCount = 0;
-        ntres = pNtResumeThread(hThread, &suspendCount);
-        if (ntres != 0) {
-            pNtClose(hThread);
-            pRtlRemoveVectoredExceptionHandler(vehHandle);
-            SIZE_T tmp = allocSize;
-            pNtFreeVirtualMemory(hCurrentProcess, &execBase, &tmp, MEM_RELEASE);
-            tmp = controlSize;
-            pNtFreeVirtualMemory(hCurrentProcess, &controlBase, &tmp, MEM_RELEASE);
-            return false;
-        }
-        ntres = pNtWaitForSingleObject(hThread, FALSE, nullptr);
-
-        // read slot (pointer-sized) so if null then no LBR observed
-        const PVOID slot_val = *reinterpret_cast<PVOID*>(controlBase);
-
-        // cleanup
-        pRtlRemoveVectoredExceptionHandler(vehHandle);
-        pNtClose(hThread);
-        SIZE_T tmpSize = allocSize;
-        pNtFreeVirtualMemory(hCurrentProcess, &execBase, &tmpSize, MEM_RELEASE);
-        tmpSize = controlSize;
-        pNtFreeVirtualMemory(hCurrentProcess, &controlBase, &tmpSize, MEM_RELEASE);
-        g_control_slot = nullptr;
-
-        // a breakpoint set anywhere in this function before slot_val is read will cause the kernel to not deliver any LBR info, thereby returning true
-        return (slot_val == nullptr);
-    #else
-        return false;
-    #endif
     }
     // ADD NEW TECHNIQUE FUNCTION HERE
 #endif
@@ -11628,7 +11271,6 @@ public: // START OF PUBLIC FUNCTIONS
             case EDID: return "EDID";
             case CPU_HEURISTIC: return "CPU_HEURISTIC";
             case CLOCK: return "CLOCK";
-            case LBR: return "LBR";
             // END OF TECHNIQUE LIST
             case DEFAULT: return "setting flag, error";
             case ALL: return "setting flag, error";
@@ -12167,7 +11809,6 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         std::make_pair(VM::CLOCK, VM::core::technique(100, VM::clock)),
         std::make_pair(VM::POWER_CAPABILITIES, VM::core::technique(45, VM::power_capabilities)),
         std::make_pair(VM::CPU_HEURISTIC, VM::core::technique(90, VM::cpu_heuristic)),
-        std::make_pair(VM::LBR, VM::core::technique(95, VM::lbr)),
         std::make_pair(VM::EDID, VM::core::technique(100, VM::edid)),
         std::make_pair(VM::BOOT_LOGO, VM::core::technique(100, VM::boot_logo)),
         std::make_pair(VM::GPU_CAPABILITIES, VM::core::technique(45, VM::gpu_capabilities)),
@@ -12278,3 +11919,5 @@ table_t VM::core::technique_table = []() -> table_t {
     }
     return table;
 }();
+
+#endif // include guard end
