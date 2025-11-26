@@ -214,8 +214,8 @@
  *       the threshold becomes 300 instead of 150.
  */
 
-
-#pragma once
+#ifndef VMAWARE_HEADER
+#define VMAWARE_HEADER
 
 #ifndef __VMAWARE_DEBUG__
     #if defined(_DEBUG)    /* MSVC Debug */       \
@@ -12101,3 +12101,5 @@ table_t VM::core::technique_table = []() -> table_t {
     }
     return table;
 }();
+
+#endif // include guard end
