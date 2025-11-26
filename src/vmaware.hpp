@@ -214,7 +214,6 @@
  *       the threshold becomes 300 instead of 150.
  */
 
-
 #pragma once
 
 #ifndef __VMAWARE_DEBUG__
@@ -1793,15 +1792,15 @@ private:
                 }
             }
             else {
-                // normally eax 12
                 const std::string brand_str = cpu::cpu_manufacturer(0x40000100);
-
+                
                 if (util::find(brand_str, "KVM")) {
                     debug("HYPER_X: Detected Hyper-V enlightenments");
                     core::add(brands::QEMU_KVM_HYPERV);
                     state = HYPERV_ENLIGHTENMENT;
                 }
-                else {
+                // vendors can sometimes advertise 0x4000xxxx leaves for compatibility/enlightenment purposes without running a hypervisor
+                else if (eax() == 12) {
                     // Windows machine running under Hyper-V type 1
                     debug("HYPER_X: Detected Hyper-V host machine");
                     core::add(brands::HYPERV_ARTIFACT);
