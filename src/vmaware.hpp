@@ -570,7 +570,6 @@ public:
         EDID,
         CPU_HEURISTIC,
         CLOCK,
-        LBR,
 
         // Linux and Windows
         SIDT,
@@ -10169,205 +10168,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         SetupDiDestroyDeviceInfoList(devs);
         return !found;
     }
-
-
-    /**
-     * @brief Check if Last Branch Record MSRs are correctly virtualized
-     * @category Windows
-     * @implements VM::LBR
-     * @note Currently investigating possible false flags with this
-     */
-    [[nodiscard]] static bool lbr() {
-    #if (x86)
-        const HMODULE ntdll = util::get_ntdll();
-        if (!ntdll) return false;
-
-        const char* names[] = {
-            "NtAllocateVirtualMemory",
-            "NtFreeVirtualMemory",
-            "NtFlushInstructionCache",
-            "RtlAddVectoredExceptionHandler",
-            "RtlRemoveVectoredExceptionHandler",
-            "NtCreateThreadEx",
-            "NtGetContextThread",
-            "NtSetContextThread",
-            "NtResumeThread",
-            "NtWaitForSingleObject",
-            "NtClose",
-            "NtProtectVirtualMemory"
-        };
-        void* funcs[ARRAYSIZE(names)] = {};
-        util::get_function_address(ntdll, names, funcs, ARRAYSIZE(names));
-
-        using NtAllocateVirtualMemory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, ULONG_PTR, PSIZE_T, ULONG, ULONG);
-        using NtFreeVirtualMemory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG);
-        using NtFlushInstructionCache_t = NTSTATUS(__stdcall*)(HANDLE, PVOID, SIZE_T);
-        using RtlAddVectoredExceptionHandler_t = PVOID(__stdcall*)(ULONG, PVECTORED_EXCEPTION_HANDLER);
-        using RtlRemoveVectoredExceptionHandler_t = ULONG(__stdcall*)(PVOID);
-        using NtCreateThreadEx_t = NTSTATUS(__stdcall*)(PHANDLE, ACCESS_MASK, PVOID, HANDLE, PVOID, PVOID, BOOLEAN, ULONG_PTR, SIZE_T, SIZE_T, PVOID);
-        using NtGetContextThread_t = NTSTATUS(__stdcall*)(HANDLE, PCONTEXT);
-        using NtSetContextThread_t = NTSTATUS(__stdcall*)(HANDLE, PCONTEXT);
-        using NtResumeThread_t = NTSTATUS(__stdcall*)(HANDLE, PULONG);
-        using NtWaitForSingleObject_t = NTSTATUS(__stdcall*)(HANDLE, BOOLEAN, PLARGE_INTEGER);
-        using NtClose_t = NTSTATUS(__stdcall*)(HANDLE);
-        using NtProtectVirtualMemory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG, PULONG);
-
-        const auto pNtAllocateVirtualMemory = reinterpret_cast<NtAllocateVirtualMemory_t>(funcs[0]);
-        const auto pNtFreeVirtualMemory = reinterpret_cast<NtFreeVirtualMemory_t>(funcs[1]);
-        const auto pNtFlushInstructionCache = reinterpret_cast<NtFlushInstructionCache_t>(funcs[2]);
-        const auto pRtlAddVectoredExceptionHandler = reinterpret_cast<RtlAddVectoredExceptionHandler_t>(funcs[3]);
-        const auto pRtlRemoveVectoredExceptionHandler = reinterpret_cast<RtlRemoveVectoredExceptionHandler_t>(funcs[4]);
-        const auto pNtCreateThreadEx = reinterpret_cast<NtCreateThreadEx_t>(funcs[5]);
-        const auto pNtGetContextThread = reinterpret_cast<NtGetContextThread_t>(funcs[6]);
-        const auto pNtSetContextThread = reinterpret_cast<NtSetContextThread_t>(funcs[7]);
-        const auto pNtResumeThread = reinterpret_cast<NtResumeThread_t>(funcs[8]);
-        const auto pNtWaitForSingleObject = reinterpret_cast<NtWaitForSingleObject_t>(funcs[9]);
-        const auto pNtClose = reinterpret_cast<NtClose_t>(funcs[10]);
-        const auto pNtProtectVirtualMemory = reinterpret_cast<NtProtectVirtualMemory_t>(funcs[11]);
-
-        if (!pNtAllocateVirtualMemory || !pNtFreeVirtualMemory || !pNtFlushInstructionCache ||
-            !pRtlAddVectoredExceptionHandler || !pRtlRemoveVectoredExceptionHandler ||
-            !pNtCreateThreadEx || !pNtGetContextThread || !pNtSetContextThread ||
-            !pNtResumeThread || !pNtWaitForSingleObject || !pNtClose || !pNtProtectVirtualMemory) {
-            return false;
-        }
-
-        // ICEBP because the kernel interrupt handler that inserts the LastBranchFromIp into EXCEPTION_RECORD->ExceptionInformation[0] is the INT 01 handler
-        constexpr unsigned char codeBytes[] = { 0xE8,0x00,0x00,0x00,0x00, 0xF1, 0xC3 }; // CALL next ; ICEBP ; RET
-        const SIZE_T codeSize = sizeof(codeBytes);
-        const HANDLE hCurrentProcess = reinterpret_cast<HANDLE>(-1LL);
-
-        PVOID controlBase = nullptr;
-        SIZE_T controlSize = sizeof(PVOID);
-        NTSTATUS st = pNtAllocateVirtualMemory(hCurrentProcess, &controlBase, 0, &controlSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-        if (st != 0 || !controlBase) return false;
-        *reinterpret_cast<PVOID*>(controlBase) = nullptr;
-
-        PVOID execBase = nullptr;
-        SIZE_T allocSize = codeSize;
-        st = pNtAllocateVirtualMemory(hCurrentProcess, &execBase, 0, &allocSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-        if (st != 0 || !execBase) {
-            SIZE_T tmp = controlSize;
-            pNtFreeVirtualMemory(hCurrentProcess, &controlBase, &tmp, MEM_RELEASE);
-            return false;
-        }
-
-        unsigned char* dst = reinterpret_cast<unsigned char*>(execBase);
-        for (SIZE_T i = 0; i < codeSize; ++i) dst[i] = codeBytes[i];
-
-        ULONG oldProtect = 0;
-        SIZE_T protectSize = allocSize; 
-        PVOID protectBase = execBase;
-        st = pNtProtectVirtualMemory(hCurrentProcess, &protectBase, &protectSize, PAGE_EXECUTE_READ, &oldProtect);
-        if (st != 0) {
-            SIZE_T tmpExec = allocSize;
-            pNtFreeVirtualMemory(hCurrentProcess, &execBase, &tmpExec, MEM_RELEASE);
-            SIZE_T tmpControl = controlSize;
-            pNtFreeVirtualMemory(hCurrentProcess, &controlBase, &tmpControl, MEM_RELEASE);
-            return false;
-        }
-
-        pNtFlushInstructionCache(hCurrentProcess, execBase, codeSize);
-
-        // local static pointer to control slot so lambda can access a stable address
-        static PVOID g_control_slot = nullptr;
-        g_control_slot = controlBase;
-
-        auto veh_lambda = [](PEXCEPTION_POINTERS ep) -> LONG {
-            if (!ep || !ep->ExceptionRecord) return EXCEPTION_CONTINUE_SEARCH;
-            if (ep->ExceptionRecord->ExceptionCode != EXCEPTION_SINGLE_STEP) return EXCEPTION_CONTINUE_SEARCH;
-
-            ULONG_PTR info0 = 0;
-            if (ep->ExceptionRecord->NumberParameters > 0) info0 = ep->ExceptionRecord->ExceptionInformation[0];
-            if (info0 && g_control_slot) {
-                PVOID expected = nullptr;
-                _InterlockedCompareExchangePointer(reinterpret_cast<PVOID*>(g_control_slot), reinterpret_cast<PVOID*>(info0), expected);
-            }
-            return EXCEPTION_CONTINUE_EXECUTION;
-        };
-
-        // Register VEH
-        const PVECTORED_EXCEPTION_HANDLER veh_fn = static_cast<PVECTORED_EXCEPTION_HANDLER>(veh_lambda);
-        const PVOID vehHandle = pRtlAddVectoredExceptionHandler(1, veh_fn);
-        if (!vehHandle) {
-            SIZE_T tmp = allocSize;
-            pNtFreeVirtualMemory(hCurrentProcess, &execBase, &tmp, MEM_RELEASE);
-            tmp = controlSize;
-            pNtFreeVirtualMemory(hCurrentProcess, &controlBase, &tmp, MEM_RELEASE);
-            return false;
-        }
-
-        // create suspended thread
-        HANDLE hThread = nullptr;
-        NTSTATUS ntres = pNtCreateThreadEx(&hThread, THREAD_ALL_ACCESS, nullptr, hCurrentProcess, execBase, nullptr, TRUE, 0, 0, 0, nullptr);
-        if (ntres != 0 || !hThread) {
-            pRtlRemoveVectoredExceptionHandler(vehHandle);
-            SIZE_T tmp = allocSize;
-            pNtFreeVirtualMemory(hCurrentProcess, &execBase, &tmp, MEM_RELEASE);
-            tmp = controlSize;
-            pNtFreeVirtualMemory(hCurrentProcess, &controlBase, &tmp, MEM_RELEASE);
-            return false;
-        }
-
-        // set debug bits + TF on suspended thread
-        CONTEXT ctx;
-        ZeroMemory(&ctx, sizeof(ctx));
-        ctx.ContextFlags = CONTEXT_CONTROL | CONTEXT_DEBUG_REGISTERS;
-        ntres = pNtGetContextThread(hThread, &ctx);
-        if (ntres != 0) {
-            pNtClose(hThread);
-            pRtlRemoveVectoredExceptionHandler(vehHandle);
-            SIZE_T tmp = allocSize;
-            pNtFreeVirtualMemory(hCurrentProcess, &execBase, &tmp, MEM_RELEASE);
-            tmp = controlSize;
-            pNtFreeVirtualMemory(hCurrentProcess, &controlBase, &tmp, MEM_RELEASE);
-            return false;
-        }
-        ctx.Dr7 |= (1ull << 8) | (1ull << 9); // LBR only would be enough
-        ctx.EFlags |= 0x100;
-        ntres = pNtSetContextThread(hThread, &ctx);
-        if (ntres != 0) {
-            pNtClose(hThread);
-            pRtlRemoveVectoredExceptionHandler(vehHandle);
-            SIZE_T tmp = allocSize;
-            pNtFreeVirtualMemory(hCurrentProcess, &execBase, &tmp, MEM_RELEASE);
-            tmp = controlSize;
-            pNtFreeVirtualMemory(hCurrentProcess, &controlBase, &tmp, MEM_RELEASE);
-            return false;
-        }
-
-        // resume and wait
-        ULONG suspendCount = 0;
-        ntres = pNtResumeThread(hThread, &suspendCount);
-        if (ntres != 0) {
-            pNtClose(hThread);
-            pRtlRemoveVectoredExceptionHandler(vehHandle);
-            SIZE_T tmp = allocSize;
-            pNtFreeVirtualMemory(hCurrentProcess, &execBase, &tmp, MEM_RELEASE);
-            tmp = controlSize;
-            pNtFreeVirtualMemory(hCurrentProcess, &controlBase, &tmp, MEM_RELEASE);
-            return false;
-        }
-        ntres = pNtWaitForSingleObject(hThread, FALSE, nullptr);
-
-        // read slot (pointer-sized) so if null then no LBR observed
-        const PVOID slot_val = *reinterpret_cast<PVOID*>(controlBase);
-
-        // cleanup
-        pRtlRemoveVectoredExceptionHandler(vehHandle);
-        pNtClose(hThread);
-        SIZE_T tmpSize = allocSize;
-        pNtFreeVirtualMemory(hCurrentProcess, &execBase, &tmpSize, MEM_RELEASE);
-        tmpSize = controlSize;
-        pNtFreeVirtualMemory(hCurrentProcess, &controlBase, &tmpSize, MEM_RELEASE);
-        g_control_slot = nullptr;
-
-        // a breakpoint set anywhere in this function before slot_val is read will cause the kernel to not deliver any LBR info, thereby returning true
-        return (slot_val == nullptr);
-    #else
-        return false;
-    #endif
-    }
     // ADD NEW TECHNIQUE FUNCTION HERE
 #endif
 
@@ -11457,7 +11257,6 @@ public: // START OF PUBLIC FUNCTIONS
             case EDID: return "EDID";
             case CPU_HEURISTIC: return "CPU_HEURISTIC";
             case CLOCK: return "CLOCK";
-            case LBR: return "LBR";
             // END OF TECHNIQUE LIST
             case DEFAULT: return "setting flag, error";
             case ALL: return "setting flag, error";
@@ -11996,7 +11795,6 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         std::make_pair(VM::CLOCK, VM::core::technique(100, VM::clock)),
         std::make_pair(VM::POWER_CAPABILITIES, VM::core::technique(45, VM::power_capabilities)),
         std::make_pair(VM::CPU_HEURISTIC, VM::core::technique(90, VM::cpu_heuristic)),
-        std::make_pair(VM::LBR, VM::core::technique(95, VM::lbr)),
         std::make_pair(VM::EDID, VM::core::technique(100, VM::edid)),
         std::make_pair(VM::BOOT_LOGO, VM::core::technique(100, VM::boot_logo)),
         std::make_pair(VM::GPU_CAPABILITIES, VM::core::technique(45, VM::gpu_capabilities)),
