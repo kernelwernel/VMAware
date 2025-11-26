@@ -782,8 +782,7 @@ static void general() {
     checker(VM::AMD_THREAD_MISMATCH, "AMD thread count mismatch");
     checker(VM::CUCKOO_DIR, "Cuckoo directory");
     checker(VM::CUCKOO_PIPE, "Cuckoo pipe");
-    checker(VM::HYPERV_HOSTNAME, "Hyper-V Azure hostname");
-    checker(VM::GENERAL_HOSTNAME, "general VM hostnames");
+    checker(VM::AZURE, "Azure Hyper-V");
     checker(VM::DISPLAY, "display");
     checker(VM::DEVICE_STRING, "bogus device string");
     checker(VM::BLUESTACKS_FOLDERS, "BlueStacks folders");
