@@ -4240,7 +4240,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
         u16 cycleThreshold = 1200;
         if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
-            cycleThreshold = 15000; // if we're running under Hyper-V, attempt to detect nested virtualization only
+            cycleThreshold = 8000; // if we're running under Hyper-V, attempt to detect nested virtualization only
         }
 
     #if (WINDOWS)
@@ -5624,14 +5624,28 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::HYPERV_HOSTNAME
      */
     [[nodiscard]] static bool hyperv_hostname() {
+        std::string hostname;
+
+    #if (WINDOWS)
         char buf[MAX_COMPUTERNAME_LENGTH + 1];
         DWORD len = sizeof(buf);
 
-        if (!GetComputerNameA(buf, &len)) {
+        if (GetComputerNameA(buf, &len)) {
+            hostname.assign(buf, len);
+        }
+        else {
             return false;
         }
+    #elif (LINUX)
+        char buf[HOST_NAME_MAX];
 
-        std::string hostname(buf, len);
+        if (gethostname(buf, sizeof(buf)) == 0) {
+            hostname = buf;
+        }
+        else {
+            return false;
+        }
+    #endif
 
         const char* prefix = "runnervm";
         const std::size_t prefix_len = std::strlen(prefix);
