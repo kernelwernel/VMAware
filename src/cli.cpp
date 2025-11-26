@@ -828,7 +828,6 @@ static void general() {
     checker(VM::EDID, "EDID");
     checker(VM::CPU_HEURISTIC, "CPU heuristics");
     checker(VM::CLOCK, "system timers");
-    checker(VM::LBR, "LBR virtualization");
     // ADD NEW TECHNIQUE CHECKER HERE
 
     const auto t2 = std::chrono::high_resolution_clock::now();
