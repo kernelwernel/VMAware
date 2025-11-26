@@ -1353,6 +1353,23 @@ private:
             file.close();
             return data;
         }
+
+        [[nodiscard]] static bool exists(const char* path) {
+        #if (VMA_CPP >= 17)
+            return std::filesystem::exists(path);
+        #elif (VMA_CPP >= 11)
+            struct stat buffer;
+            return (stat(path, &buffer) == 0);
+        #endif
+        }
+
+        static bool is_directory(const char* path) {
+            struct stat info;
+            if (stat(path, &info) != 0) {
+                return false;
+            }
+            return (info.st_mode & S_IFDIR); // check if directory
+        };
 #endif
 
         // fetch the file but in binary form
@@ -1377,24 +1394,155 @@ private:
             return buffer;
         }
 
-#if (LINUX)
-        [[nodiscard]] static bool exists(const char* path) {
-        #if (VMA_CPP >= 17)
-            return std::filesystem::exists(path);
-        #elif (VMA_CPP >= 11)
-            struct stat buffer;
-            return (stat(path, &buffer) == 0);
-        #endif
+
+        // we want to precompute hashes at compile time for C++11 and later, so we need to match the hardware _mm_crc32_u8
+        // it is based on CRC32-C (Castagnoli) polynomial
+        struct constexpr_hash {
+            static constexpr u32 crc32_bits(u32 crc, int bits) {
+                return (bits == 0) ? crc :
+                    crc32_bits((crc >> 1) ^ ((crc & 1) ? 0x82F63B78u : 0), bits - 1);
+            }
+            static constexpr u32 crc32_str(const char* s, u32 crc) {
+                return (*s == '\0') ? crc :
+                    crc32_str(s + 1, crc32_bits(crc ^ static_cast<u8>(*s), 8));
+            }
+            static constexpr u32 get(const char* s) {
+                return crc32_str(s, 0);
+            }
+        };
+
+
+        // this forces the compiler to calculate the hash when initializing the array while staying C++11 compatible
+        struct thread_entry {
+            u32 hash;
+            u32 threads;
+            constexpr thread_entry(const char* m, u32 t) : hash(constexpr_hash::get(m)), threads(t) {}
+        };
+
+
+        struct hasher {
+            static u32 crc32_sw(u32 crc, char data) {
+                crc ^= static_cast<u8>(data);
+                for (int i = 0; i < 8; ++i)
+                    crc = (crc >> 1) ^ ((crc & 1) ? 0x82F63B78u : 0);
+                return crc;
+            }
+
+            #if (CLANG || GCC)
+                __attribute__((__target__("crc32")))
+            #endif
+            static u32 crc32_hw(u32 crc, char data) {
+                return _mm_crc32_u8(crc, static_cast<u8>(data));
+            }
+
+            using hashfc = u32(*)(u32, char);
+
+            static hashfc get() {
+                // yes, vmaware runs on dinosaur cpus without sse4.2 pretty often
+                i32 regs[4];
+                cpu::cpuid(regs, 1);
+                const bool has_sse42 = (regs[2] & (1 << 20)) != 0;
+
+                return has_sse42 ? crc32_hw : crc32_sw;
+            }
+        };
+
+
+        static void lookup(
+            bool &found, 
+            const char* str, 
+            const thread_entry* thread_database,
+            const std::size_t& db_size,
+            std::size_t best_len,
+            const u8 max_token_length,
+            u32* z_series_threads,
+            u32& expected_threads,
+            const bool is_amd = false
+        ) {
+            const hasher::hashfc hash_func = util::hasher::get();
+
+            for (size_t i = 0; str[i] != '\0'; ) {
+                char c = str[i];
+                if (!((c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'))) {
+                    i++;
+                    continue;
+                }
+
+                u32 current_hash = 0;
+                size_t current_len = 0;
+                size_t j = i;
+
+                while (true) {
+                    char k = str[j];
+                    const bool is_valid = (k >= '0' && k <= '9') ||
+                        (k >= 'A' && k <= 'Z') ||
+                        (k >= 'a' && k <= 'z') ||
+                        (k == '-');  // models have hyphen
+                    if (!is_valid) break;
+
+                    if (current_len >= max_token_length) {
+                        while (str[j] != '\0' && str[j] != ' ') j++; // fast forward to space/null
+                        break;
+                    }
+
+                    if (is_amd) {
+                        // convert to lowercase on-the-fly to match compile-time keys
+                        if (k >= 'A' && k <= 'Z') k += 32;
+                    }
+
+                    /*
+                       models are usually 8 or more bytes long, i.e. i9-10900K
+                       so imagine we want to use u64, you hash the first 8 bytes i9-10900
+                       but then you are left with K. You have to handle the tail
+                       fetching 8 bytes would include the characters after the token, corrupting the hash
+                       so a byte-by-byte loop is the most optimal choice here
+                    */
+
+                    // since this technique is cross-platform, we cannot use a standard C++ try-catch block to catch a missing CPU instruction
+                    // we could use preprocessor directives and add an exception handler (VEH/SEH or SIGHANDLER) but nah
+                    current_hash = hash_func(current_hash, k);
+                    current_len++;
+                    j++;
+
+                    // boundary check, only verify match if the token has ended (next char is not alphanumeric)
+                    const char next = str[j];
+                    const bool next_is_alnum = (next >= '0' && next <= '9') ||
+                        (next >= 'A' && next <= 'Z') ||
+                        (next >= 'a' && next <= 'z');
+
+                    if (!next_is_alnum) {
+                        // Check specific Z1 Extreme token
+                        // Hash for "extreme" (CRC32-C) is 0x3D09D5B4
+                        if (
+                            is_amd && 
+                            (z_series_threads != nullptr) && 
+                            (current_hash == 0x3D09D5B4)
+                        ) { 
+                            *z_series_threads = 16; 
+                        }
+
+                        // since it's a contiguous block of integers in .rodata/.rdata, this is extremely fast
+                        for (std::size_t i = 0; i < db_size; ++i) {
+                            if (
+                                (thread_database[i].hash == current_hash) &&
+                                (current_len > best_len) 
+                            ) {
+                                best_len = current_len;
+                                expected_threads = thread_database[i].threads;
+                                found = true;
+                                
+                                // on intel, since hashing implies uniqueness in this dataset, you might say we could break 
+                                // here, but we continue to ensure we find the longest substring match if overlaps exist,
+                                // so like it finds both "i9-11900" and "i9-11900K" i.e.
+                            }
+                        }
+                    }
+                }
+                i = j;
+            }
         }
 
-        static bool is_directory(const char* path) {
-            struct stat info;
-            if (stat(path, &info) != 0) {
-                return false;
-            }
-            return (info.st_mode & S_IFDIR); // check if directory
-        };
-#endif
+
 
         // wrapper for std::make_unique because it's not available for C++11
         template<typename T, typename... Args>
@@ -2093,13 +2241,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      */
      [[nodiscard]] static bool vmid() {
     #if (!x86)
-         return false;
+        return false;
     #else
-         return (
-             cpu::vmid_template(0) ||
-             cpu::vmid_template(cpu::leaf::hypervisor) || // 0x40000000
-             cpu::vmid_template(cpu::leaf::hypervisor + 0x100) // 0x40000100
-             );
+        return (
+            cpu::vmid_template(0) ||
+            cpu::vmid_template(cpu::leaf::hypervisor) || // 0x40000000
+            cpu::vmid_template(cpu::leaf::hypervisor + 0x100) // 0x40000100
+        );
     #endif
     }
 
@@ -2343,44 +2491,17 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (!model.found) {
             return false;
         }
-    
+
         if (!model.is_i_series) {
             return false;
         }
 
         debug("INTEL_THREAD_MISMATCH: CPU model = ", model.string);
 
-        // we want to precompute hashes at compile time for C++11 and later, so we need to match the hardware _mm_crc32_u8
-        // it is based on CRC32-C (Castagnoli) polynomial
-        struct ConstexprHash {
-            // it does 8 rounds of CRC32-C bit reflection recursively
-            static constexpr u32 crc32_bits(u32 crc, int bits) {
-                return (bits == 0) ? crc :
-                    crc32_bits((crc >> 1) ^ ((crc & 1) ? 0x82F63B78u : 0), bits - 1);
-            }
-
-            // over string
-            static constexpr u32 crc32_str(const char* s, u32 crc) {
-                return (*s == '\0') ? crc :
-                    crc32_str(s + 1, crc32_bits(crc ^ static_cast<u8>(*s), 8));
-            }
-
-            static constexpr u32 get(const char* s) {
-                return crc32_str(s, 0);
-            }
-        };
-
-        // this forces the compiler to calculate the hash when initializing the array while staying C++11 compatible
-        struct Entry {
-            u32 hash;
-            u32 threads;
-            constexpr Entry(const char* m, u32 t) : hash(ConstexprHash::get(m)), threads(t) {}
-        };
-
         // umap is not an option because it cannot be constexpr
         // constexpr is respected here even in c++ 11 and static solves stack overflow
         // c arrays have less construction overhead than std::array
-        static constexpr Entry thread_database[] = {
+        static constexpr util::thread_entry thread_database[] = {
             // i3 series
             { "i3-1000G1", 4 },
             { "i3-1000G4", 4 },
@@ -3340,102 +3461,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // to save a few cycles
         static constexpr size_t MAX_INTEL_MODEL_LEN = 16;
 
-        struct hasher {
-            static u32 crc32_sw(u32 crc, char data) {
-                crc ^= static_cast<u8>(data);
-                for (int i = 0; i < 8; ++i)
-                    crc = (crc >> 1) ^ ((crc & 1) ? 0x82F63B78u : 0);
-                return crc;
-            }
-
-            #if (CLANG || GCC)
-                __attribute__((__target__("crc32")))
-            #endif
-            static u32 crc32_hw(u32 crc, char data) {
-                return _mm_crc32_u8(crc, static_cast<u8>(data));
-            }
-
-            using hashfc = u32(*)(u32, char);
-
-            static hashfc get() {
-                // yes, vmaware runs on dinosaur cpus without sse4.2 pretty often
-                i32 regs[4];
-                cpu::cpuid(regs, 1);
-                const bool has_sse42 = (regs[2] & (1 << 20)) != 0;
-
-                return has_sse42 ? crc32_hw : crc32_sw;
-            }
-        };
-
         const char* str = model.string.c_str();
         u32 expected_threads = 0;
         bool found = false;
         size_t best_len = 0;
+        const std::size_t size = sizeof(thread_database) / sizeof(util::thread_entry);
 
-        const auto hash_func = hasher::get();
-
-        for (size_t i = 0; str[i] != '\0'; ) {
-            const char c = str[i];
-            if (!((c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'))) {
-                i++;
-                continue;
-            }
-
-            u32 current_hash = 0;
-            size_t current_len = 0;
-            size_t j = i;
-
-            while (true) {
-                const char k = str[j];
-                const bool is_valid = (k >= '0' && k <= '9') ||
-                    (k >= 'A' && k <= 'Z') ||
-                    (k >= 'a' && k <= 'z') ||
-                    (k == '-'); // models have hyphen
-                if (!is_valid) break;
-
-                if (current_len >= MAX_INTEL_MODEL_LEN) {
-                    while (str[j] != '\0' && str[j] != ' ') j++; // fast forward to space/null
-                    break;
-                }
-
-                /*
-                   models are usually 8 or more bytes long, i.e. i9-10900K
-                   so imagine we want to use u64, you hash the first 8 bytes i9-10900
-                   but then you are left with K. You have to handle the tail
-                   fetching 8 bytes would include the characters after the token, corrupting the hash
-                   so a byte-by-byte loop is the most optimal choice here
-                */
-
-                // since this technique is cross-platform, we cannot use a standard C++ try-catch block to catch a missing CPU instruction
-                // we could use preprocessor directives and add an exception handler (VEH/SEH or SIGHANDLER) but nah
-                current_hash = hash_func(current_hash, k);
-                current_len++;
-                j++;
-
-                // only verify match if the token has ended (next char is not alphanumeric)
-                const char next = str[j];
-                const bool next_is_alnum = (next >= '0' && next <= '9') ||
-                    (next >= 'A' && next <= 'Z') ||
-                    (next >= 'a' && next <= 'z');
-
-                if (!next_is_alnum) {
-                    // since it's a contiguous block of integers in .rodata/.rdata, this is extremely fast
-                    for (const auto& entry : thread_database) {
-                        if (entry.hash == current_hash) {
-                            if (current_len > best_len) {
-                                best_len = current_len;
-                                expected_threads = entry.threads;
-                                found = true;
-                            }
-                            // since hashing implies uniqueness in this dataset, you might say we could break here,
-                            // but we continue to ensure we find the longest substring match if overlaps exist,
-                            // so like it finds both "i9-11900" and "i9-11900K" i.e.
-                        }
-                    }
-                }
-            }
-            i = j;
-        }
+        util::lookup(found, str, thread_database, size, best_len, MAX_INTEL_MODEL_LEN, nullptr, expected_threads);
 
         if (found) {
             const u32 actual = memo::threadcount::fetch();
@@ -3473,37 +3505,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         debug("XEON_THREAD_MISMATCH: CPU model = ", model.string);
 
-        // we want to precompute hashes at compile time for C++11 and later, so we need to match the hardware _mm_crc32_u8
-        // it is based on CRC32-C (Castagnoli) polynomial
-        struct ConstexprHash {
-            // it does 8 rounds of CRC32-C bit reflection recursively
-            static constexpr u32 crc32_bits(u32 crc, int bits) {
-                return (bits == 0) ? crc :
-                    crc32_bits((crc >> 1) ^ ((crc & 1) ? 0x82F63B78u : 0), bits - 1);
-            }
-
-            // over string
-            static constexpr u32 crc32_str(const char* s, u32 crc) {
-                return (*s == '\0') ? crc :
-                    crc32_str(s + 1, crc32_bits(crc ^ static_cast<u8>(*s), 8));
-            }
-
-            static constexpr u32 get(const char* s) {
-                return crc32_str(s, 0);
-            }
-        };
-
-        // this forces the compiler to calculate the hash when initializing the array while staying C++11 compatible
-        struct Entry {
-            u32 hash;
-            u32 threads;
-            constexpr Entry(const char* m, u32 t) : hash(ConstexprHash::get(m)), threads(t) {}
-        };
-
         // umap is not an option because it cannot be constexpr
         // constexpr is respected here even in c++ 11 and static solves stack overflow
         // c arrays have less construction overhead than std::array
-        static constexpr Entry thread_database[] = {
+        static constexpr util::thread_entry thread_database[] = {
             // Xeon D
             { "D-1518", 8 },
             { "D-1520", 8 },
@@ -3642,33 +3647,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // to save a few cycles
         static constexpr size_t MAX_XEON_MODEL_LEN = 16;
 
-        struct hasher {
-            static u32 crc32_sw(u32 crc, char data) {
-                crc ^= static_cast<u8>(data);
-                for (int i = 0; i < 8; ++i)
-                    crc = (crc >> 1) ^ ((crc & 1) ? 0x82F63B78u : 0);
-                return crc;
-            }
-
-            #if (CLANG || GCC)
-                __attribute__((__target__("crc32")))
-            #endif
-            static u32 crc32_hw(u32 crc, char data) {
-                return _mm_crc32_u8(crc, static_cast<u8>(data));
-            }
-
-            using hashfc = u32(*)(u32, char);
-
-            static hashfc get() {
-                // yes, vmaware runs on dinosaur cpus without sse4.2 pretty often
-                i32 regs[4];
-                cpu::cpuid(regs, 1);
-                const bool has_sse42 = (regs[2] & (1 << 20)) != 0;
-
-                return has_sse42 ? crc32_hw : crc32_sw;
-            }
-        };
-
         const std::string& cpu_full_name = model.string;
         if (cpu_full_name.empty()) return false;
 
@@ -3676,71 +3654,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         u32 expected_threads = 0;
         bool found = false;
         size_t best_len = 0;
+        const std::size_t size = sizeof(thread_database) / sizeof(util::thread_entry);
 
-        const auto hash_func = hasher::get();
-
-        for (size_t i = 0; str[i] != '\0'; ) {
-            const char c = str[i];
-            if (!((c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'))) {
-                i++;
-                continue;
-            }
-
-            u32 current_hash = 0;
-            size_t current_len = 0;
-            size_t j = i;
-
-            while (true) {
-                const char k = str[j];
-                const bool is_valid = (k >= '0' && k <= '9') ||
-                    (k >= 'A' && k <= 'Z') ||
-                    (k >= 'a' && k <= 'z') ||
-                    (k == '-');
-                if (!is_valid) break;
-
-                if (current_len >= MAX_XEON_MODEL_LEN) {
-                    while (str[j] != '\0' && str[j] != ' ') j++; // fast forward to space/null
-                    break;
-                }
-
-                /*
-                   models are usually 8 or more bytes long, i.e. i9-10900K
-                   so imagine we want to use u64, you hash the first 8 bytes i9-10900
-                   but then you are left with K. You have to handle the tail
-                   fetching 8 bytes would include the characters after the token, corrupting the hash
-                   so a byte-by-byte loop is the most optimal choice here
-                */
-
-                // since this technique is cross-platform, we cannot use a standard C++ try-catch block to catch a missing CPU instruction
-                // we could use preprocessor directives and add an exception handler (VEH/SEH or SIGHANDLER) but nah
-                current_hash = hash_func(current_hash, k);
-                current_len++;
-                j++;
-
-                // only verify match if the token has ended (next char is not alphanumeric)
-                const char next = str[j];
-                const bool next_is_alnum = (next >= '0' && next <= '9') ||
-                    (next >= 'A' && next <= 'Z') ||
-                    (next >= 'a' && next <= 'z');
-
-                if (!next_is_alnum) {
-                    // since it's a contiguous block of integers in .rodata/.rdata, this is extremely fast
-                    for (const auto& entry : thread_database) {
-                        if (entry.hash == current_hash) {
-                            if (current_len > best_len) {
-                                best_len = current_len;
-                                expected_threads = entry.threads;
-                                found = true;
-                            }
-                            // since hashing implies uniqueness in this dataset, you might say we could break here,
-                            // but we continue to ensure we find the longest substring match if overlaps exist,
-                            // so like it finds both "i9-11900" and "i9-11900K" i.e.
-                        }
-                    }
-                }
-            }
-            i = j;
-        }
+        util::lookup(found, str, thread_database, size, best_len, MAX_XEON_MODEL_LEN, nullptr, expected_threads);
 
         if (found) {
             const u32 actual = memo::threadcount::fetch();
@@ -3771,29 +3687,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         static constexpr size_t MAX_AMD_TOKEN_LEN = 24; // "threadripper" is long
 
-        struct ConstexprHash {
-            static constexpr u32 crc32_bits(u32 crc, int bits) {
-                return (bits == 0) ? crc :
-                    crc32_bits((crc >> 1) ^ ((crc & 1) ? 0x82F63B78u : 0), bits - 1);
-            }
-            static constexpr u32 crc32_str(const char* s, u32 crc) {
-                return (*s == '\0') ? crc :
-                    crc32_str(s + 1, crc32_bits(crc ^ static_cast<u8>(*s), 8));
-            }
-            static constexpr u32 get(const char* s) {
-                return crc32_str(s, 0);
-            }
-        };
-
-        struct Entry {
-            u32 hash;
-            u32 threads;
-            constexpr Entry(const char* m, u32 t) : hash(ConstexprHash::get(m)), threads(t) {}
-        };
-
         // Database is reduced to identifying suffixes (last token of the original strings)
         // for example handles "ryzen 5 3600" by matching "3600", which is unique in context
-        static constexpr Entry db_entries[] = {
+        static constexpr util::thread_entry thread_database[] = {
             // 3015/3020
             { "3015ce", 4 },
             { "3015e", 4 },
@@ -4304,100 +4200,21 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             { "z2", 16 }
         };
 
-        struct hasher {
-            static u32 crc32_sw(u32 crc, char data) {
-                crc ^= static_cast<u8>(data);
-                for (int i = 0; i < 8; ++i)
-                    crc = (crc >> 1) ^ ((crc & 1) ? 0x82F63B78u : 0);
-                return crc;
-            }
-
-            #if (CLANG || GCC)
-                __attribute__((__target__("crc32")))
-            #endif
-            static u32 crc32_hw(u32 crc, char data) {
-                return _mm_crc32_u8(crc, static_cast<u8>(data));
-            }
-
-            using hashfc = u32(*)(u32, char);
-
-            static hashfc get() {
-                i32 regs[4];
-                cpu::cpuid(regs, 1);
-                const bool has_sse42 = (regs[2] & (1 << 20)) != 0;
-                return has_sse42 ? crc32_hw : crc32_sw;
-            }
-        };
-
         debug("AMD_THREAD_MISMATCH: CPU model = ", model_str);
 
         const char* str = model_str.c_str();
         u32 expected_threads = 0;
         bool found = false;
         size_t best_len = 0;
-
-        const auto hash_func = hasher::get();
+        const std::size_t size = sizeof(thread_database) / sizeof(util::thread_entry);
+        const bool is_amd = true;
 
         // manual collision fix for Z1 Extreme (16) vs Z1 (12)
         // this is a special runtime check because "z1" is a substring of "z1 extreme" tokens
         // and both might be hashed. VMAware should prioritize 'extreme' if found
         u32 z_series_threads = 0;
 
-        for (size_t i = 0; str[i] != '\0'; ) {
-            char c = str[i];
-            if (!((c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'))) {
-                i++;
-                continue;
-            }
-
-            u32 current_hash = 0;
-            size_t current_len = 0;
-            size_t j = i;
-
-            while (true) {
-                char k = str[j];
-                const bool is_valid = (k >= '0' && k <= '9') ||
-                    (k >= 'A' && k <= 'Z') ||
-                    (k >= 'a' && k <= 'z') ||
-                    (k == '-');
-                if (!is_valid) break;
-
-                if (current_len >= MAX_AMD_TOKEN_LEN) {
-                    while (str[j] != '\0' && str[j] != ' ') j++;
-                    break;
-                }
-
-                // convert to lowercase on-the-fly to match compile-time keys
-                if (k >= 'A' && k <= 'Z') k += 32;
-
-                current_hash = hash_func(current_hash, k);
-                current_len++;
-                j++;
-
-                // boundary check
-                const char next = str[j];
-                const bool next_is_alnum = (next >= '0' && next <= '9') ||
-                    (next >= 'A' && next <= 'Z') ||
-                    (next >= 'a' && next <= 'z');
-
-                if (!next_is_alnum) {
-                    // Check specific Z1 Extreme token
-                    // Hash for "extreme" (CRC32-C) is 0x3D09D5B4
-                    if (current_hash == 0x3D09D5B4) { z_series_threads = 16; }
-
-                    for (const auto& entry : db_entries) {
-                        if (entry.hash == current_hash) {
-                            if (current_len > best_len) {
-                                best_len = current_len;
-                                expected_threads = entry.threads;
-                                found = true;
-                            }
-                        }
-                    }
-                }
-            }
-            i = j;
-        }
+        util::lookup(found, str, thread_database, size, best_len, MAX_AMD_TOKEN_LEN, &z_series_threads, expected_threads, is_amd);
 
         // Z1 Extreme fix
         if (z_series_threads != 0 && expected_threads == 12) {
