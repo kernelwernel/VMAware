@@ -9627,76 +9627,101 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::EDID
      */
     [[nodiscard]] static bool edid() {
-        auto decodeManufacturerFast = [](const BYTE* edid) __declspec(noinline) -> std::array<char, 4> {
-            // edid[8..9] big-endian word
-            const uint16_t word = static_cast<uint16_t>((edid[8] << 8) | edid[9]);
-            const uint8_t c1 = static_cast<uint8_t>((word >> 10) & 0x1F);
-            const uint8_t c2 = static_cast<uint8_t>((word >> 5) & 0x1F);
-            const uint8_t c3 = static_cast<uint8_t>((word >> 0) & 0x1F);
-            std::array<char, 4> out{ {'?','?','?','\0'} };
-            if (c1 >= 1 && c1 <= 26) out[0] = static_cast<char>('A' + c1 - 1);
-            if (c2 >= 1 && c2 <= 26) out[1] = static_cast<char>('A' + c2 - 1);
-            if (c3 >= 1 && c3 <= 26) out[2] = static_cast<char>('A' + c3 - 1);
-            return out;
+        auto decodeManufacturer = [](const BYTE* edid, char out[4]) {
+            const u16 word = static_cast<u16>((edid[8] << 8) | edid[9]);
+            const u8 c1 = static_cast<u8>((word >> 10) & 0x1F);
+            const u8 c2 = static_cast<u8>((word >> 5) & 0x1F);
+            const u8 c3 = static_cast<u8>((word >> 0) & 0x1F);
+            out[0] = (c1 >= 1 && c1 <= 26) ? static_cast<char>('A' + c1 - 1) : '?';
+            out[1] = (c2 >= 1 && c2 <= 26) ? static_cast<char>('A' + c2 - 1) : '?';
+            out[2] = (c3 >= 1 && c3 <= 26) ? static_cast<char>('A' + c3 - 1) : '?';
+            out[3] = '\0';
         };
 
-        auto isThreeUpperAlphaFast = [](const std::array<char, 4>& m) -> bool {
+        auto isThreeUpperAlpha = [](const char m[4]) -> bool {
             return (m[0] >= 'A' && m[0] <= 'Z') &&
                 (m[1] >= 'A' && m[1] <= 'Z') &&
                 (m[2] >= 'A' && m[2] <= 'Z');
         };
 
-        auto descHasUpperPrefixMonitorFast = [](const char* desc) -> bool {
-            if (!desc || desc[0] == '\0') return false;
-            // Two tails to search: " Monitor" and " Display" (leading space)
-            const char* tails[] = { " Monitor", " Display" };
-            for (const char* tail : tails) {
-                const char* p = strstr(desc, tail);
-                while (p) {
-                    // ensure not at position 0
-                    if (p != desc) {
-                        // walk backwards counting uppercase letters
-                        const char* start = p;
-                        size_t len = 0;
-                        while (start > desc) {
-                            --start;
-                            unsigned char uc = static_cast<unsigned char>(*start);
-                            if (uc >= 'A' && uc <= 'Z') {
-                                ++len;
-                                if (len > 8) break;
-                            }
-                            else break;
+        auto edidChecksumValid = [](const BYTE* edid, size_t len) -> bool {
+            if (len < 128) return false;
+            u8 sum = 0;
+            for (size_t i = 0; i < 128; ++i) sum = static_cast<u8>(sum + edid[i]);
+            return sum == 0;
+        };
+
+        auto extractMonitorName = [](const BYTE* edid, size_t len, char out[32]) -> bool {
+            if (len < 128) { out[0] = '\0'; return false; }
+            const size_t base = 54;
+            for (int i = 0; i < 4; ++i) {
+                size_t off = base + i * 18;
+                if (off + 18 > 128) break;
+                const BYTE* block = edid + off;
+                // descriptor: bytes 0 to 1 == 0x00, byte3 = tag
+                if (block[0] == 0x00 && block[1] == 0x00) {
+                    if (block[3] == 0xFC) { // monitor name
+                        int outi = 0;
+                        for (int j = 5; j < 18 && outi < 31; ++j) {
+                            char c = static_cast<char>(block[j]);
+                            if (c == 0x0A || c == 0x0D || c == 0x00) break;
+                            out[outi++] = c;
                         }
-                        if (len >= 4 && len <= 8) {
-                            // verify all are uppercase (we already did while walking)
-                            return true;
-                        }
+                        out[outi] = '\0';
+                        // trim trailing spaces
+                        while (outi > 0 && (out[outi - 1] == ' ' || out[outi - 1] == '\t')) { out[--outi] = '\0'; }
+                        return outi > 0;
                     }
-                    p = strstr(p + 1, tail);
+                    // monitor serial descriptor 0xFF could be used as name fallback
+                    if (block[3] == 0xFF) {
+                        int outi = 0;
+                        for (int j = 5; j < 18 && outi < 31; ++j) {
+                            char c = static_cast<char>(block[j]);
+                            if (c == 0x0A || c == 0x0D || c == '\0') break;
+                            out[outi++] = c;
+                        }
+                        out[outi] = '\0';
+                        while (outi > 0 && (out[outi - 1] == ' ' || out[outi - 1] == '\t')) { out[--outi] = '\0'; }
+                        return outi > 0;
+                    }
                 }
             }
+            out[0] = '\0';
             return false;
         };
 
-        auto getDevicePropertyA = [](HDEVINFO devInfo, SP_DEVINFO_DATA& devData, DWORD propId, std::string& out) -> bool {
-            char small[512] = {};
-            DWORD needed = 0;
-            if (SetupDiGetDeviceRegistryPropertyA(devInfo, &devData, propId, nullptr, reinterpret_cast<PBYTE>(small), sizeof(small), &needed)) {
-                out.assign(small);
-                return true;
-            }
-            const DWORD err = GetLastError();
-            if (err == ERROR_INSUFFICIENT_BUFFER && needed > 0 && needed < 65536) {
-                std::vector<char> big(needed + 1);
-                if (SetupDiGetDeviceRegistryPropertyA(devInfo, &devData, propId, nullptr, reinterpret_cast<PBYTE>(big.data()), static_cast<DWORD>(big.size()), &needed)) {
-                    big[big.size() - 1] = '\0';
-                    out.assign(big.data());
+        auto read_le16 = [](const BYTE* p) -> u16 {
+            return static_cast<u16>(p[0] | (p[1] << 8));
+        };
+        auto read_le32 = [](const BYTE* p) -> u32 {
+            return static_cast<u32>(p[0] | (p[1] << 8) | (p[2] << 16) | (p[3] << 24));
+        };
+
+        auto getDevicePropertyA = [](HDEVINFO devInfo, SP_DEVINFO_DATA& devData, DWORD propId,
+            char* outBuf, DWORD outBufSize) -> bool {
+                DWORD needed = 0;
+                if (SetupDiGetDeviceRegistryPropertyA(devInfo, &devData, propId, nullptr,
+                    reinterpret_cast<PBYTE>(outBuf), outBufSize, &needed)) {
+                    outBuf[outBufSize - 1] = '\0';
                     return true;
                 }
-            }
-            out.clear();
-            return false;
-        };
+                const DWORD err = GetLastError();
+                if (err == ERROR_INSUFFICIENT_BUFFER && needed > 0 && needed < 65536) {
+                    HLOCAL h = LocalAlloc(LMEM_FIXED, static_cast<SIZE_T>(needed) + 1);
+                    if (!h) return false;
+                    if (SetupDiGetDeviceRegistryPropertyA(devInfo, &devData, propId, nullptr,
+                        reinterpret_cast<PBYTE>(h), needed, &needed)) {
+                        DWORD toCopy = (needed < outBufSize - 1) ? needed : outBufSize - 1;
+                        memcpy(outBuf, h, toCopy);
+                        outBuf[toCopy] = '\0';
+                        LocalFree(h);
+                        return true;
+                    }
+                    LocalFree(h);
+                }
+                outBuf[0] = '\0';
+                return false;
+            };
 
         const HDEVINFO devInfo = SetupDiGetClassDevs(&GUID_DEVCLASS_MONITOR, nullptr, nullptr, DIGCF_PRESENT);
         if (devInfo == INVALID_HANDLE_VALUE) return false;
@@ -9704,47 +9729,86 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         SP_DEVINFO_DATA devData{};
         devData.cbSize = sizeof(devData);
 
+        const int threshold = 3;
+
         for (DWORD index = 0; SetupDiEnumDeviceInfo(devInfo, index, &devData); ++index) {
-            // open registry key for device
             const HKEY hDevKey = SetupDiOpenDevRegKey(devInfo, &devData, DICS_FLAG_GLOBAL, 0, DIREG_DEV, KEY_READ);
-            if (hDevKey == INVALID_HANDLE_VALUE) continue;
-
-            BYTE buffer[2048];
-            DWORD bufSize = static_cast<DWORD>(sizeof(buffer));
-            const LONG rc = RegQueryValueExA(hDevKey, "EDID", nullptr, nullptr, buffer, &bufSize);
-            RegCloseKey(hDevKey);
-            if (rc != ERROR_SUCCESS || bufSize < 128) continue;
-
-            const BYTE* edid = buffer;
-            // standard header
-            if (!(edid[0] == 0x00 && edid[1] == 0xFF && edid[2] == 0xFF && edid[3] == 0xFF &&
-                edid[4] == 0xFF && edid[5] == 0xFF && edid[6] == 0xFF && edid[7] == 0x00)) {
+            if (hDevKey == INVALID_HANDLE_VALUE) {
+                devData = {};
+                devData.cbSize = sizeof(devData);
                 continue;
             }
 
-            const uint8_t yearOffset = edid[0x11]; // 1990 + yearOffset
-            // those don't need device properties
-            const auto manufacturer = decodeManufacturerFast(edid);
-            const bool vendor_nonstandard = !isThreeUpperAlphaFast(manufacturer);
-            const bool year_in_range = (yearOffset >= 25 && yearOffset <= 35); // 2015..2025
+            BYTE edid_stack[256];
+            DWORD bufSize = static_cast<DWORD>(sizeof(edid_stack));
+            LONG rc = RegQueryValueExA(hDevKey, "EDID", nullptr, nullptr, edid_stack, &bufSize);
+            RegCloseKey(hDevKey);
 
-            if (!year_in_range) continue;
-
-            if (vendor_nonstandard) {
-                SetupDiDestroyDeviceInfoList(devInfo);
-                return true;
+            BYTE* edid = nullptr;
+            bool used_heap = false;
+            BYTE* heap_buf = nullptr;
+            if (rc == ERROR_SUCCESS && bufSize >= 128) {
+                edid = edid_stack;
+            }
+            else if (rc == ERROR_MORE_DATA) {
+                if (bufSize > 0 && bufSize < 65536) {
+                    heap_buf = static_cast<BYTE*>(LocalAlloc(LMEM_FIXED, bufSize));
+                    if (heap_buf) {
+                        DWORD bufSize2 = bufSize;
+                        const HKEY hDevKey2 = SetupDiOpenDevRegKey(devInfo, &devData, DICS_FLAG_GLOBAL, 0, DIREG_DEV, KEY_READ);
+                        if (hDevKey2 != INVALID_HANDLE_VALUE) {
+                            if (RegQueryValueExA(hDevKey2, "EDID", nullptr, nullptr, heap_buf, &bufSize2) == ERROR_SUCCESS && bufSize2 >= 128) {
+                                edid = heap_buf;
+                                used_heap = true;
+                                bufSize = bufSize2;
+                            }
+                            RegCloseKey(hDevKey2);
+                        }
+                        if (!edid) { LocalFree(heap_buf); heap_buf = nullptr; }
+                    }
+                }
             }
 
-            std::string friendly, devdesc;
-            // query Friendly name first cuz more likely to be present
-            getDevicePropertyA(devInfo, devData, SPDRP_FRIENDLYNAME, friendly);
-            if (friendly.empty()) getDevicePropertyA(devInfo, devData, SPDRP_DEVICEDESC, devdesc);
+            if (!edid) {
+                devData = {};
+                devData.cbSize = sizeof(devData);
+                continue;
+            }
 
-            const char* descriptor = nullptr;
-            if (!friendly.empty()) descriptor = friendly.c_str();
-            else if (!devdesc.empty()) descriptor = devdesc.c_str();
+            // header check
+            if (!(edid[0] == 0x00 && edid[1] == 0xFF && edid[2] == 0xFF && edid[3] == 0xFF
+                && edid[4] == 0xFF && edid[5] == 0xFF && edid[6] == 0xFF && edid[7] == 0x00)) {
+                if (used_heap) LocalFree(heap_buf);
+                devData = {};
+                devData.cbSize = sizeof(devData);
+                continue;
+            }
 
-            if (descriptor && descHasUpperPrefixMonitorFast(descriptor)) {
+            int score = 0;
+
+            if (!edidChecksumValid(edid, bufSize)) score += 1;
+
+            char manu[4];
+            decodeManufacturer(edid, manu);
+            if (!isThreeUpperAlpha(manu)) score += 1;
+
+            u16 product = static_cast<u16>(edid[10] | (edid[11] << 8)); // because its little-endian
+            u32 serial = static_cast<u32>(edid[12] | (edid[13] << 8) | (edid[14] << 16) | (edid[15] << 24));
+            if (product == 0) score += 1;
+            if (serial == 0) score += 1;
+
+            char monname[32];
+            bool hasName = extractMonitorName(edid, bufSize, monname);
+            if (!hasName) score += 1; // no way you dont have a EDID monitor name
+
+            char propBuf[512];
+            bool haveFriendly = getDevicePropertyA(devInfo, devData, SPDRP_FRIENDLYNAME, propBuf, sizeof(propBuf)); // friendly_name is often empty, like in Digital-Flachbildschirm monitors
+            bool haveDevDesc = getDevicePropertyA(devInfo, devData, SPDRP_DEVICEDESC, propBuf, sizeof(propBuf));
+            if (!haveFriendly && !haveDevDesc) score += 1;
+
+            if (used_heap) LocalFree(heap_buf);
+
+            if (score >= threshold) {
                 SetupDiDestroyDeviceInfoList(devInfo);
                 return true;
             }
