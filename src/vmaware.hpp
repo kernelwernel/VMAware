@@ -1817,10 +1817,10 @@ private:
         };
 
         // this forces the compiler to calculate the hash when initializing the array while staying C++11 compatible
-        struct Entry {
+        struct thread_entry {
             u32 hash;
             u32 threads;
-            constexpr Entry(const char* m, u32 t) : hash(ConstexprHash::get(m)), threads(t) {}
+            constexpr thread_entry(const char* m, u32 t) : hash(ConstexprHash::get(m)), threads(t) {}
         };
 
         enum class CpuType {
@@ -1830,7 +1830,7 @@ private:
         };
 
         // 4 arguments to stay compliant with x64 __fastcall (just in case)
-        [[nodiscard]] static bool verify_thread_count(const Entry* db, size_t db_size, size_t max_model_len, CpuType type) {
+        [[nodiscard]] static bool verify_thread_count(const thread_entry* db, size_t db_size, size_t max_model_len, CpuType type) {
             // to save a few cycles
             struct hasher {
                 static u32 crc32_sw(u32 crc, char data) {
@@ -2522,7 +2522,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // umap is not an option because it cannot be constexpr
         // constexpr is respected here even in c++ 11 and static solves stack overflow
         // c arrays have less construction overhead than std::array
-        static constexpr util::Entry thread_database[] = {
+        static constexpr util::thread_entry thread_database[] = {
             // i3 series
             { "i3-1000G1", 4 },
             { "i3-1000G4", 4 },
@@ -3481,7 +3481,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         static constexpr size_t MAX_INTEL_MODEL_LEN = 16;
 
-        return util::verify_thread_count(thread_database, sizeof(thread_database) / sizeof(util::Entry), MAX_INTEL_MODEL_LEN, util::CpuType::INTEL_I);
+        return util::verify_thread_count(thread_database, sizeof(thread_database) / sizeof(util::thread_entry), MAX_INTEL_MODEL_LEN, util::CpuType::INTEL_I);
     #endif
     }
                 
@@ -3499,7 +3499,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // umap is not an option because it cannot be constexpr
         // constexpr is respected here even in c++ 11 and static solves stack overflow
         // c arrays have less construction overhead than std::array
-        static constexpr util::Entry thread_database[] = {
+        static constexpr util::thread_entry thread_database[] = {
             // Xeon D
             { "D-1518", 8 },
             { "D-1520", 8 },
@@ -3637,7 +3637,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         static constexpr size_t MAX_XEON_MODEL_LEN = 16;
 
-        return util::verify_thread_count(thread_database, sizeof(thread_database) / sizeof(util::Entry), MAX_XEON_MODEL_LEN, util::CpuType::INTEL_XEON);
+        return util::verify_thread_count(thread_database, sizeof(thread_database) / sizeof(util::thread_entry), MAX_XEON_MODEL_LEN, util::CpuType::INTEL_XEON);
     #endif
     }
                 
@@ -3654,7 +3654,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     #else      
         // Database is reduced to identifying suffixes (last token of the original strings)
         // for example handles "ryzen 5 3600" by matching "3600", which is unique in context
-        static constexpr util::Entry thread_database[] = {
+        static constexpr util::thread_entry thread_database[] = {
             // 3015/3020
             { "3015ce", 4 },
             { "3015e", 4 },
@@ -4167,7 +4167,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         static constexpr size_t MAX_AMD_MODEL_LEN = 24; // "threadripper" is long
 
-        return util::verify_thread_count(thread_database, sizeof(thread_database) / sizeof(util::Entry), MAX_AMD_MODEL_LEN, util::CpuType::INTEL_XEON);
+        return util::verify_thread_count(thread_database, sizeof(thread_database) / sizeof(util::thread_entry), MAX_AMD_MODEL_LEN, util::CpuType::INTEL_XEON);
     #endif
     }
 
