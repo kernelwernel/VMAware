@@ -10153,7 +10153,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::CLOCK
      */
     [[nodiscard]] static bool clock() {
-        // The RTC (ACPI/CMOS RTC) timer can't be always detected via SetupAPI, it needs AML decode of the DSDT firmware table.
+        // The RTC (ACPI/CMOS RTC) timer can't be always detected via SetupAPI, it needs AML decode of the DSDT firmware table
         // The HPET (PNP0103) timer presence is already checked on VM::FIRMWARE
         constexpr wchar_t pattern[] = L"pnp0100"; 
         constexpr size_t patLen = (sizeof(pattern) / sizeof(wchar_t)) - 1;
@@ -10183,7 +10183,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return nullptr;
         };
 
-        HDEVINFO devs = SetupDiGetClassDevsW(nullptr, nullptr, nullptr, DIGCF_PRESENT);
+        const HDEVINFO devs = SetupDiGetClassDevsW(nullptr, nullptr, nullptr, DIGCF_PRESENT | DIGCF_ALLCLASSES);
         if (devs == INVALID_HANDLE_VALUE) return false;
 
         SP_DEVINFO_DATA devInfo{};
@@ -10202,7 +10202,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             if (!SetupDiGetDeviceRegistryPropertyW(devs, &devInfo, SPDRP_HARDWAREID,
                 &propertyType, buffer, bufBytes, nullptr))
             {
-                DWORD err = GetLastError();
+                const DWORD err = GetLastError();
                 if (err == ERROR_INSUFFICIENT_BUFFER) {
                     DWORD required = 0;
                     SetupDiGetDeviceRegistryPropertyW(devs, &devInfo, SPDRP_HARDWAREID,
