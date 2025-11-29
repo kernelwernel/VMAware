@@ -6374,7 +6374,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     break;
                 }
 
-                if (returned == 0) continue;
+                if (returned == 0 || hEvents[0] == nullptr) {
+                    if (hEvents[0]) { EvtClose(hEvents[0]); hEvents[0] = nullptr; }
+                    continue;
+                }
 
                 DWORD bufUsed = 0;
                 DWORD bufProps = 0;
