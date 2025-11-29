@@ -6070,7 +6070,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     #endif
     }
 
-
     /**
      * @brief Check for PCI vendor and device IDs that are VM-specific
      * @link https://www.pcilookup.com/?ven=&dev=&action=submit
@@ -6153,9 +6152,62 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         std::unordered_set<unsigned long long> seen;
 
-        // Lambda #1: Process the hardware ID on an instance key,
-        // extract every (VID, DID) pair, and push into devices
-        auto process_hardware_id = [&](HKEY h_inst, root_type root_type) {
+        auto add_device = [&](u16 vid, u32 did) noexcept {
+            const unsigned long long key = (static_cast<unsigned long long>(vid) << 32) | static_cast<unsigned long long>(did);
+            if (seen.insert(key).second) {
+                devices.push_back({ vid, did });
+            }
+        };
+
+        auto scan_text_ids = [&](const wchar_t* text) noexcept {
+            if (!text) return;
+
+            // USB: VID_ and then PID_
+            const wchar_t* p = text;
+            while ((p = wcsstr(p, L"VID_"))) {
+                const wchar_t* v = p;
+                p += 4;
+                const wchar_t* d = wcsstr(v + 4, L"PID_");
+                if (d && (d - v) < 64) {
+                    unsigned long parsed_v = 0, parsed_d = 0;
+                    size_t c_v = 0, c_d = 0;
+                    if (parse_hex(v + 4, 4, SIZE_MAX, parsed_v, c_v) &&
+                        parse_hex(d + 4, 8, SIZE_MAX, parsed_d, c_d)) {
+                        add_device(static_cast<u16>(parsed_v & 0xFFFFu), static_cast<u32>(parsed_d));
+                    }
+                }
+            }
+
+            // PCI or HDAUDIO = VEN_ and then DEV_ after it
+            p = text;
+            while ((p = wcsstr(p, L"VEN_"))) {
+                const wchar_t* v = p;
+                p += 4;
+                const wchar_t* d = wcsstr(v + 4, L"DEV_");
+                if (d && (d - v) < 64) {
+                    unsigned long parsed_v = 0;
+                    size_t c_v = 0;
+                    if (parse_hex(v + 4, 4, SIZE_MAX, parsed_v, c_v)) {
+                        const wchar_t* dev_start = const_cast<wchar_t*>(d + 4);
+                        const wchar_t* amp_after_dev = wcschr(dev_start, L'&');
+                        const size_t dev_len = amp_after_dev ? static_cast<size_t>(amp_after_dev - dev_start) : wcslen(dev_start);
+
+                        // for HDAUDIO expect 4 digits and for PCI allow up to 8
+                        if (dev_len > 0 && dev_len <= 8) {
+                            unsigned long parsed_d = 0;
+                            size_t c_d = 0;
+                            // parse exactly devLen digits (fail if any char is non-hex)
+                            if (parse_hex(dev_start, 8, dev_len, parsed_d, c_d) && c_d == dev_len) {
+                                add_device(static_cast<u16>(parsed_v & 0xFFFFu), static_cast<u32>(parsed_d));
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        // process the hardware ID on an instance key
+        auto process_hardware_id_reg = [&](HKEY h_inst) noexcept {
             // most HardwareIDs fit within 512 bytes
             static thread_local std::vector<wchar_t> buf;
             if (buf.empty()) buf.resize(512);
@@ -6175,7 +6227,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             if (rv == ERROR_MORE_DATA) {
                 if (cb_data > MAX_MULTI_SZ) {
-                    debug("PCI_DEVICES: HardwareID size too large: ", cb_data);
                     return;
                 }
 
@@ -6205,94 +6256,19 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             else buf.back() = L'\0';
 
             for (wchar_t* p = buf.data(); *p; p += wcslen(p) + 1) {
-                wchar_t* s = p;
-                wchar_t* v = nullptr;
-                wchar_t* d = nullptr;
-                u16 vid = 0;
-                u32 did = 0;
-                bool ok = false;
-
-                if (root_type == RT_USB) {
-                    // USB: VID_ and then PID_
-                    v = wcsstr(s, L"VID_");
-                    if (v) d = wcsstr(v + 4, L"PID_");
-                    if (v && d) {
-                        unsigned long parsed_v = 0, parsed_d = 0;
-                        size_t c_v = 0, c_d = 0;
-                        // VID_ usually 4 hex digits, PID_ usually 4
-                        if (parse_hex(v + 4, 4, SIZE_MAX, parsed_v, c_v) &&
-                            parse_hex(d + 4, 8, SIZE_MAX, parsed_d, c_d)) {
-                            vid = static_cast<u16>(parsed_v & 0xFFFFu);
-                            did = static_cast<u32>(parsed_d);
-                            ok = true;
-                        }
-                    }
-                }
-                else {
-                    // PCI or HDAUDIO = VEN_ and then DEV_ after it
-                    v = wcsstr(s, L"VEN_");
-                    if (v) d = wcsstr(v + 4, L"DEV_");
-                    if (v && d) {
-                        unsigned long parsed_v = 0;
-                        size_t c_v = 0;
-                        if (!parse_hex(v + 4, 4, SIZE_MAX, parsed_v, c_v)) {
-                            continue;
-                        }
-                        vid = static_cast<u16>(parsed_v & 0xFFFFu);
-
-                        wchar_t* dev_start = d + 4;
-                        wchar_t* amp_after_dev = wcschr(dev_start, L'&');
-                        const size_t dev_len = amp_after_dev ? static_cast<size_t>(amp_after_dev - dev_start) : wcslen(dev_start);
-
-                        // for HDAUDIO expect 4 digits and for PCI allow up to 8
-                        const size_t max_digits = (root_type == RT_HDAUDIO) ? 4 : 8;
-                        if (dev_len == 0 || dev_len > max_digits) {
-                            // if the token is longer than maxDigits, we cap parsing to maxDigits but
-                            // require that the parsed digit count equals devLen
-                            if (dev_len > max_digits) continue;
-                        }
-
-                        unsigned long parsed_d = 0;
-                        size_t c_d = 0;
-                        // parse exactly devLen digits (fail if any char is non-hex)
-                        if (!parse_hex(dev_start, max_digits, dev_len, parsed_d, c_d)) {
-                            continue;
-                        }
-                        // require we consumed all characters in device token (like std::stoul on the substring)
-                        if (c_d != dev_len) continue;
-
-                        // overflow checks
-                        if (root_type == RT_HDAUDIO) {
-                            if (parsed_d > 0xFFFF) continue;
-                            did = static_cast<u32>(parsed_d & 0xFFFFu);
-                        }
-                        else {
-                            // PCI device id may be up to 32-bit
-                            did = static_cast<u32>(parsed_d);
-                        }
-                        ok = true;
-                    }
-                }
-
-                if (ok) {
-                    const unsigned long long key = (static_cast<unsigned long long>(vid) << 32) | static_cast<unsigned long long>(did);
-                    if (seen.insert(key).second) {
-                        devices.push_back({ vid, did });
-                    }
-                }
+                scan_text_ids(p);
             }
         };
 
-        // Lambda #2: all instance subkeys under a given device key,
-        // and for each instance, open it and call processHardwareID()
-        auto enum_instances = [&](HKEY h_dev, root_type root_type) {
+        // all instance subkeys under a given device key
+        auto enum_instances = [&](HKEY h_dev) noexcept {
             wchar_t inst_name[256];
 
             for (DWORD j = 0;; ++j) {
                 // reset size for each iteration as RegEnumKeyExW modifies it
                 DWORD cb_inst = _countof(inst_name);
 
-                LONG st2 = RegEnumKeyExW(
+                const LONG st2 = RegEnumKeyExW(
                     h_dev,
                     j,
                     inst_name,
@@ -6308,20 +6284,19 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 HKEY h_inst = nullptr;
                 if (RegOpenKeyExW(h_dev, inst_name, 0, KEY_READ, &h_inst) != ERROR_SUCCESS) continue;
 
-                process_hardware_id(h_inst, root_type);
+                process_hardware_id_reg(h_inst);
                 RegCloseKey(h_inst);
             }
         };
 
-        // Lambda #3: all device subkeys under a given root key,
-        // open each device key, and call enumInstances()
-        auto enum_devices = [&](HKEY h_root, root_type root_type) {
+        // all device subkeys under a given root key
+        auto enum_devices = [&](HKEY h_root) noexcept {
             wchar_t device_name[256];
 
             for (DWORD i = 0;; ++i) {
                 DWORD cb_name = _countof(device_name);
 
-                LONG status = RegEnumKeyExW(
+                const LONG status = RegEnumKeyExW(
                     h_root,
                     i,
                     device_name,
@@ -6337,12 +6312,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 HKEY h_dev = nullptr;
                 if (RegOpenKeyExW(h_root, device_name, 0, KEY_READ, &h_dev) != ERROR_SUCCESS) continue;
 
-                enum_instances(h_dev, root_type);
+                enum_instances(h_dev);
                 RegCloseKey(h_dev);
             }
         };
 
-        // for each rootPath we open the root key once, compute its RootType, then call enumDevices()
+        // for each rootPath we open the root key once
         for (size_t rootIdx = 0; rootIdx < _countof(kRoots); ++rootIdx) {
             const wchar_t* rootPath = kRoots[rootIdx];
             HKEY hRoot = nullptr;
@@ -6356,20 +6331,88 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 continue;
             }
 
-            root_type rootType;
-            if (wcscmp(rootPath, L"SYSTEM\\CurrentControlSet\\Enum\\USB") == 0) {
-                rootType = RT_USB;
-            }
-            else if (wcscmp(rootPath, L"SYSTEM\\CurrentControlSet\\Enum\\HDAUDIO") == 0) {
-                rootType = RT_HDAUDIO;
-            }
-            else {
-                rootType = RT_PCI;
-            }
-
-            enum_devices(hRoot, rootType);
+            enum_devices(hRoot);
             RegCloseKey(hRoot);
         }
+
+        auto scan_evt_logs = [&]() noexcept {
+            static constexpr const wchar_t* q = L"<QueryList>"
+                L"  <Query Id='0' Path='Microsoft-Windows-Kernel-PnP/Device Management'>"
+                L"    <Select Path='Microsoft-Windows-Kernel-PnP/Device Management'>"
+                L"      *[System[(Provider[@Name='Microsoft-Windows-Kernel-PnP'] and (EventID=1065 or EventID=1011 or EventID=1010 or EventID=1000 or EventID=1012 or EventID=1013 or EventID=1014))]]"
+                L"    </Select>"
+                L"  </Query>"
+                L"  <Query Id='1' Path='Microsoft-Windows-Kernel-PnP/Driver Watchdog'>"
+                L"    <Select Path='Microsoft-Windows-Kernel-PnP/Driver Watchdog'>"
+                L"      *[System[(Provider[@Name='Microsoft-Windows-Kernel-PnP'] and (EventID=900 or EventID=901 or EventID=902 or EventID=903))]]"
+                L"    </Select>"
+                L"  </Query>"
+                L"  <Query Id='2' Path='Microsoft-Windows-UserPnp/DeviceInstall'>"
+                L"    <Select Path='Microsoft-Windows-UserPnp/DeviceInstall'>"
+                L"      *[System[(Provider[@Name='Microsoft-Windows-UserPnp'] and (EventID=8000 or EventID=8001))]]"
+                L"    </Select>"
+                L"  </Query>"
+                L"</QueryList>";
+
+            const EVT_HANDLE hSub = EvtQuery(nullptr, nullptr, q, EvtQueryReverseDirection | EvtQueryTolerateQueryErrors);
+            if (!hSub) return;
+
+            EVT_HANDLE hEvents[1] = { nullptr };
+            DWORD returned = 0;
+
+            static thread_local std::vector<wchar_t> buf;
+            if (buf.empty()) buf.resize(8192);
+
+            while (true) {
+                returned = 0;
+                hEvents[0] = nullptr;
+
+                if (!EvtNext(hSub, 1, hEvents, 2000, 0, &returned)) {
+                    const DWORD err = GetLastError();
+                    if (err == ERROR_NO_MORE_ITEMS) break;
+                    if (err == ERROR_TIMEOUT) continue;
+                    break;
+                }
+
+                if (returned == 0) continue;
+
+                DWORD bufUsed = 0;
+                DWORD bufProps = 0;
+
+                if (!EvtRender(nullptr, hEvents[0], EvtRenderEventXml,
+                    static_cast<DWORD>(buf.size() * sizeof(wchar_t)),
+                    buf.data(), &bufUsed, &bufProps)) {
+                    const DWORD err = GetLastError();
+                    if (err == ERROR_INSUFFICIENT_BUFFER) {
+                        size_t neededChars = (bufUsed + sizeof(wchar_t) - 1) / sizeof(wchar_t);
+                        buf.resize(neededChars + 1);
+
+                        if (!EvtRender(nullptr, hEvents[0], EvtRenderEventXml,
+                            static_cast<DWORD>(buf.size() * sizeof(wchar_t)),
+                            buf.data(), &bufUsed, &bufProps)) {
+                            if (hEvents[0]) { EvtClose(hEvents[0]); hEvents[0] = nullptr; }
+                            continue;
+                        }
+                    }
+                    else {
+                        if (hEvents[0]) { EvtClose(hEvents[0]); hEvents[0] = nullptr; }
+                        continue;
+                    }
+                }
+
+                const size_t charCount = bufUsed / sizeof(wchar_t);
+                if (charCount >= buf.size()) buf.resize(charCount + 1);
+                buf[charCount] = L'\0';
+
+                scan_text_ids(buf.data());
+
+                if (hEvents[0]) { EvtClose(hEvents[0]); hEvents[0] = nullptr; }
+            }
+
+            EvtClose(hSub);
+        };
+
+        scan_evt_logs();
         #endif
 
         for (auto& d : devices) {
