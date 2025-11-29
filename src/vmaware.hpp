@@ -571,6 +571,7 @@ public:
         EDID,
         CPU_HEURISTIC,
         CLOCK,
+        POST,
 
         // Linux and Windows
         SIDT,
@@ -9163,7 +9164,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         using PVARIABLE_NAME = VARIABLE_NAME*;
         using NtEnumerateSystemEnvironmentValuesEx_t = NTSTATUS(__stdcall*)(ULONG, PVOID, PULONG);
 
-        bool pk_checked = false;
         // Secure Boot stuff
         bool found_dbDefault = false, found_dbxDefault = false, found_KEKDefault = false, found_PKDefault = false;
         /*
@@ -9190,7 +9190,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 AdjustTokenPrivileges(hToken, FALSE, &tpDisable, sizeof(TOKEN_PRIVILEGES), nullptr, nullptr);
             }
             if (hToken) { CloseHandle(hToken); hToken = nullptr; }
-        };
+            };
 
         if (!LookupPrivilegeValue(nullptr, SE_SYSTEM_ENVIRONMENT_NAME, &luid)) { cleanup(); return false; }
         TOKEN_PRIVILEGES tpEnable{}; tpEnable.PrivilegeCount = 1; tpEnable.Privileges[0].Luid = luid; tpEnable.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
@@ -9218,12 +9218,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // ask for size
         if (pNtEnum) {
             hasFunction = true;
-            pNtEnum(1, nullptr, &bufferLength);
+            pNtEnum(static_cast<ULONG>(1), nullptr, &bufferLength);
             if (bufferLength != 0) {
                 enumSize = static_cast<SIZE_T>(bufferLength);
-                NTSTATUS st = pNtAllocateVirtualMemory(hCurrentProcess, &enumBase, 0, &enumSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+                NTSTATUS st = pNtAllocateVirtualMemory(hCurrentProcess, &enumBase, 0, &enumSize, static_cast<ULONG>(MEM_COMMIT | MEM_RESERVE), static_cast<ULONG>(PAGE_READWRITE));
                 if (st == 0 && enumBase) {
-                    st = pNtEnum(1, enumBase, &bufferLength);
+                    st = pNtEnum(static_cast<ULONG>(1), enumBase, &bufferLength);
                     if (st == 0) { success = true; }
                     else { SIZE_T zero = 0; pNtFreeVirtualMemory(hCurrentProcess, &enumBase, &zero, 0x8000); enumBase = nullptr; enumSize = 0; }
                 }
@@ -9237,39 +9237,39 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         auto ci_ascii_contains = [](const BYTE* data, size_t len, const char* pat) noexcept -> bool {
             if (!data || len == 0 || !pat) return false;
             const size_t plen = strlen(pat); if (len < plen) return false;
-            const BYTE p0 = (BYTE)((pat[0] >= 'A' && pat[0] <= 'Z') ? (pat[0] + 32) : pat[0]);
+            const BYTE p0 = static_cast<BYTE>((pat[0] >= 'A' && pat[0] <= 'Z') ? (pat[0] + 32) : pat[0]);
             const BYTE* end = data + (len - plen);
             for (const BYTE* p = data; p <= end; ++p) {
-                BYTE c0 = *p; c0 = (c0 >= 'A' && c0 <= 'Z') ? (c0 + 32) : c0;
+                BYTE c0 = *p; c0 = static_cast<BYTE>((c0 >= 'A' && c0 <= 'Z') ? (c0 + 32) : c0);
                 if (c0 != p0) continue;
                 bool ok = true;
                 for (size_t j = 1; j < plen; ++j) {
-                    BYTE dj = p[j]; dj = (dj >= 'A' && dj <= 'Z') ? (dj + 32) : dj;
-                    BYTE pj = (BYTE)((pat[j] >= 'A' && pat[j] <= 'Z') ? (pat[j] + 32) : pat[j]);
+                    BYTE dj = p[j]; dj = static_cast<BYTE>((dj >= 'A' && dj <= 'Z') ? (dj + 32) : dj);
+                    BYTE pj = static_cast<BYTE>((pat[j] >= 'A' && pat[j] <= 'Z') ? (pat[j] + 32) : pat[j]);
                     if (dj != pj) { ok = false; break; }
                 }
                 if (ok) return true;
             }
             return false;
-        };
+            };
         auto ci_utf16le_contains = [](const WCHAR* data, size_t wlen, const wchar_t* pat) noexcept -> bool {
             if (!data || wlen == 0 || !pat) return false;
             const size_t plen = wcslen(pat); if (wlen < plen) return false;
-            const WCHAR p0 = (pat[0] >= L'A' && pat[0] <= L'Z') ? (pat[0] + 32) : pat[0];
+            const WCHAR p0 = static_cast<WCHAR>((pat[0] >= L'A' && pat[0] <= L'Z') ? (pat[0] + 32) : pat[0]);
             const WCHAR* end = data + (wlen - plen);
             for (const WCHAR* p = data; p <= end; ++p) {
-                WCHAR c0 = *p; c0 = (c0 >= L'A' && c0 <= L'Z') ? (c0 + 32) : c0;
+                WCHAR c0 = *p; c0 = static_cast<WCHAR>((c0 >= L'A' && c0 <= L'Z') ? (c0 + 32) : c0);
                 if (c0 != p0) continue;
                 bool ok = true;
                 for (size_t j = 1; j < plen; ++j) {
-                    WCHAR dj = p[j]; dj = (dj >= L'A' && dj <= L'Z') ? (dj + 32) : dj;
-                    WCHAR pj = (pat[j] >= L'A' && pat[j] <= L'Z') ? (pat[j] + 32) : pat[j];
+                    WCHAR dj = p[j]; dj = static_cast<WCHAR>((dj >= L'A' && dj <= L'Z') ? (dj + 32) : dj);
+                    WCHAR pj = static_cast<WCHAR>((pat[j] >= L'A' && pat[j] <= L'Z') ? (pat[j] + 32) : pat[j]);
                     if (dj != pj) { ok = false; break; }
                 }
                 if (ok) return true;
             }
             return false;
-        };
+            };
 
         constexpr const char* vendor_ascii[] = { "msi","asrock","asus","asustek","gigabyte","giga-byte","micro-star","microstar" };
         constexpr const wchar_t* vendor_wide[] = { L"msi",L"asrock",L"asus",L"asustek",L"gigabyte",L"giga-byte",L"micro-star",L"microstar" };
@@ -9277,7 +9277,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         constexpr const wchar_t redhat_wide[] = L"red hat";
 
         constexpr size_t MAX_VAR_SZ = 131072; // 128KB
-        alignas(8) BYTE stackBuf[MAX_VAR_SZ]{};
+        // Use unique_ptr to move buffer from stack to heap (fixes 132KB stack usage)
+        std::unique_ptr<BYTE[]> stackBufPtr(new BYTE[MAX_VAR_SZ]());
+        BYTE* stackBuf = stackBufPtr.get();
 
         BYTE* pkDefaultBuf = nullptr, * pkBuf = nullptr, * kekDefaultBuf = nullptr, * kekBuf = nullptr;
         SIZE_T pkDefaultLen = 0, pkLen = 0, kekDefaultLen = 0, kekLen = 0;
@@ -9286,17 +9288,17 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             wchar_t guidStr[40] = {};
             constexpr wchar_t hex[] = L"0123456789ABCDEF";
             guidStr[0] = L'{';
-            guidStr[1] = hex[(guid.Data1 >> 28) & 0xF]; guidStr[2] = hex[(guid.Data1 >> 24) & 0xF]; guidStr[3] = hex[(guid.Data1 >> 20) & 0xF]; guidStr[4] = hex[(guid.Data1 >> 16) & 0xF];
-            guidStr[5] = hex[(guid.Data1 >> 12) & 0xF]; guidStr[6] = hex[(guid.Data1 >> 8) & 0xF]; guidStr[7] = hex[(guid.Data1 >> 4) & 0xF]; guidStr[8] = hex[guid.Data1 & 0xF];
+            guidStr[1] = hex[static_cast<size_t>((guid.Data1 >> 28) & 0xF)]; guidStr[2] = hex[static_cast<size_t>((guid.Data1 >> 24) & 0xF)]; guidStr[3] = hex[static_cast<size_t>((guid.Data1 >> 20) & 0xF)]; guidStr[4] = hex[static_cast<size_t>((guid.Data1 >> 16) & 0xF)];
+            guidStr[5] = hex[static_cast<size_t>((guid.Data1 >> 12) & 0xF)]; guidStr[6] = hex[static_cast<size_t>((guid.Data1 >> 8) & 0xF)]; guidStr[7] = hex[static_cast<size_t>((guid.Data1 >> 4) & 0xF)]; guidStr[8] = hex[static_cast<size_t>(guid.Data1 & 0xF)];
             guidStr[9] = L'-';
-            guidStr[10] = hex[(guid.Data2 >> 12) & 0xF]; guidStr[11] = hex[(guid.Data2 >> 8) & 0xF]; guidStr[12] = hex[(guid.Data2 >> 4) & 0xF]; guidStr[13] = hex[guid.Data2 & 0xF];
+            guidStr[10] = hex[static_cast<size_t>((guid.Data2 >> 12) & 0xF)]; guidStr[11] = hex[static_cast<size_t>((guid.Data2 >> 8) & 0xF)]; guidStr[12] = hex[static_cast<size_t>((guid.Data2 >> 4) & 0xF)]; guidStr[13] = hex[static_cast<size_t>(guid.Data2 & 0xF)];
             guidStr[14] = L'-';
-            guidStr[15] = hex[(guid.Data3 >> 12) & 0xF]; guidStr[16] = hex[(guid.Data3 >> 8) & 0xF]; guidStr[17] = hex[(guid.Data3 >> 4) & 0xF]; guidStr[18] = hex[guid.Data3 & 0xF];
+            guidStr[15] = hex[static_cast<size_t>((guid.Data3 >> 12) & 0xF)]; guidStr[16] = hex[static_cast<size_t>((guid.Data3 >> 8) & 0xF)]; guidStr[17] = hex[static_cast<size_t>((guid.Data3 >> 4) & 0xF)]; guidStr[18] = hex[static_cast<size_t>(guid.Data3 & 0xF)];
             guidStr[19] = L'-';
-            guidStr[20] = hex[(guid.Data4[0] >> 4) & 0xF]; guidStr[21] = hex[guid.Data4[0] & 0xF]; guidStr[22] = hex[(guid.Data4[1] >> 4) & 0xF]; guidStr[23] = hex[guid.Data4[1] & 0xF];
+            guidStr[20] = hex[static_cast<size_t>((guid.Data4[0] >> 4) & 0xF)]; guidStr[21] = hex[static_cast<size_t>(guid.Data4[0] & 0xF)]; guidStr[22] = hex[static_cast<size_t>((guid.Data4[1] >> 4) & 0xF)]; guidStr[23] = hex[static_cast<size_t>(guid.Data4[1] & 0xF)];
             guidStr[24] = L'-';
             size_t idx = 25;
-            for (int i = 2; i < 8; ++i) { guidStr[idx++] = hex[(guid.Data4[i] >> 4) & 0xF]; guidStr[idx++] = hex[guid.Data4[i] & 0xF]; }
+            for (int i = 2; i < 8; ++i) { guidStr[idx++] = hex[static_cast<size_t>((guid.Data4[i] >> 4) & 0xF)]; guidStr[idx++] = hex[static_cast<size_t>(guid.Data4[i] & 0xF)]; }
             guidStr[37] = L'}'; guidStr[38] = L'\0';
 
             DWORD ret = GetFirmwareEnvironmentVariableW(name.c_str(), guidStr, stackBuf, static_cast<DWORD>(MAX_VAR_SZ));
@@ -9313,7 +9315,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             // free and fail
             SIZE_T zero = 0; pNtFreeVirtualMemory(hCurrentProcess, &base, &zero, 0x8000);
             outBuf = nullptr; outLen = 0; return false;
-        };
+            };
 
         PVARIABLE_NAME varName = reinterpret_cast<PVARIABLE_NAME>(enumBase);
         const size_t bufSize = static_cast<size_t>(bufferLength);
@@ -9513,9 +9515,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             const u16 word = static_cast<u16>((edid[8] << 8) | edid[9]);
 
             // 5 bits per character. 0x01='A', 0x1A='Z'
-            const u8 c1 = (word >> 10) & 0x1F;
-            const u8 c2 = (word >> 5) & 0x1F;
-            const u8 c3 = word & 0x1F;
+            const u8 c1 = static_cast<u8>((word >> 10) & 0x1F);
+            const u8 c2 = static_cast<u8>((word >> 5) & 0x1F);
+            const u8 c3 = static_cast<u8>(word & 0x1F);
 
             // '?' is fallback for valid EDID range 1-26
             out[0] = (c1 >= 1 && c1 <= 26) ? static_cast<char>('A' + c1 - 1) : '?';
@@ -10049,8 +10051,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                         while (got < 4 && *q) {
                             const wchar_t c = *q;
                             u32 nib = 0;
-                            if (c >= L'0' && c <= L'9') nib = c - L'0';
-                            else if ((c | 0x20) >= L'a' && (c | 0x20) <= L'f') nib = (c | 0x20) - L'a' + 10;
+                            if (c >= L'0' && c <= L'9') nib = static_cast<u32>(c - L'0');
+                            else if ((c | 0x20) >= L'a' && (c | 0x20) <= L'f') nib = static_cast<u32>((c | 0x20) - L'a' + 10);
                             else break;
 
                             val = (val << 4) | nib;
@@ -10111,9 +10113,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
                         if (wHwId) {
                             const u32 vid = find_vendor_hex(wHwId);
-                            // VID_INTEL = 0x8086, VID_AMD_ATI = 0x1002, VID_AMD_MICRO = 0x1022
-                            if (vid == 0x8086) intel_hits++;
-                            else if (vid == 0x1002 || vid == 0x1022) amd_hits++;
+                            if (vid == VID_INTEL) intel_hits++;
+                            else if (vid == VID_AMD_ATI || vid == VID_AMD_MICRO) amd_hits++;
                         }
                     }
                 }
@@ -10259,6 +10260,61 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         free(buffer);
         SetupDiDestroyDeviceInfoList(devs);
         return !found;
+    }
+
+
+    /**
+     * @brief Check for anomalies in BIOS POST time
+     * @category Windows
+     * @implements VM::POST
+     */
+    [[nodiscard]] static bool post() {
+        /*
+        * The motherboard must test and calibrate memory timings, which is time-consuming
+        * The system physically scans PCIe buses, initializes the GPU, powers up USB controllers, and waits for storage drives to report ready
+        * Fans must spin up, and capacitors must charge
+        * 
+        * On VMs, RAM is simply a block of memory allocated by the host OS. There is no training or calibration required
+        * There are no drives to spin up, no fans to check, and no complex PCIe negotiation
+        * So at the end, we see cases like VirtualBox machines reporting 0.9s of last bios time, or QEMU machines with OVMF reporting 0s
+        */
+        static constexpr wchar_t kSubKey[] = L"SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Power";
+        static constexpr wchar_t kValueName[] = L"FwPOSTTime";
+        HKEY hKey;
+
+        long result = RegOpenKeyExW(
+            HKEY_LOCAL_MACHINE,
+            kSubKey,
+            0,
+            KEY_QUERY_VALUE,
+            &hKey
+        );
+
+        if (result != ERROR_SUCCESS) {
+            return false;
+        }
+
+        DWORD data = 0;
+        DWORD dataSize = sizeof(data);
+
+        result = RegQueryValueExW(
+            hKey,
+            kValueName,
+            NULL,
+            NULL,
+            reinterpret_cast<LPBYTE>(&data),
+            &dataSize
+        );
+
+        RegCloseKey(hKey);
+
+        if (result == ERROR_SUCCESS) {
+            if (data < 1500) { // 1.5s
+                return true;
+            }
+        }
+
+        return false;
     }
     // ADD NEW TECHNIQUE FUNCTION HERE
 #endif
@@ -11355,6 +11411,7 @@ public: // START OF PUBLIC FUNCTIONS
             case EDID: return "EDID";
             case CPU_HEURISTIC: return "CPU_HEURISTIC";
             case CLOCK: return "CLOCK";
+            case POST: return "POST";
             // END OF TECHNIQUE LIST
             case DEFAULT: return "setting flag, error";
             case ALL: return "setting flag, error";
@@ -11910,6 +11967,7 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
         std::make_pair(VM::CLOCK, VM::core::technique(100, VM::clock)),
         std::make_pair(VM::POWER_CAPABILITIES, VM::core::technique(45, VM::power_capabilities)),
         std::make_pair(VM::CPU_HEURISTIC, VM::core::technique(90, VM::cpu_heuristic)),
+        std::make_pair(VM::POST, VM::core::technique(100, VM::post)),
         std::make_pair(VM::EDID, VM::core::technique(100, VM::edid)),
         std::make_pair(VM::BOOT_LOGO, VM::core::technique(100, VM::boot_logo)),
         std::make_pair(VM::GPU_CAPABILITIES, VM::core::technique(45, VM::gpu_capabilities)),
