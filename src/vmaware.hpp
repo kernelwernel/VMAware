@@ -9359,6 +9359,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             else if (nameView == L"KEKDefault") (void)read_var_to_buf(std::wstring(nameView), varName->VendorGuid, kekDefaultBuf, kekDefaultLen);
             else if (nameView == L"KEK") (void)read_var_to_buf(std::wstring(nameView), varName->VendorGuid, kekBuf, kekLen);
 
+            // https://github.com/tianocore/edk2/blob/af9cc80359e320690877e4add870aa13fe889fbe/SecurityPkg/Library/AuthVariableLib/AuthServiceInternal.h
+            if (nameView == L"certdb" || nameView == L"certdbv") {
+                debug("NVRAM: EDK II (TianoCore) detected");
+                SIZE_T z = 0;
+                pNtFreeVirtualMemory(hCurrentProcess, &enumBase, &z, 0x8000);
+                cleanup();
+                return true; // we cant return a brand here since its used in VMWare, QEMU with OVMF, VirtualBox, etc
+            }
+
             if (varName->NextEntryOffset == 0) break;
             const SIZE_T ne = static_cast<SIZE_T>(varName->NextEntryOffset);
             const size_t nextOffset = offset + ne;
