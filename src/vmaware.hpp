@@ -9368,6 +9368,31 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return true; // we cant return a brand here since its used in VMWare, QEMU with OVMF, VirtualBox, etc
             }
 
+            if (nameView == L"Boot0000") { // should be Windows Boot Manager
+                BYTE* bootBuf = nullptr; SIZE_T bootLen = 0;
+                if (read_var_to_buf(nameView, varName->VendorGuid, bootBuf, bootLen)) {
+                    bool anomaly = (bootLen < 6);
+                    if (!anomaly) {
+                        unsigned short fplLen = 0;
+                        memcpy(&fplLen, bootBuf + 4, sizeof(fplLen));
+                        // we could also check if loadOptionsLength is 136
+                        if (fplLen != 116) anomaly = true;
+                    }
+
+                    if (bootBuf && bootBuf != stackBuf) {
+                        PVOID b = bootBuf; SIZE_T z = 0;
+                        pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000);
+                    }
+
+                    if (anomaly) {
+                        debug("NVRAM: Environment was loaded using a virtual boot loader"); // "virtual" here -> non genuine
+                        SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &enumBase, &z, 0x8000);
+                        cleanup();
+                        return true;
+                    }
+                }
+            }
+
             if (varName->NextEntryOffset == 0) break;
             const SIZE_T ne = static_cast<SIZE_T>(varName->NextEntryOffset);
             const size_t nextOffset = offset + ne;
