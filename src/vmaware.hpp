@@ -53,13 +53,13 @@
  *
  * ============================== SECTIONS ==================================
  * - enums for publicly accessible techniques  => line 535
- * - struct for internal cpu operations        => line 716
- * - struct for internal memoization           => line 1159
- * - struct for internal utility functions     => line 1289
- * - struct for internal core components       => line 10195
- * - start of VM detection technique list      => line 2272
- * - start of public VM detection functions    => line 10688
- * - start of externally defined variables     => line 11667
+ * - struct for internal cpu operations        => line 717
+ * - struct for internal memoization           => line 1141
+ * - struct for internal utility functions     => line 1271
+ * - struct for internal core components       => line 10375
+ * - start of VM detection technique list      => line 2250
+ * - start of public VM detection functions    => line 10868
+ * - start of externally defined variables     => line 11871
  *
  *
  * ============================== EXAMPLE ===================================
@@ -571,6 +571,7 @@ public:
         EDID,
         CPU_HEURISTIC,
         CLOCK,
+        POST,
 
         // Linux and Windows
         SIDT,
@@ -832,33 +833,24 @@ private:
                 return "Unknown";
             }
 
-            constexpr std::array<u32, 3> ids {{
-                cpu::leaf::brand1,
-                cpu::leaf::brand2,
-                cpu::leaf::brand3
-            }};
+            alignas(16) char buffer[49]{};
+            u32* regs = reinterpret_cast<u32*>(buffer);
 
-            std::string b;
-            b.reserve(48); // expected brand length
+            // unrolled calls to fill buffer directly
+            cpu::cpuid(regs[0], regs[1], regs[2], regs[3], cpu::leaf::brand1);
+            cpu::cpuid(regs[4], regs[5], regs[6], regs[7], cpu::leaf::brand2);
+            cpu::cpuid(regs[8], regs[9], regs[10], regs[11], cpu::leaf::brand3);
 
-            union Regs {
-                u32   i[4];
-                char  c[16];
-            } regs{};
-
-            for (auto leaf_id : ids) {
-                cpu::cpuid(regs.i[0], regs.i[1], regs.i[2], regs.i[3], leaf_id);
-                b.append(regs.c, 16);
-            }
+            buffer[48] = '\0';
 
             // do NOT touch trailing spaces for the AMD_THREAD_MISMATCH technique
-            const size_t nul = b.find('\0');
-            if (nul != std::string::npos) b.resize(nul);
+            const size_t len = std::strlen(buffer);
 
             // left-trim only to handle stupid whitespaces before the brand string in ARM CPUs (Virtual CPUs)
             size_t start = 0;
-            while (start < b.size() && std::isspace(static_cast<u8>(b[start]))) ++start;
-            if (start) b.erase(0, start);
+            while (start < len && std::isspace(static_cast<u8>(buffer[start]))) ++start;
+
+            std::string b(buffer + start, len - start);
 
             memo::cpu_brand::store(b);
             debug("CPU: ", b);
@@ -897,25 +889,31 @@ private:
             const EVT_HANDLE hCtx = EvtCreateRenderContext(2, props, EvtRenderContextValues);
             if (!hCtx) { EvtClose(hQuery); return 0; }
 
-            auto to_u64 = [](EVT_VARIANT& v)->uint64_t {
+            auto to_u64 = [](EVT_VARIANT& v) noexcept -> u64 {
                 switch (v.Type) {
                 case EvtVarTypeUInt32:  return v.UInt32Val;
                 case EvtVarTypeUInt64:  return v.UInt64Val;
-                case EvtVarTypeInt32:   return (uint64_t)v.Int32Val;
-                case EvtVarTypeInt64:   return (uint64_t)v.Int64Val;
+                case EvtVarTypeInt32:   return static_cast<u64>(v.Int32Val);
+                case EvtVarTypeInt64:   return static_cast<u64>(v.Int64Val);
                 case EvtVarTypeUInt16:  return v.UInt16Val;
-                case EvtVarTypeSByte:   return (uint8_t)v.SByteVal;
+                case EvtVarTypeSByte:   return static_cast<u8>(v.SByteVal);
                 case EvtVarTypeByte:    return v.ByteVal;
                 case EvtVarTypeBoolean: return v.BooleanVal ? 1ull : 0ull;
-                case EvtVarTypeDouble:  return (uint64_t)v.DoubleVal;
+                case EvtVarTypeDouble:  return static_cast<u64>(v.DoubleVal);
                 case EvtVarTypeAnsiString:
-                    if (v.AnsiStringVal) try { return std::stoull(std::string(v.AnsiStringVal)); }
-                    catch (...) { return 0; }
+                    if (v.AnsiStringVal) {
+                        char* end;
+                        return std::strtoull(v.AnsiStringVal, &end, 10);
+                    }
                     return 0;
+
                 case EvtVarTypeString:
-                    if (v.StringVal) try { return std::stoull(std::wstring(v.StringVal)); }
-                    catch (...) { return 0; }
+                    if (v.StringVal) {
+                        wchar_t* end;
+                        return std::wcstoull(v.StringVal, &end, 10);
+                    }
                     return 0;
+
                 default:
                     return 0;
                 }
@@ -939,10 +937,10 @@ private:
                     EvtClose(hEv);
                     if (propCount < 2) continue;
                     EVT_VARIANT* v = reinterpret_cast<EVT_VARIANT*>(buf.data());
-                    uint64_t num = to_u64(v[0]);
+                    const u64 num = to_u64(v[0]);
                     if (num != 0) continue; // only processor Number == 0 because thats where we will pin our thread on VM::TIMER and other functions
-                    uint64_t nominal = to_u64(v[1]);
-                    if (nominal != 0) { EvtClose(hCtx); EvtClose(hQuery); return static_cast<uint32_t>(nominal); }
+                    const u64 nominal = to_u64(v[1]);
+                    if (nominal != 0) { EvtClose(hCtx); EvtClose(hQuery); return static_cast<u32>(nominal); }
                 }
             }
             EvtClose(hCtx);
@@ -952,46 +950,30 @@ private:
         }
 #endif
 
-        static std::string cpu_manufacturer(const u32 p_leaf) {
-            auto cpuid_thingy = [](const u32 p_leaf, u32* regs, std::size_t start = 0, std::size_t end = 4) -> bool {
-                u32 x[4]{};
-                cpu::cpuid(x[0], x[1], x[2], x[3], p_leaf);
+        [[nodiscard]] static std::string cpu_manufacturer(const u32 leaf_id) {
+            alignas(16) char buffer[13]{};
+            u32* regs = reinterpret_cast<u32*>(buffer);
 
-                for (; start < end; start++) {
-                    *regs++ = x[start];
-                }
+            u32 eax, ebx, ecx, edx;
+            cpu::cpuid(eax, ebx, ecx, edx, leaf_id);
 
-                return true;
-            };
-
-            u32 sig_reg[3] = { 0 };
-
-            // Start at index 1 to get EBX, ECX, EDX (x[1], x[2], x[3])
-            if (!cpuid_thingy(p_leaf, sig_reg, 1, 4)) {
+            if (ebx == 0 && ecx == 0 && edx == 0) {
                 return "";
             }
 
-            if ((sig_reg[0] == 0) && (sig_reg[1] == 0) && (sig_reg[2] == 0)) {
-                return "";
-            }
-
-            auto strconvert = [](u32 n) -> std::string {
-                const char* bytes = reinterpret_cast<const char*>(&n);
-                return std::string(bytes, 4);
-            };
-
-            std::stringstream ss;
-
-            if (p_leaf >= 0x40000000) {
-                // Hypervisor vendor string order: EBX, ECX, EDX
-                ss << strconvert(sig_reg[0]) << strconvert(sig_reg[1]) << strconvert(sig_reg[2]);
+            if (leaf_id >= 0x40000000) {
+                regs[0] = ebx;
+                regs[1] = ecx;
+                regs[2] = edx;
             }
             else {
-                // Standard vendor string (leaf 0x0) order: EBX, EDX, ECX
-                ss << strconvert(sig_reg[0]) << strconvert(sig_reg[2]) << strconvert(sig_reg[1]);
+                regs[0] = ebx;
+                regs[1] = edx;
+                regs[2] = ecx;
             }
 
-            return ss.str();
+            buffer[12] = '\0';
+            return std::string(buffer);
         }
 
         struct stepping_struct {
@@ -1723,17 +1705,16 @@ private:
                 return memo::hyperx::fetch();
             }
 
-            // check if hypervisor feature bit in CPUID eax bit 31 is enabled (always false for physical CPUs)
-            auto is_hyperv_present = []() -> bool {
+            // Check if hypervisor feature bit in CPUID Leaf 1, ECX bit 31 is enabled
+            auto is_hyperv_present = []() noexcept -> bool {
                 u32 unused, ecx = 0;
                 cpu::cpuid(unused, unused, ecx, unused, 1);
 
-                const u32 mask = (1u << 31);
-                return (ecx & mask);
+                return (ecx >> 31) & 1;
             };
 
             // 0x40000003 on EBX indicates the flags that a parent partition specified to create a child partition (https://learn.microsoft.com/en-us/virtualization/hyper-v-on-windows/tlfs/datatypes/hv_partition_privilege_mask)
-            auto is_root_partition = []() -> bool {
+            auto is_root_partition = []() noexcept -> bool {
                 u32 ebx, unused = 0;
                 cpu::cpuid(unused, ebx, unused, unused, 0x40000003);
 
@@ -1747,13 +1728,12 @@ private:
               * which is reflected in the maximum input value for hypervisor CPUID information as 11
               * Essentially, it indicates that the hypervisor is managing the VM and that the VM is not running directly on hardware but rather in a virtualized environment
             */
-            auto eax = []() -> u32 {
-                char out[sizeof(i32) * 4 + 1] = { 0 };
-                cpu::cpuid(reinterpret_cast<int*>(out), cpu::leaf::hypervisor);
+            auto eax = []() noexcept -> u32 {
+                u32 eax_reg, unused = 0;
+                cpu::cpuid(eax_reg, unused, unused, unused, cpu::leaf::hypervisor);
 
-                const u32 eax = static_cast<u32>(out[0]);
-
-                return eax;
+                // truncation is intentional
+                return eax_reg & 0xFF;
             };
 
             hyperx_state state = HYPERV_UNKNOWN;
@@ -2022,22 +2002,20 @@ private:
                 }
             }
 
-            auto valid_range = [&](size_t offset, size_t sz) -> bool {
-                if (sz == 0) return false;
-                if (module_size == 0) return false;
-                if (offset >= module_size) return false;
-                if (sz > module_size) return false;
-                if (offset > module_size - sz) return false;
-                return true;
+            auto valid_range = [&](size_t offset, size_t sz) noexcept -> bool {
+                return (sz > 0) && (offset < module_size) && (sz <= module_size - offset);
             };
 
-            auto safe_cstr_from_rva = [&](DWORD rva) -> const char* {
+            auto safe_cstr_from_rva = [&](DWORD rva) noexcept -> const char* {
                 if (!valid_range(static_cast<size_t>(rva), 1)) return nullptr;
-                const char* p = reinterpret_cast<const char*>(base + rva);
+
+                const char* start = reinterpret_cast<const char*>(base + rva);
                 const size_t remaining = module_size - static_cast<size_t>(rva);
-                for (size_t i = 0; i < remaining; ++i) {
-                    if (p[i] == '\0') return p;
+
+                if (std::memchr(start, '\0', remaining)) {
+                    return start;
                 }
+
                 return nullptr;
             };
 
@@ -2364,7 +2342,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-     * @brief Check if hypervisor feature bit in CPUID eax bit 31 is enabled (always false for physical CPUs)
+     * @brief Check if hypervisor feature bit in CPUID ECX bit 31 is enabled (always false for physical CPUs)
      * @category x86
      * @implements VM::HYPERVISOR_BIT
      */
@@ -2466,31 +2444,24 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             u32 unused, eax = 0;
             cpu::cpuid(eax, unused, unused, unused, 1);
 
-            auto is_k7 = [](const u32 eax) -> bool {
-                const u32 family = (eax >> 8) & 0xF;
-                const u32 model = (eax >> 4) & 0xF;
-                const u32 extended_family = (eax >> 20) & 0xFF;
-
-                if (family == 6 && extended_family == 0) {
-                    if (model == 1 || model == 2 || model == 3 || model == 4) {
-                        return true;
-                    }
+            auto is_k7 = [](const u32 eax) noexcept -> bool {
+                if ((eax & 0x0FF00F00) != 0x00000600) {
+                    return false;
                 }
 
-                return false;
+                const u32 model = (eax >> 4) & 0xF;
+
+                return (model - 1) < 4;
             };
 
-            auto is_k8 = [](const u32 eax) -> bool {
-                const u32 family = (eax >> 8) & 0xF;
-                const u32 extended_family = (eax >> 20) & 0xFF;
-
-                if (family == 0xF) {
-                    if (extended_family == 0x00 || extended_family == 0x01) {
-                        return true;
-                    }
+            auto is_k8 = [](const u32 eax) noexcept -> bool {
+                if (((eax >> 8) & 0xF) != 0xF) {
+                    return false;
                 }
 
-                return false;
+                const u32 extended_family = (eax >> 20) & 0xFF;
+
+                return extended_family <= 1;
             };
 
             if (!(is_k7(eax) || is_k8(eax))) {
@@ -4340,7 +4311,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return true;
             }
         }
-        auto cpuid = [&]() -> u64 {
+
+        auto cpuid = [&]() noexcept -> u64 {
             const u64 t1 = __rdtsc();
 
             u32 a, b, c, d;
@@ -4353,7 +4325,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         constexpr u16 N = 1000;
 
-        auto sample_avg = [&]() -> u64 {
+        auto sample_avg = [&]() noexcept -> u64 {
             u64 sum = 0;
             for (u16 i = 0; i < N; ++i) {
                 sum += cpuid();
@@ -4424,13 +4396,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             const ULONG64 count_second = 200000000ULL;
             static thread_local volatile u64 g_sink = 0; // so that it doesnt need to be captured by the lambda
 
-            auto rd_lambda = []() -> u64 {
+            auto rd_lambda = []() noexcept -> u64 {
                 u64 v = __rdtsc();
                 g_sink ^= v;
                 return v;
             };
 
-            auto xor_lambda = []() -> u64 {
+            auto xor_lambda = []() noexcept -> u64 {
                 volatile u64 a = 0xDEADBEEFDEADBEEFull; // can be replaced by NOPs
                 volatile u64 b = 0x1234567890ABCDEFull;
                 u64 v = a ^ b;
@@ -5242,13 +5214,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             { "google compute engine", brands::GCE }
         }};
 
-        auto to_lower = [](std::string &str) {
+        auto to_lower = [](std::string& str) noexcept {
             for (auto& c : str) {
-                if (c == ' ') {
-                    continue;
+                // std::tolower is surprisingly slow because it handles locales
+                // for ASCII strings simple bitwise math is 10x faster             
+                if (c >= 'A' && c <= 'Z') {
+                    c |= 0x20;
                 }
-
-                c = static_cast<char>(tolower(c));
             }
         };
 
@@ -5747,7 +5719,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         static_assert(targets.size() == brands_map.size(), "targets and brands_map must be the same length");
 
         auto scan_table = [&](const BYTE* buf, const size_t len) noexcept -> bool {
-            // faster than std::search because of a manual byte-by-byte loop, could be optimized further with Boyer-Moore-Horspool implementations for large firmware tables like DSDT
+            // faster than std::search because of a manual byte-by-byte loop, could be optimized further with Boyer-Moore-Horspool for large tables like DSDT
             auto find_pattern = [&](const char* pat, size_t patlen) noexcept -> bool {
                 if (patlen == 0 || patlen > len) return false;
                 const u8 first = static_cast<u8>(pat[0]);
@@ -5893,16 +5865,20 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         // helper to fetch one table into a malloc'd buffer
-        auto fetch = [&](DWORD provider, DWORD tableID, BYTE*& outBuf, size_t& outLen) -> bool {
-            const UINT sz = GetSystemFirmwareTable(provider, tableID, nullptr, 0);
+        auto fetch = [&](DWORD provider, DWORD tableID, BYTE*& outBuf, size_t& outLen) noexcept -> bool {
+            const DWORD sz = GetSystemFirmwareTable(provider, tableID, nullptr, 0);
             if (sz == 0) return false;
-            outBuf = reinterpret_cast<BYTE*>(malloc(sz));
-            if (!outBuf) return false;
-            if (GetSystemFirmwareTable(provider, tableID, outBuf, sz) != sz) {
-                free(outBuf);
+
+            BYTE* buf = static_cast<BYTE*>(malloc(sz));
+            if (!buf) return false;
+
+            if (GetSystemFirmwareTable(provider, tableID, buf, sz) != sz) {
+                free(buf);
                 return false;
             }
-            outLen = sz;
+
+            outBuf = buf;
+            outLen = static_cast<size_t>(sz);
             return true;
         };
 
@@ -6094,7 +6070,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     #endif
     }
 
-
     /**
      * @brief Check for PCI vendor and device IDs that are VM-specific
      * @link https://www.pcilookup.com/?ven=&dev=&action=submit
@@ -6146,164 +6121,158 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             L"SYSTEM\\CurrentControlSet\\Enum\\HDAUDIO"
         };
 
-        enum RootType { RT_PCI, RT_USB, RT_HDAUDIO };
+        enum root_type { RT_PCI, RT_USB, RT_HDAUDIO };
         constexpr DWORD MAX_MULTI_SZ = 64 * 1024;
 
-        auto hexVal = [](wchar_t c) -> int {
+        auto hex_val = [](wchar_t c) noexcept -> int {
             if (c >= L'0' && c <= L'9') return c - L'0';
-            c = towupper(c);
-            if (c >= L'A' && c <= L'F') return 10 + (c - L'A');
+
+            const wchar_t lower = static_cast<wchar_t>((static_cast<int>(c) | 0x20));
+            if (lower >= L'a' && lower <= L'f') return lower - L'a' + 10;
+
             return -1;
         };
 
-        // parse up to maxDigits from ptr; stop also if stopLen supplied (SIZE_MAX = no limit)
-        auto parseHexInplace = [&](const wchar_t* ptr, size_t maxDigits, size_t stopLen, unsigned long& out, size_t& consumed) -> bool {
+        auto parse_hex = [&](const wchar_t* ptr, size_t maxDigits, size_t stopLen, unsigned long& out, size_t& consumed) noexcept -> bool {
             out = 0;
             consumed = 0;
-            while (consumed < maxDigits && (stopLen == SIZE_MAX || consumed < stopLen)) {
-                int v = hexVal(ptr[consumed]);
+
+            const size_t limit = (stopLen < maxDigits) ? stopLen : maxDigits;
+
+            for (; consumed < limit; ++consumed) {
+                const int v = hex_val(ptr[consumed]);
                 if (v < 0) break;
+
+                // caller must ensure maxDigits doesn't exceed 8, because on Windows unsigned long is 32-bit
                 out = (out << 4) | static_cast<unsigned long>(v);
-                ++consumed;
             }
+
             return consumed > 0;
         };
 
         std::unordered_set<unsigned long long> seen;
 
-        // Lambda #1: Process the hardware ID on an instance key,
-        // extract every (VID, DID) pair, and push into devices
-        auto processHardwareID = [&](HKEY hInst, RootType rootType) {
-            DWORD type = 0, cbData = 0;
-            LONG rv = RegGetValueW(
-                hInst,
-                nullptr,
-                L"HardwareID",
-                RRF_RT_REG_MULTI_SZ,
-                &type,
-                nullptr,
-                &cbData
-            );
-            if (rv != ERROR_SUCCESS || type != REG_MULTI_SZ || cbData <= sizeof(wchar_t)) {
-                return;
+        auto add_device = [&](u16 vid, u32 did) noexcept {
+            const unsigned long long key = (static_cast<unsigned long long>(vid) << 32) | static_cast<unsigned long long>(did);
+            if (seen.insert(key).second) {
+                devices.push_back({ vid, did });
             }
+        };
 
-            if (cbData > MAX_MULTI_SZ) {
-                debug("PCI_DEVICES: HardwareID size too large: ", cbData);
-                return;
-            }
+        auto scan_text_ids = [&](const wchar_t* text) noexcept {
+            if (!text) return;
 
-            // allocate a buffer large enough to hold the entire MULTI_SZ
-            std::vector<wchar_t> buf((cbData / sizeof(wchar_t)) + 1);
-            buf.back() = L'\0';
-            rv = RegGetValueW(
-                hInst,
-                nullptr,
-                L"HardwareID",
-                RRF_RT_REG_MULTI_SZ,
-                nullptr,
-                buf.data(),
-                &cbData
-            );
-            if (rv != ERROR_SUCCESS) {
-                return;
-            }
-
-            // guarantee terminating NUL
-            size_t wcharCount = cbData / sizeof(wchar_t);
-            if (wcharCount < buf.size()) buf[wcharCount] = L'\0';
-            else buf.back() = L'\0';
-
-            for (wchar_t* p = buf.data(); *p; p += wcslen(p) + 1) {
-                wchar_t* s = p;
-                wchar_t* v = nullptr;
-                wchar_t* d = nullptr;
-                u16 vid = 0;
-                u32 did = 0;
-                bool ok = false;
-
-                if (rootType == RT_USB) {
-                    // USB: VID_ and then PID_
-                    v = wcsstr(s, L"VID_");
-                    if (v) d = wcsstr(v + 4, L"PID_");
-                    if (v && d) {
-                        unsigned long parsedV = 0, parsedD = 0;
-                        size_t cV = 0, cD = 0;
-                        // VID_ usually 4 hex digits, PID_ usually 4
-                        if (parseHexInplace(v + 4, 4, SIZE_MAX, parsedV, cV) &&
-                            parseHexInplace(d + 4, 8, SIZE_MAX, parsedD, cD)) {
-                            vid = static_cast<u16>(parsedV & 0xFFFFu);
-                            did = static_cast<u32>(parsedD);
-                            ok = true;
-                        }
+            // USB: VID_ and then PID_
+            const wchar_t* p = text;
+            while ((p = wcsstr(p, L"VID_"))) {
+                const wchar_t* v = p;
+                p += 4;
+                const wchar_t* d = wcsstr(v + 4, L"PID_");
+                if (d && (d - v) < 64) {
+                    unsigned long parsed_v = 0, parsed_d = 0;
+                    size_t c_v = 0, c_d = 0;
+                    if (parse_hex(v + 4, 4, SIZE_MAX, parsed_v, c_v) &&
+                        parse_hex(d + 4, 8, SIZE_MAX, parsed_d, c_d)) {
+                        add_device(static_cast<u16>(parsed_v & 0xFFFFu), static_cast<u32>(parsed_d));
                     }
                 }
-                else {
-                    // PCI or HDAUDIO = VEN_ and then DEV_ after it
-                    v = wcsstr(s, L"VEN_");
-                    if (v) d = wcsstr(v + 4, L"DEV_");
-                    if (v && d) {
-                        unsigned long parsedV = 0;
-                        size_t cV = 0;
-                        if (!parseHexInplace(v + 4, 4, SIZE_MAX, parsedV, cV)) {
-                            continue; 
-                        }
-                        vid = static_cast<u16>(parsedV & 0xFFFFu);
+            }
 
-                        wchar_t* devStart = d + 4;
-                        wchar_t* ampAfterDev = wcschr(devStart, L'&');
-                        size_t devLen = ampAfterDev ? static_cast<size_t>(ampAfterDev - devStart) : wcslen(devStart);
+            // PCI or HDAUDIO = VEN_ and then DEV_ after it
+            p = text;
+            while ((p = wcsstr(p, L"VEN_"))) {
+                const wchar_t* v = p;
+                p += 4;
+                const wchar_t* d = wcsstr(v + 4, L"DEV_");
+                if (d && (d - v) < 64) {
+                    unsigned long parsed_v = 0;
+                    size_t c_v = 0;
+                    if (parse_hex(v + 4, 4, SIZE_MAX, parsed_v, c_v)) {
+                        const wchar_t* dev_start = const_cast<wchar_t*>(d + 4);
+                        const wchar_t* amp_after_dev = wcschr(dev_start, L'&');
+                        const size_t dev_len = amp_after_dev ? static_cast<size_t>(amp_after_dev - dev_start) : wcslen(dev_start);
 
-                        // For HDAUDIO expect 4 digits and for PCI allow up to 8
-                        size_t maxDigits = (rootType == RT_HDAUDIO) ? 4 : 8;
-                        if (devLen == 0 || devLen > maxDigits) {
-                            // If the token is longer than maxDigits, we cap parsing to maxDigits but
-                            // require that the parsed digit count equals devLen
-                            if (devLen > maxDigits) continue;
+                        // for HDAUDIO expect 4 digits and for PCI allow up to 8
+                        if (dev_len > 0 && dev_len <= 8) {
+                            unsigned long parsed_d = 0;
+                            size_t c_d = 0;
+                            // parse exactly devLen digits (fail if any char is non-hex)
+                            if (parse_hex(dev_start, 8, dev_len, parsed_d, c_d) && c_d == dev_len) {
+                                add_device(static_cast<u16>(parsed_v & 0xFFFFu), static_cast<u32>(parsed_d));
+                            }
                         }
-
-                        unsigned long parsedD = 0;
-                        size_t cD = 0;
-                        // parse exactly devLen digits (fail if any char is non-hex)
-                        if (!parseHexInplace(devStart, maxDigits, devLen, parsedD, cD)) {
-                            continue;
-                        }
-                        // require we consumed all characters in device token (like std::stoul on the substring)
-                        if (cD != devLen) continue;
-
-                        // overflow checks
-                        if (rootType == RT_HDAUDIO) {
-                            if (parsedD > 0xFFFF) continue;
-                            did = static_cast<u32>(parsedD & 0xFFFFu);
-                        }
-                        else {
-                            // PCI device id may be up to 32-bit
-                            did = static_cast<u32>(parsedD);
-                        }
-                        ok = true;
-                    }
-                }
-
-                if (ok) {
-                    unsigned long long key = (static_cast<unsigned long long>(vid) << 32) | static_cast<unsigned long long>(did);
-                    if (seen.insert(key).second) {
-                        devices.push_back({ vid, did });
                     }
                 }
             }
         };
 
-        // Lambda #2: all instance subkeys under a given device key,
-        // and for each instance, open it and call processHardwareID()
-        auto enumInstances = [&](HKEY hDev, RootType rootType) {
+        // process the hardware ID on an instance key
+        auto process_hardware_id_reg = [&](HKEY h_inst) noexcept {
+            // most HardwareIDs fit within 512 bytes
+            static thread_local std::vector<wchar_t> buf;
+            if (buf.empty()) buf.resize(512);
+
+            DWORD type = 0;
+            DWORD cb_data = static_cast<DWORD>(buf.size() * sizeof(wchar_t));
+
+            LONG rv = RegGetValueW(
+                h_inst,
+                nullptr,
+                L"HardwareID",
+                RRF_RT_REG_MULTI_SZ,
+                &type,
+                buf.data(),
+                &cb_data
+            );
+
+            if (rv == ERROR_MORE_DATA) {
+                if (cb_data > MAX_MULTI_SZ) {
+                    return;
+                }
+
+                // allocate a buffer large enough to hold the entire MULTI_SZ
+                // (+1 for safety null terminator logic below)
+                buf.resize((cb_data / sizeof(wchar_t)) + 2);
+
+                rv = RegGetValueW(
+                    h_inst,
+                    nullptr,
+                    L"HardwareID",
+                    RRF_RT_REG_MULTI_SZ,
+                    &type,
+                    buf.data(),
+                    &cb_data
+                );
+            }
+
+            if (rv != ERROR_SUCCESS || type != REG_MULTI_SZ || cb_data <= sizeof(wchar_t)) {
+                return;
+            }
+
+            // guarantee terminating NUL
+            // RegGetValueW with RRF_RT_REG_MULTI_SZ usually handles this but for safety
+            const size_t wchar_count = cb_data / sizeof(wchar_t);
+            if (wchar_count < buf.size()) buf[wchar_count] = L'\0';
+            else buf.back() = L'\0';
+
+            for (wchar_t* p = buf.data(); *p; p += wcslen(p) + 1) {
+                scan_text_ids(p);
+            }
+        };
+
+        // all instance subkeys under a given device key
+        auto enum_instances = [&](HKEY h_dev) noexcept {
+            wchar_t inst_name[256];
+
             for (DWORD j = 0;; ++j) {
-                wchar_t instName[256]{};
-                DWORD   cbInst = _countof(instName);
-                LONG    st2 = RegEnumKeyExW(
-                    hDev,
+                // reset size for each iteration as RegEnumKeyExW modifies it
+                DWORD cb_inst = _countof(inst_name);
+
+                const LONG st2 = RegEnumKeyExW(
+                    h_dev,
                     j,
-                    instName,
-                    &cbInst,
+                    inst_name,
+                    &cb_inst,
                     nullptr,
                     nullptr,
                     nullptr,
@@ -6312,25 +6281,26 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 if (st2 == ERROR_NO_MORE_ITEMS) break;
                 if (st2 != ERROR_SUCCESS) continue;
 
-                HKEY hInst = nullptr;
-                if (RegOpenKeyExW(hDev, instName, 0, KEY_READ, &hInst) != ERROR_SUCCESS) continue;
+                HKEY h_inst = nullptr;
+                if (RegOpenKeyExW(h_dev, inst_name, 0, KEY_READ, &h_inst) != ERROR_SUCCESS) continue;
 
-                processHardwareID(hInst, rootType);
-                RegCloseKey(hInst);
+                process_hardware_id_reg(h_inst);
+                RegCloseKey(h_inst);
             }
         };
 
-        // Lambda #3: all device subkeys under a given root key,
-        // open each device key, and call enumInstances()
-        auto enumDevices = [&](HKEY hRoot, RootType rootType) {
+        // all device subkeys under a given root key
+        auto enum_devices = [&](HKEY h_root) noexcept {
+            wchar_t device_name[256];
+
             for (DWORD i = 0;; ++i) {
-                wchar_t deviceName[256];
-                DWORD   cbName = _countof(deviceName);
-                LONG    status = RegEnumKeyExW(
-                    hRoot,
+                DWORD cb_name = _countof(device_name);
+
+                const LONG status = RegEnumKeyExW(
+                    h_root,
                     i,
-                    deviceName,
-                    &cbName,
+                    device_name,
+                    &cb_name,
                     nullptr,
                     nullptr,
                     nullptr,
@@ -6339,15 +6309,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 if (status == ERROR_NO_MORE_ITEMS) break;
                 if (status != ERROR_SUCCESS) continue;
 
-                HKEY hDev = nullptr;
-                if (RegOpenKeyExW(hRoot, deviceName, 0, KEY_READ, &hDev) != ERROR_SUCCESS) continue;
+                HKEY h_dev = nullptr;
+                if (RegOpenKeyExW(h_root, device_name, 0, KEY_READ, &h_dev) != ERROR_SUCCESS) continue;
 
-                enumInstances(hDev, rootType);
-                RegCloseKey(hDev);
+                enum_instances(h_dev);
+                RegCloseKey(h_dev);
             }
         };
 
-        // for each rootPath we open the root key once, compute its RootType, then call enumDevices()
+        // for each rootPath we open the root key once
         for (size_t rootIdx = 0; rootIdx < _countof(kRoots); ++rootIdx) {
             const wchar_t* rootPath = kRoots[rootIdx];
             HKEY hRoot = nullptr;
@@ -6361,20 +6331,91 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 continue;
             }
 
-            RootType rootType;
-            if (wcscmp(rootPath, L"SYSTEM\\CurrentControlSet\\Enum\\USB") == 0) {
-                rootType = RT_USB;
-            }
-            else if (wcscmp(rootPath, L"SYSTEM\\CurrentControlSet\\Enum\\HDAUDIO") == 0) {
-                rootType = RT_HDAUDIO;
-            }
-            else {
-                rootType = RT_PCI;
-            }
-
-            enumDevices(hRoot, rootType);
+            enum_devices(hRoot);
             RegCloseKey(hRoot);
         }
+
+        auto scan_evt_logs = [&]() noexcept {
+            static constexpr const wchar_t* q = L"<QueryList>"
+                L"  <Query Id='0' Path='Microsoft-Windows-Kernel-PnP/Device Management'>"
+                L"    <Select Path='Microsoft-Windows-Kernel-PnP/Device Management'>"
+                L"      *[System[(Provider[@Name='Microsoft-Windows-Kernel-PnP'] and (EventID=1065 or EventID=1011 or EventID=1010 or EventID=1000 or EventID=1012 or EventID=1013 or EventID=1014))]]"
+                L"    </Select>"
+                L"  </Query>"
+                L"  <Query Id='1' Path='Microsoft-Windows-Kernel-PnP/Driver Watchdog'>"
+                L"    <Select Path='Microsoft-Windows-Kernel-PnP/Driver Watchdog'>"
+                L"      *[System[(Provider[@Name='Microsoft-Windows-Kernel-PnP'] and (EventID=900 or EventID=901 or EventID=902 or EventID=903))]]"
+                L"    </Select>"
+                L"  </Query>"
+                L"  <Query Id='2' Path='Microsoft-Windows-UserPnp/DeviceInstall'>"
+                L"    <Select Path='Microsoft-Windows-UserPnp/DeviceInstall'>"
+                L"      *[System[(Provider[@Name='Microsoft-Windows-UserPnp'] and (EventID=8000 or EventID=8001))]]"
+                L"    </Select>"
+                L"  </Query>"
+                L"</QueryList>";
+
+            const EVT_HANDLE hSub = EvtQuery(nullptr, nullptr, q, EvtQueryReverseDirection | EvtQueryTolerateQueryErrors);
+            if (!hSub) return;
+
+            EVT_HANDLE hEvents[1] = { nullptr };
+            DWORD returned = 0;
+
+            static thread_local std::vector<wchar_t> buf;
+            if (buf.empty()) buf.resize(8192);
+
+            while (true) {
+                returned = 0;
+                hEvents[0] = nullptr;
+
+                if (!EvtNext(hSub, 1, hEvents, 2000, 0, &returned)) {
+                    const DWORD err = GetLastError();
+                    if (err == ERROR_NO_MORE_ITEMS) break;
+                    if (err == ERROR_TIMEOUT) continue;
+                    break;
+                }
+
+                if (returned == 0 || hEvents[0] == nullptr) {
+                    if (hEvents[0]) { EvtClose(hEvents[0]); hEvents[0] = nullptr; }
+                    continue;
+                }
+
+                DWORD bufUsed = 0;
+                DWORD bufProps = 0;
+
+                if (!EvtRender(nullptr, hEvents[0], EvtRenderEventXml,
+                    static_cast<DWORD>(buf.size() * sizeof(wchar_t)),
+                    buf.data(), &bufUsed, &bufProps)) {
+                    const DWORD err = GetLastError();
+                    if (err == ERROR_INSUFFICIENT_BUFFER) {
+                        size_t neededChars = (bufUsed + sizeof(wchar_t) - 1) / sizeof(wchar_t);
+                        buf.resize(neededChars + 1);
+
+                        if (!EvtRender(nullptr, hEvents[0], EvtRenderEventXml,
+                            static_cast<DWORD>(buf.size() * sizeof(wchar_t)),
+                            buf.data(), &bufUsed, &bufProps)) {
+                            if (hEvents[0]) { EvtClose(hEvents[0]); hEvents[0] = nullptr; }
+                            continue;
+                        }
+                    }
+                    else {
+                        if (hEvents[0]) { EvtClose(hEvents[0]); hEvents[0] = nullptr; }
+                        continue;
+                    }
+                }
+
+                const size_t charCount = bufUsed / sizeof(wchar_t);
+                if (charCount >= buf.size()) buf.resize(charCount + 1);
+                buf[charCount] = L'\0';
+
+                scan_text_ids(buf.data());
+
+                if (hEvents[0]) { EvtClose(hEvents[0]); hEvents[0] = nullptr; }
+            }
+
+            EvtClose(hSub);
+        };
+
+        scan_evt_logs();
         #endif
 
         for (auto& d : devices) {
@@ -7001,7 +7042,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         bool rc = false;
     #if (x86_32 && !CLANG)
 
-        auto IsInsideVPC_exceptionFilter = [](PEXCEPTION_POINTERS ep) -> DWORD {
+        auto IsInsideVPC_exceptionFilter = [](PEXCEPTION_POINTERS ep) noexcept -> DWORD {
             PCONTEXT ctx = ep->ContextRecord;
 
             ctx->Ebx = static_cast<DWORD>(-1); // Not running VPC
@@ -7304,38 +7345,45 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        auto try_mutex_name = [&](const wchar_t* baseName) -> bool {
-            std::wstring full = L"\\BaseNamedObjects\\";
-            full += baseName;
+        auto try_mutex_name = [&](const wchar_t* base_name) noexcept -> bool {
+            constexpr wchar_t prefix[] = L"\\BaseNamedObjects\\";
+            constexpr size_t prefix_len = (sizeof(prefix) / sizeof(wchar_t)) - 1;
 
-            UNICODE_STRING uName;
-            pRtlInitUnicodeString(&uName, full.c_str());
+            wchar_t full_path[260];
 
-            OBJECT_ATTRIBUTES objAttr;
-            ZeroMemory(&objAttr, sizeof(objAttr));
-            objAttr.Length = sizeof(objAttr);
-            objAttr.ObjectName = &uName;
-            objAttr.Attributes = OBJ_CASE_INSENSITIVE;
+            // memcpy as it is faster than wcscpy/wcscat
+            memcpy(full_path, prefix, sizeof(prefix)); 
 
-            HANDLE hMutant = nullptr;
-            NTSTATUS st = pNtOpenMutant(&hMutant, MUTANT_QUERY_STATE, &objAttr);
-            if (NT_SUCCESS(st)) {
-                if (hMutant) pNtClose(hMutant);
-                return true;
+            const size_t name_len = wcslen(base_name);
+            if (prefix_len + name_len < 260) {
+                memcpy(full_path + prefix_len, base_name, (name_len + 1) * sizeof(wchar_t));
+            }
+            else {
+                // should not happen for standard VM artifacts
+                full_path[0] = L'\0';
             }
 
-            // some contexts expose it without the prefix
-            pRtlInitUnicodeString(&uName, baseName);
-            ZeroMemory(&objAttr, sizeof(objAttr));
-            objAttr.Length = sizeof(objAttr);
-            objAttr.ObjectName = &uName;
-            objAttr.Attributes = OBJ_CASE_INSENSITIVE;
+            const wchar_t* attempts[] = { full_path, base_name };
 
-            hMutant = nullptr;
-            st = pNtOpenMutant(&hMutant, MUTANT_QUERY_STATE, &objAttr);
-            if (NT_SUCCESS(st)) {
-                if (hMutant) pNtClose(hMutant);
-                return true;
+            for (const wchar_t* path : attempts) {
+                if (*path == L'\0') continue;
+
+                UNICODE_STRING u_name;
+                pRtlInitUnicodeString(&u_name, path);
+
+                OBJECT_ATTRIBUTES obj_attr;
+                memset(&obj_attr, 0, sizeof(obj_attr));
+                obj_attr.Length = sizeof(obj_attr);
+                obj_attr.ObjectName = &u_name;
+                obj_attr.Attributes = OBJ_CASE_INSENSITIVE;
+
+                HANDLE h_mutant = nullptr;
+                const NTSTATUS st = pNtOpenMutant(&h_mutant, MUTANT_QUERY_STATE, &obj_attr);
+
+                if (NT_SUCCESS(st)) {
+                    if (h_mutant) pNtClose(h_mutant);
+                    return true;
+                }
             }
 
             return false;
@@ -7638,41 +7686,41 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         constexpr SIZE_T MAX_DESCRIPTOR_SIZE = 64 * 1024;
         u8 successfulOpens = 0;
 
-        auto is_qemu_serial = [](const char* str) -> bool {
-            return _strnicmp(str, "QM0000", 6) == 0;
+        auto is_qemu_serial = [](const char* str) noexcept -> bool {
+            if ((str[0] & 0xDF) != 'Q') return false;
+            if ((str[1] & 0xDF) != 'M') return false;
+
+            // we check byte-by-byte to be safe regarding alignment,
+            // though a 32-bit integer check (0x30303030) could be used if alignment is guaranteed
+            // we also essentially check for null termination safety here because '\0' != '0'.
+            return str[2] == '0' && str[3] == '0' && str[4] == '0' && str[5] == '0';
         };
 
-        auto is_vbox_serial = [](const char* str, size_t len) -> bool {
-            if (len != 19) {
-                return false;
-            }
+        auto is_vbox_serial = [](const char* str, size_t len) noexcept -> bool {
+            // format: VB12345678-12345678 (19 chars)
+            if (len != 19) return false;
 
-            auto toupper_char = [](char c) -> char {
-                return (c >= 'a' && c <= 'z') ? static_cast<char>(c - 'a' + 'A') : c;
+            if ((str[0] & 0xDF) != 'V' || (str[1] & 0xDF) != 'B') return false;
+
+            if (str[10] != '-') return false;
+
+            auto is_hex = [](char c) noexcept -> bool {
+                const char lower = c | 0x20;
+                return (c >= '0' && c <= '9') || (lower >= 'a' && lower <= 'f');
             };
 
-            if (toupper_char(str[0]) != 'V' || toupper_char(str[1]) != 'B' || str[10] != '-') {
-                return false;
+            for (size_t i = 2; i < 10; ++i) {
+                if (!is_hex(str[i])) return false;
             }
 
-            auto is_hex = [&](char c) {
-                char upper_c = toupper_char(c);
-                return (upper_c >= '0' && upper_c <= '9') || (upper_c >= 'A' && upper_c <= 'F');
-            };
-
-            static constexpr std::array<u8, 16> hex_positions = { {
-                2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17, 18
-            } };
-
-            for (u8 idx : hex_positions) {
-                if (!is_hex(str[idx])) {
-                    return false;
-                }
+            for (size_t i = 11; i < 19; ++i) {
+                if (!is_hex(str[i])) return false;
             }
+
             return true;
         };
 
-        auto __strnlen = [](const char* s, size_t max) -> size_t {
+        auto strnlen = [](const char* s, size_t max) noexcept -> size_t {
             const void* p = memchr(s, 0, max);
             if (!p) return max;
             return static_cast<size_t>(static_cast<const char*>(p) - s);
@@ -7804,7 +7852,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             if (serialOffset > 0 && serialOffset < descriptor->Size) {
                 const char* serial = reinterpret_cast<const char*>(descriptor) + serialOffset;
                 const size_t maxAvail = static_cast<size_t>(descriptor->Size) - static_cast<size_t>(serialOffset);
-                const size_t serialLen = __strnlen(serial, maxAvail);
+                const size_t serialLen = strnlen(serial, maxAvail);
 
                 debug("DISK_SERIAL: ", serial);
 
@@ -7997,33 +8045,40 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        auto try_open_native = [&](const wchar_t* nativePath) -> HANDLE {
-            UNICODE_STRING uPath;
-            pRtlInitUnicodeString(&uPath, nativePath);
+        auto try_open_mutex = [&](const wchar_t* native_path) noexcept -> HANDLE {
+            UNICODE_STRING u_path{};
+            u_path.Buffer = const_cast<wchar_t*>(native_path);
 
-            OBJECT_ATTRIBUTES objAttr;
-            RtlZeroMemory(&objAttr, sizeof(objAttr));
-            objAttr.Length = sizeof(objAttr);
-            objAttr.ObjectName = &uPath;
-            objAttr.Attributes = OBJ_CASE_INSENSITIVE;
+            const size_t len_bytes = wcslen(native_path) * sizeof(wchar_t);
+            u_path.Length = static_cast<USHORT>(len_bytes);
+            u_path.MaximumLength = static_cast<USHORT>(len_bytes + sizeof(wchar_t));
+
+            OBJECT_ATTRIBUTES obj_attr = {
+                sizeof(OBJECT_ATTRIBUTES),
+                nullptr,
+                &u_path,
+                OBJ_CASE_INSENSITIVE,
+                nullptr,
+                nullptr
+            };
 
             IO_STATUS_BLOCK iosb;
-            HANDLE hFile = nullptr;
+            HANDLE h_file = nullptr;
 
-            // minimal read access to emulate CreateFile(...GENERIC_READ...)
-            constexpr ACCESS_MASK desiredAccess = FILE_READ_DATA | FILE_READ_ATTRIBUTES;
-            constexpr ULONG shareAccess = FILE_SHARE_READ;
-            constexpr ULONG openOptions = FILE_OPEN | FILE_SYNCHRONOUS_IO_NONALERT;
+            constexpr ACCESS_MASK desired_access = FILE_READ_DATA | FILE_READ_ATTRIBUTES | SYNCHRONIZE;
+            constexpr ULONG share_access = FILE_SHARE_READ;
+            constexpr ULONG open_options = FILE_OPEN | FILE_SYNCHRONOUS_IO_NONALERT;
 
-            const NTSTATUS st = pNtOpenFile(&hFile, desiredAccess, &objAttr, &iosb, shareAccess, openOptions);
-            if (NT_SUCCESS(st) && hFile) {
-                return hFile;
+            const NTSTATUS st = pNtOpenFile(&h_file, desired_access, &obj_attr, &iosb, share_access, open_options);
+
+            if (NT_SUCCESS(st)) {
+                return h_file;
             }
             return INVALID_HANDLE_VALUE;
         };
 
         // \\.\Name -> \??\Name, \\.\pipe\name -> \??\pipe\name
-        const wchar_t* paths[] = {
+        constexpr const wchar_t* paths[] = {
             L"\\??\\VBoxMiniRdrDN",    // \\.\VBoxMiniRdrDN
             L"\\??\\pipe\\VBoxMiniRdDN",// \\.\pipe\VBoxMiniRdDN
             L"\\??\\VBoxTrayIPC",      // \\.\VBoxTrayIPC
@@ -8034,7 +8089,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         HANDLE handles[ARRAYSIZE(paths)]{};
         for (size_t i = 0; i < ARRAYSIZE(paths); ++i) {
-            handles[i] = try_open_native(paths[i]);
+            handles[i] = try_open_mutex(paths[i]);
         }
 
         bool vbox = false;
@@ -8601,24 +8656,27 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        auto vetExceptions = [&](u32 code, EXCEPTION_POINTERS* info) -> u8 {
+        auto vetExceptions = [&](u32 code, EXCEPTION_POINTERS* info) noexcept -> u8 {
             // if not single-step, hypervisor likely swatted our trap
             if (code != static_cast<DWORD>(0x80000004L)) {
                 hypervisorCaught = true;
                 return EXCEPTION_CONTINUE_SEARCH;
             }
+
             // count breakpoint hits
             hitCount++;
+
             // validate exception address matches our breakpoint location
             if (reinterpret_cast<uintptr_t>(info->ExceptionRecord->ExceptionAddress) != baseAddr + 11) {
                 hypervisorCaught = true;
                 return EXCEPTION_EXECUTE_HANDLER;
             }
+
             // check if Trap Flag and DR0 contributed
+            constexpr u64 required_bits = (1ULL << 14) | 1ULL;
             const u64 status = info->ContextRecord->Dr6;
-            const bool fromTrapFlag = (status & (1ULL << 14)) != 0;
-            const bool fromDr0 = (status & 1ULL) != 0;
-            if (!fromTrapFlag || !fromDr0) {
+
+            if ((status & required_bits) != required_bits) {
                 if (util::hyper_x() != HYPERV_ARTIFACT_VM)
                     hypervisorCaught = true; // detects type 1 Hyper-V too, which we consider legitimate
             }
@@ -8852,7 +8910,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         pNtFlushInstructionCache(hCurrentProcess, stub, regionSize);
 
-        auto tryPass = [&]() -> bool {
+        auto tryPass = [&]() noexcept -> bool {
+            // store forwarding in modern CPUs
             vmcallInfo.structsize = static_cast<u32>(sizeof(VMCallInfo));
             vmcallInfo.level2pass = PW2;
             vmcallInfo.command = 0;
@@ -9146,14 +9205,19 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @warning Permissions required
      * @implements VM::NVRAM
      */
-    [[nodiscard]] static bool nvram_vars() {
+    static bool nvram() {
         struct VARIABLE_NAME { ULONG NextEntryOffset; GUID VendorGuid; WCHAR Name[1]; };
         using PVARIABLE_NAME = VARIABLE_NAME*;
         using NtEnumerateSystemEnvironmentValuesEx_t = NTSTATUS(__stdcall*)(ULONG, PVOID, PULONG);
 
+        // Secure Boot stuff
         bool found_dbDefault = false, found_dbxDefault = false, found_KEKDefault = false, found_PKDefault = false;
+        /*
+            MemoryOverwriteRequestControlLock is part of a state machine defined in the TCG Platform Reset Attack Mitigation Specification
+            the SMM driver expects to initialize and manage this variable itself during the DXE phase of booting
+            Secure Boot, TPM and SMM must be enabled to set it
+        */
         bool found_MORCL = false;
-        bool pk_checked = false;
 
         if (!util::is_admin()) return false;
 
@@ -9163,7 +9227,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         LUID luid{};
         bool priv_enabled = false;
-        auto cleanup = [&]() {
+        auto cleanup = [&]() noexcept {
             if (priv_enabled && hToken) {
                 TOKEN_PRIVILEGES tpDisable{};
                 tpDisable.PrivilegeCount = 1;
@@ -9171,217 +9235,296 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 tpDisable.Privileges[0].Attributes = 0;
                 AdjustTokenPrivileges(hToken, FALSE, &tpDisable, sizeof(TOKEN_PRIVILEGES), nullptr, nullptr);
             }
-            if (hToken) {
-                CloseHandle(hToken);
-                hToken = nullptr;
-            }
+            if (hToken) { CloseHandle(hToken); hToken = nullptr; }
             };
 
         if (!LookupPrivilegeValue(nullptr, SE_SYSTEM_ENVIRONMENT_NAME, &luid)) { cleanup(); return false; }
-
-        TOKEN_PRIVILEGES tpEnable{};
-        tpEnable.PrivilegeCount = 1;
-        tpEnable.Privileges[0].Luid = luid;
-        tpEnable.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+        TOKEN_PRIVILEGES tpEnable{}; tpEnable.PrivilegeCount = 1; tpEnable.Privileges[0].Luid = luid; tpEnable.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
         AdjustTokenPrivileges(hToken, FALSE, &tpEnable, sizeof(TOKEN_PRIVILEGES), nullptr, nullptr);
         if (GetLastError() != ERROR_SUCCESS) { cleanup(); return false; }
         priv_enabled = true;
 
-        bool hasFunction = false;
-        bool success = false;
-        std::vector<BYTE> resBuffer;
-        ULONG bufferLength = 0;
         const HMODULE ntdll = util::get_ntdll();
-        if (ntdll) {
-            const char* names[] = { "NtEnumerateSystemEnvironmentValuesEx" };
-            void* functions[1] = { nullptr };
-            util::get_function_address(ntdll, names, functions, 1);
-            const auto NtEnum = reinterpret_cast<NtEnumerateSystemEnvironmentValuesEx_t>(functions[0]);
-            if (NtEnum) {
-                hasFunction = true;
-                NtEnum(1, nullptr, &bufferLength);
-                if (bufferLength != 0) {
-                    try { resBuffer.resize(bufferLength); }
-                    catch (...) { resBuffer.clear(); bufferLength = 0; }
-                    if (!resBuffer.empty()) {
-                        const NTSTATUS status = NtEnum(1, resBuffer.data(), &bufferLength);
-                        if (status == 0) { success = true; resBuffer.resize(bufferLength); }
-                        else resBuffer.clear();
-                    }
+        if (!ntdll) { cleanup(); return false; }
+
+        const char* names[] = { "NtEnumerateSystemEnvironmentValuesEx", "NtAllocateVirtualMemory", "NtFreeVirtualMemory" };
+        void* funcs[sizeof(names) / sizeof(names[0])] = {};
+        util::get_function_address(ntdll, names, funcs, sizeof(names) / sizeof(names[0]));
+        const auto pNtEnum = reinterpret_cast<NtEnumerateSystemEnvironmentValuesEx_t>(funcs[0]);
+        typedef NTSTATUS(__stdcall* NtAllocateVirtualMemory_t)(HANDLE, PVOID*, ULONG_PTR, PSIZE_T, ULONG, ULONG);
+        typedef NTSTATUS(__stdcall* NtFreeVirtualMemory_t)(HANDLE, PVOID*, PSIZE_T, ULONG);
+        const auto pNtAllocateVirtualMemory = reinterpret_cast<NtAllocateVirtualMemory_t>(funcs[1]);
+        const auto pNtFreeVirtualMemory = reinterpret_cast<NtFreeVirtualMemory_t>(funcs[2]);
+        if (!pNtEnum || !pNtAllocateVirtualMemory || !pNtFreeVirtualMemory) { cleanup(); return false; }
+
+        bool hasFunction = false, success = false;
+        PVOID enumBase = nullptr;
+        SIZE_T enumSize = 0;
+        ULONG bufferLength = 0;
+        // ask for size
+        if (pNtEnum) {
+            hasFunction = true;
+            pNtEnum(static_cast<ULONG>(1), nullptr, &bufferLength);
+            if (bufferLength != 0) {
+                enumSize = static_cast<SIZE_T>(bufferLength);
+                NTSTATUS st = pNtAllocateVirtualMemory(hCurrentProcess, &enumBase, 0, &enumSize, static_cast<ULONG>(MEM_COMMIT | MEM_RESERVE), static_cast<ULONG>(PAGE_READWRITE));
+                if (st == 0 && enumBase) {
+                    st = pNtEnum(static_cast<ULONG>(1), enumBase, &bufferLength);
+                    if (st == 0) { success = true; }
+                    else { SIZE_T zero = 0; pNtFreeVirtualMemory(hCurrentProcess, &enumBase, &zero, 0x8000); enumBase = nullptr; enumSize = 0; }
                 }
             }
         }
 
-        if (!hasFunction) {
-            debug("NVRAM: NtEnumerateSystemEnvironmentValuesEx could not be resolved");
-            cleanup();
-            return false;
-        }
-        if (!success) {
-            debug("NVRAM: System is not UEFI");
-            cleanup();
-            return false;
-        }
+        if (!hasFunction) { debug("NVRAM: NtEnumerateSystemEnvironmentValuesEx could not be resolved"); cleanup(); return true; }
+        if (!success) { debug("NVRAM: System is not UEFI"); cleanup(); return false; }
 
-        auto contains_redhat_ascii_ci = [](const BYTE* data, size_t len)->bool {
-            static const char pattern[] = "red hat secure boot";
-            const size_t plen = sizeof(pattern) - 1;
-            if (len < plen) return false;
-            for (size_t i = 0; i <= len - plen; ++i) {
+        // helpers stuff
+        auto ci_ascii_contains = [](const BYTE* data, size_t len, const char* pat) noexcept -> bool {
+            if (!data || len == 0 || !pat) return false;
+            const size_t plen = strlen(pat); if (len < plen) return false;
+            const BYTE p0 = static_cast<BYTE>((pat[0] >= 'A' && pat[0] <= 'Z') ? (pat[0] + 32) : pat[0]);
+            const BYTE* end = data + (len - plen);
+            for (const BYTE* p = data; p <= end; ++p) {
+                BYTE c0 = *p; c0 = static_cast<BYTE>((c0 >= 'A' && c0 <= 'Z') ? (c0 + 32) : c0);
+                if (c0 != p0) continue;
                 bool ok = true;
-                for (size_t j = 0; j < plen; ++j) {
-                    char c = static_cast<char>(data[i + j]);
-                    unsigned char uc = static_cast<unsigned char>(c);
-                    char lc = static_cast<char>(::tolower(uc));
-                    if (lc != pattern[j]) { ok = false; break; }
+                for (size_t j = 1; j < plen; ++j) {
+                    BYTE dj = p[j]; dj = static_cast<BYTE>((dj >= 'A' && dj <= 'Z') ? (dj + 32) : dj);
+                    BYTE pj = static_cast<BYTE>((pat[j] >= 'A' && pat[j] <= 'Z') ? (pat[j] + 32) : pat[j]);
+                    if (dj != pj) { ok = false; break; }
                 }
                 if (ok) return true;
             }
             return false;
-        };
-
-        auto contains_redhat_utf16le_ci = [](const WCHAR* wdata, size_t wlen)->bool {
-            static const wchar_t pattern[] = L"red hat secure boot";
-            const size_t plen = (sizeof(pattern) / sizeof(pattern[0])) - 1;
-            if (wlen < plen) return false;
-            for (size_t i = 0; i <= wlen - plen; ++i) {
+            };
+        auto ci_utf16le_contains = [](const WCHAR* data, size_t wlen, const wchar_t* pat) noexcept -> bool {
+            if (!data || wlen == 0 || !pat) return false;
+            const size_t plen = wcslen(pat); if (wlen < plen) return false;
+            const WCHAR p0 = static_cast<WCHAR>((pat[0] >= L'A' && pat[0] <= L'Z') ? (pat[0] + 32) : pat[0]);
+            const WCHAR* end = data + (wlen - plen);
+            for (const WCHAR* p = data; p <= end; ++p) {
+                WCHAR c0 = *p; c0 = static_cast<WCHAR>((c0 >= L'A' && c0 <= L'Z') ? (c0 + 32) : c0);
+                if (c0 != p0) continue;
                 bool ok = true;
-                for (size_t j = 0; j < plen; ++j) {
-                    wchar_t wc = wdata[i + j];
-                    wchar_t lw = static_cast<wchar_t>(::towlower(wc));
-                    if (lw != pattern[j]) { ok = false; break; }
+                for (size_t j = 1; j < plen; ++j) {
+                    WCHAR dj = p[j]; dj = static_cast<WCHAR>((dj >= L'A' && dj <= L'Z') ? (dj + 32) : dj);
+                    WCHAR pj = static_cast<WCHAR>((pat[j] >= L'A' && pat[j] <= L'Z') ? (pat[j] + 32) : pat[j]);
+                    if (dj != pj) { ok = false; break; }
                 }
                 if (ok) return true;
             }
             return false;
-        };
+            };
 
-        PVARIABLE_NAME varName = reinterpret_cast<PVARIABLE_NAME>(resBuffer.data());
-        const size_t bufSize = resBuffer.size();
+        constexpr const char* vendor_ascii[] = { "msi","asrock","asus","asustek","gigabyte","giga-byte","micro-star","microstar" };
+        constexpr const wchar_t* vendor_wide[] = { L"msi",L"asrock",L"asus",L"asustek",L"gigabyte",L"giga-byte",L"micro-star",L"microstar" };
+        constexpr const char redhat_ascii[] = "red hat";
+        constexpr const wchar_t redhat_wide[] = L"red hat";
+
+        constexpr size_t MAX_VAR_SZ = 131072; // 128KB
+        // Use unique_ptr to move buffer from stack to heap (fixes 132KB stack usage)
+        std::unique_ptr<BYTE[]> stackBufPtr(new BYTE[MAX_VAR_SZ]());
+        BYTE* stackBuf = stackBufPtr.get();
+
+        BYTE* pkDefaultBuf = nullptr, * pkBuf = nullptr, * kekDefaultBuf = nullptr, * kekBuf = nullptr;
+        SIZE_T pkDefaultLen = 0, pkLen = 0, kekDefaultLen = 0, kekLen = 0;
+
+        auto read_var_to_buf = [&](const std::wstring& name, const GUID& guid, BYTE*& outBuf, SIZE_T& outLen) noexcept -> bool {
+            wchar_t guidStr[40] = {};
+            constexpr wchar_t hex[] = L"0123456789ABCDEF";
+            guidStr[0] = L'{';
+            guidStr[1] = hex[static_cast<size_t>((guid.Data1 >> 28) & 0xF)]; guidStr[2] = hex[static_cast<size_t>((guid.Data1 >> 24) & 0xF)]; guidStr[3] = hex[static_cast<size_t>((guid.Data1 >> 20) & 0xF)]; guidStr[4] = hex[static_cast<size_t>((guid.Data1 >> 16) & 0xF)];
+            guidStr[5] = hex[static_cast<size_t>((guid.Data1 >> 12) & 0xF)]; guidStr[6] = hex[static_cast<size_t>((guid.Data1 >> 8) & 0xF)]; guidStr[7] = hex[static_cast<size_t>((guid.Data1 >> 4) & 0xF)]; guidStr[8] = hex[static_cast<size_t>(guid.Data1 & 0xF)];
+            guidStr[9] = L'-';
+            guidStr[10] = hex[static_cast<size_t>((guid.Data2 >> 12) & 0xF)]; guidStr[11] = hex[static_cast<size_t>((guid.Data2 >> 8) & 0xF)]; guidStr[12] = hex[static_cast<size_t>((guid.Data2 >> 4) & 0xF)]; guidStr[13] = hex[static_cast<size_t>(guid.Data2 & 0xF)];
+            guidStr[14] = L'-';
+            guidStr[15] = hex[static_cast<size_t>((guid.Data3 >> 12) & 0xF)]; guidStr[16] = hex[static_cast<size_t>((guid.Data3 >> 8) & 0xF)]; guidStr[17] = hex[static_cast<size_t>((guid.Data3 >> 4) & 0xF)]; guidStr[18] = hex[static_cast<size_t>(guid.Data3 & 0xF)];
+            guidStr[19] = L'-';
+            guidStr[20] = hex[static_cast<size_t>((guid.Data4[0] >> 4) & 0xF)]; guidStr[21] = hex[static_cast<size_t>(guid.Data4[0] & 0xF)]; guidStr[22] = hex[static_cast<size_t>((guid.Data4[1] >> 4) & 0xF)]; guidStr[23] = hex[static_cast<size_t>(guid.Data4[1] & 0xF)];
+            guidStr[24] = L'-';
+            size_t idx = 25;
+            for (int i = 2; i < 8; ++i) { guidStr[idx++] = hex[static_cast<size_t>((guid.Data4[i] >> 4) & 0xF)]; guidStr[idx++] = hex[static_cast<size_t>(guid.Data4[i] & 0xF)]; }
+            guidStr[37] = L'}'; guidStr[38] = L'\0';
+
+            DWORD ret = GetFirmwareEnvironmentVariableW(name.c_str(), guidStr, stackBuf, static_cast<DWORD>(MAX_VAR_SZ));
+            if (ret > 0) { outBuf = stackBuf; outLen = ret; return true; }
+            const DWORD err = GetLastError();
+            if (err != ERROR_INSUFFICIENT_BUFFER) { outBuf = nullptr; outLen = 0; return false; }
+            // fallback allocate up to 256KB
+            PVOID base = nullptr; SIZE_T rsz = 256 * 1024;
+            const ULONG ALLOC_FLAGS = 0x3000; const ULONG PAGE_RW = 0x04;
+            NTSTATUS st = pNtAllocateVirtualMemory(hCurrentProcess, &base, 0, &rsz, ALLOC_FLAGS, PAGE_RW);
+            if (st != 0 || !base) { outBuf = nullptr; outLen = 0; return false; }
+            ret = GetFirmwareEnvironmentVariableW(name.c_str(), guidStr, reinterpret_cast<BYTE*>(base), static_cast<DWORD>(rsz));
+            if (ret > 0) { outBuf = reinterpret_cast<BYTE*>(base); outLen = ret; return true; }
+            // free and fail
+            SIZE_T zero = 0; pNtFreeVirtualMemory(hCurrentProcess, &base, &zero, 0x8000);
+            outBuf = nullptr; outLen = 0; return false;
+            };
+
+        PVARIABLE_NAME varName = reinterpret_cast<PVARIABLE_NAME>(enumBase);
+        const size_t bufSize = static_cast<size_t>(bufferLength);
         constexpr size_t MAX_NAME_BYTES = 4096;
-
         while (true) {
-            const uintptr_t basePtr = reinterpret_cast<uintptr_t>(resBuffer.data());
+            const uintptr_t basePtr = reinterpret_cast<uintptr_t>(enumBase);
             const uintptr_t curPtr = reinterpret_cast<uintptr_t>(varName);
             if (curPtr < basePtr) break;
             const size_t offset = static_cast<size_t>(curPtr - basePtr);
             if (offset >= bufSize) break;
-
             const size_t nameOffset = offsetof(VARIABLE_NAME, Name);
             if (bufSize - offset < nameOffset) break;
-
             size_t nameMaxBytes = 0;
             if (varName->NextEntryOffset != 0) {
                 const SIZE_T ne = static_cast<SIZE_T>(varName->NextEntryOffset);
-                if (ne <= nameOffset) { cleanup(); return false; }
+                if (ne <= nameOffset) { SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &enumBase, &z, 0x8000); cleanup(); return false; }
                 if (ne > bufSize - offset) break;
                 nameMaxBytes = ne - nameOffset;
             }
             else {
-                if (offset + nameOffset >= bufSize) { cleanup(); return false; }
+                if (offset + nameOffset >= bufSize) { SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &enumBase, &z, 0x8000); cleanup(); return false; }
                 nameMaxBytes = bufSize - (offset + nameOffset);
             }
             if (nameMaxBytes > MAX_NAME_BYTES) nameMaxBytes = MAX_NAME_BYTES;
-
-            std::wstring_view nameView;
+            std::wstring nameView;
             if (nameMaxBytes >= sizeof(WCHAR)) {
                 const WCHAR* namePtr = reinterpret_cast<const WCHAR*>(reinterpret_cast<const BYTE*>(varName) + nameOffset);
                 const size_t maxChars = nameMaxBytes / sizeof(WCHAR);
                 size_t realChars = 0;
                 while (realChars < maxChars && namePtr[realChars] != L'\0') ++realChars;
-                if (realChars == maxChars) { cleanup(); return false; }
-                nameView = std::wstring_view(namePtr, realChars);
+                if (realChars == maxChars) { SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &enumBase, &z, 0x8000); cleanup(); return false; }
+                nameView = std::wstring(namePtr, realChars);
             }
-
-            auto format_guid = [](const GUID& g)->std::wstring {
-                wchar_t buf[40] = {};
-                int written = _snwprintf_s(buf, _countof(buf), _TRUNCATE,
-                    L"{%08lX-%04hX-%04hX-%02X%02X-%02X%02X%02X%02X%02X%02X}",
-                    static_cast<unsigned long>(g.Data1),
-                    static_cast<u16>(g.Data2),
-                    static_cast<u16>(g.Data3),
-                    static_cast<u32>(g.Data4[0]), static_cast<u32>(g.Data4[1]),
-                    static_cast<u32>(g.Data4[2]), static_cast<u32>(g.Data4[3]),
-                    static_cast<u32>(g.Data4[4]), static_cast<u32>(g.Data4[5]),
-                    static_cast<u32>(g.Data4[6]), static_cast<u32>(g.Data4[7]));
-                if (written <= 0) return std::wstring();
-                return std::wstring(buf);
-            };
-
-            if (!nameView.empty() && nameView.rfind(L"VMM", 0) == 0) {
-                debug("NVRAM: Detected hypervisor signature");
-                cleanup();
-                return true;
-            }
-
+            if (!nameView.empty() && nameView.rfind(L"VMM", 0) == 0) { debug("NVRAM: Detected hypervisor signature"); SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &enumBase, &z, 0x8000); cleanup(); return true; }
             if (nameView == L"dbDefault") found_dbDefault = true;
             else if (nameView == L"KEKDefault") found_KEKDefault = true;
             else if (nameView == L"PKDefault") found_PKDefault = true;
             else if (nameView == L"dbxDefault") found_dbxDefault = true;
             else if (nameView == L"MemoryOverwriteRequestControlLock") found_MORCL = true;
 
-            if (!pk_checked && nameView == L"PKDefault") {
-                const std::wstring guidStr = format_guid(varName->VendorGuid);
-                if (guidStr.empty()) { cleanup(); return true; }
+            if (nameView == L"PKDefault") (void)read_var_to_buf(std::wstring(nameView), varName->VendorGuid, pkDefaultBuf, pkDefaultLen);
+            else if (nameView == L"PK") (void)read_var_to_buf(std::wstring(nameView), varName->VendorGuid, pkBuf, pkLen);
+            else if (nameView == L"KEKDefault") (void)read_var_to_buf(std::wstring(nameView), varName->VendorGuid, kekDefaultBuf, kekDefaultLen);
+            else if (nameView == L"KEK") (void)read_var_to_buf(std::wstring(nameView), varName->VendorGuid, kekBuf, kekLen);
 
-                DWORD bufSizeAttempt = 8192;
-                std::vector<BYTE> valueBuf;
-                for (int attempt = 0; attempt < 4; ++attempt) { // up to 128KB aprox
-                    valueBuf.resize(bufSizeAttempt);
-                    DWORD readLen = GetFirmwareEnvironmentVariableW(
-                        std::wstring(nameView).c_str(), 
-                        guidStr.c_str(),
-                        valueBuf.data(),
-                        bufSizeAttempt);
-                    if (readLen > 0) {
-                        valueBuf.resize(readLen);
-                        break;
-                    }
-                    DWORD err = GetLastError();
-                    if (err == ERROR_INSUFFICIENT_BUFFER) {
-                        bufSizeAttempt *= 2;
-                        continue;
-                    }
-                    valueBuf.clear();
-                    break;
-                }
-
-                bool pk_has_redhat = false;
-                if (!valueBuf.empty()) {
-                    if (valueBuf.size() >= 2 && (valueBuf.size() % 2) == 0) {
-                        const WCHAR* wptr = reinterpret_cast<const WCHAR*>(valueBuf.data());
-                        size_t wlen = valueBuf.size() / sizeof(WCHAR);
-                        if (contains_redhat_utf16le_ci(wptr, wlen)) pk_has_redhat = true;
-                    }
-                    if (!pk_has_redhat) {
-                        if (contains_redhat_ascii_ci(valueBuf.data(), valueBuf.size())) pk_has_redhat = true;
-                    }
-                }
-
-                pk_checked = true;
-                if (pk_has_redhat) {
-                    debug("NVRAM: QEMU detected");
-                    cleanup();
-                    return core::add(brands::QEMU);
-                }
+            // https://github.com/tianocore/edk2/blob/af9cc80359e320690877e4add870aa13fe889fbe/SecurityPkg/Library/AuthVariableLib/AuthServiceInternal.h
+            if (nameView == L"certdb" || nameView == L"certdbv") {
+                debug("NVRAM: EDK II (TianoCore) detected");
+                SIZE_T z = 0;
+                pNtFreeVirtualMemory(hCurrentProcess, &enumBase, &z, 0x8000);
+                cleanup();
+                return true; // we cant return a brand here since its used in VMWare, QEMU with OVMF, VirtualBox, etc
             }
 
-            if (found_MORCL && found_dbDefault && found_dbxDefault && found_KEKDefault && found_PKDefault && pk_checked) {
-                break;
+            if (nameView == L"Boot0000") { // should be Windows Boot Manager
+                BYTE* bootBuf = nullptr; SIZE_T bootLen = 0;
+                if (read_var_to_buf(nameView, varName->VendorGuid, bootBuf, bootLen)) {
+                    bool anomaly = (bootLen < 6);
+                    if (!anomaly) {
+                        unsigned short fplLen = 0;
+                        memcpy(&fplLen, bootBuf + 4, sizeof(fplLen));
+                        // we could also check if loadOptionsLength is 136
+                        if (fplLen != 116) anomaly = true;
+                    }
+
+                    if (bootBuf && bootBuf != stackBuf) {
+                        PVOID b = bootBuf; SIZE_T z = 0;
+                        pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000);
+                    }
+
+                    if (anomaly) {
+                        debug("NVRAM: Environment was loaded using a virtual boot loader"); // "virtual" here -> non genuine
+                        SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &enumBase, &z, 0x8000);
+                        cleanup();
+                        return true;
+                    }
+                }
             }
 
             if (varName->NextEntryOffset == 0) break;
             const SIZE_T ne = static_cast<SIZE_T>(varName->NextEntryOffset);
             const size_t nextOffset = offset + ne;
             if (nextOffset <= offset || nextOffset > bufSize) break;
-            varName = reinterpret_cast<PVARIABLE_NAME>(reinterpret_cast<PBYTE>(resBuffer.data()) + nextOffset);
+            varName = reinterpret_cast<PVARIABLE_NAME>(reinterpret_cast<PBYTE>(enumBase) + nextOffset);
         }
+
+        // free stuff
+        { SIZE_T zero = 0; pNtFreeVirtualMemory(hCurrentProcess, &enumBase, &zero, 0x8000); enumBase = nullptr; enumSize = 0; }
 
         if (!found_MORCL) { debug("NVRAM: Missing MemoryOverwriteRequestControlLock"); cleanup(); return true; }
         if (!found_dbDefault) { debug("NVRAM: Missing dbDefault"); cleanup(); return true; }
         if (!found_dbxDefault) { debug("NVRAM: Missing dbxDefault"); cleanup(); return true; }
         if (!found_KEKDefault) { debug("NVRAM: Missing KEKDefault"); cleanup(); return true; }
         if (!found_PKDefault) { debug("NVRAM: Missing PKDefault"); cleanup(); return true; }
+
+        // check for official red hat certs
+        bool found_redhat = false;
+        if (pkDefaultBuf && pkDefaultLen) {
+            if ((pkDefaultLen >= 2) && ((pkDefaultLen % 2) == 0)) {
+                const WCHAR* wptr = reinterpret_cast<const WCHAR*>(pkDefaultBuf);
+                const size_t wlen = pkDefaultLen / sizeof(WCHAR);
+                if (ci_utf16le_contains(wptr, wlen, redhat_wide)) found_redhat = true;
+            }
+            if (!found_redhat) if (ci_ascii_contains(pkDefaultBuf, pkDefaultLen, redhat_ascii)) found_redhat = true;
+        }
+        if (found_redhat) {
+            debug("NVRAM: QEMU/OVMF detected");
+            if (pkBuf && pkBuf != stackBuf) { PVOID b = pkBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); }
+            if (kekBuf && kekBuf != stackBuf) { PVOID b = kekBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); }
+            if (pkDefaultBuf && pkDefaultBuf != stackBuf) { PVOID b = pkDefaultBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); }
+            if (kekDefaultBuf && kekDefaultBuf != stackBuf) { PVOID b = kekDefaultBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); }
+            cleanup(); return core::add(brands::QEMU);
+        }
+
+        // Vendor string checks and PK/KEK mismatch checks
+        auto buf_contains_vendor_any = [&](BYTE* buf, SIZE_T len) noexcept -> bool {
+            if (!buf || len == 0) return false;
+            if ((len >= 2) && ((len % 2) == 0)) {
+                const WCHAR* wptr = reinterpret_cast<const WCHAR*>(buf); const size_t wlen = len / sizeof(WCHAR);
+                for (const wchar_t* p : vendor_wide) if (ci_utf16le_contains(wptr, wlen, p)) return true;
+            }
+            for (const char* p : vendor_ascii) if (ci_ascii_contains(buf, len, p)) return true;
+            return false;
+        };
+        auto buf_contains_vendor_specific = [&](BYTE* buf, SIZE_T len, const char* a, const wchar_t* w) noexcept -> bool {
+            if (!buf || len == 0) return false;
+            if ((len >= 2) && ((len % 2) == 0) && w) { const WCHAR* wp = reinterpret_cast<const WCHAR*>(buf); if (ci_utf16le_contains(wp, len / sizeof(WCHAR), w)) return true; }
+            if (a) if (ci_ascii_contains(buf, len, a)) return true;
+            return false;
+        };
+
+        const bool pkdef_has_vendor = buf_contains_vendor_any(pkDefaultBuf, pkDefaultLen);
+        const bool kekdef_has_vendor = buf_contains_vendor_any(kekDefaultBuf, kekDefaultLen);
+
+        if (pkdef_has_vendor || kekdef_has_vendor) {
+            for (size_t i = 0; i < sizeof(vendor_ascii) / sizeof(*vendor_ascii); ++i) {
+                const char* vasc = vendor_ascii[i];
+                const wchar_t* vw = vendor_wide[i];
+                const bool inPKDef = buf_contains_vendor_specific(pkDefaultBuf, pkDefaultLen, vasc, vw);
+                const bool inKEKDef = buf_contains_vendor_specific(kekDefaultBuf, kekDefaultLen, vasc, vw);
+                if (!inPKDef && !inKEKDef) continue;
+                const bool inPK = buf_contains_vendor_specific(pkBuf, pkLen, vasc, vw);
+                const bool inKEK = buf_contains_vendor_specific(kekBuf, kekLen, vasc, vw);
+                if (!inPK && !inKEK) {
+                    debug("NVRAM: Vendor string found in PKDefault/KEKDefault but missing from active PK/KEK");
+                    if (pkBuf && pkBuf != stackBuf) { PVOID b = pkBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); }
+                    if (kekBuf && kekBuf != stackBuf) { PVOID b = kekBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); }
+                    if (pkDefaultBuf && pkDefaultBuf != stackBuf) { PVOID b = pkDefaultBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); }
+                    if (kekDefaultBuf && kekDefaultBuf != stackBuf) { PVOID b = kekDefaultBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); }
+                    cleanup(); return core::add(brands::QEMU);
+                }
+            }
+        }
+
+        if (pkDefaultBuf && pkBuf && (pkDefaultLen != pkLen || memcmp(pkDefaultBuf, pkBuf, static_cast<size_t>(pkDefaultLen < pkLen ? pkDefaultLen : pkLen)) != 0))
+            debug("NVRAM: PK vs PKDefault raw mismatch detected");
+        if (kekDefaultBuf && kekBuf && (kekDefaultLen != kekLen || memcmp(kekDefaultBuf, kekBuf, static_cast<size_t>(kekDefaultLen < kekLen ? kekDefaultLen : kekLen)) != 0))
+            debug("NVRAM: KEK vs KEKDefault raw mismatch detected");
+
+        if (pkBuf && pkBuf != stackBuf) { PVOID b = pkBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); }
+        if (kekBuf && kekBuf != stackBuf) { PVOID b = kekBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); }
+        if (pkDefaultBuf && pkDefaultBuf != stackBuf) { PVOID b = pkDefaultBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); }
+        if (kekDefaultBuf && kekDefaultBuf != stackBuf) { PVOID b = kekDefaultBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); }
 
         cleanup();
         return false;
@@ -9405,101 +9548,134 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::EDID
      */
     [[nodiscard]] static bool edid() {
-        auto decodeManufacturer = [](const BYTE* edid, char out[4]) {
+        // compiles to single mov
+        auto read_le16 = [](const BYTE* p) noexcept -> u16 {
+            u16 v; memcpy(&v, p, sizeof(v)); return v;
+        };
+
+        auto read_le32 = [](const BYTE* p) noexcept -> u32 {
+            u32 v; memcpy(&v, p, sizeof(v)); return v;
+        };
+
+        auto decode_manufacturer = [](const BYTE* edid, char out[4]) noexcept {
             const u16 word = static_cast<u16>((edid[8] << 8) | edid[9]);
+
+            // 5 bits per character. 0x01='A', 0x1A='Z'
             const u8 c1 = static_cast<u8>((word >> 10) & 0x1F);
             const u8 c2 = static_cast<u8>((word >> 5) & 0x1F);
-            const u8 c3 = static_cast<u8>((word >> 0) & 0x1F);
+            const u8 c3 = static_cast<u8>(word & 0x1F);
+
+            // '?' is fallback for valid EDID range 1-26
             out[0] = (c1 >= 1 && c1 <= 26) ? static_cast<char>('A' + c1 - 1) : '?';
             out[1] = (c2 >= 1 && c2 <= 26) ? static_cast<char>('A' + c2 - 1) : '?';
             out[2] = (c3 >= 1 && c3 <= 26) ? static_cast<char>('A' + c3 - 1) : '?';
             out[3] = '\0';
         };
 
-        auto isThreeUpperAlpha = [](const char m[4]) -> bool {
+        auto is_three_upper_alpha = [](const char m[4]) noexcept -> bool {
             return (m[0] >= 'A' && m[0] <= 'Z') &&
                 (m[1] >= 'A' && m[1] <= 'Z') &&
                 (m[2] >= 'A' && m[2] <= 'Z');
         };
 
-        auto edidChecksumValid = [](const BYTE* edid, size_t len) -> bool {
+        auto edid_checksum_valid = [](const BYTE* edid, size_t len) noexcept -> bool {
             if (len < 128) return false;
+
             u8 sum = 0;
-            for (size_t i = 0; i < 128; ++i) sum = static_cast<u8>(sum + edid[i]);
+            const BYTE* end = edid + 128;
+
+            while (edid < end) {
+                sum += *edid++;
+            }
+
             return sum == 0;
         };
 
-        auto extractMonitorName = [](const BYTE* edid, size_t len, char out[32]) -> bool {
-            if (len < 128) { out[0] = '\0'; return false; }
-            const size_t base = 54;
-            for (int i = 0; i < 4; ++i) {
-                size_t off = base + i * 18;
-                if (off + 18 > 128) break;
-                const BYTE* block = edid + off;
-                // descriptor: bytes 0 to 1 == 0x00, byte3 = tag
-                if (block[0] == 0x00 && block[1] == 0x00) {
-                    if (block[3] == 0xFC) { // monitor name
-                        int outi = 0;
-                        for (int j = 5; j < 18 && outi < 31; ++j) {
-                            char c = static_cast<char>(block[j]);
-                            if (c == 0x0A || c == 0x0D || c == 0x00) break;
-                            out[outi++] = c;
-                        }
-                        out[outi] = '\0';
-                        // trim trailing spaces
-                        while (outi > 0 && (out[outi - 1] == ' ' || out[outi - 1] == '\t')) { out[--outi] = '\0'; }
-                        return outi > 0;
-                    }
-                    // monitor serial descriptor 0xFF could be used as name fallback
-                    if (block[3] == 0xFF) {
-                        int outi = 0;
-                        for (int j = 5; j < 18 && outi < 31; ++j) {
-                            char c = static_cast<char>(block[j]);
-                            if (c == 0x0A || c == 0x0D || c == '\0') break;
-                            out[outi++] = c;
-                        }
-                        out[outi] = '\0';
-                        while (outi > 0 && (out[outi - 1] == ' ' || out[outi - 1] == '\t')) { out[--outi] = '\0'; }
-                        return outi > 0;
-                    }
+        auto extract_monitor_name = [](const BYTE* edid, size_t len, char out[32]) noexcept -> bool {
+            out[0] = '\0';
+            if (len < 128) return false;
+
+            // Standard EDID 1.3/1.4 Descriptor offsets
+            const BYTE* block = edid + 54;
+            const BYTE* end = edid + 126; // block area
+
+            const BYTE* best_block = nullptr;
+
+            for (; block <= end - 18; block += 18) {
+                // bytes 0-2 must be 0 to indicate a Display Descriptor
+                if (block[0] != 0 || block[1] != 0 || block[2] != 0) continue;
+
+                const u8 tag = block[3];
+
+                // 0xFC = Monitor Name
+                if (tag == 0xFC) {
+                    best_block = block;
+                    break;
+                }
+
+                // 0xFF = Monitor Serial (this is only a fallback)
+                if (tag == 0xFF && !best_block) {
+                    best_block = block;
                 }
             }
-            out[0] = '\0';
+
+            if (best_block) {
+                int outi = 0;
+                for (int j = 5; j < 18 && outi < 31; ++j) {
+                    const char c = static_cast<char>(best_block[j]);
+                    // Terminate on newline (0x0A) or carriage return (0x0D) or null
+                    if (c == 0x0A || c == 0x0D || c == '\0') break;
+                    out[outi++] = c;
+                }
+
+                // right-trim spaces
+                while (outi > 0 && (out[outi - 1] == ' ' || out[outi - 1] == '\t')) {
+                    --outi;
+                }
+
+                out[outi] = '\0';
+                return outi > 0;
+            }
+
             return false;
         };
 
-        auto read_le16 = [](const BYTE* p) -> u16 {
-            return static_cast<u16>(p[0] | (p[1] << 8));
-        };
-        auto read_le32 = [](const BYTE* p) -> u32 {
-            return static_cast<u32>(p[0] | (p[1] << 8) | (p[2] << 16) | (p[3] << 24));
-        };
-
-        auto getDevicePropertyA = [](HDEVINFO devInfo, SP_DEVINFO_DATA& devData, DWORD propId,
-            char* outBuf, DWORD outBufSize) -> bool {
+        auto get_device_property = [](HDEVINFO dev_info, SP_DEVINFO_DATA& dev_data, DWORD prop_id,
+            char* out_buf, DWORD out_buf_size) noexcept -> bool {
                 DWORD needed = 0;
-                if (SetupDiGetDeviceRegistryPropertyA(devInfo, &devData, propId, nullptr,
-                    reinterpret_cast<PBYTE>(outBuf), outBufSize, &needed)) {
-                    outBuf[outBufSize - 1] = '\0';
+
+                if (SetupDiGetDeviceRegistryPropertyA(dev_info, &dev_data, prop_id, nullptr,
+                    reinterpret_cast<PBYTE>(out_buf), out_buf_size, &needed)) {
+                    if (out_buf_size > 0) out_buf[out_buf_size - 1] = '\0';
                     return true;
                 }
+
                 const DWORD err = GetLastError();
+
                 if (err == ERROR_INSUFFICIENT_BUFFER && needed > 0 && needed < 65536) {
-                    HLOCAL h = LocalAlloc(LMEM_FIXED, static_cast<SIZE_T>(needed) + 1);
+
+                    void* h = malloc(static_cast<size_t>(needed) + 1);
                     if (!h) return false;
-                    if (SetupDiGetDeviceRegistryPropertyA(devInfo, &devData, propId, nullptr,
+
+                    if (SetupDiGetDeviceRegistryPropertyA(dev_info, &dev_data, prop_id, nullptr,
                         reinterpret_cast<PBYTE>(h), needed, &needed)) {
-                        DWORD toCopy = (needed < outBufSize - 1) ? needed : outBufSize - 1;
-                        memcpy(outBuf, h, toCopy);
-                        outBuf[toCopy] = '\0';
-                        LocalFree(h);
+
+                        const DWORD to_copy = (needed < out_buf_size - 1) ? needed : (out_buf_size - 1);
+
+                        if (out_buf_size > 0) {
+                            memcpy(out_buf, h, to_copy);
+                            out_buf[to_copy] = '\0';
+                        }
+
+                        free(h);
                         return true;
                     }
-                    LocalFree(h);
+                    free(h);
                 }
-                outBuf[0] = '\0';
+
+                if (out_buf_size > 0) out_buf[0] = '\0';
                 return false;
-            };
+        };
 
         const HDEVINFO devInfo = SetupDiGetClassDevs(&GUID_DEVCLASS_MONITOR, nullptr, nullptr, DIGCF_PRESENT);
         if (devInfo == INVALID_HANDLE_VALUE) return false;
@@ -9519,7 +9695,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             BYTE edid_stack[256];
             DWORD bufSize = static_cast<DWORD>(sizeof(edid_stack));
-            LONG rc = RegQueryValueExA(hDevKey, "EDID", nullptr, nullptr, edid_stack, &bufSize);
+            const LONG rc = RegQueryValueExA(hDevKey, "EDID", nullptr, nullptr, edid_stack, &bufSize);
             RegCloseKey(hDevKey);
 
             BYTE* edid = nullptr;
@@ -9564,24 +9740,24 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             int score = 0;
 
-            if (!edidChecksumValid(edid, bufSize)) score += 1;
+            if (!edid_checksum_valid(edid, bufSize)) score += 1;
 
             char manu[4];
-            decodeManufacturer(edid, manu);
-            if (!isThreeUpperAlpha(manu)) score += 1;
+            decode_manufacturer(edid, manu);
+            if (!is_three_upper_alpha(manu)) score += 1;
 
-            u16 product = static_cast<u16>(edid[10] | (edid[11] << 8)); // because its little-endian
-            u32 serial = static_cast<u32>(edid[12] | (edid[13] << 8) | (edid[14] << 16) | (edid[15] << 24));
+            const u16 product = static_cast<u16>(edid[10] | (edid[11] << 8)); // because its little-endian
+            const u32 serial = static_cast<u32>(edid[12] | (edid[13] << 8) | (edid[14] << 16) | (edid[15] << 24));
             if (product == 0) score += 1;
             if (serial == 0) score += 1;
 
             char monname[32];
-            bool hasName = extractMonitorName(edid, bufSize, monname);
+            const bool hasName = extract_monitor_name(edid, bufSize, monname);
             if (!hasName) score += 1; // no way you dont have a EDID monitor name
 
             char propBuf[512];
-            bool haveFriendly = getDevicePropertyA(devInfo, devData, SPDRP_FRIENDLYNAME, propBuf, sizeof(propBuf)); // friendly_name is often empty, like in Digital-Flachbildschirm monitors
-            bool haveDevDesc = getDevicePropertyA(devInfo, devData, SPDRP_DEVICEDESC, propBuf, sizeof(propBuf));
+            const bool haveFriendly = get_device_property(devInfo, devData, SPDRP_FRIENDLYNAME, propBuf, sizeof(propBuf)); // friendly_name is often empty, like in Digital-Flachbildschirm monitors
+            const bool haveDevDesc = get_device_property(devInfo, devData, SPDRP_DEVICEDESC, propBuf, sizeof(propBuf));
             if (!haveFriendly && !haveDevDesc) score += 1;
 
             if (used_heap) LocalFree(heap_buf);
@@ -9871,122 +10047,64 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         enum class MBVendor { Unknown = 0, Intel = 1, AMD = 2 };
 
-        auto detect_motherboard = []() -> MBVendor {
-            static constexpr const char* TOKENS[] = {
-                "host bridge", "northbridge", "southbridge", "pci bridge", "chipset", "pch", "fch",
-                "platform controller", "lpc", "sata controller", "ahci", "ide controller", "usb controller",
-                "xhci", "usb3", "usb 3.0", "usb 3", "pcie root", "pci express", " sata", nullptr
+        auto detect_motherboard = []() noexcept -> MBVendor {
+            static constexpr const wchar_t* TOKENS[] = {
+                L"host bridge", L"northbridge", L"southbridge", L"pci bridge", L"chipset", L"pch", L"fch",
+                L"platform controller", L"lpc", L"sata controller", L"ahci", L"ide controller", L"usb controller",
+                L"xhci", L"usb3", L"usb 3.0", L"usb 3", L"pcie root", L"pci express", L" sata", nullptr
             };
 
-            static bool meta_ready = false;
-            static const char* token_ptrs[32];
-            static int token_lens[32];
-            static int token_count = 0;
-            static unsigned char first_unique[128];
-            static int first_unique_count = 0;
+            auto contains_token = [](const wchar_t* haystack) noexcept -> bool {
+                if (!haystack) return false;
+                for (const wchar_t* const* t = TOKENS; *t; ++t) {
+                    const wchar_t* needle = *t;
+                    const wchar_t* h = haystack;
 
-            auto build_meta = [&]() {
-                if (meta_ready) return;
-                int i = 0;
-                for (; TOKENS[i]; ++i) {}
-                token_count = i;
-                assert(token_count < 32);
-                bool seen[128] = {};
-                for (int t = 0; t < token_count; ++t) {
-                    token_ptrs[t] = TOKENS[t];
-                    token_lens[t] = static_cast<int>(std::strlen(TOKENS[t]));
-                    unsigned char fc = static_cast<unsigned char>(token_ptrs[t][0]);
-                    if (fc < 128 && !seen[fc]) {
-                        first_unique[first_unique_count++] = fc;
-                        seen[fc] = true;
-                    }
-                }
-                meta_ready = true;
-            };
+                    // naive scan is faster than BM/KMP for very short needles/haystacks
+                    while (*h) {
+                        const wchar_t* h_iter = h;
+                        const wchar_t* n_iter = needle;
 
-            auto ascii_lower = [](unsigned char c) -> unsigned char {
-                if (c >= 'A' && c <= 'Z') return static_cast<unsigned char>(c + ('a' - 'A'));
-                return c;
-            };
+                        while (*n_iter) {
+                            wchar_t hc = *h_iter;
+                            if (hc >= L'A' && hc <= L'Z') hc += 32;
 
-            const size_t STACK_CAP = 4096;
-            auto wide_to_ascii = [&](const wchar_t* wptr, char* stackBuf, size_t stackCap, std::vector<char>* heapBuf, size_t& outLen) -> const char* {
-                outLen = 0;
-                if (!wptr || *wptr == L'\0') return nullptr;
-                const wchar_t* p = wptr;
-                char* out = stackBuf;
-                size_t cap = stackCap;
-                while (*p) {
-                    wchar_t wc = *p++;
-                    unsigned char c;
-                    if (wc <= 127) {
-                        c = ascii_lower(static_cast<unsigned char>(wc));
-                    }
-                    else {
-                        c = 0;
-                    }
-                    if (outLen >= cap) {
-                        if (!heapBuf) return nullptr;
-                        heapBuf->assign(stackBuf, stackBuf + cap);
-                        out = heapBuf->data();
-                        cap = heapBuf->capacity();
-                    }
-                    out[outLen++] = static_cast<char>(c);
-                }
-                return out;
-            };
-
-            using u32 = unsigned int;
-            auto __memchr = [&](const char* data, size_t len) -> u32 {
-                if (!data || len == 0) return 0;
-                build_meta();
-                u32 mask = 0;
-                for (int fi = 0; fi < first_unique_count; ++fi) {
-                    unsigned char fc = first_unique[fi];
-                    const void* cur = data;
-                    size_t remaining = len;
-                    while (remaining > 0) {
-                        const void* found = memchr(cur, fc, remaining);
-                        if (!found) break;
-                        const char* pos = static_cast<const char*>(found);
-                        long long idx = pos - data;
-                        for (int t = 0; t < token_count; ++t) {
-                            if (static_cast<unsigned char>(token_ptrs[t][0]) != fc) continue;
-                            int tlen = token_lens[t];
-                            if (idx + static_cast<size_t>(tlen) <= len) {
-                                if (memcmp(data + idx, token_ptrs[t], static_cast<size_t>(tlen)) == 0) {
-                                    mask |= (1u << t);
-                                }
-                            }
+                            if (hc != *n_iter) break;
+                            h_iter++;
+                            n_iter++;
                         }
-                        remaining = len - (idx + 1);
-                        cur = data + idx + 1;
+
+                        if (!*n_iter) return true; 
+                        h++;
                     }
                 }
-                return mask;
+                return false;
             };
 
-            auto find_vendor_hex = [&](const wchar_t* wptr) -> u32 {
+            auto find_vendor_hex = [](const wchar_t* wptr) noexcept -> u32 {
                 if (!wptr) return 0;
                 const wchar_t* p = wptr;
                 while (*p) {
-                    const wchar_t c = *p;
-                    if ((c | 0x20) == L'v') {
-                        if ((p[1] | 0x20) == L'e' && (p[2] | 0x20) == L'n' && p[3] == L'_') {
-                            const wchar_t* q = p + 4;
-                            u32 val = 0;
-                            int got = 0;
-                            while (got < 4 && *q) {
-                                wchar_t wc = *q;
-                                u32 nib = 0;
-                                if (wc >= L'0' && wc <= L'9') nib = static_cast<u32>(wc - L'0');
-                                else if ((wc | 0x20) >= L'a' && (wc | 0x20) <= L'f') nib = static_cast<u32>((wc | 0x20) - L'a' + 10);
-                                else break;
-                                val = static_cast<u32>((val << 4) | nib);
-                                ++got; ++q;
-                            }
-                            if (got == 4) return val;
+                    // Check for "VEN_" (case-insensitive)
+                    if (((p[0] | 0x20) == L'v') &&
+                        ((p[1] | 0x20) == L'e') &&
+                        ((p[2] | 0x20) == L'n') &&
+                        (p[3] == L'_')) {
+
+                        const wchar_t* q = p + 4;
+                        u32 val = 0;
+                        int got = 0;
+                        while (got < 4 && *q) {
+                            const wchar_t c = *q;
+                            u32 nib = 0;
+                            if (c >= L'0' && c <= L'9') nib = static_cast<u32>(c - L'0');
+                            else if ((c | 0x20) >= L'a' && (c | 0x20) <= L'f') nib = static_cast<u32>((c | 0x20) - L'a' + 10);
+                            else break;
+
+                            val = (val << 4) | nib;
+                            ++got; ++q;
                         }
+                        if (got == 4) return val;
                     }
                     ++p;
                 }
@@ -9996,48 +10114,53 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             // setupapi stuff
             int intel_hits = 0;
             int amd_hits = 0;
-            char stack_buf[4096]{};
-            std::vector<char> heap_buf;
-            std::vector<BYTE> prop_buf; 
 
-            auto scan_devices = [&](const GUID* classGuid, DWORD flags) {
+            wchar_t stack_buf[1024]{};
+            std::vector<BYTE> heap_buf; // fallback for rare huge strings
+
+            auto scan_devices = [&](const GUID* classGuid, DWORD flags) noexcept {
                 HDEVINFO hDevInfo = SetupDiGetClassDevsW(classGuid, nullptr, nullptr, flags);
                 if (hDevInfo == INVALID_HANDLE_VALUE) return;
 
                 SP_DEVINFO_DATA devInfoData{};
                 devInfoData.cbSize = sizeof(SP_DEVINFO_DATA);
-                DWORD reqSize = 0;
 
                 for (DWORD i = 0; SetupDiEnumDeviceInfo(hDevInfo, i, &devInfoData); ++i) {
 
-                    if (!SetupDiGetDeviceRegistryPropertyW(hDevInfo, &devInfoData, SPDRP_DEVICEDESC, nullptr, nullptr, 0, &reqSize)) {
-                        if (GetLastError() != ERROR_INSUFFICIENT_BUFFER) continue;
+                    const wchar_t* wDesc = nullptr;
+                    DWORD reqSize = 0;
+                    DWORD propType = 0;
+
+                    if (SetupDiGetDeviceRegistryPropertyW(hDevInfo, &devInfoData, SPDRP_DEVICEDESC, &propType, reinterpret_cast<PBYTE>(stack_buf), sizeof(stack_buf), &reqSize)) {
+                        wDesc = stack_buf;
+                    }
+                    else if (GetLastError() == ERROR_INSUFFICIENT_BUFFER) {
+                        if (heap_buf.size() < reqSize) heap_buf.resize(reqSize);
+                        if (SetupDiGetDeviceRegistryPropertyW(hDevInfo, &devInfoData, SPDRP_DEVICEDESC, &propType, heap_buf.data(), reqSize, nullptr)) {
+                            wDesc = reinterpret_cast<const wchar_t*>(heap_buf.data());
+                        }
                     }
 
-                    if (prop_buf.size() < reqSize) prop_buf.resize(reqSize);
+                    // check if the description contains any interesting stuff
+                    if (wDesc && contains_token(wDesc)) {
 
-                    if (SetupDiGetDeviceRegistryPropertyW(hDevInfo, &devInfoData, SPDRP_DEVICEDESC, nullptr, prop_buf.data(), reqSize, nullptr)) {
+                        // if interesting get hwid to get vendor
+                        const wchar_t* wHwId = nullptr;
 
-                        const wchar_t* wDesc = reinterpret_cast<const wchar_t*>(prop_buf.data());
-                        size_t asciiLen = 0;
-                        const char* asciiDesc = wide_to_ascii(wDesc, stack_buf, STACK_CAP, &heap_buf, asciiLen);
-
-                        // check if the description contains any interesting stuff
-                        if (__memchr(asciiDesc, asciiLen)) {
-                            // if interesting get hwid to get vendor
-                            if (!SetupDiGetDeviceRegistryPropertyW(hDevInfo, &devInfoData, SPDRP_HARDWAREID, nullptr, nullptr, 0, &reqSize)) {
-                                if (GetLastError() != ERROR_INSUFFICIENT_BUFFER) continue;
+                        if (SetupDiGetDeviceRegistryPropertyW(hDevInfo, &devInfoData, SPDRP_HARDWAREID, &propType, reinterpret_cast<PBYTE>(stack_buf), sizeof(stack_buf), &reqSize)) {
+                            wHwId = stack_buf;
+                        }
+                        else if (GetLastError() == ERROR_INSUFFICIENT_BUFFER) {
+                            if (heap_buf.size() < reqSize) heap_buf.resize(reqSize);
+                            if (SetupDiGetDeviceRegistryPropertyW(hDevInfo, &devInfoData, SPDRP_HARDWAREID, &propType, heap_buf.data(), reqSize, nullptr)) {
+                                wHwId = reinterpret_cast<const wchar_t*>(heap_buf.data());
                             }
+                        }
 
-                            if (prop_buf.size() < reqSize) prop_buf.resize(reqSize);
-
-                            if (SetupDiGetDeviceRegistryPropertyW(hDevInfo, &devInfoData, SPDRP_HARDWAREID, nullptr, prop_buf.data(), reqSize, nullptr)) {
-                                const wchar_t* wHwId = reinterpret_cast<const wchar_t*>(prop_buf.data());
-                                const u32 vid = find_vendor_hex(wHwId);
-
-                                if (vid == VID_INTEL) intel_hits++;
-                                else if (vid == VID_AMD_ATI || vid == VID_AMD_MICRO) amd_hits++;
-                            }
+                        if (wHwId) {
+                            const u32 vid = find_vendor_hex(wHwId);
+                            if (vid == VID_INTEL) intel_hits++;
+                            else if (vid == VID_AMD_ATI || vid == VID_AMD_MICRO) amd_hits++;
                         }
                     }
                 }
@@ -10097,35 +10220,37 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::CLOCK
      */
     [[nodiscard]] static bool clock() {
-        // The RTC (ACPI/CMOS RTC) timer can't be always detected via SetupAPI, it needs AML decode of the DSDT firmware table.
+        // The RTC (ACPI/CMOS RTC) timer can't be always detected via SetupAPI, it needs AML decode of the DSDT firmware table
         // The HPET (PNP0103) timer presence is already checked on VM::FIRMWARE
-        constexpr wchar_t pattern[] = L"PNP0100";
-        constexpr size_t patLen = (sizeof(pattern) / sizeof(wchar_t)) - 1; 
+        constexpr wchar_t pattern[] = L"pnp0100"; 
+        constexpr size_t patLen = (sizeof(pattern) / sizeof(wchar_t)) - 1;
 
-        auto tolower_ascii = [](wchar_t c) -> wchar_t {
-            return (c >= L'A' && c <= L'Z') ? static_cast<wchar_t>(c + 32) : c;
-        };
-
-        auto wcsstr_ci_ascii = [&](const wchar_t* hay) -> const wchar_t* {
+        auto wcsstr_ci_ascii = [&](const wchar_t* hay) noexcept -> const wchar_t* {
             if (!hay) return nullptr;
-            for (; *hay; ++hay) {
-                wchar_t h0 = tolower_ascii(*hay);
-                wchar_t p0 = tolower_ascii(pattern[0]);
-                if (h0 != p0) continue;
 
-                const wchar_t* h = hay;
-                size_t i = 0;
-                for (; i < patLen; ++i, ++h) {
-                    if (*h == L'\0') { i = SIZE_MAX; break; } 
-                    if (tolower_ascii(*h) != tolower_ascii(pattern[i])) break;
+            for (; *hay; ++hay) {
+                wchar_t h = *hay;
+                if (h >= L'A' && h <= L'Z') h += 32;
+
+                if (h != pattern[0]) continue;
+
+                size_t i = 1;
+                for (; i < patLen; ++i) {
+                    wchar_t next_h = hay[i];
+
+                    if (next_h == L'\0') return nullptr;
+
+                    if (next_h >= L'A' && next_h <= L'Z') next_h += 32;
+
+                    if (next_h != pattern[i]) break;
                 }
-                if (i == patLen) return hay; // match
-                if (i == SIZE_MAX) return nullptr;
+
+                if (i == patLen) return hay; 
             }
             return nullptr;
         };
 
-        HDEVINFO devs = SetupDiGetClassDevsW(nullptr, nullptr, nullptr, DIGCF_PRESENT);
+        const HDEVINFO devs = SetupDiGetClassDevsW(nullptr, nullptr, nullptr, DIGCF_PRESENT | DIGCF_ALLCLASSES);
         if (devs == INVALID_HANDLE_VALUE) return false;
 
         SP_DEVINFO_DATA devInfo{};
@@ -10144,7 +10269,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             if (!SetupDiGetDeviceRegistryPropertyW(devs, &devInfo, SPDRP_HARDWAREID,
                 &propertyType, buffer, bufBytes, nullptr))
             {
-                DWORD err = GetLastError();
+                const DWORD err = GetLastError();
                 if (err == ERROR_INSUFFICIENT_BUFFER) {
                     DWORD required = 0;
                     SetupDiGetDeviceRegistryPropertyW(devs, &devInfo, SPDRP_HARDWAREID,
@@ -10181,6 +10306,61 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         free(buffer);
         SetupDiDestroyDeviceInfoList(devs);
         return !found;
+    }
+
+
+    /**
+     * @brief Check for anomalies in BIOS POST time
+     * @category Windows
+     * @implements VM::POST
+     */
+    [[nodiscard]] static bool post() {
+        /*
+        * The motherboard must test and calibrate memory timings, which is time-consuming
+        * The system physically scans PCIe buses, initializes the GPU, powers up USB controllers, and waits for storage drives to report ready
+        * Fans must spin up, and capacitors must charge
+        * 
+        * On VMs, RAM is simply a block of memory allocated by the host OS. There is no training or calibration required
+        * There are no drives to spin up, no fans to check, and no complex PCIe negotiation
+        * So at the end, we see cases like VirtualBox machines reporting 0.9s of last bios time, or QEMU machines with OVMF reporting 0s
+        */
+        static constexpr wchar_t kSubKey[] = L"SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Power";
+        static constexpr wchar_t kValueName[] = L"FwPOSTTime";
+        HKEY hKey;
+
+        long result = RegOpenKeyExW(
+            HKEY_LOCAL_MACHINE,
+            kSubKey,
+            0,
+            KEY_QUERY_VALUE,
+            &hKey
+        );
+
+        if (result != ERROR_SUCCESS) {
+            return false;
+        }
+
+        DWORD data = 0;
+        DWORD dataSize = sizeof(data);
+
+        result = RegQueryValueExW(
+            hKey,
+            kValueName,
+            NULL,
+            NULL,
+            reinterpret_cast<LPBYTE>(&data),
+            &dataSize
+        );
+
+        RegCloseKey(hKey);
+
+        if (result == ERROR_SUCCESS) {
+            if (data < 1500) { // 1.5s
+                return true;
+            }
+        }
+
+        return false;
     }
     // ADD NEW TECHNIQUE FUNCTION HERE
 #endif
@@ -10880,30 +11060,36 @@ public: // START OF PUBLIC FUNCTIONS
 
         // merge 2 brands, and make a single brand out of it.
         auto merge = [&](const char* a, const char* b, const char* result) -> void {
-            if (
-                (brands.count(a) > 0) &&
-                (brands.count(b) > 0)
-            ) {
-                brands.erase(a);
-                brands.erase(b);
-                brands.emplace(std::make_pair(result, 2));
-            }
+            const auto it_a = brands.find(a);
+            if (it_a == brands.end()) return;
+
+            const auto it_b = brands.find(b);
+            if (it_b == brands.end()) return;
+
+            brands.erase(it_a);
+            brands.erase(it_b);
+
+            brands.emplace(result, 2);
         };
 
         // same as above, but for 3
         auto triple_merge = [&](const char* a, const char* b, const char* c, const char* result) -> void {
-            if (
-                (brands.count(a) > 0) &&
-                (brands.count(b) > 0) &&
-                (brands.count(c) > 0)
-            ) {
-                brands.erase(a);
-                brands.erase(b);
-                brands.erase(c);
-                brands.emplace(std::make_pair(result, 2));
-            }
-        };
+            const auto it_a = brands.find(a);
+            if (it_a == brands.end()) return;
 
+            const auto it_b = brands.find(b);
+            if (it_b == brands.end()) return;
+
+            const auto it_c = brands.find(c);
+            if (it_c == brands.end()) return;
+
+            // Only erase if ALL 3 were found
+            brands.erase(it_a);
+            brands.erase(it_b);
+            brands.erase(it_c);
+
+            brands.emplace(result, 2);
+        };
 
         // some edgecase handling for Hyper-V and VirtualPC since
         // they're very similar, and they're both from Microsoft (ew)
@@ -11271,6 +11457,7 @@ public: // START OF PUBLIC FUNCTIONS
             case EDID: return "EDID";
             case CPU_HEURISTIC: return "CPU_HEURISTIC";
             case CLOCK: return "CLOCK";
+            case POST: return "POST";
             // END OF TECHNIQUE LIST
             case DEFAULT: return "setting flag, error";
             case ALL: return "setting flag, error";
@@ -11347,10 +11534,12 @@ public: // START OF PUBLIC FUNCTIONS
 
         using table_t = std::map<enum_flags, core::technique>;
 
-        auto modify = [](table_t &table, const enum_flags flag, const u8 percent) -> void {
-            core::technique &tmp = table.at(flag);
-            table[flag].points = percent;
-            table[flag].run = tmp.run;
+        auto modify = [](table_t& table, const enum_flags flag, const u8 percent) noexcept -> void {
+            const auto it = table.find(flag);
+
+            if (it != table.end()) {
+                it->second.points = percent;
+            }
         };
 
         modify(core::technique_table, flag, percent);
@@ -11508,11 +11697,11 @@ public: // START OF PUBLIC FUNCTIONS
     #endif
 
     #if (VMA_CPP >= 17)
-        auto make_conclusion = [&](const std::string_view category) -> std::string {
+        auto make_conclusion = [&](std::string_view category) -> std::string {
     #else
-        auto make_conclusion = [&](const std::string &category) -> std::string {
+        auto make_conclusion = [&](const std::string& category) -> std::string {
     #endif
-            std::string addition = "";
+            const char* addition = " a ";
 
             // this basically just fixes the grammatical syntax
             // by either having "a" or "an" before the VM brand
@@ -11539,22 +11728,37 @@ public: // START OF PUBLIC FUNCTIONS
                 ) {
                 addition = " an ";
             }
-            else {
-                addition = " a ";
-            }         
-            
+
             // this is basically just to remove the capital "U", 
             // since it doesn't make sense to see "an Unknown"
+        #if (VMA_CPP >= 17)
+            const std::string_view final_brand = (brand_tmp == brands::NULL_BRAND) ? "unknown" : std::string_view(brand_tmp);
+        #else
+            const char* final_brand = (brand_tmp == brands::NULL_BRAND) ? "unknown" : brand_tmp.c_str();
+        #endif
+
+            // Hyper-V artifacts are an exception due to how unique the circumstance is
+            const char* suffix = " VM";
+            if (brand_tmp == brands::HYPERV_ARTIFACT && percent_tmp != 100) {
+                suffix = "";
+            }
+
+            std::string result;
+        #if (VMA_CPP >= 17)
+            result.reserve(category.length() + std::strlen(addition) + final_brand.length() + std::strlen(suffix));
+        #else
+            result.reserve(category.length() + std::strlen(addition) + std::strlen(final_brand) + std::strlen(suffix));
+        #endif
+            result.append(category);
+            result.append(addition);
+            result.append(final_brand);
+            result.append(suffix);
+
             if (brand_tmp == brands::NULL_BRAND) {
                 brand_tmp = "unknown";
             }
 
-            // Hyper-V artifacts are an exception due to how unique the circumstance is
-            if (brand_tmp == brands::HYPERV_ARTIFACT && percent_tmp != 100) {
-                return std::string(category) + addition + brand_tmp;
-            } else {
-                return std::string(category) + addition + brand_tmp + " VM";
-            }
+            return result;
         };
 
         if (core::is_enabled(flags, DYNAMIC)) {
@@ -11805,10 +12009,11 @@ std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
     #if (WINDOWS)
         std::make_pair(VM::TRAP, VM::core::technique(100, VM::trap)),
         std::make_pair(VM::ACPI_SIGNATURE, VM::core::technique(100, VM::acpi_signature)),
-        std::make_pair(VM::NVRAM, VM::core::technique(100, VM::nvram_vars)),
+        std::make_pair(VM::NVRAM, VM::core::technique(100, VM::nvram)),
         std::make_pair(VM::CLOCK, VM::core::technique(100, VM::clock)),
         std::make_pair(VM::POWER_CAPABILITIES, VM::core::technique(45, VM::power_capabilities)),
         std::make_pair(VM::CPU_HEURISTIC, VM::core::technique(90, VM::cpu_heuristic)),
+        std::make_pair(VM::POST, VM::core::technique(100, VM::post)),
         std::make_pair(VM::EDID, VM::core::technique(100, VM::edid)),
         std::make_pair(VM::BOOT_LOGO, VM::core::technique(100, VM::boot_logo)),
         std::make_pair(VM::GPU_CAPABILITIES, VM::core::technique(45, VM::gpu_capabilities)),
