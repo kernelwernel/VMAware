@@ -1798,7 +1798,7 @@ private:
         
         // to search in our databases, we want to precompute hashes at compile time for C++11 and later
         // so we need to match the hardware _mm_crc32_u8, it is based on CRC32-C (Castagnoli) polynomial
-        struct ConstexprHash {
+        struct constexpr_hash {
             // it does 8 rounds of CRC32-C bit reflection recursively
             static constexpr u32 crc32_bits(u32 crc, int bits) {
                 return (bits == 0) ? crc :
@@ -1820,17 +1820,17 @@ private:
         struct thread_entry {
             u32 hash;
             u32 threads;
-            constexpr thread_entry(const char* m, u32 t) : hash(ConstexprHash::get(m)), threads(t) {}
+            constexpr thread_entry(const char* m, u32 t) : hash(constexpr_hash::get(m)), threads(t) {}
         };
 
-        enum class CpuType {
+        enum class cpu_type {
             INTEL_I,
             INTEL_XEON,
             AMD
         };
 
         // 4 arguments to stay compliant with x64 __fastcall (just in case)
-        [[nodiscard]] static bool verify_thread_count(const thread_entry* db, size_t db_size, size_t max_model_len, CpuType type) {
+        [[nodiscard]] static bool verify_thread_count(const thread_entry* db, size_t db_size, size_t max_model_len, cpu_type type) {
             // to save a few cycles
             struct hasher {
                 static u32 crc32_sw(u32 crc, char data) {
@@ -1856,7 +1856,8 @@ private:
                     // yes, vmaware runs on dinosaur cpus without sse4.2 pretty often
                     i32 regs[4];
                     cpu::cpuid(regs, 1);
-                    const bool has_sse42 = (regs[2] & (1 << 20)) != 0;
+                    constexpr u32 SSE42_FEATURE = (1 << 20);
+                    const bool has_sse42 = (regs[2] & SSE42_FEATURE) != 0;
 
                     return has_sse42 ? crc32_hw : crc32_sw;
                 }
@@ -1865,7 +1866,7 @@ private:
             std::string model_string;
             const char* debug_tag = "";
 
-            if (type == CpuType::AMD) {
+            if (type == cpu_type::AMD) {
                 if (!cpu::is_amd()) {
                     return false;
                 }
@@ -1883,7 +1884,7 @@ private:
                     return false;
                 }
 
-                if (type == CpuType::INTEL_I) {
+                if (type == cpu_type::INTEL_I) {
                     if (!model.is_i_series) {
                         return false;
                     }
@@ -1947,7 +1948,7 @@ private:
                     */
 
                     // convert to lowercase on-the-fly to match compile-time keys
-                    if (type == CpuType::AMD && (k >= 'A' && k <= 'Z')) k += 32;
+                    if (type == cpu_type::AMD && (k >= 'A' && k <= 'Z')) k += 32;
 
                     // since this technique is cross-platform, we cannot use a standard C++ try-catch block to catch a missing CPU instruction
                     // we could use preprocessor directives and add an exception handler (VEH/SEH or SIGHANDLER) but nah
@@ -1964,7 +1965,7 @@ private:
                     if (!next_is_alnum) {
                         // Check specific Z1 Extreme token
                         // Hash for "extreme" (CRC32-C) is 0x3D09D5B4
-                        if (type == CpuType::AMD && current_hash == 0x3D09D5B4) { z_series_threads = 16; }
+                        if (type == cpu_type::AMD && current_hash == 0x3D09D5B4) { z_series_threads = 16; }
 
                         // since it's a contiguous block of integers in .rodata/.rdata, this is extremely fast
                         for (size_t idx = 0; idx < db_size; ++idx) {
@@ -1985,7 +1986,7 @@ private:
             }
 
             // Z1 Extreme fix
-            if (type == CpuType::AMD && z_series_threads != 0 && expected_threads == 12) {
+            if (type == cpu_type::AMD && z_series_threads != 0 && expected_threads == 12) {
                 expected_threads = z_series_threads;
             }
 
@@ -3481,7 +3482,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         static constexpr size_t MAX_INTEL_MODEL_LEN = 16;
 
-        return util::verify_thread_count(thread_database, sizeof(thread_database) / sizeof(util::thread_entry), MAX_INTEL_MODEL_LEN, util::CpuType::INTEL_I);
+        return util::verify_thread_count(thread_database, sizeof(thread_database) / sizeof(util::thread_entry), MAX_INTEL_MODEL_LEN, util::cpu_type::INTEL_I);
     #endif
     }
                 
@@ -3637,7 +3638,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         static constexpr size_t MAX_XEON_MODEL_LEN = 16;
 
-        return util::verify_thread_count(thread_database, sizeof(thread_database) / sizeof(util::thread_entry), MAX_XEON_MODEL_LEN, util::CpuType::INTEL_XEON);
+        return util::verify_thread_count(thread_database, sizeof(thread_database) / sizeof(util::thread_entry), MAX_XEON_MODEL_LEN, util::cpu_type::INTEL_XEON);
     #endif
     }
                 
@@ -4167,7 +4168,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         static constexpr size_t MAX_AMD_MODEL_LEN = 24; // "threadripper" is long
 
-        return util::verify_thread_count(thread_database, sizeof(thread_database) / sizeof(util::thread_entry), MAX_AMD_MODEL_LEN, util::CpuType::INTEL_XEON);
+        return util::verify_thread_count(thread_database, sizeof(thread_database) / sizeof(util::thread_entry), MAX_AMD_MODEL_LEN, util::cpu_type::INTEL_XEON);
     #endif
     }
 
@@ -10726,7 +10727,7 @@ public: // START OF PUBLIC FUNCTIONS
             (flag_bit == HIGH_THRESHOLD) ||
             (flag_bit == DYNAMIC) ||
             (flag_bit == MULTIPLE)
-            ) {
+        ) {
             throw_error("Flag argument must be a technique flag and not a settings flag");
         }
 
