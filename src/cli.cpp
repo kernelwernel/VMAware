@@ -865,7 +865,7 @@ static void general() {
     {
         if (is_vm_brand_multiple(vm.brand) == false) {
             std::string current_color = "";
-            std::string &type = vm.type;
+            const char* &type = vm.type;
 
             if (is_anyrun && (type == brands::NULL_BRAND)) {
                 type = "Sandbox";
@@ -1048,58 +1048,41 @@ static void general() {
 }
 
 
-static void generate_json(const std::string &output) {
-    std::vector<std::string> json = {};
-
-    json.push_back("{");
-    json.push_back("\n\t\"is_detected\": ");
-    json.push_back(VM::detect() ? "true," : "false,");
-    json.push_back("\n\t\"brand\": \"");
-    json.push_back(VM::brand());
-    json.push_back("\",");
-    json.push_back("\n\t\"conclusion\": \"");
-    json.push_back(VM::conclusion());
-    json.push_back("\",");
-    json.push_back("\n\t\"percentage\": ");
-    json.push_back(std::to_string(VM::percentage()));
-    json.push_back(",");
-    json.push_back("\n\t\"detected_technique_count\": ");
-    json.push_back(std::to_string(VM::technique_count));
-    json.push_back(",");
-    json.push_back("\n\t\"vm_type\": \"");
-    json.push_back(VM::type());
-    json.push_back("\",");
-    json.push_back("\n\t\"is_hardened\": ");
-    json.push_back(VM::is_hardened() ? "true," : "false,");
-    json.push_back("\n\t\"detected_techniques\": [");
-
-    std::vector<VM::enum_flags> detected_status = VM::detected_enums();
-
-    if (detected_status.size() == 0) {
-        json.push_back("]\n}");
-    } else {
-        for (size_t i = 0; i < detected_status.size(); i++) {
-            json.push_back("\n\t\t\"");
-            json.push_back(VM::flag_to_string(detected_status.at(i)));
-
-            if (i == detected_status.size() - 1) {
-                json.push_back("\"");
-            } else {
-                json.push_back("\",");
-            }
-        }
-
-        json.push_back("\n\t]\n}");
-    }
-        
+static void generate_json(const char* output) {
     std::ofstream file(output);
     if (!file) {
         std::cerr << "Failed to open/create file\n";
         return;
     }
 
-    for (const auto& line : json) {
-        file << line;
+    file << "{\n\t\"is_detected\": " << (VM::detect() ? "true," : "false,");
+    file << "\n\t\"brand\": \"" << VM::brand() << "\",";
+    file << "\n\t\"conclusion\": \"" << VM::conclusion() << "\",";
+    file << "\n\t\"percentage\": " << static_cast<int>(VM::percentage()) << ",";
+    file << "\n\t\"detected_technique_count\": " << VM::technique_count << ",";
+    file << "\n\t\"vm_type\": \"" << VM::type() << "\",";
+    file << "\n\t\"is_hardened\": " << (VM::is_hardened() ? "true," : "false,");
+    file << "\n\t\"detected_techniques\": [";
+
+    const auto detected_status = VM::detected_enums();
+
+    if (detected_status.size() == 0) {
+        file << "]\n}";
+    }
+    else {
+        for (size_t i = 0; i < detected_status.size(); i++) {
+            file << "\n\t\t\"";
+            file << VM::flag_to_string(detected_status[i]);
+
+            if (i == detected_status.size() - 1) {
+                file << "\"";
+            }
+            else {
+                file << "\",";
+            }
+        }
+
+        file << "\n\t]\n}";
     }
 
     file.close();
@@ -1160,7 +1143,7 @@ int main(int argc, char* argv[]) {
     }};
 
     std::string potential_null_arg = "";
-    std::string potential_output_arg = "results.json";
+    const char* potential_output_arg = "results.json";
 
     for (i32 i = 1; i < argc; ++i) {
         const char* arg_string = argv[i];
