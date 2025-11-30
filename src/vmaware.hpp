@@ -1290,13 +1290,13 @@ private:
 
         struct threadcount {
             static u32 threadcount_cache;
-            static bool cached;
-            static void store(u32 count) {
-                threadcount_cache = count;
-                cached = true;
+            static u32 fetch() {
+                if (threadcount_cache != 0) {
+                    return threadcount_cache;
+                }
+                threadcount_cache = std::thread::hardware_concurrency();
+                return threadcount_cache;
             }
-            static u32 fetch() { return threadcount_cache; }
-            static bool is_cached() { return cached; }
         };
 
         struct hyperx {
@@ -9461,18 +9461,31 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             for (size_t i = 0; i < sizeof(vendor_ascii) / sizeof(*vendor_ascii); ++i) {
                 const char* vasc = vendor_ascii[i];
                 const wchar_t* vw = vendor_wide[i];
+
                 const bool inPKDef = buf_contains_vendor_specific(pkDefaultBuf, pkDefaultLen, vasc, vw);
                 const bool inKEKDef = buf_contains_vendor_specific(kekDefaultBuf, kekDefaultLen, vasc, vw);
+
                 if (!inPKDef && !inKEKDef) continue;
-                const bool inPK = buf_contains_vendor_specific(pkBuf, pkLen, vasc, vw);
-                const bool inKEK = buf_contains_vendor_specific(kekBuf, kekLen, vasc, vw);
-                if (!inPK && !inKEK) {
-                    debug("NVRAM: Vendor string found in PKDefault/KEKDefault but missing from active PK/KEK");
+
+                const bool inPKActive = buf_contains_vendor_specific(pkBuf, pkLen, vasc, vw);
+                const bool inKEKActive = buf_contains_vendor_specific(kekBuf, kekLen, vasc, vw);
+
+                if (inPKDef && !inPKActive) {
+                    debug("NVRAM: Vendor string found in PKDefault but missing from active PK");
                     if (pkBuf && pkBuf != stackBuf) { PVOID b = pkBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); }
                     if (kekBuf && kekBuf != stackBuf) { PVOID b = kekBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); }
                     if (pkDefaultBuf && pkDefaultBuf != stackBuf) { PVOID b = pkDefaultBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); }
                     if (kekDefaultBuf && kekDefaultBuf != stackBuf) { PVOID b = kekDefaultBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); }
-                    cleanup(); return core::add(brands::QEMU);
+                    cleanup(); return true;
+                }
+
+                if (inKEKDef && !inKEKActive) {
+                    debug("NVRAM: Vendor string found in KEKDefault but missing from active KEK");
+                    if (pkBuf && pkBuf != stackBuf) { PVOID b = pkBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); }
+                    if (kekBuf && kekBuf != stackBuf) { PVOID b = kekBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); }
+                    if (pkDefaultBuf && pkDefaultBuf != stackBuf) { PVOID b = pkDefaultBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); }
+                    if (kekDefaultBuf && kekDefaultBuf != stackBuf) { PVOID b = kekDefaultBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); }
+                    cleanup(); return true;
                 }
             }
         }
@@ -10183,6 +10196,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     [[nodiscard]] static bool clock() {
         // The RTC (ACPI/CMOS RTC) timer can't be always detected via SetupAPI, it needs AML decode of the DSDT firmware table
         // The HPET (PNP0103) timer presence is already checked on VM::FIRMWARE
+        // Here, we check for the PIT/AT timer (PC-class System Timer)
         constexpr wchar_t pattern[] = L"pnp0100"; 
         constexpr size_t patLen = (sizeof(pattern) / sizeof(wchar_t)) - 1;
 
@@ -10806,13 +10820,11 @@ public: // START OF PUBLIC FUNCTIONS
         , [[maybe_unused]] const std::source_location& loc = std::source_location::current()
 #endif
     ) {
-        // return and force caching early if the technique is not supported
         if (util::is_unsupported(flag_bit)) {
             memo::cache_store(flag_bit, false, 0);
             return false;
         }
 
-        // lambda to manage exceptions
         auto throw_error = [&](const char* text) -> void {
             std::stringstream ss;
         #if (VMA_CPP >= 20 && !CLANG)
@@ -10822,7 +10834,6 @@ public: // START OF PUBLIC FUNCTIONS
             throw std::invalid_argument(std::string(text) + ss.str());
         };
 
-        // check if flag is out of range
         if (flag_bit > enum_size) {
             throw_error("Flag argument must be a valid");
         }
@@ -10846,30 +10857,25 @@ public: // START OF PUBLIC FUNCTIONS
             return data.result;
         }
 
-        const core::technique& pair = core::technique_table[flag_bit];
+        if (flag_bit < technique_end) {
+            const core::technique& pair = core::technique_table[flag_bit];
 
-        // check if the flag exists (has a function pointer)
-        if (!pair.run) {
-            throw_error("Flag is not known or not implemented");
-        }
-
-        // initialise and run the technique
-        bool result = false;
-        if (pair.run) {
-            result = pair.run();
-
-            if (result) {
-                detected_count_num++;
+            if (!pair.run) {
+                throw_error("Flag is not known or not implemented");
             }
-        }
+
+            bool result = pair.run();
+            if (result) detected_count_num++;
+
         #ifdef __VMAWARE_DEBUG__
             total_points += pair.points;
         #endif
 
-        // store the technique result in the cache table
-        memo::cache_store(flag_bit, result, pair.points);
+            memo::cache_store(flag_bit, result, pair.points);
+            return result;
+        }
 
-        return result;
+        return false;
     }
 
 
