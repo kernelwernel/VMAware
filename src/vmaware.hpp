@@ -352,7 +352,6 @@
 #include <cstring>
 #include <string>
 #include <fstream>
-#include <regex>
 #include <thread>
 #include <cstdint>
 #include <map>
@@ -422,12 +421,6 @@
     #include <time.h>
     #include <errno.h>
     #include <chrono>
-#endif
-
-#ifdef _UNICODE
-    #define tregex std::wregex
-#else
-    #define tregex std::regex
 #endif
 
 #ifdef __VMAWARE_DEBUG__
@@ -1051,9 +1044,37 @@ private:
             }
 
             const model_struct model = get_model();
+            const char* s = model.string.c_str();
 
-            std::regex amd_a_series("AMD A[0-9]+-[0-9]+", std::regex_constants::icase);
-            return std::regex_search(model.string, amd_a_series);
+            for (; *s; ++s) {
+                if ((*s | 0x20) != 'a') continue;
+
+                // check for "MD A" (case-insensitive match for "AMD A")
+                // We need 5 specific characters following the 'A': 'm', 'd', ' ', 'a', and a digit
+                if (!s[1] || !s[2] || !s[3] || !s[4] || !s[5]) break;
+
+                if ((s[1] | 0x20) == 'm' &&
+                    (s[2] | 0x20) == 'd' &&
+                    s[3] == ' ' &&
+                    (s[4] | 0x20) == 'a') {
+
+                    // we found "AMD A" so now verify pattern [0-9]+-[0-9]+
+                    const char* num = s + 5;
+
+                    // must have at least one digit immediately after "AMD A"
+                    if (*num < '0' || *num > '9') continue;
+                    do { num++; } while (*num >= '0' && *num <= '9');
+                    if (*num != '-') continue;
+                    num++;
+
+                    // Must have at least one digit after the hyphen
+                    if (*num >= '0' && *num <= '9') {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
         }
 
         struct model_struct {
@@ -5228,17 +5249,17 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         cat: /sys/class/dmi/id/product_uuid: Permission denied
         */
 
-        constexpr std::array<const char*, 7> dmi_array {
-            "/sys/class/dmi/id/bios_vendor",
-            "/sys/class/dmi/id/board_name",
-            "/sys/class/dmi/id/board_vendor",
-            "/sys/class/dmi/id/chassis_asset_tag",
-            "/sys/class/dmi/id/product_family",
-            "/sys/class/dmi/id/product_sku",
-            "/sys/class/dmi/id/sys_vendor"
+        constexpr std::array<const char*, 7> dmi_array{
+    "/sys/class/dmi/id/bios_vendor",
+    "/sys/class/dmi/id/board_name",
+    "/sys/class/dmi/id/board_vendor",
+    "/sys/class/dmi/id/chassis_asset_tag",
+    "/sys/class/dmi/id/product_family",
+    "/sys/class/dmi/id/product_sku",
+    "/sys/class/dmi/id/sys_vendor"
         };
 
-        constexpr std::array<std::pair<const char*, const char*>, 15> vm_table {{
+        constexpr std::array<std::pair<const char*, const char*>, 15> vm_table{ {
             { "kvm", brands::KVM },
             { "openstack", brands::OPENSTACK },
             { "kubevirt", brands::KUBEVIRT },
@@ -5255,35 +5276,37 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             { "hyper-v", brands::HYPERV },
             { "apple virtualization", brands::APPLE_VZ },
             { "google compute engine", brands::GCE }
-        }};
+        } };
 
-        auto to_lower = [](std::string& str) noexcept {
-            for (auto& c : str) {
-                // std::tolower is surprisingly slow because it handles locales
-                // for ASCII strings simple bitwise math is 10x faster             
-                if (c >= 'A' && c <= 'Z') {
-                    c |= 0x20;
+
+        for (const auto file : dmi_array) {
+            if (!util::exists(file)) {
+                continue;
+            }
+
+            std::string content = util::read_file(file);
+            if (content.empty()) {
+                continue;
+            }
+            char* data = &content[0];
+            const size_t len = content.size();
+            for (size_t i = 0; i < len; ++i) {
+                if (data[i] >= 'A' && data[i] <= 'Z') {
+                    data[i] |= 0x20;
                 }
             }
-        };
 
-        for (const auto &vm_string : vm_table) {
-            for (const auto file : dmi_array) {
-                if (!util::exists(file)) {
-                    continue;
-                }
+            for (const auto& vm_string : vm_table) {
+                if (content.find(vm_string.first) != std::string::npos) {
 
-                std::string content = util::read_file(file);
-
-                to_lower(content);
-
-                if (std::regex_search(content, std::regex(vm_string.first))) {
                     debug("DMI_SCAN: content = ", content);
+
                     if (strcmp(vm_string.second, brands::AWS_NITRO) == 0) {
                         if (smbios_vm_bit()) {
                             return core::add(brands::AWS_NITRO);
                         }
-                    } else {
+                    }
+                    else {
                         return core::add(vm_string.second);
                     }
                 }
@@ -6500,24 +6523,27 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::HWMODEL
      */
     [[nodiscard]] static bool hwmodel() {
-        const auto result = util::sys_result("sysctl -n hw.model");
+        
+        //hw.model strings are short (like for example MacBookPro16,1), 128 bytes is plenty
+        char buffer[128] = { 0 };
+        size_t size = sizeof(buffer);
 
-        std::smatch match;
-
-        if (result == nullptr) {
-            debug("HWMODEL: ", "null result received");
+        // sysctlbyname queries the kernel directly, bypassing the overhead of 
+        // fork(), exec(), and pipe() found in util::sys_result (popen)
+        if (sysctlbyname("hw.model", buffer, &size, nullptr, 0) != 0) {
+            debug("HWMODEL: ", "failed to read hw.model");
             return false;
         }
 
-        debug("HWMODEL: ", "output = ", *result);
+        // sysctlbyname returns the raw value (usually without a trailing newline),
+        // so no trimming is required
+        debug("HWMODEL: ", "output = ", buffer);
 
-        // if string contains "Mac" anywhere in the string, assume it's baremetal
-        if (std::regex_search(*result, match, std::regex("Mac"))) {
+        if (strstr(buffer, "Mac") != nullptr) {
             return false;
         }
 
-        // not sure about the other VMs, more could potentially be added
-        if (std::regex_search(*result, match, std::regex("VMware"))) {
+        if (strstr(buffer, "VMware") != nullptr) {
             return core::add(brands::VMWARE);
         }
 
@@ -10860,19 +10886,18 @@ public: // START OF PUBLIC FUNCTIONS
         if (flag_bit < technique_end) {
             const core::technique& pair = core::technique_table[flag_bit];
 
-            if (!pair.run) {
+            if (auto run_fn = pair.run) {          
+                bool result = run_fn();           
+                if (result) detected_count_num++;
+            #ifdef __VMAWARE_DEBUG__
+                total_points += pair.points;
+            #endif
+                memo::cache_store(flag_bit, result, pair.points);
+                return result;
+            }
+            else {
                 throw_error("Flag is not known or not implemented");
             }
-
-            bool result = pair.run();
-            if (result) detected_count_num++;
-
-        #ifdef __VMAWARE_DEBUG__
-            total_points += pair.points;
-        #endif
-
-            memo::cache_store(flag_bit, result, pair.points);
-            return result;
         }
 
         return false;
