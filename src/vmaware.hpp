@@ -9195,6 +9195,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         struct VARIABLE_NAME { ULONG NextEntryOffset; GUID VendorGuid; WCHAR Name[1]; };
         using PVARIABLE_NAME = VARIABLE_NAME*;
         using NtEnumerateSystemEnvironmentValuesEx_t = NTSTATUS(__stdcall*)(ULONG, PVOID, PULONG);
+        using NtQuerySystemEnvironmentValueEx_t = NTSTATUS(__stdcall*)(PUNICODE_STRING VariableName, LPGUID VendorGuid, PVOID Value, PULONG ValueLength, PULONG Attributes);
 
         // Secure Boot stuff
         bool found_dbDefault = false, found_dbxDefault = false, found_KEKDefault = false, found_PKDefault = false;
@@ -9205,328 +9206,360 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         */
         bool found_MORCL = false;
 
-        if (!util::is_admin()) return false;
+        bool result = false;
 
         HANDLE hToken = nullptr;
-        const HANDLE hCurrentProcess = reinterpret_cast<HANDLE>(-1LL);
-        if (!OpenProcessToken(hCurrentProcess, TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &hToken)) return false;
-
-        LUID luid{};
+        PVOID enumBase = nullptr;
+        BYTE* pkDefaultBuf = nullptr;
+        BYTE* pkBuf = nullptr;
+        BYTE* kekDefaultBuf = nullptr;
+        BYTE* kekBuf = nullptr;
         bool priv_enabled = false;
-        auto cleanup = [&]() noexcept {
-            if (priv_enabled && hToken) {
-                TOKEN_PRIVILEGES tpDisable{};
-                tpDisable.PrivilegeCount = 1;
-                tpDisable.Privileges[0].Luid = luid;
-                tpDisable.Privileges[0].Attributes = 0;
-                AdjustTokenPrivileges(hToken, FALSE, &tpDisable, sizeof(TOKEN_PRIVILEGES), nullptr, nullptr);
-            }
-            if (hToken) { CloseHandle(hToken); hToken = nullptr; }
-        };
+        LUID luid{};
 
-        if (!LookupPrivilegeValue(nullptr, SE_SYSTEM_ENVIRONMENT_NAME, &luid)) { cleanup(); return false; }
-        TOKEN_PRIVILEGES tpEnable{}; tpEnable.PrivilegeCount = 1; tpEnable.Privileges[0].Luid = luid; tpEnable.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
-        AdjustTokenPrivileges(hToken, FALSE, &tpEnable, sizeof(TOKEN_PRIVILEGES), nullptr, nullptr);
-        if (GetLastError() != ERROR_SUCCESS) { cleanup(); return false; }
-        priv_enabled = true;
-
-        const HMODULE ntdll = util::get_ntdll();
-        if (!ntdll) { cleanup(); return false; }
-
-        const char* names[] = { "NtEnumerateSystemEnvironmentValuesEx", "NtAllocateVirtualMemory", "NtFreeVirtualMemory" };
-        void* funcs[sizeof(names) / sizeof(names[0])] = {};
-        util::get_function_address(ntdll, names, funcs, sizeof(names) / sizeof(names[0]));
-        const auto pNtEnum = reinterpret_cast<NtEnumerateSystemEnvironmentValuesEx_t>(funcs[0]);
+        NtEnumerateSystemEnvironmentValuesEx_t pNtEnum = nullptr;
         typedef NTSTATUS(__stdcall* NtAllocateVirtualMemory_t)(HANDLE, PVOID*, ULONG_PTR, PSIZE_T, ULONG, ULONG);
         typedef NTSTATUS(__stdcall* NtFreeVirtualMemory_t)(HANDLE, PVOID*, PSIZE_T, ULONG);
-        const auto pNtAllocateVirtualMemory = reinterpret_cast<NtAllocateVirtualMemory_t>(funcs[1]);
-        const auto pNtFreeVirtualMemory = reinterpret_cast<NtFreeVirtualMemory_t>(funcs[2]);
-        if (!pNtEnum || !pNtAllocateVirtualMemory || !pNtFreeVirtualMemory) { cleanup(); return false; }
+        NtAllocateVirtualMemory_t pNtAllocateVirtualMemory = nullptr;
+        NtFreeVirtualMemory_t pNtFreeVirtualMemory = nullptr;
+        NtQuerySystemEnvironmentValueEx_t pNtQuery = nullptr;
 
-        bool hasFunction = false, success = false;
-        PVOID enumBase = nullptr;
-        SIZE_T enumSize = 0;
-        ULONG bufferLength = 0;
-        // ask for size
-        if (pNtEnum) {
-            hasFunction = true;
-            pNtEnum(static_cast<ULONG>(1), nullptr, &bufferLength);
-            if (bufferLength != 0) {
-                enumSize = static_cast<SIZE_T>(bufferLength);
-                NTSTATUS st = pNtAllocateVirtualMemory(hCurrentProcess, &enumBase, 0, &enumSize, static_cast<ULONG>(MEM_COMMIT | MEM_RESERVE), static_cast<ULONG>(PAGE_READWRITE));
-                if (st == 0 && enumBase) {
-                    st = pNtEnum(static_cast<ULONG>(1), enumBase, &bufferLength);
-                    if (st == 0) { success = true; }
-                    else { SIZE_T zero = 0; pNtFreeVirtualMemory(hCurrentProcess, &enumBase, &zero, 0x8000); enumBase = nullptr; enumSize = 0; }
+        const HANDLE hCurrentProcess = reinterpret_cast<HANDLE>(-1LL);
+
+        do {
+            if (!util::is_admin()) break;
+
+            if (!OpenProcessToken(hCurrentProcess, TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &hToken)) break;
+
+            if (!LookupPrivilegeValue(nullptr, SE_SYSTEM_ENVIRONMENT_NAME, &luid)) break;
+
+            TOKEN_PRIVILEGES tpEnable{};
+            tpEnable.PrivilegeCount = 1;
+            tpEnable.Privileges[0].Luid = luid;
+            tpEnable.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+            AdjustTokenPrivileges(hToken, FALSE, &tpEnable, sizeof(TOKEN_PRIVILEGES), nullptr, nullptr);
+            if (GetLastError() != ERROR_SUCCESS) break;
+            priv_enabled = true;
+
+            const HMODULE ntdll = util::get_ntdll();
+            if (!ntdll) break;
+
+            const char* names[] = { "NtEnumerateSystemEnvironmentValuesEx", "NtAllocateVirtualMemory", "NtFreeVirtualMemory", "NtQuerySystemEnvironmentValueEx" };
+            void* funcs[sizeof(names) / sizeof(names[0])] = {};
+            util::get_function_address(ntdll, names, funcs, sizeof(names) / sizeof(names[0]));
+            pNtEnum = reinterpret_cast<NtEnumerateSystemEnvironmentValuesEx_t>(funcs[0]);
+            pNtAllocateVirtualMemory = reinterpret_cast<NtAllocateVirtualMemory_t>(funcs[1]);
+            pNtFreeVirtualMemory = reinterpret_cast<NtFreeVirtualMemory_t>(funcs[2]);
+            pNtQuery = reinterpret_cast<NtQuerySystemEnvironmentValueEx_t>(funcs[3]);
+
+            if (!pNtEnum || !pNtAllocateVirtualMemory || !pNtFreeVirtualMemory || !pNtQuery) break;
+
+            bool hasFunction = false, success = false;
+            SIZE_T enumSize = 0;
+            ULONG bufferLength = 0;
+
+            // ask for size
+            if (pNtEnum) {
+                hasFunction = true;
+                pNtEnum(static_cast<ULONG>(1), nullptr, &bufferLength);
+                if (bufferLength != 0) {
+                    enumSize = static_cast<SIZE_T>(bufferLength);
+                    NTSTATUS st = pNtAllocateVirtualMemory(hCurrentProcess, &enumBase, 0, &enumSize, static_cast<ULONG>(MEM_COMMIT | MEM_RESERVE), static_cast<ULONG>(PAGE_READWRITE));
+                    if (st == 0 && enumBase) {
+                        st = pNtEnum(static_cast<ULONG>(1), enumBase, &bufferLength);
+                        if (st == 0) { success = true; }
+                        else {
+                            SIZE_T zero = 0;
+                            pNtFreeVirtualMemory(hCurrentProcess, &enumBase, &zero, 0x8000);
+                            enumBase = nullptr;
+                            enumSize = 0;
+                        }
+                    }
                 }
             }
-        }
 
-        if (!hasFunction) { debug("NVRAM: NtEnumerateSystemEnvironmentValuesEx could not be resolved"); cleanup(); return true; }
-        if (!success) { debug("NVRAM: System is not UEFI"); cleanup(); return false; }
-
-        // helpers stuff
-        auto ci_ascii_contains = [](const BYTE* data, size_t len, const char* pat) noexcept -> bool {
-            if (!data || len == 0 || !pat) return false;
-            const size_t plen = strlen(pat); if (len < plen) return false;
-            const BYTE p0 = static_cast<BYTE>((pat[0] >= 'A' && pat[0] <= 'Z') ? (pat[0] + 32) : pat[0]);
-            const BYTE* end = data + (len - plen);
-            for (const BYTE* p = data; p <= end; ++p) {
-                BYTE c0 = *p; c0 = static_cast<BYTE>((c0 >= 'A' && c0 <= 'Z') ? (c0 + 32) : c0);
-                if (c0 != p0) continue;
-                bool ok = true;
-                for (size_t j = 1; j < plen; ++j) {
-                    BYTE dj = p[j]; dj = static_cast<BYTE>((dj >= 'A' && dj <= 'Z') ? (dj + 32) : dj);
-                    BYTE pj = static_cast<BYTE>((pat[j] >= 'A' && pat[j] <= 'Z') ? (pat[j] + 32) : pat[j]);
-                    if (dj != pj) { ok = false; break; }
-                }
-                if (ok) return true;
+            if (!hasFunction) {
+                debug("NVRAM: NtEnumerateSystemEnvironmentValuesEx could not be resolved");
+                result = true;
+                break;
             }
-            return false;
-        };
-        auto ci_utf16le_contains = [](const WCHAR* data, size_t wlen, const wchar_t* pat) noexcept -> bool {
-            if (!data || wlen == 0 || !pat) return false;
-            const size_t plen = wcslen(pat); if (wlen < plen) return false;
-            const WCHAR p0 = static_cast<WCHAR>((pat[0] >= L'A' && pat[0] <= L'Z') ? (pat[0] + 32) : pat[0]);
-            const WCHAR* end = data + (wlen - plen);
-            for (const WCHAR* p = data; p <= end; ++p) {
-                WCHAR c0 = *p; c0 = static_cast<WCHAR>((c0 >= L'A' && c0 <= L'Z') ? (c0 + 32) : c0);
-                if (c0 != p0) continue;
-                bool ok = true;
-                for (size_t j = 1; j < plen; ++j) {
-                    WCHAR dj = p[j]; dj = static_cast<WCHAR>((dj >= L'A' && dj <= L'Z') ? (dj + 32) : dj);
-                    WCHAR pj = static_cast<WCHAR>((pat[j] >= L'A' && pat[j] <= L'Z') ? (pat[j] + 32) : pat[j]);
-                    if (dj != pj) { ok = false; break; }
-                }
-                if (ok) return true;
+            if (!success) {
+                debug("NVRAM: System is not UEFI");
+                result = false;
+                break;
             }
-            return false;
-        };
 
-        constexpr const char* vendor_ascii[] = { "msi","asrock","asus","asustek","gigabyte","giga-byte","micro-star","microstar" };
-        constexpr const wchar_t* vendor_wide[] = { L"msi",L"asrock",L"asus",L"asustek",L"gigabyte",L"giga-byte",L"micro-star",L"microstar" };
-        constexpr const char redhat_ascii[] = "red hat";
-        constexpr const wchar_t redhat_wide[] = L"red hat";
+            // helpers stuff
+            auto ci_ascii_contains = [](const BYTE* data, size_t len, const char* pat) noexcept -> bool {
+                if (!data || len == 0 || !pat) return false;
+                const size_t plen = strlen(pat); if (len < plen) return false;
+                const BYTE p0 = static_cast<BYTE>((pat[0] >= 'A' && pat[0] <= 'Z') ? (pat[0] + 32) : pat[0]);
+                const BYTE* end = data + (len - plen);
+                for (const BYTE* p = data; p <= end; ++p) {
+                    BYTE c0 = *p; c0 = static_cast<BYTE>((c0 >= 'A' && c0 <= 'Z') ? (c0 + 32) : c0);
+                    if (c0 != p0) continue;
+                    bool ok = true;
+                    for (size_t j = 1; j < plen; ++j) {
+                        BYTE dj = p[j]; dj = static_cast<BYTE>((dj >= 'A' && dj <= 'Z') ? (dj + 32) : dj);
+                        BYTE pj = static_cast<BYTE>((pat[j] >= 'A' && pat[j] <= 'Z') ? (pat[j] + 32) : pat[j]);
+                        if (dj != pj) { ok = false; break; }
+                    }
+                    if (ok) return true;
+                }
+                return false;
+            };
+            auto ci_utf16le_contains = [](const WCHAR* data, size_t wlen, const wchar_t* pat) noexcept -> bool {
+                if (!data || wlen == 0 || !pat) return false;
+                const size_t plen = wcslen(pat); if (wlen < plen) return false;
+                const WCHAR p0 = static_cast<WCHAR>((pat[0] >= L'A' && pat[0] <= L'Z') ? (pat[0] + 32) : pat[0]);
+                const WCHAR* end = data + (wlen - plen);
+                for (const WCHAR* p = data; p <= end; ++p) {
+                    WCHAR c0 = *p; c0 = static_cast<WCHAR>((c0 >= L'A' && c0 <= L'Z') ? (c0 + 32) : c0);
+                    if (c0 != p0) continue;
+                    bool ok = true;
+                    for (size_t j = 1; j < plen; ++j) {
+                        WCHAR dj = p[j]; dj = static_cast<WCHAR>((dj >= L'A' && dj <= L'Z') ? (dj + 32) : dj);
+                        WCHAR pj = static_cast<WCHAR>((pat[j] >= L'A' && pat[j] <= L'Z') ? (pat[j] + 32) : pat[j]);
+                        if (dj != pj) { ok = false; break; }
+                    }
+                    if (ok) return true;
+                }
+                return false;
+            };
 
-        constexpr size_t MAX_VAR_SZ = 131072; // 128KB
-        // Use unique_ptr to move buffer from stack to heap (otherwise we would have stack overflow)
-        std::unique_ptr<BYTE[]> stackBufPtr(new BYTE[MAX_VAR_SZ]());
-        BYTE* stackBuf = stackBufPtr.get();
+            constexpr const char* vendor_ascii[] = { "msi","asrock","asus","asustek","gigabyte","giga-byte","micro-star","microstar" };
+            constexpr const wchar_t* vendor_wide[] = { L"msi",L"asrock",L"asus",L"asustek",L"gigabyte",L"giga-byte",L"micro-star",L"microstar" };
+            constexpr const char redhat_ascii[] = "red hat";
+            constexpr const wchar_t redhat_wide[] = L"red hat";
 
-        BYTE* pkDefaultBuf = nullptr, * pkBuf = nullptr, * kekDefaultBuf = nullptr, * kekBuf = nullptr;
-        SIZE_T pkDefaultLen = 0, pkLen = 0, kekDefaultLen = 0, kekLen = 0;
+            SIZE_T pkDefaultLen = 0, pkLen = 0, kekDefaultLen = 0, kekLen = 0;
 
-        auto read_var_to_buf = [&](const std::wstring& name, const GUID& guid, BYTE*& outBuf, SIZE_T& outLen) noexcept -> bool {
-            wchar_t guidStr[40] = {};
-            constexpr wchar_t hex[] = L"0123456789ABCDEF";
-            guidStr[0] = L'{';
-            guidStr[1] = hex[static_cast<size_t>((guid.Data1 >> 28) & 0xF)]; guidStr[2] = hex[static_cast<size_t>((guid.Data1 >> 24) & 0xF)]; guidStr[3] = hex[static_cast<size_t>((guid.Data1 >> 20) & 0xF)]; guidStr[4] = hex[static_cast<size_t>((guid.Data1 >> 16) & 0xF)];
-            guidStr[5] = hex[static_cast<size_t>((guid.Data1 >> 12) & 0xF)]; guidStr[6] = hex[static_cast<size_t>((guid.Data1 >> 8) & 0xF)]; guidStr[7] = hex[static_cast<size_t>((guid.Data1 >> 4) & 0xF)]; guidStr[8] = hex[static_cast<size_t>(guid.Data1 & 0xF)];
-            guidStr[9] = L'-';
-            guidStr[10] = hex[static_cast<size_t>((guid.Data2 >> 12) & 0xF)]; guidStr[11] = hex[static_cast<size_t>((guid.Data2 >> 8) & 0xF)]; guidStr[12] = hex[static_cast<size_t>((guid.Data2 >> 4) & 0xF)]; guidStr[13] = hex[static_cast<size_t>(guid.Data2 & 0xF)];
-            guidStr[14] = L'-';
-            guidStr[15] = hex[static_cast<size_t>((guid.Data3 >> 12) & 0xF)]; guidStr[16] = hex[static_cast<size_t>((guid.Data3 >> 8) & 0xF)]; guidStr[17] = hex[static_cast<size_t>((guid.Data3 >> 4) & 0xF)]; guidStr[18] = hex[static_cast<size_t>(guid.Data3 & 0xF)];
-            guidStr[19] = L'-';
-            guidStr[20] = hex[static_cast<size_t>((guid.Data4[0] >> 4) & 0xF)]; guidStr[21] = hex[static_cast<size_t>(guid.Data4[0] & 0xF)]; guidStr[22] = hex[static_cast<size_t>((guid.Data4[1] >> 4) & 0xF)]; guidStr[23] = hex[static_cast<size_t>(guid.Data4[1] & 0xF)];
-            guidStr[24] = L'-';
-            size_t idx = 25;
-            for (int i = 2; i < 8; ++i) { guidStr[idx++] = hex[static_cast<size_t>((guid.Data4[i] >> 4) & 0xF)]; guidStr[idx++] = hex[static_cast<size_t>(guid.Data4[i] & 0xF)]; }
-            guidStr[37] = L'}'; guidStr[38] = L'\0';
+            auto read_var_to_buf = [&](const std::wstring& name, GUID& guid, BYTE*& outBuf, SIZE_T& outLen) noexcept -> bool {
+                UNICODE_STRING uStr{};
+                uStr.Buffer = const_cast<PWSTR>(name.c_str());
+                uStr.Length = static_cast<USHORT>(name.length() * sizeof(wchar_t));
+                uStr.MaximumLength = uStr.Length + sizeof(wchar_t);
 
-            DWORD ret = GetFirmwareEnvironmentVariableW(name.c_str(), guidStr, stackBuf, static_cast<DWORD>(MAX_VAR_SZ));
-            if (ret > 0) { outBuf = stackBuf; outLen = ret; return true; }
-            const DWORD err = GetLastError();
-            if (err != ERROR_INSUFFICIENT_BUFFER) { outBuf = nullptr; outLen = 0; return false; }
-            // fallback allocate up to 256KB
-            PVOID base = nullptr; SIZE_T rsz = 256 * 1024;
-            const ULONG ALLOC_FLAGS = 0x3000; const ULONG PAGE_RW = 0x04;
-            NTSTATUS st = pNtAllocateVirtualMemory(hCurrentProcess, &base, 0, &rsz, ALLOC_FLAGS, PAGE_RW);
-            if (st != 0 || !base) { outBuf = nullptr; outLen = 0; return false; }
-            ret = GetFirmwareEnvironmentVariableW(name.c_str(), guidStr, reinterpret_cast<BYTE*>(base), static_cast<DWORD>(rsz));
-            if (ret > 0) { outBuf = reinterpret_cast<BYTE*>(base); outLen = ret; return true; }
-            // free and fail
-            SIZE_T zero = 0; pNtFreeVirtualMemory(hCurrentProcess, &base, &zero, 0x8000);
-            outBuf = nullptr; outLen = 0; return false;
-        };
+                ULONG reqSize = 0;
+                NTSTATUS st = pNtQuery(&uStr, &guid, nullptr, &reqSize, nullptr);
 
-        PVARIABLE_NAME varName = reinterpret_cast<PVARIABLE_NAME>(enumBase);
-        const size_t bufSize = static_cast<size_t>(bufferLength);
-        constexpr size_t MAX_NAME_BYTES = 4096;
-        while (true) {
-            const uintptr_t basePtr = reinterpret_cast<uintptr_t>(enumBase);
-            const uintptr_t curPtr = reinterpret_cast<uintptr_t>(varName);
-            if (curPtr < basePtr) break;
-            const size_t offset = static_cast<size_t>(curPtr - basePtr);
-            if (offset >= bufSize) break;
-            const size_t nameOffset = offsetof(VARIABLE_NAME, Name);
-            if (bufSize - offset < nameOffset) break;
-            size_t nameMaxBytes = 0;
-            if (varName->NextEntryOffset != 0) {
+                if (reqSize == 0) return false;
+
+                PVOID base = nullptr;
+                SIZE_T rsz = reqSize;
+                if (rsz < 0x1000) rsz = 0x1000;
+
+                st = pNtAllocateVirtualMemory(hCurrentProcess, &base, 0, &rsz, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+                if (st != 0 || !base) { outBuf = nullptr; outLen = 0; return false; }
+
+                st = pNtQuery(&uStr, &guid, base, &reqSize, nullptr);
+                if (st == 0) {
+                    outBuf = reinterpret_cast<BYTE*>(base);
+                    outLen = reqSize;
+                    return true;
+                }
+
+                SIZE_T zero = 0;
+                pNtFreeVirtualMemory(hCurrentProcess, &base, &zero, 0x8000);
+                outBuf = nullptr;
+                outLen = 0;
+                return false;
+            };
+
+            PVARIABLE_NAME varName = reinterpret_cast<PVARIABLE_NAME>(enumBase);
+            const size_t bufSize = static_cast<size_t>(bufferLength);
+            constexpr size_t MAX_NAME_BYTES = 4096;
+
+            bool break_loop = false;
+            while (true) {
+                const uintptr_t basePtr = reinterpret_cast<uintptr_t>(enumBase);
+                const uintptr_t curPtr = reinterpret_cast<uintptr_t>(varName);
+                if (curPtr < basePtr) break;
+                const size_t offset = static_cast<size_t>(curPtr - basePtr);
+                if (offset >= bufSize) break;
+                const size_t nameOffset = offsetof(VARIABLE_NAME, Name);
+                if (bufSize - offset < nameOffset) break;
+                size_t nameMaxBytes = 0;
+                if (varName->NextEntryOffset != 0) {
+                    const SIZE_T ne = static_cast<SIZE_T>(varName->NextEntryOffset);
+                    if (ne <= nameOffset) { result = false; break_loop = true; break; }
+                    if (ne > bufSize - offset) break;
+                    nameMaxBytes = ne - nameOffset;
+                }
+                else {
+                    if (offset + nameOffset >= bufSize) { result = false; break_loop = true; break; }
+                    nameMaxBytes = bufSize - (offset + nameOffset);
+                }
+                if (nameMaxBytes > MAX_NAME_BYTES) nameMaxBytes = MAX_NAME_BYTES;
+                std::wstring nameView;
+                if (nameMaxBytes >= sizeof(WCHAR)) {
+                    const WCHAR* namePtr = reinterpret_cast<const WCHAR*>(reinterpret_cast<const BYTE*>(varName) + nameOffset);
+                    const size_t maxChars = nameMaxBytes / sizeof(WCHAR);
+                    size_t realChars = 0;
+                    while (realChars < maxChars && namePtr[realChars] != L'\0') ++realChars;
+                    if (realChars == maxChars) { result = false; break_loop = true; break; }
+                    nameView = std::wstring(namePtr, realChars);
+                }
+                if (!nameView.empty() && nameView.rfind(L"VMM", 0) == 0) {
+                    debug("NVRAM: Detected hypervisor signature");
+                    result = true;
+                    break_loop = true;
+                    break;
+                }
+                if (nameView == L"dbDefault") found_dbDefault = true;
+                else if (nameView == L"KEKDefault") found_KEKDefault = true;
+                else if (nameView == L"PKDefault") found_PKDefault = true;
+                else if (nameView == L"dbxDefault") found_dbxDefault = true;
+                else if (nameView == L"MemoryOverwriteRequestControlLock") found_MORCL = true;
+
+                if (nameView == L"PKDefault") (void)read_var_to_buf(std::wstring(nameView), varName->VendorGuid, pkDefaultBuf, pkDefaultLen);
+                else if (nameView == L"PK") (void)read_var_to_buf(std::wstring(nameView), varName->VendorGuid, pkBuf, pkLen);
+                else if (nameView == L"KEKDefault") (void)read_var_to_buf(std::wstring(nameView), varName->VendorGuid, kekDefaultBuf, kekDefaultLen);
+                else if (nameView == L"KEK") (void)read_var_to_buf(std::wstring(nameView), varName->VendorGuid, kekBuf, kekLen);
+
+                // https://github.com/tianocore/edk2/blob/af9cc80359e320690877e4add870aa13fe889fbe/SecurityPkg/Library/AuthVariableLib/AuthServiceInternal.h
+                if (nameView == L"certdb" || nameView == L"certdbv") {
+                    debug("NVRAM: EDK II (TianoCore) detected");
+                    result = true;
+                    break_loop = true;
+                    break;
+                }
+
+                if (nameView == L"Boot0000") { // should be Windows Boot Manager
+                    BYTE* bootBuf = nullptr; SIZE_T bootLen = 0;
+                    if (read_var_to_buf(nameView, varName->VendorGuid, bootBuf, bootLen)) {
+                        bool anomaly = (bootLen < 6);
+                        if (!anomaly) {
+                            unsigned short fplLen = 0;
+                            memcpy(&fplLen, bootBuf + 4, sizeof(fplLen));
+                            // we could also check if loadOptionsLength is 136
+                            if (fplLen != 116) anomaly = true;
+                        }
+
+                        if (bootBuf) {
+                            PVOID b = bootBuf; SIZE_T z = 0;
+                            pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000);
+                        }
+
+                        if (anomaly) {
+                            debug("NVRAM: Environment was loaded using a virtual boot loader"); // "virtual" here -> non genuine
+                            result = true;
+                            break_loop = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (varName->NextEntryOffset == 0) break;
                 const SIZE_T ne = static_cast<SIZE_T>(varName->NextEntryOffset);
-                if (ne <= nameOffset) { SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &enumBase, &z, 0x8000); cleanup(); return false; }
-                if (ne > bufSize - offset) break;
-                nameMaxBytes = ne - nameOffset;
-            }
-            else {
-                if (offset + nameOffset >= bufSize) { SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &enumBase, &z, 0x8000); cleanup(); return false; }
-                nameMaxBytes = bufSize - (offset + nameOffset);
-            }
-            if (nameMaxBytes > MAX_NAME_BYTES) nameMaxBytes = MAX_NAME_BYTES;
-            std::wstring nameView;
-            if (nameMaxBytes >= sizeof(WCHAR)) {
-                const WCHAR* namePtr = reinterpret_cast<const WCHAR*>(reinterpret_cast<const BYTE*>(varName) + nameOffset);
-                const size_t maxChars = nameMaxBytes / sizeof(WCHAR);
-                size_t realChars = 0;
-                while (realChars < maxChars && namePtr[realChars] != L'\0') ++realChars;
-                if (realChars == maxChars) { SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &enumBase, &z, 0x8000); cleanup(); return false; }
-                nameView = std::wstring(namePtr, realChars);
-            }
-            if (!nameView.empty() && nameView.rfind(L"VMM", 0) == 0) { debug("NVRAM: Detected hypervisor signature"); SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &enumBase, &z, 0x8000); cleanup(); return true; }
-            if (nameView == L"dbDefault") found_dbDefault = true;
-            else if (nameView == L"KEKDefault") found_KEKDefault = true;
-            else if (nameView == L"PKDefault") found_PKDefault = true;
-            else if (nameView == L"dbxDefault") found_dbxDefault = true;
-            else if (nameView == L"MemoryOverwriteRequestControlLock") found_MORCL = true;
-
-            if (nameView == L"PKDefault") (void)read_var_to_buf(std::wstring(nameView), varName->VendorGuid, pkDefaultBuf, pkDefaultLen);
-            else if (nameView == L"PK") (void)read_var_to_buf(std::wstring(nameView), varName->VendorGuid, pkBuf, pkLen);
-            else if (nameView == L"KEKDefault") (void)read_var_to_buf(std::wstring(nameView), varName->VendorGuid, kekDefaultBuf, kekDefaultLen);
-            else if (nameView == L"KEK") (void)read_var_to_buf(std::wstring(nameView), varName->VendorGuid, kekBuf, kekLen);
-
-            // https://github.com/tianocore/edk2/blob/af9cc80359e320690877e4add870aa13fe889fbe/SecurityPkg/Library/AuthVariableLib/AuthServiceInternal.h
-            if (nameView == L"certdb" || nameView == L"certdbv") {
-                debug("NVRAM: EDK II (TianoCore) detected");
-                SIZE_T z = 0;
-                pNtFreeVirtualMemory(hCurrentProcess, &enumBase, &z, 0x8000);
-                cleanup();
-                return true; // we cant return a brand here since its used in VMWare, QEMU with OVMF, VirtualBox, etc
+                const size_t nextOffset = offset + ne;
+                if (nextOffset <= offset || nextOffset > bufSize) break;
+                varName = reinterpret_cast<PVARIABLE_NAME>(reinterpret_cast<PBYTE>(enumBase) + nextOffset);
             }
 
-            if (nameView == L"Boot0000") { // should be Windows Boot Manager
-                BYTE* bootBuf = nullptr; SIZE_T bootLen = 0;
-                if (read_var_to_buf(nameView, varName->VendorGuid, bootBuf, bootLen)) {
-                    bool anomaly = (bootLen < 6);
-                    if (!anomaly) {
-                        unsigned short fplLen = 0;
-                        memcpy(&fplLen, bootBuf + 4, sizeof(fplLen));
-                        // we could also check if loadOptionsLength is 136
-                        if (fplLen != 116) anomaly = true;
+            if (break_loop) break;
+
+            // free stuff
+            { SIZE_T zero = 0; pNtFreeVirtualMemory(hCurrentProcess, &enumBase, &zero, 0x8000); enumBase = nullptr; enumSize = 0; }
+
+            if (!found_MORCL) { debug("NVRAM: Missing MemoryOverwriteRequestControlLock"); result = true; break; }
+            if (!found_dbDefault) { debug("NVRAM: Missing dbDefault"); result = true; break; }
+            if (!found_dbxDefault) { debug("NVRAM: Missing dbxDefault"); result = true; break; }
+            if (!found_KEKDefault) { debug("NVRAM: Missing KEKDefault"); result = true; break; }
+            if (!found_PKDefault) { debug("NVRAM: Missing PKDefault"); result = true; break; }
+
+            // check for official red hat certs
+            bool found_redhat = false;
+            if (pkDefaultBuf && pkDefaultLen) {
+                if ((pkDefaultLen >= 2) && ((pkDefaultLen % 2) == 0)) {
+                    const WCHAR* wptr = reinterpret_cast<const WCHAR*>(pkDefaultBuf);
+                    const size_t wlen = pkDefaultLen / sizeof(WCHAR);
+                    if (ci_utf16le_contains(wptr, wlen, redhat_wide)) found_redhat = true;
+                }
+                if (!found_redhat) if (ci_ascii_contains(pkDefaultBuf, pkDefaultLen, redhat_ascii)) found_redhat = true;
+            }
+            if (found_redhat) {
+                debug("NVRAM: QEMU/OVMF detected");
+                result = core::add(brands::QEMU);
+                break;
+            }
+
+            // Vendor string checks and PK/KEK mismatch checks
+            auto buf_contains_vendor_any = [&](BYTE* buf, SIZE_T len) noexcept -> bool {
+                if (!buf || len == 0) return false;
+                if ((len >= 2) && ((len % 2) == 0)) {
+                    const WCHAR* wptr = reinterpret_cast<const WCHAR*>(buf); const size_t wlen = len / sizeof(WCHAR);
+                    for (const wchar_t* p : vendor_wide) if (ci_utf16le_contains(wptr, wlen, p)) return true;
+                }
+                for (const char* p : vendor_ascii) if (ci_ascii_contains(buf, len, p)) return true;
+                return false;
+            };
+            auto buf_contains_vendor_specific = [&](BYTE* buf, SIZE_T len, const char* a, const wchar_t* w) noexcept -> bool {
+                if (!buf || len == 0) return false;
+                if ((len >= 2) && ((len % 2) == 0) && w) { const WCHAR* wp = reinterpret_cast<const WCHAR*>(buf); if (ci_utf16le_contains(wp, len / sizeof(WCHAR), w)) return true; }
+                if (a) if (ci_ascii_contains(buf, len, a)) return true;
+                return false;
+            };
+
+            const bool pkdef_has_vendor = buf_contains_vendor_any(pkDefaultBuf, pkDefaultLen);
+            const bool kekdef_has_vendor = buf_contains_vendor_any(kekDefaultBuf, kekDefaultLen);
+
+            if (pkdef_has_vendor || kekdef_has_vendor) {
+                bool vendor_mismatch = false;
+                for (size_t i = 0; i < sizeof(vendor_ascii) / sizeof(*vendor_ascii); ++i) {
+                    const char* vasc = vendor_ascii[i];
+                    const wchar_t* vw = vendor_wide[i];
+
+                    const bool inPKDef = buf_contains_vendor_specific(pkDefaultBuf, pkDefaultLen, vasc, vw);
+                    const bool inKEKDef = buf_contains_vendor_specific(kekDefaultBuf, kekDefaultLen, vasc, vw);
+
+                    if (!inPKDef && !inKEKDef) continue;
+
+                    const bool inPKActive = buf_contains_vendor_specific(pkBuf, pkLen, vasc, vw);
+                    const bool inKEKActive = buf_contains_vendor_specific(kekBuf, kekLen, vasc, vw);
+
+                    if (inPKDef && !inPKActive) {
+                        debug("NVRAM: Vendor string found in PKDefault but missing from active PK");
+                        result = true;
+                        vendor_mismatch = true;
+                        break;
                     }
 
-                    if (bootBuf && bootBuf != stackBuf) {
-                        PVOID b = bootBuf; SIZE_T z = 0;
-                        pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000);
-                    }
-
-                    if (anomaly) {
-                        debug("NVRAM: Environment was loaded using a virtual boot loader"); // "virtual" here -> non genuine
-                        SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &enumBase, &z, 0x8000);
-                        cleanup();
-                        return true;
+                    if (inKEKDef && !inKEKActive) {
+                        debug("NVRAM: Vendor string found in KEKDefault but missing from active KEK");
+                        result = true;
+                        vendor_mismatch = true;
+                        break;
                     }
                 }
+                if (vendor_mismatch) break;
             }
 
-            if (varName->NextEntryOffset == 0) break;
-            const SIZE_T ne = static_cast<SIZE_T>(varName->NextEntryOffset);
-            const size_t nextOffset = offset + ne;
-            if (nextOffset <= offset || nextOffset > bufSize) break;
-            varName = reinterpret_cast<PVARIABLE_NAME>(reinterpret_cast<PBYTE>(enumBase) + nextOffset);
+            if (pkDefaultBuf && pkBuf && (pkDefaultLen != pkLen || memcmp(pkDefaultBuf, pkBuf, static_cast<size_t>(pkDefaultLen < pkLen ? pkDefaultLen : pkLen)) != 0))
+                debug("NVRAM: PK vs PKDefault raw mismatch detected");
+            if (kekDefaultBuf && kekBuf && (kekDefaultLen != kekLen || memcmp(kekDefaultBuf, kekBuf, static_cast<size_t>(kekDefaultLen < kekLen ? kekDefaultLen : kekLen)) != 0))
+                debug("NVRAM: KEK vs KEKDefault raw mismatch detected");
+
+            result = false;
+
+        } while (false);
+
+        if (pkBuf) { PVOID b = pkBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); pkBuf = nullptr; }
+        if (kekBuf) { PVOID b = kekBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); kekBuf = nullptr; }
+        if (pkDefaultBuf) { PVOID b = pkDefaultBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); pkDefaultBuf = nullptr; }
+        if (kekDefaultBuf) { PVOID b = kekDefaultBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); kekDefaultBuf = nullptr; }
+        if (enumBase) { SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &enumBase, &z, 0x8000); enumBase = nullptr; }
+
+        if (priv_enabled && hToken) {
+            TOKEN_PRIVILEGES tpDisable{};
+            tpDisable.PrivilegeCount = 1;
+            tpDisable.Privileges[0].Luid = luid;
+            tpDisable.Privileges[0].Attributes = 0;
+            AdjustTokenPrivileges(hToken, FALSE, &tpDisable, sizeof(TOKEN_PRIVILEGES), nullptr, nullptr);
         }
+        if (hToken) { CloseHandle(hToken); hToken = nullptr; }
 
-        // free stuff
-        { SIZE_T zero = 0; pNtFreeVirtualMemory(hCurrentProcess, &enumBase, &zero, 0x8000); enumBase = nullptr; enumSize = 0; }
-
-        if (!found_MORCL) { debug("NVRAM: Missing MemoryOverwriteRequestControlLock"); cleanup(); return true; }
-        if (!found_dbDefault) { debug("NVRAM: Missing dbDefault"); cleanup(); return true; }
-        if (!found_dbxDefault) { debug("NVRAM: Missing dbxDefault"); cleanup(); return true; }
-        if (!found_KEKDefault) { debug("NVRAM: Missing KEKDefault"); cleanup(); return true; }
-        if (!found_PKDefault) { debug("NVRAM: Missing PKDefault"); cleanup(); return true; }
-
-        // check for official red hat certs
-        bool found_redhat = false;
-        if (pkDefaultBuf && pkDefaultLen) {
-            if ((pkDefaultLen >= 2) && ((pkDefaultLen % 2) == 0)) {
-                const WCHAR* wptr = reinterpret_cast<const WCHAR*>(pkDefaultBuf);
-                const size_t wlen = pkDefaultLen / sizeof(WCHAR);
-                if (ci_utf16le_contains(wptr, wlen, redhat_wide)) found_redhat = true;
-            }
-            if (!found_redhat) if (ci_ascii_contains(pkDefaultBuf, pkDefaultLen, redhat_ascii)) found_redhat = true;
-        }
-        if (found_redhat) {
-            debug("NVRAM: QEMU/OVMF detected");
-            if (pkBuf && pkBuf != stackBuf) { PVOID b = pkBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); }
-            if (kekBuf && kekBuf != stackBuf) { PVOID b = kekBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); }
-            if (pkDefaultBuf && pkDefaultBuf != stackBuf) { PVOID b = pkDefaultBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); }
-            if (kekDefaultBuf && kekDefaultBuf != stackBuf) { PVOID b = kekDefaultBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); }
-            cleanup(); return core::add(brands::QEMU);
-        }
-
-        // Vendor string checks and PK/KEK mismatch checks
-        auto buf_contains_vendor_any = [&](BYTE* buf, SIZE_T len) noexcept -> bool {
-            if (!buf || len == 0) return false;
-            if ((len >= 2) && ((len % 2) == 0)) {
-                const WCHAR* wptr = reinterpret_cast<const WCHAR*>(buf); const size_t wlen = len / sizeof(WCHAR);
-                for (const wchar_t* p : vendor_wide) if (ci_utf16le_contains(wptr, wlen, p)) return true;
-            }
-            for (const char* p : vendor_ascii) if (ci_ascii_contains(buf, len, p)) return true;
-            return false;
-        };
-        auto buf_contains_vendor_specific = [&](BYTE* buf, SIZE_T len, const char* a, const wchar_t* w) noexcept -> bool {
-            if (!buf || len == 0) return false;
-            if ((len >= 2) && ((len % 2) == 0) && w) { const WCHAR* wp = reinterpret_cast<const WCHAR*>(buf); if (ci_utf16le_contains(wp, len / sizeof(WCHAR), w)) return true; }
-            if (a) if (ci_ascii_contains(buf, len, a)) return true;
-            return false;
-        };
-
-        const bool pkdef_has_vendor = buf_contains_vendor_any(pkDefaultBuf, pkDefaultLen);
-        const bool kekdef_has_vendor = buf_contains_vendor_any(kekDefaultBuf, kekDefaultLen);
-
-        if (pkdef_has_vendor || kekdef_has_vendor) {
-            for (size_t i = 0; i < sizeof(vendor_ascii) / sizeof(*vendor_ascii); ++i) {
-                const char* vasc = vendor_ascii[i];
-                const wchar_t* vw = vendor_wide[i];
-
-                const bool inPKDef = buf_contains_vendor_specific(pkDefaultBuf, pkDefaultLen, vasc, vw);
-                const bool inKEKDef = buf_contains_vendor_specific(kekDefaultBuf, kekDefaultLen, vasc, vw);
-
-                if (!inPKDef && !inKEKDef) continue;
-
-                const bool inPKActive = buf_contains_vendor_specific(pkBuf, pkLen, vasc, vw);
-                const bool inKEKActive = buf_contains_vendor_specific(kekBuf, kekLen, vasc, vw);
-
-                if (inPKDef && !inPKActive) {
-                    debug("NVRAM: Vendor string found in PKDefault but missing from active PK");
-                    if (pkBuf && pkBuf != stackBuf) { PVOID b = pkBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); }
-                    if (kekBuf && kekBuf != stackBuf) { PVOID b = kekBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); }
-                    if (pkDefaultBuf && pkDefaultBuf != stackBuf) { PVOID b = pkDefaultBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); }
-                    if (kekDefaultBuf && kekDefaultBuf != stackBuf) { PVOID b = kekDefaultBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); }
-                    cleanup(); return true;
-                }
-
-                if (inKEKDef && !inKEKActive) {
-                    debug("NVRAM: Vendor string found in KEKDefault but missing from active KEK");
-                    if (pkBuf && pkBuf != stackBuf) { PVOID b = pkBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); }
-                    if (kekBuf && kekBuf != stackBuf) { PVOID b = kekBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); }
-                    if (pkDefaultBuf && pkDefaultBuf != stackBuf) { PVOID b = pkDefaultBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); }
-                    if (kekDefaultBuf && kekDefaultBuf != stackBuf) { PVOID b = kekDefaultBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); }
-                    cleanup(); return true;
-                }
-            }
-        }
-
-        if (pkDefaultBuf && pkBuf && (pkDefaultLen != pkLen || memcmp(pkDefaultBuf, pkBuf, static_cast<size_t>(pkDefaultLen < pkLen ? pkDefaultLen : pkLen)) != 0))
-            debug("NVRAM: PK vs PKDefault raw mismatch detected");
-        if (kekDefaultBuf && kekBuf && (kekDefaultLen != kekLen || memcmp(kekDefaultBuf, kekBuf, static_cast<size_t>(kekDefaultLen < kekLen ? kekDefaultLen : kekLen)) != 0))
-            debug("NVRAM: KEK vs KEKDefault raw mismatch detected");
-
-        if (pkBuf && pkBuf != stackBuf) { PVOID b = pkBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); }
-        if (kekBuf && kekBuf != stackBuf) { PVOID b = kekBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); }
-        if (pkDefaultBuf && pkDefaultBuf != stackBuf) { PVOID b = pkDefaultBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); }
-        if (kekDefaultBuf && kekDefaultBuf != stackBuf) { PVOID b = kekDefaultBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); }
-
-        cleanup();
-        return false;
+        return result;
     }
 
 
