@@ -411,15 +411,19 @@ static bool is_vm_brand_multiple(const std::string& vm_brand) {
     return (vm_brand.find(" or ") != std::string::npos);
 }
 
-
-static std::string vm_description(const std::string& vm_brand) {
+static const char* get_vm_description(const std::string& vm_brand) {
 
     // if there's multiple brands, return null
     if (is_vm_brand_multiple(vm_brand)) {
         return "";
     }
 
-    std::map<std::string, const char*> description_table{
+    struct BrandEntry {
+        const char* brand;
+        const char* description;
+    };
+
+    static const BrandEntry table[] = {
         { brands::VBOX, "Oracle VirtualBox (formerly Sun VirtualBox, Sun xVM VirtualBox and InnoTek VirtualBox) is a free and commercial hosted hypervisor for x86 and Apple ARM64 virtualization developed by Oracle Corporation initially released in 2007. It supports Intel's VT-x and AMD's AMD-V hardware-assisted virtualization, while providing an extensive feature set as a staple of its flexibility and wide use cases." },
         { brands::VMWARE, "VMware is a free and commercial type 2 hypervisor initially released in 1999 and acquired by EMC, then Dell, and finally Broadcom Inc in 2023. It was the first commercially successful company to virtualize the x86 architecture, and has since produced many sub-versions of the hypervisor since its inception. It uses binary translation to re-write the code dynamically for a faster performance." },
         { brands::VMWARE_EXPRESS, "VMware Express (formerly VMware GSX Server Express) was a free entry-level version of VMware's hosted hypervisor for small-scale virtualization. Released in 2003, it offered basic VM management capabilities but lacked advanced features like VMotion. Discontinued in 2006 as VMware shifted focus to enterprise solutions like ESX and vSphere." },
@@ -491,9 +495,12 @@ static std::string vm_description(const std::string& vm_brand) {
         { brands::NULL_BRAND, "Indicates no detectable virtualization brand. This result may occur on bare-metal systems, unsupported/obscure hypervisors, or when anti-detection techniques (e.g., VM escaping) are employed by the guest environment." }
     };
 
-    std::map<std::string, const char*>::const_iterator it = description_table.find(vm_brand);
-    if (it != description_table.end()) {
-        return it->second;
+    // Range-based for loop (C++11)
+    // std::string operator== checks size first, so this is highly optimized.
+    for (const auto& entry : table) {
+        if (vm_brand == entry.brand) {
+            return entry.description;
+        }
     }
 
     return "";
@@ -828,7 +835,6 @@ static void general() {
     checker(VM::EDID, "EDID");
     checker(VM::CPU_HEURISTIC, "CPU heuristics");
     checker(VM::CLOCK, "system timers");
-    checker(VM::POST, "BIOS POST time");
 
     // ADD NEW TECHNIQUE CHECKER HERE
 
@@ -865,7 +871,7 @@ static void general() {
     {
         if (is_vm_brand_multiple(vm.brand) == false) {
             std::string current_color = "";
-            std::string &type = vm.type;
+            const char* &type = vm.type;
 
             if (is_anyrun && (type == brands::NULL_BRAND)) {
                 type = "Sandbox";
@@ -961,7 +967,7 @@ static void general() {
     // description manager
     {
         if (vm.brand != brands::NULL_BRAND) {
-            const std::string description = vm_description(vm.brand);
+            const std::string description = get_vm_description(vm.brand);
 
             if (!description.empty()) {
                 std::cout << bold << underline << "VM description:" << ansi_exit << "\n";
@@ -1047,9 +1053,8 @@ static void general() {
 #endif
 }
 
-
-static void generate_json(const std::string &output) {
-    std::vector<std::string> json = {};
+static void generate_json(const char* output) {
+    std::vector<std::string> json;
 
     json.push_back("{");
     json.push_back("\n\t\"is_detected\": ");
@@ -1061,7 +1066,7 @@ static void generate_json(const std::string &output) {
     json.push_back(VM::conclusion());
     json.push_back("\",");
     json.push_back("\n\t\"percentage\": ");
-    json.push_back(std::to_string(VM::percentage()));
+    json.push_back(std::to_string(static_cast<int>(VM::percentage())));
     json.push_back(",");
     json.push_back("\n\t\"detected_technique_count\": ");
     json.push_back(std::to_string(VM::technique_count));
@@ -1073,25 +1078,27 @@ static void generate_json(const std::string &output) {
     json.push_back(VM::is_hardened() ? "true," : "false,");
     json.push_back("\n\t\"detected_techniques\": [");
 
-    std::vector<VM::enum_flags> detected_status = VM::detected_enums();
+    const auto detected_status = VM::detected_enums();
 
     if (detected_status.size() == 0) {
         json.push_back("]\n}");
-    } else {
+    }
+    else {
         for (size_t i = 0; i < detected_status.size(); i++) {
             json.push_back("\n\t\t\"");
-            json.push_back(VM::flag_to_string(detected_status.at(i)));
+            json.push_back(VM::flag_to_string(detected_status[i]));
 
             if (i == detected_status.size() - 1) {
                 json.push_back("\"");
-            } else {
+            }
+            else {
                 json.push_back("\",");
             }
         }
 
         json.push_back("\n\t]\n}");
     }
-        
+
     std::ofstream file(output);
     if (!file) {
         std::cerr << "Failed to open/create file\n";
@@ -1160,7 +1167,7 @@ int main(int argc, char* argv[]) {
     }};
 
     std::string potential_null_arg = "";
-    std::string potential_output_arg = "results.json";
+    const char* potential_output_arg = "results.json";
 
     for (i32 i = 1; i < argc; ++i) {
         const char* arg_string = argv[i];
