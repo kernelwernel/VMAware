@@ -582,7 +582,6 @@ public:
         EDID,
         CPU_HEURISTIC,
         CLOCK,
-        POST,
 
         // Linux and Windows
         SIDT,
@@ -10269,61 +10268,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         SetupDiDestroyDeviceInfoList(devs);
         return !found;
     }
-
-
-    /**
-     * @brief Check for anomalies in BIOS POST time
-     * @category Windows
-     * @implements VM::POST
-     */
-    [[nodiscard]] static bool post() {
-        /*
-        * The motherboard must test and calibrate memory timings, which is time-consuming
-        * The system physically scans PCIe buses, initializes the GPU, powers up USB controllers, and waits for storage drives to report ready
-        * Fans must spin up, and capacitors must charge
-        * 
-        * On VMs, RAM is simply a block of memory allocated by the host OS. There is no training or calibration required
-        * There are no drives to spin up, no fans to check, and no complex PCIe negotiation
-        * So at the end, we see cases like VirtualBox machines reporting 0.9s of last bios time, or QEMU machines with OVMF reporting 0s
-        */
-        static constexpr wchar_t kSubKey[] = L"SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Power";
-        static constexpr wchar_t kValueName[] = L"FwPOSTTime";
-        HKEY hKey;
-
-        long result = RegOpenKeyExW(
-            HKEY_LOCAL_MACHINE,
-            kSubKey,
-            0,
-            KEY_QUERY_VALUE,
-            &hKey
-        );
-
-        if (result != ERROR_SUCCESS) {
-            return false;
-        }
-
-        DWORD data = 0;
-        DWORD dataSize = sizeof(data);
-
-        result = RegQueryValueExW(
-            hKey,
-            kValueName,
-            NULL,
-            NULL,
-            reinterpret_cast<LPBYTE>(&data),
-            &dataSize
-        );
-
-        RegCloseKey(hKey);
-
-        if (result == ERROR_SUCCESS) {
-            if (data < 1500) { // 1.5s
-                return true;
-            }
-        }
-
-        return false;
-    }
     // ADD NEW TECHNIQUE FUNCTION HERE
 #endif
  
@@ -11403,7 +11347,6 @@ public: // START OF PUBLIC FUNCTIONS
             case EDID: return "EDID";
             case CPU_HEURISTIC: return "CPU_HEURISTIC";
             case CLOCK: return "CLOCK";
-            case POST: return "POST";
             // END OF TECHNIQUE LIST
             case DEFAULT: return "setting flag, error";
             case ALL: return "setting flag, error";
@@ -11949,7 +11892,6 @@ std::array<VM::core::technique, VM::enum_size + 1> VM::core::technique_table = [
             {VM::CLOCK, {100, VM::clock}},
             {VM::POWER_CAPABILITIES, {45, VM::power_capabilities}},
             {VM::CPU_HEURISTIC, {90, VM::cpu_heuristic}},
-            {VM::POST, {100, VM::post}},
             {VM::EDID, {100, VM::edid}},
             {VM::BOOT_LOGO, {100, VM::boot_logo}},
             {VM::GPU_CAPABILITIES, {45, VM::gpu_capabilities}},
