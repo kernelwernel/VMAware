@@ -1047,42 +1047,60 @@ static void general() {
 #endif
 }
 
-
 static void generate_json(const char* output) {
+    std::vector<std::string> json;
+
+    json.push_back("{");
+    json.push_back("\n\t\"is_detected\": ");
+    json.push_back(VM::detect() ? "true," : "false,");
+    json.push_back("\n\t\"brand\": \"");
+    json.push_back(VM::brand());
+    json.push_back("\",");
+    json.push_back("\n\t\"conclusion\": \"");
+    json.push_back(VM::conclusion());
+    json.push_back("\",");
+    json.push_back("\n\t\"percentage\": ");
+    json.push_back(std::to_string(static_cast<int>(VM::percentage())));
+    json.push_back(",");
+    json.push_back("\n\t\"detected_technique_count\": ");
+    json.push_back(std::to_string(VM::technique_count));
+    json.push_back(",");
+    json.push_back("\n\t\"vm_type\": \"");
+    json.push_back(VM::type());
+    json.push_back("\",");
+    json.push_back("\n\t\"is_hardened\": ");
+    json.push_back(VM::is_hardened() ? "true," : "false,");
+    json.push_back("\n\t\"detected_techniques\": [");
+
+    const auto detected_status = VM::detected_enums();
+
+    if (detected_status.size() == 0) {
+        json.push_back("]\n}");
+    }
+    else {
+        for (size_t i = 0; i < detected_status.size(); i++) {
+            json.push_back("\n\t\t\"");
+            json.push_back(VM::flag_to_string(detected_status[i]));
+
+            if (i == detected_status.size() - 1) {
+                json.push_back("\"");
+            }
+            else {
+                json.push_back("\",");
+            }
+        }
+
+        json.push_back("\n\t]\n}");
+    }
+
     std::ofstream file(output);
     if (!file) {
         std::cerr << "Failed to open/create file\n";
         return;
     }
 
-    file << "{\n\t\"is_detected\": " << (VM::detect() ? "true," : "false,");
-    file << "\n\t\"brand\": \"" << VM::brand() << "\",";
-    file << "\n\t\"conclusion\": \"" << VM::conclusion() << "\",";
-    file << "\n\t\"percentage\": " << static_cast<int>(VM::percentage()) << ",";
-    file << "\n\t\"detected_technique_count\": " << VM::technique_count << ",";
-    file << "\n\t\"vm_type\": \"" << VM::type() << "\",";
-    file << "\n\t\"is_hardened\": " << (VM::is_hardened() ? "true," : "false,");
-    file << "\n\t\"detected_techniques\": [";
-
-    const auto detected_status = VM::detected_enums();
-
-    if (detected_status.size() == 0) {
-        file << "]\n}";
-    }
-    else {
-        for (size_t i = 0; i < detected_status.size(); i++) {
-            file << "\n\t\t\"";
-            file << VM::flag_to_string(detected_status[i]);
-
-            if (i == detected_status.size() - 1) {
-                file << "\"";
-            }
-            else {
-                file << "\",";
-            }
-        }
-
-        file << "\n\t]\n}";
+    for (const auto& line : json) {
+        file << line;
     }
 
     file.close();

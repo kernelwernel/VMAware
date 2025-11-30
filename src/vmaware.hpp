@@ -691,7 +691,7 @@ public:
 
     static constexpr size_t MAX_DISABLED_TECHNIQUES = 64;
     struct disabled_tech_container {
-        enum_flags flags[MAX_DISABLED_TECHNIQUES];
+        enum_flags flags[MAX_DISABLED_TECHNIQUES] = {};
         size_t count = 0;
 
         VMAWARE_CONSTEXPR_14 void push_back(enum_flags f) {
@@ -721,7 +721,7 @@ public:
     VM(VM&&) = delete;
 
     struct enum_vector {
-        enum_flags data[enum_size];
+        enum_flags data[enum_size] = {};
         size_t count = 0;
 
         VMAWARE_CONSTEXPR_14 void push_back(enum_flags f) {
@@ -10366,8 +10366,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         static std::array<technique, enum_size + 1> technique_table;
 
         // specific to VM::add_custom(), where custom techniques will be stored here
-        static constexpr size_t MAX_CUSTOM_TECHNIQUES = 32;
-        static std::array<custom_technique, MAX_CUSTOM_TECHNIQUES> custom_table;
+        static constexpr size_t MAX_CUSTOM_TECHNIQUES = 256;
+        static std::vector<VM::core::custom_technique> custom_table; // users should not have a limit of how many functions they should add, this is the only exception of a heap-allocated object in our core
         static size_t custom_table_size;
 
         // VM scoreboard table specifically for VM::brand()
@@ -10528,35 +10528,35 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             // for custom VM techniques, won't be used most of the time
-            for (size_t i = 0; i < custom_table_size; ++i) {
-                const auto& technique = custom_table[i];
+            if (!core::custom_table.empty()) {
+                for (const auto& technique : core::custom_table) {
 
-                // if cached, return that result
-                if (memo::is_cached(technique.id)) {
-                    const memo::data_t data = memo::cache_fetch(technique.id);
+                    // if cached, return that result
+                    if (memo::is_cached(technique.id)) {
+                        const memo::data_t data = memo::cache_fetch(technique.id);
 
-                    if (data.result) {
-                        points += data.points;
+                        if (data.result) {
+                            points += data.points;
+                        }
+                        continue;
                     }
 
-                    continue;
+                    // run the custom technique
+                    const bool result = technique.run();
+
+                    // accumulate a few important values
+                    if (result) {
+                        points += technique.points;
+                        detected_count_num++;
+                    }
+
+                    // cache the result
+                    memo::cache_store(
+                        technique.id,
+                        result,
+                        technique.points
+                    );
                 }
-
-                // run the custom technique
-                const bool result = technique.run();
-
-                // accumulate a few important values
-                if (result) {
-                    points += technique.points;
-                    detected_count_num++;
-                }
-
-                // cache the result
-                memo::cache_store(
-                    technique.id,
-                    result,
-                    technique.points
-                );
             }
 
             return points;
@@ -10568,6 +10568,27 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
          *                                     ARGUMENT HANDLER SECTION                                   *
          *                                                                                                *
          * ============================================================================================== */
+
+         /**
+          * basically what this entire recursive variadic template inheritance
+          * fuckery does is manage the variadic arguments being given through
+          * the arg_handler function, which could either be a std::bitset<N>,
+          * a uint8_t, or a combination of both of them. This will handle
+          * both argument types and implement them depending on what their
+          * types are. If it's a std::bitset<N>, do the |= operation on
+          * flag_collector. If it's a uint8_t, simply .set() that into the
+          * flag_collector. That's the gist of it.
+          *
+          * Also I won't even deny, the majority of this section was 90% generated
+          * by chatgpt. Can't be arsed with this C++ variadic templatisation shit.
+          * Like is it really my fault that I have a hard time understanging C++'s
+          * god awful metaprogramming designs? And don't even get me started on SFINAE.
+          *
+          * You don't need an IQ of 3 digits to realise how dogshit this language
+          * is, when you end up in situations where there's a few correct solutions
+          * to a problem, but with a billion ways you can do the same thing but in
+          * the "wrong" way. I genuinely can't wait for Carbon to come out.
+          */
     public:
        public:
            static flagset flag_collector;
@@ -10850,12 +10871,12 @@ public: // START OF PUBLIC FUNCTIONS
         // lambda to manage exceptions
         auto throw_error = [&](const char* text) -> void {
             std::stringstream ss;
-#if (VMA_CPP >= 20 && !CLANG)
+        #if (VMA_CPP >= 20 && !CLANG)
             ss << ", error in " << loc.function_name() << " at " << loc.file_name() << ":" << loc.line() << ")";
-#endif
+        #endif
             ss << ". Consult the documentation's flag handler for VM::check()";
             throw std::invalid_argument(std::string(text) + ss.str());
-            };
+        };
 
         // check if flag is out of range
         if (flag_bit > enum_size) {
@@ -10871,9 +10892,9 @@ public: // START OF PUBLIC FUNCTIONS
             throw_error("Flag argument must be a technique flag and not a settings flag");
         }
 
-#if (VMA_CPP >= 23)
-        [[assume(flag_bit < technique_end)]];
-#endif
+        #if (VMA_CPP >= 23)
+            [[assume(flag_bit < technique_end)]];
+        #endif
 
         // if the technique is already cached, return the cached value instead
         if (memo::is_cached(flag_bit)) {
@@ -10897,9 +10918,9 @@ public: // START OF PUBLIC FUNCTIONS
                 detected_count_num++;
             }
         }
-#ifdef __VMAWARE_DEBUG__
-        total_points += pair.points;
-#endif
+        #ifdef __VMAWARE_DEBUG__
+            total_points += pair.points;
+        #endif
 
         // store the technique result in the cache table
         memo::cache_store(flag_bit, result, pair.points);
@@ -11259,17 +11280,17 @@ public: // START OF PUBLIC FUNCTIONS
         [[assume(percent > 0 && percent <= 100)]];
     #endif
 
-        static u16 id = 0;
-        id++;
+        size_t current_index = core::custom_table.size();
 
         core::custom_technique query{
             percent,
-            static_cast<u16>(static_cast<int>(base_technique_count) + static_cast<int>(id)),
+            static_cast<u16>(static_cast<int>(base_technique_count) + static_cast<int>(current_index) + 1),
             detection_func
         };
 
         technique_count++;
-        core::custom_table[core::custom_table_size++] = query;
+
+        core::custom_table.push_back(query);
     }
 
 
@@ -11781,7 +11802,13 @@ bool VM::memo::conclusion::cached = false;
 std::array<VM::core::brand_entry, VM::core::MAX_BRANDS> VM::core::brand_scoreboard = []() {
     std::array<VM::core::brand_entry, VM::core::MAX_BRANDS> arr{};
     size_t i = 0;
-    auto insert = [&](const char* n) noexcept { if (i < MAX_BRANDS) arr[i++] = { n, 0 }; };
+
+    auto insert = [&](const char* n) noexcept {
+        if (i < VM::core::MAX_BRANDS) {
+            arr[i] = { n, 0 };
+            i++;
+        }
+    };
 
     insert(brands::VBOX);
     insert(brands::VMWARE);
@@ -11904,7 +11931,9 @@ VM::disabled_tech_container VM::disabled_techniques = []() {
 VM::u16 VM::technique_count = base_technique_count;
 
 // this is initialised as empty, because this is where custom techniques can be added at runtime 
-std::array<VM::core::custom_technique, VM::core::MAX_CUSTOM_TECHNIQUES> VM::core::custom_table{};
+std::vector<VM::core::custom_technique> VM::core::custom_table = {
+
+}; 
 size_t VM::core::custom_table_size = 0;
 
 // the 0~100 points are debatable, but we think it's fine how it is. Feel free to disagree
