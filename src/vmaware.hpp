@@ -4495,7 +4495,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             const ULONG64 dtq2 = afterqit2 - beforeqit2;
             const ULONG64 secondRatio = (dtq2 != 0) ? (dtsc2 / dtq2) : 0ULL;
 
-            /* Branchless absolute difference is like:
+            /* branchless absolute difference is like:
                mask = -(uint64_t)(firstRatio < secondRatio) -> 0 or 0xFFFFFFFFFFFFFFFF
                diff  = firstRatio - secondRatio
                abs   = (diff ^ mask) - mask
@@ -11984,7 +11984,7 @@ std::array<VM::core::technique, VM::enum_size + 1> VM::core::technique_table = [
             {VM::MAC_SYS, {100, VM::mac_sys}},
         #endif
 
-        {VM::TIMER, {100, VM::timer}},
+        {VM::TIMER, {150, VM::timer}},
         {VM::INTEL_THREAD_MISMATCH, {50, VM::intel_thread_mismatch}},
         {VM::AMD_THREAD_MISMATCH, {50, VM::amd_thread_mismatch}},
         {VM::XEON_THREAD_MISMATCH, {50, VM::xeon_thread_mismatch}},
