@@ -95,9 +95,9 @@
  * Firstly, the lib is completely static, meaning that there's no need for struct 
  * constructors to be initialized (unless you're using the VM::vmaware struct).
  * The main focus of the lib are the tables:
- *  - the TECHNIQUE table stores all the VM detection technique information in a std::map 
+ *  - the TECHNIQUE table stores all the VM detection technique information in a std::array 
  * 
- *  - the BRAND table stores every VM brand as a std::map as well, but as a scoreboard. 
+ *  - the BRAND table stores every VM brand as a std::array as well, but as a scoreboard. 
  *    This means that if a VM detection technique has detected a VM brand, that brand will have an
  *    incremented score. After every technique is run, the brand with the highest score
  *    is chosen as the officially detected brand. 
@@ -354,7 +354,6 @@
 #include <fstream>
 #include <thread>
 #include <cstdint>
-#include <map>
 #include <unordered_set>
 #include <unordered_map>
 #include <array>
@@ -381,8 +380,8 @@
 
     #pragma comment(lib, "setupapi.lib")
     #pragma comment(lib, "powrprof.lib")
-    #pragma comment(lib, "Mincore.lib")
-    #pragma comment(lib,"wevtapi.lib")
+    #pragma comment(lib, "mincore.lib")
+    #pragma comment(lib, "wevtapi.lib")
 #elif (LINUX)
     #if (x86)
         #include <cpuid.h>
