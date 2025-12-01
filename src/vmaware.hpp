@@ -52,14 +52,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 535
- * - struct for internal cpu operations        => line 717
- * - struct for internal memoization           => line 1141
- * - struct for internal utility functions     => line 1271
- * - struct for internal core components       => line 10375
- * - start of VM detection technique list      => line 2250
- * - start of public VM detection functions    => line 10868
- * - start of externally defined variables     => line 11871
+ * - enums for publicly accessible techniques  => line 538
+ * - struct for internal cpu operations        => line 740
+ * - struct for internal memoization           => line 1222
+ * - struct for internal utility functions     => line 1334
+ * - struct for internal core components       => line 10352
+ * - start of VM detection technique list      => line 2313
+ * - start of public VM detection functions    => line 10866
+ * - start of externally defined variables     => line 11800
  *
  *
  * ============================== EXAMPLE ===================================
@@ -95,9 +95,9 @@
  * Firstly, the lib is completely static, meaning that there's no need for struct 
  * constructors to be initialized (unless you're using the VM::vmaware struct).
  * The main focus of the lib are the tables:
- *  - the TECHNIQUE table stores all the VM detection technique information in a std::map 
+ *  - the TECHNIQUE table stores all the VM detection technique information in a std::array 
  * 
- *  - the BRAND table stores every VM brand as a std::map as well, but as a scoreboard. 
+ *  - the BRAND table stores every VM brand as a std::array as well, but as a scoreboard. 
  *    This means that if a VM detection technique has detected a VM brand, that brand will have an
  *    incremented score. After every technique is run, the brand with the highest score
  *    is chosen as the officially detected brand. 
@@ -352,10 +352,8 @@
 #include <cstring>
 #include <string>
 #include <fstream>
-#include <regex>
 #include <thread>
 #include <cstdint>
-#include <map>
 #include <unordered_set>
 #include <unordered_map>
 #include <array>
@@ -382,8 +380,8 @@
 
     #pragma comment(lib, "setupapi.lib")
     #pragma comment(lib, "powrprof.lib")
-    #pragma comment(lib, "Mincore.lib")
-    #pragma comment(lib,"wevtapi.lib")
+    #pragma comment(lib, "mincore.lib")
+    #pragma comment(lib, "wevtapi.lib")
 #elif (LINUX)
     #if (x86)
         #include <cpuid.h>
@@ -422,12 +420,6 @@
     #include <time.h>
     #include <errno.h>
     #include <chrono>
-#endif
-
-#ifdef _UNICODE
-    #define tregex std::wregex
-#else
-    #define tregex std::regex
 #endif
 
 #ifdef __VMAWARE_DEBUG__
@@ -520,6 +512,17 @@ namespace brands {
     static constexpr const char* UTM = "UTM";
 }
 
+#if (VMA_CPP >= 17)
+    #define VMAWARE_CONSTEXPR constexpr
+#else
+    #define VMAWARE_CONSTEXPR
+#endif
+
+#if (VMA_CPP >= 14)
+    #define VMAWARE_CONSTEXPR_14 constexpr
+#else
+    #define VMAWARE_CONSTEXPR_14
+#endif
 
 struct VM {
 private:
@@ -571,7 +574,6 @@ public:
         EDID,
         CPU_HEURISTIC,
         CLOCK,
-        POST,
 
         // Linux and Windows
         SIDT,
@@ -656,8 +658,7 @@ private:
     static constexpr u16 maximum_points = 5510; // theoretical total points if all VM detections returned true (which is practically impossible)
     static constexpr u16 high_threshold_score = 300; // new threshold score from 150 to 300 if VM::HIGH_THRESHOLD flag is enabled
     static constexpr bool SHORTCUT = true; // macro for whether VM::core::run_all() should take a shortcut by skipping the rest of the techniques if the threshold score is already met
-    
-    
+       
     // intended for loop indexes
     static constexpr u8 enum_begin = 0;
     static constexpr u8 enum_end = enum_size + 1;
@@ -666,7 +667,6 @@ private:
     static constexpr u8 settings_begin = DEFAULT;
     static constexpr u8 settings_end = enum_end;
     
-
 public:
     // for platform compatibility ranges
     static constexpr u8 WINDOWS_START = VM::GPU_CAPABILITIES;
@@ -680,7 +680,19 @@ public:
     // get the total number of techniques that detected a VM
     static u8 detected_count_num; 
 
-    static std::vector<enum_flags> disabled_techniques;
+    static constexpr size_t MAX_DISABLED_TECHNIQUES = 64;
+    struct disabled_tech_container {
+        enum_flags flags[MAX_DISABLED_TECHNIQUES] = {};
+        size_t count = 0;
+
+        VMAWARE_CONSTEXPR_14 void push_back(enum_flags f) {
+            if (count < MAX_DISABLED_TECHNIQUES) flags[count++] = f;
+        }
+
+        constexpr const enum_flags* begin() const { return flags; }
+        constexpr const enum_flags* end() const { return flags + count; }
+    };
+    static disabled_tech_container disabled_techniques;
 
 private:
 
@@ -694,13 +706,24 @@ private:
     using flagset = std::bitset<enum_size + 1>;
 
 public:
-    // this will allow the enum to be used in the public interface as "VM::TECHNIQUE"
-    enum enum_flags tmp_ignore_this = HIGH_THRESHOLD;
-
-    // constructor stuff ignore this
+    // constructor stuff
     VM() = delete;
     VM(const VM&) = delete;
     VM(VM&&) = delete;
+
+    struct enum_vector {
+        enum_flags data[enum_size] = {};
+        size_t count = 0;
+
+        VMAWARE_CONSTEXPR_14 void push_back(enum_flags f) {
+            if (count < enum_size) data[count++] = f;
+        }
+
+        constexpr const enum_flags* begin() const { return data; }
+        constexpr const enum_flags* end() const { return data + count; }
+        constexpr size_t size() const { return count; }
+        constexpr const enum_flags& operator[](size_t i) const { return data[i]; }
+    };
 
 private:
     // macro for bypassing unused parameter/variable warnings
@@ -821,7 +844,7 @@ private:
             return ((ecx == intel_ecx1) || (ecx == intel_ecx2));
         }
 
-        [[nodiscard]] static std::string get_brand() {
+        [[nodiscard]] static const char* get_brand() {
             if (memo::cpu_brand::is_cached()) {
                 return memo::cpu_brand::fetch();
             }
@@ -844,17 +867,18 @@ private:
             buffer[48] = '\0';
 
             // do NOT touch trailing spaces for the AMD_THREAD_MISMATCH technique
-            const size_t len = std::strlen(buffer);
 
             // left-trim only to handle stupid whitespaces before the brand string in ARM CPUs (Virtual CPUs)
-            size_t start = 0;
-            while (start < len && std::isspace(static_cast<u8>(buffer[start]))) ++start;
+            const char* start_ptr = buffer;
+            while (*start_ptr && std::isspace(static_cast<u8>(*start_ptr))) {
+                ++start_ptr;
+            }
 
-            std::string b(buffer + start, len - start);
+            memo::cpu_brand::store(start_ptr);
+            debug("CPU: ", start_ptr);
 
-            memo::cpu_brand::store(b);
-            debug("CPU: ", b);
-            return b;
+            // Return pointer to the static cache, not the local stack buffer
+            return memo::cpu_brand::fetch();
         #endif
         }
 
@@ -1019,9 +1043,37 @@ private:
             }
 
             const model_struct model = get_model();
+            const char* s = model.string.c_str();
 
-            std::regex amd_a_series("AMD A[0-9]+-[0-9]+", std::regex_constants::icase);
-            return std::regex_search(model.string, amd_a_series);
+            for (; *s; ++s) {
+                if ((*s | 0x20) != 'a') continue;
+
+                // check for "MD A" (case-insensitive match for "AMD A")
+                // We need 5 specific characters following the 'A': 'm', 'd', ' ', 'a', and a digit
+                if (!s[1] || !s[2] || !s[3] || !s[4] || !s[5]) break;
+
+                if ((s[1] | 0x20) == 'm' &&
+                    (s[2] | 0x20) == 'd' &&
+                    s[3] == ' ' &&
+                    (s[4] | 0x20) == 'a') {
+
+                    // we found "AMD A" so now verify pattern [0-9]+-[0-9]+
+                    const char* num = s + 5;
+
+                    // must have at least one digit immediately after "AMD A"
+                    if (*num < '0' || *num > '9') continue;
+                    do { num++; } while (*num >= '0' && *num <= '9');
+                    if (*num != '-') continue;
+                    num++;
+
+                    // Must have at least one digit after the hyphen
+                    if (*num >= '0' && *num <= '9') {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
         }
 
         struct model_struct {
@@ -1138,133 +1190,144 @@ private:
         }
     };
 
+    static void str_copy(char* dest, const char* src, size_t max_len) {
+        size_t i = 0;
+        while (src[i] != '\0' && i < max_len - 1) {
+            dest[i] = src[i];
+            i++;
+        }
+        dest[i] = '\0';
+    }
+
+    static void str_cat(char* dest, const char* src, size_t max_len) {
+        size_t i = 0;
+        while (dest[i] != '\0') i++;
+        size_t j = 0;
+        while (src[j] != '\0' && i < max_len - 1) {
+            dest[i++] = src[j++];
+        }
+        dest[i] = '\0';
+    }
+
+    static bool str_eq(const char* a, const char* b) {
+        if (a == b) return true;
+        if (!a || !b) return false;
+        while (*a && *b) {
+            if (*a != *b) return false;
+            a++; b++;
+        }
+        return *a == *b;
+    }
+
     // memoization
     struct memo {
-    private:
-        using points_t = u8;
-
-    public:
         struct data_t {
             bool result;
-            points_t points;
+            u8 points;
+            bool cached;
+        };
+        struct cache_entry {
+            bool result;
+            u8 points;
+            bool has_value;
         };
 
-    private:
-        static std::map<u16, data_t> cache_table;
-        static flagset cache_keys;
+        static std::array<cache_entry, enum_size + 1> cache_table;
 
-    public:
-        static void cache_store(const u16 technique_macro, const bool result, const points_t points) {
-            cache_table[technique_macro] = { result, points };
-            cache_keys.set(technique_macro);
-        }
-
-        static bool is_cached(const u16 technique_macro) {
-            return cache_keys.test(technique_macro);
-        }
-
-        static data_t cache_fetch(const u16 technique_macro) {
-            return cache_table.at(technique_macro);
-        }
-
-        static void uncache(const u16 technique_macro) {
-            cache_table.erase(technique_macro);
-            cache_keys.set(technique_macro, false);
-        }
-
-        static std::vector<u16> cache_fetch_all() {
-            std::vector<u16> vec;
-
-            for (auto it = cache_table.cbegin(); it != cache_table.cend(); ++it) {
-                const data_t data = it->second;
-
-                if (data.result == true) {
-                    const u16 macro = it->first;
-                    vec.push_back(macro);
-                }
+        static void cache_store(u16 flag, bool result, u8 points) {
+            if (flag <= enum_size) {
+                cache_table[flag] = { result, points, true };
             }
+        }
 
-            return vec;
+        static bool is_cached(u16 flag) {
+            if (flag <= enum_size) {
+                return cache_table[flag].has_value;
+            }
+            return false;
+        }
+
+        static data_t cache_fetch(u16 flag) {
+            if (flag <= enum_size && cache_table[flag].has_value) {
+                return { cache_table[flag].result, cache_table[flag].points, true };
+            }
+            return { false, 0, false };
+        }
+
+        static void uncache(u16 flag) {
+            if (flag <= enum_size) {
+                cache_table[flag].has_value = false;
+            }
         }
 
         struct brand {
-            static std::string brand_cache;
+            static char brand_cache[512];
+            static bool cached;
 
-            static const std::string& fetch() {
-                return brand_cache;
+            static void store(const char* s) {
+                str_copy(brand_cache, s, sizeof(brand_cache));
+                cached = true;
             }
 
-            static void store(const std::string& p_brand) {
-                brand_cache = p_brand;
-            }
-
-            static bool is_cached() {
-                return (!brand_cache.empty());
-            }
+            static bool is_cached() { return cached; }
+            static const char* fetch() { return brand_cache; }
         };
 
         struct multi_brand {
-            static std::string brand_cache;
+            static char brand_cache[1024];
+            static bool cached;
 
-            static const std::string& fetch() {
-                return brand_cache;
+            static void store(const char* s) {
+                str_copy(brand_cache, s, sizeof(brand_cache));
+                cached = true;
             }
 
-            static void store(const std::string& p_brand) {
-                brand_cache = p_brand;
-            }
+            static bool is_cached() { return cached; }
+            static const char* fetch() { return brand_cache; }
+        };
 
-            static bool is_cached() {
-                return (!brand_cache.empty());
+        // helper specifically for conclusion strings
+        struct conclusion {
+            static char cache[512];
+            static bool cached;
+            static void store(const char* s) {
+                str_copy(cache, s, sizeof(cache));
+                cached = true;
             }
+            static const char* fetch() { return cache; }
         };
 
         struct cpu_brand {
-            static std::string brand_cache;
-
-            static const std::string& fetch() {
-                return brand_cache;
+            static char brand_cache[128];
+            static bool cached;
+            static void store(const char* s) {
+                str_copy(brand_cache, s, sizeof(brand_cache));
+                cached = true;
             }
+            static bool is_cached() { return cached; }
+            static const char* fetch() { return brand_cache; }
+        };
 
-            static void store(const std::string& p_brand) {
-                brand_cache = p_brand;
-            }
-
-            static bool is_cached() {
-                return (!brand_cache.empty());
+        struct threadcount {
+            static u32 threadcount_cache;
+            static u32 fetch() {
+                if (threadcount_cache != 0) {
+                    return threadcount_cache;
+                }
+                threadcount_cache = std::thread::hardware_concurrency();
+                return threadcount_cache;
             }
         };
 
         struct hyperx {
             static hyperx_state state;
             static bool cached;
-
-            static hyperx_state fetch() {
-                return state;
-            }
-
+            static hyperx_state fetch() { return state; }
             static void store(const hyperx_state p_state) {
                 state = p_state;
                 cached = true;
             }
-
-            static bool is_cached() {
-                return cached;
-            }
-        };
-
-        struct threadcount {
-            static u32 threadcount_cache;
-
-            static u32 fetch() {
-                if (threadcount_cache != 0) {
-                    return threadcount_cache;
-                }
-
-                threadcount_cache = std::thread::hardware_concurrency();
-
-                return threadcount_cache;
-            }
+            static bool is_cached() { return cached; }
         };
     };
 
@@ -4414,7 +4477,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             using fn_t = u64 (*)();
 
             // make the pointer volatile so the compiler treats the call as opaque/indirect
-            volatile fn_t rd_ptr = +rd_lambda;    // +lambda forces conversion to function ptr, so it won't be inlined, we need this to prevent some optimizatons by the compiler
+            volatile fn_t rd_ptr = +rd_lambda;    // +lambda forces conversion to function ptr, so it won't be inlined, we need to prevent the compiler from inlining this
             volatile fn_t xor_ptr = +xor_lambda;
 
             // first measurement
@@ -4453,7 +4516,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             const ULONG64 dtq2 = afterqit2 - beforeqit2;
             const ULONG64 secondRatio = (dtq2 != 0) ? (dtsc2 / dtq2) : 0ULL;
 
-            /* Branchless absolute difference is like:
+            /* branchless absolute difference is like:
                mask = -(uint64_t)(firstRatio < secondRatio) -> 0 or 0xFFFFFFFFFFFFFFFF
                diff  = firstRatio - secondRatio
                abs   = (diff ^ mask) - mask
@@ -5186,17 +5249,17 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         cat: /sys/class/dmi/id/product_uuid: Permission denied
         */
 
-        constexpr std::array<const char*, 7> dmi_array {
-            "/sys/class/dmi/id/bios_vendor",
-            "/sys/class/dmi/id/board_name",
-            "/sys/class/dmi/id/board_vendor",
-            "/sys/class/dmi/id/chassis_asset_tag",
-            "/sys/class/dmi/id/product_family",
-            "/sys/class/dmi/id/product_sku",
-            "/sys/class/dmi/id/sys_vendor"
+        constexpr std::array<const char*, 7> dmi_array{
+    "/sys/class/dmi/id/bios_vendor",
+    "/sys/class/dmi/id/board_name",
+    "/sys/class/dmi/id/board_vendor",
+    "/sys/class/dmi/id/chassis_asset_tag",
+    "/sys/class/dmi/id/product_family",
+    "/sys/class/dmi/id/product_sku",
+    "/sys/class/dmi/id/sys_vendor"
         };
 
-        constexpr std::array<std::pair<const char*, const char*>, 15> vm_table {{
+        constexpr std::array<std::pair<const char*, const char*>, 15> vm_table{ {
             { "kvm", brands::KVM },
             { "openstack", brands::OPENSTACK },
             { "kubevirt", brands::KUBEVIRT },
@@ -5213,35 +5276,37 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             { "hyper-v", brands::HYPERV },
             { "apple virtualization", brands::APPLE_VZ },
             { "google compute engine", brands::GCE }
-        }};
+        } };
 
-        auto to_lower = [](std::string& str) noexcept {
-            for (auto& c : str) {
-                // std::tolower is surprisingly slow because it handles locales
-                // for ASCII strings simple bitwise math is 10x faster             
-                if (c >= 'A' && c <= 'Z') {
-                    c |= 0x20;
+
+        for (const auto file : dmi_array) {
+            if (!util::exists(file)) {
+                continue;
+            }
+
+            std::string content = util::read_file(file);
+            if (content.empty()) {
+                continue;
+            }
+            char* data = &content[0];
+            const size_t len = content.size();
+            for (size_t i = 0; i < len; ++i) {
+                if (data[i] >= 'A' && data[i] <= 'Z') {
+                    data[i] |= 0x20;
                 }
             }
-        };
 
-        for (const auto &vm_string : vm_table) {
-            for (const auto file : dmi_array) {
-                if (!util::exists(file)) {
-                    continue;
-                }
+            for (const auto& vm_string : vm_table) {
+                if (content.find(vm_string.first) != std::string::npos) {
 
-                std::string content = util::read_file(file);
-
-                to_lower(content);
-
-                if (std::regex_search(content, std::regex(vm_string.first))) {
                     debug("DMI_SCAN: content = ", content);
+
                     if (strcmp(vm_string.second, brands::AWS_NITRO) == 0) {
                         if (smbios_vm_bit()) {
                             return core::add(brands::AWS_NITRO);
                         }
-                    } else {
+                    }
+                    else {
                         return core::add(vm_string.second);
                     }
                 }
@@ -6335,88 +6400,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             enum_devices(hRoot);
             RegCloseKey(hRoot);
         }
-
-        auto scan_evt_logs = [&]() noexcept {
-            static constexpr const wchar_t* q = L"<QueryList>"
-                L"  <Query Id='0' Path='Microsoft-Windows-Kernel-PnP/Device Management'>"
-                L"    <Select Path='Microsoft-Windows-Kernel-PnP/Device Management'>"
-                L"      *[System[(Provider[@Name='Microsoft-Windows-Kernel-PnP'] and (EventID=1065 or EventID=1011 or EventID=1010 or EventID=1000 or EventID=1012 or EventID=1013 or EventID=1014))]]"
-                L"    </Select>"
-                L"  </Query>"
-                L"  <Query Id='1' Path='Microsoft-Windows-Kernel-PnP/Driver Watchdog'>"
-                L"    <Select Path='Microsoft-Windows-Kernel-PnP/Driver Watchdog'>"
-                L"      *[System[(Provider[@Name='Microsoft-Windows-Kernel-PnP'] and (EventID=900 or EventID=901 or EventID=902 or EventID=903))]]"
-                L"    </Select>"
-                L"  </Query>"
-                L"  <Query Id='2' Path='Microsoft-Windows-UserPnp/DeviceInstall'>"
-                L"    <Select Path='Microsoft-Windows-UserPnp/DeviceInstall'>"
-                L"      *[System[(Provider[@Name='Microsoft-Windows-UserPnp'] and (EventID=8000 or EventID=8001))]]"
-                L"    </Select>"
-                L"  </Query>"
-                L"</QueryList>";
-
-            const EVT_HANDLE hSub = EvtQuery(nullptr, nullptr, q, EvtQueryReverseDirection | EvtQueryTolerateQueryErrors);
-            if (!hSub) return;
-
-            EVT_HANDLE hEvents[1] = { nullptr };
-            DWORD returned = 0;
-
-            static thread_local std::vector<wchar_t> buf;
-            if (buf.empty()) buf.resize(8192);
-
-            while (true) {
-                returned = 0;
-                hEvents[0] = nullptr;
-
-                if (!EvtNext(hSub, 1, hEvents, 2000, 0, &returned)) {
-                    const DWORD err = GetLastError();
-                    if (err == ERROR_NO_MORE_ITEMS) break;
-                    if (err == ERROR_TIMEOUT) continue;
-                    break;
-                }
-
-                if (returned == 0 || hEvents[0] == nullptr) {
-                    if (hEvents[0]) { EvtClose(hEvents[0]); hEvents[0] = nullptr; }
-                    continue;
-                }
-
-                DWORD bufUsed = 0;
-                DWORD bufProps = 0;
-
-                if (!EvtRender(nullptr, hEvents[0], EvtRenderEventXml,
-                    static_cast<DWORD>(buf.size() * sizeof(wchar_t)),
-                    buf.data(), &bufUsed, &bufProps)) {
-                    const DWORD err = GetLastError();
-                    if (err == ERROR_INSUFFICIENT_BUFFER) {
-                        size_t neededChars = (bufUsed + sizeof(wchar_t) - 1) / sizeof(wchar_t);
-                        buf.resize(neededChars + 1);
-
-                        if (!EvtRender(nullptr, hEvents[0], EvtRenderEventXml,
-                            static_cast<DWORD>(buf.size() * sizeof(wchar_t)),
-                            buf.data(), &bufUsed, &bufProps)) {
-                            if (hEvents[0]) { EvtClose(hEvents[0]); hEvents[0] = nullptr; }
-                            continue;
-                        }
-                    }
-                    else {
-                        if (hEvents[0]) { EvtClose(hEvents[0]); hEvents[0] = nullptr; }
-                        continue;
-                    }
-                }
-
-                const size_t charCount = bufUsed / sizeof(wchar_t);
-                if (charCount >= buf.size()) buf.resize(charCount + 1);
-                buf[charCount] = L'\0';
-
-                scan_text_ids(buf.data());
-
-                if (hEvents[0]) { EvtClose(hEvents[0]); hEvents[0] = nullptr; }
-            }
-
-            EvtClose(hSub);
-        };
-
-        scan_evt_logs();
         #endif
 
         for (auto& d : devices) {
@@ -6540,24 +6523,27 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::HWMODEL
      */
     [[nodiscard]] static bool hwmodel() {
-        const auto result = util::sys_result("sysctl -n hw.model");
+        
+        //hw.model strings are short (like for example MacBookPro16,1), 128 bytes is plenty
+        char buffer[128] = { 0 };
+        size_t size = sizeof(buffer);
 
-        std::smatch match;
-
-        if (result == nullptr) {
-            debug("HWMODEL: ", "null result received");
+        // sysctlbyname queries the kernel directly, bypassing the overhead of 
+        // fork(), exec(), and pipe() found in util::sys_result (popen)
+        if (sysctlbyname("hw.model", buffer, &size, nullptr, 0) != 0) {
+            debug("HWMODEL: ", "failed to read hw.model");
             return false;
         }
 
-        debug("HWMODEL: ", "output = ", *result);
+        // sysctlbyname returns the raw value (usually without a trailing newline),
+        // so no trimming is required
+        debug("HWMODEL: ", "output = ", buffer);
 
-        // if string contains "Mac" anywhere in the string, assume it's baremetal
-        if (std::regex_search(*result, match, std::regex("Mac"))) {
+        if (strstr(buffer, "Mac") != nullptr) {
             return false;
         }
 
-        // not sure about the other VMs, more could potentially be added
-        if (std::regex_search(*result, match, std::regex("VMware"))) {
+        if (strstr(buffer, "VMware") != nullptr) {
             return core::add(brands::VMWARE);
         }
 
@@ -9210,6 +9196,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         struct VARIABLE_NAME { ULONG NextEntryOffset; GUID VendorGuid; WCHAR Name[1]; };
         using PVARIABLE_NAME = VARIABLE_NAME*;
         using NtEnumerateSystemEnvironmentValuesEx_t = NTSTATUS(__stdcall*)(ULONG, PVOID, PULONG);
+        using NtQuerySystemEnvironmentValueEx_t = NTSTATUS(__stdcall*)(PUNICODE_STRING VariableName, LPGUID VendorGuid, PVOID Value, PULONG ValueLength, PULONG Attributes);
 
         // Secure Boot stuff
         bool found_dbDefault = false, found_dbxDefault = false, found_KEKDefault = false, found_PKDefault = false;
@@ -9220,315 +9207,360 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         */
         bool found_MORCL = false;
 
-        if (!util::is_admin()) return false;
+        bool result = false;
 
         HANDLE hToken = nullptr;
-        const HANDLE hCurrentProcess = reinterpret_cast<HANDLE>(-1LL);
-        if (!OpenProcessToken(hCurrentProcess, TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &hToken)) return false;
-
-        LUID luid{};
+        PVOID enumBase = nullptr;
+        BYTE* pkDefaultBuf = nullptr;
+        BYTE* pkBuf = nullptr;
+        BYTE* kekDefaultBuf = nullptr;
+        BYTE* kekBuf = nullptr;
         bool priv_enabled = false;
-        auto cleanup = [&]() noexcept {
-            if (priv_enabled && hToken) {
-                TOKEN_PRIVILEGES tpDisable{};
-                tpDisable.PrivilegeCount = 1;
-                tpDisable.Privileges[0].Luid = luid;
-                tpDisable.Privileges[0].Attributes = 0;
-                AdjustTokenPrivileges(hToken, FALSE, &tpDisable, sizeof(TOKEN_PRIVILEGES), nullptr, nullptr);
-            }
-            if (hToken) { CloseHandle(hToken); hToken = nullptr; }
-            };
+        LUID luid{};
 
-        if (!LookupPrivilegeValue(nullptr, SE_SYSTEM_ENVIRONMENT_NAME, &luid)) { cleanup(); return false; }
-        TOKEN_PRIVILEGES tpEnable{}; tpEnable.PrivilegeCount = 1; tpEnable.Privileges[0].Luid = luid; tpEnable.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
-        AdjustTokenPrivileges(hToken, FALSE, &tpEnable, sizeof(TOKEN_PRIVILEGES), nullptr, nullptr);
-        if (GetLastError() != ERROR_SUCCESS) { cleanup(); return false; }
-        priv_enabled = true;
-
-        const HMODULE ntdll = util::get_ntdll();
-        if (!ntdll) { cleanup(); return false; }
-
-        const char* names[] = { "NtEnumerateSystemEnvironmentValuesEx", "NtAllocateVirtualMemory", "NtFreeVirtualMemory" };
-        void* funcs[sizeof(names) / sizeof(names[0])] = {};
-        util::get_function_address(ntdll, names, funcs, sizeof(names) / sizeof(names[0]));
-        const auto pNtEnum = reinterpret_cast<NtEnumerateSystemEnvironmentValuesEx_t>(funcs[0]);
+        NtEnumerateSystemEnvironmentValuesEx_t pNtEnum = nullptr;
         typedef NTSTATUS(__stdcall* NtAllocateVirtualMemory_t)(HANDLE, PVOID*, ULONG_PTR, PSIZE_T, ULONG, ULONG);
         typedef NTSTATUS(__stdcall* NtFreeVirtualMemory_t)(HANDLE, PVOID*, PSIZE_T, ULONG);
-        const auto pNtAllocateVirtualMemory = reinterpret_cast<NtAllocateVirtualMemory_t>(funcs[1]);
-        const auto pNtFreeVirtualMemory = reinterpret_cast<NtFreeVirtualMemory_t>(funcs[2]);
-        if (!pNtEnum || !pNtAllocateVirtualMemory || !pNtFreeVirtualMemory) { cleanup(); return false; }
+        NtAllocateVirtualMemory_t pNtAllocateVirtualMemory = nullptr;
+        NtFreeVirtualMemory_t pNtFreeVirtualMemory = nullptr;
+        NtQuerySystemEnvironmentValueEx_t pNtQuery = nullptr;
 
-        bool hasFunction = false, success = false;
-        PVOID enumBase = nullptr;
-        SIZE_T enumSize = 0;
-        ULONG bufferLength = 0;
-        // ask for size
-        if (pNtEnum) {
-            hasFunction = true;
-            pNtEnum(static_cast<ULONG>(1), nullptr, &bufferLength);
-            if (bufferLength != 0) {
-                enumSize = static_cast<SIZE_T>(bufferLength);
-                NTSTATUS st = pNtAllocateVirtualMemory(hCurrentProcess, &enumBase, 0, &enumSize, static_cast<ULONG>(MEM_COMMIT | MEM_RESERVE), static_cast<ULONG>(PAGE_READWRITE));
-                if (st == 0 && enumBase) {
-                    st = pNtEnum(static_cast<ULONG>(1), enumBase, &bufferLength);
-                    if (st == 0) { success = true; }
-                    else { SIZE_T zero = 0; pNtFreeVirtualMemory(hCurrentProcess, &enumBase, &zero, 0x8000); enumBase = nullptr; enumSize = 0; }
+        const HANDLE hCurrentProcess = reinterpret_cast<HANDLE>(-1LL);
+
+        do {
+            if (!util::is_admin()) break;
+
+            if (!OpenProcessToken(hCurrentProcess, TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &hToken)) break;
+
+            if (!LookupPrivilegeValue(nullptr, SE_SYSTEM_ENVIRONMENT_NAME, &luid)) break;
+
+            TOKEN_PRIVILEGES tpEnable{};
+            tpEnable.PrivilegeCount = 1;
+            tpEnable.Privileges[0].Luid = luid;
+            tpEnable.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+            AdjustTokenPrivileges(hToken, FALSE, &tpEnable, sizeof(TOKEN_PRIVILEGES), nullptr, nullptr);
+            if (GetLastError() != ERROR_SUCCESS) break;
+            priv_enabled = true;
+
+            const HMODULE ntdll = util::get_ntdll();
+            if (!ntdll) break;
+
+            const char* names[] = { "NtEnumerateSystemEnvironmentValuesEx", "NtAllocateVirtualMemory", "NtFreeVirtualMemory", "NtQuerySystemEnvironmentValueEx" };
+            void* funcs[sizeof(names) / sizeof(names[0])] = {};
+            util::get_function_address(ntdll, names, funcs, sizeof(names) / sizeof(names[0]));
+            pNtEnum = reinterpret_cast<NtEnumerateSystemEnvironmentValuesEx_t>(funcs[0]);
+            pNtAllocateVirtualMemory = reinterpret_cast<NtAllocateVirtualMemory_t>(funcs[1]);
+            pNtFreeVirtualMemory = reinterpret_cast<NtFreeVirtualMemory_t>(funcs[2]);
+            pNtQuery = reinterpret_cast<NtQuerySystemEnvironmentValueEx_t>(funcs[3]);
+
+            if (!pNtEnum || !pNtAllocateVirtualMemory || !pNtFreeVirtualMemory || !pNtQuery) break;
+
+            bool hasFunction = false, success = false;
+            SIZE_T enumSize = 0;
+            ULONG bufferLength = 0;
+
+            // ask for size
+            if (pNtEnum) {
+                hasFunction = true;
+                pNtEnum(static_cast<ULONG>(1), nullptr, &bufferLength);
+                if (bufferLength != 0) {
+                    enumSize = static_cast<SIZE_T>(bufferLength);
+                    NTSTATUS st = pNtAllocateVirtualMemory(hCurrentProcess, &enumBase, 0, &enumSize, static_cast<ULONG>(MEM_COMMIT | MEM_RESERVE), static_cast<ULONG>(PAGE_READWRITE));
+                    if (st == 0 && enumBase) {
+                        st = pNtEnum(static_cast<ULONG>(1), enumBase, &bufferLength);
+                        if (st == 0) { success = true; }
+                        else {
+                            SIZE_T zero = 0;
+                            pNtFreeVirtualMemory(hCurrentProcess, &enumBase, &zero, 0x8000);
+                            enumBase = nullptr;
+                            enumSize = 0;
+                        }
+                    }
                 }
             }
-        }
 
-        if (!hasFunction) { debug("NVRAM: NtEnumerateSystemEnvironmentValuesEx could not be resolved"); cleanup(); return true; }
-        if (!success) { debug("NVRAM: System is not UEFI"); cleanup(); return false; }
-
-        // helpers stuff
-        auto ci_ascii_contains = [](const BYTE* data, size_t len, const char* pat) noexcept -> bool {
-            if (!data || len == 0 || !pat) return false;
-            const size_t plen = strlen(pat); if (len < plen) return false;
-            const BYTE p0 = static_cast<BYTE>((pat[0] >= 'A' && pat[0] <= 'Z') ? (pat[0] + 32) : pat[0]);
-            const BYTE* end = data + (len - plen);
-            for (const BYTE* p = data; p <= end; ++p) {
-                BYTE c0 = *p; c0 = static_cast<BYTE>((c0 >= 'A' && c0 <= 'Z') ? (c0 + 32) : c0);
-                if (c0 != p0) continue;
-                bool ok = true;
-                for (size_t j = 1; j < plen; ++j) {
-                    BYTE dj = p[j]; dj = static_cast<BYTE>((dj >= 'A' && dj <= 'Z') ? (dj + 32) : dj);
-                    BYTE pj = static_cast<BYTE>((pat[j] >= 'A' && pat[j] <= 'Z') ? (pat[j] + 32) : pat[j]);
-                    if (dj != pj) { ok = false; break; }
-                }
-                if (ok) return true;
+            if (!hasFunction) {
+                debug("NVRAM: NtEnumerateSystemEnvironmentValuesEx could not be resolved");
+                result = true;
+                break;
             }
-            return false;
-            };
-        auto ci_utf16le_contains = [](const WCHAR* data, size_t wlen, const wchar_t* pat) noexcept -> bool {
-            if (!data || wlen == 0 || !pat) return false;
-            const size_t plen = wcslen(pat); if (wlen < plen) return false;
-            const WCHAR p0 = static_cast<WCHAR>((pat[0] >= L'A' && pat[0] <= L'Z') ? (pat[0] + 32) : pat[0]);
-            const WCHAR* end = data + (wlen - plen);
-            for (const WCHAR* p = data; p <= end; ++p) {
-                WCHAR c0 = *p; c0 = static_cast<WCHAR>((c0 >= L'A' && c0 <= L'Z') ? (c0 + 32) : c0);
-                if (c0 != p0) continue;
-                bool ok = true;
-                for (size_t j = 1; j < plen; ++j) {
-                    WCHAR dj = p[j]; dj = static_cast<WCHAR>((dj >= L'A' && dj <= L'Z') ? (dj + 32) : dj);
-                    WCHAR pj = static_cast<WCHAR>((pat[j] >= L'A' && pat[j] <= L'Z') ? (pat[j] + 32) : pat[j]);
-                    if (dj != pj) { ok = false; break; }
-                }
-                if (ok) return true;
+            if (!success) {
+                debug("NVRAM: System is not UEFI");
+                result = false;
+                break;
             }
-            return false;
+
+            // helpers stuff
+            auto ci_ascii_contains = [](const BYTE* data, size_t len, const char* pat) noexcept -> bool {
+                if (!data || len == 0 || !pat) return false;
+                const size_t plen = strlen(pat); if (len < plen) return false;
+                const BYTE p0 = static_cast<BYTE>((pat[0] >= 'A' && pat[0] <= 'Z') ? (pat[0] + 32) : pat[0]);
+                const BYTE* end = data + (len - plen);
+                for (const BYTE* p = data; p <= end; ++p) {
+                    BYTE c0 = *p; c0 = static_cast<BYTE>((c0 >= 'A' && c0 <= 'Z') ? (c0 + 32) : c0);
+                    if (c0 != p0) continue;
+                    bool ok = true;
+                    for (size_t j = 1; j < plen; ++j) {
+                        BYTE dj = p[j]; dj = static_cast<BYTE>((dj >= 'A' && dj <= 'Z') ? (dj + 32) : dj);
+                        BYTE pj = static_cast<BYTE>((pat[j] >= 'A' && pat[j] <= 'Z') ? (pat[j] + 32) : pat[j]);
+                        if (dj != pj) { ok = false; break; }
+                    }
+                    if (ok) return true;
+                }
+                return false;
+            };
+            auto ci_utf16le_contains = [](const WCHAR* data, size_t wlen, const wchar_t* pat) noexcept -> bool {
+                if (!data || wlen == 0 || !pat) return false;
+                const size_t plen = wcslen(pat); if (wlen < plen) return false;
+                const WCHAR p0 = static_cast<WCHAR>((pat[0] >= L'A' && pat[0] <= L'Z') ? (pat[0] + 32) : pat[0]);
+                const WCHAR* end = data + (wlen - plen);
+                for (const WCHAR* p = data; p <= end; ++p) {
+                    WCHAR c0 = *p; c0 = static_cast<WCHAR>((c0 >= L'A' && c0 <= L'Z') ? (c0 + 32) : c0);
+                    if (c0 != p0) continue;
+                    bool ok = true;
+                    for (size_t j = 1; j < plen; ++j) {
+                        WCHAR dj = p[j]; dj = static_cast<WCHAR>((dj >= L'A' && dj <= L'Z') ? (dj + 32) : dj);
+                        WCHAR pj = static_cast<WCHAR>((pat[j] >= L'A' && pat[j] <= L'Z') ? (pat[j] + 32) : pat[j]);
+                        if (dj != pj) { ok = false; break; }
+                    }
+                    if (ok) return true;
+                }
+                return false;
             };
 
-        constexpr const char* vendor_ascii[] = { "msi","asrock","asus","asustek","gigabyte","giga-byte","micro-star","microstar" };
-        constexpr const wchar_t* vendor_wide[] = { L"msi",L"asrock",L"asus",L"asustek",L"gigabyte",L"giga-byte",L"micro-star",L"microstar" };
-        constexpr const char redhat_ascii[] = "red hat";
-        constexpr const wchar_t redhat_wide[] = L"red hat";
+            constexpr const char* vendor_ascii[] = { "msi","asrock","asus","asustek","gigabyte","giga-byte","micro-star","microstar" };
+            constexpr const wchar_t* vendor_wide[] = { L"msi",L"asrock",L"asus",L"asustek",L"gigabyte",L"giga-byte",L"micro-star",L"microstar" };
+            constexpr const char redhat_ascii[] = "red hat";
+            constexpr const wchar_t redhat_wide[] = L"red hat";
 
-        constexpr size_t MAX_VAR_SZ = 131072; // 128KB
-        // Use unique_ptr to move buffer from stack to heap (fixes 132KB stack usage)
-        std::unique_ptr<BYTE[]> stackBufPtr(new BYTE[MAX_VAR_SZ]());
-        BYTE* stackBuf = stackBufPtr.get();
+            SIZE_T pkDefaultLen = 0, pkLen = 0, kekDefaultLen = 0, kekLen = 0;
 
-        BYTE* pkDefaultBuf = nullptr, * pkBuf = nullptr, * kekDefaultBuf = nullptr, * kekBuf = nullptr;
-        SIZE_T pkDefaultLen = 0, pkLen = 0, kekDefaultLen = 0, kekLen = 0;
+            auto read_var_to_buf = [&](const std::wstring& name, GUID& guid, BYTE*& outBuf, SIZE_T& outLen) noexcept -> bool {
+                UNICODE_STRING uStr{};
+                uStr.Buffer = const_cast<PWSTR>(name.c_str());
+                uStr.Length = static_cast<USHORT>(name.length() * sizeof(wchar_t));
+                uStr.MaximumLength = uStr.Length + sizeof(wchar_t);
 
-        auto read_var_to_buf = [&](const std::wstring& name, const GUID& guid, BYTE*& outBuf, SIZE_T& outLen) noexcept -> bool {
-            wchar_t guidStr[40] = {};
-            constexpr wchar_t hex[] = L"0123456789ABCDEF";
-            guidStr[0] = L'{';
-            guidStr[1] = hex[static_cast<size_t>((guid.Data1 >> 28) & 0xF)]; guidStr[2] = hex[static_cast<size_t>((guid.Data1 >> 24) & 0xF)]; guidStr[3] = hex[static_cast<size_t>((guid.Data1 >> 20) & 0xF)]; guidStr[4] = hex[static_cast<size_t>((guid.Data1 >> 16) & 0xF)];
-            guidStr[5] = hex[static_cast<size_t>((guid.Data1 >> 12) & 0xF)]; guidStr[6] = hex[static_cast<size_t>((guid.Data1 >> 8) & 0xF)]; guidStr[7] = hex[static_cast<size_t>((guid.Data1 >> 4) & 0xF)]; guidStr[8] = hex[static_cast<size_t>(guid.Data1 & 0xF)];
-            guidStr[9] = L'-';
-            guidStr[10] = hex[static_cast<size_t>((guid.Data2 >> 12) & 0xF)]; guidStr[11] = hex[static_cast<size_t>((guid.Data2 >> 8) & 0xF)]; guidStr[12] = hex[static_cast<size_t>((guid.Data2 >> 4) & 0xF)]; guidStr[13] = hex[static_cast<size_t>(guid.Data2 & 0xF)];
-            guidStr[14] = L'-';
-            guidStr[15] = hex[static_cast<size_t>((guid.Data3 >> 12) & 0xF)]; guidStr[16] = hex[static_cast<size_t>((guid.Data3 >> 8) & 0xF)]; guidStr[17] = hex[static_cast<size_t>((guid.Data3 >> 4) & 0xF)]; guidStr[18] = hex[static_cast<size_t>(guid.Data3 & 0xF)];
-            guidStr[19] = L'-';
-            guidStr[20] = hex[static_cast<size_t>((guid.Data4[0] >> 4) & 0xF)]; guidStr[21] = hex[static_cast<size_t>(guid.Data4[0] & 0xF)]; guidStr[22] = hex[static_cast<size_t>((guid.Data4[1] >> 4) & 0xF)]; guidStr[23] = hex[static_cast<size_t>(guid.Data4[1] & 0xF)];
-            guidStr[24] = L'-';
-            size_t idx = 25;
-            for (int i = 2; i < 8; ++i) { guidStr[idx++] = hex[static_cast<size_t>((guid.Data4[i] >> 4) & 0xF)]; guidStr[idx++] = hex[static_cast<size_t>(guid.Data4[i] & 0xF)]; }
-            guidStr[37] = L'}'; guidStr[38] = L'\0';
+                ULONG reqSize = 0;
+                NTSTATUS st = pNtQuery(&uStr, &guid, nullptr, &reqSize, nullptr);
 
-            DWORD ret = GetFirmwareEnvironmentVariableW(name.c_str(), guidStr, stackBuf, static_cast<DWORD>(MAX_VAR_SZ));
-            if (ret > 0) { outBuf = stackBuf; outLen = ret; return true; }
-            const DWORD err = GetLastError();
-            if (err != ERROR_INSUFFICIENT_BUFFER) { outBuf = nullptr; outLen = 0; return false; }
-            // fallback allocate up to 256KB
-            PVOID base = nullptr; SIZE_T rsz = 256 * 1024;
-            const ULONG ALLOC_FLAGS = 0x3000; const ULONG PAGE_RW = 0x04;
-            NTSTATUS st = pNtAllocateVirtualMemory(hCurrentProcess, &base, 0, &rsz, ALLOC_FLAGS, PAGE_RW);
-            if (st != 0 || !base) { outBuf = nullptr; outLen = 0; return false; }
-            ret = GetFirmwareEnvironmentVariableW(name.c_str(), guidStr, reinterpret_cast<BYTE*>(base), static_cast<DWORD>(rsz));
-            if (ret > 0) { outBuf = reinterpret_cast<BYTE*>(base); outLen = ret; return true; }
-            // free and fail
-            SIZE_T zero = 0; pNtFreeVirtualMemory(hCurrentProcess, &base, &zero, 0x8000);
-            outBuf = nullptr; outLen = 0; return false;
+                if (reqSize == 0) return false;
+
+                PVOID base = nullptr;
+                SIZE_T rsz = reqSize;
+                if (rsz < 0x1000) rsz = 0x1000;
+
+                st = pNtAllocateVirtualMemory(hCurrentProcess, &base, 0, &rsz, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+                if (st != 0 || !base) { outBuf = nullptr; outLen = 0; return false; }
+
+                st = pNtQuery(&uStr, &guid, base, &reqSize, nullptr);
+                if (st == 0) {
+                    outBuf = reinterpret_cast<BYTE*>(base);
+                    outLen = reqSize;
+                    return true;
+                }
+
+                SIZE_T zero = 0;
+                pNtFreeVirtualMemory(hCurrentProcess, &base, &zero, 0x8000);
+                outBuf = nullptr;
+                outLen = 0;
+                return false;
             };
 
-        PVARIABLE_NAME varName = reinterpret_cast<PVARIABLE_NAME>(enumBase);
-        const size_t bufSize = static_cast<size_t>(bufferLength);
-        constexpr size_t MAX_NAME_BYTES = 4096;
-        while (true) {
-            const uintptr_t basePtr = reinterpret_cast<uintptr_t>(enumBase);
-            const uintptr_t curPtr = reinterpret_cast<uintptr_t>(varName);
-            if (curPtr < basePtr) break;
-            const size_t offset = static_cast<size_t>(curPtr - basePtr);
-            if (offset >= bufSize) break;
-            const size_t nameOffset = offsetof(VARIABLE_NAME, Name);
-            if (bufSize - offset < nameOffset) break;
-            size_t nameMaxBytes = 0;
-            if (varName->NextEntryOffset != 0) {
+            PVARIABLE_NAME varName = reinterpret_cast<PVARIABLE_NAME>(enumBase);
+            const size_t bufSize = static_cast<size_t>(bufferLength);
+            constexpr size_t MAX_NAME_BYTES = 4096;
+
+            bool break_loop = false;
+            while (true) {
+                const uintptr_t basePtr = reinterpret_cast<uintptr_t>(enumBase);
+                const uintptr_t curPtr = reinterpret_cast<uintptr_t>(varName);
+                if (curPtr < basePtr) break;
+                const size_t offset = static_cast<size_t>(curPtr - basePtr);
+                if (offset >= bufSize) break;
+                const size_t nameOffset = offsetof(VARIABLE_NAME, Name);
+                if (bufSize - offset < nameOffset) break;
+                size_t nameMaxBytes = 0;
+                if (varName->NextEntryOffset != 0) {
+                    const SIZE_T ne = static_cast<SIZE_T>(varName->NextEntryOffset);
+                    if (ne <= nameOffset) { result = false; break_loop = true; break; }
+                    if (ne > bufSize - offset) break;
+                    nameMaxBytes = ne - nameOffset;
+                }
+                else {
+                    if (offset + nameOffset >= bufSize) { result = false; break_loop = true; break; }
+                    nameMaxBytes = bufSize - (offset + nameOffset);
+                }
+                if (nameMaxBytes > MAX_NAME_BYTES) nameMaxBytes = MAX_NAME_BYTES;
+                std::wstring nameView;
+                if (nameMaxBytes >= sizeof(WCHAR)) {
+                    const WCHAR* namePtr = reinterpret_cast<const WCHAR*>(reinterpret_cast<const BYTE*>(varName) + nameOffset);
+                    const size_t maxChars = nameMaxBytes / sizeof(WCHAR);
+                    size_t realChars = 0;
+                    while (realChars < maxChars && namePtr[realChars] != L'\0') ++realChars;
+                    if (realChars == maxChars) { result = false; break_loop = true; break; }
+                    nameView = std::wstring(namePtr, realChars);
+                }
+                if (!nameView.empty() && nameView.rfind(L"VMM", 0) == 0) {
+                    debug("NVRAM: Detected hypervisor signature");
+                    result = true;
+                    break_loop = true;
+                    break;
+                }
+                if (nameView == L"dbDefault") found_dbDefault = true;
+                else if (nameView == L"KEKDefault") found_KEKDefault = true;
+                else if (nameView == L"PKDefault") found_PKDefault = true;
+                else if (nameView == L"dbxDefault") found_dbxDefault = true;
+                else if (nameView == L"MemoryOverwriteRequestControlLock") found_MORCL = true;
+
+                if (nameView == L"PKDefault") (void)read_var_to_buf(std::wstring(nameView), varName->VendorGuid, pkDefaultBuf, pkDefaultLen);
+                else if (nameView == L"PK") (void)read_var_to_buf(std::wstring(nameView), varName->VendorGuid, pkBuf, pkLen);
+                else if (nameView == L"KEKDefault") (void)read_var_to_buf(std::wstring(nameView), varName->VendorGuid, kekDefaultBuf, kekDefaultLen);
+                else if (nameView == L"KEK") (void)read_var_to_buf(std::wstring(nameView), varName->VendorGuid, kekBuf, kekLen);
+
+                // https://github.com/tianocore/edk2/blob/af9cc80359e320690877e4add870aa13fe889fbe/SecurityPkg/Library/AuthVariableLib/AuthServiceInternal.h
+                if (nameView == L"certdb" || nameView == L"certdbv") {
+                    debug("NVRAM: EDK II (TianoCore) detected");
+                    result = true;
+                    break_loop = true;
+                    break;
+                }
+
+                if (nameView == L"Boot0000") { // should be Windows Boot Manager
+                    BYTE* bootBuf = nullptr; SIZE_T bootLen = 0;
+                    if (read_var_to_buf(nameView, varName->VendorGuid, bootBuf, bootLen)) {
+                        bool anomaly = (bootLen < 6);
+                        if (!anomaly) {
+                            unsigned short fplLen = 0;
+                            memcpy(&fplLen, bootBuf + 4, sizeof(fplLen));
+                            // we could also check if loadOptionsLength is 136
+                            if (fplLen != 116) anomaly = true;
+                        }
+
+                        if (bootBuf) {
+                            PVOID b = bootBuf; SIZE_T z = 0;
+                            pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000);
+                        }
+
+                        if (anomaly) {
+                            debug("NVRAM: Environment was loaded using a virtual boot loader"); // "virtual" here -> non genuine
+                            result = true;
+                            break_loop = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (varName->NextEntryOffset == 0) break;
                 const SIZE_T ne = static_cast<SIZE_T>(varName->NextEntryOffset);
-                if (ne <= nameOffset) { SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &enumBase, &z, 0x8000); cleanup(); return false; }
-                if (ne > bufSize - offset) break;
-                nameMaxBytes = ne - nameOffset;
-            }
-            else {
-                if (offset + nameOffset >= bufSize) { SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &enumBase, &z, 0x8000); cleanup(); return false; }
-                nameMaxBytes = bufSize - (offset + nameOffset);
-            }
-            if (nameMaxBytes > MAX_NAME_BYTES) nameMaxBytes = MAX_NAME_BYTES;
-            std::wstring nameView;
-            if (nameMaxBytes >= sizeof(WCHAR)) {
-                const WCHAR* namePtr = reinterpret_cast<const WCHAR*>(reinterpret_cast<const BYTE*>(varName) + nameOffset);
-                const size_t maxChars = nameMaxBytes / sizeof(WCHAR);
-                size_t realChars = 0;
-                while (realChars < maxChars && namePtr[realChars] != L'\0') ++realChars;
-                if (realChars == maxChars) { SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &enumBase, &z, 0x8000); cleanup(); return false; }
-                nameView = std::wstring(namePtr, realChars);
-            }
-            if (!nameView.empty() && nameView.rfind(L"VMM", 0) == 0) { debug("NVRAM: Detected hypervisor signature"); SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &enumBase, &z, 0x8000); cleanup(); return true; }
-            if (nameView == L"dbDefault") found_dbDefault = true;
-            else if (nameView == L"KEKDefault") found_KEKDefault = true;
-            else if (nameView == L"PKDefault") found_PKDefault = true;
-            else if (nameView == L"dbxDefault") found_dbxDefault = true;
-            else if (nameView == L"MemoryOverwriteRequestControlLock") found_MORCL = true;
-
-            if (nameView == L"PKDefault") (void)read_var_to_buf(std::wstring(nameView), varName->VendorGuid, pkDefaultBuf, pkDefaultLen);
-            else if (nameView == L"PK") (void)read_var_to_buf(std::wstring(nameView), varName->VendorGuid, pkBuf, pkLen);
-            else if (nameView == L"KEKDefault") (void)read_var_to_buf(std::wstring(nameView), varName->VendorGuid, kekDefaultBuf, kekDefaultLen);
-            else if (nameView == L"KEK") (void)read_var_to_buf(std::wstring(nameView), varName->VendorGuid, kekBuf, kekLen);
-
-            // https://github.com/tianocore/edk2/blob/af9cc80359e320690877e4add870aa13fe889fbe/SecurityPkg/Library/AuthVariableLib/AuthServiceInternal.h
-            if (nameView == L"certdb" || nameView == L"certdbv") {
-                debug("NVRAM: EDK II (TianoCore) detected");
-                SIZE_T z = 0;
-                pNtFreeVirtualMemory(hCurrentProcess, &enumBase, &z, 0x8000);
-                cleanup();
-                return true; // we cant return a brand here since its used in VMWare, QEMU with OVMF, VirtualBox, etc
+                const size_t nextOffset = offset + ne;
+                if (nextOffset <= offset || nextOffset > bufSize) break;
+                varName = reinterpret_cast<PVARIABLE_NAME>(reinterpret_cast<PBYTE>(enumBase) + nextOffset);
             }
 
-            if (nameView == L"Boot0000") { // should be Windows Boot Manager
-                BYTE* bootBuf = nullptr; SIZE_T bootLen = 0;
-                if (read_var_to_buf(nameView, varName->VendorGuid, bootBuf, bootLen)) {
-                    bool anomaly = (bootLen < 6);
-                    if (!anomaly) {
-                        unsigned short fplLen = 0;
-                        memcpy(&fplLen, bootBuf + 4, sizeof(fplLen));
-                        // we could also check if loadOptionsLength is 136
-                        if (fplLen != 116) anomaly = true;
+            if (break_loop) break;
+
+            // free stuff
+            { SIZE_T zero = 0; pNtFreeVirtualMemory(hCurrentProcess, &enumBase, &zero, 0x8000); enumBase = nullptr; enumSize = 0; }
+
+            if (!found_MORCL) { debug("NVRAM: Missing MemoryOverwriteRequestControlLock"); result = true; break; }
+            if (!found_dbDefault) { debug("NVRAM: Missing dbDefault"); result = true; break; }
+            if (!found_dbxDefault) { debug("NVRAM: Missing dbxDefault"); result = true; break; }
+            if (!found_KEKDefault) { debug("NVRAM: Missing KEKDefault"); result = true; break; }
+            if (!found_PKDefault) { debug("NVRAM: Missing PKDefault"); result = true; break; }
+
+            // check for official red hat certs
+            bool found_redhat = false;
+            if (pkDefaultBuf && pkDefaultLen) {
+                if ((pkDefaultLen >= 2) && ((pkDefaultLen % 2) == 0)) {
+                    const WCHAR* wptr = reinterpret_cast<const WCHAR*>(pkDefaultBuf);
+                    const size_t wlen = pkDefaultLen / sizeof(WCHAR);
+                    if (ci_utf16le_contains(wptr, wlen, redhat_wide)) found_redhat = true;
+                }
+                if (!found_redhat) if (ci_ascii_contains(pkDefaultBuf, pkDefaultLen, redhat_ascii)) found_redhat = true;
+            }
+            if (found_redhat) {
+                debug("NVRAM: QEMU/OVMF detected");
+                result = core::add(brands::QEMU);
+                break;
+            }
+
+            // Vendor string checks and PK/KEK mismatch checks
+            auto buf_contains_vendor_any = [&](BYTE* buf, SIZE_T len) noexcept -> bool {
+                if (!buf || len == 0) return false;
+                if ((len >= 2) && ((len % 2) == 0)) {
+                    const WCHAR* wptr = reinterpret_cast<const WCHAR*>(buf); const size_t wlen = len / sizeof(WCHAR);
+                    for (const wchar_t* p : vendor_wide) if (ci_utf16le_contains(wptr, wlen, p)) return true;
+                }
+                for (const char* p : vendor_ascii) if (ci_ascii_contains(buf, len, p)) return true;
+                return false;
+            };
+            auto buf_contains_vendor_specific = [&](BYTE* buf, SIZE_T len, const char* a, const wchar_t* w) noexcept -> bool {
+                if (!buf || len == 0) return false;
+                if ((len >= 2) && ((len % 2) == 0) && w) { const WCHAR* wp = reinterpret_cast<const WCHAR*>(buf); if (ci_utf16le_contains(wp, len / sizeof(WCHAR), w)) return true; }
+                if (a) if (ci_ascii_contains(buf, len, a)) return true;
+                return false;
+            };
+
+            const bool pkdef_has_vendor = buf_contains_vendor_any(pkDefaultBuf, pkDefaultLen);
+            const bool kekdef_has_vendor = buf_contains_vendor_any(kekDefaultBuf, kekDefaultLen);
+
+            if (pkdef_has_vendor || kekdef_has_vendor) {
+                bool vendor_mismatch = false;
+                for (size_t i = 0; i < sizeof(vendor_ascii) / sizeof(*vendor_ascii); ++i) {
+                    const char* vasc = vendor_ascii[i];
+                    const wchar_t* vw = vendor_wide[i];
+
+                    const bool inPKDef = buf_contains_vendor_specific(pkDefaultBuf, pkDefaultLen, vasc, vw);
+                    const bool inKEKDef = buf_contains_vendor_specific(kekDefaultBuf, kekDefaultLen, vasc, vw);
+
+                    if (!inPKDef && !inKEKDef) continue;
+
+                    const bool inPKActive = buf_contains_vendor_specific(pkBuf, pkLen, vasc, vw);
+                    const bool inKEKActive = buf_contains_vendor_specific(kekBuf, kekLen, vasc, vw);
+
+                    if (inPKDef && !inPKActive) {
+                        debug("NVRAM: Vendor string found in PKDefault but missing from active PK");
+                        result = true;
+                        vendor_mismatch = true;
+                        break;
                     }
 
-                    if (bootBuf && bootBuf != stackBuf) {
-                        PVOID b = bootBuf; SIZE_T z = 0;
-                        pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000);
-                    }
-
-                    if (anomaly) {
-                        debug("NVRAM: Environment was loaded using a virtual boot loader"); // "virtual" here -> non genuine
-                        SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &enumBase, &z, 0x8000);
-                        cleanup();
-                        return true;
+                    if (inKEKDef && !inKEKActive) {
+                        debug("NVRAM: Vendor string found in KEKDefault but missing from active KEK");
+                        result = true;
+                        vendor_mismatch = true;
+                        break;
                     }
                 }
+                if (vendor_mismatch) break;
             }
 
-            if (varName->NextEntryOffset == 0) break;
-            const SIZE_T ne = static_cast<SIZE_T>(varName->NextEntryOffset);
-            const size_t nextOffset = offset + ne;
-            if (nextOffset <= offset || nextOffset > bufSize) break;
-            varName = reinterpret_cast<PVARIABLE_NAME>(reinterpret_cast<PBYTE>(enumBase) + nextOffset);
+            if (pkDefaultBuf && pkBuf && (pkDefaultLen != pkLen || memcmp(pkDefaultBuf, pkBuf, static_cast<size_t>(pkDefaultLen < pkLen ? pkDefaultLen : pkLen)) != 0))
+                debug("NVRAM: PK vs PKDefault raw mismatch detected");
+            if (kekDefaultBuf && kekBuf && (kekDefaultLen != kekLen || memcmp(kekDefaultBuf, kekBuf, static_cast<size_t>(kekDefaultLen < kekLen ? kekDefaultLen : kekLen)) != 0))
+                debug("NVRAM: KEK vs KEKDefault raw mismatch detected");
+
+            result = false;
+
+        } while (false);
+
+        if (pkBuf) { PVOID b = pkBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); pkBuf = nullptr; }
+        if (kekBuf) { PVOID b = kekBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); kekBuf = nullptr; }
+        if (pkDefaultBuf) { PVOID b = pkDefaultBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); pkDefaultBuf = nullptr; }
+        if (kekDefaultBuf) { PVOID b = kekDefaultBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); kekDefaultBuf = nullptr; }
+        if (enumBase) { SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &enumBase, &z, 0x8000); enumBase = nullptr; }
+
+        if (priv_enabled && hToken) {
+            TOKEN_PRIVILEGES tpDisable{};
+            tpDisable.PrivilegeCount = 1;
+            tpDisable.Privileges[0].Luid = luid;
+            tpDisable.Privileges[0].Attributes = 0;
+            AdjustTokenPrivileges(hToken, FALSE, &tpDisable, sizeof(TOKEN_PRIVILEGES), nullptr, nullptr);
         }
+        if (hToken) { CloseHandle(hToken); hToken = nullptr; }
 
-        // free stuff
-        { SIZE_T zero = 0; pNtFreeVirtualMemory(hCurrentProcess, &enumBase, &zero, 0x8000); enumBase = nullptr; enumSize = 0; }
-
-        if (!found_MORCL) { debug("NVRAM: Missing MemoryOverwriteRequestControlLock"); cleanup(); return true; }
-        if (!found_dbDefault) { debug("NVRAM: Missing dbDefault"); cleanup(); return true; }
-        if (!found_dbxDefault) { debug("NVRAM: Missing dbxDefault"); cleanup(); return true; }
-        if (!found_KEKDefault) { debug("NVRAM: Missing KEKDefault"); cleanup(); return true; }
-        if (!found_PKDefault) { debug("NVRAM: Missing PKDefault"); cleanup(); return true; }
-
-        // check for official red hat certs
-        bool found_redhat = false;
-        if (pkDefaultBuf && pkDefaultLen) {
-            if ((pkDefaultLen >= 2) && ((pkDefaultLen % 2) == 0)) {
-                const WCHAR* wptr = reinterpret_cast<const WCHAR*>(pkDefaultBuf);
-                const size_t wlen = pkDefaultLen / sizeof(WCHAR);
-                if (ci_utf16le_contains(wptr, wlen, redhat_wide)) found_redhat = true;
-            }
-            if (!found_redhat) if (ci_ascii_contains(pkDefaultBuf, pkDefaultLen, redhat_ascii)) found_redhat = true;
-        }
-        if (found_redhat) {
-            debug("NVRAM: QEMU/OVMF detected");
-            if (pkBuf && pkBuf != stackBuf) { PVOID b = pkBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); }
-            if (kekBuf && kekBuf != stackBuf) { PVOID b = kekBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); }
-            if (pkDefaultBuf && pkDefaultBuf != stackBuf) { PVOID b = pkDefaultBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); }
-            if (kekDefaultBuf && kekDefaultBuf != stackBuf) { PVOID b = kekDefaultBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); }
-            cleanup(); return core::add(brands::QEMU);
-        }
-
-        // Vendor string checks and PK/KEK mismatch checks
-        auto buf_contains_vendor_any = [&](BYTE* buf, SIZE_T len) noexcept -> bool {
-            if (!buf || len == 0) return false;
-            if ((len >= 2) && ((len % 2) == 0)) {
-                const WCHAR* wptr = reinterpret_cast<const WCHAR*>(buf); const size_t wlen = len / sizeof(WCHAR);
-                for (const wchar_t* p : vendor_wide) if (ci_utf16le_contains(wptr, wlen, p)) return true;
-            }
-            for (const char* p : vendor_ascii) if (ci_ascii_contains(buf, len, p)) return true;
-            return false;
-        };
-        auto buf_contains_vendor_specific = [&](BYTE* buf, SIZE_T len, const char* a, const wchar_t* w) noexcept -> bool {
-            if (!buf || len == 0) return false;
-            if ((len >= 2) && ((len % 2) == 0) && w) { const WCHAR* wp = reinterpret_cast<const WCHAR*>(buf); if (ci_utf16le_contains(wp, len / sizeof(WCHAR), w)) return true; }
-            if (a) if (ci_ascii_contains(buf, len, a)) return true;
-            return false;
-        };
-
-        const bool pkdef_has_vendor = buf_contains_vendor_any(pkDefaultBuf, pkDefaultLen);
-        const bool kekdef_has_vendor = buf_contains_vendor_any(kekDefaultBuf, kekDefaultLen);
-
-        if (pkdef_has_vendor || kekdef_has_vendor) {
-            for (size_t i = 0; i < sizeof(vendor_ascii) / sizeof(*vendor_ascii); ++i) {
-                const char* vasc = vendor_ascii[i];
-                const wchar_t* vw = vendor_wide[i];
-                const bool inPKDef = buf_contains_vendor_specific(pkDefaultBuf, pkDefaultLen, vasc, vw);
-                const bool inKEKDef = buf_contains_vendor_specific(kekDefaultBuf, kekDefaultLen, vasc, vw);
-                if (!inPKDef && !inKEKDef) continue;
-                const bool inPK = buf_contains_vendor_specific(pkBuf, pkLen, vasc, vw);
-                const bool inKEK = buf_contains_vendor_specific(kekBuf, kekLen, vasc, vw);
-                if (!inPK && !inKEK) {
-                    debug("NVRAM: Vendor string found in PKDefault/KEKDefault but missing from active PK/KEK");
-                    if (pkBuf && pkBuf != stackBuf) { PVOID b = pkBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); }
-                    if (kekBuf && kekBuf != stackBuf) { PVOID b = kekBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); }
-                    if (pkDefaultBuf && pkDefaultBuf != stackBuf) { PVOID b = pkDefaultBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); }
-                    if (kekDefaultBuf && kekDefaultBuf != stackBuf) { PVOID b = kekDefaultBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); }
-                    cleanup(); return core::add(brands::QEMU);
-                }
-            }
-        }
-
-        if (pkDefaultBuf && pkBuf && (pkDefaultLen != pkLen || memcmp(pkDefaultBuf, pkBuf, static_cast<size_t>(pkDefaultLen < pkLen ? pkDefaultLen : pkLen)) != 0))
-            debug("NVRAM: PK vs PKDefault raw mismatch detected");
-        if (kekDefaultBuf && kekBuf && (kekDefaultLen != kekLen || memcmp(kekDefaultBuf, kekBuf, static_cast<size_t>(kekDefaultLen < kekLen ? kekDefaultLen : kekLen)) != 0))
-            debug("NVRAM: KEK vs KEKDefault raw mismatch detected");
-
-        if (pkBuf && pkBuf != stackBuf) { PVOID b = pkBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); }
-        if (kekBuf && kekBuf != stackBuf) { PVOID b = kekBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); }
-        if (pkDefaultBuf && pkDefaultBuf != stackBuf) { PVOID b = pkDefaultBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); }
-        if (kekDefaultBuf && kekDefaultBuf != stackBuf) { PVOID b = kekDefaultBuf; SIZE_T z = 0; pNtFreeVirtualMemory(hCurrentProcess, &b, &z, 0x8000); }
-
-        cleanup();
-        return false;
+        return result;
     }
 
 
@@ -10223,6 +10255,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     [[nodiscard]] static bool clock() {
         // The RTC (ACPI/CMOS RTC) timer can't be always detected via SetupAPI, it needs AML decode of the DSDT firmware table
         // The HPET (PNP0103) timer presence is already checked on VM::FIRMWARE
+        // Here, we check for the PIT/AT timer (PC-class System Timer)
         constexpr wchar_t pattern[] = L"pnp0100"; 
         constexpr size_t patLen = (sizeof(pattern) / sizeof(wchar_t)) - 1;
 
@@ -10308,106 +10341,74 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         SetupDiDestroyDeviceInfoList(devs);
         return !found;
     }
-
-
-    /**
-     * @brief Check for anomalies in BIOS POST time
-     * @category Windows
-     * @implements VM::POST
-     */
-    [[nodiscard]] static bool post() {
-        /*
-        * The motherboard must test and calibrate memory timings, which is time-consuming
-        * The system physically scans PCIe buses, initializes the GPU, powers up USB controllers, and waits for storage drives to report ready
-        * Fans must spin up, and capacitors must charge
-        * 
-        * On VMs, RAM is simply a block of memory allocated by the host OS. There is no training or calibration required
-        * There are no drives to spin up, no fans to check, and no complex PCIe negotiation
-        * So at the end, we see cases like VirtualBox machines reporting 0.9s of last bios time, or QEMU machines with OVMF reporting 0s
-        */
-        static constexpr wchar_t kSubKey[] = L"SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Power";
-        static constexpr wchar_t kValueName[] = L"FwPOSTTime";
-        HKEY hKey;
-
-        long result = RegOpenKeyExW(
-            HKEY_LOCAL_MACHINE,
-            kSubKey,
-            0,
-            KEY_QUERY_VALUE,
-            &hKey
-        );
-
-        if (result != ERROR_SUCCESS) {
-            return false;
-        }
-
-        DWORD data = 0;
-        DWORD dataSize = sizeof(data);
-
-        result = RegQueryValueExW(
-            hKey,
-            kValueName,
-            NULL,
-            NULL,
-            reinterpret_cast<LPBYTE>(&data),
-            &dataSize
-        );
-
-        RegCloseKey(hKey);
-
-        if (result == ERROR_SUCCESS) {
-            if (data < 1500) { // 1.5s
-                return true;
-            }
-        }
-
-        return false;
-    }
     // ADD NEW TECHNIQUE FUNCTION HERE
 #endif
+ 
 
-    
     /* ============================================================================================== *
      *                                                                                                *                                                                                               *
      *                                        CORE SECTION                                            *
      *                                                                                                *
      * ============================================================================================== */
-
-
+    
     struct core {
         struct technique {
             u8 points = 0;                // this is the certainty score between 0 and 100
-            std::function<bool()> run;    // this is the technique function itself
+            bool(*run)();                 // this is the technique function itself
 
-            technique() : points(0), run(nullptr) {}
-
-            technique(u8 points, std::function<bool()> run) : points(points), run(run) {}
+            constexpr technique() : points(0), run(nullptr) {}
+            constexpr technique(u8 points, bool(*run)()) : points(points), run(run) {}
         };
 
         struct custom_technique {
             u8 points;
             u16 id;
-            std::function<bool()> run;
+            bool(*run)();
         };
 
-        // initial technique list, this is where all the techniques are stored
-        static std::pair<enum_flags, technique> technique_list[];
+        // entry for the initialization list
+        struct technique_entry {
+            enum_flags id;
+            technique tech;
+        };
+
+        // entry for brand scoreboard
+        struct brand_entry {
+            const char* name;
+            brand_score_t score;
+        };
 
         // the actual table, which is derived from the list above and will be 
         // used for most functionalities related to technique interactions
-        static std::map<enum_flags, technique> technique_table;
+        static std::array<technique, enum_size + 1> technique_table;
 
         // specific to VM::add_custom(), where custom techniques will be stored here
-        static std::vector<custom_technique> custom_table;
+        static constexpr size_t MAX_CUSTOM_TECHNIQUES = 256;
+        static std::vector<VM::core::custom_technique> custom_table; // users should not have a limit of how many functions they should add, this is the only exception of a heap-allocated object in our core
+        static size_t custom_table_size;
 
         // VM scoreboard table specifically for VM::brand()
-        static std::map<const char*, brand_score_t> brand_scoreboard;
+        static constexpr size_t MAX_BRANDS = 128;
+        static std::array<brand_entry, MAX_BRANDS> brand_scoreboard;
+        static size_t brand_count;
 
         // directly return when adding a brand to the scoreboard for a more succint expression
         static inline bool add(const char* p_brand, const char* extra_brand = "") noexcept {
-            core::brand_scoreboard.at(p_brand)++;
-            if (strcmp(extra_brand, "") != 0) {
-                core::brand_scoreboard.at(p_brand)++;
+            for (size_t i = 0; i < brand_count; ++i) {
+                // pointer comparison is sufficient as we use the static constants from brands:: namespace
+                if (brand_scoreboard[i].name == p_brand) {
+                    brand_scoreboard[i].score++;
+                    break;
+                }
+            }
+
+            if (extra_brand[0] != '\0') {
+                for (size_t i = 0; i < brand_count; ++i) {
+                    if (brand_scoreboard[i].name == extra_brand) {
+                        brand_scoreboard[i].score++;
+                        break;
+                    }
+                }
             }
             return true;
         }
@@ -10474,7 +10475,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 flags.test(DYNAMIC) ||
                 flags.test(NULL_ARG) ||
                 flags.test(MULTIPLE)
-            ) {
+                ) {
                 generate_default(flags);
             }
             else {
@@ -10493,16 +10494,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 threshold_points = high_threshold_score;
             }
 
-            // loop through the technique table, where all the techniques are stored
-            for (const auto& tmp : technique_table) {
-                const enum_flags technique_macro = tmp.first;
-                const technique& technique_data = tmp.second;
+            for (size_t i = technique_begin; i < technique_end; ++i) {
+                const enum_flags technique_macro = static_cast<enum_flags>(i);
+                const technique& technique_data = technique_table[i];
 
-                // check if platform is supported
-                //if (util::is_unsupported(technique_macro)) {
-                //    memo::cache_store(technique_macro, false, 0);
-                //    continue;
-                //}
+                // skip empty entries
+                if (!technique_data.run) continue;
 
                 // check if the technique is disabled
                 if (core::is_disabled(flags, technique_macro)) {
@@ -10523,7 +10520,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 // run the technique
                 const bool result = technique_data.run();
 
-                if (technique_data.run && result) {
+                if (result) {
                     points += technique_data.points;
 
                     // this is specific to VM::detected_count() which 
@@ -10548,8 +10545,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             // for custom VM techniques, won't be used most of the time
-            if (!custom_table.empty()) {
-                for (const auto& technique : custom_table) {
+            if (!core::custom_table.empty()) {
+                for (const auto& technique : core::custom_table) {
+
                     // if cached, return that result
                     if (memo::is_cached(technique.id)) {
                         const memo::data_t data = memo::cache_fetch(technique.id);
@@ -10557,7 +10555,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                         if (data.result) {
                             points += data.points;
                         }
-
                         continue;
                     }
 
@@ -10589,234 +10586,235 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
          *                                                                                                *
          * ============================================================================================== */
 
-
-        /**
-         * basically what this entire recursive variadic template inheritance 
-         * fuckery does is manage the variadic arguments being given through 
-         * the arg_handler function, which could either be a std::bitset<N>, 
-         * a uint8_t, or a combination of both of them. This will handle 
-         * both argument types and implement them depending on what their 
-         * types are. If it's a std::bitset<N>, do the |= operation on 
-         * flag_collector. If it's a uint8_t, simply .set() that into the 
-         * flag_collector. That's the gist of it.
-         *
-         * Also I won't even deny, the majority of this section was 90% generated
-         * by chatgpt. Can't be arsed with this C++ variadic templatisation shit.
-         * Like is it really my fault that I have a hard time understanging C++'s 
-         * god awful metaprogramming designs? And don't even get me started on SFINAE. 
-         * 
-         * You don't need an IQ of 3 digits to realise how dogshit this language
-         * is, when you end up in situations where there's a few correct solutions
-         * to a problem, but with a billion ways you can do the same thing but in 
-         * the "wrong" way. I genuinely can't wait for Carbon to come out.
-         */
+         /**
+          * basically what this entire recursive variadic template inheritance
+          * fuckery does is manage the variadic arguments being given through
+          * the arg_handler function, which could either be a std::bitset<N>,
+          * a uint8_t, or a combination of both of them. This will handle
+          * both argument types and implement them depending on what their
+          * types are. If it's a std::bitset<N>, do the |= operation on
+          * flag_collector. If it's a uint8_t, simply .set() that into the
+          * flag_collector. That's the gist of it.
+          *
+          * Also I won't even deny, the majority of this section was 90% generated
+          * by chatgpt. Can't be arsed with this C++ variadic templatisation shit.
+          * Like is it really my fault that I have a hard time understanging C++'s
+          * god awful metaprogramming designs? And don't even get me started on SFINAE.
+          *
+          * You don't need an IQ of 3 digits to realise how dogshit this language
+          * is, when you end up in situations where there's a few correct solutions
+          * to a problem, but with a billion ways you can do the same thing but in
+          * the "wrong" way. I genuinely can't wait for Carbon to come out.
+          */
     public:
-        static flagset flag_collector;
-        static flagset disabled_flag_collector;
+       public:
+           static flagset flag_collector;
+           static flagset disabled_flag_collector;
 
-        static void generate_default(flagset& flags) {
-            // set all bits to 1
-            flags.set();
+           static void generate_default(flagset& flags) {
+               // set all bits to 1
+               flags.set();
 
-            // disable all non-default techniques
-            for (const auto id : disabled_techniques) {
-                flags.flip(id);
-            }
+               // disable all non-default techniques
+               for (const auto id : disabled_techniques) {
+                   flags.flip(id);
+               }
 
-            // disable all the settings flags
-            flags.flip(HIGH_THRESHOLD);
-            flags.flip(NULL_ARG);
-            flags.flip(DYNAMIC);
-            flags.flip(MULTIPLE);
-            flags.flip(ALL);
-        }
+               // disable all the settings flags
+               flags.flip(HIGH_THRESHOLD);
+               flags.flip(NULL_ARG);
+               flags.flip(DYNAMIC);
+               flags.flip(MULTIPLE);
+               flags.flip(ALL);
+           }
 
-        static void generate_all(flagset& flags) {
-            // set all bits to 1
-            flags.set();
+           static void generate_all(flagset& flags) {
+               // set all bits to 1
+               flags.set();
 
-            // disable all the settings flags
-            flags.flip(HIGH_THRESHOLD);
-            flags.flip(NULL_ARG);
-            flags.flip(DYNAMIC);
-            flags.flip(MULTIPLE);
-            flags.flip(DEFAULT);
-        }
+               // disable all the settings flags
+               flags.flip(HIGH_THRESHOLD);
+               flags.flip(NULL_ARG);
+               flags.flip(DYNAMIC);
+               flags.flip(MULTIPLE);
+               flags.flip(DEFAULT);
+           }
 
-        static void generate_current_disabled_flags(flagset& flags) {
-            const bool setting_high_threshold = flags.test(HIGH_THRESHOLD);
-            const bool setting_dynamic = flags.test(DYNAMIC);
-            const bool setting_multiple = flags.test(MULTIPLE);
-            const bool setting_all = flags.test(ALL);
-            const bool setting_default = flags.test(DEFAULT);
+           static void generate_current_disabled_flags(flagset& flags) {
+               const bool setting_high_threshold = flags.test(HIGH_THRESHOLD);
+               const bool setting_dynamic = flags.test(DYNAMIC);
+               const bool setting_multiple = flags.test(MULTIPLE);
+               const bool setting_all = flags.test(ALL);
+               const bool setting_default = flags.test(DEFAULT);
 
-            if (disabled_flag_collector.count() == 0) {
-                return;
-            } else {
-                flags &= disabled_flag_collector;
-            }
+               if (disabled_flag_collector.count() == 0) {
+                   return;
+               }
+               else {
+                   flags &= disabled_flag_collector;
+               }
 
-            flags.set(HIGH_THRESHOLD, setting_high_threshold);
-            flags.set(DYNAMIC, setting_dynamic);
-            flags.set(MULTIPLE, setting_multiple);
-            flags.set(ALL, setting_all);
-            flags.set(DEFAULT, setting_default);
-        }
-        
-        static void reset_disable_flagset() {
-            generate_default(disabled_flag_collector);
-            disabled_flag_collector.flip(DEFAULT);
-        }
+               flags.set(HIGH_THRESHOLD, setting_high_threshold);
+               flags.set(DYNAMIC, setting_dynamic);
+               flags.set(MULTIPLE, setting_multiple);
+               flags.set(ALL, setting_all);
+               flags.set(DEFAULT, setting_default);
+           }
 
-        static void disable_flagset_manager(const flagset& flags) {
-            disabled_flag_collector = flags;
-        }
+           static void reset_disable_flagset() {
+               generate_default(disabled_flag_collector);
+               disabled_flag_collector.flip(DEFAULT);
+           }
 
-        static void disable_flag_manager(const enum_flags flag) {
-            disabled_flag_collector.set(flag, false);
-        }
+           static void disable_flagset_manager(const flagset& flags) {
+               disabled_flag_collector = flags;
+           }
 
-        static void flag_manager(const enum_flags flag) {
-            if (
-                (flag == INVALID) ||
-                (flag > enum_size)
-            ) {
-                throw std::invalid_argument("Non-flag or invalid flag provided for VM::detect(), aborting");
-            }
+           static void disable_flag_manager(const enum_flags flag) {
+               disabled_flag_collector.set(flag, false);
+           }
 
-            if (flag == DEFAULT) {
-                generate_default(flag_collector);
-            } else if (flag == ALL) {
-                generate_all(flag_collector);
-            } else {
-                flag_collector.set(flag);
-            }
-        }
+           static void flag_manager(const enum_flags flag) {
+               if (
+                   (flag == INVALID) ||
+                   (flag > enum_size)
+                   ) {
+                   throw std::invalid_argument("Non-flag or invalid flag provided for VM::detect(), aborting");
+               }
 
-        // Base class for different types
-        struct TestHandler {
-            virtual ~TestHandler() = default;
+               if (flag == DEFAULT) {
+                   generate_default(flag_collector);
+               }
+               else if (flag == ALL) {
+                   generate_all(flag_collector);
+               }
+               else {
+                   flag_collector.set(flag);
+               }
+           }
 
-            virtual void handle(const flagset& flags) {
-                disable_flagset_manager(flags);
-            }
+           // Base class for different types
+           struct TestHandler {
+               virtual ~TestHandler() = default;
 
-            virtual void handle(const enum_flags flag) {
-                flag_manager(flag);
-            }
-        };
+               virtual void handle(const flagset& flags) {
+                   disable_flagset_manager(flags);
+               }
 
-        struct DisableTestHandler {
-            virtual ~DisableTestHandler() = default;
+               virtual void handle(const enum_flags flag) {
+                   flag_manager(flag);
+               }
+           };
 
-            virtual void disable_handle(const enum_flags flag) {
-                disable_flag_manager(flag);
-            }
-        };
+           struct DisableTestHandler {
+               virtual ~DisableTestHandler() = default;
 
-        // Derived classes for specific type implementations
-        struct TestBitsetHandler : public TestHandler {
-            using TestHandler::handle; 
+               virtual void disable_handle(const enum_flags flag) {
+                   disable_flag_manager(flag);
+               }
+           };
 
-            void handle(const flagset& flags) override {
-                disable_flagset_manager(flags);
-            }
-        };
+           // Derived classes for specific type implementations
+           struct TestBitsetHandler : public TestHandler {
+               using TestHandler::handle;
 
-        struct TestUint8Handler : public TestHandler {
-            using TestHandler::handle;  
+               void handle(const flagset& flags) override {
+                   disable_flagset_manager(flags);
+               }
+           };
 
-            void handle(const enum_flags flag) override {
-                flag_manager(flag);
-            }
-        };
+           struct TestUint8Handler : public TestHandler {
+               using TestHandler::handle;
 
-        struct DisableTestUint8Handler : public DisableTestHandler {
-            using DisableTestHandler::disable_handle;  
+               void handle(const enum_flags flag) override {
+                   flag_manager(flag);
+               }
+           };
 
-            void disable_handle(const enum_flags flag) override {
-                disable_flag_manager(flag);
-            }
-        };
+           struct DisableTestUint8Handler : public DisableTestHandler {
+               using DisableTestHandler::disable_handle;
 
-        // Define a function to dispatch handling based on type
-        template <typename T>
-        static void dispatch(const T& value, TestHandler& handler) {
-            handler.handle(value);
-        }
+               void disable_handle(const enum_flags flag) override {
+                   disable_flag_manager(flag);
+               }
+           };
 
-        // Define a function to dispatch handling based on type
-        template <typename T>
-        static void disable_dispatch(const T& value, DisableTestHandler& handler) {
-            handler.disable_handle(value);
-        }
+           // Define a function to dispatch handling based on type
+           template <typename T>
+           static void dispatch(const T& value, TestHandler& handler) {
+               handler.handle(value);
+           }
 
-        // Base case for the recursive handling
-        static void handleArgs() {
-            // Base case: Do nothing
-        }
+           // Define a function to dispatch handling based on type
+           template <typename T>
+           static void disable_dispatch(const T& value, DisableTestHandler& handler) {
+               handler.disable_handle(value);
+           }
 
-        // Base case for the recursive handling
-        static void handle_disabled_args() {
-            // Base case: Do nothing
-        }
+           // Base case for the recursive handling
+           static void handleArgs() {
+               // Base case: Do nothing
+           }
 
-        // Helper function to check if a given argument is of a specific type
-        template <typename T, typename U>
-        static bool isType(U&&) {
-            return std::is_same<T, typename std::decay<U>::type>::value;
-        }
+           // Base case for the recursive handling
+           static void handle_disabled_args() {
+               // Base case: Do nothing
+           }
 
-        // Recursive case to handle each argument based on its type
-        template <typename First, typename... Rest>
-        static void handleArgs(First&& first, Rest&&... rest) {
-            TestBitsetHandler bitsetHandler;
-            TestUint8Handler uint8Handler;
+           // Helper function to check if a given argument is of a specific type
+           template <typename T, typename U>
+           static bool isType(U&&) {
+               return std::is_same<T, typename std::decay<U>::type>::value;
+           }
 
-            if (isType<flagset>(first)) {
-                dispatch(first, bitsetHandler);
-            } else if (isType<enum_flags>(first)) {
-                dispatch(first, uint8Handler);
-            } else {
-                const std::string msg =
-                    "Arguments must either be a std::bitset<" +
-                    std::to_string(static_cast<u32>(enum_size + 1)) +
-                    "> such as VM::DEFAULT, or a flag such as VM::RDTSC for example";
+           // Recursive case to handle each argument based on its type
+           template <typename First, typename... Rest>
+           static void handleArgs(First&& first, Rest&&... rest) {
+               TestBitsetHandler bitsetHandler;
+               TestUint8Handler uint8Handler;
 
-                throw std::invalid_argument(msg);
-            }
+               if (isType<flagset>(first)) {
+                   dispatch(first, bitsetHandler);
+               }
+               else if (isType<enum_flags>(first)) {
+                   dispatch(first, uint8Handler);
+               }
+               else {
+                   const std::string msg =
+                       "Arguments must either be a std::bitset<" +
+                       std::to_string(static_cast<u32>(enum_size + 1)) +
+                       "> such as VM::DEFAULT, or a flag such as VM::RDTSC for example";
 
-            // Recursively handle the rest of the arguments
-            handleArgs(std::forward<Rest>(rest)...);
-        }
+                   throw std::invalid_argument(msg);
+               }
 
-        // Recursive case to handle each argument based on its type
-        template <typename First, typename... Rest>
-        static void handle_disabled_args(First&& first, Rest&&... rest) {
-            DisableTestUint8Handler Disableuint8Handler;
+               // Recursively handle the rest of the arguments
+               handleArgs(std::forward<Rest>(rest)...);
+           }
 
-            if (isType<flagset>(first)) {
-                throw std::invalid_argument("Arguments must not contain VM::DEFAULT or VM::ALL, only technique flags are accepted (view the documentation for a full list)");
-            } else if (isType<enum_flags>(first)) {
-                disable_dispatch(first, Disableuint8Handler);
-            } else {
-                throw std::invalid_argument("Arguments must be a technique flag, aborting");
-            }
+           // Recursive case to handle each argument based on its type
+           template <typename First, typename... Rest>
+           static void handle_disabled_args(First&& first, Rest&&... rest) {
+               DisableTestUint8Handler Disableuint8Handler;
 
-            // Recursively handle the rest of the arguments
-            handle_disabled_args(std::forward<Rest>(rest)...);
-        }
+               if (isType<flagset>(first)) {
+                   throw std::invalid_argument("Arguments must not contain VM::DEFAULT or VM::ALL, only technique flags are accepted (view the documentation for a full list)");
+               }
+               else if (isType<enum_flags>(first)) {
+                   disable_dispatch(first, Disableuint8Handler);
+               }
+               else {
+                   throw std::invalid_argument("Arguments must be a technique flag, aborting");
+               }
 
-        template <typename... Args>
-        static constexpr bool is_empty() {
-            return (sizeof...(Args) == 0);
-        }
+               // Recursively handle the rest of the arguments
+               handle_disabled_args(std::forward<Rest>(rest)...);
+           }
 
-    #if (VMA_CPP >= 17)
-        #define VMAWARE_CONSTEXPR constexpr
-    #else
-        #define VMAWARE_CONSTEXPR
-    #endif
+           template <typename... Args>
+           static constexpr bool is_empty() {
+               return (sizeof...(Args) == 0);
+           }
 
     public:
         // fetch the flags, could be an enum value OR a std::bitset.
@@ -10852,7 +10850,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         static void disabled_arg_handler(Args&&... args) {
             reset_disable_flagset();
 
-            if VMAWARE_CONSTEXPR (is_empty<Args...>()) {
+            if VMAWARE_CONSTEXPR(is_empty<Args...>()) {
                 throw std::invalid_argument("VM::DISABLE() must contain a flag");
             }
 
@@ -10877,27 +10875,24 @@ public: // START OF PUBLIC FUNCTIONS
      */
     static bool check(
         const enum_flags flag_bit
-    #if (VMA_CPP >= 20) && (!CLANG || __clang_major__ >= 16)
+#if (VMA_CPP >= 20) && (!CLANG || __clang_major__ >= 16)
         , [[maybe_unused]] const std::source_location& loc = std::source_location::current()
-    #endif
+#endif
     ) {
-        // return and force caching early if the technique is not supported
         if (util::is_unsupported(flag_bit)) {
             memo::cache_store(flag_bit, false, 0);
             return false;
         }
 
-        // lambda to manage exceptions
         auto throw_error = [&](const char* text) -> void {
             std::stringstream ss;
-    #if (VMA_CPP >= 20 && !CLANG)
+        #if (VMA_CPP >= 20 && !CLANG)
             ss << ", error in " << loc.function_name() << " at " << loc.file_name() << ":" << loc.line() << ")";
-    #endif
+        #endif
             ss << ". Consult the documentation's flag handler for VM::check()";
             throw std::invalid_argument(std::string(text) + ss.str());
         };
 
-        // check if flag is out of range
         if (flag_bit > enum_size) {
             throw_error("Flag argument must be a valid");
         }
@@ -10911,9 +10906,9 @@ public: // START OF PUBLIC FUNCTIONS
             throw_error("Flag argument must be a technique flag and not a settings flag");
         }
 
-    #if (VMA_CPP >= 23)
-        [[assume(flag_bit < technique_end)]];
-    #endif
+        #if (VMA_CPP >= 23)
+            [[assume(flag_bit < technique_end)]];
+        #endif
 
         // if the technique is already cached, return the cached value instead
         if (memo::is_cached(flag_bit)) {
@@ -10921,45 +10916,38 @@ public: // START OF PUBLIC FUNCTIONS
             return data.result;
         }
 
-        // check if the flag even exists
-        const auto it = core::technique_table.find(flag_bit);
-        if (it == core::technique_table.end()) {
-            throw_error("Flag is not known");
-        }
+        if (flag_bit < technique_end) {
+            const core::technique& pair = core::technique_table[flag_bit];
 
-        // initialise and run the technique
-        const core::technique& pair = it->second;
-        bool result = false;
-        if (pair.run) {
-            result = pair.run();
-
-            if (result) {
-                detected_count_num++;
+            if (auto run_fn = pair.run) {          
+                bool result = run_fn();           
+                if (result) detected_count_num++;
+            #ifdef __VMAWARE_DEBUG__
+                total_points += pair.points;
+            #endif
+                memo::cache_store(flag_bit, result, pair.points);
+                return result;
+            }
+            else {
+                throw_error("Flag is not known or not implemented");
             }
         }
-    #ifdef __VMAWARE_DEBUG__
-        total_points += pair.points;
-    #endif
 
-        // store the technique result in the cache table
-        memo::cache_store(flag_bit, result, pair.points);
-
-        return result;
+        return false;
     }
 
 
     /**
      * @brief Fetch the VM brand
      * @param any flag combination in VM structure or nothing (VM::MULTIPLE can be added)
-     * @return std::string
+     * @return const char*
      * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmbrand
      */
     template <typename ...Args>
-    static std::string brand(Args ...args) {
+    static const char* brand(Args ...args) {
         flagset flags = core::arg_handler(args...);
 
-        // is the multiple setting flag enabled? (meaning multiple 
-        // brand strings will be outputted if there's a conflict)
+        // is the multiple setting flag enabled?
         const bool is_multiple = core::is_enabled(flags, MULTIPLE);
         
         // check if the result is already cached and return that instead
@@ -10968,7 +10956,8 @@ public: // START OF PUBLIC FUNCTIONS
                 debug("VM::brand(): returned multi brand from cache");
                 return memo::multi_brand::fetch();
             }
-        } else {
+        }
+        else {
             if (memo::brand::is_cached()) {
                 debug("VM::brand(): returned brand from cache");
                 return memo::brand::fetch();
@@ -11024,127 +11013,170 @@ public: // START OF PUBLIC FUNCTIONS
         constexpr const char* TMP_HYPERV_ARTIFACT = brands::HYPERV_ARTIFACT;
     #endif
 
-        // this is where all the RELEVANT brands are stored.
-        // The ones with no points will be filtered out.
-        std::map<const char*, brand_score_t> brands;
+        using brand_element_t = std::pair<const char*, brand_score_t>;
+        std::array<brand_element_t, core::MAX_BRANDS> active_brands;
+        size_t active_count = 0;
 
-        // add the relevant brands with at least 1 point
-        for (const auto &element : core::brand_scoreboard) {
-            if (element.second > 0) {
-                brands.insert(std::make_pair(element.first, element.second));
+        for (size_t i = 0; i < core::brand_count; ++i) {
+            if (core::brand_scoreboard[i].score > 0) {
+                active_brands[active_count++] = std::make_pair(core::brand_scoreboard[i].name, core::brand_scoreboard[i].score);
             }
         }
 
-        // if all brands have a point of 0, return 
-        // "Unknown" (no relevant brands were found)
-        if (brands.empty()) {
+        // if all brands have a point of 0, return "Unknown"
+        if (active_count == 0) {
             return brands::NULL_BRAND;
         }
 
-        // if there's only a single brand, return it. 
-        // This will skip the rest of the function
-        // where it will process and merge certain
-        // brands 
-        if (brands.size() == 1) {
-            return brands.begin()->first;
+        // if there's only a single brand, return it immediately
+        if (active_count == 1) {
+            return active_brands[0].first;
         }
-        
-        // remove Hyper-V artifacts if found with other 
-        // brands, because that's not a VM. It's added 
-        // only for the sake of information cuz of the 
-        // fucky wucky Hyper-V problem (see Hyper-X)
-        if (brands.size() > 1) {
-            if (brands.find(TMP_HYPERV_ARTIFACT) != brands.end()) {
-                brands.erase(TMP_HYPERV_ARTIFACT);
+
+        // helper lambdas for array manipulation
+        auto find_index = [&](const char* name) noexcept -> int {
+            for (size_t i = 0; i < active_count; ++i) {
+                // pointer comparison is sufficient for static brands
+                if (active_brands[i].first == name) return static_cast<int>(i);
+            }
+            return -1;
+        };
+
+        auto remove_at = [&](int index) noexcept {
+            if (index >= 0 && index < static_cast<int>(active_count)) {
+                if (index != static_cast<int>(active_count - 1)) {
+                    active_brands[static_cast<size_t>(index)] = active_brands[active_count - 1];
+                }
+                active_count--;
+            }
+        };
+
+        // remove Hyper-V artifacts if found with other brands
+        if (active_count > 1) {
+            int idx = find_index(TMP_HYPERV_ARTIFACT);
+            if (idx != -1) {
+                remove_at(idx);
             }
         }
 
-        // merge 2 brands, and make a single brand out of it.
-        auto merge = [&](const char* a, const char* b, const char* result) -> void {
-            const auto it_a = brands.find(a);
-            if (it_a == brands.end()) return;
+        // merge 2 brands
+        auto merge = [&](const char* a, const char* b, const char* result) noexcept -> void {
+            int idx_a = find_index(a);
+            if (idx_a == -1) return;
 
-            const auto it_b = brands.find(b);
-            if (it_b == brands.end()) return;
+            int idx_b = find_index(b);
+            if (idx_b == -1) return;
 
-            brands.erase(it_a);
-            brands.erase(it_b);
+            remove_at(idx_a);
+            idx_b = find_index(b); // re-find
+            remove_at(idx_b);
 
-            brands.emplace(result, 2);
-        };
+            active_brands[active_count++] = std::make_pair(result, 2);
+         };
 
         // same as above, but for 3
-        auto triple_merge = [&](const char* a, const char* b, const char* c, const char* result) -> void {
-            const auto it_a = brands.find(a);
-            if (it_a == brands.end()) return;
+        auto triple_merge = [&](const char* a, const char* b, const char* c, const char* result) noexcept -> void {
+            int idx_a = find_index(a);
+            if (idx_a == -1) return;
+            int idx_b = find_index(b);
+            if (idx_b == -1) return;
+            int idx_c = find_index(c);
+            if (idx_c == -1) return;
 
-            const auto it_b = brands.find(b);
-            if (it_b == brands.end()) return;
+            remove_at(idx_a);
+            remove_at(find_index(b));
+            remove_at(find_index(c));
 
-            const auto it_c = brands.find(c);
-            if (it_c == brands.end()) return;
-
-            // Only erase if ALL 3 were found
-            brands.erase(it_a);
-            brands.erase(it_b);
-            brands.erase(it_c);
-
-            brands.emplace(result, 2);
+            active_brands[active_count++] = std::make_pair(result, 2);
         };
 
-        // some edgecase handling for Hyper-V and VirtualPC since
-        // they're very similar, and they're both from Microsoft (ew)
-        if ((brands.count(TMP_HYPERV) > 0) && (brands.count(TMP_VPC) > 0)) {
-            if (brands.count(TMP_HYPERV) == brands.count(TMP_VPC)) {
-                merge(TMP_VPC, TMP_HYPERV, TMP_HYPERV_VPC);
-            } else {
-                brands.erase(TMP_VPC);
-            }
-        }
-        
+        // some edgecase handling for Hyper-V and VirtualPC
+        int idx_hv = find_index(TMP_HYPERV);
+        int idx_vpc = find_index(TMP_VPC);
 
-        // this is the section where brand post-processing will be done. 
-        // The reason why this part is necessary is because it will
-        // output a more accurate picture of the VM brand. For example, 
-        // Azure's cloud is based on Hyper-V, but Hyper-V may have 
-        // a higher score due to the prevalence of it in a practical 
-        // setting, which will put Azure to the side. This is stupid 
-        // because there should be an indication that Azure is involved
-        // since it's a better idea to let the end-user know that the
-        // brand is "Azure Hyper-V" instead of just "Hyper-V". So what
-        // this section does is "merge" the brands together to form
-        // a more accurate idea of the brand(s) involved.
-        merge(TMP_AZURE, TMP_HYPERV,     TMP_AZURE);
-        merge(TMP_AZURE, TMP_VPC,        TMP_AZURE);
+        if (idx_hv != -1 && idx_vpc != -1) {
+            // existence is confirmed by index != -1
+            merge(TMP_VPC, TMP_HYPERV, TMP_HYPERV_VPC);
+        }
+        else if (idx_hv != -1 && idx_vpc == -1) {
+            // before, if counts differ (and one is 0), we erased VPC
+            // but if VPC is -1, it's already "erased"
+            // so logic handled by merge check essentially
+        }
+
+        // Brand post-processing / merging
+        merge(TMP_AZURE, TMP_HYPERV, TMP_AZURE);
+        merge(TMP_AZURE, TMP_VPC, TMP_AZURE);
         merge(TMP_AZURE, TMP_HYPERV_VPC, TMP_AZURE);
 
-        merge(TMP_NANOVISOR, TMP_HYPERV,     TMP_NANOVISOR);
-        merge(TMP_NANOVISOR, TMP_VPC,        TMP_NANOVISOR);
+        merge(TMP_NANOVISOR, TMP_HYPERV, TMP_NANOVISOR);
+        merge(TMP_NANOVISOR, TMP_VPC, TMP_NANOVISOR);
         merge(TMP_NANOVISOR, TMP_HYPERV_VPC, TMP_NANOVISOR);
-        
-        merge(TMP_QEMU,     TMP_KVM,        TMP_QEMU_KVM);
-        merge(TMP_KVM,      TMP_HYPERV,     TMP_KVM_HYPERV);
-        merge(TMP_QEMU,     TMP_HYPERV,     TMP_QEMU_KVM_HYPERV);
-        merge(TMP_QEMU_KVM, TMP_HYPERV,     TMP_QEMU_KVM_HYPERV);
-        merge(TMP_KVM,      TMP_KVM_HYPERV, TMP_KVM_HYPERV);
-        merge(TMP_QEMU,     TMP_KVM_HYPERV, TMP_QEMU_KVM_HYPERV);
+
+        merge(TMP_QEMU, TMP_KVM, TMP_QEMU_KVM);
+        merge(TMP_KVM, TMP_HYPERV, TMP_KVM_HYPERV);
+        merge(TMP_QEMU, TMP_HYPERV, TMP_QEMU_KVM_HYPERV);
+        merge(TMP_QEMU_KVM, TMP_HYPERV, TMP_QEMU_KVM_HYPERV);
+        merge(TMP_KVM, TMP_KVM_HYPERV, TMP_KVM_HYPERV);
+        merge(TMP_QEMU, TMP_KVM_HYPERV, TMP_QEMU_KVM_HYPERV);
         merge(TMP_QEMU_KVM, TMP_KVM_HYPERV, TMP_QEMU_KVM_HYPERV);
 
         triple_merge(TMP_QEMU, TMP_KVM, TMP_KVM_HYPERV, TMP_QEMU_KVM_HYPERV);
 
-        merge(TMP_VMWARE, TMP_FUSION,      TMP_FUSION);
-        merge(TMP_VMWARE, TMP_EXPRESS,     TMP_EXPRESS);
-        merge(TMP_VMWARE, TMP_ESX,         TMP_ESX);
-        merge(TMP_VMWARE, TMP_GSX,         TMP_GSX);
+        merge(TMP_VMWARE, TMP_FUSION, TMP_FUSION);
+        merge(TMP_VMWARE, TMP_EXPRESS, TMP_EXPRESS);
+        merge(TMP_VMWARE, TMP_ESX, TMP_ESX);
+        merge(TMP_VMWARE, TMP_GSX, TMP_GSX);
         merge(TMP_VMWARE, TMP_WORKSTATION, TMP_WORKSTATION);
 
-        merge(TMP_VMWARE_HARD, TMP_VMWARE,      TMP_VMWARE_HARD);
-        merge(TMP_VMWARE_HARD, TMP_FUSION,      TMP_VMWARE_HARD);
-        merge(TMP_VMWARE_HARD, TMP_EXPRESS,     TMP_VMWARE_HARD);
-        merge(TMP_VMWARE_HARD, TMP_ESX,         TMP_VMWARE_HARD);
-        merge(TMP_VMWARE_HARD, TMP_GSX,         TMP_VMWARE_HARD);
+        merge(TMP_VMWARE_HARD, TMP_VMWARE, TMP_VMWARE_HARD);
+        merge(TMP_VMWARE_HARD, TMP_FUSION, TMP_VMWARE_HARD);
+        merge(TMP_VMWARE_HARD, TMP_EXPRESS, TMP_VMWARE_HARD);
+        merge(TMP_VMWARE_HARD, TMP_ESX, TMP_VMWARE_HARD);
+        merge(TMP_VMWARE_HARD, TMP_GSX, TMP_VMWARE_HARD);
         merge(TMP_VMWARE_HARD, TMP_WORKSTATION, TMP_VMWARE_HARD);
 
+        const int idx_art = find_index(TMP_HYPERV_ARTIFACT);
+        if (idx_art != -1 && score > 0) {
+            remove_at(idx_art);
+        }
+
+        if (active_count > 1) {
+            std::sort(active_brands.begin(), active_brands.begin() + static_cast<std::ptrdiff_t>(active_count), [](
+                const brand_element_t& a,
+                const brand_element_t& b
+                ) {
+                    return a.second > b.second;
+            });
+        }
+
+    #ifdef __VMAWARE_DEBUG__
+        for (size_t i = 0; i < active_count; ++i) {
+            debug("scoreboard: ", (int)active_brands[i].second, " : ", active_brands[i].first);
+        }
+    #endif
+
+        if (active_count > 0) {
+            if (!is_multiple) {
+                memo::brand::store(active_brands[0].first);
+                debug("VM::brand(): cached brand string");
+                return memo::brand::fetch();
+            }
+            else {
+                char* buffer = memo::multi_brand::brand_cache;
+                buffer[0] = '\0';
+                const size_t buf_size = sizeof(memo::multi_brand::brand_cache);
+
+                str_copy(buffer, active_brands[0].first, buf_size);
+                for (size_t i = 1; i < active_count; i++) {
+                    str_cat(buffer, " or ", buf_size);
+                    str_cat(buffer, active_brands[i].first, buf_size);
+                }
+
+                memo::multi_brand::cached = true;
+                debug("VM::brand(): cached multiple brand string");
+                return memo::multi_brand::fetch();
+            }
 
         // this is added in case the lib detects a non-Hyper-X technique.
         // A Hyper-X affiliated technique should make the overall score
@@ -11248,7 +11280,7 @@ public: // START OF PUBLIC FUNCTIONS
         u16 threshold = 150;
 
         // if high threshold is set, the points 
-        // will be 300. If not, leave it as 150.
+        // will be 300. If not, leave it as 150
         if (core::is_enabled(flags, HIGH_THRESHOLD)) {
             threshold = high_threshold_score;
         }
@@ -11277,9 +11309,9 @@ public: // START OF PUBLIC FUNCTIONS
         // flags above, and get a total score
         const u16 points = core::run_all(flags, SHORTCUT);
 
-    #if (VMA_CPP >= 23)
+#if (VMA_CPP >= 23)
         [[assume(points < maximum_points)]];
-    #endif
+#endif
 
         u8 percent = 0;
         u16 threshold = 150;
@@ -11295,9 +11327,11 @@ public: // START OF PUBLIC FUNCTIONS
         // above 150 to get to 100% 
         if (points >= threshold) {
             percent = 100;
-        } else if (points >= 100) {
+        }
+        else if (points >= 100) {
             percent = 99;
-        } else {
+        }
+        else {
             percent = static_cast<u8>(std::min<u16>(points, 99));
         }
 
@@ -11313,10 +11347,10 @@ public: // START OF PUBLIC FUNCTIONS
      */
     static void add_custom(
         const u8 percent,
-        std::function<bool()> detection_func
-    #if (VMA_CPP >= 20 && !CLANG)
+        bool(*detection_func)()
+        #if (VMA_CPP >= 20 && !CLANG)
         , const std::source_location& loc = std::source_location::current()
-    #endif
+        #endif
     ) {
         // lambda to throw the error
         auto throw_error = [&](const char* text) -> void {
@@ -11336,21 +11370,17 @@ public: // START OF PUBLIC FUNCTIONS
         [[assume(percent > 0 && percent <= 100)]];
     #endif
 
-        static u16 id = 0;
-        id++;
+        size_t current_index = core::custom_table.size();
 
-        // generate the custom technique struct
         core::custom_technique query{
             percent,
-            // this fucking sucks
-            static_cast<u16>(static_cast<int>(base_technique_count) + static_cast<int>(id)),
+            static_cast<u16>(static_cast<int>(base_technique_count) + static_cast<int>(current_index) + 1),
             detection_func
         };
 
         technique_count++;
 
-        // push it to the custome_table vector
-        core::custom_table.emplace_back(query);
+        core::custom_table.push_back(query);
     }
 
 
@@ -11364,17 +11394,14 @@ public: // START OF PUBLIC FUNCTIONS
     static flagset DISABLE(Args ...args) {
         // basically core::arg_handler but in reverse,
         // it'll clear the bits of the provided flags
-        core::disabled_arg_handler(args...);
-
-        return core::disabled_flag_collector;
+        return core::disabled_arg_handler(args...);
     }
-
 
     /**
      * @brief This will convert the technique flag into a string, which will correspond to the technique name
      * @param single technique flag in VM structure
      */
-    [[nodiscard]] static std::string flag_to_string(const enum_flags flag) {
+    [[nodiscard]] static const char* flag_to_string(const enum_flags flag) {
         switch (flag) {
             // START OF TECHNIQUE LIST
             case VMID: return "VMID";
@@ -11466,7 +11493,6 @@ public: // START OF PUBLIC FUNCTIONS
             case EDID: return "EDID";
             case CPU_HEURISTIC: return "CPU_HEURISTIC";
             case CLOCK: return "CLOCK";
-            case POST: return "POST";
             // END OF TECHNIQUE LIST
             case DEFAULT: return "setting flag, error";
             case ALL: return "setting flag, error";
@@ -11482,22 +11508,23 @@ public: // START OF PUBLIC FUNCTIONS
     /**
      * @brief Fetch all the brands that were detected in a vector
      * @param any flag combination in VM structure or nothing
-     * @return std::vector<VM::enum_flags>
+     * @return VM::enum_vector
      */
     template <typename ...Args>
-    static std::vector<enum_flags> detected_enums(Args ...args) {
+    static enum_vector detected_enums(Args ...args) {
         const flagset flags = core::arg_handler(args...);
 
-        std::vector<enum_flags> tmp{};
+        enum_vector tmp;
 
         // this will loop through all the enums in the technique_vector variable,
         // and then checks each of them and outputs the enum that was detected
-        for (const auto technique_enum : technique_vector) {
+        for (u8 i = technique_begin; i < technique_end; ++i) {
+            const enum_flags technique_enum = static_cast<enum_flags>(i);
             if (
                 (flags.test(technique_enum)) &&
-                (check(static_cast<enum_flags>(technique_enum)))
-            ) {
-                tmp.push_back(static_cast<enum_flags>(technique_enum));
+                (check(technique_enum))
+                ) {
+                tmp.push_back(technique_enum);
             }
         }
 
@@ -11524,20 +11551,28 @@ public: // START OF PUBLIC FUNCTIONS
     /**
      * @brief Fetch the total number of detected techniques
      * @param any flag combination in VM structure or nothing
-     * @return std::uint8_t
+     * @return const char*
      */
     template <typename ...Args>
-    static std::string type(Args ...args) {
+    static const char* type(Args ...args) {
         flagset flags = core::arg_handler(args...);
 
-        const std::string brand_str = brand(flags);
+        const char* brand_str = brand(flags);
 
-        // if multiple brands were found, return unknown
-        if (util::find(brand_str, " or ")) {
-            return "Unknown";
+        // this is a check for the " or " separator
+        const char* p = brand_str;
+        while (*p) {
+            if (p[0] == ' ' && p[1] == 'o' && p[2] == 'r' && p[3] == ' ') return "Unknown";
+            p++;
         }
 
-        const std::map<std::string, const char*> type_table {
+        struct map_entry {
+            const char* name;
+            const char* type;
+        };
+
+        // Static table for O(1) scanning
+        static constexpr map_entry type_table[] = {
             // type 1
             { brands::XEN, "Hypervisor (type 1)" },
             { brands::VMWARE_ESX, "Hypervisor (type 1)" },
@@ -11613,10 +11648,14 @@ public: // START OF PUBLIC FUNCTIONS
             { brands::NULL_BRAND, "Unknown" }
         };
 
-        const auto it = type_table.find(brand_str.c_str());
+        for (const auto& entry : type_table) {
+            // pointer comparison first , because is the fastest/O(1) relative to string length
+            if (brand_str == entry.name) return entry.type;
+        }
 
-        if (it != type_table.end()) {
-            return it->second;
+        // theres a chance of brand() returning a cache pointer but same content
+        for (const auto& entry : type_table) {
+            if (str_eq(brand_str, entry.name)) return entry.type;
         }
 
         debug("VM::type(): No known brand found, something went terribly wrong here...");
@@ -11628,38 +11667,24 @@ public: // START OF PUBLIC FUNCTIONS
     /**
       * @brief Fetch the conclusion message based on the brand and percentage
       * @param any flag combination in VM structure or nothing
-      * @return std::string
+      * @return const char*
       */
     template <typename ...Args>
-    static std::string conclusion(Args ...args) {
+    static const char* conclusion(Args ...args) {
         flagset flags = core::arg_handler(args...);
 
-        std::string brand_tmp = brand(flags);
+        const char* brand_tmp = brand(flags);
         const u8 percent_tmp = percentage(flags);
 
-    #if (VMA_CPP >= 17)
-        constexpr std::string_view very_unlikely = "Very unlikely a";
-        constexpr std::string_view unlikely = "Unlikely a";
-        constexpr std::string_view potentially = "Potentially";
-        constexpr std::string_view might = "Might be";
-        constexpr std::string_view likely = "Likely";
-        constexpr std::string_view very_likely = "Very likely";
-        constexpr std::string_view inside_vm = "Running inside";
-    #else
-        const std::string very_unlikely = "Very unlikely";
-        const std::string unlikely = "Unlikely";
-        const std::string potentially = "Potentially";
-        const std::string might = "Might be";
-        const std::string likely = "Likely";
-        const std::string very_likely = "Very likely";
-        const std::string inside_vm = "Running inside";
-    #endif
+        constexpr const char* very_unlikely = "Very unlikely a";
+        constexpr const char* unlikely = "Unlikely a";
+        constexpr const char* potentially = "Potentially";
+        constexpr const char* might = "Might be";
+        constexpr const char* likely = "Likely";
+        constexpr const char* very_likely = "Very likely";
+        constexpr const char* inside_vm = "Running inside";
 
-    #if (VMA_CPP >= 17)
-        auto make_conclusion = [&](std::string_view category) -> std::string {
-    #else
-        auto make_conclusion = [&](const std::string& category) -> std::string {
-    #endif
+        auto make_conclusion = [&](const char* category) -> const char* {
             const char* addition = " a ";
 
             // this basically just fixes the grammatical syntax
@@ -11690,50 +11715,42 @@ public: // START OF PUBLIC FUNCTIONS
 
             // this is basically just to remove the capital "U", 
             // since it doesn't make sense to see "an Unknown"
-        #if (VMA_CPP >= 17)
-            const std::string_view final_brand = (brand_tmp == brands::NULL_BRAND) ? "unknown" : std::string_view(brand_tmp);
-        #else
-            const char* final_brand = (brand_tmp == brands::NULL_BRAND) ? "unknown" : brand_tmp.c_str();
-        #endif
+            const char* final_brand = (str_eq(brand_tmp, brands::NULL_BRAND)) ? "unknown" : brand_tmp;
 
-            // Hyper-V artifacts are an exception due to how unique the circumstance is
             const char* suffix = " VM";
+            if (str_eq(brand_tmp, brands::HYPERV_ARTIFACT) && percent_tmp != 100) {
             if (brand_tmp == brands::HYPERV_ARTIFACT) {
                 suffix = "";
             }
 
-            std::string result;
-        #if (VMA_CPP >= 17)
-            result.reserve(category.length() + std::strlen(addition) + final_brand.length() + std::strlen(suffix));
-        #else
-            result.reserve(category.length() + std::strlen(addition) + std::strlen(final_brand) + std::strlen(suffix));
-        #endif
-            result.append(category);
-            result.append(addition);
-            result.append(final_brand);
-            result.append(suffix);
+            // Build string in static cache
+            char* buf = memo::conclusion::cache;
+            const size_t sz = sizeof(memo::conclusion::cache);
+            buf[0] = '\0';
 
-            if (brand_tmp == brands::NULL_BRAND) {
-                brand_tmp = "unknown";
-            }
+            str_copy(buf, category, sz);
+            str_cat(buf, addition, sz);
+            str_cat(buf, final_brand, sz);
+            str_cat(buf, suffix, sz);
 
-            return result;
+            return memo::conclusion::fetch();
         };
 
         if (core::is_enabled(flags, DYNAMIC)) {
-            if      (percent_tmp == 0)  { return "Running on baremetal";         }
+            if (percent_tmp == 0) { return "Running on baremetal"; }
             else if (percent_tmp <= 20) { return make_conclusion(very_unlikely); }
-            else if (percent_tmp <= 35) { return make_conclusion(unlikely);      }
-            else if (percent_tmp < 50)  { return make_conclusion(potentially);   }
-            else if (percent_tmp <= 62) { return make_conclusion(might);         }
-            else if (percent_tmp <= 75) { return make_conclusion(likely);        }
-            else if (percent_tmp < 100) { return make_conclusion(very_likely);   }
-            else                        { return make_conclusion(inside_vm);     }
+            else if (percent_tmp <= 35) { return make_conclusion(unlikely); }
+            else if (percent_tmp < 50) { return make_conclusion(potentially); }
+            else if (percent_tmp <= 62) { return make_conclusion(might); }
+            else if (percent_tmp <= 75) { return make_conclusion(likely); }
+            else if (percent_tmp < 100) { return make_conclusion(very_likely); }
+            else { return make_conclusion(inside_vm); }
         }
 
         if (percent_tmp == 100) {
             return make_conclusion(inside_vm);
-        } else {
+        }
+        else {
             return "Running on baremetal";
         }
     }
@@ -11744,18 +11761,18 @@ public: // START OF PUBLIC FUNCTIONS
      * @return bool
      */
     static bool is_hardened() {
-        auto detected_brand = [](const enum_flags flag) -> std::string {
+        auto detected_brand = [](const enum_flags flag) -> const char* {
             memo::uncache(flag);
 
-            const decltype(core::brand_scoreboard) old_scoreboard_snapshot = core::brand_scoreboard;
+            std::array<core::brand_entry, core::MAX_BRANDS> old_scoreboard_snapshot{};
+            std::copy(core::brand_scoreboard.begin(), core::brand_scoreboard.end(), old_scoreboard_snapshot.begin());
 
             check(flag);
 
-            for (const auto& entry : old_scoreboard_snapshot) {
-                const auto& brand = entry.first;
-                const brand_score_t old_score = entry.second;
-                const brand_score_t new_score = core::brand_scoreboard.at(brand);
-                if (old_score < new_score) return brand;
+            for (size_t i = 0; i < core::brand_count; ++i) {
+                if (old_scoreboard_snapshot[i].score < core::brand_scoreboard[i].score) {
+                    return core::brand_scoreboard[i].name;
+                }
             }
             return brands::NULL_BRAND;
         };
@@ -11763,7 +11780,7 @@ public: // START OF PUBLIC FUNCTIONS
         const bool hv_present = (check(VM::HYPERVISOR_BIT) || check(VM::HYPERVISOR_STR));
 
         // rule 1: if VM::FIRMWARE is detected, so should VM::HYPERVISOR_BIT or VM::HYPERVISOR_STR
-        const std::string firmware_brand = detected_brand(VM::FIRMWARE);
+        const char* firmware_brand = detected_brand(VM::FIRMWARE);
         if (firmware_brand != brands::NULL_BRAND && !hv_present) {
             return true;
         }
@@ -11771,7 +11788,7 @@ public: // START OF PUBLIC FUNCTIONS
     #if (LINUX)
         // rule 2: if VM::FIRMWARE is detected, so should VM::CVENDOR (QEMU or VBOX)
         if (firmware_brand == brands::QEMU || firmware_brand == brands::VBOX) {
-            const std::string cvendor_brand = detected_brand(VM::CVENDOR);
+            const char* cvendor_brand = detected_brand(VM::CVENDOR);
             if (firmware_brand != cvendor_brand) {
                 return true;
             }
@@ -11780,7 +11797,7 @@ public: // START OF PUBLIC FUNCTIONS
 
     #if (WINDOWS)        
         // rule 3: if VM::ACPI_SIGNATURE (QEMU) is detected, so should VM::FIRMWARE (QEMU)
-        const std::string acpi_brand = detected_brand(VM::ACPI_SIGNATURE);
+        const char* acpi_brand = detected_brand(VM::ACPI_SIGNATURE);
         if (acpi_brand == brands::QEMU && firmware_brand != brands::QEMU) {
             return true;
         }
@@ -11797,9 +11814,9 @@ public: // START OF PUBLIC FUNCTIONS
 
     #pragma pack(push, 1)
     struct vmaware {
-        std::string brand;
-        std::string type;
-        std::string conclusion;
+        const char* brand;
+        const char* type;
+        const char* conclusion;
         bool is_vm;
         u8 percentage;
         u8 detected_count;
@@ -11822,98 +11839,121 @@ public: // START OF PUBLIC FUNCTIONS
 
 
     static u16 technique_count; // get total number of techniques
-    static std::vector<enum_flags> technique_vector;
 #ifdef __VMAWARE_DEBUG__
     static u16 total_points;
 #endif
 };
 
 // ============= EXTERNAL DEFINITIONS =============
-// These are added here due to warnings related to C++17 inline variables for C++ standards that are under 17.
+// These are added here due to warnings related to C++17 inline variables for C++ standards that are under 17
 // It's easier to just group them together rather than having C++17<= preprocessors with inline stuff
+char VM::memo::conclusion::cache[512] = { 0 };
+bool VM::memo::conclusion::cached = false;
 
+// scoreboard list of brands, if a VM detection technique detects a brand, that will be incremented here as a single point
+std::array<VM::core::brand_entry, VM::core::MAX_BRANDS> VM::core::brand_scoreboard = []() {
+    std::array<VM::core::brand_entry, VM::core::MAX_BRANDS> arr{};
+    size_t i = 0;
 
-// scoreboard list of brands, if a VM detection technique detects a brand, that will be incremented here as a single point.
-std::map<const char*, VM::brand_score_t> VM::core::brand_scoreboard{
-    { brands::VBOX, 0 },
-    { brands::VMWARE, 0 },
-    { brands::VMWARE_EXPRESS, 0 },
-    { brands::VMWARE_ESX, 0 },
-    { brands::VMWARE_GSX, 0 },
-    { brands::VMWARE_WORKSTATION, 0 },
-    { brands::VMWARE_FUSION, 0 },
-    { brands::VMWARE_HARD, 0 },
-    { brands::BHYVE, 0 },
-    { brands::KVM, 0 },
-    { brands::QEMU, 0 },
-    { brands::QEMU_KVM, 0 },
-    { brands::KVM_HYPERV, 0 },
-    { brands::QEMU_KVM_HYPERV, 0 },
-    { brands::HYPERV, 0 },
-    { brands::HYPERV_VPC, 0 },
-    { brands::PARALLELS, 0 },
-    { brands::XEN, 0 },
-    { brands::ACRN, 0 },
-    { brands::QNX, 0 },
-    { brands::HYBRID, 0 },
-    { brands::SANDBOXIE, 0 },
-    { brands::DOCKER, 0 },
-    { brands::WINE, 0 },
-    { brands::VPC, 0 },
-    { brands::ANUBIS, 0 },
-    { brands::JOEBOX, 0 },
-    { brands::THREATEXPERT, 0 },
-    { brands::CWSANDBOX, 0 },
-    { brands::COMODO, 0 },
-    { brands::BOCHS, 0 },
-    { brands::NVMM, 0 },
-    { brands::BSD_VMM, 0 },
-    { brands::INTEL_HAXM, 0 },
-    { brands::UNISYS, 0 },
-    { brands::LMHS, 0 },
-    { brands::CUCKOO, 0 },
-    { brands::BLUESTACKS, 0 },
-    { brands::JAILHOUSE, 0 },
-    { brands::APPLE_VZ, 0 },
-    { brands::INTEL_KGT, 0 },
-    { brands::AZURE_HYPERV, 0 },
-    { brands::NANOVISOR, 0 },
-    { brands::SIMPLEVISOR, 0 },
-    { brands::HYPERV_ARTIFACT, 0 },
-    { brands::UML, 0 },
-    { brands::POWERVM, 0 },
-    { brands::GCE, 0 },
-    { brands::OPENSTACK, 0 },
-    { brands::KUBEVIRT, 0 },
-    { brands::AWS_NITRO, 0 },
-    { brands::PODMAN, 0 },
-    { brands::WSL, 0 },
-    { brands::OPENVZ, 0 },
-    { brands::BAREVISOR, 0 },
-    { brands::HYPERPLATFORM, 0 },
-    { brands::MINIVISOR, 0 },
-    { brands::INTEL_TDX, 0 },
-    { brands::LKVM, 0 },
-    { brands::AMD_SEV, 0 },
-    { brands::AMD_SEV_ES, 0 },
-    { brands::AMD_SEV_SNP, 0 },
-    { brands::NEKO_PROJECT, 0 },
-    { brands::QIHOO, 0 },
-    { brands::NOIRVISOR, 0 },
-    { brands::NSJAIL, 0 },
-    { brands::DBVM, 0 },
-    { brands::UTM, 0 },
-    { brands::NULL_BRAND, 0 }
-};
+    auto insert = [&](const char* n) noexcept {
+        if (i < VM::core::MAX_BRANDS) {
+            arr[i] = { n, 0 };
+            i++;
+        }
+    };
 
+    insert(brands::VBOX);
+    insert(brands::VMWARE);
+    insert(brands::VMWARE_EXPRESS);
+    insert(brands::VMWARE_ESX);
+    insert(brands::VMWARE_GSX);
+    insert(brands::VMWARE_WORKSTATION);
+    insert(brands::VMWARE_FUSION);
+    insert(brands::VMWARE_HARD);
+    insert(brands::BHYVE);
+    insert(brands::KVM);
+    insert(brands::QEMU);
+    insert(brands::QEMU_KVM);
+    insert(brands::KVM_HYPERV);
+    insert(brands::QEMU_KVM_HYPERV);
+    insert(brands::HYPERV);
+    insert(brands::HYPERV_VPC);
+    insert(brands::PARALLELS);
+    insert(brands::XEN);
+    insert(brands::ACRN);
+    insert(brands::QNX);
+    insert(brands::HYBRID);
+    insert(brands::SANDBOXIE);
+    insert(brands::DOCKER);
+    insert(brands::WINE);
+    insert(brands::VPC);
+    insert(brands::ANUBIS);
+    insert(brands::JOEBOX);
+    insert(brands::THREATEXPERT);
+    insert(brands::CWSANDBOX);
+    insert(brands::COMODO);
+    insert(brands::BOCHS);
+    insert(brands::NVMM);
+    insert(brands::BSD_VMM);
+    insert(brands::INTEL_HAXM);
+    insert(brands::UNISYS);
+    insert(brands::LMHS);
+    insert(brands::CUCKOO);
+    insert(brands::BLUESTACKS);
+    insert(brands::JAILHOUSE);
+    insert(brands::APPLE_VZ);
+    insert(brands::INTEL_KGT);
+    insert(brands::AZURE_HYPERV);
+    insert(brands::NANOVISOR);
+    insert(brands::SIMPLEVISOR);
+    insert(brands::HYPERV_ARTIFACT);
+    insert(brands::UML);
+    insert(brands::POWERVM);
+    insert(brands::GCE);
+    insert(brands::OPENSTACK);
+    insert(brands::KUBEVIRT);
+    insert(brands::AWS_NITRO);
+    insert(brands::PODMAN);
+    insert(brands::WSL);
+    insert(brands::OPENVZ);
+    insert(brands::BAREVISOR);
+    insert(brands::HYPERPLATFORM);
+    insert(brands::MINIVISOR);
+    insert(brands::INTEL_TDX);
+    insert(brands::LKVM);
+    insert(brands::AMD_SEV);
+    insert(brands::AMD_SEV_ES);
+    insert(brands::AMD_SEV_SNP);
+    insert(brands::NEKO_PROJECT);
+    insert(brands::QIHOO);
+    insert(brands::NOIRVISOR);
+    insert(brands::NSJAIL);
+    insert(brands::DBVM);
+    insert(brands::UTM);
+    insert(brands::NULL_BRAND);
+
+    return arr;
+}();
+
+// Dynamically count the brands initialized above
+size_t VM::core::brand_count = []() -> size_t {
+    size_t c = 0;
+    for (const auto& b : VM::core::brand_scoreboard) {
+        if (b.name != nullptr) c++;
+    }
+    return c;
+}();
 
 // initial definitions for cache items because C++ forbids in-class initializations
-std::map<VM::u16, VM::memo::data_t> VM::memo::cache_table;
-VM::flagset VM::memo::cache_keys = 0;
-std::string VM::memo::brand::brand_cache = "";
-std::string VM::memo::multi_brand::brand_cache = "";
-std::string VM::memo::cpu_brand::brand_cache = "";
+std::array<VM::memo::cache_entry, VM::enum_size + 1> VM::memo::cache_table{};
+char VM::memo::brand::brand_cache[512] = { 0 };
+bool VM::memo::brand::cached = false;
+char VM::memo::multi_brand::brand_cache[1024] = { 0 };
+bool VM::memo::multi_brand::cached = false;
+char VM::memo::cpu_brand::brand_cache[128] = { 0 };
+bool VM::memo::cpu_brand::cached = false;
 VM::u32 VM::memo::threadcount::threadcount_cache = 0;
+// Assuming hyperx enum or value exists externally, defaulting to 0/unknown for safe C++11 compat in this context
 VM::hyperx_state VM::memo::hyperx::state = VM::HYPERV_UNKNOWN;
 bool VM::memo::hyperx::cached = false;
 
@@ -11933,23 +11973,11 @@ VM::flagset VM::core::disabled_flag_collector;
 
 VM::u8 VM::detected_count_num = 0;
 
-
-std::vector<VM::enum_flags> VM::disabled_techniques = {
-    VM::VMWARE_DMESG
-};
-
-
-std::vector<VM::enum_flags> VM::technique_vector = []() -> std::vector<VM::enum_flags> {
-    std::vector<VM::enum_flags> tmp{};
-
-    // all the techniques have a macro value starting from 0 to ~90, hence why it's a classic loop
-    for (u8 i = VM::technique_begin; i < VM::technique_end; i++) {
-        tmp.push_back(static_cast<VM::enum_flags>(i));
-    }
-
-    return tmp;
+VM::disabled_tech_container VM::disabled_techniques = []() {
+    VM::disabled_tech_container c;
+    c.push_back(VM::VMWARE_DMESG);
+    return c;
 }();
-
 
 // this value is incremented each time VM::add_custom is called
 VM::u16 VM::technique_count = base_technique_count;
@@ -11957,129 +11985,126 @@ VM::u16 VM::technique_count = base_technique_count;
 // this is initialised as empty, because this is where custom techniques can be added at runtime 
 std::vector<VM::core::custom_technique> VM::core::custom_table = {
 
-};
+}; 
+size_t VM::core::custom_table_size = 0;
 
-#define table_t std::map<VM::enum_flags, VM::core::technique>
-
-// the 0~100 points are debatable, but we think it's fine how it is. Feel free to disagree.
-std::pair<VM::enum_flags, VM::core::technique> VM::core::technique_list[] = {
+// the 0~100 points are debatable, but we think it's fine how it is. Feel free to disagree
+std::array<VM::core::technique, VM::enum_size + 1> VM::core::technique_table = []() {
+    std::array<VM::core::technique, VM::enum_size + 1> table{};
     // FORMAT: { VM::<ID>, { certainty%, function pointer } },
     // START OF TECHNIQUE TABLE
-    #if (WINDOWS)
-        std::make_pair(VM::TRAP, VM::core::technique(100, VM::trap)),
-        std::make_pair(VM::ACPI_SIGNATURE, VM::core::technique(100, VM::acpi_signature)),
-        std::make_pair(VM::NVRAM, VM::core::technique(100, VM::nvram)),
-        std::make_pair(VM::CLOCK, VM::core::technique(100, VM::clock)),
-        std::make_pair(VM::POWER_CAPABILITIES, VM::core::technique(45, VM::power_capabilities)),
-        std::make_pair(VM::CPU_HEURISTIC, VM::core::technique(90, VM::cpu_heuristic)),
-        std::make_pair(VM::POST, VM::core::technique(100, VM::post)),
-        std::make_pair(VM::EDID, VM::core::technique(100, VM::edid)),
-        std::make_pair(VM::BOOT_LOGO, VM::core::technique(100, VM::boot_logo)),
-        std::make_pair(VM::GPU_CAPABILITIES, VM::core::technique(45, VM::gpu_capabilities)),
-        std::make_pair(VM::SMBIOS_INTEGRITY, VM::core::technique(60, VM::smbios_integrity)),
-        std::make_pair(VM::DISK_SERIAL, VM::core::technique(100, VM::disk_serial_number)),
-        std::make_pair(VM::IVSHMEM, VM::core::technique(100, VM::ivshmem)),
-        std::make_pair(VM::SGDT, VM::core::technique(50, VM::sgdt)),
-        std::make_pair(VM::SLDT, VM::core::technique(50, VM::sldt)),
-        std::make_pair(VM::SMSW, VM::core::technique(50, VM::smsw)),
-        std::make_pair(VM::DRIVERS, VM::core::technique(100, VM::drivers)),
-        std::make_pair(VM::DEVICE_HANDLES, VM::core::technique(100, VM::device_handles)),
-        std::make_pair(VM::VIRTUAL_PROCESSORS, VM::core::technique(100, VM::virtual_processors)),
-        std::make_pair(VM::OBJECTS, VM::core::technique(100, VM::objects)),
-        std::make_pair(VM::HYPERVISOR_QUERY, VM::core::technique(100, VM::hypervisor_query)),
-        std::make_pair(VM::AUDIO, VM::core::technique(25, VM::audio)),
-        std::make_pair(VM::DISPLAY, VM::core::technique(35, VM::display)),
-        std::make_pair(VM::WINE, VM::core::technique(100, VM::wine)),
-        std::make_pair(VM::DLL, VM::core::technique(50, VM::dll)),
-        std::make_pair(VM::DBVM, VM::core::technique(150, VM::dbvm)),
-        std::make_pair(VM::UD, VM::core::technique(100, VM::ud)),
-        std::make_pair(VM::BLOCKSTEP, VM::core::technique(100, VM::blockstep)),
-        std::make_pair(VM::VMWARE_BACKDOOR, VM::core::technique(100, VM::vmware_backdoor)),
-        std::make_pair(VM::VIRTUAL_REGISTRY, VM::core::technique(90, VM::virtual_registry)),
-        std::make_pair(VM::MUTEX, VM::core::technique(100, VM::mutex)),
-        std::make_pair(VM::DEVICE_STRING, VM::core::technique(25, VM::device_string)),
-        std::make_pair(VM::VPC_INVALID, VM::core::technique(75, VM::vpc_invalid)),
-        std::make_pair(VM::VMWARE_STR, VM::core::technique(35, VM::vmware_str)),
-        std::make_pair(VM::GAMARUE, VM::core::technique(10, VM::gamarue)),
-        std::make_pair(VM::CUCKOO_DIR, VM::core::technique(30, VM::cuckoo_dir)),
-        std::make_pair(VM::CUCKOO_PIPE, VM::core::technique(30, VM::cuckoo_pipe)),
-    #endif
+    const VM::core::technique_entry entries[] = {
+        #if (WINDOWS)
+            {VM::TRAP, {100, VM::trap}},
+            {VM::ACPI_SIGNATURE, {100, VM::acpi_signature}},
+            {VM::NVRAM, {100, VM::nvram}},
+            {VM::CLOCK, {100, VM::clock}},
+            {VM::POWER_CAPABILITIES, {45, VM::power_capabilities}},
+            {VM::CPU_HEURISTIC, {90, VM::cpu_heuristic}},
+            {VM::EDID, {100, VM::edid}},
+            {VM::BOOT_LOGO, {100, VM::boot_logo}},
+            {VM::GPU_CAPABILITIES, {45, VM::gpu_capabilities}},
+            {VM::SMBIOS_INTEGRITY, {60, VM::smbios_integrity}},
+            {VM::DISK_SERIAL, {100, VM::disk_serial_number}},
+            {VM::IVSHMEM, {100, VM::ivshmem}},
+            {VM::SGDT, {50, VM::sgdt}},
+            {VM::SLDT, {50, VM::sldt}},
+            {VM::SMSW, {50, VM::smsw}},
+            {VM::DRIVERS, {100, VM::drivers}},
+            {VM::DEVICE_HANDLES, {100, VM::device_handles}},
+            {VM::VIRTUAL_PROCESSORS, {100, VM::virtual_processors}},
+            {VM::OBJECTS, {100, VM::objects}},
+            {VM::HYPERVISOR_QUERY, {100, VM::hypervisor_query}},
+            {VM::AUDIO, {25, VM::audio}},
+            {VM::DISPLAY, {35, VM::display}},
+            {VM::WINE, {100, VM::wine}},
+            {VM::DLL, {50, VM::dll}},
+            {VM::DBVM, {150, VM::dbvm}},
+            {VM::UD, {100, VM::ud}},
+            {VM::BLOCKSTEP, {100, VM::blockstep}},
+            {VM::VMWARE_BACKDOOR, {100, VM::vmware_backdoor}},
+            {VM::VIRTUAL_REGISTRY, {90, VM::virtual_registry}},
+            {VM::MUTEX, {100, VM::mutex}},
+            {VM::DEVICE_STRING, {25, VM::device_string}},
+            {VM::VPC_INVALID, {75, VM::vpc_invalid}},
+            {VM::VMWARE_STR, {35, VM::vmware_str}},
+            {VM::GAMARUE, {10, VM::gamarue}},
+            {VM::CUCKOO_DIR, {30, VM::cuckoo_dir}},
+            {VM::CUCKOO_PIPE, {30, VM::cuckoo_pipe}},
+        #endif
 
-    #if (LINUX || WINDOWS)
-        std::make_pair(VM::FIRMWARE, VM::core::technique(100, VM::firmware)),
-        std::make_pair(VM::PCI_DEVICES, VM::core::technique(95, VM::pci_devices)),
-        std::make_pair(VM::SIDT, VM::core::technique(50, VM::sidt)),
-        std::make_pair(VM::AZURE, VM::core::technique(30, VM::hyperv_hostname)),
-    #endif
-        
-    #if (LINUX)
-        std::make_pair(VM::SMBIOS_VM_BIT, VM::core::technique(50, VM::smbios_vm_bit)),
-        std::make_pair(VM::KMSG, VM::core::technique(5, VM::kmsg)),
-        std::make_pair(VM::CVENDOR, VM::core::technique(65, VM::chassis_vendor)),
-        std::make_pair(VM::QEMU_FW_CFG, VM::core::technique(70, VM::qemu_fw_cfg)),
-        std::make_pair(VM::SYSTEMD, VM::core::technique(35, VM::systemd_virt)),
-        std::make_pair(VM::CTYPE, VM::core::technique(20, VM::chassis_type)),
-        std::make_pair(VM::DOCKERENV, VM::core::technique(30, VM::dockerenv)),
-        std::make_pair(VM::DMIDECODE, VM::core::technique(55, VM::dmidecode)),
-        std::make_pair(VM::DMESG, VM::core::technique(55, VM::dmesg)),
-        std::make_pair(VM::HWMON, VM::core::technique(35, VM::hwmon)),
-        std::make_pair(VM::LINUX_USER_HOST, VM::core::technique(10, VM::linux_user_host)),
-        std::make_pair(VM::VMWARE_IOMEM, VM::core::technique(65, VM::vmware_iomem)),
-        std::make_pair(VM::VMWARE_IOPORTS, VM::core::technique(70, VM::vmware_ioports)),
-        std::make_pair(VM::VMWARE_SCSI, VM::core::technique(40, VM::vmware_scsi)),
-        std::make_pair(VM::VMWARE_DMESG, VM::core::technique(65, VM::vmware_dmesg)),
-        std::make_pair(VM::QEMU_VIRTUAL_DMI, VM::core::technique(40, VM::qemu_virtual_dmi)),
-        std::make_pair(VM::QEMU_USB, VM::core::technique(20, VM::qemu_USB)),
-        std::make_pair(VM::HYPERVISOR_DIR, VM::core::technique(20, VM::hypervisor_dir)),
-        std::make_pair(VM::UML_CPU, VM::core::technique(80, VM::uml_cpu)),
-        std::make_pair(VM::VBOX_MODULE, VM::core::technique(15, VM::vbox_module)),
-        std::make_pair(VM::SYSINFO_PROC, VM::core::technique(15, VM::sysinfo_proc)),
-        std::make_pair(VM::DMI_SCAN, VM::core::technique(50, VM::dmi_scan)),
-        std::make_pair(VM::PODMAN_FILE, VM::core::technique(5, VM::podman_file)),
-        std::make_pair(VM::WSL_PROC, VM::core::technique(30, VM::wsl_proc_subdir)),
-        std::make_pair(VM::FILE_ACCESS_HISTORY, VM::core::technique(15, VM::file_access_history)),
-        std::make_pair(VM::MAC, VM::core::technique(20, VM::mac_address_check)),
-        std::make_pair(VM::NSJAIL_PID, VM::core::technique(75, VM::nsjail_proc_id)),
-        std::make_pair(VM::BLUESTACKS_FOLDERS, VM::core::technique(5, VM::bluestacks)),
-        std::make_pair(VM::AMD_SEV, VM::core::technique(50, VM::amd_sev)),
-        std::make_pair(VM::TEMPERATURE, VM::core::technique(80, VM::temperature)),
-        std::make_pair(VM::PROCESSES, VM::core::technique(40, VM::processes)),
-    #endif    
+        #if (LINUX || WINDOWS)
+            {VM::FIRMWARE, {100, VM::firmware}},
+            {VM::PCI_DEVICES, {95, VM::pci_devices}},
+            {VM::SIDT, {50, VM::sidt}},
+            {VM::AZURE, {30, VM::hyperv_hostname}},
+        #endif
 
-    #if (LINUX || APPLE)
-        std::make_pair(VM::THREAD_COUNT, VM::core::technique(35, VM::thread_count)),
-    #endif
+        #if (LINUX)
+            {VM::SMBIOS_VM_BIT, {50, VM::smbios_vm_bit}},
+            {VM::KMSG, {5, VM::kmsg}},
+            {VM::CVENDOR, {65, VM::chassis_vendor}},
+            {VM::QEMU_FW_CFG, {70, VM::qemu_fw_cfg}},
+            {VM::SYSTEMD, {35, VM::systemd_virt}},
+            {VM::CTYPE, {20, VM::chassis_type}},
+            {VM::DOCKERENV, {30, VM::dockerenv}},
+            {VM::DMIDECODE, {55, VM::dmidecode}},
+            {VM::DMESG, {55, VM::dmesg}},
+            {VM::HWMON, {35, VM::hwmon}},
+            {VM::LINUX_USER_HOST, {10, VM::linux_user_host}},
+            {VM::VMWARE_IOMEM, {65, VM::vmware_iomem}},
+            {VM::VMWARE_IOPORTS, {70, VM::vmware_ioports}},
+            {VM::VMWARE_SCSI, {40, VM::vmware_scsi}},
+            {VM::VMWARE_DMESG, {65, VM::vmware_dmesg}},
+            {VM::QEMU_VIRTUAL_DMI, {40, VM::qemu_virtual_dmi}},
+            {VM::QEMU_USB, {20, VM::qemu_USB}},
+            {VM::HYPERVISOR_DIR, {20, VM::hypervisor_dir}},
+            {VM::UML_CPU, {80, VM::uml_cpu}},
+            {VM::VBOX_MODULE, {15, VM::vbox_module}},
+            {VM::SYSINFO_PROC, {15, VM::sysinfo_proc}},
+            {VM::DMI_SCAN, {50, VM::dmi_scan}},
+            {VM::PODMAN_FILE, {5, VM::podman_file}},
+            {VM::WSL_PROC, {30, VM::wsl_proc_subdir}},
+            {VM::FILE_ACCESS_HISTORY, {15, VM::file_access_history}},
+            {VM::MAC, {20, VM::mac_address_check}},
+            {VM::NSJAIL_PID, {75, VM::nsjail_proc_id}},
+            {VM::BLUESTACKS_FOLDERS, {5, VM::bluestacks}},
+            {VM::AMD_SEV, {50, VM::amd_sev}},
+            {VM::TEMPERATURE, {80, VM::temperature}},
+            {VM::PROCESSES, {40, VM::processes}},
+        #endif    
 
-    #if (APPLE)
-        std::make_pair(VM::MAC_MEMSIZE, VM::core::technique(15, VM::hw_memsize)),
-        std::make_pair(VM::MAC_IOKIT, VM::core::technique(100, VM::io_kit)),
-        std::make_pair(VM::MAC_SIP, VM::core::technique(100, VM::mac_sip)),
-        std::make_pair(VM::IOREG_GREP, VM::core::technique(100, VM::ioreg_grep)),
-        std::make_pair(VM::HWMODEL, VM::core::technique(100, VM::hwmodel)),
-        std::make_pair(VM::MAC_SYS, VM::core::technique(100, VM::mac_sys)),
-    #endif
-    
-    std::make_pair(VM::TIMER, VM::core::technique(100, VM::timer)),
-    std::make_pair(VM::INTEL_THREAD_MISMATCH, VM::core::technique(50, VM::intel_thread_mismatch)),
-    std::make_pair(VM::AMD_THREAD_MISMATCH, VM::core::technique(50, VM::amd_thread_mismatch)),
-    std::make_pair(VM::XEON_THREAD_MISMATCH, VM::core::technique(50, VM::xeon_thread_mismatch)),
-    std::make_pair(VM::VMID, VM::core::technique(100, VM::vmid)),
-    std::make_pair(VM::CPU_BRAND, VM::core::technique(95, VM::cpu_brand)),
-    std::make_pair(VM::CPUID_SIGNATURE, VM::core::technique(95, VM::cpuid_signature)),
-    std::make_pair(VM::HYPERVISOR_STR, VM::core::technique(100, VM::hypervisor_str)),
-    std::make_pair(VM::HYPERVISOR_BIT, VM::core::technique(100, VM::hypervisor_bit)),
-    std::make_pair(VM::BOCHS_CPU, VM::core::technique(100, VM::bochs_cpu)),
-    std::make_pair(VM::KGT_SIGNATURE, VM::core::technique(80, VM::intel_kgt_signature))
-    // END OF TECHNIQUE TABLE
-};
+        #if (LINUX || APPLE)
+            {VM::THREAD_COUNT, {35, VM::thread_count}},
+        #endif
 
+        #if (APPLE)
+            {VM::MAC_MEMSIZE, {15, VM::hw_memsize}},
+            {VM::MAC_IOKIT, {100, VM::io_kit}},
+            {VM::MAC_SIP, {100, VM::mac_sip}},
+            {VM::IOREG_GREP, {100, VM::ioreg_grep}},
+            {VM::HWMODEL, {100, VM::hwmodel}},
+            {VM::MAC_SYS, {100, VM::mac_sys}},
+        #endif
 
-// the reason why the map isn't directly initialized is due to potential 
-// SDK errors on windows combined with older C++ standards
-table_t VM::core::technique_table = []() -> table_t {
-    table_t table;
-    for (const auto& technique : VM::core::technique_list) {
-        table.insert(technique);
+        {VM::TIMER, {150, VM::timer}},
+        {VM::INTEL_THREAD_MISMATCH, {50, VM::intel_thread_mismatch}},
+        {VM::AMD_THREAD_MISMATCH, {50, VM::amd_thread_mismatch}},
+        {VM::XEON_THREAD_MISMATCH, {50, VM::xeon_thread_mismatch}},
+        {VM::VMID, {100, VM::vmid}},
+        {VM::CPU_BRAND, {95, VM::cpu_brand}},
+        {VM::CPUID_SIGNATURE, {95, VM::cpuid_signature}},
+        {VM::HYPERVISOR_STR, {100, VM::hypervisor_str}},
+        {VM::HYPERVISOR_BIT, {100, VM::hypervisor_bit}},
+        {VM::BOCHS_CPU, {100, VM::bochs_cpu}},
+        {VM::KGT_SIGNATURE, {80, VM::intel_kgt_signature}}
+    };
+
+    // fill the table based on ID
+    for (const auto& entry : entries) {
+        if (entry.id < table.size()) {
+            table[entry.id] = entry.tech;
+        }
     }
     return table;
 }();
