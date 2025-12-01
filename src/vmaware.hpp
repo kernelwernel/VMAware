@@ -2279,15 +2279,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     #else
         const std::string& brand = cpu::get_brand();
 
-        struct CStrView {
+        struct string_view {
             const char* data;
             std::size_t size;
-            constexpr CStrView(const char* d, std::size_t s) noexcept
+            constexpr string_view(const char* d, std::size_t s) noexcept
                 : data(d), size(s) {
             }
         };
 
-        static constexpr std::array<CStrView, 10> checks{ {
+        static constexpr std::array<string_view, 10> checks{ {
             { "qemu",       4 },
             { "kvm",        3 },
             { "vbox",       4 },
@@ -2311,7 +2311,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 if (v.size == 7  // "monitor"
                     || ((v.size == 6) && (v.data[0] == 'h'))  // "hvisor"
                     || ((v.size == 10) && (v.data[0] == 'h')) // "hypervisor" 
-                    ) {
+                ) {
                     return true;
                 }
 
@@ -10542,7 +10542,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 if (
                     (shortcut) &&
                     (points >= threshold_points)
-                    ) {
+                ) {
                     return points;
                 }
             }
@@ -10961,10 +10961,7 @@ public: // START OF PUBLIC FUNCTIONS
         // is the multiple setting flag enabled? (meaning multiple 
         // brand strings will be outputted if there's a conflict)
         const bool is_multiple = core::is_enabled(flags, MULTIPLE);
-
-        // run all the techniques 
-        const u16 score = core::run_all(flags);
-
+        
         // check if the result is already cached and return that instead
         if (is_multiple) {
             if (memo::multi_brand::is_cached()) {
@@ -10977,6 +10974,9 @@ public: // START OF PUBLIC FUNCTIONS
                 return memo::brand::fetch();
             }
         }
+
+        // run all the techniques 
+        core::run_all(flags);
 
         // goofy ass C++11 and C++14 linker error workaround.
         // And yes, this does look stupid.
@@ -11159,9 +11159,7 @@ public: // START OF PUBLIC FUNCTIONS
         // confirmation is true and percentage is 100%, as if that makes
         // any sense whatsoever. That's what this part fixes.
         if (brands.count(TMP_HYPERV_ARTIFACT) > 0) {
-            if (score > 0) {
-                brands.erase(TMP_HYPERV_ARTIFACT);
-            }
+            brands.erase(TMP_HYPERV_ARTIFACT);
         }
 
 
@@ -11234,6 +11232,11 @@ public: // START OF PUBLIC FUNCTIONS
         // fetch all the flags in a std::bitset
         flagset flags = core::arg_handler(args...);
 
+        // early return, since this is NOT a VM
+        if (brand(flags) == brands::HYPERV_ARTIFACT) {
+            return false;
+        }
+
         // run all the techniques based on the 
         // flags above, and get a total score 
         const u16 points = core::run_all(flags, SHORTCUT);
@@ -11264,6 +11267,11 @@ public: // START OF PUBLIC FUNCTIONS
     static u8 percentage(Args ...args) {
         // fetch all the flags in a std::bitset
         const flagset flags = core::arg_handler(args...);
+
+        // early return, since this is NOT a VM
+        if (brand(flags) == brands::HYPERV_ARTIFACT) {
+            return 0;
+        } 
 
         // run all the techniques based on the 
         // flags above, and get a total score
@@ -11498,56 +11506,6 @@ public: // START OF PUBLIC FUNCTIONS
 
 
     /**
-     * @brief Change the certainty score of a technique
-     * @param technique flag, then the new percentage score to overwite
-     * @return void
-     * @warning ⚠️ FOR DEVELOPMENT USAGE ONLY, NOT MEANT FOR PUBLIC USE FOR NOW ⚠️
-     */
-    static void modify_score(
-        const enum_flags flag,
-        const u8 percent
-    #if (VMA_CPP >= 20) && (!CLANG || __clang_major__ >= 16)
-        , const std::source_location& loc = std::source_location::current()
-    #endif
-    ) {
-        // lambda to throw the error
-        auto throw_error = [&](const char* text) -> void {
-            std::stringstream ss;
-    #if (VMA_CPP >= 20 && !CLANG)
-            ss << ", error in " << loc.function_name() << " at " << loc.file_name() << ":" << loc.line() << ")";
-    #endif
-            ss << ". Consult the documentation's parameters for VM::modify_score()";
-            throw std::invalid_argument(std::string(text) + ss.str());
-        };
-
-        if (percent > 100) {
-            throw_error("Percentage parameter must be between 0 and 100");
-        }
-
-    #if (VMA_CPP >= 23)
-        [[assume(percent <= 100)]];
-    #endif  
-
-        // check if the flag provided is a setting flag, which isn't valid.
-        if (static_cast<u8>(flag) >= technique_end) {
-            throw_error("The flag is not a technique flag");
-        }
-
-        using table_t = std::map<enum_flags, core::technique>;
-
-        auto modify = [](table_t& table, const enum_flags flag, const u8 percent) noexcept -> void {
-            const auto it = table.find(flag);
-
-            if (it != table.end()) {
-                it->second.points = percent;
-            }
-        };
-
-        modify(core::technique_table, flag, percent);
-    }
-
-
-    /**
      * @brief Fetch the total number of detected techniques
      * @param any flag combination in VM structure or nothing
      * @return std::uint8_t
@@ -11726,7 +11684,7 @@ public: // START OF PUBLIC FUNCTIONS
                 (brand_tmp == brands::AMD_SEV_SNP) ||
                 (brand_tmp == brands::NSJAIL) ||
                 (brand_tmp == brands::NULL_BRAND)
-                ) {
+            ) {
                 addition = " an ";
             }
 
@@ -11740,7 +11698,7 @@ public: // START OF PUBLIC FUNCTIONS
 
             // Hyper-V artifacts are an exception due to how unique the circumstance is
             const char* suffix = " VM";
-            if (brand_tmp == brands::HYPERV_ARTIFACT && percent_tmp != 100) {
+            if (brand_tmp == brands::HYPERV_ARTIFACT) {
                 suffix = "";
             }
 
