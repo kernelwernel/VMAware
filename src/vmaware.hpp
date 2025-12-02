@@ -56,10 +56,10 @@
  * - struct for internal cpu operations        => line 740
  * - struct for internal memoization           => line 1231
  * - struct for internal utility functions     => line 1375
- * - struct for internal core components       => line 10492
- * - start of VM detection technique list      => line 2354
- * - start of public VM detection functions    => line 10997
- * - start of externally defined variables     => line 11931
+ * - struct for internal core components       => line 10493
+ * - start of VM detection technique list      => line 2355
+ * - start of public VM detection functions    => line 10998
+ * - start of externally defined variables     => line 11977
  *
  *
  * ============================== EXAMPLE ===================================
@@ -1940,7 +1940,8 @@ private:
                     // yes, vmaware runs on dinosaur cpus without sse4.2 pretty often
                     i32 regs[4];
                     cpu::cpuid(regs, 1);
-                    const bool has_sse42 = (regs[2] & (1 << 20)) != 0;
+                    constexpr u32 SSE42_FEATURE = (1 << 20);
+                    const bool has_sse42 = (regs[2] & SSE42_FEATURE) != 0;
 
                     return has_sse42 ? crc32_hw : crc32_sw;
                 }
@@ -2386,15 +2387,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     #else
         const std::string& brand = cpu::get_brand();
 
-        struct CStrView {
+        struct string_view {
             const char* data;
             std::size_t size;
-            constexpr CStrView(const char* d, std::size_t s) noexcept
+            constexpr string_view(const char* d, std::size_t s) noexcept
                 : data(d), size(s) {
             }
         };
 
-        static constexpr std::array<CStrView, 10> checks{ {
+        static constexpr std::array<string_view, 10> checks{ {
             { "qemu",       4 },
             { "kvm",        3 },
             { "vbox",       4 },
@@ -2418,7 +2419,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 if (v.size == 7  // "monitor"
                     || ((v.size == 6) && (v.data[0] == 'h'))  // "hvisor"
                     || ((v.size == 10) && (v.data[0] == 'h')) // "hypervisor" 
-                    ) {
+                ) {
                     return true;
                 }
 
@@ -10673,7 +10674,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 if (
                     (shortcut) &&
                     (points >= threshold_points)
-                    ) {
+                ) {
                     return points;
                 }
             }
@@ -11027,7 +11028,7 @@ public: // START OF PUBLIC FUNCTIONS
             (flag_bit == HIGH_THRESHOLD) ||
             (flag_bit == DYNAMIC) ||
             (flag_bit == MULTIPLE)
-            ) {
+        ) {
             throw_error("Flag argument must be a technique flag and not a settings flag");
         }
 
@@ -11074,10 +11075,7 @@ public: // START OF PUBLIC FUNCTIONS
 
         // is the multiple setting flag enabled?
         const bool is_multiple = core::is_enabled(flags, MULTIPLE);
-
-        // run all the techniques 
-        const u16 score = core::run_all(flags);
-
+        
         // check if the result is already cached and return that instead
         if (is_multiple) {
             if (memo::multi_brand::is_cached()) {
@@ -11092,6 +11090,11 @@ public: // START OF PUBLIC FUNCTIONS
             }
         }
 
+        // run all the techniques 
+        core::run_all(flags);
+
+        // goofy ass C++11 and C++14 linker error workaround.
+        // And yes, this does look stupid.
     #if (VMA_CPP <= 14)
         constexpr const char* TMP_QEMU = "QEMU";
         constexpr const char* TMP_KVM = "KVM";
@@ -11300,9 +11303,79 @@ public: // START OF PUBLIC FUNCTIONS
                 debug("VM::brand(): cached multiple brand string");
                 return memo::multi_brand::fetch();
             }
+
+        // this is added in case the lib detects a non-Hyper-X technique.
+        // A Hyper-X affiliated technique should make the overall score
+        // as 0, but this isn't the case if non-Hyper-X techniques were
+        // found. There may be a conflict between an Unknown and Hyper-V
+        // brand, which is exactly what this section is meant to handle.
+        // It will remove the Hyper-V artifact brand string from the 
+        // std::map to pave the way for other brands to take precedence.
+        // One of the main reasons to do this is because it would look
+        // incredibly awkward if the brand was "Hyper-V artifacts (not an
+        // actual VM)", clearly stating that it's NOT a VM while the VM
+        // confirmation is true and percentage is 100%, as if that makes
+        // any sense whatsoever. That's what this part fixes.
+        if (brands.count(TMP_HYPERV_ARTIFACT) > 0) {
+            brands.erase(TMP_HYPERV_ARTIFACT);
         }
 
-        return brands::NULL_BRAND;
+
+        // the brand element, which stores the NAME (const char*) and the SCORE (u8)
+        using brand_element_t = std::pair<const char*, brand_score_t>;
+
+        // convert the std::map into a std::vector, easier to handle this way
+        std::vector<brand_element_t> vec(brands.begin(), brands.end());
+
+        // sort the relevant brands vector so that the brands with 
+        // the highest score appears first in descending order
+        std::sort(vec.begin(), vec.end(), [](
+            const brand_element_t &a,
+            const brand_element_t &b
+        ) {
+            return a.second > b.second;
+        });
+
+        std::string ret_str = brands::NULL_BRAND;
+
+
+        // if the multiple setting flag is NOT set, return the
+        // brand with the highest score. Else, return a std::string
+        // of the brand message (i.e. "VirtualBox or VMware").
+        // See VM::MULTIPLE flag in docs for more information.
+        if (!is_multiple) {
+            ret_str = vec.front().first;
+        } else {
+            std::stringstream ss;
+            std::size_t i = 1;
+
+            ss << vec.front().first;
+            for (; i < vec.size(); i++) {
+                ss << " or ";
+                ss << vec.at(i).first;
+            }
+            ret_str = ss.str();
+        }
+
+
+        // cache the result 
+        if (is_multiple) {
+            debug("VM::brand(): cached multiple brand string");
+            memo::multi_brand::store(ret_str);
+        } else {
+            debug("VM::brand(): cached brand string");
+            memo::brand::store(ret_str);
+        }
+    
+
+        // debug stuff to see the brand scoreboard, ignore this
+    #ifdef __VMAWARE_DEBUG__
+        for (const auto& p : brands) {
+            debug("scoreboard: ", (int)p.second, " : ", p.first);
+        }
+    #endif
+
+        return ret_str;
     }
 
 
@@ -11316,6 +11389,11 @@ public: // START OF PUBLIC FUNCTIONS
     static bool detect(Args ...args) {
         // fetch all the flags in a std::bitset
         flagset flags = core::arg_handler(args...);
+
+        // early return, since this is NOT a VM
+        if (brand(flags) == brands::HYPERV_ARTIFACT) {
+            return false;
+        }
 
         // run all the techniques based on the 
         // flags above, and get a total score 
@@ -11347,6 +11425,11 @@ public: // START OF PUBLIC FUNCTIONS
     static u8 percentage(Args ...args) {
         // fetch all the flags in a std::bitset
         const flagset flags = core::arg_handler(args...);
+
+        // early return, since this is NOT a VM
+        if (brand(flags) == brands::HYPERV_ARTIFACT) {
+            return 0;
+        } 
 
         // run all the techniques based on the 
         // flags above, and get a total score
@@ -11574,44 +11657,6 @@ public: // START OF PUBLIC FUNCTIONS
         return tmp;
     }
 
-    /**
-     * @brief Change the certainty score of a technique
-     * @param technique flag, then the new percentage score to overwite
-     * @return void
-     * @warning ⚠️ FOR DEVELOPMENT USAGE ONLY, NOT MEANT FOR PUBLIC USE FOR NOW ⚠️
-     */
-    static void modify_score(
-        const enum_flags flag,
-        const u8 percent
-#if (VMA_CPP >= 20) && (!CLANG || __clang_major__ >= 16)
-        , const std::source_location& loc = std::source_location::current()
-#endif
-    ) {
-        // lambda to throw the error
-        auto throw_error = [&](const char* text) -> void {
-            std::stringstream ss;
-#if (VMA_CPP >= 20 && !CLANG)
-            ss << ", error in " << loc.function_name() << " at " << loc.file_name() << ":" << loc.line() << ")";
-#endif
-            ss << ". Consult the documentation's parameters for VM::modify_score()";
-            throw std::invalid_argument(std::string(text) + ss.str());
-            };
-
-        if (percent > 100) {
-            throw_error("Percentage parameter must be between 0 and 100");
-        }
-
-#if (VMA_CPP >= 23)
-        [[assume(percent <= 100)]];
-#endif  
-
-        // check if the flag provided is a setting flag, which isn't valid
-        if (static_cast<u8>(flag) >= technique_end) {
-            throw_error("The flag is not a technique flag");
-        }
-
-        core::technique_table[flag].points = percent;
-    }
 
     /**
      * @brief Fetch the total number of detected techniques
@@ -11790,7 +11835,7 @@ public: // START OF PUBLIC FUNCTIONS
                 (brand_tmp == brands::AMD_SEV_SNP) ||
                 (brand_tmp == brands::NSJAIL) ||
                 (brand_tmp == brands::NULL_BRAND)
-                ) {
+            ) {
                 addition = " an ";
             }
 
@@ -11800,6 +11845,7 @@ public: // START OF PUBLIC FUNCTIONS
 
             const char* suffix = " VM";
             if (str_eq(brand_tmp, brands::HYPERV_ARTIFACT) && percent_tmp != 100) {
+            if (brand_tmp == brands::HYPERV_ARTIFACT) {
                 suffix = "";
             }
 
