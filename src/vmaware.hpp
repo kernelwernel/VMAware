@@ -1611,7 +1611,7 @@ private:
 
         [[nodiscard]] static std::unique_ptr<std::string> sys_result(const char* cmd) {
         #if (VMA_CPP < 14)
-            UNUSED(cmd);
+            VMAWARE_UNUSED(cmd);
             return util::make_unique<std::string>();
         #else
             #if (LINUX || APPLE)
@@ -4415,7 +4415,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
             }();
         #else
-            UNUSED(aux);
+            VMAWARE_UNUSED(aux);
             int regs[4] = { 0 };
             cpu::cpuid(regs, 0x80000001);
             const bool haveRdtscp = (regs[3] & (1u << 27)) != 0;
