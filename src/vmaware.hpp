@@ -1947,7 +1947,9 @@ private:
             };
 
             std::string model_string;
+        #ifdef __VMAWARE_DEBUG__
             const char* debug_tag = "";
+        #endif
 
             if (type == cpu_type::AMD) {
                 if (!cpu::is_amd()) {
@@ -2311,7 +2313,9 @@ private:
             constexpr size_t targetLen = (std::size(targetName) - 1);
 
             LIST_ENTRY* head = &ldr->InMemoryOrderModuleList;
-            for (LIST_ENTRY* cur = head->Flink; cur != head; cur = cur->Flink) {
+            // static analyzers don't know that InMemoryOrderModuleList is a circular list managed by the loader
+            // so they conservatively assume head->Flink or some cur->Flink might be nullptr
+            for (LIST_ENTRY* cur = head->Flink; cur != nullptr && cur != head; cur = cur->Flink) {
                 auto* ent = CONTAINING_RECORD(cur, LDR_DATA_TABLE_ENTRY, InMemoryOrderLinks);
                 if (!ent) continue;
 
@@ -4652,7 +4656,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         #endif
 
-        // since we made a sleep, cache is cold (a cache flush might be induced, although is rare, it could happen with sleeps like 500ms)
+        // since we made a sleep, cache is cold (a cache flush might be induced, although is rare, it could happen with sleeps of 500ms)
         // so we warm-up to stabilize microarchitectural state (uop cache, predictors, etc)
         for (int w = 0; w < 128; ++w) {
             volatile u64 tmp = cpuid();
@@ -4671,7 +4675,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         else
             median = (samples[iterations / 2 - 1] + samples[iterations / 2]) / 2;
 
-        debug("TIMER: Median -> ", median);
+        debug("TIMER: VMEXIT latency -> ", median);
 
         // we compute the median instead of the average to be immune against DPC/APC (interrupts/kernel noise in general)
         if (median >= cycle_threshold) {
@@ -9720,15 +9724,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::EDID
      */
     [[nodiscard]] static bool edid() {
-        // compiles to single mov
-        auto read_le16 = [](const BYTE* p) noexcept -> u16 {
-            u16 v; memcpy(&v, p, sizeof(v)); return v;
-        };
-
-        auto read_le32 = [](const BYTE* p) noexcept -> u32 {
-            u32 v; memcpy(&v, p, sizeof(v)); return v;
-        };
-
         auto decode_manufacturer = [](const BYTE* edid, char out[4]) noexcept {
             const u16 word = static_cast<u16>((edid[8] << 8) | edid[9]);
 
@@ -11181,7 +11176,7 @@ public: // START OF PUBLIC FUNCTIONS
 
         // remove Hyper-V artifacts if found with other brands
         if (active_count > 1) {
-            int idx = find_index(TMP_HYPERV_ARTIFACT);
+            const int idx = find_index(TMP_HYPERV_ARTIFACT);
             if (idx != -1) {
                 remove_at(idx);
             }
