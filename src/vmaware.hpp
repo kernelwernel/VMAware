@@ -88,7 +88,7 @@
  * Welcome! This is just a preliminary text to lay the context of how it works, 
  * how it's structured, and to guide anybody who's trying to understand the whole code. 
  * Reading over 12k+ lines of other people's C++ code is obviously not an easy task, 
- * and that's perfectly understandable. I'd struggle as well if I were in your position
+ * and that's perfectly understandable. We'd struggle as well if we were in your position
  * while not even knowing where to start. So here's a more human-friendly explanation:
  * 
  * 
@@ -139,7 +139,7 @@
  *        probably the least enjoyable part of the lib to read, since it's really messy)
  * 
  * 
- * Thirdly, I'll explain in this section how all of these facets of the lib interact with 
+ * Thirdly, We'll explain in this section how all of these facets of the lib interact with 
  * each other. Let's take an example with VM::detect(), where it returns a boolean true or 
  * false if a VM has been detected or not. The chain of steps it takes goes like this:
  *    1. The function tries to handle the user arguments (if there's 
@@ -438,7 +438,7 @@
  * scoreboard["VirtualBox"]++;
  * Hopefully this makes sense.
  *
- * TL;DR I have wonky fingers :(
+ * TL;DR We have wonky fingers :(
  */
 namespace brands {
     static constexpr const char* NULL_BRAND = "Unknown";
@@ -727,7 +727,7 @@ public:
 
 private:
     // macro for bypassing unused parameter/variable warnings
-    #define UNUSED(x) ((void)(x))
+    #define VMAWARE_UNUSED(x) ((void)(x))
 
     // specifically for util::hyper_x() and memo::hyperv
     enum hyperx_state : u8 {
@@ -800,29 +800,38 @@ private:
         #if (APPLE) 
             return false;
         #endif
+            bool cached;
+            if (memo::leaf_cache::fetch(p_leaf, cached)) {
+                return cached;
+            }
+
             u32 eax = 0, unused = 0;
+            bool supported = false;
 
             if (p_leaf < 0x40000000) {
                 // Standard range: 0x00000000 - 0x3FFFFFFF
                 cpu::cpuid(eax, unused, unused, unused, 0x00000000);
                 debug("CPUID: max standard leaf = ", eax);
-                return (p_leaf <= eax);
+                supported = (p_leaf <= eax);
             }
             else if (p_leaf < 0x80000000) {
                 // Hypervisor range: 0x40000000 - 0x7FFFFFFF
                 cpu::cpuid(eax, unused, unused, unused, cpu::leaf::hypervisor);
                 debug("CPUID: max hypervisor leaf = ", eax);
-                return (p_leaf <= eax);
+                supported = (p_leaf <= eax);
             }
             else if (p_leaf < 0xC0000000) {
                 // Extended range: 0x80000000 - 0xBFFFFFFF
                 cpu::cpuid(eax, unused, unused, unused, cpu::leaf::func_ext);
                 debug("CPUID: max extended leaf = ", eax);
-                return (p_leaf <= eax);
+                supported = (p_leaf <= eax);
+            }
+            else {
+                supported = false;
             }
 
-            debug("CPUID: unsupported leaf range: ", p_leaf);
-            return false;
+            memo::leaf_cache::store(p_leaf, supported);
+            return supported;
         }
 
         [[nodiscard]] static bool is_amd() {
@@ -1011,7 +1020,7 @@ private:
 
             u32 unused, eax = 0;
             cpu::cpuid(eax, unused, unused, unused, 1);
-            UNUSED(unused);
+            VMAWARE_UNUSED(unused);
 
             steps.model = ((eax >> 4) & 0b1111);
             steps.family = ((eax >> 8) & 0b1111);
@@ -1329,6 +1338,38 @@ private:
             }
             static bool is_cached() { return cached; }
         };
+
+        struct leaf_entry { 
+            u32 leaf; 
+            bool value;
+            bool has_value; 
+        };
+        struct leaf_cache {
+            static constexpr std::size_t CAPACITY = 128;
+            static std::array<leaf_entry, CAPACITY> table;
+            static std::size_t count;      
+            static std::size_t next_index; 
+
+            static bool fetch(u32 leaf, bool& out) {
+                for (std::size_t i = 0; i < count; ++i) {
+                    if (table[i].has_value && table[i].leaf == leaf) { out = table[i].value; return true; }
+                }
+                return false;
+            }
+
+            static void store(u32 leaf, bool val) {
+                for (std::size_t i = 0; i < count; ++i) {
+                    if (table[i].leaf == leaf) { table[i].value = val; table[i].has_value = true; return; }
+                }
+                if (count < CAPACITY) {
+                    table[count++] = { leaf, val, true };
+                    return;
+                }
+                // otherwise evict in round-robin fashion
+                table[next_index] = { leaf, val, true };
+                next_index = (next_index + 1) % CAPACITY;
+            }
+        };
     };
 
     // miscellaneous functionalities
@@ -1603,7 +1644,7 @@ private:
 
                 return util::make_unique<std::string>(std::move(result));
             #else
-                UNUSED(cmd);
+                VMAWARE_UNUSED(cmd);
                 return std::make_unique<std::string>();
             #endif
         #endif
@@ -1677,7 +1718,7 @@ private:
 
             return false;
         #else
-            UNUSED(executable);
+            VMAWARE_UNUSED(executable);
             return false;
         #endif
         }
@@ -4219,7 +4260,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     #else
         u32 eax, unused = 0;
         cpu::cpuid(eax, unused, unused, unused, 0x40000001);
-        UNUSED(unused);
+        VMAWARE_UNUSED(unused);
 
         constexpr u32 nanovisor = 0x766E6258; // "Xbnv" 
         constexpr u32 simplevisor = 0x00766853; // " vhS"
@@ -4268,13 +4309,23 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      */
     [[nodiscard]] static bool timer() {
     #if (x86)
+
+    #if (MSVC)
+        #define COMPILER_BARRIER() _ReadWriteBarrier()
+    #else
+        #define COMPILER_BARRIER() asm volatile("" ::: "memory")
+    #endif
+
+        // ================ INITIALIZATION STUFF ================
+
         if (util::is_running_under_translator()) {
             debug("TIMER: Running inside a binary translation layer");
             return false;
         }
-        u16 cycleThreshold = 1200;
+        // will be used in cpuid measurements later
+        u16 cycle_threshold = 1200;
         if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
-            cycleThreshold = 8000; // if we're running under Hyper-V, attempt to detect nested virtualization only
+            cycle_threshold = 8000; // if we're running under Hyper-V, make VMAware detect nested virtualization
         }
 
     #if (WINDOWS)
@@ -4346,12 +4397,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             prevMask = 0;
         }
 
-        // setting a higher priority for the current thread actually makes the timings drift more when comparing rdtsc against NOP/XOR loops
+        // setting a higher priority for the current thread actually makes the ration between rdtsc and other timers like QIT vary much more
+        // contrary to what someone might think about preempting reschedule
     #endif 
 
-        // Case A - Hypervisor without RDTSC patch
         thread_local u32 aux = 0;
-        // Check for RDTSCP support
+        // check for RDTSCP support, we will use it later
         {
         #if (x86_64 && WINDOWS)
             const bool haveRdtscp = [&]() noexcept -> bool {
@@ -4375,44 +4426,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
         }
 
-        auto cpuid = [&]() noexcept -> u64 {
-            const u64 t1 = __rdtsc();
-
-            u32 a, b, c, d;
-            cpu::cpuid(a, b, c, d, 0); // sometimes not intercepted in some hvs under compat mode
-
-            const u64 t2 = __rdtscp(&aux);
-
-            return t2 - t1;
-        };
-
-        constexpr u16 N = 1000;
-
-        auto sample_avg = [&]() noexcept -> u64 {
-            u64 sum = 0;
-            for (u16 i = 0; i < N; ++i) {
-                sum += cpuid();
-            }
-            return (sum + N / 2) / N;
-        };
-
-        u64 avg = sample_avg();
-        debug("TIMER: Average latency -> ", avg, " cycles");
-        if (avg <= 20) {
-            return true;
-        }
-        else if (avg >= cycleThreshold) {
-            avg = sample_avg();
-            debug("TIMER: 2nd pass average -> ", avg, " cycles");
-            if (avg >= cycleThreshold) {
-                avg = sample_avg();
-                debug("TIMER: 3rd pass average -> ", avg, " cycles");
-                if (avg >= cycleThreshold) return true; // some CPUs like Intel's Emerald Rapids have much more cycles when executing CPUID than average, we should accept a high threshold
-            }
-        }
-
+        // ================ START OF TIMING ATTACKS ================
         #if (WINDOWS)
-            // Case B - Hypervisor with RDTSC patch + useplatformclock=true
             LARGE_INTEGER freq;
             if (!QueryPerformanceFrequency(&freq)) // NtPowerInformation and NtQueryPerformanceCounter are avoided as some hypervisors downscale tsc only if we triggered a context switch from userspace
                 return false;
@@ -4426,6 +4441,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             const u64 t2 = __rdtscp(&aux);
 
             // this thread is pinned to the first CPU core due to the previous SetThreadAffinityMask call, meaning this calculation and cpu::get_cpu_base_speed() will report the same speed 
+            // (normally) P-cores are in lower indexes, althought we don't really care about which type of vCPU VMAware will be pinned under
+            // pinning to index 0 is also good to keep the check compatible with dinosaur (single-core) systems
             const double elapsedSec = double(t2q.QuadPart - t1q.QuadPart) / double(freq.QuadPart); // the performance counter frequency is always 10MHz when running under Hyper-V
             const double tscHz = double(t2 - t1) / elapsedSec;
             const double tscMHz = tscHz / 1e6;
@@ -4437,6 +4454,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return true;
             }
 
+            // TODO: maybe parse cpu brand and/or fetch efi vars like MsiOcCpuMemInfo?
             const u32 baseMHz = cpu::get_cpu_base_speed(); // wont work reliably on AMD, but its more reliable than fetching from SMBIOS
 
             if (baseMHz == 0) {
@@ -4448,13 +4466,30 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
             else {
                 debug("TIMER: Processor's true base speed -> ", static_cast<double>(baseMHz), " MHz");
-                // this -650 delta accounts for older CPUs, it's better to use this rather than calling CPUID to know if the CPU supports invariant TSC, as it can be spoofed
-                if (tscMHz <= static_cast<double>(baseMHz) - 650.0) {
-                    return true;
+                constexpr const u32 check_leaf = 0x80000007u;
+                constexpr const double INVARIANT_TSC_DELTA = 250.0;
+                constexpr const double LEGACY_DELTA = 650.0;
+
+                if (cpu::is_leaf_supported(check_leaf)) {
+                    u32 a = 0, b = 0, c = 0, d = 0;
+                    cpu::cpuid(a, b, c, d, check_leaf);
+                    const bool hasInvariantTsc = (d & (1u << 8)) != 0;
+
+                    // if CPU supports invariant TSC, QPC calibration will be more accurate
+                    if (hasInvariantTsc) {
+                        debug("TIMER: CPU supports invariant TSC");
+                        if (tscMHz <= baseMHz - INVARIANT_TSC_DELTA) return true;
+                    }
+                    else {
+                        debug("TIMER: CPU does not support invariant TSC");
+                        if (tscMHz <= baseMHz - LEGACY_DELTA) return true;
+                    }
                 }
+
+                if (tscMHz <= baseMHz - LEGACY_DELTA) return true;
             }
         
-            // Case C - Hypervisor with RDTSC patch + useplatformclock = false
+            // RDTSC trap detection
             const ULONG64 count_first = 20000000ULL;
             const ULONG64 count_second = 200000000ULL;
             static thread_local volatile u64 g_sink = 0; // so that it doesnt need to be captured by the lambda
@@ -4505,7 +4540,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             for (ULONG64 x = 0; x < count_second; ++x) {
                 dummy = xor_ptr(); // this loop won't be intercepted, it never switches to kernel-mode
             }
-            UNUSED(dummy);
+            VMAWARE_UNUSED(dummy);
 
             ULONG64 afterqit2 = 0;
             QueryInterruptTime(&afterqit2);
@@ -4539,8 +4574,113 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 debug("TIMER: An hypervisor has been detected intercepting RDTSC");
                 return true; // both ratios will always differ if a RDTSC trap is present, since the hypervisor can't account for the XOR/NOP loop
             }
-            // TLB flushes or side channel cache attacks are not even tried due to how ineffective they are against stealthy hypervisors
         #endif
+
+        // An hypervisor might detect that VMAware was spamming instructions to detect rdtsc hooks, and disable interception temporarily
+        // which is why we run the classic vm-exit latency check just after
+
+        // sometimes not intercepted in some hvs (like VirtualBox) under compat mode
+        auto cpuid = [&]() noexcept -> u64 {
+        #if (MSVC)
+            int regs[4];
+            // ensure the CPU pipeline is drained of previous loads before we start the clock
+            _mm_lfence();
+
+            // read start time
+            u64 t1 = __rdtsc();
+
+            // prevent the compiler from moving the __cpuid call before the t1 read
+            COMPILER_BARRIER();
+
+            __cpuid(regs, 0); // not using cpu::cpuid to get a chance of inlining
+
+            COMPILER_BARRIER();
+
+            // the idea is to let rdtscp internally wait until cpuid is executed rather than using another memory barrier
+            unsigned int aux;
+            u64 t2 = __rdtscp(&aux);
+
+            // ensure the read of t2 doesn't bleed into future instructions
+            _mm_lfence();
+            return t2 - t1;
+        #else
+            // same logic of above
+            unsigned int lo1, hi1, lo2, hi2;
+
+            asm volatile("lfence" ::: "memory");
+            asm volatile("rdtsc" : "=a"(lo1), "=d"(hi1) :: "memory");
+            COMPILER_BARRIER();
+
+            unsigned int a, b, c, d;
+            asm volatile("cpuid" : "=a"(a), "=b"(b), "=c"(c), "=d"(d) : "a"(0) : "memory");
+            COMPILER_BARRIER();
+
+            asm volatile("rdtscp" : "=a"(lo2), "=d"(hi2) :: "rcx", "memory");
+            asm volatile("lfence" ::: "memory");
+
+            u64 t1 = (u64(hi1) << 32) | lo1;
+            u64 t2 = (u64(hi2) << 32) | lo2;
+
+            return t2 - t1;
+        #endif
+        };
+
+        constexpr u16 iterations = 1000;
+
+        // pre-allocate sample buffer and touch pages to avoid page faults by MMU during measurement
+        std::vector<u64> samples;
+        samples.resize(iterations);
+        for (unsigned i = 0; i < iterations; ++i) samples[i] = 0; // or RtlSecureZeroMemory (memset)
+
+        /*
+        * We want to move our thread from the Running state to the Waiting state
+        * When the sleep expires (at the next timer tick), the OS moves VMAware's thread to the Ready state
+        * When it picks us up again, it grants VMAware a fresh quantum, typically varying between 2 ticks (30ms) and 6 ticks (90ms) on Windows Client editions
+        * The default resolution of the Windows clock we're using is 64Hz
+        * Because we're calling NtDelayExecution with only 1ms, the kernel interprets this as "Sleep for at least 1ms"
+        * Since the hardware interrupt (tick) only fires every 15.6ms and we're not using timeBeginPeriod, the kernel cannot wake us after exactly 1ms
+        * So instead, it does what we want and wakes us up at the very next timer interrupt
+        * That's the reason why it's only 1ms and we're not using CreateWaitableTimerEx / SetWaitableTimerEx
+        * Sleep(0) would return instantly in some circumstances
+        * This gives us more time for sampling before we're rescheduled again
+        */
+       #if (WINDOWS)
+            // voluntary context switch to get a fresh quantum
+            SleepEx(1, FALSE);
+        #else 
+            // should work similarly in Unix-like operating systems
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        #endif
+
+        // since we made a sleep, cache is cold (a cache flush might be induced, although is rare, it could happen with sleeps like 500ms)
+        // so we warm-up to stabilize microarchitectural state (uop cache, predictors, etc)
+        for (int w = 0; w < 128; ++w) {
+            volatile u64 tmp = cpuid();
+            VMAWARE_UNUSED(tmp);
+        }
+
+        for (unsigned i = 0; i < iterations; ++i) {
+            samples[i] = cpuid();
+        }
+
+        // compute median, which for this case should be more reliable than average, IQR, trimming median, bottom 50%, etc against outliers/spikes
+        std::sort(samples.begin(), samples.end());
+        u64 median = 0;
+        if (iterations % 2 == 1) 
+            median = samples[iterations / 2];
+        else
+            median = (samples[iterations / 2 - 1] + samples[iterations / 2]) / 2;
+
+        debug("TIMER: Median -> ", median);
+
+        // we compute the median instead of the average to be immune against DPC/APC (interrupts/kernel noise in general)
+        if (median >= cycle_threshold) {
+            return true;
+        }
+        else if (median <= 20) { // cpuid is fully serializing, not even old CPUs have this low average cycles in real-world scenarios
+            return true;
+        }
+        // TLB flushes or side channel cache attacks are not even tried due to how unreliable they are against stealthy hypervisors
     #endif
         return false;
     }
@@ -4585,7 +4725,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         const std::string vendor = util::read_file(vendor_file);
 
-        // TODO: More can definitely be added, I only tried QEMU and VBox so far
+        // TODO: More can definitely be added
         if (util::find(vendor, "QEMU")) { return core::add(brands::QEMU); }
         if (util::find(vendor, "Oracle Corporation")) { return core::add(brands::VBOX); }
 
@@ -6836,7 +6976,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 // we dont call NtQuerySystemInformation with SystemPrefetchPathInformation | SystemHandleInformation
                 // the point is to check if this kernel32.dll function throws an exception
                 IsNativeVhdBoot(&isNativeVhdBoot);
-                UNUSED(isNativeVhdBoot);
+                VMAWARE_UNUSED(isNativeVhdBoot);
             }
             __except (EXCEPTION_EXECUTE_HANDLER) {
                 debug("WINE: SEH invoked");
@@ -10595,15 +10735,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
           * flag_collector. If it's a uint8_t, simply .set() that into the
           * flag_collector. That's the gist of it.
           *
-          * Also I won't even deny, the majority of this section was 90% generated
-          * by chatgpt. Can't be arsed with this C++ variadic templatisation shit.
-          * Like is it really my fault that I have a hard time understanging C++'s
-          * god awful metaprogramming designs? And don't even get me started on SFINAE.
-          *
-          * You don't need an IQ of 3 digits to realise how dogshit this language
-          * is, when you end up in situations where there's a few correct solutions
-          * to a problem, but with a billion ways you can do the same thing but in
-          * the "wrong" way. I genuinely can't wait for Carbon to come out.
           */
     public:
        public:
@@ -11907,9 +12038,11 @@ bool VM::memo::multi_brand::cached = false;
 char VM::memo::cpu_brand::brand_cache[128] = { 0 };
 bool VM::memo::cpu_brand::cached = false;
 VM::u32 VM::memo::threadcount::threadcount_cache = 0;
-// Assuming hyperx enum or value exists externally, defaulting to 0/unknown for safe C++11 compat in this context
 VM::hyperx_state VM::memo::hyperx::state = VM::HYPERV_UNKNOWN;
 bool VM::memo::hyperx::cached = false;
+std::array<VM::memo::leaf_entry, VM::memo::leaf_cache::CAPACITY> VM::memo::leaf_cache::table{};
+std::size_t VM::memo::leaf_cache::count = 0;
+std::size_t VM::memo::leaf_cache::next_index = 0;
 
 #ifdef __VMAWARE_DEBUG__
 VM::u16 VM::total_points = 0;
