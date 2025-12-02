@@ -584,10 +584,10 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::MAC_SYS` | Check for VM-strings in system profiler commands for MacOS | 🍏 | 0% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L6772) |
 | `VM::OBJECTS` | Check for any signs of VMs in Windows kernel object entities | 🪟 | 0% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L9023) |
 | `VM::NVRAM` | Check for known NVRAM signatures that are present on virtual firmware | 🪟 | 0% | Admin |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L9192) |
-| `VM::SMBIOS_INTEGRITY` | Check if SMBIOS is malformed/corrupted in a way that is typical for VMs | 🪟 | 0% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L9536) |
-| `VM::EDID` | Check for non-standard EDID configurations | 🪟 | 0% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L9547) |
-| `VM::CPU_HEURISTIC` | Check whether the CPU is genuine and its reported instruction capabilities are not masked | 🪟 | 0% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L9781) |
-| `VM::CLOCK` | Check the presence of system timers | 🪟 | 0% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L10219) |
+| `VM::SMBIOS_INTEGRITY` | Check if SMBIOS is malformed/corrupted in a way that is typical for VMs | 🪟 | 0% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L9569) |
+| `VM::EDID` | Check for non-standard EDID configurations | 🪟 | 0% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L9580) |
+| `VM::CPU_HEURISTIC` | Check whether the CPU is genuine and its reported instruction capabilities are not masked | 🪟 | 0% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L9814) |
+| `VM::CLOCK` | Check the presence of system timers | 🪟 | 0% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L10252) |
 <!-- END OF TECHNIQUE DOCUMENTATION -->
 
 <br>
