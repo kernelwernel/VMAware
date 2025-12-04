@@ -4,7 +4,7 @@
  * ██║   ██║██╔████╔██║███████║██║ █╗ ██║███████║██████╔╝█████╗
  * ╚██╗ ██╔╝██║╚██╔╝██║██╔══██║██║███╗██║██╔══██║██╔══██╗██╔══╝
  *  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
- *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ Experimental post-2.5.0 (December 2025)
+ *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ Experimental post-2.5.0 (November 2025)
  *
  *  C++ VM detection library
  *
@@ -54,12 +54,12 @@
  * ============================== SECTIONS ==================================
  * - enums for publicly accessible techniques  => line 538
  * - struct for internal cpu operations        => line 740
- * - struct for internal memoization           => line 1231
- * - struct for internal utility functions     => line 1375
- * - struct for internal core components       => line 10493
- * - start of VM detection technique list      => line 2355
- * - start of public VM detection functions    => line 10998
- * - start of externally defined variables     => line 11977
+ * - struct for internal memoization           => line 1222
+ * - struct for internal utility functions     => line 1334
+ * - struct for internal core components       => line 10352
+ * - start of VM detection technique list      => line 2313
+ * - start of public VM detection functions    => line 10866
+ * - start of externally defined variables     => line 11800
  *
  *
  * ============================== EXAMPLE ===================================
@@ -88,7 +88,7 @@
  * Welcome! This is just a preliminary text to lay the context of how it works, 
  * how it's structured, and to guide anybody who's trying to understand the whole code. 
  * Reading over 12k+ lines of other people's C++ code is obviously not an easy task, 
- * and that's perfectly understandable. We'd struggle as well if we were in your position
+ * and that's perfectly understandable. I'd struggle as well if I were in your position
  * while not even knowing where to start. So here's a more human-friendly explanation:
  * 
  * 
@@ -139,7 +139,7 @@
  *        probably the least enjoyable part of the lib to read, since it's really messy)
  * 
  * 
- * Thirdly, We'll explain in this section how all of these facets of the lib interact with 
+ * Thirdly, I'll explain in this section how all of these facets of the lib interact with 
  * each other. Let's take an example with VM::detect(), where it returns a boolean true or 
  * false if a VM has been detected or not. The chain of steps it takes goes like this:
  *    1. The function tries to handle the user arguments (if there's 
@@ -438,7 +438,7 @@
  * scoreboard["VirtualBox"]++;
  * Hopefully this makes sense.
  *
- * TL;DR We have wonky fingers :(
+ * TL;DR I have wonky fingers :(
  */
 namespace brands {
     static constexpr const char* NULL_BRAND = "Unknown";
@@ -801,6 +801,7 @@ private:
             return false;
         #endif
             bool cached;
+
             if (memo::leaf_cache::fetch(p_leaf, cached)) {
                 return cached;
             }
@@ -1344,6 +1345,7 @@ private:
             bool value;
             bool has_value; 
         };
+
         struct leaf_cache {
             static constexpr std::size_t CAPACITY = 128;
             static std::array<leaf_entry, CAPACITY> table;
@@ -1940,8 +1942,7 @@ private:
                     // yes, vmaware runs on dinosaur cpus without sse4.2 pretty often
                     i32 regs[4];
                     cpu::cpuid(regs, 1);
-                    constexpr u32 SSE42_FEATURE = (1 << 20);
-                    const bool has_sse42 = (regs[2] & SSE42_FEATURE) != 0;
+                    const bool has_sse42 = (regs[2] & (1 << 20)) != 0;
 
                     return has_sse42 ? crc32_hw : crc32_sw;
                 }
@@ -2078,6 +2079,7 @@ private:
                 const u32 actual = memo::threadcount::fetch();
                 if (actual != expected_threads) {
                     debug(debug_tag, ": Expected threads -> ", expected_threads);
+                    VMAWARE_UNUSED(debug_tag); // silence the unused variable warning
                     return true;
                 }
             }
@@ -2383,15 +2385,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     #else
         const std::string& brand = cpu::get_brand();
 
-        struct string_view {
+        struct CStrView {
             const char* data;
             std::size_t size;
-            constexpr string_view(const char* d, std::size_t s) noexcept
+            constexpr CStrView(const char* d, std::size_t s) noexcept
                 : data(d), size(s) {
             }
         };
 
-        static constexpr std::array<string_view, 10> checks{ {
+        static constexpr std::array<CStrView, 10> checks{ {
             { "qemu",       4 },
             { "kvm",        3 },
             { "vbox",       4 },
@@ -2415,7 +2417,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 if (v.size == 7  // "monitor"
                     || ((v.size == 6) && (v.data[0] == 'h'))  // "hvisor"
                     || ((v.size == 10) && (v.data[0] == 'h')) // "hypervisor" 
-                ) {
+                    ) {
                     return true;
                 }
 
@@ -4303,7 +4305,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     }
 
 
-    /**
+/**
      * @brief Check for timing anomalies in the system
      * @category x86
      * @implements VM::TIMER
@@ -4726,7 +4728,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         const std::string vendor = util::read_file(vendor_file);
 
-        // TODO: More can definitely be added
+        // TODO: More can definitely be added, I only tried QEMU and VBox so far
         if (util::find(vendor, "QEMU")) { return core::add(brands::QEMU); }
         if (util::find(vendor, "Oracle Corporation")) { return core::add(brands::VBOX); }
 
@@ -10679,7 +10681,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 if (
                     (shortcut) &&
                     (points >= threshold_points)
-                ) {
+                    ) {
                     return points;
                 }
             }
@@ -10736,6 +10738,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
           * flag_collector. If it's a uint8_t, simply .set() that into the
           * flag_collector. That's the gist of it.
           *
+          * Also I won't even deny, the majority of this section was 90% generated
+          * by chatgpt. Can't be arsed with this C++ variadic templatisation shit.
+          * Like is it really my fault that I have a hard time understanging C++'s
+          * god awful metaprogramming designs? And don't even get me started on SFINAE.
+          *
+          * You don't need an IQ of 3 digits to realise how dogshit this language
+          * is, when you end up in situations where there's a few correct solutions
+          * to a problem, but with a billion ways you can do the same thing but in
+          * the "wrong" way. I genuinely can't wait for Carbon to come out.
           */
     public:
        public:
@@ -11033,7 +11044,7 @@ public: // START OF PUBLIC FUNCTIONS
             (flag_bit == HIGH_THRESHOLD) ||
             (flag_bit == DYNAMIC) ||
             (flag_bit == MULTIPLE)
-        ) {
+            ) {
             throw_error("Flag argument must be a technique flag and not a settings flag");
         }
 
@@ -11075,12 +11086,15 @@ public: // START OF PUBLIC FUNCTIONS
      * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmbrand
      */
     template <typename ...Args>
-    static const char* brand(Args ...args) {
+    static std::string brand(Args ...args) {
         flagset flags = core::arg_handler(args...);
 
         // is the multiple setting flag enabled?
         const bool is_multiple = core::is_enabled(flags, MULTIPLE);
-        
+
+        // run all the techniques 
+        const u16 score = core::run_all(flags);
+
         // check if the result is already cached and return that instead
         if (is_multiple) {
             if (memo::multi_brand::is_cached()) {
@@ -11095,11 +11109,6 @@ public: // START OF PUBLIC FUNCTIONS
             }
         }
 
-        // run all the techniques 
-        core::run_all(flags);
-
-        // goofy ass C++11 and C++14 linker error workaround.
-        // And yes, this does look stupid.
     #if (VMA_CPP <= 14)
         constexpr const char* TMP_QEMU = "QEMU";
         constexpr const char* TMP_KVM = "KVM";
@@ -11203,7 +11212,7 @@ public: // START OF PUBLIC FUNCTIONS
             remove_at(idx_b);
 
             active_brands[active_count++] = std::make_pair(result, 2);
-         };
+        };
 
         // same as above, but for 3
         auto triple_merge = [&](const char* a, const char* b, const char* c, const char* result) noexcept -> void {
@@ -11292,8 +11301,7 @@ public: // START OF PUBLIC FUNCTIONS
                 memo::brand::store(active_brands[0].first);
                 debug("VM::brand(): cached brand string");
                 return memo::brand::fetch();
-            }
-            else {
+            } else {
                 char* buffer = memo::multi_brand::brand_cache;
                 buffer[0] = '\0';
                 const size_t buf_size = sizeof(memo::multi_brand::brand_cache);
@@ -11308,79 +11316,9 @@ public: // START OF PUBLIC FUNCTIONS
                 debug("VM::brand(): cached multiple brand string");
                 return memo::multi_brand::fetch();
             }
-
-        // this is added in case the lib detects a non-Hyper-X technique.
-        // A Hyper-X affiliated technique should make the overall score
-        // as 0, but this isn't the case if non-Hyper-X techniques were
-        // found. There may be a conflict between an Unknown and Hyper-V
-        // brand, which is exactly what this section is meant to handle.
-        // It will remove the Hyper-V artifact brand string from the 
-        // std::map to pave the way for other brands to take precedence.
-        // One of the main reasons to do this is because it would look
-        // incredibly awkward if the brand was "Hyper-V artifacts (not an
-        // actual VM)", clearly stating that it's NOT a VM while the VM
-        // confirmation is true and percentage is 100%, as if that makes
-        // any sense whatsoever. That's what this part fixes.
-        if (brands.count(TMP_HYPERV_ARTIFACT) > 0) {
-            brands.erase(TMP_HYPERV_ARTIFACT);
         }
 
-
-        // the brand element, which stores the NAME (const char*) and the SCORE (u8)
-        using brand_element_t = std::pair<const char*, brand_score_t>;
-
-        // convert the std::map into a std::vector, easier to handle this way
-        std::vector<brand_element_t> vec(brands.begin(), brands.end());
-
-        // sort the relevant brands vector so that the brands with 
-        // the highest score appears first in descending order
-        std::sort(vec.begin(), vec.end(), [](
-            const brand_element_t &a,
-            const brand_element_t &b
-        ) {
-            return a.second > b.second;
-        });
-
-        std::string ret_str = brands::NULL_BRAND;
-
-
-        // if the multiple setting flag is NOT set, return the
-        // brand with the highest score. Else, return a std::string
-        // of the brand message (i.e. "VirtualBox or VMware").
-        // See VM::MULTIPLE flag in docs for more information.
-        if (!is_multiple) {
-            ret_str = vec.front().first;
-        } else {
-            std::stringstream ss;
-            std::size_t i = 1;
-
-            ss << vec.front().first;
-            for (; i < vec.size(); i++) {
-                ss << " or ";
-                ss << vec.at(i).first;
-            }
-            ret_str = ss.str();
-        }
-
-
-        // cache the result 
-        if (is_multiple) {
-            debug("VM::brand(): cached multiple brand string");
-            memo::multi_brand::store(ret_str);
-        } else {
-            debug("VM::brand(): cached brand string");
-            memo::brand::store(ret_str);
-        }
-    
-
-        // debug stuff to see the brand scoreboard, ignore this
-    #ifdef __VMAWARE_DEBUG__
-        for (const auto& p : brands) {
-            debug("scoreboard: ", (int)p.second, " : ", p.first);
-        }
-    #endif
-
-        return ret_str;
+        return brands::NULL_BRAND;
     }
 
 
@@ -11394,11 +11332,6 @@ public: // START OF PUBLIC FUNCTIONS
     static bool detect(Args ...args) {
         // fetch all the flags in a std::bitset
         flagset flags = core::arg_handler(args...);
-
-        // early return, since this is NOT a VM
-        if (brand(flags) == brands::HYPERV_ARTIFACT) {
-            return false;
-        }
 
         // run all the techniques based on the 
         // flags above, and get a total score 
@@ -11430,11 +11363,6 @@ public: // START OF PUBLIC FUNCTIONS
     static u8 percentage(Args ...args) {
         // fetch all the flags in a std::bitset
         const flagset flags = core::arg_handler(args...);
-
-        // early return, since this is NOT a VM
-        if (brand(flags) == brands::HYPERV_ARTIFACT) {
-            return 0;
-        } 
 
         // run all the techniques based on the 
         // flags above, and get a total score
@@ -11532,7 +11460,7 @@ public: // START OF PUBLIC FUNCTIONS
      * @brief This will convert the technique flag into a string, which will correspond to the technique name
      * @param single technique flag in VM structure
      */
-    [[nodiscard]] static const char* flag_to_string(const enum_flags flag) {
+    [[nodiscard]] static std::string flag_to_string(const enum_flags flag) {
         switch (flag) {
             // START OF TECHNIQUE LIST
             case VMID: return "VMID";
@@ -11662,6 +11590,44 @@ public: // START OF PUBLIC FUNCTIONS
         return tmp;
     }
 
+    /**
+     * @brief Change the certainty score of a technique
+     * @param technique flag, then the new percentage score to overwite
+     * @return void
+     * @warning ⚠️ FOR DEVELOPMENT USAGE ONLY, NOT MEANT FOR PUBLIC USE FOR NOW ⚠️
+     */
+    static void modify_score(
+        const enum_flags flag,
+        const u8 percent
+#if (VMA_CPP >= 20) && (!CLANG || __clang_major__ >= 16)
+        , const std::source_location& loc = std::source_location::current()
+#endif
+    ) {
+        // lambda to throw the error
+        auto throw_error = [&](const char* text) -> void {
+            std::stringstream ss;
+#if (VMA_CPP >= 20 && !CLANG)
+            ss << ", error in " << loc.function_name() << " at " << loc.file_name() << ":" << loc.line() << ")";
+#endif
+            ss << ". Consult the documentation's parameters for VM::modify_score()";
+            throw std::invalid_argument(std::string(text) + ss.str());
+            };
+
+        if (percent > 100) {
+            throw_error("Percentage parameter must be between 0 and 100");
+        }
+
+#if (VMA_CPP >= 23)
+        [[assume(percent <= 100)]];
+#endif  
+
+        // check if the flag provided is a setting flag, which isn't valid
+        if (static_cast<u8>(flag) >= technique_end) {
+            throw_error("The flag is not a technique flag");
+        }
+
+        core::technique_table[flag].points = percent;
+    }
 
     /**
      * @brief Fetch the total number of detected techniques
@@ -11685,16 +11651,14 @@ public: // START OF PUBLIC FUNCTIONS
      * @return const char*
      */
     template <typename ...Args>
-    static const char* type(Args ...args) {
+    static std::string type(Args ...args) {
         flagset flags = core::arg_handler(args...);
 
-        const char* brand_str = brand(flags);
+        const std::string brand_str = brand(flags);
 
-        // this is a check for the " or " separator
-        const char* p = brand_str;
-        while (*p) {
-            if (p[0] == ' ' && p[1] == 'o' && p[2] == 'r' && p[3] == ' ') return "Unknown";
-            p++;
+        // if multiple brands were found, return unknown
+        if (util::find(brand_str, " or ")) {
+            return "Unknown";
         }
 
         struct map_entry {
@@ -11781,12 +11745,16 @@ public: // START OF PUBLIC FUNCTIONS
 
         for (const auto& entry : type_table) {
             // pointer comparison first , because is the fastest/O(1) relative to string length
-            if (brand_str == entry.name) return entry.type;
+            if (brand_str == entry.name) {
+                return entry.type;
+            }
         }
 
         // theres a chance of brand() returning a cache pointer but same content
         for (const auto& entry : type_table) {
-            if (str_eq(brand_str, entry.name)) return entry.type;
+            if (brand_str == entry.name) {
+                return entry.type;
+            }
         }
 
         debug("VM::type(): No known brand found, something went terribly wrong here...");
@@ -11801,10 +11769,10 @@ public: // START OF PUBLIC FUNCTIONS
       * @return const char*
       */
     template <typename ...Args>
-    static const char* conclusion(Args ...args) {
+    static std::string conclusion(Args ...args) {
         flagset flags = core::arg_handler(args...);
 
-        const char* brand_tmp = brand(flags);
+        std::string brand_tmp = brand(flags);
         const u8 percent_tmp = percentage(flags);
 
         constexpr const char* very_unlikely = "Very unlikely a";
@@ -11815,7 +11783,7 @@ public: // START OF PUBLIC FUNCTIONS
         constexpr const char* very_likely = "Very likely";
         constexpr const char* inside_vm = "Running inside";
 
-        auto make_conclusion = [&](const char* category) -> const char* {
+        auto make_conclusion = [&](const char* category) -> std::string {
             const char* addition = " a ";
 
             // this basically just fixes the grammatical syntax
@@ -11846,23 +11814,16 @@ public: // START OF PUBLIC FUNCTIONS
 
             // this is basically just to remove the capital "U", 
             // since it doesn't make sense to see "an Unknown"
-            const char* final_brand = (str_eq(brand_tmp, brands::NULL_BRAND)) ? "unknown" : brand_tmp;
-
-            const char* suffix = " VM";
-            if (str_eq(brand_tmp, brands::HYPERV_ARTIFACT) && percent_tmp != 100) {
-            if (brand_tmp == brands::HYPERV_ARTIFACT) {
-                suffix = "";
+            if (brand_tmp == brands::NULL_BRAND) {
+                brand_tmp = "unknown";
             }
 
-            // Build string in static cache
-            char* buf = memo::conclusion::cache;
-            const size_t sz = sizeof(memo::conclusion::cache);
-            buf[0] = '\0';
-
-            str_copy(buf, category, sz);
-            str_cat(buf, addition, sz);
-            str_cat(buf, final_brand, sz);
-            str_cat(buf, suffix, sz);
+            // Hyper-V artifacts are an exception due to how unique the circumstance is
+            if (brand_tmp == brands::HYPERV_ARTIFACT) {
+                return std::string(category) + addition + brand_tmp;
+            } else {
+                return std::string(category) + addition + brand_tmp + " VM";
+            }
 
             return memo::conclusion::fetch();
         };
@@ -11880,8 +11841,7 @@ public: // START OF PUBLIC FUNCTIONS
 
         if (percent_tmp == 100) {
             return make_conclusion(inside_vm);
-        }
-        else {
+        } else {
             return "Running on baremetal";
         }
     }
@@ -11945,9 +11905,9 @@ public: // START OF PUBLIC FUNCTIONS
 
     #pragma pack(push, 1)
     struct vmaware {
-        const char* brand;
-        const char* type;
-        const char* conclusion;
+        std::string brand;
+        std::string type;
+        std::string conclusion;
         bool is_vm;
         u8 percentage;
         u8 detected_count;
@@ -12084,6 +12044,7 @@ bool VM::memo::multi_brand::cached = false;
 char VM::memo::cpu_brand::brand_cache[128] = { 0 };
 bool VM::memo::cpu_brand::cached = false;
 VM::u32 VM::memo::threadcount::threadcount_cache = 0;
+// Assuming hyperx enum or value exists externally, defaulting to 0/unknown for safe C++11 compat in this context
 VM::hyperx_state VM::memo::hyperx::state = VM::HYPERV_UNKNOWN;
 bool VM::memo::hyperx::cached = false;
 std::array<VM::memo::leaf_entry, VM::memo::leaf_cache::CAPACITY> VM::memo::leaf_cache::table{};
