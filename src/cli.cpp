@@ -45,14 +45,10 @@
     #define CLI_WINDOWS 0
 #endif
 
-#if (_MSC_VER)
-#pragma warning(disable : 4061)
-#endif
-
 #include "vmaware.hpp"
 
 constexpr const char* ver = "2.5.0";
-constexpr const char* date = "November 2025";
+constexpr const char* date = "December 2025";
 
 std::string bold = "\033[1m";
 std::string underline = "\033[4m";
