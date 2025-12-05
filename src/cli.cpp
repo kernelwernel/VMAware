@@ -867,7 +867,7 @@ static void general() {
     {
         if (is_vm_brand_multiple(vm.brand) == false) {
             std::string current_color = "";
-            const char* &type = vm.type;
+            std::string type = vm.type;
 
             if (is_anyrun && (type == brands::NULL_BRAND)) {
                 type = "Sandbox";
