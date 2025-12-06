@@ -45,14 +45,10 @@
     #define CLI_WINDOWS 0
 #endif
 
-#if (_MSC_VER)
-#pragma warning(disable : 4061)
-#endif
-
 #include "vmaware.hpp"
 
 constexpr const char* ver = "2.5.0";
-constexpr const char* date = "November 2025";
+constexpr const char* date = "December 2025";
 
 std::string bold = "\033[1m";
 std::string underline = "\033[4m";
@@ -345,10 +341,7 @@ static bool is_disabled(const VM::enum_flags flag) {
         return false;
     }
 
-    switch (flag) {
-        case VM::VMWARE_DMESG: return true;
-        default: return false;
-    }
+    return flag == VM::VMWARE_DMESG;
 }
 
 static bool is_unsupported(VM::enum_flags flag) {
@@ -871,7 +864,7 @@ static void general() {
     {
         if (is_vm_brand_multiple(vm.brand) == false) {
             std::string current_color = "";
-            const char* &type = vm.type;
+            std::string type = vm.type;
 
             if (is_anyrun && (type == brands::NULL_BRAND)) {
                 type = "Sandbox";
