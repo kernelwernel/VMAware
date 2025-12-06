@@ -341,10 +341,7 @@ static bool is_disabled(const VM::enum_flags flag) {
         return false;
     }
 
-    switch (flag) {
-        case VM::VMWARE_DMESG: return true;
-        default: return false;
-    }
+    return flag == VM::VMWARE_DMESG;
 }
 
 static bool is_unsupported(VM::enum_flags flag) {
