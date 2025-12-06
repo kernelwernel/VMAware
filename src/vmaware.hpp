@@ -6168,7 +6168,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (EnumSystemFirmwareTables(acpi_signature, tables.data(), acpi_enum_size) != acpi_enum_size)
             return false;
 
-        // High Performance Event Timer detection
+        // High Precision Event Timer detection
         bool found_hpet = false;
         for (const auto table_id : tables) {
             constexpr DWORD hpet_signature = 'TEPH';
@@ -9716,7 +9716,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 out_buf = nullptr;
                 out_len = 0;
                 return false;
-                };
+            };
 
             variable_name_ptr current_var = reinterpret_cast<variable_name_ptr>(enum_base_buffer);
             const size_t buffer_total_size = static_cast<size_t>(buffer_required_length);
@@ -9845,7 +9845,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             if (!found_dbx_default || !found_kek_default || !found_pk_default) {
                 // Surface Pro models (like Pro 8) and Lenovo models, like 21CNS0YA0V, 21KSCTO1WW, 20LTA50SCD, 20U8S18J00, etc... miss dbDefault and related sb efi vars
-                // Case-insensitive check added here
                 if (ascii_string_equals_ci(manufacturer_str, "lenovo") || ascii_string_equals_ci(manufacturer_str, "surface pro"))
                     detection_result = false;
             }
@@ -9875,13 +9874,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
                 for (const char* p : vendor_list_ascii) if (buffer_contains_ascii_ci(buf, len, p)) return true;
                 return false;
-                };
+            };
             auto buffer_has_specific_vendor = [&](BYTE* buf, SIZE_T len, const char* a, const wchar_t* w) noexcept -> bool {
                 if (!buf || len == 0) return false;
                 if ((len >= 2) && ((len % 2) == 0) && w) { const WCHAR* wp = reinterpret_cast<const WCHAR*>(buf); if (buffer_contains_utf16le_ci(wp, len / sizeof(WCHAR), w)) return true; }
                 if (a) if (buffer_contains_ascii_ci(buf, len, a)) return true;
                 return false;
-                };
+            };
 
             const bool pk_def_has_vendor = buffer_has_any_vendor(pk_default_buf, pk_default_len);
             const bool kek_def_has_vendor = buffer_has_any_vendor(kek_default_buf, kek_default_len);
