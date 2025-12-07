@@ -59,7 +59,7 @@
  * - struct for internal core components       => line 10758
  * - start of VM detection technique list      => line 2447
  * - start of public VM detection functions    => line 11271
- * - start of externally defined variables     => line 12208
+ * - start of externally defined variables     => line 12207
  *
  *
  * ============================== EXAMPLE ===================================
@@ -11251,7 +11251,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         // same as above but for VM::disable which only accepts technique flags
         template <typename... Args>
-        static void disabled_arg_handler(Args&&... args) {
+        static flagset disabled_arg_handler(Args&&... args) {
             reset_disable_flagset();
 
             if VMAWARE_CONSTEXPR(is_empty<Args...>()) {
@@ -11265,7 +11265,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 throw std::invalid_argument("VM::DISABLE() must not contain a settings flag, they are disabled by default anyway");
             }
 
-            return;
+            return disabled_flag_collector;
         }
     };
     
@@ -11715,8 +11715,7 @@ public: // START OF PUBLIC FUNCTIONS
     static flagset DISABLE(Args ...args) {
         // basically core::arg_handler but in reverse,
         // it'll clear the bits of the provided flags
-        core::disabled_arg_handler(args...);
-        return core::disabled_flag_collector;
+        return core::disabled_arg_handler(args...);
     }
 
     /**
