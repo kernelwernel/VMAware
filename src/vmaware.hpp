@@ -56,9 +56,9 @@
  * - struct for internal cpu operations        => line 739
  * - struct for internal memoization           => line 1231
  * - struct for internal utility functions     => line 1405
- * - struct for internal core components       => line 10759
+ * - struct for internal core components       => line 10758
  * - start of VM detection technique list      => line 2447
- * - start of public VM detection functions    => line 11272
+ * - start of public VM detection functions    => line 11271
  * - start of externally defined variables     => line 12208
  *
  *
@@ -11715,7 +11715,8 @@ public: // START OF PUBLIC FUNCTIONS
     static flagset DISABLE(Args ...args) {
         // basically core::arg_handler but in reverse,
         // it'll clear the bits of the provided flags
-        return core::disabled_arg_handler(args...);
+        core::disabled_arg_handler(args...);
+        return core::disabled_flag_collector;
     }
 
     /**
