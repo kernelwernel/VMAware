@@ -534,7 +534,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::VMWARE_IOMEM` | Check for VMware string in /proc/iomem | 🐧 | 0% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L5094) |
 | `VM::VMWARE_IOPORTS` | Check for VMware string in /proc/ioports | 🐧 | 0% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L5606) |
 | `VM::VMWARE_SCSI` | Check for VMware string in /proc/scsi/scsi | 🐧 | 0% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L5403) |
-| `VM::VMWARE_DMESG` | Check for VMware-specific device name in dmesg output | 🪟 | 0% | Admin |  | Disabled by default | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L5422) |
+| `VM::VMWARE_DMESG` | Check for VMware-specific device name in dmesg output | 🐧 | 0% | Admin |  | Disabled by default | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L5422) |
 | `VM::VMWARE_STR` | Check str assembly instruction method for VMware | 🪟 | 0% |  | 32-bit |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L7528) |
 | `VM::VMWARE_BACKDOOR` | Check for official VMware io port backdoor technique | 🪟 | 0% |  | 32-bit |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L7553) |
 | `VM::MUTEX` | Check for mutex strings of VM brands | 🪟 | 0% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L7614) |

@@ -5415,7 +5415,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         
     /**
      * @brief Check for VMware-specific device name in dmesg output
-     * @category Windows
+     * @category Linux
      * @author idea from ScoopyNG by Tobias Klein
      * @note Disabled by default
      * @warning Permissions required
