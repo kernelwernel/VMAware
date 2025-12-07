@@ -56,10 +56,10 @@
  * - struct for internal cpu operations        => line 739
  * - struct for internal memoization           => line 1231
  * - struct for internal utility functions     => line 1405
- * - struct for internal core components       => line 10759
+ * - struct for internal core components       => line 10758
  * - start of VM detection technique list      => line 2447
- * - start of public VM detection functions    => line 11272
- * - start of externally defined variables     => line 12208
+ * - start of public VM detection functions    => line 11271
+ * - start of externally defined variables     => line 12207
  *
  *
  * ============================== EXAMPLE ===================================
@@ -5415,7 +5415,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         
     /**
      * @brief Check for VMware-specific device name in dmesg output
-     * @category Windows
+     * @category Linux
      * @author idea from ScoopyNG by Tobias Klein
      * @note Disabled by default
      * @warning Permissions required
@@ -11251,7 +11251,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         // same as above but for VM::disable which only accepts technique flags
         template <typename... Args>
-        static void disabled_arg_handler(Args&&... args) {
+        static flagset disabled_arg_handler(Args&&... args) {
             reset_disable_flagset();
 
             if VMAWARE_CONSTEXPR(is_empty<Args...>()) {
@@ -11265,7 +11265,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 throw std::invalid_argument("VM::DISABLE() must not contain a settings flag, they are disabled by default anyway");
             }
 
-            return;
+            return disabled_flag_collector;
         }
     };
     

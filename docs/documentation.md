@@ -534,7 +534,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::VMWARE_IOMEM` | Check for VMware string in /proc/iomem | 🐧 | 0% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L5094) |
 | `VM::VMWARE_IOPORTS` | Check for VMware string in /proc/ioports | 🐧 | 0% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L5606) |
 | `VM::VMWARE_SCSI` | Check for VMware string in /proc/scsi/scsi | 🐧 | 0% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L5403) |
-| `VM::VMWARE_DMESG` | Check for VMware-specific device name in dmesg output | 🪟 | 0% | Admin |  | Disabled by default | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L5422) |
+| `VM::VMWARE_DMESG` | Check for VMware-specific device name in dmesg output | 🐧 | 0% | Admin |  | Disabled by default | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L5422) |
 | `VM::VMWARE_STR` | Check str assembly instruction method for VMware | 🪟 | 0% |  | 32-bit |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L7528) |
 | `VM::VMWARE_BACKDOOR` | Check for official VMware io port backdoor technique | 🪟 | 0% |  | 32-bit |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L7553) |
 | `VM::MUTEX` | Check for mutex strings of VM brands | 🪟 | 0% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L7614) |
@@ -584,10 +584,10 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::MAC_SYS` | Check for VM-strings in system profiler commands for MacOS | 🍏 | 0% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L7074) |
 | `VM::OBJECTS` | Check for any signs of VMs in Windows kernel object entities | 🪟 | 0% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L9336) |
 | `VM::NVRAM` | Check for known NVRAM signatures that are present on virtual firmware | 🪟 | 0% | Admin |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L9505) |
-| `VM::SMBIOS_INTEGRITY` | Check if SMBIOS is malformed/corrupted in a way that is typical for VMs | 🪟 | 0% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L9958) |
-| `VM::EDID` | Check for non-standard EDID configurations | 🪟 | 0% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L9969) |
-| `VM::CPU_HEURISTIC` | Check whether the CPU is genuine and its reported instruction capabilities are not masked | 🪟 | 0% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L10194) |
-| `VM::CLOCK` | Check the presence of system timers | 🪟 | 0% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L10659) |
+| `VM::SMBIOS_INTEGRITY` | Check if SMBIOS is malformed/corrupted in a way that is typical for VMs | 🪟 | 0% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L9957) |
+| `VM::EDID` | Check for non-standard EDID configurations | 🪟 | 0% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L9968) |
+| `VM::CPU_HEURISTIC` | Check whether the CPU is genuine and its reported instruction capabilities are not masked | 🪟 | 0% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L10193) |
+| `VM::CLOCK` | Check the presence of system timers | 🪟 | 0% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L10658) |
 <!-- END OF TECHNIQUE DOCUMENTATION -->
 
 <br>
