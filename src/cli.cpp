@@ -849,7 +849,6 @@ static void general() {
     // struct containing the whole overview of the VM data
     VM::vmaware vm(VM::MULTIPLE, settings());
 
-
     // brand manager
     {
         std::string brand = vm.brand;

@@ -416,6 +416,9 @@ struct vmaware {
     std::uint8_t percentage;
     std::uint8_t detected_count;
     std::uint8_t technique_count;
+    std::vector<enum_flags> detected_techniques;
+    std::vector<std::string> detected_technique_strings;
+    std::vector<enum_flags> disabled_techniques;
 }; 
 ```
 

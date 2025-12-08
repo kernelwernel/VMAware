@@ -680,19 +680,7 @@ public:
     // get the total number of techniques that detected a VM
     static u8 detected_count_num; 
 
-    static constexpr size_t MAX_DISABLED_TECHNIQUES = 64;
-    struct disabled_tech_container {
-        enum_flags flags[MAX_DISABLED_TECHNIQUES] = {};
-        size_t count = 0;
-
-        VMAWARE_CONSTEXPR_14 void push_back(enum_flags f) {
-            if (count < MAX_DISABLED_TECHNIQUES) flags[count++] = f;
-        }
-
-        constexpr const enum_flags* begin() const { return flags; }
-        constexpr const enum_flags* end() const { return flags + count; }
-    };
-    static disabled_tech_container disabled_techniques;
+    static std::vector<enum_flags> disabled_techniques;
 
 private:
 
@@ -710,20 +698,6 @@ public:
     VM() = delete;
     VM(const VM&) = delete;
     VM(VM&&) = delete;
-
-    struct enum_vector {
-        enum_flags data[enum_size] = {};
-        size_t count = 0;
-
-        VMAWARE_CONSTEXPR_14 void push_back(enum_flags f) {
-            if (count < enum_size) data[count++] = f;
-        }
-
-        constexpr const enum_flags* begin() const { return data; }
-        constexpr const enum_flags* end() const { return data + count; }
-        constexpr size_t size() const { return count; }
-        constexpr const enum_flags& operator[](size_t i) const { return data[i]; }
-    };
 
 private:
     // macro for bypassing unused parameter/variable warnings
@@ -10749,214 +10723,215 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
           * the "wrong" way. I genuinely can't wait for Carbon to come out.
           */
     public:
-       public:
-           static flagset flag_collector;
-           static flagset disabled_flag_collector;
+        public:
+            static flagset flag_collector;
+            static flagset disabled_flag_collector;
 
-           static void generate_default(flagset& flags) {
-               // set all bits to 1
-               flags.set();
+            static void generate_default(flagset& flags) {
+                // set all bits to 1
+                flags.set();
 
-               // disable all non-default techniques
-               for (const auto id : disabled_techniques) {
-                   flags.flip(id);
-               }
+                // disable all non-default techniques
+                for (const auto id : disabled_techniques) {
+                    flags.flip(id);
+                }
 
-               // disable all the settings flags
-               flags.flip(HIGH_THRESHOLD);
-               flags.flip(NULL_ARG);
-               flags.flip(DYNAMIC);
-               flags.flip(MULTIPLE);
-               flags.flip(ALL);
-           }
+                // disable all the settings flags
+                flags.flip(HIGH_THRESHOLD);
+                flags.flip(NULL_ARG);
+                flags.flip(DYNAMIC);
+                flags.flip(MULTIPLE);
+                flags.flip(ALL);
+            }
 
-           static void generate_all(flagset& flags) {
-               // set all bits to 1
-               flags.set();
+            static void generate_all(flagset& flags) {
+                // set all bits to 1
+                flags.set();
 
-               // disable all the settings flags
-               flags.flip(HIGH_THRESHOLD);
-               flags.flip(NULL_ARG);
-               flags.flip(DYNAMIC);
-               flags.flip(MULTIPLE);
-               flags.flip(DEFAULT);
-           }
+                // disable all the settings flags
+                flags.flip(HIGH_THRESHOLD);
+                flags.flip(NULL_ARG);
+                flags.flip(DYNAMIC);
+                flags.flip(MULTIPLE);
+                flags.flip(DEFAULT);
+            }
 
-           static void generate_current_disabled_flags(flagset& flags) {
-               const bool setting_high_threshold = flags.test(HIGH_THRESHOLD);
-               const bool setting_dynamic = flags.test(DYNAMIC);
-               const bool setting_multiple = flags.test(MULTIPLE);
-               const bool setting_all = flags.test(ALL);
-               const bool setting_default = flags.test(DEFAULT);
+            static void generate_current_disabled_flags(flagset& flags) {
+                const bool setting_high_threshold = flags.test(HIGH_THRESHOLD);
+                const bool setting_dynamic = flags.test(DYNAMIC);
+                const bool setting_multiple = flags.test(MULTIPLE);
+                const bool setting_all = flags.test(ALL);
+                const bool setting_default = flags.test(DEFAULT);
 
-               if (disabled_flag_collector.count() == 0) {
-                   return;
-               }
-               else {
-                   flags &= disabled_flag_collector;
-               }
+                if (disabled_flag_collector.count() == 0) {
+                    return;
+                }
+                else {
+                    flags &= disabled_flag_collector;
+                }
 
-               flags.set(HIGH_THRESHOLD, setting_high_threshold);
-               flags.set(DYNAMIC, setting_dynamic);
-               flags.set(MULTIPLE, setting_multiple);
-               flags.set(ALL, setting_all);
-               flags.set(DEFAULT, setting_default);
-           }
+                flags.set(HIGH_THRESHOLD, setting_high_threshold);
+                flags.set(DYNAMIC, setting_dynamic);
+                flags.set(MULTIPLE, setting_multiple);
+                flags.set(ALL, setting_all);
+                flags.set(DEFAULT, setting_default);
+            }
 
-           static void reset_disable_flagset() {
-               generate_default(disabled_flag_collector);
-               disabled_flag_collector.flip(DEFAULT);
-           }
+            static void reset_disable_flagset() {
+                generate_default(disabled_flag_collector);
+                disabled_flag_collector.flip(DEFAULT);
+            }
 
-           static void disable_flagset_manager(const flagset& flags) {
-               disabled_flag_collector = flags;
-           }
+            static void disable_flagset_manager(const flagset& flags) {
+                disabled_flag_collector = flags;
+            }
 
-           static void disable_flag_manager(const enum_flags flag) {
-               disabled_flag_collector.set(flag, false);
-           }
+            static void disable_flag_manager(const enum_flags flag) {
+                disabled_flag_collector.set(flag, false);
+                disabled_techniques.push_back(flag);
+            }
 
-           static void flag_manager(const enum_flags flag) {
-               if (
-                   (flag == INVALID) ||
-                   (flag > enum_size)
-                   ) {
-                   throw std::invalid_argument("Non-flag or invalid flag provided for VM::detect(), aborting");
-               }
+            static void flag_manager(const enum_flags flag) {
+                if (
+                    (flag == INVALID) ||
+                    (flag > enum_size)
+                    ) {
+                    throw std::invalid_argument("Non-flag or invalid flag provided for VM::detect(), aborting");
+                }
 
-               if (flag == DEFAULT) {
-                   generate_default(flag_collector);
-               }
-               else if (flag == ALL) {
-                   generate_all(flag_collector);
-               }
-               else {
-                   flag_collector.set(flag);
-               }
-           }
+                if (flag == DEFAULT) {
+                    generate_default(flag_collector);
+                }
+                else if (flag == ALL) {
+                    generate_all(flag_collector);
+                }
+                else {
+                    flag_collector.set(flag);
+                }
+            }
 
-           // Base class for different types
-           struct TestHandler {
-               virtual ~TestHandler() = default;
+            // Base class for different types
+            struct TestHandler {
+                virtual ~TestHandler() = default;
 
-               virtual void handle(const flagset& flags) {
-                   disable_flagset_manager(flags);
-               }
+                virtual void handle(const flagset& flags) {
+                    disable_flagset_manager(flags);
+                }
 
-               virtual void handle(const enum_flags flag) {
-                   flag_manager(flag);
-               }
-           };
+                virtual void handle(const enum_flags flag) {
+                    flag_manager(flag);
+                }
+            };
 
-           struct DisableTestHandler {
-               virtual ~DisableTestHandler() = default;
+            struct DisableTestHandler {
+                virtual ~DisableTestHandler() = default;
 
-               virtual void disable_handle(const enum_flags flag) {
-                   disable_flag_manager(flag);
-               }
-           };
+                virtual void disable_handle(const enum_flags flag) {
+                    disable_flag_manager(flag);
+                }
+            };
 
-           // Derived classes for specific type implementations
-           struct TestBitsetHandler : public TestHandler {
-               using TestHandler::handle;
+            // Derived classes for specific type implementations
+            struct TestBitsetHandler : public TestHandler {
+                using TestHandler::handle;
 
-               void handle(const flagset& flags) override {
-                   disable_flagset_manager(flags);
-               }
-           };
+                void handle(const flagset& flags) override {
+                    disable_flagset_manager(flags);
+                }
+            };
 
-           struct TestUint8Handler : public TestHandler {
-               using TestHandler::handle;
+            struct TestUint8Handler : public TestHandler {
+                using TestHandler::handle;
 
-               void handle(const enum_flags flag) override {
-                   flag_manager(flag);
-               }
-           };
+                void handle(const enum_flags flag) override {
+                    flag_manager(flag);
+                }
+            };
 
-           struct DisableTestUint8Handler : public DisableTestHandler {
-               using DisableTestHandler::disable_handle;
+            struct DisableTestUint8Handler : public DisableTestHandler {
+                using DisableTestHandler::disable_handle;
 
-               void disable_handle(const enum_flags flag) override {
-                   disable_flag_manager(flag);
-               }
-           };
+                void disable_handle(const enum_flags flag) override {
+                    disable_flag_manager(flag);
+                }
+            };
 
-           // Define a function to dispatch handling based on type
-           template <typename T>
-           static void dispatch(const T& value, TestHandler& handler) {
-               handler.handle(value);
-           }
+            // Define a function to dispatch handling based on type
+            template <typename T>
+            static void dispatch(const T& value, TestHandler& handler) {
+                handler.handle(value);
+            }
 
-           // Define a function to dispatch handling based on type
-           template <typename T>
-           static void disable_dispatch(const T& value, DisableTestHandler& handler) {
-               handler.disable_handle(value);
-           }
+            // Define a function to dispatch handling based on type
+            template <typename T>
+            static void disable_dispatch(const T& value, DisableTestHandler& handler) {
+                handler.disable_handle(value);
+            }
 
-           // Base case for the recursive handling
-           static void handleArgs() {
-               // Base case: Do nothing
-           }
+            // Base case for the recursive handling
+            static void handleArgs() {
+                // Base case: Do nothing
+            }
 
-           // Base case for the recursive handling
-           static void handle_disabled_args() {
-               // Base case: Do nothing
-           }
+            // Base case for the recursive handling
+            static void handle_disabled_args() {
+                // Base case: Do nothing
+            }
 
-           // Helper function to check if a given argument is of a specific type
-           template <typename T, typename U>
-           static bool isType(U&&) {
-               return std::is_same<T, typename std::decay<U>::type>::value;
-           }
+            // Helper function to check if a given argument is of a specific type
+            template <typename T, typename U>
+            static bool is_type(U&&) {
+                return std::is_same<T, typename std::decay<U>::type>::value;
+            }
 
-           // Recursive case to handle each argument based on its type
-           template <typename First, typename... Rest>
-           static void handleArgs(First&& first, Rest&&... rest) {
-               TestBitsetHandler bitsetHandler;
-               TestUint8Handler uint8Handler;
+            // Recursive case to handle each argument based on its type
+            template <typename First, typename... Rest>
+            static void handleArgs(First&& first, Rest&&... rest) {
+                TestBitsetHandler bitsetHandler;
+                TestUint8Handler uint8Handler;
 
-               if (isType<flagset>(first)) {
-                   dispatch(first, bitsetHandler);
-               }
-               else if (isType<enum_flags>(first)) {
-                   dispatch(first, uint8Handler);
-               }
-               else {
-                   const std::string msg =
-                       "Arguments must either be a std::bitset<" +
-                       std::to_string(static_cast<u32>(enum_size + 1)) +
-                       "> such as VM::DEFAULT, or a flag such as VM::RDTSC for example";
+                if (is_type<flagset>(first)) {
+                    dispatch(first, bitsetHandler);
+                }
+                else if (is_type<enum_flags>(first)) {
+                    dispatch(first, uint8Handler);
+                }
+                else {
+                    const std::string msg =
+                        "Arguments must either be a std::bitset<" +
+                        std::to_string(static_cast<u32>(enum_size + 1)) +
+                        "> such as VM::DEFAULT, or a flag such as VM::RDTSC for example";
 
-                   throw std::invalid_argument(msg);
-               }
+                    throw std::invalid_argument(msg);
+                }
 
-               // Recursively handle the rest of the arguments
-               handleArgs(std::forward<Rest>(rest)...);
-           }
+                // Recursively handle the rest of the arguments
+                handleArgs(std::forward<Rest>(rest)...);
+            }
 
-           // Recursive case to handle each argument based on its type
-           template <typename First, typename... Rest>
-           static void handle_disabled_args(First&& first, Rest&&... rest) {
-               DisableTestUint8Handler Disableuint8Handler;
+            // Recursive case to handle each argument based on its type
+            template <typename First, typename... Rest>
+            static void handle_disabled_args(First&& first, Rest&&... rest) {
+                DisableTestUint8Handler Disableuint8Handler;
 
-               if (isType<flagset>(first)) {
-                   throw std::invalid_argument("Arguments must not contain VM::DEFAULT or VM::ALL, only technique flags are accepted (view the documentation for a full list)");
-               }
-               else if (isType<enum_flags>(first)) {
-                   disable_dispatch(first, Disableuint8Handler);
-               }
-               else {
-                   throw std::invalid_argument("Arguments must be a technique flag, aborting");
-               }
+                if (is_type<flagset>(first)) {
+                    throw std::invalid_argument("Arguments must not contain VM::DEFAULT or VM::ALL, only technique flags are accepted (view the documentation for a full list)");
+                }
+                else if (is_type<enum_flags>(first)) {
+                    disable_dispatch(first, Disableuint8Handler);
+                }
+                else {
+                    throw std::invalid_argument("Arguments must be a technique flag, aborting");
+                }
 
-               // Recursively handle the rest of the arguments
-               handle_disabled_args(std::forward<Rest>(rest)...);
-           }
+                // Recursively handle the rest of the arguments
+                handle_disabled_args(std::forward<Rest>(rest)...);
+            }
 
-           template <typename... Args>
-           static constexpr bool is_empty() {
-               return (sizeof...(Args) == 0);
-           }
+            template <typename... Args>
+            static constexpr bool is_empty() {
+                return (sizeof...(Args) == 0);
+            }
 
     public:
         // fetch the flags, could be an enum value OR a std::bitset.
@@ -10989,7 +10964,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         // same as above but for VM::disable which only accepts technique flags
         template <typename... Args>
-        static void disabled_arg_handler(Args&&... args) {
+        static flagset disabled_arg_handler(Args&&... args) {
             reset_disable_flagset();
 
             if VMAWARE_CONSTEXPR(is_empty<Args...>()) {
@@ -11003,7 +10978,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 throw std::invalid_argument("VM::DISABLE() must not contain a settings flag, they are disabled by default anyway");
             }
 
-            return;
+            return disabled_flag_collector;
         }
     };
     
@@ -11570,10 +11545,10 @@ public: // START OF PUBLIC FUNCTIONS
      * @return VM::enum_vector
      */
     template <typename ...Args>
-    static enum_vector detected_enums(Args ...args) {
+    static std::vector<enum_flags> detected_enums(Args ...args) {
         const flagset flags = core::arg_handler(args...);
 
-        enum_vector tmp;
+        std::vector<enum_flags> tmp;
 
         // this will loop through all the enums in the technique_vector variable,
         // and then checks each of them and outputs the enum that was detected
@@ -11582,7 +11557,7 @@ public: // START OF PUBLIC FUNCTIONS
             if (
                 (flags.test(technique_enum)) &&
                 (check(technique_enum))
-                ) {
+            ) {
                 tmp.push_back(technique_enum);
             }
         }
@@ -11611,7 +11586,7 @@ public: // START OF PUBLIC FUNCTIONS
 #endif
             ss << ". Consult the documentation's parameters for VM::modify_score()";
             throw std::invalid_argument(std::string(text) + ss.str());
-            };
+        };
 
         if (percent > 100) {
             throw_error("Percentage parameter must be between 0 and 100");
@@ -11912,6 +11887,9 @@ public: // START OF PUBLIC FUNCTIONS
         u8 percentage;
         u8 detected_count;
         u16 technique_count;
+        std::vector<enum_flags> detected_techniques;
+        std::vector<std::string> detected_technique_strings;
+        std::vector<enum_flags> disabled_techniques;
 
         template <typename ...Args>
         vmaware(Args ...args) {
@@ -11924,6 +11902,17 @@ public: // START OF PUBLIC FUNCTIONS
             percentage = VM::percentage(flags);
             detected_count = VM::detected_count(flags);
             technique_count = VM::technique_count;
+            detected_techniques = VM::detected_enums(flags);
+            detected_technique_strings = [&]() -> std::vector<std::string> {
+                std::vector<std::string> tmp{};
+
+                for (const auto technique : detected_techniques) {
+                    tmp.push_back(VM::flag_to_string(technique));
+                }
+
+                return tmp;
+            }();
+            disabled_techniques = VM::disabled_techniques;
         }
     };
     #pragma pack(pop)
@@ -12067,8 +12056,8 @@ VM::flagset VM::core::disabled_flag_collector;
 
 VM::u8 VM::detected_count_num = 0;
 
-VM::disabled_tech_container VM::disabled_techniques = []() {
-    VM::disabled_tech_container c;
+std::vector<VM::enum_flags> VM::disabled_techniques = []() {
+    std::vector<VM::enum_flags> c;
     c.push_back(VM::VMWARE_DMESG);
     return c;
 }();
