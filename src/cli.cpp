@@ -45,14 +45,10 @@
     #define CLI_WINDOWS 0
 #endif
 
-#if (_MSC_VER)
-#pragma warning(disable : 4061)
-#endif
-
 #include "vmaware.hpp"
 
 constexpr const char* ver = "2.5.0";
-constexpr const char* date = "November 2025";
+constexpr const char* date = "December 2025";
 
 std::string bold = "\033[1m";
 std::string underline = "\033[4m";
@@ -93,7 +89,6 @@ enum arg_enum : u8 {
     NULL_ARG
 };
 
-constexpr u8 max_bits = static_cast<u8>(VM::MULTIPLE) + 1;
 constexpr u8 arg_bits = static_cast<u8>(NULL_ARG) + 1;
 
 std::bitset<arg_bits> arg_bitset;
@@ -345,10 +340,7 @@ static bool is_disabled(const VM::enum_flags flag) {
         return false;
     }
 
-    switch (flag) {
-        case VM::VMWARE_DMESG: return true;
-        default: return false;
-    }
+    return flag == VM::VMWARE_DMESG;
 }
 
 static bool is_unsupported(VM::enum_flags flag) {
@@ -378,24 +370,6 @@ static bool is_unsupported(VM::enum_flags flag) {
     #else
         return true;
     #endif
-}
-
-static std::bitset<max_bits> settings() {
-    std::bitset<max_bits> tmp;
-
-    if (arg_bitset.test(HIGH_THRESHOLD)) {
-        tmp.set(VM::HIGH_THRESHOLD);
-    }
-
-    if (arg_bitset.test(ALL)) {
-        tmp.set(VM::ALL);
-    }
-
-    if (arg_bitset.test(DYNAMIC)) {
-        tmp.set(VM::DYNAMIC);
-    }
-
-    return tmp;
 }
 
 // just a simple string replacer
@@ -704,7 +678,11 @@ const bool is_anyrun_driver = anyrun_driver();
 const bool is_anyrun = (is_anyrun_directory || is_anyrun_driver);
 
 
-static void general() {
+static void general(
+    const VM::enum_flags high_threshold, 
+    const VM::enum_flags all,
+    const VM::enum_flags dynamic
+) {
     bool notes_enabled = false;
     
     if (arg_bitset.test(NO_ANSI)) {
@@ -847,7 +825,7 @@ static void general() {
 #endif
 
     // struct containing the whole overview of the VM data
-    VM::vmaware vm(VM::MULTIPLE, settings());
+    VM::vmaware vm(VM::MULTIPLE, high_threshold, all, dynamic);
 
     // brand manager
     {
@@ -1042,7 +1020,11 @@ static void general() {
     // finishing touches with notes
     if (notes_enabled) {
         if (vm.detected_count != 0) {
-            std::cout << note << " If you found a false positive, please make sure to create an issue at https://github.com/kernelwernel/VMAware/issues\n\n";
+            std::cout << 
+                note << 
+                " If you found a false positive, please make sure to create\n \
+              an issue at https://github.com/kernelwernel/VMAware/issues\n\n";
+// ^ do not modify the space above
         }
     }
 
@@ -1126,7 +1108,7 @@ int main(int argc, char* argv[]) {
     VM::add_custom(35, anyrun_directory);
 
     if (arg_count == 0) {
-        general();
+        general(VM::NULL_ARG, VM::NULL_ARG, VM::DYNAMIC);
         return 0;
     }
 
@@ -1230,6 +1212,10 @@ int main(int argc, char* argv[]) {
         static_cast<u32>(arg_bitset.test(CONCLUSION))
     );
 
+    const VM::enum_flags high_threshold = (arg_bitset.test(HIGH_THRESHOLD) ? VM::HIGH_THRESHOLD : VM::NULL_ARG);
+    const VM::enum_flags all = (arg_bitset.test(ALL) ? VM::ALL : VM::NULL_ARG);
+    const VM::enum_flags dynamic = (arg_bitset.test(DYNAMIC) ? VM::DYNAMIC : VM::NULL_ARG);
+
     if (returners > 0) { // at least one of the options are set
         if (returners > 1) { // more than 2 options are set
             std::cerr << "--stdout, --percent, --detect, --brand, --type, and --conclusion must NOT be a combination, choose only a single one\n";
@@ -1237,21 +1223,21 @@ int main(int argc, char* argv[]) {
         }
 
         if (arg_bitset.test(STDOUT)) {
-            return (!VM::detect(settings()));
+            return (!VM::detect(high_threshold, all, dynamic));
         }
 
         if (arg_bitset.test(PERCENT)) {
-            std::cout << static_cast<u32>(VM::percentage(settings())) << "\n";
+            std::cout << static_cast<u32>(VM::percentage(high_threshold, all, dynamic)) << "\n";
             return 0;
         }
 
         if (arg_bitset.test(DETECT)) {
-            std::cout << VM::detect(settings()) << "\n";
+            std::cout << VM::detect(high_threshold, all, dynamic) << "\n";
             return 0;
         }
 
         if (arg_bitset.test(BRAND)) {
-            std::string brand = VM::brand(VM::MULTIPLE, settings());
+            std::string brand = VM::brand(VM::MULTIPLE, high_threshold, all, dynamic);
             
             if (is_anyrun && (brand == brands::NULL_BRAND)) {
                 brand = "ANY.RUN";
@@ -1263,7 +1249,7 @@ int main(int argc, char* argv[]) {
         }
 
         if (arg_bitset.test(TYPE)) {
-            std::string type = VM::type(VM::MULTIPLE, settings());
+            std::string type = VM::type(VM::MULTIPLE, high_threshold, all, dynamic);
 
             if (is_anyrun && (type == brands::NULL_BRAND)) {
                 type = "Sandbox";
@@ -1275,7 +1261,7 @@ int main(int argc, char* argv[]) {
         }
 
         if (arg_bitset.test(CONCLUSION)) {
-            std::string conclusion = VM::conclusion(VM::MULTIPLE, settings());
+            std::string conclusion = VM::conclusion(VM::MULTIPLE, high_threshold, all, dynamic);
 
             if (is_anyrun) {
                 const std::string original = brands::NULL_BRAND;
@@ -1290,6 +1276,6 @@ int main(int argc, char* argv[]) {
     }
 
     // at this point, it's assumed that the user's intention is for the general summary to be ran
-    general();
+    general(high_threshold, all, dynamic);
     return 0;
 }
