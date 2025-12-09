@@ -825,7 +825,7 @@ static void general(
 #endif
 
     // struct containing the whole overview of the VM data
-    VM::vmaware vm(VM::MULTIPLE, high_threshold, all, dynamic);
+    VM::vmaware vm(VM::MULTIPLE, high_threshold, all, dynamic, VM::DISABLE(VM::HYPERVISOR_BIT));
 
     // brand manager
     {

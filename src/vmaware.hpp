@@ -11021,7 +11021,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             // reset all relevant flags
             flag_collector.reset();
-            reset_disabled_flagset();
 
             if VMAWARE_CONSTEXPR(is_empty<Args...>()) {
                 generate_default(flag_collector);
@@ -11069,7 +11068,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             // C++ trick to loop over the variadic arguments one by one
             int dummy[] = { 
-                (disabled_flag_collector.set(args, false), 0)...
+                (disabled_flag_collector.set(args, true), 0)...
             };
             VMAWARE_UNUSED(dummy);
 
