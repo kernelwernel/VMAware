@@ -10807,14 +10807,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return flags.test(flag_bit);
         }
 
-        [[nodiscard]] static bool is_technique_set(const flagset& flags) {
+        [[nodiscard]] static bool are_techniques_empty(const flagset& flags) {
             for (std::size_t i = technique_begin; i < technique_end; i++) {
                 if (flags.test(i)) {
-                    return true;
+                    return false;
                 }
             }
 
-            return false;
+            return true;
         }
 
         [[nodiscard]] static bool is_setting_flag_set(const flagset& flags) {
@@ -10825,43 +10825,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             return false;
-        }
-
-        // manage the flag to handle edgecases
-        static void flag_sanitizer(flagset& flags) {
-            if (flags.count() == 0) {
-                generate_default(flags);
-                return;
-            }
-
-            if (flags.test(DEFAULT)) {
-                return;
-            }
-
-            if (flags.test(ALL)) {
-                return;
-            }
-
-            // check if any technique flag is set, which is the "correct" way
-            if (core::is_technique_set(flags)) {
-                return;
-            }
-
-            if (!core::is_setting_flag_set(flags)) {
-                throw std::invalid_argument("Invalid flag option for function parameter found, either leave it empty or add the VM::DEFAULT flag");
-            }
-
-            // at this stage, only setting flags are asserted to be set
-            if (
-                flags.test(HIGH_THRESHOLD) ||
-                flags.test(DYNAMIC) ||
-                flags.test(NULL_ARG) ||
-                flags.test(MULTIPLE)
-            ) {
-                generate_default(flags);
-            } else {
-                throw std::invalid_argument("Invalid flag option found, aborting");
-            }
         }
 
         // run every VM detection mechanism in the technique table
@@ -11065,11 +11028,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return flag_collector;
             }
 
-            if (flag_collector.count() == 0) {
-                generate_default(flag_collector);
-                return flag_collector;
-            }
-
             // C++ trick to loop over the variadic arguments one by one
             int dummy[] = {
                 (flag_collector.set(static_cast<u32>(args), true), 0)...
@@ -11078,6 +11036,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             if (flag_collector.test(DEFAULT)) {
                 generate_default(flag_collector);
+            }
+
+            if (are_techniques_empty(flag_collector)) {
+                flag_collector |= generate_default();
             }
 
             if (flag_collector.test(ALL)) {
@@ -11675,12 +11637,12 @@ public: // START OF PUBLIC FUNCTIONS
             case CPU_HEURISTIC: return "CPU_HEURISTIC";
             case CLOCK: return "CLOCK";
             // END OF TECHNIQUE LIST
-            case DEFAULT: return "setting flag, error";
-            case ALL: return "setting flag, error";
-            case NULL_ARG: return "setting flag, error";
-            case HIGH_THRESHOLD: return "setting flag, error";
-            case DYNAMIC: return "setting flag, error";
-            case MULTIPLE: return "setting flag, error";
+            case DEFAULT: return "DEFAULT"; 
+            case ALL: return "ALL"; 
+            case NULL_ARG: return "NULL_ARG"; 
+            case HIGH_THRESHOLD: return "HIGH_THRESHOLD"; 
+            case DYNAMIC: return "DYNAMIC"; 
+            case MULTIPLE: return "MULTIPLE"; 
             default: return "Unknown flag";
         }
     }
@@ -12066,7 +12028,15 @@ public: // START OF PUBLIC FUNCTIONS
         template <typename ...Args>
         vmaware(Args&& ...args) {
             const flagset flags = core::arg_handler(args...);
+            initialise(flags);
+        }
 
+        vmaware(const flagset &flags) {
+            initialise(flags);
+        }
+
+        // having this design avoids some niche errors
+        void initialise(const flagset &flags) {
             brand = VM::brand(flags);
             type = VM::type(flags);
             conclusion = VM::conclusion(flags);
@@ -12086,6 +12056,7 @@ public: // START OF PUBLIC FUNCTIONS
             }();
             disabled_techniques = VM::disabled_techniques;
         }
+
     };
     #pragma pack(pop)
 
