@@ -53,13 +53,13 @@
  *
  * ============================== SECTIONS ==================================
  * - enums for publicly accessible techniques  => line 537
- * - struct for internal cpu operations        => line 739
- * - struct for internal memoization           => line 1231
- * - struct for internal utility functions     => line 1405
- * - struct for internal core components       => line 10758
- * - start of VM detection technique list      => line 2447
- * - start of public VM detection functions    => line 11271
- * - start of externally defined variables     => line 12207
+ * - struct for internal cpu operations        => line 713
+ * - struct for internal memoization           => line 1205
+ * - struct for internal utility functions     => line 1379
+ * - struct for internal core components       => line 10733
+ * - start of VM detection technique list      => line 2421
+ * - start of public VM detection functions    => line 11079
+ * - start of externally defined variables     => line 12064
  *
  *
  * ============================== EXAMPLE ===================================
