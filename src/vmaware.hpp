@@ -10732,7 +10732,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      *                                        CORE SECTION                                            *
      *                                                                                                *
      * ============================================================================================== */
-    
+public:
     struct core {
         struct technique {
             u8 points = 0;                // this is the certainty score between 0 and 100
