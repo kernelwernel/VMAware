@@ -2526,7 +2526,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         constexpr u32 HYPERVISOR_MASK = (1u << 31);
 
         if (ecx & HYPERVISOR_MASK) {
-            std::cout << "reached\n\n\n\n";
             if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
                 return false;
             }
@@ -2593,8 +2592,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 debug("BOCHS_CPU: technique 1 found");
                 return core::add(brands::BOCHS);
             }
-        }
-        else if (amd) {
+        } else if (amd) {
             // technique 2: "processor" should have a capital P
             if (brand == "AMD Athlon(tm) processor") {
                 debug("BOCHS_CPU: technique 2 found");
@@ -11468,11 +11466,9 @@ public: // START OF PUBLIC FUNCTIONS
         // above 150 to get to 100% 
         if (points >= threshold) {
             percent = 100;
-        }
-        else if (points >= 100) {
+        } else if (points >= 100) {
             percent = 99;
-        }
-        else {
+        } else {
             percent = static_cast<u8>(std::min<u16>(points, 99));
         }
 
