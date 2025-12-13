@@ -339,13 +339,13 @@
 #if (VMA_CPP >= 20)
     #include <bit>
     #include <ranges>
-    #include <source_location>
+    #if (SOURCE_LOCATION_SUPPORTED)
+        #include <source_location>
+    #endif
 #endif
 #if (VMA_CPP >= 17)
     #include <filesystem>
-    #if (SOURCE_LOCATION_SUPPORTED)
-        #include <system_error>
-    #endif
+    #include <system_error>
 #endif
 #ifdef __VMAWARE_DEBUG__
     #include <iomanip>
