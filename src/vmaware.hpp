@@ -218,24 +218,25 @@
 #define VMAWARE_HEADER
 
 #ifndef __VMAWARE_DEBUG__
-#if defined(_DEBUG)    /* MSVC Debug */       \
-|| defined(DEBUG)     /* user or build-system */
-#define __VMAWARE_DEBUG__
+    #if defined(_DEBUG)    /* MSVC Debug */       \
+    || defined(DEBUG)     /* user or build-system */
+        #define __VMAWARE_DEBUG__
     #endif
-    #endif
+#endif
 
-    #if defined(_WIN32) || defined(_WIN64)
+#if defined(_WIN32) || defined(_WIN64)
     #ifndef WIN32_LEAN_AND_MEAN
-    #define WIN32_LEAN_AND_MEAN
+        #define WIN32_LEAN_AND_MEAN
     #endif
+    
     #define WINDOWS 1
     #define LINUX 0
     #define APPLE 0
-    #elif (defined(__linux__))
+#elif (defined(__linux__))
     #define WINDOWS 0
     #define LINUX 1
     #define APPLE 0
-    #elif (defined(__APPLE__) || defined(__APPLE_CPP__) || defined(__MACH__) || defined(__DARWIN))
+#elif (defined(__APPLE__) || defined(__APPLE_CPP__) || defined(__MACH__) || defined(__DARWIN))
     #define WINDOWS 0
     #define LINUX 0
     #define APPLE 1
@@ -246,101 +247,106 @@
 #endif
 
 #ifdef _MSC_VER
-#define MSVC 1
+    #define MSVC 1
 #endif
 
 #if defined(_MSVC_LANG)
     #define VMA_CPLUSPLUS _MSVC_LANG
-    #else
+#else
     #define VMA_CPLUSPLUS __cplusplus
-    #endif
+#endif
 
 #if VMA_CPLUSPLUS >= 202302L
     #define VMA_CPP 23
 #elif VMA_CPLUSPLUS >= 202002L
-#define VMA_CPP 20
+    #define VMA_CPP 20
 #elif VMA_CPLUSPLUS >= 201703L
-#define VMA_CPP 17
+    #define VMA_CPP 17
 #elif VMA_CPLUSPLUS >= 201402L
-#define VMA_CPP 14
+    #define VMA_CPP 14
 #elif VMA_CPLUSPLUS >= 201103L
-#define VMA_CPP 11
+    #define VMA_CPP 11
 #elif VMA_CPLUSPLUS >= 199711L
-#define VMA_CPP 98 /* C++98 or C++03 */
+    #define VMA_CPP 98 /* C++98 or C++03 */
 #else
     #error "Unsupported C++ standard (pre-C++98 or unknown)."
-    #endif
+#endif
     
 #if (VMA_CPP < 11 && !WINDOWS)
     #error "VMAware only supports C++11 or above, set your compiler flag to '-std=c++20' for gcc/clang, or '/std:c++20' for MSVC"
-    #endif
-    
-    
-    #if defined(__x86_64__) || defined(_M_X64)
+#endif
+        
+#if defined(__x86_64__) || defined(_M_X64)
     #define x86_64 1
-    #else
+#else
     #define x86_64 0
 #endif
 
 #if defined(__i386__) || defined(_M_IX86)
     #define x86_32 1
-    #else
+#else
     #define x86_32 0
 #endif
 
 #if x86_32 || x86_64
-#define x86 1
+    #define x86 1
 #else
     #define x86 0
-    #endif
+#endif
     
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__ARM_LINUX_COMPILER__)
-#define ARM64 1
+    #define ARM64 1
 #else
     #define ARM64 0
-    #endif
+#endif
 
 #if (defined(__arm__) || defined(_M_ARM)) && !ARM64
     #define ARM32 1
-    #else
+#else
     #define ARM32 0
-    #endif
+#endif
     
-    #if ARM32 || ARM64
+#if ARM32 || ARM64
     #define ARM 1
 #else
-#define ARM 0
+    #define ARM 0
+#endif
+
+#if (!APPLE && (VMA_CPP >= 20) && (!CLANG || __clang_major__ >= 16))
+    #define SOURCE_LOCATION_SUPPORTED 1
+#else
+    #define SOURCE_LOCATION_SUPPORTED 0
 #endif
 
 #if defined(__clang__)
-#define GCC 0
-#define CLANG 1
+    #define GCC 0
+    #define CLANG 1
 #elif defined(__GNUC__)
-#define GCC 1
-#define CLANG 0
+    #define GCC 1
+    #define CLANG 0
 #else
-#define GCC 0
-#define CLANG 0
+    #define GCC 0
+    #define CLANG 0
 #endif
 
 #if !(defined(WINDOWS) || defined(LINUX) || defined(APPLE))
-#warning "Unknown OS detected, tests will be severely limited"
+    #warning "Unknown OS detected, tests will be severely limited"
 #endif
 
 #if (VMA_CPP >= 23)
-#include <limits>
+    #include <limits>
 #endif
 #if (VMA_CPP >= 20)
     #include <bit>
     #include <ranges>
     #include <source_location>
-    #endif
+#endif
 #if (VMA_CPP >= 17)
-#include <filesystem>
-#include <system_error>
+    #include <filesystem>
+    #include <system_error>
 #endif
 #ifdef __VMAWARE_DEBUG__
-#include <iomanip>
+    #include <iomanip>
     #include <ios>
     #include <locale>
     #include <codecvt>
@@ -367,20 +373,20 @@
 #include <numeric>
 
 #if (WINDOWS)
-#include <windows.h>
-#include <intrin.h>
-#include <winioctl.h>
-#include <winternl.h>
-#include <powerbase.h>
-#include <setupapi.h>
-#include <initguid.h>
-#include <devpkey.h>
-#include <devguid.h>
-#include <winevt.h>
+    #include <windows.h>
+    #include <intrin.h>
+    #include <winioctl.h>
+    #include <winternl.h>
+    #include <powerbase.h>
+    #include <setupapi.h>
+    #include <initguid.h>
+    #include <devpkey.h>
+    #include <devguid.h>
+    #include <winevt.h>
 
-#pragma comment(lib, "setupapi.lib")
-#pragma comment(lib, "powrprof.lib")
-#pragma comment(lib, "mincore.lib")
+    #pragma comment(lib, "setupapi.lib")
+    #pragma comment(lib, "powrprof.lib")
+    #pragma comment(lib, "mincore.lib")
     #pragma comment(lib, "wevtapi.lib")
 #elif (LINUX)
     #if (x86)
@@ -11104,7 +11110,7 @@ public: // START OF PUBLIC FUNCTIONS
      */
     static bool check(
         const enum_flags flag_bit
-    #if (VMA_CPP >= 20) && (!CLANG || __clang_major__ >= 16)
+    #if (SOURCE_LOCATION_SUPPORTED)
         , [[maybe_unused]] const std::source_location& loc = std::source_location::current()
     #endif
     ) {
@@ -11502,7 +11508,7 @@ public: // START OF PUBLIC FUNCTIONS
     static void add_custom(
         const u8 percent,
         bool(*detection_func)()
-        #if (VMA_CPP >= 20 && !CLANG)
+        #if (SOURCE_LOCATION_SUPPORTED)
         , const std::source_location& loc = std::source_location::current()
         #endif
     ) {
@@ -11700,7 +11706,7 @@ public: // START OF PUBLIC FUNCTIONS
     static void modify_score(
         const enum_flags flag,
         const u8 percent
-    #if (VMA_CPP >= 20) && (!CLANG || __clang_major__ >= 16)
+    #if (SOURCE_LOCATION_SUPPORTED)
         , const std::source_location& loc = std::source_location::current()
     #endif
     ) {
