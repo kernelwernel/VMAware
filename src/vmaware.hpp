@@ -388,7 +388,9 @@
 #endif
 #if (VMA_CPP >= 17)
     #include <filesystem>
-    #include <system_error>
+    #if (SOURCE_LOCATION_SUPPORTED)
+        #include <system_error>
+    #endif
 #endif
 #ifdef __VMAWARE_DEBUG__
     #include <iomanip>
