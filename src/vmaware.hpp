@@ -7032,14 +7032,31 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        if (hv_present != 0) return true;
+        if (hv_present != 0) {
+            return true;
+        }
 
         std::unique_ptr<std::string> result = util::sys_result("csrutil status");
-        const std::string tmp = *result;
+
+        if (!result) {
+            return false;
+        }
+
+        std::string tmp = *result;
+
+        auto pos = tmp.find('\n');
+
+        if (pos != std::string::npos) {
+            tmp.resize(pos);
+        }
 
         debug("MAC_SIP: ", "result = ", tmp);
 
-        return (util::find(tmp, "disabled") || (!util::find(tmp, "enabled")));
+        if (util::find(tmp, "unknown")) {
+            return false;
+        }
+
+        return (util::find(tmp, "disabled"));
     }
 
 
