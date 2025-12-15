@@ -52,14 +52,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 537
- * - struct for internal cpu operations        => line 739
- * - struct for internal memoization           => line 1231
- * - struct for internal utility functions     => line 1405
+ * - enums for publicly accessible techniques  => line 545
+ * - struct for internal cpu operations        => line 721
+ * - struct for internal memoization           => line 1213
+ * - struct for internal utility functions     => line 1387
  * - struct for internal core components       => line 10758
- * - start of VM detection technique list      => line 2447
- * - start of public VM detection functions    => line 11271
- * - start of externally defined variables     => line 12207
+ * - start of VM detection technique list      => line 2429
+ * - start of public VM detection functions    => line 11104
+ * - start of externally defined variables     => line 12089
  *
  *
  * ============================== EXAMPLE ===================================
@@ -12239,8 +12239,8 @@ size_t VM::core::custom_table_size = 0;
 std::array<VM::core::technique, VM::enum_size + 1> VM::core::technique_table = []() {
     std::array<VM::core::technique, VM::enum_size + 1> table{};
     // FORMAT: { VM::<ID>, { certainty%, function pointer } },
-    // START OF TECHNIQUE TABLE
     const VM::core::technique_entry entries[] = {
+        // START OF TECHNIQUE TABLE
         #if (WINDOWS)
             {VM::TRAP, {100, VM::trap}},
             {VM::ACPI_SIGNATURE, {100, VM::acpi_signature}},
@@ -12345,6 +12345,7 @@ std::array<VM::core::technique, VM::enum_size + 1> VM::core::technique_table = [
         {VM::HYPERVISOR_BIT, {100, VM::hypervisor_bit}},
         {VM::BOCHS_CPU, {100, VM::bochs_cpu}},
         {VM::KGT_SIGNATURE, {80, VM::intel_kgt_signature}}
+        // END OF TECHNIQUE TABLE
     };
 
     // fill the table based on ID
