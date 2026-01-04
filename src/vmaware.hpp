@@ -217,12 +217,7 @@
 #ifndef VMAWARE_HEADER
 #define VMAWARE_HEADER
 
-#ifndef __VMAWARE_DEBUG__
-    #if defined(_DEBUG)    /* MSVC Debug */       \
-    || defined(DEBUG)     /* user or build-system */
-        #define __VMAWARE_DEBUG__
-    #endif
-#endif
+#define __VMAWARE_DEBUG__
 
 #if defined(_WIN32) || defined(_WIN64)
     #ifndef WIN32_LEAN_AND_MEAN
