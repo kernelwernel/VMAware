@@ -1935,12 +1935,19 @@ private:
 
                 // For strings shorter than 16-32 bytes, the overhead of setting up the _mm_crc32_u64 (or 32) loop, then checking length, handling the tail bytes, and finally handling alignment, 
                 // will always make it slower or equal to a simple unrolled u8 loop, and not every cpu model fits in u32/u64
-                #if (CLANG || GCC)
+                #if (x86 && (CLANG || GCC))
                     __attribute__((__target__("crc32")))
                 #endif
                 static u32 crc32_hw(u32 crc, char data) {
-
+                #if (x86)
                     return _mm_crc32_u8(crc, static_cast<u8>(data));
+                #else
+                    // Fallback for non-x86: use software CRC32-C
+                    crc ^= static_cast<u8>(data);
+                    for (int i = 0; i < 8; ++i)
+                        crc = (crc >> 1) ^ ((crc & 1) ? 0x82F63B78u : 0);
+                    return crc;
+                #endif
                 }
 
                 using hashfc = u32(*)(u32, char);
@@ -9244,7 +9251,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @implements VM::BOOT_LOGO
      */
     [[nodiscard]] static bool boot_logo()
-    #if (CLANG || GCC)
+    #if (x86 && (CLANG || GCC))
         __attribute__((__target__("crc32")))
     #endif
     {
