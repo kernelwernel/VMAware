@@ -217,7 +217,12 @@
 #ifndef VMAWARE_HEADER
 #define VMAWARE_HEADER
 
-#define __VMAWARE_DEBUG__
+#ifndef __VMAWARE_DEBUG__
+    #if defined(_DEBUG)    /* MSVC Debug */       \
+    || defined(DEBUG)     /* user or build-system */
+        #define __VMAWARE_DEBUG__
+    #endif
+#endif
 
 #if defined(_WIN32) || defined(_WIN64)
     #ifndef WIN32_LEAN_AND_MEAN
@@ -1612,35 +1617,51 @@ private:
 
         template <typename... Args>
         static inline void debug_msg(Args&&... message) noexcept {
-            static std::unordered_set<std::string> printed_messages;
+            try {
+                std::stringstream ss;
 
-            std::stringstream ss;
-            print_to_stream(ss, std::forward<Args>(message)...);
-            std::string msg_content = ss.str();
+                ss.setf(std::ios::fixed, std::ios::floatfield);
+                ss.precision(2);
 
-            if (printed_messages.find(msg_content) == printed_messages.end()) {
-        #if (LINUX || APPLE)
-                constexpr const char* black_bg = "\x1B[48;2;0;0;0m";
-                constexpr const char* bold = "\033[1m";
-                constexpr const char* blue = "\x1B[38;2;00;59;193m";
-                constexpr const char* ansiexit = "\x1B[0m";
+            #if VMA_CPP >= 17
+                ((ss << std::forward<Args>(message)), ...);
+            #else
+                using expander = int[];
+                (void)expander {
+                    0, (void(ss << std::forward<Args>(message)), 0)...
+                };
+            #endif
 
-                std::cout.setf(std::ios::fixed, std::ios::floatfield);
-                std::cout.setf(std::ios::showpoint);
+                std::string msg_content = ss.str();
 
-                std::cout << black_bg
-                    << bold << "["
-                    << blue << "DEBUG"
-                    << ansiexit << bold << black_bg << "]"
-                    << ansiexit << " ";
-        #else
-                std::cout << "[DEBUG] ";
-        #endif
-                std::cout << msg_content;
-                std::cout << std::dec << "\n";
+                static std::unordered_set<std::string> printed_messages;
 
-                printed_messages.insert(std::move(msg_content));
+                if (printed_messages.find(msg_content) == printed_messages.end()) {
+                    printed_messages.insert(msg_content);
+
+                    // --- Console Output (ANSI Colors for Linux/Mac) ---
+                #if (LINUX || APPLE)
+                    constexpr const char* BLUE_BG = "\x1B[44m";
+                    constexpr const char* WHITE_FG = "\x1B[97m";
+                    constexpr const char* BOLD = "\033[1m";
+                    constexpr const char* RESET = "\033[0m";
+
+                    std::cout << BOLD << BLUE_BG << WHITE_FG << "[DEBUG]" << RESET << " "
+                        << msg_content << "\n";
+                #else
+                    // Windows Console (Standard plain text)
+                    std::cout << "[DEBUG] " << msg_content << "\n";
+                #endif
+
+                    // --- Windows Debug Output (VS Output Window / DebugView) ---
+                #if (WINDOWS)
+                    // OutputDebugStringA does not support ANSI, so we send a clean string
+                    std::string win_debug_str = "[DEBUG] " + msg_content + "\n";
+                    OutputDebugStringA(win_debug_str.c_str());
+                #endif
+                }
             }
+            catch (...) {}
         }
 
 
@@ -5867,7 +5888,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         #if (x86_64)
                 // 64-bit Linux: IDT descriptor is 10 bytes (2-byte limit + 8-byte base)
                 __asm__ __volatile__("sidt %0" : "=m"(values));
-        #ifdef __VMAWARE_DEBUG__
+        #ifdef 
+
                 debug("SIDT: values = ");
                 for (u8 i = 0; i < 10; ++i) {
                     debug(std::hex, std::setw(2), std::setfill('0'), static_cast<u32>(values[i]));
@@ -8618,11 +8640,18 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const FN_NtQuerySystemInformation pNtQuerySystemInformation = reinterpret_cast<FN_NtQuerySystemInformation>(funcs[0]);
         if (pNtQuerySystemInformation) {
             SYSTEM_HYPERVISOR_DETAIL_INFORMATION hvInfo = { {} };
+
+            // Request class 0x9F (SystemHypervisorDetailInformation)
+            // This asks the OS kernel to fill the structure with information about the 
+            // hypervisor layer it is running on top of
             const NTSTATUS status = pNtQuerySystemInformation(static_cast<SYSTEM_INFORMATION_CLASS>(0x9F), &hvInfo, sizeof(hvInfo), nullptr);
+
             if (status != 0) {
                 return false;
             }
 
+            // If Data[0] is non-zero, it means the kernel has successfully communicated 
+            // with a hypervisor and retrieved a vendor signature like "Micr" for Microsoft
             if (hvInfo.HvVendorAndMaxFunction.Data[0] != 0) {
                 return true;
             }
@@ -8679,11 +8708,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (!NtOpenKey || !NtQueryObject || !pNtClose)
             return false;
     
+        // Prepare to open the root USER registry hive
         UNICODE_STRING keyPath{};
         keyPath.Buffer = const_cast<PWSTR>(L"\\REGISTRY\\USER");
         keyPath.Length = static_cast<USHORT>(wcslen(keyPath.Buffer) * sizeof(WCHAR));
         keyPath.MaximumLength = keyPath.Length + sizeof(WCHAR);
-    
+
         OBJECT_ATTRIBUTES objAttr = {
             sizeof(OBJECT_ATTRIBUTES),
             nullptr,
@@ -8692,28 +8722,36 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             nullptr,
             nullptr
         };
-    
+
+        // Attempt to open the key. If we are sandboxed, this open call often succeeds,
+        // but the underlying handle will point to a virtualized container, not the real OS path
         HANDLE hKey = nullptr;
         NTSTATUS status = NtOpenKey(&hKey, KEY_READ, reinterpret_cast<POBJECT_ATTRIBUTES>(&objAttr));
         if (!(((NTSTATUS)(status)) >= 0))
             return false;
-    
+
+        // Ask the kernel: "What is the actual name of the object this handle points to?"
+        // Sandboxie implements file system and registry virtualization by redirecting access
+        // While the API pretends we opened "\REGISTRY\USER", the handle might actually point to 
+        // something like "\Device\HarddiskVolume2\Sandbox\User\DefaultBox\RegHive"
         alignas(16) BYTE buffer[1024]{};
         ULONG returnedLength = 0;
         status = NtQueryObject(hKey, ObjectNameInformation, buffer, sizeof(buffer), &returnedLength);
         pNtClose(hKey);
         if (!(((NTSTATUS)(status)) >= 0))
             return false;
-    
+
         const auto pObjectName = reinterpret_cast<POBJECT_NAME_INFORMATION>(buffer);
-    
+
         UNICODE_STRING expectedName{};
         expectedName.Buffer = const_cast<PWSTR>(L"\\REGISTRY\\USER");
         expectedName.Length = static_cast<USHORT>(wcslen(expectedName.Buffer) * sizeof(WCHAR));
-    
+
+        // Compare the requested name vs the actual kernel object name
+        // If they don't match, we have been redirected, confirming the presence of Sandboxie
         const bool mismatch = (pObjectName->Name.Length != expectedName.Length) ||
             (memcmp(pObjectName->Name.Buffer, expectedName.Buffer, expectedName.Length) != 0);
-    
+
         return mismatch ? core::add(brands::SANDBOXIE) : false;
     }
     
@@ -8769,6 +8807,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
+        // We are checking for the presence of Audio Render devices
+        // Most legitimate user PCs have speakers or headphones (audio endpoints)
+        // Automated sandboxes and headless servers often have no audio devices configured
+        // We target the MMDevices\Audio\Render key where these endpoints are registered
         const wchar_t* nativePath = L"\\Registry\\Machine\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\MMDevices\\Audio\\Render";
 
         UNICODE_STRING uPath;
@@ -8792,6 +8834,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         std::vector<BYTE> infoBuf(512);
         ULONG returnedLen = 0;
 
+        // Query the key information. If the buffer is too small (STATUS_BUFFER_TOO_SMALL),
+        // resize it to the exact length required by the kernel and try again
         st = pNtQueryKey(hKey, InfoClass, infoBuf.data(), static_cast<ULONG>(infoBuf.size()), &returnedLen);
 
         if (!NT_SUCCESS(st) && returnedLen > infoBuf.size()) {
@@ -8802,6 +8846,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         bool hasValues = false;
         if (NT_SUCCESS(st) && returnedLen >= sizeof(KEY_FULL_INFORMATION)) {
             auto* kfi = reinterpret_cast<PKEY_FULL_INFORMATION>(infoBuf.data());
+
+            // Check if the registry key has any values associated with it
+            // If 'Values' is 0, the audio system is likely uninitialized or barren,
+            // which strongly suggests a virtualized/sandbox environment
             const DWORD valueCount = static_cast<DWORD>(kfi->Values); // values, not subkeys
             hasValues = (valueCount > 0);
         }
@@ -9490,6 +9538,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         if (!pNtOpenDirectoryObject || !pNtQueryDirectoryObject || !pNtClose) return false;
 
+        // Prepare to open the root "\Device" directory in the Object Manager namespace
+        // This is different from the file system and we are looking for kernel objects created by drivers
         const wchar_t* deviceDirPath = L"\\Device";
         dirName.Buffer = (PWSTR)deviceDirPath;
         dirName.Length = (USHORT)(wcslen(deviceDirPath) * sizeof(wchar_t));
@@ -9497,32 +9547,40 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         InitializeObjectAttributes(&objAttr, &dirName, OBJ_CASE_INSENSITIVE, nullptr, nullptr);
 
+        // Open the directory object so we can enumerate its contents
         status = pNtOpenDirectoryObject(&hDir, DIRECTORY_QUERY, &objAttr);
 
         if (!NT_SUCCESS(status)) {
             return false;
         }
 
+        // Set up a buffer for querying directory entries
+        // We process entries one by one using a context index
         std::vector<BYTE> buffer(4096);
-        constexpr size_t MAX_DIR_BUFFER = 64 * 1024; 
+        constexpr size_t MAX_DIR_BUFFER = 64 * 1024;
         ULONG context = 0;
         ULONG returnedLength = 0;
 
         while (true) {
+            // Query the next single object in the directory
+            // 'ReturnSingleEntry' is TRUE to simplify buffer parsing logic
             status = pNtQueryDirectoryObject(
                 hDir,
                 buffer.data(),
                 static_cast<ULONG>(buffer.size()),
-                TRUE,   // ReturnSingleEntry
+                TRUE,
                 FALSE,
                 &context,
                 &returnedLength
             );
 
+            // Stop if we have iterated through all objects
             if (status == STATUS_NO_MORE_ENTRIES) {
                 break;
             }
 
+            // Handle buffer sizing. If the buffer is too small, the kernel tells us how much it needs
+            // We resize and retry, but impose a sanity cap to prevent memory issues
             if (!NT_SUCCESS(status)) {
                 if (returnedLength > buffer.size()) {
                     size_t newSize = static_cast<size_t>(returnedLength);
@@ -9544,6 +9602,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return false;
             }
 
+            // Validate the returned data length to ensure we don't read out of bounds
             const size_t usedLen = (returnedLength == 0) ? buffer.size() : static_cast<size_t>(returnedLength);
             if (usedLen < sizeof(OBJECT_DIRECTORY_INFORMATION) || usedLen > buffer.size()) {
                 pNtClose(hDir);
@@ -9552,12 +9611,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             const POBJECT_DIRECTORY_INFORMATION pOdi = reinterpret_cast<POBJECT_DIRECTORY_INFORMATION>(buffer.data());
 
+            // memory boundaries just for safe pointer arithmetic
             const uintptr_t bufBase = reinterpret_cast<uintptr_t>(buffer.data());
             const uintptr_t bufEnd = bufBase + usedLen;
 
             std::wstring objectName;
             bool gotName = false;
 
+            // Extract the name using the explicit Name pointer in the structure
+            // We strictly validate that the pointer falls within our allocated buffer to prevent crashes
             const size_t nameBytes = static_cast<size_t>(pOdi->Name.Length);
             const uintptr_t namePtr = reinterpret_cast<uintptr_t>(pOdi->Name.Buffer);
 
@@ -9567,6 +9629,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     const wchar_t* wname = reinterpret_cast<const wchar_t*>(namePtr);
                     const size_t wlen = nameBytes / sizeof(wchar_t);
                     bool foundTerm = false;
+                    // scan for null terminator just in case
                     for (size_t i = 0; i < wlen; ++i) {
                         if (wname[i] == L'\0') { objectName.assign(wname, i); foundTerm = true; break; }
                     }
@@ -9577,6 +9640,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
             }
 
+            // If the explicit pointer was invalid, assume the string data immediately follows the structure
             if (!gotName) {
                 const uintptr_t altStart = bufBase + sizeof(OBJECT_DIRECTORY_INFORMATION);
                 if (altStart >= bufEnd) {
@@ -9608,6 +9672,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return false;
             }
 
+            // "VmGenerationCounter" and "VmGid" are created by the Hyper-V VM Bus provider
             if (objectName == L"VmGenerationCounter") {
                 pNtClose(hDir);
                 debug("OBJECTS: Detected VmGenerationCounter");
@@ -10051,11 +10116,38 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         } while (false);
 
         // cleanup
-        if (pk_buf) { PVOID b = pk_buf; SIZE_T z = 0; nt_free_memory(current_process_handle, &b, &z, 0x8000); pk_buf = nullptr; }
-        if (kek_buf) { PVOID b = kek_buf; SIZE_T z = 0; nt_free_memory(current_process_handle, &b, &z, 0x8000); kek_buf = nullptr; }
-        if (pk_default_buf) { PVOID b = pk_default_buf; SIZE_T z = 0; nt_free_memory(current_process_handle, &b, &z, 0x8000); pk_default_buf = nullptr; }
-        if (kek_default_buf) { PVOID b = kek_default_buf; SIZE_T z = 0; nt_free_memory(current_process_handle, &b, &z, 0x8000); kek_default_buf = nullptr; }
-        if (enum_base_buffer) { SIZE_T z = 0; nt_free_memory(current_process_handle, &enum_base_buffer, &z, 0x8000); enum_base_buffer = nullptr; }
+        if (pk_buf) {
+            PVOID b = pk_buf;
+            SIZE_T z = 0;
+            nt_free_memory(current_process_handle, &b, &z, 0x8000);
+            pk_buf = nullptr;
+        }
+        if (kek_buf) {
+            PVOID b = kek_buf;
+            SIZE_T z = 0;
+            nt_free_memory(current_process_handle, &b, &z, 0x8000);
+            kek_buf = nullptr;
+        }
+
+        if (pk_default_buf) {
+            PVOID b = pk_default_buf;
+            SIZE_T z = 0;
+            nt_free_memory(current_process_handle, &b, &z, 0x8000);
+            pk_default_buf = nullptr;
+        }
+
+        if (kek_default_buf) {
+            PVOID b = kek_default_buf;
+            SIZE_T z = 0;
+            nt_free_memory(current_process_handle, &b, &z, 0x8000);
+            kek_default_buf = nullptr;
+        }
+
+        if (enum_base_buffer) {
+            SIZE_T z = 0;
+            nt_free_memory(current_process_handle, &enum_base_buffer, &z, 0x8000);
+            enum_base_buffer = nullptr;
+        }
 
         if (privileges_enabled && token_handle) {
             TOKEN_PRIVILEGES tp_disable{};
@@ -10064,7 +10156,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             tp_disable.Privileges[0].Attributes = 0;
             AdjustTokenPrivileges(token_handle, FALSE, &tp_disable, sizeof(TOKEN_PRIVILEGES), nullptr, nullptr);
         }
-        if (token_handle) { CloseHandle(token_handle); token_handle = nullptr; }
+        if (token_handle) { 
+            CloseHandle(token_handle); 
+            token_handle = nullptr; 
+        }
 
         return detection_result;
     }
@@ -10170,43 +10265,50 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         };
 
+        // Helper lambda to retrieve device properties from the registry
         auto get_device_property = [](HDEVINFO dev_info, SP_DEVINFO_DATA& dev_data, DWORD prop_id,
             char* out_buf, DWORD out_buf_size) noexcept -> bool {
-                DWORD needed = 0;
+            DWORD needed = 0;
+
+            // Try to get the property with the provided buffer
+            if (SetupDiGetDeviceRegistryPropertyA(dev_info, &dev_data, prop_id, nullptr,
+                reinterpret_cast<PBYTE>(out_buf), out_buf_size, &needed)) {
+                if (out_buf_size > 0) out_buf[out_buf_size - 1] = '\0';
+                return true;
+            }
+
+            const DWORD err = GetLastError();
+
+            // If the buffer was too small, allocate exactly what is needed and try again
+            // This ensures we don't fail just because a property string is unusually long
+            if (err == ERROR_INSUFFICIENT_BUFFER && needed > 0 && needed < 65536) {
+
+                void* h = malloc(static_cast<size_t>(needed) + 1);
+                if (!h) return false;
 
                 if (SetupDiGetDeviceRegistryPropertyA(dev_info, &dev_data, prop_id, nullptr,
-                    reinterpret_cast<PBYTE>(out_buf), out_buf_size, &needed)) {
-                    if (out_buf_size > 0) out_buf[out_buf_size - 1] = '\0';
+                    reinterpret_cast<PBYTE>(h), needed, &needed)) {
+
+                    const DWORD to_copy = (needed < out_buf_size - 1) ? needed : (out_buf_size - 1);
+
+                    if (out_buf_size > 0) {
+                        memcpy(out_buf, h, to_copy);
+                        out_buf[to_copy] = '\0';
+                    }
+
+                    free(h);
                     return true;
                 }
+                free(h);
+            }
 
-                const DWORD err = GetLastError();
-
-                if (err == ERROR_INSUFFICIENT_BUFFER && needed > 0 && needed < 65536) {
-
-                    void* h = malloc(static_cast<size_t>(needed) + 1);
-                    if (!h) return false;
-
-                    if (SetupDiGetDeviceRegistryPropertyA(dev_info, &dev_data, prop_id, nullptr,
-                        reinterpret_cast<PBYTE>(h), needed, &needed)) {
-
-                        const DWORD to_copy = (needed < out_buf_size - 1) ? needed : (out_buf_size - 1);
-
-                        if (out_buf_size > 0) {
-                            memcpy(out_buf, h, to_copy);
-                            out_buf[to_copy] = '\0';
-                        }
-
-                        free(h);
-                        return true;
-                    }
-                    free(h);
-                }
-
-                if (out_buf_size > 0) out_buf[0] = '\0';
-                return false;
+            if (out_buf_size > 0) out_buf[0] = '\0';
+            return false;
         };
 
+        // Initiate a query for all "Monitor" class devices present in the system.
+        // We target monitors because VMs often emulate generic displays (e.g., "Generic Non-PnP Monitor")
+        // or specific virtual hardware signatures in their EDID data.
         const HDEVINFO devInfo = SetupDiGetClassDevs(&GUID_DEVCLASS_MONITOR, nullptr, nullptr, DIGCF_PRESENT);
         if (devInfo == INVALID_HANDLE_VALUE) return false;
 
@@ -10215,7 +10317,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         const int threshold = 3;
 
+        // Iterate through every enumerated monitor to inspect its hardware details
         for (DWORD index = 0; SetupDiEnumDeviceInfo(devInfo, index, &devData); ++index) {
+            // Open the "Hardware" registry key for the specific device instance
+            // This is where the driver stores low-level configuration, including the EDID
             const HKEY hDevKey = SetupDiOpenDevRegKey(devInfo, &devData, DICS_FLAG_GLOBAL, 0, DIREG_DEV, KEY_READ);
             if (hDevKey == INVALID_HANDLE_VALUE) {
                 devData = {};
@@ -10223,6 +10328,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 continue;
             }
 
+            // Prepare to read the EDID (Extended Display Identification Data)
+            // EDID is a standard data structure containing the display's manufacturer ID, 
+            // serial number, and capabilities
             BYTE edid_stack[256];
             DWORD bufSize = static_cast<DWORD>(sizeof(edid_stack));
             const LONG rc = RegQueryValueExA(hDevKey, "EDID", nullptr, nullptr, edid_stack, &bufSize);
@@ -10231,14 +10339,19 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             BYTE* edid = nullptr;
             bool used_heap = false;
             BYTE* heap_buf = nullptr;
+
+            // standard EDID is 128 bytes so it should fit in stack
             if (rc == ERROR_SUCCESS && bufSize >= 128) {
                 edid = edid_stack;
             }
+            // If for some reason the EDID contains extension blocks (making it larger than our stack buffer)
+            // allocate a heap buffer dynamically to capture the full data
             else if (rc == ERROR_MORE_DATA) {
                 if (bufSize > 0 && bufSize < 65536) {
                     heap_buf = static_cast<BYTE*>(LocalAlloc(LMEM_FIXED, bufSize));
                     if (heap_buf) {
                         DWORD bufSize2 = bufSize;
+                        // Re-open the key to read the full data into the new buffer
                         const HKEY hDevKey2 = SetupDiOpenDevRegKey(devInfo, &devData, DICS_FLAG_GLOBAL, 0, DIREG_DEV, KEY_READ);
                         if (hDevKey2 != INVALID_HANDLE_VALUE) {
                             if (RegQueryValueExA(hDevKey2, "EDID", nullptr, nullptr, heap_buf, &bufSize2) == ERROR_SUCCESS && bufSize2 >= 128) {
@@ -10248,7 +10361,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                             }
                             RegCloseKey(hDevKey2);
                         }
-                        if (!edid) { LocalFree(heap_buf); heap_buf = nullptr; }
+                        if (!edid) { 
+                            LocalFree(heap_buf);
+                            heap_buf = nullptr; 
+                        }
                     }
                 }
             }
@@ -10384,19 +10500,19 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         auto check_rdrand_integrity = [&]() -> bool {
             __try {
                 unsigned int v = 0;
-        #if (MSVC && !CLANG)
+            #if (MSVC && !CLANG)
                 if (_rdrand32_step(&v) && !rdrand_support) {
                     debug("CPU_HEURISTIC: Hypervisor detected hiding RDRAND capabilities");
                     return true;
                 }
-        #else 
+            #else 
                 unsigned char ok = 0;
                 asm volatile("rdrand %0\n\tsetc %1" : "=r"(v), "=qm"(ok) : : "cc");
                 if (ok && !rdrand_support) {
                     debug("CPU_HEURISTIC: Hypervisor detected hiding RDRAND capabilities");
                     return true;
                 }
-        #endif      
+            #endif      
             }
             __except (GetExceptionCode() == EXCEPTION_ILLEGAL_INSTRUCTION
                 ? EXCEPTION_EXECUTE_HANDLER
@@ -10654,9 +10770,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                         while (got < 4 && *q) {
                             const wchar_t c = *q;
                             u32 nib = 0;
-                            if (c >= L'0' && c <= L'9') nib = static_cast<u32>(c - L'0');
-                            else if ((c | 0x20) >= L'a' && (c | 0x20) <= L'f') nib = static_cast<u32>((c | 0x20) - L'a' + 10);
-                            else break;
+                            if (c >= L'0' && c <= L'9') 
+                                nib = static_cast<u32>(c - L'0');
+                            else if ((c | 0x20) >= L'a' && (c | 0x20) <= L'f') 
+                                nib = static_cast<u32>((c | 0x20) - L'a' + 10);
+                            else
+                                break;
 
                             val = (val << 4) | nib;
                             ++got; ++q;
