@@ -5888,25 +5888,28 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         #if (x86_64)
                 // 64-bit Linux: IDT descriptor is 10 bytes (2-byte limit + 8-byte base)
                 __asm__ __volatile__("sidt %0" : "=m"(values));
-        #ifdef 
 
-                debug("SIDT: values = ");
-                for (u8 i = 0; i < 10; ++i) {
-                    debug(std::hex, std::setw(2), std::setfill('0'), static_cast<u32>(values[i]));
-                    if (i < 9) debug(" ");
-                }
-        #endif
+                #ifdef __VMAWARE_DEBUG__
+                    debug("SIDT: values = ");
+                    for (u8 i = 0; i < 10; ++i) {
+                        debug(std::hex, std::setw(2), std::setfill('0'), static_cast<u32>(values[i]));
+                        if (i < 9) debug(" ");
+                    }
+                #endif
+
                 return (values[9] == 0x00);  // 10th byte in x64 mode
         #elif (x86_32)
                 // 32-bit Linux: IDT descriptor is 6 bytes (2-byte limit + 4-byte base)
                 __asm__ __volatile__("sidt %0" : "=m"(values));
-        #ifdef __VMAWARE_DEBUG__
-                debug("SIDT: values = ");
-                for (u8 i = 0; i < 6; ++i) {
-                    debug(std::hex, std::setw(2), std::setfill('0'), static_cast<u32>(values[i]));
-                    if (i < 5) debug(" ");
-                }
-        #endif
+
+                #ifdef __VMAWARE_DEBUG__
+                    debug("SIDT: values = ");
+                    for (u8 i = 0; i < 6; ++i) {
+                        debug(std::hex, std::setw(2), std::setfill('0'), static_cast<u32>(values[i]));
+                        if (i < 5) debug(" ");
+                    }
+                #endif
+
                 return (values[5] == 0x00);  // 6th byte in x86 mode
         #else
                 return false;
