@@ -17,7 +17,7 @@
 #        the structure of the headers for anybody reading it for the first
 #        time, it's more of a guide to point which parts are this and that.
 # 
-#    2. Update the dates in the banner, example: "1.9 (Septmber 2024)"
+#    2. Update the dates in the banner, example: "1.9 (September 2024)"
 # 
 # ===============================================================
 # 
@@ -308,16 +308,45 @@ def fetch_lib_info(enum_list):
             end_ptr = index
             break
 
+
+    if start_ptr == -1:
+        print(f"start position for technique table not found, aborting")
+        sys.exit(1)
+
+    if end_ptr == -1:
+        print(f"end position for technique table not found, aborting")
+        sys.exit(1)
+
+    raw_technique_list = []
+
+    if end_ptr > start_ptr:
+        raw_technique_list = [line.strip() for line in file_content[start_ptr+1:end_ptr]]
+    
     technique_list = []
-    if start_ptr != -1 and end_ptr != -1 and end_ptr > start_ptr:
-        technique_list = [line.strip() for line in file_content[start_ptr+1:end_ptr]]
+
+    for line in raw_technique_list:
+        if line.startswith("#"):
+            continue
+        
+        if line == "":
+            continue
+        
+        technique_list.append(line)
 
     for enum in enum_list:
         for enum_line in technique_list:
             if enum in enum_line:
-                match = re.search(r'technique\((\d+)', enum_line)
-                if match:
-                    technique[enum].score = int(match.group(1))
+                matches = re.findall(r'\d+', enum_line)
+
+                if len(matches) == 0:
+                    print(f"could not find score number in technique table line, aborting")
+                    sys.exit(1)
+                
+                if len(matches) > 2:
+                    print(f"found multiple score numbers in technique table line, aborting")
+                    sys.exit(1)
+                
+                technique[enum].score = int(matches[0])
                 break
 
     # fetch more stuff, comment block surrounding the implementation line

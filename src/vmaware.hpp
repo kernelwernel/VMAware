@@ -52,14 +52,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 537
- * - struct for internal cpu operations        => line 739
- * - struct for internal memoization           => line 1231
- * - struct for internal utility functions     => line 1405
- * - struct for internal core components       => line 10759
- * - start of VM detection technique list      => line 2447
- * - start of public VM detection functions    => line 11272
- * - start of externally defined variables     => line 12208
+ * - enums for publicly accessible techniques  => line 545
+ * - struct for internal cpu operations        => line 721
+ * - struct for internal memoization           => line 1213
+ * - struct for internal utility functions     => line 1387
+ * - struct for internal core components       => line 10758
+ * - start of VM detection technique list      => line 2429
+ * - start of public VM detection functions    => line 11104
+ * - start of externally defined variables     => line 12089
  *
  *
  * ============================== EXAMPLE ===================================
@@ -217,18 +217,13 @@
 #ifndef VMAWARE_HEADER
 #define VMAWARE_HEADER
 
-#ifndef __VMAWARE_DEBUG__
-    #if defined(_DEBUG)    /* MSVC Debug */       \
-     || defined(DEBUG)     /* user or build-system */ \
-     || !defined(NDEBUG)   /* assert-enabled (standard) */
-    #define __VMAWARE_DEBUG__
-    #endif
-#endif
+#define __VMAWARE_DEBUG__
 
 #if defined(_WIN32) || defined(_WIN64)
     #ifndef WIN32_LEAN_AND_MEAN
         #define WIN32_LEAN_AND_MEAN
     #endif
+    
     #define WINDOWS 1
     #define LINUX 0
     #define APPLE 0
@@ -271,12 +266,11 @@
 #else
     #error "Unsupported C++ standard (pre-C++98 or unknown)."
 #endif
-
+    
 #if (VMA_CPP < 11 && !WINDOWS)
     #error "VMAware only supports C++11 or above, set your compiler flag to '-std=c++20' for gcc/clang, or '/std:c++20' for MSVC"
 #endif
-
-
+        
 #if defined(__x86_64__) || defined(_M_X64)
     #define x86_64 1
 #else
@@ -294,7 +288,7 @@
 #else
     #define x86 0
 #endif
-
+    
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__ARM_LINUX_COMPILER__)
     #define ARM64 1
 #else
@@ -306,11 +300,17 @@
 #else
     #define ARM32 0
 #endif
-
+    
 #if ARM32 || ARM64
     #define ARM 1
 #else
     #define ARM 0
+#endif
+
+#if (!APPLE && (VMA_CPP >= 20) && (!CLANG || __clang_major__ >= 16))
+    #define SOURCE_LOCATION_SUPPORTED 1
+#else
+    #define SOURCE_LOCATION_SUPPORTED 0
 #endif
 
 #if defined(__clang__)
@@ -334,12 +334,14 @@
 #if (VMA_CPP >= 20)
     #include <bit>
     #include <ranges>
-    #include <source_location>
+    #if (SOURCE_LOCATION_SUPPORTED)
+        #include <source_location>
+    #endif
 #endif
 #if (VMA_CPP >= 17)
     #include <filesystem>
-    #include <system_error>
-#endif
+        #include <system_error>
+    #endif
 #ifdef __VMAWARE_DEBUG__
     #include <iomanip>
     #include <ios>
@@ -364,6 +366,7 @@
 #include <sstream>
 #include <bitset>
 #include <type_traits>
+#include <stdexcept>
 #include <numeric>
 
 #if (WINDOWS)
@@ -679,19 +682,7 @@ public:
     // get the total number of techniques that detected a VM
     static u8 detected_count_num; 
 
-    static constexpr size_t MAX_DISABLED_TECHNIQUES = 64;
-    struct disabled_tech_container {
-        enum_flags flags[MAX_DISABLED_TECHNIQUES] = {};
-        size_t count = 0;
-
-        VMAWARE_CONSTEXPR_14 void push_back(enum_flags f) {
-            if (count < MAX_DISABLED_TECHNIQUES) flags[count++] = f;
-        }
-
-        constexpr const enum_flags* begin() const { return flags; }
-        constexpr const enum_flags* end() const { return flags + count; }
-    };
-    static disabled_tech_container disabled_techniques;
+    static std::vector<enum_flags> disabled_techniques;
 
 private:
 
@@ -709,20 +700,6 @@ public:
     VM() = delete;
     VM(const VM&) = delete;
     VM(VM&&) = delete;
-
-    struct enum_vector {
-        enum_flags data[enum_size] = {};
-        size_t count = 0;
-
-        VMAWARE_CONSTEXPR_14 void push_back(enum_flags f) {
-            if (count < enum_size) data[count++] = f;
-        }
-
-        constexpr const enum_flags* begin() const { return data; }
-        constexpr const enum_flags* end() const { return data + count; }
-        constexpr size_t size() const { return count; }
-        constexpr const enum_flags& operator[](size_t i) const { return data[i]; }
-    };
 
 private:
     // macro for bypassing unused parameter/variable warnings
@@ -2647,8 +2624,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 debug("BOCHS_CPU: technique 1 found");
                 return core::add(brands::BOCHS);
             }
-        }
-        else if (amd) {
+        } else if (amd) {
             // technique 2: "processor" should have a capital P
             if (brand == "AMD Athlon(tm) processor") {
                 debug("BOCHS_CPU: technique 2 found");
@@ -5500,7 +5476,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         
     /**
      * @brief Check for VMware-specific device name in dmesg output
-     * @category Windows
+     * @category Linux
      * @author idea from ScoopyNG by Tobias Klein
      * @note Disabled by default
      * @warning Permissions required
@@ -7152,14 +7128,31 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        if (hv_present != 0) return true;
+        if (hv_present != 0) {
+            return true;
+        }
 
         std::unique_ptr<std::string> result = util::sys_result("csrutil status");
-        const std::string tmp = *result;
+
+        if (!result) {
+            return false;
+        }
+
+        std::string tmp = *result;
+
+        auto pos = tmp.find('\n');
+
+        if (pos != std::string::npos) {
+            tmp.resize(pos);
+        }
 
         debug("MAC_SIP: ", "result = ", tmp);
 
-        return (util::find(tmp, "disabled") || (!util::find(tmp, "enabled")));
+        if (util::find(tmp, "unknown")) {
+            return false;
+        }
+
+        return (util::find(tmp, "disabled"));
     }
 
 
@@ -10889,7 +10882,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      *                                        CORE SECTION                                            *
      *                                                                                                *
      * ============================================================================================== */
-    
+public:
     struct core {
         struct technique {
             u8 points = 0;                // this is the certainty score between 0 and 100
@@ -10964,14 +10957,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return flags.test(flag_bit);
         }
 
-        [[nodiscard]] static bool is_technique_set(const flagset& flags) {
+        [[nodiscard]] static bool are_techniques_empty(const flagset& flags) {
             for (std::size_t i = technique_begin; i < technique_end; i++) {
                 if (flags.test(i)) {
-                    return true;
+                    return false;
                 }
             }
 
-            return false;
+            return true;
         }
 
         [[nodiscard]] static bool is_setting_flag_set(const flagset& flags) {
@@ -10982,44 +10975,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             return false;
-        }
-
-        // manage the flag to handle edgecases
-        static void flag_sanitizer(flagset& flags) {
-            if (flags.count() == 0) {
-                generate_default(flags);
-                return;
-            }
-
-            if (flags.test(DEFAULT)) {
-                return;
-            }
-
-            if (flags.test(ALL)) {
-                return;
-            }
-
-            // check if any technique flag is set, which is the "correct" way
-            if (core::is_technique_set(flags)) {
-                return;
-            }
-
-            if (!core::is_setting_flag_set(flags)) {
-                throw std::invalid_argument("Invalid flag option for function parameter found, either leave it empty or add the VM::DEFAULT flag");
-            }
-
-            // at this stage, only setting flags are asserted to be set
-            if (
-                flags.test(HIGH_THRESHOLD) ||
-                flags.test(DYNAMIC) ||
-                flags.test(NULL_ARG) ||
-                flags.test(MULTIPLE)
-                ) {
-                generate_default(flags);
-            }
-            else {
-                throw std::invalid_argument("Invalid flag option found, aborting");
-            }
         }
 
         // run every VM detection mechanism in the technique table
@@ -11078,7 +11033,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 if (
                     (shortcut) &&
                     (points >= threshold_points)
-                    ) {
+                ) {
                     return points;
                 }
             }
@@ -11126,29 +11081,22 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
          * ============================================================================================== */
 
          /**
-          * basically what this entire recursive variadic template inheritance
-          * fuckery does is manage the variadic arguments being given through
-          * the arg_handler function, which could either be a std::bitset<N>,
-          * a uint8_t, or a combination of both of them. This will handle
-          * both argument types and implement them depending on what their
-          * types are. If it's a std::bitset<N>, do the |= operation on
-          * flag_collector. If it's a uint8_t, simply .set() that into the
-          * flag_collector. That's the gist of it.
-          *
-          * Also I won't even deny, the majority of this section was 90% generated
-          * by chatgpt. Can't be arsed with this C++ variadic templatisation shit.
-          * Like is it really my fault that I have a hard time understanging C++'s
-          * god awful metaprogramming designs? And don't even get me started on SFINAE.
-          *
-          * You don't need an IQ of 3 digits to realise how dogshit this language
-          * is, when you end up in situations where there's a few correct solutions
-          * to a problem, but with a billion ways you can do the same thing but in
-          * the "wrong" way. I genuinely can't wait for Carbon to come out.
+          * basically what this entire section does is handle the arguments in a way
+          * where it can coordinate between enabled and disabled flags. The flags in
+          * the argument handling strategy are std::bitset variables (right below 
+          * this comment), and it's used as a semi-global variable so that each 
+          * component can share this variable together. The core of this section is
+          * the arg_handler and disabled_arg_handler functions. They both take a 
+          * variadic argument of enum_flags. The former decides which bits should be 
+          * enabled, while the latter will toggle those bits (if there's any) after 
+          * the arg_handler processing is done.
           */
-    private:
+    
+    // this is public but only for advanced use cases. It's intentionally undocumented.
+    public: 
         static flagset flag_collector;
         static flagset disabled_flag_collector;
-
+    
         static void generate_default(flagset& flags) {
             // set all bits to 1
             flags.set();
@@ -11158,7 +11106,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 flags.flip(id);
             }
 
-            // disable all the settings flags
+            // disable all the settings flags except for VM::DEFAULT
             flags.flip(HIGH_THRESHOLD);
             flags.flip(NULL_ARG);
             flags.flip(DYNAMIC);
@@ -11166,187 +11114,47 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             flags.flip(ALL);
         }
 
+        // this overload is mainly for default argument purposes
+        static flagset generate_default() {
+            flagset flags;
+            generate_default(flags);
+            return flags;
+        }
+
         static void generate_all(flagset& flags) {
-            // set all bits to 1
-            flags.set();
+            generate_default(flags);
 
-            // disable all the settings flags
-            flags.flip(HIGH_THRESHOLD);
-            flags.flip(NULL_ARG);
-            flags.flip(DYNAMIC);
-            flags.flip(MULTIPLE);
-            flags.flip(DEFAULT);
-        }
-
-        static void generate_current_disabled_flags(flagset& flags) {
-            const bool setting_high_threshold = flags.test(HIGH_THRESHOLD);
-            const bool setting_dynamic = flags.test(DYNAMIC);
-            const bool setting_multiple = flags.test(MULTIPLE);
-            const bool setting_all = flags.test(ALL);
-            const bool setting_default = flags.test(DEFAULT);
-
-            if (disabled_flag_collector.count() == 0) {
-                return;
-            }
-            else {
-                flags &= disabled_flag_collector;
-            }
-
-            flags.set(HIGH_THRESHOLD, setting_high_threshold);
-            flags.set(DYNAMIC, setting_dynamic);
-            flags.set(MULTIPLE, setting_multiple);
-            flags.set(ALL, setting_all);
-            flags.set(DEFAULT, setting_default);
-        }
-
-        static void reset_disable_flagset() {
-            generate_default(disabled_flag_collector);
-            disabled_flag_collector.flip(DEFAULT);
-        }
-
-        static void disable_flagset_manager(const flagset& flags) {
-            disabled_flag_collector = flags;
-        }
-
-        static void disable_flag_manager(const enum_flags flag) {
-            disabled_flag_collector.set(flag, false);
-        }
-
-        static void flag_manager(const enum_flags flag) {
-            if (
-                (flag == INVALID) ||
-                (flag > enum_size)
-                ) {
-                throw std::invalid_argument("Non-flag or invalid flag provided for VM::detect(), aborting");
-            }
-
-            if (flag == DEFAULT) {
-                generate_default(flag_collector);
-            }
-            else if (flag == ALL) {
-                generate_all(flag_collector);
-            }
-            else {
-                flag_collector.set(flag);
+            for (const enum_flags technique : disabled_techniques) {
+                flags.set((enum_flags)technique, true);
             }
         }
 
-        // Base class for different types
-        struct TestHandler {
-            virtual ~TestHandler() = default;
-
-            virtual void handle(const flagset& flags) {
-                disable_flagset_manager(flags);
+        static void reset_disabled_flagset() {
+            disabled_flag_collector.reset();
+            for (const auto technique : disabled_techniques) {
+                disabled_flag_collector.set(static_cast<u32>(technique), true);
             }
-
-            virtual void handle(const enum_flags flag) {
-                flag_manager(flag);
-            }
-        };
-
-        struct DisableTestHandler {
-            virtual ~DisableTestHandler() = default;
-
-            virtual void disable_handle(const enum_flags flag) {
-                disable_flag_manager(flag);
-            }
-        };
-
-        // Derived classes for specific type implementations
-        struct TestBitsetHandler : public TestHandler {
-            using TestHandler::handle;
-
-            void handle(const flagset& flags) override {
-                disable_flagset_manager(flags);
-            }
-        };
-
-        struct TestUint8Handler : public TestHandler {
-            using TestHandler::handle;
-
-            void handle(const enum_flags flag) override {
-                flag_manager(flag);
-            }
-        };
-
-        struct DisableTestUint8Handler : public DisableTestHandler {
-            using DisableTestHandler::disable_handle;
-
-            void disable_handle(const enum_flags flag) override {
-                disable_flag_manager(flag);
-            }
-        };
-
-        // Define a function to dispatch handling based on type
-        template <typename T>
-        static void dispatch(const T& value, TestHandler& handler) {
-            handler.handle(value);
         }
 
-        // Define a function to dispatch handling based on type
-        template <typename T>
-        static void disable_dispatch(const T& value, DisableTestHandler& handler) {
-            handler.disable_handle(value);
+        // base handle implementation
+        static inline bool all_enum_flags() {
+            return true;
         }
 
-        // Base case for the recursive handling
-        static void handleArgs() {
-            // Base case: Do nothing
+        template <typename T, typename... Rest>
+        static bool all_enum_flags(T&& first, Rest&&... rest) {
+            using Decayed = typename std::decay<T>::type;
+
+            if (!std::is_same<Decayed, enum_flags>::value) {
+                return false;
+            }
+
+            return all_enum_flags(std::forward<Rest>(rest)...);
         }
 
-        // Base case for the recursive handling
-        static void handle_disabled_args() {
-            // Base case: Do nothing
-        }
-
-        // Helper function to check if a given argument is of a specific type
-        template <typename T, typename U>
-        static bool isType(U&&) {
-            return std::is_same<T, typename std::decay<U>::type>::value;
-        }
-
-        // Recursive case to handle each argument based on its type
-        template <typename First, typename... Rest>
-        static void handleArgs(First&& first, Rest&&... rest) {
-            TestBitsetHandler bitsetHandler;
-            TestUint8Handler uint8Handler;
-
-            if (isType<flagset>(first)) {
-                dispatch(first, bitsetHandler);
-            }
-            else if (isType<enum_flags>(first)) {
-                dispatch(first, uint8Handler);
-            }
-            else {
-                const std::string msg =
-                    "Arguments must either be a std::bitset<" +
-                    std::to_string(static_cast<u32>(enum_size + 1)) +
-                    "> such as VM::DEFAULT, or a flag such as VM::RDTSC for example";
-
-                throw std::invalid_argument(msg);
-            }
-
-            // Recursively handle the rest of the arguments
-            handleArgs(std::forward<Rest>(rest)...);
-        }
-
-        // Recursive case to handle each argument based on its type
-        template <typename First, typename... Rest>
-        static void handle_disabled_args(First&& first, Rest&&... rest) {
-            DisableTestUint8Handler Disableuint8Handler;
-
-            if (isType<flagset>(first)) {
-                throw std::invalid_argument("Arguments must not contain VM::DEFAULT or VM::ALL, only technique flags are accepted (view the documentation for a full list)");
-            }
-            else if (isType<enum_flags>(first)) {
-                disable_dispatch(first, Disableuint8Handler);
-            }
-            else {
-                throw std::invalid_argument("Arguments must be a technique flag, aborting");
-            }
-
-            // Recursively handle the rest of the arguments
-            handle_disabled_args(std::forward<Rest>(rest)...);
+        template <typename... Args>
+        static bool is_type_valid(Args&&... args) {
+            return all_enum_flags(std::forward<Args>(args)...);
         }
 
         template <typename... Args>
@@ -11354,55 +11162,73 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return (sizeof...(Args) == 0);
         }
 
-    public:
-        // fetch the flags, could be an enum value OR a std::bitset.
-        // This will then generate a different std::bitset as the 
-        // return value by enabling the bits based on the argument.
+        // this will generate a std::bitset based on the arguments provided
         template <typename... Args>
         static VMAWARE_CONSTEXPR flagset arg_handler(Args&&... args) {
+            if (is_type_valid(args...) == false) {
+                throw std::invalid_argument("argument handler only accepts enum_flags variables");
+            }
+
+            // reset all relevant flags
             flag_collector.reset();
-            reset_disable_flagset();
 
             if VMAWARE_CONSTEXPR(is_empty<Args...>()) {
                 generate_default(flag_collector);
                 return flag_collector;
             }
-            else {
-                // set the bits in the flag, can take in either an enum value or a std::bitset
-                handleArgs(std::forward<Args>(args)...);
 
-                if (flag_collector.count() == 0) {
-                    generate_default(flag_collector);
-                }
+            // C++ trick to loop over the variadic arguments one by one
+            int dummy[] = {
+                (flag_collector.set(static_cast<u32>(args), true), 0)...
+            };
+            VMAWARE_UNUSED(dummy);
 
-                generate_current_disabled_flags(flag_collector);
-
-                // handle edgecases
-                core::flag_sanitizer(flag_collector);
-                return flag_collector;
+            if (flag_collector.test(DEFAULT)) {
+                generate_default(flag_collector);
             }
+
+            if (are_techniques_empty(flag_collector)) {
+                flag_collector |= generate_default();
+            }
+
+            if (flag_collector.test(ALL)) {
+                generate_all(flag_collector);
+            }
+
+            // if flag is disabled, remove it from the flag_collector
+            for (u8 i = 0; i < enum_size + 1; i++) {
+                if (disabled_flag_collector.test(i)) {
+                    flag_collector.set(i, false);
+                }
+            }
+
+            return flag_collector;
         }
 
         // same as above but for VM::disable which only accepts technique flags
         template <typename... Args>
         static void disabled_arg_handler(Args&&... args) {
-            reset_disable_flagset();
+            if (is_type_valid(args...) == false) {
+                throw std::invalid_argument("disabled argument handler only accepts enum_flags variables");
+            }
 
             if VMAWARE_CONSTEXPR(is_empty<Args...>()) {
                 throw std::invalid_argument("VM::DISABLE() must contain a flag");
             }
 
-            handle_disabled_args(std::forward<Args>(args)...);
+            // C++ trick to loop over the variadic arguments one by one
+            int dummy[] = { 
+                (disabled_flag_collector.set(args, true), 0)...
+            };
+            VMAWARE_UNUSED(dummy);
 
             // check if a settings flag is set, which is not valid
             if (core::is_setting_flag_set(disabled_flag_collector)) {
                 throw std::invalid_argument("VM::DISABLE() must not contain a settings flag, they are disabled by default anyway");
             }
-
-            return;
         }
     };
-    
+
 public: // START OF PUBLIC FUNCTIONS
 
     /**
@@ -11413,7 +11239,7 @@ public: // START OF PUBLIC FUNCTIONS
      */
     static bool check(
         const enum_flags flag_bit
-    #if (VMA_CPP >= 20) && (!CLANG || __clang_major__ >= 16)
+    #if (SOURCE_LOCATION_SUPPORTED)
         , [[maybe_unused]] const std::source_location& loc = std::source_location::current()
     #endif
     ) {
@@ -11440,7 +11266,7 @@ public: // START OF PUBLIC FUNCTIONS
             (flag_bit == HIGH_THRESHOLD) ||
             (flag_bit == DYNAMIC) ||
             (flag_bit == MULTIPLE)
-            ) {
+        ) {
             throw_error("Flag argument must be a technique flag and not a settings flag");
         }
 
@@ -11483,12 +11309,16 @@ public: // START OF PUBLIC FUNCTIONS
      */
     template <typename ...Args>
     static std::string brand(Args ...args) {
-        flagset flags = core::arg_handler(args...);
+        const flagset flags = core::arg_handler(args...);
+        return brand(flags);
+    }
 
+
+    static std::string brand(const flagset &flags = core::generate_default()) {
         // is the multiple setting flag enabled?
         const bool is_multiple = core::is_enabled(flags, MULTIPLE);
 
-        // run all the techniques 
+        // run all the techniques
         const u16 score = core::run_all(flags);
 
         // check if the result is already cached and return that instead
@@ -11497,8 +11327,7 @@ public: // START OF PUBLIC FUNCTIONS
                 debug("VM::brand(): returned multi brand from cache");
                 return memo::multi_brand::fetch();
             }
-        }
-        else {
+        } else {
             if (memo::brand::is_cached()) {
                 debug("VM::brand(): returned brand from cache");
                 return memo::brand::fetch();
@@ -11727,8 +11556,11 @@ public: // START OF PUBLIC FUNCTIONS
     template <typename ...Args>
     static bool detect(Args ...args) {
         // fetch all the flags in a std::bitset
-        flagset flags = core::arg_handler(args...);
+        const flagset flags = core::arg_handler(args...);
+        return detect(flags);
+    }
 
+    static bool detect(const flagset &flags = core::generate_default()) {
         // run all the techniques based on the 
         // flags above, and get a total score 
         const u16 points = core::run_all(flags, SHORTCUT);
@@ -11759,7 +11591,11 @@ public: // START OF PUBLIC FUNCTIONS
     static u8 percentage(Args ...args) {
         // fetch all the flags in a std::bitset
         const flagset flags = core::arg_handler(args...);
+        return percentage(flags);
+    }
 
+
+    static u8 percentage(const flagset &flags = core::generate_default()) {
         // run all the techniques based on the 
         // flags above, and get a total score
         const u16 points = core::run_all(flags, SHORTCUT);
@@ -11782,11 +11618,9 @@ public: // START OF PUBLIC FUNCTIONS
         // above 150 to get to 100% 
         if (points >= threshold) {
             percent = 100;
-        }
-        else if (points >= 100) {
+        } else if (points >= 100) {
             percent = 99;
-        }
-        else {
+        } else {
             percent = static_cast<u8>(std::min<u16>(points, 99));
         }
 
@@ -11803,7 +11637,7 @@ public: // START OF PUBLIC FUNCTIONS
     static void add_custom(
         const u8 percent,
         bool(*detection_func)()
-        #if (VMA_CPP >= 20 && !CLANG)
+        #if (SOURCE_LOCATION_SUPPORTED)
         , const std::source_location& loc = std::source_location::current()
         #endif
     ) {
@@ -11846,10 +11680,11 @@ public: // START OF PUBLIC FUNCTIONS
      * @return flagset
      */
     template <typename ...Args>
-    static flagset DISABLE(Args ...args) {
+    static enum_flags DISABLE(Args ...args) {
         // basically core::arg_handler but in reverse,
         // it'll clear the bits of the provided flags
-        return core::disabled_arg_handler(args...);
+        core::disabled_arg_handler(args...);
+        return VM::NULL_ARG;
     }
 
     /**
@@ -11949,12 +11784,12 @@ public: // START OF PUBLIC FUNCTIONS
             case CPU_HEURISTIC: return "CPU_HEURISTIC";
             case CLOCK: return "CLOCK";
             // END OF TECHNIQUE LIST
-            case DEFAULT: return "setting flag, error";
-            case ALL: return "setting flag, error";
-            case NULL_ARG: return "setting flag, error";
-            case HIGH_THRESHOLD: return "setting flag, error";
-            case DYNAMIC: return "setting flag, error";
-            case MULTIPLE: return "setting flag, error";
+            case DEFAULT: return "DEFAULT"; 
+            case ALL: return "ALL"; 
+            case NULL_ARG: return "NULL_ARG"; 
+            case HIGH_THRESHOLD: return "HIGH_THRESHOLD"; 
+            case DYNAMIC: return "DYNAMIC"; 
+            case MULTIPLE: return "MULTIPLE"; 
             default: return "Unknown flag";
         }
     }
@@ -11966,19 +11801,24 @@ public: // START OF PUBLIC FUNCTIONS
      * @return VM::enum_vector
      */
     template <typename ...Args>
-    static enum_vector detected_enums(Args ...args) {
+    static std::vector<enum_flags> detected_enums(Args ...args) {
         const flagset flags = core::arg_handler(args...);
+        return detected_enums(flags);
+    }
 
-        enum_vector tmp;
+
+    static std::vector<enum_flags> detected_enums(const flagset &flags = core::generate_default()) {
+        std::vector<enum_flags> tmp;
 
         // this will loop through all the enums in the technique_vector variable,
         // and then checks each of them and outputs the enum that was detected
         for (u8 i = technique_begin; i < technique_end; ++i) {
             const enum_flags technique_enum = static_cast<enum_flags>(i);
+
             if (
                 (flags.test(technique_enum)) &&
                 (check(technique_enum))
-                ) {
+            ) {
                 tmp.push_back(technique_enum);
             }
         }
@@ -11995,7 +11835,7 @@ public: // START OF PUBLIC FUNCTIONS
     static void modify_score(
         const enum_flags flag,
         const u8 percent
-    #if (VMA_CPP >= 20) && (!CLANG || __clang_major__ >= 16)
+    #if (SOURCE_LOCATION_SUPPORTED)
         , const std::source_location& loc = std::source_location::current()
     #endif
     ) {
@@ -12007,7 +11847,7 @@ public: // START OF PUBLIC FUNCTIONS
     #endif
             ss << ". Consult the documentation's parameters for VM::modify_score()";
             throw std::invalid_argument(std::string(text) + ss.str());
-            };
+        };
 
         if (percent > 100) {
             throw_error("Percentage parameter must be between 0 and 100");
@@ -12032,8 +11872,12 @@ public: // START OF PUBLIC FUNCTIONS
      */
     template <typename ...Args>
     static u8 detected_count(Args ...args) {
-        flagset flags = core::arg_handler(args...);
+        const flagset flags = core::arg_handler(args...);
+        return detected_count(flags);
+    }
 
+
+    static u8 detected_count(const flagset &flags = core::generate_default()) {
         // run all the techniques, which will set the detected_count variable 
         core::run_all(flags);
 
@@ -12048,8 +11892,12 @@ public: // START OF PUBLIC FUNCTIONS
      */
     template <typename ...Args>
     static std::string type(Args ...args) {
-        flagset flags = core::arg_handler(args...);
+        const flagset flags = core::arg_handler(args...);
+        return type(flags);
+    }
 
+
+    static std::string type(const flagset &flags = core::generate_default()) {
         const std::string brand_str = brand(flags);
 
         // if multiple brands were found, return unknown
@@ -12166,8 +12014,12 @@ public: // START OF PUBLIC FUNCTIONS
       */
     template <typename ...Args>
     static std::string conclusion(Args ...args) {
-        flagset flags = core::arg_handler(args...);
+        const flagset flags = core::arg_handler(args...);
+        return conclusion(flags);
+    }
 
+
+    static std::string conclusion(const flagset &flags = core::generate_default()) {
         std::string brand_tmp = brand(flags);
         const u8 percent_tmp = percentage(flags);
 
@@ -12316,11 +12168,22 @@ public: // START OF PUBLIC FUNCTIONS
         u8 percentage;
         u8 detected_count;
         u16 technique_count;
+        std::vector<enum_flags> detected_techniques;
+        std::vector<std::string> detected_technique_strings;
+        std::vector<enum_flags> disabled_techniques;
 
         template <typename ...Args>
-        vmaware(Args ...args) {
-            flagset flags = core::arg_handler(args...);
+        vmaware(Args&& ...args) {
+            const flagset flags = core::arg_handler(args...);
+            initialise(flags);
+        }
 
+        vmaware(const flagset &flags) {
+            initialise(flags);
+        }
+
+        // having this design avoids some niche errors
+        void initialise(const flagset &flags) {
             brand = VM::brand(flags);
             type = VM::type(flags);
             conclusion = VM::conclusion(flags);
@@ -12328,7 +12191,19 @@ public: // START OF PUBLIC FUNCTIONS
             percentage = VM::percentage(flags);
             detected_count = VM::detected_count(flags);
             technique_count = VM::technique_count;
+            detected_techniques = VM::detected_enums(flags);
+            detected_technique_strings = [&]() -> std::vector<std::string> {
+                std::vector<std::string> tmp{};
+
+                for (const auto technique : detected_techniques) {
+                    tmp.push_back(VM::flag_to_string(technique));
+                }
+
+                return tmp;
+            }();
+            disabled_techniques = VM::disabled_techniques;
         }
+
     };
     #pragma pack(pop)
 
@@ -12464,17 +12339,16 @@ VM::u16 VM::total_points = 0;
 // these are basically the base values for the core::arg_handler function.
 // It's like a bucket that will collect all the bits enabled. If for example 
 // VM::detect(VM::HIGH_THRESHOLD) is passed, the HIGH_THRESHOLD bit will be 
-// collected in this flagset (std::bitset) variable, and eventually be the 
-// return value for actual end-user functions like VM::detect() to rely 
-// and work on.
+// collected to this flagset (std::bitset) variable, and eventually be provided
+// as the return value for actual end-user functions like VM::detect() to operate on.
 VM::flagset VM::core::flag_collector;
 VM::flagset VM::core::disabled_flag_collector;
 
 
 VM::u8 VM::detected_count_num = 0;
 
-VM::disabled_tech_container VM::disabled_techniques = []() {
-    VM::disabled_tech_container c;
+std::vector<VM::enum_flags> VM::disabled_techniques = []() {
+    std::vector<VM::enum_flags> c;
     c.push_back(VM::VMWARE_DMESG);
     return c;
 }();
@@ -12492,8 +12366,8 @@ size_t VM::core::custom_table_size = 0;
 std::array<VM::core::technique, VM::enum_size + 1> VM::core::technique_table = []() {
     std::array<VM::core::technique, VM::enum_size + 1> table{};
     // FORMAT: { VM::<ID>, { certainty%, function pointer } },
-    // START OF TECHNIQUE TABLE
     const VM::core::technique_entry entries[] = {
+        // START OF TECHNIQUE TABLE
         #if (WINDOWS)
             {VM::TRAP, {100, VM::trap}},
             {VM::ACPI_SIGNATURE, {100, VM::acpi_signature}},
@@ -12598,6 +12472,7 @@ std::array<VM::core::technique, VM::enum_size + 1> VM::core::technique_table = [
         {VM::HYPERVISOR_BIT, {100, VM::hypervisor_bit}},
         {VM::BOCHS_CPU, {100, VM::bochs_cpu}},
         {VM::KGT_SIGNATURE, {80, VM::intel_kgt_signature}}
+        // END OF TECHNIQUE TABLE
     };
 
     // fill the table based on ID
