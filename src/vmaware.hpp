@@ -8119,14 +8119,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             // format: VB12345678-12345678 (19 chars)
             if (len != 19) return false;
 
-            if ((str[0] & 0xDF) != 'V' || (str[1] & 0xDF) != 'B') return false;
-
+            if ((str[0] & 0xDF) != 'V' || (str[1] & 0xDF) != 'B') {
+                return false;
+            }
             if (str[10] != '-') return false;
 
             auto is_hex = [](char c) noexcept -> bool {
                 const char lower = c | 0x20;
-                return (c >= '0' && c <= '9') || (lower >= 'a' && lower <= 'f');
-                };
+                return (c >= '0' && c <= '9') 
+                    || (lower >= 'a' && lower <= 'f');
+            };
 
             for (size_t i = 2; i < 10; ++i) {
                 if (!is_hex(str[i])) return false;
@@ -10119,38 +10121,20 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         } while (false);
 
         // cleanup
-        if (pk_buf) {
-            PVOID b = pk_buf;
-            SIZE_T z = 0;
-            nt_free_memory(current_process_handle, &b, &z, 0x8000);
-            pk_buf = nullptr;
-        }
-        if (kek_buf) {
-            PVOID b = kek_buf;
-            SIZE_T z = 0;
-            nt_free_memory(current_process_handle, &b, &z, 0x8000);
-            kek_buf = nullptr;
-        }
+        auto cleanup = [&](auto& ptr) { 
+            if (ptr) {
+                PVOID base = ptr;
+                SIZE_T size = 0;
+                nt_free_memory(current_process_handle, &base, &size, 0x8000);
+                ptr = nullptr;
+            }
+        };
 
-        if (pk_default_buf) {
-            PVOID b = pk_default_buf;
-            SIZE_T z = 0;
-            nt_free_memory(current_process_handle, &b, &z, 0x8000);
-            pk_default_buf = nullptr;
-        }
-
-        if (kek_default_buf) {
-            PVOID b = kek_default_buf;
-            SIZE_T z = 0;
-            nt_free_memory(current_process_handle, &b, &z, 0x8000);
-            kek_default_buf = nullptr;
-        }
-
-        if (enum_base_buffer) {
-            SIZE_T z = 0;
-            nt_free_memory(current_process_handle, &enum_base_buffer, &z, 0x8000);
-            enum_base_buffer = nullptr;
-        }
+        cleanup(pk_buf);
+        cleanup(kek_buf);
+        cleanup(pk_default_buf);
+        cleanup(kek_default_buf);
+        cleanup(enum_base_buffer);
 
         if (privileges_enabled && token_handle) {
             TOKEN_PRIVILEGES tp_disable{};
