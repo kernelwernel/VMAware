@@ -5,9 +5,15 @@
     "steps":
       - "uses": "actions/checkout@main"
       - "run": "cmd.exe /c .github\\workflows\\build_run_win_64_debug.bat"
+      - name: Rename binary with commit info
+        shell: pwsh
+        run: |
+          $shortSha = "${{ github.sha }}".Substring(0,12)
+          $run = "${{ github.run_number }}"
+          Rename-Item build\Debug\vmaware.exe "vmaware_${run}_${shortSha}.exe"
       - "uses": "actions/upload-artifact@main"
         "with":
-          "path": "build\\Debug\\vmaware.exe"
+          "path": build\Debug\vmaware_${{ github.run_number }}_${{ github.sha }}.exe
           "name": "vmaware64_debug.exe"
   "build_run_win_32_debug":
     "runs-on": "windows-latest"
