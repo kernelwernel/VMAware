@@ -936,30 +936,58 @@ private:
 
             const DWORD BATCH = 16;
             std::vector<EVT_HANDLE> events(BATCH);
+
             while (true) {
                 DWORD returned = 0;
+
                 if (!EvtNext(hQuery, BATCH, events.data(), INFINITE, 0, &returned)) {
-                    if (GetLastError() == ERROR_NO_MORE_ITEMS) break;
+                    if (GetLastError() == ERROR_NO_MORE_ITEMS) {
+                        break;
+                    }
                     break;
                 }
+
                 for (DWORD i = 0; i < returned; ++i) {
                     EVT_HANDLE hEv = events[i];
-                    DWORD needed = 0, propCount = 0;
+                    DWORD needed = 0;
+                    DWORD propCount = 0;
+
                     EvtRender(hCtx, hEv, EvtRenderEventValues, 0, nullptr, &needed, &propCount);
-                    if (GetLastError() != ERROR_INSUFFICIENT_BUFFER || needed == 0) { EvtClose(hEv); continue; }
+
+                    if (GetLastError() != ERROR_INSUFFICIENT_BUFFER || needed == 0) {
+                        EvtClose(hEv);
+                        continue;
+                    }
+
                     std::vector<BYTE> buf(needed);
-                    if (!EvtRender(hCtx, hEv, EvtRenderEventValues, needed, buf.data(), &needed, &propCount)) { EvtClose(hEv); continue; }
+
+                    if (!EvtRender(hCtx, hEv, EvtRenderEventValues, needed, buf.data(), &needed, &propCount)) {
+                        EvtClose(hEv);
+                        continue;
+                    }
+
                     EvtClose(hEv);
-                    if (propCount < 2) continue;
+
+                    if (propCount < 2) {
+                        continue;
+                    }
+
                     EVT_VARIANT* v = reinterpret_cast<EVT_VARIANT*>(buf.data());
                     const u64 num = to_u64(v[0]);
-                    if (num != 0) continue; // only processor Number == 0 because thats where we will pin our thread on VM::TIMER and other functions
+
+                    if (num != 0) {
+                        continue; // only processor Number == 0 because thats where we will pin our thread on VM::TIMER and other functions
+                    }
+
                     const u64 nominal = to_u64(v[1]);
-                    if (nominal != 0) { EvtClose(hCtx); EvtClose(hQuery); return static_cast<u32>(nominal); }
+
+                    if (nominal != 0) {
+                        EvtClose(hCtx);
+                        EvtClose(hQuery);
+                        return static_cast<u32>(nominal);
+                    }
                 }
             }
-            EvtClose(hCtx);
-            EvtClose(hQuery);
 
             return 0;
         }
@@ -1589,35 +1617,51 @@ private:
 
         template <typename... Args>
         static inline void debug_msg(Args&&... message) noexcept {
-            static std::unordered_set<std::string> printed_messages;
+            try {
+                std::stringstream ss;
 
-            std::stringstream ss;
-            print_to_stream(ss, std::forward<Args>(message)...);
-            std::string msg_content = ss.str();
+                ss.setf(std::ios::fixed, std::ios::floatfield);
+                ss.precision(2);
 
-            if (printed_messages.find(msg_content) == printed_messages.end()) {
-        #if (LINUX || APPLE)
-                constexpr const char* black_bg = "\x1B[48;2;0;0;0m";
-                constexpr const char* bold = "\033[1m";
-                constexpr const char* blue = "\x1B[38;2;00;59;193m";
-                constexpr const char* ansiexit = "\x1B[0m";
+            #if VMA_CPP >= 17
+                ((ss << std::forward<Args>(message)), ...);
+            #else
+                using expander = int[];
+                (void)expander {
+                    0, (void(ss << std::forward<Args>(message)), 0)...
+                };
+            #endif
 
-                std::cout.setf(std::ios::fixed, std::ios::floatfield);
-                std::cout.setf(std::ios::showpoint);
+                std::string msg_content = ss.str();
 
-                std::cout << black_bg
-                    << bold << "["
-                    << blue << "DEBUG"
-                    << ansiexit << bold << black_bg << "]"
-                    << ansiexit << " ";
-        #else
-                std::cout << "[DEBUG] ";
-        #endif
-                std::cout << msg_content;
-                std::cout << std::dec << "\n";
+                static std::unordered_set<std::string> printed_messages;
 
-                printed_messages.insert(std::move(msg_content));
+                if (printed_messages.find(msg_content) == printed_messages.end()) {
+                    printed_messages.insert(msg_content);
+
+                    // --- Console Output (ANSI Colors for Linux/Mac) ---
+                #if (LINUX || APPLE)
+                    constexpr const char* BLUE_BG = "\x1B[44m";
+                    constexpr const char* WHITE_FG = "\x1B[97m";
+                    constexpr const char* BOLD = "\033[1m";
+                    constexpr const char* RESET = "\033[0m";
+
+                    std::cout << BOLD << BLUE_BG << WHITE_FG << "[DEBUG]" << RESET << " "
+                        << msg_content << "\n";
+                #else
+                    // Windows Console (Standard plain text)
+                    std::cout << "[DEBUG] " << msg_content << "\n";
+                #endif
+
+                    // --- Windows Debug Output (VS Output Window / DebugView) ---
+                #if (WINDOWS)
+                    // OutputDebugStringA does not support ANSI, so we send a clean string
+                    std::string win_debug_str = "[DEBUG] " + msg_content + "\n";
+                    OutputDebugStringA(win_debug_str.c_str());
+                #endif
+                }
             }
+            catch (...) {}
         }
 
 
@@ -2085,6 +2129,7 @@ private:
             if (found) {
                 const u32 actual = memo::threadcount::fetch();
                 if (actual != expected_threads) {
+                    debug(debug_tag, ": Current threads -> ", actual);
                     debug(debug_tag, ": Expected threads -> ", expected_threads);
                     VMAWARE_UNUSED(debug_tag); // if compiled in release mode, silence the unused variable warning
                     return true;
@@ -3231,6 +3276,28 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             { "i5-9600K", 6 },
             { "i5-9600KF", 6 },
             { "i5-9600T", 6 },
+            { "i5-12450H", 12 },
+            { "i5-12450HX", 12 },
+            { "i5-12600HX", 16 },
+            { "i5-12650H", 16 },
+            { "i5-13420H", 12 },
+            { "i5-13450HX", 16 },
+            { "i5-13500HX", 20 },
+            { "i5-13600HX", 20 },
+            { "i5-14400", 16 },
+            { "i5-14400F", 16 },
+            { "i5-14400T", 16 },
+            { "i5-14450HX", 16 },
+            { "i5-14490F", 16 },
+            { "i5-14500", 20 },
+            { "i5-14500GX", 20 },
+            { "i5-14500HX", 20 },
+            { "i5-14500T", 20 },
+            { "i5-14500TE", 20 },
+            { "i5-14600", 20 },
+            { "i5-14600K", 20 },
+            { "i5-14600KF", 20 },
+            { "i5-14600T", 20 },
 
             // i7 series
             { "i7-10510U", 8 },
@@ -3549,6 +3616,29 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             { "i7-9850HE", 12 },
             { "i7-9850HL", 12 },
             { "i7-990X", 12 },
+            { "i7-12650H", 16 },
+            { "i7-12800H", 20 },
+            { "i7-12800HE", 20 },
+            { "i7-12800HX", 24 },
+            { "i7-12850HX", 24 },
+            { "i7-13620H", 16 },
+            { "i7-13650HX", 20 },
+            { "i7-13700H", 20 },
+            { "i7-13700HX", 24 },
+            { "i7-13705H", 20 },
+            { "i7-13800H", 20 },
+            { "i7-13850HX", 28 },
+            { "i7-14650HX", 24 },
+            { "i7-14700", 28 },
+            { "i7-14700F", 28 },
+            { "i7-14700H", 28 },
+            { "i7-14700HX", 28 },
+            { "i7-14700K", 28 },
+            { "i7-14700KF", 28 },
+            { "i7-14700T", 28 },
+            { "i7-14790F", 24 },
+            { "i7-14900H", 32 },
+			{ "i7-14950HX", 24 },
 
             // i9 series
             { "i9-10850K", 20 },
@@ -3619,7 +3709,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             { "i9-9960X", 32 },
             { "i9-9980HK", 16 },
             { "i9-9980XE", 36 },
-            { "i9-9990XE", 28 }
+            { "i9-9990XE", 28 },
+            { "i9-12900E", 24 },
+            { "i9-12900HK", 20 },
+            { "i9-12900HX", 24 },
+            { "i9-12900TE", 24 },
+            { "i9-12950HX", 24 },
+            { "i9-13900H", 20 },
+            { "i9-13900HK", 20 },
+            { "i9-13905H", 20 },
+            { "i9-14901KE", 16 }
         };
 
         static constexpr size_t MAX_INTEL_MODEL_LEN = 16;
@@ -5789,24 +5888,28 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         #if (x86_64)
                 // 64-bit Linux: IDT descriptor is 10 bytes (2-byte limit + 8-byte base)
                 __asm__ __volatile__("sidt %0" : "=m"(values));
-        #ifdef __VMAWARE_DEBUG__
-                debug("SIDT: values = ");
-                for (u8 i = 0; i < 10; ++i) {
-                    debug(std::hex, std::setw(2), std::setfill('0'), static_cast<u32>(values[i]));
-                    if (i < 9) debug(" ");
-                }
-        #endif
+
+                #ifdef __VMAWARE_DEBUG__
+                    debug("SIDT: values = ");
+                    for (u8 i = 0; i < 10; ++i) {
+                        debug(std::hex, std::setw(2), std::setfill('0'), static_cast<u32>(values[i]));
+                        if (i < 9) debug(" ");
+                    }
+                #endif
+
                 return (values[9] == 0x00);  // 10th byte in x64 mode
         #elif (x86_32)
                 // 32-bit Linux: IDT descriptor is 6 bytes (2-byte limit + 4-byte base)
                 __asm__ __volatile__("sidt %0" : "=m"(values));
-        #ifdef __VMAWARE_DEBUG__
-                debug("SIDT: values = ");
-                for (u8 i = 0; i < 6; ++i) {
-                    debug(std::hex, std::setw(2), std::setfill('0'), static_cast<u32>(values[i]));
-                    if (i < 5) debug(" ");
-                }
-        #endif
+
+                #ifdef __VMAWARE_DEBUG__
+                    debug("SIDT: values = ");
+                    for (u8 i = 0; i < 6; ++i) {
+                        debug(std::hex, std::setw(2), std::setfill('0'), static_cast<u32>(values[i]));
+                        if (i < 5) debug(" ");
+                    }
+                #endif
+
                 return (values[5] == 0x00);  // 6th byte in x86 mode
         #else
                 return false;
@@ -5842,7 +5945,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 __asm { sidt idtr_buffer }
             #elif (MSVC) && (x86_64)
                 #pragma pack(push, 1)
-                struct { USHORT Limit; ULONG_PTR Base; } idtr;
+                    struct { 
+                        USHORT Limit; 
+                        ULONG_PTR Base; 
+                    } idtr;
                 #pragma pack(pop)
                 __sidt(&idtr);
                 memcpy(idtr_buffer, &idtr, sizeof(idtr));
@@ -5931,6 +6037,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             ? true
             : (arr[i] != nullptr && check_no_nulls(arr, i + 1));
     }
+
 
     /**
      * @brief Check for VM signatures on all firmware tables
@@ -6142,10 +6249,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // Enumerate ACPI tables
         constexpr DWORD acpi_signature = 'ACPI';
         const DWORD acpi_enum_size = EnumSystemFirmwareTables(acpi_signature, nullptr, 0);
-        if (acpi_enum_size == 0) return false;
-        if (acpi_enum_size % sizeof(DWORD) != 0) return false;
-
-        // Direct optimization: use vector<DWORD> to avoid manual loop/cast
+        if (acpi_enum_size == 0) 
+            return false;
+        if (acpi_enum_size % sizeof(DWORD) != 0) 
+            return false;
+       
         const size_t table_count = acpi_enum_size / sizeof(DWORD);
         std::vector<DWORD> tables(table_count);
         if (EnumSystemFirmwareTables(acpi_signature, tables.data(), acpi_enum_size) != acpi_enum_size)
@@ -6182,27 +6290,32 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             bool is_whitelisted = false;
 
+            auto contains_case_insensitive = [](const char* haystack_c, const char* needle_c) -> bool {
+                const unsigned char* h_ptr = reinterpret_cast<const unsigned char*>(haystack_c);
+                for (; *h_ptr; ++h_ptr) {
+                    const unsigned char* h = h_ptr;
+                    const unsigned char* n = reinterpret_cast<const unsigned char*>(needle_c);
+                    while (*n && ((*h | 0x20) == (*n | 0x20))) { 
+                        ++h; ++n; 
+                    }
+                    if (!*n) return true;
+                }
+                return false;
+            };
+
             for (const auto& entry : whitelist) {
                 bool man_match = false;
                 bool model_match = false;
 
                 if (manufacturer) {
-                    const unsigned char* h_ptr = reinterpret_cast<const unsigned char*>(manufacturer);
-                    for (; *h_ptr; ++h_ptr) {
-                        const unsigned char* h = h_ptr;
-                        const unsigned char* n = reinterpret_cast<const unsigned char*>(entry.man_substr);
-                        while (*n && ((*h | 0x20) == (*n | 0x20))) { h++; n++; }
-                        if (!*n) { man_match = true; break; }
+                    if (contains_case_insensitive(manufacturer, entry.man_substr)) {
+                        man_match = true;
                     }
                 }
 
                 if (man_match && model) {
-                    const unsigned char* h_ptr = reinterpret_cast<const unsigned char*>(model);
-                    for (; *h_ptr; ++h_ptr) {
-                        const unsigned char* h = h_ptr;
-                        const unsigned char* n = reinterpret_cast<const unsigned char*>(entry.model_substr);
-                        while (*n && ((*h | 0x20) == (*n | 0x20))) { h++; n++; }
-                        if (!*n) { model_match = true; break; }
+                    if (contains_case_insensitive(model, entry.model_substr)) {
+                        model_match = true;
                     }
                 }
 
@@ -6212,7 +6325,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
             }
 
-            if (!util::is_running_under_translator() || is_whitelisted) {
+            if (util::is_running_under_translator() || is_whitelisted) {
                 found_hpet = true;
             }
         }
@@ -7238,11 +7351,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         const auto pNtOpenKey = reinterpret_cast<NTSTATUS(__stdcall*)(PHANDLE, ACCESS_MASK, POBJECT_ATTRIBUTES)>(funcs[0]);
         const auto pNtQueryValueKey = reinterpret_cast<NTSTATUS(__stdcall*)(HANDLE, PUNICODE_STRING, ULONG, PVOID, ULONG, PULONG)>(funcs[1]);
-        const auto pRtlInitUnicodeString = reinterpret_cast<void (__stdcall*)(PUNICODE_STRING, PCWSTR)>(funcs[2]);
+        const auto pRtlInitUnicodeString = reinterpret_cast<void(__stdcall*)(PUNICODE_STRING, PCWSTR)>(funcs[2]);
         const auto pNtClose = reinterpret_cast<NTSTATUS(__stdcall*)(HANDLE)>(funcs[3]);
 
-        if (!pNtOpenKey || !pNtQueryValueKey || !pRtlInitUnicodeString || !pNtClose) return false;
+        if (!pNtOpenKey || !pNtQueryValueKey || !pRtlInitUnicodeString || !pNtClose) 
+            return false;
 
+        // We use native unicode strings and object attributes to interface directly with the kernel
         UNICODE_STRING uKeyName;
         pRtlInitUnicodeString(&uKeyName, L"\\Registry\\Machine\\Software\\Microsoft\\Windows NT\\CurrentVersion");
 
@@ -7252,6 +7367,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         objAttr.ObjectName = &uKeyName;
         objAttr.Attributes = OBJ_CASE_INSENSITIVE;
 
+        // Open the registry key with minimal permissions (query only)
         HANDLE hKey = nullptr;
         constexpr ACCESS_MASK KEY_QUERY_ONLY = 0x0001; // KEY_QUERY_VALUE
         NTSTATUS st = pNtOpenKey(&hKey, KEY_QUERY_ONLY, &objAttr);
@@ -7259,6 +7375,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
+        // We specifically want the "ProductId". Automated malware analysis sandboxes often
+        // neglect to randomize this value, thats why we flag it
         UNICODE_STRING uValueName;
         pRtlInitUnicodeString(&uValueName, L"ProductId");
 
@@ -7275,6 +7393,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
+        // raw structure returned by the native API to manually parse the binary data
         struct KEY_VALUE_PARTIAL_INFORMATION_LOCAL {
             ULONG TitleIndex;
             ULONG Type;
@@ -7286,6 +7405,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
+        // Safely extract the ProductId string from the raw byte buffer, ensuring we don't 
+        // buffer overflow if the registry returns garbage data
         const auto* kv = reinterpret_cast<KEY_VALUE_PARTIAL_INFORMATION_LOCAL*>(buffer);
         const ULONG dataLen = kv->DataLength;
         if (dataLen == 0 || dataLen >= sizeof(buffer)) return false;
@@ -7295,21 +7416,24 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         memcpy(productId, kv->Data, copyLen);
         productId[copyLen] = '\0';
 
+        // A list of known "dirty" Product IDs associated with public malware analysis sandboxes
         struct TargetPattern {
             const char* product_id;
             const char* brand;
         };
 
         constexpr TargetPattern targets[] = {
-            {"55274-640-2673064-23950", brands::JOEBOX},
-            {"76487-644-3177037-23510", brands::CWSANDBOX},
-            {"76487-337-8429955-22614", brands::ANUBIS}
+            {"55274-640-2673064-23950", brands::JOEBOX},   
+            {"76487-644-3177037-23510", brands::CWSANDBOX}, 
+            {"76487-337-8429955-22614", brands::ANUBIS}     
         };
 
         constexpr size_t target_len = 21;
 
         if (strlen(productId) != target_len) return false;
 
+        // compare the current system's ProductId against the blacklist
+        // if a match is found, we identify the specific sandbox environment and flag it
         for (const auto& target : targets) {
             if (memcmp(productId, target.product_id, target_len) == 0) {
                 debug("GAMARUE: Detected ", target.product_id);
@@ -7410,7 +7534,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 __asm { sgdt gdtr }
             #else
                 #pragma pack(push,1)
-                struct { u16 limit; u64 base; } _gdtr = {};
+                    struct { 
+                        u16 limit;
+                        u64 base; 
+                    } _gdtr = {};
                 #pragma pack(pop)
                 _sgdt(&_gdtr);
                 memcpy(gdtr, &_gdtr, sizeof(_gdtr));
@@ -7974,27 +8101,33 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         constexpr SIZE_T MAX_DESCRIPTOR_SIZE = 64 * 1024;
         u8 successfulOpens = 0;
 
+        // Helper to detect QEMU instances based on default hard drive serial patterns
+        // QEMU drives often start with "QM000" followed by digits
         auto is_qemu_serial = [](const char* str) noexcept -> bool {
             if ((str[0] & 0xDF) != 'Q') return false;
             if ((str[1] & 0xDF) != 'M') return false;
 
             // we check byte-by-byte to be safe regarding alignment,
             // though a 32-bit integer check (0x30303030) could be used if alignment is guaranteed
-            // we also essentially check for null termination safety here because '\0' != '0'.
+            // we also essentially check for null termination safety here because '\0' != '0'
             return str[2] == '0' && str[3] == '0' && str[4] == '0' && str[5] == '0';
         };
 
+        // Helper to detect VirtualBox instances
+        // VirtualBox uses a specific serial format "VB" followed by hex segments
         auto is_vbox_serial = [](const char* str, size_t len) noexcept -> bool {
             // format: VB12345678-12345678 (19 chars)
             if (len != 19) return false;
 
-            if ((str[0] & 0xDF) != 'V' || (str[1] & 0xDF) != 'B') return false;
-
+            if ((str[0] & 0xDF) != 'V' || (str[1] & 0xDF) != 'B') {
+                return false;
+            }
             if (str[10] != '-') return false;
 
             auto is_hex = [](char c) noexcept -> bool {
                 const char lower = c | 0x20;
-                return (c >= '0' && c <= '9') || (lower >= 'a' && lower <= 'f');
+                return (c >= '0' && c <= '9') 
+                    || (lower >= 'a' && lower <= 'f');
             };
 
             for (size_t i = 2; i < 10; ++i) {
@@ -8041,6 +8174,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return result;
         }
 
+        // Iterate through the first few physical drives (PhysicalDrive0 to PhysicalDrive3)
+        // Most systems boot from 0, and VMs rarely emulate more than 1 or 2 drives by default
         for (u8 drive = 0; drive < MAX_PHYSICAL_DRIVES; ++drive) {
             wchar_t path[32];
             swprintf_s(path, L"\\??\\PhysicalDrive%u", drive);
@@ -8062,6 +8197,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             constexpr ULONG shareAccess = FILE_SHARE_READ | FILE_SHARE_WRITE;
             constexpr ULONG openOptions = FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT;
 
+            // Attempt to open the physical drive directly using Native API
             NTSTATUS st = pNtOpenFile(&hDevice, desiredAccess, &objAttr, &iosb, shareAccess, openOptions);
             if (!NT_SUCCESS(st) || hDevice == nullptr) {
                 continue;
@@ -8069,6 +8205,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             ++successfulOpens;
 
             // stack buffer attempt
+            // We first try to read the storage properties into a small stack buffer to avoid heap
             BYTE stackBuf[512] = { 0 };
             const STORAGE_DEVICE_DESCRIPTOR* descriptor = reinterpret_cast<STORAGE_DEVICE_DESCRIPTOR*>(stackBuf);
 
@@ -8087,12 +8224,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             SIZE_T allocatedSize = 0;
             const HANDLE hCurrentProcess = reinterpret_cast<HANDLE>(-1LL);
 
+            // If the stack buffer was too small (NtDeviceIoControlFile failed), we fall back 
+            // to allocating memory dynamically using NtAllocateVirtualMemory
             if (!NT_SUCCESS(st)) {
                 DWORD reportedSize = 0;
                 if (descriptor && descriptor->Size > 0) {
                     reportedSize = descriptor->Size;
                 }
 
+                // This branch just ensures the requested size is reasonable before allocating
                 if (reportedSize > 0 && reportedSize < static_cast<DWORD>(MAX_DESCRIPTOR_SIZE) && reportedSize >= sizeof(STORAGE_DEVICE_DESCRIPTOR)) {
                     allocatedSize = static_cast<SIZE_T>(reportedSize);
                     PVOID allocBase = nullptr;
@@ -8103,6 +8243,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                         continue;
                     }
                     allocatedBuffer = reinterpret_cast<BYTE*>(allocBase);
+
+                    // Retry the query with the larger allocated buffer
                     st = pNtDeviceIoControlFile(hDevice, nullptr, nullptr, nullptr, &iosb,
                         ioctl,
                         &query, sizeof(query),
@@ -8122,6 +8264,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
             }
 
+            // This part is just to validate the structure size returned by the driver to prevent out-of-bounds reads
             {
                 const DWORD reportedSize = descriptor->Size;
                 if (reportedSize < sizeof(STORAGE_DEVICE_DESCRIPTOR) || static_cast<SIZE_T>(reportedSize) > MAX_DESCRIPTOR_SIZE) {
@@ -8136,6 +8279,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
             }
 
+            // Serial number string within the descriptor structure
             const u32 serialOffset = descriptor->SerialNumberOffset;
             if (serialOffset > 0 && serialOffset < descriptor->Size) {
                 const char* serial = reinterpret_cast<const char*>(descriptor) + serialOffset;
@@ -8144,6 +8288,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
                 debug("DISK_SERIAL: ", serial);
 
+                // Check the retrieved serial number against known VM artifacts
                 if (is_qemu_serial(serial) || is_vbox_serial(serial, serialLen)) {
                     if (allocatedBuffer) {
                         PVOID freeBase = reinterpret_cast<PVOID>(allocatedBuffer);
@@ -8156,6 +8301,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
             }
 
+            // Cleanup for the current iteration if no VM was detected on this drive
             if (allocatedBuffer) {
                 PVOID freeBase = reinterpret_cast<PVOID>(allocatedBuffer);
                 SIZE_T freeSize = allocatedSize;
@@ -8165,6 +8311,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             pNtClose(hDevice);
         }
 
+		// If we couldn't open any physical drives (not even read permissions) it's weird so we flag it.
         if (successfulOpens == 0) {
             debug("DISK_SERIAL: No physical drives detected");
             return true;
@@ -8225,9 +8372,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
+        // Targeted GUID for IVSHMEM (Inter-VM Shared Memory).
+        // This device is typically used in KVM/QEMU environments (like Looking Glass) to pass memory between host and guest
         constexpr GUID GUID_IVSHMEM_IFACE =
         { 0xdf576976, 0x569d, 0x4672, { 0x95, 0xa0, 0xf5, 0x7e, 0x4e, 0xa0, 0xb2, 0x10 } };
 
+        // Construct the registry path for the DeviceClasses key
+        // We access the "DeviceClasses" registry hive directly to find hardware interfaces
         wchar_t interface_class_path[256];
         swprintf_s(
             interface_class_path,
@@ -8254,6 +8405,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
+        // We query the "Full Information" of the key to get the count of subkeys
+        // The existence of the class key alone isn't enough cuz Windows might register the class but have no devices
+        // If SubKeys > 0, it means actual device instances (for ex. PCI devices) are registered under this interface
         BYTE infoBuf[512] = {};
         ULONG returnedLen = 0;
         st = pNtQueryKey(hKey, KeyFullInformation, infoBuf, sizeof(infoBuf), &returnedLen);
@@ -8491,11 +8645,18 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const FN_NtQuerySystemInformation pNtQuerySystemInformation = reinterpret_cast<FN_NtQuerySystemInformation>(funcs[0]);
         if (pNtQuerySystemInformation) {
             SYSTEM_HYPERVISOR_DETAIL_INFORMATION hvInfo = { {} };
+
+            // Request class 0x9F (SystemHypervisorDetailInformation)
+            // This asks the OS kernel to fill the structure with information about the 
+            // hypervisor layer it is running on top of
             const NTSTATUS status = pNtQuerySystemInformation(static_cast<SYSTEM_INFORMATION_CLASS>(0x9F), &hvInfo, sizeof(hvInfo), nullptr);
+
             if (status != 0) {
                 return false;
             }
 
+            // If Data[0] is non-zero, it means the kernel has successfully communicated 
+            // with a hypervisor and retrieved a vendor signature like "Micr" for Microsoft
             if (hvInfo.HvVendorAndMaxFunction.Data[0] != 0) {
                 return true;
             }
@@ -8552,11 +8713,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (!NtOpenKey || !NtQueryObject || !pNtClose)
             return false;
     
+        // Prepare to open the root USER registry hive
         UNICODE_STRING keyPath{};
         keyPath.Buffer = const_cast<PWSTR>(L"\\REGISTRY\\USER");
         keyPath.Length = static_cast<USHORT>(wcslen(keyPath.Buffer) * sizeof(WCHAR));
         keyPath.MaximumLength = keyPath.Length + sizeof(WCHAR);
-    
+
         OBJECT_ATTRIBUTES objAttr = {
             sizeof(OBJECT_ATTRIBUTES),
             nullptr,
@@ -8565,28 +8727,36 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             nullptr,
             nullptr
         };
-    
+
+        // Attempt to open the key. If we are sandboxed, this open call often succeeds,
+        // but the underlying handle will point to a virtualized container, not the real OS path
         HANDLE hKey = nullptr;
         NTSTATUS status = NtOpenKey(&hKey, KEY_READ, reinterpret_cast<POBJECT_ATTRIBUTES>(&objAttr));
         if (!(((NTSTATUS)(status)) >= 0))
             return false;
-    
+
+        // Ask the kernel: "What is the actual name of the object this handle points to?"
+        // Sandboxie implements file system and registry virtualization by redirecting access
+        // While the API pretends we opened "\REGISTRY\USER", the handle might actually point to 
+        // something like "\Device\HarddiskVolume2\Sandbox\User\DefaultBox\RegHive"
         alignas(16) BYTE buffer[1024]{};
         ULONG returnedLength = 0;
         status = NtQueryObject(hKey, ObjectNameInformation, buffer, sizeof(buffer), &returnedLength);
         pNtClose(hKey);
         if (!(((NTSTATUS)(status)) >= 0))
             return false;
-    
+
         const auto pObjectName = reinterpret_cast<POBJECT_NAME_INFORMATION>(buffer);
-    
+
         UNICODE_STRING expectedName{};
         expectedName.Buffer = const_cast<PWSTR>(L"\\REGISTRY\\USER");
         expectedName.Length = static_cast<USHORT>(wcslen(expectedName.Buffer) * sizeof(WCHAR));
-    
+
+        // Compare the requested name vs the actual kernel object name
+        // If they don't match, we have been redirected, confirming the presence of Sandboxie
         const bool mismatch = (pObjectName->Name.Length != expectedName.Length) ||
             (memcmp(pObjectName->Name.Buffer, expectedName.Buffer, expectedName.Length) != 0);
-    
+
         return mismatch ? core::add(brands::SANDBOXIE) : false;
     }
     
@@ -8642,6 +8812,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
+        // We are checking for the presence of Audio Render devices
+        // Most legitimate user PCs have speakers or headphones (audio endpoints)
+        // Automated sandboxes and headless servers often have no audio devices configured
+        // We target the MMDevices\Audio\Render key where these endpoints are registered
         const wchar_t* nativePath = L"\\Registry\\Machine\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\MMDevices\\Audio\\Render";
 
         UNICODE_STRING uPath;
@@ -8665,6 +8839,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         std::vector<BYTE> infoBuf(512);
         ULONG returnedLen = 0;
 
+        // Query the key information. If the buffer is too small (STATUS_BUFFER_TOO_SMALL),
+        // resize it to the exact length required by the kernel and try again
         st = pNtQueryKey(hKey, InfoClass, infoBuf.data(), static_cast<ULONG>(infoBuf.size()), &returnedLen);
 
         if (!NT_SUCCESS(st) && returnedLen > infoBuf.size()) {
@@ -8675,6 +8851,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         bool hasValues = false;
         if (NT_SUCCESS(st) && returnedLen >= sizeof(KEY_FULL_INFORMATION)) {
             auto* kfi = reinterpret_cast<PKEY_FULL_INFORMATION>(infoBuf.data());
+
+            // Check if the registry key has any values associated with it
+            // If 'Values' is 0, the audio system is likely uninitialized or barren,
+            // which strongly suggests a virtualized/sandbox environment
             const DWORD valueCount = static_cast<DWORD>(kfi->Values); // values, not subkeys
             hasValues = (valueCount > 0);
         }
@@ -9363,6 +9543,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         if (!pNtOpenDirectoryObject || !pNtQueryDirectoryObject || !pNtClose) return false;
 
+        // Prepare to open the root "\Device" directory in the Object Manager namespace
+        // This is different from the file system and we are looking for kernel objects created by drivers
         const wchar_t* deviceDirPath = L"\\Device";
         dirName.Buffer = (PWSTR)deviceDirPath;
         dirName.Length = (USHORT)(wcslen(deviceDirPath) * sizeof(wchar_t));
@@ -9370,32 +9552,40 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         InitializeObjectAttributes(&objAttr, &dirName, OBJ_CASE_INSENSITIVE, nullptr, nullptr);
 
+        // Open the directory object so we can enumerate its contents
         status = pNtOpenDirectoryObject(&hDir, DIRECTORY_QUERY, &objAttr);
 
         if (!NT_SUCCESS(status)) {
             return false;
         }
 
+        // Set up a buffer for querying directory entries
+        // We process entries one by one using a context index
         std::vector<BYTE> buffer(4096);
-        constexpr size_t MAX_DIR_BUFFER = 64 * 1024; 
+        constexpr size_t MAX_DIR_BUFFER = 64 * 1024;
         ULONG context = 0;
         ULONG returnedLength = 0;
 
         while (true) {
+            // Query the next single object in the directory
+            // 'ReturnSingleEntry' is TRUE to simplify buffer parsing logic
             status = pNtQueryDirectoryObject(
                 hDir,
                 buffer.data(),
                 static_cast<ULONG>(buffer.size()),
-                TRUE,   // ReturnSingleEntry
+                TRUE,
                 FALSE,
                 &context,
                 &returnedLength
             );
 
+            // Stop if we have iterated through all objects
             if (status == STATUS_NO_MORE_ENTRIES) {
                 break;
             }
 
+            // Handle buffer sizing. If the buffer is too small, the kernel tells us how much it needs
+            // We resize and retry, but impose a sanity cap to prevent memory issues
             if (!NT_SUCCESS(status)) {
                 if (returnedLength > buffer.size()) {
                     size_t newSize = static_cast<size_t>(returnedLength);
@@ -9417,6 +9607,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return false;
             }
 
+            // Validate the returned data length to ensure we don't read out of bounds
             const size_t usedLen = (returnedLength == 0) ? buffer.size() : static_cast<size_t>(returnedLength);
             if (usedLen < sizeof(OBJECT_DIRECTORY_INFORMATION) || usedLen > buffer.size()) {
                 pNtClose(hDir);
@@ -9425,12 +9616,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             const POBJECT_DIRECTORY_INFORMATION pOdi = reinterpret_cast<POBJECT_DIRECTORY_INFORMATION>(buffer.data());
 
+            // memory boundaries just for safe pointer arithmetic
             const uintptr_t bufBase = reinterpret_cast<uintptr_t>(buffer.data());
             const uintptr_t bufEnd = bufBase + usedLen;
 
             std::wstring objectName;
             bool gotName = false;
 
+            // Extract the name using the explicit Name pointer in the structure
+            // We strictly validate that the pointer falls within our allocated buffer to prevent crashes
             const size_t nameBytes = static_cast<size_t>(pOdi->Name.Length);
             const uintptr_t namePtr = reinterpret_cast<uintptr_t>(pOdi->Name.Buffer);
 
@@ -9440,6 +9634,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     const wchar_t* wname = reinterpret_cast<const wchar_t*>(namePtr);
                     const size_t wlen = nameBytes / sizeof(wchar_t);
                     bool foundTerm = false;
+                    // scan for null terminator just in case
                     for (size_t i = 0; i < wlen; ++i) {
                         if (wname[i] == L'\0') { objectName.assign(wname, i); foundTerm = true; break; }
                     }
@@ -9450,6 +9645,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
             }
 
+            // If the explicit pointer was invalid, assume the string data immediately follows the structure
             if (!gotName) {
                 const uintptr_t altStart = bufBase + sizeof(OBJECT_DIRECTORY_INFORMATION);
                 if (altStart >= bufEnd) {
@@ -9481,6 +9677,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return false;
             }
 
+            // "VmGenerationCounter" and "VmGid" are created by the Hyper-V VM Bus provider
             if (objectName == L"VmGenerationCounter") {
                 pNtClose(hDir);
                 debug("OBJECTS: Detected VmGenerationCounter");
@@ -9781,14 +9978,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 else if (var_name_view == L"KEKDefault") (void)read_variable_to_buffer(std::wstring(var_name_view), current_var->VendorGuid, kek_default_buf, kek_default_len);
                 else if (var_name_view == L"KEK") (void)read_variable_to_buffer(std::wstring(var_name_view), current_var->VendorGuid, kek_buf, kek_len);
 
-                // https://github.com/tianocore/edk2/blob/af9cc80359e320690877e4add870aa13fe889fbe/SecurityPkg/Library/AuthVariableLib/AuthServiceInternal.h
-                if (var_name_view == L"certdb" || var_name_view == L"certdbv") {
-                    debug("NVRAM: EDK II (TianoCore) detected");
-                    detection_result = true;
-                    should_break_loop = true;
-                    break;
-                }
-
                 if (var_name_view == L"Boot0000") { // should be Windows Boot Manager
                     BYTE* boot_buf = nullptr; SIZE_T boot_len = 0;
                     if (read_variable_to_buffer(var_name_view, current_var->VendorGuid, boot_buf, boot_len)) {
@@ -9932,11 +10121,20 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         } while (false);
 
         // cleanup
-        if (pk_buf) { PVOID b = pk_buf; SIZE_T z = 0; nt_free_memory(current_process_handle, &b, &z, 0x8000); pk_buf = nullptr; }
-        if (kek_buf) { PVOID b = kek_buf; SIZE_T z = 0; nt_free_memory(current_process_handle, &b, &z, 0x8000); kek_buf = nullptr; }
-        if (pk_default_buf) { PVOID b = pk_default_buf; SIZE_T z = 0; nt_free_memory(current_process_handle, &b, &z, 0x8000); pk_default_buf = nullptr; }
-        if (kek_default_buf) { PVOID b = kek_default_buf; SIZE_T z = 0; nt_free_memory(current_process_handle, &b, &z, 0x8000); kek_default_buf = nullptr; }
-        if (enum_base_buffer) { SIZE_T z = 0; nt_free_memory(current_process_handle, &enum_base_buffer, &z, 0x8000); enum_base_buffer = nullptr; }
+        auto cleanup = [&](auto& ptr) { 
+            if (ptr) {
+                PVOID base = ptr;
+                SIZE_T size = 0;
+                nt_free_memory(current_process_handle, &base, &size, 0x8000);
+                ptr = nullptr;
+            }
+        };
+
+        cleanup(pk_buf);
+        cleanup(kek_buf);
+        cleanup(pk_default_buf);
+        cleanup(kek_default_buf);
+        cleanup(enum_base_buffer);
 
         if (privileges_enabled && token_handle) {
             TOKEN_PRIVILEGES tp_disable{};
@@ -9945,7 +10143,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             tp_disable.Privileges[0].Attributes = 0;
             AdjustTokenPrivileges(token_handle, FALSE, &tp_disable, sizeof(TOKEN_PRIVILEGES), nullptr, nullptr);
         }
-        if (token_handle) { CloseHandle(token_handle); token_handle = nullptr; }
+        if (token_handle) { 
+            CloseHandle(token_handle); 
+            token_handle = nullptr; 
+        }
 
         return detection_result;
     }
@@ -10051,43 +10252,50 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         };
 
+        // Helper lambda to retrieve device properties from the registry
         auto get_device_property = [](HDEVINFO dev_info, SP_DEVINFO_DATA& dev_data, DWORD prop_id,
             char* out_buf, DWORD out_buf_size) noexcept -> bool {
-                DWORD needed = 0;
+            DWORD needed = 0;
+
+            // Try to get the property with the provided buffer
+            if (SetupDiGetDeviceRegistryPropertyA(dev_info, &dev_data, prop_id, nullptr,
+                reinterpret_cast<PBYTE>(out_buf), out_buf_size, &needed)) {
+                if (out_buf_size > 0) out_buf[out_buf_size - 1] = '\0';
+                return true;
+            }
+
+            const DWORD err = GetLastError();
+
+            // If the buffer was too small, allocate exactly what is needed and try again
+            // This ensures we don't fail just because a property string is unusually long
+            if (err == ERROR_INSUFFICIENT_BUFFER && needed > 0 && needed < 65536) {
+
+                void* h = malloc(static_cast<size_t>(needed) + 1);
+                if (!h) return false;
 
                 if (SetupDiGetDeviceRegistryPropertyA(dev_info, &dev_data, prop_id, nullptr,
-                    reinterpret_cast<PBYTE>(out_buf), out_buf_size, &needed)) {
-                    if (out_buf_size > 0) out_buf[out_buf_size - 1] = '\0';
+                    reinterpret_cast<PBYTE>(h), needed, &needed)) {
+
+                    const DWORD to_copy = (needed < out_buf_size - 1) ? needed : (out_buf_size - 1);
+
+                    if (out_buf_size > 0) {
+                        memcpy(out_buf, h, to_copy);
+                        out_buf[to_copy] = '\0';
+                    }
+
+                    free(h);
                     return true;
                 }
+                free(h);
+            }
 
-                const DWORD err = GetLastError();
-
-                if (err == ERROR_INSUFFICIENT_BUFFER && needed > 0 && needed < 65536) {
-
-                    void* h = malloc(static_cast<size_t>(needed) + 1);
-                    if (!h) return false;
-
-                    if (SetupDiGetDeviceRegistryPropertyA(dev_info, &dev_data, prop_id, nullptr,
-                        reinterpret_cast<PBYTE>(h), needed, &needed)) {
-
-                        const DWORD to_copy = (needed < out_buf_size - 1) ? needed : (out_buf_size - 1);
-
-                        if (out_buf_size > 0) {
-                            memcpy(out_buf, h, to_copy);
-                            out_buf[to_copy] = '\0';
-                        }
-
-                        free(h);
-                        return true;
-                    }
-                    free(h);
-                }
-
-                if (out_buf_size > 0) out_buf[0] = '\0';
-                return false;
+            if (out_buf_size > 0) out_buf[0] = '\0';
+            return false;
         };
 
+        // Initiate a query for all "Monitor" class devices present in the system.
+        // We target monitors because VMs often emulate generic displays (e.g., "Generic Non-PnP Monitor")
+        // or specific virtual hardware signatures in their EDID data.
         const HDEVINFO devInfo = SetupDiGetClassDevs(&GUID_DEVCLASS_MONITOR, nullptr, nullptr, DIGCF_PRESENT);
         if (devInfo == INVALID_HANDLE_VALUE) return false;
 
@@ -10096,7 +10304,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         const int threshold = 3;
 
+        // Iterate through every enumerated monitor to inspect its hardware details
         for (DWORD index = 0; SetupDiEnumDeviceInfo(devInfo, index, &devData); ++index) {
+            // Open the "Hardware" registry key for the specific device instance
+            // This is where the driver stores low-level configuration, including the EDID
             const HKEY hDevKey = SetupDiOpenDevRegKey(devInfo, &devData, DICS_FLAG_GLOBAL, 0, DIREG_DEV, KEY_READ);
             if (hDevKey == INVALID_HANDLE_VALUE) {
                 devData = {};
@@ -10104,6 +10315,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 continue;
             }
 
+            // Prepare to read the EDID (Extended Display Identification Data)
+            // EDID is a standard data structure containing the display's manufacturer ID, 
+            // serial number, and capabilities
             BYTE edid_stack[256];
             DWORD bufSize = static_cast<DWORD>(sizeof(edid_stack));
             const LONG rc = RegQueryValueExA(hDevKey, "EDID", nullptr, nullptr, edid_stack, &bufSize);
@@ -10112,14 +10326,19 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             BYTE* edid = nullptr;
             bool used_heap = false;
             BYTE* heap_buf = nullptr;
+
+            // standard EDID is 128 bytes so it should fit in stack
             if (rc == ERROR_SUCCESS && bufSize >= 128) {
                 edid = edid_stack;
             }
+            // If for some reason the EDID contains extension blocks (making it larger than our stack buffer)
+            // allocate a heap buffer dynamically to capture the full data
             else if (rc == ERROR_MORE_DATA) {
                 if (bufSize > 0 && bufSize < 65536) {
                     heap_buf = static_cast<BYTE*>(LocalAlloc(LMEM_FIXED, bufSize));
                     if (heap_buf) {
                         DWORD bufSize2 = bufSize;
+                        // Re-open the key to read the full data into the new buffer
                         const HKEY hDevKey2 = SetupDiOpenDevRegKey(devInfo, &devData, DICS_FLAG_GLOBAL, 0, DIREG_DEV, KEY_READ);
                         if (hDevKey2 != INVALID_HANDLE_VALUE) {
                             if (RegQueryValueExA(hDevKey2, "EDID", nullptr, nullptr, heap_buf, &bufSize2) == ERROR_SUCCESS && bufSize2 >= 128) {
@@ -10129,7 +10348,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                             }
                             RegCloseKey(hDevKey2);
                         }
-                        if (!edid) { LocalFree(heap_buf); heap_buf = nullptr; }
+                        if (!edid) { 
+                            LocalFree(heap_buf);
+                            heap_buf = nullptr; 
+                        }
                     }
                 }
             }
@@ -10265,19 +10487,19 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         auto check_rdrand_integrity = [&]() -> bool {
             __try {
                 unsigned int v = 0;
-        #if (MSVC && !CLANG)
+            #if (MSVC && !CLANG)
                 if (_rdrand32_step(&v) && !rdrand_support) {
                     debug("CPU_HEURISTIC: Hypervisor detected hiding RDRAND capabilities");
                     return true;
                 }
-        #else 
+            #else 
                 unsigned char ok = 0;
                 asm volatile("rdrand %0\n\tsetc %1" : "=r"(v), "=qm"(ok) : : "cc");
                 if (ok && !rdrand_support) {
                     debug("CPU_HEURISTIC: Hypervisor detected hiding RDRAND capabilities");
                     return true;
                 }
-        #endif      
+            #endif      
             }
             __except (GetExceptionCode() == EXCEPTION_ILLEGAL_INSTRUCTION
                 ? EXCEPTION_EXECUTE_HANDLER
@@ -10346,7 +10568,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (claimed_amd) {
             cpu::model_struct model = cpu::get_model();
             if (!model.is_ryzen) {
-                debug("CPU_HEURISTIC: CPU is AMD but not Ryzen (Pre-Zen). Skipping CLZERO check.");
+                debug("CPU_HEURISTIC: CPU is AMD but not Ryzen (Pre-Zen). Skipping CLZERO check");
                 proceed = false;
             }
         }
@@ -10535,9 +10757,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                         while (got < 4 && *q) {
                             const wchar_t c = *q;
                             u32 nib = 0;
-                            if (c >= L'0' && c <= L'9') nib = static_cast<u32>(c - L'0');
-                            else if ((c | 0x20) >= L'a' && (c | 0x20) <= L'f') nib = static_cast<u32>((c | 0x20) - L'a' + 10);
-                            else break;
+                            if (c >= L'0' && c <= L'9') 
+                                nib = static_cast<u32>(c - L'0');
+                            else if ((c | 0x20) >= L'a' && (c | 0x20) <= L'f') 
+                                nib = static_cast<u32>((c | 0x20) - L'a' + 10);
+                            else
+                                break;
 
                             val = (val << 4) | nib;
                             ++got; ++q;
@@ -10654,10 +10879,18 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
     /**
      * @brief Check the presence of system timers
-     * @category Windows
+     * @category x86, Windows
      * @implements VM::CLOCK
      */
     [[nodiscard]] static bool clock() {
+    #if (ARM)
+		return false; // ARM systems do not have the classic x86 timers
+    #endif
+		if (util::is_running_under_translator()) {
+            debug("CLOCK: Running inside an ARM CPU");
+            return false;
+        }
+
         // The RTC (ACPI/CMOS RTC) timer can't be always detected via SetupAPI, it needs AML decode of the DSDT firmware table
         // The HPET (PNP0103) timer presence is already checked on VM::FIRMWARE
         // Here, we check for the PIT/AT timer (PC-class System Timer)
