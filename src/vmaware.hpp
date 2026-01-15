@@ -4498,7 +4498,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     #if (WINDOWS)
         const HMODULE ntdll = util::get_ntdll();
         if (!ntdll) {
-            return false;
+            return true;
         }
 
         const char* names[] = { "NtQueryInformationThread", "NtSetInformationThread" };
@@ -4511,7 +4511,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const auto pNtQueryInformationThread = reinterpret_cast<NtQueryInformationThread_t>(funcs[0]);
         const auto pNtSetInformationThread = reinterpret_cast<NtSetInformationThread_t>(funcs[1]);
         if (!pNtQueryInformationThread || !pNtSetInformationThread) {
-            return false;
+            return true;
         }
 
         constexpr int ThreadBasicInformation = 0;
@@ -4745,7 +4745,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         #endif
 
         // An hypervisor might detect that VMAware was spamming instructions to detect rdtsc hooks, and disable interception temporarily
-        // which is why we run the classic vm-exit latency check just after
+        // which is why we run the classic vm-exit latency check immediately after
 
         // sometimes not intercepted in some hvs (like VirtualBox) under compat mode
         auto cpuid = [&]() noexcept -> u64 {
