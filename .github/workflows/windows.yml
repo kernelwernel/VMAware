@@ -7,6 +7,10 @@
     "steps":
       - "uses": "actions/checkout@main"
       - "run": "cmd.exe /c .github\\workflows\\build_run_win_64_debug.bat"
+      - name: List build output
+        shell: pwsh
+        run: |
+          Get-ChildItem -Recurse build | Select-Object FullName
       - name: Rename binary with commit info
         shell: pwsh
         run: |
@@ -16,7 +20,7 @@
           Rename-Item build\Debug\vmaware.exe "vmaware_${run}_${shortSha}.exe"
       - "uses": "actions/upload-artifact@main"
         "with":
-          "path": build\Debug\vmaware_${{ github.run_number }}_${{ github.shortShaha }}.exe
+          "path": build\Debug\vmaware_${{ github.run_number }}_${{ github.shortSha }}.exe
           "name": "vmaware64_debug.exe"
   "build_run_win_32_debug":
     "runs-on": "windows-latest"
@@ -32,7 +36,7 @@
           Rename-Item build\Debug\vmaware.exe "vmaware_${run}_${shortSha}.exe"
       - "uses": "actions/upload-artifact@main"
         "with":
-          "path": build\Debug\vmaware_${{ github.run_number }}_${{ github.shortShaha }}.exe
+          "path": build\Debug\vmaware_${{ github.run_number }}_${{ github.shortSha }}.exe
           "name": "vmaware32_debug.exe"
   "build_run_win_32_release":
     "runs-on": "windows-latest"
@@ -48,7 +52,7 @@
           Rename-Item build\Debug\vmaware.exe "vmaware_${run}_${shortSha}.exe"
       - "uses": "actions/upload-artifact@main"
         "with":
-          "path": build\Release\vmaware_${{ github.run_number }}_${{ github.shortShaha }}.exe
+          "path": build\Release\vmaware_${{ github.run_number }}_${{ github.shortSha }}.exe
           "name": "vmaware32_release.exe"
   "build_run_win_64_release":
     "runs-on": "windows-latest"
@@ -64,5 +68,5 @@
           Rename-Item build\Debug\vmaware.exe "vmaware_${run}_${shortSha}.exe"
       - "uses": "actions/upload-artifact@main"
         "with":
-          "path": build\Release\vmaware_${{ github.run_number }}_${{ github.shortShaha }}.exe
+          "path": build\Release\vmaware_${{ github.run_number }}_${{ github.shortSha }}.exe
           "name": "vmaware64_release.exe"
