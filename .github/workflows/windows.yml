@@ -11,11 +11,12 @@
         shell: pwsh
         run: |
           $shortSha = "${{ github.sha }}".Substring(0,12)
+          echo "SHORT_SHA=$shortSha" >> $env:GITHUB_ENV
           $run = "${{ github.run_number }}"
           Rename-Item build\Debug\vmaware.exe "vmaware_${run}_${shortSha}.exe"
       - "uses": "actions/upload-artifact@main"
         "with":
-          "path": build\Debug\vmaware_${{ github.run_number }}_${{ github.sha }}.exe
+          "path": build\Debug\vmaware_${{ github.run_number }}_${{ github.shortShaha }}.exe
           "name": "vmaware64_debug.exe"
   "build_run_win_32_debug":
     "runs-on": "windows-latest"
@@ -26,11 +27,12 @@
         shell: pwsh
         run: |
           $shortSha = "${{ github.sha }}".Substring(0,12)
+          echo "SHORT_SHA=$shortSha" >> $env:GITHUB_ENV
           $run = "${{ github.run_number }}"
           Rename-Item build\Debug\vmaware.exe "vmaware_${run}_${shortSha}.exe"
       - "uses": "actions/upload-artifact@main"
         "with":
-          "path": build\Debug\vmaware_${{ github.run_number }}_${{ github.sha }}.exe
+          "path": build\Debug\vmaware_${{ github.run_number }}_${{ github.shortShaha }}.exe
           "name": "vmaware32_debug.exe"
   "build_run_win_32_release":
     "runs-on": "windows-latest"
@@ -41,11 +43,12 @@
         shell: pwsh
         run: |
           $shortSha = "${{ github.sha }}".Substring(0,12)
+          echo "SHORT_SHA=$shortSha" >> $env:GITHUB_ENV
           $run = "${{ github.run_number }}"
-          Rename-Item build\Release\vmaware.exe "vmaware_${run}_${shortSha}.exe"
+          Rename-Item build\Debug\vmaware.exe "vmaware_${run}_${shortSha}.exe"
       - "uses": "actions/upload-artifact@main"
         "with":
-          "path": build\Release\vmaware_${{ github.run_number }}_${{ github.sha }}.exe
+          "path": build\Release\vmaware_${{ github.run_number }}_${{ github.shortShaha }}.exe
           "name": "vmaware32_release.exe"
   "build_run_win_64_release":
     "runs-on": "windows-latest"
@@ -56,9 +59,10 @@
         shell: pwsh
         run: |
           $shortSha = "${{ github.sha }}".Substring(0,12)
+          echo "SHORT_SHA=$shortSha" >> $env:GITHUB_ENV
           $run = "${{ github.run_number }}"
-          Rename-Item build\Release\vmaware.exe "vmaware_${run}_${shortSha}.exe"
+          Rename-Item build\Debug\vmaware.exe "vmaware_${run}_${shortSha}.exe"
       - "uses": "actions/upload-artifact@main"
         "with":
-          "path": build\Release\vmaware_${{ github.run_number }}_${{ github.sha }}.exe
+          "path": build\Release\vmaware_${{ github.run_number }}_${{ github.shortShaha }}.exe
           "name": "vmaware64_release.exe"
