@@ -1,3 +1,5 @@
+# this code is absolutely atrocious but hey, if it works then it works.
+
 "on": "push"
 "jobs":
   "build_run_win_64_debug":
@@ -5,34 +7,62 @@
     "steps":
       - "uses": "actions/checkout@main"
       - "run": "cmd.exe /c .github\\workflows\\build_run_win_64_debug.bat"
+      - name: Rename binary with commit info
+        shell: pwsh
+        run: |
+          $shortSha = "${{ github.sha }}".Substring(0,12)
+          echo "SHORT_SHA=$shortSha" >> $env:GITHUB_ENV
+          $run = "${{ github.run_number }}"
+          Rename-Item build\Debug\vmaware.exe "vmaware_${run}_${shortSha}.exe"
       - "uses": "actions/upload-artifact@main"
         "with":
-          "path": "build\\Debug\\vmaware.exe"
+          "path": build\Debug\vmaware_${{ github.run_number }}_${{ github.shortSha }}.exe
           "name": "vmaware64_debug.exe"
   "build_run_win_32_debug":
     "runs-on": "windows-latest"
     "steps":
       - "uses": "actions/checkout@main"
       - "run": "cmd.exe /c .github\\workflows\\build_run_win_32_debug.bat"
+      - name: Rename binary with commit info
+        shell: pwsh
+        run: |
+          $shortSha = "${{ github.sha }}".Substring(0,12)
+          echo "SHORT_SHA=$shortSha" >> $env:GITHUB_ENV
+          $run = "${{ github.run_number }}"
+          Rename-Item build\Debug\vmaware.exe "vmaware_${run}_${shortSha}.exe"
       - "uses": "actions/upload-artifact@main"
         "with":
-          "path": "build\\Debug\\vmaware.exe"
+          "path": build\Debug\vmaware_${{ github.run_number }}_${{ github.shortSha }}.exe
           "name": "vmaware32_debug.exe"
   "build_run_win_32_release":
     "runs-on": "windows-latest"
     "steps":
       - "uses": "actions/checkout@main"
       - "run": "cmd.exe /c .github\\workflows\\build_run_win_32_release.bat"
+      - name: Rename binary with commit info
+        shell: pwsh
+        run: |
+          $shortSha = "${{ github.sha }}".Substring(0,12)
+          echo "SHORT_SHA=$shortSha" >> $env:GITHUB_ENV
+          $run = "${{ github.run_number }}"
+          Rename-Item build\Release\vmaware.exe "vmaware_${run}_${shortSha}.exe"
       - "uses": "actions/upload-artifact@main"
         "with":
-          "path": "build\\Release\\vmaware.exe"
+          "path": build\Release\vmaware_${{ github.run_number }}_${{ github.shortSha }}.exe
           "name": "vmaware32_release.exe"
   "build_run_win_64_release":
     "runs-on": "windows-latest"
     "steps":
       - "uses": "actions/checkout@main"
       - "run": "cmd.exe /c .github\\workflows\\build_run_win_64_release.bat"
+      - name: Rename binary with commit info
+        shell: pwsh
+        run: |
+          $shortSha = "${{ github.sha }}".Substring(0,12)
+          echo "SHORT_SHA=$shortSha" >> $env:GITHUB_ENV
+          $run = "${{ github.run_number }}"
+          Rename-Item build\Release\vmaware.exe "vmaware_${run}_${shortSha}.exe"
       - "uses": "actions/upload-artifact@main"
         "with":
-          "path": "build\\Release\\vmaware.exe"
+          "path": build\Release\vmaware_${{ github.run_number }}_${{ github.shortSha }}.exe
           "name": "vmaware64_release.exe"

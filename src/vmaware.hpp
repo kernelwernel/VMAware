@@ -1617,51 +1617,35 @@ private:
 
         template <typename... Args>
         static inline void debug_msg(Args&&... message) noexcept {
-            try {
-                std::stringstream ss;
+            static std::unordered_set<std::string> printed_messages;
 
-                ss.setf(std::ios::fixed, std::ios::floatfield);
-                ss.precision(2);
+            std::stringstream ss;
+            print_to_stream(ss, std::forward<Args>(message)...);
+            std::string msg_content = ss.str();
 
-            #if VMA_CPP >= 17
-                ((ss << std::forward<Args>(message)), ...);
-            #else
-                using expander = int[];
-                (void)expander {
-                    0, (void(ss << std::forward<Args>(message)), 0)...
-                };
-            #endif
+            if (printed_messages.find(msg_content) == printed_messages.end()) {
+        #if (LINUX || APPLE)
+                constexpr const char* black_bg = "\x1B[48;2;0;0;0m";
+                constexpr const char* bold = "\033[1m";
+                constexpr const char* blue = "\x1B[38;2;00;59;193m";
+                constexpr const char* ansiexit = "\x1B[0m";
 
-                std::string msg_content = ss.str();
+                std::cout.setf(std::ios::fixed, std::ios::floatfield);
+                std::cout.setf(std::ios::showpoint);
 
-                static std::unordered_set<std::string> printed_messages;
+                std::cout << black_bg
+                    << bold << "["
+                    << blue << "DEBUG"
+                    << ansiexit << bold << black_bg << "]"
+                    << ansiexit << " ";
+        #else
+                std::cout << "[DEBUG] ";
+        #endif
+                std::cout << msg_content;
+                std::cout << std::dec << "\n";
 
-                if (printed_messages.find(msg_content) == printed_messages.end()) {
-                    printed_messages.insert(msg_content);
-
-                    // --- Console Output (ANSI Colors for Linux/Mac) ---
-                #if (LINUX || APPLE)
-                    constexpr const char* BLUE_BG = "\x1B[44m";
-                    constexpr const char* WHITE_FG = "\x1B[97m";
-                    constexpr const char* BOLD = "\033[1m";
-                    constexpr const char* RESET = "\033[0m";
-
-                    std::cout << BOLD << BLUE_BG << WHITE_FG << "[DEBUG]" << RESET << " "
-                        << msg_content << "\n";
-                #else
-                    // Windows Console (Standard plain text)
-                    std::cout << "[DEBUG] " << msg_content << "\n";
-                #endif
-
-                    // --- Windows Debug Output (VS Output Window / DebugView) ---
-                #if (WINDOWS)
-                    // OutputDebugStringA does not support ANSI, so we send a clean string
-                    std::string win_debug_str = "[DEBUG] " + msg_content + "\n";
-                    OutputDebugStringA(win_debug_str.c_str());
-                #endif
-                }
+                printed_messages.insert(std::move(msg_content));
             }
-            catch (...) {}
         }
 
 
