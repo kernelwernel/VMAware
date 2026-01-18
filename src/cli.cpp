@@ -47,8 +47,8 @@
 
 #include "vmaware.hpp"
 
-constexpr const char* ver = "2.5.0";
-constexpr const char* date = "December 2025";
+constexpr const char* ver = "2.6.0";
+constexpr const char* date = "January 2025";
 
 std::string bold = "\033[1m";
 std::string underline = "\033[4m";
@@ -544,7 +544,7 @@ static const char* get_vm_description(const std::string& vm_brand) {
     using RtlInitUnicodeString_t = VOID(__stdcall*)(PUNICODE_STRING, PCWSTR);
 
 #pragma warning(push)
-#pragma warning(disable:4191)
+    #pragma warning(disable:4191)
     auto pRtlInitUnicodeString = reinterpret_cast<RtlInitUnicodeString_t>(
         GetProcAddress(ntdll, "RtlInitUnicodeString"));
     auto pNtCreateFile = reinterpret_cast<NtCreateFile_t>(
@@ -561,7 +561,7 @@ static const char* get_vm_description(const std::string& vm_brand) {
     pRtlInitUnicodeString(&name, L"\\??\\C:\\Program Files\\KernelLogger");
 
     HANDLE hFile;
-    IO_STATUS_BLOCK iosb = { { 0 } };
+    IO_STATUS_BLOCK iosb;
     OBJECT_ATTRIBUTES attrs{};
     InitializeObjectAttributes(&attrs, &name, 0, nullptr, nullptr);
 
@@ -762,9 +762,7 @@ static void general(
     checker(VM::VMWARE_STR, "STR instruction");
     checker(VM::VMWARE_BACKDOOR, "VMware IO port backdoor");
     checker(VM::MUTEX, "mutex strings");
-    checker(VM::INTEL_THREAD_MISMATCH, "Intel thread count mismatch");
-    checker(VM::XEON_THREAD_MISMATCH, "Intel Xeon thread count mismatch");
-    checker(VM::AMD_THREAD_MISMATCH, "AMD thread count mismatch");
+    checker(VM::THREAD_MISMATCH, "Thread count mismatch");
     checker(VM::CUCKOO_DIR, "Cuckoo directory");
     checker(VM::CUCKOO_PIPE, "Cuckoo pipe");
     checker(VM::AZURE, "Azure Hyper-V");
@@ -867,13 +865,13 @@ static void general(
 
     // percentage manager
     {
-        const char* percent_color = "";
+        const char* percent_color;
 
-        if      (vm.percentage == 0) { percent_color = red.c_str(); }
+        if (vm.percentage == 0) { percent_color = red.c_str(); }
         else if (vm.percentage < 25) { percent_color = red_orange.c_str(); }
         else if (vm.percentage < 50) { percent_color = orange.c_str(); }
         else if (vm.percentage < 75) { percent_color = green_orange.c_str(); }
-        else                         { percent_color = green.c_str(); }
+        else { percent_color = green.c_str(); }
 
         std::cout << bold << "VM likeliness: " << ansi_exit << percent_color << static_cast<u32>(vm.percentage) << "%" << ansi_exit << "\n";
     }
@@ -887,27 +885,26 @@ static void general(
 
     // detection count manager
     {
-        const char* count_color = "";
+        const char* count_color;
 
         switch (vm.detected_count) {
-            case 0: count_color = red.c_str(); break;
-            case 1: count_color = red_orange.c_str(); break;
-            case 2: count_color = orange.c_str(); break;
-            case 3: count_color = orange.c_str(); break;
-            case 4: count_color = green_orange.c_str(); break;
-            default:
-                // anything over 4 is green
-                count_color = green.c_str();
+        case 0: count_color = red.c_str(); break;
+        case 1: count_color = red_orange.c_str(); break;
+        case 2: count_color = orange.c_str(); break;
+        case 3: count_color = orange.c_str(); break;
+        case 4: count_color = green_orange.c_str(); break;
+        default:
+            count_color = green.c_str();
         }
 
-        std::cout << 
+        std::cout <<
             bold <<
-            "VM detections: " << 
+            "VM detections: " <<
             ansi_exit <<
-            count_color << 
-            static_cast<u32>(vm.detected_count) << 
+            count_color <<
+            static_cast<u32>(vm.detected_count) <<
             "/" <<
-            static_cast<u32>(vm.technique_count) << 
+            static_cast<u32>(vm.technique_count) <<
             ansi_exit <<
             "\n";
     }
