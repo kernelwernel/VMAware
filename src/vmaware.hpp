@@ -4726,7 +4726,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             // median gap via nth_element
             std::vector<u64> gaps_copy = gaps;
             const size_t mid_idx = gaps_copy.size() / 2;
-            // Fix C4365: cast  to ptrdiff_t for iterator arithmetic
             std::nth_element(gaps_copy.begin(), gaps_copy.begin() + static_cast<std::ptrdiff_t>(mid_idx), gaps_copy.end());
             const u64 median_gap = gaps_copy[mid_idx];
 
