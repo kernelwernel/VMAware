@@ -10172,31 +10172,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 else if (var_name_view == L"KEKDefault") (void)read_variable_to_buffer(std::wstring(var_name_view), current_var->VendorGuid, kek_default_buf, kek_default_len);
                 else if (var_name_view == L"KEK") (void)read_variable_to_buffer(std::wstring(var_name_view), current_var->VendorGuid, kek_buf, kek_len);
 
-                if (var_name_view == L"Boot0000") { // should be Windows Boot Manager
-                    BYTE* boot_buf = nullptr; SIZE_T boot_len = 0;
-                    if (read_variable_to_buffer(var_name_view, current_var->VendorGuid, boot_buf, boot_len)) {
-                        bool anomaly = (boot_len < 6);
-                        if (!anomaly) {
-                            unsigned short fpl_len = 0;
-                            memcpy(&fpl_len, boot_buf + 4, sizeof(fpl_len));
-                            // we could also check if loadOptionsLength is 136
-                            if (fpl_len != 116) anomaly = true;
-                        }
-
-                        if (boot_buf) {
-                            PVOID b_ptr = boot_buf; SIZE_T z_sz = 0;
-                            nt_free_memory(current_process_handle, &b_ptr, &z_sz, 0x8000);
-                        }
-
-                        if (anomaly) {
-                            debug("NVRAM: Environment was loaded using a virtual boot loader"); // "virtual" here -> non genuine
-                            detection_result = true;
-                            should_break_loop = true;
-                            break;
-                        }
-                    }
-                }
-
                 if (current_var->NextEntryOffset == 0) break;
                 const SIZE_T next_entry_off = static_cast<SIZE_T>(current_var->NextEntryOffset);
                 const size_t next_var_offset = current_offset + next_entry_off;
