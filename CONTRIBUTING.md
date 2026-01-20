@@ -24,9 +24,10 @@ The general rules are:
 - Keep indentations at a minimum
 - Don't create huge one-liners, try to break down statements line by line
 - Write as few lines as possible for what you're trying to achieve
-- Document your code and intentions very clearly, but don't overdo them for very obvious code.
-- Avoid `std::function`, `std::shared_ptr`, `std::bind`, `std::list`, or very obscure C++ features.
+- Document your code and intentions very clearly, but don't overdo them for very obvious code
+- Avoid `std::function`, `std::shared_ptr`, `std::bind`, `std::list`, or very obscure C++ features
 - Indent size should be 4 spaces
+- Use "We" instead of the first person when commenting
 
 There are other formatting rules, which will be covered with a demonstration:
 
