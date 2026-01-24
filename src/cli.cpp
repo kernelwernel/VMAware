@@ -40,6 +40,14 @@
     #define CLI_WINDOWS 1
     #define WIN32_LEAN_AND_MEAN
     #define NOMINMAX
+    #ifdef _WIN32_WINNT
+        #undef _WIN32_WINNT
+    #endif
+    #ifdef WINVER
+        #undef WINVER
+    #endif
+    #define _WIN32_WINNT 0x0601
+    #define WINVER 0x0601
     #include <windows.h>
 #else
     #define CLI_WINDOWS 0

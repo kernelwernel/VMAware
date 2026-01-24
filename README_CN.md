@@ -297,6 +297,7 @@ endif()
 - [luukjp](https://github.com/luukjp)
 - [Randark](https://github.com/Randark-JMT)
 - [Scrut1ny](https://github.com/Scrut1ny)
+- [Christopher Lentocha](https://github.com/CE1CECL)
 
 <br>
 

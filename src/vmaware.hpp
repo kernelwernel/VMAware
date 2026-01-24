@@ -24,6 +24,7 @@
  *      - Kyun-J (https://github.com/Kyun-J)
  *      - luukjp (https://github.com/luukjp)
  *      - Lorenzo Rizzotti (https://github.com/Dreaming-Codes) 
+ *      - Christopher Lentocha (https://github.com/CE1CECL) 
  *  - Repository: https://github.com/kernelwernel/VMAware
  *  - Docs: https://github.com/kernelwernel/VMAware/docs/documentation.md
  *  - Full credits: https://github.com/kernelwernel/VMAware#credits-and-contributors-%EF%B8%8F
