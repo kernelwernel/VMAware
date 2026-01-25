@@ -27,7 +27,7 @@ endif()
 
 # compiler flags
 if (MSVC)
-    set(CMAKE_CXX_FLAGS "/Wall /W4 /EHsc")
+    set(CMAKE_CXX_FLAGS "/W4 /EHsc")
 else()
     # Linux and Apple
     set(CMAKE_CXX_FLAGS "-Wextra -Wall -Wextra -Wconversion -Wdouble-promotion -Wno-unused-parameter -Wno-unused-function -Wno-sign-conversion")
