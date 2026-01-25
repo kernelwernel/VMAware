@@ -579,16 +579,16 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::ACPI_SIGNATURE` | Check for VM-specific ACPI device signatures | 🪟 | 100% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L9058) |
 | `VM::TRAP` | Check if after raising two traps at the same RIP, a hypervisor interferes with the instruction pointer delivery | 🪟 | 100% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L9203) |
 | `VM::UD` | Check if no waveform-audio output devices are present in the system | 🪟 | 25% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L8950) |
-| `VM::BLOCKSTEP` | Check if a hypervisor does not properly restore the interruptibility state after a VM-exit in compatibility mode | 🪟 | 100% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L9441) |
-| `VM::DBVM` | Check if Dark Byte's VM is present | 🪟 | 150% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L9488) |
-| `VM::BOOT_LOGO` | Check boot logo for known VM images | 🪟 | 100% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L9607) |
+| `VM::BLOCKSTEP` | Check if a hypervisor does not properly restore the interruptibility state after a VM-exit in compatibility mode | 🪟 | 100% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L9478) |
+| `VM::DBVM` | Check if Dark Byte's VM is present | 🪟 | 150% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L9525) |
+| `VM::BOOT_LOGO` | Check boot logo for known VM images | 🪟 | 100% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L9644) |
 | `VM::MAC_SYS` | Check for VM-strings in system profiler commands for MacOS | 🍏 | 100% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L7370) |
-| `VM::OBJECTS` | Check for any signs of VMs in Windows kernel object entities | 🪟 | 100% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L9710) |
-| `VM::NVRAM` | Check for known NVRAM signatures that are present on virtual firmware | 🪟 | 100% | Admin |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L9896) |
-| `VM::SMBIOS_INTEGRITY` | Check if SMBIOS is malformed/corrupted in a way that is typical for VMs | 🪟 | 50% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L10327) |
-| `VM::EDID` | Check for non-standard EDID configurations | 🪟 | 100% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L10338) |
-| `VM::CPU_HEURISTIC` | Check whether the CPU is genuine and its reported instruction capabilities are not masked | 🪟 | 90% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L10594) |
-| `VM::CLOCK` | Check the presence of system timers | 🪟 | 90% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L11062) |
+| `VM::OBJECTS` | Check for any signs of VMs in Windows kernel object entities | 🪟 | 100% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L9747) |
+| `VM::NVRAM` | Check for known NVRAM signatures that are present on virtual firmware | 🪟 | 100% | Admin |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L9933) |
+| `VM::SMBIOS_INTEGRITY` | Check if SMBIOS is malformed/corrupted in a way that is typical for VMs | 🪟 | 50% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L10364) |
+| `VM::EDID` | Check for non-standard EDID configurations | 🪟 | 100% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L10375) |
+| `VM::CPU_HEURISTIC` | Check whether the CPU is genuine and its reported instruction capabilities are not masked | 🪟 | 90% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L10631) |
+| `VM::CLOCK` | Check the presence of system timers | 🪟 | 90% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L11099) |
 <!-- END OF TECHNIQUE DOCUMENTATION -->
 
 <br>
