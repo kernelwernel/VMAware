@@ -9198,17 +9198,18 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
     /**
      * @brief Check if after raising two traps at the same RIP, a hypervisor interferes with the instruction pointer delivery
-     * @category Windows, x86
+     * @category Windows, x86_64
      * @implements VM::TRAP
      */
     [[nodiscard]] static bool trap() {
         bool hypervisorCaught = false;
-    #if (x86)
-        // when a single-step (TF) and hardware breakpoint (DR0) collide, Intel CPUs set both DR6.BS and DR6.B0 to report both events, which help make this detection trick
+#if (x86_64)
+        // when a single - step(TF) and hardware breakpoint(DR0) collide, Intel CPUs set both DR6.BS and DR6.B0 to report both events, which help make this detection trick
         // AMD CPUs prioritize the breakpoint, setting only its corresponding bit in DR6 and clearing the single-step bit, which is why this technique is not compatible with AMD
         if (!cpu::is_intel()) {
             return false;
         }
+
         // mobile SKUs can "false flag" this check
         const char* brand = cpu::get_brand();
         for (const char* c = brand; *c; ++c) {
@@ -9221,15 +9222,19 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
         }
 
-        // push flags, set TF-bit, pop flags, execute a dummy instruction, then return
+        // We must preserve RBX because CPUID clobbers it, and RBX is a non-volatile 
+        // register in x64. If we don't restore it, the calling function (VM::check) crashes
+        // we use MOV R8, RBX instead of PUSH RBX. Pushing to the stack without 
+        // unwind metadata breaks SEH in x64 (OS cannot find the handler), causing a crash
         constexpr u8 trampoline[] = {
-            0x9C,                         // pushfq
-            0x81, 0x04, 0x24,             // OR DWORD PTR [RSP], 0x10100
+            0x49, 0x89, 0xD8,                     // mov r8, rbx      (save rbx to volatile register r8)
+            0x9C,                                 // pushfq
+            0x81, 0x04, 0x24,                     // OR DWORD PTR [RSP], 0x10100 (Set TF)
             0x00, 0x01, 0x01, 0x00,
-            0x9D,                         // popfq
-            0x0F, 0xA2,                   // cpuid (or any other trappable instruction, but this one is ok since it has to be trapped in every x86 hv)
-            0x90, 0x90, 0x90,             // NOPs to pad to breakpoint offset
-            0xC3                          // ret
+            0x9D,                                 // popfq
+            0x0F, 0xA2,                           // cpuid 
+            0x4C, 0x89, 0xC3,                     // mov rbx, r8      (restore rbx from r8) - trap happens here
+            0xC3                                  // ret
         };
         SIZE_T trampSize = sizeof(trampoline);
 
@@ -9256,13 +9261,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         using NtGetContextThread_t = NTSTATUS(__stdcall*)(HANDLE, PCONTEXT);
         using NtSetContextThread_t = NTSTATUS(__stdcall*)(HANDLE, PCONTEXT);
 
-        const auto pNtAllocateVirtualMemory = reinterpret_cast<NtAllocateVirtualMemory_t>(funcs[0]);
-        const auto pNtProtectVirtualMemory = reinterpret_cast<NtProtectVirtualMemory_t>(funcs[1]);
-        const auto pNtFreeVirtualMemory = reinterpret_cast<NtFreeVirtualMemory_t>(funcs[2]);
-        const auto pNtFlushInstructionCache = reinterpret_cast<NtFlushInstructionCache_t>(funcs[3]);
-        const auto pNtClose = reinterpret_cast<NtClose_t>(funcs[4]);
-        const auto pNtGetContextThread = reinterpret_cast<NtGetContextThread_t>(funcs[5]);
-        const auto pNtSetContextThread = reinterpret_cast<NtSetContextThread_t>(funcs[6]);
+        // volatile ensures these are loaded from stack after SEH unwind when compiled with aggresive optimizations
+        NtAllocateVirtualMemory_t volatile pNtAllocateVirtualMemory = reinterpret_cast<NtAllocateVirtualMemory_t>(funcs[0]);
+        NtProtectVirtualMemory_t volatile pNtProtectVirtualMemory = reinterpret_cast<NtProtectVirtualMemory_t>(funcs[1]);
+        NtFreeVirtualMemory_t volatile pNtFreeVirtualMemory = reinterpret_cast<NtFreeVirtualMemory_t>(funcs[2]);
+        NtFlushInstructionCache_t volatile pNtFlushInstructionCache = reinterpret_cast<NtFlushInstructionCache_t>(funcs[3]);
+        NtClose_t volatile pNtClose = reinterpret_cast<NtClose_t>(funcs[4]);
+        NtGetContextThread_t volatile pNtGetContextThread = reinterpret_cast<NtGetContextThread_t>(funcs[5]);
+        NtSetContextThread_t volatile pNtSetContextThread = reinterpret_cast<NtSetContextThread_t>(funcs[6]);
 
         if (!pNtAllocateVirtualMemory || !pNtProtectVirtualMemory || !pNtFlushInstructionCache ||
             !pNtFreeVirtualMemory || !pNtGetContextThread || !pNtSetContextThread || !pNtClose) {
@@ -9284,7 +9290,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             ULONG oldProt = 0;
             st = pNtProtectVirtualMemory(hCurrentProcess, &tmpBase, &tmpSz, PAGE_EXECUTE_READ, &oldProt);
             if (!NT_SUCCESS(st)) {
-                PVOID freeBase = execMem; SIZE_T freeSize = trampSize;
+                PVOID freeBase = execMem;
+                SIZE_T freeSize = trampSize;
                 pNtFreeVirtualMemory(hCurrentProcess, &freeBase, &freeSize, MEM_RELEASE);
                 return false;
             }
@@ -9299,66 +9306,96 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const HANDLE hCurrentThread = reinterpret_cast<HANDLE>(-2LL);
 
         if (!NT_SUCCESS(pNtGetContextThread(hCurrentThread, &origCtx))) {
-            PVOID freeBase = execMem; SIZE_T freeSize = trampSize;
+            PVOID freeBase = execMem;
+            SIZE_T freeSize = trampSize;
             pNtFreeVirtualMemory(hCurrentProcess, &freeBase, &freeSize, MEM_RELEASE);
             return false;
         }
 
-        // set Dr0 to trampoline+offset (step triggers here)
+        // Set DR0 to trampoline + 14 (Instruction: mov rbx, r8)
+        // Offset calculation: mov_r8_rbx(3) + pushfq(1) + or(7) + popfq(1) + cpuid(2) = 14
+        // This is where single step traps after CPUID, and where we want the collision
+        const uintptr_t expectedTrapAddr = reinterpret_cast<uintptr_t>(execMem) + 14;
+
+        // set Dr0 to trampoline+offset
         CONTEXT dbgCtx = origCtx;
-        const uintptr_t baseAddr = reinterpret_cast<uintptr_t>(execMem);
-        dbgCtx.Dr0 = baseAddr + 11; // single step breakpoint address
-        dbgCtx.Dr7 = 1;             // enable local breakpoint 0
+        dbgCtx.Dr0 = expectedTrapAddr; // single step breakpoint address
+        dbgCtx.Dr7 = 1; // enable Local Breakpoint 0
 
         if (!NT_SUCCESS(pNtSetContextThread(hCurrentThread, &dbgCtx))) {
             pNtSetContextThread(hCurrentThread, &origCtx);
-            PVOID freeBase = execMem; SIZE_T freeSize = trampSize;
+            PVOID freeBase = execMem;
+            SIZE_T freeSize = trampSize;
             pNtFreeVirtualMemory(hCurrentProcess, &freeBase, &freeSize, MEM_RELEASE);
             return false;
         }
 
-        auto vetExceptions = [&](u32 code, EXCEPTION_POINTERS* info) noexcept -> u8 {
-            // if not single-step, hypervisor likely swatted our trap
-            if (code != static_cast<DWORD>(0x80000004L)) {
-                hypervisorCaught = true;
-                return EXCEPTION_CONTINUE_SEARCH;
-            }
-
-            // count breakpoint hits
-            hitCount++;
-
-            // validate exception address matches our breakpoint location
-            if (reinterpret_cast<uintptr_t>(info->ExceptionRecord->ExceptionAddress) != baseAddr + 11) {
-                hypervisorCaught = true;
-                return EXCEPTION_EXECUTE_HANDLER;
-            }
-
-            // check if Trap Flag and DR0 contributed
-            constexpr u64 required_bits = (1ULL << 14) | 1ULL;
-            const u64 status = info->ContextRecord->Dr6;
-
-            if ((status & required_bits) != required_bits) {
-                if (util::hyper_x() != HYPERV_ARTIFACT_VM)
-                    hypervisorCaught = true; // detects type 1 Hyper-V too, which we consider legitimate
-            }
-            return EXCEPTION_EXECUTE_HANDLER;
+        // Context structure to pass data to the static SEH handler
+        struct TrapContext {
+            uintptr_t expectedTrapAddr;
+            u8* hitCount;
+            bool* hypervisorCaught;
         };
+
+        // Static class for SEH filtering to avoid Release mode Lambda corruption
+        struct SEH_Trap {
+            static LONG Vet(u32 code, EXCEPTION_POINTERS* info, TrapContext* ctx) noexcept {
+                // Lambda returns LONG to support EXCEPTION_CONTINUE_EXECUTION
+                if (code != static_cast<DWORD>(0x80000004L)) {
+                    return EXCEPTION_CONTINUE_SEARCH;
+                }
+
+                // Verify exception happened at our calculated offset
+                if (reinterpret_cast<uintptr_t>(info->ExceptionRecord->ExceptionAddress) != ctx->expectedTrapAddr) {
+                    info->ContextRecord->EFlags &= ~0x100; // Clear TF
+                    info->ContextRecord->Dr7 &= ~1;        // Clear DR0 Enable
+                    *ctx->hypervisorCaught = true;
+                    return EXCEPTION_CONTINUE_EXECUTION;
+                }
+
+                (*ctx->hitCount)++;
+
+                // check if Trap Flag and DR0 contributed
+                constexpr u64 required_bits = (1ULL << 14) | 1ULL; // BS | B0
+                const u64 status = info->ContextRecord->Dr6;
+
+                if ((status & required_bits) != required_bits) {
+                    if (util::hyper_x() != HYPERV_ARTIFACT_VM) // detects type 1 Hyper-V too, which we consider legitimate
+                        *ctx->hypervisorCaught = true;
+                }
+
+                // Clear Trap Flag to stop single stepping
+                info->ContextRecord->EFlags &= ~0x100;
+
+                // Clear DR7 Local Enable 0 to disable the hardware breakpoint
+                // If we don't do this, the next instruction will trigger the breakpoint again immediately
+                info->ContextRecord->Dr7 &= ~1;
+
+                // executes mov rbx, r8 (restore), and returns
+                return EXCEPTION_CONTINUE_EXECUTION;
+            }
+        };
+
+        TrapContext ctx = { expectedTrapAddr, &hitCount, &hypervisorCaught };
 
         __try {
             reinterpret_cast<void(*)()>(execMem)();
         }
-        __except (vetExceptions(_exception_code(), reinterpret_cast<EXCEPTION_POINTERS*>(_exception_info()))) {
-            // if we didn't hit exactly once, assume hypervisor interference
-            if (hitCount != 1) {
-                hypervisorCaught = true;
-            }
+        __except (SEH_Trap::Vet(_exception_code(), reinterpret_cast<EXCEPTION_POINTERS*>(_exception_info()), &ctx)) {
+            // This block is effectively unreachable because vetExceptions returns CONTINUE_EXECUTION or CONTINUE_SEARCH
+        }
+
+        // If the hypervisor swallowed the exception entirely, hitCount will be 0
+        if (hitCount != 1) {
+            hypervisorCaught = true;
         }
 
         pNtSetContextThread(hCurrentThread, &origCtx);
 
-        PVOID freeBase = execMem; SIZE_T freeSize = trampSize;
+        PVOID freeBase = execMem;
+        SIZE_T freeSize = trampSize;
         pNtFreeVirtualMemory(hCurrentProcess, &freeBase, &freeSize, MEM_RELEASE);
-    #endif
+#endif
         return hypervisorCaught;
     }
 
