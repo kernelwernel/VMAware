@@ -1149,20 +1149,13 @@ private:
                     return crc;
                 }
 
-            #if (CLANG || GCC)
-                __attribute__((__target__("crc32")))
-            #endif
-                static u32 crc32_hw(u32 crc, char data) {
-                    return _mm_crc32_u8(crc, static_cast<u8>(data));
-                }
-
                 using hashfc = u32(*)(u32, char);
 
                 static hashfc get() {
                     i32 regs[4];
                     cpu::cpuid(regs, 1);
                     const bool has_sse42 = (regs[2] & (1 << 20)) != 0;
-                    return has_sse42 ? crc32_hw : crc32_sw;
+                    return has_sse42 ? util::crc32 : crc32_sw;
                 }
             };
 
@@ -3710,7 +3703,24 @@ private:
             return state;
         #endif
         }
-        
+
+        // For strings shorter than 16-32 bytes, the overhead of setting up the _mm_crc32_u64 (or 32) loop, then checking length, handling the tail bytes, and finally handling alignment, 
+        // will always make it slower or equal to a simple unrolled u8 loop, and not every cpu model fits in u32/u64
+        #if (x86 && (CLANG || GCC))
+            __attribute__((__target__("crc32")))
+        #endif
+        static u32 crc32(u32 crc, char data) {
+        #if (x86)
+            return _mm_crc32_u8(crc, static_cast<u8>(data));
+        #else
+            // Fallback for non-x86: use software CRC32-C
+            crc ^= static_cast<u8>(data);
+            for (int i = 0; i < 8; ++i)
+                crc = (crc >> 1) ^ ((crc & 1) ? 0x82F63B78u : 0);
+            return crc;
+        #endif
+        }
+
         // to search in our databases, we want to precompute hashes at compile time for C++11 and later
         // so we need to match the hardware _mm_crc32_u8, it is based on CRC32-C (Castagnoli) polynomial
         struct constexpr_hash {
@@ -3755,23 +3765,6 @@ private:
                     return crc;
                 }
 
-                // For strings shorter than 16-32 bytes, the overhead of setting up the _mm_crc32_u64 (or 32) loop, then checking length, handling the tail bytes, and finally handling alignment, 
-                // will always make it slower or equal to a simple unrolled u8 loop, and not every cpu model fits in u32/u64
-                #if (x86 && (CLANG || GCC))
-                    __attribute__((__target__("crc32")))
-                #endif
-                static u32 crc32_hw(u32 crc, char data) {
-                #if (x86)
-                    return _mm_crc32_u8(crc, static_cast<u8>(data));
-                #else
-                    // Fallback for non-x86: use software CRC32-C
-                    crc ^= static_cast<u8>(data);
-                    for (int i = 0; i < 8; ++i)
-                        crc = (crc >> 1) ^ ((crc & 1) ? 0x82F63B78u : 0);
-                    return crc;
-                #endif
-                }
-
                 using hashfc = u32(*)(u32, char);
 
                 static hashfc get() {
@@ -3780,7 +3773,7 @@ private:
                     cpu::cpuid(regs, 1);
                     const bool has_sse42 = (regs[2] & (1 << 20)) != 0;
 
-                    return has_sse42 ? crc32_hw : crc32_sw;
+                    return has_sse42 ? util::crc32 : crc32_sw;
                 }
             };
 
