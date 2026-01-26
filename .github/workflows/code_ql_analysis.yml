@@ -48,14 +48,6 @@ jobs:
     steps:
     - uses: actions/checkout@v3
 
-    - name: Setup Cache
-      uses: ./.github/actions/setup_cache
-      with:
-        compiler: ${{ matrix.compiler }}
-        build_type: ${{ matrix.build_type }}
-        packaging_maintainer_mode: ${{ matrix.packaging_maintainer_mode }}
-        generator: ${{ matrix.generator }}
-
     - name: Setup Cpp
       uses: aminya/setup-cpp@v1
       with:
