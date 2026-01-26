@@ -11184,9 +11184,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             if (found) break;
         }
 
-        free(buffer);
-        SetupDiDestroyDeviceInfoList(devs);
-        return !found;
+		free(buffer);
+		SetupDiDestroyDeviceInfoList(devs);
+		
+		if (!found) {
+		    debug("CLOCK: PIT/AT (PNP0100) timer not found");
+		}
+		
+		return !found;
     }
     // ADD NEW TECHNIQUE FUNCTION HERE
 #endif
