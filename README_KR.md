@@ -5,6 +5,7 @@
    <img align="center" src="https://img.shields.io/github/downloads/kernelwernel/VMAware/total">
    <img align="center" src="https://img.shields.io/badge/License-MIT-yellow.svg">
    <a href="https://deepwiki.com/kernelwernel/VMAware"><img align="center" src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
+   <img align="center" src="https://dcbadge.limes.pink/api/server/https://discord.gg/fgDvNJQK73?style=flat">
    <a href="https://github.com/kernelwernel/VMAware/actions/workflows/code_ql_analysis.yml">
      <img align="center" src="https://github.com/kernelwernel/VMAware/actions/workflows/code_ql_analysis.yml/badge.svg" alt="CodeQL Analysis">
    </a>
