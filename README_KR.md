@@ -299,6 +299,8 @@ endif()
 - [Kyun-J](https://github.com/Kyun-J)
 - [luukjp](https://github.com/luukjp)
 - [Randark](https://github.com/Randark-JMT)
+- [Scrut1ny](https://github.com/Scrut1ny)
+- [Lorenzo Rizzotti (Dreaming-Codes)](https://github.com/Dreaming-Codes)
 
 <br>
 

@@ -292,6 +292,7 @@ Et si ce projet vous a été utile, un star serait très apprécié :)
 - [luukjp](https://github.com/luukjp)
 - [Randark](https://github.com/Randark-JMT)
 - [Scrut1ny](https://github.com/Scrut1ny)
+- [Lorenzo Rizzotti (Dreaming-Codes)](https://github.com/Dreaming-Codes)
 
 <br>
 

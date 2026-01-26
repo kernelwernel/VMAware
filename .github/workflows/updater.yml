@@ -3,7 +3,7 @@ name: Python script to update documentations and header details on merge
 on:
   push:
     branches:
-      - main
+      - __never__
 
 jobs:
   run-script:
