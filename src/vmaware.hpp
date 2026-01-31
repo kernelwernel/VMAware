@@ -3025,18 +3025,20 @@ private:
             bool result;
             u8 points;
             bool cached;
+            const char* brand_name; 
         };
         struct cache_entry {
             bool result;
             u8 points;
             bool has_value;
+            const char* brand_name; 
         };
 
         static std::array<cache_entry, enum_size + 1> cache_table;
 
-        static void cache_store(u16 flag, bool result, u8 points) {
+        static void cache_store(u16 flag, bool result, u8 points, const char* brand = nullptr) {
             if (flag <= enum_size) {
-                cache_table[flag] = { result, points, true };
+                cache_table[flag] = { result, points, true, brand };
             }
         }
 
@@ -3049,14 +3051,15 @@ private:
 
         static data_t cache_fetch(u16 flag) {
             if (flag <= enum_size && cache_table[flag].has_value) {
-                return { cache_table[flag].result, cache_table[flag].points, true };
+                return { cache_table[flag].result, cache_table[flag].points, true, cache_table[flag].brand_name };
             }
-            return { false, 0, false };
+            return { false, 0, false, nullptr };
         }
 
         static void uncache(u16 flag) {
             if (flag <= enum_size) {
                 cache_table[flag].has_value = false;
+                cache_table[flag].brand_name = nullptr;
             }
         }
 
@@ -9197,7 +9200,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      */
     [[nodiscard]] static bool trap() {
         bool hypervisorCaught = false;
-#if (x86_64)
+    #if (x86_64)
         // when a single - step(TF) and hardware breakpoint(DR0) collide, Intel CPUs set both DR6.BS and DR6.B0 to report both events, which help make this detection trick
         // AMD CPUs prioritize the breakpoint, setting only its corresponding bit in DR6 and clearing the single-step bit, which is why this technique is not compatible with AMD
         if (!cpu::is_intel()) {
@@ -9389,7 +9392,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         PVOID freeBase = execMem;
         SIZE_T freeSize = trampSize;
         pNtFreeVirtualMemory(hCurrentProcess, &freeBase, &freeSize, MEM_RELEASE);
-#endif
+    #endif
         return hypervisorCaught;
     }
 
@@ -11157,7 +11160,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                         &propertyType, nullptr, 0, &required);
                     if (required > bufBytes) {
                         BYTE* newBuf = static_cast<BYTE*>(realloc(buffer, required));
-                        if (!newBuf) { found = false; break; } 
+                        if (!newBuf) { 
+                            found = false; 
+                            break; 
+                        } 
                         buffer = newBuf;
                         bufBytes = required;
                     }
@@ -11186,10 +11192,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 		free(buffer);
 		SetupDiDestroyDeviceInfoList(devs);
-		
-		if (!found) {
-		    debug("CLOCK: PIT/AT (PNP0100) timer not found");
-		}
 		
 		return !found;
     }
@@ -11244,8 +11246,14 @@ public:
         static std::array<brand_entry, MAX_BRANDS> brand_scoreboard;
         static size_t brand_count;
 
+        // Temporary storage to capture which brand was detected by the currently running technique
+        static const char* last_detected_brand;
+
         // directly return when adding a brand to the scoreboard for a more succint expression
         static inline bool add(const char* p_brand, const char* extra_brand = "") noexcept {
+            // capture the brand being added so we can cache it later
+            last_detected_brand = p_brand;
+
             for (size_t i = 0; i < brand_count; ++i) {
                 // pointer comparison is sufficient as we use the static constants from brands:: namespace
                 if (brand_scoreboard[i].name == p_brand) {
@@ -11331,8 +11339,14 @@ public:
                     continue;
                 }
 
+                // reset the last detected brand before running
+                last_detected_brand = nullptr;
+
                 // run the technique
                 const bool result = technique_data.run();
+
+                // retrieve the brand that was set during execution (if any)
+                const char* detected_brand = (result && last_detected_brand) ? last_detected_brand : brands::NULL_BRAND;
 
                 if (result) {
                     points += technique_data.points;
@@ -11343,7 +11357,7 @@ public:
                 }
 
                 // store the current technique result to the cache
-                memo::cache_store(technique_macro, result, technique_data.points);
+                memo::cache_store(technique_macro, result, technique_data.points, detected_brand);
 
                 // for things like VM::detect() and VM::percentage(),
                 // a score of 150+ is guaranteed to be a VM, so
@@ -11564,7 +11578,7 @@ public: // START OF PUBLIC FUNCTIONS
     #endif
     ) {
         if (util::is_unsupported(flag_bit)) {
-            memo::cache_store(flag_bit, false, 0);
+            memo::cache_store(flag_bit, false, 0, brands::NULL_BRAND);
             return false;
         }
 
@@ -11603,13 +11617,18 @@ public: // START OF PUBLIC FUNCTIONS
         if (flag_bit < technique_end) {
             const core::technique& pair = core::technique_table[flag_bit];
 
-            if (auto run_fn = pair.run) {          
+            if (auto run_fn = pair.run) {  
+                core::last_detected_brand = nullptr;
+
                 bool result = run_fn();           
                 if (result) detected_count_num++;
             #ifdef __VMAWARE_DEBUG__
                 total_points += pair.points;
             #endif
-                memo::cache_store(flag_bit, result, pair.points);
+                // determine the brand string associated with this result
+                const char* detected_brand = (result && core::last_detected_brand) ? core::last_detected_brand : brands::NULL_BRAND;
+
+                memo::cache_store(flag_bit, result, pair.points, detected_brand);
                 return result;
             }
             else {
@@ -12426,19 +12445,20 @@ public: // START OF PUBLIC FUNCTIONS
      * @return bool
      */
     static bool is_hardened() {
+        // Helper to get the specific brand associated with a technique using the cache
+        // If not cached, VM::check() will run it and cache the specific brand via core::last_detected_brand
         auto detected_brand = [](const enum_flags flag) -> const char* {
-            memo::uncache(flag);
-
-            std::array<core::brand_entry, core::MAX_BRANDS> old_scoreboard_snapshot{};
-            std::copy(core::brand_scoreboard.begin(), core::brand_scoreboard.end(), old_scoreboard_snapshot.begin());
-
-            check(flag);
-
-            for (size_t i = 0; i < core::brand_count; ++i) {
-                if (old_scoreboard_snapshot[i].score < core::brand_scoreboard[i].score) {
-                    return core::brand_scoreboard[i].name;
-                }
+            // ensure the technique has been run and cached
+            if (!check(flag)) {
+                return brands::NULL_BRAND;
             }
+
+            // access the private cache directly to get the brand string
+            if (memo::cache_table[flag].has_value) {
+                const char* b = memo::cache_table[flag].brand_name;
+                return (b != nullptr) ? b : brands::NULL_BRAND;
+            }
+
             return brands::NULL_BRAND;
         };
 
@@ -12649,6 +12669,7 @@ VM::hyperx_state VM::memo::hyperx::state = VM::HYPERV_UNKNOWN;
 std::array<VM::memo::leaf_entry, VM::memo::leaf_cache::CAPACITY> VM::memo::leaf_cache::table{};
 std::size_t VM::memo::leaf_cache::count = 0;
 std::size_t VM::memo::leaf_cache::next_index = 0;
+const char* VM::core::last_detected_brand = nullptr;
 
 #ifdef __VMAWARE_DEBUG__
 VM::u16 VM::total_points = 0;
