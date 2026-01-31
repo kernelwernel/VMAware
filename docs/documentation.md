@@ -591,7 +591,7 @@ VMAware provides a convenient way to not only check for VMs, but also have the f
 | `VM::DBVM` | Check if Dark Byte's VM is present | 🪟 | 150% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L9518) |
 | `VM::BOOT_LOGO` | Check boot logo for known VM images | 🪟 | 100% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L9637) |
 | `VM::MAC_SYS` | Check for VM-strings in system profiler commands for MacOS | 🍏 | 100% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L7363) |
-| `VM::OBJECTS` | Check for any signs of VMs in Windows kernel object entities | 🪟 | 100% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L9740) |
+| `VM::KERNEL_OBJECTS` | Check for any signs of VMs in Windows kernel object entities | 🪟 | 100% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L9740) |
 | `VM::NVRAM` | Check for known NVRAM signatures that are present on virtual firmware | 🪟 | 100% | Admin |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L9926) |
 | `VM::SMBIOS_INTEGRITY` | Check if SMBIOS is malformed/corrupted in a way that is typical for VMs | 🪟 | 50% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L10357) |
 | `VM::EDID` | Check for non-standard EDID configurations | 🪟 | 100% |  |  |  | [link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L10368) |

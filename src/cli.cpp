@@ -805,7 +805,7 @@ static void general(
     checker(VM::DBVM, "Dark Byte's hypervisor");
     checker(VM::BOOT_LOGO, "boot logo");
     checker(VM::MAC_SYS, "system profiler");
-    checker(VM::OBJECTS, "kernel objects");
+    checker(VM::KERNEL_OBJECTS, "kernel objects");
     checker(VM::NVRAM, "NVRAM");
     checker(VM::SMBIOS_INTEGRITY, "SMBIOS integrity");
     checker(VM::EDID, "EDID");
