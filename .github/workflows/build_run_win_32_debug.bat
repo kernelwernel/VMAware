@@ -3,9 +3,6 @@ cd "%~dp0..\.."
 mkdir build
 cd build
 cmake -DCMAKE_CXX_FLAGS="-D__VMAWARE_DEBUG__" -G "Visual Studio 17 2022" -A Win32 -S ..
-"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\devenv.com" "VMAware.sln" /Build "Debug|Win32" /Project "vmaware" /ProjectConfig "Debug|Win32"
-copy "C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\VC\Redist\MSVC\14.30.30704\debug_nonredist\x86\Microsoft.VC143.DebugCRT\ucrtbased.dll" Debug\
-copy "C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\VC\Redist\MSVC\14.30.30704\debug_nonredist\x86\Microsoft.VC143.DebugCRT\vcruntime140d.dll" Debug\
-copy "C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\VC\Redist\MSVC\14.30.30704\debug_nonredist\x86\Microsoft.VC143.DebugCRT\msvcp140d.dll" Debug\
-cd Debug
+"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\devenv.com" "VMAware.sln" /Build "Release|Win32" /Project "vmaware" /ProjectConfig "Release|Win32"
+cd Release
 vmaware.exe
