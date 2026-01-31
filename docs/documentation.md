@@ -10,8 +10,8 @@
 - [`VM::conclusion()`](#vmconclusion)
 - [`VM::detected_count()`](#vmdetected_count)
 - [`VM::is_hardened()`](#vmis_hardened)
-- [`(advanced) VM::flag_to_string()`](#vmflag_to_string)
-- [`(advanced) VM::detected_enums()`](#vmdetected_enums)
+- [`(Advanced) VM::flag_to_string()`](#advanced-vmflag_to_string)
+- [`(Advanced) VM::detected_enums()`](#advanced-vmdetected_enums)
 - [vmaware struct](#vmaware-struct)
 - [Notes and overall things to avoid](#notes-and-overall-things-to-avoid)
 - [Flag table](#flag-table)
@@ -25,7 +25,7 @@
 
 ## `VM::detect()`
 
-This is basically the main function you're looking for, which returns a bool. If no parameter is provided, all the recommended checks will be performed. But you can optionally set what techniques are used.
+This is basically the main function you're looking for, which returns a bool. If no parameter is provided, all the recommended checks will be performed. But you can optionally set which techniques are used.
 
 ```cpp
 #include "vmaware.hpp"
@@ -46,10 +46,9 @@ int main() {
 
     /**
      * All checks are performed including techniques that are
-     * disabled by default for a viariety of reasons. There are
-     * around 5 technique that are disabled. If you want all 
-     * techniques for the sake of completeness, then you can use
-     * this flag but remember that there may be potential 
+     * disabled by default for a viariety of reasons. If you 
+     * want all techniques for the sake of completeness, then 
+     * you can use this flag but remember that there may be potential 
      * performance bottlenecks and an increase in false positives.
      */ 
     bool is_vm3 = VM::detect(VM::ALL);
@@ -99,7 +98,7 @@ int main() {
 <br>
 
 ## `VM::percentage()`
-This will return a `std::uint8_t` between 0 and 100. It'll return the certainty of whether it has detected a VM based on all the techniques available as a percentage. The lower the value, the less chance it's a VM. The higher the value, the more likely it is. 
+This will return a `std::uint8_t` between 0 and 100. It'll return the certainty of whether it has detected a VM based on all the techniques available as a percentage.
 
 ```cpp
 #include "vmaware.hpp"
@@ -118,8 +117,8 @@ int main() {
         std::cout << "Unsure if it's a VM\n";
     }
 
-    // converted to std::uint32_t for console character encoding reasons
-    std::cout << "percentage: " << static_cast<std::uint32_t>(percent) << "%\n"; 
+    // converted to int for console character encoding reasons
+    std::cout << "percentage: " << static_cast<int>(percent) << "%\n"; 
 
     return 0;
 }
@@ -322,9 +321,7 @@ This will detect whether the environment has any hardening indications as a `boo
 
 Internally, this function works by analysing which combination of techniques are expected to be detected together. If a certain combination rule is mismatched, it indicates some kind of tampering of the system which assumes some sort of VM hardening.
 
-
-> [!WARNING]
-> This function should **NOT** be depended on for critical code. This is still a beta feature that hasn't been widely stress-tested as of 2.5.0. It works more as a heuristic assumption rather than a concrete guarantee.
+Similiary to `VM::brand()`, do not rely on this function for critical operations. This is meant to be a heuristic assumption rather than a concrete guarantee.
 
 
 ```cpp
@@ -332,12 +329,10 @@ Internally, this function works by analysing which combination of techniques are
 #include <iostream>
 
 int main() {
-    if (VM::detect()) {
-        if (VM::is_hardened()) {
-            std::cout << "Potential hardening detected" << "\n";
-        } else {
-            std::cout << "Unsure if hardened" << "\n";
-        }
+    if (VM::is_hardened()) {
+        std::cout << "Potential hardening detected" << "\n";
+    } else {
+        std::cout << "Unsure if hardened" << "\n";
     }
 
     return 0;
@@ -346,8 +341,13 @@ int main() {
 
 <br>
 
-## `VM::flag_to_string()`
+## (Advanced) `VM::flag_to_string()`
+
+<details>
+<summary>Show</summary>
+
 This will take a technique flag enum as an argument and return the string version of it. For example:
+
 ```cpp
 #include "vmaware.hpp"
 #include <iostream>
@@ -362,7 +362,7 @@ int main() {
 }
 ```
 
-The reason why this exists is because it can be useful for debugging purposes. It should be noted that the "VM::" part is not included in the string output, so that's based on the programmer's choice if it should remain in the string or not. The example given above is obviously useless since the whole code can be manually handwritten, but the function is especially convenient if it's being used with [`VM::technique_vector`](#variables). For example:
+The reason why this exists is because it can be useful for debugging and infodumping purposes. It should be noted that the "VM::" part is not included in the string output, so that's based on the programmer's choice if it should remain in the string or not. The example given above is obviously useless since the whole code can be manually handwritten, but the function is especially convenient if it's being used with [`VM::technique_vector`](#variables). For example:
 
 ```cpp
 #include "vmaware.hpp"
@@ -382,9 +382,15 @@ int main() {
 }
 ```
 
+</details>
+
 <br>
 
-## `VM::detected_enums()`
+## (Advanced) `VM::detected_enums()`
+
+<details>
+<summary>Show</summary>
+
 This is a function that will return a vector of all the technique flags that were detected as running in a VM. The return type is `std::vector<VM::enum_flags>`, and it's designed to give a more programmatic overview of the result. 
 
 ```cpp
@@ -401,6 +407,8 @@ int main() {
     return 0;
 }
 ```
+
+</details>
 
 <br>
 

@@ -12426,6 +12426,8 @@ public: // START OF PUBLIC FUNCTIONS
      * @return bool
      */
     static bool is_hardened() {
+        // this lambda basically detects whether a technique has found a brand.
+        // Might rewrite this or redesign the whole concept behind it, this is really janky. 
         auto detected_brand = [](const enum_flags flag) -> const char* {
             memo::uncache(flag);
 
