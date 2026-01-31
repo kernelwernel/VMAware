@@ -3194,6 +3194,11 @@ private:
             static const char* fetch_manufacturer() noexcept { return manufacturer; }
             static const char* fetch_model() noexcept { return model; }
         };
+
+        struct hardened {
+            static bool result;
+            static bool cached;
+        };
     };
 
     // miscellaneous functionalities
@@ -11922,8 +11927,7 @@ public: // START OF PUBLIC FUNCTIONS
 
         // this is added as a last ditch attempt to detect a VM, 
         // because if there are indications of hardening then logically 
-        // it should in fact be a VM. It's doubtful if this can actually 
-        // return true, but it's better than nothing
+        // it should in fact be a VM.
         return (is_hardened());
     }
 
@@ -12453,55 +12457,63 @@ public: // START OF PUBLIC FUNCTIONS
      * @return bool
      */
     static bool is_hardened() {
-        // Helper to get the specific brand associated with a technique using the cache
-        // If not cached, VM::check() will run it and cache the specific brand via core::last_detected_brand
-        auto detected_brand = [](const enum_flags flag) -> const char* {
-            // ensure the technique has been run and cached
-            if (!check(flag)) {
-                return brands::NULL_BRAND;
-            }
-
-            // access the private cache directly to get the brand string
-            if (memo::cache_table[flag].has_value) {
-                const char* b = memo::cache_table[flag].brand_name;
-                return (b != nullptr) ? b : brands::NULL_BRAND;
-            }
-
-            return brands::NULL_BRAND;
-        };
-
-        const bool hv_present = (check(VM::HYPERVISOR_BIT) || check(VM::HYPERVISOR_STR));
-
-        // rule 1: if VM::FIRMWARE is detected, so should VM::HYPERVISOR_BIT or VM::HYPERVISOR_STR
-        const char* firmware_brand = detected_brand(VM::FIRMWARE);
-        if (firmware_brand != brands::NULL_BRAND && !hv_present) {
-            return true;
+        if (memo::hardened::cached) {
+            return memo::hardened::result;
         }
 
-    #if (LINUX)
-        // rule 2: if VM::FIRMWARE is detected, so should VM::CVENDOR (QEMU or VBOX)
-        if (firmware_brand == brands::QEMU || firmware_brand == brands::VBOX) {
-            const char* cvendor_brand = detected_brand(VM::CVENDOR);
-            if (firmware_brand != cvendor_brand) {
+        auto hardened_logic = []() -> bool {
+            // Helper to get the specific brand associated with a technique using the cache.
+            auto detected_brand = [](const enum_flags flag) -> const char* {
+                if (!check(flag)) {
+                    return brands::NULL_BRAND;
+                }
+                if (memo::cache_table[flag].has_value) {
+                    const char* b = memo::cache_table[flag].brand_name;
+                    return (b != nullptr) ? b : brands::NULL_BRAND;
+                }
+                return brands::NULL_BRAND;
+            };
+
+            const bool hv_present = (check(VM::HYPERVISOR_BIT) || check(VM::HYPERVISOR_STR));
+
+            // rule 1: if VM::FIRMWARE is detected, so should VM::HYPERVISOR_BIT or VM::HYPERVISOR_STR
+            const char* firmware_brand = detected_brand(VM::FIRMWARE);
+            if (firmware_brand != brands::NULL_BRAND && !hv_present) {
                 return true;
             }
-        }
-    #endif
 
-    #if (WINDOWS)        
-        // rule 3: if VM::ACPI_SIGNATURE (QEMU) is detected, so should VM::FIRMWARE (QEMU)
-        const char* acpi_brand = detected_brand(VM::ACPI_SIGNATURE);
-        if (acpi_brand == brands::QEMU && firmware_brand != brands::QEMU) {
-            return true;
-        }
+        #if (LINUX)
+            // rule 2: if VM::FIRMWARE is detected, so should VM::CVENDOR (QEMU or VBOX)
+            if (firmware_brand == brands::QEMU || firmware_brand == brands::VBOX) {
+                const char* cvendor_brand = detected_brand(VM::CVENDOR);
+                if (firmware_brand != cvendor_brand) {
+                    return true;
+                }
+            }
+        #endif
 
-        // rule 4: if VM::TRAP or VM::NVRAM is detected, so should VM::HYPERVISOR_BIT or VM::HYPERVISOR_STR
-        if ((check(VM::TRAP) || check(VM::NVRAM)) && !hv_present) {
-            return true;
-        }
-    #endif
+        #if (WINDOWS)        
+            // rule 3: if VM::ACPI_SIGNATURE (QEMU) is detected, so should VM::FIRMWARE (QEMU)
+            const char* acpi_brand = detected_brand(VM::ACPI_SIGNATURE);
+            if (acpi_brand == brands::QEMU && firmware_brand != brands::QEMU) {
+                return true;
+            }
 
-        return false;
+            // rule 4: if VM::TRAP or VM::NVRAM is detected, so should VM::HYPERVISOR_BIT or VM::HYPERVISOR_STR
+            if ((check(VM::TRAP) || check(VM::NVRAM)) && !hv_present) {
+                return true;
+            }
+        #endif
+
+            return false;
+        };
+
+        const bool result = hardened_logic();
+
+        memo::hardened::result = result;
+        memo::hardened::cached = true;
+
+        return result;
     }
 
 
@@ -12672,6 +12684,8 @@ bool VM::memo::multi_brand::cached = false;
 bool VM::memo::cpu_brand::cached = false;
 bool VM::memo::bios_info::cached = false;
 bool VM::memo::hyperx::cached = false;
+bool VM::memo::hardened::result = false;
+bool VM::memo::hardened::cached = false;
 VM::u32 VM::memo::threadcount::threadcount_cache = 0;
 VM::hyperx_state VM::memo::hyperx::state = VM::HYPERV_UNKNOWN;
 std::array<VM::memo::leaf_entry, VM::memo::leaf_cache::CAPACITY> VM::memo::leaf_cache::table{};
