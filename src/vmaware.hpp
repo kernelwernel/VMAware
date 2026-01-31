@@ -60,7 +60,7 @@
  * - struct for internal core components       => line 11205
  * - start of VM detection technique list      => line 4251
  * - start of public VM detection functions    => line 11551
- * - start of externally defined variables     => line 12534
+ * - start of externally defined variables     => line 12544
  *
  *
  * ============================== EXAMPLE ===================================
@@ -576,7 +576,7 @@ public:
         UD,
         BLOCKSTEP,
         DBVM,
-        OBJECTS,
+        KERNEL_OBJECTS,
         NVRAM,
         SMBIOS_INTEGRITY,
         EDID,
@@ -9740,9 +9740,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for any signs of VMs in Windows kernel object entities 
      * @category Windows
-     * @implements VM::OBJECTS
+     * @implements VM::KERNEL_OBJECTS
      */
-    [[nodiscard]] static bool objects() {
+    [[nodiscard]] static bool kernel_objects() {
         struct OBJECT_DIRECTORY_INFORMATION {
             UNICODE_STRING Name;
             UNICODE_STRING TypeName;
@@ -9907,12 +9907,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             // "VmGenerationCounter" and "VmGid" are created by the Hyper-V VM Bus provider
             if (objectName == L"VmGenerationCounter") {
                 pNtClose(hDir);
-                debug("OBJECTS: Detected VmGenerationCounter");
+                debug("KERNEL_OBJECTS: Detected VmGenerationCounter");
                 return core::add(brands::HYPERV);
             }
             if (objectName == L"VmGid") {
                 pNtClose(hDir);
-                debug("OBJECTS: Detected VmGid");
+                debug("KERNEL_OBJECTS: Detected VmGid");
                 return core::add(brands::HYPERV);
             }
         }
@@ -11910,13 +11910,21 @@ public: // START OF PUBLIC FUNCTIONS
 
         u16 threshold = 150;
 
-        // if high threshold is set, the points 
+        // if high threshold is set, the bar
         // will be 300. If not, leave it as 150
         if (core::is_enabled(flags, HIGH_THRESHOLD)) {
             threshold = high_threshold_score;
         }
 
-        return (points >= threshold);
+        if (points >= threshold) {
+            return true;
+        }
+
+        // this is added as a last ditch attempt to detect a VM, 
+        // because if there are indications of hardening then logically 
+        // it should in fact be a VM. It's doubtful if this can actually 
+        // return true, but it's better than nothing
+        return (is_hardened());
     }
 
 
@@ -12114,7 +12122,7 @@ public: // START OF PUBLIC FUNCTIONS
             case DBVM: return "DBVM";
             case BOOT_LOGO: return "BOOT_LOGO";
             case MAC_SYS: return "MAC_SYS";
-            case OBJECTS: return "OBJECTS";
+            case KERNEL_OBJECTS: return "KERNEL_OBJECTS";
             case NVRAM: return "NVRAM";
             case SMBIOS_INTEGRITY: return "SMBIOS_INTEGRITY";
             case EDID: return "EDID";
@@ -12726,7 +12734,7 @@ std::array<VM::core::technique, VM::enum_size + 1> VM::core::technique_table = [
             {VM::DRIVERS, {100, VM::drivers}},
             {VM::DEVICE_HANDLES, {100, VM::device_handles}},
             {VM::VIRTUAL_PROCESSORS, {100, VM::virtual_processors}},
-            {VM::OBJECTS, {100, VM::objects}},
+            {VM::KERNEL_OBJECTS, {100, VM::kernel_objects}},
             {VM::HYPERVISOR_QUERY, {100, VM::hypervisor_query}},
             {VM::AUDIO, {25, VM::audio}},
             {VM::DISPLAY, {25, VM::display}},
