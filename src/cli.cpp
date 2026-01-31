@@ -194,6 +194,10 @@ static const char* color(const u8 score) {
         return "";
     }
 
+    if (VM::is_hardened()) {
+        return green.c_str();
+    }
+
     if (arg_bitset.test(DYNAMIC)) {
         if      (score == 0)   { return red.c_str(); }
         else if (score <= 12)  { return red.c_str(); }

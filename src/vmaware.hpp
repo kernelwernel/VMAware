@@ -12348,6 +12348,7 @@ public: // START OF PUBLIC FUNCTIONS
     static std::string conclusion(const flagset &flags = core::generate_default()) {
         std::string brand_tmp = brand(flags);
         const u8 percent_tmp = percentage(flags);
+        const bool has_hardener = is_hardened();
 
         constexpr const char* very_unlikely = "Very unlikely a";
         constexpr const char* unlikely = "Unlikely a";
@@ -12362,30 +12363,38 @@ public: // START OF PUBLIC FUNCTIONS
                 return memo::conclusion::fetch();
             }
 
+            const char* hardener = "";
+            
+            if (has_hardener) {
+                hardener = "hardened ";
+            }
+            
             const char* addition = " a ";
 
             // this basically just fixes the grammatical syntax
             // by either having "a" or "an" before the VM brand
             // name. It would look weird if the conclusion 
             // message was "an VirtualBox" or "a Anubis", so this
-            // lambda fixes that issue.    
+            // condition fixes that issue.    
             if (
-                (brand_tmp == brands::ACRN) ||
-                (brand_tmp == brands::ANUBIS) ||
-                (brand_tmp == brands::BSD_VMM) ||
-                (brand_tmp == brands::INTEL_HAXM) ||
-                (brand_tmp == brands::APPLE_VZ) ||
-                (brand_tmp == brands::INTEL_KGT) ||
-                (brand_tmp == brands::POWERVM) ||
-                (brand_tmp == brands::OPENSTACK) ||
-                (brand_tmp == brands::AWS_NITRO) ||
-                (brand_tmp == brands::OPENVZ) ||
-                (brand_tmp == brands::INTEL_TDX) ||
-                (brand_tmp == brands::AMD_SEV) ||
-                (brand_tmp == brands::AMD_SEV_ES) ||
-                (brand_tmp == brands::AMD_SEV_SNP) ||
-                (brand_tmp == brands::NSJAIL) ||
-                (brand_tmp == brands::NULL_BRAND)
+                !hardener && (
+                    (brand_tmp == brands::ACRN) ||
+                    (brand_tmp == brands::ANUBIS) ||
+                    (brand_tmp == brands::BSD_VMM) ||
+                    (brand_tmp == brands::INTEL_HAXM) ||
+                    (brand_tmp == brands::APPLE_VZ) ||
+                    (brand_tmp == brands::INTEL_KGT) ||
+                    (brand_tmp == brands::POWERVM) ||
+                    (brand_tmp == brands::OPENSTACK) ||
+                    (brand_tmp == brands::AWS_NITRO) ||
+                    (brand_tmp == brands::OPENVZ) ||
+                    (brand_tmp == brands::INTEL_TDX) ||
+                    (brand_tmp == brands::AMD_SEV) ||
+                    (brand_tmp == brands::AMD_SEV_ES) ||
+                    (brand_tmp == brands::AMD_SEV_SNP) ||
+                    (brand_tmp == brands::NSJAIL) ||
+                    (brand_tmp == brands::NULL_BRAND)
+                )
             ) {
                 addition = " an ";
             }
@@ -12399,16 +12408,19 @@ public: // START OF PUBLIC FUNCTIONS
             // Hyper-V artifacts are an exception due to how unique the circumstance is
             std::string result;
             if (brand_tmp == brands::HYPERV_ARTIFACT) {
-                result = std::string(category) + addition + brand_tmp;
-            }
-            else {
-                result = std::string(category) + addition + brand_tmp + " VM";
+                result = std::string(category) + addition + hardener + brand_tmp;
+            } else {
+                result = std::string(category) + addition + hardener + brand_tmp + " VM";
             }
 
             memo::conclusion::store(result.c_str());
 
             return result;
         };
+
+        if (has_hardener) {
+            return make_conclusion(inside_vm);
+        }
 
         if (core::is_enabled(flags, DYNAMIC)) {
             if (percent_tmp == 0) { return "Running on baremetal"; }
@@ -12418,14 +12430,13 @@ public: // START OF PUBLIC FUNCTIONS
             else if (percent_tmp <= 62) { return make_conclusion(might); }
             else if (percent_tmp <= 75) { return make_conclusion(likely); }
             else if (percent_tmp < 100) { return make_conclusion(very_likely); }
-            else { return make_conclusion(inside_vm); }
         }
 
         if (percent_tmp == 100) {
             return make_conclusion(inside_vm);
-        } else {
-            return "Running on baremetal";
         }
+
+        return "Running on baremetal";
     }
 
 
