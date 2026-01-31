@@ -551,9 +551,6 @@ public:
         POWER_CAPABILITIES,
         DISK_SERIAL,
         IVSHMEM,
-        SGDT,
-        SLDT,
-        SMSW,
         DRIVERS,
         DEVICE_HANDLES,
         VIRTUAL_PROCESSORS,
@@ -584,7 +581,7 @@ public:
         CLOCK,
 
         // Linux and Windows
-        SIDT,
+        SYSTEM_REGISTERS,
         FIRMWARE,
         PCI_DEVICES,
         AZURE,
@@ -677,7 +674,7 @@ public:
     // for platform compatibility ranges
     static constexpr u8 WINDOWS_START = VM::GPU_CAPABILITIES;
     static constexpr u8 WINDOWS_END = VM::AZURE;
-    static constexpr u8 LINUX_START = VM::SIDT;
+    static constexpr u8 LINUX_START = VM::SYSTEM_REGISTERS;
     static constexpr u8 LINUX_END = VM::THREAD_COUNT;
     static constexpr u8 MACOS_START = VM::THREAD_COUNT;
     static constexpr u8 MACOS_END = VM::MAC_SYS;
@@ -6056,54 +6053,74 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 #if (LINUX || WINDOWS)
     /**
-     * @brief Check for uncommon IDT virtual addresses
+     * @brief Check for Task Segment and Descriptor Table instructions (SGDT, SLDT, SMSW, SIDT)
+     * @category Windows, Linux, x86, x86_32
+     * @implements VM::DESCRIPTOR_TABLES
+     * 
+     * --- SGDT ---
+     * @note code documentation paper in /papers/www.offensivecomputing.net_vm.pdf (top-most byte signature)
+     *
+     * --- SLDT ---
+     * @author Danny Quist (chamuco@gmail.com), ldtr_buf signature
+     * @author Val Smith (mvalsmith@metasploit.com), ldtr_buf signature
+     * @author code documentation paper in /papers/www.offensivecomputing.net_vm.pdf for ldtr_buf signature and in https://www.aldeid.com/wiki/X86-assembly/Instructions/sldt for ldt signature
+     *
+     * --- SMSW ---
+     * @author Danny Quist from Offensive Computing
+     *
+     * --- SIDT ---
      * @author Matteo Malvica
      * @author Idea to check VPC's range from Tom Liston and Ed Skoudis' paper "On the Cutting Edge: Thwarting Virtual Machine Detection" (Windows)
      * @link https://www.matteomalvica.com/blog/2018/12/05/detecting-vmware-on-64-bit-systems/ (Linux)
-     * @category Windows, Linux, x86
-     * @implements VM::SIDT
+     * 
      */
-    [[nodiscard]] static bool sidt() {
+    [[nodiscard]] static bool system_registers() {
+        // Even though SMSW queries a status register (CR0), it is historically grouped with descriptor table checks in virtualization detection 
+        // (often called "Red Pill" techniques)
+        bool found = false;
+
+        // Linux Implementation (SIDT only)
     #if (LINUX && (GCC || CLANG) && x86)
         u8 values[10] = { 0 };
 
         fflush(stdout);
 
         #if (x86_64)
-                // 64-bit Linux: IDT descriptor is 10 bytes (2-byte limit + 8-byte base)
-                __asm__ __volatile__("sidt %0" : "=m"(values));
+            // 64-bit Linux: IDT descriptor is 10 bytes (2-byte limit + 8-byte base)
+            __asm__ __volatile__("sidt %0" : "=m"(values));
 
-                #ifdef __VMAWARE_DEBUG__
-                    debug("SIDT: values = ");
-                    for (u8 i = 0; i < 10; ++i) {
-                        debug(std::hex, std::setw(2), std::setfill('0'), static_cast<u32>(values[i]));
-                        if (i < 9) debug(" ");
-                    }
-                #endif
-
-                return (values[9] == 0x00);  // 10th byte in x64 mode
-        #elif (x86_32)
-                // 32-bit Linux: IDT descriptor is 6 bytes (2-byte limit + 4-byte base)
-                __asm__ __volatile__("sidt %0" : "=m"(values));
-
-                #ifdef __VMAWARE_DEBUG__
-                    debug("SIDT: values = ");
-                    for (u8 i = 0; i < 6; ++i) {
-                        debug(std::hex, std::setw(2), std::setfill('0'), static_cast<u32>(values[i]));
-                        if (i < 5) debug(" ");
-                    }
-                #endif
-
-                return (values[5] == 0x00);  // 6th byte in x86 mode
-        #else
-                return false;
+        #ifdef __VMAWARE_DEBUG__
+            debug("SIDT: values = ");
+            for (u8 i = 0; i < 10; ++i) {
+                debug(std::hex, std::setw(2), std::setfill('0'), static_cast<u32>(values[i]));
+                if (i < 9) debug(" ");
+            }
         #endif
+
+            if (values[9] == 0x00) found = true; // 10th byte in x64 mode
+        #elif (x86_32)
+            // 32-bit Linux: IDT descriptor is 6 bytes (2-byte limit + 4-byte base)
+            __asm__ __volatile__("sidt %0" : "=m"(values));
+
+        #ifdef __VMAWARE_DEBUG__
+            debug("SIDT: values = ");
+            for (u8 i = 0; i < 6; ++i) {
+                debug(std::hex, std::setw(2), std::setfill('0'), static_cast<u32>(values[i]));
+                if (i < 5) debug(" ");
+            }
+        #endif
+
+            if (values[5] == 0x00) found = true; // 6th byte in x86 mode
+        #endif
+
+        // Windows Implementation (SGDT, SLDT, SIDT, SMSW)
     #elif (WINDOWS && x86)
         SYSTEM_INFO si;
         GetNativeSystemInfo(&si);
         DWORD_PTR originalMask = 0;
         const HANDLE hCurrentThread = reinterpret_cast<HANDLE>(-2LL);
 
+        // Iterating processors for SGDT, SLDT, and SIDT
         for (DWORD i = 0; i < si.dwNumberOfProcessors; ++i) {
             const DWORD_PTR mask = (DWORD_PTR)1 << i;
             const DWORD_PTR previousMask = SetThreadAffinityMask(hCurrentThread, mask);
@@ -6116,52 +6133,135 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 originalMask = previousMask;
             }
 
-        #if (x86_64)
-            u8 idtr_buffer[10] = { 0 };
-        #else
-            u8 idtr_buffer[6] = { 0 };
-        #endif
-
-            __try {
-            #if (CLANG || GCC)
-                __asm__ volatile("sidt %0" : "=m"(idtr_buffer));
-            #elif (MSVC) && (x86_32)
-                __asm { sidt idtr_buffer }
-            #elif (MSVC) && (x86_64)
-                #pragma pack(push, 1)
-                    struct { 
-                        USHORT Limit; 
-                        ULONG_PTR Base; 
-                    } idtr;
-                #pragma pack(pop)
-                __sidt(&idtr);
-                memcpy(idtr_buffer, &idtr, sizeof(idtr));
+            // Technique 1: SGDT (x86 & x64)
+            {
+            #if (x86_64)
+                u8 gdtr[10] = { 0 };
+            #else
+                u8 gdtr[6] = { 0 };
             #endif
-            }
-            __except (EXCEPTION_EXECUTE_HANDLER) {} // CR4.UMIP
 
-            ULONG_PTR idt_base = 0;
-            memcpy(&idt_base, &idtr_buffer[2], sizeof(idt_base));
-
-            // Check for the 0xE8 signature (VPC/Hyper-V) in the high byte
-            if ((idt_base >> 24) == 0xE8) {
-                debug("SIDT: VPC/Hyper-V signature detected on core %u", i);
-
-                if (originalMask != 0) {
-                    SetThreadAffinityMask(hCurrentThread, originalMask);
+                __try {
+                #if (CLANG || GCC)
+                    __asm__ volatile("sgdt %0" : "=m"(gdtr));
+                #elif (MSVC && x86_32)
+                    __asm { sgdt gdtr }
+                #else
+                    #pragma pack(push,1)
+                    struct {
+                        u16 limit;
+                        u64 base;
+                    } _gdtr = {};
+                    #pragma pack(pop)
+                    _sgdt(&_gdtr);
+                    memcpy(gdtr, &_gdtr, sizeof(_gdtr));
+                #endif
                 }
-                return core::add(brands::VPC);
+                __except (EXCEPTION_EXECUTE_HANDLER) {} // CR4.UMIP
+
+                ULONG_PTR gdt_base = 0;
+                memcpy(&gdt_base, &gdtr[2], sizeof(gdt_base));
+
+                if ((gdt_base >> 24) == 0xFF) {
+                    debug("SGDT: 0xFF signature detected on core %u", i);
+                    found = true;
+                }
             }
+
+            // Technique 2: SLDT (x86_32 only)
+            #if (x86_32)
+                if (!found) {
+                    u8 ldtr_buf[4] = { 0xEF, 0xBE, 0xAD, 0xDE };
+                    u32 ldt_val = 0;
+
+                    __try {
+                    #if (CLANG || GCC)
+                        __asm__ volatile("sldt %0" : "=m"(*(u16*)ldtr_buf));
+                    #else  // MSVC
+                        __asm {
+                            sldt ax
+                            mov  word ptr[ldtr_buf], ax
+                        }
+                    #endif
+                    }
+                    __except (EXCEPTION_EXECUTE_HANDLER) {} // CR4.UMIP
+
+                    memcpy(&ldt_val, ldtr_buf, sizeof(ldt_val));
+                    if (ldtr_buf[0] != 0x00 && ldtr_buf[1] != 0x00) {
+                        debug("SLDT: ldtr_buf signature detected");
+                        found = true;
+                    }
+                    if (ldt_val != 0xDEAD0000) {
+                        debug("SLDT: 0xDEAD0000 signature detected");
+                        found = true;
+                    }
+                }
+            #endif
+
+                // Technique 3: SIDT (x86 & x64)
+                if (!found) {
+                #if (x86_64)
+                    u8 idtr_buffer[10] = { 0 };
+                #else
+                    u8 idtr_buffer[6] = { 0 };
+                #endif
+
+                    __try {
+                    #if (CLANG || GCC)
+                        __asm__ volatile("sidt %0" : "=m"(idtr_buffer));
+                    #elif (MSVC) && (x86_32)
+                        __asm { sidt idtr_buffer }
+                    #elif (MSVC) && (x86_64)
+                    #pragma pack(push, 1)
+                        struct {
+                            USHORT Limit;
+                            ULONG_PTR Base;
+                        } idtr;
+                    #pragma pack(pop)
+                        __sidt(&idtr);
+                        memcpy(idtr_buffer, &idtr, sizeof(idtr));
+                    #endif
+                    }
+                    __except (EXCEPTION_EXECUTE_HANDLER) {} // CR4.UMIP
+
+                    ULONG_PTR idt_base = 0;
+                    memcpy(&idt_base, &idtr_buffer[2], sizeof(idt_base));
+
+                    // Check for the 0xE8 signature (VPC/Hyper-V) in the high byte
+                    if ((idt_base >> 24) == 0xE8) {
+                        debug("SIDT: VPC/Hyper-V signature detected on core %u", i);
+                        found = true;
+                    }
+                }
+
+            if (found) break;
         }
 
         if (originalMask != 0) {
             SetThreadAffinityMask(hCurrentThread, originalMask);
         }
 
-        return false;
-    #else
-        return false;
+        // Technique 4: SMSW (x86_32 only), no affinity pinning needed
+        #if (x86_32)
+            if (!found) {
+                u32 reax = 0;
+                __asm
+                {
+                    mov eax, 0xCCCCCCCC;
+                    smsw eax;
+                    mov DWORD PTR[reax], eax;
+                }
+
+                if ((((reax >> 24) & 0xFF) == 0xCC) && (((reax >> 16) & 0xFF) == 0xCC)) {
+                    debug("SMSW: Signature detected");
+                    found = true;
+                }
+            }
+        #endif
+
     #endif
+
+        return found;
     }
 
 
@@ -6716,6 +6816,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
     #endif
     }
+
 
     /**
      * @brief Check for PCI vendor and device IDs that are VM-specific
@@ -7676,159 +7777,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
     #endif
         return rc;
-    }
-
-
-    /**
-     * @brief Check for sgdt instruction method
-     * @category Windows, x86
-     * @note code documentation paper in /papers/www.offensivecomputing.net_vm.pdf (top-most byte signature)
-     * @implements VM::SGDT
-     */
-    [[nodiscard]] static bool sgdt() {
-        bool found = false;
-    #if (x86)
-        SYSTEM_INFO si;
-        GetNativeSystemInfo(&si);
-        DWORD_PTR originalMask = 0;
-        const HANDLE hCurrentThread = reinterpret_cast<HANDLE>(-2LL);
-
-        for (DWORD i = 0; i < si.dwNumberOfProcessors; ++i) {
-            const DWORD_PTR mask = (DWORD_PTR)1 << i;
-            const DWORD_PTR previousMask = SetThreadAffinityMask(hCurrentThread, mask);
-
-            if (previousMask == 0) {
-                continue;
-            }
-
-            if (originalMask == 0) {
-                originalMask = previousMask;
-            }
-
-        #if (x86_64)
-            u8 gdtr[10] = { 0 };
-        #else
-            u8 gdtr[6] = { 0 };
-        #endif
-
-            __try {
-            #if (CLANG || GCC)
-                __asm__ volatile("sgdt %0" : "=m"(gdtr));
-            #elif (MSVC && x86_32)
-                __asm { sgdt gdtr }
-            #else
-                #pragma pack(push,1)
-                    struct { 
-                        u16 limit;
-                        u64 base; 
-                    } _gdtr = {};
-                #pragma pack(pop)
-                _sgdt(&_gdtr);
-                memcpy(gdtr, &_gdtr, sizeof(_gdtr));
-            #endif
-            }
-            __except (EXCEPTION_EXECUTE_HANDLER) {} // CR4.UMIP
-
-            ULONG_PTR gdt_base = 0;
-            memcpy(&gdt_base, &gdtr[2], sizeof(gdt_base));
-
-            if ((gdt_base >> 24) == 0xFF) {
-                debug("SGDT: 0xFF signature detected on core %u", i);
-                found = true;
-            }
-
-            if (found) break;
-        }
-
-        if (originalMask != 0) {
-            SetThreadAffinityMask(hCurrentThread, originalMask);
-        }
-    #endif
-        return found;
-    }
-
-
-    /**
-     * @brief Check for sldt instruction method
-     * @category Windows, x86_32
-     * @author Danny Quist (chamuco@gmail.com), ldtr_buf signature
-     * @author Val Smith (mvalsmith@metasploit.com), ldtr_buf signature
-     * @author code documentation paper in /papers/www.offensivecomputing.net_vm.pdf for ldtr_buf signature and in https://www.aldeid.com/wiki/X86-assembly/Instructions/sldt for ldt signature
-     * @implements VM::SLDT
-     */
-    [[nodiscard]] static bool sldt() {
-        bool found = false;
-    #if (x86_32)
-        SYSTEM_INFO si;
-        GetNativeSystemInfo(&si);
-        const HANDLE hCurrentThread = reinterpret_cast<HANDLE>(-2LL);
-        const DWORD_PTR origMask = SetThreadAffinityMask(hCurrentThread, 1);
-        SetThreadAffinityMask(hCurrentThread, origMask);
-
-        for (DWORD i = 0; i < si.dwNumberOfProcessors; ++i) {
-            const DWORD_PTR mask = (DWORD_PTR)1 << i;
-            if (SetThreadAffinityMask(hCurrentThread, mask) == 0)
-                continue;
-
-            u8 ldtr_buf[4] = { 0xEF, 0xBE, 0xAD, 0xDE };
-            u32 ldt_val = 0;
-
-            __try {
-        #if (CLANG || GCC)
-                __asm__ volatile("sldt %0" : "=m"(*(u16*)ldtr_buf));
-        #else  // MSVC
-                __asm {
-                    sldt ax
-                    mov  word ptr[ldtr_buf], ax
-                }
-        #endif
-            }
-            __except (EXCEPTION_EXECUTE_HANDLER) {} // CR4.UMIP
-
-            memcpy(&ldt_val, ldtr_buf, sizeof(ldt_val));
-            if (ldtr_buf[0] != 0x00 && ldtr_buf[1] != 0x00) {
-                debug("SLDT: ldtr_buf signature detected");
-                found = true;
-            }
-            if (ldt_val != 0xDEAD0000) {
-                debug("SLDT: 0xDEAD0000 signature detected");
-                found = true;
-            }
-
-            if (found)
-                break;
-        }
-
-        SetThreadAffinityMask(hCurrentThread, origMask);
-    #endif
-        return found;
-    }
-
-
-    /**
-     * @brief Check for SMSW assembly instruction technique
-     * @category Windows, x86_32
-     * @author Danny Quist from Offensive Computing
-     * @implements VM::SMSW
-     */
-    [[nodiscard]] static bool smsw() {
-    #if (x86_32)
-        u32 reax = 0;
-
-        __asm
-        {
-            mov eax, 0xCCCCCCCC;
-            smsw eax;
-            mov DWORD PTR[reax], eax;
-        }
-
-        return (
-            (((reax >> 24) & 0xFF) == 0xCC) &&
-            (((reax >> 16) & 0xFF) == 0xCC)
-            );
-    #else
-        return false;
-    #endif
     }
 
 
@@ -12073,10 +12021,7 @@ public: // START OF PUBLIC FUNCTIONS
             case IOREG_GREP: return "IOREG_GREP";
             case MAC_SIP: return "MAC_SIP";
             case VPC_INVALID: return "VPC_INVALID";
-            case SIDT: return "SIDT";
-            case SGDT: return "SGDT";
-            case SLDT: return "SLDT";
-            case SMSW: return "SMSW";
+            case SYSTEM_REGISTERS: return "TASK_SEGMENT";
             case VMWARE_IOMEM: return "VMWARE_IOMEM";
             case VMWARE_IOPORTS: return "VMWARE_IOPORTS";
             case VMWARE_SCSI: return "VMWARE_SCSI";
@@ -12742,9 +12687,6 @@ std::array<VM::core::technique, VM::enum_size + 1> VM::core::technique_table = [
             {VM::SMBIOS_INTEGRITY, {50, VM::smbios_integrity}},
             {VM::DISK_SERIAL, {100, VM::disk_serial_number}},
             {VM::IVSHMEM, {100, VM::ivshmem}},
-            {VM::SGDT, {50, VM::sgdt}},
-            {VM::SLDT, {50, VM::sldt}},
-            {VM::SMSW, {50, VM::smsw}},
             {VM::DRIVERS, {100, VM::drivers}},
             {VM::DEVICE_HANDLES, {100, VM::device_handles}},
             {VM::VIRTUAL_PROCESSORS, {100, VM::virtual_processors}},
@@ -12771,7 +12713,7 @@ std::array<VM::core::technique, VM::enum_size + 1> VM::core::technique_table = [
         #if (LINUX || WINDOWS)
             {VM::FIRMWARE, {100, VM::firmware}},
             {VM::PCI_DEVICES, {95, VM::pci_devices}},
-            {VM::SIDT, {50, VM::sidt}},
+            {VM::SYSTEM_REGISTERS, {50, VM::system_registers}},
             {VM::AZURE, {30, VM::azure}},
         #endif
 
