@@ -23,7 +23,7 @@
 The library is:
 - Very easy to use
 - Cross-platform (Windows + MacOS + Linux)
-- Features around 100 unique VM detection techniques [[list](https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#flag-table)]
+- Features around 90 unique VM detection techniques [[list](https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#flag-table)]
 - Features the most cutting-edge techniques
 - Able to detect over 70 VM brands including VMware, VirtualBox, QEMU, Hyper-V, and much more [[list](https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#brand-table)]
 - Able to beat VM hardeners

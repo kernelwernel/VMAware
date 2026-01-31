@@ -755,10 +755,7 @@ static void general(
     checker(VM::AUDIO, "audio devices");
     checker(VM::DEVICE_HANDLES, "device handles");
     checker(VM::VPC_INVALID, "VPC invalid instructions");
-    checker(VM::SIDT, "SIDT");
-    checker(VM::SGDT, "SGDT");
-    checker(VM::SLDT, "SLDT");
-    checker(VM::SMSW, "SMSW");
+    checker(VM::SYSTEM_REGISTERS, "Task segment and descriptor tables");
     checker(VM::VMWARE_IOMEM, "/proc/iomem file");
     checker(VM::VMWARE_IOPORTS, "/proc/ioports file");
     checker(VM::VMWARE_SCSI, "/proc/scsi/scsi file");
