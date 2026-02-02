@@ -4570,11 +4570,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     [[nodiscard]] static bool timer() {
     #if (x86)
 
-    #if (MSVC)
-        #define COMPILER_BARRIER() _ReadWriteBarrier()
-    #else
-        #define COMPILER_BARRIER() asm volatile("" ::: "memory")
-    #endif
+        #if (MSVC)
+            #define COMPILER_BARRIER() _ReadWriteBarrier()
+        #else
+            #define COMPILER_BARRIER() asm volatile("" ::: "memory")
+        #endif
 
         // ================ INITIALIZATION STUFF ================
 
@@ -4588,78 +4588,78 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             cycle_threshold = 7500; // if we're running under Hyper-V, make VMAware detect nested virtualization
         }
 
-    #if (WINDOWS)
-        const HMODULE ntdll = util::get_ntdll();
-        if (!ntdll) {
-            return true;
-        }
+        #if (WINDOWS)
+            const HMODULE ntdll = util::get_ntdll();
+            if (!ntdll) {
+                return true;
+            }
 
-        const char* names[] = { "NtQueryInformationThread", "NtSetInformationThread" };
-        void* funcs[ARRAYSIZE(names)] = {};
-        util::get_function_address(ntdll, names, funcs, ARRAYSIZE(names));
+            const char* names[] = { "NtQueryInformationThread", "NtSetInformationThread" };
+            void* funcs[ARRAYSIZE(names)] = {};
+            util::get_function_address(ntdll, names, funcs, ARRAYSIZE(names));
 
-        using NtQueryInformationThread_t = NTSTATUS(__stdcall*)(HANDLE, int, PVOID, ULONG, PULONG);
-        using NtSetInformationThread_t = NTSTATUS(__stdcall*)(HANDLE, int, PVOID, ULONG);
+            using NtQueryInformationThread_t = NTSTATUS(__stdcall*)(HANDLE, int, PVOID, ULONG, PULONG);
+            using NtSetInformationThread_t = NTSTATUS(__stdcall*)(HANDLE, int, PVOID, ULONG);
 
-        const auto pNtQueryInformationThread = reinterpret_cast<NtQueryInformationThread_t>(funcs[0]);
-        const auto pNtSetInformationThread = reinterpret_cast<NtSetInformationThread_t>(funcs[1]);
-        if (!pNtQueryInformationThread || !pNtSetInformationThread) {
-            return true;
-        }
+            const auto pNtQueryInformationThread = reinterpret_cast<NtQueryInformationThread_t>(funcs[0]);
+            const auto pNtSetInformationThread = reinterpret_cast<NtSetInformationThread_t>(funcs[1]);
+            if (!pNtQueryInformationThread || !pNtSetInformationThread) {
+                return true;
+            }
 
-        constexpr int ThreadBasicInformation = 0;
-        constexpr int ThreadAffinityMask = 4;
+            constexpr int ThreadBasicInformation = 0;
+            constexpr int ThreadAffinityMask = 4;
 
-        struct CLIENT_ID {
-            ULONG_PTR UniqueProcess;
-            ULONG_PTR UniqueThread;
-        };
-        struct THREAD_BASIC_INFORMATION {
-            NTSTATUS ExitStatus;
-            PVOID    TebBaseAddress;
-            CLIENT_ID ClientId;
-            ULONG_PTR AffinityMask;
-            LONG     Priority;
-            LONG     BasePriority;
-        } tbi;
-        const HANDLE hCurrentThread = reinterpret_cast<HANDLE>(-2LL);
+            struct CLIENT_ID {
+                ULONG_PTR UniqueProcess;
+                ULONG_PTR UniqueThread;
+            };
+            struct THREAD_BASIC_INFORMATION {
+                NTSTATUS ExitStatus;
+                PVOID    TebBaseAddress;
+                CLIENT_ID ClientId;
+                ULONG_PTR AffinityMask;
+                LONG     Priority;
+                LONG     BasePriority;
+            } tbi;
+            const HANDLE hCurrentThread = reinterpret_cast<HANDLE>(-2LL);
 
-        // current affinity
-        memset(&tbi, 0, sizeof(tbi));
-        NTSTATUS status = pNtQueryInformationThread(
-            hCurrentThread,
-            ThreadBasicInformation,
-            &tbi,
-            sizeof(tbi),
-            nullptr
-        );
+            // current affinity
+            memset(&tbi, 0, sizeof(tbi));
+            NTSTATUS status = pNtQueryInformationThread(
+                hCurrentThread,
+                ThreadBasicInformation,
+                &tbi,
+                sizeof(tbi),
+                nullptr
+            );
 
-        if (status < 0) {
-            return false;
-        }
+            if (status < 0) {
+                return false;
+            }
 
-        const ULONG_PTR originalAffinity = tbi.AffinityMask;
+            const ULONG_PTR originalAffinity = tbi.AffinityMask;
 
-        // new affinity
-        const DWORD_PTR wantedMask = static_cast<DWORD_PTR>(1);
-        status = pNtSetInformationThread(
-            hCurrentThread,
-            ThreadAffinityMask,
-            reinterpret_cast<PVOID>(const_cast<DWORD_PTR*>(&wantedMask)),
-            static_cast<ULONG>(sizeof(wantedMask))
-        );
+            // new affinity
+            const DWORD_PTR wantedMask = static_cast<DWORD_PTR>(1);
+            status = pNtSetInformationThread(
+                hCurrentThread,
+                ThreadAffinityMask,
+                reinterpret_cast<PVOID>(const_cast<DWORD_PTR*>(&wantedMask)),
+                static_cast<ULONG>(sizeof(wantedMask))
+            );
 
-        DWORD_PTR prevMask = 0;
-        if (status >= 0) {
-            prevMask = originalAffinity; // emulate SetThreadAffinityMask return
-        }
-        else {
-            prevMask = 0;
-        }
+            DWORD_PTR prevMask = 0;
+            if (status >= 0) {
+                prevMask = originalAffinity; // emulate SetThreadAffinityMask return
+            }
+            else {
+                prevMask = 0;
+            }
 
-        // setting a higher priority for the current thread actually makes the ration between rdtsc and other timers like QIT vary much more
-        // contrary to what someone might think about preempting reschedule
-    #endif 
+            // setting a higher priority for the current thread actually makes the ration between rdtsc and other timers like QIT vary much more
+            // contrary to what someone might think about preempting reschedule
+        #endif 
 
         thread_local u32 aux = 0;
         // check for RDTSCP support, we will use it later
@@ -4767,9 +4767,83 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
         
             // RDTSC trap detection
-            const ULONG64 count_first = 20000000ULL;
-            const ULONG64 count_second = 200000000ULL;
-            static thread_local volatile u64 g_sink = 0; // so that it doesnt need to be captured by the lambda
+            static thread_local volatile u64 g_sink = 0; // thread_local volatile so that it doesnt need to be captured by the lambda
+
+            // First we start by randomizing counts WITHOUT syscalls and WITHOUT using instructions that can be trapped by hypervisors, this was a hard task
+            struct entropy_provider {
+                // prevent inlining so optimizer can't fold this easily
+                #if (MSVC && !CLANG)
+                    __declspec(noinline)
+                #else
+                     __attribute__((noinline))
+                #endif
+                    ULONG64 operator()() const noexcept {
+                    // TO prevent hoisting across this call
+                    std::atomic_signal_fence(std::memory_order_seq_cst);
+
+                    // start state (golden ratio)
+                    volatile ULONG64 v = 0x9E3779B97F4A7C15ULL;
+
+                    // mix in addresses (ASLR gives entropy but if ASLR disabled or bypassed we have some tricks still)
+                    // Take addresses of various locals/statics and mark some volatile so they cannot be optimized away
+                    volatile int local_static = 0;               // local volatile (stack-like)
+                    static volatile int module_static = 0;       // static in function scope (image address)
+                    auto probe_lambda = []() noexcept {};       // stack-local lambda object
+                    uintptr_t pa = reinterpret_cast<uintptr_t>(&v);
+                    uintptr_t pb = reinterpret_cast<uintptr_t>(&local_static);
+                    uintptr_t pc = reinterpret_cast<uintptr_t>(&module_static);
+                    uintptr_t pd = reinterpret_cast<uintptr_t>(&probe_lambda);
+
+                    v ^= static_cast<ULONG64>(pa) + 0x9E3779B97F4A7C15ULL + (v << 6) + (v >> 2);
+                    v ^= static_cast<ULONG64>(pb) + (v << 7);
+                    v ^= static_cast<ULONG64>(pc) + (v >> 11);
+                    v ^= static_cast<ULONG64>(pd) + 0xBF58476D1CE4E5B9ULL;
+
+                    // dependent operations on volatile locals to prevent elimination
+                    for (int i = 0; i < 24; ++i) {
+                        volatile int stack_local = i ^ static_cast<int>(v);
+                        // take address each iteration and fold it in
+                        uintptr_t la = reinterpret_cast<uintptr_t>(&stack_local);
+                        v ^= (static_cast<ULONG64>(la) + (static_cast<ULONG64>(i) * 0x9E3779B97F4A7CULL));
+                        // dependent shifts to spread any small differences
+                        v ^= (v << ((i & 31)));
+                        v ^= (v >> (((i + 13) & 31)));
+                        // so compiler can't remove the local entirely
+                        std::atomic_signal_fence(std::memory_order_seq_cst);
+                    }
+
+                    // final avalanche! (as said before, just in case ASLR can be folded)
+                    v ^= (v << 13);
+                    v ^= (v >> 7);
+                    v ^= (v << 17);
+                    v *= 0x2545F4914F6CDD1DULL;
+                    v ^= (v >> 33);
+
+                    // another compiler fence to prevent hoisting results
+                    std::atomic_signal_fence(std::memory_order_seq_cst);
+
+                    return static_cast<ULONG64>(v);
+                }
+            };
+
+            // Use rejection sampling as before to avoid modulo bias
+            auto generate_iteration_value = [](ULONG64 min, ULONG64 max, auto getrand) noexcept -> ULONG64 {
+                const ULONG64 range = max - min + 1;
+                const ULONG64 limit = (~0ULL) - ((~0ULL) % range);
+                for (;;) {
+                    const ULONG64 r = getrand();
+                    if (r < limit) return min + (r % range);
+                    // small local mix to change subsequent outputs (still in user-mode and not a syscall)
+                    volatile ULONG64 scrub = r;
+                    scrub ^= (scrub << 11);
+                    scrub ^= (scrub >> 9);
+                    (void)scrub;
+                }
+            };
+
+            const entropy_provider entropyProv{};
+            const ULONG64 count_first = generate_iteration_value(30000000ULL, 40000000ULL, [&entropyProv]() noexcept { return entropyProv(); });
+            const ULONG64 count_second = generate_iteration_value(300000000ULL, 400000000ULL, [&entropyProv]() noexcept { return entropyProv(); });
 
             auto rd_lambda = []() noexcept -> u64 {
                 u64 v = __rdtsc();
@@ -4778,7 +4852,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             };
 
             auto xor_lambda = []() noexcept -> u64 {
-                volatile u64 a = 0xDEADBEEFDEADBEEFull; // can be replaced by NOPs
+                volatile u64 a = 0xDEADBEEFDEADBEEFull; // can be replaced by NOPs, the core idea is to use a non-trappable instruction that the hv cannot virtualize
                 volatile u64 b = 0x1234567890ABCDEFull;
                 u64 v = a ^ b;
                 g_sink ^= v;
@@ -4856,9 +4930,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
         #endif
 
-        // An hypervisor might detect that VMAware was spamming instructions to detect rdtsc hooks, and disable interception temporarily
+        // An hypervisor might detect that VMAware was spamming instructions to detect rdtsc hooks, and disable interception temporarily or include vm-exit latency in guest TSC
         // which is why we run the classic vm-exit latency check immediately after
-
+        // to ensure a kernel developer does not hardcode the number of iterations our detector do to change behavior depending on which test we're running (tsc freeze/downscale vs tsc aggregation)
+        // we used a rng before running the traditional rdtsc-cpuid-rdtsc trick
+       
         // sometimes not intercepted in some hvs (like VirtualBox) under compat mode
         auto cpuid = [&]() noexcept -> u64 {
         #if (MSVC)
@@ -4936,13 +5012,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         * This gives us more time for sampling before we're rescheduled again
         */
 
-    #if (WINDOWS)
-        // voluntary context switch to get a fresh quantum
-        SleepEx(1, FALSE);
-    #else 
-        // should work similarly in Unix-like operating systems
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    #endif
+        #if (WINDOWS)
+            // voluntary context switch to get a fresh quantum
+            SleepEx(1, FALSE);
+        #else 
+            // should work similarly in Unix-like operating systems
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        #endif
         for (int w = 0; w < 128; ++w) {
             volatile u64 tmp = cpuid();
             VMAWARE_UNUSED(tmp);
