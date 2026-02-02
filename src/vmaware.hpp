@@ -10117,7 +10117,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             if (!has_function) {
                 debug("NVRAM: NtEnumerateSystemEnvironmentValuesEx could not be resolved");
-                detection_result = true;
+                detection_result = false;
                 break;
             }
             if (!call_success) {
@@ -10139,6 +10139,60 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             SIZE_T kek_default_len = 0;
             SIZE_T kek_len = 0;
 
+            const GUID EFI_GLOBAL_VARIABLE = { 0x8BE4DF61, 0x93CA, 0x11D2, {0xAA,0x0D,0x00,0xE0,0x98,0x03,0x2B,0x8C} };
+
+            // Helper to read 1-byte UEFI variables like SecureBoot or SetupMode
+            auto read_uint8_var = [&](const std::wstring& name, const GUID& g, uint8_t& out) noexcept -> bool {
+                if (!nt_query_value || !nt_allocate_memory || !nt_free_memory) return false;
+                UNICODE_STRING uni_str{};
+                uni_str.Buffer = const_cast<PWSTR>(name.c_str());
+                uni_str.Length = static_cast<USHORT>(name.length() * sizeof(wchar_t));
+                uni_str.MaximumLength = uni_str.Length + sizeof(wchar_t);
+
+                ULONG required_size = 0;
+                NTSTATUS status = nt_query_value(&uni_str, const_cast<LPGUID>(&g), nullptr, &required_size, nullptr);
+                if (required_size == 0) return false;
+
+                PVOID allocation_base = nullptr;
+                SIZE_T alloc_size = required_size;
+                if (alloc_size < 0x1000) alloc_size = 0x1000;
+
+                status = nt_allocate_memory(current_process_handle, &allocation_base, 0, &alloc_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+                if (status != 0 || !allocation_base) { return false; }
+
+                status = nt_query_value(&uni_str, const_cast<LPGUID>(&g), allocation_base, &required_size, nullptr);
+                if (status == 0 && required_size >= 1) {
+                    out = *reinterpret_cast<uint8_t*>(allocation_base);
+                    SIZE_T z = 0;
+                    nt_free_memory(current_process_handle, &allocation_base, &z, 0x8000);
+                    return true;
+                }
+
+                SIZE_T zero_s = 0;
+                nt_free_memory(current_process_handle, &allocation_base, &zero_s, 0x8000);
+                return false;
+            };
+
+            bool have_secureboot = false;
+            uint8_t secureboot_val = 0;
+            if (read_uint8_var(L"SecureBoot", EFI_GLOBAL_VARIABLE, secureboot_val)) {
+                have_secureboot = true;
+                debug("NVRAM: SecureBoot variable detected");
+            }
+
+            bool have_setupmode = false;
+            uint8_t setupmode_val = 0;
+            if (read_uint8_var(L"SetupMode", EFI_GLOBAL_VARIABLE, setupmode_val)) {
+                have_setupmode = true;
+                debug("NVRAM: SetupMode variable detected");
+            }
+
+            // Determine whether it's safe to run Secure Boot dependent checks
+            const bool sb_active = (have_secureboot && (secureboot_val == 1) && have_setupmode && (setupmode_val == 0));
+            if (!sb_active) {
+                debug("NVRAM: Secure Boot not confirmed active, disabling MOCRL and raw buffer mismatch checks...");
+            }
+
             auto read_variable_to_buffer = [&](const std::wstring& name, GUID& guid, BYTE*& out_buf, SIZE_T& out_len) noexcept -> bool {
                 UNICODE_STRING uni_str{};
                 uni_str.Buffer = const_cast<PWSTR>(name.c_str());
@@ -10155,7 +10209,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 if (alloc_size < 0x1000) alloc_size = 0x1000;
 
                 status = nt_allocate_memory(current_process_handle, &allocation_base, 0, &alloc_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-                if (status != 0 || !allocation_base) { out_buf = nullptr; out_len = 0; return false; }
+                if (status != 0 || !allocation_base) { 
+                    out_buf = nullptr;
+                    out_len = 0; 
+                    return false; 
+                }
 
                 status = nt_query_value(&uni_str, &guid, allocation_base, &required_size, nullptr);
                 if (status == 0) {
@@ -10195,12 +10253,20 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 size_t name_max_bytes = 0;
                 if (current_var->NextEntryOffset != 0) {
                     const SIZE_T next_entry = static_cast<SIZE_T>(current_var->NextEntryOffset);
-                    if (next_entry <= name_struct_offset) { detection_result = false; should_break_loop = true; break; }
+                    if (next_entry <= name_struct_offset) { 
+                        detection_result = false; 
+                        should_break_loop = true; 
+                        break;
+                    }
                     if (next_entry > buffer_total_size - current_offset) break;
                     name_max_bytes = next_entry - name_struct_offset;
                 }
                 else {
-                    if (current_offset + name_struct_offset >= buffer_total_size) { detection_result = false; should_break_loop = true; break; }
+                    if (current_offset + name_struct_offset >= buffer_total_size) {
+                        detection_result = false; 
+                        should_break_loop = true;
+                        break; 
+                    }
                     name_max_bytes = buffer_total_size - (current_offset + name_struct_offset);
                 }
 
@@ -10211,12 +10277,17 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     const WCHAR* name_ptr = reinterpret_cast<const WCHAR*>(reinterpret_cast<const BYTE*>(current_var) + name_struct_offset);
                     const size_t max_chars = name_max_bytes / sizeof(WCHAR);
                     size_t real_chars = 0;
-                    while (real_chars < max_chars && name_ptr[real_chars] != L'\0') ++real_chars;
-                    if (real_chars == max_chars) { detection_result = false; should_break_loop = true; break; }
+                    while (real_chars < max_chars && name_ptr[real_chars] != L'\0') 
+                        ++real_chars;
+                    if (real_chars == max_chars) { 
+                        detection_result = false; 
+                        should_break_loop = true;
+                        break; 
+                    }
                     var_name_view = std::wstring(name_ptr, real_chars);
                 }
 
-                // Checks
+                // Presence checks
                 if (!var_name_view.empty() && var_name_view.rfind(L"VMM", 0) == 0) {
                     debug("NVRAM: Detected hypervisor signature");
                     detection_result = true;
@@ -10228,7 +10299,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 else if (var_name_view == L"dbxDefault") found_dbx_default = true;
                 else if (var_name_view == L"MemoryOverwriteRequestControlLock") found_morcl = true;
 
-                // Read specific variables
+                // Read specific variables (later checks that act on them will only be performed if Secure Boot was explicitly confirmed active)
                 if (var_name_view == L"PKDefault") (void)read_variable_to_buffer(std::wstring(var_name_view), current_var->VendorGuid, pk_default_buf, pk_default_len);
                 else if (var_name_view == L"PK") (void)read_variable_to_buffer(std::wstring(var_name_view), current_var->VendorGuid, pk_buf, pk_len);
                 else if (var_name_view == L"KEKDefault") (void)read_variable_to_buffer(std::wstring(var_name_view), current_var->VendorGuid, kek_default_buf, kek_default_len);
@@ -10236,6 +10307,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
                 if (current_var->NextEntryOffset == 0) break;
                 const SIZE_T next_entry_off = static_cast<SIZE_T>(current_var->NextEntryOffset);
+                if (next_entry_off == 0) break;
                 const size_t next_var_offset = current_offset + next_entry_off;
                 if (next_var_offset <= current_offset || next_var_offset > buffer_total_size) break;
                 current_var = reinterpret_cast<variable_name_ptr>(reinterpret_cast<PBYTE>(enum_base_buffer) + next_var_offset);
@@ -10244,11 +10316,21 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             if (should_break_loop) break;
 
             // free enumeration buffer
-            { SIZE_T z = 0; nt_free_memory(current_process_handle, &enum_base_buffer, &z, 0x8000); enum_base_buffer = nullptr; enum_alloc_size = 0; }
+            { 
+                SIZE_T z = 0; 
+                nt_free_memory(current_process_handle, &enum_base_buffer, &z, 0x8000); 
+                enum_base_buffer = nullptr; 
+                enum_alloc_size = 0; 
+            }
 
-            if (!found_morcl) {
-                debug("NVRAM: Missing MemoryOverwriteRequestControlLock"); detection_result = true;
-                break;
+            // ---------------------------------------------------------------------
+            // EFI variable analysis
+            // ---------------------------------------------------------------------
+            if (sb_active) {
+                if (!found_morcl) {
+                    debug("NVRAM: Missing MemoryOverwriteRequestControlLock"); detection_result = true;
+                    break;
+                }
             }
             if (!found_dbx_default) {
                 debug("NVRAM: Missing dbxDefault"); detection_result = true;
@@ -10263,21 +10345,18 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 break;
             }
 
-            if (!found_dbx_default || !found_kek_default || !found_pk_default) {
-                // Surface Pro models (like Pro 8) and Lenovo models, like 21CNS0YA0V, 21KSCTO1WW, 20LTA50SCD, 20U8S18J00, etc... miss dbDefault and related sb efi vars
-                if (ascii_string_equals_ci(manufacturer_str, "lenovo") || ascii_string_equals_ci(manufacturer_str, "surface pro"))
-                    detection_result = false;
-            }
-
-            // check for official red hat certs
+            // check for official red hat certs (QEMU/OVMF)
             bool found_redhat = false;
             if (pk_default_buf && pk_default_len) {
                 if ((pk_default_len >= 2) && ((pk_default_len % 2) == 0)) {
                     const WCHAR* wptr = reinterpret_cast<const WCHAR*>(pk_default_buf);
                     const size_t wlen = pk_default_len / sizeof(WCHAR);
-                    if (buffer_contains_utf16le_ci(wptr, wlen, redhat_sig_wide)) found_redhat = true;
+                    if (buffer_contains_utf16le_ci(wptr, wlen, redhat_sig_wide))
+                        found_redhat = true;
                 }
-                if (!found_redhat) if (buffer_contains_ascii_ci(pk_default_buf, pk_default_len, redhat_sig_ascii)) found_redhat = true;
+                if (!found_redhat)
+                    if (buffer_contains_ascii_ci(pk_default_buf, pk_default_len, redhat_sig_ascii))
+                        found_redhat = true;
             }
             if (found_redhat) {
                 debug("NVRAM: QEMU/OVMF detected");
@@ -10290,15 +10369,25 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 if (!buf || len == 0) return false;
                 if ((len >= 2) && ((len % 2) == 0)) {
                     const WCHAR* wptr = reinterpret_cast<const WCHAR*>(buf); const size_t wlen = len / sizeof(WCHAR);
-                    for (const wchar_t* p : vendor_list_wide) if (buffer_contains_utf16le_ci(wptr, wlen, p)) return true;
+                    for (const wchar_t* p : vendor_list_wide)
+                        if (buffer_contains_utf16le_ci(wptr, wlen, p))
+                            return true;
                 }
-                for (const char* p : vendor_list_ascii) if (buffer_contains_ascii_ci(buf, len, p)) return true;
+                for (const char* p : vendor_list_ascii)
+                    if (buffer_contains_ascii_ci(buf, len, p))
+                        return true;
                 return false;
             };
             auto buffer_has_specific_vendor = [&](BYTE* buf, SIZE_T len, const char* a, const wchar_t* w) noexcept -> bool {
                 if (!buf || len == 0) return false;
-                if ((len >= 2) && ((len % 2) == 0) && w) { const WCHAR* wp = reinterpret_cast<const WCHAR*>(buf); if (buffer_contains_utf16le_ci(wp, len / sizeof(WCHAR), w)) return true; }
-                if (a) if (buffer_contains_ascii_ci(buf, len, a)) return true;
+                if ((len >= 2) && ((len % 2) == 0) && w) {
+                    const WCHAR* wp = reinterpret_cast<const WCHAR*>(buf);
+                    if (buffer_contains_utf16le_ci(wp, len / sizeof(WCHAR), w))
+                        return true;
+                }
+                if (a)
+                    if (buffer_contains_ascii_ci(buf, len, a))
+                        return true;
                 return false;
             };
 
@@ -10336,15 +10425,17 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 if (vendor_mismatch) break;
             }
 
-            if (pk_default_buf && pk_buf && (pk_default_len != pk_len || memcmp(pk_default_buf, pk_buf, static_cast<size_t>(pk_default_len < pk_len ? pk_default_len : pk_len)) != 0)) {
-                debug("NVRAM: PK vs PKDefault raw mismatch detected");
-                detection_result = true;
-                break;
-            }
-            if (kek_default_buf && kek_buf && (kek_default_len != kek_len || memcmp(kek_default_buf, kek_buf, static_cast<size_t>(kek_default_len < kek_len ? kek_default_len : kek_len)) != 0)) {
-                debug("NVRAM: KEK vs KEKDefault raw mismatch detected");
-                detection_result = true;
-                break;
+            if (sb_active) {
+                if (pk_default_buf && pk_buf && (pk_default_len != pk_len || memcmp(pk_default_buf, pk_buf, static_cast<size_t>(pk_default_len < pk_len ? pk_default_len : pk_len)) != 0)) {
+                    debug("NVRAM: PK vs PKDefault raw mismatch detected");
+                    detection_result = true;
+                    break;
+                }
+                if (kek_default_buf && kek_buf && (kek_default_len != kek_len || memcmp(kek_default_buf, kek_buf, static_cast<size_t>(kek_default_len < kek_len ? kek_default_len : kek_len)) != 0)) {
+                    debug("NVRAM: KEK vs KEKDefault raw mismatch detected");
+                    detection_result = true;
+                    break;
+                }
             }
 
             detection_result = false;
@@ -10352,7 +10443,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         } while (false);
 
         // cleanup
-        auto cleanup = [&](auto& ptr) { 
+        auto cleanup = [&](auto& ptr) {
             if (ptr) {
                 PVOID base = ptr;
                 SIZE_T size = 0;
@@ -10374,9 +10465,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             tp_disable.Privileges[0].Attributes = 0;
             AdjustTokenPrivileges(token_handle, FALSE, &tp_disable, sizeof(TOKEN_PRIVILEGES), nullptr, nullptr);
         }
-        if (token_handle) { 
-            CloseHandle(token_handle); 
-            token_handle = nullptr; 
+        if (token_handle) {
+            CloseHandle(token_handle);
+            token_handle = nullptr;
         }
 
         return detection_result;
