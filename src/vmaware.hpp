@@ -4570,11 +4570,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     [[nodiscard]] static bool timer() {
     #if (x86)
 
-    #if (MSVC)
-        #define COMPILER_BARRIER() _ReadWriteBarrier()
-    #else
-        #define COMPILER_BARRIER() asm volatile("" ::: "memory")
-    #endif
+        #if (MSVC)
+            #define COMPILER_BARRIER() _ReadWriteBarrier()
+        #else
+            #define COMPILER_BARRIER() asm volatile("" ::: "memory")
+        #endif
 
         // ================ INITIALIZATION STUFF ================
 
@@ -4588,78 +4588,78 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             cycle_threshold = 7500; // if we're running under Hyper-V, make VMAware detect nested virtualization
         }
 
-    #if (WINDOWS)
-        const HMODULE ntdll = util::get_ntdll();
-        if (!ntdll) {
-            return true;
-        }
+        #if (WINDOWS)
+            const HMODULE ntdll = util::get_ntdll();
+            if (!ntdll) {
+                return true;
+            }
 
-        const char* names[] = { "NtQueryInformationThread", "NtSetInformationThread" };
-        void* funcs[ARRAYSIZE(names)] = {};
-        util::get_function_address(ntdll, names, funcs, ARRAYSIZE(names));
+            const char* names[] = { "NtQueryInformationThread", "NtSetInformationThread" };
+            void* funcs[ARRAYSIZE(names)] = {};
+            util::get_function_address(ntdll, names, funcs, ARRAYSIZE(names));
 
-        using NtQueryInformationThread_t = NTSTATUS(__stdcall*)(HANDLE, int, PVOID, ULONG, PULONG);
-        using NtSetInformationThread_t = NTSTATUS(__stdcall*)(HANDLE, int, PVOID, ULONG);
+            using NtQueryInformationThread_t = NTSTATUS(__stdcall*)(HANDLE, int, PVOID, ULONG, PULONG);
+            using NtSetInformationThread_t = NTSTATUS(__stdcall*)(HANDLE, int, PVOID, ULONG);
 
-        const auto pNtQueryInformationThread = reinterpret_cast<NtQueryInformationThread_t>(funcs[0]);
-        const auto pNtSetInformationThread = reinterpret_cast<NtSetInformationThread_t>(funcs[1]);
-        if (!pNtQueryInformationThread || !pNtSetInformationThread) {
-            return true;
-        }
+            const auto pNtQueryInformationThread = reinterpret_cast<NtQueryInformationThread_t>(funcs[0]);
+            const auto pNtSetInformationThread = reinterpret_cast<NtSetInformationThread_t>(funcs[1]);
+            if (!pNtQueryInformationThread || !pNtSetInformationThread) {
+                return true;
+            }
 
-        constexpr int ThreadBasicInformation = 0;
-        constexpr int ThreadAffinityMask = 4;
+            constexpr int ThreadBasicInformation = 0;
+            constexpr int ThreadAffinityMask = 4;
 
-        struct CLIENT_ID {
-            ULONG_PTR UniqueProcess;
-            ULONG_PTR UniqueThread;
-        };
-        struct THREAD_BASIC_INFORMATION {
-            NTSTATUS ExitStatus;
-            PVOID    TebBaseAddress;
-            CLIENT_ID ClientId;
-            ULONG_PTR AffinityMask;
-            LONG     Priority;
-            LONG     BasePriority;
-        } tbi;
-        const HANDLE hCurrentThread = reinterpret_cast<HANDLE>(-2LL);
+            struct CLIENT_ID {
+                ULONG_PTR UniqueProcess;
+                ULONG_PTR UniqueThread;
+            };
+            struct THREAD_BASIC_INFORMATION {
+                NTSTATUS ExitStatus;
+                PVOID    TebBaseAddress;
+                CLIENT_ID ClientId;
+                ULONG_PTR AffinityMask;
+                LONG     Priority;
+                LONG     BasePriority;
+            } tbi;
+            const HANDLE hCurrentThread = reinterpret_cast<HANDLE>(-2LL);
 
-        // current affinity
-        memset(&tbi, 0, sizeof(tbi));
-        NTSTATUS status = pNtQueryInformationThread(
-            hCurrentThread,
-            ThreadBasicInformation,
-            &tbi,
-            sizeof(tbi),
-            nullptr
-        );
+            // current affinity
+            memset(&tbi, 0, sizeof(tbi));
+            NTSTATUS status = pNtQueryInformationThread(
+                hCurrentThread,
+                ThreadBasicInformation,
+                &tbi,
+                sizeof(tbi),
+                nullptr
+            );
 
-        if (status < 0) {
-            return false;
-        }
+            if (status < 0) {
+                return false;
+            }
 
-        const ULONG_PTR originalAffinity = tbi.AffinityMask;
+            const ULONG_PTR originalAffinity = tbi.AffinityMask;
 
-        // new affinity
-        const DWORD_PTR wantedMask = static_cast<DWORD_PTR>(1);
-        status = pNtSetInformationThread(
-            hCurrentThread,
-            ThreadAffinityMask,
-            reinterpret_cast<PVOID>(const_cast<DWORD_PTR*>(&wantedMask)),
-            static_cast<ULONG>(sizeof(wantedMask))
-        );
+            // new affinity
+            const DWORD_PTR wantedMask = static_cast<DWORD_PTR>(1);
+            status = pNtSetInformationThread(
+                hCurrentThread,
+                ThreadAffinityMask,
+                reinterpret_cast<PVOID>(const_cast<DWORD_PTR*>(&wantedMask)),
+                static_cast<ULONG>(sizeof(wantedMask))
+            );
 
-        DWORD_PTR prevMask = 0;
-        if (status >= 0) {
-            prevMask = originalAffinity; // emulate SetThreadAffinityMask return
-        }
-        else {
-            prevMask = 0;
-        }
+            DWORD_PTR prevMask = 0;
+            if (status >= 0) {
+                prevMask = originalAffinity; // emulate SetThreadAffinityMask return
+            }
+            else {
+                prevMask = 0;
+            }
 
-        // setting a higher priority for the current thread actually makes the ration between rdtsc and other timers like QIT vary much more
-        // contrary to what someone might think about preempting reschedule
-    #endif 
+            // setting a higher priority for the current thread actually makes the ration between rdtsc and other timers like QIT vary much more
+            // contrary to what someone might think about preempting reschedule
+        #endif 
 
         thread_local u32 aux = 0;
         // check for RDTSCP support, we will use it later
@@ -4767,9 +4767,83 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
         
             // RDTSC trap detection
-            const ULONG64 count_first = 20000000ULL;
-            const ULONG64 count_second = 200000000ULL;
-            static thread_local volatile u64 g_sink = 0; // so that it doesnt need to be captured by the lambda
+            static thread_local volatile u64 g_sink = 0; // thread_local volatile so that it doesnt need to be captured by the lambda
+
+            // First we start by randomizing counts WITHOUT syscalls and WITHOUT using instructions that can be trapped by hypervisors, this was a hard task
+            struct entropy_provider {
+                // prevent inlining so optimizer can't fold this easily
+                #if (MSVC && !CLANG)
+                    __declspec(noinline)
+                #else
+                     __attribute__((noinline))
+                #endif
+                    ULONG64 operator()() const noexcept {
+                    // TO prevent hoisting across this call
+                    std::atomic_signal_fence(std::memory_order_seq_cst);
+
+                    // start state (golden ratio)
+                    volatile ULONG64 v = 0x9E3779B97F4A7C15ULL;
+
+                    // mix in addresses (ASLR gives entropy but if ASLR disabled or bypassed we have some tricks still)
+                    // Take addresses of various locals/statics and mark some volatile so they cannot be optimized away
+                    volatile int local_static = 0;               // local volatile (stack-like)
+                    static volatile int module_static = 0;       // static in function scope (image address)
+                    auto probe_lambda = []() noexcept {};       // stack-local lambda object
+                    uintptr_t pa = reinterpret_cast<uintptr_t>(&v);
+                    uintptr_t pb = reinterpret_cast<uintptr_t>(&local_static);
+                    uintptr_t pc = reinterpret_cast<uintptr_t>(&module_static);
+                    uintptr_t pd = reinterpret_cast<uintptr_t>(&probe_lambda);
+
+                    v ^= static_cast<ULONG64>(pa) + 0x9E3779B97F4A7C15ULL + (v << 6) + (v >> 2);
+                    v ^= static_cast<ULONG64>(pb) + (v << 7);
+                    v ^= static_cast<ULONG64>(pc) + (v >> 11);
+                    v ^= static_cast<ULONG64>(pd) + 0xBF58476D1CE4E5B9ULL;
+
+                    // dependent operations on volatile locals to prevent elimination
+                    for (int i = 0; i < 24; ++i) {
+                        volatile int stack_local = i ^ static_cast<int>(v);
+                        // take address each iteration and fold it in
+                        uintptr_t la = reinterpret_cast<uintptr_t>(&stack_local);
+                        v ^= (static_cast<ULONG64>(la) + (static_cast<ULONG64>(i) * 0x9E3779B97F4A7CULL));
+                        // dependent shifts to spread any small differences
+                        v ^= (v << ((i & 31)));
+                        v ^= (v >> (((i + 13) & 31)));
+                        // so compiler can't remove the local entirely
+                        std::atomic_signal_fence(std::memory_order_seq_cst);
+                    }
+
+                    // final avalanche! (as said before, just in case ASLR can be folded)
+                    v ^= (v << 13);
+                    v ^= (v >> 7);
+                    v ^= (v << 17);
+                    v *= 0x2545F4914F6CDD1DULL;
+                    v ^= (v >> 33);
+
+                    // another compiler fence to prevent hoisting results
+                    std::atomic_signal_fence(std::memory_order_seq_cst);
+
+                    return static_cast<ULONG64>(v);
+                }
+            };
+
+            // Use rejection sampling as before to avoid modulo bias
+            auto generate_iteration_value = [](ULONG64 min, ULONG64 max, auto getrand) noexcept -> ULONG64 {
+                const ULONG64 range = max - min + 1;
+                const ULONG64 limit = (~0ULL) - ((~0ULL) % range);
+                for (;;) {
+                    const ULONG64 r = getrand();
+                    if (r < limit) return min + (r % range);
+                    // small local mix to change subsequent outputs (still in user-mode and not a syscall)
+                    volatile ULONG64 scrub = r;
+                    scrub ^= (scrub << 11);
+                    scrub ^= (scrub >> 9);
+                    (void)scrub;
+                }
+            };
+
+            const entropy_provider entropyProv{};
+            const ULONG64 count_first = generate_iteration_value(30000000ULL, 40000000ULL, [&entropyProv]() noexcept { return entropyProv(); });
+            const ULONG64 count_second = generate_iteration_value(300000000ULL, 400000000ULL, [&entropyProv]() noexcept { return entropyProv(); });
 
             auto rd_lambda = []() noexcept -> u64 {
                 u64 v = __rdtsc();
@@ -4778,7 +4852,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             };
 
             auto xor_lambda = []() noexcept -> u64 {
-                volatile u64 a = 0xDEADBEEFDEADBEEFull; // can be replaced by NOPs
+                volatile u64 a = 0xDEADBEEFDEADBEEFull; // can be replaced by NOPs, the core idea is to use a non-trappable instruction that the hv cannot virtualize
                 volatile u64 b = 0x1234567890ABCDEFull;
                 u64 v = a ^ b;
                 g_sink ^= v;
@@ -4856,9 +4930,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
         #endif
 
-        // An hypervisor might detect that VMAware was spamming instructions to detect rdtsc hooks, and disable interception temporarily
+        // An hypervisor might detect that VMAware was spamming instructions to detect rdtsc hooks, and disable interception temporarily or include vm-exit latency in guest TSC
         // which is why we run the classic vm-exit latency check immediately after
-
+        // to ensure a kernel developer does not hardcode the number of iterations our detector do to change behavior depending on which test we're running (tsc freeze/downscale vs tsc aggregation)
+        // we used a rng before running the traditional rdtsc-cpuid-rdtsc trick
+       
         // sometimes not intercepted in some hvs (like VirtualBox) under compat mode
         auto cpuid = [&]() noexcept -> u64 {
         #if (MSVC)
@@ -4936,13 +5012,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         * This gives us more time for sampling before we're rescheduled again
         */
 
-    #if (WINDOWS)
-        // voluntary context switch to get a fresh quantum
-        SleepEx(1, FALSE);
-    #else 
-        // should work similarly in Unix-like operating systems
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    #endif
+        #if (WINDOWS)
+            // voluntary context switch to get a fresh quantum
+            SleepEx(1, FALSE);
+        #else 
+            // should work similarly in Unix-like operating systems
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        #endif
         for (int w = 0; w < 128; ++w) {
             volatile u64 tmp = cpuid();
             VMAWARE_UNUSED(tmp);
@@ -10041,7 +10117,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             if (!has_function) {
                 debug("NVRAM: NtEnumerateSystemEnvironmentValuesEx could not be resolved");
-                detection_result = true;
+                detection_result = false;
                 break;
             }
             if (!call_success) {
@@ -10063,6 +10139,60 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             SIZE_T kek_default_len = 0;
             SIZE_T kek_len = 0;
 
+            const GUID EFI_GLOBAL_VARIABLE = { 0x8BE4DF61, 0x93CA, 0x11D2, {0xAA,0x0D,0x00,0xE0,0x98,0x03,0x2B,0x8C} };
+
+            // Helper to read 1-byte UEFI variables like SecureBoot or SetupMode
+            auto read_uint8_var = [&](const std::wstring& name, const GUID& g, uint8_t& out) noexcept -> bool {
+                if (!nt_query_value || !nt_allocate_memory || !nt_free_memory) return false;
+                UNICODE_STRING uni_str{};
+                uni_str.Buffer = const_cast<PWSTR>(name.c_str());
+                uni_str.Length = static_cast<USHORT>(name.length() * sizeof(wchar_t));
+                uni_str.MaximumLength = uni_str.Length + sizeof(wchar_t);
+
+                ULONG required_size = 0;
+                NTSTATUS status = nt_query_value(&uni_str, const_cast<LPGUID>(&g), nullptr, &required_size, nullptr);
+                if (required_size == 0) return false;
+
+                PVOID allocation_base = nullptr;
+                SIZE_T alloc_size = required_size;
+                if (alloc_size < 0x1000) alloc_size = 0x1000;
+
+                status = nt_allocate_memory(current_process_handle, &allocation_base, 0, &alloc_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+                if (status != 0 || !allocation_base) { return false; }
+
+                status = nt_query_value(&uni_str, const_cast<LPGUID>(&g), allocation_base, &required_size, nullptr);
+                if (status == 0 && required_size >= 1) {
+                    out = *reinterpret_cast<uint8_t*>(allocation_base);
+                    SIZE_T z = 0;
+                    nt_free_memory(current_process_handle, &allocation_base, &z, 0x8000);
+                    return true;
+                }
+
+                SIZE_T zero_s = 0;
+                nt_free_memory(current_process_handle, &allocation_base, &zero_s, 0x8000);
+                return false;
+            };
+
+            bool have_secureboot = false;
+            uint8_t secureboot_val = 0;
+            if (read_uint8_var(L"SecureBoot", EFI_GLOBAL_VARIABLE, secureboot_val)) {
+                have_secureboot = true;
+                debug("NVRAM: SecureBoot variable detected");
+            }
+
+            bool have_setupmode = false;
+            uint8_t setupmode_val = 0;
+            if (read_uint8_var(L"SetupMode", EFI_GLOBAL_VARIABLE, setupmode_val)) {
+                have_setupmode = true;
+                debug("NVRAM: SetupMode variable detected");
+            }
+
+            // Determine whether it's safe to run Secure Boot dependent checks
+            const bool sb_active = (have_secureboot && (secureboot_val == 1) && have_setupmode && (setupmode_val == 0));
+            if (!sb_active) {
+                debug("NVRAM: Secure Boot not confirmed active, disabling MOCRL and raw buffer mismatch checks...");
+            }
+
             auto read_variable_to_buffer = [&](const std::wstring& name, GUID& guid, BYTE*& out_buf, SIZE_T& out_len) noexcept -> bool {
                 UNICODE_STRING uni_str{};
                 uni_str.Buffer = const_cast<PWSTR>(name.c_str());
@@ -10079,7 +10209,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 if (alloc_size < 0x1000) alloc_size = 0x1000;
 
                 status = nt_allocate_memory(current_process_handle, &allocation_base, 0, &alloc_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-                if (status != 0 || !allocation_base) { out_buf = nullptr; out_len = 0; return false; }
+                if (status != 0 || !allocation_base) { 
+                    out_buf = nullptr;
+                    out_len = 0; 
+                    return false; 
+                }
 
                 status = nt_query_value(&uni_str, &guid, allocation_base, &required_size, nullptr);
                 if (status == 0) {
@@ -10119,12 +10253,20 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 size_t name_max_bytes = 0;
                 if (current_var->NextEntryOffset != 0) {
                     const SIZE_T next_entry = static_cast<SIZE_T>(current_var->NextEntryOffset);
-                    if (next_entry <= name_struct_offset) { detection_result = false; should_break_loop = true; break; }
+                    if (next_entry <= name_struct_offset) { 
+                        detection_result = false; 
+                        should_break_loop = true; 
+                        break;
+                    }
                     if (next_entry > buffer_total_size - current_offset) break;
                     name_max_bytes = next_entry - name_struct_offset;
                 }
                 else {
-                    if (current_offset + name_struct_offset >= buffer_total_size) { detection_result = false; should_break_loop = true; break; }
+                    if (current_offset + name_struct_offset >= buffer_total_size) {
+                        detection_result = false; 
+                        should_break_loop = true;
+                        break; 
+                    }
                     name_max_bytes = buffer_total_size - (current_offset + name_struct_offset);
                 }
 
@@ -10135,12 +10277,17 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     const WCHAR* name_ptr = reinterpret_cast<const WCHAR*>(reinterpret_cast<const BYTE*>(current_var) + name_struct_offset);
                     const size_t max_chars = name_max_bytes / sizeof(WCHAR);
                     size_t real_chars = 0;
-                    while (real_chars < max_chars && name_ptr[real_chars] != L'\0') ++real_chars;
-                    if (real_chars == max_chars) { detection_result = false; should_break_loop = true; break; }
+                    while (real_chars < max_chars && name_ptr[real_chars] != L'\0') 
+                        ++real_chars;
+                    if (real_chars == max_chars) { 
+                        detection_result = false; 
+                        should_break_loop = true;
+                        break; 
+                    }
                     var_name_view = std::wstring(name_ptr, real_chars);
                 }
 
-                // Checks
+                // Presence checks
                 if (!var_name_view.empty() && var_name_view.rfind(L"VMM", 0) == 0) {
                     debug("NVRAM: Detected hypervisor signature");
                     detection_result = true;
@@ -10152,7 +10299,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 else if (var_name_view == L"dbxDefault") found_dbx_default = true;
                 else if (var_name_view == L"MemoryOverwriteRequestControlLock") found_morcl = true;
 
-                // Read specific variables
+                // Read specific variables (later checks that act on them will only be performed if Secure Boot was explicitly confirmed active)
                 if (var_name_view == L"PKDefault") (void)read_variable_to_buffer(std::wstring(var_name_view), current_var->VendorGuid, pk_default_buf, pk_default_len);
                 else if (var_name_view == L"PK") (void)read_variable_to_buffer(std::wstring(var_name_view), current_var->VendorGuid, pk_buf, pk_len);
                 else if (var_name_view == L"KEKDefault") (void)read_variable_to_buffer(std::wstring(var_name_view), current_var->VendorGuid, kek_default_buf, kek_default_len);
@@ -10160,6 +10307,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
                 if (current_var->NextEntryOffset == 0) break;
                 const SIZE_T next_entry_off = static_cast<SIZE_T>(current_var->NextEntryOffset);
+                if (next_entry_off == 0) break;
                 const size_t next_var_offset = current_offset + next_entry_off;
                 if (next_var_offset <= current_offset || next_var_offset > buffer_total_size) break;
                 current_var = reinterpret_cast<variable_name_ptr>(reinterpret_cast<PBYTE>(enum_base_buffer) + next_var_offset);
@@ -10168,11 +10316,21 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             if (should_break_loop) break;
 
             // free enumeration buffer
-            { SIZE_T z = 0; nt_free_memory(current_process_handle, &enum_base_buffer, &z, 0x8000); enum_base_buffer = nullptr; enum_alloc_size = 0; }
+            { 
+                SIZE_T z = 0; 
+                nt_free_memory(current_process_handle, &enum_base_buffer, &z, 0x8000); 
+                enum_base_buffer = nullptr; 
+                enum_alloc_size = 0; 
+            }
 
-            if (!found_morcl) {
-                debug("NVRAM: Missing MemoryOverwriteRequestControlLock"); detection_result = true;
-                break;
+            // ---------------------------------------------------------------------
+            // EFI variable analysis
+            // ---------------------------------------------------------------------
+            if (sb_active) {
+                if (!found_morcl) {
+                    debug("NVRAM: Missing MemoryOverwriteRequestControlLock"); detection_result = true;
+                    break;
+                }
             }
             if (!found_dbx_default) {
                 debug("NVRAM: Missing dbxDefault"); detection_result = true;
@@ -10187,21 +10345,18 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 break;
             }
 
-            if (!found_dbx_default || !found_kek_default || !found_pk_default) {
-                // Surface Pro models (like Pro 8) and Lenovo models, like 21CNS0YA0V, 21KSCTO1WW, 20LTA50SCD, 20U8S18J00, etc... miss dbDefault and related sb efi vars
-                if (ascii_string_equals_ci(manufacturer_str, "lenovo") || ascii_string_equals_ci(manufacturer_str, "surface pro"))
-                    detection_result = false;
-            }
-
-            // check for official red hat certs
+            // check for official red hat certs (QEMU/OVMF)
             bool found_redhat = false;
             if (pk_default_buf && pk_default_len) {
                 if ((pk_default_len >= 2) && ((pk_default_len % 2) == 0)) {
                     const WCHAR* wptr = reinterpret_cast<const WCHAR*>(pk_default_buf);
                     const size_t wlen = pk_default_len / sizeof(WCHAR);
-                    if (buffer_contains_utf16le_ci(wptr, wlen, redhat_sig_wide)) found_redhat = true;
+                    if (buffer_contains_utf16le_ci(wptr, wlen, redhat_sig_wide))
+                        found_redhat = true;
                 }
-                if (!found_redhat) if (buffer_contains_ascii_ci(pk_default_buf, pk_default_len, redhat_sig_ascii)) found_redhat = true;
+                if (!found_redhat)
+                    if (buffer_contains_ascii_ci(pk_default_buf, pk_default_len, redhat_sig_ascii))
+                        found_redhat = true;
             }
             if (found_redhat) {
                 debug("NVRAM: QEMU/OVMF detected");
@@ -10214,15 +10369,25 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 if (!buf || len == 0) return false;
                 if ((len >= 2) && ((len % 2) == 0)) {
                     const WCHAR* wptr = reinterpret_cast<const WCHAR*>(buf); const size_t wlen = len / sizeof(WCHAR);
-                    for (const wchar_t* p : vendor_list_wide) if (buffer_contains_utf16le_ci(wptr, wlen, p)) return true;
+                    for (const wchar_t* p : vendor_list_wide)
+                        if (buffer_contains_utf16le_ci(wptr, wlen, p))
+                            return true;
                 }
-                for (const char* p : vendor_list_ascii) if (buffer_contains_ascii_ci(buf, len, p)) return true;
+                for (const char* p : vendor_list_ascii)
+                    if (buffer_contains_ascii_ci(buf, len, p))
+                        return true;
                 return false;
             };
             auto buffer_has_specific_vendor = [&](BYTE* buf, SIZE_T len, const char* a, const wchar_t* w) noexcept -> bool {
                 if (!buf || len == 0) return false;
-                if ((len >= 2) && ((len % 2) == 0) && w) { const WCHAR* wp = reinterpret_cast<const WCHAR*>(buf); if (buffer_contains_utf16le_ci(wp, len / sizeof(WCHAR), w)) return true; }
-                if (a) if (buffer_contains_ascii_ci(buf, len, a)) return true;
+                if ((len >= 2) && ((len % 2) == 0) && w) {
+                    const WCHAR* wp = reinterpret_cast<const WCHAR*>(buf);
+                    if (buffer_contains_utf16le_ci(wp, len / sizeof(WCHAR), w))
+                        return true;
+                }
+                if (a)
+                    if (buffer_contains_ascii_ci(buf, len, a))
+                        return true;
                 return false;
             };
 
@@ -10260,15 +10425,17 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 if (vendor_mismatch) break;
             }
 
-            if (pk_default_buf && pk_buf && (pk_default_len != pk_len || memcmp(pk_default_buf, pk_buf, static_cast<size_t>(pk_default_len < pk_len ? pk_default_len : pk_len)) != 0)) {
-                debug("NVRAM: PK vs PKDefault raw mismatch detected");
-                detection_result = true;
-                break;
-            }
-            if (kek_default_buf && kek_buf && (kek_default_len != kek_len || memcmp(kek_default_buf, kek_buf, static_cast<size_t>(kek_default_len < kek_len ? kek_default_len : kek_len)) != 0)) {
-                debug("NVRAM: KEK vs KEKDefault raw mismatch detected");
-                detection_result = true;
-                break;
+            if (sb_active) {
+                if (pk_default_buf && pk_buf && (pk_default_len != pk_len || memcmp(pk_default_buf, pk_buf, static_cast<size_t>(pk_default_len < pk_len ? pk_default_len : pk_len)) != 0)) {
+                    debug("NVRAM: PK vs PKDefault raw mismatch detected");
+                    detection_result = true;
+                    break;
+                }
+                if (kek_default_buf && kek_buf && (kek_default_len != kek_len || memcmp(kek_default_buf, kek_buf, static_cast<size_t>(kek_default_len < kek_len ? kek_default_len : kek_len)) != 0)) {
+                    debug("NVRAM: KEK vs KEKDefault raw mismatch detected");
+                    detection_result = true;
+                    break;
+                }
             }
 
             detection_result = false;
@@ -10276,7 +10443,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         } while (false);
 
         // cleanup
-        auto cleanup = [&](auto& ptr) { 
+        auto cleanup = [&](auto& ptr) {
             if (ptr) {
                 PVOID base = ptr;
                 SIZE_T size = 0;
@@ -10298,9 +10465,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             tp_disable.Privileges[0].Attributes = 0;
             AdjustTokenPrivileges(token_handle, FALSE, &tp_disable, sizeof(TOKEN_PRIVILEGES), nullptr, nullptr);
         }
-        if (token_handle) { 
-            CloseHandle(token_handle); 
-            token_handle = nullptr; 
+        if (token_handle) {
+            CloseHandle(token_handle);
+            token_handle = nullptr;
         }
 
         return detection_result;
