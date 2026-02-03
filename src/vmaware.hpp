@@ -4585,7 +4585,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // will be used in cpuid measurements later
         u16 cycle_threshold = 1000;
         if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
-            cycle_threshold = 7500; // if we're running under Hyper-V, make VMAware detect nested virtualization
+            cycle_threshold = 3500; // if we're running under Hyper-V, make VMAware detect nested virtualization
         }
 
         #if (WINDOWS)
@@ -4767,6 +4767,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
         
             // RDTSC trap detection
+            // This detection uses two clocks and two loops, a loop that the hypervisor can spoof and a loop that the hypervisor cannot
+            // When RDTSC is hooked, the hypervisor usually "downscales" the result to hide the time passed or doesnt let TSC advance for the time it was vm-exiting
+            // However, the hypervisor have absolutely no way to downscale time for the second loop because it runs natively on the CPU without exiting
+            // This creates a discrepancy in the ratio of both loops
+            // The hypervisor cannot easily rewind the system wall clock (second loop, QIT/KUSER_SHARED_DATA) without causing system instability (network timeouts, audio lag)
             static thread_local volatile u64 g_sink = 0; // thread_local volatile so that it doesnt need to be captured by the lambda
 
             // First we start by randomizing counts WITHOUT syscalls and WITHOUT using instructions that can be trapped by hypervisors, this was a hard task
@@ -4867,7 +4872,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             // first measurement
             ULONG64 beforeqit = 0;
-            QueryInterruptTime(&beforeqit); // the kernel routine that backs up this api runs at CLOCK_LEVEL(13), only preempted by IPI, POWER_LEVEL and NMIs
+            QueryInterruptTime(&beforeqit); // never touches RDTSC/RDTSCP or transitions to kernel-mode, just reads from KUSER_SHARED_DATA, reason why we use it
             const ULONG64 beforetsc = __rdtsc();
 
             volatile u64 dummy = 0;
@@ -4875,8 +4880,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 dummy = rd_ptr(); // this loop will be intercepted by a RDTSC trap, downscaling our TSC
             }
 
+            // the kernel routine that backs up this api runs at CLOCK_LEVEL(13), only preempted by IPI, POWER_LEVEL and NMIs
+            // meaning it's highly accurate even with kernel noise, hence we don't need cluster or median computations to get precise ratios
             ULONG64 afterqit = 0;
-            QueryInterruptTime(&afterqit);
+            QueryInterruptTime(&afterqit); 
             const ULONG64 aftertsc = __rdtsc();
 
             const ULONG64 dtsc1 = aftertsc - beforetsc;
@@ -6619,77 +6626,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (EnumSystemFirmwareTables(acpi_signature, tables.data(), acpi_enum_size) != acpi_enum_size)
             return false;
 
-        // High Precision Event Timer detection
-        bool found_hpet = false;
-        for (const auto table_id : tables) {
-            constexpr DWORD hpet_signature = 'TEPH';
-            if (table_id == hpet_signature) {
-                found_hpet = true;
-            }
-        }
-
-        if (!found_hpet) {
-            const char* manufacturer = "";
-            const char* model = "";
-            util::get_manufacturer_model(&manufacturer, &model);
-
-            struct whitelist_entry {
-                const char* man_substr;
-                const char* model_substr;
-            };
-
-            // The OMEN by HP 16-n0xxx family appears to expose an ACPI HPET table, but Linux kernels often report it as "dysfunctional" and disable it
-            // https://linux-hardware.org/?log=dmesg&probe=5ecdd1b28c
-            constexpr whitelist_entry whitelist[] = {
-                { "hp",         "omen"    },
-                { "micro-star", "bravo"   },
-                { "asustek",    "fa" }, // fa506, fa507, fa707, etc...
-                { "asustek",    "Vivobook_ASUSLaptop" },
-                { "asustek",    "ROG Strix"} // G513RM, etc...
-            };
-
-            bool is_whitelisted = false;
-
-            auto contains_case_insensitive = [](const char* haystack_c, const char* needle_c) -> bool {
-                const unsigned char* h_ptr = reinterpret_cast<const unsigned char*>(haystack_c);
-                for (; *h_ptr; ++h_ptr) {
-                    const unsigned char* h = h_ptr;
-                    const unsigned char* n = reinterpret_cast<const unsigned char*>(needle_c);
-                    while (*n && ((*h | 0x20) == (*n | 0x20))) { 
-                        ++h; ++n; 
-                    }
-                    if (!*n) return true;
-                }
-                return false;
-            };
-
-            for (const auto& entry : whitelist) {
-                bool man_match = false;
-                bool model_match = false;
-
-                if (manufacturer) {
-                    if (contains_case_insensitive(manufacturer, entry.man_substr)) {
-                        man_match = true;
-                    }
-                }
-
-                if (man_match && model) {
-                    if (contains_case_insensitive(model, entry.model_substr)) {
-                        model_match = true;
-                    }
-                }
-
-                if (man_match && model_match) {
-                    is_whitelisted = true;
-                    break;
-                }
-            }
-
-            if (util::is_running_under_translator() || is_whitelisted) {
-                found_hpet = true;
-            }
-        }
-
         // DSDT special fetch
         {
             constexpr DWORD dsdt_sig = 'DSDT';
@@ -6753,12 +6689,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     return true;
                 }
             }
-        }
-
-        // Checks for non existent tables must run at the end because of is_hardened() logic
-        if (!found_hpet) {
-            debug("FIRMWARE: HPET table not found");
-            return true;
         }
 
         return false;
@@ -11224,7 +11154,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         // The RTC (ACPI/CMOS RTC) timer can't be always detected via SetupAPI, it needs AML decode of the DSDT firmware table
-        // The HPET (PNP0103) timer presence is already checked on VM::FIRMWARE
+        // The HPET (PNP0103) timer presence check was removed, more info at: https://github.com/kernelwernel/VMAware/pull/616
         // Here, we check for the PIT/AT timer (PC-class System Timer)
         constexpr wchar_t pattern[] = L"pnp0100"; 
         constexpr size_t patLen = (sizeof(pattern) / sizeof(wchar_t)) - 1;
