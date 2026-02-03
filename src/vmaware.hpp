@@ -4943,7 +4943,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // we used a rng before running the traditional rdtsc-cpuid-rdtsc trick
        
         // sometimes not intercepted in some hvs (like VirtualBox) under compat mode
-        auto cpuid_ex = [&](int leaf, int subleaf) noexcept -> u64 {
+        auto cpuid = [&](unsigned int leaf) noexcept -> u64 {
         #if (MSVC)
             // make regs volatile so writes cannot be optimized out, if this isn't added and the code is compiled in release mode, cycles would be around 40 even under Hyper-V
             volatile int regs[4]{};
@@ -4956,7 +4956,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             // prevent the compiler from moving the __cpuid call before the t1 read
             COMPILER_BARRIER();
 
-            __cpuidex((int*)regs, leaf, subleaf);
+            __cpuid((int*)regs, static_cast<int>(leaf)); // not using cpu::cpuid to get a chance of inlining
 
             COMPILER_BARRIER();
 
@@ -4984,7 +4984,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             // because the compiler must honor the write to a volatile variable.
             asm volatile("cpuid"
                 : "=a"(a), "=b"(b), "=c"(c), "=d"(d)
-                : "a"(leaf), "c"(subleaf)
+                : "a"(leaf)
                 : "memory");
 
             COMPILER_BARRIER();
@@ -4998,8 +4998,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return t2 - t1;
         #endif
         };
-
-        constexpr u16 iterations = 1000;
 
         auto calculate_latency = [&](const std::vector<u64>& samples_in) -> u64 {
             if (samples_in.empty()) return 0;
@@ -5079,10 +5077,28 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return result;
         };
 
+        // intel leaves on AMD and viceversa will still work for this probe
+        constexpr unsigned int leaves[] = {
+                0xB,      // topology 
+                0xD,      // xsave/xstate 
+                0x4,      // deterministic cache params
+                0x1,      // basic features
+                0x7,      // extended features
+                0xA,      // architectural performance monitoring
+                0x12,     // SGX/enclave 
+                0x5,      // MONITOR/MWAIT
+                0x40000000u, // hypervisor range start
+                0x80000008u, // extended address limits (amd/intel ext)
+                0x0        // fallback to leaf 0 occasionally
+        };
+        constexpr size_t n_leaves = sizeof(leaves) / sizeof(leaves[0]);
+
+        constexpr u16 iterations = 1000;
+
         // pre-allocate sample buffer and touch pages to avoid page faults by MMU during measurement
         std::vector<u64> samples;
-        samples.resize(iterations);
-        for (unsigned i = 0; i < iterations; ++i) samples[i] = 0; // or RtlSecureZeroMemory (memset)
+        samples.resize(n_leaves * iterations);
+        for (size_t i = 0; i < samples.size(); ++i) samples[i] = 0; // or RtlSecureZeroMemory (memset)
 
         /*
         * We want to move our thread from the Running state to the Waiting state
@@ -5097,126 +5113,40 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         * This gives us more time for sampling before we're rescheduled again
         */
 
-        #if (WINDOWS)
-            // voluntary context switch to get a fresh quantum
-            SleepEx(1, FALSE);
-        #else 
-            // should work similarly in Unix-like operating systems
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        #endif
+    #if (WINDOWS)
+        // voluntary context switch to get a fresh quantum
+        SleepEx(1, FALSE);
+    #else 
+        // should work similarly in Unix-like operating systems
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    #endif
+
+        // warm up but rotating through leaves to exercise different cpuid paths
         for (int w = 0; w < 128; ++w) {
-            volatile u64 tmp = cpuid_ex(0, 0);
+            volatile u64 tmp = cpuid(leaves[w % n_leaves]);
             VMAWARE_UNUSED(tmp);
         }
 
-        for (unsigned i = 0; i < iterations; ++i) {
-            samples[i] = cpuid_ex(0, 0); // leaf 0 just returns static data so it should be fast
-        }
-
-        const u64 cpuid_latency_leaf0 = calculate_latency(samples);
-
-        // Extended Topology requires the hypervisor to calculate dynamic x2APIC IDs
-        // we expect this to crash entire VMs if the kernel developer is not enough
-        for (unsigned i = 0; i < iterations; ++i) {
-            samples[i] = cpuid_ex(0xB, 0);
-        }
-        const u64 cpuid_latency_leafB = calculate_latency(samples);
-
-        debug("TIMER: Leaf 0 latency -> ", cpuid_latency_leaf0);
-        debug("TIMER: Leaf 0xB latency -> ", cpuid_latency_leafB);
-
-        // simple differential analysis
-        if (cpuid_latency_leaf0 > 0) {
-            if (cpuid_latency_leafB > (cpuid_latency_leaf0 * 1.6)) {
-                debug("TIMER: VMAware detected a CPUID patch");
-                return true;
+        // 1000 iterations per leaf, store contiguously per-leaf
+        for (size_t li = 0; li < n_leaves; ++li) {
+            const unsigned int leaf = leaves[li];
+            for (unsigned i = 0; i < iterations; ++i) {
+                samples[li * iterations + i] = cpuid(leaf);
             }
         }
 
-        if (cpuid_latency_leaf0 >= cycle_threshold) {
+        const u64 cpuid_latency = calculate_latency(samples);
+
+        debug("TIMER: VMEXIT latency -> ", cpuid_latency);
+
+        if (cpuid_latency >= cycle_threshold) {
             return true;
         }
-        if (cpuid_latency_leafB >= cycle_threshold) {
+        else if (cpuid_latency <= 20) { // cpuid is fully serializing, not even old CPUs have this low average cycles in real-world scenarios
             return true;
         }
-        else if (cpuid_latency_leaf0 <= 20) { // cpuid is fully serializing, not even old CPUs have this low average cycles in real-world scenarios
-            return true;
-        }
-
-        // the core idea is to force the host scheduler's pending signal check (kvm_vcpu_check_block)
-        // We detect cpuid patches that just do fast vmexits by spawning a thread on the SAME core that spams the patched instruction
-        // If patched, the host core enters an uninterruptible loop, starving the timer interrupt needed for the sleep syscall
-    #if (WINDOWS)
-        {
-            using NtCreateThreadEx_t = NTSTATUS(__stdcall*)(PHANDLE, ACCESS_MASK, PVOID, HANDLE, PVOID, PVOID, ULONG, ULONG_PTR, ULONG_PTR, ULONG_PTR, PVOID);
-            using NtTerminateThread_t = NTSTATUS(__stdcall*)(HANDLE, NTSTATUS);
-            using NtWaitForSingleObject_t = NTSTATUS(__stdcall*)(HANDLE, BOOLEAN, PLARGE_INTEGER);
-
-            const HMODULE ntdll = util::get_ntdll();
-            if (ntdll) {
-                const char* names[] = { "NtCreateThreadEx", "NtTerminateThread", "NtWaitForSingleObject" };
-                void* funcs[3] = {};
-                util::get_function_address(ntdll, names, funcs, 3);
-
-                auto pNtCreateThreadEx = (NtCreateThreadEx_t)funcs[0];
-                auto pNtTerminateThread = (NtTerminateThread_t)funcs[1];
-                auto pNtWaitForSingleObject = (NtWaitForSingleObject_t)funcs[2];
-
-                if (pNtCreateThreadEx && pNtTerminateThread && pNtWaitForSingleObject) {
-
-                    // stateless lambda castable to thread routine
-                    auto spammer_routine = [](PVOID) -> DWORD {
-                        // This loop exploits the patch's lack of interrupt window checking
-                        while (true) {
-                            int regs[4];
-                            __cpuid(regs, 0);
-                        }
-                        return 0;
-                    };
-
-                    HANDLE hSpammer = nullptr;
-                    const NTSTATUS status = pNtCreateThreadEx(&hSpammer, MAXIMUM_ALLOWED, nullptr, GetCurrentProcess(),
-                        (PVOID)(uintptr_t(+spammer_routine)), nullptr, TRUE, 0, 0, 0, nullptr);
-
-                    if (status >= 0 && hSpammer) {
-                        // forcing contention contention
-                        THREAD_BASIC_INFORMATION tbi_local{};
-                        if (pNtQueryInformationThread(hCurrentThread, ThreadBasicInformation, &tbi_local, sizeof(tbi_local), nullptr) >= 0) {
-                            pNtSetInformationThread(hSpammer, ThreadAffinityMask, &tbi_local.AffinityMask, sizeof(ULONG_PTR));
-                        }
-
-                        ResumeThread(hSpammer);
-
-                        LARGE_INTEGER qpc_start, qpc_end, qpc_freq;
-                        QueryPerformanceFrequency(&qpc_freq);
-                        QueryPerformanceCounter(&qpc_start);
-
-                        // expecting gibberish cpuid patches to lock the interrupt timer
-                        // by the infinite fastpath loop on the physical core, causing a massive overshoot
-                        SleepEx(10, FALSE);
-
-                        QueryPerformanceCounter(&qpc_end);
-
-                        // Cleanup
-                        pNtTerminateThread(hSpammer, 0);
-                        pNtWaitForSingleObject(hSpammer, FALSE, nullptr);
-                        CloseHandle(hSpammer);
-
-                        double elapsed_ms = (double)(qpc_end.QuadPart - qpc_start.QuadPart) * 1000.0 / (double)qpc_freq.QuadPart;
-
-                        debug("TIMER: Timer interrupt starvation -> ", elapsed_ms, " ms");
-
-                        if (elapsed_ms > 40.0) { 
-                            debug("TIMER: VMAware detected a CPUID patch");
-                            return true;
-                        }
-                    }
-                }
-            }
-        }
-    #endif
         // TLB flushes or side channel cache attacks are not even tried due to how unreliable they are against stealthy hypervisors
-#endif
+    #endif
         return false;
     }
 
