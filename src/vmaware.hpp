@@ -6610,7 +6610,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     memcpy(&hypervisor_vid, buffer + 268, 8);
 
                     if (hypervisor_vid != 0) {
-                        debug("FIRMWARE: FADT 'Hypervisor Vendor Identity' field is occupied");
+                        debug("FIRMWARE: FACP 'Hypervisor Vendor Identity' field is occupied");
                         return true;
                     }
                 }
