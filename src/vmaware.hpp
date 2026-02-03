@@ -4583,7 +4583,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
         // will be used in cpuid measurements later
-        u16 cycle_threshold = 1000;
+        u16 cycle_threshold = 800;
         if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
             cycle_threshold = 3500; // if we're running under Hyper-V, make VMAware detect nested virtualization
         }
