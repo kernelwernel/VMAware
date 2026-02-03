@@ -6604,6 +6604,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     debug("FIRMWARE: C2 and C3 latencies indicate VM");
                     return true;
                 }
+
+                if (buffer_len >= 276) {
+                    u64 hypervisor_vid = 0;
+                    memcpy(&hypervisor_vid, buffer + 268, 8);
+
+                    if (hypervisor_vid != 0) {
+                        debug("FIRMWARE: FADT 'Hypervisor Vendor Identity' field is occupied");
+                        return true;
+                    }
+                }
             }
 
             return false;
