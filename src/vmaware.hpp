@@ -11154,7 +11154,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         // The RTC (ACPI/CMOS RTC) timer can't be always detected via SetupAPI, it needs AML decode of the DSDT firmware table
-        // The HPET (PNP0103) timer presence is already checked on VM::FIRMWARE
+        // The HPET (PNP0103) timer presence check was removed, more info at: https://github.com/kernelwernel/VMAware/pull/616
         // Here, we check for the PIT/AT timer (PC-class System Timer)
         constexpr wchar_t pattern[] = L"pnp0100"; 
         constexpr size_t patLen = (sizeof(pattern) / sizeof(wchar_t)) - 1;
