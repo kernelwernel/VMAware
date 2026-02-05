@@ -4,7 +4,7 @@
  * ██║   ██║██╔████╔██║███████║██║ █╗ ██║███████║██████╔╝█████╗
  * ╚██╗ ██╔╝██║╚██╔╝██║██╔══██║██║███╗██║██╔══██║██╔══██╗██╔══╝
  *  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
- *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ Experimental post-2.6.0 (January 2026)
+ *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ Experimental post-2.6.0 (February 2026)
  *
  *  C++ VM detection library
  *
@@ -53,14 +53,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 546
- * - struct for internal cpu operations        => line 720
- * - struct for internal memoization           => line 3022
- * - struct for internal utility functions     => line 3196
- * - struct for internal core components       => line 11205
- * - start of VM detection technique list      => line 4251
- * - start of public VM detection functions    => line 11551
- * - start of externally defined variables     => line 12544
+ * - enums for publicly accessible techniques  => line 545
+ * - struct for internal cpu operations        => line 716
+ * - struct for internal memoization           => line 3040
+ * - struct for internal utility functions     => line 3222
+ * - struct for internal core components       => line 11316
+ * - start of VM detection technique list      => line 4277
+ * - start of public VM detection functions    => line 11674
+ * - start of externally defined variables     => line 12679
  *
  *
  * ============================== EXAMPLE ===================================
@@ -4678,7 +4678,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         #endif 
 
         // check for RDTSCP support, we will use it later
-        thread_local u32 aux = 0;
         int regs[4] = { 0 };
         cpu::cpuid(regs, 0x80000001);
         const bool haveRdtscp = (regs[3] & (1u << 27)) != 0;
@@ -4709,6 +4708,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             // calculates the invariant TSC base rate (on modern CPUs), not the dynamic core frequency, similar to what CallNtPowerInformation would give you
             LARGE_INTEGER t1q, t2q;
+            thread_local u32 aux = 0;
             const u64 t1 = __rdtsc();
             QueryPerformanceCounter(&t1q); // uses RDTSCP under the hood unless platformclock (a bcdedit setting) is set, which then would use HPET or ACPI PM via NtQueryPerformanceCounter
             SleepEx(50, 0); // 50ms under more than 100000 tests was enough to get stable results on modern Windows systems, even under heavy load
