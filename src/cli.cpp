@@ -444,7 +444,6 @@ static const char* get_vm_description(const std::string& vm_brand) {
         { brands::APPLE_VZ, "Apple Virtualization Framework (VZ) is a macOS 12+ API for creating ARM64 VMs on Apple Silicon. Provides para-virtualized devices via VirtIO and Rosetta 2 binary translation for x86_64 Linux guests. Used by Lima and UTM to run Linux distributions natively on M1/M2 Macs without traditional hypervisor overhead." },
         { brands::INTEL_KGT, "Intel Kernel Guard Technology (KGT) is a policy specification and enforcement framework for ensuring runtime integrity of kernel and platform assets. Demonstrated secure enclaves for critical OS components using VT-x/EPT before being superseded by CET (Control-flow Enforcement Technology) and HyperGuard in Windows 10." },
         { brands::AZURE_HYPERV, "Azure Hyper-V is Microsoft's cloud-optimized hypervisor variant powering Azure VMs. Implements Azure-specific virtual devices like NVMe Accelerated Networking and vTPMs. Supports nested virtualization for running Hyper-V/containers within Azure VMs, enabling cloud-based CI/CD pipelines and dev/test environments." },
-        { brands::NANOVISOR, "NanoVisor is a Hyper-V modification serving as the host OS of Xbox's devices: the Xbox System Software. It contains 2 partitions: the \"Exclusive\" partition is a custom VM for games, while the other partition, called the \"Shared\" partition is a custom VM for running multiple apps including the OS itself. The OS was based on Windows 8 Core at the Xbox One launch in 2013." },
         { brands::SIMPLEVISOR, "SimpleVisor is a minimalist Intel VT-x hypervisor by Alex Ionescu for Windows/Linux research. Demonstrates EPT-based memory isolation and hypercall handling. Used to study VM escapes and hypervisor rootkits, with hooks for intercepting CR3 changes and MSR accesses." },
         { brands::HYPERV_ARTIFACT, "VMAware detected Hyper-V operating as a type 1 hypervisor, not as a guest virtual machine. Although your hardware/firmware signatures match Microsoft's Hyper-V architecture, we determined that you're running on baremetal. This prevents false positives, as Windows sometimes runs under Hyper-V (type 1) hypervisor." },
         { brands::UML, "User-Mode Linux (UML) allows running Linux kernels as user-space processes using ptrace-based virtualization. Primarily used for kernel debugging and network namespace testing. Offers lightweight isolation without hardware acceleration, but requires host/guest kernel version matching for stable operation." },
@@ -763,7 +762,7 @@ static void general(
     checker(VM::VMWARE_STR, "STR instruction");
     checker(VM::VMWARE_BACKDOOR, "VMware IO port backdoor");
     checker(VM::MUTEX, "mutex strings");
-    checker(VM::THREAD_MISMATCH, "Thread count mismatch");
+    checker(VM::THREAD_MISMATCH, "thread count mismatch");
     checker(VM::CUCKOO_DIR, "Cuckoo directory");
     checker(VM::CUCKOO_PIPE, "Cuckoo pipe");
     checker(VM::AZURE, "Azure Hyper-V");

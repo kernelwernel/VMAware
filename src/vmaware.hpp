@@ -492,7 +492,6 @@ namespace brands {
     static constexpr const char* APPLE_VZ = "Apple VZ";
     static constexpr const char* INTEL_KGT = "Intel KGT (Trusty)";
     static constexpr const char* AZURE_HYPERV = "Microsoft Azure Hyper-V";
-    static constexpr const char* NANOVISOR = "Xbox NanoVisor (Hyper-V)";
     static constexpr const char* SIMPLEVISOR = "SimpleVisor";
     static constexpr const char* HYPERV_ARTIFACT = "Hyper-V artifact (host running Hyper-V)";
     static constexpr const char* UML = "User-mode Linux";
@@ -728,27 +727,44 @@ private:
                 amd_easter_egg = 0x8fffffff;
         };
 
-        // cross-platform wrapper function for linux and MSVC cpuid
+        #if (MSVC)
+            #define CPUID_COUNT(leaf, subleaf, a_ptr, b_ptr, c_ptr, d_ptr) \
+                    do { \
+                        int __cpuid_regs[4]; \
+                        __cpuidex(__cpuid_regs, static_cast<int>(leaf), static_cast<int>(subleaf)); \
+                        *(a_ptr) = static_cast<unsigned int>(__cpuid_regs[0]); \
+                        *(b_ptr) = static_cast<unsigned int>(__cpuid_regs[1]); \
+                        *(c_ptr) = static_cast<unsigned int>(__cpuid_regs[2]); \
+                        *(d_ptr) = static_cast<unsigned int>(__cpuid_regs[3]); \
+                    } while (0)
+        #else
+            #define CPUID_COUNT(leaf, subleaf, a_ptr, b_ptr, c_ptr, d_ptr) \
+                    do { \
+                        __get_cpuid_count((unsigned)(leaf), (unsigned)(subleaf), (a_ptr), (b_ptr), (c_ptr), (d_ptr)); \
+                    } while (0)
+        #endif
+
+        // cross-platform wrapper for linux and MSVC cpuid
         static void cpuid
         (
             u32& a, u32& b, u32& c, u32& d,
             const u32 a_leaf,
             const u32 c_leaf = 0xFF  // dummy value if not set manually
         ) {
-        #if (x86 && !APPLE)
+        #if (x86)
             // may be unmodified for older 32-bit processors, clearing just in case
+            a = 0;
             b = 0;
             c = 0;
-            #if (WINDOWS)
-                i32 x[4]{};
-                __cpuidex((i32*)x, static_cast<int>(a_leaf), static_cast<int>(c_leaf));
-                a = static_cast<u32>(x[0]);
-                b = static_cast<u32>(x[1]);
-                c = static_cast<u32>(x[2]);
-                d = static_cast<u32>(x[3]);
-            #elif (LINUX)
-                __cpuid_count(a_leaf, c_leaf, a, b, c, d);
-            #endif
+            d = 0;
+
+            unsigned int aa = 0u, bb = 0u, cc = 0u, dd = 0u;
+            CPUID_COUNT(a_leaf, c_leaf, &aa, &bb, &cc, &dd);
+
+            a = static_cast<u32>(aa);
+            b = static_cast<u32>(bb);
+            c = static_cast<u32>(cc);
+            d = static_cast<u32>(dd);
         #endif
             return;
         };
@@ -760,15 +776,20 @@ private:
             const u32 a_leaf,
             const u32 c_leaf = 0xFF
         ) {
-        #if (x86 && !APPLE)
+        #if (x86)
             // may be unmodified for older 32-bit processors, clearing just in case
+            x[0] = 0;
             x[1] = 0;
             x[2] = 0;
-            #if (WINDOWS)
-                __cpuidex((i32*)x, static_cast<int>(a_leaf), static_cast<int>(c_leaf));
-            #elif (LINUX)
-                __cpuid_count(a_leaf, c_leaf, x[0], x[1], x[2], x[3]);
-            #endif
+            x[3] = 0;
+
+            unsigned int aa = 0u, bb = 0u, cc = 0u, dd = 0u;
+            CPUID_COUNT(a_leaf, c_leaf, &aa, &bb, &cc, &dd);
+
+            x[0] = static_cast<i32>(aa);
+            x[1] = static_cast<i32>(bb);
+            x[2] = static_cast<i32>(cc);
+            x[3] = static_cast<i32>(dd);
         #endif
             return;
         };
@@ -4522,14 +4543,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         cpu::cpuid(eax, unused, unused, unused, 0x40000001);
         VMAWARE_UNUSED(unused);
 
-        constexpr u32 nanovisor = 0x766E6258; // "Xbnv" 
         constexpr u32 simplevisor = 0x00766853; // " vhS"
 
         debug("CPUID_SIGNATURE: eax = ", eax);
 
-        if (eax == nanovisor)
-            return core::add(brands::NANOVISOR);
-        else if (eax == simplevisor)
+        if (eax == simplevisor)
             return core::add(brands::SIMPLEVISOR);
 
         return false;
@@ -4569,12 +4587,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      */
     [[nodiscard]] static bool timer() {
     #if (x86)
-
-    #if (MSVC)
-        #define COMPILER_BARRIER() _ReadWriteBarrier()
-    #else
-        #define COMPILER_BARRIER() asm volatile("" ::: "memory")
-    #endif
+        #if (MSVC)
+            #define COMPILER_BARRIER() _ReadWriteBarrier()
+        #else
+            #define COMPILER_BARRIER() asm volatile("" ::: "memory")
+        #endif
 
         // ================ INITIALIZATION STUFF ================
 
@@ -4588,354 +4605,338 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             cycle_threshold = 3500; // if we're running under Hyper-V, make VMAware detect nested virtualization
         }
 
-    #if (WINDOWS)
-        const HMODULE ntdll = util::get_ntdll();
-        if (!ntdll) {
-            return true;
-        }
-
-        const char* names[] = { "NtQueryInformationThread", "NtSetInformationThread" };
-        void* funcs[ARRAYSIZE(names)] = {};
-        util::get_function_address(ntdll, names, funcs, ARRAYSIZE(names));
-
-        using NtQueryInformationThread_t = NTSTATUS(__stdcall*)(HANDLE, int, PVOID, ULONG, PULONG);
-        using NtSetInformationThread_t = NTSTATUS(__stdcall*)(HANDLE, int, PVOID, ULONG);
-
-        const auto pNtQueryInformationThread = reinterpret_cast<NtQueryInformationThread_t>(funcs[0]);
-        const auto pNtSetInformationThread = reinterpret_cast<NtSetInformationThread_t>(funcs[1]);
-        if (!pNtQueryInformationThread || !pNtSetInformationThread) {
-            return true;
-        }
-
-        constexpr int ThreadBasicInformation = 0;
-        constexpr int ThreadAffinityMask = 4;
-
-        struct CLIENT_ID {
-            ULONG_PTR UniqueProcess;
-            ULONG_PTR UniqueThread;
-        };
-        struct THREAD_BASIC_INFORMATION {
-            NTSTATUS ExitStatus;
-            PVOID    TebBaseAddress;
-            CLIENT_ID ClientId;
-            ULONG_PTR AffinityMask;
-            LONG     Priority;
-            LONG     BasePriority;
-        } tbi;
-        const HANDLE hCurrentThread = reinterpret_cast<HANDLE>(-2LL);
-
-        // current affinity
-        memset(&tbi, 0, sizeof(tbi));
-        NTSTATUS status = pNtQueryInformationThread(
-            hCurrentThread,
-            ThreadBasicInformation,
-            &tbi,
-            sizeof(tbi),
-            nullptr
-        );
-
-        if (status < 0) {
-            return false;
-        }
-
-        const ULONG_PTR originalAffinity = tbi.AffinityMask;
-
-        // new affinity
-        const DWORD_PTR wantedMask = static_cast<DWORD_PTR>(1);
-        status = pNtSetInformationThread(
-            hCurrentThread,
-            ThreadAffinityMask,
-            reinterpret_cast<PVOID>(const_cast<DWORD_PTR*>(&wantedMask)),
-            static_cast<ULONG>(sizeof(wantedMask))
-        );
-
-        DWORD_PTR prevMask = 0;
-        if (status >= 0) {
-            prevMask = originalAffinity; // emulate SetThreadAffinityMask return
-        }
-        else {
-            prevMask = 0;
-        }
-
-        // setting a higher priority for the current thread actually makes the ration between rdtsc and other timers like QIT vary much more
-        // contrary to what someone might think about preempting reschedule
-    #endif 
-
-        thread_local u32 aux = 0;
-        // check for RDTSCP support, we will use it later
-        {
-        #if (x86_64 && WINDOWS)
-            const bool haveRdtscp = [&]() noexcept -> bool {
-                __try {
-                    __rdtscp(&aux);
-                    return true;
-                }
-                __except (EXCEPTION_EXECUTE_HANDLER) {
-                    return false;
-                }
-            }();
-        #else
-            VMAWARE_UNUSED(aux);
-            int regs[4] = { 0 };
-            cpu::cpuid(regs, 0x80000001);
-            const bool haveRdtscp = (regs[3] & (1u << 27)) != 0;
-        #endif
-            if (!haveRdtscp) {
-                debug("TIMER: RDTSCP instruction not supported"); // __rdtscp should be supported nowadays
+        #if (WINDOWS)
+            const HMODULE ntdll = util::get_ntdll();
+            if (!ntdll) {
                 return true;
             }
-        }
 
-        // ================ START OF TIMING ATTACKS ================
-    #if (WINDOWS)
-        const DWORD procCount = static_cast<DWORD>(GetActiveProcessorCount(ALL_PROCESSOR_GROUPS));
-        if (procCount == 0) return false;
+            const char* names[] = { "NtQueryInformationThread", "NtSetInformationThread" };
+            void* funcs[ARRAYSIZE(names)] = {};
+            util::get_function_address(ntdll, names, funcs, ARRAYSIZE(names));
 
-        // QPC frequency
-        LARGE_INTEGER freq;
-        if (!QueryPerformanceFrequency(&freq)) // NtPowerInformation and NtQueryPerformanceCounter are avoided as some hypervisors downscale tsc only if we triggered a context switch from userspace
-            return false;
+            using NtQueryInformationThread_t = NTSTATUS(__stdcall*)(HANDLE, int, PVOID, ULONG, PULONG);
+            using NtSetInformationThread_t = NTSTATUS(__stdcall*)(HANDLE, int, PVOID, ULONG);
 
-        // on modern Intel/AMD hardware with an invariant/constant TSC we can measure once (pin to a single core like we did before) 
-        // and treat that value as the system TSC rate, we do not need to iterate every logical CPU
-        // if the CPU is old and doesn't have invariant TSC, they will not have a hybrid architecture either (cores with different frequencies)
-        // this was verified in both AMD and Intel, for example Intel since Nehalem
-        // the idea is to detect the clock speed of the fastest core, corroborate with our db if its downscaled (sign of rdtsc patch) and detect the kernel patch
-        // we do not use the slowest (E-Core) even if it would be more idle and probably have less kernel noise, because someone could just trap on the fast cores
-        // and downscale their TSC until it matches the slowest cores, defeating our detection
-        // this could've been prevented if theres a possibility to always ask the Windows kernel for the type of core we're running under,
-        // but this proved to not be reliable always, specially on AMD
-
-        // calculates the invariant TSC base rate (on modern CPUs), not the dynamic core frequency, similar to what CallNtPowerInformation would give you
-        LARGE_INTEGER t1q, t2q;
-        const u64 t1 = __rdtsc();
-        QueryPerformanceCounter(&t1q); // uses RDTSCP under the hood unless platformclock (a bcdedit setting) is set, which then would use HPET or ACPI PM via NtQueryPerformanceCounter
-        SleepEx(50, 0); // 50ms under more than 100000 tests was enough to get stable results on modern Windows systems, even under heavy load
-        QueryPerformanceCounter(&t2q);
-        const u64 t2 = __rdtscp(&aux);
-
-        // this thread is pinned to the first CPU core due to the previous SetThreadAffinityMask call, meaning this calculation and cpu::get_cpu_base_speed() will report the same speed 
-        // (normally) P-cores are in lower indexes, althought we don't really care about which type of vCPU VMAware will be pinned under
-        // pinning to index 0 is also good to keep the check compatible with dinosaur (single-core) systems
-        const double elapsedSec = double(t2q.QuadPart - t1q.QuadPart) / double(freq.QuadPart); // the performance counter frequency is always 10MHz when running under Hyper-V
-        const double tscHz = double(t2 - t1) / elapsedSec;
-        const double tscMHz = tscHz / 1e6;
-
-        // even if it sounds unbelievable, this will NOT be affected even if in the BIOS the "by core usage" frequency scaling or SpeedStep (or equivalent) is enabled, and even under heavy loads
-        debug("TIMER: Current CPU base speed -> ", tscMHz, " MHz"); // it wont also be affected if we tell our OS to use the HPET timer instead of TSC
-
-        if (tscMHz < 800.0 || tscMHz >= 7000) { // i9-14900KS has 6.2 GHz; 9 9950X3D has 5.7 GHz
-            debug("TIMER: TSC is spoofed");
-            return true;
-        }
-
-        const auto& info = VM::cpu::analyze_cpu();
-        if (info.found) {
-            if (info.base_clock_mhz == 0) {
-                debug("TIMER: Processor's true base speed not available for this CPU");
-            }
-            else if (info.base_clock_mhz < 800.0) {
-                debug("TIMER: RDTSC seems to be intercepted by an hypervisor");
+            const auto pNtQueryInformationThread = reinterpret_cast<NtQueryInformationThread_t>(funcs[0]);
+            const auto pNtSetInformationThread = reinterpret_cast<NtSetInformationThread_t>(funcs[1]);
+            if (!pNtQueryInformationThread || !pNtSetInformationThread) {
                 return true;
             }
-            else {
-                debug("TIMER: Processor's true base speed -> ", static_cast<double>(info.base_clock_mhz), " MHz");
 
-                constexpr u32 check_leaf = 0x80000007u;
-                constexpr double INVARIANT_TSC_DELTA = 250.0;
-                constexpr double LEGACY_DELTA = 650.0;
+            constexpr int ThreadBasicInformation = 0;
+            constexpr int ThreadAffinityMask = 4;
 
-                if (cpu::is_leaf_supported(check_leaf)) {
-                    u32 a = 0, b = 0, c = 0, d = 0;
-                    cpu::cpuid(a, b, c, d, check_leaf);
-                    const bool hasInvariantTsc = (d & (1u << 8)) != 0;
+            struct CLIENT_ID {
+                ULONG_PTR UniqueProcess;
+                ULONG_PTR UniqueThread;
+            };
+            struct THREAD_BASIC_INFORMATION {
+                NTSTATUS ExitStatus;
+                PVOID    TebBaseAddress;
+                CLIENT_ID ClientId;
+                ULONG_PTR AffinityMask;
+                LONG     Priority;
+                LONG     BasePriority;
+            } tbi;
+            const HANDLE hCurrentThread = reinterpret_cast<HANDLE>(-2LL);
 
-                    if (hasInvariantTsc) {
-                        debug("TIMER: CPU supports invariant TSC");
-                        if (tscMHz <= info.base_clock_mhz - INVARIANT_TSC_DELTA) return true;
-                    }
-                    else {
-                        debug("TIMER: CPU does not support invariant TSC");
-                        if (tscMHz <= info.base_clock_mhz - LEGACY_DELTA) return true;
-                    }
-                }
+            // current affinity
+            memset(&tbi, 0, sizeof(tbi));
+            NTSTATUS status = pNtQueryInformationThread(
+                hCurrentThread,
+                ThreadBasicInformation,
+                &tbi,
+                sizeof(tbi),
+                nullptr
+            );
 
-                constexpr double delta = 250.0;
-                if (tscMHz <= info.base_clock_mhz - delta)
-                    return true;
+            if (status < 0) {
+                return false;
             }
-        }
 
-        // RDTSC trap detection
-        // This detection uses two clocks and two loops, a loop that the hypervisor can spoof and a loop that the hypervisor cannot
-        // When RDTSC is hooked, the hypervisor usually "downscales" the result to hide the time passed or doesnt let TSC advance for the time it was vm-exiting
-        // However, the hypervisor have absolutely no way to downscale time for the second loop because it runs natively on the CPU without exiting
-        // This creates a discrepancy in the ratio of both loops
-        // The hypervisor cannot easily rewind the system wall clock (second loop, QIT/KUSER_SHARED_DATA) without causing system instability (network timeouts, audio lag)
-        static thread_local volatile u64 g_sink = 0; // thread_local volatile so that it doesnt need to be captured by the lambda
+            const ULONG_PTR originalAffinity = tbi.AffinityMask;
 
-        // First we start by randomizing counts WITHOUT syscalls and WITHOUT using instructions that can be trapped by hypervisors, this was a hard task
-        struct entropy_provider {
-            // prevent inlining so optimizer can't fold this easily
-            #if (MSVC && !CLANG)
-                __declspec(noinline)
-            #else
-                __attribute__((noinline))
-            #endif
-                ULONG64 operator()() const noexcept {
-                // TO prevent hoisting across this call
-                std::atomic_signal_fence(std::memory_order_seq_cst);
-
-                // start state (golden ratio)
-                volatile ULONG64 v = 0x9E3779B97F4A7C15ULL;
-
-                // mix in addresses (ASLR gives entropy but if ASLR disabled or bypassed we have some tricks still)
-                // Take addresses of various locals/statics and mark some volatile so they cannot be optimized away
-                volatile int local_static = 0;               // local volatile (stack-like)
-                static volatile int module_static = 0;       // static in function scope (image address)
-                auto probe_lambda = []() noexcept {};       // stack-local lambda object
-                uintptr_t pa = reinterpret_cast<uintptr_t>(&v);
-                uintptr_t pb = reinterpret_cast<uintptr_t>(&local_static);
-                uintptr_t pc = reinterpret_cast<uintptr_t>(&module_static);
-                uintptr_t pd = reinterpret_cast<uintptr_t>(&probe_lambda);
-
-                v ^= static_cast<ULONG64>(pa) + 0x9E3779B97F4A7C15ULL + (v << 6) + (v >> 2);
-                v ^= static_cast<ULONG64>(pb) + (v << 7);
-                v ^= static_cast<ULONG64>(pc) + (v >> 11);
-                v ^= static_cast<ULONG64>(pd) + 0xBF58476D1CE4E5B9ULL;
-
-                // dependent operations on volatile locals to prevent elimination
-                for (int i = 0; i < 24; ++i) {
-                    volatile int stack_local = i ^ static_cast<int>(v);
-                    // take address each iteration and fold it in
-                    uintptr_t la = reinterpret_cast<uintptr_t>(&stack_local);
-                    v ^= (static_cast<ULONG64>(la) + (static_cast<ULONG64>(i) * 0x9E3779B97F4A7CULL));
-                    // dependent shifts to spread any small differences
-                    v ^= (v << ((i & 31)));
-                    v ^= (v >> (((i + 13) & 31)));
-                    // so compiler can't remove the local entirely
-                    std::atomic_signal_fence(std::memory_order_seq_cst);
-                }
-
-                // final avalanche! (as said before, just in case ASLR can be folded)
-                v ^= (v << 13);
-                v ^= (v >> 7);
-                v ^= (v << 17);
-                v *= 0x2545F4914F6CDD1DULL;
-                v ^= (v >> 33);
-
-                // another compiler fence to prevent hoisting results
-                std::atomic_signal_fence(std::memory_order_seq_cst);
-
-                return static_cast<ULONG64>(v);
-            }
-        };
-
-        // Use rejection sampling as before to avoid modulo bias
-        auto generate_iteration_value = [](ULONG64 min, ULONG64 max, auto getrand) noexcept -> ULONG64 {
-            const ULONG64 range = max - min + 1;
-            const ULONG64 limit = (~0ULL) - ((~0ULL) % range);
-            for (;;) {
-                const ULONG64 r = getrand();
-                if (r < limit) return min + (r % range);
-                // small local mix to change subsequent outputs (still in user-mode and not a syscall)
-                volatile ULONG64 scrub = r;
-                scrub ^= (scrub << 11);
-                scrub ^= (scrub >> 9);
-                (void)scrub;
-            }
-        };
-
-        const entropy_provider entropyProv{};
-        const ULONG64 count_first = generate_iteration_value(30000000ULL, 40000000ULL, [&entropyProv]() noexcept { return entropyProv(); });
-        const ULONG64 count_second = generate_iteration_value(300000000ULL, 400000000ULL, [&entropyProv]() noexcept { return entropyProv(); });
-
-        auto rd_lambda = []() noexcept -> u64 {
-            u64 v = __rdtsc();
-            g_sink ^= v;
-            return v;
-        };
-
-        auto xor_lambda = []() noexcept -> u64 {
-            volatile u64 a = 0xDEADBEEFDEADBEEFull; // can be replaced by NOPs, the core idea is to use a non-trappable instruction that the hv cannot virtualize
-            volatile u64 b = 0x1234567890ABCDEFull;
-            u64 v = a ^ b;
-            g_sink ^= v;
-            return v;
-        };
-
-        using fn_t = u64(*)();
-
-        // make the pointer volatile so the compiler treats the call as opaque/indirect
-        volatile fn_t rd_ptr = +rd_lambda;    // +lambda forces conversion to function ptr, so it won't be inlined, we need to prevent the compiler from inlining this
-        volatile fn_t xor_ptr = +xor_lambda;
-
-        // first measurement
-        ULONG64 beforeqit = 0;
-        QueryInterruptTime(&beforeqit); // never touches RDTSC/RDTSCP or transitions to kernel-mode, just reads from KUSER_SHARED_DATA, reason why we use it
-        const ULONG64 beforetsc = __rdtsc();
-
-        volatile u64 dummy = 0;
-        for (ULONG64 x = 0; x < count_first; ++x) {
-            dummy = rd_ptr(); // this loop will be intercepted by a RDTSC trap, downscaling our TSC
-        }
-
-        // the kernel routine that backs up this api runs at CLOCK_LEVEL(13), only preempted by IPI, POWER_LEVEL and NMIs
-        // meaning it's highly accurate even with kernel noise, hence we don't need cluster or median computations to get precise ratios
-        ULONG64 afterqit = 0;
-        QueryInterruptTime(&afterqit);
-        const ULONG64 aftertsc = __rdtsc();
-
-        const ULONG64 dtsc1 = aftertsc - beforetsc;
-        const ULONG64 dtq1 = afterqit - beforeqit;
-        const ULONG64 firstRatio = (dtq1 != 0) ? (dtsc1 / dtq1) : 0ULL;
-
-        // second measurement
-        ULONG64 beforeqit2 = 0;
-        QueryInterruptTime(&beforeqit2);
-        const ULONG64 beforetsc2 = __rdtsc();
-
-        for (ULONG64 x = 0; x < count_second; ++x) {
-            dummy = xor_ptr(); // this loop won't be intercepted, it never switches to kernel-mode
-        }
-        VMAWARE_UNUSED(dummy);
-
-        ULONG64 afterqit2 = 0;
-        QueryInterruptTime(&afterqit2);
-        const ULONG64 aftertsc2 = __rdtsc();
-
-        const ULONG64 dtsc2 = aftertsc2 - beforetsc2;
-        const ULONG64 dtq2 = afterqit2 - beforeqit2;
-        const ULONG64 secondRatio = (dtq2 != 0) ? (dtsc2 / dtq2) : 0ULL;
-
-        /* branchless absolute difference is like:
-           mask = -(uint64_t)(firstRatio < secondRatio) -> 0 or 0xFFFFFFFFFFFFFFFF
-           diff  = firstRatio - secondRatio
-           abs   = (diff ^ mask) - mask
-        */
-        const ULONG64 diffMask = (ULONG64)0 - (ULONG64)(firstRatio < secondRatio);  // all-ones if first<second, else 0
-        const ULONG64 diff = firstRatio - secondRatio;                              // unsigned subtraction
-        const ULONG64 difference = (diff ^ diffMask) - diffMask;                    // absolute difference, unsigned
-
-        debug("TIMER: RDTSC -> ", firstRatio, ", QIT -> ", secondRatio, ", Ratio: ", difference);
-
-        if (prevMask != 0) {
-            pNtSetInformationThread(
+            // new affinity
+            const DWORD_PTR wantedMask = static_cast<DWORD_PTR>(1);
+            status = pNtSetInformationThread(
                 hCurrentThread,
                 ThreadAffinityMask,
-                reinterpret_cast<PVOID>(const_cast<ULONG_PTR*>(&originalAffinity)),
-                static_cast<ULONG>(sizeof(originalAffinity))
+                reinterpret_cast<PVOID>(const_cast<DWORD_PTR*>(&wantedMask)),
+                static_cast<ULONG>(sizeof(wantedMask))
             );
-        }
 
-        // QIT is updated in intervals of 100 nanoseconds
-        // contrary to what someone could think, under heavy load the ratio will be more close to 0, it will also be closer to 0 if we assign CPUs to a VM in our host machine
-        // it will increase if the BIOS is configured to run the TSC by "core usage", which is why we use a 100 threshold check based on a lot of empirical data
-        if (difference > 100) {
-            debug("TIMER: An hypervisor has been detected intercepting RDTSC");
-            return true; // both ratios will always differ if a RDTSC trap is present, since the hypervisor can't account for the XOR/NOP loop
-        }
-    #endif
+            // setting a higher priority for the current thread actually makes the ration between rdtsc and other timers like QIT vary much more
+            // contrary to what someone might think about preempting reschedule
+            DWORD_PTR prevMask = 0;
+            if (status >= 0) {
+                prevMask = originalAffinity; // emulate SetThreadAffinityMask return
+            }
+            else {
+                prevMask = 0;
+            }
+        #endif 
+
+        // check for RDTSCP support, we will use it later
+        thread_local u32 aux = 0;
+        int regs[4] = { 0 };
+        cpu::cpuid(regs, 0x80000001);
+        const bool haveRdtscp = (regs[3] & (1u << 27)) != 0;
+        if (!haveRdtscp) {
+            debug("TIMER: RDTSCP instruction not supported"); // __rdtscp should be supported nowadays
+            return true;
+        }     
+
+        // ================ START OF TIMING ATTACKS ================
+        #if (WINDOWS)
+            const DWORD procCount = static_cast<DWORD>(GetActiveProcessorCount(ALL_PROCESSOR_GROUPS));
+            if (procCount == 0) return false;
+
+            // QPC frequency
+            LARGE_INTEGER freq;
+            if (!QueryPerformanceFrequency(&freq)) // NtPowerInformation and NtQueryPerformanceCounter are avoided as some hypervisors downscale tsc only if we triggered a context switch from userspace
+                return false;
+
+            // on modern Intel/AMD hardware with an invariant/constant TSC we can measure once (pin to a single core like we did before) 
+            // and treat that value as the system TSC rate, we do not need to iterate every logical CPU
+            // if the CPU is old and doesn't have invariant TSC, they will not have a hybrid architecture either (cores with different frequencies)
+            // this was verified in both AMD and Intel, for example Intel since Nehalem
+            // the idea is to detect the clock speed of the fastest core, corroborate with our db if its downscaled (sign of rdtsc patch) and detect the kernel patch
+            // we do not use the slowest (E-Core) even if it would be more idle and probably have less kernel noise, because someone could just trap on the fast cores
+            // and downscale their TSC until it matches the slowest cores, defeating our detection
+            // this could've been prevented if theres a possibility to always ask the Windows kernel for the type of core we're running under,
+            // but this proved to not be reliable always, specially on AMD
+
+            // calculates the invariant TSC base rate (on modern CPUs), not the dynamic core frequency, similar to what CallNtPowerInformation would give you
+            LARGE_INTEGER t1q, t2q;
+            const u64 t1 = __rdtsc();
+            QueryPerformanceCounter(&t1q); // uses RDTSCP under the hood unless platformclock (a bcdedit setting) is set, which then would use HPET or ACPI PM via NtQueryPerformanceCounter
+            SleepEx(50, 0); // 50ms under more than 100000 tests was enough to get stable results on modern Windows systems, even under heavy load
+            QueryPerformanceCounter(&t2q);
+            const u64 t2 = __rdtscp(&aux);
+
+            // this thread is pinned to the first CPU core due to the previous SetThreadAffinityMask call, meaning this calculation and cpu::get_cpu_base_speed() will report the same speed 
+            // (normally) P-cores are in lower indexes, althought we don't really care about which type of vCPU VMAware will be pinned under
+            // pinning to index 0 is also good to keep the check compatible with dinosaur (single-core) systems
+            const double elapsedSec = double(t2q.QuadPart - t1q.QuadPart) / double(freq.QuadPart); // the performance counter frequency is always 10MHz when running under Hyper-V
+            const double tscHz = double(t2 - t1) / elapsedSec;
+            const double tscMHz = tscHz / 1e6;
+
+            // even if it sounds unbelievable, this will NOT be affected even if in the BIOS the "by core usage" frequency scaling or SpeedStep (or equivalent) is enabled, and even under heavy loads
+            debug("TIMER: Current CPU base speed -> ", tscMHz, " MHz"); // it wont also be affected if we tell our OS to use the HPET timer instead of TSC
+
+            if (tscMHz < 800.0 || tscMHz >= 7000) { // i9-14900KS has 6.2 GHz; 9 9950X3D has 5.7 GHz
+                debug("TIMER: TSC is spoofed");
+                return true;
+            }
+
+            const auto& info = VM::cpu::analyze_cpu();
+            if (info.found) {
+                if (info.base_clock_mhz == 0) {
+                    debug("TIMER: Processor's true base speed not available for this CPU");
+                }
+                else if (info.base_clock_mhz < 800.0) {
+                    debug("TIMER: RDTSC seems to be intercepted by an hypervisor");
+                    return true;
+                }
+                else {
+                    debug("TIMER: Processor's true base speed -> ", static_cast<double>(info.base_clock_mhz), " MHz");
+
+                    constexpr u32 check_leaf = 0x80000007u;
+                    constexpr double INVARIANT_TSC_DELTA = 250.0;
+                    constexpr double LEGACY_DELTA = 650.0;
+
+                    if (cpu::is_leaf_supported(check_leaf)) {
+                        u32 a = 0, b = 0, c = 0, d = 0;
+                        cpu::cpuid(a, b, c, d, check_leaf);
+                        const bool hasInvariantTsc = (d & (1u << 8)) != 0;
+
+                        if (hasInvariantTsc) {
+                            debug("TIMER: CPU supports invariant TSC");
+                            if (tscMHz <= info.base_clock_mhz - INVARIANT_TSC_DELTA) return true;
+                        }
+                        else {
+                            debug("TIMER: CPU does not support invariant TSC");
+                            if (tscMHz <= info.base_clock_mhz - LEGACY_DELTA) return true;
+                        }
+                    }
+
+                    constexpr double delta = 250.0;
+                    if (tscMHz <= info.base_clock_mhz - delta)
+                        return true;
+                }
+            }
+
+            // RDTSC trap detection
+            // This detection uses two clocks and two loops, a loop that the hypervisor can spoof and a loop that the hypervisor cannot
+            // When RDTSC is hooked, the hypervisor usually "downscales" the result to hide the time passed or doesnt let TSC advance for the time it was vm-exiting
+            // However, the hypervisor have absolutely no way to downscale time for the second loop because it runs natively on the CPU without exiting
+            // This creates a discrepancy in the ratio of both loops
+            // The hypervisor cannot easily rewind the system wall clock (second loop, QIT/KUSER_SHARED_DATA) without causing system instability (network timeouts, audio lag)
+            static thread_local volatile u64 g_sink = 0; // thread_local volatile so that it doesnt need to be captured by the lambda
+
+            // First we start by randomizing counts WITHOUT syscalls and WITHOUT using instructions that can be trapped by hypervisors, this was a hard task
+            struct entropy_provider {
+                // prevent inlining so optimizer can't fold this easily
+                #if (MSVC && !CLANG)
+                    __declspec(noinline)
+                #else
+                    __attribute__((noinline))
+                #endif
+                    ULONG64 operator()() const noexcept {
+                    // TO prevent hoisting across this call
+                    std::atomic_signal_fence(std::memory_order_seq_cst);
+
+                    // start state (golden ratio)
+                    volatile ULONG64 v = 0x9E3779B97F4A7C15ULL;
+
+                    // mix in addresses (ASLR gives entropy but if ASLR disabled or bypassed we have some tricks still)
+                    // Take addresses of various locals/statics and mark some volatile so they cannot be optimized away
+                    volatile int local_static = 0;               // local volatile (stack-like)
+                    static volatile int module_static = 0;       // static in function scope (image address)
+                    auto probe_lambda = []() noexcept {};       // stack-local lambda object
+                    uintptr_t pa = reinterpret_cast<uintptr_t>(&v);
+                    uintptr_t pb = reinterpret_cast<uintptr_t>(&local_static);
+                    uintptr_t pc = reinterpret_cast<uintptr_t>(&module_static);
+                    uintptr_t pd = reinterpret_cast<uintptr_t>(&probe_lambda);
+
+                    v ^= static_cast<ULONG64>(pa) + 0x9E3779B97F4A7C15ULL + (v << 6) + (v >> 2);
+                    v ^= static_cast<ULONG64>(pb) + (v << 7);
+                    v ^= static_cast<ULONG64>(pc) + (v >> 11);
+                    v ^= static_cast<ULONG64>(pd) + 0xBF58476D1CE4E5B9ULL;
+
+                    // dependent operations on volatile locals to prevent elimination
+                    for (int i = 0; i < 24; ++i) {
+                        volatile int stack_local = i ^ static_cast<int>(v);
+                        // take address each iteration and fold it in
+                        uintptr_t la = reinterpret_cast<uintptr_t>(&stack_local);
+                        v ^= (static_cast<ULONG64>(la) + (static_cast<ULONG64>(i) * 0x9E3779B97F4A7CULL));
+                        // dependent shifts to spread any small differences
+                        v ^= (v << ((i & 31)));
+                        v ^= (v >> (((i + 13) & 31)));
+                        // so compiler can't remove the local entirely
+                        std::atomic_signal_fence(std::memory_order_seq_cst);
+                    }
+
+                    // final avalanche! (as said before, just in case ASLR can be folded)
+                    v ^= (v << 13);
+                    v ^= (v >> 7);
+                    v ^= (v << 17);
+                    v *= 0x2545F4914F6CDD1DULL;
+                    v ^= (v >> 33);
+
+                    // another compiler fence to prevent hoisting results
+                    std::atomic_signal_fence(std::memory_order_seq_cst);
+
+                    return static_cast<ULONG64>(v);
+                }
+            };
+
+            // Use rejection sampling as before to avoid modulo bias
+            auto generate_iteration_value = [](ULONG64 min, ULONG64 max, auto getrand) noexcept -> ULONG64 {
+                const ULONG64 range = max - min + 1;
+                const ULONG64 limit = (~0ULL) - ((~0ULL) % range);
+                for (;;) {
+                    const ULONG64 r = getrand();
+                    if (r < limit) return min + (r % range);
+                    // small local mix to change subsequent outputs (still in user-mode and not a syscall)
+                    volatile ULONG64 scrub = r;
+                    scrub ^= (scrub << 11);
+                    scrub ^= (scrub >> 9);
+                    (void)scrub;
+                }
+            };
+
+            const entropy_provider entropyProv{};
+            const ULONG64 count_first = generate_iteration_value(30000000ULL, 40000000ULL, [&entropyProv]() noexcept { return entropyProv(); });
+            const ULONG64 count_second = generate_iteration_value(300000000ULL, 400000000ULL, [&entropyProv]() noexcept { return entropyProv(); });
+
+            auto rd_lambda = []() noexcept -> u64 {
+                u64 v = __rdtsc();
+                g_sink ^= v;
+                return v;
+            };
+
+            auto xor_lambda = []() noexcept -> u64 {
+                volatile u64 a = 0xDEADBEEFDEADBEEFull; // can be replaced by NOPs, the core idea is to use a non-trappable instruction that the hv cannot virtualize
+                volatile u64 b = 0x1234567890ABCDEFull;
+                u64 v = a ^ b;
+                g_sink ^= v;
+                return v;
+            };
+
+            using fn_t = u64(*)();
+
+            // make the pointer volatile so the compiler treats the call as opaque/indirect
+            volatile fn_t rd_ptr = +rd_lambda;    // +lambda forces conversion to function ptr, so it won't be inlined, we need to prevent the compiler from inlining this
+            volatile fn_t xor_ptr = +xor_lambda;
+
+            // first measurement
+            ULONG64 beforeqit = 0;
+            QueryInterruptTime(&beforeqit); // never touches RDTSC/RDTSCP or transitions to kernel-mode, just reads from KUSER_SHARED_DATA, reason why we use it
+            const ULONG64 beforetsc = __rdtsc();
+
+            volatile u64 dummy = 0;
+            for (ULONG64 x = 0; x < count_first; ++x) {
+                dummy = rd_ptr(); // this loop will be intercepted by a RDTSC trap, downscaling our TSC
+            }
+
+            // the kernel routine that backs up this api runs at CLOCK_LEVEL(13), only preempted by IPI, POWER_LEVEL and NMIs
+            // meaning it's highly accurate even with kernel noise, hence we don't need cluster or median computations to get precise ratios
+            ULONG64 afterqit = 0;
+            QueryInterruptTime(&afterqit);
+            const ULONG64 aftertsc = __rdtsc();
+
+            const ULONG64 dtsc1 = aftertsc - beforetsc;
+            const ULONG64 dtq1 = afterqit - beforeqit;
+            const ULONG64 firstRatio = (dtq1 != 0) ? (dtsc1 / dtq1) : 0ULL;
+
+            // second measurement
+            ULONG64 beforeqit2 = 0;
+            QueryInterruptTime(&beforeqit2);
+            const ULONG64 beforetsc2 = __rdtsc();
+
+            for (ULONG64 x = 0; x < count_second; ++x) {
+                dummy = xor_ptr(); // this loop won't be intercepted, it never switches to kernel-mode
+            }
+            VMAWARE_UNUSED(dummy);
+
+            ULONG64 afterqit2 = 0;
+            QueryInterruptTime(&afterqit2);
+            const ULONG64 aftertsc2 = __rdtsc();
+
+            const ULONG64 dtsc2 = aftertsc2 - beforetsc2;
+            const ULONG64 dtq2 = afterqit2 - beforeqit2;
+            const ULONG64 secondRatio = (dtq2 != 0) ? (dtsc2 / dtq2) : 0ULL;
+
+            /* branchless absolute difference is like:
+               mask = -(uint64_t)(firstRatio < secondRatio) -> 0 or 0xFFFFFFFFFFFFFFFF
+               diff  = firstRatio - secondRatio
+               abs   = (diff ^ mask) - mask
+            */
+            const ULONG64 diffMask = (ULONG64)0 - (ULONG64)(firstRatio < secondRatio);  // all-ones if first<second, else 0
+            const ULONG64 diff = firstRatio - secondRatio;                              // unsigned subtraction
+            const ULONG64 difference = (diff ^ diffMask) - diffMask;                    // absolute difference, unsigned
+
+            debug("TIMER: RDTSC -> ", firstRatio, ", QIT -> ", secondRatio, ", Ratio: ", difference);
+
+            if (prevMask != 0) {
+                pNtSetInformationThread(
+                    hCurrentThread,
+                    ThreadAffinityMask,
+                    reinterpret_cast<PVOID>(const_cast<ULONG_PTR*>(&originalAffinity)),
+                    static_cast<ULONG>(sizeof(originalAffinity))
+                );
+            }
+
+            // QIT is updated in intervals of 100 nanoseconds
+            // contrary to what someone could think, under heavy load the ratio will be more close to 0, it will also be closer to 0 if we assign CPUs to a VM in our host machine
+            // it will increase if the BIOS is configured to run the TSC by "core usage", which is why we use a 100 threshold check based on a lot of empirical data
+            if (difference > 100) {
+                debug("TIMER: An hypervisor has been detected intercepting RDTSC");
+                return true; // both ratios will always differ if a RDTSC trap is present, since the hypervisor can't account for the XOR/NOP loop
+            }
+        #endif
 
         // An hypervisor might detect that VMAware was spamming instructions to detect rdtsc hooks, and disable interception temporarily or include vm-exit latency in guest TSC
         // which is why we run the classic vm-exit latency check immediately after
@@ -5093,7 +5094,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         };
         constexpr size_t n_leaves = sizeof(leaves) / sizeof(leaves[0]);
 
-        constexpr u16 iterations = 1000;
+        constexpr u16 iterations = 100;
 
         // pre-allocate sample buffer and touch pages to avoid page faults by MMU during measurement
         std::vector<u64> samples;
@@ -5102,7 +5103,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         /*
         * We want to move our thread from the Running state to the Waiting state
-        * When the sleep expires (at the next timer tick), the OS moves VMAware's thread to the Ready state
+        * When the sleep expires (at the next timer tick), the kernel moves VMAware's thread to the Ready state
         * When it picks us up again, it grants VMAware a fresh quantum, typically varying between 2 ticks (30ms) and 6 ticks (90ms) on Windows Client editions
         * The default resolution of the Windows clock we're using is 64Hz
         * Because we're calling NtDelayExecution with only 1ms, the kernel interprets this as "Sleep for at least 1ms"
@@ -5113,13 +5114,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         * This gives us more time for sampling before we're rescheduled again
         */
 
-    #if (WINDOWS)
-        // voluntary context switch to get a fresh quantum
-        SleepEx(1, FALSE);
-    #else 
-        // should work similarly in Unix-like operating systems
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    #endif
+        #if (WINDOWS)
+            // voluntary context switch to get a fresh quantum
+            SleepEx(1, FALSE);
+        #else 
+            // should work similarly in Unix-like operating systems
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        #endif
 
         // warm up but rotating through leaves to exercise different cpuid paths
         for (int w = 0; w < 128; ++w) {
@@ -5127,7 +5128,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             VMAWARE_UNUSED(tmp);
         }
 
-        // 1000 iterations per leaf, store contiguously per-leaf
+        // 100 iterations per leaf, store contiguously per-leaf
         for (size_t li = 0; li < n_leaves; ++li) {
             const unsigned int leaf = leaves[li];
             for (unsigned i = 0; i < iterations; ++i) {
@@ -5146,7 +5147,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return true;
         }
         // TLB flushes or side channel cache attacks are not even tried due to how unreliable they are against stealthy hypervisors
-#endif
+    #endif
         return false;
     }
 
@@ -11800,7 +11801,6 @@ public: // START OF PUBLIC FUNCTIONS
         constexpr const char* TMP_HYPERV = "Microsoft Hyper-V";
         constexpr const char* TMP_HYPERV_VPC = "Microsoft Virtual PC/Hyper-V";
         constexpr const char* TMP_AZURE = "Microsoft Azure Hyper-V";
-        constexpr const char* TMP_NANOVISOR = "Xbox NanoVisor (Hyper-V)";
         constexpr const char* TMP_HYPERV_ARTIFACT = "Hyper-V artifact (host running Hyper-V)";
     #else
         constexpr const char* TMP_QEMU = brands::QEMU;
@@ -11821,7 +11821,6 @@ public: // START OF PUBLIC FUNCTIONS
         constexpr const char* TMP_HYPERV = brands::HYPERV;
         constexpr const char* TMP_HYPERV_VPC = brands::HYPERV_VPC;
         constexpr const char* TMP_AZURE = brands::AZURE_HYPERV;
-        constexpr const char* TMP_NANOVISOR = brands::NANOVISOR;
         constexpr const char* TMP_HYPERV_ARTIFACT = brands::HYPERV_ARTIFACT;
     #endif
 
@@ -11920,10 +11919,6 @@ public: // START OF PUBLIC FUNCTIONS
         merge(TMP_AZURE, TMP_HYPERV, TMP_AZURE);
         merge(TMP_AZURE, TMP_VPC, TMP_AZURE);
         merge(TMP_AZURE, TMP_HYPERV_VPC, TMP_AZURE);
-
-        merge(TMP_NANOVISOR, TMP_HYPERV, TMP_NANOVISOR);
-        merge(TMP_NANOVISOR, TMP_VPC, TMP_NANOVISOR);
-        merge(TMP_NANOVISOR, TMP_HYPERV_VPC, TMP_NANOVISOR);
 
         merge(TMP_QEMU, TMP_KVM, TMP_QEMU_KVM);
         merge(TMP_KVM, TMP_HYPERV, TMP_KVM_HYPERV);
@@ -12368,7 +12363,6 @@ public: // START OF PUBLIC FUNCTIONS
             { brands::QNX, "Hypervisor (type 1)" },
             { brands::HYPERV, "Hypervisor (type 2)" }, // to clarify you're running under a Hyper-V guest VM
             { brands::AZURE_HYPERV, "Hypervisor (type 1)" },
-            { brands::NANOVISOR, "Hypervisor (type 1)" },
             { brands::KVM, "Hypervisor (type 1)" },
             { brands::KVM_HYPERV, "Hypervisor (type 1)" },
             { brands::QEMU_KVM_HYPERV, "Hypervisor (type 1)" },
@@ -12743,7 +12737,6 @@ std::array<VM::core::brand_entry, VM::core::MAX_BRANDS> VM::core::brand_scoreboa
     insert(brands::APPLE_VZ);
     insert(brands::INTEL_KGT);
     insert(brands::AZURE_HYPERV);
-    insert(brands::NANOVISOR);
     insert(brands::SIMPLEVISOR);
     insert(brands::HYPERV_ARTIFACT);
     insert(brands::UML);
