@@ -7481,12 +7481,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return core::add(brands::VBOX);
             }
 
-            std::unique_ptr<std::string> sys_vmware = util::sys_result("ioreg -l | grep -i -c -e \"vmware\"");
-
-            if (std::stoi(*sys_vmware) > 0) {
-                return core::add(brands::VMWARE);
-            }
-
             return false;
         };
 
