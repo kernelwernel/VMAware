@@ -5137,7 +5137,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 0x5,      // MONITOR/MWAIT
                 0x40000000u, // hypervisor range start
                 0x80000008u, // extended address limits (amd/intel ext)
-                0x0        // fallback to leaf 0 occasionally,th
+                0x0        // fallback to leaf 0 occasionally, the easiest to patch
         };
         constexpr size_t n_leaves = sizeof(leaves) / sizeof(leaves[0]);
 
