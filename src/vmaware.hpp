@@ -7474,16 +7474,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         };
 
-        auto check_general = []() -> bool {
-            std::unique_ptr<std::string> sys_vbox = util::sys_result("ioreg -l | grep -i -c -e \"virtualbox\" -e \"oracle\"");
-
-            if (std::stoi(*sys_vbox) > 0) {
-                return core::add(brands::VBOX);
-            }
-
-            return false;
-        };
-
         auto check_rom = []() -> bool {
             std::unique_ptr<std::string> sys_rom = util::sys_result("system_profiler SPHardwareDataType | grep \"Boot ROM Version\"");
             const std::string rom = *sys_rom;
