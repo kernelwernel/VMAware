@@ -4602,7 +4602,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // will be used in cpuid measurements later
         u16 cycle_threshold = 800;
         if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
-            cycle_threshold = 3500; // if we're running under Hyper-V, make VMAware detect nested virtualization
+            cycle_threshold = 3250; // if we're running under Hyper-V, make VMAware detect nested virtualization
         }
 
         #if (WINDOWS)
@@ -4767,12 +4767,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
             }
 
-            // RDTSC trap detection
-            // This detection uses two clocks and two loops, a loop that the hypervisor can spoof and a loop that the hypervisor cannot
-            // When RDTSC is hooked, the hypervisor usually "downscales" the result to hide the time passed or doesnt let TSC advance for the time it was vm-exiting
+            /* TSC offseting detection */
+            // This detection uses two clocks and two loops, a loop and a timer that the hypervisor can spoof and a second loop/timer that the hypervisor cannot
+            // When the TSC is "hooked", the hypervisor usually downscales the result to hide the time passed or doesnt let TSC advance for the time it was vm-exiting
             // However, the hypervisor have absolutely no way to downscale time for the second loop because it runs natively on the CPU without exiting
-            // This creates a discrepancy in the ratio of both loops
-            // The hypervisor cannot easily rewind the system wall clock (second loop, QIT/KUSER_SHARED_DATA) without causing system instability (network timeouts, audio lag)
+            // This creates a massive discrepancy in the ratio of both loops, contrary to the very small ratio if both timers were to run normally
+            // The hypervisor cannot easily rewind the system wall clock (second loop, QIT/KUSER_SHARED_DATA) without causing system instability (network timeouts, audio lag, etc)
             static thread_local volatile u64 g_sink = 0; // thread_local volatile so that it doesnt need to be captured by the lambda
 
             // First we start by randomizing counts WITHOUT syscalls and WITHOUT using instructions that can be trapped by hypervisors, this was a hard task
@@ -4833,7 +4833,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             };
 
             // Use rejection sampling as before to avoid modulo bias
-            auto generate_iteration_value = [](ULONG64 min, ULONG64 max, auto getrand) noexcept -> ULONG64 {
+            auto rng = [](ULONG64 min, ULONG64 max, auto getrand) noexcept -> ULONG64 {
                 const ULONG64 range = max - min + 1;
                 const ULONG64 limit = (~0ULL) - ((~0ULL) % range);
                 for (;;) {
@@ -4848,17 +4848,26 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             };
 
             const entropy_provider entropyProv{};
-            const ULONG64 count_first = generate_iteration_value(30000000ULL, 40000000ULL, [&entropyProv]() noexcept { return entropyProv(); });
-            const ULONG64 count_second = generate_iteration_value(300000000ULL, 400000000ULL, [&entropyProv]() noexcept { return entropyProv(); });
+            // QueryInterruptTime uses 100-nanosecond units, but the value in KUSER_SHARED_DATA is only updated every 15.625ms (the default system timer tick)
+            // For example, 10000000 iterations at @ 3GHz is around 33ms
+            // 100000 iterations of XOR would run too quickly (0.03ms), we need at least one tick, so we put 60000000 (20-30ms avg)
+            // 100000 iterations of CPUID takes roughly 100ms-200ms (which is safe for QIT)
+            // However, we need both loops to execute for roughly the same Wall Clock time (~60-80ms) to ensure CPU Frequency (Turbo) remains consistent
+            // 1. CPUID Loop: 130000 iterations * 2000 cycles = 260M cycles
+            // 2. XOR Loop: 260M cycles / 18 cycles per iter (volatile overhead) = 14.5M iterations
+            // the goal is to ensure we pass the QIT 15.6ms resolution update threshold from usermode while minimizing thermal frequency drift
+            const ULONG64 count_first = rng(130000ULL, 135000ULL, [&entropyProv]() noexcept { return entropyProv(); });
+            const ULONG64 count_second = rng(14000000ULL, 15000000ULL, [&entropyProv]() noexcept { return entropyProv(); });
 
-            auto rd_lambda = []() noexcept -> u64 {
-                u64 v = __rdtsc();
-                g_sink ^= v;
-                return v;
+            // the reason why we use CPUID rather than RDTSC is because RDTSC is a conditionally exiting instruction, and you can modify the guest TSC without trapping it
+            auto vm_exit = []() noexcept -> u64 {
+                volatile int regs[4] = { 0 }; // doesn't need to be as elaborated as the next cpuid_lambda we will use to calculate the real latency
+                __cpuid((int*)regs, 0); // unconditional vmexit
+                return (u64)regs[0]; // dependency to avoid /O2 builds, so that the CPU cannot start the next iteration of the loop until the current __cpuid writes to regs
             };
 
             auto xor_lambda = []() noexcept -> u64 {
-                volatile u64 a = 0xDEADBEEFDEADBEEFull; // can be replaced by NOPs, the core idea is to use a non-trappable instruction that the hv cannot virtualize
+                volatile u64 a = 0xDEADBEEFDEADBEEFull; // can be replaced with NOPs, etc, the core idea is to use a non-trappable instruction that the hv cannot virtualize
                 volatile u64 b = 0x1234567890ABCDEFull;
                 u64 v = a ^ b;
                 g_sink ^= v;
@@ -4868,17 +4877,38 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             using fn_t = u64(*)();
 
             // make the pointer volatile so the compiler treats the call as opaque/indirect
-            volatile fn_t rd_ptr = +rd_lambda;    // +lambda forces conversion to function ptr, so it won't be inlined, we need to prevent the compiler from inlining this
+            volatile fn_t cp_ptr = +vm_exit;    // +lambda forces conversion to function ptr, so it won't be inlined, we need to prevent the compiler from inlining this
             volatile fn_t xor_ptr = +xor_lambda;
+            volatile u64 dummy = 0;
+
+            // run the XOR loop briefly to force CPU out of sleep states/lower frequencies
+            // This reduces the variance (jitter) between the two measurement loops
+            // and confuses hypervisors targetting this check who might try to advance TSC when XOR might be running
+            for (ULONG64 x = 0; x < 10000000; ++x) {
+                dummy += xor_ptr();
+            }
 
             // first measurement
             ULONG64 beforeqit = 0;
-            QueryInterruptTime(&beforeqit); // never touches RDTSC/RDTSCP or transitions to kernel-mode, just reads from KUSER_SHARED_DATA, reason why we use it
-            const ULONG64 beforetsc = __rdtsc();
+            // Wait for QIT tick edge to avoid granularity errors
+            // if our loop takes 20ms, we might capture one tick (15.6ms reported) or two ticks (31.2ms reported) depending on exactly when we started relative to the system timer interrupt
+            // this causes the denominator in our ratio to jump by 50-100%, causing a delta artifact of exactly 32 (that would still be too small for the ratio diff to trigger, but anyways)
+            // syncing ensures we always start the measurement at the exact edge of a QIT update, eliminating this jitter
+            {
+                ULONG64 start_wait, now_wait;
+                QueryInterruptTime(&start_wait);
+                do {
+                    _mm_pause(); // hint to CPU we-re spin-waiting
+                    QueryInterruptTime(&now_wait); // never touches RDTSC/RDTSCP or transitions to kernel-mode, just reads from KUSER_SHARED_DATA, reason why we use it
+                } while (now_wait == start_wait);
+                beforeqit = now_wait;
+            }
+            // using only one rdtsc call here is harmless
+            // and it is intentional instead of manually computing with the frequency we got before (to avoid spoofing)
+            const ULONG64 beforetsc = __rdtsc(); 
 
-            volatile u64 dummy = 0;
             for (ULONG64 x = 0; x < count_first; ++x) {
-                dummy = rd_ptr(); // this loop will be intercepted by a RDTSC trap, downscaling our TSC
+                dummy += cp_ptr(); // this loop will be intercepted by a RDTSC trap, downscaling our TSC
             }
 
             // the kernel routine that backs up this api runs at CLOCK_LEVEL(13), only preempted by IPI, POWER_LEVEL and NMIs
@@ -4893,11 +4923,20 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             // second measurement
             ULONG64 beforeqit2 = 0;
-            QueryInterruptTime(&beforeqit2);
+            // wait for QIT tick edge for the second measurement as well
+            {
+                ULONG64 start_wait, now_wait;
+                QueryInterruptTime(&start_wait);
+                do {
+                    _mm_pause();
+                    QueryInterruptTime(&now_wait);
+                } while (now_wait == start_wait);
+                beforeqit2 = now_wait;
+            }
             const ULONG64 beforetsc2 = __rdtsc();
 
             for (ULONG64 x = 0; x < count_second; ++x) {
-                dummy = xor_ptr(); // this loop won't be intercepted, it never switches to kernel-mode
+                dummy += xor_ptr(); // this loop won't be intercepted, it never switches to kernel-mode
             }
             VMAWARE_UNUSED(dummy);
 
@@ -4911,14 +4950,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             /* branchless absolute difference is like:
                mask = -(uint64_t)(firstRatio < secondRatio) -> 0 or 0xFFFFFFFFFFFFFFFF
-               diff  = firstRatio - secondRatio
-               abs   = (diff ^ mask) - mask
+               diff = firstRatio - secondRatio
+               abs  = (diff ^ mask) - mask
             */
             const ULONG64 diffMask = (ULONG64)0 - (ULONG64)(firstRatio < secondRatio);  // all-ones if first<second, else 0
             const ULONG64 diff = firstRatio - secondRatio;                              // unsigned subtraction
             const ULONG64 difference = (diff ^ diffMask) - diffMask;                    // absolute difference, unsigned
 
-            debug("TIMER: RDTSC -> ", firstRatio, ", QIT -> ", secondRatio, ", Ratio: ", difference);
+            debug("TIMER: TSC -> ", firstRatio, ", Interrupt -> ", secondRatio, ", Ratio: ", difference);
 
             if (prevMask != 0) {
                 pNtSetInformationThread(
@@ -4931,10 +4970,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             // QIT is updated in intervals of 100 nanoseconds
             // contrary to what someone could think, under heavy load the ratio will be more close to 0, it will also be closer to 0 if we assign CPUs to a VM in our host machine
-            // it will increase if the BIOS is configured to run the TSC by "core usage", which is why we use a 100 threshold check based on a lot of empirical data
-            if (difference > 100) {
-                debug("TIMER: An hypervisor has been detected intercepting RDTSC");
-                return true; // both ratios will always differ if a RDTSC trap is present, since the hypervisor can't account for the XOR/NOP loop
+            // it will increase if the BIOS/UEFI is configured to run the TSC by "core usage", which is why we use this threshold check based on a lot of empirical data
+            // it increases because the CPUID instruction forces the CPU pipeline to drain and serialize (heavy workload), while the XOR loop is a tight arithmetic loop (throughput workload). 
+            // CPUs will boost to different frequencies for these two scenarios (for example 4.2GHz for XOR vs 4.0GHz for CPUID)
+            // A difference of 5-10% in ratio (15-30 points) or even more is normal behavior on bare metal
+            // lastly, we might see a small ratio always depending on which part of the tick we exactly start the measurement, which is the most important reason why we need a threshold
+            if (difference >= 100) {
+                debug("TIMER: An hypervisor has been detected intercepting TSC");
+                return true; // both ratios will always differ if TSC is downscaled, since the hypervisor can't account for the XOR/NOP loop
             }
         #endif
 
@@ -5078,7 +5121,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return result;
         };
 
-        // intel leaves on AMD and viceversa will still work for this probe
+        // Intel leaves on an AMD CPU and viceversa will still work for this probe
+        // for leafs like 0 that just returns static data, like "AuthenticAMD" or "GenuineIntel", a fast exit path could be made
+        // for other leaves like the extended state that rely on dynamic system states like APIC IDs and XState, kernel data locks are required
+        // we try different leaves so that is not worth to just create a "fast" exit path, forcing guest TSC manipulation
+        // the vmexit itself has a latency of around 800 cycles, combined with the registers save and the cpuid information we require, it costs 1000+ cycles
         constexpr unsigned int leaves[] = {
                 0xB,      // topology 
                 0xD,      // xsave/xstate 
@@ -5090,7 +5137,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 0x5,      // MONITOR/MWAIT
                 0x40000000u, // hypervisor range start
                 0x80000008u, // extended address limits (amd/intel ext)
-                0x0        // fallback to leaf 0 occasionally
+                0x0        // fallback to leaf 0 occasionally,th
         };
         constexpr size_t n_leaves = sizeof(leaves) / sizeof(leaves[0]);
 
@@ -5128,7 +5175,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             VMAWARE_UNUSED(tmp);
         }
 
-        // 100 iterations per leaf, store contiguously per-leaf
+        // 100 iterations per leaf, store contiguously per-leaf, so 1100 runs in total
         for (size_t li = 0; li < n_leaves; ++li) {
             const unsigned int leaf = leaves[li];
             for (unsigned i = 0; i < iterations; ++i) {
@@ -5143,7 +5190,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (cpuid_latency >= cycle_threshold) {
             return true;
         }
-        else if (cpuid_latency <= 20) { // cpuid is fully serializing, not even old CPUs have this low average cycles in real-world scenarios
+        else if (cpuid_latency <= 25) { 
+            // cpuid is fully serializing, not even old CPUs have this low average cycles in real-world scenarios
+            // however, in patches, zero or even negative deltas can be seen oftenly
             return true;
         }
         // TLB flushes or side channel cache attacks are not even tried due to how unreliable they are against stealthy hypervisors
@@ -7430,12 +7479,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             if (std::stoi(*sys_vbox) > 0) {
                 return core::add(brands::VBOX);
-            }
-
-            std::unique_ptr<std::string> sys_vmware = util::sys_result("ioreg -l | grep -i -c -e \"vmware\"");
-
-            if (std::stoi(*sys_vmware) > 0) {
-                return core::add(brands::VMWARE);
             }
 
             return false;
