@@ -5278,6 +5278,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return core::add(brands::DOCKER);
         }
 
+        return core::add(brands::DOCKER); // TEMPORARY
+
         return false;
     }
 
@@ -12548,7 +12550,7 @@ public: // START OF PUBLIC FUNCTIONS
             // by either having "a" or "an" before the VM brand
             // name. It would look weird if the conclusion 
             // message was "an VirtualBox" or "a Anubis", so this
-            // condition fixes that issue.    
+            // condition fixes that issue.
             if (
                 !hardener && (
                     (brand_tmp == brands::ACRN) ||
