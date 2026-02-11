@@ -12585,7 +12585,7 @@ public: // START OF PUBLIC FUNCTIONS
                 addition + 
                 hardener + 
                 brand_tmp + 
-                (brand_tmp == brands::HYPERV_ARTIFACT ? " VM" : "");
+                (brand_tmp == brands::HYPERV_ARTIFACT ? "" : " VM");
 
             memo::conclusion::store(result.c_str());
 
