@@ -24,6 +24,7 @@
  *      - Kyun-J (https://github.com/Kyun-J)
  *      - luukjp (https://github.com/luukjp)
  *      - Lorenzo Rizzotti (https://github.com/Dreaming-Codes) 
+ *      - virtfunc (https://github.com/virtfunc)
  *  - Repository: https://github.com/kernelwernel/VMAware
  *  - Docs: https://github.com/kernelwernel/VMAware/docs/documentation.md
  *  - Full credits: https://github.com/kernelwernel/VMAware#credits-and-contributors-%EF%B8%8F
@@ -12523,8 +12524,8 @@ public: // START OF PUBLIC FUNCTIONS
         const u8 percent_tmp = percentage(flags);
         const bool has_hardener = is_hardened();
 
-        constexpr const char* very_unlikely = "Very unlikely a";
-        constexpr const char* unlikely = "Unlikely a";
+        constexpr const char* very_unlikely = "Very unlikely";
+        constexpr const char* unlikely = "Unlikely";
         constexpr const char* potentially = "Potentially";
         constexpr const char* might = "Might be";
         constexpr const char* likely = "Likely";
@@ -12550,7 +12551,7 @@ public: // START OF PUBLIC FUNCTIONS
             // message was "an VirtualBox" or "a Anubis", so this
             // condition fixes that issue.
             if (
-                !hardener && (
+                !has_hardener && (
                     (brand_tmp == brands::ACRN) ||
                     (brand_tmp == brands::ANUBIS) ||
                     (brand_tmp == brands::BSD_VMM) ||
@@ -12584,7 +12585,7 @@ public: // START OF PUBLIC FUNCTIONS
                 addition + 
                 hardener + 
                 brand_tmp + 
-                (brand_tmp == brands::HYPERV_ARTIFACT ? " VM" : "");
+                (brand_tmp == brands::HYPERV_ARTIFACT ? "" : " VM");
 
             memo::conclusion::store(result.c_str());
 

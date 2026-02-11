@@ -1,10 +1,7 @@
 # Contribution Guidelines
 
 
-Make sure to create your PR merge target to the `dev` branch and not the `main` branch. This is because all our prototype code is developed in `dev`, and we usually merge that branch to `main` at least once a week. it keeps our codebase organised and separated between a prototype that we cautiously don't think it's ready to be used by the public yet (especially if it's a new technique being introduced), and an upstream version that we've deemed to be practically ready.
-
-
-Also, please consider adding your name and github in the vmaware.hpp file and the README's credit sections. Your work is valuable to us, and we want to credit you for the improvements you've made. 
+Please consider adding your name and github in the vmaware.hpp file and the README's credit sections. Your work is valuable to us, and we want to credit you for the improvements you've made. 
 
 
 ## Translations
