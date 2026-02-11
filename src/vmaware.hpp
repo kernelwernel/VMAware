@@ -11390,11 +11390,26 @@ public:
 
         // Temporary storage to capture which brand was detected by the currently running technique
         static const char* last_detected_brand;
+        static u8 last_detected_score;
 
-        // directly return when adding a brand to the scoreboard for a more succint expression
-        static inline bool add(const char* p_brand, const char* extra_brand = "") noexcept {
-            // capture the brand being added so we can cache it later
+        // 1. one brand, custom score
+        static inline bool add(const char* p_brand, u8 score) noexcept {
+            return add_score(p_brand, "", score);
+        }
+
+        // 2. one brand, default score
+        static inline bool add(const char* p_brand) noexcept {
+            return add_score(p_brand, "", 0);
+        }
+
+        // 3. two brands, default score
+        static inline bool add(const char* p_brand, const char* extra_brand) noexcept {
+            return add_score(p_brand, extra_brand, 0);
+        }
+
+        static inline bool add_score(const char* p_brand, const char* extra_brand, u8 score) noexcept {
             last_detected_brand = p_brand;
+            last_detected_score = score; // Store for the engine to read
 
             for (size_t i = 0; i < brand_count; ++i) {
                 // pointer comparison is sufficient as we use the static constants from brands:: namespace
@@ -11404,7 +11419,7 @@ public:
                 }
             }
 
-            if (extra_brand[0] != '\0') {
+            if (extra_brand && extra_brand[0] != '\0') {
                 for (size_t i = 0; i < brand_count; ++i) {
                     if (brand_scoreboard[i].name == extra_brand) {
                         brand_scoreboard[i].score++;
@@ -11483,23 +11498,28 @@ public:
 
                 // reset the last detected brand before running
                 last_detected_brand = nullptr;
+                last_detected_score = 0;
 
                 // run the technique
                 const bool result = technique_data.run();
 
-                // retrieve the brand that was set during execution (if any)
-                const char* detected_brand = (result && last_detected_brand) ? last_detected_brand : brands::NULL_BRAND;
-
                 if (result) {
-                    points += technique_data.points;
+                    // determine which points to use: Override or Default
+                    const u8 points_to_add = (last_detected_score > 0) ? last_detected_score : technique_data.points;
 
+                    points += points_to_add;
                     // this is specific to VM::detected_count() which 
                     // returns the number of techniques that found a VM.
                     detected_count_num++;
-                }
 
-                // store the current technique result to the cache
-                memo::cache_store(technique_macro, result, technique_data.points, detected_brand);
+                    // retrieve the brand that was set during execution (if any)
+                    const char* detected_brand = (last_detected_brand) ? last_detected_brand : brands::NULL_BRAND;
+                    // store the current technique result to the cache
+                    memo::cache_store(technique_macro, result, points_to_add, detected_brand);
+                }
+                else {
+                    memo::cache_store(technique_macro, false, 0, brands::NULL_BRAND);
+                }
 
                 // for things like VM::detect() and VM::percentage(),
                 // a score of 150+ is guaranteed to be a VM, so
@@ -11761,17 +11781,20 @@ public: // START OF PUBLIC FUNCTIONS
 
             if (auto run_fn = pair.run) {  
                 core::last_detected_brand = nullptr;
+                core::last_detected_score = 0; 
 
                 bool result = run_fn();           
-                if (result) detected_count_num++;
-            #ifdef __VMAWARE_DEBUG__
-                total_points += pair.points;
-            #endif
-                // determine the brand string associated with this result
-                const char* detected_brand = (result && core::last_detected_brand) ? core::last_detected_brand : brands::NULL_BRAND;
+                if (result) {
+                    #ifdef __VMAWARE_DEBUG__
+                        total_points += pair.points;
+                    #endif
+                    detected_count_num++;
+                    u8 points_to_add = (core::last_detected_score > 0) ? core::last_detected_score : pair.points;
+                    const char* detected_brand = (core::last_detected_brand) ? core::last_detected_brand : brands::NULL_BRAND;
 
-                memo::cache_store(flag_bit, result, pair.points, detected_brand);
-                return result;
+                    memo::cache_store(flag_bit, result, points_to_add, detected_brand);
+                    return result;
+                }
             }
             else {
                 throw_error("Flag is not known or not implemented");
@@ -12829,6 +12852,7 @@ std::array<VM::memo::leaf_entry, VM::memo::leaf_cache::CAPACITY> VM::memo::leaf_
 std::size_t VM::memo::leaf_cache::count = 0;
 std::size_t VM::memo::leaf_cache::next_index = 0;
 const char* VM::core::last_detected_brand = nullptr;
+VM::u8 VM::core::last_detected_score = 0;
 
 #ifdef __VMAWARE_DEBUG__
 VM::u16 VM::total_points = 0;
