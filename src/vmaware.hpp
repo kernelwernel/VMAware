@@ -5278,8 +5278,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return core::add(brands::DOCKER);
         }
 
-        return core::add(brands::DOCKER); // TEMPORARY
-
         return false;
     }
 
@@ -12581,12 +12579,12 @@ public: // START OF PUBLIC FUNCTIONS
             }
 
             // Hyper-V artifacts are an exception due to how unique the circumstance is
-            std::string result;
-            if (brand_tmp == brands::HYPERV_ARTIFACT) {
-                result = std::string(category) + addition + hardener + brand_tmp;
-            } else {
-                result = std::string(category) + addition + hardener + brand_tmp + " VM";
-            }
+            const std::string result = 
+                std::string(category) + 
+                addition + 
+                hardener + 
+                brand_tmp + 
+                (brand_tmp == brands::HYPERV_ARTIFACT ? " VM" : "");
 
             memo::conclusion::store(result.c_str());
 
