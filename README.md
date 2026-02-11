@@ -11,7 +11,7 @@
    </a>
 
    <div align="center">
-      <b>VMAware</b> (VM + Aware) is a cross-platform C++ library for virtual machine detection.
+      <b>VMAware</b> (VM + Aware) is a cross-platform C++ framework for virtual machine detection.
       <br>
       <br>
       <a href="README_CN.md">中文 🇨🇳</a> | <a href="README_FR.md">Français 🇫🇷</a> | <a href="README_KR.md">한국어 🇰🇷</a>
@@ -39,7 +39,7 @@ The library is:
 <br>
 
 > [!NOTE]
-> We are looking for translators willing to translate this README into your native language if it isn't included. If you'd like to contribute, feel free to give us a PR! 
+> We are looking for translators willing to translate this README into your native language. If you'd like to contribute, feel free to give us a PR! 
 
 
 ## Example 🧪
@@ -258,7 +258,7 @@ If you want to learn about the architecture and design of the library, head over
 <br>
 
 ## Issues, discussions, pull requests, and inquiries 📬
-If you have any suggestions, ideas, or any sort of contribution, feel free to ask! I'll be more than happy to discuss either in the [issue](https://github.com/kernelwernel/VMAware/issues) or [discussion](https://github.com/kernelwernel/VMAware/discussions) sections. If you want to personally ask something in private, my discord is `kr.nl`.
+If you have any suggestions, ideas, or any sort of contribution, feel free to ask! I'll be more than happy to discuss either in the [issue](https://github.com/kernelwernel/VMAware/issues) or [discussion](https://github.com/kernelwernel/VMAware/discussions) sections. If you want to personally ask something in private, our discords are `kr.nl` and `shenzken`
 
 For email inquiries: `jeanruyv@gmail.com`
 
