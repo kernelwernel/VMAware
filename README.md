@@ -225,15 +225,17 @@ If you want to learn about the architecture and design of the library, head over
 <summary>How is it developed?</summary>
 <br>
 
-> Based on online research (ranging from science papers to things like private game hacking forums and discord servers), we try to identify the methods currently used to hide VMs and investigate generic detections capable of detecting them, while constantly tracking their activity to ensure we stay one step ahead.
+> Based on online research (ranging from scientific papers to private game-hacking forums and Discord servers), we identify the methods currently used to hide VMs and investigate generic detection techniques capable of finding them, while continuously tracking their activity so we stay one step ahead.
 >
-> Once we have developed production-level code, we upload it to the dev branch to start testing it in real environments, where products using our library on hundreds or even thousands of devices run our detection algorithms and silently alert us if a VM has been detected, to be later manually verified for false positives.
-> 
-> If we believe that false positives have been corrected based on experimental tests and online evidence in public documentation and databases, we merge the changes to the main branch, assigning the new detections a score, taking into account their effectiveness, reliability, and their operation in conjunction with the rest of the techniques.
+> Once we have production-ready code, we upload it directly to the main branch and begin testing in real environments. 
 >
-> Other situations (such as false flags, compilation errors, possible vulnerabilities, etc.) are immediately merged into the main branch.
+> Products that include our library run our detection algorithms on hundreds or even thousands of devices and quietly report back if a VM is detected; those reports are later manually checked for false positives.
 >
-> Once the library has undergone sufficient modifications compared to previous versions, we place the library in the releases section, explaining these changes in detail.
+> If experimental tests and public documentation/databases indicate that false positives have been resolved, we keep the changes in main and assign scores to new detections based on their effectiveness, reliability, and how they operate together with other techniques.
+>
+> Other situations (false flags, compilation errors, possible vulnerabilities, etc.) are also merged into main immediately.
+>
+> When the library has accumulated enough changes compared to previous versions, we publish a release and explain those changes in detail.
 
 </details>
 

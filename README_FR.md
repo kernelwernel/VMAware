@@ -215,15 +215,17 @@ Si vous voulez comprendre l’architecture et la conception de la bibliothèque,
 <summary>Comment est-il développé?</summary>
 <br>
 
-> À partir de recherches en ligne (articles scientifiques, forums de piratage de jeux privés, serveurs Discord, etc.), nous identifions les méthodes utilisées pour dissimuler les VM et étudions les systèmes de détection génériques capables de les repérer. Nous surveillons en permanence leur activité pour garder une longueur d'avance.
->
-> Une fois le code prêt pour la production, nous le téléchargeons sur la branche de développement (`dev`) pour le tester en conditions réelles. Sur des centaines, voire des milliers d'appareils, les produits utilisant notre bibliothèque exécutent nos algorithmes de détection et nous alertent discrètement en cas de détection d'une VM. Les faux positifs sont ensuite vérifiés manuellement.
+> À partir de recherches en ligne (articles scientifiques, forums privés de piratage de jeux, serveurs Discord, etc.), nous identifions les méthodes utilisées pour dissimuler les VM et étudions des techniques de détection générales capables de les repérer, tout en surveillant en permanence leur activité pour garder une longueur d'avance.
 > 
-> Si nous estimons que les faux positifs ont été corrigés grâce à des tests expérimentaux et des preuves en ligne issues de la documentation et des bases de données publiques, nous intégrons les modifications à la branche `main`, en attribuant un score aux nouvelles détections. Ce score tient compte de leur efficacité, de leur fiabilité et de leur fonctionnement en combinaison avec les autres techniques.
->
-> Les autres situations (telles que les faux positifs, les erreurs de compilation, les vulnérabilités potentielles, etc.) sont immédiatement résolues et intégrées sur `main`.
+> Une fois le code prêt pour la production, nous le téléversons directement sur la branche main et commençons les tests en conditions réelles. 
 > 
-> Une fois que la bibliothèque a subi suffisamment de modifications par rapport aux versions précédentes, nous la publions dans la section des versions, en expliquant ces modifications en détail.
+> Les produits intégrant notre bibliothèque exécutent nos algorithmes de détection sur des centaines voire des milliers d'appareils et nous signalent discrètement toute détection de VM ; ces signalements sont ensuite vérifiés manuellement pour détecter d'éventuels faux positifs.
+> 
+> Si les tests expérimentaux et les preuves issues de la documentation et des bases de données publiques confirment que les faux positifs ont été corrigés, nous conservons les modifications sur main et attribuons un score aux nouvelles détections selon leur efficacité, leur fiabilité et leur interaction avec les autres techniques.
+> 
+> D'autres situations (faux positifs, erreurs de compilation, vulnérabilités potentielles, etc.) sont également intégrées immédiatement sur main.
+> 
+> Quand la bibliothèque a accumulé suffisamment de modifications par rapport aux versions précédentes, nous publions une release et détaillons les changements dans les notes de version.
 
 </details>
 

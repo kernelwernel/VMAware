@@ -187,14 +187,6 @@ endif()
 
 </details>
 
-<!--
-<details>
-<summary>How does it compare to paid VM detection libraries?</summary>
-<br>
-
-> There are several paid software solutions available for protecting software licenses from reverse engineering or cracking, such as <a href="https://docs.sentinel.thalesgroup.com/home.htm">Thales' Sentinel RMS</a> and <a href="https://vmpsoft.com/">VMProtect</a>. These tools include VM detection as part of their feature set, though their primary focus is not necessarily VM detection unlike this project.
-</details>
--->
 
 <details>
 <summary>오픈 소스 프로젝트는 라이브러리를 더 취약하게 만들지 않을까요?</summary>
@@ -221,15 +213,15 @@ endif()
 <summary>어떻게 개발되나요?</summary>
 <br>
 
-> 학술 논문부터 개인 게임 해킹 포럼, Discord 커뮤니티에 이르기까지 다양한 채널을 통한 온라인 연구를 바탕으로, 우리는 가상 머신을 숨기는 데 사용되는 최신 기법을 지속적으로 추적하고 이를 감지할 수 있는 일반적인 솔루션을 연구하여 항상 기술의 선두를 유지합니다.
->
-> 프로덕션 퀄리티의 코드 개발을 완료하면 실제 테스트를 위해 개발 브랜치에 업로드합니다. 수백, 수천 대의 장치에서 감지 알고리즘을 실행하고 가상 머신이 감지되면 자동으로 보고한 후, 오탐지에 대한 수동 검증을 수행합니다.
+> 학술 논문에서 개인 게임 해킹 포럼, Discord 커뮤니티에 이르기까지 온라인 조사를 바탕으로 가상 머신을 숨기는 최신 기법을 식별하고, 이를 탐지할 수 있는 일반적 방법을 연구하며 그 활동을 지속적으로 추적해 기술 우위를 유지합니다.
 > 
-> 실험 테스트와 공개 문서/데이터베이스의 온라인 증거를 토대로 오탐지가 수정된 것으로 확인되면 변경 사항을 메인 브렌치에 병합합니다. 또한 새로운 탐지 기술에 효과성, 신뢰성, 다른 기술과의 시너지 효과 바탕으로 포괄적인 점수를 부여합니다.
->
-> 기타 특수한 경우(예: 오탐지, 컴파일 오류, 잠재적 취약점 등)는 즉시 메인 브랜치에 병합됩니다.
->
-> 라이브러리 버전에 충분한 개선 사항이 누적되면 릴리즈 되며, 릴리즈 페이지에서 모든 변경 사항을 상세히 기술합니다.
+> 프로덕션 품질의 코드가 준비되면 이를 main 분기에 직접 업로드하고 실제 환경에서 테스트를 시작합니다. 우리 라이브러리를 포함한 제품들은 수백에서 수천 대의 장치에서 탐지 알고리즘을 실행하며, 가상 머신이 감지되면 조용히 보고하고 해당 보고서는 이후 수동으로 오탐 여부를 검증합니다.
+> 
+> 실험 테스트 및 공개 문서/데이터베이스의 증거로 오탐이 수정된 것이 확인되면 변경사항은 main에 남겨지며, 새 탐지 항목에는 유효성, 신뢰성, 다른 기법과의 상호작용을 고려한 점수가 부여됩니다.
+> 
+> 오탐, 컴파일 오류, 잠재적 취약점 등 다른 상황도 즉시 main에 통합됩니다.
+> 
+> 라이브러리가 이전 버전 대비 충분한 개선을 누적하면 릴리스를 게시하고 변경 사항을 상세히 설명합니다.
 
 </details>
 
