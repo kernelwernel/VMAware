@@ -12523,8 +12523,8 @@ public: // START OF PUBLIC FUNCTIONS
         const u8 percent_tmp = percentage(flags);
         const bool has_hardener = is_hardened();
 
-        constexpr const char* very_unlikely = "Very unlikely a";
-        constexpr const char* unlikely = "Unlikely a";
+        constexpr const char* very_unlikely = "Very unlikely";
+        constexpr const char* unlikely = "Unlikely";
         constexpr const char* potentially = "Potentially";
         constexpr const char* might = "Might be";
         constexpr const char* likely = "Likely";
@@ -12550,7 +12550,7 @@ public: // START OF PUBLIC FUNCTIONS
             // message was "an VirtualBox" or "a Anubis", so this
             // condition fixes that issue.
             if (
-                !hardener && (
+                !has_hardener && (
                     (brand_tmp == brands::ACRN) ||
                     (brand_tmp == brands::ANUBIS) ||
                     (brand_tmp == brands::BSD_VMM) ||
