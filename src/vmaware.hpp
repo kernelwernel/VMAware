@@ -5013,34 +5013,34 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             #else
                 __attribute__((noinline))
             #endif
-                ULONG64 operator()() const noexcept {
+                std::uint64_t operator()() const noexcept {
                 // TO prevent hoisting across this call
                 std::atomic_signal_fence(std::memory_order_seq_cst);
 
                 // start state (golden ratio)
-                volatile ULONG64 v = 0x9E3779B97F4A7C15ULL;
+                volatile std::uint64_t v = UINT64_C(0x9E3779B97F4A7C15);
 
                 // mix in addresses (ASLR gives entropy but if ASLR disabled or bypassed we have some tricks still)
                 // Take addresses of various locals/statics and mark some volatile so they cannot be optimized away
                 volatile int local_static = 0;               // local volatile (stack-like)
                 static volatile int module_static = 0;       // static in function scope (image address)
                 auto probe_lambda = []() noexcept {};       // stack-local lambda object
-                uintptr_t pa = reinterpret_cast<uintptr_t>(&v);
-                uintptr_t pb = reinterpret_cast<uintptr_t>(&local_static);
-                uintptr_t pc = reinterpret_cast<uintptr_t>(&module_static);
-                uintptr_t pd = reinterpret_cast<uintptr_t>(&probe_lambda);
+                std::uintptr_t pa = reinterpret_cast<std::uintptr_t>(&v);
+                std::uintptr_t pb = reinterpret_cast<std::uintptr_t>(&local_static);
+                std::uintptr_t pc = reinterpret_cast<std::uintptr_t>(&module_static);
+                std::uintptr_t pd = reinterpret_cast<std::uintptr_t>(&probe_lambda);
 
-                v ^= static_cast<ULONG64>(pa) + 0x9E3779B97F4A7C15ULL + (v << 6) + (v >> 2);
-                v ^= static_cast<ULONG64>(pb) + (v << 7);
-                v ^= static_cast<ULONG64>(pc) + (v >> 11);
-                v ^= static_cast<ULONG64>(pd) + 0xBF58476D1CE4E5B9ULL;
+                v ^= static_cast<std::uint64_t>(pa) + UINT64_C(0x9E3779B97F4A7C15) + (v << 6) + (v >> 2);
+                v ^= static_cast<std::uint64_t>(pb) + (v << 7);
+                v ^= static_cast<std::uint64_t>(pc) + (v >> 11);
+                v ^= static_cast<std::uint64_t>(pd) + UINT64_C(0xBF58476D1CE4E5B9);
 
                 // dependent operations on volatile locals to prevent elimination
                 for (int i = 0; i < 24; ++i) {
                     volatile int stack_local = i ^ static_cast<int>(v);
                     // take address each iteration and fold it in
-                    uintptr_t la = reinterpret_cast<uintptr_t>(&stack_local);
-                    v ^= (static_cast<ULONG64>(la) + (static_cast<ULONG64>(i) * 0x9E3779B97F4A7CULL));
+                    std::uintptr_t la = reinterpret_cast<std::uintptr_t>(&stack_local);
+                    v ^= (static_cast<std::uint64_t>(la) + (static_cast<std::uint64_t>(i) * UINT64_C(0x9E3779B97F4A7C)));
                     // dependent shifts to spread any small differences
                     v ^= (v << ((i & 31)));
                     v ^= (v >> (((i + 13) & 31)));
@@ -5052,25 +5052,26 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 v ^= (v << 13);
                 v ^= (v >> 7);
                 v ^= (v << 17);
-                v *= 0x2545F4914F6CDD1DULL;
+                v *= UINT64_C(0x2545F4914F6CDD1D);
                 v ^= (v >> 33);
 
                 // another compiler fence to prevent hoisting results
                 std::atomic_signal_fence(std::memory_order_seq_cst);
 
-                return static_cast<ULONG64>(v);
+                return static_cast<std::uint64_t>(v);
             }
         };
 
         // rejection sampling as before to avoid modulo bias
-        auto rng = [](ULONG64 min, ULONG64 max, auto getrand) noexcept -> ULONG64 {
-            const ULONG64 range = max - min + 1;
-            const ULONG64 limit = (~0ULL) - ((~0ULL) % range);
+        auto rng = [](std::uint64_t min, std::uint64_t max, auto getrand) noexcept -> std::uint64_t {
+            const std::uint64_t range = max - min + 1;
+            const std::uint64_t max_val = std::numeric_limits<std::uint64_t>::max();
+            const std::uint64_t limit = max_val - (max_val % range);
             for (;;) {
-                const ULONG64 r = getrand();
+                const std::uint64_t r = getrand();
                 if (r < limit) return min + (r % range);
                 // small local mix to change subsequent outputs (still in user-mode and not a syscall)
-                volatile ULONG64 scrub = r;
+                volatile std::uint64_t scrub = r;
                 scrub ^= (scrub << 11);
                 scrub ^= (scrub >> 9);
                 (void)scrub;
