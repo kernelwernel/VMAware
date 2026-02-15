@@ -4601,7 +4601,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
         // will be used in cpuid measurements later
-        u16 cycle_threshold = 800;
+        u16 cycle_threshold = 800; // average latency of a VMX/SVM vmexit
         if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
             cycle_threshold = 3250; // if we're running under Hyper-V, make VMAware detect nested virtualization
         }
@@ -4689,85 +4689,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         // ================ START OF TIMING ATTACKS ================
         #if (WINDOWS)
-            const DWORD procCount = static_cast<DWORD>(GetActiveProcessorCount(ALL_PROCESSOR_GROUPS));
-            if (procCount == 0) return false;
-
-            // QPC frequency
-            LARGE_INTEGER freq;
-            if (!QueryPerformanceFrequency(&freq)) // NtPowerInformation and NtQueryPerformanceCounter are avoided as some hypervisors downscale tsc only if we triggered a context switch from userspace
-                return false;
-
-            // on modern Intel/AMD hardware with an invariant/constant TSC we can measure once (pin to a single core like we did before) 
-            // and treat that value as the system TSC rate, we do not need to iterate every logical CPU
-            // if the CPU is old and doesn't have invariant TSC, they will not have a hybrid architecture either (cores with different frequencies)
-            // this was verified in both AMD and Intel, for example Intel since Nehalem
-            // the idea is to detect the clock speed of the fastest core, corroborate with our db if its downscaled (sign of rdtsc patch) and detect the kernel patch
-            // we do not use the slowest (E-Core) even if it would be more idle and probably have less kernel noise, because someone could just trap on the fast cores
-            // and downscale their TSC until it matches the slowest cores, defeating our detection
-            // this could've been prevented if theres a possibility to always ask the Windows kernel for the type of core we're running under,
-            // but this proved to not be reliable always, specially on AMD
-
-            // calculates the invariant TSC base rate (on modern CPUs), not the dynamic core frequency, similar to what CallNtPowerInformation would give you
-            LARGE_INTEGER t1q, t2q;
-            thread_local u32 aux = 0;
-            const u64 t1 = __rdtsc();
-            QueryPerformanceCounter(&t1q); // uses RDTSCP under the hood unless platformclock (a bcdedit setting) is set, which then would use HPET or ACPI PM via NtQueryPerformanceCounter
-            SleepEx(50, 0); // 50ms under more than 100000 tests was enough to get stable results on modern Windows systems, even under heavy load
-            QueryPerformanceCounter(&t2q);
-            const u64 t2 = __rdtscp(&aux);
-
-            // this thread is pinned to the first CPU core due to the previous SetThreadAffinityMask call, meaning this calculation and cpu::get_cpu_base_speed() will report the same speed 
-            // (normally) P-cores are in lower indexes, althought we don't really care about which type of vCPU VMAware will be pinned under
-            // pinning to index 0 is also good to keep the check compatible with dinosaur (single-core) systems
-            const double elapsedSec = double(t2q.QuadPart - t1q.QuadPart) / double(freq.QuadPart); // the performance counter frequency is always 10MHz when running under Hyper-V
-            const double tscHz = double(t2 - t1) / elapsedSec;
-            const double tscMHz = tscHz / 1e6;
-
-            // even if it sounds unbelievable, this will NOT be affected even if in the BIOS the "by core usage" frequency scaling or SpeedStep (or equivalent) is enabled, and even under heavy loads
-            debug("TIMER: Current CPU base speed -> ", tscMHz, " MHz"); // it wont also be affected if we tell our OS to use the HPET timer instead of TSC
-
-            if (tscMHz < 800.0 || tscMHz >= 7000) { // i9-14900KS has 6.2 GHz; 9 9950X3D has 5.7 GHz
-                debug("TIMER: TSC is spoofed");
-                return true;
-            }
-
-            const auto& info = VM::cpu::analyze_cpu();
-            if (info.found) {
-                if (info.base_clock_mhz == 0) {
-                    debug("TIMER: CPU not found in the database");
-                }
-                else if (info.base_clock_mhz < 800.0) {
-                    debug("TIMER: RDTSC seems to be intercepted by an hypervisor");
-                    return true;
-                }
-                else {
-                    debug("TIMER: CPU's true base speed -> ", static_cast<double>(info.base_clock_mhz), " MHz");
-
-                    constexpr u32 check_leaf = 0x80000007u;
-                    constexpr double INVARIANT_TSC_DELTA = 250.0;
-                    constexpr double LEGACY_DELTA = 650.0;
-
-                    if (cpu::is_leaf_supported(check_leaf)) {
-                        u32 a = 0, b = 0, c = 0, d = 0;
-                        cpu::cpuid(a, b, c, d, check_leaf);
-                        const bool hasInvariantTsc = (d & (1u << 8)) != 0;
-
-                        if (hasInvariantTsc) {
-                            debug("TIMER: CPU supports invariant TSC");
-                            if (tscMHz <= info.base_clock_mhz - INVARIANT_TSC_DELTA) return true;
-                        }
-                        else {
-                            debug("TIMER: CPU does not support invariant TSC");
-                            if (tscMHz <= info.base_clock_mhz - LEGACY_DELTA) return true;
-                        }
-                    }
-
-                    constexpr double delta = 250.0;
-                    if (tscMHz <= info.base_clock_mhz - delta)
-                        return true;
-                }
-            }
-
             /* TSC offseting detection */
             // This detection uses two clocks and two loops, a loop and a timer that the hypervisor can spoof and a second loop/timer that the hypervisor cannot
             // When the TSC is "hooked", the hypervisor usually downscales the result to hide the time passed or doesnt let TSC advance for the time it was vm-exiting
@@ -4988,6 +4909,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // we used a rng before running the traditional rdtsc-cpuid-rdtsc trick
 
         // sometimes not intercepted in some hvs (like VirtualBox) under compat mode
+        thread_local u32 aux = 0;
         auto cpuid = [&](unsigned int leaf) noexcept -> u64 {
         #if (MSVC)
             // make regs volatile so writes cannot be optimized out, if this isn't added and the code is compiled in release mode, cycles would be around 40 even under Hyper-V
