@@ -4698,79 +4698,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             // The hypervisor cannot easily rewind the system wall clock (second loop, QIT/KUSER_SHARED_DATA) without causing system instability (network timeouts, audio lag, etc)
             static thread_local volatile u64 g_sink = 0; // thread_local volatile so that it doesnt need to be captured by the lambda
 
-            // First we start by randomizing counts WITHOUT syscalls and WITHOUT using instructions that can be trapped by hypervisors, this was a hard task
-            struct entropy_provider {
-                // prevent inlining so optimizer can't fold this easily
-                #if (MSVC && !CLANG)
-                    __declspec(noinline)
-                #else
-                    __attribute__((noinline))
-                #endif
-                    ULONG64 operator()() const noexcept {
-                    // TO prevent hoisting across this call
-                    std::atomic_signal_fence(std::memory_order_seq_cst);
-
-                    // start state (golden ratio)
-                    volatile ULONG64 v = 0x9E3779B97F4A7C15ULL;
-
-                    // mix in addresses (ASLR gives entropy but if ASLR disabled or bypassed we have some tricks still)
-                    // Take addresses of various locals/statics and mark some volatile so they cannot be optimized away
-                    volatile int local_static = 0;               // local volatile (stack-like)
-                    static volatile int module_static = 0;       // static in function scope (image address)
-                    auto probe_lambda = []() noexcept {};       // stack-local lambda object
-                    uintptr_t pa = reinterpret_cast<uintptr_t>(&v);
-                    uintptr_t pb = reinterpret_cast<uintptr_t>(&local_static);
-                    uintptr_t pc = reinterpret_cast<uintptr_t>(&module_static);
-                    uintptr_t pd = reinterpret_cast<uintptr_t>(&probe_lambda);
-
-                    v ^= static_cast<ULONG64>(pa) + 0x9E3779B97F4A7C15ULL + (v << 6) + (v >> 2);
-                    v ^= static_cast<ULONG64>(pb) + (v << 7);
-                    v ^= static_cast<ULONG64>(pc) + (v >> 11);
-                    v ^= static_cast<ULONG64>(pd) + 0xBF58476D1CE4E5B9ULL;
-
-                    // dependent operations on volatile locals to prevent elimination
-                    for (int i = 0; i < 24; ++i) {
-                        volatile int stack_local = i ^ static_cast<int>(v);
-                        // take address each iteration and fold it in
-                        uintptr_t la = reinterpret_cast<uintptr_t>(&stack_local);
-                        v ^= (static_cast<ULONG64>(la) + (static_cast<ULONG64>(i) * 0x9E3779B97F4A7CULL));
-                        // dependent shifts to spread any small differences
-                        v ^= (v << ((i & 31)));
-                        v ^= (v >> (((i + 13) & 31)));
-                        // so compiler can't remove the local entirely
-                        std::atomic_signal_fence(std::memory_order_seq_cst);
-                    }
-
-                    // final avalanche! (as said before, just in case ASLR can be folded)
-                    v ^= (v << 13);
-                    v ^= (v >> 7);
-                    v ^= (v << 17);
-                    v *= 0x2545F4914F6CDD1DULL;
-                    v ^= (v >> 33);
-
-                    // another compiler fence to prevent hoisting results
-                    std::atomic_signal_fence(std::memory_order_seq_cst);
-
-                    return static_cast<ULONG64>(v);
-                }
-            };
-
-            // Use rejection sampling as before to avoid modulo bias
-            auto rng = [](ULONG64 min, ULONG64 max, auto getrand) noexcept -> ULONG64 {
-                const ULONG64 range = max - min + 1;
-                const ULONG64 limit = (~0ULL) - ((~0ULL) % range);
-                for (;;) {
-                    const ULONG64 r = getrand();
-                    if (r < limit) return min + (r % range);
-                    // small local mix to change subsequent outputs (still in user-mode and not a syscall)
-                    volatile ULONG64 scrub = r;
-                    scrub ^= (scrub << 11);
-                    scrub ^= (scrub >> 9);
-                    (void)scrub;
-                }
-            };
-
-            const entropy_provider entropyProv{};
             // the reason why we use CPUID rather than RDTSC is because RDTSC is a conditionally exiting instruction, and you can modify the guest TSC without trapping it
             auto vm_exit = []() noexcept -> u64 {
                 volatile int regs[4] = { 0 }; // doesn't need to be as elaborated as the next cpuid_lambda we will use to calculate the real latency
@@ -5078,6 +5005,80 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return result;
         };
 
+        // First we start by randomizing counts WITHOUT syscalls and WITHOUT using instructions that can be trapped by hypervisors, this was a hard task
+        struct entropy_provider {
+            // prevent inlining so optimizer can't fold this easily
+            #if (MSVC && !CLANG)
+                __declspec(noinline)
+            #else
+                __attribute__((noinline))
+            #endif
+                ULONG64 operator()() const noexcept {
+                // TO prevent hoisting across this call
+                std::atomic_signal_fence(std::memory_order_seq_cst);
+
+                // start state (golden ratio)
+                volatile ULONG64 v = 0x9E3779B97F4A7C15ULL;
+
+                // mix in addresses (ASLR gives entropy but if ASLR disabled or bypassed we have some tricks still)
+                // Take addresses of various locals/statics and mark some volatile so they cannot be optimized away
+                volatile int local_static = 0;               // local volatile (stack-like)
+                static volatile int module_static = 0;       // static in function scope (image address)
+                auto probe_lambda = []() noexcept {};       // stack-local lambda object
+                uintptr_t pa = reinterpret_cast<uintptr_t>(&v);
+                uintptr_t pb = reinterpret_cast<uintptr_t>(&local_static);
+                uintptr_t pc = reinterpret_cast<uintptr_t>(&module_static);
+                uintptr_t pd = reinterpret_cast<uintptr_t>(&probe_lambda);
+
+                v ^= static_cast<ULONG64>(pa) + 0x9E3779B97F4A7C15ULL + (v << 6) + (v >> 2);
+                v ^= static_cast<ULONG64>(pb) + (v << 7);
+                v ^= static_cast<ULONG64>(pc) + (v >> 11);
+                v ^= static_cast<ULONG64>(pd) + 0xBF58476D1CE4E5B9ULL;
+
+                // dependent operations on volatile locals to prevent elimination
+                for (int i = 0; i < 24; ++i) {
+                    volatile int stack_local = i ^ static_cast<int>(v);
+                    // take address each iteration and fold it in
+                    uintptr_t la = reinterpret_cast<uintptr_t>(&stack_local);
+                    v ^= (static_cast<ULONG64>(la) + (static_cast<ULONG64>(i) * 0x9E3779B97F4A7CULL));
+                    // dependent shifts to spread any small differences
+                    v ^= (v << ((i & 31)));
+                    v ^= (v >> (((i + 13) & 31)));
+                    // so compiler can't remove the local entirely
+                    std::atomic_signal_fence(std::memory_order_seq_cst);
+                }
+
+                // final avalanche! (as said before, just in case ASLR can be folded)
+                v ^= (v << 13);
+                v ^= (v >> 7);
+                v ^= (v << 17);
+                v *= 0x2545F4914F6CDD1DULL;
+                v ^= (v >> 33);
+
+                // another compiler fence to prevent hoisting results
+                std::atomic_signal_fence(std::memory_order_seq_cst);
+
+                return static_cast<ULONG64>(v);
+            }
+        };
+
+        // rejection sampling as before to avoid modulo bias
+        auto rng = [](ULONG64 min, ULONG64 max, auto getrand) noexcept -> ULONG64 {
+            const ULONG64 range = max - min + 1;
+            const ULONG64 limit = (~0ULL) - ((~0ULL) % range);
+            for (;;) {
+                const ULONG64 r = getrand();
+                if (r < limit) return min + (r % range);
+                // small local mix to change subsequent outputs (still in user-mode and not a syscall)
+                volatile ULONG64 scrub = r;
+                scrub ^= (scrub << 11);
+                scrub ^= (scrub >> 9);
+                (void)scrub;
+            }
+        };
+
+        const entropy_provider entropyProv{};
+
         // Intel leaves on an AMD CPU and viceversa will still work for this probe
         // for leafs like 0 that just returns static data, like "AuthenticAMD" or "GenuineIntel", a fast exit path could be made
         // for other leaves like the extended state that rely on dynamic system states like APIC IDs and XState, kernel data locks are required
@@ -5098,7 +5099,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         };
         constexpr size_t n_leaves = sizeof(leaves) / sizeof(leaves[0]);
 
-        constexpr u16 iterations = 100;
+        const size_t iterations = static_cast<size_t>(rng(100, 200, [&entropyProv]() noexcept { return entropyProv(); }));
 
         // pre-allocate sample buffer and touch pages to avoid page faults by MMU during measurement
         std::vector<u64> samples;
