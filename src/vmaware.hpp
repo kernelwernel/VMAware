@@ -4734,14 +4734,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             const auto& info = VM::cpu::analyze_cpu();
             if (info.found) {
                 if (info.base_clock_mhz == 0) {
-                    debug("TIMER: Processor's true base speed not available for this CPU");
+                    debug("TIMER: CPU not found in the database");
                 }
                 else if (info.base_clock_mhz < 800.0) {
                     debug("TIMER: RDTSC seems to be intercepted by an hypervisor");
                     return true;
                 }
                 else {
-                    debug("TIMER: Processor's true base speed -> ", static_cast<double>(info.base_clock_mhz), " MHz");
+                    debug("TIMER: CPU's true base speed -> ", static_cast<double>(info.base_clock_mhz), " MHz");
 
                     constexpr u32 check_leaf = 0x80000007u;
                     constexpr double INVARIANT_TSC_DELTA = 250.0;
@@ -11244,6 +11244,43 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 		if (util::is_running_under_translator()) {
             debug("CLOCK: Running inside an ARM CPU");
             return false;
+        }
+
+        // Surface Pro models typically do not have PIT
+        {
+            const char* manufacturer = nullptr;
+            const char* model = nullptr;
+            if (util::get_manufacturer_model(&manufacturer, &model)) {
+                auto ci_contains = [](const char* hay, const char* needle) noexcept -> bool {
+                    if (!hay || !needle || !*hay || !*needle) return false;
+                    const unsigned char* h = reinterpret_cast<const unsigned char*>(hay);
+                    const unsigned char* n = reinterpret_cast<const unsigned char*>(needle);
+                    const size_t nlen = strlen(reinterpret_cast<const char*>(n));
+                    for (; *h; ++h) {
+                        size_t i = 0;
+                        for (;; ++i) {
+                            unsigned char hc = h[i];
+                            unsigned char nc = n[i];
+                            if (!nc) return false; // matched whole needle
+                            if (!hc) break; // hay ended
+                            // ascii lowercase
+                            if (hc >= 'A' && hc <= 'Z') hc += 32;
+                            if (nc >= 'A' && nc <= 'Z') nc += 32;
+                            if (hc != nc) break;
+                        }
+                        if (i == nlen) return false;
+                    }
+                    return false;
+                };
+
+                const bool model_has_surface = ci_contains(model, "surface");
+                const bool model_has_pro = ci_contains(model, "pro");
+                const bool man_is_microsoft = ci_contains(manufacturer, "microsoft");
+
+                if (model_has_surface && (model_has_pro || man_is_microsoft)) {
+                    return false;
+                }
+            }
         }
 
         // The RTC (ACPI/CMOS RTC) timer can't be always detected via SetupAPI, it needs AML decode of the DSDT firmware table
