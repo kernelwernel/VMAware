@@ -22,25 +22,26 @@
  *  - License: MIT
  */ 
 
-#include <string>
-#include <iostream>
 #include <vector>
-#include <cstdint>
 #include <chrono>
 
 #if (defined(__GNUC__) || defined(__linux__))
-    #include <unistd.h>
     #define CLI_LINUX 1
 #else
     #define CLI_LINUX 0
 #endif
 
+#if (defined(__APPLE__) || defined(__APPLE_CPP__) || defined(__MACH__) || defined(__DARWIN))
+    #define CLI_APPLE 1
+    #include <mach-o/dyld.h>
+#else
+    #define CLI_APPLE 0
+#endif
 
 #if (defined(_MSC_VER) || defined(_WIN32) || defined(_WIN64) || defined(__MINGW32__))
     #define CLI_WINDOWS 1
     #define WIN32_LEAN_AND_MEAN
     #define NOMINMAX
-    #include <windows.h>
 #else
     #define CLI_WINDOWS 0
 #endif
@@ -63,6 +64,7 @@ std::string grey = "\x1B[38;2;108;108;108m";
 using u8  = std::uint8_t;
 using u16 = std::uint16_t;
 using u32 = std::uint32_t;
+using u64 = std::uint64_t;
 using i32 = std::int32_t;
 
 enum arg_enum : u8 {
@@ -141,6 +143,179 @@ private:
 };
 #endif
 
+struct SHA256 {
+    u8 buf[64] = {};   // message block buffer
+    u32 len = 0;       // bytes currently in buf
+    u64 bits = 0;      // total bits processed
+    u32 s[8] = {};     // from h0 to h7
+
+    // Initialize state to SHA-256 IVs so that compiler doesn't complain
+    void init() {
+        len = 0;
+        bits = 0;
+        s[0] = 0x6a09e667;
+        s[1] = 0xbb67ae85;
+        s[2] = 0x3c6ef372;
+        s[3] = 0xa54ff53a;
+        s[4] = 0x510e527f;
+        s[5] = 0x9b05688c;
+        s[6] = 0x1f83d9ab;
+        s[7] = 0x5be0cd19;
+    }
+
+    // bitwise helpers
+    static u32 rotr(u32 x, int n) { return (x >> n) | (x << (32 - n)); }
+    static u32 ch(u32 x, u32 y, u32 z) { return (x & y) ^ (~x & z); }
+    static u32 maj(u32 x, u32 y, u32 z) { return (x & y) ^ (x & z) ^ (y & z); }
+    static u32 ep0(u32 x) { return rotr(x, 2) ^ rotr(x, 13) ^ rotr(x, 22); }
+    static u32 ep1(u32 x) { return rotr(x, 6) ^ rotr(x, 11) ^ rotr(x, 25); }
+    static u32 sig0(u32 x) { return rotr(x, 7) ^ rotr(x, 18) ^ (x >> 3); }
+    static u32 sig1(u32 x) { return rotr(x, 17) ^ rotr(x, 19) ^ (x >> 10); }
+
+    // we need to process one 512-bit block from buf
+    void transform() {
+        static const u32 k[64] = {
+          0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+          0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+          0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+          0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+          0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
+          0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+          0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+          0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2
+        };
+        u32 m[64];
+        for (u32 i = 0, j = 0; i < 16; ++i, j += 4) {
+            m[i] = (u32)buf[j] << 24 | (u32)buf[j + 1] << 16 | (u32)buf[j + 2] << 8 | (u32)buf[j + 3];
+        }
+        for (u32 i = 16; i < 64; ++i) {
+            m[i] = sig1(m[i - 2]) + m[i - 7] + sig0(m[i - 15]) + m[i - 16];
+        }
+        u32 a = s[0];
+        u32 b = s[1];
+        u32 c = s[2];
+        u32 d = s[3];
+        u32 e = s[4];
+        u32 f = s[5];
+        u32 g = s[6];
+        u32 h = s[7];
+        for (u32 i = 0; i < 64; ++i) {
+            u32 t1 = h + ep1(e) + ch(e, f, g) + k[i] + m[i];
+            u32 t2 = ep0(a) + maj(a, b, c);
+            h = g;
+            g = f;
+            f = e;
+            e = d + t1;
+            d = c;
+            c = b;
+            b = a;
+            a = t1 + t2;
+        }
+        s[0] += a;
+        s[1] += b;
+        s[2] += c;
+        s[3] += d;
+        s[4] += e;
+        s[5] += f;
+        s[6] += g;
+        s[7] += h;
+    }
+
+    // arbitrary bytes into the digest
+    void update(const u8* data, size_t n) {
+        for (size_t i = 0; i < n; ++i) {
+            buf[len++] = data[i];
+            if (len == 64) {
+                transform();
+                bits += 512;
+                len = 0;
+            }
+        }
+    }
+
+    // 32-byte digest IN big-endian
+    void final(u8 out[32]) {
+        size_t i = len;
+        if (len < 56) {
+            buf[i++] = 0x80;
+            while (i < 56) buf[i++] = 0;
+        }
+        else {
+            buf[i++] = 0x80;
+            while (i < 64) buf[i++] = 0;
+            transform();
+            for (size_t j = 0; j < 56; ++j) buf[j] = 0;
+        }
+        bits += (u64)len * 8;
+        for (int j = 0; j < 8; ++j) {
+            buf[63 - j] = (u8)((bits >> (8 * j)) & 0xFF);
+        }
+        transform();
+        for (i = 0; i < 4; ++i) {
+            for (size_t j = 0; j < 8; ++j) {
+                out[i + j * 4] = (u8)((s[j] >> (24 - i * 8)) & 0xFF);
+            }
+        }
+    }
+};
+
+static std::string exe_path() {
+#if (CLI_WINDOWS)
+    std::vector<char> buf(32768);
+    DWORD r = GetModuleFileNameA(NULL, buf.data(), (DWORD)buf.size());
+    if (r == 0 || r >= buf.size()) return {};
+    return std::string(buf.data(), r);
+#elif (CLI_APPLE)
+    uint32_t sz = 0;
+    _NSGetExecutablePath(nullptr, &sz);
+    std::vector<char> b(sz);
+    if (_NSGetExecutablePath(b.data(), &sz) != 0) return {};
+    std::vector<char> resolved(PATH_MAX);
+    if (realpath(b.data(), resolved.data())) {
+        return std::string(resolved.data());
+    }
+    return std::string(b.data());
+#else
+    std::vector<char> b(PATH_MAX);
+    ssize_t l = ::readlink("/proc/self/exe", b.data(), b.size() - 1);
+    if (l <= 0) return {};
+    b[(size_t)l] = '\0';
+    std::vector<char> resolved(PATH_MAX);
+    if (realpath(b.data(), resolved.data())) {
+        return std::string(resolved.data());
+    }
+    return std::string(b.data());
+#endif
+}
+
+std::string compute_self_sha256() {
+    std::string path = exe_path();
+    if (path.empty()) return {};
+    std::ifstream ifs(path, std::ios::binary);
+    if (!ifs) return {};
+    SHA256 sha;
+    sha.init();
+
+    std::vector<char> chunk(64 * 1024);
+    while (ifs) {
+        ifs.read(chunk.data(), static_cast<std::streamsize>(chunk.size()));
+        std::streamsize r = ifs.gcount();
+        if (r > 0) {
+            sha.update(reinterpret_cast<const u8*>(chunk.data()), static_cast<size_t>(r));
+        }
+    }
+
+    u8 digest[32];
+    sha.final(digest);
+    static const char hex[] = "0123456789abcdef";
+    std::string out;
+    out.reserve(64);
+    for (int i = 0; i < 32; ++i) {
+        out.push_back(hex[(digest[i] >> 4) & 0xF]);
+        out.push_back(hex[digest[i] & 0xF]);
+    }
+    return out;
+}
 
 [[noreturn]] static void help(void) {
     std::cout << 
@@ -220,76 +395,75 @@ static const char* color(const u8 score) {
 
 [[noreturn]] static void brand_list() {
     std::cout << 
-R"(VirtualBox
-VMware
-VMware Express
-VMware ESX
-VMware GSX
-VMware Workstation
-VMware Fusion
-bhyve
-QEMU
-KVM
-KVM Hyper-V Enlightenment
-QEMU+KVM Hyper-V Enlightenment
-QEMU+KVM
-Virtual PC
-Microsoft Hyper-V
-Microsoft Virtual PC/Hyper-V
-Parallels
-Xen HVM
-ACRN
-QNX hypervisor
-Hybrid Analysis
-Sandboxie
-Docker
-Wine
-Anubis
-JoeBox
-ThreatExpert
-CWSandbox
-Comodo
-Bochs
-Lockheed Martin LMHS
-NVMM
-OpenBSD VMM
-Intel HAXM
-Unisys s-Par
-Cuckoo
-BlueStacks
-Jailhouse
-Apple VZ
-Intel KGT (Trusty)
-Microsoft Azure Hyper-V
-Xbox NanoVisor (Hyper-V)
-SimpleVisor
-Hyper-V artifact (host with Hyper-V enabled)
-User-mode Linux
-IBM PowerVM
-Google Compute Engine (KVM)
-OpenStack (KVM)
-KubeVirt (KVM)
-AWS Nitro System (KVM-based)
-Podman
-WSL
-OpenVZ
-ANY.RUN
-Barevisor
-HyperPlatform
-MiniVisor
-Intel TDX
-LKVM
-AMD SEV
-AMD SEV-ES
-AMD SEV-SNP
-Neko Project II
-NoirVisor
-Qihoo 360 Sandbox
-nsjail
-DBVM
-UTM
-)";
-
+        R"(VirtualBox
+        VMware
+        VMware Express
+        VMware ESX
+        VMware GSX
+        VMware Workstation
+        VMware Fusion
+        bhyve
+        QEMU
+        KVM
+        KVM Hyper-V Enlightenment
+        QEMU+KVM Hyper-V Enlightenment
+        QEMU+KVM
+        Virtual PC
+        Microsoft Hyper-V
+        Microsoft Virtual PC/Hyper-V
+        Parallels
+        Xen HVM
+        ACRN
+        QNX hypervisor
+        Hybrid Analysis
+        Sandboxie
+        Docker
+        Wine
+        Anubis
+        JoeBox
+        ThreatExpert
+        CWSandbox
+        Comodo
+        Bochs
+        Lockheed Martin LMHS
+        NVMM
+        OpenBSD VMM
+        Intel HAXM
+        Unisys s-Par
+        Cuckoo
+        BlueStacks
+        Jailhouse
+        Apple VZ
+        Intel KGT (Trusty)
+        Microsoft Azure Hyper-V
+        Xbox NanoVisor (Hyper-V)
+        SimpleVisor
+        Hyper-V artifact (host with Hyper-V enabled)
+        User-mode Linux
+        IBM PowerVM
+        Google Compute Engine (KVM)
+        OpenStack (KVM)
+        KubeVirt (KVM)
+        AWS Nitro System (KVM-based)
+        Podman
+        WSL
+        OpenVZ
+        ANY.RUN
+        Barevisor
+        HyperPlatform
+        MiniVisor
+        Intel TDX
+        LKVM
+        AMD SEV
+        AMD SEV-ES
+        AMD SEV-SNP
+        Neko Project II
+        NoirVisor
+        Qihoo 360 Sandbox
+        nsjail
+        DBVM
+        UTM
+        )";
     std::exit(0);
 }
 
@@ -687,7 +861,7 @@ static void general(
     const VM::enum_flags dynamic
 ) {
     bool notes_enabled = false;
-    
+   
     if (arg_bitset.test(NO_ANSI)) {
         detected = ("[  DETECTED  ]");
         not_detected = ("[NOT DETECTED]");
@@ -722,6 +896,11 @@ static void general(
             std::cout << note << " Not running as admin - NVRAM detections will be disabled.\n";
         }
     #endif
+
+    const std::string hash = compute_self_sha256();
+    if (!hash.empty()) {
+        std::cout << "SHA256: " << hash << '\n';
+    }
 
     const auto t1 = std::chrono::high_resolution_clock::now();
 
