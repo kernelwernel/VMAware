@@ -4975,71 +4975,122 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             std::vector<u64> s = samples_in;
             std::sort(s.begin(), s.end()); // ascending
 
-            // trivial small-sample handling
+            // tiny-sample short-circuits
             if (N <= 4) return s.front();
 
-            // Compute gaps between consecutive sorted samples
-            std::vector<u64> gaps;
-            gaps.reserve(N - 1);
-            for (size_t i = 1; i < N; ++i) gaps.push_back(s[i] - s[i - 1]);
+            // median (and works for sorted input)
+            auto median_of_sorted = [](const std::vector<u64>& v, size_t lo, size_t hi) -> u64 {
+                // this is the median of v[lo..hi-1], requires 0 <= lo < hi
+                const size_t len = hi - lo;
+                if (len == 0) return 0;
+                const size_t mid = lo + (len / 2);
+                if (len & 1) return v[mid];
+                return (v[mid - 1] + v[mid]) / 2;
+            };
 
-            // median gap via nth_element
-            std::vector<u64> gaps_copy = gaps;
-            const size_t mid_idx = gaps_copy.size() / 2;
-            std::nth_element(gaps_copy.begin(), gaps_copy.begin() + static_cast<std::ptrdiff_t>(mid_idx), gaps_copy.end());
-            const u64 median_gap = gaps_copy[mid_idx];
-
-            // heuristics / parameters
-            constexpr double GAP_FACTOR = 5.0;          // require gap >= GAP_FACTOR * median_gap
-            constexpr u64 GAP_ABS_MIN = 50;             // or an absolute minimum gap
-            constexpr double LOW_PERCENTILE = 0.10;     // fallback if no gap found
-            constexpr double TRIM_RATIO = 0.10;         // trimmed mean ratio inside cluster
-            constexpr double MIN_CLEAN_FRACTION = 0.05; // require at least this fraction to accept cluster
-
-            const u64 gap_threshold = static_cast<u64>(std::max<double>(static_cast<double>(GAP_ABS_MIN), std::ceil(GAP_FACTOR * static_cast<double>(median_gap))));
-
-            // find first "large" gap and split index is i+1 (samples[0..i] is low cluster)
-            size_t split_index = 0;
-            for (size_t i = 0; i < gaps.size(); ++i) {
-                if (gaps[i] >= gap_threshold) { split_index = i + 1; break; }
+            // the robust center: median M and MAD -> approximate sigma
+            const u64 M = median_of_sorted(s, 0, s.size());
+            std::vector<u64> absdev;
+            absdev.reserve(N);
+            for (size_t i = 0; i < N; ++i) {
+                const u64 d = (s[i] > M) ? (s[i] - M) : (M - s[i]);
+                absdev.push_back(d);
             }
+            std::sort(absdev.begin(), absdev.end());
+            const u64 MAD = median_of_sorted(absdev, 0, absdev.size());
+            // convert MAD to an approximate standard-deviation-like measure
+            const long double kMADtoSigma = 1.4826L; // consistent for normal approx
+            const long double sigma = (MAD == 0) ? 1.0L : (static_cast<long double>(MAD) * kMADtoSigma);
 
-            // fallback to low-percentile if no clear gap
-            if (split_index == 0) {
-                split_index = static_cast<size_t>(std::max<size_t>(1, static_cast<size_t>(std::floor(static_cast<double>(N) * LOW_PERCENTILE))));
-            }
-
-            if (split_index > N) split_index = N;
-            size_t cluster_size = split_index;
-
-            // if cluster is too small relative to N, use percentile fallback
-            if (static_cast<double>(cluster_size) / static_cast<double>(N) < MIN_CLEAN_FRACTION) {
-                cluster_size = static_cast<size_t>(std::max<size_t>(1, static_cast<size_t>(std::floor(static_cast<double>(N) * LOW_PERCENTILE))));
-                if (cluster_size > N) cluster_size = N;
-            }
-
-            // compute robust estimate for cluster s[0 ... cluster_size-1]
-            u64 result = 0;
-            if (cluster_size >= 10) {
-                const size_t trim = static_cast<size_t>(std::floor(static_cast<double>(cluster_size) * TRIM_RATIO));
-                const size_t lo = trim;
-                const size_t hi = cluster_size - trim; // exclusive
-                if (hi <= lo) {
-                    // degenerate which is cluster median
-                    const size_t mid = cluster_size / 2;
-                    result = (cluster_size % 2) ? s[mid] : ((s[mid - 1] + s[mid]) / 2);
-                }
-                else {
-                    unsigned long long sum = 0;
-                    for (size_t i = lo; i < hi; ++i) sum += s[i];
-                    result = static_cast<u64>(static_cast<double>(sum) / static_cast<double>(hi - lo) + 0.5);
+            // find the densest small-valued cluster by sliding a fixed-count window
+            // this locates the most concentrated group of samples (likely it would be the true VMEXIT cluster)
+            // const size_t frac_win = (N * 8 + 99) / 100; // ceil(N * 0.08)
+            // const size_t win = std::min(N, std::max(MIN_WIN, frac_win));
+            const size_t MIN_WIN = 10;
+            const size_t win = std::min(
+                N,
+                std::max(
+                    MIN_WIN,
+                    static_cast<size_t>(std::ceil(static_cast<double>(N) * 0.08))
+                )
+            );
+            size_t best_i = 0;
+            u64 best_span = (s.back() - s.front()) + 1; // large initial
+            for (size_t i = 0; i + win <= N; ++i) {
+                const u64 span = s[i + win - 1] - s[i];
+                if (span < best_span) {
+                    best_span = span;
+                    best_i = i;
                 }
             }
-            else {
-                // small cluster which is median of cluster
-                const size_t mid = cluster_size / 2;
-                result = (cluster_size % 2) ? s[mid] : ((s[mid - 1] + s[mid]) / 2);
+
+            // expand the initial window greedily while staying "tight"
+            // allow expansion while adding samples does not more than multiply the span by EXPAND_FACTOR
+            constexpr long double EXPAND_FACTOR = 1.5L;
+            size_t cluster_lo = best_i;
+            size_t cluster_hi = best_i + win; // exclusive
+            // expand left
+            while (cluster_lo > 0) {
+                const u64 new_span = s[cluster_hi - 1] - s[cluster_lo - 1];
+                if (static_cast<long double>(new_span) <= EXPAND_FACTOR * static_cast<long double>(best_span) ||
+                    (s[cluster_hi - 1] <= (s[cluster_lo - 1] + static_cast<u64>(std::ceil(3.0L * sigma))))) {
+                    --cluster_lo;
+                    best_span = std::min(best_span, new_span);
+                }
+                else break;
             }
+            // expand right
+            while (cluster_hi < N) {
+                const u64 new_span = s[cluster_hi] - s[cluster_lo];
+                if (static_cast<long double>(new_span) <= EXPAND_FACTOR * static_cast<long double>(best_span) ||
+                    (s[cluster_hi] <= (s[cluster_lo] + static_cast<u64>(std::ceil(3.0L * sigma))))) {
+                    ++cluster_hi;
+                    best_span = std::min(best_span, new_span);
+                }
+                else break;
+            }
+
+            const size_t cluster_size = (cluster_hi > cluster_lo) ? (cluster_hi - cluster_lo) : 0;
+
+            // cluster must be reasonably dense and cover a non-negligible portion of samples, so this is pure sanity checks
+            const double fraction_in_cluster = static_cast<double>(cluster_size) / static_cast<double>(N);
+            const size_t MIN_CLUSTER = std::min(static_cast<size_t>(std::max<int>(5, static_cast<int>(N / 50))), N); // at least 2% or 5 elements
+            if (cluster_size < MIN_CLUSTER || fraction_in_cluster < 0.02) {
+                // low-percentile (10th) trimmed median
+                const size_t fallback_count = std::max<size_t>(1, static_cast<size_t>(std::floor(static_cast<double>(N) * 0.10)));
+                // median of lowest fallback_count elements (if fallback_count==1 that's smallest)
+                if (fallback_count == 1) return s.front();
+                const size_t mid = fallback_count / 2;
+                if (fallback_count & 1) return s[mid];
+                return (s[mid - 1] + s[mid]) / 2;
+            }
+
+            // now we try to get a robust estimate inside the cluster, trimmed mean (10% trim) centered on cluster
+            const size_t trim_count = static_cast<size_t>(std::floor(static_cast<double>(cluster_size) * 0.10));
+            size_t lo = cluster_lo + trim_count;
+            size_t hi = cluster_hi - trim_count; // exclusive
+            if (hi <= lo) {
+                // degenerate -> median of cluster
+                return median_of_sorted(s, cluster_lo, cluster_hi);
+            }
+
+            // sum with long double to avoid overflow and better rounding
+            long double sum = 0.0L;
+            for (size_t i = lo; i < hi; ++i) sum += static_cast<long double>(s[i]);
+            const long double avg = sum / static_cast<long double>(hi - lo);
+            u64 result = static_cast<u64>(std::llround(avg));
+
+            // final sanity adjustments:
+            // if the computed result is suspiciously far from the global median (e.g., > +6*sigma)
+            // clamp toward the median to avoid choosing a high noisy cluster by mistake
+            const long double diff_from_med = static_cast<long double>(result) - static_cast<long double>(M);
+            if (diff_from_med > 0 && diff_from_med > (6.0L * sigma)) {
+                // clamp to median + 4*sigma (conservative)
+                result = static_cast<u64>(std::llround(static_cast<long double>(M) + 4.0L * sigma));
+            }
+
+            // Also, if result is zero (shouldn't be) or extremely small, return a smallest observed sample
+            if (result == 0) result = s.front();
 
             return result;
         };
