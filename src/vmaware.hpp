@@ -4602,7 +4602,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
         // will be used in cpuid measurements later
-        u16 cycle_threshold = 800; // average latency of a VMX/SVM vmexit
+        u16 cycle_threshold = 800; // average latency of a VMX/SVM VMEXIT
         if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
             cycle_threshold = 3250; // if we're running under Hyper-V, make VMAware detect nested virtualization
         }
@@ -4771,17 +4771,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             };
 
             const entropy_provider entropyProv{};
-            // QueryInterruptTime uses 100-nanosecond units, but the value in KUSER_SHARED_DATA is only updated every 15.625ms (the default system timer tick)
-            // For example, 10000000 iterations at @ 3GHz is around 33ms
-            // 100000 iterations of XOR would run too quickly (0.03ms), we need at least one tick, so we put 60000000 (20-30ms avg)
-            // 100000 iterations of CPUID takes roughly 100ms-200ms (which is safe for QIT)
-            // However, we need both loops to execute for roughly the same Wall Clock time (~60-80ms) to ensure CPU Frequency (Turbo) remains consistent
-            // 1. CPUID Loop: 130000 iterations * 2000 cycles = 260M cycles
-            // 2. XOR Loop: 260M cycles / 18 cycles per iter (volatile overhead) = 14.5M iterations
-            // the goal is to ensure we pass the QIT 15.6ms resolution update threshold from usermode while minimizing thermal frequency drift
-            const ULONG64 count_first = rng(130000ULL, 135000ULL, [&entropyProv]() noexcept { return entropyProv(); });
-            const ULONG64 count_second = rng(14000000ULL, 15000000ULL, [&entropyProv]() noexcept { return entropyProv(); });
-
             // the reason why we use CPUID rather than RDTSC is because RDTSC is a conditionally exiting instruction, and you can modify the guest TSC without trapping it
             auto vm_exit = []() noexcept -> u64 {
                 volatile int regs[4] = { 0 }; // doesn't need to be as elaborated as the next cpuid_lambda we will use to calculate the real latency
@@ -4804,72 +4793,66 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             volatile fn_t xor_ptr = +xor_lambda;
             volatile u64 dummy = 0;
 
-            // run the XOR loop briefly to force CPU out of sleep states/lower frequencies
-            // This reduces the variance (jitter) between the two measurement loops
-            // and confuses hypervisors targetting this check who might try to advance TSC when XOR might be running
-            for (ULONG64 x = 0; x < 10000000; ++x) {
-                dummy += xor_ptr();
-            }
+            // 6 ticks * 15.6ms ~= 100ms
+            auto accumulate_and_measure = [&](volatile fn_t func_ptr) -> u64 {
+                u64 total_tsc = 0;
+                u64 total_qit = 0;
+                u64 ticks_captured = 0;
+                constexpr u64 TARGET_TICKS = 6;
 
-            // first measurement
-            ULONG64 beforeqit = 0;
-            // Wait for QIT tick edge to avoid granularity errors
-            // if our loop takes 20ms, we might capture one tick (15.6ms reported) or two ticks (31.2ms reported) depending on exactly when we started relative to the system timer interrupt
-            // this causes the denominator in our ratio to jump by 50-100%, causing a delta artifact of exactly 32 (that would still be too small for the ratio diff to trigger, but anyways)
-            // syncing ensures we always start the measurement at the exact edge of a QIT update, eliminating this jitter
-            {
-                ULONG64 start_wait, now_wait;
-                QueryInterruptTime(&start_wait);
-                do {
-                    _mm_pause(); // hint to CPU we-re spin-waiting
-                    QueryInterruptTime(&now_wait); // never touches RDTSC/RDTSCP or transitions to kernel-mode, just reads from KUSER_SHARED_DATA, reason why we use it
-                } while (now_wait == start_wait);
-                beforeqit = now_wait;
-            }
-            // using only one rdtsc call here is harmless
-            // and it is intentional instead of manually computing with the frequency we got before (to avoid spoofing)
-            const ULONG64 beforetsc = __rdtsc(); 
+                // We continue until we have captured enough full tick windows
+                while (ticks_captured < TARGET_TICKS) {
+                    u64 start_wait, now_wait;
 
-            for (ULONG64 x = 0; x < count_first; ++x) {
-                dummy += cp_ptr(); // this loop will be intercepted by a RDTSC trap, downscaling our TSC
-            }
+                    // Wait for QIT tick edge to avoid granularity errors
+                    // syncing ensures we always start the measurement at the exact edge of a QIT update, eliminating jitter
+                    QueryInterruptTime(&start_wait);
+                    do {
+                        _mm_pause(); // hint to CPU we-re spin-waiting
+                        QueryInterruptTime(&now_wait); // never touches RDTSC/RDTSCP or transitions to kernel-mode, just reads from KUSER_SHARED_DATA
+                    } while (now_wait == start_wait);
 
-            // the kernel routine that backs up this api runs at CLOCK_LEVEL(13), only preempted by IPI, POWER_LEVEL and NMIs
-            // meaning it's highly accurate even with kernel noise, hence we don't need cluster or median computations to get precise ratios
-            ULONG64 afterqit = 0;
-            QueryInterruptTime(&afterqit);
-            const ULONG64 aftertsc = __rdtsc();
+                    // start of a new tick window
+                    const u64 qit_start = now_wait;
+                    const u64 tsc_start = __rdtsc();
 
-            const ULONG64 dtsc1 = aftertsc - beforetsc;
-            const ULONG64 dtq1 = afterqit - beforeqit;
-            const ULONG64 firstRatio = (dtq1 != 0) ? (dtsc1 / dtq1) : 0ULL;
+                    u64 qit_current;
+                    // run until the tick updates again
+                    do {
+                        // unroll slightly to reduce overhead
+                        dummy += func_ptr(); dummy += func_ptr();
+                        dummy += func_ptr(); dummy += func_ptr();
+                        dummy += func_ptr(); dummy += func_ptr();
 
-            // second measurement
-            ULONG64 beforeqit2 = 0;
-            // wait for QIT tick edge for the second measurement as well
-            {
-                ULONG64 start_wait, now_wait;
-                QueryInterruptTime(&start_wait);
-                do {
-                    _mm_pause();
-                    QueryInterruptTime(&now_wait);
-                } while (now_wait == start_wait);
-                beforeqit2 = now_wait;
-            }
-            const ULONG64 beforetsc2 = __rdtsc();
+                        QueryInterruptTime(&qit_current);
+                    } while (qit_current == qit_start);
 
-            for (ULONG64 x = 0; x < count_second; ++x) {
-                dummy += xor_ptr(); // this loop won't be intercepted, it never switches to kernel-mode
-            }
+                    // end of tick window
+                    const u64 tsc_end = __rdtsc();
+
+                    const u64 delta_qit = qit_current - qit_start;
+                    const u64 delta_tsc = tsc_end - tsc_start;
+
+                    // we need to accumulate results, the more we do it, the more the hypervisor will downclock the TSC
+                    if (delta_qit > 0) {
+                        total_qit += delta_qit;
+                        total_tsc += delta_tsc;
+                        ticks_captured++;
+                    }
+                }
+
+                // Total TSC Cycles / Total QIT Units
+                if (total_qit == 0) return 0;
+                return total_tsc / total_qit;
+            };
+
+            // first measurement (CPUID / VMEXIT)
+            const ULONG64 firstRatio = accumulate_and_measure(cp_ptr);
+
+            // second measurement (XOR / ALU)
+            const ULONG64 secondRatio = accumulate_and_measure(xor_ptr);
+
             VMAWARE_UNUSED(dummy);
-
-            ULONG64 afterqit2 = 0;
-            QueryInterruptTime(&afterqit2);
-            const ULONG64 aftertsc2 = __rdtsc();
-
-            const ULONG64 dtsc2 = aftertsc2 - beforetsc2;
-            const ULONG64 dtq2 = afterqit2 - beforeqit2;
-            const ULONG64 secondRatio = (dtq2 != 0) ? (dtsc2 / dtq2) : 0ULL;
 
             /* branchless absolute difference is like:
                mask = -(uint64_t)(firstRatio < secondRatio) -> 0 or 0xFFFFFFFFFFFFFFFF
@@ -4895,9 +4878,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             // contrary to what someone could think, under heavy load the ratio will be more close to 0, it will also be closer to 0 if we assign CPUs to a VM in our host machine
             // it will increase if the BIOS/UEFI is configured to run the TSC by "core usage", which is why we use this threshold check based on a lot of empirical data
             // it increases because the CPUID instruction forces the CPU pipeline to drain and serialize (heavy workload), while the XOR loop is a tight arithmetic loop (throughput workload). 
-            // CPUs will boost to different frequencies for these two scenarios (for example 4.2GHz for XOR vs 4.0GHz for CPUID)
+            // CPUs will boost to different frequencies for these two scenarios
             // A difference of 5-10% in ratio (15-30 points) or even more is normal behavior on bare metal
-            // lastly, we might see a small ratio always depending on which part of the tick we exactly start the measurement, which is the most important reason why we need a threshold
             if (difference >= 100) {
                 debug("TIMER: An hypervisor has been detected intercepting TSC");
                 return true; // both ratios will always differ if TSC is downscaled, since the hypervisor can't account for the XOR/NOP loop
@@ -4919,7 +4901,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             _mm_lfence();
 
             // read start time
-            u64 t1 = __rdtsc();
+            const u64 t1 = __rdtsc();
 
             // prevent the compiler from moving the __cpuid call before the t1 read
             COMPILER_BARRIER();
@@ -4929,7 +4911,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             COMPILER_BARRIER();
 
             // the idea is to let rdtscp internally wait until cpuid is executed rather than using another memory barrier
-            u64 t2 = __rdtscp(&aux);
+            const u64 t2 = __rdtscp(&aux);
 
             // ensure the read of t2 doesn't bleed into future instructions
             _mm_lfence();
@@ -4949,7 +4931,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             volatile unsigned int a, b, c, d;
 
             // this differs from the code above because a, b, c and d are effectively "used"
-            // because the compiler must honor the write to a volatile variable.
+            // the compiler must honor the write to a volatile variable
             asm volatile("cpuid"
                 : "=a"(a), "=b"(b), "=c"(c), "=d"(d)
                 : "a"(leaf)
@@ -4960,8 +4942,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             asm volatile("rdtscp" : "=a"(lo2), "=d"(hi2) :: "rcx", "memory");
             asm volatile("lfence" ::: "memory");
 
-            u64 t1 = (u64(hi1) << 32) | lo1;
-            u64 t2 = (u64(hi2) << 32) | lo2;
+            const u64 t1 = (u64(hi1) << 32) | lo1;
+            const u64 t2 = (u64(hi2) << 32) | lo2;
 
             return t2 - t1;
         #endif
@@ -5121,7 +5103,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // pre-allocate sample buffer and touch pages to avoid page faults by MMU during measurement
         std::vector<u64> samples;
         samples.resize(n_leaves * iterations);
-        for (size_t i = 0; i < samples.size(); ++i) samples[i] = 0; // or RtlSecureZeroMemory (memset)
+        for (size_t i = 0; i < samples.size(); ++i) samples[i] = 0; // or RtlSecureZeroMemory (memset) if Windows
 
         /*
         * We want to move our thread from the Running state to the Waiting state
@@ -5166,7 +5148,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return true;
         }
         else if (cpuid_latency <= 25) { 
-            // cpuid is fully serializing, not even old CPUs have this low average cycles in real-world scenarios
+            // cpuid is fully serializing, no CPU have this low average cycles in real-world scenarios
             // however, in patches, zero or even negative deltas can be seen oftenly
             return true;
         }
