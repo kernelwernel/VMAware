@@ -346,8 +346,8 @@
 #endif
 #if (VMA_CPP >= 17)
     #include <filesystem>
-        #include <system_error>
-    #endif
+    #include <system_error>
+#endif
 #ifdef __VMAWARE_DEBUG__
     #include <iomanip>
     #include <ios>
@@ -658,6 +658,7 @@ private:
     static constexpr u8 INVALID = 255; // explicit invalid technique macro
     static constexpr u16 base_technique_count = HIGH_THRESHOLD; // original technique count, constant on purpose (can also be used as a base count value if custom techniques are added)
     static constexpr u16 maximum_points = 5510; // theoretical total points if all VM detections returned true (which is practically impossible)
+    static constexpr u16 threshold_score = 150; // standard threshold score
     static constexpr u16 high_threshold_score = 300; // new threshold score from 150 to 300 if VM::HIGH_THRESHOLD flag is enabled
     static constexpr bool SHORTCUT = true; // macro for whether VM::core::run_all() should take a shortcut by skipping the rest of the techniques if the threshold score is already met
        
@@ -11466,7 +11467,7 @@ public:
         static u16 run_all(const flagset& flags, const bool shortcut = false) {
             u16 points = 0;
 
-            u16 threshold_points = 150;
+            u16 threshold_points = threshold_score;
 
             // set it to 300 if high threshold is enabled
             if (core::is_enabled(flags, HIGH_THRESHOLD)) {
@@ -11817,8 +11818,7 @@ public: // START OF PUBLIC FUNCTIONS
         return brand(flags);
     }
 
-
-    static std::string brand(const flagset &flags = core::generate_default()) {
+    static std::string brand(const flagset& flags = core::generate_default()) {
         // is the multiple setting flag enabled?
         const bool is_multiple = core::is_enabled(flags, MULTIPLE);
 
@@ -11831,7 +11831,8 @@ public: // START OF PUBLIC FUNCTIONS
                 debug("VM::brand(): returned multi brand from cache");
                 return memo::multi_brand::fetch();
             }
-        } else {
+        }
+        else {
             if (memo::brand::is_cached()) {
                 debug("VM::brand(): returned brand from cache");
                 return memo::brand::fetch();
@@ -11896,7 +11897,9 @@ public: // START OF PUBLIC FUNCTIONS
         }
 
         // if there's only a single brand, return it immediately
-        if (active_count == 1) {
+        // We skip this early return if the single brand is HYPERV_ARTIFACT,
+        // so that the removal logic at the end of the function can process it
+        if (active_count == 1 && active_brands[0].first != TMP_HYPERV_ARTIFACT) {
             return active_brands[0].first;
         }
 
@@ -11966,9 +11969,7 @@ public: // START OF PUBLIC FUNCTIONS
             merge(TMP_VPC, TMP_HYPERV, TMP_HYPERV_VPC);
         }
         else if (idx_hv != -1 && idx_vpc == -1) {
-            // before, if counts differ (and one is 0), we erased VPC
-            // but if VPC is -1, it's already "erased"
-            // so logic handled by merge check essentially
+            // logic handled by merge check essentially
         }
 
         // Brand post-processing / merging
@@ -11999,9 +12000,20 @@ public: // START OF PUBLIC FUNCTIONS
         merge(TMP_VMWARE_HARD, TMP_GSX, TMP_VMWARE_HARD);
         merge(TMP_VMWARE_HARD, TMP_WORKSTATION, TMP_VMWARE_HARD);
 
+        // determine threshold (150 or 300)
+        u16 confirmed_vm_threshold = threshold_score;
+        if (core::is_enabled(flags, HIGH_THRESHOLD)) {
+            confirmed_vm_threshold = high_threshold_score;
+        }
+
+        // check if Hyper-V artifact is present
         const int idx_art = find_index(TMP_HYPERV_ARTIFACT);
-        if (idx_art != -1 && score > 0) {
-            remove_at(idx_art);
+        if (idx_art != -1) {
+            // If score confirms it is a VM, remove the "Artifact" label (because we're in a VM, not in a host machine)
+            // so it falls back to "Unknown" if no other brands exist
+            if (score >= confirmed_vm_threshold) {
+                remove_at(idx_art);
+            }
         }
 
         if (active_count > 1) {
@@ -12009,7 +12021,7 @@ public: // START OF PUBLIC FUNCTIONS
                 const brand_element_t& a,
                 const brand_element_t& b
                 ) {
-                    return a.second > b.second;
+                return a.second > b.second;
             });
         }
 
@@ -12024,7 +12036,8 @@ public: // START OF PUBLIC FUNCTIONS
                 memo::brand::store(active_brands[0].first);
                 debug("VM::brand(): cached brand string");
                 return memo::brand::fetch();
-            } else {
+            }
+            else {
                 char* buffer = memo::multi_brand::brand_cache;
                 buffer[0] = '\0';
                 const size_t buf_size = sizeof(memo::multi_brand::brand_cache);
@@ -12067,7 +12080,7 @@ public: // START OF PUBLIC FUNCTIONS
         [[assume(points < maximum_points)]];
     #endif
 
-        u16 threshold = 150;
+        u16 threshold = threshold_score;
 
         // if high threshold is set, the bar
         // will be 300. If not, leave it as 150
@@ -12110,7 +12123,7 @@ public: // START OF PUBLIC FUNCTIONS
     #endif
 
         u8 percent = 0;
-        u16 threshold = 150;
+        u16 threshold = threshold_score;
 
         // set to 300 if high threshold is enabled
         if (core::is_enabled(flags, HIGH_THRESHOLD)) {
