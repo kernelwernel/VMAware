@@ -7575,19 +7575,96 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
         #endif
 
-        const HMODULE k32 = GetModuleHandleA("kernel32.dll");
-        if (!k32) {
+        const HMODULE kernel32 = GetModuleHandleA("kernel32.dll");
+        const HMODULE ntdll = util::get_ntdll();
+        if (!kernel32 || !ntdll) {
             return false;
         }
 
-        const char* names[] = { "wine_get_unix_file_name" };
-        void* functions[1] = { nullptr };
-        util::get_function_address(k32, names, functions, _countof(names));
+        const char* kernel32_names[] = { "wine_get_unix_file_name" };
+        void* kernel32_functions[ARRAYSIZE(kernel32_names)] = {};
+        util::get_function_address(kernel32, kernel32_names, kernel32_functions, _countof(kernel32_names));
 
-        if (functions[0] != nullptr) {
+        if (kernel32_functions[0] != nullptr) {
             return core::add(brands::WINE);
         }
 
+        const char* ntdll_names[] = { "NtAllocateVirtualMemory", "NtFreeVirtualMemory", "NtProtectVirtualMemory" };
+        void* ntdll_functions[ARRAYSIZE(ntdll_names)] = {};
+        util::get_function_address(ntdll, ntdll_names, ntdll_functions, _countof(ntdll_names));
+
+        // https://www.unknowncheats.me/forum/anti-cheat-bypass/729130-article-wine-detection.html
+        const UINT oldMode = SetErrorMode(SEM_NOALIGNMENTFAULTEXCEPT);
+
+        static constexpr unsigned char movaps_stub[] = {
+            0x0F, 0x28, 0x01, // movaps xmm0, XMMWORD PTR [rcx]   (Windows x64: arg in RCX)
+            0xC3              // ret
+        };
+
+        typedef void (*movaps_fn)(void*);
+
+        using NtAllocateVirtualMemoryFn = NTSTATUS(__stdcall*)(HANDLE, PVOID*, ULONG_PTR, PSIZE_T, ULONG, ULONG);
+        using NtFreeVirtualMemoryFn = NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG);
+        using NtProtectVirtualMemoryFn = NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG, PULONG);
+
+        const auto ntAllocateVirtualMemory = reinterpret_cast<NtAllocateVirtualMemoryFn>(ntdll_functions[0]);
+        const auto ntFreeVirtualMemory = reinterpret_cast<NtFreeVirtualMemoryFn>(ntdll_functions[1]);
+        const auto ntProtectVirtualMemory = reinterpret_cast<NtProtectVirtualMemoryFn>(ntdll_functions[2]);
+
+        if (ntAllocateVirtualMemory == nullptr || ntFreeVirtualMemory == nullptr || ntProtectVirtualMemory == nullptr) {
+            SetErrorMode(oldMode);
+            return false;
+        }
+
+        PVOID execMem = NULL;
+        const HANDLE hCurrentProcess = reinterpret_cast<HANDLE>(-1);
+        SIZE_T regionSize = sizeof movaps_stub;
+        NTSTATUS st = ntAllocateVirtualMemory(hCurrentProcess, &execMem, 0, &regionSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        if (!NT_SUCCESS(st) || execMem == NULL) {
+            SetErrorMode(oldMode);
+            return false;
+        }
+
+        memcpy(execMem, movaps_stub, sizeof movaps_stub);
+
+        {
+            PVOID tmpBase = execMem;
+            SIZE_T tmpSz = regionSize;
+            ULONG oldProt = 0;
+            st = ntProtectVirtualMemory(hCurrentProcess, &tmpBase, &tmpSz, PAGE_EXECUTE_READ, &oldProt);
+            if (!NT_SUCCESS(st)) {
+                PVOID freeBase = execMem;
+                SIZE_T freeSize = 0;
+                ntFreeVirtualMemory(hCurrentProcess, &freeBase, &freeSize, MEM_RELEASE);
+                SetErrorMode(oldMode);
+                return false;
+            }
+        }
+
+        __declspec(align(16)) unsigned char buffer[32] = { 0 };
+        void* misaligned = buffer + 1;
+
+        __try {
+            ((movaps_fn)execMem)(misaligned);
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER) {
+            // free executable memory, restore error mode, then return the WINE marker
+            PVOID freeBase = execMem;
+            SIZE_T freeSize = 0;
+            ntFreeVirtualMemory(hCurrentProcess, &freeBase, &freeSize, MEM_RELEASE);
+
+            SetErrorMode(oldMode);
+            return core::add(brands::WINE);
+        }
+
+        // normal path: free exec memory, restore mode, return false
+        {
+            PVOID freeBase = execMem;
+            SIZE_T freeSize = 0;
+            ntFreeVirtualMemory(hCurrentProcess, &freeBase, &freeSize, MEM_RELEASE);
+        }
+
+        SetErrorMode(oldMode);
         return false;
     }
                 
@@ -8184,7 +8261,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             PSIZE_T RegionSize,
             ULONG AllocationType,
             ULONG Protect
-         );
+        );
         using NtFreeVirtualMemoryFn = NTSTATUS(__stdcall*)(HANDLE ProcessHandle, PVOID* BaseAddress, PSIZE_T RegionSize, ULONG FreeType);
 
         constexpr ULONG SystemModuleInformation = 11;
