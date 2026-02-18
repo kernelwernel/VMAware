@@ -390,7 +390,6 @@
 
     #pragma comment(lib, "setupapi.lib")
     #pragma comment(lib, "powrprof.lib")
-    #pragma comment(lib, "mincore.lib")
     #pragma comment(lib, "wevtapi.lib")
 #elif (LINUX)
     #if (x86)
@@ -4607,78 +4606,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             cycle_threshold = 3250; // if we're running under Hyper-V, make VMAware detect nested virtualization
         }
 
-        #if (WINDOWS)
-            const HMODULE ntdll = util::get_ntdll();
-            if (!ntdll) {
-                return true;
-            }
-
-            const char* names[] = { "NtQueryInformationThread", "NtSetInformationThread" };
-            void* funcs[ARRAYSIZE(names)] = {};
-            util::get_function_address(ntdll, names, funcs, ARRAYSIZE(names));
-
-            using NtQueryInformationThread_t = NTSTATUS(__stdcall*)(HANDLE, int, PVOID, ULONG, PULONG);
-            using NtSetInformationThread_t = NTSTATUS(__stdcall*)(HANDLE, int, PVOID, ULONG);
-
-            const auto nt_query_information_thread = reinterpret_cast<NtQueryInformationThread_t>(funcs[0]);
-            const auto nt_set_information_thread = reinterpret_cast<NtSetInformationThread_t>(funcs[1]);
-            if (!nt_query_information_thread || !nt_set_information_thread) {
-                return true;
-            }
-
-            constexpr int thread_basic_information = 0;
-            constexpr int thread_affinity_mask = 4;
-
-            struct CLIENT_ID {
-                ULONG_PTR UniqueProcess;
-                ULONG_PTR UniqueThread;
-            };
-            struct THREAD_BASIC_INFORMATION {
-                NTSTATUS ExitStatus;
-                PVOID    TebBaseAddress;
-                CLIENT_ID ClientId;
-                ULONG_PTR AffinityMask;
-                LONG     Priority;
-                LONG     BasePriority;
-            } tbi;
-            const HANDLE current_thread = reinterpret_cast<HANDLE>(-2LL);
-
-            // current affinity
-            memset(&tbi, 0, sizeof(tbi));
-            NTSTATUS status = nt_query_information_thread(
-                current_thread,
-                thread_basic_information,
-                &tbi,
-                sizeof(tbi),
-                nullptr
-            );
-
-            if (status < 0) {
-                return false;
-            }
-
-            const ULONG_PTR original_affinity = tbi.AffinityMask;
-
-            // new affinity
-            const DWORD_PTR wanted_mask = static_cast<DWORD_PTR>(1);
-            status = nt_set_information_thread(
-                current_thread,
-                thread_affinity_mask,
-                reinterpret_cast<PVOID>(const_cast<DWORD_PTR*>(&wanted_mask)),
-                static_cast<ULONG>(sizeof(wanted_mask))
-            );
-
-            // setting a higher priority for the current thread actually makes the ration between rdtsc and other timers like QIT vary much more
-            // contrary to what someone might think about preempting reschedule
-            DWORD_PTR previous_mask = 0;
-            if (status >= 0) {
-                previous_mask = original_affinity; // emulate SetThreadAffinityMask return
-            }
-            else {
-                previous_mask = 0;
-            }
-        #endif 
-
         // check for RDTSCP support, we will use it later
         int regs[4] = { 0 };
         cpu::cpuid(regs, 0x80000001);
@@ -4688,137 +4615,52 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return true;
         }     
 
-        // ================ START OF TIMING ATTACKS ================
-        #if (WINDOWS)
-            /* TSC offseting detection */
-            // This detection uses two clocks and two loops, a loop and a timer that the hypervisor can spoof and a second loop/timer that the hypervisor cannot
-            // When the TSC is "hooked", the hypervisor usually downscales the result to hide the time passed or doesnt let TSC advance for the time it was vm-exiting
-            // However, the hypervisor have absolutely no way to downscale time for the second loop because it runs natively on the CPU without exiting
-            // This creates a massive discrepancy in the ratio of both loops, contrary to the very small ratio if both timers were to run normally
-            // The hypervisor cannot easily rewind the system wall clock (second loop, QIT/KUSER_SHARED_DATA) without causing system instability (network timeouts, audio lag, etc)
-            static thread_local volatile u64 g_sink = 0; // thread_local volatile so that it doesnt need to be captured by the lambda
+        const u64 ITER_XOR = 50000000ULL;
+        const size_t CPUID_ITER = 100; // per leaf
+        const unsigned int leaves[] = {
+             0xB, 0xD, 0x4, 0x1, 0x7, 0xA, 0x12, 0x5, 0x40000000u, 0x80000008u, 0x0
+        };
+        const size_t n_leaves = sizeof(leaves) / sizeof(leaves[0]);
+        const size_t samples_expected = n_leaves * CPUID_ITER;
 
-            // the reason why we use CPUID rather than RDTSC is because RDTSC is a conditionally exiting instruction, and you can modify the guest TSC without trapping it
-            auto vm_exit = []() noexcept -> u64 {
-                volatile int regs[4] = { 0 }; // doesn't need to be as elaborated as the next cpuid_lambda we will use to calculate the real latency
-                __cpuid((int*)regs, 0); // unconditional vmexit
-                return (u64)regs[0]; // dependency to avoid /O2 builds, so that the CPU cannot start the next iteration of the loop until the current __cpuid writes to regs
-            };
+        unsigned hw = std::thread::hardware_concurrency();
+        if (hw == 0) hw = 1;
 
-            auto xor_lambda = []() noexcept -> u64 {
-                volatile u64 a = 0xDEADBEEFDEADBEEFull; // can be replaced with NOPs, etc, the core idea is to use a non-trappable instruction that the hv cannot virtualize
-                volatile u64 b = 0x1234567890ABCDEFull;
-                u64 v = a ^ b;
-                g_sink ^= v;
-                return v;
-            };
+        std::atomic<int> ready_count(0);
+        std::atomic<int> state(0); 
 
-            using fn_t = u64(*)();
+        std::atomic<u64> t1_start(0), t1_end(0);
+        std::atomic<u64> t2_start(0), t2_end(0);
+        std::atomic<u64> t2_accum(0);
 
-            // make the pointer volatile so the compiler treats the call as opaque/indirect
-            volatile fn_t cp_ptr = +vm_exit;    // +lambda forces conversion to function ptr, so it won't be inlined, we need to prevent the compiler from inlining this
-            volatile fn_t xor_ptr = +xor_lambda;
-            volatile u64 dummy = 0;
+        std::vector<u64> samples;
+        samples.resize(samples_expected);
+        for (size_t i = 0; i < samples.size(); ++i) samples[i] = 0;
 
-            // 6 ticks * 15.6ms ~= 100ms
-            auto accumulate_and_measure = [&](volatile fn_t func_ptr) -> u64 {
-                u64 total_tsc = 0;
-                u64 total_qit = 0;
-                u64 ticks_captured = 0;
-                constexpr u64 TARGET_TICKS = 6;
-
-                // We continue until we have captured enough full tick windows
-                while (ticks_captured < TARGET_TICKS) {
-                    u64 start_wait, now_wait;
-
-                    // Wait for QIT tick edge to avoid granularity errors
-                    // syncing ensures we always start the measurement at the exact edge of a QIT update, eliminating jitter
-                    QueryInterruptTime(&start_wait);
-                    do {
-                        _mm_pause(); // hint to CPU we-re spin-waiting
-                        QueryInterruptTime(&now_wait); // never touches RDTSC/RDTSCP or transitions to kernel-mode, just reads from KUSER_SHARED_DATA
-                    } while (now_wait == start_wait);
-
-                    // start of a new tick window
-                    const u64 qit_start = now_wait;
-                    const u64 tsc_start = __rdtsc();
-
-                    u64 qit_current;
-                    // run until the tick updates again
-                    do {
-                        // unroll slightly to reduce overhead
-                        dummy += func_ptr(); dummy += func_ptr();
-                        dummy += func_ptr(); dummy += func_ptr();
-                        dummy += func_ptr(); dummy += func_ptr();
-
-                        QueryInterruptTime(&qit_current);
-                    } while (qit_current == qit_start);
-
-                    // end of tick window
-                    const u64 tsc_end = __rdtsc();
-
-                    const u64 delta_qit = qit_current - qit_start;
-                    const u64 delta_tsc = tsc_end - tsc_start;
-
-                    // we need to accumulate results, the more we do it, the more the hypervisor will downclock the TSC
-                    if (delta_qit > 0) {
-                        total_qit += delta_qit;
-                        total_tsc += delta_tsc;
-                        ticks_captured++;
-                    }
-                }
-
-                // Total TSC Cycles / Total QIT Units
-                if (total_qit == 0) return 0;
-                return total_tsc / total_qit;
-            };
-
-            // first measurement (CPUID / VMEXIT)
-            const ULONG64 first_ratio = accumulate_and_measure(cp_ptr);
-
-            // second measurement (XOR / ALU)
-            const ULONG64 second_ratio = accumulate_and_measure(xor_ptr);
-
-            VMAWARE_UNUSED(dummy);
-
-            /* branchless absolute difference is like:
-               mask = -(uint64_t)(firstRatio < secondRatio) -> 0 or 0xFFFFFFFFFFFFFFFF
-               diff = firstRatio - secondRatio
-               abs  = (diff ^ mask) - mask
-            */
-            const ULONG64 diff_mask = (ULONG64)0 - (ULONG64)(first_ratio < second_ratio);  // all-ones if first<second, else 0
-            const ULONG64 diff = first_ratio - second_ratio;                              // unsigned subtraction
-            const ULONG64 difference = (diff ^ diff_mask) - diff_mask;                    // absolute difference, unsigned
-
-            debug("TIMER: TSC -> ", first_ratio, ", Interrupt -> ", second_ratio, ", Ratio: ", difference);
-
-            if (previous_mask != 0) {
-                nt_set_information_thread(
-                    current_thread,
-                    thread_affinity_mask,
-                    reinterpret_cast<PVOID>(const_cast<ULONG_PTR*>(&original_affinity)),
-                    static_cast<ULONG>(sizeof(original_affinity))
-                );
-            }
-
-            // QIT is updated in intervals of 100 nanoseconds
-            // contrary to what someone could think, under heavy load the ratio will be more close to 0, it will also be closer to 0 if we assign CPUs to a VM in our host machine
-            // it will increase if the BIOS/UEFI is configured to run the TSC by "core usage", which is why we use this threshold check based on a lot of empirical data
-            // it increases because the CPUID instruction forces the CPU pipeline to drain and serialize (heavy workload), while the XOR loop is a tight arithmetic loop (throughput workload). 
-            // CPUs will boost to different frequencies for these two scenarios
-            // A difference of 5-10% in ratio (15-30 points) or even more is normal behavior on bare metal
-            if (difference >= 100) {
-                debug("TIMER: An hypervisor has been detected intercepting TSC");
-                return true; // both ratios will always differ if TSC is downscaled, since the hypervisor can't account for the XOR/NOP loop
-            }
+        auto rdtsc = []() -> u64 {
+        #if (MSVC)
+            return static_cast<u64>(__rdtsc());
+        #else
+            return static_cast<u64>(__rdtsc());
         #endif
+        };
 
-        // An hypervisor might detect that VMAware was spamming instructions to detect rdtsc hooks, and disable interception temporarily or include vm-exit latency in guest TSC
-        // which is why we run the classic vm-exit latency check immediately after
-        // to ensure a kernel developer does not hardcode the number of iterations our detector do to change behavior depending on which test we're running (tsc freeze/downscale vs tsc aggregation)
-        // we used a rng before running the traditional rdtsc-cpuid-rdtsc trick
+        // best-effort affinity as a local lambda; on macOS it's a no-op
+        auto try_set_affinity = [](std::thread& t, unsigned core) {
+        #if (WINDOWS)
+            HANDLE h = static_cast<HANDLE>(t.native_handle());
+            DWORD_PTR mask = static_cast<DWORD_PTR>(1ULL) << core;
+            (void)SetThreadAffinityMask(h, mask);
+        #elif (LINUX)
+            cpu_set_t cp;
+            CPU_ZERO(&cp);
+            CPU_SET(core, &cp);
+            (void)pthread_setaffinity_np(t.native_handle(), sizeof(cp), &cp);
+        #else
+            (void)t; (void)core;
+        #endif
+        };
 
-        // sometimes not intercepted in some hvs (like VirtualBox) under compat mode
         thread_local u32 aux = 0;
         auto cpuid = [&](unsigned int leaf) noexcept -> u64 {
         #if (MSVC)
@@ -4876,21 +4718,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         #endif
         };
 
+        // calculate_latency (kept as provided, minimal adaptations)
         auto calculate_latency = [&](const std::vector<u64>& samples_in) -> u64 {
             if (samples_in.empty()) return 0;
             const size_t N = samples_in.size();
             if (N == 1) return samples_in[0];
-
-            // local sorted copy
             std::vector<u64> s = samples_in;
-            std::sort(s.begin(), s.end()); // ascending
-
-            // tiny-sample short-circuits
+            std::sort(s.begin(), s.end());
             if (N <= 4) return s.front();
 
-            // median (and works for sorted input)
             auto median_of_sorted = [](const std::vector<u64>& v, size_t lo, size_t hi) -> u64 {
-                // this is the median of v[lo..hi-1], requires 0 <= lo < hi
                 const size_t len = hi - lo;
                 if (len == 0) return 0;
                 const size_t mid = lo + (len / 2);
@@ -4898,7 +4735,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return (v[mid - 1] + v[mid]) / 2;
             };
 
-            // the robust center: median M and MAD -> approximate sigma
             const u64 M = median_of_sorted(s, 0, s.size());
             std::vector<u64> absdev;
             absdev.reserve(N);
@@ -4908,253 +4744,261 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
             std::sort(absdev.begin(), absdev.end());
             const u64 MAD = median_of_sorted(absdev, 0, absdev.size());
-            // convert MAD to an approximate standard-deviation-like measure
-            const long double kmad_to_sigma = 1.4826L; // consistent for normal approx
+            const long double kmad_to_sigma = 1.4826L;
             const long double sigma = (MAD == 0) ? 1.0L : (static_cast<long double>(MAD) * kmad_to_sigma);
 
-            // find the densest small-valued cluster by sliding a fixed-count window
-            // this locates the most concentrated group of samples (likely it would be the true VMEXIT cluster)
-            // const size_t frac_win = (N * 8 + 99) / 100; // ceil(N * 0.08)
-            // const size_t win = std::min(N, std::max(MIN_WIN, frac_win));
             const size_t MIN_WIN = 10;
-            const size_t win = std::min(
-                N,
-                std::max(
-                    MIN_WIN,
-                    static_cast<size_t>(std::ceil(static_cast<double>(N) * 0.08))
-                )
-            );
+            const size_t frac_win = static_cast<size_t>(std::ceil(static_cast<double>(N) * 0.08));
+            size_t inner_win = frac_win;
+            if (inner_win < MIN_WIN) inner_win = MIN_WIN;
+            const size_t win = (N < inner_win) ? N : inner_win;
             size_t best_i = 0;
-            u64 best_span = (s.back() - s.front()) + 1; // large initial
+            u64 best_span = (s.back() - s.front()) + 1;
             for (size_t i = 0; i + win <= N; ++i) {
                 const u64 span = s[i + win - 1] - s[i];
-                if (span < best_span) {
-                    best_span = span;
-                    best_i = i;
-                }
+                if (span < best_span) { best_span = span; best_i = i; }
             }
 
-            // expand the initial window greedily while staying "tight"
-            // allow expansion while adding samples does not more than multiply the span by EXPAND_FACTOR
             constexpr long double EXPAND_FACTOR = 1.5L;
             size_t cluster_lo = best_i;
-            size_t cluster_hi = best_i + win; // exclusive
-            // expand left
+            size_t cluster_hi = best_i + win;
             while (cluster_lo > 0) {
                 const u64 new_span = s[cluster_hi - 1] - s[cluster_lo - 1];
                 if (static_cast<long double>(new_span) <= EXPAND_FACTOR * static_cast<long double>(best_span) ||
                     (s[cluster_hi - 1] <= (s[cluster_lo - 1] + static_cast<u64>(std::ceil(3.0L * sigma))))) {
                     --cluster_lo;
-                    best_span = std::min(best_span, new_span);
+                    if (new_span < best_span) best_span = new_span;
                 }
                 else break;
             }
-            // expand right
             while (cluster_hi < N) {
                 const u64 new_span = s[cluster_hi] - s[cluster_lo];
                 if (static_cast<long double>(new_span) <= EXPAND_FACTOR * static_cast<long double>(best_span) ||
                     (s[cluster_hi] <= (s[cluster_lo] + static_cast<u64>(std::ceil(3.0L * sigma))))) {
                     ++cluster_hi;
-                    best_span = std::min(best_span, new_span);
+                    if (new_span < best_span) best_span = new_span;
                 }
                 else break;
             }
 
             const size_t cluster_size = (cluster_hi > cluster_lo) ? (cluster_hi - cluster_lo) : 0;
-
-            // cluster must be reasonably dense and cover a non-negligible portion of samples, so this is pure sanity checks
             const double fraction_in_cluster = static_cast<double>(cluster_size) / static_cast<double>(N);
-            const size_t MIN_CLUSTER = std::min(static_cast<size_t>(std::max<int>(5, static_cast<int>(N / 50))), N); // at least 2% or 5 elements
+            size_t threshold = N / 50;
+            if (threshold < 5) threshold = 5;
+            const size_t MIN_CLUSTER = (threshold < N) ? threshold : N;
             if (cluster_size < MIN_CLUSTER || fraction_in_cluster < 0.02) {
-                // low-percentile (10th) trimmed median
-                const size_t fallback_count = std::max<size_t>(1, static_cast<size_t>(std::floor(static_cast<double>(N) * 0.10)));
-                // median of lowest fallback_count elements (if fallback_count==1 that's smallest)
+                size_t fallback_count = static_cast<size_t>(std::floor(static_cast<double>(N) * 0.10));
+                if (fallback_count < 1) fallback_count = 1;
                 if (fallback_count == 1) return s.front();
                 const size_t mid = fallback_count / 2;
                 if (fallback_count & 1) return s[mid];
                 return (s[mid - 1] + s[mid]) / 2;
             }
 
-            // now we try to get a robust estimate inside the cluster, trimmed mean (10% trim) centered on cluster
             const size_t trim_count = static_cast<size_t>(std::floor(static_cast<double>(cluster_size) * 0.10));
             size_t lo = cluster_lo + trim_count;
-            size_t hi = cluster_hi - trim_count; // exclusive
+            size_t hi = cluster_hi - trim_count;
             if (hi <= lo) {
-                // degenerate -> median of cluster
                 return median_of_sorted(s, cluster_lo, cluster_hi);
             }
 
-            // sum with long double to avoid overflow and better rounding
             long double sum = 0.0L;
             for (size_t i = lo; i < hi; ++i) sum += static_cast<long double>(s[i]);
             const long double avg = sum / static_cast<long double>(hi - lo);
             u64 result = static_cast<u64>(std::llround(avg));
-
-            // final sanity adjustments:
-            // if the computed result is suspiciously far from the global median (e.g., > +6*sigma)
-            // clamp toward the median to avoid choosing a high noisy cluster by mistake
             const long double diff_from_med = static_cast<long double>(result) - static_cast<long double>(M);
             if (diff_from_med > 0 && diff_from_med > (6.0L * sigma)) {
-                // clamp to median + 4*sigma (conservative)
                 result = static_cast<u64>(std::llround(static_cast<long double>(M) + 4.0L * sigma));
             }
-
-            // Also, if result is zero (shouldn't be) or extremely small, return a smallest observed sample
             if (result == 0) result = s.front();
-
             return result;
         };
 
-        // First we start by randomizing counts WITHOUT syscalls and WITHOUT using instructions that can be trapped by hypervisors, this was a hard task
-        struct entropy_provider {
-            // prevent inlining so optimizer can't fold this easily
-            #if (MSVC && !CLANG)
-                __declspec(noinline)
-            #else
-                __attribute__((noinline))
-            #endif
-                u64 operator()() const noexcept {
-                // TO prevent hoisting across this call
-                std::atomic_signal_fence(std::memory_order_seq_cst);
-
-                // start state (golden ratio)
-                volatile u64 v = UINT64_C(0x9E3779B97F4A7C15);
-
-                // mix in addresses (ASLR gives entropy but if ASLR disabled or bypassed we have some tricks still)
-                // Take addresses of various locals/statics and mark some volatile so they cannot be optimized away
-                volatile int local_static = 0;               // local volatile (stack-like)
-                static volatile int module_static = 0;       // static in function scope (image address)
-                auto probe_lambda = []() noexcept {};       // stack-local lambda object
-                std::uintptr_t pa = reinterpret_cast<std::uintptr_t>(&v);
-                std::uintptr_t pb = reinterpret_cast<std::uintptr_t>(&local_static);
-                std::uintptr_t pc = reinterpret_cast<std::uintptr_t>(&module_static);
-                std::uintptr_t pd = reinterpret_cast<std::uintptr_t>(&probe_lambda);
-
-                v ^= static_cast<u64>(pa) + UINT64_C(0x9E3779B97F4A7C15) + (v << 6) + (v >> 2);
-                v ^= static_cast<u64>(pb) + (v << 7);
-                v ^= static_cast<u64>(pc) + (v >> 11);
-                v ^= static_cast<u64>(pd) + UINT64_C(0xBF58476D1CE4E5B9);
-
-                // dependent operations on volatile locals to prevent elimination
-                for (int i = 0; i < 24; ++i) {
-                    volatile int stack_local = i ^ static_cast<int>(v);
-                    // take address each iteration and fold it in
-                    std::uintptr_t la = reinterpret_cast<std::uintptr_t>(&stack_local);
-                    v ^= (static_cast<u64>(la) + (static_cast<u64>(i) * UINT64_C(0x9E3779B97F4A7C)));
-                    // dependent shifts to spread any small differences
-                    v ^= (v << ((i & 31)));
-                    v ^= (v >> (((i + 13) & 31)));
-                    // so compiler can't remove the local entirely
-                    std::atomic_signal_fence(std::memory_order_seq_cst);
-                }
-
-                // final avalanche! (as said before, just in case ASLR can be folded)
-                v ^= (v << 13);
-                v ^= (v >> 7);
-                v ^= (v << 17);
-                v *= UINT64_C(0x2545F4914F6CDD1D);
-                v ^= (v >> 33);
-
-                // another compiler fence to prevent hoisting results
-                std::atomic_signal_fence(std::memory_order_seq_cst);
-
-                return static_cast<u64>(v);
-            }
-        };
-
-        // rejection sampling as before to avoid modulo bias
-        auto rng = [](u64 min, u64 max, auto getrand) noexcept -> u64 {
-            const u64 range = max - min + 1;
-            const u64 max_val = std::numeric_limits<u64>::max();
-            const u64 limit = max_val - (max_val % range);
-            for (;;) {
-                const u64 r = getrand();
-                if (r < limit) return min + (r % range);
-                // small local mix to change subsequent outputs (still in user-mode and not a syscall)
-                volatile u64 scrub = r;
-                scrub ^= (scrub << 11);
-                scrub ^= (scrub >> 9);
-                (void)scrub;
-            }
-        };
-
-        const entropy_provider entropy_prov{};
-
-        // Intel leaves on an AMD CPU and viceversa will still work for this probe
-        // for leafs like 0 that just returns static data, like "AuthenticAMD" or "GenuineIntel", a fast exit path could be made
-        // for other leaves like the extended state that rely on dynamic system states like APIC IDs and XState, kernel data locks are required
-        // we try different leaves so that is not worth to just create a "fast" exit path, forcing guest TSC manipulation
-        // the vmexit itself has a latency of around 800 cycles, combined with the registers save and the cpuid information we require, it costs 1000+ cycles
-        constexpr unsigned int leaves[] = {
-                0xB,      // topology 
-                0xD,      // xsave/xstate 
-                0x4,      // deterministic cache params
-                0x1,      // basic features
-                0x7,      // extended features
-                0xA,      // architectural performance monitoring
-                0x12,     // SGX/enclave 
-                0x5,      // MONITOR/MWAIT
-                0x40000000u, // hypervisor range start
-                0x80000008u, // extended address limits (amd/intel ext)
-                0x0        // fallback to leaf 0 occasionally, the easiest to patch
-        };
-        constexpr size_t n_leaves = sizeof(leaves) / sizeof(leaves[0]);
-
-        const size_t iterations = static_cast<size_t>(rng(100, 200, [&entropy_prov]() noexcept { return entropy_prov(); }));
-
-        // pre-allocate sample buffer and touch pages to avoid page faults by MMU during measurement
-        std::vector<u64> samples;
-        samples.resize(n_leaves * iterations);
-        for (size_t i = 0; i < samples.size(); ++i) samples[i] = 0; // or RtlSecureZeroMemory (memset) if Windows
-
-        /*
-        * We want to move our thread from the Running state to the Waiting state
-        * When the sleep expires (at the next timer tick), the kernel moves VMAware's thread to the Ready state
-        * When it picks us up again, it grants VMAware a fresh quantum, typically varying between 2 ticks (30ms) and 6 ticks (90ms) on Windows Client editions
-        * The default resolution of the Windows clock we're using is 64Hz
-        * Because we're calling NtDelayExecution with only 1ms, the kernel interprets this as "Sleep for at least 1ms"
-        * Since the hardware interrupt (tick) only fires every 15.6ms and we're not using timeBeginPeriod, the kernel cannot wake us after exactly 1ms
-        * So instead, it does what we want and wakes us up at the very next timer interrupt
-        * That's the reason why it's only 1ms and we're not using CreateWaitableTimerEx / SetWaitableTimerEx
-        * Sleep(0) would return instantly in some circumstances
-        * This gives us more time for sampling before we're rescheduled again
-        */
-
-        #if (WINDOWS)
-            // voluntary context switch to get a fresh quantum
-            SleepEx(1, FALSE);
-        #else 
-            // should work similarly in Unix-like operating systems
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        #endif
-
-        // warm up but rotating through leaves to exercise different cpuid paths
+        // to touch pages and exercise cpuid paths
         for (int w = 0; w < 128; ++w) {
             volatile u64 tmp = cpuid(leaves[w % n_leaves]);
             VMAWARE_UNUSED(tmp);
         }
 
-        // 100 iterations per leaf, store contiguously per-leaf, so 1100 runs in total
-        for (size_t li = 0; li < n_leaves; ++li) {
-            const unsigned int leaf = leaves[li];
-            for (unsigned i = 0; i < iterations; ++i) {
-                samples[li * iterations + i] = cpuid(leaf);
+        // Thread 1: start near same cycle, do XOR work, set end
+        std::thread th1([&]() {
+            ready_count.fetch_add(1, std::memory_order_acq_rel);
+            while (ready_count.load(std::memory_order_acquire) < 2) { /* spin */ }
+
+            u64 s = rdtsc();
+            t1_start.store(s, std::memory_order_release);
+            state.store(1, std::memory_order_release);
+
+            volatile u64 x = 0xDEADBEEFCAFEBABEULL;
+            for (u64 i = 0; i < ITER_XOR; ++i) {
+                x ^= i;
+                x = (x << 1) ^ (x >> 3);
             }
+            VMAWARE_UNUSED(x);
+
+            u64 e = rdtsc();
+            t1_end.store(e, std::memory_order_release);
+            state.store(2, std::memory_order_release);
+        });
+
+        // Thread 2: barrier, sample start, perform cpuid sampling and keep accumulating rdtsc deltas
+        std::thread th2([&]() {
+            ready_count.fetch_add(1, std::memory_order_acq_rel);
+            while (ready_count.load(std::memory_order_acquire) < 2) { /* spin */ }
+
+            u64 last = rdtsc();
+            t2_start.store(last, std::memory_order_release);
+
+            // local accumulator (fast) and local index into samples
+            u64 acc = 0;
+            size_t idx = 0;
+
+            // per-leaf sampling but do not stop entirely if thread1 is still running after completing planned samples
+            for (size_t li = 0; li < n_leaves; ++li) {
+                const unsigned int leaf = leaves[li];
+                for (unsigned i = 0; i < CPUID_ITER; ++i) {
+                    // accumulate rdtsc delta up to now (this includes time since last sample and includes previous cpuid)
+                    u64 now = rdtsc();
+                    acc += (now >= last) ? (now - last) : (u64)((u64)0 - last + now);
+                    last = now;
+
+                    // run cpuid and store latency
+                    if (idx < samples.size()) samples[idx] = cpuid(leaf);
+                    ++idx;
+
+                    // if thread1 finished, capture a final rdtsc and exit sampling loops
+                    if (state.load(std::memory_order_acquire) == 2) {
+                        u64 final_now = rdtsc();
+                        acc += (final_now >= last) ? (final_now - last) : (u64)((u64)0 - last + final_now);
+                        last = final_now;
+                        t2_end.store(final_now, std::memory_order_release);
+                        t2_accum.store(acc, std::memory_order_release);
+                        return;
+                    }
+                }
+            }
+
+            // If we reach here, we completed planned samples but thread1 might still be running, so continue spamming 
+            while (state.load(std::memory_order_acquire) != 2) {
+                u64 now = rdtsc();
+                acc += (now >= last) ? (now - last) : (u64)((u64)0 - last + now);
+                last = now;
+            }
+
+            // final sample after seeing finished
+            u64 final_now = rdtsc();
+            acc += (final_now >= last) ? (final_now - last) : (u64)((u64)0 - last + final_now);
+            last = final_now;
+            t2_end.store(final_now, std::memory_order_release);
+            t2_accum.store(acc, std::memory_order_release);
+        });
+
+        // Try to pin to different cores
+        if (hw >= 2) { 
+            try_set_affinity(th1, 0); 
+            try_set_affinity(th2, 1); 
         }
 
-        const u64 cpuid_latency = calculate_latency(samples);
+        th1.join();
+        th2.join();
 
-        debug("TIMER: VMEXIT latency -> ", cpuid_latency);
+        const u64 a = t1_start.load(std::memory_order_acquire);
+        const u64 b = t1_end.load(std::memory_order_acquire);
+        const u64 c = t2_start.load(std::memory_order_acquire);
+        const u64 d = t2_end.load(std::memory_order_acquire);
+        const u64 acc = t2_accum.load(std::memory_order_acquire);
+
+        const u64 t1_delta = (b > a) ? (b - a) : 0;
+        const u64 t2_delta = acc;
+
+        std::vector<u64> used;
+        used.reserve(samples_expected);
+        for (size_t i = 0; i < samples.size(); ++i) 
+            if (samples[i] != 0) 
+                used.push_back(samples[i]);
+        const u64 cpuid_latency = calculate_latency(used);
+
+        debug("TIMER: thread1 cycles: start=", a, " end=", b, " delta=", t1_delta);
+        debug("TIMER: thread2 cycles: start=", c, " end=", d, " acc=", t2_delta);
+        debug("TIMER: vmexit latency: ", cpuid_latency);
 
         if (cpuid_latency >= cycle_threshold) {
             return true;
         }
-        else if (cpuid_latency <= 25) { 
+        else if (cpuid_latency <= 25) {
             // cpuid is fully serializing, no CPU have this low average cycles in real-world scenarios
             // however, in patches, zero or even negative deltas can be seen oftenly
             return true;
         }
-        // TLB flushes or side channel cache attacks are not even tried due to how unreliable they are against stealthy hypervisors
+
+        if (t1_delta == 0) {
+            return false;
+        }
+
+        const double ratio = double(t2_delta) / double(t1_delta);
+        if (ratio < 0.95 || ratio > 1.05) {
+            debug("TIMER: VMAware detected an hypervisor offsetting TSC: ", ratio);
+        }
+        else {
+            debug("TIMER: Ratio: ", ratio);
+        }
+
+        #if (WINDOWS)
+            typedef struct _PROCESSOR_POWER_INFORMATION {
+                u32 Number;
+                u32 MaxMhz;
+                u32 CurrentMhz;
+                u32 MhzLimit;
+                u32 MaxIdleState;
+                u32 CurrentIdleState;
+            } PROCESSOR_POWER_INFORMATION, * PPROCESSOR_POWER_INFORMATION;
+
+            enum POWER_INFORMATION_LEVEL_MIN {
+                ProcessorInformation = 11
+            };
+
+            HMODULE hPowr = GetModuleHandleA("powrprof.dll");
+            if (!hPowr) hPowr = LoadLibraryA("powrprof.dll");
+            if (!hPowr) return 0;
+
+            const char* names[] = { "CallNtPowerInformation" };
+            void* funcs[1] = { nullptr };
+            util::get_function_address(hPowr, names, funcs, 1);
+            if (!funcs[0]) return 0;
+
+            using CallNtPowerInformation_t = NTSTATUS(__stdcall*)(int, PVOID, ULONG, PVOID, ULONG);
+            CallNtPowerInformation_t CallNtPowerInformation =
+                reinterpret_cast<CallNtPowerInformation_t>(funcs[0]);
+
+            SYSTEM_INFO si;
+            GetSystemInfo(&si);
+            const DWORD procCount = si.dwNumberOfProcessors;
+            if (procCount == 0) return 0;
+
+            const SIZE_T bufSize = static_cast<SIZE_T>(procCount) * sizeof(PROCESSOR_POWER_INFORMATION);
+            void* raw = _malloca(bufSize);
+            if (!raw) return 0;
+            memset(raw, 0, bufSize);
+
+            NTSTATUS status = CallNtPowerInformation(
+                ProcessorInformation,
+                nullptr, 0,
+                raw, static_cast<ULONG>(bufSize)
+            );
+
+            unsigned speed = 0;
+            if ((LONG)status >= 0) {
+                PROCESSOR_POWER_INFORMATION* info = reinterpret_cast<PROCESSOR_POWER_INFORMATION*>(raw);
+                speed = static_cast<unsigned>(info[0].CurrentMhz);
+            }
+
+            _freea(raw);
+
+            if (speed < 800) {
+                debug("TIMER: VMAware detected an hypervisor offsetting TSC: ", speed);
+                return true;
+            }
+        #endif
     #endif
         return false;
     }
@@ -10031,17 +9875,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // -------------------------------------------------------------------------
         // Helper Lambdas
         // -------------------------------------------------------------------------
-
-        auto ascii_string_equals_ci = [](const char* s1, const char* s2) noexcept -> bool {
-            if (!s1 || !s2) return false;
-            while (*s1 && *s2) {
-                char c1 = *s1; if (c1 >= 'A' && c1 <= 'Z') c1 += 32;
-                char c2 = *s2; if (c2 >= 'A' && c2 <= 'Z') c2 += 32;
-                if (c1 != c2) return false;
-                s1++; s2++;
-            }
-            return *s1 == *s2;
-        };
 
         auto buffer_contains_ascii_ci = [](const BYTE* data, size_t len, const char* pat) noexcept -> bool {
             if (!data || len == 0 || !pat) return false;
