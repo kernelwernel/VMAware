@@ -68,11 +68,6 @@ int main() {
 }
 ```
 
-> [!WARNING]
-> ## Note from the developer:
-> It should be mentioned that not all of the codebase is formatted this way. This standard guideline has been introduced 2 years after the project has started, and the lack of any guideline has resulted in the codebase looking fragmented, inconsistent, and very different in some portions due to differing coding styles among developers. This is completely my fault, and it has accumulated technical debt over the years. Although the current state isn't formatted consistently, the guideline is meant to slowly evolve the library into a much simpler version that's approachable to anybody trying to contribute and read through the code.
-
-
 ## I want to add a new technique, how would I do that?
 There's a few steps that should be taken:
 1. Make sure to add the technique name in the enums of all the techniques in the appropriate place.
