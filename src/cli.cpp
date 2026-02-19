@@ -150,7 +150,7 @@ struct SHA256 {
     u32 s[8] = {};     // from h0 to h7
 
     // Initialize state to SHA-256 IVs so that compiler doesn't complain
-    void init() {
+    SHA256() {
         len = 0;
         bits = 0;
         s[0] = 0x6a09e667;
@@ -291,10 +291,11 @@ static std::string exe_path() {
 std::string compute_self_sha256() {
     std::string path = exe_path();
     if (path.empty()) return {};
+
     std::ifstream ifs(path, std::ios::binary);
     if (!ifs) return {};
+
     SHA256 sha;
-    sha.init();
 
     std::vector<char> chunk(64 * 1024);
     while (ifs) {
@@ -307,9 +308,12 @@ std::string compute_self_sha256() {
 
     u8 digest[32];
     sha.final(digest);
-    static const char hex[] = "0123456789abcdef";
+
     std::string out;
     out.reserve(64);
+
+    static constexpr char hex[] = "0123456789abcdef";
+
     for (int i = 0; i < 32; ++i) {
         out.push_back(hex[(digest[i] >> 4) & 0xF]);
         out.push_back(hex[digest[i] & 0xF]);

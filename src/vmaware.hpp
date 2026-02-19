@@ -375,6 +375,7 @@
 #include <type_traits>
 #include <stdexcept>
 #include <numeric>
+#include <atomic>
 
 #if (WINDOWS)
     #include <windows.h>
@@ -4698,6 +4699,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         #if (MSVC)
             // make regs volatile so writes cannot be optimized out, if this isn't added and the code is compiled in release mode, cycles would be around 40 even under Hyper-V
             volatile int regs[4]{};
+
             // ensure the CPU pipeline is drained of previous loads before we start the clock
             _mm_lfence();
 
@@ -4988,8 +4990,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // collect results
         const u64 a = t1_start.load(std::memory_order_acquire);
         const u64 b = t1_end.load(std::memory_order_acquire);
-        const u64 c = t2_start.load(std::memory_order_acquire);
-        const u64 d = t2_end.load(std::memory_order_acquire);
+        #ifdef __VMAWARE_DEBUG__
+            const u64 c = t2_start.load(std::memory_order_acquire);
+            const u64 d = t2_end.load(std::memory_order_acquire);
+        #endif
         const u64 acc = t2_accum.load(std::memory_order_acquire);
 
         const u64 t1_delta = (b > a) ? (b - a) : 0;
