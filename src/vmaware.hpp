@@ -4612,9 +4612,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         cpu::cpuid(regs, 0x80000001);
         const bool have_rdtscp = (regs[3] & (1u << 27)) != 0;
         if (!have_rdtscp) {
-            debug("TIMER: RDTSCP instruction not supported"); // __rdtscp should be supported nowadays
+            debug("TIMER: (1/7) RDTSCP instruction not supported"); // __rdtscp should be supported nowadays
             return true;
-        }     
+        }
 
         constexpr u64 ITER_XOR = 100000000ULL;
         constexpr size_t CPUID_ITER = 100; // per leaf
@@ -5011,15 +5011,18 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         debug("TIMER: vmexit latency: ", cpuid_latency);
 
         if (cpuid_latency >= cycle_threshold) {
+            debug("TIMER: (2/7) CPUID latency is above cycle threshold");
             return true;
         }
         else if (cpuid_latency <= 25) {
             // cpuid is fully serializing, no CPU have this low average cycles in real-world scenarios
             // however, in patches, zero or even negative deltas can be seen oftenly
+            debug("TIMER: (3/7) CPUID latency is too low in practice");
             return true;
         }
 
         if (t1_delta == 0 || calib_delta == 0) {
+            debug("TIMER: (4/7) calibration and thread deltas are both null");
             return true;
         }
 
@@ -5028,10 +5031,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         // if thread 1 was faster than thread 2, hypervisor downscaled TSC per-vCPU in either cpuid or rdtsc
         if (ratio < 0.95 || ratio > 1.05) {
+            debug("TIMER: (5/7) thread 1 was faster than thread 2, hypervisor TSC is downscaled");
             return true;
         }
         // if calibration was much faster than thread 1, hypervisor downscaled TSC globally while thread 2 was spamming
         if (calibration_ratio < 0.95) {
+            debug("TIMER: (6/7) hypervisor TSC is globally downscaled");
             return true;
         }
 
@@ -5086,7 +5091,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             _freea(raw);
 
             if (speed < 800) {
-                debug("TIMER: VMAware detected an hypervisor offsetting TSC: ", speed);
+                debug("TIMER: (7/7) VMAware detected an hypervisor offsetting TSC: ", speed);
                 return true;
             }
         #endif
