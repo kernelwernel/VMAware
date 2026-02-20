@@ -4614,7 +4614,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (!have_rdtscp) {
             debug("TIMER: (1/7) RDTSCP instruction not supported"); // __rdtscp should be supported nowadays
             return true;
-        }
+        }     
 
         constexpr u64 ITER_XOR = 100000000ULL;
         constexpr size_t CPUID_ITER = 100; // per leaf
@@ -5017,7 +5017,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         else if (cpuid_latency <= 25) {
             // cpuid is fully serializing, no CPU have this low average cycles in real-world scenarios
             // however, in patches, zero or even negative deltas can be seen oftenly
-            debug("TIMER: (3/7) CPUID latency is too low in practice");
+            debug("TIMER: (3/7) CPUID latency is far too low in practice");
             return true;
         }
 
@@ -5031,12 +5031,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         // if thread 1 was faster than thread 2, hypervisor downscaled TSC per-vCPU in either cpuid or rdtsc
         if (ratio < 0.95 || ratio > 1.05) {
-            debug("TIMER: (5/7) thread 1 was faster than thread 2, hypervisor TSC is downscaled");
+            debug("TIMER: (5/7) thread 1 was faster than thread 2, hypervisor is downscaling TSC");
             return true;
         }
         // if calibration was much faster than thread 1, hypervisor downscaled TSC globally while thread 2 was spamming
         if (calibration_ratio < 0.95) {
-            debug("TIMER: (6/7) hypervisor TSC is globally downscaled");
+            debug("TIMER: (6/7) hypervisor is globally downscaling TSC");
             return true;
         }
 
@@ -5091,7 +5091,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             _freea(raw);
 
             if (speed < 800) {
-                debug("TIMER: (7/7) VMAware detected an hypervisor offsetting TSC: ", speed);
+                debug("TIMER: (7/7) VMAware detected a hypervisor offsetting TSC: ", speed);
                 return true;
             }
         #endif
