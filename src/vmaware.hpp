@@ -54,14 +54,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 545
- * - struct for internal cpu operations        => line 717
- * - struct for internal memoization           => line 3041
- * - struct for internal utility functions     => line 3223
- * - struct for internal core components       => line 11338
- * - start of VM detection technique list      => line 4278
- * - start of public VM detection functions    => line 11716
- * - start of externally defined variables     => line 12736
+ * - enums for publicly accessible techniques  => line 546
+ * - struct for internal cpu operations        => line 718
+ * - struct for internal memoization           => line 3042
+ * - struct for internal utility functions     => line 3224
+ * - struct for internal core components       => line 11418
+ * - start of VM detection technique list      => line 4279
+ * - start of public VM detection functions    => line 11796
+ * - start of externally defined variables     => line 12816
  *
  *
  * ============================== EXAMPLE ===================================
@@ -4601,8 +4601,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             debug("TIMER: Running inside a binary translation layer");
             return false;
         }
-        // will be used in cpuid measurements
-        u16 cycle_threshold = 800; // average latency of a VMX/SVM VMEXIT alone
+        // will be used in cpuid measurements later
+        u16 cycle_threshold = 800; // average latency of a VMX/SVM VMEXIT
         if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
             cycle_threshold = 3250; // if we're running under Hyper-V, make VMAware detect nested virtualization
         }
@@ -4612,16 +4612,17 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         cpu::cpuid(regs, 0x80000001);
         const bool have_rdtscp = (regs[3] & (1u << 27)) != 0;
         if (!have_rdtscp) {
-            debug("TIMER: RDTSCP instruction not supported"); // __rdtscp should be supported nowadays
+            debug("TIMER: (1/X) RDTSCP instruction not supported"); // __rdtscp should be supported nowadays
             return true;
         }     
 
-        constexpr u64 ITER_XOR = 100000000ULL;
-        constexpr size_t CPUID_ITER = 100; // per leaf
-        static constexpr unsigned int leaves[] = {
+        const u64 ITER_XOR = 50000000ULL;
+        const size_t CPUID_ITER = 100; // per leaf
+        const unsigned int leaves[] = {
              0xB, 0xD, 0x4, 0x1, 0x7, 0xA, 0x12, 0x5, 0x40000000u, 0x80000008u, 0x0
         };
-        constexpr size_t n_leaves = sizeof(leaves) / sizeof(leaves[0]);
+        const size_t n_leaves = sizeof(leaves) / sizeof(leaves[0]);
+        const size_t samples_expected = n_leaves * CPUID_ITER;
 
         unsigned hw = std::thread::hardware_concurrency();
         if (hw == 0) hw = 1;
@@ -4633,9 +4634,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         std::atomic<u64> t2_start(0), t2_end(0);
         std::atomic<u64> t2_accum(0);
 
-        std::vector<u64> samples(100000, 0);
+        std::vector<u64> samples;
+        samples.resize(samples_expected);
+        for (size_t i = 0; i < samples.size(); ++i) samples[i] = 0;
 
-        auto rdtsc = []() noexcept -> u64 {
+        auto rdtsc = []() -> u64 {
         #if (MSVC)
             return static_cast<u64>(__rdtsc());
         #else
@@ -4643,60 +4646,28 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         #endif
         };
 
-        struct affinity_cookie {
-            bool valid{ false };
-        #if (WINDOWS)
-            HANDLE thread_handle{ nullptr };
-            DWORD_PTR prev_mask{ 0 };
-        #elif (LINUX)
-            pthread_t thread{ 0 };
-            cpu_set_t prev_mask{};
-        #endif
-        };
-
-        auto set_affinity = [](std::thread& t, unsigned core) -> affinity_cookie {
-            affinity_cookie cookie;
+        // best-effort affinity as a local lambda; on macOS it's a no-op
+        auto try_set_affinity = [](std::thread& t, unsigned core) {
         #if (WINDOWS)
             HANDLE h = static_cast<HANDLE>(t.native_handle());
             DWORD_PTR mask = static_cast<DWORD_PTR>(1ULL) << core;
-            DWORD_PTR prev = SetThreadAffinityMask(h, mask);
-            if (prev != 0) {
-                cookie.valid = true;
-                cookie.thread_handle = h;
-                cookie.prev_mask = prev;
-            }
+            (void)SetThreadAffinityMask(h, mask);
         #elif (LINUX)
-            pthread_t ph = t.native_handle();
-            cpu_set_t prev;
-            if (pthread_getaffinity_np(ph, sizeof(prev), &prev) == 0) {
-                cpu_set_t cp;
-                CPU_ZERO(&cp);
-                CPU_SET(core, &cp);
-                (void)pthread_setaffinity_np(ph, sizeof(cp), &cp); 
-                cookie.valid = true;
-                cookie.thread = ph;
-                cookie.prev_mask = prev; 
-            }
+            cpu_set_t cp;
+            CPU_ZERO(&cp);
+            CPU_SET(core, &cp);
+            (void)pthread_setaffinity_np(t.native_handle(), sizeof(cp), &cp);
         #else
             (void)t; (void)core;
         #endif
-            return cookie;
         };
 
-        auto restore_affinity = [](const affinity_cookie& cookie) {
-            if (!cookie.valid) return;
-        #if (WINDOWS)
-            (void)SetThreadAffinityMask(cookie.thread_handle, cookie.prev_mask);
-        #elif (LINUX)
-            (void)pthread_setaffinity_np(cookie.thread, sizeof(cookie.prev_mask), &cookie.prev_mask);
-        #else
-            (void)cookie;
-        #endif
-        };
-
-        thread_local u32 aux = 0;
-        auto cpuid = [](unsigned int leaf) noexcept -> u64 {
         #if (MSVC)
+            thread_local u32 aux = 0;
+        #endif
+
+        auto cpuid = [&](unsigned int leaf) noexcept -> u64 {
+            #if (MSVC)
             // make regs volatile so writes cannot be optimized out, if this isn't added and the code is compiled in release mode, cycles would be around 40 even under Hyper-V
             volatile int regs[4]{};
 
@@ -4733,7 +4704,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             volatile unsigned int a, b, c, d;
 
-            // this differs from the code above because a, b, c and d are effectively used
+            // this differs from the code above because a, b, c and d are effectively "used"
             // the compiler must honor the write to a volatile variable
             asm volatile("cpuid"
                 : "=a"(a), "=b"(b), "=c"(c), "=d"(d)
@@ -4752,21 +4723,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         #endif
         };
 
+        // calculate_latency (kept as provided, minimal adaptations)
         auto calculate_latency = [&](const std::vector<u64>& samples_in) -> u64 {
             if (samples_in.empty()) return 0;
             const size_t N = samples_in.size();
             if (N == 1) return samples_in[0];
-
-            // local sorted copy
             std::vector<u64> s = samples_in;
-            std::sort(s.begin(), s.end()); // ascending
-
-            // tiny-sample short-circuits
+            std::sort(s.begin(), s.end());
             if (N <= 4) return s.front();
 
-            // median (and works for sorted input)
             auto median_of_sorted = [](const std::vector<u64>& v, size_t lo, size_t hi) -> u64 {
-                // this is the median of v[lo..hi-1], requires 0 <= lo < hi
                 const size_t len = hi - lo;
                 if (len == 0) return 0;
                 const size_t mid = lo + (len / 2);
@@ -4774,7 +4740,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return (v[mid - 1] + v[mid]) / 2;
             };
 
-            // the robust center: median M and MAD -> approximate sigma
             const u64 M = median_of_sorted(s, 0, s.size());
             std::vector<u64> absdev;
             absdev.reserve(N);
@@ -4784,100 +4749,73 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
             std::sort(absdev.begin(), absdev.end());
             const u64 MAD = median_of_sorted(absdev, 0, absdev.size());
-            // convert MAD to an approximate standard-deviation-like measure
-            const long double kmad_to_sigma = 1.4826L; // consistent for normal approx
+            const long double kmad_to_sigma = 1.4826L;
             const long double sigma = (MAD == 0) ? 1.0L : (static_cast<long double>(MAD) * kmad_to_sigma);
 
-            // find the densest small-valued cluster by sliding a fixed-count window
-            // this locates the most concentrated group of samples (likely it would be the true VMEXIT cluster)
-            // const size_t frac_win = (N * 8 + 99) / 100; // ceil(N * 0.08)
-            // const size_t win = std::min(N, std::max(MIN_WIN, frac_win));
             const size_t MIN_WIN = 10;
-            const size_t win = std::min(
-                N,
-                std::max(
-                    MIN_WIN,
-                    static_cast<size_t>(std::ceil(static_cast<double>(N) * 0.08))
-                )
-            );
+            const size_t frac_win = static_cast<size_t>(std::ceil(static_cast<double>(N) * 0.08));
+            size_t inner_win = frac_win;
+            if (inner_win < MIN_WIN) inner_win = MIN_WIN;
+            const size_t win = (N < inner_win) ? N : inner_win;
             size_t best_i = 0;
-            u64 best_span = (s.back() - s.front()) + 1; // large initial
+            u64 best_span = (s.back() - s.front()) + 1;
             for (size_t i = 0; i + win <= N; ++i) {
                 const u64 span = s[i + win - 1] - s[i];
-                if (span < best_span) {
-                    best_span = span;
-                    best_i = i;
-                }
+                if (span < best_span) { best_span = span; best_i = i; }
             }
 
-            // expand the initial window greedily while staying "tight"
-            // allow expansion while adding samples does not more than multiply the span by EXPAND_FACTOR
             constexpr long double EXPAND_FACTOR = 1.5L;
             size_t cluster_lo = best_i;
-            size_t cluster_hi = best_i + win; // exclusive
-            // expand left
+            size_t cluster_hi = best_i + win;
             while (cluster_lo > 0) {
                 const u64 new_span = s[cluster_hi - 1] - s[cluster_lo - 1];
                 if (static_cast<long double>(new_span) <= EXPAND_FACTOR * static_cast<long double>(best_span) ||
                     (s[cluster_hi - 1] <= (s[cluster_lo - 1] + static_cast<u64>(std::ceil(3.0L * sigma))))) {
                     --cluster_lo;
-                    best_span = std::min(best_span, new_span);
+                    if (new_span < best_span) best_span = new_span;
                 }
                 else break;
             }
-            // expand right
             while (cluster_hi < N) {
                 const u64 new_span = s[cluster_hi] - s[cluster_lo];
                 if (static_cast<long double>(new_span) <= EXPAND_FACTOR * static_cast<long double>(best_span) ||
                     (s[cluster_hi] <= (s[cluster_lo] + static_cast<u64>(std::ceil(3.0L * sigma))))) {
                     ++cluster_hi;
-                    best_span = std::min(best_span, new_span);
+                    if (new_span < best_span) best_span = new_span;
                 }
                 else break;
             }
 
             const size_t cluster_size = (cluster_hi > cluster_lo) ? (cluster_hi - cluster_lo) : 0;
-
-            // cluster must be reasonably dense and cover a non-negligible portion of samples, so this is pure sanity checks
             const double fraction_in_cluster = static_cast<double>(cluster_size) / static_cast<double>(N);
-            const size_t MIN_CLUSTER = std::min(static_cast<size_t>(std::max<int>(5, static_cast<int>(N / 50))), N); // at least 2% or 5 elements
+            size_t threshold = N / 50;
+            if (threshold < 5) threshold = 5;
+            const size_t MIN_CLUSTER = (threshold < N) ? threshold : N;
             if (cluster_size < MIN_CLUSTER || fraction_in_cluster < 0.02) {
-                // low-percentile (10th) trimmed median
-                const size_t fallback_count = std::max<size_t>(1, static_cast<size_t>(std::floor(static_cast<double>(N) * 0.10)));
-                // median of lowest fallback_count elements (if fallback_count==1 that's smallest)
+                size_t fallback_count = static_cast<size_t>(std::floor(static_cast<double>(N) * 0.10));
+                if (fallback_count < 1) fallback_count = 1;
                 if (fallback_count == 1) return s.front();
                 const size_t mid = fallback_count / 2;
                 if (fallback_count & 1) return s[mid];
                 return (s[mid - 1] + s[mid]) / 2;
             }
 
-            // now we try to get a robust estimate inside the cluster, trimmed mean (10% trim) centered on cluster
             const size_t trim_count = static_cast<size_t>(std::floor(static_cast<double>(cluster_size) * 0.10));
-            const size_t lo = cluster_lo + trim_count;
-            const size_t hi = cluster_hi - trim_count; // exclusive
+            size_t lo = cluster_lo + trim_count;
+            size_t hi = cluster_hi - trim_count;
             if (hi <= lo) {
-                // degenerate -> median of cluster
                 return median_of_sorted(s, cluster_lo, cluster_hi);
             }
 
-            // sum with long double to avoid overflow and better rounding
             long double sum = 0.0L;
             for (size_t i = lo; i < hi; ++i) sum += static_cast<long double>(s[i]);
             const long double avg = sum / static_cast<long double>(hi - lo);
             u64 result = static_cast<u64>(std::llround(avg));
-
-            // final sanity adjustments:
-            // if the computed result is suspiciously far from the global median (e.g., > +6*sigma)
-            // clamp toward the median to avoid choosing a high noisy cluster by mistake
             const long double diff_from_med = static_cast<long double>(result) - static_cast<long double>(M);
             if (diff_from_med > 0 && diff_from_med > (6.0L * sigma)) {
-                // clamp to median + 4*sigma (conservative)
                 result = static_cast<u64>(std::llround(static_cast<long double>(M) + 4.0L * sigma));
             }
-
-            // also, if result is zero (shouldn't be) or extremely small, return a smallest observed sample
             if (result == 0) result = s.front();
-
             return result;
         };
 
@@ -4887,29 +4825,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             VMAWARE_UNUSED(tmp);
         }
 
-        // if hypervisor downscales TSC globally, this will catch it
-        const u64 calib_start = rdtsc();
-        {
-            volatile u64 x = 0xDEADBEEFCAFEBABEULL;
-            for (u64 i = 0; i < ITER_XOR; ++i) {
-                x ^= i;
-                x = (x << 1) ^ (x >> 3);
-            }
-            VMAWARE_UNUSED(x);
-        }
-        const u64 calib_end = rdtsc();
-        const u64 calib_delta = (calib_end > calib_start) ? (calib_end - calib_start) : 0;
-
-        ready_count.store(0, std::memory_order_release);
-        state.store(0, std::memory_order_release);
-
         // Thread 1: start near same cycle, do XOR work, set end
         std::thread th1([&]() {
             ready_count.fetch_add(1, std::memory_order_acq_rel);
-            while (ready_count.load(std::memory_order_acquire) < 2)
-                _mm_pause();
+            while (ready_count.load(std::memory_order_acquire) < 2) { /* spin */ }
 
-            const u64 s = rdtsc();
+            u64 s = rdtsc();
             t1_start.store(s, std::memory_order_release);
             state.store(1, std::memory_order_release);
 
@@ -4920,16 +4841,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
             VMAWARE_UNUSED(x);
 
-            const u64 e = rdtsc();
+            u64 e = rdtsc();
             t1_end.store(e, std::memory_order_release);
             state.store(2, std::memory_order_release);
         });
 
-        // Thread 2: rdtsc and cpuid spammer, forces hypervisor to downscale TSC if patch is present; if interception disabled, caught by cpuid latency 
+        // Thread 2: barrier, sample start, perform cpuid sampling and keep accumulating rdtsc deltas
         std::thread th2([&]() {
             ready_count.fetch_add(1, std::memory_order_acq_rel);
-            while (ready_count.load(std::memory_order_acquire) < 2) 
-                _mm_pause();
+            while (ready_count.load(std::memory_order_acquire) < 2) { /* spin */ }
 
             u64 last = rdtsc();
             t2_start.store(last, std::memory_order_release);
@@ -4938,56 +4858,55 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             u64 acc = 0;
             size_t idx = 0;
 
-            // for each leaf do CPUID_ITER samples, then repeat
-            while (state.load(std::memory_order_acquire) != 2) {
-                for (size_t li = 0; li < n_leaves; ++li) {
-                    const unsigned int leaf = leaves[li];
+            // per-leaf sampling but do not stop entirely if thread1 is still running after completing planned samples
+            for (size_t li = 0; li < n_leaves; ++li) {
+                const unsigned int leaf = leaves[li];
+                for (unsigned i = 0; i < CPUID_ITER; ++i) {
+                    // accumulate rdtsc delta up to now (this includes time since last sample and includes previous cpuid)
+                    u64 now = rdtsc();
+                    acc += (now >= last) ? (now - last) : (u64)((u64)0 - last + now);
+                    last = now;
 
-                    for (unsigned i = 0; i < CPUID_ITER; ++i) {
-                        // read rdtsc and accumulate delta
-                        const u64 now = rdtsc();
-                        acc += (now >= last) ? (now - last) : (u64)((u64)0 - last + now);
-                        last = now;
+                    // run cpuid and store latency
+                    if (idx < samples.size()) samples[idx] = cpuid(leaf);
+                    ++idx;
 
-                        // store latency if buffer has space
-                        if (idx < samples.size()) samples[idx] = cpuid(leaf);
-                        ++idx;
-
-                        // if thread1 finished
-                        if (state.load(std::memory_order_acquire) == 2) break;
+                    // if thread1 finished, capture a final rdtsc and exit sampling loops
+                    if (state.load(std::memory_order_acquire) == 2) {
+                        u64 final_now = rdtsc();
+                        acc += (final_now >= last) ? (final_now - last) : (u64)((u64)0 - last + final_now);
+                        last = final_now;
+                        t2_end.store(final_now, std::memory_order_release);
+                        t2_accum.store(acc, std::memory_order_release);
+                        return;
                     }
-
-                    if (state.load(std::memory_order_acquire) == 2) break;
                 }
             }
 
-            // final rdtsc after detecting finish
-            const u64 final_now = rdtsc();
+            // If we reach here, we completed planned samples but thread1 might still be running, so continue spamming 
+            while (state.load(std::memory_order_acquire) != 2) {
+                u64 now = rdtsc();
+                acc += (now >= last) ? (now - last) : (u64)((u64)0 - last + now);
+                last = now;
+            }
+
+            // final sample after seeing finished
+            u64 final_now = rdtsc();
             acc += (final_now >= last) ? (final_now - last) : (u64)((u64)0 - last + final_now);
             last = final_now;
-
-            // publish results
             t2_end.store(final_now, std::memory_order_release);
             t2_accum.store(acc, std::memory_order_release);
         });
 
-        // try to pin to different cores
-        affinity_cookie cookie1{};
-        affinity_cookie cookie2{};
+        // Try to pin to different cores
         if (hw >= 2) { 
-            if (hw >= 2) {
-                cookie1 = set_affinity(th1, 0);
-                cookie2 = set_affinity(th2, 1);
-            }
+            try_set_affinity(th1, 0); 
+            try_set_affinity(th2, 1); 
         }
 
         th1.join();
         th2.join();
 
-        restore_affinity(cookie1);
-        restore_affinity(cookie2);
-
-        // collect results
         const u64 a = t1_start.load(std::memory_order_acquire);
         const u64 b = t1_end.load(std::memory_order_acquire);
         #ifdef __VMAWARE_DEBUG__
@@ -5000,14 +4919,14 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const u64 t2_delta = acc;
 
         std::vector<u64> used;
-        for (size_t i = 0; i < samples.size(); ++i)
-            if (samples[i] != 0)
+        used.reserve(samples_expected);
+        for (size_t i = 0; i < samples.size(); ++i) 
+            if (samples[i] != 0) 
                 used.push_back(samples[i]);
         const u64 cpuid_latency = calculate_latency(used);
 
-        debug("TIMER: calibration cycles: start=", calib_start, " delta=", calib_delta);
-        debug("TIMER: thread1 cycles: start=", a, " delta=", t1_delta);
-        debug("TIMER: thread2 cycles: start=", c, " delta=", t2_delta);
+        debug("TIMER: thread1 cycles: start=", a, " end=", b, " delta=", t1_delta);
+        debug("TIMER: thread2 cycles: start=", c, " end=", d, " acc=", t2_delta);
         debug("TIMER: vmexit latency: ", cpuid_latency);
 
         if (cpuid_latency >= cycle_threshold) {
@@ -5019,20 +4938,16 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return true;
         }
 
-        if (t1_delta == 0 || calib_delta == 0) {
-            return true;
+        if (t1_delta == 0) {
+            return false;
         }
 
         const double ratio = double(t2_delta) / double(t1_delta);
-        const double calibration_ratio = static_cast<double>(t1_delta) / static_cast<double>(calib_delta);
-
-        // if thread 1 was faster than thread 2, hypervisor downscaled TSC per-vCPU in either cpuid or rdtsc
         if (ratio < 0.95 || ratio > 1.05) {
-            return true;
+            debug("TIMER: VMAware detected an hypervisor offsetting TSC: ", ratio);
         }
-        // if calibration was much faster than thread 1, hypervisor downscaled TSC globally while thread 2 was spamming
-        if (calibration_ratio < 0.95) {
-            return true;
+        else {
+            debug("TIMER: Ratio: ", ratio);
         }
 
         #if (WINDOWS)
@@ -5049,7 +4964,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 ProcessorInformation = 11
             };
 
-            const HMODULE hPowr = GetModuleHandleA("powrprof.dll");
+            HMODULE hPowr = GetModuleHandleA("powrprof.dll");
+            if (!hPowr) hPowr = LoadLibraryA("powrprof.dll");
             if (!hPowr) return 0;
 
             const char* names[] = { "CallNtPowerInformation" };
