@@ -4612,9 +4612,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         cpu::cpuid(regs, 0x80000001);
         const bool have_rdtscp = (regs[3] & (1u << 27)) != 0;
         if (!have_rdtscp) {
-            debug("TIMER: (1/7) RDTSCP instruction not supported"); // __rdtscp should be supported nowadays
+            debug("TIMER: RDTSCP instruction not supported"); // __rdtscp should be supported nowadays
             return true;
-        }     
+        }
 
         constexpr u64 ITER_XOR = 100000000ULL;
         constexpr size_t CPUID_ITER = 100; // per leaf
@@ -4627,7 +4627,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (hw == 0) hw = 1;
 
         std::atomic<int> ready_count(0);
-        std::atomic<int> state(0); 
+        std::atomic<int> state(0);
 
         std::atomic<u64> t1_start(0), t1_end(0);
         std::atomic<u64> t2_start(0), t2_end(0);
@@ -4672,10 +4672,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 cpu_set_t cp;
                 CPU_ZERO(&cp);
                 CPU_SET(core, &cp);
-                (void)pthread_setaffinity_np(ph, sizeof(cp), &cp); 
+                (void)pthread_setaffinity_np(ph, sizeof(cp), &cp);
                 cookie.valid = true;
                 cookie.thread = ph;
-                cookie.prev_mask = prev; 
+                cookie.prev_mask = prev;
             }
         #else
             (void)t; (void)core;
@@ -4928,13 +4928,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // Thread 2: rdtsc and cpuid spammer, forces hypervisor to downscale TSC if patch is present; if interception disabled, caught by cpuid latency 
         std::thread th2([&]() {
             ready_count.fetch_add(1, std::memory_order_acq_rel);
-            while (ready_count.load(std::memory_order_acquire) < 2) 
+            while (ready_count.load(std::memory_order_acquire) < 2)
                 _mm_pause();
 
             u64 last = rdtsc();
             t2_start.store(last, std::memory_order_release);
 
-            // local accumulator (fast) and local index into samples
+            // local accumulator and local index into samples
             u64 acc = 0;
             size_t idx = 0;
 
@@ -4974,7 +4974,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // try to pin to different cores
         affinity_cookie cookie1{};
         affinity_cookie cookie2{};
-        if (hw >= 2) { 
+        if (hw >= 2) {
             if (hw >= 2) {
                 cookie1 = set_affinity(th1, 0);
                 cookie2 = set_affinity(th2, 1);
@@ -4990,10 +4990,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // collect results
         const u64 a = t1_start.load(std::memory_order_acquire);
         const u64 b = t1_end.load(std::memory_order_acquire);
-        #ifdef __VMAWARE_DEBUG__
-            const u64 c = t2_start.load(std::memory_order_acquire);
-            const u64 d = t2_end.load(std::memory_order_acquire);
-        #endif
+    #ifdef __VMAWARE_DEBUG__
+        const u64 c = t2_start.load(std::memory_order_acquire);
+        const u64 d = t2_end.load(std::memory_order_acquire);
+    #endif
         const u64 acc = t2_accum.load(std::memory_order_acquire);
 
         const u64 t1_delta = (b > a) ? (b - a) : 0;
@@ -5011,18 +5011,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         debug("TIMER: vmexit latency: ", cpuid_latency);
 
         if (cpuid_latency >= cycle_threshold) {
-            debug("TIMER: (2/7) CPUID latency is above cycle threshold");
             return true;
         }
         else if (cpuid_latency <= 25) {
             // cpuid is fully serializing, no CPU have this low average cycles in real-world scenarios
             // however, in patches, zero or even negative deltas can be seen oftenly
-            debug("TIMER: (3/7) CPUID latency is far too low in practice");
             return true;
         }
 
         if (t1_delta == 0 || calib_delta == 0) {
-            debug("TIMER: (4/7) calibration and thread deltas are both null");
             return true;
         }
 
@@ -5031,71 +5028,69 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         // if thread 1 was faster than thread 2, hypervisor downscaled TSC per-vCPU in either cpuid or rdtsc
         if (ratio < 0.95 || ratio > 1.05) {
-            debug("TIMER: (5/7) thread 1 was faster than thread 2, hypervisor is downscaling TSC");
             return true;
         }
         // if calibration was much faster than thread 1, hypervisor downscaled TSC globally while thread 2 was spamming
         if (calibration_ratio < 0.95) {
-            debug("TIMER: (6/7) hypervisor is globally downscaling TSC");
             return true;
         }
 
-        #if (WINDOWS)
-            typedef struct _PROCESSOR_POWER_INFORMATION {
-                u32 Number;
-                u32 MaxMhz;
-                u32 CurrentMhz;
-                u32 MhzLimit;
-                u32 MaxIdleState;
-                u32 CurrentIdleState;
-            } PROCESSOR_POWER_INFORMATION, * PPROCESSOR_POWER_INFORMATION;
+    #if (WINDOWS)
+        typedef struct _PROCESSOR_POWER_INFORMATION {
+            u32 Number;
+            u32 MaxMhz;
+            u32 CurrentMhz;
+            u32 MhzLimit;
+            u32 MaxIdleState;
+            u32 CurrentIdleState;
+        } PROCESSOR_POWER_INFORMATION, * PPROCESSOR_POWER_INFORMATION;
 
-            enum POWER_INFORMATION_LEVEL_MIN {
-                ProcessorInformation = 11
-            };
+        enum POWER_INFORMATION_LEVEL_MIN {
+            ProcessorInformation = 11
+        };
 
-            const HMODULE hPowr = LoadLibraryA("powrprof.dll");
-            if (!hPowr) return 0;
+        const HMODULE hPowr = LoadLibraryA("powrprof.dll");
+        if (!hPowr) return 0;
 
-            const char* names[] = { "CallNtPowerInformation" };
-            void* funcs[1] = { nullptr };
-            util::get_function_address(hPowr, names, funcs, 1);
-            if (!funcs[0]) return 0;
+        const char* names[] = { "CallNtPowerInformation" };
+        void* funcs[1] = { nullptr };
+        util::get_function_address(hPowr, names, funcs, 1);
+        if (!funcs[0]) return 0;
 
-            using CallNtPowerInformation_t = NTSTATUS(__stdcall*)(int, PVOID, ULONG, PVOID, ULONG);
-            CallNtPowerInformation_t CallNtPowerInformation =
-                reinterpret_cast<CallNtPowerInformation_t>(funcs[0]);
+        using CallNtPowerInformation_t = NTSTATUS(__stdcall*)(int, PVOID, ULONG, PVOID, ULONG);
+        CallNtPowerInformation_t CallNtPowerInformation =
+            reinterpret_cast<CallNtPowerInformation_t>(funcs[0]);
 
-            SYSTEM_INFO si;
-            GetSystemInfo(&si);
-            const DWORD procCount = si.dwNumberOfProcessors;
-            if (procCount == 0) return 0;
+        SYSTEM_INFO si;
+        GetSystemInfo(&si);
+        const DWORD procCount = si.dwNumberOfProcessors;
+        if (procCount == 0) return 0;
 
-            const SIZE_T bufSize = static_cast<SIZE_T>(procCount) * sizeof(PROCESSOR_POWER_INFORMATION);
-            void* raw = _malloca(bufSize);
-            if (!raw) return 0;
-            memset(raw, 0, bufSize);
+        const SIZE_T bufSize = static_cast<SIZE_T>(procCount) * sizeof(PROCESSOR_POWER_INFORMATION);
+        void* raw = _malloca(bufSize);
+        if (!raw) return 0;
+        memset(raw, 0, bufSize);
 
-            NTSTATUS status = CallNtPowerInformation(
-                ProcessorInformation,
-                nullptr, 0,
-                raw, static_cast<ULONG>(bufSize)
-            );
+        const NTSTATUS status = CallNtPowerInformation(
+            ProcessorInformation,
+            nullptr, 0,
+            raw, static_cast<ULONG>(bufSize)
+        );
 
-            unsigned speed = 0;
-            if ((LONG)status >= 0) {
-                PROCESSOR_POWER_INFORMATION* info = reinterpret_cast<PROCESSOR_POWER_INFORMATION*>(raw);
-                speed = static_cast<unsigned>(info[0].CurrentMhz);
-            }
+        unsigned speed = 0;
+        if ((LONG)status >= 0) {
+            PROCESSOR_POWER_INFORMATION* info = reinterpret_cast<PROCESSOR_POWER_INFORMATION*>(raw);
+            speed = static_cast<unsigned>(info[0].CurrentMhz);
+        }
 
-            _freea(raw);
+        _freea(raw);
 
-            if (speed < 800) {
-                debug("TIMER: (7/7) VMAware detected a hypervisor offsetting TSC: ", speed);
-                return true;
-            }
-        #endif
+        if (speed < 800) {
+            debug("TIMER: VMAware detected an hypervisor offsetting TSC: ", speed);
+            return true;
+        }
     #endif
+#endif
         return false;
     }
 
