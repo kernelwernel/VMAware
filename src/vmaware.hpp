@@ -4934,7 +4934,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             u64 last = rdtsc();
             t2_start.store(last, std::memory_order_release);
 
-            // local accumulator (fast) and local index into samples
+            // local accumulator and local index into samples
             u64 acc = 0;
             size_t idx = 0;
 
@@ -5071,7 +5071,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             if (!raw) return 0;
             memset(raw, 0, bufSize);
 
-            NTSTATUS status = CallNtPowerInformation(
+            const NTSTATUS status = CallNtPowerInformation(
                 ProcessorInformation,
                 nullptr, 0,
                 raw, static_cast<ULONG>(bufSize)
