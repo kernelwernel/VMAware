@@ -5049,7 +5049,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 ProcessorInformation = 11
             };
 
-            const HMODULE hPowr = GetModuleHandleA("powrprof.dll");
+            const HMODULE hPowr = LoadLibraryA("powrprof.dll");
             if (!hPowr) return 0;
 
             const char* names[] = { "CallNtPowerInformation" };
@@ -11772,22 +11772,21 @@ public: // START OF PUBLIC FUNCTIONS
         if (flag_bit < technique_end) {
             const core::technique& pair = core::technique_table[flag_bit];
 
-            if (auto run_fn = pair.run) {  
+            if (auto run_fn = pair.run) {
                 core::last_detected_brand = nullptr;
-                core::last_detected_score = 0; 
+                core::last_detected_score = 0;
 
-                bool result = run_fn();           
+                const bool result = run_fn();
+
+                const u8 points_to_add = (core::last_detected_score > 0) ? core::last_detected_score : pair.points;
+                const char* detected_brand = (core::last_detected_brand) ? core::last_detected_brand : brands::NULL_BRAND;
+
                 if (result) {
-                    #ifdef __VMAWARE_DEBUG__
-                        total_points += pair.points;
-                    #endif
                     detected_count_num++;
-                    u8 points_to_add = (core::last_detected_score > 0) ? core::last_detected_score : pair.points;
-                    const char* detected_brand = (core::last_detected_brand) ? core::last_detected_brand : brands::NULL_BRAND;
-
-                    memo::cache_store(flag_bit, result, points_to_add, detected_brand);
-                    return result;
                 }
+
+                memo::cache_store(flag_bit, result, result ? points_to_add : 0, detected_brand);
+                return result;
             }
             else {
                 throw_error("Flag is not known or not implemented");
@@ -11814,9 +11813,6 @@ public: // START OF PUBLIC FUNCTIONS
         // is the multiple setting flag enabled?
         const bool is_multiple = core::is_enabled(flags, MULTIPLE);
 
-        // run all the techniques
-        const u16 score = core::run_all(flags);
-
         // check if the result is already cached and return that instead
         if (is_multiple) {
             if (memo::multi_brand::is_cached()) {
@@ -11830,6 +11826,9 @@ public: // START OF PUBLIC FUNCTIONS
                 return memo::brand::fetch();
             }
         }
+
+        // run all the techniques
+        const u16 score = core::run_all(flags);
 
     #if (VMA_CPP <= 14)
         constexpr const char* TMP_QEMU = "QEMU";
