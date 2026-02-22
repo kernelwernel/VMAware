@@ -5011,9 +5011,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         debug("TIMER: vmexit latency: ", cpuid_latency);
 
         if (cpuid_latency >= cycle_threshold) {
+            debug("TIMER: VMAware detected a vmexit on CPUID");
             return true;
         }
         else if (cpuid_latency <= 25) {
+            debug("TIMER: VMAware detected a hypervisor downscaling CPUID latency");
             // cpuid is fully serializing, no CPU have this low average cycles in real-world scenarios
             // however, in patches, zero or even negative deltas can be seen oftenly
             return true;
@@ -5028,10 +5030,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         // if thread 1 was faster than thread 2, hypervisor downscaled TSC per-vCPU in either cpuid or rdtsc
         if (ratio < 0.95 || ratio > 1.05) {
+            debug("TIMER: VMAware detected a hypervisor intercepting TSC");
             return true;
         }
         // if calibration was much faster than thread 1, hypervisor downscaled TSC globally while thread 2 was spamming
         if (calibration_ratio < 0.95) {
+            debug("TIMER: VMAware detected a hypervisor intercepting TSC globally");
             return true;
         }
 
@@ -5086,7 +5090,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         _freea(raw);
 
         if (speed < 800) {
-            debug("TIMER: VMAware detected an hypervisor offsetting TSC: ", speed);
+            debug("TIMER: VMAware detected a hook in rdtsc, frequency was: ", speed);
             return true;
         }
     #endif
