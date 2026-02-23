@@ -4947,7 +4947,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     for (unsigned i = 0; i < CPUID_ITER; ++i) {
                         // read rdtsc and accumulate delta
                         const u64 now = rdtsc();
-                        acc += (now >= last) ? (now - last) : (u64)((u64)0 - last + now);
+
+                        // If now < last, the hypervisor rewound the TSC or it's a very rare 64-bit overflow
+                        // we do not increment acc to ensure ratio t2_delta / t1_delta drops below 0.95
+                        if (now >= last) {
+                            acc += (now - last);
+                        }
+
                         last = now;
 
                         // store latency if buffer has space
@@ -4964,7 +4970,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             // final rdtsc after detecting finish
             const u64 final_now = rdtsc();
-            acc += (final_now >= last) ? (final_now - last) : (u64)((u64)0 - last + final_now);
+
+            if (final_now >= last) {
+                acc += (final_now - last);
+            }
+
             last = final_now;
 
             // publish results
@@ -5011,7 +5021,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         if (cpuid_latency >= cycle_threshold) {
             debug("TIMER: Detected a vmexit on CPUID");
-            return true;
+            return core::add(brands::NULL_BRAND, 100); // to prevent FPs due to kernel noise
         }
         else if (cpuid_latency <= 25) {
             debug("TIMER: Detected a hypervisor downscaling CPUID latency");
@@ -6573,16 +6583,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     debug("FIRMWARE: C2 and C3 latencies indicate VM");
                     return true;
                 }
-
-                if (buffer_len >= 276) {
-                    u64 hypervisor_vid = 0;
-                    memcpy(&hypervisor_vid, buffer + 268, 8);
-
-                    if (hypervisor_vid != 0) {
-                        debug("FIRMWARE: FACP 'Hypervisor Vendor Identity' field is occupied");
-                        return true;
-                    }
-                }
             }
 
             return false;
@@ -7512,6 +7512,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return true;
             }
         #endif
+
+        // ARM CPUs trigger this check
+        if (util::is_running_under_translator()) 
+            return false;
 
         const HMODULE kernel32 = GetModuleHandleA("kernel32.dll");
         const HMODULE ntdll = util::get_ntdll();
@@ -11211,22 +11215,26 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             if (util::get_manufacturer_model(&manufacturer, &model)) {
                 auto ci_contains = [](const char* hay, const char* needle) noexcept -> bool {
                     if (!hay || !needle || !*hay || !*needle) return false;
-                    const unsigned char* h = reinterpret_cast<const unsigned char*>(hay);
-                    const unsigned char* n = reinterpret_cast<const unsigned char*>(needle);
-                    const size_t nlen = strlen(reinterpret_cast<const char*>(n));
+
+                    const unsigned char* h =
+                        reinterpret_cast<const unsigned char*>(hay);
+                    const unsigned char* n =
+                        reinterpret_cast<const unsigned char*>(needle);
+
                     for (; *h; ++h) {
                         size_t i = 0;
                         for (;; ++i) {
                             unsigned char hc = h[i];
                             unsigned char nc = n[i];
-                            if (!nc) return false; // matched whole needle
-                            if (!hc) break; // hay ended
-                            // ascii lowercase
+
+                            if (!nc) return true; 
+                            if (!hc) break;
+
                             if (hc >= 'A' && hc <= 'Z') hc += 32;
                             if (nc >= 'A' && nc <= 'Z') nc += 32;
+
                             if (hc != nc) break;
                         }
-                        if (i == nlen) return false;
                     }
                     return false;
                 };
@@ -11355,8 +11363,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             { 0x4B564D00u, 0x4B564DFFu }
         };
 
-        static thread_local bool g_msr_faulted = false;
-
         auto try_read = [](u32 msr_index) -> bool {
         #if (MSVC)
             unsigned __int64 value = 0;
@@ -11369,7 +11375,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return false;
             }
         #elif (GCC || CLANG)
-            g_msr_faulted = false;
+            static thread_local bool g_msr_faulted = false;
 
             auto veh_handler = [](PEXCEPTION_POINTERS info) -> LONG {
                 if (info->ExceptionRecord->ExceptionCode == EXCEPTION_PRIV_INSTRUCTION) {
