@@ -11211,22 +11211,28 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             if (util::get_manufacturer_model(&manufacturer, &model)) {
                 auto ci_contains = [](const char* hay, const char* needle) noexcept -> bool {
                     if (!hay || !needle || !*hay || !*needle) return false;
-                    const unsigned char* h = reinterpret_cast<const unsigned char*>(hay);
-                    const unsigned char* n = reinterpret_cast<const unsigned char*>(needle);
-                    const size_t nlen = strlen(reinterpret_cast<const char*>(n));
+
+                    const unsigned char* h =
+                        reinterpret_cast<const unsigned char*>(hay);
+                    const unsigned char* n =
+                        reinterpret_cast<const unsigned char*>(needle);
+
+                    const size_t nlen = strlen(needle);
+
                     for (; *h; ++h) {
                         size_t i = 0;
                         for (;; ++i) {
                             unsigned char hc = h[i];
                             unsigned char nc = n[i];
-                            if (!nc) return false; // matched whole needle
-                            if (!hc) break; // hay ended
-                            // ascii lowercase
+
+                            if (!nc) return true; 
+                            if (!hc) break;
+
                             if (hc >= 'A' && hc <= 'Z') hc += 32;
                             if (nc >= 'A' && nc <= 'Z') nc += 32;
+
                             if (hc != nc) break;
                         }
-                        if (i == nlen) return false;
                     }
                     return false;
                 };
