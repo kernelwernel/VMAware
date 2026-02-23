@@ -994,6 +994,7 @@ static void general(
     checker(VM::EDID, "EDID");
     checker(VM::CPU_HEURISTIC, "CPU heuristics");
     checker(VM::CLOCK, "system timers");
+    checker(VM::MSR, "model specific registers");
 
     // ADD NEW TECHNIQUE CHECKER HERE
 
