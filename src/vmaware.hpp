@@ -518,6 +518,9 @@ namespace brands {
     static constexpr const char* NSJAIL = "nsjail";
     static constexpr const char* DBVM = "DBVM";
     static constexpr const char* UTM = "UTM";
+    static constexpr const char* COMPAQ = "Compaq FX!32";
+    static constexpr const char* INSIGNIA = "Insignia RealPC";
+    static constexpr const char* CONNECTIX = "Connectix Virtual PC";
 }
 
 #if (VMA_CPP >= 17)
@@ -659,7 +662,6 @@ private:
     static constexpr u8 settings_count = MULTIPLE - HIGH_THRESHOLD + 1; // get number of settings technique flags
     static constexpr u8 INVALID = 255; // explicit invalid technique macro
     static constexpr u16 base_technique_count = HIGH_THRESHOLD; // original technique count, constant on purpose (can also be used as a base count value if custom techniques are added)
-    static constexpr u16 maximum_points = 5510; // theoretical total points if all VM detections returned true (which is practically impossible)
     static constexpr u16 threshold_score = 150; // standard threshold score
     static constexpr u16 high_threshold_score = 300; // new threshold score from 150 to 300 if VM::HIGH_THRESHOLD flag is enabled
     static constexpr bool SHORTCUT = true; // macro for whether VM::core::run_all() should take a shortcut by skipping the rest of the techniques if the threshold score is already met
@@ -684,6 +686,7 @@ public:
     // this is specifically meant for VM::detected_count() to 
     // get the total number of techniques that detected a VM
     static u8 detected_count_num; 
+    static u16 technique_count; // get total number of techniques
 
     static std::vector<enum_flags> disabled_techniques;
 
@@ -1086,7 +1089,10 @@ private:
                 {"IntelTDX    ", brands::INTEL_TDX},
                 {"LKVMLKVMLKVM", brands::LKVM},
                 {"Neko Project", brands::NEKO_PROJECT},
-                {"NoirVisor ZT", brands::NOIRVISOR}
+                {"NoirVisor ZT", brands::NOIRVISOR},
+                {"Compaq FX!32", brands::COMPAQ},
+                {"Insignia 586", brands::INSIGNIA},
+                {"ConnectixCPU", brands::CONNECTIX}
             };
 
             const auto it = brand_map.find(brand_str);
@@ -4307,6 +4313,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         return false;
     #else
         const std::string& brand = cpu::get_brand();
+
+        // easy shortcut for QEMU
+        if (brand.rfind("QEMU Virtual CPU version", 0) == 0) {
+            return core::add(brands::QEMU);
+        }
 
         struct cstrview {
             const char* data;
@@ -12170,10 +12181,6 @@ public: // START OF PUBLIC FUNCTIONS
         // flags above, and get a total score 
         const u16 points = core::run_all(flags, SHORTCUT);
 
-    #if (VMA_CPP >= 23)
-        [[assume(points < maximum_points)]];
-    #endif
-
         u16 threshold = threshold_score;
 
         // if high threshold is set, the bar
@@ -12211,10 +12218,6 @@ public: // START OF PUBLIC FUNCTIONS
         // run all the techniques based on the 
         // flags above, and get a total score
         const u16 points = core::run_all(flags, SHORTCUT);
-
-    #if (VMA_CPP >= 23)
-        [[assume(points < maximum_points)]];
-    #endif
 
         u8 percent = 0;
         u16 threshold = threshold_score;
@@ -12574,6 +12577,9 @@ public: // START OF PUBLIC FUNCTIONS
             { brands::BOCHS, "Emulator" },
             { brands::BLUESTACKS, "Emulator" },
             { brands::NEKO_PROJECT, "Emulator" },
+            { brands::COMPAQ, "Emulator" },
+            { brands::INSIGNIA, "Emulator" },
+            { brands::CONNECTIX, "Emulator" },
             { brands::QEMU, "Emulator/Hypervisor (type 2)" },
             { brands::JAILHOUSE, "Partitioning Hypervisor" },
             { brands::UNISYS, "Partitioning Hypervisor" },
@@ -12833,12 +12839,6 @@ public: // START OF PUBLIC FUNCTIONS
 
     };
     #pragma pack(pop)
-
-
-    static u16 technique_count; // get total number of techniques
-#ifdef __VMAWARE_DEBUG__
-    static u16 total_points;
-#endif
 };
 
 // ============= EXTERNAL DEFINITIONS =============
@@ -12926,6 +12926,9 @@ std::array<VM::core::brand_entry, VM::core::MAX_BRANDS> VM::core::brand_scoreboa
     insert(brands::NSJAIL);
     insert(brands::DBVM);
     insert(brands::UTM);
+    insert(brands::COMPAQ);
+    insert(brands::INSIGNIA);
+    insert(brands::CONNECTIX);
     insert(brands::NULL_BRAND);
 
     return arr;
@@ -12961,10 +12964,6 @@ std::size_t VM::memo::leaf_cache::count = 0;
 std::size_t VM::memo::leaf_cache::next_index = 0;
 const char* VM::core::last_detected_brand = nullptr;
 VM::u8 VM::core::last_detected_score = 0;
-
-#ifdef __VMAWARE_DEBUG__
-VM::u16 VM::total_points = 0;
-#endif
 
 // these are basically the base values for the core::arg_handler function.
 // It's like a bucket that will collect all the bits enabled. If for example 
