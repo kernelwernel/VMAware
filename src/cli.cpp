@@ -1008,10 +1008,6 @@ static void general(
 
     std::printf("\n");
 
-#ifdef __VMAWARE_DEBUG__
-    std::cout << "[DEBUG] theoretical maximum points: " << VM::total_points << "\n";
-#endif
-
     // struct containing the whole overview of the VM data
     VM::vmaware vm(VM::MULTIPLE, high_threshold, all, dynamic);
 
