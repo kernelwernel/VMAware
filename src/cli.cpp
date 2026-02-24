@@ -467,6 +467,9 @@ static const char* color(const u8 score) {
         nsjail
         DBVM
         UTM
+        Compaq FX!32
+        Insignia RealPC
+        Connectix Virtual PC
         )";
     std::exit(0);
 }
@@ -647,6 +650,9 @@ static const char* get_vm_description(const std::string& vm_brand) {
         { brands::NSJAIL, "nsjail is a process isolation tool for Linux. It utilizes Linux namespace subsystem, resource limits, and the seccomp-bpf syscall filters of the Linux kernel. It can be used for isolating networking services, CTF challenges, and containing invasive syscall-level OS fuzzers." },
         { brands::DBVM, "DBVM is a ultra-lightweight virtual machine host that makes Windows run in a virtual machine so that Cheat Engine can operate at a higher level than the OS using a device driver. Instead of virtualizing devices it generally passes on interrupts unaltered meaning it has a very small impact on performance." },
         { brands::UTM, "UTM for macOS is a free, open-source virtualization and emulation app that brings full-featured virtual machines to both Intel and Apple Silicon Macs. It employs Apple's Hypervisor virtualization framework to run ARM64 operating systems on Apple Silicon at near native speeds. On other architectures, it employs software emulation through QEMU." },
+        { brands::COMPAQ, "Compaq FX!32 is an emulator that is designed to run Win32 programs for the DEC instruction set architecture. Released in 1996, it was developed by developed by Digital Equipment Corporation (DEC) to support their Alpha microprocessors. It analyzed the way programs worked and, after the program ran, used binary translation to produce dynamic-link library (DLL) files of native Alpha code that the application could execute the next time it ran." },
+        { brands::INSIGNIA, "RealPC was an emulator for the Macintosh line of PCs. It emulated a Pentium-based PC to run Windows NT, Windows 95, and Windows 98 programs. It was discontinued in 2003." },
+        { brands::CONNECTIX, "Connectix VirtualPC was the predecessor to Microsoft's VirtualPC. Originally developed as a Macintosh application for System 7.5 and released by Connectix in June 1997, it supported various OS's such as Linux and old versions of Windows. It was bought by Microsoft in February 2003." },
         { brands::NULL_BRAND, "Indicates no detectable virtualization brand. This result may occur on bare-metal systems, unsupported/obscure hypervisors, or when anti-detection techniques (e.g., VM escaping) are employed by the guest environment." }
     };
 

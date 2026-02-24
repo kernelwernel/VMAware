@@ -518,6 +518,9 @@ namespace brands {
     static constexpr const char* NSJAIL = "nsjail";
     static constexpr const char* DBVM = "DBVM";
     static constexpr const char* UTM = "UTM";
+    static constexpr const char* COMPAQ = "Compaq FX!32";
+    static constexpr const char* INSIGNIA = "Insignia RealPC";
+    static constexpr const char* CONNECTIX = "Connectix Virtual PC";
 }
 
 #if (VMA_CPP >= 17)
@@ -1085,7 +1088,10 @@ private:
                 {"IntelTDX    ", brands::INTEL_TDX},
                 {"LKVMLKVMLKVM", brands::LKVM},
                 {"Neko Project", brands::NEKO_PROJECT},
-                {"NoirVisor ZT", brands::NOIRVISOR}
+                {"NoirVisor ZT", brands::NOIRVISOR},
+                {"Compaq FX!32", brands::COMPAQ},
+                {"Insignia 586", brands::INSIGNIA},
+                {"ConnectixCPU", brands::CONNECTIX}
             };
 
             const auto it = brand_map.find(brand_str);
@@ -12474,6 +12480,9 @@ public: // START OF PUBLIC FUNCTIONS
             { brands::BOCHS, "Emulator" },
             { brands::BLUESTACKS, "Emulator" },
             { brands::NEKO_PROJECT, "Emulator" },
+            { brands::COMPAQ, "Emulator" },
+            { brands::INSIGNIA, "Emulator" },
+            { brands::CONNECTIX, "Emulator" },
             { brands::QEMU, "Emulator/Hypervisor (type 2)" },
             { brands::JAILHOUSE, "Partitioning Hypervisor" },
             { brands::UNISYS, "Partitioning Hypervisor" },
@@ -12826,6 +12835,9 @@ std::array<VM::core::brand_entry, VM::core::MAX_BRANDS> VM::core::brand_scoreboa
     insert(brands::NSJAIL);
     insert(brands::DBVM);
     insert(brands::UTM);
+    insert(brands::COMPAQ);
+    insert(brands::INSIGNIA);
+    insert(brands::CONNECTIX);
     insert(brands::NULL_BRAND);
 
     return arr;
