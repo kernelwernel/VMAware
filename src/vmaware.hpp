@@ -11208,7 +11208,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        // Surface Pro models typically do not have PIT
+        // Surface Pro models typically do not have PIT, some devices might have it but not expose it due to firmware bugs (i.e. Lenovo 83AG)
         {
             const char* manufacturer = nullptr;
             const char* model = nullptr;
@@ -13002,7 +13002,7 @@ std::array<VM::core::technique, VM::enum_size + 1> VM::core::technique_table = [
             {VM::TRAP, {100, VM::trap}},
             {VM::ACPI_SIGNATURE, {100, VM::acpi_signature}},
             {VM::NVRAM, {100, VM::nvram}},
-            {VM::CLOCK, {90, VM::clock}},
+            {VM::CLOCK, {45, VM::clock}},
             {VM::POWER_CAPABILITIES, {45, VM::power_capabilities}},
             {VM::CPU_HEURISTIC, {90, VM::cpu_heuristic}},
             {VM::BOOT_LOGO, {100, VM::boot_logo}},
