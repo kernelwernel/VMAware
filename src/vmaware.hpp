@@ -54,14 +54,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 545
- * - struct for internal cpu operations        => line 717
- * - struct for internal memoization           => line 3041
- * - struct for internal utility functions     => line 3223
- * - struct for internal core components       => line 11338
- * - start of VM detection technique list      => line 4278
- * - start of public VM detection functions    => line 11716
- * - start of externally defined variables     => line 12736
+ * - enums for publicly accessible techniques  => line 546
+ * - struct for internal cpu operations        => line 719
+ * - struct for internal memoization           => line 3043
+ * - struct for internal utility functions     => line 3225
+ * - struct for internal core components       => line 11439
+ * - start of VM detection technique list      => line 4280
+ * - start of public VM detection functions    => line 11817
+ * - start of externally defined variables     => line 12837
  *
  *
  * ============================== EXAMPLE ===================================
@@ -582,6 +582,7 @@ public:
         EDID,
         CPU_HEURISTIC,
         CLOCK,
+        MSR,
 
         // Linux and Windows
         SYSTEM_REGISTERS,
@@ -4636,8 +4637,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         std::atomic<int> state(0);
 
         std::atomic<u64> t1_start(0), t1_end(0);
-        std::atomic<u64> t2_start(0), t2_end(0);
-        std::atomic<u64> t2_accum(0);
+        std::atomic<u64> t2_start(0);
+        std::atomic<u64> t2_end(0);
 
         std::vector<u64> samples(100000, 0);
 
@@ -4663,9 +4664,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         auto set_affinity = [](std::thread& t, unsigned core) -> affinity_cookie {
             affinity_cookie cookie;
         #if (WINDOWS)
-            HANDLE h = static_cast<HANDLE>(t.native_handle());
-            DWORD_PTR mask = static_cast<DWORD_PTR>(1ULL) << core;
-            DWORD_PTR prev = SetThreadAffinityMask(h, mask);
+            const HANDLE h = static_cast<HANDLE>(t.native_handle());
+            const DWORD_PTR mask = static_cast<DWORD_PTR>(1ULL) << core;
+            const DWORD_PTR prev = SetThreadAffinityMask(h, mask);
             if (prev != 0) {
                 cookie.valid = true;
                 cookie.thread_handle = h;
@@ -4952,7 +4953,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     for (unsigned i = 0; i < CPUID_ITER; ++i) {
                         // read rdtsc and accumulate delta
                         const u64 now = rdtsc();
-                        acc += (now >= last) ? (now - last) : (u64)((u64)0 - last + now);
+
+                        // If now < last, the hypervisor rewound the TSC or it's a very rare 64-bit overflow
+                        // we do not increment acc to ensure ratio t2_delta / t1_delta drops below 0.95
+                        if (now >= last) {
+                            acc += (now - last);
+                        }
+
                         last = now;
 
                         // store latency if buffer has space
@@ -4969,12 +4976,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             // final rdtsc after detecting finish
             const u64 final_now = rdtsc();
-            acc += (final_now >= last) ? (final_now - last) : (u64)((u64)0 - last + final_now);
+
+            if (final_now >= last) {
+                acc += (final_now - last);
+            }
+
             last = final_now;
 
             // publish results
-            t2_end.store(final_now, std::memory_order_release);
-            t2_accum.store(acc, std::memory_order_release);
+            t2_end.store(acc, std::memory_order_release);
         });
 
         // try to pin to different cores
@@ -4998,12 +5008,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const u64 b = t1_end.load(std::memory_order_acquire);
     #ifdef __VMAWARE_DEBUG__
         const u64 c = t2_start.load(std::memory_order_acquire);
-        const u64 d = t2_end.load(std::memory_order_acquire);
     #endif
-        const u64 acc = t2_accum.load(std::memory_order_acquire);
+        const u64 d = t2_end.load(std::memory_order_acquire);
 
         const u64 t1_delta = (b > a) ? (b - a) : 0;
-        const u64 t2_delta = acc;
+        const u64 t2_delta = d;
 
         std::vector<u64> used;
         for (size_t i = 0; i < samples.size(); ++i)
@@ -5017,11 +5026,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         debug("TIMER: vmexit latency: ", cpuid_latency);
 
         if (cpuid_latency >= cycle_threshold) {
-            debug("TIMER: VMAware detected a vmexit on CPUID");
-            return true;
+            debug("TIMER: Detected a vmexit on CPUID");
+            return core::add(brands::NULL_BRAND, 100); // to prevent FPs due to kernel noise
         }
         else if (cpuid_latency <= 25) {
-            debug("TIMER: VMAware detected a hypervisor downscaling CPUID latency");
+            debug("TIMER: Detected a hypervisor downscaling CPUID latency");
             // cpuid is fully serializing, no CPU have this low average cycles in real-world scenarios
             // however, in patches, zero or even negative deltas can be seen oftenly
             return true;
@@ -5036,12 +5045,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         // if thread 1 was faster than thread 2, hypervisor downscaled TSC per-vCPU in either cpuid or rdtsc
         if (ratio < 0.95 || ratio > 1.05) {
-            debug("TIMER: VMAware detected a hypervisor intercepting TSC");
+            debug("TIMER: Detected a hypervisor intercepting TSC");
             return true;
         }
         // if calibration was much faster than thread 1, hypervisor downscaled TSC globally while thread 2 was spamming
         if (calibration_ratio < 0.95) {
-            debug("TIMER: VMAware detected a hypervisor intercepting TSC globally");
+            debug("TIMER: Detected a hypervisor intercepting TSC globally");
             return true;
         }
 
@@ -5096,7 +5105,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         _freea(raw);
 
         if (speed < 800) {
-            debug("TIMER: VMAware detected a hook in rdtsc, frequency was: ", speed);
+            debug("TIMER: detected a hook in rdtsc, frequency was: ", speed);
             return true;
         }
     #endif
@@ -6580,16 +6589,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     debug("FIRMWARE: C2 and C3 latencies indicate VM");
                     return true;
                 }
-
-                if (buffer_len >= 276) {
-                    u64 hypervisor_vid = 0;
-                    memcpy(&hypervisor_vid, buffer + 268, 8);
-
-                    if (hypervisor_vid != 0) {
-                        debug("FIRMWARE: FACP 'Hypervisor Vendor Identity' field is occupied");
-                        return true;
-                    }
-                }
             }
 
             return false;
@@ -7519,6 +7518,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 return true;
             }
         #endif
+
+        // ARM CPUs trigger this check
+        if (util::is_running_under_translator()) 
+            return false;
 
         const HMODULE kernel32 = GetModuleHandleA("kernel32.dll");
         const HMODULE ntdll = util::get_ntdll();
@@ -8655,8 +8658,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (!ntdll) return false;
 
         const char* names[] = { "RtlInitUnicodeString", "NtOpenFile", "NtClose" };
-        void* funcs[ARRAYSIZE(names)] = {};
-        util::get_function_address(ntdll, names, funcs, ARRAYSIZE(names));
+        void* funcs[sizeof(names) / sizeof(names[0])] = {};
+        util::get_function_address(ntdll, names, funcs, (ULONG)(sizeof(names) / sizeof(names[0])));
 
         const auto rtl_init_unicode_string = reinterpret_cast<void(__stdcall*)(PUNICODE_STRING, PCWSTR)>(funcs[0]);
         const auto nt_open_file = reinterpret_cast<NTSTATUS(__stdcall*)(PHANDLE, ACCESS_MASK, POBJECT_ATTRIBUTES, PIO_STATUS_BLOCK, ULONG, ULONG)>(funcs[1]);
@@ -8669,7 +8672,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         auto try_open_mutex = [&](const wchar_t* native_path) noexcept -> HANDLE {
             UNICODE_STRING u_path{};
             u_path.Buffer = const_cast<wchar_t*>(native_path);
-
             const size_t len_bytes = wcslen(native_path) * sizeof(wchar_t);
             u_path.Length = static_cast<USHORT>(len_bytes);
             u_path.MaximumLength = static_cast<USHORT>(len_bytes + sizeof(wchar_t));
@@ -8698,7 +8700,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return INVALID_HANDLE_VALUE;
         };
 
-        // \\.\Name -> \??\Name, \\.\pipe\name -> \??\pipe\name
         constexpr const wchar_t* paths[] = {
             L"\\??\\VBoxMiniRdrDN",    // \\.\VBoxMiniRdrDN
             L"\\??\\pipe\\VBoxMiniRdDN",// \\.\pipe\VBoxMiniRdDN
@@ -8708,22 +8709,25 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             L"\\??\\pipe\\cuckoo"      // \\.\pipe\cuckoo (Cuckoo)
         };
 
-        HANDLE handles[ARRAYSIZE(paths)]{};
-        for (size_t i = 0; i < ARRAYSIZE(paths); ++i) {
+        const size_t path_count = sizeof(paths) / sizeof(paths[0]);
+        HANDLE handles[sizeof(paths) / sizeof(paths[0])] = {};
+
+        for (size_t i = 0; i < path_count; ++i) {
             handles[i] = try_open_mutex(paths[i]);
         }
 
-        bool vbox = false;
-        if (handles[0] != INVALID_HANDLE_VALUE ||
-            handles[1] != INVALID_HANDLE_VALUE ||
-            handles[2] != INVALID_HANDLE_VALUE ||
-            handles[3] != INVALID_HANDLE_VALUE) {
-            vbox = true;
-        }
+        const bool vbox = (handles[0] != INVALID_HANDLE_VALUE) ||
+            (handles[1] != INVALID_HANDLE_VALUE) ||
+            (handles[2] != INVALID_HANDLE_VALUE) ||
+            (handles[3] != INVALID_HANDLE_VALUE);
 
-        for (size_t i = 0; i < 4; ++i) {
+        const bool vmware = (handles[4] != INVALID_HANDLE_VALUE);
+        const bool cuckoo = (handles[5] != INVALID_HANDLE_VALUE);
+
+        for (size_t i = 0; i < path_count; ++i) {
             if (handles[i] != INVALID_HANDLE_VALUE) {
-                nt_close(handles[i]);
+                (void)nt_close(handles[i]);
+                handles[i] = INVALID_HANDLE_VALUE;
             }
         }
 
@@ -8732,14 +8736,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return core::add(brands::VBOX);
         }
 
-        if (handles[4] != INVALID_HANDLE_VALUE) {
-            nt_close(handles[4]);
+        if (vmware) {
             debug("DEVICE_HANDLES: Detected VMware related device (HGFS)");
             return core::add(brands::VMWARE);
         }
 
-        if (handles[5] != INVALID_HANDLE_VALUE) {
-            nt_close(handles[5]);
+        if (cuckoo) {
             debug("DEVICE_HANDLES: Detected Cuckoo related device (pipe)");
             return core::add(brands::CUCKOO);
         }
@@ -9675,6 +9677,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // parse header to locate the bitmap
         struct boot_logo_info { ULONG flags, bitmap_offset; };
         const auto* info = reinterpret_cast<boot_logo_info*>(buffer.data());
+        if (info->bitmap_offset >= needed) return false;
         const u8* bmp = buffer.data() + info->bitmap_offset;
         const size_t size = static_cast<size_t>(needed) - info->bitmap_offset;
 
@@ -11218,22 +11221,26 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             if (util::get_manufacturer_model(&manufacturer, &model)) {
                 auto ci_contains = [](const char* hay, const char* needle) noexcept -> bool {
                     if (!hay || !needle || !*hay || !*needle) return false;
-                    const unsigned char* h = reinterpret_cast<const unsigned char*>(hay);
-                    const unsigned char* n = reinterpret_cast<const unsigned char*>(needle);
-                    const size_t nlen = strlen(reinterpret_cast<const char*>(n));
+
+                    const unsigned char* h =
+                        reinterpret_cast<const unsigned char*>(hay);
+                    const unsigned char* n =
+                        reinterpret_cast<const unsigned char*>(needle);
+
                     for (; *h; ++h) {
                         size_t i = 0;
                         for (;; ++i) {
                             unsigned char hc = h[i];
                             unsigned char nc = n[i];
-                            if (!nc) return false; // matched whole needle
-                            if (!hc) break; // hay ended
-                            // ascii lowercase
+
+                            if (!nc) return true; 
+                            if (!hc) break;
+
                             if (hc >= 'A' && hc <= 'Z') hc += 32;
                             if (nc >= 'A' && nc <= 'Z') nc += 32;
+
                             if (hc != nc) break;
                         }
-                        if (i == nlen) return false;
                     }
                     return false;
                 };
@@ -11339,6 +11346,98 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 		SetupDiDestroyDeviceInfoList(devs);
 		
 		return !found;
+    }
+
+
+    /**
+     * @brief Check whether the hypervisor correctly handles MSR behavior
+     * @category Windows
+     * @implements VM::MSR
+     */
+    [[nodiscard]] static bool msr() {
+    #if (!x86)
+        return false;
+    #endif  
+        constexpr u32 random_msr = 0xDEADBEEFu;
+
+        struct range {
+            u32 start;
+            u32 end;
+        };
+        static constexpr range ranges[] = {
+            { 0x40000000u, 0x400000FFu },
+            { 0x4B564D00u, 0x4B564DFFu }
+        };
+
+        auto try_read = [](u32 msr_index) -> bool {
+        #if (MSVC)
+            unsigned __int64 value = 0;
+            __try {
+                value = __readmsr(static_cast<unsigned long>(msr_index));
+                (void)value;
+                return true;
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER) {
+                return false;
+            }
+        #elif (GCC || CLANG)
+            static thread_local bool g_msr_faulted = false;
+
+            auto veh_handler = [](PEXCEPTION_POINTERS info) -> LONG {
+                if (info->ExceptionRecord->ExceptionCode == EXCEPTION_PRIV_INSTRUCTION) {
+                    g_msr_faulted = true;
+                    // skip the 'rdmsr' instruction (2 bytes: 0F 32)
+                #if (x86_64)
+                    info->ContextRecord->Rip += 2;
+                #else
+                    info->ContextRecord->Eip += 2;
+                #endif
+                    return EXCEPTION_CONTINUE_EXECUTION;
+                }
+                return EXCEPTION_CONTINUE_SEARCH;
+            };
+
+            const PVOID handle = AddVectoredExceptionHandler(1, veh_handler);
+
+            u32 low, high;
+            asm volatile (
+                "rdmsr"
+                : "=a"(low), "=d"(high)
+                : "c"(msr_index)
+            );
+
+            RemoveVectoredExceptionHandler(handle);
+
+            return !g_msr_faulted;
+        #endif
+        };
+
+        if (try_read(random_msr)) {
+            debug("MSR: Detected hypervisor not correctly handling #GP");
+            return true;
+        }
+        for (size_t r = 0; r < (sizeof(ranges) / sizeof(ranges[0])); ++r) {
+            const u32 s = ranges[r].start;
+            const u32 e = ranges[r].end;
+            for (u32 i = s; i != e + 1u; ++i) {
+                if (try_read(i)) {
+                    if (s == 0x40000000u && e == 0x400000FFu) {
+                        debug("MSR: Detected Hyper-V VM");
+                        return core::add(brands::HYPERV);
+                    }
+                    else if (s == 0x4B564D00u && e == 0x4B564DFFu) {
+                        debug("MSR: Detected KVM");
+                        return core::add(brands::KVM);
+                    }
+                    else {
+                        debug("MSR: Detected readable MSR index: 0x", std::hex, i, std::dec, '\n');
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
     }
     // ADD NEW TECHNIQUE FUNCTION HERE
 #endif
@@ -12297,6 +12396,7 @@ public: // START OF PUBLIC FUNCTIONS
             case EDID: return "EDID";
             case CPU_HEURISTIC: return "CPU_HEURISTIC";
             case CLOCK: return "CLOCK";
+            case MSR: return "MSR";
             // END OF TECHNIQUE LIST
             case DEFAULT: return "DEFAULT"; 
             case ALL: return "ALL"; 
@@ -12917,11 +13017,12 @@ std::array<VM::core::technique, VM::enum_size + 1> VM::core::technique_table = [
             {VM::CLOCK, {90, VM::clock}},
             {VM::POWER_CAPABILITIES, {45, VM::power_capabilities}},
             {VM::CPU_HEURISTIC, {90, VM::cpu_heuristic}},
-            {VM::EDID, {100, VM::edid}},
             {VM::BOOT_LOGO, {100, VM::boot_logo}},
+            {VM::MSR, {100, VM::msr}},
             {VM::GPU_CAPABILITIES, {45, VM::gpu_capabilities}},
             {VM::SMBIOS_INTEGRITY, {50, VM::smbios_integrity}},
             {VM::DISK_SERIAL, {100, VM::disk_serial_number}},
+            {VM::EDID, {100, VM::edid}},
             {VM::IVSHMEM, {100, VM::ivshmem}},
             {VM::DRIVERS, {100, VM::drivers}},
             {VM::DEVICE_HANDLES, {100, VM::device_handles}},

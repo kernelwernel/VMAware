@@ -184,7 +184,7 @@ struct SHA256 {
           0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
           0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2
         };
-        u32 m[64];
+        u32 m[64]{};
         for (u32 i = 0, j = 0; i < 16; ++i, j += 4) {
             m[i] = (u32)buf[j] << 24 | (u32)buf[j + 1] << 16 | (u32)buf[j + 2] << 8 | (u32)buf[j + 3];
         }
@@ -288,7 +288,7 @@ static std::string exe_path() {
 #endif
 }
 
-std::string compute_self_sha256() {
+static std::string compute_self_sha256() {
     std::string path = exe_path();
     if (path.empty()) return {};
 
@@ -1000,6 +1000,7 @@ static void general(
     checker(VM::EDID, "EDID");
     checker(VM::CPU_HEURISTIC, "CPU heuristics");
     checker(VM::CLOCK, "system timers");
+    checker(VM::MSR, "model specific registers");
 
     // ADD NEW TECHNIQUE CHECKER HERE
 
