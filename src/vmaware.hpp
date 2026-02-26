@@ -578,7 +578,6 @@ public:
         DBVM,
         KERNEL_OBJECTS,
         NVRAM,
-        SMBIOS_INTEGRITY,
         EDID,
         CPU_HEURISTIC,
         CLOCK,
@@ -2838,7 +2837,7 @@ private:
                 { "9600x", 12, 3.90 },
                 { "1500", 8, 3.00 },
                 { "3350g", 8, 3.60 },
-                { "3350ge", 4, 3.30 },
+                { "3350ge", 8, 3.30 },
                 { "4650g", 12, 3.70 },
                 { "4650ge", 12, 3.30 },
                 { "4650u", 12, 2.10 },
@@ -4706,9 +4705,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         #endif
         };
 
-        thread_local u32 aux = 0;
         auto cpuid = [](unsigned int leaf) noexcept -> u64 {
         #if (MSVC)
+            thread_local u32 aux = 0;
             // make regs volatile so writes cannot be optimized out, if this isn't added and the code is compiled in release mode, cycles would be around 40 even under Hyper-V
             volatile int regs[4]{};
 
@@ -10283,20 +10282,24 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             // ---------------------------------------------------------------------
             if (sb_active) {
                 if (!found_morcl) {
-                    debug("NVRAM: Missing MemoryOverwriteRequestControlLock"); detection_result = true;
+                    debug("NVRAM: Missing MemoryOverwriteRequestControlLock"); 
+                    detection_result = true;
                     break;
                 }
             }
             if (!found_dbx_default) {
-                debug("NVRAM: Missing dbxDefault"); detection_result = true;
+                debug("NVRAM: Missing dbxDefault"); 
+                detection_result = true;
                 break;
             }
             if (!found_kek_default) {
-                debug("NVRAM: Missing KEKDefault"); detection_result = true;
+                debug("NVRAM: Missing KEKDefault"); 
+                detection_result = true;
                 break;
             }
             if (!found_pk_default) {
-                debug("NVRAM: Missing PKDefault"); detection_result = true;
+                debug("NVRAM: Missing PKDefault"); 
+                detection_result = true;
                 break;
             }
 
@@ -10317,106 +10320,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 debug("NVRAM: QEMU/OVMF detected");
                 detection_result = core::add(brands::QEMU);
                 break;
-            }
-
-            // vendor string checks and PK/KEK mismatch checks
-            auto buffer_has_any_vendor = [&](BYTE* buf, SIZE_T len) noexcept -> bool {
-                if (!buf || len == 0) return false;
-                if ((len >= 2) && ((len % 2) == 0)) {
-                    const WCHAR* wptr = reinterpret_cast<const WCHAR*>(buf); const size_t wlen = len / sizeof(WCHAR);
-                    for (const wchar_t* p : vendor_list_wide)
-                        if (buffer_contains_utf16le_ci(wptr, wlen, p))
-                            return true;
-                }
-                for (const char* p : vendor_list_ascii)
-                    if (buffer_contains_ascii_ci(buf, len, p))
-                        return true;
-                return false;
-            };
-            auto buffer_has_specific_vendor = [&](BYTE* buf, SIZE_T len, const char* a, const wchar_t* w) noexcept -> bool {
-                if (!buf || len == 0) return false;
-                if ((len >= 2) && ((len % 2) == 0) && w) {
-                    const WCHAR* wp = reinterpret_cast<const WCHAR*>(buf);
-                    if (buffer_contains_utf16le_ci(wp, len / sizeof(WCHAR), w))
-                        return true;
-                }
-                if (a)
-                    if (buffer_contains_ascii_ci(buf, len, a))
-                        return true;
-                return false;
-            };
-
-            if (sb_active) {
-                const bool pk_def_has_vendor = buffer_has_any_vendor(pk_default_buf, pk_default_len);
-                const bool kek_def_has_vendor = buffer_has_any_vendor(kek_default_buf, kek_default_len);
-
-                if (pk_def_has_vendor || kek_def_has_vendor) {
-                    bool vendor_mismatch = false;
-                    for (size_t i = 0; i < sizeof(vendor_list_ascii) / sizeof(*vendor_list_ascii); ++i) {
-                        const char* vendor_asc = vendor_list_ascii[i];
-                        const wchar_t* vendor_w = vendor_list_wide[i];
-
-                        const bool in_pk_def = buffer_has_specific_vendor(pk_default_buf, pk_default_len, vendor_asc, vendor_w);
-                        const bool in_kek_def = buffer_has_specific_vendor(kek_default_buf, kek_default_len, vendor_asc, vendor_w);
-
-                        if (!in_pk_def && !in_kek_def) continue;
-
-                        const bool in_pk_active = buffer_has_specific_vendor(pk_buf, pk_len, vendor_asc, vendor_w);
-                        const bool in_kek_active = buffer_has_specific_vendor(kek_buf, kek_len, vendor_asc, vendor_w);
-
-                        // If the Default contains the vendor but the active variable is missing entirely
-                        if (in_pk_def && pk_len == 0) {
-                            std::string msg = "NVRAM: PKDefault contains vendor '";
-                            msg += vendor_asc;
-                            msg += "' but active PK variable is missing";
-                            debug(msg.c_str());
-                            detection_result = true;
-                            vendor_mismatch = true;
-                            break;
-                        }
-                        if (in_kek_def && kek_len == 0) {
-                            std::string msg = "NVRAM: KEKDefault contains vendor '";
-                            msg += vendor_asc;
-                            msg += "' but active KEK variable is missing";
-                            debug(msg.c_str());
-                            detection_result = true;
-                            vendor_mismatch = true;
-                            break;
-                        }
-
-                        // If the active variable exists but does not contain the same vendor string
-                        if (in_pk_def && pk_len != 0 && !in_pk_active) {
-                            std::string msg = "NVRAM: Vendor string '";
-                            msg += vendor_asc;
-                            msg += "' found in PKDefault but missing from active PK";
-                            debug(msg.c_str());
-                            detection_result = true;
-                            vendor_mismatch = true;
-                            break;
-                        }
-                        if (in_kek_def && kek_len != 0 && !in_kek_active) {
-                            std::string msg = "NVRAM: Vendor string '";
-                            msg += vendor_asc;
-                            msg += "' found in KEKDefault but missing from active KEK";
-                            debug(msg.c_str());
-                            detection_result = true;
-                            vendor_mismatch = true;
-                            break;
-                        }
-                    }
-                    if (vendor_mismatch) break;
-                }
-
-                if (pk_default_buf && pk_buf && (pk_default_len != pk_len || memcmp(pk_default_buf, pk_buf, static_cast<size_t>(pk_default_len < pk_len ? pk_default_len : pk_len)) != 0)) {
-                    debug("NVRAM: PK vs PKDefault raw mismatch detected");
-                    detection_result = true;
-                    break;
-                }
-                if (kek_default_buf && kek_buf && (kek_default_len != kek_len || memcmp(kek_default_buf, kek_buf, static_cast<size_t>(kek_default_len < kek_len ? kek_default_len : kek_len)) != 0)) {
-                    debug("NVRAM: KEK vs KEKDefault raw mismatch detected");
-                    detection_result = true;
-                    break;
-                }
             }
 
             detection_result = false;
@@ -10452,17 +10355,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         return detection_result;
-    }
-
-
-    /**
-	 * @brief Check if SMBIOS is malformed/corrupted in a way that is typical for VMs
-     * @category Windows
-     * @implements VM::SMBIOS_INTEGRITY
-     */
-    [[nodiscard]] static bool smbios_integrity() {
-        ULONGLONG total_memory_in_kilobytes;
-        return !GetPhysicallyInstalledSystemMemory(&total_memory_in_kilobytes);
     }
 
 
@@ -12374,7 +12266,6 @@ public: // START OF PUBLIC FUNCTIONS
             case MAC_SYS: return "MAC_SYS";
             case KERNEL_OBJECTS: return "KERNEL_OBJECTS";
             case NVRAM: return "NVRAM";
-            case SMBIOS_INTEGRITY: return "SMBIOS_INTEGRITY";
             case EDID: return "EDID";
             case CPU_HEURISTIC: return "CPU_HEURISTIC";
             case CLOCK: return "CLOCK";
@@ -12992,7 +12883,6 @@ std::array<VM::core::technique, VM::enum_size + 1> VM::core::technique_table = [
             {VM::BOOT_LOGO, {100, VM::boot_logo}},
             {VM::MSR, {100, VM::msr}},
             {VM::GPU_CAPABILITIES, {45, VM::gpu_capabilities}},
-            {VM::SMBIOS_INTEGRITY, {50, VM::smbios_integrity}},
             {VM::DISK_SERIAL, {100, VM::disk_serial_number}},
             {VM::EDID, {100, VM::edid}},
             {VM::IVSHMEM, {100, VM::ivshmem}},
