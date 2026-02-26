@@ -54,14 +54,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 546
- * - struct for internal cpu operations        => line 719
- * - struct for internal memoization           => line 3043
- * - struct for internal utility functions     => line 3225
- * - struct for internal core components       => line 11439
- * - start of VM detection technique list      => line 4280
- * - start of public VM detection functions    => line 11817
- * - start of externally defined variables     => line 12837
+ * - enums for publicly accessible techniques  => line 549
+ * - struct for internal cpu operations        => line 722
+ * - struct for internal memoization           => line 3049
+ * - struct for internal utility functions     => line 3231
+ * - struct for internal core components       => line 11441
+ * - start of VM detection technique list      => line 4286
+ * - start of public VM detection functions    => line 11819
+ * - start of externally defined variables     => line 12828
  *
  *
  * ============================== EXAMPLE ===================================
@@ -8125,8 +8125,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for display configurations commonly found in VMs
      * @category Windows
-     * @author Idea of screen resolution from Thomas Roccia (fr0gger)
-     * @link https://unprotect.it/technique/checking-screen-resolution/
      * @implements VM::DISPLAY
      */
     [[nodiscard]] static bool display() {
@@ -8137,21 +8135,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         ReleaseDC(nullptr, hdc);
 
         // physical monitors are almost always 32bpp and 96–144 DPI
-        if (bpp != 32 || logpix < 90 || logpix > 200)
+        if (bpp != 32 || logpix < 90)
             return true;
-
-        UINT32 path_count = 0, mode_count = 0;
-        if (QueryDisplayConfig(QDC_ONLY_ACTIVE_PATHS, // win7 and later
-            &path_count, nullptr,
-            &mode_count, nullptr,
-            nullptr) != ERROR_SUCCESS)
-            return false;
-
-        if ((path_count <= 1) || (path_count != mode_count)) {
-            debug("DISPLAY: Path count: ", path_count);
-            debug("DISPLAY: Mode count: ", mode_count);
-            return true;
-        }
 
         return false;
     }
@@ -11223,7 +11208,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        // Surface Pro models typically do not have PIT
+        // Surface Pro models typically do not have PIT, some devices might have it but not expose it due to firmware bugs (i.e. Lenovo 83AG)
         {
             const char* manufacturer = nullptr;
             const char* model = nullptr;
@@ -13005,7 +12990,7 @@ std::array<VM::core::technique, VM::enum_size + 1> VM::core::technique_table = [
             {VM::TRAP, {100, VM::trap}},
             {VM::ACPI_SIGNATURE, {100, VM::acpi_signature}},
             {VM::NVRAM, {100, VM::nvram}},
-            {VM::CLOCK, {90, VM::clock}},
+            {VM::CLOCK, {45, VM::clock}},
             {VM::POWER_CAPABILITIES, {45, VM::power_capabilities}},
             {VM::CPU_HEURISTIC, {90, VM::cpu_heuristic}},
             {VM::BOOT_LOGO, {100, VM::boot_logo}},
