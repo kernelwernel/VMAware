@@ -555,7 +555,7 @@ public:
         DISK_SERIAL,
         IVSHMEM,
         DRIVERS,
-        DEVICE_HANDLES,
+        HANDLES,
         VIRTUAL_PROCESSORS,
         HYPERVISOR_QUERY,
         AUDIO,
@@ -7090,7 +7090,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 case 0x1af41045: case 0x1af41048: case 0x1af41049: case 0x1af41050:
                 case 0x1af41052: case 0x1af41053: case 0x1af4105a: case 0x1af41100:
                 case 0x1af41110: case 0x1af41b36:
-                    debug("PCI_DEVICES: Detected Red Hat + Virtio device -> 0x", std::hex, id32);
+                    debug("DEVICES: Detected Red Hat + Virtio device -> 0x", std::hex, id32);
                     return true;
 
                 // VMware
@@ -7101,7 +7101,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 case 0x0e0f0001: case 0x0e0f0002: case 0x0e0f0003: case 0x0e0f0004: 
                 case 0x0e0f0005: case 0x0e0f0006: case 0x0e0f000a: case 0x0e0f8001: 
                 case 0x0e0f8002: case 0x0e0f8003: case 0x0e0ff80a:
-                    debug("PCI_DEVICES: Detected VMWARE device -> 0x", std::hex, id32);
+                    debug("DEVICES: Detected VMWARE device -> 0x", std::hex, id32);
                     return core::add(brands::VMWARE);
 
                 // Red Hat + QEMU
@@ -7109,39 +7109,39 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 case 0x1b360005: case 0x1b360008: case 0x1b360009: case 0x1b36000b:
                 case 0x1b36000c: case 0x1b36000d: case 0x1b360010: case 0x1b360011:
                 case 0x1b360013: case 0x1b360100:
-                    debug("PCI_DEVICES: Detected Red Hat + QEMU device -> 0x", std::hex, id32);
+                    debug("DEVICES: Detected Red Hat + QEMU device -> 0x", std::hex, id32);
                     return core::add(brands::QEMU);
 
                 // QEMU
                 case 0x06270001: case 0x1d1d1f1f: case 0x80865845: case 0x1d6b0200:
-                    debug("PCI_DEVICES: Detected QEMU device -> 0x", std::hex, id32);
+                    debug("DEVICES: Detected QEMU device -> 0x", std::hex, id32);
                     return core::add(brands::QEMU);
 
                 // vGPUs (NVIDIA + others)
                 case 0x10de0fe7: case 0x10de0ff7: case 0x10de118d: case 0x10de11b0:
                 case 0x1ec6020f:
-                    debug("PCI_DEVICES: Detected virtual gpu device -> 0x", std::hex, id32);
+                    debug("DEVICES: Detected virtual gpu device -> 0x", std::hex, id32);
                     return true;
 
                 // VirtualBox
                 case 0x80ee0021: case 0x80ee0022: case 0x80eebeef: case 0x80eecafe:
-                    debug("PCI_DEVICES: Detected VirtualBox device -> 0x", std::hex, id32);
+                    debug("DEVICES: Detected VirtualBox device -> 0x", std::hex, id32);
                     return core::add(brands::VBOX);
 
                 // Parallels
                 case 0x1ab84000: case 0x1ab84005: case 0x1ab84006:
-                    debug("PCI_DEVICES: Detected Parallels device -> 0x", std::hex, id32);
+                    debug("DEVICES: Detected Parallels device -> 0x", std::hex, id32);
                     return core::add(brands::PARALLELS);
 
                 // Xen
                 case 0x5853c000: case 0xfffd0101: case 0x5853c147:
                 case 0x5853c110: case 0x5853c200: case 0x58530001:
-                    debug("PCI_DEVICES: Detected Xen device -> 0x", std::hex, id32);
+                    debug("DEVICES: Detected Xen device -> 0x", std::hex, id32);
                     return core::add(brands::XEN);
 
                 // Connectix (VirtualPC)
                 case 0x29556e61:
-                    debug("PCI_DEVICES: Detected VirtualPC device -> 0x", std::hex, id32);
+                    debug("DEVICES: Detected VirtualPC device -> 0x", std::hex, id32);
                     return core::add(brands::VPC);
             }
 
@@ -7156,11 +7156,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 case 0x0000000010131100ULL:
                 case 0x00000000106b1100ULL:
                 case 0x0000000010221100ULL:
-                    debug("PCI_DEVICES: Detected QEMU device -> 0x", std::hex, id64);
+                    debug("DEVICES: Detected QEMU device -> 0x", std::hex, id64);
                     return core::add(brands::QEMU);
     
                 case 0x0000000015ad0800ULL:  // Hypervisor ROM Interface
-                    debug("PCI_DEVICES: Detected Hypervisor ROM interface -> 0x", std::hex, id64);
+                    debug("DEVICES: Detected Hypervisor ROM interface -> 0x", std::hex, id64);
                     return core::add(brands::VMWARE);
             }
         }
@@ -8640,7 +8640,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for vm-specific devices
      * @category Windows
-     * @implements VM::DEVICE_HANDLES
+     * @implements VM::HANDLES
      */
     [[nodiscard]] static bool device_handles() {
         const HMODULE ntdll = util::get_ntdll();
@@ -8721,17 +8721,17 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         if (vbox) {
-            debug("DEVICE_HANDLES: Detected VBox related device handles");
+            debug("HANDLES: Detected VBox related device handles");
             return core::add(brands::VBOX);
         }
 
         if (vmware) {
-            debug("DEVICE_HANDLES: Detected VMware related device (HGFS)");
+            debug("HANDLES: Detected VMware related device (HGFS)");
             return core::add(brands::VMWARE);
         }
 
         if (cuckoo) {
-            debug("DEVICE_HANDLES: Detected Cuckoo related device (pipe)");
+            debug("HANDLES: Detected Cuckoo related device (pipe)");
             return core::add(brands::CUCKOO);
         }
 
@@ -12244,7 +12244,7 @@ public: // START OF PUBLIC FUNCTIONS
             case DISK_SERIAL: return "DISK_SERIAL";
             case IVSHMEM: return "IVSHMEM";
             case GPU_CAPABILITIES: return "GPU_CAPABILITIES";
-            case DEVICE_HANDLES: return "DEVICE_HANDLES";
+            case HANDLES: return "HANDLES";
             case QEMU_FW_CFG: return "QEMU_FW_CFG";
             case VIRTUAL_PROCESSORS: return "VIRTUAL_PROCESSORS";
             case HYPERVISOR_QUERY: return "HYPERVISOR_QUERY";
@@ -12254,7 +12254,7 @@ public: // START OF PUBLIC FUNCTIONS
             case FILE_ACCESS_HISTORY: return "FILE_ACCESS_HISTORY";
             case AUDIO: return "AUDIO";
             case NSJAIL_PID: return "NSJAIL_PID";
-            case DEVICES: return "PCI_DEVICES";
+            case DEVICES: return "DEVICES";
             case ACPI_SIGNATURE: return "ACPI_SIGNATURE";
             case TRAP: return "TRAP";
             case UD: return "UNDEFINED_INSTRUCTION";
@@ -12885,7 +12885,7 @@ std::array<VM::core::technique, VM::enum_size + 1> VM::core::technique_table = [
             {VM::EDID, {100, VM::edid}},
             {VM::IVSHMEM, {100, VM::ivshmem}},
             {VM::DRIVERS, {100, VM::drivers}},
-            {VM::DEVICE_HANDLES, {100, VM::device_handles}},
+            {VM::HANDLES, {100, VM::device_handles}},
             {VM::VIRTUAL_PROCESSORS, {100, VM::virtual_processors}},
             {VM::KERNEL_OBJECTS, {100, VM::kernel_objects}},
             {VM::HYPERVISOR_QUERY, {100, VM::hypervisor_query}},

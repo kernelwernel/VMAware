@@ -941,7 +941,7 @@ static void general(
     checker(VM::IOREG_GREP, "IO registry grep");
     checker(VM::MAC_SIP, "MacOS SIP");
     checker(VM::AUDIO, "audio devices");
-    checker(VM::DEVICE_HANDLES, "device handles");
+    checker(VM::HANDLES, "device handles");
     checker(VM::VPC_INVALID, "VPC invalid instructions");
     checker(VM::SYSTEM_REGISTERS, "Task segment and descriptor tables");
     checker(VM::VMWARE_IOMEM, "/proc/iomem file");
