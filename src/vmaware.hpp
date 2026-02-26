@@ -7665,9 +7665,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         // could check for HKLM\\SYSTEM\\CurrentControlSet\\Control\\Power\\PlatformAoAcOverride
-        const bool no_sleep_states = !s0_supported && !s1_supported && !s2_supported && !s3_supported;
+        const bool no_sleep_states = !s0_supported && !s1_supported && !s2_supported && !s3_supported && !s4_supported && !hiber_file_present;
         if (no_sleep_states) {
-            debug("POWER_CAPABILITIES: Detected !(S0||S1||S2||S3) pattern"); // can sometimes false flag baremetal devices
+            debug("POWER_CAPABILITIES: Detected !(S0||S1||S2||S3||S4||H) pattern");
             return true;
         }
 
