@@ -10906,9 +10906,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         // ok so if the CPU is intel, the motherboard should be intel aswell (and same with AMD)
         // this doesnt happen in most public hardened configs out there so lets abuse it
-        constexpr unsigned int VID_INTEL = 0x8086;
-        constexpr unsigned int VID_AMD_ATI = 0x1002;
-        constexpr unsigned int VID_AMD_MICRO = 0x1022;
+        static constexpr unsigned int VID_INTEL = 0x8086;
+        static constexpr unsigned int VID_AMD_ATI = 0x1002;
+        static constexpr unsigned int VID_AMD_MICRO = 0x1022;
 
         enum class MBVendor { Unknown = 0, Intel = 1, AMD = 2 };
 
