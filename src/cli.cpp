@@ -941,7 +941,7 @@ static void general(
     checker(VM::IOREG_GREP, "IO registry grep");
     checker(VM::MAC_SIP, "MacOS SIP");
     checker(VM::AUDIO, "audio devices");
-    checker(VM::DEVICE_HANDLES, "device handles");
+    checker(VM::HANDLES, "device handles");
     checker(VM::VPC_INVALID, "VPC invalid instructions");
     checker(VM::SYSTEM_REGISTERS, "Task segment and descriptor tables");
     checker(VM::VMWARE_IOMEM, "/proc/iomem file");
@@ -986,7 +986,7 @@ static void general(
     checker(VM::FIRMWARE, "firmware");
     checker(VM::FILE_ACCESS_HISTORY, "low file access count");
     checker(VM::NSJAIL_PID, "nsjail PID");
-    checker(VM::PCI_DEVICES, "PCI vendor/device ID");
+    checker(VM::DEVICES, "PCI vendor/device ID");
     checker(VM::ACPI_SIGNATURE, "ACPI device signatures");
     checker(VM::TRAP, "hypervisor interception");
     checker(VM::UD, "undefined exceptions");
