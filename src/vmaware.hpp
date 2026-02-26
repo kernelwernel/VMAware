@@ -11996,6 +11996,14 @@ public: // START OF PUBLIC FUNCTIONS
             }
         }
 
+        // remove "Unknown" if detected with other brands
+        if (active_count > 1) {
+            const int idx = find_index(brands::NULL_BRAND);
+            if (idx != -1) {
+                remove_at(idx);
+            }
+        }
+
         if (active_count > 1) {
             std::sort(active_brands.begin(), active_brands.begin() + static_cast<std::ptrdiff_t>(active_count), [](
                 const brand_element_t& a,
@@ -12611,7 +12619,7 @@ public: // START OF PUBLIC FUNCTIONS
         }
 
         auto hardened_logic = []() -> bool {
-            // Helper to get the specific brand associated with a technique using the cache.
+            // Helper to get the specific brand associated with a technique using the cache
             auto detected_brand = [](const enum_flags flag) -> const char* {
                 if (!check(flag)) {
                     return brands::NULL_BRAND;
