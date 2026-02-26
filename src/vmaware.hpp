@@ -578,7 +578,6 @@ public:
         DBVM,
         KERNEL_OBJECTS,
         NVRAM,
-        SMBIOS_INTEGRITY,
         EDID,
         CPU_HEURISTIC,
         CLOCK,
@@ -2838,7 +2837,7 @@ private:
                 { "9600x", 12, 3.90 },
                 { "1500", 8, 3.00 },
                 { "3350g", 8, 3.60 },
-                { "3350ge", 4, 3.30 },
+                { "3350ge", 8, 3.30 },
                 { "4650g", 12, 3.70 },
                 { "4650ge", 12, 3.30 },
                 { "4650u", 12, 2.10 },
@@ -4706,9 +4705,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         #endif
         };
 
-        thread_local u32 aux = 0;
         auto cpuid = [](unsigned int leaf) noexcept -> u64 {
         #if (MSVC)
+            thread_local u32 aux = 0;
             // make regs volatile so writes cannot be optimized out, if this isn't added and the code is compiled in release mode, cycles would be around 40 even under Hyper-V
             volatile int regs[4]{};
 
@@ -10456,17 +10455,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
 
     /**
-	 * @brief Check if SMBIOS is malformed/corrupted in a way that is typical for VMs
-     * @category Windows
-     * @implements VM::SMBIOS_INTEGRITY
-     */
-    [[nodiscard]] static bool smbios_integrity() {
-        ULONGLONG total_memory_in_kilobytes;
-        return !GetPhysicallyInstalledSystemMemory(&total_memory_in_kilobytes);
-    }
-
-
-    /**
      * @brief Check for non-standard EDID configurations
      * @category Windows
      * @implements VM::EDID
@@ -12374,7 +12362,6 @@ public: // START OF PUBLIC FUNCTIONS
             case MAC_SYS: return "MAC_SYS";
             case KERNEL_OBJECTS: return "KERNEL_OBJECTS";
             case NVRAM: return "NVRAM";
-            case SMBIOS_INTEGRITY: return "SMBIOS_INTEGRITY";
             case EDID: return "EDID";
             case CPU_HEURISTIC: return "CPU_HEURISTIC";
             case CLOCK: return "CLOCK";
@@ -12992,7 +12979,6 @@ std::array<VM::core::technique, VM::enum_size + 1> VM::core::technique_table = [
             {VM::BOOT_LOGO, {100, VM::boot_logo}},
             {VM::MSR, {100, VM::msr}},
             {VM::GPU_CAPABILITIES, {45, VM::gpu_capabilities}},
-            {VM::SMBIOS_INTEGRITY, {50, VM::smbios_integrity}},
             {VM::DISK_SERIAL, {100, VM::disk_serial_number}},
             {VM::EDID, {100, VM::edid}},
             {VM::IVSHMEM, {100, VM::ivshmem}},

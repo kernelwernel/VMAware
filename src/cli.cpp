@@ -996,7 +996,6 @@ static void general(
     checker(VM::MAC_SYS, "system profiler");
     checker(VM::KERNEL_OBJECTS, "kernel objects");
     checker(VM::NVRAM, "NVRAM");
-    checker(VM::SMBIOS_INTEGRITY, "SMBIOS integrity");
     checker(VM::EDID, "EDID");
     checker(VM::CPU_HEURISTIC, "CPU heuristics");
     checker(VM::CLOCK, "system timers");
