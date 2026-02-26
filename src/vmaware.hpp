@@ -586,7 +586,7 @@ public:
         // Linux and Windows
         SYSTEM_REGISTERS,
         FIRMWARE,
-        PCI_DEVICES,
+        DEVICES,
         AZURE,
         
         // Linux
@@ -6817,7 +6817,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for PCI vendor and device IDs that are VM-specific
      * @link https://www.pcilookup.com/?ven=&dev=&action=submit
      * @category Linux, Windows
-     * @implements VM::PCI_DEVICES
+     * @implements VM::DEVICES
      */
     [[nodiscard]] static bool pci_devices() {
         struct pci_device { u16 vendor_id; u32 device_id; };
@@ -7090,7 +7090,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 case 0x1af41045: case 0x1af41048: case 0x1af41049: case 0x1af41050:
                 case 0x1af41052: case 0x1af41053: case 0x1af4105a: case 0x1af41100:
                 case 0x1af41110: case 0x1af41b36:
-                    debug("PCI_DEVICES: Detected Red Hat + Virtio device -> ", std::hex, id32);
+                    debug("PCI_DEVICES: Detected Red Hat + Virtio device -> 0x", std::hex, id32);
                     return true;
 
                 // VMware
@@ -7101,7 +7101,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 case 0x0e0f0001: case 0x0e0f0002: case 0x0e0f0003: case 0x0e0f0004: 
                 case 0x0e0f0005: case 0x0e0f0006: case 0x0e0f000a: case 0x0e0f8001: 
                 case 0x0e0f8002: case 0x0e0f8003: case 0x0e0ff80a:
-                    debug("PCI_DEVICES: Detected VMWARE device -> ", std::hex, id32);
+                    debug("PCI_DEVICES: Detected VMWARE device -> 0x", std::hex, id32);
                     return core::add(brands::VMWARE);
 
                 // Red Hat + QEMU
@@ -7109,39 +7109,39 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 case 0x1b360005: case 0x1b360008: case 0x1b360009: case 0x1b36000b:
                 case 0x1b36000c: case 0x1b36000d: case 0x1b360010: case 0x1b360011:
                 case 0x1b360013: case 0x1b360100:
-                    debug("PCI_DEVICES: Detected Red Hat + QEMU device -> ", std::hex, id32);
+                    debug("PCI_DEVICES: Detected Red Hat + QEMU device -> 0x", std::hex, id32);
                     return core::add(brands::QEMU);
 
                 // QEMU
                 case 0x06270001: case 0x1d1d1f1f: case 0x80865845: case 0x1d6b0200:
-                    debug("PCI_DEVICES: Detected QEMU device -> ", std::hex, id32);
+                    debug("PCI_DEVICES: Detected QEMU device -> 0x", std::hex, id32);
                     return core::add(brands::QEMU);
 
                 // vGPUs (NVIDIA + others)
                 case 0x10de0fe7: case 0x10de0ff7: case 0x10de118d: case 0x10de11b0:
                 case 0x1ec6020f:
-                    debug("PCI_DEVICES: Detected virtual gpu device -> ", std::hex, id32);
+                    debug("PCI_DEVICES: Detected virtual gpu device -> 0x", std::hex, id32);
                     return true;
 
                 // VirtualBox
                 case 0x80ee0021: case 0x80ee0022: case 0x80eebeef: case 0x80eecafe:
-                    debug("PCI_DEVICES: Detected VirtualBox device -> ", std::hex, id32);
+                    debug("PCI_DEVICES: Detected VirtualBox device -> 0x", std::hex, id32);
                     return core::add(brands::VBOX);
 
                 // Parallels
                 case 0x1ab84000: case 0x1ab84005: case 0x1ab84006:
-                    debug("PCI_DEVICES: Detected Parallels device -> ", std::hex, id32);
+                    debug("PCI_DEVICES: Detected Parallels device -> 0x", std::hex, id32);
                     return core::add(brands::PARALLELS);
 
                 // Xen
                 case 0x5853c000: case 0xfffd0101: case 0x5853c147:
                 case 0x5853c110: case 0x5853c200: case 0x58530001:
-                    debug("PCI_DEVICES: Detected Xen device -> ", std::hex, id32);
+                    debug("PCI_DEVICES: Detected Xen device -> 0x", std::hex, id32);
                     return core::add(brands::XEN);
 
                 // Connectix (VirtualPC)
                 case 0x29556e61:
-                    debug("PCI_DEVICES: Detected VirtualPC device -> ", std::hex, id32);
+                    debug("PCI_DEVICES: Detected VirtualPC device -> 0x", std::hex, id32);
                     return core::add(brands::VPC);
             }
 
@@ -7156,11 +7156,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 case 0x0000000010131100ULL:
                 case 0x00000000106b1100ULL:
                 case 0x0000000010221100ULL:
-                    debug("PCI_DEVICES: Detected QEMU device -> ", std::hex, id64);
+                    debug("PCI_DEVICES: Detected QEMU device -> 0x", std::hex, id64);
                     return core::add(brands::QEMU);
     
                 case 0x0000000015ad0800ULL:  // Hypervisor ROM Interface
-                    debug("PCI_DEVICES: Detected Hypervisor ROM interface -> ", std::hex, id64);
+                    debug("PCI_DEVICES: Detected Hypervisor ROM interface -> 0x", std::hex, id64);
                     return core::add(brands::VMWARE);
             }
         }
@@ -9718,7 +9718,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         switch (hash) {
             case 0x110350C5: return core::add(brands::QEMU); // TianoCore EDK2
             case 0x87c39681: return core::add(brands::HYPERV);
-            case 0xf6829262: return core::add(brands::VBOX);
+            case 0x9502cb33: return core::add(brands::VBOX);
             default:         return false;
         }
     #else
@@ -10083,8 +10083,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             // ---------------------------------------------------------------------
             // Constants & Data
             // ---------------------------------------------------------------------
-            constexpr const char* vendor_list_ascii[] = { "msi","asrock","asus","asustek","gigabyte","giga-byte","micro-star","microstar" };
-            constexpr const wchar_t* vendor_list_wide[] = { L"msi",L"asrock",L"asus",L"asustek",L"gigabyte",L"giga-byte",L"micro-star",L"microstar" };
             constexpr const char redhat_sig_ascii[] = "red hat";
             constexpr const wchar_t redhat_sig_wide[] = L"red hat";
 
@@ -12256,7 +12254,7 @@ public: // START OF PUBLIC FUNCTIONS
             case FILE_ACCESS_HISTORY: return "FILE_ACCESS_HISTORY";
             case AUDIO: return "AUDIO";
             case NSJAIL_PID: return "NSJAIL_PID";
-            case PCI_DEVICES: return "PCI_DEVICES";
+            case DEVICES: return "PCI_DEVICES";
             case ACPI_SIGNATURE: return "ACPI_SIGNATURE";
             case TRAP: return "TRAP";
             case UD: return "UNDEFINED_INSTRUCTION";
@@ -12911,7 +12909,7 @@ std::array<VM::core::technique, VM::enum_size + 1> VM::core::technique_table = [
 
         #if (LINUX || WINDOWS)
             {VM::FIRMWARE, {100, VM::firmware}},
-            {VM::PCI_DEVICES, {95, VM::pci_devices}},
+            {VM::DEVICES, {95, VM::pci_devices}},
             {VM::SYSTEM_REGISTERS, {50, VM::system_registers}},
             {VM::AZURE, {30, VM::azure}},
         #endif

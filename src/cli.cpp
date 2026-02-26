@@ -986,7 +986,7 @@ static void general(
     checker(VM::FIRMWARE, "firmware");
     checker(VM::FILE_ACCESS_HISTORY, "low file access count");
     checker(VM::NSJAIL_PID, "nsjail PID");
-    checker(VM::PCI_DEVICES, "PCI vendor/device ID");
+    checker(VM::DEVICES, "PCI vendor/device ID");
     checker(VM::ACPI_SIGNATURE, "ACPI device signatures");
     checker(VM::TRAP, "hypervisor interception");
     checker(VM::UD, "undefined exceptions");
