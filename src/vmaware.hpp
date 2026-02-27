@@ -11931,7 +11931,6 @@ public: // START OF PUBLIC FUNCTIONS
         // which would most likely indicate a hardened VM instead and return "Unknown".
         if (active_count == 1) {
             const std::string& initial_brand = fetch_brand_name(0);
-            std::cout << "\n\n\n\nINITIAL: " << initial_brand << "\n\n\n\n";
             if (initial_brand == TMP_HYPERV_ARTIFACT) {
                 if (score > 0) {
                     memo::brand::store(brands::NULL_BRAND);
