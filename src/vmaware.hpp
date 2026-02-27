@@ -12678,12 +12678,12 @@ public: // START OF PUBLIC FUNCTIONS
     }
 
 
-    #pragma pack(push, 1)
     struct vmaware {
         std::string brand;
         std::string type;
         std::string conclusion;
         bool is_vm;
+        bool is_hardened; 
         u8 percentage;
         u8 detected_count;
         u16 technique_count;
@@ -12707,6 +12707,7 @@ public: // START OF PUBLIC FUNCTIONS
             type = VM::type(flags);
             conclusion = VM::conclusion(flags);
             is_vm = VM::detect(flags);
+            is_hardened = VM::is_hardened();
             percentage = VM::percentage(flags);
             detected_count = VM::detected_count(flags);
             technique_count = VM::technique_count;
@@ -12724,7 +12725,6 @@ public: // START OF PUBLIC FUNCTIONS
         }
 
     };
-    #pragma pack(pop)
 };
 
 // ============= EXTERNAL DEFINITIONS =============

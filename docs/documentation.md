@@ -421,6 +421,7 @@ struct vmaware {
     std::string type;
     std::string conclusion;
     bool is_vm;
+    bool is_hardened;
     std::uint8_t percentage;
     std::uint8_t detected_count;
     std::uint8_t technique_count;
