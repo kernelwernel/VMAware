@@ -555,7 +555,7 @@ public:
         DISK_SERIAL,
         IVSHMEM,
         DRIVERS,
-        DEVICE_HANDLES,
+        HANDLES,
         VIRTUAL_PROCESSORS,
         HYPERVISOR_QUERY,
         AUDIO,
@@ -578,7 +578,6 @@ public:
         DBVM,
         KERNEL_OBJECTS,
         NVRAM,
-        SMBIOS_INTEGRITY,
         EDID,
         CPU_HEURISTIC,
         CLOCK,
@@ -587,7 +586,7 @@ public:
         // Linux and Windows
         SYSTEM_REGISTERS,
         FIRMWARE,
-        PCI_DEVICES,
+        DEVICES,
         AZURE,
         
         // Linux
@@ -2838,7 +2837,7 @@ private:
                 { "9600x", 12, 3.90 },
                 { "1500", 8, 3.00 },
                 { "3350g", 8, 3.60 },
-                { "3350ge", 4, 3.30 },
+                { "3350ge", 8, 3.30 },
                 { "4650g", 12, 3.70 },
                 { "4650ge", 12, 3.30 },
                 { "4650u", 12, 2.10 },
@@ -4713,6 +4712,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         auto cpuid = [](unsigned int leaf) noexcept -> u64 {
         #if (MSVC)
+            thread_local u32 aux = 0;
             // make regs volatile so writes cannot be optimized out, if this isn't added and the code is compiled in release mode, cycles would be around 40 even under Hyper-V
             volatile int regs[4]{};
 
@@ -6822,7 +6822,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      * @brief Check for PCI vendor and device IDs that are VM-specific
      * @link https://www.pcilookup.com/?ven=&dev=&action=submit
      * @category Linux, Windows
-     * @implements VM::PCI_DEVICES
+     * @implements VM::DEVICES
      */
     [[nodiscard]] static bool pci_devices() {
         struct pci_device { u16 vendor_id; u32 device_id; };
@@ -7095,7 +7095,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 case 0x1af41045: case 0x1af41048: case 0x1af41049: case 0x1af41050:
                 case 0x1af41052: case 0x1af41053: case 0x1af4105a: case 0x1af41100:
                 case 0x1af41110: case 0x1af41b36:
-                    debug("PCI_DEVICES: Detected Red Hat + Virtio device -> ", std::hex, id32);
+                    debug("DEVICES: Detected Red Hat + Virtio device -> 0x", std::hex, id32);
                     return true;
 
                 // VMware
@@ -7106,7 +7106,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 case 0x0e0f0001: case 0x0e0f0002: case 0x0e0f0003: case 0x0e0f0004: 
                 case 0x0e0f0005: case 0x0e0f0006: case 0x0e0f000a: case 0x0e0f8001: 
                 case 0x0e0f8002: case 0x0e0f8003: case 0x0e0ff80a:
-                    debug("PCI_DEVICES: Detected VMWARE device -> ", std::hex, id32);
+                    debug("DEVICES: Detected VMWARE device -> 0x", std::hex, id32);
                     return core::add(brands::VMWARE);
 
                 // Red Hat + QEMU
@@ -7114,39 +7114,39 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 case 0x1b360005: case 0x1b360008: case 0x1b360009: case 0x1b36000b:
                 case 0x1b36000c: case 0x1b36000d: case 0x1b360010: case 0x1b360011:
                 case 0x1b360013: case 0x1b360100:
-                    debug("PCI_DEVICES: Detected Red Hat + QEMU device -> ", std::hex, id32);
+                    debug("DEVICES: Detected Red Hat + QEMU device -> 0x", std::hex, id32);
                     return core::add(brands::QEMU);
 
                 // QEMU
                 case 0x06270001: case 0x1d1d1f1f: case 0x80865845: case 0x1d6b0200:
-                    debug("PCI_DEVICES: Detected QEMU device -> ", std::hex, id32);
+                    debug("DEVICES: Detected QEMU device -> 0x", std::hex, id32);
                     return core::add(brands::QEMU);
 
                 // vGPUs (NVIDIA + others)
                 case 0x10de0fe7: case 0x10de0ff7: case 0x10de118d: case 0x10de11b0:
                 case 0x1ec6020f:
-                    debug("PCI_DEVICES: Detected virtual gpu device -> ", std::hex, id32);
+                    debug("DEVICES: Detected virtual gpu device -> 0x", std::hex, id32);
                     return true;
 
                 // VirtualBox
                 case 0x80ee0021: case 0x80ee0022: case 0x80eebeef: case 0x80eecafe:
-                    debug("PCI_DEVICES: Detected VirtualBox device -> ", std::hex, id32);
+                    debug("DEVICES: Detected VirtualBox device -> 0x", std::hex, id32);
                     return core::add(brands::VBOX);
 
                 // Parallels
                 case 0x1ab84000: case 0x1ab84005: case 0x1ab84006:
-                    debug("PCI_DEVICES: Detected Parallels device -> ", std::hex, id32);
+                    debug("DEVICES: Detected Parallels device -> 0x", std::hex, id32);
                     return core::add(brands::PARALLELS);
 
                 // Xen
                 case 0x5853c000: case 0xfffd0101: case 0x5853c147:
                 case 0x5853c110: case 0x5853c200: case 0x58530001:
-                    debug("PCI_DEVICES: Detected Xen device -> ", std::hex, id32);
+                    debug("DEVICES: Detected Xen device -> 0x", std::hex, id32);
                     return core::add(brands::XEN);
 
                 // Connectix (VirtualPC)
                 case 0x29556e61:
-                    debug("PCI_DEVICES: Detected VirtualPC device -> ", std::hex, id32);
+                    debug("DEVICES: Detected VirtualPC device -> 0x", std::hex, id32);
                     return core::add(brands::VPC);
             }
 
@@ -7161,11 +7161,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 case 0x0000000010131100ULL:
                 case 0x00000000106b1100ULL:
                 case 0x0000000010221100ULL:
-                    debug("PCI_DEVICES: Detected QEMU device -> ", std::hex, id64);
+                    debug("DEVICES: Detected QEMU device -> 0x", std::hex, id64);
                     return core::add(brands::QEMU);
     
                 case 0x0000000015ad0800ULL:  // Hypervisor ROM Interface
-                    debug("PCI_DEVICES: Detected Hypervisor ROM interface -> ", std::hex, id64);
+                    debug("DEVICES: Detected Hypervisor ROM interface -> 0x", std::hex, id64);
                     return core::add(brands::VMWARE);
             }
         }
@@ -7670,9 +7670,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         // could check for HKLM\\SYSTEM\\CurrentControlSet\\Control\\Power\\PlatformAoAcOverride
-        const bool no_sleep_states = !s0_supported && !s1_supported && !s2_supported && !s3_supported;
+        const bool no_sleep_states = !s0_supported && !s1_supported && !s2_supported && !s3_supported && !s4_supported && !hiber_file_present;
         if (no_sleep_states) {
-            debug("POWER_CAPABILITIES: Detected !(S0||S1||S2||S3) pattern"); // can sometimes false flag baremetal devices
+            debug("POWER_CAPABILITIES: Detected !(S0||S1||S2||S3||S4||H) pattern");
             return true;
         }
 
@@ -8645,7 +8645,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check for vm-specific devices
      * @category Windows
-     * @implements VM::DEVICE_HANDLES
+     * @implements VM::HANDLES
      */
     [[nodiscard]] static bool device_handles() {
         const HMODULE ntdll = util::get_ntdll();
@@ -8726,17 +8726,17 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         if (vbox) {
-            debug("DEVICE_HANDLES: Detected VBox related device handles");
+            debug("HANDLES: Detected VBox related device handles");
             return core::add(brands::VBOX);
         }
 
         if (vmware) {
-            debug("DEVICE_HANDLES: Detected VMware related device (HGFS)");
+            debug("HANDLES: Detected VMware related device (HGFS)");
             return core::add(brands::VMWARE);
         }
 
         if (cuckoo) {
-            debug("DEVICE_HANDLES: Detected Cuckoo related device (pipe)");
+            debug("HANDLES: Detected Cuckoo related device (pipe)");
             return core::add(brands::CUCKOO);
         }
 
@@ -9723,7 +9723,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         switch (hash) {
             case 0x110350C5: return core::add(brands::QEMU); // TianoCore EDK2
             case 0x87c39681: return core::add(brands::HYPERV);
-            case 0xf6829262: return core::add(brands::VBOX);
+            case 0x9502cb33: return core::add(brands::VBOX);
             default:         return false;
         }
     #else
@@ -10088,8 +10088,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             // ---------------------------------------------------------------------
             // Constants & Data
             // ---------------------------------------------------------------------
-            constexpr const char* vendor_list_ascii[] = { "msi","asrock","asus","asustek","gigabyte","giga-byte","micro-star","microstar" };
-            constexpr const wchar_t* vendor_list_wide[] = { L"msi",L"asrock",L"asus",L"asustek",L"gigabyte",L"giga-byte",L"micro-star",L"microstar" };
             constexpr const char redhat_sig_ascii[] = "red hat";
             constexpr const wchar_t redhat_sig_wide[] = L"red hat";
 
@@ -10287,20 +10285,24 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             // ---------------------------------------------------------------------
             if (sb_active) {
                 if (!found_morcl) {
-                    debug("NVRAM: Missing MemoryOverwriteRequestControlLock"); detection_result = true;
+                    debug("NVRAM: Missing MemoryOverwriteRequestControlLock"); 
+                    detection_result = true;
                     break;
                 }
             }
             if (!found_dbx_default) {
-                debug("NVRAM: Missing dbxDefault"); detection_result = true;
+                debug("NVRAM: Missing dbxDefault"); 
+                detection_result = true;
                 break;
             }
             if (!found_kek_default) {
-                debug("NVRAM: Missing KEKDefault"); detection_result = true;
+                debug("NVRAM: Missing KEKDefault"); 
+                detection_result = true;
                 break;
             }
             if (!found_pk_default) {
-                debug("NVRAM: Missing PKDefault"); detection_result = true;
+                debug("NVRAM: Missing PKDefault"); 
+                detection_result = true;
                 break;
             }
 
@@ -10321,106 +10323,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 debug("NVRAM: QEMU/OVMF detected");
                 detection_result = core::add(brands::QEMU);
                 break;
-            }
-
-            // vendor string checks and PK/KEK mismatch checks
-            auto buffer_has_any_vendor = [&](BYTE* buf, SIZE_T len) noexcept -> bool {
-                if (!buf || len == 0) return false;
-                if ((len >= 2) && ((len % 2) == 0)) {
-                    const WCHAR* wptr = reinterpret_cast<const WCHAR*>(buf); const size_t wlen = len / sizeof(WCHAR);
-                    for (const wchar_t* p : vendor_list_wide)
-                        if (buffer_contains_utf16le_ci(wptr, wlen, p))
-                            return true;
-                }
-                for (const char* p : vendor_list_ascii)
-                    if (buffer_contains_ascii_ci(buf, len, p))
-                        return true;
-                return false;
-            };
-            auto buffer_has_specific_vendor = [&](BYTE* buf, SIZE_T len, const char* a, const wchar_t* w) noexcept -> bool {
-                if (!buf || len == 0) return false;
-                if ((len >= 2) && ((len % 2) == 0) && w) {
-                    const WCHAR* wp = reinterpret_cast<const WCHAR*>(buf);
-                    if (buffer_contains_utf16le_ci(wp, len / sizeof(WCHAR), w))
-                        return true;
-                }
-                if (a)
-                    if (buffer_contains_ascii_ci(buf, len, a))
-                        return true;
-                return false;
-            };
-
-            if (sb_active) {
-                const bool pk_def_has_vendor = buffer_has_any_vendor(pk_default_buf, pk_default_len);
-                const bool kek_def_has_vendor = buffer_has_any_vendor(kek_default_buf, kek_default_len);
-
-                if (pk_def_has_vendor || kek_def_has_vendor) {
-                    bool vendor_mismatch = false;
-                    for (size_t i = 0; i < sizeof(vendor_list_ascii) / sizeof(*vendor_list_ascii); ++i) {
-                        const char* vendor_asc = vendor_list_ascii[i];
-                        const wchar_t* vendor_w = vendor_list_wide[i];
-
-                        const bool in_pk_def = buffer_has_specific_vendor(pk_default_buf, pk_default_len, vendor_asc, vendor_w);
-                        const bool in_kek_def = buffer_has_specific_vendor(kek_default_buf, kek_default_len, vendor_asc, vendor_w);
-
-                        if (!in_pk_def && !in_kek_def) continue;
-
-                        const bool in_pk_active = buffer_has_specific_vendor(pk_buf, pk_len, vendor_asc, vendor_w);
-                        const bool in_kek_active = buffer_has_specific_vendor(kek_buf, kek_len, vendor_asc, vendor_w);
-
-                        // If the Default contains the vendor but the active variable is missing entirely
-                        if (in_pk_def && pk_len == 0) {
-                            std::string msg = "NVRAM: PKDefault contains vendor '";
-                            msg += vendor_asc;
-                            msg += "' but active PK variable is missing";
-                            debug(msg.c_str());
-                            detection_result = true;
-                            vendor_mismatch = true;
-                            break;
-                        }
-                        if (in_kek_def && kek_len == 0) {
-                            std::string msg = "NVRAM: KEKDefault contains vendor '";
-                            msg += vendor_asc;
-                            msg += "' but active KEK variable is missing";
-                            debug(msg.c_str());
-                            detection_result = true;
-                            vendor_mismatch = true;
-                            break;
-                        }
-
-                        // If the active variable exists but does not contain the same vendor string
-                        if (in_pk_def && pk_len != 0 && !in_pk_active) {
-                            std::string msg = "NVRAM: Vendor string '";
-                            msg += vendor_asc;
-                            msg += "' found in PKDefault but missing from active PK";
-                            debug(msg.c_str());
-                            detection_result = true;
-                            vendor_mismatch = true;
-                            break;
-                        }
-                        if (in_kek_def && kek_len != 0 && !in_kek_active) {
-                            std::string msg = "NVRAM: Vendor string '";
-                            msg += vendor_asc;
-                            msg += "' found in KEKDefault but missing from active KEK";
-                            debug(msg.c_str());
-                            detection_result = true;
-                            vendor_mismatch = true;
-                            break;
-                        }
-                    }
-                    if (vendor_mismatch) break;
-                }
-
-                if (pk_default_buf && pk_buf && (pk_default_len != pk_len || memcmp(pk_default_buf, pk_buf, static_cast<size_t>(pk_default_len < pk_len ? pk_default_len : pk_len)) != 0)) {
-                    debug("NVRAM: PK vs PKDefault raw mismatch detected");
-                    detection_result = true;
-                    break;
-                }
-                if (kek_default_buf && kek_buf && (kek_default_len != kek_len || memcmp(kek_default_buf, kek_buf, static_cast<size_t>(kek_default_len < kek_len ? kek_default_len : kek_len)) != 0)) {
-                    debug("NVRAM: KEK vs KEKDefault raw mismatch detected");
-                    detection_result = true;
-                    break;
-                }
             }
 
             detection_result = false;
@@ -10456,17 +10358,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         return detection_result;
-    }
-
-
-    /**
-	 * @brief Check if SMBIOS is malformed/corrupted in a way that is typical for VMs
-     * @category Windows
-     * @implements VM::SMBIOS_INTEGRITY
-     */
-    [[nodiscard]] static bool smbios_integrity() {
-        ULONGLONG total_memory_in_kilobytes;
-        return !GetPhysicallyInstalledSystemMemory(&total_memory_in_kilobytes);
     }
 
 
@@ -11018,9 +10909,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         // ok so if the CPU is intel, the motherboard should be intel aswell (and same with AMD)
         // this doesnt happen in most public hardened configs out there so lets abuse it
-        constexpr unsigned int VID_INTEL = 0x8086;
-        constexpr unsigned int VID_AMD_ATI = 0x1002;
-        constexpr unsigned int VID_AMD_MICRO = 0x1022;
+        static constexpr unsigned int VID_INTEL = 0x8086;
+        static constexpr unsigned int VID_AMD_ATI = 0x1002;
+        static constexpr unsigned int VID_AMD_MICRO = 0x1022;
 
         enum class MBVendor { Unknown = 0, Intel = 1, AMD = 2 };
 
@@ -12358,7 +12249,7 @@ public: // START OF PUBLIC FUNCTIONS
             case DISK_SERIAL: return "DISK_SERIAL";
             case IVSHMEM: return "IVSHMEM";
             case GPU_CAPABILITIES: return "GPU_CAPABILITIES";
-            case DEVICE_HANDLES: return "DEVICE_HANDLES";
+            case HANDLES: return "HANDLES";
             case QEMU_FW_CFG: return "QEMU_FW_CFG";
             case VIRTUAL_PROCESSORS: return "VIRTUAL_PROCESSORS";
             case HYPERVISOR_QUERY: return "HYPERVISOR_QUERY";
@@ -12368,7 +12259,7 @@ public: // START OF PUBLIC FUNCTIONS
             case FILE_ACCESS_HISTORY: return "FILE_ACCESS_HISTORY";
             case AUDIO: return "AUDIO";
             case NSJAIL_PID: return "NSJAIL_PID";
-            case PCI_DEVICES: return "PCI_DEVICES";
+            case DEVICES: return "DEVICES";
             case ACPI_SIGNATURE: return "ACPI_SIGNATURE";
             case TRAP: return "TRAP";
             case UD: return "UNDEFINED_INSTRUCTION";
@@ -12378,7 +12269,6 @@ public: // START OF PUBLIC FUNCTIONS
             case MAC_SYS: return "MAC_SYS";
             case KERNEL_OBJECTS: return "KERNEL_OBJECTS";
             case NVRAM: return "NVRAM";
-            case SMBIOS_INTEGRITY: return "SMBIOS_INTEGRITY";
             case EDID: return "EDID";
             case CPU_HEURISTIC: return "CPU_HEURISTIC";
             case CLOCK: return "CLOCK";
@@ -12726,7 +12616,7 @@ public: // START OF PUBLIC FUNCTIONS
         }
 
         auto hardened_logic = []() -> bool {
-            // Helper to get the specific brand associated with a technique using the cache.
+            // Helper to get the specific brand associated with a technique using the cache
             auto detected_brand = [](const enum_flags flag) -> const char* {
                 if (!check(flag)) {
                     return brands::NULL_BRAND;
@@ -12996,12 +12886,11 @@ std::array<VM::core::technique, VM::enum_size + 1> VM::core::technique_table = [
             {VM::BOOT_LOGO, {100, VM::boot_logo}},
             {VM::MSR, {100, VM::msr}},
             {VM::GPU_CAPABILITIES, {45, VM::gpu_capabilities}},
-            {VM::SMBIOS_INTEGRITY, {50, VM::smbios_integrity}},
             {VM::DISK_SERIAL, {100, VM::disk_serial_number}},
             {VM::EDID, {100, VM::edid}},
             {VM::IVSHMEM, {100, VM::ivshmem}},
             {VM::DRIVERS, {100, VM::drivers}},
-            {VM::DEVICE_HANDLES, {100, VM::device_handles}},
+            {VM::HANDLES, {100, VM::device_handles}},
             {VM::VIRTUAL_PROCESSORS, {100, VM::virtual_processors}},
             {VM::KERNEL_OBJECTS, {100, VM::kernel_objects}},
             {VM::HYPERVISOR_QUERY, {100, VM::hypervisor_query}},
@@ -13025,7 +12914,7 @@ std::array<VM::core::technique, VM::enum_size + 1> VM::core::technique_table = [
 
         #if (LINUX || WINDOWS)
             {VM::FIRMWARE, {100, VM::firmware}},
-            {VM::PCI_DEVICES, {95, VM::pci_devices}},
+            {VM::DEVICES, {95, VM::pci_devices}},
             {VM::SYSTEM_REGISTERS, {50, VM::system_registers}},
             {VM::AZURE, {30, VM::azure}},
         #endif
