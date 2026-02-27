@@ -673,6 +673,11 @@ This is the table of all the brands the lib supports.
 | Qihoo 360 Sandbox | `brands::QIHOO` | Sandbox |  |
 | nsjail | `brands::NSJAIL` | Process isolator |  |
 | DBVM | `brands::DBVM` | Hypervisor (type 1) | See the [Cheat Engine's Website](https://www.cheatengine.org/aboutdbvm.php) |
+| UTM | `brands::UTM` | Hypervisor (type 2) |  |
+| Compaq FX!32 | `brands::COMPAQ` | Emulator |  |
+| Insignia RealPC | `brands::INSIGNIA` | Emulator |  |
+| Connectix Virtual PC | `brands::CONNECTIX` | Emulator |
+    
 
 <br>
 
