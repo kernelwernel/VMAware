@@ -9745,7 +9745,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         using POBJECT_DIRECTORY_INFORMATION = OBJECT_DIRECTORY_INFORMATION*;
         constexpr auto DIRECTORY_QUERY = 0x0001;
-        constexpr NTSTATUS STATUS_NO_MORE_ENTRIES = static_cast<NTSTATUS>(0x8000001A);
+        constexpr NTSTATUS NO_MORE_ENTRIES = 0x8000001A;
 
         HANDLE dir = nullptr;
         OBJECT_ATTRIBUTES object_attributes{};
@@ -9802,7 +9802,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             );
 
             // Stop if we have iterated through all objects
-            if (status == STATUS_NO_MORE_ENTRIES) {
+            if (status == NO_MORE_ENTRIES) {
                 break;
             }
 
@@ -10650,10 +10650,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // need to do a lambda wrapper to isolate SEH from the parent function's stack unwinding
         // target aes is required for clang/gcc while in MSVC not, and this target can only be applied to functions, meaning we need a struct
         struct aes_executor {
-                #if (CLANG || GCC)
-                    __attribute__((__target__("aes")))
-                #endif
-                static bool check_aes_integrity(const unsigned char* pt, const unsigned char* k, unsigned char* o, bool support) {
+            #if (CLANG || GCC)
+                __attribute__((__target__("aes")))
+            #endif
+            static bool check_aes_integrity(const unsigned char* pt, const unsigned char* k, unsigned char* o, bool support) {
                 __try {
                     __m128i block = _mm_loadu_si128(reinterpret_cast<const __m128i*>(pt));
                     __m128i key_vec = _mm_loadu_si128(reinterpret_cast<const __m128i*>(k));
@@ -10670,7 +10670,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 }
                 __except (GetExceptionCode() == EXCEPTION_ILLEGAL_INSTRUCTION
                     ? EXCEPTION_EXECUTE_HANDLER
-                    : EXCEPTION_CONTINUE_SEARCH) {
+                    : EXCEPTION_CONTINUE_SEARCH
+                ) {
                     if (support) {
                         debug("CPU_HEURISTIC: Hypervisor reports AES, but it is not handled correctly");
                         return true;
