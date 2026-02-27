@@ -1284,13 +1284,13 @@ int main(int argc, char* argv[]) {
     const std::vector<std::string> args(argv + 1, argv + argc); // easier to handle args this way
     const u32 arg_count = static_cast<u32>(argc - 1);
 
-    // this was removed from the lib due to ethical 
-    // concerns, so it's added in the CLI instead
+    // these were removed from the lib due to ethical 
+    // concerns, so it's only present in the CLI instead
     VM::add_custom(65, anyrun_driver);
     VM::add_custom(35, anyrun_directory);
 
     if (arg_count == 0) {
-        general(VM::NULL_ARG, VM::NULL_ARG, VM::DYNAMIC);
+        general(VM::NULL_ARG, VM::NULL_ARG, VM::NULL_ARG);
         return 0;
     }
 
@@ -1397,6 +1397,8 @@ int main(int argc, char* argv[]) {
     const VM::enum_flags high_threshold = (arg_bitset.test(HIGH_THRESHOLD) ? VM::HIGH_THRESHOLD : VM::NULL_ARG);
     const VM::enum_flags all = (arg_bitset.test(ALL) ? VM::ALL : VM::NULL_ARG);
     const VM::enum_flags dynamic = (arg_bitset.test(DYNAMIC) ? VM::DYNAMIC : VM::NULL_ARG);
+
+    std::cout << "\n\n\n\nDYNAMIC: " << static_cast<u32>(dynamic) << "\n\n\n";
 
     if (returners > 0) { // at least one of the options are set
         if (returners > 1) { // more than 2 options are set

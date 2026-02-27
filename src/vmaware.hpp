@@ -3090,29 +3090,30 @@ private:
         }
 
         struct brand {
-            static char brand_cache[512];
+            static std::string brand_cache;
             static bool cached;
 
-            static void store(const char* s) {
-                str_copy(brand_cache, s, sizeof(brand_cache));
+            static void store(const std::string& s) {
+                brand_cache = s;
                 cached = true;
+                debug("VM::brand(): cached brand string");
             }
 
             static bool is_cached() { return cached; }
-            static const char* fetch() { return brand_cache; }
+            static std::string fetch() { return brand_cache; }
         };
 
         struct multi_brand {
-            static char brand_cache[1024];
+            static std::string brand_cache;
             static bool cached;
 
-            static void store(const char* s) {
-                str_copy(brand_cache, s, sizeof(brand_cache));
+            static void store(const std::string& s) {
+                brand_cache = s;
                 cached = true;
             }
 
             static bool is_cached() { return cached; }
-            static const char* fetch() { return brand_cache; }
+            static std::string fetch() { return brand_cache; }
         };
 
         // helper specifically for conclusion strings
@@ -4582,7 +4583,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         cpu::cpuid(unused, unused, ecx, edx, 0x40000003);
 
         constexpr u32 ECX_SIG = 0x4D4D5645u; // 'EVMM' -> 0x4D4D5645
-        constexpr u32 EDX_SIG = 0x43544E49u;  // 'INTC' -> 0x43544E49
+        constexpr u32 EDX_SIG = 0x43544E49u; // 'INTC' -> 0x43544E49
 
         if (ecx == ECX_SIG && edx == EDX_SIG) {
             return core::add(brands::INTEL_KGT);
@@ -4701,6 +4702,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             (void)cookie;
         #endif
         };
+
+        #if (MSVC)
+            thread_local u32 aux = 0;
+        #endif
 
         auto cpuid = [](unsigned int leaf) noexcept -> u64 {
         #if (MSVC)
@@ -9777,7 +9782,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         using POBJECT_DIRECTORY_INFORMATION = OBJECT_DIRECTORY_INFORMATION*;
         constexpr auto DIRECTORY_QUERY = 0x0001;
-        constexpr NTSTATUS STATUS_NO_MORE_ENTRIES = 0x8000001A;
+        constexpr NTSTATUS STATUS_NO_MORE_ENTRIES = static_cast<NTSTATUS>(0x8000001A);
 
         HANDLE dir = nullptr;
         OBJECT_ATTRIBUTES object_attributes{};
@@ -11845,8 +11850,7 @@ public: // START OF PUBLIC FUNCTIONS
                 debug("VM::brand(): returned multi brand from cache");
                 return memo::multi_brand::fetch();
             }
-        }
-        else {
+        } else {
             if (memo::brand::is_cached()) {
                 debug("VM::brand(): returned brand from cache");
                 return memo::brand::fetch();
@@ -11902,34 +11906,46 @@ public: // START OF PUBLIC FUNCTIONS
         std::array<brand_element_t, core::MAX_BRANDS> active_brands;
         size_t active_count = 0;
 
+        // wrappers for simplicity, these will most likely be inlined by the compiler anyway
+        auto fetch_brand_name = [&](const size_t index) -> const char* {
+            return active_brands[index].first;
+        };
+
+        auto fetch_brand_score = [&](const size_t index) -> brand_score_t {
+            return active_brands[index].second;
+        };
+
         for (size_t i = 0; i < core::brand_count; ++i) {
             if (core::brand_scoreboard[i].score > 0) {
                 active_brands[active_count++] = std::make_pair(core::brand_scoreboard[i].name, core::brand_scoreboard[i].score);
             }
         }
 
+        #ifdef __VMAWARE_DEBUG__
+            for (size_t i = 0; i < core::brand_count; ++i) {
+                debug("pre-processed scoreboard: ", (brand_score_t)fetch_brand_score(i), " : ", fetch_brand_name(i));
+            }
+        #endif
+
+
         // if all brands have a point of 0, return "Unknown"
         if (active_count == 0) {
+            memo::brand::store(brands::NULL_BRAND);
             return brands::NULL_BRAND;
         }
-
-        // if there's only a single brand, return it immediately
-        // We skip this early return if the single brand is HYPERV_ARTIFACT,
-        // so that the removal logic at the end of the function can process it
-        if (active_count == 1 && active_brands[0].first != TMP_HYPERV_ARTIFACT) {
-            return active_brands[0].first;
-        }
-
+        
         // helper lambdas for array manipulation
-        auto find_index = [&](const char* name) noexcept -> int {
+        auto find_index = [&](const char* name) noexcept -> i8 {
             for (size_t i = 0; i < active_count; ++i) {
                 // pointer comparison is sufficient for static brands
-                if (active_brands[i].first == name) return static_cast<int>(i);
+                if (fetch_brand_name(i) == name) {
+                    return static_cast<i8>(i);
+                }
             }
             return -1;
         };
 
-        auto remove_at = [&](int index) noexcept {
+        auto remove_at = [&](const u8 index) noexcept {
             if (index >= 0 && index < static_cast<int>(active_count)) {
                 if (index != static_cast<int>(active_count - 1)) {
                     active_brands[static_cast<size_t>(index)] = active_brands[active_count - 1];
@@ -11937,21 +11953,38 @@ public: // START OF PUBLIC FUNCTIONS
                 active_count--;
             }
         };
-
+    
         // remove Hyper-V artifacts if found with other brands
         if (active_count > 1) {
-            const int idx = find_index(TMP_HYPERV_ARTIFACT);
+            const i8 idx = find_index(TMP_HYPERV_ARTIFACT);
             if (idx != -1) {
                 remove_at(idx);
             }
         }
 
+        // if there's only a single brand, return it immediately
+        // We skip this early return if the single brand is HYPERV_ARTIFACT,
+        // but we must also nullify the result if the score is above 0, 
+        // which would most likely indicate a hardened VM instead and return "Unknown".
+        if (active_count == 1) {
+            const std::string& initial_brand = fetch_brand_name(0);
+            if (initial_brand == TMP_HYPERV_ARTIFACT) {
+                if (score > 0) {
+                    memo::brand::store(brands::NULL_BRAND);
+                    return brands::NULL_BRAND;
+                }
+            }
+    
+            memo::brand::store(initial_brand);
+            return initial_brand;
+        }
+
         // merge 2 brands
         auto merge = [&](const char* a, const char* b, const char* result) noexcept -> void {
-            int idx_a = find_index(a);
+            i8 idx_a = find_index(a);
             if (idx_a == -1) return;
 
-            int idx_b = find_index(b);
+            i8 idx_b = find_index(b);
             if (idx_b == -1) return;
 
             remove_at(idx_a);
@@ -11963,11 +11996,11 @@ public: // START OF PUBLIC FUNCTIONS
 
         // same as above, but for 3
         auto triple_merge = [&](const char* a, const char* b, const char* c, const char* result) noexcept -> void {
-            int idx_a = find_index(a);
+            i8 idx_a = find_index(a);
             if (idx_a == -1) return;
-            int idx_b = find_index(b);
+            i8 idx_b = find_index(b);
             if (idx_b == -1) return;
-            int idx_c = find_index(c);
+            i8 idx_c = find_index(c);
             if (idx_c == -1) return;
 
             remove_at(idx_a);
@@ -11976,20 +12009,10 @@ public: // START OF PUBLIC FUNCTIONS
 
             active_brands[active_count++] = std::make_pair(result, 2);
         };
-
-        // some edgecase handling for Hyper-V and VirtualPC
-        int idx_hv = find_index(TMP_HYPERV);
-        int idx_vpc = find_index(TMP_VPC);
-
-        if (idx_hv != -1 && idx_vpc != -1) {
-            // existence is confirmed by index != -1
-            merge(TMP_VPC, TMP_HYPERV, TMP_HYPERV_VPC);
-        }
-        else if (idx_hv != -1 && idx_vpc == -1) {
-            // logic handled by merge check essentially
-        }
-
+        
         // Brand post-processing / merging
+        merge(TMP_VPC, TMP_HYPERV, TMP_HYPERV_VPC);
+
         merge(TMP_AZURE, TMP_HYPERV, TMP_AZURE);
         merge(TMP_AZURE, TMP_VPC, TMP_AZURE);
         merge(TMP_AZURE, TMP_HYPERV_VPC, TMP_AZURE);
@@ -11998,6 +12021,11 @@ public: // START OF PUBLIC FUNCTIONS
         merge(TMP_KVM, TMP_HYPERV, TMP_KVM_HYPERV);
         merge(TMP_QEMU, TMP_HYPERV, TMP_QEMU_KVM_HYPERV);
         merge(TMP_QEMU_KVM, TMP_HYPERV, TMP_QEMU_KVM_HYPERV);
+
+        merge(TMP_KVM, TMP_HYPERV_VPC, TMP_KVM_HYPERV);
+        merge(TMP_QEMU, TMP_HYPERV_VPC, TMP_QEMU_KVM_HYPERV);
+        merge(TMP_QEMU_KVM, TMP_HYPERV_VPC, TMP_QEMU_KVM_HYPERV);
+
         merge(TMP_KVM, TMP_KVM_HYPERV, TMP_KVM_HYPERV);
         merge(TMP_QEMU, TMP_KVM_HYPERV, TMP_QEMU_KVM_HYPERV);
         merge(TMP_QEMU_KVM, TMP_KVM_HYPERV, TMP_QEMU_KVM_HYPERV);
@@ -12017,69 +12045,44 @@ public: // START OF PUBLIC FUNCTIONS
         merge(TMP_VMWARE_HARD, TMP_GSX, TMP_VMWARE_HARD);
         merge(TMP_VMWARE_HARD, TMP_WORKSTATION, TMP_VMWARE_HARD);
 
-        // determine threshold (150 or 300)
-        u16 confirmed_vm_threshold = threshold_score;
-        if (core::is_enabled(flags, HIGH_THRESHOLD)) {
-            confirmed_vm_threshold = high_threshold_score;
-        }
-
-        // check if Hyper-V artifact is present
-        const int idx_art = find_index(TMP_HYPERV_ARTIFACT);
-        if (idx_art != -1) {
-            // If score confirms it is a VM, remove the "Artifact" label (because we're in a VM, not in a host machine)
-            // so it falls back to "Unknown" if no other brands exist
-            if (score >= confirmed_vm_threshold) {
-                remove_at(idx_art);
-            }
-        }
-
-        // remove "Unknown" if detected with other brands
-        if (active_count > 1) {
-            const int idx = find_index(brands::NULL_BRAND);
-            if (idx != -1) {
-                remove_at(idx);
-            }
-        }
-
         if (active_count > 1) {
             std::sort(active_brands.begin(), active_brands.begin() + static_cast<std::ptrdiff_t>(active_count), [](
                 const brand_element_t& a,
                 const brand_element_t& b
-                ) {
-                return a.second > b.second;
+            ) {
+                return a.second > b.second; // .second = brand score (usually u8)
             });
         }
 
     #ifdef __VMAWARE_DEBUG__
         for (size_t i = 0; i < active_count; ++i) {
-            debug("scoreboard: ", (int)active_brands[i].second, " : ", active_brands[i].first);
+            debug("post-processed scoreboard: ", (brand_score_t)fetch_brand_score(i), " : ", fetch_brand_name(i));
         }
     #endif
 
-        if (active_count > 0) {
-            if (!is_multiple) {
-                memo::brand::store(active_brands[0].first);
-                debug("VM::brand(): cached brand string");
-                return memo::brand::fetch();
-            }
-            else {
-                char* buffer = memo::multi_brand::brand_cache;
-                buffer[0] = '\0';
-                const size_t buf_size = sizeof(memo::multi_brand::brand_cache);
-
-                str_copy(buffer, active_brands[0].first, buf_size);
-                for (size_t i = 1; i < active_count; i++) {
-                    str_cat(buffer, " or ", buf_size);
-                    str_cat(buffer, active_brands[i].first, buf_size);
-                }
-
-                memo::multi_brand::cached = true;
-                debug("VM::brand(): cached multiple brand string");
-                return memo::multi_brand::fetch();
-            }
+        if (active_count == 0) {
+            memo::brand::store(brands::NULL_BRAND);
+            return brands::NULL_BRAND;
         }
 
-        return brands::NULL_BRAND;
+        if (is_multiple) {
+            std::string buffer = {};
+            buffer += fetch_brand_name(0);
+
+            for (size_t i = 1; i < active_count; i++) {
+                buffer += " or ";
+                buffer += fetch_brand_name(i);
+            }
+
+            memo::multi_brand::store(buffer);
+            debug("VM::brand(): cached multiple brand string");
+            return buffer;
+        }
+
+        const std::string& result_brand = fetch_brand_name(0);
+
+        memo::brand::store(result_brand);
+        return result_brand;
     }
 
 
@@ -12711,12 +12714,12 @@ public: // START OF PUBLIC FUNCTIONS
     }
 
 
-    #pragma pack(push, 1)
     struct vmaware {
         std::string brand;
         std::string type;
         std::string conclusion;
         bool is_vm;
+        bool is_hardened; 
         u8 percentage;
         u8 detected_count;
         u16 technique_count;
@@ -12740,6 +12743,7 @@ public: // START OF PUBLIC FUNCTIONS
             type = VM::type(flags);
             conclusion = VM::conclusion(flags);
             is_vm = VM::detect(flags);
+            is_hardened = VM::is_hardened();
             percentage = VM::percentage(flags);
             detected_count = VM::detected_count(flags);
             technique_count = VM::technique_count;
@@ -12757,7 +12761,6 @@ public: // START OF PUBLIC FUNCTIONS
         }
 
     };
-    #pragma pack(pop)
 };
 
 // ============= EXTERNAL DEFINITIONS =============
@@ -12864,8 +12867,8 @@ size_t VM::core::brand_count = []() -> size_t {
 
 // initial definitions for cache items because C++ forbids in-class initializations
 std::array<VM::memo::cache_entry, VM::enum_size + 1> VM::memo::cache_table{};
-char VM::memo::brand::brand_cache[512] = { 0 };
-char VM::memo::multi_brand::brand_cache[1024] = { 0 };
+std::string VM::memo::brand::brand_cache = "";
+std::string VM::memo::multi_brand::brand_cache = "";
 char VM::memo::cpu_brand::brand_cache[128] = { 0 };
 char VM::memo::bios_info::manufacturer[256] = { 0 };
 char VM::memo::bios_info::model[128] = { 0 };
