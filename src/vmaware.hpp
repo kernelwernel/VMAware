@@ -4583,7 +4583,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         cpu::cpuid(unused, unused, ecx, edx, 0x40000003);
 
         constexpr u32 ECX_SIG = 0x4D4D5645u; // 'EVMM' -> 0x4D4D5645
-        constexpr u32 EDX_SIG = 0x43544E49u;  // 'INTC' -> 0x43544E49
+        constexpr u32 EDX_SIG = 0x43544E49u; // 'INTC' -> 0x43544E49
 
         if (ecx == ECX_SIG && edx == EDX_SIG) {
             return core::add(brands::INTEL_KGT);
@@ -11884,6 +11884,13 @@ public: // START OF PUBLIC FUNCTIONS
             }
         }
 
+        #ifdef __VMAWARE_DEBUG__
+            for (size_t i = 0; i < core::brand_count; ++i) {
+                debug("pre-processed scoreboard: ", (brand_score_t)fetch_brand_score(i), " : ", fetch_brand_name(i));
+            }
+        #endif
+
+
         // if all brands have a point of 0, return "Unknown"
         if (active_count == 0) {
             memo::brand::store(brands::NULL_BRAND);
@@ -11924,7 +11931,7 @@ public: // START OF PUBLIC FUNCTIONS
         // which would most likely indicate a hardened VM instead and return "Unknown".
         if (active_count == 1) {
             const std::string& initial_brand = fetch_brand_name(0);
-
+            std::cout << "\n\n\n\nINITIAL: " << initial_brand << "\n\n\n\n";
             if (initial_brand == TMP_HYPERV_ARTIFACT) {
                 if (score > 0) {
                     memo::brand::store(brands::NULL_BRAND);
@@ -12013,7 +12020,7 @@ public: // START OF PUBLIC FUNCTIONS
 
     #ifdef __VMAWARE_DEBUG__
         for (size_t i = 0; i < active_count; ++i) {
-            debug("scoreboard: ", (brand_score_t)fetch_brand_score(i), " : ", fetch_brand_name(i));
+            debug("post-processed scoreboard: ", (brand_score_t)fetch_brand_score(i), " : ", fetch_brand_name(i));
         }
     #endif
 

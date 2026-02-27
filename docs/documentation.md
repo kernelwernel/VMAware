@@ -681,8 +681,8 @@ This is the table of all the brands the lib supports.
 |------|-------------|-------------|
 | `VM::ALL` | This will enable all the technique flags, including checks that are disabled by default. |  |
 | `VM::DEFAULT` | This represents a range of flags which are enabled if no default argument is provided. |
-| `VM::MULTIPLE` | This will basically return a `std::string` message of what brands could be involved. For example, it could return "`VMware or VirtualBox`" instead of having a single brand string output. | VM::brand() |   
-| `VM::HIGH_THRESHOLD` | This will set the threshold bar to confidently detect a VM by 3x higher. | VM::detect() and VM::percentage() |
+| `VM::MULTIPLE` | This will basically return a `std::string` message of which brands could be involved. For example, it could return "`VMware or VirtualBox`" instead of having a single brand string output. | VM::brand() |   
+| `VM::HIGH_THRESHOLD` | This will set the threshold bar to confidently detect a VM by 2x higher. | VM::detect() and VM::percentage() |
 | `VM::DYNAMIC` | This will add 8 options to the conclusion message rather than 2, each with their own varying likelihoods. | VM::conclusion() |
 | `VM::NULL_ARG` | Does nothing, meant as a placeholder flag mainly for CLI purposes. It's best to ignore this.|  |
 

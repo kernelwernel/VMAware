@@ -1284,8 +1284,8 @@ int main(int argc, char* argv[]) {
     const std::vector<std::string> args(argv + 1, argv + argc); // easier to handle args this way
     const u32 arg_count = static_cast<u32>(argc - 1);
 
-    // this was removed from the lib due to ethical 
-    // concerns, so it's added in the CLI instead
+    // these were removed from the lib due to ethical 
+    // concerns, so it's only present in the CLI instead
     VM::add_custom(65, anyrun_driver);
     VM::add_custom(35, anyrun_directory);
 
