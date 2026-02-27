@@ -11282,15 +11282,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     #endif  
         constexpr u32 random_msr = 0xDEADBEEFu;
 
-        struct range {
-            u32 start;
-            u32 end;
-        };
-        static constexpr range ranges[] = {
-            { 0x40000000u, 0x400000FFu },
-            { 0x4B564D00u, 0x4B564DFFu }
-        };
-
         auto try_read = [](u32 msr_index) -> bool {
         #if (MSVC)
             unsigned __int64 value = 0;
@@ -11337,26 +11328,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (try_read(random_msr)) {
             debug("MSR: Detected hypervisor not correctly handling #GP");
             return true;
-        }
-        for (size_t r = 0; r < (sizeof(ranges) / sizeof(ranges[0])); ++r) {
-            const u32 s = ranges[r].start;
-            const u32 e = ranges[r].end;
-            for (u32 i = s; i != e + 1u; ++i) {
-                if (try_read(i)) {
-                    if (s == 0x40000000u && e == 0x400000FFu) {
-                        debug("MSR: Detected Hyper-V VM");
-                        return core::add(brands::HYPERV);
-                    }
-                    else if (s == 0x4B564D00u && e == 0x4B564DFFu) {
-                        debug("MSR: Detected KVM");
-                        return core::add(brands::KVM);
-                    }
-                    else {
-                        debug("MSR: Detected readable MSR index: 0x", std::hex, i, std::dec, '\n');
-                        return true;
-                    }
-                }
-            }
         }
 
         return false;
