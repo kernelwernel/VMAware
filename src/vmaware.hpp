@@ -55,13 +55,13 @@
  *
  * ============================== SECTIONS ==================================
  * - enums for publicly accessible techniques  => line 549
- * - struct for internal cpu operations        => line 722
- * - struct for internal memoization           => line 3049
- * - struct for internal utility functions     => line 3231
- * - struct for internal core components       => line 11441
- * - start of VM detection technique list      => line 4286
- * - start of public VM detection functions    => line 11819
- * - start of externally defined variables     => line 12828
+ * - struct for internal cpu operations        => line 721
+ * - struct for internal memoization           => line 3048
+ * - struct for internal utility functions     => line 3230
+ * - struct for internal core components       => line 11331
+ * - start of VM detection technique list      => line 4285
+ * - start of public VM detection functions    => line 11709
+ * - start of externally defined variables     => line 12725
  *
  *
  * ============================== EXAMPLE ===================================
@@ -4639,11 +4639,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         std::atomic<int> ready_count(0);
         std::atomic<int> state(0);
-
         std::atomic<u64> t1_start(0), t1_end(0);
-        std::atomic<u64> t2_start(0);
         std::atomic<u64> t2_end(0);
-
         std::vector<u64> samples(100000, 0);
 
         auto rdtsc = []() noexcept -> u64 {
@@ -4892,36 +4889,81 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return result;
         };
 
-        // to touch pages and exercise cpuid paths
-        for (int w = 0; w < 128; ++w) {
-            volatile u64 tmp = cpuid(leaves[w % n_leaves]);
-            VMAWARE_UNUSED(tmp);
-        }
+        // exercise the XOR loop and CPUID paths to wake up the CPU from low-power states
+        volatile u64 warm_x = 0;
+        for (int w = 0; w < 64; ++w) cpuid(leaves[w % n_leaves]);
+        for (u64 i = 0; i < (ITER_XOR); ++i) warm_x ^= i;
+        VMAWARE_UNUSED(warm_x);    
 
-        // if hypervisor downscales TSC globally, this will catch it
-        const u64 calib_start = rdtsc();
-        {
-            volatile u64 x = 0xDEADBEEFCAFEBABEULL;
-            for (u64 i = 0; i < ITER_XOR; ++i) {
-                x ^= i;
-                x = (x << 1) ^ (x >> 3);
+        // ========================== GLOBAL RATIO CHECK START ==========================
+
+        // the idea here is to create the same contention as the cpuid loop later
+        // this loop should NEVER run much faster than the next loop
+        // If a hypervisor downscales TSC globally in the next loop, the test run will be faster than this baseline, detecting the hypervisor
+        u64 baseline_t1_delta = 0;
+
+        auto run_baseline = [&]() {
+            ready_count.store(0);
+            state.store(0);
+
+            std::thread th1([&]() {
+                ready_count.fetch_add(1);
+                while (ready_count.load() < 2) _mm_pause();
+
+                const u64 s = rdtsc();
+                volatile u64 x = 0xDEADBEEFCAFEBABEULL;
+                for (u64 i = 0; i < ITER_XOR; ++i) {
+                    x ^= i;
+                    x = (x << 1) ^ (x >> 3);
+                }
+                const u64 e = rdtsc();
+                VMAWARE_UNUSED(x);
+
+                t1_end.store(e - s);
+                state.store(2); // signal finish
+           });
+
+            std::thread th2([&]() {
+                ready_count.fetch_add(1);
+                while (ready_count.load() < 2) _mm_pause();
+
+                volatile u64 dummy = 0;
+                while (state.load() != 2) {
+                    // must not be PAUSE so it cant be trapped
+                    dummy ^= (dummy << 5);
+                    dummy += 1;
+                }
+                VMAWARE_UNUSED(dummy);
+            });
+
+            if (hw >= 2) {
+                set_affinity(th1, 0);
+                set_affinity(th2, 1);
             }
-            VMAWARE_UNUSED(x);
-        }
-        const u64 calib_end = rdtsc();
-        const u64 calib_delta = (calib_end > calib_start) ? (calib_end - calib_start) : 0;
 
-        ready_count.store(0, std::memory_order_release);
-        state.store(0, std::memory_order_release);
+            th1.join();
+            th2.join();
+            baseline_t1_delta = t1_end.load();
+        };
 
-        // Thread 1: start near same cycle, do XOR work, set end
+        run_baseline();
+
+        // ========================== GLOBAL RATIO CHECK END ==========================
+
+        // ========================== LOCAL RATIO CHECK START ==========================
+
+        ready_count.store(0);
+        state.store(0);
+        t1_end.store(0);
+
+        // Thread 1: start near same cycle as thread 2, do work that cant be intercepted by hypervisors, and set end
         std::thread th1([&]() {
             ready_count.fetch_add(1, std::memory_order_acq_rel);
             while (ready_count.load(std::memory_order_acquire) < 2)
                 _mm_pause();
 
-            const u64 s = rdtsc();
-            t1_start.store(s, std::memory_order_release);
+            const u64 start = rdtsc();
+            t1_start.store(start, std::memory_order_release);
             state.store(1, std::memory_order_release);
 
             volatile u64 x = 0xDEADBEEFCAFEBABEULL;
@@ -4931,8 +4973,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
             VMAWARE_UNUSED(x);
 
-            const u64 e = rdtsc();
-            t1_end.store(e, std::memory_order_release);
+            const u64 end = rdtsc();
+            t1_end.store(end - start, std::memory_order_release);
             state.store(2, std::memory_order_release);
         });
 
@@ -4943,7 +4985,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 _mm_pause();
 
             u64 last = rdtsc();
-            t2_start.store(last, std::memory_order_release);
 
             // local accumulator and local index into samples
             u64 acc = 0;
@@ -4970,7 +5011,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                         if (idx < samples.size()) samples[idx] = cpuid(leaf);
                         ++idx;
 
-                        // if thread1 finished
+                        // if thread 1 finished
                         if (state.load(std::memory_order_acquire) == 2) break;
                     }
 
@@ -4980,25 +5021,19 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             // final rdtsc after detecting finish
             const u64 final_now = rdtsc();
-
-            if (final_now >= last) {
-                acc += (final_now - last);
-            }
-
-            last = final_now;
-
-            // publish results
+            if (final_now >= last) acc += (final_now - last);
             t2_end.store(acc, std::memory_order_release);
         });
 
-        // try to pin to different cores
+        // ========================== LOCAL RATIO CHECK END ==========================
+
+        // logic should be in different cores to force the hypervisor to downscale TSC globally
+        // the previous baseline logic can be in any core
         affinity_cookie cookie1{};
         affinity_cookie cookie2{};
         if (hw >= 2) {
-            if (hw >= 2) {
-                cookie1 = set_affinity(th1, 0);
-                cookie2 = set_affinity(th2, 1);
-            }
+            cookie1 = set_affinity(th1, 0);
+            cookie2 = set_affinity(th2, 1);      
         }
 
         th1.join();
@@ -5008,30 +5043,21 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         restore_affinity(cookie2);
 
         // collect results
-        const u64 a = t1_start.load(std::memory_order_acquire);
-        const u64 b = t1_end.load(std::memory_order_acquire);
-    #ifdef __VMAWARE_DEBUG__
-        const u64 c = t2_start.load(std::memory_order_acquire);
-    #endif
-        const u64 d = t2_end.load(std::memory_order_acquire);
-
-        const u64 t1_delta = (b > a) ? (b - a) : 0;
-        const u64 t2_delta = d;
+        const u64 t1_delta = t1_end.load();
+        const u64 t2_delta = t2_end.load();
 
         std::vector<u64> used;
-        for (size_t i = 0; i < samples.size(); ++i)
-            if (samples[i] != 0)
-                used.push_back(samples[i]);
+        for (u64 s : samples) if (s != 0) used.push_back(s);
         const u64 cpuid_latency = calculate_latency(used);
 
-        debug("TIMER: calibration cycles: start=", calib_start, " delta=", calib_delta);
-        debug("TIMER: thread1 cycles: start=", a, " delta=", t1_delta);
-        debug("TIMER: thread2 cycles: start=", c, " delta=", t2_delta);
-        debug("TIMER: vmexit latency: ", cpuid_latency);
+        debug("TIMER: Baseline T1 delta: ", baseline_t1_delta);
+        debug("TIMER: Test T1 delta:     ", t1_delta);
+        debug("TIMER: Test T2 delta:     ", t2_delta);
+        debug("TIMER: VMEXIT latency:    ", cpuid_latency);
 
         if (cpuid_latency >= cycle_threshold) {
             debug("TIMER: Detected a vmexit on CPUID");
-            return core::add(brands::NULL_BRAND, 100); // to prevent FPs due to kernel noise
+            return core::add(brands::NULL_BRAND, 100); // to prevent false positives due to kernel noise, doesn't trigger the default score
         }
         else if (cpuid_latency <= 25) {
             debug("TIMER: Detected a hypervisor downscaling CPUID latency");
@@ -5040,21 +5066,32 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return true;
         }
 
-        if (t1_delta == 0 || calib_delta == 0) {
+        if (t1_delta == 0 || baseline_t1_delta == 0) return true;
+
+        // ========================== LOCAL RATIO ==========================
+
+        // Within the same run, does Thread 2 see a smaller TSC delta than Thread 1?
+        // If so, a hypervisor downscaled TSC in the core where exits were occurring to hide vmexit latency
+        // while in the other core where no exits occurred, no TSC cycles were decreased, thus thread 2 ran faster than thread 1
+        // this logic can be bypassed if the hypervisor downscales TSC in both cores, and that's precisely why we do now a Global Ratio
+        const double local_ratio = double(t2_delta) / double(t1_delta);
+
+        // ========================== GLOBAL RATIO ==========================
+
+        // Does Thread 1 finish the same work in significantly fewer cycles when exits are occurring?
+        // In a patch, Thread 1 and thread 2 from the test run were both downscaled because thread 2 was spamming a lot of exiting instructions
+        // However, it didn't downscale the baseline run, because it only ran two rdtsc instructions and no cpuid instruction
+        // On bare metal, global_ratio should be >= 1.0 because CPUID spam creates more bus noise than stupid dummy math
+        // However, when a rdtsc or cpuid patch is present, thread 1 and thread 2 ran much more faster than the baseline, because the hypervisor substracted TSC
+        const double global_ratio = double(t1_delta) / double(baseline_t1_delta);
+
+        if (local_ratio < 0.95 || local_ratio > 1.05) {
+            debug("TIMER: Detected a hypervisor intercepting TSC - (Local Ratio: ", local_ratio, ")");
             return true;
         }
 
-        const double ratio = double(t2_delta) / double(t1_delta);
-        const double calibration_ratio = static_cast<double>(t1_delta) / static_cast<double>(calib_delta);
-
-        // if thread 1 was faster than thread 2, hypervisor downscaled TSC per-vCPU in either cpuid or rdtsc
-        if (ratio < 0.95 || ratio > 1.05) {
-            debug("TIMER: Detected a hypervisor intercepting TSC");
-            return true;
-        }
-        // if calibration was much faster than thread 1, hypervisor downscaled TSC globally while thread 2 was spamming
-        if (calibration_ratio < 0.95) {
-            debug("TIMER: Detected a hypervisor intercepting TSC globally");
+        if (global_ratio < 0.90) {
+            debug("TIMER: Detected a hypervisor intercepting TSC - (Global Ratio: ", global_ratio, ")");
             return true;
         }
 
@@ -5109,7 +5146,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         _freea(raw);
 
         if (speed < 800) {
-            debug("TIMER: detected a hook in rdtsc, frequency was: ", speed);
+            debug("TIMER: Detected a hook in rdtsc, frequency was: ", speed);
             return true;
         }
     #endif
