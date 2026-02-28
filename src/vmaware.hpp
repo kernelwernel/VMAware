@@ -57,11 +57,11 @@
  * - enums for publicly accessible techniques  => line 549
  * - struct for internal cpu operations        => line 721
  * - struct for internal memoization           => line 3048
- * - struct for internal utility functions     => line 3230
- * - struct for internal core components       => line 11331
- * - start of VM detection technique list      => line 4285
- * - start of public VM detection functions    => line 11709
- * - start of externally defined variables     => line 12725
+ * - struct for internal utility functions     => line 3231
+ * - struct for internal core components       => line 11180
+ * - start of VM detection technique list      => line 4286
+ * - start of public VM detection functions    => line 11558
+ * - start of externally defined variables     => line 12566
  *
  *
  * ============================== EXAMPLE ===================================
@@ -4703,15 +4703,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         #endif
         };
 
-        #if (MSVC)
-            thread_local u32 aux = 0;
-        #endif
-
         auto cpuid = [](unsigned int leaf) noexcept -> u64 {
         #if (MSVC)
             thread_local u32 aux = 0;
             // make regs volatile so writes cannot be optimized out, if this isn't added and the code is compiled in release mode, cycles would be around 40 even under Hyper-V
-            volatile int regs[4]{};
+            volatile int regs[4] = { 0 };
 
             // ensure the CPU pipeline is drained of previous loads before we start the clock
             _mm_lfence();
@@ -4806,13 +4802,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             // const size_t frac_win = (N * 8 + 99) / 100; // ceil(N * 0.08)
             // const size_t win = std::min(N, std::max(MIN_WIN, frac_win));
             const size_t MIN_WIN = 10;
-            const size_t win = std::min(
-                N,
-                std::max(
-                    MIN_WIN,
-                    static_cast<size_t>(std::ceil(static_cast<double>(N) * 0.08))
-                )
-            );
+            // Manual min/max calculation for win size
+            const size_t calc_frac = static_cast<size_t>(std::ceil(static_cast<double>(N) * 0.08));
+            const size_t inner_max = (MIN_WIN > calc_frac) ? MIN_WIN : calc_frac;
+            const size_t win = (N < inner_max) ? N : inner_max;
+
             size_t best_i = 0;
             u64 best_span = (s.back() - s.front()) + 1; // large initial
             for (size_t i = 0; i + win <= N; ++i) {
@@ -4834,7 +4828,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 if (static_cast<long double>(new_span) <= EXPAND_FACTOR * static_cast<long double>(best_span) ||
                     (s[cluster_hi - 1] <= (s[cluster_lo - 1] + static_cast<u64>(std::ceil(3.0L * sigma))))) {
                     --cluster_lo;
-                    best_span = std::min(best_span, new_span);
+                    // Manual min calculation
+                    best_span = (best_span < new_span) ? best_span : new_span;
                 }
                 else break;
             }
@@ -4844,7 +4839,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 if (static_cast<long double>(new_span) <= EXPAND_FACTOR * static_cast<long double>(best_span) ||
                     (s[cluster_hi] <= (s[cluster_lo] + static_cast<u64>(std::ceil(3.0L * sigma))))) {
                     ++cluster_hi;
-                    best_span = std::min(best_span, new_span);
+                    // Manual min calculation
+                    best_span = (best_span < new_span) ? best_span : new_span;
                 }
                 else break;
             }
@@ -4853,10 +4849,19 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
             // cluster must be reasonably dense and cover a non-negligible portion of samples, so this is pure sanity checks
             const double fraction_in_cluster = static_cast<double>(cluster_size) / static_cast<double>(N);
-            const size_t MIN_CLUSTER = std::min(static_cast<size_t>(std::max<int>(5, static_cast<int>(N / 50))), N); // at least 2% or 5 elements
+
+            // Manual min/max calculation for MIN_CLUSTER
+            // Original: std::min(static_cast<size_t>(std::max<int>(5, static_cast<int>(N / 50))), N);
+            const int val_n_50 = static_cast<int>(N / 50);
+            const size_t val_max = static_cast<size_t>((5 > val_n_50) ? 5 : val_n_50);
+            const size_t MIN_CLUSTER = (val_max < N) ? val_max : N; // at least 2% or 5 elements
+
             if (cluster_size < MIN_CLUSTER || fraction_in_cluster < 0.02) {
                 // low-percentile (10th) trimmed median
-                const size_t fallback_count = std::max<size_t>(1, static_cast<size_t>(std::floor(static_cast<double>(N) * 0.10)));
+                // Manual max calculation for fallback_count
+                const size_t floor_val = static_cast<size_t>(std::floor(static_cast<double>(N) * 0.10));
+                const size_t fallback_count = (1 > floor_val) ? 1 : floor_val;
+
                 // median of lowest fallback_count elements (if fallback_count==1 that's smallest)
                 if (fallback_count == 1) return s.front();
                 const size_t mid = fallback_count / 2;
@@ -4897,69 +4902,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // exercise the XOR loop and CPUID paths to wake up the CPU from low-power states
         volatile u64 warm_x = 0;
         for (int w = 0; w < 64; ++w) cpuid(leaves[w % n_leaves]);
-        for (u64 i = 0; i < (ITER_XOR); ++i) warm_x ^= i;
         VMAWARE_UNUSED(warm_x);    
-
-        // ========================== GLOBAL RATIO CHECK START ==========================
-
-        // the idea here is to create the same contention as the cpuid loop later
-        // this loop should NEVER run much faster than the next loop
-        // If a hypervisor downscales TSC globally in the next loop, the test run will be faster than this baseline, detecting the hypervisor
-        u64 baseline_t1_delta = 0;
-
-        auto run_baseline = [&]() {
-            ready_count.store(0);
-            state.store(0);
-
-            std::thread th1([&]() {
-                ready_count.fetch_add(1);
-                while (ready_count.load() < 2) _mm_pause();
-
-                const u64 s = rdtsc();
-                volatile u64 x = 0xDEADBEEFCAFEBABEULL;
-                for (u64 i = 0; i < ITER_XOR; ++i) {
-                    x ^= i;
-                    x = (x << 1) ^ (x >> 3);
-                }
-                const u64 e = rdtsc();
-                VMAWARE_UNUSED(x);
-
-                t1_end.store(e - s);
-                state.store(2); // signal finish
-           });
-
-            std::thread th2([&]() {
-                ready_count.fetch_add(1);
-                while (ready_count.load() < 2) _mm_pause();
-
-                volatile u64 dummy = 0;
-                while (state.load() != 2) {
-                    // must not be PAUSE so it cant be trapped
-                    dummy ^= (dummy << 5);
-                    dummy += 1;
-                }
-                VMAWARE_UNUSED(dummy);
-            });
-
-            if (hw >= 2) {
-                set_affinity(th1, 0);
-                set_affinity(th2, 1);
-            }
-
-            th1.join();
-            th2.join();
-            baseline_t1_delta = t1_end.load();
-        };
-
-        run_baseline();
-
-        // ========================== GLOBAL RATIO CHECK END ==========================
-
-        // ========================== LOCAL RATIO CHECK START ==========================
-
-        ready_count.store(0);
-        state.store(0);
-        t1_end.store(0);
 
         // Thread 1: start near same cycle as thread 2, do work that cant be intercepted by hypervisors, and set end
         std::thread th1([&]() {
@@ -5030,10 +4973,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             t2_end.store(acc, std::memory_order_release);
         });
 
-        // ========================== LOCAL RATIO CHECK END ==========================
-
         // logic should be in different cores to force the hypervisor to downscale TSC globally
-        // the previous baseline logic can be in any core
         affinity_cookie cookie1{};
         affinity_cookie cookie2{};
         if (hw >= 2) {
@@ -5055,9 +4995,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         for (u64 s : samples) if (s != 0) used.push_back(s);
         const u64 cpuid_latency = calculate_latency(used);
 
-        debug("TIMER: Baseline T1 delta: ", baseline_t1_delta);
-        debug("TIMER: Test T1 delta:     ", t1_delta);
-        debug("TIMER: Test T2 delta:     ", t2_delta);
+        debug("TIMER: T1 delta:     ", t1_delta);
+        debug("TIMER: T2 delta:     ", t2_delta);
         debug("TIMER: VMEXIT latency:    ", cpuid_latency);
 
         if (cpuid_latency >= cycle_threshold) {
@@ -5071,8 +5010,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return true;
         }
 
-        if (t1_delta == 0 || baseline_t1_delta == 0) return true;
-
         // ========================== LOCAL RATIO ==========================
 
         // Within the same run, does Thread 2 see a smaller TSC delta than Thread 1?
@@ -5081,22 +5018,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // this logic can be bypassed if the hypervisor downscales TSC in both cores, and that's precisely why we do now a Global Ratio
         const double local_ratio = double(t2_delta) / double(t1_delta);
 
-        // ========================== GLOBAL RATIO ==========================
-
-        // Does Thread 1 finish the same work in significantly fewer cycles when exits are occurring?
-        // In a patch, Thread 1 and thread 2 from the test run were both downscaled because thread 2 was spamming a lot of exiting instructions
-        // However, it didn't downscale the baseline run, because it only ran two rdtsc instructions and no cpuid instruction
-        // On bare metal, global_ratio should be >= 1.0 because CPUID spam creates more bus noise than stupid dummy math
-        // However, when a rdtsc or cpuid patch is present, thread 1 and thread 2 ran much more faster than the baseline, because the hypervisor substracted TSC
-        const double global_ratio = double(t1_delta) / double(baseline_t1_delta);
-
         if (local_ratio < 0.95 || local_ratio > 1.05) {
-            debug("TIMER: Detected a hypervisor intercepting TSC - (Local Ratio: ", local_ratio, ")");
-            return true;
-        }
-
-        if (global_ratio < 0.90) {
-            debug("TIMER: Detected a hypervisor intercepting TSC - (Global Ratio: ", global_ratio, ")");
+            debug("TIMER: Detected a hypervisor intercepting TSC: ", local_ratio, "");
             return true;
         }
 
@@ -7565,94 +7488,6 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
         #endif
 
-        // ARM CPUs trigger this check
-        if (util::is_running_under_translator()) 
-            return false;
-
-        const HMODULE kernel32 = GetModuleHandleA("kernel32.dll");
-        const HMODULE ntdll = util::get_ntdll();
-        if (!kernel32 || !ntdll) {
-            return false;
-        }
-
-        const char* kernel32_names[] = { "wine_get_unix_file_name" };
-        void* kernel32_functions[ARRAYSIZE(kernel32_names)] = {};
-        util::get_function_address(kernel32, kernel32_names, kernel32_functions, _countof(kernel32_names));
-
-        if (kernel32_functions[0] != nullptr) {
-            return core::add(brands::WINE);
-        }
-
-        const char* ntdll_names[] = { "NtAllocateVirtualMemory", "NtFreeVirtualMemory", "NtProtectVirtualMemory" };
-        void* ntdll_functions[ARRAYSIZE(ntdll_names)] = {};
-        util::get_function_address(ntdll, ntdll_names, ntdll_functions, _countof(ntdll_names));
-
-        // https://www.unknowncheats.me/forum/anti-cheat-bypass/729130-article-wine-detection.html
-        const UINT old_mode = SetErrorMode(SEM_NOALIGNMENTFAULTEXCEPT);
-
-        static constexpr unsigned char movaps_stub[] = {
-            0x0F, 0x28, 0x01, // movaps xmm0, XMMWORD PTR [rcx]   (Windows x64: arg in RCX)
-            0xC3              // ret
-        };
-
-        typedef void (*movaps_fn)(void*);
-
-        using NtAllocateVirtualMemoryFn = NTSTATUS(__stdcall*)(HANDLE, PVOID*, ULONG_PTR, PSIZE_T, ULONG, ULONG);
-        using NtFreeVirtualMemoryFn = NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG);
-        using NtProtectVirtualMemoryFn = NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG, PULONG);
-
-        const auto nt_allocate_virtual_memory = reinterpret_cast<NtAllocateVirtualMemoryFn>(ntdll_functions[0]);
-        const auto nt_free_virtual_memory = reinterpret_cast<NtFreeVirtualMemoryFn>(ntdll_functions[1]);
-        const auto nt_protect_virtual_memory = reinterpret_cast<NtProtectVirtualMemoryFn>(ntdll_functions[2]);
-
-        if (nt_allocate_virtual_memory == nullptr || nt_free_virtual_memory == nullptr || nt_protect_virtual_memory == nullptr) {
-            SetErrorMode(old_mode);
-            return false;
-        }
-
-        PVOID exec_mem = NULL;
-        const HANDLE current_process = reinterpret_cast<HANDLE>(-1);
-        SIZE_T region_size = sizeof movaps_stub;
-        NTSTATUS st = nt_allocate_virtual_memory(current_process, &exec_mem, 0, &region_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-        if (!NT_SUCCESS(st) || exec_mem == NULL) {
-            SetErrorMode(old_mode);
-            return false;
-        }
-
-        memcpy(exec_mem, movaps_stub, sizeof movaps_stub);
-     
-        PVOID tmp_base = exec_mem;
-        SIZE_T tmp_sz = region_size;
-        ULONG old_protection = 0;
-        st = nt_protect_virtual_memory(current_process, &tmp_base, &tmp_sz, PAGE_EXECUTE_READ, &old_protection);
-        if (!NT_SUCCESS(st)) {
-            PVOID free_base = exec_mem;
-            SIZE_T free_size = 0;
-            nt_free_virtual_memory(current_process, &free_base, &free_size, MEM_RELEASE);
-            SetErrorMode(old_mode);
-            return false;
-        }
-        
-        __declspec(align(16)) unsigned char buffer[32] = { 0 };
-        void* misaligned = buffer + 1;
-
-        __try {
-            ((movaps_fn)exec_mem)(misaligned);
-        }
-        __except (EXCEPTION_EXECUTE_HANDLER) {
-            PVOID free_base = exec_mem;
-            SIZE_T free_size = 0;
-            nt_free_virtual_memory(current_process, &free_base, &free_size, MEM_RELEASE);
-
-            SetErrorMode(old_mode);
-            return core::add(brands::WINE);
-        }
-      
-        PVOID free_base = exec_mem;
-        SIZE_T free_size = 0;
-        nt_free_virtual_memory(current_process, &free_base, &free_size, MEM_RELEASE);
-
-        SetErrorMode(old_mode);
         return false;
     }
                 
@@ -11883,22 +11718,16 @@ public: // START OF PUBLIC FUNCTIONS
             return active_brands[index].first;
         };
 
+    #ifdef __VMAWARE_DEBUG__
         auto fetch_brand_score = [&](const size_t index) -> brand_score_t {
             return active_brands[index].second;
         };
-
+    #endif
         for (size_t i = 0; i < core::brand_count; ++i) {
             if (core::brand_scoreboard[i].score > 0) {
                 active_brands[active_count++] = std::make_pair(core::brand_scoreboard[i].name, core::brand_scoreboard[i].score);
             }
         }
-
-        #ifdef __VMAWARE_DEBUG__
-            for (size_t i = 0; i < core::brand_count; ++i) {
-                debug("pre-processed scoreboard: ", (brand_score_t)fetch_brand_score(i), " : ", fetch_brand_name(i));
-            }
-        #endif
-
 
         // if all brands have a point of 0, return "Unknown"
         if (active_count == 0) {
@@ -12028,7 +11857,7 @@ public: // START OF PUBLIC FUNCTIONS
 
     #ifdef __VMAWARE_DEBUG__
         for (size_t i = 0; i < active_count; ++i) {
-            debug("post-processed scoreboard: ", (brand_score_t)fetch_brand_score(i), " : ", fetch_brand_name(i));
+            debug("processed scoreboard: ", (brand_score_t)fetch_brand_score(i), " : ", fetch_brand_name(i));
         }
     #endif
 
