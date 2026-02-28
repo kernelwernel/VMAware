@@ -109,6 +109,12 @@ else()
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2")
 endif()
 
+# extra flags
+option(DEBUG_OUTPUT "Force __VMAWARE_DEBUG__ define" OFF)
+if(DEBUG_OUTPUT)
+    target_compile_definitions(${TARGET} PRIVATE __VMAWARE_DEBUG__)
+endif()
+
 # add executable
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${BUILD_DIR}")
 add_executable(${TARGET} "src/cli.cpp")
