@@ -7860,7 +7860,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     [[nodiscard]] static bool dll() {
         static constexpr struct {
             const char* dll_name;
-            const char* brand;
+            enum brand_enum brand;
         } dlls[] = {
             {"sbiedll.dll",   brand_enum::SANDBOXIE},
             {"pstorec.dll",   brand_enum::CWSANDBOX},
@@ -8052,7 +8052,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         // A list of known "dirty" Product IDs associated with public malware analysis sandboxes
         struct target_pattern {
             const char* product_id;
-            const char* brand;
+            enum brand_enum brand;
         };
 
         constexpr target_pattern targets[] = {
