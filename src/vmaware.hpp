@@ -6839,13 +6839,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             "Xen"
         } };
 
-        constexpr std::array<const char*, 22> brands_map = { {
-            brands::PARALLELS, brands::PARALLELS,
-            brands::VBOX,      brands::VBOX,      brands::VBOX,     brands::VBOX,     brands::VBOX,
-            brands::VMWARE,    brands::VMWARE,    brands::VMWARE,   brands::VMWARE,
-            brands::QEMU,      brands::QEMU,      brands::QEMU,     brands::QEMU,     brands::BOCHS,
-            nullptr, nullptr, nullptr, nullptr, nullptr,
-            brands::XEN
+        constexpr std::array<brand::brand_enum, 22> brands_map = { {
+            brand_enum::PARALLELS,  brand_enum::PARALLELS,
+            brand_enum::VBOX,       brand_enum::VBOX,       brand_enum::VBOX,       brand_enum::VBOX,       brand_enum::VBOX,
+            brand_enum::VMWARE,     brand_enum::VMWARE,     brand_enum::VMWARE,     brand_enum::VMWARE,
+            brand_enum::QEMU,       brand_enum::QEMU,       brand_enum::QEMU,       brand_enum::QEMU,       brand_enum::BOCHS,
+            brand_enum::NULL_BRAND, brand_enum::NULL_BRAND, brand_enum::NULL_BRAND, brand_enum::NULL_BRAND, brand_enum::NULL_BRAND,
+            brand_enum::XEN
         } };
 
         // inside struct to not have to move out of function, constexpr this way because of c++ 11 compatibility
@@ -6919,8 +6919,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     }
 
                     debug("FIRMWARE: Detected ", pattern);
-                    const char* detected_brand = brands_map[i];
-                    return (detected_brand ? core::add(detected_brand) : true);
+                    const enum brand_enum detected_brand = brands_map[i];
+                    return core::add(detected_brand);
                 }
             }
 
@@ -7862,19 +7862,19 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             const char* dll_name;
             const char* brand;
         } dlls[] = {
-            {"sbiedll.dll",   brands::SANDBOXIE},
-            {"pstorec.dll",   brands::CWSANDBOX},
-            {"vmcheck.dll",   brands::VPC},
-            {"cmdvrt32.dll",  brands::COMODO},
-            {"cmdvrt64.dll",  brands::COMODO},
-            {"cuckoomon.dll", brands::CUCKOO},
-            {"SxIn.dll",      brands::QIHOO},
-            {"wpespy.dll",    brands::NULL_BRAND}
+            {"sbiedll.dll",   brand_enum::SANDBOXIE},
+            {"pstorec.dll",   brand_enum::CWSANDBOX},
+            {"vmcheck.dll",   brand_enum::VPC},
+            {"cmdvrt32.dll",  brand_enum::COMODO},
+            {"cmdvrt64.dll",  brand_enum::COMODO},
+            {"cuckoomon.dll", brand_enum::CUCKOO},
+            {"SxIn.dll",      brand_enum::QIHOO},
+            {"wpespy.dll",    brand_enum::NULL_BRAND}
         };
 
         for (const auto& x : dlls) {
             if (GetModuleHandleA(x.dll_name) != nullptr) {
-                debug("DLL: Found ", x.dll_name, " (", x.brand, ")");
+                debug("DLL: Found ", x.dll_name, " (", brand::brand_enum_to_string(x.brand), ")");
                 return core::add(x.brand);
             }
         }
@@ -8056,9 +8056,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         };
 
         constexpr target_pattern targets[] = {
-            {"55274-640-2673064-23950", brands::JOEBOX},   
-            {"76487-644-3177037-23510", brands::CWSANDBOX}, 
-            {"76487-337-8429955-22614", brands::ANUBIS}     
+            {"55274-640-2673064-23950", brand_enum::JOEBOX},   
+            {"76487-644-3177037-23510", brand_enum::CWSANDBOX}, 
+            {"76487-337-8429955-22614", brand_enum::ANUBIS}     
         };
 
         constexpr size_t target_length = 21;
@@ -11654,7 +11654,7 @@ public:
             last_detected_brand = p_brand;
             last_detected_score = score; // Store for the engine to read
 
-            u8 brand_score = brand_scoreboard[static_cast<u8>(p_brand)].score;
+            brand_score_t brand_score = brand_scoreboard[static_cast<u8>(p_brand)].score;
 
             brand_scoreboard[static_cast<u8>(p_brand)] = { p_brand, ++brand_score };
 
@@ -12810,9 +12810,9 @@ std::array<VM::core::technique, VM::enum_size + 1> VM::core::technique_table = [
             {VM::HYPERVISOR_QUERY, {100, VM::hypervisor_query}},
             {VM::AUDIO, {25, VM::audio}},
             {VM::DISPLAY, {25, VM::display}},
-            {VM::WINE, {100, VM::wine}},
+            {VM::WINE_FUNC, {100, VM::wine_function}},
             {VM::DLL, {50, VM::dll}},
-            {VM::DBVM, {150, VM::dbvm}},
+            {VM::DBVM_HYPERCALL, {150, VM::dbvm_hypercall}},
             {VM::UD, {100, VM::ud}},
             {VM::BLOCKSTEP, {100, VM::blockstep}},
             {VM::VMWARE_BACKDOOR, {100, VM::vmware_backdoor}},
