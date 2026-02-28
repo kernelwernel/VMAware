@@ -1,0 +1,62 @@
+name: "Issue Report"
+description: Report a problem, false positive, or suggestion.
+title: "<title>"
+labels: ["needs-triage"]
+
+body:
+  - type: checkboxes
+    id: source
+    attributes:
+      label: "Source info"
+      options:
+        - label: This is from the latest commit in the main branch
+        - label: This is from the latest release
+        - label: Other
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: issue-type
+    attributes:
+      label: "Issue type"
+      options:
+        - label: False positive
+        - label: Compilation warning/error
+        - label: Suggestion
+        - label: Other
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: environment
+    attributes:
+      label: "Environment"
+      options:
+        - label: Windows
+        - label: Linux
+        - label: MacOS
+        - label: Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: "Description"
+      description: Provide a clear and explicit description of the issue.
+      placeholder: Describe the issue briefly...
+    validations:
+      required: true
+
+  - type: textarea
+    id: cli-output
+    attributes:
+      label: "CLI output (if possible)"
+      description: >
+        It is highly recommended to paste the full output using the debug
+        binary from the latest release (e.g. vmaware_debug_X.X.X.exe).
+        If compiling from main, ensure you pass -DCMAKE_BUILD_TYPE=Debug.
+        If the CLI output doesn't apply to your issue, ignore this.
+      render: bash
+    validations:
+      required: false
