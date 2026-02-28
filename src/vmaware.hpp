@@ -6839,7 +6839,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             "Xen"
         } };
 
-        constexpr std::array<brand::brand_enum, 22> brands_map = { {
+        constexpr std::array<brand_enum, 22> brands_map = { {
             brand_enum::PARALLELS,  brand_enum::PARALLELS,
             brand_enum::VBOX,       brand_enum::VBOX,       brand_enum::VBOX,       brand_enum::VBOX,       brand_enum::VBOX,
             brand_enum::VMWARE,     brand_enum::VMWARE,     brand_enum::VMWARE,     brand_enum::VMWARE,
