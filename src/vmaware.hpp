@@ -11845,8 +11845,14 @@ public: // START OF PUBLIC FUNCTIONS
         merge(TMP_VMWARE_HARD, TMP_ESX, TMP_VMWARE_HARD);
         merge(TMP_VMWARE_HARD, TMP_GSX, TMP_VMWARE_HARD);
         merge(TMP_VMWARE_HARD, TMP_WORKSTATION, TMP_VMWARE_HARD);
-
+        
         if (active_count > 1) {
+            // remove "Unknown" if detected with other brands
+            const int idx = find_index(brands::NULL_BRAND);
+            if (idx != -1) {
+                remove_at(idx);
+            }
+
             std::sort(active_brands.begin(), active_brands.begin() + static_cast<std::ptrdiff_t>(active_count), [](
                 const brand_element_t& a,
                 const brand_element_t& b
