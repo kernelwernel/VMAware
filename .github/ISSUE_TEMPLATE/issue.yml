@@ -1,6 +1,5 @@
 name: "Issue Report"
 description: Report a problem, false positive, or suggestion.
-title: "<title>"
 labels: ["needs-triage"]
 
 body:
